@@ -40,6 +40,8 @@ from .VRGDG_MiniMaxH3PromptInstructions import (
     MINIMAX_H3_REFERENCE_TO_VIDEO_INSTRUCTIONS,
     MINIMAX_H3_TEXT_TO_VIDEO_INSTRUCTIONS,
     MINIMAX_H3_VIDEO_TO_VIDEO_INSTRUCTIONS,
+    MINIMAX_H3_SHORT_FILM_GUIDED_INSTRUCTIONS_BY_MODE,
+    MINIMAX_H3_SHORT_FILM_CUSTOM_INSTRUCTIONS_BY_MODE,
 )
 
 
@@ -518,8 +520,9 @@ def _open_tk_picker(kind):
                     ("All files", "*.*"),
                 ],
             )
-        elif kind == "project_folder":
-            path = filedialog.askdirectory(title="Choose project folder")
+        elif kind in {"project_folder", "project_root"}:
+            title = "Choose projects root folder" if kind == "project_root" else "Choose project folder"
+            path = filedialog.askdirectory(title=title)
         else:
             raise ValueError(f"Unknown picker type: {kind}")
         return str(path or "")
@@ -565,6 +568,13 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console
 Add-Type -AssemblyName System.Windows.Forms
 $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
 $dialog.Description = 'Choose project folder'
+if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Write($dialog.SelectedPath) }
+"""
+    elif kind == "project_root":
+        script = r"""
+Add-Type -AssemblyName System.Windows.Forms
+$dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+$dialog.Description = 'Choose projects root folder'
 if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Write($dialog.SelectedPath) }
 """
     else:
@@ -627,6 +637,11 @@ def _project_target_from_payload(payload, preferred_key="project_folder"):
         raw = f"VRGDG_Project_{time.strftime('%Y%m%d_%H%M%S')}"
     if os.path.isabs(raw) or os.path.dirname(raw):
         return os.path.abspath(raw)
+    project_root = str(payload.get("project_root", "") or "").strip().strip('"')
+    if project_root:
+        if not os.path.isabs(project_root):
+            raise ValueError("Custom project root must be a full absolute folder path.")
+        return os.path.join(os.path.abspath(project_root), _safe_project_name(raw))
     return os.path.join(folder_paths.get_output_directory(), _safe_project_name(raw))
 
 
@@ -890,6 +905,10 @@ _BUILDER_INSTRUCTION_DEFAULTS = {
     "t2v": _T2V_INSTRUCTIONS,
     "zimage_t2i": _STANDARD_IMAGE_T2I_INSTRUCTIONS,
 }
+for _minimax_mode, _instructions in MINIMAX_H3_SHORT_FILM_GUIDED_INSTRUCTIONS_BY_MODE.items():
+    _BUILDER_INSTRUCTION_DEFAULTS[f"minimax_h3_short_film_guided_{_minimax_mode}"] = _instructions
+for _minimax_mode, _instructions in MINIMAX_H3_SHORT_FILM_CUSTOM_INSTRUCTIONS_BY_MODE.items():
+    _BUILDER_INSTRUCTION_DEFAULTS[f"minimax_h3_short_film_custom_{_minimax_mode}"] = _instructions
 
 _BUILDER_INSTRUCTION_LABELS = {
     "flux_klein_t2i": "Flux/Klein Text to Image",
@@ -908,6 +927,10 @@ _BUILDER_INSTRUCTION_LABELS = {
     "t2v": "Text to Video",
     "zimage_t2i": "ZImage Text to Image",
 }
+for _minimax_mode in MINIMAX_H3_SHORT_FILM_GUIDED_INSTRUCTIONS_BY_MODE:
+    _mode_label = _minimax_mode.replace("_", " ").title()
+    _BUILDER_INSTRUCTION_LABELS[f"minimax_h3_short_film_guided_{_minimax_mode}"] = f"MiniMax H3 Guided Short Film - {_mode_label}"
+    _BUILDER_INSTRUCTION_LABELS[f"minimax_h3_short_film_custom_{_minimax_mode}"] = f"MiniMax H3 Fully Custom Short Film - {_mode_label}"
 
 _BUILDER_INSTRUCTION_PRESET_GROUPS = {
     "ernie_t2i": "standard_image_t2i",
@@ -3526,17 +3549,35 @@ def _clean_lm_studio_plain_text(text):
 
 
 def _format_minimax_h3_prompt(text, payload=None, instruction_key=""):
-    """Keep H3 prompts readable and make exact custom-audio lip sync explicit."""
+    """Keep H3 prompts readable and enforce the selected MiniMax audio contract."""
     payload = payload if isinstance(payload, dict) else {}
     cleaned = _clean_lm_studio_plain_text(text).replace("\r\n", "\n").replace("\r", "\n")
     cleaned = re.sub(r"<\s*Picture\s+(\d+)\s*>", r"Image \1", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"<\s*Video\s+(\d+)\s*>", r"Video \1", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"<\s*Audio\s+1\s*>", "Audio 1", cleaned, flags=re.IGNORECASE)
 
+    raw_audio_mode = str(payload.get("audio_mode") or payload.get("minimax_h3_audio_mode") or "input_audio").strip().lower().replace("-", "_").replace(" ", "_")
+    native_audio = raw_audio_mode in {"built_in_audio", "native_audio", "generated_audio"}
+    speaker_assignments_raw = payload.get("speaker_assignments") or payload.get("minimax_speaker_assignments") or payload.get("dialogue_cues") or []
+    if isinstance(speaker_assignments_raw, str):
+        try:
+            speaker_assignments_raw = json.loads(speaker_assignments_raw)
+        except Exception:
+            speaker_assignments_raw = []
+    speaker_assignments = []
+    if isinstance(speaker_assignments_raw, list):
+        for item in speaker_assignments_raw:
+            if not isinstance(item, dict):
+                continue
+            speaker_name = str(item.get("speaker_name") or item.get("speaker") or item.get("name") or "").strip()
+            cue_text = str(item.get("text") or item.get("dialogue") or item.get("line") or "").strip()
+            if cue_text:
+                speaker_assignments.append({"speaker_name": speaker_name or "The assigned speaker", "text": cue_text})
+
     timestamp_pattern = r"\[\s*\d+(?:\.\d+)?s?\s*[-\u2013\u2014]\s*\d+(?:\.\d+)?s?\s*\]"
-    section_pattern = rf"(?:Image\s+\d+|Video\s+\d+|Audio\s+1|Audio|Continuity)\s*:|{timestamp_pattern}"
+    section_pattern = rf"(?:Image\s+\d+|Video\s+\d+|Audio\s+1|Native\s+audio|Audio|Continuity)\s*:|{timestamp_pattern}"
     cleaned = re.sub(rf"[ \t]*(?={section_pattern})", "\n\n", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(rf"({timestamp_pattern})[ \t]*", r"\1\n", cleaned)
+    cleaned = re.sub(rf"({timestamp_pattern})[ \t]*(?:\n[ \t]*)?", r"\1\n", cleaned)
     cleaned = re.sub(r"\n[ \t]+", "\n", cleaned)
     cleaned = re.sub(r"[ \t]+\n", "\n", cleaned)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
@@ -3553,6 +3594,7 @@ def _format_minimax_h3_prompt(text, payload=None, instruction_key=""):
     else:
         singer_names = []
     performer = " and ".join(singer_names[:2]) if singer_names else "the visible performer"
+    ordered_native_dialogue = bool(native_audio and performance_mode == "speaking" and speaker_assignments)
 
     def insert_before_first_timeline(block):
         nonlocal cleaned
@@ -3562,7 +3604,70 @@ def _format_minimax_h3_prompt(text, payload=None, instruction_key=""):
         else:
             cleaned = f"{cleaned.rstrip()}\n\n{block}"
 
-    if instruction_key == "minimax_h3_image_to_video" and not re.search(r"(?im)^Image\s+1\s*:", cleaned):
+    def insert_before_continuity(block):
+        nonlocal cleaned
+        match = re.search(r"(?im)^Continuity\s*:", cleaned)
+        if match:
+            cleaned = f"{cleaned[:match.start()].rstrip()}\n\n{block}\n\n{cleaned[match.start():].lstrip()}"
+        else:
+            cleaned = f"{cleaned.rstrip()}\n\n{block}"
+
+    def enforce_visual_only_timeline():
+        """Remove positive vocal actions from H3 timestamps and add a final B-roll contract."""
+        nonlocal cleaned
+        positive_vocal = re.compile(
+            r"\b(?:sing(?:s|ing)?|sang|sung|rap(?:s|ping)?|lip[ -]?sync(?:s|ing)?|"
+            r"speak(?:s|ing)?|say(?:s|ing)?|said|mouth(?:s|ed|ing)?|whisper(?:s|ing)?|"
+            r"perform(?:s|ing)?\s+(?:the\s+)?(?:saved\s+|exact\s+)?(?:lyric|dialogue|words?))\b",
+            flags=re.IGNORECASE,
+        )
+        negative_safety = re.compile(
+            r"\b(?:no|not|never|without|does\s+not|do\s+not|must\s+not|cannot|can['’]t|don['’]t)\b",
+            flags=re.IGNORECASE,
+        )
+        timeline_block_pattern = re.compile(
+            rf"({timestamp_pattern}\n)(.*?)(?=\n\n(?:{timestamp_pattern}|Audio\s*:|Continuity\s*:)|$)",
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+
+        def clean_timeline_block(match):
+            parts = [
+                part.strip()
+                for part in re.split(r"(?<=[.!?])\s+|\n+", match.group(2).strip())
+                if part.strip()
+            ]
+            kept = [
+                part for part in parts
+                if not (positive_vocal.search(part) and not negative_safety.search(part))
+            ]
+            if not kept:
+                kept.append("Continue the requested visual action, camera movement, and environmental motion naturally.")
+            kept.append(
+                "All visible subjects remain silent and do not sing, speak, rap, mouth words, or lip-sync; "
+                "every mouth stays naturally relaxed or closed."
+            )
+            return f"{match.group(1)}{' '.join(kept)}"
+
+        cleaned = timeline_block_pattern.sub(clean_timeline_block, cleaned)
+        safety_block = (
+            "VISUAL-ONLY B-ROLL / NO-LIP-SYNC SAFETY — MANDATORY AND FINAL:\n"
+            "This scene is explicitly B-roll / visual-only. This safety block overrides any conflicting lyric, singer, "
+            "speaker, dialogue, voice, timestamp, facial-performance, or mouth instruction elsewhere in the prompt.\n"
+            "No visible subject sings, speaks, raps, whispers, lip-syncs, mouths words, or performs the saved lyric. "
+            "Keep every visible mouth naturally relaxed or closed and use only visual acting, physical action, dancing "
+            "without vocal performance, camera motion, and environmental motion.\n"
+            + (
+                "Built-in MiniMax Audio: generate only requested environmental ambience and sound effects. Do not "
+                "generate speech, singing, dialogue, lyrics, narration, voices, or vocal layers."
+                if native_audio else
+                "Input Audio: preserve Audio 1 completely unchanged as the soundtrack and timing reference, including "
+                "any audible vocals, but treat those vocals as off-screen soundtrack only. No visible subject may synchronize to them."
+            )
+            + "\nTreat the saved lyric only as hidden mood/story context; never quote it as dialogue or describe anyone performing it."
+        )
+        insert_before_first_timeline(safety_block)
+
+    if instruction_key.endswith("image_to_video") and not re.search(r"(?im)^Image\s+1\s*:", cleaned):
         image_assignment = (
             "Image 1: use as the exact start frame, character appearance and clothing reference, "
             "environment reference, lighting reference, and composition reference."
@@ -3573,28 +3678,77 @@ def _format_minimax_h3_prompt(text, payload=None, instruction_key=""):
         else:
             insert_before_first_timeline(image_assignment)
 
-    if not re.search(r"(?im)^Audio\s+1\s*:", cleaned):
+    if native_audio:
+        native_assignment_pattern = re.compile(
+            rf"(?ims)^(?:Audio\s+1|Native\s+audio)\s*:.*?(?=\n\n(?:{timestamp_pattern}|Image\s+\d+\s*:|Video\s+\d+\s*:|Audio\s*:|Continuity\s*:)|\Z)"
+        )
+        cleaned = native_assignment_pattern.sub("", cleaned).strip()
+        if ordered_native_dialogue:
+            ordered_cues = "; ".join(
+                f'{cue["speaker_name"]} says exactly “{cue["text"]}”'
+                for cue in speaker_assignments
+            )
+            native_assignment = (
+                f"Native audio: Generate spoken dialogue in this exact order: {ordered_cues}. "
+                "Only the assigned speaker speaks during each cue. Every other visible character remains silent with their mouth closed and reacts naturally. "
+                "Synchronize each assigned speaker’s lips, mouth shapes, jaw movement, facial muscles, and breathing precisely to that speaker’s generated words. "
+                "Speak only in the same language used by the exact supplied dialogue; do not translate or switch languages. "
+                "Pronounce every supplied word clearly at a natural measured pace. Do not generate gibberish, babble, invented syllables, filler, phonetic substitutions, repeated phrases, or extra vocalizations. "
+                "Begin the first cue within the first 0.15 seconds, pace the exact words naturally across the available clip, and land the final word approximately 0.15-0.30 seconds before the clip ends. Never finish early and fill time with invented speech. "
+                "Do not merge speakers, overlap or reorder cues, transfer words, rewrite, restart, repeat, improvise, omit, or add dialogue."
+            )
+        elif lyric_text and not no_lip_sync:
+            action = "speaking" if performance_mode == "speaking" else "singing"
+            native_assignment = (
+                f"Native audio: Generate {performer} {action} the exact line “{lyric_text}”. "
+                "Synchronize the visible performance precisely to the generated words and preserve the exact wording without additions, repetition, or replacement."
+            )
+        elif no_lip_sync:
+            native_assignment = (
+                "Native audio: Generate only the requested environmental ambience and sound effects. "
+                "Do not generate speech, singing, lyrics, dialogue, voices, or visible mouth synchronization."
+            )
+        else:
+            native_assignment = (
+                "Native audio: Generate only appropriate environmental ambience and requested sound effects. "
+                "Do not invent speech, singing, lyrics, dialogue, or voices."
+            )
+        insert_before_first_timeline(native_assignment)
+    else:
         if lyric_text and not no_lip_sync:
             action = "says" if performance_mode == "speaking" else "is singing"
             vocal_kind = "spoken" if performance_mode == "speaking" else "sung"
             audio_assignment = (
-                f"Audio 1: use as the exact vocal, timing, and lip-sync reference. {performer} {action} the exact line "
+                "Audio 1: use unchanged as the primary and only audio track. Preserve its exact music, vocals, timing, "
+                f"rhythm, phrasing, tone, and duration, and use it as the exact vocal, timing, and lip-sync reference. "
+                f"{performer} {action} the exact line "
                 f"“{lyric_text}”. Synchronize lips, mouth shapes, jaw movement, facial muscles, and breathing precisely "
-                f"to that {vocal_kind} line in Audio 1. Do not replace, alter, extend, or add vocals."
+                f"to that {vocal_kind} line in Audio 1. Do not generate, add, replace, remix, or extend any music, "
+                "ambience, dialogue, vocals, or sound effects."
             )
         elif no_lip_sync:
             audio_assignment = (
-                "Audio 1: use unchanged as the exact timing reference. This scene is visual-only; do not show singing, "
-                "speaking, or mouth synchronization."
+                "Audio 1: use unchanged as the primary and only audio track. Preserve its exact music, vocals, timing, "
+                "rhythm, phrasing, tone, and duration. This portion contains no vocal line for the visible character, "
+                "so the character does not sing, speak, or lip-sync; keep the mouth naturally relaxed or closed. "
+                "Do not generate, add, replace, remix, or extend any music, ambience, dialogue, vocals, or sound effects."
             )
         else:
             audio_assignment = (
-                "Audio 1: use unchanged as the exact performance, movement, and timing reference. "
-                "Do not invent lyrics, dialogue, replacement music, or replacement vocals."
+                "Audio 1: use unchanged as the primary and only audio track. Preserve its exact music, vocals, timing, "
+                "rhythm, phrasing, tone, and duration. Use it as the exact performance and movement reference. "
+                "Do not generate, add, replace, remix, or extend any music, ambience, dialogue, vocals, or sound effects."
             )
+        input_audio_assignment_pattern = re.compile(
+            rf"(?ims)^Audio\s+1\s*:.*?(?=\n\n(?:{timestamp_pattern}|Image\s+\d+\s*:|Video\s+\d+\s*:|Audio\s*:|Continuity\s*:|REFERENCE\s+SUBJECT\s+COUNT\b)|\Z)"
+        )
+        cleaned = input_audio_assignment_pattern.sub("", cleaned).strip()
         insert_before_first_timeline(audio_assignment)
 
-    if lyric_text and not no_lip_sync:
+    if no_lip_sync:
+        enforce_visual_only_timeline()
+
+    if lyric_text and not no_lip_sync and not ordered_native_dialogue:
         lines = cleaned.split("\n")
         exact_line_lower = lyric_text.casefold()
         for index, line in enumerate(lines):
@@ -3626,37 +3780,62 @@ def _format_minimax_h3_prompt(text, payload=None, instruction_key=""):
             if visibly_performed:
                 return f"{header}{body}"
             required_action = (
-                f"Throughout this interval, {performer} {vocal_verb} “{lyric_text}” with precise lip, mouth-shape, jaw, "
-                f"facial-muscle, and breathing synchronization to the {sync_kind} in Audio 1."
+                f"During only the portion of this interval where the {sync_kind} is audible in Audio 1, {performer} "
+                f"{vocal_verb} “{lyric_text}” with precise lip, mouth-shape, jaw, facial-muscle, and breathing synchronization. "
+                "When the supplied vocal ends, the mouth closes or relaxes naturally; never stretch, restart, or repeat the line to fill the interval."
             )
             return f"{header}{body.rstrip()} {required_action}".strip()
 
         cleaned = timeline_block_pattern.sub(ensure_vocal_in_timeline, cleaned)
 
-    if not re.search(r"(?im)^Audio\s*:", cleaned):
-        if lyric_text and not no_lip_sync:
+    if native_audio:
+        native_summary_pattern = re.compile(
+            r"(?ims)^Audio\s*:.*?(?=\n\n(?:Continuity\s*:|MINIMAX\s+NATIVE\s+VOICE\s+IDENTITY\b)|\Z)"
+        )
+        cleaned = native_summary_pattern.sub("", cleaned).strip()
+        if ordered_native_dialogue:
             audio_summary = (
-                f"Audio: Use Audio 1 unchanged as the primary audio track. Preserve its exact voice, timing, phrasing, tone, "
-                f"and duration, and keep the lip sync exact to “{lyric_text}”. Do not add replacement music, dialogue, or vocal layers."
+                "Audio: Generate the ordered spoken dialogue as the primary audio track using each character’s assigned voice. "
+                "Preserve every word and speaker turn exactly, keep the visible speaker’s lip sync precise, and keep all non-speaking characters silent. "
+                "Add only subtle low-level requested ambience and sound effects underneath. Do not add narration, extra dialogue, music, or vocal layers."
+            )
+        elif lyric_text and not no_lip_sync:
+            vocal_kind = "spoken line" if performance_mode == "speaking" else "sung lyric"
+            audio_summary = (
+                f"Audio: Generate the exact {vocal_kind} “{lyric_text}” as the primary audio track and synchronize the visible performance precisely to it. "
+                "Add only subtle low-level requested ambience and sound effects underneath. Do not add replacement words, extra dialogue, or vocal layers."
             )
         else:
             audio_summary = (
-                "Audio: Use Audio 1 unchanged as the primary audio track and preserve its exact timing and duration. "
-                "Do not add replacement music, dialogue, or vocal layers."
+                "Audio: Generate only the requested environmental ambience and sound effects. "
+                "Do not add speech, singing, dialogue, lyrics, narration, or vocal layers."
             )
-        cleaned = f"{cleaned.rstrip()}\n\n{audio_summary}"
-    elif lyric_text and not no_lip_sync:
-        lines = cleaned.split("\n")
-        for index, line in enumerate(lines):
-            if re.match(r"^Audio\s*:", line, flags=re.IGNORECASE):
-                if lyric_text.casefold() not in line.casefold() or "lip" not in line.casefold():
-                    lines[index] = (
-                        f"{line.rstrip()} Use Audio 1 unchanged as the primary audio track, preserve its exact voice, timing, "
-                        f"phrasing, tone, and duration, and keep the lip sync exact to “{lyric_text}”. "
-                        "Do not add replacement music, dialogue, or vocal layers."
-                    )
-                break
-        cleaned = "\n".join(lines)
+        insert_before_continuity(audio_summary)
+    else:
+        if lyric_text and not no_lip_sync:
+            audio_summary = (
+                "Audio: Audio 1 remains unchanged as the primary and only audio track. Preserve its exact music, vocals, "
+                f"timing, rhythm, phrasing, tone, and duration, and keep the lip sync exact to “{lyric_text}”. "
+                "Do not generate, add, replace, remix, or extend any music, ambience, dialogue, vocals, or sound effects."
+            )
+        elif no_lip_sync:
+            audio_summary = (
+                "Audio: Audio 1 remains unchanged as the primary and only audio track. Preserve its exact music, vocals, "
+                "timing, rhythm, phrasing, tone, and duration. The visible character does not sing, speak, or lip-sync "
+                "during this non-vocal portion and keeps the mouth naturally relaxed or closed. Do not generate, add, "
+                "replace, remix, or extend any music, ambience, dialogue, vocals, or sound effects."
+            )
+        else:
+            audio_summary = (
+                "Audio: Audio 1 remains unchanged as the primary and only audio track. Preserve its exact music, vocals, "
+                "timing, rhythm, phrasing, tone, and duration. Do not generate, add, replace, remix, or extend any music, "
+                "ambience, dialogue, vocals, or sound effects."
+            )
+        input_audio_summary_pattern = re.compile(
+            r"(?ims)^Audio\s*:.*?(?=\n\n(?:Audio\s+1\s*:|Continuity\s*:|REFERENCE\s+SUBJECT\s+COUNT\b)|\Z)"
+        )
+        cleaned = input_audio_summary_pattern.sub("", cleaned).strip()
+        insert_before_continuity(audio_summary)
 
     if not re.search(r"(?im)^Continuity\s*:", cleaned):
         continuity = (
@@ -3664,6 +3843,91 @@ def _format_minimax_h3_prompt(text, payload=None, instruction_key=""):
             "relationships throughout. Do not introduce new characters, objects, text, logos, captions, or scene changes unless explicitly requested."
         )
         cleaned = f"{cleaned.rstrip()}\n\n{continuity}"
+
+    if native_audio:
+        cleaned = re.sub(r"\bAudio\s+1\b", "the generated native audio", cleaned, flags=re.IGNORECASE)
+
+    if ordered_native_dialogue:
+        # Keep the exact dialogue script in one authoritative place. Repeating a full
+        # quoted cue in timeline/summary sections can make H3 restart or repeat it.
+        native_block = re.search(
+            rf"(?ims)^Native\s+audio\s*:.*?(?=\n\n{timestamp_pattern}|\Z)",
+            cleaned,
+        )
+        if native_block:
+            prefix = cleaned[:native_block.end()]
+            suffix = cleaned[native_block.end():]
+            for cue in speaker_assignments:
+                cue_text = str(cue.get("text") or "").strip()
+                if not cue_text:
+                    continue
+                escaped = re.escape(cue_text)
+                suffix = re.sub(
+                    rf"[\u201c\"]\s*{escaped}\s*[\u201d\"]",
+                    "the assigned cue",
+                    suffix,
+                    flags=re.IGNORECASE,
+                )
+                suffix = re.sub(escaped, "the assigned cue", suffix, flags=re.IGNORECASE)
+            cleaned = prefix + suffix
+
+    try:
+        camera_speed = max(0.0, min(10.0, float(payload.get("camera_motion_speed", 4))))
+    except Exception:
+        camera_speed = 4.0
+    try:
+        character_speed = max(0.0, min(10.0, float(payload.get("character_motion_speed", 4))))
+    except Exception:
+        character_speed = 4.0
+
+    if camera_speed >= 7:
+        camera_replacements = [
+            (r"\bslow cinematic drift\b", "energetic cinematic tracking drift"),
+            (r"\bslow orbit\b", "energetic orbit"),
+            (r"\bslow (left|right) orbit\b", r"energetic \1 orbit"),
+            (r"\bslow zoom out\b", "brisk pull-back reveal"),
+            (r"\bslow (left|right|side|lateral) drift\b", r"brisk \1 tracking drift"),
+            (r"\bslow (pan|tilt|track|tracking|pull[ -]?back|drift)\b", r"brisk \1"),
+            (r"\bgentle lateral drift\b", "energetic lateral tracking"),
+            (r"\bgentle pan reveal\b", "brisk pan reveal"),
+            (r"\bgentle (pan|tilt|orbit|drift|camera movement)\b", r"brisk \1"),
+            (r"\bsubtle handheld movement\b", "active handheld tracking"),
+            (r"\bsubtle handheld camera\b", "active handheld camera"),
+            (r"\bsubtle handheld follow\b", "energetic handheld follow"),
+            (r"\bsubtle rack focus\b", "quick rack focus"),
+            (r"\bsubtle energetic orbit\b", "energetic orbit"),
+            (r"\bsubtle settling pause\b", "active reframing beat"),
+            (r"\bsubtle orbit movement\b", "energetic orbit movement"),
+            (r"\b(?:quiet handheld hold|locked-off reaction hold|locked-off shot)\b", "active handheld reaction tracking"),
+            (r"\brestrained pan\b", "brisk pan"),
+        ]
+        for pattern, replacement in camera_replacements:
+            cleaned = re.sub(pattern, replacement, cleaned, flags=re.IGNORECASE)
+        if not re.search(r"\b(?:tracking|orbit|whip pan|pan|tilt|crane|pullback|pull-back|push|dolly|handheld|reveal)\b", cleaned, flags=re.IGNORECASE):
+            first_timeline = re.search(rf"(?ims)({timestamp_pattern}\n)(.*?)(?=\n\n(?:{timestamp_pattern}|Audio\s*:|Continuity\s*:)|$)", cleaned)
+            if first_timeline:
+                body = first_timeline.group(2).rstrip()
+                replacement = f"{first_timeline.group(1)}{body} The camera uses energetic tracking throughout this interval and never settles into a static hold."
+                cleaned = cleaned[:first_timeline.start()] + replacement + cleaned[first_timeline.end():]
+
+    if character_speed >= 4 and not no_visible_character:
+        physical_action_pattern = r"\b(?:walks?|steps?|strides?|runs?|sprints?|dances?|crosses?|lunges?|reaches?|pushes?|pulls?|climbs?|fights?|brushes?|sweeps?|gestures?|interacts?|grabs?|lifts?|paces?)\b"
+        timeline_text = "\n".join(
+            match.group(2)
+            for match in re.finditer(
+                rf"(?ims)({timestamp_pattern}\n)(.*?)(?=\n\n(?:{timestamp_pattern}|Audio\s*:|Continuity\s*:)|$)",
+                cleaned,
+            )
+        )
+        if not re.search(physical_action_pattern, timeline_text, flags=re.IGNORECASE):
+            first_timeline = re.search(rf"(?ims)({timestamp_pattern}\n)(.*?)(?=\n\n(?:{timestamp_pattern}|Audio\s*:|Continuity\s*:)|$)", cleaned)
+            if first_timeline:
+                body = first_timeline.group(2).rstrip()
+                replacement = (
+                    f"{first_timeline.group(1)}{body} The visible subject performs a clear physical action with the body, hands, "
+                    "or surrounding set instead of relying on facial movement alone."
+                )
+                cleaned = cleaned[:first_timeline.start()] + replacement + cleaned[first_timeline.end():]
 
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
     return cleaned
@@ -8076,6 +8340,58 @@ def _save_builder_session(payload):
     segments = session.get("segments", [])
     if not isinstance(segments, list):
         segments = []
+    # A stale browser inspector/autosave must never be able to erase most of a
+    # populated transcription in one ordinary save. Preserve blanked lyric
+    # fields when the incoming session contains the same scene IDs but suddenly
+    # loses at least half of two or more existing lyric lines. A deliberate bulk
+    # clearing tool can opt out explicitly; normal one-line edits remain valid.
+    session_path = _session_path(project_folder)
+    if not bool(session.get("allow_bulk_lyric_clear")) and os.path.isfile(session_path):
+        try:
+            with open(session_path, "r", encoding="utf-8-sig") as handle:
+                existing_session = json.load(handle)
+            existing_segments = existing_session.get("segments", []) if isinstance(existing_session, dict) else []
+            existing_by_id = {
+                str(item.get("id") or "").strip(): item
+                for item in existing_segments
+                if isinstance(item, dict) and str(item.get("id") or "").strip()
+            }
+            matched = [
+                (item, existing_by_id.get(str(item.get("id") or "").strip()))
+                for item in segments
+                if isinstance(item, dict)
+            ]
+            matched = [(incoming, existing) for incoming, existing in matched if isinstance(existing, dict)]
+            existing_nonblank = [
+                (incoming, existing)
+                for incoming, existing in matched
+                if str(existing.get("lyric_text") or "").strip()
+            ]
+            erased = [
+                (incoming, existing)
+                for incoming, existing in existing_nonblank
+                if not str(incoming.get("lyric_text") or "").strip()
+            ]
+            catastrophic = (
+                len(existing_nonblank) >= 2
+                and len(erased) >= 2
+                and len(erased) * 2 >= len(existing_nonblank)
+            )
+            if catastrophic:
+                lyric_fields = (
+                    "lyric_text", "lyric_no_lip_sync", "lyric_section",
+                    "lyric_singers", "performance_mode", "no_character_present",
+                )
+                for incoming, existing in erased:
+                    for key in lyric_fields:
+                        if key in existing:
+                            incoming[key] = existing[key]
+                print(
+                    "[VRGDG Music Builder] Prevented accidental bulk lyric clearing: "
+                    f"restored {len(erased)} of {len(existing_nonblank)} populated scene lines."
+                )
+        except Exception as exc:
+            print(f"[VRGDG Music Builder] Lyric save safety check skipped: {exc}")
     overlay_segments = session.get("overlay_segments", [])
     if not isinstance(overlay_segments, list):
         overlay_segments = []
@@ -9050,39 +9366,54 @@ def _load_builder_session(project_folder):
     }
 
 
-def _list_builder_projects():
+def _list_builder_projects(project_root=""):
     output_dir = os.path.abspath(folder_paths.get_output_directory())
     projects = []
-    if not os.path.isdir(output_dir):
-        return {"projects": projects, "output_dir": output_dir}
-    for name in os.listdir(output_dir):
-        folder = os.path.join(output_dir, name)
-        if not os.path.isdir(folder):
+    roots = [output_dir]
+    custom_root = str(project_root or "").strip().strip('"')
+    if custom_root and os.path.isabs(custom_root):
+        custom_root = os.path.abspath(custom_root)
+        if os.path.normcase(custom_root) != os.path.normcase(output_dir):
+            roots.append(custom_root)
+    seen = set()
+    for root in roots:
+        if not os.path.isdir(root):
             continue
-        session_path = _session_path(folder)
-        if not os.path.isfile(session_path):
-            continue
-        try:
-            mtime = os.path.getmtime(session_path)
-        except OSError:
-            mtime = 0
-        scene_count = 0
-        try:
-            with open(session_path, "r", encoding="utf-8-sig") as handle:
-                session = json.load(handle)
-            segments = session.get("segments", []) if isinstance(session, dict) else []
-            scene_count = len(segments) if isinstance(segments, list) else 0
-        except Exception:
+        for name in os.listdir(root):
+            folder = os.path.abspath(os.path.join(root, name))
+            folder_key = os.path.normcase(folder)
+            if folder_key in seen or not os.path.isdir(folder):
+                continue
+            session_path = _session_path(folder)
+            if not os.path.isfile(session_path):
+                continue
+            seen.add(folder_key)
+            try:
+                mtime = os.path.getmtime(session_path)
+            except OSError:
+                mtime = 0
             scene_count = 0
-        projects.append({
-            "name": name,
-            "project_folder": os.path.abspath(folder),
-            "session_path": os.path.abspath(session_path),
-            "updated": mtime,
-            "scene_count": scene_count,
-        })
+            try:
+                with open(session_path, "r", encoding="utf-8-sig") as handle:
+                    session = json.load(handle)
+                segments = session.get("segments", []) if isinstance(session, dict) else []
+                scene_count = len(segments) if isinstance(segments, list) else 0
+            except Exception:
+                scene_count = 0
+            try:
+                can_delete = os.path.commonpath([output_dir, folder]) == output_dir
+            except ValueError:
+                can_delete = False
+            projects.append({
+                "name": name,
+                "project_folder": folder,
+                "session_path": os.path.abspath(session_path),
+                "updated": mtime,
+                "scene_count": scene_count,
+                "can_delete": can_delete,
+            })
     projects.sort(key=lambda item: item.get("updated", 0), reverse=True)
-    return {"projects": projects, "output_dir": output_dir}
+    return {"projects": projects, "output_dir": output_dir, "project_roots": roots}
 
 
 def _delete_builder_project(payload):
@@ -9697,7 +10028,7 @@ def _ensure_music_builder_routes():
     @server_instance.routes.get("/vrgdg/music_builder/list_projects")
     async def vrgdg_music_builder_list_projects(request):
         try:
-            result = _list_builder_projects()
+            result = _list_builder_projects(request.query.get("project_root", ""))
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})

@@ -161,6 +161,442 @@ function escapeHtml(text) {
     .replace(/"/g, "&quot;");
 }
 
+function storyboardScriptWordCount(value) {
+  return (String(value || "").match(/[\p{L}\p{N}'’-]+/gu) || []).length;
+}
+
+function storyboardScriptSpeakerMatchKey(value) {
+  return String(value || "")
+    .toLocaleLowerCase()
+    .replace(/[’']/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+    .replace(/^(?:the|a|an)\s+/, "")
+    .replace(/\s+/g, " ");
+}
+
+function suggestStoryboardScriptSpeakerMatch(speakerName, characters = []) {
+  const speakerKey = storyboardScriptSpeakerMatchKey(speakerName);
+  if (!speakerKey) return null;
+  const speakerTokens = speakerKey.split(" ").filter(Boolean);
+  const scored = (Array.isArray(characters) ? characters : []).map((character) => {
+    const characterKey = storyboardScriptSpeakerMatchKey(character?.name);
+    if (!characterKey) return null;
+    const characterTokens = characterKey.split(" ").filter(Boolean);
+    let score = 0;
+    if (speakerKey === characterKey) score = 100;
+    else if (characterKey.startsWith(`${speakerKey} `) || characterKey.endsWith(` ${speakerKey}`) || characterKey.includes(` ${speakerKey} `)) score = 85;
+    else if (speakerKey.startsWith(`${characterKey} `) || speakerKey.endsWith(` ${characterKey}`) || speakerKey.includes(` ${characterKey} `)) score = 80;
+    else if (speakerTokens.length && speakerTokens.every((token) => characterTokens.includes(token))) score = 70;
+    return score ? { character, score } : null;
+  }).filter(Boolean).sort((left, right) => right.score - left.score);
+  if (!scored.length) return null;
+  if (scored.length > 1 && scored[0].score === scored[1].score) return null;
+  return scored[0].character || null;
+}
+
+function estimateStoryboardScriptCueSeconds(text) {
+  const value = String(text || "").trim();
+  if (!value) return 0;
+  const words = storyboardScriptWordCount(value);
+  // MiniMax native dialogue tends to complete short lines faster than a measured
+  // read. Keep the planned clip close to the spoken line so the model is not
+  // given several empty seconds that it can fill with invented speech.
+  const baseSeconds = (words / 160) * 60;
+  const commaPauses = (value.match(/[,;]/g) || []).length * 0.12;
+  const strongPauses = (value.match(/[.!?](?=\s|$)/g) || []).length * 0.22;
+  const dramaticPauses = (value.match(/[—…]/g) || []).length * 0.18;
+  return Math.max(0.75, baseSeconds + commaPauses + strongPauses + dramaticPauses);
+}
+
+function splitStoryboardScriptCueForDuration(cue, maxSpeechSeconds) {
+  const text = String(cue?.text || "").trim();
+  if (!text || estimateStoryboardScriptCueSeconds(text) <= maxSpeechSeconds) {
+    return [{ ...cue, source_cue_index: Number(cue?.index || 0), part_index: 1, part_count: 1, was_split: false }];
+  }
+  const tokens = text.match(/\S+(?:\s+|$)/g) || [text];
+  const tokenCount = tokens.length;
+  const textCache = new Map();
+  const durationCache = new Map();
+  const chunkText = (start, end) => {
+    const key = `${start}:${end}`;
+    if (!textCache.has(key)) textCache.set(key, tokens.slice(start, end).join("").trim());
+    return textCache.get(key);
+  };
+  const chunkDuration = (start, end) => {
+    const key = `${start}:${end}`;
+    if (!durationCache.has(key)) durationCache.set(key, estimateStoryboardScriptCueSeconds(chunkText(start, end)));
+    return durationCache.get(key);
+  };
+  const boundaryPenalty = (end) => {
+    if (end >= tokenCount) return 0;
+    const previousToken = tokens[end - 1].trim();
+    if (/[.!?]["')\]]?$/.test(previousToken)) return 0;
+    if (/[;—…]["')\]]?$/.test(previousToken)) return 3;
+    if (/[:,]["')\]]?$/.test(previousToken)) return 12;
+    // Never favor a visually balanced split that leaves a dangling grammar word.
+    // MiniMax is much more likely to mumble or restart when a clip ends on words
+    // such as "a", "the", "and", or "to" instead of a complete spoken phrase.
+    const normalizedPrevious = previousToken.toLocaleLowerCase().replace(/[^a-z']/g, "");
+    if (/^(?:a|an|the|and|or|but|to|of|for|with|from|in|on|at|by|as|than|that|this|these|those|my|your|his|her|its|our|their)$/.test(normalizedPrevious)) return 900;
+    const nextToken = tokens[end]?.trim().toLocaleLowerCase().replace(/[^a-z']/g, "") || "";
+    if (/^(?:and|or|but|while|then)$/.test(nextToken)) return 40;
+    return 400;
+  };
+  const bestFrom = Array(tokenCount + 1).fill(null);
+  bestFrom[tokenCount] = { cost: 0, parts: [] };
+  for (let start = tokenCount - 1; start >= 0; start -= 1) {
+    let best = null;
+    for (let end = start + 1; end <= tokenCount; end += 1) {
+      const duration = chunkDuration(start, end);
+      if (duration > maxSpeechSeconds + 1e-6 && end > start + 1) break;
+      const remainder = bestFrom[end];
+      if (!remainder) continue;
+      const wordCount = storyboardScriptWordCount(chunkText(start, end));
+      const isFinalPart = end === tokenCount;
+      let shortPartPenalty = 0;
+      if (wordCount <= 1) shortPartPenalty += isFinalPart ? 300 : 100;
+      else if (wordCount === 2) shortPartPenalty += isFinalPart ? 40 : 20;
+      else if (duration < 1.25) shortPartPenalty += isFinalPart ? 25 : 12;
+      const fullness = Math.max(0, maxSpeechSeconds - duration) / Math.max(0.75, maxSpeechSeconds);
+      const balancePenalty = fullness * fullness * 3;
+      // The large per-part cost guarantees the fewest possible clips first.
+      // Within that clip count, punctuation quality, orphan avoidance, and balance decide the split.
+      const cost = 1000 + boundaryPenalty(end) + shortPartPenalty + balancePenalty + remainder.cost;
+      if (!best || cost < best.cost) {
+        best = {
+          cost,
+          parts: [chunkText(start, end), ...remainder.parts],
+        };
+      }
+    }
+    bestFrom[start] = best;
+  }
+  const parts = bestFrom[0]?.parts?.filter(Boolean) || [text];
+  return parts.map((part, index) => ({
+    ...cue,
+    text: part,
+    word_count: storyboardScriptWordCount(part),
+    source_cue_index: Number(cue?.index || 0),
+    part_index: index + 1,
+    part_count: parts.length,
+    was_split: parts.length > 1,
+  }));
+}
+
+function planStoryboardScriptScenes(cues = [], options = {}) {
+  const maxSceneSeconds = Math.max(3, Math.min(15, Number(options.max_scene_seconds || 8)));
+  const openingBuffer = 0.15;
+  const closingBuffer = 0.25;
+  const sameSpeakerGap = 0.12;
+  const speakerChangeGap = 0.2;
+  const maxSpeechSeconds = Math.max(0.75, maxSceneSeconds - openingBuffer - closingBuffer);
+  const sourceCues = Array.isArray(cues) ? cues : [];
+  const groupKeyForCue = (cue) => Number(cue?.scene_index || 0) > 0
+    ? `scene:${Number(cue.scene_index)}`
+    : String(cue?.scene_label || "").trim() ? `label:${String(cue.scene_label).trim().toLocaleLowerCase()}` : "script:1";
+  const participantsByGroup = new Map();
+  for (const cue of sourceCues) {
+    const key = groupKeyForCue(cue);
+    const participants = participantsByGroup.get(key) || new Map();
+    const participantKey = String(cue?.speaker_id || storyboardScriptSpeakerMatchKey(cue?.speaker_name || cue?.speaker));
+    if (participantKey) participants.set(participantKey, {
+      id: String(cue?.speaker_id || ""),
+      name: String(cue?.speaker_name || cue?.speaker || ""),
+      alias: String(cue?.speaker_alias || cue?.speaker || ""),
+    });
+    participantsByGroup.set(key, participants);
+  }
+  const expandedCues = sourceCues.flatMap((cue) => splitStoryboardScriptCueForDuration(cue, maxSpeechSeconds));
+  const scenes = [];
+  const warnings = [];
+  let pending = [];
+  let pendingGroupKey = "";
+  const estimatedPackedSeconds = (rows) => {
+    if (!rows.length) return 0;
+    let total = openingBuffer + closingBuffer;
+    rows.forEach((cue, index) => {
+      if (index) total += storyboardScriptSpeakerMatchKey(rows[index - 1]?.speaker) === storyboardScriptSpeakerMatchKey(cue?.speaker) ? sameSpeakerGap : speakerChangeGap;
+      total += estimateStoryboardScriptCueSeconds(cue?.text);
+    });
+    return total;
+  };
+  const flushScene = () => {
+    if (!pending.length) return;
+    let cursor = openingBuffer;
+    const timedCues = pending.map((cue, index) => {
+      if (index) cursor += storyboardScriptSpeakerMatchKey(pending[index - 1]?.speaker) === storyboardScriptSpeakerMatchKey(cue?.speaker) ? sameSpeakerGap : speakerChangeGap;
+      const startSeconds = cursor;
+      const spokenSeconds = estimateStoryboardScriptCueSeconds(cue?.text);
+      cursor += spokenSeconds;
+      return {
+        ...cue,
+        planned_start_seconds: Number(startSeconds.toFixed(2)),
+        planned_end_seconds: Number(cursor.toFixed(2)),
+        estimated_spoken_seconds: Number(spokenSeconds.toFixed(2)),
+      };
+    });
+    const rawDuration = cursor + closingBuffer;
+    const duration = Math.min(maxSceneSeconds, Math.ceil((rawDuration - 1e-6) * 10) / 10);
+    const previousScene = scenes[scenes.length - 1];
+    const timelineStartSeconds = scenes.reduce((total, scene) => total + Number(scene.duration_seconds || 0), 0);
+    const sourceCueIndexes = Array.from(new Set(timedCues.map((cue) => Number(cue.source_cue_index || cue.index || 0)).filter(Boolean)));
+    const participants = Array.from(participantsByGroup.get(pendingGroupKey)?.values() || []);
+    const sourceSceneLabel = String(timedCues[0]?.scene_label || "").trim();
+    scenes.push({
+      index: scenes.length + 1,
+      label: sourceSceneLabel || `Script Segment ${scenes.length + 1}`,
+      source_scene_index: Number(timedCues[0]?.scene_index || 0),
+      source_scene_label: sourceSceneLabel,
+      continuation_of_previous: Boolean(previousScene && previousScene.source_group_key === pendingGroupKey),
+      source_group_key: pendingGroupKey,
+      maximum_scene_seconds: maxSceneSeconds,
+      duration_seconds: Number(duration.toFixed(2)),
+      timeline_start_seconds: Number(timelineStartSeconds.toFixed(2)),
+      timeline_end_seconds: Number((timelineStartSeconds + duration).toFixed(2)),
+      estimated_dialogue_seconds: Number(timedCues.reduce((total, cue) => total + Number(cue.estimated_spoken_seconds || 0), 0).toFixed(2)),
+      source_cue_indexes: sourceCueIndexes,
+      participant_ids: participants.map((participant) => participant.id).filter(Boolean),
+      participant_names: participants.map((participant) => participant.name).filter(Boolean),
+      participants,
+      speaker_assignments: timedCues.map((cue) => ({
+        speaker_id: String(cue.speaker_id || ""),
+        speaker_name: String(cue.speaker_name || cue.speaker || ""),
+        speaker_alias: String(cue.speaker_alias || cue.speaker || ""),
+        text: String(cue.text || ""),
+        source_cue_index: Number(cue.source_cue_index || cue.index || 0),
+        part_index: Number(cue.part_index || 1),
+        part_count: Number(cue.part_count || 1),
+        planned_start_seconds: Number(cue.planned_start_seconds || 0),
+        planned_end_seconds: Number(cue.planned_end_seconds || 0),
+        estimated_spoken_seconds: Number(cue.estimated_spoken_seconds || 0),
+      })),
+    });
+    pending = [];
+  };
+  for (const cue of expandedCues) {
+    const groupKey = groupKeyForCue(cue);
+    if (pending.length && groupKey !== pendingGroupKey) flushScene();
+    pendingGroupKey = groupKey;
+    const pendingSourceCueIndex = Number(pending[0]?.source_cue_index || pending[0]?.index || 0);
+    const incomingSourceCueIndex = Number(cue?.source_cue_index || cue?.index || 0);
+    const crossesSplitCueBoundary = pending.length
+      && pendingSourceCueIndex !== incomingSourceCueIndex
+      && (pending.some((item) => item.was_split) || (cue.was_split && Number(cue.part_index || 1) > 1));
+    if (crossesSplitCueBoundary) flushScene();
+    pendingGroupKey = groupKey;
+    if (pending.length && estimatedPackedSeconds([...pending, cue]) > maxSceneSeconds + 1e-6) flushScene();
+    pendingGroupKey = groupKey;
+    pending.push(cue);
+  }
+  flushScene();
+  const splitSourceCueIndexes = Array.from(new Set(expandedCues.filter((cue) => cue.was_split).map((cue) => Number(cue.source_cue_index || 0)).filter(Boolean)));
+  if (splitSourceCueIndexes.length) warnings.push(`${splitSourceCueIndexes.length} long dialogue cue${splitSourceCueIndexes.length === 1 ? " was" : "s were"} split at natural phrase boundaries when possible to stay within ${maxSceneSeconds} seconds.`);
+  return {
+    maximum_scene_seconds: maxSceneSeconds,
+    scene_count: scenes.length,
+    split_cue_count: splitSourceCueIndexes.length,
+    estimated_total_seconds: Number(scenes.reduce((total, scene) => total + Number(scene.duration_seconds || 0), 0).toFixed(2)),
+    scenes,
+    warnings,
+  };
+}
+
+function normalizeStoryboardScriptImportState(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  const maximumSceneSeconds = Math.max(3, Math.min(15, Number(source.maximum_scene_seconds || source.max_scene_seconds || 8) || 8));
+  const cues = (Array.isArray(source.cues) ? source.cues : []).slice(0, 1000).map((cue, index) => ({
+    index: Number(cue?.index || index + 1),
+    line_number: Number(cue?.line_number || 0),
+    scene_index: Number(cue?.scene_index || 0),
+    scene_label: String(cue?.scene_label || "").trim(),
+    speaker: String(cue?.speaker_alias || cue?.speaker || cue?.speaker_name || "").trim(),
+    speaker_alias: String(cue?.speaker_alias || cue?.speaker || cue?.speaker_name || "").trim(),
+    speaker_id: String(cue?.speaker_id || cue?.reference_subject_id || ""),
+    speaker_name: String(cue?.speaker_name || cue?.reference_subject_name || cue?.speaker || "").trim(),
+    reference_subject_id: String(cue?.reference_subject_id || cue?.speaker_id || ""),
+    reference_subject_name: String(cue?.reference_subject_name || cue?.speaker_name || "").trim(),
+    speaker_match_method: String(cue?.speaker_match_method || "manual"),
+    text: String(cue?.text || cue?.dialogue || cue?.line || "").trim(),
+    word_count: storyboardScriptWordCount(cue?.text || cue?.dialogue || cue?.line || ""),
+  })).filter((cue) => cue.speaker && cue.text);
+  const speakersByKey = new Map();
+  for (const cue of cues) {
+    const key = storyboardScriptSpeakerMatchKey(cue.speaker);
+    const existing = speakersByKey.get(key) || {
+      name: cue.speaker,
+      speaker_alias: cue.speaker,
+      cue_count: 0,
+      word_count: 0,
+      reference_subject_id: cue.reference_subject_id,
+      reference_subject_name: cue.reference_subject_name,
+      match_method: cue.reference_subject_id ? cue.speaker_match_method || "manual" : "unmatched",
+    };
+    existing.cue_count += 1;
+    existing.word_count += cue.word_count;
+    if (!existing.reference_subject_id && cue.reference_subject_id) {
+      existing.reference_subject_id = cue.reference_subject_id;
+      existing.reference_subject_name = cue.reference_subject_name;
+      existing.match_method = cue.speaker_match_method || "manual";
+    }
+    speakersByKey.set(key, existing);
+  }
+  const speakers = Array.from(speakersByKey.values());
+  const speakerMatches = speakers.map((speaker) => ({
+    speaker_alias: speaker.speaker_alias,
+    reference_subject_id: speaker.reference_subject_id,
+    reference_subject_name: speaker.reference_subject_name,
+    match_method: speaker.match_method,
+  }));
+  const scenePlan = planStoryboardScriptScenes(cues, { max_scene_seconds: maximumSceneSeconds });
+  return {
+    enabled: source.enabled !== false && cues.length > 0,
+    authoritative: source.authoritative !== false,
+    format: String(source.format || "text"),
+    raw_text: String(source.raw_text || source.rawText || ""),
+    imported_at: String(source.imported_at || source.importedAt || ""),
+    maximum_scene_seconds: maximumSceneSeconds,
+    word_count: cues.reduce((total, cue) => total + cue.word_count, 0),
+    cues,
+    speakers,
+    speaker_matches: speakerMatches,
+    unmatched_speakers: speakers.filter((speaker) => !speaker.reference_subject_id).map((speaker) => speaker.name),
+    scene_plan: scenePlan,
+  };
+}
+
+function parseStoryboardScriptImport(value) {
+  const source = String(value || "").replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
+  const result = {
+    format: "text",
+    cues: [],
+    speakers: [],
+    metadata: [],
+    errors: [],
+    word_count: 0,
+    estimated_spoken_seconds: 0,
+  };
+  const speakerMap = new Map();
+  const reservedLabels = new Set(["scene", "scene label", "location", "setting", "present", "characters", "action", "camera", "audio", "audio direction", "continuity"]);
+  const addCue = (speakerValue, textValue, details = {}) => {
+    const speaker = String(speakerValue || "").trim();
+    const text = String(textValue || "").trim();
+    if (!speaker || !text) {
+      result.errors.push({
+        line_number: Number(details.line_number || 0),
+        source: String(details.source || "").trim(),
+        message: !speaker ? "Speaker name is missing." : "Dialogue text is missing.",
+      });
+      return;
+    }
+    const wordCount = storyboardScriptWordCount(text);
+    const cue = {
+      index: result.cues.length + 1,
+      line_number: Number(details.line_number || 0),
+      scene_index: Number(details.scene_index || 0),
+      scene_label: String(details.scene_label || "").trim(),
+      speaker,
+      text,
+      word_count: wordCount,
+    };
+    result.cues.push(cue);
+    const key = speaker.toLocaleLowerCase();
+    const summary = speakerMap.get(key) || { name: speaker, cue_count: 0, word_count: 0 };
+    summary.cue_count += 1;
+    summary.word_count += wordCount;
+    speakerMap.set(key, summary);
+  };
+  const parseTextLines = (textValue, details = {}) => {
+    let activeSceneLabel = String(details.scene_label || "").trim();
+    String(textValue || "").split("\n").forEach((rawLine, index) => {
+      const line = String(rawLine || "").trim();
+      if (!line) return;
+      const lineNumber = Number(details.line_offset || 0) + index + 1;
+      const match = line.match(/^([^:\n]{1,80}?)\s*:\s*(.*)$/);
+      if (!match) {
+        result.errors.push({ line_number: lineNumber, source: line, message: "Expected speaker: dialogue." });
+        return;
+      }
+      const label = String(match[1] || "").trim();
+      const text = String(match[2] || "").trim();
+      const labelKey = label.toLocaleLowerCase();
+      if (reservedLabels.has(labelKey)) {
+        result.metadata.push({ label, value: text, line_number: lineNumber });
+        if (labelKey === "scene" || labelKey === "scene label") activeSceneLabel = text;
+        return;
+      }
+      addCue(label, text, {
+        line_number: lineNumber,
+        source: line,
+        scene_index: details.scene_index,
+        scene_label: activeSceneLabel,
+      });
+    });
+  };
+  const addJsonCueRows = (rows, details = {}) => {
+    if (typeof rows === "string") {
+      parseTextLines(rows, details);
+      return;
+    }
+    if (!Array.isArray(rows)) {
+      result.errors.push({ line_number: 0, source: details.scene_label || "JSON", message: "Dialogue cues must be an array or speaker: dialogue text." });
+      return;
+    }
+    rows.forEach((item, index) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) {
+        result.errors.push({ line_number: 0, source: `JSON cue ${index + 1}`, message: "Cue must be an object with speaker and text fields." });
+        return;
+      }
+      addCue(
+        item.speaker_name || item.speaker || item.character || item.name,
+        item.text || item.dialogue || item.line,
+        {
+          source: `JSON cue ${index + 1}`,
+          scene_index: details.scene_index,
+          scene_label: details.scene_label,
+        },
+      );
+    });
+  };
+
+  const trimmed = source.trim();
+  if (!trimmed) {
+    result.errors.push({ line_number: 0, source: "", message: "Paste a script or load a .txt/.json file first." });
+    return result;
+  }
+  if (/^[\[{]/.test(trimmed)) {
+    result.format = "json";
+    try {
+      const parsed = JSON.parse(trimmed);
+      const scenes = !Array.isArray(parsed) && Array.isArray(parsed?.scenes) ? parsed.scenes : null;
+      if (scenes) {
+        scenes.forEach((scene, sceneIndex) => {
+          if (!scene || typeof scene !== "object" || Array.isArray(scene)) {
+            result.errors.push({ line_number: 0, source: `JSON scene ${sceneIndex + 1}`, message: "Scene must be an object." });
+            return;
+          }
+          const sceneLabel = String(scene.label || scene.scene_label || scene.title || `Scene ${sceneIndex + 1}`).trim();
+          const rows = scene.speaker_assignments || scene.dialogue_cues || scene.cues || scene.dialogue || [];
+          addJsonCueRows(rows, { scene_index: sceneIndex + 1, scene_label: sceneLabel });
+        });
+      } else {
+        const rows = Array.isArray(parsed)
+          ? parsed
+          : parsed?.speaker_assignments || parsed?.dialogue_cues || parsed?.cues || parsed?.dialogue;
+        addJsonCueRows(rows, {});
+      }
+    } catch (error) {
+      result.errors.push({ line_number: 0, source: "JSON", message: `Invalid JSON: ${String(error?.message || error)}` });
+    }
+  } else {
+    parseTextLines(source);
+  }
+  result.speakers = Array.from(speakerMap.values());
+  result.word_count = result.cues.reduce((total, cue) => total + Number(cue.word_count || 0), 0);
+  result.estimated_spoken_seconds = result.word_count ? (result.word_count / 145) * 60 : 0;
+  return result;
+}
+
 function makeStoryboardImageUrl(path) {
   return `/vrgdg/video_editor/image?path=${encodeURIComponent(path)}&rand=${Date.now()}`;
 }
@@ -676,6 +1112,7 @@ export const STORYBOARD_CAMERA_FLOW_PRESETS = {
   balanced: {
     label: "Balanced cinematic flow",
     description: "Alternates wide, medium, close, lateral, reveal, and reset shots without repeating inward zooms.",
+    guidance: "Use the selected starting shot as the literal first generated frame. Do not add a wider, farther-away, establishing, or full-body lead-in before it. Preserve the selected framing unless the selected camera move explicitly changes scale. Treat inward moves as rare accents, never as a default pattern.",
     sequence: [
       { shot: "wide shot", camera: "slow cinematic drift" },
       { shot: "medium close-up shot", camera: "pull back" },
@@ -687,6 +1124,23 @@ export const STORYBOARD_CAMERA_FLOW_PRESETS = {
       { shot: "intimate close-up shot", camera: "slow zoom out" },
       { shot: "over-the-shoulder shot", camera: "reveal right" },
       { shot: "full-body shot", camera: "track backward" },
+    ],
+  },
+  intimate_closeups: {
+    label: "Intimate close-ups",
+    description: "Keeps the character close and frame-filling with face, head, neck-up, chest-up, waist-up, and upper-body coverage; full-body framing is used only for a compact seated or close pose.",
+    guidance: "Keep the character close to the camera and visually dominant for the entire shot. Use only up-close face, tight headshot, neck-up, chest-up, waist-up, or tight upper-body framing. A full-body composition is allowed only when the character is seated, crouched, curled, reclining, or held in another compact pose that still fills most of the frame. Never use a wide, long, establishing, distant, small-in-frame, or far-away composition, and never pull back far enough to make the character feel remote.",
+    sequence: [
+      { shot: "up-close face shot", camera: "subtle handheld movement" },
+      { shot: "tight headshot", camera: "slow orbit left" },
+      { shot: "neck-up close-up shot", camera: "gentle lateral drift" },
+      { shot: "chest-up close-up shot", camera: "slow orbit right" },
+      { shot: "waist-up close shot", camera: "subtle handheld follow" },
+      { shot: "tight upper-body shot", camera: "gentle pan reveal" },
+      { shot: "close-framed seated full-body shot with the compact pose filling most of the frame", camera: "slow lateral drift" },
+      { shot: "intimate face close-up shot", camera: "rack focus" },
+      { shot: "chest-up portrait shot", camera: "slow tilt up" },
+      { shot: "close-framed full-body shot in a compact crouched or reclining pose that fills most of the frame", camera: "subtle orbit movement" },
     ],
   },
   music_video: {
@@ -1166,6 +1620,302 @@ export const STORYBOARD_IMAGE_AESTHETIC_PRESETS = [
   { value: "35mm_analog_film", label: "35mm analog film", description: "Film grain, practical lighting, imperfect texture, grounded color, and documentary-like realism.", prompt_guidance: "Build a 35mm analog film still with visible grain, practical lighting, imperfect surfaces, grounded color response, natural posture, textured wardrobe, shallow lens character, and a lived-in environment. Avoid glossy music-video polish unless the scene asks for it." },
 ];
 
+const MINIMAX_VIDEO_STYLE_LABELS = [
+  "Cinematic realism", "Gothic romance", "Dark fantasy", "Ethereal dreamscape", "Surrealism", "Cosmic horror",
+  "Psychological horror", "Found footage", "Analog horror", "Body horror", "Occult ritual", "Silent Hill-inspired",
+  "Cyberpunk", "Biopunk", "Dieselpunk", "Steampunk", "Post-apocalyptic", "Dystopian sci-fi", "Retro-futurism",
+  "Y2K futurism", "Vaporwave", "Synthwave", "Dreamcore", "Weirdcore", "Liminal space", "Dark academia",
+  "Cottagecore", "Fairycore", "Angelcore", "Goblincore", "Whimsigoth", "Baroque", "Rococo", "Art Nouveau",
+  "Art Deco", "Victorian gothic", "Renaissance-inspired", "Medieval fantasy", "Mythological epic", "Film noir",
+  "Neo-noir", "Expressionism", "Giallo horror", "Grindhouse", "1970s psychedelic", "1980s music video",
+  "1990s grunge", "Early-2000s pop", "Indie sleaze", "Lo-fi VHS", "Super 8 film", "Vintage Hollywood",
+  "High-fashion editorial", "Avant-garde fashion", "Runway glamour", "Luxury commercial", "Beauty campaign",
+  "Pop-star music video", "Industrial metal", "Gothic metal", "Alternative rock", "Punk rock", "Dark pop",
+  "Hyperpop", "K-pop-inspired", "R&B glamour", "Eerie claymation", "Stop-motion", "Paper-cut animation",
+  "Hand-painted animation", "Anime-inspired", "Graphic novel", "Comic-book", "Cel-shaded 3D", "Photorealistic CGI",
+  "Low-poly 3D", "Miniature diorama", "Dollhouse surrealism", "Liquid chrome", "Holographic iridescence",
+  "Neon noir", "Monochrome minimalism", "High-key white studio", "Low-key chiaroscuro", "Soft pastel",
+  "Desaturated melancholy", "Crimson-and-black", "Teal-and-orange blockbuster", "Golden-hour nostalgia",
+  "Moonlit blue", "Underwater ethereal", "Elemental fantasy", "Nature mysticism", "Apocalyptic biblical",
+  "Glitch art", "Datamosh", "CRT distortion", "Kaleidoscopic", "Double exposure", "Infrared", "Thermal vision",
+  "Fisheye distortion", "Security-camera footage", "Documentary realism", "Social-media selfie", "TikTok transformation",
+  "Dreamlike slow motion", "Frenetic montage", "One-take immersive", "Music-video performance",
+  "Narrative short film", "Movie-trailer aesthetic",
+];
+
+const MINIMAX_VIDEO_STYLE_VERBIAGE = {
+  "Cinematic realism": "Naturalistic practical lighting, restrained color grading, balanced contrast, subtle film grain, realistic skin texture, neutral tones, believable materials, and polished cinematic clarity throughout.",
+  "Gothic romance": "Deep burgundy, black, and ivory tones, soft shadows, luminous highlights, ornate details, rich velvet and lace textures, candlelit atmosphere, and melancholic visual softness throughout.",
+  "Dark fantasy": "Shadow-heavy lighting, desaturated earth tones, metallic accents, dramatic contrast, weathered textures, monumental fantasy production design, atmospheric haze, and richly cinematic grading throughout.",
+  "Ethereal dreamscape": "Pastel colors, diffused highlights, soft focus, glowing edges, translucent layers, pearlescent haze, low contrast, and weightless dreamlike beauty throughout.",
+  "Surrealism": "Unexpected proportions, distorted perspective, symbolic abstraction, unnatural colors, impossible spatial relationships, uncanny objects, and deliberately illogical dream imagery throughout.",
+  "Cosmic horror": "Near-black palettes, cold highlights, immense scale, distorted geometry, oppressive shadows, ancient textures, unsettling negative space, and incomprehensible otherworldly detail throughout.",
+  "Psychological horror": "Sickly restrained color, oppressive shadow, uneasy negative space, subtly distorted interiors, harsh practical light, clammy skin tones, ambiguous background details, and persistent visual dread throughout.",
+  "Found footage": "Authentic in-world consumer-camera imagery with practical available light, imperfect exposure, mild autofocus softness, sensor noise, compression artifacts, clipped highlights, noisy shadows, subdued color, and an unpolished documentary texture. Keep faces readable; avoid glossy grading, studio polish, pristine sharpness, and cinematic glamour.",
+  "Analog horror": "Degraded videotape imagery, faded color, tracking noise, scan lines, chromatic bleed, warped edges, crushed blacks, blown highlights, timestamp-like visual language without readable text, and ominous broadcast-era texture throughout.",
+  "Body horror": "Visceral organic textures, pallid flesh tones, wet highlights, anatomical distortion, diseased surfaces, clinical details, bruised color accents, harsh close detail, and deeply unsettling physical materiality throughout.",
+  "Occult ritual": "Candlelit darkness, ceremonial symbols, weathered stone, smoke, wax, ash, deep red and black accents, antique ritual objects, symmetrical arrangements, and secretive sacred atmosphere throughout.",
+  "Silent Hill-inspired": "Dense pale fog, rusted industrial surfaces, damp concrete, peeling walls, muted gray-green color, dirty amber light, corroded metal, abandoned spaces, and oppressive psychological decay throughout.",
+  "Cyberpunk": "Neon magenta, cyan, and electric blue light, rain-slick surfaces, holographic signage shapes without readable text, dense urban technology, reflective synthetic materials, high contrast, and gritty futuristic detail throughout.",
+  "Biopunk": "Organic technology, translucent membranes, bone-like structures, cultured tissue, surgical hardware, sickly green and amber light, wet biological surfaces, laboratory grime, and engineered-life detail throughout.",
+  "Dieselpunk": "Oil-stained metal, riveted machinery, soot, heavy industrial architecture, military-era styling, muted olive and rust colors, hard smoky light, analog gauges, and imposing mechanical detail throughout.",
+  "Steampunk": "Aged brass, copper pipes, leather, polished wood, intricate gears, Victorian tailoring, warm amber light, steam-filled atmosphere, engraved ornament, and handcrafted mechanical detail throughout.",
+  "Post-apocalyptic": "Sun-bleached ruins, scavenged materials, dust, rust, broken infrastructure, weathered clothing, harsh natural light, muted earth colors, and layered environmental decay throughout.",
+  "Dystopian sci-fi": "Monumental controlled architecture, cold gray-blue palettes, severe uniforms, sterile surfaces, surveillance motifs without readable text, stark artificial light, rigid visual order, and oppressive technological detail throughout.",
+  "Retro-futurism": "Optimistic vintage future design, chrome, molded plastic, analog controls, bold geometric forms, saturated period color, glowing panels, clean illustrative surfaces, and nostalgic speculative detail throughout.",
+  "Y2K futurism": "Glossy silver, translucent plastics, icy blue and white palettes, bubble-like interfaces without readable text, chrome accessories, soft digital glow, clean synthetic surfaces, and early-digital optimism throughout.",
+  "Vaporwave": "Pastel pink, lavender, aqua, and sunset gradients, marble surfaces, retro computer textures, classical-statue motifs, soft haze, luminous grid-like design, and nostalgic digital unreality throughout.",
+  "Synthwave": "Hot magenta, violet, and electric cyan palettes, deep black silhouettes, neon grids, glossy reflections, dramatic sunset gradients, chrome accents, and polished retro-electronic atmosphere throughout.",
+  "Dreamcore": "Soft familiar spaces, hazy pastel light, washed color, low-detail backgrounds, uncanny childhood objects, gentle bloom, empty interiors, and comforting yet disorienting dream imagery throughout.",
+  "Weirdcore": "Low-resolution digital texture, awkward cropping, mismatched color, uncanny ordinary objects, liminal interiors, crude graphic shapes without readable text, visual noise, and deliberately unsettling internet-era imagery throughout.",
+  "Liminal space": "Empty transitional architecture, fluorescent or sodium lighting, repetitive corridors, vacant rooms, muted institutional color, dated surfaces, deep vanishing points, and eerily familiar stillness throughout.",
+  "Dark academia": "Deep brown, charcoal, forest green, and oxblood tones, old books, dark wood, worn leather, classical architecture, window light, dust, tweed textures, and scholarly melancholy throughout.",
+  "Cottagecore": "Warm natural light, wildflowers, handmade fabrics, rustic wood, ceramics, baskets, soft earth colors, pastoral interiors, gentle weathering, and cozy rural detail throughout.",
+  "Fairycore": "Mossy forests, tiny flowers, luminous dust, translucent wings, dewdrops, soft green and pastel color, miniature natural details, glowing mushrooms, and delicate enchanted atmosphere throughout.",
+  "Angelcore": "Ivory and pale gold palettes, luminous white fabric, soft clouds, radiant backlight, delicate feathers, sacred ornament, pearlescent highlights, and serene celestial atmosphere throughout.",
+  "Goblincore": "Muddy greens and browns, moss, mushrooms, stones, bones, jars, tarnished trinkets, damp forest textures, cluttered natural collections, and earthy mischievous detail throughout.",
+  "Whimsigoth": "Midnight blue, plum, black, and antique gold tones, celestial patterns, velvet, candles, stained glass, ornate jewelry, mystical clutter, and romantic witchy atmosphere throughout.",
+  "Baroque": "Deep jewel tones, dramatic light and shadow, gilded ornament, rich fabric, carved architecture, elaborate decoration, painterly highlights, and theatrical seventeenth-century grandeur throughout.",
+  "Rococo": "Powder pink, pale blue, cream, and gold palettes, delicate florals, curved ornament, silk, porcelain, airy light, playful luxury, and ornate eighteenth-century elegance throughout.",
+  "Art Nouveau": "Flowing botanical lines, stained glass, wrought metal, muted jewel colors, floral ornament, organic symmetry, decorative illustration, and elegant turn-of-the-century craftsmanship throughout.",
+  "Art Deco": "Bold geometry, black and gold contrast, polished stone, lacquer, chrome, stepped forms, symmetrical ornament, rich jewel tones, and glamorous machine-age luxury throughout.",
+  "Victorian gothic": "Black lace, dark carved wood, aged stone, gaslight, heavy drapery, mourning attire, tarnished silver, deep wine tones, and haunted nineteenth-century atmosphere throughout.",
+  "Renaissance-inspired": "Warm earth pigments, rich red and blue fabric, classical architecture, fresco-like color, soft directional light, fine textile detail, balanced humanist elegance, and old-master visual richness throughout.",
+  "Medieval fantasy": "Weathered stone, timber halls, chainmail, wool, leather, heraldic color, torchlight, misty landscapes, handcrafted props, and grounded legendary-world detail throughout.",
+  "Mythological epic": "Monumental temples, heroic silhouettes, carved stone, bronze and gold accents, dramatic skies, ceremonial fabric, divine light, vast landscapes, and timeless legendary grandeur throughout.",
+  "Film noir": "High-contrast black-and-white imagery, hard key light, venetian-blind shadows, wet streets, cigarette haze, deep blacks, bright highlights, period interiors, and morally shadowed atmosphere throughout.",
+  "Neo-noir": "Deep shadows, saturated neon accents, reflective night surfaces, controlled color contrast, urban grime, practical light, smoky atmosphere, and sleek contemporary darkness throughout.",
+  "Expressionism": "Angular sets, exaggerated shadows, distorted architecture, stark color or monochrome contrast, theatrical makeup, painted surfaces, and emotionally warped visual design throughout.",
+  "Giallo horror": "Saturated red, yellow, blue, and green light, glossy black surfaces, ornate interiors, sharp shadows, glamorous styling, lurid practical effects, and stylish Italian horror atmosphere throughout.",
+  "Grindhouse": "Faded color, heavy grain, scratched film, dirty highlights, crushed shadows, cheap practical effects, lurid wardrobe, distressed print texture, and raw exploitation-era finish throughout.",
+  "1970s psychedelic": "Burnt orange, avocado, violet, and acid color, bold patterns, soft film grain, optical layering, warped graphic forms, warm haze, and richly hallucinatory period design throughout.",
+  "1980s music video": "Saturated neon color, glossy highlights, smoky studio atmosphere, dramatic backlight, bold makeup, metallic wardrobe, soft diffusion, analog video texture, and theatrical pop imagery throughout.",
+  "1990s grunge": "Muted dirty color, fluorescent interiors, distressed denim and flannel, photocopied graphic texture without readable text, harsh flash, visible grain, urban wear, and unpolished alternative-era realism throughout.",
+  "Early-2000s pop": "Glossy candy color, icy highlights, metallic accessories, low-rise era styling, bright studio surfaces, soft skin diffusion, digital-camera crispness, and playful Y2K polish throughout.",
+  "Indie sleaze": "Direct-flash nightlife imagery, blown skin highlights, deep black backgrounds, messy styling, grainy digital texture, smoky clubs, saturated accents, and deliberately careless downtown glamour throughout.",
+  "Lo-fi VHS": "Soft analog resolution, tape grain, color bleed, scan lines, tracking instability, crushed blacks, clipped whites, oversaturated consumer color, and worn home-video texture throughout.",
+  "Super 8 film": "Warm faded color, pronounced small-gauge grain, soft focus, halation, light leaks, flickering exposure texture, rounded highlights, and intimate home-movie character throughout.",
+  "Vintage Hollywood": "Elegant studio lighting, luminous skin, rich black-and-white or restrained Technicolor tones, soft diffusion, tailored wardrobe, painted-set refinement, and classic star-era glamour throughout.",
+  "High-fashion editorial": "Sculptural wardrobe, immaculate makeup, controlled color, premium fabric detail, bold graphic styling, clean luxury surfaces, precise beauty lighting, and magazine-grade visual polish throughout.",
+  "Avant-garde fashion": "Experimental silhouettes, unexpected materials, abstract makeup, severe color blocking, sculptural sets, conceptual styling, high-detail fabric texture, and art-gallery fashion imagery throughout.",
+  "Runway glamour": "Luxury garments, luminous skin, glossy hair, dramatic show lighting, polished surfaces, rich color, crisp textile detail, and elevated fashion-week spectacle throughout.",
+  "Luxury commercial": "Pristine product-grade surfaces, controlled highlights, rich neutral color, immaculate materials, elegant reflections, premium environments, clean contrast, and expensive advertising polish throughout.",
+  "Beauty campaign": "Luminous skin, refined makeup detail, soft controlled highlights, clean backgrounds, flattering color, glossy hair, delicate texture, and premium cosmetic-advertising finish throughout.",
+  "Pop-star music video": "Bold saturated color, glamorous wardrobe, luminous skin, dramatic set lighting, glossy production design, metallic accents, atmospheric haze, and polished superstar imagery throughout.",
+  "Industrial metal": "Cold steel, concrete, rust, oil, black leather, harsh white and red light, smoke, abrasive texture, heavy machinery, and severe high-contrast atmosphere throughout.",
+  "Gothic metal": "Black leather and lace, deep crimson accents, cathedral stone, silver ornament, smoke, dramatic pale skin, low-key light, and dark romantic grandeur throughout.",
+  "Alternative rock": "Lived-in rehearsal spaces, worn instruments, denim and leather, practical stage light, muted color, visible grain, textured walls, and grounded independent-band authenticity throughout.",
+  "Punk rock": "Photocopied texture without readable text, torn fabric, studs, leather, raw club interiors, harsh flash, red and black accents, grime, and confrontational DIY visual energy throughout.",
+  "Dark pop": "Deep black palettes, jewel-tone accents, glossy shadows, dramatic beauty light, surreal luxury details, refined makeup, controlled haze, and sleek ominous pop polish throughout.",
+  "Hyperpop": "Acid neon color, chrome, glossy plastic, exaggerated digital texture, candy gradients, iridescent makeup, maximal graphic detail, and intensely synthetic internet-pop imagery throughout.",
+  "K-pop-inspired": "Immaculate styling, vivid coordinated color, glossy sets, luminous skin, detailed fashion, polished hair and makeup, clean highlights, and high-budget pop perfection throughout.",
+  "R&B glamour": "Warm bronze skin tones, black and gold accents, soft practical light, satin and velvet textures, elegant interiors, luminous highlights, and intimate luxury throughout.",
+  "Eerie claymation": "Hand-sculpted clay surfaces, visible fingerprints, miniature sets, muted uncanny color, uneven handmade forms, soft practical miniature lighting, and tactile unsettling charm throughout.",
+  "Stop-motion": "Tactile handcrafted materials, miniature practical sets, visible fabrication seams, slightly stepped pose character, controlled tabletop lighting, and charming physical-animation texture throughout.",
+  "Paper-cut animation": "Layered cut-paper shapes, visible fibers, flat illustrated color, crisp silhouettes, handmade edges, shadowed paper depth, decorative patterns, and crafted collage texture throughout.",
+  "Hand-painted animation": "Visible brushwork, layered pigment, painterly backgrounds, softened outlines, rich handcrafted color, canvas or watercolor texture, and expressive illustrated detail throughout.",
+  "Anime-inspired": "Clean expressive linework, stylized facial features, cel-painted color, luminous eyes, graphic shadows, detailed illustrated backgrounds, controlled highlights, and polished animation-art finish throughout.",
+  "Graphic novel": "Bold ink lines, dramatic shadow blocks, limited accent color, textured paper, illustrated crosshatching, high contrast, and sophisticated sequential-art atmosphere throughout.",
+  "Comic-book": "Crisp outlines, saturated primary colors, halftone texture, graphic shadow shapes, stylized anatomy, printed-paper character, and energetic illustrated spectacle throughout.",
+  "Cel-shaded 3D": "Three-dimensional forms with clean graphic outlines, flat color regions, stepped shadows, controlled highlights, simplified materials, and polished illustrated-game rendering throughout.",
+  "Photorealistic CGI": "Physically accurate materials, realistic global illumination, detailed skin and hair, precise reflections, volumetric atmosphere, clean high-resolution rendering, and seamless digital realism throughout.",
+  "Low-poly 3D": "Faceted geometry, simplified forms, flat-shaded surfaces, restrained texture, clean geometric color, stylized lighting, and intentionally economical digital design throughout.",
+  "Miniature diorama": "Clearly handcrafted miniature environments, tiny scaled props, model-making textures, shallow miniature depth, painted surfaces, practical tabletop lighting, and charming physical detail throughout.",
+  "Dollhouse surrealism": "Miniature domestic rooms, toy-like furniture, porcelain or plastic textures, artificial pastel color, uncanny scale relationships, pristine tiny details, and dreamlike domestic unease throughout.",
+  "Liquid chrome": "Mirror-bright silver surfaces, fluid metallic forms, warped reflections, cool specular highlights, deep black contrast, futuristic polish, and glossy sculptural abstraction throughout.",
+  "Holographic iridescence": "Prismatic rainbow highlights, pearlescent surfaces, translucent layers, shifting cyan-magenta color, glossy reflections, soft luminous haze, and futuristic iridescent finish throughout.",
+  "Neon noir": "Near-black environments, saturated neon red, blue, and violet accents, wet reflections, hard silhouettes, smoky atmosphere, glossy urban surfaces, and brooding futuristic contrast throughout.",
+  "Monochrome minimalism": "Single-hue or black-and-white palette, clean negative space, simple materials, restrained contrast, sparse production design, precise tonal separation, and elegant visual reduction throughout.",
+  "High-key white studio": "Bright seamless white surroundings, soft wraparound light, low shadow density, clean neutral color, crisp product-grade detail, airy surfaces, and immaculate studio clarity throughout.",
+  "Low-key chiaroscuro": "Deep black shadows, narrow pools of directional light, sculpted facial highlights, rich tonal contrast, restrained color, and dramatic painterly darkness throughout.",
+  "Soft pastel": "Powder pink, pale blue, lavender, mint, and cream color, diffused light, gentle contrast, matte surfaces, delicate texture, and calm airy softness throughout.",
+  "Desaturated melancholy": "Muted color, cool gray and faded earth tones, soft overcast light, low saturation, restrained highlights, subtle grain, weathered surfaces, and quiet visual sadness throughout.",
+  "Crimson-and-black": "Dominant black surfaces with vivid crimson accents, deep shadows, hard red highlights, dark wardrobe, severe contrast, and intense graphic drama throughout.",
+  "Teal-and-orange blockbuster": "Cool teal shadows, warm amber skin and highlights, strong complementary contrast, polished surfaces, atmospheric depth, controlled saturation, and large-scale commercial cinema finish throughout.",
+  "Golden-hour nostalgia": "Warm amber sunlight, long soft shadows, gentle haze, faded earth color, glowing skin, subtle grain, sunlit dust, and tender memory-like warmth throughout.",
+  "Moonlit blue": "Deep navy and cobalt tones, cool silver highlights, soft night haze, pale skin light, subdued warm accents, dark silhouettes, and luminous nocturnal atmosphere throughout.",
+  "Underwater ethereal": "Aqua and deep blue palettes, diffused caustic light, suspended particles, translucent fabric, softened detail, pearlescent highlights, and immersive aquatic beauty throughout.",
+  "Elemental fantasy": "Visually dominant fire, water, air, earth, ice, or lightning motifs, richly textured natural materials, luminous energy, dramatic atmospheric light, and mythic environmental detail throughout.",
+  "Nature mysticism": "Ancient forests, moss, stone, roots, mist, filtered natural light, symbolic organic details, muted green and earth color, and sacred wilderness atmosphere throughout.",
+  "Apocalyptic biblical": "Monumental skies, ash and fire, stark divine light, ancient stone, distressed earth tones, ceremonial silhouettes, vast destruction, and solemn prophetic grandeur throughout.",
+  "Glitch art": "Digital fragmentation, RGB channel separation, block corruption, pixel noise, scan errors, broken color fields, displaced image sections, and deliberate electronic artifacting throughout.",
+  "Datamosh": "Compressed digital smearing, macroblock trails, color displacement, broken codec texture, fragmented silhouettes, melted pixel fields, and aggressive corrupted-video appearance throughout.",
+  "CRT distortion": "Curved glass-screen appearance, scan lines, phosphor glow, chromatic fringing, barrel distortion, soft analog resolution, bloom, static noise, and vintage monitor texture throughout.",
+  "Kaleidoscopic": "Mirrored geometric repetition, radial symmetry, jewel-like color, layered reflections, intricate patterning, luminous fragments, and hypnotic prismatic imagery throughout.",
+  "Double exposure": "Layered translucent imagery, overlapping silhouettes, blended environments, luminous tonal merging, photographic grain, controlled negative space, and poetic composite texture throughout.",
+  "Infrared": "False-color foliage, pale luminous skin, dark skies, unusual magenta or cyan tonal mapping, high contrast, bright vegetation, and uncanny infrared-photography texture throughout.",
+  "Thermal vision": "Heat-map color ranging from deep violet and blue through red, orange, yellow, and white, simplified surface detail, glowing warm bodies, and sensor-like thermal imaging throughout.",
+  "Fisheye distortion": "Pronounced barrel distortion, curved edges, expanded center perspective, compressed borders, close spatial exaggeration, and distinctive ultra-wide optical appearance throughout.",
+  "Security-camera footage": "Fixed surveillance-system image quality, high or corner-mounted viewpoint appearance, wide utilitarian lens, low resolution, digital noise, flat exposure, limited color, and institutional monitoring texture without readable overlays.",
+  "Documentary realism": "Available practical light, natural skin and material texture, restrained color, modest contrast, believable environments, subtle sensor grain, and honest unembellished observational realism throughout.",
+  "Social-media selfie": "Front-facing phone-camera appearance, close personal perspective, wide phone-lens facial character, automatic exposure, digital sharpening, casual available light, and immediate user-generated authenticity throughout.",
+  "TikTok transformation": "Bright mobile-video color, crisp phone-camera detail, bold styling contrast, clean vertical-content polish without requiring a vertical aspect ratio, beauty-filter sheen, and highly legible before-and-after visual design throughout.",
+  "Dreamlike slow motion": "Soft temporal blur, luminous highlight bloom, gentle pastel or muted color, floating particles, delicate fabric detail, low contrast, and romantic dreamlike image softness throughout.",
+  "Frenetic montage": "Punchy high-contrast imagery, varied but coordinated color treatments, bold graphic details, sharp texture changes, intense highlights, and fragmented editorial visual energy throughout.",
+  "One-take immersive": "Naturalistic spatial continuity, consistent practical lighting, coherent production design, believable environmental depth, uninterrupted visual realism, and an immediate lived-in atmosphere throughout.",
+  "Music-video performance": "Expressive stage styling, dramatic practical and colored light, atmospheric haze, polished wardrobe and makeup, rich contrast, glossy highlights, and premium performance-world production design throughout.",
+  "Narrative short film": "Grounded production design, believable wardrobe, motivated practical lighting, restrained cinematic grading, detailed environments, natural skin texture, and cohesive story-world realism throughout.",
+  "Movie-trailer aesthetic": "Large-scale cinematic contrast, dramatic skies and practical light, rich production design, deep blacks, luminous highlights, atmospheric depth, premium color grading, and event-film visual polish throughout.",
+};
+
+export const MINIMAX_VIDEO_STYLE_PRESETS = [
+  {
+    value: "",
+    label: "Default / let prompt decide",
+    description: "No additional global video aesthetic is imposed.",
+    prompt_guidance: "",
+  },
+  ...MINIMAX_VIDEO_STYLE_LABELS.map((label) => ({
+    value: label.toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, ""),
+    label,
+    description: `${label} visual direction for MiniMax video generation.`,
+    prompt_guidance: MINIMAX_VIDEO_STYLE_VERBIAGE[label],
+  })),
+  {
+    value: "custom",
+    label: "Custom — type exact wording",
+    description: "Use custom visual-style wording exactly as entered in every eligible prompt.",
+    prompt_guidance: "",
+  },
+];
+
+function storyboardMiniMaxVideoStylePreset(value = "") {
+  return MINIMAX_VIDEO_STYLE_PRESETS.find((item) => item.value === value) || MINIMAX_VIDEO_STYLE_PRESETS[0];
+}
+
+function storyboardMiniMaxVideoStyleVerbiage(value = "", custom = "") {
+  const preset = storyboardMiniMaxVideoStylePreset(value);
+  const direction = preset.value === "custom" ? String(custom || "").trim() : String(preset.prompt_guidance || "").trim();
+  if (!direction) return "";
+  return preset.value === "custom" ? direction : `${preset.label}: ${direction}`;
+}
+
+function storyboardSceneSupportsMiniMaxVideoStyle(scene = {}) {
+  return normalizeStoryboardProjectVideoEngine(scene.project_video_engine || scene.projectVideoEngine) === "minimax_h3"
+    && ["text_to_video", "reference_to_video"].includes(normalizeStoryboardMiniMaxH3Mode(scene.minimax_h3_mode || scene.minimaxH3Mode));
+}
+
+export const MINIMAX_TEMPORAL_WORLD_EFFECT_PRESETS = [
+  { value: "", label: "Off / natural time", description: "All people and the environment move in the same natural time." },
+  { value: "realtime_subjects_timelapse_world", label: "Real-time characters / time-lapse world", description: "Mapped characters stay natural while anonymous extras, location activity, and optional light changes race around them.", prompt_guidance: "Create a clearly separated two-speed reality: protected characters remain in natural real time while only the unprotected background world moves in smooth accelerated time-lapse." },
+  { value: "frozen_world", label: "Characters move / world frozen", description: "Protected characters move naturally through a world held almost perfectly still.", prompt_guidance: "Protected characters move naturally through a world frozen at one instant. Unprotected people, particles, vehicles, liquids, smoke, weather, and environmental motion remain suspended unless the scene explicitly releases one element." },
+  { value: "reverse_world", label: "Characters forward / world reverses", description: "Protected characters continue normally while unprotected background action runs backward.", prompt_guidance: "Protected characters move and perform forward in natural time while unprotected background people and environmental events visibly run in reverse, including recoverable spills, retracing traffic, returning debris, and reversed weather or smoke." },
+  { value: "day_night_sweep", label: "Real-time characters / day-to-night sweep", description: "Characters stay natural while daylight, shadows, windows, and practical lights rapidly change.", prompt_guidance: "Protected characters remain in natural time while the environment passes rapidly through a readable day-to-night or night-to-day cycle, with accelerated sky color, sunlight angle, shadow travel, window light, and practical lights switching on or off." },
+  { value: "seasonal_passage", label: "Real-time characters / seasons pass", description: "The location visibly crosses seasons around stable real-time characters.", prompt_guidance: "Protected characters remain in natural time while the environment transitions through accelerated seasonal change: vegetation, weather, ground cover, atmospheric color, and daylight evolve coherently without changing the characters' identities or wardrobe unless explicitly requested." },
+  { value: "crowd_flow", label: "Real-time characters / crowd river", description: "Anonymous extras stream around the referenced cast while the cast remains readable.", prompt_guidance: "Protected characters remain sharply readable in natural time while anonymous unreferenced extras flow around them as an accelerated crowd river, forming continuous directional streams without duplicating, replacing, or obscuring the protected cast." },
+  { value: "looping_background", label: "Real-time characters / looping background", description: "Background actions repeat in visible cycles while the referenced cast continues normally.", prompt_guidance: "Protected characters continue naturally while unprotected background actions repeat in deliberate seamless temporal loops. Keep each loop spatially anchored and visually distinct from the protected characters' unrepeated performance." },
+  { value: "delayed_world", label: "Characters lead / world echoes behind", description: "The environment responds a beat late, creating a temporal echo.", prompt_guidance: "Protected characters move in natural time while unprotected environmental reactions lag behind them in visible delayed echoes, as though the world responds one beat late. Preserve physical readability and avoid duplicating the protected characters." },
+  { value: "living_shadows", label: "Real-time characters / living shadows", description: "Characters remain normal while unprotected shadows move independently or at accelerated speed.", prompt_guidance: "Protected characters remain in natural time while cast shadows and environmental shadows move independently at accelerated speed, changing direction and shape without changing the protected characters' bodies, faces, or identity." },
+  { value: "reflection_delay", label: "Real-time characters / delayed reflections", description: "Mirrors and reflective surfaces lag behind the real-time cast.", prompt_guidance: "Protected characters move in natural time while their reflections and the environment's reflections respond with a deliberate temporal delay. Keep the real characters singular and stable; the delayed imagery exists only inside physically plausible reflective surfaces." },
+  { value: "gravity_separation", label: "Real-time characters / altered-gravity world", description: "The cast stays grounded while loose environmental objects behave in surreal gravity.", prompt_guidance: "Protected characters remain grounded and move in natural time while unprotected loose objects, dust, fabric scraps, droplets, leaves, and environmental debris rise, fall, or drift under visibly altered gravity." },
+  { value: "custom", label: "Custom temporal effect", description: "Use the user's exact temporal-effect wording while retaining the selected protection and extras rules." },
+];
+
+function storyboardTemporalWorldEffectPreset(value = "") {
+  return MINIMAX_TEMPORAL_WORLD_EFFECT_PRESETS.find((item) => item.value === value) || MINIMAX_TEMPORAL_WORLD_EFFECT_PRESETS[0];
+}
+
+function storyboardTemporalProtectedMode(value = "") {
+  return ["all_referenced", "lead_only", "custom"].includes(String(value || "")) ? String(value) : "all_referenced";
+}
+
+function storyboardTemporalIntensity(value = 8) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, Math.min(10, Math.round(number))) : 8;
+}
+
+function storyboardTemporalLocationExamples(scene = {}) {
+  const location = scene.location_ref || scene.locationRef || {};
+  const context = [
+    location.name,
+    location.description,
+    scene.setting,
+    scene.location,
+    scene.story_beat,
+    scene.prompt_summary,
+  ].map((value) => String(value || "").toLowerCase()).join(" ");
+  if (/store|shop|market|liquor|grocery|retail|checkout/.test(context)) {
+    return "customers and staff crossing aisles, checkout activity, shelf restocking, changing window light, and accelerated reflections";
+  }
+  if (/kitchen|dining|restaurant|cafe|bar|diner/.test(context)) {
+    return "location-appropriate patrons or household activity, staff movement, changing practical light, drifting steam, and accelerated shadows";
+  }
+  if (/street|road|alley|sidewalk|parking|overpass|city|urban/.test(context)) {
+    return "pedestrians, passing traffic, moving reflections, changing signs or practical lights, fast clouds, and traveling shadows";
+  }
+  if (/laundromat|laundry/.test(context)) {
+    return "customers cycling through the room, spinning machines, baskets changing position, shifting fluorescent light, and window reflections";
+  }
+  if (/bedroom|apartment|living room|house|home|hallway|corridor|stair/.test(context)) {
+    return "location-appropriate household or neighbor activity, rapidly shifting window light, traveling shadows, changing practical lights, weather, and moving reflections";
+  }
+  if (/forest|woods|field|garden|park|outdoor|beach|mountain/.test(context)) {
+    return "location-appropriate passersby when permitted, fast clouds, traveling sunlight or moonlight, moving shadows, weather, vegetation, smoke, and airborne particles";
+  }
+  return "location-appropriate anonymous activity when permitted, changing light and shadows, weather, traffic or reflections, smoke, particles, and moving environmental details";
+}
+
+function storyboardTemporalWorldEffectForScene(scene = {}, state = {}) {
+  const override = String(scene.temporal_world_effect_override || scene.temporalWorldEffectOverride || "global").trim();
+  const globalKey = String(state.temporalWorldEffect || state.temporal_world_effect || "").trim();
+  const key = override === "off" ? "" : (override && override !== "global" ? override : globalKey);
+  const preset = storyboardTemporalWorldEffectPreset(key);
+  const custom = String(
+    key === "custom" && override && override !== "global"
+      ? (scene.temporal_world_effect_custom || scene.temporalWorldEffectCustom || "")
+      : (state.temporalWorldEffectCustom || state.temporal_world_effect_custom || ""),
+  ).trim();
+  const baseDirection = key === "custom" ? custom : String(preset.prompt_guidance || "").trim();
+  if (!key || !baseDirection) return null;
+
+  const protectedMode = storyboardTemporalProtectedMode(state.temporalProtectedCharacters || state.temporal_protected_characters);
+  const protectedCustom = String(state.temporalProtectedCustom || state.temporal_protected_custom || "").trim();
+  const protectedDirection = protectedMode === "lead_only"
+    ? "Protect only the first mapped/reference character at natural 1x real-time speed; other mapped characters may receive the selected temporal effect."
+    : protectedMode === "custom" && protectedCustom
+      ? `Protect only these named mapped/reference characters at natural 1x real-time speed: ${protectedCustom}.`
+      : "Protect every mapped/reference character in the scene at natural 1x real-time speed, including secondary referenced characters. Never accelerate, freeze, reverse, echo, duplicate, or temporally distort any protected character.";
+  const allowExtras = state.temporalAllowBackgroundExtras !== false && state.temporal_allow_background_extras !== false;
+  const extrasDirection = allowExtras
+    ? "Anonymous unreferenced background extras are allowed. Infer only extras that naturally belong in the mapped location—for example customers or staff in a store, family or household activity in a kitchen, and pedestrians or traffic on a street. Keep them clearly secondary; never turn an extra into a principal character or duplicate a mapped/reference character."
+    : "Do not add anonymous background people. Apply the temporal effect only to existing unprotected scene elements and the environment.";
+  const environmentTimePassage = state.temporalEnvironmentTimePassage !== false && state.temporal_environment_time_passage !== false;
+  const environmentDirection = environmentTimePassage
+    ? "Environmental time passage is enabled: when appropriate, accelerate or transform daylight, shadows, practical lighting, weather, traffic, smoke, particles, and location activity while preserving spatial continuity."
+    : "Do not add a day/night, lighting, weather, or seasonal time passage unless the scene notes explicitly request it.";
+  const intensity = storyboardTemporalIntensity(state.temporalBackgroundIntensity ?? state.temporal_background_intensity ?? 8);
+  const intensityDirection = intensity <= 3
+    ? `Use a subtle ${intensity}/10 background-effect intensity with restrained, readable temporal separation.`
+    : intensity <= 6
+      ? `Use a clear ${intensity}/10 background-effect intensity that is immediately visible but does not overpower the protected characters.`
+      : intensity <= 8
+        ? `Use a strong ${intensity}/10 background-effect intensity with unmistakable temporal separation while keeping protected faces and actions readable.`
+        : `Use an extreme ${intensity}/10 background-effect intensity with dramatic temporal contrast, while protected characters remain stable, singular, and readable.`;
+  const audioDirection = "Temporal speed separation is visual only. Keep supplied or generated dialogue, singing, lip sync, facial timing, and primary audio at normal speed; never time-stretch, reverse, or accelerate protected voices.";
+  const locationExamples = storyboardTemporalLocationExamples(scene);
+  const cueCount = intensity >= 9 ? "at least two concrete, clearly visible effect cues" : "at least one concrete, clearly visible effect cue";
+  const stagingRequirement = `TIMESTAMP STAGING REQUIREMENT: Every timestamp block must actively show ${cueCount} affecting only the unprotected background/world while protected characters continue at natural 1x speed. Use the mapped location to choose actions such as ${locationExamples}. At intensity 7 or higher, subtle flicker, ambience, drifting particles, or a vague mention of time passage alone does not satisfy this requirement. The temporal contrast must be immediately visible in the action itself. Any phrase such as “no people” inside a location-reference description describes only the source image and does not prohibit anonymous background extras when this contract permits them.`;
+  const timestampAction = `Visibly enact this temporal layer at ${intensity}/10: ${baseDirection} Use concrete location-appropriate activity such as ${locationExamples}. Protected mapped/reference characters remain singular and move at natural 1x speed; only the permitted unprotected background/world receives the effect.`;
+  const continuityRequirement = allowExtras
+    ? "CONTINUITY RULE: Do not add any new named, principal, mapped, or referenced characters. Anonymous unreferenced background extras are explicitly permitted and must remain secondary and subject to the selected temporal effect; never prohibit them with a generic ‘no new characters’ or ‘no people’ rule."
+    : "CONTINUITY RULE: Do not add new named, mapped, referenced, principal, or anonymous characters.";
+  const verbiage = `TEMPORAL / WORLD EFFECT — ${preset.label}: ${baseDirection} ${protectedDirection} ${extrasDirection} ${environmentDirection} ${intensityDirection} ${audioDirection} ${stagingRequirement} ${continuityRequirement}`;
+  return {
+    enabled: true,
+    key,
+    label: preset.label,
+    exact_verbiage: verbiage,
+    protected_characters: protectedMode,
+    protected_custom: protectedCustom,
+    allow_background_extras: allowExtras,
+    background_intensity: intensity,
+    environment_time_passage: environmentTimePassage,
+    timestamp_staging_requirement: stagingRequirement,
+    timestamp_action: timestampAction,
+    continuity_requirement: continuityRequirement,
+  };
+}
+
 export const ID_LORA_IMAGE_AESTHETIC_PRESETS = [
   { value: "film_default", label: "Default film still", description: "Balanced short-film still lighting, believable production design, natural texture, and cinematic composition.", prompt_guidance: "Build a polished short-film still, not a music-video still. Use believable character blocking, grounded wardrobe, practical lighting, lens/framing detail, textured production design, natural color contrast, and emotionally readable composition." },
   { value: "indie_film_naturalism", label: "Indie film naturalism", description: "Naturalistic indie-drama still with lived-in details, imperfect realism, and intimate character focus.", prompt_guidance: "Build an indie-film still with naturalistic lighting, lived-in wardrobe, imperfect textures, believable posture, intimate framing, subtle emotional detail, muted color response, and environment details that feel observed rather than staged." },
@@ -1245,6 +1995,7 @@ function normalizeReferenceBuilderCatalog(value = {}) {
       id: String(item.id || `subject_${index + 1}`),
       name: String(item.name || `Character ${index + 1}`),
       description: String(item.description || ""),
+      minimax_voice: item.minimax_voice && typeof item.minimax_voice === "object" ? { ...item.minimax_voice } : {},
       trigger_phrase: String(item.trigger_phrase || item.trigger || item.Trigger || ""),
       trigger_position: String(item.trigger_position || item.triggerPosition || item.trigger_placement || "start") === "end" ? "end" : "start",
       extra_reference_for: String(item.extra_reference_for || item.extraReferenceFor || item.same_subject_as || item.sameSubjectAs || ""),
@@ -1340,6 +2091,28 @@ function normalizeStoryboardMiniMaxH3Mode(value = "") {
     : "text_to_video";
 }
 
+function normalizeStoryboardMiniMaxH3AudioMode(value = "") {
+  const clean = String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  return ["built_in_audio", "native_audio", "generated_audio"].includes(clean) ? "built_in_audio" : "input_audio";
+}
+
+function normalizeStoryboardShortFilmPlanningMode(value = "") {
+  const clean = String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  return clean === "fully_custom" || clean === "custom" ? "fully_custom" : "guided_film";
+}
+
+function normalizeStoryboardSpeakerAssignments(value = []) {
+  return (Array.isArray(value) ? value : [])
+    .filter((item) => item && typeof item === "object")
+    .map((item, index) => ({
+      id: String(item.id || item.cue_id || item.cueId || `speaker_cue_${Date.now()}_${index}_${Math.floor(Math.random() * 10000)}`),
+      speaker_id: String(item.speaker_id || item.speakerId || item.subject_id || item.subjectId || ""),
+      speaker_name: String(item.speaker_name || item.speakerName || item.speaker || item.character || "").trim(),
+      text: String(item.text || item.dialogue || item.line || item.lyric || "").trim(),
+    }))
+    .slice(0, 40);
+}
+
 function storyboardStillFacialDirection(value = "") {
   return String(value || "")
     .replace(/\bsubtle natural eye movement\b/gi, "clear eye direction")
@@ -1388,6 +2161,7 @@ function normalizeScene(scene = {}, index = 0) {
     flf_carry_forward: scene.flf_carry_forward || scene.carry_forward_state || "",
     performance_mode: normalizeStoryboardPerformanceMode(scene.performance_mode || scene.performanceMode || scene.video_performance_mode || scene.videoPerformanceMode),
     lyric_singers: lyricSingers,
+    speaker_assignments: normalizeStoryboardSpeakerAssignments(scene.speaker_assignments || scene.minimax_speaker_assignments || scene.dialogue_cues),
     lyric_no_lip_sync: lyricNoLipSync,
     lyric_instrumental: lyricInstrumental,
     no_character_present: noCharacterPresent,
@@ -1402,6 +2176,11 @@ function normalizeScene(scene = {}, index = 0) {
     video_prompt_type: videoPromptType,
     project_video_engine: normalizeStoryboardProjectVideoEngine(scene.project_video_engine || scene.projectVideoEngine),
     minimax_h3_mode: normalizeStoryboardMiniMaxH3Mode(scene.minimax_h3_mode || scene.minimaxH3Mode),
+    minimax_h3_audio_mode: normalizeStoryboardMiniMaxH3AudioMode(scene.minimax_h3_audio_mode || scene.minimaxH3AudioMode),
+    video_style: String(scene.video_style || scene.videoStyle || ""),
+    video_style_custom: String(scene.video_style_custom || scene.videoStyleCustom || ""),
+    temporal_world_effect_override: String(scene.temporal_world_effect_override || scene.temporalWorldEffectOverride || "global"),
+    temporal_world_effect_custom: String(scene.temporal_world_effect_custom || scene.temporalWorldEffectCustom || ""),
     timeline_start: Number(scene.timeline_start ?? scene.start ?? 0),
     timeline_end: Number(scene.timeline_end ?? scene.end ?? 0),
     exact_duration: Math.max(0, Number(scene.exact_duration ?? scene.duration ?? 0)),
@@ -1419,6 +2198,8 @@ function normalizeScene(scene = {}, index = 0) {
     image_path: scene.image_path || scene.approved_image_path || "",
     image_data: scene.image_data || scene.image_reference_data || "",
     notes: scene.notes || "",
+    audio_direction: scene.audio_direction || scene.audioDirection || "",
+    continuity: scene.continuity || scene.continuity_direction || scene.continuityDirection || "",
     id_lora_character_id: scene.id_lora_character_id || scene.character_id || scene.subject_id || "",
     id_lora_location_id: scene.id_lora_location_id || scene.location_id || "",
   };
@@ -1478,6 +2259,7 @@ function scenesFromBuilderPayload(payload = {}) {
     flf_carry_forward: scene.flf_carry_forward || scene.carry_forward_state || "",
     performance_mode: scene.performance_mode || scene.performanceMode || payload.performance_mode || payload.performanceMode || "",
     lyric_singers: scene.lyric_singers || scene.singers || [],
+    speaker_assignments: scene.speaker_assignments || scene.minimax_speaker_assignments || scene.dialogue_cues || [],
     lyric_no_lip_sync: Boolean(scene.lyric_no_lip_sync || scene.no_lip_sync),
     lyric_instrumental: Boolean(scene.lyric_instrumental || scene.instrumental),
     no_character_present: Boolean(scene.no_character_present || scene.noCharacterPresent || scene.no_subject || scene.no_visible_subject),
@@ -1489,6 +2271,11 @@ function scenesFromBuilderPayload(payload = {}) {
     location_ref: scene.location_ref || null,
     project_video_engine: scene.project_video_engine || scene.projectVideoEngine || payload.project_video_engine || payload.projectVideoEngine || "",
     minimax_h3_mode: scene.minimax_h3_mode || scene.minimaxH3Mode || "",
+    minimax_h3_audio_mode: scene.minimax_h3_audio_mode || scene.minimaxH3AudioMode || payload.minimax_h3_audio_mode || payload.miniMaxH3AudioMode || "",
+    video_style: scene.video_style || scene.videoStyle || "",
+    video_style_custom: scene.video_style_custom || scene.videoStyleCustom || "",
+    temporal_world_effect_override: scene.temporal_world_effect_override || scene.temporalWorldEffectOverride || "global",
+    temporal_world_effect_custom: scene.temporal_world_effect_custom || scene.temporalWorldEffectCustom || "",
     timeline_start: scene.timeline_start ?? scene.start ?? 0,
     timeline_end: scene.timeline_end ?? scene.end ?? 0,
     exact_duration: scene.exact_duration ?? scene.duration ?? 0,
@@ -1506,6 +2293,8 @@ function scenesFromBuilderPayload(payload = {}) {
     image_path: scene.image_path || scene.approved_image_path || "",
     image_data: scene.image_data || scene.image_reference_data || "",
     notes: scene.notes || "",
+    audio_direction: scene.audio_direction || "",
+    continuity: scene.continuity || scene.continuity_direction || "",
   }, index));
 }
 
@@ -1573,6 +2362,7 @@ function slimReferenceForRequest(ref) {
     id: String(ref.id || ""),
     name: String(ref.name || ""),
     description: String(ref.description || ""),
+    minimax_voice: ref.minimax_voice && typeof ref.minimax_voice === "object" ? { ...ref.minimax_voice } : {},
     trigger_phrase: String(ref.trigger_phrase || ref.trigger || ref.Trigger || ""),
     trigger_position: String(ref.trigger_position || ref.triggerPosition || ref.trigger_placement || "start") === "end" ? "end" : "start",
     image: {
@@ -1641,25 +2431,52 @@ function storyboardSpeedGuidance(value, kind = "motion") {
   return `Character motion speed ${speed}/10: fast action character movement; require clear full-body action such as sprinting, explosive dance, striding, sharp turns, crossing the space, chase/action beats, rapid direction changes, forceful gestures, or intense physical set interaction when it fits the scene. Avoid only poised, still, standing, subtle, quiet, steady, or restrained body language.`;
 }
 
+function storyboardCameraMotionForSpeed(value, speedValue) {
+  let motion = String(value || "").trim();
+  const speed = storyboardSpeedValue(speedValue, 4);
+  if (!motion || speed < 7) return motion;
+  return motion
+    .replace(/\bslow cinematic drift\b/gi, "energetic cinematic tracking drift")
+    .replace(/\bslow orbit\b/gi, "energetic orbit")
+    .replace(/\bslow (left|right) orbit\b/gi, "energetic $1 orbit")
+    .replace(/\bslow zoom out\b/gi, "brisk pull-back reveal")
+    .replace(/\bslow (left|right|side|lateral) drift\b/gi, "brisk $1 tracking drift")
+    .replace(/\bslow (pan|tilt|track|tracking|pull[ -]?back|drift)\b/gi, "brisk $1")
+    .replace(/\bgentle lateral drift\b/gi, "energetic lateral tracking")
+    .replace(/\bgentle pan reveal\b/gi, "brisk pan reveal")
+    .replace(/\bgentle (pan|tilt|orbit|drift|camera movement)\b/gi, "brisk $1")
+    .replace(/\bsubtle handheld movement\b/gi, "active handheld tracking")
+    .replace(/\bsubtle handheld camera\b/gi, "active handheld camera")
+    .replace(/\bsubtle handheld follow\b/gi, "energetic handheld follow")
+    .replace(/\bsubtle rack focus\b/gi, "quick rack focus")
+    .replace(/\bsubtle energetic orbit\b/gi, "energetic orbit")
+    .replace(/\bsubtle settling pause\b/gi, "active reframing beat")
+    .replace(/\bsubtle orbit movement\b/gi, "energetic orbit movement")
+    .replace(/\b(?:quiet handheld hold|locked-off reaction hold|locked-off shot)\b/gi, "active handheld reaction tracking")
+    .replace(/\brestrained pan\b/gi, "brisk pan")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 function enforceHighMotionPromptLanguage(prompt, scene = {}, state = {}) {
   let text = String(prompt || "").trim();
   if (!text) return text;
   const cameraSpeed = storyboardSpeedValue(scene.camera_motion_speed ?? scene.cameraMotionSpeed ?? state.cameraMotionSpeed, 4);
   const characterSpeed = storyboardSpeedValue(scene.character_motion_speed ?? scene.characterMotionSpeed ?? state.characterMotionSpeed, 4);
-  if (cameraSpeed >= 9) {
-    text = text
+  if (cameraSpeed >= 7) {
+    text = storyboardCameraMotionForSpeed(text, cameraSpeed)
       .replace(/\bthen\s+holds?\s+on\b/gi, "then continues moving across")
       .replace(/\bthen\s+holds?\b/gi, "then continues moving")
       .replace(/\bsettles?\s+into\s+a\s+(?:static\s+|steady\s+)?hold\b/gi, "flows into another coordinated camera move")
       .replace(/\b(?:static|steady)\s+hold\b/gi, "continued camera motion")
       .replace(/\bholds?\s+on\s+her\s+steady,\s*powerful\s+gaze\b/gi, "tracks her powerful gaze while the camera keeps moving")
       .replace(/\bholds?\s+on\s+(his|her|their|the)\s+([^,.]+)\b/gi, "keeps moving around $1 $2");
-    if (!/\b(?:tracking|orbit|whip pan|pan|tilt|crane|pullback|push|dolly|handheld|reveal)\b.*\b(?:tracking|orbit|whip pan|pan|tilt|crane|pullback|push|dolly|handheld|reveal)\b/i.test(text)) {
+    if (!/\b(?:tracking|orbit|whip pan|pan|tilt|crane|pullback|pull-back|push|dolly|handheld|reveal)\b/i.test(text)) {
       text = text.replace(/\.+\s*$/, "");
-      text += ", with the camera chaining multiple readable moves instead of stopping on a hold.";
+      text += ", with energetic camera tracking that keeps moving instead of settling into a static hold.";
     }
   }
-  if (characterSpeed >= 9) {
+  if (characterSpeed >= 4) {
     text = text
       .replace(/\bmoves?\s+with\s+a\s+quiet,\s*poised\s+authority\b/gi, "moves with forceful, physically active authority")
       .replace(/\bmoves?\s+with\s+quiet,\s*poised\s+authority\b/gi, "moves with forceful, physically active authority")
@@ -1669,9 +2486,9 @@ function enforceHighMotionPromptLanguage(prompt, scene = {}, state = {}) {
       .replace(/\bpoised\s+posture\b/gi, "active, commanding posture")
       .replace(/\bsubtle\s+body\s+motion\b/gi, "clear full-body movement")
       .replace(/\bstands?\s+still\b/gi, "moves through the space");
-    if (!/\b(?:strides?|runs?|sprints?|dances?|turns?|crosses?|lunges?|reaches?|pushes?|pulls?|climbs?|fights?|brushing|sweeping|gestures?)\b/i.test(text)) {
+    if (!/\b(?:walks?|steps?|strides?|runs?|sprints?|dances?|crosses?|lunges?|reaches?|pushes?|pulls?|climbs?|fights?|brushes?|sweeps?|gestures?|interacts?|grabs?|lifts?|paces?)\b/i.test(text)) {
       text = text.replace(/\.+\s*$/, "");
-      text += ", while the subject performs clear full-body movement through the set.";
+      text += ", while the subject performs a clear physical action with the body, hands, or surrounding set instead of relying on facial movement alone.";
     }
   }
   return text.replace(/\s{2,}/g, " ").trim();
@@ -1693,9 +2510,19 @@ function slimStoryboardForRequest(state) {
     mode: state.mode,
     project_video_engine: normalizeStoryboardProjectVideoEngine(state.projectVideoEngine),
     performance_mode: normalizeStoryboardPerformanceMode(state.performanceMode || state.performance_mode),
+    short_film_planning_mode: normalizeStoryboardShortFilmPlanningMode(state.shortFilmPlanningMode),
     camera_flow: state.cameraFlow || "balanced",
     image_shot_flow: state.imageShotFlow || "intimate",
     image_aesthetic: state.imageAesthetic || "",
+    video_style: state.videoStyle || "",
+    video_style_custom: state.videoStyleCustom || "",
+    temporal_world_effect: state.temporalWorldEffect || "",
+    temporal_world_effect_custom: state.temporalWorldEffectCustom || "",
+    temporal_allow_background_extras: state.temporalAllowBackgroundExtras !== false,
+    temporal_background_intensity: storyboardTemporalIntensity(state.temporalBackgroundIntensity),
+    temporal_environment_time_passage: state.temporalEnvironmentTimePassage !== false,
+    temporal_protected_characters: storyboardTemporalProtectedMode(state.temporalProtectedCharacters),
+    temporal_protected_custom: state.temporalProtectedCustom || "",
     global_consistency_phrase: state.globalConsistencyPhrase || "",
     camera_motion_speed: storyboardSpeedValue(state.cameraMotionSpeed, 4),
     character_motion_speed: storyboardSpeedValue(state.characterMotionSpeed, 4),
@@ -1703,6 +2530,7 @@ function slimStoryboardForRequest(state) {
     facial_performance_default: state.facialPerformance || "",
     facial_performance_custom_default: state.facialPerformanceCustom || "",
     story_layer: normalizeStoryLayer(state.storyLayer),
+    script_import: normalizeStoryboardScriptImportState(state.scriptImport),
     reference_builder: {
       subjects: (state.referenceBuilder?.subjects || []).map(slimReferenceForRequest).filter(Boolean),
       locations: (state.referenceBuilder?.locations || []).map(slimReferenceForRequest).filter(Boolean),
@@ -1755,33 +2583,58 @@ function storyboardStartingShotInstruction(shotType) {
   const shot = String(shotType || "").trim();
   if (!shot) return "";
   if (shot.toLowerCase() === "eyes shot") {
-    return "Begin the final video prompt with an explicit sentence stating that the video begins with an extreme close-up of the subject's eyes. The selected camera motion must begin from that opening framing.";
+    return "The literal first generated frame must already be an extreme close-up of the subject's eyes. Do not use a wider or farther-away lead-in. The selected camera motion must begin from that opening framing.";
   }
-  return `Begin the final video prompt with an explicit sentence stating that the video begins with a ${shot}. The selected camera motion must begin from that opening framing.`;
+  return `The literal first generated frame must already be a ${shot}. Do not use a wider, farther-away, establishing, or full-body lead-in before reaching that framing. The selected camera motion must begin from that opening framing.`;
 }
 
 function storyboardScenesForGpt(state) {
   const imageMode = state.mode !== "image_to_video_prep";
   const idLoraMode = String(state.videoPromptType || state.video_prompt_type || "").trim() === "id_lora"
     || state.scenes.some((scene) => String(scene?.video_prompt_type || "").trim() === "id_lora");
-  const performancePresets = idLoraMode ? ID_LORA_PERFORMANCE_STYLE_PRESETS : PERFORMANCE_STYLE_PRESETS;
-  const facialPresets = idLoraMode ? ID_LORA_FACIAL_PERFORMANCE_PRESETS : FACIAL_PERFORMANCE_PRESETS;
+  const miniMaxShortFilmMode = normalizeStoryboardProjectVideoEngine(state.projectVideoEngine) === "minimax_h3"
+    && normalizeStoryboardPerformanceMode(state.performanceMode || state.performance_mode) === "speaking";
+  const filmPlanningProfile = idLoraMode || miniMaxShortFilmMode;
+  const fullyCustomShortFilm = miniMaxShortFilmMode
+    && normalizeStoryboardShortFilmPlanningMode(state.shortFilmPlanningMode) === "fully_custom";
+  const performancePresets = filmPlanningProfile ? ID_LORA_PERFORMANCE_STYLE_PRESETS : PERFORMANCE_STYLE_PRESETS;
+  const facialPresets = filmPlanningProfile ? ID_LORA_FACIAL_PERFORMANCE_PRESETS : FACIAL_PERFORMANCE_PRESETS;
   const performancePreset = (value = "") => performancePresets.find((item) => item.value === value) || performancePresets[0] || PERFORMANCE_STYLE_PRESETS[0];
   const facialPresetForPayload = (value = "") => facialPresets.find((item) => item.value === value) || facialPresets[0] || FACIAL_PERFORMANCE_PRESETS[0];
+  const cameraFlowKey = STORYBOARD_CAMERA_FLOW_PRESETS[state.cameraFlow] ? state.cameraFlow : "balanced";
+  const cameraFlowPreset = STORYBOARD_CAMERA_FLOW_PRESETS[cameraFlowKey];
+  const explicitLyricSections = state.scenes.map((scene, index) => String(normalizeScene(scene, index).lyric_section || "").trim());
+  const effectiveLyricSection = (index) => {
+    if (explicitLyricSections[index]) return explicitLyricSections[index];
+    for (let next = index + 1; next < explicitLyricSections.length; next += 1) {
+      if (explicitLyricSections[next]) return explicitLyricSections[next];
+    }
+    for (let previous = index - 1; previous >= 0; previous -= 1) {
+      if (explicitLyricSections[previous]) return explicitLyricSections[previous];
+    }
+    return "";
+  };
   let previousCameraMotion = "";
   return state.scenes.map((scene, index) => {
     const normalized = normalizeScene(scene, index);
+    const lyricSection = effectiveLyricSection(index);
+    if (!explicitLyricSections[index] && lyricSection && scene && typeof scene === "object") {
+      scene.lyric_section = lyricSection;
+    }
     const sceneNumberIndex = Math.max(0, Number(normalized.scene_number || index + 1) - 1);
-    const cameraFallback = storyboardCameraFlowEntry(state.cameraFlow || "balanced", sceneNumberIndex, previousCameraMotion);
+    const cameraFallback = fullyCustomShortFilm ? null : storyboardCameraFlowEntry(state.cameraFlow || "balanced", sceneNumberIndex, previousCameraMotion);
     const shotType = normalized.shot_type || cameraFallback?.shot || "";
     const requiresStartingShot = !imageMode && normalized.video_prompt_type !== "i2v" && Boolean(shotType);
-    const cameraMotion = normalized.camera_motion || (imageMode ? "" : cameraFallback?.camera) || "";
+    const rawCameraMotion = normalized.camera_motion || (imageMode ? "" : cameraFallback?.camera) || "";
+    const cameraMotion = imageMode || fullyCustomShortFilm
+      ? rawCameraMotion
+      : storyboardCameraMotionForSpeed(rawCameraMotion, state.cameraMotionSpeed);
     const motionSummary = String(normalized.motion_summary || "").trim();
     const cameraMotionForPrompt = motionSummary ? "" : cameraMotion;
     if (!imageMode) previousCameraMotion = cameraMotion || previousCameraMotion;
     const lyricText = String(normalized.lyrics || "").trim();
     const performanceMode = normalizeStoryboardPerformanceMode(normalized.performance_mode || state.performanceMode || state.videoType || state.performance_mode);
-    const selectedFacialPerformance = normalized.facial_performance || state.facialPerformance;
+    const selectedFacialPerformance = normalized.facial_performance || (fullyCustomShortFilm ? "" : state.facialPerformance);
     const facialPreset = facialPresetForPayload(selectedFacialPerformance);
     const facialCustom = String(normalized.facial_performance_custom || state.facialPerformanceCustom || "").trim();
     const facialDirection = selectedFacialPerformance === "off"
@@ -1789,8 +2642,19 @@ function storyboardScenesForGpt(state) {
       : selectedFacialPerformance === "custom" && facialCustom
       ? facialCustom
       : [facialPreset.direction, facialCustom].filter(Boolean).join(" ");
-    const selectedPerformanceStyle = normalized.performance_style || state.performanceStyle;
+    const selectedPerformanceStyle = normalized.performance_style || (fullyCustomShortFilm ? "" : state.performanceStyle);
     const selectedPerformancePreset = performancePreset(selectedPerformanceStyle);
+    const supportsVideoStyle = storyboardSceneSupportsMiniMaxVideoStyle(normalized);
+    const selectedVideoStyle = supportsVideoStyle ? String(state.videoStyle || normalized.video_style || "") : "";
+    const selectedVideoStyleCustom = selectedVideoStyle === "custom"
+      ? String(state.videoStyle === "custom" ? state.videoStyleCustom : (normalized.video_style_custom || state.videoStyleCustom || "")).trim()
+      : "";
+    const selectedVideoStylePreset = storyboardMiniMaxVideoStylePreset(selectedVideoStyle);
+    const selectedVideoStyleVerbiage = storyboardMiniMaxVideoStyleVerbiage(selectedVideoStyle, selectedVideoStyleCustom);
+    const temporalWorldEffect = !imageMode
+      && normalizeStoryboardProjectVideoEngine(normalized.project_video_engine || state.projectVideoEngine) === "minimax_h3"
+      ? storyboardTemporalWorldEffectForScene(normalized, state)
+      : null;
     const instrumental = Boolean(normalized.lyric_instrumental);
     const noLipSync = Boolean(normalized.lyric_no_lip_sync || performanceMode === "no_lip_sync");
     const noCharacterPresent = Boolean(normalized.no_character_present);
@@ -1823,6 +2687,7 @@ function storyboardScenesForGpt(state) {
     return {
       scene_number: normalized.scene_number,
       label: normalized.label,
+      lyric_section: lyricSection,
       prompt_type: imageMode ? "text to image" : storyboardVideoPromptTypeLabel(normalized.video_prompt_type),
       project_video_engine: normalizeStoryboardProjectVideoEngine(normalized.project_video_engine || state.projectVideoEngine),
       minimax_h3_mode: normalizeStoryboardMiniMaxH3Mode(normalized.minimax_h3_mode),
@@ -1830,12 +2695,16 @@ function storyboardScenesForGpt(state) {
       timeline_start: Number(normalized.timeline_start || 0),
       timeline_end: Number(normalized.timeline_end || 0),
       performance_mode: performanceMode,
+      short_film_planning_mode: miniMaxShortFilmMode ? normalizeStoryboardShortFilmPlanningMode(state.shortFilmPlanningMode) : "",
+      manual_scene_contract: fullyCustomShortFilm
+        ? "Every populated scene-card field is authoritative. Format the supplied material only. Do not invent, rewrite, reorder, merge, omit, or replace dialogue, speakers, actions, story beats, shot/framing, camera motion, setting, references, sound direction, or continuity. Leave unspecified details unspecified instead of filling them in."
+        : "",
       lyric_line_to_sing: shouldLipSync && performanceMode === "singing" ? lyricText : "",
       line_to_say: shouldLipSync && performanceMode === "speaking" ? lyricText : "",
       vocal_status: {
         performance_mode: performanceMode,
         lyric_text: lyricText,
-        lyric_section: normalized.lyric_section,
+        lyric_section: lyricSection,
         singers,
         instrumental,
         no_lip_sync: noLipSync,
@@ -1866,7 +2735,7 @@ function storyboardScenesForGpt(state) {
       },
       scene_summary: imageMode ? "" : normalized.prompt_summary,
       story_layer: {
-        lyric_section: normalized.lyric_section,
+        lyric_section: lyricSection,
         scene_story_beat: normalized.story_beat,
         flf_start_state: normalized.flf_start_state,
         flf_transformation: normalized.flf_transformation,
@@ -1879,19 +2748,31 @@ function storyboardScenesForGpt(state) {
       },
       motion_summary: imageMode ? "" : motionSummary,
       still_image_notes: imageMode ? motionSummary : "",
-      image_aesthetic: imageMode ? storyboardImageAestheticGuidance(state.imageAesthetic, { idLoraMode }) : "",
+      image_aesthetic: imageMode ? storyboardImageAestheticGuidance(state.imageAesthetic, { idLoraMode: filmPlanningProfile }) : "",
       image_aesthetic_instruction: imageMode
         ? "Translate the selected image aesthetic into concrete prompt details: pose, wardrobe styling, hair, makeup, accessories, lighting setup, lens/framing, composition, environment treatment, texture, weather/time if useful, and art direction. Do not merely name the preset or append it as a short tag."
+        : "",
+      video_style: !imageMode && supportsVideoStyle && selectedVideoStyle ? selectedVideoStylePreset.label : "",
+      video_style_custom: !imageMode && supportsVideoStyle && selectedVideoStyle === "custom" ? selectedVideoStyleCustom : "",
+      video_style_guidance: !imageMode && supportsVideoStyle ? selectedVideoStyleVerbiage : "",
+      video_style_verbiage: !imageMode && supportsVideoStyle ? selectedVideoStyleVerbiage : "",
+      video_style_instruction: !imageMode && supportsVideoStyle && selectedVideoStyleVerbiage
+        ? "This exact video_style_verbiage is mandatory. Copy it word-for-word into the final prompt and use it only as the governing visual-appearance contract for lighting, color, texture, materials, production design, grading, and image finish. Do not paraphrase, shorten, rename, or omit it. Do not use it to select, replace, or modify camera motion, character motion, shot timing, editing, or transitions."
+        : "",
+      temporal_world_effect: temporalWorldEffect || { enabled: false },
+      temporal_world_effect_verbiage: temporalWorldEffect?.exact_verbiage || "",
+      temporal_world_effect_instruction: temporalWorldEffect
+        ? "This exact temporal_world_effect_verbiage is mandatory. Copy it word-for-word before the first timestamp. Treat it as a hard temporal-layer contract, and stage its concrete visible effect inside every timestamp block. Protected characters and their voices stay natural, stable, singular, and correctly synchronized while only the stated unprotected background/world elements receive the effect. Do not write a Continuity rule that contradicts its background-extras permission."
         : "",
       global_consistency_phrase: String(state.globalConsistencyPhrase || "").trim(),
       global_consistency_instruction: String(state.globalConsistencyPhrase || "").trim()
         ? "Incorporate the global_consistency_phrase naturally into the prompt where it fits. Preserve its key wording, but do not force it to the beginning unless that is the most natural phrasing."
         : "",
-      performance_style: selectedPerformanceStyle === "off" ? "" : selectedPerformancePreset.label,
-      performance_direction: selectedPerformanceStyle === "off" ? "" : selectedPerformancePreset.direction,
-      facial_performance: selectedFacialPerformance === "off" ? "" : facialPreset.label,
-      facial_performance_direction: imageMode ? storyboardStillFacialDirection(facialDirection) : facialDirection,
-      facial_performance_custom: selectedFacialPerformance === "off" ? "" : (imageMode ? storyboardStillFacialDirection(facialCustom) : facialCustom),
+      performance_style: !selectedPerformanceStyle || selectedPerformanceStyle === "off" ? "" : selectedPerformancePreset.label,
+      performance_direction: !selectedPerformanceStyle || selectedPerformanceStyle === "off" ? "" : selectedPerformancePreset.direction,
+      facial_performance: !selectedFacialPerformance || selectedFacialPerformance === "off" ? "" : facialPreset.label,
+      facial_performance_direction: !selectedFacialPerformance ? "" : (imageMode ? storyboardStillFacialDirection(facialDirection) : facialDirection),
+      facial_performance_custom: !selectedFacialPerformance || selectedFacialPerformance === "off" ? "" : (imageMode ? storyboardStillFacialDirection(facialCustom) : facialCustom),
       microphone: {
         include: Boolean(normalized.include_microphone),
         instruction: normalized.include_microphone
@@ -1917,6 +2798,8 @@ function storyboardScenesForGpt(state) {
         name: String(normalized.setting || "").trim(),
         description: String(normalized.setting || "").trim(),
       },
+      camera_flow: cameraFlowKey,
+      camera_flow_guidance: String(cameraFlowPreset?.guidance || "").trim(),
       shot_type: shotType,
       starting_shot: requiresStartingShot
         ? {
@@ -1928,7 +2811,7 @@ function storyboardScenesForGpt(state) {
       camera_motion: imageMode ? "" : cameraMotionForPrompt,
       still_camera_style: imageMode ? cameraMotion : "",
       camera_motion_speed: storyboardSpeedValue(state.cameraMotionSpeed, 4),
-      camera_motion_speed_guidance: imageMode ? "" : storyboardSpeedGuidance(state.cameraMotionSpeed, "camera"),
+      camera_motion_speed_guidance: imageMode || (fullyCustomShortFilm && !cameraMotionForPrompt) ? "" : storyboardSpeedGuidance(state.cameraMotionSpeed, "camera"),
       camera_guidance: imageMode
         ? {
             selected_still_camera_style: cameraMotion,
@@ -1945,7 +2828,7 @@ function storyboardScenesForGpt(state) {
           },
       character_motion: imageMode ? "" : normalized.character_motion,
       character_motion_speed: storyboardSpeedValue(state.characterMotionSpeed, 4),
-      character_motion_guidance: storyboardSpeedGuidance(state.characterMotionSpeed, "character"),
+      character_motion_guidance: fullyCustomShortFilm && !normalized.character_motion ? "" : storyboardSpeedGuidance(state.characterMotionSpeed, "character"),
       first_frame_visual_inventory: imageMode
         ? ""
         : {
@@ -1956,6 +2839,8 @@ function storyboardScenesForGpt(state) {
       text_to_image_prompt: imageMode ? normalized.image_prompt : "",
       video_prompt: normalized.video_prompt,
       notes: normalized.notes,
+      audio_direction: normalized.audio_direction,
+      continuity: normalized.continuity,
     };
   });
 }
@@ -1975,6 +2860,7 @@ export function storyboardGptPayload(state, scenesOverride = null) {
     scope: selectedScene ? "single_scene" : "all_scenes",
     selected_scene_number: selectedScene ? selectedScene.scene_number : null,
     performance_mode: normalizeStoryboardPerformanceMode(selectedScene?.performance_mode || state.performanceMode || state.videoType || state.performance_mode),
+    short_film_planning_mode: normalizeStoryboardShortFilmPlanningMode(state.shortFilmPlanningMode),
     storyboard_mode: state.mode === "image_to_video_prep" ? "video prompt planning" : "text-to-image prompt planning",
     image_model_mode: selectedImageMode,
     image_model_label: selectedImageModeLabel,
@@ -1992,7 +2878,7 @@ export function storyboardGptPayload(state, scenesOverride = null) {
         },
       }
       : {
-        task_instruction: "Create detailed image-to-video prompts for Video Prep using a strict source hierarchy. The mapped location_ref is the required physical set for each scene: do not replace it with a location from story_layer, scene_story_beat, song_story_brief, user_story_arc, lyrics, or previous/next scene context. If story context mentions another place, translate only its emotion, tension, symbolism, or action into the mapped location_ref environment. The first_frame_visual_inventory field is only a first-frame inventory: visible subject identity, wardrobe, hair, makeup, props, setting, lighting, color palette, framing, and composition. Do not use first_frame_visual_inventory or any image prompt wording for body action, camera motion, performance energy, facial performance, lyric action, story action, or animation pacing. When starting_shot.required is true, the first sentence must explicitly state that the video begins with starting_shot.selected_starting_shot; do not merely imply that framing or use it later. For an eyes shot, explicitly say the video begins with an extreme close-up of the subject's eyes. The selected camera motion begins from that opening framing. Then build the rest of the video prompt in this order: 1) subject and vocal/performance sentence from vocal_status, performance_direction, and facial_performance_direction; 2) character movement sentence from character_motion, character_motion_guidance, character_motion_speed, and scene_story_beat; 3) camera movement sentence from camera_motion, camera_guidance, and camera_motion_speed_guidance; 4) environment/lighting sentence from first_frame_visual_inventory and location_ref; 5) final mood/style sentence from story_layer and image aesthetic only where visual. Each sentence has one job and must add new information. Do not repeat the same mood, trait, motion, authority/defiance language, setting adjective, or descriptive phrase across multiple sentences. If an idea appears in the face sentence, do not repeat it in the body, camera, environment, or atmosphere sentence; use a different concrete visual detail instead. Do not duplicate adjacent words such as 'tall, tall'. The motion priority is character_motion_guidance + camera_motion_speed_guidance + camera_guidance + performance_direction + vocal_status + scene_story_beat above story_layer, and all of those above first_frame_visual_inventory. At camera speed 9-10, do not write 'then holds', 'holds on', or static hold endings; use multiple coordinated readable camera moves. At character speed 9-10, do not leave the subject merely poised or standing; include clear full-body action or set interaction.",
+        task_instruction: "Create detailed image-to-video prompts for Video Prep using a strict source hierarchy. The mapped location_ref is the required physical set for each scene: do not replace it with a location from story_layer, scene_story_beat, song_story_brief, user_story_arc, lyrics, or previous/next scene context. If story context mentions another place, translate only its emotion, tension, symbolism, or action into the mapped location_ref environment. The first_frame_visual_inventory field is only a first-frame inventory: visible subject identity, wardrobe, hair, makeup, props, setting, lighting, color palette, framing, and composition. Do not use first_frame_visual_inventory or any image prompt wording for body action, camera motion, performance energy, facial performance, lyric action, story action, or animation pacing. Follow camera_flow_guidance as a hard framing constraint for the entire shot, every camera move, and the ending composition. When starting_shot.required is true, the first sentence must explicitly state that the video begins with starting_shot.selected_starting_shot; do not merely imply that framing or use it later. For an eyes shot, explicitly say the video begins with an extreme close-up of the subject's eyes. The selected camera motion begins from that opening framing. Then build the rest of the video prompt in this order: 1) subject and vocal/performance sentence from vocal_status, performance_direction, and facial_performance_direction; 2) character movement sentence from character_motion, character_motion_guidance, character_motion_speed, and scene_story_beat; 3) camera movement sentence from camera_motion, camera_guidance, and camera_motion_speed_guidance; 4) environment/lighting sentence from first_frame_visual_inventory and location_ref; 5) final mood/style sentence from story_layer and image aesthetic only where visual. Each sentence has one job and must add new information. Do not repeat the same mood, trait, motion, authority/defiance language, setting adjective, or descriptive phrase across multiple sentences. If an idea appears in the face sentence, do not repeat it in the body, camera, environment, or atmosphere sentence; use a different concrete visual detail instead. Do not duplicate adjacent words such as 'tall, tall'. The motion priority is character_motion_guidance + camera_motion_speed_guidance + camera_guidance + performance_direction + vocal_status + scene_story_beat above story_layer, and all of those above first_frame_visual_inventory. At camera speed 7-8, do not use slow, gentle, subtle, restrained, locked-off, static, or hold camera wording; use energetic active movement. At camera speed 9-10, use multiple coordinated readable camera moves. At character speed 4 or higher, include at least one clear physical body action, gesture, step, or set interaction; facial movement alone does not count.",
       }),
     story_layer: normalizeStoryLayer(state.storyLayer),
     scenes: storyboardScenesForGpt(payloadState),
@@ -2022,17 +2908,31 @@ async function copyTextToClipboard(text) {
 
 function openStoryboardBuilder(payload = {}) {
   const projectFolder = String(payload.projectFolder || payload.project_folder || "").trim();
-  const projectVideoEngine = normalizeStoryboardProjectVideoEngine(payload.projectVideoEngine || payload.project_video_engine);
+  const incomingProjectVideoEngine = String(payload.projectVideoEngine || payload.project_video_engine || "").trim();
+  const hasIncomingProjectVideoEngine = Boolean(incomingProjectVideoEngine);
+  const projectVideoEngine = normalizeStoryboardProjectVideoEngine(incomingProjectVideoEngine);
+  const payloadMiniMaxH3Mode = projectVideoEngine === "minimax_h3"
+    ? normalizeStoryboardMiniMaxH3Mode(payload.miniMaxH3Mode || payload.minimax_h3_mode || payload.videoPromptType || payload.video_prompt_type)
+    : "";
+  const payloadMiniMaxH3AudioMode = projectVideoEngine === "minimax_h3"
+    ? normalizeStoryboardMiniMaxH3AudioMode(payload.miniMaxH3AudioMode || payload.minimax_h3_audio_mode)
+    : "input_audio";
   const payloadVideoPromptType = ["i2v", "id_lora", "t2v", "rtv", "ingredients", "flf"].includes(String(payload.videoPromptType || payload.video_prompt_type || "").trim())
     ? String(payload.videoPromptType || payload.video_prompt_type || "").trim()
     : "";
   const isIdLoraMode = payloadVideoPromptType === "id_lora";
   const payloadPerformanceMode = normalizeStoryboardPerformanceMode(payload.performanceMode || payload.performance_mode || payload.videoType || payload.video_type);
+  const isMiniMaxShortFilmMode = projectVideoEngine === "minimax_h3" && payloadPerformanceMode === "speaking";
+  const usesFilmPlanningProfile = isIdLoraMode || isMiniMaxShortFilmMode;
+  const openingMode = projectVideoEngine === "minimax_h3"
+    ? (payloadMiniMaxH3Mode === "image_to_video" ? "storyboard_prompts" : "image_to_video_prep")
+    : (payloadVideoPromptType === "i2v" ? "storyboard_prompts" : "image_to_video_prep");
   const state = {
     projectFolder,
     projectVideoEngine,
+    miniMaxH3AudioMode: payloadMiniMaxH3AudioMode,
     lineMappingLyrics: String(payload.lineMappingLyrics || payload.line_mapping_lyrics || payload.lyricMapper?.source_text || payload.lyric_mapper?.source_text || ""),
-    mode: "storyboard_prompts",
+    mode: openingMode,
     scenes: scenesFromBuilderPayload(payload).map((scene) => ({
       ...scene,
       video_prompt_type: payloadVideoPromptType || scene.video_prompt_type,
@@ -2040,26 +2940,44 @@ function openStoryboardBuilder(payload = {}) {
     })),
     referenceBuilder: normalizeReferenceBuilderCatalog(payload.referenceBuilder || payload.reference_builder || {}),
     storyLayer: normalizeStoryLayer(payload.storyLayer || payload.story_layer || {}),
+    scriptImport: normalizeStoryboardScriptImportState(payload.scriptImport || payload.script_import || {}),
     onReferenceMappingsChanged: typeof payload.onReferenceMappingsChanged === "function" ? payload.onReferenceMappingsChanged : null,
     onStoryLayerChanged: typeof payload.onStoryLayerChanged === "function" ? payload.onStoryLayerChanged : null,
     onPromptsExported: typeof payload.onPromptsExported === "function" ? payload.onPromptsExported : null,
     onApplyIdLoraDialoguePlan: typeof payload.onApplyIdLoraDialoguePlan === "function" ? payload.onApplyIdLoraDialoguePlan : null,
+    onApplyMiniMaxDialoguePlan: typeof payload.onApplyMiniMaxDialoguePlan === "function" ? payload.onApplyMiniMaxDialoguePlan : null,
     onCreateVideoPrompt: typeof payload.onCreateVideoPrompt === "function" ? payload.onCreateVideoPrompt : null,
     query: "",
     selected: new Set(),
     saving: false,
     gemmaSettings: payload.gemmaSettings || payload.gemma_settings || {},
     cameraFlow: String(payload.cameraFlow || payload.camera_flow || "balanced"),
-    imageShotFlow: String(payload.imageShotFlow || payload.image_shot_flow || (isIdLoraMode ? "film_dialogue_coverage" : "intimate")),
-    imageAesthetic: String(payload.imageAesthetic || payload.image_aesthetic || (isIdLoraMode ? "film_default" : "")),
+    imageShotFlow: String(payload.imageShotFlow || payload.image_shot_flow || (usesFilmPlanningProfile ? "film_dialogue_coverage" : "intimate")),
+    imageAesthetic: String(payload.imageAesthetic || payload.image_aesthetic || (usesFilmPlanningProfile ? "film_default" : "")),
+    videoStyle: String(payload.videoStyle || payload.video_style || ""),
+    videoStyleCustom: String(payload.videoStyleCustom || payload.video_style_custom || ""),
+    temporalWorldEffect: String(payload.temporalWorldEffect || payload.temporal_world_effect || ""),
+    temporalWorldEffectCustom: String(payload.temporalWorldEffectCustom || payload.temporal_world_effect_custom || ""),
+    temporalAllowBackgroundExtras: (payload.temporalAllowBackgroundExtras ?? payload.temporal_allow_background_extras) !== false,
+    temporalBackgroundIntensity: storyboardTemporalIntensity(payload.temporalBackgroundIntensity ?? payload.temporal_background_intensity ?? 8),
+    temporalEnvironmentTimePassage: (payload.temporalEnvironmentTimePassage ?? payload.temporal_environment_time_passage) !== false,
+    temporalProtectedCharacters: storyboardTemporalProtectedMode(payload.temporalProtectedCharacters || payload.temporal_protected_characters),
+    temporalProtectedCustom: String(payload.temporalProtectedCustom || payload.temporal_protected_custom || ""),
     globalConsistencyPhrase: String(payload.globalConsistencyPhrase || payload.global_consistency_phrase || ""),
-    performanceStyle: String(payload.performanceStyle || payload.performance_style || payload.performance_style_default || (isIdLoraMode ? "dialogue_naturalism" : "")),
+    performanceStyle: String(payload.performanceStyle || payload.performance_style || payload.performance_style_default || (usesFilmPlanningProfile ? "dialogue_naturalism" : "")),
     facialPerformance: String(payload.facialPerformance || payload.facial_performance || payload.facial_performance_default || ""),
     facialPerformanceCustom: String(payload.facialPerformanceCustom || payload.facial_performance_custom || payload.facial_performance_custom_default || ""),
     cameraMotionSpeed: storyboardSpeedValue(payload.cameraMotionSpeed ?? payload.camera_motion_speed ?? payload.motion_defaults?.camera_motion_speed, 4),
     characterMotionSpeed: storyboardSpeedValue(payload.characterMotionSpeed ?? payload.character_motion_speed ?? payload.motion_defaults?.character_motion_speed, 4),
     performanceMode: payloadPerformanceMode,
+    shortFilmPlanningMode: normalizeStoryboardShortFilmPlanningMode(
+      payload.shortFilmPlanningMode
+      || payload.short_film_planning_mode
+      || payload.builderStoryboardDefaults?.short_film_planning_mode
+      || payload.builder_storyboard_defaults?.short_film_planning_mode,
+    ),
     videoPromptType: payloadVideoPromptType,
+    miniMaxH3Mode: payloadMiniMaxH3Mode,
     imageMode: String(payload.imageMode || payload.image_mode || "zimage").trim() || "zimage",
     imageModeLabel: String(payload.imageModeLabel || payload.image_mode_label || "").trim(),
   };
@@ -2070,16 +2988,18 @@ function openStoryboardBuilder(payload = {}) {
     if (runner === "llm_api" || runner === "llmapi" || runner === "llm-api" || runner === "api") return "API LLM";
     return "Gemma";
   };
-  const imageShotFlowPresets = isIdLoraMode ? ID_LORA_IMAGE_SHOT_FLOW_PRESETS : STORYBOARD_IMAGE_SHOT_FLOW_PRESETS;
-  const imageAestheticPresets = isIdLoraMode ? ID_LORA_IMAGE_AESTHETIC_PRESETS : STORYBOARD_IMAGE_AESTHETIC_PRESETS;
-  const performanceStylePresets = isIdLoraMode ? ID_LORA_PERFORMANCE_STYLE_PRESETS : PERFORMANCE_STYLE_PRESETS;
-  const facialPerformancePresets = isIdLoraMode ? ID_LORA_FACIAL_PERFORMANCE_PRESETS : FACIAL_PERFORMANCE_PRESETS;
+  const imageShotFlowPresets = usesFilmPlanningProfile ? ID_LORA_IMAGE_SHOT_FLOW_PRESETS : STORYBOARD_IMAGE_SHOT_FLOW_PRESETS;
+  const imageAestheticPresets = usesFilmPlanningProfile ? ID_LORA_IMAGE_AESTHETIC_PRESETS : STORYBOARD_IMAGE_AESTHETIC_PRESETS;
+  const performanceStylePresets = usesFilmPlanningProfile ? ID_LORA_PERFORMANCE_STYLE_PRESETS : PERFORMANCE_STYLE_PRESETS;
+  const facialPerformancePresets = usesFilmPlanningProfile ? ID_LORA_FACIAL_PERFORMANCE_PRESETS : FACIAL_PERFORMANCE_PRESETS;
   const imageShotFlowPresetForMode = (value = "") => imageShotFlowPresets[value] || imageShotFlowPresets[Object.keys(imageShotFlowPresets)[0]] || STORYBOARD_IMAGE_SHOT_FLOW_PRESETS.intimate;
   const imageAestheticPresetForMode = (value = "") => imageAestheticPresets.find((item) => item.value === value) || imageAestheticPresets[0] || STORYBOARD_IMAGE_AESTHETIC_PRESETS[0];
   const performancePresetForMode = (value = "") => performanceStylePresets.find((item) => item.value === value) || performanceStylePresets[0] || PERFORMANCE_STYLE_PRESETS[0];
   const facialPresetForMode = (value = "") => facialPerformancePresets.find((item) => item.value === value) || facialPerformancePresets[0] || FACIAL_PERFORMANCE_PRESETS[0];
   if (!imageShotFlowPresets[state.imageShotFlow]) state.imageShotFlow = Object.keys(imageShotFlowPresets)[0] || "off";
   if (!imageAestheticPresets.some((item) => item.value === state.imageAesthetic)) state.imageAesthetic = imageAestheticPresets[0]?.value || "";
+  if (!MINIMAX_VIDEO_STYLE_PRESETS.some((item) => item.value === state.videoStyle)) state.videoStyle = "";
+  if (!MINIMAX_TEMPORAL_WORLD_EFFECT_PRESETS.some((item) => item.value === state.temporalWorldEffect)) state.temporalWorldEffect = "";
   if (!performanceStylePresets.some((item) => item.value === state.performanceStyle)) state.performanceStyle = performanceStylePresets[0]?.value || "";
   if (!facialPerformancePresets.some((item) => item.value === state.facialPerformance)) state.facialPerformance = facialPerformancePresets[0]?.value || "";
   const storyboardDefaultsPayload = () => ({
@@ -2090,12 +3010,32 @@ function openStoryboardBuilder(payload = {}) {
       camera_guidance: storyboardSpeedGuidance(state.cameraMotionSpeed, "camera"),
       character_guidance: storyboardSpeedGuidance(state.characterMotionSpeed, "character"),
       performance_style: String(state.performanceStyle || ""),
+      short_film_planning_mode: normalizeStoryboardShortFilmPlanningMode(state.shortFilmPlanningMode),
       camera_flow: String(state.cameraFlow || ""),
       image_shot_flow: String(state.imageShotFlow || ""),
       image_aesthetic: String(state.imageAesthetic || ""),
+      video_style: String(state.videoStyle || ""),
+      video_style_custom: String(state.videoStyleCustom || "").trim(),
+      temporal_world_effect: String(state.temporalWorldEffect || ""),
+      temporal_world_effect_custom: String(state.temporalWorldEffectCustom || "").trim(),
+      temporal_allow_background_extras: state.temporalAllowBackgroundExtras !== false,
+      temporal_background_intensity: storyboardTemporalIntensity(state.temporalBackgroundIntensity),
+      temporal_environment_time_passage: state.temporalEnvironmentTimePassage !== false,
+      temporal_protected_characters: storyboardTemporalProtectedMode(state.temporalProtectedCharacters),
+      temporal_protected_custom: String(state.temporalProtectedCustom || "").trim(),
     },
     global_consistency_phrase: String(state.globalConsistencyPhrase || "").trim(),
     performance_style_default: String(state.performanceStyle || ""),
+    short_film_planning_mode: normalizeStoryboardShortFilmPlanningMode(state.shortFilmPlanningMode),
+    video_style: String(state.videoStyle || ""),
+    video_style_custom: String(state.videoStyleCustom || "").trim(),
+    temporal_world_effect: String(state.temporalWorldEffect || ""),
+    temporal_world_effect_custom: String(state.temporalWorldEffectCustom || "").trim(),
+    temporal_allow_background_extras: state.temporalAllowBackgroundExtras !== false,
+    temporal_background_intensity: storyboardTemporalIntensity(state.temporalBackgroundIntensity),
+    temporal_environment_time_passage: state.temporalEnvironmentTimePassage !== false,
+    temporal_protected_characters: storyboardTemporalProtectedMode(state.temporalProtectedCharacters),
+    temporal_protected_custom: String(state.temporalProtectedCustom || "").trim(),
     camera_motion_speed: storyboardSpeedValue(state.cameraMotionSpeed, 4),
     character_motion_speed: storyboardSpeedValue(state.characterMotionSpeed, 4),
     motion_defaults: {
@@ -2296,6 +3236,96 @@ function openStoryboardBuilder(payload = {}) {
   imageAestheticControls.append(imageAestheticLabel, imageAestheticSelect, imageAestheticApply, imageAestheticReplace);
   const imageAestheticInfo = document.createElement("div");
   imageAestheticInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
+  const videoStyleControls = document.createElement("div");
+  videoStyleControls.style.cssText = "display:flex;gap:8px;align-items:center;white-space:nowrap;";
+  const videoStyleLabel = document.createElement("div");
+  videoStyleLabel.style.cssText = "font-weight:900;color:#cffafe;white-space:nowrap;text-align:right;min-width:160px;";
+  videoStyleLabel.textContent = "Video aesthetic";
+  const videoStyleSelect = makeSelect(MINIMAX_VIDEO_STYLE_PRESETS, state.videoStyle);
+  videoStyleSelect.style.width = "max-content";
+  videoStyleSelect.style.minWidth = "220px";
+  const videoStyleApply = makeButton("Fill Missing", "primary");
+  videoStyleApply.title = "Fill blank style fields only for MiniMax Text to Video and Reference to Video scenes.";
+  const videoStyleReplace = makeButton("Replace All");
+  videoStyleReplace.title = "Replace the style on all MiniMax Text to Video and Reference to Video scenes. Other modes are ignored.";
+  videoStyleControls.append(videoStyleLabel, videoStyleSelect, videoStyleApply, videoStyleReplace);
+  const videoStyleCustomControls = document.createElement("div");
+  videoStyleCustomControls.style.cssText = "display:flex;gap:8px;align-items:flex-start;";
+  const videoStyleCustomLabel = document.createElement("div");
+  videoStyleCustomLabel.style.cssText = "font-weight:900;color:#cffafe;white-space:nowrap;text-align:right;min-width:160px;padding-top:9px;";
+  videoStyleCustomLabel.textContent = "Custom style wording";
+  const videoStyleCustomInput = makeTextarea(
+    state.videoStyleCustom,
+    "Type the exact visual-style wording that must appear unchanged in every eligible prompt...",
+    3,
+  );
+  videoStyleCustomInput.style.minWidth = "520px";
+  videoStyleCustomControls.append(videoStyleCustomLabel, videoStyleCustomInput);
+  const videoStyleInfo = document.createElement("div");
+  videoStyleInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
+  const temporalEffectControls = document.createElement("div");
+  temporalEffectControls.style.cssText = "display:flex;gap:8px;align-items:center;white-space:nowrap;";
+  const temporalEffectLabel = document.createElement("div");
+  temporalEffectLabel.style.cssText = "font-weight:900;color:#cffafe;white-space:nowrap;text-align:right;min-width:160px;";
+  temporalEffectLabel.textContent = "Temporal / world effect";
+  const temporalEffectSelect = makeSelect(MINIMAX_TEMPORAL_WORLD_EFFECT_PRESETS, state.temporalWorldEffect);
+  temporalEffectSelect.style.width = "max-content";
+  temporalEffectSelect.style.minWidth = "300px";
+  temporalEffectControls.append(temporalEffectLabel, temporalEffectSelect);
+  const temporalEffectCustomControls = document.createElement("div");
+  temporalEffectCustomControls.style.cssText = "display:flex;gap:8px;align-items:flex-start;";
+  const temporalEffectCustomLabel = document.createElement("div");
+  temporalEffectCustomLabel.style.cssText = "font-weight:900;color:#cffafe;white-space:nowrap;text-align:right;min-width:160px;padding-top:9px;";
+  temporalEffectCustomLabel.textContent = "Custom temporal wording";
+  const temporalEffectCustomInput = makeTextarea(state.temporalWorldEffectCustom, "Describe the exact temporal separation or world behavior. Character protection and audio-safety rules will be added automatically...", 3);
+  temporalEffectCustomInput.style.minWidth = "520px";
+  temporalEffectCustomControls.append(temporalEffectCustomLabel, temporalEffectCustomInput);
+  const temporalEffectOptions = document.createElement("div");
+  temporalEffectOptions.style.cssText = "display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;padding:9px 10px;border:1px solid #1f3347;border-radius:7px;background:#07111f;";
+  const temporalExtrasLabel = document.createElement("label");
+  temporalExtrasLabel.style.cssText = "display:flex;align-items:center;gap:7px;font-weight:800;color:#cbd5e1;";
+  const temporalExtrasInput = document.createElement("input");
+  temporalExtrasInput.type = "checkbox";
+  temporalExtrasInput.checked = state.temporalAllowBackgroundExtras !== false;
+  temporalExtrasLabel.append(temporalExtrasInput, document.createTextNode("Allow location-appropriate anonymous extras"));
+  const temporalEnvironmentLabel = document.createElement("label");
+  temporalEnvironmentLabel.style.cssText = "display:flex;align-items:center;gap:7px;font-weight:800;color:#cbd5e1;";
+  const temporalEnvironmentInput = document.createElement("input");
+  temporalEnvironmentInput.type = "checkbox";
+  temporalEnvironmentInput.checked = state.temporalEnvironmentTimePassage !== false;
+  temporalEnvironmentLabel.append(temporalEnvironmentInput, document.createTextNode("Allow lighting / weather / time passage"));
+  const temporalIntensityLabel = document.createElement("label");
+  temporalIntensityLabel.style.cssText = "display:flex;align-items:center;gap:7px;font-weight:800;color:#cbd5e1;min-width:290px;";
+  const temporalIntensityInput = makeInput(String(storyboardTemporalIntensity(state.temporalBackgroundIntensity)));
+  temporalIntensityInput.type = "range";
+  temporalIntensityInput.min = "0";
+  temporalIntensityInput.max = "10";
+  temporalIntensityInput.step = "1";
+  temporalIntensityInput.style.width = "170px";
+  temporalIntensityInput.style.accentColor = "#22d3ee";
+  const temporalIntensityValue = document.createElement("span");
+  temporalIntensityValue.style.cssText = "color:#cffafe;font-weight:900;min-width:38px;";
+  temporalIntensityLabel.append(document.createTextNode("World intensity"), temporalIntensityInput, temporalIntensityValue);
+  const temporalProtectedLabel = document.createElement("label");
+  temporalProtectedLabel.style.cssText = "display:flex;align-items:center;gap:7px;font-weight:800;color:#cbd5e1;min-width:360px;";
+  const temporalProtectedSelect = makeSelect([
+    { value: "all_referenced", label: "Protect all referenced characters (recommended)" },
+    { value: "lead_only", label: "Protect first referenced character only" },
+    { value: "custom", label: "Protect named referenced characters" },
+  ], state.temporalProtectedCharacters);
+  temporalProtectedSelect.style.minWidth = "280px";
+  temporalProtectedLabel.append(document.createTextNode("Real-time cast"), temporalProtectedSelect);
+  temporalEffectOptions.append(temporalExtrasLabel, temporalEnvironmentLabel, temporalIntensityLabel, temporalProtectedLabel);
+  const temporalProtectedCustomControls = document.createElement("div");
+  temporalProtectedCustomControls.style.cssText = "display:flex;gap:8px;align-items:center;";
+  const temporalProtectedCustomLabel = document.createElement("div");
+  temporalProtectedCustomLabel.style.cssText = "font-weight:900;color:#cffafe;white-space:nowrap;text-align:right;min-width:160px;";
+  temporalProtectedCustomLabel.textContent = "Protected names";
+  const temporalProtectedCustomInput = makeInput(state.temporalProtectedCustom, "Exact mapped character names, comma separated");
+  temporalProtectedCustomInput.style.minWidth = "520px";
+  temporalProtectedCustomControls.append(temporalProtectedCustomLabel, temporalProtectedCustomInput);
+  const temporalEffectInfo = document.createElement("div");
+  temporalEffectInfo.style.cssText = "color:#94a3b8;line-height:1.35;white-space:pre-wrap;";
   const consistencyControls = document.createElement("div");
   consistencyControls.style.cssText = "display:flex;gap:8px;align-items:center;white-space:nowrap;";
   const consistencyLabel = document.createElement("div");
@@ -2347,14 +3377,14 @@ function openStoryboardBuilder(payload = {}) {
   performanceControls.style.cssText = "display:flex;gap:8px;align-items:center;white-space:nowrap;";
   const performanceLabel = document.createElement("div");
   performanceLabel.style.cssText = "font-weight:900;color:#cffafe;white-space:nowrap;text-align:right;min-width:160px;";
-  performanceLabel.textContent = isIdLoraMode ? "Global acting style" : "Global performance style";
+  performanceLabel.textContent = usesFilmPlanningProfile ? "Global acting style" : "Global performance style";
   const performanceSelect = makeSelect(performanceStylePresets, state.performanceStyle);
   performanceSelect.style.width = "max-content";
   performanceSelect.style.minWidth = "180px";
   const performanceApply = makeButton("Fill Missing", "primary");
-  performanceApply.title = isIdLoraMode ? "Fill only blank per-scene acting style fields. Existing scene choices are kept." : "Fill only blank per-scene performance/song style fields. Existing scene choices are kept.";
+  performanceApply.title = usesFilmPlanningProfile ? "Fill only blank per-scene acting style fields. Existing scene choices are kept." : "Fill only blank per-scene performance/song style fields. Existing scene choices are kept.";
   const performanceReplace = makeButton("Replace All");
-  performanceReplace.title = isIdLoraMode ? "Replace every scene's acting style with the selected global style." : "Replace every scene's performance/song style with the selected global style.";
+  performanceReplace.title = usesFilmPlanningProfile ? "Replace every scene's acting style with the selected global style." : "Replace every scene's performance/song style with the selected global style.";
   performanceControls.append(performanceLabel, performanceSelect, performanceApply, performanceReplace);
   const performanceInfo = document.createElement("div");
   performanceInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
@@ -2381,7 +3411,7 @@ function openStoryboardBuilder(payload = {}) {
   facialControls.style.cssText = "display:flex;gap:8px;align-items:center;white-space:nowrap;";
   const facialLabel = document.createElement("div");
   facialLabel.style.cssText = "font-weight:900;color:#cffafe;white-space:nowrap;text-align:right;min-width:160px;";
-  facialLabel.textContent = isIdLoraMode ? "Global screen face" : "Global facial performance";
+  facialLabel.textContent = usesFilmPlanningProfile ? "Global screen face" : "Global facial performance";
   const facialSelect = makeSelect(facialPerformancePresets, state.facialPerformance);
   facialSelect.style.width = "max-content";
   facialSelect.style.minWidth = "180px";
@@ -2432,6 +3462,12 @@ function openStoryboardBuilder(payload = {}) {
   const responsiveDefaultRows = [
     imageShotControls,
     imageAestheticControls,
+    videoStyleControls,
+    videoStyleCustomControls,
+    temporalEffectControls,
+    temporalEffectCustomControls,
+    temporalEffectOptions,
+    temporalProtectedCustomControls,
     imageWorldStyleControls,
     imageCustomStyleControls,
     consistencyControls,
@@ -2451,6 +3487,13 @@ function openStoryboardBuilder(payload = {}) {
   const responsiveDefaultInputs = [
     imageShotSelect,
     imageAestheticSelect,
+    videoStyleSelect,
+    videoStyleCustomInput,
+    temporalEffectSelect,
+    temporalEffectCustomInput,
+    temporalIntensityInput,
+    temporalProtectedSelect,
+    temporalProtectedCustomInput,
     imageWorldStyleSelect,
     imageCustomStyleInput,
     consistencyInput,
@@ -2465,13 +3508,15 @@ function openStoryboardBuilder(payload = {}) {
     control.style.minWidth = "0";
     control.style.maxWidth = "100%";
   }
-  for (const control of [imageCustomStyleInput, consistencyInput, cameraSpeedInput, characterSpeedInput, facialCustomInput]) {
+  for (const control of [videoStyleCustomInput, temporalEffectCustomInput, temporalProtectedCustomInput, imageCustomStyleInput, consistencyInput, cameraSpeedInput, characterSpeedInput, facialCustomInput]) {
     control.style.flex = "1 1 280px";
     control.style.width = "100%";
   }
   const responsiveDefaultInfo = [
     imageShotInfo,
     imageAestheticInfo,
+    videoStyleInfo,
+    temporalEffectInfo,
     imageWorldStyleInfo,
     imageCustomStyleInfo,
     consistencyInfo,
@@ -2487,7 +3532,7 @@ function openStoryboardBuilder(payload = {}) {
     info.style.maxWidth = "100%";
     info.style.overflowWrap = "anywhere";
   }
-  cameraFlowBar.append(imageShotControls, imageShotInfo, imageAestheticControls, imageAestheticInfo, imageWorldStyleControls, imageWorldStyleInfo, imageCustomStyleControls, imageCustomStyleInfo, consistencyControls, consistencyInfo, cameraFlowControls, cameraFlowInfo, cameraSpeedControls, cameraSpeedInfo, performanceControls, performanceInfo, characterSpeedControls, characterSpeedInfo, facialControls, facialInfo, facialCustomControls, facialCustomInfo);
+  cameraFlowBar.append(imageShotControls, imageShotInfo, imageAestheticControls, imageAestheticInfo, videoStyleControls, videoStyleCustomControls, videoStyleInfo, temporalEffectControls, temporalEffectCustomControls, temporalEffectOptions, temporalProtectedCustomControls, temporalEffectInfo, imageWorldStyleControls, imageWorldStyleInfo, imageCustomStyleControls, imageCustomStyleInfo, consistencyControls, consistencyInfo, cameraFlowControls, cameraFlowInfo, cameraSpeedControls, cameraSpeedInfo, performanceControls, performanceInfo, characterSpeedControls, characterSpeedInfo, facialControls, facialInfo, facialCustomControls, facialCustomInfo);
 
   const storyLayerBar = document.createElement("div");
   storyLayerBar.className = "vrgdg-storyboard-story-grid";
@@ -2496,8 +3541,8 @@ function openStoryboardBuilder(payload = {}) {
   storyLayerHeader.style.cssText = "grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;min-width:0;max-width:100%;";
   const storyLayerTitle = document.createElement("div");
   storyLayerTitle.style.cssText = "flex:1 1 420px;min-width:0;max-width:100%;overflow-wrap:anywhere;";
-  storyLayerTitle.innerHTML = isIdLoraMode
-    ? `<div style="font-weight:900;color:#cffafe;font-size:15px;">Short Film Story Layer</div><div style="color:#94a3b8;margin-top:2px;">Dialogue-first planning for ID-LoRA scenes, characters, and locations.</div>`
+  storyLayerTitle.innerHTML = usesFilmPlanningProfile
+    ? `<div style="font-weight:900;color:#cffafe;font-size:15px;">Short Film Story Layer</div><div style="color:#94a3b8;margin-top:2px;">Dialogue-first planning for ${isIdLoraMode ? "ID-LoRA" : "MiniMax H3"} scenes, characters, and locations.</div>`
     : `<div style="font-weight:900;color:#cffafe;font-size:15px;">Story Layer</div><div style="color:#94a3b8;margin-top:2px;">Optional narrative context for connecting lyrics, sections, subjects, and locations across scenes.</div>`;
   const storyLayerEnabledLabel = document.createElement("label");
   storyLayerEnabledLabel.style.cssText = "display:flex;align-items:center;gap:7px;font-weight:800;color:#cbd5e1;white-space:normal;max-width:100%;";
@@ -2506,6 +3551,19 @@ function openStoryboardBuilder(payload = {}) {
   storyLayerEnabledInput.checked = state.storyLayer.enabled !== false;
   storyLayerEnabledLabel.append(storyLayerEnabledInput, document.createTextNode("Use in Gemma prompts"));
   storyLayerHeader.append(storyLayerTitle, storyLayerEnabledLabel);
+  const shortFilmPlanningModeWrap = document.createElement("div");
+  shortFilmPlanningModeWrap.style.cssText = "grid-column:1/-1;display:none;grid-template-columns:minmax(180px,260px) minmax(0,1fr);gap:12px;align-items:start;border:1px solid #155e75;border-radius:8px;background:#071a2b;padding:12px;";
+  const shortFilmPlanningModeSelect = makeSelect([
+    { value: "guided_film", label: "Guided Film Automation" },
+    { value: "fully_custom", label: "Fully Custom" },
+  ], state.shortFilmPlanningMode);
+  const shortFilmPlanningModeField = document.createElement("label");
+  shortFilmPlanningModeField.style.cssText = "display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:900;color:#cbd5e1;";
+  shortFilmPlanningModeField.textContent = "Short Film Authoring Mode";
+  shortFilmPlanningModeField.append(shortFilmPlanningModeSelect);
+  const shortFilmPlanningModeInfo = document.createElement("div");
+  shortFilmPlanningModeInfo.style.cssText = "color:#bae6fd;line-height:1.45;min-width:0;overflow-wrap:anywhere;";
+  shortFilmPlanningModeWrap.append(shortFilmPlanningModeField, shortFilmPlanningModeInfo);
   const overallStoryIdeaInput = makeTextarea(
     state.storyLayer.overall_story_idea || "",
     "Optional short premise, e.g. A woman navigates a surreal dream world.",
@@ -2514,12 +3572,12 @@ function openStoryboardBuilder(payload = {}) {
   overallStoryIdeaInput.title = "Optional. Sets the overall premise, world, or theme that Gemma develops through the real lyric sections.";
   const userStoryArcInput = makeTextarea(
     state.storyLayer.user_story_arc || "",
-    isIdLoraMode ? "Short film premise, conflict, tone, character goal..." : "Optional user story arc, e.g. Verse 1: she feels trapped. Chorus: she breaks free...",
+    usesFilmPlanningProfile ? "Short film premise, conflict, tone, character goal, or pasted script..." : "Optional user story arc, e.g. Verse 1: she feels trapped. Chorus: she breaks free...",
     5,
   );
   const songStoryBriefInput = makeTextarea(
     state.storyLayer.song_story_brief || "",
-    isIdLoraMode ? "Gemma-created short film story brief..." : "Gemma-created song story brief...",
+    usesFilmPlanningProfile ? "LLM-created short film story brief..." : "Gemma-created song story brief...",
     5,
   );
   const lyricStoryStrengthInput = makeInput(String(normalizeStoryLayer(state.storyLayer).lyric_story_strength));
@@ -2560,11 +3618,11 @@ function openStoryboardBuilder(payload = {}) {
   const lyricStoryStrengthRow = document.createElement("div");
   lyricStoryStrengthRow.style.cssText = "grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:end;";
   lyricStoryStrengthRow.append(storyField("Lyric Story Strength", lyricStoryStrengthInput), lyricStoryStrengthValue, lyricStoryStrengthHintButton);
-  lyricStoryStrengthRow.style.display = isIdLoraMode ? "none" : "grid";
+  lyricStoryStrengthRow.style.display = usesFilmPlanningProfile ? "none" : "grid";
   const idLoraDialoguePlanner = document.createElement("div");
   idLoraDialoguePlanner.style.cssText = "grid-column:1/-1;display:none;border:1px solid #155e75;border-radius:8px;background:#082f49;padding:12px;gap:10px;align-items:center;grid-template-columns:minmax(0,1fr) auto;";
   const idLoraDialoguePlannerText = document.createElement("div");
-  idLoraDialoguePlannerText.innerHTML = `<div style="font-weight:900;color:#cffafe;">Plan Dialogue Scenes</div><div style="color:#bae6fd;line-height:1.35;margin-top:3px;">Enter a story idea, outline, or pasted script above. If left blank, Gemma invents a short-film dialogue scene plan from your ID-LoRA characters and locations.</div>`;
+  idLoraDialoguePlannerText.innerHTML = `<div style="font-weight:900;color:#cffafe;">Plan Dialogue Scenes</div><div style="color:#bae6fd;line-height:1.35;margin-top:3px;">Enter a story idea, outline, or pasted script above. If left blank, the selected LLM invents a short-film dialogue scene plan from your ${isIdLoraMode ? "ID-LoRA" : "MiniMax H3"} characters and locations.</div>`;
   const idLoraDialogueControls = document.createElement("div");
   idLoraDialogueControls.style.cssText = "display:flex;gap:8px;align-items:end;flex-wrap:wrap;justify-content:flex-end;";
   const idLoraDialogueSceneCount = makeInput("6");
@@ -2573,27 +3631,50 @@ function openStoryboardBuilder(payload = {}) {
   idLoraDialogueSceneCount.max = "24";
   idLoraDialogueSceneCount.step = "1";
   idLoraDialogueSceneCount.style.width = "76px";
-  const planDialogueScenesButton = makeButton("Plan Dialogue Scenes", "primary");
-  planDialogueScenesButton.title = "ID-LoRA only. Create a preview scene plan from the premise/script and ID-LoRA Ref Builder characters.";
-  const applyDialoguePlanButton = makeButton("Apply Dialogue Plan", "primary");
-  applyDialoguePlanButton.title = "Apply the reviewed ID-LoRA dialogue scenes to Video Builder.";
+  const planDialogueScenesButton = makeButton("Plan Storyboard Scenes", "primary");
+  planDialogueScenesButton.title = `${isIdLoraMode ? "ID-LoRA" : "MiniMax H3 Guided Film"}. Develop editable scene cards inside Storyboard Builder. This does not create Video Builder timeline segments.`;
+  const applyDialoguePlanButton = makeButton("Create Timeline Segments", "primary");
+  applyDialoguePlanButton.title = "Create real Video Builder timeline segments from the reviewed storyboard scenes.";
   applyDialoguePlanButton.style.display = "none";
   idLoraDialogueControls.append(storyField("Scenes", idLoraDialogueSceneCount), planDialogueScenesButton, applyDialoguePlanButton);
   idLoraDialoguePlanner.append(idLoraDialoguePlannerText, idLoraDialogueControls);
+  const miniMaxGuidedWorkflowSteps = document.createElement("div");
+  miniMaxGuidedWorkflowSteps.style.cssText = "grid-column:1/-1;display:none;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;border:1px solid #155e75;border-radius:8px;background:#041923;padding:10px;";
+  miniMaxGuidedWorkflowSteps.innerHTML = `
+    <div style="border:1px solid #0891b2;border-radius:7px;background:#083344;padding:10px;line-height:1.35;"><strong style="color:#67e8f9;">STEP 1 — SCRIPT</strong><br><span style="color:#bae6fd;">Import or review the script, map speakers, then click <strong>Use This Script</strong>.</span></div>
+    <div style="border:1px solid #0891b2;border-radius:7px;background:#083344;padding:10px;line-height:1.35;"><strong style="color:#67e8f9;">STEP 2 — DEVELOP</strong><br><span style="color:#bae6fd;">Create the editable storyboard scene cards. The timeline is still unchanged.</span></div>
+    <div style="border:1px solid #0891b2;border-radius:7px;background:#083344;padding:10px;line-height:1.35;"><strong style="color:#67e8f9;">STEP 3 — REVIEW</strong><br><span style="color:#bae6fd;">Review and edit the scene cards, dialogue, references, shots, and continuity below.</span></div>
+    <div style="border:1px solid #0891b2;border-radius:7px;background:#083344;padding:10px;line-height:1.35;"><strong style="color:#67e8f9;">STEP 4 — TIMELINE</strong><br><span style="color:#bae6fd;">Create the real Video Builder timeline segments only after reviewing the cards.</span></div>
+  `;
+  const miniMaxScriptImporter = document.createElement("div");
+  miniMaxScriptImporter.style.cssText = "grid-column:1/-1;display:none;border:1px solid #0e7490;border-radius:8px;background:#06283d;padding:12px;gap:10px;align-items:center;grid-template-columns:minmax(0,1fr) auto;";
+  const miniMaxScriptImporterText = document.createElement("div");
+  miniMaxScriptImporterText.innerHTML = `<div style="font-weight:900;color:#cffafe;">Import Script / Script Mapper</div><div style="color:#bae6fd;line-height:1.4;margin-top:3px;">Paste a <strong>speaker: dialogue</strong> script or load a .txt/.json file. Validate exact cues, match speakers, and preview automatically timed MiniMax segments without changing the timeline.</div>`;
+  const openMiniMaxScriptMapperButton = makeButton("Import Script / Script Mapper", "primary");
+  openMiniMaxScriptMapperButton.title = "Import, map, time, and activate an exact dialogue script for MiniMax Guided Film Automation.";
+  miniMaxScriptImporter.append(miniMaxScriptImporterText, openMiniMaxScriptMapperButton);
   const storyActions = document.createElement("div");
   storyActions.style.cssText = "grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap;";
+  const storyActionsLabel = document.createElement("div");
+  storyActionsLabel.style.cssText = "flex:0 0 100%;font-size:12px;font-weight:900;color:#fcd34d;border-top:1px solid #334155;padding-top:10px;";
+  storyActionsLabel.textContent = usesFilmPlanningProfile
+    ? "OPTIONAL STORY PLANNING TOOLS — not required when using an imported authoritative script"
+    : "OPTIONAL STORY PLANNING TOOLS";
   const createStoryArcButton = makeButton("Create User Story Arc", "primary");
   const createStoryBriefButton = makeButton("Create Story Brief", "primary");
   const createMissingBeatsButton = makeButton("Create Missing Scene Beats", "purple");
   const replaceBeatsButton = makeButton("Replace All Scene Beats");
   const detectSectionsButton = makeButton("Detect Lyric Sections");
-  storyActions.append(createStoryArcButton, createStoryBriefButton, createMissingBeatsButton, replaceBeatsButton, detectSectionsButton);
+  storyActions.append(storyActionsLabel, createStoryArcButton, createStoryBriefButton, createMissingBeatsButton, replaceBeatsButton, detectSectionsButton);
   storyLayerBar.append(
     storyLayerHeader,
+    shortFilmPlanningModeWrap,
     lyricStoryStrengthRow,
     overallStoryIdeaField,
     storyField("User Story Arc", userStoryArcInput),
     storyField("Song Story Brief", songStoryBriefInput),
+    miniMaxGuidedWorkflowSteps,
+    miniMaxScriptImporter,
     idLoraDialoguePlanner,
     storyActions,
   );
@@ -2601,7 +3682,7 @@ function openStoryboardBuilder(payload = {}) {
   const sceneDefaultsPanel = makeCollapsiblePanel("Scene Defaults", "", cameraFlowBar, { open: false });
   sceneDefaultsPanel.classList.add("vrgdg-storyboard-panel");
   const hasStoryLayerContent = Boolean(String(state.storyLayer.overall_story_idea || "").trim() || String(state.storyLayer.user_story_arc || "").trim() || String(state.storyLayer.song_story_brief || "").trim());
-  const storyLayerPanel = makeCollapsiblePanel("Story Layer", "", storyLayerBar, { open: hasStoryLayerContent });
+  const storyLayerPanel = makeCollapsiblePanel("Story Layer", "", storyLayerBar, { open: hasStoryLayerContent || isMiniMaxShortFilmMode });
   storyLayerPanel.classList.add("vrgdg-storyboard-panel");
 
   const tableWrap = document.createElement("div");
@@ -2615,8 +3696,8 @@ function openStoryboardBuilder(payload = {}) {
   const footerActions = document.createElement("div");
   footerActions.style.cssText = "display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:flex-end;min-width:0;max-width:100%;";
   const save = makeButton("Save Storyboard");
-  const exportPrompts = makeButton("Export Prompt Files", "purple");
-  exportPrompts.title = "Export text prompt files plus clean JSON files keyed by scene number.";
+  const exportPrompts = makeButton("Export Prompt Files Only", "purple");
+  exportPrompts.title = "Write TXT and JSON prompt files only. This does not create or replace Video Builder timeline segments.";
   footerActions.append(save, exportPrompts);
   footer.append(stats, footerActions);
 
@@ -2628,6 +3709,9 @@ function openStoryboardBuilder(payload = {}) {
   const setMode = (mode) => {
     state.mode = mode;
     const isVideoPrepMode = mode === "image_to_video_prep";
+    const videoStyleEligible = (state.projectVideoEngine === "minimax_h3"
+      && ["text_to_video", "reference_to_video"].includes(state.miniMaxH3Mode))
+      || state.scenes.some((scene) => storyboardSceneSupportsMiniMaxVideoStyle(scene));
     stepPrompts.style.background = mode === "storyboard_prompts" ? "#0e7490" : "#2b2b30";
     stepPrompts.style.borderColor = mode === "storyboard_prompts" ? "#06b6d4" : "#3f3f46";
     stepPrep.style.background = mode === "image_to_video_prep" ? "#0e7490" : "#2b2b30";
@@ -2652,6 +3736,15 @@ function openStoryboardBuilder(payload = {}) {
     imageShotInfo.style.display = isVideoPrepMode ? "none" : "";
     imageAestheticControls.style.display = isVideoPrepMode ? "none" : "flex";
     imageAestheticInfo.style.display = isVideoPrepMode ? "none" : "";
+    videoStyleControls.style.display = isVideoPrepMode && videoStyleEligible ? "flex" : "none";
+    videoStyleCustomControls.style.display = isVideoPrepMode && videoStyleEligible && state.videoStyle === "custom" ? "flex" : "none";
+    videoStyleInfo.style.display = isVideoPrepMode && videoStyleEligible ? "" : "none";
+    const temporalEffectEligible = isVideoPrepMode && state.projectVideoEngine === "minimax_h3";
+    temporalEffectControls.style.display = temporalEffectEligible ? "flex" : "none";
+    temporalEffectCustomControls.style.display = temporalEffectEligible && state.temporalWorldEffect === "custom" ? "flex" : "none";
+    temporalEffectOptions.style.display = temporalEffectEligible && Boolean(state.temporalWorldEffect) ? "flex" : "none";
+    temporalProtectedCustomControls.style.display = temporalEffectEligible && Boolean(state.temporalWorldEffect) && state.temporalProtectedCharacters === "custom" ? "flex" : "none";
+    temporalEffectInfo.style.display = temporalEffectEligible ? "" : "none";
     imageWorldStyleControls.style.display = isVideoPrepMode ? "none" : "flex";
     imageWorldStyleInfo.style.display = isVideoPrepMode ? "none" : "";
     imageCustomStyleControls.style.display = isVideoPrepMode ? "none" : "flex";
@@ -2685,42 +3778,85 @@ function openStoryboardBuilder(payload = {}) {
     return !text;
   };
 
-  const shouldShowIdLoraDialoguePlanner = () => {
-    return isIdLoraMode
+  const isFullyCustomShortFilm = () => isMiniMaxShortFilmMode
+    && normalizeStoryboardShortFilmPlanningMode(state.shortFilmPlanningMode) === "fully_custom";
+  const shouldShowFilmDialoguePlanner = () => {
+    return (isIdLoraMode || (isMiniMaxShortFilmMode && !isFullyCustomShortFilm()))
       && state.scenes.length > 0
       && state.scenes.length <= 2
       && state.scenes.every(sceneLooksLikeStarterPlaceholder);
   };
-  const hasIdLoraDialoguePlan = () => {
-    return isIdLoraMode
+  const hasFilmDialoguePlan = () => {
+    return (isIdLoraMode || isMiniMaxShortFilmMode)
       && state.scenes.some((scene) => String(scene.lyrics || scene.story_beat || scene.image_prompt || "").trim())
-      && state.scenes.some((scene) => String(scene.video_prompt_type || "") === "id_lora");
+      && (isIdLoraMode
+        ? state.scenes.some((scene) => String(scene.video_prompt_type || "") === "id_lora")
+        : state.scenes.some((scene) => normalizeStoryboardProjectVideoEngine(scene.project_video_engine || state.projectVideoEngine) === "minimax_h3"));
   };
 
   const refreshSetupPanelSummaries = () => {
     const cameraPreset = STORYBOARD_CAMERA_FLOW_PRESETS[state.cameraFlow] || STORYBOARD_CAMERA_FLOW_PRESETS.balanced;
     const imageShotPreset = imageShotFlowPresetForMode(state.imageShotFlow);
     const imageAestheticPreset = imageAestheticPresetForMode(state.imageAesthetic);
+    const videoStylePreset = storyboardMiniMaxVideoStylePreset(state.videoStyle);
+    const temporalEffectPreset = storyboardTemporalWorldEffectPreset(state.temporalWorldEffect);
     const performancePreset = performancePresetForMode(state.performanceStyle);
     const facialPreset = facialPresetForMode(state.facialPerformance);
     sceneDefaultsPanel.setSummary(state.mode === "image_to_video_prep"
-      ? `${cameraPreset.label || "Camera flow"} · camera ${storyboardSpeedValue(state.cameraMotionSpeed, 4)}/10 · character ${storyboardSpeedValue(state.characterMotionSpeed, 4)}/10 · ${performancePreset.label || "Performance style"} · ${facialPreset.label || "Facial performance"}${state.globalConsistencyPhrase ? " · consistency phrase" : ""}`
+      ? `${cameraPreset.label || "Camera flow"}${state.videoStyle ? ` · ${videoStylePreset.label}` : ""}${state.temporalWorldEffect ? ` · ${temporalEffectPreset.label}` : ""} · camera ${storyboardSpeedValue(state.cameraMotionSpeed, 4)}/10 · character ${storyboardSpeedValue(state.characterMotionSpeed, 4)}/10 · ${performancePreset.label || "Performance style"} · ${facialPreset.label || "Facial performance"}${state.globalConsistencyPhrase ? " · consistency phrase" : ""}`
       : `${imageShotPreset.label || "Still shot flow"} · ${imageAestheticPreset.label || "Image aesthetic"} · ${performancePreset.label || "Performance style"} · ${facialPreset.label || "Facial performance"}${state.globalConsistencyPhrase ? " · consistency phrase" : ""}`);
     const beatCount = state.scenes.filter((scene) => String(scene.story_beat || "").trim()).length;
     const sectionCount = state.scenes.filter((scene) => String(scene.lyric_section || "").trim()).length;
     const hasBrief = Boolean(String(state.storyLayer.song_story_brief || "").trim());
     const hasArc = Boolean(String(state.storyLayer.user_story_arc || "").trim());
     const lyricStrength = normalizeStoryLayer(state.storyLayer).lyric_story_strength;
-    const idLoraPlannerVisible = shouldShowIdLoraDialoguePlanner();
-    idLoraDialoguePlanner.style.display = (idLoraPlannerVisible || hasIdLoraDialoguePlan()) ? "grid" : "none";
-    applyDialoguePlanButton.style.display = hasIdLoraDialoguePlan() && state.onApplyIdLoraDialoguePlan ? "" : "none";
-    createStoryArcButton.textContent = isIdLoraMode ? "Create Story Premise" : "Create User Story Arc";
-    createStoryBriefButton.textContent = isIdLoraMode ? "Create Short Film Brief" : "Create Story Brief";
+    const filmPlannerVisible = shouldShowFilmDialoguePlanner();
+    const fullyCustom = isFullyCustomShortFilm();
+    const activeScriptImport = normalizeStoryboardScriptImportState(state.scriptImport);
+    shortFilmPlanningModeWrap.style.display = isMiniMaxShortFilmMode ? "grid" : "none";
+    miniMaxGuidedWorkflowSteps.style.display = isMiniMaxShortFilmMode && state.miniMaxH3AudioMode === "built_in_audio" && !fullyCustom ? "grid" : "none";
+    miniMaxScriptImporter.style.display = isMiniMaxShortFilmMode && state.miniMaxH3AudioMode === "built_in_audio" ? "grid" : "none";
+    miniMaxScriptImporterText.innerHTML = activeScriptImport.enabled
+      ? `<div style="font-weight:900;color:#cffafe;">Authoritative Script Active</div><div style="color:#bae6fd;line-height:1.4;margin-top:3px;"><strong>${activeScriptImport.cues.length}</strong> exact dialogue cues are mapped into <strong>${activeScriptImport.scene_plan.scene_count}</strong> planned MiniMax segments at a ${activeScriptImport.maximum_scene_seconds}-second maximum. Guided Film may develop the visual story but cannot rewrite the dialogue.</div>`
+      : `<div style="font-weight:900;color:#cffafe;">Import Script / Script Mapper</div><div style="color:#bae6fd;line-height:1.4;margin-top:3px;">Paste a <strong>speaker: dialogue</strong> script or load a .txt/.json file. Validate exact cues, match speakers, and preview automatically timed MiniMax segments without changing the timeline.</div>`;
+    openMiniMaxScriptMapperButton.textContent = activeScriptImport.enabled ? "Step 1 — Review / Replace Script" : "Step 1 — Import / Activate Script";
+    if (activeScriptImport.enabled) {
+      idLoraDialogueSceneCount.value = String(activeScriptImport.scene_plan.scene_count || 1);
+      idLoraDialogueSceneCount.disabled = true;
+      idLoraDialogueSceneCount.title = "The authoritative Script Mapper plan controls the required segment count.";
+      idLoraDialoguePlannerText.innerHTML = `<div style="font-weight:900;color:#cffafe;">Step 2 — Develop Imported Script Storyboard</div><div style="color:#bae6fd;line-height:1.35;margin-top:3px;">The LLM will create editable storyboard scene cards with visual story beats, actions, reactions, shots, camera direction, locations, ambience, and continuity for all ${activeScriptImport.scene_plan.scene_count} locked script sections. Exact dialogue, speakers, and order are enforced. The timeline remains unchanged. Afterward, complete <strong>Step 3</strong> by reviewing the cards below.</div>`;
+      planDialogueScenesButton.textContent = `Step 2 — Develop ${activeScriptImport.scene_plan.scene_count} Scenes`;
+      planDialogueScenesButton.title = `Develop ${activeScriptImport.scene_plan.scene_count} editable storyboard scene cards. After reviewing them, use Create ${activeScriptImport.scene_plan.scene_count} Timeline Segments.`;
+    } else {
+      idLoraDialogueSceneCount.disabled = false;
+      idLoraDialogueSceneCount.title = "Number of guided dialogue scenes to create.";
+      idLoraDialoguePlannerText.innerHTML = isMiniMaxShortFilmMode
+        ? `<div style="font-weight:900;color:#cffafe;">Step 2 — Plan Storyboard Scenes</div><div style="color:#bae6fd;line-height:1.35;margin-top:3px;">Enter a story idea, outline, or pasted script above. If left blank, the selected LLM invents editable short-film storyboard scenes from your MiniMax H3 characters and locations. The timeline remains unchanged until Step 4.</div>`
+        : `<div style="font-weight:900;color:#cffafe;">Plan Storyboard Scenes</div><div style="color:#bae6fd;line-height:1.35;margin-top:3px;">Enter a story idea, outline, or pasted script above. If left blank, the selected LLM invents editable short-film storyboard scenes from your ID-LoRA characters and locations. This does not alter the timeline until you choose Create Timeline Segments.</div>`;
+      planDialogueScenesButton.textContent = isMiniMaxShortFilmMode ? "Step 2 — Plan Storyboard Scenes" : "Plan Storyboard Scenes";
+      planDialogueScenesButton.title = "Develop editable storyboard scene cards. This does not create Video Builder timeline segments.";
+    }
+    shortFilmPlanningModeInfo.innerHTML = fullyCustom
+      ? `<strong style="color:#cffafe;">Manual scene cards are authoritative.</strong><br>Enter dialogue in Speaker Assignment and fill the scene beat, action, shot, camera, setting, references, audio direction, and continuity yourself. Prompt generation formats your entries but may not invent or rewrite them.`
+      : `<strong style="color:#cffafe;">The LLM can help plan the film.</strong><br>Use the premise/script, reference characters, film shot coverage, story beats, and dialogue planner to create scene cards. You can still edit every result manually before prompting.`;
+    idLoraDialoguePlanner.style.display = !fullyCustom && (activeScriptImport.enabled || filmPlannerVisible || hasFilmDialoguePlan()) ? "grid" : "none";
+    const hasApplyDialogueCallback = isIdLoraMode ? Boolean(state.onApplyIdLoraDialoguePlan) : Boolean(state.onApplyMiniMaxDialoguePlan);
+    applyDialoguePlanButton.style.display = hasFilmDialoguePlan() && hasApplyDialogueCallback ? "" : "none";
+    const plannedTimelineSceneCount = state.scenes.filter((scene) => String(scene.lyrics || scene.story_beat || scene.image_prompt || "").trim()).length;
+    applyDialoguePlanButton.textContent = plannedTimelineSceneCount
+      ? `${isMiniMaxShortFilmMode ? "Step 4 — " : ""}Create ${plannedTimelineSceneCount} Timeline Segment${plannedTimelineSceneCount === 1 ? "" : "s"}`
+      : `${isMiniMaxShortFilmMode ? "Step 4 — " : ""}Create Timeline Segments`;
+    applyDialoguePlanButton.title = plannedTimelineSceneCount
+      ? `Create ${plannedTimelineSceneCount} real Video Builder timeline segment${plannedTimelineSceneCount === 1 ? "" : "s"} from these storyboard scenes. This may replace existing base timeline scenes.`
+      : "Create real Video Builder timeline segments from the reviewed storyboard scenes.";
+    storyActions.style.display = fullyCustom ? "none" : "flex";
+    createStoryArcButton.textContent = usesFilmPlanningProfile ? "Create Story Premise" : "Create User Story Arc";
+    createStoryBriefButton.textContent = usesFilmPlanningProfile ? "Create Short Film Brief" : "Create Story Brief";
     createMissingBeatsButton.textContent = isIdLoraMode ? "Create Missing Scene Beats" : "Create Missing Scene Beats";
     replaceBeatsButton.textContent = isIdLoraMode ? "Replace All Scene Beats" : "Replace All Scene Beats";
-    detectSectionsButton.style.display = isIdLoraMode ? "none" : "";
-    storyLayerPanel.setSummary(isIdLoraMode
-      ? `${state.storyLayer.enabled === false ? "Off" : "On"} · ID-LoRA dialogue story · ${beatCount}/${state.scenes.length} beats${hasBrief ? " · brief" : ""}${hasArc ? " · premise" : ""}${idLoraPlannerVisible ? " · starter scenes" : ""}`
+    detectSectionsButton.style.display = usesFilmPlanningProfile ? "none" : "";
+    storyLayerPanel.setSummary(usesFilmPlanningProfile
+      ? `${state.storyLayer.enabled === false ? "Off" : "On"} · ${isIdLoraMode ? "ID-LoRA dialogue story" : (fullyCustom ? "MiniMax fully custom film" : "MiniMax guided film")} · ${beatCount}/${state.scenes.length} beats${hasBrief ? " · brief" : ""}${hasArc ? " · premise" : ""}${filmPlannerVisible ? " · starter scenes" : ""}`
       : `${state.storyLayer.enabled === false ? "Off" : "On"} · lyric ${lyricStrength}/10 · ${beatCount}/${state.scenes.length} beats · ${sectionCount}/${state.scenes.length} sections${hasBrief ? " · brief" : ""}${hasArc ? " · user arc" : ""}`);
   };
 
@@ -2817,6 +3953,7 @@ function openStoryboardBuilder(payload = {}) {
       state.onStoryLayerChanged({
         ...storyboardDefaultsPayload(),
         story_layer: normalizeStoryLayer(state.storyLayer),
+        script_import: normalizeStoryboardScriptImportState(state.scriptImport),
         facial_performance_default: state.facialPerformance || "",
         facial_performance_custom_default: state.facialPerformanceCustom || "",
         scenes: state.scenes.map((scene, index) => slimSceneForRequest(scene, index)),
@@ -2829,6 +3966,7 @@ function openStoryboardBuilder(payload = {}) {
     state.onStoryLayerChanged({
       ...storyboardDefaultsPayload(),
       story_layer: normalizeStoryLayer(state.storyLayer),
+      script_import: normalizeStoryboardScriptImportState(state.scriptImport),
       facial_performance_default: state.facialPerformance || "",
       facial_performance_custom_default: state.facialPerformanceCustom || "",
       scenes: state.scenes.map((scene, index) => slimSceneForRequest(scene, index)),
@@ -2853,6 +3991,42 @@ function openStoryboardBuilder(payload = {}) {
       .map(({ section, lyrics }) => `${section ? `[${section}]\n` : ""}${lyrics.join("\n")}`.trim())
       .filter(Boolean)
       .join("\n\n");
+  };
+
+  const refreshVideoStyleInfo = () => {
+    const preset = storyboardMiniMaxVideoStylePreset(state.videoStyle);
+    const exactVerbiage = storyboardMiniMaxVideoStyleVerbiage(state.videoStyle, state.videoStyleCustom);
+    videoStyleCustomControls.style.display = state.mode === "image_to_video_prep"
+      && ((state.projectVideoEngine === "minimax_h3"
+        && ["text_to_video", "reference_to_video"].includes(state.miniMaxH3Mode))
+        || state.scenes.some((scene) => storyboardSceneSupportsMiniMaxVideoStyle(scene)))
+      && state.videoStyle === "custom"
+      ? "flex"
+      : "none";
+    videoStyleInfo.textContent = exactVerbiage
+      ? `Required exact wording in every eligible prompt: ${exactVerbiage}`
+      : "Optional. Choose the governing visual aesthetic for MiniMax scenes that do not use a required start image.";
+    refreshSetupPanelSummaries();
+  };
+
+  const refreshTemporalEffectInfo = () => {
+    state.temporalBackgroundIntensity = storyboardTemporalIntensity(temporalIntensityInput.value);
+    temporalIntensityValue.textContent = `${state.temporalBackgroundIntensity}/10`;
+    temporalEffectCustomControls.style.display = state.mode === "image_to_video_prep"
+      && state.projectVideoEngine === "minimax_h3"
+      && state.temporalWorldEffect === "custom" ? "flex" : "none";
+    temporalEffectOptions.style.display = state.mode === "image_to_video_prep"
+      && state.projectVideoEngine === "minimax_h3"
+      && Boolean(state.temporalWorldEffect) ? "flex" : "none";
+    temporalProtectedCustomControls.style.display = state.mode === "image_to_video_prep"
+      && state.projectVideoEngine === "minimax_h3"
+      && Boolean(state.temporalWorldEffect)
+      && state.temporalProtectedCharacters === "custom" ? "flex" : "none";
+    const effect = storyboardTemporalWorldEffectForScene({}, state);
+    temporalEffectInfo.textContent = effect
+      ? `Hardcoded into every MiniMax video prompt unless a scene overrides it.\n${effect.exact_verbiage}`
+      : "Optional. Choose a global temporal/world effect. Existing projects and scenes remain natural-time while this is Off.";
+    refreshSetupPanelSummaries();
   };
 
   const sectionMapFromLyrics = () => {
@@ -2892,16 +4066,23 @@ function openStoryboardBuilder(payload = {}) {
 
   const createStoryBriefWithGemma = async () => {
     syncStoryLayerFromInputs();
+    const authoritativeScript = normalizeStoryboardScriptImportState(state.scriptImport);
     const progress = createStoryboardProgressWindow("Story Brief Gemma");
     try {
-      progress.set("Creating compact song story brief from lyrics, sections, and your story arc...", 18);
+      progress.set(authoritativeScript.enabled
+        ? "Creating a short-film production brief around the exact imported script..."
+        : "Creating compact song story brief from lyrics, sections, and your story arc...", 18);
       const data = await postJson("/vrgdg/storyboard/story_brief", {
         ...(state.gemmaSettings || {}),
         story_layer: normalizeStoryLayer(state.storyLayer),
+        script_import: normalizeStoryboardScriptImportState(state.scriptImport),
+        performance_mode: state.performanceMode,
+        reference_builder: state.referenceBuilder || {},
+        storyboard: slimStoryboardForRequest(state),
         lyrics: lyricsForStoryBrief(),
         scenes: state.scenes.map((scene, index) => slimSceneForRequest(scene, index)),
         unload_after: true,
-        max_new_tokens: 800,
+        max_new_tokens: authoritativeScript.enabled ? 1200 : 800,
       }, 240000);
       state.storyLayer.song_story_brief = String(data.story_brief || "").trim();
       songStoryBriefInput.value = state.storyLayer.song_story_brief;
@@ -2917,7 +4098,8 @@ function openStoryboardBuilder(payload = {}) {
 
   const createStoryArcWithGemma = async () => {
     syncStoryLayerFromInputs();
-    const progress = createStoryboardProgressWindow("Story Arc Gemma");
+    const authoritativeScript = normalizeStoryboardScriptImportState(state.scriptImport);
+    const progress = createStoryboardProgressWindow(authoritativeScript.enabled ? "Short Film Premise" : "Story Arc Gemma");
     const storyArcSeed = Math.floor(Math.random() * 2147483647);
     const existingStoryArcText = String(userStoryArcInput.value || "").trim();
     const overallStoryIdea = String(overallStoryIdeaInput.value || "").trim();
@@ -2927,13 +4109,17 @@ function openStoryboardBuilder(payload = {}) {
       user_story_arc: "",
     });
     try {
-      progress.set(`Creating a short song-structure story arc from lyrics, subjects, and locations...\nReroll seed: ${storyArcSeed}`, 18);
+      progress.set(authoritativeScript.enabled
+        ? `Creating a visual short-film premise around the exact imported dialogue...\nReroll seed: ${storyArcSeed}`
+        : `Creating a short song-structure story arc from lyrics, subjects, and locations...\nReroll seed: ${storyArcSeed}`, 18);
       const data = await postJson("/vrgdg/storyboard/story_arc", {
         ...(state.gemmaSettings || {}),
         n_ctx: Math.max(16384, Number(state.gemmaSettings?.n_ctx) || 0),
         seed: storyArcSeed,
         story_arc_seed: storyArcSeed,
         story_layer: storyLayerForRequest,
+        script_import: normalizeStoryboardScriptImportState(state.scriptImport),
+        performance_mode: state.performanceMode,
         storyboard: slimStoryboardForRequest(state),
         story_idea: overallStoryIdea,
         previous_story_arc: existingStoryArcText,
@@ -2955,9 +4141,9 @@ function openStoryboardBuilder(payload = {}) {
       state.storyLayer.user_story_arc = String(data.story_arc || "").trim();
       userStoryArcInput.value = state.storyLayer.user_story_arc;
       syncStoryLayerFromInputs({ notify: true });
-      progress.set(`Story arc saved into the Story Layer.\nSeed: ${storyArcSeed}`, 100);
+      progress.set(`${authoritativeScript.enabled ? "Short-film premise" : "Story arc"} saved into the Story Layer.\nSeed: ${storyArcSeed}`, 100);
       progress.close(1600);
-      createToast(`Story arc created. Seed: ${storyArcSeed}`);
+      createToast(`${authoritativeScript.enabled ? "Short-film premise" : "Story arc"} created. Seed: ${storyArcSeed}`);
     } catch (error) {
       progress.set(`Error:\n${String(error?.message || error)}`, 100);
       createToast(`Story arc failed:\n${String(error?.message || error)}`, true);
@@ -3076,23 +4262,397 @@ function openStoryboardBuilder(payload = {}) {
     }
   };
 
-  const planIdLoraDialogueScenesWithGemma = async () => {
-    if (!isIdLoraMode) return;
+  const openMiniMaxScriptMapper = () => {
+    if (!isMiniMaxShortFilmMode || state.miniMaxH3AudioMode !== "built_in_audio") {
+      createToast("Script Mapper is available for MiniMax Short Film with Built-in MiniMax Audio.", true);
+      return;
+    }
+    const mapperBackdrop = document.createElement("div");
+    mapperBackdrop.style.cssText = "position:fixed;inset:0;z-index:100070;background:rgba(0,0,0,.78);display:flex;align-items:stretch;justify-content:center;padding:18px;box-sizing:border-box;";
+    const mapperShell = document.createElement("div");
+    mapperShell.style.cssText = "width:min(1320px,calc(100vw - 36px));height:calc(100vh - 36px);min-height:520px;border:1px solid #0e7490;border-radius:11px;background:#07111f;color:#e5e7eb;box-shadow:0 24px 90px rgba(0,0,0,.72);overflow:hidden;display:grid;grid-template-rows:auto minmax(0,1fr) auto;";
+    const mapperHeader = document.createElement("div");
+    mapperHeader.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:center;padding:15px 18px;background:#083344;border-bottom:1px solid #155e75;";
+    const mapperHeading = document.createElement("div");
+    mapperHeading.innerHTML = `<div style="font-size:20px;font-weight:900;color:#cffafe;">Import Script / Script Mapper</div><div style="font-size:12px;color:#bae6fd;line-height:1.4;margin-top:3px;">Import, map, and time exact dialogue, then activate it as the authoritative source for Guided Film Automation. Activation alone does not change the Video Builder timeline.</div>`;
+    const mapperCloseTop = makeButton("Close");
+    mapperHeader.append(mapperHeading, mapperCloseTop);
+
+    const mapperBody = document.createElement("div");
+    mapperBody.style.cssText = "min-height:0;overflow:auto;padding:16px 18px;display:grid;grid-template-columns:minmax(360px,.8fr) minmax(480px,1.2fr);gap:14px;align-items:stretch;";
+    const sourcePanel = document.createElement("div");
+    sourcePanel.style.cssText = "min-width:0;border:1px solid #334155;border-radius:9px;background:#0b1220;padding:12px;display:flex;flex-direction:column;gap:10px;";
+    const sourceTitle = document.createElement("div");
+    sourceTitle.innerHTML = `<div style="font-weight:900;color:#cffafe;">Script source</div><div style="font-size:12px;color:#94a3b8;line-height:1.4;margin-top:3px;">Plain text uses <strong style="color:#e2e8f0;">speaker: exact dialogue</strong>. JSON accepts cues with speaker/speaker_name and text/dialogue fields.</div>`;
+    const existingScriptImport = normalizeStoryboardScriptImportState(state.scriptImport);
+    const scriptInput = makeTextarea(existingScriptImport.raw_text, "woman: Have you tried the new MiniMax H3 model yet?\n\nman: I have, and honestly...", 22);
+    scriptInput.style.flex = "1 1 auto";
+    scriptInput.style.minHeight = "360px";
+    const sourceActions = document.createElement("div");
+    sourceActions.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;align-items:center;";
+    const loadScriptButton = makeButton("Load .txt / .json", "primary");
+    const parseScriptButton = makeButton("Parse + Plan Preview", "purple");
+    const clearScriptButton = makeButton("Clear");
+    const scriptFileInput = document.createElement("input");
+    scriptFileInput.type = "file";
+    scriptFileInput.accept = ".txt,.json,text/plain,application/json";
+    scriptFileInput.style.display = "none";
+    sourceActions.append(loadScriptButton, parseScriptButton, clearScriptButton, scriptFileInput);
+    const sceneLengthSettings = document.createElement("div");
+    sceneLengthSettings.style.cssText = "border:1px solid #0e7490;border-radius:7px;background:#082f49;padding:10px;display:grid;grid-template-columns:minmax(150px,.8fr) minmax(180px,1.2fr);gap:9px;align-items:center;";
+    const sceneLengthLabel = document.createElement("div");
+    sceneLengthLabel.innerHTML = `<div style="font-weight:900;color:#cffafe;">Maximum scene length</div><div style="font-size:11px;color:#bae6fd;line-height:1.35;margin-top:3px;">Hard ceiling for every planned MiniMax clip. Shorter clips can reduce VRAM pressure and generation time.</div>`;
+    const sceneLengthControls = document.createElement("div");
+    sceneLengthControls.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) 96px;gap:8px;align-items:center;";
+    const maxSceneLengthSelect = makeSelect([
+      { value: "5", label: "5 seconds — low VRAM" },
+      { value: "8", label: "8 seconds — recommended" },
+      { value: "10", label: "10 seconds" },
+      { value: "12", label: "12 seconds" },
+      { value: "15", label: "15 seconds — maximum" },
+      { value: "custom", label: "Custom..." },
+    ], "8");
+    const customSceneLengthInput = makeInput("8", "3–15");
+    customSceneLengthInput.type = "number";
+    customSceneLengthInput.min = "3";
+    customSceneLengthInput.max = "15";
+    customSceneLengthInput.step = "0.5";
+    customSceneLengthInput.title = "Custom maximum scene length from 3 to 15 seconds";
+    customSceneLengthInput.style.display = "none";
+    const presetSceneLengths = new Set([5, 8, 10, 12, 15]);
+    if (existingScriptImport.enabled) {
+      if (presetSceneLengths.has(existingScriptImport.maximum_scene_seconds)) {
+        maxSceneLengthSelect.value = String(existingScriptImport.maximum_scene_seconds);
+      } else {
+        maxSceneLengthSelect.value = "custom";
+        customSceneLengthInput.value = String(existingScriptImport.maximum_scene_seconds);
+        customSceneLengthInput.style.display = "";
+      }
+    }
+    const currentMaximumSceneSeconds = () => Math.max(3, Math.min(15, Number(maxSceneLengthSelect.value === "custom" ? customSceneLengthInput.value : maxSceneLengthSelect.value) || 8));
+    sceneLengthControls.append(maxSceneLengthSelect, customSceneLengthInput);
+    sceneLengthSettings.append(sceneLengthLabel, sceneLengthControls);
+    const sourceStatus = document.createElement("div");
+    sourceStatus.style.cssText = "min-height:18px;font-size:12px;color:#94a3b8;line-height:1.4;";
+    sourcePanel.append(sourceTitle, scriptInput, sourceActions, sceneLengthSettings, sourceStatus);
+
+    const previewPanel = document.createElement("div");
+    previewPanel.style.cssText = "min-width:0;border:1px solid #155e75;border-radius:9px;background:#071827;padding:12px;overflow:auto;";
+    const renderEmptyPreview = () => {
+      previewPanel.innerHTML = `<div style="height:100%;min-height:360px;display:grid;place-items:center;border:1px dashed #334155;border-radius:8px;color:#94a3b8;text-align:center;padding:24px;box-sizing:border-box;"><div><strong style="display:block;color:#cffafe;font-size:15px;margin-bottom:6px;">No parsed script yet</strong>Paste dialogue or load a file, then click Parse Preview.</div></div>`;
+    };
+    let lastParsed = null;
+    const speakerMatches = new Map();
+    for (const match of existingScriptImport.speaker_matches || []) {
+      const aliasKey = storyboardScriptSpeakerMatchKey(match?.speaker_alias);
+      if (!aliasKey) continue;
+      speakerMatches.set(aliasKey, {
+        subject_id: String(match?.reference_subject_id || ""),
+        method: String(match?.match_method || (match?.reference_subject_id ? "manual" : "unmatched")),
+      });
+    }
+    const referenceCharacters = normalizeReferenceBuilderCatalog(state.referenceBuilder).subjects;
+    const copyParsedButton = makeButton("Copy Parsed JSON");
+    copyParsedButton.disabled = true;
+    const useGuidedScriptButton = makeButton("Use This Script in Guided Film", "primary");
+    useGuidedScriptButton.disabled = true;
+    const removeGuidedScriptButton = makeButton("Remove Active Script");
+    removeGuidedScriptButton.style.display = existingScriptImport.enabled ? "" : "none";
+    const renderParsedPreview = (parsed) => {
+      const characterById = new Map(referenceCharacters.map((character) => [String(character.id || ""), character]));
+      for (const speaker of Array.isArray(parsed?.speakers) ? parsed.speakers : []) {
+        const aliasKey = storyboardScriptSpeakerMatchKey(speaker?.name);
+        if (!aliasKey || speakerMatches.has(aliasKey)) continue;
+        const suggested = suggestStoryboardScriptSpeakerMatch(speaker.name, referenceCharacters);
+        speakerMatches.set(aliasKey, suggested
+          ? { subject_id: String(suggested.id || ""), method: "auto" }
+          : { subject_id: "", method: "unmatched" });
+      }
+      const mappedSpeakers = (Array.isArray(parsed?.speakers) ? parsed.speakers : []).map((speaker) => {
+        const aliasKey = storyboardScriptSpeakerMatchKey(speaker?.name);
+        const match = speakerMatches.get(aliasKey) || { subject_id: "", method: "unmatched" };
+        const character = characterById.get(String(match.subject_id || ""));
+        const method = character ? String(match.method || "manual") : "unmatched";
+        return {
+          ...speaker,
+          speaker_alias: String(speaker.name || ""),
+          reference_subject_id: character ? String(character.id || "") : "",
+          reference_subject_name: character ? String(character.name || "") : "",
+          match_method: method,
+        };
+      });
+      const mappedSpeakerByKey = new Map(mappedSpeakers.map((speaker) => [storyboardScriptSpeakerMatchKey(speaker.name), speaker]));
+      parsed.speakers = mappedSpeakers;
+      parsed.cues = (Array.isArray(parsed?.cues) ? parsed.cues : []).map((cue) => {
+        const mappedSpeaker = mappedSpeakerByKey.get(storyboardScriptSpeakerMatchKey(cue?.speaker));
+        return {
+          ...cue,
+          speaker_alias: String(cue?.speaker || ""),
+          speaker_id: String(mappedSpeaker?.reference_subject_id || ""),
+          speaker_name: String(mappedSpeaker?.reference_subject_name || cue?.speaker || ""),
+          reference_subject_id: String(mappedSpeaker?.reference_subject_id || ""),
+          reference_subject_name: String(mappedSpeaker?.reference_subject_name || ""),
+          speaker_match_method: String(mappedSpeaker?.match_method || "unmatched"),
+        };
+      });
+      parsed.speaker_matches = mappedSpeakers.map((speaker) => ({
+        speaker_alias: String(speaker.speaker_alias || speaker.name || ""),
+        reference_subject_id: String(speaker.reference_subject_id || ""),
+        reference_subject_name: String(speaker.reference_subject_name || ""),
+        match_method: String(speaker.match_method || "unmatched"),
+      }));
+      parsed.unmatched_speakers = mappedSpeakers.filter((speaker) => !speaker.reference_subject_id).map((speaker) => String(speaker.name || ""));
+      parsed.scene_plan = planStoryboardScriptScenes(parsed.cues, { max_scene_seconds: currentMaximumSceneSeconds() });
+      lastParsed = parsed;
+      copyParsedButton.disabled = !parsed?.cues?.length;
+      const cueCount = Array.isArray(parsed?.cues) ? parsed.cues.length : 0;
+      const speakerCount = Array.isArray(parsed?.speakers) ? parsed.speakers.length : 0;
+      const wordCount = Number(parsed?.word_count || 0);
+      const speechSeconds = Number(parsed?.estimated_spoken_seconds || 0);
+      const errorCount = Array.isArray(parsed?.errors) ? parsed.errors.length : 0;
+      const scenePlan = parsed.scene_plan || { scenes: [], warnings: [] };
+      const plannedSceneCount = Number(scenePlan.scene_count || 0);
+      const speakerHtml = speakerCount
+        ? parsed.speakers.map((speaker) => `<span style="display:inline-flex;gap:6px;align-items:center;border:1px solid #0e7490;border-radius:999px;background:#083344;color:#cffafe;padding:5px 9px;font-size:11px;font-weight:900;">${escapeHtml(speaker.name)} <span style="color:#67e8f9;">${Number(speaker.cue_count || 0)} cue${Number(speaker.cue_count || 0) === 1 ? "" : "s"}</span></span>`).join("")
+        : `<span style="color:#fca5a5;">No speakers detected.</span>`;
+      const matchedCount = parsed.speakers.filter((speaker) => speaker.reference_subject_id).length;
+      useGuidedScriptButton.disabled = !cueCount || errorCount > 0 || matchedCount !== speakerCount;
+      useGuidedScriptButton.title = errorCount
+        ? "Resolve every parse issue before activating the script."
+        : matchedCount !== speakerCount
+          ? "Match every script speaker to a Reference Builder character first."
+          : "Save this exact script and timed segment plan as the authoritative source for Guided Film Automation.";
+      const speakerMappingHtml = speakerCount
+        ? parsed.speakers.map((speaker, index) => {
+          const status = speaker.reference_subject_id
+            ? speaker.match_method === "auto" ? "Auto matched" : "Manually matched"
+            : "Needs a character";
+          const statusColor = speaker.reference_subject_id ? "#86efac" : "#fbbf24";
+          const options = [
+            `<option value="">Choose Reference Builder character...</option>`,
+            ...referenceCharacters.map((character) => `<option value="${escapeHtml(character.id)}"${String(character.id) === String(speaker.reference_subject_id) ? " selected" : ""}>${escapeHtml(character.name)}</option>`),
+          ].join("");
+          return `<div style="display:grid;grid-template-columns:minmax(130px,.65fr) minmax(210px,1.35fr) auto;gap:9px;align-items:center;border-top:${index ? "1px solid #1e3a5f" : "0"};padding:${index ? "9px 0 0" : "0"};margin-top:${index ? "9px" : "0"};"><div style="min-width:0;"><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;font-weight:900;">Script speaker</div><div title="${escapeHtml(speaker.name)}" style="color:#cffafe;font-weight:900;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:3px;">${escapeHtml(speaker.name)}</div></div><select data-script-speaker-index="${index}" style="width:100%;box-sizing:border-box;border:1px solid #334155;border-radius:6px;background:#18181b;color:#f8fafc;padding:9px;"${referenceCharacters.length ? "" : " disabled"}>${options}</select><div style="color:${statusColor};font-size:11px;font-weight:900;white-space:nowrap;">${status}</div></div>`;
+        }).join("")
+        : `<div style="color:#fca5a5;">Parse at least one valid speaker before matching characters.</div>`;
+      const rows = cueCount
+        ? parsed.cues.map((cue) => `<tr style="border-top:1px solid #1e3a5f;"><td style="padding:8px;color:#67e8f9;font-weight:900;vertical-align:top;">${cue.index}</td><td style="padding:8px;color:#94a3b8;vertical-align:top;">${cue.line_number || "JSON"}</td><td style="padding:8px;color:#cffafe;font-weight:900;vertical-align:top;overflow-wrap:anywhere;">${escapeHtml(cue.speaker)}</td><td style="padding:8px;color:#e2e8f0;vertical-align:top;line-height:1.4;overflow-wrap:anywhere;">${escapeHtml(cue.text)}</td><td style="padding:8px;color:#a5f3fc;text-align:right;vertical-align:top;">${cue.word_count}</td></tr>`).join("")
+        : `<tr><td colspan="5" style="padding:18px;color:#fca5a5;text-align:center;">No valid dialogue cues were parsed.</td></tr>`;
+      const errorsHtml = errorCount
+        ? `<div style="margin-top:12px;border:1px solid #991b1b;border-radius:7px;background:#3f0808;padding:10px;"><div style="font-weight:900;color:#fecaca;">${errorCount} issue${errorCount === 1 ? "" : "s"} found</div>${parsed.errors.map((error) => `<div style="margin-top:6px;color:#fecaca;font-size:12px;line-height:1.4;"><strong>${error.line_number ? `Line ${error.line_number}: ` : ""}</strong>${escapeHtml(error.message)}${error.source ? `<div style="color:#fca5a5;font-family:monospace;overflow-wrap:anywhere;">${escapeHtml(error.source)}</div>` : ""}</div>`).join("")}</div>`
+        : `<div style="margin-top:12px;border:1px solid #166534;border-radius:7px;background:#052e16;color:#bbf7d0;padding:9px 10px;font-size:12px;font-weight:900;">All non-empty script lines parsed successfully. Exact dialogue was preserved.</div>`;
+      const scenePlanHtml = plannedSceneCount
+        ? scenePlan.scenes.map((scene) => {
+          const participantHtml = Array.isArray(scene.participants) && scene.participants.length
+            ? scene.participants.map((participant) => `<span style="display:inline-flex;border:1px solid #334155;border-radius:999px;background:#0f172a;color:#bae6fd;padding:3px 7px;font-size:10px;font-weight:900;">${escapeHtml(participant.name || participant.alias || "Unmatched speaker")}</span>`).join("")
+            : `<span style="color:#fbbf24;font-size:11px;">No matched participants</span>`;
+          const dialogueHtml = (Array.isArray(scene.speaker_assignments) ? scene.speaker_assignments : []).map((cue) => `<div style="display:grid;grid-template-columns:82px minmax(105px,.35fr) minmax(0,1fr);gap:8px;border-top:1px solid #1e3a5f;padding:7px 0;align-items:start;"><div style="color:#67e8f9;font:10px monospace;white-space:nowrap;">${Number(cue.planned_start_seconds || 0).toFixed(2)}–${Number(cue.planned_end_seconds || 0).toFixed(2)}s</div><div style="color:#cffafe;font-size:11px;font-weight:900;overflow-wrap:anywhere;">${escapeHtml(cue.speaker_name || cue.speaker_alias)}${Number(cue.part_count || 1) > 1 ? `<div style="color:#fbbf24;font-size:9px;margin-top:2px;">Split ${cue.part_index}/${cue.part_count}</div>` : ""}</div><div style="color:#e2e8f0;font-size:11px;line-height:1.4;overflow-wrap:anywhere;">${escapeHtml(cue.text)}</div></div>`).join("");
+          return `<div style="border:1px solid #334155;border-radius:7px;background:#07111f;padding:9px;margin-top:8px;"><div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;"><div><div style="font-weight:900;color:#cffafe;">Segment ${scene.index}${scene.continuation_of_previous ? ` <span style="color:#fbbf24;font-size:10px;">CONTINUATION</span>` : ""}</div><div style="color:#94a3b8;font:10px monospace;margin-top:3px;">Timeline ${Number(scene.timeline_start_seconds || 0).toFixed(1)}–${Number(scene.timeline_end_seconds || 0).toFixed(1)}s</div><div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:5px;">${participantHtml}</div></div><div style="text-align:right;"><div style="font-weight:900;color:#67e8f9;">${Number(scene.duration_seconds || 0).toFixed(1)}s</div><div style="color:#94a3b8;font-size:10px;">max ${Number(scene.maximum_scene_seconds || 0).toFixed(1)}s</div></div></div><div style="margin-top:7px;">${dialogueHtml}</div></div>`;
+        }).join("")
+        : `<div style="color:#fca5a5;padding:10px;text-align:center;">No scenes could be planned from the parsed dialogue.</div>`;
+      const planWarningsHtml = Array.isArray(scenePlan.warnings) && scenePlan.warnings.length
+        ? `<div style="margin-top:8px;color:#fde68a;font-size:11px;line-height:1.4;">${scenePlan.warnings.map((warning) => escapeHtml(warning)).join("<br>")}</div>`
+        : "";
+      previewPanel.innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;">
+          <div style="border:1px solid #334155;border-radius:7px;background:#0f172a;padding:9px;"><div style="font-size:10px;color:#94a3b8;font-weight:900;text-transform:uppercase;">Format</div><div style="margin-top:3px;color:#cffafe;font-weight:900;">${escapeHtml(String(parsed.format || "text").toUpperCase())}</div></div>
+          <div style="border:1px solid #334155;border-radius:7px;background:#0f172a;padding:9px;"><div style="font-size:10px;color:#94a3b8;font-weight:900;text-transform:uppercase;">Speakers</div><div style="margin-top:3px;color:#cffafe;font-weight:900;">${speakerCount}</div></div>
+          <div style="border:1px solid #334155;border-radius:7px;background:#0f172a;padding:9px;"><div style="font-size:10px;color:#94a3b8;font-weight:900;text-transform:uppercase;">Dialogue cues</div><div style="margin-top:3px;color:#cffafe;font-weight:900;">${cueCount}</div></div>
+          <div style="border:1px solid #334155;border-radius:7px;background:#0f172a;padding:9px;"><div style="font-size:10px;color:#94a3b8;font-weight:900;text-transform:uppercase;">Words / raw speech</div><div style="margin-top:3px;color:#cffafe;font-weight:900;">${wordCount} / ${speechSeconds.toFixed(1)}s</div></div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:11px;">${speakerHtml}</div>
+        <div style="margin-top:12px;border:1px solid ${matchedCount === speakerCount && speakerCount ? "#166534" : "#92400e"};border-radius:7px;background:${matchedCount === speakerCount && speakerCount ? "#052e16" : "#291804"};padding:10px;">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:9px;"><div><div style="font-weight:900;color:${matchedCount === speakerCount && speakerCount ? "#bbf7d0" : "#fde68a"};">Speaker matching — ${matchedCount}/${speakerCount} matched</div><div style="font-size:11px;color:#cbd5e1;line-height:1.4;margin-top:3px;">Match each exact script name to the character that should speak it. Clear automatic matches can be changed manually.</div></div><div style="color:#94a3b8;font-size:11px;text-align:right;">${referenceCharacters.length} Reference Builder character${referenceCharacters.length === 1 ? "" : "s"}</div></div>
+          ${referenceCharacters.length ? speakerMappingHtml : `<div style="border:1px solid #991b1b;border-radius:6px;background:#3f0808;color:#fecaca;padding:9px;font-size:12px;">No Reference Builder characters are available. Add or save the film characters in Reference Builder, then reopen Script Mapper.</div>`}
+        </div>
+        <div style="margin-top:12px;border:1px solid #0e7490;border-radius:7px;background:#06283d;padding:10px;">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;"><div><div style="font-weight:900;color:#cffafe;">Timed MiniMax scene plan</div><div style="font-size:11px;color:#bae6fd;line-height:1.4;margin-top:3px;">${plannedSceneCount} segment${plannedSceneCount === 1 ? "" : "s"}; ${Number(scenePlan.estimated_total_seconds || 0).toFixed(1)} estimated total seconds. Each clip stays at or below ${Number(scenePlan.maximum_scene_seconds || currentMaximumSceneSeconds()).toFixed(1)} seconds.</div></div><div style="color:#67e8f9;font-weight:900;white-space:nowrap;">${Number(scenePlan.split_cue_count || 0)} long cue${Number(scenePlan.split_cue_count || 0) === 1 ? "" : "s"} split</div></div>
+          ${planWarningsHtml}
+          <div style="margin-top:8px;max-height:620px;overflow:auto;padding-right:3px;">${scenePlanHtml}</div>
+        </div>
+        <div style="margin-top:12px;border:1px solid #334155;border-radius:7px;overflow:auto;max-height:520px;">
+          <table style="width:100%;border-collapse:collapse;table-layout:fixed;font-size:12px;">
+            <thead><tr style="background:#0f172a;color:#bae6fd;text-align:left;"><th style="width:42px;padding:8px;">#</th><th style="width:58px;padding:8px;">Line</th><th style="width:150px;padding:8px;">Speaker</th><th style="padding:8px;">Exact dialogue</th><th style="width:54px;padding:8px;text-align:right;">Words</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+        ${errorsHtml}`;
+      previewPanel.querySelectorAll("select[data-script-speaker-index]").forEach((select) => {
+        select.onchange = () => {
+          const speaker = parsed.speakers[Number(select.dataset.scriptSpeakerIndex || 0)];
+          if (!speaker) return;
+          const aliasKey = storyboardScriptSpeakerMatchKey(speaker.name);
+          speakerMatches.set(aliasKey, {
+            subject_id: String(select.value || ""),
+            method: select.value ? "manual" : "unmatched",
+          });
+          renderParsedPreview(parsed);
+        };
+      });
+      sourceStatus.textContent = cueCount
+        ? `Parsed ${cueCount} exact cue${cueCount === 1 ? "" : "s"} from ${speakerCount} speaker${speakerCount === 1 ? "" : "s"}; planned ${plannedSceneCount} MiniMax segment${plannedSceneCount === 1 ? "" : "s"} at a ${currentMaximumSceneSeconds()}s maximum. ${matchedCount}/${speakerCount} matched to Reference Builder.${errorCount ? ` Review ${errorCount} issue${errorCount === 1 ? "" : "s"}.` : ""}`
+        : "No valid dialogue cues were found.";
+      sourceStatus.style.color = cueCount && !errorCount && matchedCount === speakerCount ? "#67e8f9" : "#fbbf24";
+    };
+    renderEmptyPreview();
+    mapperBody.append(sourcePanel, previewPanel);
+
+    const mapperFooter = document.createElement("div");
+    mapperFooter.style.cssText = "display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding:12px 18px;background:#0f172a;border-top:1px solid #334155;";
+    const footerNote = document.createElement("div");
+    footerNote.style.cssText = "color:#94a3b8;font-size:12px;line-height:1.4;";
+    footerNote.textContent = "Use This Script makes the exact dialogue authoritative for Guided Film Automation. It still does not change the Video Builder timeline.";
+    const footerActions = document.createElement("div");
+    footerActions.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;";
+    const mapperDone = makeButton("Done", "primary");
+    footerActions.append(removeGuidedScriptButton, copyParsedButton, useGuidedScriptButton, mapperDone);
+    mapperFooter.append(footerNote, footerActions);
+    mapperShell.append(mapperHeader, mapperBody, mapperFooter);
+    mapperBackdrop.append(mapperShell);
+    document.body.append(mapperBackdrop);
+
+    const closeMapper = () => {
+      document.removeEventListener("keydown", onMapperKeyDown, true);
+      mapperBackdrop.remove();
+    };
+    const onMapperKeyDown = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      closeMapper();
+    };
+    mapperCloseTop.onclick = closeMapper;
+    mapperDone.onclick = closeMapper;
+    mapperBackdrop.addEventListener("pointerdown", (event) => {
+      if (event.target === mapperBackdrop) closeMapper();
+    });
+    document.addEventListener("keydown", onMapperKeyDown, true);
+    loadScriptButton.onclick = () => scriptFileInput.click();
+    maxSceneLengthSelect.onchange = () => {
+      customSceneLengthInput.style.display = maxSceneLengthSelect.value === "custom" ? "" : "none";
+      if (lastParsed?.cues?.length) renderParsedPreview(lastParsed);
+    };
+    customSceneLengthInput.onchange = () => {
+      customSceneLengthInput.value = String(currentMaximumSceneSeconds());
+      if (lastParsed?.cues?.length) renderParsedPreview(lastParsed);
+    };
+    scriptFileInput.onchange = async () => {
+      const file = scriptFileInput.files?.[0];
+      if (!file) return;
+      try {
+        scriptInput.value = await file.text();
+        sourceStatus.textContent = `Loaded ${file.name}. Parsing preview...`;
+        renderParsedPreview(parseStoryboardScriptImport(scriptInput.value));
+      } catch (error) {
+        sourceStatus.textContent = `Could not read ${file.name}: ${String(error?.message || error)}`;
+        sourceStatus.style.color = "#fca5a5";
+      } finally {
+        scriptFileInput.value = "";
+      }
+    };
+    parseScriptButton.onclick = () => renderParsedPreview(parseStoryboardScriptImport(scriptInput.value));
+    clearScriptButton.onclick = () => {
+      scriptInput.value = "";
+      lastParsed = null;
+      speakerMatches.clear();
+      copyParsedButton.disabled = true;
+      sourceStatus.textContent = "";
+      renderEmptyPreview();
+      scriptInput.focus();
+    };
+    copyParsedButton.onclick = async () => {
+      if (!lastParsed?.cues?.length) return;
+      await copyTextToClipboard(JSON.stringify(lastParsed, null, 2));
+      createToast("Parsed script JSON copied. No timeline changes were made.");
+    };
+    useGuidedScriptButton.onclick = async () => {
+      if (!lastParsed?.cues?.length || useGuidedScriptButton.disabled) return;
+      useGuidedScriptButton.disabled = true;
+      try {
+        state.scriptImport = normalizeStoryboardScriptImportState({
+          enabled: true,
+          authoritative: true,
+          format: lastParsed.format,
+          raw_text: scriptInput.value,
+          imported_at: new Date().toISOString(),
+          maximum_scene_seconds: currentMaximumSceneSeconds(),
+          cues: lastParsed.cues,
+        });
+        refreshSetupPanelSummaries();
+        notifyStoryboardDefaultsChanged();
+        if (state.projectFolder) {
+          await postJson("/vrgdg/storyboard/save", {
+            project_folder: state.projectFolder,
+            storyboard: slimStoryboardForRequest(state),
+          });
+        }
+        closeMapper();
+        createToast(`Authoritative script activated: ${state.scriptImport.cues.length} exact cue${state.scriptImport.cues.length === 1 ? "" : "s"} across ${state.scriptImport.scene_plan.scene_count} planned MiniMax segment${state.scriptImport.scene_plan.scene_count === 1 ? "" : "s"}.`);
+      } catch (error) {
+        sourceStatus.textContent = `Could not activate the script: ${String(error?.message || error)}`;
+        sourceStatus.style.color = "#fca5a5";
+        useGuidedScriptButton.disabled = false;
+      }
+    };
+    removeGuidedScriptButton.onclick = async () => {
+      if (!window.confirm("Remove the authoritative imported script from Guided Film Automation?\n\nThis does not delete existing Storyboard or Video Builder scenes.")) return;
+      removeGuidedScriptButton.disabled = true;
+      try {
+        state.scriptImport = normalizeStoryboardScriptImportState({});
+        refreshSetupPanelSummaries();
+        notifyStoryboardDefaultsChanged();
+        if (state.projectFolder) {
+          await postJson("/vrgdg/storyboard/save", {
+            project_folder: state.projectFolder,
+            storyboard: slimStoryboardForRequest(state),
+          });
+        }
+        closeMapper();
+        createToast("Authoritative script removed. Existing scenes were not changed.");
+      } catch (error) {
+        sourceStatus.textContent = `Could not remove the active script: ${String(error?.message || error)}`;
+        sourceStatus.style.color = "#fca5a5";
+        removeGuidedScriptButton.disabled = false;
+      }
+    };
+    if (existingScriptImport.enabled && scriptInput.value.trim()) {
+      renderParsedPreview(parseStoryboardScriptImport(scriptInput.value));
+    } else {
+      scriptInput.focus();
+    }
+  };
+
+  const planFilmDialogueScenesWithLlm = async () => {
+    if (!isIdLoraMode && !isMiniMaxShortFilmMode) return;
+    if (isFullyCustomShortFilm()) {
+      createToast("Fully Custom uses your manual scene cards. Switch to Guided Film Automation to ask the LLM to plan dialogue scenes.");
+      return;
+    }
     syncStoryLayerFromInputs();
-    const sceneCount = Math.max(1, Math.min(24, Number(idLoraDialogueSceneCount.value || 6)));
+    const authoritativeScript = normalizeStoryboardScriptImportState(state.scriptImport);
+    const sceneCount = authoritativeScript.enabled
+      ? Math.max(1, Math.min(80, Number(authoritativeScript.scene_plan.scene_count || 1)))
+      : Math.max(1, Math.min(24, Number(idLoraDialogueSceneCount.value || 6)));
     idLoraDialogueSceneCount.value = String(sceneCount);
-    const progress = createStoryboardProgressWindow("ID-LoRA Dialogue Scenes");
+    const plannerLabel = isIdLoraMode ? "ID-LoRA Dialogue Scenes" : "MiniMax Short Film Scenes";
+    const progress = createStoryboardProgressWindow(plannerLabel);
     try {
-      progress.set(`Planning ${sceneCount} ID-LoRA dialogue scene${sceneCount === 1 ? "" : "s"} with ${promptRunnerName()}...`, 8);
-      const data = await postJson("/vrgdg/storyboard/id_lora_dialogue_scenes", {
+      progress.set(`Planning ${sceneCount} ${isIdLoraMode ? "ID-LoRA" : "MiniMax"} dialogue scene${sceneCount === 1 ? "" : "s"} with ${promptRunnerName()}...`, 8);
+      const data = await postJson(isIdLoraMode ? "/vrgdg/storyboard/id_lora_dialogue_scenes" : "/vrgdg/storyboard/minimax_dialogue_scenes", {
         ...(state.gemmaSettings || {}),
-        story_source: [userStoryArcInput.value, songStoryBriefInput.value].map((item) => String(item || "").trim()).filter(Boolean).join("\n\n"),
+        story_source: authoritativeScript.enabled
+          ? authoritativeScript.raw_text
+          : [userStoryArcInput.value, songStoryBriefInput.value].map((item) => String(item || "").trim()).filter(Boolean).join("\n\n"),
+        script_import: authoritativeScript,
         story_layer: normalizeStoryLayer(state.storyLayer),
         reference_builder: state.referenceBuilder || {},
         scenes: state.scenes.map((scene, index) => slimSceneForRequest(scene, index)),
         storyboard: slimStoryboardForRequest(state),
         scene_count: sceneCount,
-        video_prompt_type: "id_lora",
+        project_video_engine: state.projectVideoEngine,
+        minimax_h3_mode: state.miniMaxH3Mode,
+        video_prompt_type: isIdLoraMode ? "id_lora" : state.videoPromptType,
+        short_film_planning_mode: "guided_film",
         performance_mode: "speaking",
         unload_after: true,
         max_new_tokens: Math.max(2200, sceneCount * 520),
@@ -3102,7 +4662,13 @@ function openStoryboardBuilder(payload = {}) {
       const generated = Array.isArray(data.scenes) ? data.scenes : [];
       if (!generated.length) throw new Error("Gemma returned no dialogue scenes.");
       state.scenes = generated.map((scene, index) => {
-        const normalized = normalizeScene({ ...scene, video_prompt_type: "id_lora", performance_mode: "speaking" }, index);
+        const normalized = normalizeScene({
+          ...scene,
+          video_prompt_type: isIdLoraMode ? "id_lora" : state.videoPromptType,
+          project_video_engine: isIdLoraMode ? "ltx" : "minimax_h3",
+          minimax_h3_mode: isIdLoraMode ? "" : state.miniMaxH3Mode,
+          performance_mode: "speaking",
+        }, index);
         normalized.id_lora_character_id = scene.id_lora_character_id || scene.character_id || scene.subject_id || "";
         normalized.id_lora_location_id = scene.id_lora_location_id || scene.location_id || "";
         return normalized;
@@ -3115,37 +4681,39 @@ function openStoryboardBuilder(payload = {}) {
       setMode("storyboard_prompts");
       renderTable();
       refreshSetupPanelSummaries();
-      progress.set(`Dialogue scene plan ready.\nCreated ${state.scenes.length} preview scene${state.scenes.length === 1 ? "" : "s"}.`, 96);
+      progress.set(`Storyboard scenes ready.\nCreated ${state.scenes.length} editable storyboard scene${state.scenes.length === 1 ? "" : "s"}. The Video Builder timeline has not been changed.`, 96);
       await saveStoryboard();
-      progress.set(`Dialogue scene plan saved for review.\nNext step will apply this plan to Video Builder.`, 100);
+      progress.set(`Storyboard saved for review.\nNext: click Create ${state.scenes.length} Timeline Segment${state.scenes.length === 1 ? "" : "s"} to build the Video Builder timeline.`, 100);
       progress.close(1800);
-      createToast(`ID-LoRA dialogue plan created with ${state.scenes.length} preview scene${state.scenes.length === 1 ? "" : "s"}.`);
+      createToast(`Created ${state.scenes.length} ${isIdLoraMode ? "ID-LoRA" : "MiniMax"} storyboard scene${state.scenes.length === 1 ? "" : "s"}. The timeline is unchanged until you click Create ${state.scenes.length} Timeline Segment${state.scenes.length === 1 ? "" : "s"}.`);
     } catch (error) {
-      progress.set(`ID-LoRA dialogue planning failed:\n${String(error?.message || error)}`, 100);
-      createToast(`ID-LoRA dialogue planning failed:\n${String(error?.message || error)}`, true);
+      progress.set(`${isIdLoraMode ? "ID-LoRA" : "MiniMax"} dialogue planning failed:\n${String(error?.message || error)}`, 100);
+      createToast(`${isIdLoraMode ? "ID-LoRA" : "MiniMax"} dialogue planning failed:\n${String(error?.message || error)}`, true);
     }
   };
 
-  const applyIdLoraDialoguePlanToVideoBuilder = async () => {
-    if (!isIdLoraMode || !state.onApplyIdLoraDialoguePlan) return;
+  const applyFilmDialoguePlanToVideoBuilder = async () => {
+    const applyCallback = isIdLoraMode ? state.onApplyIdLoraDialoguePlan : state.onApplyMiniMaxDialoguePlan;
+    if (!applyCallback) return;
     const scenes = state.scenes
       .map((scene, index) => slimSceneForRequest(scene, index))
       .filter((scene) => String(scene.lyrics || scene.story_beat || scene.image_prompt || "").trim());
     if (!scenes.length) {
-      createToast("No ID-LoRA dialogue plan scenes found.", true);
+      createToast(`No reviewed ${isIdLoraMode ? "ID-LoRA" : "MiniMax"} storyboard scenes were found to create timeline segments.`, true);
       return;
     }
-    const confirmed = window.confirm(`Apply ${scenes.length} ID-LoRA dialogue scene${scenes.length === 1 ? "" : "s"} to Video Builder?\n\nThis will replace the blank starter timeline scene when the project is still empty. If real scenes already exist, Video Builder will ask/guard before replacing.`);
+    const confirmed = window.confirm(`Create ${scenes.length} Video Builder timeline segment${scenes.length === 1 ? "" : "s"} from the reviewed ${isIdLoraMode ? "ID-LoRA" : "MiniMax"} storyboard scenes?\n\nThis is the step that creates the timeline. Export Prompt Files Only does not create timeline segments.\n\nThe blank starter scene will be replaced. If real scenes already exist, Video Builder will ask before replacing them.`);
     if (!confirmed) return;
     try {
       applyDialoguePlanButton.disabled = true;
-      const result = await state.onApplyIdLoraDialoguePlan({
+      const result = await applyCallback({
         story_layer: normalizeStoryLayer(state.storyLayer),
+        short_film_planning_mode: normalizeStoryboardShortFilmPlanningMode(state.shortFilmPlanningMode),
         scenes,
       });
-      createToast(result?.message || `Applied ${scenes.length} ID-LoRA dialogue scene${scenes.length === 1 ? "" : "s"} to Video Builder.`);
+      createToast(result?.message || `Created ${scenes.length} Video Builder timeline segment${scenes.length === 1 ? "" : "s"} from the reviewed ${isIdLoraMode ? "ID-LoRA" : "MiniMax"} storyboard.`);
     } catch (error) {
-      createToast(`Apply Dialogue Plan failed:\n${String(error?.message || error)}`, true);
+      createToast(`Create Timeline Segments failed:\n${String(error?.message || error)}`, true);
     } finally {
       applyDialoguePlanButton.disabled = false;
     }
@@ -3389,6 +4957,9 @@ function openStoryboardBuilder(payload = {}) {
         location_id: String(scene.location_ref?.id || ""),
         trigger: String(scene.trigger_phrase || ""),
         trigger_position: String(scene.trigger_position || "start") === "end" ? "end" : "start",
+        speaker_assignments: normalizeStoryboardSpeakerAssignments(scene.speaker_assignments),
+        lyric_text: String(scene.lyrics || ""),
+        lyric_singers: Array.isArray(scene.lyric_singers) ? [...scene.lyric_singers] : [],
       })),
     });
   }
@@ -3630,6 +5201,36 @@ function openStoryboardBuilder(payload = {}) {
     return ref;
   };
 
+  const applyVideoStyle = ({ overwrite = false } = {}) => {
+    if (state.mode !== "image_to_video_prep") {
+      createToast("Video style is only available in Video Prep.");
+      return;
+    }
+    const value = String(state.videoStyle || "").trim();
+    if (!value) {
+      createToast("Choose a MiniMax video style first.");
+      return;
+    }
+    if (value === "custom" && !String(state.videoStyleCustom || "").trim()) {
+      createToast("Type the exact custom style wording first.");
+      return;
+    }
+    let changed = 0;
+    state.scenes.forEach((scene) => {
+      if (!storyboardSceneSupportsMiniMaxVideoStyle(scene)) return;
+      if (!overwrite && String(scene.video_style || "").trim()) return;
+      scene.video_style = value;
+      scene.video_style_custom = value === "custom" ? String(state.videoStyleCustom || "").trim() : "";
+      changed += 1;
+    });
+    renderTable();
+    if (overwrite) {
+      createToast(changed ? `Video style replaced ${changed} eligible scene${changed === 1 ? "" : "s"}.` : "No eligible MiniMax scene styles were changed.");
+    } else {
+      createToast(changed ? `Video style filled ${changed} eligible scene${changed === 1 ? "" : "s"}.` : "No blank eligible MiniMax scene styles needed filling.");
+    }
+  };
+
   const openStoryboardSubjectPicker = (scene) => {
     if (!scene) return;
     const backdrop = document.createElement("div");
@@ -3784,6 +5385,21 @@ function openStoryboardBuilder(payload = {}) {
     const characterMotionPreset = makeGroupedSelect(CHARACTER_MOTION_GROUPS, characterMotionValue);
     const customCharacterMotion = makeInput(scene.character_motion || "", "Custom character motion");
     const performanceStyle = makeSelect(performanceStylePresets, scene.performance_style || "");
+    const videoStyle = makeSelect(MINIMAX_VIDEO_STYLE_PRESETS, state.videoStyle || scene.video_style || "");
+    videoStyle.disabled = Boolean(state.videoStyle);
+    videoStyle.title = state.videoStyle ? "The global Video style is required for every eligible scene." : "Choose a style for this scene.";
+    const videoStyleCustom = makeTextarea(
+      state.videoStyle === "custom" ? state.videoStyleCustom : (scene.video_style_custom || state.videoStyleCustom || ""),
+      "Type the exact style wording that must appear unchanged in this scene's prompt...",
+      3,
+    );
+    videoStyleCustom.disabled = Boolean(state.videoStyle);
+    const temporalEffectOverride = makeSelect([
+      { value: "global", label: "Use global temporal effect" },
+      { value: "off", label: "Off for this scene" },
+      ...MINIMAX_TEMPORAL_WORLD_EFFECT_PRESETS.filter((item) => item.value).map((item) => ({ value: item.value, label: item.label })),
+    ], scene.temporal_world_effect_override || "global");
+    const temporalEffectCustom = makeTextarea(scene.temporal_world_effect_custom || "", "Exact custom temporal behavior for only this scene...", 3);
     const facialPerformance = makeSelect(facialPerformancePresets, scene.facial_performance || "");
     const facialPerformanceCustom = makeTextarea(scene.facial_performance_custom || "", "Optional custom facial expression/movement text for this scene...", 3);
     const includeMicLabel = document.createElement("label");
@@ -3903,6 +5519,8 @@ function openStoryboardBuilder(payload = {}) {
       { value: "end", label: "Add trigger to end" },
     ], scene.trigger_position || "start");
     const notes = makeTextarea(scene.notes, "Extra planning notes...", 3);
+    const audioDirection = makeTextarea(scene.audio_direction || "", "Exact ambience, sound effects, silence, breathing, or audio behavior for this scene...", 4);
+    const continuityDirection = makeTextarea(scene.continuity || "", "Exact identity, wardrobe, prop, location, screen-direction, and spatial continuity requirements...", 4);
     const selectedSubjectIds = scene.no_character_present ? [] : (Array.isArray(scene.subject_refs) ? scene.subject_refs : [])
       .map((ref) => String(ref?.id || ""))
       .filter(Boolean);
@@ -3976,13 +5594,17 @@ function openStoryboardBuilder(payload = {}) {
     const characterMotionField = field("Character motion preset", characterMotionPreset);
     const customCharacterMotionField = field("Custom character motion", customCharacterMotion);
     const performanceStyleField = field("Performance / song style", performanceStyle);
+    const videoStyleField = field(state.videoStyle ? "Video aesthetic — global and required" : "Video aesthetic", videoStyle);
+    const videoStyleCustomField = field("Custom style wording — copied exactly", videoStyleCustom);
+    const temporalEffectField = field("Temporal / world effect", temporalEffectOverride);
+    const temporalEffectCustomField = field("Custom temporal wording", temporalEffectCustom);
     const facialPerformanceField = field("Facial performance", facialPerformance);
     const facialPerformanceCustomField = field("Custom facial performance", facialPerformanceCustom);
     const imagePathField = field("Starting image", startingImageControl);
     const motionField = field(isImagePrepMode ? "Still photography notes" : "Motion Notes / LLM Direction", motion);
     const t2iPromptField = field("T2I prompt", imagePrompt);
     if (isVideoPrepMode) {
-      grid.append(field("Video prompt type", videoPromptType), field("Setting", setting), videoTypeHint, field("Subjects", subjects), performanceStyleField, facialPerformanceField, facialPerformanceCustomField, includeMicLabel, noCharacterLabel, shotPresetField, shotCustomField, cameraMotionField, characterMotionField, customCharacterMotionField, imagePathField, field("Scene trigger phrase", triggerPhrase), field("Trigger placement", triggerPosition));
+      grid.append(field("Video prompt type", videoPromptType), videoStyleField, videoStyleCustomField, field("Setting", setting), videoTypeHint, field("Subjects", subjects), performanceStyleField, facialPerformanceField, facialPerformanceCustomField, includeMicLabel, noCharacterLabel, shotPresetField, shotCustomField, cameraMotionField, characterMotionField, customCharacterMotionField, imagePathField, field("Scene trigger phrase", triggerPhrase), field("Trigger placement", triggerPosition));
     } else {
       grid.append(field("Setting", setting), field("Subjects", subjects), performanceStyleField, facialPerformanceField, facialPerformanceCustomField, includeMicLabel, noCharacterLabel, shotPresetField, shotCustomField, cameraMotionField, field("Scene trigger phrase", triggerPhrase), field("Trigger placement", triggerPosition));
     }
@@ -4003,6 +5625,10 @@ function openStoryboardBuilder(payload = {}) {
     const cancel = makeButton("Cancel");
     const apply = makeButton("Save Scene Card", "primary");
     actions.append(cancel, gemmaBeat, gemma, apply);
+    if (isFullyCustomShortFilm()) {
+      gemmaBeat.style.display = "none";
+      gemma.title = "Formats the manually entered scene card into a MiniMax H3 prompt without inventing or rewriting scene content.";
+    }
     const closeEditor = makeButton("×");
     closeEditor.style.cssText += "font-size:26px;line-height:1;width:44px;height:44px;padding:0;border-radius:8px;";
     const header = document.createElement("div");
@@ -4017,7 +5643,7 @@ function openStoryboardBuilder(payload = {}) {
     const basicsGrid = twoCol();
     basicsGrid.append(field("Scene label", label), field("Lyric section", lyricSection), field("Scene / lyrics", lyrics), field("Scene story beat", storyBeat));
     if (isVideoPrepMode) {
-      basicsGrid.append(field("Prompt mode", iconField("▣", videoPromptType)), field("Performance / song style", performanceStyle), field("Facial performance", facialPerformance), field("Custom facial performance", facialPerformanceCustom), includeMicLabel, noCharacterLabel, videoTypeHint);
+      basicsGrid.append(field("Prompt mode", iconField("▣", videoPromptType)), videoStyleField, videoStyleCustomField, temporalEffectField, temporalEffectCustomField, field("Performance / song style", performanceStyle), field("Facial performance", facialPerformance), field("Custom facial performance", facialPerformanceCustom), includeMicLabel, noCharacterLabel, videoTypeHint);
     } else {
       const imagePromptType = makeInput("Text to Image", "Text to Image");
       imagePromptType.readOnly = true;
@@ -4065,6 +5691,136 @@ function openStoryboardBuilder(payload = {}) {
     referencesGrid.append(subjectPick, locationPick, ...Array.from(referenceGrid.children));
     refreshReferenceChips();
 
+    const speakerAssignmentEnabled = isVideoPrepMode
+      && miniMaxProject
+      && normalizeStoryboardPerformanceMode(scene.performance_mode || state.performanceMode) === "speaking"
+      && normalizeStoryboardMiniMaxH3AudioMode(scene.minimax_h3_audio_mode || state.miniMaxH3AudioMode) === "built_in_audio";
+    let speakerAssignments = normalizeStoryboardSpeakerAssignments(scene.speaker_assignments);
+    const speakerAssignmentWrap = document.createElement("div");
+    speakerAssignmentWrap.style.cssText = "display:flex;flex-direction:column;gap:9px;";
+    const speakerAssignmentNote = document.createElement("div");
+    speakerAssignmentNote.style.cssText = "border:1px solid #155e75;border-radius:8px;background:#07111f;color:#cbd5e1;padding:9px 10px;font-size:12px;line-height:1.45;";
+    speakerAssignmentNote.textContent = "Drag cues into the exact speaking order. The same character can have multiple turns. Speaker choices come only from this scene’s mapped Reference Builder characters.";
+    const speakerAssignmentRows = document.createElement("div");
+    speakerAssignmentRows.style.cssText = "display:flex;flex-direction:column;gap:8px;";
+    const addSpeakerAssignment = makeButton("Add Dialogue Cue", "primary");
+    const mappedSpeakerOptions = () => {
+      const selectedIds = Array.from(subjectSelect.selectedOptions).map((option) => String(option.value || "")).filter(Boolean);
+      const selected = selectedIds
+        .map((id) => state.referenceBuilder.subjects.find((subject) => String(subject.id || "") === id))
+        .filter(Boolean);
+      const fallback = Array.isArray(scene.subject_refs) ? scene.subject_refs : [];
+      return (selected.length ? selected : fallback)
+        .filter((subject) => subject && typeof subject === "object")
+        .map((subject) => ({ id: String(subject.id || ""), name: String(subject.name || "Character").trim() || "Character" }));
+    };
+    const syncSpeakerAssignmentLegacy = () => {
+      speakerAssignments = normalizeStoryboardSpeakerAssignments(speakerAssignments);
+      scene.speaker_assignments = speakerAssignments;
+      const filled = speakerAssignments.filter((cue) => cue.text);
+      const combined = filled.map((cue) => cue.text).join("\n");
+      lyrics.value = combined;
+      scene.lyrics = combined;
+      scene.lyric_singers = Array.from(new Set(filled.map((cue) => cue.speaker_name).filter(Boolean)));
+    };
+    const ensureSpeakerAssignments = () => {
+      if (speakerAssignments.length) return;
+      const speakers = mappedSpeakerOptions();
+      const existingLine = String(scene.lyrics || lyrics.value || "").trim();
+      if (existingLine) {
+        const preferred = String((Array.isArray(scene.lyric_singers) ? scene.lyric_singers[0] : "") || "").trim();
+        const speaker = speakers.find((item) => item.name.toLowerCase() === preferred.toLowerCase()) || speakers[0] || { id: "", name: preferred };
+        speakerAssignments = normalizeStoryboardSpeakerAssignments([{ speaker_id: speaker.id, speaker_name: speaker.name, text: existingLine }]);
+      } else if (speakers.length) {
+        speakerAssignments = normalizeStoryboardSpeakerAssignments(speakers.map((speaker) => ({ speaker_id: speaker.id, speaker_name: speaker.name, text: "" })));
+      }
+      syncSpeakerAssignmentLegacy();
+    };
+    const renderSpeakerAssignments = () => {
+      speakerAssignmentRows.replaceChildren();
+      const speakers = mappedSpeakerOptions();
+      addSpeakerAssignment.disabled = !speakers.length || Boolean(noCharacterInput.checked);
+      ensureSpeakerAssignments();
+      if (!speakers.length || noCharacterInput.checked) {
+        const empty = document.createElement("div");
+        empty.textContent = noCharacterInput.checked
+          ? "This scene is marked No character present."
+          : "Map one or more Reference Builder characters to this scene first.";
+        empty.style.cssText = "border:1px dashed #334155;border-radius:8px;padding:12px;color:#94a3b8;text-align:center;font-size:12px;";
+        speakerAssignmentRows.append(empty);
+        return;
+      }
+      let draggedIndex = -1;
+      speakerAssignments.forEach((cue, index) => {
+        const row = document.createElement("div");
+        row.style.cssText = "display:grid;grid-template-columns:34px 34px minmax(160px,.65fr) minmax(300px,1.5fr) 76px;gap:8px;align-items:center;border:1px solid #334155;border-radius:8px;background:#0f172a;padding:8px;";
+        row.addEventListener("dragover", (event) => {
+          if (draggedIndex < 0 || draggedIndex === index) return;
+          event.preventDefault();
+          row.style.borderColor = "#22d3ee";
+        });
+        row.addEventListener("dragleave", () => { row.style.borderColor = "#334155"; });
+        row.addEventListener("drop", (event) => {
+          event.preventDefault();
+          row.style.borderColor = "#334155";
+          if (draggedIndex < 0 || draggedIndex === index) return;
+          const [moved] = speakerAssignments.splice(draggedIndex, 1);
+          speakerAssignments.splice(index, 0, moved);
+          syncSpeakerAssignmentLegacy();
+          renderSpeakerAssignments();
+        });
+        const handle = document.createElement("button");
+        handle.type = "button";
+        handle.textContent = "::";
+        handle.title = "Drag to change speaking order";
+        handle.draggable = true;
+        handle.style.cssText = "height:38px;border:1px solid #334155;border-radius:6px;background:#07111f;color:#67e8f9;font-weight:900;cursor:grab;";
+        handle.addEventListener("dragstart", () => { draggedIndex = index; row.style.opacity = ".55"; });
+        handle.addEventListener("dragend", () => { draggedIndex = -1; row.style.opacity = ""; });
+        const number = document.createElement("div");
+        number.textContent = String(index + 1);
+        number.style.cssText = "font-weight:900;color:#cffafe;text-align:center;";
+        const speakerSelect = makeSelect(speakers.map((speaker) => ({ value: speaker.id, label: speaker.name })), cue.speaker_id);
+        if (!speakers.some((speaker) => speaker.id === cue.speaker_id) && cue.speaker_name) {
+          speakerSelect.prepend(new Option(`${cue.speaker_name} (not currently mapped)`, cue.speaker_id));
+          speakerSelect.value = cue.speaker_id;
+        }
+        const line = makeInput(cue.text || "", "Exact words this character says...");
+        const remove = makeButton("Remove");
+        speakerSelect.addEventListener("change", () => {
+          const speaker = speakers.find((item) => item.id === speakerSelect.value) || { id: speakerSelect.value, name: speakerSelect.selectedOptions[0]?.textContent || "" };
+          cue.speaker_id = speaker.id;
+          cue.speaker_name = speaker.name;
+          syncSpeakerAssignmentLegacy();
+        });
+        line.addEventListener("input", () => {
+          cue.text = line.value;
+          syncSpeakerAssignmentLegacy();
+        });
+        remove.onclick = () => {
+          speakerAssignments.splice(index, 1);
+          syncSpeakerAssignmentLegacy();
+          renderSpeakerAssignments();
+        };
+        row.append(handle, number, speakerSelect, line, remove);
+        speakerAssignmentRows.append(row);
+      });
+    };
+    addSpeakerAssignment.onclick = () => {
+      const speaker = mappedSpeakerOptions()[0];
+      if (!speaker) return;
+      speakerAssignments.push(...normalizeStoryboardSpeakerAssignments([{ speaker_id: speaker.id, speaker_name: speaker.name, text: "" }]));
+      syncSpeakerAssignmentLegacy();
+      renderSpeakerAssignments();
+    };
+    speakerAssignmentWrap.append(speakerAssignmentNote, speakerAssignmentRows, addSpeakerAssignment);
+    if (speakerAssignmentEnabled) {
+      lyrics.readOnly = true;
+      lyrics.title = "This value is built automatically from the ordered Speaker Assignment cues below.";
+      lyrics.style.opacity = "0.78";
+      renderSpeakerAssignments();
+    }
+
     const motionGrid = isVideoPrepMode ? threeCol() : twoCol();
     if (isVideoPrepMode) {
       motionGrid.append(
@@ -4087,6 +5843,9 @@ function openStoryboardBuilder(payload = {}) {
     const advancedGrid = twoCol();
     if (isVideoPrepMode) {
       advancedGrid.append(field("Prompt summary", summary), motionField, field("Character details", subjectDetails), field("Location details", locationDetails), imagePathField, t2iPromptField, field("Video prompt", videoPrompt));
+      if (isMiniMaxShortFilmMode) {
+        advancedGrid.append(field("Manual audio / sound direction", audioDirection), field("Manual continuity requirements", continuityDirection));
+      }
     } else {
       advancedGrid.append(t2iPromptField, field("Character details", subjectDetails), field("Location details", locationDetails), field("Still photography notes", motion));
     }
@@ -4104,6 +5863,7 @@ function openStoryboardBuilder(payload = {}) {
       header,
       section(1, "Scene Basics", basicsGrid),
     ];
+    if (speakerAssignmentEnabled) editorSections.push(section("2", "Speaker Assignment", speakerAssignmentWrap));
     if (state.videoPromptType === "flf" || scene.video_prompt_type === "flf") editorSections.push(flfBeatSection);
     editorSections.push(
       section(3, "References", referencesGrid),
@@ -4123,6 +5883,7 @@ function openStoryboardBuilder(payload = {}) {
       const imageToVideoType = type === "i2v" || type === "image_to_video";
       const textToVideoType = type === "t2v" || type === "text_to_video";
       const referenceToVideoType = type === "rtv" || type === "reference_to_video";
+      const videoStyleType = miniMaxProject && (textToVideoType || referenceToVideoType);
       const options = isImagePrepMode ? IMAGE_SHOT_TYPES : (imageToVideoType ? VIDEO_SHOT_TYPES : Array.from(new Set([...IMAGE_SHOT_TYPES, ...VIDEO_SHOT_TYPES])));
       const current = shot.value || scene.shot_type || "";
       shotPreset.replaceChildren();
@@ -4149,6 +5910,10 @@ function openStoryboardBuilder(payload = {}) {
             : "Motion Notes / LLM Direction";
       t2iPromptField.style.display = isImagePrepMode || (!textToVideoType && !referenceToVideoType) ? "flex" : "none";
       imagePathField.style.display = isVideoPrepMode && !textToVideoType && !referenceToVideoType ? "flex" : "none";
+      videoStyleField.style.display = isVideoPrepMode && videoStyleType ? "flex" : "none";
+      videoStyleCustomField.style.display = isVideoPrepMode && videoStyleType && videoStyle.value === "custom" ? "flex" : "none";
+      temporalEffectField.style.display = isVideoPrepMode && miniMaxProject ? "flex" : "none";
+      temporalEffectCustomField.style.display = isVideoPrepMode && miniMaxProject && temporalEffectOverride.value === "custom" ? "flex" : "none";
       videoPrompt.style.display = isVideoPrepMode ? "" : "none";
       videoPrompt.placeholder = textToVideoType
         ? "Full text-to-video prompt..."
@@ -4160,6 +5925,8 @@ function openStoryboardBuilder(payload = {}) {
     };
     refreshShotPresetForVideoType();
     videoPromptType.addEventListener("change", refreshShotPresetForVideoType);
+    videoStyle.addEventListener("change", refreshShotPresetForVideoType);
+    temporalEffectOverride.addEventListener("change", refreshShotPresetForVideoType);
     const refreshSubjectDetailsFromSelection = () => {
       const selectedIds = Array.from(subjectSelect.selectedOptions).map((option) => option.value).filter(Boolean);
       const selectedSubjects = selectedIds
@@ -4173,6 +5940,10 @@ function openStoryboardBuilder(payload = {}) {
     subjectSelect.addEventListener("change", refreshSubjectDetailsFromSelection);
     subjectSelect.addEventListener("change", refreshReferenceChips);
     noCharacterInput.addEventListener("change", refreshNoCharacterState);
+    if (speakerAssignmentEnabled) {
+      subjectSelect.addEventListener("change", renderSpeakerAssignments);
+      noCharacterInput.addEventListener("change", renderSpeakerAssignments);
+    }
     refreshNoCharacterState();
     shotPreset.addEventListener("change", () => {
       if (shotPreset.value && shotPreset.value !== "__custom__") shot.value = shotPreset.value;
@@ -4297,6 +6068,10 @@ function openStoryboardBuilder(payload = {}) {
       scene.camera_motion = customCameraMotion.value.trim() || cameraMotionPreset.value.trim();
       scene.character_motion = isVideoPrepMode ? (customCharacterMotion.value.trim() || characterMotionPreset.value.trim()) : "";
       scene.performance_style = performanceStyle.value || "";
+      scene.video_style = videoStyle.value || "";
+      scene.video_style_custom = videoStyle.value === "custom" ? videoStyleCustom.value.trim() : "";
+      scene.temporal_world_effect_override = temporalEffectOverride.value || "global";
+      scene.temporal_world_effect_custom = temporalEffectOverride.value === "custom" ? temporalEffectCustom.value.trim() : "";
       scene.facial_performance = facialPerformance.value || "";
       scene.facial_performance_custom = facialPerformanceCustom.value.trim();
       scene.include_microphone = Boolean(includeMic.checked);
@@ -4312,7 +6087,13 @@ function openStoryboardBuilder(payload = {}) {
         scene.image_data = sceneImageData;
         scene.image_name = sceneImageName;
       }
+      if (speakerAssignmentEnabled) {
+        scene.minimax_h3_audio_mode = "built_in_audio";
+        syncSpeakerAssignmentLegacy();
+      }
       scene.notes = notes.value.trim();
+      scene.audio_direction = audioDirection.value.trim();
+      scene.continuity = continuityDirection.value.trim();
     };
     cancel.onclick = () => editorBackdrop.remove();
     gemma.onclick = async () => {
@@ -4505,7 +6286,9 @@ function openStoryboardBuilder(payload = {}) {
       const incomingScenes = state.scenes.map((scene) => normalizeScene(scene));
       const data = await postJson("/vrgdg/storyboard/load", { project_folder: state.projectFolder });
       const saved = data.storyboard || {};
-      state.projectVideoEngine = normalizeStoryboardProjectVideoEngine(saved.project_video_engine || saved.projectVideoEngine || state.projectVideoEngine);
+      if (!hasIncomingProjectVideoEngine) {
+        state.projectVideoEngine = normalizeStoryboardProjectVideoEngine(saved.project_video_engine || saved.projectVideoEngine || state.projectVideoEngine);
+      }
       const savedReferences = normalizeReferenceBuilderCatalog(saved.reference_builder || saved.referenceBuilder || {});
       const currentHasSubjects = Array.isArray(state.referenceBuilder?.subjects) && state.referenceBuilder.subjects.length > 0;
       const currentHasLocations = Array.isArray(state.referenceBuilder?.locations) && state.referenceBuilder.locations.length > 0;
@@ -4549,6 +6332,8 @@ function openStoryboardBuilder(payload = {}) {
             lyrics: fresh.lyrics || normalized.lyrics,
             lyric_section: fresh.lyric_section || normalized.lyric_section,
             story_beat: fresh.story_beat || normalized.story_beat,
+            audio_direction: fresh.audio_direction || normalized.audio_direction,
+            continuity: fresh.continuity || normalized.continuity,
             flf_start_state: fresh.flf_start_state || normalized.flf_start_state,
             flf_transformation: fresh.flf_transformation || normalized.flf_transformation,
             flf_end_state: fresh.flf_end_state || normalized.flf_end_state,
@@ -4556,6 +6341,8 @@ function openStoryboardBuilder(payload = {}) {
             performance_mode: fresh.performance_mode || normalized.performance_mode || state.performanceMode,
             prompt_summary: state.mode === "image_to_video_prep" ? (fresh.prompt_summary || normalized.prompt_summary) : "",
             motion_summary: fresh.motion_summary || normalized.motion_summary,
+            temporal_world_effect_override: fresh.temporal_world_effect_override || normalized.temporal_world_effect_override || "global",
+            temporal_world_effect_custom: fresh.temporal_world_effect_custom || normalized.temporal_world_effect_custom || "",
             image_path: fresh.image_path || normalized.image_path,
             no_character_present: Boolean(fresh.no_character_present || normalized.no_character_present),
             subjects,
@@ -4572,8 +6359,12 @@ function openStoryboardBuilder(payload = {}) {
         }
         absorbSceneReferencesIntoCatalog(state.scenes);
       }
-      state.mode = saved.mode || state.mode;
+      // The current video mode decides the opening workspace every time. Do not
+      // restore a stale Image Prep/Video Prep tab from an earlier visit.
+      state.mode = openingMode;
       state.performanceMode = normalizeStoryboardPerformanceMode(saved.performance_mode || saved.performanceMode || state.performanceMode);
+      state.shortFilmPlanningMode = normalizeStoryboardShortFilmPlanningMode(saved.short_film_planning_mode || saved.shortFilmPlanningMode || state.shortFilmPlanningMode);
+      shortFilmPlanningModeSelect.value = state.shortFilmPlanningMode;
       if (saved.camera_flow && STORYBOARD_CAMERA_FLOW_PRESETS[saved.camera_flow]) {
         state.cameraFlow = saved.camera_flow;
         cameraFlowSelect.value = state.cameraFlow;
@@ -4585,6 +6376,26 @@ function openStoryboardBuilder(payload = {}) {
       state.imageAesthetic = String(saved.image_aesthetic || saved.imageAesthetic || state.imageAesthetic || "");
       if (!imageAestheticPresets.some((preset) => preset.value === state.imageAesthetic)) state.imageAesthetic = imageAestheticPresets[0]?.value || "";
       imageAestheticSelect.value = state.imageAesthetic;
+      state.videoStyle = String(saved.video_style || saved.videoStyle || state.videoStyle || "");
+      if (!MINIMAX_VIDEO_STYLE_PRESETS.some((preset) => preset.value === state.videoStyle)) state.videoStyle = "";
+      videoStyleSelect.value = state.videoStyle;
+      state.videoStyleCustom = String(saved.video_style_custom || saved.videoStyleCustom || state.videoStyleCustom || "");
+      videoStyleCustomInput.value = state.videoStyleCustom;
+      state.temporalWorldEffect = String(saved.temporal_world_effect || saved.temporalWorldEffect || state.temporalWorldEffect || "");
+      if (!MINIMAX_TEMPORAL_WORLD_EFFECT_PRESETS.some((preset) => preset.value === state.temporalWorldEffect)) state.temporalWorldEffect = "";
+      temporalEffectSelect.value = state.temporalWorldEffect;
+      state.temporalWorldEffectCustom = String(saved.temporal_world_effect_custom || saved.temporalWorldEffectCustom || state.temporalWorldEffectCustom || "");
+      temporalEffectCustomInput.value = state.temporalWorldEffectCustom;
+      state.temporalAllowBackgroundExtras = (saved.temporal_allow_background_extras ?? saved.temporalAllowBackgroundExtras ?? state.temporalAllowBackgroundExtras) !== false;
+      temporalExtrasInput.checked = state.temporalAllowBackgroundExtras;
+      state.temporalBackgroundIntensity = storyboardTemporalIntensity(saved.temporal_background_intensity ?? saved.temporalBackgroundIntensity ?? state.temporalBackgroundIntensity);
+      temporalIntensityInput.value = String(state.temporalBackgroundIntensity);
+      state.temporalEnvironmentTimePassage = (saved.temporal_environment_time_passage ?? saved.temporalEnvironmentTimePassage ?? state.temporalEnvironmentTimePassage) !== false;
+      temporalEnvironmentInput.checked = state.temporalEnvironmentTimePassage;
+      state.temporalProtectedCharacters = storyboardTemporalProtectedMode(saved.temporal_protected_characters || saved.temporalProtectedCharacters || state.temporalProtectedCharacters);
+      temporalProtectedSelect.value = state.temporalProtectedCharacters;
+      state.temporalProtectedCustom = String(saved.temporal_protected_custom || saved.temporalProtectedCustom || state.temporalProtectedCustom || "");
+      temporalProtectedCustomInput.value = state.temporalProtectedCustom;
       state.globalConsistencyPhrase = String(saved.global_consistency_phrase || saved.globalConsistencyPhrase || state.globalConsistencyPhrase || "");
       consistencyInput.value = state.globalConsistencyPhrase;
       state.performanceStyle = String(saved.performance_style_default || saved.performance_style || state.performanceStyle || "");
@@ -4600,6 +6411,7 @@ function openStoryboardBuilder(payload = {}) {
       cameraSpeedInput.value = String(state.cameraMotionSpeed);
       characterSpeedInput.value = String(state.characterMotionSpeed);
       state.storyLayer = normalizeStoryLayer(saved.story_layer || saved.storyLayer || {});
+      state.scriptImport = normalizeStoryboardScriptImportState(saved.script_import || saved.scriptImport || state.scriptImport || {});
       storyLayerEnabledInput.checked = state.storyLayer.enabled !== false;
       overallStoryIdeaInput.value = state.storyLayer.overall_story_idea || "";
       userStoryArcInput.value = state.storyLayer.user_story_arc || "";
@@ -4609,6 +6421,8 @@ function openStoryboardBuilder(payload = {}) {
       refreshCameraFlowInfo();
       refreshImageShotInfo();
       refreshImageAestheticInfo();
+      refreshVideoStyleInfo();
+      refreshTemporalEffectInfo();
       refreshConsistencyInfo();
       refreshCameraSpeedInfo();
       refreshPerformanceInfo();
@@ -4674,7 +6488,7 @@ function openStoryboardBuilder(payload = {}) {
           scenes: state.scenes.map((scene, index) => slimSceneForRequest(scene, index)),
         });
       }
-      createToast(`Exported ${data.scene_count || 0} scene prompt rows:\nText:\n${data.t2i_prompts_path}\n${data.i2v_prompts_path}\nJSON:\n${data.t2i_prompts_json_path || ""}\n${data.video_prompts_json_path || ""}`);
+      createToast(`Exported ${data.scene_count || 0} scene prompt rows to files only. The Video Builder timeline was not created or replaced.\n\nText:\n${data.t2i_prompts_path}\n${data.i2v_prompts_path}\nJSON:\n${data.t2i_prompts_json_path || ""}\n${data.video_prompts_json_path || ""}`);
     } catch (error) {
       createToast(String(error?.message || error), true);
     } finally {
@@ -5160,6 +6974,63 @@ function openStoryboardBuilder(payload = {}) {
     refreshImageAestheticInfo();
     notifyStoryboardDefaultsChanged();
   };
+  videoStyleSelect.onchange = () => {
+    state.videoStyle = MINIMAX_VIDEO_STYLE_PRESETS.some((preset) => preset.value === videoStyleSelect.value) ? videoStyleSelect.value : "";
+    videoStyleSelect.value = state.videoStyle;
+    refreshVideoStyleInfo();
+    notifyStoryboardDefaultsChanged();
+  };
+  videoStyleCustomInput.addEventListener("input", () => {
+    state.videoStyleCustom = videoStyleCustomInput.value;
+    refreshVideoStyleInfo();
+  });
+  videoStyleCustomInput.addEventListener("change", notifyStoryboardDefaultsChanged);
+  temporalEffectSelect.onchange = () => {
+    const previous = state.temporalWorldEffect;
+    state.temporalWorldEffect = MINIMAX_TEMPORAL_WORLD_EFFECT_PRESETS.some((preset) => preset.value === temporalEffectSelect.value)
+      ? temporalEffectSelect.value
+      : "";
+    temporalEffectSelect.value = state.temporalWorldEffect;
+    if (!previous && state.temporalWorldEffect) {
+      state.temporalAllowBackgroundExtras = true;
+      state.temporalEnvironmentTimePassage = true;
+      temporalExtrasInput.checked = true;
+      temporalEnvironmentInput.checked = true;
+    }
+    refreshTemporalEffectInfo();
+    notifyStoryboardDefaultsChanged();
+  };
+  temporalEffectCustomInput.addEventListener("input", () => {
+    state.temporalWorldEffectCustom = temporalEffectCustomInput.value;
+    refreshTemporalEffectInfo();
+  });
+  temporalEffectCustomInput.addEventListener("change", notifyStoryboardDefaultsChanged);
+  temporalExtrasInput.onchange = () => {
+    state.temporalAllowBackgroundExtras = temporalExtrasInput.checked;
+    refreshTemporalEffectInfo();
+    notifyStoryboardDefaultsChanged();
+  };
+  temporalEnvironmentInput.onchange = () => {
+    state.temporalEnvironmentTimePassage = temporalEnvironmentInput.checked;
+    refreshTemporalEffectInfo();
+    notifyStoryboardDefaultsChanged();
+  };
+  temporalIntensityInput.addEventListener("input", () => {
+    state.temporalBackgroundIntensity = storyboardTemporalIntensity(temporalIntensityInput.value);
+    refreshTemporalEffectInfo();
+  });
+  temporalIntensityInput.addEventListener("change", notifyStoryboardDefaultsChanged);
+  temporalProtectedSelect.onchange = () => {
+    state.temporalProtectedCharacters = storyboardTemporalProtectedMode(temporalProtectedSelect.value);
+    temporalProtectedSelect.value = state.temporalProtectedCharacters;
+    refreshTemporalEffectInfo();
+    notifyStoryboardDefaultsChanged();
+  };
+  temporalProtectedCustomInput.addEventListener("input", () => {
+    state.temporalProtectedCustom = temporalProtectedCustomInput.value;
+    refreshTemporalEffectInfo();
+  });
+  temporalProtectedCustomInput.addEventListener("change", notifyStoryboardDefaultsChanged);
   consistencyInput.addEventListener("input", () => {
     state.globalConsistencyPhrase = consistencyInput.value.trim();
     refreshConsistencyInfo();
@@ -5188,6 +7059,8 @@ function openStoryboardBuilder(payload = {}) {
   imageShotReplace.onclick = () => applyImageShotFlow({ overwrite: true });
   imageAestheticApply.onclick = () => applyImageAesthetic({ overwrite: false });
   imageAestheticReplace.onclick = () => applyImageAesthetic({ overwrite: true });
+  videoStyleApply.onclick = () => applyVideoStyle({ overwrite: false });
+  videoStyleReplace.onclick = () => applyVideoStyle({ overwrite: true });
   performanceSelect.onchange = () => {
     state.performanceStyle = String(performanceSelect.value || "");
     refreshPerformanceInfo();
@@ -5236,6 +7109,13 @@ function openStoryboardBuilder(payload = {}) {
   clearPromptsButton.onclick = clearAllStoryboardPrompts;
   clearStoryBeatsButton.onclick = clearAllStoryboardStoryBeats;
   storyLayerEnabledInput.addEventListener("change", () => syncStoryLayerFromInputs({ notify: true }));
+  shortFilmPlanningModeSelect.addEventListener("change", () => {
+    state.shortFilmPlanningMode = normalizeStoryboardShortFilmPlanningMode(shortFilmPlanningModeSelect.value);
+    shortFilmPlanningModeSelect.value = state.shortFilmPlanningMode;
+    refreshSetupPanelSummaries();
+    notifyStoryboardDefaultsChanged();
+    renderTable();
+  });
   imageWorldStyleSelect.addEventListener("change", () => {
     refreshImageWorldStyleInfo();
     syncStoryLayerFromInputs({ notify: true });
@@ -5272,8 +7152,9 @@ function openStoryboardBuilder(payload = {}) {
   createMissingBeatsButton.onclick = () => createAllSceneBeatsWithGemma({ overwrite: false });
   replaceBeatsButton.onclick = () => createAllSceneBeatsWithGemma({ overwrite: true });
   detectSectionsButton.onclick = detectLyricSections;
-  planDialogueScenesButton.onclick = planIdLoraDialogueScenesWithGemma;
-  applyDialoguePlanButton.onclick = applyIdLoraDialoguePlanToVideoBuilder;
+  openMiniMaxScriptMapperButton.onclick = openMiniMaxScriptMapper;
+  planDialogueScenesButton.onclick = planFilmDialogueScenesWithLlm;
+  applyDialoguePlanButton.onclick = applyFilmDialoguePlanToVideoBuilder;
   keepGemmaLoadedInput.onchange = () => {
     state.gemmaSettings = {
       ...(state.gemmaSettings || {}),
@@ -5289,6 +7170,8 @@ function openStoryboardBuilder(payload = {}) {
   refreshCameraFlowInfo();
   refreshImageShotInfo();
   refreshImageAestheticInfo();
+  refreshVideoStyleInfo();
+  refreshTemporalEffectInfo();
   refreshImageWorldStyleInfo();
   refreshConsistencyInfo();
   refreshCameraSpeedInfo();

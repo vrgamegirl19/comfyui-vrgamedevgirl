@@ -158,8 +158,61 @@ const MINIMAX_H3_VIDEO_REFERENCE_PURPOSES = [
   { value: "transformation", label: "Transformation Source" },
   { value: "visual_style", label: "Visual Style Guide" },
 ];
+const MINIMAX_H3_AUDIO_MODE_OPTIONS = [
+  { value: "input_audio", label: "Input Audio (exact supplied audio)" },
+  { value: "built_in_audio", label: "Built-in MiniMax Audio" },
+];
+const MINIMAX_H3_VOICE_PRESETS = [
+  { value: "none", label: "No voice preset", gender: "", name: "", description: "" },
+  {
+    value: "female_velvet_ember",
+    label: "Woman — Velvet Ember (American)",
+    gender: "female",
+    name: "VELVET EMBER",
+    description: "an adult feminine low contralto with a warm smoky texture, a soft neutral American accent, measured confident cadence, crisp consonants, gentle breathiness, and clean intimate close-microphone delivery.",
+  },
+  {
+    value: "female_silver_thistle",
+    label: "Woman — Silver Thistle (British)",
+    gender: "female",
+    name: "SILVER THISTLE",
+    description: "an adult feminine clear mid-range voice with an unmistakable polished British Received Pronunciation accent, non-rhotic pronunciation, elongated broad-A vowels in words such as can’t, after, and glass, measured aristocratic English cadence, light airy resonance, precise consonants, elegant warmth, and clean intimate close-microphone delivery.",
+  },
+  {
+    value: "female_sunlit_wattle",
+    label: "Woman — Sunlit Wattle (Australian)",
+    gender: "female",
+    name: "SUNLIT WATTLE",
+    description: "an adult feminine bright mezzo voice with an unmistakable contemporary General Australian English accent, non-rhotic pronunciation, broad open vowels, relaxed upward inflection, confident friendly cadence, crisp natural consonants, lively sunlit warmth, and clean intimate close-microphone delivery.",
+  },
+  { value: "female_custom", label: "Woman — Custom Voice", gender: "female", name: "", description: "" },
+  {
+    value: "male_iron_cedar",
+    label: "Man — Iron Cedar (American)",
+    gender: "male",
+    name: "IRON CEDAR",
+    description: "an adult masculine deep baritone voice with a clear neutral American accent, grounded resonant timbre, measured confident cadence, crisp consonants, subtle gravel, calm authority, natural warmth, and clean intimate close-microphone delivery.",
+  },
+  {
+    value: "male_crowned_ash",
+    label: "Man — Crowned Ash (British)",
+    gender: "male",
+    name: "CROWNED ASH",
+    description: "an adult masculine polished baritone voice with an unmistakable British Received Pronunciation accent, non-rhotic pronunciation, elongated broad-A vowels in words such as can’t, after, and glass, measured articulate cadence, precise consonants, restrained dry warmth, quiet authority, and clean intimate close-microphone delivery.",
+  },
+  {
+    value: "male_red_gum",
+    label: "Man — Red Gum (Australian)",
+    gender: "male",
+    name: "RED GUM",
+    description: "an adult masculine warm tenor-baritone voice with an unmistakable contemporary General Australian English accent, non-rhotic pronunciation, broad open vowels, relaxed upward inflection, easygoing confident cadence, clear natural consonants, bright resonant warmth, and clean intimate close-microphone delivery.",
+  },
+  { value: "male_custom", label: "Man — Custom Voice", gender: "male", name: "", description: "" },
+];
 const DEFAULT_MINIMAX_H3_SETTINGS = {
   video_mode: "text_to_video",
+  audio_mode: "input_audio",
+  continuity_mode: "off",
   diffusion_model_name: "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
   clip_name: "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
   video_vae_name: "minimax_h3_video_vae_fp16.safetensors",
@@ -182,6 +235,12 @@ const DEFAULT_MINIMAX_H3_SETTINGS = {
   enable_fp16_accumulation: true,
 };
 
+const MINIMAX_H3_CONTINUITY_OPTIONS = [
+  { value: "off", label: "Off" },
+  { value: "spatial_reference", label: "Previous final frame — spatial reference" },
+  { value: "exact_start_frame", label: "Previous final frame — exact start frame" },
+];
+
 const MINIMAX_H3_SAGE_ATTENTION_OPTIONS = [
   { value: "disabled", label: "Disabled" },
   { value: "auto", label: "Auto" },
@@ -198,6 +257,44 @@ function normalizeMiniMaxH3Mode(value) {
   return MINIMAX_H3_MODE_OPTIONS.some((item) => item.value === clean) ? clean : "text_to_video";
 }
 
+function normalizeMiniMaxH3AudioMode(value) {
+  const clean = String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  return ["built_in_audio", "native_audio", "generated_audio"].includes(clean) ? "built_in_audio" : "input_audio";
+}
+
+function normalizeMiniMaxH3ContinuityMode(value) {
+  const clean = String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (["spatial", "spatial_reference", "continuity_reference"].includes(clean)) return "spatial_reference";
+  if (["exact", "exact_start", "exact_start_frame", "continuous_start"].includes(clean)) return "exact_start_frame";
+  return "off";
+}
+
+function normalizeMiniMaxH3Voice(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  const rawPreset = String(source.preset_id || source.presetId || source.preset || "none").trim().toLowerCase();
+  const preset = MINIMAX_H3_VOICE_PRESETS.find((item) => item.value === rawPreset) || MINIMAX_H3_VOICE_PRESETS[0];
+  const custom = preset.value.endsWith("_custom");
+  return {
+    preset_id: preset.value,
+    gender: preset.gender,
+    preset_name: custom ? String(source.preset_name || source.presetName || source.name || "").trim() : preset.name,
+    description: custom ? String(source.description || source.voice_description || source.voiceDescription || "").trim() : preset.description,
+  };
+}
+
+function normalizeMiniMaxSpeakerAssignments(value = []) {
+  const source = Array.isArray(value) ? value : [];
+  return source
+    .filter((item) => item && typeof item === "object")
+    .map((item, index) => ({
+      id: String(item.id || item.cue_id || item.cueId || `speaker_cue_${Date.now()}_${index}_${Math.floor(Math.random() * 10000)}`),
+      speaker_id: String(item.speaker_id || item.speakerId || item.subject_id || item.subjectId || ""),
+      speaker_name: String(item.speaker_name || item.speakerName || item.speaker || item.character || "").trim(),
+      text: String(item.text || item.dialogue || item.line || item.lyric || "").trim(),
+    }))
+    .slice(0, 40);
+}
+
 function miniMaxH3ModeLabel(value) {
   const mode = normalizeMiniMaxH3Mode(value);
   return MINIMAX_H3_MODE_OPTIONS.find((item) => item.value === mode)?.label || "Text to Video";
@@ -205,6 +302,17 @@ function miniMaxH3ModeLabel(value) {
 
 function miniMaxH3InstructionKey(value) {
   return MINIMAX_H3_INSTRUCTION_KEYS[normalizeMiniMaxH3Mode(value)] || MINIMAX_H3_INSTRUCTION_KEYS.text_to_video;
+}
+
+function normalizeMiniMaxShortFilmPlanningMode(value = "") {
+  const clean = String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  return clean === "fully_custom" || clean === "custom" ? "fully_custom" : "guided_film";
+}
+
+function miniMaxH3ShortFilmInstructionKey(value, planningMode = "guided_film") {
+  const mode = normalizeMiniMaxH3Mode(value);
+  const profile = normalizeMiniMaxShortFilmPlanningMode(planningMode) === "fully_custom" ? "custom" : "guided";
+  return `minimax_h3_short_film_${profile}_${mode}`;
 }
 
 function normalizeMiniMaxH3VideoPurpose(value) {
@@ -218,6 +326,8 @@ function cloneMiniMaxH3Settings(value = {}) {
     ...DEFAULT_MINIMAX_H3_SETTINGS,
     ...source,
     video_mode: normalizeMiniMaxH3Mode(source.video_mode || source.mode || DEFAULT_MINIMAX_H3_SETTINGS.video_mode),
+    audio_mode: normalizeMiniMaxH3AudioMode(source.audio_mode || source.audioMode || DEFAULT_MINIMAX_H3_SETTINGS.audio_mode),
+    continuity_mode: normalizeMiniMaxH3ContinuityMode(source.continuity_mode || source.continuityMode || DEFAULT_MINIMAX_H3_SETTINGS.continuity_mode),
     diffusion_model_name: String(source.diffusion_model_name || DEFAULT_MINIMAX_H3_SETTINGS.diffusion_model_name),
     clip_name: String(source.clip_name || DEFAULT_MINIMAX_H3_SETTINGS.clip_name),
     video_vae_name: String(source.video_vae_name || DEFAULT_MINIMAX_H3_SETTINGS.video_vae_name),
@@ -846,8 +956,13 @@ function createProgressWindow(title, options = {}) {
   headerActions.append(minimize, close);
   header.append(heading, headerActions);
   const body = document.createElement("div");
-  body.style.cssText = "padding:12px;font-size:12px;line-height:1.45;white-space:pre-wrap;max-height:min(62vh,620px);overflow:auto;";
-  body.textContent = "Starting...";
+  body.style.cssText = "padding:12px;font-size:12px;line-height:1.45;max-height:min(72vh,760px);overflow:auto;";
+  const status = document.createElement("div");
+  status.style.cssText = "white-space:pre-wrap;";
+  status.textContent = "Starting...";
+  const sceneDetails = document.createElement("div");
+  sceneDetails.style.cssText = "display:none;margin-top:12px;padding-top:12px;border-top:1px solid #164e63;";
+  body.append(status, sceneDetails);
   const barOuter = document.createElement("div");
   barOuter.style.cssText = "height:8px;background:#164e63;border-radius:999px;margin:0 12px 12px;overflow:hidden;";
   const barInner = document.createElement("div");
@@ -876,15 +991,90 @@ function createProgressWindow(title, options = {}) {
   close.onclick = removeAll;
   return {
     set(message, percent = null) {
-      body.textContent = message;
+      status.textContent = message;
       if (percent !== null) barInner.style.width = `${Math.max(5, Math.min(100, percent))}%`;
       const firstLine = String(message || title).split(/\r?\n/)[0] || title;
       restore.textContent = `${title}: ${firstLine}`;
     },
     setHtml(html, percent = null) {
-      body.innerHTML = html;
+      status.innerHTML = html;
       if (percent !== null) barInner.style.width = `${Math.max(5, Math.min(100, percent))}%`;
       restore.textContent = title;
+    },
+    setSceneDetails(details = {}) {
+      const images = Array.isArray(details.images) ? details.images : [];
+      const prompt = String(details.prompt || "").trim();
+      const lyric = String(details.lyric || "").trim();
+      const sceneLabel = String(details.sceneLabel || "Current scene").trim();
+      const modeLabel = String(details.modeLabel || "").trim();
+      sceneDetails.replaceChildren();
+      sceneDetails.style.display = "block";
+      box.style.width = "min(1100px, calc(100vw - 48px))";
+
+      const summary = document.createElement("div");
+      summary.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;";
+      const sceneName = document.createElement("div");
+      sceneName.textContent = sceneLabel;
+      sceneName.style.cssText = "font-size:13px;font-weight:900;color:#e0f2fe;";
+      const mode = document.createElement("div");
+      mode.textContent = modeLabel;
+      mode.style.cssText = "font-size:11px;color:#67e8f9;text-align:right;";
+      summary.append(sceneName, mode);
+      sceneDetails.append(summary);
+
+      const sectionTitle = (text) => {
+        const label = document.createElement("div");
+        label.textContent = text;
+        label.style.cssText = "margin:10px 0 6px;font-size:10px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:#94a3b8;";
+        return label;
+      };
+
+      sceneDetails.append(sectionTitle(`Reference images (${images.length})`));
+      if (images.length) {
+        const strip = document.createElement("div");
+        strip.style.cssText = "display:flex;gap:8px;overflow-x:auto;padding:2px 0 8px;";
+        images.forEach((item, index) => {
+          const card = document.createElement("div");
+          card.style.cssText = "flex:0 0 118px;border:1px solid #334155;border-radius:7px;background:#020617;overflow:hidden;";
+          const image = document.createElement("img");
+          const imagePath = String(item?.path || "").trim();
+          const imageData = String(item?.data || "").trim();
+          image.src = imagePath ? makeEditorImageUrl(imagePath) : imageData;
+          image.alt = String(item?.label || `Image ${index + 1}`);
+          image.title = [item?.label, imagePath].filter(Boolean).join("\n");
+          image.style.cssText = "display:block;width:118px;height:86px;object-fit:cover;background:#0f172a;";
+          const caption = document.createElement("div");
+          caption.textContent = `Image ${index + 1}: ${String(item?.label || "Reference")}`;
+          caption.title = image.title;
+          caption.style.cssText = "padding:6px;font-size:10px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+          card.append(image, caption);
+          strip.append(card);
+        });
+        sceneDetails.append(strip);
+      } else {
+        const empty = document.createElement("div");
+        empty.textContent = "No image references are being sent for this scene.";
+        empty.style.cssText = "padding:8px;border:1px dashed #334155;border-radius:6px;color:#94a3b8;background:#020617;";
+        sceneDetails.append(empty);
+      }
+
+      sceneDetails.append(sectionTitle("Lyric / dialogue sent"));
+      const lyricBox = document.createElement("div");
+      lyricBox.textContent = lyric || "No lyric or dialogue line is assigned to this scene.";
+      lyricBox.style.cssText = "padding:9px 10px;border:1px solid #334155;border-radius:6px;background:#020617;color:#f8fafc;white-space:pre-wrap;";
+      sceneDetails.append(lyricBox);
+
+      const promptDetails = document.createElement("details");
+      promptDetails.open = true;
+      promptDetails.style.cssText = "margin-top:10px;border:1px solid #334155;border-radius:6px;background:#020617;overflow:hidden;";
+      const promptSummary = document.createElement("summary");
+      promptSummary.textContent = "Exact prompt sent to MiniMax H3";
+      promptSummary.style.cssText = "padding:9px 10px;cursor:pointer;font-weight:900;color:#67e8f9;background:#0b1220;";
+      const promptText = document.createElement("pre");
+      promptText.textContent = prompt || "No prompt is available.";
+      promptText.style.cssText = "margin:0;padding:10px;max-height:260px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;color:#e2e8f0;font:11px/1.45 monospace;";
+      promptDetails.append(promptSummary, promptText);
+      sceneDetails.append(promptDetails);
     },
     close(delay = 0) {
       setTimeout(removeAll, delay);
@@ -1358,6 +1548,8 @@ function showWelcomeProjectModal(projects = [], projectsLoader = null) {
         const del = makeButton("Delete");
         del.style.borderColor = "#7f1d1d";
         del.style.color = "#fecaca";
+        del.disabled = project.can_delete === false;
+        if (del.disabled) del.title = "For safety, projects outside the ComfyUI output folder must be deleted manually.";
         open.onclick = () => finish({ action: "load", project_folder: project.project_folder || "" });
         del.onclick = async (event) => {
           event.preventDefault();
@@ -1477,6 +1669,8 @@ function showLoadProjectModal(projects = []) {
         const del = makeButton("Delete");
         del.style.borderColor = "#7f1d1d";
         del.style.color = "#fecaca";
+        del.disabled = project.can_delete === false;
+        if (del.disabled) del.title = "For safety, projects outside the ComfyUI output folder must be deleted manually.";
         open.onclick = () => finish({ action: "load", project_folder: project.project_folder || "" });
         del.onclick = async (event) => {
           event.preventDefault();
@@ -1719,7 +1913,7 @@ function sceneVideoTimeoutMessage({
   finalFolder = "",
 } = {}) {
   const lines = [
-    `${sceneLabel}: ${modeLabel} did not finish before the 40-minute wait limit.`,
+    `${sceneLabel}: ${modeLabel} did not finish before the 2-hour wait limit.`,
     "",
     "What this means:",
     "- ComfyUI may still be rendering, or the workflow may have stopped without returning a video to the builder.",
@@ -1740,7 +1934,7 @@ function sceneVideoTimeoutMessage({
 async function waitForVideos(promptId, onStatus, shouldCancel, findOutputFallback = null, options = {}) {
   const started = Date.now();
   let lastFallbackCheck = 0;
-  while (Date.now() - started < 40 * 60 * 1000) {
+  while (Date.now() - started < 2 * 60 * 60 * 1000) {
     if (shouldCancel?.()) throw new Error("Stopped by user.");
     const response = await api.fetchApi(`/history/${encodeURIComponent(promptId)}`);
     const data = await response.json().catch(() => ({}));
@@ -1955,6 +2149,7 @@ function audioUrl(path) {
     flf_end_frame_stale: false,
     flf_final_prompt_ready: false,
     lyric_singers: [],
+    minimax_speaker_assignments: [],
     facial_performance: "",
     facial_performance_custom: "",
     no_character_present: false,
@@ -3589,6 +3784,9 @@ function openBuilder(node) {
   const i2vTextGemmaModelSelect = makeSelect([""], "");
   const i2vGemmaModelSelect = makeSelect([""], "");
   const i2vMmprojSelect = makeSelect([""], "");
+  const miniMaxTextGemmaModelSelect = makeSelect([""], "");
+  const miniMaxGemmaModelSelect = makeSelect([""], "");
+  const miniMaxMmprojSelect = makeSelect([""], "");
   function copySelectOptions(sourceSelect, targetSelect) {
     targetSelect.textContent = "";
     for (const option of sourceSelect.options) {
@@ -3611,6 +3809,22 @@ function openBuilder(node) {
   }
   for (const select of [t2iTextGemmaModelSelect, gemmaModelSelect, mmprojSelect]) {
     select.addEventListener("change", syncKrea2TwoPassLlmSelectsFromShared);
+  }
+  const syncMiniMaxLlmSelectsFromShared = () => {
+    miniMaxTextGemmaModelSelect.value = i2vTextGemmaModelSelect.value || "";
+    miniMaxGemmaModelSelect.value = i2vGemmaModelSelect.value || "";
+    miniMaxMmprojSelect.value = i2vMmprojSelect.value || "";
+  };
+  const syncMiniMaxLlmSelectsToShared = () => {
+    i2vTextGemmaModelSelect.value = miniMaxTextGemmaModelSelect.value || "";
+    i2vGemmaModelSelect.value = miniMaxGemmaModelSelect.value || "";
+    i2vMmprojSelect.value = miniMaxMmprojSelect.value || "";
+  };
+  for (const select of [miniMaxTextGemmaModelSelect, miniMaxGemmaModelSelect, miniMaxMmprojSelect]) {
+    select.addEventListener("change", syncMiniMaxLlmSelectsToShared);
+  }
+  for (const select of [i2vTextGemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect]) {
+    select.addEventListener("change", syncMiniMaxLlmSelectsFromShared);
   }
   const useVisionReference = makeCheckbox("Use vision reference image?", false);
   const useI2VVisionReference = makeCheckbox("Use image reference for I2V prompt?", true);
@@ -4713,6 +4927,10 @@ function openBuilder(node) {
   const miniMaxClipPicker = makeSearchableLoraPicker(DEFAULT_MINIMAX_H3_SETTINGS.clip_name);
   const miniMaxVideoVaePicker = makeSearchableLoraPicker(DEFAULT_MINIMAX_H3_SETTINGS.video_vae_name);
   const miniMaxAudioVaePicker = makeSearchableLoraPicker(DEFAULT_MINIMAX_H3_SETTINGS.audio_vae_name);
+  const miniMaxAudioMode = makeSelect(MINIMAX_H3_AUDIO_MODE_OPTIONS, DEFAULT_MINIMAX_H3_SETTINGS.audio_mode);
+  const miniMaxContinuityMode = makeSelect(MINIMAX_H3_CONTINUITY_OPTIONS, DEFAULT_MINIMAX_H3_SETTINGS.continuity_mode);
+  const miniMaxContinuityNote = document.createElement("div");
+  miniMaxContinuityNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
   const miniMaxNoGgufNote = document.createElement("div");
   miniMaxNoGgufNote.textContent = "MiniMax H3 currently uses the standard diffusion-model loader. GGUF is not enabled yet.";
   miniMaxNoGgufNote.style.cssText = "font-size:11px;color:#fcd34d;line-height:1.4;";
@@ -4882,8 +5100,14 @@ function openBuilder(node) {
   miniMaxPromptActions.append(miniMaxCreatePromptButton, miniMaxEditInstructionsButton);
   const miniMaxPromptRunnerNote = document.createElement("div");
   miniMaxPromptRunnerNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
+  const miniMaxSpeakerAssignmentPanel = makeSettingsPanel([]);
+  const miniMaxSpeakerAssignmentNote = document.createElement("div");
+  miniMaxSpeakerAssignmentNote.style.cssText = "font-size:11px;color:#cbd5e1;line-height:1.45;border:1px solid #155e75;border-radius:7px;background:#07111f;padding:9px;";
+  const miniMaxSpeakerAssignmentList = document.createElement("div");
+  miniMaxSpeakerAssignmentList.style.cssText = "display:flex;flex-direction:column;gap:8px;";
+  const miniMaxAddSpeakerCueButton = makeButton("Add Dialogue Cue", "primary");
+  miniMaxSpeakerAssignmentPanel.append(miniMaxSpeakerAssignmentNote, miniMaxSpeakerAssignmentList, miniMaxAddSpeakerCueButton);
   const miniMaxAudioNote = document.createElement("div");
-  miniMaxAudioNote.textContent = "The current hidden workflow requires custom scene audio or project audio. Built-in MiniMax audio will be added with a separate workflow later.";
   miniMaxAudioNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
   const useSceneMiniMaxH3Settings = makeCheckbox("Lock MiniMax mode, models, and video settings for this scene", false);
   const useSceneMiniMaxH3SettingsNote = document.createElement("div");
@@ -4901,6 +5125,13 @@ function openBuilder(node) {
         makeField("Text encoder / CLIP", miniMaxClipPicker.wrapper),
         makeField("Video VAE", miniMaxVideoVaePicker.wrapper),
         makeField("Audio VAE", miniMaxAudioVaePicker.wrapper),
+        makeSettingsSection("Non-Vision LLM Models", [
+          makeField("Non-Vision text Gemma model", miniMaxTextGemmaModelSelect),
+        ]),
+        makeSettingsSection("Vision LLM Models", [
+          makeField("Vision Gemma model", miniMaxGemmaModelSelect),
+          makeField("Vision mmproj", miniMaxMmprojSelect),
+        ]),
       ]),
     },
     {
@@ -4910,14 +5141,26 @@ function openBuilder(node) {
         useSceneMiniMaxH3Settings.wrapper,
         useSceneMiniMaxH3SettingsNote,
         miniMaxSettingsScopeNote,
+        makeSettingsSection("Audio", [
+          makeField("Audio mode", miniMaxAudioMode),
+          miniMaxAudioNote,
+        ]),
+        makeSettingsSection("Between-scene continuity", [
+          makeField("Previous rendered final frame", miniMaxContinuityMode),
+          miniMaxContinuityNote,
+        ]),
         ...Object.values(miniMaxModePanels),
         makeSettingsSection("Render Settings", [miniMaxRenderSettingsGrid]),
         miniMaxAdvancedSettings,
-        miniMaxAudioNote,
       ]),
     },
     {
-      label: "Prompt",
+      label: "Speaker Assignment",
+      value: "speakers",
+      content: miniMaxSpeakerAssignmentPanel,
+    },
+    {
+      label: "LLM Prompting",
       value: "prompt",
       content: makeSettingsPanel([
         miniMaxPromptRunnerNote,
@@ -5073,7 +5316,7 @@ function openBuilder(node) {
   closeTimelineGapsButton.title = "Shift later base scenes left to remove empty gaps in the timeline.";
   snapSceneEdgeButton.title = "Move the selected scene start or end to its closest beat marker. A connected neighboring scene follows only at that shared boundary. Shortcuts: Ctrl+S snaps the start; Ctrl+E snaps the end.";
   splitSceneButton.title = "Split the selected base scene at the playhead. The left and right scene timings stay exactly where they are; later clips do not move and are only renumbered. Vocal text stays on the left half, while instrumental text is kept on both halves. Scenes with rendered video must be cleared before splitting.";
-  idLoraTrimModeButton.title = "ID-LoRA only: quiet scrub mode for finding trim points without autoplay.";
+  idLoraTrimModeButton.title = "Quiet scrub mode for finding left/right video trim points without autoplay. Available for ID-LoRA and MiniMax built-in-audio scenes.";
   overlayTrackToggleButton.title = "Turn the advanced overlay timeline on or off.";
   overlayTrackHintButton.title = "How does the overlay timeline work?";
   addTimelineMarkerButton.title = "Add a free timeline note/song marker at the playhead or selected In/Out range.";
@@ -5563,6 +5806,7 @@ function openBuilder(node) {
     const motionDefaults = source.motion_defaults && typeof source.motion_defaults === "object" ? source.motion_defaults : {};
     const cameraSpeed = Math.max(0, Math.min(10, Number(source.camera_motion_speed ?? source.cameraMotionSpeed ?? motionDefaults.camera_motion_speed ?? 4)));
     const characterSpeed = Math.max(0, Math.min(10, Number(source.character_motion_speed ?? source.characterMotionSpeed ?? motionDefaults.character_motion_speed ?? 4)));
+    const temporalIntensity = Math.max(0, Math.min(10, Number(source.temporal_background_intensity ?? source.temporalBackgroundIntensity ?? 8)));
     return {
       global_consistency_phrase: String(source.global_consistency_phrase || source.globalConsistencyPhrase || ""),
       camera_motion_speed: Number.isFinite(cameraSpeed) ? cameraSpeed : 4,
@@ -5570,9 +5814,21 @@ function openBuilder(node) {
       camera_guidance: String(source.camera_guidance || motionDefaults.camera_guidance || ""),
       character_guidance: String(source.character_guidance || motionDefaults.character_guidance || ""),
       performance_style: String(source.performance_style || source.performanceStyle || source.performance_style_default || ""),
+      short_film_planning_mode: normalizeMiniMaxShortFilmPlanningMode(source.short_film_planning_mode || source.shortFilmPlanningMode),
       camera_flow: String(source.camera_flow || source.cameraFlow || ""),
       image_shot_flow: String(source.image_shot_flow || source.imageShotFlow || ""),
       image_aesthetic: String(source.image_aesthetic || source.imageAesthetic || ""),
+      video_style: String(source.video_style || source.videoStyle || ""),
+      video_style_custom: String(source.video_style_custom || source.videoStyleCustom || ""),
+      temporal_world_effect: String(source.temporal_world_effect || source.temporalWorldEffect || ""),
+      temporal_world_effect_custom: String(source.temporal_world_effect_custom || source.temporalWorldEffectCustom || ""),
+      temporal_allow_background_extras: (source.temporal_allow_background_extras ?? source.temporalAllowBackgroundExtras) !== false,
+      temporal_background_intensity: Number.isFinite(temporalIntensity) ? temporalIntensity : 8,
+      temporal_environment_time_passage: (source.temporal_environment_time_passage ?? source.temporalEnvironmentTimePassage) !== false,
+      temporal_protected_characters: ["all_referenced", "lead_only", "custom"].includes(String(source.temporal_protected_characters || source.temporalProtectedCharacters || ""))
+        ? String(source.temporal_protected_characters || source.temporalProtectedCharacters)
+        : "all_referenced",
+      temporal_protected_custom: String(source.temporal_protected_custom || source.temporalProtectedCustom || ""),
     };
   }
 
@@ -5747,6 +6003,18 @@ function openBuilder(node) {
     return miniMaxH3SettingsForSegment(segment).video_mode;
   }
 
+  function miniMaxH3ContinuityModeForSegment(segment = activeSegment()) {
+    const mode = miniMaxH3ModeForSegment(segment);
+    if (!["reference_to_video", "video_to_video"].includes(mode)) return "off";
+    return normalizeMiniMaxH3ContinuityMode(miniMaxH3SettingsForSegment(segment).continuity_mode);
+  }
+
+  function miniMaxH3ContinuityReferenceReserved(segment = activeSegment()) {
+    return Boolean(segment
+      && miniMaxH3ContinuityModeForSegment(segment) !== "off"
+      && previousAutoChainSourceSegment(segment));
+  }
+
   function setMiniMaxH3ModeForSegment(segment, value) {
     const mode = normalizeMiniMaxH3Mode(value);
     if (segment?.use_scene_minimax_h3_settings) {
@@ -5789,12 +6057,13 @@ function openBuilder(node) {
       && effectiveMode === "reference_to_video"
       && (segmentImageSource(segment)?.path || segmentImageSource(segment)?.data)
     );
+    const hasContinuityReservation = miniMaxH3ContinuityReferenceReserved(segment);
     for (const button of miniMaxReferenceButtons) {
       button.textContent = button === miniMaxVideoReferencesButton
-        ? `Choose MiniMax Edit References (${orderedCount}/9)`
+        ? `Choose MiniMax Edit References (${orderedCount}${hasContinuityReservation ? " + continuity" : ""}/9)`
         : hasStartFrame
-          ? `Choose MiniMax References (${orderedCount}/9 — start + ${Math.max(0, orderedCount - 1)})`
-          : `Choose MiniMax References (${libraryCount}/9)`;
+          ? `Choose MiniMax References (${orderedCount}${hasContinuityReservation ? " + continuity" : ""}/9 — start + ${Math.max(0, orderedCount - 1)})`
+          : `Choose MiniMax References (${libraryCount}${hasContinuityReservation ? " + continuity" : ""}/9)`;
       button.disabled = !segment;
     }
   }
@@ -5804,6 +6073,8 @@ function openBuilder(node) {
     const currentSettings = miniMaxH3SettingsForSegment(segment);
     const settings = cloneMiniMaxH3Settings({
       video_mode: currentSettings.video_mode,
+      audio_mode: miniMaxAudioMode.value,
+      continuity_mode: miniMaxContinuityMode.value,
       diffusion_model_name: miniMaxDiffusionModelPicker.input.value,
       clip_name: miniMaxClipPicker.input.value,
       video_vae_name: miniMaxVideoVaePicker.input.value,
@@ -5852,6 +6123,143 @@ function openBuilder(node) {
       .slice(0, 3);
   }
 
+  function miniMaxMappedSpeakersForSegment(segment) {
+    if (!segment || segment.no_character_present) return [];
+    return (storyboardReferenceDataForSegment(segment).subject_refs || [])
+      .filter((subject) => (subject.reference_type || "character") === "character")
+      .map((subject) => ({ id: String(subject.id || ""), name: String(subject.name || "Character").trim() || "Character" }));
+  }
+
+  function syncMiniMaxSpeakerAssignmentLegacyFields(segment) {
+    if (!segment) return;
+    segment.minimax_speaker_assignments = normalizeMiniMaxSpeakerAssignments(segment.minimax_speaker_assignments);
+    const filled = segment.minimax_speaker_assignments.filter((cue) => cue.text);
+    // An empty Storyboard speaker plan means no dialogue override was supplied.
+    // It must not erase lyrics/transcription already stored on the timeline.
+    if (filled.length) {
+      segment.lyric_text = filled.map((cue) => cue.text).join("\n");
+      segment.lyric_singers = Array.from(new Set(filled.map((cue) => cue.speaker_name).filter(Boolean)));
+    }
+  }
+
+  function ensureMiniMaxSpeakerAssignments(segment, speakers = miniMaxMappedSpeakersForSegment(segment)) {
+    if (!segment) return [];
+    let cues = normalizeMiniMaxSpeakerAssignments(segment.minimax_speaker_assignments || segment.speaker_assignments || []);
+    if (!cues.length) {
+      const existingLine = isInstrumentalLyricText(segment.lyric_text) ? "" : String(segment.lyric_text || "").trim();
+      if (existingLine) {
+        const preferredName = String((Array.isArray(segment.lyric_singers) ? segment.lyric_singers[0] : "") || "").trim();
+        const speaker = speakers.find((item) => item.name.toLowerCase() === preferredName.toLowerCase()) || speakers[0] || { id: "", name: preferredName };
+        cues = normalizeMiniMaxSpeakerAssignments([{ speaker_id: speaker.id, speaker_name: speaker.name, text: existingLine }]);
+      } else if (speakers.length) {
+        cues = normalizeMiniMaxSpeakerAssignments(speakers.map((speaker) => ({ speaker_id: speaker.id, speaker_name: speaker.name, text: "" })));
+      }
+      segment.minimax_speaker_assignments = cues;
+    }
+    return cues;
+  }
+
+  function renderMiniMaxSpeakerAssignmentPanel() {
+    const segment = activeSegment();
+    const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
+    const settings = miniMaxH3SettingsForSegment(segment);
+    const shortFilm = normalizeVideoType(segment?.performance_mode || state.videoType) === "speaking";
+    const enabled = Boolean(miniMaxProject && segment && shortFilm && settings.audio_mode === "built_in_audio" && !segment.no_character_present);
+    const speakers = enabled ? miniMaxMappedSpeakersForSegment(segment) : [];
+    miniMaxSpeakerAssignmentList.replaceChildren();
+    miniMaxAddSpeakerCueButton.disabled = !enabled || !speakers.length;
+    if (!miniMaxProject || !segment) {
+      miniMaxSpeakerAssignmentNote.textContent = "Choose an active MiniMax scene to assign speakers.";
+      return;
+    }
+    if (!shortFilm) {
+      miniMaxSpeakerAssignmentNote.textContent = "Speaker Assignment is available for Short Film projects. Music Video continues to use the scene lyric/vocal line.";
+      return;
+    }
+    if (settings.audio_mode !== "built_in_audio") {
+      miniMaxSpeakerAssignmentNote.textContent = "Speaker Assignment is disabled for Input Audio because changing the words would no longer match the supplied audio. Select Built-in MiniMax Audio in Video Settings to create dialogue here.";
+      return;
+    }
+    if (segment.no_character_present) {
+      miniMaxSpeakerAssignmentNote.textContent = "This scene is marked No character present, so it cannot contain assigned dialogue.";
+      return;
+    }
+    miniMaxSpeakerAssignmentNote.textContent = "Drag cues into the exact speaking order. A character may appear more than once. Only characters mapped to this scene in Reference Builder are available, and MiniMax must speak each line exactly as entered.";
+    if (!speakers.length) {
+      const empty = document.createElement("div");
+      empty.textContent = "No characters are mapped to this scene yet. Map them in Reference Builder first.";
+      empty.style.cssText = "border:1px dashed #334155;border-radius:7px;padding:12px;color:#94a3b8;text-align:center;font-size:12px;";
+      miniMaxSpeakerAssignmentList.append(empty);
+      return;
+    }
+    const cues = ensureMiniMaxSpeakerAssignments(segment, speakers);
+    let draggedIndex = -1;
+    cues.forEach((cue, index) => {
+      const row = document.createElement("div");
+      row.style.cssText = "display:grid;grid-template-columns:32px 34px minmax(150px,.7fr) minmax(240px,1.5fr) 74px;gap:8px;align-items:center;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:8px;";
+      row.addEventListener("dragover", (event) => {
+        if (draggedIndex < 0 || draggedIndex === index) return;
+        event.preventDefault();
+        row.style.borderColor = "#22d3ee";
+      });
+      row.addEventListener("dragleave", () => { row.style.borderColor = "#334155"; });
+      row.addEventListener("drop", (event) => {
+        event.preventDefault();
+        row.style.borderColor = "#334155";
+        if (draggedIndex < 0 || draggedIndex === index) return;
+        const [moved] = cues.splice(draggedIndex, 1);
+        cues.splice(index, 0, moved);
+        segment.minimax_speaker_assignments = cues;
+        syncMiniMaxSpeakerAssignmentLegacyFields(segment);
+        renderMiniMaxSpeakerAssignmentPanel();
+        autoSaveSessionQuiet("MiniMax speaker cue reordered").catch(() => null);
+      });
+      const handle = document.createElement("button");
+      handle.type = "button";
+      handle.textContent = "::";
+      handle.title = "Drag to change speaking order";
+      handle.draggable = true;
+      handle.style.cssText = "height:38px;border:1px solid #334155;border-radius:6px;background:#07111f;color:#67e8f9;font-weight:900;cursor:grab;";
+      handle.addEventListener("dragstart", () => { draggedIndex = index; row.style.opacity = ".55"; });
+      handle.addEventListener("dragend", () => { draggedIndex = -1; row.style.opacity = ""; });
+      const number = document.createElement("div");
+      number.textContent = String(index + 1);
+      number.style.cssText = "font-size:14px;font-weight:900;color:#cffafe;text-align:center;";
+      const speakerSelect = makeSelect(speakers.map((speaker) => ({ value: speaker.id, label: speaker.name })), cue.speaker_id);
+      if (!speakers.some((speaker) => speaker.id === cue.speaker_id) && cue.speaker_name) {
+        speakerSelect.prepend(new Option(`${cue.speaker_name} (not currently mapped)`, cue.speaker_id));
+        speakerSelect.value = cue.speaker_id;
+      }
+      const line = makeInput(cue.text || "");
+      line.placeholder = "Exact words this character says...";
+      const remove = makeButton("Remove");
+      speakerSelect.addEventListener("change", () => {
+        const speaker = speakers.find((item) => item.id === speakerSelect.value) || { id: speakerSelect.value, name: speakerSelect.selectedOptions[0]?.textContent || "" };
+        cue.speaker_id = speaker.id;
+        cue.speaker_name = speaker.name;
+        segment.minimax_speaker_assignments = cues;
+        syncMiniMaxSpeakerAssignmentLegacyFields(segment);
+        autoSaveSessionQuiet("MiniMax speaker assignment changed").catch(() => null);
+      });
+      line.addEventListener("input", () => {
+        cue.text = line.value;
+        segment.minimax_speaker_assignments = cues;
+        syncMiniMaxSpeakerAssignmentLegacyFields(segment);
+      });
+      line.addEventListener("change", () => autoSaveSessionQuiet("MiniMax dialogue cue changed").catch(() => null));
+      remove.onclick = () => {
+        pushHistory();
+        cues.splice(index, 1);
+        segment.minimax_speaker_assignments = cues;
+        syncMiniMaxSpeakerAssignmentLegacyFields(segment);
+        renderMiniMaxSpeakerAssignmentPanel();
+        autoSaveSessionQuiet("MiniMax dialogue cue removed").catch(() => null);
+      };
+      row.append(handle, number, speakerSelect, line, remove);
+      miniMaxSpeakerAssignmentList.append(row);
+    });
+  }
+
   function syncMiniMaxH3Panel() {
     const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
     const segment = activeSegment();
@@ -5861,6 +6269,8 @@ function openBuilder(node) {
     miniMaxClipPicker.input.value = settings.clip_name;
     miniMaxVideoVaePicker.input.value = settings.video_vae_name;
     miniMaxAudioVaePicker.input.value = settings.audio_vae_name;
+    miniMaxAudioMode.value = settings.audio_mode;
+    miniMaxContinuityMode.value = settings.continuity_mode;
     miniMaxAspectRatio.value = settings.aspect_ratio;
     miniMaxMegapixels.value = String(settings.megapixels);
     miniMaxSeed.value = String(settings.seed);
@@ -5897,7 +6307,23 @@ function openBuilder(node) {
     miniMaxCreatePromptButton.textContent = `Create MiniMax ${modeLabel} Prompt`;
     miniMaxEditInstructionsButton.textContent = `Edit ${modeLabel} Instructions`;
     miniMaxPromptRunnerNote.textContent = `Uses the existing ${gemmaRunnerLabel()} selection from LLM Runner. The result is saved only as this scene's MiniMax H3 prompt.`;
+    miniMaxAudioNote.textContent = settings.audio_mode === "built_in_audio"
+      ? "MiniMax generates the scene audio from the prompt. In Short Film mode, character voice presets are configured in Reference Builder and copied exactly into every matching scene prompt."
+      : "Uses custom scene audio or project audio unchanged for exact timing and lip sync. Native voice presets are hidden while Input Audio is selected.";
+    const continuitySupported = ["reference_to_video", "video_to_video"].includes(mode);
+    miniMaxContinuityMode.disabled = !continuitySupported;
+    miniMaxContinuityNote.textContent = !continuitySupported
+      ? "Available in Reference to Video and Video to Video. Those modes can receive the prior clip's extracted final frame as one additional reference image."
+      : settings.continuity_mode === "spatial_reference"
+        ? "Recommended for a new camera angle. Preserves character blocking, orientation, screen direction, props, and environment layout without forcing the same opening composition. The extracted frame and its prompt contract are injected when rendering; Scene 1 is unaffected."
+        : settings.continuity_mode === "exact_start_frame"
+          ? "Begins each later scene on the previous rendered clip's exact final frame. The extracted frame and its prompt contract are injected when rendering. Do not also enable the scene-image exact start-frame option; Scene 1 is unaffected."
+          : "Off: every scene starts independently from its normal MiniMax references.";
     miniMaxUseSceneImageAsStartFrame.input.checked = Boolean(segment?.minimax_h3_use_scene_image_as_start_frame);
+    miniMaxUseSceneImageAsStartFrame.input.disabled = !segment || settings.continuity_mode === "exact_start_frame";
+    miniMaxStartFrameReferenceNote.textContent = settings.continuity_mode === "exact_start_frame"
+      ? "Disabled because the previous rendered final frame is the sole exact opening frame. Character and location references remain supporting references."
+      : "When enabled, Image 1 locks the exact opening composition. Character and location references begin at Image 2 and preserve identity or environment details that are not visible in the start frame.";
     const imagePath = String(segment ? selectedSegmentImagePath(segment) || "" : "").trim();
     miniMaxImageModeSource.textContent = imagePath
       ? `Scene image input:\n${imagePath}`
@@ -5913,6 +6339,8 @@ function openBuilder(node) {
     });
     miniMaxSceneVideoButton.disabled = !miniMaxProject || !segment;
     syncMiniMaxReferenceButtons();
+    renderMiniMaxSpeakerAssignmentPanel();
+    syncTimelineTrimModeButton();
   }
 
   function normalizeRenderLog(raw) {
@@ -7895,6 +8323,7 @@ function openBuilder(node) {
     videoTypeSelect.value = state.videoType;
   }
   const LAST_PROJECT_KEY = "vrgdg_music_builder_last_project_folder";
+  const PROJECT_ROOT_KEY = "vrgdg_music_builder_project_root";
 
   let notificationAudioContext = null;
   let lastNotificationAt = 0;
@@ -8095,6 +8524,32 @@ function openBuilder(node) {
     } catch {
       return "";
     }
+  }
+
+  function getPreferredProjectRoot() {
+    try {
+      return String(localStorage.getItem(PROJECT_ROOT_KEY) || "").trim();
+    } catch {
+      return "";
+    }
+  }
+
+  function setPreferredProjectRoot(projectRoot = "") {
+    const root = String(projectRoot || "").trim();
+    try {
+      if (root) localStorage.setItem(PROJECT_ROOT_KEY, root);
+      else localStorage.removeItem(PROJECT_ROOT_KEY);
+    } catch (error) {
+      console.warn("[VRGDG Music Builder] Could not save the preferred projects root:", error);
+    }
+    return root;
+  }
+
+  function projectListUrl() {
+    const root = getPreferredProjectRoot();
+    return root
+      ? `/vrgdg/music_builder/list_projects?project_root=${encodeURIComponent(root)}`
+      : "/vrgdg/music_builder/list_projects";
   }
 
   function allEditableSegments() {
@@ -8809,7 +9264,9 @@ function openBuilder(node) {
   }
 
   function syncTimelineTrimModeButton() {
-    const canUseTrimMode = currentVideoMode() === "id_lora";
+    const miniMaxBuiltInAudio = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3"
+      && miniMaxH3SettingsForSegment(activeSegment()).audio_mode === "built_in_audio";
+    const canUseTrimMode = currentVideoMode() === "id_lora" || miniMaxBuiltInAudio;
     if (!canUseTrimMode && state.timelineTrimEditMode) state.timelineTrimEditMode = false;
     idLoraTrimModeButton.style.display = canUseTrimMode ? "" : "none";
     idLoraTrimModeButton.textContent = state.timelineTrimEditMode ? "Trim Mode On" : "Trim Mode";
@@ -8897,6 +9354,16 @@ function openBuilder(node) {
     segment.flf_end_frame_stale = Boolean(segment.flf_end_frame_stale);
     segment.flf_final_prompt_ready = Boolean(segment.flf_final_prompt_ready);
     if (!Array.isArray(segment.lyric_singers)) segment.lyric_singers = [];
+    segment.minimax_speaker_assignments = normalizeMiniMaxSpeakerAssignments(
+      segment.minimax_speaker_assignments || segment.speaker_assignments || segment.dialogue_cues || [],
+    );
+    if (segment.minimax_speaker_assignments.length) {
+      const filledSpeakerCues = segment.minimax_speaker_assignments.filter((cue) => cue.text);
+      if (filledSpeakerCues.length) {
+        segment.lyric_text = filledSpeakerCues.map((cue) => cue.text).join("\n");
+        segment.lyric_singers = Array.from(new Set(filledSpeakerCues.map((cue) => cue.speaker_name).filter(Boolean)));
+      }
+    }
     if (segment.facial_performance == null) segment.facial_performance = "";
     if (segment.facial_performance_custom == null) segment.facial_performance_custom = "";
     segment.lyric_no_lip_sync = Boolean(segment.lyric_no_lip_sync);
@@ -8905,6 +9372,10 @@ function openBuilder(node) {
     if (segment.i2v_notes == null) segment.i2v_notes = "";
     segment.i2v_prompt_origin = normalizeVideoPromptOrigin(segment.i2v_prompt_origin);
     segment.minimax_h3_mode = normalizeMiniMaxH3Mode(segment.minimax_h3_mode);
+    if (segment.minimax_h3_video_style == null) segment.minimax_h3_video_style = "";
+    if (segment.minimax_h3_video_style_custom == null) segment.minimax_h3_video_style_custom = "";
+    if (segment.temporal_world_effect_override == null) segment.temporal_world_effect_override = "global";
+    if (segment.temporal_world_effect_custom == null) segment.temporal_world_effect_custom = "";
     segment.use_scene_minimax_h3_settings = Boolean(segment.use_scene_minimax_h3_settings);
     if (segment.minimax_h3_settings != null && typeof segment.minimax_h3_settings !== "object") {
       segment.minimax_h3_settings = null;
@@ -8925,6 +9396,11 @@ function openBuilder(node) {
         : null;
     }
     segment.minimax_h3_use_scene_image_as_start_frame = Boolean(segment.minimax_h3_use_scene_image_as_start_frame);
+    segment.minimax_h3_continuity_frame_path = String(segment.minimax_h3_continuity_frame_path || "");
+    segment.minimax_h3_continuity_source_video_path = String(segment.minimax_h3_continuity_source_video_path || "");
+    segment.minimax_h3_continuity_source_scene_id = String(segment.minimax_h3_continuity_source_scene_id || "");
+    segment.minimax_h3_continuity_mode_used = normalizeMiniMaxH3ContinuityMode(segment.minimax_h3_continuity_mode_used);
+    segment.minimax_h3_continuity_image_number = Math.max(0, Math.trunc(Number(segment.minimax_h3_continuity_image_number || 0)));
     segment.minimax_h3_video_references = (Array.isArray(segment.minimax_h3_video_references) ? segment.minimax_h3_video_references : [])
       .slice(0, 3)
       .map((item) => ({
@@ -11100,7 +11576,7 @@ function openBuilder(node) {
       use_location_references: false,
       include_manual_ingredients: true,
       subject_count: 0,
-      subject: { description: "", reference_type: "character", image: { path: "", data: "", name: "" } },
+      subject: { description: "", reference_type: "character", minimax_voice: normalizeMiniMaxH3Voice(), image: { path: "", data: "", name: "" } },
       subjects: [],
       subject_scene_map: {},
       locations: [],
@@ -11587,6 +12063,7 @@ function openBuilder(node) {
           trigger_position: existing.trigger_position || item.trigger_position,
           extra_reference_for: existing.extra_reference_for || item.extra_reference_for || item.extraReferenceFor || item.same_subject_as || item.sameSubjectAs,
           extra_reference_note: existing.extra_reference_note || item.extra_reference_note || item.extraReferenceNote,
+          minimax_voice: existing.minimax_voice || item.minimax_voice || item.miniMaxVoice,
           image: {
             ...(item.image || {}),
             ...(existing.image || {}),
@@ -11627,6 +12104,7 @@ function openBuilder(node) {
     normalized.subject = {
       description: String(subject.description || ""),
       reference_type: normalizeReferenceType(subject.reference_type || subject.referenceType || subject.type || "character"),
+      minimax_voice: normalizeMiniMaxH3Voice(subject.minimax_voice || subject.miniMaxVoice),
       reference_generation_draft: normalizeReferenceGenerationDraft(subject.reference_generation_draft || subject.referenceGenerationDraft),
       image: normalizeRefImage(subject),
     };
@@ -11642,6 +12120,7 @@ function openBuilder(node) {
           trigger_position: String(item.trigger_position || item.triggerPosition || item.trigger_placement || "start") === "end" ? "end" : "start",
           extra_reference_for: String(item.extra_reference_for || item.extraReferenceFor || item.same_subject_as || item.sameSubjectAs || ""),
           extra_reference_note: String(item.extra_reference_note || item.extraReferenceNote || ""),
+          minimax_voice: normalizeMiniMaxH3Voice(item.minimax_voice || item.miniMaxVoice),
           reference_generation_draft: normalizeReferenceGenerationDraft(item.reference_generation_draft || item.referenceGenerationDraft),
           image: normalizeRefImage(item),
         };
@@ -11656,6 +12135,7 @@ function openBuilder(node) {
         trigger_position: String(subject.trigger_position || subject.triggerPosition || subject.trigger_placement || "start") === "end" ? "end" : "start",
         extra_reference_for: "",
         extra_reference_note: "",
+        minimax_voice: normalizeMiniMaxH3Voice(subject.minimax_voice || subject.miniMaxVoice),
         reference_generation_draft: normalizeReferenceGenerationDraft(subject.reference_generation_draft || subject.referenceGenerationDraft),
         image: { ...normalized.subject.image },
       });
@@ -11670,6 +12150,7 @@ function openBuilder(node) {
         trigger_position: "start",
         extra_reference_for: "",
         extra_reference_note: "",
+        minimax_voice: normalizeMiniMaxH3Voice(),
         reference_generation_draft: normalizeReferenceGenerationDraft(),
         image: { path: "", data: "", name: "" },
       });
@@ -11689,6 +12170,7 @@ function openBuilder(node) {
         name: "",
         description: "",
         reference_type: normalized.subject.reference_type || "character",
+        minimax_voice: normalized.subject.minimax_voice || normalizeMiniMaxH3Voice(),
         reference_generation_draft: normalized.subject.reference_generation_draft || normalizeReferenceGenerationDraft(),
         image: { path: "", data: "", name: "" },
       };
@@ -11698,6 +12180,7 @@ function openBuilder(node) {
       normalized.subject = {
         description: firstSubject.description || normalized.subject.description || "",
         reference_type: firstSubject.reference_type || normalized.subject.reference_type || "character",
+        minimax_voice: normalizeMiniMaxH3Voice(firstSubject.minimax_voice || normalized.subject.minimax_voice),
         reference_generation_draft: firstSubject.reference_generation_draft || normalized.subject.reference_generation_draft || normalizeReferenceGenerationDraft(),
         image: (firstSubject.image?.path || firstSubject.image?.data || firstSubject.image?.name)
           ? { ...(firstSubject.image || { path: "", data: "", name: "" }) }
@@ -12788,13 +13271,15 @@ function openBuilder(node) {
   function syncInspector() {
     const segment = activeSegment();
     startInput.dataset.vrgdgInspectorSegmentId = String(segment?.id || "");
+    lyricTextInput.dataset.vrgdgInspectorSegmentId = String(segment?.id || "");
+    lyricTextInput.dataset.vrgdgUserEdited = "0";
     const disabled = !segment;
     for (const control of [labelInput, startInput, endInput, notesInput, ernieNotesInput, krea2TwoPassNotesInput, nbNotes, lyricTextInput, lyricSingersInput, i2vNotesInput, t2iPrompt, ernieT2IPrompt, krea2TwoPassT2IPrompt, nbPrompt, i2vPrompt, zEnhanceGemmaNotes, zEnhancePromptPreview, previewButton, ernieCreateButton, previewNBButton, deleteSegmentButton, createSceneVideoButton, miniMaxSceneVideoButtons[0]]) {
       control.disabled = disabled;
     }
     loadCustomImageButton.disabled = disabled;
     openSceneAudioOptionsButton.disabled = disabled;
-    for (const control of [t2iTextGemmaModelSelect, gemmaModelSelect, mmprojSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, ernieMmprojSelect, zEnhanceGemmaModelSelect, zEnhanceMmprojSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect, nbApiKey, nbModelSelect, nbGemmaModelSelect, nbMmprojSelect, fluxUseTextOnlyGemmaPrompt.input, fluxUseDirectorNotes.input, nbUseTextOnlyGemmaPrompt.input, nbUseDirectorNotes.input, useVisionReference.input, ernieUseVisionReference.input, krea2TwoPassUseVisionReference.input, useI2VVisionReference.input, useT2VVisionReference.input, useSceneZImageSettings.input, useSceneErnieImageSettings.input, useSceneFluxKleinSettings.input, useSceneNBImageSettings.input, useSceneI2VVideoSettings.input, useSceneMiniMaxH3Settings.input, rtvReferenceBehaviorSelect, createSceneEndFrameButton, clearSceneEndFrameButton, i2vUseGgufModel.input, refImageInput, createT2IButton, editZImageT2IInstructionsButton, ernieCreateT2IButton, editErnieT2IInstructionsButton, krea2TwoPassCreateT2IButton, editKrea2T2IInstructionsButton, createNBPromptButton, editNanoBT2IInstructionsButton, flowGptCreatePromptButton, editFlowGptT2IInstructionsButton, createFluxPromptButton, editFluxKleinT2IInstructionsButton, createI2VButton, editI2VPromptButton, editIdLoraInstructionsButton, zEnhanceGemmaButton, ...editImagePromptButtons]) {
+    for (const control of [t2iTextGemmaModelSelect, gemmaModelSelect, mmprojSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, ernieMmprojSelect, zEnhanceGemmaModelSelect, zEnhanceMmprojSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect, miniMaxTextGemmaModelSelect, miniMaxGemmaModelSelect, miniMaxMmprojSelect, nbApiKey, nbModelSelect, nbGemmaModelSelect, nbMmprojSelect, fluxUseTextOnlyGemmaPrompt.input, fluxUseDirectorNotes.input, nbUseTextOnlyGemmaPrompt.input, nbUseDirectorNotes.input, useVisionReference.input, ernieUseVisionReference.input, krea2TwoPassUseVisionReference.input, useI2VVisionReference.input, useT2VVisionReference.input, useSceneZImageSettings.input, useSceneErnieImageSettings.input, useSceneFluxKleinSettings.input, useSceneNBImageSettings.input, useSceneI2VVideoSettings.input, useSceneMiniMaxH3Settings.input, rtvReferenceBehaviorSelect, createSceneEndFrameButton, clearSceneEndFrameButton, i2vUseGgufModel.input, refImageInput, createT2IButton, editZImageT2IInstructionsButton, ernieCreateT2IButton, editErnieT2IInstructionsButton, krea2TwoPassCreateT2IButton, editKrea2T2IInstructionsButton, createNBPromptButton, editNanoBT2IInstructionsButton, flowGptCreatePromptButton, editFlowGptT2IInstructionsButton, createFluxPromptButton, editFluxKleinT2IInstructionsButton, createI2VButton, editI2VPromptButton, editIdLoraInstructionsButton, zEnhanceGemmaButton, ...editImagePromptButtons]) {
       control.disabled = disabled;
     }
     const lockedByVideo = hasLockedVideo(segment);
@@ -14031,7 +14516,8 @@ function openBuilder(node) {
     const startFrameReserved = miniMaxH3ModeForSegment(segment) === "reference_to_video"
       && Boolean(segment.minimax_h3_use_scene_image_as_start_frame)
       && Boolean(segmentImageSource(segment)?.path || segmentImageSource(segment)?.data);
-    const maxLibraryReferences = startFrameReserved ? 8 : 9;
+    const continuityReserved = miniMaxH3ContinuityReferenceReserved(segment);
+    const maxLibraryReferences = Math.max(0, 9 - (startFrameReserved ? 1 : 0) - (continuityReserved ? 1 : 0));
     let selectedKeys = miniMaxReferenceKeysForSegment(segment, refs).slice(0, maxLibraryReferences);
     let useAutomaticMappings = !Array.isArray(segment.minimax_h3_reference_keys);
 
@@ -14048,8 +14534,8 @@ function openBuilder(node) {
     header.append(heading, close);
     const note = document.createElement("div");
     note.textContent = startFrameReserved
-      ? "The scene image is reserved as Image 1 and the exact start frame. Choose up to eight additional Reference Builder images; they become Image 2 through Image 9 in the exact order shown."
-      : "Choose up to nine existing Reference Builder images. The numbered order below is the exact order sent into MiniMax H3. Scene character/location mappings are used automatically until you save a custom selection.";
+      ? `The scene image is reserved as Image 1 and the exact start frame. Choose up to ${maxLibraryReferences} additional Reference Builder image${maxLibraryReferences === 1 ? "" : "s"}.${continuityReserved ? " One final slot is reserved for the previous rendered scene's continuity frame." : ""}`
+      : `Choose up to ${maxLibraryReferences} existing Reference Builder image${maxLibraryReferences === 1 ? "" : "s"}. The numbered order is sent into MiniMax H3 exactly as shown.${continuityReserved ? " One final slot is reserved for the previous rendered scene's continuity frame." : ""} Scene character/location mappings are used automatically until you save a custom selection.`;
     note.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;padding:11px 15px;border-bottom:1px solid #1e293b;";
     const body = document.createElement("div");
     body.style.cssText = "display:grid;grid-template-columns:minmax(0,1.25fr) minmax(320px,.75fr);gap:12px;padding:12px;overflow:auto;min-height:260px;";
@@ -14164,10 +14650,10 @@ function openBuilder(node) {
       syncMiniMaxReferenceButtons();
       await autoSaveSessionQuiet("MiniMax H3 scene references");
       const savedCount = miniMaxReferenceKeysForSegment(segment).slice(0, maxLibraryReferences).length;
-      const totalCount = savedCount + (startFrameReserved ? 1 : 0);
+      const totalCount = savedCount + (startFrameReserved ? 1 : 0) + (continuityReserved ? 1 : 0);
       toast(useAutomaticMappings
-        ? `MiniMax H3 will automatically follow this scene's Reference Builder mappings (${totalCount}/9 images${startFrameReserved ? ", including the start frame" : ""}).`
-        : `Saved ${totalCount} ordered MiniMax H3 image${totalCount === 1 ? "" : "s"}${startFrameReserved ? " including Image 1 as the exact start frame" : ""}.`);
+        ? `MiniMax H3 will automatically follow this scene's Reference Builder mappings (${totalCount}/9 images${startFrameReserved ? ", including the start frame" : ""}${continuityReserved ? ", including the reserved continuity frame" : ""}).`
+        : `Saved ${totalCount} ordered MiniMax H3 image${totalCount === 1 ? "" : "s"}${startFrameReserved ? " including Image 1 as the exact start frame" : ""}${continuityReserved ? " including the reserved continuity frame" : ""}.`);
     };
     footer.append(utility, save);
     box.append(header, note, body, footer);
@@ -15899,7 +16385,18 @@ function openBuilder(node) {
     }
     segment.i2v_notes = i2vNotesInput.value || "";
     segment.flf_transition_type = ["auto", "smooth", "morph"].includes(flfTransitionTypeSelect.value) ? flfTransitionTypeSelect.value : "global";
-    segment.lyric_text = lyricTextInput.value || "";
+    // The inspector can temporarily contain an old/blank value while scenes are
+    // replaced by transcription, SRT import, project load, or another batch
+    // operation. Only let this field overwrite the scene after a real user edit.
+    // Timeline lyric boxes update their scene objects directly.
+    const lyricInspectorSegmentId = String(lyricTextInput.dataset.vrgdgInspectorSegmentId || "");
+    if (
+      lyricTextInput.dataset.vrgdgUserEdited === "1"
+      && lyricInspectorSegmentId === String(segment.id || "")
+    ) {
+      segment.lyric_text = lyricTextInput.value || "";
+      segment.lyric_no_lip_sync = isInstrumentalLyricText(segment.lyric_text);
+    }
     segment.lyric_singers = lyricSingersInput.value.split(",").map((item) => item.trim()).filter(Boolean);
     let editedT2IPrompt = t2iPrompt.value || "";
     if (state.imageModelMode === "ernie_image") editedT2IPrompt = ernieT2IPrompt.value || "";
@@ -17305,14 +17802,28 @@ function openBuilder(node) {
     await snapSceneEdgeToNearestBeat(segment, side);
   }
 
-  async function trimIdLoraSceneVideoAtPlayhead(segment, side, trimTimeOverride = null) {
+  function baseSceneVideoTrimKind(segment) {
+    if (!segment || segmentTrack(segment) === "overlay" || !String(selectedSegmentVideoPath(segment) || "").trim()) return "";
+    if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") {
+      return miniMaxH3SettingsForSegment(segment).audio_mode === "built_in_audio" ? "minimax_h3" : "";
+    }
+    return currentVideoMode() === "id_lora" ? "id_lora" : "";
+  }
+
+  async function trimBaseSceneVideoAtPlayhead(segment, side, trimTimeOverride = null) {
     const videoPath = String(selectedSegmentVideoPath(segment) || "").trim();
-    if (currentVideoMode() !== "id_lora") {
-      toast("Timeline video trim is only available in ID-LoRA I2V mode.", true);
+    const trimKind = baseSceneVideoTrimKind(segment);
+    const miniMaxTrim = trimKind === "minimax_h3";
+    const modeLabel = miniMaxTrim ? "MiniMax H3 built-in-audio" : "ID-LoRA";
+    if (!trimKind) {
+      const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
+      toast(miniMaxProject
+        ? "Playhead trimming is currently available for MiniMax built-in-audio scenes. Input-audio scenes stay protected so their separately stitched source audio cannot drift."
+        : "Timeline video trim is only available in ID-LoRA I2V mode.", true);
       return;
     }
     if (!segment || segmentTrack(segment) === "overlay" || !videoPath) {
-      toast("Select a rendered ID-LoRA scene video first.", true);
+      toast(`Select a rendered ${modeLabel} scene video first.`, true);
       return;
     }
     const sceneStart = Number(segment.start || 0);
@@ -17337,7 +17848,7 @@ function openBuilder(node) {
     const progress = createProgressWindow(trimLeft ? "Trimming left side of scene video" : "Trimming right side of scene video");
     try {
       pauseTimelineForEditing();
-      progress.set(`Creating trimmed ID-LoRA scene video...\n${videoPath}`, 20);
+      progress.set(`Creating trimmed ${modeLabel} scene video with synchronized embedded audio...\n${videoPath}`, 20);
       const data = await postJson("/vrgdg/workflow_runner/trim_scene_video", {
         project_folder: projectInput.value || state.projectFolder || "",
         source_path: videoPath,
@@ -17345,6 +17856,7 @@ function openBuilder(node) {
         start: sourceStart,
         duration: nextDuration,
         label,
+        mark_as_audio_video: miniMaxTrim,
       }, 180000);
       pushHistory();
       const oldEnd = sceneEnd;
@@ -17353,14 +17865,33 @@ function openBuilder(node) {
       segment.video_status = "done";
       segment.end = sceneStart + nextDuration;
       shiftTimelineAfterTrim(segment, oldEnd, removedDuration);
+      if (miniMaxTrim) {
+        segment.minimax_h3_trimmed_video = true;
+        segment.minimax_h3_trim_side = trimLeft ? "left" : "right";
+        segment.minimax_h3_trim_removed_seconds = Number(removedDuration.toFixed(3));
+        segment.minimax_h3_trim_source_start_seconds = Number(sourceStart.toFixed(3));
+        segment.minimax_h3_trimmed_duration_seconds = Number(nextDuration.toFixed(3));
+        if (!trimLeft) {
+          const nextSegment = allEditableSegments()
+            .filter((item) => segmentTrack(item) === segmentTrack(segment))
+            .sort((left, right) => Number(left.start || 0) - Number(right.start || 0))
+            .find((item) => Number(item.start || 0) >= Number(segment.end || 0) - 0.001 && item.id !== segment.id);
+          if (nextSegment) {
+            nextSegment.minimax_h3_continuity_frame_path = "";
+            nextSegment.minimax_h3_continuity_source_video_path = "";
+            nextSegment.minimax_h3_continuity_source_scene_id = "";
+            nextSegment.minimax_h3_continuity_image_number = 0;
+          }
+        }
+      }
       state.activeId = segment.id;
       state.sceneAudioGlobalTime = trimLeft ? Number(segment.start || 0) : Number(segment.end || 0);
       syncInspector();
       render();
-      await autoSaveSessionQuiet(trimLeft ? "ID-LoRA scene video trimmed left" : "ID-LoRA scene video trimmed right");
+      await autoSaveSessionQuiet(`${modeLabel} scene video trimmed ${trimLeft ? "left" : "right"}`);
       progress.set(`Trim complete.\n${data.video_path || ""}`, 100);
       progress.close(900);
-      toast(trimLeft ? "Trimmed left side of ID-LoRA scene video." : "Trimmed right side of ID-LoRA scene video.");
+      toast(`Trimmed ${trimLeft ? "left" : "right"} side of ${modeLabel} scene video.${miniMaxTrim && !trimLeft ? " Rerender the following scene if it was already created with previous-frame continuity." : ""}`);
     } catch (error) {
       progress.set(`Trim failed:\n${String(error?.message || error)}`, 100);
       toast(String(error?.message || error), true);
@@ -17585,9 +18116,7 @@ function openBuilder(node) {
       menu.append(button);
     };
     const isOverlay = segmentTrack(segment) === "overlay";
-    const idLoraTrimMode = currentVideoMode() === "id_lora"
-      && !isOverlay
-      && String(selectedSegmentVideoPath(segment) || "").trim();
+    const baseTrimKind = !isOverlay ? baseSceneVideoTrimKind(segment) : "";
     const playheadTime = currentGlobalTime();
     const sceneStart = Number(segment.start || 0);
     const sceneEnd = Number(segment.end || 0);
@@ -17599,9 +18128,9 @@ function openBuilder(node) {
     const trimTime = playheadInsideScene ? playheadTime : clickedTime;
     const trimLabel = playheadInsideScene ? "Playhead" : "Click";
     addItem("Restore Video...", () => restoreVideoForSegment(segment), !String(state.projectFolder || projectInput.value || "").trim());
-    if (idLoraTrimMode) {
-      addItem(`Trim Left at ${trimLabel}`, () => trimIdLoraSceneVideoAtPlayhead(segment, "left", trimTime), !(playheadInsideScene || clickInsideScene));
-      addItem(`Trim Right at ${trimLabel}`, () => trimIdLoraSceneVideoAtPlayhead(segment, "right", trimTime), !(playheadInsideScene || clickInsideScene));
+    if (baseTrimKind) {
+      addItem(`Trim Left at ${trimLabel}`, () => trimBaseSceneVideoAtPlayhead(segment, "left", trimTime), !(playheadInsideScene || clickInsideScene));
+      addItem(`Trim Right at ${trimLabel}`, () => trimBaseSceneVideoAtPlayhead(segment, "right", trimTime), !(playheadInsideScene || clickInsideScene));
     }
     if (isOverlay && String(selectedSegmentVideoPath(segment) || "").trim()) {
       addItem(`Trim Left at ${trimLabel}`, () => trimOverlayVideoAtPlayhead(segment, "left", trimTime), segment.overlay_locked !== false || !(playheadInsideScene || clickInsideScene));
@@ -20689,6 +21218,7 @@ function openBuilder(node) {
   function normalizeLyricSectionLookupText(value = "") {
     return String(value || "")
       .toLowerCase()
+      .replace(/[\u2018\u2019'`]/g, "")
       .replace(/[^\p{L}\p{N}' ]/gu, " ")
       .replace(/\s+/g, " ")
       .trim();
@@ -23017,8 +23547,11 @@ function openBuilder(node) {
     const wizardLocationMode = Boolean(options?.wizardMode || options?.wizard_location_mode);
     const referenceImagesEnabled = options?.textOnlyMode !== true;
     const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
+    const showMiniMaxNativeVoiceControls = miniMaxProject
+      && normalizeVideoType(state.videoType) === "speaking"
+      && miniMaxH3SettingsForSegment(activeSegment()).audio_mode === "built_in_audio";
     const miniMaxTargetMode = normalizeMiniMaxH3Mode(options?.miniMaxTargetMode || miniMaxH3ModeForSegment(activeSegment()));
-    const allowExtraSubjectReferences = referenceImagesEnabled && (currentVideoMode() === "rtv" || (miniMaxProject && ["reference_to_video", "video_to_video"].includes(miniMaxTargetMode)));
+    const allowExtraSubjectReferences = referenceImagesEnabled && !miniMaxProject && currentVideoMode() === "rtv";
     const referenceBuilderTargetLabel = !referenceImagesEnabled
       ? "Gemma scene text mapping"
       : miniMaxProject && miniMaxTargetMode === "video_to_video"
@@ -23929,6 +24462,7 @@ function openBuilder(node) {
           reference_type: "character",
           extra_reference_for: "",
           extra_reference_note: "",
+          minimax_voice: normalizeMiniMaxH3Voice(),
           image: { path: "", data: "", name: "" },
         });
       }
@@ -23948,6 +24482,7 @@ function openBuilder(node) {
         reference_type: "character",
         extra_reference_for: "",
         extra_reference_note: "",
+        minimax_voice: normalizeMiniMaxH3Voice(),
         image: { path: "", data: "", name: "" },
       };
       refs.subjects.push(subject);
@@ -23965,6 +24500,7 @@ function openBuilder(node) {
           name: "",
           description: "",
           reference_type: "character",
+          minimax_voice: normalizeMiniMaxH3Voice(),
           image: { path: "", data: "", name: "" },
         };
         return;
@@ -23976,6 +24512,7 @@ function openBuilder(node) {
         name: first.name || "Character 1",
         description: first.description || "",
         reference_type: first.reference_type || "character",
+        minimax_voice: normalizeMiniMaxH3Voice(first.minimax_voice),
         image: { ...(first.image || { path: "", data: "", name: "" }) },
       };
     };
@@ -26587,6 +27124,65 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         metaRow.append(used);
         if (allowExtraSubjectReferences && refs.subjects.length > 1) metaRow.append(sameSubjectWrap);
         row.append(mainRow, metaRow);
+        if (showMiniMaxNativeVoiceControls && subject.reference_type === "character" && !isExtraSubjectReference(subject)) {
+          subject.minimax_voice = normalizeMiniMaxH3Voice(subject.minimax_voice);
+          const voiceWrap = document.createElement("div");
+          voiceWrap.style.cssText = "border:1px solid #155e75;border-radius:7px;background:#061620;padding:10px;display:flex;flex-direction:column;gap:8px;";
+          const voiceHeading = document.createElement("div");
+          voiceHeading.innerHTML = `<div style="font-size:12px;font-weight:900;color:#cffafe;">MiniMax built-in voice</div><div style="font-size:11px;color:#94a3b8;margin-top:2px;">Short Film + Built-in Audio only. The saved preset name and voice description are copied verbatim into every prompt where this character speaks.</div>`;
+          const voicePreset = makeSelect(MINIMAX_H3_VOICE_PRESETS, subject.minimax_voice.preset_id);
+          const voiceName = makeInput(subject.minimax_voice.preset_name || "");
+          voiceName.placeholder = "Exact reusable preset name, e.g. MIDNIGHT ROSE";
+          const voiceDescription = document.createElement("textarea");
+          voiceDescription.placeholder = "Exact reusable voice description: adult voice range, accent, timbre, cadence, consonants, warmth, and microphone delivery.";
+          voiceDescription.style.cssText = "min-height:76px;resize:vertical;border:1px solid #3f3f46;border-radius:6px;background:#09090b;color:#f8fafc;padding:8px;font-size:12px;line-height:1.4;";
+          const voiceFields = document.createElement("div");
+          voiceFields.style.cssText = "display:grid;grid-template-columns:minmax(180px,.7fr) minmax(320px,1.8fr);gap:8px;";
+          const voiceNameField = makeField("Exact preset name", voiceName);
+          const voiceDescriptionField = makeField("Exact voice description", voiceDescription);
+          voiceFields.append(voiceNameField, voiceDescriptionField);
+          const syncVoiceFields = () => {
+            const preset = MINIMAX_H3_VOICE_PRESETS.find((item) => item.value === voicePreset.value) || MINIMAX_H3_VOICE_PRESETS[0];
+            const custom = preset.value.endsWith("_custom");
+            const normalizedVoice = normalizeMiniMaxH3Voice({
+              preset_id: preset.value,
+              preset_name: custom ? voiceName.value : preset.name,
+              description: custom ? voiceDescription.value : preset.description,
+            });
+            subject.minimax_voice = normalizedVoice;
+            voiceName.value = normalizedVoice.preset_name;
+            voiceDescription.value = normalizedVoice.description;
+            voiceName.disabled = !custom;
+            voiceDescription.disabled = !custom;
+            voiceFields.style.display = preset.value === "none" ? "none" : "grid";
+          };
+          voicePreset.addEventListener("change", () => {
+            if (voicePreset.value.endsWith("_custom") && subject.minimax_voice.preset_id !== voicePreset.value) {
+              voiceName.value = "";
+              voiceDescription.value = "";
+            }
+            syncVoiceFields();
+          });
+          voiceName.addEventListener("input", () => {
+            subject.minimax_voice = normalizeMiniMaxH3Voice({
+              ...subject.minimax_voice,
+              preset_id: voicePreset.value,
+              preset_name: voiceName.value,
+              description: voiceDescription.value,
+            });
+          });
+          voiceDescription.addEventListener("input", () => {
+            subject.minimax_voice = normalizeMiniMaxH3Voice({
+              ...subject.minimax_voice,
+              preset_id: voicePreset.value,
+              preset_name: voiceName.value,
+              description: voiceDescription.value,
+            });
+          });
+          syncVoiceFields();
+          voiceWrap.append(voiceHeading, makeField("Voice preset", voicePreset), voiceFields);
+          row.append(voiceWrap);
+        }
         subjectsList.append(row);
       });
     }
@@ -27355,6 +27951,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           name: primarySubject.name || "Character 1",
           description: primarySubject.description || "",
           reference_type: primarySubject.reference_type || "character",
+          minimax_voice: normalizeMiniMaxH3Voice(primarySubject.minimax_voice),
           reference_generation_draft: primarySubject.reference_generation_draft || refs.subject.reference_generation_draft || {},
           image: { ...(primarySubject.image || { path: "", data: "", name: "" }) },
         };
@@ -27364,6 +27961,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           name: refs.subjects[0].name || "Character 1",
           description: refs.subjects[0].description || "",
           reference_type: refs.subjects[0].reference_type || "character",
+          minimax_voice: normalizeMiniMaxH3Voice(refs.subjects[0].minimax_voice),
           image: { ...(refs.subjects[0].image || { path: "", data: "", name: "" }) },
         };
       } else {
@@ -27371,6 +27969,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           name: "",
           description: "",
           reference_type: "character",
+          minimax_voice: normalizeMiniMaxH3Voice(),
           image: { path: "", data: "", name: "" },
         };
       }
@@ -30596,6 +31195,22 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const customModelsRootRow = document.createElement("div");
     customModelsRootRow.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end;";
     customModelsRootRow.append(makeField("Custom ComfyUI models root", customModelsRootInput, "Optional. Point this at the folder that contains diffusion_models, text_encoders, vae, loras, LLM, and other Comfy model folders."), saveCustomModelsRootButton);
+    const projectRootInput = makeInput(getPreferredProjectRoot());
+    projectRootInput.placeholder = "Optional projects root, e.g. D:\\VRGDG Projects";
+    const chooseProjectRootButton = makeButton("Choose Folder");
+    const saveProjectRootButton = makeButton("Save Projects Root", "primary");
+    const clearProjectRootButton = makeButton("Use ComfyUI Output");
+    const projectRootActions = document.createElement("div");
+    projectRootActions.style.cssText = "display:grid;grid-template-columns:repeat(3,minmax(120px,auto));gap:8px;";
+    projectRootActions.append(chooseProjectRootButton, saveProjectRootButton, clearProjectRootButton);
+    const projectRootNote = document.createElement("div");
+    projectRootNote.textContent = "Optional and safe: only newly created projects use this parent folder. Existing projects and ComfyUI temporary render outputs are not moved. Leave blank to keep using the ComfyUI output folder. A full folder path entered in New Project still overrides this preference for that one project.";
+    projectRootNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
+    const projectStoragePanel = makeSettingsSection("Project Storage", [
+      makeField("Default folder for new projects", projectRootInput),
+      projectRootActions,
+      projectRootNote,
+    ], true);
     pathGrid.append(
       makePickerField("Audio file path", audioInput, pickAudioButton),
       makeField("Project folder", projectInput),
@@ -30894,7 +31509,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     testErrorSound.onclick = () => playBuilderNotification("error", true);
     syncCustomAudioLabels();
     syncContinuityModeVisibility();
-    box.append(header, pathGrid, actions, note, projectVideoEnginePanel, themePanel, memoryManagementPanel, autoChainPanel, notificationPanel);
+    box.append(header, pathGrid, actions, note, projectStoragePanel, projectVideoEnginePanel, themePanel, memoryManagementPanel, autoChainPanel, notificationPanel);
     backdrop.append(box);
     document.body.append(backdrop);
     modalClose.onclick = () => backdrop.remove();
@@ -32042,7 +32657,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.overlaySegments = [];
       state.activeId = state.segments[0]?.id || "";
     }
-    const projectsLoader = getJson("/vrgdg/music_builder/list_projects")
+    const projectsLoader = getJson(projectListUrl())
       .then((data) => Array.isArray(data.projects) ? data.projects : []);
     const choice = await showWelcomeProjectModal([], projectsLoader);
     if (!choice) return false;
@@ -32059,7 +32674,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     try {
       let projects = [];
       try {
-        const data = await getJson("/vrgdg/music_builder/list_projects");
+        const data = await getJson(projectListUrl());
         projects = Array.isArray(data.projects) ? data.projects : [];
       } catch (error) {
         console.warn("[VRGDG Music Builder] Could not list existing projects:", error);
@@ -34306,17 +34921,191 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
   }
 
+  function miniMaxDialogueAssignmentsForSegment(segment) {
+    return normalizeMiniMaxSpeakerAssignments(
+      segment?.minimax_speaker_assignments || segment?.speaker_assignments || segment?.dialogue_cues || [],
+    ).filter((cue) => cue.text);
+  }
+
+  function miniMaxDialogueOrderText(segment) {
+    const cues = miniMaxDialogueAssignmentsForSegment(segment);
+    if (!cues.length) return "";
+    return cues.map((cue, index) => `${index + 1}. ${cue.speaker_name || "The assigned speaker"} says exactly: “${cue.text}”`).join("\n");
+  }
+
+  function miniMaxH3NativeVoiceAssignments(segment) {
+    const settings = miniMaxH3SettingsForSegment(segment);
+    if (settings.audio_mode !== "built_in_audio" || normalizeVideoType(segment?.performance_mode || state.videoType) !== "speaking") return [];
+    const subjectRefs = storyboardReferenceDataForSegment(segment).subject_refs || [];
+    const configured = subjectRefs
+      .map((subject) => ({ ...subject, minimax_voice: normalizeMiniMaxH3Voice(subject.minimax_voice) }))
+      .filter((subject) => subject.minimax_voice.preset_id !== "none"
+        && subject.minimax_voice.preset_name
+        && subject.minimax_voice.description);
+    if (!configured.length) return [];
+    const dialogueSpeakers = miniMaxDialogueAssignmentsForSegment(segment).map((cue) => cue.speaker_name).filter(Boolean);
+    const speakerKeys = (dialogueSpeakers.length
+      ? dialogueSpeakers
+      : Array.isArray(segment?.lyric_singers)
+        ? segment.lyric_singers
+      : String(segment?.lyric_singers || "").split(/[,;\n]+/))
+      .map((value) => String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim())
+      .filter(Boolean);
+    if (!speakerKeys.length) return configured.length === 1 ? configured : configured;
+    const matched = configured.filter((subject) => {
+      const nameKey = String(subject.name || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      return nameKey && speakerKeys.some((speaker) => speaker === nameKey || speaker.includes(nameKey) || nameKey.includes(speaker));
+    });
+    return matched.length ? matched : configured;
+  }
+
+  function miniMaxH3NativeVoiceBlock(segment) {
+    const settings = miniMaxH3SettingsForSegment(segment);
+    if (segmentUsesNoLipSyncPerformance(segment)
+      || settings.audio_mode !== "built_in_audio"
+      || normalizeVideoType(segment?.performance_mode || state.videoType) !== "speaking") return "";
+    const assignments = miniMaxH3NativeVoiceAssignments(segment);
+    const lyricText = isInstrumentalLyricText(segment?.lyric_text) ? "" : flattenLyricForPrompt(segment?.lyric_text);
+    const dialogueOrder = miniMaxDialogueOrderText(segment);
+    if (!assignments.length && !dialogueOrder && !lyricText) return "";
+    const lines = ["MINIMAX NATIVE VOICE IDENTITY — MANDATORY AND VERBATIM:"];
+    if (assignments.length) {
+      lines.push(
+        ...assignments.map((subject) => `${subject.name || "The speaking character"}: voice preset “${subject.minimax_voice.preset_name}” — ${subject.minimax_voice.description}`),
+        "Use each preset name and its complete voice description exactly as written for that character. Do not paraphrase, shorten, blend, or transfer voices between characters.",
+      );
+    }
+    if (dialogueOrder) {
+      lines.push("DIALOGUE RELIABILITY — MANDATORY:");
+      lines.push("Use the single authoritative exact dialogue script written in the Native audio section. Do not print or quote that script again anywhere else in this prompt.");
+      lines.push("Generate those cues in exactly the assigned speaker order. Do not merge speakers, reorder cues, rewrite, restart, repeat, improvise, omit, or add any word.");
+      lines.push("Speak only in the language used by the supplied dialogue. Do not translate, switch languages, generate gibberish, babble, invented syllables, filler, phonetic substitutions, or extra vocalizations.");
+      lines.push("Begin the first cue within the first 0.15 seconds, pace every supplied word naturally across the available clip, and land the final spoken word approximately 0.15-0.30 seconds before the clip ends. Never finish early and fill time with invented speech.");
+      lines.push("If a character appears in more than one cue, preserve that character’s same assigned voice in every turn.");
+      lines.push("If the dialogue finishes before the video ends, fill the remaining time only with natural silence, breathing, facial reaction, physical action, and low environmental ambience—never additional speech.");
+    } else if (lyricText) {
+      lines.push(`Generate only the exact spoken words “${lyricText}”. Do not add, repeat, improvise, or replace any word.`);
+      lines.push("If the spoken line finishes before the video ends, fill the remaining time only with natural silence, breathing, facial reaction, physical action, and low environmental ambience—never additional speech.");
+    }
+    return lines.join("\n");
+  }
+
+  function miniMaxH3VisualOnlySafetyBlock(segment) {
+    if (!segmentUsesNoLipSyncPerformance(segment)) return "";
+    const builtInAudio = miniMaxH3SettingsForSegment(segment).audio_mode === "built_in_audio";
+    return [
+      "VISUAL-ONLY B-ROLL / NO-LIP-SYNC SAFETY — MANDATORY AND FINAL:",
+      "This scene is explicitly B-roll / visual-only. This safety block overrides any conflicting lyric, singer, speaker, dialogue, voice, timestamp, facial-performance, or mouth instruction elsewhere in the prompt.",
+      "No visible subject sings, speaks, raps, whispers, lip-syncs, mouths words, or performs the saved lyric. Keep every visible mouth naturally relaxed or closed and use only visual acting, physical action, dancing without vocal performance, camera motion, and environmental motion.",
+      builtInAudio
+        ? "Built-in MiniMax Audio: generate only requested environmental ambience and sound effects. Do not generate speech, singing, dialogue, lyrics, narration, voices, or vocal layers."
+        : "Input Audio: preserve Audio 1 completely unchanged as the soundtrack and timing reference, including any audible vocals, but treat those vocals as off-screen soundtrack only. No visible subject may synchronize to them.",
+      "Treat the saved lyric only as hidden mood/story context; never quote it as dialogue or describe anyone performing it.",
+    ].join("\n");
+  }
+
+  function stripMiniMaxH3VisualOnlyTimelineVocalDirections(prompt) {
+    const positiveVocal = /\b(?:sing(?:s|ing)?|sang|sung|rap(?:s|ping)?|lip[ -]?sync(?:s|ing)?|speak(?:s|ing)?|say(?:s|ing)?|said|mouth(?:s|ed|ing)?|whisper(?:s|ing)?|perform(?:s|ing)?\s+(?:the\s+)?(?:saved\s+|exact\s+)?(?:lyric|dialogue|words?))\b/i;
+    const negativeSafety = /\b(?:no|not|never|without|does\s+not|do\s+not|must\s+not|cannot|can['’]t|don['’]t)\b/i;
+    const timestampPattern = /(\[\s*\d+(?:\.\d+)?s?\s*[-–—]\s*\d+(?:\.\d+)?s?\s*\]\s*\n)([\s\S]*?)(?=\n\n(?:\[\s*\d+(?:\.\d+)?s?\s*[-–—]|Audio\s*:|Continuity\s*:)|$)/gi;
+    return String(prompt || "").replace(timestampPattern, (match, header, body) => {
+      const kept = String(body || "")
+        .split(/(?<=[.!?])\s+|\n+/)
+        .map((part) => part.trim())
+        .filter((part) => part && !(positiveVocal.test(part) && !negativeSafety.test(part)));
+      if (!kept.length) kept.push("Continue the requested visual action, camera movement, and environmental motion naturally.");
+      kept.push("All visible subjects remain silent and do not sing, speak, rap, mouth words, or lip-sync; every mouth stays naturally relaxed or closed.");
+      return `${header}${kept.join(" ")}`;
+    });
+  }
+
+  function miniMaxH3SubjectMultiplicityBlock(segment) {
+    const mode = miniMaxH3ModeForSegment(segment);
+    if (mode !== "reference_to_video" && mode !== "video_to_video") return "";
+    const subjectRefs = storyboardReferenceDataForSegment(segment).subject_refs || [];
+    const subjects = [];
+    const seen = new Set();
+    for (const subject of subjectRefs) {
+      const name = String(subject?.name || subject?.label || "").trim();
+      const key = name.toLocaleLowerCase();
+      if (!name || seen.has(key)) continue;
+      seen.add(key);
+      subjects.push(name);
+    }
+    if (!subjects.length) return "";
+    const count = subjects.length;
+    return [
+      "REFERENCE SUBJECT COUNT — MANDATORY:",
+      `This scene contains exactly ${count} distinct named ${count === 1 ? "subject" : "subjects"}: ${subjects.join(", ")}.`,
+      "A character/person reference image may be a multi-view character sheet, turnaround sheet, or contact sheet. Every portrait and full-body view inside one character reference image depicts the same single person; use those views only to learn that one person's identity, face, hair, clothing, and proportions.",
+      "Render exactly one on-screen instance of each named subject. Do not turn alternate views from a reference sheet into additional people. Do not duplicate, clone, twin, multiply, or add background copies of any referenced subject unless the scene explicitly requests duplicates.",
+    ].join("\n");
+  }
+
+  function miniMaxH3ContinuityPromptBlock(segment, continuityInput, imageNumber) {
+    const continuityMode = normalizeMiniMaxH3ContinuityMode(continuityInput?.continuityMode);
+    const number = Math.max(1, Math.trunc(Number(imageNumber || 1)));
+    if (continuityMode === "off" || !continuityInput?.framePath) return "";
+    const sharedIdentityRule = `Image ${number} contains the same named subjects already assigned by the character references; it does not introduce additional people. Never duplicate or clone a person because they appear in both a character sheet and Image ${number}.`;
+    if (continuityMode === "exact_start_frame") {
+      return [
+        "PREVIOUS-SCENE EXACT FRAME CONTINUITY — MANDATORY:",
+        `Image ${number} is the actual final frame of the immediately previous rendered scene and is the sole exact opening frame for this scene. Begin on Image ${number} exactly, preserving its composition, camera angle, subject positions, poses, orientations, screen direction, distances, props, environment layout, lighting, and visual state.`,
+        "Continue naturally from that exact frame without resetting, teleporting, mirroring, swapping sides, changing wardrobe, or rearranging the set. Character and location reference images remain identity and environment support only.",
+        `Image ${number} is only the opening frame, never an ending target. Progress the requested action and camera direction away from that opening state and finish on a newly advanced frame; do not return to the same composition at the end.`,
+        sharedIdentityRule,
+      ].join("\n");
+    }
+    return [
+      "PREVIOUS-SCENE SPATIAL CONTINUITY — MANDATORY:",
+      `Image ${number} is a blocking-and-layout reference extracted from the immediately previous rendered scene. It is not a start frame, opening-frame anchor, end frame, or destination target. Use it only to understand each subject's relative physical position, orientation, distance from the others, screen-direction relationship, nearby props, and the environment's physical layout.`,
+      `The literal first generated frame must be a visibly different composition from Image ${number}, using the new shot type, angle, crop, distance, height, and lens requested by this scene. Do not reproduce Image ${number}'s camera view, framing, or pixel composition at the beginning or at any later point in the clip.`,
+      "Preserve the established blocking when photographing it from the new viewpoint. Do not reset, teleport, mirror, swap sides, reverse screen direction, rearrange the set, or move a subject behind/in front of another unless the requested action visibly causes that movement.",
+      `Progress naturally from the new first frame and finish on a newly advanced composition. Do not recreate, return to, or converge on Image ${number}. Do not invent a distant establishing shot or an automatic push-in; use only the scene's requested camera motion.`,
+      sharedIdentityRule,
+    ].join("\n");
+  }
+
+  function applyMiniMaxH3ContinuityPromptBlock(prompt, segment, continuityInput, imageNumber) {
+    const clean = String(prompt || "").trim()
+      .replace(/\n*PREVIOUS-SCENE (?:SPATIAL|EXACT FRAME) CONTINUITY — MANDATORY:[\s\S]*?(?=\n\n(?:MINIMAX NATIVE VOICE IDENTITY|REFERENCE SUBJECT COUNT|Audio:|Continuity:)|$)/g, "")
+      .trim();
+    const block = miniMaxH3ContinuityPromptBlock(segment, continuityInput, imageNumber);
+    return block ? `${clean}\n\n${block}`.trim() : clean;
+  }
+
+  function applyMiniMaxH3NativeVoiceBlock(prompt, segment) {
+    const clean = String(prompt || "").trim()
+      .replace(/\n*MINIMAX NATIVE VOICE IDENTITY — MANDATORY AND VERBATIM:[\s\S]*?(?=\n\n(?:Audio:|Continuity:)|$)/g, "")
+      .replace(/\n*REFERENCE SUBJECT COUNT — MANDATORY:[\s\S]*?(?=\n\n(?:MINIMAX NATIVE VOICE IDENTITY|Audio:|Continuity:)|$)/g, "")
+      .replace(/\n*VISUAL-ONLY B-ROLL \/ NO-LIP-SYNC SAFETY — MANDATORY AND FINAL:[\s\S]*$/g, "")
+      .trim();
+    const visualOnlyBlock = miniMaxH3VisualOnlySafetyBlock(segment);
+    const safePrompt = visualOnlyBlock ? stripMiniMaxH3VisualOnlyTimelineVocalDirections(clean) : clean;
+    const block = visualOnlyBlock ? "" : miniMaxH3NativeVoiceBlock(segment);
+    const subjectMultiplicityBlock = miniMaxH3SubjectMultiplicityBlock(segment);
+    return [safePrompt, subjectMultiplicityBlock, block, visualOnlyBlock].filter(Boolean).join("\n\n").trim();
+  }
+
   function miniMaxH3PromptContextForSegment(segment, mode) {
     const settings = miniMaxH3SettingsForSegment(segment);
+    const nativeAudio = settings.audio_mode === "built_in_audio";
     const duration = Math.max(0, Number(segment?.end || 0) - Number(segment?.start || 0));
     const exactDuration = String(Number(duration.toFixed(3)));
     const aspectRatio = String(settings.aspect_ratio || "16:9").match(/\d+\s*:\s*\d+/)?.[0]?.replace(/\s+/g, "") || "16:9";
-    const lyricText = isInstrumentalLyricText(segment?.lyric_text) ? "" : flattenLyricForPrompt(segment?.lyric_text);
-    const performanceMode = segmentUsesNoLipSyncPerformance(segment)
+    const visualOnly = segmentUsesNoLipSyncPerformance(segment);
+    const dialogueAssignments = visualOnly ? [] : miniMaxDialogueAssignmentsForSegment(segment);
+    const dialogueOrder = visualOnly ? "" : miniMaxDialogueOrderText(segment);
+    const lyricText = dialogueAssignments.length
+      ? dialogueAssignments.map((cue) => cue.text).join(" ")
+      : isInstrumentalLyricText(segment?.lyric_text) ? "" : flattenLyricForPrompt(segment?.lyric_text);
+    const performanceMode = visualOnly
       ? "no_lip_sync"
       : normalizeVideoType(segment?.performance_mode || state.videoType);
-    const singerNames = (Array.isArray(segment?.lyric_singers)
-      ? segment.lyric_singers
+    const singerNames = (dialogueAssignments.length
+      ? dialogueAssignments.map((cue) => cue.speaker_name)
+      : Array.isArray(segment?.lyric_singers)
+        ? segment.lyric_singers
       : String(segment?.lyric_singers || "").split(/[,;\n]+/))
       .map((value) => String(value || "").trim())
       .filter(Boolean);
@@ -34329,34 +35118,59 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       `Exact duration: ${exactDuration} seconds`,
       `Timeline range: ${Number(segment?.start || 0).toFixed(3)}s to ${Number(segment?.end || 0).toFixed(3)}s`,
       `Aspect ratio: ${aspectRatio}`,
+      `Audio mode: ${nativeAudio ? "Built-in MiniMax Audio — generate native scene audio" : "Input Audio — preserve the supplied Audio 1 unchanged"}`,
       "Visual style: follow the supplied scene/theme context; default to photorealistic when no style is specified.",
     ];
+    const cameraMotionSpeed = Number(segment?.camera_motion_speed ?? state.builderStoryboardDefaults?.camera_motion_speed ?? 4);
+    const characterMotionSpeed = Number(segment?.character_motion_speed ?? state.builderStoryboardDefaults?.character_motion_speed ?? 4);
+    const cameraMotionGuidance = String(segment?.camera_motion_speed_guidance || state.builderStoryboardDefaults?.camera_guidance || "").trim();
+    const characterMotionGuidance = String(segment?.character_motion_guidance || state.builderStoryboardDefaults?.character_guidance || "").trim();
+    parts.push(
+      `Camera motion speed: ${Number.isFinite(cameraMotionSpeed) ? cameraMotionSpeed : 4}/10.`,
+      cameraMotionGuidance || "Follow the selected camera speed as a hard motion requirement.",
+      `Character motion speed: ${Number.isFinite(characterMotionSpeed) ? characterMotionSpeed : 4}/10.`,
+      characterMotionGuidance || "Include physical character action appropriate to the selected character-motion speed.",
+    );
+    if (cameraMotionSpeed >= 7) {
+      parts.push("MANDATORY CAMERA RULE: use energetic, visibly active camera movement. Slow, gentle, subtle, restrained, locked-off, static, and hold camera language contradicts this setting and must not appear.");
+    }
+    if (characterMotionSpeed >= 4) {
+      parts.push("MANDATORY CHARACTER ACTION RULE: include at least one clear physical body action, gesture, step, or interaction with the set. Facial expression, blinking, breathing, and mouth movement alone do not satisfy character motion.");
+    }
     if (segment?.no_character_present) {
       parts.push(
         "Vocal performance: NO VISIBLE CHARACTER / NO LIP SYNC.",
-        "Audio 1 assignment: use the exact supplied custom/project audio segment unchanged for timing. Do not invent a visible singer or speaker.",
+        nativeAudio
+          ? "Native audio assignment: generate only low environmental ambience and requested sound effects. Do not invent a singer, speaker, dialogue, lyrics, or voice."
+          : "Audio 1 assignment: use the exact supplied custom/project audio segment unchanged for timing. Do not invent a visible singer or speaker.",
       );
     } else if (performanceMode === "no_lip_sync") {
       parts.push(
         "Vocal performance: VISUAL ONLY / NO LIP SYNC.",
-        "Audio 1 assignment: use the exact supplied custom/project audio segment unchanged for timing, but do not show singing, speaking, or mouth synchronization.",
+        nativeAudio
+          ? "Native audio assignment: generate only ambience and requested sound effects. Do not generate speech, singing, lyrics, dialogue, or visible mouth synchronization."
+          : "Audio 1 assignment: use the exact supplied custom/project audio segment unchanged for timing, but do not show singing, speaking, or mouth synchronization.",
       );
     } else if (lyricText && performanceMode === "speaking") {
       parts.push(
         "Vocal performance: SPEAKING WITH EXACT DIALOGUE LIP SYNC.",
-        `Exact dialogue line: “${lyricText}”`,
-        `Audio 1 assignment: use as the exact voice, timing, and lip-sync reference. ${performerLabel} says the exact line “${lyricText}”. Synchronize lips, mouth shapes, jaw movement, facial muscles, and breathing precisely to that spoken line in Audio 1. Do not replace, alter, extend, or add words.`,
+        dialogueOrder ? `Mandatory dialogue order:\n${dialogueOrder}` : `Exact dialogue line: “${lyricText}”`,
+        nativeAudio
+          ? `Native audio assignment: MiniMax generates the voices and audio. Follow the mandatory speaker assignment and dialogue order exactly. Synchronize each assigned speaker’s lips, mouth shapes, jaw movement, facial muscles, and breathing precisely to that speaker’s generated line. Do not merge speakers, reorder cues, replace, alter, repeat, extend, improvise, omit, or add words. Use silence, breathing, facial reaction, physical action, and low ambience for all remaining time.`
+          : `Audio 1 assignment: use as the exact voice, timing, and lip-sync reference. ${performerLabel} says the exact line “${lyricText}”. Synchronize lips, mouth shapes, jaw movement, facial muscles, and breathing precisely to that spoken line in Audio 1. Do not replace, alter, extend, or add words.`,
       );
     } else if (lyricText) {
       parts.push(
         "Vocal performance: SINGING WITH EXACT LYRIC LIP SYNC.",
         `Exact lyric line to sing: “${lyricText}”`,
-        `Audio 1 assignment: use as the exact vocal, timing, and lip-sync reference. ${performerLabel} is singing the exact line “${lyricText}”. Synchronize lips, mouth shapes, jaw movement, facial muscles, and breathing precisely to that sung line in Audio 1. Every active vocal timestamp must visibly describe the singing and exact lip sync. Do not replace, alter, extend, or add vocals.`,
+        `Audio 1 assignment: use as the exact vocal, timing, and lip-sync reference. ${performerLabel} is singing the exact line “${lyricText}”. Synchronize lips, mouth shapes, jaw movement, facial muscles, and breathing precisely only while that sung line is audible in Audio 1. Never stretch, restart, or repeat the full lyric across every timestamp. When the vocal ends, the mouth closes or relaxes naturally while physical action continues. Do not replace, alter, extend, or add vocals.`,
       );
     } else {
       parts.push(
         "Vocal performance: no exact lyric or dialogue is assigned to this scene.",
-        "Audio 1 assignment: use the exact supplied custom/project audio segment unchanged for performance, movement, and camera timing. Do not invent lyrics, dialogue, or replacement audio.",
+        nativeAudio
+          ? "Native audio assignment: generate only ambience and requested sound effects. Do not invent lyrics, dialogue, or voices."
+          : "Audio 1 assignment: use the exact supplied custom/project audio segment unchanged for performance, movement, and camera timing. Do not invent lyrics, dialogue, or replacement audio.",
       );
     }
     const add = (label, value) => {
@@ -34365,13 +35179,17 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     };
     add("Scene idea / image prompt", sceneVideoConceptPromptText(segment));
     add("Scene notes", segment?.notes || segment?.director_note);
+    add("Exact manual audio / sound direction", segment?.audio_direction);
+    add("Exact manual continuity requirements", segment?.continuity);
     add("Director timeline note", segment?.timeline_note);
     add("Motion and camera request", segment?.i2v_notes);
     add("Scene story beat", segment?.story_beat);
-    add("Exact supplied lyric or dialogue", lyricText);
+    add(performanceMode === "no_lip_sync" ? "Hidden lyric mood/story context — never performed" : "Exact supplied lyric or dialogue", lyricText);
     add("Lyric section", segment?.lyric_section);
     add("Visible character context", segment?.no_character_present ? "No main character is visible in this scene." : segmentMappedSubjectText(segment));
     add("Location context", segmentMappedLocationText(segment));
+    const nativeVoiceBlock = miniMaxH3NativeVoiceBlock(segment);
+    if (nativeVoiceBlock) parts.push(nativeVoiceBlock);
 
     if (mode === "image_to_video") {
       parts.push("Ordered image assignment:\nImage 1: exact start frame and authoritative opening composition, character identity, clothing, location, lighting, and visual-state anchor.");
@@ -34458,8 +35276,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       return;
     }
     const context = miniMaxH3PromptContextForSegment(segment, mode);
-    const promptLyricText = isInstrumentalLyricText(segment.lyric_text) ? "" : flattenLyricForPrompt(segment.lyric_text);
-    const promptSingerNames = (Array.isArray(segment.lyric_singers)
+    const miniMaxVisualOnly = segmentUsesNoLipSyncPerformance(segment);
+    const promptLyricText = miniMaxVisualOnly || isInstrumentalLyricText(segment.lyric_text) ? "" : flattenLyricForPrompt(segment.lyric_text);
+    const promptSingerNames = miniMaxVisualOnly ? [] : (Array.isArray(segment.lyric_singers)
       ? segment.lyric_singers
       : String(segment.lyric_singers || "").split(/[,;\n]+/))
       .map((value) => String(value || "").trim())
@@ -34482,9 +35301,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         project_folder: projectFolder,
         scene_id: segment.id || "",
         builder_instruction_key: miniMaxH3InstructionKey(mode),
-        model_file: visionImages.length ? i2vGemmaModelSelect.value : i2vTextGemmaModelSelect.value,
-        repair_model_file: i2vTextGemmaModelSelect.value,
-        mmproj_file: visionImages.length ? i2vMmprojSelect.value : "",
+        model_file: visionImages.length ? miniMaxGemmaModelSelect.value : miniMaxTextGemmaModelSelect.value,
+        repair_model_file: miniMaxTextGemmaModelSelect.value,
+        mmproj_file: visionImages.length ? miniMaxMmprojSelect.value : "",
         t2i_prompt: context,
         user_notes: "Follow the MiniMax H3 mode contract and the exact ordered media assignments in the scene context.",
         subject_context: segment.no_character_present ? "" : segmentMappedSubjectText(segment),
@@ -34494,6 +35313,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         performance_mode: effectiveVideoPerformanceModeForSegment(segment),
         lyric_text: promptLyricText,
         singers: promptSingerNames,
+        audio_mode: miniMaxH3SettingsForSegment(segment).audio_mode,
+        speaker_assignments: miniMaxVisualOnly ? [] : miniMaxDialogueAssignmentsForSegment(segment),
         theme_style_path: state.useVrgdgTextContext ? state.themeStylePath || "" : "",
         story_idea_path: state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
         subject_scene_path: state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
@@ -34502,7 +35323,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         top_p: 0.92,
         max_new_tokens: 4000,
       }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
-      const prompt = String(data.prompt || "").trim();
+      const prompt = applyMiniMaxH3NativeVoiceBlock(String(data.prompt || ""), segment);
       if (!prompt) throw new Error(`The LLM returned an empty MiniMax ${modeLabel} prompt.`);
       pushHistory();
       segment.minimax_h3_prompt = prompt;
@@ -35338,6 +36159,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         name: subject.name,
         description: subject.description,
         reference_type: subject.reference_type || "character",
+        minimax_voice: normalizeMiniMaxH3Voice(subject.minimax_voice),
         trigger_phrase: subject.trigger_phrase || "",
         trigger_position: subject.trigger_position || "start",
         image: { ...(subject.image || {}) },
@@ -35410,6 +36232,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           prompt_summary: promptSummary,
           motion_summary: videoNotes,
           lyric_singers: Array.isArray(segment.lyric_singers) && !segment.no_character_present ? segment.lyric_singers : [],
+          speaker_assignments: normalizeMiniMaxSpeakerAssignments(segment.minimax_speaker_assignments),
           lyric_no_lip_sync: Boolean(segmentUsesNoLipSyncPerformance(segment)),
           lyric_instrumental: isInstrumentalLyricText(lyric),
           no_character_present: Boolean(segment.no_character_present),
@@ -35418,6 +36241,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           performance_style: String(segment.performance_style || defaults.performance_style || "").trim(),
           project_video_engine: normalizeProjectVideoEngine(state.projectVideoEngine),
           minimax_h3_mode: miniMaxH3ModeForSegment(segment),
+          minimax_h3_audio_mode: miniMaxH3SettingsForSegment(segment).audio_mode,
+          video_style: String(segment.minimax_h3_video_style || defaults.video_style || "").trim(),
+          video_style_custom: String(segment.minimax_h3_video_style_custom || defaults.video_style_custom || "").trim(),
+          temporal_world_effect_override: String(segment.temporal_world_effect_override || "global").trim(),
+          temporal_world_effect_custom: String(segment.temporal_world_effect_custom || "").trim(),
           timeline_start: Number(segment.start || 0),
           timeline_end: Number(segment.end || 0),
           exact_duration: Number(timelineSegmentDuration(segment).toFixed(3)),
@@ -35440,6 +36268,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           image_path: imageReference.path || selectedSegmentImagePath(segment),
           image_data: imageReference.data || "",
           notes: sceneNotes,
+          audio_direction: String(segment.audio_direction || "").trim(),
+          continuity: String(segment.continuity || "").trim(),
         };
       });
   }
@@ -35455,12 +36285,24 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       mode: promptMode === "video" ? "image_to_video_prep" : "storyboard_prompts",
       performanceMode: normalizeVideoType(state.videoType),
       videoType: normalizeVideoType(state.videoType),
+      shortFilmPlanningMode: defaults.short_film_planning_mode,
       videoPromptType: videoMode,
+      miniMaxH3Mode: normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3" ? normalizeMiniMaxH3Mode(options.miniMaxH3Mode || state.miniMaxH3Settings?.video_mode) : "",
+      miniMaxH3AudioMode: normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3" ? normalizeMiniMaxH3AudioMode(state.miniMaxH3Settings?.audio_mode) : "",
       imageMode,
       imageModeLabel: imageModeDisplayLabel(imageMode),
       cameraFlow: defaults.camera_flow || "balanced",
       imageShotFlow: defaults.image_shot_flow || "intimate",
       imageAesthetic: defaults.image_aesthetic || "",
+      videoStyle: defaults.video_style || "",
+      videoStyleCustom: defaults.video_style_custom || "",
+      temporalWorldEffect: defaults.temporal_world_effect || "",
+      temporalWorldEffectCustom: defaults.temporal_world_effect_custom || "",
+      temporalAllowBackgroundExtras: defaults.temporal_allow_background_extras !== false,
+      temporalBackgroundIntensity: Number(defaults.temporal_background_intensity ?? 8),
+      temporalEnvironmentTimePassage: defaults.temporal_environment_time_passage !== false,
+      temporalProtectedCharacters: defaults.temporal_protected_characters || "all_referenced",
+      temporalProtectedCustom: defaults.temporal_protected_custom || "",
       globalConsistencyPhrase: defaults.global_consistency_phrase || "",
       performanceStyle: defaults.performance_style || "",
       facialPerformance: state.defaultFacialPerformance || "",
@@ -35486,6 +36328,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
     updateActiveFromInputs();
     saveI2VVideoSettingsFromPanel();
+    const storyboardOpeningMiniMaxMode = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3"
+      ? miniMaxH3ModeForSegment(activeSegment())
+      : "";
     const applyStoryboardReferenceMappings = (updates = {}) => {
       const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
       const incomingSource = updates.reference_builder || updates.referenceBuilder || {};
@@ -35572,6 +36417,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         if (locationId && !refs.locations_cleared) refs.scene_map[segment.id] = locationId;
         else delete refs.scene_map[segment.id];
         if (item.trigger_position) refs.location_trigger_position = String(item.trigger_position || "start") === "end" ? "end" : "start";
+        if (Array.isArray(item.speaker_assignments) || Array.isArray(item.minimax_speaker_assignments) || Array.isArray(item.dialogue_cues)) {
+          segment.minimax_speaker_assignments = normalizeMiniMaxSpeakerAssignments(item.speaker_assignments || item.minimax_speaker_assignments || item.dialogue_cues);
+          syncMiniMaxSpeakerAssignmentLegacyFields(segment);
+        }
       }
       state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
       render();
@@ -35585,6 +36434,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       let storyChanged = false;
       let facialChanged = false;
       let beatChanged = false;
+      let speakerChanged = false;
       const hasIncomingFacialDefault = Object.prototype.hasOwnProperty.call(updates, "facial_performance_default")
         || Object.prototype.hasOwnProperty.call(updates, "facialPerformance")
         || Object.prototype.hasOwnProperty.call(updates, "default_facial_performance");
@@ -35596,7 +36446,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         || Object.prototype.hasOwnProperty.call(updates, "motion_defaults")
         || Object.prototype.hasOwnProperty.call(updates, "global_consistency_phrase")
         || Object.prototype.hasOwnProperty.call(updates, "performance_style_default")
-        || Object.prototype.hasOwnProperty.call(updates, "performanceStyle");
+        || Object.prototype.hasOwnProperty.call(updates, "performanceStyle")
+        || Object.prototype.hasOwnProperty.call(updates, "video_style")
+        || Object.prototype.hasOwnProperty.call(updates, "videoStyle")
+        || Object.prototype.hasOwnProperty.call(updates, "video_style_custom")
+        || Object.prototype.hasOwnProperty.call(updates, "videoStyleCustom")
+        || Object.prototype.hasOwnProperty.call(updates, "temporal_world_effect")
+        || Object.prototype.hasOwnProperty.call(updates, "temporalWorldEffect")
+        || Object.prototype.hasOwnProperty.call(updates, "short_film_planning_mode")
+        || Object.prototype.hasOwnProperty.call(updates, "shortFilmPlanningMode");
       if (hasIncomingFacialDefault) {
         const nextDefault = String(updates.facial_performance_default ?? updates.facialPerformance ?? updates.default_facial_performance ?? "").trim();
         if (state.defaultFacialPerformance !== nextDefault) {
@@ -35618,6 +36476,16 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           motion_defaults: updates.motion_defaults || updates.builder_storyboard_defaults?.motion_defaults || updates.storyboard_defaults?.motion_defaults || state.builderStoryboardDefaults?.motion_defaults || {},
           global_consistency_phrase: updates.global_consistency_phrase ?? updates.globalConsistencyPhrase ?? state.builderStoryboardDefaults?.global_consistency_phrase,
           performance_style: updates.performance_style_default ?? updates.performance_style ?? updates.performanceStyle ?? state.builderStoryboardDefaults?.performance_style,
+          video_style: updates.video_style ?? updates.videoStyle ?? updates.builder_storyboard_defaults?.video_style ?? updates.storyboard_defaults?.video_style ?? state.builderStoryboardDefaults?.video_style,
+          video_style_custom: updates.video_style_custom ?? updates.videoStyleCustom ?? updates.builder_storyboard_defaults?.video_style_custom ?? updates.storyboard_defaults?.video_style_custom ?? state.builderStoryboardDefaults?.video_style_custom,
+          temporal_world_effect: updates.temporal_world_effect ?? updates.temporalWorldEffect ?? updates.builder_storyboard_defaults?.temporal_world_effect ?? updates.storyboard_defaults?.temporal_world_effect ?? state.builderStoryboardDefaults?.temporal_world_effect,
+          temporal_world_effect_custom: updates.temporal_world_effect_custom ?? updates.temporalWorldEffectCustom ?? updates.builder_storyboard_defaults?.temporal_world_effect_custom ?? updates.storyboard_defaults?.temporal_world_effect_custom ?? state.builderStoryboardDefaults?.temporal_world_effect_custom,
+          temporal_allow_background_extras: updates.temporal_allow_background_extras ?? updates.temporalAllowBackgroundExtras ?? updates.builder_storyboard_defaults?.temporal_allow_background_extras ?? updates.storyboard_defaults?.temporal_allow_background_extras ?? state.builderStoryboardDefaults?.temporal_allow_background_extras,
+          temporal_background_intensity: updates.temporal_background_intensity ?? updates.temporalBackgroundIntensity ?? updates.builder_storyboard_defaults?.temporal_background_intensity ?? updates.storyboard_defaults?.temporal_background_intensity ?? state.builderStoryboardDefaults?.temporal_background_intensity,
+          temporal_environment_time_passage: updates.temporal_environment_time_passage ?? updates.temporalEnvironmentTimePassage ?? updates.builder_storyboard_defaults?.temporal_environment_time_passage ?? updates.storyboard_defaults?.temporal_environment_time_passage ?? state.builderStoryboardDefaults?.temporal_environment_time_passage,
+          temporal_protected_characters: updates.temporal_protected_characters ?? updates.temporalProtectedCharacters ?? updates.builder_storyboard_defaults?.temporal_protected_characters ?? updates.storyboard_defaults?.temporal_protected_characters ?? state.builderStoryboardDefaults?.temporal_protected_characters,
+          temporal_protected_custom: updates.temporal_protected_custom ?? updates.temporalProtectedCustom ?? updates.builder_storyboard_defaults?.temporal_protected_custom ?? updates.storyboard_defaults?.temporal_protected_custom ?? state.builderStoryboardDefaults?.temporal_protected_custom,
+          short_film_planning_mode: updates.short_film_planning_mode ?? updates.shortFilmPlanningMode ?? updates.builder_storyboard_defaults?.short_film_planning_mode ?? updates.storyboard_defaults?.short_film_planning_mode ?? state.builderStoryboardDefaults?.short_film_planning_mode,
           camera_motion_speed: updates.camera_motion_speed ?? updates.cameraMotionSpeed ?? updates.motion_defaults?.camera_motion_speed ?? state.builderStoryboardDefaults?.camera_motion_speed,
           character_motion_speed: updates.character_motion_speed ?? updates.characterMotionSpeed ?? updates.motion_defaults?.character_motion_speed ?? state.builderStoryboardDefaults?.character_motion_speed,
         });
@@ -35628,6 +36496,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           || segments.find((candidate, index) => Number(index + 1) === Number(scene.scene_number));
         if (!segment) continue;
         ensureSegmentRuntimeFields(segment);
+        if (Object.prototype.hasOwnProperty.call(scene, "lyric_no_lip_sync") || Object.prototype.hasOwnProperty.call(scene, "no_lip_sync")) {
+          segment.lyric_no_lip_sync = Boolean(scene.lyric_no_lip_sync || scene.no_lip_sync);
+        }
+        if (Array.isArray(scene.speaker_assignments) || Array.isArray(scene.minimax_speaker_assignments) || Array.isArray(scene.dialogue_cues)) {
+          segment.minimax_speaker_assignments = normalizeMiniMaxSpeakerAssignments(scene.speaker_assignments || scene.minimax_speaker_assignments || scene.dialogue_cues);
+          syncMiniMaxSpeakerAssignmentLegacyFields(segment);
+          speakerChanged = true;
+        }
         const imagePrompt = String(scene.image_prompt || "").trim();
         const videoPrompt = String(scene.video_prompt || scene.i2v_prompt || scene.t2v_prompt || "").trim();
         const videoType = String(scene.video_prompt_type || "").trim();
@@ -35645,6 +36521,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           : String(segment.story_beat || "").trim();
         if (segment.story_beat !== nextStoryBeat) beatChanged = true;
         segment.story_beat = nextStoryBeat;
+        if (Object.prototype.hasOwnProperty.call(scene, "audio_direction")) segment.audio_direction = String(scene.audio_direction || "").trim();
+        if (Object.prototype.hasOwnProperty.call(scene, "continuity") || Object.prototype.hasOwnProperty.call(scene, "continuity_direction")) {
+          segment.continuity = String(scene.continuity || scene.continuity_direction || "").trim();
+        }
         segment.flf_start_state = String(scene.flf_start_state || segment.flf_start_state || "").trim();
         segment.flf_transformation = String(scene.flf_transformation || segment.flf_transformation || "").trim();
         segment.flf_end_state = String(scene.flf_end_state || segment.flf_end_state || "").trim();
@@ -35654,13 +36534,17 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         if (segment.facial_performance !== nextFacial || segment.facial_performance_custom !== nextFacialCustom) facialChanged = true;
         segment.facial_performance = nextFacial;
         segment.facial_performance_custom = nextFacialCustom;
+        if (Object.prototype.hasOwnProperty.call(scene, "video_style")) segment.minimax_h3_video_style = String(scene.video_style || "").trim();
+        if (Object.prototype.hasOwnProperty.call(scene, "video_style_custom")) segment.minimax_h3_video_style_custom = String(scene.video_style_custom || "").trim();
+        if (Object.prototype.hasOwnProperty.call(scene, "temporal_world_effect_override")) segment.temporal_world_effect_override = String(scene.temporal_world_effect_override || "global").trim();
+        if (Object.prototype.hasOwnProperty.call(scene, "temporal_world_effect_custom")) segment.temporal_world_effect_custom = String(scene.temporal_world_effect_custom || "").trim();
         if (imagePrompt) {
           setSegmentPromptForEdit(segment, "t2i", imagePrompt);
           applied += 1;
         }
         if (videoPrompt) {
           if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") {
-            segment.minimax_h3_prompt = videoPrompt;
+            segment.minimax_h3_prompt = applyMiniMaxH3NativeVoiceBlock(videoPrompt, segment);
             segment.minimax_h3_prompt_origin = normalizeVideoPromptOrigin(scene.video_prompt_origin);
           } else {
             setSegmentPromptForEdit(segment, "i2v", videoPrompt, {
@@ -35677,7 +36561,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         state.builderStoryLayer = normalizeBuilderStoryLayer(updates.story_layer || updates.storyLayer);
         storyChanged = true;
       }
-      if (applied || storyChanged || facialChanged || beatChanged) {
+      if (applied || storyChanged || facialChanged || beatChanged || speakerChanged) {
         ensureAllSegmentRuntimeFields();
         syncInspector();
         render();
@@ -35695,6 +36579,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     };
     const storyboardVideoExtraNotes = (scene = {}, storyboardPayload = {}) => {
       const selectedScene = Array.isArray(storyboardPayload?.scenes) && storyboardPayload.scenes.length ? storyboardPayload.scenes[0] : {};
+      const fullyCustomShortFilm = normalizeMiniMaxShortFilmPlanningMode(storyboardPayload?.short_film_planning_mode) === "fully_custom";
       const storyLayer = selectedScene.story_layer || {};
       const vocalStatus = selectedScene.vocal_status || {};
       const startingShot = selectedScene.starting_shot && typeof selectedScene.starting_shot === "object"
@@ -35705,6 +36590,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         if (text) parts.push(`${title}:\n${text}`);
       };
       const parts = [];
+      if (fullyCustomShortFilm) {
+        parts.push("FULLY CUSTOM SHORT FILM SOURCE CONTRACT:\nUse only the populated manual scene-card fields below. Do not infer or invent missing dialogue, speakers, actions, story beats, shots, camera moves, settings, sound, or continuity.");
+      }
       if (startingShot?.required) {
         add(
           parts,
@@ -35713,15 +36601,21 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         );
       }
       add(parts, "Storyboard scene story beat", storyLayer.scene_story_beat || scene.story_beat);
+      add(parts, "REQUIRED Storyboard video style", selectedScene.video_style);
+      add(parts, "MANDATORY exact Storyboard video style verbiage — copy word-for-word", selectedScene.video_style_verbiage);
+      add(parts, "MANDATORY exact temporal / world effect verbiage — copy word-for-word", selectedScene.temporal_world_effect_verbiage);
       const customMotionSummary = String(selectedScene.motion_summary || scene.motion_summary || scene.video_notes || "").trim();
       add(parts, "Storyboard motion/video summary", customMotionSummary);
-      if (!customMotionSummary) add(parts, "Storyboard camera motion", selectedScene.camera_motion || scene.camera_motion);
-      add(parts, "Storyboard camera motion speed guidance", selectedScene.camera_motion_speed_guidance || selectedScene.camera_guidance?.camera_motion_speed_guidance);
+        if (!customMotionSummary) add(parts, "Storyboard camera motion", selectedScene.camera_motion || scene.camera_motion);
+        if (!fullyCustomShortFilm) add(parts, "REQUIRED Storyboard camera-flow framing", selectedScene.camera_flow_guidance);
+        add(parts, "Storyboard camera motion speed guidance", selectedScene.camera_motion_speed_guidance || selectedScene.camera_guidance?.camera_motion_speed_guidance);
       add(parts, "Storyboard character motion guidance", selectedScene.character_motion_guidance || scene.character_motion);
       add(parts, "Storyboard performance direction", selectedScene.performance_direction || scene.performance_style);
       add(parts, "Storyboard facial performance direction", selectedScene.facial_performance_direction || scene.facial_performance_custom || scene.facial_performance);
       add(parts, "Storyboard lyric section", vocalStatus.lyric_section || scene.lyric_section);
       add(parts, "Storyboard first-frame visual inventory", selectedScene.first_frame_visual_inventory?.text || "");
+      add(parts, "Exact manual audio / sound direction", selectedScene.audio_direction || scene.audio_direction);
+      add(parts, "Exact manual continuity requirements", selectedScene.continuity || scene.continuity || scene.continuity_direction);
       return parts.join("\n\n");
     };
     const ensureStoryboardRequiredStartingShot = (prompt, segment, scene = {}, storyboardPayload = {}) => {
@@ -35760,12 +36654,118 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         { ensureTransitionLast: true },
       );
     };
+    const ensureStoryboardRequiredVideoStyle = (prompt, storyboardPayload = {}) => {
+      const text = String(prompt || "").trim();
+      const selectedScene = Array.isArray(storyboardPayload?.scenes) && storyboardPayload.scenes.length
+        ? storyboardPayload.scenes[0]
+        : {};
+      const verbiage = String(selectedScene.video_style_verbiage || "").trim();
+      if (!text || !verbiage || text.includes(verbiage)) return text;
+      const requiredLine = verbiage;
+      const firstParagraphEnd = text.indexOf("\n\n");
+      if (firstParagraphEnd >= 0) {
+        return `${text.slice(0, firstParagraphEnd)}\n\n${requiredLine}${text.slice(firstParagraphEnd)}`;
+      }
+      const firstLineEnd = text.indexOf("\n");
+      if (firstLineEnd >= 0) {
+        return `${text.slice(0, firstLineEnd)}\n\n${requiredLine}\n${text.slice(firstLineEnd + 1)}`;
+      }
+      return `${text}\n\n${requiredLine}`;
+    };
+    const ensureStoryboardRequiredTemporalWorldEffect = (prompt, storyboardPayload = {}) => {
+      let text = String(prompt || "").trim();
+      const selectedScene = Array.isArray(storyboardPayload?.scenes) && storyboardPayload.scenes.length
+        ? storyboardPayload.scenes[0]
+        : {};
+      const effect = selectedScene.temporal_world_effect || {};
+      const verbiage = String(selectedScene.temporal_world_effect_verbiage || effect.exact_verbiage || "").trim();
+      if (!text || !verbiage) return text;
+
+      // Canonicalize the exact contract before the timeline. Gemma sometimes embeds it
+      // inside the first beat or appends it after Continuity, where H3 treats it as an
+      // afterthought instead of a governing instruction.
+      text = text.split(verbiage).join("").replace(/\n{3,}/g, "\n\n").trim();
+      const firstTimestamp = text.search(/^\s*\[\d+(?:\.\d+)?s\s*[-–—]\s*\d+(?:\.\d+)?s\]/m);
+      text = firstTimestamp >= 0
+        ? `${text.slice(0, firstTimestamp).trimEnd()}\n\n${verbiage}\n\n${text.slice(firstTimestamp).trimStart()}`
+        : `${text}\n\n${verbiage}`;
+
+      // Enforce a visible temporal-layer action in every beat even when the LLM only
+      // copied the global contract. This makes high-intensity presets reach H3 as
+      // timestamped action rather than passive metadata.
+      const timestampAction = String(effect.timestamp_action || effect.timestampAction || "").trim();
+      if (timestampAction) {
+        const timestampPattern = /(\[\d+(?:\.\d+)?s\s*[-–—]\s*\d+(?:\.\d+)?s\]\s*\n)([\s\S]*?)(?=\n\s*\[\d+(?:\.\d+)?s\s*[-–—]\s*\d+(?:\.\d+)?s\]|\n\s*Audio:|\n\s*Continuity:|$)/g;
+        const blockCount = Array.from(text.matchAll(timestampPattern)).length;
+        let blockIndex = 0;
+        text = text.replace(timestampPattern, (whole, header, body) => {
+          const phase = blockIndex === 0
+            ? "begins visibly"
+            : blockIndex === blockCount - 1
+              ? "reaches its strongest readable payoff"
+              : "continues and develops visibly";
+          blockIndex += 1;
+          const cleanBody = String(body || "").trim();
+          if (cleanBody.includes(timestampAction)) return `${header}${cleanBody}\n`;
+          return `${header}${cleanBody}\n\nTemporal-layer action ${phase}: ${timestampAction}\n`;
+        }).trim();
+      }
+
+      // Location references often describe an empty source image with “no people.”
+      // When extras are enabled, prevent Continuity from accidentally turning that
+      // source-image description into an output-wide ban.
+      if (effect.allow_background_extras === true || effect.allowBackgroundExtras === true) {
+        text = text.replace(/(\n\s*Continuity:\s*)([^\n]*)/i, (whole, heading, body) => {
+          let corrected = String(body || "")
+            .replace(/\b(no (?:new|added|additional) [^.\n]{0,120}?)(?:people|characters)\b/gi, (match, prefix) => `${prefix}named or referenced characters`)
+            .replace(/\bno new people\b/gi, "no new named or referenced characters")
+            .replace(/\bno added people\b/gi, "no added named or referenced characters")
+            .replace(/\bno people\b/gi, "no named or referenced characters")
+            .replace(/\bno new characters\b/gi, "no new named or referenced characters")
+            .replace(/\bdo not (add|introduce) ((?:any )?(?:new )?)[^.\n]{0,120}?(?:people|characters)\b/gi, (match, verb, qualifier) => `do not ${verb} ${qualifier}named or referenced characters`)
+            .replace(/\bdo not (?:add|introduce) (?:any )?(?:new )?people\b/gi, "do not add named or referenced characters")
+            .trim();
+          const permission = "Anonymous unreferenced background extras are permitted, remain secondary, and receive the selected temporal/world effect; they must never duplicate or replace a mapped/reference character.";
+          if (!corrected.includes(permission)) corrected = `${corrected}${corrected ? " " : ""}${permission}`;
+          return `${heading}${corrected}`;
+        });
+      }
+      return text.trim();
+    };
+    const normalizeStoryboardInputAudioVocalTimeline = (prompt, segment) => {
+      let text = String(prompt || "").trim();
+      const settings = miniMaxH3SettingsForSegment(segment);
+      const lyric = isInstrumentalLyricText(segment?.lyric_text) ? "" : flattenLyricForPrompt(segment?.lyric_text);
+      if (!text || !lyric || settings.audio_mode !== "input_audio" || effectiveVideoPerformanceModeForSegment(segment) !== "singing") return text;
+      const timestampPattern = /(\[\d+(?:\.\d+)?s\s*[-–—]\s*\d+(?:\.\d+)?s\]\s*\n)([\s\S]*?)(?=\n\s*\[\d+(?:\.\d+)?s\s*[-–—]\s*\d+(?:\.\d+)?s\]|\n\s*Audio:|\n\s*Continuity:|$)/g;
+      const blockCount = Array.from(text.matchAll(timestampPattern)).length;
+      if (!blockCount) return text;
+      const repeatedVocalBoilerplate = /During only the portion of this interval where the sung lyric is audible in Audio 1,[\s\S]*?never stretch, restart, or repeat the line to fill the interval\./gi;
+      const quotedLyricVariants = [`“${lyric}”`, `\"${lyric}\"`];
+      let blockIndex = 0;
+      text = text.replace(timestampPattern, (whole, header, body) => {
+        const phaseDirection = blockIndex === 0
+          ? "Only while vocals are actually audible in this interval, the assigned singer begins the currently audible portion of the assigned lyric in exact sync with Audio 1."
+          : blockIndex === blockCount - 1
+            ? "Only while vocals remain audible in this interval, the assigned singer completes any remaining portion of the assigned lyric in exact sync with Audio 1; once the supplied vocal ends, the mouth closes or relaxes naturally."
+            : "Only while vocals are actually audible in this interval, the assigned singer continues the currently audible portion of the assigned lyric in exact sync with Audio 1 without restarting or repeating it.";
+        blockIndex += 1;
+        let cleanBody = String(body || "").replace(repeatedVocalBoilerplate, "").trim();
+        quotedLyricVariants.forEach((quoted) => {
+          cleanBody = cleanBody.split(quoted).join("the assigned lyric");
+        });
+        if (!cleanBody.includes(phaseDirection)) cleanBody = `${cleanBody}\n\n${phaseDirection}`.trim();
+        return `${header}${cleanBody}\n`;
+      });
+      return text.trim();
+    };
     const storyboardSceneCloneForI2V = (segment, scene = {}) => {
       const clone = {
         ...segment,
         lyric_text: String(scene.lyrics || scene.lyric_text || segment.lyric_text || "").trim(),
         lyric_section: String(scene.lyric_section || scene.section || scene.song_section || segment.lyric_section || "").trim(),
         lyric_singers: Array.isArray(scene.lyric_singers) ? scene.lyric_singers : segment.lyric_singers,
+        minimax_speaker_assignments: normalizeMiniMaxSpeakerAssignments(scene.speaker_assignments || scene.minimax_speaker_assignments || segment.minimax_speaker_assignments),
         lyric_no_lip_sync: Boolean(scene.lyric_no_lip_sync || scene.no_lip_sync || segmentUsesNoLipSyncPerformance(segment)),
         no_character_present: Boolean(scene.no_character_present || scene.noCharacterPresent || segment.no_character_present),
         story_beat: String(scene.story_beat || scene.scene_story_beat || scene.narrative_beat || segment.story_beat || "").trim(),
@@ -35775,6 +36775,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         flf_carry_forward: String(scene.flf_carry_forward || segment.flf_carry_forward || "").trim(),
         shot_type: String(scene.shot_type || segment.shot_type || "").trim(),
         camera_motion: String(scene.camera_motion || segment.camera_motion || "").trim(),
+        camera_motion_speed: Number(scene.camera_motion_speed ?? segment.camera_motion_speed ?? state.builderStoryboardDefaults?.camera_motion_speed ?? 4),
+        camera_motion_speed_guidance: String(scene.camera_motion_speed_guidance || segment.camera_motion_speed_guidance || state.builderStoryboardDefaults?.camera_guidance || "").trim(),
+        character_motion: String(scene.character_motion || segment.character_motion || "").trim(),
+        character_motion_speed: Number(scene.character_motion_speed ?? segment.character_motion_speed ?? state.builderStoryboardDefaults?.character_motion_speed ?? 4),
+        character_motion_guidance: String(scene.character_motion_guidance || segment.character_motion_guidance || state.builderStoryboardDefaults?.character_guidance || "").trim(),
         subject_refs: Array.isArray(scene.subject_refs) ? scene.subject_refs : Array.isArray(segment.subject_refs) ? segment.subject_refs : [],
         mapped_subjects: Array.isArray(scene.subject_refs)
           ? scene.subject_refs.map((subject) => [subject?.name, subject?.description].filter(Boolean).join(": ")).filter(Boolean).join("\n")
@@ -35784,6 +36789,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         performance_mode: String(scene.performance_mode || scene.performanceMode || segment.performance_mode || "").trim(),
         prompt_summary: String(scene.prompt_summary || scene.summary || segment.prompt_summary || segment.summary || "").trim(),
         summary: String(scene.prompt_summary || scene.summary || segment.prompt_summary || segment.summary || "").trim(),
+        audio_direction: String(scene.audio_direction || segment.audio_direction || "").trim(),
+        continuity: String(scene.continuity || scene.continuity_direction || segment.continuity || "").trim(),
+        temporal_world_effect_override: String(scene.temporal_world_effect_override || segment.temporal_world_effect_override || "global").trim(),
+        temporal_world_effect_custom: String(scene.temporal_world_effect_custom || segment.temporal_world_effect_custom || "").trim(),
       };
       const imageData = String(scene.image_data || scene.image_reference_data || "").trim();
       const imagePath = String(scene.image_path || scene.approved_image_path || "").trim();
@@ -35821,6 +36830,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           .join("\n\n");
         const mode = miniMaxH3ModeForSegment(segment);
         const modeLabel = miniMaxH3ModeLabel(mode);
+        const storyboardPlanningMode = normalizeMiniMaxShortFilmPlanningMode(
+          options.storyboardPayload?.short_film_planning_mode
+          || options.storyboardPayload?.shortFilmPlanningMode
+          || state.builderStoryboardDefaults?.short_film_planning_mode,
+        );
+        const isMiniMaxShortFilmPrompt = effectiveVideoPerformanceModeForSegment(workingSegment) === "speaking";
+        const storyboardInstructionKey = isMiniMaxShortFilmPrompt
+          ? miniMaxH3ShortFilmInstructionKey(mode, storyboardPlanningMode)
+          : miniMaxH3InstructionKey(mode);
+        const customSourceContract = storyboardPlanningMode === "fully_custom"
+          ? "FULLY CUSTOM SHORT FILM: Every populated scene-card field is authoritative. Format only what the user supplied. Do not invent, rewrite, reorder, merge, omit, or replace dialogue, speakers, story beats, actions, shot/framing, camera motion, setting, references, audio direction, sound, or continuity. Leave unspecified choices unspecified."
+          : "GUIDED SHORT FILM: Preserve exact dialogue and speaker order while using the supplied film-planning fields to stage a coherent narrative scene.";
         workingSegment.minimax_h3_mode = mode;
         workingSegment.minimax_h3_reference_keys = Array.isArray(segment.minimax_h3_reference_keys)
           ? [...segment.minimax_h3_reference_keys]
@@ -35849,19 +36870,25 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           ...textGemmaRunnerPayload(),
           project_folder: activeProjectFolderForSave(),
           scene_id: segment.id || "",
-          builder_instruction_key: miniMaxH3InstructionKey(mode),
-          model_file: visionImages.length ? i2vGemmaModelSelect.value : i2vTextGemmaModelSelect.value,
-          repair_model_file: i2vTextGemmaModelSelect.value,
-          mmproj_file: visionImages.length ? i2vMmprojSelect.value : "",
+          builder_instruction_key: storyboardInstructionKey,
+          model_file: visionImages.length ? miniMaxGemmaModelSelect.value : miniMaxTextGemmaModelSelect.value,
+          repair_model_file: miniMaxTextGemmaModelSelect.value,
+          mmproj_file: visionImages.length ? miniMaxMmprojSelect.value : "",
           t2i_prompt: miniMaxH3PromptContextForSegment(workingSegment, mode),
-          user_notes: "Follow the MiniMax H3 mode contract and the exact ordered media assignments in the scene context.",
+          user_notes: `Follow the MiniMax H3 mode contract and the exact ordered media assignments in the scene context.\n\n${customSourceContract}`,
           subject_context: workingSegment.no_character_present ? "" : segmentMappedSubjectText(workingSegment),
           location_context: segmentMappedLocationText(workingSegment),
           no_character_present: Boolean(workingSegment.no_character_present),
           image_references: visionImages,
           performance_mode: effectiveVideoPerformanceModeForSegment(workingSegment),
-          lyric_text: isInstrumentalLyricText(workingSegment.lyric_text) ? "" : flattenLyricForPrompt(workingSegment.lyric_text),
-          singers: Array.isArray(workingSegment.lyric_singers) ? workingSegment.lyric_singers : [],
+          lyric_text: segmentUsesNoLipSyncPerformance(workingSegment) || isInstrumentalLyricText(workingSegment.lyric_text) ? "" : flattenLyricForPrompt(workingSegment.lyric_text),
+          singers: segmentUsesNoLipSyncPerformance(workingSegment) ? [] : (Array.isArray(workingSegment.lyric_singers) ? workingSegment.lyric_singers : []),
+          audio_mode: miniMaxH3SettingsForSegment(workingSegment).audio_mode,
+          speaker_assignments: segmentUsesNoLipSyncPerformance(workingSegment) ? [] : miniMaxDialogueAssignmentsForSegment(workingSegment),
+          camera_motion_speed: workingSegment.camera_motion_speed,
+          camera_motion_speed_guidance: workingSegment.camera_motion_speed_guidance,
+          character_motion_speed: workingSegment.character_motion_speed,
+          character_motion_guidance: workingSegment.character_motion_guidance,
           theme_style_path: state.useVrgdgTextContext ? state.themeStylePath || "" : "",
           story_idea_path: state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
           subject_scene_path: state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
@@ -35870,8 +36897,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           top_p: 0.92,
           max_new_tokens: 4000,
         }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
-        const prompt = String(data.prompt || "").trim();
-        if (!prompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: LLM returned an empty MiniMax ${modeLabel} prompt.`);
+        const generatedPrompt = String(data.prompt || "").trim();
+        if (!generatedPrompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: LLM returned an empty MiniMax ${modeLabel} prompt.`);
+        const prompt = applyMiniMaxH3NativeVoiceBlock(
+          normalizeStoryboardInputAudioVocalTimeline(
+            ensureStoryboardRequiredTemporalWorldEffect(
+              ensureStoryboardRequiredVideoStyle(generatedPrompt, options.storyboardPayload || {}),
+              options.storyboardPayload || {},
+            ),
+            workingSegment,
+          ),
+          workingSegment,
+        );
         return {
           ...data,
           prompt,
@@ -36053,6 +37090,99 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         message: `Applied ${nextSegments.length} ID-LoRA dialogue scene${nextSegments.length === 1 ? "" : "s"} to Video Builder.`,
       };
     };
+    const applyMiniMaxDialoguePlanFromStoryboard = async (updates = {}) => {
+      const scenes = Array.isArray(updates.scenes)
+        ? updates.scenes.filter((scene) => String(scene?.lyrics || scene?.story_beat || scene?.image_prompt || "").trim())
+        : [];
+      if (!scenes.length) throw new Error("No reviewed MiniMax storyboard scenes were found to create timeline segments.");
+      const hasSceneWork = (segment) => [
+        segment?.lyric_text,
+        segment?.story_beat,
+        segment?.notes,
+        segment?.i2v_notes,
+        segment?.t2i_prompt,
+        segment?.minimax_h3_prompt,
+        segment?.video_path,
+        selectedSegmentImagePath(segment),
+      ].some((value) => String(value || "").trim());
+      const currentBase = Array.isArray(state.segments) ? state.segments : [];
+      const currentOverlays = Array.isArray(state.overlaySegments) ? state.overlaySegments : [];
+      const starterIsBlank = currentBase.length <= 1 && currentOverlays.length === 0 && currentBase.every((segment) => !hasSceneWork(segment));
+      if (!starterIsBlank) {
+        const ok = window.confirm(`Create ${scenes.length} MiniMax timeline segment${scenes.length === 1 ? "" : "s"}?\n\nThis will replace the current base timeline scenes and clear insert scenes.`);
+        if (!ok) return { message: "Create MiniMax timeline segments cancelled." };
+      }
+      pushHistory();
+      const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+      refs.subject_scene_map = {};
+      refs.scene_map = {};
+      const validSubjectIds = new Set((refs.subjects || []).map((subject) => String(subject.id || "")).filter(Boolean));
+      const validLocationIds = new Set((refs.locations || []).map((location) => String(location.id || "")).filter(Boolean));
+      const nextSegments = [];
+      let cursor = 0;
+      scenes.forEach((scene, index) => {
+        const dialogue = String(scene.lyrics || scene.dialogue || scene.lyric_text || "").trim();
+        const requestedDuration = Number(scene.exact_duration || scene.duration || 0);
+        const duration = requestedDuration > 0
+          ? Math.max(1, Math.min(15, requestedDuration))
+          : Math.max(1, Math.min(15, estimateIdLoraDialogueDuration(dialogue || scene.story_beat || scene.image_prompt)));
+        const segment = ensureSegmentRuntimeFields(newSegment(cursor, cursor + duration));
+        segment.label = String(scene.label || `Scene ${index + 1}`).trim() || `Scene ${index + 1}`;
+        segment.lyric_text = dialogue;
+        segment.lyric_section = String(scene.lyric_section || "").trim();
+        segment.lyric_singers = Array.isArray(scene.lyric_singers) ? scene.lyric_singers.map(String).filter(Boolean) : [];
+        segment.minimax_speaker_assignments = normalizeMiniMaxSpeakerAssignments(scene.speaker_assignments || scene.dialogue_cues || []);
+        syncMiniMaxSpeakerAssignmentLegacyFields(segment);
+        segment.performance_mode = "speaking";
+        segment.story_beat = String(scene.story_beat || "").trim();
+        segment.notes = String(scene.prompt_summary || scene.summary || scene.notes || scene.image_prompt || "").trim();
+        segment.i2v_notes = [scene.motion_summary, scene.character_motion, scene.camera_motion ? `Camera: ${scene.camera_motion}` : ""]
+          .map((value) => String(value || "").trim()).filter(Boolean).join("\n");
+        segment.audio_direction = String(scene.audio_direction || "").trim();
+        segment.continuity = String(scene.continuity || scene.continuity_direction || "").trim();
+        segment.minimax_h3_mode = normalizeMiniMaxH3Mode(scene.minimax_h3_mode || state.miniMaxH3Settings?.video_mode);
+        segment.facial_performance = String(scene.facial_performance || "").trim();
+        segment.facial_performance_custom = String(scene.facial_performance_custom || "").trim();
+        segment.shot_type = String(scene.shot_type || "").trim();
+        segment.camera_motion = String(scene.camera_motion || "").trim();
+        segment.character_motion = String(scene.character_motion || "").trim();
+        segment.temporal_world_effect_override = String(scene.temporal_world_effect_override || "global").trim();
+        segment.temporal_world_effect_custom = String(scene.temporal_world_effect_custom || "").trim();
+        const imagePrompt = String(scene.image_prompt || scene.t2i_prompt || "").trim();
+        if (imagePrompt) setSegmentPromptForEdit(segment, "t2i", imagePrompt);
+        const videoPrompt = String(scene.video_prompt || "").trim();
+        if (videoPrompt) {
+          segment.minimax_h3_prompt = applyMiniMaxH3NativeVoiceBlock(videoPrompt, segment);
+          segment.minimax_h3_prompt_origin = normalizeVideoPromptOrigin(scene.video_prompt_origin);
+        }
+        const subjectIds = (Array.isArray(scene.subject_refs) ? scene.subject_refs : [])
+          .map((subject) => String(subject?.id || ""))
+          .filter((id) => validSubjectIds.has(id));
+        if (subjectIds.length) refs.subject_scene_map[segment.id] = subjectIds;
+        const locationId = String(scene.location_ref?.id || scene.location_id || "").trim();
+        if (locationId && validLocationIds.has(locationId)) refs.scene_map[segment.id] = locationId;
+        nextSegments.push(segment);
+        cursor += duration;
+      });
+      state.segments = nextSegments;
+      state.overlaySegments = [];
+      state.activeId = nextSegments[0]?.id || "";
+      state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
+      state.builderStoryLayer = normalizeBuilderStoryLayer(updates.story_layer || updates.storyLayer || state.builderStoryLayer);
+      state.builderStoryboardDefaults = normalizeBuilderStoryboardDefaults({
+        ...state.builderStoryboardDefaults,
+        short_film_planning_mode: updates.short_film_planning_mode || "guided_film",
+      });
+      sortSegments(state.segments);
+      state.duration = timelineDuration();
+      ensureAllSegmentRuntimeFields();
+      syncVideoModePanel();
+      syncI2VVideoSettingsPanel();
+      syncInspector();
+      render();
+      await autoSaveSessionQuiet("MiniMax timeline segments created from storyboard");
+      return { message: `Created ${nextSegments.length} MiniMax timeline segment${nextSegments.length === 1 ? "" : "s"} from the reviewed storyboard.` };
+    };
     window.VRGDGStoryboardBuilder.open({
       projectFolder: projectInput.value || state.projectFolder || "",
       projectVideoEngine: normalizeProjectVideoEngine(state.projectVideoEngine),
@@ -36060,12 +37190,26 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       imageMode: state.imageModelMode || "zimage",
       imageModeLabel: imageModeDisplayLabel(state.imageModelMode || "zimage"),
       videoPromptType: currentVideoMode(),
+      miniMaxH3Mode: storyboardOpeningMiniMaxMode,
+      miniMaxH3AudioMode: normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3"
+        ? normalizeMiniMaxH3AudioMode(miniMaxH3SettingsForSegment(activeSegment()).audio_mode)
+        : "",
       performanceMode: normalizeVideoType(state.videoType),
       videoType: normalizeVideoType(state.videoType),
+      shortFilmPlanningMode: state.builderStoryboardDefaults?.short_film_planning_mode || "guided_film",
       facialPerformance: state.defaultFacialPerformance || "",
       facialPerformanceCustom: state.defaultFacialPerformanceCustom || "",
       globalConsistencyPhrase: state.builderStoryboardDefaults?.global_consistency_phrase || "",
       performanceStyle: state.builderStoryboardDefaults?.performance_style || "",
+      videoStyle: state.builderStoryboardDefaults?.video_style || "",
+      videoStyleCustom: state.builderStoryboardDefaults?.video_style_custom || "",
+      temporalWorldEffect: state.builderStoryboardDefaults?.temporal_world_effect || "",
+      temporalWorldEffectCustom: state.builderStoryboardDefaults?.temporal_world_effect_custom || "",
+      temporalAllowBackgroundExtras: state.builderStoryboardDefaults?.temporal_allow_background_extras !== false,
+      temporalBackgroundIntensity: state.builderStoryboardDefaults?.temporal_background_intensity ?? 8,
+      temporalEnvironmentTimePassage: state.builderStoryboardDefaults?.temporal_environment_time_passage !== false,
+      temporalProtectedCharacters: state.builderStoryboardDefaults?.temporal_protected_characters || "all_referenced",
+      temporalProtectedCustom: state.builderStoryboardDefaults?.temporal_protected_custom || "",
       cameraMotionSpeed: state.builderStoryboardDefaults?.camera_motion_speed ?? 4,
       characterMotionSpeed: state.builderStoryboardDefaults?.character_motion_speed ?? 4,
       motion_defaults: {
@@ -36092,6 +37236,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       onPromptsExported: applyStoryboardPrompts,
       onCreateVideoPrompt: createStoryboardVideoPromptViaBuilder,
       onApplyIdLoraDialoguePlan: applyIdLoraDialoguePlanFromStoryboard,
+      onApplyMiniMaxDialoguePlan: applyMiniMaxDialoguePlanFromStoryboard,
     }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
   }
 
@@ -36154,11 +37299,39 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (mode === "reference_to_video" && segment?.minimax_h3_use_scene_image_as_start_frame && !String(selectedSegmentImagePath(segment) || "").trim()) {
       missing.push(`${name}: MiniMax Reference to Video is set to use the scene image as its start frame, but no scene image is saved.`);
     }
-    if (mode === "reference_to_video" && !miniMaxOrderedImageReferenceItemsForSegment(segment, mode).length) {
+    const continuityMode = miniMaxH3ContinuityModeForSegment(segment);
+    const continuityReserved = miniMaxH3ContinuityReferenceReserved(segment);
+    if (continuityMode === "exact_start_frame" && segment?.minimax_h3_use_scene_image_as_start_frame) {
+      missing.push(`${name}: choose either the scene image or the previous rendered final frame as the exact start frame, not both.`);
+    }
+    const orderedReferenceCount = miniMaxOrderedImageReferenceItemsForSegment(segment, mode).length;
+    if (orderedReferenceCount + (continuityReserved ? 1 : 0) > 9) {
+      missing.push(`${name}: MiniMax continuity needs one image slot. Remove one Reference Builder image so the total stays at nine.`);
+    }
+    if (mode === "reference_to_video" && !orderedReferenceCount && !continuityReserved) {
       missing.push(`${name}: MiniMax Reference to Video needs a start frame or at least one ordered Reference Builder image.`);
     }
     if (mode === "video_to_video" && !(segment?.minimax_h3_video_references || []).some((item) => String(item?.path || "").trim())) {
       missing.push(`${name}: MiniMax Video to Video needs at least one reference-video path.`);
+    }
+    const settings = miniMaxH3SettingsForSegment(segment);
+    if (settings.audio_mode === "built_in_audio" && effectiveVideoPerformanceModeForSegment(segment) === "speaking") {
+      const mappedSubjects = storyboardReferenceDataForSegment(segment).subject_refs || [];
+      const mappedIds = new Set(mappedSubjects.map((subject) => String(subject.id || "")).filter(Boolean));
+      const dialogueCues = miniMaxDialogueAssignmentsForSegment(segment);
+      const speakingIds = new Set(dialogueCues.map((cue) => String(cue.speaker_id || "")).filter(Boolean));
+      for (const cue of dialogueCues) {
+        if (!cue.speaker_id || !mappedIds.has(String(cue.speaker_id))) {
+          missing.push(`${name}: dialogue cue “${cue.text.slice(0, 80)}${cue.text.length > 80 ? "..." : ""}” needs a speaker currently mapped to this scene.`);
+        }
+      }
+      for (const subject of mappedSubjects) {
+        if (dialogueCues.length && !speakingIds.has(String(subject.id || ""))) continue;
+        const voice = normalizeMiniMaxH3Voice(subject.minimax_voice);
+        if (voice.preset_id.endsWith("_custom") && (!voice.preset_name || !voice.description)) {
+          missing.push(`${name}: ${subject.name || "a mapped character"}'s custom MiniMax voice needs both an exact preset name and an exact voice description in Reference Builder.`);
+        }
+      }
     }
     return missing;
   }
@@ -37130,7 +38303,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         progress,
         (value) => Math.min(93, base + (value - 90) * 0.5),
         "",
-        { preserveAudio: false, encodeCrf: POST_PROCESS_STITCH_CRF },
+        { preserveAudio: normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3" && miniMaxH3SettingsForSegment(segment).audio_mode === "built_in_audio", encodeCrf: POST_PROCESS_STITCH_CRF },
       );
       activateSegmentVideoPath(segment, result.video_path || videoPath, result.thumbnail_path || segment.video_thumbnail_path || "");
       segment.video_cache_bust = Date.now();
@@ -37164,7 +38337,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         progress,
         (value) => Math.min(95, base + (value - 90) * 0.3),
         "",
-        { preserveAudio: false, encodeCrf: POST_PROCESS_STITCH_CRF },
+        { preserveAudio: normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3" && miniMaxH3SettingsForSegment(segment).audio_mode === "built_in_audio", encodeCrf: POST_PROCESS_STITCH_CRF },
       );
       activateSegmentVideoPath(segment, result.video_path || videoPath, result.thumbnail_path || segment.video_thumbnail_path || "");
       segment.video_cache_bust = Date.now();
@@ -37197,7 +38370,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         progress,
         (value) => Math.min(97, base + (value - 90) * 0.4),
         "",
-        { preserveAudio: false, encodeCrf: POST_PROCESS_STITCH_CRF },
+        { preserveAudio: normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3" && miniMaxH3SettingsForSegment(segment).audio_mode === "built_in_audio", encodeCrf: POST_PROCESS_STITCH_CRF },
       );
       activateSegmentVideoPath(segment, result.video_path || videoPath, result.thumbnail_path || segment.video_thumbnail_path || "");
       segment.video_cache_bust = Date.now();
@@ -37220,7 +38393,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (miniMaxProject) {
       if (!String(projectInput.value || state.projectFolder || "").trim()) missing.push("Project folder is missing.");
       scenesToRender.forEach(({ segment, index }) => {
-        if (!String(segment.custom_audio_path || currentProjectAudioPath() || audioInput.value || "").trim()) {
+        if (miniMaxH3SettingsForSegment(segment).audio_mode !== "built_in_audio"
+          && !String(segment.custom_audio_path || currentProjectAudioPath() || audioInput.value || "").trim()) {
           missing.push(`${sceneDisplayName(segment, index)}: MiniMax H3 needs project audio or custom scene audio.`);
         }
         missing.push(...validateMiniMaxSceneReadyForVideo(segment, index));
@@ -37277,6 +38451,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   async function ensureAudioOrOfferSilentTimeline(options = {}) {
+    if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") {
+      const targetScenes = audioFallbackTargetScenes(options);
+      if (targetScenes.length && targetScenes.every((segment) => miniMaxH3SettingsForSegment(segment).audio_mode === "built_in_audio")) return true;
+    }
     if (normalizeProjectVideoEngine(state.projectVideoEngine) !== "minimax_h3" && currentVideoMode() === "id_lora") return true;
     if (currentProjectAudioPath()) return true;
     const scenes = audioFallbackTargetScenes(options);
@@ -37696,6 +38874,39 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return segment.video_path;
   }
 
+  async function prepareMiniMaxH3ContinuityReference(segment, progress = null, percent = 3, label = "MiniMax continuity") {
+    if (!segment || segmentTrack(segment) === "overlay") return null;
+    const continuityMode = miniMaxH3ContinuityModeForSegment(segment);
+    if (continuityMode === "off") return null;
+    if (continuityMode === "exact_start_frame" && segment.minimax_h3_use_scene_image_as_start_frame) {
+      throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)} cannot use both its scene image and the previous rendered final frame as the exact start frame.`);
+    }
+    const previousSegment = previousAutoChainSourceSegment(segment);
+    if (!previousSegment) return null;
+    const previousVideoPath = String(selectedSegmentVideoPath(previousSegment) || "").trim();
+    if (!previousVideoPath) {
+      progress?.set(`${label}: the previous scene has no rendered video, so this scene will render without a continuity frame.`, percent);
+      segment.minimax_h3_continuity_frame_path = "";
+      segment.minimax_h3_continuity_source_video_path = "";
+      return null;
+    }
+    const projectFolder = String(projectInput.value || state.projectFolder || "").trim();
+    if (!projectFolder) throw new Error("Project folder is missing.");
+    progress?.set(`${label}: extracting the previous scene's actual final frame...`, percent);
+    const extracted = await postJson("/vrgdg/music_builder/extract_video_final_frame", {
+      project_folder: projectFolder,
+      source_path: previousVideoPath,
+      scene_number: sceneSlotNumber(segment),
+    }, 120000);
+    const framePath = String(extracted.saved_path || "").trim();
+    if (!framePath) throw new Error("MiniMax continuity final-frame extraction did not return an image path.");
+    segment.minimax_h3_continuity_frame_path = framePath;
+    segment.minimax_h3_continuity_source_video_path = previousVideoPath;
+    segment.minimax_h3_continuity_source_scene_id = String(previousSegment.id || "");
+    segment.minimax_h3_continuity_mode_used = continuityMode;
+    return { framePath, continuityMode, previousSegment, previousVideoPath };
+  }
+
   async function renderMiniMaxSceneVideoWithProgress(segment, sceneIndex, progress, options = {}) {
     const progressBase = Number(options.progressBase ?? 0);
     const progressSpan = Number(options.progressSpan ?? 100);
@@ -37707,23 +38918,33 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const timelineEnd = Number(segment?.end);
     const sceneDuration = timelineEnd - timelineStart;
     const miniMaxSettings = miniMaxH3SettingsForSegment(segment);
+    const builtInAudio = miniMaxSettings.audio_mode === "built_in_audio";
     const mode = normalizeMiniMaxH3Mode(options.mode ?? miniMaxSettings.video_mode);
     if (!projectFolder) throw new Error("Save or select a project folder before rendering MiniMax H3.");
     if (!Number.isFinite(timelineStart) || !Number.isFinite(timelineEnd) || sceneDuration <= 0) {
       throw new Error(`${sceneDisplayName(segment, sceneIndex)} has invalid timeline boundaries.`);
     }
 
-    const prompt = String(
+    const continuityInput = options.continuityInput === undefined
+      ? await prepareMiniMaxH3ContinuityReference(
+        segment,
+        progress,
+        pct(3),
+        `${batchLabel}MiniMax continuity`,
+      )
+      : options.continuityInput;
+
+    let prompt = applyMiniMaxH3NativeVoiceBlock(String(
       options.prompt
       ?? (segment?.minimax_h3_prompt || segment?.i2v_prompt || "")
-    ).trim();
+    ), segment);
     if (!prompt) throw new Error(`${sceneDisplayName(segment, sceneIndex)} needs a MiniMax H3 prompt.`);
 
     const sourceAudioPath = String(
       options.audioPath
       ?? (segment?.custom_audio_path || currentProjectAudioPath() || audioInput.value || "")
     ).trim();
-    if (!sourceAudioPath) throw new Error(`${sceneDisplayName(segment, sceneIndex)} needs source audio for MiniMax H3.`);
+    if (!builtInAudio && !sourceAudioPath) throw new Error(`${sceneDisplayName(segment, sceneIndex)} needs source audio for MiniMax H3.`);
     const sourceStartSeconds = Number(
       options.sourceStartSeconds
       ?? (segment?.custom_audio_path ? audioSourceStart(segment) : timelineStart)
@@ -37764,6 +38985,26 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const selectedImage = String(selectedSegmentImagePath(segment) || "").trim();
       if (selectedImage) imagePaths = [selectedImage];
     }
+    let continuityImageNumber = 0;
+    if (continuityInput?.framePath) {
+      const continuityKey = mediaPathKey(continuityInput.framePath);
+      const alreadyIncluded = imagePaths.some((path) => mediaPathKey(path) === continuityKey);
+      if (!alreadyIncluded) {
+        if (imagePaths.length >= 9) {
+          throw new Error(
+            `${sceneDisplayName(segment, sceneIndex)} has nine MiniMax image references already. `
+            + "Remove one Reference Builder image so the previous-scene continuity frame can use the reserved ninth slot."
+          );
+        }
+        imagePaths.push(continuityInput.framePath);
+      }
+      continuityImageNumber = imagePaths.findIndex((path) => mediaPathKey(path) === continuityKey) + 1;
+      segment.minimax_h3_continuity_image_number = continuityImageNumber;
+      prompt = applyMiniMaxH3ContinuityPromptBlock(prompt, segment, continuityInput, continuityImageNumber);
+    } else {
+      segment.minimax_h3_continuity_image_number = 0;
+      prompt = applyMiniMaxH3ContinuityPromptBlock(prompt, segment, null, 0);
+    }
     const rawVideoReferences = options.videoReferences
       ?? segment?.minimax_h3_video_references
       ?? segment?.minimax_video_references
@@ -37778,6 +39019,35 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (mode === "video_to_video" && !videoReferences.some((item) => String(item?.path || "").trim())) {
       throw new Error(`${sceneDisplayName(segment, sceneIndex)} needs at least one reference video path.`);
     }
+    const orderedReferenceItems = miniMaxOrderedImageReferenceItemsForSegment(segment, mode);
+    const progressImages = imagePaths.map((path, index) => {
+      const matched = orderedReferenceItems.find((item) => mediaPathKey(item?.image?.path) === mediaPathKey(path));
+      const isContinuity = continuityImageNumber === index + 1;
+      let label = String(matched?.label || "").trim();
+      if (isContinuity) {
+        label = continuityInput?.continuityMode === "exact_start_frame"
+          ? "Previous scene final frame — exact start"
+          : "Previous scene final frame — spatial continuity";
+      } else if (!label && mode === "image_to_video" && index === 0) {
+        label = "Scene image — exact start frame";
+      }
+      return {
+        path,
+        data: String(matched?.image?.data || "").trim(),
+        label: label || String(path || "").split(/[\\/]/).pop() || "Reference",
+      };
+    });
+    const progressDialogue = miniMaxDialogueOrderText(segment);
+    const progressLyric = progressDialogue
+      || String(segment?.lyric_text || "").trim()
+      || (segmentUsesNoLipSyncPerformance(segment) ? "[No visible vocal / no lip sync]" : "");
+    progress?.setSceneDetails?.({
+      sceneLabel: sceneDisplayName(segment, sceneIndex),
+      modeLabel: `${miniMaxH3ModeLabel(mode)} · ${builtInAudio ? "Built-in MiniMax Audio" : "Input Audio"}`,
+      images: progressImages,
+      lyric: progressLyric,
+      prompt,
+    });
     const warmupFrames = Math.max(0, Math.trunc(Number(
       options.warmupFrames
       ?? miniMaxSettings.warmup_frames
@@ -37790,17 +39060,20 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     state.activeId = segment.id;
     segment.video_status = "running";
     renderList();
-    progress?.set(`${batchLabel}Preparing exact MiniMax H3 scene timing and audio...`, pct(8));
+    progress?.set(`${batchLabel}Preparing exact MiniMax H3 scene timing and ${builtInAudio ? "native audio generation" : "input audio"}...`, pct(8));
 
     try {
       const payload = {
         project_folder: projectFolder,
         scene_number: slotNumber,
-        audio_path: sourceAudioPath,
+        audio_mode: miniMaxSettings.audio_mode,
+        audio_path: builtInAudio ? "" : sourceAudioPath,
         prompt,
         timeline_start_seconds: timelineStart,
         timeline_end_seconds: timelineEnd,
-        source_start_seconds: Number.isFinite(sourceStartSeconds) ? Math.max(0, sourceStartSeconds) : timelineStart,
+        source_start_seconds: builtInAudio
+          ? timelineStart
+          : (Number.isFinite(sourceStartSeconds) ? Math.max(0, sourceStartSeconds) : timelineStart),
         pre_frames: warmupFrames,
         tail_loss_frames: cooldownFrames,
         seed: Number(options.seed ?? miniMaxSettings.seed),
@@ -37824,7 +39097,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         image_paths: imagePaths,
         video_references: videoReferences,
       };
-      if (Number.isFinite(sourceDurationSeconds) && sourceDurationSeconds > 0) {
+      if (!builtInAudio && Number.isFinite(sourceDurationSeconds) && sourceDurationSeconds > 0) {
         payload.source_duration_seconds = sourceDurationSeconds;
       }
 
@@ -37846,7 +39119,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       progress?.set(
         `${batchLabel}Queueing MiniMax H3...\n`
         + `Timeline: ${sceneDuration.toFixed(3)}s\n`
-        + `H3 render: ${Number(timing.h3_frame_count || 0)} frames`,
+        + `H3 render: ${Number(timing.h3_frame_count || 0)} frames`
+        + (continuityImageNumber ? `\nContinuity: ${continuityInput.continuityMode === "exact_start_frame" ? "exact start" : "spatial reference"} (Image ${continuityImageNumber})` : ""),
         pct(30),
       );
       const queued = await queueWorkflowPrompt(built.prompt);
@@ -37971,7 +39245,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         label: segment.label || `Insert ${index + 1}`,
       }));
     const globalAudioPath = currentProjectAudioPath();
-    const embeddedSceneAudioMode = (!miniMaxProject && currentVideoMode() === "id_lora") || !!options.useEmbeddedSceneAudio;
+    const miniMaxBuiltInAudioMode = miniMaxProject && baseSegments.length > 0
+      && baseSegments.every((segment) => miniMaxH3SettingsForSegment(segment).audio_mode === "built_in_audio");
+    const embeddedSceneAudioMode = miniMaxBuiltInAudioMode || (!miniMaxProject && currentVideoMode() === "id_lora") || !!options.useEmbeddedSceneAudio;
     const sceneAudioMode = !embeddedSceneAudioMode && !globalAudioPath && usingSceneAudioMode();
     const audioPaths = sceneAudioMode ? baseSegments.map((segment) => String(segment.custom_audio_path || "").trim()) : [];
     const audioItems = sceneAudioMode ? baseSegments.map((segment) => ({
@@ -38144,7 +39420,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
 
     const missing = validateMiniMaxSceneReadyForVideo(segment, sceneIndex);
     if (!String(projectInput.value || state.projectFolder || "").trim()) missing.push("Project folder is missing.");
-    if (!String(segment.custom_audio_path || currentProjectAudioPath() || audioInput.value || "").trim()) {
+    if (miniMaxH3SettingsForSegment(segment).audio_mode !== "built_in_audio"
+      && !String(segment.custom_audio_path || currentProjectAudioPath() || audioInput.value || "").trim()) {
       missing.push("Load global audio or add custom audio for this scene.");
     }
     if (missing.length) {
@@ -41283,6 +42560,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     try {
       const data = await postJson("/vrgdg/music_builder/new_project", {
         project_folder: projectName,
+        project_root: getPreferredProjectRoot(),
       }, 60000);
       resetProjectState(data.project_folder || "", data.session_path || "", data.srt_path || "");
       await loadGlobalModelDefaultsQuiet();
@@ -41472,6 +42750,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const data = await postJson("/vrgdg/music_builder/save_project_as", {
         source_project_folder: currentProject,
         target_project_folder: targetProject,
+        project_root: getPreferredProjectRoot(),
         audio_path: audioInput.value,
         session: currentSessionData(),
       }, 120000);
@@ -44230,6 +45509,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const data = await postJson("/vrgdg/music_builder/save_project_as", {
         source_project_folder: currentProject,
         target_project_folder: choice.target,
+        project_root: getPreferredProjectRoot(),
         audio_path: audioInput.value,
         session,
       }, 120000);
@@ -44686,14 +45966,17 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       if (String(settings.text_gemma_model || "").trim()) {
         t2iTextGemmaModelSelect.value = settings.text_gemma_model;
         i2vTextGemmaModelSelect.value = settings.text_gemma_model;
+        miniMaxTextGemmaModelSelect.value = settings.text_gemma_model;
       }
       if (String(settings.vision_gemma_model || "").trim()) {
         gemmaModelSelect.value = settings.vision_gemma_model;
         i2vGemmaModelSelect.value = settings.vision_gemma_model;
+        miniMaxGemmaModelSelect.value = settings.vision_gemma_model;
       }
       if (String(settings.mmproj_file || "").trim()) {
         mmprojSelect.value = settings.mmproj_file;
         i2vMmprojSelect.value = settings.mmproj_file;
+        miniMaxMmprojSelect.value = settings.mmproj_file;
       }
       syncKrea2TwoPassLlmSelectsFromShared();
       syncI2VVideoModelPickerVisibility();
@@ -44865,6 +46148,22 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         toast(String(error?.message || error), true);
         return { mapped: 0, error: String(error?.message || error) };
       }
+    };
+    chooseProjectRootButton.onclick = async () => {
+      const path = await pickPath("project_root", projectRootInput);
+      if (path) projectRootInput.value = path;
+    };
+    saveProjectRootButton.onclick = () => {
+      const root = setPreferredProjectRoot(projectRootInput.value);
+      projectRootInput.value = root;
+      toast(root
+        ? `New projects will be created under:\n${root}`
+        : "New projects will use the ComfyUI output folder.");
+    };
+    clearProjectRootButton.onclick = () => {
+      projectRootInput.value = "";
+      setPreferredProjectRoot("");
+      toast("New projects will use the ComfyUI output folder.");
     };
     const applyWizardSceneDefaultSettingsToState = (settings = {}) => {
       const cameraSpeed = Math.max(0, Math.min(10, Number(settings.cameraMotionSpeed ?? settings.camera_motion_speed ?? state.builderStoryboardDefaults?.camera_motion_speed ?? 4)));
@@ -45290,7 +46589,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           const finalizedPrompt = miniMaxProject
             ? String(data.prompt || "").trim()
             : segment ? finalizeVideoPromptDraftOnly(segment, data.prompt) : String(data.prompt || "").trim();
-          const prompt = miniMaxProject ? finalizedPrompt : applyWizardStoryboardTriggerPhrases(finalizedPrompt, scene);
+          const prompt = miniMaxProject
+            ? applyMiniMaxH3NativeVoiceBlock(finalizedPrompt, segment)
+            : applyWizardStoryboardTriggerPhrases(finalizedPrompt, scene);
           if (!prompt) throw new Error(`${scene.label || `Scene ${index + 1}`}: ${runnerGenericName} returned an empty Storyboard video prompt.`);
           if (segment) {
             if (miniMaxProject) {
@@ -45430,6 +46731,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           cameraFlow: state.builderStoryboardDefaults?.camera_flow || "balanced",
           imageShotFlow: state.builderStoryboardDefaults?.image_shot_flow || "intimate",
           imageAesthetic: state.builderStoryboardDefaults?.image_aesthetic || "",
+          videoStyle: state.builderStoryboardDefaults?.video_style || "",
+          videoStyleCustom: state.builderStoryboardDefaults?.video_style_custom || "",
+          temporalWorldEffect: state.builderStoryboardDefaults?.temporal_world_effect || "",
+          temporalWorldEffectCustom: state.builderStoryboardDefaults?.temporal_world_effect_custom || "",
+          temporalAllowBackgroundExtras: state.builderStoryboardDefaults?.temporal_allow_background_extras !== false,
+          temporalBackgroundIntensity: state.builderStoryboardDefaults?.temporal_background_intensity ?? 8,
+          temporalEnvironmentTimePassage: state.builderStoryboardDefaults?.temporal_environment_time_passage !== false,
+          temporalProtectedCharacters: state.builderStoryboardDefaults?.temporal_protected_characters || "all_referenced",
+          temporalProtectedCustom: state.builderStoryboardDefaults?.temporal_protected_custom || "",
           globalConsistencyPhrase: state.builderStoryboardDefaults?.global_consistency_phrase || "",
           performanceStyle: state.builderStoryboardDefaults?.performance_style || "",
           facialPerformance: state.defaultFacialPerformance || "",
@@ -45602,6 +46912,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     control.addEventListener("input", () => updateActiveFromInputs({ skipHistory: true }));
     control.addEventListener("change", () => updateActiveFromInputs({ skipHistory: true }));
   }
+  lyricTextInput.addEventListener("focus", pushHistory);
+  lyricTextInput.addEventListener("input", () => {
+    lyricTextInput.dataset.vrgdgUserEdited = "1";
+    updateActiveFromInputs({ skipHistory: true });
+  });
+  lyricTextInput.addEventListener("change", () => {
+    lyricTextInput.dataset.vrgdgUserEdited = "1";
+    updateActiveFromInputs({ skipHistory: true });
+  });
   freezeTimingControl.input.addEventListener("change", () => {
     pushHistory();
     state.timingFrozen = Boolean(freezeTimingControl.input.checked);
@@ -46374,7 +47693,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   loadLastProjectButton.onclick = loadLastProject;
   promptCreatorButton.onclick = confirmOpenLegacyPromptCreator;
   wizardButton.onclick = openWizardFromBuilder;
-  storyboardBuilderButton.onclick = openStoryboardBuilderFromProject;
+  storyboardBuilderButton.onclick = () => {
+    try {
+      openStoryboardBuilderFromProject();
+    } catch (error) {
+      console.error("VRGDG Storyboard Builder failed to open", error);
+      toast(`Storyboard Builder failed to open:\n${String(error?.message || error)}`, true);
+    }
+  };
   fluxReferenceBuilderButton.onclick = openReferenceBuilderTargetChooser;
   lyricMapperButton.onclick = openLyricMappingWorkflowModal;
   sendToPromptCreatorButton.onclick = sendCurrentProjectToPromptCreator;
@@ -46454,7 +47780,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   closeTimelineGapsButton.onclick = closeTimelineGapsFromMenu;
   snapSceneEdgeButton.onclick = openSnapSceneEdgeMenu;
   idLoraTrimModeButton.onclick = () => {
-    if (currentVideoMode() !== "id_lora") return;
+    const miniMaxBuiltInAudio = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3"
+      && miniMaxH3SettingsForSegment(activeSegment()).audio_mode === "built_in_audio";
+    if (currentVideoMode() !== "id_lora" && !miniMaxBuiltInAudio) return;
     state.timelineTrimEditMode = !state.timelineTrimEditMode;
     if (state.timelineTrimEditMode) pauseTimelineForEditing();
     syncTimelineTrimModeButton();
@@ -47108,7 +48436,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const mmproj = data.mmproj || [];
     const validMmproj = mmproj.filter((item) => item && !/^\[No mmproj/i.test(item));
     const singleMmproj = validMmproj.length === 1 ? validMmproj[0] : "";
-    for (const select of [t2iTextGemmaModelSelect, gemmaModelSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, zEnhanceGemmaModelSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, fluxGemmaModelSelect, nbGemmaModelSelect]) {
+    for (const select of [t2iTextGemmaModelSelect, gemmaModelSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, zEnhanceGemmaModelSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, miniMaxTextGemmaModelSelect, miniMaxGemmaModelSelect, fluxGemmaModelSelect, nbGemmaModelSelect]) {
       select.textContent = "";
       for (const model of models) {
         const option = document.createElement("option");
@@ -47122,11 +48450,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       || models.find((model) => /supergemma/i.test(model))
       || "";
     if (preferredNonVision) {
-      for (const select of [t2iTextGemmaModelSelect, ernieTextGemmaModelSelect, i2vTextGemmaModelSelect]) {
+      for (const select of [t2iTextGemmaModelSelect, ernieTextGemmaModelSelect, i2vTextGemmaModelSelect, miniMaxTextGemmaModelSelect]) {
         select.value = preferredNonVision;
       }
     }
-    for (const select of [mmprojSelect, ernieMmprojSelect, zEnhanceMmprojSelect, i2vMmprojSelect, fluxMmprojSelect, nbMmprojSelect]) {
+    for (const select of [mmprojSelect, ernieMmprojSelect, zEnhanceMmprojSelect, i2vMmprojSelect, miniMaxMmprojSelect, fluxMmprojSelect, nbMmprojSelect]) {
       const previousValue = select.value;
       select.textContent = "";
       for (const item of mmproj) {
@@ -47141,6 +48469,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         select.value = singleMmproj;
       }
     }
+    syncMiniMaxLlmSelectsFromShared();
     syncKrea2TwoPassLlmSelectsFromShared();
   }
 
@@ -47487,6 +48816,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
   for (const control of [
     miniMaxAspectRatio,
+    miniMaxAudioMode,
+    miniMaxContinuityMode,
     miniMaxMegapixels,
     miniMaxSeed,
     miniMaxWarmupFrames,
@@ -47516,11 +48847,53 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       await autoSaveSessionQuiet(segment.use_scene_minimax_h3_settings ? "MiniMax H3 locked scene mode" : "MiniMax H3 project mode");
     };
   }
+  miniMaxAudioMode.addEventListener("change", syncMiniMaxH3Panel);
+  miniMaxContinuityMode.addEventListener("change", () => {
+    const segment = activeSegment();
+    const continuityMode = normalizeMiniMaxH3ContinuityMode(miniMaxContinuityMode.value);
+    const affectedSegments = segment?.use_scene_minimax_h3_settings
+      ? [segment]
+      : allEditableSegments().filter((item) => miniMaxH3ContinuityModeForSegment(item) === "exact_start_frame");
+    const clearedStartFrames = continuityMode === "exact_start_frame"
+      ? affectedSegments.filter((item) => item?.minimax_h3_use_scene_image_as_start_frame)
+      : [];
+    for (const item of clearedStartFrames) item.minimax_h3_use_scene_image_as_start_frame = false;
+    if (clearedStartFrames.length) {
+      miniMaxUseSceneImageAsStartFrame.input.checked = false;
+      toast(`Previous-frame exact continuation is now the sole exact start frame. Turned off the scene-image exact start-frame option for ${clearedStartFrames.length} scene${clearedStartFrames.length === 1 ? "" : "s"}.`);
+    }
+    syncMiniMaxH3Panel();
+    syncMiniMaxReferenceButtons();
+    autoSaveSessionQuiet("MiniMax H3 continuity mode changed").catch(() => null);
+  });
+  miniMaxAddSpeakerCueButton.onclick = () => {
+    const segment = requireActiveSegment();
+    if (!segment) return;
+    const speakers = miniMaxMappedSpeakersForSegment(segment);
+    if (!speakers.length) {
+      toast("Map at least one character to this scene in Reference Builder first.", true);
+      return;
+    }
+    pushHistory();
+    const cues = ensureMiniMaxSpeakerAssignments(segment, speakers);
+    const speaker = speakers[0];
+    cues.push(...normalizeMiniMaxSpeakerAssignments([{ speaker_id: speaker.id, speaker_name: speaker.name, text: "" }]));
+    segment.minimax_speaker_assignments = cues;
+    syncMiniMaxSpeakerAssignmentLegacyFields(segment);
+    renderMiniMaxSpeakerAssignmentPanel();
+    autoSaveSessionQuiet("MiniMax dialogue cue added").catch(() => null);
+  };
   miniMaxPrompt.addEventListener("input", saveMiniMaxSceneInputsFromPanel);
   miniMaxPrompt.addEventListener("change", () => autoSaveSessionQuiet("MiniMax H3 scene prompt").catch(() => null));
   miniMaxUseSceneImageAsStartFrame.input.addEventListener("change", async () => {
     const segment = requireActiveSegment();
     if (!segment) return;
+    if (miniMaxUseSceneImageAsStartFrame.input.checked
+      && normalizeMiniMaxH3ContinuityMode(miniMaxH3SettingsForSegment(segment).continuity_mode) === "exact_start_frame") {
+      miniMaxUseSceneImageAsStartFrame.input.checked = false;
+      toast("Choose either the scene image as the exact start frame or the previous rendered final frame as the exact start frame—not both.", true);
+      return;
+    }
     pushHistory();
     saveMiniMaxSceneInputsFromPanel();
     syncMiniMaxReferenceButtons();
