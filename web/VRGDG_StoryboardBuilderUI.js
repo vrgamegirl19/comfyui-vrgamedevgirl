@@ -3149,7 +3149,7 @@ function openStoryboardBuilder(payload = {}) {
       <div style="width:52px;height:52px;border-radius:12px;background:#164e63;color:#67e8f9;display:grid;place-items:center;font-size:28px;">▣</div>
       <div style="min-width:0;">
         <div style="font-size:26px;font-weight:900;color:#cffafe;">Storyboard Builder <span id="vrgdg-storyboard-mode-pill" style="font-size:13px;border-radius:999px;background:#164e63;color:#a5f3fc;padding:5px 9px;vertical-align:middle;">Planning</span></div>
-        <div id="vrgdg-storyboard-subtitle" style="color:#cbd5e1;font-size:14px;margin-top:3px;">Write scene cards, image prompts, and video prompts before sending them to the Video Creator.</div>
+        <div id="vrgdg-storyboard-subtitle" style="color:#cbd5e1;font-size:14px;margin-top:3px;">Write scene cards, image prompts, and video prompts before sending them to the AI Video Builder.</div>
       </div>
     </div>
   `;
@@ -5182,7 +5182,7 @@ function openStoryboardBuilder(payload = {}) {
         createToast(`Could not save this reference image into the project folder. It will stay in this session only.\n${String(error?.message || error)}`, true);
       }
     } else {
-      createToast("Save the Video Creator project first if you want imported Storyboard references to persist.", true);
+      createToast("Save the AI Video Builder project first if you want imported Storyboard references to persist.", true);
     }
     const ref = upsertStoryboardReference(kind, reference);
     if (!ref || !scene) return ref;
@@ -6438,7 +6438,7 @@ function openStoryboardBuilder(payload = {}) {
 
   async function saveStoryboard() {
     if (!state.projectFolder) {
-      createToast("Save the Video Creator project first so Storyboard Builder knows where to write files.", true);
+      createToast("Save the AI Video Builder project first so Storyboard Builder knows where to write files.", true);
       return;
     }
     state.saving = true;
@@ -6466,7 +6466,7 @@ function openStoryboardBuilder(payload = {}) {
 
   async function exportPromptFiles() {
     if (!state.projectFolder) {
-      createToast("Save the Video Creator project first so Storyboard Builder knows where to export prompt files.", true);
+      createToast("Save the AI Video Builder project first so Storyboard Builder knows where to export prompt files.", true);
       return;
     }
     exportPrompts.disabled = true;

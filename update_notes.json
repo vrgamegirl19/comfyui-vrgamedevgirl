@@ -1,7 +1,51 @@
 {
   "schema_version": 1,
-  "product": "LTX 2.3 Video Builder",
+  "product": "AI Video Builder",
   "releases": [
+    {
+      "id": "2026-08-06-timeline-editing-minimax-prompt-reliability",
+      "version": "2026.08.06-builder-workflow-updates",
+      "date": "2026-08-06",
+      "title": "Timeline editing and MiniMax prompt workflow improvements",
+      "commit": "2f678b0ce9e15e4350745fd365f9af438d942462",
+      "restart_required": true,
+      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
+      "sections": [
+        {
+          "title": "New",
+          "items": [
+            "Added a one-button Tools-panel converter that sends every populated LTX video prompt through the selected LLM Runner and saves a separate, more detailed MiniMax H3 prompt without changing the original LTX prompt, global audio, scene timing, or other project data.",
+            "Added silent timeline playback so the playhead, scene selection, seeking, and scrubbing continue to work in short-film projects and other timelines that do not have global audio.",
+            "Added playhead trimming for rendered MiniMax built-in-audio and ID-LoRA scenes. Click or right-click the scissors button and choose whether to remove everything before or after the playhead.",
+            "Added Delete ALL Videos to clear every selected video, video history entry, thumbnail assignment, trim state, and rendered-video continuity assignment from the timeline while preserving the actual files in the project folder as backups."
+          ]
+        },
+        {
+          "title": "Improved",
+          "items": [
+            "Rendered MiniMax H3 built-in-audio clips can now supply scene audio during timeline playback and begin from the rendered clip's local start when no global audio is present.",
+            "Renamed user-facing Music Video Builder and Video Creator labels to AI Video Builder across the main README, Builder guide, Prompt Creator, Storyboard Builder, Wizard, release notes, and package metadata.",
+            "Closing the Builder now stops global audio, scene audio, silent timeline playback, and active video-preview playback."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "MiniMax Render All now displays and sends the complete saved right-panel prompt exactly as written instead of rewriting voice, B-roll, or continuity text during rendering.",
+            "Replaced an unbounded MiniMax managed-block cleanup pattern that could remove every timestamped shot, Audio section, and Continuity section after a visual-only B-roll block.",
+            "Timeline Play no longer stops with a Load audio first error when the project has no global audio; it automatically uses the silent timeline clock instead.",
+            "MiniMax built-in-audio timeline scrubbing now uses scene timeline time and the correct local media offset."
+          ]
+        },
+        {
+          "title": "Compatibility Notes",
+          "items": [
+            "The LTX-to-MiniMax converter is for music-video projects and continues using the same unchanged global Audio 1 file; it does not enable MiniMax built-in audio.",
+            "Delete ALL Videos changes timeline assignments only. Existing rendered video and thumbnail files remain in the project folder and can still be used as backups."
+          ]
+        }
+      ]
+    },
     {
       "id": "2026-08-05-minimax-h3-model-downloads",
       "version": "2026.08.05-minimax-h3-model-downloads",
@@ -314,7 +358,7 @@
         {
           "title": "New",
           "items": [
-            "Added Review Guide to the Builder menu for direct access to the public LTX 2.3 Video Builder guide.",
+            "Added Review Guide to the Builder menu for direct access to the public AI Video Builder guide.",
             "Added a clear legacy notice before opening the older Prompt Creator workflow.",
             "Added an optional What's New window so users can review release details from the status banner or Builder menu."
           ]

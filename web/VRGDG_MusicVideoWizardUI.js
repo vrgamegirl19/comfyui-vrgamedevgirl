@@ -1015,7 +1015,7 @@ export function openMusicVideoWizard(api = {}) {
     const settingsCard = el("div", "vrgdg-wizard-settings-card span-6");
     settingsCard.append(
       el("div", "vrgdg-wizard-settings-title", "Current Builder State"),
-      el("div", "vrgdg-wizard-settings-subtitle", "The wizard uses the settings already selected in the Video Creator."),
+      el("div", "vrgdg-wizard-settings-subtitle", "The wizard uses the settings already selected in the AI Video Builder."),
     );
     const statusRow = el("div", "vrgdg-wizard-status-row");
     [

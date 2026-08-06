@@ -2,13 +2,13 @@
 
 A growing collection of custom ComfyUI nodes for **AI video creation, music videos, storyboarding, image generation, video enhancement, face repair, editing, LoRA training, and workflow automation**.
 
-The flagship tool is the **MiniMax H3 and LTX 2.3 Video Builder**: a scene-by-scene production workspace that brings planning, prompting, media generation, timing, review, and final assembly together inside ComfyUI.
+The flagship tool is the **AI Video Builder**: a scene-by-scene production workspace for LTX 2.3, MiniMax H3, and future video engines that brings planning, prompting, media generation, timing, review, and final assembly together inside ComfyUI.
 
 ---
 
 ## 🎬 AI Video Builder
 
-Add the node named **`VRGDG Music Video Builder UI`** to open the Builder.
+Add the node named **`VRGDG AI Video Builder UI`** to open the Builder.
 
 Use it to:
 
@@ -23,7 +23,7 @@ Use it to:
 - 💾 Save, branch, export, import, and continue portable Builder projects.
 - 🤖 Use built-in LLM, local LM Studio, API, and Browser AI options where supported.
 
-📖 **New here? Start with the full [MiniMax H3 and LTX 2.3 Video Builder Guide](Workflows/LTX-2_Workflows/Video_Builder/readme.md).**
+📖 **New here? Start with the full [AI Video Builder Guide](Workflows/LTX-2_Workflows/Video_Builder/readme.md).**
 
 ✨ **Or chat with a GPT and ask any question about the video builder. [HERE](https://chatgpt.com/g/g-6a6b4799d0e48191acf5a97fb2132ba9-ltx-2-3-music-video-builder-guide)** 
 
@@ -68,7 +68,7 @@ These are some of the most useful tools included in the pack. Many can be used o
 
 1. Install the node pack and restart ComfyUI.
 2. Hard refresh the ComfyUI browser page so the latest JavaScript UI files load.
-3. Add **`VRGDG Music Video Builder UI`**.
+3. Add **`VRGDG AI Video Builder UI`**.
 4. Create a project and add audio, SRT timing, or scenes.
 5. Use the Wizard or Storyboard Builder to plan the project.
 6. Generate and approve scene images, render scene videos, then stitch the final video.

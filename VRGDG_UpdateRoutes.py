@@ -76,7 +76,7 @@ def _load_release_notes(ref=""):
     if not raw:
         notes_path = os.path.join(_NODE_DIR, _RELEASE_NOTES_FILE)
         if not os.path.isfile(notes_path):
-            return {"schema_version": 1, "product": "LTX 2.3 Video Builder", "releases": []}, "none"
+            return {"schema_version": 1, "product": "AI Video Builder", "releases": []}, "none"
         with open(notes_path, "r", encoding="utf-8") as handle:
             raw = handle.read()
 

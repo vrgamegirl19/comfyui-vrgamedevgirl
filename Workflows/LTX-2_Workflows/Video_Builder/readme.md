@@ -1,4 +1,4 @@
-# Video Builder Guide — LTX 2.3 and MiniMax H3
+# AI Video Builder Guide
 
 This guide is for someone opening the Video Builder for the first time. It explains what each main area does, the usual workflow, and where to look when something is missing.
 
@@ -209,7 +209,7 @@ After every completed update, fully stop and restart ComfyUI, then hard refresh 
 
 ## Opening the Builder
 
-Add the node named `VRGDG Music Video Builder UI` in ComfyUI.
+Add the node named `VRGDG AI Video Builder UI` in ComfyUI.
 
 When the builder opens, it may show a welcome window where you can create a new project or open an existing project.
 
@@ -2496,8 +2496,8 @@ Prompt Creator buttons:
 | `Run: Skip Whisper/SRT` | Uses existing SRT/segment data and runs the later prompt steps |
 | `Save Project Draft` | Saves the Prompt Creator draft |
 | `Load Project Draft` | Opens a saved Prompt Creator draft |
-| `Send To Video Creator` | Sends saved Prompt Creator output into Video Builder |
-| `Back To Video Creator` | Returns to Video Builder without necessarily importing new data |
+| `Send To AI Video Builder` | Sends saved Prompt Creator output into Video Builder |
+| `Back To AI Video Builder` | Returns to Video Builder without necessarily importing new data |
 
 ### Concept Lyric Match
 
@@ -2525,7 +2525,7 @@ Use presets or restore defaults if a custom instruction causes problems.
 After running or editing Prompt Creator:
 
 1. Click `Save Project Draft`.
-2. Click `Send To Video Creator`.
+2. Click `Send To AI Video Builder`.
 3. In Video Builder, confirm scenes, notes, prompt paths, audio, and SRT timing came over.
 4. Use `Import Data From Prompt Creator` or Prompt Options reload buttons if needed.
 
@@ -2539,9 +2539,9 @@ Useful buttons:
 | --- | --- |
 | `Prompt Creator (Legacy)` | Shows the legacy-workflow warning before opening Prompt Creator |
 | `Import Data From Prompt Creator` | Copies Prompt Creator outputs into the current builder project |
-| `Send To Video Creator` | From Prompt Creator, saves/imports the current prompt creator project into Video Builder |
+| `Send To AI Video Builder` | From Prompt Creator, saves/imports the current prompt creator project into Video Builder |
 | `Send To Prompt Creator` | From Video Builder, sends audio/SRT/lyrics back to Prompt Creator so you can create concept prompts |
-| `Back To Video Creator` | Returns to Video Builder; it is navigation, not the same as importing |
+| `Back To AI Video Builder` | Returns to Video Builder; it is navigation, not the same as importing |
 | `Prompt Options` | Opens prompt-related settings/options |
 | `LLM Runner` | Opens text-only LLM/Gemma runner tools |
 | `Agent` | Opens the builder assistant/agent |
@@ -2822,7 +2822,7 @@ These copies are optimized for web viewing and download. The original full-resol
 
 Use this if you are new and just want the first successful video.
 
-1. Add/open `VRGDG Music Video Builder UI`.
+1. Add/open `VRGDG AI Video Builder UI`.
 2. Click `New Project`.
 3. Add global audio in the `Audio` tab.
 4. Import SRT or create scenes with `+ Segment` / `Bulk Segments`.
@@ -2864,7 +2864,7 @@ Use this only for an older Prompt Creator project or when you specifically need 
 2. Add audio and full lyrics.
 3. Run the prompt creator pipeline.
 4. Review/edit concept prompts and motion notes.
-5. Click `Send To Video Creator`.
+5. Click `Send To AI Video Builder`.
 6. In Video Builder, verify scenes, notes, prompts, audio, and SRT timing.
 7. Generate images and videos.
 
@@ -2958,7 +2958,7 @@ Use this for new projects.
 | Story Arc reports a changed lyric structure | Update and rerun. Trailing invented headings are removed automatically; a remaining error means Gemma actually missed, renamed, reordered, or inserted a heading inside the required structure |
 | Render All progress disappeared | Reopen the persistent render log and inspect the saved JSON/text report in the project for completed phases, failures, and stitch timing |
 | A scene render reports the wait limit | The Builder now waits up to two hours. Check whether the ComfyUI queue is still running; if it finished, use scene-video recovery/history, and inspect the terminal plus temporary output before retrying |
-| Prompt Creator data does not populate notes | Use `Send To Video Creator` or `Import Data From Prompt Creator`, then reload/import prompt files if needed |
+| Prompt Creator data does not populate notes | Use `Send To AI Video Builder` or `Import Data From Prompt Creator`, then reload/import prompt files if needed |
 | LM Studio is selected but not used | Vision Gemma still uses built-in GGUF; only text-only passes use LM Studio |
 | Browser AI cannot control the browser | Run Install/Check Browser Setup, sign in with `Open Selected Login`, or use the manual export/import path |
 | Face Fix finds no face | Choose a clearer description frame, lower minimum face pixels, adjust confidence/rotation assist, or pick a repair-distance preset that includes the face size |

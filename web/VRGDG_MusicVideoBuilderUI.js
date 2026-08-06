@@ -2390,7 +2390,7 @@ function openBuilder(node) {
   updateStatusClose.type = "button";
   updateStatusClose.textContent = "×";
   updateStatusClose.title = "Dismiss this version status";
-  updateStatusClose.setAttribute("aria-label", "Dismiss LTX 2.3 Video Builder version status");
+  updateStatusClose.setAttribute("aria-label", "Dismiss AI Video Builder version status");
   updateStatusClose.style.cssText = "width:24px;height:24px;flex:0 0 24px;display:flex;align-items:center;justify-content:center;padding:0;border:1px solid rgba(255,255,255,.32);border-radius:5px;background:rgba(0,0,0,.18);color:inherit;font:700 18px/1 sans-serif;cursor:pointer;";
   updateStatusBanner.append(updateStatusDot, updateStatusText, updateWhatsNewAction, updateStatusAction, updateStatusClose);
 
@@ -2436,7 +2436,10 @@ function openBuilder(node) {
     if (mode === "available" && availableIds.size) {
       releases = allReleases.filter((release) => availableIds.has(String(release.id || "")));
     } else if (mode === "current" && currentReleaseId) {
-      releases = allReleases.filter((release) => String(release.id || "") === currentReleaseId);
+      releases = allReleases.filter((release) => (
+        !String(release.commit || "").trim()
+        || String(release.id || "") === currentReleaseId
+      ));
     }
     if (!releases.length) releases = allReleases.slice(0, mode === "history" ? 8 : 3);
 
@@ -2451,7 +2454,7 @@ function openBuilder(node) {
     const headingWrap = document.createElement("div");
     headingWrap.style.cssText = "min-width:0;flex:1 1 auto;";
     const heading = document.createElement("div");
-    heading.textContent = "What's New in LTX 2.3 Video Builder";
+    heading.textContent = "What's New in AI Video Builder";
     heading.style.cssText = "font-size:19px;font-weight:950;color:#cffafe;";
     const summary = document.createElement("div");
     const installed = String(payload.installed_commit || "").slice(0, 7);
@@ -2627,6 +2630,8 @@ function openBuilder(node) {
   fullscreenButton.title = "Expand the Video Creator to fill the browser window without closing or resetting anything.";
   const closeButton = makeButton("Close");
   closeButton.onclick = () => {
+    pauseAllAudio();
+    if (!previewVideo.paused) previewVideo.pause();
     window.removeEventListener("vrgdg:builder-toast", toastNotificationHandler);
     if (builderKeydownHandler) document.removeEventListener("keydown", builderKeydownHandler, true);
     restoreBrowserAiDownloadsQuietly().catch(() => null);
@@ -2654,6 +2659,8 @@ function openBuilder(node) {
   const zImageAllButton = makeButton("Image All");
   const zEnhanceAllButton = makeButton("Enhance All");
   const zEnhanceAllToolButton = makeButton("Enhance All");
+  const convertLtxPromptsToMiniMaxButton = makeButton("Convert LTX Video Prompts to MiniMax H3", "primary");
+  convertLtxPromptsToMiniMaxButton.title = "Use the selected LLM Runner to convert every populated LTX video prompt into a MiniMax H3 prompt. Global audio and all other project data stay unchanged.";
   const importImageFolderButton = makeButton("Fill Timeline Images From Folder", "primary");
   const fullBuildButton = makeButton("Build Full Video");
   const fullFLFBuildButton = makeButton("Build Full FLF Video");
@@ -2803,6 +2810,7 @@ function openBuilder(node) {
     beatCalibrationToolRow,
     beatCalibrationWizard,
     makeToolRow(snapAllSceneStartsButton, "Snap Scene 3 onward to the nearest valid beat. The Scene 1-to-2 intro boundary stays fixed; connected previous scene ends move with later shared cuts."),
+    makeToolRow(convertLtxPromptsToMiniMaxButton, "Convert every populated LTX video prompt into a detailed MiniMax H3 prompt. The global audio file, scene timing, and original LTX prompts stay unchanged."),
     makeToolRow(zEnhanceAllToolButton, "Upscale/enhance every timeline scene that already has an image, using each scene's current T2I/image prompt."),
     makeToolRow(builderAgentButton, "Open Builder Agent for scene help, prompt edits, image references, and project guidance.")
   );
@@ -5389,7 +5397,7 @@ function openBuilder(node) {
   clearRangeButton.title = "Clear the selected timeline range.";
   closeTimelineGapsButton.title = "Shift later base scenes left to remove empty gaps in the timeline.";
   snapSceneEdgeButton.title = "Move the selected scene start or end to its closest beat marker. A connected neighboring scene follows only at that shared boundary. Shortcuts: Ctrl+S snaps the start; Ctrl+E snaps the end.";
-  splitSceneButton.title = "Split the selected base scene at the playhead. The left and right scene timings stay exactly where they are; later clips do not move and are only renumbered. Vocal text stays on the left half, while instrumental text is kept on both halves. Scenes with rendered video must be cleared before splitting.";
+  splitSceneButton.title = "Click: split an unrendered base scene, or trim a rendered ID-LoRA / MiniMax built-in-audio scene before or after the playhead. Right-click also opens the rendered-scene trim chooser.";
   idLoraTrimModeButton.title = "Quiet scrub mode for finding left/right video trim points without autoplay. Available for ID-LoRA and MiniMax built-in-audio scenes.";
   overlayTrackToggleButton.title = "Turn the advanced overlay timeline on or off.";
   overlayTrackHintButton.title = "How does the overlay timeline work?";
@@ -5495,13 +5503,19 @@ function openBuilder(node) {
   deleteSelectedMediaButton.style.padding = "6px 10px";
   deleteSelectedMediaButton.style.borderColor = "#7f1d1d";
   deleteSelectedMediaButton.style.color = "#fecaca";
+  const deleteAllTimelineVideosButton = makeButton("Delete ALL Videos");
+  deleteAllTimelineVideosButton.style.padding = "6px 10px";
+  deleteAllTimelineVideosButton.style.borderColor = "#dc2626";
+  deleteAllTimelineVideosButton.style.background = "#450a0a";
+  deleteAllTimelineVideosButton.style.color = "#fee2e2";
+  deleteAllTimelineVideosButton.title = "Remove every selected/generated video and video history entry from the timeline without deleting any video or thumbnail files from the project folder.";
   const deleteAllTimelineImagesButton = makeButton("Delete ALL Images");
   deleteAllTimelineImagesButton.style.padding = "6px 10px";
   deleteAllTimelineImagesButton.style.borderColor = "#dc2626";
   deleteAllTimelineImagesButton.style.background = "#450a0a";
   deleteAllTimelineImagesButton.style.color = "#fee2e2";
   deleteAllTimelineImagesButton.title = "Delete every timeline image from every scene, including FLF first frames, last frames, and extracted chained start frames, and remove those files from the project folder.";
-  selectedMediaTools.append(selectedMediaLabel, useFrameAsImageButton, deleteSelectedMediaButton, deleteAllTimelineImagesButton);
+  selectedMediaTools.append(selectedMediaLabel, useFrameAsImageButton, deleteSelectedMediaButton, deleteAllTimelineVideosButton, deleteAllTimelineImagesButton);
   const zoomWrap = document.createElement("div");
   zoomWrap.style.cssText = "display:flex;gap:4px;align-items:center;";
   zoomWrap.append(zoomOutButton, zoomInButton);
@@ -5538,6 +5552,10 @@ function openBuilder(node) {
   audio.preload = "metadata";
   const sceneAudio = document.createElement("audio");
   sceneAudio.preload = "metadata";
+  let silentTimelinePlaying = false;
+  let silentTimelineRaf = 0;
+  let silentTimelineStartedAt = 0;
+  let silentTimelineStartTime = 0;
   updateGlobalAudioMuteButton();
 
   const shellHeader = document.createElement("div");
@@ -8844,15 +8862,23 @@ function openBuilder(node) {
     return state.segments.some((segment) => String(segment.custom_audio_path || "").trim());
   }
 
+  function segmentUsesRenderedTimelineAudio(segment) {
+    if (!segment || !String(selectedSegmentVideoPath(segment) || "").trim()) return false;
+    if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") {
+      return miniMaxH3SettingsForSegment(segment).audio_mode === "built_in_audio";
+    }
+    return currentVideoMode() === "id_lora";
+  }
+
   function usingRenderedSceneAudioMode() {
-    return currentVideoMode() === "id_lora" && !currentProjectAudioPath() && state.segments.some((segment) => String(selectedSegmentVideoPath(segment) || "").trim());
+    return !currentProjectAudioPath() && state.segments.some((segment) => segmentUsesRenderedTimelineAudio(segment));
   }
 
   function timelineAudioPathForSegment(segment) {
     if (!segment) return "";
     const customAudioPath = String(segment.custom_audio_path || "").trim();
     if (customAudioPath) return customAudioPath;
-    if (usingRenderedSceneAudioMode()) return String(selectedSegmentVideoPath(segment) || "").trim();
+    if (!currentProjectAudioPath() && segmentUsesRenderedTimelineAudio(segment)) return String(selectedSegmentVideoPath(segment) || "").trim();
     if (usingSceneAudioMode()) return currentProjectAudioPath();
     return "";
   }
@@ -8864,9 +8890,9 @@ function openBuilder(node) {
 
   function timelineAudioSourceStartForSegment(segment) {
     if (!segment) return 0;
-    return String(segment.custom_audio_path || "").trim()
-      ? audioSourceStart(segment)
-      : Math.max(0, Number(segment.start || 0));
+    if (String(segment.custom_audio_path || "").trim()) return audioSourceStart(segment);
+    if (!currentProjectAudioPath() && segmentUsesRenderedTimelineAudio(segment)) return 0;
+    return Math.max(0, Number(segment.start || 0));
   }
 
   function timelineAudioDurationForSegment(segment) {
@@ -9209,10 +9235,54 @@ function openBuilder(node) {
     };
   }
 
+  function stopSilentTimelinePlayback() {
+    silentTimelinePlaying = false;
+    if (silentTimelineRaf) window.cancelAnimationFrame(silentTimelineRaf);
+    silentTimelineRaf = 0;
+  }
+
+  function startSilentTimelinePlayback(startTime = currentGlobalTime()) {
+    const maxTime = playbackDuration();
+    if (!(maxTime > 0)) {
+      toast("Add a scene with a positive duration before playing the timeline.", true);
+      return false;
+    }
+    audio.pause();
+    sceneAudio.pause();
+    stopSilentTimelinePlayback();
+    silentTimelineStartTime = Math.max(0, Math.min(maxTime, Number(startTime || 0)));
+    silentTimelineStartedAt = performance.now();
+    state.sceneAudioGlobalTime = silentTimelineStartTime;
+    state.sceneSelectionUsesGlobalAudio = false;
+    silentTimelinePlaying = true;
+
+    const tick = (now) => {
+      if (!silentTimelinePlaying) return;
+      const elapsed = Math.max(0, (Number(now || 0) - silentTimelineStartedAt) / 1000);
+      const current = Math.min(maxTime, silentTimelineStartTime + elapsed);
+      state.sceneAudioGlobalTime = current;
+      updateAudioScrubbers();
+      if (current >= maxTime - 0.001) {
+        stopSilentTimelinePlayback();
+        if (!previewVideo.paused) previewVideo.pause();
+        updatePlayPauseButton();
+        updateAudioScrubbers();
+        return;
+      }
+      silentTimelineRaf = window.requestAnimationFrame(tick);
+    };
+    silentTimelineRaf = window.requestAnimationFrame(tick);
+    updatePlayPauseButton();
+    updateAudioScrubbers();
+    return true;
+  }
+
   function currentGlobalTime() {
+    if (silentTimelinePlaying) return Number(state.sceneAudioGlobalTime || 0);
     if (usingSceneAudioPlaybackMode() && (!state.sceneSelectionUsesGlobalAudio || (sceneAudio.src && !sceneAudio.paused))) {
       return Number(state.sceneAudioGlobalTime || 0);
     }
+    if (!currentProjectAudioPath()) return Number(state.sceneAudioGlobalTime || 0);
     return Number(audio.currentTime || 0);
   }
 
@@ -9280,7 +9350,7 @@ function openBuilder(node) {
   }
 
   function isTimelinePlaying() {
-    return (audio.src && !audio.paused) || (sceneAudio.src && !sceneAudio.paused);
+    return silentTimelinePlaying || (audio.src && !audio.paused) || (sceneAudio.src && !sceneAudio.paused);
   }
 
   function updatePlayPauseButton() {
@@ -9305,6 +9375,7 @@ function openBuilder(node) {
   }
 
   function pauseAllAudio() {
+    stopSilentTimelinePlayback();
     audio.pause();
     sceneAudio.pause();
     updatePlayPauseButton();
@@ -9320,9 +9391,18 @@ function openBuilder(node) {
     state.sceneSelectionUsesGlobalAudio = true;
     state.sceneAudioGlobalTime = start;
     if (!ensureGlobalTimelineAudioSource(start)) {
+      if (usingSceneAudioPlaybackMode()) {
+        state.sceneSelectionUsesGlobalAudio = false;
+        setGlobalPlaybackTime(start);
+        updatePlayPauseButton();
+        updateAudioScrubbers();
+        return true;
+      }
+      state.sceneSelectionUsesGlobalAudio = false;
+      state.sceneAudioGlobalTime = start;
       updatePlayPauseButton();
       updateAudioScrubbers();
-      return false;
+      return true;
     }
     seekAudioWhenReady(start);
     updatePlayPauseButton();
@@ -13191,6 +13271,12 @@ function openBuilder(node) {
     const media = selectedMediaForDelete();
     const segment = activeSegment();
     const hasVideoFrameSource = Boolean(selectedSegmentVideoPath(segment));
+    const hasTimelineVideos = allEditableSegments().some((item) => Boolean(
+      String(item?.video_path || "").trim()
+      || (Array.isArray(item?.video_history) && item.video_history.some((path) => String(path || "").trim()))
+      || (Array.isArray(item?.video_backup_paths) && item.video_backup_paths.some((path) => String(path || "").trim()))
+      || String(item?.video_original_path || "").trim()
+    ));
     const label = media.type ? `Selected media: ${media.type}` : "Selected media: none";
     selectedMediaLabel.textContent = media.path ? label : `${label} missing`;
     useFrameAsImageButton.disabled = !hasVideoFrameSource;
@@ -13198,6 +13284,8 @@ function openBuilder(node) {
     deleteSelectedMediaButton.textContent = media.type === "video" ? "Delete Video" : "Delete Image";
     deleteSelectedMediaButton.disabled = !media.path;
     deleteSelectedMediaButton.style.opacity = media.path ? "1" : ".55";
+    deleteAllTimelineVideosButton.disabled = !hasTimelineVideos;
+    deleteAllTimelineVideosButton.style.opacity = hasTimelineVideos ? "1" : ".55";
   }
 
   function syncPreview(segment) {
@@ -13528,7 +13616,7 @@ function openBuilder(node) {
   function updateAudioScrubbers() {
     const current = currentGlobalTime();
     const maxTime = playbackDuration();
-    const followPlayback = Boolean((audio.src && !audio.paused) || (sceneAudio.src && !sceneAudio.paused) || state.isScrubbing);
+    const followPlayback = Boolean(isTimelinePlaying() || state.isScrubbing);
     if (followPlayback) {
       const playbackSegment = playbackSegmentAtTime(current);
       if (playbackSegment && playbackSegment.id !== state.activeId) {
@@ -13561,7 +13649,12 @@ function openBuilder(node) {
     const maxTime = playbackDuration();
     const time = Math.max(0, Math.min(maxTime, Number(value || 0)));
     state.sceneAudioGlobalTime = time;
-    if (!state.sceneSelectionUsesGlobalAudio && usingSceneAudioPlaybackMode()) {
+    if (silentTimelinePlaying) {
+      silentTimelineStartTime = time;
+      silentTimelineStartedAt = performance.now();
+    }
+    if (usingSceneAudioPlaybackMode()) {
+      state.sceneSelectionUsesGlobalAudio = false;
       const segment = timelineAudioSegmentAtTime(time) || playbackSegmentAtTime(time) || state.segments[state.segments.length - 1] || null;
       if (segment) state.activeId = segment.id;
       const sourcePath = timelineAudioPathForSegment(segment);
@@ -13591,7 +13684,7 @@ function openBuilder(node) {
     state.sceneSelectionUsesGlobalAudio = false;
     const maxTime = timelineDuration();
     const segment = timelineAudioSegmentAtTime(time) || playbackSegmentAtTime(time) || state.segments.find((item) => timelineAudioEndForSegment(item) > time && timelineAudioPathForSegment(item)) || state.segments[0] || null;
-    if (!segment) return;
+    if (!segment) return false;
     state.activeId = segment.id;
     state.sceneAudioGlobalTime = Math.max(timelineAudioStartForSegment(segment), Math.min(maxTime, Number(time || 0)));
     syncInspector();
@@ -13603,11 +13696,10 @@ function openBuilder(node) {
       state.sceneAudioSegmentId = "";
       const next = state.segments.find((item) => timelineAudioStartForSegment(item) > timelineAudioStartForSegment(segment) && timelineAudioPathForSegment(item));
       if (next) {
-        playSceneAudioFrom(timelineAudioStartForSegment(next));
-        return;
+        return playSceneAudioFrom(timelineAudioStartForSegment(next));
       }
       updateAudioScrubbers();
-      return;
+      return false;
     }
     const local = Math.max(0, state.sceneAudioGlobalTime - timelineAudioStartForSegment(segment)) + timelineAudioSourceStartForSegment(segment);
     sceneAudio.src = audioUrl(sourcePath);
@@ -13619,10 +13711,14 @@ function openBuilder(node) {
       } catch {
         // Metadata not ready yet.
       }
-      sceneAudio.play().catch((error) => toast(String(error?.message || error), true));
+      sceneAudio.play().catch(() => {
+        sceneAudio.pause();
+        startSilentTimelinePlayback(state.sceneAudioGlobalTime);
+      });
     };
     if (Number.isFinite(sceneAudio.duration)) start();
     else sceneAudio.onloadedmetadata = start;
+    return true;
   }
 
   function beginGlobalTimelineScrub(event) {
@@ -17882,6 +17978,50 @@ function openBuilder(node) {
       return miniMaxH3SettingsForSegment(segment).audio_mode === "built_in_audio" ? "minimax_h3" : "";
     }
     return currentVideoMode() === "id_lora" ? "id_lora" : "";
+  }
+
+  async function chooseRenderedSceneTrimAtPlayhead() {
+    const segment = activeSegment();
+    if (!segment || segmentTrack(segment) === "overlay") {
+      toast("Select a rendered base scene before right-clicking ✂ to trim it.", true);
+      return;
+    }
+    if (!String(selectedSegmentVideoPath(segment) || "").trim()) {
+      toast("The selected scene does not have a rendered video to trim.", true);
+      return;
+    }
+    if (!baseSceneVideoTrimKind(segment)) {
+      toast("Right-click trimming is available for MiniMax built-in-audio and ID-LoRA rendered scenes.", true);
+      return;
+    }
+
+    const trimTime = Number(currentGlobalTime() || 0);
+    const sceneStart = Number(segment.start || 0);
+    const sceneEnd = Number(segment.end || sceneStart);
+    if (trimTime <= sceneStart + 0.15 || trimTime >= sceneEnd - 0.15) {
+      toast("Move the playhead inside the selected rendered scene, then right-click ✂ again.", true);
+      return;
+    }
+    pauseTimelineForEditing();
+    const choice = await chooseBatchModeAction({
+      title: "Trim Rendered Scene at Playhead",
+      intro: `${sceneDisplayName(segment, segmentIndexInfo(segment).index)} — playhead at ${formatTime(trimTime)}. Choose which portion to remove.`,
+      confirmLabel: "Trim Scene",
+      choices: [
+        {
+          value: "before",
+          label: "Remove before playhead",
+          description: "Discard the beginning of the rendered clip and keep everything from the playhead onward.",
+        },
+        {
+          value: "after",
+          label: "Remove after playhead",
+          description: "Keep the beginning of the rendered clip and discard everything after the playhead.",
+        },
+      ],
+    });
+    if (!choice) return;
+    await trimBaseSceneVideoAtPlayhead(segment, choice === "before" ? "left" : "right", trimTime);
   }
 
   async function trimBaseSceneVideoAtPlayhead(segment, side, trimTimeOverride = null) {
@@ -35092,6 +35232,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     ].join("\n");
   }
 
+  function stripMiniMaxH3ManagedPromptBlock(prompt, headingPattern) {
+    const nextSection = String.raw`(?=\n+(?:\[\s*\d+(?:\.\d+)?s?\s*[-–—]\s*\d+(?:\.\d+)?s?\s*\]|Audio(?:\s+1)?\s*:|Native\s+audio\s*:|Continuity\s*:|MINIMAX NATIVE VOICE IDENTITY — MANDATORY AND VERBATIM:|REFERENCE SUBJECT COUNT — MANDATORY:|VISUAL-ONLY B-ROLL / NO-LIP-SYNC SAFETY — MANDATORY AND FINAL:|PREVIOUS-SCENE (?:SPATIAL|EXACT FRAME) CONTINUITY — MANDATORY:)|$)`;
+    return String(prompt || "").replace(
+      new RegExp(`\\n*${headingPattern}:[\\s\\S]*?${nextSection}`, "g"),
+      "",
+    ).trim();
+  }
+
   function stripMiniMaxH3VisualOnlyTimelineVocalDirections(prompt) {
     const positiveVocal = /\b(?:sing(?:s|ing)?|sang|sung|rap(?:s|ping)?|lip[ -]?sync(?:s|ing)?|speak(?:s|ing)?|say(?:s|ing)?|said|mouth(?:s|ed|ing)?|whisper(?:s|ing)?|perform(?:s|ing)?\s+(?:the\s+)?(?:saved\s+|exact\s+)?(?:lyric|dialogue|words?))\b/i;
     const negativeSafety = /\b(?:no|not|never|without|does\s+not|do\s+not|must\s+not|cannot|can['’]t|don['’]t)\b/i;
@@ -35155,19 +35303,27 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   function applyMiniMaxH3ContinuityPromptBlock(prompt, segment, continuityInput, imageNumber) {
-    const clean = String(prompt || "").trim()
-      .replace(/\n*PREVIOUS-SCENE (?:SPATIAL|EXACT FRAME) CONTINUITY — MANDATORY:[\s\S]*?(?=\n\n(?:MINIMAX NATIVE VOICE IDENTITY|REFERENCE SUBJECT COUNT|Audio:|Continuity:)|$)/g, "")
-      .trim();
+    const clean = stripMiniMaxH3ManagedPromptBlock(
+      prompt,
+      "PREVIOUS-SCENE (?:SPATIAL|EXACT FRAME) CONTINUITY — MANDATORY",
+    );
     const block = miniMaxH3ContinuityPromptBlock(segment, continuityInput, imageNumber);
     return block ? `${clean}\n\n${block}`.trim() : clean;
   }
 
   function applyMiniMaxH3NativeVoiceBlock(prompt, segment) {
-    const clean = String(prompt || "").trim()
-      .replace(/\n*MINIMAX NATIVE VOICE IDENTITY — MANDATORY AND VERBATIM:[\s\S]*?(?=\n\n(?:Audio:|Continuity:)|$)/g, "")
-      .replace(/\n*REFERENCE SUBJECT COUNT — MANDATORY:[\s\S]*?(?=\n\n(?:MINIMAX NATIVE VOICE IDENTITY|Audio:|Continuity:)|$)/g, "")
-      .replace(/\n*VISUAL-ONLY B-ROLL \/ NO-LIP-SYNC SAFETY — MANDATORY AND FINAL:[\s\S]*$/g, "")
-      .trim();
+    let clean = stripMiniMaxH3ManagedPromptBlock(
+      prompt,
+      "MINIMAX NATIVE VOICE IDENTITY — MANDATORY AND VERBATIM",
+    );
+    clean = stripMiniMaxH3ManagedPromptBlock(
+      clean,
+      "REFERENCE SUBJECT COUNT — MANDATORY",
+    );
+    clean = stripMiniMaxH3ManagedPromptBlock(
+      clean,
+      "VISUAL-ONLY B-ROLL / NO-LIP-SYNC SAFETY — MANDATORY AND FINAL",
+    );
     const visualOnlyBlock = miniMaxH3VisualOnlySafetyBlock(segment);
     const safePrompt = visualOnlyBlock ? stripMiniMaxH3VisualOnlyTimelineVocalDirections(clean) : clean;
     const block = visualOnlyBlock ? "" : miniMaxH3NativeVoiceBlock(segment);
@@ -35429,6 +35585,113 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     } finally {
       miniMaxCreatePromptButton.disabled = false;
       syncMiniMaxH3Panel();
+    }
+  }
+
+  async function convertAllLtxVideoPromptsToMiniMaxH3() {
+    updateActiveFromInputs();
+    if (normalizeVideoType(state.videoType) === "speaking") {
+      toast("This converter is for music-video projects, not speaking / short-film projects.", true);
+      return;
+    }
+    const targets = allEditableSegments()
+      .map((segment) => ({ segment, ltxPrompt: String(segment?.i2v_prompt || "").trim() }))
+      .filter((item) => item.ltxPrompt);
+    if (!targets.length) {
+      toast("No populated LTX video prompts were found to convert.", true);
+      return;
+    }
+
+    const projectFolder = activeProjectFolderForSave();
+    if (!projectFolder) {
+      toast("Create or load a Builder project before converting its LTX prompts.", true);
+      return;
+    }
+
+    let progress = null;
+    let converted = 0;
+    let historySaved = false;
+    try {
+      convertLtxPromptsToMiniMaxButton.disabled = true;
+      convertLtxPromptsToMiniMaxButton.textContent = "Converting...";
+      state.batchCancelled = false;
+      progress = createProgressWindow("Convert LTX Video Prompts to MiniMax H3");
+
+      for (let index = 0; index < targets.length; index += 1) {
+        assertBatchNotStopped();
+        const { segment, ltxPrompt } = targets[index];
+        const mode = miniMaxH3ModeForSegment(segment);
+        const modeLabel = miniMaxH3ModeLabel(mode);
+        const duration = Math.max(0, Number(segment.end || 0) - Number(segment.start || 0));
+        const lyricText = segmentUsesNoLipSyncPerformance(segment) || isInstrumentalLyricText(segment.lyric_text)
+          ? ""
+          : flattenLyricForPrompt(segment.lyric_text);
+        const singerNames = segmentUsesNoLipSyncPerformance(segment)
+          ? []
+          : (Array.isArray(segment.lyric_singers) ? segment.lyric_singers : String(segment.lyric_singers || "").split(/[,;\n]+/))
+            .map((value) => String(value || "").trim())
+            .filter(Boolean);
+        const label = `${sceneDisplayName(segment, segmentIndexInfo(segment).index)} (${index + 1}/${targets.length})`;
+        const percent = 5 + Math.round((index / Math.max(1, targets.length)) * 88);
+        progress.set(`${label}: converting the existing LTX prompt to detailed MiniMax H3 ${modeLabel} format...\n${gemmaRunnerLine()}`, percent);
+
+        const data = await postJson("/vrgdg/music_builder/generate_t2v", {
+          ...textGemmaRunnerPayload(),
+          project_folder: projectFolder,
+          scene_id: segment.id || "",
+          builder_instruction_key: miniMaxH3InstructionKey(mode),
+          model_file: miniMaxTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value,
+          repair_model_file: miniMaxTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value,
+          t2i_prompt: [
+            "EXISTING LTX VIDEO PROMPT TO CONVERT:",
+            ltxPrompt,
+            "",
+            `Target scene duration: ${duration.toFixed(3)} seconds.`,
+          ].join("\n"),
+          user_notes: [
+            "Rewrite the existing LTX video prompt as one substantially more detailed MiniMax H3 prompt for the selected mode.",
+            "Preserve the same scene, subjects, setting, wardrobe, action, camera intent, performance, and ending. Do not invent a different scene or change the creative intent.",
+            "The existing global Audio 1 file remains the only audio source and must stay completely unchanged. Do not generate, replace, remix, extend, or add audio.",
+          ].join("\n"),
+          performance_mode: effectiveVideoPerformanceModeForSegment(segment),
+          lyric_text: lyricText,
+          singers: singerNames,
+          audio_mode: "input_audio",
+          speaker_assignments: [],
+          no_character_present: Boolean(segment.no_character_present),
+          unload_after: index === targets.length - 1,
+          temperature: 0.4,
+          top_p: 0.92,
+          max_new_tokens: 4000,
+        }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
+
+        const prompt = String(data.prompt || "").trim();
+        if (!prompt) throw new Error(`${label}: the LLM returned an empty MiniMax H3 prompt.`);
+        if (!historySaved) {
+          pushHistory();
+          historySaved = true;
+        }
+        segment.minimax_h3_prompt = prompt;
+        segment.minimax_h3_prompt_origin = "gemma";
+        converted += 1;
+      }
+
+      if (activeSegment()) {
+        miniMaxPrompt.value = String(activeSegment().minimax_h3_prompt || "");
+      }
+      ensureAllSegmentRuntimeFields();
+      syncInspector();
+      render();
+      await autoSaveSessionQuiet("converted LTX video prompts to MiniMax H3");
+      progress.set(`Converted ${converted} LTX video prompt${converted === 1 ? "" : "s"} to MiniMax H3. Global audio and original LTX prompts were not changed.`, 100);
+      progress.close(1600);
+      toast(`Converted ${converted} LTX video prompt${converted === 1 ? "" : "s"} to MiniMax H3.`);
+    } catch (error) {
+      progress?.set(`Conversion stopped after ${converted}/${targets.length} prompts:\n${String(error?.message || error)}`, 100);
+      toast(`LTX to MiniMax H3 conversion stopped after ${converted}/${targets.length} prompts:\n${String(error?.message || error)}`, true);
+    } finally {
+      convertLtxPromptsToMiniMaxButton.disabled = false;
+      convertLtxPromptsToMiniMaxButton.textContent = "Convert LTX Video Prompts to MiniMax H3";
     }
   }
 
@@ -39022,10 +39285,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       )
       : options.continuityInput;
 
-    let prompt = applyMiniMaxH3NativeVoiceBlock(String(
+    const prompt = String(
       options.prompt
       ?? (segment?.minimax_h3_prompt || segment?.i2v_prompt || "")
-    ), segment);
+    ).trim();
     if (!prompt) throw new Error(`${sceneDisplayName(segment, sceneIndex)} needs a MiniMax H3 prompt.`);
 
     const sourceAudioPath = String(
@@ -39088,10 +39351,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       }
       continuityImageNumber = imagePaths.findIndex((path) => mediaPathKey(path) === continuityKey) + 1;
       segment.minimax_h3_continuity_image_number = continuityImageNumber;
-      prompt = applyMiniMaxH3ContinuityPromptBlock(prompt, segment, continuityInput, continuityImageNumber);
     } else {
       segment.minimax_h3_continuity_image_number = 0;
-      prompt = applyMiniMaxH3ContinuityPromptBlock(prompt, segment, null, 0);
     }
     const rawVideoReferences = options.videoReferences
       ?? segment?.minimax_h3_video_references
@@ -41930,7 +42191,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       return;
     }
     if (String(selectedSegmentVideoPath(segment) || "").trim() || (Array.isArray(segment.video_history) && segment.video_history.length)) {
-      toast("This scene has rendered video versions. Clear its selected video/history before changing its timing.", true);
+      if (baseSceneVideoTrimKind(segment)) {
+        await chooseRenderedSceneTrimAtPlayhead();
+        return;
+      }
+      toast("This rendered scene cannot be split. MiniMax built-in-audio and ID-LoRA rendered scenes can be trimmed at the playhead instead.", true);
       return;
     }
     const index = state.segments.indexOf(segment);
@@ -45608,6 +45873,86 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
   }
 
+  async function deleteAllTimelineVideos() {
+    const segments = allEditableSegments();
+    const assignedSegments = segments.filter((segment) => Boolean(
+      String(segment.video_path || "").trim()
+      || (Array.isArray(segment.video_history) && segment.video_history.some((path) => String(path || "").trim()))
+      || (Array.isArray(segment.video_backup_paths) && segment.video_backup_paths.some((path) => String(path || "").trim()))
+      || String(segment.video_original_path || "").trim()
+    ));
+    const videoPaths = [...new Set(assignedSegments.flatMap((segment) => [
+      segment.video_path || "",
+      ...(Array.isArray(segment.video_history) ? segment.video_history : []),
+      ...(Array.isArray(segment.video_backup_paths) ? segment.video_backup_paths : []),
+      segment.video_original_path || "",
+    ]).map((path) => String(path || "").trim()).filter(Boolean))];
+    if (!assignedSegments.length) {
+      toast("There are no timeline videos to remove.");
+      return;
+    }
+    const ok = window.confirm(
+      `Remove ALL videos from the timeline?\n\nThis clears video assignments and video history from ${assignedSegments.length} scene${assignedSegments.length === 1 ? "" : "s"}.\n\nThe ${videoPaths.length} video file${videoPaths.length === 1 ? "" : "s"} and their thumbnails will NOT be deleted from the project folder. They remain on disk as backups.`
+    );
+    if (!ok) return;
+
+    try {
+      deleteAllTimelineVideosButton.disabled = true;
+      deleteAllTimelineVideosButton.textContent = "Removing ALL...";
+      pauseTimelineForEditing();
+      pushHistory();
+      for (const segment of segments) {
+        segment.video_path = "";
+        segment.video_source_path = "";
+        segment.video_thumbnail_path = "";
+        segment.video_history = [];
+        segment.video_thumbnail_history = [];
+        segment.video_backup_paths = [];
+        segment.video_backup_thumbnail_paths = [];
+        segment.video_history_index = -1;
+        segment.video_output = null;
+        segment.video_original_path = "";
+        segment.video_original_thumbnail_path = "";
+        segment.video_status = "none";
+        segment.video_cache_bust = Date.now();
+        segment.minimax_h3_trimmed_video = false;
+        segment.minimax_h3_trim_side = "";
+        segment.minimax_h3_trim_removed_seconds = 0;
+        segment.minimax_h3_trim_source_start_seconds = 0;
+        segment.minimax_h3_trimmed_duration_seconds = 0;
+        segment.minimax_h3_continuity_frame_path = "";
+        segment.minimax_h3_continuity_source_video_path = "";
+        segment.minimax_h3_continuity_source_scene_id = "";
+        segment.minimax_h3_continuity_image_number = 0;
+        segment.flf_rendered_source_video_path = "";
+        segment.preview_mode = "image";
+        ensureSegmentRuntimeFields(segment);
+      }
+      previewVideo.pause();
+      previewVideo.removeAttribute("src");
+      previewVideo.dataset.path = "";
+      previewVideo.dataset.cacheKey = "";
+      previewVideo.dataset.segmentId = "";
+      previewVideo.style.display = "none";
+      sceneAudio.pause();
+      sceneAudio.removeAttribute("src");
+      sceneAudio.load();
+      state.sceneAudioSegmentId = "";
+      syncInspector();
+      syncPreview(activeSegment());
+      renderList();
+      render();
+      await autoSaveSessionQuiet("all timeline videos removed");
+      updateSelectedMediaTools();
+      toast(`Removed all timeline videos from ${assignedSegments.length} scene${assignedSegments.length === 1 ? "" : "s"}. The files remain in the project folder as backups.`);
+    } catch (error) {
+      toast(String(error?.message || error), true);
+    } finally {
+      deleteAllTimelineVideosButton.disabled = false;
+      deleteAllTimelineVideosButton.textContent = "Delete ALL Videos";
+    }
+  }
+
   async function deleteAllTimelineImages() {
     const segments = allEditableSegments();
     const imagePaths = [...new Set(segments.flatMap((segment) => [
@@ -47776,6 +48121,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   overlayTrackToggleButton.onclick = toggleOverlayTrack;
   overlayTrackHintButton.onclick = showOverlayTrackHelp;
   splitSceneButton.onclick = splitActiveSceneAtPlayhead;
+  splitSceneButton.oncontextmenu = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    chooseRenderedSceneTrimAtPlayhead().catch((error) => toast(String(error?.message || error), true));
+  };
   loadSrtButton.onclick = loadSrt;
   loadSessionButton.onclick = loadSession;
   loadLastProjectButton.onclick = loadLastProject;
@@ -47807,6 +48157,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   zImageAllButton.onclick = confirmAndRunZImageAll;
   zEnhanceAllButton.onclick = confirmAndRunZEnhanceAll;
   zEnhanceAllToolButton.onclick = confirmAndRunZEnhanceAll;
+  convertLtxPromptsToMiniMaxButton.onclick = convertAllLtxVideoPromptsToMiniMaxH3;
   editI2VPromptButton.onclick = editCurrentVideoPromptWithGemma;
   fullBuildButton.onclick = confirmAndRunFullBuild;
   fullFLFBuildButton.onclick = confirmAndRunFullFLFBuild;
@@ -48240,6 +48591,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   deleteAllSegmentsButton.onclick = deleteAllSegments;
   useFrameAsImageButton.onclick = captureSelectedVideoFrameAsImage;
   deleteSelectedMediaButton.onclick = deleteSelectedMedia;
+  deleteAllTimelineVideosButton.onclick = deleteAllTimelineVideos;
   deleteAllTimelineImagesButton.onclick = deleteAllTimelineImages;
   globalAudioMuteButton.onclick = (event) => {
     event.preventDefault();
@@ -48258,8 +48610,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
     if (!state.sceneSelectionUsesGlobalAudio && usingSceneAudioPlaybackMode()) {
       audio.pause();
-      playSceneAudioFrom(currentGlobalTime());
-      updatePlayPauseButton();
+      const started = playSceneAudioFrom(currentGlobalTime());
+      if (!started) startSilentTimelinePlayback(currentGlobalTime());
+      else updatePlayPauseButton();
       return;
     }
     let startTime = currentGlobalTime();
@@ -48267,11 +48620,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       startTime = Math.max(0, Number(activeSegment()?.start || 0));
     }
     if (!ensureGlobalTimelineAudioSource(startTime)) {
-      toast("Load audio first, or add custom audio to scenes.", true);
+      startSilentTimelinePlayback(startTime);
       return;
     }
     seekAudioWhenReady(startTime);
-    audio.play().then(updatePlayPauseButton).catch((error) => toast(String(error?.message || error), true));
+    audio.play().then(updatePlayPauseButton).catch(() => startSilentTimelinePlayback(startTime));
   };
   multiSelectButton.onclick = openMultiSelectChooser;
   multiSelectHintButton.onclick = showMultiSelectHint;
@@ -48421,7 +48774,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
     updateAudioScrubbers();
   });
-  audio.addEventListener("play", updatePlayPauseButton);
+  audio.addEventListener("play", () => {
+    stopSilentTimelinePlayback();
+    updatePlayPauseButton();
+  });
   audio.addEventListener("pause", () => {
     updatePlayPauseButton();
     updateAudioScrubbers();
@@ -48431,7 +48787,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     updatePlayPauseButton();
     updateAudioScrubbers();
   });
-  sceneAudio.addEventListener("play", updatePlayPauseButton);
+  sceneAudio.addEventListener("play", () => {
+    stopSilentTimelinePlayback();
+    updatePlayPauseButton();
+  });
   sceneAudio.addEventListener("pause", updatePlayPauseButton);
   sceneAudio.addEventListener("timeupdate", () => {
     const segment = state.segments.find((item) => item.id === state.sceneAudioSegmentId) || activeSegment();
