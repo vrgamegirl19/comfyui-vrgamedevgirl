@@ -45,6 +45,7 @@ import {
 
 const NODE_NAME = "VRGDG_MusicVideoBuilderUI";
 const BUILDER_UI_VERSION = "welcome-startup-2026-05-20";
+const DEFAULT_LLM_MAX_TOKENS = 8192;
 const HIDDEN_WIDGETS = new Set(["audio_path", "project_folder", "session_path", "srt_path"]);
 let builderAutomaticMemoryCleanupEnabled = false;
 const EMBEDDED_MEMORY_CLEANUP_NODE_TYPES = new Set([
@@ -5987,7 +5988,6 @@ function openBuilder(node) {
     storyIdeaPath: "",
     subjectScenePath: "",
     textGemmaRunner: "builtin",
-    gemmaContextLimit: 8000,
     gemmaGpuLayers: 99,
     lmStudioBaseUrl: "http://127.0.0.1:1234/v1",
     lmStudioModel: "",
@@ -5995,7 +5995,7 @@ function openBuilder(node) {
     llmApiProvider: "openai",
     llmApiModel: "",
     llmApiKey: "",
-    llmMaxTokens: 8192,
+    llmMaxTokens: DEFAULT_LLM_MAX_TOKENS,
     llmApiChoices: null,
     customModelsRoot: "",
     notificationSettings: defaultNotificationSettings(),
@@ -8485,7 +8485,7 @@ function openBuilder(node) {
   function textGemmaRunnerPayload() {
     return {
       text_runner: state.textGemmaRunner || "builtin",
-      n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
+      n_ctx: getLlmRunnerMaxTokens(),
       n_gpu_layers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),
       max_new_tokens: getLlmRunnerMaxTokens(),
       lmstudio_base_url: state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
@@ -9929,9 +9929,6 @@ function openBuilder(node) {
     if (Object.prototype.hasOwnProperty.call(defaults, "gemma_gpu_layers") || Object.prototype.hasOwnProperty.call(defaults, "gemmaGpuLayers") || Object.prototype.hasOwnProperty.call(defaults, "n_gpu_layers")) {
       state.gemmaGpuLayers = normalizeGemmaGpuLayers(defaults.gemma_gpu_layers ?? defaults.gemmaGpuLayers ?? defaults.n_gpu_layers ?? state.gemmaGpuLayers);
     }
-    if (Object.prototype.hasOwnProperty.call(defaults, "gemma_context_limit") || Object.prototype.hasOwnProperty.call(defaults, "gemmaContextLimit") || Object.prototype.hasOwnProperty.call(defaults, "n_ctx")) {
-      state.gemmaContextLimit = normalizeGemmaContextLimit(defaults.gemma_context_limit ?? defaults.gemmaContextLimit ?? defaults.n_ctx ?? state.gemmaContextLimit);
-    }
     if (defaults.lm_studio_base_url || defaults.lmStudioBaseUrl) {
       state.lmStudioBaseUrl = defaults.lm_studio_base_url || defaults.lmStudioBaseUrl || state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
     }
@@ -9947,8 +9944,21 @@ function openBuilder(node) {
     if (defaults.llm_api_model || defaults.llmApiModel) {
       state.llmApiModel = defaults.llm_api_model || defaults.llmApiModel || state.llmApiModel || "";
     }
-    if (Object.prototype.hasOwnProperty.call(defaults, "llm_max_tokens") || Object.prototype.hasOwnProperty.call(defaults, "llmMaxTokens")) {
-      state.llmMaxTokens = normalizeLlmMaxTokens(defaults.llm_max_tokens ?? defaults.llmMaxTokens ?? state.llmMaxTokens);
+    if (
+      Object.prototype.hasOwnProperty.call(defaults, "llm_max_tokens")
+      || Object.prototype.hasOwnProperty.call(defaults, "llmMaxTokens")
+      || Object.prototype.hasOwnProperty.call(defaults, "gemma_context_limit")
+      || Object.prototype.hasOwnProperty.call(defaults, "gemmaContextLimit")
+      || Object.prototype.hasOwnProperty.call(defaults, "n_ctx")
+    ) {
+      state.llmMaxTokens = normalizeLlmMaxTokens(
+        defaults.llm_max_tokens
+        ?? defaults.llmMaxTokens
+        ?? defaults.gemma_context_limit
+        ?? defaults.gemmaContextLimit
+        ?? defaults.n_ctx
+        ?? state.llmMaxTokens,
+      );
     }
     state.imageModelMode = defaults.image_model_mode || defaults.imageModelMode || defaults.flux_klein_settings?.image_model_mode || defaults.fluxKleinSettings?.image_model_mode || state.imageModelMode || "zimage";
     state.videoType = normalizeVideoType(defaults.video_type || defaults.videoType || state.videoType);
@@ -10154,7 +10164,6 @@ function openBuilder(node) {
       storyIdeaPath: state.storyIdeaPath,
       subjectScenePath: state.subjectScenePath,
       textGemmaRunner: state.textGemmaRunner,
-      gemmaContextLimit: normalizeGemmaContextLimit(state.gemmaContextLimit),
       gemmaGpuLayers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),
       lmStudioBaseUrl: state.lmStudioBaseUrl,
       lmStudioModel: state.lmStudioModel,
@@ -10237,13 +10246,20 @@ function openBuilder(node) {
     state.storyIdeaPath = data.storyIdeaPath || "";
     state.subjectScenePath = data.subjectScenePath || "";
     state.textGemmaRunner = data.textGemmaRunner || data.text_gemma_runner || state.textGemmaRunner || "builtin";
-    state.gemmaContextLimit = normalizeGemmaContextLimit(data.gemmaContextLimit ?? data.gemma_context_limit ?? data.n_ctx ?? state.gemmaContextLimit);
     state.gemmaGpuLayers = normalizeGemmaGpuLayers(data.gemmaGpuLayers ?? data.gemma_gpu_layers ?? data.n_gpu_layers ?? state.gemmaGpuLayers);
     state.lmStudioBaseUrl = data.lmStudioBaseUrl || data.lm_studio_base_url || state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
     state.lmStudioModel = data.lmStudioModel || data.lm_studio_model || state.lmStudioModel || "";
     state.lmStudioApiKey = data.lmStudioApiKey || data.lm_studio_api_key || state.lmStudioApiKey || "";
     state.llmApiProvider = data.llmApiProvider || data.llm_api_provider || state.llmApiProvider || "openai";
     state.llmApiModel = data.llmApiModel || data.llm_api_model || state.llmApiModel || "";
+    state.llmMaxTokens = normalizeLlmMaxTokens(
+      data.llmMaxTokens
+      ?? data.llm_max_tokens
+      ?? data.gemmaContextLimit
+      ?? data.gemma_context_limit
+      ?? data.n_ctx
+      ?? state.llmMaxTokens,
+    );
     state.notificationSettings = normalizeNotificationSettings(data.notificationSettings || data.notification_settings || state.notificationSettings);
     state.automaticMemoryCleanup = setBuilderAutomaticMemoryCleanupEnabled(data.automaticMemoryCleanup ?? data.automatic_memory_cleanup ?? state.automaticMemoryCleanup ?? false);
     state.waveformMode = data.waveformMode || state.waveformMode || "medium";
@@ -11562,19 +11578,15 @@ function openBuilder(node) {
     return Math.max(0, Math.min(999, Math.round(parsed)));
   }
 
-  function normalizeGemmaContextLimit(value) {
-    const parsed = Number(value);
-    if (!Number.isFinite(parsed)) return 8000;
-    return Math.max(512, Math.min(262144, Math.round(parsed)));
-  }
-
   function normalizeLlmMaxTokens(value) {
     const parsed = Number(value);
-    if (!Number.isFinite(parsed)) return 8192;
+    if (!Number.isFinite(parsed)) return DEFAULT_LLM_MAX_TOKENS;
     return Math.max(2048, Math.min(262144, Math.round(parsed)));
   }
 
   function getLlmRunnerMaxTokens(options = {}) {
+    const runner = String(options.runner || state.textGemmaRunner || "builtin").trim().toLowerCase();
+    if (runner === "llm_api") return undefined;
     if (Object.prototype.hasOwnProperty.call(options, "maxNewTokens") && Number.isFinite(Number(options.maxNewTokens))) {
       return normalizeLlmMaxTokens(options.maxNewTokens);
     }
@@ -19483,6 +19495,7 @@ function openBuilder(node) {
         const storyIdea = gemmaTarget === "builder_subjects_and_scenes"
           ? await loadContextTextQuiet(storyIdeaInput.value)
           : "";
+        const localLlmMaxTokens = getLlmRunnerMaxTokens({ runner: "builtin" });
         const data = await postJson("/vrgdg/gemma4/generate", {
           target: gemmaTarget,
           model_file: modelFile,
@@ -19490,8 +19503,8 @@ function openBuilder(node) {
           style_theme: styleTheme,
           story_idea: storyIdea || idea,
           unload_after: true,
-          n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
-          max_new_tokens: getLlmRunnerMaxTokens(),
+          n_ctx: localLlmMaxTokens,
+          max_new_tokens: localLlmMaxTokens,
         }, 10 * 60 * 1000);
         const text = String(data.text || "").trim();
         if (!text) throw new Error("Gemma4 returned an empty draft.");
@@ -26388,7 +26401,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
             subject_context: referenceSubjectContextForLocations(),
             existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
             max_locations: refs.max_generated_locations || 8,
-            n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
+            n_ctx: getLlmRunnerMaxTokens(),
             max_new_tokens: getLlmRunnerMaxTokens(),
             unload_after: true,
           }, 10 * 60 * 1000)
@@ -26401,7 +26414,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
             subject_context: referenceSubjectContextForLocations(),
             existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
             max_locations: refs.max_generated_locations || 8,
-            n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
+            n_ctx: getLlmRunnerMaxTokens(),
             unload_after: true,
           }, 10 * 60 * 1000);
         progress.set("Adding extracted locations to the Reference Builder...", 78);
@@ -26615,7 +26628,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
             used_location_counts: usedLocationCounts,
             previous_assignments: previousAssignments.slice(-24),
             unload_after: batchIndex === batches.length - 1,
-            n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
+            n_ctx: getLlmRunnerMaxTokens(),
             max_new_tokens: getLlmRunnerMaxTokens(),
           }, 10 * 60 * 1000);
           mergedData.locations = batchData.locations || mergedData.locations || [];
@@ -28956,7 +28969,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
             subject_context: ingredientSubjectContextForLocations(),
             existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
             max_locations: refs.max_generated_locations || 8,
-            n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
+            n_ctx: getLlmRunnerMaxTokens(),
             max_new_tokens: getLlmRunnerMaxTokens(),
             unload_after: true,
           }, 10 * 60 * 1000)
@@ -28969,7 +28982,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
             subject_context: ingredientSubjectContextForLocations(),
             existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
             max_locations: refs.max_generated_locations || 8,
-            n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
+            n_ctx: getLlmRunnerMaxTokens(),
             unload_after: true,
           }, 10 * 60 * 1000);
         const { added, updated } = upsertLocationText((data.locations || []).map((item) => ({ name: item.name, description: item.description })));
@@ -29699,7 +29712,7 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
             subject_context: subjectContextForTextMapLocations(),
             existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
             max_locations: refs.max_generated_locations || 8,
-            n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
+            n_ctx: getLlmRunnerMaxTokens(),
             max_new_tokens: getLlmRunnerMaxTokens(),
             unload_after: true,
           }, 10 * 60 * 1000)
@@ -29712,7 +29725,7 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
             subject_context: subjectContextForTextMapLocations(),
             existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
             max_locations: refs.max_generated_locations || 8,
-            n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
+            n_ctx: getLlmRunnerMaxTokens(),
             unload_after: true,
           }, 10 * 60 * 1000);
         const { added, updated } = upsertTextMapLocations((data.locations || []).map((item) => ({ name: item.name, description: item.description })));
@@ -29785,7 +29798,7 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
             description: compactTextForTextMap(item.description, 650),
           })),
           unload_after: true,
-          n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
+          n_ctx: getLlmRunnerMaxTokens(),
           max_new_tokens: getLlmRunnerMaxTokens(),
         }, 10 * 60 * 1000);
         upsertTextMapLocations(data.locations || []);
@@ -32018,7 +32031,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       story_idea_path: state.storyIdeaPath,
       subject_scene_path: state.subjectScenePath,
       text_gemma_runner: state.textGemmaRunner || "builtin",
-      gemma_context_limit: normalizeGemmaContextLimit(state.gemmaContextLimit),
+      gemma_context_limit: normalizeLlmMaxTokens(state.llmMaxTokens),
+      llm_max_tokens: normalizeLlmMaxTokens(state.llmMaxTokens),
       gemma_gpu_layers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),
       lm_studio_base_url: state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
       lm_studio_model: state.lmStudioModel || "",
@@ -32279,9 +32293,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         state.renderLogs = normalizeRenderLogs(data.session.render_logs || state.renderLogs);
         state.activeRenderLogId = data.session.active_render_log_id || state.renderLogs[state.renderLogs.length - 1]?.id || "";
         state.textGemmaRunner = data.session.text_gemma_runner || state.textGemmaRunner || "builtin";
-        state.gemmaContextLimit = normalizeGemmaContextLimit(data.session.gemma_context_limit ?? data.session.n_ctx ?? state.gemmaContextLimit);
         state.gemmaGpuLayers = normalizeGemmaGpuLayers(data.session.gemma_gpu_layers ?? data.session.n_gpu_layers ?? state.gemmaGpuLayers);
-        state.llmMaxTokens = normalizeLlmMaxTokens(data.session.llm_max_tokens ?? data.session.llmMaxTokens ?? state.llmMaxTokens);
+        state.llmMaxTokens = normalizeLlmMaxTokens(
+          data.session.llm_max_tokens
+          ?? data.session.llmMaxTokens
+          ?? data.session.gemma_context_limit
+          ?? data.session.n_ctx
+          ?? state.llmMaxTokens,
+        );
         state.lmStudioBaseUrl = data.session.lm_studio_base_url || state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
         state.lmStudioModel = data.session.lm_studio_model || state.lmStudioModel || "";
         state.lmStudioApiKey = data.session.lm_studio_api_key || state.lmStudioApiKey || "";
@@ -32606,8 +32625,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.renderLogs = normalizeRenderLogs(session.render_logs);
       state.activeRenderLogId = session.active_render_log_id || state.renderLogs[state.renderLogs.length - 1]?.id || "";
       state.textGemmaRunner = session.text_gemma_runner || state.textGemmaRunner || "builtin";
-      state.gemmaContextLimit = normalizeGemmaContextLimit(session.gemma_context_limit ?? session.n_ctx ?? state.gemmaContextLimit);
       state.gemmaGpuLayers = normalizeGemmaGpuLayers(session.gemma_gpu_layers ?? session.n_gpu_layers ?? state.gemmaGpuLayers);
+      state.llmMaxTokens = normalizeLlmMaxTokens(
+        session.llm_max_tokens
+        ?? session.llmMaxTokens
+        ?? session.gemma_context_limit
+        ?? session.n_ctx
+        ?? state.llmMaxTokens,
+      );
       state.lmStudioBaseUrl = session.lm_studio_base_url || state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
       state.lmStudioModel = session.lm_studio_model || state.lmStudioModel || "";
       state.lmStudioApiKey = session.lm_studio_api_key || state.lmStudioApiKey || "";
@@ -33908,7 +33933,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       user_notes: userNotes,
       clear_before_load: options.clearBeforeLoad !== false,
       unload_after: options.unloadAfter !== false,
-      n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
+      n_ctx: getLlmRunnerMaxTokens(),
       max_new_tokens: getLlmRunnerMaxTokens(),
       seed: options.seed,
       temperature: options.temperature,
@@ -34535,7 +34560,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       no_vocal: noVocal,
       no_character_present: Boolean(segment?.no_character_present),
       unload_after: options.unloadAfter !== false,
-      n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
+      n_ctx: getLlmRunnerMaxTokens(),
       max_new_tokens: getLlmRunnerMaxTokens(),
     }, GEMMA_VIDEO_ENHANCE_TIMEOUT_MS);
     return String(data.prompt || "").trim() || base;
@@ -34915,7 +34940,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           no_character_present: Boolean(segment.no_character_present),
         } : {},
         unload_after: true,
-        n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
+        n_ctx: getLlmRunnerMaxTokens(),
         temperature: 0.25,
         top_p: 0.9,
         max_new_tokens: getLlmRunnerMaxTokens(),
@@ -35002,7 +35027,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           no_character_present: Boolean(segment.no_character_present),
         } : {},
         unload_after: true,
-        n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
+        n_ctx: getLlmRunnerMaxTokens(),
         temperature: 0.25,
         top_p: 0.9,
         max_new_tokens: getLlmRunnerMaxTokens(),
@@ -37335,7 +37360,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         model_file: i2vTextGemmaModelSelect.value || t2iTextGemmaModelSelect.value || "",
         vision_model_file: i2vGemmaModelSelect.value || gemmaModelSelect.value || "",
         mmproj_file: i2vMmprojSelect.value || mmprojSelect.value || "",
-        n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
+        n_ctx: getLlmRunnerMaxTokens(),
         n_gpu_layers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),
         n_threads: 8,
         unload_after: true,
@@ -37595,7 +37620,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       performance_mode: effectiveVideoPerformanceModeForSegment(nextSegment),
       repair_model_file: i2vTextGemmaModelSelect.value,
       unload_after: true,
-      n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
+      n_ctx: getLlmRunnerMaxTokens(),
       temperature: 0.25,
       top_p: 0.9,
       max_new_tokens: getLlmRunnerMaxTokens(),
@@ -42807,7 +42832,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         append_subject_to_prompts: true,
         repair_lyric_segments: false,
         text_gemma_runner: state.textGemmaRunner || "builtin",
-        gemma_context_limit: normalizeGemmaContextLimit(state.gemmaContextLimit),
+        gemma_context_limit: normalizeLlmMaxTokens(state.llmMaxTokens),
+        llm_max_tokens: normalizeLlmMaxTokens(state.llmMaxTokens),
         gemma_gpu_layers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),
         lm_studio_base_url: state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
         lm_studio_model: state.lmStudioModel || "",
@@ -44612,7 +44638,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           auto_apply: allowActions,
           agent_purpose: purpose.value || "scene_work",
           unload_after: true,
-          n_ctx: scope.value === "project_brief" || scope.value === "full_scene_plan" ? 12000 : 8000,
+          n_ctx: getLlmRunnerMaxTokens(),
           max_new_tokens: getLlmRunnerMaxTokens(),
           temperature: 0.55,
           top_p: 0.95,
@@ -44794,7 +44820,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           image_ingredients: refs,
           user_notes: "These are performer, character, location, and aesthetic references for the whole project.",
           unload_after: true,
-          n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
+          n_ctx: getLlmRunnerMaxTokens(),
           max_new_tokens: getLlmRunnerMaxTokens(),
           temperature: 0.25,
           top_p: 0.95,
@@ -44978,10 +45004,6 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     runner.options[0].textContent = "Gemma Local";
     runner.options[1].textContent = "LM Studio";
     runner.options[2].textContent = "LLM API";
-    const gemmaContextLimit = makeInput(String(normalizeGemmaContextLimit(state.gemmaContextLimit)), "number");
-    gemmaContextLimit.min = "512";
-    gemmaContextLimit.max = "262144";
-    gemmaContextLimit.step = "256";
     const gemmaGpuLayers = makeInput(String(normalizeGemmaGpuLayers(state.gemmaGpuLayers)), "number");
     gemmaGpuLayers.min = "0";
     gemmaGpuLayers.max = "999";
@@ -44990,13 +45012,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     builtinPanel.style.cssText = "display:flex;flex-direction:column;gap:10px;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:12px;";
     const builtinNote = document.createElement("div");
     builtinNote.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
-    builtinNote.textContent = "Advanced local GGUF settings. Context limit controls how much text Gemma Local can accept. Higher context can use much more RAM/VRAM and may slow down, hang, fail, or run out of memory.";
+    builtinNote.textContent = "Advanced local GGUF settings. Max tokens controls how much text Gemma Local can accept. Higher values can use much more RAM/VRAM and may slow down, hang, fail, or run out of memory.";
     const gpuNote = document.createElement("div");
     gpuNote.style.cssText = "font-size:12px;color:#94a3b8;line-height:1.4;";
     gpuNote.textContent = "Lower GPU layers if Gemma Local runs out of VRAM; try 12 for 10GB cards. Higher values use more VRAM and may run faster.";
     builtinPanel.append(
       builtinNote,
-      makeField("Context limit / n_ctx", gemmaContextLimit),
       gpuNote,
       makeField("GPU layers / n_gpu_layers", gemmaGpuLayers),
     );
@@ -45011,8 +45032,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     llmMaxTokens.min = "2048";
     llmMaxTokens.max = "262144";
     llmMaxTokens.step = "256";
-    llmMaxTokens.title = "Global max tokens for LM Studio and LLM API requests.";
-    const llmMaxTokensField = makeField("Global max tokens", llmMaxTokens, "Applies to LM Studio and LLM API prompt generation. Default: 8192.");
+    llmMaxTokens.title = "Shared token limit for Gemma Local and LM Studio.";
+    const localTokenPanel = document.createElement("div");
+    localTokenPanel.style.cssText = "display:flex;flex-direction:column;gap:10px;border:1px solid #0e7490;border-radius:7px;background:#083344;padding:12px;";
+    localTokenPanel.append(makeField(
+      "Local LLM max tokens",
+      llmMaxTokens,
+      `Shared by both local runners: Gemma Local uses it for n_ctx and generation, while LM Studio receives it as max_tokens. Default: ${DEFAULT_LLM_MAX_TOKENS}.`,
+    ));
     const lmPanel = document.createElement("div");
     lmPanel.style.cssText = "display:flex;flex-direction:column;gap:10px;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:12px;";
     const note = document.createElement("div");
@@ -45083,6 +45110,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     llmApiKey.oninput = () => {
       state.llmApiKey = llmApiKey.value || "";
     };
+    llmMaxTokens.oninput = () => {
+      state.llmMaxTokens = normalizeLlmMaxTokens(llmMaxTokens.value);
+    };
     modelSelect.onchange = () => {
       if (modelSelect.value) model.value = modelSelect.value;
     };
@@ -45138,8 +45168,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     );
     const syncVisibility = () => {
       state.textGemmaRunner = runner.value || "builtin";
-      state.gemmaContextLimit = normalizeGemmaContextLimit(gemmaContextLimit.value);
       state.gemmaGpuLayers = normalizeGemmaGpuLayers(gemmaGpuLayers.value);
+      state.llmMaxTokens = normalizeLlmMaxTokens(llmMaxTokens.value);
+      localTokenPanel.style.display = runner.value === "llm_api" ? "none" : "flex";
       builtinPanel.style.display = runner.value === "builtin" ? "flex" : "none";
       lmPanel.style.display = runner.value === "lm_studio" ? "flex" : "none";
       apiPanel.style.display = runner.value === "llm_api" ? "flex" : "none";
@@ -45175,7 +45206,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const cancel = makeButton("Cancel");
     const save = makeButton("Save Runner", "primary");
     actions.append(cancel, save);
-    box.append(header, makeField("Text LLM runner", runner), llmMaxTokensField, builtinPanel, lmPanel, apiPanel, actions);
+    box.append(header, makeField("Text LLM runner", runner), localTokenPanel, builtinPanel, lmPanel, apiPanel, actions);
     backdrop.append(box);
     document.body.append(backdrop);
     syncVisibility();
@@ -45183,7 +45214,6 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     close.onclick = cancel.onclick = () => backdrop.remove();
     save.onclick = async () => {
       state.textGemmaRunner = runner.value || "builtin";
-      state.gemmaContextLimit = normalizeGemmaContextLimit(gemmaContextLimit.value);
       state.gemmaGpuLayers = normalizeGemmaGpuLayers(gemmaGpuLayers.value);
       state.llmMaxTokens = normalizeLlmMaxTokens(llmMaxTokens.value);
       state.lmStudioBaseUrl = baseUrl.value || "http://127.0.0.1:1234/v1";
@@ -46181,7 +46211,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           })),
           max_locations: refs.max_generated_locations || 8,
           unload_after: true,
-          n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
+          n_ctx: getLlmRunnerMaxTokens(),
           max_new_tokens: getLlmRunnerMaxTokens(),
         }, 10 * 60 * 1000);
         const { added, updated } = upsertWizardLocations(refs, data.locations || []);
@@ -46236,7 +46266,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
             description: compactWizardText(item.description, 700),
           })),
           unload_after: true,
-          n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
+          n_ctx: getLlmRunnerMaxTokens(),
           max_new_tokens: getLlmRunnerMaxTokens(),
         }, 10 * 60 * 1000);
         upsertWizardLocations(refs, data.locations || []);
@@ -46668,7 +46698,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           model_file: i2vTextGemmaModelSelect.value || t2iTextGemmaModelSelect.value || "",
           vision_model_file: i2vGemmaModelSelect.value || gemmaModelSelect.value || "",
           mmproj_file: i2vMmprojSelect.value || mmprojSelect.value || "",
-          n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
+          n_ctx: getLlmRunnerMaxTokens(),
           n_gpu_layers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),
           n_threads: 8,
           unload_after: true,
