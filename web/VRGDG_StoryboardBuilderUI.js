@@ -2406,6 +2406,54 @@ function storyboardSpeedValue(value, fallback = 4) {
   return Number.isFinite(number) ? Math.max(0, Math.min(10, number)) : fallback;
 }
 
+export function storyboardCutFrequencyValue(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, Math.min(10, Math.round(number))) : fallback;
+}
+
+export function storyboardCutFrequencyLabel(value) {
+  const frequency = storyboardCutFrequencyValue(value);
+  if (frequency <= 0) return "0 / continuous shot";
+  if (frequency >= 10) return "10 / cut every second";
+  if (frequency <= 3) return `${frequency} / occasional cuts`;
+  if (frequency <= 6) return `${frequency} / moderate cuts`;
+  return `${frequency} / frequent cuts`;
+}
+
+export function storyboardCutPlanForDuration(durationValue, frequencyValue) {
+  const duration = Math.max(0, Number(durationValue) || 0);
+  const frequency = storyboardCutFrequencyValue(frequencyValue);
+  const maximumCuts = Math.max(0, Math.ceil(Math.max(0, duration - 0.000001)) - 1);
+  const nonMaximumCutLimit = Math.max(1, maximumCuts - 1);
+  const cutCount = frequency <= 0 || maximumCuts <= 0
+    ? 0
+    : frequency >= 10
+      ? maximumCuts
+      : Math.min(nonMaximumCutLimit, Math.max(1, Math.round(maximumCuts * frequency / 10)));
+  let cutTimes = [];
+  if (cutCount > 0) {
+    cutTimes = cutCount === maximumCuts
+      ? Array.from({ length: cutCount }, (_, index) => index + 1)
+      : Array.from({ length: cutCount }, (_, index) => duration * (index + 1) / (cutCount + 1));
+    cutTimes = cutTimes.map((time) => Number(time.toFixed(3)));
+  }
+  const exactDuration = Number(duration.toFixed(3));
+  const timingText = cutTimes.map((time) => `${time}s`).join(", ");
+  const instruction = cutCount > 0
+    ? `EDITING / CUT PLAN — MANDATORY: Cut frequency ${frequency}/10 for this exact ${exactDuration}-second segment requires exactly ${cutCount} hard CUT TO transition${cutCount === 1 ? "" : "s"}, at approximately ${timingText}, creating ${cutCount + 1} coherent shots. Begin with shot 1 at 0s. At every listed time, write an explicit new timestamp block beginning with CUT TO: and change to a clearly different but continuity-preserving angle, framing, or story detail within the same scene and ongoing action. Preserve identity, wardrobe, location, lighting, props, spatial direction, and action continuity. Do not add extra cuts, montage beats, dissolves, scene changes, or transitions outside this schedule.`
+    : `EDITING / CUT PLAN — MANDATORY: Use one smooth, continuous, uninterrupted shot for the full ${exactDuration}-second segment. Use no CUT TO, hard cut, angle reset, montage, dissolve, scene change, or transition. Camera and character movement may develop inside the same continuous take.`;
+  return {
+    frequency,
+    exact_duration_seconds: exactDuration,
+    maximum_one_per_second_cuts: maximumCuts,
+    cut_count: cutCount,
+    shot_count: cutCount + 1,
+    cut_times_seconds: cutTimes,
+    continuous_shot: cutCount === 0,
+    instruction,
+  };
+}
+
 function storyboardSpeedLabel(value, kind = "motion") {
   const speed = storyboardSpeedValue(value);
   if (speed <= 0) return kind === "camera" ? "0 / static camera" : "0 / still subject";
@@ -2526,6 +2574,7 @@ function slimStoryboardForRequest(state) {
     global_consistency_phrase: state.globalConsistencyPhrase || "",
     camera_motion_speed: storyboardSpeedValue(state.cameraMotionSpeed, 4),
     character_motion_speed: storyboardSpeedValue(state.characterMotionSpeed, 4),
+    minimax_h3_cut_frequency: storyboardCutFrequencyValue(state.cutFrequency),
     performance_style_default: state.performanceStyle || "",
     facial_performance_default: state.facialPerformance || "",
     facial_performance_custom_default: state.facialPerformanceCustom || "",
@@ -2655,6 +2704,15 @@ function storyboardScenesForGpt(state) {
       && normalizeStoryboardProjectVideoEngine(normalized.project_video_engine || state.projectVideoEngine) === "minimax_h3"
       ? storyboardTemporalWorldEffectForScene(normalized, state)
       : null;
+    const miniMaxVideoScene = !imageMode
+      && normalizeStoryboardProjectVideoEngine(normalized.project_video_engine || state.projectVideoEngine) === "minimax_h3";
+    const exactSceneDuration = Math.max(
+      0,
+      Number(normalized.exact_duration || 0) || Number(normalized.timeline_end || 0) - Number(normalized.timeline_start || 0),
+    );
+    const cutPlan = miniMaxVideoScene
+      ? storyboardCutPlanForDuration(exactSceneDuration, state.cutFrequency)
+      : null;
     const instrumental = Boolean(normalized.lyric_instrumental);
     const noLipSync = Boolean(normalized.lyric_no_lip_sync || performanceMode === "no_lip_sync");
     const noCharacterPresent = Boolean(normalized.no_character_present);
@@ -2691,6 +2749,10 @@ function storyboardScenesForGpt(state) {
       prompt_type: imageMode ? "text to image" : storyboardVideoPromptTypeLabel(normalized.video_prompt_type),
       project_video_engine: normalizeStoryboardProjectVideoEngine(normalized.project_video_engine || state.projectVideoEngine),
       minimax_h3_mode: normalizeStoryboardMiniMaxH3Mode(normalized.minimax_h3_mode),
+      ...(cutPlan ? {
+        minimax_h3_cut_frequency: cutPlan.frequency,
+        cut_plan: cutPlan,
+      } : {}),
       exact_duration: Number(normalized.exact_duration || 0),
       timeline_start: Number(normalized.timeline_start || 0),
       timeline_end: Number(normalized.timeline_end || 0),
@@ -2878,7 +2940,7 @@ export function storyboardGptPayload(state, scenesOverride = null) {
         },
       }
       : {
-        task_instruction: "Create detailed image-to-video prompts for Video Prep using a strict source hierarchy. The mapped location_ref is the required physical set for each scene: do not replace it with a location from story_layer, scene_story_beat, song_story_brief, user_story_arc, lyrics, or previous/next scene context. If story context mentions another place, translate only its emotion, tension, symbolism, or action into the mapped location_ref environment. The first_frame_visual_inventory field is only a first-frame inventory: visible subject identity, wardrobe, hair, makeup, props, setting, lighting, color palette, framing, and composition. Do not use first_frame_visual_inventory or any image prompt wording for body action, camera motion, performance energy, facial performance, lyric action, story action, or animation pacing. Follow camera_flow_guidance as a hard framing constraint for the entire shot, every camera move, and the ending composition. When starting_shot.required is true, the first sentence must explicitly state that the video begins with starting_shot.selected_starting_shot; do not merely imply that framing or use it later. For an eyes shot, explicitly say the video begins with an extreme close-up of the subject's eyes. The selected camera motion begins from that opening framing. Then build the rest of the video prompt in this order: 1) subject and vocal/performance sentence from vocal_status, performance_direction, and facial_performance_direction; 2) character movement sentence from character_motion, character_motion_guidance, character_motion_speed, and scene_story_beat; 3) camera movement sentence from camera_motion, camera_guidance, and camera_motion_speed_guidance; 4) environment/lighting sentence from first_frame_visual_inventory and location_ref; 5) final mood/style sentence from story_layer and image aesthetic only where visual. Each sentence has one job and must add new information. Do not repeat the same mood, trait, motion, authority/defiance language, setting adjective, or descriptive phrase across multiple sentences. If an idea appears in the face sentence, do not repeat it in the body, camera, environment, or atmosphere sentence; use a different concrete visual detail instead. Do not duplicate adjacent words such as 'tall, tall'. The motion priority is character_motion_guidance + camera_motion_speed_guidance + camera_guidance + performance_direction + vocal_status + scene_story_beat above story_layer, and all of those above first_frame_visual_inventory. At camera speed 7-8, do not use slow, gentle, subtle, restrained, locked-off, static, or hold camera wording; use energetic active movement. At camera speed 9-10, use multiple coordinated readable camera moves. At character speed 4 or higher, include at least one clear physical body action, gesture, step, or set interaction; facial movement alone does not count.",
+        task_instruction: "Create detailed image-to-video prompts for Video Prep using a strict source hierarchy. The mapped location_ref is the required physical set for each scene: do not replace it with a location from story_layer, scene_story_beat, song_story_brief, user_story_arc, lyrics, or previous/next scene context. If story context mentions another place, translate only its emotion, tension, symbolism, or action into the mapped location_ref environment. The first_frame_visual_inventory field is only a first-frame inventory: visible subject identity, wardrobe, hair, makeup, props, setting, lighting, color palette, framing, and composition. Do not use first_frame_visual_inventory or any image prompt wording for body action, camera motion, performance energy, facial performance, lyric action, story action, or animation pacing. Follow camera_flow_guidance as a hard framing constraint for the entire shot, every camera move, and the ending composition. For MiniMax scenes, follow cut_plan.instruction exactly: a zero/effectively-zero plan is one continuous take with no cuts, while an active plan requires the exact listed number and timing of explicit CUT TO transitions. When starting_shot.required is true, the first sentence must explicitly state that the video begins with starting_shot.selected_starting_shot; do not merely imply that framing or use it later. For an eyes shot, explicitly say the video begins with an extreme close-up of the subject's eyes. The selected camera motion begins from that opening framing. Then build the rest of the video prompt in this order: 1) subject and vocal/performance sentence from vocal_status, performance_direction, and facial_performance_direction; 2) character movement sentence from character_motion, character_motion_guidance, character_motion_speed, and scene_story_beat; 3) camera movement sentence from camera_motion, camera_guidance, and camera_motion_speed_guidance; 4) environment/lighting sentence from first_frame_visual_inventory and location_ref; 5) final mood/style sentence from story_layer and image aesthetic only where visual. Each sentence has one job and must add new information. Do not repeat the same mood, trait, motion, authority/defiance language, setting adjective, or descriptive phrase across multiple sentences. If an idea appears in the face sentence, do not repeat it in the body, camera, environment, or atmosphere sentence; use a different concrete visual detail instead. Do not duplicate adjacent words such as 'tall, tall'. The motion priority is character_motion_guidance + camera_motion_speed_guidance + camera_guidance + performance_direction + vocal_status + scene_story_beat above story_layer, and all of those above first_frame_visual_inventory. At camera speed 7-8, do not use slow, gentle, subtle, restrained, locked-off, static, or hold camera wording; use energetic active movement. At camera speed 9-10, use multiple coordinated readable camera moves. At character speed 4 or higher, include at least one clear physical body action, gesture, step, or set interaction; facial movement alone does not count.",
       }),
     story_layer: normalizeStoryLayer(state.storyLayer),
     scenes: storyboardScenesForGpt(payloadState),
@@ -2969,6 +3031,7 @@ function openStoryboardBuilder(payload = {}) {
     facialPerformanceCustom: String(payload.facialPerformanceCustom || payload.facial_performance_custom || payload.facial_performance_custom_default || ""),
     cameraMotionSpeed: storyboardSpeedValue(payload.cameraMotionSpeed ?? payload.camera_motion_speed ?? payload.motion_defaults?.camera_motion_speed, 4),
     characterMotionSpeed: storyboardSpeedValue(payload.characterMotionSpeed ?? payload.character_motion_speed ?? payload.motion_defaults?.character_motion_speed, 4),
+    cutFrequency: storyboardCutFrequencyValue(payload.cutFrequency ?? payload.minimax_h3_cut_frequency ?? payload.builderStoryboardDefaults?.minimax_h3_cut_frequency ?? payload.builder_storyboard_defaults?.minimax_h3_cut_frequency),
     performanceMode: payloadPerformanceMode,
     shortFilmPlanningMode: normalizeStoryboardShortFilmPlanningMode(
       payload.shortFilmPlanningMode
@@ -3007,6 +3070,7 @@ function openStoryboardBuilder(payload = {}) {
       global_consistency_phrase: String(state.globalConsistencyPhrase || "").trim(),
       camera_motion_speed: storyboardSpeedValue(state.cameraMotionSpeed, 4),
       character_motion_speed: storyboardSpeedValue(state.characterMotionSpeed, 4),
+      minimax_h3_cut_frequency: storyboardCutFrequencyValue(state.cutFrequency),
       camera_guidance: storyboardSpeedGuidance(state.cameraMotionSpeed, "camera"),
       character_guidance: storyboardSpeedGuidance(state.characterMotionSpeed, "character"),
       performance_style: String(state.performanceStyle || ""),
@@ -3038,6 +3102,7 @@ function openStoryboardBuilder(payload = {}) {
     temporal_protected_custom: String(state.temporalProtectedCustom || "").trim(),
     camera_motion_speed: storyboardSpeedValue(state.cameraMotionSpeed, 4),
     character_motion_speed: storyboardSpeedValue(state.characterMotionSpeed, 4),
+    minimax_h3_cut_frequency: storyboardCutFrequencyValue(state.cutFrequency),
     motion_defaults: {
       camera_motion_speed: storyboardSpeedValue(state.cameraMotionSpeed, 4),
       character_motion_speed: storyboardSpeedValue(state.characterMotionSpeed, 4),
@@ -3373,6 +3438,25 @@ function openStoryboardBuilder(payload = {}) {
   cameraSpeedControls.append(cameraSpeedLabel, cameraSpeedInput, cameraSpeedValue, cameraSpeedHint);
   const cameraSpeedInfo = document.createElement("div");
   cameraSpeedInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
+  const cutFrequencyControls = document.createElement("div");
+  cutFrequencyControls.style.cssText = "display:flex;gap:8px;align-items:center;white-space:nowrap;";
+  const cutFrequencyLabel = document.createElement("div");
+  cutFrequencyLabel.style.cssText = "font-weight:900;color:#cffafe;white-space:nowrap;text-align:right;min-width:160px;";
+  cutFrequencyLabel.textContent = "Cut frequency";
+  const cutFrequencyInput = makeInput(String(storyboardCutFrequencyValue(state.cutFrequency)));
+  cutFrequencyInput.type = "range";
+  cutFrequencyInput.min = "0";
+  cutFrequencyInput.max = "10";
+  cutFrequencyInput.step = "1";
+  cutFrequencyInput.style.minWidth = "360px";
+  cutFrequencyInput.style.accentColor = "#22d3ee";
+  const cutFrequencyValue = document.createElement("div");
+  cutFrequencyValue.style.cssText = "font-size:12px;color:#cffafe;font-weight:900;min-width:150px;";
+  const cutFrequencyHint = makeButton("Hint");
+  cutFrequencyHint.title = "Explain MiniMax cut frequency.";
+  cutFrequencyControls.append(cutFrequencyLabel, cutFrequencyInput, cutFrequencyValue, cutFrequencyHint);
+  const cutFrequencyInfo = document.createElement("div");
+  cutFrequencyInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
   const performanceControls = document.createElement("div");
   performanceControls.style.cssText = "display:flex;gap:8px;align-items:center;white-space:nowrap;";
   const performanceLabel = document.createElement("div");
@@ -3473,6 +3557,7 @@ function openStoryboardBuilder(payload = {}) {
     consistencyControls,
     cameraFlowControls,
     cameraSpeedControls,
+    cutFrequencyControls,
     performanceControls,
     characterSpeedControls,
     facialControls,
@@ -3499,6 +3584,7 @@ function openStoryboardBuilder(payload = {}) {
     consistencyInput,
     cameraFlowSelect,
     cameraSpeedInput,
+    cutFrequencyInput,
     performanceSelect,
     characterSpeedInput,
     facialSelect,
@@ -3508,7 +3594,7 @@ function openStoryboardBuilder(payload = {}) {
     control.style.minWidth = "0";
     control.style.maxWidth = "100%";
   }
-  for (const control of [videoStyleCustomInput, temporalEffectCustomInput, temporalProtectedCustomInput, imageCustomStyleInput, consistencyInput, cameraSpeedInput, characterSpeedInput, facialCustomInput]) {
+  for (const control of [videoStyleCustomInput, temporalEffectCustomInput, temporalProtectedCustomInput, imageCustomStyleInput, consistencyInput, cameraSpeedInput, cutFrequencyInput, characterSpeedInput, facialCustomInput]) {
     control.style.flex = "1 1 280px";
     control.style.width = "100%";
   }
@@ -3522,6 +3608,7 @@ function openStoryboardBuilder(payload = {}) {
     consistencyInfo,
     cameraFlowInfo,
     cameraSpeedInfo,
+    cutFrequencyInfo,
     performanceInfo,
     characterSpeedInfo,
     facialInfo,
@@ -3532,7 +3619,7 @@ function openStoryboardBuilder(payload = {}) {
     info.style.maxWidth = "100%";
     info.style.overflowWrap = "anywhere";
   }
-  cameraFlowBar.append(imageShotControls, imageShotInfo, imageAestheticControls, imageAestheticInfo, videoStyleControls, videoStyleCustomControls, videoStyleInfo, temporalEffectControls, temporalEffectCustomControls, temporalEffectOptions, temporalProtectedCustomControls, temporalEffectInfo, imageWorldStyleControls, imageWorldStyleInfo, imageCustomStyleControls, imageCustomStyleInfo, consistencyControls, consistencyInfo, cameraFlowControls, cameraFlowInfo, cameraSpeedControls, cameraSpeedInfo, performanceControls, performanceInfo, characterSpeedControls, characterSpeedInfo, facialControls, facialInfo, facialCustomControls, facialCustomInfo);
+  cameraFlowBar.append(imageShotControls, imageShotInfo, imageAestheticControls, imageAestheticInfo, videoStyleControls, videoStyleCustomControls, videoStyleInfo, temporalEffectControls, temporalEffectCustomControls, temporalEffectOptions, temporalProtectedCustomControls, temporalEffectInfo, imageWorldStyleControls, imageWorldStyleInfo, imageCustomStyleControls, imageCustomStyleInfo, consistencyControls, consistencyInfo, cameraFlowControls, cameraFlowInfo, cameraSpeedControls, cameraSpeedInfo, cutFrequencyControls, cutFrequencyInfo, performanceControls, performanceInfo, characterSpeedControls, characterSpeedInfo, facialControls, facialInfo, facialCustomControls, facialCustomInfo);
 
   const storyLayerBar = document.createElement("div");
   storyLayerBar.className = "vrgdg-storyboard-story-grid";
@@ -3753,6 +3840,9 @@ function openStoryboardBuilder(payload = {}) {
     cameraFlowInfo.style.display = isVideoPrepMode ? "" : "none";
     cameraSpeedControls.style.display = isVideoPrepMode ? "flex" : "none";
     cameraSpeedInfo.style.display = isVideoPrepMode ? "" : "none";
+    const cutFrequencyEligible = isVideoPrepMode && state.projectVideoEngine === "minimax_h3";
+    cutFrequencyControls.style.display = cutFrequencyEligible ? "flex" : "none";
+    cutFrequencyInfo.style.display = cutFrequencyEligible ? "" : "none";
     characterSpeedControls.style.display = isVideoPrepMode ? "flex" : "none";
     characterSpeedInfo.style.display = isVideoPrepMode ? "" : "none";
     refreshConsistencyInfo();
@@ -3803,7 +3893,7 @@ function openStoryboardBuilder(payload = {}) {
     const performancePreset = performancePresetForMode(state.performanceStyle);
     const facialPreset = facialPresetForMode(state.facialPerformance);
     sceneDefaultsPanel.setSummary(state.mode === "image_to_video_prep"
-      ? `${cameraPreset.label || "Camera flow"}${state.videoStyle ? ` · ${videoStylePreset.label}` : ""}${state.temporalWorldEffect ? ` · ${temporalEffectPreset.label}` : ""} · camera ${storyboardSpeedValue(state.cameraMotionSpeed, 4)}/10 · character ${storyboardSpeedValue(state.characterMotionSpeed, 4)}/10 · ${performancePreset.label || "Performance style"} · ${facialPreset.label || "Facial performance"}${state.globalConsistencyPhrase ? " · consistency phrase" : ""}`
+      ? `${cameraPreset.label || "Camera flow"}${state.videoStyle ? ` · ${videoStylePreset.label}` : ""}${state.temporalWorldEffect ? ` · ${temporalEffectPreset.label}` : ""} · camera ${storyboardSpeedValue(state.cameraMotionSpeed, 4)}/10${state.projectVideoEngine === "minimax_h3" ? ` · cuts ${storyboardCutFrequencyValue(state.cutFrequency)}/10` : ""} · character ${storyboardSpeedValue(state.characterMotionSpeed, 4)}/10 · ${performancePreset.label || "Performance style"} · ${facialPreset.label || "Facial performance"}${state.globalConsistencyPhrase ? " · consistency phrase" : ""}`
       : `${imageShotPreset.label || "Still shot flow"} · ${imageAestheticPreset.label || "Image aesthetic"} · ${performancePreset.label || "Performance style"} · ${facialPreset.label || "Facial performance"}${state.globalConsistencyPhrase ? " · consistency phrase" : ""}`);
     const beatCount = state.scenes.filter((scene) => String(scene.story_beat || "").trim()).length;
     const sectionCount = state.scenes.filter((scene) => String(scene.lyric_section || "").trim()).length;
@@ -3872,6 +3962,17 @@ function openStoryboardBuilder(payload = {}) {
   const refreshCameraSpeedInfo = () => {
     cameraSpeedValue.textContent = storyboardSpeedLabel(state.cameraMotionSpeed, "camera");
     cameraSpeedInfo.textContent = storyboardSpeedGuidance(state.cameraMotionSpeed, "camera");
+    refreshSetupPanelSummaries();
+  };
+
+  const refreshCutFrequencyInfo = () => {
+    const frequency = storyboardCutFrequencyValue(state.cutFrequency);
+    cutFrequencyValue.textContent = storyboardCutFrequencyLabel(frequency);
+    cutFrequencyInfo.textContent = frequency <= 0
+      ? "MiniMax prompts use one smooth, continuous shot for every segment. Existing prompts are not changed until regenerated."
+      : frequency >= 10
+        ? "Maximum MiniMax editing: each segment cuts at every whole second inside its exact duration. A 5-second segment gets cuts at 1s, 2s, 3s, and 4s."
+        : `MiniMax scales this ${frequency}/10 editing intensity to each segment's exact duration, spacing the resulting CUT TO transitions evenly. Existing prompts are not changed until regenerated.`;
     refreshSetupPanelSummaries();
   };
 
@@ -6408,8 +6509,10 @@ function openStoryboardBuilder(payload = {}) {
       facialCustomInput.value = state.facialPerformanceCustom;
       state.cameraMotionSpeed = storyboardSpeedValue(saved.camera_motion_speed ?? saved.motion_defaults?.camera_motion_speed ?? state.cameraMotionSpeed, 4);
       state.characterMotionSpeed = storyboardSpeedValue(saved.character_motion_speed ?? saved.motion_defaults?.character_motion_speed ?? state.characterMotionSpeed, 4);
+      state.cutFrequency = storyboardCutFrequencyValue(saved.minimax_h3_cut_frequency ?? saved.cut_frequency ?? state.cutFrequency);
       cameraSpeedInput.value = String(state.cameraMotionSpeed);
       characterSpeedInput.value = String(state.characterMotionSpeed);
+      cutFrequencyInput.value = String(state.cutFrequency);
       state.storyLayer = normalizeStoryLayer(saved.story_layer || saved.storyLayer || {});
       state.scriptImport = normalizeStoryboardScriptImportState(saved.script_import || saved.scriptImport || state.scriptImport || {});
       storyLayerEnabledInput.checked = state.storyLayer.enabled !== false;
@@ -6425,6 +6528,7 @@ function openStoryboardBuilder(payload = {}) {
       refreshTemporalEffectInfo();
       refreshConsistencyInfo();
       refreshCameraSpeedInfo();
+      refreshCutFrequencyInfo();
       refreshPerformanceInfo();
       refreshCharacterSpeedInfo();
       refreshFacialInfo();
@@ -7053,6 +7157,26 @@ function openStoryboardBuilder(payload = {}) {
       "9-10: fast action camera language; multiple coordinated moves can happen in one scene while keeping the subject readable.",
     ].join("\n"));
   };
+  cutFrequencyInput.addEventListener("input", () => {
+    state.cutFrequency = storyboardCutFrequencyValue(cutFrequencyInput.value);
+    cutFrequencyInput.value = String(state.cutFrequency);
+    refreshCutFrequencyInfo();
+  });
+  cutFrequencyInput.addEventListener("change", notifyStoryboardDefaultsChanged);
+  cutFrequencyHint.onclick = () => {
+    window.alert([
+      "Cut Frequency controls MiniMax H3 editing inside each timeline segment.",
+      "",
+      "0: one smooth continuous take with no cuts.",
+      "1-3: occasional cuts, scaled to the segment's exact duration.",
+      "4-6: a moderate number of evenly spaced cuts.",
+      "7-9: frequent cuts with short coherent coverage shots.",
+      "10: maximum frequency — CUT TO a new continuity-preserving angle every second.",
+      "",
+      "Example: a 5-second segment at 10 starts with shot 1, then cuts at 1s, 2s, 3s, and 4s.",
+      "Changing this setting affects newly generated MiniMax prompts; it does not rewrite existing prompts automatically.",
+    ].join("\n"));
+  };
   cameraFlowApply.onclick = () => applyCameraFlow({ overwrite: false });
   cameraFlowReplace.onclick = () => applyCameraFlow({ overwrite: true });
   imageShotApply.onclick = () => applyImageShotFlow({ overwrite: false });
@@ -7175,6 +7299,7 @@ function openStoryboardBuilder(payload = {}) {
   refreshImageWorldStyleInfo();
   refreshConsistencyInfo();
   refreshCameraSpeedInfo();
+  refreshCutFrequencyInfo();
   refreshPerformanceInfo();
   refreshCharacterSpeedInfo();
   refreshFacialInfo();

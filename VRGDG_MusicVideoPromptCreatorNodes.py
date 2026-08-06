@@ -15,6 +15,7 @@ from .VRGDG_MusicVideoBuilderNodes import (
     _prompts_folder,
     _run_builder_text_llm,
     _llm_runner_from_payload,
+    _runner_output_token_limit,
     _safe_project_name,
     _session_path,
     _srt_path,
@@ -934,6 +935,8 @@ def _run_text_gemma(model_file, prompt, overrides=None, payload=None):
     settings = dict(_LLM_SETTINGS)
     if isinstance(overrides, dict):
         settings.update({key: value for key, value in overrides.items() if value not in (None, "")})
+    settings["n_ctx"] = int(runner_payload.get("n_ctx") or runner_payload.get("gemma_context_limit") or settings["n_ctx"])
+    settings["max_new_tokens"] = _runner_output_token_limit(runner_payload, settings["max_new_tokens"])
 
     llm = VRGDG_SuperGemmaGGUFChat()
     model_path = llm._resolve_dropdown_path(str(model_file), llm.MISSING_MODEL_OPTION)
@@ -1000,6 +1003,8 @@ def _run_text_gemma_custom(model_file, custom_instructions, user_input, override
     settings = dict(_LLM_SETTINGS)
     if isinstance(overrides, dict):
         settings.update({key: value for key, value in overrides.items() if value not in (None, "")})
+    settings["n_ctx"] = int(runner_payload.get("n_ctx") or runner_payload.get("gemma_context_limit") or settings["n_ctx"])
+    settings["max_new_tokens"] = _runner_output_token_limit(runner_payload, settings["max_new_tokens"])
 
     llm = VRGDG_SuperGemmaGGUFChat()
     text, used_model, status = llm.generate_prompt(
@@ -1476,9 +1481,13 @@ def _save_prompt_creator_draft(payload):
         "append_subject_to_prompts": _payload_bool(payload.get("append_subject_to_prompts", True), True),
         "repair_lyric_segments": _payload_bool(payload.get("repair_lyric_segments", False), False),
         "text_gemma_runner": str(payload.get("text_gemma_runner") or payload.get("text_runner") or "builtin"),
+        "gemma_context_limit": payload.get("gemma_context_limit", payload.get("n_ctx", payload.get("llm_max_tokens", 8000))),
+        "gemma_output_token_limit": payload.get("gemma_output_token_limit", payload.get("llm_max_tokens", 8192)),
         "lm_studio_base_url": str(payload.get("lm_studio_base_url") or payload.get("lmstudio_base_url") or "http://127.0.0.1:1234/v1"),
         "lm_studio_model": str(payload.get("lm_studio_model") or payload.get("lmstudio_model") or ""),
         "lm_studio_api_key": "",
+        "lm_studio_context_limit": payload.get("lm_studio_context_limit", payload.get("lmstudio_context_limit", 32768)),
+        "lm_studio_output_token_limit": payload.get("lm_studio_output_token_limit", payload.get("lmstudio_output_token_limit", payload.get("llm_max_tokens", 8192))),
         "llm_api_provider": str(payload.get("llm_api_provider") or "openai"),
         "llm_api_model": str(payload.get("llm_api_model") or ""),
         "full_lyrics": str(payload.get("full_lyrics", "") or ""),

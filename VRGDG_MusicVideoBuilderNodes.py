@@ -3282,7 +3282,7 @@ def _validate_builder_gemma_prompt(text, label, payload=None):
 
 
 def _llm_runner_from_payload(payload):
-    runner = str(payload.get("text_runner") or payload.get("gemma_runner") or "builtin").strip().lower()
+    runner = str(payload.get("text_runner") or payload.get("text_gemma_runner") or payload.get("gemma_runner") or "builtin").strip().lower()
     if runner in {"lmstudio", "lm-studio", "lm_studio"}:
         runner = "lm_studio"
     if runner in {"llmapi", "llm-api", "llm_api", "api", "outside_api", "outside_llm_api"}:
@@ -3290,6 +3290,117 @@ def _llm_runner_from_payload(payload):
     if runner not in {"builtin", "lm_studio", "llm_api"}:
         runner = "builtin"
     return runner
+
+
+def _normalized_token_limit(value, default, minimum=64, maximum=262144):
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = int(default)
+    return max(int(minimum), min(int(maximum), parsed))
+
+
+def _runner_output_token_limit(payload, requested=1200):
+    payload = payload if isinstance(payload, dict) else {}
+    runner = _llm_runner_from_payload(payload)
+    if runner == "lm_studio":
+        configured = payload.get("lmstudio_output_token_limit")
+        if configured in (None, ""):
+            configured = payload.get("lm_studio_output_token_limit")
+    elif runner == "builtin":
+        configured = payload.get("gemma_output_token_limit")
+    else:
+        configured = None
+    if runner in {"builtin", "lm_studio"} and configured in (None, ""):
+        configured = payload.get("llm_max_tokens")
+    if configured not in (None, ""):
+        return _normalized_token_limit(configured, requested)
+    return _normalized_token_limit(requested, 1200)
+
+
+def _lm_studio_context_limit(payload):
+    payload = payload if isinstance(payload, dict) else {}
+    configured = payload.get("lmstudio_context_limit")
+    if configured in (None, ""):
+        configured = payload.get("lm_studio_context_limit")
+    return _normalized_token_limit(configured, 32768, minimum=512)
+
+
+def _lm_studio_api_root(payload):
+    base_url = str(payload.get("lmstudio_base_url") or _LM_STUDIO_DEFAULT_BASE_URL).strip().rstrip("/")
+    if base_url.lower().endswith("/v1"):
+        return base_url[:-3].rstrip("/")
+    return base_url
+
+
+def _lm_studio_native_output_text(data):
+    output = data.get("output") if isinstance(data, dict) else None
+    if not isinstance(output, list):
+        return ""
+    parts = []
+    for item in output:
+        if not isinstance(item, dict) or str(item.get("type") or "").lower() != "message":
+            continue
+        content = item.get("content")
+        if isinstance(content, str):
+            parts.append(content)
+        elif isinstance(content, list):
+            for block in content:
+                if isinstance(block, str):
+                    parts.append(block)
+                elif isinstance(block, dict):
+                    text = block.get("text") or block.get("content")
+                    if text:
+                        parts.append(str(text))
+    return "\n".join(part.strip() for part in parts if str(part or "").strip()).strip()
+
+
+def _run_lm_studio_native_chat(payload, input_value, temperature, top_p, max_new_tokens, timeout, label):
+    api_root = _lm_studio_api_root(payload)
+    model = str(payload.get("lmstudio_model") or payload.get("model_file") or "").strip()
+    api_key = str(payload.get("lmstudio_api_key") or "").strip()
+    if not api_root:
+        raise ValueError("LM Studio base URL is empty.")
+    if not model:
+        raise ValueError(f"Enter the LM Studio {label}model name shown in LM Studio.")
+    body = {
+        "model": model,
+        "input": input_value,
+        "temperature": float(temperature),
+        "top_p": float(top_p),
+        "context_length": _lm_studio_context_limit(payload),
+        "max_output_tokens": _runner_output_token_limit(payload, max_new_tokens),
+        "store": False,
+        "stream": False,
+    }
+    if payload.get("seed") is not None:
+        body["seed"] = int(payload.get("seed"))
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    request = urllib.request.Request(
+        f"{api_root}/api/v1/chat",
+        data=json.dumps(body).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=float(timeout)) as response:
+            data = json.loads(response.read().decode("utf-8", errors="replace"))
+    except urllib.error.HTTPError as exc:
+        details = exc.read().decode("utf-8", errors="replace") if hasattr(exc, "read") else ""
+        if exc.code in {404, 405}:
+            raise RuntimeError(
+                "LM Studio's native /api/v1/chat endpoint is required to apply per-request context and output limits. "
+                "Update LM Studio and make sure its Local Server is running."
+            ) from exc
+        raise RuntimeError(f"LM Studio {label}request failed ({exc.code}): {details or exc.reason}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Could not connect to LM Studio at {api_root}. Make sure LM Studio's local server is running.") from exc
+    text = _lm_studio_native_output_text(data)
+    if not text:
+        raise ValueError(f"LM Studio {label}returned empty text.")
+    return text
 
 
 def _resolve_mmproj_dropdown_path(llm, mmproj_file):
@@ -3314,50 +3425,15 @@ def _resolve_mmproj_dropdown_path(llm, mmproj_file):
 
 
 def _run_lm_studio_text(payload, instruction_text, temperature=0.6, top_p=0.95, max_new_tokens=1200):
-    base_url = str(payload.get("lmstudio_base_url") or _LM_STUDIO_DEFAULT_BASE_URL).strip().rstrip("/")
-    model = str(payload.get("lmstudio_model") or payload.get("model_file") or "").strip()
-    api_key = str(payload.get("lmstudio_api_key") or "").strip()
-    if not base_url:
-        raise ValueError("LM Studio base URL is empty.")
-    if not model:
-        raise ValueError("Enter the LM Studio model name shown in LM Studio.")
-    url = f"{base_url}/chat/completions"
-    body = {
-        "model": model,
-        "messages": [{"role": "user", "content": instruction_text}],
-        "temperature": float(temperature),
-        "top_p": float(top_p),
-        "max_tokens": int(max_new_tokens),
-        "stream": False,
-    }
-    if payload.get("seed") is not None:
-        body["seed"] = int(payload.get("seed"))
-    headers = {"Content-Type": "application/json"}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-    request = urllib.request.Request(
-        url,
-        data=json.dumps(body).encode("utf-8"),
-        headers=headers,
-        method="POST",
+    return _run_lm_studio_native_chat(
+        payload,
+        str(instruction_text or ""),
+        temperature,
+        top_p,
+        max_new_tokens,
+        payload.get("lmstudio_timeout") or 180,
+        "",
     )
-    try:
-        with urllib.request.urlopen(request, timeout=float(payload.get("lmstudio_timeout") or 180)) as response:
-            data = json.loads(response.read().decode("utf-8", errors="replace"))
-    except urllib.error.HTTPError as exc:
-        details = exc.read().decode("utf-8", errors="replace") if hasattr(exc, "read") else ""
-        raise RuntimeError(f"LM Studio request failed ({exc.code}): {details or exc.reason}") from exc
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"Could not connect to LM Studio at {base_url}. Make sure LM Studio's local server is running.") from exc
-    choices = data.get("choices") if isinstance(data, dict) else None
-    if not choices:
-        raise ValueError("LM Studio returned no choices.")
-    message = choices[0].get("message") if isinstance(choices[0], dict) else {}
-    text = message.get("content") if isinstance(message, dict) else ""
-    text = str(text or "").strip()
-    if not text:
-        raise ValueError("LM Studio returned empty text.")
-    return text
 
 
 def _run_llm_api_text(payload, instruction_text):
@@ -3457,58 +3533,24 @@ def _pil_image_to_data_url(image, max_height=512, quality=88):
 
 
 def _run_lm_studio_vision(payload, instruction_text, pil_images, temperature=0.25, top_p=0.95, max_new_tokens=1200):
-    base_url = str(payload.get("lmstudio_base_url") or _LM_STUDIO_DEFAULT_BASE_URL).strip().rstrip("/")
-    model = str(payload.get("lmstudio_model") or payload.get("model_file") or "").strip()
-    api_key = str(payload.get("lmstudio_api_key") or "").strip()
-    if not base_url:
-        raise ValueError("LM Studio base URL is empty.")
-    if not model:
-        raise ValueError("Enter the LM Studio vision model name shown in LM Studio.")
     images = list(pil_images or [])
     if not images:
         raise ValueError("LM Studio vision needs at least one image.")
-    content = [{"type": "text", "text": instruction_text}]
+    content = [{"type": "message", "role": "user", "content": str(instruction_text or "")}]
     for image in images:
         content.append({
-            "type": "image_url",
-            "image_url": {"url": _pil_image_to_data_url(image)},
+            "type": "image",
+            "data_url": _pil_image_to_data_url(image),
         })
-    body = {
-        "model": model,
-        "messages": [{"role": "user", "content": content}],
-        "temperature": float(temperature),
-        "top_p": float(top_p),
-        "max_tokens": int(max_new_tokens),
-        "stream": False,
-    }
-    if payload.get("seed") is not None:
-        body["seed"] = int(payload.get("seed"))
-    headers = {"Content-Type": "application/json"}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-    request = urllib.request.Request(
-        f"{base_url}/chat/completions",
-        data=json.dumps(body).encode("utf-8"),
-        headers=headers,
-        method="POST",
+    return _run_lm_studio_native_chat(
+        payload,
+        content,
+        temperature,
+        top_p,
+        max_new_tokens,
+        payload.get("lmstudio_timeout") or 300,
+        "vision ",
     )
-    try:
-        with urllib.request.urlopen(request, timeout=float(payload.get("lmstudio_timeout") or 300)) as response:
-            data = json.loads(response.read().decode("utf-8", errors="replace"))
-    except urllib.error.HTTPError as exc:
-        details = exc.read().decode("utf-8", errors="replace") if hasattr(exc, "read") else ""
-        raise RuntimeError(f"LM Studio vision request failed ({exc.code}): {details or exc.reason}") from exc
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"Could not connect to LM Studio at {base_url}. Make sure LM Studio's local server is running.") from exc
-    choices = data.get("choices") if isinstance(data, dict) else None
-    if not choices:
-        raise ValueError("LM Studio vision returned no choices.")
-    message = choices[0].get("message") if isinstance(choices[0], dict) else {}
-    text = message.get("content") if isinstance(message, dict) else ""
-    text = str(text or "").strip()
-    if not text:
-        raise ValueError("LM Studio vision returned empty text.")
-    return text
 
 
 def _list_lm_studio_models(payload):
@@ -3934,6 +3976,7 @@ def _format_minimax_h3_prompt(text, payload=None, instruction_key=""):
 
 
 def _run_builder_text_llm(payload, instruction_text, temperature=0.6, top_p=0.95, max_new_tokens=1200, label="Gemma", preserve_paragraphs=False):
+    max_new_tokens = _runner_output_token_limit(payload, max_new_tokens)
     if _llm_runner_from_payload(payload) == "lm_studio":
         text = _run_lm_studio_text(
             payload,
@@ -5037,7 +5080,7 @@ def _generate_builder_t2i_prompt(payload):
     chat_format = str(payload.get("chat_format", "") or "").strip()
     temperature = float(payload.get("temperature") or (0.25 if has_ref_image else 0.6))
     top_p = float(payload.get("top_p") or 0.95)
-    max_new_tokens = int(payload.get("max_new_tokens") or (1000 if has_ref_image else 1200))
+    max_new_tokens = _runner_output_token_limit(payload, int(payload.get("max_new_tokens") or (1000 if has_ref_image else 1200)))
     unload_after = bool(payload.get("unload_after", True))
     seed = payload.get("seed")
 
@@ -5215,7 +5258,7 @@ def _generate_builder_i2v_prompt(payload):
     chat_format = str(payload.get("chat_format", "") or "").strip()
     temperature = float(payload.get("temperature") or (0.25 if has_image_reference else 0.7))
     top_p = float(payload.get("top_p") or 0.95)
-    max_new_tokens = int(payload.get("max_new_tokens") or 4000)
+    max_new_tokens = _runner_output_token_limit(payload, int(payload.get("max_new_tokens") or 4000))
     unload_after = bool(payload.get("unload_after", True))
     seed = payload.get("seed")
 
@@ -5569,7 +5612,7 @@ def _generate_builder_chained_i2v_prompt(payload):
     chat_format = str(payload.get("chat_format", "") or "").strip()
     temperature = float(payload.get("temperature") or 0.25)
     top_p = float(payload.get("top_p") or 0.9)
-    max_new_tokens = int(payload.get("max_new_tokens") or 1200)
+    max_new_tokens = _runner_output_token_limit(payload, int(payload.get("max_new_tokens") or 1200))
     unload_after = bool(payload.get("unload_after", True))
     seed = payload.get("seed")
 
@@ -5730,6 +5773,7 @@ def _generate_builder_t2v_prompt(payload):
     no_character_present = bool(payload.get("no_character_present") or payload.get("no_subject") or payload.get("no_visible_subject"))
     instruction_key = _safe_builder_instruction_key(payload.get("builder_instruction_key") or payload.get("instruction_key") or "t2v")
     is_minimax_h3_prompt = instruction_key.startswith("minimax_h3_")
+    prompt_only_scene_inspiration = bool(payload.get("prompt_only_scene_inspiration"))
     text_runner = _llm_runner_from_payload(payload)
     if not model_file and text_runner not in {"lm_studio", "llm_api"}:
         raise ValueError("Choose a T2V Gemma model first.")
@@ -5744,7 +5788,7 @@ def _generate_builder_t2v_prompt(payload):
         except Exception:
             image_references = [{"path": line.strip()} for line in image_references.splitlines() if line.strip()]
     if isinstance(image_references, list):
-        reference_limit = 9 if is_minimax_h3_prompt else 4
+        reference_limit = 10 if is_minimax_h3_prompt and prompt_only_scene_inspiration else 9 if is_minimax_h3_prompt else 4
         for index, item in enumerate(image_references[:reference_limit], start=1):
             if isinstance(item, str):
                 item = {"path": item}
@@ -5904,6 +5948,14 @@ def _generate_builder_t2v_prompt(payload):
             )
     elif has_image_reference and is_minimax_h3_prompt:
         image_guidance = (
+            "MiniMax H3 prompt-only scene-inspiration guidance:\n"
+            "- Attached <Picture 1> is vision input for prompt writing only. It is never supplied to the MiniMax renderer and must never appear as Image 1 or any Image N in the finished prompt.\n"
+            "- Follow the scene context's exact environment-only or environment-plus-framing extraction limits for <Picture 1>. Always ignore all character identity, appearance, clothing, body, pose, placement, and activity visible in it.\n"
+            "- Attached <Picture 2> corresponds to renderer Image 1, <Picture 3> to renderer Image 2, and so on. Inspect each renderer picture only for its assigned purpose.\n"
+            "- In the finished prompt, use only renderer Image N labels. Convert permitted observations from <Picture 1> into direct scene prose without mentioning pictures, inspiration, analysis, or source imagery.\n"
+            "- Do not merge a storyboard grid into a collage output; interpret its panels as ordered visual guidance.\n\n"
+            if prompt_only_scene_inspiration
+            else
             "MiniMax H3 ordered visual-reference guidance:\n"
             "- The attached pictures are in the exact <Picture 1>, <Picture 2>, and subsequent order stated in the scene context.\n"
             "- Inspect every attached picture and use it only for the purpose assigned to its matching tag.\n"
@@ -5938,7 +5990,7 @@ def _generate_builder_t2v_prompt(payload):
     chat_format = str(payload.get("chat_format", "") or "").strip()
     temperature = float(payload.get("temperature") or 0.7)
     top_p = float(payload.get("top_p") or 0.95)
-    max_new_tokens = int(payload.get("max_new_tokens") or 4000)
+    max_new_tokens = _runner_output_token_limit(payload, int(payload.get("max_new_tokens") or 4000))
     unload_after = bool(payload.get("unload_after", True))
 
     try:
@@ -6341,7 +6393,7 @@ def _edit_builder_video_prompt(payload):
 
     temperature = float(payload.get("temperature") or 0.25)
     top_p = float(payload.get("top_p") or 0.9)
-    max_new_tokens = int(payload.get("max_new_tokens") or 1200)
+    max_new_tokens = _runner_output_token_limit(payload, int(payload.get("max_new_tokens") or 1200))
     unload_after = bool(payload.get("unload_after", True))
     n_ctx = int(payload.get("n_ctx") or 8000)
     n_gpu_layers = int(payload.get("n_gpu_layers") or 99)
@@ -6581,7 +6633,7 @@ def _edit_builder_image_prompt(payload):
 
     temperature = float(payload.get("temperature") or 0.25)
     top_p = float(payload.get("top_p") or 0.9)
-    max_new_tokens = int(payload.get("max_new_tokens") or 1200)
+    max_new_tokens = _runner_output_token_limit(payload, int(payload.get("max_new_tokens") or 1200))
     unload_after = bool(payload.get("unload_after", True))
     n_ctx = int(payload.get("n_ctx") or 8000)
     n_gpu_layers = int(payload.get("n_gpu_layers") or 99)
@@ -6912,7 +6964,7 @@ def _generate_builder_reference_description(payload):
     chat_format = str(payload.get("chat_format", "") or "").strip()
     temperature = float(payload.get("temperature") or 0.2)
     top_p = float(payload.get("top_p") or 0.9)
-    max_new_tokens = int(payload.get("max_new_tokens") or 180)
+    max_new_tokens = _runner_output_token_limit(payload, int(payload.get("max_new_tokens") or 180))
     seed = payload.get("seed")
     clear_before_load = bool(payload.get("clear_before_load", False))
     unload_after = bool(payload.get("unload_after", True))
@@ -7102,7 +7154,7 @@ def _generate_flux_klein_prompt(payload):
     chat_format = str(payload.get("chat_format", "") or "").strip()
     temperature = float(payload.get("temperature") or 0.25)
     top_p = float(payload.get("top_p") or 0.95)
-    max_new_tokens = int(payload.get("max_new_tokens") or 350)
+    max_new_tokens = _runner_output_token_limit(payload, int(payload.get("max_new_tokens") or 350))
     seed = payload.get("seed")
     clear_before_load = bool(payload.get("clear_before_load", True))
     unload_after = bool(payload.get("unload_after", True))
@@ -7194,7 +7246,7 @@ def _analyze_builder_story_references(payload):
     chat_format = str(payload.get("chat_format", "") or "").strip()
     temperature = float(payload.get("temperature") or 0.25)
     top_p = float(payload.get("top_p") or 0.95)
-    max_new_tokens = int(payload.get("max_new_tokens") or 500)
+    max_new_tokens = _runner_output_token_limit(payload, int(payload.get("max_new_tokens") or 500))
     unload_after = bool(payload.get("unload_after", True))
     try:
         model = None
@@ -7476,7 +7528,7 @@ def _generate_nb_image_prompt(payload):
     chat_format = str(payload.get("chat_format", "") or "").strip()
     temperature = float(payload.get("temperature") or 0.25)
     top_p = float(payload.get("top_p") or 0.95)
-    max_new_tokens = int(payload.get("max_new_tokens") or 900)
+    max_new_tokens = _runner_output_token_limit(payload, int(payload.get("max_new_tokens") or 900))
     seed = payload.get("seed")
     clear_before_load = bool(payload.get("clear_before_load", True))
     unload_after = bool(payload.get("unload_after", True))
@@ -7668,7 +7720,7 @@ def _generate_flux_reference_location_map(payload):
 
     temperature = float(payload.get("temperature") or 0.25)
     top_p = float(payload.get("top_p") or 0.8)
-    max_new_tokens = int(payload.get("max_new_tokens") or 5000)
+    max_new_tokens = _runner_output_token_limit(payload, int(payload.get("max_new_tokens") or 5000))
     text, run_info = _run_builder_text_llm(
         payload,
         instruction,
@@ -8175,7 +8227,7 @@ def _generate_flux_reference_zimage_prompt(payload):
 
     temperature = float(payload.get("temperature") or 0.25)
     top_p = float(payload.get("top_p") or 0.8)
-    max_new_tokens = int(payload.get("max_new_tokens") or 900)
+    max_new_tokens = _runner_output_token_limit(payload, int(payload.get("max_new_tokens") or 900))
 
     text, run_info = _run_builder_text_llm(
         payload,
@@ -8207,10 +8259,15 @@ def _gemma_choices():
 
 _MODEL_DEFAULT_KEYS = (
     "text_gemma_runner",
+    "llm_max_tokens",
     "gemma_context_limit",
+    "gemma_output_token_limit",
+    "gemma_gpu_layers",
     "lm_studio_base_url",
     "lm_studio_model",
     "lm_studio_api_key",
+    "lm_studio_context_limit",
+    "lm_studio_output_token_limit",
     "image_model_mode",
     "zimage_settings",
     "reference_krea2_settings",
