@@ -8205,9 +8205,14 @@ def _gemma_choices():
     }
 
 
+_MODEL_DEFAULT_VALUES = {
+    "llm_max_tokens": 8192,
+}
+
+
 _MODEL_DEFAULT_KEYS = (
     "text_gemma_runner",
-    "gemma_context_limit",
+    "llm_max_tokens",
     "lm_studio_base_url",
     "lm_studio_model",
     "lm_studio_api_key",
@@ -8247,7 +8252,7 @@ def _scrub_model_defaults_project_sources(defaults):
 def _extract_model_defaults(session):
     if not isinstance(session, dict):
         return {}
-    defaults = {}
+    defaults = dict(_MODEL_DEFAULT_VALUES)
     for key in _MODEL_DEFAULT_KEYS:
         value = session.get(key)
         if value is not None:
@@ -8273,7 +8278,7 @@ def _save_model_defaults(session):
 def _load_model_defaults():
     target = _model_defaults_path()
     if not os.path.isfile(target):
-        return {"path": target, "defaults": {}, "saved_at": ""}
+        return {"path": target, "defaults": dict(_MODEL_DEFAULT_VALUES), "saved_at": ""}
     with open(target, "r", encoding="utf-8") as handle:
         payload = json.load(handle)
     if not isinstance(payload, dict):
@@ -8281,7 +8286,10 @@ def _load_model_defaults():
     defaults = payload.get("defaults")
     if not isinstance(defaults, dict):
         defaults = {}
-    defaults = _scrub_model_defaults_project_sources(defaults)
+    defaults = {
+        **_MODEL_DEFAULT_VALUES,
+        **_scrub_model_defaults_project_sources(defaults),
+    }
     return {
         "path": target,
         "defaults": defaults,
