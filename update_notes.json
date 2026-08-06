@@ -3,6 +3,54 @@
   "product": "AI Video Builder",
   "releases": [
     {
+      "id": "2026-08-06-minimax-turbo-reference-llm-controls",
+      "version": "2026.08.06-minimax-builder-controls",
+      "date": "2026-08-06",
+      "title": "MiniMax Turbo, reference control, and larger LLM output",
+      "commit": "a8779f500033acb06764cd224aa6c889254ac0e5",
+      "restart_required": true,
+      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
+      "sections": [
+        {
+          "title": "New",
+          "items": [
+            "Added optional MiniMax-H3 Turbo LoRA acceleration to MiniMax Video Settings. The hidden workflow injects the required Turbo LoRA and dedicated sampler, defaults to 6 editable steps with a minimum of 4, automatically bypasses EasyCache, and restores the previous normal steps and EasyCache preference when Turbo is turned off.",
+            "Added a scope-aware MiniMax Reference-to-Video Scene image use dropdown. A scene image can be unused, supplied to both the LLM and MiniMax as the exact start frame, or supplied only to the vision LLM as environment inspiration with camera framing either ignored or optionally considered.",
+            "Added Face + hair only exact-start priority. Character references can replace only face identity and hair from the first generated frame while the start image remains authoritative for body, clothing, pose, composition, lighting, environment, and every other visible detail.",
+            "Added a MiniMax-only Cut frequency Scene Default from 0–10. Zero requests one continuous uninterrupted take, while 10 schedules one continuity-preserving CUT TO per second within each segment's exact duration.",
+            "Added separate persistent input-context and maximum-output controls for Gemma Local and LM Studio so longer MiniMax prompts are no longer constrained by the former small hardcoded task limits."
+          ]
+        },
+        {
+          "title": "Improved",
+          "items": [
+            "Prompt-only scene-image inspiration is never sent to MiniMax, never receives an Image N label, and never consumes a renderer reference slot. Character references remain authoritative for character identity and appearance.",
+            "Builder, Storyboard, Wizard, Prompt Creator, and image-reference vision jobs now honor the selected local-runner output ceiling. LM Studio receives both context length and maximum output tokens through its native chat API.",
+            "Project-global MiniMax mode, model, video, scene-image, and character-priority changes now update every eligible unlocked scene while preserving independently locked scene settings.",
+            "The top status bar consistently uses the AI Video Builder product name and includes a persistent live badge showing whether the project is using LTX or MiniMax.",
+            "Existing projects saved with Turbo's old 20-step default migrate to 6 steps, and existing Turbo projects or locked scenes migrate to EasyCache bypass without overwriting later manual experimentation."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "MiniMax-H3 Turbo now uses a packaged compatibility LoRA adapter for pruned models with reference audio, preventing the SamplerCustomAdvanced 3-versus-2 AdaLN tensor mismatch while automatically delegating to the upstream node once it includes the same fix.",
+            "The Video Wizard button opens again; Project Storage handlers no longer throw an out-of-scope JavaScript error during the Builder-to-Wizard handoff.",
+            "The MiniMax managed subject-count block respects Face + hair only start-frame priority and no longer grants character sheets conflicting authority over clothing or body proportions.",
+            "Runner progress labels correctly report LM Studio for selected-runner vision jobs, while genuinely local-only Gemma work remains labeled as built-in and honors the configured output limit.",
+            "Projects created from the PR #114 development branch migrate its legacy llm_max_tokens setting into the new Gemma and LM Studio limits; commercial LLM API requests continue ignoring local-runner limits."
+          ]
+        },
+        {
+          "title": "Compatibility Notes",
+          "items": [
+            "MiniMax-H3 Turbo requires ComfyUI-MiniMax-H3-Turbo and the selected Turbo LoRA file. Standard MiniMax rendering remains unchanged when Turbo is disabled.",
+            "Existing LTX projects remain on the LTX engine unless MiniMax is explicitly selected. Prompt-only scene-image modes affect newly generated prompts, so regenerate an existing MiniMax prompt after changing that setting."
+          ]
+        }
+      ]
+    },
+    {
       "id": "2026-08-06-timeline-editing-minimax-prompt-reliability",
       "version": "2026.08.06-builder-workflow-updates",
       "date": "2026-08-06",

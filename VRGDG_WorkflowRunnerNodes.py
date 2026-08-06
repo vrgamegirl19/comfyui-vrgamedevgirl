@@ -2475,6 +2475,93 @@ def _patch_minimax_h3_advanced_settings(prompt, payload):
     }
 
 
+def _patch_minimax_h3_turbo(prompt, payload):
+    enabled = _bool_payload(payload, "use_turbo_lora", False)
+    if not enabled:
+        return {
+            "enabled": False,
+            "lora_name": "",
+            "strength": 0.0,
+            "scheduler": "",
+            "steps": 0,
+        }
+
+    try:
+        import nodes as comfy_nodes
+        mappings = getattr(comfy_nodes, "NODE_CLASS_MAPPINGS", {}) or {}
+    except Exception as exc:
+        raise ValueError(
+            "MiniMax-H3 Turbo could not inspect ComfyUI custom-node registrations. "
+            "Restart ComfyUI after installing ComfyUI-MiniMax-H3-Turbo."
+        ) from exc
+    required_nodes = ("MiniMaxH3TurboLoRA", "MiniMaxH3TurboSampler")
+    missing_nodes = [name for name in required_nodes if name not in mappings]
+    if missing_nodes:
+        raise ValueError(
+            "MiniMax-H3 Turbo is enabled, but the required custom nodes are not registered: "
+            + ", ".join(missing_nodes)
+            + ". Install or update ComfyUI-MiniMax-H3-Turbo, then restart ComfyUI."
+        )
+
+    lora_name = str(
+        payload.get("turbo_lora_name") or "minimax_h3_turbo_4step_ema_ckpt850.safetensors"
+    ).strip()
+    if not lora_name:
+        raise ValueError("MiniMax-H3 Turbo is enabled, but no Turbo LoRA file is selected.")
+    if not _model_choice_exists("loras", lora_name):
+        raise ValueError(
+            f"MiniMax-H3 Turbo LoRA '{lora_name}' was not found in ComfyUI/models/loras. "
+            "Download the LoRA, refresh/restart ComfyUI, and select it in MiniMax Video Settings."
+        )
+    strength = _float_payload(payload, "turbo_lora_strength", 1.0, -10.0, 10.0)
+    turbo_steps = _int_payload(payload, "steps", 6, 4, 1000)
+
+    scheduler_id = _api_node_id_by_class(prompt, "BasicScheduler", fallback="124")
+    guider_id = _api_node_id_by_class(prompt, "BasicGuider", fallback="126")
+    sampler_advanced_id = _api_node_id_by_class(prompt, "SamplerCustomAdvanced", fallback="125")
+    stock_sampler_id = _optional_api_node_id_by_class(prompt, "KSamplerSelect", fallback_ids=("123",))
+    scheduler_inputs = prompt.get(scheduler_id, {}).get("inputs", {})
+    model_ref = scheduler_inputs.get("model")
+    if not isinstance(model_ref, list) or len(model_ref) != 2:
+        raise ValueError("MiniMax-H3 Turbo could not find the current model connection feeding BasicScheduler.")
+
+    turbo_lora_id = "9001"
+    while turbo_lora_id in prompt:
+        turbo_lora_id = str(int(turbo_lora_id) + 1)
+    turbo_sampler_id = str(int(turbo_lora_id) + 1)
+    while turbo_sampler_id in prompt:
+        turbo_sampler_id = str(int(turbo_sampler_id) + 1)
+    prompt[turbo_lora_id] = {
+        "class_type": "VRGDG_MiniMaxH3TurboLoRACompat",
+        "inputs": {
+            "model": list(model_ref),
+            "lora_name": lora_name,
+            "strength": strength,
+        },
+    }
+    prompt[turbo_sampler_id] = {
+        "class_type": "MiniMaxH3TurboSampler",
+        "inputs": {},
+    }
+    _set_api_input(prompt, scheduler_id, "model", [turbo_lora_id, 0])
+    _set_api_input(prompt, scheduler_id, "scheduler", "simple")
+    _set_api_input(prompt, scheduler_id, "steps", turbo_steps)
+    _set_api_input(prompt, guider_id, "model", [turbo_lora_id, 0])
+    _set_api_input(prompt, sampler_advanced_id, "sampler", [turbo_sampler_id, 0])
+    if stock_sampler_id:
+        prompt.pop(stock_sampler_id, None)
+
+    return {
+        "enabled": True,
+        "lora_name": lora_name,
+        "strength": strength,
+        "scheduler": "simple",
+        "steps": turbo_steps,
+        "lora_node": "VRGDG_MiniMaxH3TurboLoRACompat",
+        "sampler_node": "MiniMaxH3TurboSampler",
+    }
+
+
 def _build_minimax_h3_api_prompt(payload):
     raw_audio_mode = str(payload.get("audio_mode") or payload.get("audioMode") or "input_audio").strip().lower().replace("-", "_").replace(" ", "_")
     audio_mode = "built_in_audio" if raw_audio_mode in {"built_in_audio", "native_audio", "generated_audio"} else "input_audio"
@@ -2613,6 +2700,14 @@ def _build_minimax_h3_api_prompt(payload):
     # exact scene trimmer receives them.
     _set_api_input(prompt, "142", "trim_to_audio", False)
     advanced_settings = _patch_minimax_h3_advanced_settings(prompt, payload)
+    turbo_settings = _patch_minimax_h3_turbo(prompt, payload)
+    if turbo_settings["enabled"]:
+        advanced_settings = {
+            **advanced_settings,
+            "effective_sampler_name": "MiniMaxH3TurboSampler",
+            "effective_scheduler": "simple",
+            "effective_steps": turbo_settings["steps"],
+        }
 
     return {
         "workflow_path": workflow_path,
@@ -2638,6 +2733,7 @@ def _build_minimax_h3_api_prompt(payload):
             "audio_vae_name": audio_vae_name,
         },
         "advanced_settings": advanced_settings,
+        "turbo_settings": turbo_settings,
     }
 
 
@@ -4380,6 +4476,175 @@ def _ensure_workflow_runner_routes():
     _VRGDG_WORKFLOW_RUNNER_ROUTES_REGISTERED = True
 
 
+class VRGDG_MiniMaxH3TurboLoRACompat:
+    """Apply the upstream Turbo LoRA with its missing pruned Ref2VA audio-row fix.
+
+    The upstream v1.2.1 adapter derives only video/audio and visual-reference
+    time rows for pruned MiniMax checkpoints. Reference audio adds another row
+    in ComfyUI core, causing AdaLN's base projection to have three rows while
+    the LoRA delta has two. Delegate whenever upstream includes audio-row
+    support; otherwise reproduce its pruned path with the complete core layout.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "model": ("MODEL",),
+                "lora_name": (folder_paths.get_filename_list("loras"),),
+                "strength": (
+                    "FLOAT",
+                    {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01},
+                ),
+            }
+        }
+
+    RETURN_TYPES = ("MODEL",)
+    FUNCTION = "apply_lora"
+    CATEGORY = "VRGDG/Compatibility"
+    DESCRIPTION = (
+        "MiniMax-H3 Turbo LoRA adapter with pruned-model reference-audio "
+        "conditioning compatibility."
+    )
+
+    @staticmethod
+    def _condition_times(upstream, timestep, payload, shift_v, shift_a):
+        sigma_v = float((timestep.flatten()[0] / 1000.0).clamp(min=1e-6))
+        t_video = 1.0 - sigma_v
+        t_audio = 1.0 - upstream._time_shift_sigma(sigma_v, shift_v, shift_a)
+        layout = payload.get("layout")
+        if layout is not None:
+            segments = getattr(layout, "segments", ()) or ()
+            has_visual_condition = any(
+                kind in ("cond", "ref_img") for _, _, kind in segments
+            )
+            has_audio_condition = any(
+                kind == "ref_audio" for _, _, kind in segments
+            )
+        else:
+            refs = payload.get("refs") or ()
+            ref_kinds = {
+                str(item.get("kind") or "")
+                for item in refs
+                if isinstance(item, dict)
+            }
+            has_visual_condition = bool(payload.get("keyframes")) or bool(
+                ref_kinds.intersection({"image", "video", "video_audio"})
+            )
+            has_audio_condition = bool(
+                ref_kinds.intersection({"audio", "video_audio"})
+            )
+        visual_aug = float(payload.get("visual_cond_noise_aug", 0.999))
+        audio_aug = float(payload.get("audio_cond_noise_aug", 1.0))
+        times = {t_video, t_audio}
+        if has_visual_condition:
+            times.add(max(t_video, visual_aug))
+        if has_audio_condition:
+            times.add(max(t_audio, audio_aug))
+        return sorted(times)
+
+    def apply_lora(self, model, lora_name, strength):
+        import inspect
+        import nodes as comfy_nodes
+
+        upstream_class = (getattr(comfy_nodes, "NODE_CLASS_MAPPINGS", {}) or {}).get(
+            "MiniMaxH3TurboLoRA"
+        )
+        if upstream_class is None:
+            raise RuntimeError(
+                "MiniMaxH3TurboLoRA is not registered. Install or update "
+                "ComfyUI-MiniMax-H3-Turbo, then restart ComfyUI."
+            )
+        upstream = sys.modules.get(upstream_class.__module__)
+        if upstream is None:
+            upstream = importlib.import_module(upstream_class.__module__)
+        upstream_node = upstream_class()
+        unique_t = getattr(upstream, "_unique_t", None)
+        upstream_supports_audio = False
+        if callable(unique_t):
+            try:
+                upstream_supports_audio = "has_aud_cond" in inspect.signature(unique_t).parameters
+            except (TypeError, ValueError):
+                upstream_supports_audio = False
+
+        diffusion_model = model.model.diffusion_model
+        pruned = bool(getattr(diffusion_model, "use_adaln_curves", False))
+        if not pruned or upstream_supports_audio:
+            return upstream_node.apply_lora(model, lora_name, strength)
+
+        required_helpers = (
+            "_apply_bypass_lora",
+            "_egrid",
+            "_interp_egrid",
+            "_AdalnDelta",
+            "_add_dbg_wrapper",
+            "_time_shift_sigma",
+        )
+        missing_helpers = [name for name in required_helpers if not hasattr(upstream, name)]
+        if missing_helpers:
+            raise RuntimeError(
+                "The installed ComfyUI-MiniMax-H3-Turbo version is incompatible "
+                "with Builder reference-audio support. Missing helpers: "
+                + ", ".join(missing_helpers)
+                + ". Update the Turbo extension and restart ComfyUI."
+            )
+
+        lora_path = folder_paths.get_full_path("loras", lora_name)
+        if not lora_path:
+            raise RuntimeError(f"MiniMax-H3 Turbo LoRA was not found: {lora_name}")
+        lora = upstream.comfy.utils.load_torch_file(lora_path, safe_load=True)
+        modules = sorted({key.rsplit(".lora_", 1)[0] for key in lora})
+        new_model = model.clone()
+        backbone = [name for name in modules if "adaln_proj" not in name]
+        adaln = [name for name in modules if "adaln_proj" in name]
+        bound = upstream._apply_bypass_lora(new_model, lora, backbone, strength)
+
+        embedding_grid = upstream._egrid()
+        shared = {"silu_temb": None}
+        shift_v = float(getattr(diffusion_model, "sigma_shift_video", upstream.SHIFT_V))
+        shift_a = float(getattr(diffusion_model, "sigma_shift_audio", upstream.SHIFT_A))
+
+        def wrap(executor, *args, **kwargs):
+            timestep = args[1] if len(args) > 1 else kwargs.get("timestep")
+            context = args[2] if len(args) > 2 else kwargs.get("context")
+            payload = kwargs.get("minimax_payload") or {}
+            times = self._condition_times(upstream, timestep, payload, shift_v, shift_a)
+            shared["silu_temb"] = upstream._interp_egrid(
+                times,
+                embedding_grid,
+                context.device,
+                context.dtype,
+            )
+            return executor(*args, **kwargs)
+
+        new_model.add_wrapper_with_key(
+            upstream.comfy.patcher_extension.WrappersMP.DIFFUSION_MODEL,
+            "vrgdg_h3turbo_ref_audio",
+            wrap,
+        )
+        for name in adaln:
+            lora_a = lora[name + ".lora_A.weight"]
+            lora_b = lora[name + ".lora_B.weight"] * strength
+            model_key = "diffusion_model." + name.rsplit(".linear", 1)[0]
+            new_model.add_object_patch(
+                model_key,
+                upstream._AdalnDelta(
+                    new_model.get_model_object(model_key),
+                    lora_a,
+                    lora_b,
+                    shared,
+                ),
+            )
+        print(
+            "[VRGDG MiniMaxH3TurboLoRACompat] pruned base: "
+            f"{bound} backbone adapters + {len(adaln)} AdaLN adapters; "
+            "reference-audio time rows enabled",
+            flush=True,
+        )
+        upstream._add_dbg_wrapper(new_model, diffusion_model, "pruned-ref-audio-compat")
+        return (new_model,)
+
+
 class VRGDG_ZImageWorkflowRunnerUI:
     @classmethod
     def INPUT_TYPES(cls):
@@ -4438,11 +4703,13 @@ _ensure_workflow_runner_routes()
 
 
 NODE_CLASS_MAPPINGS = {
+    "VRGDG_MiniMaxH3TurboLoRACompat": VRGDG_MiniMaxH3TurboLoRACompat,
     "VRGDG_ZImageWorkflowRunnerUI": VRGDG_ZImageWorkflowRunnerUI,
     "VRGDG_ClearMemoryButtonUI": VRGDG_ClearMemoryButtonUI,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
+    "VRGDG_MiniMaxH3TurboLoRACompat": "VRGDG MiniMax-H3 Turbo LoRA Compatibility",
     "VRGDG_ZImageWorkflowRunnerUI": "VRGDG Z-Image Workflow Runner UI",
     "VRGDG_ClearMemoryButtonUI": "VRGDG Clear Memory Button",
 }

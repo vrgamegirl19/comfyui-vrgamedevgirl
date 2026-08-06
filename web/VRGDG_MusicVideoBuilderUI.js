@@ -9,6 +9,8 @@ import {
   STORYBOARD_IMAGE_SHOT_FLOW_PRESETS,
   storyboardFacialPerformancePreset,
   storyboardCameraFlowEntry,
+  storyboardCutFrequencyValue,
+  storyboardCutPlanForDuration,
   storyboardGptPayload,
   storyboardImageAestheticPreset,
   storyboardImageShotFlowEntry,
@@ -225,20 +227,37 @@ const DEFAULT_MINIMAX_H3_SETTINGS = {
   sampler_name: "res_multistep",
   scheduler: "simple",
   steps: 20,
+  steps_before_turbo: 20,
   denoise: 1,
   easy_cache_bypass: false,
+  easy_cache_bypass_before_turbo: false,
   easy_cache_reuse_threshold: 0.3,
   easy_cache_start_percent: 0.2,
   easy_cache_end_percent: 0.9,
   easy_cache_verbose: false,
   sage_attention: "auto",
   enable_fp16_accumulation: true,
+  use_turbo_lora: false,
+  turbo_lora_name: "minimax_h3_turbo_4step_ema_ckpt850.safetensors",
+  turbo_lora_strength: 1,
 };
 
 const MINIMAX_H3_CONTINUITY_OPTIONS = [
   { value: "off", label: "Off" },
   { value: "spatial_reference", label: "Previous final frame — spatial reference" },
   { value: "exact_start_frame", label: "Previous final frame — exact start frame" },
+];
+
+const MINIMAX_H3_START_FRAME_CHARACTER_INFLUENCE_OPTIONS = [
+  { value: "face_hair_only", label: "Face + hair only (keep the rest of the start frame)" },
+  { value: "full_character", label: "Full character identity (face, hair, clothing, and body)" },
+];
+
+const MINIMAX_H3_SCENE_IMAGE_USE_OPTIONS = [
+  { value: "off", label: "Do not use scene image" },
+  { value: "exact_start_frame", label: "Exact start frame (LLM + MiniMax)" },
+  { value: "environment_inspiration", label: "Environment inspiration only (LLM only — ignore framing)" },
+  { value: "environment_framing_inspiration", label: "Environment + framing inspiration (LLM only)" },
 ];
 
 const MINIMAX_H3_SAGE_ATTENTION_OPTIONS = [
@@ -267,6 +286,21 @@ function normalizeMiniMaxH3ContinuityMode(value) {
   if (["spatial", "spatial_reference", "continuity_reference"].includes(clean)) return "spatial_reference";
   if (["exact", "exact_start", "exact_start_frame", "continuous_start"].includes(clean)) return "exact_start_frame";
   return "off";
+}
+
+function normalizeMiniMaxH3StartFrameCharacterInfluence(value) {
+  const clean = String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  return ["face_hair_only", "face_and_hair_only", "identity_face_hair_only"].includes(clean)
+    ? "face_hair_only"
+    : "full_character";
+}
+
+function normalizeMiniMaxH3SceneImageUse(value, legacyExactStartFrame = false) {
+  const clean = String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (["exact", "exact_start", "exact_start_frame"].includes(clean)) return "exact_start_frame";
+  if (["environment", "environment_only", "environment_inspiration", "inspiration"].includes(clean)) return "environment_inspiration";
+  if (["environment_framing", "environment_framing_inspiration", "inspiration_with_framing"].includes(clean)) return "environment_framing_inspiration";
+  return legacyExactStartFrame ? "exact_start_frame" : "off";
 }
 
 function normalizeMiniMaxH3Voice(value = {}) {
@@ -322,6 +356,14 @@ function normalizeMiniMaxH3VideoPurpose(value) {
 
 function cloneMiniMaxH3Settings(value = {}) {
   const source = value && typeof value === "object" ? value : {};
+  const turboEnabled = Boolean(source.use_turbo_lora ?? source.useTurboLora ?? DEFAULT_MINIMAX_H3_SETTINGS.use_turbo_lora);
+  const rawSteps = Math.max(1, Math.min(1000, Math.trunc(Number(source.steps ?? DEFAULT_MINIMAX_H3_SETTINGS.steps) || DEFAULT_MINIMAX_H3_SETTINGS.steps)));
+  const hasSavedPreTurboSteps = source.steps_before_turbo != null || source.stepsBeforeTurbo != null;
+  const migrateOldTurboDefault = turboEnabled
+    && !hasSavedPreTurboSteps
+    && rawSteps === DEFAULT_MINIMAX_H3_SETTINGS.steps;
+  const hasSavedPreTurboEasyCache = source.easy_cache_bypass_before_turbo != null || source.easyCacheBypassBeforeTurbo != null;
+  const rawEasyCacheBypass = Boolean(source.easy_cache_bypass ?? DEFAULT_MINIMAX_H3_SETTINGS.easy_cache_bypass);
   return {
     ...DEFAULT_MINIMAX_H3_SETTINGS,
     ...source,
@@ -339,9 +381,11 @@ function cloneMiniMaxH3Settings(value = {}) {
     cooldown_frames: Math.max(0, Math.trunc(Number(source.cooldown_frames || 0))),
     sampler_name: String(source.sampler_name || DEFAULT_MINIMAX_H3_SETTINGS.sampler_name),
     scheduler: String(source.scheduler || DEFAULT_MINIMAX_H3_SETTINGS.scheduler),
-    steps: Math.max(1, Math.min(1000, Math.trunc(Number(source.steps ?? DEFAULT_MINIMAX_H3_SETTINGS.steps) || DEFAULT_MINIMAX_H3_SETTINGS.steps))),
+    steps: migrateOldTurboDefault ? 6 : rawSteps,
+    steps_before_turbo: Math.max(1, Math.min(1000, Math.trunc(Number(source.steps_before_turbo ?? source.stepsBeforeTurbo ?? rawSteps) || DEFAULT_MINIMAX_H3_SETTINGS.steps_before_turbo))),
     denoise: Math.max(0, Math.min(1, Number(source.denoise ?? DEFAULT_MINIMAX_H3_SETTINGS.denoise))),
-    easy_cache_bypass: Boolean(source.easy_cache_bypass ?? DEFAULT_MINIMAX_H3_SETTINGS.easy_cache_bypass),
+    easy_cache_bypass: turboEnabled && !hasSavedPreTurboEasyCache ? true : rawEasyCacheBypass,
+    easy_cache_bypass_before_turbo: Boolean(source.easy_cache_bypass_before_turbo ?? source.easyCacheBypassBeforeTurbo ?? rawEasyCacheBypass),
     easy_cache_reuse_threshold: Math.max(0, Math.min(1, Number(source.easy_cache_reuse_threshold ?? DEFAULT_MINIMAX_H3_SETTINGS.easy_cache_reuse_threshold))),
     easy_cache_start_percent: Math.max(0, Math.min(1, Number(source.easy_cache_start_percent ?? DEFAULT_MINIMAX_H3_SETTINGS.easy_cache_start_percent))),
     easy_cache_end_percent: Math.max(0, Math.min(1, Number(source.easy_cache_end_percent ?? DEFAULT_MINIMAX_H3_SETTINGS.easy_cache_end_percent))),
@@ -350,6 +394,9 @@ function cloneMiniMaxH3Settings(value = {}) {
       ? source.sage_attention
       : DEFAULT_MINIMAX_H3_SETTINGS.sage_attention,
     enable_fp16_accumulation: Boolean(source.enable_fp16_accumulation ?? DEFAULT_MINIMAX_H3_SETTINGS.enable_fp16_accumulation),
+    use_turbo_lora: turboEnabled,
+    turbo_lora_name: String(source.turbo_lora_name || source.turboLoraName || DEFAULT_MINIMAX_H3_SETTINGS.turbo_lora_name),
+    turbo_lora_strength: Math.max(-10, Math.min(10, Number(source.turbo_lora_strength ?? source.turboLoraStrength ?? DEFAULT_MINIMAX_H3_SETTINGS.turbo_lora_strength))),
   };
 }
 const LTX_MODEL_DOWNLOADS = [
@@ -2240,6 +2287,8 @@ function audioUrl(path) {
     minimax_h3_prompt_origin: "manual",
     minimax_h3_reference_keys: null,
     minimax_h3_use_scene_image_as_start_frame: false,
+    minimax_h3_scene_image_use: "off",
+    minimax_h3_start_frame_character_influence: "full_character",
     minimax_h3_video_references: [],
     ref_image_path: "",
     use_vision_reference: false,
@@ -2381,7 +2430,7 @@ function openBuilder(node) {
   updateStatusDot.style.cssText = "width:9px;height:9px;flex:0 0 9px;border-radius:999px;background:#a1a1aa;box-shadow:0 0 0 3px rgba(161,161,170,.16);";
   const updateStatusText = document.createElement("span");
   updateStatusText.style.cssText = "min-width:0;flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
-  updateStatusText.textContent = "LTX 2.3 Video Builder — Checking for updates…";
+  updateStatusText.textContent = "AI Video Builder — Checking for updates…";
   const updateWhatsNewAction = makeButton("What's New");
   updateWhatsNewAction.style.cssText += "display:none;padding:4px 10px;min-height:24px;background:#164e63;border-color:#22d3ee;color:#ecfeff;font-size:11px;font-weight:900;";
   const updateStatusAction = makeButton("Update");
@@ -2551,7 +2600,7 @@ function openBuilder(node) {
 
   const refreshV10UpdateStatus = async () => {
     updateStatusPayload = null;
-    setUpdateStatusAppearance("checking", "LTX 2.3 Video Builder — Checking for updates…");
+    setUpdateStatusAppearance("checking", "AI Video Builder — Checking for updates…");
     try {
       const response = await api.fetchApi("/vrgdg/update/v10/status");
       const payload = await response.json();
@@ -2572,7 +2621,7 @@ function openBuilder(node) {
           : countText;
         setUpdateStatusAppearance(
           "outdated",
-          `LTX 2.3 Video Builder build ${installed} — Update available (${reason}; latest ${latest})`,
+          `AI Video Builder build ${installed} — Update available (${reason}; latest ${latest})`,
           `This installation is not at the latest production version on main (${reason}). Click Update to run the safe updater.`
         );
       } else {
@@ -2582,15 +2631,15 @@ function openBuilder(node) {
         const localNote = localNotes.length ? ` · ${localNotes.join(" · ")}` : "";
         setUpdateStatusAppearance(
           "current",
-          `LTX 2.3 Video Builder build ${installed} — Up to date${localNote}`,
-          `Installed LTX 2.3 Video Builder commit: ${payload.installed_commit}`
+          `AI Video Builder build ${installed} — Up to date${localNote}`,
+          `Installed AI Video Builder commit: ${payload.installed_commit}`
         );
       }
     } catch (error) {
       updateStatusPayload = null;
       setUpdateStatusAppearance(
         "unavailable",
-        "LTX 2.3 Video Builder — Could not check for updates",
+        "AI Video Builder — Could not check for updates",
         String(error?.message || error)
       );
     }
@@ -2607,9 +2656,9 @@ function openBuilder(node) {
   pickSrtButton.textContent = "Choose SRT";
   const settingsButton = makeButton("Settings");
   const reviewGuideButton = makeButton("Review Guide");
-  reviewGuideButton.title = "Open the LTX 2.3 Video Builder guide on GitHub.";
+  reviewGuideButton.title = "Open the AI Video Builder guide on GitHub.";
   const whatsNewMenuButton = makeButton("What's New");
-  whatsNewMenuButton.title = "Review recent LTX 2.3 Video Builder features, improvements, and fixes.";
+  whatsNewMenuButton.title = "Review recent AI Video Builder features, improvements, and fixes.";
   const loadButton = makeButton("Load Audio", "primary");
   const loadSrtButton = makeButton("Load SRT", "primary");
   const menuButton = makeButton("Menu");
@@ -2713,7 +2762,13 @@ function openBuilder(node) {
   centerActions.append(importActions, batchActions);
   const utilityActions = document.createElement("div");
   utilityActions.style.cssText = "display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:nowrap;min-width:max-content;";
-  utilityActions.append(stopWorkflowButton, downloadModelsButton, clearMemoryButton, fullscreenButton, closeButton);
+  const projectVideoEngineBadge = document.createElement("div");
+  projectVideoEngineBadge.textContent = "◈ LTX";
+  projectVideoEngineBadge.title = "Project video engine: LTX";
+  projectVideoEngineBadge.setAttribute("role", "status");
+  projectVideoEngineBadge.setAttribute("aria-live", "polite");
+  projectVideoEngineBadge.style.cssText = "height:26px;box-sizing:border-box;display:inline-flex;align-items:center;padding:0 9px;border:1px solid #60a5fa;border-radius:999px;background:#172554;color:#bfdbfe;font-size:11px;font-weight:950;letter-spacing:.03em;white-space:nowrap;";
+  utilityActions.append(projectVideoEngineBadge, stopWorkflowButton, downloadModelsButton, clearMemoryButton, fullscreenButton, closeButton);
   topbar.append(projectActions, centerActions, utilityActions, menuDropdown);
 
   const main = document.createElement("div");
@@ -5016,6 +5071,23 @@ function openBuilder(node) {
   const miniMaxNoGgufNote = document.createElement("div");
   miniMaxNoGgufNote.textContent = "MiniMax H3 currently uses the standard diffusion-model loader. GGUF is not enabled yet.";
   miniMaxNoGgufNote.style.cssText = "font-size:11px;color:#fcd34d;line-height:1.4;";
+  const miniMaxUseTurboLora = makeCheckbox("Use MiniMax-H3 Turbo LoRA (4-step)", false);
+  miniMaxUseTurboLora.wrapper.title = "Conditionally injects MiniMaxH3TurboLoRA and MiniMaxH3TurboSampler into the hidden API workflow.";
+  const miniMaxTurboLoraPicker = makeSearchableLoraPicker(DEFAULT_MINIMAX_H3_SETTINGS.turbo_lora_name);
+  const miniMaxTurboLoraField = makeField("Turbo LoRA", miniMaxTurboLoraPicker.wrapper);
+  const miniMaxTurboLoraStrength = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.turbo_lora_strength), "number");
+  miniMaxTurboLoraStrength.min = "-10";
+  miniMaxTurboLoraStrength.max = "10";
+  miniMaxTurboLoraStrength.step = "0.01";
+  const miniMaxTurboLoraStrengthField = makeField("Turbo LoRA strength", miniMaxTurboLoraStrength);
+  const miniMaxTurboNote = document.createElement("div");
+  miniMaxTurboNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
+  const miniMaxTurboSection = makeSettingsSection("Turbo acceleration", [
+    miniMaxUseTurboLora.wrapper,
+    miniMaxTurboLoraField,
+    miniMaxTurboLoraStrengthField,
+    miniMaxTurboNote,
+  ]);
   const miniMaxAspectRatio = makeSelect([
     "16:9 (Widescreen)",
     "9:16 (Portrait Widescreen)",
@@ -5129,12 +5201,16 @@ function openBuilder(node) {
   const miniMaxReferenceModeNote = document.createElement("div");
   miniMaxReferenceModeNote.textContent = "Uses ordered character, location, ingredients-sheet, or storyboard-grid images. Add and map the library from the existing Reference Builder button at the top of the Builder.";
   miniMaxReferenceModeNote.style.cssText = miniMaxTextModeNote.style.cssText;
-  const miniMaxUseSceneImageAsStartFrame = makeCheckbox("Use scene image as exact start frame", false);
-  miniMaxUseSceneImageAsStartFrame.wrapper.title = "Prepends this scene's selected timeline image as Image 1. Character, location, and storyboard references follow in their saved order.";
+  const miniMaxSceneImageUse = makeSelect(MINIMAX_H3_SCENE_IMAGE_USE_OPTIONS, "off");
+  const miniMaxSceneImageUseField = makeField("Scene image use — all unlocked Reference-to-Video scenes", miniMaxSceneImageUse);
+  miniMaxSceneImageUseField.title = "Choose whether each scene image is unused, becomes the exact MiniMax start frame, or is shown only to the prompt-writing vision LLM as inspiration.";
+  const miniMaxStartFrameCharacterInfluence = makeSelect(MINIMAX_H3_START_FRAME_CHARACTER_INFLUENCE_OPTIONS, "full_character");
+  const miniMaxStartFrameCharacterInfluenceField = makeField("Character reference influence — all Reference-to-Video scenes", miniMaxStartFrameCharacterInfluence);
+  miniMaxStartFrameCharacterInfluenceField.title = "Applies this character-reference priority across every eligible base scene that uses the scene image as its exact start frame.";
   const miniMaxStartFrameReferenceNote = document.createElement("div");
-  miniMaxStartFrameReferenceNote.textContent = "When enabled, Image 1 locks the exact opening composition. Character and location references begin at Image 2 and preserve identity or environment details that are not visible in the start frame.";
+  miniMaxStartFrameReferenceNote.textContent = "Choose whether the scene image is unused, becomes MiniMax's exact start frame, or is shown only to the prompt-writing vision LLM as environment inspiration.";
   miniMaxStartFrameReferenceNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
-  miniMaxReferenceModePanel.append(miniMaxReferenceModeNote, miniMaxUseSceneImageAsStartFrame.wrapper, miniMaxStartFrameReferenceNote, miniMaxReferencesButton);
+  miniMaxReferenceModePanel.append(miniMaxReferenceModeNote, miniMaxSceneImageUseField, miniMaxStartFrameCharacterInfluenceField, miniMaxStartFrameReferenceNote, miniMaxReferencesButton);
   const miniMaxVideoModePanel = makeSettingsPanel([]);
   const miniMaxVideoModeNote = document.createElement("div");
   miniMaxVideoModeNote.textContent = "Add up to three source/reference videos. You can also choose ordered Reference Builder images to replace or preserve people, backgrounds, locations, props, or visual style during the edit.";
@@ -5231,6 +5307,7 @@ function openBuilder(node) {
           makeField("Previous rendered final frame", miniMaxContinuityMode),
           miniMaxContinuityNote,
         ]),
+        miniMaxTurboSection,
         ...Object.values(miniMaxModePanels),
         makeSettingsSection("Render Settings", [miniMaxRenderSettingsGrid]),
         miniMaxAdvancedSettings,
@@ -5898,11 +5975,13 @@ function openBuilder(node) {
     const motionDefaults = source.motion_defaults && typeof source.motion_defaults === "object" ? source.motion_defaults : {};
     const cameraSpeed = Math.max(0, Math.min(10, Number(source.camera_motion_speed ?? source.cameraMotionSpeed ?? motionDefaults.camera_motion_speed ?? 4)));
     const characterSpeed = Math.max(0, Math.min(10, Number(source.character_motion_speed ?? source.characterMotionSpeed ?? motionDefaults.character_motion_speed ?? 4)));
+    const cutFrequency = storyboardCutFrequencyValue(source.minimax_h3_cut_frequency ?? source.cut_frequency ?? source.cutFrequency);
     const temporalIntensity = Math.max(0, Math.min(10, Number(source.temporal_background_intensity ?? source.temporalBackgroundIntensity ?? 8)));
     return {
       global_consistency_phrase: String(source.global_consistency_phrase || source.globalConsistencyPhrase || ""),
       camera_motion_speed: Number.isFinite(cameraSpeed) ? cameraSpeed : 4,
       character_motion_speed: Number.isFinite(characterSpeed) ? characterSpeed : 4,
+      minimax_h3_cut_frequency: cutFrequency,
       camera_guidance: String(source.camera_guidance || motionDefaults.camera_guidance || ""),
       character_guidance: String(source.character_guidance || motionDefaults.character_guidance || ""),
       performance_style: String(source.performance_style || source.performanceStyle || source.performance_style_default || ""),
@@ -6006,10 +6085,13 @@ function openBuilder(node) {
     subjectScenePath: "",
     textGemmaRunner: "builtin",
     gemmaContextLimit: 8000,
+    gemmaOutputTokenLimit: 8192,
     gemmaGpuLayers: 99,
     lmStudioBaseUrl: "http://127.0.0.1:1234/v1",
     lmStudioModel: "",
     lmStudioApiKey: "",
+    lmStudioContextLimit: 32768,
+    lmStudioOutputTokenLimit: 8192,
     llmApiProvider: "openai",
     llmApiModel: "",
     llmApiKey: "",
@@ -6070,6 +6152,14 @@ function openBuilder(node) {
 
   function syncProjectVideoEngineUI() {
     const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
+    projectVideoEngineBadge.dataset.engine = miniMaxProject ? "minimax_h3" : "ltx";
+    projectVideoEngineBadge.textContent = miniMaxProject ? "◈ MiniMax" : "◈ LTX";
+    projectVideoEngineBadge.title = miniMaxProject
+      ? "Project video engine: MiniMax H3"
+      : "Project video engine: LTX";
+    projectVideoEngineBadge.style.background = miniMaxProject ? "#083344" : "#172554";
+    projectVideoEngineBadge.style.borderColor = miniMaxProject ? "#22d3ee" : "#60a5fa";
+    projectVideoEngineBadge.style.color = miniMaxProject ? "#a5f3fc" : "#bfdbfe";
     ltxVideoPanel.style.display = miniMaxProject ? "none" : "flex";
     miniMaxEnginePanel.style.display = miniMaxProject ? "flex" : "none";
     syncMiniMaxH3Panel();
@@ -6086,6 +6176,12 @@ function openBuilder(node) {
       ...sceneSettings,
       video_mode: sceneSettings.video_mode || segment.minimax_h3_mode || globalSettings.video_mode,
     });
+    const sceneHasPreTurboEasyCache = sceneSettings.easy_cache_bypass_before_turbo != null
+      || sceneSettings.easyCacheBypassBeforeTurbo != null;
+    if (settings.use_turbo_lora && !sceneHasPreTurboEasyCache) {
+      settings.easy_cache_bypass_before_turbo = Boolean(sceneSettings.easy_cache_bypass ?? globalSettings.easy_cache_bypass);
+      settings.easy_cache_bypass = true;
+    }
     segment.minimax_h3_settings = settings;
     segment.minimax_h3_mode = settings.video_mode;
     return settings;
@@ -6105,6 +6201,25 @@ function openBuilder(node) {
     return Boolean(segment
       && miniMaxH3ContinuityModeForSegment(segment) !== "off"
       && previousAutoChainSourceSegment(segment));
+  }
+
+  function miniMaxH3StartFrameCharacterInfluenceForSegment(segment = activeSegment()) {
+    return normalizeMiniMaxH3StartFrameCharacterInfluence(
+      segment?.minimax_h3_start_frame_character_influence,
+    );
+  }
+
+  function miniMaxH3SceneImageUseForSegment(segment = activeSegment()) {
+    return normalizeMiniMaxH3SceneImageUse(
+      segment?.minimax_h3_scene_image_use,
+      Boolean(segment?.minimax_h3_use_scene_image_as_start_frame),
+    );
+  }
+
+  function miniMaxH3SceneImageIsPromptInspiration(segment = activeSegment()) {
+    return ["environment_inspiration", "environment_framing_inspiration"].includes(
+      miniMaxH3SceneImageUseForSegment(segment),
+    );
   }
 
   function setMiniMaxH3ModeForSegment(segment, value) {
@@ -6163,6 +6278,7 @@ function openBuilder(node) {
   function saveMiniMaxH3SettingsFromPanel() {
     const segment = activeSegment();
     const currentSettings = miniMaxH3SettingsForSegment(segment);
+    const turboEnabled = miniMaxUseTurboLora.input.checked;
     const settings = cloneMiniMaxH3Settings({
       video_mode: currentSettings.video_mode,
       audio_mode: miniMaxAudioMode.value,
@@ -6179,14 +6295,21 @@ function openBuilder(node) {
       sampler_name: miniMaxSamplerName.value,
       scheduler: miniMaxScheduler.value,
       steps: miniMaxSteps.value,
+      steps_before_turbo: turboEnabled ? currentSettings.steps_before_turbo : miniMaxSteps.value,
       denoise: miniMaxDenoise.value,
       easy_cache_bypass: miniMaxEasyCacheBypass.input.checked,
+      easy_cache_bypass_before_turbo: turboEnabled
+        ? currentSettings.easy_cache_bypass_before_turbo
+        : miniMaxEasyCacheBypass.input.checked,
       easy_cache_reuse_threshold: miniMaxEasyCacheReuseThreshold.value,
       easy_cache_start_percent: miniMaxEasyCacheStartPercent.value,
       easy_cache_end_percent: miniMaxEasyCacheEndPercent.value,
       easy_cache_verbose: miniMaxEasyCacheVerbose.input.checked,
       sage_attention: miniMaxSageAttention.value,
       enable_fp16_accumulation: miniMaxFp16Accumulation.input.checked,
+      use_turbo_lora: turboEnabled,
+      turbo_lora_name: miniMaxTurboLoraPicker.input.value,
+      turbo_lora_strength: miniMaxTurboLoraStrength.value,
     });
     if (segment?.use_scene_minimax_h3_settings) {
       segment.minimax_h3_settings = settings;
@@ -6202,7 +6325,11 @@ function openBuilder(node) {
     const segment = activeSegment();
     if (!segment) return;
     segment.minimax_h3_prompt = miniMaxPrompt.value || "";
-    segment.minimax_h3_use_scene_image_as_start_frame = Boolean(miniMaxUseSceneImageAsStartFrame.input.checked);
+    segment.minimax_h3_scene_image_use = normalizeMiniMaxH3SceneImageUse(miniMaxSceneImageUse.value);
+    segment.minimax_h3_use_scene_image_as_start_frame = segment.minimax_h3_scene_image_use === "exact_start_frame";
+    segment.minimax_h3_start_frame_character_influence = normalizeMiniMaxH3StartFrameCharacterInfluence(
+      miniMaxStartFrameCharacterInfluence.value,
+    );
     segment.minimax_h3_video_references = miniMaxVideoReferenceRows
       .map((row) => ({
         path: String(row.path.value || "").trim(),
@@ -6379,11 +6506,36 @@ function openBuilder(node) {
     miniMaxEasyCacheVerbose.input.checked = settings.easy_cache_verbose;
     miniMaxSageAttention.value = settings.sage_attention;
     miniMaxFp16Accumulation.input.checked = settings.enable_fp16_accumulation;
+    miniMaxUseTurboLora.input.checked = settings.use_turbo_lora;
+    miniMaxTurboLoraPicker.input.value = settings.turbo_lora_name;
+    miniMaxTurboLoraStrength.value = String(settings.turbo_lora_strength);
+    miniMaxTurboLoraField.style.display = settings.use_turbo_lora ? "flex" : "none";
+    miniMaxTurboLoraStrengthField.style.display = settings.use_turbo_lora ? "flex" : "none";
+    miniMaxTurboNote.textContent = settings.use_turbo_lora
+      ? "Turbo is ON. The hidden API workflow uses MiniMax-H3 Turbo LoRA plus the dedicated Turbo sampler and simple scheduler. Steps defaults to 6 when Turbo is switched on and remains editable with a minimum of 4. EasyCache bypass is enabled automatically; the advanced control remains editable for experiments. Normal settings are restored when Turbo is turned off."
+      : "Turbo is OFF. The normal MiniMax sampler, scheduler, and step settings are used.";
+    miniMaxSamplerName.disabled = settings.use_turbo_lora;
+    miniMaxScheduler.disabled = settings.use_turbo_lora;
+    miniMaxSteps.disabled = false;
+    miniMaxSteps.min = settings.use_turbo_lora ? "4" : "1";
     useSceneMiniMaxH3Settings.input.checked = Boolean(segment?.use_scene_minimax_h3_settings);
     useSceneMiniMaxH3Settings.input.disabled = !segment;
-    miniMaxSettingsScopeNote.textContent = segment?.use_scene_minimax_h3_settings
+    const sceneMiniMaxSettingsLocked = Boolean(segment?.use_scene_minimax_h3_settings);
+    miniMaxSettingsScopeNote.textContent = sceneMiniMaxSettingsLocked
       ? "Scene lock is ON — this scene uses its own MiniMax mode, models, and video settings."
       : "Scene lock is OFF — this scene follows the project-global MiniMax mode, models, and video settings.";
+    miniMaxSceneImageUseField.firstElementChild.textContent = sceneMiniMaxSettingsLocked
+      ? "Scene image use — this locked scene"
+      : "Scene image use — all unlocked Reference-to-Video scenes";
+    miniMaxSceneImageUseField.title = sceneMiniMaxSettingsLocked
+      ? "Changes only this locked scene. Prompt-only inspiration is sent to the vision LLM but not to MiniMax."
+      : "Applies across every eligible unlocked base scene. Locked scenes remain unchanged; prompt-only inspiration is never sent to MiniMax.";
+    miniMaxStartFrameCharacterInfluenceField.firstElementChild.textContent = sceneMiniMaxSettingsLocked
+      ? "Character reference influence — this locked scene"
+      : "Character reference influence — all unlocked Reference-to-Video scenes";
+    miniMaxStartFrameCharacterInfluenceField.title = sceneMiniMaxSettingsLocked
+      ? "Changes only this locked scene's character-reference priority."
+      : "Applies this priority across eligible unlocked base scenes; locked scenes remain unchanged.";
     const mode = settings.video_mode;
     const modeLabel = miniMaxH3ModeLabel(mode);
     for (const button of miniMaxModeButtons) {
@@ -6411,11 +6563,29 @@ function openBuilder(node) {
         : settings.continuity_mode === "exact_start_frame"
           ? "Begins each later scene on the previous rendered clip's exact final frame. The extracted frame and its prompt contract are injected when rendering. Do not also enable the scene-image exact start-frame option; Scene 1 is unaffected."
           : "Off: every scene starts independently from its normal MiniMax references.";
-    miniMaxUseSceneImageAsStartFrame.input.checked = Boolean(segment?.minimax_h3_use_scene_image_as_start_frame);
-    miniMaxUseSceneImageAsStartFrame.input.disabled = !segment || settings.continuity_mode === "exact_start_frame";
+    const sceneImageUse = miniMaxH3SceneImageUseForSegment(segment);
+    miniMaxSceneImageUse.value = sceneImageUse;
+    miniMaxSceneImageUse.disabled = !segment;
+    const exactStartFrameOption = Array.from(miniMaxSceneImageUse.options).find((option) => option.value === "exact_start_frame");
+    if (exactStartFrameOption) exactStartFrameOption.disabled = settings.continuity_mode === "exact_start_frame";
+    const startFrameCharacterInfluence = miniMaxH3StartFrameCharacterInfluenceForSegment(segment);
+    miniMaxStartFrameCharacterInfluence.value = startFrameCharacterInfluence;
+    miniMaxStartFrameCharacterInfluence.disabled = !segment
+      || sceneImageUse !== "exact_start_frame"
+      || settings.continuity_mode === "exact_start_frame";
+    miniMaxStartFrameCharacterInfluenceField.style.display = sceneImageUse === "exact_start_frame" ? "flex" : "none";
     miniMaxStartFrameReferenceNote.textContent = settings.continuity_mode === "exact_start_frame"
-      ? "Disabled because the previous rendered final frame is the sole exact opening frame. Character and location references remain supporting references."
-      : "When enabled, Image 1 locks the exact opening composition. Character and location references begin at Image 2 and preserve identity or environment details that are not visible in the start frame.";
+      && sceneImageUse === "exact_start_frame"
+      ? "The previous rendered final frame is the sole exact opening frame. Choose an LLM-only inspiration mode or Do not use instead."
+      : sceneImageUse === "environment_inspiration"
+        ? "The scene image is shown only to the prompt-writing LLM for location, environment, atmosphere, mood, lighting, weather, colors, materials, background details, relevant objects, and scene activity. It must ignore framing, shot distance, camera angle, lens, composition, and every character detail, pose, and placement. MiniMax never receives this image."
+        : sceneImageUse === "environment_framing_inspiration"
+          ? "The scene image is shown only to the prompt-writing LLM for environment plus optional shot framing, distance, angle, lens, and composition inspiration. It must ignore every character's identity, appearance, clothing, pose, and placement. MiniMax never receives this image."
+          : startFrameCharacterInfluence === "face_hair_only" && sceneImageUse === "exact_start_frame"
+        ? "Image 1 keeps its pose, body, wardrobe, accessories, composition, camera, lighting, props, and environment. Character references supply only face identity and hair from the first generated frame—there is no visible swap or transformation."
+        : sceneImageUse === "exact_start_frame"
+          ? "The scene image becomes MiniMax Image 1 and locks the exact opening composition. Character and location references follow it."
+          : "The scene image is not used by the prompt-writing LLM or MiniMax.";
     const imagePath = String(segment ? selectedSegmentImagePath(segment) || "" : "").trim();
     miniMaxImageModeSource.textContent = imagePath
       ? `Scene image input:\n${imagePath}`
@@ -8503,10 +8673,13 @@ function openBuilder(node) {
     return {
       text_runner: state.textGemmaRunner || "builtin",
       n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
+      gemma_output_token_limit: normalizeOutputTokenLimit(state.gemmaOutputTokenLimit),
       n_gpu_layers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),
       lmstudio_base_url: state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
       lmstudio_model: state.lmStudioModel || "",
       lmstudio_api_key: state.lmStudioApiKey || "",
+      lmstudio_context_limit: normalizeLmStudioContextLimit(state.lmStudioContextLimit),
+      lmstudio_output_token_limit: normalizeOutputTokenLimit(state.lmStudioOutputTokenLimit),
       llm_api_provider: state.llmApiProvider || "openai",
       llm_api_model: state.llmApiModel || "",
       llm_api_key: state.llmApiKey || "",
@@ -9549,7 +9722,14 @@ function openBuilder(node) {
         ? segment.minimax_h3_reference_keys.map((key) => String(key || "").trim()).filter(Boolean).slice(0, 9)
         : null;
     }
-    segment.minimax_h3_use_scene_image_as_start_frame = Boolean(segment.minimax_h3_use_scene_image_as_start_frame);
+    segment.minimax_h3_scene_image_use = normalizeMiniMaxH3SceneImageUse(
+      segment.minimax_h3_scene_image_use,
+      Boolean(segment.minimax_h3_use_scene_image_as_start_frame),
+    );
+    segment.minimax_h3_use_scene_image_as_start_frame = segment.minimax_h3_scene_image_use === "exact_start_frame";
+    segment.minimax_h3_start_frame_character_influence = normalizeMiniMaxH3StartFrameCharacterInfluence(
+      segment.minimax_h3_start_frame_character_influence,
+    );
     segment.minimax_h3_continuity_frame_path = String(segment.minimax_h3_continuity_frame_path || "");
     segment.minimax_h3_continuity_source_video_path = String(segment.minimax_h3_continuity_source_video_path || "");
     segment.minimax_h3_continuity_source_scene_id = String(segment.minimax_h3_continuity_source_scene_id || "");
@@ -10000,14 +10180,18 @@ function openBuilder(node) {
 
   function applyModelDefaults(defaults) {
     if (!defaults || typeof defaults !== "object" || Array.isArray(defaults)) return false;
+    const legacyLlmMaxTokens = defaults.llm_max_tokens ?? defaults.llmMaxTokens;
     if (defaults.text_gemma_runner || defaults.textGemmaRunner) {
       state.textGemmaRunner = defaults.text_gemma_runner || defaults.textGemmaRunner || state.textGemmaRunner || "builtin";
     }
     if (Object.prototype.hasOwnProperty.call(defaults, "gemma_gpu_layers") || Object.prototype.hasOwnProperty.call(defaults, "gemmaGpuLayers") || Object.prototype.hasOwnProperty.call(defaults, "n_gpu_layers")) {
       state.gemmaGpuLayers = normalizeGemmaGpuLayers(defaults.gemma_gpu_layers ?? defaults.gemmaGpuLayers ?? defaults.n_gpu_layers ?? state.gemmaGpuLayers);
     }
-    if (Object.prototype.hasOwnProperty.call(defaults, "gemma_context_limit") || Object.prototype.hasOwnProperty.call(defaults, "gemmaContextLimit") || Object.prototype.hasOwnProperty.call(defaults, "n_ctx")) {
-      state.gemmaContextLimit = normalizeGemmaContextLimit(defaults.gemma_context_limit ?? defaults.gemmaContextLimit ?? defaults.n_ctx ?? state.gemmaContextLimit);
+    if (Object.prototype.hasOwnProperty.call(defaults, "gemma_context_limit") || Object.prototype.hasOwnProperty.call(defaults, "gemmaContextLimit") || Object.prototype.hasOwnProperty.call(defaults, "n_ctx") || legacyLlmMaxTokens != null) {
+      state.gemmaContextLimit = normalizeGemmaContextLimit(defaults.gemma_context_limit ?? defaults.gemmaContextLimit ?? defaults.n_ctx ?? legacyLlmMaxTokens ?? state.gemmaContextLimit);
+    }
+    if (Object.prototype.hasOwnProperty.call(defaults, "gemma_output_token_limit") || Object.prototype.hasOwnProperty.call(defaults, "gemmaOutputTokenLimit") || legacyLlmMaxTokens != null) {
+      state.gemmaOutputTokenLimit = normalizeOutputTokenLimit(defaults.gemma_output_token_limit ?? defaults.gemmaOutputTokenLimit ?? legacyLlmMaxTokens ?? state.gemmaOutputTokenLimit);
     }
     if (defaults.lm_studio_base_url || defaults.lmStudioBaseUrl) {
       state.lmStudioBaseUrl = defaults.lm_studio_base_url || defaults.lmStudioBaseUrl || state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
@@ -10017,6 +10201,12 @@ function openBuilder(node) {
     }
     if (Object.prototype.hasOwnProperty.call(defaults, "lm_studio_api_key") || Object.prototype.hasOwnProperty.call(defaults, "lmStudioApiKey")) {
       state.lmStudioApiKey = defaults.lm_studio_api_key ?? defaults.lmStudioApiKey ?? state.lmStudioApiKey ?? "";
+    }
+    if (Object.prototype.hasOwnProperty.call(defaults, "lm_studio_context_limit") || Object.prototype.hasOwnProperty.call(defaults, "lmStudioContextLimit")) {
+      state.lmStudioContextLimit = normalizeLmStudioContextLimit(defaults.lm_studio_context_limit ?? defaults.lmStudioContextLimit ?? state.lmStudioContextLimit);
+    }
+    if (Object.prototype.hasOwnProperty.call(defaults, "lm_studio_output_token_limit") || Object.prototype.hasOwnProperty.call(defaults, "lmStudioOutputTokenLimit") || legacyLlmMaxTokens != null) {
+      state.lmStudioOutputTokenLimit = normalizeOutputTokenLimit(defaults.lm_studio_output_token_limit ?? defaults.lmStudioOutputTokenLimit ?? legacyLlmMaxTokens ?? state.lmStudioOutputTokenLimit);
     }
     if (defaults.llm_api_provider || defaults.llmApiProvider) {
       state.llmApiProvider = defaults.llm_api_provider || defaults.llmApiProvider || state.llmApiProvider || "openai";
@@ -10229,10 +10419,13 @@ function openBuilder(node) {
       subjectScenePath: state.subjectScenePath,
       textGemmaRunner: state.textGemmaRunner,
       gemmaContextLimit: normalizeGemmaContextLimit(state.gemmaContextLimit),
+      gemmaOutputTokenLimit: normalizeOutputTokenLimit(state.gemmaOutputTokenLimit),
       gemmaGpuLayers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),
       lmStudioBaseUrl: state.lmStudioBaseUrl,
       lmStudioModel: state.lmStudioModel,
       lmStudioApiKey: state.lmStudioApiKey,
+      lmStudioContextLimit: normalizeLmStudioContextLimit(state.lmStudioContextLimit),
+      lmStudioOutputTokenLimit: normalizeOutputTokenLimit(state.lmStudioOutputTokenLimit),
       llmApiProvider: state.llmApiProvider,
       llmApiModel: state.llmApiModel,
       notificationSettings: normalizeNotificationSettings(state.notificationSettings),
@@ -10278,6 +10471,7 @@ function openBuilder(node) {
 
   function restoreHistorySnapshot(snapshot) {
     const data = JSON.parse(snapshot, historySnapshotReviver);
+    const legacyLlmMaxTokens = data.llmMaxTokens ?? data.llm_max_tokens;
     state.isRestoringHistory = true;
     state.segments = data.segments || [];
     state.overlaySegments = data.overlaySegments || data.overlay_segments || [];
@@ -10310,11 +10504,14 @@ function openBuilder(node) {
     state.storyIdeaPath = data.storyIdeaPath || "";
     state.subjectScenePath = data.subjectScenePath || "";
     state.textGemmaRunner = data.textGemmaRunner || data.text_gemma_runner || state.textGemmaRunner || "builtin";
-    state.gemmaContextLimit = normalizeGemmaContextLimit(data.gemmaContextLimit ?? data.gemma_context_limit ?? data.n_ctx ?? state.gemmaContextLimit);
+    state.gemmaContextLimit = normalizeGemmaContextLimit(data.gemmaContextLimit ?? data.gemma_context_limit ?? data.n_ctx ?? legacyLlmMaxTokens ?? state.gemmaContextLimit);
+    state.gemmaOutputTokenLimit = normalizeOutputTokenLimit(data.gemmaOutputTokenLimit ?? data.gemma_output_token_limit ?? legacyLlmMaxTokens ?? state.gemmaOutputTokenLimit);
     state.gemmaGpuLayers = normalizeGemmaGpuLayers(data.gemmaGpuLayers ?? data.gemma_gpu_layers ?? data.n_gpu_layers ?? state.gemmaGpuLayers);
     state.lmStudioBaseUrl = data.lmStudioBaseUrl || data.lm_studio_base_url || state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
     state.lmStudioModel = data.lmStudioModel || data.lm_studio_model || state.lmStudioModel || "";
     state.lmStudioApiKey = data.lmStudioApiKey || data.lm_studio_api_key || state.lmStudioApiKey || "";
+    state.lmStudioContextLimit = normalizeLmStudioContextLimit(data.lmStudioContextLimit ?? data.lm_studio_context_limit ?? state.lmStudioContextLimit);
+    state.lmStudioOutputTokenLimit = normalizeOutputTokenLimit(data.lmStudioOutputTokenLimit ?? data.lm_studio_output_token_limit ?? legacyLlmMaxTokens ?? state.lmStudioOutputTokenLimit);
     state.llmApiProvider = data.llmApiProvider || data.llm_api_provider || state.llmApiProvider || "openai";
     state.llmApiModel = data.llmApiModel || data.llm_api_model || state.llmApiModel || "";
     state.notificationSettings = normalizeNotificationSettings(data.notificationSettings || data.notification_settings || state.notificationSettings);
@@ -11450,6 +11647,10 @@ function openBuilder(node) {
     add(parts, "Storyboard still shot direction", scene.shot_type || segment.shot_type);
     if (!customMotionSummary) add(parts, "Storyboard camera motion", scene.camera_motion || segment.camera_motion || segment.motion_preset);
     add(parts, "Storyboard camera motion speed guidance", defaults.camera_guidance || builderMotionSpeedGuidance(defaults.camera_motion_speed, "camera"));
+    if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") {
+      const cutPlan = storyboardCutPlanForDuration(timelineSegmentDuration(segment), defaults.minimax_h3_cut_frequency);
+      add(parts, "Mandatory MiniMax editing / cut plan", cutPlan.instruction);
+    }
     add(parts, "Storyboard character motion guidance", segment.character_motion || defaults.character_guidance || builderMotionSpeedGuidance(defaults.character_motion_speed, "character"));
     const performanceStyle = String(segment.performance_style || defaults.performance_style || "").trim();
     const performancePreset = storyboardPerformancePreset(performanceStyle) || {};
@@ -11639,6 +11840,18 @@ function openBuilder(node) {
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) return 8000;
     return Math.max(512, Math.min(262144, Math.round(parsed)));
+  }
+
+  function normalizeLmStudioContextLimit(value) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return 32768;
+    return Math.max(512, Math.min(262144, Math.round(parsed)));
+  }
+
+  function normalizeOutputTokenLimit(value) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return 8192;
+    return Math.max(64, Math.min(262144, Math.round(parsed)));
   }
 
   function removeQuietFromSingingPrompt(text) {
@@ -14636,11 +14849,15 @@ function openBuilder(node) {
     if (normalizedMode === "reference_to_video" && segment?.minimax_h3_use_scene_image_as_start_frame) {
       const startFrame = segmentImageSource(segment);
       if (startFrame?.path || startFrame?.data) {
+        const characterInfluence = miniMaxH3StartFrameCharacterInfluenceForSegment(segment);
         ordered.push({
           key: "scene:start_frame",
           kind: "start_frame",
           label: "Scene start frame",
-          description: "Exact opening frame, composition, pose, camera angle, environment, and lighting anchor.",
+          start_frame_character_influence: characterInfluence,
+          description: characterInfluence === "face_hair_only"
+            ? "Exact opening frame and authoritative source for pose, body proportions, wardrobe, accessories, composition, camera angle, environment, props, lighting, and every visible detail except face identity and hair."
+            : "Exact opening frame, composition, pose, camera angle, environment, and lighting anchor.",
           image: {
             path: String(startFrame.path || "").trim(),
             data: String(startFrame.data || "").trim(),
@@ -14661,9 +14878,21 @@ function openBuilder(node) {
     }).slice(0, 9);
   }
 
-  function miniMaxReferencePurposeText(item) {
-    if (item?.kind === "start_frame") return "exact start frame, opening composition, pose, camera angle, environment, and lighting anchor";
-    if (item?.kind === "subject") return "character identity, face, hair, clothing, and body-proportion reference";
+  function miniMaxReferencePurposeText(item, segment = null) {
+    const faceHairOnly = Boolean(
+      segment?.minimax_h3_use_scene_image_as_start_frame
+      && miniMaxH3StartFrameCharacterInfluenceForSegment(segment) === "face_hair_only"
+    );
+    if (item?.kind === "start_frame") {
+      return faceHairOnly
+        ? "exact start frame and authority for every visible detail except face identity and hair"
+        : "exact start frame, opening composition, pose, camera angle, environment, and lighting anchor";
+    }
+    if (item?.kind === "subject") {
+      return faceHairOnly
+        ? "face identity and hair reference only; do not copy clothing, body proportions, pose, accessories, framing, lighting, or background"
+        : "character identity, face, hair, clothing, and body-proportion reference";
+    }
     if (item?.kind === "location") return "environment, location, architecture, layout, and atmosphere reference";
     if (item?.kind === "ingredients") {
       const searchable = `${item?.label || ""} ${item?.description || ""}`.toLowerCase();
@@ -14686,6 +14915,8 @@ function openBuilder(node) {
     const startFrameReserved = miniMaxH3ModeForSegment(segment) === "reference_to_video"
       && Boolean(segment.minimax_h3_use_scene_image_as_start_frame)
       && Boolean(segmentImageSource(segment)?.path || segmentImageSource(segment)?.data);
+    const promptInspiration = miniMaxH3ModeForSegment(segment) === "reference_to_video"
+      && miniMaxH3SceneImageIsPromptInspiration(segment);
     const continuityReserved = miniMaxH3ContinuityReferenceReserved(segment);
     const maxLibraryReferences = Math.max(0, 9 - (startFrameReserved ? 1 : 0) - (continuityReserved ? 1 : 0));
     let selectedKeys = miniMaxReferenceKeysForSegment(segment, refs).slice(0, maxLibraryReferences);
@@ -14705,7 +14936,7 @@ function openBuilder(node) {
     const note = document.createElement("div");
     note.textContent = startFrameReserved
       ? `The scene image is reserved as Image 1 and the exact start frame. Choose up to ${maxLibraryReferences} additional Reference Builder image${maxLibraryReferences === 1 ? "" : "s"}.${continuityReserved ? " One final slot is reserved for the previous rendered scene's continuity frame." : ""}`
-      : `Choose up to ${maxLibraryReferences} existing Reference Builder image${maxLibraryReferences === 1 ? "" : "s"}. The numbered order is sent into MiniMax H3 exactly as shown.${continuityReserved ? " One final slot is reserved for the previous rendered scene's continuity frame." : ""} Scene character/location mappings are used automatically until you save a custom selection.`;
+      : `Choose up to ${maxLibraryReferences} existing Reference Builder image${maxLibraryReferences === 1 ? "" : "s"}. The numbered order is sent into MiniMax H3 exactly as shown.${promptInspiration ? " The scene image is prompt-only LLM inspiration and does not consume a MiniMax reference slot." : ""}${continuityReserved ? " One final slot is reserved for the previous rendered scene's continuity frame." : ""} Scene character/location mappings are used automatically until you save a custom selection.`;
     note.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;padding:11px 15px;border-bottom:1px solid #1e293b;";
     const body = document.createElement("div");
     body.style.cssText = "display:grid;grid-template-columns:minmax(0,1.25fr) minmax(320px,.75fr);gap:12px;padding:12px;overflow:auto;min-height:260px;";
@@ -19611,7 +19842,8 @@ function openBuilder(node) {
           story_idea: storyIdea || idea,
           unload_after: true,
           n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
-          max_new_tokens: 8000,
+          gemma_output_token_limit: normalizeOutputTokenLimit(state.gemmaOutputTokenLimit),
+          max_new_tokens: normalizeOutputTokenLimit(state.gemmaOutputTokenLimit),
         }, 10 * 60 * 1000);
         const text = String(data.text || "").trim();
         if (!text) throw new Error("Gemma4 returned an empty draft.");
@@ -25422,7 +25654,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
 
     async function describeGeneratedReference(referenceType, target, prompt = "") {
       if (referenceType === "subject") {
-        setInlineProgress(`Vision Gemma describing the generated subject image...\n${gemmaRunnerLine({ vision: true, forceBuiltin: true })}`, 91);
+        setInlineProgress(`Vision Gemma describing the generated subject image...\n${gemmaRunnerLine({ vision: true })}`, 91);
         const description = await describeReferenceImageWithGemma(target, "subject", {
           unloadAfter: true,
           clearBeforeLoad: false,
@@ -25890,7 +26122,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         for (let index = 0; index < jobs.length; index += 1) {
           const { target, label } = jobs[index];
           const isLast = index === jobs.length - 1;
-          progress.set(`Vision Gemma describing ${referenceType} image...\n${index + 1}/${jobs.length}: ${label || target.name || referenceType}\n${gemmaRunnerLine({ vision: true, forceBuiltin: true })}`, 8 + Math.round((index / Math.max(1, jobs.length)) * 84));
+          progress.set(`Vision Gemma describing ${referenceType} image...\n${index + 1}/${jobs.length}: ${label || target.name || referenceType}\n${gemmaRunnerLine({ vision: true })}`, 8 + Math.round((index / Math.max(1, jobs.length)) * 84));
           await describeReferenceImageWithGemma(target, referenceType, {
             unloadAfter: options.keepLoaded ? isLast : true,
             clearBeforeLoad: index === 0 && Boolean(options.clearBeforeLoad),
@@ -25918,7 +26150,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       const effectiveType = referenceType === "subject" ? (target?.reference_type || "character") : referenceType;
       const progress = createProgressWindow(referenceType === "location" ? "Describing location" : "Describing reference", { zIndex: 100008 });
       try {
-        progress.set(`Vision Gemma describing ${effectiveType} image...\n${label || target?.name || effectiveType}\n${gemmaRunnerLine({ vision: true, forceBuiltin: true })}`, 18);
+        progress.set(`Vision Gemma describing ${effectiveType} image...\n${label || target?.name || effectiveType}\n${gemmaRunnerLine({ vision: true })}`, 18);
         const description = await describeReferenceImageWithGemma(target, referenceType, { unloadAfter: true, clearBeforeLoad: false });
         applyReferenceDescription(referenceType, target, description);
         renderAll();
@@ -27973,7 +28205,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       const primarySubject = refs.subjects[0] || refs.subject;
       const progress = createProgressWindow("Describing character", { zIndex: 100008 });
       try {
-        progress.set(`Vision Gemma describing character image...\n${subjectNameInput.value || refs.subjects[0]?.name || "Subject"}\n${gemmaRunnerLine({ vision: true, forceBuiltin: true })}`, 18);
+        progress.set(`Vision Gemma describing character image...\n${subjectNameInput.value || refs.subjects[0]?.name || "Subject"}\n${gemmaRunnerLine({ vision: true })}`, 18);
         const description = await describeReferenceImageWithGemma(primarySubject, "subject", { unloadAfter: true });
         applyReferenceDescription("subject", primarySubject, description);
         renderAll();
@@ -28455,7 +28687,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       if (!currentSheet) return;
       const progress = createProgressWindow("Describing Ingredients sheet", { zIndex: 100008 });
       try {
-        progress.set(`Vision Gemma describing sheet image...\n${currentSheet.name || "Ingredients sheet"}\n${gemmaRunnerLine({ vision: true, forceBuiltin: true })}`, 18);
+        progress.set(`Vision Gemma describing sheet image...\n${currentSheet.name || "Ingredients sheet"}\n${gemmaRunnerLine({ vision: true })}`, 18);
         await describeReferenceImageWithGemma(currentSheet, "subject", { unloadAfter: true });
         renderSheets();
         await autoSaveSessionQuiet("Gemma described ingredients sheet");
@@ -28479,7 +28711,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       try {
         for (let index = 0; index < jobs.length; index += 1) {
           const sheet = jobs[index];
-          progress.set(`Vision Gemma describing sheet image...\n${index + 1}/${jobs.length}: ${sheet.name || `Ingredients Sheet ${index + 1}`}\n${gemmaRunnerLine({ vision: true, forceBuiltin: true })}`, 8 + Math.round((index / Math.max(1, jobs.length)) * 84));
+          progress.set(`Vision Gemma describing sheet image...\n${index + 1}/${jobs.length}: ${sheet.name || `Ingredients Sheet ${index + 1}`}\n${gemmaRunnerLine({ vision: true })}`, 8 + Math.round((index / Math.max(1, jobs.length)) * 84));
           await describeReferenceImageWithGemma(sheet, "subject", { unloadAfter: index === jobs.length - 1 });
           renderSheets();
           await autoSaveSessionQuiet(`Gemma described ingredients sheet ${index + 1}`);
@@ -29560,7 +29792,7 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
         for (let index = 0; index < jobs.length; index += 1) {
           const item = jobs[index];
           const effectiveType = referenceType === "subject" ? (item.reference_type || "character") : referenceType;
-          progress.set(`Vision Gemma describing ${effectiveType} image...\n${index + 1}/${jobs.length}: ${item.name || effectiveType}\n${gemmaRunnerLine({ vision: true, forceBuiltin: true })}`, 8 + Math.round((index / Math.max(1, jobs.length)) * 84));
+          progress.set(`Vision Gemma describing ${effectiveType} image...\n${index + 1}/${jobs.length}: ${item.name || effectiveType}\n${gemmaRunnerLine({ vision: true })}`, 8 + Math.round((index / Math.max(1, jobs.length)) * 84));
           await describeReferenceImageWithGemma(item, referenceType, { unloadAfter: index === jobs.length - 1 });
           renderAll();
           await autoSaveSessionQuiet(`Gemma described ${referenceType} text`);
@@ -31741,6 +31973,22 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     backdrop.append(box);
     document.body.append(backdrop);
     modalClose.onclick = () => backdrop.remove();
+    chooseProjectRootButton.onclick = async () => {
+      const path = await pickPath("project_root", projectRootInput);
+      if (path) projectRootInput.value = path;
+    };
+    saveProjectRootButton.onclick = () => {
+      const root = setPreferredProjectRoot(projectRootInput.value);
+      projectRootInput.value = root;
+      toast(root
+        ? `New projects will be created under:\n${root}`
+        : "New projects will use the ComfyUI output folder.");
+    };
+    clearProjectRootButton.onclick = () => {
+      projectRootInput.value = "";
+      setPreferredProjectRoot("");
+      toast("New projects will use the ComfyUI output folder.");
+    };
     saveCustomModelsRootButton.onclick = async () => {
       try {
         saveCustomModelsRootButton.disabled = true;
@@ -32139,10 +32387,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       subject_scene_path: state.subjectScenePath,
       text_gemma_runner: state.textGemmaRunner || "builtin",
       gemma_context_limit: normalizeGemmaContextLimit(state.gemmaContextLimit),
+      gemma_output_token_limit: normalizeOutputTokenLimit(state.gemmaOutputTokenLimit),
       gemma_gpu_layers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),
       lm_studio_base_url: state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
       lm_studio_model: state.lmStudioModel || "",
       lm_studio_api_key: state.lmStudioApiKey || "",
+      lm_studio_context_limit: normalizeLmStudioContextLimit(state.lmStudioContextLimit),
+      lm_studio_output_token_limit: normalizeOutputTokenLimit(state.lmStudioOutputTokenLimit),
       llm_api_provider: state.llmApiProvider || "openai",
       llm_api_model: state.llmApiModel || "",
       notification_settings: normalizeNotificationSettings(state.notificationSettings),
@@ -32399,11 +32650,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         state.renderLogs = normalizeRenderLogs(data.session.render_logs || state.renderLogs);
         state.activeRenderLogId = data.session.active_render_log_id || state.renderLogs[state.renderLogs.length - 1]?.id || "";
         state.textGemmaRunner = data.session.text_gemma_runner || state.textGemmaRunner || "builtin";
-        state.gemmaContextLimit = normalizeGemmaContextLimit(data.session.gemma_context_limit ?? data.session.n_ctx ?? state.gemmaContextLimit);
+        state.gemmaContextLimit = normalizeGemmaContextLimit(data.session.gemma_context_limit ?? data.session.n_ctx ?? data.session.llm_max_tokens ?? data.session.llmMaxTokens ?? state.gemmaContextLimit);
+        state.gemmaOutputTokenLimit = normalizeOutputTokenLimit(data.session.gemma_output_token_limit ?? data.session.llm_max_tokens ?? data.session.llmMaxTokens ?? state.gemmaOutputTokenLimit);
         state.gemmaGpuLayers = normalizeGemmaGpuLayers(data.session.gemma_gpu_layers ?? data.session.n_gpu_layers ?? state.gemmaGpuLayers);
         state.lmStudioBaseUrl = data.session.lm_studio_base_url || state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
         state.lmStudioModel = data.session.lm_studio_model || state.lmStudioModel || "";
         state.lmStudioApiKey = data.session.lm_studio_api_key || state.lmStudioApiKey || "";
+        state.lmStudioContextLimit = normalizeLmStudioContextLimit(data.session.lm_studio_context_limit ?? state.lmStudioContextLimit);
+        state.lmStudioOutputTokenLimit = normalizeOutputTokenLimit(data.session.lm_studio_output_token_limit ?? data.session.llm_max_tokens ?? data.session.llmMaxTokens ?? state.lmStudioOutputTokenLimit);
         state.notificationSettings = normalizeNotificationSettings(data.session.notification_settings || state.notificationSettings);
         state.automaticMemoryCleanup = setBuilderAutomaticMemoryCleanupEnabled(data.session.automatic_memory_cleanup ?? state.automaticMemoryCleanup ?? false);
         state.waveformMode = data.session.waveform_mode || state.waveformMode;
@@ -32725,11 +32979,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.renderLogs = normalizeRenderLogs(session.render_logs);
       state.activeRenderLogId = session.active_render_log_id || state.renderLogs[state.renderLogs.length - 1]?.id || "";
       state.textGemmaRunner = session.text_gemma_runner || state.textGemmaRunner || "builtin";
-      state.gemmaContextLimit = normalizeGemmaContextLimit(session.gemma_context_limit ?? session.n_ctx ?? state.gemmaContextLimit);
+      state.gemmaContextLimit = normalizeGemmaContextLimit(session.gemma_context_limit ?? session.n_ctx ?? session.llm_max_tokens ?? session.llmMaxTokens ?? state.gemmaContextLimit);
+      state.gemmaOutputTokenLimit = normalizeOutputTokenLimit(session.gemma_output_token_limit ?? session.llm_max_tokens ?? session.llmMaxTokens ?? state.gemmaOutputTokenLimit);
       state.gemmaGpuLayers = normalizeGemmaGpuLayers(session.gemma_gpu_layers ?? session.n_gpu_layers ?? state.gemmaGpuLayers);
       state.lmStudioBaseUrl = session.lm_studio_base_url || state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
       state.lmStudioModel = session.lm_studio_model || state.lmStudioModel || "";
       state.lmStudioApiKey = session.lm_studio_api_key || state.lmStudioApiKey || "";
+      state.lmStudioContextLimit = normalizeLmStudioContextLimit(session.lm_studio_context_limit ?? state.lmStudioContextLimit);
+      state.lmStudioOutputTokenLimit = normalizeOutputTokenLimit(session.lm_studio_output_token_limit ?? session.llm_max_tokens ?? session.llmMaxTokens ?? state.lmStudioOutputTokenLimit);
       state.notificationSettings = normalizeNotificationSettings(session.notification_settings || state.notificationSettings);
       state.automaticMemoryCleanup = setBuilderAutomaticMemoryCleanupEnabled(session.automatic_memory_cleanup ?? false);
       state.waveformMode = session.waveform_mode || state.waveformMode || "medium";
@@ -35258,6 +35515,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   function miniMaxH3SubjectMultiplicityBlock(segment) {
     const mode = miniMaxH3ModeForSegment(segment);
     if (mode !== "reference_to_video" && mode !== "video_to_video") return "";
+    const faceHairOnly = mode === "reference_to_video"
+      && Boolean(segment?.minimax_h3_use_scene_image_as_start_frame)
+      && miniMaxH3StartFrameCharacterInfluenceForSegment(segment) === "face_hair_only";
     const subjectRefs = storyboardReferenceDataForSegment(segment).subject_refs || [];
     const subjects = [];
     const seen = new Set();
@@ -35273,7 +35533,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return [
       "REFERENCE SUBJECT COUNT — MANDATORY:",
       `This scene contains exactly ${count} distinct named ${count === 1 ? "subject" : "subjects"}: ${subjects.join(", ")}.`,
-      "A character/person reference image may be a multi-view character sheet, turnaround sheet, or contact sheet. Every portrait and full-body view inside one character reference image depicts the same single person; use those views only to learn that one person's identity, face, hair, clothing, and proportions.",
+      faceHairOnly
+        ? "A character/person reference image may be a multi-view character sheet, turnaround sheet, or contact sheet. Every portrait and full-body view inside one character reference image depicts the same single person; use those views ONLY to learn that one person's face identity, facial features, and hair. Image 1 remains authoritative for clothing, body proportions, pose, accessories, framing, lighting, and background."
+        : "A character/person reference image may be a multi-view character sheet, turnaround sheet, or contact sheet. Every portrait and full-body view inside one character reference image depicts the same single person; use those views only to learn that one person's identity, face, hair, clothing, and proportions.",
       "Render exactly one on-screen instance of each named subject. Do not turn alternate views from a reference sheet into additional people. Do not duplicate, clone, twin, multiply, or add background copies of any referenced subject unless the scene explicitly requests duplicates.",
     ].join("\n");
   }
@@ -35369,11 +35631,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const characterMotionSpeed = Number(segment?.character_motion_speed ?? state.builderStoryboardDefaults?.character_motion_speed ?? 4);
     const cameraMotionGuidance = String(segment?.camera_motion_speed_guidance || state.builderStoryboardDefaults?.camera_guidance || "").trim();
     const characterMotionGuidance = String(segment?.character_motion_guidance || state.builderStoryboardDefaults?.character_guidance || "").trim();
+    const cutPlan = storyboardCutPlanForDuration(duration, state.builderStoryboardDefaults?.minimax_h3_cut_frequency);
     parts.push(
       `Camera motion speed: ${Number.isFinite(cameraMotionSpeed) ? cameraMotionSpeed : 4}/10.`,
       cameraMotionGuidance || "Follow the selected camera speed as a hard motion requirement.",
       `Character motion speed: ${Number.isFinite(characterMotionSpeed) ? characterMotionSpeed : 4}/10.`,
       characterMotionGuidance || "Include physical character action appropriate to the selected character-motion speed.",
+      cutPlan.instruction,
     );
     if (cameraMotionSpeed >= 7) {
       parts.push("MANDATORY CAMERA RULE: use energetic, visibly active camera movement. Slow, gentle, subtle, restrained, locked-off, static, and hold camera language contradicts this setting and must not appear.");
@@ -35440,11 +35704,40 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
     if (mode === "reference_to_video" || mode === "video_to_video") {
       const items = miniMaxOrderedImageReferenceItemsForSegment(segment, mode);
+      const promptInspiration = mode === "reference_to_video" && miniMaxH3SceneImageIsPromptInspiration(segment);
       const assignments = items.map((item, index) => {
         const detail = [item.label, item.description].map((value) => String(value || "").trim()).filter(Boolean).join(" — ");
-        return `Image ${index + 1}: ${miniMaxReferencePurposeText(item)}${detail ? `. ${detail}` : ""}`;
+        const attachmentMapping = promptInspiration ? ` (attached Picture ${index + 2})` : "";
+        return `Image ${index + 1}${attachmentMapping}: ${miniMaxReferencePurposeText(item, segment)}${detail ? `. ${detail}` : ""}`;
       });
       if (assignments.length) parts.push(`${mode === "video_to_video" ? "Ordered supporting edit-image assignments" : "Ordered image assignments"} (exact connected order):\n${assignments.join("\n")}`);
+      if (promptInspiration) {
+        const includesFraming = miniMaxH3SceneImageUseForSegment(segment) === "environment_framing_inspiration";
+        parts.push(
+          "PROMPT-ONLY SCENE-IMAGE INSPIRATION — MANDATORY:\n"
+          + "Attached Picture 1 is shown only to the prompt-writing vision LLM. It is NOT supplied to the MiniMax H3 renderer, is NOT a start frame, is NOT a renderer reference, consumes no MiniMax reference slot, and must never be identified or mentioned as Image 1 or any Image N in the finished prompt. "
+          + "Use Attached Picture 1 only to extract location and environment, atmosphere and mood, lighting and weather, colors, materials and background details, and relevant objects or environmental activity. "
+          + (includesFraming
+            ? "Camera framing, shot distance, camera angle, lens, and image composition may be used only as optional inspiration and may be changed freely to suit the requested scene. "
+            : "Explicitly ignore camera framing and shot distance, camera angle and lens, and image composition. Choose new camera coverage freely from the scene request and camera-motion settings. ")
+          + "Always ignore every visible character's identity, face, hair, body, clothing, accessories, pose, placement, and activity in Attached Picture 1. The assigned character reference images are the sole authority for the rendered character's complete identity and appearance. "
+          + "In the finished prompt, convert permitted environmental observations into direct scene description without mentioning Attached Picture 1, inspiration, source imagery, or analysis. Renderer Image 1 is attached as Picture 2, Renderer Image 2 as Picture 3, and so on; use only the renderer Image N labels in the finished prompt.",
+        );
+      }
+      if (mode === "reference_to_video" && segment?.minimax_h3_use_scene_image_as_start_frame) {
+        const characterInfluence = miniMaxH3StartFrameCharacterInfluenceForSegment(segment);
+        if (characterInfluence === "face_hair_only") {
+          parts.push(
+            "START-FRAME / CHARACTER-REFERENCE PRIORITY — MANDATORY:\n"
+            + "Image 1 remains authoritative for the subject's pose, body and body proportions, clothing, wardrobe styling, accessories, framing, composition, camera angle, environment, props, lighting, colors, and every other visible detail. Character-reference images may override Image 1 ONLY for the subject's face identity, facial features, and hair. The literal first generated frame must already depict the character-reference face and hair within Image 1's otherwise unchanged visual setup. Describe the intended character as directly present from the first frame. Do not use temporal comparison language such as 'now featuring,' 'becomes,' 'changes into,' or 'replaced by'; never describe or show a face swap, replacement process, morph, transition, or transformation. Never import the character reference's clothing, body, pose, accessories, framing, lighting, or background.",
+          );
+        } else {
+          parts.push(
+            "START-FRAME / CHARACTER-REFERENCE PRIORITY — MANDATORY:\n"
+            + "Image 1 controls the exact opening composition, pose, camera angle, environment, and lighting. Character-reference images control the subject's face, hair, clothing, body proportions, and identity details, including details hidden in Image 1.",
+          );
+        }
+      }
     }
     if (mode === "video_to_video") {
       const assignments = (Array.isArray(segment?.minimax_h3_video_references) ? segment.minimax_h3_video_references : [])
@@ -35472,13 +35765,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       return path || data ? [{ path, data }] : [];
     }
     if (mode === "reference_to_video" || mode === "video_to_video") {
-      return miniMaxOrderedImageReferenceItemsForSegment(segment, mode)
+      const rendererImages = miniMaxOrderedImageReferenceItemsForSegment(segment, mode)
         .map((item) => ({
           path: String(item?.image?.path || "").trim(),
           data: String(item?.image?.data || "").trim(),
         }))
         .filter((item) => item.path || item.data)
         .slice(0, 9);
+      if (mode !== "reference_to_video" || !miniMaxH3SceneImageIsPromptInspiration(segment)) return rendererImages;
+      const inspiration = segmentImageSource(segment);
+      const path = String(inspiration?.path || selectedSegmentImagePath(segment) || "").trim();
+      const data = String(inspiration?.data || "").trim();
+      return path || data ? [{ path, data, prompt_only_scene_inspiration: true }, ...rendererImages] : rendererImages;
     }
     return [];
   }
@@ -35501,11 +35799,20 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       return;
     }
     const visionImages = miniMaxH3PromptVisionImages(segment, mode);
+    const rendererReferenceImages = mode === "reference_to_video"
+      ? miniMaxOrderedImageReferenceItemsForSegment(segment, mode)
+      : [];
+    const sceneImageUse = miniMaxH3SceneImageUseForSegment(segment);
+    const sceneImageSourceAvailable = Boolean(segmentImageSource(segment)?.path || segmentImageSource(segment)?.data);
     if (mode === "image_to_video" && !visionImages.length) {
       toast("Image to Video needs a selected scene image before the LLM can create its MiniMax prompt.", true);
       return;
     }
-    if (mode === "reference_to_video" && !visionImages.length) {
+    if (mode === "reference_to_video" && sceneImageUse !== "off" && !sceneImageSourceAvailable) {
+      toast("The selected scene-image mode needs a timeline image for this scene before the LLM can create its MiniMax prompt.", true);
+      return;
+    }
+    if (mode === "reference_to_video" && !rendererReferenceImages.length) {
       toast("Reference to Video needs at least one ordered Reference Builder image.", true);
       return;
     }
@@ -35554,6 +35861,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         location_context: segmentMappedLocationText(segment),
         no_character_present: Boolean(segment.no_character_present),
         image_references: visionImages,
+        prompt_only_scene_inspiration: miniMaxH3SceneImageIsPromptInspiration(segment),
         performance_mode: effectiveVideoPerformanceModeForSegment(segment),
         lyric_text: promptLyricText,
         singers: promptSingerNames,
@@ -36562,6 +36870,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         const imageReference = getI2VImageReference(segment);
         const referenceData = storyboardReferenceDataForSegment(segment);
         const promptSummary = storyboardSummaryForSegment(segment, imagePrompt, videoPrompt, referenceData);
+        const cutPlan = miniMaxProject
+          ? storyboardCutPlanForDuration(timelineSegmentDuration(segment), defaults.minimax_h3_cut_frequency)
+          : null;
         const subjectRefNames = (referenceData.subject_refs || [])
           .map((subject) => String(subject?.name || "").trim())
           .filter(Boolean);
@@ -36593,6 +36904,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           project_video_engine: normalizeProjectVideoEngine(state.projectVideoEngine),
           minimax_h3_mode: miniMaxH3ModeForSegment(segment),
           minimax_h3_audio_mode: miniMaxH3SettingsForSegment(segment).audio_mode,
+          ...(cutPlan ? {
+            minimax_h3_cut_frequency: cutPlan.frequency,
+            cut_plan: cutPlan,
+          } : {}),
           video_style: String(segment.minimax_h3_video_style || defaults.video_style || "").trim(),
           video_style_custom: String(segment.minimax_h3_video_style_custom || defaults.video_style_custom || "").trim(),
           temporal_world_effect_override: String(segment.temporal_world_effect_override || "global").trim(),
@@ -36660,9 +36975,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       facialPerformanceCustom: state.defaultFacialPerformanceCustom || "",
       cameraMotionSpeed: Number(defaults.camera_motion_speed ?? 4),
       characterMotionSpeed: Number(defaults.character_motion_speed ?? 4),
+      cutFrequency: storyboardCutFrequencyValue(defaults.minimax_h3_cut_frequency),
       motion_defaults: {
         camera_motion_speed: Number(defaults.camera_motion_speed ?? 4),
         character_motion_speed: Number(defaults.character_motion_speed ?? 4),
+        minimax_h3_cut_frequency: storyboardCutFrequencyValue(defaults.minimax_h3_cut_frequency),
         camera_guidance: defaults.camera_guidance || "",
         character_guidance: defaults.character_guidance || "",
       },
@@ -36805,7 +37122,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         || Object.prototype.hasOwnProperty.call(updates, "temporal_world_effect")
         || Object.prototype.hasOwnProperty.call(updates, "temporalWorldEffect")
         || Object.prototype.hasOwnProperty.call(updates, "short_film_planning_mode")
-        || Object.prototype.hasOwnProperty.call(updates, "shortFilmPlanningMode");
+        || Object.prototype.hasOwnProperty.call(updates, "shortFilmPlanningMode")
+        || Object.prototype.hasOwnProperty.call(updates, "minimax_h3_cut_frequency")
+        || Object.prototype.hasOwnProperty.call(updates, "cutFrequency");
       if (hasIncomingFacialDefault) {
         const nextDefault = String(updates.facial_performance_default ?? updates.facialPerformance ?? updates.default_facial_performance ?? "").trim();
         if (state.defaultFacialPerformance !== nextDefault) {
@@ -36837,6 +37156,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           temporal_protected_characters: updates.temporal_protected_characters ?? updates.temporalProtectedCharacters ?? updates.builder_storyboard_defaults?.temporal_protected_characters ?? updates.storyboard_defaults?.temporal_protected_characters ?? state.builderStoryboardDefaults?.temporal_protected_characters,
           temporal_protected_custom: updates.temporal_protected_custom ?? updates.temporalProtectedCustom ?? updates.builder_storyboard_defaults?.temporal_protected_custom ?? updates.storyboard_defaults?.temporal_protected_custom ?? state.builderStoryboardDefaults?.temporal_protected_custom,
           short_film_planning_mode: updates.short_film_planning_mode ?? updates.shortFilmPlanningMode ?? updates.builder_storyboard_defaults?.short_film_planning_mode ?? updates.storyboard_defaults?.short_film_planning_mode ?? state.builderStoryboardDefaults?.short_film_planning_mode,
+          minimax_h3_cut_frequency: updates.minimax_h3_cut_frequency ?? updates.cut_frequency ?? updates.cutFrequency ?? updates.builder_storyboard_defaults?.minimax_h3_cut_frequency ?? updates.storyboard_defaults?.minimax_h3_cut_frequency ?? state.builderStoryboardDefaults?.minimax_h3_cut_frequency,
           camera_motion_speed: updates.camera_motion_speed ?? updates.cameraMotionSpeed ?? updates.motion_defaults?.camera_motion_speed ?? state.builderStoryboardDefaults?.camera_motion_speed,
           character_motion_speed: updates.character_motion_speed ?? updates.characterMotionSpeed ?? updates.motion_defaults?.character_motion_speed ?? state.builderStoryboardDefaults?.character_motion_speed,
         });
@@ -36957,9 +37277,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       add(parts, "MANDATORY exact temporal / world effect verbiage — copy word-for-word", selectedScene.temporal_world_effect_verbiage);
       const customMotionSummary = String(selectedScene.motion_summary || scene.motion_summary || scene.video_notes || "").trim();
       add(parts, "Storyboard motion/video summary", customMotionSummary);
-        if (!customMotionSummary) add(parts, "Storyboard camera motion", selectedScene.camera_motion || scene.camera_motion);
-        if (!fullyCustomShortFilm) add(parts, "REQUIRED Storyboard camera-flow framing", selectedScene.camera_flow_guidance);
-        add(parts, "Storyboard camera motion speed guidance", selectedScene.camera_motion_speed_guidance || selectedScene.camera_guidance?.camera_motion_speed_guidance);
+      if (!customMotionSummary) add(parts, "Storyboard camera motion", selectedScene.camera_motion || scene.camera_motion);
+      if (!fullyCustomShortFilm) add(parts, "REQUIRED Storyboard camera-flow framing", selectedScene.camera_flow_guidance);
+      add(parts, "Storyboard camera motion speed guidance", selectedScene.camera_motion_speed_guidance || selectedScene.camera_guidance?.camera_motion_speed_guidance);
       add(parts, "Storyboard character motion guidance", selectedScene.character_motion_guidance || scene.character_motion);
       add(parts, "Storyboard performance direction", selectedScene.performance_direction || scene.performance_style);
       add(parts, "Storyboard facial performance direction", selectedScene.facial_performance_direction || scene.facial_performance_custom || scene.facial_performance);
@@ -37201,10 +37521,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           ? segment.minimax_h3_video_references
           : []).map((item) => ({ ...item }));
         const visionImages = miniMaxH3PromptVisionImages(workingSegment, mode);
+        const rendererReferenceImages = mode === "reference_to_video"
+          ? miniMaxOrderedImageReferenceItemsForSegment(workingSegment, mode)
+          : [];
+        const sceneImageUse = miniMaxH3SceneImageUseForSegment(workingSegment);
+        const sceneImageSourceAvailable = Boolean(segmentImageSource(workingSegment)?.path || segmentImageSource(workingSegment)?.data);
         if (mode === "image_to_video" && !visionImages.length) {
           throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: MiniMax Image to Video needs a selected scene image.`);
         }
-        if (mode === "reference_to_video" && !visionImages.length) {
+        if (mode === "reference_to_video" && sceneImageUse !== "off" && !sceneImageSourceAvailable) {
+          throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: the selected scene-image mode needs a timeline image for LLM prompting.`);
+        }
+        if (mode === "reference_to_video" && !rendererReferenceImages.length) {
           throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: MiniMax Reference to Video needs ordered Reference Builder images.`);
         }
         if (mode === "video_to_video" && !workingSegment.minimax_h3_video_references.some((item) => String(item?.path || "").trim())) {
@@ -37231,6 +37559,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           location_context: segmentMappedLocationText(workingSegment),
           no_character_present: Boolean(workingSegment.no_character_present),
           image_references: visionImages,
+          prompt_only_scene_inspiration: miniMaxH3SceneImageIsPromptInspiration(workingSegment),
           performance_mode: effectiveVideoPerformanceModeForSegment(workingSegment),
           lyric_text: segmentUsesNoLipSyncPerformance(workingSegment) || isInstrumentalLyricText(workingSegment.lyric_text) ? "" : flattenLyricForPrompt(workingSegment.lyric_text),
           singers: segmentUsesNoLipSyncPerformance(workingSegment) ? [] : (Array.isArray(workingSegment.lyric_singers) ? workingSegment.lyric_singers : []),
@@ -37563,9 +37892,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       temporalProtectedCustom: state.builderStoryboardDefaults?.temporal_protected_custom || "",
       cameraMotionSpeed: state.builderStoryboardDefaults?.camera_motion_speed ?? 4,
       characterMotionSpeed: state.builderStoryboardDefaults?.character_motion_speed ?? 4,
+      cutFrequency: state.builderStoryboardDefaults?.minimax_h3_cut_frequency ?? 0,
       motion_defaults: {
         camera_motion_speed: state.builderStoryboardDefaults?.camera_motion_speed ?? 4,
         character_motion_speed: state.builderStoryboardDefaults?.character_motion_speed ?? 4,
+        minimax_h3_cut_frequency: state.builderStoryboardDefaults?.minimax_h3_cut_frequency ?? 0,
         camera_guidance: state.builderStoryboardDefaults?.camera_guidance || "",
         character_guidance: state.builderStoryboardDefaults?.character_guidance || "",
       },
@@ -39443,6 +39774,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         easy_cache_verbose: miniMaxSettings.easy_cache_verbose,
         sage_attention: miniMaxSettings.sage_attention,
         enable_fp16_accumulation: miniMaxSettings.enable_fp16_accumulation,
+        use_turbo_lora: miniMaxSettings.use_turbo_lora,
+        turbo_lora_name: miniMaxSettings.turbo_lora_name,
+        turbo_lora_strength: miniMaxSettings.turbo_lora_strength,
         image_paths: imagePaths,
         video_references: videoReferences,
       };
@@ -43052,10 +43386,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         repair_lyric_segments: false,
         text_gemma_runner: state.textGemmaRunner || "builtin",
         gemma_context_limit: normalizeGemmaContextLimit(state.gemmaContextLimit),
+        gemma_output_token_limit: normalizeOutputTokenLimit(state.gemmaOutputTokenLimit),
         gemma_gpu_layers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),
         lm_studio_base_url: state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
         lm_studio_model: state.lmStudioModel || "",
         lm_studio_api_key: state.lmStudioApiKey || "",
+        lm_studio_context_limit: normalizeLmStudioContextLimit(state.lmStudioContextLimit),
+        lm_studio_output_token_limit: normalizeOutputTokenLimit(state.lmStudioOutputTokenLimit),
       };
 
       progress.set("Saving Prompt Creator draft from this timeline...", 70);
@@ -45226,6 +45563,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     gemmaContextLimit.min = "512";
     gemmaContextLimit.max = "262144";
     gemmaContextLimit.step = "256";
+    const gemmaOutputTokenLimit = makeInput(String(normalizeOutputTokenLimit(state.gemmaOutputTokenLimit)), "number");
+    gemmaOutputTokenLimit.min = "64";
+    gemmaOutputTokenLimit.max = "262144";
+    gemmaOutputTokenLimit.step = "256";
     const gemmaGpuLayers = makeInput(String(normalizeGemmaGpuLayers(state.gemmaGpuLayers)), "number");
     gemmaGpuLayers.min = "0";
     gemmaGpuLayers.max = "999";
@@ -45234,13 +45575,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     builtinPanel.style.cssText = "display:flex;flex-direction:column;gap:10px;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:12px;";
     const builtinNote = document.createElement("div");
     builtinNote.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
-    builtinNote.textContent = "Advanced local GGUF settings. Context limit controls how much text Gemma Local can accept. Higher context can use much more RAM/VRAM and may slow down, hang, fail, or run out of memory.";
+    builtinNote.textContent = "Advanced local GGUF settings. Context limit is the model's total input/output window; maximum output tokens is the most text one request may generate. Their combined use must fit the loaded model. Higher values can use much more RAM/VRAM and take longer.";
     const gpuNote = document.createElement("div");
     gpuNote.style.cssText = "font-size:12px;color:#94a3b8;line-height:1.4;";
     gpuNote.textContent = "Lower GPU layers if Gemma Local runs out of VRAM; try 12 for 10GB cards. Higher values use more VRAM and may run faster.";
     builtinPanel.append(
       builtinNote,
       makeField("Context limit / n_ctx", gemmaContextLimit),
+      makeField("Maximum output tokens", gemmaOutputTokenLimit),
       gpuNote,
       makeField("GPU layers / n_gpu_layers", gemmaGpuLayers),
     );
@@ -45251,11 +45593,19 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const modelPickerRow = document.createElement("div");
     modelPickerRow.style.cssText = "display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end;";
     const lmStudioApiKey = makeInput(state.lmStudioApiKey || "", "password");
+    const lmStudioContextLimit = makeInput(String(normalizeLmStudioContextLimit(state.lmStudioContextLimit)), "number");
+    lmStudioContextLimit.min = "512";
+    lmStudioContextLimit.max = "262144";
+    lmStudioContextLimit.step = "256";
+    const lmStudioOutputTokenLimit = makeInput(String(normalizeOutputTokenLimit(state.lmStudioOutputTokenLimit)), "number");
+    lmStudioOutputTokenLimit.min = "64";
+    lmStudioOutputTokenLimit.max = "262144";
+    lmStudioOutputTokenLimit.step = "256";
     const lmPanel = document.createElement("div");
     lmPanel.style.cssText = "display:flex;flex-direction:column;gap:10px;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:12px;";
     const note = document.createElement("div");
     note.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
-    note.textContent = "In LM Studio, load your Gemma GGUF model, open the Local Server tab, start the server, then copy the model name shown there. No extra Python install is needed.";
+    note.textContent = "In LM Studio, load your model and start the Local Server. Input context and maximum output tokens are sent with every text and vision request. Their combined use must fit the model; larger values need more memory and time.";
     const test = makeButton("Test LM Studio", "primary");
     const apiPanel = document.createElement("div");
     apiPanel.style.cssText = "display:flex;flex-direction:column;gap:10px;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:12px;";
@@ -45364,6 +45714,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       modelPickerRow,
       makeField("LM Studio model name", model),
       makeField("API key (usually blank for local LM Studio)", lmStudioApiKey),
+      makeField("Input context limit", lmStudioContextLimit),
+      makeField("Maximum output tokens", lmStudioOutputTokenLimit),
       test,
     );
     apiPanel.append(
@@ -45377,7 +45729,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const syncVisibility = () => {
       state.textGemmaRunner = runner.value || "builtin";
       state.gemmaContextLimit = normalizeGemmaContextLimit(gemmaContextLimit.value);
+      state.gemmaOutputTokenLimit = normalizeOutputTokenLimit(gemmaOutputTokenLimit.value);
       state.gemmaGpuLayers = normalizeGemmaGpuLayers(gemmaGpuLayers.value);
+      state.lmStudioContextLimit = normalizeLmStudioContextLimit(lmStudioContextLimit.value);
+      state.lmStudioOutputTokenLimit = normalizeOutputTokenLimit(lmStudioOutputTokenLimit.value);
       builtinPanel.style.display = runner.value === "builtin" ? "flex" : "none";
       lmPanel.style.display = runner.value === "lm_studio" ? "flex" : "none";
       apiPanel.style.display = runner.value === "llm_api" ? "flex" : "none";
@@ -45388,6 +45743,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.lmStudioBaseUrl = baseUrl.value || "http://127.0.0.1:1234/v1";
       state.lmStudioModel = model.value || "";
       state.lmStudioApiKey = lmStudioApiKey.value || "";
+      state.lmStudioContextLimit = normalizeLmStudioContextLimit(lmStudioContextLimit.value);
+      state.lmStudioOutputTokenLimit = normalizeOutputTokenLimit(lmStudioOutputTokenLimit.value);
       let progress = null;
       try {
         progress = createProgressWindow("Testing LM Studio");
@@ -45398,7 +45755,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           reference_type: "location",
           source_text: "small empty test room",
           style_theme: "",
-          max_new_tokens: 120,
+          max_new_tokens: Math.min(120, normalizeOutputTokenLimit(state.lmStudioOutputTokenLimit)),
         }, 60000);
         progress.set(`LM Studio responded successfully:\n${data.prompt}`, 100);
         progress.close(4000);
@@ -45422,10 +45779,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     save.onclick = async () => {
       state.textGemmaRunner = runner.value || "builtin";
       state.gemmaContextLimit = normalizeGemmaContextLimit(gemmaContextLimit.value);
+      state.gemmaOutputTokenLimit = normalizeOutputTokenLimit(gemmaOutputTokenLimit.value);
       state.gemmaGpuLayers = normalizeGemmaGpuLayers(gemmaGpuLayers.value);
       state.lmStudioBaseUrl = baseUrl.value || "http://127.0.0.1:1234/v1";
       state.lmStudioModel = model.value || "";
       state.lmStudioApiKey = lmStudioApiKey.value || "";
+      state.lmStudioContextLimit = normalizeLmStudioContextLimit(lmStudioContextLimit.value);
+      state.lmStudioOutputTokenLimit = normalizeOutputTokenLimit(lmStudioOutputTokenLimit.value);
       state.llmApiProvider = apiProvider.value || "openai";
       state.llmApiModel = apiModel.value || "";
       state.llmApiKey = runner.value === "llm_api" ? llmApiKey.value || "" : state.llmApiKey || "";
@@ -46581,22 +46941,6 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         toast(String(error?.message || error), true);
         return { mapped: 0, error: String(error?.message || error) };
       }
-    };
-    chooseProjectRootButton.onclick = async () => {
-      const path = await pickPath("project_root", projectRootInput);
-      if (path) projectRootInput.value = path;
-    };
-    saveProjectRootButton.onclick = () => {
-      const root = setPreferredProjectRoot(projectRootInput.value);
-      projectRootInput.value = root;
-      toast(root
-        ? `New projects will be created under:\n${root}`
-        : "New projects will use the ComfyUI output folder.");
-    };
-    clearProjectRootButton.onclick = () => {
-      projectRootInput.value = "";
-      setPreferredProjectRoot("");
-      toast("New projects will use the ComfyUI output folder.");
     };
     const applyWizardSceneDefaultSettingsToState = (settings = {}) => {
       const cameraSpeed = Math.max(0, Math.min(10, Number(settings.cameraMotionSpeed ?? settings.camera_motion_speed ?? state.builderStoryboardDefaults?.camera_motion_speed ?? 4)));
@@ -48130,7 +48474,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   loadSessionButton.onclick = loadSession;
   loadLastProjectButton.onclick = loadLastProject;
   promptCreatorButton.onclick = confirmOpenLegacyPromptCreator;
-  wizardButton.onclick = openWizardFromBuilder;
+  wizardButton.onclick = () => {
+    try {
+      openWizardFromBuilder();
+    } catch (error) {
+      console.error("VRGDG Video Wizard failed to open", error);
+      toast(`Video Wizard failed to open:\n${String(error?.message || error)}`, true);
+    }
+  };
   storyboardBuilderButton.onclick = () => {
     try {
       openStoryboardBuilderFromProject();
@@ -49058,6 +49409,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (!ltxIngredientsLoraPicker.input.value) ltxIngredientsLoraPicker.input.value = REQUIRED_LTX_INGREDIENTS_LORA;
     ltxIdLoraPicker.options = loras;
     if (!ltxIdLoraPicker.input.value) ltxIdLoraPicker.input.value = REQUIRED_LTX_ID_LORA;
+    miniMaxTurboLoraPicker.options = loras;
+    if (!miniMaxTurboLoraPicker.input.value) {
+      miniMaxTurboLoraPicker.input.value = DEFAULT_MINIMAX_H3_SETTINGS.turbo_lora_name;
+    }
   }
 
   async function confirmAndRunFullFLFBuild() {
@@ -49261,6 +49616,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     wireSearchablePicker(picker, saveMiniMaxH3SettingsFromPanel);
     picker.input.addEventListener("change", persistMiniMaxSettings);
   }
+  wireSearchablePicker(miniMaxTurboLoraPicker, saveMiniMaxH3SettingsFromPanel);
+  miniMaxTurboLoraPicker.input.addEventListener("change", persistMiniMaxSettings);
   for (const control of [
     miniMaxAspectRatio,
     miniMaxAudioMode,
@@ -49280,10 +49637,34 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     miniMaxEasyCacheVerbose.input,
     miniMaxSageAttention,
     miniMaxFp16Accumulation.input,
+    miniMaxTurboLoraStrength,
   ]) {
     control.addEventListener("input", saveMiniMaxH3SettingsFromPanel);
     control.addEventListener("change", persistMiniMaxSettings);
   }
+  miniMaxUseTurboLora.input.addEventListener("change", () => {
+    const segment = activeSegment();
+    const currentSettings = miniMaxH3SettingsForSegment(segment);
+    if (miniMaxUseTurboLora.input.checked) {
+      currentSettings.steps_before_turbo = Math.max(1, Math.trunc(Number(miniMaxSteps.value) || DEFAULT_MINIMAX_H3_SETTINGS.steps));
+      currentSettings.easy_cache_bypass_before_turbo = miniMaxEasyCacheBypass.input.checked;
+      miniMaxSteps.value = "6";
+      miniMaxEasyCacheBypass.input.checked = true;
+    } else {
+      miniMaxSteps.value = String(currentSettings.steps_before_turbo || DEFAULT_MINIMAX_H3_SETTINGS.steps);
+      miniMaxEasyCacheBypass.input.checked = Boolean(currentSettings.easy_cache_bypass_before_turbo);
+    }
+    const settings = saveMiniMaxH3SettingsFromPanel();
+    settings.steps_before_turbo = currentSettings.steps_before_turbo;
+    settings.easy_cache_bypass_before_turbo = currentSettings.easy_cache_bypass_before_turbo;
+    if (segment?.use_scene_minimax_h3_settings) {
+      segment.minimax_h3_settings = settings;
+    } else {
+      state.miniMaxH3Settings = settings;
+    }
+    syncMiniMaxH3Panel();
+    autoSaveSessionQuiet("MiniMax H3 Turbo setting").catch(() => null);
+  });
   for (const button of miniMaxModeButtons) {
     button.onclick = async () => {
       const segment = requireActiveSegment();
@@ -49300,13 +49681,19 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const continuityMode = normalizeMiniMaxH3ContinuityMode(miniMaxContinuityMode.value);
     const affectedSegments = segment?.use_scene_minimax_h3_settings
       ? [segment]
-      : allEditableSegments().filter((item) => miniMaxH3ContinuityModeForSegment(item) === "exact_start_frame");
+      : allEditableSegments().filter((item) => (
+        !item?.use_scene_minimax_h3_settings
+        && miniMaxH3ContinuityModeForSegment(item) === "exact_start_frame"
+      ));
     const clearedStartFrames = continuityMode === "exact_start_frame"
       ? affectedSegments.filter((item) => item?.minimax_h3_use_scene_image_as_start_frame)
       : [];
-    for (const item of clearedStartFrames) item.minimax_h3_use_scene_image_as_start_frame = false;
+    for (const item of clearedStartFrames) {
+      item.minimax_h3_use_scene_image_as_start_frame = false;
+      item.minimax_h3_scene_image_use = "off";
+    }
     if (clearedStartFrames.length) {
-      miniMaxUseSceneImageAsStartFrame.input.checked = false;
+      miniMaxSceneImageUse.value = "off";
       toast(`Previous-frame exact continuation is now the sole exact start frame. Turned off the scene-image exact start-frame option for ${clearedStartFrames.length} scene${clearedStartFrames.length === 1 ? "" : "s"}.`);
     }
     syncMiniMaxH3Panel();
@@ -49332,22 +49719,96 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   };
   miniMaxPrompt.addEventListener("input", saveMiniMaxSceneInputsFromPanel);
   miniMaxPrompt.addEventListener("change", () => autoSaveSessionQuiet("MiniMax H3 scene prompt").catch(() => null));
-  miniMaxUseSceneImageAsStartFrame.input.addEventListener("change", async () => {
+  miniMaxSceneImageUse.addEventListener("change", async () => {
     const segment = requireActiveSegment();
     if (!segment) return;
-    if (miniMaxUseSceneImageAsStartFrame.input.checked
-      && normalizeMiniMaxH3ContinuityMode(miniMaxH3SettingsForSegment(segment).continuity_mode) === "exact_start_frame") {
-      miniMaxUseSceneImageAsStartFrame.input.checked = false;
-      toast("Choose either the scene image as the exact start frame or the previous rendered final frame as the exact start frame—not both.", true);
+    const sceneImageUse = normalizeMiniMaxH3SceneImageUse(miniMaxSceneImageUse.value);
+    const exactStartFrame = sceneImageUse === "exact_start_frame";
+    const usesSceneImage = sceneImageUse !== "off";
+    const characterInfluence = normalizeMiniMaxH3StartFrameCharacterInfluence(
+      miniMaxStartFrameCharacterInfluence.value,
+    );
+    const sceneLocked = Boolean(segment.use_scene_minimax_h3_settings);
+    const candidates = (sceneLocked ? [segment] : allEditableSegments()).filter((item) => (
+      segmentTrack(item) !== "overlay"
+      && miniMaxH3ModeForSegment(item) === "reference_to_video"
+      && (sceneLocked || !item.use_scene_minimax_h3_settings)
+    ));
+    const blocked = exactStartFrame
+      ? candidates.filter((item) => miniMaxH3ContinuityModeForSegment(item) === "exact_start_frame")
+      : [];
+    const targets = exactStartFrame
+      ? candidates.filter((item) => miniMaxH3ContinuityModeForSegment(item) !== "exact_start_frame")
+      : candidates;
+    if (!targets.length) {
+      miniMaxSceneImageUse.value = miniMaxH3SceneImageUseForSegment(segment);
+      toast(blocked.length
+        ? "Every Reference-to-Video scene is using the previous rendered frame as its exact start, so the scene-image start frame could not be enabled."
+        : "There are no eligible Reference-to-Video scenes to update.", true);
       return;
     }
     pushHistory();
-    saveMiniMaxSceneInputsFromPanel();
+    for (const item of targets) {
+      item.minimax_h3_scene_image_use = sceneImageUse;
+      item.minimax_h3_use_scene_image_as_start_frame = exactStartFrame;
+      item.minimax_h3_start_frame_character_influence = characterInfluence;
+    }
+    const missingSceneImages = usesSceneImage
+      ? targets.filter((item) => !Boolean(segmentImageSource(item)?.path || segmentImageSource(item)?.data))
+      : [];
+    syncMiniMaxH3Panel();
     syncMiniMaxReferenceButtons();
-    await autoSaveSessionQuiet("MiniMax H3 start frame reference");
-    toast(miniMaxUseSceneImageAsStartFrame.input.checked
-      ? "The scene image will be sent as Image 1 and the exact MiniMax start frame."
-      : "The scene image will no longer be forced as the MiniMax start frame.");
+    await autoSaveSessionQuiet("MiniMax H3 scene image use");
+    if (usesSceneImage) {
+      const scopeLabel = sceneLocked
+        ? "this locked Reference-to-Video scene"
+        : `${targets.length} unlocked Reference-to-Video scene${targets.length === 1 ? "" : "s"}`;
+      const action = exactStartFrame
+        ? "Uses each scene image as MiniMax Image 1 and the exact start frame"
+        : sceneImageUse === "environment_inspiration"
+          ? "Uses each scene image only as environment inspiration for the prompt-writing LLM; framing and all character details are ignored, and MiniMax never receives the image"
+          : "Uses each scene image only as environment and framing inspiration for the prompt-writing LLM; all character details are ignored, and MiniMax never receives the image";
+      const details = [
+        `${action} for ${scopeLabel}.`,
+        blocked.length ? `Skipped ${blocked.length} scene${blocked.length === 1 ? "" : "s"} using previous-frame exact continuity.` : "",
+        missingSceneImages.length ? `${missingSceneImages.length} enabled scene${missingSceneImages.length === 1 ? " still needs" : "s still need"} a timeline image before prompting or rendering.` : "",
+        "Regenerate existing MiniMax prompts to apply this setup.",
+      ].filter(Boolean);
+      toast(details.join("\n"), Boolean(missingSceneImages.length));
+    } else {
+      toast(sceneLocked
+        ? "The scene image will not be used for this locked Reference-to-Video scene."
+        : `Turned off scene-image use for all ${targets.length} unlocked Reference-to-Video scene${targets.length === 1 ? "" : "s"}.`);
+    }
+  });
+  miniMaxStartFrameCharacterInfluence.addEventListener("change", async () => {
+    const segment = requireActiveSegment();
+    if (!segment) return;
+    const characterInfluence = normalizeMiniMaxH3StartFrameCharacterInfluence(
+      miniMaxStartFrameCharacterInfluence.value,
+    );
+    const sceneLocked = Boolean(segment.use_scene_minimax_h3_settings);
+    const targets = (sceneLocked ? [segment] : allEditableSegments()).filter((item) => (
+      segmentTrack(item) !== "overlay"
+      && miniMaxH3ModeForSegment(item) === "reference_to_video"
+      && (sceneLocked || !item.use_scene_minimax_h3_settings)
+    ));
+    if (!targets.length) {
+      toast("There are no eligible Reference-to-Video scenes to update.", true);
+      return;
+    }
+    pushHistory();
+    for (const item of targets) {
+      item.minimax_h3_start_frame_character_influence = characterInfluence;
+    }
+    syncMiniMaxH3Panel();
+    await autoSaveSessionQuiet("MiniMax H3 global start-frame character influence");
+    const scopeLabel = sceneLocked
+      ? "this locked Reference-to-Video scene"
+      : `all ${targets.length} unlocked Reference-to-Video scene${targets.length === 1 ? "" : "s"}`;
+    toast(miniMaxStartFrameCharacterInfluence.value === "face_hair_only"
+      ? `Character references will supply only face and hair for ${scopeLabel}. Regenerate existing MiniMax prompts to apply the new priority.`
+      : `Character references may supply the full character identity for ${scopeLabel}. Regenerate existing MiniMax prompts to apply the new priority.`);
   });
   for (const row of miniMaxVideoReferenceRows) {
     for (const control of [row.path, row.start, row.duration, row.purpose, row.useAudio.input]) {

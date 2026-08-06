@@ -1,0 +1,173 @@
+import unittest
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+BUILDER_SOURCE = (ROOT / "web" / "VRGDG_MusicVideoBuilderUI.js").read_text(
+    encoding="utf-8"
+)
+RUNNER_SOURCE = (ROOT / "VRGDG_WorkflowRunnerNodes.py").read_text(
+    encoding="utf-8"
+)
+
+
+class BuilderMiniMaxTurboTests(unittest.TestCase):
+    def test_video_settings_exposes_turbo_checkbox_picker_and_strength(self):
+        self.assertIn(
+            'makeCheckbox("Use MiniMax-H3 Turbo LoRA (4-step)"',
+            BUILDER_SOURCE,
+        )
+        self.assertIn(
+            'turbo_lora_name: "minimax_h3_turbo_4step_ema_ckpt850.safetensors"',
+            BUILDER_SOURCE,
+        )
+        self.assertIn(
+            'const miniMaxTurboSection = makeSettingsSection("Turbo acceleration"',
+            BUILDER_SOURCE,
+        )
+
+    def test_turbo_settings_follow_existing_global_or_locked_scene_settings(self):
+        self.assertIn(
+            "use_turbo_lora: turboEnabled",
+            BUILDER_SOURCE,
+        )
+        self.assertIn(
+            "turbo_lora_name: miniMaxTurboLoraPicker.input.value",
+            BUILDER_SOURCE,
+        )
+        self.assertIn(
+            "turbo_lora_strength: miniMaxTurboLoraStrength.value",
+            BUILDER_SOURCE,
+        )
+        self.assertIn(
+            "if (segment?.use_scene_minimax_h3_settings)",
+            BUILDER_SOURCE,
+        )
+
+    def test_render_payload_sends_turbo_settings_to_hidden_workflow_builder(self):
+        self.assertIn(
+            "use_turbo_lora: miniMaxSettings.use_turbo_lora",
+            BUILDER_SOURCE,
+        )
+        self.assertIn(
+            "turbo_lora_name: miniMaxSettings.turbo_lora_name",
+            BUILDER_SOURCE,
+        )
+        self.assertIn(
+            "turbo_lora_strength: miniMaxSettings.turbo_lora_strength",
+            BUILDER_SOURCE,
+        )
+
+    def test_hidden_api_graph_injects_both_required_custom_nodes(self):
+        self.assertIn(
+            '"class_type": "VRGDG_MiniMaxH3TurboLoRACompat"',
+            RUNNER_SOURCE,
+        )
+        self.assertIn(
+            '"class_type": "MiniMaxH3TurboSampler"',
+            RUNNER_SOURCE,
+        )
+        self.assertIn(
+            '_set_api_input(prompt, guider_id, "model", [turbo_lora_id, 0])',
+            RUNNER_SOURCE,
+        )
+        self.assertIn(
+            '_set_api_input(prompt, scheduler_id, "model", [turbo_lora_id, 0])',
+            RUNNER_SOURCE,
+        )
+        self.assertIn(
+            '_set_api_input(prompt, sampler_advanced_id, "sampler", [turbo_sampler_id, 0])',
+            RUNNER_SOURCE,
+        )
+
+    def test_pruned_reference_audio_uses_layout_aware_compatibility_adapter(self):
+        self.assertIn(
+            'class VRGDG_MiniMaxH3TurboLoRACompat:',
+            RUNNER_SOURCE,
+        )
+        self.assertIn(
+            'kind == "ref_audio" for _, _, kind in segments',
+            RUNNER_SOURCE,
+        )
+        self.assertIn(
+            'times.add(max(t_audio, audio_aug))',
+            RUNNER_SOURCE,
+        )
+        self.assertIn(
+            'upstream_supports_audio = "has_aud_cond" in inspect.signature(unique_t).parameters',
+            RUNNER_SOURCE,
+        )
+
+    def test_turbo_forces_required_sampler_but_allows_four_or_more_steps(self):
+        self.assertIn(
+            '_set_api_input(prompt, scheduler_id, "scheduler", "simple")',
+            RUNNER_SOURCE,
+        )
+        self.assertIn(
+            'turbo_steps = _int_payload(payload, "steps", 6, 4, 1000)',
+            RUNNER_SOURCE,
+        )
+        self.assertIn(
+            '_set_api_input(prompt, scheduler_id, "steps", turbo_steps)',
+            RUNNER_SOURCE,
+        )
+        self.assertIn(
+            '"effective_sampler_name": "MiniMaxH3TurboSampler"',
+            RUNNER_SOURCE,
+        )
+
+    def test_turbo_ui_keeps_steps_and_easy_cache_available(self):
+        self.assertIn(
+            'miniMaxSteps.disabled = false;',
+            BUILDER_SOURCE,
+        )
+        self.assertIn(
+            'miniMaxSteps.min = settings.use_turbo_lora ? "4" : "1";',
+            BUILDER_SOURCE,
+        )
+        self.assertIn(
+            "EasyCache bypass is enabled automatically",
+            BUILDER_SOURCE,
+        )
+        self.assertIn(
+            'miniMaxSteps.value = "6";',
+            BUILDER_SOURCE,
+        )
+        self.assertIn(
+            "currentSettings.steps_before_turbo",
+            BUILDER_SOURCE,
+        )
+        self.assertIn(
+            "migrateOldTurboDefault ? 6 : rawSteps",
+            BUILDER_SOURCE,
+        )
+        self.assertIn(
+            "miniMaxEasyCacheBypass.input.checked = true;",
+            BUILDER_SOURCE,
+        )
+        self.assertIn(
+            "currentSettings.easy_cache_bypass_before_turbo",
+            BUILDER_SOURCE,
+        )
+        self.assertIn(
+            "settings.use_turbo_lora && !sceneHasPreTurboEasyCache",
+            BUILDER_SOURCE,
+        )
+        self.assertIn(
+            'model_ref = scheduler_inputs.get("model")',
+            RUNNER_SOURCE,
+        )
+
+    def test_missing_extension_or_lora_produces_actionable_error(self):
+        self.assertIn(
+            "Install or update ComfyUI-MiniMax-H3-Turbo, then restart ComfyUI.",
+            RUNNER_SOURCE,
+        )
+        self.assertIn(
+            "was not found in ComfyUI/models/loras",
+            RUNNER_SOURCE,
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

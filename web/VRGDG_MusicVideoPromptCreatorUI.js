@@ -585,9 +585,13 @@ function buildPayload(controls, modelSelect) {
     srt_text: controls.srtText.value,
     output_srt_path: controls.srtOutput.value,
     text_runner: controls.textGemmaRunner || "builtin",
+    gemma_context_limit: controls.gemmaContextLimit || 8000,
+    gemma_output_token_limit: controls.gemmaOutputTokenLimit || 8192,
     lmstudio_base_url: controls.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
     lmstudio_model: controls.lmStudioModel || "",
     lmstudio_api_key: controls.lmStudioApiKey || "",
+    lmstudio_context_limit: controls.lmStudioContextLimit || 32768,
+    lmstudio_output_token_limit: controls.lmStudioOutputTokenLimit || 8192,
     llm_api_provider: controls.llmApiProvider || "openai",
     llm_api_model: controls.llmApiModel || "",
     llm_api_key: controls.llmApiKey || "",
@@ -595,6 +599,8 @@ function buildPayload(controls, modelSelect) {
     lm_studio_base_url: controls.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
     lm_studio_model: controls.lmStudioModel || "",
     lm_studio_api_key: controls.lmStudioApiKey || "",
+    lm_studio_context_limit: controls.lmStudioContextLimit || 32768,
+    lm_studio_output_token_limit: controls.lmStudioOutputTokenLimit || 8192,
   };
 }
 
@@ -672,9 +678,13 @@ function openPromptCreator(options = {}) {
     i2vMotionNotes: {},
     extractedSubject: "",
     textGemmaRunner: "builtin",
+    gemmaContextLimit: 8000,
+    gemmaOutputTokenLimit: 8192,
     lmStudioBaseUrl: "http://127.0.0.1:1234/v1",
     lmStudioModel: "",
     lmStudioApiKey: "",
+    lmStudioContextLimit: 32768,
+    lmStudioOutputTokenLimit: 8192,
     llmApiProvider: "openai",
     llmApiModel: "",
     llmApiKey: "",
@@ -923,9 +933,13 @@ function openPromptCreator(options = {}) {
 
   function syncRunnerControls() {
     controls.textGemmaRunner = state.textGemmaRunner;
+    controls.gemmaContextLimit = state.gemmaContextLimit;
+    controls.gemmaOutputTokenLimit = state.gemmaOutputTokenLimit;
     controls.lmStudioBaseUrl = state.lmStudioBaseUrl;
     controls.lmStudioModel = state.lmStudioModel;
     controls.lmStudioApiKey = state.lmStudioApiKey;
+    controls.lmStudioContextLimit = state.lmStudioContextLimit;
+    controls.lmStudioOutputTokenLimit = state.lmStudioOutputTokenLimit;
     controls.llmApiProvider = state.llmApiProvider;
     controls.llmApiModel = state.llmApiModel;
     controls.llmApiKey = state.llmApiKey;
@@ -1508,9 +1522,13 @@ function openPromptCreator(options = {}) {
     state.i2vMotionNotes = parseJsonSafe(i2vMotionOutput.value, {});
     state.extractedSubject = subjectOutput.value || "";
     state.textGemmaRunner = draft.text_gemma_runner || draft.text_runner || draft.textGemmaRunner || state.textGemmaRunner || "builtin";
+    state.gemmaContextLimit = Number(draft.gemma_context_limit || draft.n_ctx || draft.llm_max_tokens || draft.llmMaxTokens || state.gemmaContextLimit || 8000);
+    state.gemmaOutputTokenLimit = Number(draft.gemma_output_token_limit || draft.llm_max_tokens || draft.llmMaxTokens || state.gemmaOutputTokenLimit || 8192);
     state.lmStudioBaseUrl = draft.lm_studio_base_url || draft.lmstudio_base_url || draft.lmStudioBaseUrl || state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
     state.lmStudioModel = draft.lm_studio_model || draft.lmstudio_model || draft.lmStudioModel || state.lmStudioModel || "";
     state.lmStudioApiKey = draft.lm_studio_api_key || draft.lmstudio_api_key || draft.lmStudioApiKey || state.lmStudioApiKey || "";
+    state.lmStudioContextLimit = Number(draft.lm_studio_context_limit || draft.lmstudio_context_limit || state.lmStudioContextLimit || 32768);
+    state.lmStudioOutputTokenLimit = Number(draft.lm_studio_output_token_limit || draft.lmstudio_output_token_limit || draft.llm_max_tokens || draft.llmMaxTokens || state.lmStudioOutputTokenLimit || 8192);
     state.llmApiProvider = draft.llm_api_provider || draft.llmApiProvider || state.llmApiProvider || "openai";
     state.llmApiModel = draft.llm_api_model || draft.llmApiModel || state.llmApiModel || "";
     syncRunnerControls();
@@ -1645,9 +1663,13 @@ function openPromptCreator(options = {}) {
       temperature: 0.75,
       top_p: 0.95,
       text_runner: state.textGemmaRunner || "builtin",
+      gemma_context_limit: state.gemmaContextLimit || 8000,
+      gemma_output_token_limit: state.gemmaOutputTokenLimit || 8192,
       lmstudio_base_url: state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
       lmstudio_model: state.lmStudioModel || "",
       lmstudio_api_key: state.lmStudioApiKey || "",
+      lmstudio_context_limit: state.lmStudioContextLimit || 32768,
+      lmstudio_output_token_limit: state.lmStudioOutputTokenLimit || 8192,
       llm_api_provider: state.llmApiProvider || "openai",
       llm_api_model: state.llmApiModel || "",
       llm_api_key: state.llmApiKey || "",

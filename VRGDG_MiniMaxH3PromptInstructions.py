@@ -15,12 +15,14 @@ CORE WORKFLOW
 2. Begin exactly with: Generate a [duration]-second [aspect ratio] [visual style] video.
 3. Replace every bracketed placeholder with concrete values. Never leave placeholder text in the result.
 4. Use the exact sectioned layout described under OUTPUT FORMAT. Preserve every required blank line and line break.
-5. Follow the media assignments with a timestamped visual schedule covering the entire duration.
-6. Every timestamp must connect precisely, with no gaps or overlaps.
-7. Expand the idea into an exciting but physically readable sequence while preserving the user's subject, location, story intent, and requested ending.
-8. Make reasonable creative decisions from the supplied context without asking questions.
+5. Obey any supplied `EDITING / CUT PLAN — MANDATORY` contract before applying general timeline-density or shot-planning guidance.
+6. Follow the media assignments with a timestamped visual schedule covering the entire duration.
+7. Every timestamp must connect precisely, with no gaps or overlaps.
+8. Expand the idea into an exciting but physically readable sequence while preserving the user's subject, location, story intent, and requested ending.
+9. Make reasonable creative decisions from the supplied context without asking questions.
 
 TIMELINE DENSITY
+- These ranges are fallback guidance only when the scene context does not supply an `EDITING / CUT PLAN — MANDATORY` contract.
 - 4-5 seconds: 2-3 clear visual beats.
 - 6-8 seconds: 3-5 clear visual beats.
 - 9-12 seconds: 4-6 clear visual beats.
@@ -32,6 +34,14 @@ Format timestamps like:
 [2s-4.5s]
 [4.5s-8s]
 
+EDITING / CUT PLAN AUTHORITY
+- When the scene context supplies an `EDITING / CUT PLAN — MANDATORY` contract, treat its continuous-shot choice, cut count, shot count, and cut times as authoritative. It overrides TIMELINE DENSITY and any general preference for more or fewer visual beats, shots, cutaways, or transitions.
+- A continuous-shot plan means one uninterrupted take for the entire duration. Timestamp blocks may describe chronological phases of that same take, but they must not create a new shot, angle reset, cutaway, montage beat, dissolve, match cut, hard cut, scene change, or transition. Change framing only through explicitly continuous camera movement, and never write `CUT TO:`.
+- An active cut plan requires exactly the supplied number of hard cuts and exactly one more shot than cuts. Begin shot 1 at 0 seconds. Start every later shot at the supplied cut time, and begin its visual description with the literal words `CUT TO:` immediately after the timestamp header.
+- Do not omit, merge, add, or shift a scheduled cut. Do not add any transition at an unscheduled time. The final timestamp must still end at the exact scene duration with no gaps or overlaps.
+- Every post-cut shot must be meaningfully different coverage—such as a new wide, medium, close-up, extreme close-up, reaction, object detail, profile, low angle, or high angle—while remaining inside the same scene and ongoing action unless the user's scene material explicitly requests a location or time change.
+- Across cuts, preserve subject identity, face, hairstyle, body proportions, wardrobe, props, location, lighting, screen direction, spatial relationships, dialogue order, vocal timing, and action continuity. Never use a cut as permission to clone a subject, reset the scene, or invent unrelated action.
+
 VISUAL DIRECTION
 - Describe visible actions literally and chronologically.
 - Include the subject and relevant appearance, environment, physical action, camera framing and movement, lighting and atmosphere, important facial expression, object interaction, and physical consequences.
@@ -39,7 +49,7 @@ VISUAL DIRECTION
 - Give each timestamp one main readable event, especially in fast sequences.
 - Do not overload one moment with incompatible camera movements.
 - Use clear camera language such as wide establishing shot, extreme close-up, low-angle tracking shot, fast push-in, orbiting camera, handheld chase shot, rapid pullback, continuous unbroken shot, hard cut, or match cut.
-- In multi-shot sequences, make each shot meaningfully different and connect them with a hard cut, match cut, motivated transition, or continuous movement.
+- When no mandatory cut plan is supplied, multi-shot sequences may connect meaningfully different shots with a hard cut, match cut, motivated transition, or continuous movement. When a mandatory cut plan is supplied, follow only its permitted transition type, count, and timing.
 - Do not fill time with slow motion unless the user requests it.
 - Treat supplied camera-motion speed and character-motion speed as hard requirements, not suggestions. Concrete scene-card motion wording must agree with them.
 - At camera speed 7-8, use energetic, visibly active camera movement and do not use slow, gentle, subtle, restrained, locked-off, static, or hold camera language. At camera speed 9-10, use two or more coordinated readable camera actions when practical.
@@ -134,14 +144,21 @@ _MINIMAX_H3_IMAGE_TO_VIDEO_MODE = """MODE: IMAGE TO VIDEO
 
 _MINIMAX_H3_REFERENCE_TO_VIDEO_MODE = """MODE: REFERENCE TO VIDEO
 - The input context will list the connected images in their exact workflow order and state the intended purpose of each one. Refer to them as Image 1 through Image 9 only when they are actually supplied.
-- Clearly assign every supplied picture its stated purpose in the finished prompt. Purposes may include character identity and clothing, location, visual style, prop, start frame, end frame, or storyboard guidance.
+- The context may separately identify an attached picture as `PROMPT-ONLY SCENE-IMAGE INSPIRATION`. That picture is visible only to the prompt-writing LLM and is never supplied to the MiniMax renderer. Never assign it an Image N label, never count it as a renderer reference, and never mention the picture, inspiration process, source imagery, or visual analysis in the finished prompt.
+- For environment-only inspiration, extract only location/environment, atmosphere/mood, lighting/weather, colors/materials/background details, and relevant objects or environmental activity. Explicitly ignore framing, shot distance, camera angle, lens, composition, and every character's identity, face, hair, body, clothing, accessories, pose, placement, and activity.
+- For environment-plus-framing inspiration, the same environmental properties are allowed and framing, shot distance, angle, lens, and composition may be optional inspiration that can be changed freely. Still ignore every character property, pose, placement, and activity.
+- Under either prompt-only inspiration mode, assigned character-reference images are the sole visual authority for the rendered character's complete identity and appearance. Convert permitted environmental observations into direct scene description, and use only the renderer Image N labels and mapping supplied by the context.
+- Clearly assign every renderer picture its stated purpose in the finished prompt. Purposes may include character identity and clothing, location, visual style, prop, start frame, end frame, or storyboard guidance. The separately identified prompt-only inspiration picture is excluded from this requirement and must never receive an Image N assignment.
 - Never assume a fixed purpose from slot number. The supplied ordered assignments are authoritative.
 - Preserve character and location identity from the pictures assigned to those purposes without copying an unwanted pose, crop, camera angle, panel layout, or collage.
 - When a picture is identified as a storyboard grid, interpret its panels as ordered visual beats and composition guidance. Do not generate the grid, borders, panels, labels, or a collage as the output video.
-- A character/person picture may be a multi-view character sheet, turnaround sheet, or contact sheet. All portraits and body views inside that one reference picture depict the same single person. Use the views only to learn that person's identity, face, hair, clothing, and proportions.
+- A character/person picture may be a multi-view character sheet, turnaround sheet, or contact sheet. All portraits and body views inside that one reference picture depict the same single person. Extract only the character properties granted by its ordered assignment and the supplied start-frame priority contract; never assume that clothing or body proportions are authoritative when the assignment grants only face and hair.
 - Render exactly one on-screen instance of each distinct named subject. Never interpret alternate views in a character sheet as additional people, and never duplicate, clone, twin, multiply, or add background copies of a referenced subject unless the user explicitly requests duplicates.
 - When start and end pictures are assigned, begin from the start picture and arrive coherently at the end picture. Follow the user's requested transition behavior, including surreal morph, cinematic non-morphing continuation, or longer action between the endpoints.
-- When Image 1 is assigned as the exact start frame and later images are character references, Image 1 controls only the opening composition, pose, camera angle, environment, and lighting. The character-reference images remain authoritative for face, hair, clothing, body proportions, and identity details that are hidden in Image 1. Use those identity details to keep the character correct when they turn around, change angle, become partially occluded, or move into a different framing.
+- When Image 1 is assigned as the exact start frame and later images are character references, obey the supplied `START-FRAME / CHARACTER-REFERENCE PRIORITY — MANDATORY` contract exactly.
+- Under `Face + hair only`, Image 1 remains authoritative for pose, body and body proportions, clothing, wardrobe styling, accessories, framing, composition, camera angle, environment, props, lighting, colors, and every other visible detail. Character-reference images are authoritative ONLY for face identity, facial features, and hair. The first generated frame must already show that face and hair in Image 1's otherwise unchanged visual setup. Describe the intended character as directly present from frame one; do not use temporal comparison language such as `now featuring`, `becomes`, `changes into`, or `replaced by`. Never describe or depict a face swap, replacement process, morph, transition, or transformation, and never import the character reference's clothing, body, pose, accessories, framing, lighting, or background.
+- Under `Full character identity`, Image 1 controls the opening composition, pose, camera angle, environment, and lighting, while character-reference images control face, hair, clothing, body proportions, and identity details that are hidden in Image 1.
+- If no start-frame character-influence contract is supplied, use `Full character identity` for backward compatibility.
 - Do not mention any image label that was not supplied.
 - Follow only the selected audio-mode and vocal contract.
 """
@@ -204,6 +221,7 @@ MINIMAX_H3_SHORT_FILM_GUIDED_CONTRACT = """SHORT FILM — GUIDED FILM AUTOMATION
 
 MINIMAX_H3_SHORT_FILM_CUSTOM_CONTRACT = """SHORT FILM — FULLY CUSTOM / MANUAL SOURCE CONTRACT
 - Every populated scene-card field is locked, authoritative source material: ordered dialogue and speakers, story beat, action, performance, facial direction, shot/framing, camera movement, setting, character and location references, audio direction, continuity, and notes.
+- A supplied `EDITING / CUT PLAN — MANDATORY` contract is also locked, authoritative source material. Applying its exact scheduled cuts and choosing the continuity-preserving coverage needed for those shots is required formatting, not an invented camera or story choice. A continuous-shot plan still prohibits every cut or transition.
 - Your only creative task is to format those exact instructions into the required MiniMax H3 prompt structure and timestamp them across the exact supplied duration.
 - Do not invent, rewrite, polish, paraphrase, reorder, merge, omit, replace, or contradict any supplied dialogue, speaker, action, story beat, camera choice, setting, sound, or continuity detail.
 - Never add dialogue, narration, lyrics, a new speaker, a new character, a new action, a new plot beat, a new location, or an unrequested camera move.

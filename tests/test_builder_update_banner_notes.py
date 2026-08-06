@@ -15,6 +15,10 @@ class BuilderUpdateBannerNotesTests(unittest.TestCase):
         release = UPDATE_NOTES["releases"][0]
         self.assertEqual(
             release["id"],
+            "2026-08-06-minimax-turbo-reference-llm-controls",
+        )
+        self.assertEqual(
+            UPDATE_NOTES["releases"][1]["id"],
             "2026-08-06-timeline-editing-minimax-prompt-reliability",
         )
         items = "\n".join(
@@ -23,21 +27,44 @@ class BuilderUpdateBannerNotesTests(unittest.TestCase):
             for item in section.get("items", [])
         )
         for expected in (
-            "LTX video prompt",
-            "silent timeline playback",
-            "playhead trimming",
-            "Delete ALL Videos",
-            "complete saved right-panel prompt",
+            "6 editable steps",
+            "automatically bypasses EasyCache",
+            "environment inspiration",
+            "Face + hair only",
+            "Cut frequency",
+            "maximum-output controls",
+            "AI Video Builder product name",
+            "3-versus-2 AdaLN tensor mismatch",
+            "Video Wizard button",
         ):
             self.assertIn(expected, items)
 
     def test_banner_uses_the_ai_video_builder_name(self):
+        self.assertNotIn("LTX 2.3 Video Builder", BUILDER_SOURCE)
+        self.assertIn(
+            'updateStatusText.textContent = "AI Video Builder — Checking for updates…"',
+            BUILDER_SOURCE,
+        )
         self.assertIn(
             'heading.textContent = "What\'s New in AI Video Builder"',
             BUILDER_SOURCE,
         )
         self.assertIn(
             '"Dismiss AI Video Builder version status"',
+            BUILDER_SOURCE,
+        )
+
+    def test_topbar_has_live_project_video_engine_badge(self):
+        self.assertIn(
+            'projectVideoEngineBadge.textContent = miniMaxProject ? "◈ MiniMax" : "◈ LTX";',
+            BUILDER_SOURCE,
+        )
+        self.assertIn(
+            'projectVideoEngineBadge.dataset.engine = miniMaxProject ? "minimax_h3" : "ltx";',
+            BUILDER_SOURCE,
+        )
+        self.assertIn(
+            "utilityActions.append(projectVideoEngineBadge, stopWorkflowButton",
             BUILDER_SOURCE,
         )
 
