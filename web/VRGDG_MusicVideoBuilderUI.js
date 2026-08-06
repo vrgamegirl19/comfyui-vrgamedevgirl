@@ -2916,7 +2916,7 @@ function openBuilder(node) {
         clear_before_load: false,
         temperature: 0.15,
         top_p: 0.85,
-        max_new_tokens: 180,
+        max_new_tokens: 8000,
       }, 4 * 60 * 1000);
       const description = String(data.description || "").trim();
       if (!description) throw new Error("The selected LLM Runner returned an empty face description.");
@@ -26369,7 +26369,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
             existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
             max_locations: refs.max_generated_locations || 8,
             n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
-            max_new_tokens: 2200,
+            max_new_tokens: 8000,
             unload_after: true,
           }, 10 * 60 * 1000)
           : await postJson("/vrgdg/music_builder/flux_reference_extract_locations", {
@@ -26596,7 +26596,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
             previous_assignments: previousAssignments.slice(-24),
             unload_after: batchIndex === batches.length - 1,
             n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
-            max_new_tokens: 1200,
+            max_new_tokens: 8000,
           }, 10 * 60 * 1000);
           mergedData.locations = batchData.locations || mergedData.locations || [];
           Object.assign(mergedData.scene_map, batchData.scene_map || {});
@@ -28937,7 +28937,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
             existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
             max_locations: refs.max_generated_locations || 8,
             n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
-            max_new_tokens: 2200,
+            max_new_tokens: 8000,
             unload_after: true,
           }, 10 * 60 * 1000)
           : await postJson("/vrgdg/music_builder/flux_reference_extract_locations", {
@@ -29680,7 +29680,7 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
             existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
             max_locations: refs.max_generated_locations || 8,
             n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
-            max_new_tokens: 2200,
+            max_new_tokens: 8000,
             unload_after: true,
           }, 10 * 60 * 1000)
           : await postJson("/vrgdg/music_builder/flux_reference_extract_locations", {
@@ -29766,7 +29766,7 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
           })),
           unload_after: true,
           n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
-          max_new_tokens: 1600,
+          max_new_tokens: 8000,
         }, 10 * 60 * 1000);
         upsertTextMapLocations(data.locations || []);
         let mapped = 0;
@@ -30604,7 +30604,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           scenes: batch.map(({ segment, index }) => conceptPromptScenePayload(segment, index, sourceMode)),
           temperature: options.temperature ?? 0.45,
           top_p: options.topP ?? 0.95,
-          max_new_tokens: options.maxNewTokens ?? 1200,
+          max_new_tokens: options.maxNewTokens ?? 8000,
         }, 180000);
         const prompts = data.prompts || {};
         for (const { segment, index } of batch) {
@@ -30772,7 +30772,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           scenes: batch.map(({ segment, index }) => motionNoteScenePayload(segment, index, sourceMode)),
           temperature: options.temperature ?? 0.45,
           top_p: options.topP ?? 0.95,
-          max_new_tokens: options.maxNewTokens ?? 1200,
+          max_new_tokens: options.maxNewTokens ?? 8000,
         }, 180000);
         const notes = data.notes || {};
         for (const { segment, index } of batch) {
@@ -33111,7 +33111,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       seed: options.seed,
       temperature: options.temperature ?? 0.35,
       top_p: options.topP ?? 0.90,
-      max_new_tokens: options.maxNewTokens ?? 1200,
+      max_new_tokens: options.maxNewTokens ?? 8000,
     }, 240000);
     pushHistory();
     syncSegmentT2IPrompt(segment, applyMappedTriggerPhrases(applyImageTriggerToPrompt(data.prompt, segment, imageMode, { validateJunk: true }), segment));
@@ -33888,7 +33888,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       clear_before_load: options.clearBeforeLoad !== false,
       unload_after: options.unloadAfter !== false,
       n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
-      max_new_tokens: 900,
+      max_new_tokens: 8000,
       seed: options.seed,
       temperature: options.temperature,
       top_p: options.topP,
@@ -34170,7 +34170,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         scene_number: sceneSlotNumber(segment),
         user_notes: userNotes,
         unload_after: true,
-        max_new_tokens: 1000,
+        max_new_tokens: 8000,
       }, 10 * 60 * 1000);
       pushHistory();
       segment.enhance_prompt = applyTriggerPhrase(data.prompt, state.imageTriggerPhrase);
@@ -34515,7 +34515,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       no_character_present: Boolean(segment?.no_character_present),
       unload_after: options.unloadAfter !== false,
       n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
-      max_new_tokens: 1200,
+      max_new_tokens: 8000,
     }, GEMMA_VIDEO_ENHANCE_TIMEOUT_MS);
     return String(data.prompt || "").trim() || base;
   }
@@ -34897,7 +34897,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
         temperature: 0.25,
         top_p: 0.9,
-        max_new_tokens: 1200,
+        max_new_tokens: 8000,
       }, 180000);
       const nextPrompt = String(data.prompt || "").trim();
       if (!nextPrompt) throw new Error("Gemma returned an empty edited image prompt.");
@@ -34984,7 +34984,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
         temperature: 0.25,
         top_p: 0.9,
-        max_new_tokens: 1200,
+        max_new_tokens: 8000,
       }, GEMMA_VIDEO_ENHANCE_TIMEOUT_MS);
       const nextPrompt = String(data.prompt || "").trim();
       if (!nextPrompt) throw new Error("Gemma returned an empty edited prompt.");
@@ -35409,7 +35409,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         unload_after: true,
         temperature: 0.45,
         top_p: 0.92,
-        max_new_tokens: 4000,
+        max_new_tokens: 8000,
       }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
       const prompt = applyMiniMaxH3NativeVoiceBlock(String(data.prompt || ""), segment);
       if (!prompt) throw new Error(`The LLM returned an empty MiniMax ${modeLabel} prompt.`);
@@ -36983,7 +36983,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           unload_after: options.unloadAfter !== false,
           temperature: 0.45,
           top_p: 0.92,
-          max_new_tokens: 4000,
+          max_new_tokens: 8000,
         }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
         const generatedPrompt = String(data.prompt || "").trim();
         if (!generatedPrompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: LLM returned an empty MiniMax ${modeLabel} prompt.`);
@@ -37577,7 +37577,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
       temperature: 0.25,
       top_p: 0.9,
-      max_new_tokens: 1200,
+      max_new_tokens: 8000,
     }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
     const prompt = String(data.prompt || "").trim();
     if (!prompt) throw new Error("Gemma returned an empty chained I2V prompt.");
@@ -41438,7 +41438,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         next_lyrics: String(next?.lyric_text || ""),
         flf_mode: true,
         unload_after: index === missingTargets.length - 1,
-        max_new_tokens: 700,
+        max_new_tokens: 8000,
         temperature: 0.35,
         top_p: 0.9,
       }, 240000);
@@ -44592,7 +44592,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           agent_purpose: purpose.value || "scene_work",
           unload_after: true,
           n_ctx: scope.value === "project_brief" || scope.value === "full_scene_plan" ? 12000 : 8000,
-          max_new_tokens: purpose.value === "story_builder" && allowActions ? 1800 : allowActions ? 700 : 450,
+          max_new_tokens: 8000,
           temperature: 0.55,
           top_p: 0.95,
         });
@@ -44774,7 +44774,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           user_notes: "These are performer, character, location, and aesthetic references for the whole project.",
           unload_after: true,
           n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
-          max_new_tokens: 500,
+          max_new_tokens: 8000,
           temperature: 0.25,
           top_p: 0.95,
         }, 10 * 60 * 1000);
@@ -46154,7 +46154,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           max_locations: refs.max_generated_locations || 8,
           unload_after: true,
           n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
-          max_new_tokens: 2200,
+          max_new_tokens: 8000,
         }, 10 * 60 * 1000);
         const { added, updated } = upsertWizardLocations(refs, data.locations || []);
         refs.use_location_references = Boolean(refs.locations.length || Object.keys(refs.scene_map || {}).length);
@@ -46209,7 +46209,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           })),
           unload_after: true,
           n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
-          max_new_tokens: 1800,
+          max_new_tokens: 8000,
         }, 10 * 60 * 1000);
         upsertWizardLocations(refs, data.locations || []);
         refs.scene_map = refs.scene_map && typeof refs.scene_map === "object" ? refs.scene_map : {};
@@ -46501,7 +46501,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           lyrics: scenes.map((scene) => `${scene.lyric_section ? `[${scene.lyric_section}]\n` : ""}${scene.lyrics || ""}`).filter(Boolean).join("\n\n"),
           scenes,
           unload_after: true,
-          max_new_tokens: 800,
+          max_new_tokens: 8000,
         }, 240000);
         state.builderStoryLayer = normalizeBuilderStoryLayer({
           ...layer,
@@ -46540,7 +46540,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           scenes,
           reference_builder: storyboardReferenceBuilderWithIdLoraRefs(state.fluxReferenceBuilder),
           unload_after: true,
-          max_new_tokens: 900,
+          max_new_tokens: 8000,
         }, 240000);
         state.builderStoryLayer = normalizeBuilderStoryLayer({
           ...layer,
@@ -46600,7 +46600,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
             previous_beat: previousBeat,
             next_lyrics: nextLyrics,
             unload_after: index === targets.length - 1,
-            max_new_tokens: 360,
+            max_new_tokens: 8000,
           }, 240000);
           const segment = segments.find((item) => item.id === scene.id);
           if (segment) segment.story_beat = String(data.story_beat || "").trim();
@@ -46670,7 +46670,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
               ...(storyboardState.gemmaSettings || {}),
               unload_after: index === scenes.length - 1,
               storyboard_payload: storyboardGptPayload(storyboardState, [scene]),
-              max_new_tokens: 1400,
+              max_new_tokens: 8000,
               temperature: 0.35,
               top_p: 0.90,
             }, 240000);
