@@ -8568,6 +8568,7 @@ function openBuilder(node) {
       reference_type: referenceType === "subject" ? (target?.reference_type || "character") : referenceType,
       name: target?.name || "",
       ...referenceImagePayload(image),
+      max_new_tokens: 8000,
       unload_after: options.unloadAfter !== false,
       clear_before_load: Boolean(options.clearBeforeLoad),
     }, 4 * 60 * 1000);
@@ -25282,7 +25283,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
 
     async function describeGeneratedReference(referenceType, target, prompt = "") {
       if (referenceType === "subject") {
-        setInlineProgress(`Vision Gemma describing the generated subject image...\n${gemmaRunnerLine({ vision: true, forceBuiltin: true })}`, 91);
+        setInlineProgress(`Vision Gemma describing the generated subject image...\n${gemmaRunnerLine({ vision: true })}`, 91);
         const description = await describeReferenceImageWithGemma(target, "subject", {
           unloadAfter: true,
           clearBeforeLoad: false,
@@ -25750,7 +25751,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         for (let index = 0; index < jobs.length; index += 1) {
           const { target, label } = jobs[index];
           const isLast = index === jobs.length - 1;
-          progress.set(`Vision Gemma describing ${referenceType} image...\n${index + 1}/${jobs.length}: ${label || target.name || referenceType}\n${gemmaRunnerLine({ vision: true, forceBuiltin: true })}`, 8 + Math.round((index / Math.max(1, jobs.length)) * 84));
+          progress.set(`Vision Gemma describing ${referenceType} image...\n${index + 1}/${jobs.length}: ${label || target.name || referenceType}\n${gemmaRunnerLine({ vision: true })}`, 8 + Math.round((index / Math.max(1, jobs.length)) * 84));
           await describeReferenceImageWithGemma(target, referenceType, {
             unloadAfter: options.keepLoaded ? isLast : true,
             clearBeforeLoad: index === 0 && Boolean(options.clearBeforeLoad),
@@ -25778,7 +25779,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       const effectiveType = referenceType === "subject" ? (target?.reference_type || "character") : referenceType;
       const progress = createProgressWindow(referenceType === "location" ? "Describing location" : "Describing reference", { zIndex: 100008 });
       try {
-        progress.set(`Vision Gemma describing ${effectiveType} image...\n${label || target?.name || effectiveType}\n${gemmaRunnerLine({ vision: true, forceBuiltin: true })}`, 18);
+        progress.set(`Vision Gemma describing ${effectiveType} image...\n${label || target?.name || effectiveType}\n${gemmaRunnerLine({ vision: true })}`, 18);
         const description = await describeReferenceImageWithGemma(target, referenceType, { unloadAfter: true, clearBeforeLoad: false });
         applyReferenceDescription(referenceType, target, description);
         renderAll();
@@ -27833,7 +27834,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       const primarySubject = refs.subjects[0] || refs.subject;
       const progress = createProgressWindow("Describing character", { zIndex: 100008 });
       try {
-        progress.set(`Vision Gemma describing character image...\n${subjectNameInput.value || refs.subjects[0]?.name || "Subject"}\n${gemmaRunnerLine({ vision: true, forceBuiltin: true })}`, 18);
+        progress.set(`Vision Gemma describing character image...\n${subjectNameInput.value || refs.subjects[0]?.name || "Subject"}\n${gemmaRunnerLine({ vision: true })}`, 18);
         const description = await describeReferenceImageWithGemma(primarySubject, "subject", { unloadAfter: true });
         applyReferenceDescription("subject", primarySubject, description);
         renderAll();
@@ -28315,7 +28316,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       if (!currentSheet) return;
       const progress = createProgressWindow("Describing Ingredients sheet", { zIndex: 100008 });
       try {
-        progress.set(`Vision Gemma describing sheet image...\n${currentSheet.name || "Ingredients sheet"}\n${gemmaRunnerLine({ vision: true, forceBuiltin: true })}`, 18);
+        progress.set(`Vision Gemma describing sheet image...\n${currentSheet.name || "Ingredients sheet"}\n${gemmaRunnerLine({ vision: true })}`, 18);
         await describeReferenceImageWithGemma(currentSheet, "subject", { unloadAfter: true });
         renderSheets();
         await autoSaveSessionQuiet("Gemma described ingredients sheet");
@@ -28339,7 +28340,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       try {
         for (let index = 0; index < jobs.length; index += 1) {
           const sheet = jobs[index];
-          progress.set(`Vision Gemma describing sheet image...\n${index + 1}/${jobs.length}: ${sheet.name || `Ingredients Sheet ${index + 1}`}\n${gemmaRunnerLine({ vision: true, forceBuiltin: true })}`, 8 + Math.round((index / Math.max(1, jobs.length)) * 84));
+          progress.set(`Vision Gemma describing sheet image...\n${index + 1}/${jobs.length}: ${sheet.name || `Ingredients Sheet ${index + 1}`}\n${gemmaRunnerLine({ vision: true })}`, 8 + Math.round((index / Math.max(1, jobs.length)) * 84));
           await describeReferenceImageWithGemma(sheet, "subject", { unloadAfter: index === jobs.length - 1 });
           renderSheets();
           await autoSaveSessionQuiet(`Gemma described ingredients sheet ${index + 1}`);
@@ -29420,7 +29421,7 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
         for (let index = 0; index < jobs.length; index += 1) {
           const item = jobs[index];
           const effectiveType = referenceType === "subject" ? (item.reference_type || "character") : referenceType;
-          progress.set(`Vision Gemma describing ${effectiveType} image...\n${index + 1}/${jobs.length}: ${item.name || effectiveType}\n${gemmaRunnerLine({ vision: true, forceBuiltin: true })}`, 8 + Math.round((index / Math.max(1, jobs.length)) * 84));
+          progress.set(`Vision Gemma describing ${effectiveType} image...\n${index + 1}/${jobs.length}: ${item.name || effectiveType}\n${gemmaRunnerLine({ vision: true })}`, 8 + Math.round((index / Math.max(1, jobs.length)) * 84));
           await describeReferenceImageWithGemma(item, referenceType, { unloadAfter: index === jobs.length - 1 });
           renderAll();
           await autoSaveSessionQuiet(`Gemma described ${referenceType} text`);
