@@ -45133,7 +45133,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           reference_type: "location",
           source_text: "small empty test room",
           style_theme: "",
-          max_new_tokens: 120,
+          max_new_tokens: 1024,
         }, 60000);
         progress.set(`LM Studio responded successfully:\n${data.prompt}`, 100);
         progress.close(4000);
