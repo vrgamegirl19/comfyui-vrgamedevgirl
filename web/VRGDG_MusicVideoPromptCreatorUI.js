@@ -705,9 +705,9 @@ function openPromptCreator(options = {}) {
   const title = document.createElement("div");
   title.textContent = "Prompt Creator (Legacy)";
   title.style.cssText = "font-size:16px;font-weight:900;color:#cffafe;margin-right:auto;";
-  const backButton = makeButton("Back To Video Creator");
+  const backButton = makeButton("Back To AI Video Builder");
   const loadDraftButton = makeButton("Load Project Draft");
-  const sendToVideoButton = makeButton("Send To Video Creator", "primary");
+  const sendToVideoButton = makeButton("Send To AI Video Builder", "primary");
   const gemmaRunnerButton = makeButton("Gemma Runner");
   const saveDraftButton = makeButton("Save Project Draft", "primary");
   const closeButton = makeButton("Close");
@@ -1798,7 +1798,7 @@ function openPromptCreator(options = {}) {
       throw new Error("ConceptPrompts editor does not contain any Prompt1/Prompt2 JSON values.");
     }
     if (isSceneLabelOnlyPromptMap(editedConceptPrompts)) {
-      throw new Error("ConceptPrompts only contains scene labels like SCENE 1. Create or paste real concept prompts before sending to Video Creator.");
+      throw new Error("ConceptPrompts only contains scene labels like SCENE 1. Create or paste real concept prompts before sending to AI Video Builder.");
     }
     state.conceptPrompts = Object.keys(editedConceptPrompts).length ? editedConceptPrompts : (state.conceptPrompts || {});
     state.i2vMotionNotes = Object.keys(editedI2VMotionNotes).length ? editedI2VMotionNotes : (state.i2vMotionNotes || {});
@@ -1810,7 +1810,7 @@ function openPromptCreator(options = {}) {
       ? state.conceptPrompts
       : parseJsonSafe(conceptOutput.value, {});
     if (isSceneLabelOnlyPromptMap(payload.prompts)) {
-      throw new Error("ConceptPrompts only contains scene labels like SCENE 1. Create or paste real concept prompts before sending to Video Creator.");
+      throw new Error("ConceptPrompts only contains scene labels like SCENE 1. Create or paste real concept prompts before sending to AI Video Builder.");
     }
     payload.i2v_motion_notes = state.i2vMotionNotes && Object.keys(state.i2vMotionNotes).length
       ? state.i2vMotionNotes
@@ -1836,15 +1836,15 @@ function openPromptCreator(options = {}) {
     try {
       sendToVideoButton.disabled = true;
       sendToVideoButton.textContent = "Sending...";
-      progress = createProgressWindow("Sending To Video Creator");
+      progress = createProgressWindow("Sending To AI Video Builder");
       const result = await saveOutputs(progress);
-      progress.set("Opening Video Creator and importing this Prompt Creator project...", 96);
+      progress.set("Opening AI Video Builder and importing this Prompt Creator project...", 96);
       if (typeof options.onSendToVideoCreator === "function") {
         await options.onSendToVideoCreator(result);
       } else {
         options.onSaved?.(result);
       }
-      progress.set("Sent to Video Creator.", 100);
+      progress.set("Sent to AI Video Builder.", 100);
       progress.close(900);
       overlay.remove();
     } catch (error) {
@@ -1853,7 +1853,7 @@ function openPromptCreator(options = {}) {
       progress?.set(`Error:\n${message}`, 100);
     } finally {
       sendToVideoButton.disabled = false;
-      sendToVideoButton.textContent = "Send To Video Creator";
+      sendToVideoButton.textContent = "Send To AI Video Builder";
     }
   }
 

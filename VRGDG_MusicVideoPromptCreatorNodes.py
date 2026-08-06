@@ -1332,7 +1332,7 @@ def _save_prompt_creator_outputs(payload):
     if concept_prompts:
         concept_prompts = _canonical_prompt_mapping(concept_prompts)
         if _is_scene_label_only_prompt_mapping(concept_prompts):
-            raise ValueError("ConceptPrompts only contains scene labels like SCENE 1. Create or paste real concept prompts before sending to Video Creator.")
+            raise ValueError("ConceptPrompts only contains scene labels like SCENE 1. Create or paste real concept prompts before sending to AI Video Builder.")
         if _payload_bool(payload.get("append_subject_to_prompts", True), True):
             concept_prompts = _prepend_subject_to_prompts(
                 concept_prompts,
