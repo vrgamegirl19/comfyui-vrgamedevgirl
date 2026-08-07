@@ -188,12 +188,37 @@ Three layers, each catching different bugs — don't skip to the top layer:
   "LTX-2 MLX (Apple Silicon)" → badge updates, correct panel renders with correct
   defaults, toast is correct.
 
+## Bug found after this doc was first written: "no video path was found in history"
+
+Reported by actually using the button this doc had flagged as untested. Two compounding
+bugs in the shared history-parsing helpers, both now fixed:
+
+1. `extractVideosFromHistory()` only checked `gifs`/`videos`/a legacy `animated`-as-
+   file-array convention. LTX2MLX's nodes report outputs the way ComfyUI's *native*
+   `SaveVideo` does — files under `images`, with a sibling `animated: [true]` flag — a
+   shape the function didn't recognize at all.
+2. Even once found, `resolveComfyVideoPath()` still couldn't turn `{filename, subfolder,
+   type}` into a path — it only understands a `fullpath` param or a Windows-absolute
+   `subfolder` (every other engine in this codebase feeds an absolute `filename_prefix`,
+   so `subfolder` in history already *is* the absolute directory). LTX2MLX uses
+   `folder_paths.get_save_image_path()`, ComfyUI's own relative-path convention, which is
+   a genuinely different shape nothing else in this codebase produces.
+
+Fix: added `_resolve_output_media_path()` / `/vrgdg/workflow_runner/resolve_output_path`
+(Python, `folder_paths`-based, scoped to output/input/temp dirs) as a fallback used only
+from `renderLtx2MlxSceneVideoWithProgress` when `resolveComfyVideoPath` returns empty —
+other engines untouched. Re-verified against a live server: build → queue → history
+entry correctly extracted → `resolve_output_path` returns the real, existing file path.
+
+**Lesson**: layers 1-3 in the testing methodology above (direct calls, curl+history,
+Playwright UI) each verified a *segment* of the pipeline in isolation but never the full
+chain from click to collected file in one pass — which is exactly where this bug lived,
+at the seam between "history contains an output" and "here is its path on disk." Wiring
+a new engine into shared helpers written for a different output-path convention needs a
+real click-through test, not just its component pieces individually.
+
 ## Known gaps / not done
 
-- Never clicked "Create LTX-2 MLX Scene Video" through the full UI with a real typed
-  prompt + loaded audio — the render pipeline itself was verified via curl (layer 2
-  above), and the button/panel were verified via Playwright (layer 3), but the two were
-  never exercised together as one user action.
 - Only tested at low resolution/frame count with q4 + distilled/dev pipelines — real
   generation time/memory at production settings (q8, higher res, `two_stage`) unknown.
 - `venv-3.13` has ComfyUI core + comfyui-ltx2-mlx + comfyui-vrgamedevgirl deps only, not
