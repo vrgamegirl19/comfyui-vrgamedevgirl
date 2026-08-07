@@ -2038,6 +2038,20 @@ function extractVideosFromHistory(historyPayload, promptId) {
   return videos;
 }
 
+const DEFAULT_SCENE_RENDER_WAIT_HOURS = 2;
+const MAX_SCENE_RENDER_WAIT_HOURS = 24;
+
+function normalizeSceneRenderWaitHours(value) {
+  const hours = Number(value);
+  if (!Number.isFinite(hours)) return DEFAULT_SCENE_RENDER_WAIT_HOURS;
+  return Math.max(1, Math.min(MAX_SCENE_RENDER_WAIT_HOURS, Math.round(hours)));
+}
+
+function sceneRenderWaitLabel(value) {
+  const hours = normalizeSceneRenderWaitHours(value);
+  return `${hours}-hour`;
+}
+
 function sceneVideoTimeoutMessage({
   promptId = "",
   sceneLabel = "Scene",
@@ -2045,9 +2059,10 @@ function sceneVideoTimeoutMessage({
   outputFolder = "",
   projectFolder = "",
   finalFolder = "",
+  waitHours = DEFAULT_SCENE_RENDER_WAIT_HOURS,
 } = {}) {
   const lines = [
-    `${sceneLabel}: ${modeLabel} did not finish before the 2-hour wait limit.`,
+    `${sceneLabel}: ${modeLabel} did not finish before the ${sceneRenderWaitLabel(waitHours)} wait limit.`,
     "",
     "What this means:",
     "- ComfyUI may still be rendering, or the workflow may have stopped without returning a video to the builder.",
@@ -2067,8 +2082,10 @@ function sceneVideoTimeoutMessage({
 
 async function waitForVideos(promptId, onStatus, shouldCancel, findOutputFallback = null, options = {}) {
   const started = Date.now();
+  const timeoutHours = normalizeSceneRenderWaitHours(options.timeoutHours);
+  const timeoutMs = timeoutHours * 60 * 60 * 1000;
   let lastFallbackCheck = 0;
-  while (Date.now() - started < 2 * 60 * 60 * 1000) {
+  while (Date.now() - started < timeoutMs) {
     if (shouldCancel?.()) throw new Error("Stopped by user.");
     const response = await api.fetchApi(`/history/${encodeURIComponent(promptId)}`);
     const data = await response.json().catch(() => ({}));
@@ -6071,6 +6088,7 @@ function openBuilder(node) {
     srtPath: "",
     autoSaveEnabled: true,
     automaticMemoryCleanup: false,
+    sceneRenderWaitHours: DEFAULT_SCENE_RENDER_WAIT_HOURS,
     isScrubbing: false,
     isClipScrubbing: false,
     sceneAudioMode: false,
@@ -10529,6 +10547,7 @@ function openBuilder(node) {
     state.llmApiModel = data.llmApiModel || data.llm_api_model || state.llmApiModel || "";
     state.notificationSettings = normalizeNotificationSettings(data.notificationSettings || data.notification_settings || state.notificationSettings);
     state.automaticMemoryCleanup = setBuilderAutomaticMemoryCleanupEnabled(data.automaticMemoryCleanup ?? data.automatic_memory_cleanup ?? state.automaticMemoryCleanup ?? false);
+    state.sceneRenderWaitHours = normalizeSceneRenderWaitHours(data.sceneRenderWaitHours ?? data.scene_render_wait_hours ?? state.sceneRenderWaitHours);
     state.waveformMode = data.waveformMode || state.waveformMode || "medium";
     state.snapToBeats = data.snapToBeats ?? state.snapToBeats ?? true;
     state.showTimelineSceneNotes = data.showTimelineSceneNotes ?? state.showTimelineSceneNotes ?? false;
@@ -31719,6 +31738,20 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       makeField("Video engine for this project", projectVideoEngineSelect),
       projectVideoEngineNote,
     ], true);
+    const sceneRenderWaitHoursInput = makeInput(
+      String(normalizeSceneRenderWaitHours(state.sceneRenderWaitHours)),
+      "number",
+    );
+    sceneRenderWaitHoursInput.min = "1";
+    sceneRenderWaitHoursInput.max = String(MAX_SCENE_RENDER_WAIT_HOURS);
+    sceneRenderWaitHoursInput.step = "1";
+    const renderWaitingNote = document.createElement("div");
+    renderWaitingNote.textContent = "How long the Builder follows each queued LTX or MiniMax scene before reporting a wait-limit error. This does not cancel ComfyUI's render. Existing projects default to 2 hours; choose 1–24 hours for future scene waits.";
+    renderWaitingNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
+    const renderWaitingPanel = makeSettingsSection("Render Waiting", [
+      makeField("Scene render wait limit (hours)", sceneRenderWaitHoursInput),
+      renderWaitingNote,
+    ], true);
     const automaticMemoryCleanupControl = makeCheckbox(
       "Run automatic RAM/VRAM cleanup",
       Boolean(state.automaticMemoryCleanup),
@@ -31958,6 +31991,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         ? "Automatic RAM/VRAM cleanup enabled."
         : "Automatic RAM/VRAM cleanup disabled. DynamicVRAM will manage memory pressure.");
     });
+    sceneRenderWaitHoursInput.addEventListener("change", async () => {
+      state.sceneRenderWaitHours = normalizeSceneRenderWaitHours(sceneRenderWaitHoursInput.value);
+      sceneRenderWaitHoursInput.value = String(state.sceneRenderWaitHours);
+      await autoSaveSessionQuiet("scene render wait limit");
+      toast(`Scene renders will now wait up to ${state.sceneRenderWaitHours} hour${state.sceneRenderWaitHours === 1 ? "" : "s"}.`);
+    });
     projectVideoEngineSelect.addEventListener("change", async () => {
       state.projectVideoEngine = normalizeProjectVideoEngine(projectVideoEngineSelect.value);
       syncProjectVideoEngineUI();
@@ -31982,7 +32021,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     testErrorSound.onclick = () => playBuilderNotification("error", true);
     syncCustomAudioLabels();
     syncContinuityModeVisibility();
-    box.append(header, pathGrid, actions, note, projectStoragePanel, projectVideoEnginePanel, themePanel, memoryManagementPanel, autoChainPanel, notificationPanel);
+    box.append(header, pathGrid, actions, note, projectStoragePanel, projectVideoEnginePanel, renderWaitingPanel, themePanel, memoryManagementPanel, autoChainPanel, notificationPanel);
     backdrop.append(box);
     document.body.append(backdrop);
     modalClose.onclick = () => backdrop.remove();
@@ -32411,6 +32450,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       llm_api_model: state.llmApiModel || "",
       notification_settings: normalizeNotificationSettings(state.notificationSettings),
       automatic_memory_cleanup: Boolean(state.automaticMemoryCleanup),
+      scene_render_wait_hours: normalizeSceneRenderWaitHours(state.sceneRenderWaitHours),
       waveform_mode: state.waveformMode,
       snap_to_beats: state.snapToBeats,
       show_beat_markers: state.showBeatMarkers,
@@ -32673,6 +32713,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         state.lmStudioOutputTokenLimit = normalizeOutputTokenLimit(data.session.lm_studio_output_token_limit ?? data.session.llm_max_tokens ?? data.session.llmMaxTokens ?? state.lmStudioOutputTokenLimit);
         state.notificationSettings = normalizeNotificationSettings(data.session.notification_settings || state.notificationSettings);
         state.automaticMemoryCleanup = setBuilderAutomaticMemoryCleanupEnabled(data.session.automatic_memory_cleanup ?? state.automaticMemoryCleanup ?? false);
+        state.sceneRenderWaitHours = normalizeSceneRenderWaitHours(data.session.scene_render_wait_hours ?? state.sceneRenderWaitHours);
         state.waveformMode = data.session.waveform_mode || state.waveformMode;
         state.snapToBeats = data.session.snap_to_beats ?? state.snapToBeats;
         state.showTimelineSceneNotes = data.session.show_timeline_scene_notes ?? state.showTimelineSceneNotes ?? false;
@@ -33002,6 +33043,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.lmStudioOutputTokenLimit = normalizeOutputTokenLimit(session.lm_studio_output_token_limit ?? session.llm_max_tokens ?? session.llmMaxTokens ?? state.lmStudioOutputTokenLimit);
       state.notificationSettings = normalizeNotificationSettings(session.notification_settings || state.notificationSettings);
       state.automaticMemoryCleanup = setBuilderAutomaticMemoryCleanupEnabled(session.automatic_memory_cleanup ?? false);
+      state.sceneRenderWaitHours = normalizeSceneRenderWaitHours(session.scene_render_wait_hours ?? state.sceneRenderWaitHours);
       state.waveformMode = session.waveform_mode || state.waveformMode || "medium";
       state.snapToBeats = session.snap_to_beats ?? state.snapToBeats ?? true;
       state.showTimelineSceneNotes = session.show_timeline_scene_notes ?? state.showTimelineSceneNotes ?? false;
@@ -39472,6 +39514,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       () => state.batchCancelled,
       findSceneVideoOutput,
       {
+        timeoutHours: state.sceneRenderWaitHours,
         timeoutMessage: () => sceneVideoTimeoutMessage({
           promptId,
           sceneLabel: sceneDisplayName(segment, sceneIndex),
@@ -39479,6 +39522,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           outputFolder: built.output_folder || defaultOutputFolder,
           projectFolder: projectInput.value,
           finalFolder: collectedSceneVideoFolder(),
+          waitHours: state.sceneRenderWaitHours,
         }),
       }
     );
@@ -39828,6 +39872,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         () => state.batchCancelled,
         null,
         {
+          timeoutHours: state.sceneRenderWaitHours,
           timeoutMessage: () => sceneVideoTimeoutMessage({
             promptId,
             sceneLabel: sceneDisplayName(segment, sceneIndex),
@@ -39835,6 +39880,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
             outputFolder: built.output_folder || "",
             projectFolder,
             finalFolder: collectedSceneVideoFolder(),
+            waitHours: state.sceneRenderWaitHours,
           }),
         },
       );

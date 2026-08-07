@@ -5,7 +5,7 @@ import sys
 
 import folder_paths
 
-__version__ = "v9.1.0"
+__version__ = "v9.1.1"
 __updated__ = "2026-08-06"
 
 _VRGDG_SUBMODULES = (

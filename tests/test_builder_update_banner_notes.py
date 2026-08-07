@@ -24,7 +24,7 @@ class BuilderUpdateBannerNotesTests(unittest.TestCase):
         )
         self.assertEqual(
             release["commit"],
-            "84fa509b85c88b7d6a8af9b9ca5eafcadf6b8c11",
+            "1fbbf4539856b522b6e6bb67cbd2711b28f587df",
         )
         items = "\n".join(
             item
@@ -37,15 +37,16 @@ class BuilderUpdateBannerNotesTests(unittest.TestCase):
             "four-minute request cutoff",
             "NetworkError when attempting to fetch resource",
             "Expanded the AI Video Builder guide",
-            "ComfyUI Registry version 9.1.0",
+            "ComfyUI Registry version 9.1.1",
             "Manager continuing to install the July 3 version 9.0.0",
             "may not contain Git metadata",
+            "Scene render wait limit",
         ):
             self.assertIn(expected, items)
 
     def test_registry_and_runtime_versions_match_current_release(self):
-        self.assertIn('version = "9.1.0"', PACKAGE_METADATA)
-        self.assertIn('__version__ = "v9.1.0"', PACKAGE_INIT)
+        self.assertIn('version = "9.1.1"', PACKAGE_METADATA)
+        self.assertIn('__version__ = "v9.1.1"', PACKAGE_INIT)
         self.assertIn('__updated__ = "2026-08-06"', PACKAGE_INIT)
 
     def test_previous_release_documents_minimax_builder_controls(self):
@@ -123,8 +124,9 @@ class BuilderUpdateBannerNotesTests(unittest.TestCase):
             "silent timeline clock",
             "allow up to ten minutes per scene",
             "Connection to the ComfyUI backend was lost",
-            "current ComfyUI Registry release is `9.1.0`",
+            "current ComfyUI Registry release is `9.1.1`",
             "Manager-installed folder",
+            "Scene render wait limit (hours)",
         ):
             self.assertIn(expected, BUILDER_GUIDE)
 
