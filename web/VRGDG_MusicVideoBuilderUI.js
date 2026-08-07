@@ -154,6 +154,40 @@ const MINIMAX_H3_MODE_OPTIONS = [
   { value: "reference_to_video", label: "Reference to Video", buttonLabel: "Ref to\nVideo" },
   { value: "video_to_video", label: "Video to Video", buttonLabel: "V2V" },
 ];
+const LTX2MLX_MODE_OPTIONS = [
+  { value: "t2v", label: "Text to Video" },
+  { value: "i2v", label: "Image to Video" },
+  { value: "a2v", label: "Audio to Video (Song Mode)" },
+];
+const LTX2MLX_MODEL_OPTIONS = [
+  { value: "dgrauet/ltx-2.3-mlx-q4", label: "q4 (~12GB, 16GB+ Macs)" },
+  { value: "dgrauet/ltx-2.3-mlx-q8", label: "q8 (~21GB, 32GB+ Macs)" },
+  { value: "dgrauet/ltx-2.3-mlx", label: "bf16 (~42GB, 64GB+ Macs)" },
+];
+const LTX2MLX_PIPELINE_OPTIONS = [
+  { value: "two_stage", label: "Two Stage (recommended)" },
+  { value: "two_stage_hq", label: "Two Stage HQ" },
+  { value: "one_stage", label: "One Stage" },
+  { value: "distilled", label: "Distilled (fastest)" },
+];
+const DEFAULT_LTX2MLX_SETTINGS = {
+  mode: "a2v",
+  model_dir: "dgrauet/ltx-2.3-mlx-q8",
+  pipeline_type: "two_stage",
+  low_ram: false,
+  height: 480,
+  width: 704,
+  num_frames: 97,
+  frame_rate: 24,
+  seed: 0,
+  cfg_scale: 3.0,
+  match_audio_length: true,
+};
+
+function cloneLtx2MlxSettings(overrides = {}) {
+  return { ...DEFAULT_LTX2MLX_SETTINGS, ...(overrides && typeof overrides === "object" ? overrides : {}) };
+}
+
 const MINIMAX_H3_INSTRUCTION_KEYS = {
   text_to_video: "minimax_h3_text_to_video",
   image_to_video: "minimax_h3_image_to_video",
@@ -921,7 +955,10 @@ function normalizeVideoType(value) {
 }
 
 function normalizeProjectVideoEngine(value) {
-  return String(value || "").trim().toLowerCase() === "minimax_h3" ? "minimax_h3" : "ltx";
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "minimax_h3") return "minimax_h3";
+  if (normalized === "ltx2mlx") return "ltx2mlx";
+  return "ltx";
 }
 
 function makeVideoTypeSelect(value = "singing") {
@@ -4925,6 +4962,9 @@ function openBuilder(node) {
   applyCompactButtonLabel(miniMaxSceneVideoButton, "Create MiniMax H3\nScene Video", { noMap: true, padding: "8px 8px", title: "Create MiniMax H3 Scene Video" });
   miniMaxSceneVideoButton.title = "Render this scene with the MiniMax H3 hidden workflow and preserve the exact timeline duration.";
   const miniMaxSceneVideoButtons = [miniMaxSceneVideoButton];
+  const ltx2MlxSceneVideoButton = makeButton("Create LTX-2 MLX Scene Video", "primary");
+  ltx2MlxSceneVideoButton.title = "Render this scene with LTX-2.3 via MLX on Apple Silicon.";
+  const ltx2MlxSceneVideoButtons = [ltx2MlxSceneVideoButton];
   const miniMaxReferencesButton = makeButton("Choose MiniMax References (0/9)");
   miniMaxReferencesButton.title = "Choose and order up to nine images from the existing Reference Builder for this scene.";
   const miniMaxVideoReferencesButton = makeButton("Choose MiniMax Edit References (0/9)");
@@ -5878,7 +5918,89 @@ function openBuilder(node) {
   const ltxVideoPanel = document.createElement("div");
   ltxVideoPanel.style.cssText = "display:flex;flex-direction:column;gap:10px;";
   ltxVideoPanel.append(videoModeChooser, importCustomVideoPanel, videoSubTabs.wrapper);
-  videoPanel.append(ltxVideoPanel, miniMaxEnginePanel);
+
+  const ltx2MlxEnginePanel = document.createElement("div");
+  ltx2MlxEnginePanel.style.cssText = "display:none;flex-direction:column;gap:10px;";
+  const ltx2MlxBanner = document.createElement("div");
+  ltx2MlxBanner.innerHTML = `<div style="font-size:14px;font-weight:900;color:#e0e7ff;">LTX-2 MLX Project (Apple Silicon)</div><div style="font-size:11px;color:#c7d2fe;margin-top:3px;">Runs LTX-2.3 natively via MLX. Requires the comfyui-ltx2-mlx custom node and macOS on Apple Silicon.</div>`;
+  ltx2MlxBanner.style.cssText = "border:1px solid #6366f1;border-radius:7px;background:#1e1b4b;padding:10px;line-height:1.35;";
+  const ltx2MlxUnavailableNote = document.createElement("div");
+  ltx2MlxUnavailableNote.style.cssText = "font-size:11px;color:#fcd34d;line-height:1.4;display:none;";
+  const ltx2MlxModeSelect = makeSelect(LTX2MLX_MODE_OPTIONS, DEFAULT_LTX2MLX_SETTINGS.mode);
+  const ltx2MlxModelSelect = makeSelect(LTX2MLX_MODEL_OPTIONS, DEFAULT_LTX2MLX_SETTINGS.model_dir);
+  const ltx2MlxPipelineSelect = makeSelect(LTX2MLX_PIPELINE_OPTIONS, DEFAULT_LTX2MLX_SETTINGS.pipeline_type);
+  const ltx2MlxLowRam = makeCheckbox("Low RAM (block streaming)", DEFAULT_LTX2MLX_SETTINGS.low_ram);
+  const ltx2MlxHeight = makeInput(String(DEFAULT_LTX2MLX_SETTINGS.height), "number");
+  const ltx2MlxWidth = makeInput(String(DEFAULT_LTX2MLX_SETTINGS.width), "number");
+  const ltx2MlxNumFrames = makeInput(String(DEFAULT_LTX2MLX_SETTINGS.num_frames), "number");
+  const ltx2MlxFrameRate = makeInput(String(DEFAULT_LTX2MLX_SETTINGS.frame_rate), "number");
+  const ltx2MlxSeed = makeInput(String(DEFAULT_LTX2MLX_SETTINGS.seed), "number");
+  const ltx2MlxCfgScale = makeInput(String(DEFAULT_LTX2MLX_SETTINGS.cfg_scale), "number");
+  ltx2MlxCfgScale.step = "0.1";
+  const ltx2MlxMatchAudioLength = makeCheckbox(
+    "Match video length to audio (Song Mode)",
+    DEFAULT_LTX2MLX_SETTINGS.match_audio_length,
+  );
+  const ltx2MlxDimensionsRow = document.createElement("div");
+  ltx2MlxDimensionsRow.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;";
+  ltx2MlxDimensionsRow.append(
+    makeField("Height", ltx2MlxHeight),
+    makeField("Width", ltx2MlxWidth),
+  );
+  const ltx2MlxTimingRow = document.createElement("div");
+  ltx2MlxTimingRow.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;";
+  ltx2MlxTimingRow.append(
+    makeField("Frame rate", ltx2MlxFrameRate),
+    makeField("Num frames (t2v/i2v; ignored for song mode when matching)", ltx2MlxNumFrames),
+  );
+  ltx2MlxEnginePanel.append(
+    ltx2MlxBanner,
+    ltx2MlxUnavailableNote,
+    makeField("Mode", ltx2MlxModeSelect),
+    makeField("Model", ltx2MlxModelSelect),
+    makeField("Pipeline", ltx2MlxPipelineSelect),
+    ltx2MlxLowRam.wrapper,
+    ltx2MlxDimensionsRow,
+    ltx2MlxTimingRow,
+    makeField("Seed", ltx2MlxSeed),
+    makeField("CFG scale (t2v/i2v)", ltx2MlxCfgScale),
+    ltx2MlxMatchAudioLength.wrapper,
+    ltx2MlxSceneVideoButton,
+  );
+
+  function syncLtx2MlxPanelFromState() {
+    const settings = cloneLtx2MlxSettings(state.ltx2MlxSettings);
+    ltx2MlxModeSelect.value = settings.mode;
+    ltx2MlxModelSelect.value = settings.model_dir;
+    ltx2MlxPipelineSelect.value = settings.pipeline_type;
+    ltx2MlxLowRam.input.checked = Boolean(settings.low_ram);
+    ltx2MlxHeight.value = String(settings.height);
+    ltx2MlxWidth.value = String(settings.width);
+    ltx2MlxNumFrames.value = String(settings.num_frames);
+    ltx2MlxFrameRate.value = String(settings.frame_rate);
+    ltx2MlxSeed.value = String(settings.seed);
+    ltx2MlxCfgScale.value = String(settings.cfg_scale);
+    ltx2MlxMatchAudioLength.input.checked = Boolean(settings.match_audio_length);
+  }
+  syncLtx2MlxPanelFromState();
+
+  function updateLtx2MlxSetting(key, value) {
+    state.ltx2MlxSettings = cloneLtx2MlxSettings({ ...state.ltx2MlxSettings, [key]: value });
+    autoSaveSessionQuiet("LTX-2 MLX project settings changed").catch(() => null);
+  }
+  ltx2MlxModeSelect.addEventListener("change", () => updateLtx2MlxSetting("mode", ltx2MlxModeSelect.value));
+  ltx2MlxModelSelect.addEventListener("change", () => updateLtx2MlxSetting("model_dir", ltx2MlxModelSelect.value));
+  ltx2MlxPipelineSelect.addEventListener("change", () => updateLtx2MlxSetting("pipeline_type", ltx2MlxPipelineSelect.value));
+  ltx2MlxLowRam.input.addEventListener("change", () => updateLtx2MlxSetting("low_ram", ltx2MlxLowRam.input.checked));
+  ltx2MlxHeight.addEventListener("change", () => updateLtx2MlxSetting("height", Number(ltx2MlxHeight.value) || DEFAULT_LTX2MLX_SETTINGS.height));
+  ltx2MlxWidth.addEventListener("change", () => updateLtx2MlxSetting("width", Number(ltx2MlxWidth.value) || DEFAULT_LTX2MLX_SETTINGS.width));
+  ltx2MlxNumFrames.addEventListener("change", () => updateLtx2MlxSetting("num_frames", Number(ltx2MlxNumFrames.value) || DEFAULT_LTX2MLX_SETTINGS.num_frames));
+  ltx2MlxFrameRate.addEventListener("change", () => updateLtx2MlxSetting("frame_rate", Number(ltx2MlxFrameRate.value) || DEFAULT_LTX2MLX_SETTINGS.frame_rate));
+  ltx2MlxSeed.addEventListener("change", () => updateLtx2MlxSetting("seed", Number(ltx2MlxSeed.value) || 0));
+  ltx2MlxCfgScale.addEventListener("change", () => updateLtx2MlxSetting("cfg_scale", Number(ltx2MlxCfgScale.value) || DEFAULT_LTX2MLX_SETTINGS.cfg_scale));
+  ltx2MlxMatchAudioLength.input.addEventListener("change", () => updateLtx2MlxSetting("match_audio_length", ltx2MlxMatchAudioLength.input.checked));
+
+  videoPanel.append(ltxVideoPanel, miniMaxEnginePanel, ltx2MlxEnginePanel);
   audioPanel.append(
     makeSettingsSection("Scene Audio", [
       audioSummary,
@@ -6579,6 +6701,7 @@ function openBuilder(node) {
     videoType: "singing",
     projectVideoEngine: "ltx",
     miniMaxH3Settings: cloneMiniMaxH3Settings(),
+    ltx2MlxSettings: cloneLtx2MlxSettings(),
     imageModelMode: "zimage",
     zimageSettings: defaultZImageSettings(),
     referenceKrea2Settings: { ...DEFAULT_KREA2_REFERENCE_SETTINGS },
@@ -6628,19 +6751,41 @@ function openBuilder(node) {
     batchCancelled: false,
   };
 
+  let ltx2MlxCapabilityChecked = false;
+
+  function checkLtx2MlxCapabilityOnce() {
+    if (ltx2MlxCapabilityChecked) return;
+    ltx2MlxCapabilityChecked = true;
+    getJson("/vrgdg/workflow_runner/ltx2mlx_capability")
+      .then((result) => {
+        if (result && result.available === false) {
+          ltx2MlxUnavailableNote.textContent = result.reason || "LTX-2 MLX is not available on this machine.";
+          ltx2MlxUnavailableNote.style.display = "block";
+        }
+      })
+      .catch(() => {});
+  }
+
   function syncProjectVideoEngineUI() {
-    const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
-    projectVideoEngineBadge.dataset.engine = miniMaxProject ? "minimax_h3" : "ltx";
-    projectVideoEngineBadge.textContent = miniMaxProject ? "◈ MiniMax" : "◈ LTX";
+    const engine = normalizeProjectVideoEngine(state.projectVideoEngine);
+    const miniMaxProject = engine === "minimax_h3";
+    const ltx2MlxProject = engine === "ltx2mlx";
+    projectVideoEngineBadge.dataset.engine = engine;
+    projectVideoEngineBadge.textContent = miniMaxProject ? "◈ MiniMax" : ltx2MlxProject ? "◈ LTX-2 MLX" : "◈ LTX";
     projectVideoEngineBadge.title = miniMaxProject
       ? "Project video engine: MiniMax H3"
+      : ltx2MlxProject
+      ? "Project video engine: LTX-2 MLX (Apple Silicon)"
       : "Project video engine: LTX";
-    projectVideoEngineBadge.style.background = miniMaxProject ? "#083344" : "#172554";
-    projectVideoEngineBadge.style.borderColor = miniMaxProject ? "#22d3ee" : "#60a5fa";
-    projectVideoEngineBadge.style.color = miniMaxProject ? "#a5f3fc" : "#bfdbfe";
-    ltxVideoPanel.style.display = miniMaxProject ? "none" : "flex";
+    projectVideoEngineBadge.style.background = miniMaxProject ? "#083344" : ltx2MlxProject ? "#1e1b4b" : "#172554";
+    projectVideoEngineBadge.style.borderColor = miniMaxProject ? "#22d3ee" : ltx2MlxProject ? "#818cf8" : "#60a5fa";
+    projectVideoEngineBadge.style.color = miniMaxProject ? "#a5f3fc" : ltx2MlxProject ? "#c7d2fe" : "#bfdbfe";
+    ltxVideoPanel.style.display = (miniMaxProject || ltx2MlxProject) ? "none" : "flex";
     miniMaxEnginePanel.style.display = miniMaxProject ? "flex" : "none";
+    ltx2MlxEnginePanel.style.display = ltx2MlxProject ? "flex" : "none";
+    if (ltx2MlxProject) checkLtx2MlxCapabilityOnce();
     syncMiniMaxH3Panel();
+    syncLtx2MlxPanelFromState();
   }
 
   function miniMaxH3SettingsForSegment(segment = activeSegment()) {
@@ -7549,6 +7694,9 @@ function openBuilder(node) {
       row.useAudio.input.checked = Boolean(item.use_audio);
     });
     miniMaxSceneVideoButton.disabled = !miniMaxProject || !segment;
+    if (ltx2MlxSceneVideoButton) {
+      ltx2MlxSceneVideoButton.disabled = normalizeProjectVideoEngine(state.projectVideoEngine) !== "ltx2mlx" || !segment;
+    }
     syncMiniMaxReferenceButtons();
     renderMiniMaxSpeakerAssignmentPanel();
     syncTimelineTrimModeButton();
@@ -14631,7 +14779,7 @@ function openBuilder(node) {
     lyricSingersInput.dataset.vrgdgInspectorSegmentId = String(segment?.id || "");
     lyricSingersInput.dataset.vrgdgUserEdited = "0";
     const disabled = !segment;
-    for (const control of [labelInput, startInput, endInput, notesInput, ernieNotesInput, krea2TwoPassNotesInput, nbNotes, lyricTextInput, lyricSingersInput, i2vNotesInput, t2iPrompt, ernieT2IPrompt, krea2TwoPassT2IPrompt, nbPrompt, i2vPrompt, zEnhanceGemmaNotes, zEnhancePromptPreview, previewButton, ernieCreateButton, previewNBButton, deleteSegmentButton, createSceneVideoButton, miniMaxSceneVideoButtons[0]]) {
+    for (const control of [labelInput, startInput, endInput, notesInput, ernieNotesInput, krea2TwoPassNotesInput, nbNotes, lyricTextInput, lyricSingersInput, i2vNotesInput, t2iPrompt, ernieT2IPrompt, krea2TwoPassT2IPrompt, nbPrompt, i2vPrompt, zEnhanceGemmaNotes, zEnhancePromptPreview, previewButton, ernieCreateButton, previewNBButton, deleteSegmentButton, createSceneVideoButton, miniMaxSceneVideoButtons[0], ltx2MlxSceneVideoButtons[0]]) {
       control.disabled = disabled;
     }
     loadCustomImageButton.disabled = disabled;
@@ -33856,9 +34004,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const projectVideoEngineSelect = makeSelect([
       { value: "ltx", label: "LTX (current Builder)" },
       { value: "minimax_h3", label: "MiniMax H3" },
+      { value: "ltx2mlx", label: "LTX-2 MLX (Apple Silicon)" },
     ], normalizeProjectVideoEngine(state.projectVideoEngine));
     const projectVideoEngineNote = document.createElement("div");
-    projectVideoEngineNote.textContent = "This choice belongs to the whole project. LTX projects keep the existing scene renderer unchanged. MiniMax H3 projects use the separate MiniMax scene action and exact-timeline adapter.";
+    projectVideoEngineNote.textContent = "This choice belongs to the whole project. LTX projects keep the existing scene renderer unchanged. MiniMax H3 projects use the separate MiniMax scene action and exact-timeline adapter. LTX-2 MLX runs LTX-2.3 natively via MLX on Apple Silicon Macs only.";
     projectVideoEngineNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
     const projectVideoEnginePanel = makeSettingsSection("Project Video Engine", [
       makeField("Video engine for this project", projectVideoEngineSelect),
@@ -34606,6 +34755,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       video_type: normalizeVideoType(state.videoType),
       video_engine: normalizeProjectVideoEngine(state.projectVideoEngine),
       minimax_h3_settings: cloneMiniMaxH3Settings(state.miniMaxH3Settings),
+      ltx2mlx_settings: cloneLtx2MlxSettings(state.ltx2MlxSettings),
       image_model_mode: state.imageModelMode,
       zimage_settings: state.zimageSettings,
       reference_krea2_settings: cloneKrea2ReferenceSettings(state.referenceKrea2Settings),
@@ -34870,6 +35020,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         state.videoType = normalizeVideoType(data.session.video_type || data.session.videoType || state.videoType);
         state.projectVideoEngine = normalizeProjectVideoEngine(data.session.video_engine ?? state.projectVideoEngine);
         state.miniMaxH3Settings = cloneMiniMaxH3Settings(data.session.minimax_h3_settings || state.miniMaxH3Settings);
+        state.ltx2MlxSettings = cloneLtx2MlxSettings(data.session.ltx2mlx_settings || state.ltx2MlxSettings);
         state.imageModelMode = data.session.image_model_mode || data.session.flux_klein_settings?.image_model_mode || state.imageModelMode || "zimage";
         state.pxPerSecond = state.timelineZoom;
         waveformModeSelect.value = state.waveformMode;
@@ -35204,6 +35355,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.videoType = normalizeVideoType(session.video_type || session.videoType || state.videoType);
       state.projectVideoEngine = normalizeProjectVideoEngine(session.video_engine);
       state.miniMaxH3Settings = cloneMiniMaxH3Settings(session.minimax_h3_settings || {});
+      state.ltx2MlxSettings = cloneLtx2MlxSettings(session.ltx2mlx_settings || {});
       state.imageModelMode = session.image_model_mode || session.flux_klein_settings?.image_model_mode || state.imageModelMode || "zimage";
       state.pxPerSecond = state.timelineZoom;
       waveformModeSelect.value = state.waveformMode;
@@ -42381,6 +42533,23 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       });
       return missing;
     }
+    const ltx2MlxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "ltx2mlx";
+    if (ltx2MlxProject) {
+      const settings = cloneLtx2MlxSettings(state.ltx2MlxSettings);
+      if (!String(projectInput.value || state.projectFolder || "").trim()) missing.push("Project folder is missing.");
+      scenesToRender.forEach(({ segment, index }) => {
+        if (!String(segment?.ltx2mlx_prompt || segment?.i2v_prompt || segment?.t2v_prompt || "").trim()) {
+          missing.push(`${sceneDisplayName(segment, index)}: LTX-2 MLX needs a prompt.`);
+        }
+        if (settings.mode === "a2v" && !String(segment.custom_audio_path || currentProjectAudioPath() || audioInput.value || "").trim()) {
+          missing.push(`${sceneDisplayName(segment, index)}: LTX-2 MLX Song Mode needs project audio or custom scene audio.`);
+        }
+        if (settings.mode === "i2v" && !String(selectedSegmentImagePath(segment) || "").trim()) {
+          missing.push(`${sceneDisplayName(segment, index)}: LTX-2 MLX Image to Video needs a selected scene image.`);
+        }
+      });
+      return missing;
+    }
     const idLoraMode = currentVideoMode() === "id_lora";
     const embeddedSceneAudioMode = currentVideoMode() === "id_lora" || !!options.useEmbeddedSceneAudio;
     const sceneAudioMode = !embeddedSceneAudioMode && usingSceneAudioMode();
@@ -43214,6 +43383,155 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
   }
 
+  async function renderLtx2MlxSceneVideoWithProgress(segment, sceneIndex, progress, options = {}) {
+    const progressBase = Number(options.progressBase ?? 0);
+    const progressSpan = Number(options.progressSpan ?? 100);
+    const batchLabel = options.batchLabel ? `${options.batchLabel}\n` : "";
+    const pct = (value) => Math.min(100, progressBase + (progressSpan * value / 100));
+    const slotNumber = sceneSlotNumber(segment);
+    const projectFolder = String(projectInput.value || "").trim();
+    if (!projectFolder) throw new Error("Save or select a project folder before rendering LTX-2 MLX.");
+    const settings = cloneLtx2MlxSettings(state.ltx2MlxSettings);
+    const mode = String(options.mode || settings.mode || "a2v").trim().toLowerCase();
+
+    try {
+      const prompt = String(
+        options.prompt
+        ?? (segment?.ltx2mlx_prompt || segment?.i2v_prompt || segment?.t2v_prompt || "")
+      ).trim();
+      if (!prompt) throw new Error(`${sceneDisplayName(segment, sceneIndex)} needs a prompt for LTX-2 MLX.`);
+
+      const payload = {
+        ltx2mlx_mode: mode,
+        prompt,
+        project_folder: projectFolder,
+        scene_number: slotNumber,
+        model_dir: settings.model_dir,
+        pipeline_type: settings.pipeline_type,
+        low_ram: settings.low_ram,
+        height: settings.height,
+        width: settings.width,
+        frame_rate: settings.frame_rate,
+        seed: settings.seed,
+        cfg_scale: settings.cfg_scale,
+        num_frames: settings.num_frames,
+        match_audio_length: settings.match_audio_length,
+      };
+
+      if (mode === "i2v") {
+        const selectedImage = String(selectedSegmentImagePath(segment) || "").trim();
+        if (!selectedImage) throw new Error(`${sceneDisplayName(segment, sceneIndex)} needs a selected scene image for LTX-2 MLX Image to Video.`);
+        payload.image_path = selectedImage;
+      }
+
+      if (mode === "a2v") {
+        const timelineStart = Number(segment?.start);
+        const timelineEnd = Number(segment?.end);
+        const sceneDuration = timelineEnd - timelineStart;
+        if (!Number.isFinite(timelineStart) || !Number.isFinite(timelineEnd) || sceneDuration <= 0) {
+          throw new Error(`${sceneDisplayName(segment, sceneIndex)} has invalid timeline boundaries.`);
+        }
+        const sourceAudioPath = String(
+          options.audioPath
+          ?? (segment?.custom_audio_path || currentProjectAudioPath() || audioInput.value || "")
+        ).trim();
+        if (!sourceAudioPath) throw new Error(`${sceneDisplayName(segment, sceneIndex)} needs source audio for LTX-2 MLX Song Mode.`);
+        const sourceStartSeconds = Number(
+          options.sourceStartSeconds
+          ?? (segment?.custom_audio_path ? audioSourceStart(segment) : timelineStart)
+        );
+
+        progress?.set(`${batchLabel}Trimming scene audio for LTX-2 MLX...`, pct(5));
+        const trimmedAudio = await postJson("/vrgdg/workflow_runner/trim_scene_audio", {
+          source_path: sourceAudioPath,
+          project_folder: projectFolder,
+          scene_number: slotNumber,
+          start_seconds: Number.isFinite(sourceStartSeconds) ? sourceStartSeconds : 0,
+          duration_seconds: sceneDuration,
+          subdir: "ltx2mlx_scene_audio",
+        }, 120000);
+        payload.audio_path = String(trimmedAudio.audio_path || "").trim();
+        if (!payload.audio_path) throw new Error("LTX-2 MLX audio trimming did not return an audio path.");
+
+        const selectedImage = String(selectedSegmentImagePath(segment) || "").trim();
+        if (selectedImage) payload.image_path = selectedImage;
+      }
+
+      progress?.set(`${batchLabel}Building LTX-2 MLX workflow...`, pct(15));
+      const built = await postJson("/vrgdg/workflow_runner/build_ltx2mlx_prompt", payload, 60000);
+
+      progress?.set(`${batchLabel}Queueing LTX-2 MLX render (this can take a while on first load)...`, pct(25));
+      const queued = await queueWorkflowPrompt(built.prompt);
+      const promptId = queued?.prompt_id;
+      if (!promptId) throw new Error("ComfyUI queued LTX-2 MLX but did not return a prompt_id.");
+      const videos = await waitForVideos(
+        promptId,
+        (message) => progress?.set(`${batchLabel}${message}\nPrompt ID: ${promptId}`, pct(70)),
+        () => state.batchCancelled,
+        (findOptions) => postJson("/vrgdg/workflow_runner/find_scene_video_output", findOptions, 60000).catch(() => null),
+        {
+          timeoutMessage: () => sceneVideoTimeoutMessage({
+            promptId,
+            sceneLabel: sceneDisplayName(segment, sceneIndex),
+            modeLabel: "LTX-2 MLX",
+            outputFolder: built.output_folder || "",
+            projectFolder,
+            finalFolder: collectedSceneVideoFolder(),
+          }),
+        },
+      );
+      const video = videos[videos.length - 1] || null;
+      const renderedVideoPath = resolveComfyVideoPath(video);
+      if (!renderedVideoPath) {
+        throw new Error("LTX-2 MLX finished, but no video path was found in history.");
+      }
+
+      progress?.set(`${batchLabel}Collecting LTX-2 MLX scene video...`, pct(92));
+      const collected = await postJson("/vrgdg/workflow_runner/collect_scene_video", {
+        source_path: renderedVideoPath,
+        project_folder: projectFolder,
+        scene_number: slotNumber,
+        existing_action: options.existingVideoAction || "overwrite",
+      }, 120000);
+
+      pushHistory();
+      if (collected.backup_path) {
+        if (!Array.isArray(segment.video_backup_paths)) segment.video_backup_paths = [];
+        if (!segment.video_backup_paths.some((item) => mediaPathKey(item) === mediaPathKey(collected.backup_path))) {
+          segment.video_backup_paths.push(collected.backup_path);
+        }
+      }
+      if (collected.backup_thumbnail_path) {
+        if (!Array.isArray(segment.video_backup_thumbnail_paths)) segment.video_backup_thumbnail_paths = [];
+        if (!segment.video_backup_thumbnail_paths.some((item) => mediaPathKey(item) === mediaPathKey(collected.backup_thumbnail_path))) {
+          segment.video_backup_thumbnail_paths.push(collected.backup_thumbnail_path);
+        }
+      }
+      segment.video_output = video;
+      segment.video_source_path = renderedVideoPath;
+      activateSegmentVideoPath(
+        segment,
+        collected.video_path || renderedVideoPath,
+        collected.thumbnail_path || "",
+      );
+      segment.video_cache_bust = Date.now();
+      segment.video_folder = collected.video_folder || collectedSceneVideoFolder();
+      segment.preview_mode = "video";
+      segment.video_status = "done";
+      syncPreview(segment);
+      render();
+      if (options.autoSaveAfter !== false) {
+        await autoSaveSessionQuiet(options.autoSaveReason || "LTX-2 MLX scene video complete");
+      }
+      progress?.set(`${batchLabel}LTX-2 MLX scene ready.\n${segment.video_path}`, pct(100));
+      return segment.video_path;
+    } catch (error) {
+      segment.video_status = "error";
+      renderList();
+      throw error;
+    }
+  }
+
   async function stitchRenderedScenes(progress, options = {}) {
     const baseSegments = Array.isArray(options.segments) && options.segments.length ? options.segments : state.segments;
     const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
@@ -43475,6 +43793,54 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
   }
 
+  async function createLtx2MlxSceneVideo() {
+    if (normalizeProjectVideoEngine(state.projectVideoEngine) !== "ltx2mlx") {
+      toast("Set this project's Video Engine to LTX-2 MLX in Builder Settings first.", true);
+      return;
+    }
+    const segment = requireActiveSegment();
+    if (!segment) return;
+    updateActiveFromInputs();
+    const info = segmentIndexInfo(segment);
+    const sceneIndex = info.index;
+    if (sceneIndex < 0) return;
+
+    const settings = cloneLtx2MlxSettings(state.ltx2MlxSettings);
+    const missing = [];
+    if (!String(projectInput.value || state.projectFolder || "").trim()) missing.push("Project folder is missing.");
+    if (!String(segment?.ltx2mlx_prompt || segment?.i2v_prompt || segment?.t2v_prompt || "").trim()) {
+      missing.push("This scene needs a prompt for LTX-2 MLX.");
+    }
+    if (settings.mode === "a2v" && !String(segment?.custom_audio_path || currentProjectAudioPath() || audioInput.value || "").trim()) {
+      missing.push("Load global audio or add custom audio for this scene.");
+    }
+    if (settings.mode === "i2v" && !String(selectedSegmentImagePath(segment) || "").trim()) {
+      missing.push("This scene needs a selected timeline image for Image to Video.");
+    }
+    if (missing.length) {
+      toast(missing.join("\n"), true);
+      return;
+    }
+
+    let progress = null;
+    try {
+      state.batchCancelled = false;
+      setButtonGroupState(ltx2MlxSceneVideoButtons, { disabled: true, text: "Creating LTX-2 MLX..." });
+      progress = createProgressWindow("Creating LTX-2 MLX scene video");
+      const videoPath = await renderLtx2MlxSceneVideoWithProgress(segment, sceneIndex, progress, {});
+      progress.close(900);
+      toast(`LTX-2 MLX scene video ready:\n${videoPath}`);
+    } catch (error) {
+      const stopped = /stopped by user/i.test(String(error?.message || error));
+      segment.video_status = stopped ? "none" : "error";
+      progress?.set(stopped ? "LTX-2 MLX scene video creation stopped by user." : `Error:\n${String(error?.message || error)}`, 100);
+      toast(stopped ? "LTX-2 MLX scene video creation stopped." : String(error?.message || error), !stopped);
+      renderList();
+    } finally {
+      setButtonGroupState(ltx2MlxSceneVideoButtons, { disabled: false, text: "Create LTX-2 MLX Scene Video" });
+    }
+  }
+
   function overlaySegmentsForPreviewRange(startTime, endTime) {
     return state.overlaySegments
       .filter((segment) => String(selectedSegmentVideoPath(segment) || "").trim())
@@ -43709,6 +44075,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     updateActiveFromInputs();
     saveI2VVideoSettingsFromPanel();
     const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
+    const ltx2MlxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "ltx2mlx";
     if (miniMaxProject) saveMiniMaxH3SettingsFromPanel();
     const forceVideos = Boolean(options.forceVideos);
     const randomizeVideoSeed = Boolean(options.randomizeVideoSeed);
@@ -43751,8 +44118,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       mode_label: modeLabel,
       scene_scope: sceneScope,
       project_folder: String(state.projectFolder || projectInput.value || ""),
-      video_engine: miniMaxProject ? "minimax_h3" : "ltx",
-      video_mode: miniMaxProject ? state.miniMaxH3Settings.video_mode : currentVideoMode(),
+      video_engine: miniMaxProject ? "minimax_h3" : ltx2MlxProject ? "ltx2mlx" : "ltx",
+      video_mode: miniMaxProject ? state.miniMaxH3Settings.video_mode : ltx2MlxProject ? state.ltx2MlxSettings.mode : currentVideoMode(),
       force_videos: forceVideos,
       randomize_video_seed: randomizeVideoSeed,
       skip_final_stitch: skipFinalStitch,
@@ -43774,6 +44141,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       renderAllButton.textContent = "Rendering...";
       setButtonGroupState(createSceneVideoButtons, { disabled: true });
       setButtonGroupState(miniMaxSceneVideoButtons, { disabled: true });
+      setButtonGroupState(ltx2MlxSceneVideoButtons, { disabled: true });
       setButtonGroupState(gemmaThenCreateVideoButtons, { disabled: true });
       await persistRenderLog(renderLog);
       progress.set(`Autosaving session/SRT before ${sceneScope === "selected" ? "Render Selected" : sceneScope === "from_selected" ? "Render From Selected" : "Render All"}...`, 3);
@@ -43822,7 +44190,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           scene_number: sceneSlotNumber(segment),
           timeline_index: sceneIndex,
           label: sceneLabel,
-          video_mode: miniMaxProject ? miniMaxH3ModeForSegment(segment) : currentVideoMode(),
+          video_mode: miniMaxProject ? miniMaxH3ModeForSegment(segment) : ltx2MlxProject ? state.ltx2MlxSettings.mode : currentVideoMode(),
           status: "running",
           phase: "preparation",
           started_at: new Date(sceneStartedMs).toISOString(),
@@ -43911,6 +44279,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         };
         const renderedVideoPath = miniMaxProject
           ? await renderMiniMaxSceneVideoWithProgress(segment, sceneIndex, progress, sharedRenderOptions)
+          : ltx2MlxProject
+          ? await renderLtx2MlxSceneVideoWithProgress(segment, sceneIndex, progress, sharedRenderOptions)
           : await renderSceneVideoWithProgress(segment, sceneIndex, progress, {
             ...sharedRenderOptions,
             audioPathOverride: skipFinalStitch || segmentTrack(segment) === "overlay" ? "" : preparedAudio.audioPath,
@@ -44028,6 +44398,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       renderAllButton.textContent = "Render All";
       setButtonGroupState(createSceneVideoButtons, { disabled: false, text: "Create Scene Video" });
       setButtonGroupState(miniMaxSceneVideoButtons, { disabled: false, text: "Create MiniMax H3 Scene Video" });
+      setButtonGroupState(ltx2MlxSceneVideoButtons, { disabled: false, text: "Create LTX-2 MLX Scene Video" });
       setButtonGroupState(gemmaThenCreateVideoButtons, { disabled: false });
       state.batchCancelled = false;
       syncInspector();
@@ -52632,6 +53003,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   editFlowGptT2IInstructionsButton.onclick = () => openBuilderInstructionEditor("flow_gpt_t2i");
   for (const button of createSceneVideoButtons) button.onclick = createSceneVideo;
   for (const button of miniMaxSceneVideoButtons) button.onclick = createMiniMaxSceneVideo;
+  for (const button of ltx2MlxSceneVideoButtons) button.onclick = createLtx2MlxSceneVideo;
   for (const button of miniMaxReferenceButtons) button.onclick = openMiniMaxReferenceSelector;
   for (const button of gemmaThenCreateVideoButtons) button.onclick = runGemmaThenCreateSceneVideo;
   loadCustomImageButton.onclick = loadCustomImage;

@@ -4,6 +4,7 @@ import hashlib
 import importlib
 import json
 import os
+import platform
 import random
 import re
 import shutil
@@ -196,6 +197,24 @@ def _flf_api_template_path():
     return os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
         "Workflows", "UsedForUIDoNotTouch", "LTX2.3_FLF_API.json",
+    )
+
+
+def _ltx2mlx_t2v_i2v_api_template_path():
+    return os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "Workflows",
+        "UsedForUIDoNotTouch",
+        "ltx2mlx_t2v_i2v_API.json",
+    )
+
+
+def _ltx2mlx_a2v_api_template_path():
+    return os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "Workflows",
+        "UsedForUIDoNotTouch",
+        "ltx2mlx_a2v_API.json",
     )
 
 
@@ -3101,6 +3120,192 @@ def _build_id_lora_api_prompt(payload):
     }
 
 
+def _trim_scene_audio_clip(source_path, project_folder, scene_number, start_seconds, duration_seconds, subdir):
+    target_dir = os.path.join(project_folder, subdir)
+    os.makedirs(target_dir, exist_ok=True)
+    target_path = os.path.join(target_dir, f"scene_audio_{scene_number:04d}.wav")
+    ffmpeg_path = _find_ffmpeg_path()
+    cmd = [
+        ffmpeg_path,
+        "-y",
+        "-ss",
+        f"{start_seconds:.9f}",
+        "-i",
+        source_path,
+        "-t",
+        f"{duration_seconds:.9f}",
+        "-vn",
+        "-ac",
+        "2",
+        "-ar",
+        "44100",
+        "-c:a",
+        "pcm_s16le",
+        target_path,
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
+    if result.returncode != 0 or not os.path.isfile(target_path):
+        raise RuntimeError((result.stderr or result.stdout or "FFmpeg failed to trim scene audio.").strip())
+    try:
+        with wave.open(target_path, "rb") as handle:
+            actual_duration = handle.getnframes() / float(handle.getframerate())
+    except Exception as exc:
+        raise RuntimeError(f"Could not verify the trimmed scene audio: {target_path}") from exc
+    return {"audio_path": target_path, "start": start_seconds, "duration": actual_duration}
+
+
+def _require_ltx2mlx_available():
+    if sys.platform != "darwin" or platform.machine() != "arm64":
+        raise RuntimeError(
+            "LTX-2 MLX only runs on Apple Silicon Macs (macOS + arm64). "
+            "Use the LTX or MiniMax H3 engine on this machine instead."
+        )
+    try:
+        import nodes as comfy_nodes
+        mappings = getattr(comfy_nodes, "NODE_CLASS_MAPPINGS", {}) or {}
+    except Exception as exc:
+        raise RuntimeError(
+            "LTX-2 MLX could not inspect ComfyUI custom-node registrations."
+        ) from exc
+    required_nodes = (
+        "LTX2MLXModelLoader",
+        "LTX2MLXAudioModelLoader",
+        "LTX2MLXGenerate",
+        "LTX2MLXAudioToVideo",
+    )
+    missing = [name for name in required_nodes if name not in mappings]
+    if missing:
+        raise RuntimeError(
+            "LTX-2 MLX is selected, but the required custom nodes are not registered: "
+            + ", ".join(missing)
+            + ". Install or update comfyui-ltx2-mlx, then restart ComfyUI."
+        )
+
+
+def _patch_ltx2mlx_t2v_i2v_api_prompt(prompt, payload):
+    prompt = copy.deepcopy(prompt)
+    prompt_text = str(
+        payload.get("prompt")
+        or payload.get("i2v_prompt")
+        or payload.get("t2v_prompt")
+        or ""
+    ).strip()
+    if not prompt_text:
+        raise ValueError("LTX-2 MLX prompt is empty.")
+
+    project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
+    if not project_folder:
+        raise ValueError("Project folder is empty.")
+    output_folder = _scene_render_output_folder(project_folder, "ltx2mlx_clips", payload)
+
+    ltx2mlx_mode = str(payload.get("ltx2mlx_mode", "t2v") or "t2v").strip().lower()
+    if ltx2mlx_mode not in {"t2v", "i2v"}:
+        ltx2mlx_mode = "t2v"
+
+    image_path = os.path.abspath(str(payload.get("image_path", "") or "").strip().strip('"'))
+    if ltx2mlx_mode == "i2v":
+        if not image_path or not os.path.isfile(image_path):
+            raise FileNotFoundError(f"LTX-2 MLX I2V image was not found: {image_path}")
+
+    _set_api_input(prompt, "1", "model_dir", str(payload.get("model_dir") or "dgrauet/ltx-2.3-mlx-q8"))
+    _set_api_input(prompt, "1", "pipeline_type", str(payload.get("pipeline_type") or "two_stage"))
+    _set_api_input(prompt, "1", "low_ram", _bool_payload(payload, "low_ram", False))
+    _set_api_input(prompt, "1", "custom_model_dir", str(payload.get("custom_model_dir", "") or ""))
+
+    _set_api_input(prompt, "3", "prompt", prompt_text)
+    _set_api_input(prompt, "3", "height", _int_payload(payload, "height", 480, 64, 2160))
+    _set_api_input(prompt, "3", "width", _int_payload(payload, "width", 704, 64, 3840))
+    _set_api_input(prompt, "3", "num_frames", _int_payload(payload, "num_frames", 97, 9, 257))
+    _set_api_input(prompt, "3", "seed", _int_payload(payload, "seed", 0, 0, 0xFFFFFFFF))
+    _set_api_input(prompt, "3", "cfg_scale", _float_payload(payload, "cfg_scale", 3.0, 0.0, 20.0))
+    _set_api_input(prompt, "3", "frame_rate", _float_payload(payload, "frame_rate", 24.0, 1.0, 60.0))
+
+    scene_number = _int_payload(payload, "scene_number", 0, 0, 999999)
+    filename_prefix = f"ltx2mlx/scene_{scene_number:04d}" if scene_number > 0 else "ltx2mlx/video"
+    _set_api_input(prompt, "3", "filename_prefix", filename_prefix)
+
+    if ltx2mlx_mode == "i2v":
+        _set_api_input(prompt, "2", "image", image_path)
+        _set_api_input(prompt, "3", "image", ["2", 0])
+    else:
+        prompt.pop("2", None)
+        prompt.get("3", {}).get("inputs", {}).pop("image", None)
+
+    return prompt, output_folder
+
+
+def _patch_ltx2mlx_a2v_api_prompt(prompt, payload):
+    prompt = copy.deepcopy(prompt)
+    prompt_text = str(
+        payload.get("prompt")
+        or payload.get("a2v_prompt")
+        or payload.get("i2v_prompt")
+        or ""
+    ).strip()
+    if not prompt_text:
+        raise ValueError("LTX-2 MLX prompt is empty.")
+
+    audio_path = os.path.abspath(str(payload.get("audio_path", "") or "").strip().strip('"'))
+    if not os.path.isfile(audio_path):
+        raise FileNotFoundError(f"LTX-2 MLX audio file was not found: {audio_path}")
+
+    project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
+    if not project_folder:
+        raise ValueError("Project folder is empty.")
+    output_folder = _scene_render_output_folder(project_folder, "ltx2mlx_a2v_clips", payload)
+
+    image_path = os.path.abspath(str(payload.get("image_path", "") or "").strip().strip('"'))
+    has_image = bool(image_path) and os.path.isfile(image_path)
+
+    _set_api_input(prompt, "1", "model_dir", str(payload.get("model_dir") or "dgrauet/ltx-2.3-mlx-q8"))
+    _set_api_input(prompt, "1", "low_ram", _bool_payload(payload, "low_ram", False))
+    _set_api_input(prompt, "1", "custom_model_dir", str(payload.get("custom_model_dir", "") or ""))
+
+    _set_api_input(prompt, "2", "audio_file", audio_path)
+    _set_api_input(prompt, "2", "seek_seconds", _float_payload(payload, "audio_seek_seconds", 0.0, 0.0, 1e9))
+    _set_api_input(prompt, "2", "duration", _float_payload(payload, "audio_duration_seconds", 0.0, 0.0, 1e9))
+
+    _set_api_input(prompt, "4", "prompt", prompt_text)
+    _set_api_input(prompt, "4", "height", _int_payload(payload, "height", 480, 64, 2160))
+    _set_api_input(prompt, "4", "width", _int_payload(payload, "width", 704, 64, 3840))
+    _set_api_input(prompt, "4", "frame_rate", _int_payload(payload, "frame_rate", 24, 1, 60))
+    _set_api_input(prompt, "4", "match_audio_length", _bool_payload(payload, "match_audio_length", True))
+    _set_api_input(prompt, "4", "num_frames", _int_payload(payload, "num_frames", 97, 9, 257))
+    _set_api_input(prompt, "4", "seed", _int_payload(payload, "seed", 0, 0, 0xFFFFFFFF))
+
+    scene_number = _int_payload(payload, "scene_number", 0, 0, 999999)
+    filename_prefix = f"ltx2mlx/a2v_scene_{scene_number:04d}" if scene_number > 0 else "ltx2mlx/a2v"
+    _set_api_input(prompt, "4", "filename_prefix", filename_prefix)
+
+    if has_image:
+        _set_api_input(prompt, "3", "image", image_path)
+        _set_api_input(prompt, "4", "image", ["3", 0])
+    else:
+        prompt.pop("3", None)
+        prompt.get("4", {}).get("inputs", {}).pop("image", None)
+
+    return prompt, output_folder
+
+
+def _build_ltx2mlx_api_prompt(payload):
+    _require_ltx2mlx_available()
+
+    ltx2mlx_mode = str(payload.get("ltx2mlx_mode", "t2v") or "t2v").strip().lower()
+    if ltx2mlx_mode == "a2v":
+        workflow_path, prompt = _load_api_template(_ltx2mlx_a2v_api_template_path())
+        patched_prompt, output_folder = _patch_ltx2mlx_a2v_api_prompt(prompt, payload)
+    else:
+        workflow_path, prompt = _load_api_template(_ltx2mlx_t2v_i2v_api_template_path())
+        patched_prompt, output_folder = _patch_ltx2mlx_t2v_i2v_api_prompt(prompt, payload)
+
+    return {
+        "workflow_path": workflow_path,
+        "output_folder": output_folder,
+        "prompt": patched_prompt,
+        "ltx2mlx_mode": ltx2mlx_mode,
+    }
+
+
 def _build_flux_klein_api_prompt(payload):
     workflow_path, prompt = _load_api_template(_flux_klein_api_template_path())
     patched_prompt = _patch_flux_klein_api_prompt(prompt, payload)
@@ -4468,6 +4673,26 @@ def _ensure_workflow_runner_routes():
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
 
+    @server_instance.routes.post("/vrgdg/workflow_runner/build_ltx2mlx_prompt")
+    async def vrgdg_workflow_runner_build_ltx2mlx_prompt(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+        try:
+            result = _build_ltx2mlx_api_prompt(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.get("/vrgdg/workflow_runner/ltx2mlx_capability")
+    async def vrgdg_workflow_runner_ltx2mlx_capability(request):
+        try:
+            _require_ltx2mlx_available()
+        except Exception as exc:
+            return web.json_response({"ok": True, "available": False, "reason": str(exc)})
+        return web.json_response({"ok": True, "available": True})
+
     @server_instance.routes.post("/vrgdg/workflow_runner/build_rtv_prompt")
     async def vrgdg_workflow_runner_build_rtv_prompt(request):
         try:
@@ -4637,6 +4862,35 @@ def _ensure_workflow_runner_routes():
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
             result = _trim_scene_video(payload)
+        except subprocess.CalledProcessError as exc:
+            error = exc.stderr or exc.stdout or str(exc)
+            return web.json_response({"ok": False, "error": f"FFmpeg failed:\n{error}"}, status=400)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/workflow_runner/trim_scene_audio")
+    async def vrgdg_workflow_runner_trim_scene_audio(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+        try:
+            source_path = os.path.abspath(str(payload.get("source_path", "") or "").strip().strip('"'))
+            if not os.path.isfile(source_path):
+                raise FileNotFoundError(f"Source audio was not found: {source_path}")
+            project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
+            if not project_folder:
+                raise ValueError("Project folder is empty.")
+            scene_number = _int_payload(payload, "scene_number", 0, 0, 999999)
+            start_seconds = _float_payload(payload, "start_seconds", 0.0, 0.0, 1e9)
+            duration_seconds = _float_payload(payload, "duration_seconds", 0.0, 0.0, 1e9)
+            if duration_seconds <= 0:
+                raise ValueError("duration_seconds must be greater than zero.")
+            subdir = str(payload.get("subdir", "") or "ltx2mlx_scene_audio")
+            result = _trim_scene_audio_clip(
+                source_path, project_folder, scene_number, start_seconds, duration_seconds, subdir
+            )
         except subprocess.CalledProcessError as exc:
             error = exc.stderr or exc.stdout or str(exc)
             return web.json_response({"ok": False, "error": f"FFmpeg failed:\n{error}"}, status=400)

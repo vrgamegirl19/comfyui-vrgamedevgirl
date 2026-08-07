@@ -2278,7 +2278,10 @@ function normalizeStoryboardPerformanceMode(value = "") {
 }
 
 function normalizeStoryboardProjectVideoEngine(value = "") {
-  return String(value || "").trim().toLowerCase() === "minimax_h3" ? "minimax_h3" : "ltx";
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "minimax_h3") return "minimax_h3";
+  if (normalized === "ltx2mlx") return "ltx2mlx";
+  return "ltx";
 }
 
 function normalizeStoryboardMiniMaxH3Mode(value = "") {

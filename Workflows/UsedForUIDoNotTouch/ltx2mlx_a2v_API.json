@@ -1,0 +1,53 @@
+{
+    "1": {
+        "inputs": {
+            "model_dir": "dgrauet/ltx-2.3-mlx-q8",
+            "low_ram": false,
+            "custom_model_dir": ""
+        },
+        "class_type": "LTX2MLXAudioModelLoader",
+        "_meta": {
+            "title": "LTX-2 MLX Audio Model Loader (A2V)"
+        }
+    },
+    "2": {
+        "inputs": {
+            "audio_file": "",
+            "seek_seconds": 0,
+            "duration": 0
+        },
+        "class_type": "VHS_LoadAudio",
+        "_meta": {
+            "title": "Load Audio (Path)"
+        }
+    },
+    "3": {
+        "inputs": {
+            "image": "",
+            "custom_width": 0,
+            "custom_height": 0
+        },
+        "class_type": "VHS_LoadImagePath",
+        "_meta": {
+            "title": "Load Image (Path)"
+        }
+    },
+    "4": {
+        "inputs": {
+            "pipeline": ["1", 0],
+            "prompt": "",
+            "audio": ["2", 0],
+            "height": 480,
+            "width": 704,
+            "frame_rate": 24,
+            "match_audio_length": true,
+            "num_frames": 97,
+            "seed": 0,
+            "filename_prefix": "ltx2mlx/a2v"
+        },
+        "class_type": "LTX2MLXAudioToVideo",
+        "_meta": {
+            "title": "LTX-2 MLX Audio to Video (Song Mode)"
+        }
+    }
+}

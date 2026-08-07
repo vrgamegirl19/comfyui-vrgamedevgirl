@@ -190,6 +190,15 @@ def _clean_scene_text(value, limit=12000):
     return text.strip()[:limit]
 
 
+def _normalize_project_video_engine(value):
+    normalized = str(value or "").strip().lower()
+    if normalized == "minimax_h3":
+        return "minimax_h3"
+    if normalized == "ltx2mlx":
+        return "ltx2mlx"
+    return "ltx"
+
+
 def _selected_storyboard_scene(scene_bundle):
     scenes = scene_bundle.get("scenes")
     if not isinstance(scenes, list) or not scenes:
@@ -550,7 +559,7 @@ def _normalize_storyboard_scene(scene, fallback_number=1):
     video_prompt_type = _clean_scene_text(scene.get("video_prompt_type") or scene.get("video_type") or scene.get("mode") or "", 40)
     if video_prompt_type not in {"i2v", "id_lora", "t2v", "rtv", "ingredients"}:
         video_prompt_type = "i2v"
-    project_video_engine = "minimax_h3" if str(scene.get("project_video_engine") or scene.get("projectVideoEngine") or "").strip().lower() == "minimax_h3" else "ltx"
+    project_video_engine = _normalize_project_video_engine(scene.get("project_video_engine") or scene.get("projectVideoEngine"))
     minimax_h3_mode = str(scene.get("minimax_h3_mode") or scene.get("minimaxH3Mode") or "").strip().lower().replace("-", "_").replace(" ", "_")
     if minimax_h3_mode not in {"text_to_video", "image_to_video", "reference_to_video", "video_to_video"}:
         minimax_h3_mode = "text_to_video"
@@ -747,7 +756,7 @@ def _default_storyboard(payload):
         "created_at": datetime.now().isoformat(timespec="seconds"),
         "updated_at": datetime.now().isoformat(timespec="seconds"),
         "project_folder": os.path.abspath(str(payload.get("project_folder", "") or "")),
-        "project_video_engine": "minimax_h3" if str(payload.get("project_video_engine") or payload.get("projectVideoEngine") or "").strip().lower() == "minimax_h3" else "ltx",
+        "project_video_engine": _normalize_project_video_engine(payload.get("project_video_engine") or payload.get("projectVideoEngine")),
         "mode": "image_to_video_prep" if any(scene.get("image_path") or scene.get("image_data") for scene in normalized) else "storyboard_prompts",
         "performance_mode": _normalize_performance_mode(payload.get("performance_mode") or payload.get("performanceMode") or payload.get("video_type") or payload.get("videoType")),
         "short_film_planning_mode": _normalize_short_film_planning_mode(payload.get("short_film_planning_mode") or payload.get("shortFilmPlanningMode")),
@@ -810,7 +819,7 @@ def _save_storyboard(payload):
         "created_at": storyboard.get("created_at") or datetime.now().isoformat(timespec="seconds"),
         "updated_at": datetime.now().isoformat(timespec="seconds"),
         "project_folder": project_folder,
-        "project_video_engine": "minimax_h3" if str(storyboard.get("project_video_engine") or storyboard.get("projectVideoEngine") or "").strip().lower() == "minimax_h3" else "ltx",
+        "project_video_engine": _normalize_project_video_engine(storyboard.get("project_video_engine") or storyboard.get("projectVideoEngine")),
         "mode": storyboard.get("mode") or "storyboard_prompts",
         "performance_mode": _normalize_performance_mode(storyboard.get("performance_mode") or storyboard.get("performanceMode") or storyboard.get("video_type") or storyboard.get("videoType")),
         "short_film_planning_mode": _normalize_short_film_planning_mode(storyboard.get("short_film_planning_mode") or storyboard.get("shortFilmPlanningMode")),
@@ -886,7 +895,7 @@ def _export_storyboard_prompts(payload):
         "version": 1,
         "exported_at": datetime.now().isoformat(timespec="seconds"),
         "type": "storyboard_video_prompts",
-        "project_video_engine": saved.get("project_video_engine") or "ltx",
+        "project_video_engine": _normalize_project_video_engine(saved.get("project_video_engine")),
         "performance_mode": saved.get("performance_mode") or "singing",
         "scene_count": len(scenes),
         "scenes": [
