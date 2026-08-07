@@ -3,6 +3,43 @@
   "product": "AI Video Builder",
   "releases": [
     {
+      "id": "2026-08-06-storyboard-gemma-network-reliability",
+      "version": "2026.08.06-storyboard-gemma-reliability",
+      "date": "2026-08-06",
+      "title": "Storyboard Gemma reliability, Manager release, and updated guide",
+      "commit": "84fa509b85c88b7d6a8af9b9ca5eafcadf6b8c11",
+      "restart_required": true,
+      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
+      "sections": [
+        {
+          "title": "Improved",
+          "items": [
+            "Published the current AI Video Builder, MiniMax H3, and Storyboard feature set as ComfyUI Registry version 9.1.0 so ComfyUI Manager installs include the Builder launcher and recent H3 updates.",
+            "Storyboard Gemma image and video prompt requests now allow up to ten minutes per scene, matching the Builder's established long-running Gemma prompt window.",
+            "Browser fetch failures now distinguish a real timeout from a lost ComfyUI backend connection and provide direct guidance for checking the queue, console, GPU layers, and context size.",
+            "Expanded the AI Video Builder guide with the recent MiniMax-H3 Turbo, scene-image inspiration, Face + hair priority, Cut frequency, LLM context/output, LTX-to-MiniMax conversion, silent playback, rendered-scene trim, and Delete ALL Videos workflows."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Fixed ComfyUI Manager continuing to install the July 3 version 9.0.0 package, which predated the Video Builder launcher, by advancing the registry package and runtime version to 9.1.0.",
+            "Fixed the MiniMax-H3 Turbo compatibility adapter rejecting extension v1.2.2 because upstream replaced its private _AdalnDelta wrapper with the safer _make_adaln_forward API; pruned Ref2VA models can now use Turbo with reference audio through either supported upstream API shape.",
+            "Fixed Storyboard Gemma All stopping on a slow first scene because its newer Video Builder path still used a four-minute request cutoff.",
+            "Fixed Firefox exposing the opaque 'NetworkError when attempting to fetch resource' message when a Storyboard prompt request timed out or the ComfyUI connection closed."
+          ]
+        },
+        {
+          "title": "Compatibility Notes",
+          "items": [
+            "Manager-installed packages may not contain Git metadata, so update them through ComfyUI Manager rather than running git pull. Git commands and the Builder self-updater apply to installations created with git clone.",
+            "Restart ComfyUI and hard-refresh the browser after updating so both revised JavaScript modules are loaded.",
+            "A connection-lost message before the ten-minute limit usually means ComfyUI stopped or a local GGUF load exhausted memory; inspect the terminal and retry one scene with fewer GPU layers, a smaller context, or a smaller model."
+          ]
+        }
+      ]
+    },
+    {
       "id": "2026-08-06-minimax-turbo-reference-llm-controls",
       "version": "2026.08.06-minimax-builder-controls",
       "date": "2026-08-06",

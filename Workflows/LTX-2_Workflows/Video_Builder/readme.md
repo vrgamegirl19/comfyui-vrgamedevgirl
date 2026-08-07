@@ -84,8 +84,9 @@ The current Video Builder feature set includes:
 | Project video engines | Keeps LTX 2.3 as the default for existing and new projects while adding a separate MiniMax H3 renderer selected in Builder Settings |
 | MiniMax H3 scene modes | Adds Text-to-Video, Image-to-Video, Reference-to-Video, and Video-to-Video with global settings or locked per-scene overrides |
 | MiniMax exact timing and audio | Renders on H3's required 24 FPS/frame grid, supplies the exact project or scene audio when selected, then trims every result back to the authoritative timeline range |
-| MiniMax references and continuity | Sends up to nine ordered images and three ordered videos, supports exact-start and spatial continuity, and preserves the purpose/order of every reference |
+| MiniMax references and continuity | Sends up to nine ordered images and three ordered videos, supports exact-start and spatial continuity, adds LLM-only scene-image inspiration plus face/hair priority, and preserves the purpose/order of every renderer reference |
 | MiniMax short-film authoring | Adds built-in generated audio, Reference Builder voice presets, per-scene speaker cues, Guided Film Automation, and an exact-dialogue Script Mapper |
+| Flexible LLM runners | Uses Gemma Local, LM Studio, or an LLM API for prompt work, with separate local context/output limits and supported text/vision routing |
 | Chained First/Last Frame | Builds one opening image plus a destination image for each scene; each destination can become the next scene's start |
 | Independent First/Last Frame pairs | Gives every scene its own start and end image using four resumable passes: starts, motion plans, ends, and final two-image video prompts |
 | `Build Full FLF Video` | Runs missing endpoint planning, the FLF image chain, per-scene prompts/renders, final-frame extraction, and stitching as one pipeline |
@@ -95,7 +96,7 @@ The current Video Builder feature set includes:
 | Browser AI image mode | Sends prompts and references to Flow Nano Banana, GPT Image, or Meta AI through automated or manual browser handoff, imports results into scenes, and supports reusable reference groups plus project-wide Band Sequence batches |
 | `ID-LoRA I2V` | Adds identity-LoRA video generation, character/voice reference mapping, required-LoRA controls, and quiet timeline trim mode |
 | Portable projects | Adds `Branch Project`, `Export Shareable Project ZIP`, and `Import Project ZIP` with project-path rebasing on import |
-| Safer timeline editing | Adds playhead scene splitting, close-gaps, delete-all-images, audio-length clamping, exact lyric-line timing, and clearer global audio scrubbing |
+| Safer timeline editing | Adds playhead splitting/rendered-scene trimming, close-gaps, recoverable delete-all-videos, delete-all-images, silent playback, audio-length clamping, exact lyric-line timing, and clearer global audio scrubbing |
 | Manual timing and overlay editing | Adds five Bulk Segment input formats, tap-by-ear split timing, a saved optional video overlay layer, clip visibility/locking, alternate-take rendering, and context-menu trim/copy tools |
 | Reference-preserving lyric timing | Uses pasted reference lyrics as the exact text source for existing scenes, keeps every lyric line in order, and uses acoustic timing plus vocal tails to place words at scene boundaries |
 | Beat-mode transcription | Creates beat-aligned scene blocks first, then automatically runs the same reference-preserving `Transcribe Existing Scenes` process with `Replace All` |
@@ -116,6 +117,9 @@ These are the newest user-facing changes covered throughout this guide:
 | Update | What changed |
 | --- | --- |
 | MiniMax H3 Builder integration | Projects can select MiniMax H3 and use its four scene modes, dedicated prompts and renderer, ordered image/video references, exact timeline trim, input-audio or built-in-audio paths, and H3-aware `Render All`/stitching. |
+| MiniMax-H3 Turbo acceleration | Optional Turbo mode injects the selected Turbo LoRA and dedicated sampler, starts at 6 editable steps with a minimum of 4, bypasses EasyCache by default, and restores the prior normal steps/cache preference when disabled. |
+| MiniMax reference priority and editing | Reference-to-Video can use a scene image as the exact start, as LLM-only environment inspiration, as environment-plus-framing inspiration, or not at all. Exact-start scenes can limit character references to face and hair, and Storyboard `Cut frequency` creates an exact duration-aware cut plan. |
+| Larger LLM runner controls | Gemma Local and LM Studio now have separate input-context and maximum-output controls. Supported vision jobs can use LM Studio or a vision-capable LLM API, while progress labels identify genuinely built-in-only work. |
 | MiniMax H3 B-roll safety | Scenes marked B-roll/no-lip-sync now suppress lyric, singer, speaker, and native-voice inputs during prompt generation, remove singing directions from H3 timestamp blocks, and reapply a visual-only safety contract when rendering an existing prompt. |
 | MiniMax short films | Storyboard Builder can plan Guided Film scene cards, import and validate `speaker: dialogue` scripts, map every speaker to a Reference Builder character, preserve exact dialogue, and create the real timeline only after review. |
 | Project storage and memory control | Settings can choose a default folder for newly created projects and can enable or disable automatic RAM/VRAM cleanup. Existing projects and temporary ComfyUI outputs are not moved. |
@@ -123,7 +127,9 @@ These are the newest user-facing changes covered throughout this guide:
 | Reference lyrics and Story Arc reliability | `Transcribe Existing Scenes` now requires reference lyrics, preserves their exact line order, corrects held or missed boundary words, and no longer inserts pipe delimiters. Beat mode automatically transcribes its finished beat scenes. Story Arc keeps a complete valid heading structure when Gemma only appends invented trailing sections. |
 | Faster scene selection and Ingredients panels | `Select Multi` now supports direct timeline clicks and typed scene lists with ranges and shortcuts. The Ingredients Reference Builder correctly mounts its Sheets, Mapping, and Locations panels. |
 | Timeline and Storyboard prompt controls | `+ Segment` can end at the scrubber, Space toggles playback, `S` adds a segment, Left/Right navigate scenes, Storyboard Video Prep exposes Motion Notes inline, and all-scenes Gemma runs can fill only missing prompts or redo every visible scene. |
+| Timeline recovery and migration tools | Silent projects can play and scrub without global audio, rendered MiniMax built-in-audio and ID-LoRA scenes can be trimmed at the playhead, `Delete ALL Videos` clears assignments without deleting backup files, and the Tools panel can convert populated LTX prompts into separate MiniMax prompts. |
 | Render visibility and resume safety | `Render All` has a persistent live log and saved reports. Missing-only Storyboard batches preserve completed prompts and save successful partial progress if a later scene fails. |
+| Storyboard Gemma request reliability | Storyboard image/video prompt requests now allow up to ten minutes per scene and translate browser fetch failures into timeout or lost-backend guidance instead of exposing Firefox's raw `NetworkError when attempting to fetch resource` message. |
 | Lyric, prompt, and scene safety | Adjacent scenes can be merged without shifting the remaining timeline, exact pasted lyric units remain intact, manual prompts remain manual, Storyboard starting-shot instructions are enforced, global audio remains the final soundtrack, and undo/thumbnail handling uses less memory. |
 
 ## Installing From Main
@@ -142,6 +148,10 @@ https://github.com/vrgamegirl19/comfyui-vrgamedevgirl
 
 4. Use the default `main` branch if Manager asks you to choose a branch.
 5. Install, restart ComfyUI, then hard refresh the browser page.
+
+The current ComfyUI Registry release is `9.1.0`. ComfyUI Manager installs a registry package rather than necessarily creating a Git checkout, so `git pull` and the Builder's Git self-updater may not work inside a Manager-installed folder. Use Manager's `Update` or reinstall action for that kind of installation.
+
+If many VRGDG nodes appear but `VRGDG AI Video Builder UI` does not, check the installed version in Manager or the `[VRGDG]` line printed in the ComfyUI terminal during startup. A version older than `9.1.0` predates the current Builder/H3 registry package. Refresh Manager's node data, update or reinstall `comfyui-vrgamedevgirl`, restart ComfyUI, and hard refresh the browser. If Manager still offers the older package, remove only this custom-node folder and use the Git installation below until Manager refreshes its registry data.
 
 ### New Install With Git
 
@@ -201,7 +211,7 @@ The Builder shows a version-status banner above the workspace. It checks the ins
 
 You can dismiss the current banner state. If a newer commit becomes available, the new status can appear again.
 
-Use `Menu` -> `Update to Latest` to run the built-in updater. It fetches `origin/main`, switches to local `main`, and runs a fast-forward-only pull from `origin/main`. If `requirements.txt` changed between the installed and updated commits, the updater installs it with the same Python executable running ComfyUI; otherwise dependency installation is skipped. It does not run `git reset` or `git clean`, does not delete created files, and stops if local edits would conflict.
+For installations created with `git clone`, use `Menu` -> `Update to Latest` to run the built-in updater. It fetches `origin/main`, switches to local `main`, and runs a fast-forward-only pull from `origin/main`. If `requirements.txt` changed between the installed and updated commits, the updater installs it with the same Python executable running ComfyUI; otherwise dependency installation is skipped. It does not run `git reset` or `git clean`, does not delete created files, and stops if local edits would conflict. For Manager package installations without Git metadata, update through ComfyUI Manager instead.
 
 Use `Menu` -> `What's New` or the update-status details action to review the release entries that apply to your installation. Use `Menu` -> `Review Guide` to reopen this public guide. The older Prompt Creator remains available as `Prompt Creator (Legacy)` and displays a warning before leaving the current Builder workflow.
 
@@ -259,7 +269,9 @@ The top bar contains project-wide tools. These are not tied to only one scene.
 | `Fullscreen` | Expands the builder UI without closing it |
 | `Close` | Closes the builder UI |
 
-The left panel also has `Scenes`, `Tools`, and `Post Process` tabs. `Tools` contains Prompt Creator handoff, scene-note import, numbered image-folder import, `Enhance All`, Builder Agent, and integrated Face Fix actions.
+The left panel also has `Scenes`, `Tools`, and `Post Process` tabs. `Tools` contains Prompt Creator handoff, scene-note import, numbered image-folder import, `Enhance All`, Builder Agent, integrated Face Fix actions, and `Convert LTX Video Prompts to MiniMax H3`. The converter writes separate MiniMax prompts while preserving every original LTX prompt, scene time, and global-audio assignment.
+
+The live engine badge at the right side of the top bar reads `LTX` or `MiniMax`. Check it before changing engine-specific prompts or render settings, especially after loading or branching a project.
 
 If a button opens a modal, use that modal's `Close` button to return to the main builder.
 
@@ -401,25 +413,30 @@ Timeline controls:
 | `Clear Range` | Remove the selected range |
 | `Close Gaps` | Shift later base scenes left to remove empty timeline gaps |
 | `Snap Scene Edge` | Move the selected scene start or end to the closest beat while moving only a directly connected neighbor's shared boundary |
-| Scissors (`✂`) | Split the selected base scene at the playhead without moving later scene timing |
+| Scissors (`✂`) | Split an unrendered base scene, or trim a rendered ID-LoRA/MiniMax built-in-audio scene before or after the playhead |
 | `+ Timeline Note` | Add a timeline marker or note |
 | `+ Segment` | Add a normal scene; when the scrubber is at least 0.5 seconds beyond the final base scene, it becomes the new segment endpoint |
 | `Overlay Track: On/Off` | Enable or ignore the saved overlay layer during preview and stitching |
 | `+ Overlay Track` | Add an overlay clip at the playhead without changing the base timeline |
 | Undo / Redo | Revert or restore timeline edits |
-| Play / Stop | Preview audio/timeline playback |
+| Play / Stop | Preview audio/timeline playback; when no playable audio exists, advance the timeline with the silent clock |
 | `Select Multi` | Open the scene-selection chooser, then select clips directly or enter a scene-number list |
 | Waveform size | Choose small, medium, or large waveform |
 | `Snap beats` | Snap edits to detected beats |
 | Zoom `-` / `+` | Zoom the timeline view |
 | `Use Frame as Image` | Save the current video frame as the selected scene image |
 | `Delete Image/Video` | Remove selected media from the scene |
+| `Delete ALL Videos` | Clear every scene's selected/generated video, video history, thumbnail assignment, trim state, and rendered continuity assignment without deleting the actual video/thumbnail files from the project folder |
 | `Delete ALL Images` | Clear first frames, FLF end frames, and extracted chained start frames from every scene and delete those files from the current project |
 | `Delete ALL segments` | Delete every base and overlay segment after confirmation; use only when intentionally rebuilding the complete timeline |
 
 The Builder treats loaded global audio as the hard timeline boundary. Scenes and overlays beyond the audio end are removed, clips crossing the end are trimmed, new scenes cannot extend past it, and the timeline shows both timeline and audio duration. The scrubber is labeled `Global audio scrub` so it is clear that it follows the soundtrack rather than the selected video.
 
-When using the scissors button, move the playhead inside the selected scene and away from either edge. Vocal text remains on the left half; instrumental text is retained on both halves. Clear selected video/history before splitting a scene that already has rendered video.
+If a project has no global audio, Play still advances the playhead, selects the current scene, and supports seeking/scrubbing through the saved scene duration. A rendered MiniMax built-in-audio clip can supply local scene playback sound; otherwise the Builder uses a silent timeline clock. Closing the Builder stops global audio, scene audio, silent playback, and video-preview playback.
+
+When using the scissors button on an unrendered scene, move the playhead inside the selected scene and away from either edge. Vocal text remains on the left half; instrumental text is retained on both halves. For a rendered ID-LoRA or MiniMax built-in-audio scene, click or right-click the scissors and choose whether to remove everything before or after the playhead. Use the quiet trim mode when you need to scrub for a clean sound boundary without autoplay.
+
+`Delete ALL Videos` is recoverable at the file level: it clears timeline assignments and histories but leaves rendered videos and thumbnails in the project folder as backups. `Delete ALL Images` is intentionally different and removes the managed image files described in its confirmation dialog.
 
 Right-click a base scene to merge it with its left or right neighbor. The merge keeps the outer start/end times, combines lyrics, notes, singers, and scene mappings, and does not shift the scenes that follow it.
 
@@ -1092,6 +1109,22 @@ models/vae/minimax_h3_audio_vae_fp32.safetensors
 
 The main video settings choose aspect ratio, megapixels, seed, warm-up frames, and cool-down frames. The collapsed advanced area contains sampler, scheduler, steps, denoise, EasyCache controls, SageAttention, and FP16 accumulation. Begin with the workflow defaults and test a single scene before changing advanced controls.
 
+#### MiniMax-H3 Turbo Acceleration
+
+Enable `Use MiniMax-H3 Turbo LoRA (4-step)` when the optional `ComfyUI-MiniMax-H3-Turbo` extension and selected Turbo LoRA are installed. The Builder injects the Turbo LoRA and dedicated Turbo sampler into a queued copy of the hidden workflow; standard MiniMax rendering is unchanged while Turbo is off.
+
+When Turbo turns on, the Builder defaults to 6 editable steps, enforces a minimum of 4, and enables `Bypass EasyCache`. The step field remains editable for quality/speed testing. Turning Turbo off restores the normal step count and EasyCache preference that were active before Turbo was enabled. Existing projects saved with the former 20-step Turbo default migrate to the newer 6-step default when appropriate.
+
+The default Turbo LoRA filename is:
+
+```text
+models/loras/minimax_h3_turbo_4step_ema_ckpt850.safetensors
+```
+
+If the extension, its nodes, or the selected LoRA is missing, the render stops with an installation/file message instead of silently falling back to standard sampling. Restart ComfyUI after installing or updating the extension.
+
+The Builder's compatibility adapter supports the current Turbo v1.2.2 forward-patch API as well as the earlier AdaLN wrapper API. This is required when the default pruned Ref2VA model uses Turbo together with character reference audio. If an older Builder reports `Missing helpers: _AdalnDelta` even though the Turbo extension is current, update `comfyui-vrgamedevgirl` to registry version `9.1.0` or newer, then restart ComfyUI.
+
 MiniMax timing rules are different from LTX:
 
 - H3 renders at a fixed `24 FPS`.
@@ -1117,9 +1150,29 @@ For built-in-audio scenes, use the quiet timeline trim mode to set clean boundar
 
 Reference-to-Video can use up to nine image inputs. Open the scene's MiniMax reference chooser from the Video tab and order the Reference Builder images exactly as H3 should receive them. Until you save a custom choice, the scene automatically follows its mapped character and location references.
 
+`Scene image use` controls the role of the selected timeline image:
+
+| Choice | LLM behavior | MiniMax renderer behavior |
+| --- | --- | --- |
+| `Do not use scene image` | Does not inspect it | Does not receive it |
+| `Exact start frame (LLM + MiniMax)` | Uses it as visual truth while writing the prompt | Receives it as Image 1 and the exact opening frame |
+| `Environment inspiration only (LLM only — ignore framing)` | May use location, atmosphere, lighting, materials, background objects, and scene activity; must ignore composition and all character details | Never receives it and no reference slot is consumed |
+| `Environment + framing inspiration (LLM only)` | May also use optional shot distance, angle, lens, framing, and composition; must still ignore every character's identity, appearance, clothing, pose, placement, and activity | Never receives it and no reference slot is consumed |
+
+Prompt-only inspiration is not named `Image 1` in the final MiniMax prompt. Renderer reference numbering begins with the first image MiniMax actually receives.
+
+When `Exact start frame` is active, `Character reference influence` chooses how character sheets interact with that frame:
+
+| Choice | Priority contract |
+| --- | --- |
+| `Face + hair only (keep the rest of the start frame)` | Character references may replace only face identity and hair. The start frame remains authoritative for body, proportions, clothing, pose, composition, lighting, environment, and every other visible detail. |
+| `Full character identity (face, hair, clothing, and body)` | Character references may guide the full character appearance while the start image still defines the opening composition. |
+
+These controls apply to all eligible unlocked Reference-to-Video scenes. If the active scene has custom MiniMax settings locked, they apply only to that scene. Regenerate existing MiniMax prompts after changing either control.
+
 Important rules:
 
-- `Use scene image as exact start frame` reserves Image 1 for the selected scene image.
+- `Exact start frame (LLM + MiniMax)` reserves Image 1 for the selected scene image.
 - Previous-scene continuity can reserve one additional image slot, leaving fewer library-reference slots.
 - `Previous final frame — spatial reference` supplies the previous render as another visual reference.
 - `Previous final frame — exact start frame` makes the previous render's last frame the new scene's exact start.
@@ -1144,6 +1197,8 @@ Video-to-Video accepts up to three ordered source videos. Each row stores:
 
 MiniMax prompts are stored separately from LTX video prompts, so generating or editing an H3 prompt does not overwrite an LTX prompt for the same scene. Click `Create MiniMax H3 Prompt` to use the runner selected in `LLM Runner`. Each H3 mode has its own editable instruction set.
 
+The left `Tools` panel also provides `Convert LTX Video Prompts to MiniMax H3`. It sends every populated LTX video prompt through the selected LLM Runner and saves the result into the separate MiniMax prompt field. It does not alter the original LTX prompt, scene timing, global Audio 1 file, or other project data. The converter is intended for music-video projects that are being branched or migrated to MiniMax; it does not switch the project to Built-in MiniMax Audio.
+
 The prompt writer receives the exact scene duration, timeline/audio contract, lyric or dialogue line, mapped performers, ordered image/video references, and the current H3 mode. Review that the prompt:
 
 - describes action that fits within the exact scene time
@@ -1151,6 +1206,10 @@ The prompt writer receives the exact scene duration, timeline/audio contract, ly
 - uses `<Audio 1>` when the supplied audio drives the performance
 - preserves the exact lyric/dialogue instead of paraphrasing it
 - includes saved voice descriptions only for Built-in Audio speakers
+
+`Cut frequency` appears in MiniMax Storyboard Scene Defaults and ranges from 0–10. A value of 0 requires one continuous take with no cuts. Higher values calculate an exact duration-aware schedule; 10 requests approximately one continuity-preserving `CUT TO` per second. When cuts are active, the prompt writer must use the exact calculated count/times and must not add extra cuts, dissolves, or unrelated scene changes.
+
+Rendering uses the complete saved right-panel MiniMax prompt as written. `Render All` does not silently rewrite the stored voice, B-roll, timestamp, or continuity sections. Regenerate or edit the prompt before rendering when its contract needs to change.
 
 Click `Create MiniMax H3 Scene Video` to render one scene. The Builder uses the dedicated H3 workflow and adds the exact-trimmed result to that scene's video history.
 
@@ -1984,7 +2043,7 @@ Recommended Wizard workflow:
 4. Load global audio and paste/import the lyrics.
 5. Create scenes, then open lyric review to correct timing, singers, instrumental/B-roll flags, and locations.
 6. Add and map references for modes that require them.
-7. Set the image-world, consistency, camera speed, character speed, performance, and facial defaults under Scene Defaults. Apply image shot/aesthetic and video camera flow as needed. `Fill Missing` preserves scene-level work; `Replace All` intentionally rewrites that category across every scene.
+7. Set the image-world, consistency, camera speed, character speed, performance, and facial defaults under Scene Defaults. For MiniMax, also set `Cut frequency`: 0 is one continuous take, while higher values produce an exact duration-aware `CUT TO` plan. Apply image shot/aesthetic and video camera flow as needed. `Fill Missing` preserves scene-level work; `Replace All` intentionally rewrites that category across every scene.
 8. Under Story Direction, set the overall idea and lyric strength, then build the user story arc, story brief, and missing scene beats if the project needs a continuous narrative. These are the same shared fields shown in Storyboard Builder.
 9. Run image prompts and review images before running video prompts.
 10. Use the Wizard's full-build action only after a few representative scenes work correctly.
@@ -2061,6 +2120,8 @@ Video Prep scene defaults control camera flow and speed, character motion, perfo
 ![Storyboard Builder Video Prep scene defaults](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/storyboardbuilder/scene%20defaults%20video%20prep.png)
 
 `Clear Prompts` removes generated prompt fields but keeps planning choices. `Clear All Story Beats` removes only story beats. When a generated story arc invents a different setting, correct the mapped `location_ref`; the mapped location is the required physical set.
+
+Storyboard Gemma image/video prompt requests allow up to ten minutes per scene. A timeout now says that the backend may still be processing the request; wait for the ComfyUI queue/console before retrying so two expensive generations do not overlap. If the message says `Connection to the ComfyUI backend was lost`, confirm ComfyUI is still running. A local GGUF load that closes the backend often needs fewer GPU layers, a smaller context limit, or a smaller model.
 
 ## Start Image Storyboard Creator
 
@@ -2281,17 +2342,25 @@ Gemma instruction editors are separate from final prompt-file editing. The relev
 
 ## LLM Runner
 
-The `LLM Runner` button controls which runner is used for text-only prompt-writing steps. Vision/image-reference Gemma calls still use the built-in vision path.
+The `LLM Runner` button controls which runner writes Builder, Storyboard, Wizard, Prompt Creator, and supported image-reference prompts. Text-only work can use any runner. Supported vision work can use Gemma Local, LM Studio with a vision-capable model, or a vision-capable LLM API model. A few explicitly local-only drafts still use the built-in runner; progress windows name the runner actually used.
 
 Options:
 
 | Runner | What it means |
 | --- | --- |
-| `builtin` | Uses the built-in local GGUF runner |
-| `lm_studio` | Uses LM Studio's local server for text-only Gemma calls |
-| `llm_api` | Uses an OpenAI-compatible API endpoint for text-only LLM calls |
+| `builtin` | Uses the built-in local GGUF text/vision runner and the selected GGUF/mmproj files |
+| `lm_studio` | Uses LM Studio's local server for text and supported vision calls; load a model with the required capability |
+| `llm_api` | Uses the configured API provider/model for text and supported vision calls; choose a vision-capable model when images are attached |
 
-LM Studio is only for text-only Gemma steps. Vision/image-reference Gemma still uses the built-in GGUF runner.
+Gemma Local setup fields:
+
+| Field | What it controls |
+| --- | --- |
+| `Context limit / n_ctx` | Total local GGUF input/output context window |
+| `Maximum output tokens` | Maximum generated text for one request; current Builder tasks use this ceiling instead of their older small hardcoded limits |
+| `GPU layers / n_gpu_layers` | Number of local GGUF layers placed on the GPU; lower this when model loading exhausts VRAM |
+
+The context and requested output must fit within the model's supported window. Large values can substantially increase RAM/VRAM use and response time.
 
 LM Studio setup fields:
 
@@ -2301,16 +2370,20 @@ LM Studio setup fields:
 | `Available LM Studio models` | Click `Load LM Studio Models` to fill this |
 | `LM Studio model name` | The loaded chat model name from LM Studio |
 | `API key` | Usually blank for local LM Studio |
+| `Input context limit` | Context length sent to LM Studio for each text or vision request |
+| `Maximum output tokens` | Maximum response length sent to LM Studio |
 | `Test LM Studio` | Sends a tiny test prompt to confirm it works |
 
 LLM API setup fields:
 
 | Field | What to enter |
 | --- | --- |
-| API base URL | OpenAI-compatible `/v1` base URL |
-| Model name | Chat/completions model name exposed by that server |
-| API key | Key required by the server, if any |
-| Test API | Sends a tiny test prompt to confirm the endpoint works |
+| `Provider` | Configured API provider |
+| `Model` | Provider model used for prompt writing; select a vision-capable model for image-reference jobs |
+| `API key` | Provider key. It is session-only and is not written into the saved project |
+| `Test LLM API` | Sends a tiny test prompt and reports the provider/model response |
+
+The Gemma Local and LM Studio context/output limits do not cap commercial/API LLM requests; the selected API model/provider controls those limits.
 
 When a batch run is active, progress windows show the runner name so you can tell whether a text-only pass is using `LM Studio`, `API LLM`, or the built-in runner.
 
@@ -2326,9 +2399,9 @@ To choose a runner:
 
 1. Click `LLM Runner`.
 2. Choose `builtin`, `lm_studio`, or `llm_api`.
-3. Fill the fields for that runner and use its test action.
+3. Fill the fields for that runner. For local runners, keep context/output values within the loaded model's capacity; use the runner's test action when available.
 4. Save the runner settings.
-5. Run one text-only scene prompt and confirm the progress window names the expected runner before starting a batch.
+5. Run one representative text or image-reference scene prompt and confirm the progress window names the expected runner before starting a batch.
 
 ![Gemma Runner Window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/Gemma%20Runner%20Window.png)
 
@@ -2682,6 +2755,7 @@ Mode-specific notes:
 | --- | --- |
 | `Image to Video` / `Text to Video` | Requires the LTXVideo, VideoHelperSuite, GGUF, and KJNodes packs above |
 | `MiniMax H3` | Requires a current ComfyUI build with `MiniMaxH3ReferenceToVideo`, KJNodes for the standard diffusion loader, VideoHelperSuite for reference video/audio loading and combining, and this repo's H3 timing/audio/reference nodes. Built-in audio also uses the installed LTX audio VAE decode node. GGUF is not supported on this path. |
+| `MiniMax-H3 Turbo` | Optional. Requires `ComfyUI-MiniMax-H3-Turbo`, the selected Turbo LoRA under `models/loras`, and a ComfyUI restart after installation/update. Standard MiniMax does not require this extension while Turbo is disabled. |
 | `First Last Frame` | Requires the same LTX stack plus the bundled `LTX2.3_FLF_API.json` hidden workflow and both start/end images |
 | `ID-LoRA I2V` | Requires LTXVideo plus the required ID-LoRA/model shown in the Video tab |
 | `Reference to Video` | Requires LTXVideo plus the MSR LoRA/model files shown in `Download Models` |
@@ -2922,15 +2996,22 @@ Use this for new projects.
 | Model dropdowns are empty | Install models, then restart ComfyUI |
 | MiniMax H3 is not shown in the Video tab | Open `Menu` -> `Settings`, set the whole project's Video Engine to `MiniMax H3`, save, and reselect the scene |
 | MiniMax diffusion model is missing from the picker | H3 uses non-GGUF diffusion models only. Place the `.safetensors` model in `models/diffusion_models`, restart ComfyUI, and hard refresh |
+| MiniMax Turbo reports missing/incompatible nodes | Install or update `ComfyUI-MiniMax-H3-Turbo`, restart ComfyUI, and confirm the extension's nodes load without red errors |
+| MiniMax Turbo LoRA is missing | Put the selected Turbo LoRA in `ComfyUI/models/loras`, refresh the picker or restart ComfyUI, and verify the exact filename selected in Turbo acceleration |
 | MiniMax reports a scene is too long | Split the scene so each H3 range is about 15 seconds or shorter; H3 is fixed at 24 FPS and a maximum 362-frame render |
 | MiniMax references are missing or in the wrong order | Save Reference Builder, reopen the scene's H3 reference chooser, and check the numbered image/video order plus any slot reserved for exact-start continuity |
+| A prompt-only scene image appears as MiniMax `Image 1` | Regenerate the MiniMax prompt after selecting an LLM-only environment inspiration mode. Prompt-only images never go to the renderer and must not consume or shift renderer Image N labels. |
+| Character references change the start-frame clothing/body | With `Exact start frame` active, choose `Face + hair only`, save, and regenerate the MiniMax prompt. The start image then remains authoritative for clothing, body, pose, composition, lighting, and environment. |
 | MiniMax exact start is unavailable | A scene image exact start and previous-final-frame exact start cannot both be active; choose one exact-start source |
 | MiniMax Input Audio cannot edit speaker cues | This is intentional because typed changes would not match the supplied waveform. Choose Built-in MiniMax Audio for generated dialogue |
 | MiniMax Script Mapper will not activate | Use `speaker: dialogue` or supported JSON, fix every parse error, and map every speaker to a saved Reference Builder character |
 | MiniMax Render All uses the wrong mode | Check whether the scene has custom MiniMax settings locked. Unlock it to follow the current global mode, or update the locked scene settings |
 | A character still sings in a MiniMax B-roll scene | Confirm `B-roll / no lip-sync` is saved in Line Mapping, then regenerate the prompt or render again. The renderer now reapplies the visual-only contract even to an older saved prompt; Input Audio vocals remain audible only as off-screen soundtrack. |
 | MiniMax final clip timing is wrong | Confirm the timeline scene itself has valid start/end times and stays inside the source audio; H3 renders extra aligned frames but the Builder should trim back to the exact scene duration |
+| MiniMax prompt has too many/few cuts | Check Storyboard `Cut frequency`, regenerate the prompt, and verify the exact calculated `CUT TO` count. Set it to 0 for one continuous uninterrupted take. |
 | Gemma prompt buttons fail | Make sure the correct Gemma model and mmproj are selected |
+| Storyboard Gemma reports a 10-minute timeout | Check the ComfyUI queue and console before retrying; the backend may still be finishing the request. Lower context/output size or use a faster runner if one scene regularly exceeds the limit. |
+| Storyboard Gemma says the backend connection was lost | Confirm ComfyUI is still running and inspect the terminal for an out-of-memory/model-load crash. For Gemma Local, reduce GPU layers or context size and try one scene before restarting the full batch. |
 | NanoBanana fails | Add the API key in the Nano B `Models` tab |
 | Render All skips scenes | Scenes with selected videos may already be complete |
 | Build Full Video replaced too much | Next time choose `Resume missing only` or a "keep prompts" option |
@@ -2958,8 +3039,9 @@ Use this for new projects.
 | Story Arc reports a changed lyric structure | Update and rerun. Trailing invented headings are removed automatically; a remaining error means Gemma actually missed, renamed, reordered, or inserted a heading inside the required structure |
 | Render All progress disappeared | Reopen the persistent render log and inspect the saved JSON/text report in the project for completed phases, failures, and stitch timing |
 | A scene render reports the wait limit | The Builder now waits up to two hours. Check whether the ComfyUI queue is still running; if it finished, use scene-video recovery/history, and inspect the terminal plus temporary output before retrying |
+| `Delete ALL Videos` cleared the timeline | The underlying video/thumbnail files were intentionally left in the project folder. Reassign or recover the desired file; unlike `Delete ALL Images`, this action does not delete media files. |
 | Prompt Creator data does not populate notes | Use `Send To AI Video Builder` or `Import Data From Prompt Creator`, then reload/import prompt files if needed |
-| LM Studio is selected but not used | Vision Gemma still uses built-in GGUF; only text-only passes use LM Studio |
+| LM Studio is selected but a pass says Built-in GGUF | That job is explicitly local-only, or the selected LM Studio model cannot serve the required path. Supported text/vision jobs name LM Studio in progress; test the server/model and use a vision-capable model for image-reference work. |
 | Browser AI cannot control the browser | Run Install/Check Browser Setup, sign in with `Open Selected Login`, or use the manual export/import path |
 | Face Fix finds no face | Choose a clearer description frame, lower minimum face pixels, adjust confidence/rotation assist, or pick a repair-distance preset that includes the face size |
 | Updater stops | Local edits or a non-fast-forward branch can block the safe updater; save/back up your work and use the manual Git commands to inspect the conflict |

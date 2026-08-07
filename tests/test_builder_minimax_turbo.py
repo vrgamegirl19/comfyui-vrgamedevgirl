@@ -1,3 +1,7 @@
+import ast
+import importlib
+import sys
+import types
 import unittest
 from pathlib import Path
 
@@ -9,6 +13,23 @@ BUILDER_SOURCE = (ROOT / "web" / "VRGDG_MusicVideoBuilderUI.js").read_text(
 RUNNER_SOURCE = (ROOT / "VRGDG_WorkflowRunnerNodes.py").read_text(
     encoding="utf-8"
 )
+
+
+def _load_compat_class(folder_paths):
+    tree = ast.parse(RUNNER_SOURCE)
+    compat_class = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef)
+        and node.name == "VRGDG_MiniMaxH3TurboLoRACompat"
+    )
+    namespace = {
+        "folder_paths": folder_paths,
+        "importlib": importlib,
+        "sys": sys,
+    }
+    exec(compile(ast.Module(body=[compat_class], type_ignores=[]), str(ROOT), "exec"), namespace)
+    return namespace["VRGDG_MiniMaxH3TurboLoRACompat"]
 
 
 class BuilderMiniMaxTurboTests(unittest.TestCase):
@@ -97,6 +118,105 @@ class BuilderMiniMaxTurboTests(unittest.TestCase):
             'upstream_supports_audio = "has_aud_cond" in inspect.signature(unique_t).parameters',
             RUNNER_SOURCE,
         )
+
+    def test_current_upstream_adaln_forward_api_is_supported(self):
+        calls = {"patches": [], "debug": []}
+
+        class Weight:
+            def __mul__(self, _strength):
+                return self
+
+        class DiffusionModel:
+            use_adaln_curves = True
+            sigma_shift_video = 1.0
+            sigma_shift_audio = 1.0
+
+        class NewModel:
+            def __init__(self):
+                self.model = types.SimpleNamespace(diffusion_model=DiffusionModel())
+
+            def add_wrapper_with_key(self, *_args):
+                pass
+
+            def get_model_object(self, key):
+                return ("base", key)
+
+            def add_object_patch(self, key, value):
+                calls["patches"].append((key, value))
+
+        new_model = NewModel()
+
+        class Model:
+            model = types.SimpleNamespace(diffusion_model=DiffusionModel())
+
+            def clone(self):
+                return new_model
+
+        upstream_name = "_vrgdg_test_minimax_turbo"
+        upstream = types.ModuleType(upstream_name)
+        upstream.SHIFT_V = 1.0
+        upstream.SHIFT_A = 1.0
+        upstream._unique_t = lambda timestep, shift_v, shift_a, has_vis_cond: []
+        upstream._time_shift_sigma = lambda sigma, shift_v, shift_a: sigma
+        upstream._egrid = lambda: object()
+        upstream._interp_egrid = lambda *args: object()
+        upstream._apply_bypass_lora = lambda *args: 1
+        upstream._make_adaln_forward = (
+            lambda base, a, b, shared: ("forward", base, a, b, shared)
+        )
+
+        def add_debug(_model, _diffusion_model, tag, mode):
+            calls["debug"].append((tag, mode))
+
+        upstream._add_dbg_wrapper = add_debug
+        upstream.comfy = types.SimpleNamespace(
+            utils=types.SimpleNamespace(
+                load_torch_file=lambda *_args, **_kwargs: {
+                    "blocks.0.attn.qkv_proj.lora_A.weight": Weight(),
+                    "blocks.0.attn.qkv_proj.lora_B.weight": Weight(),
+                    "blocks.0.adaln_proj.linear.lora_A.weight": Weight(),
+                    "blocks.0.adaln_proj.linear.lora_B.weight": Weight(),
+                }
+            ),
+            patcher_extension=types.SimpleNamespace(
+                WrappersMP=types.SimpleNamespace(DIFFUSION_MODEL="diffusion")
+            ),
+        )
+
+        class UpstreamNode:
+            __module__ = upstream_name
+
+            def apply_lora(self, *_args):
+                raise AssertionError("the stale upstream audio path must not be delegated")
+
+        fake_nodes = types.ModuleType("nodes")
+        fake_nodes.NODE_CLASS_MAPPINGS = {"MiniMaxH3TurboLoRA": UpstreamNode}
+        folder_paths = types.SimpleNamespace(
+            get_filename_list=lambda _kind: ["turbo.safetensors"],
+            get_full_path=lambda _kind, _name: "turbo.safetensors",
+        )
+        compat_class = _load_compat_class(folder_paths)
+
+        old_nodes = sys.modules.get("nodes")
+        old_upstream = sys.modules.get(upstream_name)
+        sys.modules["nodes"] = fake_nodes
+        sys.modules[upstream_name] = upstream
+        try:
+            result = compat_class().apply_lora(Model(), "turbo.safetensors", 1.0)
+        finally:
+            if old_nodes is None:
+                sys.modules.pop("nodes", None)
+            else:
+                sys.modules["nodes"] = old_nodes
+            if old_upstream is None:
+                sys.modules.pop(upstream_name, None)
+            else:
+                sys.modules[upstream_name] = old_upstream
+
+        self.assertEqual(result, (new_model,))
+        self.assertEqual(calls["patches"][0][0], "diffusion_model.blocks.0.adaln_proj.forward")
+        self.assertEqual(calls["patches"][0][1][0], "forward")
+        self.assertEqual(calls["debug"], [("pruned-ref-audio-compat", "bypass")])
 
     def test_turbo_forces_required_sampler_but_allows_four_or_more_steps(self):
         self.assertIn(
