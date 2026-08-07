@@ -40,6 +40,7 @@ class BuilderUpdateBannerNotesTests(unittest.TestCase):
             "ComfyUI Registry version 9.1.0",
             "Manager continuing to install the July 3 version 9.0.0",
             "may not contain Git metadata",
+            "Scene render wait limit",
         ):
             self.assertIn(expected, items)
 
@@ -125,6 +126,7 @@ class BuilderUpdateBannerNotesTests(unittest.TestCase):
             "Connection to the ComfyUI backend was lost",
             "current ComfyUI Registry release is `9.1.0`",
             "Manager-installed folder",
+            "Scene render wait limit (hours)",
         ):
             self.assertIn(expected, BUILDER_GUIDE)
 

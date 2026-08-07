@@ -15,6 +15,7 @@
           "title": "Improved",
           "items": [
             "Published the current AI Video Builder, MiniMax H3, and Storyboard feature set as ComfyUI Registry version 9.1.0 so ComfyUI Manager installs include the Builder launcher and recent H3 updates.",
+            "Added a persistent Scene render wait limit in Builder Settings. Projects can keep individual and batch LTX or MiniMax scene waits active for 1–24 hours while existing projects retain the two-hour default.",
             "Storyboard Gemma image and video prompt requests now allow up to ten minutes per scene, matching the Builder's established long-running Gemma prompt window.",
             "Browser fetch failures now distinguish a real timeout from a lost ComfyUI backend connection and provide direct guidance for checking the queue, console, GPU layers, and context size.",
             "Expanded the AI Video Builder guide with the recent MiniMax-H3 Turbo, scene-image inspiration, Face + hair priority, Cut frequency, LLM context/output, LTX-to-MiniMax conversion, silent playback, rendered-scene trim, and Delete ALL Videos workflows."

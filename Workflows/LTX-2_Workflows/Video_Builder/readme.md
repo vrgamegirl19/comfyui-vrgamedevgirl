@@ -123,7 +123,7 @@ These are the newest user-facing changes covered throughout this guide:
 | MiniMax H3 B-roll safety | Scenes marked B-roll/no-lip-sync now suppress lyric, singer, speaker, and native-voice inputs during prompt generation, remove singing directions from H3 timestamp blocks, and reapply a visual-only safety contract when rendering an existing prompt. |
 | MiniMax short films | Storyboard Builder can plan Guided Film scene cards, import and validate `speaker: dialogue` scripts, map every speaker to a Reference Builder character, preserve exact dialogue, and create the real timeline only after review. |
 | Project storage and memory control | Settings can choose a default folder for newly created projects and can enable or disable automatic RAM/VRAM cleanup. Existing projects and temporary ComfyUI outputs are not moved. |
-| International lyric alignment and longer waits | Lyric matching now preserves Unicode words such as Cyrillic instead of stripping them, and an individual scene render may wait up to two hours before the Builder reports a timeout. |
+| International lyric alignment and longer waits | Lyric matching preserves Unicode words such as Cyrillic instead of stripping them, and Settings can keep an individual scene render waiting from 1–24 hours before the Builder reports a timeout. |
 | Reference lyrics and Story Arc reliability | `Transcribe Existing Scenes` now requires reference lyrics, preserves their exact line order, corrects held or missed boundary words, and no longer inserts pipe delimiters. Beat mode automatically transcribes its finished beat scenes. Story Arc keeps a complete valid heading structure when Gemma only appends invented trailing sections. |
 | Faster scene selection and Ingredients panels | `Select Multi` now supports direct timeline clicks and typed scene lists with ranges and shortcuts. The Ingredients Reference Builder correctly mounts its Sheets, Mapping, and Locations panels. |
 | Timeline and Storyboard prompt controls | `+ Segment` can end at the scrubber, Space toggles playback, `S` adds a segment, Left/Right navigate scenes, Storyboard Video Prep exposes Motion Notes inline, and all-scenes Gemma runs can fill only missing prompts or redo every visible scene. |
@@ -2639,6 +2639,7 @@ Common settings:
 | Setting | What it does |
 | --- | --- |
 | Project Video Engine | Chooses `LTX (current Builder)` or the separate `MiniMax H3` path for the whole project |
+| Scene render wait limit | Chooses how many hours, from 1–24, the Builder follows each queued LTX or MiniMax scene before reporting a timeout |
 | Default folder for new projects | Optional absolute parent folder used by New Project, Save Project As, and Branch Project |
 | Custom model root | Optional alternate models folder root |
 | Run automatic RAM/VRAM cleanup | Controls embedded cleanup nodes and automatic cache clearing between Builder jobs |
@@ -2652,6 +2653,10 @@ Common settings:
 ### Project Video Engine
 
 Choose the engine before creating prompts and videos. `LTX (current Builder)` keeps the existing LTX modes and renderer. `MiniMax H3` shows the separate four-mode H3 panel, exact-timeline adapter, and H3 scene action. The value is saved with the project; older sessions without it load as LTX.
+
+### Render Waiting
+
+`Scene render wait limit (hours)` accepts 1–24 hours and defaults to 2. It is saved with the project and applies to newly started individual or batch scene renders for both LTX and MiniMax. Reaching this limit only stops the Builder from polling that scene; it does not cancel a render that is still active in the ComfyUI queue. Let the queue finish and use `Recover Scene Videos` when necessary.
 
 ### Project Storage
 
@@ -3038,7 +3043,7 @@ Use this for new projects.
 | Ingredients tabs are blank | Update to the newest Builder, restart ComfyUI, and hard refresh the browser so the repaired Sheets, Mapping, and Locations panels load |
 | Story Arc reports a changed lyric structure | Update and rerun. Trailing invented headings are removed automatically; a remaining error means Gemma actually missed, renamed, reordered, or inserted a heading inside the required structure |
 | Render All progress disappeared | Reopen the persistent render log and inspect the saved JSON/text report in the project for completed phases, failures, and stitch timing |
-| A scene render reports the wait limit | The Builder now waits up to two hours. Check whether the ComfyUI queue is still running; if it finished, use scene-video recovery/history, and inspect the terminal plus temporary output before retrying |
+| A scene render reports the wait limit | Open `Menu` -> `Settings` -> `Render Waiting` and increase `Scene render wait limit (hours)` up to 24. If ComfyUI is still rendering, let it finish and then use scene-video recovery/history; also inspect the terminal and temporary output before retrying |
 | `Delete ALL Videos` cleared the timeline | The underlying video/thumbnail files were intentionally left in the project folder. Reassign or recover the desired file; unlike `Delete ALL Images`, this action does not delete media files. |
 | Prompt Creator data does not populate notes | Use `Send To AI Video Builder` or `Import Data From Prompt Creator`, then reload/import prompt files if needed |
 | LM Studio is selected but a pass says Built-in GGUF | That job is explicitly local-only, or the selected LM Studio model cannot serve the required path. Supported text/vision jobs name LM Studio in progress; test the server/model and use a vision-capable model for image-reference work. |
