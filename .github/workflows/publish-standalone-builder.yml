@@ -6,7 +6,7 @@ on:
       prerelease:
         description: Publish as a prerelease (not offered to stable standalone users)
         required: true
-        default: true
+        default: false
         type: boolean
 
 permissions:
