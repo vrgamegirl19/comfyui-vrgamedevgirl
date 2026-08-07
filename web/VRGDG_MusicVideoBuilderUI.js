@@ -2344,8 +2344,9 @@ function sceneVideoTimeoutMessage({
 
 async function waitForVideos(promptId, onStatus, shouldCancel, findOutputFallback = null, options = {}) {
   const started = Date.now();
-  const timeoutHours = normalizeSceneRenderWaitHours(options.timeoutHours);
-  const timeoutMs = timeoutHours * 60 * 60 * 1000;
+  const timeoutMs = Number(options.timeoutMs) > 0
+    ? Number(options.timeoutMs)
+    : normalizeSceneRenderWaitHours(options.timeoutHours) * 60 * 60 * 1000;
   let lastFallbackCheck = 0;
   while (Date.now() - started < timeoutMs) {
     if (shouldCancel?.()) throw new Error("Stopped by user.");
@@ -43478,6 +43479,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         () => state.batchCancelled,
         (findOptions) => postJson("/vrgdg/workflow_runner/find_scene_video_output", findOptions, 60000).catch(() => null),
         {
+          // LTX2MLX is real local MLX inference on Apple Silicon, not a fast GPU/cloud
+          // backend -- two_stage at higher quality or a cold model load can genuinely
+          // take much longer than the 2h default other engines use. A render that's
+          // still legitimately progressing shouldn't be abandoned (and its eventually-
+          // finished output orphaned, never collected) just because of that ceiling.
+          timeoutMs: 8 * 60 * 60 * 1000,
           timeoutMessage: () => sceneVideoTimeoutMessage({
             promptId,
             sceneLabel: sceneDisplayName(segment, sceneIndex),
