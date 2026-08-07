@@ -2289,6 +2289,13 @@ function extractVideosFromHistory(historyPayload, promptId) {
         for (const video of output[key]) videos.push(video);
       }
     }
+    // ComfyUI's native SaveVideo/PreviewVideo report videos under "images" with a
+    // sibling "animated" flag (the same convention used for animated webp), not under
+    // a dedicated "gifs"/"videos" key -- only treat "images" as videos when that flag
+    // is present so plain image-output nodes aren't misidentified as video outputs.
+    if (output?.animated && Array.isArray(output?.images)) {
+      for (const video of output.images) videos.push(video);
+    }
   }
   return videos;
 }
@@ -43482,7 +43489,23 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         },
       );
       const video = videos[videos.length - 1] || null;
-      const renderedVideoPath = resolveComfyVideoPath(video);
+      let renderedVideoPath = resolveComfyVideoPath(video);
+      if (!renderedVideoPath) {
+        // LTX2MLX nodes report outputs via ComfyUI's native relative filename/subfolder/
+        // type convention (like the stock SaveVideo node), which resolveComfyVideoPath
+        // doesn't understand -- it only handles fullpath or Windows-absolute subfolders.
+        const filename = video?.filename || video?.params?.filename || "";
+        const subfolder = video?.subfolder || video?.params?.subfolder || "";
+        const mediaType = video?.type || video?.params?.type || "output";
+        if (filename) {
+          const resolved = await postJson("/vrgdg/workflow_runner/resolve_output_path", {
+            filename,
+            subfolder,
+            type: mediaType,
+          }, 30000).catch(() => null);
+          renderedVideoPath = String(resolved?.path || "").trim();
+        }
+      }
       if (!renderedVideoPath) {
         throw new Error("LTX-2 MLX finished, but no video path was found in history.");
       }

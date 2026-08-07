@@ -3120,6 +3120,34 @@ def _build_id_lora_api_prompt(payload):
     }
 
 
+def _resolve_output_media_path(payload):
+    """Resolve a ComfyUI history output's {filename, subfolder, type} into an absolute
+    path. Needed for nodes (like LTX2MLX's) that report outputs via ComfyUI's native
+    relative-path convention instead of this codebase's usual absolute-filename_prefix
+    convention, which is all resolveComfyVideoPath() on the JS side understands."""
+    filename = str(payload.get("filename") or "").strip()
+    if not filename:
+        raise ValueError("filename is required.")
+    subfolder = str(payload.get("subfolder") or "").strip()
+    media_type = str(payload.get("type") or "output").strip()
+
+    if media_type == "input":
+        base_dir = folder_paths.get_input_directory()
+    elif media_type == "temp":
+        base_dir = folder_paths.get_temp_directory()
+    else:
+        base_dir = folder_paths.get_output_directory()
+    base_dir = os.path.abspath(base_dir)
+
+    full_dir = os.path.join(base_dir, subfolder) if subfolder else base_dir
+    full_path = os.path.abspath(os.path.join(full_dir, filename))
+    if os.path.commonpath([base_dir, full_path]) != base_dir:
+        raise ValueError("Resolved path escapes the expected base directory.")
+    if not os.path.isfile(full_path):
+        raise FileNotFoundError(f"Resolved output file does not exist: {full_path}")
+    return {"path": full_path}
+
+
 def _trim_scene_audio_clip(source_path, project_folder, scene_number, start_seconds, duration_seconds, subdir):
     target_dir = os.path.join(project_folder, subdir)
     os.makedirs(target_dir, exist_ok=True)
@@ -4865,6 +4893,18 @@ def _ensure_workflow_runner_routes():
         except subprocess.CalledProcessError as exc:
             error = exc.stderr or exc.stdout or str(exc)
             return web.json_response({"ok": False, "error": f"FFmpeg failed:\n{error}"}, status=400)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/workflow_runner/resolve_output_path")
+    async def vrgdg_workflow_runner_resolve_output_path(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+        try:
+            result = _resolve_output_media_path(payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
