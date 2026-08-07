@@ -24,7 +24,7 @@ class BuilderUpdateBannerNotesTests(unittest.TestCase):
         )
         self.assertEqual(
             release["commit"],
-            "1fbbf4539856b522b6e6bb67cbd2711b28f587df",
+            "26004612d5ee0dcdd5269b0835a2b37d13a98223",
         )
         items = "\n".join(
             item
