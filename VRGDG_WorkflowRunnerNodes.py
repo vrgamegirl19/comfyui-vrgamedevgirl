@@ -2514,7 +2514,7 @@ def _patch_minimax_h3_turbo(prompt, payload):
             "Download the LoRA, refresh/restart ComfyUI, and select it in MiniMax Video Settings."
         )
     strength = _float_payload(payload, "turbo_lora_strength", 1.0, -10.0, 10.0)
-    turbo_steps = _int_payload(payload, "steps", 6, 4, 1000)
+    turbo_steps = _int_payload(payload, "steps", 4, 1, 1000)
 
     scheduler_id = _api_node_id_by_class(prompt, "BasicScheduler", fallback="124")
     guider_id = _api_node_id_by_class(prompt, "BasicGuider", fallback="126")

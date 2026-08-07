@@ -117,7 +117,7 @@ These are the newest user-facing changes covered throughout this guide:
 | Update | What changed |
 | --- | --- |
 | MiniMax H3 Builder integration | Projects can select MiniMax H3 and use its four scene modes, dedicated prompts and renderer, ordered image/video references, exact timeline trim, input-audio or built-in-audio paths, and H3-aware `Render All`/stitching. |
-| MiniMax-H3 Turbo acceleration | Optional Turbo mode injects the selected Turbo LoRA and dedicated sampler, starts at 6 editable steps with a minimum of 4, bypasses EasyCache by default, and restores the prior normal steps/cache preference when disabled. |
+| MiniMax-H3 Turbo acceleration | Optional Turbo mode injects the selected Turbo LoRA and dedicated sampler, starts at 4 editable steps, allows experimental step values below the usual 4-step target, bypasses EasyCache by default, and restores the prior normal steps/cache preference when disabled. |
 | MiniMax reference priority and editing | Reference-to-Video can use a scene image as the exact start, as LLM-only environment inspiration, as environment-plus-framing inspiration, or not at all. Exact-start scenes can limit character references to face and hair, and Storyboard `Cut frequency` creates an exact duration-aware cut plan. |
 | Larger LLM runner controls | Gemma Local and LM Studio now have separate input-context and maximum-output controls. Supported vision jobs can use LM Studio or a vision-capable LLM API, while progress labels identify genuinely built-in-only work. |
 | MiniMax H3 B-roll safety | Scenes marked B-roll/no-lip-sync now suppress lyric, singer, speaker, and native-voice inputs during prompt generation, remove singing directions from H3 timestamp blocks, and reapply a visual-only safety contract when rendering an existing prompt. |
@@ -1113,7 +1113,7 @@ The main video settings choose aspect ratio, megapixels, seed, warm-up frames, a
 
 Enable `Use MiniMax-H3 Turbo LoRA (4-step)` when the optional `ComfyUI-MiniMax-H3-Turbo` extension and selected Turbo LoRA are installed. The Builder injects the Turbo LoRA and dedicated Turbo sampler into a queued copy of the hidden workflow; standard MiniMax rendering is unchanged while Turbo is off.
 
-When Turbo turns on, the Builder defaults to 6 editable steps, enforces a minimum of 4, and enables `Bypass EasyCache`. The step field remains editable for quality/speed testing. Turning Turbo off restores the normal step count and EasyCache preference that were active before Turbo was enabled. Existing projects saved with the former 20-step Turbo default migrate to the newer 6-step default when appropriate.
+When Turbo turns on, the Builder defaults to 4 editable steps and enables `Bypass EasyCache`. The step field remains editable down to 1 for quality/speed experiments, though values below 4 are outside the Turbo LoRA's usual 4-step target. Turning Turbo off restores the normal step count and EasyCache preference that were active before Turbo was enabled. Existing projects saved with the former 20-step Turbo default migrate to the newer 4-step default when appropriate.
 
 The default Turbo LoRA filename is:
 

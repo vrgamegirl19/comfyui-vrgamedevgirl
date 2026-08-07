@@ -52,7 +52,7 @@
         {
           "title": "New",
           "items": [
-            "Added optional MiniMax-H3 Turbo LoRA acceleration to MiniMax Video Settings. The hidden workflow injects the required Turbo LoRA and dedicated sampler, defaults to 6 editable steps with a minimum of 4, automatically bypasses EasyCache, and restores the previous normal steps and EasyCache preference when Turbo is turned off.",
+            "Added optional MiniMax-H3 Turbo LoRA acceleration to MiniMax Video Settings. The hidden workflow injects the required Turbo LoRA and dedicated sampler, defaults to 4 editable steps, allows experimental step values below the usual 4-step target, automatically bypasses EasyCache, and restores the previous normal steps and EasyCache preference when Turbo is turned off.",
             "Added a scope-aware MiniMax Reference-to-Video Scene image use dropdown. A scene image can be unused, supplied to both the LLM and MiniMax as the exact start frame, or supplied only to the vision LLM as environment inspiration with camera framing either ignored or optionally considered.",
             "Added Face + hair only exact-start priority. Character references can replace only face identity and hair from the first generated frame while the start image remains authoritative for body, clothing, pose, composition, lighting, environment, and every other visible detail.",
             "Added a MiniMax-only Cut frequency Scene Default from 0–10. Zero requests one continuous uninterrupted take, while 10 schedules one continuity-preserving CUT TO per second within each segment's exact duration.",
@@ -66,7 +66,7 @@
             "Builder, Storyboard, Wizard, Prompt Creator, and image-reference vision jobs now honor the selected local-runner output ceiling. LM Studio receives both context length and maximum output tokens through its native chat API.",
             "Project-global MiniMax mode, model, video, scene-image, and character-priority changes now update every eligible unlocked scene while preserving independently locked scene settings.",
             "The top status bar consistently uses the AI Video Builder product name and includes a persistent live badge showing whether the project is using LTX or MiniMax.",
-            "Existing projects saved with Turbo's old 20-step default migrate to 6 steps, and existing Turbo projects or locked scenes migrate to EasyCache bypass without overwriting later manual experimentation."
+            "Existing projects saved with Turbo's old 20-step default migrate to 4 steps, and existing Turbo projects or locked scenes migrate to EasyCache bypass without overwriting later manual experimentation."
           ]
         },
         {

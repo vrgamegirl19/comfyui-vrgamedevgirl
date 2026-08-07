@@ -65,7 +65,7 @@ class BuilderUpdateBannerNotesTests(unittest.TestCase):
             for item in section.get("items", [])
         )
         for expected in (
-            "6 editable steps",
+            "4 editable steps",
             "automatically bypasses EasyCache",
             "environment inspiration",
             "Face + hair only",

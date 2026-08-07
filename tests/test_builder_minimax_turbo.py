@@ -218,13 +218,13 @@ class BuilderMiniMaxTurboTests(unittest.TestCase):
         self.assertEqual(calls["patches"][0][1][0], "forward")
         self.assertEqual(calls["debug"], [("pruned-ref-audio-compat", "bypass")])
 
-    def test_turbo_forces_required_sampler_but_allows_four_or_more_steps(self):
+    def test_turbo_forces_required_sampler_but_allows_experimental_low_steps(self):
         self.assertIn(
             '_set_api_input(prompt, scheduler_id, "scheduler", "simple")',
             RUNNER_SOURCE,
         )
         self.assertIn(
-            'turbo_steps = _int_payload(payload, "steps", 6, 4, 1000)',
+            'turbo_steps = _int_payload(payload, "steps", 4, 1, 1000)',
             RUNNER_SOURCE,
         )
         self.assertIn(
@@ -242,15 +242,15 @@ class BuilderMiniMaxTurboTests(unittest.TestCase):
             BUILDER_SOURCE,
         )
         self.assertIn(
-            'miniMaxSteps.min = settings.use_turbo_lora ? "4" : "1";',
+            'miniMaxSteps.min = "1";',
             BUILDER_SOURCE,
         )
         self.assertIn(
-            "EasyCache bypass is enabled automatically",
+            "Steps defaults to 4 when Turbo is switched on and remains editable down to 1 for experiments",
             BUILDER_SOURCE,
         )
         self.assertIn(
-            'miniMaxSteps.value = "6";',
+            'miniMaxSteps.value = "4";',
             BUILDER_SOURCE,
         )
         self.assertIn(
@@ -258,7 +258,7 @@ class BuilderMiniMaxTurboTests(unittest.TestCase):
             BUILDER_SOURCE,
         )
         self.assertIn(
-            "migrateOldTurboDefault ? 6 : rawSteps",
+            "migrateOldTurboDefault ? 4 : rawSteps",
             BUILDER_SOURCE,
         )
         self.assertIn(

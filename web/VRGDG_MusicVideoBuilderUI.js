@@ -140,11 +140,12 @@ const FLUX_GEMMA_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_NON_VISION_GEMMA_MODEL = "supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf";
 const NB_IMAGE_MODELS = ["gemini-3-pro-image-preview", "gemini-3.1-flash-image-preview"];
 const DEFAULT_NB_IMAGE_MODEL = "gemini-3-pro-image-preview";
+const BUILDER_FONT_STACK = "Segoe UI, Inter, Roboto, Arial, sans-serif";
 const MINIMAX_H3_MODE_OPTIONS = [
-  { value: "text_to_video", label: "Text to Video" },
-  { value: "image_to_video", label: "Image to Video" },
-  { value: "reference_to_video", label: "Reference to Video" },
-  { value: "video_to_video", label: "Video to Video" },
+  { value: "text_to_video", label: "Text to Video", buttonLabel: "T2V" },
+  { value: "image_to_video", label: "Image to Video", buttonLabel: "I2V" },
+  { value: "reference_to_video", label: "Reference to Video", buttonLabel: "Ref to\nVideo" },
+  { value: "video_to_video", label: "Video to Video", buttonLabel: "V2V" },
 ];
 const MINIMAX_H3_INSTRUCTION_KEYS = {
   text_to_video: "minimax_h3_text_to_video",
@@ -381,7 +382,7 @@ function cloneMiniMaxH3Settings(value = {}) {
     cooldown_frames: Math.max(0, Math.trunc(Number(source.cooldown_frames || 0))),
     sampler_name: String(source.sampler_name || DEFAULT_MINIMAX_H3_SETTINGS.sampler_name),
     scheduler: String(source.scheduler || DEFAULT_MINIMAX_H3_SETTINGS.scheduler),
-    steps: migrateOldTurboDefault ? 6 : rawSteps,
+    steps: migrateOldTurboDefault ? 4 : rawSteps,
     steps_before_turbo: Math.max(1, Math.min(1000, Math.trunc(Number(source.steps_before_turbo ?? source.stepsBeforeTurbo ?? rawSteps) || DEFAULT_MINIMAX_H3_SETTINGS.steps_before_turbo))),
     denoise: Math.max(0, Math.min(1, Number(source.denoise ?? DEFAULT_MINIMAX_H3_SETTINGS.denoise))),
     easy_cache_bypass: turboEnabled && !hasSavedPreTurboEasyCache ? true : rawEasyCacheBypass,
@@ -636,13 +637,111 @@ function makeButton(label, kind = "neutral") {
     border-radius: 6px;
     background: ${kind === "primary" ? "#06b6d4" : "#27272a"};
     color: ${kind === "primary" ? "#082f49" : "#f4f4f5"};
+    font-family: ${BUILDER_FONT_STACK};
     font-size: 12px;
-    font-weight: 800;
+    font-weight: 600;
     padding: 8px 11px;
     cursor: pointer;
     white-space: nowrap;
     line-height: 1.2;
   `;
+  return button;
+}
+
+const COMPACT_TOOLBAR_ICONS = {
+  save: '<path d="M13 2H5a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8z"/><path d="M13 2v6h6"/><path d="M8 13h8v6H8z"/>',
+  wizard: '<path d="m15 4 5 5L7 22l-5-5Z"/><path d="m14 5 5 5"/><path d="M6 3v4"/><path d="M4 5h4"/><path d="M19 14v4"/><path d="M17 16h4"/>',
+  auto: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m7 5 2 4 2-4 2 4 2-4 2 4 2-4"/><path d="M8 13h4"/><path d="M10 11v4"/><path d="M17 12v4"/><path d="M15 14h4"/>',
+  story: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 4v16"/><path d="M16 4v16"/><path d="M3 9h5"/><path d="M16 15h5"/>',
+  reference: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m5 18 4-4 3 3 2-2 5 3"/>',
+  mapping: '<circle cx="5" cy="12" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="12" cy="19" r="2"/><path d="m6.5 10.5 4-4"/><path d="m13.5 6.5 4 4"/><path d="m17.5 13.5-4 4"/><path d="m10.5 17.5-4-4"/>',
+  brain: '<path d="M9.5 4A3.5 3.5 0 0 0 6 7.5v.2A3.5 3.5 0 0 0 4 11v2a3.5 3.5 0 0 0 2 3.2v.3A3.5 3.5 0 0 0 9.5 20H11V4Z"/><path d="M14.5 4A3.5 3.5 0 0 1 18 7.5v.2a3.5 3.5 0 0 1 2 3.3v2a3.5 3.5 0 0 1-2 3.2v.3a3.5 3.5 0 0 1-3.5 3.5H13V4Z"/><path d="M8 9h3"/><path d="M13 14h3"/>',
+  prompt: '<path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z"/><path d="M8 9h8"/><path d="M8 13h5"/>',
+  download: '<path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/>',
+  memory: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/>',
+  fullscreen: '<path d="M8 3H3v5"/><path d="m3 3 6 6"/><path d="M16 3h5v5"/><path d="m21 3-6 6"/><path d="M8 21H3v-5"/><path d="m3 21 6-6"/><path d="M16 21h5v-5"/><path d="m21 21-6-6"/>',
+  restore: '<path d="M8 3H3v5"/><path d="m3 3 6 6"/><path d="M16 3h5v5"/><path d="m21 3-6 6"/><path d="M8 21H3v-5"/><path d="m3 21 6-6"/><path d="M16 21h5v-5"/><path d="m21 21-6-6"/>',
+  close: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+};
+
+function styleCompactToolbarButton(button, options = {}) {
+  const lines = Array.isArray(options.lines) ? options.lines.filter(Boolean) : [String(options.label || button.textContent || "")];
+  const accessibleLabel = String(options.ariaLabel || lines.join(" ") || button.textContent || "Toolbar button");
+  const width = Math.max(36, Number(options.width || (options.iconOnly ? 40 : 58)));
+  button.style.cssText += `
+    width:${width}px;
+    min-width:${width}px;
+    height:${options.iconOnly ? 42 : 54}px;
+    box-sizing:border-box;
+    padding:${options.iconOnly ? "6px" : "5px 4px"};
+    display:inline-flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:2px;
+    white-space:normal;
+    line-height:1.08;
+    text-align:center;
+    font-family:${BUILDER_FONT_STACK};
+    font-size:11px;
+    font-weight:500;
+    letter-spacing:0;
+  `;
+  button.setAttribute("aria-label", accessibleLabel);
+  if (options.title) button.title = options.title;
+  button.replaceChildren();
+  if (options.icon && COMPACT_TOOLBAR_ICONS[options.icon]) {
+    const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    icon.setAttribute("viewBox", "0 0 24 24");
+    icon.setAttribute("width", options.iconOnly ? "20" : "15");
+    icon.setAttribute("height", options.iconOnly ? "20" : "15");
+    icon.setAttribute("fill", "none");
+    icon.setAttribute("stroke", "currentColor");
+    icon.setAttribute("stroke-width", "2");
+    icon.setAttribute("stroke-linecap", "round");
+    icon.setAttribute("stroke-linejoin", "round");
+    icon.setAttribute("aria-hidden", "true");
+    icon.innerHTML = COMPACT_TOOLBAR_ICONS[options.icon];
+    button.append(icon);
+  }
+  if (!options.iconOnly) {
+    const label = document.createElement("span");
+    label.style.cssText = "display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:11px;font-weight:500;line-height:1.08;letter-spacing:0;";
+    for (const line of lines) {
+      const row = document.createElement("span");
+      row.textContent = line;
+      label.append(row);
+    }
+    button.append(label);
+  }
+  return button;
+}
+
+function compactButtonLabelText(label) {
+  const text = String(label || "");
+  const map = {
+    "Text to Video": "T2V",
+    "Image to Video": "I2V",
+    "Reference to Video": "Ref to\nVideo",
+    "Video to Video": "V2V",
+    "Image Settings": "Image\nSettings",
+    "Video Settings": "Video\nSettings",
+    "Singer Assignment": "Singer\nAssignment",
+    "Speaker Assignment": "Speaker\nAssignment",
+    "LLM Prompting": "LLM\nPrompting",
+  };
+  return map[text] || text;
+}
+
+function applyCompactButtonLabel(button, label, options = {}) {
+  const compact = options.noMap ? String(label || "") : compactButtonLabelText(label);
+  button.textContent = compact;
+  button.title = options.title || String(label || compact).replace(/\s+/g, " ").trim();
+  button.style.minWidth = `${Number(options.minWidth || 0)}px`;
+  button.style.whiteSpace = "pre-line";
+  button.style.lineHeight = "1.05";
+  button.style.textAlign = "center";
+  button.style.padding = options.padding || "7px 8px";
   return button;
 }
 
@@ -741,13 +840,13 @@ function makeInput(value = "", type = "text") {
   const input = document.createElement("input");
   input.type = type;
   input.value = value;
-  input.style.cssText = "width:100%;box-sizing:border-box;border:1px solid #3f3f46;border-radius:6px;background:#18181b;color:#fafafa;padding:8px;font-size:12px;";
+  input.style.cssText = `width:100%;box-sizing:border-box;border:1px solid #3f3f46;border-radius:6px;background:#18181b;color:#fafafa;padding:8px;font-family:${BUILDER_FONT_STACK};font-size:12px;font-weight:400;`;
   return input;
 }
 
 function makeCheckbox(label, checked = false) {
   const wrapper = document.createElement("label");
-  wrapper.style.cssText = "display:flex;align-items:center;gap:8px;font-size:12px;color:#f4f4f5;font-weight:800;";
+  wrapper.style.cssText = `display:flex;align-items:center;gap:8px;font-family:${BUILDER_FONT_STACK};font-size:12px;color:#f4f4f5;font-weight:500;`;
   const input = document.createElement("input");
   input.type = "checkbox";
   input.checked = Boolean(checked);
@@ -757,7 +856,7 @@ function makeCheckbox(label, checked = false) {
 
 function makeSelect(options = [], value = "") {
   const select = document.createElement("select");
-  select.style.cssText = "width:100%;box-sizing:border-box;border:1px solid #3f3f46;border-radius:6px;background:#18181b;color:#fafafa;padding:8px;font-size:12px;";
+  select.style.cssText = `width:100%;box-sizing:border-box;border:1px solid #3f3f46;border-radius:6px;background:#18181b;color:#fafafa;padding:8px;font-family:${BUILDER_FONT_STACK};font-size:12px;font-weight:400;`;
   for (const optionValue of options) {
     const option = document.createElement("option");
     if (optionValue && typeof optionValue === "object") {
@@ -815,7 +914,7 @@ function makeSearchableLoraPicker(value = "[none]") {
 
 function makeField(label, control) {
   const wrapper = document.createElement("label");
-  wrapper.style.cssText = "display:flex;flex-direction:column;gap:5px;font-size:12px;color:#d4d4d8;font-weight:700;";
+  wrapper.style.cssText = `display:flex;flex-direction:column;gap:5px;font-family:${BUILDER_FONT_STACK};font-size:12px;color:#d4d4d8;font-weight:500;`;
   const text = document.createElement("span");
   text.textContent = label;
   wrapper.append(text, control);
@@ -920,7 +1019,7 @@ function makeSubTabs(tabs = []) {
   const wrapper = document.createElement("div");
   wrapper.style.cssText = "display:flex;flex-direction:column;gap:8px;";
   const tabBar = document.createElement("div");
-  tabBar.style.cssText = "display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:6px;position:sticky;top:44px;z-index:2;background:#202024;padding-bottom:2px;";
+  tabBar.style.cssText = "display:grid;grid-template-columns:repeat(auto-fit,minmax(74px,1fr));gap:6px;position:sticky;top:44px;z-index:2;background:#202024;padding-bottom:2px;";
   const panels = document.createElement("div");
   panels.style.cssText = "display:flex;flex-direction:column;gap:8px;";
   const buttons = [];
@@ -938,6 +1037,7 @@ function makeSubTabs(tabs = []) {
   };
   for (const tab of tabs) {
     const button = makeButton(tab.label);
+    applyCompactButtonLabel(button, tab.label, { minWidth: 0, padding: "7px 6px" });
     button.dataset.value = tab.value;
     button.onclick = () => setActive(tab.value);
     buttons.push(button);
@@ -1342,7 +1442,7 @@ function showModelDownloadModal() {
 function showTextInputModal({ title, label, value = "", placeholder = "", confirmLabel = "Continue" } = {}) {
   return new Promise((resolve) => {
     const backdrop = document.createElement("div");
-    backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100020;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
     const box = document.createElement("div");
     box.style.cssText = "width:min(560px,calc(100vw - 40px));border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
     const heading = document.createElement("div");
@@ -2425,7 +2525,7 @@ function openBuilder(node) {
   const overlay = document.createElement("div");
   let builderKeydownHandler = null;
   overlay.dataset.vrgdgThemeRoot = "true";
-  overlay.style.cssText = "position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;";
+  overlay.style.cssText = `position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;font-family:${BUILDER_FONT_STACK};`;
   const shell = document.createElement("div");
   const normalShellStyle = `
     width: min(1800px, calc(100vw - 24px));
@@ -2455,16 +2555,16 @@ function openBuilder(node) {
   let builderFullscreen = false;
 
   const updateStatusBanner = document.createElement("div");
-  updateStatusBanner.style.cssText = "display:flex;align-items:center;gap:10px;min-height:34px;box-sizing:border-box;padding:5px 10px 5px 12px;border-bottom:1px solid #52525b;background:#27272a;color:#f4f4f5;font-size:12px;font-weight:700;line-height:1.25;";
+  updateStatusBanner.style.cssText = `display:flex;align-items:center;gap:10px;min-height:34px;box-sizing:border-box;padding:5px 10px 5px 12px;border-bottom:1px solid #52525b;background:#27272a;color:#f4f4f5;font-family:${BUILDER_FONT_STACK};font-size:12px;font-weight:500;line-height:1.3;letter-spacing:0;`;
   const updateStatusDot = document.createElement("span");
   updateStatusDot.style.cssText = "width:9px;height:9px;flex:0 0 9px;border-radius:999px;background:#a1a1aa;box-shadow:0 0 0 3px rgba(161,161,170,.16);";
   const updateStatusText = document.createElement("span");
   updateStatusText.style.cssText = "min-width:0;flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
   updateStatusText.textContent = "AI Video Builder — Checking for updates…";
   const updateWhatsNewAction = makeButton("What's New");
-  updateWhatsNewAction.style.cssText += "display:none;padding:4px 10px;min-height:24px;background:#164e63;border-color:#22d3ee;color:#ecfeff;font-size:11px;font-weight:900;";
+  updateWhatsNewAction.style.cssText += `display:none;padding:4px 10px;min-height:24px;background:#164e63;border-color:#22d3ee;color:#ecfeff;font-family:${BUILDER_FONT_STACK};font-size:11px;font-weight:600;letter-spacing:0;`;
   const updateStatusAction = makeButton("Update");
-  updateStatusAction.style.cssText += "display:none;padding:4px 10px;min-height:24px;background:#7f1d1d;border-color:#f87171;color:#fff;font-size:11px;font-weight:900;";
+  updateStatusAction.style.cssText += `display:none;padding:4px 10px;min-height:24px;background:#7f1d1d;border-color:#f87171;color:#fff;font-family:${BUILDER_FONT_STACK};font-size:11px;font-weight:600;letter-spacing:0;`;
   const updateStatusClose = document.createElement("button");
   updateStatusClose.type = "button";
   updateStatusClose.textContent = "×";
@@ -2676,7 +2776,7 @@ function openBuilder(node) {
   };
 
   const topbar = document.createElement("div");
-  topbar.style.cssText = "position:relative;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center;padding:12px;border-bottom:1px solid #27272a;background:#202024;min-width:0;";
+  topbar.style.cssText = `position:relative;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center;padding:8px 10px;border-bottom:1px solid #27272a;background:#202024;min-width:0;font-family:${BUILDER_FONT_STACK};font-weight:500;letter-spacing:0;`;
   const audioInput = makeInput(String(getWidget(node, "audio_path")?.value || ""));
   const projectInput = makeInput(String(getWidget(node, "project_folder")?.value || ""));
   const srtInput = makeInput("");
@@ -2703,12 +2803,16 @@ function openBuilder(node) {
   const videoTypeSelect = makeVideoTypeSelect("singing");
   const videoTypeField = makeField("Video Type", videoTypeSelect);
   videoTypeField.style.minWidth = "180px";
+  videoTypeField.style.fontFamily = BUILDER_FONT_STACK;
+  videoTypeField.style.fontWeight = "500";
+  videoTypeSelect.style.fontFamily = BUILDER_FONT_STACK;
+  videoTypeSelect.style.fontWeight = "400";
   const autoSaveControl = makeCheckbox("Auto save", true);
   autoSaveControl.wrapper.style.cssText += "border:1px solid #3f3f46;border-radius:6px;background:#18181b;padding:7px 10px;";
   const fullscreenButton = makeButton("Fullscreen");
   fullscreenButton.title = "Expand the Video Creator to fill the browser window without closing or resetting anything.";
   const closeButton = makeButton("Close");
-  closeButton.onclick = () => {
+  const closeBuilderNow = () => {
     pauseAllAudio();
     if (!previewVideo.paused) previewVideo.pause();
     window.removeEventListener("vrgdg:builder-toast", toastNotificationHandler);
@@ -2716,10 +2820,57 @@ function openBuilder(node) {
     restoreBrowserAiDownloadsQuietly().catch(() => null);
     overlay.remove();
   };
+  const confirmCloseBuilder = () => {
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100050;background:rgba(0,0,0,.68);display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;";
+    const box = document.createElement("div");
+    box.style.cssText = `width:min(520px,calc(100vw - 40px));border:1px solid #155e75;border-radius:10px;background:#0f172a;color:#f8fafc;box-shadow:0 24px 80px rgba(0,0,0,.65);padding:16px;display:flex;flex-direction:column;gap:12px;font-family:${BUILDER_FONT_STACK};`;
+    const title = document.createElement("div");
+    title.textContent = "Close Video Builder?";
+    title.style.cssText = "font-size:17px;font-weight:600;color:#cffafe;";
+    const note = document.createElement("div");
+    note.textContent = "Are you sure you want to exit? Any unsaved changes will be lost unless you save first.";
+    note.style.cssText = "font-size:13px;line-height:1.45;color:#cbd5e1;";
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;";
+    const saveAndClose = makeButton("Save + Close", "primary");
+    const closeWithoutSaving = makeButton("Close Without Saving");
+    const goBack = makeButton("Go Back");
+    closeWithoutSaving.style.borderColor = "#991b1b";
+    closeWithoutSaving.style.color = "#fecaca";
+    closeWithoutSaving.style.background = "#3f1518";
+    goBack.onclick = () => backdrop.remove();
+    closeWithoutSaving.onclick = () => {
+      backdrop.remove();
+      closeBuilderNow();
+    };
+    saveAndClose.onclick = async () => {
+      saveAndClose.disabled = true;
+      saveAndClose.textContent = "Saving...";
+      try {
+        await saveSession({ quiet: true, throwOnError: true });
+        backdrop.remove();
+        closeBuilderNow();
+      } catch (error) {
+        saveAndClose.disabled = false;
+        saveAndClose.textContent = "Save + Close";
+        toast(`Could not save before closing: ${error?.message || error}`, true);
+      }
+    };
+    actions.append(saveAndClose, closeWithoutSaving, goBack);
+    box.append(title, note, actions);
+    backdrop.append(box);
+    document.body.append(backdrop);
+    backdrop.addEventListener("pointerdown", (event) => {
+      if (event.target === backdrop) backdrop.remove();
+    });
+  };
+  closeButton.onclick = confirmCloseBuilder;
   const promptCreatorButton = makeButton("Prompt Creator (Legacy)");
   const autoLoadAllButton = makeButton("Import Data From Prompt Creator");
   const importSceneNotesButton = makeButton("Import Scene Notes JSON");
   const wizardButton = makeButton("Wizard", "primary");
+  const autoBuildButton = makeButton("Auto Build", "primary");
   const storyboardBuilderButton = makeButton("Storyboard Builder");
   const fluxReferenceBuilderButton = makeButton("Reference Builder");
   const lyricMapperButton = makeButton("Line Mapping");
@@ -2741,6 +2892,7 @@ function openBuilder(node) {
   const convertLtxPromptsToMiniMaxButton = makeButton("Convert LTX Video Prompts to MiniMax H3", "primary");
   convertLtxPromptsToMiniMaxButton.title = "Use the selected LLM Runner to convert every populated LTX video prompt into a MiniMax H3 prompt. Global audio and all other project data stay unchanged.";
   const importImageFolderButton = makeButton("Fill Timeline Images From Folder", "primary");
+  const projectBatchButton = makeButton("Project Batch", "primary");
   const fullBuildButton = makeButton("Build Full Video");
   const fullFLFBuildButton = makeButton("Build Full FLF Video");
   const stopWorkflowButton = makeButton("Stop");
@@ -2760,8 +2912,98 @@ function openBuilder(node) {
   stopWorkflowButton.style.background = "#b91c1c";
   stopWorkflowButton.style.borderColor = "#7f1d1d";
   stopWorkflowButton.style.color = "#fee2e2";
+  autoBuildButton.style.background = "linear-gradient(180deg,#22d3ee,#0891b2)";
+  autoBuildButton.style.borderColor = "#67e8f9";
+  autoBuildButton.style.color = "#082f49";
+  styleCompactToolbarButton(saveButton, {
+    lines: ["Quick", "Save"],
+    icon: "save",
+    width: 54,
+    title: "Save the current project immediately.",
+  });
+  styleCompactToolbarButton(wizardButton, {
+    lines: ["Wizard"],
+    icon: "wizard",
+    width: 54,
+    title: "Open the guided Video Builder setup workflow.",
+  });
+  styleCompactToolbarButton(autoBuildButton, {
+    lines: ["Auto", "Build"],
+    icon: "auto",
+    width: 56,
+    title: "Automatically build a complete music-video timeline from a song, lyrics, a singer image, and optional locations.",
+  });
+  styleCompactToolbarButton(storyboardBuilderButton, {
+    lines: ["Story", "Builder"],
+    icon: "story",
+    width: 58,
+    title: "Open Storyboard Builder to plan and edit scene prompts.",
+  });
+  styleCompactToolbarButton(fluxReferenceBuilderButton, {
+    lines: ["Ref", "Builder"],
+    icon: "reference",
+    width: 54,
+    title: "Open Reference Builder to manage characters and locations.",
+  });
+  styleCompactToolbarButton(lyricMapperButton, {
+    lines: ["Line", "Mapping"],
+    icon: "mapping",
+    width: 56,
+    title: "Transcribe lyrics or dialogue and map performers to scenes.",
+  });
+  styleCompactToolbarButton(gemmaRunnerButton, {
+    lines: ["LLM", "Runner"],
+    icon: "brain",
+    width: 54,
+    title: "Choose the language-model runner used for prompt writing.",
+  });
+  styleCompactToolbarButton(promptOptionsButton, {
+    lines: ["Prompt", "Options"],
+    icon: "prompt",
+    width: 58,
+    title: "Open prompt editing, reload, clear, and prompt-file tools.",
+  });
+  styleCompactToolbarButton(downloadModelsButton, {
+    lines: ["Models"],
+    icon: "download",
+    width: 54,
+    title: "Download or review the models used by the builder.",
+  });
+  styleCompactToolbarButton(clearMemoryButton, {
+    lines: ["Clear", "RAM"],
+    icon: "memory",
+    width: 52,
+    title: "Clear Builder, ComfyUI, and model memory caches.",
+  });
+  styleCompactToolbarButton(fullscreenButton, {
+    icon: "fullscreen",
+    iconOnly: true,
+    width: 40,
+    ariaLabel: "Enter fullscreen",
+    title: "Expand the Video Creator to fill the browser window without closing or resetting anything.",
+  });
+  styleCompactToolbarButton(closeButton, {
+    icon: "close",
+    iconOnly: true,
+    width: 40,
+    ariaLabel: "Close Video Builder",
+    title: "Close the Video Builder.",
+  });
+  closeButton.style.borderColor = "#991b1b";
+  closeButton.style.color = "#fecaca";
+  closeButton.style.background = "#3f1518";
+  stopWorkflowButton.style.width = "52px";
+  stopWorkflowButton.style.minWidth = "52px";
+  stopWorkflowButton.style.height = "42px";
+  stopWorkflowButton.style.padding = "6px";
+  stopWorkflowButton.style.fontFamily = "Inter,Segoe UI,Roboto,Arial,sans-serif";
+  stopWorkflowButton.style.fontWeight = "600";
+  stopWorkflowButton.style.letterSpacing = "0";
+  menuButton.style.fontFamily = "Inter,Segoe UI,Roboto,Arial,sans-serif";
+  menuButton.style.fontWeight = "500";
+  menuButton.style.letterSpacing = "0";
   const menuDropdown = document.createElement("div");
-  menuDropdown.style.cssText = "display:none;position:absolute;left:12px;top:52px;z-index:20;min-width:260px;max-height:min(760px,calc(100vh - 88px));overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;scrollbar-gutter:stable;box-sizing:border-box;border:1px solid #3f3f46;border-radius:8px;background:#18181b;box-shadow:0 18px 60px rgba(0,0,0,.55);padding:8px;gap:6px;flex-direction:column;";
+  menuDropdown.style.cssText = "display:none;position:absolute;left:10px;top:calc(100% + 1px);z-index:20;min-width:260px;max-height:min(760px,calc(100vh - 88px));overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;scrollbar-gutter:stable;box-sizing:border-box;border:1px solid #3f3f46;border-radius:8px;background:#18181b;box-shadow:0 18px 60px rgba(0,0,0,.55);padding:8px;gap:6px;flex-direction:column;";
   const styleMenuItem = (button) => {
     button.style.width = "100%";
     button.style.textAlign = "left";
@@ -2779,25 +3021,25 @@ function openBuilder(node) {
   updateV10Row.append(updateV10Button, updateV10HintButton);
   menuDropdown.append(updateV10Row);
   const projectActions = document.createElement("div");
-  projectActions.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:nowrap;min-width:max-content;";
+  projectActions.style.cssText = "display:flex;gap:6px;align-items:center;flex-wrap:nowrap;min-width:max-content;";
   projectActions.append(menuButton, videoTypeField, saveButton);
   const batchActions = document.createElement("div");
   batchActions.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:nowrap;border-left:1px solid #3f3f46;border-right:1px solid #3f3f46;padding:0 10px;flex:0 0 auto;";
   batchActions.style.display = "none";
   const importActions = document.createElement("div");
-  importActions.style.cssText = "display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:nowrap;min-width:0;overflow:visible;";
-  importActions.append(wizardButton, storyboardBuilderButton, fluxReferenceBuilderButton, lyricMapperButton, gemmaRunnerButton, promptOptionsButton);
+  importActions.style.cssText = "display:flex;gap:5px;align-items:center;justify-content:center;flex-wrap:nowrap;min-width:0;overflow:visible;";
+  importActions.append(wizardButton, autoBuildButton, storyboardBuilderButton, fluxReferenceBuilderButton, lyricMapperButton, gemmaRunnerButton, promptOptionsButton);
   const centerActions = document.createElement("div");
   centerActions.style.cssText = "display:flex;gap:8px;align-items:center;justify-content:center;min-width:0;overflow:visible;";
   centerActions.append(importActions, batchActions);
   const utilityActions = document.createElement("div");
-  utilityActions.style.cssText = "display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:nowrap;min-width:max-content;";
+  utilityActions.style.cssText = "display:flex;gap:5px;align-items:center;justify-content:flex-end;flex-wrap:nowrap;min-width:max-content;";
   const projectVideoEngineBadge = document.createElement("div");
   projectVideoEngineBadge.textContent = "◈ LTX";
   projectVideoEngineBadge.title = "Project video engine: LTX";
   projectVideoEngineBadge.setAttribute("role", "status");
   projectVideoEngineBadge.setAttribute("aria-live", "polite");
-  projectVideoEngineBadge.style.cssText = "height:26px;box-sizing:border-box;display:inline-flex;align-items:center;padding:0 9px;border:1px solid #60a5fa;border-radius:999px;background:#172554;color:#bfdbfe;font-size:11px;font-weight:950;letter-spacing:.03em;white-space:nowrap;";
+  projectVideoEngineBadge.style.cssText = `height:26px;box-sizing:border-box;display:inline-flex;align-items:center;padding:0 9px;border:1px solid #60a5fa;border-radius:999px;background:#172554;color:#bfdbfe;font-family:${BUILDER_FONT_STACK};font-size:11px;font-weight:600;letter-spacing:0;white-space:nowrap;`;
   utilityActions.append(projectVideoEngineBadge, stopWorkflowButton, downloadModelsButton, clearMemoryButton, fullscreenButton, closeButton);
   topbar.append(projectActions, centerActions, utilityActions, menuDropdown);
 
@@ -2836,6 +3078,42 @@ function openBuilder(node) {
     return row;
   };
   const beatCalibrationToolRow = makeToolRow(calibrateFirstBeatButton, "Capture a first, middle, and last beat with the playhead, then correct both beat-grid offset and cumulative drift. Scene timing stays unchanged.");
+  const projectBatchPanel = document.createElement("div");
+  projectBatchPanel.style.cssText = "display:none;margin:0 0 10px;border:1px solid #0891b2;border-radius:7px;background:#082f49;padding:9px;gap:8px;flex-direction:column;";
+  const projectBatchTitle = document.createElement("div");
+  projectBatchTitle.textContent = "Project Batch";
+  projectBatchTitle.style.cssText = "font-size:13px;font-weight:900;color:#cffafe;";
+  const projectBatchHelp = document.createElement("div");
+  projectBatchHelp.textContent = "Queue saved projects and run Render All on each one in order. The next project opens only after the previous project finishes and saves.";
+  projectBatchHelp.style.cssText = "font-size:11px;line-height:1.45;color:#e0f2fe;";
+  const projectBatchActions = document.createElement("div");
+  projectBatchActions.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;";
+  const projectBatchAddCurrent = makeButton("Add Current", "primary");
+  const projectBatchAddRecent = makeButton("Add Project");
+  const projectBatchAddSession = makeButton("Add Session JSON");
+  const projectBatchAddCustom = makeButton("Paste Folder");
+  projectBatchActions.append(projectBatchAddCurrent, projectBatchAddRecent, projectBatchAddSession, projectBatchAddCustom);
+  const projectBatchOptions = document.createElement("div");
+  projectBatchOptions.style.cssText = "display:flex;flex-direction:column;gap:6px;border:1px solid #155e75;border-radius:6px;background:#0f172a;padding:7px;";
+  const projectBatchForceVideos = makeCheckbox("Redo scene videos", false);
+  const projectBatchContinueOnError = makeCheckbox("Continue if a project fails", true);
+  const projectBatchClearMemory = makeCheckbox("Clear memory between projects", true);
+  for (const option of [projectBatchForceVideos, projectBatchContinueOnError, projectBatchClearMemory]) {
+    option.wrapper.style.fontSize = "11px";
+    option.wrapper.style.fontWeight = "600";
+  }
+  projectBatchOptions.append(projectBatchForceVideos.wrapper, projectBatchContinueOnError.wrapper, projectBatchClearMemory.wrapper);
+  const projectBatchQueue = document.createElement("div");
+  projectBatchQueue.style.cssText = "display:flex;flex-direction:column;gap:6px;max-height:220px;overflow:auto;border:1px solid #155e75;border-radius:6px;background:#071422;padding:7px;";
+  const projectBatchFooter = document.createElement("div");
+  projectBatchFooter.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;";
+  const projectBatchRun = makeButton("Run Batch", "primary");
+  const projectBatchStop = makeButton("Stop Batch");
+  projectBatchStop.disabled = true;
+  projectBatchFooter.append(projectBatchRun, projectBatchStop);
+  const projectBatchStatus = document.createElement("div");
+  projectBatchStatus.style.cssText = "font-size:11px;color:#bae6fd;white-space:pre-wrap;line-height:1.35;";
+  projectBatchPanel.append(projectBatchTitle, projectBatchHelp, projectBatchActions, projectBatchOptions, projectBatchQueue, projectBatchFooter, projectBatchStatus);
   const beatCalibrationWizard = document.createElement("div");
   beatCalibrationWizard.style.cssText = "display:none;margin:0 0 10px;border:1px solid #0891b2;border-radius:7px;background:#082f49;padding:9px;gap:8px;flex-direction:column;";
   const beatCalibrationTitle = document.createElement("div");
@@ -2892,6 +3170,8 @@ function openBuilder(node) {
     makeToolRow(autoLoadAllButton, "Import the latest Prompt Creator outputs into this project, including timing and prompt data."),
     makeToolRow(importSceneNotesButton, "Load a scene-notes JSON file and map its notes onto the current scenes."),
     makeToolRow(importImageFolderButton, "Choose a folder of numbered images and fill base timeline scenes in numeric order. Requires project audio and existing scenes."),
+    makeToolRow(projectBatchButton, "Run Render All across multiple saved projects one after another for overnight batches."),
+    projectBatchPanel,
     beatCalibrationToolRow,
     beatCalibrationWizard,
     makeToolRow(snapAllSceneStartsButton, "Snap Scene 3 onward to the nearest valid beat. The Scene 1-to-2 intro boundary stays fixed; connected previous scene ends move with later shared cuts."),
@@ -4524,6 +4804,7 @@ function openBuilder(node) {
   const createSceneVideoButtons = [createSceneVideoButton];
   const gemmaThenCreateVideoButtons = [];
   const miniMaxSceneVideoButton = makeButton("Create MiniMax H3 Scene Video", "primary");
+  applyCompactButtonLabel(miniMaxSceneVideoButton, "Create MiniMax H3\nScene Video", { noMap: true, padding: "8px 8px", title: "Create MiniMax H3 Scene Video" });
   miniMaxSceneVideoButton.title = "Render this scene with the MiniMax H3 hidden workflow and preserve the exact timeline duration.";
   const miniMaxSceneVideoButtons = [miniMaxSceneVideoButton];
   const miniMaxReferencesButton = makeButton("Choose MiniMax References (0/9)");
@@ -4585,7 +4866,8 @@ function openBuilder(node) {
   function setButtonGroupState(buttons, { disabled = false, text = "" } = {}) {
     for (const button of buttons) {
       button.disabled = disabled;
-      if (text) button.textContent = text;
+      if (text === "Create MiniMax H3 Scene Video") applyCompactButtonLabel(button, "Create MiniMax H3\nScene Video", { noMap: true, padding: "8px 8px", title: text });
+      else if (text) button.textContent = text;
     }
   }
   const inspectorActions = document.createElement("div");
@@ -5085,7 +5367,8 @@ function openBuilder(node) {
   const miniMaxModeChooser = document.createElement("div");
   miniMaxModeChooser.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;";
   const miniMaxModeButtons = MINIMAX_H3_MODE_OPTIONS.map((item) => {
-    const button = makeButton(item.label);
+    const button = makeButton(item.buttonLabel || item.label);
+    applyCompactButtonLabel(button, item.buttonLabel || item.label, { noMap: true, minWidth: 0, padding: "7px 6px", title: item.label });
     button.dataset.minimaxH3Mode = item.value;
     miniMaxModeChooser.append(button);
     return button;
@@ -5659,6 +5942,11 @@ function openBuilder(node) {
   audio.preload = "metadata";
   const sceneAudio = document.createElement("audio");
   sceneAudio.preload = "metadata";
+  let singerCueStopAt = null;
+  let singerCueStopTimer = 0;
+  let singerCueStopRaf = 0;
+  let activeSingerCuePlayButton = null;
+  let activeSingerCuePlayLabel = "";
   let silentTimelinePlaying = false;
   let silentTimelineRaf = 0;
   let silentTimelineStartedAt = 0;
@@ -5681,10 +5969,15 @@ function openBuilder(node) {
     overlay.style.alignItems = builderFullscreen ? "stretch" : "center";
     overlay.style.justifyContent = builderFullscreen ? "stretch" : "center";
     overlay.style.background = builderFullscreen ? "#09090b" : "rgba(0,0,0,.72)";
-    fullscreenButton.textContent = builderFullscreen ? "Exit Fullscreen" : "Fullscreen";
-    fullscreenButton.title = builderFullscreen
-      ? "Return the Video Creator to the normal floating panel size."
-      : "Expand the Video Creator to fill the browser window without closing or resetting anything.";
+    styleCompactToolbarButton(fullscreenButton, {
+      icon: builderFullscreen ? "restore" : "fullscreen",
+      iconOnly: true,
+      width: 40,
+      ariaLabel: builderFullscreen ? "Exit fullscreen" : "Enter fullscreen",
+      title: builderFullscreen
+        ? "Return the Video Creator to the normal floating panel size."
+        : "Expand the Video Creator to fill the browser window without closing or resetting anything.",
+    });
     applyLayoutSizes();
     render();
   }
@@ -6409,17 +6702,299 @@ function openBuilder(node) {
     return cues;
   }
 
+  function isMiniMaxSingerAssignmentMode(segment = activeSegment()) {
+    if (!segment) return false;
+    const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
+    const settings = miniMaxH3SettingsForSegment(segment);
+    const videoType = normalizeVideoType(segment?.performance_mode || state.videoType);
+    return Boolean(miniMaxProject && videoType === "singing" && settings.audio_mode === "input_audio");
+  }
+
+  function syncLyricTextFromCueMap(segment) {
+    if (!segment || !Array.isArray(segment.lyric_cue_map) || !segment.lyric_cue_map.length) return;
+    const joined = segment.lyric_cue_map.map((cue) => flattenLyricForPrompt(cue?.text)).filter(Boolean).join(" ");
+    if (joined) segment.lyric_text = joined;
+  }
+
   function renderMiniMaxSpeakerAssignmentPanel() {
     const segment = activeSegment();
     const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
     const settings = miniMaxH3SettingsForSegment(segment);
     const shortFilm = normalizeVideoType(segment?.performance_mode || state.videoType) === "speaking";
-    const enabled = Boolean(miniMaxProject && segment && shortFilm && settings.audio_mode === "built_in_audio" && !segment.no_character_present);
+    const singerMode = isMiniMaxSingerAssignmentMode(segment);
+    const enabled = Boolean(miniMaxProject && segment && !segment.no_character_present && ((shortFilm && settings.audio_mode === "built_in_audio") || singerMode));
     const speakers = enabled ? miniMaxMappedSpeakersForSegment(segment) : [];
     miniMaxSpeakerAssignmentList.replaceChildren();
-    miniMaxAddSpeakerCueButton.disabled = !enabled || !speakers.length;
+    miniMaxAddSpeakerCueButton.disabled = !enabled || !speakers.length || (singerMode && segment?.lyric_performance_mode !== "cue_map");
+    miniMaxAddSpeakerCueButton.textContent = singerMode ? "Add Lyric Cue" : "Add Dialogue Cue";
+    miniMaxAddSpeakerCueButton.style.display = singerMode ? "none" : "";
     if (!miniMaxProject || !segment) {
-      miniMaxSpeakerAssignmentNote.textContent = "Choose an active MiniMax scene to assign speakers.";
+      miniMaxSpeakerAssignmentNote.textContent = "Choose an active MiniMax scene to assign vocal performers.";
+      return;
+    }
+    if (singerMode) {
+      if (segment.no_character_present) {
+        miniMaxSpeakerAssignmentNote.textContent = "This scene is marked No character present, so it cannot contain assigned singing.";
+        return;
+      }
+      miniMaxSpeakerAssignmentNote.textContent = "Singer Assignment uses the same performers mapped in Reference Builder. Choose Together when all selected singers perform the full line, or Split cue map when different singers take turns on lyric chunks.";
+      if (!speakers.length) {
+        const empty = document.createElement("div");
+        empty.textContent = "No singers are mapped to this scene yet. Map performer subjects in Reference Builder first.";
+        empty.style.cssText = "border:1px dashed #334155;border-radius:7px;padding:12px;color:#94a3b8;text-align:center;font-size:12px;";
+        miniMaxSpeakerAssignmentList.append(empty);
+        return;
+      }
+      let selectedPerformers = selectedPerformerSubjectsForSegment(segment);
+      const selectedIds = new Set(selectedPerformers.map((subject) => String(subject.id)));
+      if (!selectedIds.size && speakers[0]?.id) {
+        segment.lyric_singers = [speakers[0].name];
+        selectedIds.add(String(speakers[0].id));
+        selectedPerformers = speakers.slice(0, 1);
+      } else if (selectedPerformers.length) {
+        segment.lyric_singers = selectedPerformers.map((subject) => subject.name || "Character");
+      }
+      const audioTools = document.createElement("div");
+      audioTools.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+      const playSceneCueAudio = makeButton("Play Scene Audio", "primary");
+      const jumpSceneCueAudio = makeButton("Jump To Scene Start");
+      applyCompactButtonLabel(playSceneCueAudio, "Play\nScene Audio", { noMap: true, padding: "7px 6px", title: "Play this scene's audio range." });
+      applyCompactButtonLabel(jumpSceneCueAudio, "Jump To\nScene Start", { noMap: true, padding: "7px 6px", title: "Move the playhead to this scene start." });
+      playSceneCueAudio.onclick = () => {
+        const start = timelineAudioStartForSegment(segment);
+        if (!playSceneAudioFrom(start)) {
+          activateGlobalTimelineAudioPlayback(Math.max(0, Number(segment.start || 0)));
+          audio.play().then(updatePlayPauseButton).catch(() => startSilentTimelinePlayback(Math.max(0, Number(segment.start || 0))));
+        }
+      };
+      jumpSceneCueAudio.onclick = () => {
+        const start = Math.max(0, Number(segment.start || 0));
+        activateGlobalTimelineAudioPlayback(start);
+        toast(`Playhead moved to ${formatTime(start)}. Play the scene, then use Set Start / Set End on cue rows.`);
+      };
+      audioTools.append(playSceneCueAudio, jumpSceneCueAudio);
+      miniMaxSpeakerAssignmentList.append(audioTools);
+
+      const modeWrap = document.createElement("div");
+      modeWrap.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:8px;align-items:end;border:1px solid #155e75;border-radius:7px;background:#07111f;padding:9px;";
+      const performerSelect = document.createElement("select");
+      performerSelect.multiple = true;
+      performerSelect.size = Math.min(5, Math.max(2, speakers.length));
+      performerSelect.style.cssText = "min-height:74px;border:1px solid #3f3f46;border-radius:6px;background:#18181b;color:#fafafa;padding:6px;font-size:12px;";
+      speakers.forEach((speaker) => {
+        const option = new Option(speaker.name, speaker.id);
+        option.selected = selectedIds.has(String(speaker.id));
+        performerSelect.append(option);
+      });
+      const performanceMode = makeSelect(["together", "cue_map"], segment.lyric_performance_mode || "together");
+      performanceMode.options[0].textContent = "Together / same full line";
+      performanceMode.options[1].textContent = "Split lyric cues";
+      performerSelect.onchange = () => {
+        const chosen = Array.from(performerSelect.selectedOptions || []).map((option) => speakers.find((speaker) => speaker.id === option.value)).filter(Boolean);
+        segment.lyric_singers = chosen.map((speaker) => speaker.name);
+        const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+        if (!refs.performer_scene_map || typeof refs.performer_scene_map !== "object") refs.performer_scene_map = {};
+        if (chosen.length) refs.performer_scene_map[segment.id] = chosen.map((speaker) => speaker.id);
+        else delete refs.performer_scene_map[segment.id];
+        state.fluxReferenceBuilder = refs;
+        if (chosen.length < 2) {
+          segment.lyric_performance_mode = "together";
+          segment.lyric_cue_map = [];
+        }
+        renderMiniMaxSpeakerAssignmentPanel();
+        autoSaveSessionQuiet("MiniMax singer performers changed").catch(() => null);
+      };
+      performanceMode.onchange = () => {
+        segment.lyric_performance_mode = performanceMode.value;
+        if (performanceMode.value === "cue_map" && !normalizeLyricCueMapForSegment(segment, undefined, { preserveBlank: true }).length) {
+          const performers = selectedPerformerSubjectsForSegment(segment);
+          segment.lyric_cue_map = lyricCueTextParts(segment.lyric_text).map((text, index) => {
+            const performer = performers[index % performers.length] || performers[0] || {};
+            return { text, singer_id: performer.id || "", singer_name: performer.name || "" };
+          });
+        }
+        renderMiniMaxSpeakerAssignmentPanel();
+        autoSaveSessionQuiet("MiniMax singer assignment mode changed").catch(() => null);
+      };
+      modeWrap.append(makeField("Singers / performers", performerSelect), makeField("Performance mode", performanceMode));
+      miniMaxSpeakerAssignmentList.append(modeWrap);
+      if (selectedPerformers.length >= 2 && segment.lyric_performance_mode === "cue_map" && !normalizeLyricCueMapForSegment(segment, undefined, { preserveBlank: true }).length) {
+        segment.lyric_cue_map = lyricCueTextParts(segment.lyric_text).map((text, index) => {
+          const performer = selectedPerformers[index % selectedPerformers.length] || selectedPerformers[0] || {};
+          return { text, singer_id: performer.id || "", singer_name: performer.name || "" };
+        });
+      }
+      if (selectedPerformers.length < 2 || segment.lyric_performance_mode !== "cue_map") {
+        const together = document.createElement("div");
+        const performerNames = Array.from(performerSelect.selectedOptions || []).map((option) => option.textContent).filter(Boolean);
+        together.textContent = performerNames.length > 1
+          ? `${performerNames.join(" and ")} will sing/speak the complete scene lyric together.`
+          : `${performerNames[0] || "The selected singer"} will sing/speak the complete scene lyric.`;
+        together.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;padding:10px;color:#cbd5e1;font-size:12px;line-height:1.45;";
+        miniMaxSpeakerAssignmentList.append(together);
+        return;
+      }
+      const cues = normalizeLyricCueMapForSegment(segment, undefined, { preserveBlank: true });
+      segment.lyric_cue_map = cues;
+      const cueActions = document.createElement("div");
+      cueActions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+      const addLyricCue = makeButton("Add Lyric Cue", "primary");
+      const addInstrumentalCue = makeButton("Add Instrumental Cue");
+      applyCompactButtonLabel(addLyricCue, "Add\nLyric Cue", { noMap: true, padding: "7px 6px" });
+      applyCompactButtonLabel(addInstrumentalCue, "Add\nInstrumental", { noMap: true, padding: "7px 6px", title: "Add Instrumental Cue" });
+      addLyricCue.onclick = () => {
+        const performer = selectedPerformers[cues.filter((cue) => cue.type !== "instrumental").length % selectedPerformers.length] || selectedPerformers[0] || speakers[0] || {};
+        cues.push({ type: "vocal", text: "", action_note: "", singer_id: performer.id || "", singer_name: performer.name || "", start: null, end: null });
+        segment.lyric_cue_map = cues;
+        renderMiniMaxSpeakerAssignmentPanel();
+      };
+      addInstrumentalCue.onclick = () => {
+        cues.push({ type: "instrumental", text: "", action_note: "", singer_id: "", singer_name: "", start: null, end: null });
+        segment.lyric_cue_map = cues;
+        renderMiniMaxSpeakerAssignmentPanel();
+      };
+      cueActions.append(addLyricCue, addInstrumentalCue);
+      miniMaxSpeakerAssignmentList.append(cueActions);
+      let draggedIndex = -1;
+      cues.forEach((cue, index) => {
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex;flex-direction:column;gap:8px;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:8px;";
+        row.addEventListener("dragover", (event) => {
+          if (draggedIndex < 0 || draggedIndex === index) return;
+          event.preventDefault();
+          row.style.borderColor = "#22d3ee";
+        });
+        row.addEventListener("dragleave", () => { row.style.borderColor = "#334155"; });
+        row.addEventListener("drop", (event) => {
+          event.preventDefault();
+          row.style.borderColor = "#334155";
+          if (draggedIndex < 0 || draggedIndex === index) return;
+          const [moved] = cues.splice(draggedIndex, 1);
+          cues.splice(index, 0, moved);
+          segment.lyric_cue_map = cues;
+          syncLyricTextFromCueMap(segment);
+          renderMiniMaxSpeakerAssignmentPanel();
+          autoSaveSessionQuiet("MiniMax singer cue reordered").catch(() => null);
+        });
+        const handle = document.createElement("button");
+        handle.type = "button";
+        handle.textContent = "::";
+        handle.title = "Drag to change lyric cue order";
+        handle.draggable = true;
+        handle.style.cssText = "height:38px;border:1px solid #334155;border-radius:6px;background:#07111f;color:#67e8f9;font-weight:900;cursor:grab;";
+        handle.addEventListener("dragstart", () => { draggedIndex = index; row.style.opacity = ".55"; });
+        handle.addEventListener("dragend", () => { draggedIndex = -1; row.style.opacity = ""; });
+        const number = document.createElement("div");
+        number.textContent = String(index + 1);
+        number.style.cssText = "font-size:14px;font-weight:900;color:#cffafe;text-align:center;";
+        const mainRow = document.createElement("div");
+        mainRow.style.cssText = "display:grid;grid-template-columns:32px 34px minmax(106px,.5fr) minmax(132px,.65fr) minmax(180px,1.4fr) 58px;gap:7px;align-items:center;";
+        const typeSelect = makeSelect(["vocal", "instrumental"], cue.type || "vocal");
+        typeSelect.options[0].textContent = "Lyric";
+        typeSelect.options[1].textContent = "Instrumental";
+        const singerSelect = makeSelect(speakers.map((speaker) => ({ value: speaker.id, label: speaker.name })), cue.singer_id);
+        const line = makeInput(cue.type === "instrumental" ? cue.action_note || "" : cue.text || "");
+        line.placeholder = cue.type === "instrumental" ? "Action note while nobody sings..." : "Exact lyric words for this singer...";
+        const remove = makeButton("Remove");
+        applyCompactButtonLabel(remove, "Remove", { minWidth: 0, padding: "7px 6px" });
+        typeSelect.addEventListener("change", () => {
+          cue.type = typeSelect.value === "instrumental" ? "instrumental" : "vocal";
+          if (cue.type === "instrumental") {
+            shiftCueLyricTextDown(cues, index, cue.text, selectedPerformers[index % selectedPerformers.length] || selectedPerformers[0] || speakers[0] || {});
+            cue.action_note = cue.action_note || "";
+            cue.text = "";
+            cue.singer_id = "";
+            cue.singer_name = "";
+          } else {
+            const singer = selectedPerformers[0] || speakers[0] || {};
+            cue.text = cue.text || cue.action_note || "";
+            cue.action_note = "";
+            cue.singer_id = cue.singer_id || singer.id || "";
+            cue.singer_name = cue.singer_name || singer.name || "";
+          }
+          segment.lyric_cue_map = cues;
+          renderMiniMaxSpeakerAssignmentPanel();
+        });
+        singerSelect.addEventListener("change", () => {
+          const singer = speakers.find((item) => item.id === singerSelect.value) || { id: singerSelect.value, name: singerSelect.selectedOptions[0]?.textContent || "" };
+          cue.singer_id = singer.id;
+          cue.singer_name = singer.name;
+          segment.lyric_cue_map = cues;
+          syncLyricTextFromCueMap(segment);
+          autoSaveSessionQuiet("MiniMax singer cue changed").catch(() => null);
+        });
+        line.addEventListener("input", () => {
+          if (cue.type === "instrumental") cue.action_note = line.value;
+          else cue.text = line.value;
+          segment.lyric_cue_map = cues;
+          syncLyricTextFromCueMap(segment);
+        });
+        line.addEventListener("change", () => autoSaveSessionQuiet("MiniMax lyric cue changed").catch(() => null));
+        remove.onclick = () => {
+          pushHistory();
+          cues.splice(index, 1);
+          segment.lyric_cue_map = cues;
+          syncLyricTextFromCueMap(segment);
+          renderMiniMaxSpeakerAssignmentPanel();
+          autoSaveSessionQuiet("MiniMax singer cue removed").catch(() => null);
+        };
+        singerSelect.disabled = cue.type === "instrumental";
+        mainRow.append(handle, number, typeSelect, singerSelect, line, remove);
+        const timingRow = document.createElement("div");
+        timingRow.style.cssText = "display:grid;grid-template-columns:minmax(44px,.45fr) minmax(44px,.45fr) 58px 64px 58px 58px 60px;gap:7px;align-items:center;padding-left:74px;";
+        const startLabel = document.createElement("div");
+        startLabel.textContent = `Start: ${formatCueTime(cue.start)}`;
+        startLabel.style.cssText = "font-size:11px;color:#a5f3fc;";
+        const endLabel = document.createElement("div");
+        endLabel.textContent = `End: ${formatCueTime(cue.end)}`;
+        endLabel.style.cssText = "font-size:11px;color:#a5f3fc;";
+        const playCue = makeButton("Play Cue", "primary");
+        const playFromCue = makeButton("Play From Here");
+        const setStart = makeButton("Set Start");
+        const setEnd = makeButton("Set End");
+        const clearTiming = makeButton("Clear Timing");
+        applyCompactButtonLabel(playCue, "Play\nCue", { noMap: true, minWidth: 0, padding: "6px 5px", title: "Play only this cue's timed audio range." });
+        applyCompactButtonLabel(playFromCue, "From\nHere", { noMap: true, minWidth: 0, padding: "6px 5px", title: "Play from this cue start." });
+        applyCompactButtonLabel(setStart, "Set\nStart", { noMap: true, minWidth: 0, padding: "6px 5px" });
+        applyCompactButtonLabel(setEnd, "Set\nEnd", { noMap: true, minWidth: 0, padding: "6px 5px" });
+        applyCompactButtonLabel(clearTiming, "Clear\nTime", { noMap: true, minWidth: 0, padding: "6px 5px", title: "Clear Timing" });
+        const cueRange = singerCuePlaybackRangeForCue(segment, cues, index);
+        playCue.title = "Play from this cue start to its end, the next cue start, or the scene end.";
+        playFromCue.title = "Play from this cue start, or from the scene start if no cue start is set.";
+        playCue.onclick = () => {
+          playSingerCueRange(segment, cueRange.start, cueRange.end, playCue, "Play Cue");
+        };
+        playFromCue.onclick = () => {
+          playSingerCueRange(segment, cueRange.start, null, playFromCue, "Play From Here");
+        };
+        setStart.onclick = () => {
+          cue.start = singerCueRelativePlayheadTime(segment);
+          if (Number.isFinite(Number(cue.end)) && cue.end <= cue.start) cue.end = null;
+          segment.lyric_cue_map = cues;
+          renderMiniMaxSpeakerAssignmentPanel();
+        };
+        setEnd.onclick = () => {
+          cue.end = singerCueRelativePlayheadTime(segment);
+          if (Number.isFinite(Number(cue.start)) && cue.end <= cue.start) {
+            toast("Cue end must be after cue start.", true);
+            cue.end = null;
+          } else if (index + 1 < cues.length) {
+            cues[index + 1].start = cue.end;
+            if (Number.isFinite(Number(cues[index + 1].end)) && cues[index + 1].end <= cues[index + 1].start) cues[index + 1].end = null;
+          }
+          segment.lyric_cue_map = cues;
+          renderMiniMaxSpeakerAssignmentPanel();
+        };
+        clearTiming.onclick = () => {
+          cue.start = null;
+          cue.end = null;
+          segment.lyric_cue_map = cues;
+          renderMiniMaxSpeakerAssignmentPanel();
+        };
+        timingRow.append(startLabel, endLabel, playCue, playFromCue, setStart, setEnd, clearTiming);
+        row.append(mainRow, timingRow);
+        miniMaxSpeakerAssignmentList.append(row);
+      });
       return;
     }
     if (!shortFilm) {
@@ -6543,12 +7118,12 @@ function openBuilder(node) {
     miniMaxTurboLoraField.style.display = settings.use_turbo_lora ? "flex" : "none";
     miniMaxTurboLoraStrengthField.style.display = settings.use_turbo_lora ? "flex" : "none";
     miniMaxTurboNote.textContent = settings.use_turbo_lora
-      ? "Turbo is ON. The hidden API workflow uses MiniMax-H3 Turbo LoRA plus the dedicated Turbo sampler and simple scheduler. Steps defaults to 6 when Turbo is switched on and remains editable with a minimum of 4. EasyCache bypass is enabled automatically; the advanced control remains editable for experiments. Normal settings are restored when Turbo is turned off."
+      ? "Turbo is ON. The hidden API workflow uses MiniMax-H3 Turbo LoRA plus the dedicated Turbo sampler and simple scheduler. Steps defaults to 4 when Turbo is switched on and remains editable down to 1 for experiments. Values below 4 are outside the Turbo LoRA's usual 4-step target. EasyCache bypass is enabled automatically; the advanced control remains editable for experiments. Normal settings are restored when Turbo is turned off."
       : "Turbo is OFF. The normal MiniMax sampler, scheduler, and step settings are used.";
     miniMaxSamplerName.disabled = settings.use_turbo_lora;
     miniMaxScheduler.disabled = settings.use_turbo_lora;
     miniMaxSteps.disabled = false;
-    miniMaxSteps.min = settings.use_turbo_lora ? "4" : "1";
+    miniMaxSteps.min = "1";
     useSceneMiniMaxH3Settings.input.checked = Boolean(segment?.use_scene_minimax_h3_settings);
     useSceneMiniMaxH3Settings.input.disabled = !segment;
     const sceneMiniMaxSettingsLocked = Boolean(segment?.use_scene_minimax_h3_settings);
@@ -6581,6 +7156,8 @@ function openBuilder(node) {
     miniMaxPrompt.value = String(segment?.minimax_h3_prompt || segment?.i2v_prompt || "");
     miniMaxCreatePromptButton.textContent = `Create MiniMax ${modeLabel} Prompt`;
     miniMaxEditInstructionsButton.textContent = `Edit ${modeLabel} Instructions`;
+    const assignmentTabButton = miniMaxSubTabs.wrapper.querySelector('[data-value="speakers"]');
+    if (assignmentTabButton) applyCompactButtonLabel(assignmentTabButton, isMiniMaxSingerAssignmentMode(segment) ? "Singer Assignment" : "Speaker Assignment", { minWidth: 0, padding: "7px 6px" });
     miniMaxPromptRunnerNote.textContent = `Uses the existing ${gemmaRunnerLabel()} selection from LLM Runner. The result is saved only as this scene's MiniMax H3 prompt.`;
     miniMaxAudioNote.textContent = settings.audio_mode === "built_in_audio"
       ? "MiniMax generates the scene audio from the prompt. In Short Film mode, character voice presets are configured in Reference Builder and copied exactly into every matching scene prompt."
@@ -9712,6 +10289,20 @@ function openBuilder(node) {
     segment.flf_end_frame_stale = Boolean(segment.flf_end_frame_stale);
     segment.flf_final_prompt_ready = Boolean(segment.flf_final_prompt_ready);
     if (!Array.isArray(segment.lyric_singers)) segment.lyric_singers = [];
+    segment.lyric_performance_mode = ["together", "cue_map"].includes(String(segment.lyric_performance_mode || "").trim())
+      ? String(segment.lyric_performance_mode || "").trim()
+      : "together";
+    segment.lyric_cue_map = Array.isArray(segment.lyric_cue_map)
+      ? segment.lyric_cue_map.map((cue) => ({
+        type: ["instrumental", "vocal"].includes(String(cue?.type || "").trim()) ? String(cue.type).trim() : "vocal",
+        text: String(cue?.text || "").trim(),
+        action_note: String(cue?.action_note || cue?.actionNote || cue?.note || "").trim(),
+        singer_id: String(cue?.singer_id || cue?.singerId || cue?.subject_id || cue?.subjectId || "").trim(),
+        singer_name: String(cue?.singer_name || cue?.singerName || cue?.name || "").trim(),
+        start: Number.isFinite(Number(cue?.start)) ? Math.max(0, Number(cue.start)) : null,
+        end: Number.isFinite(Number(cue?.end)) ? Math.max(0, Number(cue.end)) : null,
+      })).filter((cue) => cue.type === "instrumental" || cue.text || cue.action_note)
+      : [];
     segment.minimax_speaker_assignments = normalizeMiniMaxSpeakerAssignments(
       segment.minimax_speaker_assignments || segment.speaker_assignments || segment.dialogue_cues || [],
     );
@@ -9894,7 +10485,7 @@ function openBuilder(node) {
     if (repairedIds.length) {
       state.repairedSegmentIdCount = Number(state.repairedSegmentIdCount || 0) + repairedIds.length;
       const refs = state.fluxReferenceBuilder;
-      const mapKeys = ["subject_scene_map", "scene_map", "scene_trigger_map", "ingredients_scene_map"];
+      const mapKeys = ["subject_scene_map", "performer_scene_map", "scene_map", "scene_trigger_map", "ingredients_scene_map"];
       if (refs && typeof refs === "object") {
         for (const { originalId, replacementId } of repairedIds) {
           if (!originalId) continue;
@@ -11978,6 +12569,7 @@ function openBuilder(node) {
       subject: { description: "", reference_type: "character", minimax_voice: normalizeMiniMaxH3Voice(), image: { path: "", data: "", name: "" } },
       subjects: [],
       subject_scene_map: {},
+      performer_scene_map: {},
       locations: [],
       scene_map: {},
       scene_trigger_map: {},
@@ -12590,6 +13182,13 @@ function openBuilder(node) {
     if (source.subject_scene_map && typeof source.subject_scene_map === "object") {
       for (const [sceneId, value] of Object.entries(source.subject_scene_map)) {
         normalized.subject_scene_map[sceneId] = Array.isArray(value) ? value.map(String).filter(Boolean) : String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
+      }
+    }
+    normalized.performer_scene_map = {};
+    const rawPerformerSceneMap = source.performer_scene_map || source.performerSceneMap || source.lyric_performer_scene_map || source.lyricPerformerSceneMap;
+    if (rawPerformerSceneMap && typeof rawPerformerSceneMap === "object") {
+      for (const [sceneId, value] of Object.entries(rawPerformerSceneMap)) {
+        normalized.performer_scene_map[sceneId] = Array.isArray(value) ? value.map(String).filter(Boolean) : String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
       }
     }
     normalized.locations = (normalized.cleared || normalized.locations_cleared) ? [] : dedupeRefsByName(Array.isArray(source.locations) ? source.locations : [])
@@ -13680,6 +14279,8 @@ function openBuilder(node) {
     startInput.dataset.vrgdgInspectorSegmentId = String(segment?.id || "");
     lyricTextInput.dataset.vrgdgInspectorSegmentId = String(segment?.id || "");
     lyricTextInput.dataset.vrgdgUserEdited = "0";
+    lyricSingersInput.dataset.vrgdgInspectorSegmentId = String(segment?.id || "");
+    lyricSingersInput.dataset.vrgdgUserEdited = "0";
     const disabled = !segment;
     for (const control of [labelInput, startInput, endInput, notesInput, ernieNotesInput, krea2TwoPassNotesInput, nbNotes, lyricTextInput, lyricSingersInput, i2vNotesInput, t2iPrompt, ernieT2IPrompt, krea2TwoPassT2IPrompt, nbPrompt, i2vPrompt, zEnhanceGemmaNotes, zEnhancePromptPreview, previewButton, ernieCreateButton, previewNBButton, deleteSegmentButton, createSceneVideoButton, miniMaxSceneVideoButtons[0]]) {
       control.disabled = disabled;
@@ -14933,6 +15534,26 @@ function openBuilder(node) {
         : "ordered ingredients, props, identity, or visual-detail reference";
     }
     return "visual reference";
+  }
+
+  function miniMaxH3MissingReferenceDescriptions(segment, mode = miniMaxH3ModeForSegment(segment)) {
+    const missing = [];
+    if (normalizeMiniMaxH3Mode(mode) !== "reference_to_video" && normalizeMiniMaxH3Mode(mode) !== "video_to_video") return missing;
+    const items = miniMaxOrderedImageReferenceItemsForSegment(segment, mode)
+      .filter((item) => item?.kind === "subject" || item?.kind === "location");
+    items.forEach((item, index) => {
+      const label = String(item?.label || `${item?.kind === "location" ? "Location" : "Character"} ${index + 1}`).trim();
+      if (!String(item?.description || "").trim()) missing.push(`${label} (${item?.kind === "location" ? "location" : "character"})`);
+    });
+    return missing;
+  }
+
+  function assertMiniMaxH3ReferenceDescriptionsReady(segment, mode = miniMaxH3ModeForSegment(segment)) {
+    const missing = miniMaxH3MissingReferenceDescriptions(segment, mode);
+    if (!missing.length) return;
+    throw new Error(
+      `MiniMax prompt creation needs Reference Builder descriptions before it can assemble the fixed Image blocks.\n\nMissing description for:\n- ${missing.join("\n- ")}\n\nOpen Reference Builder and click Gemma Describe, or type the description manually, then create the prompt again.`,
+    );
   }
 
   function openMiniMaxReferenceSelector() {
@@ -16830,7 +17451,17 @@ function openBuilder(node) {
       segment.lyric_text = lyricTextInput.value || "";
       segment.lyric_no_lip_sync = isInstrumentalLyricText(segment.lyric_text);
     }
-    segment.lyric_singers = lyricSingersInput.value.split(",").map((item) => item.trim()).filter(Boolean);
+    const singerInspectorSegmentId = String(lyricSingersInput.dataset.vrgdgInspectorSegmentId || "");
+    if (
+      lyricSingersInput.dataset.vrgdgUserEdited === "1"
+      && singerInspectorSegmentId === String(segment.id || "")
+    ) {
+      segment.lyric_singers = lyricSingersInput.value.split(",").map((item) => item.trim()).filter(Boolean);
+      if (segment.lyric_singers.length < 2) {
+        segment.lyric_performance_mode = "together";
+        segment.lyric_cue_map = [];
+      }
+    }
     let editedT2IPrompt = t2iPrompt.value || "";
     if (state.imageModelMode === "ernie_image") editedT2IPrompt = ernieT2IPrompt.value || "";
     else if (state.imageModelMode === "krea2_2pass") editedT2IPrompt = krea2TwoPassT2IPrompt.value || "";
@@ -20768,6 +21399,297 @@ function openBuilder(node) {
     if (!locId) return null;
     const location = refs.locations.find((item) => String(item?.id || "").trim() === locId) || null;
     return location ? { ...location, id: locId } : null;
+  }
+
+  function selectedPerformerSubjectsForSegment(segment, refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder)) {
+    const normalizedRefs = normalizeFluxReferenceBuilder(refs);
+    const subjects = logicalReferenceSubjects(normalizedRefs);
+    const performerIds = sceneReferenceMapArray(normalizedRefs.performer_scene_map, segment);
+    if (performerIds.length) {
+      const validIds = new Set(performerIds.map(String));
+      return subjects.filter((subject) => validIds.has(String(subject?.id || "")));
+    }
+    const selected = new Set((Array.isArray(segment?.lyric_singers) ? segment.lyric_singers : String(segment?.lyric_singers || "").split(/[,;\n]+/))
+      .map((value) => String(value || "").trim().toLowerCase())
+      .filter(Boolean));
+    return subjects.filter((subject) => {
+      const id = String(subject?.id || "").trim();
+      const name = String(subject?.name || "").trim();
+      return selected.has(id.toLowerCase()) || selected.has(name.toLowerCase());
+    });
+  }
+
+  function syncPerformerInspectorForSegment(segment) {
+    if (!segment || String(activeSegment()?.id || "") !== String(segment.id || "")) return;
+    lyricSingersInput.value = Array.isArray(segment.lyric_singers) ? segment.lyric_singers.join(", ") : "";
+    lyricSingersInput.dataset.vrgdgInspectorSegmentId = String(segment.id || "");
+    lyricSingersInput.dataset.vrgdgUserEdited = "0";
+  }
+
+  function miniMaxH3SubjectLabelMapForSegment(segment, mode = miniMaxH3ModeForSegment(segment)) {
+    const map = new Map();
+    let subjectNumber = 0;
+    miniMaxOrderedImageReferenceItemsForSegment(segment, mode).forEach((item) => {
+      if (item?.kind === "start_frame") return;
+      subjectNumber += 1;
+      const rawKey = String(item?.key || "").trim();
+      const subjectId = String(item?.id || item?.subject_id || item?.subjectId || rawKey.replace(/^subject:/, "") || "").trim();
+      const name = String(item?.label || item?.name || "").trim();
+      const value = {
+        label: `<Subject ${subjectNumber}>`,
+        alias: item?.kind === "subject" ? `(S${subjectNumber})` : "",
+        name,
+        kind: item?.kind || "reference",
+      };
+      if (subjectId) map.set(subjectId, value);
+      if (name) map.set(name.toLowerCase(), value);
+    });
+    return map;
+  }
+
+  function miniMaxH3PerformerLabel(subject, labelMap) {
+    const id = String(subject?.id || "").trim();
+    const name = String(subject?.name || "").trim();
+    const mapped = labelMap.get(id) || labelMap.get(name.toLowerCase());
+    if (mapped?.label) return `${mapped.label}${mapped.alias ? ` ${mapped.alias}` : ""}`;
+    return name || "the assigned performer";
+  }
+
+  function lyricCueTextParts(text) {
+    const clean = flattenLyricForPrompt(text);
+    if (!clean) return [];
+    const lines = String(text || "").split(/\r?\n+/).map((line) => flattenLyricForPrompt(line)).filter(Boolean);
+    if (lines.length > 1) return lines;
+    const words = clean.split(/\s+/).filter(Boolean);
+    if (words.length <= 2) return [clean];
+    const chunks = [];
+    for (let index = 0; index < words.length; index += 2) {
+      chunks.push(words.slice(index, index + 2).join(" "));
+    }
+    return chunks;
+  }
+
+  function normalizeLyricCueMapForSegment(segment, refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder), options = {}) {
+    const performers = selectedPerformerSubjectsForSegment(segment, refs);
+    if (performers.length < 2 || String(segment?.lyric_performance_mode || "together") !== "cue_map") return [];
+    const existing = Array.isArray(segment?.lyric_cue_map) ? segment.lyric_cue_map : [];
+    const parts = existing.length ? existing : lyricCueTextParts(segment?.lyric_text).map((text, index) => {
+      const performer = performers[index % performers.length] || performers[0] || {};
+      return { text, singer_id: performer.id || "", singer_name: performer.name || "" };
+    });
+    return parts.map((cue, index) => {
+      const type = String(cue?.type || "").trim() === "instrumental" ? "instrumental" : "vocal";
+      const performer = performers.find((subject) => String(subject.id) === String(cue?.singer_id || ""))
+        || performers.find((subject) => String(subject.name || "").toLowerCase() === String(cue?.singer_name || "").toLowerCase())
+        || performers[index % performers.length]
+        || null;
+      return {
+        type,
+        text: flattenLyricForPrompt(cue?.text),
+        action_note: String(cue?.action_note || cue?.actionNote || cue?.note || "").trim(),
+        singer_id: String(performer?.id || cue?.singer_id || "").trim(),
+        singer_name: String(performer?.name || cue?.singer_name || "").trim(),
+        start: Number.isFinite(Number(cue?.start)) ? Math.max(0, Number(cue.start)) : null,
+        end: Number.isFinite(Number(cue?.end)) ? Math.max(0, Number(cue.end)) : null,
+      };
+    }).filter((cue) => options.preserveBlank || cue.type === "instrumental" || cue.text);
+  }
+
+  function miniMaxH3VocalCueMapText(segment, mode = miniMaxH3ModeForSegment(segment), options = {}) {
+    const performers = selectedPerformerSubjectsForSegment(segment);
+    const lyricText = isInstrumentalLyricText(segment?.lyric_text) ? "" : flattenLyricForPrompt(segment?.lyric_text);
+    const cueMap = normalizeLyricCueMapForSegment(segment);
+    if (segmentUsesNoLipSyncPerformance(segment) || segment?.no_character_present || !performers.length) return "";
+    if (!lyricText && !cueMap.length) return "";
+    const labelMap = miniMaxH3SubjectLabelMapForSegment(segment, mode);
+    if (performers.length === 1 && lyricText) {
+      const performer = miniMaxH3PerformerLabel(performers[0], labelMap);
+      return `${performer} performs the exact full lyric/dialogue line from <Audio 1>: "${miniMaxH3PunctuatedCueText(lyricText)}"`;
+    }
+    if (String(segment?.lyric_performance_mode || "together") === "cue_map" && cueMap.length) {
+      const lines = cueMap.map((cue) => {
+        const timing = miniMaxH3CueTimingText(cue);
+        if (cue.type === "instrumental") {
+          const note = cue.action_note ? ` Action note: ${cue.action_note}` : "";
+          return `${timing}Instrumental / no vocal cue. No visible subject sings or lip-syncs; mouths stay closed or naturally relaxed.${note}`;
+        }
+        const subject = performers.find((item) => String(item.id) === String(cue.singer_id)) || { id: cue.singer_id, name: cue.singer_name };
+        return `${timing}${miniMaxH3PerformerLabel(subject, labelMap)} performs "${miniMaxH3PunctuatedCueText(cue.text)}" from <Audio 1>.`;
+      });
+      if (options.compact) return lines.join(" ");
+      return [
+        "Vocal cue map:",
+        ...lines,
+        "Only the assigned performer sings or speaks each cue. Other visible performers remain silent, mouth closed or naturally reacting, until assigned their own cue.",
+      ].join("\n");
+    }
+    const performerText = performers.map((subject) => miniMaxH3PerformerLabel(subject, labelMap)).join(" and ");
+    return `${performerText} perform the same complete lyric/dialogue line together from <Audio 1>: "${miniMaxH3PunctuatedCueText(lyricText)}"`;
+  }
+
+  function miniMaxH3CueTimingText(cue = {}) {
+    const start = Number(cue?.start);
+    const end = Number(cue?.end);
+    if (Number.isFinite(start) && Number.isFinite(end) && end > start) return `${start.toFixed(3)}s-${end.toFixed(3)}s: `;
+    if (Number.isFinite(start)) return `from ${start.toFixed(3)}s: `;
+    return "";
+  }
+
+  function miniMaxH3CutPlanForSegment(segment) {
+    const duration = Math.max(0, Number(segment?.end || 0) - Number(segment?.start || 0));
+    const fallback = storyboardCutPlanForDuration(duration, state.builderStoryboardDefaults?.minimax_h3_cut_frequency);
+    if (!isMiniMaxSingerAssignmentMode(segment) || String(segment?.lyric_performance_mode || "together") !== "cue_map") return fallback;
+    const cues = normalizeLyricCueMapForSegment(segment);
+    if (cues.length < 2) return fallback;
+    const cuts = [];
+    cues.forEach((cue, index) => {
+      const start = Number(cue?.start);
+      if (index > 0 && Number.isFinite(start) && start > 0.04 && start < duration - 0.04 && !cuts.some((time) => Math.abs(time - start) < 0.04)) {
+        cuts.push(Number(start.toFixed(3)));
+      }
+    });
+    if (!cuts.length) return fallback;
+    cuts.sort((a, b) => a - b);
+    return {
+      ...fallback,
+      frequency: state.builderStoryboardDefaults?.minimax_h3_cut_frequency ?? fallback.frequency,
+      cut_times_seconds: cuts,
+      cue_driven: true,
+      cue_count: cues.length,
+      instruction: miniMaxH3OfficialCutPlanInstruction({ ...fallback, cut_times_seconds: cuts, cue_driven: true, cue_count: cues.length }),
+    };
+  }
+
+  function miniMaxH3CueShotContractText(segment, mode = miniMaxH3ModeForSegment(segment)) {
+    if (!isMiniMaxSingerAssignmentMode(segment) || String(segment?.lyric_performance_mode || "together") !== "cue_map") return "";
+    const cues = normalizeLyricCueMapForSegment(segment);
+    if (!cues.length) return "";
+    const performers = selectedPerformerSubjectsForSegment(segment);
+    const labelMap = miniMaxH3SubjectLabelMapForSegment(segment, mode);
+    const duration = Math.max(0, Number(segment?.end || 0) - Number(segment?.start || 0));
+    const lines = cues.map((cue, index) => {
+      const range = singerCuePlaybackRangeForCue(segment, cues, index);
+      const start = Number.isFinite(Number(cue.start)) ? Number(cue.start) : range.start;
+      const end = Number.isFinite(Number(cue.end)) && Number(cue.end) > start ? Number(cue.end) : range.end;
+      const timing = Number.isFinite(end) && end > start
+        ? `${start.toFixed(3)}s-${Math.min(duration || end, end).toFixed(3)}s`
+        : `from ${start.toFixed(3)}s`;
+      if (cue.type === "instrumental") {
+        const note = String(cue.action_note || "").trim();
+        return `[Shot ${index + 1}] ${timing}: instrumental/no vocal. No visible subject sings or lip-syncs.${note ? ` Visual action note: ${note}` : ""}`;
+      }
+      const subject = performers.find((item) => String(item.id) === String(cue.singer_id)) || { id: cue.singer_id, name: cue.singer_name };
+      return `[Shot ${index + 1}] ${timing}: ${miniMaxH3PerformerLabel(subject, labelMap)} is the only performer singing/lip-syncing <d>[English] ${miniMaxH3PunctuatedCueText(cue.text)}</d> from <Audio 1>. Other visible performers remain silent, mouth closed or naturally reacting.`;
+    });
+    return [
+      "Timed singer/lyric shot contract — authoritative:",
+      ...lines,
+      "Each listed cue is its own shot. Do not swap singers, merge lyric cues, or make an unassigned visible performer sing during another subject's cue.",
+    ].join("\n");
+  }
+
+  function singerCueRelativePlayheadTime(segment) {
+    const global = Math.max(0, Number(currentGlobalTime() || 0));
+    const sceneStart = Math.max(0, Number(segment?.start || 0));
+    const duration = Math.max(0, Number(segment?.end || sceneStart) - sceneStart);
+    return Math.max(0, Math.min(duration || Number.MAX_SAFE_INTEGER, global - sceneStart));
+  }
+
+  function formatCueTime(value) {
+    return Number.isFinite(Number(value)) ? `${Number(value).toFixed(3)}s` : "--";
+  }
+
+  function singerCuePlaybackRangeForCue(segment, cues = [], index = 0) {
+    const cue = cues[index] || {};
+    const sceneDuration = Math.max(0.1, Number(timelineSegmentDuration(segment) || 0.1));
+    const hasStart = Number.isFinite(Number(cue.start));
+    const start = Math.max(0, Math.min(sceneDuration, hasStart ? Number(cue.start) : 0));
+    const explicitEnd = Number(cue.end);
+    if (Number.isFinite(explicitEnd) && explicitEnd > start) {
+      return { start, end: Math.min(sceneDuration, explicitEnd), hasStart };
+    }
+    const nextCue = cues.slice(index + 1).find((item) => Number.isFinite(Number(item?.start)) && Number(item.start) > start);
+    if (nextCue) return { start, end: Math.min(sceneDuration, Number(nextCue.start)), hasStart };
+    return { start, end: sceneDuration > start ? sceneDuration : null, hasStart };
+  }
+
+  function shiftCueLyricTextDown(cues = [], index = 0, text = "", defaultPerformer = {}) {
+    const carried = flattenLyricForPrompt(text);
+    if (!carried) return;
+    cues.splice(index + 1, 0, { type: "vocal", text: carried, action_note: "", singer_id: defaultPerformer?.id || "", singer_name: defaultPerformer?.name || "", start: null, end: null });
+  }
+
+  function clearSingerCuePlaybackStop() {
+    if (singerCueStopTimer) window.clearTimeout(singerCueStopTimer);
+    if (singerCueStopRaf) window.cancelAnimationFrame(singerCueStopRaf);
+    singerCueStopTimer = 0;
+    singerCueStopRaf = 0;
+    singerCueStopAt = null;
+  }
+
+  function resetSingerCuePlayButton() {
+    if (activeSingerCuePlayButton) activeSingerCuePlayButton.textContent = activeSingerCuePlayLabel || "Play";
+    activeSingerCuePlayButton = null;
+    activeSingerCuePlayLabel = "";
+  }
+
+  function stopSingerCuePlaybackAtBoundary() {
+    const end = singerCueStopAt;
+    clearSingerCuePlaybackStop();
+    audio.pause();
+    if (Number.isFinite(end)) {
+      try {
+        audio.currentTime = end;
+        state.sceneAudioGlobalTime = end;
+      } catch {
+        // Browser may reject seeks before metadata is settled.
+      }
+    }
+    resetSingerCuePlayButton();
+    updateAudioScrubbers();
+  }
+
+  function armSingerCuePlaybackStop(start, end) {
+    clearSingerCuePlaybackStop();
+    const safeStart = Math.max(0, Number(start) || 0);
+    const safeEnd = Math.max(safeStart + 0.1, Number(end) || safeStart + 0.1);
+    singerCueStopAt = safeEnd;
+    singerCueStopTimer = window.setTimeout(stopSingerCuePlaybackAtBoundary, Math.max(40, (safeEnd - safeStart) * 1000 + 30));
+    const tick = () => {
+      if (singerCueStopAt == null) return;
+      if (audio.currentTime >= singerCueStopAt - 0.012) {
+        stopSingerCuePlaybackAtBoundary();
+        return;
+      }
+      singerCueStopRaf = window.requestAnimationFrame(tick);
+    };
+    singerCueStopRaf = window.requestAnimationFrame(tick);
+  }
+
+  function playSingerCueRange(segment, startRelative = 0, endRelative = null, button = null, label = "Play") {
+    if (!segment) return;
+    const sceneStart = Math.max(0, Number(segment.start || 0));
+    const sceneDuration = Math.max(0.1, Number(segment.end || sceneStart + 0.1) - sceneStart);
+    const start = sceneStart + Math.max(0, Math.min(sceneDuration, Number(startRelative) || 0));
+    const hasEnd = Number.isFinite(Number(endRelative)) && Number(endRelative) > Number(startRelative);
+    const end = hasEnd ? sceneStart + Math.max(0, Math.min(sceneDuration, Number(endRelative))) : null;
+    if (button && activeSingerCuePlayButton === button && !audio.paused) {
+      clearSingerCuePlaybackStop();
+      audio.pause();
+      resetSingerCuePlayButton();
+      return;
+    }
+    pauseAllAudio();
+    clearSingerCuePlaybackStop();
+    activateGlobalTimelineAudioPlayback(start);
+    if (button) {
+      resetSingerCuePlayButton();
+      activeSingerCuePlayButton = button;
+      activeSingerCuePlayLabel = label || button.textContent || "Play";
+      button.textContent = "Pause";
+    }
+    if (end != null) armSingerCuePlaybackStop(start, end);
+    audio.play().then(updatePlayPauseButton).catch(() => startSilentTimelinePlayback(start));
   }
 
   function segmentsShareMappedLocation(firstSegment, secondSegment) {
@@ -27957,6 +28879,189 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         });
         return items;
       };
+      const openCueMapEditor = (segment, performerIds = []) => {
+        const performers = logicalSubjects.filter((subject) => performerIds.includes(String(subject.id)));
+        if (performers.length < 2) {
+          toast("Choose at least two performers before splitting lyric cues.", true);
+          return;
+        }
+        const parts = lyricCueTextParts(segment.lyric_text);
+        if (!parts.length) {
+          toast("This scene needs lyric/dialogue text before cue mapping.", true);
+          return;
+        }
+        const existing = normalizeLyricCueMapForSegment(segment, refs, { preserveBlank: true });
+        const rows = (existing.length ? existing : parts.map((text, index) => {
+          const performer = performers[index % performers.length] || performers[0];
+          return { type: "vocal", text, action_note: "", singer_id: performer.id, singer_name: performer.name || "", start: null, end: null };
+        })).map((cue, index) => {
+          const performer = performers.find((subject) => subject.id === cue.singer_id) || performers[index % performers.length] || performers[0];
+          return {
+            type: cue.type === "instrumental" ? "instrumental" : "vocal",
+            text: cue.text || parts[index] || "",
+            action_note: cue.action_note || "",
+            singer_id: cue.type === "instrumental" ? "" : performer?.id || "",
+            singer_name: cue.type === "instrumental" ? "" : performer?.name || "",
+            start: Number.isFinite(Number(cue.start)) ? Number(cue.start) : null,
+            end: Number.isFinite(Number(cue.end)) ? Number(cue.end) : null,
+          };
+        });
+        const cueBackdrop = document.createElement("div");
+        cueBackdrop.style.cssText = "position:fixed;inset:0;z-index:100030;background:rgba(0,0,0,.76);display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;";
+        const cuePanel = document.createElement("div");
+        cuePanel.style.cssText = "width:min(760px,calc(100vw - 40px));max-height:calc(100vh - 40px);overflow:auto;border:1px solid #155e75;border-radius:9px;background:#0b1220;color:#f8fafc;box-shadow:0 24px 80px rgba(0,0,0,.72);padding:15px;display:flex;flex-direction:column;gap:12px;";
+        const cueTitle = document.createElement("div");
+        cueTitle.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Split Line Between Performers</div><div style="font-size:12px;color:#cbd5e1;margin-top:4px;">Assign each lyric/dialogue cue to exactly one performer. Everyone else stays silent during that cue.</div>`;
+        const cueList = document.createElement("div");
+        cueList.style.cssText = "display:flex;flex-direction:column;gap:8px;";
+        const renderCueRows = () => {
+          cueList.replaceChildren();
+          rows.forEach((row, index) => {
+            const line = document.createElement("div");
+            line.style.cssText = "display:flex;flex-direction:column;gap:7px;border:1px solid #1e3a5f;border-radius:7px;background:#071422;padding:8px;";
+            const top = document.createElement("div");
+            top.style.cssText = "display:grid;grid-template-columns:minmax(104px,.35fr) minmax(132px,.55fr) minmax(0,1fr) 34px;gap:7px;align-items:center;";
+            const type = makeSelect(["vocal", "instrumental"], row.type || "vocal");
+            type.options[0].textContent = "Lyric";
+            type.options[1].textContent = "Instrumental";
+            const text = makeInput(row.type === "instrumental" ? row.action_note || "" : row.text || "");
+            text.placeholder = row.type === "instrumental" ? "action note while nobody sings..." : "lyric cue...";
+            text.oninput = () => { row.text = text.value; };
+            const performer = makeSelect(performers.map((subject) => subject.id), row.singer_id || performers[index % performers.length]?.id || "");
+            Array.from(performer.options).forEach((option) => {
+              const subject = performers.find((item) => item.id === option.value);
+              option.textContent = subject?.name || "Character";
+            });
+            performer.disabled = row.type === "instrumental";
+            type.onchange = () => {
+              row.type = type.value === "instrumental" ? "instrumental" : "vocal";
+              if (row.type === "instrumental") {
+                shiftCueLyricTextDown(rows, index, row.text, performers[index % performers.length] || performers[0] || {});
+                row.action_note = row.action_note || "";
+                row.text = "";
+                row.singer_id = "";
+                row.singer_name = "";
+              } else {
+                const nextPerformer = performers[index % performers.length] || performers[0] || {};
+                row.text = row.text || row.action_note || "";
+                row.action_note = "";
+                row.singer_id = row.singer_id || nextPerformer.id || "";
+                row.singer_name = row.singer_name || nextPerformer.name || "";
+              }
+              renderCueRows();
+            };
+            performer.onchange = () => {
+              row.singer_id = performer.value;
+              row.singer_name = performers.find((subject) => subject.id === performer.value)?.name || "";
+            };
+            const remove = makeButton("×");
+            remove.title = "Remove cue";
+            remove.style.cssText += "min-width:0;width:34px;padding:6px 0;font-size:18px;line-height:1;";
+            remove.onclick = () => {
+              rows.splice(index, 1);
+              renderCueRows();
+            };
+            text.oninput = () => {
+              if (row.type === "instrumental") row.action_note = text.value;
+              else row.text = text.value;
+            };
+            top.append(type, performer, text, remove);
+            const timing = document.createElement("div");
+            timing.style.cssText = "display:grid;grid-template-columns:minmax(44px,.45fr) minmax(44px,.45fr) 58px 64px 58px 58px 60px;gap:7px;align-items:center;";
+            const startLabel = document.createElement("div");
+            startLabel.textContent = `Start: ${formatCueTime(row.start)}`;
+            startLabel.style.cssText = "font-size:11px;color:#a5f3fc;";
+            const endLabel = document.createElement("div");
+            endLabel.textContent = `End: ${formatCueTime(row.end)}`;
+            endLabel.style.cssText = "font-size:11px;color:#a5f3fc;";
+            const playCue = makeButton("Play Cue", "primary");
+            const playFromCue = makeButton("Play From Here");
+            const setStart = makeButton("Set Start");
+            const setEnd = makeButton("Set End");
+            const clearTime = makeButton("Clear Timing");
+            applyCompactButtonLabel(playCue, "Play\nCue", { noMap: true, minWidth: 0, padding: "6px 5px", title: "Play only this cue's timed audio range." });
+            applyCompactButtonLabel(playFromCue, "From\nHere", { noMap: true, minWidth: 0, padding: "6px 5px", title: "Play from this cue start." });
+            applyCompactButtonLabel(setStart, "Set\nStart", { noMap: true, minWidth: 0, padding: "6px 5px" });
+            applyCompactButtonLabel(setEnd, "Set\nEnd", { noMap: true, minWidth: 0, padding: "6px 5px" });
+            applyCompactButtonLabel(clearTime, "Clear\nTime", { noMap: true, minWidth: 0, padding: "6px 5px", title: "Clear Timing" });
+            const rowRange = singerCuePlaybackRangeForCue(segment, rows, index);
+            playCue.title = "Play from this cue start to its end, the next cue start, or the scene end.";
+            playFromCue.title = "Play from this cue start, or from the scene start if no cue start is set.";
+            playCue.onclick = () => {
+              playSingerCueRange(segment, rowRange.start, rowRange.end, playCue, "Play Cue");
+            };
+            playFromCue.onclick = () => {
+              playSingerCueRange(segment, rowRange.start, null, playFromCue, "Play From Here");
+            };
+            setStart.onclick = () => { row.start = singerCueRelativePlayheadTime(segment); if (Number.isFinite(Number(row.end)) && row.end <= row.start) row.end = null; renderCueRows(); };
+            setEnd.onclick = () => {
+              row.end = singerCueRelativePlayheadTime(segment);
+              if (Number.isFinite(Number(row.start)) && row.end <= row.start) {
+                toast("Cue end must be after cue start.", true);
+                row.end = null;
+              } else if (index + 1 < rows.length) {
+                rows[index + 1].start = row.end;
+                if (Number.isFinite(Number(rows[index + 1].end)) && rows[index + 1].end <= rows[index + 1].start) rows[index + 1].end = null;
+              }
+              renderCueRows();
+            };
+            clearTime.onclick = () => { row.start = null; row.end = null; renderCueRows(); };
+            timing.append(startLabel, endLabel, playCue, playFromCue, setStart, setEnd, clearTime);
+            line.append(top, timing);
+            cueList.append(line);
+          });
+        };
+        const cueActions = document.createElement("div");
+        cueActions.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;";
+        const addCue = makeButton("Add Lyric Cue");
+        const addInstrumental = makeButton("Add Instrumental");
+        const cancelCue = makeButton("Cancel");
+        const saveCue = makeButton("Save Cue Map", "primary");
+        applyCompactButtonLabel(addCue, "Add\nLyric Cue", { noMap: true, padding: "7px 6px" });
+        applyCompactButtonLabel(addInstrumental, "Add\nInstrumental", { noMap: true, padding: "7px 6px" });
+        applyCompactButtonLabel(saveCue, "Save\nCue Map", { noMap: true, padding: "7px 6px" });
+        addCue.onclick = () => {
+          const performer = performers[rows.length % performers.length] || performers[0];
+          rows.push({ type: "vocal", text: "", action_note: "", singer_id: performer?.id || "", singer_name: performer?.name || "", start: null, end: null });
+          renderCueRows();
+        };
+        addInstrumental.onclick = () => {
+          rows.push({ type: "instrumental", text: "", action_note: "", singer_id: "", singer_name: "", start: null, end: null });
+          renderCueRows();
+        };
+        cancelCue.onclick = () => cueBackdrop.remove();
+        saveCue.onclick = () => {
+          const saved = rows.map((row, index) => {
+            const performer = performers.find((subject) => subject.id === row.singer_id) || performers[index % performers.length] || performers[0];
+            return {
+              type: row.type === "instrumental" ? "instrumental" : "vocal",
+              text: row.type === "instrumental" ? "" : flattenLyricForPrompt(row.text),
+              action_note: row.type === "instrumental" ? String(row.action_note || "").trim() : "",
+              singer_id: row.type === "instrumental" ? "" : performer?.id || "",
+              singer_name: row.type === "instrumental" ? "" : performer?.name || "",
+              start: Number.isFinite(Number(row.start)) ? Math.max(0, Number(row.start)) : null,
+              end: Number.isFinite(Number(row.end)) ? Math.max(0, Number(row.end)) : null,
+            };
+          }).filter((row) => row.type === "instrumental" || (row.text && row.singer_id));
+          if (!saved.length) {
+            toast("Add at least one lyric cue before saving.", true);
+            return;
+          }
+          segment.lyric_performance_mode = "cue_map";
+          segment.lyric_cue_map = saved;
+          syncPerformerInspectorForSegment(segment);
+          cueBackdrop.remove();
+          renderMapping();
+        };
+        cueActions.append(addCue, addInstrumental, cancelCue, saveCue);
+        cuePanel.append(cueTitle, cueList, cueActions);
+        cueBackdrop.append(cuePanel);
+        document.body.append(cueBackdrop);
+        cueBackdrop.addEventListener("pointerdown", (event) => {
+          if (event.target === cueBackdrop) cueBackdrop.remove();
+        });
+        renderCueRows();
+      };
       mappingNote.textContent = singleGlobalSubject
         ? `Each row shows its current lyric or dialogue line. Click the visual cards to choose who is present, who performs the line, and the scene location.`
         : showSubjects
@@ -28025,7 +29130,10 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         performerSelect.multiple = true;
         performerSelect.size = Math.min(4, Math.max(2, logicalSubjects.length || 2));
         performerSelect.style.display = "none";
-        const selectedPerformers = new Set((Array.isArray(segment.lyric_singers) ? segment.lyric_singers : []).map((value) => String(value || "").trim().toLowerCase()));
+        const savedPerformerIds = sceneReferenceMapArray(refs.performer_scene_map, segment);
+        const selectedPerformers = new Set(savedPerformerIds.length
+          ? savedPerformerIds.map((value) => String(value || "").trim().toLowerCase())
+          : (Array.isArray(segment.lyric_singers) ? segment.lyric_singers : []).map((value) => String(value || "").trim().toLowerCase()));
         logicalSubjects.forEach((subject) => {
           const label = String(subject.name || "Character").trim();
           const option = new Option(label, subject.id);
@@ -28035,9 +29143,14 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         performerSelect.onchange = () => {
           const selectedOptions = Array.from(performerSelect.selectedOptions || []);
           segment.lyric_singers = selectedOptions.map((option) => option.textContent || option.value).filter(Boolean);
+          if (!refs.performer_scene_map || typeof refs.performer_scene_map !== "object") refs.performer_scene_map = {};
+          const performerIds = selectedOptions.map((option) => option.value).filter(Boolean);
+          if (performerIds.length) refs.performer_scene_map[segment.id] = performerIds;
+          else delete refs.performer_scene_map[segment.id];
           const present = new Set(Array.isArray(refs.subject_scene_map?.[segment.id]) ? refs.subject_scene_map[segment.id] : []);
           selectedOptions.forEach((option) => present.add(option.value));
           if (present.size) refs.subject_scene_map[segment.id] = Array.from(present);
+          syncPerformerInspectorForSegment(segment);
           renderMapping();
         };
         const selectedPerformerIds = Array.from(performerSelect.selectedOptions || []).map((option) => option.value);
@@ -28049,13 +29162,53 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           selectedIds: selectedPerformerIds, multiple: true,
           onApply: (ids) => {
             segment.lyric_singers = logicalSubjects.filter((subject) => ids.includes(String(subject.id))).map((subject) => subject.name || "Character");
+            if (!refs.performer_scene_map || typeof refs.performer_scene_map !== "object") refs.performer_scene_map = {};
+            if (ids.length) refs.performer_scene_map[segment.id] = ids.map(String);
+            else delete refs.performer_scene_map[segment.id];
             const present = new Set(Array.isArray(refs.subject_scene_map?.[segment.id]) ? refs.subject_scene_map[segment.id] : []);
             ids.forEach((id) => present.add(id));
             if (present.size) refs.subject_scene_map[segment.id] = Array.from(present);
+            syncPerformerInspectorForSegment(segment);
             renderMapping();
           },
         });
         performerPanel.append(performerTitle, performerSelect, performerPreview);
+        if (selectedPerformerIds.length >= 2) {
+          const modeRow = document.createElement("div");
+          modeRow.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;align-items:center;";
+          const modeSelect = makeSelect(["together", "cue_map"], segment.lyric_performance_mode || "together");
+          modeSelect.options[0].textContent = "Together";
+          modeSelect.options[1].textContent = "Split cue map";
+          modeSelect.title = "Together means all selected performers sing/speak the same full line. Split cue map assigns lyric chunks to specific performers.";
+          const editCueMap = makeButton("Cues", "primary");
+          editCueMap.title = "Assign lyric chunks to performers for this scene.";
+          editCueMap.style.cssText += "min-width:58px;padding:7px 8px;";
+          modeSelect.onchange = () => {
+            segment.lyric_performance_mode = modeSelect.value;
+            if (modeSelect.value === "cue_map" && !normalizeLyricCueMapForSegment(segment, refs, { preserveBlank: true }).length) {
+              const performers = logicalSubjects.filter((subject) => selectedPerformerIds.includes(String(subject.id)));
+              segment.lyric_cue_map = lyricCueTextParts(segment.lyric_text).map((text, cueIndex) => {
+                const performer = performers[cueIndex % performers.length] || performers[0] || {};
+                return { text, singer_id: performer.id || "", singer_name: performer.name || "" };
+              });
+            }
+            syncPerformerInspectorForSegment(segment);
+            renderMapping();
+          };
+          editCueMap.onclick = () => openCueMapEditor(segment, selectedPerformerIds);
+          modeRow.append(modeSelect, editCueMap);
+          const summary = document.createElement("div");
+          summary.style.cssText = "font-size:10px;color:#a5f3fc;line-height:1.35;";
+          const cueCount = normalizeLyricCueMapForSegment(segment, refs, { preserveBlank: true }).length;
+          summary.textContent = segment.lyric_performance_mode === "cue_map"
+            ? `${cueCount || 0} mapped cue${cueCount === 1 ? "" : "s"}; only assigned performer sings each cue.`
+            : "All selected performers sing/speak the same full line together.";
+          performerPanel.append(modeRow, summary);
+        } else if (segment.lyric_performance_mode !== "together") {
+          segment.lyric_performance_mode = "together";
+          segment.lyric_cue_map = [];
+          syncPerformerInspectorForSegment(segment);
+        }
         const locationPanel = document.createElement("div");
         locationPanel.style.cssText = referenceImagesEnabled
           ? "display:grid;grid-template-columns:minmax(120px,.78fr) minmax(150px,1fr);gap:8px;align-items:stretch;min-width:0;"
@@ -28467,6 +29620,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       }
       const validSubjectIds = new Set(logicalReferenceSubjects(refs).map((subject) => String(subject.id || "").trim()).filter(Boolean));
       if (!refs.subject_scene_map || typeof refs.subject_scene_map !== "object") refs.subject_scene_map = {};
+      if (!refs.performer_scene_map || typeof refs.performer_scene_map !== "object") refs.performer_scene_map = {};
       for (const [sceneId, ids] of Object.entries(refs.subject_scene_map || {})) {
         const pruned = Array.from(new Set((Array.isArray(ids) ? ids : []).map(String).map((id) => {
           const subject = refs.subjects.find((item) => item.id === id);
@@ -28475,12 +29629,33 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         if (pruned.length) refs.subject_scene_map[sceneId] = pruned;
         else delete refs.subject_scene_map[sceneId];
       }
+      for (const [sceneId, ids] of Object.entries(refs.performer_scene_map || {})) {
+        const pruned = Array.from(new Set((Array.isArray(ids) ? ids : []).map(String).map((id) => {
+          const subject = refs.subjects.find((item) => item.id === id);
+          return subject ? (subjectExtraTargetId(subject) || subject.id) : "";
+        }).filter((id) => validSubjectIds.has(id))));
+        if (pruned.length) refs.performer_scene_map[sceneId] = pruned;
+        else delete refs.performer_scene_map[sceneId];
+      }
       for (const select of mappingList.querySelectorAll("[data-subject-map-segment-id]")) {
         const segmentId = select.dataset.subjectMapSegmentId || "";
         if (!segmentId) continue;
         const subjectIds = Array.from(select.selectedOptions || []).map((option) => option.value).filter((id) => validSubjectIds.has(id));
         if (subjectIds.length) refs.subject_scene_map[segmentId] = subjectIds;
         else delete refs.subject_scene_map[segmentId];
+      }
+      for (const segment of allEditableSegments()) {
+        const performerIds = sceneReferenceMapArray(refs.performer_scene_map, segment).filter((id) => validSubjectIds.has(id));
+        if (performerIds.length) {
+          refs.performer_scene_map[segment.id] = performerIds;
+          const performerNames = logicalReferenceSubjects(refs)
+            .filter((subject) => performerIds.includes(String(subject.id)))
+            .map((subject) => subject.name || "Character")
+            .filter(Boolean);
+          if (performerNames.length) segment.lyric_singers = performerNames;
+        } else {
+          delete refs.performer_scene_map[segment.id];
+        }
       }
       const validLocationIds = new Set((refs.locations || []).map((location) => String(location.id || "").trim()).filter(Boolean));
       if (!validLocationIds.size) {
@@ -28510,6 +29685,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
       renderFluxIngredientList(activeSegment());
       renderNBIngredientList(activeSegment());
+      syncPerformerInspectorForSegment(activeSegment());
+      syncMiniMaxH3Panel();
       render();
       await autoSaveSessionQuiet(`${referenceBuilderTargetLabel} reference builder`);
       toast(`${referenceBuilderTargetLabel} reference builder saved.`);
@@ -32295,7 +33472,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       toast(String(error?.message || error), true);
     } finally {
       clearMemoryButton.disabled = false;
-      clearMemoryButton.textContent = "Clear Memory";
+      styleCompactToolbarButton(clearMemoryButton, {
+        lines: ["Clear", "RAM"],
+        icon: "memory",
+        width: 52,
+        title: "Clear Builder, ComfyUI, and model memory caches.",
+      });
     }
   }
 
@@ -33235,6 +34417,258 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
     await loadSessionFromProject(folder);
   }
+
+  const projectBatchQueueItems = [];
+  let projectBatchRunning = false;
+  let projectBatchStopRequested = false;
+
+  function projectBatchName(folder) {
+    return String(folder || "").split(/[\\/]/).filter(Boolean).pop() || String(folder || "Project");
+  }
+
+  function renderProjectBatchQueue() {
+    projectBatchQueue.replaceChildren();
+    if (!projectBatchQueueItems.length) {
+      const empty = document.createElement("div");
+      empty.textContent = "No projects queued yet.";
+      empty.style.cssText = "border:1px dashed #155e75;border-radius:6px;padding:10px;color:#7dd3fc;font-size:11px;text-align:center;";
+      projectBatchQueue.append(empty);
+      projectBatchRun.disabled = true;
+      return;
+    }
+    projectBatchQueueItems.forEach((item, index) => {
+      const row = document.createElement("div");
+      row.style.cssText = "display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:7px;align-items:center;border:1px solid #155e75;border-radius:6px;background:#0b1220;padding:7px;";
+      const number = document.createElement("div");
+      number.textContent = String(index + 1);
+      number.style.cssText = "width:22px;height:22px;border-radius:999px;background:#083344;color:#a5f3fc;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;";
+      const info = document.createElement("div");
+      info.style.cssText = "min-width:0;";
+      const name = document.createElement("div");
+      name.textContent = item.name || projectBatchName(item.folder);
+      name.style.cssText = "font-size:12px;font-weight:900;color:#f8fafc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+      const path = document.createElement("div");
+      path.textContent = item.folder;
+      path.title = item.folder;
+      path.style.cssText = "font-size:10px;color:#67e8f9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+      info.append(name, path);
+      const remove = makeButton("Remove");
+      remove.style.padding = "5px 7px";
+      remove.disabled = projectBatchRunning;
+      remove.onclick = () => {
+        projectBatchQueueItems.splice(index, 1);
+        renderProjectBatchQueue();
+      };
+      row.append(number, info, remove);
+      projectBatchQueue.append(row);
+    });
+    projectBatchRun.disabled = projectBatchRunning || !projectBatchQueueItems.length;
+  }
+
+  function addProjectToBatch(folder) {
+    const clean = String(folder || "").trim();
+    if (!clean) return false;
+    if (projectBatchQueueItems.some((item) => item.folder.toLowerCase() === clean.toLowerCase())) {
+      toast("That project is already in the batch queue.", true);
+      return false;
+    }
+    projectBatchQueueItems.push({ folder: clean, name: projectBatchName(clean) });
+    projectBatchStatus.textContent = `${projectBatchQueueItems.length} project${projectBatchQueueItems.length === 1 ? "" : "s"} queued.`;
+    renderProjectBatchQueue();
+    return true;
+  }
+
+  function setProjectBatchRunning(running) {
+    projectBatchRunning = Boolean(running);
+    projectBatchRun.disabled = projectBatchRunning || !projectBatchQueueItems.length;
+    projectBatchStop.disabled = !projectBatchRunning;
+    for (const button of [projectBatchAddCurrent, projectBatchAddRecent, projectBatchAddSession, projectBatchAddCustom]) button.disabled = projectBatchRunning;
+    projectBatchForceVideos.input.disabled = projectBatchRunning;
+    projectBatchContinueOnError.input.disabled = projectBatchRunning;
+    projectBatchClearMemory.input.disabled = projectBatchRunning;
+    renderProjectBatchQueue();
+  }
+
+  function showProjectBatchResultsModal(results = []) {
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100020;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(820px,calc(100vw - 48px));max-height:calc(100vh - 48px);overflow:hidden;border:1px solid #155e75;border-radius:8px;background:#0f172a;color:#cffafe;box-shadow:0 22px 70px rgba(0,0,0,.6);display:flex;flex-direction:column;";
+    const header = document.createElement("div");
+    header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border-bottom:1px solid #155e75;background:#083344;";
+    const completed = results.filter((item) => item.status === "complete");
+    const failed = results.filter((item) => item.status !== "complete");
+    const title = document.createElement("div");
+    title.textContent = `Project Batch Complete: ${completed.length} completed, ${failed.length} failed`;
+    title.style.cssText = "font-size:14px;font-weight:900;";
+    const close = makeButton("Close");
+    close.style.padding = "6px 10px";
+    header.append(title, close);
+    const body = document.createElement("div");
+    body.style.cssText = "display:flex;flex-direction:column;gap:9px;padding:14px;overflow:auto;";
+    results.forEach((item, index) => {
+      const row = document.createElement("div");
+      row.style.cssText = `display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;border:1px solid ${item.status === "complete" ? "#155e75" : "#7f1d1d"};border-radius:7px;background:#020617;padding:10px;`;
+      const info = document.createElement("div");
+      info.style.cssText = "min-width:0;display:flex;flex-direction:column;gap:5px;";
+      const name = document.createElement("div");
+      name.textContent = `${index + 1}. ${item.name || projectBatchName(item.folder)} — ${item.status === "complete" ? "Complete" : "Failed"}`;
+      name.style.cssText = `font-size:12px;font-weight:900;color:${item.status === "complete" ? "#a5f3fc" : "#fecaca"};`;
+      const path = document.createElement("div");
+      path.textContent = item.status === "complete" ? (item.finalVideoPath || "Completed, but no final video path was reported.") : item.error;
+      path.title = path.textContent;
+      path.style.cssText = "font-size:11px;color:#e2e8f0;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.35;";
+      const folder = document.createElement("div");
+      folder.textContent = item.folder;
+      folder.style.cssText = "font-size:10px;color:#67e8f9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+      info.append(name, path, folder);
+      const open = makeButton(item.status === "complete" ? "Open Video" : "Open Project");
+      open.disabled = item.status === "complete" && !item.finalVideoPath;
+      open.onclick = async () => {
+        const target = item.status === "complete" ? item.finalVideoPath : item.folder;
+        if (!target) return;
+        open.disabled = true;
+        open.textContent = "Opening...";
+        try {
+          await postJson("/vrgdg/music_builder/open_local_file", { path: target }, 30000);
+        } catch (error) {
+          toast(String(error?.message || error), true);
+        } finally {
+          open.disabled = false;
+          open.textContent = item.status === "complete" ? "Open Video" : "Open Project";
+        }
+      };
+      row.append(info, open);
+      body.append(row);
+    });
+    if (!results.length) {
+      const empty = document.createElement("div");
+      empty.textContent = "No projects were run.";
+      empty.style.cssText = "font-size:12px;color:#a1a1aa;";
+      body.append(empty);
+    }
+    box.append(header, body);
+    backdrop.append(box);
+    document.body.append(backdrop);
+    const finish = () => backdrop.remove();
+    close.onclick = finish;
+    backdrop.addEventListener("pointerdown", (event) => {
+      if (event.target === backdrop) finish();
+    });
+  }
+
+  async function runProjectBatchQueue() {
+    if (projectBatchRunning) return;
+    if (!projectBatchQueueItems.length) {
+      toast("Add at least one saved project to the Project Batch queue.", true);
+      return;
+    }
+    projectBatchStopRequested = false;
+    setProjectBatchRunning(true);
+    const queue = projectBatchQueueItems.map((item) => ({ ...item }));
+    const results = [];
+    const progress = createProgressWindow("Project Batch");
+    const startedAt = Date.now();
+    try {
+      for (let index = 0; index < queue.length; index += 1) {
+        if (projectBatchStopRequested) break;
+        const item = queue[index];
+        const name = item.name || projectBatchName(item.folder);
+        const prefix = `Project ${index + 1}/${queue.length}: ${name}`;
+        projectBatchStatus.textContent = `${prefix}\nLoading project...`;
+        progress.set(`${prefix}\nLoading project...`, Math.round((index / queue.length) * 100));
+        let result = { ...item, status: "failed", finalVideoPath: "", error: "" };
+        try {
+          const loaded = await loadSessionFromProject(item.folder);
+          if (!loaded) throw new Error("Project could not be loaded.");
+          await saveSession({ quiet: true, throwOnError: true });
+          projectBatchStatus.textContent = `${prefix}\nRunning Render All...`;
+          progress.set(`${prefix}\nRunning Render All. The normal Render All progress window will show scene details.`, Math.round((index / queue.length) * 100));
+          state.batchCancelled = false;
+          const renderResult = await renderAllScenes({
+            sceneScope: "all",
+            forceVideos: Boolean(projectBatchForceVideos.input.checked),
+            suppressFinalModal: true,
+          });
+          if (projectBatchStopRequested || state.batchCancelled) throw new Error("Stopped by user.");
+          await saveSession({ quiet: true, throwOnError: true });
+          const finalVideoPath = String(renderResult?.final_video_path || state.finalVideoPath || "");
+          if (!finalVideoPath) throw new Error("Render All finished without reporting a final video path.");
+          result.status = "complete";
+          result.finalVideoPath = finalVideoPath;
+          result.error = "";
+          results.push(result);
+          projectBatchStatus.textContent = `${prefix}\nComplete.\n${result.finalVideoPath || ""}`;
+          if (projectBatchClearMemory.input.checked && index < queue.length - 1) {
+            progress.set(`${prefix}\nClearing memory before the next project...`, Math.round(((index + 0.9) / queue.length) * 100));
+            await runClearMemoryWorkflowQuiet(progress, `Project Batch ${name}`, Math.round(((index + 0.95) / queue.length) * 100));
+          }
+        } catch (error) {
+          result.error = String(error?.message || error);
+          results.push(result);
+          projectBatchStatus.textContent = `${prefix}\nFailed:\n${result.error}`;
+          if (!projectBatchContinueOnError.input.checked || projectBatchStopRequested || state.batchCancelled) break;
+        }
+      }
+      const completed = results.filter((item) => item.status === "complete").length;
+      const failed = results.filter((item) => item.status !== "complete").length;
+      const elapsed = renderLogDuration(Date.now() - startedAt);
+      progress.set(`Project Batch finished.\nCompleted: ${completed}\nFailed: ${failed}\nElapsed: ${elapsed}`, 100);
+      progress.close(4500);
+      projectBatchStatus.textContent = `Project Batch finished.\nCompleted: ${completed}\nFailed: ${failed}\nElapsed: ${elapsed}`;
+      showProjectBatchResultsModal(results);
+    } finally {
+      state.batchCancelled = false;
+      setProjectBatchRunning(false);
+    }
+  }
+
+  projectBatchButton.onclick = () => {
+    projectBatchPanel.style.display = projectBatchPanel.style.display === "none" ? "flex" : "none";
+  };
+  projectBatchAddCurrent.onclick = () => {
+    const folder = String(projectInput.value || state.projectFolder || "").trim();
+    if (!folder) {
+      toast("Create or load a project before adding the current project to Project Batch.", true);
+      return;
+    }
+    addProjectToBatch(folder);
+  };
+  projectBatchAddRecent.onclick = async () => {
+    try {
+      const data = await getJson(projectListUrl());
+      const choice = await showLoadProjectModal(Array.isArray(data.projects) ? data.projects : []);
+      if (choice?.project_folder) addProjectToBatch(choice.project_folder);
+    } catch (error) {
+      toast(String(error?.message || error), true);
+    }
+  };
+  projectBatchAddSession.onclick = async () => {
+    try {
+      const folder = await pickProjectSessionFile();
+      if (folder) addProjectToBatch(folder);
+    } catch (error) {
+      toast(String(error?.message || error), true);
+    }
+  };
+  projectBatchAddCustom.onclick = async () => {
+    const folder = await showTextInputModal({
+      title: "Add Project To Batch",
+      label: "Project folder path",
+      value: "",
+      placeholder: "Full project folder path...",
+      confirmLabel: "Add Project",
+    });
+    if (folder) addProjectToBatch(folder);
+  };
+  projectBatchRun.onclick = runProjectBatchQueue;
+  projectBatchStop.onclick = () => {
+    projectBatchStopRequested = true;
+    state.batchCancelled = true;
+    projectBatchStatus.textContent = "Stop requested. The current render will stop at the next safe checkpoint.";
+    toast("Project Batch stop requested.");
+  };
+  renderProjectBatchQueue();
 
   async function archiveGeneratedSceneImage(segment, imageInfo) {
     ensureSegmentRuntimeFields(segment);
@@ -35648,6 +37082,582 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return [safePrompt, subjectMultiplicityBlock, block, visualOnlyBlock].filter(Boolean).join("\n\n").trim();
   }
 
+  function miniMaxH3CreativePromptContextForSegment(segment, mode) {
+    const settings = miniMaxH3SettingsForSegment(segment);
+    const nativeAudio = settings.audio_mode === "built_in_audio";
+    const duration = Math.max(0, Number(segment?.end || 0) - Number(segment?.start || 0));
+    const exactDuration = String(Number(duration.toFixed(3)));
+    const aspectRatio = String(settings.aspect_ratio || "16:9").match(/\d+\s*:\s*\d+/)?.[0]?.replace(/\s+/g, "") || "16:9";
+    const visualOnly = segmentUsesNoLipSyncPerformance(segment);
+    const dialogueAssignments = visualOnly ? [] : miniMaxDialogueAssignmentsForSegment(segment);
+    const lyricText = dialogueAssignments.length
+      ? dialogueAssignments.map((cue) => cue.text).join(" ")
+      : isInstrumentalLyricText(segment?.lyric_text) ? "" : flattenLyricForPrompt(segment?.lyric_text);
+    const performanceMode = visualOnly
+      ? "no_lip_sync"
+      : normalizeVideoType(segment?.performance_mode || state.videoType);
+    const cameraMotionSpeed = Number(segment?.camera_motion_speed ?? state.builderStoryboardDefaults?.camera_motion_speed ?? 4);
+    const characterMotionSpeed = Number(segment?.character_motion_speed ?? state.builderStoryboardDefaults?.character_motion_speed ?? 4);
+    const cameraMotionGuidance = String(segment?.camera_motion_speed_guidance || state.builderStoryboardDefaults?.camera_guidance || "").trim();
+    const characterMotionGuidance = String(segment?.character_motion_guidance || state.builderStoryboardDefaults?.character_guidance || "").trim();
+    const cutPlan = miniMaxH3CutPlanForSegment(segment);
+    const shotPlan = miniMaxH3OfficialShotPlan(cutPlan);
+    const compact = (value, limit = 900) => {
+      const text = String(value || "").replace(/\s+/g, " ").trim();
+      return text.length > limit ? `${text.slice(0, limit).trim()}...` : text;
+    };
+    const add = (parts, label, value, limit = 900) => {
+      const text = compact(value, limit);
+      if (text) parts.push(`${label}:\n${text}`);
+    };
+    const parts = [
+      "MiniMax H3 shot-description task.",
+      `Return exactly ${shotPlan.length} JSON shot description${shotPlan.length === 1 ? "" : "s"}: {"shots":[{"description":"..."}]}`,
+      "Write only creative shot text. Do not include [Shot N] labels, cut times, Audio, Continuity, fixed sections, markdown, or analysis.",
+      `Mode: ${miniMaxH3ModeLabel(mode)}`,
+      `Duration: ${exactDuration}s, ${aspectRatio}`,
+      `Audio mode: ${nativeAudio ? "Built-in MiniMax audio" : "Input Audio 1 preserved by Builder"}`,
+      `Shot count: ${shotPlan.length}`,
+    ];
+    const cutTimes = shotPlan.slice(1).map((shot) => shot.timecode);
+    if (cutTimes.length) {
+      parts.push(`Builder cut times for your planning only: ${cutTimes.join(", ")}. Do not write these times.`);
+    } else {
+      parts.push("Continuous shot: return one description only.");
+    }
+    parts.push(`Camera speed: ${Number.isFinite(cameraMotionSpeed) ? cameraMotionSpeed : 4}/10${cameraMotionGuidance ? ` - ${compact(cameraMotionGuidance, 240)}` : ""}.`);
+    parts.push(`Character speed: ${Number.isFinite(characterMotionSpeed) ? characterMotionSpeed : 4}/10${characterMotionGuidance ? ` - ${compact(characterMotionGuidance, 240)}` : ""}.`);
+    if (cameraMotionSpeed >= 7) {
+      parts.push("Camera rule: use energetic, visibly active camera movement; avoid slow/static/locked-off language.");
+    }
+    if (characterMotionSpeed >= 4) {
+      parts.push("Character rule: include clear body action, gesture, step, or set interaction; mouth movement alone is not enough.");
+    }
+    if (segment?.no_character_present) {
+      parts.push("Vocal performance: no visible character / no lip sync. Do not invent a visible singer or speaker.");
+    } else if (performanceMode === "no_lip_sync") {
+      parts.push("Vocal performance: visual-only / no lip sync. Use lyric only as hidden mood/story context.");
+    } else if (lyricText && performanceMode === "speaking") {
+      parts.push("Vocal performance: speaking with exact dialogue lip sync. Mention the visible speaking action naturally in the shot descriptions, but do not write separate audio sections.");
+      add(parts, "Exact dialogue order", miniMaxDialogueOrderText(segment) || `The assigned speaker says exactly: "${lyricText}"`);
+    } else if (lyricText) {
+      parts.push("Vocal performance: singing with exact lyric lip sync. Mention the visible singing action naturally in the shot descriptions, but do not write separate audio sections or repeat boilerplate in every cut.");
+      add(parts, "Exact lyric line", lyricText);
+    } else {
+      parts.push("Vocal performance: no exact lyric or dialogue is assigned to this scene.");
+    }
+    const cueShotContract = miniMaxH3CueShotContractText(segment, mode);
+    if (cueShotContract) add(parts, "Timed singer / shot contract", cueShotContract, 1800);
+    const vocalCueMap = miniMaxH3VocalCueMapText(segment, mode);
+    if (vocalCueMap) {
+      add(parts, "Performer / vocal cue map", vocalCueMap);
+      if (selectedPerformerSubjectsForSegment(segment).length >= 2) {
+        parts.push("Multi-performer rule: use exact subject labels such as <Subject 1> (S1), <Subject 2> (S2), and <Audio 1> in the shot descriptions. For each assigned cue, write that the assigned subject precisely lip-syncs to <Audio 1>, singing or speaking the cue inside <d>[English] cue.</d>. Do not make an unassigned performer sing or speak during another performer's cue; keep them silent, mouth closed, or naturally reacting.");
+        parts.push("Shot wording rule: do not begin descriptions with 'The camera cuts to' or 'The camera...'. Start with the resulting framing or subject action, e.g. 'A panning medium shot shows...' or '<Subject 2> (S2) steps forward...'.");
+      }
+    }
+    add(parts, "Scene idea", sceneVideoConceptPromptText(segment));
+    add(parts, "Scene notes", segment?.notes || segment?.director_note);
+    add(parts, "Motion/camera request", segment?.i2v_notes);
+    add(parts, "Story beat", segment?.story_beat);
+    add(parts, "Lyric section", segment?.lyric_section);
+    add(parts, "Subject", segment?.no_character_present ? "No main character is visible in this scene." : segmentMappedSubjectText(segment));
+    add(parts, "Location", segmentMappedLocationText(segment));
+    const referenceLabels = miniMaxH3ReferenceAssignmentLines(segment, mode)
+      .map((line) => String(line || "").split(":")[0].trim())
+      .filter(Boolean);
+    if (referenceLabels.length) {
+      parts.push(`Available renderer reference labels: ${referenceLabels.join(", ")}. Mention labels only when useful in the shot text; do not define them.`);
+    }
+    if (mode === "video_to_video") {
+      const videoAssignments = miniMaxH3VideoAssignmentLines(segment);
+      if (videoAssignments.length) parts.push(`Available video reference labels: ${videoAssignments.map((line) => String(line || "").split(":")[0].trim()).filter(Boolean).join(", ")}.`);
+    }
+    add(parts, "Manual audio direction for staging only", segment?.audio_direction);
+    add(parts, "Continuity notes for staging only", segment?.continuity);
+    return parts.join("\n\n");
+  }
+
+  function miniMaxH3Timecode(seconds = 0) {
+    const total = Math.max(0, Number(seconds) || 0);
+    const minutes = Math.floor(total / 60);
+    const secs = total - minutes * 60;
+    return `${String(minutes).padStart(2, "0")}:${secs.toFixed(3).padStart(6, "0")}`;
+  }
+
+  function miniMaxH3OfficialShotScheduleLines(cutPlan = {}) {
+    const cuts = Array.isArray(cutPlan.cut_times_seconds) ? cutPlan.cut_times_seconds : [];
+    const lines = ["[Shot 1] starts at 00:00.000 and has no timestamp after the label."];
+    cuts.forEach((time, index) => {
+      lines.push(`[Shot ${index + 2}] At ${miniMaxH3Timecode(time)}, begin a new continuity-preserving cut.`);
+    });
+    return lines;
+  }
+
+  function miniMaxH3OfficialShotPlan(cutPlan = {}) {
+    const cuts = Array.isArray(cutPlan.cut_times_seconds) ? cutPlan.cut_times_seconds : [];
+    return [
+      { number: 1, time: 0, timecode: "00:00.000" },
+      ...cuts.map((time, index) => ({
+        number: index + 2,
+        time: Number(time || 0),
+        timecode: miniMaxH3Timecode(time),
+      })),
+    ];
+  }
+
+  function miniMaxH3OfficialCutPlanInstruction(cutPlan = {}) {
+    const duration = Number(cutPlan.exact_duration_seconds || 0);
+    const exactDuration = Number.isFinite(duration) ? Number(duration.toFixed(3)) : 0;
+    const cuts = Array.isArray(cutPlan.cut_times_seconds) ? cutPlan.cut_times_seconds : [];
+    if (cutPlan.cue_driven) {
+      const timingText = cuts.map((time) => miniMaxH3Timecode(time)).join(", ");
+      return `EDITING / CUT PLAN — MANDATORY: The timed singer/lyric cue map controls this exact ${exactDuration}-second segment. Create exactly ${cuts.length + 1} shot${cuts.length ? "s" : ""}${cuts.length ? ` with hard cuts at ${timingText}` : ""}. Each shot corresponds to one cue row in order: instrumental rows mean no visible lip-sync, and lyric rows mean only the assigned subject sings that cue. The builder will write [Shot 1] and every later [Shot N] At MM:SS.mmm label. Return only the creative description for each shot. Do not omit, merge, add, reorder, or shift cue shots.`;
+    }
+    if (!cuts.length) {
+      return `EDITING / CUT PLAN — MANDATORY: Use one smooth, continuous, uninterrupted shot for the full ${exactDuration}-second segment. Output only [Shot 1]. Use no additional shot label, hard cut, angle reset, montage, dissolve, scene change, or transition. Camera and character movement may develop inside the same continuous take.`;
+    }
+    const timingText = cuts.map((time) => miniMaxH3Timecode(time)).join(", ");
+    return `EDITING / CUT PLAN — MANDATORY: Cut frequency ${cutPlan.frequency}/10 for this exact ${exactDuration}-second segment requires exactly ${cuts.length} hard cut${cuts.length === 1 ? "" : "s"} at ${timingText}, creating ${cuts.length + 1} coherent shots. The builder will write [Shot 1] and every later [Shot N] At MM:SS.mmm label. Return only the creative description for each shot. Each later description should stage a continuity-preserving camera/shot cut. Do not omit, merge, add, or shift a scheduled cut. Do not add extra shots, montage beats, dissolves, scene changes, or transitions outside this schedule.`;
+  }
+
+  function miniMaxH3ReferenceAssignmentLines(segment, mode = miniMaxH3ModeForSegment(segment)) {
+    const normalizedMode = normalizeMiniMaxH3Mode(mode);
+    if (normalizedMode === "image_to_video") {
+      return ["<Picture 1>: exact start frame and authoritative opening composition, character identity, clothing, location, lighting, and visual-state anchor."];
+    }
+    if (normalizedMode !== "reference_to_video" && normalizedMode !== "video_to_video") return [];
+    return miniMaxOrderedImageReferenceItemsForSegment(segment, normalizedMode).map((item, index) => {
+      const detail = [item.label, item.description].map((value) => String(value || "").trim()).filter(Boolean).join(" — ");
+      return `<Picture ${index + 1}>: ${miniMaxReferencePurposeText(item, segment)}${detail ? `. ${detail}` : ""}`;
+    });
+  }
+
+  function miniMaxH3VideoAssignmentLines(segment) {
+    return (Array.isArray(segment?.minimax_h3_video_references) ? segment.minimax_h3_video_references : [])
+      .filter((item) => String(item?.path || "").trim())
+      .slice(0, 3)
+      .map((item, index) => {
+        const purpose = normalizeMiniMaxH3VideoPurpose(item.purpose);
+        const purposeLabel = MINIMAX_H3_VIDEO_REFERENCE_PURPOSES.find((option) => option.value === purpose)?.label || "Continuation / Extension";
+        const timing = Number(item.start_seconds || 0) > 0 || Number(item.duration || 0) > 0
+          ? ` Use from ${Math.max(0, Number(item.start_seconds || 0))}s${Number(item.duration || 0) > 0 ? ` for ${Math.max(0, Number(item.duration || 0))}s` : " onward"}.`
+          : "";
+        const audio = item.use_audio ? " Its embedded audio is also supplied as a paired reference." : " Do not use its embedded audio.";
+        return `<Video ${index + 1}>: ${purposeLabel}.${timing}${audio}`;
+      });
+  }
+
+  function miniMaxH3OpeningLine(segment) {
+    const settings = miniMaxH3SettingsForSegment(segment);
+    const duration = Math.max(0, Number(segment?.end || 0) - Number(segment?.start || 0));
+    const exactDuration = String(Number(duration.toFixed(3)));
+    const aspectRatio = String(settings.aspect_ratio || "16:9").match(/\d+\s*:\s*\d+/)?.[0]?.replace(/\s+/g, "") || "16:9";
+    const style = String(segment?.minimax_h3_video_style || state.builderStoryboardDefaults?.video_style || "").trim();
+    const styleText = style || "photorealistic";
+    return `Generate a ${exactDuration}-second ${aspectRatio} ${styleText} video.`;
+  }
+
+  function miniMaxH3AudioAssignmentBlock(segment) {
+    const settings = miniMaxH3SettingsForSegment(segment);
+    const nativeAudio = settings.audio_mode === "built_in_audio";
+    const visualOnly = segmentUsesNoLipSyncPerformance(segment);
+    const dialogueAssignments = visualOnly ? [] : miniMaxDialogueAssignmentsForSegment(segment);
+    const dialogueOrder = visualOnly ? "" : miniMaxDialogueOrderText(segment);
+    const lyricText = dialogueAssignments.length
+      ? dialogueAssignments.map((cue) => cue.text).join(" ")
+      : isInstrumentalLyricText(segment?.lyric_text) ? "" : flattenLyricForPrompt(segment?.lyric_text);
+    const performanceMode = visualOnly
+      ? "no_lip_sync"
+      : normalizeVideoType(segment?.performance_mode || state.videoType);
+    const singerNames = (dialogueAssignments.length
+      ? dialogueAssignments.map((cue) => cue.speaker_name)
+      : Array.isArray(segment?.lyric_singers)
+        ? segment.lyric_singers
+        : String(segment?.lyric_singers || "").split(/[,;\n]+/))
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
+    const performerLabel = singerNames.length
+      ? singerNames.join(singerNames.length === 2 ? " and " : ", ")
+      : "the visible performer";
+    if (segment?.no_character_present) {
+      return nativeAudio
+        ? "Native audio: generate only low environmental ambience and requested sound effects. Do not invent a singer, speaker, dialogue, lyrics, or voice."
+        : "Audio 1: use unchanged as the primary and only audio track. Preserve its exact music, vocals, timing, rhythm, phrasing, tone, and duration. Do not invent a visible singer or speaker.";
+    }
+    if (performanceMode === "no_lip_sync") {
+      return nativeAudio
+        ? "Native audio: generate only ambience and requested sound effects. Do not generate speech, singing, lyrics, dialogue, or visible mouth synchronization."
+        : "Audio 1: use unchanged as the primary and only audio track. Preserve its exact music, vocals, timing, rhythm, phrasing, tone, and duration, but do not show singing, speaking, or mouth synchronization.";
+    }
+    if (lyricText && performanceMode === "speaking") {
+      return nativeAudio
+        ? `Native audio: generate the exact dialogue only. ${dialogueOrder ? `Mandatory dialogue order:\n${dialogueOrder}` : `${performerLabel} says the exact line “${lyricText}”.`} Do not merge speakers, reorder cues, replace, alter, repeat, extend, improvise, omit, or add words. Use silence, breathing, facial reaction, physical action, and low ambience for all remaining time.`
+        : `Audio 1: use unchanged as the primary and only audio track. Preserve its exact music, vocals, timing, rhythm, phrasing, tone, and duration, and use it as the exact voice, timing, and lip-sync reference. ${performerLabel} says the exact line “${lyricText}”. Synchronize lips, mouth shapes, jaw movement, facial muscles, and breathing precisely to that spoken line in Audio 1. Do not replace, alter, extend, or add words.`;
+    }
+    if (lyricText) {
+      return `Audio 1: use unchanged as the primary and only audio track. Preserve its exact music, vocals, timing, rhythm, phrasing, tone, and duration, and use it as the exact vocal, timing, and lip-sync reference. ${performerLabel} is singing the exact line “${lyricText}”. Synchronize lips, mouth shapes, jaw movement, facial muscles, and breathing precisely only while that sung line is audible in Audio 1. Never stretch, restart, or repeat the full lyric across every timestamp. When the vocal ends, the mouth closes or relaxes naturally while physical action continues. Do not generate, add, replace, remix, or extend any music, ambience, dialogue, vocals, or sound effects.`;
+    }
+    return nativeAudio
+      ? "Native audio: generate only ambience and requested sound effects. Do not invent lyrics, dialogue, or voices."
+      : "Audio 1: use unchanged as the primary and only audio track. Preserve its exact music, vocals, timing, rhythm, phrasing, tone, and duration. Do not generate, add, replace, remix, or extend any music, ambience, dialogue, vocals, or sound effects.";
+  }
+
+  function miniMaxH3FinalAudioBlock(segment) {
+    const block = miniMaxH3AudioAssignmentBlock(segment);
+    if (!block) return "";
+    return block.replace(/^Audio 1:/, "Audio:").replace(/^Native audio:/, "Native audio:");
+  }
+
+  function miniMaxH3ContinuityBlock(segment) {
+    const parts = [];
+    const subjectText = segment?.no_character_present ? "" : segmentMappedSubjectText(segment);
+    const locationText = segmentMappedLocationText(segment);
+    const manualContinuity = String(segment?.continuity || "").trim();
+    const lyricSingers = Array.isArray(segment?.lyric_singers)
+      ? segment.lyric_singers.map((value) => String(value || "").trim()).filter(Boolean)
+      : String(segment?.lyric_singers || "").split(/[,;\n]+/).map((value) => String(value || "").trim()).filter(Boolean);
+    if (subjectText) parts.push(`Preserve the mapped character identity, wardrobe, hair, body proportions, accessories, and performance continuity exactly:\n${subjectText}`);
+    else if (lyricSingers.length && !segment?.no_character_present) parts.push(`Preserve the visible performer identity for ${lyricSingers.join(", ")} consistently throughout the clip.`);
+    if (locationText) parts.push(`Preserve the mapped location/environment, lighting, spatial orientation, materials, and atmosphere consistently:\n${locationText}`);
+    if (manualContinuity) parts.push(manualContinuity);
+    parts.push("Do not add, remove, duplicate, clone, or replace mapped subjects unless the creative shot action explicitly asks for it.");
+    return `Continuity: ${parts.join("\n")}`;
+  }
+
+  function stripMiniMaxH3FixedSectionsFromCreative(prompt) {
+    let text = String(prompt || "").trim();
+    text = text.replace(/^\s*Generate\s+(?:an?|the)\s+[\s\S]*?(?=\n\s*(?:Image\s+\d+\s*:|\[\s*\d|CUT TO:|Audio(?:\s+1)?\s*:|Native audio\s*:|Continuity\s*:)|$)/i, "").trim();
+    text = text.replace(/(?:^|\n)\s*(?:Ordered [^\n]*assignments?[^\n]*:\s*)?(?:Image\s+\d+(?:\s*\([^)]*\))?\s*:[^\n]*(?:\n|$))+/gi, "\n").trim();
+    text = text.replace(/(?:^|\n)\s*(?:Ordered video assignments?[^\n]*:\s*)?(?:Video\s+\d+\s*:[^\n]*(?:\n|$))+/gi, "\n").trim();
+    text = text.replace(/(?:^|\n)\s*Audio\s+1\s*:[\s\S]*?(?=\n\s*(?:\[\s*\d|CUT TO:|Audio\s*:|Continuity\s*:|MINIMAX|REFERENCE SUBJECT COUNT|VISUAL-ONLY|$))/gi, "\n").trim();
+    text = text.replace(/(?:^|\n)\s*Audio\s*:[\s\S]*?(?=\n\s*(?:Continuity\s*:|MINIMAX|REFERENCE SUBJECT COUNT|VISUAL-ONLY|$))/gi, "\n").trim();
+    text = text.replace(/(?:^|\n)\s*Native audio\s*:[\s\S]*?(?=\n\s*(?:\[\s*\d|CUT TO:|Audio\s*:|Continuity\s*:|MINIMAX|REFERENCE SUBJECT COUNT|VISUAL-ONLY|$))/gi, "\n").trim();
+    text = text.replace(/(?:^|\n)\s*Continuity\s*:[\s\S]*?(?=\n\s*(?:MINIMAX|REFERENCE SUBJECT COUNT|VISUAL-ONLY|$))/gi, "\n").trim();
+    text = stripMiniMaxH3ManagedPromptBlock(text, "MINIMAX NATIVE VOICE IDENTITY — MANDATORY AND VERBATIM");
+    text = stripMiniMaxH3ManagedPromptBlock(text, "REFERENCE SUBJECT COUNT — MANDATORY");
+    text = stripMiniMaxH3ManagedPromptBlock(text, "VISUAL-ONLY B-ROLL / NO-LIP-SYNC SAFETY — MANDATORY AND FINAL");
+    return text.replace(/\n{3,}/g, "\n\n").trim();
+  }
+
+  function miniMaxH3FallbackShotDescription(segment, shotIndex = 0, mode = miniMaxH3ModeForSegment(segment)) {
+    const cues = isMiniMaxSingerAssignmentMode(segment) && String(segment?.lyric_performance_mode || "together") === "cue_map"
+      ? normalizeLyricCueMapForSegment(segment)
+      : [];
+    const cue = cues[shotIndex] || null;
+    const labelMap = miniMaxH3SubjectLabelMapForSegment(segment, mode);
+    const performers = selectedPerformerSubjectsForSegment(segment);
+    const environment = "inside the mapped environment";
+    if (cue?.type === "instrumental") {
+      return normalizeMiniMaxH3ShotDescription(`An atmospheric cinematic shot shows the scene ${environment} during an instrumental no-vocal moment. Any visible performers remain silent with closed or naturally relaxed mouths while the camera creates visual movement through posture, wind, clothing motion, and the surrounding environment.`);
+    }
+    if (cue) {
+      const subject = performers.find((item) => String(item.id) === String(cue.singer_id)) || { id: cue.singer_id, name: cue.singer_name };
+      const performer = miniMaxH3PerformerLabel(subject, labelMap);
+      const lyric = miniMaxH3CapitalizeCueText(miniMaxH3PunctuatedCueText(cue.text));
+      return normalizeMiniMaxH3ShotDescription(`A clear medium close-up shows only ${performer} ${environment}, with the face and mouth unobstructed. ${performer} precisely lip-syncs to <Audio 1>, <d>[English] ${lyric}</d>, while no other visible performer sings or lip-syncs.`);
+    }
+    const subject = performers[0] ? miniMaxH3PerformerLabel(performers[0], labelMap) : "the mapped performer";
+    return normalizeMiniMaxH3ShotDescription(`A cinematic shot shows ${subject} ${environment}, preserving identity, wardrobe, lighting, and location continuity while the camera stages a clear music-video performance moment.`);
+  }
+
+  function parseMiniMaxH3ShotDescriptionPayload(rawPrompt, cutPlan = {}, segment = null, mode = miniMaxH3ModeForSegment(segment)) {
+    const text = String(rawPrompt || "").trim();
+    if (!text) throw new Error("The LLM returned an empty MiniMax shot-description payload.");
+    const extractLeadingJson = (value) => {
+      const source = String(value || "").trim();
+      const start = source.indexOf("{");
+      if (start < 0) return source;
+      let depth = 0;
+      let inString = false;
+      let escaped = false;
+      for (let index = start; index < source.length; index += 1) {
+        const ch = source[index];
+        if (inString) {
+          if (escaped) escaped = false;
+          else if (ch === "\\") escaped = true;
+          else if (ch === "\"") inString = false;
+          continue;
+        }
+        if (ch === "\"") {
+          inString = true;
+          continue;
+        }
+        if (ch === "{") depth += 1;
+        else if (ch === "}") {
+          depth -= 1;
+          if (depth === 0) return source.slice(start, index + 1);
+        }
+      }
+      return source;
+    };
+    const jsonText = extractLeadingJson(text);
+    let parsed = null;
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch (error) {
+      throw new Error(`The LLM did not return valid JSON shot descriptions. Raw output:\n${text}`);
+    }
+    const shotPlan = miniMaxH3OfficialShotPlan(cutPlan);
+    const rawShots = Array.isArray(parsed?.shots) ? parsed.shots : [];
+    if (rawShots.length !== shotPlan.length) {
+      throw new Error(`The LLM returned ${rawShots.length} shot description${rawShots.length === 1 ? "" : "s"}, but the builder expected ${shotPlan.length}.`);
+    }
+    return rawShots.map((item, index) => {
+      const description = typeof item === "string" ? item : String(item?.description || item?.text || item?.shot || "").trim();
+      if (!description) {
+        toast(`Gemma returned a blank description for shot ${index + 1}; Builder filled it from the singer cue map.`, true);
+        return miniMaxH3FallbackShotDescription(segment, index, mode);
+      }
+      if (/\[\s*Shot\s+\d+\s*\]/i.test(description) || /\bAt\s+\d{1,2}:\d{2}(?:\.\d{1,3})?\b/i.test(description)) {
+        throw new Error(`The LLM included shot labels or cut times inside shot ${index + 1}. Generate again so the builder can own labels/timing.`);
+      }
+      return normalizeMiniMaxH3ShotDescription(description);
+    });
+  }
+
+  function normalizeMiniMaxH3DialogueTags(text) {
+    return String(text || "")
+    .replace(/<\|[^<>]*\|>/g, "")
+    .replace(/<\s*tool_call\|?>+/gi, "")
+    .replace(/<d>\s*\[+\s*([A-Za-z][A-Za-z -]{1,30})\]\s*/gi, "<d>[$1] ")
+    .replace(/<d>\s*\[([^\]]+)\]\s*([^<]*?)\s*<\/d>/gi, (_match, language, lyric) => {
+      const cleanLanguage = String(language || "English").trim() || "English";
+      const cleanLyric = miniMaxH3CapitalizeCueText(miniMaxH3PunctuatedCueText(lyric));
+      return cleanLyric ? `<d>[${cleanLanguage}] ${cleanLyric}</d>` : "";
+    }).replace(/<d>\s*(?!\[[^\]]+\]\s*)([^<]*?)\s*<\/d>/gi, (_match, lyric) => {
+      const cleanLyric = miniMaxH3CapitalizeCueText(miniMaxH3PunctuatedCueText(lyric));
+      return cleanLyric ? `<d>[English] ${cleanLyric}</d>` : "";
+    });
+  }
+
+  function miniMaxH3PunctuatedCueText(value) {
+    let text = String(value || "").trim();
+    if (text && !/[.!?…]["')\]]?$/.test(text)) text += ".";
+    return text;
+  }
+
+  function miniMaxH3CapitalizeCueText(value) {
+    return String(value || "").replace(/^(\s*["'“‘(]*)([a-z])/, (_match, prefix, letter) => `${prefix}${letter.toUpperCase()}`);
+  }
+
+  function miniMaxH3CleanSubjectNoun(value, fallback = "reference") {
+    const text = String(value || "").replace(/\s+/g, " ").trim() || fallback;
+    return text.replace(/^(?:the\s+)+/i, "the ");
+  }
+
+  function normalizeMiniMaxH3ShotDescription(text) {
+    return normalizeMiniMaxH3DialogueTags(String(text || "")
+      .replace(/\bto\s+Audio\s+1\b/gi, "to <Audio 1>")
+      .replace(/\bfrom\s+Audio\s+1\b/gi, "from <Audio 1>")
+      .replace(/\bwith\s+Audio\s+1\b/gi, "with <Audio 1>")
+      .replace(/\bin\s+Audio\s+1\b/gi, "in <Audio 1>")
+      .replace(/\bAudio\s+1\b/g, "<Audio 1>")
+      .replace(/<+Audio 1>+/g, "<Audio 1>")
+      .replace(/\s+/g, " ")
+      .trim());
+  }
+
+  function miniMaxH3SentenceFragmentAfterCut(text) {
+    let clean = normalizeMiniMaxH3ShotDescription(text);
+    clean = clean.replace(/^(?:cut\s+to\s+)?(?:a|an|the)\s+/i, (match) => match.toLowerCase());
+    return clean;
+  }
+
+  function miniMaxH3CleanPostCutGrammar(text) {
+    let clean = String(text || "").replace(/\s+/g, " ").trim();
+    clean = clean.replace(/\bthe camera cuts\s+to\s+(?=(?:the\s+)?camera\b)/gi, "the camera cuts. ");
+    clean = clean.replace(/\bthe camera cuts\.\s*(?:the\s+camera\s+cuts(?:\s+to)?\.?\s*)+/gi, "the camera cuts. ");
+    clean = clean.replace(/\bthe camera cuts\s+to\s+((?:a|an|the)\s+(?:(?:extreme|tight|wide|medium|close|low-angle|high-angle|over-the-shoulder|tracking|panning|orbiting|dolly|handheld|static|locked-off|profile|two-shot|single|insert|detail|wide-angle|telephoto)[\s-]+){0,6}(?:close-up|shot|view|angle|frame|framing)(?:\s+of\b[^.]{0,140})?\s+(?:shows|captures|reveals|frames|focuses|follows|tracks|pans|pushes|orbits|opens|begins)\b)/gi, (_match, fragment) => {
+      return `the camera cuts. ${miniMaxH3CapitalizeCueText(fragment)}`;
+    });
+    clean = clean.replace(/\bthe camera cuts\.\s+([a-z])/g, (_match, letter) => `the camera cuts. ${letter.toUpperCase()}`);
+    return clean;
+  }
+
+  function miniMaxH3PostCutShotText(text) {
+    const clean = normalizeMiniMaxH3ShotDescription(text);
+    if (/^(?:the\s+)?camera\b/i.test(clean)) {
+      return miniMaxH3CleanPostCutGrammar(`the camera cuts. ${clean}`);
+    }
+    if (/^(?:a|an|the)\s+[\w-]+(?:\s+[\w-]+){0,8}\s+shot(?:\s+of\b[^.]{0,120})?\s+(?:shows|captures|reveals|frames|focuses|follows|tracks|pans|pushes|orbits|opens|begins)\b/i.test(clean)) {
+      return miniMaxH3CleanPostCutGrammar(`the camera cuts. ${clean}`);
+    }
+    return miniMaxH3CleanPostCutGrammar(`the camera cuts to ${miniMaxH3SentenceFragmentAfterCut(clean)}`);
+  }
+
+  function miniMaxH3OfficialShotBodyFromDescriptions(segment, descriptions = []) {
+    const cutPlan = miniMaxH3CutPlanForSegment(segment);
+    const shotPlan = miniMaxH3OfficialShotPlan(cutPlan);
+    if (descriptions.length !== shotPlan.length) {
+      throw new Error(`Cannot assemble MiniMax shots: expected ${shotPlan.length} description${shotPlan.length === 1 ? "" : "s"}, got ${descriptions.length}.`);
+    }
+    return shotPlan.map((shot, index) => {
+      const description = normalizeMiniMaxH3ShotDescription(descriptions[index]);
+      if (shot.number === 1) return `[Shot 1] ${description}`;
+      return `[Shot ${shot.number}] At ${shot.timecode}, ${miniMaxH3PostCutShotText(description)}`;
+    }).join("\n\n");
+  }
+
+  function miniMaxH3OfficialReferencePlan(segment, mode = miniMaxH3ModeForSegment(segment)) {
+    const normalizedMode = normalizeMiniMaxH3Mode(mode);
+    const cutPlan = miniMaxH3CutPlanForSegment(segment);
+    const shotList = miniMaxH3OfficialShotPlan(cutPlan).map((shot) => `[Shot ${shot.number}]`).join(", ");
+    const pictureItems = normalizedMode === "image_to_video"
+      ? [{ kind: "start_frame", label: "opening frame", description: "the exact first frame and visual composition anchor" }]
+      : (normalizedMode === "reference_to_video" || normalizedMode === "video_to_video")
+        ? miniMaxOrderedImageReferenceItemsForSegment(segment, normalizedMode)
+        : [];
+    let subjectNumber = 0;
+    const pictureDefinitions = [];
+    const subjectDefinitions = [];
+    const retention = [];
+    const subjects = [];
+    pictureItems.forEach((item, index) => {
+      const pictureLabel = `<Picture ${index + 1}>`;
+      const name = miniMaxH3CleanSubjectNoun(item?.label || item?.name || `${item?.kind === "location" ? "location" : "reference"} ${index + 1}`);
+      const isLocation = item?.kind === "location";
+      const displayName = isLocation ? "environment" : name;
+      const description = String(item?.description || "").trim();
+      const purpose = miniMaxReferencePurposeText(item, segment);
+      if (item?.kind === "start_frame") {
+        pictureDefinitions.push(`${pictureLabel} is the first frame of [Shot 1], used as the exact opening composition and visual-state anchor.`);
+        retention.push(`${pictureLabel} ([Shot 1] first frame): fully_preserved - the opening composition, subject placement, environment, lighting, and visual state are retained as the starting frame.`);
+        return;
+      }
+      subjectNumber += 1;
+      const subjectLabel = `<Subject ${subjectNumber}>`;
+      const noun = isLocation
+        ? "environment"
+        : item?.kind === "subject"
+          ? displayName
+          : `${displayName} reference`;
+      const nounPhrase = /^(?:the|a|an)\s+/i.test(noun) ? noun : `the ${noun}`;
+      subjectDefinitions.push(`${subjectLabel} is ${nounPhrase} in ${pictureLabel}, used as ${purpose}${description ? `: ${description}` : "."}`);
+      retention.push(`${subjectLabel} (appears in ${shotList || "[Shot 1]"}): fully_preserved - ${description || `${displayName} is preserved according to its reference role.`}`);
+      subjects.push({ label: subjectLabel, name: displayName, kind: item?.kind || "reference", description, pictureLabel });
+    });
+    const videoDefinitions = miniMaxH3VideoAssignmentLines(segment).map((line) => line.replace(/^<Video\s+(\d+)>\s*:\s*/, "<Video $1> is a reference video used as "));
+    const videoRetention = miniMaxH3VideoAssignmentLines(segment).map((line, index) => {
+      const purpose = line.replace(/^<Video\s+\d+>\s*:\s*/, "").trim();
+      return `<Video ${index + 1}> (reference-video structure): weak_reference - ${purpose}`;
+    });
+    return {
+      subjects,
+      subjectDefinitions,
+      pictureDefinitions,
+      videoDefinitions,
+      retention: [...retention, ...videoRetention],
+    };
+  }
+
+  function miniMaxH3OfficialAudioDefinition(segment) {
+    const settings = miniMaxH3SettingsForSegment(segment);
+    if (settings.audio_mode === "built_in_audio") return "";
+    const visualOnly = segmentUsesNoLipSyncPerformance(segment);
+    const dialogueAssignments = visualOnly ? [] : miniMaxDialogueAssignmentsForSegment(segment);
+    const lyricText = dialogueAssignments.length
+      ? dialogueAssignments.map((cue) => cue.text).join(" ")
+      : isInstrumentalLyricText(segment?.lyric_text) ? "" : flattenLyricForPrompt(segment?.lyric_text);
+    const multiCueSingers = isMiniMaxSingerAssignmentMode(segment)
+      && String(segment?.lyric_performance_mode || "together") === "cue_map"
+      && selectedPerformerSubjectsForSegment(segment).length >= 2;
+    const performer = segment?.no_character_present || multiCueSingers ? "the target video" : "<Subject 1> (S1)";
+    const lyricClause = lyricText && !visualOnly
+      ? selectedPerformerSubjectsForSegment(segment).length >= 2
+        ? ` ${miniMaxH3VocalCueMapText(segment, miniMaxH3ModeForSegment(segment), { compact: true })}`
+        : ` The exact performed lyric/dialogue line is "${miniMaxH3PunctuatedCueText(lyricText)}"`
+      : "";
+    return `<Audio 1> is the complete synchronized song and vocal track for ${performer}, reused as the target video's complete final soundtrack and timing reference.${lyricClause}`;
+  }
+
+  function miniMaxH3OfficialSummary(segment, mode, refs) {
+    const settings = miniMaxH3SettingsForSegment(segment);
+    const normalizedMode = normalizeMiniMaxH3Mode(mode);
+    const taskTypes = [];
+    if (normalizedMode === "video_to_video") taskTypes.push("video editing");
+    if (normalizedMode === "image_to_video") taskTypes.push("keyframe completion");
+    if (normalizedMode === "reference_to_video" || refs.subjects.length) taskTypes.push("reference generation");
+    if (settings.audio_mode === "input_audio") taskTypes.push("audio reuse");
+    if (!taskTypes.length) taskTypes.push("text generation");
+    const subjectNames = refs.subjects.map((item) => item.kind === "location" ? `${item.label} (environment)` : `${item.label} (${item.name})`);
+    const subjectText = subjectNames.length ? subjectNames.join(" and ") : "the described target scene";
+    const audioText = settings.audio_mode === "input_audio"
+      ? " <Audio 1> is reused as the complete soundtrack and timing reference."
+      : " MiniMax generates the native audio requested by the scene.";
+    return `[${Array.from(new Set(taskTypes)).join(" + ")}] The target video is a ${miniMaxH3OpeningStyle(segment)} scene featuring ${subjectText}.${audioText}`;
+  }
+
+  function miniMaxH3OpeningStyle(segment) {
+    return String(segment?.minimax_h3_video_style || state.builderStoryboardDefaults?.video_style || "").trim() || "photorealistic cinematic";
+  }
+
+  function miniMaxH3OfficialSoundscape(segment) {
+    const settings = miniMaxH3SettingsForSegment(segment);
+    if (settings.audio_mode === "input_audio") {
+      return "overall_soundscape:\nNo additional environmental or physical sounds are added over <Audio 1>.";
+    }
+    const audioDirection = String(segment?.audio_direction || "").trim();
+    return `overall_soundscape:\n${audioDirection || "Subtle location-appropriate ambience, physical movement sounds, breathing, and non-verbal performance sounds support the scene without adding unrequested dialogue."}`;
+  }
+
+  function miniMaxH3OfficialMusic(segment) {
+    const settings = miniMaxH3SettingsForSegment(segment);
+    if (settings.audio_mode === "input_audio") {
+      return "non_diegetic_music:\n<Audio 1> is reused as the complete audience-facing song/music track.";
+    }
+    return "non_diegetic_music:\nN/A";
+  }
+
+  function miniMaxH3OfficialIntegratedDescription(segment, mode, creative) {
+    const normalizedMode = normalizeMiniMaxH3Mode(mode);
+    const prefix = normalizedMode === "image_to_video"
+      ? `For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.\n\n`
+      : "";
+    return `${prefix}integrated_multimodal_description:\n${creative}`;
+  }
+
+  function assembleMiniMaxH3OfficialPromptFromCreative(segment, mode, creativePrompt) {
+    const normalizedMode = normalizeMiniMaxH3Mode(mode);
+    const cutPlan = miniMaxH3CutPlanForSegment(segment);
+    const shotDescriptions = parseMiniMaxH3ShotDescriptionPayload(creativePrompt, cutPlan, segment, normalizedMode);
+    const creative = miniMaxH3OfficialShotBodyFromDescriptions(segment, shotDescriptions);
+    if (!creative) {
+      throw new Error("The LLM returned no creative MiniMax scene body. Try again, or add more scene notes so it has action/camera material to write.");
+    }
+    if (normalizedMode === "text_to_video" || normalizedMode === "image_to_video") {
+      return [
+        miniMaxH3OfficialIntegratedDescription(segment, normalizedMode, creative),
+        miniMaxH3OfficialSoundscape(segment),
+        miniMaxH3OfficialMusic(segment),
+      ].filter(Boolean).join("\n\n").trim();
+    }
+    const refs = miniMaxH3OfficialReferencePlan(segment, normalizedMode);
+    const audioDefinition = miniMaxH3OfficialAudioDefinition(segment);
+    const definitions = [
+      ...refs.subjectDefinitions,
+      ...refs.pictureDefinitions,
+      ...refs.videoDefinitions,
+      audioDefinition,
+    ].filter(Boolean);
+    const retention = [
+      ...refs.retention,
+      audioDefinition ? "<Audio 1>: fully_copy - <Audio 1> is reused 1:1 as the target video's complete final audio track." : "",
+    ].filter(Boolean);
+    return [
+      `subject_definitions:\n${definitions.join("\n")}`,
+      `summary:\n${miniMaxH3OfficialSummary(segment, normalizedMode, refs)}`,
+      `retention_analysis:\n${retention.join("\n")}`,
+      `detailed_description:\nThe target video is in a ${miniMaxH3OpeningStyle(segment)} music-video style.\n\n${creative}`,
+      miniMaxH3OfficialSoundscape(segment),
+      miniMaxH3OfficialMusic(segment),
+    ].filter(Boolean).join("\n\n").trim();
+  }
+
+  function assembleMiniMaxH3PromptFromCreative(segment, mode, creativePrompt) {
+    return assembleMiniMaxH3OfficialPromptFromCreative(segment, mode, creativePrompt);
+  }
+
   function miniMaxH3PromptContextForSegment(segment, mode) {
     const settings = miniMaxH3SettingsForSegment(segment);
     const nativeAudio = settings.audio_mode === "built_in_audio";
@@ -35686,7 +37696,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const characterMotionSpeed = Number(segment?.character_motion_speed ?? state.builderStoryboardDefaults?.character_motion_speed ?? 4);
     const cameraMotionGuidance = String(segment?.camera_motion_speed_guidance || state.builderStoryboardDefaults?.camera_guidance || "").trim();
     const characterMotionGuidance = String(segment?.character_motion_guidance || state.builderStoryboardDefaults?.character_guidance || "").trim();
-    const cutPlan = storyboardCutPlanForDuration(duration, state.builderStoryboardDefaults?.minimax_h3_cut_frequency);
+    const cutPlan = miniMaxH3CutPlanForSegment(segment);
     parts.push(
       `Camera motion speed: ${Number.isFinite(cameraMotionSpeed) ? cameraMotionSpeed : 4}/10.`,
       cameraMotionGuidance || "Follow the selected camera speed as a hard motion requirement.",
@@ -35694,6 +37704,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       characterMotionGuidance || "Include physical character action appropriate to the selected character-motion speed.",
       cutPlan.instruction,
     );
+    const cueShotContract = miniMaxH3CueShotContractText(segment, mode);
+    if (cueShotContract) parts.push(cueShotContract);
     if (cameraMotionSpeed >= 7) {
       parts.push("MANDATORY CAMERA RULE: use energetic, visibly active camera movement. Slow, gentle, subtle, restrained, locked-off, static, and hold camera language contradicts this setting and must not appear.");
     }
@@ -35836,6 +37848,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return [];
   }
 
+  function miniMaxH3PromptVisionImagesForRunner(segment, mode) {
+    if ((state.textGemmaRunner || "builtin") === "builtin") return [];
+    return miniMaxH3PromptVisionImages(segment, mode);
+  }
+
   async function createMiniMaxH3PromptWithLLM() {
     const segment = requireActiveSegment();
     if (!segment) return;
@@ -35853,13 +37870,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       toast("Create or load a Builder project before creating MiniMax prompts.", true);
       return;
     }
-    const visionImages = miniMaxH3PromptVisionImages(segment, mode);
+    const rendererPromptImages = miniMaxH3PromptVisionImages(segment, mode);
+    const visionImages = miniMaxH3PromptVisionImagesForRunner(segment, mode);
     const rendererReferenceImages = mode === "reference_to_video"
       ? miniMaxOrderedImageReferenceItemsForSegment(segment, mode)
       : [];
     const sceneImageUse = miniMaxH3SceneImageUseForSegment(segment);
     const sceneImageSourceAvailable = Boolean(segmentImageSource(segment)?.path || segmentImageSource(segment)?.data);
-    if (mode === "image_to_video" && !visionImages.length) {
+    if (mode === "image_to_video" && !rendererPromptImages.length) {
       toast("Image to Video needs a selected scene image before the LLM can create its MiniMax prompt.", true);
       return;
     }
@@ -35869,6 +37887,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
     if (mode === "reference_to_video" && !rendererReferenceImages.length) {
       toast("Reference to Video needs at least one ordered Reference Builder image.", true);
+      return;
+    }
+    try {
+      assertMiniMaxH3ReferenceDescriptionsReady(segment, mode);
+    } catch (error) {
+      toast(String(error?.message || error), true);
       return;
     }
     const videoReferences = (Array.isArray(segment.minimax_h3_video_references) ? segment.minimax_h3_video_references : [])
@@ -35881,7 +37905,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       toast("MiniMax image/reference prompting needs a vision-capable API model selected in LLM Runner.", true);
       return;
     }
-    const context = miniMaxH3PromptContextForSegment(segment, mode);
+    const context = miniMaxH3CreativePromptContextForSegment(segment, mode);
     const miniMaxVisualOnly = segmentUsesNoLipSyncPerformance(segment);
     const promptLyricText = miniMaxVisualOnly || isInstrumentalLyricText(segment.lyric_text) ? "" : flattenLyricForPrompt(segment.lyric_text);
     const promptSingerNames = miniMaxVisualOnly ? [] : (Array.isArray(segment.lyric_singers)
@@ -35911,9 +37935,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         repair_model_file: miniMaxTextGemmaModelSelect.value,
         mmproj_file: visionImages.length ? miniMaxMmprojSelect.value : "",
         t2i_prompt: context,
-        user_notes: "Follow the MiniMax H3 mode contract and the exact ordered media assignments in the scene context.",
-        subject_context: segment.no_character_present ? "" : segmentMappedSubjectText(segment),
-        location_context: segmentMappedLocationText(segment),
+        user_notes: "",
+        subject_context: "",
+        location_context: "",
         no_character_present: Boolean(segment.no_character_present),
         image_references: visionImages,
         prompt_only_scene_inspiration: miniMaxH3SceneImageIsPromptInspiration(segment),
@@ -35922,15 +37946,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         singers: promptSingerNames,
         audio_mode: miniMaxH3SettingsForSegment(segment).audio_mode,
         speaker_assignments: miniMaxVisualOnly ? [] : miniMaxDialogueAssignmentsForSegment(segment),
-        theme_style_path: state.useVrgdgTextContext ? state.themeStylePath || "" : "",
-        story_idea_path: state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
-        subject_scene_path: state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
+        theme_style_path: "",
+        story_idea_path: "",
+        subject_scene_path: "",
         unload_after: true,
         temperature: 0.45,
         top_p: 0.92,
         max_new_tokens: 4000,
       }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
-      const prompt = applyMiniMaxH3NativeVoiceBlock(String(data.prompt || ""), segment);
+      const prompt = assembleMiniMaxH3PromptFromCreative(segment, mode, String(data.prompt || ""));
       if (!prompt) throw new Error(`The LLM returned an empty MiniMax ${modeLabel} prompt.`);
       pushHistory();
       segment.minimax_h3_prompt = prompt;
@@ -37575,13 +39599,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         workingSegment.minimax_h3_video_references = (Array.isArray(segment.minimax_h3_video_references)
           ? segment.minimax_h3_video_references
           : []).map((item) => ({ ...item }));
-        const visionImages = miniMaxH3PromptVisionImages(workingSegment, mode);
+        const rendererPromptImages = miniMaxH3PromptVisionImages(workingSegment, mode);
+        const visionImages = miniMaxH3PromptVisionImagesForRunner(workingSegment, mode);
         const rendererReferenceImages = mode === "reference_to_video"
           ? miniMaxOrderedImageReferenceItemsForSegment(workingSegment, mode)
           : [];
         const sceneImageUse = miniMaxH3SceneImageUseForSegment(workingSegment);
         const sceneImageSourceAvailable = Boolean(segmentImageSource(workingSegment)?.path || segmentImageSource(workingSegment)?.data);
-        if (mode === "image_to_video" && !visionImages.length) {
+        if (mode === "image_to_video" && !rendererPromptImages.length) {
           throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: MiniMax Image to Video needs a selected scene image.`);
         }
         if (mode === "reference_to_video" && sceneImageUse !== "off" && !sceneImageSourceAvailable) {
@@ -37590,6 +39615,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         if (mode === "reference_to_video" && !rendererReferenceImages.length) {
           throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: MiniMax Reference to Video needs ordered Reference Builder images.`);
         }
+        assertMiniMaxH3ReferenceDescriptionsReady(workingSegment, mode);
         if (mode === "video_to_video" && !workingSegment.minimax_h3_video_references.some((item) => String(item?.path || "").trim())) {
           throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: MiniMax Video to Video needs a reference video.`);
         }
@@ -37608,10 +39634,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           model_file: visionImages.length ? miniMaxGemmaModelSelect.value : miniMaxTextGemmaModelSelect.value,
           repair_model_file: miniMaxTextGemmaModelSelect.value,
           mmproj_file: visionImages.length ? miniMaxMmprojSelect.value : "",
-          t2i_prompt: miniMaxH3PromptContextForSegment(workingSegment, mode),
-          user_notes: `Follow the MiniMax H3 mode contract and the exact ordered media assignments in the scene context.\n\n${customSourceContract}`,
-          subject_context: workingSegment.no_character_present ? "" : segmentMappedSubjectText(workingSegment),
-          location_context: segmentMappedLocationText(workingSegment),
+          t2i_prompt: miniMaxH3CreativePromptContextForSegment(workingSegment, mode),
+          user_notes: customSourceContract,
+          subject_context: "",
+          location_context: "",
           no_character_present: Boolean(workingSegment.no_character_present),
           image_references: visionImages,
           prompt_only_scene_inspiration: miniMaxH3SceneImageIsPromptInspiration(workingSegment),
@@ -37624,9 +39650,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           camera_motion_speed_guidance: workingSegment.camera_motion_speed_guidance,
           character_motion_speed: workingSegment.character_motion_speed,
           character_motion_guidance: workingSegment.character_motion_guidance,
-          theme_style_path: state.useVrgdgTextContext ? state.themeStylePath || "" : "",
-          story_idea_path: state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
-          subject_scene_path: state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
+          theme_style_path: "",
+          story_idea_path: "",
+          subject_scene_path: "",
           unload_after: options.unloadAfter !== false,
           temperature: 0.45,
           top_p: 0.92,
@@ -37634,16 +39660,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
         const generatedPrompt = String(data.prompt || "").trim();
         if (!generatedPrompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: LLM returned an empty MiniMax ${modeLabel} prompt.`);
-        const prompt = applyMiniMaxH3NativeVoiceBlock(
-          normalizeStoryboardInputAudioVocalTimeline(
-            ensureStoryboardRequiredTemporalWorldEffect(
-              ensureStoryboardRequiredVideoStyle(generatedPrompt, options.storyboardPayload || {}),
-              options.storyboardPayload || {},
-            ),
-            workingSegment,
-          ),
-          workingSegment,
-        );
+        const prompt = assembleMiniMaxH3PromptFromCreative(workingSegment, mode, generatedPrompt);
         return {
           ...data,
           prompt,
@@ -39848,6 +41865,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       );
       const timing = built?.timing || {};
       const postTrim = built?.post_render_trim || {};
+      const builtTurboSettings = built?.turbo_settings || {};
+      const builtAdvancedSettings = built?.advanced_settings || {};
+      const turboLine = builtTurboSettings.enabled
+        ? `\nTurbo: ON — effective steps ${Number(builtAdvancedSettings.effective_steps || builtTurboSettings.steps || miniMaxSettings.steps)}; LoRA ${builtTurboSettings.lora_name || miniMaxSettings.turbo_lora_name} @ ${builtTurboSettings.strength ?? miniMaxSettings.turbo_lora_strength}`
+        : `\nTurbo: OFF — steps ${Number(builtAdvancedSettings.steps || miniMaxSettings.steps)}`;
+      const settingsScopeLine = `\nSettings scope: ${segment?.use_scene_minimax_h3_settings ? "locked scene settings" : "project/global settings"}`;
       const finalDuration = Number(postTrim.duration);
       if (!Number.isFinite(finalDuration) || Math.abs(finalDuration - sceneDuration) > 0.001) {
         throw new Error(
@@ -39860,6 +41883,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         `${batchLabel}Queueing MiniMax H3...\n`
         + `Timeline: ${sceneDuration.toFixed(3)}s\n`
         + `H3 render: ${Number(timing.h3_frame_count || 0)} frames`
+        + turboLine
+        + settingsScopeLine
         + (continuityImageNumber ? `\nContinuity: ${continuityInput.continuityMode === "exact_start_frame" ? "exact start" : "spatial reference"} (Image ${continuityImageNumber})` : ""),
         pct(30),
       );
@@ -40726,7 +42751,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       progress.set(`Render All complete.\n\nFinal video:\n${stitched.final_video_path}\n\nScene clips:\n${stitched.video_folder}\n\nTotal time: ${renderLogDuration(summary.total_ms)}\nActive scene rendering: ${renderLogDuration(summary.render_ms)}\nFinal stitching: ${renderLogDuration(summary.stitch_ms)}\nRender Log:\n${renderLog.report_text_path || "saved in the project session"}`, 100);
       progress.close(6500);
       toast(`Render All complete:\n${stitched.final_video_path}`);
-      showFinalVideoReadyModal(stitched.final_video_path);
+      if (!options.suppressFinalModal) showFinalVideoReadyModal(stitched.final_video_path);
+      return stitched;
     } catch (error) {
       const failedAt = Date.now();
       const message = String(error?.message || error);
@@ -42850,9 +44876,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const songDuration = Number(audio.duration || state.duration || 0);
       if (!Number.isFinite(duration) || duration <= 0) throw new Error("Scene length must be greater than zero.");
       if (!Number.isFinite(songDuration) || songDuration <= 0) throw new Error("Load a song first so its duration is available.");
-      const fullScenes = Math.floor(songDuration / duration);
-      const remainder = songDuration - fullScenes * duration;
-      const count = Math.max(1, fullScenes + (remainder >= duration * 0.5 ? 1 : 0));
+      const count = Math.max(1, Math.ceil(songDuration / duration));
       return Array.from({ length: count }, (_, index) => ({
         start: index * duration,
         end: index === count - 1 ? songDuration : (index + 1) * duration,
@@ -42867,7 +44891,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         examples.innerHTML = `<strong style="color:#e0f2fe;">Fixed length + scene count</strong><br>Create the requested number of consecutive scenes, all with the same duration.`;
         actionSelect.disabled = false;
       } else if (modeSelect.value === "fit") {
-        examples.innerHTML = `<strong style="color:#e0f2fe;">Fit to song duration</strong><br>Fill the loaded song using the preferred scene length. A final scene at least half that length is kept; a smaller remainder is added to the previous scene.`;
+        examples.innerHTML = `<strong style="color:#e0f2fe;">Fit to song duration</strong><br>Fill the entire loaded song using the preferred scene length. Any remainder becomes its own shorter final scene so generated clips never lose the ending.`;
         actionSelect.value = "replace";
         actionSelect.disabled = true;
       } else if (modeSelect.value === "durations") {
@@ -45605,7 +47629,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
 
   function openGemmaRunnerModal() {
     const backdrop = document.createElement("div");
-    backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100020;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
     const box = document.createElement("div");
     box.style.cssText = "width:min(700px,calc(100vw - 40px));border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
     const header = document.createElement("div");
@@ -45899,6 +47923,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         testApi.textContent = "Test LLM API";
       }
     };
+    return backdrop;
   }
 
   function confirmDeleteMediaAction(type, path) {
@@ -46700,6 +48725,585 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     });
   }
 
+  function openAutoBuildModal() {
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100011;background:rgba(0,0,0,.74);display:flex;align-items:center;justify-content:center;padding:18px;box-sizing:border-box;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(720px,calc(100vw - 36px));max-height:calc(100vh - 36px);overflow:hidden;border:1px solid #0891b2;border-radius:14px;background:linear-gradient(180deg,#0f172a,#0b1220);color:#f8fafc;box-shadow:0 28px 90px rgba(0,0,0,.72);display:flex;flex-direction:column;";
+    const header = document.createElement("div");
+    header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px 18px;border-bottom:1px solid #164e63;background:linear-gradient(135deg,#083344,#0f172a);";
+    const headingWrap = document.createElement("div");
+    headingWrap.style.cssText = "display:flex;align-items:center;gap:11px;min-width:0;";
+    const headingIcon = document.createElement("div");
+    headingIcon.innerHTML = `<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${COMPACT_TOOLBAR_ICONS.auto}</svg>`;
+    headingIcon.style.cssText = "width:42px;height:42px;border:1px solid #22d3ee;border-radius:10px;background:#063b4a;color:#67e8f9;display:flex;align-items:center;justify-content:center;flex:0 0 auto;";
+    const heading = document.createElement("div");
+    heading.innerHTML = '<div style="font-size:19px;font-weight:950;color:#ecfeff;">Auto Build Music Video</div><div style="font-size:12px;color:#a5f3fc;margin-top:3px;">Add four things. Auto Build prepares everything else for you.</div>';
+    const close = makeButton("Close");
+    close.style.padding = "7px 10px";
+    headingWrap.append(headingIcon, heading);
+    header.append(headingWrap, close);
+
+    const body = document.createElement("div");
+    body.style.cssText = "padding:16px 18px;display:flex;flex-direction:column;gap:12px;overflow:auto;";
+    const engineCard = document.createElement("div");
+    engineCard.style.cssText = "border:1px solid #334155;border-radius:10px;background:#0f172a;padding:11px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;";
+    const engineCopy = document.createElement("div");
+    engineCopy.innerHTML = '<div style="font-size:12px;font-weight:900;color:#e0f2fe;">Video model</div><div style="font-size:11px;color:#94a3b8;margin-top:2px;">Auto Build applies the correct prompt format for the selected engine.</div>';
+    const engineToggle = document.createElement("div");
+    engineToggle.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:5px;";
+    const ltxEngine = makeButton("LTX");
+    const miniMaxEngine = makeButton("MiniMax");
+    ltxEngine.style.minWidth = "76px";
+    miniMaxEngine.style.minWidth = "76px";
+    let selectedEngine = normalizeProjectVideoEngine(state.projectVideoEngine);
+    const syncEngineButtons = () => {
+      for (const [button, value] of [[ltxEngine, "ltx"], [miniMaxEngine, "minimax_h3"]]) {
+        const active = selectedEngine === value;
+        button.style.background = active ? "#06b6d4" : "#1e293b";
+        button.style.borderColor = active ? "#67e8f9" : "#475569";
+        button.style.color = active ? "#082f49" : "#e2e8f0";
+        button.setAttribute("aria-pressed", active ? "true" : "false");
+      }
+    };
+    let syncAutoBuildRunnerStatus = () => {};
+    ltxEngine.onclick = () => { selectedEngine = "ltx"; syncEngineButtons(); syncAutoBuildRunnerStatus(); };
+    miniMaxEngine.onclick = () => { selectedEngine = "minimax_h3"; syncEngineButtons(); syncAutoBuildRunnerStatus(); };
+    syncEngineButtons();
+    engineToggle.append(ltxEngine, miniMaxEngine);
+    engineCard.append(engineCopy, engineToggle);
+
+    const runnerCard = document.createElement("div");
+    runnerCard.style.cssText = "border:1px solid #334155;border-radius:10px;background:#0f172a;padding:11px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;";
+    const runnerCopy = document.createElement("div");
+    const runnerTitle = document.createElement("div");
+    runnerTitle.textContent = "LLM runner";
+    runnerTitle.style.cssText = "font-size:12px;font-weight:900;color:#e0f2fe;";
+    const runnerStatus = document.createElement("div");
+    runnerStatus.style.cssText = "font-size:11px;color:#94a3b8;margin-top:2px;";
+    const openRunner = makeButton("LLM Runner", "primary");
+    openRunner.style.minWidth = "116px";
+    syncAutoBuildRunnerStatus = () => {
+      const runnerLabel = gemmaRunnerLabel({ vision: selectedEngine === "minimax_h3" });
+      const needsKey = state.textGemmaRunner === "llm_api" && !String(state.llmApiKey || "").trim();
+      const needsVisionModel = selectedEngine === "minimax_h3" && state.textGemmaRunner === "llm_api" && !llmApiVisionModelSelected();
+      runnerStatus.textContent = needsKey
+        ? `${runnerLabel} selected, but no API key is set.`
+        : needsVisionModel
+        ? `${runnerLabel} selected, but choose a vision-capable API model.`
+        : `Current: ${runnerLabel}`;
+      runnerStatus.style.color = needsKey || needsVisionModel ? "#fdba74" : "#94a3b8";
+    };
+    openRunner.onclick = () => {
+      const runnerBackdrop = openGemmaRunnerModal();
+      const timer = setInterval(() => {
+        syncAutoBuildRunnerStatus();
+        if (!runnerBackdrop?.isConnected) clearInterval(timer);
+      }, 500);
+    };
+    runnerCopy.append(runnerTitle, runnerStatus);
+    runnerCard.append(runnerCopy, openRunner);
+    syncAutoBuildRunnerStatus();
+
+    const songInput = document.createElement("input");
+    songInput.type = "file";
+    songInput.accept = "audio/*,.mp3,.wav,.flac,.m4a,.ogg";
+    songInput.style.display = "none";
+    const singerInput = document.createElement("input");
+    singerInput.type = "file";
+    singerInput.accept = "image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp";
+    singerInput.style.display = "none";
+    const locationInput = document.createElement("input");
+    locationInput.type = "file";
+    locationInput.multiple = true;
+    locationInput.accept = "image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp";
+    locationInput.style.display = "none";
+    body.append(songInput, singerInput, locationInput);
+
+    const selected = { song: null, singer: null, locations: [] };
+    const uploadCard = (number, title, caption, buttonLabel, optional = false) => {
+      const card = document.createElement("div");
+      card.style.cssText = "border:1px solid #334155;border-radius:10px;background:#111827;padding:11px;display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:10px;align-items:center;";
+      const badge = document.createElement("div");
+      badge.textContent = String(number);
+      badge.style.cssText = "width:30px;height:30px;border:1px solid #0891b2;border-radius:999px;background:#083344;color:#a5f3fc;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:950;";
+      const copy = document.createElement("div");
+      const label = document.createElement("div");
+      label.innerHTML = `${escapeHtml(title)}${optional ? ' <span style="font-size:10px;color:#94a3b8;font-weight:700;">(optional)</span>' : ""}`;
+      label.style.cssText = "font-size:13px;font-weight:900;color:#e2e8f0;";
+      const status = document.createElement("div");
+      status.textContent = caption;
+      status.style.cssText = "font-size:11px;color:#94a3b8;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+      copy.append(label, status);
+      const choose = makeButton(buttonLabel, "primary");
+      choose.style.minWidth = "116px";
+      card.append(badge, copy, choose);
+      return { card, choose, status };
+    };
+
+    const currentAudioPath = String(audioInput.value || state.audioPath || "").trim();
+    const songRow = uploadCard(1, "Song", currentAudioPath ? `Using current audio: ${currentAudioPath.split(/[\\/]/).pop()}` : "MP3, WAV, FLAC, M4A, or OGG", "Choose Song");
+    const singerRow = uploadCard(3, "Singer image", "One clear reference image of the singer", "Choose Singer");
+    const locationRow = uploadCard(4, "Location images", "One image repeats; multiple images rotate every two scenes", "Add Locations", true);
+    songRow.choose.onclick = () => songInput.click();
+    singerRow.choose.onclick = () => singerInput.click();
+    locationRow.choose.onclick = () => locationInput.click();
+    songInput.onchange = () => {
+      selected.song = songInput.files?.[0] || null;
+      songRow.status.textContent = selected.song ? selected.song.name : (currentAudioPath ? `Using current audio: ${currentAudioPath.split(/[\\/]/).pop()}` : "Choose a song file");
+    };
+    singerInput.onchange = () => {
+      selected.singer = singerInput.files?.[0] || null;
+      singerRow.status.textContent = selected.singer ? selected.singer.name : "Choose one singer image";
+    };
+    locationInput.onchange = () => {
+      selected.locations = Array.from(locationInput.files || []);
+      locationRow.status.textContent = selected.locations.length
+        ? `${selected.locations.length} location image${selected.locations.length === 1 ? "" : "s"}: ${selected.locations.map((file) => file.name).join(", ")}`
+        : "No locations selected; Auto Build will continue without them";
+    };
+
+    const lyricsCard = document.createElement("div");
+    lyricsCard.style.cssText = "border:1px solid #334155;border-radius:10px;background:#111827;padding:11px;display:grid;grid-template-columns:34px minmax(0,1fr);gap:10px;align-items:start;";
+    const lyricsBadge = document.createElement("div");
+    lyricsBadge.textContent = "2";
+    lyricsBadge.style.cssText = "width:30px;height:30px;border:1px solid #0891b2;border-radius:999px;background:#083344;color:#a5f3fc;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:950;";
+    const lyricsWrap = document.createElement("div");
+    const lyricsLabel = document.createElement("div");
+    lyricsLabel.textContent = "Lyrics";
+    lyricsLabel.style.cssText = "font-size:13px;font-weight:900;color:#e2e8f0;margin-bottom:7px;";
+    const lyricsInput = document.createElement("textarea");
+    lyricsInput.placeholder = "Paste the complete lyrics here...";
+    lyricsInput.spellcheck = true;
+    lyricsInput.style.cssText = "width:100%;box-sizing:border-box;min-height:150px;resize:vertical;border:1px solid #475569;border-radius:8px;background:#020617;color:#f8fafc;padding:10px;font-size:12px;line-height:1.45;";
+    lyricsWrap.append(lyricsLabel, lyricsInput);
+    lyricsCard.append(lyricsBadge, lyricsWrap);
+
+    const note = document.createElement("div");
+    note.style.cssText = "border:1px solid #155e75;border-radius:9px;background:#062b36;padding:10px 12px;color:#bae6fd;font-size:11px;line-height:1.45;";
+    note.textContent = "Auto Build creates complete 8-second coverage, uses the LLM to describe the singer and locations, transcribes the existing scenes, maps everything, applies the recommended defaults, and generates prompts. It returns you to the normal timeline so you can review every lyric note.";
+    const projectWarning = document.createElement("div");
+    const getAutoBuildProjectFolder = () => String(projectInput.value || state.projectFolder || "").trim();
+    let projectFolder = getAutoBuildProjectFolder();
+    projectWarning.style.cssText = `border:1px solid #92400e;border-radius:9px;background:#451a03;padding:10px 12px;color:#fed7aa;font-size:11px;line-height:1.45;${projectFolder ? "display:none;" : ""}`;
+    const projectWarningText = document.createElement("div");
+    projectWarningText.textContent = "Auto Build needs a project folder to save the song and reference images.";
+    const createProjectNow = makeButton("Create Project Now", "primary");
+    createProjectNow.style.cssText += "margin-top:8px;padding:7px 10px;background:#f97316;border-color:#fdba74;color:#431407;font-size:12px;font-weight:800;";
+    projectWarning.append(projectWarningText, createProjectNow);
+    const status = document.createElement("div");
+    status.style.cssText = "display:none;border:1px solid #0891b2;border-radius:9px;background:#083344;padding:11px 12px;color:#cffafe;font-size:12px;font-weight:800;white-space:pre-wrap;line-height:1.45;";
+    body.append(engineCard, runnerCard, songRow.card, lyricsCard, singerRow.card, locationRow.card, note, projectWarning, status);
+
+    const footer = document.createElement("div");
+    footer.style.cssText = "display:grid;grid-template-columns:1fr minmax(210px,auto);gap:10px;padding:13px 18px;border-top:1px solid #164e63;background:#0f172a;";
+    const cancel = makeButton("Cancel");
+    const build = makeButton("Build My Music Video", "primary");
+    build.style.cssText += "font-size:13px;padding:11px 18px;background:linear-gradient(180deg,#22d3ee,#0891b2);border-color:#67e8f9;";
+    const refreshProjectReady = () => {
+      projectFolder = getAutoBuildProjectFolder();
+      const ready = Boolean(projectFolder);
+      projectWarning.style.display = ready ? "none" : "block";
+      build.textContent = ready ? "Build My Music Video" : "Create Project & Build";
+      build.title = ready
+        ? "Build the music-video timeline from the inputs above."
+        : "Create a project first, then continue Auto Build without losing the inputs above.";
+      return ready;
+    };
+    refreshProjectReady();
+    footer.append(cancel, build);
+    box.append(header, body, footer);
+    backdrop.append(box);
+    document.body.append(backdrop);
+
+    const closeModal = () => backdrop.remove();
+    close.onclick = closeModal;
+    cancel.onclick = closeModal;
+    backdrop.addEventListener("pointerdown", (event) => {
+      if (event.target === backdrop) closeModal();
+    });
+    const ensureAutoBuildProject = async () => {
+      if (refreshProjectReady()) return true;
+      createProjectNow.disabled = true;
+      build.disabled = true;
+      try {
+        const created = await newProject();
+        refreshProjectReady();
+        return Boolean(created && getAutoBuildProjectFolder());
+      } finally {
+        createProjectNow.disabled = false;
+        build.disabled = false;
+      }
+    };
+    createProjectNow.onclick = async () => {
+      await ensureAutoBuildProject();
+    };
+
+    const imageBaseName = (file, fallback) => String(file?.name || fallback || "Reference")
+      .replace(/\.[^.]+$/, "")
+      .replace(/[_-]+/g, " ")
+      .trim() || fallback || "Reference";
+    const hasRealTimeline = () => {
+      const scenes = allEditableSegments();
+      if (scenes.length > 1) return true;
+      const scene = scenes[0];
+      if (!scene) return false;
+      return Boolean(
+        String(scene.lyric_text || scene.notes || scene.t2i_prompt || scene.i2v_prompt || scene.minimax_h3_prompt || "").trim()
+        || scene.image
+        || scene.video_path
+        || !/^New scene$/i.test(String(scene.label || "New scene"))
+      );
+    };
+
+    const generateAutoBuildMiniMaxPrompts = async () => {
+      const scenes = [...state.segments];
+      const progress = createProgressWindow("Auto Build MiniMax Prompts");
+      let created = 0;
+      let historySaved = false;
+      try {
+        state.batchCancelled = false;
+        for (let index = 0; index < scenes.length; index += 1) {
+          assertBatchNotStopped();
+          const segment = scenes[index];
+          const mode = "reference_to_video";
+          const visionImages = miniMaxH3PromptVisionImagesForRunner(segment, mode);
+          const rendererReferences = miniMaxOrderedImageReferenceItemsForSegment(segment, mode);
+          if (!rendererReferences.length) throw new Error(`${sceneDisplayName(segment, index)} has no mapped Reference Builder image.`);
+          assertMiniMaxH3ReferenceDescriptionsReady(segment, mode);
+          if (visionImages.length && state.textGemmaRunner === "llm_api" && !llmApiVisionModelSelected()) {
+            throw new Error("MiniMax reference prompting needs a vision-capable API model selected in LLM Runner.");
+          }
+          const visualOnly = segmentUsesNoLipSyncPerformance(segment);
+          const lyricText = visualOnly || isInstrumentalLyricText(segment.lyric_text) ? "" : flattenLyricForPrompt(segment.lyric_text);
+          const singerNames = visualOnly ? [] : (Array.isArray(segment.lyric_singers)
+            ? segment.lyric_singers
+            : String(segment.lyric_singers || "").split(/[,;\n]+/))
+            .map((value) => String(value || "").trim())
+            .filter(Boolean);
+          const percent = 5 + Math.round((index / Math.max(1, scenes.length)) * 90);
+          progress.set(`Creating MiniMax prompt ${index + 1}/${scenes.length}: ${sceneDisplayName(segment, index)}\n${gemmaRunnerLine({ vision: Boolean(visionImages.length) })}`, percent);
+          const data = await postJson("/vrgdg/music_builder/generate_t2v", {
+            ...textGemmaRunnerPayload(),
+            project_folder: projectFolder,
+            scene_id: segment.id || "",
+            builder_instruction_key: miniMaxH3InstructionKey(mode),
+            model_file: visionImages.length ? miniMaxGemmaModelSelect.value : miniMaxTextGemmaModelSelect.value,
+            repair_model_file: miniMaxTextGemmaModelSelect.value,
+            mmproj_file: visionImages.length ? miniMaxMmprojSelect.value : "",
+            t2i_prompt: miniMaxH3CreativePromptContextForSegment(segment, mode),
+            user_notes: "",
+            subject_context: "",
+            location_context: "",
+            no_character_present: Boolean(segment.no_character_present),
+            image_references: visionImages,
+            prompt_only_scene_inspiration: false,
+            performance_mode: "singing",
+            lyric_text: lyricText,
+            singers: singerNames,
+            audio_mode: "input_audio",
+            speaker_assignments: [],
+            theme_style_path: "",
+            story_idea_path: "",
+            subject_scene_path: "",
+            unload_after: index === scenes.length - 1,
+            temperature: 0.45,
+            top_p: 0.92,
+            max_new_tokens: 4000,
+          }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
+          const prompt = assembleMiniMaxH3PromptFromCreative(segment, mode, String(data.prompt || ""));
+          if (!prompt) throw new Error(`${sceneDisplayName(segment, index)} returned an empty MiniMax prompt.`);
+          if (!historySaved) {
+            pushHistory();
+            historySaved = true;
+          }
+          segment.minimax_h3_prompt = prompt;
+          segment.minimax_h3_prompt_origin = "gemma";
+          created += 1;
+          await autoSaveSessionQuiet(`Auto Build MiniMax prompt ${index + 1}`);
+        }
+        progress.set(`Created ${created} MiniMax video prompt${created === 1 ? "" : "s"}.`, 100);
+        progress.close(1600);
+        return created;
+      } catch (error) {
+        progress.set(`Auto Build MiniMax prompts stopped after ${created}/${scenes.length}:\n${String(error?.message || error)}`, 100);
+        progress.close(5000);
+        throw error;
+      }
+    };
+
+    const validateAutoBuildPromptRunner = () => {
+      if (state.textGemmaRunner === "llm_api") {
+        if (!String(state.llmApiKey || "").trim()) {
+          throw new Error("LLM API is selected, but no API key is set. Open LLM Runner in Auto Build, paste/test the key, then start Auto Build again.");
+        }
+        if (selectedEngine === "minimax_h3" && !llmApiVisionModelSelected()) {
+          throw new Error("MiniMax Auto Build uses reference images for prompt writing. Open LLM Runner and choose a vision-capable API model.");
+        }
+      }
+      if (state.textGemmaRunner === "lm_studio" && !String(state.lmStudioModel || "").trim()) {
+        throw new Error("LM Studio is selected, but no model name is set. Open LLM Runner, load/select a model, then start Auto Build again.");
+      }
+    };
+
+    const applyAutoBuildSingerPerformerMapping = (singer) => {
+      const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+      if (!refs.subject_scene_map || typeof refs.subject_scene_map !== "object") refs.subject_scene_map = {};
+      state.segments.forEach((segment, index) => {
+        refs.subject_scene_map[segment.id] = Array.from(new Set([singer.id, ...sceneReferenceMapArray(refs.subject_scene_map, segment, index)].filter(Boolean)));
+        segment.lyric_singers = [singer.name];
+        segment.lyric_no_lip_sync = false;
+        segment.no_character_present = false;
+        const cueText = String(segment.lyric_text || "").trim();
+        segment.minimax_speaker_assignments = cueText && !isInstrumentalLyricText(cueText)
+          ? normalizeMiniMaxSpeakerAssignments([{
+            speaker_id: singer.id,
+            speaker_name: singer.name,
+            text: cueText,
+          }])
+          : [];
+      });
+      refs.use_subject_reference = true;
+      state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
+    };
+
+    build.onclick = async () => {
+      const lyrics = String(lyricsInput.value || "").trim();
+      if (!lyrics) {
+        toast("Paste the complete lyrics before starting Auto Build.", true);
+        lyricsInput.focus();
+        return;
+      }
+      if (!selected.singer) {
+        toast("Choose one singer reference image before starting Auto Build.", true);
+        return;
+      }
+      try {
+        validateAutoBuildPromptRunner();
+      } catch (error) {
+        syncAutoBuildRunnerStatus();
+        toast(String(error?.message || error), true);
+        openGemmaRunnerModal();
+        return;
+      }
+      if (hasRealTimeline() && !window.confirm("Auto Build will replace the current base timeline and its insert scenes. Continue?")) return;
+      if (!await ensureAutoBuildProject()) {
+        toast("Create a project before starting Auto Build.", true);
+        return;
+      }
+      const audioAvailable = Boolean(selected.song || String(audioInput.value || state.audioPath || "").trim());
+      if (!audioAvailable) {
+        toast("Choose a song before starting Auto Build.", true);
+        return;
+      }
+
+      build.disabled = true;
+      cancel.disabled = true;
+      close.disabled = true;
+      createProjectNow.disabled = true;
+      for (const control of [ltxEngine, miniMaxEngine, openRunner, songRow.choose, singerRow.choose, locationRow.choose, lyricsInput]) control.disabled = true;
+      status.style.display = "block";
+      const setStatus = (message) => {
+        status.textContent = message;
+        status.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      };
+
+      try {
+        setStatus("1/7  Loading the song...");
+        if (selected.song) {
+          const loaded = await chooseProjectAudioFile(selected.song);
+          if (!loaded) throw new Error("The selected song could not be loaded into the project.");
+        }
+        const songDuration = Number(state.audioDuration || audio.duration || state.duration || 0);
+        if (!Number.isFinite(songDuration) || songDuration <= 0) throw new Error("The song duration could not be read.");
+
+        state.projectVideoEngine = normalizeProjectVideoEngine(selectedEngine);
+        state.videoType = "singing";
+        state.videoModelMode = "rtv";
+        state.miniMaxH3Settings = cloneMiniMaxH3Settings({
+          ...state.miniMaxH3Settings,
+          video_mode: "reference_to_video",
+          audio_mode: "input_audio",
+        });
+        syncVideoTypeControl();
+        syncProjectVideoEngineUI();
+        syncVideoModePanel();
+        syncI2VVideoSettingsPanel();
+
+        setStatus("2/7  Creating complete 8-second timeline coverage...");
+        const sceneCount = Math.max(1, Math.ceil(songDuration / 8));
+        const timings = Array.from({ length: sceneCount }, (_, index) => ({
+          start: index * 8,
+          end: Math.min(songDuration, (index + 1) * 8),
+        }));
+        await applyBulkSegmentTimings(timings, "replace");
+        state.overlaySegments = [];
+        state.activeTrack = "base";
+        state.duration = songDuration;
+
+        setStatus("3/7  Adding and mapping singer and location references...");
+        const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+        refs.cleared = false;
+        refs.locations_cleared = false;
+        refs.subjects = refs.subjects.filter((item) => !String(item?.id || "").startsWith("auto_build_singer_"));
+        refs.locations = refs.locations.filter((item) => !String(item?.id || "").startsWith("auto_build_location_"));
+        const singerData = await readFileAsDataUrl(selected.singer);
+        const singer = {
+          id: `auto_build_singer_${Date.now()}`,
+          name: "Singer",
+          description: "",
+          reference_type: "character",
+          trigger_phrase: "",
+          trigger_position: "start",
+          extra_reference_for: "",
+          extra_reference_note: "",
+          minimax_voice: normalizeMiniMaxH3Voice(),
+          image: { path: "", data: singerData, name: selected.singer.name || "singer.png" },
+        };
+        refs.subjects.unshift(singer);
+        refs.subject_count = refs.subjects.length;
+        refs.subject = {
+          description: singer.description,
+          reference_type: "character",
+          minimax_voice: normalizeMiniMaxH3Voice(),
+          image: { ...singer.image },
+        };
+        refs.use_subject_reference = true;
+        const autoLocations = [];
+        const locationData = await Promise.all(selected.locations.map((file) => readFileAsDataUrl(file)));
+        selected.locations.forEach((file, index) => {
+          const location = {
+            id: `auto_build_location_${Date.now()}_${index}`,
+            name: imageBaseName(file, `Location ${index + 1}`),
+            description: "",
+            trigger_phrase: "",
+            trigger_position: "start",
+            image: { path: "", data: locationData[index], name: file.name || `location_${index + 1}.png` },
+          };
+          refs.locations.push(location);
+          autoLocations.push(location);
+        });
+
+        setStatus("3/7  Describing singer and location references with the LLM...");
+        await describeReferenceImageWithGemma(singer, "subject", {
+          unloadAfter: autoLocations.length === 0,
+          clearBeforeLoad: false,
+        });
+        if (!String(singer.description || "").trim()) {
+          singer.description = "The lead singer and visible performer in every scene.";
+        }
+        refs.subject.description = singer.description;
+        for (let index = 0; index < autoLocations.length; index += 1) {
+          const location = autoLocations[index];
+          setStatus(`3/7  Describing location ${index + 1}/${autoLocations.length} with the LLM...`);
+          await describeReferenceImageWithGemma(location, "location", {
+            unloadAfter: index === autoLocations.length - 1,
+            clearBeforeLoad: false,
+          });
+        }
+        refs.use_location_references = autoLocations.length > 0;
+        refs.subject_scene_map = {};
+        refs.scene_map = {};
+        state.segments.forEach((segment, index) => {
+          refs.subject_scene_map[segment.id] = [singer.id];
+          if (autoLocations.length) refs.scene_map[segment.id] = autoLocations[Math.floor(index / 2) % autoLocations.length].id;
+          else delete refs.scene_map[segment.id];
+          segment.lyric_singers = [singer.name];
+          segment.lyric_no_lip_sync = false;
+          segment.no_character_present = false;
+          segment.minimax_speaker_assignments = [];
+          segment.story_beat = "";
+          segment.minimax_h3_mode = "reference_to_video";
+          segment.minimax_h3_scene_image_use = "off";
+        });
+        state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
+
+        setStatus("4/7  Applying recommended scene defaults...");
+        state.builderStoryLayer = normalizeBuilderStoryLayer({
+          enabled: true,
+          overall_story_idea: "",
+          user_story_arc: "",
+          song_story_brief: "",
+          lyric_story_strength: 3,
+          image_world_style: "natural",
+          image_custom_style_direction: "",
+        });
+        state.builderStoryboardDefaults = normalizeBuilderStoryboardDefaults({
+          ...state.builderStoryboardDefaults,
+          video_style: "Cinematic realism",
+          video_style_custom: "",
+          temporal_world_effect: "",
+          temporal_world_effect_custom: "",
+          global_consistency_phrase: "",
+          camera_flow: "intimate_closeups",
+          camera_motion_speed: 6,
+          minimax_h3_cut_frequency: 3,
+          performance_style: "",
+          character_motion_speed: 4,
+          camera_guidance: builderMotionSpeedGuidance(6, "camera"),
+          character_guidance: builderMotionSpeedGuidance(4, "character"),
+        });
+        state.defaultFacialPerformance = "";
+        state.defaultFacialPerformanceCustom = "";
+        let previousMotion = "";
+        state.segments.forEach((segment, index) => {
+          const camera = storyboardCameraFlowEntry("intimate_closeups", index, previousMotion);
+          if (camera?.shot) segment.shot_type = camera.shot;
+          if (camera?.camera) segment.camera_motion = camera.camera;
+          previousMotion = String(segment.camera_motion || previousMotion);
+          segment.performance_style = "";
+          segment.facial_performance = "";
+          segment.facial_performance_custom = "";
+          segment.character_motion = builderMotionSpeedGuidance(4, "character");
+        });
+
+        setStatus("5/7  Transcribing the existing scenes and filling lyric notes...");
+        await transcribeExistingScenesWithOptions({
+          referenceLyrics: lyrics,
+          language: "english",
+          replaceAll: true,
+          instrumentalText: "[instrumental]",
+        }, {
+          recordHistory: false,
+        });
+        applyAutoBuildSingerPerformerMapping(singer);
+
+        setStatus("6/7  Saving references and timeline mappings...");
+        await saveSession({ quiet: true, throwOnError: true });
+        syncInspector();
+        render();
+
+        setStatus("7/7  Preparing video prompts. The normal prompt progress window will open next...");
+        closeModal();
+        if (selectedEngine === "minimax_h3") {
+          await generateAutoBuildMiniMaxPrompts();
+        } else {
+          await gemmaVideoAllTextOnly({
+            promptRunMode: "redo_all",
+            gemmaInputMode: "text",
+            sceneScope: "all",
+          });
+        }
+        state.activeId = state.segments[0]?.id || state.activeId;
+        state.activeTrack = "base";
+        syncInspector();
+        render();
+        const promptCount = selectedEngine === "minimax_h3"
+          ? state.segments.filter((segment) => String(segment.minimax_h3_prompt || "").trim()).length
+          : state.segments.filter((segment) => String(segment.i2v_prompt || "").trim()).length;
+        toast(`Auto Build complete.\nCreated ${state.segments.length} scenes with full song coverage.\nGenerated ${promptCount} video prompt${promptCount === 1 ? "" : "s"}.\nReview the timeline and lyric notes before rendering.`);
+      } catch (error) {
+        setStatus(`Auto Build paused:\n${String(error?.message || error)}\n\nAny completed timeline work has been preserved for review.`);
+        build.disabled = false;
+        cancel.disabled = false;
+        close.disabled = false;
+        createProjectNow.disabled = false;
+        for (const control of [ltxEngine, miniMaxEngine, openRunner, songRow.choose, singerRow.choose, locationRow.choose, lyricsInput]) control.disabled = false;
+        toast(`Auto Build paused:\n${String(error?.message || error)}`, true);
+      }
+    };
+  }
+
   function openWizardFromBuilder() {
     const setWizardVideoMode = (mode) => {
       const normalized = String(mode || "").trim().toLowerCase();
@@ -47426,7 +50030,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
             ? String(data.prompt || "").trim()
             : segment ? finalizeVideoPromptDraftOnly(segment, data.prompt) : String(data.prompt || "").trim();
           const prompt = miniMaxProject
-            ? applyMiniMaxH3NativeVoiceBlock(finalizedPrompt, segment)
+            ? finalizedPrompt
             : applyWizardStoryboardTriggerPhrases(finalizedPrompt, scene);
           if (!prompt) throw new Error(`${scene.label || `Scene ${index + 1}`}: ${runnerGenericName} returned an empty Storyboard video prompt.`);
           if (segment) {
@@ -47755,6 +50359,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   });
   lyricTextInput.addEventListener("change", () => {
     lyricTextInput.dataset.vrgdgUserEdited = "1";
+    updateActiveFromInputs({ skipHistory: true });
+  });
+  lyricSingersInput.addEventListener("focus", pushHistory);
+  lyricSingersInput.addEventListener("input", () => {
+    lyricSingersInput.dataset.vrgdgUserEdited = "1";
+    updateActiveFromInputs({ skipHistory: true });
+  });
+  lyricSingersInput.addEventListener("change", () => {
+    lyricSingersInput.dataset.vrgdgUserEdited = "1";
     updateActiveFromInputs({ skipHistory: true });
   });
   freezeTimingControl.input.addEventListener("change", () => {
@@ -48539,6 +51152,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     } catch (error) {
       console.error("VRGDG Video Wizard failed to open", error);
       toast(`Video Wizard failed to open:\n${String(error?.message || error)}`, true);
+    }
+  };
+  autoBuildButton.onclick = () => {
+    try {
+      openAutoBuildModal();
+    } catch (error) {
+      console.error("VRGDG Auto Build failed to open", error);
+      toast(`Auto Build failed to open:\n${String(error?.message || error)}`, true);
     }
   };
   storyboardBuilderButton.onclick = () => {
@@ -49707,7 +52328,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (miniMaxUseTurboLora.input.checked) {
       currentSettings.steps_before_turbo = Math.max(1, Math.trunc(Number(miniMaxSteps.value) || DEFAULT_MINIMAX_H3_SETTINGS.steps));
       currentSettings.easy_cache_bypass_before_turbo = miniMaxEasyCacheBypass.input.checked;
-      miniMaxSteps.value = "6";
+      miniMaxSteps.value = "4";
       miniMaxEasyCacheBypass.input.checked = true;
     } else {
       miniMaxSteps.value = String(currentSettings.steps_before_turbo || DEFAULT_MINIMAX_H3_SETTINGS.steps);
@@ -49768,6 +52389,20 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       return;
     }
     pushHistory();
+    if (isMiniMaxSingerAssignmentMode(segment)) {
+      const selectedPerformers = selectedPerformerSubjectsForSegment(segment);
+      const performer = selectedPerformers[0] || speakers[0];
+      segment.lyric_performance_mode = selectedPerformers.length >= 2 ? "cue_map" : "together";
+      segment.lyric_singers = selectedPerformers.length
+        ? selectedPerformers.map((subject) => subject.name || "Character")
+        : [performer.name || "Character"];
+      const cues = Array.isArray(segment.lyric_cue_map) ? segment.lyric_cue_map : [];
+      cues.push({ text: "", singer_id: performer.id || "", singer_name: performer.name || "" });
+      segment.lyric_cue_map = cues;
+      renderMiniMaxSpeakerAssignmentPanel();
+      autoSaveSessionQuiet("MiniMax lyric cue added").catch(() => null);
+      return;
+    }
     const cues = ensureMiniMaxSpeakerAssignments(segment, speakers);
     const speaker = speakers[0];
     cues.push(...normalizeMiniMaxSpeakerAssignments([{ speaker_id: speaker.id, speaker_name: speaker.name, text: "" }]));
