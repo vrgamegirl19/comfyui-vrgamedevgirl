@@ -6755,11 +6755,13 @@ function openBuilder(node) {
         segment.lyric_singers = selectedPerformers.map((subject) => subject.name || "Character");
       }
       const audioTools = document.createElement("div");
-      audioTools.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+      audioTools.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;";
       const playSceneCueAudio = makeButton("Play Scene Audio", "primary");
       const jumpSceneCueAudio = makeButton("Jump To Scene Start");
+      const autoTimeSceneCues = makeButton("Auto Time This Scene");
       applyCompactButtonLabel(playSceneCueAudio, "Play\nScene Audio", { noMap: true, padding: "7px 6px", title: "Play this scene's audio range." });
       applyCompactButtonLabel(jumpSceneCueAudio, "Jump To\nScene Start", { noMap: true, padding: "7px 6px", title: "Move the playhead to this scene start." });
+      applyCompactButtonLabel(autoTimeSceneCues, "Auto Time\nThis Scene", { noMap: true, padding: "7px 6px", title: "Use the existing Stable-ts timestamp workflow to fill cue start/end times for this scene. Manual editing stays available." });
       playSceneCueAudio.onclick = () => {
         const start = timelineAudioStartForSegment(segment);
         if (!playSceneAudioFrom(start)) {
@@ -6772,7 +6774,8 @@ function openBuilder(node) {
         activateGlobalTimelineAudioPlayback(start);
         toast(`Playhead moved to ${formatTime(start)}. Play the scene, then use Set Start / Set End on cue rows.`);
       };
-      audioTools.append(playSceneCueAudio, jumpSceneCueAudio);
+      autoTimeSceneCues.onclick = () => autoTimeMiniMaxSingerCuesForSegment(segment);
+      audioTools.append(playSceneCueAudio, jumpSceneCueAudio, autoTimeSceneCues);
       miniMaxSpeakerAssignmentList.append(audioTools);
 
       const modeWrap = document.createElement("div");
@@ -6844,12 +6847,14 @@ function openBuilder(node) {
       applyCompactButtonLabel(addInstrumentalCue, "Add\nInstrumental", { noMap: true, padding: "7px 6px", title: "Add Instrumental Cue" });
       addLyricCue.onclick = () => {
         const performer = selectedPerformers[cues.filter((cue) => cue.type !== "instrumental").length % selectedPerformers.length] || selectedPerformers[0] || speakers[0] || {};
-        cues.push({ type: "vocal", text: "", action_note: "", singer_id: performer.id || "", singer_name: performer.name || "", start: null, end: null });
+        const start = miniMaxNextCueStartTime(segment, cues);
+        cues.push({ type: "vocal", text: "", action_note: "", singer_id: performer.id || "", singer_name: performer.name || "", start, end: null });
         segment.lyric_cue_map = cues;
         renderMiniMaxSpeakerAssignmentPanel();
       };
       addInstrumentalCue.onclick = () => {
-        cues.push({ type: "instrumental", text: "", action_note: "", singer_id: "", singer_name: "", start: null, end: null });
+        const start = miniMaxNextCueStartTime(segment, cues);
+        cues.push({ type: "instrumental", text: "", action_note: "", singer_id: "", singer_name: "", start, end: null });
         segment.lyric_cue_map = cues;
         renderMiniMaxSpeakerAssignmentPanel();
       };
@@ -6942,11 +6947,13 @@ function openBuilder(node) {
         mainRow.append(handle, number, typeSelect, singerSelect, line, remove);
         const timingRow = document.createElement("div");
         timingRow.style.cssText = "display:grid;grid-template-columns:minmax(44px,.45fr) minmax(44px,.45fr) 58px 64px 58px 58px 60px;gap:7px;align-items:center;padding-left:74px;";
+        const cueRange = singerCuePlaybackRangeForCue(segment, cues, index);
+        const effectiveEnd = miniMaxEffectiveCueEnd(segment, cues, index);
         const startLabel = document.createElement("div");
         startLabel.textContent = `Start: ${formatCueTime(cue.start)}`;
         startLabel.style.cssText = "font-size:11px;color:#a5f3fc;";
         const endLabel = document.createElement("div");
-        endLabel.textContent = `End: ${formatCueTime(cue.end)}`;
+        endLabel.textContent = `End: ${formatCueTime(effectiveEnd)}`;
         endLabel.style.cssText = "font-size:11px;color:#a5f3fc;";
         const playCue = makeButton("Play Cue", "primary");
         const playFromCue = makeButton("Play From Here");
@@ -6958,7 +6965,6 @@ function openBuilder(node) {
         applyCompactButtonLabel(setStart, "Set\nStart", { noMap: true, minWidth: 0, padding: "6px 5px" });
         applyCompactButtonLabel(setEnd, "Set\nEnd", { noMap: true, minWidth: 0, padding: "6px 5px" });
         applyCompactButtonLabel(clearTiming, "Clear\nTime", { noMap: true, minWidth: 0, padding: "6px 5px", title: "Clear Timing" });
-        const cueRange = singerCuePlaybackRangeForCue(segment, cues, index);
         playCue.title = "Play from this cue start to its end, the next cue start, or the scene end.";
         playFromCue.title = "Play from this cue start, or from the scene start if no cue start is set.";
         playCue.onclick = () => {
@@ -6969,7 +6975,9 @@ function openBuilder(node) {
         };
         setStart.onclick = () => {
           cue.start = singerCueRelativePlayheadTime(segment);
+          if (index > 0) cues[index - 1].end = cue.start;
           if (Number.isFinite(Number(cue.end)) && cue.end <= cue.start) cue.end = null;
+          syncCueEndBoundariesFromNextStarts(cues);
           segment.lyric_cue_map = cues;
           renderMiniMaxSpeakerAssignmentPanel();
         };
@@ -6982,6 +6990,7 @@ function openBuilder(node) {
             cues[index + 1].start = cue.end;
             if (Number.isFinite(Number(cues[index + 1].end)) && cues[index + 1].end <= cues[index + 1].start) cues[index + 1].end = null;
           }
+          syncCueEndBoundariesFromNextStarts(cues);
           segment.lyric_cue_map = cues;
           renderMiniMaxSpeakerAssignmentPanel();
         };
@@ -21507,8 +21516,8 @@ function openBuilder(node) {
       return `${performer} performs the exact full lyric/dialogue line from <Audio 1>: "${miniMaxH3PunctuatedCueText(lyricText)}"`;
     }
     if (String(segment?.lyric_performance_mode || "together") === "cue_map" && cueMap.length) {
-      const lines = cueMap.map((cue) => {
-        const timing = miniMaxH3CueTimingText(cue);
+      const lines = cueMap.map((cue, index) => {
+        const timing = miniMaxH3CueTimingText(cue, segment, cueMap, index);
         if (cue.type === "instrumental") {
           const note = cue.action_note ? ` Action note: ${cue.action_note}` : "";
           return `${timing}Instrumental / no vocal cue. No visible subject sings or lip-syncs; mouths stay closed or naturally relaxed.${note}`;
@@ -21527,12 +21536,46 @@ function openBuilder(node) {
     return `${performerText} perform the same complete lyric/dialogue line together from <Audio 1>: "${miniMaxH3PunctuatedCueText(lyricText)}"`;
   }
 
-  function miniMaxH3CueTimingText(cue = {}) {
+  function miniMaxH3CueTimingText(cue = {}, segment = null, cues = [], index = 0) {
     const start = Number(cue?.start);
-    const end = Number(cue?.end);
+    const end = miniMaxEffectiveCueEnd(segment, cues, index, cue);
     if (Number.isFinite(start) && Number.isFinite(end) && end > start) return `${start.toFixed(3)}s-${end.toFixed(3)}s: `;
     if (Number.isFinite(start)) return `from ${start.toFixed(3)}s: `;
     return "";
+  }
+
+  function miniMaxEffectiveCueEnd(segment, cues = [], index = 0, cueOverride = null) {
+    const cue = cueOverride || cues[index] || {};
+    const start = Number(cue?.start);
+    const explicitEnd = Number(cue?.end);
+    if (Number.isFinite(explicitEnd) && (!Number.isFinite(start) || explicitEnd > start)) return explicitEnd;
+    if (!segment) return Number.isFinite(explicitEnd) ? explicitEnd : null;
+    const range = singerCuePlaybackRangeForCue(segment, cues, index);
+    return Number.isFinite(Number(range?.end)) ? Number(range.end) : null;
+  }
+
+  function miniMaxNextCueStartTime(segment, cues = []) {
+    const sceneDuration = Math.max(0, Number(timelineSegmentDuration(segment) || 0));
+    if (!Array.isArray(cues) || !cues.length) return 0;
+    const lastIndex = cues.length - 1;
+    const lastCue = cues[lastIndex] || {};
+    const lastEnd = miniMaxEffectiveCueEnd(segment, cues, lastIndex, lastCue);
+    if (Number.isFinite(Number(lastEnd))) return Math.max(0, Math.min(sceneDuration || Number(lastEnd), Number(lastEnd)));
+    const lastStart = Number(lastCue.start);
+    return Number.isFinite(lastStart) ? Math.max(0, Math.min(sceneDuration || lastStart, lastStart)) : 0;
+  }
+
+  function syncCueEndBoundariesFromNextStarts(cues = []) {
+    if (!Array.isArray(cues)) return cues;
+    for (let index = 0; index < cues.length - 1; index += 1) {
+      const current = cues[index];
+      const nextStart = Number(cues[index + 1]?.start);
+      const currentStart = Number(current?.start);
+      if (current && Number.isFinite(nextStart) && (!Number.isFinite(currentStart) || nextStart > currentStart)) {
+        current.end = nextStart;
+      }
+    }
+    return cues;
   }
 
   function miniMaxH3CutPlanForSegment(segment) {
@@ -21617,6 +21660,181 @@ function openBuilder(node) {
     const carried = flattenLyricForPrompt(text);
     if (!carried) return;
     cues.splice(index + 1, 0, { type: "vocal", text: carried, action_note: "", singer_id: defaultPerformer?.id || "", singer_name: defaultPerformer?.name || "", start: null, end: null });
+  }
+
+  function timestampedCueSegments(payload = {}) {
+    return (Array.isArray(payload?.segments) ? payload.segments : [])
+      .map((item) => {
+        const type = String(item?.type || "").trim().toLowerCase() === "instrumental" ? "instrumental" : "vocal";
+        const start = Number(item?.start);
+        const end = Number(item?.end);
+        return {
+          type,
+          text: flattenLyricForPrompt(item?.text),
+          start: Number.isFinite(start) ? Math.max(0, start) : null,
+          end: Number.isFinite(end) ? Math.max(0, end) : null,
+          duration: Number.isFinite(start) && Number.isFinite(end) ? Math.max(0, end - start) : 0,
+        };
+      })
+      .filter((item) => Number.isFinite(Number(item.start)) && Number.isFinite(Number(item.end)) && item.end > item.start);
+  }
+
+  function rebuildSingerCueMapFromTimestampedSegments(segment, currentCues = [], timestamped = [], options = {}) {
+    const sceneDuration = Math.max(0, Number(timelineSegmentDuration(segment) || 0));
+    const minInstrumentalGap = Math.max(0, Number(options.minInstrumentalGap ?? 0.5));
+    const trailingVocalTailMergeSeconds = Math.max(0, Number(options.trailingVocalTailMergeSeconds ?? 1.5));
+    const vocalCues = currentCues.filter((cue) => cue.type !== "instrumental" && flattenLyricForPrompt(cue.text));
+    const instrumentalNotes = currentCues
+      .filter((cue) => cue.type === "instrumental")
+      .map((cue) => String(cue.action_note || cue.note || "").trim())
+      .filter(Boolean);
+    let vocalIndex = 0;
+    let instrumentalIndex = 0;
+    const rebuilt = [];
+    const absorbSkippedGap = (end) => {
+      if (!rebuilt.length) return;
+      const previous = rebuilt[rebuilt.length - 1];
+      if (!Number.isFinite(Number(previous.end)) || Number(previous.end) < end) previous.end = end;
+    };
+    for (let itemIndex = 0; itemIndex < timestamped.length; itemIndex += 1) {
+      const item = timestamped[itemIndex];
+      const start = Math.max(0, Math.min(sceneDuration || item.start, Number(item.start)));
+      const end = Math.max(start, Math.min(sceneDuration || item.end, Number(item.end)));
+      if (item.type === "instrumental") {
+        const hasLaterVocal = timestamped.slice(itemIndex + 1).some((next) => next.type !== "instrumental");
+        const previous = rebuilt[rebuilt.length - 1];
+        if (!hasLaterVocal && previous?.type === "vocal" && end - start <= trailingVocalTailMergeSeconds) {
+          previous.end = end;
+          continue;
+        }
+        if (end - start < minInstrumentalGap) {
+          if (start <= 0.001 && rebuilt[0]) rebuilt[0].start = 0;
+          else absorbSkippedGap(end);
+          continue;
+        }
+        const note = instrumentalNotes[instrumentalIndex++] || "";
+        rebuilt.push({ type: "instrumental", text: "", action_note: note, singer_id: "", singer_name: "", start, end });
+        continue;
+      }
+      const source = vocalCues[vocalIndex++] || {};
+      rebuilt.push({
+        type: "vocal",
+        text: flattenLyricForPrompt(source.text || item.text),
+        action_note: "",
+        singer_id: String(source.singer_id || "").trim(),
+        singer_name: String(source.singer_name || "").trim(),
+        start,
+        end,
+      });
+    }
+    while (vocalIndex < vocalCues.length) {
+      const source = vocalCues[vocalIndex++];
+      const start = miniMaxNextCueStartTime(segment, rebuilt);
+      rebuilt.push({
+        type: "vocal",
+        text: flattenLyricForPrompt(source.text),
+        action_note: "",
+        singer_id: String(source.singer_id || "").trim(),
+        singer_name: String(source.singer_name || "").trim(),
+        start,
+        end: null,
+      });
+    }
+    if (rebuilt.length) {
+      const last = rebuilt[rebuilt.length - 1];
+      if (!Number.isFinite(Number(last.end)) || Number(last.end) <= Number(last.start)) last.end = sceneDuration || null;
+    }
+    return rebuilt.filter((cue) => cue.type === "instrumental" || cue.text);
+  }
+
+  async function prepareSceneAudioClipForTimestamping(segment, progress = null) {
+    const projectFolder = String(projectInput.value || state.projectFolder || "").trim();
+    const customAudioPath = String(segment?.custom_audio_path || "").trim();
+    const sourcePath = customAudioPath || currentProjectAudioPath();
+    if (!sourcePath) throw new Error("Load project audio first, or add custom scene audio for this scene.");
+    if (!projectFolder) throw new Error("Create or load a project before auto-timing singer cues.");
+    const sceneNumber = sceneSlotNumber(segment);
+    const start = customAudioPath ? audioSourceStart(segment) : Math.max(0, Number(segment.start || 0));
+    const duration = customAudioPath ? audioChunkDuration(segment) : timelineSegmentDuration(segment);
+    progress?.set(`Preparing ${duration.toFixed(3)}s scene audio clip...`, 10);
+    const prepared = await postJson("/vrgdg/workflow_runner/prepare_scene_audio_clip", {
+      audio_path: sourcePath,
+      project_folder: projectFolder,
+      scene_number: sceneNumber,
+      start_seconds: start,
+      duration_seconds: duration,
+    }, 120000);
+    return String(prepared.audio_path || "").trim();
+  }
+
+  async function runTimestampedCueWorkflow(audioPath, referenceLyrics, progress = null, maxSceneSeconds = 8) {
+    progress?.set("Building Stable-ts timestamp workflow...", 22);
+    const built = await postJson("/vrgdg/workflow_runner/build_timestamped_transcribe_prompt", {
+      audio_path: audioPath,
+      reference_lyrics: referenceLyrics,
+      language: "english",
+      segment_mode: "reference_scene_words",
+      include_instrumental_gaps: true,
+      instrumental_text: "[instrumental]",
+      min_gap_seconds: 0.5,
+      min_scene_seconds: 1.0,
+      max_scene_seconds: Math.max(1, Number(maxSceneSeconds || 8)),
+      vocal_tail_padding_seconds: 0.0,
+      model_name: "large-v3",
+    }, 60000);
+    progress?.set("Queueing Stable-ts timestamp workflow...", 32);
+    const queued = await queueWorkflowPrompt(built.prompt, {
+      onStatus: (message) => progress?.set(message, 34),
+      idleTimeoutMs: 10 * 60 * 1000,
+    });
+    const promptId = queued.prompt_id;
+    if (!promptId) throw new Error("ComfyUI queued the timestamp workflow but did not return a prompt_id.");
+    const textValues = await waitForText(
+      promptId,
+      (message) => progress?.set(`${message}\nPrompt ID: ${promptId}`, 58),
+      () => false,
+      45 * 60 * 1000,
+    );
+    return parseTimestampedLyricsOutput(textValues.join("\n"));
+  }
+
+  async function autoTimeMiniMaxSingerCuesForSegment(segment) {
+    if (!segment || !isMiniMaxSingerAssignmentMode(segment)) return;
+    const progress = createProgressWindow("Auto Time Singer Cues");
+    try {
+      const cues = normalizeLyricCueMapForSegment(segment, undefined, { preserveBlank: true });
+      const vocalCues = cues.filter((cue) => cue.type !== "instrumental" && flattenLyricForPrompt(cue.text));
+      if (!vocalCues.length) throw new Error("Add at least one lyric cue before auto-timing this scene.");
+      progress.set("Preparing lyric cue text...", 5);
+      const referenceLyrics = vocalCues.map((cue) => flattenLyricForPrompt(cue.text)).filter(Boolean).join("\n");
+      const audioPath = await prepareSceneAudioClipForTimestamping(segment, progress);
+      const payload = await runTimestampedCueWorkflow(audioPath, referenceLyrics, progress, timelineSegmentDuration(segment));
+      const timestamped = timestampedCueSegments(payload);
+      if (!timestamped.length) throw new Error("Stable-ts did not return usable cue timestamps for this scene.");
+      progress.set("Applying timestamped cue rows...", 88);
+      const rebuilt = rebuildSingerCueMapFromTimestampedSegments(segment, cues, timestamped, { minInstrumentalGap: 0.5 });
+      if (!rebuilt.length) throw new Error("No usable cue rows were created from the timestamped result.");
+      pushHistory();
+      segment.lyric_performance_mode = "cue_map";
+      segment.lyric_cue_map = rebuilt;
+      syncLyricTextFromCueMap(segment);
+      renderMiniMaxSpeakerAssignmentPanel();
+      syncInspector();
+      render();
+      await autoSaveSessionQuiet("MiniMax singer cues auto-timed");
+      const vocalReturned = timestamped.filter((item) => item.type !== "instrumental").length;
+      const instrumentalReturned = rebuilt.filter((item) => item.type === "instrumental").length;
+      const warning = vocalReturned !== vocalCues.length
+        ? `\nWarning: Stable-ts returned ${vocalReturned} vocal cue${vocalReturned === 1 ? "" : "s"} for ${vocalCues.length} mapped lyric cue${vocalCues.length === 1 ? "" : "s"}. Review before rendering.`
+        : "";
+      progress.set(`Auto timing complete.\nVocal cues: ${vocalReturned}\nInstrumental gaps: ${instrumentalReturned}${warning}`, 100);
+      progress.close(2600);
+      toast("Singer cue timing filled. Review with Play Cue before rendering.");
+    } catch (error) {
+      progress.set(`Error:\n${String(error?.message || error)}`, 100);
+      progress.close(6000);
+      toast(String(error?.message || error), true);
+    }
   }
 
   function clearSingerCuePlaybackStop() {
@@ -24115,12 +24333,14 @@ function openBuilder(node) {
       segment.no_character_present = noCharacterPresent;
       segment.facial_performance = String(row.querySelector("[data-review-facial-performance='1']")?.value || "").trim();
       segment.facial_performance_custom = String(row.querySelector("[data-review-facial-performance-custom='1']")?.value || "").trim();
-      segment.lyric_singers = [...row.querySelectorAll("[data-review-singer-choice='1']")]
-        .filter((input) => !instrumental && !broll && !noCharacterPresent && input.checked)
+      const checkedSingerInputs = [...row.querySelectorAll("[data-review-singer-choice='1']")]
+        .filter((input) => !instrumental && !broll && !noCharacterPresent && input.checked);
+      segment.lyric_singers = checkedSingerInputs
         .map((input) => input.value)
         .filter(Boolean);
       const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
       refs.subject_scene_map = refs.subject_scene_map && typeof refs.subject_scene_map === "object" ? refs.subject_scene_map : {};
+      refs.performer_scene_map = refs.performer_scene_map && typeof refs.performer_scene_map === "object" ? refs.performer_scene_map : {};
       const presentSubjectIds = [...row.querySelectorAll("[data-review-present-subject='1']")]
         .filter((input) => !noCharacterPresent && input.checked)
         .map((input) => String(input.value || "").trim())
@@ -24128,6 +24348,29 @@ function openBuilder(node) {
       const uniqueSubjectIds = Array.from(new Set(presentSubjectIds));
       if (!noCharacterPresent && uniqueSubjectIds.length) refs.subject_scene_map[segment.id] = uniqueSubjectIds;
       else delete refs.subject_scene_map[segment.id];
+      const validSubjectIds = new Set((refs.subjects || []).map((subject) => String(subject?.id || "").trim()).filter(Boolean));
+      const performerSubjectIds = [];
+      for (const input of checkedSingerInputs) {
+        const rawId = String(input.dataset.reviewSubjectId || "").trim();
+        if (rawId === "group") {
+          performerSubjectIds.push(...uniqueSubjectIds);
+          continue;
+        }
+        if (rawId && validSubjectIds.has(rawId)) {
+          performerSubjectIds.push(rawId);
+          continue;
+        }
+        const cleanName = String(input.value || "").trim().toLowerCase();
+        const byName = (refs.subjects || []).find((subject) => String(subject?.name || "").trim().toLowerCase() === cleanName);
+        if (byName?.id) performerSubjectIds.push(String(byName.id));
+      }
+      const uniquePerformerIds = Array.from(new Set(performerSubjectIds.filter((id) => validSubjectIds.has(String(id)))));
+      if (!instrumental && !broll && !noCharacterPresent && uniquePerformerIds.length) {
+        refs.performer_scene_map[segment.id] = uniquePerformerIds;
+        refs.subject_scene_map[segment.id] = Array.from(new Set([...(refs.subject_scene_map[segment.id] || []), ...uniquePerformerIds]));
+      } else {
+        delete refs.performer_scene_map[segment.id];
+      }
       state.fluxReferenceBuilder = refs;
       if (includeTiming) {
         const start = parseBulkTimeValue(row.querySelector("[data-review-start]")?.value);
@@ -25229,15 +25472,84 @@ function openBuilder(node) {
     const mappingNote = document.createElement("div");
     mappingNote.textContent = "Choose which character and location text each scene should send to Gemma. Images are only used by image/reference-image workflows that support them.";
     mappingNote.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
+    const globalPerformanceControls = document.createElement("div");
+    globalPerformanceControls.style.cssText = "border:1px solid #155e75;border-radius:7px;background:#071422;padding:9px;display:flex;flex-direction:column;gap:7px;";
     const mappingList = document.createElement("div");
     mappingList.style.cssText = "display:flex;flex-direction:column;gap:8px;max-height:560px;overflow:auto;padding-right:4px;";
-    mappingCard.append(mappingHeader, mappingNote, mappingList);
+    mappingCard.append(mappingHeader, mappingNote, globalPerformanceControls, mappingList);
     const launchAdvancedLineMapping = (segment = null) => {
       state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
       backdrop.remove();
       openLyricReviewModal(segment ? { focusSceneId: segment.id } : {});
     };
     openAdvancedLineMapping.onclick = () => launchAdvancedLineMapping();
+
+    const performerIdsForMappingSegment = (segment, logicalSubjects = logicalReferenceSubjects(refs)) => {
+      const savedIds = sceneReferenceMapArray(refs.performer_scene_map, segment);
+      if (savedIds.length) return savedIds.map(String).filter(Boolean);
+      const selected = new Set((Array.isArray(segment?.lyric_singers) ? segment.lyric_singers : [])
+        .map((value) => String(value || "").trim().toLowerCase())
+        .filter(Boolean));
+      if (!selected.size) return [];
+      return logicalSubjects
+        .filter((subject) => selected.has(String(subject?.id || "").trim().toLowerCase()) || selected.has(String(subject?.name || "").trim().toLowerCase()))
+        .map((subject) => String(subject.id || "").trim())
+        .filter(Boolean);
+    };
+
+    const ensureCueMapForMappedScene = (segment, performerIds = []) => {
+      if (!segment || performerIds.length < 2) return;
+      if (normalizeLyricCueMapForSegment(segment, refs, { preserveBlank: true }).length) return;
+      const performers = logicalReferenceSubjects(refs).filter((subject) => performerIds.includes(String(subject.id)));
+      segment.lyric_cue_map = lyricCueTextParts(segment.lyric_text).map((text, cueIndex) => {
+        const performer = performers[cueIndex % performers.length] || performers[0] || {};
+        return { type: "vocal", text, action_note: "", singer_id: performer.id || "", singer_name: performer.name || "", start: null, end: null };
+      });
+    };
+
+    const renderGlobalPerformanceControls = () => {
+      globalPerformanceControls.replaceChildren();
+      const logicalSubjects = logicalReferenceSubjects(refs);
+      const targets = allEditableSegments()
+        .map((segment) => ({ segment, performerIds: performerIdsForMappingSegment(segment, logicalSubjects) }))
+        .filter((item) => item.performerIds.length >= 2);
+      const modes = new Set(targets.map((item) => String(item.segment.lyric_performance_mode || "together") === "cue_map" ? "cue_map" : "together"));
+      const currentMode = !targets.length ? "together" : (modes.size === 1 ? Array.from(modes)[0] : "mixed");
+      const title = document.createElement("div");
+      title.innerHTML = `<div style="font-weight:800;color:#cffafe;">Global performance mode</div><div style="font-size:11px;color:#94a3b8;margin-top:2px;">Applies to scenes with 2+ selected performers. Individual scene dropdowns still override this.</div>`;
+      const row = document.createElement("div");
+      row.style.cssText = "display:grid;grid-template-columns:minmax(180px,260px) minmax(110px,150px) minmax(0,1fr);gap:8px;align-items:center;";
+      const modeSelect = makeSelect([
+        { value: "mixed", label: "Mixed / keep current" },
+        { value: "together", label: "Together / same full line" },
+        { value: "cue_map", label: "Split cue map" },
+      ], currentMode);
+      const apply = makeButton("Apply To All", "primary");
+      apply.disabled = !targets.length || modeSelect.value === "mixed";
+      const status = document.createElement("div");
+      status.style.cssText = "font-size:11px;color:#a5f3fc;line-height:1.35;";
+      status.textContent = targets.length
+        ? `${targets.length} mapped scene${targets.length === 1 ? "" : "s"} with 2+ performers. Current: ${currentMode === "mixed" ? "mixed per-scene modes" : modeSelect.options[modeSelect.selectedIndex]?.textContent || currentMode}.`
+        : "No scenes currently have 2+ selected performers.";
+      modeSelect.onchange = () => {
+        apply.disabled = !targets.length || modeSelect.value === "mixed";
+      };
+      apply.onclick = () => {
+        const mode = String(modeSelect.value || "");
+        if (!["together", "cue_map"].includes(mode)) return;
+        pushHistory();
+        for (const item of targets) {
+          item.segment.lyric_performance_mode = mode;
+          if (mode === "cue_map") ensureCueMapForMappedScene(item.segment, item.performerIds);
+        }
+        syncInspector();
+        renderMapping();
+        autoSaveSessionQuiet("global MiniMax performance mode changed").catch(() => null);
+        toast(`Set ${targets.length} mapped scene${targets.length === 1 ? "" : "s"} to ${mode === "cue_map" ? "Split cue map" : "Together"}.`);
+      };
+      row.append(modeSelect, apply, status);
+      globalPerformanceControls.append(title, row);
+    };
 
     function openSceneAssignmentDialog() {
       const scenes = allEditableSegments();
@@ -28739,6 +29051,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
 
     function renderMapping() {
       mappingList.innerHTML = "";
+      renderGlobalPerformanceControls();
       const logicalSubjects = logicalReferenceSubjects(refs);
       const showSubjects = logicalSubjects.length > 0;
       const singleGlobalSubject = refs.use_subject_reference && logicalSubjects.length === 1;
@@ -28968,11 +29281,13 @@ Chrome vault corridor: A sealed industrial passage...</pre>
             top.append(type, performer, text, remove);
             const timing = document.createElement("div");
             timing.style.cssText = "display:grid;grid-template-columns:minmax(44px,.45fr) minmax(44px,.45fr) 58px 64px 58px 58px 60px;gap:7px;align-items:center;";
+            const rowRange = singerCuePlaybackRangeForCue(segment, rows, index);
+            const effectiveEnd = miniMaxEffectiveCueEnd(segment, rows, index);
             const startLabel = document.createElement("div");
             startLabel.textContent = `Start: ${formatCueTime(row.start)}`;
             startLabel.style.cssText = "font-size:11px;color:#a5f3fc;";
             const endLabel = document.createElement("div");
-            endLabel.textContent = `End: ${formatCueTime(row.end)}`;
+            endLabel.textContent = `End: ${formatCueTime(effectiveEnd)}`;
             endLabel.style.cssText = "font-size:11px;color:#a5f3fc;";
             const playCue = makeButton("Play Cue", "primary");
             const playFromCue = makeButton("Play From Here");
@@ -28984,7 +29299,6 @@ Chrome vault corridor: A sealed industrial passage...</pre>
             applyCompactButtonLabel(setStart, "Set\nStart", { noMap: true, minWidth: 0, padding: "6px 5px" });
             applyCompactButtonLabel(setEnd, "Set\nEnd", { noMap: true, minWidth: 0, padding: "6px 5px" });
             applyCompactButtonLabel(clearTime, "Clear\nTime", { noMap: true, minWidth: 0, padding: "6px 5px", title: "Clear Timing" });
-            const rowRange = singerCuePlaybackRangeForCue(segment, rows, index);
             playCue.title = "Play from this cue start to its end, the next cue start, or the scene end.";
             playFromCue.title = "Play from this cue start, or from the scene start if no cue start is set.";
             playCue.onclick = () => {
@@ -28993,7 +29307,13 @@ Chrome vault corridor: A sealed industrial passage...</pre>
             playFromCue.onclick = () => {
               playSingerCueRange(segment, rowRange.start, null, playFromCue, "Play From Here");
             };
-            setStart.onclick = () => { row.start = singerCueRelativePlayheadTime(segment); if (Number.isFinite(Number(row.end)) && row.end <= row.start) row.end = null; renderCueRows(); };
+            setStart.onclick = () => {
+              row.start = singerCueRelativePlayheadTime(segment);
+              if (index > 0) rows[index - 1].end = row.start;
+              if (Number.isFinite(Number(row.end)) && row.end <= row.start) row.end = null;
+              syncCueEndBoundariesFromNextStarts(rows);
+              renderCueRows();
+            };
             setEnd.onclick = () => {
               row.end = singerCueRelativePlayheadTime(segment);
               if (Number.isFinite(Number(row.start)) && row.end <= row.start) {
@@ -29003,6 +29323,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
                 rows[index + 1].start = row.end;
                 if (Number.isFinite(Number(rows[index + 1].end)) && rows[index + 1].end <= rows[index + 1].start) rows[index + 1].end = null;
               }
+              syncCueEndBoundariesFromNextStarts(rows);
               renderCueRows();
             };
             clearTime.onclick = () => { row.start = null; row.end = null; renderCueRows(); };
@@ -29022,11 +29343,13 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         applyCompactButtonLabel(saveCue, "Save\nCue Map", { noMap: true, padding: "7px 6px" });
         addCue.onclick = () => {
           const performer = performers[rows.length % performers.length] || performers[0];
-          rows.push({ type: "vocal", text: "", action_note: "", singer_id: performer?.id || "", singer_name: performer?.name || "", start: null, end: null });
+          const start = miniMaxNextCueStartTime(segment, rows);
+          rows.push({ type: "vocal", text: "", action_note: "", singer_id: performer?.id || "", singer_name: performer?.name || "", start, end: null });
           renderCueRows();
         };
         addInstrumental.onclick = () => {
-          rows.push({ type: "instrumental", text: "", action_note: "", singer_id: "", singer_name: "", start: null, end: null });
+          const start = miniMaxNextCueStartTime(segment, rows);
+          rows.push({ type: "instrumental", text: "", action_note: "", singer_id: "", singer_name: "", start, end: null });
           renderCueRows();
         };
         cancelCue.onclick = () => cueBackdrop.remove();
@@ -52397,7 +52720,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         ? selectedPerformers.map((subject) => subject.name || "Character")
         : [performer.name || "Character"];
       const cues = Array.isArray(segment.lyric_cue_map) ? segment.lyric_cue_map : [];
-      cues.push({ text: "", singer_id: performer.id || "", singer_name: performer.name || "" });
+      const start = miniMaxNextCueStartTime(segment, cues);
+      cues.push({ type: "vocal", text: "", action_note: "", singer_id: performer.id || "", singer_name: performer.name || "", start, end: null });
       segment.lyric_cue_map = cues;
       renderMiniMaxSpeakerAssignmentPanel();
       autoSaveSessionQuiet("MiniMax lyric cue added").catch(() => null);

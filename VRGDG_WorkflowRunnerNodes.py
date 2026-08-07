@@ -680,6 +680,54 @@ def _trim_minimax_h3_audio_context(source_path, project_folder, scene_number, ti
     }
 
 
+def _prepare_scene_audio_clip(payload):
+    source_path = os.path.abspath(str(payload.get("audio_path", "") or "").strip().strip('"'))
+    project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
+    if not source_path:
+        raise ValueError("Audio file path is empty.")
+    if not os.path.isfile(source_path):
+        raise FileNotFoundError(f"Audio file was not found: {source_path}")
+    if not project_folder:
+        raise ValueError("Create or load a project before preparing scene audio.")
+    os.makedirs(project_folder, exist_ok=True)
+    scene_number = int(_float_payload(payload, "scene_number", 1, minimum=1, maximum=9999))
+    start = _float_payload(payload, "start_seconds", 0.0, minimum=0.0, maximum=24 * 60 * 60)
+    duration = _float_payload(payload, "duration_seconds", 8.0, minimum=0.05, maximum=120.0)
+    target_dir = os.path.join(project_folder, "minimax_h3_scene_audio")
+    os.makedirs(target_dir, exist_ok=True)
+    target_path = os.path.join(target_dir, f"scene_audio_{scene_number:04d}.wav")
+    ffmpeg_path = _find_ffmpeg_path()
+    cmd = [
+        ffmpeg_path,
+        "-y",
+        "-ss",
+        f"{start:.9f}",
+        "-i",
+        source_path,
+        "-t",
+        f"{duration:.9f}",
+        "-vn",
+        "-ac",
+        "2",
+        "-ar",
+        "44100",
+        "-c:a",
+        "pcm_s16le",
+        target_path,
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
+    if result.returncode != 0 or not os.path.isfile(target_path):
+        raise RuntimeError((result.stderr or result.stdout or "FFmpeg failed to prepare scene audio.").strip())
+    actual_duration = _probe_media_duration_seconds(target_path)
+    return {
+        "audio_path": target_path,
+        "start": start,
+        "duration": actual_duration,
+        "requested_duration": duration,
+        "format": "pcm_s16le_wav",
+    }
+
+
 def _minimax_h3_output_location(project_folder, scene_number):
     project_name = re.sub(
         r"[^A-Za-z0-9_-]+",
@@ -4376,6 +4424,18 @@ def _ensure_workflow_runner_routes():
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
             result = _build_timestamped_transcribe_api_prompt(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/workflow_runner/prepare_scene_audio_clip")
+    async def vrgdg_workflow_runner_prepare_scene_audio_clip(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+        try:
+            result = _prepare_scene_audio_clip(payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
