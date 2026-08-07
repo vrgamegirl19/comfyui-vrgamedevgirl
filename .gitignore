@@ -15,3 +15,4 @@ flow_automation/outputs/*
 flow_automation/chatgpt_outputs/*
 !flow_automation/inputs/.gitkeep
 !flow_automation/outputs/.gitkeep
+/dist/standalone-builder/
