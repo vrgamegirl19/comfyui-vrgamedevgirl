@@ -5982,7 +5982,6 @@ function openBuilder(node) {
     ltx2MlxCfgScale.value = String(settings.cfg_scale);
     ltx2MlxMatchAudioLength.input.checked = Boolean(settings.match_audio_length);
   }
-  syncLtx2MlxPanelFromState();
 
   function updateLtx2MlxSetting(key, value) {
     state.ltx2MlxSettings = cloneLtx2MlxSettings({ ...state.ltx2MlxSettings, [key]: value });
@@ -34278,6 +34277,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       await autoSaveSessionQuiet("project video engine");
       toast(state.projectVideoEngine === "minimax_h3"
         ? "This project now uses the separate MiniMax H3 scene renderer."
+        : state.projectVideoEngine === "ltx2mlx"
+        ? "This project now uses LTX-2 MLX (Apple Silicon)."
         : "This project now uses the existing LTX scene renderer.");
     });
     clearSuccessSound.onclick = async () => {
