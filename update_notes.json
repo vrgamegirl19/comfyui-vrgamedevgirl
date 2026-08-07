@@ -3,6 +3,52 @@
   "product": "AI Video Builder",
   "releases": [
     {
+      "id": "2026-08-07-auto-build-minimax-singer-cues",
+      "version": "2026.08.07-auto-build-singer-cues",
+      "date": "2026-08-07",
+      "title": "Auto Build and MiniMax singer cue workflow",
+      "commit": "adf9bafa12e93c66960b62b3d067719022ef1012",
+      "restart_required": true,
+      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
+      "sections": [
+        {
+          "title": "New",
+          "items": [
+            "Added Auto Build to the Builder toolbar so music-video projects can create scenes, lyrics, references, mappings, defaults, and prompts from a simpler guided setup.",
+            "Added MiniMax Singer Assignment for split lyric cues, including timed lyric and instrumental rows, per-cue singer selection, and synchronized Reference Builder mappings.",
+            "Added compact per-cue audio playback controls so users can audition each lyric or instrumental slice while setting Start and End times.",
+            "Added Project Batch tooling for running saved projects one after another."
+          ]
+        },
+        {
+          "title": "Improved",
+          "items": [
+            "MiniMax split lyric cues now drive shot count and cut timing, so prompt shots align with the assigned singer and cue boundaries.",
+            "MiniMax prompt generation now asks Gemma for creative shot JSON only while the Builder appends fixed reference, audio, continuity, and MiniMax format sections.",
+            "The Builder toolbar, shared tabs, buttons, and global font styling are more compact and easier to read in crowded MiniMax, LTX, and image-generation panels.",
+            "Changing a lyric cue to Instrumental now creates a new lyric slot underneath instead of merging or losing the lyric text.",
+            "Set End on one singer cue now automatically sets the next cue's Start time to the same boundary."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Fixed MiniMax multi-singer prompts so Audio 1 belongs to the target video instead of incorrectly assigning the whole song to Subject 1.",
+            "Fixed malformed LLM artifacts inside MiniMax dialogue tags and cleaned awkward post-cut wording such as 'the camera cuts to a medium close-up shows'.",
+            "Fixed blank Gemma shot descriptions by filling missing shots from the timed singer cue map instead of stopping prompt creation.",
+            "Fixed the top-right Builder close button so it asks whether to Save + Close, Close Without Saving, or Go Back before exiting."
+          ]
+        },
+        {
+          "title": "Compatibility Notes",
+          "items": [
+            "Restart ComfyUI and hard-refresh the browser after updating so the new Builder JavaScript is loaded.",
+            "If a two-performer MiniMax shot swaps lip-sync unexpectedly, use tighter framing or over-the-shoulder composition for that cue while keeping the same singer assignment data."
+          ]
+        }
+      ]
+    },
+    {
       "id": "2026-08-06-storyboard-gemma-network-reliability",
       "version": "2026.08.06-storyboard-gemma-reliability",
       "date": "2026-08-06",
