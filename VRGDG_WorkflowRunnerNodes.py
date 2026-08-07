@@ -4576,11 +4576,14 @@ class VRGDG_MiniMaxH3TurboLoRACompat:
             "_apply_bypass_lora",
             "_egrid",
             "_interp_egrid",
-            "_AdalnDelta",
             "_add_dbg_wrapper",
             "_time_shift_sigma",
         )
         missing_helpers = [name for name in required_helpers if not hasattr(upstream, name)]
+        make_adaln_forward = getattr(upstream, "_make_adaln_forward", None)
+        legacy_adaln_delta = getattr(upstream, "_AdalnDelta", None)
+        if not callable(make_adaln_forward) and legacy_adaln_delta is None:
+            missing_helpers.append("_make_adaln_forward (or legacy _AdalnDelta)")
         if missing_helpers:
             raise RuntimeError(
                 "The installed ComfyUI-MiniMax-H3-Turbo version is incompatible "
@@ -4626,22 +4629,41 @@ class VRGDG_MiniMaxH3TurboLoRACompat:
             lora_a = lora[name + ".lora_A.weight"]
             lora_b = lora[name + ".lora_B.weight"] * strength
             model_key = "diffusion_model." + name.rsplit(".linear", 1)[0]
-            new_model.add_object_patch(
-                model_key,
-                upstream._AdalnDelta(
-                    new_model.get_model_object(model_key),
-                    lora_a,
-                    lora_b,
-                    shared,
-                ),
-            )
+            base_adaln = new_model.get_model_object(model_key)
+            if callable(make_adaln_forward):
+                # Turbo v1.2.2+ patches only the forward attribute so ComfyUI's
+                # dynamic-VRAM unload keeps the original module tree intact.
+                new_model.add_object_patch(
+                    model_key + ".forward",
+                    make_adaln_forward(base_adaln, lora_a, lora_b, shared),
+                )
+            else:
+                # Retain compatibility with the earlier upstream API that
+                # exposed a whole-module AdaLN wrapper.
+                new_model.add_object_patch(
+                    model_key,
+                    legacy_adaln_delta(base_adaln, lora_a, lora_b, shared),
+                )
         print(
             "[VRGDG MiniMaxH3TurboLoRACompat] pruned base: "
             f"{bound} backbone adapters + {len(adaln)} AdaLN adapters; "
             "reference-audio time rows enabled",
             flush=True,
         )
-        upstream._add_dbg_wrapper(new_model, diffusion_model, "pruned-ref-audio-compat")
+        dbg_wrapper = upstream._add_dbg_wrapper
+        try:
+            dbg_has_mode = "mode" in inspect.signature(dbg_wrapper).parameters
+        except (TypeError, ValueError):
+            dbg_has_mode = False
+        if dbg_has_mode:
+            dbg_wrapper(
+                new_model,
+                diffusion_model,
+                "pruned-ref-audio-compat",
+                "bypass",
+            )
+        else:
+            dbg_wrapper(new_model, diffusion_model, "pruned-ref-audio-compat")
         return (new_model,)
 
 

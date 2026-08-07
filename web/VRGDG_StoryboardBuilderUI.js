@@ -3,6 +3,7 @@ import { api } from "../../scripts/api.js";
 
 const NODE_NAME = "VRGDG_StoryboardBuilderUI";
 const HIDDEN_WIDGETS = new Set(["project_folder"]);
+const STORYBOARD_GEMMA_TIMEOUT_MS = 600000;
 
 function hideInternalWidgets(node) {
   for (const widget of node.widgets || []) {
@@ -14,7 +15,11 @@ function hideInternalWidgets(node) {
 
 async function postJson(url, payload = {}, timeoutMs = 120000) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
   try {
     const response = await api.fetchApi(url, {
       method: "POST",
@@ -27,6 +32,18 @@ async function postJson(url, payload = {}, timeoutMs = 120000) {
       throw new Error(data?.error || `Request failed (${response.status})`);
     }
     return data;
+  } catch (error) {
+    if (timedOut || controller.signal.aborted || error?.name === "AbortError") {
+      const timeoutSeconds = Math.max(1, Math.round(timeoutMs / 1000));
+      const timeoutAmount = timeoutSeconds >= 60 ? Math.round(timeoutSeconds / 60) : timeoutSeconds;
+      const timeoutUnit = timeoutSeconds >= 60 ? "minute" : "second";
+      throw new Error(`Request timed out after ${timeoutAmount} ${timeoutUnit}${timeoutAmount === 1 ? "" : "s"}. The backend may still be processing it.`);
+    }
+    const message = String(error?.message || error || "");
+    if (/NetworkError|Failed to fetch|fetch resource|Load failed/i.test(message)) {
+      throw new Error("Connection to the ComfyUI backend was lost. Check that ComfyUI is still running and inspect its console. If this happened while loading a local LLM, lower its GPU layers or context limit and try again.");
+    }
+    throw error;
   } finally {
     clearTimeout(timeout);
   }
@@ -6762,7 +6779,7 @@ function openStoryboardBuilder(payload = {}) {
     const genericName = promptRunnerGenericName();
     try {
       progress?.set(`${progressLabel || normalized.label || `Scene ${normalized.scene_number}`}: sending image scene card to ${runnerName}...\nThis creates the text-to-image prompt for Image Prep.`, progressPercent);
-      const data = await postJson("/vrgdg/storyboard/gemma_image_prompt", storyboardGemmaPayload(scene, { unload_after: unloadAfter, max_new_tokens: 1200 }), 240000);
+      const data = await postJson("/vrgdg/storyboard/gemma_image_prompt", storyboardGemmaPayload(scene, { unload_after: unloadAfter, max_new_tokens: 1200 }), STORYBOARD_GEMMA_TIMEOUT_MS);
       progress?.set(`${progressLabel || normalized.label || `Scene ${normalized.scene_number}`}: ${genericName} response received.\nRunner: ${data.runner || runnerName}\nSaving image prompt into the scene card...`, Math.min(96, progressPercent + 45));
       const prompt = ensureStoryboardReferenceOpening(applyStoryboardTriggerPhrases(data.prompt, scene), scene, state.imageMode);
       if (!prompt) throw new Error(`${genericName} returned an empty Storyboard image prompt.`);
@@ -6893,7 +6910,7 @@ function openStoryboardBuilder(payload = {}) {
           progressPercent,
           progressLabel,
         })
-        : await postJson("/vrgdg/storyboard/gemma_video_prompt", storyboardGemmaPayload(scene, { unload_after: unloadAfter }), 240000);
+        : await postJson("/vrgdg/storyboard/gemma_video_prompt", storyboardGemmaPayload(scene, { unload_after: unloadAfter }), STORYBOARD_GEMMA_TIMEOUT_MS);
       progress?.set(`${progressLabel || normalized.label || `Scene ${normalized.scene_number}`}: ${genericName} response received.\nRunner: ${data.runner || runnerName}\nSaving prompt into the scene card...`, Math.min(96, progressPercent + 45));
       const rawPrompt = String(data?.prompt || data || "").trim();
       const prompt = data?.already_finalized ? rawPrompt : applyStoryboardTriggerPhrases(rawPrompt, scene);

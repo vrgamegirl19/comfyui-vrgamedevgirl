@@ -1867,7 +1867,11 @@ function showDeleteProjectConfirm(project) {
 
 async function postJson(url, payload, timeoutMs = 120000) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
   try {
     const response = await api.fetchApi(url, {
       method: "POST",
@@ -1879,7 +1883,16 @@ async function postJson(url, payload, timeoutMs = 120000) {
     if (!response.ok || !data?.ok) throw new Error(String(data?.error || `Request failed (${response.status})`));
     return data;
   } catch (error) {
-    if (error?.name === "AbortError") throw new Error("Request timed out. The backend may still be processing that file.");
+    if (timedOut || controller.signal.aborted || error?.name === "AbortError") {
+      const timeoutSeconds = Math.max(1, Math.round(timeoutMs / 1000));
+      const timeoutAmount = timeoutSeconds >= 60 ? Math.round(timeoutSeconds / 60) : timeoutSeconds;
+      const timeoutUnit = timeoutSeconds >= 60 ? "minute" : "second";
+      throw new Error(`Request timed out after ${timeoutAmount} ${timeoutUnit}${timeoutAmount === 1 ? "" : "s"}. The backend may still be processing it.`);
+    }
+    const message = String(error?.message || error || "");
+    if (/NetworkError|Failed to fetch|fetch resource|Load failed/i.test(message)) {
+      throw new Error("Connection to the ComfyUI backend was lost. Check that ComfyUI is still running and inspect its console. If this happened while loading a local LLM, lower its GPU layers or context limit and try again.");
+    }
     throw error;
   } finally {
     clearTimeout(timeout);
@@ -47362,7 +47375,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
               max_new_tokens: 1400,
               temperature: 0.35,
               top_p: 0.90,
-            }, 240000);
+            }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
           const finalizedPrompt = miniMaxProject
             ? String(data.prompt || "").trim()
             : segment ? finalizeVideoPromptDraftOnly(segment, data.prompt) : String(data.prompt || "").trim();

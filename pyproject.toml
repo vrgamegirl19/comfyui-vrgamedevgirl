@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-vrgamedevgirl"
 description = "VRGameDevGirl custom nodes for the ComfyUI AI Video Builder, audio, image, video, workflow-runner, prompt-creator, and post-process workflows."
-version = "9.0.0"
+version = "9.1.0"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
 dependencies = [
