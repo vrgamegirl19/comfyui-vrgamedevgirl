@@ -7,7 +7,7 @@
       "version": "2026.08.06-storyboard-gemma-reliability",
       "date": "2026-08-06",
       "title": "Storyboard Gemma reliability, Manager release, and updated guide",
-      "commit": "",
+      "commit": "84fa509b85c88b7d6a8af9b9ca5eafcadf6b8c11",
       "restart_required": true,
       "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
       "sections": [

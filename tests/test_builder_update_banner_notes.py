@@ -22,7 +22,10 @@ class BuilderUpdateBannerNotesTests(unittest.TestCase):
             release["id"],
             "2026-08-06-storyboard-gemma-network-reliability",
         )
-        self.assertEqual(release["commit"], "")
+        self.assertEqual(
+            release["commit"],
+            "84fa509b85c88b7d6a8af9b9ca5eafcadf6b8c11",
+        )
         items = "\n".join(
             item
             for section in release["sections"]
