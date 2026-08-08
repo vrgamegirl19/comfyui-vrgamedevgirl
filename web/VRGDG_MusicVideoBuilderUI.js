@@ -12887,6 +12887,7 @@ function openBuilder(node) {
       ernieT2IPrompt.value = cleanPrompt;
       krea2TwoPassT2IPrompt.value = cleanPrompt;
       fluxPrompt.value = cleanPrompt;
+      flux2KleinMlxPrompt.value = cleanPrompt;
       nbPrompt.value = cleanPrompt;
       flowGptPrompt.value = cleanPrompt;
       zEnhancePromptPreview.value = cleanPrompt;

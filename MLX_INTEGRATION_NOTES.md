@@ -12,6 +12,10 @@ Sessions documented here, oldest first:
 2. **FLUX.2 Klein / Krea-2 / Z-Image MLX** (images, Reference Builder "Create Subject"
    engines) — see [Krea-2 + Z-Image MLX Integration](#krea-2--z-image-mlx-integration----session-notes)
    near the end of this file.
+3. **Gemma MLX chat/vision backend** (`LLM.py`, used by prompt/lyric/story writing and
+   LoRA-dataset image captioning across the repo) — see
+   [Gemma MLX Backend Integration](#gemma-mlx-backend-integration----session-notes)
+   at the very end of this file.
 
 ## Why this exists
 
@@ -359,3 +363,310 @@ enhancer pass visibly sharpened fur/snow texture without regenerating the scene.
 - `comfyui-krea2-mlx`/`comfyui-zimage-mlx`/`comfyui-flux2klein-mlx` are git-initialized
   locally but not pushed to GitHub yet, same as `comfyui-ltx2-mlx` at the equivalent
   point in its own session.
+- **No standalone Krea-2 MLX build path exists — confirmed real gap, not by design.**
+  On the CUDA side there are genuinely two separate builders:
+  `_build_krea2_api_prompt` (Krea-2 alone, loads `Krea2_TextToImage_API.json`) and
+  `_build_krea2_2pass_api_prompt` (Krea-2 → Z-Image enhancer, loads
+  `Krea2_API_2Pass.json`). The single-pass one is **actively used**, not dead code — the
+  Reference Builder's "Use Krea2 + Enhancer For All Missing" buttons (JS
+  `VRGDG_MusicVideoBuilderUI.js:26582`, `:26731`, `:26886`) all POST to
+  `/vrgdg/workflow_runner/build_krea2_prompt`, i.e. the plain single-pass endpoint,
+  despite the button label saying "+ Enhancer" (a pre-existing UI copy inaccuracy, not
+  something this session touched). On the MLX side, only the enhancer-chain equivalent
+  was ever wired up (`_build_krea2_zimage_mlx_api_prompt` /
+  `krea2ZimageMlx_API.json`) — there is no `krea2Mlx_API.json`, no
+  `_build_krea2_mlx_api_prompt`, and no `/vrgdg/workflow_runner/build_krea2_mlx_prompt`
+  route. The underlying `comfyui-krea2-mlx` node pack already supports standalone use
+  (`Krea2ModelLoader` + `Krea2Generate` alone was tested standalone earlier in this same
+  session, see above) — it just was never surfaced as its own Reference Builder option.
+  Deferred by explicit user request as of 2026-08-08; would be a small, contained
+  addition mirroring the Z-Image MLX wiring (new API template + builder function +
+  route + a JS card) if picked up later.
+
+## Console logging added for every MLX engine (2026-08-08)
+
+None of the MLX engines printed anything to the ComfyUI console before this — the only
+confirmation a user had that MLX (vs. the CUDA equivalent, vs. a different MLX tier)
+actually ran was client-side toast text, output `filename_prefix`, or node titles in
+the graph. Added a `print(f"[VRGDG ...] Engine=... ...", flush=True)` line — matching
+this file's existing `[VRGDG WorkflowRunner]`/`[VRGDG FLF]` convention — at the point
+each engine's prompt is built/dispatched, so the actual engine, model, quantize level,
+and seed used are now visible in the server log for every single generation:
+
+- **LTX-2 MLX** — `_build_ltx2mlx_api_prompt()` (`VRGDG_WorkflowRunnerNodes.py`): logs
+  `mode` (t2v/i2v/a2v), `model_dir`, `pipeline_type`, `seed`.
+- **FLUX.2 Klein MLX** — `_build_flux2klein_mlx_api_prompt()`: logs `mode` (t2i/edit),
+  `model_name`, `quantize`, `seed`.
+- **Z-Image MLX** — `_build_zimage_mlx_api_prompt()`: logs `model_name`, `quantize`,
+  `seed`.
+- **Krea2 + Z-Image MLX Enhancer** — `_build_krea2_zimage_mlx_api_prompt()`: logs both
+  passes' `model_name`/`quantize` plus `seed`.
+- **Gemma MLX (text and vision)** — `LLM.py`'s `_load_gguf_model()`, the single
+  dispatch point every internal call site and `generate_prompt()` funnel through: logs
+  `Engine=Gemma MLX (Apple Silicon)` with `kind=text|vision`, the resolved
+  `mlx-community/gemma-3-*` repo, and the original GGUF `model_path` it was mapped
+  from — **or**, when no MLX mapping applies (or MLX isn't available), logs
+  `Engine=GGUF (llama-cpp-python)` instead. Placed before either path's own model
+  cache check, so it fires on every call, not just on first load/cache-miss — cached
+  reuse is exactly as visible as a fresh load, deliberately kept consistent between the
+  two branches (the GGUF branch's log line was initially placed after its cache check,
+  which would have hidden cache hits; moved earlier to match the MLX branch's
+  behavior).
+
+## Publishing the 4 node packs to the ComfyUI Registry
+
+All four standalone repos (`comfyui-ltx2-mlx`, `comfyui-flux2klein-mlx`,
+`comfyui-krea2-mlx`, `comfyui-zimage-mlx`) got pushed to GitHub under `tanis2000` and
+published to [registry.comfy.org](https://registry.comfy.org) in a later session, per
+the [official publishing guide](https://docs.comfy.org/registry/publishing). All four
+already had `pyproject.toml` with a `[tool.comfy]` block (`PublisherId`, `DisplayName`)
+from when they were first created, so this was just wiring up CI + auth, not writing
+registry metadata from scratch.
+
+Steps taken, identical across all four repos:
+
+1. Added `.github/workflows/publish.yml` to each repo — the standard
+   `Comfy-Org/publish-node-action@main` workflow, triggered on `workflow_dispatch` or on
+   push to `main` when `pyproject.toml` changes:
+
+   ```yaml
+   name: Publish to Comfy registry
+   on:
+     workflow_dispatch:
+     push:
+       branches:
+         - main
+       paths:
+         - "pyproject.toml"
+
+   permissions:
+     issues: write
+
+   jobs:
+     publish-node:
+       name: Publish Custom Node to registry
+       runs-on: ubuntu-latest
+       steps:
+         - name: Check out code
+           uses: actions/checkout@v4
+         - name: Publish Custom Node
+           uses: Comfy-Org/publish-node-action@main
+           with:
+             personal_access_token: ${{ secrets.REGISTRY_ACCESS_TOKEN }}
+   ```
+
+   Note the trigger path is `main`, not `master` — worth double-checking against each
+   repo's actual default branch name if a future push doesn't fire the workflow.
+
+2. Changed `PublisherId` in each `pyproject.toml` from the placeholder `vrgamedevgirl`
+   to `tanis2000` (the real registry publisher these repos are published under).
+
+3. User generated a `REGISTRY_ACCESS_TOKEN` from the ComfyUI Registry publisher
+   dashboard and added it as a repo secret (Settings → Secrets and variables → Actions)
+   on all four GitHub repos — this step has to happen in the GitHub UI, no CLI path was
+   used.
+
+4. Committed (`pyproject.toml` + `.github/workflows/publish.yml`) and pushed `master` to
+   `origin` on all four repos — remotes were already configured
+   (`git@github.com:tanis2000/<repo>.git`), so this was the first real push for all of
+   them.
+
+5. Verified via each repo's GitHub Actions tab (`gh` CLI wasn't installed in this
+   environment, so this had to be checked manually in the browser) — all four
+   `publish-node` runs succeeded.
+
+6. Confirmed all four packages showed up immediately on
+   [registry.comfy.org](https://registry.comfy.org) (publisher page:
+   `registry.comfy.org/publishers/tanis2000`) right after the workflow run completed —
+   registry publish is synchronous with the Action, not a delayed/batched process.
+
+**Gotcha avoided**: the workflow's push-trigger path filter is `pyproject.toml` only.
+Any future metadata bump (new `version`, description, etc.) needs to touch that file
+specifically to auto-publish on push — editing other files and pushing to `main` won't
+trigger a new registry version. `workflow_dispatch` is always available as a manual
+fallback regardless of what changed.
+
+---
+
+## Gemma MLX Backend Integration — Session Notes
+
+Every "write a prompt/lyric/story/JSON extraction" call and every LoRA-dataset image
+caption in this repo goes through Gemma via `LLM.py`'s `VRGDG_GeneralGGUF`/
+`VRGDG_SuperGemmaGGUFChat` (llama-cpp-python, GGUF) or `VRGDG_GeneralVLM` (HF
+`transformers`, no `mps` device support). On this machine `llama-cpp-python` is the
+dependency documented above as failing to build in `venv-3.13` (the OpenSSL/
+`cpp-httplib` linker error) — so on Apple Silicon, Gemma had no working local backend
+at all until this session, short of very slow CPU `transformers`.
+
+### Why an MLX backend was scoped differently from LTX2MLX/Flux2Klein/Krea2/Z-Image
+
+Those four engines are each a single diffusion pipeline invoked from exactly one place
+(a ComfyUI graph node). Gemma is the opposite: investigation found **~15+ internal call
+sites** across `VRGDG_MusicVideoBuilderNodes.py`, `VRGDG_LoraDatasetCreatorNodes.py`,
+`VRGDG_MusicVideoPromptCreatorNodes.py`, `VRGDG_VideoEditorNodes.py`,
+`VRGDG_GeneralNodes2.py`, and `LTXLoraTrain.py` that instantiate
+`VRGDG_SuperGemmaGGUFChat()` directly in Python and call its low-level helpers
+(`_load_gguf_model`, `_run_gguf_text_pipeline`, `_run_gguf_vision_pipeline`) — bypassing
+the ComfyUI graph and the node's `generate_prompt()` entrypoint entirely. A sibling
+node-pack repo (the LTX2MLX pattern) would have needed every one of those ~15 call sites
+edited individually to route to it.
+
+Instead, the MLX backend was built **in place inside `LLM.py`**, dispatching from
+inside those same three low-level methods based on Apple-Silicon + `mlx-lm`/`mlx-vlm`
+availability. Method signatures and return types (`str`) are unchanged, so **every**
+call site — the ~15 direct callers and the `generate_prompt()` node entrypoint alike —
+gets MLX for free with zero edits outside `LLM.py`. No new node pack, no new UI.
+
+### `mlx-vlm` install and the `mlx` version pin
+
+`mlx-lm` (0.31.3) was already installed in `venv-3.13`, pulled in transitively by
+`ltx-core-mlx` (LTX2MLX's own Gemma-3 text-encoder dependency), and already working
+against the `mlx==0.31.2`/`mlx-metal==0.31.2` pin mflux needs.
+
+`mlx-vlm` was not installed. `pip install mlx-vlm` pulled `mlx-vlm==0.6.10`, which
+bumped `mlx`/`mlx-metal` to `0.32.0` — breaking mflux's `mlx<0.32.0` pin, exactly the
+conflict flagged as a risk before starting. Downgrading back with
+`pip install "mlx==0.31.2" "mlx-metal==0.31.2"` left pip reporting a *declared*
+incompatibility (`mlx-vlm 0.6.10 requires mlx>=0.32.0, but you have mlx 0.31.2`), but
+this turned out to be an overly strict pin, not a real runtime requirement — confirmed
+by direct testing, not by trusting the pip warning:
+
+- `mlx_vlm` imports cleanly and `mlx_vlm.load`/`mlx_vlm.generate` run successfully
+  against `mlx==0.31.2`.
+- `mflux` (`Krea2`), `ltx_core_mlx`, and `mlx_lm` all still import cleanly together
+  with `mlx-vlm` installed and `mlx` pinned back to `0.31.2`.
+- A real Krea2/LTX2MLX generation smoke-test wasn't re-run end-to-end (basic
+  tensor-op + real-package-import checks were judged sufficient here, unlike the
+  original mlx-metal 0.32.0→0.31.2 downgrade session which did re-verify with full
+  generations) — worth a full regression pass before relying on this in production if
+  mflux/LTX2MLX behavior looks off after this change.
+
+**Net effect**: `mlx`/`mlx-metal` stayed pinned at `0.31.2` in `venv-3.13`; `mlx-vlm`
+runs fine despite its own stricter declared requirement. Neither `mlx-lm` nor
+`mlx-vlm` were added to this repo's root `requirements.txt` (it has no platform
+markers and would apply the install to every OS/CUDA target) — they're documented here
+instead, same as the other three sibling MLX node-pack repos' dependencies.
+
+### Design in `LLM.py`
+
+- New module-level caches `_MLX_TEXT_MODEL_CACHE`/`_MLX_VISION_MODEL_CACHE`
+  (single-slot, same evict-on-load-new policy as every other MLX engine in this repo),
+  cleared by `_clear_vrgdg_llm_caches()` alongside the existing GGUF caches.
+- `_gemma_mlx_available(vision=False)` — Apple Silicon (`sys.platform == "darwin" and
+  platform.machine() == "arm64"`) plus `importlib.util.find_spec("mlx_lm")`
+  (and `mlx_vlm` too when `vision=True`). No sibling-node-pack "required classes"
+  check like `_require_ltx2mlx_available()` uses, since there's no node pack here —
+  just direct library imports.
+- `_GEMMA_MLX_MODEL_MAP` + `_GEMMA_MLX_SIZE_HINTS` + `_resolve_gemma_mlx_repo()` —
+  maps known GGUF preset repo ids (`unsloth/gemma-4-26B-A4B-it-GGUF`, `Jiunsong/
+  supergemma4-26b-uncensored-gguf-v2`) and size-tier substrings in a GGUF filename
+  (`27b`/`26b`→`gemma-3-27b-it-4bit`, `12b`→`gemma-3-12b-it-4bit`, `4b`→
+  `gemma-3-4b-it-4bit`, `1b`→`gemma-3-1b-it-4bit`, default `gemma-3-12b-it-4bit`) to an
+  `mlx-community/gemma-3-*-it-4bit` repo id. Matched against the GGUF `model_path`'s
+  basename alone (not a separately threaded `model_id`), since that's all the low-level
+  helpers ever receive, and `VRGDG_SuperGemmaGGUFChat`'s local-file dropdown already
+  filters filenames for `"gemma"` — confirmed via `_list_local_gemma_gguf_choices()` —
+  so real call sites reliably have "gemma" in the basename already.
+- **Caveat, deliberately not papered over**: MLX cannot load an arbitrary local
+  `.gguf` file — different format entirely from `mlx-lm`/`mlx-vlm`'s safetensors-based
+  MLX format. When `_resolve_gemma_mlx_repo()` returns `None` (no `"gemma"` in the
+  path, or a model with no known MLX equivalent), `_load_gguf_model` falls straight
+  through to the existing `llama_cpp.Llama(...)` path unchanged — so a genuinely custom
+  local GGUF still needs `llama-cpp-python` working, same as before this change.
+- `_load_mlx_text_model(repo)` / `_load_mlx_vision_model(repo)` — lazy `import mlx_lm`
+  / `import mlx_vlm`, wrapped in the exact same try/except-with-clear-message idiom
+  already used for `llama_cpp` (`LLM.py`'s existing pattern), so machines without these
+  packages installed get a clear error instead of an ImportError deep in a stack trace.
+  Return a tagged `_MLXTextHandle`/`_MLXVisionHandle` (plain attribute holder,
+  `model`/`tokenizer`/`repo` or `model`/`processor`/`config`/`repo`) rather than the
+  library's raw model object, so `_run_gguf_text_pipeline`/`_run_gguf_vision_pipeline`
+  can `isinstance()`-check and dispatch without changing their own signatures.
+- `_run_mlx_text_pipeline()` — `tokenizer.apply_chat_template(messages,
+  add_generation_prompt=True)` → `mlx_lm.generate(model, tokenizer, prompt=...,
+  max_tokens=..., sampler=make_sampler(temp=..., top_p=...))`. **Real bug caught by
+  actual end-to-end testing, not just import checks**: `mlx_lm.generate()` doesn't stop
+  at Gemma's `<end_of_turn>` token by default — first response came back correct,
+  followed by the model endlessly repeating garbage tokens for the rest of
+  `max_new_tokens`. Fixed by calling `tokenizer.add_eos_token(tok)` for every entry in
+  `VRGDG_GeneralGGUF._GEMMA_STOP_SEQUENCES` right after `mlx_lm.load()` — the same stop
+  sequences already used to bound the GGUF/llama.cpp path, now reused for MLX too.
+- `_run_mlx_vision_pipeline()` — saves incoming PIL images to temp PNG files (mflux's
+  sibling packs use the identical `_tensor_to_image_path`-style pattern for image
+  conditioning), builds the prompt via `mlx_vlm.prompt_utils.apply_chat_template(processor,
+  config, instruction_text, num_images=len(image_paths))`, then
+  `mlx_vlm.generate(model, processor, prompt=..., image=image_paths, max_tokens=...,
+  temperature=..., top_p=...)`, reading `.text` off the returned `GenerationResult`.
+  Temp files cleaned up in a `finally`.
+- Dispatch itself lives at the top of `_load_gguf_model()` (branches to
+  `_load_mlx_text_model`/`_load_mlx_vision_model` when available+mapped, else falls
+  through unchanged) and at the top of `_run_gguf_text_pipeline()`/
+  `_run_gguf_vision_pipeline()` (`isinstance(model, _MLXTextHandle/_MLXVisionHandle)` →
+  MLX path, else unchanged GGUF path). `_unload_gguf_model()` was left untouched — it
+  only pops from the GGUF cache dict by GGUF cache key, which MLX handles never enter,
+  so it's a harmless no-op for MLX-backed sessions; MLX models are only evicted by the
+  single-slot cache loading a different model, or by `_clear_vrgdg_llm_caches()`.
+
+### Real-API findings from `inspect` against the actually installed packages
+
+- `mlx_lm.load(repo) -> (model, TokenizerWrapper)`; `mlx_lm.generate(model, tokenizer,
+  prompt, max_tokens=, sampler=)`; sampler built via
+  `mlx_lm.sample_utils.make_sampler(temp=, top_p=)`.
+- `TokenizerWrapper.add_eos_token(token_str_or_id)` is the real (undocumented-in-README)
+  way to add extra stop tokens beyond the tokenizer's default `eos_token_id` — needed
+  for the `<end_of_turn>` fix above.
+- `mlx_vlm.load(repo) -> (model, processor)`; config for chat-templating comes from
+  `mlx_vlm.utils.load_config(repo)`, a separate call, not part of `load()`'s return.
+  `mlx_vlm.generate()` returns a `GenerationResult` dataclass-like object with a `.text`
+  attribute (plus token counts, timing, etc.) — not a plain string like `mlx_lm.generate()`.
+
+### Testing performed (adapted from the repo's 3-layer methodology — no new UI, so no
+Playwright layer was needed)
+
+1. **Direct Python calls**: `_gemma_mlx_available()`/`_resolve_gemma_mlx_repo()` unit
+   checks (mapping correctness, non-Gemma paths correctly return `None`); a real
+   `_load_mlx_text_model`/`_run_mlx_text_pipeline` call against
+   `mlx-community/gemma-3-1b-it-4bit` (smallest tier, chosen to conserve the ~35-46GB
+   free disk on this machine) — caught and fixed the `<end_of_turn>` stopping bug above.
+2. **Through the real call-site pattern**: instantiated `VRGDG_SuperGemmaGGUFChat()`
+   and called `_load_gguf_model()` → `_run_gguf_text_pipeline()` exactly as the ~15
+   internal call sites do, with a fake path containing `"gemma-4-26B-A4B"` (matching
+   the real default preset's naming) — confirmed it dispatched to `_MLXTextHandle` and
+   produced a clean response. Repeated for vision: `_load_gguf_model()` with a non-empty
+   `mmproj_path` + a real solid-orange test image through
+   `_run_gguf_vision_pipeline()`, against `mlx-community/gemma-3-4b-it-4bit` — dispatched
+   to `_MLXVisionHandle`, correctly described the image's color.
+3. **mflux/LTX2MLX regression check**: re-imported `mflux`'s `Krea2` and `ltx_core_mlx`
+   after the `mlx-vlm` install + `mlx` re-pin — both clean. A full real-generation
+   regression (not just imports) was **not** re-run this session — flagged as a gap.
+4. **Real ComfyUI server / UI click-through** — performed after this doc was first
+   written, by the user manually exercising the real Music Video Builder UI (not
+   Playwright). Confirmed working:
+   - **Text, 27B tier**: real prompt/lyric/story-type generation through the actual
+     builder UI ran successfully against the `mlx-community/gemma-3-27b-it-4bit`
+     mapping (the default tier for the `gemma-4-26B-A4B`-style preset naming).
+   - **Vision**: confirmed working too. The user wasn't initially sure which builder
+     feature actually exercises the vision path (it's gated behind `use_vision` +
+     an attached reference image, not always-on) — traced it to the
+     `use_vision`/`has_ref_image` gate in `_generate_builder_t2i_prompt()` (and the
+     same pattern in `_generate_builder_i2v_prompt`/`_generate_builder_chained_i2v_prompt`/
+     `_generate_builder_t2v_prompt`/`_edit_builder_video_prompt`), plus the always-vision
+     `/vrgdg/music_builder/describe_reference_image` route and
+     `VRGDG_LoraDatasetCreatorNodes.py`'s captioning step. The `[VRGDG LLM] Engine=Gemma
+     MLX ... kind=vision` console log line added earlier this session was what let the
+     user confirm which backend actually ran, resolving the ambiguity.
+
+### Known gaps / not done
+
+- No full mflux/LTX2MLX real-generation regression re-run after the `mlx-vlm` install
+  (only import-level + basic tensor-op checks were done).
+- The 12B default text tier and other Gemma-3 sizes below 27B haven't been separately
+  confirmed by the user (27B and 4B/vision were the ones actually exercised) — output
+  quality at those tiers, at real generation lengths/settings used by this repo's
+  prompt/lyric/story tasks, is unverified.
+- `_GEMMA_MLX_MODEL_MAP`/`_GEMMA_MLX_SIZE_HINTS` is a best-effort mapping, not an
+  exhaustive one — a custom local GGUF with unusual naming (no size-tier substring, no
+  `"gemma"` in the filename at all) silently falls back to the GGUF/llama-cpp path
+  rather than MLX, which on this machine means it'll hit the still-unresolved
+  `llama-cpp-python` build failure. No user-facing override/warning surfaces this today.
+- No explicit user-facing override to force GGUF over MLX (or vice versa) when both are
+  technically available — dispatch is fully automatic today.

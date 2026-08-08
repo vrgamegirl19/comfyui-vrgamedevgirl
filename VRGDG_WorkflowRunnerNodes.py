@@ -3606,6 +3606,15 @@ def _build_ltx2mlx_api_prompt(payload):
         workflow_path, prompt = _load_api_template(_ltx2mlx_t2v_i2v_api_template_path())
         patched_prompt, output_folder = _patch_ltx2mlx_t2v_i2v_api_prompt(prompt, payload)
 
+    print(
+        "[VRGDG WorkflowRunner] Engine=LTX-2 MLX (Apple Silicon) "
+        f"mode={ltx2mlx_mode!r} "
+        f"model_dir={payload.get('model_dir', 'dgrauet/ltx-2.3-mlx-q8')!r} "
+        f"pipeline_type={payload.get('pipeline_type', 'two_stage')!r} "
+        f"seed={payload.get('seed', 0)!r}",
+        flush=True,
+    )
+
     return {
         "workflow_path": workflow_path,
         "output_folder": output_folder,
@@ -3633,6 +3642,15 @@ def _build_flux2klein_mlx_api_prompt(payload):
     else:
         workflow_path, prompt = _load_api_template(_flux2klein_mlx_t2i_api_template_path())
         patched_prompt = _patch_flux2klein_mlx_t2i_api_prompt(prompt, payload)
+
+    print(
+        "[VRGDG WorkflowRunner] Engine=FLUX.2 Klein MLX (Apple Silicon) "
+        f"mode={flux2klein_mlx_mode!r} "
+        f"model_name={payload.get('model_name', 'flux2-klein-4b')!r} "
+        f"quantize={payload.get('quantize', '4')!r} "
+        f"seed={payload.get('seed', 0)!r}",
+        flush=True,
+    )
 
     return {
         "workflow_path": workflow_path,
@@ -3740,6 +3758,12 @@ def _build_zimage_mlx_api_prompt(payload):
     _require_zimage_mlx_available()
     workflow_path, prompt = _load_api_template(_zimage_mlx_api_template_path())
     patched_prompt, used_seed = _patch_zimage_mlx_api_prompt(prompt, payload)
+    print(
+        "[VRGDG WorkflowRunner] Engine=ZImage MLX (Apple Silicon) "
+        f"model_name={payload.get('model_name', 'z-image-turbo')!r} "
+        f"quantize={payload.get('quantize', '4')!r} seed={used_seed}",
+        flush=True,
+    )
     return {
         "workflow_path": workflow_path,
         "prompt": patched_prompt,
@@ -3751,6 +3775,14 @@ def _build_krea2_zimage_mlx_api_prompt(payload):
     _require_krea2_zimage_mlx_available()
     workflow_path, prompt = _load_api_template(_krea2_zimage_mlx_api_template_path())
     patched_prompt, used_seed = _patch_krea2_zimage_mlx_api_prompt(prompt, payload)
+    print(
+        "[VRGDG WorkflowRunner] Engine=Krea2 + ZImage MLX Enhancer (Apple Silicon) "
+        f"krea2_model={payload.get('krea2_model_name', 'krea2')!r} "
+        f"krea2_quantize={payload.get('krea2_quantize', '4')!r} "
+        f"zimage_model={payload.get('zimage_model_name', 'z-image-turbo')!r} "
+        f"zimage_quantize={payload.get('zimage_quantize', '4')!r} seed={used_seed}",
+        flush=True,
+    )
     return {
         "workflow_path": workflow_path,
         "prompt": patched_prompt,
