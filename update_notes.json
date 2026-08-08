@@ -7,7 +7,7 @@
       "version": "2026.08.08-auto-build-advanced",
       "date": "2026-08-08",
       "title": "Auto Build advanced controls and LM Studio compatibility",
-      "commit": "5f20e9385c52bef37fa82ea816d0b5dccf87a630",
+      "commit": "71e45aef6abd0a58a5c084f327ba0c3e9a14737",
       "restart_required": true,
       "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
       "sections": [
