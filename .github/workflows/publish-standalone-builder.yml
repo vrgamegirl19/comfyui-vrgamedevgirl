@@ -1,0 +1,63 @@
+name: Publish Standalone Builder Update
+
+on:
+  workflow_dispatch:
+    inputs:
+      prerelease:
+        description: Publish as a prerelease (not offered to stable standalone users)
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-standalone-builder
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build and verify release package
+        id: package
+        run: python scripts/build_standalone_release.py
+
+      - name: Refuse to replace an existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${{ steps.package.outputs.tag }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Release ${{ steps.package.outputs.tag }} already exists. Bump the version in pyproject.toml." >&2
+            exit 1
+          fi
+
+      - name: Publish immutable GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          args=(
+            "${{ steps.package.outputs.tag }}"
+            "${{ steps.package.outputs.archive }}"
+            "${{ steps.package.outputs.manifest }}"
+            --repo "${{ github.repository }}"
+            --target "${{ github.sha }}"
+            --title "AI Video Builder ${{ steps.package.outputs.version }}"
+            --notes-file "${{ steps.package.outputs.notes }}"
+          )
+          if [[ "$PRERELEASE" == "true" ]]; then
+            args+=(--prerelease)
+          fi
+          gh release create "${args[@]}"

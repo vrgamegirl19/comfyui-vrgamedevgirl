@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "product": "svb-builder",
+  "repository": "vrgamegirl19/comfyui-vrgamedevgirl",
+  "minimum_standalone_version": "0.1.0",
+  "engine_api": 1,
+  "requires_full_app_update": false,
+  "full_app_update_reason": "",
+  "required_custom_nodes": [
+    "ComfyMath",
+    "comfyui_memory_cleanup",
+    "ComfyUI-GGUF",
+    "ComfyUI-KJNodes",
+    "ComfyUI-LTXVideo",
+    "comfyui-videohelpersuite",
+    "comfyui-vrgamedevgirl",
+    "erosdiffusion-eulerflowmatchingdiscretescheduler",
+    "vrgdg-ltx-msr-reference-builder"
+  ]
+}
