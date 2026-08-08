@@ -3,6 +3,38 @@
   "product": "AI Video Builder",
   "releases": [
     {
+      "id": "2026-08-08-auto-build-advanced-lm-studio-seed",
+      "version": "2026.08.08-auto-build-advanced",
+      "date": "2026-08-08",
+      "title": "Auto Build advanced controls and LM Studio compatibility",
+      "commit": "5f20e9385c52bef37fa82ea816d0b5dccf87a630",
+      "restart_required": true,
+      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
+      "sections": [
+        {
+          "title": "New",
+          "items": [
+            "Added collapsed Auto Build Advanced options for 8-second recommended coverage, 5-second lower-VRAM coverage, 6-second coverage, or a custom 1–60 second segment duration.",
+            "Added a GPT Scout location source that opens the existing Reference Builder location JSON importer and preserves imported location cards and scene mappings during Auto Build.",
+            "Added an option to preserve the project's current Scene Defaults, story layer, story arc, story beats, lyric story strength, and per-scene performance settings instead of applying Auto Build recommendations."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "LM Studio native chat now retries once without the seed field when the server specifically rejects that unsupported key, while continuing to surface unrelated request and connection errors normally."
+          ]
+        },
+        {
+          "title": "Compatibility Notes",
+          "items": [
+            "Restart ComfyUI and hard-refresh the browser after updating so the revised Builder JavaScript and Python modules are loaded.",
+            "Eight-second Auto Build segments remain the recommended default; five-second segments can reduce per-clip VRAM use."
+          ]
+        }
+      ]
+    },
+    {
       "id": "2026-08-07-auto-build-minimax-singer-cues",
       "version": "2026.08.07-auto-build-singer-cues",
       "date": "2026-08-07",
