@@ -12547,25 +12547,29 @@ function openBuilder(node) {
     const temporalText = temporalKey
       ? String(defaults.temporal_world_effect_custom || temporalPreset?.prompt_guidance || temporalPreset?.description || temporalPreset?.label || temporalKey.replace(/[_-]+/g, " ")).trim()
       : "Off / natural time";
-    const videoStyle = [defaults.video_style, defaults.video_style_custom].map((value) => String(value || "").trim()).filter(Boolean).join(" — ");
+    const prettyLabel = (value) => String(value || "").trim().replace(/[_-]+/g, " ").replace(/\s+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+    const videoStyle = [prettyLabel(defaults.video_style), defaults.video_style_custom].map((value) => String(value || "").trim()).filter(Boolean).join(" — ");
     const cameraFlowText = [cameraFlowPreset?.label || cameraFlowKey, cameraFlowPreset?.description].map((value) => String(value || "").trim()).filter(Boolean).join(" — ");
     const performanceText = performanceKey && performanceKey !== "off"
       ? [performancePreset.direction || performancePreset.description || performancePreset.label || performanceKey].map((value) => String(value || "").trim()).filter(Boolean).join(" ")
       : "";
+    const compactCutText = cutPlan.cut_times_seconds?.length
+      ? `Cut frequency: ${cutPlan.frequency}/10; ${cutPlan.cut_times_seconds.length} hard cut${cutPlan.cut_times_seconds.length === 1 ? "" : "s"} at ${cutPlan.cut_times_seconds.map((time) => miniMaxH3Timecode(time)).join(", ")}, creating ${cutPlan.cut_times_seconds.length + 1} shots.`
+      : `Cut frequency: ${cutPlan.frequency}/10; one continuous shot with no hard cuts.`;
     const lines = [];
     if (videoStyle) lines.push(`Video aesthetic: ${videoStyle}.`);
     lines.push(`Temporal / world effect: ${temporalText}.`);
     if (defaults.global_consistency_phrase) lines.push(`Global consistency phrase: ${defaults.global_consistency_phrase}.`);
     if (cameraFlowText) lines.push(`Auto camera flow: ${cameraFlowText}.`);
     lines.push(`Camera motion speed: ${defaults.camera_motion_speed}/10. ${defaults.camera_guidance || builderMotionSpeedGuidance(defaults.camera_motion_speed, "camera")}`);
-    lines.push(`Cut frequency: ${cutPlan.frequency}/10. ${cutPlan.instruction}`);
+    lines.push(compact ? compactCutText : `Cut frequency: ${cutPlan.frequency}/10. ${cutPlan.instruction}`);
     if (performanceText) lines.push(`Global performance style: ${performanceText}.`);
     lines.push(`Character motion speed: ${defaults.character_motion_speed}/10. ${defaults.character_guidance || builderMotionSpeedGuidance(defaults.character_motion_speed, "character")}`);
     if (facialText) lines.push(`Global facial performance: ${facialText}`);
     if (storyLayer.enabled !== false) {
       lines.push(`Lyric story strength: ${storyLayer.lyric_story_strength}/10.`);
-      if (storyLayer.user_story_arc) lines.push(`User story arc: ${storyLayer.user_story_arc}`);
-      if (storyLayer.song_story_brief) lines.push(`Song story brief: ${storyLayer.song_story_brief}`);
+      if (!compact && storyLayer.user_story_arc) lines.push(`User story arc: ${storyLayer.user_story_arc}`);
+      if (!compact && storyLayer.song_story_brief) lines.push(`Song story brief: ${storyLayer.song_story_brief}`);
     }
     const text = lines.filter(Boolean).join(compact ? " " : "\n");
     return text ? `${compact ? "Scene defaults applied: " : "Scene defaults applied — mandatory:\n"}${text}` : "";
@@ -37894,6 +37898,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     } else if (lyricText) {
       parts.push("Vocal performance: singing with exact lyric lip sync. Mention the visible singing action naturally in the shot descriptions, but do not write separate audio sections or repeat boilerplate in every cut.");
       add(parts, "Exact lyric line", lyricText);
+      parts.push("Lyric timing rule: do not restart, repeat, stretch, or invent lyric fragments to fill extra shots. If the cut plan has more shots than the audible lyric naturally supports, later shots continue visual performance, reaction, dance, movement, or atmosphere while the mouth closes or relaxes naturally when no vocal is audible.");
     } else {
       parts.push("Vocal performance: no exact lyric or dialogue is assigned to this scene.");
     }
