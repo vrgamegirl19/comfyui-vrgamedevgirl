@@ -323,9 +323,13 @@ function normalizeMiniMaxSpeakerAssignments(value = []) {
     .filter((item) => item && typeof item === "object")
     .map((item, index) => ({
       id: String(item.id || item.cue_id || item.cueId || `speaker_cue_${Date.now()}_${index}_${Math.floor(Math.random() * 10000)}`),
+      type: String(item.type || item.kind || "").trim().toLowerCase() === "instrumental" ? "instrumental" : "dialogue",
       speaker_id: String(item.speaker_id || item.speakerId || item.subject_id || item.subjectId || ""),
       speaker_name: String(item.speaker_name || item.speakerName || item.speaker || item.character || "").trim(),
       text: String(item.text || item.dialogue || item.line || item.lyric || "").trim(),
+      action_note: String(item.action_note || item.actionNote || item.note || "").trim(),
+      start: Number.isFinite(Number(item.start)) ? Math.max(0, Number(item.start)) : null,
+      end: Number.isFinite(Number(item.end)) ? Math.max(0, Number(item.end)) : null,
     }))
     .slice(0, 40);
 }
@@ -6710,6 +6714,14 @@ function openBuilder(node) {
     return Boolean(miniMaxProject && videoType === "singing" && settings.audio_mode === "input_audio");
   }
 
+  function isMiniMaxBuiltInSpeakerAssignmentMode(segment = activeSegment()) {
+    if (!segment) return false;
+    const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
+    const settings = miniMaxH3SettingsForSegment(segment);
+    const videoType = normalizeVideoType(segment?.performance_mode || state.videoType);
+    return Boolean(miniMaxProject && videoType === "speaking" && settings.audio_mode === "built_in_audio");
+  }
+
   function syncLyricTextFromCueMap(segment) {
     if (!segment || !Array.isArray(segment.lyric_cue_map) || !segment.lyric_cue_map.length) return;
     const joined = segment.lyric_cue_map.map((cue) => flattenLyricForPrompt(cue?.text)).filter(Boolean).join(" ");
@@ -6727,7 +6739,7 @@ function openBuilder(node) {
     miniMaxSpeakerAssignmentList.replaceChildren();
     miniMaxAddSpeakerCueButton.disabled = !enabled || !speakers.length || (singerMode && segment?.lyric_performance_mode !== "cue_map");
     miniMaxAddSpeakerCueButton.textContent = singerMode ? "Add Lyric Cue" : "Add Dialogue Cue";
-    miniMaxAddSpeakerCueButton.style.display = singerMode ? "none" : "";
+    miniMaxAddSpeakerCueButton.style.display = (singerMode || isMiniMaxBuiltInSpeakerAssignmentMode(segment)) ? "none" : "";
     if (!miniMaxProject || !segment) {
       miniMaxSpeakerAssignmentNote.textContent = "Choose an active MiniMax scene to assign vocal performers.";
       return;
@@ -7018,7 +7030,7 @@ function openBuilder(node) {
       miniMaxSpeakerAssignmentNote.textContent = "This scene is marked No character present, so it cannot contain assigned dialogue.";
       return;
     }
-    miniMaxSpeakerAssignmentNote.textContent = "Drag cues into the exact speaking order. A character may appear more than once. Only characters mapped to this scene in Reference Builder are available, and MiniMax must speak each line exactly as entered.";
+    miniMaxSpeakerAssignmentNote.textContent = "Speaker Assignment uses timed cue rows for MiniMax built-in audio. Add Dialogue cues for spoken lines, or Instrumental cues for action/silence where nobody speaks.";
     if (!speakers.length) {
       const empty = document.createElement("div");
       empty.textContent = "No characters are mapped to this scene yet. Map them in Reference Builder first.";
@@ -7027,10 +7039,56 @@ function openBuilder(node) {
       return;
     }
     const cues = ensureMiniMaxSpeakerAssignments(segment, speakers);
+    segment.minimax_speaker_assignments = cues;
+    const audioTools = document.createElement("div");
+    audioTools.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+    const playSceneCueAudio = makeButton("Play Scene Clock", "primary");
+    const jumpSceneCueAudio = makeButton("Jump To Scene Start");
+    applyCompactButtonLabel(playSceneCueAudio, "Play\nScene Clock", { noMap: true, padding: "7px 6px", title: "Play this scene range. If no generated audio exists yet, the silent timeline clock still lets you set cue times." });
+    applyCompactButtonLabel(jumpSceneCueAudio, "Jump To\nScene Start", { noMap: true, padding: "7px 6px", title: "Move the playhead to this scene start." });
+    playSceneCueAudio.onclick = () => {
+      const start = timelineAudioStartForSegment(segment);
+      if (!playSceneAudioFrom(start)) {
+        activateGlobalTimelineAudioPlayback(Math.max(0, Number(segment.start || 0)));
+        audio.play().then(updatePlayPauseButton).catch(() => startSilentTimelinePlayback(Math.max(0, Number(segment.start || 0))));
+      }
+    };
+    jumpSceneCueAudio.onclick = () => {
+      const start = Math.max(0, Number(segment.start || 0));
+      activateGlobalTimelineAudioPlayback(start);
+      toast(`Playhead moved to ${formatTime(start)}. Play the scene, then use Set Start / Set End on cue rows.`);
+    };
+    audioTools.append(playSceneCueAudio, jumpSceneCueAudio);
+    miniMaxSpeakerAssignmentList.append(audioTools);
+
+    const cueActions = document.createElement("div");
+    cueActions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+    const addDialogueCue = makeButton("Add Dialogue Cue", "primary");
+    const addInstrumentalCue = makeButton("Add Instrumental Cue");
+    applyCompactButtonLabel(addDialogueCue, "Add\nDialogue", { noMap: true, padding: "7px 6px", title: "Add Dialogue Cue" });
+    applyCompactButtonLabel(addInstrumentalCue, "Add\nInstrumental", { noMap: true, padding: "7px 6px", title: "Add Instrumental Cue" });
+    addDialogueCue.onclick = () => {
+      const speaker = speakers[cues.filter((cue) => cue.type !== "instrumental").length % speakers.length] || speakers[0] || {};
+      const start = miniMaxNextCueStartTime(segment, cues);
+      cues.push({ type: "dialogue", text: "", action_note: "", speaker_id: speaker.id || "", speaker_name: speaker.name || "", start, end: null });
+      segment.minimax_speaker_assignments = cues;
+      renderMiniMaxSpeakerAssignmentPanel();
+      autoSaveSessionQuiet("MiniMax dialogue cue added").catch(() => null);
+    };
+    addInstrumentalCue.onclick = () => {
+      const start = miniMaxNextCueStartTime(segment, cues);
+      cues.push({ type: "instrumental", text: "", action_note: "", speaker_id: "", speaker_name: "", start, end: null });
+      segment.minimax_speaker_assignments = cues;
+      renderMiniMaxSpeakerAssignmentPanel();
+      autoSaveSessionQuiet("MiniMax instrumental cue added").catch(() => null);
+    };
+    cueActions.append(addDialogueCue, addInstrumentalCue);
+    miniMaxSpeakerAssignmentList.append(cueActions);
+
     let draggedIndex = -1;
     cues.forEach((cue, index) => {
       const row = document.createElement("div");
-      row.style.cssText = "display:grid;grid-template-columns:32px 34px minmax(150px,.7fr) minmax(240px,1.5fr) 74px;gap:8px;align-items:center;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:8px;";
+      row.style.cssText = "display:flex;flex-direction:column;gap:8px;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:8px;";
       row.addEventListener("dragover", (event) => {
         if (draggedIndex < 0 || draggedIndex === index) return;
         event.preventDefault();
@@ -7059,14 +7117,38 @@ function openBuilder(node) {
       const number = document.createElement("div");
       number.textContent = String(index + 1);
       number.style.cssText = "font-size:14px;font-weight:900;color:#cffafe;text-align:center;";
+      const mainRow = document.createElement("div");
+      mainRow.style.cssText = "display:grid;grid-template-columns:32px 34px minmax(106px,.5fr) minmax(132px,.65fr) minmax(180px,1.4fr) 58px;gap:7px;align-items:center;";
+      const typeSelect = makeSelect(["dialogue", "instrumental"], cue.type === "instrumental" ? "instrumental" : "dialogue");
+      typeSelect.options[0].textContent = "Dialogue";
+      typeSelect.options[1].textContent = "Instrumental";
       const speakerSelect = makeSelect(speakers.map((speaker) => ({ value: speaker.id, label: speaker.name })), cue.speaker_id);
       if (!speakers.some((speaker) => speaker.id === cue.speaker_id) && cue.speaker_name) {
         speakerSelect.prepend(new Option(`${cue.speaker_name} (not currently mapped)`, cue.speaker_id));
         speakerSelect.value = cue.speaker_id;
       }
-      const line = makeInput(cue.text || "");
-      line.placeholder = "Exact words this character says...";
+      const line = makeInput(cue.type === "instrumental" ? cue.action_note || "" : cue.text || "");
+      line.placeholder = cue.type === "instrumental" ? "Action note while nobody speaks..." : "Exact words this character says...";
       const remove = makeButton("Remove");
+      applyCompactButtonLabel(remove, "Remove", { minWidth: 0, padding: "7px 6px" });
+      typeSelect.addEventListener("change", () => {
+        cue.type = typeSelect.value === "instrumental" ? "instrumental" : "dialogue";
+        if (cue.type === "instrumental") {
+          cue.action_note = cue.action_note || "";
+          cue.text = "";
+          cue.speaker_id = "";
+          cue.speaker_name = "";
+        } else {
+          const speaker = speakers[0] || {};
+          cue.text = cue.text || cue.action_note || "";
+          cue.action_note = "";
+          cue.speaker_id = cue.speaker_id || speaker.id || "";
+          cue.speaker_name = cue.speaker_name || speaker.name || "";
+        }
+        segment.minimax_speaker_assignments = cues;
+        syncMiniMaxSpeakerAssignmentLegacyFields(segment);
+        renderMiniMaxSpeakerAssignmentPanel();
+      });
       speakerSelect.addEventListener("change", () => {
         const speaker = speakers.find((item) => item.id === speakerSelect.value) || { id: speakerSelect.value, name: speakerSelect.selectedOptions[0]?.textContent || "" };
         cue.speaker_id = speaker.id;
@@ -7076,7 +7158,8 @@ function openBuilder(node) {
         autoSaveSessionQuiet("MiniMax speaker assignment changed").catch(() => null);
       });
       line.addEventListener("input", () => {
-        cue.text = line.value;
+        if (cue.type === "instrumental") cue.action_note = line.value;
+        else cue.text = line.value;
         segment.minimax_speaker_assignments = cues;
         syncMiniMaxSpeakerAssignmentLegacyFields(segment);
       });
@@ -7089,7 +7172,62 @@ function openBuilder(node) {
         renderMiniMaxSpeakerAssignmentPanel();
         autoSaveSessionQuiet("MiniMax dialogue cue removed").catch(() => null);
       };
-      row.append(handle, number, speakerSelect, line, remove);
+      speakerSelect.disabled = cue.type === "instrumental";
+      mainRow.append(handle, number, typeSelect, speakerSelect, line, remove);
+      const timingRow = document.createElement("div");
+      timingRow.style.cssText = "display:grid;grid-template-columns:minmax(44px,.45fr) minmax(44px,.45fr) 58px 64px 58px 58px 60px;gap:7px;align-items:center;padding-left:74px;";
+      const cueRange = singerCuePlaybackRangeForCue(segment, cues, index);
+      const effectiveEnd = miniMaxEffectiveCueEnd(segment, cues, index);
+      const startLabel = document.createElement("div");
+      startLabel.textContent = `Start: ${formatCueTime(cue.start)}`;
+      startLabel.style.cssText = "font-size:11px;color:#a5f3fc;";
+      const endLabel = document.createElement("div");
+      endLabel.textContent = `End: ${formatCueTime(effectiveEnd)}`;
+      endLabel.style.cssText = "font-size:11px;color:#a5f3fc;";
+      const playCue = makeButton("Play Cue", "primary");
+      const playFromCue = makeButton("Play From Here");
+      const setStart = makeButton("Set Start");
+      const setEnd = makeButton("Set End");
+      const clearTiming = makeButton("Clear Timing");
+      applyCompactButtonLabel(playCue, "Play\nCue", { noMap: true, minWidth: 0, padding: "6px 5px", title: "Play only this cue's timed scene range." });
+      applyCompactButtonLabel(playFromCue, "From\nHere", { noMap: true, minWidth: 0, padding: "6px 5px", title: "Play from this cue start." });
+      applyCompactButtonLabel(setStart, "Set\nStart", { noMap: true, minWidth: 0, padding: "6px 5px" });
+      applyCompactButtonLabel(setEnd, "Set\nEnd", { noMap: true, minWidth: 0, padding: "6px 5px" });
+      applyCompactButtonLabel(clearTiming, "Clear\nTime", { noMap: true, minWidth: 0, padding: "6px 5px", title: "Clear Timing" });
+      playCue.onclick = () => playSingerCueRange(segment, cueRange.start, cueRange.end, playCue, "Play Cue");
+      playFromCue.onclick = () => playSingerCueRange(segment, cueRange.start, null, playFromCue, "Play From Here");
+      setStart.onclick = () => {
+        cue.start = singerCueRelativePlayheadTime(segment);
+        if (index > 0) cues[index - 1].end = cue.start;
+        if (Number.isFinite(Number(cue.end)) && cue.end <= cue.start) cue.end = null;
+        syncCueEndBoundariesFromNextStarts(cues);
+        segment.minimax_speaker_assignments = cues;
+        renderMiniMaxSpeakerAssignmentPanel();
+        autoSaveSessionQuiet("MiniMax speaker cue timing changed").catch(() => null);
+      };
+      setEnd.onclick = () => {
+        cue.end = singerCueRelativePlayheadTime(segment);
+        if (Number.isFinite(Number(cue.start)) && cue.end <= cue.start) {
+          toast("Cue end must be after cue start.", true);
+          cue.end = null;
+        } else if (index + 1 < cues.length) {
+          cues[index + 1].start = cue.end;
+          if (Number.isFinite(Number(cues[index + 1].end)) && cues[index + 1].end <= cues[index + 1].start) cues[index + 1].end = null;
+        }
+        syncCueEndBoundariesFromNextStarts(cues);
+        segment.minimax_speaker_assignments = cues;
+        renderMiniMaxSpeakerAssignmentPanel();
+        autoSaveSessionQuiet("MiniMax speaker cue timing changed").catch(() => null);
+      };
+      clearTiming.onclick = () => {
+        cue.start = null;
+        cue.end = null;
+        segment.minimax_speaker_assignments = cues;
+        renderMiniMaxSpeakerAssignmentPanel();
+        autoSaveSessionQuiet("MiniMax speaker cue timing cleared").catch(() => null);
+      };
+      timingRow.append(startLabel, endLabel, playCue, playFromCue, setStart, setEnd, clearTiming);
+      row.append(mainRow, timingRow);
       miniMaxSpeakerAssignmentList.append(row);
     });
   }
@@ -21468,14 +21606,15 @@ function openBuilder(node) {
     const clean = flattenLyricForPrompt(text);
     if (!clean) return [];
     const lines = String(text || "").split(/\r?\n+/).map((line) => flattenLyricForPrompt(line)).filter(Boolean);
-    if (lines.length > 1) return lines;
+    const splitIntoTwo = (items) => {
+      if (items.length <= 1) return items;
+      const midpoint = Math.ceil(items.length / 2);
+      return [items.slice(0, midpoint).join(" "), items.slice(midpoint).join(" ")].map((item) => item.trim()).filter(Boolean);
+    };
+    if (lines.length > 1) return splitIntoTwo(lines);
     const words = clean.split(/\s+/).filter(Boolean);
     if (words.length <= 2) return [clean];
-    const chunks = [];
-    for (let index = 0; index < words.length; index += 2) {
-      chunks.push(words.slice(index, index + 2).join(" "));
-    }
-    return chunks;
+    return splitIntoTwo(words);
   }
 
   function normalizeLyricCueMapForSegment(segment, refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder), options = {}) {
@@ -21581,6 +21720,28 @@ function openBuilder(node) {
   function miniMaxH3CutPlanForSegment(segment) {
     const duration = Math.max(0, Number(segment?.end || 0) - Number(segment?.start || 0));
     const fallback = storyboardCutPlanForDuration(duration, state.builderStoryboardDefaults?.minimax_h3_cut_frequency);
+    if (isMiniMaxBuiltInSpeakerAssignmentMode(segment)) {
+      const speakerCues = normalizeMiniMaxSpeakerAssignments(segment?.minimax_speaker_assignments || segment?.speaker_assignments || segment?.dialogue_cues || [])
+        .filter((cue) => cue.type === "instrumental" || cue.text);
+      const cuts = [];
+      speakerCues.forEach((cue, index) => {
+        const start = Number(cue?.start);
+        if (index > 0 && Number.isFinite(start) && start > 0.04 && start < duration - 0.04 && !cuts.some((time) => Math.abs(time - start) < 0.04)) {
+          cuts.push(Number(start.toFixed(3)));
+        }
+      });
+      if (cuts.length) {
+        cuts.sort((a, b) => a - b);
+        return {
+          ...fallback,
+          frequency: state.builderStoryboardDefaults?.minimax_h3_cut_frequency ?? fallback.frequency,
+          cut_times_seconds: cuts,
+          cue_driven: true,
+          cue_count: speakerCues.length,
+          instruction: `EDITING / CUT PLAN — MANDATORY: The timed speaker/dialogue cue map controls this exact ${Number(duration.toFixed(3))}-second segment. Create exactly ${cuts.length + 1} shot${cuts.length ? "s" : ""}${cuts.length ? ` with hard cuts at ${cuts.map((time) => miniMaxH3Timecode(time)).join(", ")}` : ""}. Dialogue rows mean only the assigned speaker talks during that cue; instrumental rows mean no visible lip-sync or spoken dialogue. The builder will write [Shot 1] and every later [Shot N] At MM:SS.mmm label. Return only the creative description for each shot. Do not omit, merge, add, reorder, or shift cue shots.`,
+        };
+      }
+    }
     if (!isMiniMaxSingerAssignmentMode(segment) || String(segment?.lyric_performance_mode || "together") !== "cue_map") return fallback;
     const cues = normalizeLyricCueMapForSegment(segment);
     if (cues.length < 2) return fallback;
@@ -37227,7 +37388,29 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   function miniMaxDialogueOrderText(segment) {
     const cues = miniMaxDialogueAssignmentsForSegment(segment);
     if (!cues.length) return "";
-    return cues.map((cue, index) => `${index + 1}. ${cue.speaker_name || "The assigned speaker"} says exactly: “${cue.text}”`).join("\n");
+    return cues.map((cue, index) => {
+      const timing = miniMaxH3CueTimingText(cue, segment, cues, index);
+      return `${index + 1}. ${timing}${cue.speaker_name || "The assigned speaker"} says exactly: “${cue.text}”`;
+    }).join("\n");
+  }
+
+  function miniMaxBuiltInDialogueCueMapText(segment) {
+    if (!isMiniMaxBuiltInSpeakerAssignmentMode(segment)) return "";
+    const cues = normalizeMiniMaxSpeakerAssignments(segment?.minimax_speaker_assignments || segment?.speaker_assignments || segment?.dialogue_cues || []);
+    if (!cues.length) return "";
+    const lines = cues.map((cue, index) => {
+      const timing = miniMaxH3CueTimingText(cue, segment, cues, index);
+      if (cue.type === "instrumental") {
+        const note = cue.action_note ? ` Visual/audio action note: ${cue.action_note}` : "";
+        return `${timing}Instrumental / no dialogue cue. No visible subject speaks or lip-syncs.${note}`;
+      }
+      return `${timing}${cue.speaker_name || "The assigned speaker"} speaks exactly: "${cue.text}"`;
+    });
+    return [
+      "Native MiniMax dialogue cue map:",
+      ...lines,
+      "Only the assigned speaker talks during each dialogue cue. Other visible characters remain silent, mouth closed or naturally reacting.",
+    ].join("\n");
   }
 
   function miniMaxH3NativeVoiceAssignments(segment) {
@@ -37463,6 +37646,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     } else if (lyricText && performanceMode === "speaking") {
       parts.push("Vocal performance: speaking with exact dialogue lip sync. Mention the visible speaking action naturally in the shot descriptions, but do not write separate audio sections.");
       add(parts, "Exact dialogue order", miniMaxDialogueOrderText(segment) || `The assigned speaker says exactly: "${lyricText}"`);
+      add(parts, "Timed native dialogue cue map", miniMaxBuiltInDialogueCueMapText(segment), 1800);
     } else if (lyricText) {
       parts.push("Vocal performance: singing with exact lyric lip sync. Mention the visible singing action naturally in the shot descriptions, but do not write separate audio sections or repeat boilerplate in every cut.");
       add(parts, "Exact lyric line", lyricText);
