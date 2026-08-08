@@ -41,6 +41,7 @@
           "items": [
             "Fixed MiniMax multi-singer prompts so Audio 1 belongs to the target video instead of incorrectly assigning the whole song to Subject 1.",
             "Fixed MiniMax prompt drift where side-panel generation, Storyboard Builder generation, and Auto Build could use slightly different request wrappers or instruction keys.",
+            "Fixed LTX-to-MiniMax conversion saving the intermediate JSON shot-description payload as the final MiniMax prompt instead of assembling the full MiniMax H3 prompt sections.",
             "Fixed malformed LLM artifacts inside MiniMax dialogue tags and cleaned awkward post-cut wording such as 'the camera cuts to a medium close-up shows'.",
             "Fixed blank Gemma shot descriptions by filling missing shots from the timed singer cue map instead of stopping prompt creation.",
             "Fixed the top-right Builder close button so it asks whether to Save + Close, Close Without Saving, or Go Back before exiting."

@@ -38748,47 +38748,33 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         const mode = miniMaxH3ModeForSegment(segment);
         const modeLabel = miniMaxH3ModeLabel(mode);
         const duration = Math.max(0, Number(segment.end || 0) - Number(segment.start || 0));
-        const lyricText = segmentUsesNoLipSyncPerformance(segment) || isInstrumentalLyricText(segment.lyric_text)
-          ? ""
-          : flattenLyricForPrompt(segment.lyric_text);
-        const singerNames = segmentUsesNoLipSyncPerformance(segment)
-          ? []
-          : (Array.isArray(segment.lyric_singers) ? segment.lyric_singers : String(segment.lyric_singers || "").split(/[,;\n]+/))
-            .map((value) => String(value || "").trim())
-            .filter(Boolean);
         const label = `${sceneDisplayName(segment, segmentIndexInfo(segment).index)} (${index + 1}/${targets.length})`;
         const percent = 5 + Math.round((index / Math.max(1, targets.length)) * 88);
         progress.set(`${label}: converting the existing LTX prompt to detailed MiniMax H3 ${modeLabel} format...\n${gemmaRunnerLine()}`, percent);
 
-        const data = await postJson("/vrgdg/music_builder/generate_t2v", {
-          ...textGemmaRunnerPayload(),
-          project_folder: projectFolder,
-          scene_id: segment.id || "",
-          builder_instruction_key: miniMaxH3InstructionKey(mode),
-          model_file: miniMaxTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value,
-          repair_model_file: miniMaxTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value,
-          t2i_prompt: [
-            "EXISTING LTX VIDEO PROMPT TO CONVERT:",
-            ltxPrompt,
-            "",
-            `Target scene duration: ${duration.toFixed(3)} seconds.`,
-          ].join("\n"),
-          user_notes: [
-            "Rewrite the existing LTX video prompt as one substantially more detailed MiniMax H3 prompt for the selected mode.",
+        const data = await runMiniMaxH3PromptGeneration(segment, mode, {
+          projectFolder,
+          unloadAfter: index === targets.length - 1,
+          audioMode: "input_audio",
+          performanceMode: effectiveVideoPerformanceModeForSegment(segment),
+          contextOptions: {
+            storyboardContext: [
+              "Existing LTX video prompt to convert:",
+              ltxPrompt,
+              "",
+              `Target scene duration: ${duration.toFixed(3)} seconds.`,
+            ].join("\n"),
+          },
+          userNotes: [
+            "Rewrite the existing LTX video prompt as one substantially more detailed MiniMax H3 shot-description plan for the selected mode.",
             "Preserve the same scene, subjects, setting, wardrobe, action, camera intent, performance, and ending. Do not invent a different scene or change the creative intent.",
-            "The existing global Audio 1 file remains the only audio source and must stay completely unchanged. Do not generate, replace, remix, extend, or add audio.",
+            "Return only the required JSON shot-description payload. The Builder will assemble the final MiniMax H3 prompt sections, reference definitions, audio reuse, continuity, and safety blocks.",
           ].join("\n"),
-          performance_mode: effectiveVideoPerformanceModeForSegment(segment),
-          lyric_text: lyricText,
-          singers: singerNames,
-          audio_mode: "input_audio",
-          speaker_assignments: [],
-          no_character_present: Boolean(segment.no_character_present),
-          unload_after: index === targets.length - 1,
           temperature: 0.4,
-          top_p: 0.92,
-          max_new_tokens: 4000,
-        }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
+          topP: 0.92,
+          maxNewTokens: 4000,
+          emptyPromptMessage: `${label}: the LLM returned an empty MiniMax H3 prompt.`,
+        });
 
         const prompt = String(data.prompt || "").trim();
         if (!prompt) throw new Error(`${label}: the LLM returned an empty MiniMax H3 prompt.`);
