@@ -72,6 +72,26 @@
         warning: "#f0c96b",
       },
     },
+    graphite: {
+      label: "Graphite",
+      colors: {
+        bg0: "#0a0a0a",
+        bg1: "#141414",
+        bg2: "#202020",
+        bg3: "#303030",
+        text0: "#ffffff",
+        text1: "#d6d6d6",
+        text2: "#969696",
+        border0: "#343434",
+        border1: "#565656",
+        primary: "#ffffff",
+        primary2: "#c8c8c8",
+        primaryText: "#101010",
+        success: "#eeeeee",
+        danger: "#b8b8b8",
+        warning: "#d8d8d8",
+      },
+    },
     neon: {
       label: "Neon",
       colors: {
@@ -397,6 +417,7 @@
       }
       [${ROOT_ATTR}][data-vrgdg-ui-theme="dark"],
       [${ROOT_ATTR}][data-vrgdg-ui-theme="studio"],
+      [${ROOT_ATTR}][data-vrgdg-ui-theme="graphite"],
       [${ROOT_ATTR}][data-vrgdg-ui-theme="neon"],
       [${ROOT_ATTR}][data-vrgdg-ui-theme="forest"] {
         color-scheme: dark;

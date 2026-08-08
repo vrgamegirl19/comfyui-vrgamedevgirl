@@ -16,15 +16,44 @@ BUILDER_GUIDE = (
 
 
 class BuilderUpdateBannerNotesTests(unittest.TestCase):
-    def test_latest_release_documents_storyboard_gemma_reliability(self):
+    def test_latest_release_documents_auto_build_and_singer_cues(self):
         release = UPDATE_NOTES["releases"][0]
+        self.assertEqual(
+            release["id"],
+            "2026-08-07-auto-build-minimax-singer-cues",
+        )
+        self.assertEqual(
+            release["commit"],
+            "adf9bafa12e93c66960b62b3d067719022ef1012",
+        )
+        items = "\n".join(
+            item
+            for section in release["sections"]
+            for item in section.get("items", [])
+        )
+        for expected in (
+            "Auto Build",
+            "MiniMax Singer Assignment",
+            "per-cue audio playback",
+            "Project Batch",
+            "split lyric cues now drive shot count and cut timing",
+            "creative shot JSON only",
+            "lyric cue to Instrumental",
+            "Audio 1 belongs to the target video",
+            "blank Gemma shot descriptions",
+            "Save + Close",
+        ):
+            self.assertIn(expected, items)
+
+    def test_previous_release_documents_storyboard_gemma_reliability(self):
+        release = UPDATE_NOTES["releases"][1]
         self.assertEqual(
             release["id"],
             "2026-08-06-storyboard-gemma-network-reliability",
         )
         self.assertEqual(
             release["commit"],
-            "84fa509b85c88b7d6a8af9b9ca5eafcadf6b8c11",
+            "26004612d5ee0dcdd5269b0835a2b37d13a98223",
         )
         items = "\n".join(
             item
@@ -37,25 +66,26 @@ class BuilderUpdateBannerNotesTests(unittest.TestCase):
             "four-minute request cutoff",
             "NetworkError when attempting to fetch resource",
             "Expanded the AI Video Builder guide",
-            "ComfyUI Registry version 9.1.0",
+            "ComfyUI Registry version 9.1.1",
             "Manager continuing to install the July 3 version 9.0.0",
             "may not contain Git metadata",
+            "Scene render wait limit",
         ):
             self.assertIn(expected, items)
 
     def test_registry_and_runtime_versions_match_current_release(self):
-        self.assertIn('version = "9.1.0"', PACKAGE_METADATA)
-        self.assertIn('__version__ = "v9.1.0"', PACKAGE_INIT)
+        self.assertIn('version = "9.1.1"', PACKAGE_METADATA)
+        self.assertIn('__version__ = "v9.1.1"', PACKAGE_INIT)
         self.assertIn('__updated__ = "2026-08-06"', PACKAGE_INIT)
 
     def test_previous_release_documents_minimax_builder_controls(self):
-        release = UPDATE_NOTES["releases"][1]
+        release = UPDATE_NOTES["releases"][2]
         self.assertEqual(
             release["id"],
             "2026-08-06-minimax-turbo-reference-llm-controls",
         )
         self.assertEqual(
-            UPDATE_NOTES["releases"][2]["id"],
+            UPDATE_NOTES["releases"][3]["id"],
             "2026-08-06-timeline-editing-minimax-prompt-reliability",
         )
         items = "\n".join(
@@ -64,7 +94,7 @@ class BuilderUpdateBannerNotesTests(unittest.TestCase):
             for item in section.get("items", [])
         )
         for expected in (
-            "6 editable steps",
+            "4 editable steps",
             "automatically bypasses EasyCache",
             "environment inspiration",
             "Face + hair only",
@@ -123,8 +153,9 @@ class BuilderUpdateBannerNotesTests(unittest.TestCase):
             "silent timeline clock",
             "allow up to ten minutes per scene",
             "Connection to the ComfyUI backend was lost",
-            "current ComfyUI Registry release is `9.1.0`",
+            "current ComfyUI Registry release is `9.1.1`",
             "Manager-installed folder",
+            "Scene render wait limit (hours)",
         ):
             self.assertIn(expected, BUILDER_GUIDE)
 

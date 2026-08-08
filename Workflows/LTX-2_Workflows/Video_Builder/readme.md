@@ -117,13 +117,13 @@ These are the newest user-facing changes covered throughout this guide:
 | Update | What changed |
 | --- | --- |
 | MiniMax H3 Builder integration | Projects can select MiniMax H3 and use its four scene modes, dedicated prompts and renderer, ordered image/video references, exact timeline trim, input-audio or built-in-audio paths, and H3-aware `Render All`/stitching. |
-| MiniMax-H3 Turbo acceleration | Optional Turbo mode injects the selected Turbo LoRA and dedicated sampler, starts at 6 editable steps with a minimum of 4, bypasses EasyCache by default, and restores the prior normal steps/cache preference when disabled. |
+| MiniMax-H3 Turbo acceleration | Optional Turbo mode injects the selected Turbo LoRA and dedicated sampler, starts at 4 editable steps, allows experimental step values below the usual 4-step target, bypasses EasyCache by default, and restores the prior normal steps/cache preference when disabled. |
 | MiniMax reference priority and editing | Reference-to-Video can use a scene image as the exact start, as LLM-only environment inspiration, as environment-plus-framing inspiration, or not at all. Exact-start scenes can limit character references to face and hair, and Storyboard `Cut frequency` creates an exact duration-aware cut plan. |
 | Larger LLM runner controls | Gemma Local and LM Studio now have separate input-context and maximum-output controls. Supported vision jobs can use LM Studio or a vision-capable LLM API, while progress labels identify genuinely built-in-only work. |
 | MiniMax H3 B-roll safety | Scenes marked B-roll/no-lip-sync now suppress lyric, singer, speaker, and native-voice inputs during prompt generation, remove singing directions from H3 timestamp blocks, and reapply a visual-only safety contract when rendering an existing prompt. |
 | MiniMax short films | Storyboard Builder can plan Guided Film scene cards, import and validate `speaker: dialogue` scripts, map every speaker to a Reference Builder character, preserve exact dialogue, and create the real timeline only after review. |
 | Project storage and memory control | Settings can choose a default folder for newly created projects and can enable or disable automatic RAM/VRAM cleanup. Existing projects and temporary ComfyUI outputs are not moved. |
-| International lyric alignment and longer waits | Lyric matching now preserves Unicode words such as Cyrillic instead of stripping them, and an individual scene render may wait up to two hours before the Builder reports a timeout. |
+| International lyric alignment and longer waits | Lyric matching preserves Unicode words such as Cyrillic instead of stripping them, and Settings can keep an individual scene render waiting from 1–24 hours before the Builder reports a timeout. |
 | Reference lyrics and Story Arc reliability | `Transcribe Existing Scenes` now requires reference lyrics, preserves their exact line order, corrects held or missed boundary words, and no longer inserts pipe delimiters. Beat mode automatically transcribes its finished beat scenes. Story Arc keeps a complete valid heading structure when Gemma only appends invented trailing sections. |
 | Faster scene selection and Ingredients panels | `Select Multi` now supports direct timeline clicks and typed scene lists with ranges and shortcuts. The Ingredients Reference Builder correctly mounts its Sheets, Mapping, and Locations panels. |
 | Timeline and Storyboard prompt controls | `+ Segment` can end at the scrubber, Space toggles playback, `S` adds a segment, Left/Right navigate scenes, Storyboard Video Prep exposes Motion Notes inline, and all-scenes Gemma runs can fill only missing prompts or redo every visible scene. |
@@ -149,9 +149,9 @@ https://github.com/vrgamegirl19/comfyui-vrgamedevgirl
 4. Use the default `main` branch if Manager asks you to choose a branch.
 5. Install, restart ComfyUI, then hard refresh the browser page.
 
-The current ComfyUI Registry release is `9.1.0`. ComfyUI Manager installs a registry package rather than necessarily creating a Git checkout, so `git pull` and the Builder's Git self-updater may not work inside a Manager-installed folder. Use Manager's `Update` or reinstall action for that kind of installation.
+The current ComfyUI Registry release is `9.1.1`. ComfyUI Manager installs a registry package rather than necessarily creating a Git checkout, so `git pull` and the Builder's Git self-updater may not work inside a Manager-installed folder. Use Manager's `Update` or reinstall action for that kind of installation.
 
-If many VRGDG nodes appear but `VRGDG AI Video Builder UI` does not, check the installed version in Manager or the `[VRGDG]` line printed in the ComfyUI terminal during startup. A version older than `9.1.0` predates the current Builder/H3 registry package. Refresh Manager's node data, update or reinstall `comfyui-vrgamedevgirl`, restart ComfyUI, and hard refresh the browser. If Manager still offers the older package, remove only this custom-node folder and use the Git installation below until Manager refreshes its registry data.
+If many VRGDG nodes appear but `VRGDG AI Video Builder UI` does not, check the installed version in Manager or the `[VRGDG]` line printed in the ComfyUI terminal during startup. A version older than `9.1.0` predates the Builder/H3 registry package, while `9.1.1` adds the configurable scene-render wait. Refresh Manager's node data, update or reinstall `comfyui-vrgamedevgirl`, restart ComfyUI, and hard refresh the browser. If Manager still offers the older package, remove only this custom-node folder and use the Git installation below until Manager refreshes its registry data.
 
 ### New Install With Git
 
@@ -1113,7 +1113,7 @@ The main video settings choose aspect ratio, megapixels, seed, warm-up frames, a
 
 Enable `Use MiniMax-H3 Turbo LoRA (4-step)` when the optional `ComfyUI-MiniMax-H3-Turbo` extension and selected Turbo LoRA are installed. The Builder injects the Turbo LoRA and dedicated Turbo sampler into a queued copy of the hidden workflow; standard MiniMax rendering is unchanged while Turbo is off.
 
-When Turbo turns on, the Builder defaults to 6 editable steps, enforces a minimum of 4, and enables `Bypass EasyCache`. The step field remains editable for quality/speed testing. Turning Turbo off restores the normal step count and EasyCache preference that were active before Turbo was enabled. Existing projects saved with the former 20-step Turbo default migrate to the newer 6-step default when appropriate.
+When Turbo turns on, the Builder defaults to 4 editable steps and enables `Bypass EasyCache`. The step field remains editable down to 1 for quality/speed experiments, though values below 4 are outside the Turbo LoRA's usual 4-step target. Turning Turbo off restores the normal step count and EasyCache preference that were active before Turbo was enabled. Existing projects saved with the former 20-step Turbo default migrate to the newer 4-step default when appropriate.
 
 The default Turbo LoRA filename is:
 
@@ -2639,6 +2639,7 @@ Common settings:
 | Setting | What it does |
 | --- | --- |
 | Project Video Engine | Chooses `LTX (current Builder)` or the separate `MiniMax H3` path for the whole project |
+| Scene render wait limit | Chooses how many hours, from 1–24, the Builder follows each queued LTX or MiniMax scene before reporting a timeout |
 | Default folder for new projects | Optional absolute parent folder used by New Project, Save Project As, and Branch Project |
 | Custom model root | Optional alternate models folder root |
 | Run automatic RAM/VRAM cleanup | Controls embedded cleanup nodes and automatic cache clearing between Builder jobs |
@@ -2652,6 +2653,10 @@ Common settings:
 ### Project Video Engine
 
 Choose the engine before creating prompts and videos. `LTX (current Builder)` keeps the existing LTX modes and renderer. `MiniMax H3` shows the separate four-mode H3 panel, exact-timeline adapter, and H3 scene action. The value is saved with the project; older sessions without it load as LTX.
+
+### Render Waiting
+
+`Scene render wait limit (hours)` accepts 1–24 hours and defaults to 2. It is saved with the project and applies to newly started individual or batch scene renders for both LTX and MiniMax. Reaching this limit only stops the Builder from polling that scene; it does not cancel a render that is still active in the ComfyUI queue. Let the queue finish and use `Recover Scene Videos` when necessary.
 
 ### Project Storage
 
@@ -3038,7 +3043,7 @@ Use this for new projects.
 | Ingredients tabs are blank | Update to the newest Builder, restart ComfyUI, and hard refresh the browser so the repaired Sheets, Mapping, and Locations panels load |
 | Story Arc reports a changed lyric structure | Update and rerun. Trailing invented headings are removed automatically; a remaining error means Gemma actually missed, renamed, reordered, or inserted a heading inside the required structure |
 | Render All progress disappeared | Reopen the persistent render log and inspect the saved JSON/text report in the project for completed phases, failures, and stitch timing |
-| A scene render reports the wait limit | The Builder now waits up to two hours. Check whether the ComfyUI queue is still running; if it finished, use scene-video recovery/history, and inspect the terminal plus temporary output before retrying |
+| A scene render reports the wait limit | Open `Menu` -> `Settings` -> `Render Waiting` and increase `Scene render wait limit (hours)` up to 24. If ComfyUI is still rendering, let it finish and then use scene-video recovery/history; also inspect the terminal and temporary output before retrying |
 | `Delete ALL Videos` cleared the timeline | The underlying video/thumbnail files were intentionally left in the project folder. Reassign or recover the desired file; unlike `Delete ALL Images`, this action does not delete media files. |
 | Prompt Creator data does not populate notes | Use `Send To AI Video Builder` or `Import Data From Prompt Creator`, then reload/import prompt files if needed |
 | LM Studio is selected but a pass says Built-in GGUF | That job is explicitly local-only, or the selected LM Studio model cannot serve the required path. Supported text/vision jobs name LM Studio in progress; test the server/model and use a vision-capable model for image-reference work. |
