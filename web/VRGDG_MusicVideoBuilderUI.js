@@ -37914,7 +37914,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
     add(parts, "Scene idea", sceneVideoConceptPromptText(segment));
     add(parts, "Scene notes", segment?.notes || segment?.director_note);
-    add(parts, "Scene Defaults context", options.includeSceneDefaultsContext === false ? "" : miniMaxH3SceneDefaultsContextForSegment(segment), 2600);
+    add(parts, "Scene Defaults context", options.includeSceneDefaultsContext === false ? "" : miniMaxH3SceneDefaultsContextForSegment(segment, { compact: true }), 1800);
     add(parts, "Storyboard Builder context", options.storyboardContext || options.extraStoryboardNotes, 2200);
     add(parts, "Motion/camera request", segment?.i2v_notes);
     add(parts, "Story beat", segment?.story_beat);
@@ -37933,6 +37933,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
     add(parts, "Manual audio direction for staging only", segment?.audio_direction);
     add(parts, "Continuity notes for staging only", segment?.continuity);
+    parts.push("FINAL OUTPUT REQUIREMENT: return only the JSON object with the shots array. Do not append Audio, Audio 1, Continuity, subject_definitions, detailed_description, markdown, notes, or any prose after the closing JSON brace.");
     return parts.join("\n\n");
   }
 
