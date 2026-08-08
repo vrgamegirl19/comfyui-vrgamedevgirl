@@ -17,7 +17,7 @@
             "Added Auto Build to the Builder toolbar so music-video projects can create scenes, lyrics, references, mappings, defaults, and prompts from a simpler guided setup.",
             "Added MiniMax Singer Assignment for split lyric cues, including timed lyric and instrumental rows, per-cue singer selection, and synchronized Reference Builder mappings.",
             "Added compact per-cue audio playback controls so users can audition each lyric or instrumental slice while setting Start and End times.",
-            "Added timed Dialogue and Instrumental cue rows to MiniMax built-in-audio Speaker Assignment, bringing the same Start, End, Play Cue, and boundary-sync workflow used by singer cues to generated dialogue scenes.",
+            "Added timed Dialogue and Instrumental cue rows to MiniMax built-in-audio Speaker Assignment, bringing the same Start, End, Play Cue, Auto Time This Scene, and boundary-sync workflow used by singer cues to generated dialogue scenes.",
             "Added a shared MiniMax H3 prompt-generation path so the side panel, Storyboard Builder, Wizard Storyboard All, and Auto Build can produce the same final MiniMax prompt format.",
             "Added Project Batch tooling for running saved projects one after another."
           ]

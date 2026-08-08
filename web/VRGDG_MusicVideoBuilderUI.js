@@ -7041,11 +7041,13 @@ function openBuilder(node) {
     const cues = ensureMiniMaxSpeakerAssignments(segment, speakers);
     segment.minimax_speaker_assignments = cues;
     const audioTools = document.createElement("div");
-    audioTools.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+    audioTools.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;";
     const playSceneCueAudio = makeButton("Play Scene Clock", "primary");
     const jumpSceneCueAudio = makeButton("Jump To Scene Start");
+    const autoTimeSceneCues = makeButton("Auto Time This Scene");
     applyCompactButtonLabel(playSceneCueAudio, "Play\nScene Clock", { noMap: true, padding: "7px 6px", title: "Play this scene range. If no generated audio exists yet, the silent timeline clock still lets you set cue times." });
     applyCompactButtonLabel(jumpSceneCueAudio, "Jump To\nScene Start", { noMap: true, padding: "7px 6px", title: "Move the playhead to this scene start." });
+    applyCompactButtonLabel(autoTimeSceneCues, "Auto Time\nThis Scene", { noMap: true, padding: "7px 6px", title: "Use Stable-ts to fill dialogue/instrumental cue start/end times from rendered scene audio or custom/project audio." });
     playSceneCueAudio.onclick = () => {
       const start = timelineAudioStartForSegment(segment);
       if (!playSceneAudioFrom(start)) {
@@ -7058,7 +7060,8 @@ function openBuilder(node) {
       activateGlobalTimelineAudioPlayback(start);
       toast(`Playhead moved to ${formatTime(start)}. Play the scene, then use Set Start / Set End on cue rows.`);
     };
-    audioTools.append(playSceneCueAudio, jumpSceneCueAudio);
+    autoTimeSceneCues.onclick = () => autoTimeMiniMaxSpeakerCuesForSegment(segment);
+    audioTools.append(playSceneCueAudio, jumpSceneCueAudio, autoTimeSceneCues);
     miniMaxSpeakerAssignmentList.append(audioTools);
 
     const cueActions = document.createElement("div");
@@ -21908,14 +21911,84 @@ function openBuilder(node) {
     return rebuilt.filter((cue) => cue.type === "instrumental" || cue.text);
   }
 
+  function rebuildSpeakerCueMapFromTimestampedSegments(segment, currentCues = [], timestamped = [], options = {}) {
+    const sceneDuration = Math.max(0, Number(timelineSegmentDuration(segment) || 0));
+    const minInstrumentalGap = Math.max(0, Number(options.minInstrumentalGap ?? 0.5));
+    const trailingSpeechTailMergeSeconds = Math.max(0, Number(options.trailingSpeechTailMergeSeconds ?? 1.0));
+    const normalizedCues = normalizeMiniMaxSpeakerAssignments(currentCues);
+    const dialogueCues = normalizedCues.filter((cue) => cue.type !== "instrumental" && flattenLyricForPrompt(cue.text));
+    const instrumentalNotes = normalizedCues
+      .filter((cue) => cue.type === "instrumental")
+      .map((cue) => String(cue.action_note || cue.note || "").trim())
+      .filter(Boolean);
+    let dialogueIndex = 0;
+    let instrumentalIndex = 0;
+    const rebuilt = [];
+    const absorbSkippedGap = (end) => {
+      if (!rebuilt.length) return;
+      const previous = rebuilt[rebuilt.length - 1];
+      if (!Number.isFinite(Number(previous.end)) || Number(previous.end) < end) previous.end = end;
+    };
+    for (let itemIndex = 0; itemIndex < timestamped.length; itemIndex += 1) {
+      const item = timestamped[itemIndex];
+      const start = Math.max(0, Math.min(sceneDuration || item.start, Number(item.start)));
+      const end = Math.max(start, Math.min(sceneDuration || item.end, Number(item.end)));
+      if (item.type === "instrumental") {
+        const hasLaterDialogue = timestamped.slice(itemIndex + 1).some((next) => next.type !== "instrumental");
+        const previous = rebuilt[rebuilt.length - 1];
+        if (!hasLaterDialogue && previous?.type !== "instrumental" && end - start <= trailingSpeechTailMergeSeconds) {
+          previous.end = end;
+          continue;
+        }
+        if (end - start < minInstrumentalGap) {
+          if (start <= 0.001 && rebuilt[0]) rebuilt[0].start = 0;
+          else absorbSkippedGap(end);
+          continue;
+        }
+        const note = instrumentalNotes[instrumentalIndex++] || "";
+        rebuilt.push({ type: "instrumental", text: "", action_note: note, speaker_id: "", speaker_name: "", start, end });
+        continue;
+      }
+      const source = dialogueCues[dialogueIndex++] || {};
+      rebuilt.push({
+        type: "dialogue",
+        text: flattenLyricForPrompt(source.text || item.text),
+        action_note: "",
+        speaker_id: String(source.speaker_id || "").trim(),
+        speaker_name: String(source.speaker_name || "").trim(),
+        start,
+        end,
+      });
+    }
+    while (dialogueIndex < dialogueCues.length) {
+      const source = dialogueCues[dialogueIndex++];
+      const start = miniMaxNextCueStartTime(segment, rebuilt);
+      rebuilt.push({
+        type: "dialogue",
+        text: flattenLyricForPrompt(source.text),
+        action_note: "",
+        speaker_id: String(source.speaker_id || "").trim(),
+        speaker_name: String(source.speaker_name || "").trim(),
+        start,
+        end: null,
+      });
+    }
+    if (rebuilt.length) {
+      const last = rebuilt[rebuilt.length - 1];
+      if (!Number.isFinite(Number(last.end)) || Number(last.end) <= Number(last.start)) last.end = sceneDuration || null;
+    }
+    return normalizeMiniMaxSpeakerAssignments(rebuilt).filter((cue) => cue.type === "instrumental" || cue.text);
+  }
+
   async function prepareSceneAudioClipForTimestamping(segment, progress = null) {
     const projectFolder = String(projectInput.value || state.projectFolder || "").trim();
     const customAudioPath = String(segment?.custom_audio_path || "").trim();
-    const sourcePath = customAudioPath || currentProjectAudioPath();
-    if (!sourcePath) throw new Error("Load project audio first, or add custom scene audio for this scene.");
-    if (!projectFolder) throw new Error("Create or load a project before auto-timing singer cues.");
+    const renderedAudioPath = segmentUsesRenderedTimelineAudio(segment) ? String(selectedSegmentVideoPath(segment) || "").trim() : "";
+    const sourcePath = customAudioPath || renderedAudioPath || currentProjectAudioPath();
+    if (!sourcePath) throw new Error("Load project audio, add custom scene audio, or render this built-in-audio scene before auto-timing cues.");
+    if (!projectFolder) throw new Error("Create or load a project before auto-timing cues.");
     const sceneNumber = sceneSlotNumber(segment);
-    const start = customAudioPath ? audioSourceStart(segment) : Math.max(0, Number(segment.start || 0));
+    const start = customAudioPath ? audioSourceStart(segment) : renderedAudioPath ? 0 : Math.max(0, Number(segment.start || 0));
     const duration = customAudioPath ? audioChunkDuration(segment) : timelineSegmentDuration(segment);
     progress?.set(`Preparing ${duration.toFixed(3)}s scene audio clip...`, 10);
     const prepared = await postJson("/vrgdg/workflow_runner/prepare_scene_audio_clip", {
@@ -21994,6 +22067,47 @@ function openBuilder(node) {
     } catch (error) {
       progress.set(`Error:\n${String(error?.message || error)}`, 100);
       progress.close(6000);
+      toast(String(error?.message || error), true);
+    }
+  }
+
+  async function autoTimeMiniMaxSpeakerCuesForSegment(segment) {
+    if (!segment || !isMiniMaxBuiltInSpeakerAssignmentMode(segment)) return;
+    const progress = createProgressWindow("Auto Time Speaker Cues");
+    try {
+      const cues = ensureMiniMaxSpeakerAssignments(segment, miniMaxMappedSpeakersForSegment(segment));
+      const dialogueCues = normalizeMiniMaxSpeakerAssignments(cues).filter((cue) => cue.type !== "instrumental" && flattenLyricForPrompt(cue.text));
+      if (!dialogueCues.length) throw new Error("Add at least one dialogue cue before auto-timing this scene.");
+      if (!String(segment.custom_audio_path || "").trim() && !segmentUsesRenderedTimelineAudio(segment) && !currentProjectAudioPath()) {
+        throw new Error("Auto Time needs audio to analyze. Render this MiniMax built-in-audio scene first, or add custom/project audio for testing.");
+      }
+      progress.set("Preparing dialogue cue text...", 5);
+      const referenceDialogue = dialogueCues.map((cue) => flattenLyricForPrompt(cue.text)).filter(Boolean).join("\n");
+      const audioPath = await prepareSceneAudioClipForTimestamping(segment, progress);
+      const payload = await runTimestampedCueWorkflow(audioPath, referenceDialogue, progress, timelineSegmentDuration(segment));
+      const timestamped = timestampedCueSegments(payload);
+      if (!timestamped.length) throw new Error("Stable-ts did not return usable cue timestamps for this scene.");
+      progress.set("Applying timestamped speaker cue rows...", 88);
+      const rebuilt = rebuildSpeakerCueMapFromTimestampedSegments(segment, cues, timestamped, { minInstrumentalGap: 0.5 });
+      if (!rebuilt.length) throw new Error("No usable speaker cue rows were created from the timestamped result.");
+      pushHistory();
+      segment.minimax_speaker_assignments = rebuilt;
+      syncMiniMaxSpeakerAssignmentLegacyFields(segment);
+      renderMiniMaxSpeakerAssignmentPanel();
+      syncInspector();
+      render();
+      await autoSaveSessionQuiet("MiniMax speaker cues auto-timed");
+      const dialogueReturned = timestamped.filter((item) => item.type !== "instrumental").length;
+      const instrumentalReturned = rebuilt.filter((item) => item.type === "instrumental").length;
+      const warning = dialogueReturned !== dialogueCues.length
+        ? `\nWarning: Stable-ts returned ${dialogueReturned} dialogue cue${dialogueReturned === 1 ? "" : "s"} for ${dialogueCues.length} mapped dialogue cue${dialogueCues.length === 1 ? "" : "s"}. Review before rendering.`
+        : "";
+      progress.set(`Auto timing complete.\nDialogue cues: ${dialogueReturned}\nInstrumental gaps: ${instrumentalReturned}${warning}`, 100);
+      progress.close(2600);
+      toast("Speaker cue timing filled. Review with Play Cue before rendering.");
+    } catch (error) {
+      progress.set(`Error:\n${String(error?.message || error)}`, 100);
+      progress.close(7000);
       toast(String(error?.message || error), true);
     }
   }
