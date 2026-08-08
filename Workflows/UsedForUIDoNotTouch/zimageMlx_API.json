@@ -1,0 +1,32 @@
+{
+    "1": {
+        "inputs": {
+            "model_name": "z-image-turbo",
+            "quantize": "4",
+            "custom_model_path": "",
+            "loras": ""
+        },
+        "class_type": "ZImageModelLoader",
+        "_meta": {
+            "title": "Z-Image MLX Model Loader"
+        }
+    },
+    "2": {
+        "inputs": {
+            "pipeline": ["1", 0],
+            "prompt": "",
+            "negative_prompt": "",
+            "height": 1024,
+            "width": 1024,
+            "num_inference_steps": 4,
+            "seed": 0,
+            "guidance": 1.0,
+            "image_strength": 0.3,
+            "filename_prefix": "zimage_mlx/reference"
+        },
+        "class_type": "ZImageGenerate",
+        "_meta": {
+            "title": "Z-Image MLX Generate"
+        }
+    }
+}
