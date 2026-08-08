@@ -26151,7 +26151,7 @@ function openBuilder(node) {
       tabBar.append(button);
     }
     tabShell.append(tabBar, tabContent);
-    setReferenceTab(wizardLocationMode ? "locations" : "subjects");
+    setReferenceTab(options?.initialTab || (wizardLocationMode ? "locations" : "subjects"));
     const footer = document.createElement("div");
     footer.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;flex:0 0 auto;";
     const cancel = makeButton("Cancel");
@@ -26160,6 +26160,10 @@ function openBuilder(node) {
     box.append(header, inlineProgress, tabShell, footer);
     backdrop.append(box);
     document.body.append(backdrop);
+
+    if (options?.openLocationImport) {
+      setTimeout(() => openImportLocationsDialog(), 0);
+    }
 
     const fileInput = document.createElement("input");
     fileInput.type = "file";
@@ -49523,7 +49527,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     locationInput.style.display = "none";
     body.append(songInput, singerInput, locationInput);
 
-    const selected = { song: null, singer: null, locations: [] };
+    const selected = { song: null, singer: null, locations: [], locationSource: "images" };
     const uploadCard = (number, title, caption, buttonLabel, optional = false) => {
       const card = document.createElement("div");
       card.style.cssText = "border:1px solid #334155;border-radius:10px;background:#111827;padding:11px;display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:10px;align-items:center;";
@@ -49548,9 +49552,25 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const songRow = uploadCard(1, "Song", currentAudioPath ? `Using current audio: ${currentAudioPath.split(/[\\/]/).pop()}` : "MP3, WAV, FLAC, M4A, or OGG", "Choose Song");
     const singerRow = uploadCard(3, "Singer image", "One clear reference image of the singer", "Choose Singer");
     const locationRow = uploadCard(4, "Location images", "One image repeats; multiple images rotate every two scenes", "Add Locations", true);
+    const scoutLocations = makeButton("Use GPT Scout", "primary");
+    scoutLocations.style.minWidth = "116px";
+    locationRow.card.style.gridTemplateColumns = "34px minmax(0,1fr) auto auto";
+    locationRow.card.append(scoutLocations);
     songRow.choose.onclick = () => songInput.click();
     singerRow.choose.onclick = () => singerInput.click();
-    locationRow.choose.onclick = () => locationInput.click();
+    locationRow.choose.onclick = () => {
+      selected.locationSource = "images";
+      locationInput.click();
+    };
+    scoutLocations.onclick = () => {
+      selected.locationSource = "gpt_scout";
+      locationRow.status.textContent = "GPT Scout selected; import locations and scene mappings in Reference Builder";
+      openFluxReferenceBuilderModal({
+        miniMaxTargetMode: selectedEngine === "minimax_h3" ? "reference_to_video" : undefined,
+        initialTab: "locations",
+        openLocationImport: true,
+      });
+    };
     songInput.onchange = () => {
       selected.song = songInput.files?.[0] || null;
       songRow.status.textContent = selected.song ? selected.song.name : (currentAudioPath ? `Using current audio: ${currentAudioPath.split(/[\\/]/).pop()}` : "Choose a song file");
@@ -49560,6 +49580,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       singerRow.status.textContent = selected.singer ? selected.singer.name : "Choose one singer image";
     };
     locationInput.onchange = () => {
+      selected.locationSource = "images";
       selected.locations = Array.from(locationInput.files || []);
       locationRow.status.textContent = selected.locations.length
         ? `${selected.locations.length} location image${selected.locations.length === 1 ? "" : "s"}: ${selected.locations.map((file) => file.name).join(", ")}`
@@ -49582,9 +49603,54 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     lyricsWrap.append(lyricsLabel, lyricsInput);
     lyricsCard.append(lyricsBadge, lyricsWrap);
 
+    const advanced = document.createElement("details");
+    advanced.style.cssText = "border:1px solid #334155;border-radius:10px;background:#0f172a;padding:0 11px;";
+    const advancedSummary = document.createElement("summary");
+    advancedSummary.textContent = "Advanced options";
+    advancedSummary.style.cssText = "cursor:pointer;padding:11px 0;font-size:12px;font-weight:900;color:#cbd5e1;";
+    const advancedBody = document.createElement("div");
+    advancedBody.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;padding:0 0 11px;";
+    const durationLabel = document.createElement("label");
+    durationLabel.textContent = "Segment duration";
+    durationLabel.style.cssText = "display:flex;flex-direction:column;gap:5px;font-size:11px;color:#cbd5e1;font-weight:800;";
+    const durationSelect = document.createElement("select");
+    durationSelect.style.cssText = "border:1px solid #475569;border-radius:7px;background:#020617;color:#f8fafc;padding:8px;font-size:12px;";
+    for (const [value, label] of [["8", "8 seconds (recommended)"], ["5", "5 seconds (lower VRAM)"], ["6", "6 seconds"], ["custom", "Custom"]]) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      durationSelect.append(option);
+    }
+    const customDuration = document.createElement("input");
+    customDuration.type = "number";
+    customDuration.min = "1";
+    customDuration.max = "60";
+    customDuration.step = "0.5";
+    customDuration.value = "8";
+    customDuration.placeholder = "Seconds";
+    customDuration.style.cssText = "display:none;border:1px solid #475569;border-radius:7px;background:#020617;color:#f8fafc;padding:8px;font-size:12px;";
+    durationSelect.onchange = () => { customDuration.style.display = durationSelect.value === "custom" ? "block" : "none"; };
+    durationLabel.append(durationSelect, customDuration);
+    const advancedHint = document.createElement("div");
+    advancedHint.textContent = "Shorter segments reduce per-clip VRAM use. Auto Build still clamps the final segment to the exact audio end.";
+    advancedHint.style.cssText = "align-self:end;color:#94a3b8;font-size:11px;line-height:1.4;padding-bottom:2px;";
+    const useCurrentBuilderSettings = makeCheckbox("Use current Scene Defaults and story settings", false);
+    useCurrentBuilderSettings.wrapper.style.cssText += "grid-column:1 / -1;border:1px solid #334155;border-radius:7px;background:#111827;padding:8px;";
+    useCurrentBuilderSettings.wrapper.title = "Preserve the current Scene Defaults, story layer, story beats, and per-scene performance settings instead of applying Auto Build recommendations.";
+    advancedBody.append(durationLabel, advancedHint, useCurrentBuilderSettings.wrapper);
+    advanced.append(advancedSummary, advancedBody);
+
     const note = document.createElement("div");
     note.style.cssText = "border:1px solid #155e75;border-radius:9px;background:#062b36;padding:10px 12px;color:#bae6fd;font-size:11px;line-height:1.45;";
-    note.textContent = "Auto Build creates complete 8-second coverage, uses the LLM to describe the singer and locations, transcribes the existing scenes, maps everything, applies the recommended defaults, and generates prompts. It returns you to the normal timeline so you can review every lyric note.";
+    const selectedDurationLabel = () => durationSelect.value === "custom"
+      ? `${Math.max(1, Math.min(60, Number(customDuration.value) || 8))} seconds`
+      : `${durationSelect.value} seconds`;
+    const syncAutoBuildNote = () => {
+      note.textContent = `Auto Build creates complete ${selectedDurationLabel()} coverage, uses the LLM to describe the singer and locations, transcribes the existing scenes, maps everything, applies the recommended defaults, and generates prompts. It returns you to the normal timeline so you can review every lyric note.`;
+    };
+    durationSelect.addEventListener("change", syncAutoBuildNote);
+    customDuration.addEventListener("input", syncAutoBuildNote);
+    syncAutoBuildNote();
     const projectWarning = document.createElement("div");
     const getAutoBuildProjectFolder = () => String(projectInput.value || state.projectFolder || "").trim();
     let projectFolder = getAutoBuildProjectFolder();
@@ -49596,7 +49662,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     projectWarning.append(projectWarningText, createProjectNow);
     const status = document.createElement("div");
     status.style.cssText = "display:none;border:1px solid #0891b2;border-radius:9px;background:#083344;padding:11px 12px;color:#cffafe;font-size:12px;font-weight:800;white-space:pre-wrap;line-height:1.45;";
-    body.append(engineCard, runnerCard, songRow.card, lyricsCard, singerRow.card, locationRow.card, note, projectWarning, status);
+    body.append(engineCard, runnerCard, songRow.card, lyricsCard, singerRow.card, locationRow.card, advanced, note, projectWarning, status);
 
     const footer = document.createElement("div");
     footer.style.cssText = "display:grid;grid-template-columns:1fr minmax(210px,auto);gap:10px;padding:13px 18px;border-top:1px solid #164e63;background:#0f172a;";
@@ -49754,6 +49820,17 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         toast("Choose one singer reference image before starting Auto Build.", true);
         return;
       }
+      const requestedSegmentDuration = durationSelect.value === "custom"
+        ? Number(customDuration.value)
+        : Number(durationSelect.value);
+      const segmentDuration = Math.max(1, Math.min(60, Number.isFinite(requestedSegmentDuration) ? requestedSegmentDuration : 8));
+      if (selected.locationSource === "gpt_scout") {
+        const importedLocations = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder).locations || [];
+        if (!importedLocations.length) {
+          toast("Import at least one GPT Scout location before starting Auto Build.", true);
+          return;
+        }
+      }
       try {
         validateAutoBuildPromptRunner();
       } catch (error) {
@@ -49777,7 +49854,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       cancel.disabled = true;
       close.disabled = true;
       createProjectNow.disabled = true;
-      for (const control of [ltxEngine, miniMaxEngine, openRunner, songRow.choose, singerRow.choose, locationRow.choose, lyricsInput]) control.disabled = true;
+      for (const control of [ltxEngine, miniMaxEngine, openRunner, songRow.choose, singerRow.choose, locationRow.choose, scoutLocations, lyricsInput, durationSelect, customDuration, useCurrentBuilderSettings.input]) control.disabled = true;
       status.style.display = "block";
       const setStatus = (message) => {
         status.textContent = message;
@@ -49806,11 +49883,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         syncVideoModePanel();
         syncI2VVideoSettingsPanel();
 
-        setStatus("2/7  Creating complete 8-second timeline coverage...");
-        const sceneCount = Math.max(1, Math.ceil(songDuration / 8));
+        setStatus(`2/7  Creating complete ${segmentDuration}-second timeline coverage...`);
+        const sceneCount = Math.max(1, Math.ceil(songDuration / segmentDuration));
         const timings = Array.from({ length: sceneCount }, (_, index) => ({
-          start: index * 8,
-          end: Math.min(songDuration, (index + 1) * 8),
+          start: index * segmentDuration,
+          end: Math.min(songDuration, (index + 1) * segmentDuration),
         }));
         await applyBulkSegmentTimings(timings, "replace");
         state.overlaySegments = [];
@@ -49823,6 +49900,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         refs.locations_cleared = false;
         refs.subjects = refs.subjects.filter((item) => !String(item?.id || "").startsWith("auto_build_singer_"));
         refs.locations = refs.locations.filter((item) => !String(item?.id || "").startsWith("auto_build_location_"));
+        const importedLocations = refs.locations.slice();
         const singerData = await readFileAsDataUrl(selected.singer);
         const singer = {
           id: `auto_build_singer_${Date.now()}`,
@@ -49846,8 +49924,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         };
         refs.use_subject_reference = true;
         const autoLocations = [];
-        const locationData = await Promise.all(selected.locations.map((file) => readFileAsDataUrl(file)));
-        selected.locations.forEach((file, index) => {
+        const locationData = await Promise.all(selected.locationSource === "images" ? selected.locations.map((file) => readFileAsDataUrl(file)) : []);
+        (selected.locationSource === "images" ? selected.locations : []).forEach((file, index) => {
           const location = {
             id: `auto_build_location_${Date.now()}_${index}`,
             name: imageBaseName(file, `Location ${index + 1}`),
@@ -49877,13 +49955,17 @@ Chrome vault corridor = Sealed industrial passage...</pre>
             clearBeforeLoad: false,
           });
         }
-        refs.use_location_references = autoLocations.length > 0;
+        refs.use_location_references = importedLocations.length > 0 || autoLocations.length > 0;
         refs.subject_scene_map = {};
-        refs.scene_map = {};
+        refs.scene_map = selected.locationSource === "gpt_scout" && refs.scene_map && typeof refs.scene_map === "object"
+          ? { ...refs.scene_map }
+          : {};
         state.segments.forEach((segment, index) => {
           refs.subject_scene_map[segment.id] = [singer.id];
-          if (autoLocations.length) refs.scene_map[segment.id] = autoLocations[Math.floor(index / 2) % autoLocations.length].id;
-          else delete refs.scene_map[segment.id];
+          const availableLocations = autoLocations.length ? autoLocations : importedLocations;
+          if (!refs.scene_map[segment.id] && availableLocations.length) {
+            refs.scene_map[segment.id] = availableLocations[Math.floor(index / 2) % availableLocations.length].id;
+          }
           segment.lyric_singers = [singer.name];
           segment.lyric_no_lip_sync = false;
           segment.no_character_present = false;
@@ -49894,44 +49976,48 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         });
         state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
 
-        setStatus("4/7  Applying recommended scene defaults...");
-        state.builderStoryLayer = normalizeBuilderStoryLayer({
-          enabled: true,
-          overall_story_idea: "",
-          user_story_arc: "",
-          song_story_brief: "",
-          lyric_story_strength: 3,
-          image_world_style: "natural",
-          image_custom_style_direction: "",
-        });
-        state.builderStoryboardDefaults = normalizeBuilderStoryboardDefaults({
-          ...state.builderStoryboardDefaults,
-          video_style: "Cinematic realism",
-          video_style_custom: "",
-          temporal_world_effect: "",
-          temporal_world_effect_custom: "",
-          global_consistency_phrase: "",
-          camera_flow: "intimate_closeups",
-          camera_motion_speed: 6,
-          minimax_h3_cut_frequency: 3,
-          performance_style: "",
-          character_motion_speed: 4,
-          camera_guidance: builderMotionSpeedGuidance(6, "camera"),
-          character_guidance: builderMotionSpeedGuidance(4, "character"),
-        });
-        state.defaultFacialPerformance = "";
-        state.defaultFacialPerformanceCustom = "";
-        let previousMotion = "";
-        state.segments.forEach((segment, index) => {
-          const camera = storyboardCameraFlowEntry("intimate_closeups", index, previousMotion);
-          if (camera?.shot) segment.shot_type = camera.shot;
-          if (camera?.camera) segment.camera_motion = camera.camera;
-          previousMotion = String(segment.camera_motion || previousMotion);
-          segment.performance_style = "";
-          segment.facial_performance = "";
-          segment.facial_performance_custom = "";
-          segment.character_motion = builderMotionSpeedGuidance(4, "character");
-        });
+        if (useCurrentBuilderSettings.input.checked) {
+          setStatus("4/7  Preserving current Scene Defaults and story settings...");
+        } else {
+          setStatus("4/7  Applying recommended scene defaults...");
+          state.builderStoryLayer = normalizeBuilderStoryLayer({
+            enabled: true,
+            overall_story_idea: "",
+            user_story_arc: "",
+            song_story_brief: "",
+            lyric_story_strength: 3,
+            image_world_style: "natural",
+            image_custom_style_direction: "",
+          });
+          state.builderStoryboardDefaults = normalizeBuilderStoryboardDefaults({
+            ...state.builderStoryboardDefaults,
+            video_style: "Cinematic realism",
+            video_style_custom: "",
+            temporal_world_effect: "",
+            temporal_world_effect_custom: "",
+            global_consistency_phrase: "",
+            camera_flow: "intimate_closeups",
+            camera_motion_speed: 6,
+            minimax_h3_cut_frequency: 3,
+            performance_style: "",
+            character_motion_speed: 4,
+            camera_guidance: builderMotionSpeedGuidance(6, "camera"),
+            character_guidance: builderMotionSpeedGuidance(4, "character"),
+          });
+          state.defaultFacialPerformance = "";
+          state.defaultFacialPerformanceCustom = "";
+          let previousMotion = "";
+          state.segments.forEach((segment, index) => {
+            const camera = storyboardCameraFlowEntry("intimate_closeups", index, previousMotion);
+            if (camera?.shot) segment.shot_type = camera.shot;
+            if (camera?.camera) segment.camera_motion = camera.camera;
+            previousMotion = String(segment.camera_motion || previousMotion);
+            segment.performance_style = "";
+            segment.facial_performance = "";
+            segment.facial_performance_custom = "";
+            segment.character_motion = builderMotionSpeedGuidance(4, "character");
+          });
+        }
 
         setStatus("5/7  Transcribing the existing scenes and filling lyric notes...");
         await transcribeExistingScenesWithOptions({
@@ -49974,7 +50060,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         cancel.disabled = false;
         close.disabled = false;
         createProjectNow.disabled = false;
-        for (const control of [ltxEngine, miniMaxEngine, openRunner, songRow.choose, singerRow.choose, locationRow.choose, lyricsInput]) control.disabled = false;
+        for (const control of [ltxEngine, miniMaxEngine, openRunner, songRow.choose, singerRow.choose, locationRow.choose, scoutLocations, lyricsInput, durationSelect, customDuration, useCurrentBuilderSettings.input]) control.disabled = false;
         toast(`Auto Build paused:\n${String(error?.message || error)}`, true);
       }
     };
