@@ -38373,8 +38373,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const prefix = normalizedMode === "image_to_video"
       ? `For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.\n\n`
       : "";
-    const defaultsLine = miniMaxH3SceneDefaultsContextForSegment(segment, { compact: true });
-    return `${prefix}integrated_multimodal_description:\n${[defaultsLine, creative].filter(Boolean).join("\n\n")}`;
+    return `${prefix}integrated_multimodal_description:\n${creative}`;
   }
 
   function assembleMiniMaxH3OfficialPromptFromCreative(segment, mode, creativePrompt) {
@@ -38408,7 +38407,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       `subject_definitions:\n${definitions.join("\n")}`,
       `summary:\n${miniMaxH3OfficialSummary(segment, normalizedMode, refs)}`,
       `retention_analysis:\n${retention.join("\n")}`,
-      `detailed_description:\nThe target video is in a ${miniMaxH3OpeningStyle(segment)} music-video style.\n\n${[miniMaxH3SceneDefaultsContextForSegment(segment, { compact: true }), creative].filter(Boolean).join("\n\n")}`,
+      `detailed_description:\nThe target video is in a ${miniMaxH3OpeningStyle(segment)} music-video style.\n\n${creative}`,
       miniMaxH3OfficialSoundscape(segment),
       miniMaxH3OfficialMusic(segment),
     ].filter(Boolean).join("\n\n").trim();
