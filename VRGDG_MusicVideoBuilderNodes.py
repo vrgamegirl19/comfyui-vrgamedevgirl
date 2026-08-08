@@ -5773,6 +5773,10 @@ def _generate_builder_t2v_prompt(payload):
     no_character_present = bool(payload.get("no_character_present") or payload.get("no_subject") or payload.get("no_visible_subject"))
     instruction_key = _safe_builder_instruction_key(payload.get("builder_instruction_key") or payload.get("instruction_key") or "t2v")
     is_minimax_h3_prompt = instruction_key.startswith("minimax_h3_")
+    structured_shot_descriptions = bool(
+        payload.get("structured_shot_descriptions")
+        or payload.get("structuredShotDescriptions")
+    )
     prompt_only_scene_inspiration = bool(payload.get("prompt_only_scene_inspiration"))
     text_runner = _llm_runner_from_payload(payload)
     if not model_file and text_runner not in {"lm_studio", "llm_api"}:
@@ -6080,7 +6084,7 @@ def _generate_builder_t2v_prompt(payload):
                 preserve_paragraphs=is_minimax_h3_prompt,
             )
         text = _clean_lm_studio_plain_text(text) if is_minimax_h3_prompt else _clean_gemma_prompt_text(text)
-        if is_minimax_h3_prompt:
+        if is_minimax_h3_prompt and not structured_shot_descriptions:
             text = _format_minimax_h3_prompt(text, payload, instruction_key)
         if first_last_frame_mode:
             text = re.sub(r"(?i)\b(?:cinematic\s+)?(?:aspect\s+ratio\s*[:=]?\s*)?(?:16\s*:\s*9|9\s*:\s*16|21\s*:\s*9|4\s*:\s*3|3\s*:\s*4|1\s*:\s*1)(?:\s+(?:aspect\s+ratio|widescreen|portrait|landscape))?\b[,]?\s*", "", text)

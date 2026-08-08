@@ -5516,6 +5516,8 @@ function openBuilder(node) {
   miniMaxDenoise.min = "0";
   miniMaxDenoise.max = "1";
   miniMaxDenoise.step = "0.01";
+  const miniMaxSamplerNote = document.createElement("div");
+  miniMaxSamplerNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
   const miniMaxEasyCacheBypass = makeCheckbox("Bypass EasyCache", DEFAULT_MINIMAX_H3_SETTINGS.easy_cache_bypass);
   const miniMaxEasyCacheReuseThreshold = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.easy_cache_reuse_threshold), "number");
   miniMaxEasyCacheReuseThreshold.min = "0";
@@ -5541,6 +5543,7 @@ function openBuilder(node) {
       makeField("Scheduler", miniMaxScheduler),
       makeField("Steps", miniMaxSteps),
       makeField("Denoise", miniMaxDenoise),
+      miniMaxSamplerNote,
     ]),
     makeSettingsSection("EasyCache", [
       miniMaxEasyCacheBypass.wrapper,
@@ -7356,12 +7359,21 @@ function openBuilder(node) {
         ? "Normal MiniMax LoRAs are disabled while Turbo acceleration is active."
         : "Optional normal MiniMax LoRAs are OFF.";
     miniMaxTurboNote.textContent = settings.use_turbo_lora
-      ? "Turbo is ON. The hidden API workflow uses MiniMax-H3 Turbo LoRA plus the dedicated Turbo sampler and simple scheduler. Steps defaults to 4 when Turbo is switched on and remains editable down to 1 for experiments. Values below 4 are outside the Turbo LoRA's usual 4-step target. EasyCache bypass is enabled automatically; the advanced control remains editable for experiments. Normal settings are restored when Turbo is turned off."
+      ? "Turbo is ON. The hidden API workflow uses MiniMax-H3 Turbo LoRA plus the dedicated Turbo sampler and simple scheduler. Steps defaults to 4 when Turbo is switched on and remains editable down to 1 for experiments. Values below 4 are outside the Turbo LoRA's usual 4-step target. EasyCache bypass is enabled automatically; the advanced control remains editable for experiments. Choosing a standard sampler or scheduler turns Turbo off and restores the normal settings."
       : settings.use_loras
         ? "Turbo is unavailable while normal MiniMax LoRAs are enabled."
         : "Turbo is OFF. The normal MiniMax sampler, scheduler, and step settings are used.";
-    miniMaxSamplerName.disabled = settings.use_turbo_lora;
-    miniMaxScheduler.disabled = settings.use_turbo_lora;
+    miniMaxSamplerName.disabled = false;
+    miniMaxScheduler.disabled = false;
+    miniMaxSamplerName.title = settings.use_turbo_lora
+      ? "Turbo currently uses MiniMaxH3TurboSampler. Choosing a standard sampler turns Turbo off."
+      : "Sampler choices reported by this ComfyUI instance.";
+    miniMaxScheduler.title = settings.use_turbo_lora
+      ? "Turbo currently uses the simple scheduler. Choosing a scheduler turns Turbo off."
+      : "Scheduler choices reported by this ComfyUI instance.";
+    miniMaxSamplerNote.textContent = settings.use_turbo_lora
+      ? "Turbo currently overrides these saved standard values with MiniMaxH3TurboSampler + simple. Change either dropdown to turn Turbo off and use your selection."
+      : "Sampler and scheduler choices are loaded from the nodes registered in this ComfyUI instance.";
     miniMaxSteps.disabled = false;
     miniMaxSteps.min = "1";
     useSceneMiniMaxH3Settings.input.checked = Boolean(segment?.use_scene_minimax_h3_settings);
@@ -37868,7 +37880,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
     add(parts, "Scene idea", sceneVideoConceptPromptText(segment));
     add(parts, "Scene notes", segment?.notes || segment?.director_note);
-    add(parts, "Storyboard Builder context", options.storyboardContext || options.extraStoryboardNotes, 2200);
+    const creativeStoryboardContext = String(options.storyboardContext || options.extraStoryboardNotes || "")
+      .split(/\n{2,}/)
+      .filter((block) => !/^\s*(?:Exact manual audio\s*\/\s*sound direction|Exact manual continuity requirements)\s*:/i.test(block))
+      .join("\n\n");
+    add(parts, "Storyboard Builder context", creativeStoryboardContext, 2200);
     add(parts, "Motion/camera request", segment?.i2v_notes);
     add(parts, "Story beat", segment?.story_beat);
     add(parts, "Lyric section", segment?.lyric_section);
@@ -37884,8 +37900,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const videoAssignments = miniMaxH3VideoAssignmentLines(segment);
       if (videoAssignments.length) parts.push(`Available video reference labels: ${videoAssignments.map((line) => String(line || "").split(":")[0].trim()).filter(Boolean).join(", ")}.`);
     }
-    add(parts, "Manual audio direction for staging only", segment?.audio_direction);
-    add(parts, "Continuity notes for staging only", segment?.continuity);
+    parts.push("Output boundary: stop immediately after the closing JSON brace. The Builder adds Audio and Continuity separately, so never repeat those sections.");
     return parts.join("\n\n");
   }
 
@@ -38068,11 +38083,75 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const lyric = miniMaxH3CapitalizeCueText(miniMaxH3PunctuatedCueText(cue.text));
       return normalizeMiniMaxH3ShotDescription(`A clear medium close-up shows only ${performer} ${environment}, with the face and mouth unobstructed. ${performer} precisely lip-syncs to <Audio 1>, <d>[English] ${lyric}</d>, while no other visible performer sings or lip-syncs.`);
     }
-    const subject = performers[0] ? miniMaxH3PerformerLabel(performers[0], labelMap) : "the mapped performer";
+    const performerLabels = performers.map((item) => miniMaxH3PerformerLabel(item, labelMap)).filter(Boolean);
+    const subject = performerLabels[0] || "the mapped performer";
+    const visualOnly = segmentUsesNoLipSyncPerformance(segment) || Boolean(segment?.no_character_present);
+    const lyricText = visualOnly || isInstrumentalLyricText(segment?.lyric_text)
+      ? ""
+      : flattenLyricForPrompt(segment?.lyric_text);
+    if (lyricText) {
+      const framing = ["A chest-up close-up", "A moving medium shot", "A wide low-angle shot", "A dynamic profile shot"][shotIndex % 4];
+      const performersText = performerLabels.length > 1
+        ? `${performerLabels.slice(0, -1).join(", ")} and ${performerLabels.at(-1)}`
+        : subject;
+      const lipSyncVerb = performerLabels.length > 1 ? "precisely lip-sync" : "precisely lip-syncs";
+      const lyric = miniMaxH3CapitalizeCueText(miniMaxH3PunctuatedCueText(lyricText));
+      return normalizeMiniMaxH3ShotDescription(`${framing} shows ${performersText} ${environment}, with every performing face and mouth clearly visible. ${performersText} ${lipSyncVerb} to <Audio 1>, <d>[English] ${lyric}</d>, while the camera and physical performance maintain the requested music-video energy and scene continuity.`);
+    }
     return normalizeMiniMaxH3ShotDescription(`A cinematic shot shows ${subject} ${environment}, preserving identity, wardrobe, lighting, and location continuity while the camera stages a clear music-video performance moment.`);
   }
 
-  function parseMiniMaxH3ShotDescriptionPayload(rawPrompt, cutPlan = {}, segment = null, mode = miniMaxH3ModeForSegment(segment)) {
+  function extractMiniMaxH3CompleteShotDescriptions(rawPrompt) {
+    const source = String(rawPrompt || "");
+    const shotsKey = /"shots"\s*:/i.exec(source);
+    if (!shotsKey) return [];
+    const arrayStart = source.indexOf("[", shotsKey.index + shotsKey[0].length);
+    if (arrayStart < 0) return [];
+    const managedSectionOffset = source.slice(arrayStart + 1).search(
+      /\n\s*(?=(?:Audio(?:\s+1)?|Native audio|Continuity|overall_soundscape|non_diegetic_music)\s*:)/i,
+    );
+    const recoverySource = managedSectionOffset >= 0
+      ? source.slice(0, arrayStart + 1 + managedSectionOffset)
+      : source;
+    const keyPattern = /"(?:description|text|shot)"\s*:\s*"/gi;
+    keyPattern.lastIndex = arrayStart + 1;
+    const descriptions = [];
+    let match = null;
+    while ((match = keyPattern.exec(recoverySource))) {
+      const quoteStart = keyPattern.lastIndex - 1;
+      let escaped = false;
+      let quoteEnd = -1;
+      for (let index = quoteStart + 1; index < recoverySource.length; index += 1) {
+        const ch = recoverySource[index];
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+        if (ch === "\\") {
+          escaped = true;
+          continue;
+        }
+        if (ch === "\"") {
+          quoteEnd = index;
+          break;
+        }
+      }
+      if (quoteEnd < 0) break;
+      let objectEnd = quoteEnd + 1;
+      while (/\s/.test(recoverySource[objectEnd] || "")) objectEnd += 1;
+      if (recoverySource[objectEnd] !== "}") break;
+      try {
+        const description = JSON.parse(recoverySource.slice(quoteStart, quoteEnd + 1));
+        if (typeof description === "string" && description.trim()) descriptions.push(description.trim());
+      } catch (_) {
+        break;
+      }
+      keyPattern.lastIndex = quoteEnd + 1;
+    }
+    return descriptions;
+  }
+
+  function parseMiniMaxH3ShotDescriptionPayload(rawPrompt, cutPlan = {}, segment = null, mode = miniMaxH3ModeForSegment(segment), options = {}) {
     const text = String(rawPrompt || "").trim();
     if (!text) throw new Error("The LLM returned an empty MiniMax shot-description payload.");
     const extractLeadingJson = (value) => {
@@ -38103,13 +38182,31 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       return source;
     };
     const jsonText = extractLeadingJson(text);
+    const shotPlan = miniMaxH3OfficialShotPlan(cutPlan);
     let parsed = null;
     try {
       parsed = JSON.parse(jsonText);
     } catch (error) {
-      throw new Error(`The LLM did not return valid JSON shot descriptions. Raw output:\n${text}`);
+      const recoveredDescriptions = extractMiniMaxH3CompleteShotDescriptions(text);
+      const startedRequestedSchema = /"shots"\s*:\s*\[/i.test(text) && /"description"\s*:\s*"/i.test(text);
+      const allowFullFallback = Boolean(options.allowFullFallback) && startedRequestedSchema;
+      if ((!recoveredDescriptions.length && !allowFullFallback) || recoveredDescriptions.length > shotPlan.length) {
+        throw new Error(`The LLM did not return valid JSON shot descriptions. Raw output:\n${text}`);
+      }
+      parsed = {
+        shots: Array.from({ length: shotPlan.length }, (_, index) => ({
+          description: recoveredDescriptions[index]
+            || miniMaxH3FallbackShotDescription(segment, index, mode),
+        })),
+      };
+      const filledCount = shotPlan.length - recoveredDescriptions.length;
+      toast(
+        recoveredDescriptions.length
+          ? `Gemma returned incomplete JSON. Builder safely recovered ${recoveredDescriptions.length}/${shotPlan.length} complete shot description${shotPlan.length === 1 ? "" : "s"}${filledCount ? ` and filled ${filledCount} missing shot${filledCount === 1 ? "" : "s"} from the singer cue map` : ""}.`
+          : `Gemma returned invalid JSON twice. Builder discarded the unfinished text and safely filled ${filledCount} shot description${filledCount === 1 ? "" : "s"} from the singer cue map.`,
+        true,
+      );
     }
-    const shotPlan = miniMaxH3OfficialShotPlan(cutPlan);
     const rawShots = Array.isArray(parsed?.shots) ? parsed.shots : [];
     if (rawShots.length !== shotPlan.length) {
       throw new Error(`The LLM returned ${rawShots.length} shot description${rawShots.length === 1 ? "" : "s"}, but the builder expected ${shotPlan.length}.`);
@@ -38328,10 +38425,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return `${prefix}integrated_multimodal_description:\n${creative}`;
   }
 
-  function assembleMiniMaxH3OfficialPromptFromCreative(segment, mode, creativePrompt) {
+  function assembleMiniMaxH3OfficialPromptFromCreative(segment, mode, creativePrompt, options = {}) {
     const normalizedMode = normalizeMiniMaxH3Mode(mode);
     const cutPlan = miniMaxH3CutPlanForSegment(segment);
-    const shotDescriptions = parseMiniMaxH3ShotDescriptionPayload(creativePrompt, cutPlan, segment, normalizedMode);
+    const shotDescriptions = parseMiniMaxH3ShotDescriptionPayload(creativePrompt, cutPlan, segment, normalizedMode, options);
     const creative = miniMaxH3OfficialShotBodyFromDescriptions(segment, shotDescriptions);
     if (!creative) {
       throw new Error("The LLM returned no creative MiniMax scene body. Try again, or add more scene notes so it has action/camera material to write.");
@@ -38365,8 +38462,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     ].filter(Boolean).join("\n\n").trim();
   }
 
-  function assembleMiniMaxH3PromptFromCreative(segment, mode, creativePrompt) {
-    return assembleMiniMaxH3OfficialPromptFromCreative(segment, mode, creativePrompt);
+  function assembleMiniMaxH3PromptFromCreative(segment, mode, creativePrompt, options = {}) {
+    return assembleMiniMaxH3OfficialPromptFromCreative(segment, mode, creativePrompt, options);
   }
 
   function miniMaxH3PromptContextForSegment(segment, mode) {
@@ -38573,16 +38670,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       : String(segment.lyric_singers || "").split(/[,;\n]+/))
       .map((value) => String(value || "").trim())
       .filter(Boolean);
-    const data = await postJson("/vrgdg/music_builder/generate_t2v", {
+    const baseUserNotes = String(options.userNotes || "");
+    const requestPayload = {
       ...textGemmaRunnerPayload(),
       project_folder: options.projectFolder || activeProjectFolderForSave(),
       scene_id: options.sceneId || segment.id || "",
       builder_instruction_key: options.builderInstructionKey || miniMaxH3InstructionKey(mode),
+      structured_shot_descriptions: true,
       model_file: visionImages.length ? miniMaxGemmaModelSelect.value : miniMaxTextGemmaModelSelect.value,
       repair_model_file: miniMaxTextGemmaModelSelect.value,
       mmproj_file: visionImages.length ? miniMaxMmprojSelect.value : "",
       t2i_prompt: miniMaxH3CreativePromptContextForSegment(segment, mode, options.contextOptions || {}),
-      user_notes: String(options.userNotes || ""),
+      user_notes: baseUserNotes,
       subject_context: "",
       location_context: "",
       no_character_present: Boolean(segment.no_character_present),
@@ -38606,14 +38705,40 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       temperature: Number(options.temperature ?? 0.45),
       top_p: Number(options.topP ?? 0.92),
       max_new_tokens: Number(options.maxNewTokens ?? 4000),
+    };
+    const requestGeneratedPrompt = (jsonRetry = false) => postJson("/vrgdg/music_builder/generate_t2v", {
+      ...requestPayload,
+      user_notes: jsonRetry
+        ? [
+          baseUserNotes,
+          "JSON RETRY: The previous response was unusable. Return only one complete JSON object matching the requested shots schema and exact shot count. Do not write markdown, Audio, Continuity, commentary, or any text after the closing brace.",
+        ].filter(Boolean).join("\n\n")
+        : baseUserNotes,
+      temperature: jsonRetry ? Math.min(Number(options.temperature ?? 0.45), 0.15) : requestPayload.temperature,
+      top_p: jsonRetry ? Math.min(Number(options.topP ?? 0.92), 0.80) : requestPayload.top_p,
     }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
-    const generatedPrompt = String(data.prompt || "").trim();
-    if (!generatedPrompt) {
-      throw new Error(options.emptyPromptMessage || `The LLM returned an empty MiniMax ${miniMaxH3ModeLabel(mode)} prompt.`);
-    }
-    const prompt = assembleMiniMaxH3PromptFromCreative(segment, mode, generatedPrompt);
-    if (!prompt) {
-      throw new Error(options.emptyPromptMessage || `The LLM returned an empty MiniMax ${miniMaxH3ModeLabel(mode)} prompt.`);
+    const assembleGeneratedPrompt = (payload, allowFullFallback = false) => {
+      const generatedPrompt = String(payload?.prompt || "").trim();
+      if (!generatedPrompt) {
+        throw new Error(options.emptyPromptMessage || `The LLM returned an empty MiniMax ${miniMaxH3ModeLabel(mode)} prompt.`);
+      }
+      const prompt = assembleMiniMaxH3PromptFromCreative(segment, mode, generatedPrompt, { allowFullFallback });
+      if (!prompt) {
+        throw new Error(options.emptyPromptMessage || `The LLM returned an empty MiniMax ${miniMaxH3ModeLabel(mode)} prompt.`);
+      }
+      return prompt;
+    };
+    let data = await requestGeneratedPrompt(false);
+    let prompt = "";
+    try {
+      prompt = assembleGeneratedPrompt(data);
+    } catch (error) {
+      const message = String(error?.message || error);
+      const structuredOutputFailure = /(?:did not return valid JSON shot descriptions|returned \d+ shot descriptions?|included shot labels or cut times|returned an empty MiniMax)/i.test(message);
+      if (!structuredOutputFailure || options.retryInvalidJson === false) throw error;
+      toast("Gemma returned an unusable shot payload. Retrying once with stricter JSON settings...");
+      data = await requestGeneratedPrompt(true);
+      prompt = assembleGeneratedPrompt(data, true);
     }
     return {
       ...data,
@@ -50732,8 +50857,19 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         progress.close(1800);
         toast(`Storyboard ${runnerName} All created ${created} video prompt${created === 1 ? "" : "s"}.`);
       } catch (error) {
-        progress.set(`Storyboard ${runnerName} All stopped after ${created}/${scenes.length} scenes:\n${String(error?.message || error)}`, 100);
-        toast(`Storyboard ${runnerName} All stopped after ${created}/${scenes.length} scenes:\n${String(error?.message || error)}`, true);
+        const errorMessage = String(error?.message || error);
+        if (created > 0) {
+          try {
+            ensureAllSegmentRuntimeFields();
+            syncInspector();
+            render();
+            await autoSaveSessionQuiet("wizard storyboard llm partial");
+          } catch (saveError) {
+            console.warn("[VRGDG] Could not save partial Storyboard LLM prompts", saveError);
+          }
+        }
+        progress.set(`Storyboard ${runnerName} All stopped after ${created}/${scenes.length} scenes. ${created ? "Completed scenes were saved.\n" : ""}${errorMessage}`, 100);
+        toast(`Storyboard ${runnerName} All stopped after ${created}/${scenes.length} scenes. ${created ? "Completed scenes were saved.\n" : ""}${errorMessage}`, true);
       }
     };
     const wizardSnapshot = () => {
@@ -52815,6 +52951,58 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     });
   }
 
+  function objectInfoComboOptions(data, nodeName, inputName) {
+    const input = data?.[nodeName]?.input?.required?.[inputName];
+    if (!Array.isArray(input)) return [];
+    const options = Array.isArray(input[0]) ? input[0] : input[1]?.options;
+    return Array.isArray(options)
+      ? Array.from(new Set(options.map((item) => String(item || "").trim()).filter(Boolean)))
+      : [];
+  }
+
+  function replaceSelectOptions(select, options, preferred, fallback) {
+    if (!options.length) return String(select.value || preferred || fallback || "");
+    const value = options.includes(preferred)
+      ? preferred
+      : options.includes(fallback)
+        ? fallback
+        : options[0];
+    select.replaceChildren(...options.map((optionValue) => {
+      const option = document.createElement("option");
+      option.value = optionValue;
+      option.textContent = optionValue;
+      return option;
+    }));
+    select.value = value;
+    return value;
+  }
+
+  async function refreshMiniMaxSamplingChoices() {
+    const [samplerInfo, schedulerInfo] = await Promise.all([
+      getJson("/object_info/KSamplerSelect"),
+      getJson("/object_info/BasicScheduler"),
+    ]);
+    const segment = activeSegment();
+    const settings = miniMaxH3SettingsForSegment(segment);
+    const samplerName = replaceSelectOptions(
+      miniMaxSamplerName,
+      objectInfoComboOptions(samplerInfo, "KSamplerSelect", "sampler_name"),
+      settings.sampler_name,
+      DEFAULT_MINIMAX_H3_SETTINGS.sampler_name,
+    );
+    const scheduler = replaceSelectOptions(
+      miniMaxScheduler,
+      objectInfoComboOptions(schedulerInfo, "BasicScheduler", "scheduler"),
+      settings.scheduler,
+      DEFAULT_MINIMAX_H3_SETTINGS.scheduler,
+    );
+    if (samplerName === settings.sampler_name && scheduler === settings.scheduler) return;
+    const normalized = cloneMiniMaxH3Settings({ ...settings, sampler_name: samplerName, scheduler });
+    if (segment?.use_scene_minimax_h3_settings) segment.minimax_h3_settings = normalized;
+    else state.miniMaxH3Settings = normalized;
+    syncMiniMaxH3Panel();
+  }
+
   async function refreshModelChoices() {
     const data = await getJson("/vrgdg/workflow_runner/i2v_choices");
     const setOptions = (picker, options, preferred = []) => {
@@ -52872,6 +53060,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   loadCustomModelRootSetting().finally(() => {
+    refreshMiniMaxSamplingChoices().catch((error) => {
+      console.warn("[VRGDG Music Builder] Could not refresh sampler and scheduler choices; using built-in fallbacks:", error);
+    });
     refreshGemmaChoices().catch((error) => {
       toast(`Could not load Gemma model choices:\n${String(error?.message || error)}`, true);
     });
@@ -53048,6 +53239,17 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     syncMiniMaxH3Panel();
     autoSaveSessionQuiet("MiniMax H3 Turbo setting").catch(() => null);
   });
+  for (const [control, label] of [
+    [miniMaxSamplerName, "sampler"],
+    [miniMaxScheduler, "scheduler"],
+  ]) {
+    control.addEventListener("change", () => {
+      if (!miniMaxUseTurboLora.input.checked) return;
+      miniMaxUseTurboLora.input.checked = false;
+      miniMaxUseTurboLora.input.dispatchEvent(new Event("change"));
+      toast(`Turbo was turned off so the selected standard ${label} will be used.`);
+    });
+  }
   for (const button of miniMaxModeButtons) {
     button.onclick = async () => {
       const segment = requireActiveSegment();
