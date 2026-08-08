@@ -1,8 +1,17 @@
-# LTX-2 MLX Integration — Session Notes
+# MLX Integration — Session Notes
 
-Context dump from the session that added LTX-2.3 video generation on Apple Silicon
-(via MLX) as a third render engine in MusicVideoBuilder, alongside LTX and MiniMax H3.
-Written so this doesn't have to be re-derived after a context reset.
+Context dump covering every Apple Silicon / MLX engine added to this repo, across
+multiple sessions. Originally scoped to just LTX-2 video (hence any file paths that
+still say "ltx2mlx" below); renamed to `MLX_INTEGRATION_NOTES.md` once FLUX.2 Klein,
+Krea-2, and Z-Image MLX engines were added too, since the same environment setup,
+node-pack pattern, and 3-layer testing methodology apply to all of them. Written so
+none of this has to be re-derived after a context reset.
+
+Sessions documented here, oldest first:
+1. **LTX-2 MLX** (video, MusicVideoBuilder third render engine) — original content below.
+2. **FLUX.2 Klein / Krea-2 / Z-Image MLX** (images, Reference Builder "Create Subject"
+   engines) — see [Krea-2 + Z-Image MLX Integration](#krea-2--z-image-mlx-integration----session-notes)
+   near the end of this file.
 
 ## Why this exists
 
@@ -226,3 +235,127 @@ real click-through test, not just its component pieces individually.
 - `comfyui-ltx2-mlx` repo not pushed to GitHub (local commit only).
 - Storyboard Builder has no LTX2MLX-specific reference/V2V UI (treated as plain `ltx`).
 - `llama-cpp-python` still doesn't build in venv-3.13 (see Environment setup above).
+
+---
+
+## Krea-2 + Z-Image MLX Integration — Session Notes
+
+Context dump from the session(s) that added FLUX.2 Klein, Krea-2, and Z-Image image
+generation on Apple Silicon (via MLX / `mflux`) — first as a `flux2klein_mlx` engine
+option in MusicVideoBuilder's per-scene image modes, then as two new engine cards in
+the Reference Builder's "Create Subject"/"Create Location" flow (`ZImage MLX` and
+`Krea2 + ZImage MLX Enhancer`). Same shape of problem as LTX-2: the existing
+`flux_klein`/`zimage`/`krea2` engines assume a CUDA-capable ComfyUI backend;
+[filipstrand/mflux](https://github.com/filipstrand/mflux) is a pure-MLX implementation
+of all three model families, reusing the shared `venv-3.13` set up for LTX2MLX (no new
+venv needed — `mflux` was `pip install`ed into it alongside `ltx-2-mlx`, with only a
+`mlx`/`mlx-metal` downgrade from 0.32.0 to 0.31.2 to satisfy mflux's pin; LTX2MLX was
+re-verified working afterward).
+
+### Three new standalone node-pack repos
+
+Same isolation pattern as `comfyui-ltx2-mlx`: each is its own `custom_nodes/` git repo
+(now git-initialized with LICENSE/README/.gitignore and an initial commit), never
+imported directly by `comfyui-vrgamedevgirl`, with a `_check_apple_silicon()` guard in
+every loader's `execute()`.
+
+- **`comfyui-flux2klein-mlx`** — `Flux2KleinModelLoader`/`Flux2KleinGenerate` (T2I/
+  img2img) and `Flux2KleinEditModelLoader`/`Flux2KleinEdit` (multi-image conditioned
+  editing, `image_paths` one-per-line or JSON list, matching
+  `VRGDG_MultiReferenceConditioningFromPaths`'s format). See its own `SCOPING.md` and
+  `README.md` for the full node/API details.
+- **`comfyui-krea2-mlx`** — `Krea2ModelLoader`/`Krea2Generate` (T2I/img2img). Model name
+  `"krea2"` resolves fine via `ModelConfig.from_name()` in either underscore or
+  hyphenated form (unlike Flux2Klein/Z-Image, which require hyphens).
+- **`comfyui-zimage-mlx`** — `ZImageModelLoader`/`ZImageGenerate` (T2I/img2img). Model
+  names must be hyphenated (`"z-image"`, `"z-image-turbo"`) — `ModelConfig.from_name()`
+  raises `Cannot infer base_model` on the underscore form, same gotcha as Flux2Klein.
+
+**Real API findings, from `inspect.signature`/`inspect.getsource` against the actually
+installed `mflux` 0.18.1, not README prose:**
+- `Krea2`/`ZImage` both accept `negative_prompt` directly (unlike Flux2Klein, which
+  hard-rejects it) — Krea-2 turbo CLI defaults are 8 steps, guidance 1.0, shift 1.15.
+- `ZImage.generate_image()`'s return type annotation says plain `PIL.Image.Image`, but
+  tracing through `ImageUtil.to_image()` confirms it actually returns the same
+  `GeneratedImage` wrapper Krea2/Flux2Klein do (with a `.image` attribute) — the
+  annotation is stale, not the real contract.
+- `image_strength`'s inverted-from-usual-convention semantics (higher = closer to
+  source, fewer denoise steps) is *presumed* to carry over from Flux2Klein's confirmed
+  behavior for Krea2/ZImage too, but has not been independently re-verified — flagged
+  in both node tooltips and READMEs as provisional.
+
+### No combiner node needed for the Krea2 + ZImage "enhancer" chain
+
+CUDA's Reference Builder wires "Krea2 + ZImage Enhancer" as a hidden two-pass workflow
+(Krea2 T2I → ZImage img2img refine) inside one JSON template. The MLX equivalent needed
+no new node type at all: `Krea2Generate`'s `IMAGE` output connects straight into
+`ZImageGenerate`'s `image` input on the graph, since both packs speak plain ComfyUI
+`IMAGE` tensors. Confirmed with a real chained generation (Krea2 seed=42 → ZImage
+enhancer seed=7, `image_strength=0.3`): composition/pose/scene held across both passes,
+enhancer pass visibly sharpened fur/snow texture without regenerating the scene.
+
+### Testing methodology — same three layers as LTX2MLX, all three run for this work too
+
+1. **Direct Python calls** (`Krea2(...).generate_image(...)`, `ZImage(...)`, and the
+   chained pair) — real weight downloads (`krea/Krea-2-Turbo` is a **gated** HF repo;
+   needed the user to visit the model page and request/accept access before
+   `HF_TOKEN`-authenticated downloads succeeded — 401 before auth, 403-not-authorized
+   after auth but before approval, 200 after approval), real generations, real images
+   saved and visually inspected.
+2. **Real ComfyUI server + curl** — `build_zimage_mlx_prompt`/`build_krea2_zimage_mlx_prompt`
+   POSTed, then the returned `prompt` POSTed to `/prompt`, polled `/history/{id}`.
+   Zero `node_errors`, `status_str: "success"`, correct files landed in `output/` via
+   the same `ImageSaveHelper`/`folder_paths.get_save_image_path()` convention the stock
+   `SaveImage` node uses — unlike LTX2MLX, this needed **no** history-parsing fallback
+   fix, since it's the same output shape every other engine in this codebase already
+   produces.
+3. **Real browser (Playwright)** — same `window.comfyAPI.app.app` /
+   `LiteGraph.createNode("VRGDG_MusicVideoBuilderUI")` / button-widget-callback pattern
+   as LTX2MLX. Click path: open builder → dismiss the "Welcome to Video Creator"
+   dialog (a *second* modal stacked on top of the builder on first open, not mentioned
+   in the original LTX2MLX playwright notes — text-based Playwright locators kept
+   matching ComfyUI's own top-level `close-workflow-button` instead of this dialog's
+   `Close`, needed a direct DOM query/click instead) → Reference Builder → Flux/Nano
+   Image References → Add Subject → Generate Subject. Confirmed: both new option cards
+   render with all fields, both buttons enabled (capability check passed), zero
+   `PAGE_ERRORS`. One tolerated, **pre-existing, already-documented** error reproduced
+   again during builder open (`segmentImageSource`'s `image_history` crash on a
+   brand-new node with zero real segments, from the original LTX2MLX playwright
+   session) — confirmed still non-regression, modal still renders around it.
+
+### Reference Builder integration points (`comfyui-vrgamedevgirl`)
+
+- **`VRGDG_WorkflowRunnerNodes.py`**: `_build_zimage_mlx_api_prompt`/
+  `_build_krea2_zimage_mlx_api_prompt`, `_require_zimage_mlx_available`/
+  `_require_krea2_zimage_mlx_available` capability guards, two new API-format workflow
+  JSON templates (`zimageMlx_API.json`, `krea2ZimageMlx_API.json`), four new routes
+  (`build_zimage_mlx_prompt`, `build_krea2_zimage_mlx_prompt`, `zimage_mlx_capability`,
+  `krea2_zimage_mlx_capability`) — exact mirror of the `flux2klein_mlx` route shape.
+- **`VRGDG_MusicVideoBuilderUI.js`**: two new option cards — "ZImage MLX (Apple
+  Silicon)" and "Krea2 + ZImage MLX Enhancer (Apple Silicon)" — added to all three
+  Reference Builder dialogs (single subject/location generate, batch missing subjects,
+  batch missing locations), each capability-gated (`applyMlxCapabilityGate`, disables
+  the button and shows the server's reason if unavailable). New `workflow` values
+  (`"zimage_mlx"`, `"krea2_zimage_mlx"`) threaded through the existing
+  `createMissingSubjectReferencesWithImageWorkflow`/`createMissingLocationReferencesWithZImage`
+  batch functions alongside `"zimage"`/`"krea2"`/`"flow_gpt"`. Cards expose real
+  settings (quantize, width/height, steps, seed/seed mode, enhancer strength) via a new
+  `buildMlxReferenceGeneratorControls()`, persisted the same way the CUDA cards persist
+  their settings — models themselves are *not* configurable (fixed to `krea2`/
+  `z-image-turbo`), since that's the whole point of the MLX path.
+- LoRA slots are **not** exposed on either MLX Reference Builder card — a deliberate
+  scope cut, not an oversight; CUDA's first/second-pass LoRA-strength UI wasn't ported.
+
+### Known gaps / not done (Krea-2 + Z-Image MLX)
+
+- LoRA support on the Reference Builder MLX cards (both node packs support
+  `lora_paths`/`lora_scales` already; just not wired into these two cards' UI yet).
+- `image_strength`'s direction not independently re-verified for Krea2/ZImage, only
+  presumed to match Flux2Klein's confirmed-inverted behavior.
+- No reference-image resize/downscale controls, same gap as Flux2Klein's.
+- Krea-2's HF gating means first-run setup requires a manual "request access" step on
+  huggingface.co before generation works — not automatable, should be called out
+  wherever this engine is documented for end users.
+- `comfyui-krea2-mlx`/`comfyui-zimage-mlx`/`comfyui-flux2klein-mlx` are git-initialized
+  locally but not pushed to GitHub yet, same as `comfyui-ltx2-mlx` at the equivalent
+  point in its own session.
