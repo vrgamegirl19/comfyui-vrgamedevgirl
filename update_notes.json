@@ -18,6 +18,7 @@
             "Added MiniMax Singer Assignment for split lyric cues, including timed lyric and instrumental rows, per-cue singer selection, and synchronized Reference Builder mappings.",
             "Added compact per-cue audio playback controls so users can audition each lyric or instrumental slice while setting Start and End times.",
             "Added timed Dialogue and Instrumental cue rows to MiniMax built-in-audio Speaker Assignment, bringing the same Start, End, Play Cue, custom-audio Auto Time This Scene, and boundary-sync workflow used by singer cues to generated dialogue scenes.",
+            "Added optional normal MiniMax H3 LoRA support with a LoRA count, chained LoRA dropdowns, per-LoRA strength controls, and a Kijai MiniMax H3 LoRA download link.",
             "Added a shared MiniMax H3 prompt-generation path so the side panel, Storyboard Builder, Wizard Storyboard All, and Auto Build can produce the same final MiniMax prompt format.",
             "Added Project Batch tooling for running saved projects one after another."
           ]
@@ -31,7 +32,8 @@
             "The Builder toolbar, shared tabs, buttons, and global font styling are more compact and easier to read in crowded MiniMax, LTX, and image-generation panels.",
             "Changing a lyric cue to Instrumental now creates a new lyric slot underneath instead of merging or losing the lyric text.",
             "Set End on one singer cue now automatically sets the next cue's Start time to the same boundary.",
-            "New split lyric cue maps now start with two larger lyric chunks instead of auto-splitting every couple of words, keeping Auto Build and manual review less crowded."
+            "New split lyric cue maps now start with two larger lyric chunks instead of auto-splitting every couple of words, keeping Auto Build and manual review less crowded.",
+            "MiniMax normal LoRAs and MiniMax-H3 Turbo are now mutually exclusive, with Turbo controls disabled while the normal LoRA stack is active."
           ]
         },
         {

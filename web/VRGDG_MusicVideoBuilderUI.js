@@ -238,6 +238,9 @@ const DEFAULT_MINIMAX_H3_SETTINGS = {
   easy_cache_verbose: false,
   sage_attention: "auto",
   enable_fp16_accumulation: true,
+  use_loras: false,
+  lora_count: 0,
+  loras: [],
   use_turbo_lora: false,
   turbo_lora_name: "minimax_h3_turbo_4step_ema_ckpt850.safetensors",
   turbo_lora_strength: 1,
@@ -361,7 +364,21 @@ function normalizeMiniMaxH3VideoPurpose(value) {
 
 function cloneMiniMaxH3Settings(value = {}) {
   const source = value && typeof value === "object" ? value : {};
+  const sourceLoras = Array.isArray(source.loras)
+    ? source.loras
+    : Array.from({ length: 4 }, (_, index) => ({
+      name: source[`lora_${index + 1}`],
+      strength: source[`lora_${index + 1}_strength`],
+    }));
+  const loras = sourceLoras
+    .map((item) => ({
+      name: String(item?.name || item?.lora_name || item?.loraName || "").trim(),
+      strength: Math.max(-10, Math.min(10, Number(item?.strength ?? item?.strength_model ?? item?.strengthModel ?? 1))),
+    }))
+    .filter((item) => item.name && item.name !== "[none]")
+    .slice(0, 4);
   const turboEnabled = Boolean(source.use_turbo_lora ?? source.useTurboLora ?? DEFAULT_MINIMAX_H3_SETTINGS.use_turbo_lora);
+  const loraEnabled = Boolean(source.use_loras ?? source.useLoras ?? source.use_custom_loras ?? source.useCustomLoras ?? DEFAULT_MINIMAX_H3_SETTINGS.use_loras) && !turboEnabled;
   const rawSteps = Math.max(1, Math.min(1000, Math.trunc(Number(source.steps ?? DEFAULT_MINIMAX_H3_SETTINGS.steps) || DEFAULT_MINIMAX_H3_SETTINGS.steps)));
   const hasSavedPreTurboSteps = source.steps_before_turbo != null || source.stepsBeforeTurbo != null;
   const migrateOldTurboDefault = turboEnabled
@@ -399,6 +416,9 @@ function cloneMiniMaxH3Settings(value = {}) {
       ? source.sage_attention
       : DEFAULT_MINIMAX_H3_SETTINGS.sage_attention,
     enable_fp16_accumulation: Boolean(source.enable_fp16_accumulation ?? DEFAULT_MINIMAX_H3_SETTINGS.enable_fp16_accumulation),
+    use_loras: loraEnabled,
+    lora_count: loraEnabled ? Math.max(0, Math.min(4, Math.trunc(Number(source.lora_count ?? source.loraCount ?? loras.length) || loras.length))) : 0,
+    loras,
     use_turbo_lora: turboEnabled,
     turbo_lora_name: String(source.turbo_lora_name || source.turboLoraName || DEFAULT_MINIMAX_H3_SETTINGS.turbo_lora_name),
     turbo_lora_strength: Math.max(-10, Math.min(10, Number(source.turbo_lora_strength ?? source.turboLoraStrength ?? DEFAULT_MINIMAX_H3_SETTINGS.turbo_lora_strength))),
@@ -417,6 +437,7 @@ const MINIMAX_H3_MODEL_DOWNLOADS = [
   { label: "Qwen3-VL text encoder", url: "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors" },
   { label: "Video VAE", url: "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/vae/minimax_h3_video_vae_fp16.safetensors" },
   { label: "Audio VAE", url: "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/vae/minimax_h3_audio_vae_fp32.safetensors" },
+  { label: "Kijai MiniMax H3 LoRAs", url: "https://huggingface.co/Kijai/MiniMax-H3_comfy/tree/main/loras" },
 ];
 const ZIMAGE_MODEL_DOWNLOADS = [
   { label: "Z-Image Turbo", url: "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors" },
@@ -5405,6 +5426,35 @@ function openBuilder(node) {
     miniMaxTurboLoraStrengthField,
     miniMaxTurboNote,
   ]);
+  const miniMaxUseLoras = makeCheckbox("Use MiniMax LoRAs?", false);
+  const miniMaxLoraCount = makeInput("0", "number");
+  miniMaxLoraCount.min = "0";
+  miniMaxLoraCount.max = "4";
+  miniMaxLoraCount.step = "1";
+  const miniMaxLoraRows = document.createElement("div");
+  miniMaxLoraRows.style.cssText = "display:none;flex-direction:column;gap:8px;";
+  const miniMaxLoraSlots = [];
+  for (let index = 0; index < 4; index += 1) {
+    const slot = index + 1;
+    const picker = makeSearchableLoraPicker("[none]");
+    const strength = makeInput("1", "number");
+    strength.min = "-10";
+    strength.max = "10";
+    strength.step = "0.01";
+    const row = document.createElement("div");
+    row.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) 92px;gap:8px;";
+    row.append(makeField(`MiniMax LoRA ${slot}`, picker.wrapper), makeField("Strength", strength));
+    miniMaxLoraRows.append(row);
+    miniMaxLoraSlots.push({ row, picker, strength });
+  }
+  const miniMaxLoraNote = document.createElement("div");
+  miniMaxLoraNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
+  const miniMaxLoraSection = makeSettingsSection("Optional MiniMax LoRAs", [
+    miniMaxUseLoras.wrapper,
+    makeField("LoRA count", miniMaxLoraCount),
+    miniMaxLoraRows,
+    miniMaxLoraNote,
+  ]);
   const miniMaxAspectRatio = makeSelect([
     "16:9 (Widescreen)",
     "9:16 (Portrait Widescreen)",
@@ -5624,6 +5674,7 @@ function openBuilder(node) {
           makeField("Previous rendered final frame", miniMaxContinuityMode),
           miniMaxContinuityNote,
         ]),
+        miniMaxLoraSection,
         miniMaxTurboSection,
         ...Object.values(miniMaxModePanels),
         makeSettingsSection("Render Settings", [miniMaxRenderSettingsGrid]),
@@ -6606,7 +6657,16 @@ function openBuilder(node) {
   function saveMiniMaxH3SettingsFromPanel() {
     const segment = activeSegment();
     const currentSettings = miniMaxH3SettingsForSegment(segment);
-    const turboEnabled = miniMaxUseTurboLora.input.checked;
+    const loraEnabled = Boolean(miniMaxUseLoras.input.checked);
+    const turboEnabled = Boolean(miniMaxUseTurboLora.input.checked) && !loraEnabled;
+    const loraCount = loraEnabled ? Math.max(0, Math.min(4, Math.trunc(Number(miniMaxLoraCount.value || 0)))) : 0;
+    const loras = miniMaxLoraSlots
+      .slice(0, loraCount)
+      .map((slot) => ({
+        name: String(slot.picker.input.value || "").trim(),
+        strength: Math.max(-10, Math.min(10, Number(slot.strength.value || 1))),
+      }))
+      .filter((item) => item.name && item.name !== "[none]");
     const settings = cloneMiniMaxH3Settings({
       video_mode: currentSettings.video_mode,
       audio_mode: miniMaxAudioMode.value,
@@ -6635,6 +6695,9 @@ function openBuilder(node) {
       easy_cache_verbose: miniMaxEasyCacheVerbose.input.checked,
       sage_attention: miniMaxSageAttention.value,
       enable_fp16_accumulation: miniMaxFp16Accumulation.input.checked,
+      use_loras: loraEnabled,
+      lora_count: loraCount,
+      loras,
       use_turbo_lora: turboEnabled,
       turbo_lora_name: miniMaxTurboLoraPicker.input.value,
       turbo_lora_strength: miniMaxTurboLoraStrength.value,
@@ -7264,14 +7327,39 @@ function openBuilder(node) {
     miniMaxEasyCacheVerbose.input.checked = settings.easy_cache_verbose;
     miniMaxSageAttention.value = settings.sage_attention;
     miniMaxFp16Accumulation.input.checked = settings.enable_fp16_accumulation;
+    miniMaxUseLoras.input.checked = settings.use_loras;
+    miniMaxLoraCount.value = String(settings.lora_count || 0);
+    miniMaxLoraRows.style.display = settings.use_loras && Number(settings.lora_count || 0) > 0 ? "flex" : "none";
+    miniMaxLoraSlots.forEach((slot, index) => {
+      const item = settings.loras?.[index] || {};
+      slot.row.style.display = settings.use_loras && index < Number(settings.lora_count || 0) ? "grid" : "none";
+      slot.picker.input.value = item.name || slot.picker.input.value || "[none]";
+      slot.strength.value = String(item.strength ?? slot.strength.value ?? 1);
+    });
     miniMaxUseTurboLora.input.checked = settings.use_turbo_lora;
     miniMaxTurboLoraPicker.input.value = settings.turbo_lora_name;
     miniMaxTurboLoraStrength.value = String(settings.turbo_lora_strength);
+    miniMaxUseTurboLora.input.disabled = settings.use_loras;
+    miniMaxTurboSection.style.opacity = settings.use_loras ? ".55" : "";
+    miniMaxUseLoras.input.disabled = settings.use_turbo_lora;
+    miniMaxLoraSection.style.opacity = settings.use_turbo_lora ? ".55" : "";
+    miniMaxLoraCount.disabled = !settings.use_loras || settings.use_turbo_lora;
+    miniMaxLoraSlots.forEach((slot) => {
+      slot.picker.input.disabled = !settings.use_loras || settings.use_turbo_lora;
+      slot.strength.disabled = !settings.use_loras || settings.use_turbo_lora;
+    });
     miniMaxTurboLoraField.style.display = settings.use_turbo_lora ? "flex" : "none";
     miniMaxTurboLoraStrengthField.style.display = settings.use_turbo_lora ? "flex" : "none";
+    miniMaxLoraNote.textContent = settings.use_loras
+      ? "Normal MiniMax LoRAs are ON. Turbo acceleration is disabled while this stack is active."
+      : settings.use_turbo_lora
+        ? "Normal MiniMax LoRAs are disabled while Turbo acceleration is active."
+        : "Optional normal MiniMax LoRAs are OFF.";
     miniMaxTurboNote.textContent = settings.use_turbo_lora
       ? "Turbo is ON. The hidden API workflow uses MiniMax-H3 Turbo LoRA plus the dedicated Turbo sampler and simple scheduler. Steps defaults to 4 when Turbo is switched on and remains editable down to 1 for experiments. Values below 4 are outside the Turbo LoRA's usual 4-step target. EasyCache bypass is enabled automatically; the advanced control remains editable for experiments. Normal settings are restored when Turbo is turned off."
-      : "Turbo is OFF. The normal MiniMax sampler, scheduler, and step settings are used.";
+      : settings.use_loras
+        ? "Turbo is unavailable while normal MiniMax LoRAs are enabled."
+        : "Turbo is OFF. The normal MiniMax sampler, scheduler, and step settings are used.";
     miniMaxSamplerName.disabled = settings.use_turbo_lora;
     miniMaxScheduler.disabled = settings.use_turbo_lora;
     miniMaxSteps.disabled = false;
@@ -42469,6 +42557,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         easy_cache_verbose: miniMaxSettings.easy_cache_verbose,
         sage_attention: miniMaxSettings.sage_attention,
         enable_fp16_accumulation: miniMaxSettings.enable_fp16_accumulation,
+        use_loras: miniMaxSettings.use_loras,
+        lora_count: miniMaxSettings.lora_count,
+        loras: miniMaxSettings.loras,
         use_turbo_lora: miniMaxSettings.use_turbo_lora,
         turbo_lora_name: miniMaxSettings.turbo_lora_name,
         turbo_lora_strength: miniMaxSettings.turbo_lora_strength,
@@ -42486,8 +42577,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       );
       const timing = built?.timing || {};
       const postTrim = built?.post_render_trim || {};
+      const builtLoraSettings = built?.lora_settings || {};
       const builtTurboSettings = built?.turbo_settings || {};
       const builtAdvancedSettings = built?.advanced_settings || {};
+      const loraLine = builtLoraSettings.enabled
+        ? `\nLoRAs: ${Number(builtLoraSettings.count || 0)} — ${(builtLoraSettings.loras || []).map((item) => `${item.name} @ ${item.strength}`).join(", ")}`
+        : "\nLoRAs: OFF";
       const turboLine = builtTurboSettings.enabled
         ? `\nTurbo: ON — effective steps ${Number(builtAdvancedSettings.effective_steps || builtTurboSettings.steps || miniMaxSettings.steps)}; LoRA ${builtTurboSettings.lora_name || miniMaxSettings.turbo_lora_name} @ ${builtTurboSettings.strength ?? miniMaxSettings.turbo_lora_strength}`
         : `\nTurbo: OFF — steps ${Number(builtAdvancedSettings.steps || miniMaxSettings.steps)}`;
@@ -42504,6 +42599,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         `${batchLabel}Queueing MiniMax H3...\n`
         + `Timeline: ${sceneDuration.toFixed(3)}s\n`
         + `H3 render: ${Number(timing.h3_frame_count || 0)} frames`
+        + loraLine
         + turboLine
         + settingsScopeLine
         + (continuityImageNumber ? `\nContinuity: ${continuityInput.continuityMode === "exact_start_frame" ? "exact start" : "spatial reference"} (Image ${continuityImageNumber})` : ""),
@@ -52672,7 +52768,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   async function refreshLoraChoices() {
     const data = await getJson("/vrgdg/workflow_runner/lora_list");
     const loras = data.loras || ["[none]"];
-    for (const slot of [...zLoraSlots, ...ernieLoraSlots, ...fluxLoraSlots, ...i2vLoraSlots, ...zEnhanceLoraSlots, ...krea2TwoPassLoraSlots]) {
+    for (const slot of [...zLoraSlots, ...ernieLoraSlots, ...fluxLoraSlots, ...i2vLoraSlots, ...zEnhanceLoraSlots, ...krea2TwoPassLoraSlots, ...miniMaxLoraSlots]) {
       const current = slot.picker.input.value || "[none]";
       slot.picker.options = loras;
       slot.picker.input.value = loras.includes(current) ? current : current;
@@ -52892,6 +52988,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
   wireSearchablePicker(miniMaxTurboLoraPicker, saveMiniMaxH3SettingsFromPanel);
   miniMaxTurboLoraPicker.input.addEventListener("change", persistMiniMaxSettings);
+  for (const slot of miniMaxLoraSlots) {
+    wireSearchablePicker(slot.picker, saveMiniMaxH3SettingsFromPanel);
+    slot.picker.input.addEventListener("change", persistMiniMaxSettings);
+    slot.strength.addEventListener("input", saveMiniMaxH3SettingsFromPanel);
+    slot.strength.addEventListener("change", persistMiniMaxSettings);
+  }
   for (const control of [
     miniMaxAspectRatio,
     miniMaxAudioMode,
@@ -52911,15 +53013,36 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     miniMaxEasyCacheVerbose.input,
     miniMaxSageAttention,
     miniMaxFp16Accumulation.input,
+    miniMaxUseLoras.input,
+    miniMaxLoraCount,
     miniMaxTurboLoraStrength,
   ]) {
     control.addEventListener("input", saveMiniMaxH3SettingsFromPanel);
     control.addEventListener("change", persistMiniMaxSettings);
   }
+  miniMaxUseLoras.input.addEventListener("change", () => {
+    const segment = activeSegment();
+    if (miniMaxUseLoras.input.checked) {
+      miniMaxUseTurboLora.input.checked = false;
+      if (Math.max(0, Math.trunc(Number(miniMaxLoraCount.value) || 0)) < 1) miniMaxLoraCount.value = "1";
+    }
+    const settings = saveMiniMaxH3SettingsFromPanel();
+    if (segment?.use_scene_minimax_h3_settings) segment.minimax_h3_settings = settings;
+    else state.miniMaxH3Settings = settings;
+    syncMiniMaxH3Panel();
+    autoSaveSessionQuiet("MiniMax H3 LoRA setting").catch(() => null);
+  });
+  miniMaxLoraCount.addEventListener("change", () => {
+    miniMaxLoraCount.value = String(Math.max(0, Math.min(4, Math.trunc(Number(miniMaxLoraCount.value) || 0))));
+    if (Number(miniMaxLoraCount.value || 0) > 0) miniMaxUseLoras.input.checked = true;
+    persistMiniMaxSettings();
+    syncMiniMaxH3Panel();
+  });
   miniMaxUseTurboLora.input.addEventListener("change", () => {
     const segment = activeSegment();
     const currentSettings = miniMaxH3SettingsForSegment(segment);
     if (miniMaxUseTurboLora.input.checked) {
+      miniMaxUseLoras.input.checked = false;
       currentSettings.steps_before_turbo = Math.max(1, Math.trunc(Number(miniMaxSteps.value) || DEFAULT_MINIMAX_H3_SETTINGS.steps));
       currentSettings.easy_cache_bypass_before_turbo = miniMaxEasyCacheBypass.input.checked;
       miniMaxSteps.value = "4";

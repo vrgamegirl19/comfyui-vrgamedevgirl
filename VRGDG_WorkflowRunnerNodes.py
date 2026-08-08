@@ -2610,6 +2610,93 @@ def _patch_minimax_h3_turbo(prompt, payload):
     }
 
 
+def _patch_minimax_h3_loras(prompt, payload):
+    enabled = _bool_payload(payload, "use_loras", False) or _bool_payload(payload, "use_custom_loras", False)
+    if not enabled:
+        return {
+            "enabled": False,
+            "count": 0,
+            "loras": [],
+        }
+    if _bool_payload(payload, "use_turbo_lora", False):
+        raise ValueError("MiniMax normal LoRAs and MiniMax-H3 Turbo LoRA cannot be enabled at the same time.")
+
+    raw_loras = payload.get("loras")
+    configured = []
+    if isinstance(raw_loras, list):
+        for item in raw_loras:
+            if not isinstance(item, dict):
+                continue
+            configured.append({
+                "name": _clean_lora_name(item.get("name") or item.get("lora_name") or item.get("loraName") or _NONE_LORA),
+                "strength": _float_payload(item, "strength", 1.0, -10.0, 10.0),
+            })
+    lora_count = _int_payload(payload, "lora_count", len(configured), 0, 4)
+    if not configured:
+        for slot in range(1, lora_count + 1):
+            configured.append({
+                "name": _clean_lora_name(payload.get(f"lora_{slot}", _NONE_LORA)),
+                "strength": _float_payload(payload, f"lora_{slot}_strength", 1.0, -10.0, 10.0),
+            })
+    configured = [
+        item for item in configured[:lora_count]
+        if item["name"] and item["name"] != _NONE_LORA
+    ]
+    if not configured:
+        return {
+            "enabled": False,
+            "count": 0,
+            "loras": [],
+        }
+    for item in configured:
+        if not _model_choice_exists("loras", item["name"]):
+            raise ValueError(
+                f"MiniMax LoRA '{item['name']}' was not found in ComfyUI/models/loras. "
+                "Download the LoRA, refresh/restart ComfyUI, and select it in MiniMax Video Settings."
+            )
+
+    scheduler_id = _api_node_id_by_class(prompt, "BasicScheduler", fallback="124")
+    guider_id = _api_node_id_by_class(prompt, "BasicGuider", fallback="126")
+    scheduler_inputs = prompt.get(scheduler_id, {}).get("inputs", {})
+    model_ref = scheduler_inputs.get("model")
+    if not isinstance(model_ref, list) or len(model_ref) != 2:
+        raise ValueError("MiniMax LoRA patch could not find the current model connection feeding BasicScheduler.")
+
+    next_id = 9101
+    current_ref = list(model_ref)
+    applied = []
+    for index, item in enumerate(configured, start=1):
+        while str(next_id) in prompt:
+            next_id += 1
+        node_id = str(next_id)
+        next_id += 1
+        prompt[node_id] = {
+            "class_type": "LoraLoaderModelOnly",
+            "inputs": {
+                "model": list(current_ref),
+                "lora_name": item["name"],
+                "strength_model": item["strength"],
+            },
+            "_meta": {
+                "title": f"MiniMax LoRA {index}",
+            },
+        }
+        current_ref = [node_id, 0]
+        applied.append({
+            "name": item["name"],
+            "strength": item["strength"],
+            "node": node_id,
+        })
+
+    _set_api_input(prompt, scheduler_id, "model", list(current_ref))
+    _set_api_input(prompt, guider_id, "model", list(current_ref))
+    return {
+        "enabled": True,
+        "count": len(applied),
+        "loras": applied,
+    }
+
+
 def _build_minimax_h3_api_prompt(payload):
     raw_audio_mode = str(payload.get("audio_mode") or payload.get("audioMode") or "input_audio").strip().lower().replace("-", "_").replace(" ", "_")
     audio_mode = "built_in_audio" if raw_audio_mode in {"built_in_audio", "native_audio", "generated_audio"} else "input_audio"
@@ -2748,6 +2835,7 @@ def _build_minimax_h3_api_prompt(payload):
     # exact scene trimmer receives them.
     _set_api_input(prompt, "142", "trim_to_audio", False)
     advanced_settings = _patch_minimax_h3_advanced_settings(prompt, payload)
+    lora_settings = _patch_minimax_h3_loras(prompt, payload)
     turbo_settings = _patch_minimax_h3_turbo(prompt, payload)
     if turbo_settings["enabled"]:
         advanced_settings = {
@@ -2781,6 +2869,7 @@ def _build_minimax_h3_api_prompt(payload):
             "audio_vae_name": audio_vae_name,
         },
         "advanced_settings": advanced_settings,
+        "lora_settings": lora_settings,
         "turbo_settings": turbo_settings,
     }
 
