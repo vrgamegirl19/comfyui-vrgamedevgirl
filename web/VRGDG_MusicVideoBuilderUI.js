@@ -37405,7 +37405,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return [safePrompt, subjectMultiplicityBlock, block, visualOnlyBlock].filter(Boolean).join("\n\n").trim();
   }
 
-  function miniMaxH3CreativePromptContextForSegment(segment, mode) {
+  function miniMaxH3CreativePromptContextForSegment(segment, mode, options = {}) {
     const settings = miniMaxH3SettingsForSegment(segment);
     const nativeAudio = settings.audio_mode === "built_in_audio";
     const duration = Math.max(0, Number(segment?.end || 0) - Number(segment?.start || 0));
@@ -37481,6 +37481,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
     add(parts, "Scene idea", sceneVideoConceptPromptText(segment));
     add(parts, "Scene notes", segment?.notes || segment?.director_note);
+    add(parts, "Storyboard Builder context", options.storyboardContext || options.extraStoryboardNotes, 2200);
     add(parts, "Motion/camera request", segment?.i2v_notes);
     add(parts, "Story beat", segment?.story_beat);
     add(parts, "Lyric section", segment?.lyric_section);
@@ -38176,6 +38177,66 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return miniMaxH3PromptVisionImages(segment, mode);
   }
 
+  async function runMiniMaxH3PromptGeneration(segment, mode, options = {}) {
+    const visionImages = miniMaxH3PromptVisionImagesForRunner(segment, mode);
+    const visualOnly = segmentUsesNoLipSyncPerformance(segment);
+    const promptLyricText = visualOnly || isInstrumentalLyricText(segment.lyric_text) ? "" : flattenLyricForPrompt(segment.lyric_text);
+    const promptSingerNames = visualOnly ? [] : (Array.isArray(segment.lyric_singers)
+      ? segment.lyric_singers
+      : String(segment.lyric_singers || "").split(/[,;\n]+/))
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
+    const data = await postJson("/vrgdg/music_builder/generate_t2v", {
+      ...textGemmaRunnerPayload(),
+      project_folder: options.projectFolder || activeProjectFolderForSave(),
+      scene_id: options.sceneId || segment.id || "",
+      builder_instruction_key: options.builderInstructionKey || miniMaxH3InstructionKey(mode),
+      model_file: visionImages.length ? miniMaxGemmaModelSelect.value : miniMaxTextGemmaModelSelect.value,
+      repair_model_file: miniMaxTextGemmaModelSelect.value,
+      mmproj_file: visionImages.length ? miniMaxMmprojSelect.value : "",
+      t2i_prompt: miniMaxH3CreativePromptContextForSegment(segment, mode, options.contextOptions || {}),
+      user_notes: String(options.userNotes || ""),
+      subject_context: "",
+      location_context: "",
+      no_character_present: Boolean(segment.no_character_present),
+      image_references: visionImages,
+      prompt_only_scene_inspiration: options.promptOnlySceneInspiration ?? miniMaxH3SceneImageIsPromptInspiration(segment),
+      performance_mode: options.performanceMode || effectiveVideoPerformanceModeForSegment(segment),
+      lyric_text: promptLyricText,
+      singers: promptSingerNames,
+      audio_mode: options.audioMode || miniMaxH3SettingsForSegment(segment).audio_mode,
+      speaker_assignments: Array.isArray(options.speakerAssignments)
+        ? options.speakerAssignments
+        : visualOnly ? [] : miniMaxDialogueAssignmentsForSegment(segment),
+      camera_motion_speed: segment.camera_motion_speed,
+      camera_motion_speed_guidance: segment.camera_motion_speed_guidance,
+      character_motion_speed: segment.character_motion_speed,
+      character_motion_guidance: segment.character_motion_guidance,
+      theme_style_path: "",
+      story_idea_path: "",
+      subject_scene_path: "",
+      unload_after: options.unloadAfter !== false,
+      temperature: Number(options.temperature ?? 0.45),
+      top_p: Number(options.topP ?? 0.92),
+      max_new_tokens: Number(options.maxNewTokens ?? 4000),
+    }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
+    const generatedPrompt = String(data.prompt || "").trim();
+    if (!generatedPrompt) {
+      throw new Error(options.emptyPromptMessage || `The LLM returned an empty MiniMax ${miniMaxH3ModeLabel(mode)} prompt.`);
+    }
+    const prompt = assembleMiniMaxH3PromptFromCreative(segment, mode, generatedPrompt);
+    if (!prompt) {
+      throw new Error(options.emptyPromptMessage || `The LLM returned an empty MiniMax ${miniMaxH3ModeLabel(mode)} prompt.`);
+    }
+    return {
+      ...data,
+      prompt,
+      already_finalized: true,
+      minimax_h3_mode: mode,
+      used_minimax_h3_instructions: true,
+    };
+  }
+
   async function createMiniMaxH3PromptWithLLM() {
     const segment = requireActiveSegment();
     if (!segment) return;
@@ -38228,14 +38289,6 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       toast("MiniMax image/reference prompting needs a vision-capable API model selected in LLM Runner.", true);
       return;
     }
-    const context = miniMaxH3CreativePromptContextForSegment(segment, mode);
-    const miniMaxVisualOnly = segmentUsesNoLipSyncPerformance(segment);
-    const promptLyricText = miniMaxVisualOnly || isInstrumentalLyricText(segment.lyric_text) ? "" : flattenLyricForPrompt(segment.lyric_text);
-    const promptSingerNames = miniMaxVisualOnly ? [] : (Array.isArray(segment.lyric_singers)
-      ? segment.lyric_singers
-      : String(segment.lyric_singers || "").split(/[,;\n]+/))
-      .map((value) => String(value || "").trim())
-      .filter(Boolean);
     if (mode === "text_to_video" && !sceneVideoConceptPromptText(segment) && !String(segment.i2v_notes || segment.story_beat || segment.lyric_text || "").trim()) {
       toast("Add a scene idea, notes, story beat, lyrics, or motion direction before creating a Text to Video prompt.", true);
       return;
@@ -38249,40 +38302,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       progress.set(`Autosaving this scene before LLM prompting...`, 8);
       await autoSaveSessionQuiet(`MiniMax ${modeLabel} prompt`);
       progress.set(`Running ${visionImages.length ? "vision-assisted" : "text-only"} MiniMax prompt direction...\n${gemmaRunnerLine({ vision: Boolean(visionImages.length) })}`, 42);
-      const data = await postJson("/vrgdg/music_builder/generate_t2v", {
-        ...textGemmaRunnerPayload(),
-        project_folder: projectFolder,
-        scene_id: segment.id || "",
-        builder_instruction_key: miniMaxH3InstructionKey(mode),
-        model_file: visionImages.length ? miniMaxGemmaModelSelect.value : miniMaxTextGemmaModelSelect.value,
-        repair_model_file: miniMaxTextGemmaModelSelect.value,
-        mmproj_file: visionImages.length ? miniMaxMmprojSelect.value : "",
-        t2i_prompt: context,
-        user_notes: "",
-        subject_context: "",
-        location_context: "",
-        no_character_present: Boolean(segment.no_character_present),
-        image_references: visionImages,
-        prompt_only_scene_inspiration: miniMaxH3SceneImageIsPromptInspiration(segment),
-        performance_mode: effectiveVideoPerformanceModeForSegment(segment),
-        lyric_text: promptLyricText,
-        singers: promptSingerNames,
-        audio_mode: miniMaxH3SettingsForSegment(segment).audio_mode,
-        speaker_assignments: miniMaxVisualOnly ? [] : miniMaxDialogueAssignmentsForSegment(segment),
-        theme_style_path: "",
-        story_idea_path: "",
-        subject_scene_path: "",
-        unload_after: true,
-        temperature: 0.45,
-        top_p: 0.92,
-        max_new_tokens: 4000,
-      }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
-      const prompt = assembleMiniMaxH3PromptFromCreative(segment, mode, String(data.prompt || ""));
-      if (!prompt) throw new Error(`The LLM returned an empty MiniMax ${modeLabel} prompt.`);
+      const data = await runMiniMaxH3PromptGeneration(segment, mode, {
+        projectFolder,
+        unloadAfter: true,
+        emptyPromptMessage: `The LLM returned an empty MiniMax ${modeLabel} prompt.`,
+      });
       pushHistory();
-      segment.minimax_h3_prompt = prompt;
+      segment.minimax_h3_prompt = data.prompt;
       segment.minimax_h3_prompt_origin = "gemma";
-      miniMaxPrompt.value = prompt;
+      miniMaxPrompt.value = data.prompt;
       render();
       await autoSaveSessionQuiet(`MiniMax ${modeLabel} prompt complete`);
       progress.set(`MiniMax ${modeLabel} prompt ready.`, 100);
@@ -39898,9 +39926,6 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const workingSegment = storyboardSceneCloneForI2V(segment, scene);
       const extraUserNotes = storyboardVideoExtraNotes(scene, options.storyboardPayload || {});
       if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") {
-        workingSegment.i2v_notes = [String(workingSegment.i2v_notes || "").trim(), extraUserNotes]
-          .filter(Boolean)
-          .join("\n\n");
         const mode = miniMaxH3ModeForSegment(segment);
         const modeLabel = miniMaxH3ModeLabel(mode);
         const storyboardPlanningMode = normalizeMiniMaxShortFilmPlanningMode(
@@ -39908,10 +39933,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           || options.storyboardPayload?.shortFilmPlanningMode
           || state.builderStoryboardDefaults?.short_film_planning_mode,
         );
-        const isMiniMaxShortFilmPrompt = effectiveVideoPerformanceModeForSegment(workingSegment) === "speaking";
-        const storyboardInstructionKey = isMiniMaxShortFilmPrompt
-          ? miniMaxH3ShortFilmInstructionKey(mode, storyboardPlanningMode)
-          : miniMaxH3InstructionKey(mode);
+        const storyboardInstructionKey = miniMaxH3InstructionKey(mode);
         const customSourceContract = storyboardPlanningMode === "fully_custom"
           ? "FULLY CUSTOM SHORT FILM: Every populated scene-card field is authoritative. Format only what the user supplied. Do not invent, rewrite, reorder, merge, omit, or replace dialogue, speakers, story beats, actions, shot/framing, camera motion, setting, references, audio direction, sound, or continuity. Leave unspecified choices unspecified."
           : "GUIDED SHORT FILM: Preserve exact dialogue and speaker order while using the supplied film-planning fields to stage a coherent narrative scene.";
@@ -39949,44 +39971,21 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           `${options.progressLabel || scene.label || sceneDisplayName(segment, segmentIndexInfo(segment).index)}: creating MiniMax ${modeLabel} prompt with the scene's H3 instructions...\n${gemmaRunnerLine({ vision: Boolean(visionImages.length) })}`,
           Math.min(92, Number(options.progressPercent || 35) + 18),
         );
-        const data = await postJson("/vrgdg/music_builder/generate_t2v", {
-          ...textGemmaRunnerPayload(),
-          project_folder: activeProjectFolderForSave(),
-          scene_id: segment.id || "",
-          builder_instruction_key: storyboardInstructionKey,
-          model_file: visionImages.length ? miniMaxGemmaModelSelect.value : miniMaxTextGemmaModelSelect.value,
-          repair_model_file: miniMaxTextGemmaModelSelect.value,
-          mmproj_file: visionImages.length ? miniMaxMmprojSelect.value : "",
-          t2i_prompt: miniMaxH3CreativePromptContextForSegment(workingSegment, mode),
-          user_notes: customSourceContract,
-          subject_context: "",
-          location_context: "",
-          no_character_present: Boolean(workingSegment.no_character_present),
-          image_references: visionImages,
-          prompt_only_scene_inspiration: miniMaxH3SceneImageIsPromptInspiration(workingSegment),
-          performance_mode: effectiveVideoPerformanceModeForSegment(workingSegment),
-          lyric_text: segmentUsesNoLipSyncPerformance(workingSegment) || isInstrumentalLyricText(workingSegment.lyric_text) ? "" : flattenLyricForPrompt(workingSegment.lyric_text),
-          singers: segmentUsesNoLipSyncPerformance(workingSegment) ? [] : (Array.isArray(workingSegment.lyric_singers) ? workingSegment.lyric_singers : []),
-          audio_mode: miniMaxH3SettingsForSegment(workingSegment).audio_mode,
-          speaker_assignments: segmentUsesNoLipSyncPerformance(workingSegment) ? [] : miniMaxDialogueAssignmentsForSegment(workingSegment),
-          camera_motion_speed: workingSegment.camera_motion_speed,
-          camera_motion_speed_guidance: workingSegment.camera_motion_speed_guidance,
-          character_motion_speed: workingSegment.character_motion_speed,
-          character_motion_guidance: workingSegment.character_motion_guidance,
-          theme_style_path: "",
-          story_idea_path: "",
-          subject_scene_path: "",
-          unload_after: options.unloadAfter !== false,
-          temperature: 0.45,
-          top_p: 0.92,
-          max_new_tokens: 4000,
-        }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
-        const generatedPrompt = String(data.prompt || "").trim();
-        if (!generatedPrompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: LLM returned an empty MiniMax ${modeLabel} prompt.`);
-        const prompt = assembleMiniMaxH3PromptFromCreative(workingSegment, mode, generatedPrompt);
+        const data = await runMiniMaxH3PromptGeneration(workingSegment, mode, {
+          projectFolder: activeProjectFolderForSave(),
+          sceneId: segment.id || "",
+          builderInstructionKey: storyboardInstructionKey,
+          contextOptions: {
+            storyboardContext: extraUserNotes,
+            storyboardPayload: options.storyboardPayload || {},
+            storyboardScene: scene,
+          },
+          userNotes: customSourceContract,
+          unloadAfter: options.unloadAfter !== false,
+          emptyPromptMessage: `${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: LLM returned an empty MiniMax ${modeLabel} prompt.`,
+        });
         return {
           ...data,
-          prompt,
           already_finalized: true,
           minimax_h3_mode: mode,
           used_minimax_h3_instructions: true,
@@ -49297,50 +49296,23 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           if (visionImages.length && state.textGemmaRunner === "llm_api" && !llmApiVisionModelSelected()) {
             throw new Error("MiniMax reference prompting needs a vision-capable API model selected in LLM Runner.");
           }
-          const visualOnly = segmentUsesNoLipSyncPerformance(segment);
-          const lyricText = visualOnly || isInstrumentalLyricText(segment.lyric_text) ? "" : flattenLyricForPrompt(segment.lyric_text);
-          const singerNames = visualOnly ? [] : (Array.isArray(segment.lyric_singers)
-            ? segment.lyric_singers
-            : String(segment.lyric_singers || "").split(/[,;\n]+/))
-            .map((value) => String(value || "").trim())
-            .filter(Boolean);
           const percent = 5 + Math.round((index / Math.max(1, scenes.length)) * 90);
           progress.set(`Creating MiniMax prompt ${index + 1}/${scenes.length}: ${sceneDisplayName(segment, index)}\n${gemmaRunnerLine({ vision: Boolean(visionImages.length) })}`, percent);
-          const data = await postJson("/vrgdg/music_builder/generate_t2v", {
-            ...textGemmaRunnerPayload(),
-            project_folder: projectFolder,
-            scene_id: segment.id || "",
-            builder_instruction_key: miniMaxH3InstructionKey(mode),
-            model_file: visionImages.length ? miniMaxGemmaModelSelect.value : miniMaxTextGemmaModelSelect.value,
-            repair_model_file: miniMaxTextGemmaModelSelect.value,
-            mmproj_file: visionImages.length ? miniMaxMmprojSelect.value : "",
-            t2i_prompt: miniMaxH3CreativePromptContextForSegment(segment, mode),
-            user_notes: "",
-            subject_context: "",
-            location_context: "",
-            no_character_present: Boolean(segment.no_character_present),
-            image_references: visionImages,
-            prompt_only_scene_inspiration: false,
-            performance_mode: "singing",
-            lyric_text: lyricText,
-            singers: singerNames,
-            audio_mode: "input_audio",
-            speaker_assignments: [],
-            theme_style_path: "",
-            story_idea_path: "",
-            subject_scene_path: "",
-            unload_after: index === scenes.length - 1,
-            temperature: 0.45,
-            top_p: 0.92,
-            max_new_tokens: 4000,
-          }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
-          const prompt = assembleMiniMaxH3PromptFromCreative(segment, mode, String(data.prompt || ""));
-          if (!prompt) throw new Error(`${sceneDisplayName(segment, index)} returned an empty MiniMax prompt.`);
+          const data = await runMiniMaxH3PromptGeneration(segment, mode, {
+            projectFolder,
+            sceneId: segment.id || "",
+            unloadAfter: index === scenes.length - 1,
+            promptOnlySceneInspiration: false,
+            performanceMode: "singing",
+            audioMode: "input_audio",
+            speakerAssignments: [],
+            emptyPromptMessage: `${sceneDisplayName(segment, index)} returned an empty MiniMax prompt.`,
+          });
           if (!historySaved) {
             pushHistory();
             historySaved = true;
           }
-          segment.minimax_h3_prompt = prompt;
+          segment.minimax_h3_prompt = data.prompt;
           segment.minimax_h3_prompt_origin = "gemma";
           created += 1;
           await autoSaveSessionQuiet(`Auto Build MiniMax prompt ${index + 1}`);

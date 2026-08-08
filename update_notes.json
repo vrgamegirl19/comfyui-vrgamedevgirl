@@ -17,6 +17,7 @@
             "Added Auto Build to the Builder toolbar so music-video projects can create scenes, lyrics, references, mappings, defaults, and prompts from a simpler guided setup.",
             "Added MiniMax Singer Assignment for split lyric cues, including timed lyric and instrumental rows, per-cue singer selection, and synchronized Reference Builder mappings.",
             "Added compact per-cue audio playback controls so users can audition each lyric or instrumental slice while setting Start and End times.",
+            "Added a shared MiniMax H3 prompt-generation path so the side panel, Storyboard Builder, Wizard Storyboard All, and Auto Build can produce the same final MiniMax prompt format.",
             "Added Project Batch tooling for running saved projects one after another."
           ]
         },
@@ -25,6 +26,7 @@
           "items": [
             "MiniMax split lyric cues now drive shot count and cut timing, so prompt shots align with the assigned singer and cue boundaries.",
             "MiniMax prompt generation now asks Gemma for creative shot JSON only while the Builder appends fixed reference, audio, continuity, and MiniMax format sections.",
+            "Storyboard Builder context is now passed into the same MiniMax H3 prompt context used by the side panel, keeping storyboard beats, camera guidance, style, temporal/world effects, facial direction, audio notes, and continuity aligned.",
             "The Builder toolbar, shared tabs, buttons, and global font styling are more compact and easier to read in crowded MiniMax, LTX, and image-generation panels.",
             "Changing a lyric cue to Instrumental now creates a new lyric slot underneath instead of merging or losing the lyric text.",
             "Set End on one singer cue now automatically sets the next cue's Start time to the same boundary."
@@ -34,6 +36,7 @@
           "title": "Fixed",
           "items": [
             "Fixed MiniMax multi-singer prompts so Audio 1 belongs to the target video instead of incorrectly assigning the whole song to Subject 1.",
+            "Fixed MiniMax prompt drift where side-panel generation, Storyboard Builder generation, and Auto Build could use slightly different request wrappers or instruction keys.",
             "Fixed malformed LLM artifacts inside MiniMax dialogue tags and cleaned awkward post-cut wording such as 'the camera cuts to a medium close-up shows'.",
             "Fixed blank Gemma shot descriptions by filling missing shots from the timed singer cue map instead of stopping prompt creation.",
             "Fixed the top-right Builder close button so it asks whether to Save + Close, Close Without Saving, or Go Back before exiting."
