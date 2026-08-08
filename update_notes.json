@@ -28,6 +28,7 @@
           "items": [
             "MiniMax split lyric cues now drive shot count and cut timing, so prompt shots align with the assigned singer and cue boundaries.",
             "MiniMax prompt generation now asks Gemma for creative shot JSON only while the Builder appends fixed reference, audio, continuity, and MiniMax format sections.",
+            "MiniMax side-panel, Auto Build, and converter prompt generation now inject the active Scene Defaults into the LLM request and the final prompt so aesthetic, temporal/world effect, camera flow, motion speeds, cut frequency, performance, facial, and lyric-story settings are visibly applied.",
             "Storyboard Builder context is now passed into the same MiniMax H3 prompt context used by the side panel, keeping storyboard beats, camera guidance, style, temporal/world effects, facial direction, audio notes, and continuity aligned.",
             "The Builder toolbar, shared tabs, buttons, and global font styling are more compact and easier to read in crowded MiniMax, LTX, and image-generation panels.",
             "Changing a lyric cue to Instrumental now creates a new lyric slot underneath instead of merging or losing the lyric text.",

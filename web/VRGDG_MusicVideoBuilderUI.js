@@ -3,6 +3,7 @@ import { api } from "../../scripts/api.js";
 import "./VRGDG_MusicVideoPromptCreatorUI.js";
 import {
   FACIAL_PERFORMANCE_PRESETS,
+  MINIMAX_TEMPORAL_WORLD_EFFECT_PRESETS,
   PERFORMANCE_STYLE_PRESETS,
   STORYBOARD_CAMERA_FLOW_PRESETS,
   STORYBOARD_IMAGE_AESTHETIC_PRESETS,
@@ -12528,6 +12529,46 @@ function openBuilder(node) {
     }
     add(parts, "Storyboard first-frame visual inventory", scene.image_prompt || sceneConceptPromptText(segment));
     return parts.join("\n\n");
+  }
+
+  function miniMaxH3SceneDefaultsContextForSegment(segment = null, options = {}) {
+    const defaults = normalizeBuilderStoryboardDefaults(state.builderStoryboardDefaults);
+    const storyLayer = normalizeBuilderStoryLayer(state.builderStoryLayer);
+    const compact = Boolean(options.compact);
+    const duration = timelineSegmentDuration(segment);
+    const cutPlan = storyboardCutPlanForDuration(duration, defaults.minimax_h3_cut_frequency);
+    const cameraFlowKey = String(defaults.camera_flow || "").trim();
+    const cameraFlowPreset = STORYBOARD_CAMERA_FLOW_PRESETS[cameraFlowKey] || null;
+    const performanceKey = String(segment?.performance_style || defaults.performance_style || "").trim();
+    const performancePreset = storyboardPerformancePreset(performanceKey) || {};
+    const facialText = resolvedFacialPerformanceText(segment);
+    const temporalKey = String(defaults.temporal_world_effect || "").trim();
+    const temporalPreset = MINIMAX_TEMPORAL_WORLD_EFFECT_PRESETS.find((item) => item.value === temporalKey) || null;
+    const temporalText = temporalKey
+      ? String(defaults.temporal_world_effect_custom || temporalPreset?.prompt_guidance || temporalPreset?.description || temporalPreset?.label || temporalKey.replace(/[_-]+/g, " ")).trim()
+      : "Off / natural time";
+    const videoStyle = [defaults.video_style, defaults.video_style_custom].map((value) => String(value || "").trim()).filter(Boolean).join(" — ");
+    const cameraFlowText = [cameraFlowPreset?.label || cameraFlowKey, cameraFlowPreset?.description].map((value) => String(value || "").trim()).filter(Boolean).join(" — ");
+    const performanceText = performanceKey && performanceKey !== "off"
+      ? [performancePreset.direction || performancePreset.description || performancePreset.label || performanceKey].map((value) => String(value || "").trim()).filter(Boolean).join(" ")
+      : "";
+    const lines = [];
+    if (videoStyle) lines.push(`Video aesthetic: ${videoStyle}.`);
+    lines.push(`Temporal / world effect: ${temporalText}.`);
+    if (defaults.global_consistency_phrase) lines.push(`Global consistency phrase: ${defaults.global_consistency_phrase}.`);
+    if (cameraFlowText) lines.push(`Auto camera flow: ${cameraFlowText}.`);
+    lines.push(`Camera motion speed: ${defaults.camera_motion_speed}/10. ${defaults.camera_guidance || builderMotionSpeedGuidance(defaults.camera_motion_speed, "camera")}`);
+    lines.push(`Cut frequency: ${cutPlan.frequency}/10. ${cutPlan.instruction}`);
+    if (performanceText) lines.push(`Global performance style: ${performanceText}.`);
+    lines.push(`Character motion speed: ${defaults.character_motion_speed}/10. ${defaults.character_guidance || builderMotionSpeedGuidance(defaults.character_motion_speed, "character")}`);
+    if (facialText) lines.push(`Global facial performance: ${facialText}`);
+    if (storyLayer.enabled !== false) {
+      lines.push(`Lyric story strength: ${storyLayer.lyric_story_strength}/10.`);
+      if (storyLayer.user_story_arc) lines.push(`User story arc: ${storyLayer.user_story_arc}`);
+      if (storyLayer.song_story_brief) lines.push(`Song story brief: ${storyLayer.song_story_brief}`);
+    }
+    const text = lines.filter(Boolean).join(compact ? " " : "\n");
+    return text ? `${compact ? "Scene defaults applied: " : "Scene defaults applied — mandatory:\n"}${text}` : "";
   }
 
   function cleanNaturalSubjectLabel(value) {
@@ -37868,6 +37909,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
     add(parts, "Scene idea", sceneVideoConceptPromptText(segment));
     add(parts, "Scene notes", segment?.notes || segment?.director_note);
+    add(parts, "Scene Defaults context", options.includeSceneDefaultsContext === false ? "" : miniMaxH3SceneDefaultsContextForSegment(segment), 2600);
     add(parts, "Storyboard Builder context", options.storyboardContext || options.extraStoryboardNotes, 2200);
     add(parts, "Motion/camera request", segment?.i2v_notes);
     add(parts, "Story beat", segment?.story_beat);
@@ -38325,7 +38367,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const prefix = normalizedMode === "image_to_video"
       ? `For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.\n\n`
       : "";
-    return `${prefix}integrated_multimodal_description:\n${creative}`;
+    const defaultsLine = miniMaxH3SceneDefaultsContextForSegment(segment, { compact: true });
+    return `${prefix}integrated_multimodal_description:\n${[defaultsLine, creative].filter(Boolean).join("\n\n")}`;
   }
 
   function assembleMiniMaxH3OfficialPromptFromCreative(segment, mode, creativePrompt) {
@@ -38359,7 +38402,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       `subject_definitions:\n${definitions.join("\n")}`,
       `summary:\n${miniMaxH3OfficialSummary(segment, normalizedMode, refs)}`,
       `retention_analysis:\n${retention.join("\n")}`,
-      `detailed_description:\nThe target video is in a ${miniMaxH3OpeningStyle(segment)} music-video style.\n\n${creative}`,
+      `detailed_description:\nThe target video is in a ${miniMaxH3OpeningStyle(segment)} music-video style.\n\n${[miniMaxH3SceneDefaultsContextForSegment(segment, { compact: true }), creative].filter(Boolean).join("\n\n")}`,
       miniMaxH3OfficialSoundscape(segment),
       miniMaxH3OfficialMusic(segment),
     ].filter(Boolean).join("\n\n").trim();
