@@ -1,0 +1,32 @@
+{
+    "1": {
+        "inputs": {
+            "model_name": "flux2-klein-4b",
+            "quantize": "4",
+            "custom_model_path": "",
+            "loras": ""
+        },
+        "class_type": "Flux2KleinEditModelLoader",
+        "_meta": {
+            "title": "FLUX.2 Klein MLX Model Loader (Multi-Image Edit)"
+        }
+    },
+    "2": {
+        "inputs": {
+            "pipeline": ["1", 0],
+            "prompt": "",
+            "image_paths": "",
+            "height": 1024,
+            "width": 1024,
+            "num_inference_steps": 4,
+            "seed": 0,
+            "guidance": 1.0,
+            "use_kv_cache": false,
+            "filename_prefix": "flux2klein_mlx/edit"
+        },
+        "class_type": "Flux2KleinEdit",
+        "_meta": {
+            "title": "FLUX.2 Klein MLX Multi-Image Edit"
+        }
+    }
+}

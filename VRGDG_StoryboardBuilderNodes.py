@@ -1267,7 +1267,7 @@ def _ensure_storyboard_reference_opening(prompt, scene):
 
 def _storyboard_image_mode_uses_reference_opening(scene_bundle):
     mode = str((scene_bundle or {}).get("image_model_mode") or (scene_bundle or {}).get("imageMode") or "").strip().lower()
-    return mode in {"nano_banana", "flux_klein", "flow_gpt"}
+    return mode in {"nano_banana", "flux_klein", "flux2klein_mlx", "flow_gpt"}
 
 
 def _build_storyboard_image_prompt(payload):

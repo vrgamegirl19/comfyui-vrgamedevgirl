@@ -2423,7 +2423,7 @@ function storyboardReferenceOpening(scene = {}) {
 }
 
 function storyboardImageModeUsesReferenceOpening(imageMode = "") {
-  return ["nano_banana", "flux_klein", "flow_gpt"].includes(String(imageMode || "").trim());
+  return ["nano_banana", "flux_klein", "flux2klein_mlx", "flow_gpt"].includes(String(imageMode || "").trim());
 }
 
 function ensureStoryboardReferenceOpening(prompt, scene = {}, imageMode = "") {

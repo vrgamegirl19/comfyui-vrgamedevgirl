@@ -1,0 +1,31 @@
+{
+    "1": {
+        "inputs": {
+            "model_name": "flux2-klein-4b",
+            "quantize": "4",
+            "custom_model_path": "",
+            "loras": ""
+        },
+        "class_type": "Flux2KleinModelLoader",
+        "_meta": {
+            "title": "FLUX.2 Klein MLX Model Loader (T2I)"
+        }
+    },
+    "2": {
+        "inputs": {
+            "pipeline": ["1", 0],
+            "prompt": "",
+            "height": 1024,
+            "width": 1024,
+            "num_inference_steps": 4,
+            "seed": 0,
+            "guidance": 1.0,
+            "image_strength": 0.3,
+            "filename_prefix": "flux2klein_mlx/image"
+        },
+        "class_type": "Flux2KleinGenerate",
+        "_meta": {
+            "title": "FLUX.2 Klein MLX Generate (T2I)"
+        }
+    }
+}
