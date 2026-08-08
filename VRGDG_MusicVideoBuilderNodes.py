@@ -3378,15 +3378,19 @@ def _run_lm_studio_native_chat(payload, input_value, temperature, top_p, max_new
     headers = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
-    request = urllib.request.Request(
-        f"{api_root}/api/v1/chat",
-        data=json.dumps(body).encode("utf-8"),
-        headers=headers,
-        method="POST",
-    )
-    try:
+
+    def _post(request_body):
+        request = urllib.request.Request(
+            f"{api_root}/api/v1/chat",
+            data=json.dumps(request_body).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
         with urllib.request.urlopen(request, timeout=float(timeout)) as response:
-            data = json.loads(response.read().decode("utf-8", errors="replace"))
+            return json.loads(response.read().decode("utf-8", errors="replace"))
+
+    try:
+        data = _post(body)
     except urllib.error.HTTPError as exc:
         details = exc.read().decode("utf-8", errors="replace") if hasattr(exc, "read") else ""
         if exc.code in {404, 405}:
@@ -3394,7 +3398,17 @@ def _run_lm_studio_native_chat(payload, input_value, temperature, top_p, max_new
                 "LM Studio's native /api/v1/chat endpoint is required to apply per-request context and output limits. "
                 "Update LM Studio and make sure its Local Server is running."
             ) from exc
-        raise RuntimeError(f"LM Studio {label}request failed ({exc.code}): {details or exc.reason}") from exc
+        if "seed" in body and "unrecognized_keys" in details.lower() and "seed" in details.lower():
+            retry_body = {key: value for key, value in body.items() if key != "seed"}
+            try:
+                data = _post(retry_body)
+            except urllib.error.HTTPError as retry_exc:
+                retry_details = retry_exc.read().decode("utf-8", errors="replace") if hasattr(retry_exc, "read") else ""
+                raise RuntimeError(f"LM Studio {label}request failed ({retry_exc.code}): {retry_details or retry_exc.reason}") from retry_exc
+            except urllib.error.URLError as retry_exc:
+                raise RuntimeError(f"Could not connect to LM Studio at {api_root}. Make sure LM Studio's local server is running.") from retry_exc
+        else:
+            raise RuntimeError(f"LM Studio {label}request failed ({exc.code}): {details or exc.reason}") from exc
     except urllib.error.URLError as exc:
         raise RuntimeError(f"Could not connect to LM Studio at {api_root}. Make sure LM Studio's local server is running.") from exc
     text = _lm_studio_native_output_text(data)
@@ -5773,10 +5787,6 @@ def _generate_builder_t2v_prompt(payload):
     no_character_present = bool(payload.get("no_character_present") or payload.get("no_subject") or payload.get("no_visible_subject"))
     instruction_key = _safe_builder_instruction_key(payload.get("builder_instruction_key") or payload.get("instruction_key") or "t2v")
     is_minimax_h3_prompt = instruction_key.startswith("minimax_h3_")
-    structured_shot_descriptions = bool(
-        payload.get("structured_shot_descriptions")
-        or payload.get("structuredShotDescriptions")
-    )
     prompt_only_scene_inspiration = bool(payload.get("prompt_only_scene_inspiration"))
     text_runner = _llm_runner_from_payload(payload)
     if not model_file and text_runner not in {"lm_studio", "llm_api"}:
@@ -6084,7 +6094,7 @@ def _generate_builder_t2v_prompt(payload):
                 preserve_paragraphs=is_minimax_h3_prompt,
             )
         text = _clean_lm_studio_plain_text(text) if is_minimax_h3_prompt else _clean_gemma_prompt_text(text)
-        if is_minimax_h3_prompt and not structured_shot_descriptions:
+        if is_minimax_h3_prompt:
             text = _format_minimax_h3_prompt(text, payload, instruction_key)
         if first_last_frame_mode:
             text = re.sub(r"(?i)\b(?:cinematic\s+)?(?:aspect\s+ratio\s*[:=]?\s*)?(?:16\s*:\s*9|9\s*:\s*16|21\s*:\s*9|4\s*:\s*3|3\s*:\s*4|1\s*:\s*1)(?:\s+(?:aspect\s+ratio|widescreen|portrait|landscape))?\b[,]?\s*", "", text)
