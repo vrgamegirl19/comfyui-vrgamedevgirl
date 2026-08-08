@@ -7041,13 +7041,14 @@ function openBuilder(node) {
     const cues = ensureMiniMaxSpeakerAssignments(segment, speakers);
     segment.minimax_speaker_assignments = cues;
     const audioTools = document.createElement("div");
-    audioTools.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;";
+    const hasCustomSpeakerTimingAudio = Boolean(String(segment.custom_audio_path || "").trim());
+    audioTools.style.cssText = `display:grid;grid-template-columns:${hasCustomSpeakerTimingAudio ? "1fr 1fr 1fr" : "1fr 1fr"};gap:8px;`;
     const playSceneCueAudio = makeButton("Play Scene Clock", "primary");
     const jumpSceneCueAudio = makeButton("Jump To Scene Start");
     const autoTimeSceneCues = makeButton("Auto Time This Scene");
     applyCompactButtonLabel(playSceneCueAudio, "Play\nScene Clock", { noMap: true, padding: "7px 6px", title: "Play this scene range. If no generated audio exists yet, the silent timeline clock still lets you set cue times." });
     applyCompactButtonLabel(jumpSceneCueAudio, "Jump To\nScene Start", { noMap: true, padding: "7px 6px", title: "Move the playhead to this scene start." });
-    applyCompactButtonLabel(autoTimeSceneCues, "Auto Time\nThis Scene", { noMap: true, padding: "7px 6px", title: "Use Stable-ts to fill dialogue/instrumental cue start/end times from rendered scene audio or custom/project audio." });
+    applyCompactButtonLabel(autoTimeSceneCues, "Auto Time\nThis Scene", { noMap: true, padding: "7px 6px", title: "Use Stable-ts to fill dialogue/instrumental cue start/end times from this scene's custom audio." });
     playSceneCueAudio.onclick = () => {
       const start = timelineAudioStartForSegment(segment);
       if (!playSceneAudioFrom(start)) {
@@ -7061,7 +7062,8 @@ function openBuilder(node) {
       toast(`Playhead moved to ${formatTime(start)}. Play the scene, then use Set Start / Set End on cue rows.`);
     };
     autoTimeSceneCues.onclick = () => autoTimeMiniMaxSpeakerCuesForSegment(segment);
-    audioTools.append(playSceneCueAudio, jumpSceneCueAudio, autoTimeSceneCues);
+    audioTools.append(playSceneCueAudio, jumpSceneCueAudio);
+    if (hasCustomSpeakerTimingAudio) audioTools.append(autoTimeSceneCues);
     miniMaxSpeakerAssignmentList.append(audioTools);
 
     const cueActions = document.createElement("div");
@@ -21983,12 +21985,11 @@ function openBuilder(node) {
   async function prepareSceneAudioClipForTimestamping(segment, progress = null) {
     const projectFolder = String(projectInput.value || state.projectFolder || "").trim();
     const customAudioPath = String(segment?.custom_audio_path || "").trim();
-    const renderedAudioPath = segmentUsesRenderedTimelineAudio(segment) ? String(selectedSegmentVideoPath(segment) || "").trim() : "";
-    const sourcePath = customAudioPath || renderedAudioPath || currentProjectAudioPath();
+    const sourcePath = customAudioPath || currentProjectAudioPath();
     if (!sourcePath) throw new Error("Load project audio, add custom scene audio, or render this built-in-audio scene before auto-timing cues.");
     if (!projectFolder) throw new Error("Create or load a project before auto-timing cues.");
     const sceneNumber = sceneSlotNumber(segment);
-    const start = customAudioPath ? audioSourceStart(segment) : renderedAudioPath ? 0 : Math.max(0, Number(segment.start || 0));
+    const start = customAudioPath ? audioSourceStart(segment) : Math.max(0, Number(segment.start || 0));
     const duration = customAudioPath ? audioChunkDuration(segment) : timelineSegmentDuration(segment);
     progress?.set(`Preparing ${duration.toFixed(3)}s scene audio clip...`, 10);
     const prepared = await postJson("/vrgdg/workflow_runner/prepare_scene_audio_clip", {
@@ -22078,8 +22079,8 @@ function openBuilder(node) {
       const cues = ensureMiniMaxSpeakerAssignments(segment, miniMaxMappedSpeakersForSegment(segment));
       const dialogueCues = normalizeMiniMaxSpeakerAssignments(cues).filter((cue) => cue.type !== "instrumental" && flattenLyricForPrompt(cue.text));
       if (!dialogueCues.length) throw new Error("Add at least one dialogue cue before auto-timing this scene.");
-      if (!String(segment.custom_audio_path || "").trim() && !segmentUsesRenderedTimelineAudio(segment) && !currentProjectAudioPath()) {
-        throw new Error("Auto Time needs audio to analyze. Render this MiniMax built-in-audio scene first, or add custom/project audio for testing.");
+      if (!String(segment.custom_audio_path || "").trim()) {
+        throw new Error("Speaker Auto Time needs a custom audio file on this scene. MiniMax built-in audio does not exist yet before rendering, so enter dialogue timing manually or add custom audio for timing.");
       }
       progress.set("Preparing dialogue cue text...", 5);
       const referenceDialogue = dialogueCues.map((cue) => flattenLyricForPrompt(cue.text)).filter(Boolean).join("\n");
