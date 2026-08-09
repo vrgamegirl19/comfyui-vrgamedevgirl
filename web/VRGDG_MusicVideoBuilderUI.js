@@ -5,6 +5,7 @@ import {
   FACIAL_PERFORMANCE_PRESETS,
   PERFORMANCE_STYLE_PRESETS,
   STORYBOARD_CAMERA_FLOW_PRESETS,
+  storyboardFxContract,
   STORYBOARD_IMAGE_AESTHETIC_PRESETS,
   STORYBOARD_IMAGE_SHOT_FLOW_PRESETS,
   storyboardFacialPerformancePreset,
@@ -24,6 +25,11 @@ import {
 import { createMusicVideoBuilderLuts } from "./VRGDG_MusicVideoBuilderLUTs.js";
 import { createPostProcessComparePreview } from "./VRGDG_PostProcessComparePreview.js";
 import { createFaceFixTool } from "./VRGDG_FaceFixUI.js?v=20260716-1";
+
+// Safe rollout switch: the legacy side-panel generators remain below and can
+// be restored by changing this one value to false without deleting them.
+const USE_STORYBOARD_PROMPT_PIPELINE_FOR_SIDE_PANEL = true;
+let ACTIVE_STORYBOARD_PROMPT_PIPELINE = null;
 import {
   BROWSER_IMAGE_PROVIDERS,
   buildBrowserImagePrompt,
@@ -6468,6 +6474,8 @@ function openBuilder(node) {
         ? String(source.temporal_protected_characters || source.temporalProtectedCharacters)
         : "all_referenced",
       temporal_protected_custom: String(source.temporal_protected_custom || source.temporalProtectedCustom || ""),
+      fx_preset: String(source.fx_preset || source.fxPreset || ""),
+      fx_custom_json: String(source.fx_custom_json || source.fxCustomJson || ""),
     };
   }
 
@@ -37979,34 +37987,6 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     });
   }
 
-  function miniMaxH3SubjectMultiplicityBlock(segment) {
-    const mode = miniMaxH3ModeForSegment(segment);
-    if (mode !== "reference_to_video" && mode !== "video_to_video") return "";
-    const faceHairOnly = mode === "reference_to_video"
-      && Boolean(segment?.minimax_h3_use_scene_image_as_start_frame)
-      && miniMaxH3StartFrameCharacterInfluenceForSegment(segment) === "face_hair_only";
-    const subjectRefs = storyboardReferenceDataForSegment(segment).subject_refs || [];
-    const subjects = [];
-    const seen = new Set();
-    for (const subject of subjectRefs) {
-      const name = String(subject?.name || subject?.label || "").trim();
-      const key = name.toLocaleLowerCase();
-      if (!name || seen.has(key)) continue;
-      seen.add(key);
-      subjects.push(name);
-    }
-    if (!subjects.length) return "";
-    const count = subjects.length;
-    return [
-      "REFERENCE SUBJECT COUNT — MANDATORY:",
-      `This scene contains exactly ${count} distinct named ${count === 1 ? "subject" : "subjects"}: ${subjects.join(", ")}.`,
-      faceHairOnly
-        ? "A character/person reference image may be a multi-view character sheet, turnaround sheet, or contact sheet. Every portrait and full-body view inside one character reference image depicts the same single person; use those views ONLY to learn that one person's face identity, facial features, and hair. Image 1 remains authoritative for clothing, body proportions, pose, accessories, framing, lighting, and background."
-        : "A character/person reference image may be a multi-view character sheet, turnaround sheet, or contact sheet. Every portrait and full-body view inside one character reference image depicts the same single person; use those views only to learn that one person's identity, face, hair, clothing, and proportions.",
-      "Render exactly one on-screen instance of each named subject. Do not turn alternate views from a reference sheet into additional people. Do not duplicate, clone, twin, multiply, or add background copies of any referenced subject unless the scene explicitly requests duplicates.",
-    ].join("\n");
-  }
-
   function miniMaxH3ContinuityPromptBlock(segment, continuityInput, imageNumber) {
     const continuityMode = normalizeMiniMaxH3ContinuityMode(continuityInput?.continuityMode);
     const number = Math.max(1, Math.trunc(Number(imageNumber || 1)));
@@ -38056,8 +38036,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const visualOnlyBlock = miniMaxH3VisualOnlySafetyBlock(segment);
     const safePrompt = visualOnlyBlock ? stripMiniMaxH3VisualOnlyTimelineVocalDirections(clean) : clean;
     const block = visualOnlyBlock ? "" : miniMaxH3NativeVoiceBlock(segment);
-    const subjectMultiplicityBlock = miniMaxH3SubjectMultiplicityBlock(segment);
-    return [safePrompt, subjectMultiplicityBlock, block, visualOnlyBlock].filter(Boolean).join("\n\n").trim();
+    return [safePrompt, block, visualOnlyBlock].filter(Boolean).join("\n\n").trim();
   }
 
   function miniMaxH3FramingSubjectReference(segment) {
@@ -39046,7 +39025,67 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     };
   }
 
+  let storyboardPromptPipelineRunner = null;
+  async function createSidePanelPromptFromStoryboardPipeline(segment, mode, label = "Storyboard") {
+    const storyboardScenes = storyboardScenePayload();
+    const scene = storyboardScenes.find((item) => item.id === segment.id) || storyboardScenes.find((item) => Number(item.scene_number) === Number(segmentIndexInfo(segment).index + 1));
+    if (!scene) throw new Error("The active scene could not be mapped into the Storyboard prompt pipeline.");
+    const storyboardState = wizardStoryboardState(storyboardScenes, {
+      promptMode: "video",
+      videoMode: currentVideoMode(),
+      miniMaxH3Mode: mode,
+    });
+    const storyboardPayload = storyboardGptPayload(storyboardState, [scene]);
+    const progress = createProgressWindow(`Creating ${label} prompt`);
+    try {
+      const pipeline = typeof state.onCreateVideoPrompt === "function"
+        ? state.onCreateVideoPrompt
+        : (storyboardPromptPipelineRunner || ACTIVE_STORYBOARD_PROMPT_PIPELINE);
+      if (typeof pipeline !== "function") {
+        throw new Error("The Storyboard prompt pipeline is not ready yet. Reload the Video Builder once, then try again.");
+      }
+      const data = await pipeline(scene, {
+        storyboardPayload,
+        progress,
+      progressLabel: `Side panel → Storyboard pipeline (${label})`,
+      progressPercent: 35,
+      unloadAfter: true,
+      });
+      if (mode === "text_to_video" || mode === "image_to_video" || mode === "reference_to_video" || mode === "video_to_video") {
+        segment.minimax_h3_prompt = data.prompt;
+        segment.minimax_h3_prompt_origin = "gemma";
+        miniMaxPrompt.value = data.prompt;
+      } else {
+        segment.i2v_prompt = data.prompt;
+        segment.i2v_prompt_origin = "gemma";
+        i2vPrompt.value = data.prompt;
+      }
+      render();
+      await autoSaveSessionQuiet(`Storyboard pipeline ${label} prompt complete`);
+      progress.set(`${label} prompt ready.`, 100);
+      progress.close(900);
+      return data.prompt;
+    } catch (error) {
+      progress.set(`Error:\n${String(error?.message || error)}`, 100);
+      progress.close(1800);
+      throw error;
+    }
+  }
+
   async function createMiniMaxH3PromptWithLLM() {
+    if (USE_STORYBOARD_PROMPT_PIPELINE_FOR_SIDE_PANEL) {
+      const segment = requireActiveSegment();
+      if (!segment) return;
+      updateActiveFromInputs();
+      saveMiniMaxSceneInputsFromPanel();
+      try {
+        await createSidePanelPromptFromStoryboardPipeline(segment, miniMaxH3ModeForSegment(segment), "MiniMax");
+        toast("Created the MiniMax prompt through the Storyboard pipeline.");
+      } catch (error) {
+        toast(`Storyboard side-panel prompt failed. Legacy path is preserved; set USE_STORYBOARD_PROMPT_PIPELINE_FOR_SIDE_PANEL to false to switch back.\n${String(error?.message || error)}`, true);
+      }
+      return;
+    }
     const segment = requireActiveSegment();
     if (!segment) return;
     updateActiveFromInputs();
@@ -39117,9 +39156,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         emptyPromptMessage: `The LLM returned an empty MiniMax ${modeLabel} prompt.`,
       });
       pushHistory();
-      segment.minimax_h3_prompt = data.prompt;
+      segment.minimax_h3_prompt = ensureBuilderManagedFx(data.prompt, segment);
       segment.minimax_h3_prompt_origin = "gemma";
-      miniMaxPrompt.value = data.prompt;
+      miniMaxPrompt.value = segment.minimax_h3_prompt;
       render();
       await autoSaveSessionQuiet(`MiniMax ${modeLabel} prompt complete`);
       progress.set(`MiniMax ${modeLabel} prompt ready.`, 100);
@@ -39233,6 +39272,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   async function createI2VPromptWithGemma() {
+    if (USE_STORYBOARD_PROMPT_PIPELINE_FOR_SIDE_PANEL) {
+      const segment = requireActiveSegment();
+      if (!segment) return;
+      updateActiveFromInputs();
+      try {
+        await createSidePanelPromptFromStoryboardPipeline(segment, currentVideoMode(), "video");
+        toast("Created the video prompt through the Storyboard pipeline.");
+      } catch (error) {
+        toast(`Storyboard side-panel prompt failed. Legacy path is preserved; set USE_STORYBOARD_PROMPT_PIPELINE_FOR_SIDE_PANEL to false to switch back.\n${String(error?.message || error)}`, true);
+      }
+      return;
+    }
     const segment = requireActiveSegment();
     if (!segment) return;
     updateActiveFromInputs();
@@ -39311,7 +39362,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         unload_after: !state.useI2VPromptEnhancementPass || useImageReference,
       }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
       pushHistory();
-      segment.i2v_prompt = await finalizeVideoPromptForSegment(segment, data.prompt, progress, 82, `${modeLabel} prompt enhancement`, { unloadAfter: true });
+      segment.i2v_prompt = ensureBuilderManagedFx(
+        await finalizeVideoPromptForSegment(segment, data.prompt, progress, 82, `${modeLabel} prompt enhancement`, { unloadAfter: true }),
+        segment,
+      );
       segment.i2v_prompt_origin = "gemma";
       i2vPrompt.value = segment.i2v_prompt;
       render();
@@ -40252,6 +40306,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       temporalEnvironmentTimePassage: defaults.temporal_environment_time_passage !== false,
       temporalProtectedCharacters: defaults.temporal_protected_characters || "all_referenced",
       temporalProtectedCustom: defaults.temporal_protected_custom || "",
+      fxPreset: defaults.fx_preset || "",
+      fxCustomJson: defaults.fx_custom_json || "",
       globalConsistencyPhrase: defaults.global_consistency_phrase || "",
       performanceStyle: defaults.performance_style || "",
       facialPerformance: state.defaultFacialPerformance || "",
@@ -40626,6 +40682,25 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       }
       return `${text}\n\n${requiredLine}`;
     };
+    const ensureBuilderManagedFx = (prompt, scene = {}) => {
+      let text = String(prompt || "").trim();
+      const defaults = normalizeBuilderStoryboardDefaults(state.builderStoryboardDefaults);
+      const preset = String(defaults.fx_preset || "").trim();
+      if (!text || !preset) return text;
+      const timestampPattern = /((?:\[\s*\d+(?:\.\d+)?s?\s*[-–—]\s*\d+(?:\.\d+)?s?\s*\]|\[\s*Shot\s+\d+[^\]]*\])\s*\n?)([\s\S]*?)(?=\n\s*(?:\[\s*\d+(?:\.\d+)?s?\s*[-–—]\s*\d+(?:\.\d+)?s?\s*\]|\[\s*Shot\s+\d+[^\]]*\])|\n\s*(?:Audio(?:\s+1)?|Native\s+audio|overall_soundscape|non_diegetic_music|Continuity)\s*:|$)/gi;
+      let shotIndex = 0;
+      let matched = false;
+      text = text.replace(timestampPattern, (whole, header, body) => {
+        matched = true;
+        const contract = storyboardFxContract(preset, defaults.fx_custom_json, shotIndex++);
+        if (!contract || String(body || "").includes(contract.cue)) return whole;
+        const cue = `FX accent: ${contract.cue} Timing: ${contract.timing}. Keep the mapped subject stable and readable.`;
+        return `${header}${String(body || "").trim()} ${cue}\n`;
+      });
+      if (matched) return text.trim();
+      const contract = storyboardFxContract(preset, defaults.fx_custom_json, 0);
+      return contract ? `${text}\n\nFX accent inside this shot: ${contract.cue} Keep the mapped subject stable and readable.`.trim() : text;
+    };
     const ensureStoryboardRequiredTemporalWorldEffect = (prompt, storyboardPayload = {}, scene = {}) => {
       let text = String(prompt || "").trim();
       const storyboardScenes = Array.isArray(storyboardPayload?.scenes) ? storyboardPayload.scenes : [];
@@ -40799,7 +40874,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           emptyPromptMessage: `${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: LLM returned an empty MiniMax ${modeLabel} prompt.`,
         });
         const prompt = ensureStoryboardRequiredTemporalWorldEffect(
-          data.prompt,
+          ensureBuilderManagedFx(data.prompt, scene),
           options.storyboardPayload || {},
           scene,
         );
@@ -40833,12 +40908,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         `${options.progressLabel || "Storyboard Gemma"}: enhancement pass`,
         { unloadAfter: request.useImageReference ? true : options.unloadAfter !== false },
       );
-      const prompt = ensureStoryboardRequiredStartingShot(
+      const promptWithStartingShot = ensureStoryboardRequiredStartingShot(
         finalizedPrompt,
         workingSegment,
         scene,
         options.storyboardPayload || {},
       );
+      const prompt = ensureBuilderManagedFx(promptWithStartingShot, scene);
       if (!prompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: Gemma returned an empty I2V prompt.`);
       return {
         ...data,
@@ -40847,6 +40923,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         used_video_builder_i2v_payload: true,
       };
     };
+    storyboardPromptPipelineRunner = createStoryboardVideoPromptViaBuilder;
+    ACTIVE_STORYBOARD_PROMPT_PIPELINE = createStoryboardVideoPromptViaBuilder;
     const applyIdLoraDialoguePlanFromStoryboard = async (updates = {}) => {
       const scenes = Array.isArray(updates.scenes)
         ? updates.scenes.filter((scene) => String(scene?.lyrics || scene?.story_beat || scene?.image_prompt || "").trim())
@@ -41108,6 +41186,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       temporalEnvironmentTimePassage: state.builderStoryboardDefaults?.temporal_environment_time_passage !== false,
       temporalProtectedCharacters: state.builderStoryboardDefaults?.temporal_protected_characters || "all_referenced",
       temporalProtectedCustom: state.builderStoryboardDefaults?.temporal_protected_custom || "",
+      fxPreset: state.builderStoryboardDefaults?.fx_preset || "",
+      fxCustomJson: state.builderStoryboardDefaults?.fx_custom_json || "",
       cameraMotionSpeed: state.builderStoryboardDefaults?.camera_motion_speed ?? 4,
       characterMotionSpeed: state.builderStoryboardDefaults?.character_motion_speed ?? 4,
       cutFrequency: state.builderStoryboardDefaults?.minimax_h3_cut_frequency ?? 0,

@@ -161,7 +161,7 @@ function createCompareUI(node) {
   stage.append(beforeVideo, afterClip, divider, handle, beforeLabel, afterLabel, empty);
 
   const controls = document.createElement("div");
-  controls.style.cssText = "display:grid;grid-template-columns:auto auto minmax(80px,1fr) auto auto;gap:7px;align-items:center;";
+  controls.style.cssText = "display:grid;grid-template-columns:auto auto auto minmax(80px,1fr) auto auto;gap:7px;align-items:center;";
   const playButton = createButton("▶", "Play or pause both videos");
   const restartButton = createButton("↺", "Restart both videos");
   const scrubber = document.createElement("input");
@@ -175,12 +175,17 @@ function createCompareUI(node) {
   timeLabel.textContent = "00:00.00 / 00:00.00";
   timeLabel.style.cssText = "font:700 11px Arial,sans-serif;color:#67e8f9;white-space:nowrap;font-variant-numeric:tabular-nums;";
   const muteButton = createButton("🔇", "Mute or unmute before-video audio");
-  controls.append(playButton, restartButton, scrubber, timeLabel, muteButton);
+  const recordButton = createButton("● Record", "Record the labeled slider preview for the configured duration");
+  recordButton.style.background = "#7f1d1d";
+  const recordStatus = document.createElement("div");
+  recordStatus.textContent = "";
+  recordStatus.style.cssText = "font:700 10px Arial,sans-serif;color:#fca5a5;white-space:nowrap;";
+  controls.append(playButton, restartButton, recordButton, scrubber, timeLabel, muteButton);
 
   const wipeRow = document.createElement("div");
   wipeRow.style.cssText = "display:grid;grid-template-columns:auto minmax(80px,1fr) auto;gap:8px;align-items:center;";
   const wipeTitle = document.createElement("div");
-  wipeTitle.textContent = "Before / After";
+  wipeTitle.textContent = "Slider";
   wipeTitle.style.cssText = "font:800 11px Arial,sans-serif;color:#d4d4d8;white-space:nowrap;";
   const wipeSlider = document.createElement("input");
   wipeSlider.type = "range";
@@ -191,11 +196,15 @@ function createCompareUI(node) {
   const wipeValue = document.createElement("div");
   wipeValue.style.cssText = "min-width:34px;text-align:right;font:700 11px Arial,sans-serif;color:#d4d4d8;";
   wipeRow.append(wipeTitle, wipeSlider, wipeValue);
-  root.append(stage, controls, wipeRow);
+  root.append(stage, controls, wipeRow, recordStatus);
 
   let dragging = false;
   let animationFrame = 0;
   let commonDuration = 0;
+  let recorder = null;
+  let recordingTimer = 0;
+  let recordingFrame = 0;
+  let recordingChunks = [];
 
   function showLabels() {
     const visible = !!widgetValue(node, "show_labels", true);
@@ -203,6 +212,122 @@ function createCompareUI(node) {
     afterLabel.textContent = String(widgetValue(node, "after_label", "After") || "After");
     beforeLabel.style.display = visible ? "" : "none";
     afterLabel.style.display = visible ? "" : "none";
+  }
+
+  function drawContained(ctx, video, width, height) {
+    if (!video.videoWidth || !video.videoHeight) return;
+    const scale = Math.min(width / video.videoWidth, height / video.videoHeight);
+    const drawWidth = video.videoWidth * scale;
+    const drawHeight = video.videoHeight * scale;
+    ctx.drawImage(video, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
+  }
+
+  function drawRecordingFrame(ctx, width, height) {
+    ctx.fillStyle = "#050505";
+    ctx.fillRect(0, 0, width, height);
+    drawContained(ctx, beforeVideo, width, height);
+    const position = Math.max(0, Math.min(1, Number(wipeSlider.value || 0.5)));
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(width * position, 0, width * (1 - position), height);
+    ctx.clip();
+    drawContained(ctx, afterVideo, width, height);
+    ctx.restore();
+    if (widgetValue(node, "show_labels", true)) {
+      ctx.font = "900 22px Arial,sans-serif";
+      const beforeText = beforeLabel.textContent || "Before";
+      const afterText = afterLabel.textContent || "After";
+      const beforeWidth = ctx.measureText(beforeText).width;
+      const afterWidth = ctx.measureText(afterText).width;
+      ctx.fillStyle = "rgba(0,0,0,.68)";
+      ctx.fillRect(10, 10, beforeWidth + 16, 32);
+      ctx.fillRect(width - afterWidth - 26, 10, afterWidth + 16, 32);
+      ctx.fillStyle = "#fff";
+      ctx.fillText(beforeText, 18, 34);
+      ctx.fillText(afterText, width - afterWidth - 18, 34);
+    }
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = Math.max(2, width / 640);
+    ctx.beginPath();
+    ctx.moveTo(width * position, 0);
+    ctx.lineTo(width * position, height);
+    ctx.stroke();
+  }
+
+  function stopRecording() {
+    if (!recorder) return;
+    clearTimeout(recordingTimer);
+    cancelAnimationFrame(recordingFrame);
+    recorder.stop();
+    pauseBoth();
+    recordButton.disabled = false;
+    recordButton.textContent = "● Record";
+    recordStatus.textContent = "Finishing…";
+  }
+
+  function startRecording() {
+    if (recorder || !beforeVideo.src || !afterVideo.src) return;
+    const canvas = document.createElement("canvas");
+    const width = Math.max(640, Math.round((beforeVideo.videoWidth || stage.clientWidth || 640)));
+    const height = Math.max(360, Math.round((beforeVideo.videoHeight || stage.clientHeight || 360)));
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    const stream = canvas.captureStream(30);
+    const mimeType = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"]
+      .find((type) => MediaRecorder.isTypeSupported(type));
+    if (!mimeType) {
+      recordStatus.textContent = "Recording is not supported by this browser.";
+      return;
+    }
+    recordingChunks = [];
+    recorder = new MediaRecorder(stream, { mimeType });
+    recorder.ondataavailable = (event) => { if (event.data.size) recordingChunks.push(event.data); };
+    recorder.onstop = async () => {
+      const blob = new Blob(recordingChunks, { type: mimeType });
+      recordStatus.textContent = "Saving MP4 to ComfyUI output…";
+      try {
+        const form = new FormData();
+        form.append("file", blob, "vrgdg-video-compare.webm");
+        const response = await api.fetchApi("/vrgdg/video_compare/save_recording", {
+          method: "POST",
+          body: form,
+        });
+        const data = await response.json();
+        if (!response.ok || !data.ok) throw new Error(data.error || "The recording could not be saved.");
+        const link = document.createElement("a");
+        link.href = videoUrl(data.path);
+        link.download = data.name || "vrgdg-video-compare.mp4";
+        link.textContent = `Download MP4 (${data.name || "saved"})`;
+        link.title = data.path;
+        link.style.cssText = "color:#67e8f9;font:700 11px Arial,sans-serif;white-space:nowrap;";
+        recordStatus.replaceChildren(link);
+      } catch (error) {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "vrgdg-video-compare.webm";
+        link.textContent = "Download temporary WebM (MP4 save failed)";
+        link.style.cssText = "color:#fca5a5;font:700 11px Arial,sans-serif;white-space:nowrap;";
+        recordStatus.replaceChildren(link);
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        console.error("[VRGDG Video Compare] Could not save MP4:", error);
+      }
+      recorder = null;
+    };
+    recorder.start(200);
+    recordButton.disabled = true;
+    recordButton.textContent = "■ Recording";
+    recordStatus.textContent = "Move the slider…";
+    playBoth();
+    const startedAt = performance.now();
+    const durationMs = Math.max(500, Number(widgetValue(node, "record_duration", 5)) * 1000);
+    const render = () => {
+      drawRecordingFrame(ctx, width, height);
+      if (recorder && performance.now() - startedAt < durationMs) recordingFrame = requestAnimationFrame(render);
+    };
+    render();
+    recordingTimer = setTimeout(stopRecording, durationMs);
   }
 
   function setWipe(value, updateWidget = false) {
@@ -347,8 +472,16 @@ function createCompareUI(node) {
     setWidgetValue(node, "muted", muted);
     muteButton.textContent = muted ? "🔇" : "🔊";
   });
+  recordButton.addEventListener("click", startRecording);
   beforeVideo.addEventListener("loadedmetadata", calculateDuration);
   afterVideo.addEventListener("loadedmetadata", calculateDuration);
+  for (const video of [beforeVideo, afterVideo]) {
+    video.addEventListener("error", () => {
+      empty.textContent = "Could not load one of the videos. Check the ComfyUI console for the media URL/error.";
+      empty.style.display = "flex";
+      console.error("[VRGDG Video Compare] Video load failed:", video.currentSrc || video.src, video.error);
+    });
+  }
   beforeVideo.addEventListener("pause", () => {
     if (!beforeVideo.ended) pauseBoth();
   });
@@ -378,6 +511,7 @@ function createCompareUI(node) {
         ["show_labels", settings.show_labels],
         ["loop", settings.loop],
         ["muted", settings.muted],
+        ["record_duration", settings.record_duration],
       ]) {
         if (value !== undefined) {
           const widget = getWidget(node, name);
@@ -396,6 +530,7 @@ function createCompareUI(node) {
       node.setDirtyCanvas?.(true, true);
     },
     destroy() {
+      if (recorder) stopRecording();
       pauseBoth();
       clearVideo(beforeVideo);
       clearVideo(afterVideo);
@@ -460,9 +595,10 @@ app.registerExtension({
 
     nodeType.prototype.onExecuted = function (message) {
       onExecuted?.apply(this, arguments);
+      const payload = message?.output || message?.ui || message || {};
       this._vrgdgVideoCompareUI?.load(
-        message?.compare_videos || [],
-        message?.compare_video_settings || {},
+        payload?.compare_videos || [],
+        payload?.compare_video_settings || {},
       );
     };
 

@@ -66,6 +66,14 @@ class VideoCompareSliderTests(unittest.TestCase):
         self.assertIn("afterClip.style.clipPath", ui_source)
         self.assertIn("Promise.all([beforeVideo.play(), afterVideo.play()])", ui_source)
         self.assertIn("requestAnimationFrame(animationSync)", ui_source)
+        self.assertIn('"before_images"', node_source)
+        self.assertIn('"after_images"', node_source)
+        self.assertIn('"record_duration"', node_source)
+        self.assertIn('/vrgdg/video_compare/save_recording', node_source)
+        self.assertIn('"libx264"', node_source)
+        self.assertIn("new MediaRecorder", ui_source)
+        self.assertIn("Download MP4", ui_source)
+        self.assertIn("Saving MP4 to ComfyUI output", ui_source)
 
 
 if __name__ == "__main__":

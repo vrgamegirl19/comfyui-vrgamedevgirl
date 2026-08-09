@@ -1939,6 +1939,72 @@ export const MINIMAX_TEMPORAL_WORLD_EFFECT_PRESETS = [
   { value: "custom", label: "Custom temporal effect", description: "Use the user's exact temporal-effect wording while retaining the selected protection and extras rules." },
 ];
 
+// FX are injected by the Builder into each timestamped shot after prompt
+// generation. They are intentionally separate from camera flow and temporal
+// world effects so the LLM does not have to invent, place, or repeat them.
+export const STORYBOARD_FX_PRESETS = [
+  { value: "", label: "Off", description: "Do not add builder-managed FX.", cues: [] },
+  { value: "lighting", label: "Lighting FX", description: "Practical-light flicker, sweeps, pulses, exposure and color changes.", cues: ["A brief practical-light flicker cascade sweeps through the environment and resolves into clean subject light.", "A controlled red-to-blue light sweep travels across the set, creating a readable cinematic exposure pulse.", "Neon reflections pulse once across the surfaces on the musical accent, without obscuring the subject's face."] },
+  { value: "camera_lens", label: "Camera / Lens FX", description: "Lens flare, bloom, parallax, focus breathing, motion blur and optical artifacts.", cues: ["A restrained lens flare and foreground-parallax accent passes through the frame as the camera moves.", "A subtle lens-bloom pulse and focus-breathing shift accent the camera move while the subject remains sharp.", "A controlled motion-blur streak catches the edge of the frame during the camera movement, preserving subject readability."] },
+  { value: "glitch", label: "Glitch / Digital FX", description: "Scan lines, signal tearing, RGB separation, frame stutter and digital distortion.", cues: ["A restrained scan-glitch briefly tears across the background, leaving the subject's face and body stable.", "A short RGB-separation and signal-noise burst flickers at the musical accent, then clears completely.", "A controlled digital frame stutter affects the environment for a moment without duplicating or deforming the subject."] },
+  { value: "atmospheric", label: "Atmospheric FX", description: "Fog, smoke, dust, ash, rain, sparks and environmental particles.", cues: ["A thin layer of atmospheric mist curls through the background, catching the existing light without hiding the subject.", "Small airborne particles drift through the light beam and briefly sparkle around the environment.", "A restrained veil of smoke and dust crosses the deeper background, preserving the foreground performance clearly."] },
+  { value: "energy", label: "Energy / Impact FX", description: "Beat flashes, sparks, shockwave-like light and controlled energy accents.", cues: ["A compact beat-synchronized light burst radiates through the environment and quickly settles.", "A brief ring of sparks and reflected light marks the musical accent without touching or altering the subject.", "A controlled impact pulse ripples through loose environmental particles while the subject continues naturally."] },
+  { value: "film_texture", label: "Film / Texture FX", description: "Film grain, halation, gate weave, light leaks and shutter trails.", cues: ["A subtle film-grain and halation texture becomes visible in the highlights for this shot.", "A restrained analog gate-weave and soft light leak add a brief tactile film accent.", "A short shutter-trail texture catches the brightest movement while keeping the composition and subject readable."] },
+  { value: "distortion", label: "Distortion FX", description: "Fisheye warp, heat haze, ripples, refraction and reality-bending lens effects.", cues: ["A localized lens distortion gently bends the outer edges of the environment while the subject remains stable.", "A brief heat-haze ripple passes through the background, refracting light without changing the subject's identity.", "A controlled wide-angle warp accentuates the perspective at the frame edges, then returns to a clean image."] },
+  { value: "supernatural", label: "Supernatural FX", description: "Living shadows, aura, reality fractures, floating debris and uncanny visual accents.", cues: ["The environment's shadows shift independently for a brief uncanny accent while the subject remains physically natural.", "A faint supernatural glow gathers in the background atmosphere and fades without changing the subject's face or clothing.", "A few loose environmental fragments hover briefly in the air, creating a controlled reality-fracture accent around the subject."] },
+  { value: "music_video", label: "Music Video FX", description: "A curated rhythmic mix of lighting, lens and restrained post-production accents.", cues: ["A rhythmic neon light pulse combines with a restrained lens flare on the musical accent.", "A brief bloom and light-streak accent sweeps across the frame, then resolves into clean cinematic contrast.", "A controlled mix of atmospheric particles and subtle chromatic color separation marks the beat without obscuring the subject."] },
+  { value: "custom", label: "Custom FX JSON", description: "Use the exact custom FX JSON wording and Builder placement rules." },
+];
+
+export function storyboardFxPreset(value = "") {
+  return STORYBOARD_FX_PRESETS.find((item) => item.value === String(value || "")) || STORYBOARD_FX_PRESETS[0];
+}
+
+export function normalizeStoryboardCustomFxJson(input) {
+  let source = input;
+  if (typeof source === "string") {
+    try { source = JSON.parse(source); } catch { return null; }
+  }
+  if (Array.isArray(source)) source = { cues: source };
+  if (!source || typeof source !== "object") return null;
+  const rawCues = Array.isArray(source.cues) ? source.cues : (Array.isArray(source.effects) ? source.effects : []);
+  const cues = rawCues.map((item) => {
+    if (typeof item === "string") return item.trim();
+    if (item && typeof item === "object") return String(item.text || item.cue || item.description || "").trim();
+    return "";
+  }).filter(Boolean).slice(0, 12);
+  const primary = String(source.primary || source.primary_effect || "").trim();
+  const secondary = String(source.secondary || source.secondary_effect || "").trim();
+  if (primary) cues.unshift(primary);
+  if (secondary) cues.push(secondary);
+  if (!cues.length) return null;
+  return {
+    label: String(source.label || source.name || "Custom FX").trim().slice(0, 120) || "Custom FX",
+    cues: Array.from(new Set(cues)).slice(0, 12),
+    timing: String(source.timing || "on the strongest musical or action accent").trim().slice(0, 240),
+    intensity: Math.max(0, Math.min(10, Number(source.intensity ?? 6))) || 6,
+    avoid: String(source.avoid || source.avoid_text || "Do not obscure, duplicate, deform, or alter the mapped subject.").trim().slice(0, 500),
+  };
+}
+
+export function storyboardFxContract(value = "", customInput = "", shotIndex = 0) {
+  const preset = storyboardFxPreset(value);
+  const custom = value === "custom" ? normalizeStoryboardCustomFxJson(customInput) : null;
+  const source = custom || preset;
+  if (!source?.cues?.length) return null;
+  const cue = source.cues[Math.max(0, Number(shotIndex) || 0) % source.cues.length];
+  const timing = custom ? custom.timing : "on a readable musical, lyric, or action accent when one is present";
+  const intensity = custom ? custom.intensity : 6;
+  const avoid = custom ? custom.avoid : "Keep the mapped subject's face, identity, body, wardrobe, performance, and lip sync stable and readable.";
+  return {
+    label: source.label || preset.label,
+    cue,
+    timing,
+    intensity,
+    exact_verbiage: `FX placement — ${source.label || preset.label}: Insert this FX directly inside the timestamped shot after the camera direction and before the lyric or performance action. Use one clear ${intensity}/10 visual accent: ${cue} Timing: ${timing} ${avoid}`,
+  };
+}
+
 function storyboardTemporalWorldEffectPreset(value = "") {
   return MINIMAX_TEMPORAL_WORLD_EFFECT_PRESETS.find((item) => item.value === value) || MINIMAX_TEMPORAL_WORLD_EFFECT_PRESETS[0];
 }
@@ -3157,6 +3223,8 @@ function openStoryboardBuilder(payload = {}) {
     temporalEnvironmentTimePassage: (payload.temporalEnvironmentTimePassage ?? payload.temporal_environment_time_passage) !== false,
     temporalProtectedCharacters: storyboardTemporalProtectedMode(payload.temporalProtectedCharacters || payload.temporal_protected_characters),
     temporalProtectedCustom: String(payload.temporalProtectedCustom || payload.temporal_protected_custom || ""),
+    fxPreset: String(payload.fxPreset || payload.fx_preset || payload.builderStoryboardDefaults?.fx_preset || payload.builder_storyboard_defaults?.fx_preset || ""),
+    fxCustomJson: String(payload.fxCustomJson || payload.fx_custom_json || payload.builderStoryboardDefaults?.fx_custom_json || payload.builder_storyboard_defaults?.fx_custom_json || ""),
     globalConsistencyPhrase: String(payload.globalConsistencyPhrase || payload.global_consistency_phrase || ""),
     performanceStyle: String(payload.performanceStyle || payload.performance_style || payload.performance_style_default || (usesFilmPlanningProfile ? "dialogue_naturalism" : "")),
     facialPerformance: String(payload.facialPerformance || payload.facial_performance || payload.facial_performance_default || ""),
@@ -3195,6 +3263,7 @@ function openStoryboardBuilder(payload = {}) {
   if (!imageAestheticPresets.some((item) => item.value === state.imageAesthetic)) state.imageAesthetic = imageAestheticPresets[0]?.value || "";
   if (!MINIMAX_VIDEO_STYLE_PRESETS.some((item) => item.value === state.videoStyle)) state.videoStyle = "";
   if (!MINIMAX_TEMPORAL_WORLD_EFFECT_PRESETS.some((item) => item.value === state.temporalWorldEffect)) state.temporalWorldEffect = "";
+  if (!STORYBOARD_FX_PRESETS.some((item) => item.value === state.fxPreset)) state.fxPreset = "";
   if (!performanceStylePresets.some((item) => item.value === state.performanceStyle)) state.performanceStyle = performanceStylePresets[0]?.value || "";
   if (!facialPerformancePresets.some((item) => item.value === state.facialPerformance)) state.facialPerformance = facialPerformancePresets[0]?.value || "";
   const storyboardDefaultsPayload = () => ({
@@ -3220,6 +3289,8 @@ function openStoryboardBuilder(payload = {}) {
       temporal_environment_time_passage: state.temporalEnvironmentTimePassage !== false,
       temporal_protected_characters: storyboardTemporalProtectedMode(state.temporalProtectedCharacters),
       temporal_protected_custom: String(state.temporalProtectedCustom || "").trim(),
+      fx_preset: String(state.fxPreset || ""),
+      fx_custom_json: String(state.fxCustomJson || "").trim(),
     },
     global_consistency_phrase: String(state.globalConsistencyPhrase || "").trim(),
     performance_style_default: String(state.performanceStyle || ""),
@@ -3233,6 +3304,8 @@ function openStoryboardBuilder(payload = {}) {
     temporal_environment_time_passage: state.temporalEnvironmentTimePassage !== false,
     temporal_protected_characters: storyboardTemporalProtectedMode(state.temporalProtectedCharacters),
     temporal_protected_custom: String(state.temporalProtectedCustom || "").trim(),
+    fx_preset: String(state.fxPreset || ""),
+    fx_custom_json: String(state.fxCustomJson || "").trim(),
     camera_motion_speed: storyboardSpeedValue(state.cameraMotionSpeed, 4),
     character_motion_speed: storyboardSpeedValue(state.characterMotionSpeed, 4),
     minimax_h3_cut_frequency: storyboardCutFrequencyValue(state.cutFrequency),
@@ -3479,6 +3552,25 @@ function openStoryboardBuilder(payload = {}) {
   const temporalEffectCustomInput = makeTextarea(state.temporalWorldEffectCustom, "Describe the exact temporal separation or world behavior. Character protection and audio-safety rules will be added automatically...", 3);
   temporalEffectCustomInput.style.minWidth = "520px";
   temporalEffectCustomControls.append(temporalEffectCustomLabel, temporalEffectCustomInput);
+  const fxControls = document.createElement("div");
+  fxControls.style.cssText = "display:flex;gap:8px;align-items:center;white-space:nowrap;";
+  const fxLabel = document.createElement("div");
+  fxLabel.style.cssText = "font-weight:900;color:#cffafe;white-space:nowrap;text-align:right;min-width:160px;";
+  fxLabel.textContent = "Shot FX preset";
+  const fxSelect = makeSelect(STORYBOARD_FX_PRESETS, state.fxPreset);
+  fxSelect.style.width = "max-content";
+  fxSelect.style.minWidth = "260px";
+  fxControls.append(fxLabel, fxSelect);
+  const fxCustomControls = document.createElement("div");
+  fxCustomControls.style.cssText = "display:flex;gap:8px;align-items:flex-start;";
+  const fxCustomLabel = document.createElement("div");
+  fxCustomLabel.style.cssText = "font-weight:900;color:#cffafe;white-space:nowrap;text-align:right;min-width:160px;padding-top:9px;";
+  fxCustomLabel.textContent = "Custom FX JSON";
+  const fxCustomInput = makeTextarea(state.fxCustomJson, "{\n  \"label\": \"Custom FX\",\n  \"cues\": [\"A brief effect crosses the background on the beat.\"],\n  \"timing\": \"on the musical accent\",\n  \"intensity\": 6\n}", 5);
+  fxCustomInput.style.minWidth = "520px";
+  fxCustomControls.append(fxCustomLabel, fxCustomInput);
+  const fxInfo = document.createElement("div");
+  fxInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
   const temporalEffectOptions = document.createElement("div");
   temporalEffectOptions.style.cssText = "display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;padding:9px 10px;border:1px solid #1f3347;border-radius:7px;background:#07111f;";
   const temporalExtrasLabel = document.createElement("label");
@@ -3747,6 +3839,8 @@ function openStoryboardBuilder(payload = {}) {
     videoStyleCustomControls,
     temporalEffectControls,
     temporalEffectCustomControls,
+    fxControls,
+    fxCustomControls,
     temporalEffectOptions,
     temporalProtectedCustomControls,
     imageWorldStyleControls,
@@ -3773,6 +3867,8 @@ function openStoryboardBuilder(payload = {}) {
     videoStyleCustomInput,
     temporalEffectSelect,
     temporalEffectCustomInput,
+    fxSelect,
+    fxCustomInput,
     temporalIntensityInput,
     temporalProtectedSelect,
     temporalProtectedCustomInput,
@@ -3791,7 +3887,7 @@ function openStoryboardBuilder(payload = {}) {
     control.style.minWidth = "0";
     control.style.maxWidth = "100%";
   }
-  for (const control of [videoStyleCustomInput, temporalEffectCustomInput, temporalProtectedCustomInput, imageCustomStyleInput, consistencyInput, cameraSpeedInput, cutFrequencyInput, characterSpeedInput, facialCustomInput]) {
+  for (const control of [videoStyleCustomInput, temporalEffectCustomInput, fxCustomInput, temporalProtectedCustomInput, imageCustomStyleInput, consistencyInput, cameraSpeedInput, cutFrequencyInput, characterSpeedInput, facialCustomInput]) {
     control.style.flex = "1 1 280px";
     control.style.width = "100%";
   }
@@ -3800,6 +3896,7 @@ function openStoryboardBuilder(payload = {}) {
     imageAestheticInfo,
     videoStyleInfo,
     temporalEffectInfo,
+    fxInfo,
     imageWorldStyleInfo,
     imageCustomStyleInfo,
     consistencyInfo,
@@ -3816,7 +3913,7 @@ function openStoryboardBuilder(payload = {}) {
     info.style.maxWidth = "100%";
     info.style.overflowWrap = "anywhere";
   }
-  cameraFlowBar.append(imageShotControls, imageShotInfo, imageAestheticControls, imageAestheticInfo, videoStyleControls, videoStyleCustomControls, videoStyleInfo, temporalEffectControls, temporalEffectCustomControls, temporalEffectOptions, temporalProtectedCustomControls, temporalEffectInfo, imageWorldStyleControls, imageWorldStyleInfo, imageCustomStyleControls, imageCustomStyleInfo, consistencyControls, consistencyInfo, cameraFlowControls, cameraFlowInfo, cameraSpeedControls, cameraSpeedInfo, cutFrequencyControls, cutFrequencyInfo, performanceControls, performanceInfo, characterSpeedControls, characterSpeedInfo, facialControls, facialInfo, facialCustomControls, facialCustomInfo);
+  cameraFlowBar.append(imageShotControls, imageShotInfo, imageAestheticControls, imageAestheticInfo, videoStyleControls, videoStyleCustomControls, videoStyleInfo, temporalEffectControls, temporalEffectCustomControls, temporalEffectOptions, temporalProtectedCustomControls, temporalEffectInfo, fxControls, fxCustomControls, fxInfo, imageWorldStyleControls, imageWorldStyleInfo, imageCustomStyleControls, imageCustomStyleInfo, consistencyControls, consistencyInfo, cameraFlowControls, cameraFlowInfo, cameraSpeedControls, cameraSpeedInfo, cutFrequencyControls, cutFrequencyInfo, performanceControls, performanceInfo, characterSpeedControls, characterSpeedInfo, facialControls, facialInfo, facialCustomControls, facialCustomInfo);
 
   const storyLayerBar = document.createElement("div");
   storyLayerBar.className = "vrgdg-storyboard-story-grid";
@@ -4029,6 +4126,9 @@ function openStoryboardBuilder(payload = {}) {
     temporalEffectOptions.style.display = temporalEffectEligible && Boolean(state.temporalWorldEffect) ? "flex" : "none";
     temporalProtectedCustomControls.style.display = temporalEffectEligible && Boolean(state.temporalWorldEffect) && state.temporalProtectedCharacters === "custom" ? "flex" : "none";
     temporalEffectInfo.style.display = temporalEffectEligible ? "" : "none";
+    fxControls.style.display = isVideoPrepMode ? "flex" : "none";
+    fxInfo.style.display = isVideoPrepMode ? "" : "none";
+    fxCustomControls.style.display = isVideoPrepMode && state.fxPreset === "custom" ? "flex" : "none";
     imageWorldStyleControls.style.display = isVideoPrepMode ? "none" : "flex";
     imageWorldStyleInfo.style.display = isVideoPrepMode ? "none" : "";
     imageCustomStyleControls.style.display = isVideoPrepMode ? "none" : "flex";
@@ -4090,7 +4190,7 @@ function openStoryboardBuilder(payload = {}) {
     const performancePreset = performancePresetForMode(state.performanceStyle);
     const facialPreset = facialPresetForMode(state.facialPerformance);
     sceneDefaultsPanel.setSummary(state.mode === "image_to_video_prep"
-      ? `${cameraPreset.label || "Camera flow"}${state.videoStyle ? ` · ${videoStylePreset.label}` : ""}${state.temporalWorldEffect ? ` · ${temporalEffectPreset.label}` : ""} · camera ${storyboardSpeedValue(state.cameraMotionSpeed, 4)}/10${state.projectVideoEngine === "minimax_h3" ? ` · cuts ${storyboardCutFrequencyValue(state.cutFrequency)}/10` : ""} · character ${storyboardSpeedValue(state.characterMotionSpeed, 4)}/10 · ${performancePreset.label || "Performance style"} · ${facialPreset.label || "Facial performance"}${state.globalConsistencyPhrase ? " · consistency phrase" : ""}`
+      ? `${cameraPreset.label || "Camera flow"}${state.videoStyle ? ` · ${videoStylePreset.label}` : ""}${state.temporalWorldEffect ? ` · ${temporalEffectPreset.label}` : ""}${state.fxPreset ? ` · ${storyboardFxPreset(state.fxPreset).label}` : ""} · camera ${storyboardSpeedValue(state.cameraMotionSpeed, 4)}/10${state.projectVideoEngine === "minimax_h3" ? ` · cuts ${storyboardCutFrequencyValue(state.cutFrequency)}/10` : ""} · character ${storyboardSpeedValue(state.characterMotionSpeed, 4)}/10 · ${performancePreset.label || "Performance style"} · ${facialPreset.label || "Facial performance"}${state.globalConsistencyPhrase ? " · consistency phrase" : ""}`
       : `${imageShotPreset.label || "Still shot flow"} · ${imageAestheticPreset.label || "Image aesthetic"} · ${performancePreset.label || "Performance style"} · ${facialPreset.label || "Facial performance"}${state.globalConsistencyPhrase ? " · consistency phrase" : ""}`);
     const beatCount = state.scenes.filter((scene) => String(scene.story_beat || "").trim()).length;
     const sectionCount = state.scenes.filter((scene) => String(scene.lyric_section || "").trim()).length;
@@ -6703,6 +6803,11 @@ function openStoryboardBuilder(payload = {}) {
       temporalProtectedSelect.value = state.temporalProtectedCharacters;
       state.temporalProtectedCustom = String(saved.temporal_protected_custom || saved.temporalProtectedCustom || state.temporalProtectedCustom || "");
       temporalProtectedCustomInput.value = state.temporalProtectedCustom;
+      state.fxPreset = String(saved.fx_preset || saved.fxPreset || saved.builder_storyboard_defaults?.fx_preset || saved.builderStoryboardDefaults?.fx_preset || state.fxPreset || "");
+      if (!STORYBOARD_FX_PRESETS.some((preset) => preset.value === state.fxPreset)) state.fxPreset = "";
+      fxSelect.value = state.fxPreset;
+      state.fxCustomJson = String(saved.fx_custom_json || saved.fxCustomJson || saved.builder_storyboard_defaults?.fx_custom_json || saved.builderStoryboardDefaults?.fx_custom_json || state.fxCustomJson || "");
+      fxCustomInput.value = state.fxCustomJson;
       state.globalConsistencyPhrase = String(saved.global_consistency_phrase || saved.globalConsistencyPhrase || state.globalConsistencyPhrase || "");
       consistencyInput.value = state.globalConsistencyPhrase;
       state.performanceStyle = String(saved.performance_style_default || saved.performance_style || state.performanceStyle || "");
@@ -6732,6 +6837,7 @@ function openStoryboardBuilder(payload = {}) {
       refreshImageAestheticInfo();
       refreshVideoStyleInfo();
       refreshTemporalEffectInfo();
+      refreshFxInfo();
       refreshConsistencyInfo();
       refreshCameraSpeedInfo();
       refreshCutFrequencyInfo();
@@ -7081,6 +7187,23 @@ function openStoryboardBuilder(payload = {}) {
     return text;
   }
 
+  function applyBuilderManagedFx(prompt, presetValue = "", customJson = "") {
+    let text = String(prompt || "").trim();
+    if (!text || !presetValue) return text;
+    const timestampPattern = /((?:\[\s*\d+(?:\.\d+)?s?\s*[-–—]\s*\d+(?:\.\d+)?s?\s*\]|\[\s*Shot\s+\d+[^\]]*\])\s*\n?)([\s\S]*?)(?=\n\s*(?:\[\s*\d+(?:\.\d+)?s?\s*[-–—]\s*\d+(?:\.\d+)?s?\s*\]|\[\s*Shot\s+\d+[^\]]*\])|\n\s*(?:Audio(?:\s+1)?|overall_soundscape|non_diegetic_music|Continuity)\s*:|$)/gi;
+    let index = 0;
+    let matched = false;
+    text = text.replace(timestampPattern, (whole, header, body) => {
+      matched = true;
+      const contract = storyboardFxContract(presetValue, customJson, index++);
+      if (!contract || String(body || "").includes(contract.cue)) return whole;
+      return `${header}${String(body || "").trim()} FX accent: ${contract.cue} Keep the mapped subject stable and readable.\n`;
+    });
+    if (matched) return text.trim();
+    const contract = storyboardFxContract(presetValue, customJson, 0);
+    return contract ? `${text}\n\nFX accent inside this shot: ${contract.cue} Keep the mapped subject stable and readable.`.trim() : text;
+  }
+
   async function createSceneVideoPromptWithGemma(scene, { quiet = false, unloadAfter = true, progress = null, progressPercent = 35, progressLabel = "" } = {}) {
     const normalized = normalizeScene(scene, 0);
     const runnerName = promptRunnerName();
@@ -7102,7 +7225,8 @@ function openStoryboardBuilder(payload = {}) {
         : await postJson("/vrgdg/storyboard/gemma_video_prompt", storyboardGemmaPayload(scene, { unload_after: unloadAfter }), STORYBOARD_GEMMA_TIMEOUT_MS);
       progress?.set(`${progressLabel || normalized.label || `Scene ${normalized.scene_number}`}: ${genericName} response received.\nRunner: ${data.runner || runnerName}\nSaving prompt into the scene card...`, Math.min(96, progressPercent + 45));
       const rawPrompt = String(data?.prompt || data || "").trim();
-      const prompt = data?.already_finalized ? rawPrompt : applyStoryboardTriggerPhrases(rawPrompt, scene);
+      const prompted = data?.already_finalized ? rawPrompt : applyStoryboardTriggerPhrases(rawPrompt, scene);
+      const prompt = data?.already_finalized ? prompted : applyBuilderManagedFx(prompted, state.fxPreset, state.fxCustomJson);
       if (!prompt) throw new Error(`${genericName} returned an empty Storyboard video prompt.`);
       scene.video_prompt = prompt;
       scene.video_prompt_origin = "gemma";
@@ -7285,6 +7409,17 @@ function openStoryboardBuilder(payload = {}) {
     refreshCameraFlowInfo();
     notifyStoryboardDefaultsChanged();
   };
+  const refreshFxInfo = () => {
+    const preset = storyboardFxPreset(state.fxPreset);
+    const custom = state.fxPreset === "custom" ? normalizeStoryboardCustomFxJson(state.fxCustomJson) : null;
+    fxInfo.textContent = state.fxPreset === ""
+      ? preset.description
+      : custom
+        ? `${custom.label}: ${custom.cues.length} custom cue${custom.cues.length === 1 ? "" : "s"}. The Builder injects one cue into each finished timestamped shot after Gemma returns.`
+        : `${preset.description} The Builder injects one cue into each finished timestamped shot after Gemma returns.`;
+    fxCustomControls.style.display = state.fxPreset === "custom" ? "flex" : "none";
+    refreshSetupPanelSummaries();
+  };
   imageShotSelect.onchange = () => {
     state.imageShotFlow = imageShotFlowPresets[imageShotSelect.value] ? imageShotSelect.value : Object.keys(imageShotFlowPresets)[0] || "off";
     imageShotSelect.value = state.imageShotFlow;
@@ -7328,6 +7463,17 @@ function openStoryboardBuilder(payload = {}) {
     refreshTemporalEffectInfo();
   });
   temporalEffectCustomInput.addEventListener("change", notifyStoryboardDefaultsChanged);
+  fxSelect.onchange = () => {
+    state.fxPreset = STORYBOARD_FX_PRESETS.some((preset) => preset.value === fxSelect.value) ? fxSelect.value : "";
+    fxSelect.value = state.fxPreset;
+    refreshFxInfo();
+    notifyStoryboardDefaultsChanged();
+  };
+  fxCustomInput.addEventListener("input", () => {
+    state.fxCustomJson = fxCustomInput.value;
+    refreshFxInfo();
+  });
+  fxCustomInput.addEventListener("change", notifyStoryboardDefaultsChanged);
   temporalExtrasInput.onchange = () => {
     state.temporalAllowBackgroundExtras = temporalExtrasInput.checked;
     refreshTemporalEffectInfo();
@@ -7515,6 +7661,7 @@ function openStoryboardBuilder(payload = {}) {
   refreshImageAestheticInfo();
   refreshVideoStyleInfo();
   refreshTemporalEffectInfo();
+  refreshFxInfo();
   refreshImageWorldStyleInfo();
   refreshConsistencyInfo();
   refreshCameraSpeedInfo();
