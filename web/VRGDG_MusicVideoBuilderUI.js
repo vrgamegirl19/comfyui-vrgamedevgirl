@@ -37961,6 +37961,35 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return [safePrompt, subjectMultiplicityBlock, block, visualOnlyBlock].filter(Boolean).join("\n\n").trim();
   }
 
+  function miniMaxH3FramingSubjectReference(segment) {
+    if (!segment || segment.no_character_present) return "the subject";
+    const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+    const performerSubjects = selectedPerformerSubjectsForSegment(segment, refs);
+    const mappedIds = logicalSubjectIdsForScene(refs, segment, Math.max(0, segmentIndexInfo(segment).index));
+    const mappedSubjects = mappedIds
+      .map((id) => refs.subjects.find((subject) => String(subject?.id || "") === String(id)))
+      .filter(Boolean);
+    const subject = performerSubjects[0] || mappedSubjects[0] || refs.subjects[0];
+    if (!subject) return "the subject";
+    const subjectId = String(subject.id || "");
+    const mappedIndex = mappedIds.findIndex((id) => String(id) === subjectId);
+    const fallbackIndex = refs.subjects.findIndex((item) => String(item?.id || "") === subjectId);
+    const subjectNumber = (mappedIndex >= 0 ? mappedIndex : fallbackIndex) + 1;
+    if (subjectNumber < 1) return "the subject";
+    return `<Subject ${subjectNumber}> (S${subjectNumber})`;
+  }
+
+  function miniMaxH3ResolveFramingEntry(segment, entry) {
+    const reference = miniMaxH3FramingSubjectReference(segment);
+    const possessive = reference === "the subject" ? "the subject's" : `${reference}'s`;
+    const shot = String(entry?.shot || "")
+      .replace(/\{\{subject_possessive\}\}/gi, possessive)
+      .replace(/\{\{subject\}\}/gi, reference)
+      .replace(/\bthe subject's\b/gi, possessive)
+      .replace(/\bthe subject\b/gi, reference);
+    return { ...entry, shot };
+  }
+
   function miniMaxH3SelectedFramingEntries(segment, shotPlan = []) {
     if (!Array.isArray(shotPlan) || !shotPlan.length) return [];
     const cameraFlowKey = String(segment?.camera_flow || state.builderStoryboardDefaults?.camera_flow || "").trim();
@@ -38001,7 +38030,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       { terms: /approach|approaches|lean|leans|crouch|crouching|reach|reaching|bend|bends|look down/, match: /approach|lean|crouch|reach|lens|tilt/ },
     ];
     const normalizeShotId = (entry, index) => String(entry.id || `${cameraFlowKey}_${index + 1}`).trim();
-    const entries = sequence.map((entry, index) => ({ entry, index, id: normalizeShotId(entry, index) }));
+    const entries = sequence.map((entry, index) => ({ entry: miniMaxH3ResolveFramingEntry(segment, entry), index, id: normalizeShotId(entry, index) }));
     const previousUsedIds = new Set(
       (Array.isArray(state.segments) ? state.segments : [])
         .filter((candidate) => candidate !== segment)
