@@ -1137,6 +1137,11 @@ function recordGemmaBatchFailure(key, segment, error, debugPath = "") {
   return store[key];
 }
 
+function looksLikeUnfilledMiniMaxTemplate(text) {
+  const value = String(text || "").toLowerCase();
+  return /\[(?:subject|setting(?:\/environment)?|environment|time(?:\/weather)?|weather|camera motion|dynamic performance|subject visibility|framing|clothing|hair)\]/i.test(value);
+}
+
 function showGemmaBatchFailures(failures) {
   const items = Array.isArray(failures) ? failures : [];
   if (!items.length) return;
@@ -12204,6 +12209,8 @@ function openBuilder(node) {
       "returned an empty i2v prompt",
       "returned an empty t2v prompt",
       "returned an empty flux/klein prompt",
+      "returned an empty minimax",
+      "empty minimax",
       "returned the scene lyrics instead of a usable",
     ];
     if (recoverable.some((item) => message.includes(item))) return true;
@@ -39021,6 +39028,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (!generatedPrompt) {
       throw new Error(options.emptyPromptMessage || `The LLM returned an empty MiniMax ${miniMaxH3ModeLabel(mode)} prompt.`);
     }
+    if (looksLikeUnfilledMiniMaxTemplate(generatedPrompt)) {
+      const error = new Error(`Gemma returned an unfilled MiniMax ${miniMaxH3ModeLabel(mode)} template.`);
+      error.rawGemmaPrompt = generatedPrompt;
+      throw error;
+    }
     const prompt = assembleMiniMaxH3PromptFromCreative(segment, mode, generatedPrompt);
     if (!prompt) {
       throw new Error(options.emptyPromptMessage || `The LLM returned an empty MiniMax ${miniMaxH3ModeLabel(mode)} prompt.`);
@@ -39115,6 +39127,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       toast(`Created the MiniMax ${modeLabel} prompt with ${gemmaRunnerLabel({ vision: Boolean(visionImages.length) })}.`);
     } catch (error) {
       const debugPath = error?.gemmaDebugPath || await saveGemmaJunkDebug(error, { label: `MiniMax ${modeLabel} prompt`, segment });
+      if (isRecoverableBuildGemmaError(error)) {
+        const failure = recordGemmaBatchFailure(`minimax:${mode}:${segment.id}`, segment, error, debugPath);
+        showGemmaBatchFailures([failure]);
+      }
       progress?.set(`Error:\n${String(error?.message || error)}${debugPath ? `\n\nRaw LLM output saved to:\n${debugPath}` : ""}`, 100);
       toast(String(error?.message || error), true);
     } finally {
@@ -39729,12 +39745,17 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const items = Array.isArray(failures) ? failures : [];
     const t2i = items.filter((item) => String(item.key || "").startsWith("t2i:"));
     const i2v = items.filter((item) => String(item.key || "").startsWith("i2v:"));
+    const minimax = items.filter((item) => String(item.key || "").startsWith("minimax:"));
     if (t2i.length) {
       await gemmaT2IAllScenes({ promptRunMode: "failed_only", failedIds: t2i.map((item) => item.segmentId), sceneScope: "all" });
       return;
     }
     if (i2v.length) {
       await i2vAllScenes({ i2vRunMode: "failed_only", failedIds: i2v.map((item) => item.segmentId), sceneScope: "all" });
+      return;
+    }
+    if (minimax.length) {
+      await generateAutoBuildMiniMaxPrompts({ failedOnly: true, failedIds: minimax.map((item) => item.segmentId) });
     }
   }
 
@@ -50180,10 +50201,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       );
     };
 
-    const generateAutoBuildMiniMaxPrompts = async () => {
-      const scenes = [...state.segments];
+    const generateAutoBuildMiniMaxPrompts = async (options = {}) => {
+      const failedIds = new Set((options.failedIds || []).map((value) => String(value)));
+      const allScenes = [...state.segments];
+      const scenes = options.failedOnly
+        ? allScenes.filter((segment) => failedIds.has(String(segment?.id || "")))
+        : allScenes;
       const progress = createProgressWindow("Auto Build MiniMax Prompts");
       let created = 0;
+      const failures = [];
       let historySaved = false;
       try {
         state.batchCancelled = false;
@@ -50200,27 +50226,36 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           }
           const percent = 5 + Math.round((index / Math.max(1, scenes.length)) * 90);
           progress.set(`Creating MiniMax prompt ${index + 1}/${scenes.length}: ${sceneDisplayName(segment, index)}\n${gemmaRunnerLine({ vision: Boolean(visionImages.length) })}`, percent);
-          const data = await runMiniMaxH3PromptGeneration(segment, mode, {
-            projectFolder,
-            sceneId: segment.id || "",
-            unloadAfter: index === scenes.length - 1,
-            promptOnlySceneInspiration: false,
-            performanceMode: "singing",
-            audioMode: "input_audio",
-            speakerAssignments: [],
-            emptyPromptMessage: `${sceneDisplayName(segment, index)} returned an empty MiniMax prompt.`,
-          });
-          if (!historySaved) {
-            pushHistory();
-            historySaved = true;
+          try {
+            const data = await runMiniMaxH3PromptGeneration(segment, mode, {
+              projectFolder,
+              sceneId: segment.id || "",
+              unloadAfter: index === scenes.length - 1,
+              promptOnlySceneInspiration: false,
+              performanceMode: "singing",
+              audioMode: "input_audio",
+              speakerAssignments: [],
+              emptyPromptMessage: `${sceneDisplayName(segment, index)} returned an empty MiniMax prompt.`,
+            });
+            gemmaBatchFailureStore()[`minimax:${mode}:${segment.id}`] = undefined;
+            if (!historySaved) {
+              pushHistory();
+              historySaved = true;
+            }
+            segment.minimax_h3_prompt = data.prompt;
+            segment.minimax_h3_prompt_origin = "gemma";
+            created += 1;
+            await autoSaveSessionQuiet(`Auto Build MiniMax prompt ${index + 1}`);
+          } catch (error) {
+            if (!isRecoverableBuildGemmaError(error)) throw error;
+            const debugPath = error?.gemmaDebugPath || await saveGemmaJunkDebug(error, { label: `Auto Build MiniMax prompt ${index + 1}`, segment });
+            failures.push(recordGemmaBatchFailure(`minimax:${mode}:${segment.id}`, segment, error, debugPath));
+            progress.set(`${sceneDisplayName(segment, index)} skipped. Continuing with the remaining MiniMax scenes...`, percent);
           }
-          segment.minimax_h3_prompt = data.prompt;
-          segment.minimax_h3_prompt_origin = "gemma";
-          created += 1;
-          await autoSaveSessionQuiet(`Auto Build MiniMax prompt ${index + 1}`);
         }
-        progress.set(`Created ${created} MiniMax video prompt${created === 1 ? "" : "s"}.`, 100);
+        progress.set(`Created ${created} MiniMax video prompt${created === 1 ? "" : "s"}.${failures.length ? ` Skipped ${failures.length} scene${failures.length === 1 ? "" : "s"}.` : ""}`, 100);
         progress.close(1600);
+        if (failures.length) showGemmaBatchFailures(failures);
         return created;
       } catch (error) {
         progress.set(`Auto Build MiniMax prompts stopped after ${created}/${scenes.length}:\n${String(error?.message || error)}`, 100);
