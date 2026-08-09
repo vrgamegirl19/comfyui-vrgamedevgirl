@@ -3,6 +3,49 @@
   "product": "AI Video Builder",
   "releases": [
     {
+      "id": "2026-08-08-minimax-builder-framing-workflow",
+      "version": "2026.08.08-minimax-builder-workflow",
+      "date": "2026-08-08",
+      "title": "MiniMax framing, prompt reliability, and project workflow improvements",
+      "commit": "eaacdc7",
+      "restart_required": true,
+      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
+      "sections": [
+        {
+          "title": "New",
+          "items": [
+            "Added context-aware intimate close-up framing selection tied to each scene's cut count, with persistent per-scene shot choices that avoid unnecessary repetition across scenes.",
+            "Added project-scoped LLM API key save and load support, with an export warning when a project contains a saved API key.",
+            "Added an optional MiniMax H3 memory-efficient Sage Attention path with hardware and dependency validation."
+          ]
+        },
+        {
+          "title": "Improved",
+          "items": [
+            "MiniMax prompt generation now preserves required cut wording, repairs common post-cut grammar issues, and adds explicit visible lip-sync guidance for sung lyrics and sustained non-verbal vocals.",
+            "Auto Build can pause after timeline creation so scenes can be reviewed before prompt creation, while lyric editing and storyboard context remain synchronized across Builder views.",
+            "Location descriptions can be expanded into detailed standalone environment descriptions for more consistent scene prompting.",
+            "The intimate close-up preset is the first preset-specific implementation of the candidate-list selection system; the same per-preset curated-list logic is planned for the remaining camera-flow presets."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Fixed MiniMax framing injection so selected shot descriptions are written as natural prompt instructions instead of exposing internal builder terminology to the video model.",
+            "Fixed temporal/world-effect prompt assembly so the Builder owns the canonical continuity instruction without duplicating conflicting per-shot directions.",
+            "Added GPT-5.6 model choices to the Python and browser LLM runner configuration."
+          ]
+        },
+        {
+          "title": "Compatibility Notes",
+          "items": [
+            "Restart ComfyUI and hard-refresh the browser after updating so the revised Python and Builder JavaScript modules are loaded.",
+            "The memory-efficient Sage Attention option requires a compatible SageAttention installation and supported CUDA architecture; standard attention remains available when it is disabled."
+          ]
+        }
+      ]
+    },
+    {
       "id": "2026-08-08-auto-build-advanced-lm-studio-seed",
       "version": "2026.08.08-auto-build-advanced",
       "date": "2026-08-08",

@@ -349,6 +349,12 @@ Rules:
 - For Time of Day, output only time-of-day phrases.
 - For Emotion or Facial Expression, output only the emotion or expression."""
 
+_VRGDG_GEMMA4_LOCATION_DETAIL_INSTRUCTIONS = """Expand a short location description into one detailed, standalone environment description.
+
+Use only the supplied location label and short description as your source. Preserve the same place and do not invent a different setting. Add concrete visual detail about architecture or terrain, spatial layout, materials, textures, color palette, lighting, atmosphere, weather, and background elements that would help a visual artist reproduce the location.
+
+Return only the expanded location description as one cohesive paragraph. Do not mention reference images, pictures, prompts, image generation, LLMs, subjects, characters, lyrics, or camera shots. Do not add a title, bullets, or labels."""
+
 
 def _get_default_comfy_output_directory():
     base_path = getattr(folder_paths, "base_path", None)
@@ -814,6 +820,22 @@ def _build_gemma4_prompt(target, payload):
             prompt += f"Optional user guidance for all lists:\n{notes}\n\n"
         prompt += f"Scene prompts:\n" + "\n".join(prompt_lines)
         return prompt
+
+    if target == "location_description_detail":
+        location_name = str(payload.get("location_name", "") or "").strip()
+        location_description = str(payload.get("location_description", "") or notes).strip()
+        if not location_name or not location_description:
+            raise ValueError("A location label and short description are required.")
+        instructions = _prompt_creator_custom_instruction(
+            payload,
+            "location_description_detail",
+            _VRGDG_GEMMA4_LOCATION_DETAIL_INSTRUCTIONS,
+        )
+        return (
+            f"{instructions}\n\n"
+            f"Location label:\n{location_name}\n\n"
+            f"Short location description:\n{location_description}"
+        )
 
     raise ValueError(f"Unsupported Gemma4 target: {target}")
 
