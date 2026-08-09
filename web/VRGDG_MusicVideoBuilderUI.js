@@ -9,6 +9,7 @@ import {
   STORYBOARD_IMAGE_SHOT_FLOW_PRESETS,
   storyboardFacialPerformancePreset,
   storyboardCameraFlowEntry,
+  normalizeStoryboardCustomCameraFlowSequence,
   storyboardCutFrequencyValue,
   storyboardCutPlanForDuration,
   storyboardGptPayload,
@@ -6369,6 +6370,7 @@ function openBuilder(node) {
       performance_style: String(source.performance_style || source.performanceStyle || source.performance_style_default || ""),
       short_film_planning_mode: normalizeMiniMaxShortFilmPlanningMode(source.short_film_planning_mode || source.shortFilmPlanningMode),
       camera_flow: String(source.camera_flow || source.cameraFlow || ""),
+      custom_camera_flow_sequence: normalizeStoryboardCustomCameraFlowSequence(source.custom_camera_flow_sequence || source.customCameraFlowSequence),
       image_shot_flow: String(source.image_shot_flow || source.imageShotFlow || ""),
       image_aesthetic: String(source.image_aesthetic || source.imageAesthetic || ""),
       video_style: String(source.video_style || source.videoStyle || ""),
@@ -37995,7 +37997,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const cameraFlowKey = String(segment?.camera_flow || state.builderStoryboardDefaults?.camera_flow || "").trim();
     const preset = STORYBOARD_CAMERA_FLOW_PRESETS[cameraFlowKey];
     if (!preset?.framing_candidates) return shotPlan.map(() => null);
-    const sequence = Array.isArray(preset?.sequence) ? preset.sequence.filter((entry) => entry?.shot) : [];
+    const customSequence = cameraFlowKey === "custom"
+      ? normalizeStoryboardCustomCameraFlowSequence(segment?.custom_camera_flow_sequence || state.builderStoryboardDefaults?.custom_camera_flow_sequence)
+      : [];
+    const sequence = (cameraFlowKey === "custom" ? customSequence : (Array.isArray(preset?.sequence) ? preset.sequence : []))
+      .filter((entry) => entry?.shot);
     if (!sequence.length) return shotPlan.map(() => null);
     const sceneText = [
       segment?.lyric_text,
@@ -50778,7 +50784,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
             imageAestheticChanged += 1;
           }
         }
-        const entry = shouldApplyCamera ? storyboardCameraFlowEntry(cameraFlow, index, previousMotion) : null;
+      const entry = shouldApplyCamera
+        ? storyboardCameraFlowEntry(cameraFlow, index, previousMotion, state.builderStoryboardDefaults?.custom_camera_flow_sequence)
+        : null;
         if (entry && cameraFlow !== "off") {
           const hadShot = Boolean(String(segment.shot_type || "").trim());
           const hadCamera = Boolean(String(segment.camera_motion || segment.motion_preset || "").trim());

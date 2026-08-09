@@ -1120,6 +1120,34 @@ const CHARACTER_MOTION_GROUPS = [
   },
 ];
 
+export function normalizeStoryboardCustomCameraFlowSequence(input) {
+  let source = input;
+  if (typeof source === "string") {
+    const raw = source.trim();
+    if (!raw) return [];
+    try {
+      source = JSON.parse(raw);
+    } catch (_error) {
+      source = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    }
+  }
+  if (source && !Array.isArray(source) && typeof source === "object") {
+    source = source.shots || source.sequence || source.candidates || source.list || source.items || [];
+  }
+  if (!Array.isArray(source)) return [];
+  return source.map((item) => {
+    if (typeof item === "string") {
+      const parts = item.trim().replace(/^\s*(?:[-*•]|\d+[.)])\s*/, "").split(/\s+(?:\||—|–|-|->|=>)\s+/);
+      return { shot: String(parts[0] || "").trim(), camera: String(parts.slice(1).join(" | ") || "").trim() };
+    }
+    if (!item || typeof item !== "object") return null;
+    return {
+      shot: String(item.shot || item.framing || item.type || item.description || item.name || "").trim(),
+      camera: String(item.camera || item.camera_motion || item.movement || item.motion || "").trim(),
+    };
+  }).filter((item) => item?.shot).map((item) => ({ shot: item.shot, camera: item.camera }));
+}
+
 export const STORYBOARD_CAMERA_FLOW_PRESETS = {
   off: {
     label: "Off",
@@ -1249,6 +1277,13 @@ export const STORYBOARD_CAMERA_FLOW_PRESETS = {
       { shot: "handheld camera held at arm's length as the subject looks into it", camera: "handheld fisheye sway" },
       { shot: "centered fisheye shot with the entire background bending around the subject", camera: "centered warped drift" },
     ],
+  },
+  custom: {
+    label: "Custom",
+    framing_candidates: true,
+    description: "Uses the project-specific camera-shot list imported by the user.",
+    guidance: "Use only the selected framing from the user's custom camera-shot list. Choose the strongest fit for the lyrics, story, character motion, performance, and location. Preserve distinct shot variety across the scene and avoid unnecessary repetition across scenes; sensible reuse is allowed when the action clearly calls for it or the candidate pool is exhausted.",
+    sequence: [],
   },
   quiet: {
     label: "Quiet dramatic",
@@ -1516,9 +1551,11 @@ function storyboardMotionFamily(motion = "") {
   return text.split(/\s+/).slice(0, 2).join(" ");
 }
 
-export function storyboardCameraFlowEntry(profileKey, sceneIndex, previousMotion = "") {
+export function storyboardCameraFlowEntry(profileKey, sceneIndex, previousMotion = "", customSequence = []) {
   const preset = STORYBOARD_CAMERA_FLOW_PRESETS[profileKey] || STORYBOARD_CAMERA_FLOW_PRESETS.balanced;
-  const sequence = preset.sequence || [];
+  const sequence = profileKey === "custom"
+    ? normalizeStoryboardCustomCameraFlowSequence(customSequence)
+    : (preset.sequence || []);
   if (!sequence.length) return null;
   let entry = sequence[sceneIndex % sequence.length];
   if (previousMotion && storyboardMotionFamily(entry.camera) === storyboardMotionFamily(previousMotion)) {
@@ -2765,7 +2802,7 @@ function storyboardScenesForGpt(state) {
       scene.lyric_section = lyricSection;
     }
     const sceneNumberIndex = Math.max(0, Number(normalized.scene_number || index + 1) - 1);
-    const cameraFallback = fullyCustomShortFilm ? null : storyboardCameraFlowEntry(state.cameraFlow || "balanced", sceneNumberIndex, previousCameraMotion);
+    const cameraFallback = fullyCustomShortFilm ? null : storyboardCameraFlowEntry(state.cameraFlow || "balanced", sceneNumberIndex, previousCameraMotion, state.customCameraFlowSequence);
     const shotType = normalized.shot_type || cameraFallback?.shot || "";
     const requiresStartingShot = !imageMode && normalized.video_prompt_type !== "i2v" && Boolean(shotType);
     const rawCameraMotion = normalized.camera_motion || (imageMode ? "" : cameraFallback?.camera) || "";
@@ -3108,6 +3145,7 @@ function openStoryboardBuilder(payload = {}) {
     saving: false,
     gemmaSettings: payload.gemmaSettings || payload.gemma_settings || {},
     cameraFlow: String(payload.cameraFlow || payload.camera_flow || "balanced"),
+    customCameraFlowSequence: normalizeStoryboardCustomCameraFlowSequence(payload.customCameraFlowSequence || payload.custom_camera_flow_sequence || payload.builderStoryboardDefaults?.custom_camera_flow_sequence || payload.builder_storyboard_defaults?.custom_camera_flow_sequence),
     imageShotFlow: String(payload.imageShotFlow || payload.image_shot_flow || (usesFilmPlanningProfile ? "film_dialogue_coverage" : "intimate")),
     imageAesthetic: String(payload.imageAesthetic || payload.image_aesthetic || (usesFilmPlanningProfile ? "film_default" : "")),
     videoStyle: String(payload.videoStyle || payload.video_style || ""),
@@ -3170,6 +3208,7 @@ function openStoryboardBuilder(payload = {}) {
       performance_style: String(state.performanceStyle || ""),
       short_film_planning_mode: normalizeStoryboardShortFilmPlanningMode(state.shortFilmPlanningMode),
       camera_flow: String(state.cameraFlow || ""),
+      custom_camera_flow_sequence: normalizeStoryboardCustomCameraFlowSequence(state.customCameraFlowSequence),
       image_shot_flow: String(state.imageShotFlow || ""),
       image_aesthetic: String(state.imageAesthetic || ""),
       video_style: String(state.videoStyle || ""),
@@ -3197,6 +3236,7 @@ function openStoryboardBuilder(payload = {}) {
     camera_motion_speed: storyboardSpeedValue(state.cameraMotionSpeed, 4),
     character_motion_speed: storyboardSpeedValue(state.characterMotionSpeed, 4),
     minimax_h3_cut_frequency: storyboardCutFrequencyValue(state.cutFrequency),
+    custom_camera_flow_sequence: normalizeStoryboardCustomCameraFlowSequence(state.customCameraFlowSequence),
     motion_defaults: {
       camera_motion_speed: storyboardSpeedValue(state.cameraMotionSpeed, 4),
       character_motion_speed: storyboardSpeedValue(state.characterMotionSpeed, 4),
@@ -3513,6 +3553,69 @@ function openStoryboardBuilder(payload = {}) {
   cameraFlowControls.append(cameraFlowLabel, cameraFlowSelect, cameraFlowApply, cameraFlowReplace);
   const cameraFlowInfo = document.createElement("div");
   cameraFlowInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
+  const openCustomCameraFlowDialog = () => new Promise((resolve) => {
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100070;background:rgba(0,0,0,.74);display:flex;align-items:center;justify-content:center;padding:22px;box-sizing:border-box;";
+    const panel = document.createElement("div");
+    panel.setAttribute("role", "dialog");
+    panel.setAttribute("aria-modal", "true");
+    panel.style.cssText = "width:min(900px,calc(100vw - 44px));max-height:calc(100vh - 44px);overflow:auto;border:1px solid #155e75;border-radius:11px;background:#0f172a;color:#e5e7eb;box-shadow:0 24px 90px rgba(0,0,0,.7);";
+    const header = document.createElement("div");
+    header.style.cssText = "padding:16px 18px;background:#083f4f;border-bottom:1px solid #155e75;";
+    const title = document.createElement("div");
+    title.style.cssText = "font-size:18px;font-weight:900;color:#cffafe;";
+    title.textContent = "Import Custom Camera Shot List";
+    const subtitle = document.createElement("div");
+    subtitle.style.cssText = "margin-top:5px;color:#bae6fd;font-size:12px;line-height:1.45;";
+    subtitle.textContent = "Paste a JSON list, a JSON object containing shots/sequence/candidates, or one shot per line. Optional camera movement can follow a pipe, em dash, arrow, or =>.";
+    header.append(title, subtitle);
+    const body = document.createElement("div");
+    body.style.cssText = "padding:16px 18px;display:grid;gap:12px;";
+    const examples = document.createElement("pre");
+    examples.style.cssText = "margin:0;padding:10px;border:1px solid #334155;border-radius:8px;background:#07111f;color:#cbd5e1;font:11px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;";
+    examples.textContent = `Accepted examples:\n\nJSON array:\n[{"shot":"wide performance shot","camera":"slow push-in"},{"shot":"close-up of the eyes","camera":"pan left"}]\n\nJSON object:\n{"shots":[{"shot":"tracking shot","camera":"side follow"}]}\n\nPlain list:\n1. Wide shot — slow pull-back\n2. Close-up of the hands | slow tilt down\n3. Overhead shot -> slow drift`;
+    const input = document.createElement("textarea");
+    input.value = state.customCameraFlowSequence.length ? JSON.stringify(state.customCameraFlowSequence, null, 2) : "";
+    input.placeholder = "Paste or enter your custom camera-shot list here...";
+    input.style.cssText = "width:100%;min-height:260px;resize:vertical;box-sizing:border-box;border:1px solid #475569;border-radius:8px;background:#020617;color:#e2e8f0;padding:11px;font:12px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace;outline:none;";
+    const status = document.createElement("div");
+    status.style.cssText = "min-height:18px;color:#94a3b8;font-size:12px;line-height:1.4;";
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:flex;justify-content:flex-end;gap:9px;";
+    const cancel = makeButton("Cancel");
+    const importButton = makeButton("Import Custom List", "primary");
+    actions.append(cancel, importButton);
+    body.append(examples, input, status, actions);
+    panel.append(header, body);
+    backdrop.append(panel);
+    document.body.append(backdrop);
+    const finish = (value) => {
+      document.removeEventListener("keydown", onKeyDown, true);
+      backdrop.remove();
+      resolve(value);
+    };
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        finish(null);
+      }
+    };
+    document.addEventListener("keydown", onKeyDown, true);
+    cancel.onclick = () => finish(null);
+    importButton.onclick = () => {
+      const sequence = normalizeStoryboardCustomCameraFlowSequence(input.value);
+      if (!sequence.length) {
+        status.textContent = "No valid shot entries were found. Add a shot description, then try Import again.";
+        status.style.color = "#fca5a5";
+        return;
+      }
+      finish(sequence);
+    };
+    backdrop.addEventListener("pointerdown", (event) => {
+      if (event.target === backdrop) finish(null);
+    });
+    input.focus();
+  });
   const cameraSpeedControls = document.createElement("div");
   cameraSpeedControls.style.cssText = "display:flex;gap:8px;align-items:center;white-space:nowrap;";
   const cameraSpeedLabel = document.createElement("div");
@@ -3945,7 +4048,7 @@ function openStoryboardBuilder(payload = {}) {
   };
 
   const cameraFlowEntryForScene = (profileKey, sceneIndex, previousMotion = "") => {
-    return storyboardCameraFlowEntry(profileKey, sceneIndex, previousMotion);
+    return storyboardCameraFlowEntry(profileKey, sceneIndex, previousMotion, state.customCameraFlowSequence);
   };
 
   const sceneLooksLikeStarterPlaceholder = (scene = {}) => {
@@ -4046,10 +4149,12 @@ function openStoryboardBuilder(payload = {}) {
 
   const refreshCameraFlowInfo = () => {
     const preset = STORYBOARD_CAMERA_FLOW_PRESETS[state.cameraFlow] || STORYBOARD_CAMERA_FLOW_PRESETS.balanced;
-    const count = preset.sequence?.length || 0;
+    const count = state.cameraFlow === "custom"
+      ? normalizeStoryboardCustomCameraFlowSequence(state.customCameraFlowSequence).length
+      : (preset.sequence?.length || 0);
     cameraFlowInfo.textContent = state.cameraFlow === "off"
       ? preset.description
-      : `${preset.description} For any scene count, it cycles through ${count} camera beats and only fills blank fields.`;
+      : `${preset.description} ${state.cameraFlow === "custom" ? (count ? `The project list contains ${count} shot${count === 1 ? "" : "s"}.` : "Import a custom shot list to activate this flow.") : `For any scene count, it cycles through ${count} camera beats and only fills blank fields.`}`;
     refreshSetupPanelSummaries();
   };
 
@@ -6560,6 +6665,13 @@ function openStoryboardBuilder(payload = {}) {
       state.performanceMode = normalizeStoryboardPerformanceMode(saved.performance_mode || saved.performanceMode || state.performanceMode);
       state.shortFilmPlanningMode = normalizeStoryboardShortFilmPlanningMode(saved.short_film_planning_mode || saved.shortFilmPlanningMode || state.shortFilmPlanningMode);
       shortFilmPlanningModeSelect.value = state.shortFilmPlanningMode;
+      state.customCameraFlowSequence = normalizeStoryboardCustomCameraFlowSequence(
+        saved.custom_camera_flow_sequence
+        || saved.customCameraFlowSequence
+        || saved.builder_storyboard_defaults?.custom_camera_flow_sequence
+        || saved.builderStoryboardDefaults?.custom_camera_flow_sequence
+        || state.customCameraFlowSequence,
+      );
       if (saved.camera_flow && STORYBOARD_CAMERA_FLOW_PRESETS[saved.camera_flow]) {
         state.cameraFlow = saved.camera_flow;
         cameraFlowSelect.value = state.cameraFlow;
@@ -7154,8 +7266,21 @@ function openStoryboardBuilder(payload = {}) {
     state.query = search.value || "";
     renderTable();
   };
-  cameraFlowSelect.onchange = () => {
-    state.cameraFlow = STORYBOARD_CAMERA_FLOW_PRESETS[cameraFlowSelect.value] ? cameraFlowSelect.value : "balanced";
+  cameraFlowSelect.onchange = async () => {
+    const previous = state.cameraFlow;
+    const next = STORYBOARD_CAMERA_FLOW_PRESETS[cameraFlowSelect.value] ? cameraFlowSelect.value : "balanced";
+    if (next === "custom") {
+      state.cameraFlow = "custom";
+      const imported = await openCustomCameraFlowDialog();
+      if (imported) {
+        state.customCameraFlowSequence = normalizeStoryboardCustomCameraFlowSequence(imported);
+        state.cameraFlow = "custom";
+      } else {
+        state.cameraFlow = previous === "custom" && state.customCameraFlowSequence.length ? "custom" : (STORYBOARD_CAMERA_FLOW_PRESETS[previous] ? previous : "balanced");
+      }
+    } else {
+      state.cameraFlow = next;
+    }
     cameraFlowSelect.value = state.cameraFlow;
     refreshCameraFlowInfo();
     notifyStoryboardDefaultsChanged();
