@@ -5,10 +5,12 @@ import {
   FACIAL_PERFORMANCE_PRESETS,
   PERFORMANCE_STYLE_PRESETS,
   STORYBOARD_CAMERA_FLOW_PRESETS,
+  storyboardFxContract,
   STORYBOARD_IMAGE_AESTHETIC_PRESETS,
   STORYBOARD_IMAGE_SHOT_FLOW_PRESETS,
   storyboardFacialPerformancePreset,
   storyboardCameraFlowEntry,
+  normalizeStoryboardCustomCameraFlowSequence,
   storyboardCutFrequencyValue,
   storyboardCutPlanForDuration,
   storyboardGptPayload,
@@ -23,6 +25,11 @@ import {
 import { createMusicVideoBuilderLuts } from "./VRGDG_MusicVideoBuilderLUTs.js";
 import { createPostProcessComparePreview } from "./VRGDG_PostProcessComparePreview.js";
 import { createFaceFixTool } from "./VRGDG_FaceFixUI.js?v=20260716-1";
+
+// Safe rollout switch: the legacy side-panel generators remain below and can
+// be restored by changing this one value to false without deleting them.
+const USE_STORYBOARD_PROMPT_PIPELINE_FOR_SIDE_PANEL = true;
+let ACTIVE_STORYBOARD_PROMPT_PIPELINE = null;
 import {
   BROWSER_IMAGE_PROVIDERS,
   buildBrowserImagePrompt,
@@ -1109,6 +1116,90 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+// Batch prompt generation keeps recoverable Gemma failures per scene so one
+// bad response does not discard the successful scenes from the same pass.
+function gemmaBatchFailureStore() {
+  if (!window.__vrgdgGemmaBatchFailures) window.__vrgdgGemmaBatchFailures = {};
+  return window.__vrgdgGemmaBatchFailures;
+}
+
+function recordGemmaBatchFailure(key, segment, error, debugPath = "") {
+  const store = gemmaBatchFailureStore();
+  const info = segment ? segmentIndexInfo(segment) : { index: -1 };
+  const raw = String(error?.rawGemmaPrompt ?? error?.rawPrompt ?? "").trim();
+  const cleaned = String(error?.cleanedGemmaPrompt ?? error?.cleanedPrompt ?? "").trim();
+  store[key] = {
+    key,
+    segmentId: String(segment?.id || ""),
+    sceneLabel: segment ? sceneDisplayName(segment, info.index) : "Unknown scene",
+    error: String(error?.message || error || "Unknown Gemma error"),
+    raw: raw || cleaned || "(raw Gemma output was not attached)",
+    cleaned,
+    debugPath: String(debugPath || error?.gemmaDebugPath || ""),
+    timestamp: new Date().toISOString(),
+  };
+  return store[key];
+}
+
+function looksLikeUnfilledMiniMaxTemplate(text) {
+  const value = String(text || "").toLowerCase();
+  return /\[(?:subject|setting(?:\/environment)?|environment|time(?:\/weather)?|weather|camera motion|dynamic performance|subject visibility|framing|clothing|hair)\]/i.test(value);
+}
+
+function showGemmaBatchFailures(failures) {
+  const items = Array.isArray(failures) ? failures : [];
+  if (!items.length) return;
+  const backdrop = document.createElement("div");
+  backdrop.style.cssText = "position:fixed;inset:0;z-index:100009;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:18px;";
+  const box = document.createElement("div");
+  box.style.cssText = "width:min(980px,calc(100vw - 36px));max-height:calc(100vh - 36px);overflow:auto;border:1px solid #991b1b;border-radius:10px;background:#111827;color:#f8fafc;box-shadow:0 22px 80px rgba(0,0,0,.65);padding:16px;box-sizing:border-box;";
+  const title = document.createElement("div");
+  title.innerHTML = `<div style="font-size:17px;font-weight:900;color:#fecaca;">Gemma skipped ${items.length} scene${items.length === 1 ? "" : "s"}</div><div style="font-size:12px;color:#cbd5e1;margin-top:5px;">Successful scenes were kept. Only these scenes will be retried.</div>`;
+  const list = document.createElement("div");
+  list.style.cssText = "display:flex;flex-direction:column;gap:12px;margin-top:14px;";
+  items.forEach((item) => {
+    const card = document.createElement("details");
+    card.open = true;
+    card.style.cssText = "border:1px solid #7f1d1d;border-radius:7px;background:#1f0808;padding:9px;";
+    const summary = document.createElement("summary");
+    summary.style.cssText = "cursor:pointer;font-weight:900;color:#fca5a5;";
+    summary.textContent = `${item.sceneLabel}: ${item.error}`;
+    const raw = document.createElement("pre");
+    raw.style.cssText = "white-space:pre-wrap;word-break:break-word;max-height:240px;overflow:auto;margin:9px 0 0;color:#fecaca;font-size:11px;line-height:1.4;";
+    raw.textContent = item.raw;
+    card.append(summary, raw);
+    if (item.debugPath) {
+      const path = document.createElement("div");
+      path.style.cssText = "margin-top:7px;color:#fda4af;font-size:11px;word-break:break-all;";
+      path.textContent = `Debug file: ${item.debugPath}`;
+      card.append(path);
+    }
+    list.append(card);
+  });
+  const actions = document.createElement("div");
+  actions.style.cssText = "display:flex;justify-content:flex-end;gap:8px;margin-top:16px;";
+  const close = makeButton("Close");
+  const retry = makeButton(`Retry ${items.length} Failed Scene${items.length === 1 ? "" : "s"}`);
+  retry.style.background = "#7f1d1d";
+  retry.onclick = async () => {
+    retry.disabled = true;
+    retry.textContent = "Retrying...";
+    try {
+      await retryOnlyGemmaBatchFailures(items);
+      backdrop.remove();
+    } catch (error) {
+      toast(String(error?.message || error), true);
+      retry.disabled = false;
+      retry.textContent = `Retry ${items.length} Failed Scene${items.length === 1 ? "" : "s"}`;
+    }
+  };
+  close.onclick = () => backdrop.remove();
+  actions.append(close, retry);
+  box.append(title, list, actions);
+  backdrop.append(box);
+  document.body.append(backdrop);
 }
 
 function createProgressWindow(title, options = {}) {
@@ -6369,6 +6460,7 @@ function openBuilder(node) {
       performance_style: String(source.performance_style || source.performanceStyle || source.performance_style_default || ""),
       short_film_planning_mode: normalizeMiniMaxShortFilmPlanningMode(source.short_film_planning_mode || source.shortFilmPlanningMode),
       camera_flow: String(source.camera_flow || source.cameraFlow || ""),
+      custom_camera_flow_sequence: normalizeStoryboardCustomCameraFlowSequence(source.custom_camera_flow_sequence || source.customCameraFlowSequence),
       image_shot_flow: String(source.image_shot_flow || source.imageShotFlow || ""),
       image_aesthetic: String(source.image_aesthetic || source.imageAesthetic || ""),
       video_style: String(source.video_style || source.videoStyle || ""),
@@ -6382,6 +6474,8 @@ function openBuilder(node) {
         ? String(source.temporal_protected_characters || source.temporalProtectedCharacters)
         : "all_referenced",
       temporal_protected_custom: String(source.temporal_protected_custom || source.temporalProtectedCustom || ""),
+      fx_preset: String(source.fx_preset || source.fxPreset || ""),
+      fx_custom_json: String(source.fx_custom_json || source.fxCustomJson || ""),
     };
   }
 
@@ -12123,6 +12217,8 @@ function openBuilder(node) {
       "returned an empty i2v prompt",
       "returned an empty t2v prompt",
       "returned an empty flux/klein prompt",
+      "returned an empty minimax",
+      "empty minimax",
       "returned the scene lyrics instead of a usable",
     ];
     if (recoverable.some((item) => message.includes(item))) return true;
@@ -34483,6 +34579,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       lm_studio_output_token_limit: normalizeOutputTokenLimit(state.lmStudioOutputTokenLimit),
       llm_api_provider: state.llmApiProvider || "openai",
       llm_api_model: state.llmApiModel || "",
+      llm_api_key_project: state.llmApiKeyProject || "",
       notification_settings: normalizeNotificationSettings(state.notificationSettings),
       automatic_memory_cleanup: Boolean(state.automaticMemoryCleanup),
       scene_render_wait_hours: normalizeSceneRenderWaitHours(state.sceneRenderWaitHours),
@@ -35857,7 +35954,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       max_new_tokens: options.maxNewTokens ?? 1200,
     }, 240000);
     pushHistory();
-    syncSegmentT2IPrompt(segment, applyMappedTriggerPhrases(applyImageTriggerToPrompt(data.prompt, segment, imageMode, { validateJunk: true }), segment));
+    try {
+      syncSegmentT2IPrompt(segment, applyMappedTriggerPhrases(applyImageTriggerToPrompt(data.prompt, segment, imageMode, { validateJunk: true }), segment));
+    } catch (error) {
+      error.rawGemmaPrompt = String(data.prompt || "");
+      throw error;
+    }
     render();
     return { ...data, used_storyboard_prompt_writer: true };
   }
@@ -37002,6 +37104,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           ? "Gemma created T2I from reference image."
           : "Gemma created T2I from notes.");
     } catch (error) {
+      if (isRecoverableBuildGemmaError(error)) {
+        const debugPath = error?.gemmaDebugPath || await saveGemmaJunkDebug(error, { label: "single T2I prompt", segment });
+        const failure = recordGemmaBatchFailure(`t2i:${state.imageModelMode || "zimage"}:${segment.id}`, segment, error, debugPath);
+        showGemmaBatchFailures([failure]);
+      }
       progress?.set(`Error:\n${String(error?.message || error)}`, 100);
       toast(String(error?.message || error), true);
     } finally {
@@ -37880,34 +37987,6 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     });
   }
 
-  function miniMaxH3SubjectMultiplicityBlock(segment) {
-    const mode = miniMaxH3ModeForSegment(segment);
-    if (mode !== "reference_to_video" && mode !== "video_to_video") return "";
-    const faceHairOnly = mode === "reference_to_video"
-      && Boolean(segment?.minimax_h3_use_scene_image_as_start_frame)
-      && miniMaxH3StartFrameCharacterInfluenceForSegment(segment) === "face_hair_only";
-    const subjectRefs = storyboardReferenceDataForSegment(segment).subject_refs || [];
-    const subjects = [];
-    const seen = new Set();
-    for (const subject of subjectRefs) {
-      const name = String(subject?.name || subject?.label || "").trim();
-      const key = name.toLocaleLowerCase();
-      if (!name || seen.has(key)) continue;
-      seen.add(key);
-      subjects.push(name);
-    }
-    if (!subjects.length) return "";
-    const count = subjects.length;
-    return [
-      "REFERENCE SUBJECT COUNT — MANDATORY:",
-      `This scene contains exactly ${count} distinct named ${count === 1 ? "subject" : "subjects"}: ${subjects.join(", ")}.`,
-      faceHairOnly
-        ? "A character/person reference image may be a multi-view character sheet, turnaround sheet, or contact sheet. Every portrait and full-body view inside one character reference image depicts the same single person; use those views ONLY to learn that one person's face identity, facial features, and hair. Image 1 remains authoritative for clothing, body proportions, pose, accessories, framing, lighting, and background."
-        : "A character/person reference image may be a multi-view character sheet, turnaround sheet, or contact sheet. Every portrait and full-body view inside one character reference image depicts the same single person; use those views only to learn that one person's identity, face, hair, clothing, and proportions.",
-      "Render exactly one on-screen instance of each named subject. Do not turn alternate views from a reference sheet into additional people. Do not duplicate, clone, twin, multiply, or add background copies of any referenced subject unless the scene explicitly requests duplicates.",
-    ].join("\n");
-  }
-
   function miniMaxH3ContinuityPromptBlock(segment, continuityInput, imageNumber) {
     const continuityMode = normalizeMiniMaxH3ContinuityMode(continuityInput?.continuityMode);
     const number = Math.max(1, Math.trunc(Number(imageNumber || 1)));
@@ -37957,16 +38036,48 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const visualOnlyBlock = miniMaxH3VisualOnlySafetyBlock(segment);
     const safePrompt = visualOnlyBlock ? stripMiniMaxH3VisualOnlyTimelineVocalDirections(clean) : clean;
     const block = visualOnlyBlock ? "" : miniMaxH3NativeVoiceBlock(segment);
-    const subjectMultiplicityBlock = miniMaxH3SubjectMultiplicityBlock(segment);
-    return [safePrompt, subjectMultiplicityBlock, block, visualOnlyBlock].filter(Boolean).join("\n\n").trim();
+    return [safePrompt, block, visualOnlyBlock].filter(Boolean).join("\n\n").trim();
+  }
+
+  function miniMaxH3FramingSubjectReference(segment) {
+    if (!segment || segment.no_character_present) return "the subject";
+    const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+    const performerSubjects = selectedPerformerSubjectsForSegment(segment, refs);
+    const mappedIds = logicalSubjectIdsForScene(refs, segment, Math.max(0, segmentIndexInfo(segment).index));
+    const mappedSubjects = mappedIds
+      .map((id) => refs.subjects.find((subject) => String(subject?.id || "") === String(id)))
+      .filter(Boolean);
+    const subject = performerSubjects[0] || mappedSubjects[0] || refs.subjects[0];
+    if (!subject) return "the subject";
+    const subjectId = String(subject.id || "");
+    const mappedIndex = mappedIds.findIndex((id) => String(id) === subjectId);
+    const fallbackIndex = refs.subjects.findIndex((item) => String(item?.id || "") === subjectId);
+    const subjectNumber = (mappedIndex >= 0 ? mappedIndex : fallbackIndex) + 1;
+    if (subjectNumber < 1) return "the subject";
+    return `<Subject ${subjectNumber}> (S${subjectNumber})`;
+  }
+
+  function miniMaxH3ResolveFramingEntry(segment, entry) {
+    const reference = miniMaxH3FramingSubjectReference(segment);
+    const possessive = reference === "the subject" ? "the subject's" : `${reference}'s`;
+    const shot = String(entry?.shot || "")
+      .replace(/\{\{subject_possessive\}\}/gi, possessive)
+      .replace(/\{\{subject\}\}/gi, reference)
+      .replace(/\bthe subject[’']s\b/gi, possessive)
+      .replace(/\bthe subject\b/gi, reference);
+    return { ...entry, shot };
   }
 
   function miniMaxH3SelectedFramingEntries(segment, shotPlan = []) {
     if (!Array.isArray(shotPlan) || !shotPlan.length) return [];
-    const cameraFlowKey = String(segment?.camera_flow || state.builderStoryboardDefaults?.camera_flow || "").trim();
-    if (cameraFlowKey !== "intimate_closeups") return shotPlan.map(() => null);
+    const cameraFlowKey = String(state.builderStoryboardDefaults?.camera_flow || segment?.camera_flow || "").trim();
     const preset = STORYBOARD_CAMERA_FLOW_PRESETS[cameraFlowKey];
-    const sequence = Array.isArray(preset?.sequence) ? preset.sequence.filter((entry) => entry?.shot) : [];
+    if (!preset?.framing_candidates) return shotPlan.map(() => null);
+    const customSequence = cameraFlowKey === "custom"
+      ? normalizeStoryboardCustomCameraFlowSequence(segment?.custom_camera_flow_sequence || state.builderStoryboardDefaults?.custom_camera_flow_sequence)
+      : [];
+    const sequence = (cameraFlowKey === "custom" ? customSequence : (Array.isArray(preset?.sequence) ? preset.sequence : []))
+      .filter((entry) => entry?.shot);
     if (!sequence.length) return shotPlan.map(() => null);
     const sceneText = [
       segment?.lyric_text,
@@ -37995,9 +38106,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       { terms: /shadow|silhouette|dark|backlit|night/, match: /silhouette/ },
       { terms: /above|down|overhead|looking down/, match: /high-angle|overhead/ },
       { terms: /below|low angle|powerful|towering/, match: /low-angle/ },
+      { terms: /dance|dancing|performance|rhythm|music video|singing/, match: /performance|dancing|rhythmic|vocal/ },
+      { terms: /door|doorway|enter|exit|location|environment|room|street|landscape/, match: /doorway|location|environment|ground|background/ },
+      { terms: /fisheye|distort|warped|curved|lens|glass|wide perspective/, match: /fisheye|distort|warped|curved|glass|lens/ },
+      { terms: /approach|approaches|lean|leans|crouch|crouching|reach|reaching|bend|bends|look down/, match: /approach|lean|crouch|reach|lens|tilt/ },
     ];
     const normalizeShotId = (entry, index) => String(entry.id || `${cameraFlowKey}_${index + 1}`).trim();
-    const entries = sequence.map((entry, index) => ({ entry, index, id: normalizeShotId(entry, index) }));
+    const entries = sequence.map((entry, index) => ({ entry: miniMaxH3ResolveFramingEntry(segment, entry), index, id: normalizeShotId(entry, index) }));
     const previousUsedIds = new Set(
       (Array.isArray(state.segments) ? state.segments : [])
         .filter((candidate) => candidate !== segment)
@@ -38056,10 +38171,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         : "";
     }).filter(Boolean);
     if (!framingLines.length) return [];
-    const preset = STORYBOARD_CAMERA_FLOW_PRESETS.intimate_closeups;
+    const cameraFlowKey = String(state.builderStoryboardDefaults?.camera_flow || segment?.camera_flow || "").trim();
+    const preset = STORYBOARD_CAMERA_FLOW_PRESETS[cameraFlowKey];
+    if (!preset?.framing_candidates) return [];
     return [
       `MANDATORY per-shot framing variety (${preset.label}):\n${framingLines.join("\n")}`,
-      "Use the listed framing as exact cinematic direction for each shot. Do not choose, broaden, replace, or contradict it. Add the character's emotion, performance, and action around the specified framing. Every shot must remain close, intimate, and frame-filling. The furthest framing is a tightly composed upper-body shot. Never use a wide shot, distant shot, full-body shot, small-in-frame composition, or full environment view. Do not repeat a framing within this segment. A previously used framing may recur only when it is the strongest contextual fit or the available framing pool has been exhausted.",
+      preset.guidance || "Use the listed framing as exact cinematic direction for each shot. Do not choose, broaden, replace, or contradict it. Add the character's emotion, performance, and action around the specified framing. Do not repeat a framing within this segment. A previously used framing may recur only when it is the strongest contextual fit or the available framing pool has been exhausted.",
     ];
   }
 
@@ -38890,6 +39007,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (!generatedPrompt) {
       throw new Error(options.emptyPromptMessage || `The LLM returned an empty MiniMax ${miniMaxH3ModeLabel(mode)} prompt.`);
     }
+    if (looksLikeUnfilledMiniMaxTemplate(generatedPrompt)) {
+      const error = new Error(`Gemma returned an unfilled MiniMax ${miniMaxH3ModeLabel(mode)} template.`);
+      error.rawGemmaPrompt = generatedPrompt;
+      throw error;
+    }
     const prompt = assembleMiniMaxH3PromptFromCreative(segment, mode, generatedPrompt);
     if (!prompt) {
       throw new Error(options.emptyPromptMessage || `The LLM returned an empty MiniMax ${miniMaxH3ModeLabel(mode)} prompt.`);
@@ -38903,7 +39025,67 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     };
   }
 
+  let storyboardPromptPipelineRunner = null;
+  async function createSidePanelPromptFromStoryboardPipeline(segment, mode, label = "Storyboard") {
+    const storyboardScenes = storyboardScenePayload();
+    const scene = storyboardScenes.find((item) => item.id === segment.id) || storyboardScenes.find((item) => Number(item.scene_number) === Number(segmentIndexInfo(segment).index + 1));
+    if (!scene) throw new Error("The active scene could not be mapped into the Storyboard prompt pipeline.");
+    const storyboardState = wizardStoryboardState(storyboardScenes, {
+      promptMode: "video",
+      videoMode: currentVideoMode(),
+      miniMaxH3Mode: mode,
+    });
+    const storyboardPayload = storyboardGptPayload(storyboardState, [scene]);
+    const progress = createProgressWindow(`Creating ${label} prompt`);
+    try {
+      const pipeline = typeof state.onCreateVideoPrompt === "function"
+        ? state.onCreateVideoPrompt
+        : (storyboardPromptPipelineRunner || ACTIVE_STORYBOARD_PROMPT_PIPELINE);
+      if (typeof pipeline !== "function") {
+        throw new Error("The Storyboard prompt pipeline is not ready yet. Reload the Video Builder once, then try again.");
+      }
+      const data = await pipeline(scene, {
+        storyboardPayload,
+        progress,
+      progressLabel: `Side panel → Storyboard pipeline (${label})`,
+      progressPercent: 35,
+      unloadAfter: true,
+      });
+      if (mode === "text_to_video" || mode === "image_to_video" || mode === "reference_to_video" || mode === "video_to_video") {
+        segment.minimax_h3_prompt = data.prompt;
+        segment.minimax_h3_prompt_origin = "gemma";
+        miniMaxPrompt.value = data.prompt;
+      } else {
+        segment.i2v_prompt = data.prompt;
+        segment.i2v_prompt_origin = "gemma";
+        i2vPrompt.value = data.prompt;
+      }
+      render();
+      await autoSaveSessionQuiet(`Storyboard pipeline ${label} prompt complete`);
+      progress.set(`${label} prompt ready.`, 100);
+      progress.close(900);
+      return data.prompt;
+    } catch (error) {
+      progress.set(`Error:\n${String(error?.message || error)}`, 100);
+      progress.close(1800);
+      throw error;
+    }
+  }
+
   async function createMiniMaxH3PromptWithLLM() {
+    if (USE_STORYBOARD_PROMPT_PIPELINE_FOR_SIDE_PANEL) {
+      const segment = requireActiveSegment();
+      if (!segment) return;
+      updateActiveFromInputs();
+      saveMiniMaxSceneInputsFromPanel();
+      try {
+        await createSidePanelPromptFromStoryboardPipeline(segment, miniMaxH3ModeForSegment(segment), "MiniMax");
+        toast("Created the MiniMax prompt through the Storyboard pipeline.");
+      } catch (error) {
+        toast(`Storyboard side-panel prompt failed. Legacy path is preserved; set USE_STORYBOARD_PROMPT_PIPELINE_FOR_SIDE_PANEL to false to switch back.\n${String(error?.message || error)}`, true);
+      }
+      return;
+    }
     const segment = requireActiveSegment();
     if (!segment) return;
     updateActiveFromInputs();
@@ -38974,9 +39156,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         emptyPromptMessage: `The LLM returned an empty MiniMax ${modeLabel} prompt.`,
       });
       pushHistory();
-      segment.minimax_h3_prompt = data.prompt;
+      segment.minimax_h3_prompt = ensureBuilderManagedFx(data.prompt, segment);
       segment.minimax_h3_prompt_origin = "gemma";
-      miniMaxPrompt.value = data.prompt;
+      miniMaxPrompt.value = segment.minimax_h3_prompt;
       render();
       await autoSaveSessionQuiet(`MiniMax ${modeLabel} prompt complete`);
       progress.set(`MiniMax ${modeLabel} prompt ready.`, 100);
@@ -38984,6 +39166,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       toast(`Created the MiniMax ${modeLabel} prompt with ${gemmaRunnerLabel({ vision: Boolean(visionImages.length) })}.`);
     } catch (error) {
       const debugPath = error?.gemmaDebugPath || await saveGemmaJunkDebug(error, { label: `MiniMax ${modeLabel} prompt`, segment });
+      if (isRecoverableBuildGemmaError(error)) {
+        const failure = recordGemmaBatchFailure(`minimax:${mode}:${segment.id}`, segment, error, debugPath);
+        showGemmaBatchFailures([failure]);
+      }
       progress?.set(`Error:\n${String(error?.message || error)}${debugPath ? `\n\nRaw LLM output saved to:\n${debugPath}` : ""}`, 100);
       toast(String(error?.message || error), true);
     } finally {
@@ -39086,6 +39272,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   async function createI2VPromptWithGemma() {
+    if (USE_STORYBOARD_PROMPT_PIPELINE_FOR_SIDE_PANEL) {
+      const segment = requireActiveSegment();
+      if (!segment) return;
+      updateActiveFromInputs();
+      try {
+        await createSidePanelPromptFromStoryboardPipeline(segment, currentVideoMode(), "video");
+        toast("Created the video prompt through the Storyboard pipeline.");
+      } catch (error) {
+        toast(`Storyboard side-panel prompt failed. Legacy path is preserved; set USE_STORYBOARD_PROMPT_PIPELINE_FOR_SIDE_PANEL to false to switch back.\n${String(error?.message || error)}`, true);
+      }
+      return;
+    }
     const segment = requireActiveSegment();
     if (!segment) return;
     updateActiveFromInputs();
@@ -39164,7 +39362,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         unload_after: !state.useI2VPromptEnhancementPass || useImageReference,
       }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
       pushHistory();
-      segment.i2v_prompt = await finalizeVideoPromptForSegment(segment, data.prompt, progress, 82, `${modeLabel} prompt enhancement`, { unloadAfter: true });
+      segment.i2v_prompt = ensureBuilderManagedFx(
+        await finalizeVideoPromptForSegment(segment, data.prompt, progress, 82, `${modeLabel} prompt enhancement`, { unloadAfter: true }),
+        segment,
+      );
       segment.i2v_prompt_origin = "gemma";
       i2vPrompt.value = segment.i2v_prompt;
       render();
@@ -39174,6 +39375,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       toast(data.used_image_reference ? "Gemma created I2V prompt from the image reference." : `Gemma created ${modeLabel} prompt from the T2I prompt.`);
     } catch (error) {
       const debugPath = error?.gemmaDebugPath || await saveGemmaJunkDebug(error, { label: `single ${modeLabel} prompt`, segment });
+      if (isRecoverableBuildGemmaError(error)) {
+        const failure = recordGemmaBatchFailure(`i2v:${videoMode}:${segment.id}`, segment, error, debugPath);
+        showGemmaBatchFailures([failure]);
+      }
       progress?.set(`Error:\n${String(error?.message || error)}${debugPath ? `\n\nRaw Gemma output saved to:\n${debugPath}` : ""}`, 100);
       toast(String(error?.message || error), true);
     } finally {
@@ -39223,9 +39428,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       : `${label}: converting T2I prompt to ${request.modeLabel} prompt without vision...\n${gemmaRunnerLine()}`, percent);
     const data = await postJson(request.endpoint, request.payload, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
     pushHistory();
-    segment.i2v_prompt = options.deferEnhancement
-      ? finalizeVideoPromptDraftOnly(segment, data.prompt)
-      : await finalizeVideoPromptForSegment(segment, data.prompt, progress, Math.min(98, percent + 20), `${label}: enhancement pass`, { unloadAfter: request.useImageReference ? true : options.unloadAfter !== false });
+    try {
+      segment.i2v_prompt = options.deferEnhancement
+        ? finalizeVideoPromptDraftOnly(segment, data.prompt)
+        : await finalizeVideoPromptForSegment(segment, data.prompt, progress, Math.min(98, percent + 20), `${label}: enhancement pass`, { unloadAfter: request.useImageReference ? true : options.unloadAfter !== false });
+    } catch (error) {
+      error.rawGemmaPrompt = String(data.prompt || "");
+      throw error;
+    }
     if (!segment.i2v_prompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: Gemma returned an empty ${request.modeLabel} prompt.`);
     segment.i2v_prompt_origin = "gemma";
     if (segment.id === state.activeId) i2vPrompt.value = segment.i2v_prompt;
@@ -39331,6 +39541,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const sceneScope = normalizeBatchScope(options.sceneScope);
     const allScenes = batchTargetItems(sceneScope).map(({ segment }) => segment);
     const redoPrompts = options.i2vRunMode === "redo_prompts";
+    const failedIds = new Set((options.failedIds || []).map((value) => String(value)));
     const forceTextOnly = Boolean(options.forceTextOnly);
     const forceVision = Boolean(options.forceVision);
     const deferEnhancement = Boolean(state.useI2VPromptEnhancementPass);
@@ -39340,7 +39551,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         segment.i2v_prompt_origin = "manual";
       });
     }
-    const scenes = allScenes.filter((segment) => redoPrompts || !String(segment?.i2v_prompt || "").trim());
+    const scenes = options.i2vRunMode === "failed_only"
+      ? allScenes.filter((segment) => failedIds.has(String(segment?.id || "")))
+      : allScenes.filter((segment) => redoPrompts || !String(segment?.i2v_prompt || "").trim());
     const missing = [];
     const continuityCanCreateImageLater = (segment, requestedUseImageReference) => {
       if (forceVision || forceTextOnly || !requestedUseImageReference || videoMode !== "i2v") return false;
@@ -39409,14 +39622,22 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         const generatePrompt = firstLastFrameVision
           ? generateI2VPromptForSegmentWithFLFRetry
           : generateI2VPromptForSegment;
-        await generatePrompt(segment, progress, Math.min(deferEnhancement ? 70 : 98, base + 30), `${runnerName} ${modeLabel} All ${index + 1}/${scenes.length}`, {
-          unloadAfter: false,
-          forceTextOnly: forceTextOnly || forceTextForContinuity,
-          forceVision,
-          deferEnhancement,
-          maxFLFAttempts: 3,
-        });
-        await autoSaveSessionQuiet(`${runnerName} ${modeLabel} All ${sceneDisplayName(segment, displayIndex)}`);
+        try {
+          await generatePrompt(segment, progress, Math.min(deferEnhancement ? 70 : 98, base + 30), `${runnerName} ${modeLabel} All ${index + 1}/${scenes.length}`, {
+            unloadAfter: false,
+            forceTextOnly: forceTextOnly || forceTextForContinuity,
+            forceVision,
+            deferEnhancement,
+            maxFLFAttempts: 3,
+          });
+          gemmaBatchFailureStore()[`i2v:${videoMode}:${segment.id}`] = undefined;
+          await autoSaveSessionQuiet(`${runnerName} ${modeLabel} All ${sceneDisplayName(segment, displayIndex)}`);
+        } catch (error) {
+          if (!isRecoverableBuildGemmaError(error)) throw error;
+          const debugPath = error?.gemmaDebugPath || await saveGemmaJunkDebug(error, { label: `${runnerName} ${modeLabel} All`, segment });
+          recordGemmaBatchFailure(`i2v:${videoMode}:${segment.id}`, segment, error, debugPath);
+          progress.set(`${runnerName} ${modeLabel} ${sceneDisplayName(segment, displayIndex)} skipped. Continuing with the remaining scenes...`, base);
+        }
       }
       if (deferEnhancement) {
         await runClearMemoryWorkflowQuiet(progress, `${runnerName} ${modeLabel} draft prompt pass`, 72);
@@ -39428,8 +39649,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       }
       await runClearMemoryWorkflowQuiet(progress, `${runnerName} ${modeLabel} prompt pass`, 96);
       await autoSaveSessionQuiet(`${runnerName} ${modeLabel} All complete`);
-      progress.set(`${runnerName} ${modeLabel} All complete.`, 100);
+      const failures = scenes.map((segment) => gemmaBatchFailureStore()[`i2v:${videoMode}:${segment.id}`]).filter(Boolean);
+      progress.set(`${runnerName} ${modeLabel} All complete. ${failures.length ? `${failures.length} scene${failures.length === 1 ? " was" : "s were"} skipped.` : "All scenes succeeded."}`, 100);
       if (closeProgress) progress.close(1800);
+      if (failures.length) showGemmaBatchFailures(failures, true);
     } catch (error) {
       const debugPath = error?.gemmaDebugPath || await saveGemmaJunkDebug(error, { label: `${runnerName} ${modeLabel} All` });
       progress.set(`Stopped/Error:\n${String(error?.message || error)}${debugPath ? `\n\nRaw Gemma output saved to:\n${debugPath}` : ""}`, 100);
@@ -39459,8 +39682,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const promptRunMode = options.promptRunMode || "redo_all";
     const sceneScope = normalizeBatchScope(options.sceneScope);
     const redoPrompts = promptRunMode === "redo_all";
+    const failedIds = new Set((options.failedIds || []).map((value) => String(value)));
     const allScenes = batchTargetItems(sceneScope);
-    const targetScenes = promptAllModeTargets(promptRunMode, imageMode, sceneScope);
+    const targetScenes = promptRunMode === "failed_only"
+      ? allScenes.filter(({ segment }) => failedIds.has(String(segment?.id || "")))
+      : promptAllModeTargets(promptRunMode, imageMode, sceneScope);
     const progress = createProgressWindow(`${runnerName} T2I All (${modelLabel})`);
     const missing = [];
     if (!allScenes.length) missing.push(batchEmptyMessage(sceneScope));
@@ -39521,19 +39747,30 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         syncInspector();
         render();
         const promptLabel = `${runnerName} T2I All ${index + 1}/${promptScenes.length}: ${sceneLabel}`;
-        await runGemmaImagePromptPassWithRetry(segment, progress, base, promptLabel, generateT2IPromptForSegment, {
+        try {
+          await runGemmaImagePromptPassWithRetry(segment, progress, base, promptLabel, generateT2IPromptForSegment, {
           unloadAfter: false,
           imageMode,
           generatorOptions: { imageMode },
-        });
-        assertBatchNotStopped();
-        await autoSaveSessionQuiet(`${runnerName} T2I All ${sceneLabel}`);
+            textFallback: false,
+          });
+          gemmaBatchFailureStore()[`t2i:${imageMode}:${segment.id}`] = undefined;
+          assertBatchNotStopped();
+          await autoSaveSessionQuiet(`${runnerName} T2I All ${sceneLabel}`);
+        } catch (error) {
+          if (!isRecoverableBuildGemmaError(error)) throw error;
+          const debugPath = error?.gemmaDebugPath || await saveGemmaJunkDebug(error, { label: promptLabel, segment });
+          recordGemmaBatchFailure(`t2i:${imageMode}:${segment.id}`, segment, error, debugPath);
+          progress.set(`${promptLabel} skipped. Continuing with the remaining scenes...`, base);
+        }
       }
       await runClearMemoryWorkflowQuiet(progress, `${runnerName} T2I prompt pass`, 96);
       await autoSaveSessionQuiet(`${runnerName} T2I All complete`);
-      progress.set(`${runnerName} T2I All complete. Review or edit the image prompts before creating images.`, 100);
+      const failures = promptScenes.map(({ segment }) => gemmaBatchFailureStore()[`t2i:${imageMode}:${segment.id}`]).filter(Boolean);
+      progress.set(`${runnerName} T2I All complete. ${failures.length ? `${failures.length} scene${failures.length === 1 ? " was" : "s were"} skipped.` : "All scenes succeeded."}\nReview or edit the image prompts before creating images.`, 100);
       progress.close(2500);
-      toast(`${runnerName} T2I All complete.`);
+      toast(`${runnerName} T2I All complete${failures.length ? ` with ${failures.length} skipped scene${failures.length === 1 ? "" : "s"}` : ""}.`, Boolean(failures.length));
+      if (failures.length) showGemmaBatchFailures(failures, true);
     } catch (error) {
       const message = String(error?.message || error);
       const stopped = /stopped by user/i.test(message);
@@ -39555,6 +39792,24 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.batchCancelled = false;
       syncInspector();
       render();
+    }
+  }
+
+  async function retryOnlyGemmaBatchFailures(failures) {
+    const items = Array.isArray(failures) ? failures : [];
+    const t2i = items.filter((item) => String(item.key || "").startsWith("t2i:"));
+    const i2v = items.filter((item) => String(item.key || "").startsWith("i2v:"));
+    const minimax = items.filter((item) => String(item.key || "").startsWith("minimax:"));
+    if (t2i.length) {
+      await gemmaT2IAllScenes({ promptRunMode: "failed_only", failedIds: t2i.map((item) => item.segmentId), sceneScope: "all" });
+      return;
+    }
+    if (i2v.length) {
+      await i2vAllScenes({ i2vRunMode: "failed_only", failedIds: i2v.map((item) => item.segmentId), sceneScope: "all" });
+      return;
+    }
+    if (minimax.length) {
+      await generateAutoBuildMiniMaxPrompts({ failedOnly: true, failedIds: minimax.map((item) => item.segmentId) });
     }
   }
 
@@ -40051,6 +40306,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       temporalEnvironmentTimePassage: defaults.temporal_environment_time_passage !== false,
       temporalProtectedCharacters: defaults.temporal_protected_characters || "all_referenced",
       temporalProtectedCustom: defaults.temporal_protected_custom || "",
+      fxPreset: defaults.fx_preset || "",
+      fxCustomJson: defaults.fx_custom_json || "",
       globalConsistencyPhrase: defaults.global_consistency_phrase || "",
       performanceStyle: defaults.performance_style || "",
       facialPerformance: state.defaultFacialPerformance || "",
@@ -40425,6 +40682,25 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       }
       return `${text}\n\n${requiredLine}`;
     };
+    const ensureBuilderManagedFx = (prompt, scene = {}) => {
+      let text = String(prompt || "").trim();
+      const defaults = normalizeBuilderStoryboardDefaults(state.builderStoryboardDefaults);
+      const preset = String(defaults.fx_preset || "").trim();
+      if (!text || !preset) return text;
+      const timestampPattern = /((?:\[\s*\d+(?:\.\d+)?s?\s*[-–—]\s*\d+(?:\.\d+)?s?\s*\]|\[\s*Shot\s+\d+[^\]]*\])\s*\n?)([\s\S]*?)(?=\n\s*(?:\[\s*\d+(?:\.\d+)?s?\s*[-–—]\s*\d+(?:\.\d+)?s?\s*\]|\[\s*Shot\s+\d+[^\]]*\])|\n\s*(?:Audio(?:\s+1)?|Native\s+audio|overall_soundscape|non_diegetic_music|Continuity)\s*:|$)/gi;
+      let shotIndex = 0;
+      let matched = false;
+      text = text.replace(timestampPattern, (whole, header, body) => {
+        matched = true;
+        const contract = storyboardFxContract(preset, defaults.fx_custom_json, shotIndex++);
+        if (!contract || String(body || "").includes(contract.cue)) return whole;
+        const cue = `FX accent: ${contract.cue} Timing: ${contract.timing}. Keep the mapped subject stable and readable.`;
+        return `${header}${String(body || "").trim()} ${cue}\n`;
+      });
+      if (matched) return text.trim();
+      const contract = storyboardFxContract(preset, defaults.fx_custom_json, 0);
+      return contract ? `${text}\n\nFX accent inside this shot: ${contract.cue} Keep the mapped subject stable and readable.`.trim() : text;
+    };
     const ensureStoryboardRequiredTemporalWorldEffect = (prompt, storyboardPayload = {}, scene = {}) => {
       let text = String(prompt || "").trim();
       const storyboardScenes = Array.isArray(storyboardPayload?.scenes) ? storyboardPayload.scenes : [];
@@ -40598,7 +40874,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           emptyPromptMessage: `${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: LLM returned an empty MiniMax ${modeLabel} prompt.`,
         });
         const prompt = ensureStoryboardRequiredTemporalWorldEffect(
-          data.prompt,
+          ensureBuilderManagedFx(data.prompt, scene),
           options.storyboardPayload || {},
           scene,
         );
@@ -40632,12 +40908,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         `${options.progressLabel || "Storyboard Gemma"}: enhancement pass`,
         { unloadAfter: request.useImageReference ? true : options.unloadAfter !== false },
       );
-      const prompt = ensureStoryboardRequiredStartingShot(
+      const promptWithStartingShot = ensureStoryboardRequiredStartingShot(
         finalizedPrompt,
         workingSegment,
         scene,
         options.storyboardPayload || {},
       );
+      const prompt = ensureBuilderManagedFx(promptWithStartingShot, scene);
       if (!prompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: Gemma returned an empty I2V prompt.`);
       return {
         ...data,
@@ -40646,6 +40923,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         used_video_builder_i2v_payload: true,
       };
     };
+    storyboardPromptPipelineRunner = createStoryboardVideoPromptViaBuilder;
+    ACTIVE_STORYBOARD_PROMPT_PIPELINE = createStoryboardVideoPromptViaBuilder;
     const applyIdLoraDialoguePlanFromStoryboard = async (updates = {}) => {
       const scenes = Array.isArray(updates.scenes)
         ? updates.scenes.filter((scene) => String(scene?.lyrics || scene?.story_beat || scene?.image_prompt || "").trim())
@@ -40907,6 +41186,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       temporalEnvironmentTimePassage: state.builderStoryboardDefaults?.temporal_environment_time_passage !== false,
       temporalProtectedCharacters: state.builderStoryboardDefaults?.temporal_protected_characters || "all_referenced",
       temporalProtectedCustom: state.builderStoryboardDefaults?.temporal_protected_custom || "",
+      fxPreset: state.builderStoryboardDefaults?.fx_preset || "",
+      fxCustomJson: state.builderStoryboardDefaults?.fx_custom_json || "",
       cameraMotionSpeed: state.builderStoryboardDefaults?.camera_motion_speed ?? 4,
       characterMotionSpeed: state.builderStoryboardDefaults?.character_motion_speed ?? 4,
       cutFrequency: state.builderStoryboardDefaults?.minimax_h3_cut_frequency ?? 0,
@@ -50000,10 +50281,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       );
     };
 
-    const generateAutoBuildMiniMaxPrompts = async () => {
-      const scenes = [...state.segments];
+    const generateAutoBuildMiniMaxPrompts = async (options = {}) => {
+      const failedIds = new Set((options.failedIds || []).map((value) => String(value)));
+      const allScenes = [...state.segments];
+      const scenes = options.failedOnly
+        ? allScenes.filter((segment) => failedIds.has(String(segment?.id || "")))
+        : allScenes;
       const progress = createProgressWindow("Auto Build MiniMax Prompts");
       let created = 0;
+      const failures = [];
       let historySaved = false;
       try {
         state.batchCancelled = false;
@@ -50020,27 +50306,36 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           }
           const percent = 5 + Math.round((index / Math.max(1, scenes.length)) * 90);
           progress.set(`Creating MiniMax prompt ${index + 1}/${scenes.length}: ${sceneDisplayName(segment, index)}\n${gemmaRunnerLine({ vision: Boolean(visionImages.length) })}`, percent);
-          const data = await runMiniMaxH3PromptGeneration(segment, mode, {
-            projectFolder,
-            sceneId: segment.id || "",
-            unloadAfter: index === scenes.length - 1,
-            promptOnlySceneInspiration: false,
-            performanceMode: "singing",
-            audioMode: "input_audio",
-            speakerAssignments: [],
-            emptyPromptMessage: `${sceneDisplayName(segment, index)} returned an empty MiniMax prompt.`,
-          });
-          if (!historySaved) {
-            pushHistory();
-            historySaved = true;
+          try {
+            const data = await runMiniMaxH3PromptGeneration(segment, mode, {
+              projectFolder,
+              sceneId: segment.id || "",
+              unloadAfter: index === scenes.length - 1,
+              promptOnlySceneInspiration: false,
+              performanceMode: "singing",
+              audioMode: "input_audio",
+              speakerAssignments: [],
+              emptyPromptMessage: `${sceneDisplayName(segment, index)} returned an empty MiniMax prompt.`,
+            });
+            gemmaBatchFailureStore()[`minimax:${mode}:${segment.id}`] = undefined;
+            if (!historySaved) {
+              pushHistory();
+              historySaved = true;
+            }
+            segment.minimax_h3_prompt = data.prompt;
+            segment.minimax_h3_prompt_origin = "gemma";
+            created += 1;
+            await autoSaveSessionQuiet(`Auto Build MiniMax prompt ${index + 1}`);
+          } catch (error) {
+            if (!isRecoverableBuildGemmaError(error)) throw error;
+            const debugPath = error?.gemmaDebugPath || await saveGemmaJunkDebug(error, { label: `Auto Build MiniMax prompt ${index + 1}`, segment });
+            failures.push(recordGemmaBatchFailure(`minimax:${mode}:${segment.id}`, segment, error, debugPath));
+            progress.set(`${sceneDisplayName(segment, index)} skipped. Continuing with the remaining MiniMax scenes...`, percent);
           }
-          segment.minimax_h3_prompt = data.prompt;
-          segment.minimax_h3_prompt_origin = "gemma";
-          created += 1;
-          await autoSaveSessionQuiet(`Auto Build MiniMax prompt ${index + 1}`);
         }
-        progress.set(`Created ${created} MiniMax video prompt${created === 1 ? "" : "s"}.`, 100);
+        progress.set(`Created ${created} MiniMax video prompt${created === 1 ? "" : "s"}.${failures.length ? ` Skipped ${failures.length} scene${failures.length === 1 ? "" : "s"}.` : ""}`, 100);
         progress.close(1600);
+        if (failures.length) showGemmaBatchFailures(failures);
         return created;
       } catch (error) {
         progress.set(`Auto Build MiniMax prompts stopped after ${created}/${scenes.length}:\n${String(error?.message || error)}`, 100);
@@ -50743,7 +51038,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
             imageAestheticChanged += 1;
           }
         }
-        const entry = shouldApplyCamera ? storyboardCameraFlowEntry(cameraFlow, index, previousMotion) : null;
+      const entry = shouldApplyCamera
+        ? storyboardCameraFlowEntry(cameraFlow, index, previousMotion, state.builderStoryboardDefaults?.custom_camera_flow_sequence)
+        : null;
         if (entry && cameraFlow !== "off") {
           const hadShot = Boolean(String(segment.shot_type || "").trim());
           const hadCamera = Boolean(String(segment.camera_motion || segment.motion_preset || "").trim());

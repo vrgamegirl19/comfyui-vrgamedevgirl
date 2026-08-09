@@ -3,6 +3,45 @@
   "product": "AI Video Builder",
   "releases": [
     {
+      "id": "2026-08-09-video-compare-shot-fx",
+      "version": "2026.08.09-video-compare-shot-fx",
+      "date": "2026-08-09",
+      "title": "Video comparison recording, shot FX, and prompt workflow updates",
+      "commit": "d48e424",
+      "restart_required": true,
+      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
+      "sections": [
+        {
+          "title": "New",
+          "items": [
+            "Added configurable Storyboard shot FX presets and custom FX JSON for lighting, lens, glitch, atmospheric, energy, film, distortion, supernatural, and music-video accents.",
+            "Added Video Compare Slider recording with configurable duration, browser capture, ComfyUI MP4 saving, and downloadable fallback recording support.",
+            "Added IMAGE-batch inputs to the Video Compare Slider so rendered image sequences can be previewed as browser-playable videos."
+          ]
+        },
+        {
+          "title": "Improved",
+          "items": [
+            "Video Compare now provides clearer recording progress, media-load errors, labels, and output handling.",
+            "Video Builder side-panel prompt generation can use the shared Storyboard prompt pipeline and inject selected FX directly into timestamped shots."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Removed the hardcoded reference-subject-count block from generated prompts so prompts no longer receive that mandatory boilerplate."
+          ]
+        },
+        {
+          "title": "Compatibility Notes",
+          "items": [
+            "Restart ComfyUI and hard-refresh the browser after updating so the revised Python and Builder JavaScript modules are loaded.",
+            "Video Compare recording and IMAGE-batch conversion require FFmpeg; the browser still offers a temporary WebM download if MP4 saving is unavailable."
+          ]
+        }
+      ]
+    },
+    {
       "id": "2026-08-08-minimax-builder-framing-workflow",
       "version": "2026.08.08-minimax-builder-workflow",
       "date": "2026-08-08",
@@ -15,6 +54,7 @@
           "title": "New",
           "items": [
             "Added context-aware intimate close-up framing selection tied to each scene's cut count, with persistent per-scene shot choices that avoid unnecessary repetition across scenes.",
+            "Added curated Music Video Shots and Fisheye and Distorted-Lens Shots camera-flow presets, each with its own context-aware candidate list and per-scene usage tracking.",
             "Added project-scoped LLM API key save and load support, with an export warning when a project contains a saved API key.",
             "Added an optional MiniMax H3 memory-efficient Sage Attention path with hardware and dependency validation."
           ]
@@ -25,7 +65,7 @@
             "MiniMax prompt generation now preserves required cut wording, repairs common post-cut grammar issues, and adds explicit visible lip-sync guidance for sung lyrics and sustained non-verbal vocals.",
             "Auto Build can pause after timeline creation so scenes can be reviewed before prompt creation, while lyric editing and storyboard context remain synchronized across Builder views.",
             "Location descriptions can be expanded into detailed standalone environment descriptions for more consistent scene prompting.",
-            "The intimate close-up preset is the first preset-specific implementation of the candidate-list selection system; the same per-preset curated-list logic is planned for the remaining camera-flow presets."
+            "The intimate close-up preset was the first preset-specific implementation of the candidate-list selection system; Music Video Shots and Fisheye and Distorted-Lens Shots now use the same per-preset curated-list logic, with additional presets planned later."
           ]
         },
         {
