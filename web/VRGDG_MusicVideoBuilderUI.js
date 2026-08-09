@@ -202,6 +202,59 @@ const FLUX2KLEIN_MLX_QUANTIZE_OPTIONS = [
   { value: "8", label: "8-bit" },
   { value: "none", label: "None (full precision)" },
 ];
+
+// Mirrors the Python-side _PREQUANTIZED_REPO_MAP dicts in
+// comfyui-flux2klein-mlx/comfyui-krea2-mlx/comfyui-zimage-mlx's
+// nodes/loaders.py -- display-only, the actual routing decision is made
+// server-side in each pack's execute() method. Keep these in sync if either
+// side's map changes. Each repo's compatibility with mflux's own weight
+// loader was individually confirmed (weight-index metadata / README, not
+// guessed from naming) before being added on the Python side.
+const MLX_PREQUANTIZED_REPO_MAP = {
+  flux2klein: {
+    "flux2-klein-4b|4": "mlx-community/flux2-klein-4b-4bit (~4.6GB)",
+    "flux2-klein-4b|8": "mlx-community/flux2-klein-4b-8bit (~8.6GB)",
+    "flux2-klein-9b|4": "mlx-community/flux2-klein-9b-4bit (~9.5GB)",
+    "flux2-klein-9b|8": "mlx-community/flux2-klein-9b-8bit (~17.9GB)",
+  },
+  krea2: {
+    "krea2|4": "MLXBits/krea-2-mlx-q4 (~7GB)",
+    "krea2|8": "MLXBits/krea-2-mlx-q8 (~22GB)",
+  },
+  zimage: {
+    "z-image-turbo|8": "deepsweet/Z-Image-Turbo-6B-MLX-Q8 (~11GB)",
+  },
+};
+
+function describeMlxQuantStatus(engine, modelName, quantize) {
+  if (quantize === "none") {
+    return {
+      fast: false,
+      text: "Full precision: downloads the full-size original checkpoint (largest, slowest), no local quantization step needed afterward.",
+    };
+  }
+  const repo = MLX_PREQUANTIZED_REPO_MAP[engine]?.[`${modelName}|${quantize}`];
+  if (repo) {
+    return { fast: true, text: `Pre-quantized build available: downloads ${repo} directly.` };
+  }
+  return {
+    fast: false,
+    text: "No pre-quantized build known for this model + quantize combo: downloads the full-size original checkpoint, then quantizes it locally on first run (slow, large one-time download).",
+  };
+}
+
+function makeMlxQuantStatusNote() {
+  const note = document.createElement("div");
+  note.style.cssText = "font-size:11px;line-height:1.4;margin-top:-2px;";
+  return note;
+}
+
+function updateMlxQuantStatusNote(noteEl, engine, modelName, quantize) {
+  if (!noteEl) return;
+  const { fast, text } = describeMlxQuantStatus(engine, modelName, quantize);
+  noteEl.textContent = (fast ? "⚡ " : "⏳ ") + text;
+  noteEl.style.color = fast ? "#4ade80" : "#fcd34d";
+}
 const DEFAULT_FLUX2KLEIN_MLX_SETTINGS = {
   // Edit mode's multi-image conditioning (reference images injected as
   // conditioning tokens at every denoise step) is architecturally the
@@ -6178,12 +6231,14 @@ function openBuilder(node) {
   // engine actually renders the scene, so no new backend code was needed.
   const flux2KleinMlxGemmaPromptButton = makeButton("Gemma Klein MLX Prompt", "primary");
   flux2KleinMlxGemmaPromptButton.title = "Write this scene's prompt with Gemma (shares the Flux/Klein Gemma model pickers and vision/text-only setting).";
+  const flux2KleinMlxQuantStatusNote = makeMlxQuantStatusNote();
   flux2KleinMlxImagePanel.append(
     flux2KleinMlxBanner,
     flux2KleinMlxUnavailableNote,
     makeField("Mode", flux2KleinMlxModeSelect),
     makeField("Model", flux2KleinMlxModelSelect),
     makeField("Quantize", flux2KleinMlxQuantizeSelect),
+    flux2KleinMlxQuantStatusNote,
     flux2KleinMlxGemmaPromptButton,
     makeField("Prompt", flux2KleinMlxPrompt),
     flux2KleinMlxAutoIngredientsNote,
@@ -6205,6 +6260,7 @@ function openBuilder(node) {
     flux2KleinMlxModeSelect.value = settings.mode;
     flux2KleinMlxModelSelect.value = settings.model_name;
     flux2KleinMlxQuantizeSelect.value = settings.quantize;
+    updateMlxQuantStatusNote(flux2KleinMlxQuantStatusNote, "flux2klein", settings.model_name, settings.quantize);
     flux2KleinMlxHeight.value = String(settings.height);
     flux2KleinMlxWidth.value = String(settings.width);
     flux2KleinMlxSeed.value = String(settings.seed);
@@ -6250,8 +6306,14 @@ function openBuilder(node) {
     flux2KleinMlxImagePathsField.style.display = editMode ? "" : "none";
     flux2KleinMlxImageStrengthField.style.display = editMode ? "none" : "";
   });
-  flux2KleinMlxModelSelect.addEventListener("change", () => updateFlux2KleinMlxSetting("model_name", flux2KleinMlxModelSelect.value));
-  flux2KleinMlxQuantizeSelect.addEventListener("change", () => updateFlux2KleinMlxSetting("quantize", flux2KleinMlxQuantizeSelect.value));
+  flux2KleinMlxModelSelect.addEventListener("change", () => {
+    updateFlux2KleinMlxSetting("model_name", flux2KleinMlxModelSelect.value);
+    updateMlxQuantStatusNote(flux2KleinMlxQuantStatusNote, "flux2klein", flux2KleinMlxModelSelect.value, flux2KleinMlxQuantizeSelect.value);
+  });
+  flux2KleinMlxQuantizeSelect.addEventListener("change", () => {
+    updateFlux2KleinMlxSetting("quantize", flux2KleinMlxQuantizeSelect.value);
+    updateMlxQuantStatusNote(flux2KleinMlxQuantStatusNote, "flux2klein", flux2KleinMlxModelSelect.value, flux2KleinMlxQuantizeSelect.value);
+  });
   flux2KleinMlxHeight.addEventListener("change", () => updateFlux2KleinMlxSetting("height", Number(flux2KleinMlxHeight.value) || DEFAULT_FLUX2KLEIN_MLX_SETTINGS.height));
   flux2KleinMlxWidth.addEventListener("change", () => updateFlux2KleinMlxSetting("width", Number(flux2KleinMlxWidth.value) || DEFAULT_FLUX2KLEIN_MLX_SETTINGS.width));
   flux2KleinMlxSeed.addEventListener("change", () => updateFlux2KleinMlxSetting("seed", Number(flux2KleinMlxSeed.value) || 0));
@@ -27997,6 +28059,9 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       const kreaMlxSettings = currentKrea2ZimageMlxReferenceSettings();
 
       const zimageMlxQuantize = makeSelect(MLX_QUANTIZE_CHOICES, zimageMlxSettings.quantize || DEFAULT_ZIMAGE_MLX_REFERENCE_SETTINGS.quantize);
+      const zimageMlxQuantStatusNote = makeMlxQuantStatusNote();
+      updateMlxQuantStatusNote(zimageMlxQuantStatusNote, "zimage", "z-image-turbo", zimageMlxQuantize.value);
+      zimageMlxQuantize.addEventListener("change", () => updateMlxQuantStatusNote(zimageMlxQuantStatusNote, "zimage", "z-image-turbo", zimageMlxQuantize.value));
       const zimageMlxWidth = makeInput(String(zimageMlxSettings.width || DEFAULT_ZIMAGE_MLX_REFERENCE_SETTINGS.width), "number");
       const zimageMlxHeight = makeInput(String(zimageMlxSettings.height || DEFAULT_ZIMAGE_MLX_REFERENCE_SETTINGS.height), "number");
       const zimageMlxSteps = makeInput(String(zimageMlxSettings.num_inference_steps || DEFAULT_ZIMAGE_MLX_REFERENCE_SETTINGS.num_inference_steps), "number");
@@ -28012,7 +28077,13 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       zimageMlxSeed.step = "1";
 
       const krea2MlxQuantize = makeSelect(MLX_QUANTIZE_CHOICES, kreaMlxSettings.krea2_quantize || DEFAULT_KREA2_ZIMAGE_MLX_REFERENCE_SETTINGS.krea2_quantize);
+      const krea2MlxQuantStatusNote = makeMlxQuantStatusNote();
+      updateMlxQuantStatusNote(krea2MlxQuantStatusNote, "krea2", "krea2", krea2MlxQuantize.value);
+      krea2MlxQuantize.addEventListener("change", () => updateMlxQuantStatusNote(krea2MlxQuantStatusNote, "krea2", "krea2", krea2MlxQuantize.value));
       const zimageEnhancerMlxQuantize = makeSelect(MLX_QUANTIZE_CHOICES, kreaMlxSettings.zimage_quantize || DEFAULT_KREA2_ZIMAGE_MLX_REFERENCE_SETTINGS.zimage_quantize);
+      const zimageEnhancerMlxQuantStatusNote = makeMlxQuantStatusNote();
+      updateMlxQuantStatusNote(zimageEnhancerMlxQuantStatusNote, "zimage", "z-image-turbo", zimageEnhancerMlxQuantize.value);
+      zimageEnhancerMlxQuantize.addEventListener("change", () => updateMlxQuantStatusNote(zimageEnhancerMlxQuantStatusNote, "zimage", "z-image-turbo", zimageEnhancerMlxQuantize.value));
       const krea2MlxFirstWidth = makeInput(String(kreaMlxSettings.first_pass_width || DEFAULT_KREA2_ZIMAGE_MLX_REFERENCE_SETTINGS.first_pass_width), "number");
       const krea2MlxFirstHeight = makeInput(String(kreaMlxSettings.first_pass_height || DEFAULT_KREA2_ZIMAGE_MLX_REFERENCE_SETTINGS.first_pass_height), "number");
       const krea2MlxWidth = makeInput(String(kreaMlxSettings.width || DEFAULT_KREA2_ZIMAGE_MLX_REFERENCE_SETTINGS.width), "number");
@@ -28063,8 +28134,9 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       });
 
       return {
-        zimageMlxQuantize, zimageMlxWidth, zimageMlxHeight, zimageMlxSteps, zimageMlxSeed, zimageMlxSeedMode,
-        krea2MlxQuantize, zimageEnhancerMlxQuantize, krea2MlxFirstWidth, krea2MlxFirstHeight, krea2MlxWidth, krea2MlxHeight,
+        zimageMlxQuantize, zimageMlxQuantStatusNote, zimageMlxWidth, zimageMlxHeight, zimageMlxSteps, zimageMlxSeed, zimageMlxSeedMode,
+        krea2MlxQuantize, krea2MlxQuantStatusNote, zimageEnhancerMlxQuantize, zimageEnhancerMlxQuantStatusNote,
+        krea2MlxFirstWidth, krea2MlxFirstHeight, krea2MlxWidth, krea2MlxHeight,
         krea2MlxSteps, zimageEnhancerMlxSteps, krea2MlxImageStrength, krea2MlxSeed, krea2MlxSeedMode,
         readZimageMlx, readKrea2ZimageMlx,
       };
@@ -28908,8 +28980,9 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       const { zModel, zClip, zVae, kreaModel, kreaClip, kreaVae, seed, seedMode, firstWidth, firstHeight, width, height, readZImage, readKrea2 } = generatorControls;
       const mlxGeneratorControls = buildMlxReferenceGeneratorControls();
       const {
-        zimageMlxQuantize, zimageMlxWidth, zimageMlxHeight, zimageMlxSteps, zimageMlxSeed, zimageMlxSeedMode,
-        krea2MlxQuantize, zimageEnhancerMlxQuantize, krea2MlxFirstWidth, krea2MlxFirstHeight, krea2MlxWidth, krea2MlxHeight,
+        zimageMlxQuantize, zimageMlxQuantStatusNote, zimageMlxWidth, zimageMlxHeight, zimageMlxSteps, zimageMlxSeed, zimageMlxSeedMode,
+        krea2MlxQuantize, krea2MlxQuantStatusNote, zimageEnhancerMlxQuantize, zimageEnhancerMlxQuantStatusNote,
+        krea2MlxFirstWidth, krea2MlxFirstHeight, krea2MlxWidth, krea2MlxHeight,
         krea2MlxSteps, zimageEnhancerMlxSteps, krea2MlxImageStrength, krea2MlxSeed, krea2MlxSeedMode,
         readZimageMlx, readKrea2ZimageMlx,
       } = mlxGeneratorControls;
@@ -29065,6 +29138,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       const zimageMlxCard = optionCard("ZImage MLX (Apple Silicon)", [
         modalHelp("Runs Z-Image natively via MLX (mflux). Requires the comfyui-zimage-mlx custom node and macOS on Apple Silicon."),
         makeField("Quantize", zimageMlxQuantize),
+        zimageMlxQuantStatusNote,
         makeField("Width", zimageMlxWidth),
         makeField("Height", zimageMlxHeight),
         makeField("Steps", zimageMlxSteps),
@@ -29077,7 +29151,9 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       const krea2ZimageMlxCard = optionCard("Krea2 + ZImage MLX Enhancer (Apple Silicon)", [
         modalHelp("Runs Krea-2 first-pass generation then a Z-Image img2img enhancer pass, both natively via MLX (mflux). Requires the comfyui-krea2-mlx and comfyui-zimage-mlx custom nodes and macOS on Apple Silicon. Models are fixed (Krea-2 + Z-Image Turbo) -- only quantization/dimensions/steps/seed are configurable."),
         makeField("Krea2 quantize", krea2MlxQuantize),
+        krea2MlxQuantStatusNote,
         makeField("ZImage enhancer quantize", zimageEnhancerMlxQuantize),
+        zimageEnhancerMlxQuantStatusNote,
         makeField("Seed", krea2MlxSeed),
         makeField("Seed mode", krea2MlxSeedMode),
         makeField("Krea2 first pass width", krea2MlxFirstWidth),
@@ -29171,8 +29247,9 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       const { zModel, zClip, zVae, kreaModel, kreaClip, kreaVae, seed, seedMode, firstWidth, firstHeight, width, height, readZImage, readKrea2 } = generatorControls;
       const mlxGeneratorControls = buildMlxReferenceGeneratorControls();
       const {
-        zimageMlxQuantize, zimageMlxWidth, zimageMlxHeight, zimageMlxSteps, zimageMlxSeed, zimageMlxSeedMode,
-        krea2MlxQuantize, zimageEnhancerMlxQuantize, krea2MlxFirstWidth, krea2MlxFirstHeight, krea2MlxWidth, krea2MlxHeight,
+        zimageMlxQuantize, zimageMlxQuantStatusNote, zimageMlxWidth, zimageMlxHeight, zimageMlxSteps, zimageMlxSeed, zimageMlxSeedMode,
+        krea2MlxQuantize, krea2MlxQuantStatusNote, zimageEnhancerMlxQuantize, zimageEnhancerMlxQuantStatusNote,
+        krea2MlxFirstWidth, krea2MlxFirstHeight, krea2MlxWidth, krea2MlxHeight,
         krea2MlxSteps, zimageEnhancerMlxSteps, krea2MlxImageStrength, krea2MlxSeed, krea2MlxSeedMode,
         readZimageMlx, readKrea2ZimageMlx,
       } = mlxGeneratorControls;
@@ -29217,6 +29294,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       const subjectZimageMlxCard = optionCard("ZImage MLX (Apple Silicon)", [
         modalHelp("Runs Z-Image natively via MLX (mflux) for every missing subject/reference image. Requires the comfyui-zimage-mlx custom node and macOS on Apple Silicon."),
         makeField("Quantize", zimageMlxQuantize),
+        zimageMlxQuantStatusNote,
         makeField("Width", zimageMlxWidth),
         makeField("Height", zimageMlxHeight),
         makeField("Steps", zimageMlxSteps),
@@ -29229,7 +29307,9 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       const subjectKrea2ZimageMlxCard = optionCard("Krea2 + ZImage MLX Enhancer (Apple Silicon)", [
         modalHelp("Runs Krea-2 first-pass generation then a Z-Image img2img enhancer pass, both natively via MLX (mflux), for every missing subject/reference image. Requires the comfyui-krea2-mlx and comfyui-zimage-mlx custom nodes and macOS on Apple Silicon. Models are fixed (Krea-2 + Z-Image Turbo) -- only quantization/dimensions/steps/seed are configurable."),
         makeField("Krea2 quantize", krea2MlxQuantize),
+        krea2MlxQuantStatusNote,
         makeField("ZImage enhancer quantize", zimageEnhancerMlxQuantize),
+        zimageEnhancerMlxQuantStatusNote,
         makeField("Seed", krea2MlxSeed),
         makeField("Seed mode", krea2MlxSeedMode),
         makeField("Krea2 first pass width", krea2MlxFirstWidth),
@@ -29314,8 +29394,9 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       const { zModel, zClip, zVae, kreaModel, kreaClip, kreaVae, seed, seedMode, firstWidth, firstHeight, width, height, readZImage, readKrea2 } = generatorControls;
       const mlxGeneratorControls = buildMlxReferenceGeneratorControls();
       const {
-        zimageMlxQuantize, zimageMlxWidth, zimageMlxHeight, zimageMlxSteps, zimageMlxSeed, zimageMlxSeedMode,
-        krea2MlxQuantize, zimageEnhancerMlxQuantize, krea2MlxFirstWidth, krea2MlxFirstHeight, krea2MlxWidth, krea2MlxHeight,
+        zimageMlxQuantize, zimageMlxQuantStatusNote, zimageMlxWidth, zimageMlxHeight, zimageMlxSteps, zimageMlxSeed, zimageMlxSeedMode,
+        krea2MlxQuantize, krea2MlxQuantStatusNote, zimageEnhancerMlxQuantize, zimageEnhancerMlxQuantStatusNote,
+        krea2MlxFirstWidth, krea2MlxFirstHeight, krea2MlxWidth, krea2MlxHeight,
         krea2MlxSteps, zimageEnhancerMlxSteps, krea2MlxImageStrength, krea2MlxSeed, krea2MlxSeedMode,
         readZimageMlx, readKrea2ZimageMlx,
       } = mlxGeneratorControls;
@@ -29360,6 +29441,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       const locationZimageMlxCard = optionCard("ZImage MLX (Apple Silicon)", [
         modalHelp("Runs Z-Image natively via MLX (mflux) for every missing location image. Requires the comfyui-zimage-mlx custom node and macOS on Apple Silicon."),
         makeField("Quantize", zimageMlxQuantize),
+        zimageMlxQuantStatusNote,
         makeField("Width", zimageMlxWidth),
         makeField("Height", zimageMlxHeight),
         makeField("Steps", zimageMlxSteps),
@@ -29372,7 +29454,9 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       const locationKrea2ZimageMlxCard = optionCard("Krea2 + ZImage MLX Enhancer (Apple Silicon)", [
         modalHelp("Runs Krea-2 first-pass generation then a Z-Image img2img enhancer pass, both natively via MLX (mflux), for every missing location image. Requires the comfyui-krea2-mlx and comfyui-zimage-mlx custom nodes and macOS on Apple Silicon. Models are fixed (Krea-2 + Z-Image Turbo) -- only quantization/dimensions/steps/seed are configurable."),
         makeField("Krea2 quantize", krea2MlxQuantize),
+        krea2MlxQuantStatusNote,
         makeField("ZImage enhancer quantize", zimageEnhancerMlxQuantize),
+        zimageEnhancerMlxQuantStatusNote,
         makeField("Seed", krea2MlxSeed),
         makeField("Seed mode", krea2MlxSeedMode),
         makeField("Krea2 first pass width", krea2MlxFirstWidth),
