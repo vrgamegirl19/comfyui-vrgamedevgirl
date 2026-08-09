@@ -2472,6 +2472,38 @@ _MINIMAX_H3_SAGE_ATTENTION_MODES = {
 }
 
 
+def _require_minimax_h3_memory_efficient_sage_attention():
+    try:
+        from importlib import metadata
+
+        try:
+            installed_version = metadata.version("sageattention")
+        except metadata.PackageNotFoundError:
+            installed_version = "not installed"
+        core = importlib.import_module("sageattention.core")
+        get_arch_versions = getattr(core, "get_cuda_arch_versions", None)
+        if not callable(get_arch_versions):
+            raise RuntimeError("sageattention.core.get_cuda_arch_versions is missing")
+        arch_versions = get_arch_versions()
+        if not arch_versions:
+            raise RuntimeError("CUDA architecture detection returned no architectures")
+        supported_arches = {"sm75", "sm80", "sm86", "sm89", "sm90", "sm120", "sm121"}
+        detected_arch = str(arch_versions[0])
+        if detected_arch not in supported_arches:
+            raise RuntimeError(f"detected GPU architecture {detected_arch} is not supported by this KJNodes patch")
+    except Exception as exc:
+        python_executable = sys.executable
+        raise RuntimeError(
+            "MiniMax H3 memory-efficient Sage Attention is enabled, but SageAttention is missing or incompatible.\n"
+            f"Detected SageAttention version: {installed_version if 'installed_version' in locals() else 'unknown'}.\n"
+            "KJNodes requires SageAttention 2.2.0 or newer with CUDA architecture detection.\n\n"
+            "Install it with ComfyUI's embedded Python, then restart ComfyUI:\n"
+            f'\"{python_executable}\" -m pip install sageattention==2.2.0 --no-build-isolation\n\n'
+            "To continue without this optimization, turn off the MiniMax H3 memory-efficient Sage Attention checkbox.\n"
+            f"Technical detail: {exc}"
+        ) from exc
+
+
 def _patch_minimax_h3_advanced_settings(prompt, payload):
     sampler_id = _api_node_id_by_class(prompt, "KSamplerSelect", fallback="123")
     scheduler_id = _api_node_id_by_class(prompt, "BasicScheduler", fallback="124")
@@ -2610,6 +2642,31 @@ def _patch_minimax_h3_turbo(prompt, payload):
     }
 
 
+def _patch_minimax_h3_memory_efficient_sage_attention(prompt, payload):
+    enabled = _bool_payload(payload, "use_memory_efficient_sage_attention", False)
+    if not enabled:
+        return {"enabled": False, "node": ""}
+
+    scheduler_id = _api_node_id_by_class(prompt, "BasicScheduler", fallback="124")
+    guider_id = _api_node_id_by_class(prompt, "BasicGuider", fallback="126")
+    model_ref = prompt.get(scheduler_id, {}).get("inputs", {}).get("model")
+    if not isinstance(model_ref, list) or len(model_ref) != 2:
+        raise ValueError("MiniMax H3 memory-efficient Sage Attention patch could not find the current model connection.")
+
+    node_id = "9201"
+    while node_id in prompt:
+        node_id = str(int(node_id) + 1)
+    prompt[node_id] = {
+        "class_type": "MiniMaxH3MemoryEfficientSageAttentionPatch",
+        "inputs": {"model": list(model_ref)},
+        "_meta": {"title": "MiniMax H3 Mem Eff Sage Attention Patch"},
+    }
+    patched_ref = [node_id, 0]
+    _set_api_input(prompt, scheduler_id, "model", patched_ref)
+    _set_api_input(prompt, guider_id, "model", patched_ref)
+    return {"enabled": True, "node": node_id}
+
+
 def _patch_minimax_h3_loras(prompt, payload):
     enabled = _bool_payload(payload, "use_loras", False) or _bool_payload(payload, "use_custom_loras", False)
     if not enabled:
@@ -2698,6 +2755,8 @@ def _patch_minimax_h3_loras(prompt, payload):
 
 
 def _build_minimax_h3_api_prompt(payload):
+    if _bool_payload(payload, "use_memory_efficient_sage_attention", False):
+        _require_minimax_h3_memory_efficient_sage_attention()
     raw_audio_mode = str(payload.get("audio_mode") or payload.get("audioMode") or "input_audio").strip().lower().replace("-", "_").replace(" ", "_")
     audio_mode = "built_in_audio" if raw_audio_mode in {"built_in_audio", "native_audio", "generated_audio"} else "input_audio"
     workflow_template = _minimax_h3_built_in_audio_api_template_path() if audio_mode == "built_in_audio" else _minimax_h3_api_template_path()
@@ -2835,8 +2894,12 @@ def _build_minimax_h3_api_prompt(payload):
     # exact scene trimmer receives them.
     _set_api_input(prompt, "142", "trim_to_audio", False)
     advanced_settings = _patch_minimax_h3_advanced_settings(prompt, payload)
+    if _bool_payload(payload, "use_memory_efficient_sage_attention", False):
+        _set_api_input(prompt, "141", "sage_attention", "disabled")
+        advanced_settings["sage_attention"] = "disabled"
     lora_settings = _patch_minimax_h3_loras(prompt, payload)
     turbo_settings = _patch_minimax_h3_turbo(prompt, payload)
+    memory_efficient_sage_attention = _patch_minimax_h3_memory_efficient_sage_attention(prompt, payload)
     if turbo_settings["enabled"]:
         advanced_settings = {
             **advanced_settings,
@@ -2871,6 +2934,7 @@ def _build_minimax_h3_api_prompt(payload):
         "advanced_settings": advanced_settings,
         "lora_settings": lora_settings,
         "turbo_settings": turbo_settings,
+        "memory_efficient_sage_attention": memory_efficient_sage_attention,
     }
 
 

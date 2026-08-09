@@ -1145,19 +1145,39 @@ export const STORYBOARD_CAMERA_FLOW_PRESETS = {
   },
   intimate_closeups: {
     label: "Intimate close-ups",
-    description: "Keeps the character close and frame-filling with face, head, neck-up, chest-up, waist-up, and upper-body coverage; full-body framing is used only for a compact seated or close pose.",
-    guidance: "Keep the character close to the camera and visually dominant for the entire shot. Use only up-close face, tight headshot, neck-up, chest-up, waist-up, or tight upper-body framing. A full-body composition is allowed only when the character is seated, crouched, curled, reclining, or held in another compact pose that still fills most of the frame. Never use a wide, long, establishing, distant, small-in-frame, or far-away composition, and never pull back far enough to make the character feel remote.",
+    description: "Uses only distinct frame-filling close-ups, body-detail reveals, tight seated poses, and tight upper-body compositions.",
+    guidance: "Every shot remains close, intimate, and frame-filling. The furthest framing is a tightly composed upper-body shot. Never use a wide shot, distant shot, full-body shot, small-in-frame composition, or full environment view. Each shot must use a distinct framing, angle, subject detail, or camera movement.",
     sequence: [
-      { shot: "up-close face shot", camera: "subtle handheld movement" },
-      { shot: "tight headshot", camera: "slow orbit left" },
-      { shot: "neck-up close-up shot", camera: "gentle lateral drift" },
-      { shot: "chest-up close-up shot", camera: "slow orbit right" },
-      { shot: "waist-up close shot", camera: "subtle handheld follow" },
-      { shot: "tight upper-body shot", camera: "gentle pan reveal" },
-      { shot: "close-framed seated full-body shot with the compact pose filling most of the frame", camera: "slow lateral drift" },
-      { shot: "intimate face close-up shot", camera: "rack focus" },
-      { shot: "chest-up portrait shot", camera: "slow tilt up" },
-      { shot: "close-framed full-body shot in a compact crouched or reclining pose that fills most of the frame", camera: "subtle orbit movement" },
+      { shot: "extreme close-up of one eye, slowly pulling back to reveal the full face", camera: "slow pullback" },
+      { shot: "extreme close-up of the mouth, slowly pulling back to the upper body", camera: "slow pullback" },
+      { shot: "close-up of both eyes", camera: "slight sideways camera slide" },
+      { shot: "tight face close-up from a three-quarter angle", camera: "slow three-quarter orbit" },
+      { shot: "tight profile close-up of the face", camera: "gentle lateral drift" },
+      { shot: "close-up of the hand resting on the hip, slowly panning upward to the face", camera: "slow upward pan" },
+      { shot: "close-up of fingers brushing through the hair, tilting upward to the eyes", camera: "slow upward tilt" },
+      { shot: "close-up of the shoulder and neck, panning upward to the face", camera: "slow upward pan" },
+      { shot: "close-up of the lips, then tilting upward to the eyes", camera: "slow upward tilt" },
+      { shot: "close-up of the eyes, slowly tilting downward to the hands", camera: "slow downward tilt" },
+      { shot: "close-up of the feet walking, panning upward along the body to the face", camera: "slow upward pan" },
+      { shot: "close-up of the feet standing still, slowly tilting upward to the upper body", camera: "slow upward tilt" },
+      { shot: "close-up of one hand reaching toward the camera, revealing the face behind it", camera: "slow reveal" },
+      { shot: "close-up of hands gripping clothing, panning upward to the face", camera: "slow upward pan" },
+      { shot: "close-up of a hand touching the chest, tilting upward to the eyes", camera: "slow upward tilt" },
+      { shot: "tight seated portrait with the knees, torso, and face filling the frame", camera: "slow lateral drift" },
+      { shot: "seated side-profile shot with the body filling the entire frame", camera: "slow side pan" },
+      { shot: "seated curled-up pose framed from knees to face", camera: "slow push-in" },
+      { shot: "tight upper-body shot with the character leaning toward the camera", camera: "slow push-in" },
+      { shot: "tight upper-body shot from behind the shoulder, revealing the face in profile", camera: "slow shoulder reveal" },
+      { shot: "low-angle close-up from the waist upward, keeping the face near the top of frame", camera: "slow upward tilt" },
+      { shot: "high-angle close-up looking down at the character’s face and upper body", camera: "slow downward drift" },
+      { shot: "tight overhead shot of the character lying down, filling the frame", camera: "slow overhead drift" },
+      { shot: "close-up of the character lying on their side, slowly panning from feet to face", camera: "slow lateral pan" },
+      { shot: "close-up from behind as the character turns their head toward the camera", camera: "slow turn reveal" },
+      { shot: "tight front-facing upper-body shot with a slow push-in toward the eyes", camera: "slow push-in" },
+      { shot: "tight side shot with a slow horizontal pan from shoulder to face", camera: "slow horizontal pan" },
+      { shot: "close-up framed through the character’s moving hair", camera: "gentle hair reveal" },
+      { shot: "reflection close-up in a mirror, slowly moving from the reflection’s hands to face", camera: "slow reflection pan" },
+      { shot: "tight silhouette close-up with the face and shoulders filling the frame", camera: "slow silhouette drift" },
     ],
   },
   music_video: {
@@ -1916,7 +1936,10 @@ function storyboardTemporalWorldEffectForScene(scene = {}, state = {}) {
   const continuityRequirement = allowExtras
     ? "CONTINUITY RULE: Do not add any new named, principal, mapped, or referenced characters. Anonymous unreferenced background extras are explicitly permitted and must remain secondary and subject to the selected temporal effect; never prohibit them with a generic ‘no new characters’ or ‘no people’ rule."
     : "CONTINUITY RULE: Do not add new named, mapped, referenced, principal, or anonymous characters.";
-  const verbiage = `TEMPORAL / WORLD EFFECT — ${preset.label}: ${baseDirection} ${protectedDirection} ${extrasDirection} ${environmentDirection} ${intensityDirection} ${audioDirection} ${stagingRequirement} ${continuityRequirement}`;
+  // This is a builder-owned contract. Gemma should not spend tokens recreating
+  // temporal rules, and the final renderer prompt should receive one canonical
+  // block instead of repeated per-shot instructions.
+  const verbiage = `Temporal / World Effect — ${preset.label} — Mandatory:\n\n${baseDirection}\n\n${protectedDirection}\n\nOnly the unprotected background/world may receive this effect, including location-appropriate environmental motion or anonymous extras when permitted. Keep the effect secondary; never alter, duplicate, replace, or obscure a mapped/reference character.\n\nTimestamp staging requirement: every shot must visibly show at least one concrete, readable effect affecting only the unprotected background/world while protected characters continue moving naturally at normal 1x speed.\n\n${audioDirection}`;
   return {
     enabled: true,
     key,
@@ -2841,7 +2864,7 @@ function storyboardScenesForGpt(state) {
       temporal_world_effect: temporalWorldEffect || { enabled: false },
       temporal_world_effect_verbiage: temporalWorldEffect?.exact_verbiage || "",
       temporal_world_effect_instruction: temporalWorldEffect
-        ? "This exact temporal_world_effect_verbiage is mandatory. Copy it word-for-word before the first timestamp. Treat it as a hard temporal-layer contract, and stage its concrete visible effect inside every timestamp block. Protected characters and their voices stay natural, stable, singular, and correctly synchronized while only the stated unprotected background/world elements receive the effect. Do not write a Continuity rule that contradicts its background-extras permission."
+        ? "This exact temporal_world_effect_verbiage is mandatory and will be appended by the builder. Do not recreate, paraphrase, duplicate, or distribute this contract through the shot descriptions. Write only the creative shot action; the appended contract governs temporal behavior."
         : "",
       global_consistency_phrase: String(state.globalConsistencyPhrase || "").trim(),
       global_consistency_instruction: String(state.globalConsistencyPhrase || "").trim()

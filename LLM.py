@@ -314,6 +314,10 @@ class VRGDG_LLM_Multi:
         "openai": [
             "gpt-image-2",
             "gpt-image-1",
+            "gpt-5.6",
+            "gpt-5.6-sol",
+            "gpt-5.6-terra",
+            "gpt-5.6-luna",
             "gpt-5.5",
             "gpt-5.4",
             "gpt-5.4-mini",
@@ -388,6 +392,10 @@ class VRGDG_LLM_Multi:
             "deepseek-reasoner",
         ],
         "openrouter": [
+            "openai/gpt-5.6",
+            "openai/gpt-5.6-sol",
+            "openai/gpt-5.6-terra",
+            "openai/gpt-5.6-luna",
             "openai/gpt-5.5",
             "openai/gpt-5.4",
             "openai/gpt-5.4-mini",
@@ -403,13 +411,13 @@ class VRGDG_LLM_Multi:
         ],
     }
     DEFAULT_MODEL = {
-        "openai": "gpt-5.4-mini",
+        "openai": "gpt-5.6-luna",
         "anthropic": "claude-sonnet-4-6",
         "google": "gemini-3.5-flash",
         "xai": "grok-4.3",
         "grok": "grok-4.3",
         "deepseek": "deepseek-chat",
-        "openrouter": "openai/gpt-5.4-mini",
+        "openrouter": "openai/gpt-5.6-luna",
         "apifreellm": "apifreellm",
     }
     ALL_MODELS = [m for models in PROVIDER_MODELS.values() for m in models]

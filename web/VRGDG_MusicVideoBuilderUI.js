@@ -237,6 +237,7 @@ const DEFAULT_MINIMAX_H3_SETTINGS = {
   easy_cache_end_percent: 0.9,
   easy_cache_verbose: false,
   sage_attention: "auto",
+  use_memory_efficient_sage_attention: false,
   enable_fp16_accumulation: true,
   use_loras: false,
   lora_count: 0,
@@ -415,6 +416,7 @@ function cloneMiniMaxH3Settings(value = {}) {
     sage_attention: MINIMAX_H3_SAGE_ATTENTION_OPTIONS.some((item) => item.value === source.sage_attention)
       ? source.sage_attention
       : DEFAULT_MINIMAX_H3_SETTINGS.sage_attention,
+    use_memory_efficient_sage_attention: Boolean(source.use_memory_efficient_sage_attention ?? DEFAULT_MINIMAX_H3_SETTINGS.use_memory_efficient_sage_attention),
     enable_fp16_accumulation: Boolean(source.enable_fp16_accumulation ?? DEFAULT_MINIMAX_H3_SETTINGS.enable_fp16_accumulation),
     use_loras: loraEnabled,
     lora_count: loraEnabled ? Math.max(0, Math.min(4, Math.trunc(Number(source.lora_count ?? source.loraCount ?? loras.length) || loras.length))) : 0,
@@ -5531,6 +5533,7 @@ function openBuilder(node) {
   miniMaxEasyCacheEndPercent.step = "0.01";
   const miniMaxEasyCacheVerbose = makeCheckbox("Verbose EasyCache logging", DEFAULT_MINIMAX_H3_SETTINGS.easy_cache_verbose);
   const miniMaxSageAttention = makeSelect(MINIMAX_H3_SAGE_ATTENTION_OPTIONS, DEFAULT_MINIMAX_H3_SETTINGS.sage_attention);
+  const miniMaxMemoryEfficientSageAttention = makeCheckbox("Use memory-efficient MiniMax H3 Sage Attention patch", DEFAULT_MINIMAX_H3_SETTINGS.use_memory_efficient_sage_attention);
   const miniMaxFp16Accumulation = makeCheckbox("Enable fp16 accumulation", DEFAULT_MINIMAX_H3_SETTINGS.enable_fp16_accumulation);
   const miniMaxEasyCacheNote = document.createElement("div");
   miniMaxEasyCacheNote.textContent = "Bypass sends the diffusion model directly to the scheduler and removes EasyCache from the queued workflow copy.";
@@ -5552,6 +5555,7 @@ function openBuilder(node) {
     ]),
     makeSettingsSection("Model Loader", [
       makeField("Sage Attention", miniMaxSageAttention),
+      miniMaxMemoryEfficientSageAttention.wrapper,
       miniMaxFp16Accumulation.wrapper,
     ]),
   ], false);
@@ -6474,6 +6478,7 @@ function openBuilder(node) {
     llmApiProvider: "openai",
     llmApiModel: "",
     llmApiKey: "",
+    llmApiKeyProject: "",
     llmApiChoices: null,
     customModelsRoot: "",
     notificationSettings: defaultNotificationSettings(),
@@ -6694,6 +6699,7 @@ function openBuilder(node) {
       easy_cache_end_percent: miniMaxEasyCacheEndPercent.value,
       easy_cache_verbose: miniMaxEasyCacheVerbose.input.checked,
       sage_attention: miniMaxSageAttention.value,
+      use_memory_efficient_sage_attention: miniMaxMemoryEfficientSageAttention.input.checked,
       enable_fp16_accumulation: miniMaxFp16Accumulation.input.checked,
       use_loras: loraEnabled,
       lora_count: loraCount,
@@ -7326,6 +7332,7 @@ function openBuilder(node) {
     miniMaxEasyCacheEndPercent.value = String(settings.easy_cache_end_percent);
     miniMaxEasyCacheVerbose.input.checked = settings.easy_cache_verbose;
     miniMaxSageAttention.value = settings.sage_attention;
+    miniMaxMemoryEfficientSageAttention.input.checked = settings.use_memory_efficient_sage_attention;
     miniMaxFp16Accumulation.input.checked = settings.enable_fp16_accumulation;
     miniMaxUseLoras.input.checked = settings.use_loras;
     miniMaxLoraCount.value = String(settings.lora_count || 0);
@@ -9530,6 +9537,7 @@ function openBuilder(node) {
       lmstudio_output_token_limit: normalizeOutputTokenLimit(state.lmStudioOutputTokenLimit),
       llm_api_provider: state.llmApiProvider || "openai",
       llm_api_model: state.llmApiModel || "",
+      llm_api_key_project: state.llmApiKeyProject || "",
       llm_api_key: state.llmApiKey || "",
     };
   }
@@ -10548,7 +10556,9 @@ function openBuilder(node) {
     );
     if (segment.minimax_speaker_assignments.length) {
       const filledSpeakerCues = segment.minimax_speaker_assignments.filter((cue) => cue.text);
-      if (filledSpeakerCues.length) {
+      // Speaker assignments can seed an empty scene, but they must not replace
+      // lyric text the user has manually edited in the timeline.
+      if (filledSpeakerCues.length && !String(segment.lyric_text || "").trim()) {
         segment.lyric_text = filledSpeakerCues.map((cue) => cue.text).join("\n");
         segment.lyric_singers = Array.from(new Set(filledSpeakerCues.map((cue) => cue.speaker_name).filter(Boolean)));
       }
@@ -11290,6 +11300,7 @@ function openBuilder(node) {
       lmStudioOutputTokenLimit: normalizeOutputTokenLimit(state.lmStudioOutputTokenLimit),
       llmApiProvider: state.llmApiProvider,
       llmApiModel: state.llmApiModel,
+      llmApiKeyProject: state.llmApiKeyProject,
       notificationSettings: normalizeNotificationSettings(state.notificationSettings),
       automaticMemoryCleanup: Boolean(state.automaticMemoryCleanup),
       waveformMode: state.waveformMode,
@@ -11376,6 +11387,8 @@ function openBuilder(node) {
     state.lmStudioOutputTokenLimit = normalizeOutputTokenLimit(data.lmStudioOutputTokenLimit ?? data.lm_studio_output_token_limit ?? legacyLlmMaxTokens ?? state.lmStudioOutputTokenLimit);
     state.llmApiProvider = data.llmApiProvider || data.llm_api_provider || state.llmApiProvider || "openai";
     state.llmApiModel = data.llmApiModel || data.llm_api_model || state.llmApiModel || "";
+    state.llmApiKeyProject = data.llmApiKeyProject || data.llm_api_key_project || state.llmApiKeyProject || "";
+    if (state.llmApiKeyProject) state.llmApiKey = state.llmApiKeyProject;
     state.notificationSettings = normalizeNotificationSettings(data.notificationSettings || data.notification_settings || state.notificationSettings);
     state.automaticMemoryCleanup = setBuilderAutomaticMemoryCleanupEnabled(data.automaticMemoryCleanup ?? data.automatic_memory_cleanup ?? state.automaticMemoryCleanup ?? false);
     state.sceneRenderWaitHours = normalizeSceneRenderWaitHours(data.sceneRenderWaitHours ?? data.scene_render_wait_hours ?? state.sceneRenderWaitHours);
@@ -18416,6 +18429,10 @@ function openBuilder(node) {
         noteBox.onclick = (event) => event.stopPropagation();
         noteBox.onkeydown = (event) => event.stopPropagation();
         noteBox.onfocus = () => {
+          if (!state.multiSelectMode) {
+            state.activeId = segment.id;
+            state.activeTrack = "base";
+          }
           noteBox.dataset.previousValue = noteBox.value;
           noteBox.dataset.historyPushed = "0";
         };
@@ -18484,7 +18501,15 @@ function openBuilder(node) {
         lyricBox.onclick = (event) => event.stopPropagation();
         lyricBox.onkeydown = (event) => event.stopPropagation();
         lyricBox.onfocus = () => {
+          if (!state.multiSelectMode) {
+            state.activeId = segment.id;
+            state.activeTrack = "base";
+            lyricTextInput.value = lyricBox.value;
+            lyricTextInput.dataset.vrgdgInspectorSegmentId = String(segment.id || "");
+            lyricTextInput.dataset.vrgdgUserEdited = "0";
+          }
           lyricBox.dataset.previousValue = lyricBox.value;
+          lyricBox.dataset.savedValue = lyricBox.value;
           lyricBox.dataset.historyPushed = "0";
         };
         lyricBox.oninput = () => {
@@ -18492,14 +18517,36 @@ function openBuilder(node) {
             pushHistory();
             lyricBox.dataset.historyPushed = "1";
           }
-          segment.lyric_text = lyricBox.value || "";
-          if (segment.id === state.activeId) lyricTextInput.value = segment.lyric_text;
+          // Resolve the live object by id. Timeline rerenders can replace the
+          // segment array while an older textarea closure is still focused.
+          const liveSegment = state.segments.find((item) => item.id === segment.id) || segment;
+          liveSegment.lyric_text = lyricBox.value || "";
+          liveSegment.lyric_no_lip_sync = isInstrumentalLyricText(liveSegment.lyric_text);
+          if (liveSegment.id === state.activeId) {
+            // Keep the inspector mirror explicitly in sync. Otherwise a stale
+            // inspector edit can overwrite this timeline edit during autosave.
+            lyricTextInput.value = liveSegment.lyric_text;
+            lyricTextInput.dataset.vrgdgInspectorSegmentId = String(liveSegment.id || "");
+            lyricTextInput.dataset.vrgdgUserEdited = "0";
+          }
         };
-        lyricBox.onchange = () => {
-          segment.lyric_text = lyricBox.value || "";
-          segment.lyric_no_lip_sync = isInstrumentalLyricText(segment.lyric_text);
-          if (segment.id === state.activeId) syncInspector();
+        const saveTimelineLyricEdit = () => {
+          const liveSegment = state.segments.find((item) => item.id === segment.id) || segment;
+          liveSegment.lyric_text = lyricBox.value || "";
+          liveSegment.lyric_no_lip_sync = isInstrumentalLyricText(liveSegment.lyric_text);
+          if (liveSegment.id === state.activeId) {
+            syncInspector();
+            lyricTextInput.dataset.vrgdgInspectorSegmentId = String(liveSegment.id || "");
+            lyricTextInput.dataset.vrgdgUserEdited = "0";
+          }
+          lyricBox.dataset.savedValue = lyricBox.value;
           autoSaveSessionQuiet("timeline line note edited");
+        };
+        lyricBox.onchange = saveTimelineLyricEdit;
+        lyricBox.onblur = () => {
+          // Some browser/layout interactions do not dispatch change before a
+          // timeline rerender; blur is the final persistence safeguard.
+          if (lyricBox.dataset.savedValue !== lyricBox.value) saveTimelineLyricEdit();
         };
         segmentLayer.append(lyricBox);
       }
@@ -27798,6 +27845,63 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       }
     }
 
+    async function createDetailedLocationDescriptionWithGemma(location, button = null) {
+      const name = String(location?.name || "").trim();
+      const shortDescription = String(location?.description || "").trim();
+      if (!name || !shortDescription) {
+        toast("Run GPT Scout or Gemma Extract first so this location has a label and short description.", true);
+        return;
+      }
+      const modelFile = String(
+        t2iTextGemmaModelSelect.value
+        || gemmaModelSelect.value
+        || i2vTextGemmaModelSelect.value
+        || i2vGemmaModelSelect.value
+        || "",
+      ).trim();
+      if (!modelFile && state.textGemmaRunner === "builtin") {
+        toast("Choose a Gemma4 model first in the LLM/Image model settings.", true);
+        return;
+      }
+      const progress = createProgressWindow("Creating detailed location description", { zIndex: 100008 });
+      const previousText = button?.textContent || "";
+      if (button) {
+        button.disabled = true;
+        button.textContent = "Creating...";
+      }
+      try {
+        progress.set(`Expanding ${name} from its short description...\n${gemmaRunnerLine()}`, 24);
+        const data = await postJson("/vrgdg/gemma4/generate", {
+          ...textGemmaRunnerPayload(),
+          target: "location_description_detail",
+          model_file: modelFile,
+          location_name: name,
+          location_description: shortDescription,
+          notes: shortDescription,
+          unload_after: true,
+          n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
+          gemma_output_token_limit: normalizeOutputTokenLimit(state.gemmaOutputTokenLimit),
+          max_new_tokens: normalizeOutputTokenLimit(state.gemmaOutputTokenLimit),
+        }, 10 * 60 * 1000);
+        const detailed = String(data.text || "").trim();
+        if (!detailed) throw new Error("Gemma4 returned an empty detailed location description.");
+        location.description = detailed;
+        renderAll();
+        await autoSaveSessionQuiet(`Detailed location description: ${name}`);
+        progress.set("Detailed location description ready.", 100);
+        progress.close(1000);
+        toast(`Detailed description created for ${name}.`);
+      } catch (error) {
+        progress.set(`Error:\n${String(error?.message || error)}`, 100);
+        toast(String(error?.message || error), true);
+      } finally {
+        if (button) {
+          button.disabled = false;
+          button.textContent = previousText || "Detailed Description";
+        }
+      }
+    }
+
     async function runFluxReferenceWithKrea2(referenceType, target, sourceText, name = "", generatorSettings = {}) {
       const text = String(sourceText || "").trim();
       if (!text) {
@@ -29281,6 +29385,57 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       });
     }
 
+    async function createDetailedLocationDescriptionWithGemma(location, button = null) {
+      const name = String(location?.name || "").trim();
+      const shortDescription = String(location?.description || "").trim();
+      if (!name || !shortDescription) {
+        toast("Run GPT Scout or Gemma Extract first so this location has a label and short description.", true);
+        return;
+      }
+      const modelFile = String(t2iTextGemmaModelSelect.value || gemmaModelSelect.value || i2vTextGemmaModelSelect.value || i2vGemmaModelSelect.value || "").trim();
+      if (!modelFile && state.textGemmaRunner === "builtin") {
+        toast("Choose a Gemma4 model first in the LLM/Image model settings.", true);
+        return;
+      }
+      const progress = createProgressWindow("Creating detailed location description", { zIndex: 100008 });
+      const previousText = button?.textContent || "";
+      if (button) {
+        button.disabled = true;
+        button.textContent = "Creating...";
+      }
+      try {
+        progress.set(`Expanding ${name} from its short description...\n${gemmaRunnerLine()}`, 24);
+        const data = await postJson("/vrgdg/gemma4/generate", {
+          ...textGemmaRunnerPayload(),
+          target: "location_description_detail",
+          model_file: modelFile,
+          location_name: name,
+          location_description: shortDescription,
+          notes: shortDescription,
+          unload_after: true,
+          n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
+          gemma_output_token_limit: normalizeOutputTokenLimit(state.gemmaOutputTokenLimit),
+          max_new_tokens: normalizeOutputTokenLimit(state.gemmaOutputTokenLimit),
+        }, 10 * 60 * 1000);
+        const detailed = String(data.text || "").trim();
+        if (!detailed) throw new Error("Gemma4 returned an empty detailed location description.");
+        location.description = detailed;
+        renderAll();
+        await autoSaveSessionQuiet(`Detailed location description: ${name}`);
+        progress.set("Detailed location description ready.", 100);
+        progress.close(1000);
+        toast(`Detailed description created for ${name}.`);
+      } catch (error) {
+        progress.set(`Error:\n${String(error?.message || error)}`, 100);
+        toast(String(error?.message || error), true);
+      } finally {
+        if (button) {
+          button.disabled = false;
+          button.textContent = previousText || "Detailed Description";
+        }
+      }
+    }
+
     function renderLocations() {
       locationsList.innerHTML = "";
       locationsList.style.maxHeight = "none";
@@ -29356,10 +29511,13 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         createZImage.title = "Choose ZImage or Krea2 + ZImage enhancer for this location reference.";
         const describeImage = makeButton("Gemma Describe", "primary");
         const upload = makeButton("Upload", "primary");
+        const detailedDescription = makeButton("Detailed Description", "primary");
+        detailedDescription.title = "Expand the existing location label and short description into a detailed standalone environment description.";
         const clear = makeButton("Clear");
         const remove = makeButton("Remove");
         createZImage.onclick = () => createFluxReferenceWithZImage("location", location, `${location.name || ""}\n${location.description || ""}`, location.name || `location_${index + 1}`);
         describeImage.onclick = () => describeSingleReferenceWithGemma(location, "location", location.name || `Location ${index + 1}`);
+        detailedDescription.onclick = () => createDetailedLocationDescriptionWithGemma(location, detailedDescription);
         upload.onclick = () => uploadFor(target);
         clear.onclick = () => {
           location.image = { path: "", data: "", name: "" };
@@ -29386,7 +29544,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         description.addEventListener("input", () => {
           location.description = description.value;
         });
-        if (referenceImagesEnabled) buttons.append(createZImage, describeImage, upload, clear);
+        if (referenceImagesEnabled) buttons.append(createZImage, describeImage, detailedDescription, upload, clear);
+        else buttons.append(detailedDescription);
         buttons.append(remove);
         const handle = document.createElement("button");
         handle.type = "button";
@@ -30866,7 +31025,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       }
       refs.locations.forEach((location, index) => {
         const row = document.createElement("div");
-        row.style.cssText = "border:1px solid #334155;border-radius:7px;background:linear-gradient(135deg,#0f172a,#111827);padding:10px;display:grid;grid-template-columns:34px minmax(180px,.85fr) minmax(320px,1.4fr) 110px;gap:10px;align-items:center;min-width:760px;";
+        row.style.cssText = "border:1px solid #334155;border-radius:7px;background:linear-gradient(135deg,#0f172a,#111827);padding:10px;display:grid;grid-template-columns:34px minmax(180px,.85fr) minmax(320px,1.4fr) 150px 110px;gap:10px;align-items:center;min-width:920px;";
         const number = document.createElement("div");
         number.textContent = String(index + 1);
         number.style.cssText = "font-size:18px;font-weight:900;color:#f8fafc;text-align:center;";
@@ -30887,6 +31046,9 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           const currentLocation = locationById(location.id) || location;
           currentLocation.description = description.value;
         };
+        const detailedDescription = makeButton("Detailed Description", "primary");
+        detailedDescription.title = "Expand the existing location label and short description into a detailed standalone environment description.";
+        detailedDescription.onclick = () => createDetailedLocationDescriptionWithGemma(location, detailedDescription);
         const remove = makeButton("Remove");
         remove.onclick = () => {
           refs.locations = refs.locations.filter((item) => item.id !== location.id);
@@ -30895,7 +31057,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           }
           renderAll();
         };
-        row.append(number, makeField("Location label", name), makeField("Description", description), remove);
+        row.append(number, makeField("Location label", name), makeField("Description", description), detailedDescription, remove);
         locationList.append(row);
       });
     }
@@ -34564,6 +34726,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         state.subjectScenePath = data.session.subject_scene_path || state.subjectScenePath;
         state.llmApiProvider = data.session.llm_api_provider || state.llmApiProvider || "openai";
         state.llmApiModel = data.session.llm_api_model || state.llmApiModel || "";
+        state.llmApiKeyProject = data.session.llm_api_key_project || "";
+        if (state.llmApiKeyProject) state.llmApiKey = state.llmApiKeyProject;
         state.builderAgentMessages = Array.isArray(data.session.builder_agent_messages) ? data.session.builder_agent_messages : state.builderAgentMessages || [];
         state.builderAgentAutoApply = data.session.builder_agent_auto_apply ?? state.builderAgentAutoApply ?? false;
         state.builderAgentPurpose = data.session.builder_agent_purpose || state.builderAgentPurpose || "scene_work";
@@ -34894,6 +35058,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.subjectScenePath = session.subject_scene_path || "";
       state.llmApiProvider = session.llm_api_provider || state.llmApiProvider || "openai";
       state.llmApiModel = session.llm_api_model || state.llmApiModel || "";
+      state.llmApiKeyProject = session.llm_api_key_project || "";
+      if (state.llmApiKeyProject) state.llmApiKey = state.llmApiKeyProject;
       state.builderAgentMessages = Array.isArray(session.builder_agent_messages) ? session.builder_agent_messages : [];
       state.builderAgentAutoApply = Boolean(session.builder_agent_auto_apply);
       state.builderAgentPurpose = session.builder_agent_purpose || "scene_work";
@@ -37795,6 +37961,108 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return [safePrompt, subjectMultiplicityBlock, block, visualOnlyBlock].filter(Boolean).join("\n\n").trim();
   }
 
+  function miniMaxH3SelectedFramingEntries(segment, shotPlan = []) {
+    if (!Array.isArray(shotPlan) || !shotPlan.length) return [];
+    const cameraFlowKey = String(segment?.camera_flow || state.builderStoryboardDefaults?.camera_flow || "").trim();
+    if (cameraFlowKey !== "intimate_closeups") return shotPlan.map(() => null);
+    const preset = STORYBOARD_CAMERA_FLOW_PRESETS[cameraFlowKey];
+    const sequence = Array.isArray(preset?.sequence) ? preset.sequence.filter((entry) => entry?.shot) : [];
+    if (!sequence.length) return shotPlan.map(() => null);
+    const sceneText = [
+      segment?.lyric_text,
+      segment?.story_beat,
+      segment?.notes,
+      segment?.director_note,
+      segment?.i2v_notes,
+      segment?.timeline_note,
+      segment?.motion_summary,
+      segment?.character_motion_guidance,
+      Number(segment?.character_motion_speed) >= 6 ? "active physical movement" : "",
+      segment?.shot_type,
+      segment?.camera_motion,
+      sceneVideoConceptPromptText(segment),
+    ].map((value) => String(value || "").toLowerCase()).join(" ");
+    const semanticThemes = [
+      { terms: /walk|walking|feet|step|stride|cross|move through/, match: /feet|walking/ },
+      { terms: /sit|sitting|seated|chair|kneel|kneeling|ground|floor|curl|curled/, match: /seated|knees|curled/ },
+      { terms: /lie|lying|recline|reclining|sleep|fallen|on her side|on the side/, match: /lying|side|overhead/ },
+      { terms: /hair|wind|brush|touch.*hair|fingers/, match: /hair|fingers/ },
+      { terms: /hand|hands|touch|reach|grip|hold|clothing|hip|chest/, match: /hand|hands|hip|chest|clothing/ },
+      { terms: /eye|eyes|gaze|look|watch|stare|see/, match: /eye|eyes/ },
+      { terms: /mouth|lip|lips|sing|sings|sings|whisper|speak|speaks/, match: /mouth|lips/ },
+      { terms: /mirror|reflection|double|memory|remember/, match: /reflection|mirror/ },
+      { terms: /behind|turn|turns|profile|sideways|back/, match: /behind|profile|side/ },
+      { terms: /shadow|silhouette|dark|backlit|night/, match: /silhouette/ },
+      { terms: /above|down|overhead|looking down/, match: /high-angle|overhead/ },
+      { terms: /below|low angle|powerful|towering/, match: /low-angle/ },
+    ];
+    const normalizeShotId = (entry, index) => String(entry.id || `${cameraFlowKey}_${index + 1}`).trim();
+    const entries = sequence.map((entry, index) => ({ entry, index, id: normalizeShotId(entry, index) }));
+    const previousUsedIds = new Set(
+      (Array.isArray(state.segments) ? state.segments : [])
+        .filter((candidate) => candidate !== segment)
+        .flatMap((candidate) => Array.isArray(candidate?.minimax_h3_framing_shot_ids) ? candidate.minimax_h3_framing_shot_ids : [])
+        .map((value) => String(value || "").trim())
+        .filter(Boolean),
+    );
+    const existingIds = Array.isArray(segment?.minimax_h3_framing_shot_ids)
+      ? segment.minimax_h3_framing_shot_ids.map((value) => String(value || "").trim()).filter(Boolean)
+      : [];
+    const existingMatchesPlan = existingIds.length === shotPlan.length && existingIds.every((id) => entries.some((item) => item.id === id));
+    const chosenIds = existingMatchesPlan ? existingIds : [];
+    const usedInThisScene = new Set(chosenIds);
+    const stableTieBreak = (id, shotNumber) => {
+      const text = `${segment?.id || segment?.start || "scene"}:${shotNumber}:${id}`;
+      let hash = 0;
+      for (let index = 0; index < text.length; index += 1) hash = ((hash << 5) - hash + text.charCodeAt(index)) | 0;
+      return Math.abs(hash);
+    };
+    const chooseEntry = (shot, shotIndex) => {
+      if (chosenIds[shotIndex]) return entries.find((item) => item.id === chosenIds[shotIndex]) || entries[0];
+      const available = entries.filter((item) => !usedInThisScene.has(item.id));
+      const candidates = available.length ? available : entries.filter((item) => !usedInThisScene.has(item.id));
+      const scored = (candidates.length ? candidates : entries).map((item) => {
+        const shotText = `${item.entry.shot} ${item.entry.camera}`.toLowerCase();
+        let score = previousUsedIds.has(item.id) ? -28 : 28;
+        semanticThemes.forEach((theme) => {
+          if (theme.terms.test(sceneText) && theme.match.test(shotText)) score += 22;
+        });
+        const shotWords = shotText.split(/[^a-z0-9]+/).filter((word) => word.length > 3);
+        shotWords.forEach((word) => {
+          if (sceneText.includes(word)) score += 3;
+        });
+        if (item.id === chosenIds[shotIndex - 1]) score -= 18;
+        return { item, score, tie: stableTieBreak(item.id, shot.number) };
+      }).sort((left, right) => right.score - left.score || left.tie - right.tie);
+      const selected = scored[0]?.item || entries[shotIndex % entries.length];
+      chosenIds[shotIndex] = selected.id;
+      usedInThisScene.add(selected.id);
+      return selected;
+    };
+    const selectedEntries = shotPlan.map((shot, index) => {
+      const selected = chooseEntry(shot, index);
+      return selected?.entry || null;
+    });
+    if (!existingMatchesPlan) segment.minimax_h3_framing_shot_ids = chosenIds;
+    return selectedEntries;
+  }
+
+  function miniMaxH3PerShotFramingLines(segment, shotPlan = []) {
+    const selectedEntries = miniMaxH3SelectedFramingEntries(segment, shotPlan);
+    const framingLines = selectedEntries.map((entry, index) => {
+      const shot = shotPlan[index];
+      return entry && shot
+        ? `Shot ${shot.number} framing: ${entry.shot}${entry.camera ? ` (camera: ${entry.camera})` : ""}.`
+        : "";
+    }).filter(Boolean);
+    if (!framingLines.length) return [];
+    const preset = STORYBOARD_CAMERA_FLOW_PRESETS.intimate_closeups;
+    return [
+      `MANDATORY per-shot framing variety (${preset.label}):\n${framingLines.join("\n")}`,
+      "Use the listed framing as exact cinematic direction for each shot. Do not choose, broaden, replace, or contradict it. Add the character's emotion, performance, and action around the specified framing. Every shot must remain close, intimate, and frame-filling. The furthest framing is a tightly composed upper-body shot. Never use a wide shot, distant shot, full-body shot, small-in-frame composition, or full environment view. Do not repeat a framing within this segment. A previously used framing may recur only when it is the strongest contextual fit or the available framing pool has been exhausted.",
+    ];
+  }
+
   function miniMaxH3CreativePromptContextForSegment(segment, mode, options = {}) {
     const settings = miniMaxH3SettingsForSegment(segment);
     const nativeAudio = settings.audio_mode === "built_in_audio";
@@ -37838,13 +38106,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     } else {
       parts.push("Continuous shot: return one description only.");
     }
+    const framingLines = miniMaxH3PerShotFramingLines(segment, shotPlan);
+    if (framingLines.length) parts.push(...framingLines);
     parts.push(`Camera speed: ${Number.isFinite(cameraMotionSpeed) ? cameraMotionSpeed : 4}/10${cameraMotionGuidance ? ` - ${compact(cameraMotionGuidance, 240)}` : ""}.`);
     parts.push(`Character speed: ${Number.isFinite(characterMotionSpeed) ? characterMotionSpeed : 4}/10${characterMotionGuidance ? ` - ${compact(characterMotionGuidance, 240)}` : ""}.`);
     if (cameraMotionSpeed >= 7) {
       parts.push("Camera rule: use energetic, visibly active camera movement; avoid slow/static/locked-off language.");
     }
     if (characterMotionSpeed >= 4) {
-      parts.push("Character rule: include clear body action, gesture, step, or set interaction; mouth movement alone is not enough.");
+      parts.push("Character rule: include clear body action, gesture, step, or set interaction in addition to visible singing and lip sync. Mouth movement alone is not enough, but do not omit or suppress the required lip sync.");
     }
     if (segment?.no_character_present) {
       parts.push("Vocal performance: no visible character / no lip sync. Do not invent a visible singer or speaker.");
@@ -37855,7 +38125,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       add(parts, "Exact dialogue order", miniMaxDialogueOrderText(segment) || `The assigned speaker says exactly: "${lyricText}"`);
       add(parts, "Timed native dialogue cue map", miniMaxBuiltInDialogueCueMapText(segment), 1800);
     } else if (lyricText) {
-      parts.push("Vocal performance: singing with exact lyric lip sync. Mention the visible singing action naturally in the shot descriptions, but do not write separate audio sections or repeat boilerplate in every cut.");
+      parts.push("MANDATORY VOCAL PERFORMANCE: The assigned subject is visibly singing the exact supplied lyric/audio during this scene. Show clear, natural mouth, lip, jaw, and facial movement synchronized to the audible vocal. Never describe the lips as closed, still, motionless, or sealed while the assigned vocal is being performed. Body action is required in addition to lip sync; it does not replace lip sync. Non-verbal vocals such as oooh, ah, humming, and sustained notes still require visible mouth movement. Mention the visible singing action naturally in the shot descriptions, but do not write separate audio sections or repeat boilerplate in every cut.");
       add(parts, "Exact lyric line", lyricText);
     } else {
       parts.push("Vocal performance: no exact lyric or dialogue is assigned to this scene.");
@@ -38163,12 +38433,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
 
   function normalizeMiniMaxH3ShotDescription(text) {
     return normalizeMiniMaxH3DialogueTags(String(text || "")
+      .replace(/<\s*(Subject\s+\d+)\s*\(\s*([^)<>]+)\s*>\s*'s/gi, "<$1> ($2)'s")
+      .replace(/<\s*(Subject\s+\d+)\s*\(\s*([^)<>]+)\s*>/gi, "<$1> ($2)")
       .replace(/\bto\s+Audio\s+1\b/gi, "to <Audio 1>")
       .replace(/\bfrom\s+Audio\s+1\b/gi, "from <Audio 1>")
       .replace(/\bwith\s+Audio\s+1\b/gi, "with <Audio 1>")
       .replace(/\bin\s+Audio\s+1\b/gi, "in <Audio 1>")
       .replace(/\bAudio\s+1\b/g, "<Audio 1>")
       .replace(/<+Audio 1>+/g, "<Audio 1>")
+      .replace(/\bImage\s+\d+\b[,.]?/gi, "")
       .replace(/\s+/g, " ")
       .trim());
   }
@@ -38181,6 +38454,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
 
   function miniMaxH3CleanPostCutGrammar(text) {
     let clean = String(text || "").replace(/\s+/g, " ").trim();
+    clean = clean.replace(/\b(the camera cuts to\s+(?:a|an|the)\s+(?:(?:[a-z-]+)\s+){0,8}(?:close-up|shot|portrait|view|angle))\s+(?:holds?\s+on|frames?|captures?|isolates?|features?|shows?|finds?)\b/gi, "$1 of");
     clean = clean.replace(/\bthe camera cuts\s+to\s+(?=(?:the\s+)?camera\b)/gi, "the camera cuts. ");
     clean = clean.replace(/\bthe camera cuts\.\s*(?:the\s+camera\s+cuts(?:\s+to)?\.?\s*)+/gi, "the camera cuts. ");
     clean = clean.replace(/\bthe camera cuts\s+to\s+((?:a|an|the)\s+(?:(?:extreme|tight|wide|medium|close|low-angle|high-angle|over-the-shoulder|tracking|panning|orbiting|dolly|handheld|static|locked-off|profile|two-shot|single|insert|detail|wide-angle|telephoto)[\s-]+){0,6}(?:close-up|shot|view|angle|frame|framing)(?:\s+of\b[^.]{0,140})?\s+(?:shows|captures|reveals|frames|focuses|follows|tracks|pans|pushes|orbits|opens|begins)\b)/gi, (_match, fragment) => {
@@ -38207,10 +38481,16 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (descriptions.length !== shotPlan.length) {
       throw new Error(`Cannot assemble MiniMax shots: expected ${shotPlan.length} description${shotPlan.length === 1 ? "" : "s"}, got ${descriptions.length}.`);
     }
+    const selectedFramingEntries = miniMaxH3SelectedFramingEntries(segment, shotPlan);
     return shotPlan.map((shot, index) => {
       const description = normalizeMiniMaxH3ShotDescription(descriptions[index]);
-      if (shot.number === 1) return `[Shot 1] ${description}`;
-      return `[Shot ${shot.number}] At ${shot.timecode}, ${miniMaxH3PostCutShotText(description)}`;
+      const framing = selectedFramingEntries[index];
+      const framingBlock = framing
+        ? `Frame this shot as ${framing.shot}${framing.camera ? `, with ${framing.camera} camera movement` : ""}.`
+        : "";
+      if (shot.number === 1) return `[Shot 1] ${framingBlock} ${description}`.trim();
+      const postCutDescription = miniMaxH3PostCutShotText(description).replace(/^\s*([a-z])/, (_match, letter) => letter.toUpperCase());
+      return `[Shot ${shot.number}] At ${shot.timecode}, ${framingBlock} ${postCutDescription}`.trim();
     }).join("\n\n");
   }
 
@@ -38425,7 +38705,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       parts.push("MANDATORY CAMERA RULE: use energetic, visibly active camera movement. Slow, gentle, subtle, restrained, locked-off, static, and hold camera language contradicts this setting and must not appear.");
     }
     if (characterMotionSpeed >= 4) {
-      parts.push("MANDATORY CHARACTER ACTION RULE: include at least one clear physical body action, gesture, step, or interaction with the set. Facial expression, blinking, breathing, and mouth movement alone do not satisfy character motion.");
+      parts.push("MANDATORY CHARACTER ACTION RULE: include at least one clear physical body action, gesture, step, or interaction with the set in addition to visible singing and lip sync. Facial expression, blinking, breathing, and mouth movement alone do not satisfy character motion, but do not omit or suppress the required lip sync.");
     }
     if (segment?.no_character_present) {
       parts.push(
@@ -38451,7 +38731,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       );
     } else if (lyricText) {
       parts.push(
-        "Vocal performance: SINGING WITH EXACT LYRIC LIP SYNC.",
+        "MANDATORY VOCAL PERFORMANCE: The assigned subject is visibly singing the exact supplied lyric/audio during this scene. Show clear, natural mouth, lip, jaw, and facial movement synchronized to the audible vocal. Never describe the lips as closed, still, motionless, or sealed while the assigned vocal is being performed. Non-verbal vocals such as oooh, ah, humming, and sustained notes still require visible mouth movement.",
         `Exact lyric line to sing: “${lyricText}”`,
         `Audio 1 assignment: use as the exact vocal, timing, and lip-sync reference. ${performerLabel} is singing the exact line “${lyricText}”. Synchronize lips, mouth shapes, jaw movement, facial muscles, and breathing precisely only while that sung line is audible in Audio 1. Never stretch, restart, or repeat the full lyric across every timestamp. When the vocal ends, the mouth closes or relaxes naturally while physical action continues. Do not replace, alter, extend, or add vocals.`,
       );
@@ -40150,64 +40430,22 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       }
       return `${text}\n\n${requiredLine}`;
     };
-    const ensureStoryboardRequiredTemporalWorldEffect = (prompt, storyboardPayload = {}) => {
+    const ensureStoryboardRequiredTemporalWorldEffect = (prompt, storyboardPayload = {}, scene = {}) => {
       let text = String(prompt || "").trim();
-      const selectedScene = Array.isArray(storyboardPayload?.scenes) && storyboardPayload.scenes.length
-        ? storyboardPayload.scenes[0]
-        : {};
+      const storyboardScenes = Array.isArray(storyboardPayload?.scenes) ? storyboardPayload.scenes : [];
+      const selectedScene = storyboardScenes.find((candidate) => candidate?.id && candidate.id === scene?.id)
+        || storyboardScenes.find((candidate) => Number(candidate?.scene_number) === Number(scene?.scene_number))
+        || (storyboardScenes.length ? storyboardScenes[0] : scene);
       const effect = selectedScene.temporal_world_effect || {};
       const verbiage = String(selectedScene.temporal_world_effect_verbiage || effect.exact_verbiage || "").trim();
       if (!text || !verbiage) return text;
 
-      // Canonicalize the exact contract before the timeline. Gemma sometimes embeds it
-      // inside the first beat or appends it after Continuity, where H3 treats it as an
-      // afterthought instead of a governing instruction.
+      // Canonicalize the exact contract at the end of the prompt. Gemma sometimes
+      // embeds or paraphrases it inside a shot; remove that copy and append the
+      // builder-owned contract once in its canonical form.
       text = text.split(verbiage).join("").replace(/\n{3,}/g, "\n\n").trim();
-      const firstTimestamp = text.search(/^\s*\[\d+(?:\.\d+)?s\s*[-–—]\s*\d+(?:\.\d+)?s\]/m);
-      text = firstTimestamp >= 0
-        ? `${text.slice(0, firstTimestamp).trimEnd()}\n\n${verbiage}\n\n${text.slice(firstTimestamp).trimStart()}`
-        : `${text}\n\n${verbiage}`;
+      text = `${text}\n\n${verbiage}`.trim();
 
-      // Enforce a visible temporal-layer action in every beat even when the LLM only
-      // copied the global contract. This makes high-intensity presets reach H3 as
-      // timestamped action rather than passive metadata.
-      const timestampAction = String(effect.timestamp_action || effect.timestampAction || "").trim();
-      if (timestampAction) {
-        const timestampPattern = /(\[\d+(?:\.\d+)?s\s*[-–—]\s*\d+(?:\.\d+)?s\]\s*\n)([\s\S]*?)(?=\n\s*\[\d+(?:\.\d+)?s\s*[-–—]\s*\d+(?:\.\d+)?s\]|\n\s*Audio:|\n\s*Continuity:|$)/g;
-        const blockCount = Array.from(text.matchAll(timestampPattern)).length;
-        let blockIndex = 0;
-        text = text.replace(timestampPattern, (whole, header, body) => {
-          const phase = blockIndex === 0
-            ? "begins visibly"
-            : blockIndex === blockCount - 1
-              ? "reaches its strongest readable payoff"
-              : "continues and develops visibly";
-          blockIndex += 1;
-          const cleanBody = String(body || "").trim();
-          if (cleanBody.includes(timestampAction)) return `${header}${cleanBody}\n`;
-          return `${header}${cleanBody}\n\nTemporal-layer action ${phase}: ${timestampAction}\n`;
-        }).trim();
-      }
-
-      // Location references often describe an empty source image with “no people.”
-      // When extras are enabled, prevent Continuity from accidentally turning that
-      // source-image description into an output-wide ban.
-      if (effect.allow_background_extras === true || effect.allowBackgroundExtras === true) {
-        text = text.replace(/(\n\s*Continuity:\s*)([^\n]*)/i, (whole, heading, body) => {
-          let corrected = String(body || "")
-            .replace(/\b(no (?:new|added|additional) [^.\n]{0,120}?)(?:people|characters)\b/gi, (match, prefix) => `${prefix}named or referenced characters`)
-            .replace(/\bno new people\b/gi, "no new named or referenced characters")
-            .replace(/\bno added people\b/gi, "no added named or referenced characters")
-            .replace(/\bno people\b/gi, "no named or referenced characters")
-            .replace(/\bno new characters\b/gi, "no new named or referenced characters")
-            .replace(/\bdo not (add|introduce) ((?:any )?(?:new )?)[^.\n]{0,120}?(?:people|characters)\b/gi, (match, verb, qualifier) => `do not ${verb} ${qualifier}named or referenced characters`)
-            .replace(/\bdo not (?:add|introduce) (?:any )?(?:new )?people\b/gi, "do not add named or referenced characters")
-            .trim();
-          const permission = "Anonymous unreferenced background extras are permitted, remain secondary, and receive the selected temporal/world effect; they must never duplicate or replace a mapped/reference character.";
-          if (!corrected.includes(permission)) corrected = `${corrected}${corrected ? " " : ""}${permission}`;
-          return `${heading}${corrected}`;
-        });
-      }
       return text.trim();
     };
     const normalizeStoryboardInputAudioVocalTimeline = (prompt, segment) => {
@@ -40318,6 +40556,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         workingSegment.minimax_h3_reference_keys = Array.isArray(segment.minimax_h3_reference_keys)
           ? [...segment.minimax_h3_reference_keys]
           : null;
+        workingSegment.minimax_h3_framing_shot_ids = Array.isArray(segment.minimax_h3_framing_shot_ids)
+          ? [...segment.minimax_h3_framing_shot_ids]
+          : [];
         workingSegment.minimax_h3_video_references = (Array.isArray(segment.minimax_h3_video_references)
           ? segment.minimax_h3_video_references
           : []).map((item) => ({ ...item }));
@@ -40361,8 +40602,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           unloadAfter: options.unloadAfter !== false,
           emptyPromptMessage: `${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: LLM returned an empty MiniMax ${modeLabel} prompt.`,
         });
+        const prompt = ensureStoryboardRequiredTemporalWorldEffect(
+          data.prompt,
+          options.storyboardPayload || {},
+          scene,
+        );
+        if (!prompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: LLM returned an empty MiniMax ${modeLabel} prompt.`);
+        if (Array.isArray(workingSegment.minimax_h3_framing_shot_ids)) {
+          segment.minimax_h3_framing_shot_ids = [...workingSegment.minimax_h3_framing_shot_ids];
+        }
         return {
           ...data,
+          prompt,
           already_finalized: true,
           minimax_h3_mode: mode,
           used_minimax_h3_instructions: true,
@@ -42546,6 +42797,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         easy_cache_end_percent: miniMaxSettings.easy_cache_end_percent,
         easy_cache_verbose: miniMaxSettings.easy_cache_verbose,
         sage_attention: miniMaxSettings.sage_attention,
+        use_memory_efficient_sage_attention: miniMaxSettings.use_memory_efficient_sage_attention,
         enable_fp16_accumulation: miniMaxSettings.enable_fp16_accumulation,
         use_loras: miniMaxSettings.use_loras,
         lora_count: miniMaxSettings.lora_count,
@@ -45964,6 +46216,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     state.projectFolder = cleanProjectFolder;
     state.sessionPath = sessionPath || "";
     state.srtPath = srtPath || "";
+    state.llmApiKey = "";
+    state.llmApiKeyProject = "";
     state.segments = [newSegment(0, 4)];
     state.overlaySegments = [];
     state.activeTrack = "base";
@@ -46246,6 +46500,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (!projectFolder) {
       toast("Create or load a project before exporting it.", true);
       return;
+    }
+    if (String(state.llmApiKeyProject || "").trim()) {
+      const proceed = window.confirm(
+        "This project contains a saved LLM API key. Exporting a shareable ZIP may include that key in the project session. Continue exporting?",
+      );
+      if (!proceed) return;
     }
     try {
       exportProjectButton.disabled = true;
@@ -48401,11 +48661,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     apiPanel.style.cssText = "display:flex;flex-direction:column;gap:10px;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:12px;";
     const apiNote = document.createElement("div");
     apiNote.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
-    apiNote.textContent = "API key is session-only. It is not saved with the project and may need to be pasted again after refresh or restart. For image-reference Video Prep, choose an API model that supports vision/images.";
+    apiNote.textContent = "API keys are session-only unless you explicitly save the current key to this project. A project-saved key will be included in the project session and may be included in shareable exports. For image-reference Video Prep, choose an API model that supports vision/images.";
     const apiProvider = makeSelect(["openai"], state.llmApiProvider || "openai");
     const apiModel = makeSelect([""], state.llmApiModel || "");
     const llmApiKey = makeInput(state.llmApiKey || "", "password");
     const testApi = makeButton("Test LLM API", "primary");
+    const saveProjectApiKey = makeButton("Save API Key to Project", "primary");
     const apiStatus = document.createElement("div");
     apiStatus.style.cssText = "font-size:12px;color:#94a3b8;min-height:16px;";
     const providerLabel = (provider = {}) => String(provider.label || provider.id || "").trim();
@@ -48514,6 +48775,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       makeField("Model", apiModel),
       makeField("API key", llmApiKey),
       testApi,
+      saveProjectApiKey,
       apiStatus,
     );
     const syncVisibility = () => {
@@ -48628,6 +48890,29 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       } finally {
         testApi.disabled = false;
         testApi.textContent = "Test LLM API";
+      }
+    };
+    saveProjectApiKey.onclick = async () => {
+      const key = String(llmApiKey.value || "").trim();
+      if (!key) {
+        toast("Enter an API key before saving it to this project.", true);
+        return;
+      }
+      try {
+        saveProjectApiKey.disabled = true;
+        saveProjectApiKey.textContent = "Saving...";
+        state.textGemmaRunner = "llm_api";
+        state.llmApiProvider = apiProvider.value || "openai";
+        state.llmApiModel = apiModel.value || "";
+        state.llmApiKey = key;
+        state.llmApiKeyProject = key;
+        await saveSession({ quiet: true, throwOnError: true });
+        toast("LLM API key saved to this project. Shareable exports will warn you before including it.");
+      } catch (error) {
+        toast(`Could not save the project API key: ${String(error?.message || error)}`, true);
+      } finally {
+        saveProjectApiKey.disabled = false;
+        saveProjectApiKey.textContent = "Save API Key to Project";
       }
     };
     return backdrop;
@@ -49434,7 +49719,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
 
   function openAutoBuildModal() {
     const backdrop = document.createElement("div");
-    backdrop.style.cssText = "position:fixed;inset:0;z-index:100011;background:rgba(0,0,0,.74);display:flex;align-items:center;justify-content:center;padding:18px;box-sizing:border-box;";
+    // Keep nested builders (Reference Builder, LLM Runner, and their import dialogs)
+    // above Auto Build when they are opened from this modal.
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100005;background:rgba(0,0,0,.74);display:flex;align-items:center;justify-content:center;padding:18px;box-sizing:border-box;";
     const box = document.createElement("div");
     box.style.cssText = "width:min(720px,calc(100vw - 36px));max-height:calc(100vh - 36px);overflow:hidden;border:1px solid #0891b2;border-radius:14px;background:linear-gradient(180deg,#0f172a,#0b1220);color:#f8fafc;box-shadow:0 28px 90px rgba(0,0,0,.72);display:flex;flex-direction:column;";
     const header = document.createElement("div");
@@ -49552,24 +49839,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const songRow = uploadCard(1, "Song", currentAudioPath ? `Using current audio: ${currentAudioPath.split(/[\\/]/).pop()}` : "MP3, WAV, FLAC, M4A, or OGG", "Choose Song");
     const singerRow = uploadCard(3, "Singer image", "One clear reference image of the singer", "Choose Singer");
     const locationRow = uploadCard(4, "Location images", "One image repeats; multiple images rotate every two scenes", "Add Locations", true);
-    const scoutLocations = makeButton("Use GPT Scout", "primary");
-    scoutLocations.style.minWidth = "116px";
-    locationRow.card.style.gridTemplateColumns = "34px minmax(0,1fr) auto auto";
-    locationRow.card.append(scoutLocations);
     songRow.choose.onclick = () => songInput.click();
     singerRow.choose.onclick = () => singerInput.click();
     locationRow.choose.onclick = () => {
       selected.locationSource = "images";
       locationInput.click();
-    };
-    scoutLocations.onclick = () => {
-      selected.locationSource = "gpt_scout";
-      locationRow.status.textContent = "GPT Scout selected; import locations and scene mappings in Reference Builder";
-      openFluxReferenceBuilderModal({
-        miniMaxTargetMode: selectedEngine === "minimax_h3" ? "reference_to_video" : undefined,
-        initialTab: "locations",
-        openLocationImport: true,
-      });
     };
     songInput.onchange = () => {
       selected.song = songInput.files?.[0] || null;
@@ -49637,7 +49911,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const useCurrentBuilderSettings = makeCheckbox("Use current Scene Defaults and story settings", false);
     useCurrentBuilderSettings.wrapper.style.cssText += "grid-column:1 / -1;border:1px solid #334155;border-radius:7px;background:#111827;padding:8px;";
     useCurrentBuilderSettings.wrapper.title = "Preserve the current Scene Defaults, story layer, story beats, and per-scene performance settings instead of applying Auto Build recommendations.";
-    advancedBody.append(durationLabel, advancedHint, useCurrentBuilderSettings.wrapper);
+    const skipPromptCreation = makeCheckbox("Skip prompt creation (review timeline first)", false);
+    skipPromptCreation.wrapper.style.cssText += "grid-column:1 / -1;border:1px solid #334155;border-radius:7px;background:#111827;padding:8px;";
+    skipPromptCreation.wrapper.title = "Return to the timeline after Auto Build saves the audio, scenes, references, mappings, and lyric notes. You can generate prompts later from the normal builder tools.";
+    advancedBody.append(durationLabel, advancedHint, useCurrentBuilderSettings.wrapper, skipPromptCreation.wrapper);
     advanced.append(advancedSummary, advancedBody);
 
     const note = document.createElement("div");
@@ -49646,10 +49923,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       ? `${Math.max(1, Math.min(60, Number(customDuration.value) || 8))} seconds`
       : `${durationSelect.value} seconds`;
     const syncAutoBuildNote = () => {
-      note.textContent = `Auto Build creates complete ${selectedDurationLabel()} coverage, uses the LLM to describe the singer and locations, transcribes the existing scenes, maps everything, applies the recommended defaults, and generates prompts. It returns you to the normal timeline so you can review every lyric note.`;
+      note.textContent = skipPromptCreation.input.checked
+        ? `Auto Build creates complete ${selectedDurationLabel()} coverage, describes the singer and locations, transcribes the existing scenes, maps everything, and saves the timeline for review. Prompt creation is skipped; generate prompts later from the normal builder tools.`
+        : `Auto Build creates complete ${selectedDurationLabel()} coverage, uses the LLM to describe the singer and locations, transcribes the existing scenes, maps everything, applies the recommended defaults, and generates prompts. It returns you to the normal timeline so you can review every lyric note.`;
     };
     durationSelect.addEventListener("change", syncAutoBuildNote);
     customDuration.addEventListener("input", syncAutoBuildNote);
+    skipPromptCreation.input.addEventListener("change", syncAutoBuildNote);
     syncAutoBuildNote();
     const projectWarning = document.createElement("div");
     const getAutoBuildProjectFolder = () => String(projectInput.value || state.projectFolder || "").trim();
@@ -49824,13 +50104,6 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         ? Number(customDuration.value)
         : Number(durationSelect.value);
       const segmentDuration = Math.max(1, Math.min(60, Number.isFinite(requestedSegmentDuration) ? requestedSegmentDuration : 8));
-      if (selected.locationSource === "gpt_scout") {
-        const importedLocations = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder).locations || [];
-        if (!importedLocations.length) {
-          toast("Import at least one GPT Scout location before starting Auto Build.", true);
-          return;
-        }
-      }
       try {
         validateAutoBuildPromptRunner();
       } catch (error) {
@@ -49854,7 +50127,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       cancel.disabled = true;
       close.disabled = true;
       createProjectNow.disabled = true;
-      for (const control of [ltxEngine, miniMaxEngine, openRunner, songRow.choose, singerRow.choose, locationRow.choose, scoutLocations, lyricsInput, durationSelect, customDuration, useCurrentBuilderSettings.input]) control.disabled = true;
+      for (const control of [ltxEngine, miniMaxEngine, openRunner, songRow.choose, singerRow.choose, locationRow.choose, lyricsInput, durationSelect, customDuration, useCurrentBuilderSettings.input, skipPromptCreation.input]) control.disabled = true;
       status.style.display = "block";
       const setStatus = (message) => {
         status.textContent = message;
@@ -49957,9 +50230,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         }
         refs.use_location_references = importedLocations.length > 0 || autoLocations.length > 0;
         refs.subject_scene_map = {};
-        refs.scene_map = selected.locationSource === "gpt_scout" && refs.scene_map && typeof refs.scene_map === "object"
-          ? { ...refs.scene_map }
-          : {};
+        refs.scene_map = {};
         state.segments.forEach((segment, index) => {
           refs.subject_scene_map[segment.id] = [singer.id];
           const availableLocations = autoLocations.length ? autoLocations : importedLocations;
@@ -50035,6 +50306,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         syncInspector();
         render();
 
+        if (skipPromptCreation.input.checked) {
+          closeModal();
+          state.activeId = state.segments[0]?.id || state.activeId;
+          state.activeTrack = "base";
+          syncInspector();
+          render();
+          toast(`Auto Build complete.\nCreated ${state.segments.length} scenes with full song coverage.\nPrompt creation was skipped. Review the timeline and lyric notes, then create prompts when ready.`);
+          return;
+        }
         setStatus("7/7  Preparing video prompts. The normal prompt progress window will open next...");
         closeModal();
         if (selectedEngine === "minimax_h3") {
@@ -50060,7 +50340,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         cancel.disabled = false;
         close.disabled = false;
         createProjectNow.disabled = false;
-        for (const control of [ltxEngine, miniMaxEngine, openRunner, songRow.choose, singerRow.choose, locationRow.choose, scoutLocations, lyricsInput, durationSelect, customDuration, useCurrentBuilderSettings.input]) control.disabled = false;
+        for (const control of [ltxEngine, miniMaxEngine, openRunner, songRow.choose, singerRow.choose, locationRow.choose, lyricsInput, durationSelect, customDuration, useCurrentBuilderSettings.input, skipPromptCreation.input]) control.disabled = false;
         toast(`Auto Build paused:\n${String(error?.message || error)}`, true);
       }
     };
@@ -53084,6 +53364,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     miniMaxEasyCacheEndPercent,
     miniMaxEasyCacheVerbose.input,
     miniMaxSageAttention,
+    miniMaxMemoryEfficientSageAttention.input,
     miniMaxFp16Accumulation.input,
     miniMaxUseLoras.input,
     miniMaxLoraCount,
