@@ -1112,6 +1112,85 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
+// Batch prompt generation keeps recoverable Gemma failures per scene so one
+// bad response does not discard the successful scenes from the same pass.
+function gemmaBatchFailureStore() {
+  if (!window.__vrgdgGemmaBatchFailures) window.__vrgdgGemmaBatchFailures = {};
+  return window.__vrgdgGemmaBatchFailures;
+}
+
+function recordGemmaBatchFailure(key, segment, error, debugPath = "") {
+  const store = gemmaBatchFailureStore();
+  const info = segment ? segmentIndexInfo(segment) : { index: -1 };
+  const raw = String(error?.rawGemmaPrompt ?? error?.rawPrompt ?? "").trim();
+  const cleaned = String(error?.cleanedGemmaPrompt ?? error?.cleanedPrompt ?? "").trim();
+  store[key] = {
+    key,
+    segmentId: String(segment?.id || ""),
+    sceneLabel: segment ? sceneDisplayName(segment, info.index) : "Unknown scene",
+    error: String(error?.message || error || "Unknown Gemma error"),
+    raw: raw || cleaned || "(raw Gemma output was not attached)",
+    cleaned,
+    debugPath: String(debugPath || error?.gemmaDebugPath || ""),
+    timestamp: new Date().toISOString(),
+  };
+  return store[key];
+}
+
+function showGemmaBatchFailures(failures) {
+  const items = Array.isArray(failures) ? failures : [];
+  if (!items.length) return;
+  const backdrop = document.createElement("div");
+  backdrop.style.cssText = "position:fixed;inset:0;z-index:100009;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:18px;";
+  const box = document.createElement("div");
+  box.style.cssText = "width:min(980px,calc(100vw - 36px));max-height:calc(100vh - 36px);overflow:auto;border:1px solid #991b1b;border-radius:10px;background:#111827;color:#f8fafc;box-shadow:0 22px 80px rgba(0,0,0,.65);padding:16px;box-sizing:border-box;";
+  const title = document.createElement("div");
+  title.innerHTML = `<div style="font-size:17px;font-weight:900;color:#fecaca;">Gemma skipped ${items.length} scene${items.length === 1 ? "" : "s"}</div><div style="font-size:12px;color:#cbd5e1;margin-top:5px;">Successful scenes were kept. Only these scenes will be retried.</div>`;
+  const list = document.createElement("div");
+  list.style.cssText = "display:flex;flex-direction:column;gap:12px;margin-top:14px;";
+  items.forEach((item) => {
+    const card = document.createElement("details");
+    card.open = true;
+    card.style.cssText = "border:1px solid #7f1d1d;border-radius:7px;background:#1f0808;padding:9px;";
+    const summary = document.createElement("summary");
+    summary.style.cssText = "cursor:pointer;font-weight:900;color:#fca5a5;";
+    summary.textContent = `${item.sceneLabel}: ${item.error}`;
+    const raw = document.createElement("pre");
+    raw.style.cssText = "white-space:pre-wrap;word-break:break-word;max-height:240px;overflow:auto;margin:9px 0 0;color:#fecaca;font-size:11px;line-height:1.4;";
+    raw.textContent = item.raw;
+    card.append(summary, raw);
+    if (item.debugPath) {
+      const path = document.createElement("div");
+      path.style.cssText = "margin-top:7px;color:#fda4af;font-size:11px;word-break:break-all;";
+      path.textContent = `Debug file: ${item.debugPath}`;
+      card.append(path);
+    }
+    list.append(card);
+  });
+  const actions = document.createElement("div");
+  actions.style.cssText = "display:flex;justify-content:flex-end;gap:8px;margin-top:16px;";
+  const close = makeButton("Close");
+  const retry = makeButton(`Retry ${items.length} Failed Scene${items.length === 1 ? "" : "s"}`);
+  retry.style.background = "#7f1d1d";
+  retry.onclick = async () => {
+    retry.disabled = true;
+    retry.textContent = "Retrying...";
+    try {
+      await retryOnlyGemmaBatchFailures(items);
+      backdrop.remove();
+    } catch (error) {
+      toast(String(error?.message || error), true);
+      retry.disabled = false;
+      retry.textContent = `Retry ${items.length} Failed Scene${items.length === 1 ? "" : "s"}`;
+    }
+  };
+  close.onclick = () => backdrop.remove();
+  actions.append(close, retry);
+  box.append(title, list, actions);
+  backdrop.append(box);
+  document.body.append(backdrop);
+}
+
 function createProgressWindow(title, options = {}) {
   const box = document.createElement("div");
   const zIndex = Number(options.zIndex || 100004);
@@ -35860,7 +35939,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       max_new_tokens: options.maxNewTokens ?? 1200,
     }, 240000);
     pushHistory();
-    syncSegmentT2IPrompt(segment, applyMappedTriggerPhrases(applyImageTriggerToPrompt(data.prompt, segment, imageMode, { validateJunk: true }), segment));
+    try {
+      syncSegmentT2IPrompt(segment, applyMappedTriggerPhrases(applyImageTriggerToPrompt(data.prompt, segment, imageMode, { validateJunk: true }), segment));
+    } catch (error) {
+      error.rawGemmaPrompt = String(data.prompt || "");
+      throw error;
+    }
     render();
     return { ...data, used_storyboard_prompt_writer: true };
   }
@@ -39265,9 +39349,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       : `${label}: converting T2I prompt to ${request.modeLabel} prompt without vision...\n${gemmaRunnerLine()}`, percent);
     const data = await postJson(request.endpoint, request.payload, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
     pushHistory();
-    segment.i2v_prompt = options.deferEnhancement
-      ? finalizeVideoPromptDraftOnly(segment, data.prompt)
-      : await finalizeVideoPromptForSegment(segment, data.prompt, progress, Math.min(98, percent + 20), `${label}: enhancement pass`, { unloadAfter: request.useImageReference ? true : options.unloadAfter !== false });
+    try {
+      segment.i2v_prompt = options.deferEnhancement
+        ? finalizeVideoPromptDraftOnly(segment, data.prompt)
+        : await finalizeVideoPromptForSegment(segment, data.prompt, progress, Math.min(98, percent + 20), `${label}: enhancement pass`, { unloadAfter: request.useImageReference ? true : options.unloadAfter !== false });
+    } catch (error) {
+      error.rawGemmaPrompt = String(data.prompt || "");
+      throw error;
+    }
     if (!segment.i2v_prompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: Gemma returned an empty ${request.modeLabel} prompt.`);
     segment.i2v_prompt_origin = "gemma";
     if (segment.id === state.activeId) i2vPrompt.value = segment.i2v_prompt;
@@ -39373,6 +39462,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const sceneScope = normalizeBatchScope(options.sceneScope);
     const allScenes = batchTargetItems(sceneScope).map(({ segment }) => segment);
     const redoPrompts = options.i2vRunMode === "redo_prompts";
+    const failedIds = new Set((options.failedIds || []).map((value) => String(value)));
     const forceTextOnly = Boolean(options.forceTextOnly);
     const forceVision = Boolean(options.forceVision);
     const deferEnhancement = Boolean(state.useI2VPromptEnhancementPass);
@@ -39382,7 +39472,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         segment.i2v_prompt_origin = "manual";
       });
     }
-    const scenes = allScenes.filter((segment) => redoPrompts || !String(segment?.i2v_prompt || "").trim());
+    const scenes = options.i2vRunMode === "failed_only"
+      ? allScenes.filter((segment) => failedIds.has(String(segment?.id || "")))
+      : allScenes.filter((segment) => redoPrompts || !String(segment?.i2v_prompt || "").trim());
     const missing = [];
     const continuityCanCreateImageLater = (segment, requestedUseImageReference) => {
       if (forceVision || forceTextOnly || !requestedUseImageReference || videoMode !== "i2v") return false;
@@ -39451,14 +39543,22 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         const generatePrompt = firstLastFrameVision
           ? generateI2VPromptForSegmentWithFLFRetry
           : generateI2VPromptForSegment;
-        await generatePrompt(segment, progress, Math.min(deferEnhancement ? 70 : 98, base + 30), `${runnerName} ${modeLabel} All ${index + 1}/${scenes.length}`, {
-          unloadAfter: false,
-          forceTextOnly: forceTextOnly || forceTextForContinuity,
-          forceVision,
-          deferEnhancement,
-          maxFLFAttempts: 3,
-        });
-        await autoSaveSessionQuiet(`${runnerName} ${modeLabel} All ${sceneDisplayName(segment, displayIndex)}`);
+        try {
+          await generatePrompt(segment, progress, Math.min(deferEnhancement ? 70 : 98, base + 30), `${runnerName} ${modeLabel} All ${index + 1}/${scenes.length}`, {
+            unloadAfter: false,
+            forceTextOnly: forceTextOnly || forceTextForContinuity,
+            forceVision,
+            deferEnhancement,
+            maxFLFAttempts: 3,
+          });
+          gemmaBatchFailureStore()[`i2v:${videoMode}:${segment.id}`] = undefined;
+          await autoSaveSessionQuiet(`${runnerName} ${modeLabel} All ${sceneDisplayName(segment, displayIndex)}`);
+        } catch (error) {
+          if (!isRecoverableBuildGemmaError(error)) throw error;
+          const debugPath = error?.gemmaDebugPath || await saveGemmaJunkDebug(error, { label: `${runnerName} ${modeLabel} All`, segment });
+          recordGemmaBatchFailure(`i2v:${videoMode}:${segment.id}`, segment, error, debugPath);
+          progress.set(`${runnerName} ${modeLabel} ${sceneDisplayName(segment, displayIndex)} skipped. Continuing with the remaining scenes...`, base);
+        }
       }
       if (deferEnhancement) {
         await runClearMemoryWorkflowQuiet(progress, `${runnerName} ${modeLabel} draft prompt pass`, 72);
@@ -39470,8 +39570,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       }
       await runClearMemoryWorkflowQuiet(progress, `${runnerName} ${modeLabel} prompt pass`, 96);
       await autoSaveSessionQuiet(`${runnerName} ${modeLabel} All complete`);
-      progress.set(`${runnerName} ${modeLabel} All complete.`, 100);
+      const failures = scenes.map((segment) => gemmaBatchFailureStore()[`i2v:${videoMode}:${segment.id}`]).filter(Boolean);
+      progress.set(`${runnerName} ${modeLabel} All complete. ${failures.length ? `${failures.length} scene${failures.length === 1 ? " was" : "s were"} skipped.` : "All scenes succeeded."}`, 100);
       if (closeProgress) progress.close(1800);
+      if (failures.length) showGemmaBatchFailures(failures, true);
     } catch (error) {
       const debugPath = error?.gemmaDebugPath || await saveGemmaJunkDebug(error, { label: `${runnerName} ${modeLabel} All` });
       progress.set(`Stopped/Error:\n${String(error?.message || error)}${debugPath ? `\n\nRaw Gemma output saved to:\n${debugPath}` : ""}`, 100);
@@ -39501,8 +39603,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const promptRunMode = options.promptRunMode || "redo_all";
     const sceneScope = normalizeBatchScope(options.sceneScope);
     const redoPrompts = promptRunMode === "redo_all";
+    const failedIds = new Set((options.failedIds || []).map((value) => String(value)));
     const allScenes = batchTargetItems(sceneScope);
-    const targetScenes = promptAllModeTargets(promptRunMode, imageMode, sceneScope);
+    const targetScenes = promptRunMode === "failed_only"
+      ? allScenes.filter(({ segment }) => failedIds.has(String(segment?.id || "")))
+      : promptAllModeTargets(promptRunMode, imageMode, sceneScope);
     const progress = createProgressWindow(`${runnerName} T2I All (${modelLabel})`);
     const missing = [];
     if (!allScenes.length) missing.push(batchEmptyMessage(sceneScope));
@@ -39563,19 +39668,30 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         syncInspector();
         render();
         const promptLabel = `${runnerName} T2I All ${index + 1}/${promptScenes.length}: ${sceneLabel}`;
-        await runGemmaImagePromptPassWithRetry(segment, progress, base, promptLabel, generateT2IPromptForSegment, {
+        try {
+          await runGemmaImagePromptPassWithRetry(segment, progress, base, promptLabel, generateT2IPromptForSegment, {
           unloadAfter: false,
           imageMode,
           generatorOptions: { imageMode },
-        });
-        assertBatchNotStopped();
-        await autoSaveSessionQuiet(`${runnerName} T2I All ${sceneLabel}`);
+            textFallback: false,
+          });
+          gemmaBatchFailureStore()[`t2i:${imageMode}:${segment.id}`] = undefined;
+          assertBatchNotStopped();
+          await autoSaveSessionQuiet(`${runnerName} T2I All ${sceneLabel}`);
+        } catch (error) {
+          if (!isRecoverableBuildGemmaError(error)) throw error;
+          const debugPath = error?.gemmaDebugPath || await saveGemmaJunkDebug(error, { label: promptLabel, segment });
+          recordGemmaBatchFailure(`t2i:${imageMode}:${segment.id}`, segment, error, debugPath);
+          progress.set(`${promptLabel} skipped. Continuing with the remaining scenes...`, base);
+        }
       }
       await runClearMemoryWorkflowQuiet(progress, `${runnerName} T2I prompt pass`, 96);
       await autoSaveSessionQuiet(`${runnerName} T2I All complete`);
-      progress.set(`${runnerName} T2I All complete. Review or edit the image prompts before creating images.`, 100);
+      const failures = promptScenes.map(({ segment }) => gemmaBatchFailureStore()[`t2i:${imageMode}:${segment.id}`]).filter(Boolean);
+      progress.set(`${runnerName} T2I All complete. ${failures.length ? `${failures.length} scene${failures.length === 1 ? " was" : "s were"} skipped.` : "All scenes succeeded."}\nReview or edit the image prompts before creating images.`, 100);
       progress.close(2500);
-      toast(`${runnerName} T2I All complete.`);
+      toast(`${runnerName} T2I All complete${failures.length ? ` with ${failures.length} skipped scene${failures.length === 1 ? "" : "s"}` : ""}.`, Boolean(failures.length));
+      if (failures.length) showGemmaBatchFailures(failures, true);
     } catch (error) {
       const message = String(error?.message || error);
       const stopped = /stopped by user/i.test(message);
@@ -39597,6 +39713,19 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.batchCancelled = false;
       syncInspector();
       render();
+    }
+  }
+
+  async function retryOnlyGemmaBatchFailures(failures) {
+    const items = Array.isArray(failures) ? failures : [];
+    const t2i = items.filter((item) => String(item.key || "").startsWith("t2i:"));
+    const i2v = items.filter((item) => String(item.key || "").startsWith("i2v:"));
+    if (t2i.length) {
+      await gemmaT2IAllScenes({ promptRunMode: "failed_only", failedIds: t2i.map((item) => item.segmentId), sceneScope: "all" });
+      return;
+    }
+    if (i2v.length) {
+      await i2vAllScenes({ i2vRunMode: "failed_only", failedIds: i2v.map((item) => item.segmentId), sceneScope: "all" });
     }
   }
 
