@@ -235,6 +235,22 @@ def _load_mlx_vision_model(repo: str) -> "_MLXVisionHandle":
     return handle
 
 
+def _truncate_at_stop_sequence(text: str, stop_sequences) -> tuple:
+    """Mirrors llama-cpp's text-based `stop` matching for the MLX path, since
+    `add_eos_token` only fires on exact single-token matches and several of
+    Gemma's stop markers aren't single vocab tokens for every MLX tokenizer —
+    the gap that let generation run past the turn boundary into repeated
+    channel/thought junk. Returns (truncated_text, stopped)."""
+    earliest = None
+    for marker in stop_sequences:
+        idx = text.find(marker)
+        if idx != -1 and (earliest is None or idx < earliest):
+            earliest = idx
+    if earliest is None:
+        return text, False
+    return text[:earliest], True
+
+
 def _run_mlx_text_pipeline(
     handle: "_MLXTextHandle",
     instruction_text: str,
@@ -244,8 +260,8 @@ def _run_mlx_text_pipeline(
     system_prompt: str = "",
     seed: Optional[int] = None,
 ) -> str:
-    import mlx_lm
-    from mlx_lm.sample_utils import make_sampler
+    from mlx_lm import stream_generate
+    from mlx_lm.sample_utils import make_repetition_penalty, make_sampler
 
     if seed is not None:
         import mlx.core as mx
@@ -260,13 +276,27 @@ def _run_mlx_text_pipeline(
     prompt = handle.tokenizer.apply_chat_template(messages, add_generation_prompt=True)
 
     sampler = make_sampler(temp=float(temperature), top_p=float(top_p))
-    text = mlx_lm.generate(
+    # Lookback window needs to scale with max_new_tokens: video-prep calls
+    # request up to 4000 tokens vs. ~1000-1200 for image-prep, and a fixed
+    # short window lets repetition loops recur just outside it undetected.
+    repetition_context_size = max(64, min(int(max_new_tokens), 512))
+    logits_processors = [make_repetition_penalty(1.3, context_size=repetition_context_size)]
+    stop_sequences = VRGDG_GeneralGGUF._GEMMA_STOP_SEQUENCES
+
+    text = ""
+    for response in stream_generate(
         handle.model,
         handle.tokenizer,
         prompt=prompt,
         max_tokens=int(max_new_tokens),
         sampler=sampler,
-    )
+        logits_processors=logits_processors,
+    ):
+        text += response.text
+        truncated, stopped = _truncate_at_stop_sequence(text, stop_sequences)
+        if stopped:
+            text = truncated
+            break
     return str(text or "").strip()
 
 
@@ -280,7 +310,7 @@ def _run_mlx_vision_pipeline(
     seed: Optional[int] = None,
 ) -> str:
     import tempfile
-    import mlx_vlm
+    from mlx_vlm import stream_generate
     from mlx_vlm.prompt_utils import apply_chat_template
 
     if seed is not None:
@@ -301,7 +331,10 @@ def _run_mlx_vision_pipeline(
             instruction_text,
             num_images=len(image_paths),
         )
-        result = mlx_vlm.generate(
+        stop_sequences = VRGDG_GeneralGGUF._GEMMA_STOP_SEQUENCES
+        repetition_context_size = max(64, min(int(max_new_tokens), 512))
+        text = ""
+        for response in stream_generate(
             handle.model,
             handle.processor,
             prompt=formatted_prompt,
@@ -309,10 +342,14 @@ def _run_mlx_vision_pipeline(
             max_tokens=int(max_new_tokens),
             temperature=float(temperature),
             top_p=float(top_p),
-        )
-        text = getattr(result, "text", None)
-        if text is None:
-            text = str(result)
+            repetition_penalty=1.3,
+            repetition_context_size=repetition_context_size,
+        ):
+            text += getattr(response, "text", "") or ""
+            truncated, stopped = _truncate_at_stop_sequence(text, stop_sequences)
+            if stopped:
+                text = truncated
+                break
         return str(text or "").strip()
     finally:
         for path in image_paths:

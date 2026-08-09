@@ -12741,8 +12741,11 @@ function openBuilder(node) {
   function looksLikeGeneratedPromptJunk(prompt) {
     const text = String(prompt || "").toLowerCase().replace(/\s+/g, " ").trim();
     if (!text) return false;
-    const bracketed = text.match(/\[[^\]]{2,80}\]/g) || [];
-    if (bracketed.length >= 2) return true;
+    // Only flag brackets that look like an unfilled template placeholder
+    // (e.g. "[camera motion]") rather than any bracketed text at all -- the
+    // I2V/video enhancement instruction template itself is full of legitimate
+    // bracket examples, and Gemma's cleaned output can validly contain a
+    // bracketed camera/shot note without being template leakage.
     if (/\[[^\]]*(?:subject|setting|environment|camera|motion|weather|lighting|dynamic|framing)[^\]]*\]/i.test(text)) return true;
     const compact = text.replace(/[^a-z0-9_<>\-|]+/g, "");
     const markers = [
@@ -12877,6 +12880,10 @@ function openBuilder(node) {
   function applyTriggerPhrase(prompt, trigger, options = {}) {
     const promptText = cleanGeneratedPromptText(prompt);
     if (options.validateJunk !== false && looksLikeGeneratedPromptJunk(promptText)) {
+      console.error("[VRGDG Music Builder] looksLikeGeneratedPromptJunk rejected this text:", {
+        rawPrompt: String(prompt || ""),
+        cleanedPromptText: promptText,
+      });
       const error = new Error("Gemma returned repeated/thought junk instead of a usable prompt. Try again or shorten the notes.");
       error.rawGemmaPrompt = String(prompt || "");
       error.cleanedGemmaPrompt = promptText;
@@ -13223,7 +13230,10 @@ function openBuilder(node) {
     const original = String(value || "").trim();
     if (!original) return "";
     const firstLine = original.split(/\n/)[0].trim();
-    const beforeDetail = firstLine.split(/\s+[:|]\s+/)[0].trim();
+    // Split on "label: description" / "label | description" -- the colon/pipe
+    // commonly has no space before it (e.g. "the singer: The singer has..."),
+    // so only whitespace *after* the delimiter is required, not before.
+    const beforeDetail = firstLine.split(/\s*[:|]\s+/)[0].trim();
     let text = /^(?:character\s*\d*|subject\s*\d*|person|the subject|visible subject|the visible subject)$/i.test(beforeDetail)
       ? original
       : beforeDetail;
