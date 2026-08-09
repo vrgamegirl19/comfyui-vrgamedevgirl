@@ -37995,7 +37995,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
 
   function miniMaxH3SelectedFramingEntries(segment, shotPlan = []) {
     if (!Array.isArray(shotPlan) || !shotPlan.length) return [];
-    const cameraFlowKey = String(segment?.camera_flow || state.builderStoryboardDefaults?.camera_flow || "").trim();
+    const cameraFlowKey = String(state.builderStoryboardDefaults?.camera_flow || segment?.camera_flow || "").trim();
     const preset = STORYBOARD_CAMERA_FLOW_PRESETS[cameraFlowKey];
     if (!preset?.framing_candidates) return shotPlan.map(() => null);
     const customSequence = cameraFlowKey === "custom"
@@ -38096,7 +38096,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         : "";
     }).filter(Boolean);
     if (!framingLines.length) return [];
-    const cameraFlowKey = String(segment?.camera_flow || state.builderStoryboardDefaults?.camera_flow || "").trim();
+    const cameraFlowKey = String(state.builderStoryboardDefaults?.camera_flow || segment?.camera_flow || "").trim();
     const preset = STORYBOARD_CAMERA_FLOW_PRESETS[cameraFlowKey];
     if (!preset?.framing_candidates) return [];
     return [
