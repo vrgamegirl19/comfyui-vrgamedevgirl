@@ -16,6 +16,8 @@ dependencies = [
     "transformers",
     "accelerate",
     "huggingface_hub",
+    "Cython",
+    "scikit-build-core",
     "voxcpm",
     "llama-cpp-python",
 ]

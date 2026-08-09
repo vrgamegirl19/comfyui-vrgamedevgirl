@@ -99,8 +99,12 @@ git clone https://github.com/vrgamegirl19/comfyui-vrgamedevgirl.git
 Then install the Python requirements using the Python environment that runs ComfyUI. For the Windows portable build, run this from `ComfyUI_windows_portable`:
 
 ```bat
+python_embeded\python.exe -m pip install --upgrade pip setuptools wheel
+python_embeded\python.exe -m pip install Cython scikit-build-core
 python_embeded\python.exe -m pip install -r ComfyUI\custom_nodes\comfyui-vrgamedevgirl\requirements.txt
 ```
+
+The first two commands prepare the build tooling needed by `voxcpm` and `llama-cpp-python`, especially on Windows with Python 3.13. `llama-cpp-python` may also need a working CMake/Ninja and C++ compiler when a compatible prebuilt wheel is unavailable. Python 3.12 is the safer choice for older Windows portable environments.
 
 Restart ComfyUI and hard refresh the browser page after installation.
 
