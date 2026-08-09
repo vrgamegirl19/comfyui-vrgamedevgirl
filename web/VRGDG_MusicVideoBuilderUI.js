@@ -34485,6 +34485,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       lm_studio_output_token_limit: normalizeOutputTokenLimit(state.lmStudioOutputTokenLimit),
       llm_api_provider: state.llmApiProvider || "openai",
       llm_api_model: state.llmApiModel || "",
+      llm_api_key_project: state.llmApiKeyProject || "",
       notification_settings: normalizeNotificationSettings(state.notificationSettings),
       automatic_memory_cleanup: Boolean(state.automaticMemoryCleanup),
       scene_render_wait_hours: normalizeSceneRenderWaitHours(state.sceneRenderWaitHours),
