@@ -37089,6 +37089,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           ? "Gemma created T2I from reference image."
           : "Gemma created T2I from notes.");
     } catch (error) {
+      if (isRecoverableBuildGemmaError(error)) {
+        const debugPath = error?.gemmaDebugPath || await saveGemmaJunkDebug(error, { label: "single T2I prompt", segment });
+        const failure = recordGemmaBatchFailure(`t2i:${state.imageModelMode || "zimage"}:${segment.id}`, segment, error, debugPath);
+        showGemmaBatchFailures([failure]);
+      }
       progress?.set(`Error:\n${String(error?.message || error)}`, 100);
       toast(String(error?.message || error), true);
     } finally {
@@ -39300,6 +39305,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       toast(data.used_image_reference ? "Gemma created I2V prompt from the image reference." : `Gemma created ${modeLabel} prompt from the T2I prompt.`);
     } catch (error) {
       const debugPath = error?.gemmaDebugPath || await saveGemmaJunkDebug(error, { label: `single ${modeLabel} prompt`, segment });
+      if (isRecoverableBuildGemmaError(error)) {
+        const failure = recordGemmaBatchFailure(`i2v:${videoMode}:${segment.id}`, segment, error, debugPath);
+        showGemmaBatchFailures([failure]);
+      }
       progress?.set(`Error:\n${String(error?.message || error)}${debugPath ? `\n\nRaw Gemma output saved to:\n${debugPath}` : ""}`, 100);
       toast(String(error?.message || error), true);
     } finally {
