@@ -38502,10 +38502,16 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
     const shotPlan = miniMaxH3OfficialShotPlan(cutPlan);
     const rawShots = Array.isArray(parsed?.shots) ? parsed.shots : [];
-    if (rawShots.length !== shotPlan.length) {
+    if (rawShots.length > shotPlan.length) {
       throw new Error(`The LLM returned ${rawShots.length} shot description${rawShots.length === 1 ? "" : "s"}, but the builder expected ${shotPlan.length}.`);
     }
-    return rawShots.map((item, index) => {
+    const normalizedShots = rawShots.slice();
+    if (normalizedShots.length < shotPlan.length) {
+      const missingCount = shotPlan.length - normalizedShots.length;
+      toast(`The LLM returned ${normalizedShots.length} of ${shotPlan.length} shot descriptions; Builder filled ${missingCount} missing shot${missingCount === 1 ? "" : "s"} so the scheduled cuts remain intact.`, true);
+      while (normalizedShots.length < shotPlan.length) normalizedShots.push({});
+    }
+    return normalizedShots.map((item, index) => {
       const description = typeof item === "string" ? item : String(item?.description || item?.text || item?.shot || "").trim();
       if (!description) {
         toast(`Gemma returned a blank description for shot ${index + 1}; Builder filled it from the singer cue map.`, true);
@@ -54156,4 +54162,3 @@ app.registerExtension({
     };
   },
 });
-
