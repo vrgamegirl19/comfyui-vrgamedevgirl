@@ -816,3 +816,101 @@ precision: downloads the full-size original checkpoint..." (yellow) depending on
 current selection. Wired into `buildMlxReferenceGeneratorControls()` (shared by all
 three Reference Builder modal call sites) and the FLUX.2 Klein MLX scene-image panel's
 existing `change` listeners.
+
+---
+
+## Follow-up session (2026-08-09/10): "Gemma returned repeated/thought junk" investigation
+
+Reported symptom: generating a video prompt from the Edit Scene Card's video prep flow
+sometimes threw `"Gemma returned repeated/thought junk instead of a usable prompt. Try
+again or shorten the notes."` This took several rounds to pin down because two real,
+independent bugs were fixed along the way before finding the actual root cause — worth
+recording all three so the wrong ones aren't "found" again.
+
+### Fix 1 (real, but not the reported bug): MLX text/vision generation had no stop-sequence enforcement
+
+`_run_mlx_text_pipeline`/`_run_mlx_vision_pipeline` (`LLM.py`) relied only on
+`tokenizer.add_eos_token()` at model-load time (see the original Gemma MLX Backend
+Integration section above), silently swallowed via a bare `try/except: pass`. Several of
+`_GEMMA_STOP_SEQUENCES`'s entries (`_end_turn`, `|end_of_turn|`, etc.) aren't real single
+vocab tokens for this tokenizer, so registration for those silently failed. Unlike the
+GGUF/llama-cpp path, which passes a `stop=` list checked against generated *text* on every
+call, MLX had no per-call text-based stop check at all — so a generation that drifted past
+`<end_of_turn>` could run to `max_tokens` producing repeated channel/thought text.
+
+Fixed by adding `_truncate_at_stop_sequence()` (mirrors the GGUF path's substring
+matching) plus a repetition-penalty logits processor
+(`make_repetition_penalty`/`repetition_penalty` kwarg) to both MLX pipelines, with the
+penalty's lookback window scaled to `max_new_tokens` (`max(64, min(max_new_tokens, 512))`)
+since video-prep calls request up to 4000 tokens vs. ~1000-1200 for image-prep — a fixed
+64-token window left long generations unprotected against loops recurring outside it.
+
+Verified via direct `venv-3.13` calls: clean, correctly-terminated output at both short
+and full 4000-token budgets, including through the real `VRGDG_SuperGemmaGGUFChat`
+dispatch path. **This was a real gap and is a legitimate improvement, but it turned out
+not to be what the user was hitting** — real MLX generations were coming back clean the
+whole time.
+
+### Fix 2 (real, but also not the reported bug): frontend junk-detector's blanket bracket rule
+
+`looksLikeGeneratedPromptJunk()` (`web/VRGDG_MusicVideoBuilderUI.js`) had
+`if (bracketed.length >= 2) return true;` — flagging *any* text with two or more
+bracket-enclosed spans regardless of content. The I2V prompt-enhancement instruction
+template (`VRGDG_MusicVideoBuilderNodes.py`'s `_video_prompt_enhancement_instructions`)
+is itself built from bracket-placeholder examples (`[subject]`, `[camera motion]`, etc.),
+so a legitimately-cleaned response containing even two unrelated bracketed asides (e.g. a
+shot annotation) could get rejected client-side after the backend's own placeholder-aware
+validator had already passed it. Removed the blanket rule, keeping only the targeted check
+for brackets that actually contain placeholder words
+(`subject|setting|environment|camera|motion|weather|lighting|dynamic|framing`). Verified
+with a small harness: legitimate bracket use no longer trips it, genuine unfilled-template
+leaks still do. **Also a real fix, also not the actual cause of the user's failure.**
+
+### Actual root cause: `cleanNaturalSubjectLabel()`'s colon-split regex
+
+Neither fix above reproduced the failure — 10+ live `venv-3.13` generations against the
+user's exact scene notes (character/location/T2I text, both text-only and real-image
+vision paths, the enhancement pass, RTV mode) all came back clean. The backend's own
+`/vrgdg/music_builder/generate_i2v` request/response, captured from the user's real
+browser session via DevTools, also came back clean and passed the (already-patched) junk
+detector when tested in isolation.
+
+Added a `console.error` at the actual throw site in `applyTriggerPhrase()` so the next
+failure would print the exact text being rejected regardless of whether the existing
+`gemma_debug` file-save path fired (it wasn't producing a file for this user — likely
+because `project_folder` wasn't populated at the moment the error handler ran in this
+particular call path). That surfaced the real text: the user's full multi-sentence
+character bio (`"the singer: The singer has long, dark, wavy hair..."`) appearing
+**twice** in the final prompt, back-to-back with unrelated sentences between.
+
+Traced to `cleanNaturalSubjectLabel()` (`web/VRGDG_MusicVideoBuilderUI.js:12270`), which
+tries to shorten a `"label: description"` string down to just the label by splitting on
+`/\s+[:|]\s+/` — requiring whitespace on **both sides** of the colon/pipe. Standard
+English punctuation writes `"the singer:"` with no space before the colon, so the split
+never matched, `beforeDetail` fell back to the *entire original paragraph*, and since that
+paragraph starts with "the singer" it passed the `/^(?:the\s+)?(?:singer|performer|...)/i`
+check and was returned unchanged — the whole bio, not a short label.
+
+That mislabeled "performer" then got used twice by different downstream call sites:
+once prepended as the vocal directive in `applyVocalDirectiveToVideoPrompt()`
+(`"<performer> visibly sings "..." in sync with the audio."`), and again substituted into
+Gemma's own generated paragraph via `replaceGenericSubjectLabels()`. The result was a
+genuinely duplicated character bio in the final text — the junk detector was correctly
+catching a real defect, just not a Gemma/MLX generation problem at all.
+
+**Fix**: changed the split regex to `/\s*[:|]\s+/` (space before the delimiter now
+optional, space after still required) at `web/VRGDG_MusicVideoBuilderUI.js:12274`.
+Verified: `"the singer: <full bio>"` now correctly resolves to `"the singer"`; the
+previously-working spaced (`"the singer : ..."`) and generic-placeholder
+(`"Subject 1: ..."`) cases are unaffected. Confirmed working end-to-end by the user
+against the real builder after this fix (Fixes 1 and 2 above did not resolve it on their
+own; this one did).
+
+**Lesson**: when a Gemma/MLX-labeled error message shows up, don't assume the bug is in
+generation — several call sites downstream mutate the model's raw output client-side
+(vocal directive injection, generic-subject-label replacement, trigger-phrase mapping)
+before it reaches the user, and a bug in any of those can produce text that legitimately
+looks like model repetition. The `console.error` added to `applyTriggerPhrase()`'s throw
+site is a permanent diagnostic now — future junk-detector failures will log the exact
+rejected text to the browser console even if the file-based `gemma_debug` save path
+doesn't fire.
