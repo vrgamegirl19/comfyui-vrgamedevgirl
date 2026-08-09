@@ -37964,8 +37964,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   function miniMaxH3SelectedFramingEntries(segment, shotPlan = []) {
     if (!Array.isArray(shotPlan) || !shotPlan.length) return [];
     const cameraFlowKey = String(segment?.camera_flow || state.builderStoryboardDefaults?.camera_flow || "").trim();
-    if (cameraFlowKey !== "intimate_closeups") return shotPlan.map(() => null);
     const preset = STORYBOARD_CAMERA_FLOW_PRESETS[cameraFlowKey];
+    if (!preset?.framing_candidates) return shotPlan.map(() => null);
     const sequence = Array.isArray(preset?.sequence) ? preset.sequence.filter((entry) => entry?.shot) : [];
     if (!sequence.length) return shotPlan.map(() => null);
     const sceneText = [
@@ -37995,6 +37995,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       { terms: /shadow|silhouette|dark|backlit|night/, match: /silhouette/ },
       { terms: /above|down|overhead|looking down/, match: /high-angle|overhead/ },
       { terms: /below|low angle|powerful|towering/, match: /low-angle/ },
+      { terms: /dance|dancing|performance|rhythm|music video|singing/, match: /performance|dancing|rhythmic|vocal/ },
+      { terms: /door|doorway|enter|exit|location|environment|room|street|landscape/, match: /doorway|location|environment|ground|background/ },
+      { terms: /fisheye|distort|warped|curved|lens|glass|wide perspective/, match: /fisheye|distort|warped|curved|glass|lens/ },
+      { terms: /approach|approaches|lean|leans|crouch|crouching|reach|reaching|bend|bends|look down/, match: /approach|lean|crouch|reach|lens|tilt/ },
     ];
     const normalizeShotId = (entry, index) => String(entry.id || `${cameraFlowKey}_${index + 1}`).trim();
     const entries = sequence.map((entry, index) => ({ entry, index, id: normalizeShotId(entry, index) }));
@@ -38056,10 +38060,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         : "";
     }).filter(Boolean);
     if (!framingLines.length) return [];
-    const preset = STORYBOARD_CAMERA_FLOW_PRESETS.intimate_closeups;
+    const cameraFlowKey = String(segment?.camera_flow || state.builderStoryboardDefaults?.camera_flow || "").trim();
+    const preset = STORYBOARD_CAMERA_FLOW_PRESETS[cameraFlowKey];
+    if (!preset?.framing_candidates) return [];
     return [
       `MANDATORY per-shot framing variety (${preset.label}):\n${framingLines.join("\n")}`,
-      "Use the listed framing as exact cinematic direction for each shot. Do not choose, broaden, replace, or contradict it. Add the character's emotion, performance, and action around the specified framing. Every shot must remain close, intimate, and frame-filling. The furthest framing is a tightly composed upper-body shot. Never use a wide shot, distant shot, full-body shot, small-in-frame composition, or full environment view. Do not repeat a framing within this segment. A previously used framing may recur only when it is the strongest contextual fit or the available framing pool has been exhausted.",
+      preset.guidance || "Use the listed framing as exact cinematic direction for each shot. Do not choose, broaden, replace, or contradict it. Add the character's emotion, performance, and action around the specified framing. Do not repeat a framing within this segment. A previously used framing may recur only when it is the strongest contextual fit or the available framing pool has been exhausted.",
     ];
   }
 
