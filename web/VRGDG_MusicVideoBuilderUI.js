@@ -43392,6 +43392,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const videoPath = await renderSceneVideoWithProgress(renderTarget, renderIndex, progress, {
         existingVideoAction,
       });
+      await runClearMemoryWorkflowQuiet(progress, `${sceneDisplayName(renderTarget, renderIndex)} render`, 98);
       progress.close(900);
       toast(`Scene video ready:\n${videoPath}`);
     } catch (error) {
@@ -43460,6 +43461,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const videoPath = await renderMiniMaxSceneVideoWithProgress(renderTarget, renderIndex, progress, {
         existingVideoAction,
       });
+      await runClearMemoryWorkflowQuiet(progress, `${sceneDisplayName(renderTarget, renderIndex)} render`, 98);
       progress.close(900);
       toast(`MiniMax H3 scene video ready:\n${videoPath}`);
     } catch (error) {
