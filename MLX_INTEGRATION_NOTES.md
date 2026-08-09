@@ -670,3 +670,149 @@ Playwright layer was needed)
   `llama-cpp-python` build failure. No user-facing override/warning surfaces this today.
 - No explicit user-facing override to force GGUF over MLX (or vice versa) when both are
   technically available — dispatch is fully automatic today.
+
+---
+
+## Follow-up session (2026-08-09): engine visibility, memory diagnosis, pre-quantized downloads
+
+### FLUX.2 Klein MLX "Gemma Klein MLX Prompt" button fix
+
+Reported as "does nothing" — turned out unrelated to Gemma/MLX entirely. Both the CUDA
+"Gemma Flux Prompt" button and the MLX one already called the same endpoint
+(`/vrgdg/music_builder/generate_flux_klein_prompt`) and correctly updated the segment's
+data model (`segment.flux_prompt`). The bug: `syncSegmentT2IPrompt()` (the function both
+buttons funnel through to push the result into visible textareas) was missing the line
+that writes into the FLUX.2 Klein MLX card's textarea (`flux2KleinMlxPrompt`) — its
+sibling function `syncSegmentFlowGptPrompt()` already had it. So the prompt was saved
+but the box stayed stale until the user navigated away from the scene and back (full
+re-sync). Fixed by adding `flux2KleinMlxPrompt.value = cleanPrompt;` to
+`syncSegmentT2IPrompt()` (`web/VRGDG_MusicVideoBuilderUI.js`).
+
+### `[VRGDG WorkflowRunner]`/`[VRGDG LLM]` console logging for every MLX engine
+
+None of the MLX engines printed anything to the ComfyUI console before this — the only
+confirmation a user had that MLX (vs. CUDA, vs. a different MLX tier) actually ran was
+client-side toast text, output `filename_prefix`, or node titles in the graph. Added
+`print(f"[VRGDG ...] Engine=... ...", flush=True)` lines at the point each engine's
+prompt is built/dispatched:
+
+- **LTX-2 MLX** — `_build_ltx2mlx_api_prompt()`: `mode`, `model_dir`, `pipeline_type`, `seed`.
+- **FLUX.2 Klein MLX** — `_build_flux2klein_mlx_api_prompt()`: `mode`, `model_name`, `quantize`, `seed`.
+- **Z-Image MLX** — `_build_zimage_mlx_api_prompt()`: `model_name`, `quantize`, `seed`.
+- **Krea2 + Z-Image MLX Enhancer** — `_build_krea2_zimage_mlx_api_prompt()`: both passes' `model_name`/`quantize`, `seed`.
+- **Gemma MLX (text and vision)** — `LLM.py`'s `_load_gguf_model()`, the single dispatch
+  point every internal call site and `generate_prompt()` funnel through: logs
+  `Engine=Gemma MLX (Apple Silicon)` with `kind=text|vision`, the resolved
+  `mlx-community/gemma-3-*` repo, and the original GGUF `model_path`, or
+  `Engine=GGUF (llama-cpp-python)` when no MLX mapping applies. Placed before either
+  path's own cache check so cache hits log too, not just fresh loads.
+
+User confirmed via this logging: the 27B Gemma-3 MLX text tier and vision (image
+captioning) both work end-to-end through the real Music Video Builder UI. Vision
+specifically fires from `_generate_builder_t2i_prompt()`/`_generate_builder_i2v_prompt()`/
+etc. (gated behind a `use_vision` toggle + an attached reference image, not always-on),
+the always-vision `/vrgdg/music_builder/describe_reference_image` route, and
+`VRGDG_LoraDatasetCreatorNodes.py`'s captioning step.
+
+### LTX2MLX 8h+ render investigation: memory pressure, not (only) inherent slowness
+
+User reported LTX-2.3 MLX at q8, 1920x1080, 8 seconds, exceeding the already-generous 8h
+render timeout. Diagnosis: `vm.swapusage` showed 24.4GB/25.6GB swap used (only ~1.2GB
+free) — heavy swapping on Apple Silicon severely degrades unified-memory-bound
+workloads. After the user closed some apps, physical free RAM improved (~4.7GB → ~7.8GB)
+and `memory_pressure`'s own verdict moved to "System-wide memory free percentage: 62%"
+(healthy) — but the swap "used" figure barely moved, since macOS doesn't proactively
+reclaim swap once written; it's a stale signature of the render's *actual* peak demand,
+not a live indicator once pressure eases. No single foreground app was found hogging
+tens of GB — top RSS consumers were all under ~1GB. Most likely explanation: some
+combination of (a) 1080p/8s/q8/`two_stage` genuinely being a very large, previously
+untested workload for a 22B model on Apple Silicon's unified memory, and (b) that load
+itself triggering swap thrashing that made it much worse than the "just slow" baseline.
+
+Available levers on `LTX2MLXModelLoader`/`LTX2MLXAudioModelLoader` (not yet tested
+against each other head-to-head): `low_ram` toggle (→ `low_ram_streaming=True`, streams
+weights from disk instead of holding q8's ~21GB resident at once — trades throughput for
+much lower peak memory, worth trying first given the swap evidence); `model_dir` quant
+tier (`dgrauet/ltx-2.3-mlx-q4` vs. the current `-q8`, roughly halves resident weight
+size); `pipeline_type` (`two_stage`/`two_stage_hq` run generation twice vs. `one_stage`;
+`distilled` is fastest/cheapest via fewer steps, some quality tradeoff).
+
+### Pre-quantized HuggingFace downloads for FLUX.2 Klein / Krea2 / Z-Image MLX
+
+Discovered while debugging why selecting "FLUX.2 Klein MLX, 9B, 8-bit" still triggered a
+`Downloading model from HuggingFace: black-forest-labs/FLUX.2-klein-9B...` log line for
+a ~32GB+ bf16 checkpoint. Root cause (not a bug, confirmed via real `mflux` source):
+`mflux` has no separate pre-quantized repo concept baked into `ModelConfig.from_name()`
+— it always resolves a bare `model_name` like `flux2-klein-9b` to the original
+full-precision HF repo, downloads that, and quantizes locally on first load, regardless
+of the requested `quantize` level. The `quantize` savings only apply to compute/memory
+after that point, not to the download itself.
+
+However, all three sibling loader nodes already had an existing, previously
+under-utilized `custom_model_path` field ("Overrides model_name if set — local path or
+HF repo id"). Traced through `Flux2Initializer.init()` → `WeightLoader.load()` →
+`WeightApplier.apply_and_quantize_single()`: if `custom_model_path` points at a repo
+whose weights already carry `quantization_level` metadata (i.e. a genuine pre-quantized
+"mflux save format" export), `QuantizationResolution.resolve(stored=stored_q,
+requested=quantize_arg)` uses the stored quantization instead of re-quantizing — safe
+and correct, confirmed by reading `mflux`'s actual resolution rule table
+(`quantization_resolution.py`), not assumed.
+
+**Verified real repos** (via `HfApi.model_info(..., files_metadata=True)` — actual
+existence, non-gated status, and real file sizes checked, not guessed from naming
+conventions) and wired into each pack's `nodes/loaders.py` as an automatic
+`_PREQUANTIZED_REPO_MAP` lookup (used only when `custom_model_path` is left blank):
+
+| Engine | Model + quantize | Repo | Size | vs. bf16 original |
+|---|---|---|---|---|
+| FLUX.2 Klein | `flux2-klein-4b` @ 4/8-bit | `mlx-community/flux2-klein-4b-4bit`/`-8bit` | 4.6GB / 8.6GB | ~15GB+ |
+| FLUX.2 Klein | `flux2-klein-9b` @ 4/8-bit | `mlx-community/flux2-klein-9b-4bit`/`-8bit` | 9.5GB / 17.9GB | ~32GB+ |
+| Krea2 | `krea2` @ 4/8-bit | `MLXBits/krea-2-mlx-q4`/`-q8` | ~7GB / 22.2GB | full `krea/Krea-2-Turbo` bf16 (also gated) |
+| Z-Image | `z-image-turbo` @ 8-bit | `deepsweet/Z-Image-Turbo-6B-MLX-Q8` | 11GB | `Tongyi-MAI/Z-Image-Turbo` bf16 |
+
+Every repo above was confirmed compatible the same way: its own `model.safetensors.index.json`
+`metadata` field carries `quantization_level`/`mflux_version`, and its README explicitly
+states `library_name: mflux` with an `mflux-generate-*` usage example — i.e. it was
+actually exported by `mflux` itself, not just similarly named.
+
+**Rejected**: `SceneWorks/krea-2-turbo-mlx` (user-suggested) — real repo, real MLX
+weights, but its `q8/transformer/config.json` shows `_class_name:
+"Krea2Transformer2DModel"` and `q8/model_index.json` declares `diffusers`/`transformers`
+library components (`Krea2Pipeline`) — a `diffusers`-native pipeline export, a
+fundamentally different weight-key schema than what this pack's `mflux`-based `Krea2`
+loader expects. Not wired in; would very likely throw a key/shape-mismatch error or
+silently produce broken output if pointed at directly.
+
+Also added: a `_log_resolved_source()` print in each of the three packs' loaders
+(`[comfyui-flux2klein-mlx]`/`[comfyui-krea2-mlx]`/`[comfyui-zimage-mlx]` prefix),
+logging whether the pre-quantized repo, a `custom_model_path` override, or the original
+bf16-then-quantize-locally path was actually used — visible in the ComfyUI console for
+every single model load.
+
+**Not done**: `flux2-klein-9b-kv` (no pre-quantized mirror found), plain `z-image`
+(non-turbo), and Z-Image's 4-bit tier all still fall through to the original
+download-and-quantize-locally behavior — no verified repo exists for these yet.
+
+### Frontend: pre-quantized vs. full-precision status indicator
+
+Added a live status note under every model/quantize dropdown pair across the three
+engines above, so the choice's cost is visible before clicking generate — not just
+knowable after the fact from the console log:
+
+- FLUX.2 Klein MLX scene-image card: updates on both model and quantize changes.
+- Z-Image MLX (standalone card, and the enhancer second pass inside the "Krea2 + Z-Image
+  MLX Enhancer" combo card): updates on quantize (model is a fixed constant per card).
+- Krea2 MLX (first pass of the enhancer combo card): same.
+
+Implementation: a client-side `MLX_PREQUANTIZED_REPO_MAP` in
+`web/VRGDG_MusicVideoBuilderUI.js` mirrors the Python-side maps above (with an explicit
+comment noting they must be kept in sync — this is display-only, the real routing
+decision is always made server-side, so any drift would only produce a misleading label,
+never wrong behavior). `describeMlxQuantStatus()`/`makeMlxQuantStatusNote()`/
+`updateMlxQuantStatusNote()` render either "⚡ Pre-quantized build available: downloads
+`<repo> (<size>)` directly" (green) or "⏳ No pre-quantized build known ... downloads the
+full-size original and quantizes it locally (slow, large one-time download)" / "⏳ Full
+precision: downloads the full-size original checkpoint..." (yellow) depending on the
+current selection. Wired into `buildMlxReferenceGeneratorControls()` (shared by all
+three Reference Builder modal call sites) and the FLUX.2 Klein MLX scene-image panel's
+existing `change` listeners.
