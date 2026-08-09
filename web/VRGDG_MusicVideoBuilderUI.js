@@ -37985,7 +37985,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const shot = String(entry?.shot || "")
       .replace(/\{\{subject_possessive\}\}/gi, possessive)
       .replace(/\{\{subject\}\}/gi, reference)
-      .replace(/\bthe subject's\b/gi, possessive)
+      .replace(/\bthe subject[’']s\b/gi, possessive)
       .replace(/\bthe subject\b/gi, reference);
     return { ...entry, shot };
   }
