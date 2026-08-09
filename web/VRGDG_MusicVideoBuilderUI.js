@@ -38481,16 +38481,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (descriptions.length !== shotPlan.length) {
       throw new Error(`Cannot assemble MiniMax shots: expected ${shotPlan.length} description${shotPlan.length === 1 ? "" : "s"}, got ${descriptions.length}.`);
     }
-    const selectedFramingEntries = miniMaxH3SelectedFramingEntries(segment, shotPlan);
     return shotPlan.map((shot, index) => {
       const description = normalizeMiniMaxH3ShotDescription(descriptions[index]);
-      const framing = selectedFramingEntries[index];
-      const framingBlock = framing
-        ? `Frame this shot as ${framing.shot}${framing.camera ? `, with ${framing.camera} camera movement` : ""}.`
-        : "";
-      if (shot.number === 1) return `[Shot 1] ${framingBlock} ${description}`.trim();
+      if (shot.number === 1) return `[Shot 1] ${description}`.trim();
       const postCutDescription = miniMaxH3PostCutShotText(description).replace(/^\s*([a-z])/, (_match, letter) => letter.toUpperCase());
-      return `[Shot ${shot.number}] At ${shot.timecode}, ${framingBlock} ${postCutDescription}`.trim();
+      return `[Shot ${shot.number}] At ${shot.timecode}, ${postCutDescription}`.trim();
     }).join("\n\n");
   }
 
