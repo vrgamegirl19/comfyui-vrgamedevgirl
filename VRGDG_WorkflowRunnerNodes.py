@@ -2504,6 +2504,18 @@ def _require_minimax_h3_memory_efficient_sage_attention():
         ) from exc
 
 
+def _require_minimax_h3_sol_attention():
+    """Check the optional Kijai node before emitting a Sol-Attn workflow node."""
+    custom_nodes_root = os.path.join(folder_paths.base_path, "custom_nodes")
+    node_root = os.path.join(custom_nodes_root, "ComfyUI-SolAttn_triton")
+    if not os.path.isfile(os.path.join(node_root, "__init__.py")):
+        raise RuntimeError(
+            "MiniMax H3 Sol Attention is enabled, but ComfyUI-SolAttn_triton is not installed. "
+            "Install https://github.com/kijai/ComfyUI-SolAttn_triton in ComfyUI/custom_nodes, "
+            "then restart ComfyUI."
+        )
+
+
 def _patch_minimax_h3_advanced_settings(prompt, payload):
     sampler_id = _api_node_id_by_class(prompt, "KSamplerSelect", fallback="123")
     scheduler_id = _api_node_id_by_class(prompt, "BasicScheduler", fallback="124")
@@ -2667,6 +2679,49 @@ def _patch_minimax_h3_memory_efficient_sage_attention(prompt, payload):
     return {"enabled": True, "node": node_id}
 
 
+def _patch_minimax_h3_sol_attention(prompt, payload):
+    enabled = _bool_payload(payload, "use_sol_attention", False)
+    if not enabled:
+        return {"enabled": False, "node": ""}
+
+    _require_minimax_h3_sol_attention()
+    scheduler_id = _api_node_id_by_class(prompt, "BasicScheduler", fallback="124")
+    guider_id = _api_node_id_by_class(prompt, "BasicGuider", fallback="126")
+    model_ref = prompt.get(scheduler_id, {}).get("inputs", {}).get("model")
+    if not isinstance(model_ref, list) or len(model_ref) != 2:
+        raise ValueError("MiniMax H3 Sol Attention patch could not find the current model connection.")
+
+    node_id = "9301"
+    while node_id in prompt:
+        node_id = str(int(node_id) + 1)
+    tau = _float_payload(payload, "sol_attention_tau", 1.3, 0.0, 4.0)
+    start_percent = _float_payload(payload, "sol_attention_start_percentage", 0.2, 0.0, 1.0)
+    end_percent = _float_payload(payload, "sol_attention_end_percentage", 0.9, 0.0, 1.0)
+    min_tokens = _int_payload(payload, "sol_attention_min_tokens", 4096, 0, 1 << 20)
+    prompt[node_id] = {
+        "class_type": "SolAttnPatch",
+        "inputs": {
+            "model": list(model_ref),
+            "tau": tau,
+            "start_percent": start_percent,
+            "end_percent": end_percent,
+            "min_tokens": min_tokens,
+        },
+        "_meta": {"title": "MiniMax H3 Sol Attention"},
+    }
+    patched_ref = [node_id, 0]
+    _set_api_input(prompt, scheduler_id, "model", patched_ref)
+    _set_api_input(prompt, guider_id, "model", patched_ref)
+    return {
+        "enabled": True,
+        "node": node_id,
+        "tau": tau,
+        "start_percent": start_percent,
+        "end_percent": end_percent,
+        "min_tokens": min_tokens,
+    }
+
+
 def _patch_minimax_h3_loras(prompt, payload):
     enabled = _bool_payload(payload, "use_loras", False) or _bool_payload(payload, "use_custom_loras", False)
     if not enabled:
@@ -2757,6 +2812,8 @@ def _patch_minimax_h3_loras(prompt, payload):
 def _build_minimax_h3_api_prompt(payload):
     if _bool_payload(payload, "use_memory_efficient_sage_attention", False):
         _require_minimax_h3_memory_efficient_sage_attention()
+    if _bool_payload(payload, "use_sol_attention", False):
+        _require_minimax_h3_sol_attention()
     raw_audio_mode = str(payload.get("audio_mode") or payload.get("audioMode") or "input_audio").strip().lower().replace("-", "_").replace(" ", "_")
     audio_mode = "built_in_audio" if raw_audio_mode in {"built_in_audio", "native_audio", "generated_audio"} else "input_audio"
     workflow_template = _minimax_h3_built_in_audio_api_template_path() if audio_mode == "built_in_audio" else _minimax_h3_api_template_path()
@@ -2900,6 +2957,7 @@ def _build_minimax_h3_api_prompt(payload):
     lora_settings = _patch_minimax_h3_loras(prompt, payload)
     turbo_settings = _patch_minimax_h3_turbo(prompt, payload)
     memory_efficient_sage_attention = _patch_minimax_h3_memory_efficient_sage_attention(prompt, payload)
+    sol_attention = _patch_minimax_h3_sol_attention(prompt, payload)
     if turbo_settings["enabled"]:
         advanced_settings = {
             **advanced_settings,
@@ -2935,6 +2993,7 @@ def _build_minimax_h3_api_prompt(payload):
         "lora_settings": lora_settings,
         "turbo_settings": turbo_settings,
         "memory_efficient_sage_attention": memory_efficient_sage_attention,
+        "sol_attention": sol_attention,
     }
 
 

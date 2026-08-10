@@ -245,6 +245,11 @@ const DEFAULT_MINIMAX_H3_SETTINGS = {
   easy_cache_verbose: false,
   sage_attention: "auto",
   use_memory_efficient_sage_attention: false,
+  use_sol_attention: false,
+  sol_attention_tau: 1.3,
+  sol_attention_start_percentage: 0.2,
+  sol_attention_end_percentage: 0.9,
+  sol_attention_min_tokens: 4096,
   enable_fp16_accumulation: true,
   use_loras: false,
   lora_count: 0,
@@ -424,6 +429,11 @@ function cloneMiniMaxH3Settings(value = {}) {
       ? source.sage_attention
       : DEFAULT_MINIMAX_H3_SETTINGS.sage_attention,
     use_memory_efficient_sage_attention: Boolean(source.use_memory_efficient_sage_attention ?? DEFAULT_MINIMAX_H3_SETTINGS.use_memory_efficient_sage_attention),
+    use_sol_attention: Boolean(source.use_sol_attention ?? DEFAULT_MINIMAX_H3_SETTINGS.use_sol_attention),
+    sol_attention_tau: Number.isFinite(Number(source.sol_attention_tau)) ? Math.max(0, Math.min(4, Number(source.sol_attention_tau))) : DEFAULT_MINIMAX_H3_SETTINGS.sol_attention_tau,
+    sol_attention_start_percentage: Number.isFinite(Number(source.sol_attention_start_percentage)) ? Math.max(0, Math.min(1, Number(source.sol_attention_start_percentage))) : DEFAULT_MINIMAX_H3_SETTINGS.sol_attention_start_percentage,
+    sol_attention_end_percentage: Number.isFinite(Number(source.sol_attention_end_percentage)) ? Math.max(0, Math.min(1, Number(source.sol_attention_end_percentage))) : DEFAULT_MINIMAX_H3_SETTINGS.sol_attention_end_percentage,
+    sol_attention_min_tokens: Math.max(0, Math.min(1048576, Math.trunc(Number(source.sol_attention_min_tokens ?? DEFAULT_MINIMAX_H3_SETTINGS.sol_attention_min_tokens) || DEFAULT_MINIMAX_H3_SETTINGS.sol_attention_min_tokens))),
     enable_fp16_accumulation: Boolean(source.enable_fp16_accumulation ?? DEFAULT_MINIMAX_H3_SETTINGS.enable_fp16_accumulation),
     use_loras: loraEnabled,
     lora_count: loraEnabled ? Math.max(0, Math.min(4, Math.trunc(Number(source.lora_count ?? source.loraCount ?? loras.length) || loras.length))) : 0,
@@ -5625,6 +5635,23 @@ function openBuilder(node) {
   const miniMaxEasyCacheVerbose = makeCheckbox("Verbose EasyCache logging", DEFAULT_MINIMAX_H3_SETTINGS.easy_cache_verbose);
   const miniMaxSageAttention = makeSelect(MINIMAX_H3_SAGE_ATTENTION_OPTIONS, DEFAULT_MINIMAX_H3_SETTINGS.sage_attention);
   const miniMaxMemoryEfficientSageAttention = makeCheckbox("Use memory-efficient MiniMax H3 Sage Attention patch", DEFAULT_MINIMAX_H3_SETTINGS.use_memory_efficient_sage_attention);
+  const miniMaxSolAttention = makeCheckbox("Use MiniMax H3 Sol Attention patch", DEFAULT_MINIMAX_H3_SETTINGS.use_sol_attention);
+  const miniMaxSolAttentionTau = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.sol_attention_tau), "number");
+  miniMaxSolAttentionTau.min = "0";
+  miniMaxSolAttentionTau.max = "4";
+  miniMaxSolAttentionTau.step = "0.05";
+  const miniMaxSolAttentionStartPercentage = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.sol_attention_start_percentage), "number");
+  miniMaxSolAttentionStartPercentage.min = "0";
+  miniMaxSolAttentionStartPercentage.max = "1";
+  miniMaxSolAttentionStartPercentage.step = "0.01";
+  const miniMaxSolAttentionEndPercentage = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.sol_attention_end_percentage), "number");
+  miniMaxSolAttentionEndPercentage.min = "0";
+  miniMaxSolAttentionEndPercentage.max = "1";
+  miniMaxSolAttentionEndPercentage.step = "0.01";
+  const miniMaxSolAttentionMinTokens = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.sol_attention_min_tokens), "number");
+  miniMaxSolAttentionMinTokens.min = "0";
+  miniMaxSolAttentionMinTokens.max = "1048576";
+  miniMaxSolAttentionMinTokens.step = "512";
   const miniMaxFp16Accumulation = makeCheckbox("Enable fp16 accumulation", DEFAULT_MINIMAX_H3_SETTINGS.enable_fp16_accumulation);
   const miniMaxEasyCacheNote = document.createElement("div");
   miniMaxEasyCacheNote.textContent = "Bypass sends the diffusion model directly to the scheduler and removes EasyCache from the queued workflow copy.";
@@ -5645,9 +5672,18 @@ function openBuilder(node) {
       miniMaxEasyCacheVerbose.wrapper,
     ]),
     makeSettingsSection("Model Loader", [
-      makeField("Sage Attention", miniMaxSageAttention),
-      miniMaxMemoryEfficientSageAttention.wrapper,
+      makeSettingsSection("Sage Attention", [
+        makeField("Sage Attention", miniMaxSageAttention),
+        miniMaxMemoryEfficientSageAttention.wrapper,
+      ]),
       miniMaxFp16Accumulation.wrapper,
+      makeSettingsSection("Sol Attention", [
+        miniMaxSolAttention.wrapper,
+        makeField("Tau", miniMaxSolAttentionTau),
+        makeField("Start percentage", miniMaxSolAttentionStartPercentage),
+        makeField("End percentage", miniMaxSolAttentionEndPercentage),
+        makeField("Minimum tokens", miniMaxSolAttentionMinTokens),
+      ]),
     ]),
   ], false);
   const miniMaxTextModePanel = makeSettingsPanel([]);
@@ -6794,6 +6830,11 @@ function openBuilder(node) {
       easy_cache_verbose: miniMaxEasyCacheVerbose.input.checked,
       sage_attention: miniMaxSageAttention.value,
       use_memory_efficient_sage_attention: miniMaxMemoryEfficientSageAttention.input.checked,
+      use_sol_attention: miniMaxSolAttention.input.checked,
+      sol_attention_tau: miniMaxSolAttentionTau.value,
+      sol_attention_start_percentage: miniMaxSolAttentionStartPercentage.value,
+      sol_attention_end_percentage: miniMaxSolAttentionEndPercentage.value,
+      sol_attention_min_tokens: miniMaxSolAttentionMinTokens.value,
       enable_fp16_accumulation: miniMaxFp16Accumulation.input.checked,
       use_loras: loraEnabled,
       lora_count: loraCount,
@@ -7427,6 +7468,11 @@ function openBuilder(node) {
     miniMaxEasyCacheVerbose.input.checked = settings.easy_cache_verbose;
     miniMaxSageAttention.value = settings.sage_attention;
     miniMaxMemoryEfficientSageAttention.input.checked = settings.use_memory_efficient_sage_attention;
+    miniMaxSolAttention.input.checked = settings.use_sol_attention;
+    miniMaxSolAttentionTau.value = String(settings.sol_attention_tau);
+    miniMaxSolAttentionStartPercentage.value = String(settings.sol_attention_start_percentage);
+    miniMaxSolAttentionEndPercentage.value = String(settings.sol_attention_end_percentage);
+    miniMaxSolAttentionMinTokens.value = String(settings.sol_attention_min_tokens);
     miniMaxFp16Accumulation.input.checked = settings.enable_fp16_accumulation;
     miniMaxUseLoras.input.checked = settings.use_loras;
     miniMaxLoraCount.value = String(settings.lora_count || 0);
