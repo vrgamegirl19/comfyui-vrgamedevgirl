@@ -3550,7 +3550,9 @@ def _run_lm_studio_vision(payload, instruction_text, pil_images, temperature=0.2
     images = list(pil_images or [])
     if not images:
         raise ValueError("LM Studio vision needs at least one image.")
-    content = [{"type": "message", "role": "user", "content": str(instruction_text or "")}]
+    # Native LM Studio chat accepts multimodal input blocks directly. Do not
+    # wrap the text in an OpenAI-style message object inside `input`.
+    content = [{"type": "text", "content": str(instruction_text or "")}]
     for image in images:
         content.append({
             "type": "image",
