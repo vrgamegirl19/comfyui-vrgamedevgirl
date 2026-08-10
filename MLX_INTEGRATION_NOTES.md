@@ -914,3 +914,44 @@ looks like model repetition. The `console.error` added to `applyTriggerPhrase()`
 site is a permanent diagnostic now — future junk-detector failures will log the exact
 rejected text to the browser console even if the file-based `gemma_debug` save path
 doesn't fire.
+
+### TODO (not yet done): LTX2MLX A2V trims video slightly shorter than its audio slice — scene splitting needs to account for this
+
+Found while fixing an unrelated crash in the sibling `comfyui-ltx2-mlx` repo (see its own
+commit history: `4528ec3`, superseded by `e71109b`). `LTX2MLXAudioToVideo`'s
+`match_audio_length` used to round the derived frame count to the *nearest* valid `8k+1`
+value and pad the audio with trailing silence if that rounded up past the clip's real
+duration — which fixed a RoPE broadcast-shape crash
+(`[broadcast_shapes] Shapes (1,32,100,32) and (1,32,101,32) cannot be broadcast`) but added
+synthetic silence to the song. Revised to instead round the frame count *down* to the
+largest `8k+1` value that fits within the audio's actual duration
+(`_snap_frame_count_leq` in `comfyui-ltx2-mlx/nodes/audio.py`) — no padding, but the
+rendered video can now be up to just under one frame-snap step
+(8 frames / frame_rate, ~333ms at 24fps) **shorter** than the audio slice it was given.
+
+**Why this matters here**: this repo's scene-splitting logic (`_trim_scene_audio_clip` in
+`VRGDG_WorkflowRunnerNodes.py:3156`, and whatever computes each scene's `start_seconds`/
+`duration_seconds` slice of the full song before calling it) currently assumes each
+scene's rendered video will cover its audio slice exactly, back-to-back with no gap, so
+consecutive scenes concatenate seamlessly into the full song. With the LTX2MLX A2V engine
+specifically, that assumption is no longer exactly true — a scene's video can now end
+up to ~333ms *before* its audio slice ends, which would show up as a small silent/frozen
+gap at each scene boundary in the final concatenated music video (LTX2MLX A2V only; other
+video engines — LTX, MiniMax H3 — aren't affected, since they don't derive frame count
+from `match_audio_length`'s 8k+1 snap-down).
+
+**Not yet investigated/fixed** — needs a follow-up session to look at:
+- Whether scene concatenation is even audio-driven end-to-end for LTX2MLX A2V today, or
+  whether each scene's own generated audio (LTX2MLX A2V outputs audio too, not just
+  video — it's driven by a vocoder/audio decoder per the pipeline load log) is what
+  actually gets stitched, in which case the video/audio *within* a single scene's output
+  are already in sync and the only question is whether the next scene's clip starts
+  immediately after or leaves a gap.
+- Whether the fix belongs in `_trim_scene_audio_clip`/scene-boundary computation (e.g.
+  snap each scene's duration down to the same `8k+1`-at-24fps boundary *before* slicing,
+  so consecutive slices already tile with no gap) or in how the render pipeline
+  reassembles per-scene clips into the final timeline (e.g. compensate the next scene's
+  start time by the previous scene's actual trimmed length rather than its requested
+  audio-slice length).
+- Whether this is specific to the current default `frame_rate=24` (8-frame step ≈ 333ms)
+  or should be computed dynamically per the project's actual frame rate setting.
