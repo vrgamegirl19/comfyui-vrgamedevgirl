@@ -955,3 +955,100 @@ from `match_audio_length`'s 8k+1 snap-down).
   audio-slice length).
 - Whether this is specific to the current default `frame_rate=24` (8-frame step ≈ 333ms)
   or should be computed dynamically per the project's actual frame rate setting.
+
+---
+
+## Follow-up session (2026-08-11): example workflows for all 4 MLX node packs, Krea2 mflux bug fix
+
+### Example workflows added to all four standalone node-pack repos
+
+Each of `comfyui-zimage-mlx`, `comfyui-flux2klein-mlx`, `comfyui-ltx2-mlx`, and
+`comfyui-krea2-mlx` now ships an `examples/` folder: a loadable ComfyUI workflow
+graph (Loader → Generate [→ Preview]), a real output produced by actually running
+it against a live ComfyUI server (`/prompt` → `/history`, zero `node_errors`), and
+a Playwright screenshot of the loaded graph — all committed to each repo's own
+GitHub remote (`tanis2000/comfyui-{zimage,flux2klein,ltx2,krea2}-mlx`).
+
+**Real bug found and fixed along the way, worth remembering for any future
+hand-authored workflow JSON**: ComfyUI's frontend auto-inserts a
+`control_after_generate` widget immediately after any INT widget literally named
+`seed` — even though none of these node packs' `define_schema()`s declare one
+(`control_after_generate=None` by default, no opt-in). This is invisible from the
+Python schema alone; it only shows up once the workflow is actually loaded in the
+browser. A hand-written `widgets_values` array that doesn't budget a slot for it
+silently shifts every value after `seed` out of alignment — e.g. a string like
+`"zimage_mlx/image"` landing in a `FLOAT` widget's slot. Root-caused by loading
+the graph in a real headless browser via Playwright and reading
+`node.widgets.map(w => ({name: w.name, value: w.value}))` directly, not by
+guessing from the schema — the widget's *serialized position*, not its declared
+name, is what actually gets consumed. **Lesson: always verify a hand-authored
+workflow JSON's `widgets_values` against a real loaded graph in the browser
+(`app.loadGraphData()` + reading live widget values), never trust the schema
+order alone when a `seed`-named INT widget is present anywhere in the node.**
+
+Also confirmed (contrary to an earlier assumption checked and discarded this
+session): the newer Vue-based frontend's saved `links` array uses the classic
+`[id, from_node, from_slot, to_node, to_slot, type]` tuple format, not an
+object form — that wasn't the actual cause of an early workflow failing to load;
+the `control_after_generate` misalignment was.
+
+### Real mflux bug found and fixed in `comfyui-krea2-mlx`
+
+Krea2 generation via the pre-quantized `MLXBits/krea-2-mlx-q8`/`-q4` repos
+(previously recorded as "verified genuinely compatible" in this doc's original
+Krea-2 + Z-Image session) started failing with `FileNotFoundError: Missing
+specified weight files ... ['turbo.safetensors']` — the installed `mflux` version
+had apparently moved on since that verification. Root-caused by reading the
+actually-installed `mflux` 0.18.1 source directly: `Krea2WeightDefinition`
+(`mflux/models/krea2/weights/krea2_weight_definition.py`) hardcodes the
+transformer component's weight file as a single literal `turbo.safetensors`, and
+its own `get_download_patterns()` only ever fetches that exact filename — but the
+MLXBits pre-quantized repos ship the transformer as root-level numbered shards
+(`0.safetensors`..`6.safetensors` + `model.safetensors.index.json`) instead of a
+single file, a genuinely different, incompatible layout. Not fixable in mflux
+from this repo; worked around in `comfyui-krea2-mlx/nodes/loaders.py` instead:
+`_ensure_turbo_safetensors()` does its own separate, narrowly-scoped
+`snapshot_download` for the root-level shards (mflux's own restrictive
+`allow_patterns` never fetches them), then merges them via `mlx.load`/
+`mx.save_safetensors` into a `turbo.safetensors` file inside the same HF cache
+snapshot directory — one-time and idempotent, since `PathResolution.resolve`'s
+`exists_locally` rule (confirmed by reading `mflux/models/common/resolution/
+path_resolution.py`) takes priority over re-downloading once a local path is
+handed back.
+
+**Verified for real, not just at the merge-logic level**: loaded the actual
+updated `Krea2ModelLoader`/`Krea2Generate` node classes directly (via
+`importlib.util.spec_from_file_location` with `submodule_search_locations`, to
+handle the hyphenated package directory name the same way ComfyUI itself does)
+and ran a full pipeline load + real generation end-to-end — produced a clean
+image matching the prompt. This is the repo's existing "layer 1: direct Python
+calls" testing methodology, used here specifically because the live ComfyUI
+server's already-imported Python module can't hot-reload edited node code
+without a restart, and restarting risked losing an undocumented `HF_HOME`
+env var override that isn't set in the interactive shell (confirmed via
+`lsof`/`ps` that the running server process has it set somehow, but it doesn't
+appear in the shell's own environment — likely set by whatever launched it,
+StabilityMatrix's own process launcher).
+
+**Disk space note**: this session's Krea2 q8 download (root-level shards, since
+the vae/text_encoder portion was already cached from an earlier failed attempt)
+needed ~22GB total and briefly pushed free disk down to ~18GB before the merge
+step (which needs its own ~14GB for the merged `turbo.safetensors`, in addition
+to the shard files it reads from) completed. Also found and cleaned up ~2.8GB of
+orphaned `.incomplete` blob files left over from the original failed attempt
+(different content hashes than the successful retry, so not deduplicated
+automatically) — worth checking for on any machine that hit the original bug
+before this fix existed.
+
+### Krea2 remaining known gaps
+
+- The other three MLXBits→turbo.safetensors-shape mismatches this fix doesn't
+  address (if they exist): only `krea2` was affected/tested here, since it's the
+  only model in `comfyui-krea2-mlx`. `flux2-klein-*`/`z-image-*`'s pre-quantized
+  `mlx-community` mirrors were not affected — confirmed via their own successful
+  example-workflow runs this same session, so this is a `Krea2WeightDefinition`
+  -specific quirk, not a general mflux pre-quantized-repo problem.
+- `_ensure_turbo_safetensors()` doesn't verify the merged shards' key names
+  actually match what `Krea2WeightMapping.get_transformer_mapping()` expects
+  beyond "generation ran and produced a sane-looking image" — that's fairly
+  strong evidence, but not the same as inspecting the key schema directly.
