@@ -50843,7 +50843,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const useErnieMode = imageMode === "ernie_image";
     const useKrea2TwoPassMode = imageMode === "krea2_2pass";
     const useFlowGptMode = imageMode === "flow_gpt";
-    const modelLabel = useFluxKleinMode ? "Flux/Klein" : useNBMode ? "NanoBanana" : useErnieMode ? "Ernie" : useKrea2TwoPassMode ? "Krea 2" : useFlowGptMode ? "Flow/GPT" : "ZImage";
+    const useFlux2KleinMlxMode = imageMode === "flux2klein_mlx";
+    const modelLabel = useFluxKleinMode ? "Flux/Klein" : useFlux2KleinMlxMode ? "Klein MLX" : useNBMode ? "NanoBanana" : useErnieMode ? "Ernie" : useKrea2TwoPassMode ? "Krea 2" : useFlowGptMode ? "Flow/GPT" : "ZImage";
     const imageModeChoices = [
       {
         value: "zimage",
@@ -50854,6 +50855,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         value: "flux_klein",
         label: "Flux/Klein",
         description: "Use Flux/Klein. Reference images are optional.",
+      },
+      {
+        value: "flux2klein_mlx",
+        label: "Klein MLX",
+        description: "Apple Silicon only. Use the local FLUX.2 Klein MLX engine — no CUDA/cloud dependency.",
       },
       {
         value: "nano_banana",
