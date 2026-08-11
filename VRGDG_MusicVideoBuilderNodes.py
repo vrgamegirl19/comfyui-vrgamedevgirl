@@ -4322,7 +4322,7 @@ def _generate_builder_agent_reply(payload):
         "generate_video_prompt_for_current_mode",
         "run_video_for_current_mode",
     }
-    allowed_image_modes = {"zimage", "flux_klein", "nano_banana", "ernie_image"}
+    allowed_image_modes = {"zimage", "flux_klein", "nano_banana", "ernie_image", "flux2klein_mlx"}
     allowed_video_modes = {"i2v", "id_lora", "t2v", "rtv", "ingredients"}
     max_actions = 60 if agent_purpose == "story_builder" else 12
     plan_fields = {"director_note", "scene_notes", "flux_notes", "nb_notes", "video_notes"}

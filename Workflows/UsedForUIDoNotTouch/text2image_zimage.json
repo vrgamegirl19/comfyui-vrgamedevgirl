@@ -578,7 +578,7 @@
         "disable",
         "disable",
         "disable",
-        "cuda"
+        "auto"
       ]
     },
     {
@@ -1007,7 +1007,7 @@
         "disable",
         "disable",
         "disable",
-        "cuda"
+        "auto"
       ]
     },
     {

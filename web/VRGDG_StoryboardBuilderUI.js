@@ -2278,7 +2278,10 @@ function normalizeStoryboardPerformanceMode(value = "") {
 }
 
 function normalizeStoryboardProjectVideoEngine(value = "") {
-  return String(value || "").trim().toLowerCase() === "minimax_h3" ? "minimax_h3" : "ltx";
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "minimax_h3") return "minimax_h3";
+  if (normalized === "ltx2mlx") return "ltx2mlx";
+  return "ltx";
 }
 
 function normalizeStoryboardMiniMaxH3Mode(value = "") {
@@ -2420,7 +2423,7 @@ function storyboardReferenceOpening(scene = {}) {
 }
 
 function storyboardImageModeUsesReferenceOpening(imageMode = "") {
-  return ["nano_banana", "flux_klein", "flow_gpt"].includes(String(imageMode || "").trim());
+  return ["nano_banana", "flux_klein", "flux2klein_mlx", "flow_gpt"].includes(String(imageMode || "").trim());
 }
 
 function ensureStoryboardReferenceOpening(prompt, scene = {}, imageMode = "") {

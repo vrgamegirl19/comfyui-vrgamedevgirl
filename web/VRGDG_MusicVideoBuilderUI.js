@@ -154,6 +154,150 @@ const MINIMAX_H3_MODE_OPTIONS = [
   { value: "reference_to_video", label: "Reference to Video", buttonLabel: "Ref to\nVideo" },
   { value: "video_to_video", label: "Video to Video", buttonLabel: "V2V" },
 ];
+const LTX2MLX_MODE_OPTIONS = [
+  { value: "t2v", label: "Text to Video" },
+  { value: "i2v", label: "Image to Video" },
+  { value: "a2v", label: "Audio to Video (Song Mode)" },
+];
+const LTX2MLX_MODEL_OPTIONS = [
+  { value: "dgrauet/ltx-2.3-mlx-q4", label: "q4 (~12GB, 16GB+ Macs)" },
+  { value: "dgrauet/ltx-2.3-mlx-q8", label: "q8 (~21GB, 32GB+ Macs)" },
+  { value: "dgrauet/ltx-2.3-mlx", label: "bf16 (~42GB, 64GB+ Macs)" },
+];
+const LTX2MLX_PIPELINE_OPTIONS = [
+  { value: "two_stage", label: "Two Stage (recommended)" },
+  { value: "two_stage_hq", label: "Two Stage HQ" },
+  { value: "one_stage", label: "One Stage" },
+  { value: "distilled", label: "Distilled (fastest)" },
+];
+const DEFAULT_LTX2MLX_SETTINGS = {
+  mode: "a2v",
+  model_dir: "dgrauet/ltx-2.3-mlx-q8",
+  pipeline_type: "two_stage",
+  low_ram: false,
+  height: 480,
+  width: 704,
+  num_frames: 97,
+  frame_rate: 24,
+  seed: 0,
+  cfg_scale: 3.0,
+  match_audio_length: true,
+};
+
+function cloneLtx2MlxSettings(overrides = {}) {
+  return { ...DEFAULT_LTX2MLX_SETTINGS, ...(overrides && typeof overrides === "object" ? overrides : {}) };
+}
+
+const FLUX2KLEIN_MLX_MODE_OPTIONS = [
+  { value: "t2i", label: "Text to Image" },
+  { value: "edit", label: "Multi-Image Edit" },
+];
+const FLUX2KLEIN_MLX_MODEL_OPTIONS = [
+  { value: "flux2-klein-4b", label: "4B (~15GB, faster)" },
+  { value: "flux2-klein-9b", label: "9B (~32GB, higher quality)" },
+  { value: "flux2-klein-9b-kv", label: "9B-kv (multi-image, KV cache)" },
+];
+const FLUX2KLEIN_MLX_QUANTIZE_OPTIONS = [
+  { value: "4", label: "4-bit (smallest, fastest)" },
+  { value: "8", label: "8-bit" },
+  { value: "none", label: "None (full precision)" },
+];
+
+// Mirrors the Python-side _PREQUANTIZED_REPO_MAP dicts in
+// comfyui-flux2klein-mlx/comfyui-krea2-mlx/comfyui-zimage-mlx's
+// nodes/loaders.py -- display-only, the actual routing decision is made
+// server-side in each pack's execute() method. Keep these in sync if either
+// side's map changes. Each repo's compatibility with mflux's own weight
+// loader was individually confirmed (weight-index metadata / README, not
+// guessed from naming) before being added on the Python side.
+const MLX_PREQUANTIZED_REPO_MAP = {
+  flux2klein: {
+    "flux2-klein-4b|4": "mlx-community/flux2-klein-4b-4bit (~4.6GB)",
+    "flux2-klein-4b|8": "mlx-community/flux2-klein-4b-8bit (~8.6GB)",
+    "flux2-klein-9b|4": "mlx-community/flux2-klein-9b-4bit (~9.5GB)",
+    "flux2-klein-9b|8": "mlx-community/flux2-klein-9b-8bit (~17.9GB)",
+  },
+  krea2: {
+    "krea2|4": "MLXBits/krea-2-mlx-q4 (~7GB)",
+    "krea2|8": "MLXBits/krea-2-mlx-q8 (~22GB)",
+  },
+  zimage: {
+    "z-image-turbo|8": "deepsweet/Z-Image-Turbo-6B-MLX-Q8 (~11GB)",
+  },
+};
+
+function describeMlxQuantStatus(engine, modelName, quantize) {
+  if (quantize === "none") {
+    return {
+      fast: false,
+      text: "Full precision: downloads the full-size original checkpoint (largest, slowest), no local quantization step needed afterward.",
+    };
+  }
+  const repo = MLX_PREQUANTIZED_REPO_MAP[engine]?.[`${modelName}|${quantize}`];
+  if (repo) {
+    return { fast: true, text: `Pre-quantized build available: downloads ${repo} directly.` };
+  }
+  return {
+    fast: false,
+    text: "No pre-quantized build known for this model + quantize combo: downloads the full-size original checkpoint, then quantizes it locally on first run (slow, large one-time download).",
+  };
+}
+
+function makeMlxQuantStatusNote() {
+  const note = document.createElement("div");
+  note.style.cssText = "font-size:11px;line-height:1.4;margin-top:-2px;";
+  return note;
+}
+
+function updateMlxQuantStatusNote(noteEl, engine, modelName, quantize) {
+  if (!noteEl) return;
+  const { fast, text } = describeMlxQuantStatus(engine, modelName, quantize);
+  noteEl.textContent = (fast ? "⚡ " : "⏳ ") + text;
+  noteEl.style.color = fast ? "#4ade80" : "#fcd34d";
+}
+const DEFAULT_FLUX2KLEIN_MLX_SETTINGS = {
+  // Edit mode's multi-image conditioning (reference images injected as
+  // conditioning tokens at every denoise step) is architecturally the
+  // closer match to CUDA flux_klein's ReferenceLatent behavior, and the
+  // scene's real reference images are picked up automatically either way
+  // -- T2I mode only accepts a single reference image and errors if more
+  // than one is attached, so Edit mode is the safer default.
+  mode: "edit",
+  model_name: "flux2-klein-4b",
+  quantize: "4",
+  width: 1024,
+  height: 1024,
+  seed: 0,
+  num_inference_steps: 4,
+  guidance: 1.0,
+  // CONFIRMED via mflux source inspection: this is inverted from the usual
+  // img2img convention -- HIGHER values skip MORE denoise steps and stay
+  // CLOSER to the original image (less prompt influence); LOWER values let
+  // the prompt dominate more. mflux computes
+  // init_step = max(1, int(num_inference_steps * image_strength)), so with
+  // few steps (4 by default) the old default 0.8 left only 1/4 steps to
+  // actually denoise -- the prompt was effectively ignored. 0.3 leaves 3/4
+  // steps for the prompt to take effect.
+  image_strength: 0.3,
+  // CONFIRMED via a real generation test (see comfyui-flux2klein-mlx/SCOPING.md):
+  // use_kv_cache=True crashes with an mx.compile error on the plain 4B/9B
+  // models. Only the untested 9B-kv variant might support it, so default
+  // stays false regardless of what the user picks unless model_name is
+  // exactly "flux2-klein-9b-kv" — the same guard the backend patch function
+  // applies independently.
+  use_kv_cache: false,
+  // Same LoRA files CUDA flux_klein uses (ComfyUI's loras folder) --
+  // mflux's LoRA weight mapping explicitly supports the ComfyUI/BFL
+  // naming convention, confirmed from source, no conversion needed.
+  use_loras: false,
+  lora_count: 0,
+  loras: [],
+};
+
+function cloneFlux2KleinMlxSettings(overrides = {}) {
+  return { ...DEFAULT_FLUX2KLEIN_MLX_SETTINGS, ...(overrides && typeof overrides === "object" ? overrides : {}) };
+}
+
 const MINIMAX_H3_INSTRUCTION_KEYS = {
   text_to_video: "minimax_h3_text_to_video",
   image_to_video: "minimax_h3_image_to_video",
@@ -476,6 +620,42 @@ const DEFAULT_KREA2_REFERENCE_SETTINGS = {
 function cloneKrea2ReferenceSettings(settings = {}) {
   return {
     ...DEFAULT_KREA2_REFERENCE_SETTINGS,
+    ...(settings && typeof settings === "object" ? settings : {}),
+  };
+}
+const DEFAULT_ZIMAGE_MLX_REFERENCE_SETTINGS = {
+  quantize: "4",
+  width: 1024,
+  height: 1024,
+  num_inference_steps: 4,
+  seed: 0,
+  seed_mode: "fixed",
+};
+
+function cloneZimageMlxReferenceSettings(settings = {}) {
+  return {
+    ...DEFAULT_ZIMAGE_MLX_REFERENCE_SETTINGS,
+    ...(settings && typeof settings === "object" ? settings : {}),
+  };
+}
+
+const DEFAULT_KREA2_ZIMAGE_MLX_REFERENCE_SETTINGS = {
+  krea2_quantize: "4",
+  zimage_quantize: "4",
+  first_pass_width: 1024,
+  first_pass_height: 576,
+  width: 1920,
+  height: 1080,
+  krea2_num_inference_steps: 8,
+  zimage_num_inference_steps: 4,
+  image_strength: 0.3,
+  seed: 0,
+  seed_mode: "fixed",
+};
+
+function cloneKrea2ZimageMlxReferenceSettings(settings = {}) {
+  return {
+    ...DEFAULT_KREA2_ZIMAGE_MLX_REFERENCE_SETTINGS,
     ...(settings && typeof settings === "object" ? settings : {}),
   };
 }
@@ -921,7 +1101,10 @@ function normalizeVideoType(value) {
 }
 
 function normalizeProjectVideoEngine(value) {
-  return String(value || "").trim().toLowerCase() === "minimax_h3" ? "minimax_h3" : "ltx";
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "minimax_h3") return "minimax_h3";
+  if (normalized === "ltx2mlx") return "ltx2mlx";
+  return "ltx";
 }
 
 function makeVideoTypeSelect(value = "singing") {
@@ -2252,6 +2435,13 @@ function extractVideosFromHistory(historyPayload, promptId) {
         for (const video of output[key]) videos.push(video);
       }
     }
+    // ComfyUI's native SaveVideo/PreviewVideo report videos under "images" with a
+    // sibling "animated" flag (the same convention used for animated webp), not under
+    // a dedicated "gifs"/"videos" key -- only treat "images" as videos when that flag
+    // is present so plain image-output nodes aren't misidentified as video outputs.
+    if (output?.animated && Array.isArray(output?.images)) {
+      for (const video of output.images) videos.push(video);
+    }
   }
   return videos;
 }
@@ -2300,8 +2490,9 @@ function sceneVideoTimeoutMessage({
 
 async function waitForVideos(promptId, onStatus, shouldCancel, findOutputFallback = null, options = {}) {
   const started = Date.now();
-  const timeoutHours = normalizeSceneRenderWaitHours(options.timeoutHours);
-  const timeoutMs = timeoutHours * 60 * 60 * 1000;
+  const timeoutMs = Number(options.timeoutMs) > 0
+    ? Number(options.timeoutMs)
+    : normalizeSceneRenderWaitHours(options.timeoutHours) * 60 * 60 * 1000;
   let lastFallbackCheck = 0;
   while (Date.now() - started < timeoutMs) {
     if (shouldCancel?.()) throw new Error("Stopped by user.");
@@ -4297,6 +4488,7 @@ function openBuilder(node) {
   }
   const zImageCard = makeImageModelCard("ZImage", "zimage");
   const fluxKleinCard = makeImageModelCard("Flux Klein", "flux_klein");
+  const flux2KleinMlxCard = makeImageModelCard("Klein MLX", "flux2klein_mlx");
   const nbImageCard = makeImageModelCard("Nano B", "nano_banana");
   const ernieImageCard = makeImageModelCard("Ernie", "ernie_image");
   const krea2TwoPassCard = makeImageModelCard("Krea 2", "krea2_2pass");
@@ -4304,7 +4496,7 @@ function openBuilder(node) {
   const zEnhanceCard = makeImageModelCard("Enhance", "z_enhance");
   const loadCustomImageButton = makeImageModelCard("+ Custom", "custom_image");
   loadCustomImageButton.title = "Load a custom image for the selected scene";
-  imageModelChooser.append(zImageCard, fluxKleinCard, nbImageCard, ernieImageCard, krea2TwoPassCard, flowGptCard, zEnhanceCard, loadCustomImageButton);
+  imageModelChooser.append(zImageCard, fluxKleinCard, flux2KleinMlxCard, nbImageCard, ernieImageCard, krea2TwoPassCard, flowGptCard, zEnhanceCard, loadCustomImageButton);
   imageModelChooserWrap.append(imageModelChooserLabel, imageModelChooser);
   const zImageModePanel = document.createElement("div");
   zImageModePanel.style.cssText = "display:flex;flex-direction:column;gap:10px;";
@@ -4925,6 +5117,9 @@ function openBuilder(node) {
   applyCompactButtonLabel(miniMaxSceneVideoButton, "Create MiniMax H3\nScene Video", { noMap: true, padding: "8px 8px", title: "Create MiniMax H3 Scene Video" });
   miniMaxSceneVideoButton.title = "Render this scene with the MiniMax H3 hidden workflow and preserve the exact timeline duration.";
   const miniMaxSceneVideoButtons = [miniMaxSceneVideoButton];
+  const ltx2MlxSceneVideoButton = makeButton("Create LTX-2 MLX Scene Video", "primary");
+  ltx2MlxSceneVideoButton.title = "Render this scene with LTX-2.3 via MLX on Apple Silicon.";
+  const ltx2MlxSceneVideoButtons = [ltx2MlxSceneVideoButton];
   const miniMaxReferencesButton = makeButton("Choose MiniMax References (0/9)");
   miniMaxReferencesButton.title = "Choose and order up to nine images from the existing Reference Builder for this scene.";
   const miniMaxVideoReferencesButton = makeButton("Choose MiniMax Edit References (0/9)");
@@ -5878,7 +6073,318 @@ function openBuilder(node) {
   const ltxVideoPanel = document.createElement("div");
   ltxVideoPanel.style.cssText = "display:flex;flex-direction:column;gap:10px;";
   ltxVideoPanel.append(videoModeChooser, importCustomVideoPanel, videoSubTabs.wrapper);
-  videoPanel.append(ltxVideoPanel, miniMaxEnginePanel);
+
+  const ltx2MlxEnginePanel = document.createElement("div");
+  ltx2MlxEnginePanel.style.cssText = "display:none;flex-direction:column;gap:10px;";
+  const ltx2MlxBanner = document.createElement("div");
+  ltx2MlxBanner.innerHTML = `<div style="font-size:14px;font-weight:900;color:#e0e7ff;">LTX-2 MLX Project (Apple Silicon)</div><div style="font-size:11px;color:#c7d2fe;margin-top:3px;">Runs LTX-2.3 natively via MLX. Requires the comfyui-ltx2-mlx custom node and macOS on Apple Silicon.</div>`;
+  ltx2MlxBanner.style.cssText = "border:1px solid #6366f1;border-radius:7px;background:#1e1b4b;padding:10px;line-height:1.35;";
+  const ltx2MlxUnavailableNote = document.createElement("div");
+  ltx2MlxUnavailableNote.style.cssText = "font-size:11px;color:#fcd34d;line-height:1.4;display:none;";
+  const ltx2MlxModeSelect = makeSelect(LTX2MLX_MODE_OPTIONS, DEFAULT_LTX2MLX_SETTINGS.mode);
+  const ltx2MlxModelSelect = makeSelect(LTX2MLX_MODEL_OPTIONS, DEFAULT_LTX2MLX_SETTINGS.model_dir);
+  const ltx2MlxPipelineSelect = makeSelect(LTX2MLX_PIPELINE_OPTIONS, DEFAULT_LTX2MLX_SETTINGS.pipeline_type);
+  const ltx2MlxLowRam = makeCheckbox("Low RAM (block streaming)", DEFAULT_LTX2MLX_SETTINGS.low_ram);
+  const ltx2MlxHeight = makeInput(String(DEFAULT_LTX2MLX_SETTINGS.height), "number");
+  const ltx2MlxWidth = makeInput(String(DEFAULT_LTX2MLX_SETTINGS.width), "number");
+  const ltx2MlxNumFrames = makeInput(String(DEFAULT_LTX2MLX_SETTINGS.num_frames), "number");
+  const ltx2MlxFrameRate = makeInput(String(DEFAULT_LTX2MLX_SETTINGS.frame_rate), "number");
+  const ltx2MlxSeed = makeInput(String(DEFAULT_LTX2MLX_SETTINGS.seed), "number");
+  const ltx2MlxCfgScale = makeInput(String(DEFAULT_LTX2MLX_SETTINGS.cfg_scale), "number");
+  ltx2MlxCfgScale.step = "0.1";
+  const ltx2MlxMatchAudioLength = makeCheckbox(
+    "Match video length to audio (Song Mode)",
+    DEFAULT_LTX2MLX_SETTINGS.match_audio_length,
+  );
+  const ltx2MlxDimensionsRow = document.createElement("div");
+  ltx2MlxDimensionsRow.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;";
+  ltx2MlxDimensionsRow.append(
+    makeField("Height", ltx2MlxHeight),
+    makeField("Width", ltx2MlxWidth),
+  );
+  const ltx2MlxTimingRow = document.createElement("div");
+  ltx2MlxTimingRow.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;";
+  ltx2MlxTimingRow.append(
+    makeField("Frame rate", ltx2MlxFrameRate),
+    makeField("Num frames (t2v/i2v; ignored for song mode when matching)", ltx2MlxNumFrames),
+  );
+  ltx2MlxEnginePanel.append(
+    ltx2MlxBanner,
+    ltx2MlxUnavailableNote,
+    makeField("Mode", ltx2MlxModeSelect),
+    makeField("Model", ltx2MlxModelSelect),
+    makeField("Pipeline", ltx2MlxPipelineSelect),
+    ltx2MlxLowRam.wrapper,
+    ltx2MlxDimensionsRow,
+    ltx2MlxTimingRow,
+    makeField("Seed", ltx2MlxSeed),
+    makeField("CFG scale (t2v/i2v)", ltx2MlxCfgScale),
+    ltx2MlxMatchAudioLength.wrapper,
+    ltx2MlxSceneVideoButton,
+  );
+
+  const flux2KleinMlxImagePanel = document.createElement("div");
+  flux2KleinMlxImagePanel.style.cssText = "display:none;flex-direction:column;gap:10px;";
+  const flux2KleinMlxBanner = document.createElement("div");
+  flux2KleinMlxBanner.innerHTML = `<div style="font-size:14px;font-weight:900;color:#e0e7ff;">FLUX.2 Klein MLX (Apple Silicon)</div><div style="font-size:11px;color:#c7d2fe;margin-top:3px;">Runs FLUX.2 Klein natively via MLX (mflux). Requires the comfyui-flux2klein-mlx custom node and macOS on Apple Silicon.</div>`;
+  flux2KleinMlxBanner.style.cssText = "border:1px solid #6366f1;border-radius:7px;background:#1e1b4b;padding:10px;line-height:1.35;";
+  const flux2KleinMlxUnavailableNote = document.createElement("div");
+  flux2KleinMlxUnavailableNote.style.cssText = "font-size:11px;color:#fcd34d;line-height:1.4;display:none;";
+  const flux2KleinMlxModeSelect = makeSelect(FLUX2KLEIN_MLX_MODE_OPTIONS, DEFAULT_FLUX2KLEIN_MLX_SETTINGS.mode);
+  const flux2KleinMlxModelSelect = makeSelect(FLUX2KLEIN_MLX_MODEL_OPTIONS, DEFAULT_FLUX2KLEIN_MLX_SETTINGS.model_name);
+  const flux2KleinMlxQuantizeSelect = makeSelect(FLUX2KLEIN_MLX_QUANTIZE_OPTIONS, DEFAULT_FLUX2KLEIN_MLX_SETTINGS.quantize);
+  const flux2KleinMlxHeight = makeInput(String(DEFAULT_FLUX2KLEIN_MLX_SETTINGS.height), "number");
+  const flux2KleinMlxWidth = makeInput(String(DEFAULT_FLUX2KLEIN_MLX_SETTINGS.width), "number");
+  const flux2KleinMlxSeed = makeInput(String(DEFAULT_FLUX2KLEIN_MLX_SETTINGS.seed), "number");
+  const flux2KleinMlxSteps = makeInput(String(DEFAULT_FLUX2KLEIN_MLX_SETTINGS.num_inference_steps), "number");
+  const flux2KleinMlxGuidance = makeInput(String(DEFAULT_FLUX2KLEIN_MLX_SETTINGS.guidance), "number");
+  flux2KleinMlxGuidance.step = "0.1";
+  const flux2KleinMlxImageStrength = makeInput(String(DEFAULT_FLUX2KLEIN_MLX_SETTINGS.image_strength), "number");
+  flux2KleinMlxImageStrength.step = "0.05";
+  flux2KleinMlxImageStrength.min = "0";
+  flux2KleinMlxImageStrength.max = "1";
+  const flux2KleinMlxImageStrengthField = makeField(
+    "Image strength (T2I mode, only used with a reference image)",
+    flux2KleinMlxImageStrength,
+  );
+  flux2KleinMlxImageStrengthField.title = "CONFIRMED inverted from the usual img2img convention: HIGHER "
+    + "values skip MORE denoise steps and stay CLOSER to the reference image (prompt has LESS effect); "
+    + "LOWER values let the prompt dominate more. With few steps (4 by default) this is coarse-grained -- "
+    + "0.8 left only 1/4 steps to denoise and effectively ignored the prompt. Default is 0.3.";
+  const flux2KleinMlxUseKvCache = makeCheckbox(
+    "Use KV cache (CONFIRMED broken except on the 9B-kv model — leave off for 4B/9B)",
+    DEFAULT_FLUX2KLEIN_MLX_SETTINGS.use_kv_cache,
+  );
+  // Same LoRA picker UI/data source as CUDA Flux/Klein's 4 slots
+  // (fluxLoraSlots) -- reuses the same ComfyUI loras folder listing via
+  // refreshLoraChoices(), since mflux's LoRA loader is confirmed compatible
+  // with standard ComfyUI/BFL-format Flux LoRA safetensors files.
+  const flux2KleinMlxUseLora = makeCheckbox("Use FLUX.2 Klein MLX LoRAs?", DEFAULT_FLUX2KLEIN_MLX_SETTINGS.use_loras);
+  const flux2KleinMlxLoraPanel = document.createElement("div");
+  flux2KleinMlxLoraPanel.style.cssText = "display:none;flex-direction:column;gap:8px;";
+  const flux2KleinMlxLoraCount = makeInput(String(DEFAULT_FLUX2KLEIN_MLX_SETTINGS.lora_count), "number");
+  flux2KleinMlxLoraCount.min = "0";
+  flux2KleinMlxLoraCount.max = "4";
+  const flux2KleinMlxLoraRows = document.createElement("div");
+  flux2KleinMlxLoraRows.style.cssText = "display:none;flex-direction:column;gap:8px;";
+  const flux2KleinMlxLoraSlots = [];
+  for (let slot = 1; slot <= 4; slot++) {
+    const row = document.createElement("div");
+    row.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) 84px;gap:8px;";
+    const picker = makeSearchableLoraPicker("[none]");
+    const strength = makeInput("1", "number");
+    strength.step = "0.01";
+    row.append(makeField(`LoRA ${slot}`, picker.wrapper), makeField("Strength", strength));
+    flux2KleinMlxLoraRows.append(row);
+    flux2KleinMlxLoraSlots.push({ row, picker, strength });
+  }
+  flux2KleinMlxLoraPanel.append(makeField("LoRA count", flux2KleinMlxLoraCount), flux2KleinMlxLoraRows);
+
+  function updateFlux2KleinMlxLoraVisibility() {
+    const count = Math.max(0, Math.min(4, Number(flux2KleinMlxLoraCount.value || 0)));
+    flux2KleinMlxLoraPanel.style.display = flux2KleinMlxUseLora.input.checked ? "flex" : "none";
+    flux2KleinMlxLoraRows.style.display = flux2KleinMlxUseLora.input.checked && count > 0 ? "flex" : "none";
+    flux2KleinMlxLoraSlots.forEach((slot, index) => {
+      slot.row.style.display = index < count ? "grid" : "none";
+    });
+  }
+
+  function saveFlux2KleinMlxLoraSettingsFromPanel() {
+    const count = Math.max(0, Math.min(4, Number(flux2KleinMlxLoraCount.value || 0)));
+    updateFlux2KleinMlxSetting("use_loras", Boolean(flux2KleinMlxUseLora.input.checked));
+    state.flux2KleinMlxSettings = cloneFlux2KleinMlxSettings({
+      ...state.flux2KleinMlxSettings,
+      lora_count: count,
+      loras: flux2KleinMlxLoraSlots.map((slot) => ({
+        name: slot.picker.input.value || "[none]",
+        strength: Number(slot.strength.value || 1),
+      })),
+    });
+    autoSaveSessionQuiet("FLUX.2 Klein MLX LoRA settings changed").catch(() => null);
+  }
+
+  const flux2KleinMlxPrompt = document.createElement("textarea");
+  flux2KleinMlxPrompt.rows = 4;
+  flux2KleinMlxPrompt.placeholder = "FLUX.2 Klein MLX prompt (shares the scene's Flux/Klein prompt field)";
+  flux2KleinMlxPrompt.style.cssText = "width:100%;resize:vertical;background:#18181b;color:#f4f4f5;border:1px solid #3f3f46;border-radius:6px;padding:8px;font-size:12px;line-height:1.4;box-sizing:border-box;";
+  const flux2KleinMlxImagePathsInput = document.createElement("textarea");
+  flux2KleinMlxImagePathsInput.rows = 3;
+  flux2KleinMlxImagePathsInput.placeholder = "Optional extra reference image paths, one per line (or a JSON list). "
+    + "The scene's normal reference images (subject/location builder, global and per-scene ingredients) "
+    + "are already included automatically -- this field only adds more on top, it is not required.";
+  flux2KleinMlxImagePathsInput.style.cssText = flux2KleinMlxPrompt.style.cssText;
+  const flux2KleinMlxImagePathsField = makeField("Extra reference image paths (optional, Multi-Image Edit mode only)", flux2KleinMlxImagePathsInput);
+  const flux2KleinMlxAutoIngredientsNote = document.createElement("div");
+  flux2KleinMlxAutoIngredientsNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
+  const flux2KleinMlxDimensionsRow = document.createElement("div");
+  flux2KleinMlxDimensionsRow.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;";
+  flux2KleinMlxDimensionsRow.append(
+    makeField("Height", flux2KleinMlxHeight),
+    makeField("Width", flux2KleinMlxWidth),
+  );
+  const flux2KleinMlxSceneImageButton = makeButton("Create FLUX.2 Klein MLX Scene Image", "primary");
+  flux2KleinMlxSceneImageButton.title = "Render this scene with FLUX.2 Klein via MLX on Apple Silicon.";
+  const flux2KleinMlxCreateButtons = [flux2KleinMlxSceneImageButton];
+  // Reuses the existing CUDA Flux/Klein Gemma auto-prompt route unchanged —
+  // it's a pure LLM/vision text-generation call (writes into
+  // segment.flux_prompt / t2i_prompt) with zero dependency on which image
+  // engine actually renders the scene, so no new backend code was needed.
+  const flux2KleinMlxGemmaPromptButton = makeButton("Gemma Klein MLX Prompt", "primary");
+  flux2KleinMlxGemmaPromptButton.title = "Write this scene's prompt with Gemma (shares the Flux/Klein Gemma model pickers and vision/text-only setting).";
+  const flux2KleinMlxQuantStatusNote = makeMlxQuantStatusNote();
+  flux2KleinMlxImagePanel.append(
+    flux2KleinMlxBanner,
+    flux2KleinMlxUnavailableNote,
+    makeField("Mode", flux2KleinMlxModeSelect),
+    makeField("Model", flux2KleinMlxModelSelect),
+    makeField("Quantize", flux2KleinMlxQuantizeSelect),
+    flux2KleinMlxQuantStatusNote,
+    flux2KleinMlxGemmaPromptButton,
+    makeField("Prompt", flux2KleinMlxPrompt),
+    flux2KleinMlxAutoIngredientsNote,
+    flux2KleinMlxImagePathsField,
+    flux2KleinMlxDimensionsRow,
+    makeField("Seed", flux2KleinMlxSeed),
+    makeField("Steps", flux2KleinMlxSteps),
+    makeField("Guidance", flux2KleinMlxGuidance),
+    flux2KleinMlxImageStrengthField,
+    flux2KleinMlxUseKvCache.wrapper,
+    flux2KleinMlxUseLora.wrapper,
+    flux2KleinMlxLoraPanel,
+    flux2KleinMlxSceneImageButton,
+  );
+  imagePanel.append(flux2KleinMlxImagePanel);
+
+  function syncFlux2KleinMlxPanelFromState() {
+    const settings = cloneFlux2KleinMlxSettings(state.flux2KleinMlxSettings);
+    flux2KleinMlxModeSelect.value = settings.mode;
+    flux2KleinMlxModelSelect.value = settings.model_name;
+    flux2KleinMlxQuantizeSelect.value = settings.quantize;
+    updateMlxQuantStatusNote(flux2KleinMlxQuantStatusNote, "flux2klein", settings.model_name, settings.quantize);
+    flux2KleinMlxHeight.value = String(settings.height);
+    flux2KleinMlxWidth.value = String(settings.width);
+    flux2KleinMlxSeed.value = String(settings.seed);
+    flux2KleinMlxSteps.value = String(settings.num_inference_steps);
+    flux2KleinMlxGuidance.value = String(settings.guidance);
+    flux2KleinMlxImageStrength.value = String(settings.image_strength);
+    flux2KleinMlxUseKvCache.input.checked = Boolean(settings.use_kv_cache);
+    flux2KleinMlxImagePathsField.style.display = settings.mode === "edit" ? "" : "none";
+    // CONFIRMED via a real generation test: passing image_strength in Edit
+    // mode produces corrupted/noisy output. mflux's Flux2KleinEdit always
+    // starts from pure-noise latents (reference images are injected as
+    // conditioning tokens at every step instead), so image_strength's
+    // "skip early denoise steps" logic operates on noise that was never
+    // blended with the real image -- it's a T2I-mode-only concept, not
+    // just deprioritized in Edit mode. Hide the field entirely there so it
+    // can't be set to something that visibly breaks the output.
+    flux2KleinMlxImageStrengthField.style.display = settings.mode === "edit" ? "none" : "";
+    const segment = activeSegment();
+    flux2KleinMlxPrompt.value = segment?.flux_prompt || segment?.t2i_prompt || "";
+    const paths = segment?.flux2klein_mlx_image_paths;
+    flux2KleinMlxImagePathsInput.value = Array.isArray(paths) ? paths.join("\n") : (paths || "");
+    const autoCount = mergedFluxImageIngredients(segment).length;
+    flux2KleinMlxAutoIngredientsNote.textContent = autoCount
+      ? `${autoCount} reference image${autoCount === 1 ? "" : "s"} attached to this scene will be used automatically (subject/location builder, global and per-scene ingredients).`
+      : "No reference images are currently attached to this scene (subject/location builder, global or per-scene ingredients).";
+    flux2KleinMlxUseLora.input.checked = Boolean(settings.use_loras);
+    flux2KleinMlxLoraCount.value = Number(settings.lora_count || 0);
+    flux2KleinMlxLoraSlots.forEach((slot, index) => {
+      const config = settings.loras?.[index] || {};
+      slot.picker.input.value = config.name || "[none]";
+      slot.strength.value = config.strength ?? 1;
+    });
+    updateFlux2KleinMlxLoraVisibility();
+  }
+
+  function updateFlux2KleinMlxSetting(key, value) {
+    state.flux2KleinMlxSettings = cloneFlux2KleinMlxSettings({ ...state.flux2KleinMlxSettings, [key]: value });
+    autoSaveSessionQuiet("FLUX.2 Klein MLX settings changed").catch(() => null);
+  }
+  flux2KleinMlxModeSelect.addEventListener("change", () => {
+    updateFlux2KleinMlxSetting("mode", flux2KleinMlxModeSelect.value);
+    const editMode = flux2KleinMlxModeSelect.value === "edit";
+    flux2KleinMlxImagePathsField.style.display = editMode ? "" : "none";
+    flux2KleinMlxImageStrengthField.style.display = editMode ? "none" : "";
+  });
+  flux2KleinMlxModelSelect.addEventListener("change", () => {
+    updateFlux2KleinMlxSetting("model_name", flux2KleinMlxModelSelect.value);
+    updateMlxQuantStatusNote(flux2KleinMlxQuantStatusNote, "flux2klein", flux2KleinMlxModelSelect.value, flux2KleinMlxQuantizeSelect.value);
+  });
+  flux2KleinMlxQuantizeSelect.addEventListener("change", () => {
+    updateFlux2KleinMlxSetting("quantize", flux2KleinMlxQuantizeSelect.value);
+    updateMlxQuantStatusNote(flux2KleinMlxQuantStatusNote, "flux2klein", flux2KleinMlxModelSelect.value, flux2KleinMlxQuantizeSelect.value);
+  });
+  flux2KleinMlxHeight.addEventListener("change", () => updateFlux2KleinMlxSetting("height", Number(flux2KleinMlxHeight.value) || DEFAULT_FLUX2KLEIN_MLX_SETTINGS.height));
+  flux2KleinMlxWidth.addEventListener("change", () => updateFlux2KleinMlxSetting("width", Number(flux2KleinMlxWidth.value) || DEFAULT_FLUX2KLEIN_MLX_SETTINGS.width));
+  flux2KleinMlxSeed.addEventListener("change", () => updateFlux2KleinMlxSetting("seed", Number(flux2KleinMlxSeed.value) || 0));
+  flux2KleinMlxSteps.addEventListener("change", () => updateFlux2KleinMlxSetting("num_inference_steps", Number(flux2KleinMlxSteps.value) || DEFAULT_FLUX2KLEIN_MLX_SETTINGS.num_inference_steps));
+  flux2KleinMlxGuidance.addEventListener("change", () => updateFlux2KleinMlxSetting("guidance", Number(flux2KleinMlxGuidance.value) || DEFAULT_FLUX2KLEIN_MLX_SETTINGS.guidance));
+  flux2KleinMlxImageStrength.addEventListener("change", () => {
+    const parsed = Number(flux2KleinMlxImageStrength.value);
+    updateFlux2KleinMlxSetting("image_strength", Number.isFinite(parsed) ? parsed : DEFAULT_FLUX2KLEIN_MLX_SETTINGS.image_strength);
+  });
+  flux2KleinMlxUseKvCache.input.addEventListener("change", () => updateFlux2KleinMlxSetting("use_kv_cache", flux2KleinMlxUseKvCache.input.checked));
+  flux2KleinMlxPrompt.addEventListener("change", () => {
+    const segment = activeSegment();
+    if (!segment) return;
+    pushHistory();
+    segment.flux_prompt = flux2KleinMlxPrompt.value || "";
+    segment.t2i_prompt = segment.flux_prompt;
+    autoSaveSessionQuiet("FLUX.2 Klein MLX prompt changed").catch(() => null);
+  });
+  flux2KleinMlxImagePathsInput.addEventListener("change", () => {
+    const segment = activeSegment();
+    if (!segment) return;
+    pushHistory();
+    segment.flux2klein_mlx_image_paths = flux2KleinMlxImagePathsInput.value || "";
+    autoSaveSessionQuiet("FLUX.2 Klein MLX reference image paths changed").catch(() => null);
+  });
+  flux2KleinMlxUseLora.input.addEventListener("change", () => {
+    updateFlux2KleinMlxLoraVisibility();
+    saveFlux2KleinMlxLoraSettingsFromPanel();
+  });
+  flux2KleinMlxLoraCount.addEventListener("change", () => {
+    updateFlux2KleinMlxLoraVisibility();
+    saveFlux2KleinMlxLoraSettingsFromPanel();
+  });
+  for (const slot of flux2KleinMlxLoraSlots) {
+    wireSearchablePicker(slot.picker, saveFlux2KleinMlxLoraSettingsFromPanel);
+    slot.picker.input.addEventListener("change", saveFlux2KleinMlxLoraSettingsFromPanel);
+    slot.strength.addEventListener("change", saveFlux2KleinMlxLoraSettingsFromPanel);
+  }
+
+  function syncLtx2MlxPanelFromState() {
+    const settings = cloneLtx2MlxSettings(state.ltx2MlxSettings);
+    ltx2MlxModeSelect.value = settings.mode;
+    ltx2MlxModelSelect.value = settings.model_dir;
+    ltx2MlxPipelineSelect.value = settings.pipeline_type;
+    ltx2MlxLowRam.input.checked = Boolean(settings.low_ram);
+    ltx2MlxHeight.value = String(settings.height);
+    ltx2MlxWidth.value = String(settings.width);
+    ltx2MlxNumFrames.value = String(settings.num_frames);
+    ltx2MlxFrameRate.value = String(settings.frame_rate);
+    ltx2MlxSeed.value = String(settings.seed);
+    ltx2MlxCfgScale.value = String(settings.cfg_scale);
+    ltx2MlxMatchAudioLength.input.checked = Boolean(settings.match_audio_length);
+  }
+
+  function updateLtx2MlxSetting(key, value) {
+    state.ltx2MlxSettings = cloneLtx2MlxSettings({ ...state.ltx2MlxSettings, [key]: value });
+    autoSaveSessionQuiet("LTX-2 MLX project settings changed").catch(() => null);
+  }
+  ltx2MlxModeSelect.addEventListener("change", () => updateLtx2MlxSetting("mode", ltx2MlxModeSelect.value));
+  ltx2MlxModelSelect.addEventListener("change", () => updateLtx2MlxSetting("model_dir", ltx2MlxModelSelect.value));
+  ltx2MlxPipelineSelect.addEventListener("change", () => updateLtx2MlxSetting("pipeline_type", ltx2MlxPipelineSelect.value));
+  ltx2MlxLowRam.input.addEventListener("change", () => updateLtx2MlxSetting("low_ram", ltx2MlxLowRam.input.checked));
+  ltx2MlxHeight.addEventListener("change", () => updateLtx2MlxSetting("height", Number(ltx2MlxHeight.value) || DEFAULT_LTX2MLX_SETTINGS.height));
+  ltx2MlxWidth.addEventListener("change", () => updateLtx2MlxSetting("width", Number(ltx2MlxWidth.value) || DEFAULT_LTX2MLX_SETTINGS.width));
+  ltx2MlxNumFrames.addEventListener("change", () => updateLtx2MlxSetting("num_frames", Number(ltx2MlxNumFrames.value) || DEFAULT_LTX2MLX_SETTINGS.num_frames));
+  ltx2MlxFrameRate.addEventListener("change", () => updateLtx2MlxSetting("frame_rate", Number(ltx2MlxFrameRate.value) || DEFAULT_LTX2MLX_SETTINGS.frame_rate));
+  ltx2MlxSeed.addEventListener("change", () => updateLtx2MlxSetting("seed", Number(ltx2MlxSeed.value) || 0));
+  ltx2MlxCfgScale.addEventListener("change", () => updateLtx2MlxSetting("cfg_scale", Number(ltx2MlxCfgScale.value) || DEFAULT_LTX2MLX_SETTINGS.cfg_scale));
+  ltx2MlxMatchAudioLength.input.addEventListener("change", () => updateLtx2MlxSetting("match_audio_length", ltx2MlxMatchAudioLength.input.checked));
+
+  videoPanel.append(ltxVideoPanel, miniMaxEnginePanel, ltx2MlxEnginePanel);
   audioPanel.append(
     makeSettingsSection("Scene Audio", [
       audioSummary,
@@ -6579,10 +7085,12 @@ function openBuilder(node) {
     videoType: "singing",
     projectVideoEngine: "ltx",
     miniMaxH3Settings: cloneMiniMaxH3Settings(),
+    ltx2MlxSettings: cloneLtx2MlxSettings(),
     imageModelMode: "zimage",
     zimageSettings: defaultZImageSettings(),
     referenceKrea2Settings: { ...DEFAULT_KREA2_REFERENCE_SETTINGS },
     fluxKleinSettings: defaultFluxKleinSettings(),
+    flux2KleinMlxSettings: cloneFlux2KleinMlxSettings(),
     flowGptBrowserSettings: defaultFlowGptBrowserSettings(),
     ernieImageSettings: defaultErnieImageSettings(),
     krea2TwoPassSettings: defaultKrea2TwoPassSettings(),
@@ -6628,19 +7136,87 @@ function openBuilder(node) {
     batchCancelled: false,
   };
 
+  let ltx2MlxCapabilityChecked = false;
+
+  function checkLtx2MlxCapabilityOnce() {
+    if (ltx2MlxCapabilityChecked) return;
+    ltx2MlxCapabilityChecked = true;
+    getJson("/vrgdg/workflow_runner/ltx2mlx_capability")
+      .then((result) => {
+        if (result && result.available === false) {
+          ltx2MlxUnavailableNote.textContent = result.reason || "LTX-2 MLX is not available on this machine.";
+          ltx2MlxUnavailableNote.style.display = "block";
+        }
+      })
+      .catch(() => {});
+  }
+
+  let flux2KleinMlxCapabilityChecked = false;
+
+  function checkFlux2KleinMlxCapabilityOnce() {
+    if (flux2KleinMlxCapabilityChecked) return;
+    flux2KleinMlxCapabilityChecked = true;
+    getJson("/vrgdg/workflow_runner/flux2klein_mlx_capability")
+      .then((result) => {
+        if (result && result.available === false) {
+          flux2KleinMlxUnavailableNote.textContent = result.reason || "FLUX.2 Klein MLX is not available on this machine.";
+          flux2KleinMlxUnavailableNote.style.display = "block";
+        }
+      })
+      .catch(() => {});
+  }
+
+  let zimageMlxCapabilityPromise = null;
+  function zimageMlxCapability() {
+    if (!zimageMlxCapabilityPromise) {
+      zimageMlxCapabilityPromise = getJson("/vrgdg/workflow_runner/zimage_mlx_capability")
+        .catch(() => ({ available: false, reason: "Could not reach the ComfyUI server to check Z-Image MLX availability." }));
+    }
+    return zimageMlxCapabilityPromise;
+  }
+
+  let krea2ZimageMlxCapabilityPromise = null;
+  function krea2ZimageMlxCapability() {
+    if (!krea2ZimageMlxCapabilityPromise) {
+      krea2ZimageMlxCapabilityPromise = getJson("/vrgdg/workflow_runner/krea2_zimage_mlx_capability")
+        .catch(() => ({ available: false, reason: "Could not reach the ComfyUI server to check Krea-2 + Z-Image MLX availability." }));
+    }
+    return krea2ZimageMlxCapabilityPromise;
+  }
+
+  function applyMlxCapabilityGate(card, button, capabilityPromise) {
+    capabilityPromise.then((result) => {
+      if (result && result.available === false) {
+        button.disabled = true;
+        button.title = result.reason || "Not available on this machine.";
+        const note = document.createElement("div");
+        note.style.cssText = "font-size:11px;color:#fcd34d;line-height:1.4;";
+        note.textContent = result.reason || "Not available on this machine.";
+        card.append(note);
+      }
+    });
+  }
+
   function syncProjectVideoEngineUI() {
-    const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
-    projectVideoEngineBadge.dataset.engine = miniMaxProject ? "minimax_h3" : "ltx";
-    projectVideoEngineBadge.textContent = miniMaxProject ? "◈ MiniMax" : "◈ LTX";
+    const engine = normalizeProjectVideoEngine(state.projectVideoEngine);
+    const miniMaxProject = engine === "minimax_h3";
+    const ltx2MlxProject = engine === "ltx2mlx";
+    projectVideoEngineBadge.dataset.engine = engine;
+    projectVideoEngineBadge.textContent = miniMaxProject ? "◈ MiniMax" : ltx2MlxProject ? "◈ LTX-2 MLX" : "◈ LTX";
     projectVideoEngineBadge.title = miniMaxProject
       ? "Project video engine: MiniMax H3"
+      : ltx2MlxProject
+      ? "Project video engine: LTX-2 MLX (Apple Silicon)"
       : "Project video engine: LTX";
-    projectVideoEngineBadge.style.background = miniMaxProject ? "#083344" : "#172554";
-    projectVideoEngineBadge.style.borderColor = miniMaxProject ? "#22d3ee" : "#60a5fa";
-    projectVideoEngineBadge.style.color = miniMaxProject ? "#a5f3fc" : "#bfdbfe";
-    ltxVideoPanel.style.display = miniMaxProject ? "none" : "flex";
+    projectVideoEngineBadge.style.background = miniMaxProject ? "#083344" : ltx2MlxProject ? "#1e1b4b" : "#172554";
+    projectVideoEngineBadge.style.borderColor = miniMaxProject ? "#22d3ee" : ltx2MlxProject ? "#818cf8" : "#60a5fa";
+    projectVideoEngineBadge.style.color = miniMaxProject ? "#a5f3fc" : ltx2MlxProject ? "#c7d2fe" : "#bfdbfe";
+    ltxVideoPanel.style.display = (miniMaxProject || ltx2MlxProject) ? "none" : "flex";
     miniMaxEnginePanel.style.display = miniMaxProject ? "flex" : "none";
+    ltx2MlxEnginePanel.style.display = ltx2MlxProject ? "flex" : "none";
+    if (ltx2MlxProject) checkLtx2MlxCapabilityOnce();
     syncMiniMaxH3Panel();
+    syncLtx2MlxPanelFromState();
   }
 
   function miniMaxH3SettingsForSegment(segment = activeSegment()) {
@@ -7549,6 +8125,9 @@ function openBuilder(node) {
       row.useAudio.input.checked = Boolean(item.use_audio);
     });
     miniMaxSceneVideoButton.disabled = !miniMaxProject || !segment;
+    if (ltx2MlxSceneVideoButton) {
+      ltx2MlxSceneVideoButton.disabled = normalizeProjectVideoEngine(state.projectVideoEngine) !== "ltx2mlx" || !segment;
+    }
     syncMiniMaxReferenceButtons();
     renderMiniMaxSpeakerAssignmentPanel();
     syncTimelineTrimModeButton();
@@ -12163,8 +12742,11 @@ function openBuilder(node) {
   function looksLikeGeneratedPromptJunk(prompt) {
     const text = String(prompt || "").toLowerCase().replace(/\s+/g, " ").trim();
     if (!text) return false;
-    const bracketed = text.match(/\[[^\]]{2,80}\]/g) || [];
-    if (bracketed.length >= 2) return true;
+    // Only flag brackets that look like an unfilled template placeholder
+    // (e.g. "[camera motion]") rather than any bracketed text at all -- the
+    // I2V/video enhancement instruction template itself is full of legitimate
+    // bracket examples, and Gemma's cleaned output can validly contain a
+    // bracketed camera/shot note without being template leakage.
     if (/\[[^\]]*(?:subject|setting|environment|camera|motion|weather|lighting|dynamic|framing)[^\]]*\]/i.test(text)) return true;
     const compact = text.replace(/[^a-z0-9_<>\-|]+/g, "");
     const markers = [
@@ -12299,6 +12881,10 @@ function openBuilder(node) {
   function applyTriggerPhrase(prompt, trigger, options = {}) {
     const promptText = cleanGeneratedPromptText(prompt);
     if (options.validateJunk !== false && looksLikeGeneratedPromptJunk(promptText)) {
+      console.error("[VRGDG Music Builder] looksLikeGeneratedPromptJunk rejected this text:", {
+        rawPrompt: String(prompt || ""),
+        cleanedPromptText: promptText,
+      });
       const error = new Error("Gemma returned repeated/thought junk instead of a usable prompt. Try again or shorten the notes.");
       error.rawGemmaPrompt = String(prompt || "");
       error.cleanedGemmaPrompt = promptText;
@@ -12371,6 +12957,7 @@ function openBuilder(node) {
       ernieT2IPrompt.value = cleanPrompt;
       krea2TwoPassT2IPrompt.value = cleanPrompt;
       fluxPrompt.value = cleanPrompt;
+      flux2KleinMlxPrompt.value = cleanPrompt;
       nbPrompt.value = cleanPrompt;
       flowGptPrompt.value = cleanPrompt;
       zEnhancePromptPreview.value = cleanPrompt;
@@ -12390,6 +12977,7 @@ function openBuilder(node) {
       flowGptPrompt.value = cleanPrompt;
       t2iPrompt.value = cleanPrompt;
       fluxPrompt.value = cleanPrompt;
+      flux2KleinMlxPrompt.value = cleanPrompt;
       nbPrompt.value = cleanPrompt;
       zEnhancePromptPreview.value = cleanPrompt;
     }
@@ -12643,7 +13231,10 @@ function openBuilder(node) {
     const original = String(value || "").trim();
     if (!original) return "";
     const firstLine = original.split(/\n/)[0].trim();
-    const beforeDetail = firstLine.split(/\s+[:|]\s+/)[0].trim();
+    // Split on "label: description" / "label | description" -- the colon/pipe
+    // commonly has no space before it (e.g. "the singer: The singer has..."),
+    // so only whitespace *after* the delimiter is required, not before.
+    const beforeDetail = firstLine.split(/\s*[:|]\s+/)[0].trim();
     let text = /^(?:character\s*\d*|subject\s*\d*|person|the subject|visible subject|the visible subject)$/i.test(beforeDetail)
       ? original
       : beforeDetail;
@@ -14631,12 +15222,12 @@ function openBuilder(node) {
     lyricSingersInput.dataset.vrgdgInspectorSegmentId = String(segment?.id || "");
     lyricSingersInput.dataset.vrgdgUserEdited = "0";
     const disabled = !segment;
-    for (const control of [labelInput, startInput, endInput, notesInput, ernieNotesInput, krea2TwoPassNotesInput, nbNotes, lyricTextInput, lyricSingersInput, i2vNotesInput, t2iPrompt, ernieT2IPrompt, krea2TwoPassT2IPrompt, nbPrompt, i2vPrompt, zEnhanceGemmaNotes, zEnhancePromptPreview, previewButton, ernieCreateButton, previewNBButton, deleteSegmentButton, createSceneVideoButton, miniMaxSceneVideoButtons[0]]) {
+    for (const control of [labelInput, startInput, endInput, notesInput, ernieNotesInput, krea2TwoPassNotesInput, nbNotes, lyricTextInput, lyricSingersInput, i2vNotesInput, t2iPrompt, ernieT2IPrompt, krea2TwoPassT2IPrompt, nbPrompt, i2vPrompt, zEnhanceGemmaNotes, zEnhancePromptPreview, previewButton, ernieCreateButton, previewNBButton, deleteSegmentButton, createSceneVideoButton, miniMaxSceneVideoButtons[0], ltx2MlxSceneVideoButtons[0]]) {
       control.disabled = disabled;
     }
     loadCustomImageButton.disabled = disabled;
     openSceneAudioOptionsButton.disabled = disabled;
-    for (const control of [t2iTextGemmaModelSelect, gemmaModelSelect, mmprojSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, ernieMmprojSelect, zEnhanceGemmaModelSelect, zEnhanceMmprojSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect, miniMaxTextGemmaModelSelect, miniMaxGemmaModelSelect, miniMaxMmprojSelect, nbApiKey, nbModelSelect, nbGemmaModelSelect, nbMmprojSelect, fluxUseTextOnlyGemmaPrompt.input, fluxUseDirectorNotes.input, nbUseTextOnlyGemmaPrompt.input, nbUseDirectorNotes.input, useVisionReference.input, ernieUseVisionReference.input, krea2TwoPassUseVisionReference.input, useI2VVisionReference.input, useT2VVisionReference.input, useSceneZImageSettings.input, useSceneErnieImageSettings.input, useSceneFluxKleinSettings.input, useSceneNBImageSettings.input, useSceneI2VVideoSettings.input, useSceneMiniMaxH3Settings.input, rtvReferenceBehaviorSelect, createSceneEndFrameButton, clearSceneEndFrameButton, i2vUseGgufModel.input, refImageInput, createT2IButton, editZImageT2IInstructionsButton, ernieCreateT2IButton, editErnieT2IInstructionsButton, krea2TwoPassCreateT2IButton, editKrea2T2IInstructionsButton, createNBPromptButton, editNanoBT2IInstructionsButton, flowGptCreatePromptButton, editFlowGptT2IInstructionsButton, createFluxPromptButton, editFluxKleinT2IInstructionsButton, createI2VButton, editI2VPromptButton, editIdLoraInstructionsButton, zEnhanceGemmaButton, ...editImagePromptButtons]) {
+    for (const control of [t2iTextGemmaModelSelect, gemmaModelSelect, mmprojSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, ernieMmprojSelect, zEnhanceGemmaModelSelect, zEnhanceMmprojSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect, miniMaxTextGemmaModelSelect, miniMaxGemmaModelSelect, miniMaxMmprojSelect, nbApiKey, nbModelSelect, nbGemmaModelSelect, nbMmprojSelect, fluxUseTextOnlyGemmaPrompt.input, fluxUseDirectorNotes.input, nbUseTextOnlyGemmaPrompt.input, nbUseDirectorNotes.input, useVisionReference.input, ernieUseVisionReference.input, krea2TwoPassUseVisionReference.input, useI2VVisionReference.input, useT2VVisionReference.input, useSceneZImageSettings.input, useSceneErnieImageSettings.input, useSceneFluxKleinSettings.input, useSceneNBImageSettings.input, useSceneI2VVideoSettings.input, useSceneMiniMaxH3Settings.input, rtvReferenceBehaviorSelect, createSceneEndFrameButton, clearSceneEndFrameButton, i2vUseGgufModel.input, refImageInput, createT2IButton, editZImageT2IInstructionsButton, ernieCreateT2IButton, editErnieT2IInstructionsButton, krea2TwoPassCreateT2IButton, editKrea2T2IInstructionsButton, createNBPromptButton, editNanoBT2IInstructionsButton, flowGptCreatePromptButton, editFlowGptT2IInstructionsButton, createFluxPromptButton, editFluxKleinT2IInstructionsButton, flux2KleinMlxGemmaPromptButton, flux2KleinMlxSceneImageButton, createI2VButton, editI2VPromptButton, editIdLoraInstructionsButton, zEnhanceGemmaButton, ...editImagePromptButtons]) {
       control.disabled = disabled;
     }
     const lockedByVideo = hasLockedVideo(segment);
@@ -16197,6 +16788,7 @@ function openBuilder(node) {
     settings.enabled = mode === "flux_klein";
     zImageModePanel.style.display = mode === "zimage" ? "flex" : "none";
     fluxKleinModePanel.style.display = mode === "flux_klein" || mode === "nano_banana" ? "flex" : "none";
+    flux2KleinMlxImagePanel.style.display = mode === "flux2klein_mlx" ? "flex" : "none";
     ernieImageModePanel.style.display = mode === "ernie_image" ? "flex" : "none";
     krea2TwoPassModePanel.style.display = mode === "krea2_2pass" ? "flex" : "none";
     flowGptModePanel.style.display = mode === "flow_gpt" ? "flex" : "none";
@@ -16209,7 +16801,7 @@ function openBuilder(node) {
     nbImagePanel.style.display = mode === "nano_banana" ? "flex" : "none";
     ernieImagePanel.style.display = mode === "ernie_image" ? "flex" : "none";
     krea2TwoPassPanel.style.display = mode === "krea2_2pass" ? "flex" : "none";
-    for (const card of [zImageCard, fluxKleinCard, nbImageCard, ernieImageCard, krea2TwoPassCard, flowGptCard, zEnhanceCard]) {
+    for (const card of [zImageCard, fluxKleinCard, flux2KleinMlxCard, nbImageCard, ernieImageCard, krea2TwoPassCard, flowGptCard, zEnhanceCard]) {
       const active = card.dataset.model === mode;
       card.style.borderColor = active ? "#0891b2" : "#3f3f46";
       card.style.background = active ? "#06b6d4" : "#27272a";
@@ -16254,6 +16846,7 @@ function openBuilder(node) {
     syncErnieImagePanel();
     syncNBImagePanel();
     syncFlowGptBrowserPanel();
+    syncFlux2KleinMlxPanelFromState();
   }
 
   function updateFluxLoraVisibility() {
@@ -27339,6 +27932,38 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       batch_size: 1,
     });
 
+    const zimageMlxReferencePayload = (prompt, settings = {}) => ({
+      prompt: String(prompt || "").trim(),
+      negative_prompt: "",
+      model_name: settings.model_name || "z-image-turbo",
+      quantize: settings.quantize || "4",
+      width: Number(settings.width || 1024),
+      height: Number(settings.height || 1024),
+      num_inference_steps: Number(settings.num_inference_steps || 4),
+      guidance: Number(settings.guidance ?? 1.0),
+      seed: Number(settings.seed || 0),
+      seed_mode: settings.seed_mode || "fixed",
+    });
+
+    const krea2ZimageMlxReferencePayload = (prompt, settings = {}) => ({
+      prompt: String(prompt || "").trim(),
+      negative_prompt: "",
+      krea2_model_name: settings.krea2_model_name || "krea2",
+      krea2_quantize: settings.krea2_quantize || "4",
+      zimage_model_name: settings.zimage_model_name || "z-image-turbo",
+      zimage_quantize: settings.zimage_quantize || "4",
+      first_pass_width: Number(settings.first_pass_width || 1024),
+      first_pass_height: Number(settings.first_pass_height || 576),
+      width: Number(settings.width || 1920),
+      height: Number(settings.height || 1080),
+      krea2_num_inference_steps: Number(settings.krea2_num_inference_steps || 8),
+      zimage_num_inference_steps: Number(settings.zimage_num_inference_steps || 4),
+      guidance: Number(settings.guidance ?? 1.0),
+      image_strength: Number(settings.image_strength ?? 0.3),
+      seed: Number(settings.seed || 0),
+      seed_mode: settings.seed_mode || "fixed",
+    });
+
     const currentKrea2ReferenceSettings = () => {
       state.referenceKrea2Settings = cloneKrea2ReferenceSettings(state.referenceKrea2Settings);
       return state.referenceKrea2Settings;
@@ -27347,6 +27972,26 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     const rememberKrea2ReferenceSettings = (settings = {}) => {
       state.referenceKrea2Settings = cloneKrea2ReferenceSettings(settings);
       return state.referenceKrea2Settings;
+    };
+
+    const currentZimageMlxReferenceSettings = () => {
+      state.referenceZimageMlxSettings = cloneZimageMlxReferenceSettings(state.referenceZimageMlxSettings);
+      return state.referenceZimageMlxSettings;
+    };
+
+    const rememberZimageMlxReferenceSettings = (settings = {}) => {
+      state.referenceZimageMlxSettings = cloneZimageMlxReferenceSettings(settings);
+      return state.referenceZimageMlxSettings;
+    };
+
+    const currentKrea2ZimageMlxReferenceSettings = () => {
+      state.referenceKrea2ZimageMlxSettings = cloneKrea2ZimageMlxReferenceSettings(state.referenceKrea2ZimageMlxSettings);
+      return state.referenceKrea2ZimageMlxSettings;
+    };
+
+    const rememberKrea2ZimageMlxReferenceSettings = (settings = {}) => {
+      state.referenceKrea2ZimageMlxSettings = cloneKrea2ZimageMlxReferenceSettings(settings);
+      return state.referenceKrea2ZimageMlxSettings;
     };
 
     const referenceGeneratorPickerOptions = (options = [], defaults = []) => {
@@ -27412,6 +28057,100 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       });
 
       return { zModel, zClip, zVae, kreaModel, kreaClip, kreaVae, seed, seedMode, firstWidth, firstHeight, width, height, readZImage, readKrea2 };
+    }
+
+    const MLX_QUANTIZE_CHOICES = [
+      { value: "4", label: "4-bit" },
+      { value: "8", label: "8-bit" },
+      { value: "none", label: "Full precision" },
+    ];
+
+    function buildMlxReferenceGeneratorControls() {
+      const zimageMlxSettings = currentZimageMlxReferenceSettings();
+      const kreaMlxSettings = currentKrea2ZimageMlxReferenceSettings();
+
+      const zimageMlxQuantize = makeSelect(MLX_QUANTIZE_CHOICES, zimageMlxSettings.quantize || DEFAULT_ZIMAGE_MLX_REFERENCE_SETTINGS.quantize);
+      const zimageMlxQuantStatusNote = makeMlxQuantStatusNote();
+      updateMlxQuantStatusNote(zimageMlxQuantStatusNote, "zimage", "z-image-turbo", zimageMlxQuantize.value);
+      zimageMlxQuantize.addEventListener("change", () => updateMlxQuantStatusNote(zimageMlxQuantStatusNote, "zimage", "z-image-turbo", zimageMlxQuantize.value));
+      const zimageMlxWidth = makeInput(String(zimageMlxSettings.width || DEFAULT_ZIMAGE_MLX_REFERENCE_SETTINGS.width), "number");
+      const zimageMlxHeight = makeInput(String(zimageMlxSettings.height || DEFAULT_ZIMAGE_MLX_REFERENCE_SETTINGS.height), "number");
+      const zimageMlxSteps = makeInput(String(zimageMlxSettings.num_inference_steps || DEFAULT_ZIMAGE_MLX_REFERENCE_SETTINGS.num_inference_steps), "number");
+      const zimageMlxSeed = makeInput(String(zimageMlxSettings.seed || DEFAULT_ZIMAGE_MLX_REFERENCE_SETTINGS.seed), "number");
+      const zimageMlxSeedMode = makeSelect(["fixed", "random"], zimageMlxSettings.seed_mode || DEFAULT_ZIMAGE_MLX_REFERENCE_SETTINGS.seed_mode);
+      for (const input of [zimageMlxWidth, zimageMlxHeight]) {
+        input.min = "64";
+        input.step = "8";
+      }
+      zimageMlxSteps.min = "1";
+      zimageMlxSteps.step = "1";
+      zimageMlxSeed.min = "0";
+      zimageMlxSeed.step = "1";
+
+      const krea2MlxQuantize = makeSelect(MLX_QUANTIZE_CHOICES, kreaMlxSettings.krea2_quantize || DEFAULT_KREA2_ZIMAGE_MLX_REFERENCE_SETTINGS.krea2_quantize);
+      const krea2MlxQuantStatusNote = makeMlxQuantStatusNote();
+      updateMlxQuantStatusNote(krea2MlxQuantStatusNote, "krea2", "krea2", krea2MlxQuantize.value);
+      krea2MlxQuantize.addEventListener("change", () => updateMlxQuantStatusNote(krea2MlxQuantStatusNote, "krea2", "krea2", krea2MlxQuantize.value));
+      const zimageEnhancerMlxQuantize = makeSelect(MLX_QUANTIZE_CHOICES, kreaMlxSettings.zimage_quantize || DEFAULT_KREA2_ZIMAGE_MLX_REFERENCE_SETTINGS.zimage_quantize);
+      const zimageEnhancerMlxQuantStatusNote = makeMlxQuantStatusNote();
+      updateMlxQuantStatusNote(zimageEnhancerMlxQuantStatusNote, "zimage", "z-image-turbo", zimageEnhancerMlxQuantize.value);
+      zimageEnhancerMlxQuantize.addEventListener("change", () => updateMlxQuantStatusNote(zimageEnhancerMlxQuantStatusNote, "zimage", "z-image-turbo", zimageEnhancerMlxQuantize.value));
+      const krea2MlxFirstWidth = makeInput(String(kreaMlxSettings.first_pass_width || DEFAULT_KREA2_ZIMAGE_MLX_REFERENCE_SETTINGS.first_pass_width), "number");
+      const krea2MlxFirstHeight = makeInput(String(kreaMlxSettings.first_pass_height || DEFAULT_KREA2_ZIMAGE_MLX_REFERENCE_SETTINGS.first_pass_height), "number");
+      const krea2MlxWidth = makeInput(String(kreaMlxSettings.width || DEFAULT_KREA2_ZIMAGE_MLX_REFERENCE_SETTINGS.width), "number");
+      const krea2MlxHeight = makeInput(String(kreaMlxSettings.height || DEFAULT_KREA2_ZIMAGE_MLX_REFERENCE_SETTINGS.height), "number");
+      const krea2MlxSteps = makeInput(String(kreaMlxSettings.krea2_num_inference_steps || DEFAULT_KREA2_ZIMAGE_MLX_REFERENCE_SETTINGS.krea2_num_inference_steps), "number");
+      const zimageEnhancerMlxSteps = makeInput(String(kreaMlxSettings.zimage_num_inference_steps || DEFAULT_KREA2_ZIMAGE_MLX_REFERENCE_SETTINGS.zimage_num_inference_steps), "number");
+      const krea2MlxImageStrength = makeInput(String(kreaMlxSettings.image_strength ?? DEFAULT_KREA2_ZIMAGE_MLX_REFERENCE_SETTINGS.image_strength), "number");
+      const krea2MlxSeed = makeInput(String(kreaMlxSettings.seed || DEFAULT_KREA2_ZIMAGE_MLX_REFERENCE_SETTINGS.seed), "number");
+      const krea2MlxSeedMode = makeSelect(["fixed", "random"], kreaMlxSettings.seed_mode || DEFAULT_KREA2_ZIMAGE_MLX_REFERENCE_SETTINGS.seed_mode);
+      for (const input of [krea2MlxFirstWidth, krea2MlxFirstHeight, krea2MlxWidth, krea2MlxHeight]) {
+        input.min = "64";
+        input.step = "8";
+      }
+      for (const input of [krea2MlxSteps, zimageEnhancerMlxSteps]) {
+        input.min = "1";
+        input.step = "1";
+      }
+      krea2MlxImageStrength.min = "0";
+      krea2MlxImageStrength.max = "1";
+      krea2MlxImageStrength.step = "0.05";
+      krea2MlxImageStrength.title = "Enhancer pass strength. Not independently re-verified for this "
+        + "pipeline -- presumed inverted from the usual img2img convention (higher = closer to the "
+        + "Krea-2 pass output, fewer denoise steps used), same as comfyui-flux2klein-mlx's confirmed behavior.";
+      krea2MlxSeed.min = "0";
+      krea2MlxSeed.step = "1";
+
+      const readZimageMlx = () => rememberZimageMlxReferenceSettings({
+        quantize: zimageMlxQuantize.value,
+        width: Number(zimageMlxWidth.value || DEFAULT_ZIMAGE_MLX_REFERENCE_SETTINGS.width),
+        height: Number(zimageMlxHeight.value || DEFAULT_ZIMAGE_MLX_REFERENCE_SETTINGS.height),
+        num_inference_steps: Number(zimageMlxSteps.value || DEFAULT_ZIMAGE_MLX_REFERENCE_SETTINGS.num_inference_steps),
+        seed: Number(zimageMlxSeed.value || DEFAULT_ZIMAGE_MLX_REFERENCE_SETTINGS.seed),
+        seed_mode: zimageMlxSeedMode.value || DEFAULT_ZIMAGE_MLX_REFERENCE_SETTINGS.seed_mode,
+      });
+
+      const readKrea2ZimageMlx = () => rememberKrea2ZimageMlxReferenceSettings({
+        krea2_quantize: krea2MlxQuantize.value,
+        zimage_quantize: zimageEnhancerMlxQuantize.value,
+        first_pass_width: Number(krea2MlxFirstWidth.value || DEFAULT_KREA2_ZIMAGE_MLX_REFERENCE_SETTINGS.first_pass_width),
+        first_pass_height: Number(krea2MlxFirstHeight.value || DEFAULT_KREA2_ZIMAGE_MLX_REFERENCE_SETTINGS.first_pass_height),
+        width: Number(krea2MlxWidth.value || DEFAULT_KREA2_ZIMAGE_MLX_REFERENCE_SETTINGS.width),
+        height: Number(krea2MlxHeight.value || DEFAULT_KREA2_ZIMAGE_MLX_REFERENCE_SETTINGS.height),
+        krea2_num_inference_steps: Number(krea2MlxSteps.value || DEFAULT_KREA2_ZIMAGE_MLX_REFERENCE_SETTINGS.krea2_num_inference_steps),
+        zimage_num_inference_steps: Number(zimageEnhancerMlxSteps.value || DEFAULT_KREA2_ZIMAGE_MLX_REFERENCE_SETTINGS.zimage_num_inference_steps),
+        image_strength: Number(krea2MlxImageStrength.value ?? DEFAULT_KREA2_ZIMAGE_MLX_REFERENCE_SETTINGS.image_strength),
+        seed: Number(krea2MlxSeed.value || DEFAULT_KREA2_ZIMAGE_MLX_REFERENCE_SETTINGS.seed),
+        seed_mode: krea2MlxSeedMode.value || DEFAULT_KREA2_ZIMAGE_MLX_REFERENCE_SETTINGS.seed_mode,
+      });
+
+      return {
+        zimageMlxQuantize, zimageMlxQuantStatusNote, zimageMlxWidth, zimageMlxHeight, zimageMlxSteps, zimageMlxSeed, zimageMlxSeedMode,
+        krea2MlxQuantize, krea2MlxQuantStatusNote, zimageEnhancerMlxQuantize, zimageEnhancerMlxQuantStatusNote,
+        krea2MlxFirstWidth, krea2MlxFirstHeight, krea2MlxWidth, krea2MlxHeight,
+        krea2MlxSteps, zimageEnhancerMlxSteps, krea2MlxImageStrength, krea2MlxSeed, krea2MlxSeedMode,
+        readZimageMlx, readKrea2ZimageMlx,
+      };
     }
 
     function applyReferenceDescription(referenceType, target, description = "") {
@@ -27615,10 +28354,15 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     async function createMissingLocationReferencesWithZImage(workflow = "zimage", generatorSettings = {}) {
       const useKrea2 = workflow === "krea2";
       const useFlowGpt = workflow === "flow_gpt";
+      const useZimageMlx = workflow === "zimage_mlx";
+      const useKrea2ZimageMlx = workflow === "krea2_zimage_mlx";
       const browserSettings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
       const workflowLabel = useFlowGpt
         ? browserImageProviderLabel(browserSettings.provider)
-        : useKrea2 ? "Krea2 + ZImage enhancer" : "ZImage";
+        : useKrea2 ? "Krea2 + ZImage enhancer"
+        : useZimageMlx ? "Z-Image MLX"
+        : useKrea2ZimageMlx ? "Krea2 + ZImage MLX enhancer"
+        : "ZImage";
       const missingLocations = refs.locations
         .map((location, index) => ({ location, index }))
         .filter(({ location }) => {
@@ -27666,6 +28410,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
 
         let zSettings = generatorSettings?.zimage ? cloneZImageSettings({ ...currentZImageReferenceSettings(), ...generatorSettings.zimage }) : currentZImageReferenceSettings();
         const kreaSettings = generatorSettings?.krea2 || {};
+        const zimageMlxSettings = generatorSettings?.zimage_mlx || {};
+        const krea2ZimageMlxSettings = generatorSettings?.krea2_zimage_mlx || {};
         for (let index = 0; index < promptJobs.length; index += 1) {
           const { location, prompt } = promptJobs[index];
           const label = location.name || `Location ${index + 1}`;
@@ -27682,8 +28428,12 @@ Chrome vault corridor: A sealed industrial passage...</pre>
             })
             : useKrea2
               ? await postJson("/vrgdg/workflow_runner/build_krea2_prompt", krea2ReferencePayload(prompt, kreaSettings))
-              : await postJson("/vrgdg/workflow_runner/build_zimage_prompt", zimageReferencePayload(prompt, zSettings));
-          if (!useFlowGpt && !useKrea2 && Number.isFinite(Number(built.used_seed))) {
+              : useZimageMlx
+                ? await postJson("/vrgdg/workflow_runner/build_zimage_mlx_prompt", zimageMlxReferencePayload(prompt, zimageMlxSettings))
+                : useKrea2ZimageMlx
+                  ? await postJson("/vrgdg/workflow_runner/build_krea2_zimage_mlx_prompt", krea2ZimageMlxReferencePayload(prompt, krea2ZimageMlxSettings))
+                  : await postJson("/vrgdg/workflow_runner/build_zimage_prompt", zimageReferencePayload(prompt, zSettings));
+          if (!useFlowGpt && !useKrea2 && !useZimageMlx && !useKrea2ZimageMlx && Number.isFinite(Number(built.used_seed))) {
             zSettings.seed = Number(built.used_seed);
             state.zimageSettings = zSettings;
             zSeed.value = String(zSettings.seed);
@@ -27712,7 +28462,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           location.image.name = `${location.name || `location_${index + 1}`}.png`;
           await describeGeneratedReference("location", location, prompt);
           await persistGeneratedReferenceImage("location", location);
-          if (!useFlowGpt && !useKrea2) {
+          if (!useFlowGpt && !useKrea2 && !useZimageMlx && !useKrea2ZimageMlx) {
             advanceZImageSeedAfterRun(zSettings);
             zSettings = cloneZImageSettings(state.zimageSettings);
             syncZImageSettingsPanel();
@@ -27756,10 +28506,15 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       }
       const useKrea2 = workflow === "krea2";
       const useFlowGpt = workflow === "flow_gpt";
+      const useZimageMlx = workflow === "zimage_mlx";
+      const useKrea2ZimageMlx = workflow === "krea2_zimage_mlx";
       const browserSettings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
       const workflowLabel = useFlowGpt
         ? browserImageProviderLabel(browserSettings.provider)
-        : useKrea2 ? "Krea2 + ZImage enhancer" : "ZImage";
+        : useKrea2 ? "Krea2 + ZImage enhancer"
+        : useZimageMlx ? "Z-Image MLX"
+        : useKrea2ZimageMlx ? "Krea2 + ZImage MLX enhancer"
+        : "ZImage";
       const missingSubjects = refs.subjects
         .map((subject, index) => ({ subject, index }))
         .filter(({ subject }) => {
@@ -27804,6 +28559,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
 
         let zSettings = generatorSettings?.zimage ? cloneZImageSettings({ ...currentZImageReferenceSettings(), ...generatorSettings.zimage }) : currentZImageReferenceSettings();
         const kreaSettings = generatorSettings?.krea2 || {};
+        const zimageMlxSettings = generatorSettings?.zimage_mlx || {};
+        const krea2ZimageMlxSettings = generatorSettings?.krea2_zimage_mlx || {};
         for (let index = 0; index < promptJobs.length; index += 1) {
           const { subject, prompt } = promptJobs[index];
           const label = subject.name || `Subject ${index + 1}`;
@@ -27820,8 +28577,12 @@ Chrome vault corridor: A sealed industrial passage...</pre>
             })
             : useKrea2
               ? await postJson("/vrgdg/workflow_runner/build_krea2_prompt", krea2ReferencePayload(prompt, kreaSettings))
-              : await postJson("/vrgdg/workflow_runner/build_zimage_prompt", zimageReferencePayload(prompt, zSettings));
-          if (!useFlowGpt && !useKrea2 && Number.isFinite(Number(built.used_seed))) {
+              : useZimageMlx
+                ? await postJson("/vrgdg/workflow_runner/build_zimage_mlx_prompt", zimageMlxReferencePayload(prompt, zimageMlxSettings))
+                : useKrea2ZimageMlx
+                  ? await postJson("/vrgdg/workflow_runner/build_krea2_zimage_mlx_prompt", krea2ZimageMlxReferencePayload(prompt, krea2ZimageMlxSettings))
+                  : await postJson("/vrgdg/workflow_runner/build_zimage_prompt", zimageReferencePayload(prompt, zSettings));
+          if (!useFlowGpt && !useKrea2 && !useZimageMlx && !useKrea2ZimageMlx && Number.isFinite(Number(built.used_seed))) {
             zSettings.seed = Number(built.used_seed);
             state.zimageSettings = zSettings;
             zSeed.value = String(zSettings.seed);
@@ -27853,7 +28614,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           if (refs.subject_count === 1 && refs.subjects[0]?.id === subject.id) {
             refs.subject.image = subject.image;
           }
-          if (!useFlowGpt && !useKrea2) {
+          if (!useFlowGpt && !useKrea2 && !useZimageMlx && !useKrea2ZimageMlx) {
             advanceZImageSeedAfterRun(zSettings);
             zSettings = cloneZImageSettings(state.zimageSettings);
             syncZImageSettingsPanel();
@@ -28072,6 +28833,142 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       }
     }
 
+    async function runFluxReferenceWithZImageMlx(referenceType, target, sourceText, name = "", generatorSettings = {}) {
+      const text = String(sourceText || "").trim();
+      if (!text) {
+        toast(referenceType === "subject" ? "Enter a subject description first." : "Enter a location description first.", true);
+        return;
+      }
+      const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
+      if (!modelFile && !["lm_studio", "llm_api"].includes(state.textGemmaRunner)) {
+        toast("Choose a non-vision Gemma model first.", true);
+        return;
+      }
+      let progress = null;
+      let ranZImageMlx = false;
+      try {
+        setInlineProgress(referenceType === "subject" ? "Creating subject prompt with Gemma..." : "Creating location prompt with Gemma...", 8);
+        progress = createProgressWindow(referenceType === "subject" ? "Creating subject reference" : "Creating location reference", { zIndex: 100008 });
+        progress.set(`Creating reference prompt with Gemma...\n${gemmaRunnerLine()}`, 8);
+        const styleTheme = state.useVrgdgTextContext ? await loadContextTextQuiet(themeStyleInput.value) : "";
+        const promptData = await postJson("/vrgdg/music_builder/flux_reference_zimage_prompt", {
+          ...textGemmaRunnerPayload(),
+          model_file: modelFile,
+          reference_type: referenceType,
+          source_text: text,
+          style_theme: styleTheme,
+          unload_after: true,
+        }, 3 * 60 * 1000);
+        const zimageMlxSettings = generatorSettings.zimage_mlx || {};
+        setInlineProgress("Building Z-Image MLX reference workflow...", 28);
+        progress.set("Building Z-Image MLX reference workflow...", 28);
+        const built = await postJson("/vrgdg/workflow_runner/build_zimage_mlx_prompt", zimageMlxReferencePayload(promptData.prompt, zimageMlxSettings));
+        setInlineProgress("Queueing Z-Image MLX reference workflow...", 42);
+        progress.set("Queueing Z-Image MLX reference workflow...", 42);
+        const queued = await queueWorkflowPrompt(built.prompt);
+        const promptId = queued?.prompt_id;
+        if (!promptId) throw new Error("ComfyUI queued the Z-Image MLX reference but did not return a prompt_id.");
+        ranZImageMlx = true;
+        const images = await waitForImages(promptId, (message) => {
+          setInlineProgress(`${message}\nPrompt ID: ${promptId}`, 66);
+          progress?.set(`${message}\nPrompt ID: ${promptId}`, 66);
+        });
+        const image = images[images.length - 1];
+        if (!image) throw new Error("Z-Image MLX did not return a reference image.");
+        setInlineProgress("Saving reference image into the project...", 88);
+        progress.set("Saving reference image into the project...", 88);
+        const saved = await postJson("/vrgdg/music_builder/save_flux_reference_image", {
+          project_folder: projectInput.value || state.projectFolder,
+          reference_type: referenceType,
+          name: name || text.slice(0, 48) || referenceType,
+          image,
+        });
+        target.image.path = saved.saved_path || "";
+        target.image.data = "";
+        target.image.name = `${name || referenceType}.png`;
+        await describeGeneratedReference(referenceType, target, promptData.prompt);
+        await persistGeneratedReferenceImage(referenceType, target);
+        renderAll();
+        setInlineProgress("Reference image ready.", 100);
+        progress.set("Reference image ready.", 100);
+        progress.close(1300);
+        hideInlineProgress();
+        toast(referenceType === "subject" ? "Subject reference created with Z-Image MLX." : "Location reference created with Z-Image MLX.");
+      } catch (error) {
+        setInlineProgress(`Error:\n${String(error?.message || error)}`, 100);
+        progress?.set(`Error:\n${String(error?.message || error)}`, 100);
+        toast(String(error?.message || error), true);
+      }
+    }
+
+    async function runFluxReferenceWithKrea2ZimageMlx(referenceType, target, sourceText, name = "", generatorSettings = {}) {
+      const text = String(sourceText || "").trim();
+      if (!text) {
+        toast(referenceType === "subject" ? "Enter a subject description first." : "Enter a location description first.", true);
+        return;
+      }
+      const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
+      if (!modelFile && !["lm_studio", "llm_api"].includes(state.textGemmaRunner)) {
+        toast("Choose a non-vision Gemma model first.", true);
+        return;
+      }
+      let progress = null;
+      let ranKrea2ZimageMlx = false;
+      try {
+        setInlineProgress(referenceType === "subject" ? "Creating subject prompt with Gemma..." : "Creating location prompt with Gemma...", 8);
+        progress = createProgressWindow(referenceType === "subject" ? "Creating subject reference" : "Creating location reference", { zIndex: 100008 });
+        progress.set(`Creating reference prompt with Gemma...\n${gemmaRunnerLine()}`, 8);
+        const styleTheme = state.useVrgdgTextContext ? await loadContextTextQuiet(themeStyleInput.value) : "";
+        const promptData = await postJson("/vrgdg/music_builder/flux_reference_zimage_prompt", {
+          ...textGemmaRunnerPayload(),
+          model_file: modelFile,
+          reference_type: referenceType,
+          source_text: text,
+          style_theme: styleTheme,
+          unload_after: true,
+        }, 3 * 60 * 1000);
+        const kreaMlxSettings = generatorSettings.krea2_zimage_mlx || {};
+        setInlineProgress("Building Krea-2 + Z-Image MLX enhancer workflow...", 28);
+        progress.set("Building Krea-2 + Z-Image MLX enhancer workflow...", 28);
+        const built = await postJson("/vrgdg/workflow_runner/build_krea2_zimage_mlx_prompt", krea2ZimageMlxReferencePayload(promptData.prompt, kreaMlxSettings));
+        setInlineProgress("Queueing Krea-2 + Z-Image MLX reference workflow...", 42);
+        progress.set("Queueing Krea-2 + Z-Image MLX reference workflow...", 42);
+        const queued = await queueWorkflowPrompt(built.prompt);
+        const promptId = queued?.prompt_id;
+        if (!promptId) throw new Error("ComfyUI queued the Krea-2 + Z-Image MLX reference but did not return a prompt_id.");
+        ranKrea2ZimageMlx = true;
+        const images = await waitForImages(promptId, (message) => {
+          setInlineProgress(`${message}\nPrompt ID: ${promptId}`, 66);
+          progress?.set(`${message}\nPrompt ID: ${promptId}`, 66);
+        });
+        const image = images[images.length - 1];
+        if (!image) throw new Error("Krea-2 + Z-Image MLX did not return a reference image.");
+        setInlineProgress("Saving reference image into the project...", 88);
+        progress.set("Saving reference image into the project...", 88);
+        const saved = await postJson("/vrgdg/music_builder/save_flux_reference_image", {
+          project_folder: projectInput.value || state.projectFolder,
+          reference_type: referenceType,
+          name: name || text.slice(0, 48) || referenceType,
+          image,
+        });
+        target.image.path = saved.saved_path || "";
+        target.image.data = "";
+        target.image.name = `${name || referenceType}.png`;
+        await describeGeneratedReference(referenceType, target, promptData.prompt);
+        await persistGeneratedReferenceImage(referenceType, target);
+        renderAll();
+        setInlineProgress("Reference image ready.", 100);
+        progress.set("Reference image ready.", 100);
+        progress.close(1300);
+        hideInlineProgress();
+        toast(referenceType === "subject" ? "Subject reference created with Krea-2 + Z-Image MLX." : "Location reference created with Krea-2 + Z-Image MLX.");
+      } catch (error) {
+        setInlineProgress(`Error:\n${String(error?.message || error)}`, 100);
+        progress?.set(`Error:\n${String(error?.message || error)}`, 100);
+        toast(String(error?.message || error), true);
+      }
+    }
+
     function createFluxReferenceWithZImage(referenceType, target, sourceText, name = "") {
       const text = String(sourceText || "").trim();
       const backdrop = document.createElement("div");
@@ -28092,6 +28989,14 @@ Chrome vault corridor: A sealed industrial passage...</pre>
 
       const generatorControls = buildReferenceGeneratorControls();
       const { zModel, zClip, zVae, kreaModel, kreaClip, kreaVae, seed, seedMode, firstWidth, firstHeight, width, height, readZImage, readKrea2 } = generatorControls;
+      const mlxGeneratorControls = buildMlxReferenceGeneratorControls();
+      const {
+        zimageMlxQuantize, zimageMlxQuantStatusNote, zimageMlxWidth, zimageMlxHeight, zimageMlxSteps, zimageMlxSeed, zimageMlxSeedMode,
+        krea2MlxQuantize, krea2MlxQuantStatusNote, zimageEnhancerMlxQuantize, zimageEnhancerMlxQuantStatusNote,
+        krea2MlxFirstWidth, krea2MlxFirstHeight, krea2MlxWidth, krea2MlxHeight,
+        krea2MlxSteps, zimageEnhancerMlxSteps, krea2MlxImageStrength, krea2MlxSeed, krea2MlxSeedMode,
+        readZimageMlx, readKrea2ZimageMlx,
+      } = mlxGeneratorControls;
       const subjectOptionsCard = document.createElement("div");
       subjectOptionsCard.style.cssText = "border:1px solid #334155;border-radius:8px;background:#0f172a;padding:12px;display:flex;flex-direction:column;gap:10px;";
       const subjectMode = makeSelect([
@@ -28241,12 +29146,45 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         card.append(h, ...body, button);
         return card;
       };
+      const zimageMlxCard = optionCard("ZImage MLX (Apple Silicon)", [
+        modalHelp("Runs Z-Image natively via MLX (mflux). Requires the comfyui-zimage-mlx custom node and macOS on Apple Silicon."),
+        makeField("Quantize", zimageMlxQuantize),
+        zimageMlxQuantStatusNote,
+        makeField("Width", zimageMlxWidth),
+        makeField("Height", zimageMlxHeight),
+        makeField("Steps", zimageMlxSteps),
+        makeField("Seed", zimageMlxSeed),
+        makeField("Seed mode", zimageMlxSeedMode),
+      ], "Use ZImage MLX", (runText) => runFluxReferenceWithZImageMlx(referenceType, target, runText, name, {
+        zimage_mlx: readZimageMlx(),
+      }));
+      applyMlxCapabilityGate(zimageMlxCard, zimageMlxCard.lastElementChild, zimageMlxCapability());
+      const krea2ZimageMlxCard = optionCard("Krea2 + ZImage MLX Enhancer (Apple Silicon)", [
+        modalHelp("Runs Krea-2 first-pass generation then a Z-Image img2img enhancer pass, both natively via MLX (mflux). Requires the comfyui-krea2-mlx and comfyui-zimage-mlx custom nodes and macOS on Apple Silicon. Models are fixed (Krea-2 + Z-Image Turbo) -- only quantization/dimensions/steps/seed are configurable."),
+        makeField("Krea2 quantize", krea2MlxQuantize),
+        krea2MlxQuantStatusNote,
+        makeField("ZImage enhancer quantize", zimageEnhancerMlxQuantize),
+        zimageEnhancerMlxQuantStatusNote,
+        makeField("Seed", krea2MlxSeed),
+        makeField("Seed mode", krea2MlxSeedMode),
+        makeField("Krea2 first pass width", krea2MlxFirstWidth),
+        makeField("Krea2 first pass height", krea2MlxFirstHeight),
+        makeField("Final width", krea2MlxWidth),
+        makeField("Final height", krea2MlxHeight),
+        makeField("Krea2 steps", krea2MlxSteps),
+        makeField("ZImage enhancer steps", zimageEnhancerMlxSteps),
+        makeField("Enhancer strength", krea2MlxImageStrength),
+      ], "Use Krea2 + ZImage MLX", (runText) => runFluxReferenceWithKrea2ZimageMlx(referenceType, target, runText, name, {
+        krea2_zimage_mlx: readKrea2ZimageMlx(),
+      }));
+      applyMlxCapabilityGate(krea2ZimageMlxCard, krea2ZimageMlxCard.lastElementChild, krea2ZimageMlxCapability());
       grid.append(
         optionCard("ZImage", [
           modalHelp("Use the shared ZImage model settings above for a direct ZImage reference image."),
         ], "Use ZImage", (runText) => runFluxReferenceWithZImage(referenceType, target, runText, name, {
           zimage: readZImage(),
         })),
+        zimageMlxCard,
         optionCard("Krea2 + ZImage Enhancer", [
           makeField("Krea2 diffusion model", kreaModel.wrapper),
           makeField("Krea2 text encoder", kreaClip.wrapper),
@@ -28260,6 +29198,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         ], "Use Krea2 + Enhancer", (runText) => runFluxReferenceWithKrea2(referenceType, target, runText, name, {
           krea2: readKrea2(),
         })),
+        krea2ZimageMlxCard,
         optionCard("Flow/GPT", [
           modalHelp("Use the selected browser image provider. Flow requires its browser profile and manual aspect setup; GPT Image appends the selected aspect ratio; Meta AI uses the meta.ai profile and login."),
         ], "Use Flow/GPT", (runText) => runFluxReferenceWithFlowGpt(referenceType, target, runText, name)),
@@ -28317,6 +29256,14 @@ Chrome vault corridor: A sealed industrial passage...</pre>
 
       const generatorControls = buildReferenceGeneratorControls();
       const { zModel, zClip, zVae, kreaModel, kreaClip, kreaVae, seed, seedMode, firstWidth, firstHeight, width, height, readZImage, readKrea2 } = generatorControls;
+      const mlxGeneratorControls = buildMlxReferenceGeneratorControls();
+      const {
+        zimageMlxQuantize, zimageMlxQuantStatusNote, zimageMlxWidth, zimageMlxHeight, zimageMlxSteps, zimageMlxSeed, zimageMlxSeedMode,
+        krea2MlxQuantize, krea2MlxQuantStatusNote, zimageEnhancerMlxQuantize, zimageEnhancerMlxQuantStatusNote,
+        krea2MlxFirstWidth, krea2MlxFirstHeight, krea2MlxWidth, krea2MlxHeight,
+        krea2MlxSteps, zimageEnhancerMlxSteps, krea2MlxImageStrength, krea2MlxSeed, krea2MlxSeedMode,
+        readZimageMlx, readKrea2ZimageMlx,
+      } = mlxGeneratorControls;
 
       const grid = document.createElement("div");
       grid.style.cssText = "display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start;";
@@ -28355,12 +29302,45 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         card.append(h, ...body, button);
         return card;
       };
+      const subjectZimageMlxCard = optionCard("ZImage MLX (Apple Silicon)", [
+        modalHelp("Runs Z-Image natively via MLX (mflux) for every missing subject/reference image. Requires the comfyui-zimage-mlx custom node and macOS on Apple Silicon."),
+        makeField("Quantize", zimageMlxQuantize),
+        zimageMlxQuantStatusNote,
+        makeField("Width", zimageMlxWidth),
+        makeField("Height", zimageMlxHeight),
+        makeField("Steps", zimageMlxSteps),
+        makeField("Seed", zimageMlxSeed),
+        makeField("Seed mode", zimageMlxSeedMode),
+      ], "Use ZImage MLX For All Missing", () => createMissingSubjectReferencesWithImageWorkflow("zimage_mlx", {
+        zimage_mlx: readZimageMlx(),
+      }));
+      applyMlxCapabilityGate(subjectZimageMlxCard, subjectZimageMlxCard.lastElementChild, zimageMlxCapability());
+      const subjectKrea2ZimageMlxCard = optionCard("Krea2 + ZImage MLX Enhancer (Apple Silicon)", [
+        modalHelp("Runs Krea-2 first-pass generation then a Z-Image img2img enhancer pass, both natively via MLX (mflux), for every missing subject/reference image. Requires the comfyui-krea2-mlx and comfyui-zimage-mlx custom nodes and macOS on Apple Silicon. Models are fixed (Krea-2 + Z-Image Turbo) -- only quantization/dimensions/steps/seed are configurable."),
+        makeField("Krea2 quantize", krea2MlxQuantize),
+        krea2MlxQuantStatusNote,
+        makeField("ZImage enhancer quantize", zimageEnhancerMlxQuantize),
+        zimageEnhancerMlxQuantStatusNote,
+        makeField("Seed", krea2MlxSeed),
+        makeField("Seed mode", krea2MlxSeedMode),
+        makeField("Krea2 first pass width", krea2MlxFirstWidth),
+        makeField("Krea2 first pass height", krea2MlxFirstHeight),
+        makeField("Final width", krea2MlxWidth),
+        makeField("Final height", krea2MlxHeight),
+        makeField("Krea2 steps", krea2MlxSteps),
+        makeField("ZImage enhancer steps", zimageEnhancerMlxSteps),
+        makeField("Enhancer strength", krea2MlxImageStrength),
+      ], "Use Krea2 + ZImage MLX For All Missing", () => createMissingSubjectReferencesWithImageWorkflow("krea2_zimage_mlx", {
+        krea2_zimage_mlx: readKrea2ZimageMlx(),
+      }));
+      applyMlxCapabilityGate(subjectKrea2ZimageMlxCard, subjectKrea2ZimageMlxCard.lastElementChild, krea2ZimageMlxCapability());
       grid.append(
         optionCard("ZImage", [
           modalHelp("Use the shared ZImage model settings above for every missing subject/reference image."),
         ], "Use ZImage For All Missing", () => createMissingSubjectReferencesWithImageWorkflow("zimage", {
           zimage: readZImage(),
         })),
+        subjectZimageMlxCard,
         optionCard("Krea2 + ZImage Enhancer", [
           makeField("Krea2 diffusion model", kreaModel.wrapper),
           makeField("Krea2 text encoder", kreaClip.wrapper),
@@ -28374,6 +29354,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         ], "Use Krea2 + Enhancer For All Missing", () => createMissingSubjectReferencesWithImageWorkflow("krea2", {
           krea2: readKrea2(),
         })),
+        subjectKrea2ZimageMlxCard,
         optionCard("Flow/GPT", [
           modalHelp("Use the selected browser image provider for every missing subject/reference image. Log into the chosen browser profile first."),
         ], "Use Flow/GPT For All Missing", () => createMissingSubjectReferencesWithImageWorkflow("flow_gpt")),
@@ -28422,6 +29403,14 @@ Chrome vault corridor: A sealed industrial passage...</pre>
 
       const generatorControls = buildReferenceGeneratorControls();
       const { zModel, zClip, zVae, kreaModel, kreaClip, kreaVae, seed, seedMode, firstWidth, firstHeight, width, height, readZImage, readKrea2 } = generatorControls;
+      const mlxGeneratorControls = buildMlxReferenceGeneratorControls();
+      const {
+        zimageMlxQuantize, zimageMlxQuantStatusNote, zimageMlxWidth, zimageMlxHeight, zimageMlxSteps, zimageMlxSeed, zimageMlxSeedMode,
+        krea2MlxQuantize, krea2MlxQuantStatusNote, zimageEnhancerMlxQuantize, zimageEnhancerMlxQuantStatusNote,
+        krea2MlxFirstWidth, krea2MlxFirstHeight, krea2MlxWidth, krea2MlxHeight,
+        krea2MlxSteps, zimageEnhancerMlxSteps, krea2MlxImageStrength, krea2MlxSeed, krea2MlxSeedMode,
+        readZimageMlx, readKrea2ZimageMlx,
+      } = mlxGeneratorControls;
 
       const grid = document.createElement("div");
       grid.style.cssText = "display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start;";
@@ -28460,12 +29449,45 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         card.append(h, ...body, button);
         return card;
       };
+      const locationZimageMlxCard = optionCard("ZImage MLX (Apple Silicon)", [
+        modalHelp("Runs Z-Image natively via MLX (mflux) for every missing location image. Requires the comfyui-zimage-mlx custom node and macOS on Apple Silicon."),
+        makeField("Quantize", zimageMlxQuantize),
+        zimageMlxQuantStatusNote,
+        makeField("Width", zimageMlxWidth),
+        makeField("Height", zimageMlxHeight),
+        makeField("Steps", zimageMlxSteps),
+        makeField("Seed", zimageMlxSeed),
+        makeField("Seed mode", zimageMlxSeedMode),
+      ], "Use ZImage MLX For All Missing", () => createMissingLocationReferencesWithZImage("zimage_mlx", {
+        zimage_mlx: readZimageMlx(),
+      }));
+      applyMlxCapabilityGate(locationZimageMlxCard, locationZimageMlxCard.lastElementChild, zimageMlxCapability());
+      const locationKrea2ZimageMlxCard = optionCard("Krea2 + ZImage MLX Enhancer (Apple Silicon)", [
+        modalHelp("Runs Krea-2 first-pass generation then a Z-Image img2img enhancer pass, both natively via MLX (mflux), for every missing location image. Requires the comfyui-krea2-mlx and comfyui-zimage-mlx custom nodes and macOS on Apple Silicon. Models are fixed (Krea-2 + Z-Image Turbo) -- only quantization/dimensions/steps/seed are configurable."),
+        makeField("Krea2 quantize", krea2MlxQuantize),
+        krea2MlxQuantStatusNote,
+        makeField("ZImage enhancer quantize", zimageEnhancerMlxQuantize),
+        zimageEnhancerMlxQuantStatusNote,
+        makeField("Seed", krea2MlxSeed),
+        makeField("Seed mode", krea2MlxSeedMode),
+        makeField("Krea2 first pass width", krea2MlxFirstWidth),
+        makeField("Krea2 first pass height", krea2MlxFirstHeight),
+        makeField("Final width", krea2MlxWidth),
+        makeField("Final height", krea2MlxHeight),
+        makeField("Krea2 steps", krea2MlxSteps),
+        makeField("ZImage enhancer steps", zimageEnhancerMlxSteps),
+        makeField("Enhancer strength", krea2MlxImageStrength),
+      ], "Use Krea2 + ZImage MLX For All Missing", () => createMissingLocationReferencesWithZImage("krea2_zimage_mlx", {
+        krea2_zimage_mlx: readKrea2ZimageMlx(),
+      }));
+      applyMlxCapabilityGate(locationKrea2ZimageMlxCard, locationKrea2ZimageMlxCard.lastElementChild, krea2ZimageMlxCapability());
       grid.append(
         optionCard("ZImage", [
           modalHelp("Use the shared ZImage model settings above for every missing location image."),
         ], "Use ZImage For All Missing", () => createMissingLocationReferencesWithZImage("zimage", {
           zimage: readZImage(),
         })),
+        locationZimageMlxCard,
         optionCard("Krea2 + ZImage Enhancer", [
           makeField("Krea2 diffusion model", kreaModel.wrapper),
           makeField("Krea2 text encoder", kreaClip.wrapper),
@@ -28479,6 +29501,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         ], "Use Krea2 + Enhancer For All Missing", () => createMissingLocationReferencesWithZImage("krea2", {
           krea2: readKrea2(),
         })),
+        locationKrea2ZimageMlxCard,
         optionCard("Flow/GPT", [
           modalHelp("Use the selected browser image provider for every missing location image. Log into the chosen browser profile first."),
         ], "Use Flow/GPT For All Missing", () => createMissingLocationReferencesWithZImage("flow_gpt")),
@@ -33856,9 +34879,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const projectVideoEngineSelect = makeSelect([
       { value: "ltx", label: "LTX (current Builder)" },
       { value: "minimax_h3", label: "MiniMax H3" },
+      { value: "ltx2mlx", label: "LTX-2 MLX (Apple Silicon)" },
     ], normalizeProjectVideoEngine(state.projectVideoEngine));
     const projectVideoEngineNote = document.createElement("div");
-    projectVideoEngineNote.textContent = "This choice belongs to the whole project. LTX projects keep the existing scene renderer unchanged. MiniMax H3 projects use the separate MiniMax scene action and exact-timeline adapter.";
+    projectVideoEngineNote.textContent = "This choice belongs to the whole project. LTX projects keep the existing scene renderer unchanged. MiniMax H3 projects use the separate MiniMax scene action and exact-timeline adapter. LTX-2 MLX runs LTX-2.3 natively via MLX on Apple Silicon Macs only.";
     projectVideoEngineNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
     const projectVideoEnginePanel = makeSettingsSection("Project Video Engine", [
       makeField("Video engine for this project", projectVideoEngineSelect),
@@ -34129,6 +35153,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       await autoSaveSessionQuiet("project video engine");
       toast(state.projectVideoEngine === "minimax_h3"
         ? "This project now uses the separate MiniMax H3 scene renderer."
+        : state.projectVideoEngine === "ltx2mlx"
+        ? "This project now uses LTX-2 MLX (Apple Silicon)."
         : "This project now uses the existing LTX scene renderer.");
     });
     clearSuccessSound.onclick = async () => {
@@ -34606,10 +35632,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       video_type: normalizeVideoType(state.videoType),
       video_engine: normalizeProjectVideoEngine(state.projectVideoEngine),
       minimax_h3_settings: cloneMiniMaxH3Settings(state.miniMaxH3Settings),
+      ltx2mlx_settings: cloneLtx2MlxSettings(state.ltx2MlxSettings),
       image_model_mode: state.imageModelMode,
       zimage_settings: state.zimageSettings,
       reference_krea2_settings: cloneKrea2ReferenceSettings(state.referenceKrea2Settings),
       flux_klein_settings: state.fluxKleinSettings,
+      flux2klein_mlx_settings: cloneFlux2KleinMlxSettings(state.flux2KleinMlxSettings),
       flow_gpt_browser_settings: cloneFlowGptBrowserSettings(state.flowGptBrowserSettings),
       nb_image_settings: state.nbImageSettings,
       ernie_image_settings: state.ernieImageSettings,
@@ -34870,6 +35898,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         state.videoType = normalizeVideoType(data.session.video_type || data.session.videoType || state.videoType);
         state.projectVideoEngine = normalizeProjectVideoEngine(data.session.video_engine ?? state.projectVideoEngine);
         state.miniMaxH3Settings = cloneMiniMaxH3Settings(data.session.minimax_h3_settings || state.miniMaxH3Settings);
+        state.ltx2MlxSettings = cloneLtx2MlxSettings(data.session.ltx2mlx_settings || state.ltx2MlxSettings);
         state.imageModelMode = data.session.image_model_mode || data.session.flux_klein_settings?.image_model_mode || state.imageModelMode || "zimage";
         state.pxPerSecond = state.timelineZoom;
         waveformModeSelect.value = state.waveformMode;
@@ -34885,6 +35914,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         state.zimageSettings = scrubGlobalImageToImageSourceForProject(cloneZImageSettings(data.session.zimage_settings || state.zimageSettings), state.projectFolder);
         state.referenceKrea2Settings = cloneKrea2ReferenceSettings(data.session.reference_krea2_settings || state.referenceKrea2Settings);
         state.fluxKleinSettings = data.session.flux_klein_settings || state.fluxKleinSettings;
+        state.flux2KleinMlxSettings = cloneFlux2KleinMlxSettings(data.session.flux2klein_mlx_settings || state.flux2KleinMlxSettings);
         state.flowGptBrowserSettings = cloneFlowGptBrowserSettings(data.session.flow_gpt_browser_settings || state.flowGptBrowserSettings);
         state.nbImageSettings = data.session.nb_image_settings || state.nbImageSettings;
         state.ernieImageSettings = scrubGlobalImageToImageSourceForProject(cloneErnieImageSettings(data.session.ernie_image_settings || state.ernieImageSettings), state.projectFolder);
@@ -35204,6 +36234,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.videoType = normalizeVideoType(session.video_type || session.videoType || state.videoType);
       state.projectVideoEngine = normalizeProjectVideoEngine(session.video_engine);
       state.miniMaxH3Settings = cloneMiniMaxH3Settings(session.minimax_h3_settings || {});
+      state.ltx2MlxSettings = cloneLtx2MlxSettings(session.ltx2mlx_settings || {});
       state.imageModelMode = session.image_model_mode || session.flux_klein_settings?.image_model_mode || state.imageModelMode || "zimage";
       state.pxPerSecond = state.timelineZoom;
       waveformModeSelect.value = state.waveformMode;
@@ -35219,6 +36250,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.zimageSettings = scrubGlobalImageToImageSourceForProject(cloneZImageSettings(session.zimage_settings || state.zimageSettings), state.projectFolder);
       state.referenceKrea2Settings = cloneKrea2ReferenceSettings(session.reference_krea2_settings || state.referenceKrea2Settings);
       state.fluxKleinSettings = session.flux_klein_settings || state.fluxKleinSettings;
+      state.flux2KleinMlxSettings = cloneFlux2KleinMlxSettings(session.flux2klein_mlx_settings || state.flux2KleinMlxSettings);
       state.flowGptBrowserSettings = cloneFlowGptBrowserSettingsForLoadedProject(session.flow_gpt_browser_settings);
       state.nbImageSettings = session.nb_image_settings || state.nbImageSettings;
       state.ernieImageSettings = scrubGlobalImageToImageSourceForProject(cloneErnieImageSettings(session.ernie_image_settings || state.ernieImageSettings), state.projectFolder);
@@ -36414,6 +37446,107 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return images;
   }
 
+  function flux2KleinMlxImagePathsForSegment(segment) {
+    const raw = segment?.flux2klein_mlx_image_paths;
+    if (Array.isArray(raw)) return raw.map((item) => String(item || "").trim()).filter(Boolean);
+    return String(raw || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  }
+
+  function flux2KleinMlxLoraPayload(settings = {}) {
+    const count = Math.max(0, Math.min(4, Number(settings.lora_count || 0)));
+    const useLoras = Boolean(settings.use_loras && count > 0);
+    const payload = {
+      use_custom_loras: useLoras,
+      lora_count: useLoras ? count : 0,
+    };
+    for (let slot = 1; slot <= 4; slot++) {
+      const config = settings.loras?.[slot - 1] || {};
+      payload[`lora_${slot}`] = config.name || "[none]";
+      payload[`strength_${slot}`] = Number(config.strength ?? 1);
+    }
+    return payload;
+  }
+
+  async function createFlux2KleinMlxImageForSegment(segment, progress = null, percentBase = 45, percentSpan = 35, label = "FLUX.2 Klein MLX") {
+    state.activeId = segment.id;
+    syncInspector();
+    render();
+    const settings = cloneFlux2KleinMlxSettings(state.flux2KleinMlxSettings);
+    // Deliberately reuses the Flux/Klein prompt field + trigger phrase
+    // (segment.flux_prompt / state.fluxKleinSettings.image_trigger_phrase):
+    // both engines render the same "Flux Klein" prompt family, just on
+    // different backends, and this avoids a second prompt-editing UI.
+    const prompt = ensureSegmentT2IPromptHasTrigger(segment, "flux_klein", segment.flux_prompt || segment.t2i_prompt || "");
+    if (!prompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: FLUX.2 Klein MLX prompt is missing.`);
+    progress?.set(`${label}: building hidden FLUX.2 Klein MLX workflow...`, percentBase + percentSpan * 0.25);
+    const payload = {
+      flux2klein_mlx_mode: settings.mode,
+      prompt,
+      width: settings.width || 1024,
+      height: settings.height || 1024,
+      seed: settings.seed || 0,
+      num_inference_steps: settings.num_inference_steps || 4,
+      guidance: settings.guidance ?? 1.0,
+      model_name: settings.model_name || "flux2-klein-4b",
+      quantize: settings.quantize || "4",
+      ...flux2KleinMlxLoraPayload(settings),
+    };
+    // Same reference-image system Flux/Klein (CUDA) uses: subject/location
+    // reference builder + global ingredients + per-scene
+    // segment.flux_image_ingredients, all merged by mergedFluxImageIngredients.
+    // The first pass of this integration only read the manually-typed
+    // image-paths textarea in edit mode and nothing at all in t2i mode,
+    // silently dropping any reference image attached the normal way.
+    const mergedIngredients = mergedFluxImageIngredients(segment);
+    if (settings.mode === "edit") {
+      const manualPaths = flux2KleinMlxImagePathsForSegment(segment).map((path) => ({ path }));
+      const seen = new Set();
+      const allIngredients = [...mergedIngredients, ...manualPaths].filter((item) => {
+        const key = item.path || item.data || item.name || "";
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      if (!allIngredients.length) {
+        throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: FLUX.2 Klein MLX multi-image edit needs at least one reference image.`);
+      }
+      payload.image_ingredients = allIngredients;
+      // CONFIRMED via a real generation test: use_kv_cache=True crashes on
+      // the plain 4B/9B models. Only forward it when the 9B-kv model is
+      // explicitly selected — the backend patch function enforces this
+      // independently too, this is belt-and-braces.
+      payload.use_kv_cache = Boolean(settings.use_kv_cache) && settings.model_name === "flux2-klein-9b-kv";
+    } else {
+      if (mergedIngredients.length > 1) {
+        throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: FLUX.2 Klein MLX text-to-image only accepts a single reference image (${mergedIngredients.length} attached); switch to Multi-Image Edit mode for more than one.`);
+      }
+      payload.image_ingredients = mergedIngredients;
+      payload.image_strength = settings.image_strength ?? 0.3;
+    }
+    const built = await postJson("/vrgdg/workflow_runner/build_flux2klein_mlx_prompt", payload);
+    progress?.set(`${label}: queueing FLUX.2 Klein MLX workflow...`, percentBase + percentSpan * 0.45);
+    const queued = await queueWorkflowPrompt(built.prompt);
+    const promptId = queued?.prompt_id;
+    if (!promptId) throw new Error("ComfyUI queued the FLUX.2 Klein MLX image but did not return a prompt_id.");
+    const images = await waitForImages(promptId, (message) => {
+      progress?.set(`${label}: ${message}\nPrompt ID: ${promptId}`, percentBase + percentSpan * 0.72);
+    });
+    pushHistory();
+    segment.image = images[images.length - 1] || null;
+    await archiveGeneratedSceneImage(segment, segment.image);
+    syncSegmentT2IPrompt(segment, prompt);
+    segment.custom_image_path = "";
+    segment.custom_image_data = "";
+    segment.custom_image_name = "";
+    segment.approved_image_path = "";
+    segment.preview_mode = "image";
+    if (segment.id === activeSegment()?.id) {
+      syncPreview(segment);
+    }
+    render();
+    return images;
+  }
+
   function nbImageSettingsForSegment(segment = activeSegment()) {
     const current = segment?.use_scene_nb_image_settings
       ? (segment.nb_image_settings || cloneNBImageSettings(state.nbImageSettings))
@@ -36872,6 +38005,64 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       toast(String(error?.message || error), true);
     } finally {
       setButtonGroupState(fluxCreateButtons, { disabled: false, text: "Create with Flux/Klein" });
+    }
+  }
+
+  async function previewFlux2KleinMlxImage() {
+    const segment = requireActiveSegment();
+    if (!segment) return;
+    const prompt = String(segment.flux_prompt || segment.t2i_prompt || "").trim();
+    if (!prompt) {
+      toast("Hey, you need a FLUX.2 Klein MLX prompt first. Type one into the prompt box.", true);
+      return;
+    }
+    let progress = null;
+    try {
+      setButtonGroupState(flux2KleinMlxCreateButtons, { disabled: true, text: "Creating..." });
+      progress = createProgressWindow("Creating FLUX.2 Klein MLX image");
+      progress.set("Autosaving session before FLUX.2 Klein MLX image...", 8);
+      await autoSaveSessionQuiet("FLUX.2 Klein MLX image");
+      await createFlux2KleinMlxImageForSegment(segment, progress, 10, 85, "FLUX.2 Klein MLX");
+      await autoSaveSessionQuiet("FLUX.2 Klein MLX image complete");
+      progress.close(900);
+      toast("FLUX.2 Klein MLX image preview ready.");
+    } catch (error) {
+      progress?.set(`Error:\n${String(error?.message || error)}`, 100);
+      toast(String(error?.message || error), true);
+    } finally {
+      setButtonGroupState(flux2KleinMlxCreateButtons, { disabled: false, text: "Create FLUX.2 Klein MLX Scene Image" });
+    }
+  }
+
+  async function createFlux2KleinMlxPromptWithGemma() {
+    const segment = requireActiveSegment();
+    if (!segment) return;
+    // Deliberately does NOT call saveFluxKleinSettingsFromPanel() -- that
+    // reads live values out of the CUDA Flux/Klein panel's own DOM fields
+    // (fluxPrompt/fluxNotes/etc.), which would clobber this scene's prompt
+    // with whatever happens to be sitting in that unrelated panel.
+    // generateFluxKleinPromptForSegment already reads directly from
+    // segment.flux_prompt/segment.flux_notes via fluxKleinSettingsForSegment,
+    // so no pre-sync is needed here.
+    let progress = null;
+    try {
+      flux2KleinMlxGemmaPromptButton.disabled = true;
+      flux2KleinMlxGemmaPromptButton.textContent = "Gemma...";
+      progress = createProgressWindow("Creating FLUX.2 Klein MLX prompt");
+      progress.set("Autosaving session before Gemma FLUX.2 Klein MLX...", 8);
+      await autoSaveSessionQuiet("Gemma FLUX.2 Klein MLX prompt");
+      await generateFluxKleinPromptForSegment(segment, progress, 25, "Gemma FLUX.2 Klein MLX", { unloadAfter: true });
+      progress.set("FLUX.2 Klein MLX prompt ready.", 100);
+      await autoSaveSessionQuiet("Gemma FLUX.2 Klein MLX prompt complete");
+      progress.close(900);
+      render();
+      toast("Gemma created the FLUX.2 Klein MLX prompt.");
+    } catch (error) {
+      progress?.set(`Error:\n${String(error?.message || error)}`, 100);
+      toast(String(error?.message || error), true);
+    } finally {
+      flux2KleinMlxGemmaPromptButton.disabled = false;
+      flux2KleinMlxGemmaPromptButton.textContent = "Gemma Klein MLX Prompt";
     }
   }
 
@@ -39677,7 +40868,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   async function gemmaT2IAllScenes(options = {}) {
     updateActiveFromInputs();
     const imageMode = state.imageModelMode || "zimage";
-    const modelLabel = imageMode === "flux_klein" ? "Flux/Klein" : imageMode === "flow_gpt" ? "Flow/GPT" : imageMode === "nano_banana" ? "NanoBanana" : imageMode === "ernie_image" ? "Ernie" : "ZImage";
+    const modelLabel = imageMode === "flux_klein" ? "Flux/Klein" : imageMode === "flux2klein_mlx" ? "Klein MLX" : imageMode === "flow_gpt" ? "Flow/GPT" : imageMode === "nano_banana" ? "NanoBanana" : imageMode === "ernie_image" ? "Ernie" : "ZImage";
     const runnerName = promptRunnerActionName();
     const promptRunMode = options.promptRunMode || "redo_all";
     const sceneScope = normalizeBatchScope(options.sceneScope);
@@ -41606,6 +42797,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       await createKrea2TwoPassImageForSegment(segment, progress, percentBase, percentSpan, `${label}: Krea 2 image`, options);
     } else if (imageMode === "flux_klein") {
       await createFluxKleinImageForSegment(segment, progress, percentBase, percentSpan, `${label}: Flux/Klein image`);
+    } else if (imageMode === "flux2klein_mlx") {
+      await createFlux2KleinMlxImageForSegment(segment, progress, percentBase, percentSpan, `${label}: FLUX.2 Klein MLX image`);
     } else if (imageMode === "nano_banana") {
       await createNBImageForSegmentWithRetry(segment, progress, percentBase, percentSpan, `${label}: NanoBanana image`, { maxRetries: 10 });
     } else if (imageMode === "flow_gpt") {
@@ -42378,6 +43571,23 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           missing.push(`${sceneDisplayName(segment, index)}: MiniMax H3 needs project audio or custom scene audio.`);
         }
         missing.push(...validateMiniMaxSceneReadyForVideo(segment, index));
+      });
+      return missing;
+    }
+    const ltx2MlxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "ltx2mlx";
+    if (ltx2MlxProject) {
+      const settings = cloneLtx2MlxSettings(state.ltx2MlxSettings);
+      if (!String(projectInput.value || state.projectFolder || "").trim()) missing.push("Project folder is missing.");
+      scenesToRender.forEach(({ segment, index }) => {
+        if (!String(segment?.ltx2mlx_prompt || segment?.i2v_prompt || segment?.t2v_prompt || "").trim()) {
+          missing.push(`${sceneDisplayName(segment, index)}: LTX-2 MLX needs a prompt.`);
+        }
+        if (settings.mode === "a2v" && !String(segment.custom_audio_path || currentProjectAudioPath() || audioInput.value || "").trim()) {
+          missing.push(`${sceneDisplayName(segment, index)}: LTX-2 MLX Song Mode needs project audio or custom scene audio.`);
+        }
+        if (settings.mode === "i2v" && !String(selectedSegmentImagePath(segment) || "").trim()) {
+          missing.push(`${sceneDisplayName(segment, index)}: LTX-2 MLX Image to Video needs a selected scene image.`);
+        }
       });
       return missing;
     }
@@ -43214,6 +44424,177 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
   }
 
+  async function renderLtx2MlxSceneVideoWithProgress(segment, sceneIndex, progress, options = {}) {
+    const progressBase = Number(options.progressBase ?? 0);
+    const progressSpan = Number(options.progressSpan ?? 100);
+    const batchLabel = options.batchLabel ? `${options.batchLabel}\n` : "";
+    const pct = (value) => Math.min(100, progressBase + (progressSpan * value / 100));
+    const slotNumber = sceneSlotNumber(segment);
+    const projectFolder = String(projectInput.value || "").trim();
+    if (!projectFolder) throw new Error("Save or select a project folder before rendering LTX-2 MLX.");
+    const settings = cloneLtx2MlxSettings(state.ltx2MlxSettings);
+    const mode = String(options.mode || settings.mode || "a2v").trim().toLowerCase();
+
+    try {
+      const prompt = String(
+        options.prompt
+        ?? (segment?.ltx2mlx_prompt || segment?.i2v_prompt || segment?.t2v_prompt || "")
+      ).trim();
+      if (!prompt) throw new Error(`${sceneDisplayName(segment, sceneIndex)} needs a prompt for LTX-2 MLX.`);
+
+      const payload = {
+        ltx2mlx_mode: mode,
+        prompt,
+        project_folder: projectFolder,
+        scene_number: slotNumber,
+        model_dir: settings.model_dir,
+        pipeline_type: settings.pipeline_type,
+        low_ram: settings.low_ram,
+        height: settings.height,
+        width: settings.width,
+        frame_rate: settings.frame_rate,
+        seed: settings.seed,
+        cfg_scale: settings.cfg_scale,
+        num_frames: settings.num_frames,
+        match_audio_length: settings.match_audio_length,
+      };
+
+      if (mode === "i2v") {
+        const selectedImage = String(selectedSegmentImagePath(segment) || "").trim();
+        if (!selectedImage) throw new Error(`${sceneDisplayName(segment, sceneIndex)} needs a selected scene image for LTX-2 MLX Image to Video.`);
+        payload.image_path = selectedImage;
+      }
+
+      if (mode === "a2v") {
+        const timelineStart = Number(segment?.start);
+        const timelineEnd = Number(segment?.end);
+        const sceneDuration = timelineEnd - timelineStart;
+        if (!Number.isFinite(timelineStart) || !Number.isFinite(timelineEnd) || sceneDuration <= 0) {
+          throw new Error(`${sceneDisplayName(segment, sceneIndex)} has invalid timeline boundaries.`);
+        }
+        const sourceAudioPath = String(
+          options.audioPath
+          ?? (segment?.custom_audio_path || currentProjectAudioPath() || audioInput.value || "")
+        ).trim();
+        if (!sourceAudioPath) throw new Error(`${sceneDisplayName(segment, sceneIndex)} needs source audio for LTX-2 MLX Song Mode.`);
+        const sourceStartSeconds = Number(
+          options.sourceStartSeconds
+          ?? (segment?.custom_audio_path ? audioSourceStart(segment) : timelineStart)
+        );
+
+        progress?.set(`${batchLabel}Trimming scene audio for LTX-2 MLX...`, pct(5));
+        const trimmedAudio = await postJson("/vrgdg/workflow_runner/trim_scene_audio", {
+          source_path: sourceAudioPath,
+          project_folder: projectFolder,
+          scene_number: slotNumber,
+          start_seconds: Number.isFinite(sourceStartSeconds) ? sourceStartSeconds : 0,
+          duration_seconds: sceneDuration,
+          subdir: "ltx2mlx_scene_audio",
+        }, 120000);
+        payload.audio_path = String(trimmedAudio.audio_path || "").trim();
+        if (!payload.audio_path) throw new Error("LTX-2 MLX audio trimming did not return an audio path.");
+
+        const selectedImage = String(selectedSegmentImagePath(segment) || "").trim();
+        if (selectedImage) payload.image_path = selectedImage;
+      }
+
+      progress?.set(`${batchLabel}Building LTX-2 MLX workflow...`, pct(15));
+      const built = await postJson("/vrgdg/workflow_runner/build_ltx2mlx_prompt", payload, 60000);
+
+      progress?.set(`${batchLabel}Queueing LTX-2 MLX render (this can take a while on first load)...`, pct(25));
+      const queued = await queueWorkflowPrompt(built.prompt);
+      const promptId = queued?.prompt_id;
+      if (!promptId) throw new Error("ComfyUI queued LTX-2 MLX but did not return a prompt_id.");
+      const videos = await waitForVideos(
+        promptId,
+        (message) => progress?.set(`${batchLabel}${message}\nPrompt ID: ${promptId}`, pct(70)),
+        () => state.batchCancelled,
+        (findOptions) => postJson("/vrgdg/workflow_runner/find_scene_video_output", findOptions, 60000).catch(() => null),
+        {
+          // LTX2MLX is real local MLX inference on Apple Silicon, not a fast GPU/cloud
+          // backend -- two_stage at higher quality or a cold model load can genuinely
+          // take much longer than the 2h default other engines use. A render that's
+          // still legitimately progressing shouldn't be abandoned (and its eventually-
+          // finished output orphaned, never collected) just because of that ceiling.
+          timeoutMs: 8 * 60 * 60 * 1000,
+          timeoutMessage: () => sceneVideoTimeoutMessage({
+            promptId,
+            sceneLabel: sceneDisplayName(segment, sceneIndex),
+            modeLabel: "LTX-2 MLX",
+            outputFolder: built.output_folder || "",
+            projectFolder,
+            finalFolder: collectedSceneVideoFolder(),
+          }),
+        },
+      );
+      const video = videos[videos.length - 1] || null;
+      let renderedVideoPath = resolveComfyVideoPath(video);
+      if (!renderedVideoPath) {
+        // LTX2MLX nodes report outputs via ComfyUI's native relative filename/subfolder/
+        // type convention (like the stock SaveVideo node), which resolveComfyVideoPath
+        // doesn't understand -- it only handles fullpath or Windows-absolute subfolders.
+        const filename = video?.filename || video?.params?.filename || "";
+        const subfolder = video?.subfolder || video?.params?.subfolder || "";
+        const mediaType = video?.type || video?.params?.type || "output";
+        if (filename) {
+          const resolved = await postJson("/vrgdg/workflow_runner/resolve_output_path", {
+            filename,
+            subfolder,
+            type: mediaType,
+          }, 30000).catch(() => null);
+          renderedVideoPath = String(resolved?.path || "").trim();
+        }
+      }
+      if (!renderedVideoPath) {
+        throw new Error("LTX-2 MLX finished, but no video path was found in history.");
+      }
+
+      progress?.set(`${batchLabel}Collecting LTX-2 MLX scene video...`, pct(92));
+      const collected = await postJson("/vrgdg/workflow_runner/collect_scene_video", {
+        source_path: renderedVideoPath,
+        project_folder: projectFolder,
+        scene_number: slotNumber,
+        existing_action: options.existingVideoAction || "overwrite",
+      }, 120000);
+
+      pushHistory();
+      if (collected.backup_path) {
+        if (!Array.isArray(segment.video_backup_paths)) segment.video_backup_paths = [];
+        if (!segment.video_backup_paths.some((item) => mediaPathKey(item) === mediaPathKey(collected.backup_path))) {
+          segment.video_backup_paths.push(collected.backup_path);
+        }
+      }
+      if (collected.backup_thumbnail_path) {
+        if (!Array.isArray(segment.video_backup_thumbnail_paths)) segment.video_backup_thumbnail_paths = [];
+        if (!segment.video_backup_thumbnail_paths.some((item) => mediaPathKey(item) === mediaPathKey(collected.backup_thumbnail_path))) {
+          segment.video_backup_thumbnail_paths.push(collected.backup_thumbnail_path);
+        }
+      }
+      segment.video_output = video;
+      segment.video_source_path = renderedVideoPath;
+      activateSegmentVideoPath(
+        segment,
+        collected.video_path || renderedVideoPath,
+        collected.thumbnail_path || "",
+      );
+      segment.video_cache_bust = Date.now();
+      segment.video_folder = collected.video_folder || collectedSceneVideoFolder();
+      segment.preview_mode = "video";
+      segment.video_status = "done";
+      syncPreview(segment);
+      render();
+      if (options.autoSaveAfter !== false) {
+        await autoSaveSessionQuiet(options.autoSaveReason || "LTX-2 MLX scene video complete");
+      }
+      progress?.set(`${batchLabel}LTX-2 MLX scene ready.\n${segment.video_path}`, pct(100));
+      return segment.video_path;
+    } catch (error) {
+      segment.video_status = "error";
+      renderList();
+      throw error;
+    }
+  }
+
   async function stitchRenderedScenes(progress, options = {}) {
     const baseSegments = Array.isArray(options.segments) && options.segments.length ? options.segments : state.segments;
     const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
@@ -43475,6 +44856,54 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
   }
 
+  async function createLtx2MlxSceneVideo() {
+    if (normalizeProjectVideoEngine(state.projectVideoEngine) !== "ltx2mlx") {
+      toast("Set this project's Video Engine to LTX-2 MLX in Builder Settings first.", true);
+      return;
+    }
+    const segment = requireActiveSegment();
+    if (!segment) return;
+    updateActiveFromInputs();
+    const info = segmentIndexInfo(segment);
+    const sceneIndex = info.index;
+    if (sceneIndex < 0) return;
+
+    const settings = cloneLtx2MlxSettings(state.ltx2MlxSettings);
+    const missing = [];
+    if (!String(projectInput.value || state.projectFolder || "").trim()) missing.push("Project folder is missing.");
+    if (!String(segment?.ltx2mlx_prompt || segment?.i2v_prompt || segment?.t2v_prompt || "").trim()) {
+      missing.push("This scene needs a prompt for LTX-2 MLX.");
+    }
+    if (settings.mode === "a2v" && !String(segment?.custom_audio_path || currentProjectAudioPath() || audioInput.value || "").trim()) {
+      missing.push("Load global audio or add custom audio for this scene.");
+    }
+    if (settings.mode === "i2v" && !String(selectedSegmentImagePath(segment) || "").trim()) {
+      missing.push("This scene needs a selected timeline image for Image to Video.");
+    }
+    if (missing.length) {
+      toast(missing.join("\n"), true);
+      return;
+    }
+
+    let progress = null;
+    try {
+      state.batchCancelled = false;
+      setButtonGroupState(ltx2MlxSceneVideoButtons, { disabled: true, text: "Creating LTX-2 MLX..." });
+      progress = createProgressWindow("Creating LTX-2 MLX scene video");
+      const videoPath = await renderLtx2MlxSceneVideoWithProgress(segment, sceneIndex, progress, {});
+      progress.close(900);
+      toast(`LTX-2 MLX scene video ready:\n${videoPath}`);
+    } catch (error) {
+      const stopped = /stopped by user/i.test(String(error?.message || error));
+      segment.video_status = stopped ? "none" : "error";
+      progress?.set(stopped ? "LTX-2 MLX scene video creation stopped by user." : `Error:\n${String(error?.message || error)}`, 100);
+      toast(stopped ? "LTX-2 MLX scene video creation stopped." : String(error?.message || error), !stopped);
+      renderList();
+    } finally {
+      setButtonGroupState(ltx2MlxSceneVideoButtons, { disabled: false, text: "Create LTX-2 MLX Scene Video" });
+    }
+  }
+
   function overlaySegmentsForPreviewRange(startTime, endTime) {
     return state.overlaySegments
       .filter((segment) => String(selectedSegmentVideoPath(segment) || "").trim())
@@ -43709,6 +45138,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     updateActiveFromInputs();
     saveI2VVideoSettingsFromPanel();
     const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
+    const ltx2MlxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "ltx2mlx";
     if (miniMaxProject) saveMiniMaxH3SettingsFromPanel();
     const forceVideos = Boolean(options.forceVideos);
     const randomizeVideoSeed = Boolean(options.randomizeVideoSeed);
@@ -43751,8 +45181,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       mode_label: modeLabel,
       scene_scope: sceneScope,
       project_folder: String(state.projectFolder || projectInput.value || ""),
-      video_engine: miniMaxProject ? "minimax_h3" : "ltx",
-      video_mode: miniMaxProject ? state.miniMaxH3Settings.video_mode : currentVideoMode(),
+      video_engine: miniMaxProject ? "minimax_h3" : ltx2MlxProject ? "ltx2mlx" : "ltx",
+      video_mode: miniMaxProject ? state.miniMaxH3Settings.video_mode : ltx2MlxProject ? state.ltx2MlxSettings.mode : currentVideoMode(),
       force_videos: forceVideos,
       randomize_video_seed: randomizeVideoSeed,
       skip_final_stitch: skipFinalStitch,
@@ -43774,6 +45204,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       renderAllButton.textContent = "Rendering...";
       setButtonGroupState(createSceneVideoButtons, { disabled: true });
       setButtonGroupState(miniMaxSceneVideoButtons, { disabled: true });
+      setButtonGroupState(ltx2MlxSceneVideoButtons, { disabled: true });
       setButtonGroupState(gemmaThenCreateVideoButtons, { disabled: true });
       await persistRenderLog(renderLog);
       progress.set(`Autosaving session/SRT before ${sceneScope === "selected" ? "Render Selected" : sceneScope === "from_selected" ? "Render From Selected" : "Render All"}...`, 3);
@@ -43822,7 +45253,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           scene_number: sceneSlotNumber(segment),
           timeline_index: sceneIndex,
           label: sceneLabel,
-          video_mode: miniMaxProject ? miniMaxH3ModeForSegment(segment) : currentVideoMode(),
+          video_mode: miniMaxProject ? miniMaxH3ModeForSegment(segment) : ltx2MlxProject ? state.ltx2MlxSettings.mode : currentVideoMode(),
           status: "running",
           phase: "preparation",
           started_at: new Date(sceneStartedMs).toISOString(),
@@ -43911,6 +45342,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         };
         const renderedVideoPath = miniMaxProject
           ? await renderMiniMaxSceneVideoWithProgress(segment, sceneIndex, progress, sharedRenderOptions)
+          : ltx2MlxProject
+          ? await renderLtx2MlxSceneVideoWithProgress(segment, sceneIndex, progress, sharedRenderOptions)
           : await renderSceneVideoWithProgress(segment, sceneIndex, progress, {
             ...sharedRenderOptions,
             audioPathOverride: skipFinalStitch || segmentTrack(segment) === "overlay" ? "" : preparedAudio.audioPath,
@@ -44028,6 +45461,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       renderAllButton.textContent = "Render All";
       setButtonGroupState(createSceneVideoButtons, { disabled: false, text: "Create Scene Video" });
       setButtonGroupState(miniMaxSceneVideoButtons, { disabled: false, text: "Create MiniMax H3 Scene Video" });
+      setButtonGroupState(ltx2MlxSceneVideoButtons, { disabled: false, text: "Create LTX-2 MLX Scene Video" });
       setButtonGroupState(gemmaThenCreateVideoButtons, { disabled: false });
       state.batchCancelled = false;
       syncInspector();
@@ -44619,6 +46053,120 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       zImageAllButton.textContent = "Image All";
       setButtonGroupState(fluxCreateButtons, { disabled: false, text: "Create with Flux/Klein" });
       createFluxPromptButton.disabled = false;
+      state.batchCancelled = false;
+      syncInspector();
+      render();
+    }
+  }
+
+  async function flux2KleinMlxAllScenes(options = {}) {
+    updateActiveFromInputs();
+    const imageRunMode = options.imageRunMode || "resume_missing";
+    const sceneScope = normalizeBatchScope(options.sceneScope);
+    const forceNewImages = imageRunMode === "redo_prompts_images" || imageRunMode === "keep_prompts_redo_images";
+    const redoPrompts = imageRunMode === "redo_prompts_images";
+    const progress = createProgressWindow("FLUX.2 Klein MLX All Scenes");
+    if (img2imgContinuityEnabled() && currentVideoMode() === "i2v") {
+      const message = "Img2Img continuity is not available for FLUX.2 Klein MLX yet. Choose ZImage, Ernie, or Krea 2 for the image model, or turn continuity Off.";
+      progress.set(message, 100);
+      toast(message, true);
+      if (options.throwOnError) throw new Error(message);
+      return;
+    }
+    try {
+      state.batchCancelled = false;
+      zImageAllButton.disabled = true;
+      zImageAllButton.textContent = "Rendering...";
+      setButtonGroupState(flux2KleinMlxCreateButtons, { disabled: true });
+      progress.set(`Autosaving session/SRT before FLUX.2 Klein MLX All (${batchScopeLabel(sceneScope)})...`, 3);
+      await saveSessionForSceneVideo();
+      const scenes = imageAllSegmentsForMode(imageRunMode, "flux2klein_mlx", sceneScope);
+      if (!scenes.length) {
+        progress.set("All scenes already have images. Skipping FLUX.2 Klein MLX All.", 100);
+        progress.close(1800);
+        toast("All scenes already have images. FLUX.2 Klein MLX All skipped.");
+        return;
+      }
+      if (redoPrompts) {
+        scenes.forEach(({ segment }) => {
+          segment.t2i_prompt = "";
+          segment.flux_prompt = "";
+          segment.nb_prompt = "";
+          segment.enhance_prompt = "";
+        });
+      }
+      // Reuses the same Gemma auto-prompt route Flux/Klein All uses
+      // (generateFluxKleinPromptForSegment) — pure LLM/vision text
+      // generation, engine-agnostic, writes into segment.flux_prompt.
+      const promptScenes = scenes.filter(({ segment }) => !String(segment.flux_prompt || segment.t2i_prompt || "").trim());
+      if (promptScenes.length) {
+        progress.set(`Image All: creating ${promptScenes.length} missing FLUX.2 Klein MLX prompt${promptScenes.length === 1 ? "" : "s"} with Gemma first...`, 6);
+      } else {
+        progress.set("Image All: all missing images already have image prompts. Skipping Gemma prompt pass...", 12);
+      }
+      for (let index = 0; index < promptScenes.length; index += 1) {
+        assertBatchNotStopped();
+        const { segment, index: sceneIndex } = promptScenes[index];
+        const sceneLabel = sceneDisplayName(segment, sceneIndex);
+        const base = 6 + Math.floor((index / promptScenes.length) * 32);
+        try {
+          await runGemmaImagePromptPassWithRetry(
+            segment,
+            progress,
+            base,
+            `Image All prompt pass ${index + 1}/${promptScenes.length}: ${sceneLabel}`,
+            generateFluxKleinPromptForSegment,
+            { clearBeforeLoad: index === 0, unloadAfter: false },
+          );
+          assertBatchNotStopped();
+          await autoSaveSessionQuiet(`Image All prompt pass scene ${sceneIndex + 1}`);
+        } catch (error) {
+          throw new Error(`Image All prompt pass stopped at ${sceneLabel} (${index + 1}/${promptScenes.length}):\n${String(error?.message || error || "Unknown error")}`);
+        }
+      }
+      if (promptScenes.length) {
+        await runClearMemoryWorkflowQuiet(progress, "Image All prompt pass", 42);
+      }
+      progress.set(`FLUX.2 Klein MLX All: creating ${scenes.length} image${scenes.length === 1 ? "" : "s"} from saved prompts...`, 45);
+      for (let index = 0; index < scenes.length; index += 1) {
+        assertBatchNotStopped();
+        const { segment, index: sceneIndex } = scenes[index];
+        const sceneLabel = sceneDisplayName(segment, sceneIndex);
+        const base = 45 + Math.floor((index / scenes.length) * 45);
+        const span = Math.max(1, Math.floor(40 / scenes.length));
+        try {
+          if (forceNewImages) setImageSeedForCurrentMode("flux2klein_mlx");
+          progress.set(`FLUX.2 Klein MLX image pass ${index + 1}/${scenes.length}: ${sceneLabel}`, base);
+          await createFlux2KleinMlxImageForSegment(segment, progress, base + span * 0.35, span * 0.45, `FLUX.2 Klein MLX All ${index + 1}/${scenes.length}: Image`);
+          assertBatchNotStopped();
+          await autoSaveSessionQuiet(`FLUX.2 Klein MLX All scene ${sceneIndex + 1}`);
+          await runClearMemoryWorkflowQuiet(progress, sceneLabel, Math.min(98, base + span));
+        } catch (error) {
+          throw new Error(`FLUX.2 Klein MLX image pass stopped at ${sceneLabel} (${index + 1}/${scenes.length}):\n${String(error?.message || error || "Unknown error")}`);
+        }
+      }
+      await autoSaveSessionQuiet("FLUX.2 Klein MLX All complete");
+      progress.set("Image All complete. You can review the generated images and re-do any scenes you do not like.", 100);
+      progress.close(4500);
+      toast("FLUX.2 Klein MLX All complete.");
+    } catch (error) {
+      const errorMessage = String(error?.message || error);
+      const stopped = /stopped by user/i.test(errorMessage);
+      const statusLabel = stopped ? "Stopped" : "Error";
+      progress.set(`${statusLabel}:\n${errorMessage}\n\nRunning memory cleanup...`, 100);
+      toast(errorMessage, !stopped);
+      try {
+        const cleanupOutput = await runClearMemoryWorkflowQuiet(progress, stopped ? "stopped FLUX.2 Klein MLX All" : "FLUX.2 Klein MLX All error", 100);
+        progress.set(`${statusLabel}:\n${errorMessage}\n\n${cleanupOutput}`, 100);
+      } catch (cleanupError) {
+        console.warn("[VRGDG Music Builder] Cleanup after FLUX.2 Klein MLX All stop failed:", cleanupError);
+        progress.set(`${statusLabel}:\n${errorMessage}\n\nCleanup also failed:\n${String(cleanupError?.message || cleanupError)}`, 100);
+      }
+      if (options.throwOnError) throw error;
+    } finally {
+      zImageAllButton.disabled = false;
+      zImageAllButton.textContent = "Image All";
+      setButtonGroupState(flux2KleinMlxCreateButtons, { disabled: false, text: "Create FLUX.2 Klein MLX Scene Image" });
       state.batchCancelled = false;
       syncInspector();
       render();
@@ -45456,7 +47004,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           if (videoMode === "t2v" || videoMode === "rtv") {
             progress.set(`Stage 1/3: ${videoModeDisplayLabel(videoMode)} mode skips image generation.`, 20);
           } else {
-            const imageStage = (state.imageModelMode || "") === "flux_klein" ? "Flux/Klein image pass" : state.imageModelMode === "nano_banana" ? "NanoBanana image pass" : state.imageModelMode === "flow_gpt" ? "Flow/GPT image pass" : state.imageModelMode === "ernie_image" ? "Ernie image pass" : state.imageModelMode === "krea2_2pass" ? "Krea 2 image pass" : "Z-Image pass";
+            const imageStage = (state.imageModelMode || "") === "flux_klein" ? "Flux/Klein image pass" : state.imageModelMode === "flux2klein_mlx" ? "FLUX.2 Klein MLX image pass" : state.imageModelMode === "nano_banana" ? "NanoBanana image pass" : state.imageModelMode === "flow_gpt" ? "Flow/GPT image pass" : state.imageModelMode === "ernie_image" ? "Ernie image pass" : state.imageModelMode === "krea2_2pass" ? "Krea 2 image pass" : "Z-Image pass";
             progress.set(`Stage 1/3: ${imageStage}...`, 5);
             const imageMode = state.imageModelMode || "zimage";
             const imageRunMode = buildMode === "fresh_rebuild" ? "redo_prompts_images" : "resume_missing";
@@ -45493,6 +47041,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
               }
             } else if (imageMode === "flux_klein") {
               await fluxKleinAllScenes({ throwOnError: true, imageRunMode, sceneScope });
+            } else if (imageMode === "flux2klein_mlx") {
+              await flux2KleinMlxAllScenes({ throwOnError: true, imageRunMode, sceneScope });
             } else if (imageMode === "nano_banana") {
               await nbImageAllScenes({ throwOnError: true, imageRunMode, sceneScope });
             } else if (imageMode === "flow_gpt") {
@@ -46507,6 +48057,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     state.zimageSettings = defaultZImageSettings();
     state.referenceKrea2Settings = { ...DEFAULT_KREA2_REFERENCE_SETTINGS };
     state.fluxKleinSettings = defaultFluxKleinSettings();
+    state.flux2KleinMlxSettings = cloneFlux2KleinMlxSettings();
     state.flowGptBrowserSettings = defaultFlowGptBrowserSettings();
     state.ernieImageSettings = defaultErnieImageSettings();
     state.krea2TwoPassSettings = defaultKrea2TwoPassSettings();
@@ -47150,7 +48701,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     };
     const normalizeImageMode = (mode) => {
       const value = String(mode || "").trim().toLowerCase();
-      if (["zimage", "flux_klein", "nano_banana", "ernie_image", "krea2_2pass", "flow_gpt"].includes(value)) return value;
+      if (["zimage", "flux_klein", "flux2klein_mlx", "nano_banana", "ernie_image", "krea2_2pass", "flow_gpt"].includes(value)) return value;
       if (value === "flux" || value === "klein") return "flux_klein";
       if (value === "nano" || value === "nanobanana" || value === "nano_b") return "nano_banana";
       if (value === "ernie") return "ernie_image";
@@ -49293,7 +50844,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const useErnieMode = imageMode === "ernie_image";
     const useKrea2TwoPassMode = imageMode === "krea2_2pass";
     const useFlowGptMode = imageMode === "flow_gpt";
-    const modelLabel = useFluxKleinMode ? "Flux/Klein" : useNBMode ? "NanoBanana" : useErnieMode ? "Ernie" : useKrea2TwoPassMode ? "Krea 2" : useFlowGptMode ? "Flow/GPT" : "ZImage";
+    const useFlux2KleinMlxMode = imageMode === "flux2klein_mlx";
+    const modelLabel = useFluxKleinMode ? "Flux/Klein" : useFlux2KleinMlxMode ? "Klein MLX" : useNBMode ? "NanoBanana" : useErnieMode ? "Ernie" : useKrea2TwoPassMode ? "Krea 2" : useFlowGptMode ? "Flow/GPT" : "ZImage";
     const imageModeChoices = [
       {
         value: "zimage",
@@ -49304,6 +50856,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         value: "flux_klein",
         label: "Flux/Klein",
         description: "Use Flux/Klein. Reference images are optional.",
+      },
+      {
+        value: "flux2klein_mlx",
+        label: "Klein MLX",
+        description: "Apple Silicon only. Use the local FLUX.2 Klein MLX engine — no CUDA/cloud dependency.",
       },
       {
         value: "nano_banana",
@@ -49402,7 +50959,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       ],
     }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
     if (!action?.mode) return;
-    const selectedImageMode = ["zimage", "flux_klein", "nano_banana", "ernie_image", "krea2_2pass", "flow_gpt"].includes(action.imageMode) ? action.imageMode : imageMode;
+    const selectedImageMode = ["zimage", "flux_klein", "flux2klein_mlx", "nano_banana", "ernie_image", "krea2_2pass", "flow_gpt"].includes(action.imageMode) ? action.imageMode : imageMode;
     const sceneScope = normalizeBatchScope(action.sceneScope);
     state.imageModelMode = selectedImageMode;
     state.fluxKleinSettings.image_model_mode = selectedImageMode;
@@ -49430,6 +50987,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       return;
     }
     if (selectedImageMode === "flux_klein") await fluxKleinAllScenes({ imageRunMode: action.mode, sceneScope });
+    else if (selectedImageMode === "flux2klein_mlx") await flux2KleinMlxAllScenes({ imageRunMode: action.mode, sceneScope });
     else if (selectedImageMode === "nano_banana") await nbImageAllScenes({ imageRunMode: action.mode, sceneScope });
     else if (selectedImageMode === "ernie_image") await ernieImageAllScenes({ imageRunMode: action.mode, sceneScope });
     else if (selectedImageMode === "krea2_2pass") await krea2TwoPassImageAllScenes({ imageRunMode: action.mode, sceneScope });
@@ -49771,7 +51329,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
 
   async function confirmAndRunGemmaT2IAll() {
     const imageMode = state.imageModelMode || "zimage";
-    const modelLabel = imageMode === "flux_klein" ? "Flux/Klein" : imageMode === "nano_banana" ? "NanoBanana" : imageMode === "ernie_image" ? "Ernie" : imageMode === "krea2_2pass" ? "Krea 2" : "ZImage";
+    const modelLabel = imageMode === "flux_klein" ? "Flux/Klein" : imageMode === "flux2klein_mlx" ? "Klein MLX" : imageMode === "nano_banana" ? "NanoBanana" : imageMode === "ernie_image" ? "Ernie" : imageMode === "krea2_2pass" ? "Krea 2" : "ZImage";
     const runnerName = promptRunnerActionName();
     const scopeChoices = batchScopeChoices();
     const action = await chooseBatchModeAction({
@@ -50651,7 +52209,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     };
     const normalizeWizardImageMode = (mode) => {
       const normalized = String(mode || "").trim().toLowerCase();
-      return ["zimage", "flux_klein", "nano_banana", "ernie_image", "krea2_2pass", "flow_gpt"].includes(normalized)
+      return ["zimage", "flux_klein", "flux2klein_mlx", "nano_banana", "ernie_image", "krea2_2pass", "flow_gpt"].includes(normalized)
         ? normalized
         : "zimage";
     };
@@ -52632,6 +54190,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   editFlowGptT2IInstructionsButton.onclick = () => openBuilderInstructionEditor("flow_gpt_t2i");
   for (const button of createSceneVideoButtons) button.onclick = createSceneVideo;
   for (const button of miniMaxSceneVideoButtons) button.onclick = createMiniMaxSceneVideo;
+  for (const button of ltx2MlxSceneVideoButtons) button.onclick = createLtx2MlxSceneVideo;
   for (const button of miniMaxReferenceButtons) button.onclick = openMiniMaxReferenceSelector;
   for (const button of gemmaThenCreateVideoButtons) button.onclick = runGemmaThenCreateSceneVideo;
   loadCustomImageButton.onclick = loadCustomImage;
@@ -52643,6 +54202,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   for (const button of ernieCreateButtons) button.onclick = previewErnieImage;
   for (const button of krea2TwoPassCreateButtons) button.onclick = previewKrea2TwoPassImage;
   for (const button of fluxCreateButtons) button.onclick = previewFluxKleinImage;
+  for (const button of flux2KleinMlxCreateButtons) button.onclick = previewFlux2KleinMlxImage;
+  flux2KleinMlxGemmaPromptButton.onclick = createFlux2KleinMlxPromptWithGemma;
   for (const button of nbCreateButtons) button.onclick = previewNBImage;
   customImageFileInput.addEventListener("change", () => {
     const file = customImageFileInput.files?.[0];
@@ -52676,6 +54237,16 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     state.fluxKleinSettings.enabled = true;
     syncFluxKleinPanel();
     autoSaveSessionQuiet("image mode changed to Flux/Klein").catch(() => null);
+  };
+  flux2KleinMlxCard.onclick = () => {
+    pushHistory();
+    state.imageModelMode = "flux2klein_mlx";
+    state.fluxKleinSettings.image_model_mode = "flux2klein_mlx";
+    state.fluxKleinSettings.enabled = false;
+    syncFluxKleinPanel();
+    checkFlux2KleinMlxCapabilityOnce();
+    syncFlux2KleinMlxPanelFromState();
+    autoSaveSessionQuiet("image mode changed to FLUX.2 Klein MLX").catch(() => null);
   };
   ernieImageCard.onclick = () => {
     pushHistory();
@@ -53414,7 +54985,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   async function refreshLoraChoices() {
     const data = await getJson("/vrgdg/workflow_runner/lora_list");
     const loras = data.loras || ["[none]"];
-    for (const slot of [...zLoraSlots, ...ernieLoraSlots, ...fluxLoraSlots, ...i2vLoraSlots, ...zEnhanceLoraSlots, ...krea2TwoPassLoraSlots, ...miniMaxLoraSlots]) {
+    for (const slot of [...zLoraSlots, ...ernieLoraSlots, ...fluxLoraSlots, ...flux2KleinMlxLoraSlots, ...i2vLoraSlots, ...zEnhanceLoraSlots, ...krea2TwoPassLoraSlots, ...miniMaxLoraSlots]) {
       const current = slot.picker.input.value || "[none]";
       slot.picker.options = loras;
       slot.picker.input.value = loras.includes(current) ? current : current;

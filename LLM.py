@@ -23,6 +23,8 @@ import time
 _HF_PIPELINE_CACHE: dict[tuple, tuple] = {}
 _GGUF_MODEL_CACHE: dict[tuple, object] = {}
 _GGUF_CHAT_HANDLER_CACHE: dict[tuple, object] = {}
+_MLX_TEXT_MODEL_CACHE: dict[tuple, object] = {}
+_MLX_VISION_MODEL_CACHE: dict[tuple, object] = {}
 
 
 def _close_possible_resource(obj) -> None:
@@ -94,11 +96,267 @@ def _clear_vrgdg_llm_caches(clear_cuda_cache: bool = True, clear_hf_pipeline_cac
         except Exception:
             pass
 
+    mlx_text_count = len(_MLX_TEXT_MODEL_CACHE)
+    mlx_vision_count = len(_MLX_VISION_MODEL_CACHE)
+    _MLX_TEXT_MODEL_CACHE.clear()
+    _MLX_VISION_MODEL_CACHE.clear()
+
     return {
         "gguf_models_unloaded": gguf_count,
         "hf_pipelines_unloaded": hf_count,
         "cuda_cache_cleared": cuda_cleared,
+        "mlx_text_models_unloaded": mlx_text_count,
+        "mlx_vision_models_unloaded": mlx_vision_count,
     }
+
+
+def _gemma_mlx_available(vision: bool = False) -> bool:
+    """Apple Silicon + mlx-lm (and mlx-vlm, for vision) importable.
+
+    llama-cpp-python is documented as failing to build on this repo's Apple
+    Silicon venv (see MLX_INTEGRATION_NOTES.md); mlx-lm/mlx-vlm are the native
+    replacement, checked lazily so non-Mac installs are unaffected.
+    """
+    if sys.platform != "darwin" or platform.machine() != "arm64":
+        return False
+    import importlib.util
+    if importlib.util.find_spec("mlx_lm") is None:
+        return False
+    if vision and importlib.util.find_spec("mlx_vlm") is None:
+        return False
+    return True
+
+
+# Maps known GGUF preset repo ids to their closest mlx-community Gemma-3 MLX
+# equivalent. Matched case-insensitively against a GGUF model_path's basename
+# (and, for presets, the model_id) since most internal call sites only ever
+# see a resolved local .gguf file path, never the original repo id.
+_GEMMA_MLX_MODEL_MAP = {
+    "unsloth/gemma-4-26b-a4b-it-gguf": "mlx-community/gemma-3-27b-it-4bit",
+    "jiunsong/supergemma4-26b-uncensored-gguf-v2": "mlx-community/gemma-3-27b-it-4bit",
+}
+_GEMMA_MLX_DEFAULT_REPO = "mlx-community/gemma-3-12b-it-4bit"
+_GEMMA_MLX_SIZE_HINTS = (
+    ("27b", "mlx-community/gemma-3-27b-it-4bit"),
+    ("26b", "mlx-community/gemma-3-27b-it-4bit"),
+    ("12b", "mlx-community/gemma-3-12b-it-4bit"),
+    ("4b", "mlx-community/gemma-3-4b-it-4bit"),
+    ("1b", "mlx-community/gemma-3-1b-it-4bit"),
+)
+
+
+def _resolve_gemma_mlx_repo(model_path: str, model_id: str = "") -> Optional[str]:
+    """Return an mlx-community Gemma-3 repo id for this GGUF model, or None.
+
+    None means "no known MLX equivalent" (e.g. a genuinely custom local
+    .gguf) -- callers should fall back to the GGUF/llama-cpp path rather than
+    guessing, since MLX cannot load .gguf files directly (different format).
+    """
+    lookup = str(model_id or "").strip().lower()
+    if lookup in _GEMMA_MLX_MODEL_MAP:
+        return _GEMMA_MLX_MODEL_MAP[lookup]
+    haystack = f"{model_id or ''} {os.path.basename(str(model_path or ''))}".lower()
+    if "gemma" not in haystack:
+        return None
+    for hint, repo in _GEMMA_MLX_SIZE_HINTS:
+        if hint in haystack:
+            return repo
+    return _GEMMA_MLX_DEFAULT_REPO
+
+
+class _MLXTextHandle:
+    """Tagged handle distinguishing an mlx-lm (model, tokenizer) pair from a
+    raw llama_cpp.Llama instance in the shared _load_gguf_model()/
+    _run_gguf_text_pipeline() call paths."""
+
+    __slots__ = ("model", "tokenizer", "repo")
+
+    def __init__(self, model, tokenizer, repo: str):
+        self.model = model
+        self.tokenizer = tokenizer
+        self.repo = repo
+
+
+class _MLXVisionHandle:
+    """Tagged handle for an mlx-vlm (model, processor, config) triple."""
+
+    __slots__ = ("model", "processor", "config", "repo")
+
+    def __init__(self, model, processor, config, repo: str):
+        self.model = model
+        self.processor = processor
+        self.config = config
+        self.repo = repo
+
+
+def _load_mlx_text_model(repo: str) -> "_MLXTextHandle":
+    key = ("text", repo)
+    cached = _MLX_TEXT_MODEL_CACHE.get(key)
+    if cached is not None:
+        return cached
+    try:
+        import mlx_lm
+    except Exception as e:
+        raise Exception(
+            "Missing dependency: install mlx-lm to use the MLX Gemma backend."
+        ) from e
+    model, tokenizer = mlx_lm.load(repo)
+    for stop_token in VRGDG_GeneralGGUF._GEMMA_STOP_SEQUENCES:
+        try:
+            tokenizer.add_eos_token(stop_token)
+        except Exception:
+            pass
+    handle = _MLXTextHandle(model, tokenizer, repo)
+    # Single-slot cache, same policy as the LTX2MLX/mflux MLX engines: only
+    # one Gemma model resident at a time, since larger tiers don't fit twice
+    # in unified memory alongside everything else already loaded.
+    _MLX_TEXT_MODEL_CACHE.clear()
+    _MLX_TEXT_MODEL_CACHE[key] = handle
+    return handle
+
+
+def _load_mlx_vision_model(repo: str) -> "_MLXVisionHandle":
+    key = ("vision", repo)
+    cached = _MLX_VISION_MODEL_CACHE.get(key)
+    if cached is not None:
+        return cached
+    try:
+        import mlx_vlm
+        from mlx_vlm.utils import load_config
+    except Exception as e:
+        raise Exception(
+            "Missing dependency: install mlx-vlm to use the MLX Gemma vision backend."
+        ) from e
+    model, processor = mlx_vlm.load(repo)
+    config = load_config(repo)
+    handle = _MLXVisionHandle(model, processor, config, repo)
+    _MLX_VISION_MODEL_CACHE.clear()
+    _MLX_VISION_MODEL_CACHE[key] = handle
+    return handle
+
+
+def _truncate_at_stop_sequence(text: str, stop_sequences) -> tuple:
+    """Mirrors llama-cpp's text-based `stop` matching for the MLX path, since
+    `add_eos_token` only fires on exact single-token matches and several of
+    Gemma's stop markers aren't single vocab tokens for every MLX tokenizer —
+    the gap that let generation run past the turn boundary into repeated
+    channel/thought junk. Returns (truncated_text, stopped)."""
+    earliest = None
+    for marker in stop_sequences:
+        idx = text.find(marker)
+        if idx != -1 and (earliest is None or idx < earliest):
+            earliest = idx
+    if earliest is None:
+        return text, False
+    return text[:earliest], True
+
+
+def _run_mlx_text_pipeline(
+    handle: "_MLXTextHandle",
+    instruction_text: str,
+    temperature: float,
+    top_p: float,
+    max_new_tokens: int,
+    system_prompt: str = "",
+    seed: Optional[int] = None,
+) -> str:
+    from mlx_lm import stream_generate
+    from mlx_lm.sample_utils import make_repetition_penalty, make_sampler
+
+    if seed is not None:
+        import mlx.core as mx
+        mx.random.seed(int(seed))
+
+    messages = []
+    system_text = str(system_prompt or "").strip()
+    user_text = str(instruction_text or "").strip()
+    if system_text:
+        messages.append({"role": "system", "content": system_text})
+    messages.append({"role": "user", "content": user_text})
+    prompt = handle.tokenizer.apply_chat_template(messages, add_generation_prompt=True)
+
+    sampler = make_sampler(temp=float(temperature), top_p=float(top_p))
+    # Lookback window needs to scale with max_new_tokens: video-prep calls
+    # request up to 4000 tokens vs. ~1000-1200 for image-prep, and a fixed
+    # short window lets repetition loops recur just outside it undetected.
+    repetition_context_size = max(64, min(int(max_new_tokens), 512))
+    logits_processors = [make_repetition_penalty(1.3, context_size=repetition_context_size)]
+    stop_sequences = VRGDG_GeneralGGUF._GEMMA_STOP_SEQUENCES
+
+    text = ""
+    for response in stream_generate(
+        handle.model,
+        handle.tokenizer,
+        prompt=prompt,
+        max_tokens=int(max_new_tokens),
+        sampler=sampler,
+        logits_processors=logits_processors,
+    ):
+        text += response.text
+        truncated, stopped = _truncate_at_stop_sequence(text, stop_sequences)
+        if stopped:
+            text = truncated
+            break
+    return str(text or "").strip()
+
+
+def _run_mlx_vision_pipeline(
+    handle: "_MLXVisionHandle",
+    pil_images: list,
+    instruction_text: str,
+    temperature: float,
+    top_p: float,
+    max_new_tokens: int,
+    seed: Optional[int] = None,
+) -> str:
+    import tempfile
+    from mlx_vlm import stream_generate
+    from mlx_vlm.prompt_utils import apply_chat_template
+
+    if seed is not None:
+        import mlx.core as mx
+        mx.random.seed(int(seed))
+
+    image_paths = []
+    try:
+        for img in pil_images:
+            fd, path = tempfile.mkstemp(suffix=".png", prefix="gemma_mlx_vision_")
+            os.close(fd)
+            img.convert("RGB").save(path)
+            image_paths.append(path)
+
+        formatted_prompt = apply_chat_template(
+            handle.processor,
+            handle.config,
+            instruction_text,
+            num_images=len(image_paths),
+        )
+        stop_sequences = VRGDG_GeneralGGUF._GEMMA_STOP_SEQUENCES
+        repetition_context_size = max(64, min(int(max_new_tokens), 512))
+        text = ""
+        for response in stream_generate(
+            handle.model,
+            handle.processor,
+            prompt=formatted_prompt,
+            image=image_paths,
+            max_tokens=int(max_new_tokens),
+            temperature=float(temperature),
+            top_p=float(top_p),
+            repetition_penalty=1.3,
+            repetition_context_size=repetition_context_size,
+        ):
+            text += getattr(response, "text", "") or ""
+            truncated, stopped = _truncate_at_stop_sequence(text, stop_sequences)
+            if stopped:
+                text = truncated
+                break
+        return str(text or "").strip()
+    finally:
+        for path in image_paths:
+            try:
+                os.remove(path)
+            except Exception:
+                pass
 
 
 @lru_cache(maxsize=1)
@@ -3224,6 +3482,26 @@ class VRGDG_GeneralGGUF(VRGDG_Qwen25):
         chat_format: str,
         mmproj_path: str = "",
     ):
+        wants_vision = bool(str(mmproj_path or "").strip())
+        if _gemma_mlx_available(vision=wants_vision):
+            mlx_repo = _resolve_gemma_mlx_repo(model_path)
+            if mlx_repo:
+                print(
+                    "[VRGDG LLM] Engine=Gemma MLX (Apple Silicon) "
+                    f"kind={'vision' if wants_vision else 'text'} repo={mlx_repo!r} "
+                    f"gguf_model_path={model_path!r}",
+                    flush=True,
+                )
+                if wants_vision:
+                    return _load_mlx_vision_model(mlx_repo)
+                return _load_mlx_text_model(mlx_repo)
+
+        print(
+            "[VRGDG LLM] Engine=GGUF (llama-cpp-python) "
+            f"kind={'vision' if wants_vision else 'text'} model_path={model_path!r}",
+            flush=True,
+        )
+
         key = self._gguf_model_key(model_path, n_ctx, n_gpu_layers, n_threads, chat_format, mmproj_path)
         cached = _GGUF_MODEL_CACHE.get(key)
         if cached is not None:
@@ -3442,6 +3720,10 @@ class VRGDG_GeneralGGUF(VRGDG_Qwen25):
         system_prompt: str = "",
         seed: Optional[int] = None,
     ) -> str:
+        if isinstance(model, _MLXTextHandle):
+            return _run_mlx_text_pipeline(
+                model, instruction_text, temperature, top_p, max_new_tokens, system_prompt, seed
+            )
         kwargs = {}
         if seed is not None:
             kwargs["seed"] = int(seed)
@@ -3470,6 +3752,10 @@ class VRGDG_GeneralGGUF(VRGDG_Qwen25):
         max_new_tokens: int,
         seed: Optional[int] = None,
     ) -> str:
+        if isinstance(model, _MLXVisionHandle):
+            return _run_mlx_vision_pipeline(
+                model, pil_images, instruction_text, temperature, top_p, max_new_tokens, seed
+            )
         user_content = [
             {"type": "image_url", "image_url": {"url": self._pil_to_data_url(img)}}
             for img in pil_images
