@@ -1052,3 +1052,71 @@ before this fix existed.
   actually match what `Krea2WeightMapping.get_transformer_mapping()` expects
   beyond "generation ran and produced a sane-looking image" — that's fairly
   strong evidence, but not the same as inspecting the key schema directly.
+
+---
+
+## Follow-up session (2026-08-11): FLUX.2 Klein MLX scene-image LoRA picker bug
+
+### Investigation: was Klein MLX LoRA support even wired up?
+
+Asked to "wire up LoRA in scenes → image → Klein MLX like the CUDA Flux Klein
+card." A code-level research pass found it already fully wired end-to-end:
+UI (`Use FLUX.2 Klein MLX LoRAs?` checkbox, `LoRA count`, 4 slot pickers +
+strength fields in `web/VRGDG_MusicVideoBuilderUI.js`), payload builder
+(`flux2KleinMlxLoraPayload()`), backend patch functions
+(`_patch_flux2klein_mlx_t2i_api_prompt`/`_patch_flux2klein_mlx_edit_api_prompt`
+in `VRGDG_WorkflowRunnerNodes.py`, sharing the `_flux2klein_mlx_loras_field()`
+helper), the `loras` schema field on `Flux2KleinModelLoader`/
+`Flux2KleinEditModelLoader` in the sibling `comfyui-flux2klein-mlx` node pack,
+and the `loras` input already present on both
+`flux2kleinMlx_T2I_API.json`/`flux2kleinMlx_Edit_API.json` templates. This had
+landed in a recent prior commit on this branch, not something to build from
+scratch.
+
+### Real bug found and fixed: LoRA picker dropdown never opened
+
+Live-testing this in a real browser (launched `venv-3.13`'s ComfyUI server,
+drove the Music Video Builder via Playwright per this doc's usual pattern)
+surfaced a genuine defect the code-level pass missed: clicking a Klein MLX
+LoRA slot's `[none]` picker did nothing — no dropdown, no suggestions —
+while the equivalent CUDA Flux Klein picker on the same page correctly
+opened a 43-item list from the real `models/loras` folder.
+
+Root cause: `wireSearchablePicker(picker, onChange)`
+(`VRGDG_MusicVideoBuilderUI.js:54901`) is the function that attaches the
+`focus`/`input`/`keydown`/`blur` listeners responsible for opening and
+filtering a LoRA picker's suggestion dropdown (`renderSearchableSuggestions`).
+Every other LoRA picker group in the file calls it at init time — e.g. CUDA
+Flux Klein's `fluxLoraSlots` loop at line 55480 (`wireSearchablePicker(slot.picker,
+saveFluxKleinSettingsFromPanel)`) — but the `flux2KleinMlxLoraSlots` init loop
+(originally at line 6350) only attached a plain `change` listener on
+`slot.picker.input`, never calling `wireSearchablePicker`. The picker's
+`options` array *was* being populated correctly by `refreshLoraChoices()`
+(`flux2KleinMlxLoraSlots` is included in that function's slot-groups list at
+line 54987) — the data was there, just nothing ever told the dropdown to
+render it on focus/click.
+
+**Fix** (`web/VRGDG_MusicVideoBuilderUI.js:6350`):
+
+```js
+for (const slot of flux2KleinMlxLoraSlots) {
+  wireSearchablePicker(slot.picker, saveFlux2KleinMlxLoraSettingsFromPanel); // added
+  slot.picker.input.addEventListener("change", saveFlux2KleinMlxLoraSettingsFromPanel);
+  slot.strength.addEventListener("change", saveFlux2KleinMlxLoraSettingsFromPanel);
+}
+```
+
+**Verified via real browser re-test** (same Playwright driver, no server
+restart needed since this is a static JS asset reload): clicking the Klein
+MLX LoRA 1 picker now opens the dropdown with all 43 real LoRA files
+(`[none]`, `3DMM_V12.safetensors`, ...), matching the CUDA Flux Klein
+picker's behavior exactly. Confirmed via both DOM state inspection
+(`list.style.display === "block"`, `childCount: 43`) and a visual screenshot.
+
+**Lesson**: a purely code-level "is this wired up" pass (reading UI markup,
+payload builders, backend routes, node-pack schema) can miss a defect that
+only exists in event-wiring glue code — the picker had the right markup,
+the right data, and the right save-on-change behavior, but was silently
+missing the one call that makes it interactive. Worth a real click-through
+test of any dropdown/picker control, not just confirming its HTML and data
+source exist.

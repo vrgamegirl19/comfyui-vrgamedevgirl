@@ -6348,6 +6348,7 @@ function openBuilder(node) {
     saveFlux2KleinMlxLoraSettingsFromPanel();
   });
   for (const slot of flux2KleinMlxLoraSlots) {
+    wireSearchablePicker(slot.picker, saveFlux2KleinMlxLoraSettingsFromPanel);
     slot.picker.input.addEventListener("change", saveFlux2KleinMlxLoraSettingsFromPanel);
     slot.strength.addEventListener("change", saveFlux2KleinMlxLoraSettingsFromPanel);
   }
