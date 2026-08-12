@@ -2345,6 +2345,17 @@ function normalizeScene(scene = {}, index = 0) {
   const lyricNoLipSync = Boolean(scene.lyric_no_lip_sync || scene.no_lip_sync || scene.noLipSync || scene.broll || scene.b_roll);
   const lyricInstrumental = Boolean(scene.lyric_instrumental || scene.instrumental || storyboardIsInstrumentalText(lyrics));
   const noCharacterPresent = Boolean(scene.no_character_present || scene.noCharacterPresent || scene.no_subject || scene.no_visible_subject);
+  const extraSubjects = noCharacterPresent || !Array.isArray(scene.extra_subjects || scene.extraSubjects)
+    ? []
+    : (scene.extra_subjects || scene.extraSubjects).filter((item) => item && typeof item === "object").map((item, extraIndex) => ({
+        id: String(item.id || `extra_${extraIndex + 1}`).trim(),
+        name: String(item.name || item.title || `Extra ${extraIndex + 1}`).replace(/\s+/g, " ").trim(),
+        count: Math.max(1, Math.min(100, Math.round(Number(item.count) || 1))),
+        interaction: ["background", "background_dancing", "alongside", "dancing_with", "direct"].includes(String(item.interaction || "").trim())
+          ? String(item.interaction).trim()
+          : "background",
+        identity: String(item.identity || item.description || "").replace(/\s+/g, " ").trim().slice(0, 240),
+      }));
   return {
     id: scene.id || `storyboard_scene_${index + 1}_${Date.now()}`,
     scene_number: Number(scene.scene_number || scene.number || index + 1),
@@ -2366,6 +2377,7 @@ function normalizeScene(scene = {}, index = 0) {
     motion_summary: scene.motion_summary || scene.video_notes || scene.i2v_notes || "",
     subjects: Array.isArray(scene.subjects) ? scene.subjects : String(scene.subjects || "").split(/[,;\n]+/).map((item) => item.trim()).filter(Boolean),
     subject_refs: noCharacterPresent ? [] : Array.isArray(scene.subject_refs) ? scene.subject_refs.filter((item) => item && typeof item === "object") : [],
+    extra_subjects: extraSubjects,
     setting: scene.setting || scene.location_ref?.description || scene.location_ref?.name || scene.location || "",
     location_ref: scene.location_ref && typeof scene.location_ref === "object" ? scene.location_ref : null,
     trigger_phrase: String(scene.trigger_phrase || scene.trigger || scene.Trigger || ""),
@@ -2793,6 +2805,56 @@ function slimStoryboardForRequest(state) {
 
 const STORYBOARD_GPT_URL = "https://chatgpt.com/g/g-6a28d15f04e88191a2375d564ff8d90c-ltx-2-3-video-builder-from-storyboard-builder";
 const STORYBOARD_IMAGE_GPT_URL = "https://chatgpt.com/g/g-6a40129fc12c81919878b79eaa5ae94f-text-to-image-prompt-builder-for-krea-2";
+const STORY_LAYER_CHATGPT_URL = "https://chatgpt.com/";
+
+function storyLayerGptPayload(state) {
+  const storyboardPayload = storyboardGptPayload(state);
+  const scenes = state.scenes.map((scene, index) => slimSceneForRequest(scene, index));
+  const orderedLyrics = scenes
+    .map((scene) => String(scene.lyrics || scene.lyric_text || "").trim())
+    .filter(Boolean);
+  const sourceLyrics = String(state.lineMappingLyrics || state.lyricMapper?.source_text || "").trim();
+  const lyricSections = scenes.map((scene, index) => ({
+    scene_number: Number(scene.scene_number || index + 1),
+    section: String(scene.lyric_section || scene.label || "").trim(),
+    lyrics: String(scene.lyrics || scene.lyric_text || "").trim(),
+  })).filter((item) => item.section || item.lyrics);
+  const presetDetails = {
+    image_aesthetic: state.imageAesthetic || "",
+    image_shot_flow: state.imageShotFlow || "",
+    video_style: state.videoStyle || "",
+    performance_style: state.performanceStyle || "",
+    facial_performance: state.facialPerformance || "",
+    camera_flow: state.cameraFlow || "",
+    camera_motion_speed: storyboardSpeedValue(state.cameraMotionSpeed, 4),
+    character_motion_speed: storyboardSpeedValue(state.characterMotionSpeed, 4),
+    lyric_story_strength: normalizeStoryLayer(state.storyLayer).lyric_story_strength,
+  };
+  return {
+    payload_type: "story_layer_planning",
+    execution_mode: "execute_immediately",
+    user_request: "Process this story-layer planning payload now. Do not ask what I want done and do not ask for more lyrics or project details. Generate the final story-layer JSON response immediately.",
+    task_instruction: "Use the supplied project context to create or revise a coherent music-video story. The explicit project_inputs fields are the source of truth. Execute this task immediately and return only valid JSON matching output_format. Keep the user's overall story idea when it is present, use the ordered lyric sections as the structural spine, and use the style, subject, location, performance, and camera preset details as creative constraints.",
+    output_format: {
+      overall_story_idea: "A concise premise or overall story idea. Preserve the supplied idea when it is usable; otherwise create one.",
+      user_story_arc: "A section-by-section story arc using the supplied lyric section labels in order.",
+      song_story_brief: "A compact production brief explaining the premise, emotional progression, visual world, recurring motifs, and ending."
+    },
+    current_story_layer: normalizeStoryLayer(state.storyLayer),
+    project_inputs: {
+      overall_story_idea: String(state.storyLayer?.overall_story_idea || "").trim(),
+      ordered_lyrics: orderedLyrics,
+      source_lyrics: sourceLyrics,
+      lyrics_instruction: "When scenes are present, use ordered_lyrics for scene alignment. When ordered_lyrics is empty, use source_lyrics as the complete pasted song/script and create the lyric sections yourself from its headings and structure.",
+      lyric_sections: lyricSections,
+      subjects: (state.referenceBuilder?.subjects || []).map(slimReferenceForRequest).filter(Boolean),
+      locations: (state.referenceBuilder?.locations || []).map(slimReferenceForRequest).filter(Boolean),
+      preset_details: presetDetails,
+      scenes,
+    },
+    project_context: storyboardPayload,
+  };
+}
 
 function storyboardReferenceForGpt(ref, options = {}) {
   if (!ref) return null;
@@ -3049,6 +3111,10 @@ function storyboardScenesForGpt(state) {
       subject_name_rule: "Preserve mapped subject prompt names exactly as provided in visible_subjects and subjects.name. For subjects with trigger_phrase, subjects.name is already the prompt-facing trigger phrase and must be used as the subject instead of generic wording like 'a woman' or 'a man'.",
       visible_subjects: subjectNames,
       subjects: subjectRefs.length ? subjectRefs : subjectFallbacks,
+      extra_subjects: normalized.extra_subjects,
+      extra_subject_instruction: normalized.extra_subjects.length
+        ? "Use every mapped extra in the scene's action and blocking according to interaction. Describe direct, dancing_with, and alongside roles individually; extras sharing background or background_dancing roles may be grouped by name. Keep identity wording brief and use it only to distinguish people. Do not assign singing, dialogue, or speaker IDs to extras unless explicitly supplied elsewhere."
+        : "No mapped extras are assigned to this scene.",
       setting: locationRef || {
         name: String(normalized.setting || "").trim(),
         description: String(normalized.setting || "").trim(),
@@ -3202,6 +3268,7 @@ function openStoryboardBuilder(payload = {}) {
     scriptImport: normalizeStoryboardScriptImportState(payload.scriptImport || payload.script_import || {}),
     onReferenceMappingsChanged: typeof payload.onReferenceMappingsChanged === "function" ? payload.onReferenceMappingsChanged : null,
     onStoryLayerChanged: typeof payload.onStoryLayerChanged === "function" ? payload.onStoryLayerChanged : null,
+    onPrepareStoryContext: typeof payload.onPrepareStoryContext === "function" ? payload.onPrepareStoryContext : null,
     onPromptsExported: typeof payload.onPromptsExported === "function" ? payload.onPromptsExported : null,
     onApplyIdLoraDialoguePlan: typeof payload.onApplyIdLoraDialoguePlan === "function" ? payload.onApplyIdLoraDialoguePlan : null,
     onApplyMiniMaxDialoguePlan: typeof payload.onApplyMiniMaxDialoguePlan === "function" ? payload.onApplyMiniMaxDialoguePlan : null,
@@ -4043,10 +4110,14 @@ function openStoryboardBuilder(payload = {}) {
     : "OPTIONAL STORY PLANNING TOOLS";
   const createStoryArcButton = makeButton("Create User Story Arc", "primary");
   const createStoryBriefButton = makeButton("Create Story Brief", "primary");
+  const gptStoryButton = makeButton("GPT Story");
+  gptStoryButton.title = "Copy all story, lyric, scene, reference, and preset details as JSON, then open the Storyboard GPT.";
+  const importStoryJsonButton = makeButton("Import story from json");
+  importStoryJsonButton.title = "Paste or load GPT story JSON and fill the overall idea, story arc, and story brief.";
   const createMissingBeatsButton = makeButton("Create Missing Scene Beats", "purple");
   const replaceBeatsButton = makeButton("Replace All Scene Beats");
   const detectSectionsButton = makeButton("Detect Lyric Sections");
-  storyActions.append(storyActionsLabel, createStoryArcButton, createStoryBriefButton, createMissingBeatsButton, replaceBeatsButton, detectSectionsButton);
+  storyActions.append(storyActionsLabel, createStoryArcButton, createStoryBriefButton, createMissingBeatsButton, replaceBeatsButton, detectSectionsButton, gptStoryButton, importStoryJsonButton);
   storyLayerBar.append(
     storyLayerHeader,
     shortFilmPlanningModeWrap,
@@ -4467,7 +4538,7 @@ function openStoryboardBuilder(payload = {}) {
   const createStoryBriefWithGemma = async () => {
     syncStoryLayerFromInputs();
     const authoritativeScript = normalizeStoryboardScriptImportState(state.scriptImport);
-    const progress = createStoryboardProgressWindow("Story Brief Gemma");
+    const progress = createStoryboardProgressWindow(`Story Brief — ${promptRunnerName()}`);
     try {
       progress.set(authoritativeScript.enabled
         ? "Creating a short-film production brief around the exact imported script..."
@@ -4499,7 +4570,7 @@ function openStoryboardBuilder(payload = {}) {
   const createStoryArcWithGemma = async () => {
     syncStoryLayerFromInputs();
     const authoritativeScript = normalizeStoryboardScriptImportState(state.scriptImport);
-    const progress = createStoryboardProgressWindow(authoritativeScript.enabled ? "Short Film Premise" : "Story Arc Gemma");
+    const progress = createStoryboardProgressWindow(`${authoritativeScript.enabled ? "Short Film Premise" : "Story Arc"} — ${promptRunnerName()}`);
     const storyArcSeed = Math.floor(Math.random() * 2147483647);
     const existingStoryArcText = String(userStoryArcInput.value || "").trim();
     const overallStoryIdea = String(overallStoryIdeaInput.value || "").trim();
@@ -4582,7 +4653,7 @@ function openStoryboardBuilder(payload = {}) {
       scene.flf_start_state = previousEndState.trim();
     }
     try {
-      progress?.set(`${progressLabel || normalized.label || "Scene"}: creating scene story beat...`, progressPercent);
+      progress?.set(`${progressLabel || normalized.label || "Scene"}: creating scene story beat with ${promptRunnerName()}...`, progressPercent);
       const data = await postJson("/vrgdg/storyboard/scene_story_beat", sceneBeatGemmaPayload(scene, {
         unload_after: unloadAfter,
         previous_beat: previousBeat,
@@ -4614,20 +4685,24 @@ function openStoryboardBuilder(payload = {}) {
     }
   };
 
-  const createAllSceneBeatsWithGemma = async ({ overwrite = false } = {}) => {
+  const createAllSceneBeatsWithGemma = async ({ overwrite = false, failedSceneIds = [] } = {}) => {
     syncStoryLayerFromInputs();
     const flfMode = state.videoPromptType === "flf";
-    const scenes = currentRows().filter((scene) => overwrite
+    const failedIds = new Set(failedSceneIds.map((value) => String(value)));
+    const scenes = currentRows().filter((scene) => failedIds.size
+      ? failedIds.has(String(scene.id || ""))
+      : overwrite
       || !String(scene.story_beat || "").trim()
       || (flfMode && [scene.flf_start_state, scene.flf_transformation, scene.flf_end_state, scene.flf_carry_forward].some((value) => !String(value || "").trim())));
     if (!scenes.length) {
       createToast(overwrite ? "No scenes found." : "No scene story beats are missing.");
       return;
     }
-    const progress = createStoryboardProgressWindow(overwrite ? "Replace Scene Beats" : "Create Missing Scene Beats");
+    const progress = createStoryboardProgressWindow(`${overwrite ? "Replace Scene Beats" : "Create Missing Scene Beats"} — ${promptRunnerName()}`);
     let created = 0;
+    const failures = [];
     try {
-      progress.set(`Creating ${scenes.length} scene story beat${scenes.length === 1 ? "" : "s"}...`, 5);
+      progress.set(`${failedIds.size ? "Retrying failed" : "Creating"} ${scenes.length} scene story beat${scenes.length === 1 ? "" : "s"}...`, 5);
       for (let index = 0; index < scenes.length; index += 1) {
         const scene = scenes[index];
         const allIndex = state.scenes.findIndex((item) => item.id === scene.id);
@@ -4637,25 +4712,34 @@ function openStoryboardBuilder(payload = {}) {
         const previousCarryForward = allIndex > 0 ? String(state.scenes[allIndex - 1]?.flf_carry_forward || "") : "";
         const nextLyrics = allIndex >= 0 && allIndex < state.scenes.length - 1 ? String(state.scenes[allIndex + 1]?.lyrics || "") : "";
         const base = 8 + Math.round((index / Math.max(1, scenes.length)) * 84);
-        await createSceneBeatWithGemma(scene, {
-          quiet: true,
-          unloadAfter: index === scenes.length - 1,
-          previousBeat,
-          previousLyrics,
-          previousEndState,
-          previousCarryForward,
-          nextLyrics,
-          progress,
-          progressPercent: base,
-          progressLabel: `Scene Beat ${index + 1}/${scenes.length}: ${scene.label || `Scene ${scene.scene_number || index + 1}`}`,
-        });
-        created += 1;
+        try {
+          await createSceneBeatWithGemma(scene, {
+            quiet: true,
+            unloadAfter: index === scenes.length - 1,
+            previousBeat,
+            previousLyrics,
+            previousEndState,
+            previousCarryForward,
+            nextLyrics,
+            progress,
+            progressPercent: base,
+            progressLabel: `Scene Beat ${index + 1}/${scenes.length}: ${scene.label || `Scene ${scene.scene_number || index + 1}`}`,
+          });
+          created += 1;
+        } catch (error) {
+          if (!isRecoverableStoryboardBatchError(error)) throw error;
+          failures.push({ scene, error: String(error?.message || error) });
+          progress.set(`Scene Beat ${index + 1}/${scenes.length} skipped. Continuing with the remaining scenes...`, base);
+        }
       }
       progress.set("Saving story beats...", 96);
       await saveStoryboard();
-      progress.set(`Scene beats complete.\nCreated ${created} story beat${created === 1 ? "" : "s"}.`, 100);
+      progress.set(`Scene beats complete.\nCreated ${created} story beat${created === 1 ? "" : "s"}.${failures.length ? ` ${failures.length} scene${failures.length === 1 ? " was" : "s were"} skipped.` : ""}`, 100);
       progress.close(1600);
-      createToast(`Created ${created} scene story beat${created === 1 ? "" : "s"}.`);
+      createToast(`Created ${created} scene story beat${created === 1 ? "" : "s"}${failures.length ? ` with ${failures.length} skipped scene${failures.length === 1 ? "" : "s"}` : ""}.`, Boolean(failures.length));
+      if (failures.length) showStoryboardBatchFailures(failures, (items) => createAllSceneBeatsWithGemma({
+        failedSceneIds: items.map((item) => item.scene.id),
+      }));
     } catch (error) {
       progress.set(`Scene beats stopped after ${created}/${scenes.length}:\n${String(error?.message || error)}`, 100);
       createToast(`Scene beats stopped after ${created}/${scenes.length}:\n${String(error?.message || error)}`, true);
@@ -6937,6 +7021,221 @@ function openStoryboardBuilder(payload = {}) {
     }
   }
 
+  function showStoryLayerGptHandoff(payloadJson, chatWindow = null) {
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100014;background:rgba(0,0,0,.68);display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(900px,calc(100vw - 48px));max-height:calc(100vh - 48px);border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 22px 80px rgba(0,0,0,.62);display:flex;flex-direction:column;overflow:hidden;";
+    const header = document.createElement("div");
+    header.style.cssText = "display:flex;align-items:flex-start;justify-content:space-between;gap:12px;background:#083f4f;border-bottom:1px solid #155e75;padding:13px 15px;";
+    const title = document.createElement("div");
+    title.innerHTML = "<div style=\"font-size:17px;font-weight:900;color:#cffafe;\">GPT Story JSON</div><div style=\"font-size:12px;color:#cbd5e1;margin-top:3px;\">Attach or paste the JSON, then send an explicit request to process it.</div>";
+    const close = makeButton("Close");
+    header.append(title, close);
+    const body = document.createElement("div");
+    body.style.cssText = "padding:14px;display:flex;flex-direction:column;gap:12px;overflow:auto;";
+    const status = document.createElement("div");
+    status.style.cssText = "font-size:12px;color:#94a3b8;min-height:18px;";
+    const text = document.createElement("textarea");
+    text.value = payloadJson;
+    text.spellcheck = false;
+    text.style.cssText = "min-height:360px;resize:vertical;border:1px solid #334155;border-radius:7px;background:#020617;color:#f8fafc;padding:10px;font-size:12px;font-family:monospace;line-height:1.45;white-space:pre;overflow:auto;";
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;";
+    const copy = makeButton("Copy JSON", "primary");
+    const copyRequest = makeButton("Copy Request");
+    const openChat = makeButton("Open ChatGPT", "primary");
+    actions.append(copy, copyRequest, openChat, close);
+    body.append(status, text, actions);
+    box.append(header, body);
+    backdrop.append(box);
+    document.body.append(backdrop);
+    const closeModal = () => backdrop.remove();
+    const copyJson = async () => {
+      try {
+        await copyTextToClipboard(text.value);
+        status.textContent = "Copied JSON to clipboard. Paste it into ChatGPT.";
+        status.style.color = "#67e8f9";
+      } catch (error) {
+        status.textContent = "Clipboard copy was blocked. Select the JSON above and copy it manually.";
+        status.style.color = "#fbbf24";
+      }
+    };
+    const copyRequestText = async () => {
+      try {
+        await copyTextToClipboard("Process the attached story-layer planning JSON now. Do not ask what I want done. Use its task_instruction and project_inputs, then return only the final JSON with overall_story_idea, user_story_arc, and song_story_brief.");
+        status.textContent = "Copied the request text. Paste it into ChatGPT after attaching the JSON.";
+        status.style.color = "#67e8f9";
+      } catch (error) {
+        status.textContent = "Clipboard copy was blocked. Manually type: Process the attached story-layer planning JSON now and return the final JSON.";
+        status.style.color = "#fbbf24";
+      }
+    };
+    close.onclick = closeModal;
+    copy.onclick = copyJson;
+    copyRequest.onclick = copyRequestText;
+    openChat.onclick = () => {
+      if (chatWindow && !chatWindow.closed) chatWindow.focus();
+      else window.open(STORY_LAYER_CHATGPT_URL, "_blank", "noopener,noreferrer");
+    };
+    backdrop.addEventListener("pointerdown", (event) => {
+      if (event.target === backdrop) closeModal();
+    });
+    text.focus();
+    text.select();
+  }
+
+  async function copyStoryLayerForGpt() {
+    const progress = createStoryboardProgressWindow("GPT Story Preparation");
+    try {
+      progress.set("Preparing Auto Mode story context...", 12);
+      syncStoryLayerFromInputs();
+      if (state.onPrepareStoryContext) {
+        const prepared = await state.onPrepareStoryContext({
+          setProgress: (message, percent) => progress.set(String(message || "Preparing story context..."), Number(percent || 50)),
+        });
+        if (prepared?.reference_builder || prepared?.referenceBuilder) {
+          state.referenceBuilder = normalizeReferenceBuilderCatalog(prepared.reference_builder || prepared.referenceBuilder);
+        }
+        if (prepared?.source_lyrics || prepared?.sourceLyrics) {
+          state.lineMappingLyrics = String(prepared.source_lyrics || prepared.sourceLyrics || "");
+        }
+      }
+      progress.set("Packaging lyrics, descriptions, presets, and story settings...", 82);
+      const payload = storyLayerGptPayload(state);
+      const payloadText = JSON.stringify(payload, null, 2);
+      let clipboardCopied = true;
+      try {
+        await copyTextToClipboard(payloadText);
+      } catch (error) {
+        clipboardCopied = false;
+      }
+      const lyricCount = payload.project_inputs.ordered_lyrics.length;
+      const sceneCount = payload.project_inputs.scenes.length;
+      const sourceLyricsPresent = Boolean(payload.project_inputs.source_lyrics);
+      const lyricStatus = lyricCount ? `${lyricCount} lyric entries` : (sourceLyricsPresent ? "full pasted lyrics" : "no lyrics");
+      progress.set("Story context ready. JSON review window opened.", 100);
+      progress.close(1200);
+      showStoryLayerGptHandoff(payloadText);
+      createToast(`${clipboardCopied ? "Copied" : "Prepared"} Story Layer JSON (${sceneCount} scenes, ${lyricStatus}). Use Open ChatGPT in the JSON window.`);
+    } catch (error) {
+      progress.set(`Story preparation failed:\n${String(error?.message || error)}`, 100);
+      progress.close(5000);
+      createToast(`Could not copy Story Layer GPT JSON:\n${String(error?.message || error)}`, true);
+    }
+  }
+
+  function parseStoryLayerImportJson(rawText) {
+    const data = JSON.parse(imagePromptImportJsonText(rawText));
+    const source = data?.story_layer && typeof data.story_layer === "object"
+      ? { ...data, ...data.story_layer }
+      : data;
+    if (!source || typeof source !== "object" || Array.isArray(source)) {
+      throw new Error("Story JSON must be an object.");
+    }
+    const stringifyStoryValue = (raw) => {
+      if (raw === undefined || raw === null) return "";
+      if (typeof raw === "string" || typeof raw === "number" || typeof raw === "boolean") return String(raw).trim();
+      if (Array.isArray(raw)) return raw.map(stringifyStoryValue).filter(Boolean).join("\n");
+      if (typeof raw === "object") {
+        return Object.entries(raw)
+          .map(([key, value]) => {
+            const text = stringifyStoryValue(value);
+            return text ? `${key}:\n${text}` : "";
+          })
+          .filter(Boolean)
+          .join("\n\n");
+      }
+      return "";
+    };
+    const value = (...keys) => {
+      for (const key of keys) {
+        if (source[key] !== undefined && source[key] !== null) return stringifyStoryValue(source[key]);
+      }
+      return "";
+    };
+    const result = {
+      overall_story_idea: value("overall_story_idea", "overallStoryIdea", "story_idea", "storyIdea"),
+      user_story_arc: value("user_story_arc", "userStoryArc", "story_arc", "storyArc"),
+      song_story_brief: value("song_story_brief", "songStoryBrief", "story_brief", "storyBrief", "brief"),
+    };
+    if (!result.overall_story_idea && !result.user_story_arc && !result.song_story_brief) {
+      throw new Error("No overall_story_idea, user_story_arc/story_arc, or song_story_brief/story_brief was found.");
+    }
+    return result;
+  }
+
+  function openImportStoryJsonModal() {
+    const importBackdrop = document.createElement("div");
+    importBackdrop.style.cssText = "position:fixed;inset:0;z-index:100013;background:rgba(0,0,0,.68);display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;";
+    const importBox = document.createElement("div");
+    importBox.style.cssText = "width:min(840px,calc(100vw - 48px));max-height:calc(100vh - 48px);border:1px solid #155e75;border-radius:10px;background:#111827;color:#f8fafc;box-shadow:0 24px 80px rgba(0,0,0,.62);display:flex;flex-direction:column;overflow:hidden;";
+    const importHeader = document.createElement("div");
+    importHeader.style.cssText = "display:flex;align-items:flex-start;justify-content:space-between;gap:12px;background:#083f4f;border-bottom:1px solid #155e75;padding:13px 15px;";
+    const importTitle = document.createElement("div");
+    importTitle.innerHTML = "<div style=\"font-size:17px;font-weight:900;color:#cffafe;\">Import Story JSON</div><div style=\"font-size:12px;color:#cbd5e1;margin-top:3px;\">Paste the GPT response or load a .json file. This fills the overall idea, story arc, and story brief.</div>";
+    const importClose = makeButton("Close");
+    importHeader.append(importTitle, importClose);
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = ".json,application/json,text/plain";
+    const input = document.createElement("textarea");
+    input.placeholder = '{\n  "overall_story_idea": "...",\n  "user_story_arc": "...",\n  "song_story_brief": "..."\n}';
+    input.spellcheck = false;
+    input.style.cssText = "min-height:300px;resize:vertical;border:1px solid #334155;border-radius:7px;background:#020617;color:#f8fafc;padding:10px;font-size:12px;font-family:monospace;line-height:1.45;";
+    const status = document.createElement("div");
+    status.style.cssText = "min-height:18px;font-size:12px;color:#94a3b8;";
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;";
+    const cancel = makeButton("Cancel");
+    const apply = makeButton("Import Story", "purple");
+    actions.append(cancel, apply);
+    const body = document.createElement("div");
+    body.style.cssText = "padding:14px;display:flex;flex-direction:column;gap:10px;overflow:auto;";
+    body.append(fileInput, input, status, actions);
+    importBox.append(importHeader, body);
+    importBackdrop.append(importBox);
+    document.body.append(importBackdrop);
+    const closeImport = () => importBackdrop.remove();
+    importClose.onclick = closeImport;
+    cancel.onclick = closeImport;
+    importBackdrop.addEventListener("pointerdown", (event) => {
+      if (event.target === importBackdrop) closeImport();
+    });
+    fileInput.onchange = async () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+      input.value = await file.text();
+      status.textContent = `Loaded ${file.name}. Review it, then click Import Story.`;
+    };
+    apply.onclick = () => {
+      try {
+        const imported = parseStoryLayerImportJson(input.value);
+        if (imported.overall_story_idea) {
+          state.storyLayer.overall_story_idea = imported.overall_story_idea;
+          overallStoryIdeaInput.value = imported.overall_story_idea;
+        }
+        if (imported.user_story_arc) {
+          state.storyLayer.user_story_arc = imported.user_story_arc;
+          userStoryArcInput.value = imported.user_story_arc;
+        }
+        if (imported.song_story_brief) {
+          state.storyLayer.song_story_brief = imported.song_story_brief;
+          songStoryBriefInput.value = imported.song_story_brief;
+        }
+        syncStoryLayerFromInputs({ notify: true });
+        status.textContent = "Story Layer fields updated.";
+        status.style.color = "#67e8f9";
+        createToast("Imported story idea, story arc, and story brief.");
+        closeImport();
+      } catch (error) {
+        status.textContent = String(error?.message || error);
+        status.style.color = "#fca5a5";
+      }
+    };
+    input.focus();
+  }
+
   function imagePromptImportJsonText(rawText) {
     const text = String(rawText || "").trim();
     const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -7316,7 +7615,69 @@ function openStoryboardBuilder(payload = {}) {
     requestAnimationFrame(() => (missingCount ? onlyMissing : redoAll).focus());
   });
 
-  async function createAllPromptsWithGemma({ onlyMissing = false } = {}) {
+  function isRecoverableStoryboardBatchError(error) {
+    const message = String(error?.message || error || "").toLowerCase();
+    return [
+      "did not return valid json shot descriptions",
+      "returned 0 shot descriptions",
+      "returned an invalid number of shot descriptions",
+      "returned an empty",
+      "request timed out",
+      "backend may still be processing",
+      "repeated/thought",
+      "unfilled template",
+      "placeholder",
+    ].some((phrase) => message.includes(phrase));
+  }
+
+  function showStoryboardBatchFailures(failures, retryHandler) {
+    const items = Array.isArray(failures) ? failures : [];
+    if (!items.length) return;
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100020;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:18px;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(980px,calc(100vw - 36px));max-height:calc(100vh - 36px);overflow:auto;border:1px solid #991b1b;border-radius:10px;background:#111827;color:#f8fafc;box-shadow:0 22px 80px rgba(0,0,0,.65);padding:16px;box-sizing:border-box;";
+    const title = document.createElement("div");
+    title.innerHTML = `<div style="font-size:17px;font-weight:900;color:#fecaca;">Storyboard skipped ${items.length} scene${items.length === 1 ? "" : "s"}</div><div style="font-size:12px;color:#cbd5e1;margin-top:5px;">Successful scenes were saved. Only these scenes will be retried.</div>`;
+    const list = document.createElement("div");
+    list.style.cssText = "display:flex;flex-direction:column;gap:10px;margin-top:14px;";
+    items.forEach((item) => {
+      const card = document.createElement("details");
+      card.open = true;
+      card.style.cssText = "border:1px solid #7f1d1d;border-radius:7px;background:#1f0808;padding:9px;";
+      const summary = document.createElement("summary");
+      summary.style.cssText = "cursor:pointer;font-weight:900;color:#fca5a5;";
+      summary.textContent = `${item.scene.label || `Scene ${item.scene.scene_number || "?"}`}: ${item.error}`;
+      const raw = document.createElement("pre");
+      raw.style.cssText = "white-space:pre-wrap;word-break:break-word;max-height:220px;overflow:auto;margin:9px 0 0;color:#fecaca;font-size:11px;line-height:1.4;";
+      raw.textContent = item.error;
+      card.append(summary, raw);
+      list.append(card);
+    });
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:flex;justify-content:flex-end;gap:8px;margin-top:16px;";
+    const close = makeButton("Close");
+    const retry = makeButton(`Retry ${items.length} Failed Scene${items.length === 1 ? "" : "s"}`, "primary");
+    retry.onclick = async () => {
+      retry.disabled = true;
+      retry.textContent = "Retrying...";
+      try {
+        backdrop.remove();
+        await retryHandler(items);
+      } catch (error) {
+        createToast(String(error?.message || error), true);
+        retry.disabled = false;
+        retry.textContent = `Retry ${items.length} Failed Scene${items.length === 1 ? "" : "s"}`;
+      }
+    };
+    close.onclick = () => backdrop.remove();
+    actions.append(close, retry);
+    box.append(title, list, actions);
+    backdrop.append(box);
+    document.body.append(backdrop);
+  }
+
+  async function createAllPromptsWithGemma({ onlyMissing = false, failedSceneIds = [] } = {}) {
     const visibleScenes = currentRows();
     if (!visibleScenes.length) {
       createToast("No storyboard scenes found.", true);
@@ -7325,7 +7686,10 @@ function openStoryboardBuilder(payload = {}) {
     const videoMode = state.mode === "image_to_video_prep";
     const promptKind = videoMode ? "video" : "image";
     const promptField = videoMode ? "video_prompt" : "image_prompt";
-    const scenes = onlyMissing
+    const failedIds = new Set(failedSceneIds.map((value) => String(value)));
+    const scenes = failedIds.size
+      ? visibleScenes.filter((scene) => failedIds.has(String(scene.id || "")))
+      : onlyMissing
       ? visibleScenes.filter((scene) => !String(scene[promptField] || "").trim())
       : visibleScenes;
     if (!scenes.length) {
@@ -7338,23 +7702,35 @@ function openStoryboardBuilder(payload = {}) {
     const genericName = promptRunnerGenericName();
     const progress = createStoryboardProgressWindow(`Storyboard ${runnerName} All`);
     let created = 0;
+    const failures = [];
     try {
       const keepLoaded = Boolean(keepGemmaLoadedInput.checked);
-      progress.set(`Starting Storyboard ${runnerName} All...\nMode: ${videoMode ? "Video Prep" : "Image Prep"}\nScope: ${onlyMissing ? `only missing (${scenes.length} of ${visibleScenes.length})` : `redo all (${scenes.length})`}\nKeep local LLM loaded: ${keepLoaded ? "yes" : "no"}`, 5);
+      progress.set(`${failedIds.size ? "Retrying failed Storyboard scenes" : `Starting Storyboard ${runnerName} All`}...\nMode: ${videoMode ? "Video Prep" : "Image Prep"}\nScope: ${failedIds.size ? `failed only (${scenes.length})` : onlyMissing ? `only missing (${scenes.length} of ${visibleScenes.length})` : `redo all (${scenes.length})`}\nKeep local LLM loaded: ${keepLoaded ? "yes" : "no"}`, 5);
       for (let index = 0; index < scenes.length; index += 1) {
         gemmaAllButton.textContent = `${runnerName} ${index + 1}/${scenes.length}`;
         const unloadAfter = keepLoaded ? index === scenes.length - 1 : true;
         const base = 8 + Math.round((index / Math.max(1, scenes.length)) * 84);
         const label = `${runnerName} All ${index + 1}/${scenes.length}: ${scenes[index].label || `Scene ${scenes[index].scene_number || index + 1}`}`;
-        progress.set(`${label}\nCreating storyboard ${promptKind} prompt...`, base);
-        await createScenePromptForActiveMode(scenes[index], { quiet: true, unloadAfter, progress, progressPercent: base, progressLabel: label });
-        created += 1;
+        try {
+          progress.set(`${label}\nCreating storyboard ${promptKind} prompt...`, base);
+          await createScenePromptForActiveMode(scenes[index], { quiet: true, unloadAfter, progress, progressPercent: base, progressLabel: label });
+          created += 1;
+        } catch (error) {
+          if (!isRecoverableStoryboardBatchError(error)) throw error;
+          failures.push({ scene: scenes[index], error: String(error?.message || error) });
+          progress.set(`${label} skipped. Continuing with the remaining scenes...`, base);
+        }
       }
       progress.set("Saving storyboard prompts...", 96);
       await saveStoryboard();
-      progress.set(`${runnerName} All complete.\nCreated ${created} storyboard ${promptKind} prompt${created === 1 ? "" : "s"}${onlyMissing ? "; existing prompts were preserved" : ""}.`, 100);
+      progress.set(`${runnerName} All complete.\nCreated ${created} storyboard ${promptKind} prompt${created === 1 ? "" : "s"}${failures.length ? `. ${failures.length} scene${failures.length === 1 ? " was" : "s were"} skipped` : ""}${onlyMissing ? "; existing prompts were preserved" : ""}.`, 100);
       progress.close(1800);
-      createToast(`${genericName} created ${created} storyboard ${promptKind} prompt${created === 1 ? "" : "s"}${onlyMissing ? "; existing prompts were preserved" : ""}.`);
+      createToast(`${genericName} created ${created} storyboard ${promptKind} prompt${created === 1 ? "" : "s"}${failures.length ? ` with ${failures.length} skipped scene${failures.length === 1 ? "" : "s"}` : ""}${onlyMissing ? "; existing prompts were preserved" : ""}.`, Boolean(failures.length));
+      if (failures.length) {
+        showStoryboardBatchFailures(failures, (items) => createAllPromptsWithGemma({
+          failedSceneIds: items.map((item) => item.scene.id),
+        }));
+      }
     } catch (error) {
       if (created > 0) {
         progress.set(`Saving ${created} completed prompt${created === 1 ? "" : "s"} before stopping...`, 96);
@@ -7594,6 +7970,8 @@ function openStoryboardBuilder(payload = {}) {
   };
   gptButton.onclick = copyStoryboardForGpt;
   importImagePromptsButton.onclick = openImportImagePromptsFromGptModal;
+  gptStoryButton.onclick = copyStoryLayerForGpt;
+  importStoryJsonButton.onclick = openImportStoryJsonModal;
   gemmaAllButton.onclick = startAllPromptsWithGemma;
   clearPromptsButton.onclick = clearAllStoryboardPrompts;
   clearStoryBeatsButton.onclick = clearAllStoryboardStoryBeats;

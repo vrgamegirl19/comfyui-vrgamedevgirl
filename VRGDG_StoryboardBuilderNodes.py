@@ -524,7 +524,7 @@ def _normalize_storyboard_scene(scene, fallback_number=1):
     story_beat = _clean_scene_text(scene.get("story_beat") or scene.get("scene_story_beat") or scene.get("narrative_beat") or "", 1800)
     performance_mode = _normalize_performance_mode(scene.get("performance_mode") or scene.get("performanceMode") or scene.get("video_performance_mode") or scene.get("videoPerformanceMode"))
     image_prompt = _clean_scene_text(scene.get("image_prompt") or scene.get("t2i_prompt") or scene.get("prompt") or "", 12000)
-    video_prompt = _clean_scene_text(scene.get("video_prompt") or scene.get("i2v_prompt") or scene.get("t2v_prompt") or "", 12000)
+    video_prompt = _clean_scene_text(scene.get("video_prompt") or scene.get("i2v_prompt") or scene.get("t2v_prompt") or "", 100000)
     image_path = _clean_scene_text(scene.get("image_path") or scene.get("approved_image_path") or scene.get("image") or "", 2000)
     image_data = str(scene.get("image_data") or scene.get("image_reference_data") or "").strip()
     image_name = _clean_scene_text(scene.get("image_name") or scene.get("image_reference_name") or "", 260)
@@ -564,6 +564,28 @@ def _normalize_storyboard_scene(scene, fallback_number=1):
         timeline_start = 0.0
         timeline_end = 0.0
         exact_duration = 0.0
+    raw_extra_subjects = scene.get("extra_subjects") or scene.get("extraSubjects") or []
+    extra_subjects = []
+    if isinstance(raw_extra_subjects, list):
+        for index, item in enumerate(raw_extra_subjects[:100], start=1):
+            if not isinstance(item, dict):
+                continue
+            interaction = str(item.get("interaction") or "background").strip()
+            if interaction not in {"background", "background_dancing", "alongside", "dancing_with", "direct"}:
+                interaction = "background"
+            try:
+                count = max(1, min(100, int(round(float(item.get("count") or 1)))))
+            except (TypeError, ValueError):
+                count = 1
+            extra_subjects.append({
+                "id": _clean_scene_text(item.get("id") or f"extra_{index}", 180),
+                "name": _clean_scene_text(item.get("name") or item.get("title") or f"Extra {index}", 180),
+                "count": count,
+                "interaction": interaction,
+                "identity": _clean_scene_text(item.get("identity") or item.get("description") or "", 240),
+            })
+    if scene.get("no_character_present") or scene.get("noCharacterPresent") or scene.get("no_visible_subject") or scene.get("no_subject"):
+        extra_subjects = []
     if video_prompt and project_video_engine != "minimax_h3":
         video_prompt = _enforce_storyboard_video_facial_requirements(video_prompt, {
             **scene,
@@ -585,6 +607,7 @@ def _normalize_storyboard_scene(scene, fallback_number=1):
         "motion_summary": motion_summary,
         "subjects": subjects,
         "subject_refs": subject_refs,
+        "extra_subjects": extra_subjects,
         "speaker_assignments": speaker_assignments,
         "setting": setting,
         "location_ref": location_ref,
@@ -847,12 +870,14 @@ def _save_storyboard(payload):
 def _write_key_value_file(path, prefix, scenes, field):
     with open(path, "w", encoding="utf-8") as handle:
         for index, scene in enumerate(scenes, start=1):
-            text = _clean_scene_text(scene.get(field) or "")
+            text_limit = 100000 if field == "video_prompt" else 12000
+            text = _clean_scene_text(scene.get(field) or "", text_limit)
             handle.write(f"{prefix}{index}={text}\n")
 
 
 def _prompt_json_entry(scene, index, field):
-    prompt = _clean_scene_text(scene.get(field) or "")
+    prompt_limit = 100000 if field == "video_prompt" else 12000
+    prompt = _clean_scene_text(scene.get(field) or "", prompt_limit)
     return {
         "scene": index,
         "scene_id": _clean_scene_text(scene.get("id") or "", 120),
@@ -979,7 +1004,7 @@ def _storyboard_scene_is_visible_singing(scene):
 
 
 def _enforce_storyboard_video_facial_requirements(prompt, scene):
-    text = _clean_scene_text(prompt or "", 12000)
+    text = _clean_scene_text(prompt or "", 100000)
     if not text:
         return text
     vocal_status = scene.get("vocal_status") if isinstance(scene, dict) else {}
@@ -1026,7 +1051,7 @@ def _enforce_storyboard_video_facial_requirements(prompt, scene):
             text = text[:start] + sentence + text[end:]
         else:
             text = f"{text.rstrip().rstrip('.')} with {', '.join(additions)}."
-    return _clean_scene_text(re.sub(r"\s{2,}", " ", text).strip(), 12000)
+    return _clean_scene_text(re.sub(r"\s{2,}", " ", text).strip(), 100000)
 
 
 def _storyboard_speed_value(value, fallback=4):
@@ -1070,7 +1095,7 @@ def _camera_motion_for_storyboard_speed(value, speed_value):
 
 
 def _enforce_storyboard_high_motion_language(prompt, scene):
-    text = _clean_scene_text(prompt or "", 12000)
+    text = _clean_scene_text(prompt or "", 100000)
     if not text or not isinstance(scene, dict):
         return text
     camera_speed = _storyboard_speed_value(scene.get("camera_motion_speed") or scene.get("cameraMotionSpeed"), 4)
@@ -1105,7 +1130,7 @@ def _enforce_storyboard_high_motion_language(prompt, scene):
             text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
         if not re.search(r"\b(?:walks?|steps?|strides?|runs?|sprints?|dances?|crosses?|lunges?|reaches?|pushes?|pulls?|climbs?|fights?|brushes?|sweeps?|gestures?|interacts?|grabs?|lifts?|paces?)\b", text, flags=re.IGNORECASE):
             text = f"{text.rstrip().rstrip('.')}, while the subject performs a clear physical action with the body, hands, or surrounding set instead of relying on facial movement alone."
-    return _clean_scene_text(re.sub(r"\s{2,}", " ", text).strip(), 12000)
+    return _clean_scene_text(re.sub(r"\s{2,}", " ", text).strip(), 100000)
 
 
 def _storyboard_video_prompt_writing_rules():
@@ -1178,7 +1203,7 @@ def _storyboard_starting_shot_sentence(scene):
 
 
 def _ensure_storyboard_starting_shot(prompt, scene):
-    text = _clean_scene_text(prompt or "", 12000)
+    text = _clean_scene_text(prompt or "", 100000)
     sentence = _storyboard_starting_shot_sentence(scene)
     if not text or not sentence:
         return text
@@ -1599,6 +1624,15 @@ def _build_story_layer_brief(payload):
             "label": normalized["label"],
             "lyric_section": normalized.get("lyric_section", ""),
             "lyrics": normalized.get("lyrics", "")[:500],
+            "mapped_extras": [
+                {
+                    "name": item.get("name", ""),
+                    "count": item.get("count", 1),
+                    "interaction": item.get("interaction", "background"),
+                }
+                for item in (normalized.get("extra_subjects") or [])
+                if isinstance(item, dict) and item.get("name")
+            ],
         })
     if not lyrics and not compact_scenes and not story_layer.get("user_story_arc"):
         raise ValueError("Lyrics, scene lyrics, or a user story arc are required to create a story brief.")
@@ -2030,6 +2064,9 @@ def _build_story_layer_arc(payload):
         "* If Location descriptions are provided, use only those locations as the physical settings for the arc.\n"
         "* Do not invent warehouses, loading docks, corridors, steel stairs, metal doors, concrete halls, or other industrial spaces unless those are explicitly present in the provided Location descriptions.\n"
         "* To create variety, change subject actions, camera energy, props, lighting, mood, blocking, and use of the mapped locations instead of inventing unrelated places.\n"
+        "* The Scene lyric map may include mapped_extras. Use those exact extras only in the scenes where they are mapped, and use each interaction role to shape the section's larger action progression.\n"
+        "* Plan recurring extra relationships across sections when the same named extra returns, especially direct, dancing_with, and alongside roles. Background and background_dancing extras may support group progression without becoming principal singers.\n"
+        "* Extras never sing, speak, or receive dialogue unless the scene mapping explicitly identifies them as a vocal subject elsewhere. Do not move an extra into an unmapped scene.\n"
         "* Never force a standard pop-song template over explicit lyric section headers.\n"
         "* When a lyric header line contains several bracketed tags, only the required section heading listed above is structural. Tags such as [Whispered], [High Energy], [Dark Atmosphere], and [Explosive] are performance or mood notes, not output headings. [End] is only an end marker.\n"
         "* Values such as [instrumental], [music only], or [no vocals] inside the Scene lyric map are timing/content markers, not additional song-section headings. Cover their visuals inside the nearest listed required section and never output those markers as separate headings.\n"
@@ -2157,9 +2194,34 @@ def _build_story_layer_scene_beat(payload):
     current_lyrics = _clean_scene_text(payload.get("current_lyrics") or scene.get("lyrics") or scene.get("lyric_text") or "", 1200)
     next_lyrics = _clean_scene_text(payload.get("next_lyrics") or "", 800)
     flf_mode = bool(payload.get("flf_mode")) or str(scene.get("video_prompt_type") or "").strip().lower() == "flf"
+    raw_extra_subjects = scene.get("extra_subjects") or scene.get("extraSubjects") or []
+    extra_subjects = []
+    if isinstance(raw_extra_subjects, list):
+        for index, item in enumerate(raw_extra_subjects[:100], start=1):
+            if not isinstance(item, dict):
+                continue
+            name = _clean_scene_text(item.get("name") or item.get("title") or f"Extra {index}", 180)
+            if not name:
+                continue
+            interaction = str(item.get("interaction") or "background").strip()
+            if interaction not in {"background", "background_dancing", "alongside", "dancing_with", "direct"}:
+                interaction = "background"
+            try:
+                count = max(1, min(100, int(round(float(item.get("count") or 1)))))
+            except (TypeError, ValueError):
+                count = 1
+            extra_subjects.append({
+                "name": name,
+                "count": count,
+                "interaction": interaction,
+                "identity": _clean_scene_text(item.get("identity") or item.get("description") or "", 240),
+            })
+    if scene.get("no_character_present") or scene.get("noCharacterPresent") or scene.get("no_visible_subject") or scene.get("no_subject"):
+        extra_subjects = []
+    beat_word_limit = 100 if extra_subjects else 80
     output_rules = (
         "Return valid JSON only with exactly these string keys: story_beat, flf_start_state, flf_transformation, flf_end_state, flf_carry_forward.\n"
-        "The story_beat is a concise compatibility summary under 80 words.\n"
+        f"The story_beat is a concise compatibility summary under {beat_word_limit} words.\n"
         "flf_start_state describes the concrete visible opening image. If Previous FLF end state is provided, copy it exactly as flf_start_state; do not reinterpret or redesign it.\n"
         "flf_transformation describes one continuous, progressive visual change that expresses the CURRENT lyric.\n"
         "flf_end_state describes the concrete visible destination image reached by the end of the CURRENT lyric.\n"
@@ -2167,7 +2229,7 @@ def _build_story_layer_scene_beat(payload):
         "The current lyric is authoritative. Previous and next lyrics provide continuity only and must not replace or steal this scene's action.\n"
         "Do not include Markdown fences or any text outside the JSON object."
         if flf_mode else
-        "Output one short paragraph only, no label, no bullets.\nKeep it under 80 words."
+        f"Output one short paragraph only, no label, no bullets.\nKeep it under {beat_word_limit} words."
     )
     instruction = (
         "You are a music video scene-story planner.\n"
@@ -2179,6 +2241,11 @@ def _build_story_layer_scene_beat(payload):
         "- Do not invent or import a different place from the story arc, song brief, previous beat, or next lyrics.\n"
         "- If the story arc names a different location, translate only its emotion, tension, symbolism, or action into the selected location_ref.\n"
         "- Describe narrative purpose, emotional state, visual symbolism, and how the scene should feel.\n"
+        "- Use every mapped extra listed below in the scene's action or blocking. Keep each exact extra name visible in the beat.\n"
+        "- Interaction meanings are exact: background stays present without active choreography; background_dancing performs backup choreography; alongside moves beside the main subject without contact; dancing_with performs partnered or group choreography with the main subject; direct performs an explicit physical or narrative interaction.\n"
+        "- Describe direct, dancing_with, and alongside extras individually. Extras sharing background or background_dancing may be combined into one concise named group.\n"
+        "- Use an extra's identity only when needed to distinguish people. Do not copy full appearance or wardrobe biographies into the beat.\n"
+        "- Extras do not sing, speak, or receive speaker IDs unless the selected scene explicitly supplies them as vocal sources elsewhere.\n"
         "- Do not write the final video prompt.\n"
         "- Do not include camera technical instructions unless they are part of the story emotion.\n"
         "- Do not quote long lyric text.\n"
@@ -2193,6 +2260,7 @@ def _build_story_layer_scene_beat(payload):
         f"Previous FLF carry-forward constraints:\n{previous_carry_forward or '[none]'}\n\n"
         f"CURRENT scene lyric text (main authority):\n{current_lyrics or '[none]'}\n\n"
         f"Next scene lyric text:\n{next_lyrics or '[none]'}\n\n"
+        f"Mapped extras and exact scene roles:\n{json.dumps(extra_subjects, ensure_ascii=False, indent=2) if extra_subjects else '[none]'}\n\n"
         "Selected scene JSON:\n"
         + json.dumps(scene, ensure_ascii=False, indent=2)
     )
@@ -2299,6 +2367,40 @@ def _build_story_layer_scene_beat(payload):
                 "location_repair_terms": drift_terms,
                 "location_repair_fallback": True,
             }
+    missing_extras = [item["name"] for item in extra_subjects if item["name"].casefold() not in text.casefold()]
+    if missing_extras:
+        repair_instruction = (
+            "Rewrite this music-video scene beat so it includes every mapped extra by exact name and gives each the assigned action/blocking role.\n\n"
+            "Hard rules:\n"
+            "- Preserve the original narrative purpose, mapped location, main subject action, and emotional progression.\n"
+            "- Include every exact extra name from the mapping.\n"
+            "- Apply each interaction role exactly. Group only extras sharing background or background_dancing.\n"
+            "- Extras do not sing, speak, or receive speaker IDs.\n"
+            "- Use identity details only when required to distinguish characters; do not copy wardrobe biographies.\n"
+            "- Output one concise paragraph only, under 100 words, with no label or bullets.\n\n"
+            f"Mapped extras:\n{json.dumps(extra_subjects, ensure_ascii=False, indent=2)}\n\n"
+            f"Original scene beat:\n{text}"
+        )
+        repaired_text, repair_info = _run_builder_text_llm(
+            payload,
+            repair_instruction,
+            temperature=0.15,
+            top_p=0.82,
+            max_new_tokens=360,
+            label="Storyboard Scene Beat Extra Mapping Repair Gemma",
+            preserve_paragraphs=True,
+        )
+        repaired_text = re.sub(r"^\s*(scene\s+story\s+beat|story\s+beat|beat)\s*:\s*", "", _clean_scene_text(repaired_text, 1800), flags=re.I)
+        still_missing = [item["name"] for item in extra_subjects if item["name"].casefold() not in repaired_text.casefold()]
+        if not repaired_text or still_missing:
+            raise ValueError("Gemma omitted mapped extras from the scene story beat after repair: " + ", ".join(still_missing or missing_extras))
+        text = repaired_text
+        run_info = {
+            **run_info,
+            "extra_mapping_repaired": True,
+            "extra_mapping_repair_runner": repair_info.get("runner", ""),
+            "extra_mapping_repair_model": repair_info.get("used_model", ""),
+        }
     return {
         "story_beat": text,
         **flf_fields,
