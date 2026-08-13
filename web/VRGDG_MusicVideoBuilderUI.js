@@ -29399,20 +29399,28 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         exportGptSceneContext.disabled = true;
         const data = buildSceneMappingContextJson();
         const content = JSON.stringify(data, null, 2);
-        const gptWindow = window.open(SCENE_MAPPING_GPT_URL, "_blank", "noopener,noreferrer");
         exportGptSceneContext.textContent = "Copying...";
         let copied = false;
         try {
-          copied = await copyTextToClipboard(content);
+          const handoff = [
+            "Process the following pasted scene-mapping JSON as the complete input for this task.",
+            "The JSON is pasted inline, not attached as a file. Do not say that an attachment is missing or ask me to re-upload it.",
+            "Return only the requested scene-mapping JSON output after using the subjects, locations, lyric lines, and scene numbers from the data.",
+            "```json",
+            content,
+            "```",
+          ].join("\n\n");
+          copied = await copyTextToClipboard(handoff);
         } catch (copyError) {
           console.warn("[VRGDG Music Builder] Could not copy GPT scene mapping context:", copyError);
         }
+        const gptWindow = window.open(SCENE_MAPPING_GPT_URL, "_blank", "noopener,noreferrer");
         exportGptSceneContext.textContent = "Saving...";
         const result = await postJson("/vrgdg/music_builder/save_text_file", {
           path,
           content,
         }, 60000);
-        toast(`${copied ? "Copied GPT scene mapping JSON to clipboard" : "Clipboard copy was blocked by the browser"}${gptWindow ? " and opened the GPT." : ", but the GPT popup was blocked."}\nSaved backup for ${data.scenes.length} scene${data.scenes.length === 1 ? "" : "s"} to:\n${result.path || path}`);
+        toast(`${copied ? "Copied the GPT scene-mapping request and JSON to clipboard" : "Clipboard copy was blocked by the browser"}${gptWindow ? " and opened the GPT." : ", but the GPT popup was blocked."}\nSaved backup for ${data.scenes.length} scene${data.scenes.length === 1 ? "" : "s"} to:\n${result.path || path}`);
       } catch (error) {
         toast(String(error?.message || error), true);
       } finally {

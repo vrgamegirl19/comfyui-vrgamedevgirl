@@ -30,6 +30,12 @@
           ]
         },
         {
+          "title": "Fixed",
+          "items": [
+            "Fixed Export GPT Context in Ref Builder Scene Mapping so it copies the scene-mapping request and JSON before opening the GPT, with explicit inline JSON instructions that prevent the GPT from treating the pasted context as a missing attachment."
+          ]
+        },
+        {
           "title": "Compatibility Notes",
           "items": [
             "Restart ComfyUI and hard-refresh the browser after updating so the revised Python nodes and Builder JavaScript modules are loaded.",
