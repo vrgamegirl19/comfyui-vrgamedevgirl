@@ -217,6 +217,15 @@ def _minimax_h3_2pass_api_template_path():
     )
 
 
+def _minimax_h3_3pass_api_template_path():
+    return os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "Workflows",
+        "UsedForUIDoNotTouch",
+        "minimax_ref2video_3pass_audio_driven_api.json",
+    )
+
+
 def _minimax_h3_built_in_audio_api_template_path():
     return os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
