@@ -3,6 +3,39 @@
   "product": "AI Video Builder",
   "releases": [
     {
+      "id": "2026-08-12-minimax-h3-two-pass-builder",
+      "version": "2026.08.12-minimax-h3-two-pass",
+      "date": "2026-08-12",
+      "title": "MiniMax H3 two-pass Reference-to-Video rendering",
+      "commit": "7d9806a",
+      "restart_required": true,
+      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
+      "sections": [
+        {
+          "title": "New",
+          "items": [
+            "Added a MiniMax H3 Ref to Video 2 Pass mode in the Video Builder for external/custom audio projects.",
+            "The two-pass workflow saves separate Stage 1 and Stage 2 outputs. Stage 2 is automatically collected for timeline stitching, while Stage 1 is retained as a review backup on the scene."
+          ]
+        },
+        {
+          "title": "Improved",
+          "items": [
+            "Exposed MiniMax H3 reference-image sizing in Advanced Settings with Match generation size and Max identity fidelity options.",
+            "MiniMax H3 Advanced Settings now open by default and continue to expose sampler, scheduler, denoise, EasyCache, SageAttention, fp16, and reference-conditioning controls."
+          ]
+        },
+        {
+          "title": "Compatibility Notes",
+          "items": [
+            "Restart ComfyUI and hard-refresh the browser after updating so the revised Python nodes, workflow template, and Builder JavaScript are loaded.",
+            "The current two-pass Builder mode uses Input Audio. Built-in MiniMax audio remains on the existing one-pass path until a separate built-in-audio two-pass adapter is added.",
+            "Models are not downloaded by this update; required model files must already be installed or selected separately."
+          ]
+        }
+      ]
+    },
+    {
       "id": "2026-08-12-storyboard-extras-face-fix-engine-toggle",
       "version": "2026.08.12-storyboard-extras-face-fix",
       "date": "2026-08-12",
