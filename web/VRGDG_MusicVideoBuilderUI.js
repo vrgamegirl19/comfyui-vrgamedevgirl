@@ -5551,6 +5551,10 @@ function openBuilder(node) {
   applyCompactButtonLabel(miniMaxTwoPassButton, "Ref to Video\n2 Pass", { noMap: true, minWidth: 0, padding: "7px 6px", title: "Reference-to-Video two-pass upscale workflow" });
   miniMaxTwoPassButton.dataset.minimaxH3TwoPass = "true";
   miniMaxModeChooser.append(miniMaxTwoPassButton);
+  const miniMaxThreePassButton = makeButton("Ref to Video\n3 Pass");
+  applyCompactButtonLabel(miniMaxThreePassButton, "Ref to Video\n3 Pass", { noMap: true, minWidth: 0, padding: "7px 6px", title: "Reference-to-Video experimental three-pass workflow" });
+  miniMaxThreePassButton.dataset.minimaxH3ThreePass = "true";
+  miniMaxModeChooser.append(miniMaxThreePassButton);
   const miniMaxDiffusionModelPicker = makeSearchableLoraPicker(DEFAULT_MINIMAX_H3_SETTINGS.diffusion_model_name);
   const miniMaxClipPicker = makeSearchableLoraPicker(DEFAULT_MINIMAX_H3_SETTINGS.clip_name);
   const miniMaxVideoVaePicker = makeSearchableLoraPicker(DEFAULT_MINIMAX_H3_SETTINGS.video_vae_name);
@@ -7699,8 +7703,9 @@ function openBuilder(node) {
     const mode = settings.video_mode;
     const modeLabel = miniMaxH3ModeLabel(mode);
     const twoPass = Boolean(state.miniMaxH3TwoPassEnabled) && mode === "reference_to_video";
+    const threePass = Boolean(state.miniMaxH3ThreePassEnabled) && mode === "reference_to_video";
     for (const button of miniMaxModeButtons) {
-      const active = !twoPass && button.dataset.minimaxH3Mode === mode;
+      const active = !twoPass && !threePass && button.dataset.minimaxH3Mode === mode;
       button.style.background = active ? "#06b6d4" : "#27272a";
       button.style.borderColor = active ? "#0891b2" : "#3f3f46";
       button.style.color = active ? "#082f49" : "#f4f4f5";
@@ -7708,6 +7713,9 @@ function openBuilder(node) {
     miniMaxTwoPassButton.style.background = twoPass ? "#06b6d4" : "#27272a";
     miniMaxTwoPassButton.style.borderColor = twoPass ? "#0891b2" : "#3f3f46";
     miniMaxTwoPassButton.style.color = twoPass ? "#082f49" : "#f4f4f5";
+    miniMaxThreePassButton.style.background = threePass ? "#06b6d4" : "#27272a";
+    miniMaxThreePassButton.style.borderColor = threePass ? "#0891b2" : "#3f3f46";
+    miniMaxThreePassButton.style.color = threePass ? "#082f49" : "#f4f4f5";
     for (const [panelMode, panel] of Object.entries(miniMaxModePanels)) {
       panel.style.display = panelMode === mode ? "flex" : "none";
     }
@@ -44277,8 +44285,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const builtInAudio = miniMaxSettings.audio_mode === "built_in_audio";
     const mode = normalizeMiniMaxH3Mode(options.mode ?? miniMaxSettings.video_mode);
     const twoPass = Boolean(state.miniMaxH3TwoPassEnabled) && mode === "reference_to_video";
-    if (twoPass && builtInAudio) {
-      throw new Error("MiniMax H3 2 Pass currently supports Input Audio only. Switch Audio Mode to Input Audio before rendering.");
+    const threePass = Boolean(state.miniMaxH3ThreePassEnabled) && mode === "reference_to_video";
+    if ((twoPass || threePass) && builtInAudio) {
+      throw new Error(`MiniMax H3 ${threePass ? "3 Pass" : "2 Pass"} currently supports Input Audio only. Switch Audio Mode to Input Audio before rendering.`);
     }
     if (!projectFolder) throw new Error("Save or select a project folder before rendering MiniMax H3.");
     if (!Number.isFinite(timelineStart) || !Number.isFinite(timelineEnd) || sceneDuration <= 0) {
@@ -44453,6 +44462,27 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         pass2_steps: 4,
         pass2_denoise: 0.2,
         pass2_megapixels: 1.5,
+        three_pass_pass1_megapixels: miniMaxSettings.three_pass_pass1_megapixels,
+        three_pass_pass1_steps: miniMaxSettings.three_pass_pass1_steps,
+        three_pass_pass1_denoise: miniMaxSettings.three_pass_pass1_denoise,
+        three_pass_pass1_sampler: miniMaxSettings.three_pass_pass1_sampler,
+        three_pass_pass1_scheduler: miniMaxSettings.three_pass_pass1_scheduler,
+        three_pass_pass1_seed: miniMaxSettings.three_pass_pass1_seed,
+        three_pass_pass1_te_speed: miniMaxSettings.three_pass_pass1_te_speed,
+        three_pass_pass2_megapixels: miniMaxSettings.three_pass_pass2_megapixels,
+        three_pass_pass2_steps: miniMaxSettings.three_pass_pass2_steps,
+        three_pass_pass2_denoise: miniMaxSettings.three_pass_pass2_denoise,
+        three_pass_pass2_sampler: miniMaxSettings.three_pass_pass2_sampler,
+        three_pass_pass2_scheduler: miniMaxSettings.three_pass_pass2_scheduler,
+        three_pass_pass2_seed: miniMaxSettings.three_pass_pass2_seed,
+        three_pass_pass2_te_speed: miniMaxSettings.three_pass_pass2_te_speed,
+        three_pass_pass3_megapixels: miniMaxSettings.three_pass_pass3_megapixels,
+        three_pass_pass3_steps: miniMaxSettings.three_pass_pass3_steps,
+        three_pass_pass3_denoise: miniMaxSettings.three_pass_pass3_denoise,
+        three_pass_pass3_sampler: miniMaxSettings.three_pass_pass3_sampler,
+        three_pass_pass3_scheduler: miniMaxSettings.three_pass_pass3_scheduler,
+        three_pass_pass3_seed: miniMaxSettings.three_pass_pass3_seed,
+        three_pass_pass3_te_speed: miniMaxSettings.three_pass_pass3_te_speed,
         easy_cache_bypass: miniMaxSettings.easy_cache_bypass,
         easy_cache_reuse_threshold: miniMaxSettings.easy_cache_reuse_threshold,
         easy_cache_start_percent: miniMaxSettings.easy_cache_start_percent,
@@ -44475,8 +44505,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       }
 
       const built = await postJson(
-        twoPass
-          ? "/vrgdg/workflow_runner/build_minimax_h3_2pass_prompt"
+        threePass
+          ? "/vrgdg/workflow_runner/build_minimax_h3_3pass_prompt"
+          : twoPass
+            ? "/vrgdg/workflow_runner/build_minimax_h3_2pass_prompt"
           : "/vrgdg/workflow_runner/build_minimax_h3_prompt",
         payload,
         180000,
@@ -44502,10 +44534,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       }
 
       progress?.set(
-        `${batchLabel}${twoPass ? "Queueing MiniMax H3 2 Pass (Stage 1 → Stage 2)..." : "Queueing MiniMax H3..."}\n`
+        `${batchLabel}${threePass ? "Queueing MiniMax H3 3 Pass (Stage 1 → Stage 2 → Stage 3)..." : twoPass ? "Queueing MiniMax H3 2 Pass (Stage 1 → Stage 2)..." : "Queueing MiniMax H3..."}\n`
         + `Timeline: ${sceneDuration.toFixed(3)}s\n`
         + `H3 render: ${Number(timing.h3_frame_count || 0)} frames`
-        + (twoPass ? "\nStage 1 is saved as a backup; Stage 2 will be used for stitching." : "")
+        + (threePass ? "\nStage 1 and Stage 2 are saved as backups; Stage 3 will be used for stitching." : twoPass ? "\nStage 1 is saved as a backup; Stage 2 will be used for stitching." : "")
         + loraLine
         + turboLine
         + settingsScopeLine
@@ -44517,7 +44549,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       if (!promptId) throw new Error("ComfyUI queued MiniMax H3 but did not return a prompt_id.");
       const videos = await waitForVideos(
         promptId,
-        (message) => progress?.set(`${batchLabel}${twoPass ? "MiniMax H3 2 Pass (Stage 1 → Stage 2)\n" : ""}${message}\nPrompt ID: ${promptId}`, pct(62)),
+        (message) => progress?.set(`${batchLabel}${threePass ? "MiniMax H3 3 Pass (Stage 1 → Stage 2 → Stage 3)\n" : twoPass ? "MiniMax H3 2 Pass (Stage 1 → Stage 2)\n" : ""}${message}\nPrompt ID: ${promptId}`, pct(62)),
         () => state.batchCancelled,
         null,
         {
@@ -44525,7 +44557,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           timeoutMessage: () => sceneVideoTimeoutMessage({
             promptId,
             sceneLabel: sceneDisplayName(segment, sceneIndex),
-            modeLabel: twoPass ? "MiniMax H3 2 Pass (Stage 1 → Stage 2)" : "MiniMax H3",
+            modeLabel: threePass ? "MiniMax H3 3 Pass (Stage 1 → Stage 2 → Stage 3)" : twoPass ? "MiniMax H3 2 Pass (Stage 1 → Stage 2)" : "MiniMax H3",
             outputFolder: built.output_folder || "",
             projectFolder,
             finalFolder: collectedSceneVideoFolder(),
@@ -44534,13 +44566,19 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         },
       );
       const videoName = (item) => String(item?.params?.filename || item?.filename || "").toLowerCase();
-      const stage1Video = twoPass
+      const stage1Video = (twoPass || threePass)
         ? videos.find((item) => videoName(item).includes("stage1")) || null
         : null;
-      const video = twoPass
-        ? videos.find((item) => videoName(item).includes("stage2")) || videos[videos.length - 1] || null
+      const stage2Video = threePass
+        ? videos.find((item) => videoName(item).includes("stage2")) || null
+        : null;
+      const video = threePass
+        ? videos.find((item) => videoName(item).includes("stage3")) || videos[videos.length - 1] || null
+        : twoPass
+          ? videos.find((item) => videoName(item).includes("stage2")) || videos[videos.length - 1] || null
         : videos[videos.length - 1] || null;
       const stage1VideoPath = stage1Video ? resolveComfyVideoPath(stage1Video) : "";
+      const stage2VideoPath = stage2Video ? resolveComfyVideoPath(stage2Video) : "";
       const alignedVideoPath = resolveComfyVideoPath(video);
       if (!alignedVideoPath) {
         throw new Error("MiniMax H3 finished, but no aligned video path was found in history.");
@@ -44587,6 +44625,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           segment.video_backup_paths.push(stage1VideoPath);
         }
       }
+      if (stage2VideoPath) {
+        segment.minimax_h3_stage2_path = stage2VideoPath;
+        if (!Array.isArray(segment.video_backup_paths)) segment.video_backup_paths = [];
+        if (!segment.video_backup_paths.some((item) => mediaPathKey(item) === mediaPathKey(stage2VideoPath))) {
+          segment.video_backup_paths.push(stage2VideoPath);
+        }
+      }
       segment.video_output = video;
       segment.video_source_path = alignedVideoPath;
       segment.minimax_h3_timing = timing;
@@ -44605,7 +44650,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         await autoSaveSessionQuiet(options.autoSaveReason || "MiniMax H3 scene video complete");
       }
       progress?.set(
-        `${batchLabel}${twoPass ? "MiniMax H3 2 Pass complete — Stage 2 selected; Stage 1 backup saved." : "MiniMax H3 scene ready."}\n${segment.video_path}\n`
+        `${batchLabel}${threePass ? "MiniMax H3 3 Pass complete — Stage 3 selected; Stage 1 and Stage 2 backups saved." : twoPass ? "MiniMax H3 2 Pass complete — Stage 2 selected; Stage 1 backup saved." : "MiniMax H3 scene ready."}\n${segment.video_path}\n`
         + `Exact duration: ${finalDuration.toFixed(3)}s`,
         pct(100),
       );
@@ -55311,6 +55356,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       if (!segment) return;
       pushHistory();
       state.miniMaxH3TwoPassEnabled = false;
+      state.miniMaxH3ThreePassEnabled = false;
       setMiniMaxH3ModeForSegment(segment, button.dataset.minimaxH3Mode);
       syncMiniMaxH3Panel();
       await autoSaveSessionQuiet(segment.use_scene_minimax_h3_settings ? "MiniMax H3 locked scene mode" : "MiniMax H3 project mode");
@@ -55321,9 +55367,20 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (!segment) return;
     pushHistory();
     state.miniMaxH3TwoPassEnabled = true;
+    state.miniMaxH3ThreePassEnabled = false;
     setMiniMaxH3ModeForSegment(segment, "reference_to_video");
     syncMiniMaxH3Panel();
     await autoSaveSessionQuiet("MiniMax H3 two-pass project mode");
+  };
+  miniMaxThreePassButton.onclick = async () => {
+    const segment = requireActiveSegment();
+    if (!segment) return;
+    pushHistory();
+    state.miniMaxH3TwoPassEnabled = false;
+    state.miniMaxH3ThreePassEnabled = true;
+    setMiniMaxH3ModeForSegment(segment, "reference_to_video");
+    syncMiniMaxH3Panel();
+    await autoSaveSessionQuiet("MiniMax H3 three-pass project mode");
   };
   miniMaxAudioMode.addEventListener("change", syncMiniMaxH3Panel);
   miniMaxContinuityMode.addEventListener("change", () => {

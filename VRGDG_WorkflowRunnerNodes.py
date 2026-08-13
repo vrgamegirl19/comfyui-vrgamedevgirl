@@ -3075,6 +3075,137 @@ def _build_minimax_h3_2pass_api_prompt(payload):
     }
 
 
+def _build_minimax_h3_3pass_api_prompt(payload):
+    """Build the experimental external-audio MiniMax H3 three-pass prompt."""
+    workflow_path, prompt = _load_api_template(_minimax_h3_3pass_api_template_path())
+    prompt = copy.deepcopy(prompt)
+    video_prompt = str(_first_payload_value(payload, "prompt", "video_prompt", default="") or "").strip()
+    if not video_prompt:
+        raise ValueError("MiniMax H3 three-pass video prompt is empty.")
+    audio_path = str(_first_payload_value(payload, "audio_path", "source_audio_path", default="") or "").strip().strip('"')
+    if not audio_path:
+        raise ValueError("MiniMax H3 three-pass source audio path is empty.")
+    audio_path = os.path.abspath(audio_path)
+    if not os.path.isfile(audio_path):
+        raise FileNotFoundError(f"MiniMax H3 three-pass source audio was not found: {audio_path}")
+    project_text = str(payload.get("project_folder", "") or "").strip().strip('"')
+    if not project_text:
+        raise ValueError("Project folder is empty.")
+    project_folder = os.path.abspath(project_text)
+    if not os.path.isdir(project_folder):
+        raise FileNotFoundError(f"Project folder was not found: {project_folder}")
+    scene_number = _int_payload(payload, "scene_number", 1, 1, 999999)
+    timeline_start = _first_payload_value(payload, "timeline_start_seconds", "scene_start_seconds", "start", default=0)
+    timeline_end = _first_payload_value(payload, "timeline_end_seconds", "scene_end_seconds", "end", default=None)
+    if timeline_end is None:
+        duration = _first_payload_value(payload, "scene_duration_seconds", "scene_duration", "duration", default=None)
+        if duration is None:
+            raise ValueError("MiniMax H3 three-pass needs timeline_end_seconds or scene_duration_seconds.")
+        timeline_end = float(timeline_start) + float(duration)
+    source_duration = _first_payload_value(payload, "source_duration_seconds", "audio_duration_seconds", default=None)
+    if source_duration is None:
+        source_duration = _probe_media_duration_seconds(audio_path)
+    source_start = _first_payload_value(payload, "source_start_seconds", "audio_start_seconds", default=None)
+    timing = calculate_minimax_h3_timing(
+        timeline_start,
+        timeline_end,
+        _first_payload_value(payload, "warmup_frames", "pre_frames", default=0),
+        _first_payload_value(payload, "cooldown_frames", "tail_loss_frames", default=0),
+        source_start_seconds=source_start,
+        source_duration_seconds=source_duration,
+    )
+    prepared_audio = _trim_minimax_h3_audio_context(audio_path, project_folder, scene_number, timing)
+    image_paths = _minimax_h3_image_paths(payload)
+    video_references = _minimax_h3_video_references(payload)
+    diffusion_model_name = str(payload.get("diffusion_model_name") or "minimax_h3_ref2va_pruned_int8_convrot.safetensors").strip()
+    clip_name = str(payload.get("clip_name") or "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors").strip()
+    video_vae_name = str(payload.get("video_vae_name") or "minimax_h3_video_vae_fp16.safetensors").strip()
+    audio_vae_name = str(payload.get("audio_vae_name") or "minimax_h3_audio_vae_fp32.safetensors").strip()
+    _require_model_choice(("diffusion_models", "unet"), diffusion_model_name, "MiniMax H3 three-pass diffusion model")
+    _require_model_choice(("text_encoders", "clip"), clip_name, "MiniMax H3 three-pass text encoder")
+    _require_model_choice("vae", video_vae_name, "MiniMax H3 three-pass video VAE")
+    _require_model_choice("vae", audio_vae_name, "MiniMax H3 three-pass audio VAE")
+
+    seed = _int_payload(payload, "seed", 69, 0, 0xFFFFFFFFFFFFFFFF)
+    aspect_ratio = str(payload.get("aspect_ratio") or "16:9 (Widescreen)").strip()
+    if aspect_ratio not in _MINIMAX_H3_ASPECT_RATIOS:
+        raise ValueError(f"Unsupported MiniMax H3 three-pass aspect ratio: {aspect_ratio}")
+    _set_api_input(prompt, "329", "text", video_prompt)
+    _set_api_input(prompt, "84", "value", float(timing.workflow_duration_input_seconds))
+    _set_api_input(prompt, "9001", "audio_file", prepared_audio["audio_path"])
+    _set_api_input(prompt, "9001", "seek_seconds", 0)
+    _set_api_input(prompt, "9001", "duration", 0)
+    _set_api_input(prompt, "9000", "image_paths", json.dumps(image_paths, ensure_ascii=False))
+    _set_api_input(prompt, "9000", "video_references", json.dumps(video_references, ensure_ascii=False))
+    ref_image_size = str(payload.get("ref_image_size") or "max").strip().lower()
+    if ref_image_size not in {"match", "max"}:
+        ref_image_size = "max"
+    _set_api_input(prompt, "108", "ref_image_size", ref_image_size)
+    _set_api_input(prompt, "330", "model_name", diffusion_model_name)
+    _set_api_input(prompt, "4", "clip_name", clip_name)
+    _set_api_input(prompt, "5", "vae_name", video_vae_name)
+    _set_api_input(prompt, "6", "vae_name", audio_vae_name)
+    pass_specs = [
+        (1, "105", "248", "249", "243", "328", "246", 0.4, 20, 1.0, True),
+        (2, "297", "290", "289", "300", "187", "294", 1.0, 5, 0.2, False),
+        (3, "334", "344", "341", "345", "187", "340", 2.0, 5, 0.2, False),
+    ]
+    for pass_number, resolution_id, scheduler_id, sampler_id, noise_id, default_model_id, guider_id, default_mp, default_steps, default_denoise, default_speed in pass_specs:
+        prefix = f"three_pass_pass{pass_number}_"
+        _set_api_input(prompt, resolution_id, "aspect_ratio", str(payload.get(f"{prefix}aspect_ratio") or aspect_ratio))
+        _set_api_input(prompt, resolution_id, "megapixels", _float_payload(payload, f"{prefix}megapixels", default_mp, 0.1, 16.0))
+        _set_api_input(prompt, scheduler_id, "steps", _int_payload(payload, f"{prefix}steps", default_steps, 1, 1000))
+        _set_api_input(prompt, scheduler_id, "denoise", _float_payload(payload, f"{prefix}denoise", default_denoise, 0.0, 1.0))
+        _set_api_input(prompt, scheduler_id, "scheduler", str(payload.get(f"{prefix}scheduler") or "beta").strip() or "beta")
+        _set_api_input(prompt, sampler_id, "sampler_name", str(payload.get(f"{prefix}sampler") or "euler").strip() or "euler")
+        _set_api_input(prompt, noise_id, "noise_seed", _int_payload(payload, f"{prefix}seed", seed, 0, 0xFFFFFFFFFFFFFFFF))
+
+    pass1_speed = _bool_payload(payload, "three_pass_pass1_te_speed", True)
+    pass2_speed = _bool_payload(payload, "three_pass_pass2_te_speed", False)
+    pass3_speed = _bool_payload(payload, "three_pass_pass3_te_speed", False)
+    base_model_ref = ["328", 0] if pass1_speed else ["330", 0]
+    _set_api_input(prompt, "187", "model", list(base_model_ref))
+    _set_api_input(prompt, "248", "model", list(base_model_ref if pass1_speed else ["330", 0]))
+    _set_api_input(prompt, "246", "model", list(base_model_ref if pass1_speed else ["330", 0]))
+    for enabled, scheduler_id, guider_id, node_id in ((pass2_speed, "290", "294", "9202"), (pass3_speed, "344", "340", "9203")):
+        if enabled:
+            prompt[node_id] = {
+                "class_type": "TESpeedMiniMaxH3",
+                "inputs": {
+                    "processing_control_value": 0.07,
+                    "processing_percent_1": 0.1,
+                    "processing_percent_2": 0.9,
+                    "mcs": 2,
+                    "device": "auto",
+                    "cache_depth": 0.75,
+                    "model": list(base_model_ref),
+                },
+                "_meta": {"title": f"TE-Speed-MiniMaxH3 Pass {3 if node_id == '9203' else 2}"},
+            }
+            _set_api_input(prompt, scheduler_id, "model", [node_id, 0])
+            _set_api_input(prompt, guider_id, "model", [node_id, 0])
+        else:
+            _set_api_input(prompt, scheduler_id, "model", list(base_model_ref))
+            _set_api_input(prompt, guider_id, "model", list(base_model_ref))
+    output_folder, filename_prefix = _minimax_h3_output_location(project_folder, scene_number)
+    _set_api_input(prompt, "91", "filename_prefix", f"{filename_prefix}_stage1")
+    _set_api_input(prompt, "299", "filename_prefix", f"{filename_prefix}_stage2")
+    _set_api_input(prompt, "353", "filename_prefix", f"{filename_prefix}_stage3")
+    return {
+        "workflow_path": workflow_path,
+        "output_folder": output_folder,
+        "prompt": prompt,
+        "used_seed": seed,
+        "audio_mode": "input_audio",
+        "timing": timing.to_dict(),
+        "prepared_audio": prepared_audio,
+        "post_render_trim": {"start": timing.final_trim_start_seconds, "duration": timing.final_trim_duration_seconds},
+        "reference_inputs": {"image_count": len(image_paths), "video_count": len(video_references)},
+        "three_pass": {"pass1_steps": prompt["248"]["inputs"]["steps"], "pass2_steps": prompt["290"]["inputs"]["steps"], "pass3_steps": prompt["344"]["inputs"]["steps"]},
+        "te_speed": {"pass1": pass1_speed, "pass2": pass2_speed, "pass3": pass3_speed},
+    }
+
+
 def _build_i2v_api_prompt(payload):
     api_template = _i2v_api_template_path()
     if os.path.isfile(api_template) and not payload.get("workflow_path"):
@@ -4613,6 +4744,18 @@ def _ensure_workflow_runner_routes():
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
             result = _build_minimax_h3_2pass_api_prompt(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/workflow_runner/build_minimax_h3_3pass_prompt")
+    async def vrgdg_workflow_runner_build_minimax_h3_3pass_prompt(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+        try:
+            result = _build_minimax_h3_3pass_api_prompt(payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
