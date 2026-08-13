@@ -4125,6 +4125,33 @@ def _find_scene_video_output(payload):
     }
 
 
+def _find_minimax_h3_stage_outputs(payload):
+    output_folder = os.path.abspath(str(payload.get("output_folder", "") or "").strip().strip('"'))
+    if not output_folder or not os.path.isdir(output_folder):
+        return {"stage1_path": "", "stage2_path": "", "stage3_path": ""}
+    min_mtime = float(payload.get("min_mtime") or 0)
+    found = {}
+    for root, _dirs, files in os.walk(output_folder):
+        for name in files:
+            lower = name.lower()
+            if not lower.endswith("-audio.mp4"):
+                continue
+            stage = next((item for item in ("stage1", "stage2", "stage3") if item in lower), "")
+            if not stage:
+                continue
+            path = os.path.abspath(os.path.join(root, name))
+            try:
+                mtime = os.path.getmtime(path)
+                if mtime + 1 < min_mtime or os.path.getsize(path) <= 0:
+                    continue
+            except OSError:
+                continue
+            previous = found.get(stage)
+            if not previous or mtime > previous[0]:
+                found[stage] = (mtime, path)
+    return {f"{stage}_path": found.get(stage, (0, ""))[1] for stage in ("stage1", "stage2", "stage3")}
+
+
 def _stitch_scene_videos(payload):
     raw_paths = payload.get("scene_paths", [])
     if not isinstance(raw_paths, list) or not raw_paths:
@@ -4944,6 +4971,18 @@ def _ensure_workflow_runner_routes():
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
             result = _find_scene_video_output(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/workflow_runner/find_minimax_h3_stage_outputs")
+    async def vrgdg_workflow_runner_find_minimax_h3_stage_outputs(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+        try:
+            result = _find_minimax_h3_stage_outputs(payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})

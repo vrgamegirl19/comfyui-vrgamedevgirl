@@ -44521,6 +44521,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         payload.source_duration_seconds = sourceDurationSeconds;
       }
 
+      const renderStartedAt = Date.now() / 1000 - 2;
       const built = await postJson(
         threePass
           ? "/vrgdg/workflow_runner/build_minimax_h3_3pass_prompt"
@@ -44564,9 +44565,38 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const queued = await queueWorkflowPrompt(built.prompt);
       const promptId = queued?.prompt_id;
       if (!promptId) throw new Error("ComfyUI queued MiniMax H3 but did not return a prompt_id.");
+      let liveStageBackupsRegistered = false;
+      const registerLiveThreePassBackups = async () => {
+        if (!threePass || liveStageBackupsRegistered) return;
+        const stages = await postJson("/vrgdg/workflow_runner/find_minimax_h3_stage_outputs", {
+          output_folder: built.output_folder || "",
+          min_mtime: renderStartedAt,
+        }, 15000).catch(() => ({}));
+        const paths = [stages.stage1_path, stages.stage2_path].filter(Boolean);
+        if (!paths.length) return;
+        let changed = false;
+        if (!Array.isArray(segment.video_backup_paths)) segment.video_backup_paths = [];
+        for (const path of paths) {
+          if (!segment.video_backup_paths.some((item) => mediaPathKey(item) === mediaPathKey(path))) {
+            segment.video_backup_paths.push(path);
+            changed = true;
+          }
+        }
+        if (!changed) return;
+        segment.minimax_h3_stage1_path = stages.stage1_path || segment.minimax_h3_stage1_path || "";
+        segment.minimax_h3_stage2_path = stages.stage2_path || segment.minimax_h3_stage2_path || "";
+        liveStageBackupsRegistered = Boolean(stages.stage1_path && stages.stage2_path);
+        segment.video_cache_bust = Date.now();
+        renderList();
+        render();
+        await autoSaveSessionQuiet("MiniMax H3 three-pass backup available");
+      };
       const videos = await waitForVideos(
         promptId,
-        (message) => progress?.set(`${batchLabel}${threePass ? "MiniMax H3 3 Pass (Stage 1 → Stage 2 → Stage 3)\n" : twoPass ? "MiniMax H3 2 Pass (Stage 1 → Stage 2)\n" : ""}${message}\nPrompt ID: ${promptId}`, pct(62)),
+        (message) => {
+          void registerLiveThreePassBackups();
+          progress?.set(`${batchLabel}${threePass ? "MiniMax H3 3 Pass (Stage 1 → Stage 2 → Stage 3)\n" : twoPass ? "MiniMax H3 2 Pass (Stage 1 → Stage 2)\n" : ""}${message}\nPrompt ID: ${promptId}`, pct(62));
+        },
         () => state.batchCancelled,
         null,
         {
