@@ -254,6 +254,27 @@ const DEFAULT_MINIMAX_H3_SETTINGS = {
   turbo_lora_name: "minimax_h3_turbo_4step_ema_ckpt850.safetensors",
   turbo_lora_strength: 1,
   ref_image_size: "max",
+  three_pass_pass1_megapixels: 0.4,
+  three_pass_pass1_steps: 20,
+  three_pass_pass1_denoise: 1,
+  three_pass_pass1_sampler: "euler",
+  three_pass_pass1_scheduler: "beta",
+  three_pass_pass1_seed: 69,
+  three_pass_pass1_te_speed: true,
+  three_pass_pass2_megapixels: 1,
+  three_pass_pass2_steps: 5,
+  three_pass_pass2_denoise: 0.2,
+  three_pass_pass2_sampler: "euler",
+  three_pass_pass2_scheduler: "beta",
+  three_pass_pass2_seed: 69,
+  three_pass_pass2_te_speed: false,
+  three_pass_pass3_megapixels: 2,
+  three_pass_pass3_steps: 5,
+  three_pass_pass3_denoise: 0.2,
+  three_pass_pass3_sampler: "euler",
+  three_pass_pass3_scheduler: "beta",
+  three_pass_pass3_seed: 69,
+  three_pass_pass3_te_speed: false,
 };
 
 const MINIMAX_H3_CONTINUITY_OPTIONS = [
@@ -436,6 +457,19 @@ function cloneMiniMaxH3Settings(value = {}) {
     ref_image_size: ["match", "max"].includes(String(source.ref_image_size || "").trim().toLowerCase())
       ? String(source.ref_image_size).trim().toLowerCase()
       : DEFAULT_MINIMAX_H3_SETTINGS.ref_image_size,
+    ...Object.fromEntries([1, 2, 3].flatMap((pass) => {
+      const prefix = `three_pass_pass${pass}_`;
+      const defaults = DEFAULT_MINIMAX_H3_SETTINGS;
+      return [
+        [`${prefix}megapixels`, Math.max(0.1, Number(source[`${prefix}megapixels`] ?? defaults[`${prefix}megapixels`]))],
+        [`${prefix}steps`, Math.max(1, Math.min(1000, Math.trunc(Number(source[`${prefix}steps`] ?? defaults[`${prefix}steps`]) || defaults[`${prefix}steps`])))],
+        [`${prefix}denoise`, Math.max(0, Math.min(1, Number(source[`${prefix}denoise`] ?? defaults[`${prefix}denoise`])) )],
+        [`${prefix}sampler`, String(source[`${prefix}sampler`] || defaults[`${prefix}sampler`])],
+        [`${prefix}scheduler`, String(source[`${prefix}scheduler`] || defaults[`${prefix}scheduler`])],
+        [`${prefix}seed`, Number.isFinite(Number(source[`${prefix}seed`])) ? Number(source[`${prefix}seed`]) : defaults[`${prefix}seed`]],
+        [`${prefix}te_speed`, Boolean(source[`${prefix}te_speed`] ?? defaults[`${prefix}te_speed`])],
+      ];
+    })),
   };
 }
 const LTX_MODEL_DOWNLOADS = [
@@ -5639,6 +5673,63 @@ function openBuilder(node) {
     { value: "match", label: "Match generation size" },
     { value: "max", label: "Max identity fidelity (2048px short edge)" },
   ], DEFAULT_MINIMAX_H3_SETTINGS.ref_image_size);
+  const threePassSamplerOptions = [
+    "euler",
+    "euler_ancestral",
+    "res_multistep",
+    "heun",
+    "dpmpp_2m",
+    "dpmpp_2m_sde",
+    "dpmpp_3m_sde",
+    "uni_pc",
+    "deis",
+  ];
+  const threePassSchedulerOptions = [
+    "beta",
+    "simple",
+    "normal",
+    "karras",
+    "exponential",
+    "sgm_uniform",
+    "ddim_uniform",
+    "linear_quadratic",
+    "kl_optimal",
+  ];
+  const threePassControls = [1, 2, 3].map((pass) => {
+    const prefix = `three_pass_pass${pass}_`;
+    const megapixels = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS[`${prefix}megapixels`]), "number");
+    megapixels.min = "0.1";
+    megapixels.max = "16";
+    megapixels.step = "0.1";
+    const steps = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS[`${prefix}steps`]), "number");
+    steps.min = "1";
+    steps.max = "1000";
+    steps.step = "1";
+    const denoise = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS[`${prefix}denoise`]), "number");
+    denoise.min = "0";
+    denoise.max = "1";
+    denoise.step = "0.01";
+    const sampler = makeSelect(threePassSamplerOptions, DEFAULT_MINIMAX_H3_SETTINGS[`${prefix}sampler`]);
+    const scheduler = makeSelect(threePassSchedulerOptions, DEFAULT_MINIMAX_H3_SETTINGS[`${prefix}scheduler`]);
+    const seed = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS[`${prefix}seed`]), "number");
+    seed.step = "1";
+    const teSpeed = makeCheckbox("Use TE-Speed-MiniMaxH3 (OSS)", DEFAULT_MINIMAX_H3_SETTINGS[`${prefix}te_speed`]);
+    const section = makeSettingsSection(`Pass ${pass}`, [
+      makeField("Resolution (megapixels)", megapixels),
+      makeField("Steps", steps),
+      makeField("Sampler", sampler),
+      makeField("Scheduler", scheduler),
+      makeField("Denoise", denoise),
+      makeField("Seed", seed),
+      teSpeed.wrapper,
+    ], pass === 1);
+    return { prefix, megapixels, steps, denoise, sampler, scheduler, seed, teSpeed, section };
+  });
+  const miniMaxThreePassSettings = makeSettingsSection("Three-Pass Experimental Settings", [
+    document.createTextNode("These controls apply when Ref to Video 3 Pass is selected. Defaults match the imported workflow."),
+    ...threePassControls.map((item) => item.section),
+  ], false);
+  miniMaxThreePassSettings.style.display = "none";
   const miniMaxEasyCacheBypass = makeCheckbox("Bypass EasyCache", DEFAULT_MINIMAX_H3_SETTINGS.easy_cache_bypass);
   const miniMaxEasyCacheReuseThreshold = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.easy_cache_reuse_threshold), "number");
   miniMaxEasyCacheReuseThreshold.min = "0";
@@ -5821,6 +5912,7 @@ function openBuilder(node) {
         ...Object.values(miniMaxModePanels),
         makeSettingsSection("Render Settings", [miniMaxRenderSettingsGrid]),
         miniMaxAdvancedSettings,
+        miniMaxThreePassSettings,
       ]),
     },
     {
@@ -6652,6 +6744,7 @@ function openBuilder(node) {
     projectVideoEngine: "ltx",
     miniMaxH3Settings: cloneMiniMaxH3Settings(),
     miniMaxH3TwoPassEnabled: false,
+    miniMaxH3ThreePassEnabled: false,
     imageModelMode: "zimage",
     zimageSettings: defaultZImageSettings(),
     referenceKrea2Settings: { ...DEFAULT_KREA2_REFERENCE_SETTINGS },
@@ -6883,6 +6976,15 @@ function openBuilder(node) {
       steps_before_turbo: turboEnabled ? currentSettings.steps_before_turbo : miniMaxSteps.value,
       denoise: miniMaxDenoise.value,
       ref_image_size: miniMaxRefImageSize.value,
+      ...Object.fromEntries(threePassControls.flatMap((control) => [
+        [`${control.prefix}megapixels`, control.megapixels.value],
+        [`${control.prefix}steps`, control.steps.value],
+        [`${control.prefix}denoise`, control.denoise.value],
+        [`${control.prefix}sampler`, control.sampler.value],
+        [`${control.prefix}scheduler`, control.scheduler.value],
+        [`${control.prefix}seed`, control.seed.value],
+        [`${control.prefix}te_speed`, control.teSpeed.input.checked],
+      ])),
       easy_cache_bypass: miniMaxEasyCacheBypass.input.checked,
       easy_cache_bypass_before_turbo: turboEnabled
         ? currentSettings.easy_cache_bypass_before_turbo
@@ -7521,6 +7623,16 @@ function openBuilder(node) {
     miniMaxSteps.value = String(settings.steps);
     miniMaxDenoise.value = String(settings.denoise);
     miniMaxRefImageSize.value = settings.ref_image_size;
+    threePassControls.forEach((control) => {
+      control.megapixels.value = String(settings[`${control.prefix}megapixels`]);
+      control.steps.value = String(settings[`${control.prefix}steps`]);
+      control.denoise.value = String(settings[`${control.prefix}denoise`]);
+      control.sampler.value = settings[`${control.prefix}sampler`];
+      control.scheduler.value = settings[`${control.prefix}scheduler`];
+      control.seed.value = String(settings[`${control.prefix}seed`]);
+      control.teSpeed.input.checked = Boolean(settings[`${control.prefix}te_speed`]);
+    });
+    miniMaxThreePassSettings.style.display = state.miniMaxH3ThreePassEnabled ? "" : "none";
     miniMaxEasyCacheBypass.input.checked = settings.easy_cache_bypass;
     miniMaxEasyCacheReuseThreshold.value = String(settings.easy_cache_reuse_threshold);
     miniMaxEasyCacheStartPercent.value = String(settings.easy_cache_start_percent);
@@ -35312,6 +35424,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       video_engine: normalizeProjectVideoEngine(state.projectVideoEngine),
       minimax_h3_settings: cloneMiniMaxH3Settings(state.miniMaxH3Settings),
       minimax_h3_two_pass: Boolean(state.miniMaxH3TwoPassEnabled),
+      minimax_h3_three_pass: Boolean(state.miniMaxH3ThreePassEnabled),
       image_model_mode: state.imageModelMode,
       zimage_settings: state.zimageSettings,
       reference_krea2_settings: cloneKrea2ReferenceSettings(state.referenceKrea2Settings),
@@ -35580,6 +35693,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         state.projectVideoEngine = normalizeProjectVideoEngine(data.session.video_engine ?? state.projectVideoEngine);
         state.miniMaxH3Settings = cloneMiniMaxH3Settings(data.session.minimax_h3_settings || state.miniMaxH3Settings);
         state.miniMaxH3TwoPassEnabled = Boolean(data.session.minimax_h3_two_pass ?? state.miniMaxH3TwoPassEnabled);
+        state.miniMaxH3ThreePassEnabled = Boolean(data.session.minimax_h3_three_pass ?? state.miniMaxH3ThreePassEnabled);
         state.imageModelMode = data.session.image_model_mode || data.session.flux_klein_settings?.image_model_mode || state.imageModelMode || "zimage";
         state.pxPerSecond = state.timelineZoom;
         waveformModeSelect.value = state.waveformMode;
@@ -35917,6 +36031,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.projectVideoEngine = normalizeProjectVideoEngine(session.video_engine);
       state.miniMaxH3Settings = cloneMiniMaxH3Settings(session.minimax_h3_settings || {});
       state.miniMaxH3TwoPassEnabled = Boolean(session.minimax_h3_two_pass);
+      state.miniMaxH3ThreePassEnabled = Boolean(session.minimax_h3_three_pass);
       state.imageModelMode = session.image_model_mode || session.flux_klein_settings?.image_model_mode || state.imageModelMode || "zimage";
       state.pxPerSecond = state.timelineZoom;
       waveformModeSelect.value = state.waveformMode;
@@ -47807,6 +47922,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     state.projectVideoEngine = "ltx";
     state.miniMaxH3Settings = cloneMiniMaxH3Settings();
     state.miniMaxH3TwoPassEnabled = false;
+    state.miniMaxH3ThreePassEnabled = false;
     state.videoModelMode = "i2v";
     state.i2vVideoSettings = defaultI2VVideoSettings();
     state.promptToolsHintPrefs = {};
