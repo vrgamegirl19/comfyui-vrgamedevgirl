@@ -5509,6 +5509,10 @@ function openBuilder(node) {
     miniMaxModeChooser.append(button);
     return button;
   });
+  const miniMaxTwoPassButton = makeButton("Ref to Video\n2 Pass");
+  applyCompactButtonLabel(miniMaxTwoPassButton, "Ref to Video\n2 Pass", { noMap: true, minWidth: 0, padding: "7px 6px", title: "Reference-to-Video two-pass upscale workflow" });
+  miniMaxTwoPassButton.dataset.minimaxH3TwoPass = "true";
+  miniMaxModeChooser.append(miniMaxTwoPassButton);
   const miniMaxDiffusionModelPicker = makeSearchableLoraPicker(DEFAULT_MINIMAX_H3_SETTINGS.diffusion_model_name);
   const miniMaxClipPicker = makeSearchableLoraPicker(DEFAULT_MINIMAX_H3_SETTINGS.clip_name);
   const miniMaxVideoVaePicker = makeSearchableLoraPicker(DEFAULT_MINIMAX_H3_SETTINGS.video_vae_name);
@@ -6636,6 +6640,7 @@ function openBuilder(node) {
     videoType: "singing",
     projectVideoEngine: "ltx",
     miniMaxH3Settings: cloneMiniMaxH3Settings(),
+    miniMaxH3TwoPassEnabled: false,
     imageModelMode: "zimage",
     zimageSettings: defaultZImageSettings(),
     referenceKrea2Settings: { ...DEFAULT_KREA2_REFERENCE_SETTINGS },
@@ -7568,12 +7573,16 @@ function openBuilder(node) {
       : "Applies this priority across eligible unlocked base scenes; locked scenes remain unchanged.";
     const mode = settings.video_mode;
     const modeLabel = miniMaxH3ModeLabel(mode);
+    const twoPass = Boolean(state.miniMaxH3TwoPassEnabled) && mode === "reference_to_video";
     for (const button of miniMaxModeButtons) {
-      const active = button.dataset.minimaxH3Mode === mode;
+      const active = !twoPass && button.dataset.minimaxH3Mode === mode;
       button.style.background = active ? "#06b6d4" : "#27272a";
       button.style.borderColor = active ? "#0891b2" : "#3f3f46";
       button.style.color = active ? "#082f49" : "#f4f4f5";
     }
+    miniMaxTwoPassButton.style.background = twoPass ? "#06b6d4" : "#27272a";
+    miniMaxTwoPassButton.style.borderColor = twoPass ? "#0891b2" : "#3f3f46";
+    miniMaxTwoPassButton.style.color = twoPass ? "#082f49" : "#f4f4f5";
     for (const [panelMode, panel] of Object.entries(miniMaxModePanels)) {
       panel.style.display = panelMode === mode ? "flex" : "none";
     }
@@ -35289,6 +35298,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       video_type: normalizeVideoType(state.videoType),
       video_engine: normalizeProjectVideoEngine(state.projectVideoEngine),
       minimax_h3_settings: cloneMiniMaxH3Settings(state.miniMaxH3Settings),
+      minimax_h3_two_pass: Boolean(state.miniMaxH3TwoPassEnabled),
       image_model_mode: state.imageModelMode,
       zimage_settings: state.zimageSettings,
       reference_krea2_settings: cloneKrea2ReferenceSettings(state.referenceKrea2Settings),
@@ -35556,6 +35566,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         state.videoType = normalizeVideoType(data.session.video_type || data.session.videoType || state.videoType);
         state.projectVideoEngine = normalizeProjectVideoEngine(data.session.video_engine ?? state.projectVideoEngine);
         state.miniMaxH3Settings = cloneMiniMaxH3Settings(data.session.minimax_h3_settings || state.miniMaxH3Settings);
+        state.miniMaxH3TwoPassEnabled = Boolean(data.session.minimax_h3_two_pass ?? state.miniMaxH3TwoPassEnabled);
         state.imageModelMode = data.session.image_model_mode || data.session.flux_klein_settings?.image_model_mode || state.imageModelMode || "zimage";
         state.pxPerSecond = state.timelineZoom;
         waveformModeSelect.value = state.waveformMode;
@@ -35892,6 +35903,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.videoType = normalizeVideoType(session.video_type || session.videoType || state.videoType);
       state.projectVideoEngine = normalizeProjectVideoEngine(session.video_engine);
       state.miniMaxH3Settings = cloneMiniMaxH3Settings(session.minimax_h3_settings || {});
+      state.miniMaxH3TwoPassEnabled = Boolean(session.minimax_h3_two_pass);
       state.imageModelMode = session.image_model_mode || session.flux_klein_settings?.image_model_mode || state.imageModelMode || "zimage";
       state.pxPerSecond = state.timelineZoom;
       waveformModeSelect.value = state.waveformMode;
@@ -47753,6 +47765,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     state.videoType = "singing";
     state.projectVideoEngine = "ltx";
     state.miniMaxH3Settings = cloneMiniMaxH3Settings();
+    state.miniMaxH3TwoPassEnabled = false;
     state.videoModelMode = "i2v";
     state.i2vVideoSettings = defaultI2VVideoSettings();
     state.promptToolsHintPrefs = {};
@@ -55140,11 +55153,21 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const segment = requireActiveSegment();
       if (!segment) return;
       pushHistory();
+      state.miniMaxH3TwoPassEnabled = false;
       setMiniMaxH3ModeForSegment(segment, button.dataset.minimaxH3Mode);
       syncMiniMaxH3Panel();
       await autoSaveSessionQuiet(segment.use_scene_minimax_h3_settings ? "MiniMax H3 locked scene mode" : "MiniMax H3 project mode");
     };
   }
+  miniMaxTwoPassButton.onclick = async () => {
+    const segment = requireActiveSegment();
+    if (!segment) return;
+    pushHistory();
+    state.miniMaxH3TwoPassEnabled = true;
+    setMiniMaxH3ModeForSegment(segment, "reference_to_video");
+    syncMiniMaxH3Panel();
+    await autoSaveSessionQuiet("MiniMax H3 two-pass project mode");
+  };
   miniMaxAudioMode.addEventListener("change", syncMiniMaxH3Panel);
   miniMaxContinuityMode.addEventListener("change", () => {
     const segment = activeSegment();
