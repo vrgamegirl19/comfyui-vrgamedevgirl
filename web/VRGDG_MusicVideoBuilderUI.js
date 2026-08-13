@@ -3158,10 +3158,12 @@ function openBuilder(node) {
   utilityActions.style.cssText = "display:flex;gap:5px;align-items:center;justify-content:flex-end;flex-wrap:nowrap;min-width:max-content;";
   const projectVideoEngineBadge = document.createElement("div");
   projectVideoEngineBadge.textContent = "◈ LTX";
-  projectVideoEngineBadge.title = "Project video engine: LTX";
-  projectVideoEngineBadge.setAttribute("role", "status");
+  projectVideoEngineBadge.title = "Switch project video engine: LTX";
+  projectVideoEngineBadge.setAttribute("role", "button");
+  projectVideoEngineBadge.setAttribute("tabindex", "0");
+  projectVideoEngineBadge.setAttribute("aria-label", "Switch project video engine");
   projectVideoEngineBadge.setAttribute("aria-live", "polite");
-  projectVideoEngineBadge.style.cssText = `height:26px;box-sizing:border-box;display:inline-flex;align-items:center;padding:0 9px;border:1px solid #60a5fa;border-radius:999px;background:#172554;color:#bfdbfe;font-family:${BUILDER_FONT_STACK};font-size:11px;font-weight:600;letter-spacing:0;white-space:nowrap;`;
+  projectVideoEngineBadge.style.cssText = `height:26px;box-sizing:border-box;display:inline-flex;align-items:center;padding:0 9px;border:1px solid #60a5fa;border-radius:999px;background:#172554;color:#bfdbfe;font-family:${BUILDER_FONT_STACK};font-size:11px;font-weight:600;letter-spacing:0;white-space:nowrap;cursor:pointer;user-select:none;`;
   utilityActions.append(projectVideoEngineBadge, stopWorkflowButton, downloadModelsButton, clearMemoryButton, fullscreenButton, closeButton);
   topbar.append(projectActions, centerActions, utilityActions, menuDropdown);
 
@@ -6685,11 +6687,15 @@ function openBuilder(node) {
 
   function syncProjectVideoEngineUI() {
     const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
+    if (projectVideoEngineSelect) projectVideoEngineSelect.value = miniMaxProject ? "minimax_h3" : "ltx";
     projectVideoEngineBadge.dataset.engine = miniMaxProject ? "minimax_h3" : "ltx";
     projectVideoEngineBadge.textContent = miniMaxProject ? "◈ MiniMax" : "◈ LTX";
     projectVideoEngineBadge.title = miniMaxProject
-      ? "Project video engine: MiniMax H3"
-      : "Project video engine: LTX";
+      ? "Switch project video engine: MiniMax H3"
+      : "Switch project video engine: LTX";
+    projectVideoEngineBadge.setAttribute("aria-label", miniMaxProject
+      ? "Switch project video engine from MiniMax H3 to LTX"
+      : "Switch project video engine from LTX to MiniMax H3");
     projectVideoEngineBadge.style.background = miniMaxProject ? "#083344" : "#172554";
     projectVideoEngineBadge.style.borderColor = miniMaxProject ? "#22d3ee" : "#60a5fa";
     projectVideoEngineBadge.style.color = miniMaxProject ? "#a5f3fc" : "#bfdbfe";
@@ -34778,6 +34784,23 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       toast(state.projectVideoEngine === "minimax_h3"
         ? "This project now uses the separate MiniMax H3 scene renderer."
         : "This project now uses the existing LTX scene renderer.");
+    });
+    const toggleProjectVideoEngine = async () => {
+      state.projectVideoEngine = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3"
+        ? "ltx"
+        : "minimax_h3";
+      projectVideoEngineSelect.value = state.projectVideoEngine;
+      syncProjectVideoEngineUI();
+      await autoSaveSessionQuiet("project video engine badge toggle");
+      toast(state.projectVideoEngine === "minimax_h3"
+        ? "Switched this project to MiniMax H3."
+        : "Switched this project to LTX.");
+    };
+    projectVideoEngineBadge.addEventListener("click", () => { void toggleProjectVideoEngine(); });
+    projectVideoEngineBadge.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      void toggleProjectVideoEngine();
     });
     clearSuccessSound.onclick = async () => {
       state.notificationSettings.success_custom_audio = "";
