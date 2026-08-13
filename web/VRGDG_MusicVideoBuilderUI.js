@@ -44161,6 +44161,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const miniMaxSettings = miniMaxH3SettingsForSegment(segment);
     const builtInAudio = miniMaxSettings.audio_mode === "built_in_audio";
     const mode = normalizeMiniMaxH3Mode(options.mode ?? miniMaxSettings.video_mode);
+    const twoPass = Boolean(state.miniMaxH3TwoPassEnabled) && mode === "reference_to_video";
+    if (twoPass && builtInAudio) {
+      throw new Error("MiniMax H3 2 Pass currently supports Input Audio only. Switch Audio Mode to Input Audio before rendering.");
+    }
     if (!projectFolder) throw new Error("Save or select a project folder before rendering MiniMax H3.");
     if (!Number.isFinite(timelineStart) || !Number.isFinite(timelineEnd) || sceneDuration <= 0) {
       throw new Error(`${sceneDisplayName(segment, sceneIndex)} has invalid timeline boundaries.`);
@@ -44328,6 +44332,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         steps: miniMaxSettings.steps,
         denoise: miniMaxSettings.denoise,
         ref_image_size: miniMaxSettings.ref_image_size,
+        pass1_steps: miniMaxSettings.steps,
+        pass1_denoise: miniMaxSettings.denoise,
+        pass1_megapixels: 0.5,
+        pass2_steps: 4,
+        pass2_denoise: 0.2,
+        pass2_megapixels: 1.5,
         easy_cache_bypass: miniMaxSettings.easy_cache_bypass,
         easy_cache_reuse_threshold: miniMaxSettings.easy_cache_reuse_threshold,
         easy_cache_start_percent: miniMaxSettings.easy_cache_start_percent,
@@ -44350,7 +44360,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       }
 
       const built = await postJson(
-        "/vrgdg/workflow_runner/build_minimax_h3_prompt",
+        twoPass
+          ? "/vrgdg/workflow_runner/build_minimax_h3_2pass_prompt"
+          : "/vrgdg/workflow_runner/build_minimax_h3_prompt",
         payload,
         180000,
       );
@@ -44405,7 +44417,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           }),
         },
       );
-      const video = videos[videos.length - 1] || null;
+      const videoName = (item) => String(item?.params?.filename || item?.filename || "").toLowerCase();
+      const stage1Video = twoPass
+        ? videos.find((item) => videoName(item).includes("stage1")) || null
+        : null;
+      const video = twoPass
+        ? videos.find((item) => videoName(item).includes("stage2")) || videos[videos.length - 1] || null
+        : videos[videos.length - 1] || null;
+      const stage1VideoPath = stage1Video ? resolveComfyVideoPath(stage1Video) : "";
       const alignedVideoPath = resolveComfyVideoPath(video);
       if (!alignedVideoPath) {
         throw new Error("MiniMax H3 finished, but no aligned video path was found in history.");
@@ -44443,6 +44462,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         if (!Array.isArray(segment.video_backup_thumbnail_paths)) segment.video_backup_thumbnail_paths = [];
         if (!segment.video_backup_thumbnail_paths.some((item) => mediaPathKey(item) === mediaPathKey(collected.backup_thumbnail_path))) {
           segment.video_backup_thumbnail_paths.push(collected.backup_thumbnail_path);
+        }
+      }
+      if (stage1VideoPath) {
+        segment.minimax_h3_stage1_path = stage1VideoPath;
+        if (!Array.isArray(segment.video_backup_paths)) segment.video_backup_paths = [];
+        if (!segment.video_backup_paths.some((item) => mediaPathKey(item) === mediaPathKey(stage1VideoPath))) {
+          segment.video_backup_paths.push(stage1VideoPath);
         }
       }
       segment.video_output = video;

@@ -13,7 +13,7 @@
     "class_type": "BasicGuider",
     "inputs": {
       "model": [
-        "187",
+        "125",
         0
       ],
       "conditioning": [
@@ -99,7 +99,7 @@
     "class_type": "BasicGuider",
     "inputs": {
       "model": [
-        "187",
+        "125",
         0
       ],
       "conditioning": [
@@ -279,7 +279,7 @@
     "class_type": "BasicScheduler",
     "inputs": {
       "model": [
-        "187",
+        "125",
         0
       ],
       "scheduler": "beta",
@@ -390,7 +390,7 @@
     "class_type": "BasicScheduler",
     "inputs": {
       "model": [
-        "187",
+        "125",
         0
       ],
       "scheduler": "beta",
@@ -412,6 +412,29 @@
       "frame_rate": 24,
       "loop_count": 0,
       "filename_prefix": "H3_Ref2VA_Stage2",
+      "format": "video/h264-mp4",
+      "pingpong": false,
+      "save_output": true,
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false
+    }
+  },
+  "298": {
+    "class_type": "VHS_VideoCombine",
+    "inputs": {
+      "images": [
+        "305",
+        0
+      ],
+      "audio": [
+        "9002",
+        0
+      ],
+      "frame_rate": 24,
+      "loop_count": 0,
+      "filename_prefix": "H3_Ref2VA_Stage1",
       "format": "video/h264-mp4",
       "pingpong": false,
       "save_output": true,

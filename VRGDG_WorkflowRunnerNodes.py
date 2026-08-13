@@ -3031,6 +3031,10 @@ def _build_minimax_h3_2pass_api_prompt(payload):
     _set_api_input(prompt, "297", "megapixels", _float_payload(payload, "pass2_megapixels", 1.5, 0.1, 16.0))
     _set_api_input(prompt, "248", "steps", _int_payload(payload, "pass1_steps", 15, 1, 1000))
     _set_api_input(prompt, "290", "steps", _int_payload(payload, "pass2_steps", 4, 1, 1000))
+    _set_api_input(prompt, "249", "sampler_name", str(payload.get("sampler_name") or "euler").strip() or "euler")
+    _set_api_input(prompt, "289", "sampler_name", str(payload.get("pass2_sampler_name") or payload.get("sampler_name") or "euler").strip() or "euler")
+    _set_api_input(prompt, "248", "scheduler", str(payload.get("scheduler") or "beta").strip() or "beta")
+    _set_api_input(prompt, "290", "scheduler", str(payload.get("pass2_scheduler") or payload.get("scheduler") or "beta").strip() or "beta")
     _set_api_input(prompt, "248", "denoise", _float_payload(payload, "pass1_denoise", 1.0, 0.0, 1.0))
     _set_api_input(prompt, "290", "denoise", _float_payload(payload, "pass2_denoise", 0.2, 0.0, 1.0))
     _set_api_input(prompt, "243", "noise_seed", pass1_seed)
@@ -3039,10 +3043,18 @@ def _build_minimax_h3_2pass_api_prompt(payload):
     _set_api_input(prompt, "4", "clip_name", clip_name)
     _set_api_input(prompt, "5", "vae_name", video_vae_name)
     _set_api_input(prompt, "6", "vae_name", audio_vae_name)
-    _set_api_input(prompt, "299", "filename_prefix", _minimax_h3_output_location(project_folder, scene_number)[1])
+    if _bool_payload(payload, "use_loras", False):
+        _patch_minimax_h3_loras(prompt, payload)
+        pass1_model = prompt.get("248", {}).get("inputs", {}).get("model")
+        if isinstance(pass1_model, list) and len(pass1_model) == 2:
+            _set_api_input(prompt, "290", "model", list(pass1_model))
+            _set_api_input(prompt, "294", "model", list(pass1_model))
+    output_folder, filename_prefix = _minimax_h3_output_location(project_folder, scene_number)
+    _set_api_input(prompt, "298", "filename_prefix", f"{filename_prefix}_stage1")
+    _set_api_input(prompt, "299", "filename_prefix", f"{filename_prefix}_stage2")
     return {
         "workflow_path": workflow_path,
-        "output_folder": _minimax_h3_output_location(project_folder, scene_number)[0],
+        "output_folder": output_folder,
         "prompt": prompt,
         "used_seed": seed,
         "audio_mode": "input_audio",
