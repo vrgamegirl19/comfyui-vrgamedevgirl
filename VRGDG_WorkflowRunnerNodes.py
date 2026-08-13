@@ -3163,13 +3163,22 @@ def _build_minimax_h3_3pass_api_prompt(payload):
     pass1_speed = _bool_payload(payload, "three_pass_pass1_te_speed", True)
     pass2_speed = _bool_payload(payload, "three_pass_pass2_te_speed", False)
     pass3_speed = _bool_payload(payload, "three_pass_pass3_te_speed", False)
-    base_model_ref = ["328", 0] if pass1_speed else ["330", 0]
-    _set_api_input(prompt, "187", "model", list(base_model_ref))
-    _set_api_input(prompt, "248", "model", list(base_model_ref if pass1_speed else ["330", 0]))
-    _set_api_input(prompt, "246", "model", list(base_model_ref if pass1_speed else ["330", 0]))
-    for enabled, scheduler_id, guider_id, node_id in ((pass2_speed, "290", "294", "9202"), (pass3_speed, "344", "340", "9203")):
+    raw_lora = prompt.get("187", {}).get("inputs", {})
+    lora_name = str(raw_lora.get("lora_name") or "").strip()
+    lora_strength = float(raw_lora.get("strength_model", 0.8) or 0.8)
+    pass1_model_ref = ["328", 0] if pass1_speed else ["330", 0]
+    _set_api_input(prompt, "328", "model", ["330", 0])
+    _set_api_input(prompt, "248", "model", list(pass1_model_ref))
+    _set_api_input(prompt, "246", "model", list(pass1_model_ref))
+
+    pass_model_refs = []
+    for pass_number, enabled, scheduler_id, guider_id, speed_node_id, lora_node_id in (
+        (2, pass2_speed, "290", "294", "9202", "9204"),
+        (3, pass3_speed, "344", "340", "9203", "9205"),
+    ):
+        pass_base_ref = [speed_node_id, 0] if enabled else ["330", 0]
         if enabled:
-            prompt[node_id] = {
+            prompt[speed_node_id] = {
                 "class_type": "TESpeedMiniMaxH3",
                 "inputs": {
                     "processing_control_value": 0.07,
@@ -3178,15 +3187,23 @@ def _build_minimax_h3_3pass_api_prompt(payload):
                     "mcs": 2,
                     "device": "auto",
                     "cache_depth": 0.75,
-                    "model": list(base_model_ref),
+                    "model": ["330", 0],
                 },
-                "_meta": {"title": f"TE-Speed-MiniMaxH3 Pass {3 if node_id == '9203' else 2}"},
+                "_meta": {"title": f"TE-Speed-MiniMaxH3 Pass {pass_number}"},
             }
-            _set_api_input(prompt, scheduler_id, "model", [node_id, 0])
-            _set_api_input(prompt, guider_id, "model", [node_id, 0])
-        else:
-            _set_api_input(prompt, scheduler_id, "model", list(base_model_ref))
-            _set_api_input(prompt, guider_id, "model", list(base_model_ref))
+        prompt[lora_node_id] = {
+            "class_type": "LoraLoaderModelOnly",
+            "inputs": {
+                "model": list(pass_base_ref),
+                "lora_name": lora_name,
+                "strength_model": lora_strength,
+            },
+            "_meta": {"title": f"MiniMax H3 Pass {pass_number} LoRA"},
+        }
+        pass_model_refs.append((scheduler_id, guider_id, [lora_node_id, 0]))
+    for scheduler_id, guider_id, model_ref in pass_model_refs:
+        _set_api_input(prompt, scheduler_id, "model", list(model_ref))
+        _set_api_input(prompt, guider_id, "model", list(model_ref))
     output_folder, filename_prefix = _minimax_h3_output_location(project_folder, scene_number)
     _set_api_input(prompt, "91", "filename_prefix", f"{filename_prefix}_stage1")
     _set_api_input(prompt, "299", "filename_prefix", f"{filename_prefix}_stage2")
