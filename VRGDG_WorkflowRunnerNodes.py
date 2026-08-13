@@ -3021,7 +3021,10 @@ def _build_minimax_h3_2pass_api_prompt(payload):
     _set_api_input(prompt, "9001", "duration", 0)
     _set_api_input(prompt, "9000", "image_paths", json.dumps(image_paths, ensure_ascii=False))
     _set_api_input(prompt, "9000", "video_references", json.dumps(video_references, ensure_ascii=False))
-    _set_api_input(prompt, "108", "ref_image_size", str(payload.get("ref_image_size") or "max"))
+    ref_image_size = str(payload.get("ref_image_size") or "max").strip().lower()
+    if ref_image_size not in {"match", "max"}:
+        ref_image_size = "max"
+    _set_api_input(prompt, "108", "ref_image_size", ref_image_size)
     _set_api_input(prompt, "105", "aspect_ratio", aspect_ratio)
     _set_api_input(prompt, "105", "megapixels", _float_payload(payload, "pass1_megapixels", 0.5, 0.1, 16.0))
     _set_api_input(prompt, "297", "aspect_ratio", str(payload.get("pass2_aspect_ratio") or aspect_ratio))

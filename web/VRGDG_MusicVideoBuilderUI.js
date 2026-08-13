@@ -253,6 +253,7 @@ const DEFAULT_MINIMAX_H3_SETTINGS = {
   use_turbo_lora: false,
   turbo_lora_name: "minimax_h3_turbo_4step_ema_ckpt850.safetensors",
   turbo_lora_strength: 1,
+  ref_image_size: "max",
 };
 
 const MINIMAX_H3_CONTINUITY_OPTIONS = [
@@ -432,6 +433,9 @@ function cloneMiniMaxH3Settings(value = {}) {
     use_turbo_lora: turboEnabled,
     turbo_lora_name: String(source.turbo_lora_name || source.turboLoraName || DEFAULT_MINIMAX_H3_SETTINGS.turbo_lora_name),
     turbo_lora_strength: Math.max(-10, Math.min(10, Number(source.turbo_lora_strength ?? source.turboLoraStrength ?? DEFAULT_MINIMAX_H3_SETTINGS.turbo_lora_strength))),
+    ref_image_size: ["match", "max"].includes(String(source.ref_image_size || "").trim().toLowerCase())
+      ? String(source.ref_image_size).trim().toLowerCase()
+      : DEFAULT_MINIMAX_H3_SETTINGS.ref_image_size,
   };
 }
 const LTX_MODEL_DOWNLOADS = [
@@ -5631,6 +5635,10 @@ function openBuilder(node) {
   miniMaxDenoise.min = "0";
   miniMaxDenoise.max = "1";
   miniMaxDenoise.step = "0.01";
+  const miniMaxRefImageSize = makeSelect([
+    { value: "match", label: "Match generation size" },
+    { value: "max", label: "Max identity fidelity (2048px short edge)" },
+  ], DEFAULT_MINIMAX_H3_SETTINGS.ref_image_size);
   const miniMaxEasyCacheBypass = makeCheckbox("Bypass EasyCache", DEFAULT_MINIMAX_H3_SETTINGS.easy_cache_bypass);
   const miniMaxEasyCacheReuseThreshold = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.easy_cache_reuse_threshold), "number");
   miniMaxEasyCacheReuseThreshold.min = "0";
@@ -5658,6 +5666,9 @@ function openBuilder(node) {
       makeField("Steps", miniMaxSteps),
       makeField("Denoise", miniMaxDenoise),
     ]),
+    makeSettingsSection("Reference Conditioning", [
+      makeField("Reference image sizing", miniMaxRefImageSize),
+    ]),
     makeSettingsSection("EasyCache", [
       miniMaxEasyCacheBypass.wrapper,
       miniMaxEasyCacheNote,
@@ -5671,7 +5682,7 @@ function openBuilder(node) {
       miniMaxMemoryEfficientSageAttention.wrapper,
       miniMaxFp16Accumulation.wrapper,
     ]),
-  ], false);
+  ], true);
   const miniMaxTextModePanel = makeSettingsPanel([]);
   const miniMaxTextModeNote = document.createElement("div");
   miniMaxTextModeNote.textContent = "Text to Video sends no image or video references. The scene prompt and custom/project audio drive the shot.";
@@ -6871,6 +6882,7 @@ function openBuilder(node) {
       steps: miniMaxSteps.value,
       steps_before_turbo: turboEnabled ? currentSettings.steps_before_turbo : miniMaxSteps.value,
       denoise: miniMaxDenoise.value,
+      ref_image_size: miniMaxRefImageSize.value,
       easy_cache_bypass: miniMaxEasyCacheBypass.input.checked,
       easy_cache_bypass_before_turbo: turboEnabled
         ? currentSettings.easy_cache_bypass_before_turbo
@@ -7508,6 +7520,7 @@ function openBuilder(node) {
     miniMaxScheduler.value = settings.scheduler;
     miniMaxSteps.value = String(settings.steps);
     miniMaxDenoise.value = String(settings.denoise);
+    miniMaxRefImageSize.value = settings.ref_image_size;
     miniMaxEasyCacheBypass.input.checked = settings.easy_cache_bypass;
     miniMaxEasyCacheReuseThreshold.value = String(settings.easy_cache_reuse_threshold);
     miniMaxEasyCacheStartPercent.value = String(settings.easy_cache_start_percent);
@@ -44314,6 +44327,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         scheduler: miniMaxSettings.scheduler,
         steps: miniMaxSettings.steps,
         denoise: miniMaxSettings.denoise,
+        ref_image_size: miniMaxSettings.ref_image_size,
         easy_cache_bypass: miniMaxSettings.easy_cache_bypass,
         easy_cache_reuse_threshold: miniMaxSettings.easy_cache_reuse_threshold,
         easy_cache_start_percent: miniMaxSettings.easy_cache_start_percent,
