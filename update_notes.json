@@ -3,6 +3,43 @@
   "product": "AI Video Builder",
   "releases": [
     {
+      "id": "2026-08-12-storyboard-extras-face-fix-engine-toggle",
+      "version": "2026.08.12-storyboard-extras-face-fix",
+      "date": "2026-08-12",
+      "title": "Storyboard extras, GPT story planning, face-fix improvements, and quick engine switching",
+      "commit": "99c7f72",
+      "restart_required": true,
+      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
+      "sections": [
+        {
+          "title": "New",
+          "items": [
+            "Added mapped background extras with reference images, concise identity descriptions, group counts, scene mapping, and interaction roles such as background, background dancing, alongside, dancing with, and direct contact.",
+            "Added GPT Story planning handoff/import and Advanced Location Scout tools for packaging project lyrics, story context, references, mapped extras, locations, and visual presets as JSON.",
+            "Added shot-aware face-fix preparation plus opaque and landmark-aligned compositing options for more consistent face repairs across cuts and changing camera framing.",
+            "Added a clickable MiniMax/LTX project-engine badge in the top toolbar. Click it, or focus it and press Enter/Space, to switch engines without opening Settings."
+          ]
+        },
+        {
+          "title": "Improved",
+          "items": [
+            "MiniMax prompt generation now supports mapped extras while preserving exact subject labels, reference limits, non-speaking extra behavior, and the existing prompt workflow.",
+            "Storyboard and Auto Build scene generation can continue past recoverable LLM failures and retry only skipped scenes instead of restarting the full batch.",
+            "MiniMax external prompts can be accepted without strict format validation by default; the 7,000-character hard limit remains enforced, and a testing switch restores strict validation.",
+            "Face-fix processing now handles LTX frame offsets and shot boundaries more reliably when preparing, aligning, and compositing repaired frames."
+          ]
+        },
+        {
+          "title": "Compatibility Notes",
+          "items": [
+            "Restart ComfyUI and hard-refresh the browser after updating so the revised Python nodes and Builder JavaScript modules are loaded.",
+            "Existing projects remain on their selected video engine. The toolbar badge changes and autosaves the project-wide engine selection; it does not download models or alter model files.",
+            "The new face-fix alignment option requires the available OpenCV face-landmark detector asset and the corresponding face-fix workflow nodes."
+          ]
+        }
+      ]
+    },
+    {
       "id": "2026-08-09-video-compare-shot-fx",
       "version": "2026.08.09-video-compare-shot-fx",
       "date": "2026-08-09",
