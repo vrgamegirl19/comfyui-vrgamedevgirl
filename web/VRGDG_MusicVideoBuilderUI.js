@@ -55351,6 +55351,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     miniMaxUseLoras.input,
     miniMaxLoraCount,
     miniMaxTurboLoraStrength,
+    ...threePassControls.flatMap((pass) => [
+      pass.megapixels,
+      pass.steps,
+      pass.denoise,
+      pass.sampler,
+      pass.scheduler,
+      pass.seed,
+      pass.teSpeed.input,
+    ]),
   ]) {
     control.addEventListener("input", saveMiniMaxH3SettingsFromPanel);
     control.addEventListener("change", persistMiniMaxSettings);
