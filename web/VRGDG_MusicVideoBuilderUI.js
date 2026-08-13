@@ -5636,12 +5636,17 @@ function openBuilder(node) {
   miniMaxCooldownFrames.step = "1";
   const miniMaxRenderSettingsGrid = document.createElement("div");
   miniMaxRenderSettingsGrid.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;";
+  const miniMaxAspectRatioField = makeField("Aspect ratio", miniMaxAspectRatio);
+  const miniMaxMegapixelsField = makeField("Megapixels", miniMaxMegapixels);
+  const miniMaxSeedField = makeField("Seed", miniMaxSeed);
+  const miniMaxWarmupFramesField = makeField("Warmup frames", miniMaxWarmupFrames);
+  const miniMaxCooldownFramesField = makeField("Cooldown frames", miniMaxCooldownFrames);
   miniMaxRenderSettingsGrid.append(
-    makeField("Aspect ratio", miniMaxAspectRatio),
-    makeField("Megapixels", miniMaxMegapixels),
-    makeField("Seed", miniMaxSeed),
-    makeField("Warmup frames", miniMaxWarmupFrames),
-    makeField("Cooldown frames", miniMaxCooldownFrames),
+    miniMaxAspectRatioField,
+    miniMaxMegapixelsField,
+    miniMaxSeedField,
+    miniMaxWarmupFramesField,
+    miniMaxCooldownFramesField,
   );
   const miniMaxSamplerName = makeSelect([
     "res_multistep",
@@ -5754,29 +5759,33 @@ function openBuilder(node) {
   const miniMaxEasyCacheNote = document.createElement("div");
   miniMaxEasyCacheNote.textContent = "Bypass sends the diffusion model directly to the scheduler and removes EasyCache from the queued workflow copy.";
   miniMaxEasyCacheNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
+  const miniMaxSamplerSettings = makeSettingsSection("Sampler", [
+    makeField("Sampler", miniMaxSamplerName),
+    makeField("Scheduler", miniMaxScheduler),
+    makeField("Steps", miniMaxSteps),
+    makeField("Denoise", miniMaxDenoise),
+  ]);
+  const miniMaxReferenceConditioningSettings = makeSettingsSection("Reference Conditioning", [
+    makeField("Reference image sizing", miniMaxRefImageSize),
+  ]);
+  const miniMaxEasyCacheSettings = makeSettingsSection("EasyCache", [
+    miniMaxEasyCacheBypass.wrapper,
+    miniMaxEasyCacheNote,
+    makeField("Reuse threshold", miniMaxEasyCacheReuseThreshold),
+    makeField("Start percent", miniMaxEasyCacheStartPercent),
+    makeField("End percent", miniMaxEasyCacheEndPercent),
+    miniMaxEasyCacheVerbose.wrapper,
+  ]);
+  const miniMaxModelLoaderSettings = makeSettingsSection("Model Loader", [
+    makeField("Sage Attention", miniMaxSageAttention),
+    miniMaxMemoryEfficientSageAttention.wrapper,
+    miniMaxFp16Accumulation.wrapper,
+  ]);
   const miniMaxAdvancedSettings = makeSettingsSection("Advanced Settings", [
-    makeSettingsSection("Sampler", [
-      makeField("Sampler", miniMaxSamplerName),
-      makeField("Scheduler", miniMaxScheduler),
-      makeField("Steps", miniMaxSteps),
-      makeField("Denoise", miniMaxDenoise),
-    ]),
-    makeSettingsSection("Reference Conditioning", [
-      makeField("Reference image sizing", miniMaxRefImageSize),
-    ]),
-    makeSettingsSection("EasyCache", [
-      miniMaxEasyCacheBypass.wrapper,
-      miniMaxEasyCacheNote,
-      makeField("Reuse threshold", miniMaxEasyCacheReuseThreshold),
-      makeField("Start percent", miniMaxEasyCacheStartPercent),
-      makeField("End percent", miniMaxEasyCacheEndPercent),
-      miniMaxEasyCacheVerbose.wrapper,
-    ]),
-    makeSettingsSection("Model Loader", [
-      makeField("Sage Attention", miniMaxSageAttention),
-      miniMaxMemoryEfficientSageAttention.wrapper,
-      miniMaxFp16Accumulation.wrapper,
-    ]),
+    miniMaxSamplerSettings,
+    miniMaxReferenceConditioningSettings,
+    miniMaxEasyCacheSettings,
+    miniMaxModelLoaderSettings,
   ], true);
   const miniMaxTextModePanel = makeSettingsPanel([]);
   const miniMaxTextModeNote = document.createElement("div");
@@ -7704,6 +7713,14 @@ function openBuilder(node) {
     const modeLabel = miniMaxH3ModeLabel(mode);
     const twoPass = Boolean(state.miniMaxH3TwoPassEnabled) && mode === "reference_to_video";
     const threePass = Boolean(state.miniMaxH3ThreePassEnabled) && mode === "reference_to_video";
+    const hideThreePassIgnoredSettings = threePass;
+    miniMaxMegapixelsField.style.display = hideThreePassIgnoredSettings ? "none" : "";
+    miniMaxSeedField.style.display = hideThreePassIgnoredSettings ? "none" : "";
+    miniMaxSamplerSettings.style.display = hideThreePassIgnoredSettings ? "none" : "";
+    miniMaxEasyCacheSettings.style.display = hideThreePassIgnoredSettings ? "none" : "";
+    miniMaxModelLoaderSettings.style.display = hideThreePassIgnoredSettings ? "none" : "";
+    miniMaxLoraSection.style.display = hideThreePassIgnoredSettings ? "none" : "";
+    miniMaxTurboSection.style.display = hideThreePassIgnoredSettings ? "none" : "";
     for (const button of miniMaxModeButtons) {
       const active = !twoPass && !threePass && button.dataset.minimaxH3Mode === mode;
       button.style.background = active ? "#06b6d4" : "#27272a";
