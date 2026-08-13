@@ -4142,6 +4142,38 @@ def _find_scene_video_output(payload):
     }
 
 
+def _collect_minimax_h3_stage_backup(payload):
+    source_path = os.path.abspath(str(payload.get("source_path", "") or "").strip().strip('"'))
+    if not os.path.isfile(source_path):
+        raise FileNotFoundError(f"MiniMax H3 stage video was not found: {source_path}")
+    project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
+    if not project_folder or not os.path.isdir(project_folder):
+        raise ValueError("Project folder is empty or does not exist.")
+    if os.path.commonpath([project_folder, source_path]) == project_folder:
+        raise ValueError("MiniMax H3 stage backup source must be outside the project folder.")
+    stage = str(payload.get("stage", "") or "").strip().lower()
+    if stage not in {"stage1", "stage2"}:
+        raise ValueError("MiniMax H3 stage backup must be stage1 or stage2.")
+    scene_number = _int_payload(payload, "scene_number", 1, 1, 999999)
+    backup_dir = os.path.join(project_folder, "rendered_scene_videos_backup", f"scene_{scene_number:04d}")
+    os.makedirs(backup_dir, exist_ok=True)
+    _wait_for_stable_readable_file(source_path)
+    stamp = time.strftime("%Y%m%d_%H%M%S")
+    target_path = os.path.join(backup_dir, f"video_{scene_number:04d}-{stage}_{stamp}.mp4")
+    index = 2
+    while os.path.exists(target_path):
+        target_path = os.path.join(backup_dir, f"video_{scene_number:04d}-{stage}_{stamp}_{index:02d}.mp4")
+        index += 1
+    _retry_file_op(lambda: shutil.copy2(source_path, target_path), f"Copying MiniMax H3 {stage} backup")
+    thumbnail_path = _create_scene_video_thumbnail(target_path)
+    return {
+        "backup_path": target_path,
+        "backup_thumbnail_path": thumbnail_path,
+        "stage": stage,
+        "scene_number": scene_number,
+    }
+
+
 def _find_minimax_h3_stage_outputs(payload):
     output_folder = os.path.abspath(str(payload.get("output_folder", "") or "").strip().strip('"'))
     if not output_folder or not os.path.isdir(output_folder):
@@ -4988,6 +5020,18 @@ def _ensure_workflow_runner_routes():
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
             result = _find_scene_video_output(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/workflow_runner/collect_minimax_h3_stage_backup")
+    async def vrgdg_workflow_runner_collect_minimax_h3_stage_backup(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+        try:
+            result = _collect_minimax_h3_stage_backup(payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})

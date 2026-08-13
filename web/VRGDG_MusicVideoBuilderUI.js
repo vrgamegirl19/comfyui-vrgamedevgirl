@@ -44566,25 +44566,44 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const promptId = queued?.prompt_id;
       if (!promptId) throw new Error("ComfyUI queued MiniMax H3 but did not return a prompt_id.");
       let liveStageBackupsRegistered = false;
+      let liveStageBackupCopying = false;
       const registerLiveThreePassBackups = async () => {
-        if (!threePass || liveStageBackupsRegistered) return;
+        if (!threePass || liveStageBackupsRegistered || liveStageBackupCopying) return;
         const stages = await postJson("/vrgdg/workflow_runner/find_minimax_h3_stage_outputs", {
           output_folder: built.output_folder || "",
           min_mtime: renderStartedAt,
         }, 15000).catch(() => ({}));
-        const paths = [stages.stage1_path, stages.stage2_path].filter(Boolean);
+        const paths = [
+          ["stage1", stages.stage1_path],
+          ["stage2", stages.stage2_path],
+        ].filter(([, path]) => Boolean(path));
         if (!paths.length) return;
+        liveStageBackupCopying = true;
         let changed = false;
         if (!Array.isArray(segment.video_backup_paths)) segment.video_backup_paths = [];
-        for (const path of paths) {
-          if (!segment.video_backup_paths.some((item) => mediaPathKey(item) === mediaPathKey(path))) {
-            segment.video_backup_paths.push(path);
+        for (const [stage, sourcePath] of paths) {
+          if (segment[`minimax_h3_${stage}_source_path`] === sourcePath) continue;
+          const copied = await postJson("/vrgdg/workflow_runner/collect_minimax_h3_stage_backup", {
+            source_path: sourcePath,
+            project_folder: projectFolder,
+            scene_number: slotNumber,
+            stage,
+          }, 120000).catch(() => ({}));
+          const backupPath = copied.backup_path || "";
+          if (backupPath && !segment.video_backup_paths.some((item) => mediaPathKey(item) === mediaPathKey(backupPath))) {
+            segment.video_backup_paths.push(backupPath);
             changed = true;
           }
+          if (backupPath) segment[`minimax_h3_${stage}_source_path`] = sourcePath;
+          if (copied.backup_thumbnail_path) {
+            if (!Array.isArray(segment.video_backup_thumbnail_paths)) segment.video_backup_thumbnail_paths = [];
+            segment.video_backup_thumbnail_paths.push(copied.backup_thumbnail_path);
+          }
         }
+        liveStageBackupCopying = false;
         if (!changed) return;
-        segment.minimax_h3_stage1_path = stages.stage1_path || segment.minimax_h3_stage1_path || "";
-        segment.minimax_h3_stage2_path = stages.stage2_path || segment.minimax_h3_stage2_path || "";
+        segment.minimax_h3_stage1_path = segment.minimax_h3_stage1_source_path || segment.minimax_h3_stage1_path || "";
+        segment.minimax_h3_stage2_path = segment.minimax_h3_stage2_source_path || segment.minimax_h3_stage2_path || "";
         liveStageBackupsRegistered = Boolean(stages.stage1_path && stages.stage2_path);
         segment.video_cache_bust = Date.now();
         renderList();
