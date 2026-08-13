@@ -44387,9 +44387,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       }
 
       progress?.set(
-        `${batchLabel}Queueing MiniMax H3...\n`
+        `${batchLabel}${twoPass ? "Queueing MiniMax H3 2 Pass (Stage 1 → Stage 2)..." : "Queueing MiniMax H3..."}\n`
         + `Timeline: ${sceneDuration.toFixed(3)}s\n`
         + `H3 render: ${Number(timing.h3_frame_count || 0)} frames`
+        + (twoPass ? "\nStage 1 is saved as a backup; Stage 2 will be used for stitching." : "")
         + loraLine
         + turboLine
         + settingsScopeLine
@@ -44401,7 +44402,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       if (!promptId) throw new Error("ComfyUI queued MiniMax H3 but did not return a prompt_id.");
       const videos = await waitForVideos(
         promptId,
-        (message) => progress?.set(`${batchLabel}${message}\nPrompt ID: ${promptId}`, pct(62)),
+        (message) => progress?.set(`${batchLabel}${twoPass ? "MiniMax H3 2 Pass (Stage 1 → Stage 2)\n" : ""}${message}\nPrompt ID: ${promptId}`, pct(62)),
         () => state.batchCancelled,
         null,
         {
@@ -44409,7 +44410,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           timeoutMessage: () => sceneVideoTimeoutMessage({
             promptId,
             sceneLabel: sceneDisplayName(segment, sceneIndex),
-            modeLabel: "MiniMax H3",
+            modeLabel: twoPass ? "MiniMax H3 2 Pass (Stage 1 → Stage 2)" : "MiniMax H3",
             outputFolder: built.output_folder || "",
             projectFolder,
             finalFolder: collectedSceneVideoFolder(),
@@ -44489,7 +44490,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         await autoSaveSessionQuiet(options.autoSaveReason || "MiniMax H3 scene video complete");
       }
       progress?.set(
-        `${batchLabel}MiniMax H3 scene ready.\n${segment.video_path}\n`
+        `${batchLabel}${twoPass ? "MiniMax H3 2 Pass complete — Stage 2 selected; Stage 1 backup saved." : "MiniMax H3 scene ready."}\n${segment.video_path}\n`
         + `Exact duration: ${finalDuration.toFixed(3)}s`,
         pct(100),
       );
