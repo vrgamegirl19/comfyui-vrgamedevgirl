@@ -3157,6 +3157,7 @@ function openBuilder(node) {
   const utilityActions = document.createElement("div");
   utilityActions.style.cssText = "display:flex;gap:5px;align-items:center;justify-content:flex-end;flex-wrap:nowrap;min-width:max-content;";
   const projectVideoEngineBadge = document.createElement("div");
+  let projectVideoEngineSettingsSelect = null;
   projectVideoEngineBadge.textContent = "◈ LTX";
   projectVideoEngineBadge.title = "Switch project video engine: LTX";
   projectVideoEngineBadge.setAttribute("role", "button");
@@ -6687,7 +6688,7 @@ function openBuilder(node) {
 
   function syncProjectVideoEngineUI() {
     const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
-    if (projectVideoEngineSelect) projectVideoEngineSelect.value = miniMaxProject ? "minimax_h3" : "ltx";
+    if (projectVideoEngineSettingsSelect) projectVideoEngineSettingsSelect.value = miniMaxProject ? "minimax_h3" : "ltx";
     projectVideoEngineBadge.dataset.engine = miniMaxProject ? "minimax_h3" : "ltx";
     projectVideoEngineBadge.textContent = miniMaxProject ? "◈ MiniMax" : "◈ LTX";
     projectVideoEngineBadge.title = miniMaxProject
@@ -6703,6 +6704,24 @@ function openBuilder(node) {
     miniMaxEnginePanel.style.display = miniMaxProject ? "flex" : "none";
     syncMiniMaxH3Panel();
   }
+
+  async function toggleProjectVideoEngineFromBadge() {
+    state.projectVideoEngine = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3"
+      ? "ltx"
+      : "minimax_h3";
+    syncProjectVideoEngineUI();
+    await autoSaveSessionQuiet("project video engine badge toggle");
+    toast(state.projectVideoEngine === "minimax_h3"
+      ? "Switched this project to MiniMax H3."
+      : "Switched this project to LTX.");
+  }
+
+  projectVideoEngineBadge.addEventListener("click", () => { void toggleProjectVideoEngineFromBadge(); });
+  projectVideoEngineBadge.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    void toggleProjectVideoEngineFromBadge();
+  });
 
   function miniMaxH3SettingsForSegment(segment = activeSegment()) {
     const globalSettings = cloneMiniMaxH3Settings(state.miniMaxH3Settings);
@@ -34519,6 +34538,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       { value: "ltx", label: "LTX (current Builder)" },
       { value: "minimax_h3", label: "MiniMax H3" },
     ], normalizeProjectVideoEngine(state.projectVideoEngine));
+    projectVideoEngineSettingsSelect = projectVideoEngineSelect;
     const projectVideoEngineNote = document.createElement("div");
     projectVideoEngineNote.textContent = "This choice belongs to the whole project. LTX projects keep the existing scene renderer unchanged. MiniMax H3 projects use the separate MiniMax scene action and exact-timeline adapter.";
     projectVideoEngineNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
@@ -34792,23 +34812,6 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       toast(state.projectVideoEngine === "minimax_h3"
         ? "This project now uses the separate MiniMax H3 scene renderer."
         : "This project now uses the existing LTX scene renderer.");
-    });
-    const toggleProjectVideoEngine = async () => {
-      state.projectVideoEngine = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3"
-        ? "ltx"
-        : "minimax_h3";
-      projectVideoEngineSelect.value = state.projectVideoEngine;
-      syncProjectVideoEngineUI();
-      await autoSaveSessionQuiet("project video engine badge toggle");
-      toast(state.projectVideoEngine === "minimax_h3"
-        ? "Switched this project to MiniMax H3."
-        : "Switched this project to LTX.");
-    };
-    projectVideoEngineBadge.addEventListener("click", () => { void toggleProjectVideoEngine(); });
-    projectVideoEngineBadge.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter" && event.key !== " ") return;
-      event.preventDefault();
-      void toggleProjectVideoEngine();
     });
     clearSuccessSound.onclick = async () => {
       state.notificationSettings.success_custom_audio = "";

@@ -32,7 +32,8 @@
         {
           "title": "Fixed",
           "items": [
-            "Fixed Export GPT Context in Ref Builder Scene Mapping so it copies the scene-mapping request and JSON before opening the GPT, with explicit inline JSON instructions that prevent the GPT from treating the pasted context as a missing attachment."
+            "Fixed Export GPT Context in Ref Builder Scene Mapping so it copies the scene-mapping request and JSON before opening the GPT, with explicit inline JSON instructions that prevent the GPT from treating the pasted context as a missing attachment.",
+            "Fixed the top-toolbar LTX/MiniMax engine badge so it toggles from the main Builder scope without depending on the Settings modal being open or throwing a selector-scope error."
           ]
         },
         {
