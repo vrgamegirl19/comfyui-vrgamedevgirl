@@ -88,10 +88,11 @@ Rules:
 * Do not default to zoom-in, push-in, dolly-in, crash-zoom, or close-up endings. Use those inward camera moves only when `camera_motion`, `shot_type`, or the user notes explicitly ask for them.
 * If `camera_motion` names a non-inward move such as pull back, track backward, side-follow, pan, tilt, crane, reveal, orbit, handheld follow, rack focus, or drift, preserve that motion and do not add a zoom-in or push-in afterward.
 * Vary camera behavior between scenes. Avoid repeating the same inward camera language across multiple prompts.
+* Follow `cut_plan.instruction` exactly when present. MiniMax cut plans use timestamped `CUT TO` blocks. LTX cut plans must express the same number of distinct continuity-preserving shots in ordinary chronological language such as "then cut to" and must not use the MiniMax timestamp schema. A continuous-shot plan forbids cuts for either engine.
 * If `global_consistency_phrase` is present, include it in the final video prompt. Preserve its wording as much as possible, but lightly adapt grammar if needed so it fits the scene naturally.
 * If `video_style_verbiage` is present, copy that exact text word-for-word into the final prompt. Do not paraphrase, shorten, rename, or omit it. Treat it only as the governing visual-appearance contract for lighting, color, texture, materials, production design, grading, and image finish. It must not select, replace, or modify camera motion, character motion, shot timing, editing, or transitions.
-* If `temporal_world_effect_verbiage` is present, copy that exact text word-for-word into the final prompt before the first timestamp. Do not place it inside a timestamp or after Continuity. Do not paraphrase, shorten, or omit it. It is a hard temporal-layer contract: every protected mapped/reference character, their face, performance, voice, dialogue/singing timing, and lip sync remain natural and stable while only the explicitly unprotected background/world elements receive the temporal effect. Anonymous extras may be added only when the contract allows them, and must fit `location_ref` without replacing or duplicating a mapped character.
-* A temporal/world contract must be enacted, not merely copied. Every timestamp block must contain the contract's required number of concrete visible background/world actions. At intensity 7 or higher, subtle flicker, ambience, particles, or vague time-passage language alone is invalid. Use visibly accelerated, frozen, reversed, looping, delayed, season-changing, light-changing, crowd, traffic, weather, reflection, shadow, or location activity appropriate to the selected effect and mapped location.
+* If `temporal_world_effect_verbiage` is present, copy that exact text word-for-word into the final prompt before the first shot description. MiniMax may place it before its first timestamp; LTX must keep it in ordinary natural-language prompt form. Do not paraphrase, shorten, or omit it. It is a hard temporal-layer contract: every protected mapped/reference character, their face, performance, voice, dialogue/singing timing, and lip sync remain natural and stable while only the explicitly unprotected background/world elements receive the temporal effect. Anonymous extras may be added only when the contract allows them, and must fit `location_ref` without replacing or duplicating a mapped character.
+* A temporal/world contract must be enacted, not merely copied. Every MiniMax timestamp block or LTX natural-language shot must contain the contract's required number of concrete visible background/world actions. At intensity 7 or higher, subtle flicker, ambience, particles, or vague time-passage language alone is invalid. Use visibly accelerated, frozen, reversed, looping, delayed, season-changing, light-changing, crowd, traffic, weather, reflection, shadow, or location activity appropriate to the selected effect and mapped location.
 * When a temporal/world contract permits anonymous extras, wording such as `no people` in `location_ref` describes the source reference image only and is not an output prohibition. In Continuity, prohibit only additional named, principal, mapped, or referenced characters; explicitly preserve the contract's permission for anonymous unreferenced background extras.
 * Use `performance_style` and `performance_direction` to choose body language, gesture intensity, and camera energy. In singing mode, rap/hip-hop may describe rapping with rhythmic energy, hand gestures, head nods, and confident body language instead of soft singing. In speaking mode, remove music-video wording and use grounded short-film acting language.
 * Follow `character_motion_guidance` when present. Low values mean still/subtle body language; high values mean energetic or fast physical action when it fits the scene.
@@ -524,7 +525,7 @@ def _normalize_storyboard_scene(scene, fallback_number=1):
     story_beat = _clean_scene_text(scene.get("story_beat") or scene.get("scene_story_beat") or scene.get("narrative_beat") or "", 1800)
     performance_mode = _normalize_performance_mode(scene.get("performance_mode") or scene.get("performanceMode") or scene.get("video_performance_mode") or scene.get("videoPerformanceMode"))
     image_prompt = _clean_scene_text(scene.get("image_prompt") or scene.get("t2i_prompt") or scene.get("prompt") or "", 12000)
-    video_prompt = _clean_scene_text(scene.get("video_prompt") or scene.get("i2v_prompt") or scene.get("t2v_prompt") or "", 12000)
+    video_prompt = _clean_scene_text(scene.get("video_prompt") or scene.get("i2v_prompt") or scene.get("t2v_prompt") or "", 100000)
     image_path = _clean_scene_text(scene.get("image_path") or scene.get("approved_image_path") or scene.get("image") or "", 2000)
     image_data = str(scene.get("image_data") or scene.get("image_reference_data") or "").strip()
     image_name = _clean_scene_text(scene.get("image_name") or scene.get("image_reference_name") or "", 260)
@@ -564,6 +565,28 @@ def _normalize_storyboard_scene(scene, fallback_number=1):
         timeline_start = 0.0
         timeline_end = 0.0
         exact_duration = 0.0
+    raw_extra_subjects = scene.get("extra_subjects") or scene.get("extraSubjects") or []
+    extra_subjects = []
+    if isinstance(raw_extra_subjects, list):
+        for index, item in enumerate(raw_extra_subjects[:100], start=1):
+            if not isinstance(item, dict):
+                continue
+            interaction = str(item.get("interaction") or "background").strip()
+            if interaction not in {"background", "background_dancing", "alongside", "dancing_with", "direct"}:
+                interaction = "background"
+            try:
+                count = max(1, min(100, int(round(float(item.get("count") or 1)))))
+            except (TypeError, ValueError):
+                count = 1
+            extra_subjects.append({
+                "id": _clean_scene_text(item.get("id") or f"extra_{index}", 180),
+                "name": _clean_scene_text(item.get("name") or item.get("title") or f"Extra {index}", 180),
+                "count": count,
+                "interaction": interaction,
+                "identity": _clean_scene_text(item.get("identity") or item.get("description") or "", 240),
+            })
+    if scene.get("no_character_present") or scene.get("noCharacterPresent") or scene.get("no_visible_subject") or scene.get("no_subject"):
+        extra_subjects = []
     if video_prompt and project_video_engine != "minimax_h3":
         video_prompt = _enforce_storyboard_video_facial_requirements(video_prompt, {
             **scene,
@@ -585,6 +608,7 @@ def _normalize_storyboard_scene(scene, fallback_number=1):
         "motion_summary": motion_summary,
         "subjects": subjects,
         "subject_refs": subject_refs,
+        "extra_subjects": extra_subjects,
         "speaker_assignments": speaker_assignments,
         "setting": setting,
         "location_ref": location_ref,
@@ -847,12 +871,14 @@ def _save_storyboard(payload):
 def _write_key_value_file(path, prefix, scenes, field):
     with open(path, "w", encoding="utf-8") as handle:
         for index, scene in enumerate(scenes, start=1):
-            text = _clean_scene_text(scene.get(field) or "")
+            text_limit = 100000 if field == "video_prompt" else 12000
+            text = _clean_scene_text(scene.get(field) or "", text_limit)
             handle.write(f"{prefix}{index}={text}\n")
 
 
 def _prompt_json_entry(scene, index, field):
-    prompt = _clean_scene_text(scene.get(field) or "")
+    prompt_limit = 100000 if field == "video_prompt" else 12000
+    prompt = _clean_scene_text(scene.get(field) or "", prompt_limit)
     return {
         "scene": index,
         "scene_id": _clean_scene_text(scene.get("id") or "", 120),
@@ -979,7 +1005,7 @@ def _storyboard_scene_is_visible_singing(scene):
 
 
 def _enforce_storyboard_video_facial_requirements(prompt, scene):
-    text = _clean_scene_text(prompt or "", 12000)
+    text = _clean_scene_text(prompt or "", 100000)
     if not text:
         return text
     vocal_status = scene.get("vocal_status") if isinstance(scene, dict) else {}
@@ -1026,7 +1052,7 @@ def _enforce_storyboard_video_facial_requirements(prompt, scene):
             text = text[:start] + sentence + text[end:]
         else:
             text = f"{text.rstrip().rstrip('.')} with {', '.join(additions)}."
-    return _clean_scene_text(re.sub(r"\s{2,}", " ", text).strip(), 12000)
+    return _clean_scene_text(re.sub(r"\s{2,}", " ", text).strip(), 100000)
 
 
 def _storyboard_speed_value(value, fallback=4):
@@ -1070,7 +1096,7 @@ def _camera_motion_for_storyboard_speed(value, speed_value):
 
 
 def _enforce_storyboard_high_motion_language(prompt, scene):
-    text = _clean_scene_text(prompt or "", 12000)
+    text = _clean_scene_text(prompt or "", 100000)
     if not text or not isinstance(scene, dict):
         return text
     camera_speed = _storyboard_speed_value(scene.get("camera_motion_speed") or scene.get("cameraMotionSpeed"), 4)
@@ -1105,7 +1131,7 @@ def _enforce_storyboard_high_motion_language(prompt, scene):
             text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
         if not re.search(r"\b(?:walks?|steps?|strides?|runs?|sprints?|dances?|crosses?|lunges?|reaches?|pushes?|pulls?|climbs?|fights?|brushes?|sweeps?|gestures?|interacts?|grabs?|lifts?|paces?)\b", text, flags=re.IGNORECASE):
             text = f"{text.rstrip().rstrip('.')}, while the subject performs a clear physical action with the body, hands, or surrounding set instead of relying on facial movement alone."
-    return _clean_scene_text(re.sub(r"\s{2,}", " ", text).strip(), 12000)
+    return _clean_scene_text(re.sub(r"\s{2,}", " ", text).strip(), 100000)
 
 
 def _storyboard_video_prompt_writing_rules():
@@ -1178,7 +1204,7 @@ def _storyboard_starting_shot_sentence(scene):
 
 
 def _ensure_storyboard_starting_shot(prompt, scene):
-    text = _clean_scene_text(prompt or "", 12000)
+    text = _clean_scene_text(prompt or "", 100000)
     sentence = _storyboard_starting_shot_sentence(scene)
     if not text or not sentence:
         return text
@@ -1369,10 +1395,16 @@ def _build_storyboard_video_prompt(payload):
             for subject in selected_scene.get("subjects") or []
             if isinstance(subject, dict)
         )
-        location_ref = selected_scene.get("setting") or {}
+        # The mapped Reference Builder location is authoritative. ``setting``
+        # may be only a plain-text scene field, so reading it first can discard
+        # a valid location_ref and leave the vision model without labeled
+        # location context.
+        location_ref = selected_scene.get("location_ref") or selected_scene.get("setting") or {}
         location_context = ""
         if isinstance(location_ref, dict):
             location_context = f"{_clean_scene_text(location_ref.get('name') or 'Location', 120)}: {_clean_scene_text(location_ref.get('description') or '', 1000)}".strip()
+        elif isinstance(location_ref, str):
+            location_context = _clean_scene_text(location_ref, 1000)
         vocal_status = selected_scene.get("vocal_status") or {}
         performance_mode = _normalize_performance_mode(
             selected_scene.get("performance_mode")
@@ -1383,6 +1415,38 @@ def _build_storyboard_video_prompt(payload):
             or payload.get("video_type")
             or payload.get("videoType")
         )
+        pronouns = _single_subject_pronouns(selected_scene)
+        if pronouns:
+            pronoun_contract = (
+                f"This scene contains exactly one mapped subject. Use {pronouns['they']}/{pronouns['them']}/{pronouns['their']} "
+                "consistently for that person. Never use they, them, their, or plural agreement."
+            )
+        else:
+            pronoun_contract = "Use pronouns and singular/plural agreement that exactly match the mapped subject count."
+        if _storyboard_scene_is_visible_singing(selected_scene):
+            vocal_contract = (
+                "This is a visible singing/lip-sync scene. The performer must visibly vocalize the supplied lyric in sync with the audio, "
+                "using natural mouth, lip, cheek, and jaw movement. Never describe closed, still, sealed, relaxed-closed, or unmoving lips."
+            )
+        else:
+            vocal_contract = (
+                "This is not a visible singing/lip-sync scene. Do not say any subject sings, vocalizes, mouths words, or lip-syncs, "
+                "and do not quote the lyric as performed dialogue."
+            )
+        ltx_scene = str(selected_scene.get("project_video_engine") or scene_bundle.get("project_video_engine") or "").strip().lower() != "minimax_h3"
+        ltx_one_pass_contract = (
+            "AUTHORITATIVE LTX ONE-PASS OUTPUT CONTRACT — obey every item and output the finished prompt only:\n"
+            "- Follow the editing/cut plan exactly. Write every required cut directly into ordinary chronological prose using 'then cut to' or equivalent natural wording; do not use MiniMax timestamps.\n"
+            f"- {vocal_contract}\n"
+            f"- {pronoun_contract}\n"
+            "- Integrate facial and performance guidance naturally. Never print field names, headings, metadata labels, or phrases such as 'Facial performance direction:'.\n"
+            "- The first sentence is the sole opening-shot statement. Continue with new action afterward; never restate that the subject is first shown, already shown, framed, introduced, or seen in that opening shot.\n"
+            "- Describe each camera action once. Do not repeat the opening framing, reveal, pull-back, or other camera direction.\n"
+            "- Use natural possessive anatomy phrasing such as 'the woman's eye' or 'the subject's eye'; never write 'one eye of the woman'.\n"
+            "- Write only complete grammatical sentences. Attach short details with wording such as 'with subtle natural eye movement'; never append a bare comma fragment.\n"
+            "- Treat first-frame visual inventory as optional visible detail, not a checklist. Mention only details inside the current framing; eye, face, and upper-body shots must not claim shoes, heels, feet, lower-body clothing, or other off-frame details are visible.\n"
+            "- Return one polished generation-ready prompt. Do not explain these rules."
+        ) if ltx_scene else ""
         story_layer = selected_scene.get("story_layer") or {}
         camera_guidance = selected_scene.get("camera_guidance") if isinstance(selected_scene.get("camera_guidance"), dict) else {}
         camera_speed_guidance = (
@@ -1404,14 +1468,16 @@ def _build_storyboard_video_prompt(payload):
         camera_motion = "" if motion_summary else _clean_scene_text(selected_scene.get("camera_motion") or "", 500)
         user_notes = "\n\n".join(
             part for part in [
+                ltx_one_pass_contract,
+                f"MANDATORY editing / cut plan:\n{_clean_scene_text((selected_scene.get('cut_plan') or {}).get('instruction') if isinstance(selected_scene.get('cut_plan'), dict) else '', 5000)}",
                 f"Required starting shot:\n{json.dumps(selected_scene.get('starting_shot'), ensure_ascii=False)}" if _storyboard_starting_shot_value(selected_scene) else "",
                 f"Performance mode:\n{performance_mode}",
                 f"Scene lyrics:\n{_clean_scene_text(vocal_status.get('lyric_text') or '', 1000)}",
                 f"Lyric section:\n{_clean_scene_text(vocal_status.get('lyric_section') or story_layer.get('lyric_section') or '', 200)}",
                 f"Scene story beat:\n{_clean_scene_text(story_layer.get('scene_story_beat') or '', 1200)}",
                 f"Motion/video summary:\n{motion_summary}",
-                f"Required MiniMax video style:\n{_clean_scene_text(selected_scene.get('video_style') or '', 200)}",
-                f"MANDATORY exact MiniMax video style verbiage — copy word-for-word into the final prompt:\n{_clean_scene_text(selected_scene.get('video_style_verbiage') or '', 3000)}",
+                f"Required video style:\n{_clean_scene_text(selected_scene.get('video_style') or '', 200)}",
+                f"MANDATORY exact video style verbiage — copy word-for-word into the final prompt:\n{_clean_scene_text(selected_scene.get('video_style_verbiage') or '', 3000)}",
                 f"MANDATORY exact temporal / world effect verbiage — copy word-for-word into the final prompt:\n{_clean_scene_text(selected_scene.get('temporal_world_effect_verbiage') or '', 5000)}",
                 f"Camera motion:\n{camera_motion}",
                 f"Required camera-flow framing:\n{_clean_scene_text(selected_scene.get('camera_flow_guidance') or '', 1600)}",
@@ -1599,6 +1665,15 @@ def _build_story_layer_brief(payload):
             "label": normalized["label"],
             "lyric_section": normalized.get("lyric_section", ""),
             "lyrics": normalized.get("lyrics", "")[:500],
+            "mapped_extras": [
+                {
+                    "name": item.get("name", ""),
+                    "count": item.get("count", 1),
+                    "interaction": item.get("interaction", "background"),
+                }
+                for item in (normalized.get("extra_subjects") or [])
+                if isinstance(item, dict) and item.get("name")
+            ],
         })
     if not lyrics and not compact_scenes and not story_layer.get("user_story_arc"):
         raise ValueError("Lyrics, scene lyrics, or a user story arc are required to create a story brief.")
@@ -2030,6 +2105,9 @@ def _build_story_layer_arc(payload):
         "* If Location descriptions are provided, use only those locations as the physical settings for the arc.\n"
         "* Do not invent warehouses, loading docks, corridors, steel stairs, metal doors, concrete halls, or other industrial spaces unless those are explicitly present in the provided Location descriptions.\n"
         "* To create variety, change subject actions, camera energy, props, lighting, mood, blocking, and use of the mapped locations instead of inventing unrelated places.\n"
+        "* The Scene lyric map may include mapped_extras. Use those exact extras only in the scenes where they are mapped, and use each interaction role to shape the section's larger action progression.\n"
+        "* Plan recurring extra relationships across sections when the same named extra returns, especially direct, dancing_with, and alongside roles. Background and background_dancing extras may support group progression without becoming principal singers.\n"
+        "* Extras never sing, speak, or receive dialogue unless the scene mapping explicitly identifies them as a vocal subject elsewhere. Do not move an extra into an unmapped scene.\n"
         "* Never force a standard pop-song template over explicit lyric section headers.\n"
         "* When a lyric header line contains several bracketed tags, only the required section heading listed above is structural. Tags such as [Whispered], [High Energy], [Dark Atmosphere], and [Explosive] are performance or mood notes, not output headings. [End] is only an end marker.\n"
         "* Values such as [instrumental], [music only], or [no vocals] inside the Scene lyric map are timing/content markers, not additional song-section headings. Cover their visuals inside the nearest listed required section and never output those markers as separate headings.\n"
@@ -2157,9 +2235,80 @@ def _build_story_layer_scene_beat(payload):
     current_lyrics = _clean_scene_text(payload.get("current_lyrics") or scene.get("lyrics") or scene.get("lyric_text") or "", 1200)
     next_lyrics = _clean_scene_text(payload.get("next_lyrics") or "", 800)
     flf_mode = bool(payload.get("flf_mode")) or str(scene.get("video_prompt_type") or "").strip().lower() == "flf"
+    vocal_status = scene.get("vocal_status") if isinstance(scene.get("vocal_status"), dict) else {}
+    # Scene-beat generation is also called from Image Prep, where the normal
+    # prompt payload intentionally clears vocal_status.singers. The storyboard
+    # scene's lyric_singers is the performer assignment that remains valid in
+    # both Image Prep and Video Prep.
+    assigned_performers = scene.get("lyric_singers") if isinstance(scene.get("lyric_singers"), list) else []
+    if not assigned_performers and isinstance(vocal_status.get("singers"), list):
+        assigned_performers = vocal_status.get("singers")
+    assigned_performers = [_clean_scene_text(item, 180) for item in assigned_performers if _clean_scene_text(item, 180)]
+    performer_assignment = scene.get("performer_assignment") if isinstance(scene.get("performer_assignment"), dict) else {}
+    assigned_performers = [
+        _clean_scene_text(item, 180)
+        for item in (performer_assignment.get("singing") if isinstance(performer_assignment.get("singing"), list) else assigned_performers)
+        if _clean_scene_text(item, 180)
+    ]
+    if not assigned_performers:
+        mapped_subject_names = []
+        for item in scene.get("subject_refs") or []:
+            if isinstance(item, dict):
+                name = _clean_scene_text(item.get("name") or "", 180)
+                if name:
+                    mapped_subject_names.append(name)
+        for item in scene.get("subjects") or []:
+            name = _clean_scene_text(item.get("name") if isinstance(item, dict) else item, 180)
+            if name:
+                mapped_subject_names.append(name)
+        singer_named_subjects = [
+            name for name in dict.fromkeys(mapped_subject_names)
+            if re.search(r"\b(?:singer|performer|vocalist|rapper)\b", name, flags=re.IGNORECASE)
+        ]
+        if len(singer_named_subjects) == 1:
+            assigned_performers = singer_named_subjects
+    silent_performers = [
+        _clean_scene_text(item, 180)
+        for item in (performer_assignment.get("silent") if isinstance(performer_assignment.get("silent"), list) else [])
+        if _clean_scene_text(item, 180)
+    ]
+    scene_defaults = {
+        "shot_type": _clean_scene_text(scene.get("shot_type") or scene.get("shot") or "", 240),
+        "camera_motion": _clean_scene_text(scene.get("camera_motion") or scene.get("camera_motion_preset") or "", 500),
+        "camera_flow": _clean_scene_text(scene.get("camera_flow") or scene.get("cameraFlow") or "", 120),
+        "camera_flow_guidance": _clean_scene_text(scene.get("camera_flow_guidance") or "", 1200),
+        "character_motion": _clean_scene_text(scene.get("character_motion") or scene.get("character_motion_preset") or "", 700),
+        "performance_direction": _clean_scene_text(scene.get("performance_direction") or scene.get("performance_style") or "", 1000),
+        "facial_performance_direction": _clean_scene_text(scene.get("facial_performance_direction") or scene.get("facial_performance_custom") or scene.get("facial_performance") or "", 1200),
+    }
+    raw_extra_subjects = scene.get("extra_subjects") or scene.get("extraSubjects") or []
+    extra_subjects = []
+    if isinstance(raw_extra_subjects, list):
+        for index, item in enumerate(raw_extra_subjects[:100], start=1):
+            if not isinstance(item, dict):
+                continue
+            name = _clean_scene_text(item.get("name") or item.get("title") or f"Extra {index}", 180)
+            if not name:
+                continue
+            interaction = str(item.get("interaction") or "background").strip()
+            if interaction not in {"background", "background_dancing", "alongside", "dancing_with", "direct"}:
+                interaction = "background"
+            try:
+                count = max(1, min(100, int(round(float(item.get("count") or 1)))))
+            except (TypeError, ValueError):
+                count = 1
+            extra_subjects.append({
+                "name": name,
+                "count": count,
+                "interaction": interaction,
+                "identity": _clean_scene_text(item.get("identity") or item.get("description") or "", 240),
+            })
+    if scene.get("no_character_present") or scene.get("noCharacterPresent") or scene.get("no_visible_subject") or scene.get("no_subject"):
+        extra_subjects = []
+    beat_word_limit = 100 if extra_subjects else 80
     output_rules = (
         "Return valid JSON only with exactly these string keys: story_beat, flf_start_state, flf_transformation, flf_end_state, flf_carry_forward.\n"
-        "The story_beat is a concise compatibility summary under 80 words.\n"
+        f"The story_beat is a concise compatibility summary under {beat_word_limit} words.\n"
         "flf_start_state describes the concrete visible opening image. If Previous FLF end state is provided, copy it exactly as flf_start_state; do not reinterpret or redesign it.\n"
         "flf_transformation describes one continuous, progressive visual change that expresses the CURRENT lyric.\n"
         "flf_end_state describes the concrete visible destination image reached by the end of the CURRENT lyric.\n"
@@ -2167,7 +2316,7 @@ def _build_story_layer_scene_beat(payload):
         "The current lyric is authoritative. Previous and next lyrics provide continuity only and must not replace or steal this scene's action.\n"
         "Do not include Markdown fences or any text outside the JSON object."
         if flf_mode else
-        "Output one short paragraph only, no label, no bullets.\nKeep it under 80 words."
+        f"Output one short paragraph only, no label, no bullets.\nKeep it under {beat_word_limit} words."
     )
     instruction = (
         "You are a music video scene-story planner.\n"
@@ -2175,10 +2324,19 @@ def _build_story_layer_scene_beat(payload):
         "Rules:\n"
         "- Use the Song Story Brief and User Story Arc as continuity anchors.\n"
         "- Use the selected scene lyrics, lyric section, subject details, location details, vocal status, and no-character flag.\n"
+        "- Vocal casting is absolute: follow the Performer assignment exactly. Only names in its singing list may sing. Every name in its silent list must remain visibly present but silent. Never write that both/all visible subjects sing unless both/all are explicitly in the singing list. If the singing list has one name, use singular wording: that performer sings; the other subject does not sing.\n"
+        "- This request creates a narrative Scene Story Beat, not the final still-image prompt. Ignore any Image Prep instruction saying that subjects must be silent or that singing must not be mentioned. For this beat, use the Performer assignment: if one performer is assigned, that performer visibly sings while every other visible subject remains silent.\n"
+        "- The existing scene story beat, if present in the selected scene JSON, is stale draft text being replaced. Do not copy, preserve, or treat it as a fact; the Performer assignment and current scene data override it.\n"
+        "- Scene defaults are authoritative when supplied: use the selected shot, camera motion/camera-flow direction, character motion, performance direction, and facial direction to shape the beat. Do not replace them with generic actions.\n"
         "- Treat the selected scene location_ref as the required physical setting for this scene.\n"
         "- Do not invent or import a different place from the story arc, song brief, previous beat, or next lyrics.\n"
         "- If the story arc names a different location, translate only its emotion, tension, symbolism, or action into the selected location_ref.\n"
         "- Describe narrative purpose, emotional state, visual symbolism, and how the scene should feel.\n"
+        "- Use every mapped extra listed below in the scene's action or blocking. Keep each exact extra name visible in the beat.\n"
+        "- Interaction meanings are exact: background stays present without active choreography; background_dancing performs backup choreography; alongside moves beside the main subject without contact; dancing_with performs partnered or group choreography with the main subject; direct performs an explicit physical or narrative interaction.\n"
+        "- Describe direct, dancing_with, and alongside extras individually. Extras sharing background or background_dancing may be combined into one concise named group.\n"
+        "- Use an extra's identity only when needed to distinguish people. Do not copy full appearance or wardrobe biographies into the beat.\n"
+        "- Extras do not sing, speak, or receive speaker IDs unless the selected scene explicitly supplies them as vocal sources elsewhere.\n"
         "- Do not write the final video prompt.\n"
         "- Do not include camera technical instructions unless they are part of the story emotion.\n"
         "- Do not quote long lyric text.\n"
@@ -2193,8 +2351,19 @@ def _build_story_layer_scene_beat(payload):
         f"Previous FLF carry-forward constraints:\n{previous_carry_forward or '[none]'}\n\n"
         f"CURRENT scene lyric text (main authority):\n{current_lyrics or '[none]'}\n\n"
         f"Next scene lyric text:\n{next_lyrics or '[none]'}\n\n"
+        f"Scene defaults and motion direction (authoritative when supplied):\n{json.dumps(scene_defaults, ensure_ascii=False, indent=2)}\n\n"
+        f"Assigned singing performers (the only subjects allowed to sing):\n{json.dumps(assigned_performers, ensure_ascii=False)}\n\n"
+        f"Performer assignment contract:\n{json.dumps({'singing': assigned_performers, 'silent': silent_performers}, ensure_ascii=False, indent=2)}\n\n"
+        f"Mapped extras and exact scene roles:\n{json.dumps(extra_subjects, ensure_ascii=False, indent=2) if extra_subjects else '[none]'}\n\n"
         "Selected scene JSON:\n"
         + json.dumps(scene, ensure_ascii=False, indent=2)
+        + "\n\nFINAL SCENE-BEAT OVERRIDE — FOLLOW THIS LAST:\n"
+        + f"This is a narrative scene beat, not an Image Prep still-image prompt. Assigned singing performers: {json.dumps(assigned_performers, ensure_ascii=False)}. Assigned silent visible subjects: {json.dumps(silent_performers, ensure_ascii=False)}. "
+        + (f"Only {assigned_performers[0]} visibly sings the current lyric; every other visible subject is silent. Do not write that both subjects sing."
+           if len(assigned_performers) == 1 else
+           "No mapped subject sings; keep all visible subjects silent."
+           if not assigned_performers else
+           f"Only these performers visibly sing: {', '.join(assigned_performers)}; every other visible subject is silent.")
     )
     from .VRGDG_MusicVideoBuilderNodes import _run_builder_text_llm
 
@@ -2299,6 +2468,40 @@ def _build_story_layer_scene_beat(payload):
                 "location_repair_terms": drift_terms,
                 "location_repair_fallback": True,
             }
+    missing_extras = [item["name"] for item in extra_subjects if item["name"].casefold() not in text.casefold()]
+    if missing_extras:
+        repair_instruction = (
+            "Rewrite this music-video scene beat so it includes every mapped extra by exact name and gives each the assigned action/blocking role.\n\n"
+            "Hard rules:\n"
+            "- Preserve the original narrative purpose, mapped location, main subject action, and emotional progression.\n"
+            "- Include every exact extra name from the mapping.\n"
+            "- Apply each interaction role exactly. Group only extras sharing background or background_dancing.\n"
+            "- Extras do not sing, speak, or receive speaker IDs.\n"
+            "- Use identity details only when required to distinguish characters; do not copy wardrobe biographies.\n"
+            "- Output one concise paragraph only, under 100 words, with no label or bullets.\n\n"
+            f"Mapped extras:\n{json.dumps(extra_subjects, ensure_ascii=False, indent=2)}\n\n"
+            f"Original scene beat:\n{text}"
+        )
+        repaired_text, repair_info = _run_builder_text_llm(
+            payload,
+            repair_instruction,
+            temperature=0.15,
+            top_p=0.82,
+            max_new_tokens=360,
+            label="Storyboard Scene Beat Extra Mapping Repair Gemma",
+            preserve_paragraphs=True,
+        )
+        repaired_text = re.sub(r"^\s*(scene\s+story\s+beat|story\s+beat|beat)\s*:\s*", "", _clean_scene_text(repaired_text, 1800), flags=re.I)
+        still_missing = [item["name"] for item in extra_subjects if item["name"].casefold() not in repaired_text.casefold()]
+        if not repaired_text or still_missing:
+            raise ValueError("Gemma omitted mapped extras from the scene story beat after repair: " + ", ".join(still_missing or missing_extras))
+        text = repaired_text
+        run_info = {
+            **run_info,
+            "extra_mapping_repaired": True,
+            "extra_mapping_repair_runner": repair_info.get("runner", ""),
+            "extra_mapping_repair_model": repair_info.get("used_model", ""),
+        }
     return {
         "story_beat": text,
         **flf_fields,

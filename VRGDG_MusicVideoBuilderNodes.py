@@ -5789,6 +5789,7 @@ def _generate_builder_t2v_prompt(payload):
     no_character_present = bool(payload.get("no_character_present") or payload.get("no_subject") or payload.get("no_visible_subject"))
     instruction_key = _safe_builder_instruction_key(payload.get("builder_instruction_key") or payload.get("instruction_key") or "t2v")
     is_minimax_h3_prompt = instruction_key.startswith("minimax_h3_")
+    is_minimax_h3_shot_json_task = is_minimax_h3_prompt and scene_prompt.lstrip().startswith("MiniMax H3 shot-description task.")
     prompt_only_scene_inspiration = bool(payload.get("prompt_only_scene_inspiration"))
     text_runner = _llm_runner_from_payload(payload)
     if not model_file and text_runner not in {"lm_studio", "llm_api"}:
@@ -5889,6 +5890,15 @@ def _generate_builder_t2v_prompt(payload):
             raise ValueError("Create or paste scene notes, mapped references, motion notes, or a T2I/concept prompt first.")
 
     t2v_instructions = _effective_builder_instruction(payload, instruction_key, _T2V_INSTRUCTIONS)
+    if is_minimax_h3_shot_json_task:
+        t2v_instructions = (
+            "Follow the Scene concept below as the complete output contract. "
+            "Return only one valid JSON object with its exact requested shots array. "
+            "Write creative visual shot descriptions only. Do not output or append subject_definitions, summary, "
+            "retention_analysis, detailed_description, Audio, Continuity, overall_soundscape, non_diegetic_music, "
+            "markdown, commentary, or any text outside the JSON object. Keep every string properly escaped and close "
+            "every quote, array, and brace. The frontend deterministically adds the official MiniMax H3 sections afterward."
+        )
     prompt_label = (
         _BUILDER_INSTRUCTION_LABELS.get(instruction_key, "MiniMax H3")
         if is_minimax_h3_prompt
@@ -5962,6 +5972,13 @@ def _generate_builder_t2v_prompt(payload):
                 "- Ignore lyrics, story arc, mapped descriptions, detailed endpoint prose, other scene notes, and camera presets when deciding visible action or camera travel.\n"
                 "- The application adds any required exact vocal line and facial-performance direction after this visual prompt is returned.\n\n"
             )
+    elif has_image_reference and is_minimax_h3_shot_json_task:
+        image_guidance = (
+            "MiniMax H3 JSON-shot visual-reference guidance:\n"
+            "- Inspect the attached pictures only according to the exact assignments and limits in the Scene concept.\n"
+            "- Use permitted visual facts inside the creative shot descriptions, but do not define pictures, subjects, audio, retention, continuity, or final prompt sections.\n"
+            "- Return only the requested valid JSON object.\n\n"
+        )
     elif has_image_reference and is_minimax_h3_prompt:
         image_guidance = (
             "MiniMax H3 prompt-only scene-inspiration guidance:\n"
@@ -6096,7 +6113,7 @@ def _generate_builder_t2v_prompt(payload):
                 preserve_paragraphs=is_minimax_h3_prompt,
             )
         text = _clean_lm_studio_plain_text(text) if is_minimax_h3_prompt else _clean_gemma_prompt_text(text)
-        if is_minimax_h3_prompt:
+        if is_minimax_h3_prompt and not is_minimax_h3_shot_json_task:
             text = _format_minimax_h3_prompt(text, payload, instruction_key)
         if first_last_frame_mode:
             text = re.sub(r"(?i)\b(?:cinematic\s+)?(?:aspect\s+ratio\s*[:=]?\s*)?(?:16\s*:\s*9|9\s*:\s*16|21\s*:\s*9|4\s*:\s*3|3\s*:\s*4|1\s*:\s*1)(?:\s+(?:aspect\s+ratio|widescreen|portrait|landscape))?\b[,]?\s*", "", text)
@@ -6915,7 +6932,7 @@ def _generate_builder_reference_description(payload):
     if subject_label.lower().startswith("the "):
         subject_label = subject_label.lower()
     object_reference_types = {"prop", "object", "vehicle", "creature", "animal", "outfit", "style", "environment", "other"}
-    if reference_type not in {"subject", "character", "face", "location", *object_reference_types}:
+    if reference_type not in {"subject", "character", "face", "location", "extra", *object_reference_types}:
         reference_type = "subject"
     if text_runner not in {"lm_studio", "llm_api"} and not model_file:
         raise ValueError("Choose a Gemma vision model first.")
@@ -6947,6 +6964,27 @@ def _generate_builder_reference_description(payload):
                 f"\nRefer to the subject as {subject_label}. "
                 f"Do not call them the character or the subject in the final description."
             )
+    elif reference_type == "extra":
+        try:
+            count = max(1, min(100, int(round(float(payload.get("count") or 1)))))
+        except (TypeError, ValueError, OverflowError):
+            count = 1
+        style_hint = re.sub(r"\s+", " ", str(payload.get("style") or "")).strip()
+        group_hint = f"one of a group of {count} background performers"
+        if style_hint:
+            group_hint += f" in a {style_hint}-appropriate wardrobe"
+        instruction = (
+            "Look at the image and write one very short background-performer identity description.\n"
+            "Output only the description, one paragraph, no markdown, no label, no bullet points.\n"
+            "Include apparent gender presentation, hair color and hairstyle, a concise outfit description with its main colors, and at most one clearly visible distinguishing trait when available, such as build, face shape, facial hair, or one prominent accessory.\n"
+            "Use one complete grammatical sentence of no more than 35 words.\n"
+            "Do not mention skin color, skin tone, ethnicity, race, or complexion.\n"
+            "Do not describe the background, location, pose, camera angle, facial expression, mood, action, or what the performer is doing.\n"
+            "Do not list minor jewelry, every accessory, fabric micro-details, or unseen details.\n"
+            f"Treat the pictured person as {group_hint}."
+        )
+        if subject_label:
+            instruction += f"\nUse this label only as the performer name if needed: {subject_label}"
     elif reference_type == "location":
         instruction = (
             "Look at the image and write one concise location/environment description.\n"

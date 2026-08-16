@@ -1,0 +1,488 @@
+{
+  "92": {
+    "class_type": "ComfyMathExpression",
+    "inputs": {
+      "values.a": [
+        "84",
+        0
+      ],
+      "values.b": "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17"
+    }
+  },
+  "246": {
+    "class_type": "BasicGuider",
+    "inputs": {
+      "model": [
+        "125",
+        0
+      ],
+      "conditioning": [
+        "108",
+        0
+      ]
+    }
+  },
+  "292": {
+    "class_type": "VAEEncode",
+    "inputs": {
+      "pixels": [
+        "291",
+        0
+      ],
+      "vae": [
+        "5",
+        0
+      ]
+    }
+  },
+  "288": {
+    "class_type": "VAEEncodeAudio",
+    "inputs": {
+      "audio": [
+        "305",
+        1
+      ],
+      "vae": [
+        "6",
+        0
+      ]
+    }
+  },
+  "305": {
+    "class_type": "MiniMaxH3AVDecodeT8",
+    "inputs": {
+      "av_latent": [
+        "247",
+        0
+      ],
+      "video_vae": [
+        "5",
+        0
+      ],
+      "audio_vae": [
+        "6",
+        0
+      ]
+    }
+  },
+  "5": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+    }
+  },
+  "6": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+    }
+  },
+  "249": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "euler"
+    }
+  },
+  "243": {
+    "class_type": "RandomNoise",
+    "inputs": {
+      "noise_seed": 638834793373320
+    }
+  },
+  "300": {
+    "class_type": "RandomNoise",
+    "inputs": {
+      "noise_seed": 81279284262303
+    }
+  },
+  "294": {
+    "class_type": "BasicGuider",
+    "inputs": {
+      "model": [
+        "125",
+        0
+      ],
+      "conditioning": [
+        "108",
+        0
+      ]
+    }
+  },
+  "289": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "euler"
+    }
+  },
+  "247": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": [
+        "243",
+        0
+      ],
+      "guider": [
+        "246",
+        0
+      ],
+      "sampler": [
+        "249",
+        0
+      ],
+      "sigmas": [
+        "248",
+        0
+      ],
+      "latent_image": [
+        "245",
+        0
+      ]
+    }
+  },
+  "296": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "295",
+        0
+      ],
+      "vae": [
+        "5",
+        0
+      ]
+    }
+  },
+  "295": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": [
+        "300",
+        0
+      ],
+      "guider": [
+        "294",
+        0
+      ],
+      "sampler": [
+        "289",
+        0
+      ],
+      "sigmas": [
+        "290",
+        0
+      ],
+      "latent_image": [
+        "293",
+        0
+      ]
+    }
+  },
+  "108": {
+    "class_type": "MiniMaxH3ReferenceToVideo",
+    "inputs": {
+      "clip": [
+        "4",
+        0
+      ],
+      "vae": [
+        "5",
+        0
+      ],
+      "audio_vae": [
+        "6",
+        0
+      ],
+      "ref_images.ref_image_0": [
+        "9000",
+        0
+      ],
+      "ref_images.ref_image_1": [
+        "9000",
+        1
+      ],
+      "ref_images.ref_image_2": [
+        "9000",
+        2
+      ],
+      "ref_images.ref_image_3": [
+        "9000",
+        3
+      ],
+      "ref_images.ref_image_4": [
+        "9000",
+        4
+      ],
+      "ref_images.ref_image_5": [
+        "9000",
+        5
+      ],
+      "ref_videos.ref_video_0": [
+        "9000",
+        9
+      ],
+      "ref_audios.ref_audio_0": [
+        "9001",
+        0
+      ],
+      "prompt": [
+        "83",
+        0
+      ],
+      "width": [
+        "105",
+        0
+      ],
+      "height": [
+        "105",
+        1
+      ],
+      "length": [
+        "92",
+        1
+      ],
+      "ref_images.ref_image_6": [
+        "9000",
+        6
+      ],
+      "ref_videos.ref_video_1": [
+        "9000",
+        10
+      ],
+      "ref_video_audios.ref_video_audio_0": [
+        "9000",
+        12
+      ],
+      "ref_image_size": "max",
+      "ref_images.ref_image_7": [
+        "9000",
+        7
+      ],
+      "ref_images.ref_image_8": [
+        "9000",
+        8
+      ],
+      "ref_video_audios.ref_video_audio_1": [
+        "9000",
+        13
+      ],
+      "ref_videos.ref_video_2": [
+        "9000",
+        11
+      ],
+      "ref_video_audios.ref_video_audio_2": [
+        "9000",
+        14
+      ]
+    }
+  },
+  "290": {
+    "class_type": "BasicScheduler",
+    "inputs": {
+      "model": [
+        "125",
+        0
+      ],
+      "scheduler": "beta",
+      "steps": 4,
+      "denoise": 0.20000000000000004
+    }
+  },
+  "4": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "type": "minimax",
+      "device": "default"
+    }
+  },
+  "291": {
+    "class_type": "ImageResizeKJv2",
+    "inputs": {
+      "image": [
+        "305",
+        0
+      ],
+      "width": [
+        "297",
+        0
+      ],
+      "height": [
+        "297",
+        1
+      ],
+      "upscale_method": "nvidia_rtx_vsr",
+      "keep_proportion": "crop",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 0,
+      "device": "cpu"
+    }
+  },
+  "293": {
+    "class_type": "PT_H3ConcatAVLatent",
+    "inputs": {
+      "video_latent": [
+        "292",
+        0
+      ],
+      "audio_latent": [
+        "288",
+        0
+      ]
+    }
+  },
+  "297": {
+    "class_type": "ResolutionSelector",
+    "inputs": {
+      "aspect_ratio": "16:9 (Widescreen)",
+      "megapixels": 1.5,
+      "multiple": 32
+    }
+  },
+  "9": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "minimax_h3_ref2va_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "125": {
+    "class_type": "MiniMaxH3MemoryEfficientSageAttentionPatch",
+    "inputs": {
+      "model": [
+        "9",
+        0
+      ]
+    }
+  },
+  "105": {
+    "class_type": "ResolutionSelector",
+    "inputs": {
+      "aspect_ratio": "16:9 (Widescreen)",
+      "megapixels": 0.5,
+      "multiple": 32
+    }
+  },
+  "187": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "model": [
+        "125",
+        0
+      ],
+      "lora_name": "minimax_h3_turbo_v4_step600_ema.safetensors",
+      "strength_model": 0.7000000000000002
+    }
+  },
+  "83": {
+    "class_type": "VRGDG_TextBox",
+    "inputs": {
+      "text": "Reference: image 1 = character identity (purple hair, face reference), image 2 =\noutfit reference.\n\nShe wears the outfit from image 2, dancing in a crowded nightclub — pulsing\ncolored lights, dense fog/haze catching the light beams, a packed dance floor\naround her, bass-driven energy.\n\n[0s–4s] Medium shot, she moves fluidly to the beat, hair swinging with her\nmovement, colored strobe light sweeping across her face and body in rhythm.\n\n[4s–8s] Camera circles slowly around her as she dances, other dancers blurred and\nout of focus around her, she remains the sharp focal point, lights flashing in\nsync with the music's rhythm.\n\n[8s–12s] Close-up on her face, eyes closed, lost in the moment, lights flaring\nand pulsing behind her, hair catching the light as she moves.\n\nStyle: high-energy nightclub cinematography, saturated colored lighting (magenta,\ncyan, deep blue), lens flare and light streaks, shallow depth of field isolating\nher from the crowd, confident and immersive dance energy.\n\nAudio: pulsing club music/bass, ambient crowd noise, energetic and rhythmic\nthroughout.\n\nDo not include: text, subtitles, watermark, logos, changes to her identity or the\noutfit."
+    }
+  },
+  "84": {
+    "class_type": "PrimitiveFloat",
+    "inputs": {
+      "value": 12
+    }
+  },
+  "248": {
+    "class_type": "BasicScheduler",
+    "inputs": {
+      "model": [
+        "125",
+        0
+      ],
+      "scheduler": "beta",
+      "steps": 15,
+      "denoise": 1
+    }
+  },
+  "299": {
+    "class_type": "VHS_VideoCombine",
+    "inputs": {
+      "images": [
+        "296",
+        0
+      ],
+      "audio": [
+        "9002",
+        0
+      ],
+      "frame_rate": 24,
+      "loop_count": 0,
+      "filename_prefix": "H3_Ref2VA_Stage2",
+      "format": "video/h264-mp4",
+      "pingpong": false,
+      "save_output": true,
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false
+    }
+  },
+  "298": {
+    "class_type": "VHS_VideoCombine",
+    "inputs": {
+      "images": [
+        "305",
+        0
+      ],
+      "audio": [
+        "9002",
+        0
+      ],
+      "frame_rate": 24,
+      "loop_count": 0,
+      "filename_prefix": "H3_Ref2VA_Stage1",
+      "format": "video/h264-mp4",
+      "pingpong": false,
+      "save_output": true,
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false
+    }
+  },
+  "9000": {
+    "class_type": "VRGDG_MiniMaxH3ReferenceMediaFromPaths",
+    "inputs": {
+      "image_paths": "[]",
+      "video_references": "[]"
+    },
+    "_meta": {
+      "title": "BUILDER INPUTS - Ordered H3 Reference Images And Videos"
+    }
+  },
+  "9001": {
+    "class_type": "VHS_LoadAudio",
+    "inputs": {
+      "audio_file": "",
+      "seek_seconds": 0,
+      "duration": 0
+    },
+    "_meta": {
+      "title": "BUILDER INPUT - Project Audio"
+    }
+  },
+  "9002": {
+    "class_type": "VRGDG_MiniMaxH3AudioDrive",
+    "inputs": {
+      "av_latent": [
+        "295",
+        0
+      ],
+      "source_audio": [
+        "9001",
+        0
+      ],
+      "audio_vae": [
+        "6",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "BUILDER OUTPUT - External Audio Drive"
+    }
+  }
+}
