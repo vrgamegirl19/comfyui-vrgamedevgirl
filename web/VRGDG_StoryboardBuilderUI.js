@@ -2903,6 +2903,19 @@ function storyboardStartingShotInstruction(shotType) {
   return `The literal first generated frame must already be a ${shot}. Do not use a wider, farther-away, establishing, or full-body lead-in before reaching that framing. The selected camera motion must begin from that opening framing.`;
 }
 
+function storyboardLtxStartingFraming(shotType) {
+  const shot = String(shotType || "").trim();
+  if (!shot) return "";
+  const movementClause = shot.match(/^(.*?),\s*(?:(?:then|before)\s+)?(?:slowly\s+)?(?:pulling|panning|tilting|sliding|tracking|orbiting|zooming|dollying|crane|moving|drifting)\b/i);
+  return movementClause ? movementClause[1].trim() : shot;
+}
+
+function storyboardLtxEmbeddedCameraMotion(shotType) {
+  const shot = String(shotType || "").trim();
+  const movementClause = shot.match(/^.*?,\s*((?:(?:then|before)\s+)?(?:slowly\s+)?(?:pulling|panning|tilting|sliding|tracking|orbiting|zooming|dollying|crane|moving|drifting)\b.*)$/i);
+  return movementClause ? movementClause[1].replace(/^(?:then|before)\s+/i, "").trim() : "";
+}
+
 function storyboardScenesForGpt(state) {
   const imageMode = state.mode !== "image_to_video_prep";
   const idLoraMode = String(state.videoPromptType || state.video_prompt_type || "").trim() === "id_lora"
@@ -2932,6 +2945,7 @@ function storyboardScenesForGpt(state) {
   let previousCameraMotion = "";
   return state.scenes.map((scene, index) => {
     const normalized = normalizeScene(scene, index);
+    const sceneVideoEngine = normalizeStoryboardProjectVideoEngine(normalized.project_video_engine || state.projectVideoEngine);
     const lyricSection = effectiveLyricSection(index);
     if (!explicitLyricSections[index] && lyricSection && scene && typeof scene === "object") {
       scene.lyric_section = lyricSection;
@@ -2939,8 +2953,10 @@ function storyboardScenesForGpt(state) {
     const sceneNumberIndex = Math.max(0, Number(normalized.scene_number || index + 1) - 1);
     const cameraFallback = fullyCustomShortFilm ? null : storyboardCameraFlowEntry(state.cameraFlow || "balanced", sceneNumberIndex, previousCameraMotion, state.customCameraFlowSequence);
     const shotType = normalized.shot_type || cameraFallback?.shot || "";
-    const requiresStartingShot = !imageMode && normalized.video_prompt_type !== "i2v" && Boolean(shotType);
-    const rawCameraMotion = normalized.camera_motion || (imageMode ? "" : cameraFallback?.camera) || "";
+    const promptShotType = sceneVideoEngine === "ltx" ? storyboardLtxStartingFraming(shotType) : shotType;
+    const requiresStartingShot = !imageMode && normalized.video_prompt_type !== "i2v" && Boolean(promptShotType);
+    const embeddedLtxCameraMotion = sceneVideoEngine === "ltx" ? storyboardLtxEmbeddedCameraMotion(shotType) : "";
+    const rawCameraMotion = normalized.camera_motion || (imageMode ? "" : embeddedLtxCameraMotion || cameraFallback?.camera) || "";
     const cameraMotion = imageMode || fullyCustomShortFilm
       ? rawCameraMotion
       : storyboardCameraMotionForSpeed(rawCameraMotion, state.cameraMotionSpeed);
@@ -2966,7 +2982,6 @@ function storyboardScenesForGpt(state) {
       : "";
     const selectedVideoStylePreset = storyboardMiniMaxVideoStylePreset(selectedVideoStyle);
     const selectedVideoStyleVerbiage = storyboardMiniMaxVideoStyleVerbiage(selectedVideoStyle, selectedVideoStyleCustom);
-    const sceneVideoEngine = normalizeStoryboardProjectVideoEngine(normalized.project_video_engine || state.projectVideoEngine);
     const temporalWorldEffect = !imageMode ? storyboardTemporalWorldEffectForScene(normalized, state) : null;
     const exactSceneDuration = Math.max(
       0,
@@ -3141,12 +3156,12 @@ function storyboardScenesForGpt(state) {
       },
       camera_flow: cameraFlowKey,
       camera_flow_guidance: String(cameraFlowPreset?.guidance || "").trim(),
-      shot_type: shotType,
+      shot_type: promptShotType,
       starting_shot: requiresStartingShot
         ? {
             required: true,
-            selected_starting_shot: shotType,
-            instruction: storyboardStartingShotInstruction(shotType),
+            selected_starting_shot: promptShotType,
+            instruction: storyboardStartingShotInstruction(promptShotType),
           }
         : null,
       camera_motion: imageMode ? "" : cameraMotionForPrompt,
@@ -6971,7 +6986,9 @@ function openStoryboardBuilder(payload = {}) {
         project_folder: state.projectFolder,
         storyboard: slimStoryboardForRequest(state),
       });
-      syncStoryLayerFromInputs({ notify: true });
+      // The Storyboard is already saved. Do not trigger a redundant parent
+      // Video Builder session save from this completed save action.
+      syncStoryLayerFromInputs({ notify: false });
       createToast(`Storyboard saved:\n${data.storyboard?.path || ""}`);
     } catch (error) {
       createToast(String(error?.message || error), true);
@@ -6998,13 +7015,6 @@ function openStoryboardBuilder(payload = {}) {
         project_folder: state.projectFolder,
         storyboard: slimStoryboardForRequest(state),
       });
-      if (state.onPromptsExported) {
-        state.onPromptsExported({
-          ...storyboardDefaultsPayload(),
-          story_layer: normalizeStoryLayer(state.storyLayer),
-          scenes: state.scenes.map((scene, index) => slimSceneForRequest(scene, index)),
-        });
-      }
       createToast(`Exported ${data.scene_count || 0} scene prompt rows to files only. The Video Builder timeline was not created or replaced.\n\nText:\n${data.t2i_prompts_path}\n${data.i2v_prompts_path}\nJSON:\n${data.t2i_prompts_json_path || ""}\n${data.video_prompts_json_path || ""}`);
     } catch (error) {
       createToast(String(error?.message || error), true);

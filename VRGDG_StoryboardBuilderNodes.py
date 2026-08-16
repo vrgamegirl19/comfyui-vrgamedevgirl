@@ -1415,6 +1415,38 @@ def _build_storyboard_video_prompt(payload):
             or payload.get("video_type")
             or payload.get("videoType")
         )
+        pronouns = _single_subject_pronouns(selected_scene)
+        if pronouns:
+            pronoun_contract = (
+                f"This scene contains exactly one mapped subject. Use {pronouns['they']}/{pronouns['them']}/{pronouns['their']} "
+                "consistently for that person. Never use they, them, their, or plural agreement."
+            )
+        else:
+            pronoun_contract = "Use pronouns and singular/plural agreement that exactly match the mapped subject count."
+        if _storyboard_scene_is_visible_singing(selected_scene):
+            vocal_contract = (
+                "This is a visible singing/lip-sync scene. The performer must visibly vocalize the supplied lyric in sync with the audio, "
+                "using natural mouth, lip, cheek, and jaw movement. Never describe closed, still, sealed, relaxed-closed, or unmoving lips."
+            )
+        else:
+            vocal_contract = (
+                "This is not a visible singing/lip-sync scene. Do not say any subject sings, vocalizes, mouths words, or lip-syncs, "
+                "and do not quote the lyric as performed dialogue."
+            )
+        ltx_scene = str(selected_scene.get("project_video_engine") or scene_bundle.get("project_video_engine") or "").strip().lower() != "minimax_h3"
+        ltx_one_pass_contract = (
+            "AUTHORITATIVE LTX ONE-PASS OUTPUT CONTRACT — obey every item and output the finished prompt only:\n"
+            "- Follow the editing/cut plan exactly. Write every required cut directly into ordinary chronological prose using 'then cut to' or equivalent natural wording; do not use MiniMax timestamps.\n"
+            f"- {vocal_contract}\n"
+            f"- {pronoun_contract}\n"
+            "- Integrate facial and performance guidance naturally. Never print field names, headings, metadata labels, or phrases such as 'Facial performance direction:'.\n"
+            "- The first sentence is the sole opening-shot statement. Continue with new action afterward; never restate that the subject is first shown, already shown, framed, introduced, or seen in that opening shot.\n"
+            "- Describe each camera action once. Do not repeat the opening framing, reveal, pull-back, or other camera direction.\n"
+            "- Use natural possessive anatomy phrasing such as 'the woman's eye' or 'the subject's eye'; never write 'one eye of the woman'.\n"
+            "- Write only complete grammatical sentences. Attach short details with wording such as 'with subtle natural eye movement'; never append a bare comma fragment.\n"
+            "- Treat first-frame visual inventory as optional visible detail, not a checklist. Mention only details inside the current framing; eye, face, and upper-body shots must not claim shoes, heels, feet, lower-body clothing, or other off-frame details are visible.\n"
+            "- Return one polished generation-ready prompt. Do not explain these rules."
+        ) if ltx_scene else ""
         story_layer = selected_scene.get("story_layer") or {}
         camera_guidance = selected_scene.get("camera_guidance") if isinstance(selected_scene.get("camera_guidance"), dict) else {}
         camera_speed_guidance = (
@@ -1436,6 +1468,8 @@ def _build_storyboard_video_prompt(payload):
         camera_motion = "" if motion_summary else _clean_scene_text(selected_scene.get("camera_motion") or "", 500)
         user_notes = "\n\n".join(
             part for part in [
+                ltx_one_pass_contract,
+                f"MANDATORY editing / cut plan:\n{_clean_scene_text((selected_scene.get('cut_plan') or {}).get('instruction') if isinstance(selected_scene.get('cut_plan'), dict) else '', 5000)}",
                 f"Required starting shot:\n{json.dumps(selected_scene.get('starting_shot'), ensure_ascii=False)}" if _storyboard_starting_shot_value(selected_scene) else "",
                 f"Performance mode:\n{performance_mode}",
                 f"Scene lyrics:\n{_clean_scene_text(vocal_status.get('lyric_text') or '', 1000)}",
@@ -1445,7 +1479,6 @@ def _build_storyboard_video_prompt(payload):
                 f"Required video style:\n{_clean_scene_text(selected_scene.get('video_style') or '', 200)}",
                 f"MANDATORY exact video style verbiage — copy word-for-word into the final prompt:\n{_clean_scene_text(selected_scene.get('video_style_verbiage') or '', 3000)}",
                 f"MANDATORY exact temporal / world effect verbiage — copy word-for-word into the final prompt:\n{_clean_scene_text(selected_scene.get('temporal_world_effect_verbiage') or '', 5000)}",
-                f"MANDATORY editing / cut plan:\n{_clean_scene_text((selected_scene.get('cut_plan') or {}).get('instruction') if isinstance(selected_scene.get('cut_plan'), dict) else '', 5000)}",
                 f"Camera motion:\n{camera_motion}",
                 f"Required camera-flow framing:\n{_clean_scene_text(selected_scene.get('camera_flow_guidance') or '', 1600)}",
                 f"Camera motion speed guidance:\n{_clean_scene_text(camera_speed_guidance, 1000)}",

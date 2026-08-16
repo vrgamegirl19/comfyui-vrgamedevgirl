@@ -373,6 +373,7 @@ def _manual_model_folder_choices(category):
         "text_encoders": {".safetensors", ".ckpt", ".pt", ".bin"},
         "vae": {".safetensors", ".ckpt", ".pt", ".bin"},
         "upscale_models": {".safetensors", ".ckpt", ".pt", ".bin"},
+        "latent_upscale_models": {".safetensors", ".ckpt", ".pt", ".bin"},
     }.get(category, {".safetensors", ".ckpt", ".pt", ".bin", ".gguf"})
     roots = []
     try:
@@ -5001,7 +5002,9 @@ def _ensure_workflow_runner_routes():
             "video_diffusion_models": video_diffusion_models,
             "vae": _folder_choices("vae"),
             "clip": _folder_choices(("clip", "text_encoders")),
-            "upscale_models": _folder_choices("upscale_models"),
+            # LatentUpscaleModelLoader validates against latent_upscale_models,
+            # not the ESRGAN/image upscale_models category.
+            "upscale_models": _folder_choices("latent_upscale_models"),
         })
 
     @server_instance.routes.get("/vrgdg/workflow_runner/model_root")

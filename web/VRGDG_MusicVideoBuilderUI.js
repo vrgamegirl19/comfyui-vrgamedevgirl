@@ -11514,10 +11514,21 @@ function openBuilder(node) {
 
   function cloneI2VVideoSettings(settings) {
     const source = settings || {};
+    const ltxVersion = String(source.ltx_version || "2.5") === "2.3" ? "2.3" : "2.5";
+    const requestedUpscaler = String(source.upscale_model_name || "").trim();
+    // Older builds populated this field from the regular image-upscaler list.
+    // Migrate those invalid .pth selections back to the matching LTX latent
+    // upscaler so existing projects render without manual repair.
+    const latentUpscaler = !requestedUpscaler || /\.pth$/i.test(requestedUpscaler)
+      ? (ltxVersion === "2.3"
+        ? "ltx-2.3-spatial-upscaler-x2-1.1.safetensors"
+        : "ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors")
+      : requestedUpscaler;
     return repairI2VVideoSettingDimensions({
       ...defaultI2VVideoSettings(),
       ...source,
-      ltx_version: String(source.ltx_version || "2.5") === "2.3" ? "2.3" : "2.5",
+      ltx_version: ltxVersion,
+      upscale_model_name: latentUpscaler,
       use_gguf_model: source.use_gguf_model ?? source.useGgufModel ?? (String(source.ltx_version || "2.5") === "2.3"),
       unet_name: BAD_I2V_UNET_ALIASES.has(source.unet_name) ? DEFAULT_I2V_UNET : source.unet_name || DEFAULT_I2V_UNET,
       diffusion_model_name: source.diffusion_model_name || source.model_name || (String(source.ltx_version || "2.5") === "2.3" ? DEFAULT_I2V_DIFFUSION_MODEL : "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors"),
@@ -13291,7 +13302,12 @@ function openBuilder(node) {
     const base = String(prompt || "")
       .replace(/^\s*No visible subject sings or lip-syncs in this shot;\s*this is an instrumental or no-vocal visual moment\.\s*/i, "")
       .trim();
-    const facialText = options.includeFacialPerformance === false
+    const facialPresetKey = String(segment?.facial_performance || state.defaultFacialPerformance || "").trim();
+    const facialCustomText = String(segment?.facial_performance_custom || state.defaultFacialPerformanceCustom || "").trim();
+    // Default natural is guidance for the one-pass LLM request, not literal
+    // boilerplate to append to the finished generation prompt. Explicit presets
+    // and custom facial direction retain the existing final-output behavior.
+    const facialText = options.includeFacialPerformance === false || (!facialPresetKey && !facialCustomText)
       ? ""
       : facialPerformanceNoteForSegment(segment);
     const appendFacial = (text) => {
@@ -35980,7 +35996,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.projectFolder = data.project_folder || "";
       state.sessionPath = data.session_path || "";
       state.srtPath = data.srt_path || "";
-      if (data.session) {
+      // The live builder state is already the source of the session we just
+      // saved. Rehydrating that same payload here is redundant and can make a
+      // completed save appear to fail if an unrelated panel normalizer rejects
+      // one of its values. Loading a project still performs the full hydrate;
+      // an explicit caller may request it here when that behavior is needed.
+      if (data.session && options.refreshFromSavedSession === true) {
         state.overlaySegments = Array.isArray(data.session.overlay_segments) ? data.session.overlay_segments : state.overlaySegments;
         state.overlaySegments.forEach(normalizeOverlayClip);
         state.overlayTrack = normalizeOverlayTrackState(data.session.overlay_track || state.overlayTrack);
@@ -38681,7 +38702,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         flf_end_state: isFLF ? String(segment.flf_end_state || "").trim() : "",
         flf_carry_forward: isFLF ? String(segment.flf_carry_forward || "").trim() : "",
         repair_model_file: i2vTextGemmaModelSelect.value,
-        user_notes: [modeNotes, extraNotes].filter(Boolean).join("\n\n"),
+        user_notes: (options.skipStoryboardExtraNotes ? [extraNotes, modeNotes] : [modeNotes, extraNotes]).filter(Boolean).join("\n\n"),
         subject_context: provisionalMotionPlan ? mappedSubjectContext : isIdLora ? [idLoraContext?.characterName || "", String(idLoraContext?.character?.description || "").trim()].filter(Boolean).join("\n") : isFLF && flfGemmaContextMode(segment) !== "full" ? "" : segment.no_character_present ? "" : (isT2V || textScriptMode || !useImageReference ? mappedSubjectContext : ""),
         location_context: provisionalMotionPlan ? mappedLocationContext : isIdLora ? [idLoraContext?.locationName || "", String(idLoraContext?.location?.description || "").trim()].filter(Boolean).join("\n") : isFLF && flfGemmaContextMode(segment) !== "full" ? "" : isT2V || textScriptMode || !useImageReference ? mappedLocationContext : "",
         no_character_present: Boolean(segment.no_character_present),
@@ -42348,6 +42369,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const fullyCustomShortFilm = normalizeMiniMaxShortFilmPlanningMode(storyboardPayload?.short_film_planning_mode) === "fully_custom";
       const storyLayer = selectedScene.story_layer || {};
       const vocalStatus = selectedScene.vocal_status || {};
+      const ltxScene = normalizeProjectVideoEngine(selectedScene.project_video_engine || storyboardPayload?.project_video_engine || state.projectVideoEngine) === "ltx";
       const startingShot = selectedScene.starting_shot && typeof selectedScene.starting_shot === "object"
         ? selectedScene.starting_shot
         : null;
@@ -42356,6 +42378,35 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         if (text) parts.push(`${title}:\n${text}`);
       };
       const parts = [];
+      if (ltxScene) {
+        const mappedSubjects = Array.isArray(selectedScene.subjects) ? selectedScene.subjects : [];
+        const singleSubjectText = mappedSubjects.length === 1
+          ? [mappedSubjects[0]?.name, mappedSubjects[0]?.description].filter(Boolean).join(" ").toLowerCase()
+          : "";
+        const singularPronouns = /\b(?:woman|girl|female|feminine|she|her)\b/.test(singleSubjectText)
+          ? "she/her"
+          : /\b(?:man|boy|male|masculine|he|him|his)\b/.test(singleSubjectText)
+            ? "he/him"
+            : "singular wording that repeats the mapped subject name when needed";
+        const vocalContract = vocalStatus.should_lip_sync === true
+          ? `This is a visible singing/lip-sync scene. The mapped performer visibly vocalizes ${JSON.stringify(String(vocalStatus.lyric_text || scene.lyrics || "").trim())} in sync with the audio using natural mouth, lip, cheek, and jaw movement. Never describe closed, still, sealed, relaxed-closed, or unmoving lips, and never call the performance silent or instrumental.`
+          : "This is not a visible singing/lip-sync scene. Do not say anyone sings, vocalizes, mouths words, or lip-syncs, and do not quote the lyric as performed dialogue.";
+        parts.push([
+          "AUTHORITATIVE LTX ONE-PASS OUTPUT CONTRACT:",
+          "Return one polished generation-ready prompt only. Do not print headings, field names, metadata labels, explanations, or this contract.",
+          String(selectedScene.cut_plan?.instruction || "").trim() || "Use one continuous shot unless the scene explicitly requests a cut.",
+          vocalContract,
+          mappedSubjects.length === 1
+            ? `This scene contains exactly one mapped subject. Use ${singularPronouns} consistently. Never use they/them/their or plural agreement for that person.`
+            : "Use pronouns and singular/plural agreement that exactly match the mapped subject count.",
+          "Integrate facial and performance guidance as natural visual prose; never output labels such as 'Facial performance direction:'.",
+          "The first sentence is the sole opening-shot statement. After it, continue directly with new subject action; never restate that the subject is first shown, already shown, framed, introduced, or seen in the same opening shot.",
+          "Describe each camera action exactly once. Do not repeat the opening framing, reveal, pull-back, or other camera direction.",
+          "Use natural possessive anatomy phrasing such as 'the woman's eye' or 'the subject's eye'; never write awkward constructions such as 'one eye of the woman'.",
+          "Write only complete grammatical sentences. Attach short descriptive additions with grammatical wording such as 'with subtle natural eye movement'; never append a bare comma fragment such as ', subtle natural eye movement.'.",
+          "Treat first-frame visual inventory as optional visible detail, not a checklist. Mention only anatomy, wardrobe, accessories, and props that are actually inside the current framing. An eye, face, or upper-body shot must not claim that shoes, heels, feet, lower-body clothing, or other off-frame details are visible.",
+        ].filter(Boolean).join("\n"));
+      }
       if (fullyCustomShortFilm) {
         parts.push("FULLY CUSTOM SHORT FILM SOURCE CONTRACT:\nUse only the populated manual scene-card fields below. Do not infer or invent missing dialogue, speakers, actions, story beats, shots, camera moves, settings, sound, or continuity.");
       }
@@ -42370,6 +42421,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       add(parts, "REQUIRED Storyboard video style", selectedScene.video_style);
       add(parts, "MANDATORY exact Storyboard video style verbiage — copy word-for-word", selectedScene.video_style_verbiage);
       add(parts, "MANDATORY exact temporal / world effect verbiage — copy word-for-word", selectedScene.temporal_world_effect_verbiage);
+      if (!ltxScene) add(parts, "MANDATORY Storyboard editing / cut plan", selectedScene.cut_plan?.instruction);
       const customMotionSummary = String(selectedScene.motion_summary || scene.motion_summary || scene.video_notes || "").trim();
       add(parts, "Storyboard motion/video summary", customMotionSummary);
       if (!customMotionSummary) add(parts, "Storyboard camera motion", selectedScene.camera_motion || scene.camera_motion);
