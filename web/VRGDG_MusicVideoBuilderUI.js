@@ -40740,6 +40740,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   let storyboardPromptPipelineRunner = null;
+  function storyboardSidePanelPromptPipelineReady() {
+    return typeof state.onCreateVideoPrompt === "function"
+      || typeof storyboardPromptPipelineRunner === "function"
+      || typeof ACTIVE_STORYBOARD_PROMPT_PIPELINE === "function";
+  }
   async function createSidePanelPromptFromStoryboardPipeline(segment, mode, label = "Storyboard") {
     const storyboardScenes = storyboardScenePayload();
     const scene = storyboardScenes.find((item) => item.id === segment.id) || storyboardScenes.find((item) => Number(item.scene_number) === Number(segmentIndexInfo(segment).index + 1));
@@ -40788,7 +40793,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   async function createMiniMaxH3PromptWithLLM() {
-    if (USE_STORYBOARD_PROMPT_PIPELINE_FOR_SIDE_PANEL) {
+    if (USE_STORYBOARD_PROMPT_PIPELINE_FOR_SIDE_PANEL && storyboardSidePanelPromptPipelineReady()) {
       const segment = requireActiveSegment();
       if (!segment) return;
       updateActiveFromInputs();
@@ -41002,7 +41007,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   async function createI2VPromptWithGemma() {
-    if (USE_STORYBOARD_PROMPT_PIPELINE_FOR_SIDE_PANEL) {
+    if (USE_STORYBOARD_PROMPT_PIPELINE_FOR_SIDE_PANEL && storyboardSidePanelPromptPipelineReady()) {
       const segment = requireActiveSegment();
       if (!segment) return;
       updateActiveFromInputs();
