@@ -1553,12 +1553,15 @@ function storyboardMotionFamily(motion = "") {
 
 export function storyboardCameraFlowEntry(profileKey, sceneIndex, previousMotion = "", customSequence = []) {
   const preset = STORYBOARD_CAMERA_FLOW_PRESETS[profileKey] || STORYBOARD_CAMERA_FLOW_PRESETS.balanced;
+  const customFlow = profileKey === "custom";
   const sequence = profileKey === "custom"
     ? normalizeStoryboardCustomCameraFlowSequence(customSequence)
     : (preset.sequence || []);
   if (!sequence.length) return null;
   let entry = sequence[sceneIndex % sequence.length];
-  if (previousMotion && storyboardMotionFamily(entry.camera) === storyboardMotionFamily(previousMotion)) {
+  // A custom list is an authored shot-by-shot plan. Preserve its exact order;
+  // the repetition-avoidance rule is only for generated preset sequences.
+  if (!customFlow && previousMotion && storyboardMotionFamily(entry.camera) === storyboardMotionFamily(previousMotion)) {
     entry = sequence[(sceneIndex + 1) % sequence.length] || entry;
   }
   return entry;
@@ -1918,9 +1921,10 @@ function storyboardMiniMaxVideoStyleVerbiage(value = "", custom = "") {
   return preset.value === "custom" ? direction : `${preset.label}: ${direction}`;
 }
 
-function storyboardSceneSupportsMiniMaxVideoStyle(scene = {}) {
-  return normalizeStoryboardProjectVideoEngine(scene.project_video_engine || scene.projectVideoEngine) === "minimax_h3"
-    && ["text_to_video", "reference_to_video"].includes(normalizeStoryboardMiniMaxH3Mode(scene.minimax_h3_mode || scene.minimaxH3Mode));
+function storyboardSceneSupportsVideoStyle(scene = {}) {
+  const engine = normalizeStoryboardProjectVideoEngine(scene.project_video_engine || scene.projectVideoEngine);
+  if (engine === "ltx") return true;
+  return ["text_to_video", "reference_to_video"].includes(normalizeStoryboardMiniMaxH3Mode(scene.minimax_h3_mode || scene.minimaxH3Mode));
 }
 
 export const MINIMAX_TEMPORAL_WORLD_EFFECT_PRESETS = [
@@ -2345,6 +2349,17 @@ function normalizeScene(scene = {}, index = 0) {
   const lyricNoLipSync = Boolean(scene.lyric_no_lip_sync || scene.no_lip_sync || scene.noLipSync || scene.broll || scene.b_roll);
   const lyricInstrumental = Boolean(scene.lyric_instrumental || scene.instrumental || storyboardIsInstrumentalText(lyrics));
   const noCharacterPresent = Boolean(scene.no_character_present || scene.noCharacterPresent || scene.no_subject || scene.no_visible_subject);
+  const extraSubjects = noCharacterPresent || !Array.isArray(scene.extra_subjects || scene.extraSubjects)
+    ? []
+    : (scene.extra_subjects || scene.extraSubjects).filter((item) => item && typeof item === "object").map((item, extraIndex) => ({
+        id: String(item.id || `extra_${extraIndex + 1}`).trim(),
+        name: String(item.name || item.title || `Extra ${extraIndex + 1}`).replace(/\s+/g, " ").trim(),
+        count: Math.max(1, Math.min(100, Math.round(Number(item.count) || 1))),
+        interaction: ["background", "background_dancing", "alongside", "dancing_with", "direct"].includes(String(item.interaction || "").trim())
+          ? String(item.interaction).trim()
+          : "background",
+        identity: String(item.identity || item.description || "").replace(/\s+/g, " ").trim().slice(0, 240),
+      }));
   return {
     id: scene.id || `storyboard_scene_${index + 1}_${Date.now()}`,
     scene_number: Number(scene.scene_number || scene.number || index + 1),
@@ -2366,6 +2381,7 @@ function normalizeScene(scene = {}, index = 0) {
     motion_summary: scene.motion_summary || scene.video_notes || scene.i2v_notes || "",
     subjects: Array.isArray(scene.subjects) ? scene.subjects : String(scene.subjects || "").split(/[,;\n]+/).map((item) => item.trim()).filter(Boolean),
     subject_refs: noCharacterPresent ? [] : Array.isArray(scene.subject_refs) ? scene.subject_refs.filter((item) => item && typeof item === "object") : [],
+    extra_subjects: extraSubjects,
     setting: scene.setting || scene.location_ref?.description || scene.location_ref?.name || scene.location || "",
     location_ref: scene.location_ref && typeof scene.location_ref === "object" ? scene.location_ref : null,
     trigger_phrase: String(scene.trigger_phrase || scene.trigger || scene.Trigger || ""),
@@ -2617,7 +2633,7 @@ export function storyboardCutFrequencyLabel(value) {
   return `${frequency} / frequent cuts`;
 }
 
-export function storyboardCutPlanForDuration(durationValue, frequencyValue) {
+export function storyboardCutPlanForDuration(durationValue, frequencyValue, engineValue = "minimax_h3") {
   const duration = Math.max(0, Number(durationValue) || 0);
   const frequency = storyboardCutFrequencyValue(frequencyValue);
   const maximumCuts = Math.max(0, Math.ceil(Math.max(0, duration - 0.000001)) - 1);
@@ -2636,9 +2652,12 @@ export function storyboardCutPlanForDuration(durationValue, frequencyValue) {
   }
   const exactDuration = Number(duration.toFixed(3));
   const timingText = cutTimes.map((time) => `${time}s`).join(", ");
+  const miniMax = normalizeStoryboardProjectVideoEngine(engineValue) === "minimax_h3";
   const instruction = cutCount > 0
-    ? `EDITING / CUT PLAN — MANDATORY: Cut frequency ${frequency}/10 for this exact ${exactDuration}-second segment requires exactly ${cutCount} hard CUT TO transition${cutCount === 1 ? "" : "s"}, at approximately ${timingText}, creating ${cutCount + 1} coherent shots. Begin with shot 1 at 0s. At every listed time, write an explicit new timestamp block beginning with CUT TO: and change to a clearly different but continuity-preserving angle, framing, or story detail within the same scene and ongoing action. Preserve identity, wardrobe, location, lighting, props, spatial direction, and action continuity. Do not add extra cuts, montage beats, dissolves, scene changes, or transitions outside this schedule.`
-    : `EDITING / CUT PLAN — MANDATORY: Use one smooth, continuous, uninterrupted shot for the full ${exactDuration}-second segment. Use no CUT TO, hard cut, angle reset, montage, dissolve, scene change, or transition. Camera and character movement may develop inside the same continuous take.`;
+    ? miniMax
+      ? `EDITING / CUT PLAN — MANDATORY: Cut frequency ${frequency}/10 for this exact ${exactDuration}-second segment requires exactly ${cutCount} hard CUT TO transition${cutCount === 1 ? "" : "s"}, at approximately ${timingText}, creating ${cutCount + 1} coherent shots. Begin with shot 1 at 0s. At every listed time, write an explicit new timestamp block beginning with CUT TO: and change to a clearly different but continuity-preserving angle, framing, or story detail within the same scene and ongoing action. Preserve identity, wardrobe, location, lighting, props, spatial direction, and action continuity. Do not add extra cuts, montage beats, dissolves, scene changes, or transitions outside this schedule.`
+      : `EDITING / CUT PLAN — MANDATORY FOR LTX: Cut frequency ${frequency}/10 for this exact ${exactDuration}-second segment requires exactly ${cutCount} clear cut${cutCount === 1 ? "" : "s"}, creating ${cutCount + 1} coherent shots. Write the edits in ordinary natural language in chronological order, using phrases such as "then cut to" or "cut to a different angle". Do not use MiniMax timestamp blocks or a special prompt schema. Each cut must introduce a clearly different but continuity-preserving angle, framing, or story detail within the same location and ongoing action. Preserve identity, wardrobe, lighting, props, spatial direction, and action continuity. Do not add extra cuts, montage beats, dissolves, scene changes, or transitions.`
+    : `EDITING / CUT PLAN — MANDATORY: Use one smooth, continuous, uninterrupted shot for the full ${exactDuration}-second segment. Use no hard cut, angle reset, montage, dissolve, scene change, or transition. Camera and character movement may develop inside the same continuous take.`;
   return {
     frequency,
     exact_duration_seconds: exactDuration,
@@ -2793,6 +2812,56 @@ function slimStoryboardForRequest(state) {
 
 const STORYBOARD_GPT_URL = "https://chatgpt.com/g/g-6a28d15f04e88191a2375d564ff8d90c-ltx-2-3-video-builder-from-storyboard-builder";
 const STORYBOARD_IMAGE_GPT_URL = "https://chatgpt.com/g/g-6a40129fc12c81919878b79eaa5ae94f-text-to-image-prompt-builder-for-krea-2";
+const STORY_LAYER_CHATGPT_URL = "https://chatgpt.com/";
+
+function storyLayerGptPayload(state) {
+  const storyboardPayload = storyboardGptPayload(state);
+  const scenes = state.scenes.map((scene, index) => slimSceneForRequest(scene, index));
+  const orderedLyrics = scenes
+    .map((scene) => String(scene.lyrics || scene.lyric_text || "").trim())
+    .filter(Boolean);
+  const sourceLyrics = String(state.lineMappingLyrics || state.lyricMapper?.source_text || "").trim();
+  const lyricSections = scenes.map((scene, index) => ({
+    scene_number: Number(scene.scene_number || index + 1),
+    section: String(scene.lyric_section || scene.label || "").trim(),
+    lyrics: String(scene.lyrics || scene.lyric_text || "").trim(),
+  })).filter((item) => item.section || item.lyrics);
+  const presetDetails = {
+    image_aesthetic: state.imageAesthetic || "",
+    image_shot_flow: state.imageShotFlow || "",
+    video_style: state.videoStyle || "",
+    performance_style: state.performanceStyle || "",
+    facial_performance: state.facialPerformance || "",
+    camera_flow: state.cameraFlow || "",
+    camera_motion_speed: storyboardSpeedValue(state.cameraMotionSpeed, 4),
+    character_motion_speed: storyboardSpeedValue(state.characterMotionSpeed, 4),
+    lyric_story_strength: normalizeStoryLayer(state.storyLayer).lyric_story_strength,
+  };
+  return {
+    payload_type: "story_layer_planning",
+    execution_mode: "execute_immediately",
+    user_request: "Process this story-layer planning payload now. Do not ask what I want done and do not ask for more lyrics or project details. Generate the final story-layer JSON response immediately.",
+    task_instruction: "Use the supplied project context to create or revise a coherent music-video story. The explicit project_inputs fields are the source of truth. Execute this task immediately and return only valid JSON matching output_format. Keep the user's overall story idea when it is present, use the ordered lyric sections as the structural spine, and use the style, subject, location, performance, and camera preset details as creative constraints.",
+    output_format: {
+      overall_story_idea: "A concise premise or overall story idea. Preserve the supplied idea when it is usable; otherwise create one.",
+      user_story_arc: "A section-by-section story arc using the supplied lyric section labels in order.",
+      song_story_brief: "A compact production brief explaining the premise, emotional progression, visual world, recurring motifs, and ending."
+    },
+    current_story_layer: normalizeStoryLayer(state.storyLayer),
+    project_inputs: {
+      overall_story_idea: String(state.storyLayer?.overall_story_idea || "").trim(),
+      ordered_lyrics: orderedLyrics,
+      source_lyrics: sourceLyrics,
+      lyrics_instruction: "When scenes are present, use ordered_lyrics for scene alignment. When ordered_lyrics is empty, use source_lyrics as the complete pasted song/script and create the lyric sections yourself from its headings and structure.",
+      lyric_sections: lyricSections,
+      subjects: (state.referenceBuilder?.subjects || []).map(slimReferenceForRequest).filter(Boolean),
+      locations: (state.referenceBuilder?.locations || []).map(slimReferenceForRequest).filter(Boolean),
+      preset_details: presetDetails,
+      scenes,
+    },
+    project_context: storyboardPayload,
+  };
+}
 
 function storyboardReferenceForGpt(ref, options = {}) {
   if (!ref) return null;
@@ -2834,6 +2903,19 @@ function storyboardStartingShotInstruction(shotType) {
   return `The literal first generated frame must already be a ${shot}. Do not use a wider, farther-away, establishing, or full-body lead-in before reaching that framing. The selected camera motion must begin from that opening framing.`;
 }
 
+function storyboardLtxStartingFraming(shotType) {
+  const shot = String(shotType || "").trim();
+  if (!shot) return "";
+  const movementClause = shot.match(/^(.*?),\s*(?:(?:then|before)\s+)?(?:slowly\s+)?(?:pulling|panning|tilting|sliding|tracking|orbiting|zooming|dollying|crane|moving|drifting)\b/i);
+  return movementClause ? movementClause[1].trim() : shot;
+}
+
+function storyboardLtxEmbeddedCameraMotion(shotType) {
+  const shot = String(shotType || "").trim();
+  const movementClause = shot.match(/^.*?,\s*((?:(?:then|before)\s+)?(?:slowly\s+)?(?:pulling|panning|tilting|sliding|tracking|orbiting|zooming|dollying|crane|moving|drifting)\b.*)$/i);
+  return movementClause ? movementClause[1].replace(/^(?:then|before)\s+/i, "").trim() : "";
+}
+
 function storyboardScenesForGpt(state) {
   const imageMode = state.mode !== "image_to_video_prep";
   const idLoraMode = String(state.videoPromptType || state.video_prompt_type || "").trim() === "id_lora"
@@ -2863,6 +2945,7 @@ function storyboardScenesForGpt(state) {
   let previousCameraMotion = "";
   return state.scenes.map((scene, index) => {
     const normalized = normalizeScene(scene, index);
+    const sceneVideoEngine = normalizeStoryboardProjectVideoEngine(normalized.project_video_engine || state.projectVideoEngine);
     const lyricSection = effectiveLyricSection(index);
     if (!explicitLyricSections[index] && lyricSection && scene && typeof scene === "object") {
       scene.lyric_section = lyricSection;
@@ -2870,8 +2953,10 @@ function storyboardScenesForGpt(state) {
     const sceneNumberIndex = Math.max(0, Number(normalized.scene_number || index + 1) - 1);
     const cameraFallback = fullyCustomShortFilm ? null : storyboardCameraFlowEntry(state.cameraFlow || "balanced", sceneNumberIndex, previousCameraMotion, state.customCameraFlowSequence);
     const shotType = normalized.shot_type || cameraFallback?.shot || "";
-    const requiresStartingShot = !imageMode && normalized.video_prompt_type !== "i2v" && Boolean(shotType);
-    const rawCameraMotion = normalized.camera_motion || (imageMode ? "" : cameraFallback?.camera) || "";
+    const promptShotType = sceneVideoEngine === "ltx" ? storyboardLtxStartingFraming(shotType) : shotType;
+    const requiresStartingShot = !imageMode && normalized.video_prompt_type !== "i2v" && Boolean(promptShotType);
+    const embeddedLtxCameraMotion = sceneVideoEngine === "ltx" ? storyboardLtxEmbeddedCameraMotion(shotType) : "";
+    const rawCameraMotion = normalized.camera_motion || (imageMode ? "" : embeddedLtxCameraMotion || cameraFallback?.camera) || "";
     const cameraMotion = imageMode || fullyCustomShortFilm
       ? rawCameraMotion
       : storyboardCameraMotionForSpeed(rawCameraMotion, state.cameraMotionSpeed);
@@ -2890,25 +2975,20 @@ function storyboardScenesForGpt(state) {
       : [facialPreset.direction, facialCustom].filter(Boolean).join(" ");
     const selectedPerformanceStyle = normalized.performance_style || (fullyCustomShortFilm ? "" : state.performanceStyle);
     const selectedPerformancePreset = performancePreset(selectedPerformanceStyle);
-    const supportsVideoStyle = storyboardSceneSupportsMiniMaxVideoStyle(normalized);
+    const supportsVideoStyle = storyboardSceneSupportsVideoStyle(normalized);
     const selectedVideoStyle = supportsVideoStyle ? String(state.videoStyle || normalized.video_style || "") : "";
     const selectedVideoStyleCustom = selectedVideoStyle === "custom"
       ? String(state.videoStyle === "custom" ? state.videoStyleCustom : (normalized.video_style_custom || state.videoStyleCustom || "")).trim()
       : "";
     const selectedVideoStylePreset = storyboardMiniMaxVideoStylePreset(selectedVideoStyle);
     const selectedVideoStyleVerbiage = storyboardMiniMaxVideoStyleVerbiage(selectedVideoStyle, selectedVideoStyleCustom);
-    const temporalWorldEffect = !imageMode
-      && normalizeStoryboardProjectVideoEngine(normalized.project_video_engine || state.projectVideoEngine) === "minimax_h3"
-      ? storyboardTemporalWorldEffectForScene(normalized, state)
-      : null;
-    const miniMaxVideoScene = !imageMode
-      && normalizeStoryboardProjectVideoEngine(normalized.project_video_engine || state.projectVideoEngine) === "minimax_h3";
+    const temporalWorldEffect = !imageMode ? storyboardTemporalWorldEffectForScene(normalized, state) : null;
     const exactSceneDuration = Math.max(
       0,
       Number(normalized.exact_duration || 0) || Number(normalized.timeline_end || 0) - Number(normalized.timeline_start || 0),
     );
-    const cutPlan = miniMaxVideoScene
-      ? storyboardCutPlanForDuration(exactSceneDuration, state.cutFrequency)
+    const cutPlan = !imageMode
+      ? storyboardCutPlanForDuration(exactSceneDuration, state.cutFrequency, sceneVideoEngine)
       : null;
     const instrumental = Boolean(normalized.lyric_instrumental);
     const noLipSync = Boolean(normalized.lyric_no_lip_sync || performanceMode === "no_lip_sync");
@@ -2960,6 +3040,19 @@ function storyboardScenesForGpt(state) {
         : "",
       lyric_line_to_sing: shouldLipSync && performanceMode === "singing" ? lyricText : "",
       line_to_say: shouldLipSync && performanceMode === "speaking" ? lyricText : "",
+      // Preserve the mapped performer assignment even in Image Prep. Image
+      // prompts intentionally disable lip-sync, but Scene Beat generation
+      // still needs to know which visible subject is the singer.
+      lyric_singers: explicitSingers,
+      performer_assignment: {
+        singing: explicitSingers,
+        silent: nonSingingSubjects,
+        instruction: explicitSingers.length === 1
+          ? `${explicitSingers[0]} is the only singing performer. Every other visible subject is silent and must not sing.`
+          : explicitSingers.length > 1
+            ? `Only these mapped performers sing: ${explicitSingers.join(", ")}. Every other visible subject is silent and must not sing.`
+            : "No mapped subject is assigned to sing. All visible subjects are silent.",
+      },
       vocal_status: {
         performance_mode: performanceMode,
         lyric_text: lyricText,
@@ -3049,6 +3142,10 @@ function storyboardScenesForGpt(state) {
       subject_name_rule: "Preserve mapped subject prompt names exactly as provided in visible_subjects and subjects.name. For subjects with trigger_phrase, subjects.name is already the prompt-facing trigger phrase and must be used as the subject instead of generic wording like 'a woman' or 'a man'.",
       visible_subjects: subjectNames,
       subjects: subjectRefs.length ? subjectRefs : subjectFallbacks,
+      extra_subjects: normalized.extra_subjects,
+      extra_subject_instruction: normalized.extra_subjects.length
+        ? "Use every mapped extra in the scene's action and blocking according to interaction. Describe direct, dancing_with, and alongside roles individually; extras sharing background or background_dancing roles may be grouped by name. Keep identity wording brief and use it only to distinguish people. Do not assign singing, dialogue, or speaker IDs to extras unless explicitly supplied elsewhere."
+        : "No mapped extras are assigned to this scene.",
       setting: locationRef || {
         name: String(normalized.setting || "").trim(),
         description: String(normalized.setting || "").trim(),
@@ -3059,12 +3156,12 @@ function storyboardScenesForGpt(state) {
       },
       camera_flow: cameraFlowKey,
       camera_flow_guidance: String(cameraFlowPreset?.guidance || "").trim(),
-      shot_type: shotType,
+      shot_type: promptShotType,
       starting_shot: requiresStartingShot
         ? {
             required: true,
-            selected_starting_shot: shotType,
-            instruction: storyboardStartingShotInstruction(shotType),
+            selected_starting_shot: promptShotType,
+            instruction: storyboardStartingShotInstruction(promptShotType),
           }
         : null,
       camera_motion: imageMode ? "" : cameraMotionForPrompt,
@@ -3137,7 +3234,7 @@ export function storyboardGptPayload(state, scenesOverride = null) {
         },
       }
       : {
-        task_instruction: "Create detailed image-to-video prompts for Video Prep using a strict source hierarchy. The mapped location_ref is the required physical set for each scene: do not replace it with a location from story_layer, scene_story_beat, song_story_brief, user_story_arc, lyrics, or previous/next scene context. If story context mentions another place, translate only its emotion, tension, symbolism, or action into the mapped location_ref environment. The first_frame_visual_inventory field is only a first-frame inventory: visible subject identity, wardrobe, hair, makeup, props, setting, lighting, color palette, framing, and composition. Do not use first_frame_visual_inventory or any image prompt wording for body action, camera motion, performance energy, facial performance, lyric action, story action, or animation pacing. Follow camera_flow_guidance as a hard framing constraint for the entire shot, every camera move, and the ending composition. For MiniMax scenes, follow cut_plan.instruction exactly: a zero/effectively-zero plan is one continuous take with no cuts, while an active plan requires the exact listed number and timing of explicit CUT TO transitions. When starting_shot.required is true, the first sentence must explicitly state that the video begins with starting_shot.selected_starting_shot; do not merely imply that framing or use it later. For an eyes shot, explicitly say the video begins with an extreme close-up of the subject's eyes. The selected camera motion begins from that opening framing. Then build the rest of the video prompt in this order: 1) subject and vocal/performance sentence from vocal_status, performance_direction, and facial_performance_direction; 2) character movement sentence from character_motion, character_motion_guidance, character_motion_speed, and scene_story_beat; 3) camera movement sentence from camera_motion, camera_guidance, and camera_motion_speed_guidance; 4) environment/lighting sentence from first_frame_visual_inventory and location_ref; 5) final mood/style sentence from story_layer and image aesthetic only where visual. Each sentence has one job and must add new information. Do not repeat the same mood, trait, motion, authority/defiance language, setting adjective, or descriptive phrase across multiple sentences. If an idea appears in the face sentence, do not repeat it in the body, camera, environment, or atmosphere sentence; use a different concrete visual detail instead. Do not duplicate adjacent words such as 'tall, tall'. The motion priority is character_motion_guidance + camera_motion_speed_guidance + camera_guidance + performance_direction + vocal_status + scene_story_beat above story_layer, and all of those above first_frame_visual_inventory. At camera speed 7-8, do not use slow, gentle, subtle, restrained, locked-off, static, or hold camera wording; use energetic active movement. At camera speed 9-10, use multiple coordinated readable camera moves. At character speed 4 or higher, include at least one clear physical body action, gesture, step, or set interaction; facial movement alone does not count.",
+        task_instruction: "Create detailed image-to-video prompts for Video Prep using a strict source hierarchy. The mapped location_ref is the required physical set for each scene: do not replace it with a location from story_layer, scene_story_beat, song_story_brief, user_story_arc, lyrics, or previous/next scene context. If story context mentions another place, translate only its emotion, tension, symbolism, or action into the mapped location_ref environment. The first_frame_visual_inventory field is only a first-frame inventory: visible subject identity, wardrobe, hair, makeup, props, setting, lighting, color palette, framing, and composition. Do not use first_frame_visual_inventory or any image prompt wording for body action, camera motion, performance energy, facial performance, lyric action, story action, or animation pacing. Follow camera_flow_guidance as a hard framing constraint for the entire shot, every camera move, and the ending composition. Follow cut_plan.instruction exactly for every video engine. MiniMax uses its timestamped CUT TO structure. LTX uses ordinary chronological language such as 'then cut to' and must not use the MiniMax timestamp schema. A zero/effectively-zero plan is one continuous take with no cuts. When starting_shot.required is true, the first sentence must explicitly state that the video begins with starting_shot.selected_starting_shot; do not merely imply that framing or use it later. For an eyes shot, explicitly say the video begins with an extreme close-up of the subject's eyes. The selected camera motion begins from that opening framing. Then build the rest of the video prompt in this order: 1) subject and vocal/performance sentence from vocal_status, performance_direction, and facial_performance_direction; 2) character movement sentence from character_motion, character_motion_guidance, character_motion_speed, and scene_story_beat; 3) camera movement sentence from camera_motion, camera_guidance, and camera_motion_speed_guidance; 4) environment/lighting sentence from first_frame_visual_inventory and location_ref; 5) final mood/style sentence from story_layer and image aesthetic only where visual. Each sentence has one job and must add new information. Do not repeat the same mood, trait, motion, authority/defiance language, setting adjective, or descriptive phrase across multiple sentences. If an idea appears in the face sentence, do not repeat it in the body, camera, environment, or atmosphere sentence; use a different concrete visual detail instead. Do not duplicate adjacent words such as 'tall, tall'. The motion priority is character_motion_guidance + camera_motion_speed_guidance + camera_guidance + performance_direction + vocal_status + scene_story_beat above story_layer, and all of those above first_frame_visual_inventory. At camera speed 7-8, do not use slow, gentle, subtle, restrained, locked-off, static, or hold camera wording; use energetic active movement. At camera speed 9-10, use multiple coordinated readable camera moves. At character speed 4 or higher, include at least one clear physical body action, gesture, step, or set interaction; facial movement alone does not count.",
       }),
     story_layer: normalizeStoryLayer(state.storyLayer),
     scenes: storyboardScenesForGpt(payloadState),
@@ -3202,6 +3299,7 @@ function openStoryboardBuilder(payload = {}) {
     scriptImport: normalizeStoryboardScriptImportState(payload.scriptImport || payload.script_import || {}),
     onReferenceMappingsChanged: typeof payload.onReferenceMappingsChanged === "function" ? payload.onReferenceMappingsChanged : null,
     onStoryLayerChanged: typeof payload.onStoryLayerChanged === "function" ? payload.onStoryLayerChanged : null,
+    onPrepareStoryContext: typeof payload.onPrepareStoryContext === "function" ? payload.onPrepareStoryContext : null,
     onPromptsExported: typeof payload.onPromptsExported === "function" ? payload.onPromptsExported : null,
     onApplyIdLoraDialoguePlan: typeof payload.onApplyIdLoraDialoguePlan === "function" ? payload.onApplyIdLoraDialoguePlan : null,
     onApplyMiniMaxDialoguePlan: typeof payload.onApplyMiniMaxDialoguePlan === "function" ? payload.onApplyMiniMaxDialoguePlan : null,
@@ -3517,9 +3615,9 @@ function openStoryboardBuilder(payload = {}) {
   videoStyleSelect.style.width = "max-content";
   videoStyleSelect.style.minWidth = "220px";
   const videoStyleApply = makeButton("Fill Missing", "primary");
-  videoStyleApply.title = "Fill blank style fields only for MiniMax Text to Video and Reference to Video scenes.";
+  videoStyleApply.title = "Fill blank style fields on eligible video scenes.";
   const videoStyleReplace = makeButton("Replace All");
-  videoStyleReplace.title = "Replace the style on all MiniMax Text to Video and Reference to Video scenes. Other modes are ignored.";
+  videoStyleReplace.title = "Replace the style on all eligible video scenes.";
   videoStyleControls.append(videoStyleLabel, videoStyleSelect, videoStyleApply, videoStyleReplace);
   const videoStyleCustomControls = document.createElement("div");
   videoStyleCustomControls.style.cssText = "display:flex;gap:8px;align-items:flex-start;";
@@ -4043,10 +4141,14 @@ function openStoryboardBuilder(payload = {}) {
     : "OPTIONAL STORY PLANNING TOOLS";
   const createStoryArcButton = makeButton("Create User Story Arc", "primary");
   const createStoryBriefButton = makeButton("Create Story Brief", "primary");
+  const gptStoryButton = makeButton("GPT Story");
+  gptStoryButton.title = "Copy all story, lyric, scene, reference, and preset details as JSON, then open the Storyboard GPT.";
+  const importStoryJsonButton = makeButton("Import story from json");
+  importStoryJsonButton.title = "Paste or load GPT story JSON and fill the overall idea, story arc, and story brief.";
   const createMissingBeatsButton = makeButton("Create Missing Scene Beats", "purple");
   const replaceBeatsButton = makeButton("Replace All Scene Beats");
   const detectSectionsButton = makeButton("Detect Lyric Sections");
-  storyActions.append(storyActionsLabel, createStoryArcButton, createStoryBriefButton, createMissingBeatsButton, replaceBeatsButton, detectSectionsButton);
+  storyActions.append(storyActionsLabel, createStoryArcButton, createStoryBriefButton, createMissingBeatsButton, replaceBeatsButton, detectSectionsButton, gptStoryButton, importStoryJsonButton);
   storyLayerBar.append(
     storyLayerHeader,
     shortFilmPlanningModeWrap,
@@ -4090,9 +4192,9 @@ function openStoryboardBuilder(payload = {}) {
   const setMode = (mode) => {
     state.mode = mode;
     const isVideoPrepMode = mode === "image_to_video_prep";
-    const videoStyleEligible = (state.projectVideoEngine === "minimax_h3"
-      && ["text_to_video", "reference_to_video"].includes(state.miniMaxH3Mode))
-      || state.scenes.some((scene) => storyboardSceneSupportsMiniMaxVideoStyle(scene));
+    const videoStyleEligible = state.projectVideoEngine === "ltx"
+      || (state.projectVideoEngine === "minimax_h3" && ["text_to_video", "reference_to_video"].includes(state.miniMaxH3Mode))
+      || state.scenes.some((scene) => storyboardSceneSupportsVideoStyle(scene));
     stepPrompts.style.background = mode === "storyboard_prompts" ? "#0e7490" : "#2b2b30";
     stepPrompts.style.borderColor = mode === "storyboard_prompts" ? "#06b6d4" : "#3f3f46";
     stepPrep.style.background = mode === "image_to_video_prep" ? "#0e7490" : "#2b2b30";
@@ -4120,7 +4222,7 @@ function openStoryboardBuilder(payload = {}) {
     videoStyleControls.style.display = isVideoPrepMode && videoStyleEligible ? "flex" : "none";
     videoStyleCustomControls.style.display = isVideoPrepMode && videoStyleEligible && state.videoStyle === "custom" ? "flex" : "none";
     videoStyleInfo.style.display = isVideoPrepMode && videoStyleEligible ? "" : "none";
-    const temporalEffectEligible = isVideoPrepMode && state.projectVideoEngine === "minimax_h3";
+    const temporalEffectEligible = isVideoPrepMode;
     temporalEffectControls.style.display = temporalEffectEligible ? "flex" : "none";
     temporalEffectCustomControls.style.display = temporalEffectEligible && state.temporalWorldEffect === "custom" ? "flex" : "none";
     temporalEffectOptions.style.display = temporalEffectEligible && Boolean(state.temporalWorldEffect) ? "flex" : "none";
@@ -4137,7 +4239,7 @@ function openStoryboardBuilder(payload = {}) {
     cameraFlowInfo.style.display = isVideoPrepMode ? "" : "none";
     cameraSpeedControls.style.display = isVideoPrepMode ? "flex" : "none";
     cameraSpeedInfo.style.display = isVideoPrepMode ? "" : "none";
-    const cutFrequencyEligible = isVideoPrepMode && state.projectVideoEngine === "minimax_h3";
+    const cutFrequencyEligible = isVideoPrepMode;
     cutFrequencyControls.style.display = cutFrequencyEligible ? "flex" : "none";
     cutFrequencyInfo.style.display = cutFrequencyEligible ? "" : "none";
     characterSpeedControls.style.display = isVideoPrepMode ? "flex" : "none";
@@ -4190,7 +4292,7 @@ function openStoryboardBuilder(payload = {}) {
     const performancePreset = performancePresetForMode(state.performanceStyle);
     const facialPreset = facialPresetForMode(state.facialPerformance);
     sceneDefaultsPanel.setSummary(state.mode === "image_to_video_prep"
-      ? `${cameraPreset.label || "Camera flow"}${state.videoStyle ? ` · ${videoStylePreset.label}` : ""}${state.temporalWorldEffect ? ` · ${temporalEffectPreset.label}` : ""}${state.fxPreset ? ` · ${storyboardFxPreset(state.fxPreset).label}` : ""} · camera ${storyboardSpeedValue(state.cameraMotionSpeed, 4)}/10${state.projectVideoEngine === "minimax_h3" ? ` · cuts ${storyboardCutFrequencyValue(state.cutFrequency)}/10` : ""} · character ${storyboardSpeedValue(state.characterMotionSpeed, 4)}/10 · ${performancePreset.label || "Performance style"} · ${facialPreset.label || "Facial performance"}${state.globalConsistencyPhrase ? " · consistency phrase" : ""}`
+      ? `${cameraPreset.label || "Camera flow"}${state.videoStyle ? ` · ${videoStylePreset.label}` : ""}${state.temporalWorldEffect ? ` · ${temporalEffectPreset.label}` : ""}${state.fxPreset ? ` · ${storyboardFxPreset(state.fxPreset).label}` : ""} · camera ${storyboardSpeedValue(state.cameraMotionSpeed, 4)}/10 · cuts ${storyboardCutFrequencyValue(state.cutFrequency)}/10 · character ${storyboardSpeedValue(state.characterMotionSpeed, 4)}/10 · ${performancePreset.label || "Performance style"} · ${facialPreset.label || "Facial performance"}${state.globalConsistencyPhrase ? " · consistency phrase" : ""}`
       : `${imageShotPreset.label || "Still shot flow"} · ${imageAestheticPreset.label || "Image aesthetic"} · ${performancePreset.label || "Performance style"} · ${facialPreset.label || "Facial performance"}${state.globalConsistencyPhrase ? " · consistency phrase" : ""}`);
     const beatCount = state.scenes.filter((scene) => String(scene.story_beat || "").trim()).length;
     const sectionCount = state.scenes.filter((scene) => String(scene.lyric_section || "").trim()).length;
@@ -4266,12 +4368,13 @@ function openStoryboardBuilder(payload = {}) {
 
   const refreshCutFrequencyInfo = () => {
     const frequency = storyboardCutFrequencyValue(state.cutFrequency);
+    const engineLabel = state.projectVideoEngine === "minimax_h3" ? "MiniMax" : "LTX";
     cutFrequencyValue.textContent = storyboardCutFrequencyLabel(frequency);
     cutFrequencyInfo.textContent = frequency <= 0
-      ? "MiniMax prompts use one smooth, continuous shot for every segment. Existing prompts are not changed until regenerated."
+      ? `${engineLabel} prompts use one smooth, continuous shot for every segment. Existing prompts are not changed until regenerated.`
       : frequency >= 10
-        ? "Maximum MiniMax editing: each segment cuts at every whole second inside its exact duration. A 5-second segment gets cuts at 1s, 2s, 3s, and 4s."
-        : `MiniMax scales this ${frequency}/10 editing intensity to each segment's exact duration, spacing the resulting CUT TO transitions evenly. Existing prompts are not changed until regenerated.`;
+        ? `Maximum ${engineLabel} editing: each segment requests a new continuity-preserving shot every second. A 5-second segment gets four cuts.`
+        : `${engineLabel} scales this ${frequency}/10 editing intensity to each segment's exact duration. LTX writes the cuts in ordinary language; MiniMax uses its structured CUT TO format. Existing prompts are not changed until regenerated.`;
     refreshSetupPanelSummaries();
   };
 
@@ -4397,15 +4500,15 @@ function openStoryboardBuilder(payload = {}) {
     const preset = storyboardMiniMaxVideoStylePreset(state.videoStyle);
     const exactVerbiage = storyboardMiniMaxVideoStyleVerbiage(state.videoStyle, state.videoStyleCustom);
     videoStyleCustomControls.style.display = state.mode === "image_to_video_prep"
-      && ((state.projectVideoEngine === "minimax_h3"
-        && ["text_to_video", "reference_to_video"].includes(state.miniMaxH3Mode))
-        || state.scenes.some((scene) => storyboardSceneSupportsMiniMaxVideoStyle(scene)))
+      && (state.projectVideoEngine === "ltx"
+        || (state.projectVideoEngine === "minimax_h3" && ["text_to_video", "reference_to_video"].includes(state.miniMaxH3Mode))
+        || state.scenes.some((scene) => storyboardSceneSupportsVideoStyle(scene)))
       && state.videoStyle === "custom"
       ? "flex"
       : "none";
     videoStyleInfo.textContent = exactVerbiage
       ? `Required exact wording in every eligible prompt: ${exactVerbiage}`
-      : "Optional. Choose the governing visual aesthetic for MiniMax scenes that do not use a required start image.";
+      : "Optional. Choose the governing visual aesthetic for eligible video scenes.";
     refreshSetupPanelSummaries();
   };
 
@@ -4413,18 +4516,15 @@ function openStoryboardBuilder(payload = {}) {
     state.temporalBackgroundIntensity = storyboardTemporalIntensity(temporalIntensityInput.value);
     temporalIntensityValue.textContent = `${state.temporalBackgroundIntensity}/10`;
     temporalEffectCustomControls.style.display = state.mode === "image_to_video_prep"
-      && state.projectVideoEngine === "minimax_h3"
       && state.temporalWorldEffect === "custom" ? "flex" : "none";
     temporalEffectOptions.style.display = state.mode === "image_to_video_prep"
-      && state.projectVideoEngine === "minimax_h3"
       && Boolean(state.temporalWorldEffect) ? "flex" : "none";
     temporalProtectedCustomControls.style.display = state.mode === "image_to_video_prep"
-      && state.projectVideoEngine === "minimax_h3"
       && Boolean(state.temporalWorldEffect)
       && state.temporalProtectedCharacters === "custom" ? "flex" : "none";
     const effect = storyboardTemporalWorldEffectForScene({}, state);
     temporalEffectInfo.textContent = effect
-      ? `Hardcoded into every MiniMax video prompt unless a scene overrides it.\n${effect.exact_verbiage}`
+      ? `Required in every video prompt unless a scene overrides it.\n${effect.exact_verbiage}`
       : "Optional. Choose a global temporal/world effect. Existing projects and scenes remain natural-time while this is Off.";
     refreshSetupPanelSummaries();
   };
@@ -4467,7 +4567,7 @@ function openStoryboardBuilder(payload = {}) {
   const createStoryBriefWithGemma = async () => {
     syncStoryLayerFromInputs();
     const authoritativeScript = normalizeStoryboardScriptImportState(state.scriptImport);
-    const progress = createStoryboardProgressWindow("Story Brief Gemma");
+    const progress = createStoryboardProgressWindow(`Story Brief — ${promptRunnerName()}`);
     try {
       progress.set(authoritativeScript.enabled
         ? "Creating a short-film production brief around the exact imported script..."
@@ -4499,7 +4599,7 @@ function openStoryboardBuilder(payload = {}) {
   const createStoryArcWithGemma = async () => {
     syncStoryLayerFromInputs();
     const authoritativeScript = normalizeStoryboardScriptImportState(state.scriptImport);
-    const progress = createStoryboardProgressWindow(authoritativeScript.enabled ? "Short Film Premise" : "Story Arc Gemma");
+    const progress = createStoryboardProgressWindow(`${authoritativeScript.enabled ? "Short Film Premise" : "Story Arc"} — ${promptRunnerName()}`);
     const storyArcSeed = Math.floor(Math.random() * 2147483647);
     const existingStoryArcText = String(userStoryArcInput.value || "").trim();
     const overallStoryIdea = String(overallStoryIdeaInput.value || "").trim();
@@ -4554,7 +4654,10 @@ function openStoryboardBuilder(payload = {}) {
     ...(state.gemmaSettings || {}),
     ...overrides,
     story_layer: normalizeStoryLayer(state.storyLayer),
-    storyboard_payload: storyboardGptPayload(state, [scene]),
+    // A replacement request must not feed the old beat back to the model as
+    // if it were authoritative. Lyrics, mappings, defaults, and references
+    // remain; only the stale generated beat is cleared from this request.
+    storyboard_payload: storyboardGptPayload(state, [{ ...scene, story_beat: "" }]),
     max_new_tokens: state.videoPromptType === "flf" ? 700 : 360,
     temperature: 0.35,
     top_p: 0.90,
@@ -4582,7 +4685,7 @@ function openStoryboardBuilder(payload = {}) {
       scene.flf_start_state = previousEndState.trim();
     }
     try {
-      progress?.set(`${progressLabel || normalized.label || "Scene"}: creating scene story beat...`, progressPercent);
+      progress?.set(`${progressLabel || normalized.label || "Scene"}: creating scene story beat with ${promptRunnerName()}...`, progressPercent);
       const data = await postJson("/vrgdg/storyboard/scene_story_beat", sceneBeatGemmaPayload(scene, {
         unload_after: unloadAfter,
         previous_beat: previousBeat,
@@ -4614,20 +4717,24 @@ function openStoryboardBuilder(payload = {}) {
     }
   };
 
-  const createAllSceneBeatsWithGemma = async ({ overwrite = false } = {}) => {
+  const createAllSceneBeatsWithGemma = async ({ overwrite = false, failedSceneIds = [] } = {}) => {
     syncStoryLayerFromInputs();
     const flfMode = state.videoPromptType === "flf";
-    const scenes = currentRows().filter((scene) => overwrite
+    const failedIds = new Set(failedSceneIds.map((value) => String(value)));
+    const scenes = currentRows().filter((scene) => failedIds.size
+      ? failedIds.has(String(scene.id || ""))
+      : overwrite
       || !String(scene.story_beat || "").trim()
       || (flfMode && [scene.flf_start_state, scene.flf_transformation, scene.flf_end_state, scene.flf_carry_forward].some((value) => !String(value || "").trim())));
     if (!scenes.length) {
       createToast(overwrite ? "No scenes found." : "No scene story beats are missing.");
       return;
     }
-    const progress = createStoryboardProgressWindow(overwrite ? "Replace Scene Beats" : "Create Missing Scene Beats");
+    const progress = createStoryboardProgressWindow(`${overwrite ? "Replace Scene Beats" : "Create Missing Scene Beats"} — ${promptRunnerName()}`);
     let created = 0;
+    const failures = [];
     try {
-      progress.set(`Creating ${scenes.length} scene story beat${scenes.length === 1 ? "" : "s"}...`, 5);
+      progress.set(`${failedIds.size ? "Retrying failed" : "Creating"} ${scenes.length} scene story beat${scenes.length === 1 ? "" : "s"}...`, 5);
       for (let index = 0; index < scenes.length; index += 1) {
         const scene = scenes[index];
         const allIndex = state.scenes.findIndex((item) => item.id === scene.id);
@@ -4637,25 +4744,34 @@ function openStoryboardBuilder(payload = {}) {
         const previousCarryForward = allIndex > 0 ? String(state.scenes[allIndex - 1]?.flf_carry_forward || "") : "";
         const nextLyrics = allIndex >= 0 && allIndex < state.scenes.length - 1 ? String(state.scenes[allIndex + 1]?.lyrics || "") : "";
         const base = 8 + Math.round((index / Math.max(1, scenes.length)) * 84);
-        await createSceneBeatWithGemma(scene, {
-          quiet: true,
-          unloadAfter: index === scenes.length - 1,
-          previousBeat,
-          previousLyrics,
-          previousEndState,
-          previousCarryForward,
-          nextLyrics,
-          progress,
-          progressPercent: base,
-          progressLabel: `Scene Beat ${index + 1}/${scenes.length}: ${scene.label || `Scene ${scene.scene_number || index + 1}`}`,
-        });
-        created += 1;
+        try {
+          await createSceneBeatWithGemma(scene, {
+            quiet: true,
+            unloadAfter: index === scenes.length - 1,
+            previousBeat,
+            previousLyrics,
+            previousEndState,
+            previousCarryForward,
+            nextLyrics,
+            progress,
+            progressPercent: base,
+            progressLabel: `Scene Beat ${index + 1}/${scenes.length}: ${scene.label || `Scene ${scene.scene_number || index + 1}`}`,
+          });
+          created += 1;
+        } catch (error) {
+          if (!isRecoverableStoryboardBatchError(error)) throw error;
+          failures.push({ scene, error: String(error?.message || error) });
+          progress.set(`Scene Beat ${index + 1}/${scenes.length} skipped. Continuing with the remaining scenes...`, base);
+        }
       }
       progress.set("Saving story beats...", 96);
       await saveStoryboard();
-      progress.set(`Scene beats complete.\nCreated ${created} story beat${created === 1 ? "" : "s"}.`, 100);
+      progress.set(`Scene beats complete.\nCreated ${created} story beat${created === 1 ? "" : "s"}.${failures.length ? ` ${failures.length} scene${failures.length === 1 ? " was" : "s were"} skipped.` : ""}`, 100);
       progress.close(1600);
-      createToast(`Created ${created} scene story beat${created === 1 ? "" : "s"}.`);
+      createToast(`Created ${created} scene story beat${created === 1 ? "" : "s"}${failures.length ? ` with ${failures.length} skipped scene${failures.length === 1 ? "" : "s"}` : ""}.`, Boolean(failures.length));
+      if (failures.length) showStoryboardBatchFailures(failures, (items) => createAllSceneBeatsWithGemma({
+        failedSceneIds: items.map((item) => item.scene.id),
+      }));
     } catch (error) {
       progress.set(`Scene beats stopped after ${created}/${scenes.length}:\n${String(error?.message || error)}`, 100);
       createToast(`Scene beats stopped after ${created}/${scenes.length}:\n${String(error?.message || error)}`, true);
@@ -5608,7 +5724,7 @@ function openStoryboardBuilder(payload = {}) {
     }
     const value = String(state.videoStyle || "").trim();
     if (!value) {
-      createToast("Choose a MiniMax video style first.");
+      createToast("Choose a video style first.");
       return;
     }
     if (value === "custom" && !String(state.videoStyleCustom || "").trim()) {
@@ -5617,7 +5733,7 @@ function openStoryboardBuilder(payload = {}) {
     }
     let changed = 0;
     state.scenes.forEach((scene) => {
-      if (!storyboardSceneSupportsMiniMaxVideoStyle(scene)) return;
+      if (!storyboardSceneSupportsVideoStyle(scene)) return;
       if (!overwrite && String(scene.video_style || "").trim()) return;
       scene.video_style = value;
       scene.video_style_custom = value === "custom" ? String(state.videoStyleCustom || "").trim() : "";
@@ -5625,9 +5741,9 @@ function openStoryboardBuilder(payload = {}) {
     });
     renderTable();
     if (overwrite) {
-      createToast(changed ? `Video style replaced ${changed} eligible scene${changed === 1 ? "" : "s"}.` : "No eligible MiniMax scene styles were changed.");
+      createToast(changed ? `Video style replaced ${changed} eligible scene${changed === 1 ? "" : "s"}.` : "No eligible video scene styles were changed.");
     } else {
-      createToast(changed ? `Video style filled ${changed} eligible scene${changed === 1 ? "" : "s"}.` : "No blank eligible MiniMax scene styles needed filling.");
+      createToast(changed ? `Video style filled ${changed} eligible scene${changed === 1 ? "" : "s"}.` : "No blank eligible video scene styles needed filling.");
     }
   };
 
@@ -6283,7 +6399,7 @@ function openStoryboardBuilder(payload = {}) {
       const imageToVideoType = type === "i2v" || type === "image_to_video";
       const textToVideoType = type === "t2v" || type === "text_to_video";
       const referenceToVideoType = type === "rtv" || type === "reference_to_video";
-      const videoStyleType = miniMaxProject && (textToVideoType || referenceToVideoType);
+      const videoStyleType = !miniMaxProject || textToVideoType || referenceToVideoType;
       const options = isImagePrepMode ? IMAGE_SHOT_TYPES : (imageToVideoType ? VIDEO_SHOT_TYPES : Array.from(new Set([...IMAGE_SHOT_TYPES, ...VIDEO_SHOT_TYPES])));
       const current = shot.value || scene.shot_type || "";
       shotPreset.replaceChildren();
@@ -6312,8 +6428,8 @@ function openStoryboardBuilder(payload = {}) {
       imagePathField.style.display = isVideoPrepMode && !textToVideoType && !referenceToVideoType ? "flex" : "none";
       videoStyleField.style.display = isVideoPrepMode && videoStyleType ? "flex" : "none";
       videoStyleCustomField.style.display = isVideoPrepMode && videoStyleType && videoStyle.value === "custom" ? "flex" : "none";
-      temporalEffectField.style.display = isVideoPrepMode && miniMaxProject ? "flex" : "none";
-      temporalEffectCustomField.style.display = isVideoPrepMode && miniMaxProject && temporalEffectOverride.value === "custom" ? "flex" : "none";
+      temporalEffectField.style.display = isVideoPrepMode ? "flex" : "none";
+      temporalEffectCustomField.style.display = isVideoPrepMode && temporalEffectOverride.value === "custom" ? "flex" : "none";
       videoPrompt.style.display = isVideoPrepMode ? "" : "none";
       videoPrompt.placeholder = textToVideoType
         ? "Full text-to-video prompt..."
@@ -6870,7 +6986,9 @@ function openStoryboardBuilder(payload = {}) {
         project_folder: state.projectFolder,
         storyboard: slimStoryboardForRequest(state),
       });
-      syncStoryLayerFromInputs({ notify: true });
+      // The Storyboard is already saved. Do not trigger a redundant parent
+      // Video Builder session save from this completed save action.
+      syncStoryLayerFromInputs({ notify: false });
       createToast(`Storyboard saved:\n${data.storyboard?.path || ""}`);
     } catch (error) {
       createToast(String(error?.message || error), true);
@@ -6897,13 +7015,6 @@ function openStoryboardBuilder(payload = {}) {
         project_folder: state.projectFolder,
         storyboard: slimStoryboardForRequest(state),
       });
-      if (state.onPromptsExported) {
-        state.onPromptsExported({
-          ...storyboardDefaultsPayload(),
-          story_layer: normalizeStoryLayer(state.storyLayer),
-          scenes: state.scenes.map((scene, index) => slimSceneForRequest(scene, index)),
-        });
-      }
       createToast(`Exported ${data.scene_count || 0} scene prompt rows to files only. The Video Builder timeline was not created or replaced.\n\nText:\n${data.t2i_prompts_path}\n${data.i2v_prompts_path}\nJSON:\n${data.t2i_prompts_json_path || ""}\n${data.video_prompts_json_path || ""}`);
     } catch (error) {
       createToast(String(error?.message || error), true);
@@ -6935,6 +7046,221 @@ function openStoryboardBuilder(payload = {}) {
     } catch (error) {
       createToast(`Could not copy scene GPT JSON:\n${String(error?.message || error)}`, true);
     }
+  }
+
+  function showStoryLayerGptHandoff(payloadJson, chatWindow = null) {
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100014;background:rgba(0,0,0,.68);display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(900px,calc(100vw - 48px));max-height:calc(100vh - 48px);border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 22px 80px rgba(0,0,0,.62);display:flex;flex-direction:column;overflow:hidden;";
+    const header = document.createElement("div");
+    header.style.cssText = "display:flex;align-items:flex-start;justify-content:space-between;gap:12px;background:#083f4f;border-bottom:1px solid #155e75;padding:13px 15px;";
+    const title = document.createElement("div");
+    title.innerHTML = "<div style=\"font-size:17px;font-weight:900;color:#cffafe;\">GPT Story JSON</div><div style=\"font-size:12px;color:#cbd5e1;margin-top:3px;\">Attach or paste the JSON, then send an explicit request to process it.</div>";
+    const close = makeButton("Close");
+    header.append(title, close);
+    const body = document.createElement("div");
+    body.style.cssText = "padding:14px;display:flex;flex-direction:column;gap:12px;overflow:auto;";
+    const status = document.createElement("div");
+    status.style.cssText = "font-size:12px;color:#94a3b8;min-height:18px;";
+    const text = document.createElement("textarea");
+    text.value = payloadJson;
+    text.spellcheck = false;
+    text.style.cssText = "min-height:360px;resize:vertical;border:1px solid #334155;border-radius:7px;background:#020617;color:#f8fafc;padding:10px;font-size:12px;font-family:monospace;line-height:1.45;white-space:pre;overflow:auto;";
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;";
+    const copy = makeButton("Copy JSON", "primary");
+    const copyRequest = makeButton("Copy Request");
+    const openChat = makeButton("Open ChatGPT", "primary");
+    actions.append(copy, copyRequest, openChat, close);
+    body.append(status, text, actions);
+    box.append(header, body);
+    backdrop.append(box);
+    document.body.append(backdrop);
+    const closeModal = () => backdrop.remove();
+    const copyJson = async () => {
+      try {
+        await copyTextToClipboard(text.value);
+        status.textContent = "Copied JSON to clipboard. Paste it into ChatGPT.";
+        status.style.color = "#67e8f9";
+      } catch (error) {
+        status.textContent = "Clipboard copy was blocked. Select the JSON above and copy it manually.";
+        status.style.color = "#fbbf24";
+      }
+    };
+    const copyRequestText = async () => {
+      try {
+        await copyTextToClipboard("Process the attached story-layer planning JSON now. Do not ask what I want done. Use its task_instruction and project_inputs, then return only the final JSON with overall_story_idea, user_story_arc, and song_story_brief.");
+        status.textContent = "Copied the request text. Paste it into ChatGPT after attaching the JSON.";
+        status.style.color = "#67e8f9";
+      } catch (error) {
+        status.textContent = "Clipboard copy was blocked. Manually type: Process the attached story-layer planning JSON now and return the final JSON.";
+        status.style.color = "#fbbf24";
+      }
+    };
+    close.onclick = closeModal;
+    copy.onclick = copyJson;
+    copyRequest.onclick = copyRequestText;
+    openChat.onclick = () => {
+      if (chatWindow && !chatWindow.closed) chatWindow.focus();
+      else window.open(STORY_LAYER_CHATGPT_URL, "_blank", "noopener,noreferrer");
+    };
+    backdrop.addEventListener("pointerdown", (event) => {
+      if (event.target === backdrop) closeModal();
+    });
+    text.focus();
+    text.select();
+  }
+
+  async function copyStoryLayerForGpt() {
+    const progress = createStoryboardProgressWindow("GPT Story Preparation");
+    try {
+      progress.set("Preparing Auto Mode story context...", 12);
+      syncStoryLayerFromInputs();
+      if (state.onPrepareStoryContext) {
+        const prepared = await state.onPrepareStoryContext({
+          setProgress: (message, percent) => progress.set(String(message || "Preparing story context..."), Number(percent || 50)),
+        });
+        if (prepared?.reference_builder || prepared?.referenceBuilder) {
+          state.referenceBuilder = normalizeReferenceBuilderCatalog(prepared.reference_builder || prepared.referenceBuilder);
+        }
+        if (prepared?.source_lyrics || prepared?.sourceLyrics) {
+          state.lineMappingLyrics = String(prepared.source_lyrics || prepared.sourceLyrics || "");
+        }
+      }
+      progress.set("Packaging lyrics, descriptions, presets, and story settings...", 82);
+      const payload = storyLayerGptPayload(state);
+      const payloadText = JSON.stringify(payload, null, 2);
+      let clipboardCopied = true;
+      try {
+        await copyTextToClipboard(payloadText);
+      } catch (error) {
+        clipboardCopied = false;
+      }
+      const lyricCount = payload.project_inputs.ordered_lyrics.length;
+      const sceneCount = payload.project_inputs.scenes.length;
+      const sourceLyricsPresent = Boolean(payload.project_inputs.source_lyrics);
+      const lyricStatus = lyricCount ? `${lyricCount} lyric entries` : (sourceLyricsPresent ? "full pasted lyrics" : "no lyrics");
+      progress.set("Story context ready. JSON review window opened.", 100);
+      progress.close(1200);
+      showStoryLayerGptHandoff(payloadText);
+      createToast(`${clipboardCopied ? "Copied" : "Prepared"} Story Layer JSON (${sceneCount} scenes, ${lyricStatus}). Use Open ChatGPT in the JSON window.`);
+    } catch (error) {
+      progress.set(`Story preparation failed:\n${String(error?.message || error)}`, 100);
+      progress.close(5000);
+      createToast(`Could not copy Story Layer GPT JSON:\n${String(error?.message || error)}`, true);
+    }
+  }
+
+  function parseStoryLayerImportJson(rawText) {
+    const data = JSON.parse(imagePromptImportJsonText(rawText));
+    const source = data?.story_layer && typeof data.story_layer === "object"
+      ? { ...data, ...data.story_layer }
+      : data;
+    if (!source || typeof source !== "object" || Array.isArray(source)) {
+      throw new Error("Story JSON must be an object.");
+    }
+    const stringifyStoryValue = (raw) => {
+      if (raw === undefined || raw === null) return "";
+      if (typeof raw === "string" || typeof raw === "number" || typeof raw === "boolean") return String(raw).trim();
+      if (Array.isArray(raw)) return raw.map(stringifyStoryValue).filter(Boolean).join("\n");
+      if (typeof raw === "object") {
+        return Object.entries(raw)
+          .map(([key, value]) => {
+            const text = stringifyStoryValue(value);
+            return text ? `${key}:\n${text}` : "";
+          })
+          .filter(Boolean)
+          .join("\n\n");
+      }
+      return "";
+    };
+    const value = (...keys) => {
+      for (const key of keys) {
+        if (source[key] !== undefined && source[key] !== null) return stringifyStoryValue(source[key]);
+      }
+      return "";
+    };
+    const result = {
+      overall_story_idea: value("overall_story_idea", "overallStoryIdea", "story_idea", "storyIdea"),
+      user_story_arc: value("user_story_arc", "userStoryArc", "story_arc", "storyArc"),
+      song_story_brief: value("song_story_brief", "songStoryBrief", "story_brief", "storyBrief", "brief"),
+    };
+    if (!result.overall_story_idea && !result.user_story_arc && !result.song_story_brief) {
+      throw new Error("No overall_story_idea, user_story_arc/story_arc, or song_story_brief/story_brief was found.");
+    }
+    return result;
+  }
+
+  function openImportStoryJsonModal() {
+    const importBackdrop = document.createElement("div");
+    importBackdrop.style.cssText = "position:fixed;inset:0;z-index:100013;background:rgba(0,0,0,.68);display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;";
+    const importBox = document.createElement("div");
+    importBox.style.cssText = "width:min(840px,calc(100vw - 48px));max-height:calc(100vh - 48px);border:1px solid #155e75;border-radius:10px;background:#111827;color:#f8fafc;box-shadow:0 24px 80px rgba(0,0,0,.62);display:flex;flex-direction:column;overflow:hidden;";
+    const importHeader = document.createElement("div");
+    importHeader.style.cssText = "display:flex;align-items:flex-start;justify-content:space-between;gap:12px;background:#083f4f;border-bottom:1px solid #155e75;padding:13px 15px;";
+    const importTitle = document.createElement("div");
+    importTitle.innerHTML = "<div style=\"font-size:17px;font-weight:900;color:#cffafe;\">Import Story JSON</div><div style=\"font-size:12px;color:#cbd5e1;margin-top:3px;\">Paste the GPT response or load a .json file. This fills the overall idea, story arc, and story brief.</div>";
+    const importClose = makeButton("Close");
+    importHeader.append(importTitle, importClose);
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = ".json,application/json,text/plain";
+    const input = document.createElement("textarea");
+    input.placeholder = '{\n  "overall_story_idea": "...",\n  "user_story_arc": "...",\n  "song_story_brief": "..."\n}';
+    input.spellcheck = false;
+    input.style.cssText = "min-height:300px;resize:vertical;border:1px solid #334155;border-radius:7px;background:#020617;color:#f8fafc;padding:10px;font-size:12px;font-family:monospace;line-height:1.45;";
+    const status = document.createElement("div");
+    status.style.cssText = "min-height:18px;font-size:12px;color:#94a3b8;";
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;";
+    const cancel = makeButton("Cancel");
+    const apply = makeButton("Import Story", "purple");
+    actions.append(cancel, apply);
+    const body = document.createElement("div");
+    body.style.cssText = "padding:14px;display:flex;flex-direction:column;gap:10px;overflow:auto;";
+    body.append(fileInput, input, status, actions);
+    importBox.append(importHeader, body);
+    importBackdrop.append(importBox);
+    document.body.append(importBackdrop);
+    const closeImport = () => importBackdrop.remove();
+    importClose.onclick = closeImport;
+    cancel.onclick = closeImport;
+    importBackdrop.addEventListener("pointerdown", (event) => {
+      if (event.target === importBackdrop) closeImport();
+    });
+    fileInput.onchange = async () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+      input.value = await file.text();
+      status.textContent = `Loaded ${file.name}. Review it, then click Import Story.`;
+    };
+    apply.onclick = () => {
+      try {
+        const imported = parseStoryLayerImportJson(input.value);
+        if (imported.overall_story_idea) {
+          state.storyLayer.overall_story_idea = imported.overall_story_idea;
+          overallStoryIdeaInput.value = imported.overall_story_idea;
+        }
+        if (imported.user_story_arc) {
+          state.storyLayer.user_story_arc = imported.user_story_arc;
+          userStoryArcInput.value = imported.user_story_arc;
+        }
+        if (imported.song_story_brief) {
+          state.storyLayer.song_story_brief = imported.song_story_brief;
+          songStoryBriefInput.value = imported.song_story_brief;
+        }
+        syncStoryLayerFromInputs({ notify: true });
+        status.textContent = "Story Layer fields updated.";
+        status.style.color = "#67e8f9";
+        createToast("Imported story idea, story arc, and story brief.");
+        closeImport();
+      } catch (error) {
+        status.textContent = String(error?.message || error);
+        status.style.color = "#fca5a5";
+      }
+    };
+    input.focus();
   }
 
   function imagePromptImportJsonText(rawText) {
@@ -7316,7 +7642,69 @@ function openStoryboardBuilder(payload = {}) {
     requestAnimationFrame(() => (missingCount ? onlyMissing : redoAll).focus());
   });
 
-  async function createAllPromptsWithGemma({ onlyMissing = false } = {}) {
+  function isRecoverableStoryboardBatchError(error) {
+    const message = String(error?.message || error || "").toLowerCase();
+    return [
+      "did not return valid json shot descriptions",
+      "returned 0 shot descriptions",
+      "returned an invalid number of shot descriptions",
+      "returned an empty",
+      "request timed out",
+      "backend may still be processing",
+      "repeated/thought",
+      "unfilled template",
+      "placeholder",
+    ].some((phrase) => message.includes(phrase));
+  }
+
+  function showStoryboardBatchFailures(failures, retryHandler) {
+    const items = Array.isArray(failures) ? failures : [];
+    if (!items.length) return;
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100020;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:18px;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(980px,calc(100vw - 36px));max-height:calc(100vh - 36px);overflow:auto;border:1px solid #991b1b;border-radius:10px;background:#111827;color:#f8fafc;box-shadow:0 22px 80px rgba(0,0,0,.65);padding:16px;box-sizing:border-box;";
+    const title = document.createElement("div");
+    title.innerHTML = `<div style="font-size:17px;font-weight:900;color:#fecaca;">Storyboard skipped ${items.length} scene${items.length === 1 ? "" : "s"}</div><div style="font-size:12px;color:#cbd5e1;margin-top:5px;">Successful scenes were saved. Only these scenes will be retried.</div>`;
+    const list = document.createElement("div");
+    list.style.cssText = "display:flex;flex-direction:column;gap:10px;margin-top:14px;";
+    items.forEach((item) => {
+      const card = document.createElement("details");
+      card.open = true;
+      card.style.cssText = "border:1px solid #7f1d1d;border-radius:7px;background:#1f0808;padding:9px;";
+      const summary = document.createElement("summary");
+      summary.style.cssText = "cursor:pointer;font-weight:900;color:#fca5a5;";
+      summary.textContent = `${item.scene.label || `Scene ${item.scene.scene_number || "?"}`}: ${item.error}`;
+      const raw = document.createElement("pre");
+      raw.style.cssText = "white-space:pre-wrap;word-break:break-word;max-height:220px;overflow:auto;margin:9px 0 0;color:#fecaca;font-size:11px;line-height:1.4;";
+      raw.textContent = item.error;
+      card.append(summary, raw);
+      list.append(card);
+    });
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:flex;justify-content:flex-end;gap:8px;margin-top:16px;";
+    const close = makeButton("Close");
+    const retry = makeButton(`Retry ${items.length} Failed Scene${items.length === 1 ? "" : "s"}`, "primary");
+    retry.onclick = async () => {
+      retry.disabled = true;
+      retry.textContent = "Retrying...";
+      try {
+        backdrop.remove();
+        await retryHandler(items);
+      } catch (error) {
+        createToast(String(error?.message || error), true);
+        retry.disabled = false;
+        retry.textContent = `Retry ${items.length} Failed Scene${items.length === 1 ? "" : "s"}`;
+      }
+    };
+    close.onclick = () => backdrop.remove();
+    actions.append(close, retry);
+    box.append(title, list, actions);
+    backdrop.append(box);
+    document.body.append(backdrop);
+  }
+
+  async function createAllPromptsWithGemma({ onlyMissing = false, failedSceneIds = [] } = {}) {
     const visibleScenes = currentRows();
     if (!visibleScenes.length) {
       createToast("No storyboard scenes found.", true);
@@ -7325,7 +7713,10 @@ function openStoryboardBuilder(payload = {}) {
     const videoMode = state.mode === "image_to_video_prep";
     const promptKind = videoMode ? "video" : "image";
     const promptField = videoMode ? "video_prompt" : "image_prompt";
-    const scenes = onlyMissing
+    const failedIds = new Set(failedSceneIds.map((value) => String(value)));
+    const scenes = failedIds.size
+      ? visibleScenes.filter((scene) => failedIds.has(String(scene.id || "")))
+      : onlyMissing
       ? visibleScenes.filter((scene) => !String(scene[promptField] || "").trim())
       : visibleScenes;
     if (!scenes.length) {
@@ -7338,23 +7729,35 @@ function openStoryboardBuilder(payload = {}) {
     const genericName = promptRunnerGenericName();
     const progress = createStoryboardProgressWindow(`Storyboard ${runnerName} All`);
     let created = 0;
+    const failures = [];
     try {
       const keepLoaded = Boolean(keepGemmaLoadedInput.checked);
-      progress.set(`Starting Storyboard ${runnerName} All...\nMode: ${videoMode ? "Video Prep" : "Image Prep"}\nScope: ${onlyMissing ? `only missing (${scenes.length} of ${visibleScenes.length})` : `redo all (${scenes.length})`}\nKeep local LLM loaded: ${keepLoaded ? "yes" : "no"}`, 5);
+      progress.set(`${failedIds.size ? "Retrying failed Storyboard scenes" : `Starting Storyboard ${runnerName} All`}...\nMode: ${videoMode ? "Video Prep" : "Image Prep"}\nScope: ${failedIds.size ? `failed only (${scenes.length})` : onlyMissing ? `only missing (${scenes.length} of ${visibleScenes.length})` : `redo all (${scenes.length})`}\nKeep local LLM loaded: ${keepLoaded ? "yes" : "no"}`, 5);
       for (let index = 0; index < scenes.length; index += 1) {
         gemmaAllButton.textContent = `${runnerName} ${index + 1}/${scenes.length}`;
         const unloadAfter = keepLoaded ? index === scenes.length - 1 : true;
         const base = 8 + Math.round((index / Math.max(1, scenes.length)) * 84);
         const label = `${runnerName} All ${index + 1}/${scenes.length}: ${scenes[index].label || `Scene ${scenes[index].scene_number || index + 1}`}`;
-        progress.set(`${label}\nCreating storyboard ${promptKind} prompt...`, base);
-        await createScenePromptForActiveMode(scenes[index], { quiet: true, unloadAfter, progress, progressPercent: base, progressLabel: label });
-        created += 1;
+        try {
+          progress.set(`${label}\nCreating storyboard ${promptKind} prompt...`, base);
+          await createScenePromptForActiveMode(scenes[index], { quiet: true, unloadAfter, progress, progressPercent: base, progressLabel: label });
+          created += 1;
+        } catch (error) {
+          if (!isRecoverableStoryboardBatchError(error)) throw error;
+          failures.push({ scene: scenes[index], error: String(error?.message || error) });
+          progress.set(`${label} skipped. Continuing with the remaining scenes...`, base);
+        }
       }
       progress.set("Saving storyboard prompts...", 96);
       await saveStoryboard();
-      progress.set(`${runnerName} All complete.\nCreated ${created} storyboard ${promptKind} prompt${created === 1 ? "" : "s"}${onlyMissing ? "; existing prompts were preserved" : ""}.`, 100);
+      progress.set(`${runnerName} All complete.\nCreated ${created} storyboard ${promptKind} prompt${created === 1 ? "" : "s"}${failures.length ? `. ${failures.length} scene${failures.length === 1 ? " was" : "s were"} skipped` : ""}${onlyMissing ? "; existing prompts were preserved" : ""}.`, 100);
       progress.close(1800);
-      createToast(`${genericName} created ${created} storyboard ${promptKind} prompt${created === 1 ? "" : "s"}${onlyMissing ? "; existing prompts were preserved" : ""}.`);
+      createToast(`${genericName} created ${created} storyboard ${promptKind} prompt${created === 1 ? "" : "s"}${failures.length ? ` with ${failures.length} skipped scene${failures.length === 1 ? "" : "s"}` : ""}${onlyMissing ? "; existing prompts were preserved" : ""}.`, Boolean(failures.length));
+      if (failures.length) {
+        showStoryboardBatchFailures(failures, (items) => createAllPromptsWithGemma({
+          failedSceneIds: items.map((item) => item.scene.id),
+        }));
+      }
     } catch (error) {
       if (created > 0) {
         progress.set(`Saving ${created} completed prompt${created === 1 ? "" : "s"} before stopping...`, 96);
@@ -7530,16 +7933,17 @@ function openStoryboardBuilder(payload = {}) {
   cutFrequencyInput.addEventListener("change", notifyStoryboardDefaultsChanged);
   cutFrequencyHint.onclick = () => {
     window.alert([
-      "Cut Frequency controls MiniMax H3 editing inside each timeline segment.",
+      "Cut Frequency controls editing inside each timeline segment.",
       "",
       "0: one smooth continuous take with no cuts.",
       "1-3: occasional cuts, scaled to the segment's exact duration.",
       "4-6: a moderate number of evenly spaced cuts.",
       "7-9: frequent cuts with short coherent coverage shots.",
-      "10: maximum frequency — CUT TO a new continuity-preserving angle every second.",
+      "10: maximum frequency — request a new continuity-preserving angle every second.",
       "",
       "Example: a 5-second segment at 10 starts with shot 1, then cuts at 1s, 2s, 3s, and 4s.",
-      "Changing this setting affects newly generated MiniMax prompts; it does not rewrite existing prompts automatically.",
+      "LTX writes cuts in ordinary language such as 'then cut to'; MiniMax keeps its structured CUT TO format.",
+      "Changing this setting affects newly generated prompts; it does not rewrite existing prompts automatically.",
     ].join("\n"));
   };
   cameraFlowApply.onclick = () => applyCameraFlow({ overwrite: false });
@@ -7594,6 +7998,8 @@ function openStoryboardBuilder(payload = {}) {
   };
   gptButton.onclick = copyStoryboardForGpt;
   importImagePromptsButton.onclick = openImportImagePromptsFromGptModal;
+  gptStoryButton.onclick = copyStoryLayerForGpt;
+  importStoryJsonButton.onclick = openImportStoryJsonModal;
   gemmaAllButton.onclick = startAllPromptsWithGemma;
   clearPromptsButton.onclick = clearAllStoryboardPrompts;
   clearStoryBeatsButton.onclick = clearAllStoryboardStoryBeats;

@@ -30,6 +30,7 @@ _VRGDG_WORKFLOW_RUNNER_ROUTES_REGISTERED = False
 _MAX_LORA_SLOTS = 20
 _NONE_LORA = "[none]"
 _REQUIRED_LTX_MSR_LORA = "licon\\LTX-2.3-Licon-MSR-V1.safetensors"
+_REQUIRED_LTX25_MSR_LORA = "LTX-2.5-Licon-MSR-V1.safetensors"
 _REQUIRED_LTX_INGREDIENTS_LORA = "ltx-2.3-22b-ic-lora-ingredients-0.9.safetensors"
 _REQUIRED_LTX_ID_LORA = "lora_weights.safetensors"
 _MIN_LTX_INGREDIENTS_FRAMES = 121
@@ -208,6 +209,42 @@ def _minimax_h3_api_template_path():
     )
 
 
+def _rtv_25_api_template_path():
+    return os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "Workflows",
+        "UsedForUIDoNotTouch",
+        "SingleRef2VidForUI_LTX25_API.json",
+    )
+
+
+def _t2v_25_api_template_path():
+    return os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "Workflows",
+        "UsedForUIDoNotTouch",
+        "video_ltx2_5_t2v_bult_In_Audio_API.json",
+    )
+
+
+def _minimax_h3_2pass_api_template_path():
+    return os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "Workflows",
+        "UsedForUIDoNotTouch",
+        "minimax_ref2video_2pass_audio_driven_api.json",
+    )
+
+
+def _minimax_h3_3pass_api_template_path():
+    return os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "Workflows",
+        "UsedForUIDoNotTouch",
+        "minimax_ref2video_3pass_audio_driven_api.json",
+    )
+
+
 def _minimax_h3_built_in_audio_api_template_path():
     return os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
@@ -336,6 +373,7 @@ def _manual_model_folder_choices(category):
         "text_encoders": {".safetensors", ".ckpt", ".pt", ".bin"},
         "vae": {".safetensors", ".ckpt", ".pt", ".bin"},
         "upscale_models": {".safetensors", ".ckpt", ".pt", ".bin"},
+        "latent_upscale_models": {".safetensors", ".ckpt", ".pt", ".bin"},
     }.get(category, {".safetensors", ".ckpt", ".pt", ".bin", ".gguf"})
     roots = []
     try:
@@ -433,6 +471,21 @@ def _load_workflow_template(path=None):
     if not isinstance(workflow, dict) or not isinstance(workflow.get("nodes"), list):
         raise ValueError("Workflow template is not a valid ComfyUI workflow JSON.")
     return workflow_path, workflow
+
+
+def _ltx25_diffusion_loader_node(payload):
+    return {
+        "inputs": {
+            "model_name": str(payload.get("diffusion_model_name") or payload.get("model_name") or ""),
+            "weight_dtype": "default",
+            "compute_dtype": "default",
+            "patch_cublaslinear": False,
+            "sage_attention": "auto" if _bool_payload(payload, "use_sage_attention", False) else "disabled",
+            "enable_fp16_accumulation": _bool_payload(payload, "enable_fp16_accumulation", False),
+        },
+        "class_type": "DiffusionModelLoaderKJ",
+        "_meta": {"title": "LTX 2.5 Diffusion Model Loader"},
+    }
 
 
 def _load_api_template(path):
@@ -1642,10 +1695,27 @@ def _patch_i2v_api_prompt(prompt, payload):
     height = _int_payload(payload, "height", 1080, 64, 4096)
     seed = _int_payload(payload, "seed", 1, 0, 0xFFFFFFFFFFFFFFFF)
 
-    _patch_ltx_video_model_loader(prompt, payload)
+    is_ltx25 = str(payload.get("ltx_version", "2.3") or "2.3").strip() == "2.5"
+    if is_ltx25:
+        prompt["938"] = _ltx25_diffusion_loader_node(payload)
+        prompt["937"]["inputs"]["model"] = ["938", 0]
+        prompt.pop("939", None)
+        prompt.pop("271:215", None)
+        prompt["271:216"] = {
+            "inputs": {
+                "clip_name": str(payload.get("clip_name1", "") or ""),
+                "type": "ltxv",
+                "device": "default",
+            },
+            "class_type": "CLIPLoader",
+            "_meta": {"title": "Load CLIP"},
+        }
+    else:
+        _patch_ltx_video_model_loader(prompt, payload)
     _set_api_input(prompt, "271:256", "vae_name", str(payload.get("vae_name", "") or ""))
-    _set_api_input(prompt, "271:216", "clip_name1", str(payload.get("clip_name1", "") or ""))
-    _set_api_input(prompt, "271:216", "clip_name2", str(payload.get("clip_name2", "") or ""))
+    if not is_ltx25:
+        _set_api_input(prompt, "271:216", "clip_name1", str(payload.get("clip_name1", "") or ""))
+        _set_api_input(prompt, "271:216", "clip_name2", str(payload.get("clip_name2", "") or ""))
     _set_api_input(prompt, "271:211", "model_name", str(payload.get("upscale_model_name", "") or ""))
     _set_api_input(prompt, "271:254", "vae_name", str(payload.get("audio_vae_name", "") or ""))
 
@@ -1765,13 +1835,15 @@ def _rtv_reference_strength(value):
     return "auto - based on subject count"
 
 
-def _rtv_background_mode(value, has_background):
+def _rtv_background_mode(value, has_background, is_ltx25=False):
     text = str(value or "").strip().lower()
+    if is_ltx25 and (text in {"no", "false", "off", "no_background"} or "no background" in text):
+        return "no_background"
     if "neutral" in text or "placeholder" in text:
         return "neutral_placeholder_wip"
     if has_background:
         return "use_uploaded_background"
-    return "neutral_placeholder_wip"
+    return "no_background" if is_ltx25 else "neutral_placeholder_wip"
 
 
 def _srt_time_to_seconds(value):
@@ -1871,20 +1943,30 @@ def _patch_rtv_api_prompt(prompt, payload):
     tail_loss_frames = _int_payload(payload, "tail_loss_frames", 25, 0, 10000)
     pre_frames = _int_payload(payload, "pre_frames", 50, 0, 10000)
 
-    _patch_ltx_video_model_loader(prompt, payload)
+    is_ltx25 = str(payload.get("ltx_version", "2.3") or "2.3").strip() == "2.5"
+    if is_ltx25:
+        prompt["956"] = _ltx25_diffusion_loader_node(payload)
+    else:
+        _patch_ltx_video_model_loader(prompt, payload)
     _set_api_input(prompt, "271:256", "vae_name", str(payload.get("vae_name", "") or ""))
-    _set_api_input(prompt, "271:216", "clip_name1", str(payload.get("clip_name1", "") or ""))
-    _set_api_input(prompt, "271:216", "clip_name2", str(payload.get("clip_name2", "") or ""))
+    if is_ltx25:
+        _set_api_input(prompt, "271:216", "clip_name", str(payload.get("clip_name1", "") or ""))
+    else:
+        _set_api_input(prompt, "271:216", "clip_name1", str(payload.get("clip_name1", "") or ""))
+        _set_api_input(prompt, "271:216", "clip_name2", str(payload.get("clip_name2", "") or ""))
     _set_optional_api_input(prompt, "271:211", "model_name", str(payload.get("upscale_model_name", "") or ""))
     _set_api_input(prompt, "271:254", "vae_name", str(payload.get("audio_vae_name", "") or ""))
 
     _set_api_input(prompt, "736:424", "value", fps)
-    _set_api_input(prompt, "736:425", "value", width)
-    _set_api_input(prompt, "736:426", "value", height)
+    stage1_width = max(64, int(round((width / 2) / 32.0)) * 32) if is_ltx25 else width
+    stage1_height = max(64, int(round((height / 2) / 32.0)) * 32) if is_ltx25 else height
+    _set_api_input(prompt, "736:425", "value", stage1_width)
+    _set_api_input(prompt, "736:426", "value", stage1_height)
     _set_api_input(prompt, "736:449", "value", seed)
     _set_api_input(prompt, "736:551", "value", 0)
 
-    msr_lora_name = _clean_msr_lora_name(payload.get("msr_lora_name", _REQUIRED_LTX_MSR_LORA))
+    msr_default = _REQUIRED_LTX25_MSR_LORA if is_ltx25 else _REQUIRED_LTX_MSR_LORA
+    msr_lora_name = _clean_msr_lora_name(payload.get("msr_lora_name", msr_default))
     use_user_loras = _bool_payload(payload, "use_custom_loras", False)
     user_lora_count = _int_payload(payload, "lora_count", 0, 0, _MAX_LORA_SLOTS)
     _set_api_input(prompt, "937", "use_custom_loras", use_user_loras)
@@ -1893,7 +1975,10 @@ def _patch_rtv_api_prompt(prompt, payload):
         if use_user_loras and slot <= user_lora_count:
             legacy_strength = _float_payload(payload, f"strength_{slot}", 1.0)
             first_pass_strength = _float_payload(payload, f"first_pass_strength_{slot}", legacy_strength)
-            second_pass_strength = 0.0
+            second_pass_strength = (
+                _float_payload(payload, f"second_pass_strength_{slot}", legacy_strength)
+                if is_ltx25 else 0.0
+            )
             lora_name = _clean_lora_name(payload.get(f"lora_{slot}", _NONE_LORA))
         else:
             first_pass_strength = 1.0
@@ -1918,8 +2003,15 @@ def _patch_rtv_api_prompt(prompt, payload):
     for index, image_name in enumerate(subject_images, start=1):
         _set_api_input(prompt, "951", f"subject_{index}", image_name)
     _set_api_input(prompt, "951", "background_image", background_image)
-    _set_api_input(prompt, "951", "background_mode", _rtv_background_mode(payload.get("msr_background_mode"), has_background))
-    _set_api_input(prompt, "951", "reference_strength", _rtv_reference_strength(payload.get("msr_reference_strength")))
+    _set_api_input(prompt, "951", "background_mode", _rtv_background_mode(payload.get("msr_background_mode"), has_background, is_ltx25))
+    if is_ltx25:
+        requested_strength = str(payload.get("msr_reference_strength", "33") or "33").strip()
+        reference_frames = "25" if requested_strength.startswith("25") else "33"
+        _set_api_input(prompt, "939", "reference_frames", reference_frames)
+        _set_api_input(prompt, "961", "reference_frames", reference_frames)
+        _set_api_input(prompt, "959", "model_name", str(payload.get("upscale_model_name", "") or ""))
+    else:
+        _set_api_input(prompt, "951", "reference_strength", _rtv_reference_strength(payload.get("msr_reference_strength")))
 
     _set_api_input(prompt, "927", "audio_file", audio_path)
     _set_api_input(prompt, "927", "seek_seconds", 0)
@@ -1932,6 +2024,23 @@ def _patch_rtv_api_prompt(prompt, payload):
     _set_api_input(prompt, "218:287", "tail_loss_frames", tail_loss_frames)
     _set_api_input(prompt, "218:287", "pre_frames", pre_frames)
     _patch_ltx_single_pass_sampler_overrides(prompt, payload)
+    if is_ltx25:
+        _set_api_input(prompt, "964", "sampler_name", str(payload.get("pass2_sampler_name") or "euler_ancestral"))
+        _set_api_input(prompt, "965", "sigmas", str(payload.get("pass2_sigmas") or _DEFAULT_I2V_PASS2_SIGMAS))
+        _set_api_input(prompt, "963", "noise_seed", seed)
+        final_resize_id = "vrgdg_ltx25_rtv_final_resize"
+        _replace_api_input_refs(prompt, ("954", 0), (final_resize_id, 0))
+        prompt[final_resize_id] = {
+            "class_type": "ImageScale",
+            "inputs": {
+                "image": ["954", 0],
+                "upscale_method": "lanczos",
+                "width": width,
+                "height": height,
+                "crop": "disabled",
+            },
+            "_meta": {"title": "Resize LTX 2.5 RTV to requested final resolution"},
+        }
     _set_api_input(prompt, "437", "value", output_folder)
     return prompt, output_folder
 
@@ -1974,10 +2083,27 @@ def _patch_ingredients_api_prompt(prompt, payload):
         tail_loss_frames,
     )
 
-    _patch_ltx_video_model_loader(prompt, payload)
+    is_ltx25 = str(payload.get("ltx_version", "2.3") or "2.3").strip() == "2.5"
+    if is_ltx25:
+        prompt["958"] = _ltx25_diffusion_loader_node(payload)
+        prompt["937"]["inputs"]["model"] = ["958", 0]
+        prompt.pop("959", None)
+        prompt.pop("271:215", None)
+        prompt["271:216"] = {
+            "inputs": {
+                "clip_name": str(payload.get("clip_name1", "") or ""),
+                "type": "ltxv",
+                "device": "default",
+            },
+            "class_type": "CLIPLoader",
+            "_meta": {"title": "Load CLIP"},
+        }
+    else:
+        _patch_ltx_video_model_loader(prompt, payload)
     _set_api_input(prompt, "271:256", "vae_name", str(payload.get("vae_name", "") or ""))
-    _set_api_input(prompt, "271:216", "clip_name1", str(payload.get("clip_name1", "") or ""))
-    _set_api_input(prompt, "271:216", "clip_name2", str(payload.get("clip_name2", "") or ""))
+    if not is_ltx25:
+        _set_api_input(prompt, "271:216", "clip_name1", str(payload.get("clip_name1", "") or ""))
+        _set_api_input(prompt, "271:216", "clip_name2", str(payload.get("clip_name2", "") or ""))
     _set_api_input(prompt, "271:211", "model_name", str(payload.get("upscale_model_name", "") or ""))
     _set_api_input(prompt, "271:254", "vae_name", str(payload.get("audio_vae_name", "") or ""))
 
@@ -2095,13 +2221,30 @@ def _patch_id_lora_api_prompt(prompt, payload):
         pass1_seed = random.randint(0, 0xFFFFFFFFFFFFFFFF)
         pass2_seed = random.randint(0, 0xFFFFFFFFFFFFFFFF)
 
-    _patch_ltx_video_model_loader(prompt, payload)
-    _set_optional_api_input(prompt, "969", "unet_name", _clean_i2v_unet_name(payload.get("unet_name", "")))
-    _set_optional_api_input(prompt, "971", "model_name", str(payload.get("diffusion_model_name") or payload.get("model_name") or ""))
+    is_ltx25 = str(payload.get("ltx_version", "2.3") or "2.3").strip() == "2.5"
+    if is_ltx25:
+        prompt["971"] = _ltx25_diffusion_loader_node(payload)
+        prompt["972"]["inputs"]["model"] = ["971", 0]
+        prompt.pop("970", None)
+        prompt.pop("969", None)
+        prompt["968"] = {
+            "inputs": {
+                "clip_name": str(payload.get("clip_name1", "") or ""),
+                "type": "ltxv",
+                "device": "default",
+            },
+            "class_type": "CLIPLoader",
+            "_meta": {"title": "Load CLIP"},
+        }
+    else:
+        _patch_ltx_video_model_loader(prompt, payload)
+        _set_optional_api_input(prompt, "969", "unet_name", _clean_i2v_unet_name(payload.get("unet_name", "")))
+        _set_optional_api_input(prompt, "971", "model_name", str(payload.get("diffusion_model_name") or payload.get("model_name") or ""))
     _set_api_input(prompt, "966", "vae_name", str(payload.get("audio_vae_name", "") or ""))
     _set_api_input(prompt, "967", "vae_name", str(payload.get("vae_name", "") or ""))
-    _set_api_input(prompt, "968", "clip_name1", str(payload.get("clip_name1", "") or ""))
-    _set_api_input(prompt, "968", "clip_name2", str(payload.get("clip_name2", "") or ""))
+    if not is_ltx25:
+        _set_api_input(prompt, "968", "clip_name1", str(payload.get("clip_name1", "") or ""))
+        _set_api_input(prompt, "968", "clip_name2", str(payload.get("clip_name2", "") or ""))
     _set_api_input(prompt, "951", "model_name", str(payload.get("upscale_model_name", "") or ""))
 
     _set_api_input(prompt, "957", "value", id_prompt)
@@ -2206,6 +2349,29 @@ def _workflow_to_api_prompt(workflow):
         link_id, origin_id, origin_slot = raw_link[0], raw_link[1], raw_link[2]
         links[int(link_id)] = [str(origin_id), int(origin_slot)]
 
+    # Reroute is a canvas-only node. Resolve every link originating from one
+    # directly to the reroute's incoming source before converting the graph.
+    reroute_ids = {str(node.get("id")) for node in workflow.get("nodes", []) if node.get("type") == "Reroute"}
+    reroute_inputs = {}
+    for node in workflow.get("nodes", []):
+        node_id = str(node.get("id"))
+        if node_id not in reroute_ids:
+            continue
+        incoming = next((item.get("link") for item in node.get("inputs", []) or [] if item.get("link") is not None), None)
+        if incoming is not None and int(incoming) in links:
+            reroute_inputs[node_id] = list(links[int(incoming)])
+
+    def resolve_source(source):
+        seen = set()
+        current = list(source)
+        while str(current[0]) in reroute_inputs and str(current[0]) not in seen:
+            seen.add(str(current[0]))
+            current = list(reroute_inputs[str(current[0])])
+        return current
+
+    for link_id, source in list(links.items()):
+        links[link_id] = resolve_source(source)
+
     set_values = {}
     get_nodes = {}
     for node in workflow.get("nodes", []):
@@ -2229,7 +2395,7 @@ def _workflow_to_api_prompt(workflow):
         class_type = node.get("type")
         if not node_id or not class_type:
             continue
-        if class_type in {"SetNode", "GetNode", "MarkdownNote"}:
+        if class_type in {"SetNode", "GetNode", "MarkdownNote", "Reroute"}:
             continue
 
         linked_inputs = {}
@@ -2938,6 +3104,326 @@ def _build_minimax_h3_api_prompt(payload):
     }
 
 
+def _build_minimax_h3_2pass_api_prompt(payload):
+    """Build the cleaned external-audio MiniMax H3 two-pass API prompt.
+
+    This intentionally has its own adapter instead of reusing the one-pass
+    node IDs or mutating the existing MiniMax template path.
+    """
+    workflow_path, prompt = _load_api_template(_minimax_h3_2pass_api_template_path())
+    prompt = copy.deepcopy(prompt)
+    video_prompt = str(_first_payload_value(payload, "prompt", "video_prompt", default="") or "").strip()
+    if not video_prompt:
+        raise ValueError("MiniMax H3 two-pass video prompt is empty.")
+
+    audio_path = str(_first_payload_value(payload, "audio_path", "source_audio_path", default="") or "").strip().strip('"')
+    if not audio_path:
+        raise ValueError("MiniMax H3 two-pass source audio path is empty.")
+    audio_path = os.path.abspath(audio_path)
+    if not os.path.isfile(audio_path):
+        raise FileNotFoundError(f"MiniMax H3 two-pass source audio was not found: {audio_path}")
+
+    project_text = str(payload.get("project_folder", "") or "").strip().strip('"')
+    if not project_text:
+        raise ValueError("Project folder is empty.")
+    project_folder = os.path.abspath(project_text)
+    if not os.path.isdir(project_folder):
+        raise FileNotFoundError(f"Project folder was not found: {project_folder}")
+
+    scene_number = _int_payload(payload, "scene_number", 1, 1, 999999)
+    timeline_start = _first_payload_value(payload, "timeline_start_seconds", "scene_start_seconds", "start", default=0)
+    timeline_end = _first_payload_value(payload, "timeline_end_seconds", "scene_end_seconds", "end", default=None)
+    if timeline_end is None:
+        duration = _first_payload_value(payload, "scene_duration_seconds", "scene_duration", "duration", default=None)
+        if duration is None:
+            raise ValueError("MiniMax H3 two-pass needs timeline_end_seconds or scene_duration_seconds.")
+        timeline_end = float(timeline_start) + float(duration)
+
+    source_duration = _first_payload_value(payload, "source_duration_seconds", "audio_duration_seconds", default=None)
+    if source_duration is None:
+        source_duration = _probe_media_duration_seconds(audio_path)
+    source_start = _first_payload_value(payload, "source_start_seconds", "audio_start_seconds", default=None)
+    timing = calculate_minimax_h3_timing(
+        timeline_start,
+        timeline_end,
+        _first_payload_value(payload, "warmup_frames", "pre_frames", default=0),
+        _first_payload_value(payload, "cooldown_frames", "tail_loss_frames", default=0),
+        source_start_seconds=source_start,
+        source_duration_seconds=source_duration,
+    )
+    prepared_audio = _trim_minimax_h3_audio_context(audio_path, project_folder, scene_number, timing)
+
+    image_paths = _minimax_h3_image_paths(payload)
+    video_references = _minimax_h3_video_references(payload)
+    diffusion_model_name = str(payload.get("diffusion_model_name") or "minimax_h3_ref2va_pruned_int8_convrot.safetensors").strip()
+    clip_name = str(payload.get("clip_name") or "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors").strip()
+    video_vae_name = str(payload.get("video_vae_name") or "minimax_h3_video_vae_fp16.safetensors").strip()
+    audio_vae_name = str(payload.get("audio_vae_name") or "minimax_h3_audio_vae_fp32.safetensors").strip()
+    _require_model_choice(("diffusion_models", "unet"), diffusion_model_name, "MiniMax H3 two-pass diffusion model")
+    _require_model_choice(("text_encoders", "clip"), clip_name, "MiniMax H3 two-pass text encoder")
+    _require_model_choice("vae", video_vae_name, "MiniMax H3 two-pass video VAE")
+    _require_model_choice("vae", audio_vae_name, "MiniMax H3 two-pass audio VAE")
+
+    seed = _int_payload(payload, "seed", 69, 0, 0xFFFFFFFFFFFFFFFF)
+    pass1_seed = _int_payload(payload, "pass1_seed", seed, 0, 0xFFFFFFFFFFFFFFFF)
+    pass2_seed = _int_payload(payload, "pass2_seed", seed, 0, 0xFFFFFFFFFFFFFFFF)
+    aspect_ratio = str(payload.get("aspect_ratio") or "16:9 (Widescreen)").strip()
+    if aspect_ratio not in _MINIMAX_H3_ASPECT_RATIOS:
+        raise ValueError(f"Unsupported MiniMax H3 two-pass aspect ratio: {aspect_ratio}")
+
+    _set_api_input(prompt, "83", "text", video_prompt)
+    # Recent ComfyUI node schemas require these fields explicitly; older
+    # exported API workflows omitted them from the JSON.
+    _set_api_input(prompt, "83", "output_mode", "string")
+    _set_api_input(prompt, "92", "expression", "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17")
+    _set_api_input(prompt, "84", "value", float(timing.workflow_duration_input_seconds))
+    _set_api_input(prompt, "9001", "audio_file", prepared_audio["audio_path"])
+    _set_api_input(prompt, "9001", "seek_seconds", 0)
+    _set_api_input(prompt, "9001", "duration", 0)
+    _set_api_input(prompt, "9000", "image_paths", json.dumps(image_paths, ensure_ascii=False))
+    _set_api_input(prompt, "9000", "video_references", json.dumps(video_references, ensure_ascii=False))
+    ref_image_size = str(payload.get("ref_image_size") or "max").strip().lower()
+    if ref_image_size not in {"match", "max"}:
+        ref_image_size = "max"
+    _set_api_input(prompt, "108", "ref_image_size", ref_image_size)
+    _set_api_input(prompt, "105", "aspect_ratio", aspect_ratio)
+    _set_api_input(prompt, "105", "megapixels", _float_payload(payload, "pass1_megapixels", 0.5, 0.1, 16.0))
+    _set_api_input(prompt, "297", "aspect_ratio", str(payload.get("pass2_aspect_ratio") or aspect_ratio))
+    _set_api_input(prompt, "297", "megapixels", _float_payload(payload, "pass2_megapixels", 1.5, 0.1, 16.0))
+    _set_api_input(prompt, "248", "steps", _int_payload(payload, "pass1_steps", 15, 1, 1000))
+    _set_api_input(prompt, "290", "steps", _int_payload(payload, "pass2_steps", 4, 1, 1000))
+    _set_api_input(prompt, "249", "sampler_name", str(payload.get("pass1_sampler_name") or payload.get("sampler_name") or "euler").strip() or "euler")
+    _set_api_input(prompt, "289", "sampler_name", str(payload.get("pass2_sampler_name") or payload.get("sampler_name") or "euler").strip() or "euler")
+    _set_api_input(prompt, "248", "scheduler", str(payload.get("pass1_scheduler") or payload.get("scheduler") or "beta").strip() or "beta")
+    _set_api_input(prompt, "290", "scheduler", str(payload.get("pass2_scheduler") or payload.get("scheduler") or "beta").strip() or "beta")
+    _set_api_input(prompt, "248", "denoise", _float_payload(payload, "pass1_denoise", 1.0, 0.0, 1.0))
+    _set_api_input(prompt, "290", "denoise", _float_payload(payload, "pass2_denoise", 0.2, 0.0, 1.0))
+    _set_api_input(prompt, "243", "noise_seed", pass1_seed)
+    _set_api_input(prompt, "300", "noise_seed", pass2_seed)
+    _set_api_input(prompt, "9", "unet_name", diffusion_model_name)
+    _set_api_input(prompt, "4", "clip_name", clip_name)
+    _set_api_input(prompt, "5", "vae_name", video_vae_name)
+    _set_api_input(prompt, "6", "vae_name", audio_vae_name)
+    lightx_lora_name = _clean_lora_name(payload.get("two_pass_lora_name", "minimax_h3_turbo_v4_step600_ema.safetensors"))
+    if lightx_lora_name == _NONE_LORA:
+        raise ValueError("A valid Multi-Pass LightX2V LoRA must be selected.")
+    _require_model_choice("loras", lightx_lora_name, "MiniMax H3 two-pass LoRA")
+    _set_api_input(prompt, "187", "model", ["125", 0])
+    _set_api_input(prompt, "187", "lora_name", lightx_lora_name)
+    _set_api_input(prompt, "187", "strength_model", _float_payload(payload, "two_pass_lora_strength", 0.7, -10.0, 10.0))
+    for node_id in ("248", "246", "290", "294"):
+        _set_api_input(prompt, node_id, "model", ["187", 0])
+    if _bool_payload(payload, "use_loras", False):
+        _patch_minimax_h3_loras(prompt, payload)
+        pass1_model = prompt.get("248", {}).get("inputs", {}).get("model")
+        if isinstance(pass1_model, list) and len(pass1_model) == 2:
+            _set_api_input(prompt, "290", "model", list(pass1_model))
+            _set_api_input(prompt, "294", "model", list(pass1_model))
+    output_folder, filename_prefix = _minimax_h3_output_location(project_folder, scene_number)
+    _set_api_input(prompt, "298", "filename_prefix", f"{filename_prefix}_stage1")
+    _set_api_input(prompt, "299", "filename_prefix", f"{filename_prefix}_stage2")
+    return {
+        "workflow_path": workflow_path,
+        "output_folder": output_folder,
+        "prompt": prompt,
+        "used_seed": seed,
+        "audio_mode": "input_audio",
+        "timing": timing.to_dict(),
+        "prepared_audio": prepared_audio,
+        "post_render_trim": {"start": timing.final_trim_start_seconds, "duration": timing.final_trim_duration_seconds},
+        "reference_inputs": {"image_count": len(image_paths), "video_count": len(video_references)},
+        "two_pass": {"pass1_steps": prompt["248"]["inputs"]["steps"], "pass2_steps": prompt["290"]["inputs"]["steps"]},
+    }
+
+
+def _remap_api_prompt_references(prompt, prefix):
+    """Copy an API prompt under collision-free IDs and rewrite socket links."""
+    mapping = {str(node_id): f"{prefix}{str(node_id).replace(':', '_')}" for node_id in prompt}
+
+    def remap(value):
+        if isinstance(value, list):
+            if len(value) == 2 and str(value[0]) in mapping and isinstance(value[1], int):
+                return [mapping[str(value[0])], value[1]]
+            return [remap(item) for item in value]
+        if isinstance(value, dict):
+            return {key: remap(item) for key, item in value.items()}
+        return value
+
+    return {mapping[str(node_id)]: remap(copy.deepcopy(node)) for node_id, node in prompt.items()}, mapping
+
+
+def _prune_api_prompt_to_roots(prompt, roots):
+    """Keep only API nodes required to produce the requested output roots."""
+    required = set()
+
+    def visit(node_id):
+        node_id = str(node_id)
+        if node_id in required or node_id not in prompt:
+            return
+        required.add(node_id)
+        node = prompt.get(node_id) or {}
+        inputs = node.get("inputs") or {}
+        for value in inputs.values():
+            if isinstance(value, list) and len(value) == 2 and isinstance(value[1], int) and str(value[0]) in prompt:
+                visit(value[0])
+
+    for root in roots:
+        visit(root)
+    return {node_id: node for node_id, node in prompt.items() if node_id in required}
+
+
+def _build_minimax_h3_3pass_api_prompt(payload):
+    """Build the experimental external-audio MiniMax H3 three-pass prompt."""
+    workflow_path, prompt = _load_api_template(_minimax_h3_3pass_api_template_path())
+    prompt = copy.deepcopy(prompt)
+    video_prompt = str(_first_payload_value(payload, "prompt", "video_prompt", default="") or "").strip()
+    if not video_prompt:
+        raise ValueError("MiniMax H3 three-pass video prompt is empty.")
+    audio_path = str(_first_payload_value(payload, "audio_path", "source_audio_path", default="") or "").strip().strip('"')
+    if not audio_path:
+        raise ValueError("MiniMax H3 three-pass source audio path is empty.")
+    audio_path = os.path.abspath(audio_path)
+    if not os.path.isfile(audio_path):
+        raise FileNotFoundError(f"MiniMax H3 three-pass source audio was not found: {audio_path}")
+    project_text = str(payload.get("project_folder", "") or "").strip().strip('"')
+    if not project_text:
+        raise ValueError("Project folder is empty.")
+    project_folder = os.path.abspath(project_text)
+    if not os.path.isdir(project_folder):
+        raise FileNotFoundError(f"Project folder was not found: {project_folder}")
+    scene_number = _int_payload(payload, "scene_number", 1, 1, 999999)
+    timeline_start = _first_payload_value(payload, "timeline_start_seconds", "scene_start_seconds", "start", default=0)
+    timeline_end = _first_payload_value(payload, "timeline_end_seconds", "scene_end_seconds", "end", default=None)
+    if timeline_end is None:
+        duration = _first_payload_value(payload, "scene_duration_seconds", "scene_duration", "duration", default=None)
+        if duration is None:
+            raise ValueError("MiniMax H3 three-pass needs timeline_end_seconds or scene_duration_seconds.")
+        timeline_end = float(timeline_start) + float(duration)
+    source_duration = _first_payload_value(payload, "source_duration_seconds", "audio_duration_seconds", default=None)
+    if source_duration is None:
+        source_duration = _probe_media_duration_seconds(audio_path)
+    source_start = _first_payload_value(payload, "source_start_seconds", "audio_start_seconds", default=None)
+    timing = calculate_minimax_h3_timing(
+        timeline_start,
+        timeline_end,
+        _first_payload_value(payload, "warmup_frames", "pre_frames", default=0),
+        _first_payload_value(payload, "cooldown_frames", "tail_loss_frames", default=0),
+        source_start_seconds=source_start,
+        source_duration_seconds=source_duration,
+    )
+    prepared_audio = _trim_minimax_h3_audio_context(audio_path, project_folder, scene_number, timing)
+    image_paths = _minimax_h3_image_paths(payload)
+    video_references = _minimax_h3_video_references(payload)
+    diffusion_model_name = str(payload.get("diffusion_model_name") or "minimax_h3_ref2va_pruned_int8_convrot.safetensors").strip()
+    clip_name = str(payload.get("clip_name") or "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors").strip()
+    video_vae_name = str(payload.get("video_vae_name") or "minimax_h3_video_vae_fp16.safetensors").strip()
+    audio_vae_name = str(payload.get("audio_vae_name") or "minimax_h3_audio_vae_fp32.safetensors").strip()
+    _require_model_choice(("diffusion_models", "unet"), diffusion_model_name, "MiniMax H3 three-pass diffusion model")
+    _require_model_choice(("text_encoders", "clip"), clip_name, "MiniMax H3 three-pass text encoder")
+    _require_model_choice("vae", video_vae_name, "MiniMax H3 three-pass video VAE")
+    _require_model_choice("vae", audio_vae_name, "MiniMax H3 three-pass audio VAE")
+
+    seed = _int_payload(payload, "seed", 69, 0, 0xFFFFFFFFFFFFFFFF)
+    aspect_ratio = str(payload.get("aspect_ratio") or "16:9 (Widescreen)").strip()
+    if aspect_ratio not in _MINIMAX_H3_ASPECT_RATIOS:
+        raise ValueError(f"Unsupported MiniMax H3 three-pass aspect ratio: {aspect_ratio}")
+    _set_api_input(prompt, "329", "text", video_prompt)
+    _set_api_input(prompt, "84", "value", float(timing.workflow_duration_input_seconds))
+    _set_api_input(prompt, "9001", "audio_file", prepared_audio["audio_path"])
+    _set_api_input(prompt, "9001", "seek_seconds", 0)
+    _set_api_input(prompt, "9001", "duration", 0)
+    _set_api_input(prompt, "9000", "image_paths", json.dumps(image_paths, ensure_ascii=False))
+    _set_api_input(prompt, "9000", "video_references", json.dumps(video_references, ensure_ascii=False))
+    ref_image_size = str(payload.get("ref_image_size") or "max").strip().lower()
+    if ref_image_size not in {"match", "max"}:
+        ref_image_size = "max"
+    _set_api_input(prompt, "108", "ref_image_size", ref_image_size)
+    _set_api_input(prompt, "330", "model_name", diffusion_model_name)
+    _set_api_input(prompt, "4", "clip_name", clip_name)
+    _set_api_input(prompt, "5", "vae_name", video_vae_name)
+    _set_api_input(prompt, "6", "vae_name", audio_vae_name)
+    pass_specs = [
+        (1, "105", "248", "249", "243", "328", "246", 0.4, 20, 1.0, True),
+        (2, "297", "290", "289", "300", "187", "294", 1.0, 5, 0.2, False),
+        (3, "334", "344", "341", "345", "187", "340", 2.0, 5, 0.2, False),
+    ]
+    for pass_number, resolution_id, scheduler_id, sampler_id, noise_id, default_model_id, guider_id, default_mp, default_steps, default_denoise, default_speed in pass_specs:
+        prefix = f"three_pass_pass{pass_number}_"
+        _set_api_input(prompt, resolution_id, "aspect_ratio", str(payload.get(f"{prefix}aspect_ratio") or aspect_ratio))
+        _set_api_input(prompt, resolution_id, "megapixels", _float_payload(payload, f"{prefix}megapixels", default_mp, 0.1, 16.0))
+        _set_api_input(prompt, scheduler_id, "steps", _int_payload(payload, f"{prefix}steps", default_steps, 1, 1000))
+        _set_api_input(prompt, scheduler_id, "denoise", _float_payload(payload, f"{prefix}denoise", default_denoise, 0.0, 1.0))
+        _set_api_input(prompt, scheduler_id, "scheduler", str(payload.get(f"{prefix}scheduler") or "beta").strip() or "beta")
+        _set_api_input(prompt, sampler_id, "sampler_name", str(payload.get(f"{prefix}sampler") or "euler").strip() or "euler")
+        _set_api_input(prompt, noise_id, "noise_seed", _int_payload(payload, f"{prefix}seed", seed, 0, 0xFFFFFFFFFFFFFFFF))
+
+    pass1_speed = _bool_payload(payload, "three_pass_pass1_te_speed", True)
+    pass2_speed = _bool_payload(payload, "three_pass_pass2_te_speed", False)
+    pass3_speed = _bool_payload(payload, "three_pass_pass3_te_speed", False)
+    lora_name = _clean_lora_name(payload.get("three_pass_lightx_lora_name", "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors"))
+    if lora_name == _NONE_LORA:
+        raise ValueError("A valid Multi-Pass LightX2V LoRA must be selected.")
+    _require_model_choice("loras", lora_name, "MiniMax H3 three-pass LightX2V LoRA")
+    lora_strength = _float_payload(payload, "three_pass_lightx_lora_strength", 0.5, -10.0, 10.0)
+    _set_api_input(prompt, "187", "lora_name", lora_name)
+    _set_api_input(prompt, "187", "strength_model", lora_strength)
+    pass1_model_ref = ["328", 0] if pass1_speed else ["330", 0]
+    _set_api_input(prompt, "328", "model", ["330", 0])
+    _set_api_input(prompt, "248", "model", list(pass1_model_ref))
+    _set_api_input(prompt, "246", "model", list(pass1_model_ref))
+
+    pass_model_refs = []
+    for pass_number, enabled, scheduler_id, guider_id, speed_node_id, lora_node_id in (
+        (2, pass2_speed, "290", "294", "9202", "9204"),
+        (3, pass3_speed, "344", "340", "9203", "9205"),
+    ):
+        pass_base_ref = [speed_node_id, 0] if enabled else ["330", 0]
+        if enabled:
+            prompt[speed_node_id] = {
+                "class_type": "TESpeedMiniMaxH3",
+                "inputs": {
+                    "processing_control_value": 0.07,
+                    "processing_percent_1": 0.1,
+                    "processing_percent_2": 0.9,
+                    "mcs": 2,
+                    "device": "auto",
+                    "cache_depth": 0.75,
+                    "model": ["330", 0],
+                },
+                "_meta": {"title": f"TE-Speed-MiniMaxH3 Pass {pass_number}"},
+            }
+        prompt[lora_node_id] = {
+            "class_type": "LoraLoaderModelOnly",
+            "inputs": {
+                "model": list(pass_base_ref),
+                "lora_name": lora_name,
+                "strength_model": lora_strength,
+            },
+            "_meta": {"title": f"MiniMax H3 Pass {pass_number} LoRA"},
+        }
+        pass_model_refs.append((scheduler_id, guider_id, [lora_node_id, 0]))
+    for scheduler_id, guider_id, model_ref in pass_model_refs:
+        _set_api_input(prompt, scheduler_id, "model", list(model_ref))
+        _set_api_input(prompt, guider_id, "model", list(model_ref))
+    output_folder, filename_prefix = _minimax_h3_output_location(project_folder, scene_number)
+    _set_api_input(prompt, "91", "filename_prefix", f"{filename_prefix}_stage1")
+    _set_api_input(prompt, "299", "filename_prefix", f"{filename_prefix}_stage2")
+    _set_api_input(prompt, "353", "filename_prefix", f"{filename_prefix}_stage3")
+    return {
+        "workflow_path": workflow_path,
+        "output_folder": output_folder,
+        "prompt": prompt,
+        "used_seed": seed,
+        "audio_mode": "input_audio",
+        "timing": timing.to_dict(),
+        "prepared_audio": prepared_audio,
+        "post_render_trim": {"start": timing.final_trim_start_seconds, "duration": timing.final_trim_duration_seconds},
+        "reference_inputs": {"image_count": len(image_paths), "video_count": len(video_references)},
+        "three_pass": {"pass1_steps": prompt["248"]["inputs"]["steps"], "pass2_steps": prompt["290"]["inputs"]["steps"], "pass3_steps": prompt["344"]["inputs"]["steps"]},
+        "te_speed": {"pass1": pass1_speed, "pass2": pass2_speed, "pass3": pass3_speed},
+    }
+
+
 def _build_i2v_api_prompt(payload):
     api_template = _i2v_api_template_path()
     if os.path.isfile(api_template) and not payload.get("workflow_path"):
@@ -2958,8 +3444,13 @@ def _build_i2v_api_prompt(payload):
 
 
 def _build_t2v_api_prompt(payload):
-    workflow_path, prompt = _load_api_template(_t2v_api_template_path())
-    patched_prompt, output_folder = _patch_t2v_api_prompt(prompt, payload)
+    version = str(payload.get("ltx_version", "2.5") or "2.5").strip()
+    if version == "2.3":
+        workflow_path, prompt = _load_api_template(_t2v_api_template_path())
+        patched_prompt, output_folder = _patch_t2v_api_prompt(prompt, payload)
+    else:
+        workflow_path, prompt = _load_api_template(_t2v_25_api_template_path())
+        patched_prompt, output_folder = _patch_t2v_25_api_prompt(prompt, payload)
     return {
         "workflow_path": workflow_path,
         "output_folder": output_folder,
@@ -2968,7 +3459,10 @@ def _build_t2v_api_prompt(payload):
 
 
 def _build_rtv_api_prompt(payload):
-    workflow_path, prompt = _load_api_template(_rtv_api_template_path())
+    version = str(payload.get("ltx_version", "2.3") or "2.3").strip()
+    workflow_path, prompt = _load_api_template(
+        _rtv_25_api_template_path() if version == "2.5" else _rtv_api_template_path()
+    )
     patched_prompt, output_folder = _patch_rtv_api_prompt(prompt, payload)
     return {
         "workflow_path": workflow_path,
@@ -3008,8 +3502,34 @@ def _patch_flf_api_prompt(prompt, payload):
         raise ValueError(f"First Last Frame resolved both inputs to the same image: {first_name}")
     output_folder = _scene_render_output_folder(project_folder, "first_last_frame_clips", payload)
     fps = _int_payload(payload, "fps", 24, 1, 120)
-    _patch_ltx_video_model_loader(prompt, payload)
-    for node_id, key, value in (("271:256","vae_name",payload.get("vae_name","")),("271:216","clip_name1",payload.get("clip_name1","")),("271:216","clip_name2",payload.get("clip_name2","")),("271:211","model_name",payload.get("upscale_model_name","")),("271:254","vae_name",payload.get("audio_vae_name",""))):
+    is_ltx25 = str(payload.get("ltx_version", "2.3") or "2.3").strip() == "2.5"
+    if is_ltx25:
+        prompt["938"] = _ltx25_diffusion_loader_node(payload)
+        prompt["937"]["inputs"]["model"] = ["938", 0]
+        prompt.pop("939", None)
+        prompt.pop("271:215", None)
+        prompt["271:216"] = {
+            "inputs": {
+                "clip_name": str(payload.get("clip_name1", "") or ""),
+                "type": "ltxv",
+                "device": "default",
+            },
+            "class_type": "CLIPLoader",
+            "_meta": {"title": "Load CLIP"},
+        }
+    else:
+        _patch_ltx_video_model_loader(prompt, payload)
+    model_inputs = [
+        ("271:256", "vae_name", payload.get("vae_name", "")),
+        ("271:211", "model_name", payload.get("upscale_model_name", "")),
+        ("271:254", "vae_name", payload.get("audio_vae_name", "")),
+    ]
+    if not is_ltx25:
+        model_inputs.extend([
+            ("271:216", "clip_name1", payload.get("clip_name1", "")),
+            ("271:216", "clip_name2", payload.get("clip_name2", "")),
+        ])
+    for node_id, key, value in model_inputs:
         _set_api_input(prompt, node_id, key, str(value or ""))
     _set_api_input(prompt, "736:424", "value", fps)
     _set_api_input(prompt, "736:425", "value", _int_payload(payload,"width",1920,64,4096))
@@ -3857,6 +4377,125 @@ def _find_scene_video_output(payload):
     }
 
 
+def _patch_t2v_25_api_prompt(prompt, payload):
+    """Patch the native-audio LTX 2.5 T2V graph.
+
+    LoRAs are deliberately expanded into ordinary model-only loader nodes so
+    this workflow has no dependency on the legacy multi-LoRA custom node.
+    """
+    prompt = copy.deepcopy(prompt)
+    text = str(payload.get("t2v_prompt", payload.get("i2v_prompt", "")) or "").strip()
+    if not text:
+        raise ValueError("T2V prompt is empty.")
+    project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
+    if not project_folder:
+        raise ValueError("Project folder is empty.")
+    output_folder = _scene_render_output_folder(project_folder, "text_to_video_clips", payload)
+
+    fps = _int_payload(payload, "fps", 24, 1, 120)
+    duration = max(1, int(round(_float_payload(payload, "duration", 5.0, 0.25, 3600.0))))
+    seed = _int_payload(payload, "seed", 1, 0, 0xFFFFFFFFFFFFFFFF)
+    _set_api_input(prompt, "405:361", "value", fps)
+    _set_api_input(prompt, "405:362", "value", duration)
+    _set_api_input(prompt, "405:376", "value", text)
+    _set_api_input(prompt, "405:338", "noise_seed", seed)
+    _set_api_input(prompt, "405:339", "noise_seed", seed)
+    prompt["405:384"] = _ltx25_diffusion_loader_node(payload)
+    _set_api_input(prompt, "405:385", "vae_name", str(payload.get("vae_name") or ""))
+    _set_api_input(prompt, "405:386", "vae_name", str(payload.get("audio_vae_name") or ""))
+    _set_api_input(prompt, "405:387", "clip_name", str(payload.get("clip_name1") or ""))
+    _set_api_input(prompt, "405:371", "model_name", str(payload.get("upscale_model_name") or ""))
+    _set_api_input(prompt, "409", "aspect_ratio", str(payload.get("resolution_aspect_ratio") or "16:9 (Widescreen)"))
+    _set_api_input(prompt, "409", "megapixels", _float_payload(payload, "resolution_megapixels", 1.2, 0.1, 16.0))
+    _set_api_input(prompt, "409", "multiple", 32)
+
+    model_ref = ["405:384", 0]
+    count = _int_payload(payload, "lora_count", 0, 0, _MAX_LORA_SLOTS) if _bool_payload(payload, "use_custom_loras", False) else 0
+    for slot in range(1, count + 1):
+        name = _clean_lora_name(payload.get(f"lora_{slot}", _NONE_LORA))
+        if name == _NONE_LORA:
+            continue
+        node_id = f"vrgdg_ltx25_lora_{slot}"
+        prompt[node_id] = {
+            "class_type": "LoraLoaderModelOnly",
+            "inputs": {
+                "model": list(model_ref),
+                "lora_name": name,
+                "strength_model": _float_payload(payload, f"first_pass_strength_{slot}", 1.0),
+            },
+            "_meta": {"title": f"LTX 2.5 LoRA {slot}"},
+        }
+        model_ref = [node_id, 0]
+    _set_api_input(prompt, "405:388", "model", list(model_ref))
+    _set_api_input(prompt, "405:391", "model", list(model_ref))
+    prefix = os.path.join(output_folder, f"scene_{_int_payload(payload, 'prompt_number_one_based', 1, 1, 999999):04d}")
+    # The supplied graph also contains an unconnected native SaveVideo node.
+    # VHS_VideoCombine is the actual connected A/V output used by the Builder.
+    prompt.pop("75", None)
+    _set_api_input(prompt, "405:416", "frame_rate", fps)
+    _set_api_input(prompt, "405:416", "filename_prefix", prefix)
+    return prompt, output_folder
+
+
+def _collect_minimax_h3_stage_backup(payload):
+    source_path = os.path.abspath(str(payload.get("source_path", "") or "").strip().strip('"'))
+    if not os.path.isfile(source_path):
+        raise FileNotFoundError(f"MiniMax H3 stage video was not found: {source_path}")
+    project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
+    if not project_folder or not os.path.isdir(project_folder):
+        raise ValueError("Project folder is empty or does not exist.")
+    if os.path.commonpath([project_folder, source_path]) == project_folder:
+        raise ValueError("MiniMax H3 stage backup source must be outside the project folder.")
+    stage = str(payload.get("stage", "") or "").strip().lower()
+    if stage not in {"stage1", "stage2"}:
+        raise ValueError("MiniMax H3 stage backup must be stage1 or stage2.")
+    scene_number = _int_payload(payload, "scene_number", 1, 1, 999999)
+    backup_dir = os.path.join(project_folder, "rendered_scene_videos_backup", f"scene_{scene_number:04d}")
+    os.makedirs(backup_dir, exist_ok=True)
+    _wait_for_stable_readable_file(source_path)
+    stamp = time.strftime("%Y%m%d_%H%M%S")
+    target_path = os.path.join(backup_dir, f"video_{scene_number:04d}-{stage}_{stamp}.mp4")
+    index = 2
+    while os.path.exists(target_path):
+        target_path = os.path.join(backup_dir, f"video_{scene_number:04d}-{stage}_{stamp}_{index:02d}.mp4")
+        index += 1
+    _retry_file_op(lambda: shutil.copy2(source_path, target_path), f"Copying MiniMax H3 {stage} backup")
+    thumbnail_path = _create_scene_video_thumbnail(target_path)
+    return {
+        "backup_path": target_path,
+        "backup_thumbnail_path": thumbnail_path,
+        "stage": stage,
+        "scene_number": scene_number,
+    }
+
+
+def _find_minimax_h3_stage_outputs(payload):
+    output_folder = os.path.abspath(str(payload.get("output_folder", "") or "").strip().strip('"'))
+    if not output_folder or not os.path.isdir(output_folder):
+        return {"stage1_path": "", "stage2_path": "", "stage3_path": ""}
+    min_mtime = float(payload.get("min_mtime") or 0)
+    found = {}
+    for root, _dirs, files in os.walk(output_folder):
+        for name in files:
+            lower = name.lower()
+            if not lower.endswith("-audio.mp4"):
+                continue
+            stage = next((item for item in ("stage1", "stage2", "stage3") if item in lower), "")
+            if not stage:
+                continue
+            path = os.path.abspath(os.path.join(root, name))
+            try:
+                mtime = os.path.getmtime(path)
+                if mtime + 1 < min_mtime or os.path.getsize(path) <= 0:
+                    continue
+            except OSError:
+                continue
+            previous = found.get(stage)
+            if not previous or mtime > previous[0]:
+                found[stage] = (mtime, path)
+    return {f"{stage}_path": found.get(stage, (0, ""))[1] for stage in ("stage1", "stage2", "stage3")}
+
+
 def _stitch_scene_videos(payload):
     raw_paths = payload.get("scene_paths", [])
     if not isinstance(raw_paths, list) or not raw_paths:
@@ -4363,7 +5002,9 @@ def _ensure_workflow_runner_routes():
             "video_diffusion_models": video_diffusion_models,
             "vae": _folder_choices("vae"),
             "clip": _folder_choices(("clip", "text_encoders")),
-            "upscale_models": _folder_choices("upscale_models"),
+            # LatentUpscaleModelLoader validates against latent_upscale_models,
+            # not the ESRGAN/image upscale_models category.
+            "upscale_models": _folder_choices("latent_upscale_models"),
         })
 
     @server_instance.routes.get("/vrgdg/workflow_runner/model_root")
@@ -4464,6 +5105,30 @@ def _ensure_workflow_runner_routes():
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
             result = _build_minimax_h3_api_prompt(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/workflow_runner/build_minimax_h3_2pass_prompt")
+    async def vrgdg_workflow_runner_build_minimax_h3_2pass_prompt(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+        try:
+            result = _build_minimax_h3_2pass_api_prompt(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/workflow_runner/build_minimax_h3_3pass_prompt")
+    async def vrgdg_workflow_runner_build_minimax_h3_3pass_prompt(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+        try:
+            result = _build_minimax_h3_3pass_api_prompt(payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -4652,6 +5317,30 @@ def _ensure_workflow_runner_routes():
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
             result = _find_scene_video_output(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/workflow_runner/collect_minimax_h3_stage_backup")
+    async def vrgdg_workflow_runner_collect_minimax_h3_stage_backup(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+        try:
+            result = _collect_minimax_h3_stage_backup(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/workflow_runner/find_minimax_h3_stage_outputs")
+    async def vrgdg_workflow_runner_find_minimax_h3_stage_outputs(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+        try:
+            result = _find_minimax_h3_stage_outputs(payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})

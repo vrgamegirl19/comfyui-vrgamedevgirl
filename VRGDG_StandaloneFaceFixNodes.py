@@ -1,6 +1,7 @@
 import os
 import shutil
 import subprocess
+import tempfile
 import time
 import uuid
 
@@ -339,6 +340,15 @@ class VRGDGFaceFixPrepare:
                 crops[i] = last
             else:
                 last = crops[i]
+        # LTX temporal batches are safest when their length is 8n+1 and the
+        # source video's final frame lands on index 8n.  Prefix the crop stream
+        # with copies of its first crop so the original final frame is moved to
+        # a valid boundary index.  The prefix is bookkeeping only: Composite
+        # maps the generated frames back to the unpadded source frames.
+        ltx_offset = (-(count - 1)) % 8
+        if ltx_offset:
+            crops = [crops[0]] * ltx_offset + crops
+        ltx_count = len(crops)
         step = _interval(anchor_interval)
         desired = list(range(0, count, step))
         if desired[-1] != count - 1:
@@ -354,6 +364,14 @@ class VRGDGFaceFixPrepare:
             nearest = min(fresh_indices, key=lambda value: abs(value - target))
             if nearest not in anchors:
                 anchors.append(nearest)
+        # Always give the actual final source frame its own Z-Image identity
+        # anchor whenever it has a usable tracked crop.  The LTX boundary
+        # offset above makes that guide land on a valid 8n index, including a
+        # frame carried through a brief final detection miss.
+        if crops[-1] is not None and float(entries[-1].get("strength") or 0.0) > 0.0:
+            final_index = count - 1
+            if final_index not in anchors:
+                anchors.append(final_index)
         anchors.sort()
         _log(
             f"Detection complete: {fresh_count} fresh detection(s), {tracked_count} short-gap tracked frame(s), "
@@ -363,10 +381,12 @@ class VRGDGFaceFixPrepare:
         context = {
             "version": 1, "job_id": f"standalone_{time.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}",
             "original_frames": video_frames, "entries": entries, "anchor_indices": anchors,
-            "frame_count": int(count), "width": int(width), "height": int(height),
+            "frame_count": int(ltx_count), "original_frame_count": int(count),
+            "ltx_frame_offset": int(ltx_offset), "width": int(width), "height": int(height),
         }
         crop_batch = torch.stack(crops)
-        anchor_batch = crop_batch[torch.tensor(anchors, device=crop_batch.device, dtype=torch.long)]
+        source_crop_batch = crop_batch[ltx_offset:]
+        anchor_batch = source_crop_batch[torch.tensor(anchors, device=source_crop_batch.device, dtype=torch.long)]
         import cv2
         import folder_paths
         source_folder = os.path.join(folder_paths.get_output_directory(), "face_fix_standalone",
@@ -378,7 +398,208 @@ class VRGDGFaceFixPrepare:
             _progress(order, len(anchor_batch), "Saving source anchors")
         context["anchor_sources_folder"] = source_folder
         _log(f"Prepare finished. Job={context['job_id']}; source anchors={source_folder}")
+        _log(f"LTX boundary padding: original={count}, padded={ltx_count}, prefix_offset={ltx_offset}; original final frame maps to LTX index {ltx_offset + count - 1}.")
         return crop_batch, anchor_batch, len(anchors), ",".join(str(value) for value in anchors), context
+
+
+class VRGDGFaceFixPrepareShotAware(VRGDGFaceFixPrepare):
+    """Face preparation that resets tracking at hard shot boundaries."""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        result = super().INPUT_TYPES()
+        result["required"]["cut_sensitivity"] = ("FLOAT", {
+            "default": 0.28, "min": 0.05, "max": 0.95, "step": 0.01,
+            "tooltip": "Hard-cut sensitivity. Lower detects subtler cuts; higher ignores flashes and lighting changes.",
+        })
+        result["required"]["crop_smoothing"] = ("FLOAT", {
+            "default": 0.85, "min": 0.0, "max": 0.95, "step": 0.05,
+            "tooltip": "Stabilizes tracked crop position and size within each shot. Resets automatically at hard cuts.",
+        })
+        return result
+
+    @staticmethod
+    def _cut_score(previous_rgb, current_rgb):
+        import cv2
+        import numpy as np
+        previous = cv2.resize(previous_rgb, (64, 64), interpolation=cv2.INTER_AREA).astype(np.float32) / 255.0
+        current = cv2.resize(current_rgb, (64, 64), interpolation=cv2.INTER_AREA).astype(np.float32) / 255.0
+        mean_delta = float(np.abs(previous - current).mean())
+        previous_hsv = cv2.cvtColor((previous * 255).astype(np.uint8), cv2.COLOR_RGB2HSV)
+        current_hsv = cv2.cvtColor((current * 255).astype(np.uint8), cv2.COLOR_RGB2HSV)
+        bins = [32, 32]
+        ranges = [0, 180, 0, 256]
+        hist_a = cv2.normalize(cv2.calcHist([previous_hsv], [0, 1], None, bins, ranges), None).flatten()
+        hist_b = cv2.normalize(cv2.calcHist([current_hsv], [0, 1], None, bins, ranges), None).flatten()
+        histogram_delta = (1.0 - float(cv2.compareHist(hist_a, hist_b, cv2.HISTCMP_CORREL))) * 0.5
+        return max(mean_delta, histogram_delta)
+
+    def prepare(self, video_frames, detection_confidence, crop_padding, minimum_face_pixels,
+                rotation_assist, repair_distance, custom_distance_threshold,
+                anchor_interval, short_gap_tracking, cut_sensitivity, crop_smoothing):
+        import cv2
+        import folder_paths
+
+        if video_frames.ndim != 4 or video_frames.shape[0] < 1:
+            raise ValueError("Shot-aware Face Fix Prepare requires a non-empty video batch.")
+        net = _detector()
+        count, height, width = video_frames.shape[:3]
+        entries, crops = [], []
+        previous_face = None
+        previous_rgb = None
+        misses = 0
+        shot_id = 0
+        fresh_count = tracked_count = missing_count = cut_count = 0
+        smoothing = max(0.0, min(0.95, float(crop_smoothing)))
+
+        for index in range(count):
+            rgb = (video_frames[index, ..., :3].detach().cpu().clamp(0, 1).numpy() * 255).round().astype("uint8")
+            hard_cut = previous_rgb is not None and self._cut_score(previous_rgb, rgb) >= float(cut_sensitivity)
+            if hard_cut:
+                shot_id += 1
+                previous_face = None
+                misses = 0
+                cut_count += 1
+
+            bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+            candidates = _detect_with_rotation(net, bgr, float(detection_confidence), int(minimum_face_pixels), rotation_assist)
+            chosen = _choose(candidates, previous_face, width, height)
+            fresh = chosen is not None
+            if fresh:
+                fresh_count += 1
+                current = chosen[:4]
+                previous_face = current if previous_face is None else tuple(previous_face[i] * smoothing + current[i] * (1.0 - smoothing) for i in range(4))
+                misses = 0
+                tracking_strength = 1.0
+            else:
+                misses += 1
+                if previous_face is None or misses > int(short_gap_tracking):
+                    previous_face = None
+                    tracking_strength = 0.0
+                    missing_count += 1
+                else:
+                    tracking_strength = 0.65 if misses == 1 else 0.30
+                    tracked_count += 1
+
+            face_width_percent = (float(previous_face[2]) / float(width) * 100.0) if previous_face is not None else 0.0
+            distance_strength = _distance_repair_strength(face_width_percent, repair_distance, custom_distance_threshold) if previous_face is not None else 0.0
+            box = _crop_box(previous_face, width, height, float(crop_padding)) if previous_face is not None else None
+            crop = None
+            if box:
+                left, top, right, bottom = box
+                item = video_frames[index:index + 1, top:bottom, left:right, :3].permute(0, 3, 1, 2)
+                crop = F.interpolate(item, size=(512, 512), mode="bicubic", align_corners=False).permute(0, 2, 3, 1)[0].clamp(0, 1)
+            entries.append({
+                "index": index, "box": box, "fresh": fresh, "strength": tracking_strength * distance_strength,
+                "tracking_strength": tracking_strength, "distance_strength": distance_strength,
+                "face_width_percent": face_width_percent, "shot_id": shot_id, "hard_cut": hard_cut,
+            })
+            crops.append(crop)
+            previous_rgb = rgb
+            _progress(index, count, "Detecting/tracking shot-aware faces")
+
+        valid = [i for i, crop in enumerate(crops) if crop is not None]
+        if not valid:
+            raise ValueError("No face was detected in the video. Lower confidence or minimum face pixels.")
+        fallback = crops[valid[0]]
+        for current_shot in sorted({entry["shot_id"] for entry in entries}):
+            shot_indices = [i for i, entry in enumerate(entries) if entry["shot_id"] == current_shot]
+            shot_valid = [i for i in shot_indices if crops[i] is not None]
+            shot_fallback = crops[shot_valid[0]] if shot_valid else fallback
+            for i in shot_indices:
+                if crops[i] is None:
+                    crops[i] = shot_fallback
+
+        ltx_offset = (-(count - 1)) % 8
+        if ltx_offset:
+            crops = [crops[0]] * ltx_offset + crops
+        ltx_count = len(crops)
+        fresh_indices = [entry["index"] for entry in entries if entry["fresh"] and entry["box"]]
+        if not fresh_indices:
+            raise ValueError("No fresh face detections were found in the video.")
+        step = _interval(anchor_interval)
+        desired = list(range(0, count, step))
+        if desired[-1] != count - 1:
+            desired.append(count - 1)
+        anchors = []
+        for target in desired:
+            nearest = min(fresh_indices, key=lambda value: abs(value - target))
+            if nearest not in anchors:
+                anchors.append(nearest)
+        anchors.sort()
+        context = {
+            "version": 2, "job_id": f"standalone_{time.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}",
+            "original_frames": video_frames, "entries": entries, "anchor_indices": anchors,
+            "frame_count": int(ltx_count), "original_frame_count": int(count),
+            "ltx_frame_offset": int(ltx_offset), "width": int(width), "height": int(height),
+            "shot_count": int(shot_id + 1), "shot_boundaries": [i for i, entry in enumerate(entries) if entry.get("hard_cut")],
+        }
+        crop_batch = torch.stack(crops)
+        source_crop_batch = crop_batch[ltx_offset:]
+        anchor_batch = source_crop_batch[torch.tensor(anchors, device=source_crop_batch.device, dtype=torch.long)]
+        source_folder = os.path.join(folder_paths.get_output_directory(), "face_fix_standalone", context["job_id"], "anchor_sources_512")
+        os.makedirs(source_folder, exist_ok=True)
+        for order, image in enumerate(anchor_batch):
+            rgb = (image[..., :3].detach().cpu().clamp(0, 1).numpy() * 255).round().astype("uint8")
+            cv2.imwrite(os.path.join(source_folder, f"anchor_{order:04d}.png"), cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
+        context["anchor_sources_folder"] = source_folder
+        _log(f"Shot-aware prepare finished: shots={shot_id + 1}, cuts={cut_count}, fresh={fresh_count}, tracked={tracked_count}, missing={missing_count}, crop_smoothing={smoothing:.2f}.")
+        return crop_batch, anchor_batch, len(anchors), ",".join(str(value) for value in anchors), context
+
+
+class VRGDGFaceFixPrepareVideoShotAware(VRGDGFaceFixPrepareShotAware):
+    """Clean LTX-oriented prepare node with no legacy anchor/Z-Image controls."""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "video_frames": ("IMAGE", {"tooltip": "Complete input video frame sequence."}),
+                "detection_confidence": ("FLOAT", {
+                    "default": 0.40, "min": 0.05, "max": 0.95, "step": 0.01,
+                    "tooltip": "Minimum face detector confidence.",
+                }),
+                "crop_padding": ("FLOAT", {
+                    "default": 0.08, "min": 0.0, "max": 0.50, "step": 0.01,
+                    "tooltip": "Extra space around each detected face crop.",
+                }),
+                "minimum_face_pixels": ("INT", {
+                    "default": 12, "min": 4, "max": 2048, "step": 1,
+                    "tooltip": "Minimum detected face size before it is rejected.",
+                }),
+                "rotation_assist": (["Off (fastest)", "Auto", "Force"], {
+                    "default": "Off (fastest)",
+                    "tooltip": "Optional rotated detection for tilted faces.",
+                }),
+                "short_gap_tracking": ("INT", {
+                    "default": 2, "min": 0, "max": 12, "step": 1,
+                    "tooltip": "Frames to bridge when detection briefly misses a face.",
+                }),
+                "cut_sensitivity": ("FLOAT", {
+                    "default": 0.15, "min": 0.05, "max": 0.95, "step": 0.01,
+                    "tooltip": "Hard-cut threshold; lower values detect subtler cuts.",
+                }),
+                "crop_smoothing": ("FLOAT", {
+                    "default": 0.85, "min": 0.0, "max": 0.95, "step": 0.05,
+                    "tooltip": "Stabilizes crop position and size within each shot.",
+                }),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE", FACE_FIX_CONTEXT)
+    RETURN_NAMES = ("face_video_512", "face_fix_context")
+    FUNCTION = "prepare"
+    CATEGORY = "VRGameDevGirl/Face Fix"
+    DESCRIPTION = "Prepares every frame as a shot-aware 512px face video for LTX; no legacy Z-Image anchor controls."
+
+    def prepare(self, video_frames, detection_confidence, crop_padding, minimum_face_pixels,
+                rotation_assist, short_gap_tracking, cut_sensitivity, crop_smoothing):
+        face_video, _anchors, _count, _indices, context = super().prepare(
+            video_frames, detection_confidence, crop_padding, minimum_face_pixels,
+            rotation_assist, "All detected faces", 9.0, "8 frames", short_gap_tracking,
+            cut_sensitivity, crop_smoothing,
+        )
+        return face_video, context
 
 
 class VRGDGFaceFixLoadAnchorsMetaBatch:
@@ -590,7 +811,8 @@ class VRGDGFaceFixComposite:
     def composite(self, ltx_face_frames, face_fix_context, feather_pixels, color_match):
         originals = face_fix_context["original_frames"]
         entries = face_fix_context["entries"]
-        delta = len(entries) - int(ltx_face_frames.shape[0])
+        offset = int(face_fix_context.get("ltx_frame_offset") or 0)
+        delta = len(entries) - max(0, int(ltx_face_frames.shape[0]) - offset)
         _log(
             f"Composite started. Job={face_fix_context.get('job_id', 'unknown')}; "
             f"source_frames={len(entries)}, LTX_frames={ltx_face_frames.shape[0]}, delta={delta}, "
@@ -601,7 +823,7 @@ class VRGDGFaceFixComposite:
         output = originals.clone()
         masks = torch.zeros((originals.shape[0], originals.shape[1], originals.shape[2]), device=originals.device, dtype=originals.dtype)
         repaired = 0
-        usable = min(len(entries), int(ltx_face_frames.shape[0]))
+        usable = min(len(entries), max(0, int(ltx_face_frames.shape[0]) - offset))
         for index in range(usable):
             entry = entries[index]
             box, strength = entry.get("box"), float(entry.get("strength", 0.0))
@@ -609,7 +831,8 @@ class VRGDGFaceFixComposite:
                 continue
             left, top, right, bottom = box
             h, w = bottom - top, right - left
-            face = ltx_face_frames[index:index + 1, ..., :3].to(output.device, output.dtype).permute(0, 3, 1, 2)
+            ltx_index = index + offset
+            face = ltx_face_frames[ltx_index:ltx_index + 1, ..., :3].to(output.device, output.dtype).permute(0, 3, 1, 2)
             face = F.interpolate(face, size=(h, w), mode="bicubic", align_corners=False).permute(0, 2, 3, 1)[0].clamp(0, 1)
             yy = torch.linspace(-1, 1, h, device=output.device, dtype=output.dtype)[:, None]
             xx = torch.linspace(-1, 1, w, device=output.device, dtype=output.dtype)[None, :]
@@ -628,6 +851,210 @@ class VRGDGFaceFixComposite:
             f"Composite finished: repaired={repaired}, unchanged={len(entries) - repaired}, "
             f"preserved_LTX_tail={max(0, delta)}."
         )
+        return output.clamp(0, 1), masks, repaired
+
+
+class VRGDGFaceFixCompositeOpaque:
+    """Composite the generated crop at full opacity inside a feathered edge."""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {
+            "ltx_face_frames": ("IMAGE", {"tooltip": "The complete decoded LTX face-video batch."}),
+            "face_fix_context": (FACE_FIX_CONTEXT, {"tooltip": "Tracked crop boxes and original frames from Face Fix Prepare."}),
+            "feather_pixels": ("INT", {"default": 6, "min": 0, "max": 128, "tooltip": "Feather only the outer crop boundary. The face interior remains fully opaque."}),
+        }}
+
+    RETURN_TYPES = ("IMAGE", "MASK", "INT")
+    RETURN_NAMES = ("repaired_video_frames", "applied_face_mask", "repaired_frame_count")
+    FUNCTION = "composite"
+    CATEGORY = "VRGameDevGirl/Face Fix"
+    DESCRIPTION = "Fully replaces every tracked face crop; only the outside boundary is feathered."
+
+    def composite(self, ltx_face_frames, face_fix_context, feather_pixels):
+        import torch
+        import torch.nn.functional as F
+
+        originals = face_fix_context["original_frames"]
+        entries = face_fix_context["entries"]
+        offset = int(face_fix_context.get("ltx_frame_offset") or 0)
+        delta = len(entries) - max(0, int(ltx_face_frames.shape[0]) - offset)
+        if abs(delta) > 7:
+            raise ValueError(f"LTX returned {ltx_face_frames.shape[0]} frames for {len(entries)} source frames.")
+
+        output = originals.clone()
+        masks = torch.zeros((originals.shape[0], originals.shape[1], originals.shape[2]), device=originals.device, dtype=originals.dtype)
+        usable = min(len(entries), max(0, int(ltx_face_frames.shape[0]) - offset))
+        repaired = 0
+        feather = max(0, int(feather_pixels))
+
+        for index in range(usable):
+            box = entries[index].get("box")
+            if not box:
+                continue
+            left, top, right, bottom = (int(value) for value in box)
+            h, w = bottom - top, right - left
+            if h <= 0 or w <= 0:
+                continue
+            ltx_index = index + offset
+            face = ltx_face_frames[ltx_index:ltx_index + 1, ..., :3].to(output.device, output.dtype).permute(0, 3, 1, 2)
+            face = F.interpolate(face, size=(h, w), mode="bicubic", align_corners=False).permute(0, 2, 3, 1)[0].clamp(0, 1)
+
+            yy = torch.linspace(-1, 1, h, device=output.device, dtype=output.dtype)[:, None]
+            xx = torch.linspace(-1, 1, w, device=output.device, dtype=output.dtype)[None, :]
+            radius = torch.sqrt(xx * xx + yy * yy)
+            edge = min(1.0, (2.0 * feather) / max(1.0, float(min(w, h))))
+            if edge <= 0:
+                alpha = (radius <= 1.0).to(output.dtype)
+            else:
+                alpha = torch.clamp((1.0 - radius) / edge, 0, 1)
+
+            target = output[index, top:bottom, left:right, :3]
+            output[index, top:bottom, left:right, :3] = target * (1 - alpha[..., None]) + face * alpha[..., None]
+            masks[index, top:bottom, left:right] = alpha
+            repaired += 1
+            _progress(index, usable, "Compositing opaque repaired faces")
+
+        _log(f"Opaque composite finished: repaired={repaired}, unchanged={len(entries) - repaired}, feather={feather}.")
+        return output.clamp(0, 1), masks, repaired
+
+
+class VRGDGFaceFixCompositeLandmarkAligned:
+    """Align the generated face to the source crop before opaque compositing."""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {
+            "ltx_face_frames": ("IMAGE", {"tooltip": "Decoded LTX face-video frames."}),
+            "face_fix_context": (FACE_FIX_CONTEXT, {"tooltip": "Tracked source crop boxes and original frames."}),
+            "feather_pixels": ("INT", {"default": 6, "min": 0, "max": 128, "tooltip": "Feather only the outer crop boundary."}),
+            "transform_smoothing": ("FLOAT", {"default": 0.75, "min": 0.0, "max": 0.95, "step": 0.05, "tooltip": "Smooths landmark scale/position changes across frames. Resets automatically at hard cuts."}),
+        }}
+
+    RETURN_TYPES = ("IMAGE", "MASK", "INT")
+    RETURN_NAMES = ("repaired_video_frames", "applied_face_mask", "repaired_frame_count")
+    FUNCTION = "composite"
+    CATEGORY = "VRGameDevGirl/Face Fix"
+    DESCRIPTION = "Aligns LTX eyes/nose/mouth to the source crop, then fully replaces the tracked face."
+
+    @staticmethod
+    def _detector():
+        import cv2
+        model = os.path.join(os.path.dirname(__file__), "assets", "face_detection_yunet_2023mar.onnx")
+        loader = getattr(cv2, "FaceDetectorYN_create", None)
+        if loader is None and getattr(cv2, "FaceDetectorYN", None) is not None:
+            loader = getattr(cv2.FaceDetectorYN, "create", None)
+        if not callable(loader) or not os.path.isfile(model):
+            return None
+        try:
+            return loader(model, "", (320, 320), 0.1, 0.3, 5000)
+        except Exception:
+            return None
+
+    @staticmethod
+    def _landmarks(detector, rgb):
+        import cv2
+        if detector is None:
+            return None
+        height, width = rgb.shape[:2]
+        if width < 2 or height < 2:
+            return None
+        # Keep YuNet's DNN input fixed. OpenCV 4.7 can throw a tensor
+        # broadcasting error when FaceDetectorYN is repeatedly resized to
+        # arbitrary crop dimensions across a batch.
+        detector.setInputSize((320, 320))
+        resized = cv2.resize(rgb, (320, 320), interpolation=cv2.INTER_AREA)
+        try:
+            result = detector.detect(cv2.cvtColor(resized, cv2.COLOR_RGB2BGR))
+        except cv2.error:
+            return None
+        faces = result[1] if isinstance(result, tuple) and len(result) > 1 else result
+        if faces is None or len(faces) == 0:
+            return None
+        face = max(faces, key=lambda item: float(item[-1]))
+        # YuNet: bbox, right eye, left eye, nose, right mouth, left mouth, score.
+        points = face[4:14].reshape(5, 2).astype("float32")
+        points[:, 0] *= float(width) / 320.0
+        points[:, 1] *= float(height) / 320.0
+        return points
+
+    @staticmethod
+    def _alpha(height, width, feather, device, dtype):
+        import torch
+        yy = torch.linspace(-1, 1, height, device=device, dtype=dtype)[:, None]
+        xx = torch.linspace(-1, 1, width, device=device, dtype=dtype)[None, :]
+        radius = torch.sqrt(xx * xx + yy * yy)
+        edge = min(1.0, (2.0 * max(0, int(feather))) / max(1.0, float(min(width, height))))
+        if edge <= 0:
+            return (radius <= 1.0).to(dtype)
+        return torch.clamp((1.0 - radius) / edge, 0, 1)
+
+    def composite(self, ltx_face_frames, face_fix_context, feather_pixels, transform_smoothing):
+        import cv2
+        import numpy as np
+        import torch
+        import torch.nn.functional as F
+
+        originals = face_fix_context["original_frames"]
+        entries = face_fix_context["entries"]
+        offset = int(face_fix_context.get("ltx_frame_offset") or 0)
+        delta = len(entries) - max(0, int(ltx_face_frames.shape[0]) - offset)
+        if abs(delta) > 7:
+            raise ValueError(f"LTX returned {ltx_face_frames.shape[0]} frames for {len(entries)} source frames.")
+
+        detector = self._detector()
+        output = originals.clone()
+        masks = torch.zeros((originals.shape[0], originals.shape[1], originals.shape[2]), device=originals.device, dtype=originals.dtype)
+        usable = min(len(entries), max(0, int(ltx_face_frames.shape[0]) - offset))
+        repaired = 0
+        aligned = 0
+        previous_transform = None
+        previous_shot = None
+        smoothing = max(0.0, min(0.95, float(transform_smoothing)))
+
+        for index in range(usable):
+            box = entries[index].get("box")
+            if not box:
+                continue
+            left, top, right, bottom = (int(value) for value in box)
+            h, w = bottom - top, right - left
+            if h <= 0 or w <= 0:
+                continue
+            shot_id = entries[index].get("shot_id", 0)
+            if entries[index].get("hard_cut") or (previous_shot is not None and shot_id != previous_shot):
+                previous_transform = None
+            previous_shot = shot_id
+            ltx_index = index + offset
+            face_tensor = ltx_face_frames[ltx_index:ltx_index + 1, ..., :3].to(output.device, output.dtype).permute(0, 3, 1, 2)
+            face_tensor = F.interpolate(face_tensor, size=(h, w), mode="bicubic", align_corners=False).permute(0, 2, 3, 1)[0].clamp(0, 1)
+
+            source = (originals[index, top:bottom, left:right, :3].detach().cpu().numpy() * 255).round().clip(0, 255).astype(np.uint8)
+            generated = (face_tensor.detach().cpu().numpy() * 255).round().clip(0, 255).astype(np.uint8)
+            source_points = self._landmarks(detector, source)
+            generated_points = self._landmarks(detector, generated)
+            transform = None
+            if source_points is not None and generated_points is not None:
+                transform, _ = cv2.estimateAffinePartial2D(generated_points, source_points, method=cv2.RANSAC, ransacReprojThreshold=3.0)
+            if transform is not None:
+                transform = transform.astype(np.float32)
+                if previous_transform is not None:
+                    transform = previous_transform * smoothing + transform * (1.0 - smoothing)
+                previous_transform = transform
+            elif previous_transform is not None:
+                transform = previous_transform
+            if transform is not None:
+                generated = cv2.warpAffine(generated, transform, (w, h), flags=cv2.INTER_LANCZOS4, borderMode=cv2.BORDER_REFLECT101)
+                face_tensor = torch.from_numpy(generated.astype(np.float32) / 255.0).to(output.device, output.dtype)
+                aligned += 1
+
+            alpha = self._alpha(h, w, feather_pixels, output.device, output.dtype)
+            target = output[index, top:bottom, left:right, :3]
+            output[index, top:bottom, left:right, :3] = target * (1 - alpha[..., None]) + face_tensor * alpha[..., None]
+            masks[index, top:bottom, left:right] = alpha
+            repaired += 1
+            _progress(index, usable, "Compositing landmark-aligned faces")
+
+        _log(f"Landmark composite finished: repaired={repaired}, aligned={aligned}, fallback={repaired - aligned}, feather={feather_pixels}, smoothing={smoothing:.2f}.")
         return output.clamp(0, 1), masks, repaired
 
 
@@ -681,6 +1108,7 @@ class VRGDGFaceFixLTXInputs:
         video_path = str(cropped_video_context.get("crop_video_path") or "")
         folder = str(enhanced_anchor_context.get("enhanced_anchor_folder") or "")
         indices = list(enhanced_anchor_context.get("anchor_indices") or [])
+        ltx_offset = int(cropped_video_context.get("ltx_frame_offset") or enhanced_anchor_context.get("ltx_frame_offset") or 0)
         frame_count = int(cropped_video_context.get("frame_count") or 0)
         _log(
             f"Collect LTX Inputs started. Job={crop_job}; frames={frame_count}; "
@@ -694,6 +1122,7 @@ class VRGDGFaceFixLTXInputs:
         if len(files) != len(indices):
             raise ValueError(f"Enhanced anchor folder contains {len(files)} images; expected {len(indices)}.")
         original_indices = list(indices)
+        indices = [int(value) + ltx_offset for value in indices]
         indices = self._safe_indices(indices, frame_count)
         changes = [f"{old}->{new}" for old, new in zip(original_indices, indices) if old != new]
         if changes:
@@ -703,6 +1132,7 @@ class VRGDGFaceFixLTXInputs:
         context = dict(cropped_video_context)
         context["enhanced_anchor_folder"] = folder
         context["anchor_indices"] = indices
+        context["ltx_frame_offset"] = ltx_offset
         _log(
             f"Collect LTX Inputs finished: video={video_path}; anchors={folder}; "
             f"indices=[{','.join(str(v) for v in indices)}]."
@@ -710,20 +1140,96 @@ class VRGDGFaceFixLTXInputs:
         return video_path, folder, ",".join(str(value) for value in indices), len(indices), context
 
 
+class VRGDGFaceFixCopyVideo:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {
+            "source_video_path": ("STRING", {"tooltip": "Completed Face Fix crop video path."}),
+            "output_folder": ("STRING", {"default": "", "tooltip": "Project folder where the review copy is saved."}),
+            "filename": ("STRING", {"default": "face_fix_crop.mp4"}),
+        }}
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("saved_video_path",)
+    FUNCTION = "copy"
+    OUTPUT_NODE = True
+    CATEGORY = "VRGameDevGirl/Face Fix"
+
+    def copy(self, source_video_path, output_folder, filename):
+        source = os.path.abspath(str(source_video_path or "").strip().strip('"'))
+        if not os.path.isfile(source):
+            raise FileNotFoundError(f"Face Fix review source video was not found: {source}")
+        folder = os.path.abspath(str(output_folder or "").strip().strip('"'))
+        os.makedirs(folder, exist_ok=True)
+        target = os.path.join(folder, os.path.basename(str(filename or "face_fix_crop.mp4")))
+        shutil.copy2(source, target)
+        _log(f"Saved Face Fix crop review video: {target}")
+        return (target,)
+
+
+class VRGDGFaceFixSaveFramesVideo:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {
+            "frames": ("IMAGE", {"tooltip": "Face-repair crop frames to save for review."}),
+            "fps": ("FLOAT", {"default": 24.0, "min": 1.0, "max": 240.0}),
+            "output_folder": ("STRING", {"default": ""}),
+            "filename": ("STRING", {"default": "face_fix_repaired_crop.mp4"}),
+        }}
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("saved_video_path",)
+    FUNCTION = "save"
+    OUTPUT_NODE = True
+    CATEGORY = "VRGameDevGirl/Face Fix"
+
+    def save(self, frames, fps, output_folder, filename):
+        import cv2
+        folder = os.path.abspath(str(output_folder or "").strip().strip('"'))
+        os.makedirs(folder, exist_ok=True)
+        target = os.path.join(folder, os.path.basename(str(filename or "face_fix_repaired_crop.mp4")))
+        with tempfile.TemporaryDirectory(prefix="vrgdg_face_fix_review_") as temp_folder:
+            for index, frame in enumerate(frames):
+                rgb = (frame[..., :3].detach().cpu().clamp(0, 1).numpy() * 255).round().astype("uint8")
+                cv2.imwrite(os.path.join(temp_folder, f"frame_{index:06d}.png"), cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
+            ffmpeg = shutil.which("ffmpeg")
+            if not ffmpeg:
+                raise RuntimeError("FFmpeg is required to save Face Fix review videos.")
+            command = [ffmpeg, "-y", "-framerate", f"{float(fps):.12g}", "-i", os.path.join(temp_folder, "frame_%06d.png"),
+                       "-c:v", "libx264", "-crf", "16", "-pix_fmt", "yuv420p", target]
+            result = subprocess.run(command, capture_output=True, text=True, errors="replace", check=False)
+            if result.returncode != 0 or not os.path.isfile(target):
+                raise RuntimeError(f"Could not save Face Fix repair review video: {(result.stderr or result.stdout or 'FFmpeg failed')[-1200:]}")
+        _log(f"Saved Face Fix repaired-crop review video: {target}")
+        return (target,)
+
+
 NODE_CLASS_MAPPINGS = {
     "VRGDGFaceFixPrepare": VRGDGFaceFixPrepare,
+    "VRGDGFaceFixPrepareShotAware": VRGDGFaceFixPrepareShotAware,
+    "VRGDGFaceFixPrepareVideoShotAware": VRGDGFaceFixPrepareVideoShotAware,
     "VRGDGFaceFixLoadAnchorsMetaBatch": VRGDGFaceFixLoadAnchorsMetaBatch,
     "VRGDGFaceFixStoreAnchors": VRGDGFaceFixStoreAnchors,
     "VRGDGFaceFixCreateCropVideo": VRGDGFaceFixCreateCropVideo,
     "VRGDGFaceFixLTXInputs": VRGDGFaceFixLTXInputs,
     "VRGDGFaceFixComposite": VRGDGFaceFixComposite,
+    "VRGDGFaceFixCompositeOpaque": VRGDGFaceFixCompositeOpaque,
+    "VRGDGFaceFixCompositeLandmarkAligned": VRGDGFaceFixCompositeLandmarkAligned,
+    "VRGDGFaceFixCopyVideo": VRGDGFaceFixCopyVideo,
+    "VRGDGFaceFixSaveFramesVideo": VRGDGFaceFixSaveFramesVideo,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDGFaceFixPrepare": "Face Fix - Prepare Video and Anchors",
+    "VRGDGFaceFixPrepareShotAware": "Face Fix - Prepare Full Video With Shot Tracking",
+    "VRGDGFaceFixPrepareVideoShotAware": "Face Fix - Prepare Full Face Video (Shot Aware)",
     "VRGDGFaceFixLoadAnchorsMetaBatch": "Face Fix - Load Anchors (Meta Batch)",
     "VRGDGFaceFixStoreAnchors": "Face Fix - Store Enhanced Anchors",
     "VRGDGFaceFixCreateCropVideo": "Face Fix - Create Cropped Face Video",
     "VRGDGFaceFixLTXInputs": "Face Fix - Collect LTX Inputs",
     "VRGDGFaceFixComposite": "Face Fix - Composite Repaired Video",
+    "VRGDGFaceFixCompositeOpaque": "Face Fix - Composite Opaque Full Face",
+    "VRGDGFaceFixCompositeLandmarkAligned": "Face Fix - Composite Landmark Aligned",
+    "VRGDGFaceFixCopyVideo": "Face Fix - Save Crop Review Video",
+    "VRGDGFaceFixSaveFramesVideo": "Face Fix - Save Repaired Crop Review Video",
 }

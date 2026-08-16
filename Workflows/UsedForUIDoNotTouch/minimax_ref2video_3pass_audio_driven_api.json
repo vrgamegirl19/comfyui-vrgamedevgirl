@@ -1,0 +1,825 @@
+{
+  "4": {
+    "inputs": {
+      "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "type": "minimax",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "5": {
+    "inputs": {
+      "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "6": {
+    "inputs": {
+      "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "84": {
+    "inputs": {
+      "value": 8
+    },
+    "class_type": "PrimitiveFloat",
+    "_meta": {
+      "title": "Video Duration (seconds)"
+    }
+  },
+  "91": {
+    "inputs": {
+      "frame_rate": 24,
+      "loop_count": 0,
+      "filename_prefix": "H3_Ref2VA_stage1",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": false,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true,
+      "images": [
+        "305",
+        0
+      ],
+      "audio": [
+        "9001",
+        0
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine 🎥🅥🅗🅢"
+    }
+  },
+  "92": {
+    "inputs": {
+      "expression": "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17",
+      "values.a": [
+        "84",
+        0
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Math Expression"
+    }
+  },
+  "97": {
+    "inputs": {
+      "image": "ChatGPT Image Aug 12, 2026, 07_04_19 PM (4).png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image"
+    }
+  },
+  "99": {
+    "inputs": {
+      "aspect_ratio": "original",
+      "proportional_width": 1,
+      "proportional_height": 1,
+      "fit": "crop",
+      "method": "lanczos",
+      "round_to_multiple": "32",
+      "scale_to_side": "total_pixel(kilo pixel)",
+      "scale_to_length": 1536,
+      "background_color": "#000000",
+      "image": [
+        "97",
+        0
+      ]
+    },
+    "class_type": "LayerUtility: ImageScaleByAspectRatio V2",
+    "_meta": {
+      "title": "LayerUtility: ImageScaleByAspectRatio V2"
+    }
+  },
+  "100": {
+    "inputs": {
+      "images": [
+        "99",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Preview Image"
+    }
+  },
+  "101": {
+    "inputs": {
+      "image": "ChatGPT Image Aug 12, 2026, 07_11_54 PM (1).png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image"
+    }
+  },
+  "102": {
+    "inputs": {
+      "aspect_ratio": "original",
+      "proportional_width": 1,
+      "proportional_height": 1,
+      "fit": "crop",
+      "method": "lanczos",
+      "round_to_multiple": "32",
+      "scale_to_side": "total_pixel(kilo pixel)",
+      "scale_to_length": 1536,
+      "background_color": "#000000",
+      "image": [
+        "101",
+        0
+      ]
+    },
+    "class_type": "LayerUtility: ImageScaleByAspectRatio V2",
+    "_meta": {
+      "title": "LayerUtility: ImageScaleByAspectRatio V2"
+    }
+  },
+  "103": {
+    "inputs": {
+      "images": [
+        "102",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Preview Image"
+    }
+  },
+  "9000": {
+    "class_type": "VRGDG_MiniMaxH3ReferenceMediaFromPaths",
+    "inputs": {
+      "image_paths": "[]",
+      "video_references": "[]"
+    },
+    "_meta": {
+      "title": "BUILDER INPUTS - Ordered H3 Reference Images And Videos"
+    }
+  },
+  "9001": {
+    "class_type": "VHS_LoadAudio",
+    "inputs": {
+      "audio_file": "",
+      "seek_seconds": 0,
+      "duration": 0
+    },
+    "_meta": {
+      "title": "BUILDER INPUT - Project Audio"
+    }
+  },
+  "9002": {
+    "class_type": "VRGDG_MiniMaxH3AudioDrive",
+    "inputs": {
+      "av_latent": [
+        "350",
+        0
+      ],
+      "source_audio": [
+        "9001",
+        0
+      ],
+      "audio_vae": [
+        "6",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "BUILDER OUTPUT - External Audio Drive"
+    }
+  },
+  "105": {
+    "inputs": {
+      "aspect_ratio": "16:9 (Widescreen)",
+      "megapixels": 0.4,
+      "multiple": 32
+    },
+    "class_type": "ResolutionSelector",
+    "_meta": {
+      "title": "Resolution Selector"
+    }
+  },
+  "108": {
+    "inputs": {
+      "prompt": [
+        "329",
+        0
+      ],
+      "width": [
+        "105",
+        0
+      ],
+      "height": [
+        "105",
+        1
+      ],
+      "length": [
+        "92",
+        1
+      ],
+      "ref_image_size": "max",
+      "clip": [
+        "4",
+        0
+      ],
+      "vae": [
+        "5",
+        0
+      ],
+      "audio_vae": [
+        "6",
+        0
+      ],
+      "ref_images.ref_image_0": [
+        "9000",
+        0
+      ],
+      "ref_images.ref_image_1": [
+        "9000",
+        1
+      ],
+      "ref_audios.ref_audio_0": [
+        "9001",
+        0
+      ]
+    },
+    "class_type": "MiniMaxH3ReferenceToVideo",
+    "_meta": {
+      "title": "MiniMax H3 Reference to Video"
+    }
+  },
+  "187": {
+    "inputs": {
+      "lora_name": "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors",
+      "strength_model": 0.8,
+      "model": [
+        "328",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "Load LoRA"
+    }
+  },
+  "243": {
+    "inputs": {
+      "noise_seed": 69
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "RandomNoise"
+    }
+  },
+  "246": {
+    "inputs": {
+      "model": [
+        "328",
+        0
+      ],
+      "conditioning": [
+        "108",
+        0
+      ]
+    },
+    "class_type": "BasicGuider",
+    "_meta": {
+      "title": "Basic Guider"
+    }
+  },
+  "247": {
+    "inputs": {
+      "noise": [
+        "243",
+        0
+      ],
+      "guider": [
+        "246",
+        0
+      ],
+      "sampler": [
+        "249",
+        0
+      ],
+      "sigmas": [
+        "248",
+        0
+      ],
+      "latent_image": [
+        "108",
+        1
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "SamplerCustomAdvanced"
+    }
+  },
+  "248": {
+    "inputs": {
+      "scheduler": "beta",
+      "steps": 20,
+      "denoise": 1,
+      "model": [
+        "328",
+        0
+      ]
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {
+      "title": "BasicScheduler"
+    }
+  },
+  "249": {
+    "inputs": {
+      "sampler_name": "euler"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "KSamplerSelect"
+    }
+  },
+  "288": {
+    "inputs": {
+      "audio": [
+        "305",
+        1
+      ],
+      "vae": [
+        "6",
+        0
+      ]
+    },
+    "class_type": "VAEEncodeAudio",
+    "_meta": {
+      "title": "VAE Encode Audio"
+    }
+  },
+  "289": {
+    "inputs": {
+      "sampler_name": "euler"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "KSamplerSelect"
+    }
+  },
+  "290": {
+    "inputs": {
+      "scheduler": "beta",
+      "steps": 5,
+      "denoise": 0.20000000000000004,
+      "model": [
+        "187",
+        0
+      ]
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {
+      "title": "BasicScheduler"
+    }
+  },
+  "291": {
+    "inputs": {
+      "width": [
+        "297",
+        0
+      ],
+      "height": [
+        "297",
+        1
+      ],
+      "upscale_method": "nvidia_rtx_vsr",
+      "keep_proportion": "crop",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 0,
+      "device": "cpu",
+      "image": [
+        "305",
+        0
+      ]
+    },
+    "class_type": "ImageResizeKJv2",
+    "_meta": {
+      "title": "Resize Image v2"
+    }
+  },
+  "292": {
+    "inputs": {
+      "pixels": [
+        "291",
+        0
+      ],
+      "vae": [
+        "5",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE Encode"
+    }
+  },
+  "293": {
+    "inputs": {
+      "video_latent": [
+        "292",
+        0
+      ],
+      "audio_latent": [
+        "288",
+        0
+      ]
+    },
+    "class_type": "PT_H3ConcatAVLatent",
+    "_meta": {
+      "title": "PT H3 Concat AV Latent"
+    }
+  },
+  "294": {
+    "inputs": {
+      "model": [
+        "187",
+        0
+      ],
+      "conditioning": [
+        "108",
+        0
+      ]
+    },
+    "class_type": "BasicGuider",
+    "_meta": {
+      "title": "Basic Guider"
+    }
+  },
+  "295": {
+    "inputs": {
+      "noise": [
+        "300",
+        0
+      ],
+      "guider": [
+        "294",
+        0
+      ],
+      "sampler": [
+        "289",
+        0
+      ],
+      "sigmas": [
+        "290",
+        0
+      ],
+      "latent_image": [
+        "293",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "SamplerCustomAdvanced"
+    }
+  },
+  "296": {
+    "inputs": {
+      "samples": [
+        "295",
+        0
+      ],
+      "vae": [
+        "5",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "297": {
+    "inputs": {
+      "aspect_ratio": "16:9 (Widescreen)",
+      "megapixels": 1,
+      "multiple": 32
+    },
+    "class_type": "ResolutionSelector",
+    "_meta": {
+      "title": "Resolution Selector"
+    }
+  },
+  "299": {
+    "inputs": {
+      "frame_rate": 24,
+      "loop_count": 0,
+      "filename_prefix": "H3_Ref2VA_Stage2",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": false,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true,
+      "images": [
+        "296",
+        0
+      ],
+      "audio": [
+        "9001",
+        0
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine 🎥🅥🅗🅢"
+    }
+  },
+  "300": {
+    "inputs": {
+      "noise_seed": 69
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "RandomNoise"
+    }
+  },
+  "305": {
+    "inputs": {
+      "av_latent": [
+        "247",
+        0
+      ],
+      "video_vae": [
+        "5",
+        0
+      ],
+      "audio_vae": [
+        "6",
+        0
+      ]
+    },
+    "class_type": "MiniMaxH3AVDecodeT8",
+    "_meta": {
+      "title": "MiniMax H3 AV Decode (T8)"
+    }
+  },
+  "328": {
+    "inputs": {
+      "processing_control_value": 0.07,
+      "processing_percent_1": 0.1,
+      "processing_percent_2": 0.9,
+      "mcs": 2,
+      "device": "auto",
+      "cache_depth": 0.75,
+      "model": [
+        "330",
+        0
+      ]
+    },
+    "class_type": "TESpeedMiniMaxH3",
+    "_meta": {
+      "title": "TE-Speed-MiniMaxH3 (OSS)"
+    }
+  },
+  "329": {
+    "inputs": {
+      "text": "subject_definitions:\n<Subject 1> is the woman in <Picture 1>; <Picture 1> is the visual authority for character identity, face, hair, clothing, and body-proportion reference.\n<Subject 2> is the environment in <Picture 2>, used as environment, location, architecture, layout, and atmosphere reference: A ceremonial aisle stretches across a pale, snow-covered landscape toward a raised white platform and ornate golden sunburst arch. Tall rectangular pillars draped in translucent white fabric and cascading gold chains line both sides.\n<Audio 1> is the complete synchronized song and vocal track for <Subject 1> (S1), reused as the target video's complete final soundtrack and timing reference. The exact performed lyric/dialogue line is \"I learned to speak where no one.\"\n\nsummary:\n[reference generation + audio reuse] The target video is a cinematic_realism scene featuring <Subject 1> (the woman) and <Subject 2> (environment). <Audio 1> is reused as the complete soundtrack and timing reference.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - reference identity, face, hair, wardrobe, and accessories remain consistent.\n<Subject 2> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - A ceremonial aisle stretches across a pale, snow-covered landscape toward a raised white platform and ornate golden sunburst arch. Tall and its reference identity remain consistent.\n<Audio 1>: fully_copy - <Audio 1> is reused 1:1 as the target video's complete final audio track.\n\ndetailed_description:\nThe target video is in a cinematic_realism music-video style.\n\n[Shot 1] S1, the woman, fills the frame in an intimate seated side-profile close-up, her platinum-blonde braids, fine gold chains, jeweled halo spikes, gold eye makeup, metallic lips, and teardrop ornaments glowing in warm sunset light. The camera makes a slow controlled side pan as she leans forward and gathers a pearl strand against her cream-and-gold corseted bodice, ruffled sleeve shifting with the gesture. Her jaw, mouth, and face move naturally in precise lip sync as she visibly sings, <d>[English] I learned to speak where no one.</d> Behind her, only soft ivory fabric and glinting gold chains from the ceremonial aisle remain abstractly visible.\n\n[Shot 2] At 00:02.667, The camera cuts to S1, the woman, lies on her side in a tightly composed frame, the beaded edge of her translucent cream-and-gold dress and one white platform shoe entering first as the camera slowly pans laterally from her feet toward her face. Her upper body curls gently, one hand pressing into the reflective walkway while the other traces the cascading train. The pan reveals her halo crown, loose braids, gold facial ornaments, and expressive eyes; her lips and jaw articulate the exact sung line in clear synchronization, <d>[English] I learned to speak where no one.</d> Candlelit gold reflections and blurred white drapery create an intimate celestial backdrop.\n\n[Shot 3] At 00:05.333, The camera cuts to In an extreme close-up, S1, the woman, raises her fingers and slowly brushes through her platinum-blonde hair and loose braids, fine gold chains trembling beside her cheek. The camera performs a slow upward tilt from the moving fingers across the jeweled halo crown to her gold-lined eyes. Her brow, cheeks, mouth, and jaw animate with restrained emotion while she visibly sings in exact lip sync, <d>[English] I learned to speak where no one.</d> Teardrop facial ornaments sway with each small movement, catching the warm amber light as the background dissolves into creamy fabric and soft golden bokeh.\n\noverall_soundscape:\nNo additional environmental or physical sounds are added over <Audio 1>.\n\nnon_diegetic_music:\n<Audio 1> is reused as the complete audience-facing song/music track.",
+      "output_mode": "string"
+    },
+    "class_type": "VRGDG_TextBox",
+    "_meta": {
+      "title": "VRGDG_TextBox"
+    }
+  },
+  "330": {
+    "inputs": {
+      "model_name": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+      "weight_dtype": "default",
+      "compute_dtype": "default",
+      "patch_cublaslinear": false,
+      "sage_attention": "auto",
+      "enable_fp16_accumulation": true
+    },
+    "class_type": "DiffusionModelLoaderKJ",
+    "_meta": {
+      "title": "Diffusion Model Loader KJ"
+    }
+  },
+  "334": {
+    "inputs": {
+      "aspect_ratio": "16:9 (Widescreen)",
+      "megapixels": 2,
+      "multiple": 32
+    },
+    "class_type": "ResolutionSelector",
+    "_meta": {
+      "title": "Resolution Selector"
+    }
+  },
+  "335": {
+    "inputs": {
+      "pixels": [
+        "342",
+        0
+      ],
+      "vae": [
+        "5",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE Encode"
+    }
+  },
+  "336": {
+    "inputs": {
+      "audio": [
+        "305",
+        1
+      ],
+      "vae": [
+        "6",
+        0
+      ]
+    },
+    "class_type": "VAEEncodeAudio",
+    "_meta": {
+      "title": "VAE Encode Audio"
+    }
+  },
+  "340": {
+    "inputs": {
+      "model": [
+        "187",
+        0
+      ],
+      "conditioning": [
+        "108",
+        0
+      ]
+    },
+    "class_type": "BasicGuider",
+    "_meta": {
+      "title": "Basic Guider"
+    }
+  },
+  "341": {
+    "inputs": {
+      "sampler_name": "euler"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "KSamplerSelect"
+    }
+  },
+  "342": {
+    "inputs": {
+      "width": [
+        "334",
+        0
+      ],
+      "height": [
+        "334",
+        1
+      ],
+      "upscale_method": "nvidia_rtx_vsr",
+      "keep_proportion": "crop",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 0,
+      "device": "cpu",
+      "image": [
+        "296",
+        0
+      ]
+    },
+    "class_type": "ImageResizeKJv2",
+    "_meta": {
+      "title": "Resize Image v2"
+    }
+  },
+  "343": {
+    "inputs": {
+      "video_latent": [
+        "335",
+        0
+      ],
+      "audio_latent": [
+        "336",
+        0
+      ]
+    },
+    "class_type": "PT_H3ConcatAVLatent",
+    "_meta": {
+      "title": "PT H3 Concat AV Latent"
+    }
+  },
+  "344": {
+    "inputs": {
+      "scheduler": "beta",
+      "steps": 5,
+      "denoise": 0.20000000000000004,
+      "model": [
+        "187",
+        0
+      ]
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {
+      "title": "BasicScheduler"
+    }
+  },
+  "345": {
+    "inputs": {
+      "noise_seed": 69
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "RandomNoise"
+    }
+  },
+  "347": {
+    "inputs": {
+      "samples": [
+        "350",
+        0
+      ],
+      "vae": [
+        "5",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "350": {
+    "inputs": {
+      "noise": [
+        "345",
+        0
+      ],
+      "guider": [
+        "340",
+        0
+      ],
+      "sampler": [
+        "341",
+        0
+      ],
+      "sigmas": [
+        "344",
+        0
+      ],
+      "latent_image": [
+        "343",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "SamplerCustomAdvanced"
+    }
+  },
+  "353": {
+    "inputs": {
+      "frame_rate": 24,
+      "loop_count": 0,
+      "filename_prefix": "H3_Ref2VA_Stage3",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": false,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true,
+      "images": [
+        "347",
+        0
+      ],
+      "audio": [
+        "9002",
+        1
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine 🎥🅥🅗🅢"
+    }
+  }
+}
