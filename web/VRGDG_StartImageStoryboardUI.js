@@ -421,6 +421,7 @@ function openStoryboardCreator() {
       const providers = Array.isArray(data.providers) ? data.providers : [];
       apiProvider.replaceChildren();
       providers.forEach((item) => { const option = el("option", "", item.label || item.id); option.value = item.id; apiProvider.append(option); });
+      if (state.apiProvider === "xai") state.apiProvider = "grok";
       if (providers.some((item) => item.id === state.apiProvider)) apiProvider.value = state.apiProvider;
       const fillModels = () => {
         const selected = providers.find((item) => item.id === apiProvider.value) || providers[0] || {};

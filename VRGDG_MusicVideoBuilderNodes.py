@@ -422,15 +422,14 @@ def _llm_multi_choices():
         "anthropic": "Anthropic",
         "google": "Google Gemini",
         "grok": "Grok",
-        "xai": "xAI / Grok",
         "deepseek": "DeepSeek",
         "openrouter": "OpenRouter",
         "apifreellm": "APIFreeLLM",
     }
     providers = []
     for provider, models in provider_models.items():
-        clean_provider = str(provider or "").strip()
-        if not clean_provider:
+        clean_provider = str(provider or "").strip().lower()
+        if not clean_provider or clean_provider == "xai":
             continue
         model_list = [str(model or "").strip() for model in (models or []) if str(model or "").strip()]
         providers.append({
@@ -448,6 +447,8 @@ def _test_llm_api(payload):
     except Exception as exc:
         raise RuntimeError(f"Could not load LLM API runner: {exc}") from exc
     provider = str(payload.get("provider") or payload.get("llm_api_provider") or "openai").strip().lower()
+    if provider == "xai":
+        provider = "grok"
     model = str(payload.get("model") or payload.get("llm_api_model") or "").strip()
     api_key = str(payload.get("api_key") or payload.get("llm_api_key") or "").strip()
     custom_model = str(payload.get("custom_model") or "").strip()
@@ -3456,6 +3457,8 @@ def _run_llm_api_text(payload, instruction_text):
     except Exception as exc:
         raise RuntimeError(f"Could not load LLM API runner: {exc}") from exc
     provider = str(payload.get("llm_api_provider") or payload.get("provider") or "openai").strip().lower()
+    if provider == "xai":
+        provider = "grok"
     model = str(payload.get("llm_api_model") or payload.get("model") or "").strip()
     api_key = str(payload.get("llm_api_key") or payload.get("api_key") or "").strip()
     custom_model = str(payload.get("llm_api_custom_model") or payload.get("custom_model") or "").strip()
@@ -3491,6 +3494,8 @@ def _run_llm_api_vision(payload, instruction_text, pil_images):
     except Exception as exc:
         raise RuntimeError(f"Could not load LLM API runner: {exc}") from exc
     provider = str(payload.get("llm_api_provider") or payload.get("provider") or "openai").strip().lower()
+    if provider == "xai":
+        provider = "grok"
     model = str(payload.get("llm_api_model") or payload.get("model") or "").strip()
     api_key = str(payload.get("llm_api_key") or payload.get("api_key") or "").strip()
     custom_model = str(payload.get("llm_api_custom_model") or payload.get("custom_model") or "").strip()

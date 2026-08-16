@@ -1048,7 +1048,9 @@ function openPromptCreator(options = {}) {
         option.textContent = String(provider.label || provider.id || "");
         apiProvider.append(option);
       });
-      const wanted = String(state.llmApiProvider || "").trim();
+      const wantedRaw = String(state.llmApiProvider || "").trim();
+      const wanted = wantedRaw === "xai" ? "grok" : wantedRaw;
+      if (wantedRaw === "xai") state.llmApiProvider = "grok";
       apiProvider.value = providers.some((provider) => String(provider.id) === wanted) ? wanted : String(providers[0]?.id || "openai");
       populateApiModels();
     };

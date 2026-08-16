@@ -45,31 +45,10 @@ const PROVIDER_MODELS = {
     "gemini-2.5-flash",
     "gemini-2.5-flash-lite",
   ],
-  xai: [
-    "grok-4.3",
-    "grok-4.3-latest",
-    "grok-build-0.1",
-    "grok-4.1-fast",
-    "grok-4.1-fast-latest",
-    "grok-4",
-    "grok-4-latest",
-    "grok-3",
-    "grok-3-latest",
-    "grok-3-mini",
-    "grok-3-mini-latest",
-  ],
   grok: [
+    "grok-4.6",
+    "grok-4.5",
     "grok-4.3",
-    "grok-4.3-latest",
-    "grok-build-0.1",
-    "grok-4.1-fast",
-    "grok-4.1-fast-latest",
-    "grok-4",
-    "grok-4-latest",
-    "grok-3",
-    "grok-3-latest",
-    "grok-3-mini",
-    "grok-3-mini-latest",
   ],
   deepseek: ["deepseek-chat", "deepseek-reasoner"],
   openrouter: [
@@ -94,8 +73,7 @@ const DEFAULT_MODEL = {
   openai: "gpt-5.6-luna",
   anthropic: "claude-sonnet-4-6",
   google: "gemini-3.5-flash",
-  xai: "grok-4.3",
-  grok: "grok-4.3",
+  grok: "grok-4.6",
   deepseek: "deepseek-chat",
   openrouter: "openai/gpt-5.6-luna",
   apifreellm: "apifreellm",
@@ -110,7 +88,9 @@ function syncModelWidget(node) {
   const modelWidget = getWidget(node, "model");
   if (!providerWidget || !modelWidget) return;
 
-  const provider = String(providerWidget.value || "openai").toLowerCase();
+  const providerRaw = String(providerWidget.value || "openai").toLowerCase();
+  const provider = providerRaw === "xai" ? "grok" : providerRaw;
+  if (providerRaw === "xai") providerWidget.value = "grok";
   const models = PROVIDER_MODELS[provider] || [];
   if (!models.length) return;
 
