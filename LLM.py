@@ -353,39 +353,10 @@ class VRGDG_LLM_Multi:
             "gemini-2.5-flash",
             "gemini-2.5-flash-lite",
         ],
-        "xai": [
-            "grok-4.3",
-            "grok-4.3-latest",
-            "grok-build-0.1",
-            "grok-4.1-fast",
-            "grok-4.1-fast-latest",
-            "grok-4",
-            "grok-4-latest",
-            "grok-3",
-            "grok-3-latest",
-            "grok-3-mini",
-            "grok-3-mini-latest",
-            "grok-imagine-image",
-            "grok-imagine-image-quality",
-            "grok-imagine-video",
-            "grok-imagine-video-1.5",
-        ],
         "grok": [
+            "grok-4.6",
+            "grok-4.5",
             "grok-4.3",
-            "grok-4.3-latest",
-            "grok-build-0.1",
-            "grok-4.1-fast",
-            "grok-4.1-fast-latest",
-            "grok-4",
-            "grok-4-latest",
-            "grok-3",
-            "grok-3-latest",
-            "grok-3-mini",
-            "grok-3-mini-latest",
-            "grok-imagine-image",
-            "grok-imagine-image-quality",
-            "grok-imagine-video",
-            "grok-imagine-video-1.5",
         ],
         "deepseek": [
             "deepseek-chat",
@@ -414,8 +385,7 @@ class VRGDG_LLM_Multi:
         "openai": "gpt-5.6-luna",
         "anthropic": "claude-sonnet-4-6",
         "google": "gemini-3.5-flash",
-        "xai": "grok-4.3",
-        "grok": "grok-4.3",
+        "grok": "grok-4.6",
         "deepseek": "deepseek-chat",
         "openrouter": "openai/gpt-5.6-luna",
         "apifreellm": "apifreellm",
@@ -525,7 +495,15 @@ class VRGDG_LLM_Multi:
             )
         return f"error: {msg}"
 
+    @classmethod
+    def _canonical_provider(cls, provider: str) -> str:
+        name = str(provider or "").strip().lower()
+        if name == "xai":
+            return "grok"
+        return name
+
     def _validate_provider_model(self, provider: str, model: str):
+        provider = self._canonical_provider(provider)
         allowed = self.PROVIDER_MODELS.get(provider, [])
         if model not in allowed:
             raise Exception(
@@ -534,6 +512,7 @@ class VRGDG_LLM_Multi:
             )
 
     def _resolve_model(self, provider: str, selected_model: str, custom_model: str) -> str:
+        provider = self._canonical_provider(provider)
         custom_model = custom_model.strip()
         if custom_model:
             return custom_model
@@ -868,7 +847,7 @@ class VRGDG_LLM_Multi:
         if not prompt.strip():
             raise Exception("Prompt is empty")
 
-        provider = provider.strip().lower()
+        provider = self._canonical_provider(provider)
         if provider not in self.PROVIDER_MODELS:
             raise Exception(f"Unsupported provider: {provider}")
         chosen_model = self._resolve_model(provider, model, custom_model)
@@ -886,7 +865,7 @@ class VRGDG_LLM_Multi:
                         prompt,
                         pil_images,
                     )
-            elif provider in ("xai", "grok"):
+            elif provider == "grok":
                 text, image_out = self._call_openai_compatible(
                     "https://api.x.ai/v1",
                     api_key,
