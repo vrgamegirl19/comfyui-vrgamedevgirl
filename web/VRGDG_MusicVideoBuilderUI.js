@@ -38610,7 +38610,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const isFLF = videoMode === "flf";
     const isIngredients = videoMode === "ingredients";
     const isIdLora = videoMode === "id_lora";
-    const modeLabel = videoModeDisplayLabel(videoMode, true);
+    const modeLabel = videoModeDisplayLabel(videoMode, false);
     const provisionalMotionPlan = Boolean(options.provisionalMotionPlan);
     const forceTextOnly = Boolean(options.forceTextOnly);
     const forceVision = Boolean(options.forceVision);
@@ -42655,7 +42655,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         skipStoryboardExtraNotes: true,
         forceTextOnly,
       });
-      options.progress?.set(`${options.progressLabel || scene.label || sceneDisplayName(segment, segmentIndexInfo(segment).index)}: creating prompt through Video Builder I2V payload...\n${forceTextOnly ? "No scene image found, using text-only storyboard fallback.\n" : ""}${gemmaRunnerLine({ vision: request.useImageReference })}`, Math.min(92, Number(options.progressPercent || 35) + 18));
+      options.progress?.set(`${options.progressLabel || scene.label || sceneDisplayName(segment, segmentIndexInfo(segment).index)}: creating prompt through Video Builder ${request.modeLabel} payload...\n${forceTextOnly ? "No scene image found, using text-only storyboard fallback.\n" : ""}${gemmaRunnerLine({ vision: request.useImageReference })}`, Math.min(92, Number(options.progressPercent || 35) + 18));
       const data = await postJson(request.endpoint, request.payload, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
       const finalizedPrompt = await finalizeVideoPromptForSegment(
         workingSegment,

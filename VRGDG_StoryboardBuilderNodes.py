@@ -88,10 +88,11 @@ Rules:
 * Do not default to zoom-in, push-in, dolly-in, crash-zoom, or close-up endings. Use those inward camera moves only when `camera_motion`, `shot_type`, or the user notes explicitly ask for them.
 * If `camera_motion` names a non-inward move such as pull back, track backward, side-follow, pan, tilt, crane, reveal, orbit, handheld follow, rack focus, or drift, preserve that motion and do not add a zoom-in or push-in afterward.
 * Vary camera behavior between scenes. Avoid repeating the same inward camera language across multiple prompts.
+* Follow `cut_plan.instruction` exactly when present. MiniMax cut plans use timestamped `CUT TO` blocks. LTX cut plans must express the same number of distinct continuity-preserving shots in ordinary chronological language such as "then cut to" and must not use the MiniMax timestamp schema. A continuous-shot plan forbids cuts for either engine.
 * If `global_consistency_phrase` is present, include it in the final video prompt. Preserve its wording as much as possible, but lightly adapt grammar if needed so it fits the scene naturally.
 * If `video_style_verbiage` is present, copy that exact text word-for-word into the final prompt. Do not paraphrase, shorten, rename, or omit it. Treat it only as the governing visual-appearance contract for lighting, color, texture, materials, production design, grading, and image finish. It must not select, replace, or modify camera motion, character motion, shot timing, editing, or transitions.
-* If `temporal_world_effect_verbiage` is present, copy that exact text word-for-word into the final prompt before the first timestamp. Do not place it inside a timestamp or after Continuity. Do not paraphrase, shorten, or omit it. It is a hard temporal-layer contract: every protected mapped/reference character, their face, performance, voice, dialogue/singing timing, and lip sync remain natural and stable while only the explicitly unprotected background/world elements receive the temporal effect. Anonymous extras may be added only when the contract allows them, and must fit `location_ref` without replacing or duplicating a mapped character.
-* A temporal/world contract must be enacted, not merely copied. Every timestamp block must contain the contract's required number of concrete visible background/world actions. At intensity 7 or higher, subtle flicker, ambience, particles, or vague time-passage language alone is invalid. Use visibly accelerated, frozen, reversed, looping, delayed, season-changing, light-changing, crowd, traffic, weather, reflection, shadow, or location activity appropriate to the selected effect and mapped location.
+* If `temporal_world_effect_verbiage` is present, copy that exact text word-for-word into the final prompt before the first shot description. MiniMax may place it before its first timestamp; LTX must keep it in ordinary natural-language prompt form. Do not paraphrase, shorten, or omit it. It is a hard temporal-layer contract: every protected mapped/reference character, their face, performance, voice, dialogue/singing timing, and lip sync remain natural and stable while only the explicitly unprotected background/world elements receive the temporal effect. Anonymous extras may be added only when the contract allows them, and must fit `location_ref` without replacing or duplicating a mapped character.
+* A temporal/world contract must be enacted, not merely copied. Every MiniMax timestamp block or LTX natural-language shot must contain the contract's required number of concrete visible background/world actions. At intensity 7 or higher, subtle flicker, ambience, particles, or vague time-passage language alone is invalid. Use visibly accelerated, frozen, reversed, looping, delayed, season-changing, light-changing, crowd, traffic, weather, reflection, shadow, or location activity appropriate to the selected effect and mapped location.
 * When a temporal/world contract permits anonymous extras, wording such as `no people` in `location_ref` describes the source reference image only and is not an output prohibition. In Continuity, prohibit only additional named, principal, mapped, or referenced characters; explicitly preserve the contract's permission for anonymous unreferenced background extras.
 * Use `performance_style` and `performance_direction` to choose body language, gesture intensity, and camera energy. In singing mode, rap/hip-hop may describe rapping with rhythmic energy, hand gestures, head nods, and confident body language instead of soft singing. In speaking mode, remove music-video wording and use grounded short-film acting language.
 * Follow `character_motion_guidance` when present. Low values mean still/subtle body language; high values mean energetic or fast physical action when it fits the scene.
@@ -1394,10 +1395,16 @@ def _build_storyboard_video_prompt(payload):
             for subject in selected_scene.get("subjects") or []
             if isinstance(subject, dict)
         )
-        location_ref = selected_scene.get("setting") or {}
+        # The mapped Reference Builder location is authoritative. ``setting``
+        # may be only a plain-text scene field, so reading it first can discard
+        # a valid location_ref and leave the vision model without labeled
+        # location context.
+        location_ref = selected_scene.get("location_ref") or selected_scene.get("setting") or {}
         location_context = ""
         if isinstance(location_ref, dict):
             location_context = f"{_clean_scene_text(location_ref.get('name') or 'Location', 120)}: {_clean_scene_text(location_ref.get('description') or '', 1000)}".strip()
+        elif isinstance(location_ref, str):
+            location_context = _clean_scene_text(location_ref, 1000)
         vocal_status = selected_scene.get("vocal_status") or {}
         performance_mode = _normalize_performance_mode(
             selected_scene.get("performance_mode")
@@ -1435,9 +1442,10 @@ def _build_storyboard_video_prompt(payload):
                 f"Lyric section:\n{_clean_scene_text(vocal_status.get('lyric_section') or story_layer.get('lyric_section') or '', 200)}",
                 f"Scene story beat:\n{_clean_scene_text(story_layer.get('scene_story_beat') or '', 1200)}",
                 f"Motion/video summary:\n{motion_summary}",
-                f"Required MiniMax video style:\n{_clean_scene_text(selected_scene.get('video_style') or '', 200)}",
-                f"MANDATORY exact MiniMax video style verbiage — copy word-for-word into the final prompt:\n{_clean_scene_text(selected_scene.get('video_style_verbiage') or '', 3000)}",
+                f"Required video style:\n{_clean_scene_text(selected_scene.get('video_style') or '', 200)}",
+                f"MANDATORY exact video style verbiage — copy word-for-word into the final prompt:\n{_clean_scene_text(selected_scene.get('video_style_verbiage') or '', 3000)}",
                 f"MANDATORY exact temporal / world effect verbiage — copy word-for-word into the final prompt:\n{_clean_scene_text(selected_scene.get('temporal_world_effect_verbiage') or '', 5000)}",
+                f"MANDATORY editing / cut plan:\n{_clean_scene_text((selected_scene.get('cut_plan') or {}).get('instruction') if isinstance(selected_scene.get('cut_plan'), dict) else '', 5000)}",
                 f"Camera motion:\n{camera_motion}",
                 f"Required camera-flow framing:\n{_clean_scene_text(selected_scene.get('camera_flow_guidance') or '', 1600)}",
                 f"Camera motion speed guidance:\n{_clean_scene_text(camera_speed_guidance, 1000)}",
