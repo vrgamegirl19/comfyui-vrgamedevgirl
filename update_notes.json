@@ -3,6 +3,63 @@
   "product": "AI Video Builder",
   "releases": [
     {
+      "id": "2026-08-16-ltx25-minimax-three-pass",
+      "version": "2026.08.16-ltx25-minimax-three-pass",
+      "date": "2026-08-16",
+      "title": "LTX 2.5 workflows, MiniMax H3 three-pass rendering, and Storyboard improvements",
+      "commit": "d2ef56a",
+      "restart_required": true,
+      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
+      "sections": [
+        {
+          "title": "Added",
+          "items": [
+            "Added LTX 2.5 as the default LTX engine version, with LTX 2.3 retained as a legacy option for older GGUF and dual-CLIP workflows.",
+            "Added native LTX 2.5 Text to Video with built-in audio and Reference to Video workflow templates, including the LTX 2.5 video VAE, audio VAE, latent spatial upscaler, and required Licon MSR LoRA selections.",
+            "Added an experimental MiniMax H3 Ref to Video 3 Pass mode. Stage 1 establishes the scene, Stage 2 refines it, and Stage 3 produces the final clip used by timeline stitching.",
+            "Added independent three-pass controls for megapixels, steps, denoise, sampler, scheduler, seed, and TE-Speed on every pass, plus a dedicated LightX LoRA and strength control.",
+            "Added automatic Stage 1 and Stage 2 backup collection for three-pass renders so intermediate results remain available for review while Stage 3 becomes the selected scene video.",
+            "Added LTX-aware Storyboard defaults, cut-frequency planning, starting-shot guidance, camera-flow instructions, and ordinary-language chronological cut descriptions sized to each scene's exact duration."
+          ]
+        },
+        {
+          "title": "Changed",
+          "items": [
+            "LTX 2.5 model defaults now select its matching video VAE, audio VAE, latent spatial upscaler, and MSR assets automatically, while switching back to LTX 2.3 restores the legacy defaults.",
+            "Storyboard prompt generation now follows the selected project engine: MiniMax retains timestamped CUT TO formatting, while LTX receives natural chronological editing language without MiniMax-only prompt structure.",
+            "Storyboard scene defaults, camera motion, character motion, performance direction, visual effects, and cut plans now apply consistently to both MiniMax and LTX projects.",
+            "MiniMax two-pass and three-pass progress messages now identify the active stage sequence and explain which intermediate clips are retained and which stage will be used for final stitching.",
+            "MiniMax three-pass settings now save immediately, restore with the project session, and expose only controls that affect the selected rendering mode.",
+            "LTX 2.5 generated-audio projects no longer require an external audio file; modes that are only supported by legacy LTX 2.3 are clearly identified in Builder Settings."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Fixed MiniMax three-pass Stage 3 audio output and final-video selection so the completed Stage 3 clip is used for playback and stitching.",
+            "Fixed three-pass TE-Speed patching so each pass uses an isolated model branch and one pass cannot leak patched model state into another.",
+            "Fixed Stage 1 and Stage 2 backup discovery, registration, project copying, session persistence, and restoration during and after three-pass rendering.",
+            "Fixed LTX 2.5 Reference to Video settings so the correct model assets, pass strengths, dimensions, and generation options reach the hidden workflow.",
+            "Fixed invalid legacy .pth upscaler selections being reused by LTX 2.5; affected projects now migrate to the LTX 2.5 latent spatial upscaler.",
+            "Fixed LTX prompt generation to return one clean generation-ready prompt without internal headings, metadata labels, duplicated cut instructions, or MiniMax-only formatting.",
+            "Fixed Storyboard saves that could appear to fail after the project had already saved successfully because unrelated panel settings were re-normalized afterward.",
+            "Fixed side-panel Gemma generation so scenes without a usable image reference fall back to the text-only prompt path instead of failing the request.",
+            "Fixed LTX storyboard scene-beat handoff, singer/lip-sync guidance, and exact-duration cut planning so regenerated prompts preserve the intended performance and editing structure."
+          ]
+        },
+        {
+          "title": "Compatibility Notes",
+          "items": [
+            "Restart ComfyUI and hard-refresh the browser after updating so the new Python routes, workflow templates, Builder JavaScript, and Storyboard JavaScript are loaded.",
+            "The included workflow templates do not download models. Install the matching LTX 2.5 and MiniMax H3 model files and select them in Builder Settings before rendering.",
+            "MiniMax H3 two-pass and three-pass modes currently require Input Audio. Built-in MiniMax audio continues to use the existing one-pass workflow.",
+            "LTX 2.5 is now the default for new LTX projects. Existing projects retain their saved engine version and settings whenever those values are present.",
+            "Three-pass Stage 1 and Stage 2 videos are review backups; Stage 3 is the final scene video used by Render All and timeline stitching."
+          ]
+        }
+      ]
+    },
+    {
       "id": "2026-08-12-minimax-h3-two-pass-builder",
       "version": "2026.08.12-minimax-h3-two-pass",
       "date": "2026-08-12",
