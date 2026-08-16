@@ -1,0 +1,558 @@
+{
+  "75": {
+    "inputs": {
+      "filename_prefix": "LTX 2.5_TEST/video",
+      "format": "auto",
+      "codec": "auto"
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+      "title": "Save Video"
+    }
+  },
+  "409": {
+    "inputs": {
+      "aspect_ratio": "16:9 (Widescreen)",
+      "megapixels": 1.2,
+      "multiple": 32
+    },
+    "class_type": "ResolutionSelector",
+    "_meta": {
+      "title": "Resolution Selector"
+    }
+  },
+  "405:340": {
+    "inputs": {
+      "video_latent": [
+        "405:348",
+        0
+      ],
+      "audio_latent": [
+        "405:367",
+        1
+      ]
+    },
+    "class_type": "LTXVConcatAVLatent",
+    "_meta": {
+      "title": "LTXVConcatAVLatent"
+    }
+  },
+  "405:395": {
+    "inputs": {
+      "sigmas": "0.85, 0.7250, 0.4219, 0.0"
+    },
+    "class_type": "ManualSigmas",
+    "_meta": {
+      "title": "ManualSigmas"
+    }
+  },
+  "405:348": {
+    "inputs": {
+      "samples": [
+        "405:367",
+        0
+      ],
+      "upscale_model": [
+        "405:371",
+        0
+      ],
+      "vae": [
+        "405:385",
+        0
+      ]
+    },
+    "class_type": "LTXVLatentUpsampler",
+    "_meta": {
+      "title": "LTXVLatentUpsampler"
+    }
+  },
+  "405:341": {
+    "inputs": {
+      "sampler_name": "euler_ancestral"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "KSamplerSelect"
+    }
+  },
+  "405:391": {
+    "inputs": {
+      "video_cfg": 1,
+      "audio_cfg": 1,
+      "model": [
+        "405:384",
+        0
+      ],
+      "positive": [
+        "405:365",
+        0
+      ],
+      "negative": [
+        "405:365",
+        1
+      ]
+    },
+    "class_type": "LTXVDualCFGGuider",
+    "_meta": {
+      "title": "LTXV Dual CFG Guider"
+    }
+  },
+  "405:368": {
+    "inputs": {
+      "noise": [
+        "405:338",
+        0
+      ],
+      "guider": [
+        "405:391",
+        0
+      ],
+      "sampler": [
+        "405:341",
+        0
+      ],
+      "sigmas": [
+        "405:395",
+        0
+      ],
+      "latent_image": [
+        "405:340",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "SamplerCustomAdvanced"
+    }
+  },
+  "405:367": {
+    "inputs": {
+      "av_latent": [
+        "405:344",
+        0
+      ]
+    },
+    "class_type": "LTXVSeparateAVLatent",
+    "_meta": {
+      "title": "LTXVSeparateAVLatent"
+    }
+  },
+  "405:369": {
+    "inputs": {
+      "av_latent": [
+        "405:368",
+        0
+      ]
+    },
+    "class_type": "LTXVSeparateAVLatent",
+    "_meta": {
+      "title": "LTXVSeparateAVLatent"
+    }
+  },
+  "405:344": {
+    "inputs": {
+      "noise": [
+        "405:339",
+        0
+      ],
+      "guider": [
+        "405:388",
+        0
+      ],
+      "sampler": [
+        "405:352",
+        0
+      ],
+      "sigmas": [
+        "405:404",
+        0
+      ],
+      "latent_image": [
+        "405:377",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "SamplerCustomAdvanced"
+    }
+  },
+  "405:404": {
+    "inputs": {
+      "sigmas": "1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0"
+    },
+    "class_type": "ManualSigmas",
+    "_meta": {
+      "title": "ManualSigmas"
+    }
+  },
+  "405:388": {
+    "inputs": {
+      "video_cfg": 1,
+      "audio_cfg": 1,
+      "model": [
+        "405:384",
+        0
+      ],
+      "positive": [
+        "405:365",
+        0
+      ],
+      "negative": [
+        "405:365",
+        1
+      ]
+    },
+    "class_type": "LTXVDualCFGGuider",
+    "_meta": {
+      "title": "LTXV Dual CFG Guider"
+    }
+  },
+  "405:352": {
+    "inputs": {
+      "sampler_name": "euler_ancestral"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "KSamplerSelect"
+    }
+  },
+  "405:365": {
+    "inputs": {
+      "frame_rate": [
+        "405:359",
+        0
+      ],
+      "positive": [
+        "405:364",
+        0
+      ],
+      "negative": [
+        "405:373",
+        0
+      ]
+    },
+    "class_type": "LTXVConditioning",
+    "_meta": {
+      "title": "LTXVConditioning"
+    }
+  },
+  "405:377": {
+    "inputs": {
+      "video_latent": [
+        "405:356",
+        0
+      ],
+      "audio_latent": [
+        "405:366",
+        0
+      ]
+    },
+    "class_type": "LTXVConcatAVLatent",
+    "_meta": {
+      "title": "LTXVConcatAVLatent"
+    }
+  },
+  "405:364": {
+    "inputs": {
+      "text": [
+        "405:376",
+        0
+      ],
+      "clip": [
+        "405:387",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "405:373": {
+    "inputs": {
+      "text": "pc game, console game, video game, cartoon, childish, ugly",
+      "clip": [
+        "405:387",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "405:356": {
+    "inputs": {
+      "width": [
+        "405:353",
+        1
+      ],
+      "height": [
+        "405:355",
+        1
+      ],
+      "length": [
+        "405:378",
+        1
+      ],
+      "batch_size": 1
+    },
+    "class_type": "EmptyLTXVLatentVideo",
+    "_meta": {
+      "title": "EmptyLTXVLatentVideo"
+    }
+  },
+  "405:366": {
+    "inputs": {
+      "frames_number": [
+        "405:378",
+        1
+      ],
+      "frame_rate": [
+        "405:359",
+        1
+      ],
+      "batch_size": 1,
+      "audio_vae": [
+        "405:386",
+        0
+      ]
+    },
+    "class_type": "LTXVEmptyLatentAudio",
+    "_meta": {
+      "title": "LTXV Empty Latent Audio"
+    }
+  },
+  "405:371": {
+    "inputs": {
+      "model_name": "ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors"
+    },
+    "class_type": "LatentUpscaleModelLoader",
+    "_meta": {
+      "title": "Load Latent Upscale Model"
+    }
+  },
+  "405:384": {
+    "inputs": {
+      "unet_name": "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Load Diffusion Model"
+    }
+  },
+  "405:385": {
+    "inputs": {
+      "vae_name": "ltx-2.5-video-vae-conv-bf16.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "405:386": {
+    "inputs": {
+      "vae_name": "ltx-2.5-audio-vae-bf16.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "405:387": {
+    "inputs": {
+      "clip_name": "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+      "type": "ltxv",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "405:378": {
+    "inputs": {
+      "expression": "a * b + 1",
+      "values.a": [
+        "405:362",
+        0
+      ],
+      "values.b": [
+        "405:361",
+        0
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Math Expression (length)"
+    }
+  },
+  "405:353": {
+    "inputs": {
+      "expression": "a/2",
+      "values.a": [
+        "405:372",
+        0
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Math Expression"
+    }
+  },
+  "405:355": {
+    "inputs": {
+      "expression": "a/2",
+      "values.a": [
+        "405:360",
+        0
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Math Expression"
+    }
+  },
+  "405:359": {
+    "inputs": {
+      "expression": "a",
+      "values.a": [
+        "405:361",
+        0
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Math Expression (fps)"
+    }
+  },
+  "405:360": {
+    "inputs": {
+      "value": [
+        "409",
+        1
+      ]
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Height"
+    }
+  },
+  "405:361": {
+    "inputs": {
+      "value": 24
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Frame Rate"
+    }
+  },
+  "405:362": {
+    "inputs": {
+      "value": 8
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Duration"
+    }
+  },
+  "405:372": {
+    "inputs": {
+      "value": [
+        "409",
+        0
+      ]
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Width"
+    }
+  },
+  "405:376": {
+    "inputs": {
+      "value": "A cinematic-realism continuous shot features an adult woman in her late twenties with a slender natural build, light warm skin, large almond-shaped warm brown eyes, softly arched dark eyebrows, a straight delicate nose, full natural pink lips, and an oval face with a softly defined jawline; she has very long dark chocolate-brown hair falling below her chest in soft loose waves with side-swept bangs draped across her forehead, natural understated makeup, no jewelry, and she wears a floor-length ivory-white satin gown with a wide sleeveless boat neckline, a softly fitted waist, and a smooth flowing skirt, and she is barefoot. The scene takes place on a remote windswept black-sand beach beneath heavy slate-gray storm clouds, with dark volcanic sand, wet reflective patches near the waterline, scattered low black rocks extending into a gray-blue ocean, powerful waves breaking into broad bands of white sea foam, low dark volcanic cliffs fading into haze along the distant coastline, and strong coastal wind driving mist from the surf; soft diffused daylight filtered through dense cloud cover produces cool natural skin tones, deep soft shadows, realistic wet surfaces, and a desaturated palette of charcoal, graphite, steel gray, muted blue-gray, black, white foam, and soft ivory fabric. Her voice is a low intimate adult female voice with a warm smoky mezzo-soprano tone, soft breath texture, clear natural articulation, restrained emotional delivery, and a neutral contemporary American accent; strong coastal wind, rolling ocean surf, and distant wave impacts remain naturally audible beneath her voice, with no music, narration, additional voices, subtitles, or on-screen text. She stands at the edge of the retreating surf for a moment, then slowly turns away from the ocean and begins walking inland across the wet black sand, the wind pulling her long hair and satin skirt toward the sea as she takes several deliberate steps without looking back; midway through the movement she briefly slows and turns only her head toward the camera. The camera begins in a medium-wide side view close to the waterline and tracks parallel to her as she turns and walks inland, then gradually moves ahead into a backward-moving medium shot that reveals her face while the ocean and storm clouds recede behind her. While continuing to walk, she meets the camera for a final moment and visibly says, \"I'm finally ready to let you go,\" with the audible words coming directly from her visible mouth as her lips, jaw, cheeks, and subtle facial muscles move naturally in synchronization with every spoken syllable."
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "Prompt"
+    }
+  },
+  "405:338": {
+    "inputs": {
+      "noise_seed": 1
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "RandomNoise"
+    }
+  },
+  "405:339": {
+    "inputs": {
+      "noise_seed": 1
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "RandomNoise"
+    }
+  },
+  "405:358": {
+    "inputs": {
+      "samples": [
+        "405:369",
+        1
+      ],
+      "audio_vae": [
+        "405:386",
+        0
+      ]
+    },
+    "class_type": "LTXVAudioVAEDecode",
+    "_meta": {
+      "title": "LTXV Audio VAE Decode"
+    }
+  },
+  "405:415": {
+    "inputs": {
+      "samples": [
+        "405:369",
+        0
+      ],
+      "vae": [
+        "405:385",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "405:416": {
+    "inputs": {
+      "frame_rate": 24,
+      "loop_count": 0,
+      "filename_prefix": "AnimateDiff",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true,
+      "images": [
+        "405:415",
+        0
+      ],
+      "audio": [
+        "405:358",
+        0
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine 🎥🅥🅗🅢"
+    }
+  }
+}
