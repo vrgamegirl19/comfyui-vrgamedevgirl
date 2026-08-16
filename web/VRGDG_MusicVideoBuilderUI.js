@@ -4605,6 +4605,12 @@ function openBuilder(node) {
   const i2vDiffusionModelPicker = makeSearchableLoraPicker(DEFAULT_I2V_DIFFUSION_MODEL);
   const i2vUnetModelField = makeField("Unet model", i2vUnetPicker.wrapper);
   const i2vDiffusionModelField = makeField("Diffusion model", i2vDiffusionModelPicker.wrapper);
+  const i2vUseSageAttention = makeCheckbox("Use Sage Attention", false);
+  const i2vEnableFp16Accumulation = makeCheckbox("Enable fp16 accumulation", false);
+  const i2vDiffusionLoaderAdvanced = makeSettingsSection("Advanced Diffusion Loader Settings", [
+    i2vUseSageAttention.wrapper,
+    i2vEnableFp16Accumulation.wrapper,
+  ], false);
   const i2vVaePicker = makeSearchableLoraPicker("");
   const i2vClip1Picker = makeSearchableLoraPicker("");
   const i2vClip2Picker = makeSearchableLoraPicker("");
@@ -4686,9 +4692,9 @@ function openBuilder(node) {
     "41 - strongest",
   ], "auto - based on subject count");
   const ltxMsrBackgroundMode = makeSelect([
-    "neutral placeholder (WIP/testing)",
+    "no background reference",
     "use location/background reference",
-  ], "neutral placeholder (WIP/testing)");
+  ], "no background reference");
   const ltxMsrStrengthGrid = document.createElement("div");
   ltxMsrStrengthGrid.style.cssText = "display:grid;grid-template-columns:1fr 84px;gap:8px;";
   ltxMsrStrengthGrid.append(
@@ -6047,6 +6053,7 @@ function openBuilder(node) {
           makeField("Clip model 2", i2vClip2Picker.wrapper),
           makeField("Latent upscaler", i2vUpscalePicker.wrapper),
           makeField("Audio VAE", i2vAudioVaePicker.wrapper),
+          i2vDiffusionLoaderAdvanced,
         ]),
         makeSettingsSection("Non-Vision LLM Models", [
           makeField("Non-Vision text Gemma model", i2vTextGemmaModelSelect),
@@ -6573,6 +6580,8 @@ function openBuilder(node) {
       use_gguf_model: false,
       unet_name: DEFAULT_I2V_UNET,
       diffusion_model_name: "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+      use_sage_attention: false,
+      enable_fp16_accumulation: false,
       vae_name: "ltx-2.5-video-vae-conv-bf16.safetensors",
       clip_name1: "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
       clip_name2: "ltx-2.3_text_projection_bf16.safetensors",
@@ -6613,7 +6622,7 @@ function openBuilder(node) {
       msr_first_pass_strength: 1,
       msr_second_pass_strength: 0,
       msr_reference_strength: "auto - based on subject count",
-      msr_background_mode: "neutral placeholder (WIP/testing)",
+      msr_background_mode: "no background reference",
       ingredients_lora_name: REQUIRED_LTX_INGREDIENTS_LORA,
       ingredients_first_pass_strength: 1,
       ingredients_second_pass_strength: 0,
@@ -11512,6 +11521,8 @@ function openBuilder(node) {
       use_gguf_model: source.use_gguf_model ?? source.useGgufModel ?? (String(source.ltx_version || "2.5") === "2.3"),
       unet_name: BAD_I2V_UNET_ALIASES.has(source.unet_name) ? DEFAULT_I2V_UNET : source.unet_name || DEFAULT_I2V_UNET,
       diffusion_model_name: source.diffusion_model_name || source.model_name || (String(source.ltx_version || "2.5") === "2.3" ? DEFAULT_I2V_DIFFUSION_MODEL : "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors"),
+      use_sage_attention: Boolean(source.use_sage_attention ?? false),
+      enable_fp16_accumulation: Boolean(source.enable_fp16_accumulation ?? false),
       fps: Number(source.fps || 24),
       width: Number(source.width || 1920),
       height: Number(source.height || 1080),
@@ -18014,6 +18025,8 @@ function openBuilder(node) {
     i2vUseGgufModel.input.checked = settings.use_gguf_model !== false;
     i2vUnetPicker.input.value = BAD_I2V_UNET_ALIASES.has(settings.unet_name) ? DEFAULT_I2V_UNET : settings.unet_name || "";
     i2vDiffusionModelPicker.input.value = settings.diffusion_model_name || DEFAULT_I2V_DIFFUSION_MODEL;
+    i2vUseSageAttention.input.checked = Boolean(settings.use_sage_attention);
+    i2vEnableFp16Accumulation.input.checked = Boolean(settings.enable_fp16_accumulation);
     i2vVaePicker.input.value = settings.vae_name || "";
     i2vClip1Picker.input.value = settings.clip_name1 || "";
     i2vClip2Picker.input.value = settings.clip_name2 || "";
@@ -18072,7 +18085,20 @@ function openBuilder(node) {
     ltxMsrFirstPassStrength.value = Number(settings.msr_first_pass_strength ?? 1);
     ltxMsrSecondPassStrength.value = 0;
     ltxMsrReferenceStrength.value = settings.msr_reference_strength || "auto - based on subject count";
-    ltxMsrBackgroundMode.value = settings.msr_background_mode || "neutral placeholder (WIP/testing)";
+    const isLtx25Rtv = settings.ltx_version !== "2.3";
+    const backgroundChoices = isLtx25Rtv
+      ? ["no background reference", "use location/background reference"]
+      : ["neutral placeholder (WIP/testing)", "use location/background reference"];
+    const selectedBackground = String(settings.msr_background_mode || "").includes("location")
+      ? "use location/background reference"
+      : backgroundChoices[0];
+    ltxMsrBackgroundMode.replaceChildren(...backgroundChoices.map((value) => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = value;
+      return option;
+    }));
+    ltxMsrBackgroundMode.value = selectedBackground;
     ltxIngredientsLoraPicker.input.value = settings.ingredients_lora_name || REQUIRED_LTX_INGREDIENTS_LORA;
     ltxIngredientsFirstPassStrength.value = Number(settings.ingredients_first_pass_strength ?? 1);
     ltxIdLoraPicker.input.value = settings.id_lora_name || REQUIRED_LTX_ID_LORA;
@@ -18100,11 +18126,13 @@ function openBuilder(node) {
     if (isLtx25) {
       i2vUnetModelField.style.display = "none";
       i2vDiffusionModelField.style.display = "flex";
+      i2vDiffusionLoaderAdvanced.style.display = "";
       return;
     }
     const useGguf = Boolean(i2vUseGgufModel.input.checked);
     i2vUnetModelField.style.display = useGguf ? "flex" : "none";
     i2vDiffusionModelField.style.display = useGguf ? "none" : "flex";
+    i2vDiffusionLoaderAdvanced.style.display = useGguf ? "none" : "";
   }
 
   function saveI2VVideoSettingsFromPanel() {
@@ -18140,6 +18168,8 @@ function openBuilder(node) {
       use_gguf_model: Boolean(i2vUseGgufModel.input.checked),
       unet_name: BAD_I2V_UNET_ALIASES.has(i2vUnetPicker.input.value) ? DEFAULT_I2V_UNET : i2vUnetPicker.input.value || "",
       diffusion_model_name: i2vDiffusionModelPicker.input.value || DEFAULT_I2V_DIFFUSION_MODEL,
+      use_sage_attention: Boolean(i2vUseSageAttention.input.checked),
+      enable_fp16_accumulation: Boolean(i2vEnableFp16Accumulation.input.checked),
       vae_name: i2vVaePicker.input.value || "",
       clip_name1: i2vClip1Picker.input.value || "",
       clip_name2: i2vClip2Picker.input.value || "",
@@ -18181,7 +18211,7 @@ function openBuilder(node) {
       msr_first_pass_strength: Number(ltxMsrFirstPassStrength.value || 1),
       msr_second_pass_strength: 0,
       msr_reference_strength: ltxMsrReferenceStrength.value || "auto - based on subject count",
-      msr_background_mode: ltxMsrBackgroundMode.value || "neutral placeholder (WIP/testing)",
+      msr_background_mode: ltxMsrBackgroundMode.value || (previous.ltx_version === "2.3" ? "neutral placeholder (WIP/testing)" : "no background reference"),
       ingredients_lora_name: ltxIngredientsLoraPicker.input.value || REQUIRED_LTX_INGREDIENTS_LORA,
       ingredients_first_pass_strength: Number(ltxIngredientsFirstPassStrength.value || 1),
       ingredients_second_pass_strength: 0,
@@ -41720,6 +41750,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       use_gguf_model: settings.use_gguf_model !== false,
       unet_name: settings.unet_name || "",
       diffusion_model_name: settings.diffusion_model_name || DEFAULT_I2V_DIFFUSION_MODEL,
+      use_sage_attention: Boolean(settings.use_sage_attention),
+      enable_fp16_accumulation: Boolean(settings.enable_fp16_accumulation),
       vae_name: settings.vae_name || "",
       clip_name1: settings.clip_name1 || "",
       clip_name2: settings.clip_name2 || "",
@@ -41751,7 +41783,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       msr_first_pass_strength: Number(settings.msr_first_pass_strength ?? 1),
       msr_second_pass_strength: 0,
       msr_reference_strength: settings.msr_reference_strength || "auto - based on subject count",
-      msr_background_mode: settings.msr_background_mode || "neutral placeholder (WIP/testing)",
+      msr_background_mode: settings.msr_background_mode || (settings.ltx_version === "2.3" ? "neutral placeholder (WIP/testing)" : "no background reference"),
       ingredients_lora_name: settings.ingredients_lora_name || REQUIRED_LTX_INGREDIENTS_LORA,
       ingredients_first_pass_strength: Number(settings.ingredients_first_pass_strength ?? 1),
       ingredients_second_pass_strength: 0,
@@ -55735,6 +55767,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     syncI2VVideoModelPickerVisibility();
     saveI2VVideoSettingsFromPanel();
   });
+  for (const control of [i2vUseSageAttention, i2vEnableFp16Accumulation]) {
+    control.input.addEventListener("change", saveI2VVideoSettingsFromPanel);
+  }
   for (const picker of [i2vUnetPicker, i2vDiffusionModelPicker, i2vVaePicker, i2vClip1Picker, i2vClip2Picker, i2vUpscalePicker, i2vAudioVaePicker]) {
     wireSearchablePicker(picker, saveI2VVideoSettingsFromPanel);
     picker.input.addEventListener("change", saveI2VVideoSettingsFromPanel);

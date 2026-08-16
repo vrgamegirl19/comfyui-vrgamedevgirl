@@ -472,6 +472,21 @@ def _load_workflow_template(path=None):
     return workflow_path, workflow
 
 
+def _ltx25_diffusion_loader_node(payload):
+    return {
+        "inputs": {
+            "model_name": str(payload.get("diffusion_model_name") or payload.get("model_name") or ""),
+            "weight_dtype": "default",
+            "compute_dtype": "default",
+            "patch_cublaslinear": False,
+            "sage_attention": "auto" if _bool_payload(payload, "use_sage_attention", False) else "disabled",
+            "enable_fp16_accumulation": _bool_payload(payload, "enable_fp16_accumulation", False),
+        },
+        "class_type": "DiffusionModelLoaderKJ",
+        "_meta": {"title": "LTX 2.5 Diffusion Model Loader"},
+    }
+
+
 def _load_api_template(path):
     api_path = os.path.abspath(path)
     if not os.path.isfile(api_path):
@@ -1681,14 +1696,7 @@ def _patch_i2v_api_prompt(prompt, payload):
 
     is_ltx25 = str(payload.get("ltx_version", "2.3") or "2.3").strip() == "2.5"
     if is_ltx25:
-        prompt["938"] = {
-            "inputs": {
-                "unet_name": str(payload.get("diffusion_model_name", "") or ""),
-                "weight_dtype": "default",
-            },
-            "class_type": "UNETLoader",
-            "_meta": {"title": "Load Diffusion Model"},
-        }
+        prompt["938"] = _ltx25_diffusion_loader_node(payload)
         prompt["937"]["inputs"]["model"] = ["938", 0]
         prompt.pop("939", None)
         prompt.pop("271:215", None)
@@ -1826,13 +1834,15 @@ def _rtv_reference_strength(value):
     return "auto - based on subject count"
 
 
-def _rtv_background_mode(value, has_background):
+def _rtv_background_mode(value, has_background, is_ltx25=False):
     text = str(value or "").strip().lower()
+    if is_ltx25 and (text in {"no", "false", "off", "no_background"} or "no background" in text):
+        return "no_background"
     if "neutral" in text or "placeholder" in text:
         return "neutral_placeholder_wip"
     if has_background:
         return "use_uploaded_background"
-    return "neutral_placeholder_wip"
+    return "no_background" if is_ltx25 else "neutral_placeholder_wip"
 
 
 def _srt_time_to_seconds(value):
@@ -1934,7 +1944,7 @@ def _patch_rtv_api_prompt(prompt, payload):
 
     is_ltx25 = str(payload.get("ltx_version", "2.3") or "2.3").strip() == "2.5"
     if is_ltx25:
-        _set_api_input(prompt, "956", "unet_name", str(payload.get("diffusion_model_name", "") or ""))
+        prompt["956"] = _ltx25_diffusion_loader_node(payload)
     else:
         _patch_ltx_video_model_loader(prompt, payload)
     _set_api_input(prompt, "271:256", "vae_name", str(payload.get("vae_name", "") or ""))
@@ -1947,8 +1957,10 @@ def _patch_rtv_api_prompt(prompt, payload):
     _set_api_input(prompt, "271:254", "vae_name", str(payload.get("audio_vae_name", "") or ""))
 
     _set_api_input(prompt, "736:424", "value", fps)
-    _set_api_input(prompt, "736:425", "value", width)
-    _set_api_input(prompt, "736:426", "value", height)
+    stage1_width = max(64, int(round((width / 2) / 32.0)) * 32) if is_ltx25 else width
+    stage1_height = max(64, int(round((height / 2) / 32.0)) * 32) if is_ltx25 else height
+    _set_api_input(prompt, "736:425", "value", stage1_width)
+    _set_api_input(prompt, "736:426", "value", stage1_height)
     _set_api_input(prompt, "736:449", "value", seed)
     _set_api_input(prompt, "736:551", "value", 0)
 
@@ -1990,7 +2002,7 @@ def _patch_rtv_api_prompt(prompt, payload):
     for index, image_name in enumerate(subject_images, start=1):
         _set_api_input(prompt, "951", f"subject_{index}", image_name)
     _set_api_input(prompt, "951", "background_image", background_image)
-    _set_api_input(prompt, "951", "background_mode", _rtv_background_mode(payload.get("msr_background_mode"), has_background))
+    _set_api_input(prompt, "951", "background_mode", _rtv_background_mode(payload.get("msr_background_mode"), has_background, is_ltx25))
     if is_ltx25:
         requested_strength = str(payload.get("msr_reference_strength", "33") or "33").strip()
         reference_frames = "25" if requested_strength.startswith("25") else "33"
@@ -2015,6 +2027,19 @@ def _patch_rtv_api_prompt(prompt, payload):
         _set_api_input(prompt, "964", "sampler_name", str(payload.get("pass2_sampler_name") or "euler_ancestral"))
         _set_api_input(prompt, "965", "sigmas", str(payload.get("pass2_sigmas") or _DEFAULT_I2V_PASS2_SIGMAS))
         _set_api_input(prompt, "963", "noise_seed", seed)
+        final_resize_id = "vrgdg_ltx25_rtv_final_resize"
+        _replace_api_input_refs(prompt, ("954", 0), (final_resize_id, 0))
+        prompt[final_resize_id] = {
+            "class_type": "ImageScale",
+            "inputs": {
+                "image": ["954", 0],
+                "upscale_method": "lanczos",
+                "width": width,
+                "height": height,
+                "crop": "disabled",
+            },
+            "_meta": {"title": "Resize LTX 2.5 RTV to requested final resolution"},
+        }
     _set_api_input(prompt, "437", "value", output_folder)
     return prompt, output_folder
 
@@ -2059,14 +2084,7 @@ def _patch_ingredients_api_prompt(prompt, payload):
 
     is_ltx25 = str(payload.get("ltx_version", "2.3") or "2.3").strip() == "2.5"
     if is_ltx25:
-        prompt["958"] = {
-            "inputs": {
-                "unet_name": str(payload.get("diffusion_model_name", "") or ""),
-                "weight_dtype": "default",
-            },
-            "class_type": "UNETLoader",
-            "_meta": {"title": "Load Diffusion Model"},
-        }
+        prompt["958"] = _ltx25_diffusion_loader_node(payload)
         prompt["937"]["inputs"]["model"] = ["958", 0]
         prompt.pop("959", None)
         prompt.pop("271:215", None)
@@ -2204,14 +2222,7 @@ def _patch_id_lora_api_prompt(prompt, payload):
 
     is_ltx25 = str(payload.get("ltx_version", "2.3") or "2.3").strip() == "2.5"
     if is_ltx25:
-        prompt["971"] = {
-            "inputs": {
-                "unet_name": str(payload.get("diffusion_model_name") or payload.get("model_name") or ""),
-                "weight_dtype": "default",
-            },
-            "class_type": "UNETLoader",
-            "_meta": {"title": "Load Diffusion Model"},
-        }
+        prompt["971"] = _ltx25_diffusion_loader_node(payload)
         prompt["972"]["inputs"]["model"] = ["971", 0]
         prompt.pop("970", None)
         prompt.pop("969", None)
@@ -3492,14 +3503,7 @@ def _patch_flf_api_prompt(prompt, payload):
     fps = _int_payload(payload, "fps", 24, 1, 120)
     is_ltx25 = str(payload.get("ltx_version", "2.3") or "2.3").strip() == "2.5"
     if is_ltx25:
-        prompt["938"] = {
-            "inputs": {
-                "unet_name": str(payload.get("diffusion_model_name", "") or ""),
-                "weight_dtype": "default",
-            },
-            "class_type": "UNETLoader",
-            "_meta": {"title": "Load Diffusion Model"},
-        }
+        prompt["938"] = _ltx25_diffusion_loader_node(payload)
         prompt["937"]["inputs"]["model"] = ["938", 0]
         prompt.pop("939", None)
         prompt.pop("271:215", None)
@@ -4395,7 +4399,7 @@ def _patch_t2v_25_api_prompt(prompt, payload):
     _set_api_input(prompt, "405:376", "value", text)
     _set_api_input(prompt, "405:338", "noise_seed", seed)
     _set_api_input(prompt, "405:339", "noise_seed", seed)
-    _set_api_input(prompt, "405:384", "unet_name", str(payload.get("diffusion_model_name") or payload.get("unet_name") or ""))
+    prompt["405:384"] = _ltx25_diffusion_loader_node(payload)
     _set_api_input(prompt, "405:385", "vae_name", str(payload.get("vae_name") or ""))
     _set_api_input(prompt, "405:386", "vae_name", str(payload.get("audio_vae_name") or ""))
     _set_api_input(prompt, "405:387", "clip_name", str(payload.get("clip_name1") or ""))
