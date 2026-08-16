@@ -1,6 +1,7 @@
 import os
 import shutil
 import subprocess
+import tempfile
 import time
 import uuid
 
@@ -1139,6 +1140,70 @@ class VRGDGFaceFixLTXInputs:
         return video_path, folder, ",".join(str(value) for value in indices), len(indices), context
 
 
+class VRGDGFaceFixCopyVideo:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {
+            "source_video_path": ("STRING", {"tooltip": "Completed Face Fix crop video path."}),
+            "output_folder": ("STRING", {"default": "", "tooltip": "Project folder where the review copy is saved."}),
+            "filename": ("STRING", {"default": "face_fix_crop.mp4"}),
+        }}
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("saved_video_path",)
+    FUNCTION = "copy"
+    OUTPUT_NODE = True
+    CATEGORY = "VRGameDevGirl/Face Fix"
+
+    def copy(self, source_video_path, output_folder, filename):
+        source = os.path.abspath(str(source_video_path or "").strip().strip('"'))
+        if not os.path.isfile(source):
+            raise FileNotFoundError(f"Face Fix review source video was not found: {source}")
+        folder = os.path.abspath(str(output_folder or "").strip().strip('"'))
+        os.makedirs(folder, exist_ok=True)
+        target = os.path.join(folder, os.path.basename(str(filename or "face_fix_crop.mp4")))
+        shutil.copy2(source, target)
+        _log(f"Saved Face Fix crop review video: {target}")
+        return (target,)
+
+
+class VRGDGFaceFixSaveFramesVideo:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {
+            "frames": ("IMAGE", {"tooltip": "Face-repair crop frames to save for review."}),
+            "fps": ("FLOAT", {"default": 24.0, "min": 1.0, "max": 240.0}),
+            "output_folder": ("STRING", {"default": ""}),
+            "filename": ("STRING", {"default": "face_fix_repaired_crop.mp4"}),
+        }}
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("saved_video_path",)
+    FUNCTION = "save"
+    OUTPUT_NODE = True
+    CATEGORY = "VRGameDevGirl/Face Fix"
+
+    def save(self, frames, fps, output_folder, filename):
+        import cv2
+        folder = os.path.abspath(str(output_folder or "").strip().strip('"'))
+        os.makedirs(folder, exist_ok=True)
+        target = os.path.join(folder, os.path.basename(str(filename or "face_fix_repaired_crop.mp4")))
+        with tempfile.TemporaryDirectory(prefix="vrgdg_face_fix_review_") as temp_folder:
+            for index, frame in enumerate(frames):
+                rgb = (frame[..., :3].detach().cpu().clamp(0, 1).numpy() * 255).round().astype("uint8")
+                cv2.imwrite(os.path.join(temp_folder, f"frame_{index:06d}.png"), cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
+            ffmpeg = shutil.which("ffmpeg")
+            if not ffmpeg:
+                raise RuntimeError("FFmpeg is required to save Face Fix review videos.")
+            command = [ffmpeg, "-y", "-framerate", f"{float(fps):.12g}", "-i", os.path.join(temp_folder, "frame_%06d.png"),
+                       "-c:v", "libx264", "-crf", "16", "-pix_fmt", "yuv420p", target]
+            result = subprocess.run(command, capture_output=True, text=True, errors="replace", check=False)
+            if result.returncode != 0 or not os.path.isfile(target):
+                raise RuntimeError(f"Could not save Face Fix repair review video: {(result.stderr or result.stdout or 'FFmpeg failed')[-1200:]}")
+        _log(f"Saved Face Fix repaired-crop review video: {target}")
+        return (target,)
+
+
 NODE_CLASS_MAPPINGS = {
     "VRGDGFaceFixPrepare": VRGDGFaceFixPrepare,
     "VRGDGFaceFixPrepareShotAware": VRGDGFaceFixPrepareShotAware,
@@ -1150,6 +1215,8 @@ NODE_CLASS_MAPPINGS = {
     "VRGDGFaceFixComposite": VRGDGFaceFixComposite,
     "VRGDGFaceFixCompositeOpaque": VRGDGFaceFixCompositeOpaque,
     "VRGDGFaceFixCompositeLandmarkAligned": VRGDGFaceFixCompositeLandmarkAligned,
+    "VRGDGFaceFixCopyVideo": VRGDGFaceFixCopyVideo,
+    "VRGDGFaceFixSaveFramesVideo": VRGDGFaceFixSaveFramesVideo,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -1163,4 +1230,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDGFaceFixComposite": "Face Fix - Composite Repaired Video",
     "VRGDGFaceFixCompositeOpaque": "Face Fix - Composite Opaque Full Face",
     "VRGDGFaceFixCompositeLandmarkAligned": "Face Fix - Composite Landmark Aligned",
+    "VRGDGFaceFixCopyVideo": "Face Fix - Save Crop Review Video",
+    "VRGDGFaceFixSaveFramesVideo": "Face Fix - Save Repaired Crop Review Video",
 }

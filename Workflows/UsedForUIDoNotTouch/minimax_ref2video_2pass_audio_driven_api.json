@@ -375,7 +375,7 @@
     }
   },
   "83": {
-    "class_type": "Text",
+    "class_type": "VRGDG_TextBox",
     "inputs": {
       "text": "Reference: image 1 = character identity (purple hair, face reference), image 2 =\noutfit reference.\n\nShe wears the outfit from image 2, dancing in a crowded nightclub — pulsing\ncolored lights, dense fog/haze catching the light beams, a packed dance floor\naround her, bass-driven energy.\n\n[0s–4s] Medium shot, she moves fluidly to the beat, hair swinging with her\nmovement, colored strobe light sweeping across her face and body in rhythm.\n\n[4s–8s] Camera circles slowly around her as she dances, other dancers blurred and\nout of focus around her, she remains the sharp focal point, lights flashing in\nsync with the music's rhythm.\n\n[8s–12s] Close-up on her face, eyes closed, lost in the moment, lights flaring\nand pulsing behind her, hair catching the light as she moves.\n\nStyle: high-energy nightclub cinematography, saturated colored lighting (magenta,\ncyan, deep blue), lens flare and light streaks, shallow depth of field isolating\nher from the crowd, confident and immersive dance energy.\n\nAudio: pulsing club music/bass, ambient crowd noise, energetic and rhythmic\nthroughout.\n\nDo not include: text, subtitles, watermark, logos, changes to her identity or the\noutfit."
     }

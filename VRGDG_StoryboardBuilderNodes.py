@@ -2194,6 +2194,52 @@ def _build_story_layer_scene_beat(payload):
     current_lyrics = _clean_scene_text(payload.get("current_lyrics") or scene.get("lyrics") or scene.get("lyric_text") or "", 1200)
     next_lyrics = _clean_scene_text(payload.get("next_lyrics") or "", 800)
     flf_mode = bool(payload.get("flf_mode")) or str(scene.get("video_prompt_type") or "").strip().lower() == "flf"
+    vocal_status = scene.get("vocal_status") if isinstance(scene.get("vocal_status"), dict) else {}
+    # Scene-beat generation is also called from Image Prep, where the normal
+    # prompt payload intentionally clears vocal_status.singers. The storyboard
+    # scene's lyric_singers is the performer assignment that remains valid in
+    # both Image Prep and Video Prep.
+    assigned_performers = scene.get("lyric_singers") if isinstance(scene.get("lyric_singers"), list) else []
+    if not assigned_performers and isinstance(vocal_status.get("singers"), list):
+        assigned_performers = vocal_status.get("singers")
+    assigned_performers = [_clean_scene_text(item, 180) for item in assigned_performers if _clean_scene_text(item, 180)]
+    performer_assignment = scene.get("performer_assignment") if isinstance(scene.get("performer_assignment"), dict) else {}
+    assigned_performers = [
+        _clean_scene_text(item, 180)
+        for item in (performer_assignment.get("singing") if isinstance(performer_assignment.get("singing"), list) else assigned_performers)
+        if _clean_scene_text(item, 180)
+    ]
+    if not assigned_performers:
+        mapped_subject_names = []
+        for item in scene.get("subject_refs") or []:
+            if isinstance(item, dict):
+                name = _clean_scene_text(item.get("name") or "", 180)
+                if name:
+                    mapped_subject_names.append(name)
+        for item in scene.get("subjects") or []:
+            name = _clean_scene_text(item.get("name") if isinstance(item, dict) else item, 180)
+            if name:
+                mapped_subject_names.append(name)
+        singer_named_subjects = [
+            name for name in dict.fromkeys(mapped_subject_names)
+            if re.search(r"\b(?:singer|performer|vocalist|rapper)\b", name, flags=re.IGNORECASE)
+        ]
+        if len(singer_named_subjects) == 1:
+            assigned_performers = singer_named_subjects
+    silent_performers = [
+        _clean_scene_text(item, 180)
+        for item in (performer_assignment.get("silent") if isinstance(performer_assignment.get("silent"), list) else [])
+        if _clean_scene_text(item, 180)
+    ]
+    scene_defaults = {
+        "shot_type": _clean_scene_text(scene.get("shot_type") or scene.get("shot") or "", 240),
+        "camera_motion": _clean_scene_text(scene.get("camera_motion") or scene.get("camera_motion_preset") or "", 500),
+        "camera_flow": _clean_scene_text(scene.get("camera_flow") or scene.get("cameraFlow") or "", 120),
+        "camera_flow_guidance": _clean_scene_text(scene.get("camera_flow_guidance") or "", 1200),
+        "character_motion": _clean_scene_text(scene.get("character_motion") or scene.get("character_motion_preset") or "", 700),
+        "performance_direction": _clean_scene_text(scene.get("performance_direction") or scene.get("performance_style") or "", 1000),
+        "facial_performance_direction": _clean_scene_text(scene.get("facial_performance_direction") or scene.get("facial_performance_custom") or scene.get("facial_performance") or "", 1200),
+    }
     raw_extra_subjects = scene.get("extra_subjects") or scene.get("extraSubjects") or []
     extra_subjects = []
     if isinstance(raw_extra_subjects, list):
@@ -2237,6 +2283,10 @@ def _build_story_layer_scene_beat(payload):
         "Rules:\n"
         "- Use the Song Story Brief and User Story Arc as continuity anchors.\n"
         "- Use the selected scene lyrics, lyric section, subject details, location details, vocal status, and no-character flag.\n"
+        "- Vocal casting is absolute: follow the Performer assignment exactly. Only names in its singing list may sing. Every name in its silent list must remain visibly present but silent. Never write that both/all visible subjects sing unless both/all are explicitly in the singing list. If the singing list has one name, use singular wording: that performer sings; the other subject does not sing.\n"
+        "- This request creates a narrative Scene Story Beat, not the final still-image prompt. Ignore any Image Prep instruction saying that subjects must be silent or that singing must not be mentioned. For this beat, use the Performer assignment: if one performer is assigned, that performer visibly sings while every other visible subject remains silent.\n"
+        "- The existing scene story beat, if present in the selected scene JSON, is stale draft text being replaced. Do not copy, preserve, or treat it as a fact; the Performer assignment and current scene data override it.\n"
+        "- Scene defaults are authoritative when supplied: use the selected shot, camera motion/camera-flow direction, character motion, performance direction, and facial direction to shape the beat. Do not replace them with generic actions.\n"
         "- Treat the selected scene location_ref as the required physical setting for this scene.\n"
         "- Do not invent or import a different place from the story arc, song brief, previous beat, or next lyrics.\n"
         "- If the story arc names a different location, translate only its emotion, tension, symbolism, or action into the selected location_ref.\n"
@@ -2260,9 +2310,19 @@ def _build_story_layer_scene_beat(payload):
         f"Previous FLF carry-forward constraints:\n{previous_carry_forward or '[none]'}\n\n"
         f"CURRENT scene lyric text (main authority):\n{current_lyrics or '[none]'}\n\n"
         f"Next scene lyric text:\n{next_lyrics or '[none]'}\n\n"
+        f"Scene defaults and motion direction (authoritative when supplied):\n{json.dumps(scene_defaults, ensure_ascii=False, indent=2)}\n\n"
+        f"Assigned singing performers (the only subjects allowed to sing):\n{json.dumps(assigned_performers, ensure_ascii=False)}\n\n"
+        f"Performer assignment contract:\n{json.dumps({'singing': assigned_performers, 'silent': silent_performers}, ensure_ascii=False, indent=2)}\n\n"
         f"Mapped extras and exact scene roles:\n{json.dumps(extra_subjects, ensure_ascii=False, indent=2) if extra_subjects else '[none]'}\n\n"
         "Selected scene JSON:\n"
         + json.dumps(scene, ensure_ascii=False, indent=2)
+        + "\n\nFINAL SCENE-BEAT OVERRIDE — FOLLOW THIS LAST:\n"
+        + f"This is a narrative scene beat, not an Image Prep still-image prompt. Assigned singing performers: {json.dumps(assigned_performers, ensure_ascii=False)}. Assigned silent visible subjects: {json.dumps(silent_performers, ensure_ascii=False)}. "
+        + (f"Only {assigned_performers[0]} visibly sings the current lyric; every other visible subject is silent. Do not write that both subjects sing."
+           if len(assigned_performers) == 1 else
+           "No mapped subject sings; keep all visible subjects silent."
+           if not assigned_performers else
+           f"Only these performers visibly sing: {', '.join(assigned_performers)}; every other visible subject is silent.")
     )
     from .VRGDG_MusicVideoBuilderNodes import _run_builder_text_llm
 

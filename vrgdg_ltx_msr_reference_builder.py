@@ -42,6 +42,12 @@ def _pil_to_rgb_array(pil_image, target_size):
     return cv2.resize(image_array, target_size, interpolation=cv2.INTER_LANCZOS4)
 
 
+def _pil_to_image_tensor(pil_image):
+    """Convert one PIL image to the single-image batch ComfyUI expects."""
+    image_array = np.asarray(pil_image.convert("RGB"), dtype=np.float32) / 255.0
+    return torch.from_numpy(np.ascontiguousarray(image_array)).unsqueeze(0)
+
+
 def _expand_frames(images, frame_count):
     base_count = frame_count // len(images)
     remainder = frame_count % len(images)
@@ -147,10 +153,87 @@ class VRGDG_LTXMSRReferenceBuilder:
         return 41
 
 
+class VRGDG_LTX25MSRReferenceLoader:
+    """Load separate still-image references for ComfyUI-LTX2.5-MSR.
+
+    Unlike the legacy LTX 2.3 builder, the LTX 2.5 guide assigns learned slot
+    embeddings to individual image inputs. References must therefore remain
+    separate one-image batches instead of being expanded into one frame batch.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        images = _input_images()
+        return {
+            "required": {
+                "subject_1": (images, {"image_upload": True}),
+                "subject_2": (images, {"image_upload": True}),
+                "subject_3": (images, {"image_upload": True}),
+                "subject_4": (images, {"image_upload": True}),
+                "background_image": (images, {"image_upload": True}),
+                "background_mode": (
+                    ["use_uploaded_background", "neutral_placeholder_wip", "no_background"],
+                    {"default": "use_uploaded_background"},
+                ),
+                "width": ("INT", {"default": 736, "min": 32, "max": 8192, "step": 32}),
+                "height": ("INT", {"default": 1280, "min": 32, "max": 8192, "step": 32}),
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE", "IMAGE", "IMAGE", "IMAGE", "IMAGE")
+    RETURN_NAMES = ("pic1", "pic2", "pic3", "pic4", "background")
+    FUNCTION = "load_references"
+    CATEGORY = "VRGDG/LTX MSR"
+    DESCRIPTION = (
+        "Loads up to four subjects and an optional background as separate still "
+        "images for ComfyUI-LTX2.5-MSR Multi-Reference Guide."
+    )
+
+    def load_references(
+        self,
+        subject_1,
+        subject_2,
+        subject_3,
+        subject_4,
+        background_image,
+        background_mode,
+        width,
+        height,
+    ):
+        subject = _load_image_file(subject_1)
+        if subject is None:
+            raise ValueError("subject_1 is required for LTX 2.5 MSR.")
+
+        outputs = [_pil_to_image_tensor(subject)]
+        for image_name in (subject_2, subject_3, subject_4):
+            image = _load_image_file(image_name)
+            outputs.append(_pil_to_image_tensor(image) if image is not None else None)
+
+        if background_mode == "neutral_placeholder_wip":
+            background = torch.full(
+                (1, int(height), int(width), 3),
+                NEUTRAL_GRAY / 255.0,
+                dtype=torch.float32,
+            )
+        elif background_mode == "no_background":
+            background = None
+        else:
+            image = _load_image_file(background_image)
+            if image is None:
+                raise ValueError(
+                    "background_image is required when background_mode is use_uploaded_background."
+                )
+            background = _pil_to_image_tensor(image)
+
+        return (*outputs, background)
+
+
 NODE_CLASS_MAPPINGS = {
     "VRGDG_LTXMSRReferenceBuilder": VRGDG_LTXMSRReferenceBuilder,
+    "VRGDG_LTX25MSRReferenceLoader": VRGDG_LTX25MSRReferenceLoader,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_LTXMSRReferenceBuilder": "VRGDG LTX MSR Reference Builder",
+    "VRGDG_LTX25MSRReferenceLoader": "VRGDG LTX 2.5 MSR Reference Loader",
 }

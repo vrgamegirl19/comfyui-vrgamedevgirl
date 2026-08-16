@@ -108,6 +108,7 @@ const DEFAULT_I2V_UNET = "LTX-2.3-22B-distilled-1.1-Q6_K.gguf";
 const DEFAULT_I2V_DIFFUSION_MODEL = "LTX_8bit\\ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors";
 const BAD_I2V_UNET_ALIASES = new Set(["LTX-2.3-22B-distilled-11-Q6_K.gguf"]);
 const REQUIRED_LTX_MSR_LORA = "licon\\LTX-2.3-Licon-MSR-V1.safetensors";
+const REQUIRED_LTX25_MSR_LORA = "LTX-2.5-Licon-MSR-V1.safetensors";
 const REQUIRED_LTX_INGREDIENTS_LORA = "ltx-2.3-22b-ic-lora-ingredients-0.9.safetensors";
 const REQUIRED_LTX_ID_LORA = "lora_weights.safetensors";
 const REQUIRED_LTX_ID_LORA_URL = "https://huggingface.co/AviadDahan/LTX-2.3-ID-LoRA-CelebVHQ-3K";
@@ -254,6 +255,22 @@ const DEFAULT_MINIMAX_H3_SETTINGS = {
   turbo_lora_name: "minimax_h3_turbo_4step_ema_ckpt850.safetensors",
   turbo_lora_strength: 1,
   ref_image_size: "max",
+  two_pass_lora_name: "minimax_h3_turbo_v4_step600_ema.safetensors",
+  two_pass_lora_strength: 0.7,
+  three_pass_lightx_lora_name: "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors",
+  three_pass_lightx_lora_strength: 0.5,
+  two_pass_pass1_megapixels: 0.5,
+  two_pass_pass1_steps: 15,
+  two_pass_pass1_denoise: 1,
+  two_pass_pass1_sampler: "euler",
+  two_pass_pass1_scheduler: "beta",
+  two_pass_pass1_seed: 69,
+  two_pass_pass2_megapixels: 1.5,
+  two_pass_pass2_steps: 4,
+  two_pass_pass2_denoise: 0.2,
+  two_pass_pass2_sampler: "euler",
+  two_pass_pass2_scheduler: "beta",
+  two_pass_pass2_seed: 69,
   three_pass_pass1_megapixels: 0.4,
   three_pass_pass1_steps: 20,
   three_pass_pass1_denoise: 1,
@@ -4596,6 +4613,14 @@ function openBuilder(node) {
   const i2vFpsInput = makeInput("24", "number");
   const i2vWidthInput = makeInput("1920", "number");
   const i2vHeightInput = makeInput("1080", "number");
+  const ltx25AspectRatioSelect = makeSelect([
+    "1:1 (Square)", "2:3 (Portrait Photo)", "3:2 (Photo)", "3:4 (Portrait Standard)",
+    "4:3 (Standard)", "9:16 (Portrait Widescreen)", "16:9 (Widescreen)", "21:9 (Ultrawide)",
+  ], "16:9 (Widescreen)");
+  const ltx25MegapixelsInput = makeInput("1.2", "number");
+  ltx25MegapixelsInput.min = "0.1";
+  ltx25MegapixelsInput.max = "16";
+  ltx25MegapixelsInput.step = "0.1";
   const i2vSeedInput = makeInput("69", "number");
   const i2vTailLossFramesInput = makeInput("25", "number");
   i2vTailLossFramesInput.min = "0";
@@ -4801,6 +4826,12 @@ function openBuilder(node) {
   const i2vSettingsGrid = document.createElement("div");
   i2vSettingsGrid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
   i2vSettingsGrid.append(makeField("FPS", i2vFpsInput), makeField("Seed", i2vSeedInput), makeField("Width", i2vWidthInput), makeField("Height", i2vHeightInput));
+  const ltx25ResolutionGrid = document.createElement("div");
+  ltx25ResolutionGrid.style.cssText = i2vSettingsGrid.style.cssText;
+  ltx25ResolutionGrid.append(
+    makeField("Aspect ratio", ltx25AspectRatioSelect),
+    makeField("Megapixels", ltx25MegapixelsInput, "LTX 2.5 resolves width and height from this target and rounds them to a multiple of 32."),
+  );
   const ltxIngredientsResolutionWarning = document.createElement("div");
   ltxIngredientsResolutionWarning.textContent = "Ingredients LoRA was trained at 768x448. Other resolutions, including portrait, can break quality or composition. Final output is 2x after the second pass.";
   ltxIngredientsResolutionWarning.style.cssText = "display:none;border:1px solid #991b1b;border-radius:7px;background:#450a0a;color:#fecaca;padding:8px 10px;font-size:11px;line-height:1.35;font-weight:800;";
@@ -5734,6 +5765,39 @@ function openBuilder(node) {
     ], pass === 1);
     return { prefix, megapixels, steps, denoise, sampler, scheduler, seed, teSpeed, section };
   });
+  const twoPassControls = [1, 2].map((pass) => {
+    const prefix = `two_pass_pass${pass}_`;
+    const megapixels = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS[`${prefix}megapixels`]), "number");
+    megapixels.min = "0.1";
+    megapixels.max = "16";
+    megapixels.step = "0.1";
+    const steps = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS[`${prefix}steps`]), "number");
+    steps.min = "1";
+    steps.max = "1000";
+    steps.step = "1";
+    const denoise = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS[`${prefix}denoise`]), "number");
+    denoise.min = "0";
+    denoise.max = "1";
+    denoise.step = "0.01";
+    const sampler = makeSelect(threePassSamplerOptions, DEFAULT_MINIMAX_H3_SETTINGS[`${prefix}sampler`]);
+    const scheduler = makeSelect(threePassSchedulerOptions, DEFAULT_MINIMAX_H3_SETTINGS[`${prefix}scheduler`]);
+    const seed = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS[`${prefix}seed`]), "number");
+    seed.step = "1";
+    const section = makeSettingsSection(`Pass ${pass}`, [
+      makeField("Resolution (megapixels)", megapixels),
+      makeField("Steps", steps),
+      makeField("Sampler", sampler),
+      makeField("Scheduler", scheduler),
+      makeField("Denoise", denoise),
+      makeField("Seed", seed),
+    ], pass === 1);
+    return { prefix, megapixels, steps, denoise, sampler, scheduler, seed, section };
+  });
+  const miniMaxTwoPassSettings = makeSettingsSection("Two-Pass Settings", [
+    document.createTextNode("These controls apply when Ref to Video 2 Pass is selected. Defaults match the imported workflow."),
+    ...twoPassControls.map((item) => item.section),
+  ], false);
+  miniMaxTwoPassSettings.style.display = "none";
   const miniMaxThreePassSettings = makeSettingsSection("Three-Pass Experimental Settings", [
     document.createTextNode("These controls apply when Ref to Video 3 Pass is selected. Defaults match the imported workflow."),
     ...threePassControls.map((item) => item.section),
@@ -5764,6 +5828,24 @@ function openBuilder(node) {
     makeField("Scheduler", miniMaxScheduler),
     makeField("Steps", miniMaxSteps),
     makeField("Denoise", miniMaxDenoise),
+  ]);
+  const miniMaxTwoPassLoraPicker = makeSearchableLoraPicker(DEFAULT_MINIMAX_H3_SETTINGS.two_pass_lora_name);
+  const miniMaxTwoPassLoraStrength = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.two_pass_lora_strength), "number");
+  miniMaxTwoPassLoraStrength.min = "-10";
+  miniMaxTwoPassLoraStrength.max = "10";
+  miniMaxTwoPassLoraStrength.step = "0.01";
+  const miniMaxTwoPassLoraSection = makeSettingsSection("2-Pass LoRA", [
+    makeField("2-pass LoRA", miniMaxTwoPassLoraPicker.wrapper),
+    makeField("Strength", miniMaxTwoPassLoraStrength),
+  ]);
+  const miniMaxThreePassLoraPicker = makeSearchableLoraPicker(DEFAULT_MINIMAX_H3_SETTINGS.three_pass_lightx_lora_name);
+  const miniMaxThreePassLoraStrength = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.three_pass_lightx_lora_strength), "number");
+  miniMaxThreePassLoraStrength.min = "-10";
+  miniMaxThreePassLoraStrength.max = "10";
+  miniMaxThreePassLoraStrength.step = "0.01";
+  const miniMaxThreePassLoraSection = makeSettingsSection("3-Pass LightX2V LoRA", [
+    makeField("LightX2V LoRA", miniMaxThreePassLoraPicker.wrapper),
+    makeField("Strength", miniMaxThreePassLoraStrength),
   ]);
   const miniMaxReferenceConditioningSettings = makeSettingsSection("Reference Conditioning", [
     makeField("Reference image sizing", miniMaxRefImageSize),
@@ -5921,10 +6003,13 @@ function openBuilder(node) {
           miniMaxContinuityNote,
         ]),
         miniMaxLoraSection,
+        miniMaxTwoPassLoraSection,
+        miniMaxThreePassLoraSection,
         miniMaxTurboSection,
         ...Object.values(miniMaxModePanels),
         makeSettingsSection("Render Settings", [miniMaxRenderSettingsGrid]),
         miniMaxAdvancedSettings,
+        miniMaxTwoPassSettings,
         miniMaxThreePassSettings,
       ]),
     },
@@ -5986,6 +6071,7 @@ function openBuilder(node) {
         makeField("Video trigger phrase", videoTriggerInput),
         makeSettingsSection("Render basics", [
           i2vSettingsGrid,
+          ltx25ResolutionGrid,
           ltxIngredientsResolutionWarning,
         ]),
         idLoraVoiceSettingsSection,
@@ -6483,17 +6569,20 @@ function openBuilder(node) {
 
   function defaultI2VVideoSettings() {
     return {
-      use_gguf_model: true,
+      ltx_version: "2.5",
+      use_gguf_model: false,
       unet_name: DEFAULT_I2V_UNET,
-      diffusion_model_name: DEFAULT_I2V_DIFFUSION_MODEL,
-      vae_name: "LTX23_video_vae_bf16.safetensors",
-      clip_name1: "gemma-3-12b-it-abliterated-sikaworld-high-fidelity-edition.safetensors",
+      diffusion_model_name: "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+      vae_name: "ltx-2.5-video-vae-conv-bf16.safetensors",
+      clip_name1: "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
       clip_name2: "ltx-2.3_text_projection_bf16.safetensors",
-      upscale_model_name: "ltx-2.3-spatial-upscaler-x2-1.1.safetensors",
-      audio_vae_name: "LTX23_audio_vae_bf16.safetensors",
+      upscale_model_name: "ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors",
+      audio_vae_name: "ltx-2.5-audio-vae-bf16.safetensors",
       fps: 24,
       width: 1920,
       height: 1080,
+      resolution_aspect_ratio: "16:9 (Widescreen)",
+      resolution_megapixels: 1.2,
       seed: 69,
       tail_loss_frames: 25,
       pre_frames: 50,
@@ -6520,7 +6609,7 @@ function openBuilder(node) {
       flf_color_match_fade_seconds: 1.0,
       flf_global_transition_type: "auto",
       flf_gemma_context_mode: "images_story",
-      msr_lora_name: REQUIRED_LTX_MSR_LORA,
+      msr_lora_name: REQUIRED_LTX25_MSR_LORA,
       msr_first_pass_strength: 1,
       msr_second_pass_strength: 0,
       msr_reference_strength: "auto - based on subject count",
@@ -6555,6 +6644,8 @@ function openBuilder(node) {
       t2v_pass2_sigmas: DEFAULT_I2V_PASS2_SIGMAS,
       rtv_pass1_sampler_name: "euler_ancestral",
       rtv_pass1_sigmas: DEFAULT_I2V_PASS1_SIGMAS,
+      rtv_pass2_sampler_name: "euler_ancestral",
+      rtv_pass2_sigmas: DEFAULT_I2V_PASS2_SIGMAS,
       ingredients_pass1_sampler_name: DEFAULT_INGREDIENTS_SAMPLER,
       ingredients_pass1_sigmas: DEFAULT_I2V_PASS1_SIGMAS,
       ingredients_pass2_sampler_name: DEFAULT_INGREDIENTS_SAMPLER,
@@ -6989,6 +7080,18 @@ function openBuilder(node) {
       steps_before_turbo: turboEnabled ? currentSettings.steps_before_turbo : miniMaxSteps.value,
       denoise: miniMaxDenoise.value,
       ref_image_size: miniMaxRefImageSize.value,
+      two_pass_lora_name: miniMaxTwoPassLoraPicker.input.value,
+      two_pass_lora_strength: miniMaxTwoPassLoraStrength.value,
+      three_pass_lightx_lora_name: miniMaxThreePassLoraPicker.input.value,
+      three_pass_lightx_lora_strength: miniMaxThreePassLoraStrength.value,
+      ...Object.fromEntries(twoPassControls.flatMap((control) => [
+        [`${control.prefix}megapixels`, control.megapixels.value],
+        [`${control.prefix}steps`, control.steps.value],
+        [`${control.prefix}denoise`, control.denoise.value],
+        [`${control.prefix}sampler`, control.sampler.value],
+        [`${control.prefix}scheduler`, control.scheduler.value],
+        [`${control.prefix}seed`, control.seed.value],
+      ])),
       ...Object.fromEntries(threePassControls.flatMap((control) => [
         [`${control.prefix}megapixels`, control.megapixels.value],
         [`${control.prefix}steps`, control.steps.value],
@@ -7190,7 +7293,7 @@ function openBuilder(node) {
         if (chosen.length) refs.performer_scene_map[segment.id] = chosen.map((speaker) => speaker.id);
         else delete refs.performer_scene_map[segment.id];
         state.fluxReferenceBuilder = refs;
-        if (chosen.length < 2) {
+        if (chosen.length < 2 && !segment.lyric_shot_word_timing_enabled) {
           segment.lyric_performance_mode = "together";
           segment.lyric_cue_map = [];
         }
@@ -7211,13 +7314,34 @@ function openBuilder(node) {
       };
       modeWrap.append(makeField("Singers / performers", performerSelect), makeField("Performance mode", performanceMode));
       miniMaxSpeakerAssignmentList.append(modeWrap);
-      if (selectedPerformers.length >= 2 && segment.lyric_performance_mode === "cue_map" && !normalizeLyricCueMapForSegment(segment, undefined, { preserveBlank: true }).length) {
+      const timedWords = makeCheckbox("Match exact sung words to each shot", Boolean(segment.lyric_shot_word_timing_enabled));
+      timedWords.wrapper.style.cssText += "border:1px solid #155e75;border-radius:7px;background:#07111f;padding:10px;";
+      timedWords.input.title = "Optional. Auto Time analyzes the scene audio, keeps silent shots instrumental, and assigns only the words actually sung during each shot.";
+      timedWords.input.onchange = () => {
+        segment.lyric_shot_word_timing_enabled = Boolean(timedWords.input.checked);
+        if (segment.lyric_shot_word_timing_enabled) {
+          segment.lyric_performance_mode = "cue_map";
+          const performer = selectedPerformerSubjectsForSegment(segment)[0] || {};
+          const fullLyric = isInstrumentalLyricText(segment.lyric_text) ? "" : flattenLyricForPrompt(segment.lyric_text);
+          if (fullLyric) segment.lyric_cue_map = [{ type: "vocal", text: fullLyric, action_note: "", singer_id: performer.id || "", singer_name: performer.name || "", start: null, end: null }];
+        } else if (selectedPerformerSubjectsForSegment(segment).length < 2) {
+          segment.lyric_performance_mode = "together";
+          segment.lyric_cue_map = [];
+        }
+        renderMiniMaxSpeakerAssignmentPanel();
+        autoSaveSessionQuiet("MiniMax exact shot lyric timing changed").catch(() => null);
+      };
+      const timedWordsNote = document.createElement("div");
+      timedWordsNote.textContent = "Optional and off by default. Turn it on, then click Auto Time This Scene. Silent shots get no lip-sync; vocal shots receive only the words heard inside that shot.";
+      timedWordsNote.style.cssText = "font-size:11px;color:#94a3b8;line-height:1.45;margin:-3px 4px 2px;";
+      miniMaxSpeakerAssignmentList.append(timedWords.wrapper, timedWordsNote);
+      if ((selectedPerformers.length >= 2 || segment.lyric_shot_word_timing_enabled) && segment.lyric_performance_mode === "cue_map" && !normalizeLyricCueMapForSegment(segment, undefined, { preserveBlank: true }).length) {
         segment.lyric_cue_map = lyricCueTextParts(segment.lyric_text).map((text, index) => {
           const performer = selectedPerformers[index % selectedPerformers.length] || selectedPerformers[0] || {};
           return { text, singer_id: performer.id || "", singer_name: performer.name || "" };
         });
       }
-      if (selectedPerformers.length < 2 || segment.lyric_performance_mode !== "cue_map") {
+      if ((selectedPerformers.length < 2 && !segment.lyric_shot_word_timing_enabled) || segment.lyric_performance_mode !== "cue_map") {
         const together = document.createElement("div");
         const performerNames = Array.from(performerSelect.selectedOptions || []).map((option) => option.textContent).filter(Boolean);
         together.textContent = performerNames.length > 1
@@ -7636,6 +7760,18 @@ function openBuilder(node) {
     miniMaxSteps.value = String(settings.steps);
     miniMaxDenoise.value = String(settings.denoise);
     miniMaxRefImageSize.value = settings.ref_image_size;
+    miniMaxTwoPassLoraPicker.input.value = settings.two_pass_lora_name;
+    miniMaxTwoPassLoraStrength.value = String(settings.two_pass_lora_strength);
+    miniMaxThreePassLoraPicker.input.value = settings.three_pass_lightx_lora_name;
+    miniMaxThreePassLoraStrength.value = String(settings.three_pass_lightx_lora_strength);
+    twoPassControls.forEach((control) => {
+      control.megapixels.value = String(settings[`${control.prefix}megapixels`]);
+      control.steps.value = String(settings[`${control.prefix}steps`]);
+      control.denoise.value = String(settings[`${control.prefix}denoise`]);
+      control.sampler.value = settings[`${control.prefix}sampler`];
+      control.scheduler.value = settings[`${control.prefix}scheduler`];
+      control.seed.value = String(settings[`${control.prefix}seed`]);
+    });
     threePassControls.forEach((control) => {
       control.megapixels.value = String(settings[`${control.prefix}megapixels`]);
       control.steps.value = String(settings[`${control.prefix}steps`]);
@@ -7645,7 +7781,14 @@ function openBuilder(node) {
       control.seed.value = String(settings[`${control.prefix}seed`]);
       control.teSpeed.input.checked = Boolean(settings[`${control.prefix}te_speed`]);
     });
+    const multiPassMode = state.miniMaxH3TwoPassEnabled || state.miniMaxH3ThreePassEnabled;
+    miniMaxMegapixelsField.style.display = multiPassMode ? "none" : "";
+    miniMaxSeedField.style.display = multiPassMode ? "none" : "";
+    miniMaxAdvancedSettings.style.display = multiPassMode ? "none" : "";
+    miniMaxTwoPassSettings.style.display = state.miniMaxH3TwoPassEnabled ? "" : "none";
     miniMaxThreePassSettings.style.display = state.miniMaxH3ThreePassEnabled ? "" : "none";
+    miniMaxTwoPassLoraSection.style.display = state.miniMaxH3TwoPassEnabled ? "" : "none";
+    miniMaxThreePassLoraSection.style.display = state.miniMaxH3ThreePassEnabled ? "" : "none";
     miniMaxEasyCacheBypass.input.checked = settings.easy_cache_bypass;
     miniMaxEasyCacheReuseThreshold.value = String(settings.easy_cache_reuse_threshold);
     miniMaxEasyCacheStartPercent.value = String(settings.easy_cache_start_percent);
@@ -7713,14 +7856,18 @@ function openBuilder(node) {
     const modeLabel = miniMaxH3ModeLabel(mode);
     const twoPass = Boolean(state.miniMaxH3TwoPassEnabled) && mode === "reference_to_video";
     const threePass = Boolean(state.miniMaxH3ThreePassEnabled) && mode === "reference_to_video";
-    const hideThreePassIgnoredSettings = threePass;
-    miniMaxMegapixelsField.style.display = hideThreePassIgnoredSettings ? "none" : "";
-    miniMaxSeedField.style.display = hideThreePassIgnoredSettings ? "none" : "";
-    miniMaxSamplerSettings.style.display = hideThreePassIgnoredSettings ? "none" : "";
-    miniMaxEasyCacheSettings.style.display = hideThreePassIgnoredSettings ? "none" : "";
-    miniMaxModelLoaderSettings.style.display = hideThreePassIgnoredSettings ? "none" : "";
-    miniMaxLoraSection.style.display = hideThreePassIgnoredSettings ? "none" : "";
-    miniMaxTurboSection.style.display = hideThreePassIgnoredSettings ? "none" : "";
+    const hideMultiPassIgnoredSettings = twoPass || threePass;
+    miniMaxMegapixelsField.style.display = hideMultiPassIgnoredSettings ? "none" : "";
+    miniMaxSeedField.style.display = hideMultiPassIgnoredSettings ? "none" : "";
+    miniMaxSamplerSettings.style.display = hideMultiPassIgnoredSettings ? "none" : "";
+    miniMaxEasyCacheSettings.style.display = hideMultiPassIgnoredSettings ? "none" : "";
+    miniMaxModelLoaderSettings.style.display = hideMultiPassIgnoredSettings ? "none" : "";
+    // Multi-pass workflows have their own optional normal-LoRA controls.
+    // Turbo is a separate single-pass acceleration path and must not be offered here.
+    miniMaxLoraSection.style.display = "";
+    miniMaxTurboSection.style.display = hideMultiPassIgnoredSettings ? "none" : "";
+    miniMaxUseTurboLora.input.checked = hideMultiPassIgnoredSettings ? false : settings.use_turbo_lora;
+    miniMaxUseTurboLora.input.disabled = hideMultiPassIgnoredSettings || settings.use_loras;
     for (const button of miniMaxModeButtons) {
       const active = !twoPass && !threePass && button.dataset.minimaxH3Mode === mode;
       button.style.background = active ? "#06b6d4" : "#27272a";
@@ -7736,6 +7883,11 @@ function openBuilder(node) {
     for (const [panelMode, panel] of Object.entries(miniMaxModePanels)) {
       panel.style.display = panelMode === mode ? "flex" : "none";
     }
+    const sceneImageSource = segmentImageSource(segment);
+    const hasSceneImage = Boolean(sceneImageSource?.path || sceneImageSource?.data);
+    miniMaxSceneImageUseField.style.display = hasSceneImage ? "flex" : "none";
+    miniMaxStartFrameCharacterInfluenceField.style.display = hasSceneImage && miniMaxSceneImageUse.value === "exact_start_frame" ? "flex" : "none";
+    miniMaxStartFrameReferenceNote.style.display = hasSceneImage ? "block" : "none";
     miniMaxPrompt.value = String(segment?.minimax_h3_prompt || segment?.i2v_prompt || "");
     updateMiniMaxPromptCharacterStatus(segment);
     miniMaxCreatePromptButton.textContent = `Create MiniMax ${modeLabel} Prompt`;
@@ -7765,7 +7917,7 @@ function openBuilder(node) {
     miniMaxStartFrameCharacterInfluence.disabled = !segment
       || sceneImageUse !== "exact_start_frame"
       || settings.continuity_mode === "exact_start_frame";
-    miniMaxStartFrameCharacterInfluenceField.style.display = sceneImageUse === "exact_start_frame" ? "flex" : "none";
+    miniMaxStartFrameCharacterInfluenceField.style.display = hasSceneImage && sceneImageUse === "exact_start_frame" ? "flex" : "none";
     miniMaxStartFrameReferenceNote.textContent = settings.continuity_mode === "exact_start_frame"
       && sceneImageUse === "exact_start_frame"
       ? "The previous rendered final frame is the sole exact opening frame. Choose an LLM-only inspiration mode or Do not use instead."
@@ -9964,7 +10116,9 @@ function openBuilder(node) {
     if (referenceType === "extra" && !/\b(?:hair|bob(?:bed)?|pixie cut|buzz cut|braids?|dreadlocks?|locs?|afro|shaved head|bald)\b/i.test(description)) {
       throw new Error("Gemma omitted the extra's required hairstyle. Run Gemma Describe again so the locked identity includes hair color and style.");
     }
-    target.description = description;
+    const outputField = String(options.storeField || "").trim();
+    if (outputField) target[outputField] = description;
+    else target.description = description;
     return description;
   }
 
@@ -10371,6 +10525,14 @@ function openBuilder(node) {
       const path = String(item || "").trim();
       const key = mediaPathKey(path);
       if (!path || !key || seen.has(key)) continue;
+      // MiniMax H3 stage 1/2 source files are scratch outputs. The copied
+      // rendered_scene_videos_backup versions are the review entries; keeping
+      // both makes one render appear twice in timeline history.
+      if (
+        key.includes("/vrgdg_minimaxh3/")
+        && /_stage[12][^/]*\.mp4$/i.test(key)
+        && !isBackupSceneVideoPath(path)
+      ) continue;
       seen.add(key);
       cleaned.push(path);
     }
@@ -10881,6 +11043,7 @@ function openBuilder(node) {
     segment.flf_end_frame_stale = Boolean(segment.flf_end_frame_stale);
     segment.flf_final_prompt_ready = Boolean(segment.flf_final_prompt_ready);
     if (!Array.isArray(segment.lyric_singers)) segment.lyric_singers = [];
+    segment.lyric_shot_word_timing_enabled = Boolean(segment.lyric_shot_word_timing_enabled);
     segment.lyric_performance_mode = ["together", "cue_map"].includes(String(segment.lyric_performance_mode || "").trim())
       ? String(segment.lyric_performance_mode || "").trim()
       : "together";
@@ -10893,6 +11056,8 @@ function openBuilder(node) {
         singer_name: String(cue?.singer_name || cue?.singerName || cue?.name || "").trim(),
         start: Number.isFinite(Number(cue?.start)) ? Math.max(0, Number(cue.start)) : null,
         end: Number.isFinite(Number(cue?.end)) ? Math.max(0, Number(cue.end)) : null,
+        vocal_start: Number.isFinite(Number(cue?.vocal_start)) ? Math.max(0, Number(cue.vocal_start)) : null,
+        vocal_end: Number.isFinite(Number(cue?.vocal_end)) ? Math.max(0, Number(cue.vocal_end)) : null,
       })).filter((cue) => cue.type === "instrumental" || cue.text || cue.action_note)
       : [];
     segment.minimax_speaker_assignments = normalizeMiniMaxSpeakerAssignments(
@@ -11343,12 +11508,15 @@ function openBuilder(node) {
     return repairI2VVideoSettingDimensions({
       ...defaultI2VVideoSettings(),
       ...source,
-      use_gguf_model: source.use_gguf_model ?? source.useGgufModel ?? true,
+      ltx_version: String(source.ltx_version || "2.5") === "2.3" ? "2.3" : "2.5",
+      use_gguf_model: source.use_gguf_model ?? source.useGgufModel ?? (String(source.ltx_version || "2.5") === "2.3"),
       unet_name: BAD_I2V_UNET_ALIASES.has(source.unet_name) ? DEFAULT_I2V_UNET : source.unet_name || DEFAULT_I2V_UNET,
-      diffusion_model_name: source.diffusion_model_name || source.model_name || DEFAULT_I2V_DIFFUSION_MODEL,
+      diffusion_model_name: source.diffusion_model_name || source.model_name || (String(source.ltx_version || "2.5") === "2.3" ? DEFAULT_I2V_DIFFUSION_MODEL : "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors"),
       fps: Number(source.fps || 24),
       width: Number(source.width || 1920),
       height: Number(source.height || 1080),
+      resolution_aspect_ratio: source.resolution_aspect_ratio || "16:9 (Widescreen)",
+      resolution_megapixels: Number(source.resolution_megapixels || 1.2),
       seed: Number(source.seed || 69),
       tail_loss_frames: Math.max(0, Number(source.tail_loss_frames ?? 25)),
       pre_frames: Math.max(0, Number(source.pre_frames ?? 50)),
@@ -11379,6 +11547,8 @@ function openBuilder(node) {
       t2v_pass2_sigmas: source.t2v_pass2_sigmas || DEFAULT_I2V_PASS2_SIGMAS,
       rtv_pass1_sampler_name: source.rtv_pass1_sampler_name || "euler_ancestral",
       rtv_pass1_sigmas: source.rtv_pass1_sigmas || DEFAULT_I2V_PASS1_SIGMAS,
+      rtv_pass2_sampler_name: source.rtv_pass2_sampler_name || "euler_ancestral",
+      rtv_pass2_sigmas: source.rtv_pass2_sigmas || DEFAULT_I2V_PASS2_SIGMAS,
       ingredients_pass1_sampler_name: source.ingredients_pass1_sampler_name || DEFAULT_INGREDIENTS_SAMPLER,
       ingredients_pass1_sigmas: source.ingredients_pass1_sigmas || DEFAULT_I2V_PASS1_SIGMAS,
       ingredients_pass2_sampler_name: source.ingredients_pass2_sampler_name || DEFAULT_INGREDIENTS_SAMPLER,
@@ -13684,6 +13854,8 @@ function openBuilder(node) {
           id: existing.id || item.id,
           name: existing.name || item.name,
           description: existing.description || item.description,
+          face_description: existing.face_description || item.face_description || item.faceDescription,
+          face_description_source_key: existing.face_description_source_key || item.face_description_source_key || item.faceDescriptionSourceKey,
           reference_type: existing.reference_type || item.reference_type || item.referenceType || item.type,
           trigger_phrase: existing.trigger_phrase || item.trigger_phrase,
           trigger_position: existing.trigger_position || item.trigger_position,
@@ -13730,6 +13902,8 @@ function openBuilder(node) {
     const subject = source.subject && typeof source.subject === "object" ? source.subject : {};
     normalized.subject = {
       description: String(subject.description || ""),
+      face_description: String(subject.face_description || subject.faceDescription || ""),
+      face_description_source_key: String(subject.face_description_source_key || subject.faceDescriptionSourceKey || ""),
       reference_type: normalizeReferenceType(subject.reference_type || subject.referenceType || subject.type || "character"),
       minimax_voice: normalizeMiniMaxH3Voice(subject.minimax_voice || subject.miniMaxVoice),
       reference_generation_draft: normalizeReferenceGenerationDraft(subject.reference_generation_draft || subject.referenceGenerationDraft),
@@ -13742,6 +13916,8 @@ function openBuilder(node) {
           id: String(item.id || `subj_${Date.now()}_${index}_${Math.floor(Math.random() * 10000)}`),
           name: String(item.name || `Character ${index + 1}`),
           description: String(item.description || ""),
+          face_description: String(item.face_description || item.faceDescription || ""),
+          face_description_source_key: String(item.face_description_source_key || item.faceDescriptionSourceKey || ""),
           auto_build_role: String(item.auto_build_role || item.autoBuildRole || ""),
           reference_type: normalizeReferenceType(item.reference_type || item.referenceType || item.type || "character"),
           trigger_phrase: String(item.trigger_phrase || item.trigger || item.Trigger || ""),
@@ -13758,6 +13934,8 @@ function openBuilder(node) {
         id: "subject_1",
         name: "Character 1",
         description: normalized.subject.description,
+        face_description: normalized.subject.face_description,
+        face_description_source_key: normalized.subject.face_description_source_key,
         reference_type: normalized.subject.reference_type || "character",
         trigger_phrase: String(subject.trigger_phrase || subject.trigger || subject.Trigger || ""),
         trigger_position: String(subject.trigger_position || subject.triggerPosition || subject.trigger_placement || "start") === "end" ? "end" : "start",
@@ -13807,6 +13985,8 @@ function openBuilder(node) {
       const firstSubject = normalized.subjects[0];
       normalized.subject = {
         description: firstSubject.description || normalized.subject.description || "",
+        face_description: firstSubject.face_description || normalized.subject.face_description || "",
+        face_description_source_key: firstSubject.face_description_source_key || normalized.subject.face_description_source_key || "",
         reference_type: firstSubject.reference_type || normalized.subject.reference_type || "character",
         minimax_voice: normalizeMiniMaxH3Voice(firstSubject.minimax_voice || normalized.subject.minimax_voice),
         reference_generation_draft: firstSubject.reference_generation_draft || normalized.subject.reference_generation_draft || normalizeReferenceGenerationDraft(),
@@ -16914,6 +17094,8 @@ function openBuilder(node) {
     } else if (mode === "rtv") {
       pass1SamplerName = settings.rtv_pass1_sampler_name || "euler_ancestral";
       pass1Sigmas = settings.rtv_pass1_sigmas || DEFAULT_I2V_PASS1_SIGMAS;
+      pass2SamplerName = settings.rtv_pass2_sampler_name || "euler_ancestral";
+      pass2Sigmas = settings.rtv_pass2_sigmas || DEFAULT_I2V_PASS2_SIGMAS;
     } else if (mode === "ingredients") {
       pass1SamplerName = settings.ingredients_pass1_sampler_name || DEFAULT_INGREDIENTS_SAMPLER;
       pass1Sigmas = settings.ingredients_pass1_sigmas || DEFAULT_I2V_PASS1_SIGMAS;
@@ -16930,7 +17112,7 @@ function openBuilder(node) {
     i2vPass2Bypass.input.checked = Boolean(settings.pass2_inplace_bypass);
     const showNodeSettings = mode === "i2v" || mode === "id_lora" || mode === "t2v" || mode === "rtv" || mode === "ingredients";
     const showInplaceSettings = mode === "i2v" || mode === "id_lora";
-    const showSecondPass = mode !== "rtv";
+    const showSecondPass = mode !== "rtv" || settings.ltx_version !== "2.3";
     i2vAdvancedNodeSettingsPanel.style.display = showNodeSettings ? "flex" : "none";
     i2vAdvancedNodeSettingsSection.style.display = showNodeSettings ? "" : "none";
     i2vPass1NodePanel.inplaceCard.style.display = showInplaceSettings ? "flex" : "none";
@@ -17849,6 +18031,14 @@ function openBuilder(node) {
     i2vFpsInput.value = settings.fps || 24;
     i2vWidthInput.value = isIngredientsMode ? ingredientsWidth : repairedRegularWidth;
     i2vHeightInput.value = isIngredientsMode ? ingredientsHeight : repairedRegularHeight;
+    ltx25AspectRatioSelect.value = settings.resolution_aspect_ratio || "16:9 (Widescreen)";
+    ltx25MegapixelsInput.value = Number(settings.resolution_megapixels || 1.2);
+    const isLtx25 = settings.ltx_version !== "2.3";
+    const isLtx25T2V = isLtx25 && currentVideoMode() === "t2v";
+    i2vSettingsGrid.style.display = isLtx25T2V ? "none" : "grid";
+    ltx25ResolutionGrid.style.display = isLtx25T2V ? "grid" : "none";
+    i2vUseGgufModel.wrapper.style.display = isLtx25 ? "none" : "flex";
+    i2vClip2Picker.wrapper.parentElement.style.display = isLtx25 ? "none" : "flex";
     i2vSeedInput.value = settings.seed || 69;
     i2vTailLossFramesInput.value = Math.max(0, Number(settings.tail_loss_frames ?? 25));
     const isFLFMode = currentVideoMode() === "flf";
@@ -17906,6 +18096,12 @@ function openBuilder(node) {
   }
 
   function syncI2VVideoModelPickerVisibility() {
+    const isLtx25 = (activeI2VVideoSettings()?.ltx_version || "2.5") !== "2.3";
+    if (isLtx25) {
+      i2vUnetModelField.style.display = "none";
+      i2vDiffusionModelField.style.display = "flex";
+      return;
+    }
     const useGguf = Boolean(i2vUseGgufModel.input.checked);
     i2vUnetModelField.style.display = useGguf ? "flex" : "none";
     i2vDiffusionModelField.style.display = useGguf ? "none" : "flex";
@@ -17940,6 +18136,7 @@ function openBuilder(node) {
     const pass2SamplerName = i2vPass2SamplerSelect.value || defaultSamplerForMode;
     const pass2Sigmas = normalizeI2VSigmasText(i2vPass2SigmasInput.value, DEFAULT_I2V_PASS2_SIGMAS);
     const settings = {
+      ltx_version: previous.ltx_version === "2.3" ? "2.3" : "2.5",
       use_gguf_model: Boolean(i2vUseGgufModel.input.checked),
       unet_name: BAD_I2V_UNET_ALIASES.has(i2vUnetPicker.input.value) ? DEFAULT_I2V_UNET : i2vUnetPicker.input.value || "",
       diffusion_model_name: i2vDiffusionModelPicker.input.value || DEFAULT_I2V_DIFFUSION_MODEL,
@@ -17951,6 +18148,8 @@ function openBuilder(node) {
       fps: Number(i2vFpsInput.value || 24),
       width: regularWidth,
       height: regularHeight,
+      resolution_aspect_ratio: ltx25AspectRatioSelect.value || "16:9 (Widescreen)",
+      resolution_megapixels: Math.max(0.1, Number(ltx25MegapixelsInput.value || 1.2)),
       seed: Number(i2vSeedInput.value || 69),
       tail_loss_frames: isIdLoraMode ? 0 : Math.max(0, Number(i2vTailLossFramesInput.value || 0)),
       pre_frames: isIdLoraMode ? 0 : isFLFMode ? Math.max(0, Number(previous.pre_frames ?? 50)) : Math.max(0, Number(i2vPreFramesInput.value || 0)),
@@ -18010,6 +18209,8 @@ function openBuilder(node) {
       t2v_pass2_sigmas: isT2VMode ? pass2Sigmas : (previous.t2v_pass2_sigmas || DEFAULT_I2V_PASS2_SIGMAS),
       rtv_pass1_sampler_name: isRTVMode ? pass1SamplerName : (previous.rtv_pass1_sampler_name || "euler_ancestral"),
       rtv_pass1_sigmas: isRTVMode ? pass1Sigmas : (previous.rtv_pass1_sigmas || DEFAULT_I2V_PASS1_SIGMAS),
+      rtv_pass2_sampler_name: isRTVMode ? pass2SamplerName : (previous.rtv_pass2_sampler_name || "euler_ancestral"),
+      rtv_pass2_sigmas: isRTVMode ? pass2Sigmas : (previous.rtv_pass2_sigmas || DEFAULT_I2V_PASS2_SIGMAS),
       ingredients_pass1_sampler_name: isIngredientsMode ? (pass1SamplerName || DEFAULT_INGREDIENTS_SAMPLER) : (previous.ingredients_pass1_sampler_name || DEFAULT_INGREDIENTS_SAMPLER),
       ingredients_pass1_sigmas: isIngredientsMode ? pass1Sigmas : (previous.ingredients_pass1_sigmas || DEFAULT_I2V_PASS1_SIGMAS),
       ingredients_pass2_sampler_name: isIngredientsMode ? (pass2SamplerName || DEFAULT_INGREDIENTS_SAMPLER) : (previous.ingredients_pass2_sampler_name || DEFAULT_INGREDIENTS_SAMPLER),
@@ -18206,7 +18407,8 @@ function openBuilder(node) {
     idLoraVoiceSettingsSection.style.display = isIdLora ? "" : "none";
     flfGuideSettingsSection.style.display = isFLF ? "" : "none";
     flfTransitionTypeField.style.display = isFLF ? "flex" : "none";
-    i2vPass2NodePanel.style.display = isFLF || isRTV ? "none" : "";
+    const isLegacySinglePassRTV = isRTV && (activeI2VVideoSettings()?.ltx_version || "2.5") === "2.3";
+    i2vPass2NodePanel.style.display = isFLF || isLegacySinglePassRTV ? "none" : "";
     syncTimelineTrimModeButton();
     i2vWarmCooldownSection.style.display = isIdLora ? "none" : "";
     createI2VButton.textContent = isIdLora ? "Gemma ID Script" : isIngredients ? "Gemma Ingredients Video" : isFLF ? "Gemma First/Last Prompt" : isRTV ? "Gemma Reference Video" : isT2V ? "Gemma T2V" : "Gemma I2V";
@@ -18274,7 +18476,7 @@ function openBuilder(node) {
       && singerInspectorSegmentId === String(segment.id || "")
     ) {
       segment.lyric_singers = lyricSingersInput.value.split(",").map((item) => item.trim()).filter(Boolean);
-      if (segment.lyric_singers.length < 2) {
+      if (segment.lyric_singers.length < 2 && !segment.lyric_shot_word_timing_enabled) {
         segment.lyric_performance_mode = "together";
         segment.lyric_cue_map = [];
       }
@@ -22362,7 +22564,8 @@ function openBuilder(node) {
 
   function normalizeLyricCueMapForSegment(segment, refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder), options = {}) {
     const performers = selectedPerformerSubjectsForSegment(segment, refs);
-    if (performers.length < 2 || String(segment?.lyric_performance_mode || "together") !== "cue_map") return [];
+    const allowsSoloTimedCues = performers.length === 1 && Boolean(segment?.lyric_shot_word_timing_enabled);
+    if ((!allowsSoloTimedCues && performers.length < 2) || String(segment?.lyric_performance_mode || "together") !== "cue_map") return [];
     const existing = Array.isArray(segment?.lyric_cue_map) ? segment.lyric_cue_map : [];
     const parts = existing.length ? existing : lyricCueTextParts(segment?.lyric_text).map((text, index) => {
       const performer = performers[index % performers.length] || performers[0] || {};
@@ -22382,6 +22585,8 @@ function openBuilder(node) {
         singer_name: String(performer?.name || cue?.singer_name || "").trim(),
         start: Number.isFinite(Number(cue?.start)) ? Math.max(0, Number(cue.start)) : null,
         end: Number.isFinite(Number(cue?.end)) ? Math.max(0, Number(cue.end)) : null,
+        vocal_start: Number.isFinite(Number(cue?.vocal_start)) ? Math.max(0, Number(cue.vocal_start)) : null,
+        vocal_end: Number.isFinite(Number(cue?.vocal_end)) ? Math.max(0, Number(cue.vocal_end)) : null,
       };
     }).filter((cue) => options.preserveBlank || cue.type === "instrumental" || cue.text);
   }
@@ -22393,10 +22598,6 @@ function openBuilder(node) {
     if (segmentUsesNoLipSyncPerformance(segment) || segment?.no_character_present || !performers.length) return "";
     if (!lyricText && !cueMap.length) return "";
     const labelMap = miniMaxH3SubjectLabelMapForSegment(segment, mode);
-    if (performers.length === 1 && lyricText) {
-      const performer = miniMaxH3PerformerLabel(performers[0], labelMap);
-      return `${performer} performs the exact full lyric/dialogue line from <Audio 1>: "${miniMaxH3PunctuatedCueText(lyricText)}"`;
-    }
     if (String(segment?.lyric_performance_mode || "together") === "cue_map" && cueMap.length) {
       const lines = cueMap.map((cue, index) => {
         const timing = miniMaxH3CueTimingText(cue, segment, cueMap, index);
@@ -22405,7 +22606,12 @@ function openBuilder(node) {
           return `${timing}Instrumental / no vocal cue. No visible subject sings or lip-syncs; mouths stay closed or naturally relaxed.${note}`;
         }
         const subject = performers.find((item) => String(item.id) === String(cue.singer_id)) || { id: cue.singer_id, name: cue.singer_name };
-        return `${timing}${miniMaxH3PerformerLabel(subject, labelMap)} performs "${miniMaxH3PunctuatedCueText(cue.text)}" from <Audio 1>.`;
+        const vocalStart = Number(cue.vocal_start);
+        const vocalEnd = Number(cue.vocal_end);
+        const vocalWindow = Number.isFinite(vocalStart) && Number.isFinite(vocalEnd) && vocalEnd > vocalStart
+          ? ` Vocal lip-sync occurs only from ${vocalStart.toFixed(3)}s-${vocalEnd.toFixed(3)}s; before and after that window the mouth stays closed or naturally relaxed.`
+          : "";
+        return `${timing}${miniMaxH3PerformerLabel(subject, labelMap)} performs "${miniMaxH3PunctuatedCueText(cue.text)}" from <Audio 1>.${vocalWindow}`;
       });
       if (options.compact) return lines.join(" ");
       return [
@@ -22413,6 +22619,10 @@ function openBuilder(node) {
         ...lines,
         "Only the assigned performer sings or speaks each cue. Other visible performers remain silent, mouth closed or naturally reacting, until assigned their own cue.",
       ].join("\n");
+    }
+    if (performers.length === 1 && lyricText) {
+      const performer = miniMaxH3PerformerLabel(performers[0], labelMap);
+      return `${performer} performs the exact full lyric/dialogue line from <Audio 1>: "${miniMaxH3PunctuatedCueText(lyricText)}"`;
     }
     const performerText = performers.map((subject) => miniMaxH3PerformerLabel(subject, labelMap)).join(" and ");
     return `${performerText} perform the same complete lyric/dialogue line together from <Audio 1>: "${miniMaxH3PunctuatedCueText(lyricText)}"`;
@@ -22526,12 +22736,17 @@ function openBuilder(node) {
         return `[Shot ${index + 1}] ${timing}: instrumental/no vocal. No visible subject sings or lip-syncs.${note ? ` Visual action note: ${note}` : ""}`;
       }
       const subject = performers.find((item) => String(item.id) === String(cue.singer_id)) || { id: cue.singer_id, name: cue.singer_name };
-      return `[Shot ${index + 1}] ${timing}: ${miniMaxH3PerformerLabel(subject, labelMap)} is the only performer singing/lip-syncing <d>[English] ${miniMaxH3PunctuatedCueText(cue.text)}</d> from <Audio 1>. Other visible performers remain silent, mouth closed or naturally reacting.`;
+      const vocalStart = Number(cue.vocal_start);
+      const vocalEnd = Number(cue.vocal_end);
+      const vocalWindow = Number.isFinite(vocalStart) && Number.isFinite(vocalEnd) && vocalEnd > vocalStart
+        ? ` The singer begins lip-syncing only at ${vocalStart.toFixed(3)}s and stops at ${vocalEnd.toFixed(3)}s. Before and after that exact vocal window, the singer's mouth stays closed or naturally relaxed.`
+        : "";
+      return `[Shot ${index + 1}] ${timing}: ${miniMaxH3PerformerLabel(subject, labelMap)} is the only performer singing/lip-syncing <d>[English] ${miniMaxH3PunctuatedCueText(cue.text)}</d> from <Audio 1>.${vocalWindow} Other visible performers remain silent, mouth closed or naturally reacting.`;
     });
     return [
       "Timed singer/lyric shot contract — authoritative:",
       ...lines,
-      "Each listed cue is its own shot. Do not swap singers, merge lyric cues, or make an unassigned visible performer sing during another subject's cue.",
+      "Each listed cue is its own shot. Do not swap singers, merge lyric cues, anticipate a later lyric, or make any visible performer sing outside the exact assigned vocal window.",
     ].join("\n");
   }
 
@@ -22578,9 +22793,54 @@ function openBuilder(node) {
           start: Number.isFinite(start) ? Math.max(0, start) : null,
           end: Number.isFinite(end) ? Math.max(0, end) : null,
           duration: Number.isFinite(start) && Number.isFinite(end) ? Math.max(0, end - start) : 0,
+          words: (Array.isArray(item?.words) ? item.words : []).map((word) => ({
+            text: String(word?.text || word?.word || "").trim(),
+            start: Number.isFinite(Number(word?.start)) ? Math.max(0, Number(word.start)) : null,
+            end: Number.isFinite(Number(word?.end)) ? Math.max(0, Number(word.end)) : null,
+          })).filter((word) => word.text && Number.isFinite(word.start) && Number.isFinite(word.end) && word.end > word.start),
         };
       })
       .filter((item) => Number.isFinite(Number(item.start)) && Number.isFinite(Number(item.end)) && item.end > item.start);
+  }
+
+  function buildShotAlignedSingerCueMap(segment, timestamped = [], performer = {}) {
+    const sceneDuration = Math.max(0, Number(timelineSegmentDuration(segment) || 0));
+    if (!sceneDuration) return [];
+    const words = timestamped.flatMap((item) => item.type === "instrumental" ? [] : (Array.isArray(item.words) ? item.words : []))
+      .filter((word) => word.text && Number.isFinite(Number(word.start)) && Number.isFinite(Number(word.end)))
+      .sort((a, b) => Number(a.start) - Number(b.start));
+    if (!words.length) return [];
+    const cutPlan = storyboardCutPlanForDuration(sceneDuration, state.builderStoryboardDefaults?.minimax_h3_cut_frequency);
+    const cuts = (Array.isArray(cutPlan?.cut_times_seconds) ? cutPlan.cut_times_seconds : [])
+      .map(Number)
+      .filter((time) => Number.isFinite(time) && time > 0.001 && time < sceneDuration - 0.001)
+      .sort((a, b) => a - b);
+    const boundaries = [0, ...cuts, sceneDuration];
+    const cues = [];
+    for (let index = 0; index < boundaries.length - 1; index += 1) {
+      const shotStart = boundaries[index];
+      const shotEnd = boundaries[index + 1];
+      const shotWords = words.filter((word) => {
+        const midpoint = (Number(word.start) + Number(word.end)) / 2;
+        return midpoint >= shotStart && (index === boundaries.length - 2 ? midpoint <= shotEnd : midpoint < shotEnd);
+      });
+      if (!shotWords.length) {
+        cues.push({ type: "instrumental", text: "", action_note: "", singer_id: "", singer_name: "", start: shotStart, end: shotEnd, vocal_start: null, vocal_end: null });
+        continue;
+      }
+      cues.push({
+        type: "vocal",
+        text: flattenLyricForPrompt(shotWords.map((word) => word.text).join(" ")),
+        action_note: "",
+        singer_id: String(performer?.id || "").trim(),
+        singer_name: String(performer?.name || "").trim(),
+        start: shotStart,
+        end: shotEnd,
+        vocal_start: Math.max(shotStart, Number(shotWords[0].start)),
+        vocal_end: Math.min(shotEnd, Number(shotWords[shotWords.length - 1].end)),
+      });
+    }
+    return cues;
   }
 
   function rebuildSingerCueMapFromTimestampedSegments(segment, currentCues = [], timestamped = [], options = {}) {
@@ -22775,7 +23035,13 @@ function openBuilder(node) {
     if (!segment || !isMiniMaxSingerAssignmentMode(segment)) return;
     const progress = createProgressWindow("Auto Time Singer Cues");
     try {
-      const cues = normalizeLyricCueMapForSegment(segment, undefined, { preserveBlank: true });
+      const exactShotTiming = Boolean(segment.lyric_shot_word_timing_enabled);
+      const performer = selectedPerformerSubjectsForSegment(segment)[0] || {};
+      let cues = normalizeLyricCueMapForSegment(segment, undefined, { preserveBlank: true });
+      if (exactShotTiming && !cues.some((cue) => cue.type !== "instrumental" && flattenLyricForPrompt(cue.text))) {
+        const fullLyric = isInstrumentalLyricText(segment.lyric_text) ? "" : flattenLyricForPrompt(segment.lyric_text);
+        if (fullLyric) cues = [{ type: "vocal", text: fullLyric, action_note: "", singer_id: performer.id || "", singer_name: performer.name || "", start: null, end: null }];
+      }
       const vocalCues = cues.filter((cue) => cue.type !== "instrumental" && flattenLyricForPrompt(cue.text));
       if (!vocalCues.length) throw new Error("Add at least one lyric cue before auto-timing this scene.");
       progress.set("Preparing lyric cue text...", 5);
@@ -22785,7 +23051,8 @@ function openBuilder(node) {
       const timestamped = timestampedCueSegments(payload);
       if (!timestamped.length) throw new Error("Stable-ts did not return usable cue timestamps for this scene.");
       progress.set("Applying timestamped cue rows...", 88);
-      const rebuilt = rebuildSingerCueMapFromTimestampedSegments(segment, cues, timestamped, { minInstrumentalGap: 0.5 });
+      const shotAligned = exactShotTiming ? buildShotAlignedSingerCueMap(segment, timestamped, performer) : [];
+      const rebuilt = shotAligned.length ? shotAligned : rebuildSingerCueMapFromTimestampedSegments(segment, cues, timestamped, { minInstrumentalGap: 0.5 });
       if (!rebuilt.length) throw new Error("No usable cue rows were created from the timestamped result.");
       pushHistory();
       segment.lyric_performance_mode = "cue_map";
@@ -22800,7 +23067,7 @@ function openBuilder(node) {
       const warning = vocalReturned !== vocalCues.length
         ? `\nWarning: Stable-ts returned ${vocalReturned} vocal cue${vocalReturned === 1 ? "" : "s"} for ${vocalCues.length} mapped lyric cue${vocalCues.length === 1 ? "" : "s"}. Review before rendering.`
         : "";
-      progress.set(`Auto timing complete.\nVocal cues: ${vocalReturned}\nInstrumental gaps: ${instrumentalReturned}${warning}`, 100);
+      progress.set(`Auto timing complete.\nVocal cues: ${vocalReturned}\nInstrumental gaps: ${instrumentalReturned}${exactShotTiming && shotAligned.length ? "\nExact words matched to storyboard shots." : ""}${warning}`, 100);
       progress.close(2600);
       toast("Singer cue timing filled. Review with Play Cue before rendering.");
     } catch (error) {
@@ -30825,7 +31092,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
             ? `${cueCount || 0} mapped cue${cueCount === 1 ? "" : "s"}; only assigned performer sings each cue.`
             : "All selected performers sing/speak the same full line together.";
           performerPanel.append(modeRow, summary);
-        } else if (segment.lyric_performance_mode !== "together") {
+        } else if (segment.lyric_performance_mode !== "together" && !segment.lyric_shot_word_timing_enabled) {
           segment.lyric_performance_mode = "together";
           segment.lyric_cue_map = [];
           syncPerformerInspectorForSegment(segment);
@@ -34705,6 +34972,54 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       makeField("Video engine for this project", projectVideoEngineSelect),
       projectVideoEngineNote,
     ], true);
+    const ltxVersionSelect = makeSelect([
+      { value: "2.5", label: "LTX 2.5 (default)" },
+      { value: "2.3", label: "LTX 2.3 (legacy)" },
+    ], state.i2vVideoSettings?.ltx_version || "2.5");
+    const ltxVersionNote = document.createElement("div");
+    ltxVersionNote.textContent = "LTX 2.5 is the default for all LTX video modes. Choose LTX 2.3 to use the legacy GGUF and dual-CLIP workflows.";
+    ltxVersionNote.style.cssText = projectVideoEngineNote.style.cssText;
+    const ltxVersionPanel = makeSettingsSection("LTX Version", [
+      makeField("Builder LTX version", ltxVersionSelect),
+      ltxVersionNote,
+    ], true);
+    ltxVersionSelect.addEventListener("change", async () => {
+      const selectedVersion = ltxVersionSelect.value;
+      const versionDefaults = selectedVersion === "2.5" ? {
+        use_gguf_model: false,
+        diffusion_model_name: "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+        vae_name: "ltx-2.5-video-vae-conv-bf16.safetensors",
+        audio_vae_name: "ltx-2.5-audio-vae-bf16.safetensors",
+        clip_name1: "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+        upscale_model_name: "ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors",
+        msr_lora_name: REQUIRED_LTX25_MSR_LORA,
+      } : {
+        use_gguf_model: true,
+        unet_name: DEFAULT_I2V_UNET,
+        diffusion_model_name: DEFAULT_I2V_DIFFUSION_MODEL,
+        vae_name: "LTX23_video_vae_bf16.safetensors",
+        audio_vae_name: "LTX23_audio_vae_bf16.safetensors",
+        clip_name1: "gemma-3-12b-it-abliterated-sikaworld-high-fidelity-edition.safetensors",
+        clip_name2: "ltx-2.3_text_projection_bf16.safetensors",
+        upscale_model_name: "ltx-2.3-spatial-upscaler-x2-1.1.safetensors",
+        msr_lora_name: REQUIRED_LTX_MSR_LORA,
+      };
+      state.i2vVideoSettings = cloneI2VVideoSettings({
+        ...(state.i2vVideoSettings || {}),
+        ...versionDefaults,
+        ltx_version: selectedVersion,
+      });
+      for (const segment of allEditableSegments()) {
+        if (!segment?.i2v_video_settings) continue;
+        segment.i2v_video_settings = cloneI2VVideoSettings({
+          ...segment.i2v_video_settings,
+          ...versionDefaults,
+          ltx_version: selectedVersion,
+        });
+      }
+      syncI2VVideoSettingsPanel();
+      await autoSaveSessionQuiet(`selected LTX ${ltxVersionSelect.value}`);
+    });
     const sceneRenderWaitHoursInput = makeInput(
       String(normalizeSceneRenderWaitHours(state.sceneRenderWaitHours)),
       "number",
@@ -34988,7 +35303,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     testErrorSound.onclick = () => playBuilderNotification("error", true);
     syncCustomAudioLabels();
     syncContinuityModeVisibility();
-    box.append(header, pathGrid, actions, note, projectStoragePanel, projectVideoEnginePanel, renderWaitingPanel, themePanel, memoryManagementPanel, autoChainPanel, notificationPanel);
+    box.append(header, pathGrid, actions, note, projectStoragePanel, projectVideoEnginePanel, ltxVersionPanel, renderWaitingPanel, themePanel, memoryManagementPanel, autoChainPanel, notificationPanel);
     backdrop.append(box);
     document.body.append(backdrop);
     modalClose.onclick = () => backdrop.remove();
@@ -35448,8 +35763,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       video_type: normalizeVideoType(state.videoType),
       video_engine: normalizeProjectVideoEngine(state.projectVideoEngine),
       minimax_h3_settings: cloneMiniMaxH3Settings(state.miniMaxH3Settings),
-      minimax_h3_two_pass: Boolean(state.miniMaxH3TwoPassEnabled),
-      minimax_h3_three_pass: Boolean(state.miniMaxH3ThreePassEnabled),
+        minimax_h3_two_pass: Boolean(state.miniMaxH3TwoPassEnabled),
+        minimax_h3_three_pass: Boolean(state.miniMaxH3ThreePassEnabled),
       image_model_mode: state.imageModelMode,
       zimage_settings: state.zimageSettings,
       reference_krea2_settings: cloneKrea2ReferenceSettings(state.referenceKrea2Settings),
@@ -41379,7 +41694,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const useLoras = Boolean(settings.use_loras && Number(settings.lora_count || 0) > 0);
     const count = Math.max(0, Math.min(4, Number(settings.lora_count || 0)));
     const videoMode = currentVideoMode();
-    const singlePassLoras = videoMode === "rtv" || videoMode === "flf";
+    const singlePassLoras = videoMode === "flf" || (videoMode === "rtv" && settings.ltx_version === "2.3");
     let pass1SamplerName = settings.pass1_sampler_name || "euler_ancestral";
     let pass1Sigmas = settings.pass1_sigmas || DEFAULT_I2V_PASS1_SIGMAS;
     let pass2SamplerName = settings.pass2_sampler_name || "euler_ancestral";
@@ -41392,6 +41707,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     } else if (videoMode === "rtv") {
       pass1SamplerName = settings.rtv_pass1_sampler_name || "euler_ancestral";
       pass1Sigmas = settings.rtv_pass1_sigmas || DEFAULT_I2V_PASS1_SIGMAS;
+      pass2SamplerName = settings.rtv_pass2_sampler_name || "euler_ancestral";
+      pass2Sigmas = settings.rtv_pass2_sigmas || DEFAULT_I2V_PASS2_SIGMAS;
     } else if (videoMode === "ingredients") {
       pass1SamplerName = settings.ingredients_pass1_sampler_name || DEFAULT_INGREDIENTS_SAMPLER;
       pass1Sigmas = settings.ingredients_pass1_sigmas || DEFAULT_I2V_PASS1_SIGMAS;
@@ -41399,6 +41716,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       pass2Sigmas = settings.ingredients_pass2_sigmas || DEFAULT_I2V_PASS2_SIGMAS;
     }
     const payload = {
+      ltx_version: settings.ltx_version === "2.3" ? "2.3" : "2.5",
       use_gguf_model: settings.use_gguf_model !== false,
       unet_name: settings.unet_name || "",
       diffusion_model_name: settings.diffusion_model_name || DEFAULT_I2V_DIFFUSION_MODEL,
@@ -41410,6 +41728,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       fps: Number(settings.fps || 24),
       width: videoMode === "ingredients" ? Number(settings.ingredients_width || DEFAULT_LTX_INGREDIENTS_WIDTH) : Number(settings.width || 1920),
       height: videoMode === "ingredients" ? Number(settings.ingredients_height || DEFAULT_LTX_INGREDIENTS_HEIGHT) : Number(settings.height || 1080),
+      resolution_aspect_ratio: settings.resolution_aspect_ratio || "16:9 (Widescreen)",
+      resolution_megapixels: Number(settings.resolution_megapixels || 1.2),
       seed: Number(settings.seed || 1),
       tail_loss_frames: videoMode === "id_lora" ? 0 : Math.max(0, Number(settings.tail_loss_frames ?? 25)),
       pre_frames: videoMode === "id_lora" ? 0 : videoMode === "flf" ? Math.max(0, Number(settings.flf_pre_frames ?? 0)) : Math.max(0, Number(settings.pre_frames ?? 50)),
@@ -41608,6 +41928,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         const subjects = subjectRefNames.length
           ? Array.from(new Set(subjectRefNames))
           : Array.from(new Set(storyboardSubjectsForSegment(segment).map((item) => String(item || "").trim()).filter(Boolean)));
+        const assignedPerformers = selectedPerformerSubjectsForSegment(segment, state.fluxReferenceBuilder)
+          .map((subject) => String(subject?.name || "").trim())
+          .filter(Boolean);
+        const lyricSingers = assignedPerformers.length
+          ? Array.from(new Set(assignedPerformers))
+          : (Array.isArray(segment.lyric_singers) && !segment.no_character_present ? segment.lyric_singers : []);
         return {
           id: segment.id || `scene_${sortedIndex + 1}`,
           scene_number: sortedIndex + 1,
@@ -41622,7 +41948,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           performance_mode: effectiveVideoPerformanceModeForSegment(segment),
           prompt_summary: promptSummary,
           motion_summary: videoNotes,
-          lyric_singers: Array.isArray(segment.lyric_singers) && !segment.no_character_present ? segment.lyric_singers : [],
+          lyric_singers: lyricSingers,
           speaker_assignments: normalizeMiniMaxSpeakerAssignments(segment.minimax_speaker_assignments),
           lyric_no_lip_sync: Boolean(segmentUsesNoLipSyncPerformance(segment)),
           lyric_instrumental: isInstrumentalLyricText(lyric),
@@ -42620,6 +42946,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const name = sceneDisplayName(segment, sceneIndex);
     const missing = [];
     const mode = currentVideoMode();
+    const selectedLtxVersion = activeI2VVideoSettings()?.ltx_version || "2.5";
+    if (selectedLtxVersion === "2.5" && !["i2v", "id_lora", "t2v", "rtv", "ingredients", "flf"].includes(mode)) {
+      missing.push(`${name}: ${mode.toUpperCase()} is not available with LTX 2.5. Select LTX 2.3 (legacy) in Builder Settings for this mode.`);
+    }
     const promptLabel = mode === "id_lora" ? "ID-LoRA I2V" : mode === "ingredients" ? "Ingredients to Video" : mode === "flf" ? "First Last Frame" : mode === "rtv" ? "Reference to Video" : mode === "t2v" ? "T2V" : "I2V";
     if (mode === "ingredients") applyIngredientsSheetForSceneIfMapped(segment);
     if ((mode === "i2v" || mode === "ingredients" || mode === "id_lora") && !segmentImageSource(segment)) missing.push(`${name}: selected scene image is missing.`);
@@ -43968,6 +44298,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       progress?.set(`${batchLabel}Preparing text-to-video render...`, pct(12));
     }
     const videoSettingsForScene = i2vVideoSettingsForSegment(segment);
+    const isLtx25NativeAudio = videoMode === "t2v" && videoSettingsForScene.ltx_version !== "2.3";
     const idLoraContext = isIdLoraMode ? idLoraSceneContext(segment) : null;
     if (isIdLoraMode && idLoraContext?.dialogue) {
       segment.lyric_text = idLoraContext.dialogue;
@@ -43979,12 +44310,16 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     let audioModeForScene = isIdLoraMode
       ? "ID-LoRA reference voice sample"
       : options.audioPathOverride ? "Combined scene-audio track" : "Global/project audio trimmed for this scene";
+    if (isLtx25NativeAudio) {
+      audioPathForScene = "";
+      audioModeForScene = "LTX 2.5 generated audio from prompt";
+    }
     if (options.srtPathOverride) {
       srtPath = options.srtPathOverride;
     }
     if (isIdLoraMode) {
       promptNumberForScene = 1;
-    } else if (!options.audioPathOverride) {
+    } else if (!options.audioPathOverride && !isLtx25NativeAudio) {
       const fpsForPreroll = Math.max(1, Number(videoSettingsForScene.fps || 24));
       const requestedPreFrames = autoChainPreFrames > 0 ? autoChainPreFrames : Math.max(0, Number(videoSettingsForScene.pre_frames ?? 0));
       const requestedPreSeconds = requestedPreFrames / fpsForPreroll;
@@ -44025,13 +44360,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       promptNumberForScene = 1;
       audioModeForScene = segment.custom_audio_path ? "Custom scene audio trimmed for this scene" : "Global/project audio trimmed for this scene";
     }
-    if (!String(audioPathForScene || "").trim()) {
+    if (!isLtx25NativeAudio && !String(audioPathForScene || "").trim()) {
       throw new Error(isIdLoraMode
         ? `${sceneDisplayName(segment, sceneIndex)}: ID-LoRA reference voice sample is missing.`
         : `${sceneDisplayName(segment, sceneIndex)}: no audio path is being sent to LTX. Add custom scene audio or load project/global audio before creating the video.`);
     }
     let timingCheck = null;
-    if (!isIdLoraMode) {
+    if (!isIdLoraMode && !isLtx25NativeAudio) {
       progress?.set(`${batchLabel}Checking SRT timing before hidden ${modeLabel}...`, pct(14));
       const expectedDurationForScene = !options.audioPathOverride
         ? Math.max(0.1, timelineSegmentDuration(segment) || 4)
@@ -44473,12 +44808,22 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         steps: miniMaxSettings.steps,
         denoise: miniMaxSettings.denoise,
         ref_image_size: miniMaxSettings.ref_image_size,
-        pass1_steps: miniMaxSettings.steps,
-        pass1_denoise: miniMaxSettings.denoise,
-        pass1_megapixels: 0.5,
-        pass2_steps: 4,
-        pass2_denoise: 0.2,
-        pass2_megapixels: 1.5,
+        two_pass_lora_name: miniMaxSettings.two_pass_lora_name,
+        two_pass_lora_strength: miniMaxSettings.two_pass_lora_strength,
+        three_pass_lightx_lora_name: miniMaxSettings.three_pass_lightx_lora_name,
+        three_pass_lightx_lora_strength: miniMaxSettings.three_pass_lightx_lora_strength,
+        pass1_steps: twoPass ? miniMaxSettings.two_pass_pass1_steps : miniMaxSettings.steps,
+        pass1_denoise: twoPass ? miniMaxSettings.two_pass_pass1_denoise : miniMaxSettings.denoise,
+        pass1_megapixels: twoPass ? miniMaxSettings.two_pass_pass1_megapixels : 0.5,
+        pass1_sampler_name: twoPass ? miniMaxSettings.two_pass_pass1_sampler : miniMaxSettings.sampler_name,
+        pass1_scheduler: twoPass ? miniMaxSettings.two_pass_pass1_scheduler : miniMaxSettings.scheduler,
+        pass1_seed: twoPass ? miniMaxSettings.two_pass_pass1_seed : miniMaxSettings.seed,
+        pass2_steps: twoPass ? miniMaxSettings.two_pass_pass2_steps : 4,
+        pass2_denoise: twoPass ? miniMaxSettings.two_pass_pass2_denoise : 0.2,
+        pass2_megapixels: twoPass ? miniMaxSettings.two_pass_pass2_megapixels : 1.5,
+        pass2_sampler_name: twoPass ? miniMaxSettings.two_pass_pass2_sampler : miniMaxSettings.sampler_name,
+        pass2_scheduler: twoPass ? miniMaxSettings.two_pass_pass2_scheduler : miniMaxSettings.scheduler,
+        pass2_seed: twoPass ? miniMaxSettings.two_pass_pass2_seed : miniMaxSettings.seed,
         three_pass_pass1_megapixels: miniMaxSettings.three_pass_pass1_megapixels,
         three_pass_pass1_steps: miniMaxSettings.three_pass_pass1_steps,
         three_pass_pass1_denoise: miniMaxSettings.three_pass_pass1_denoise,
@@ -44511,7 +44856,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         use_loras: miniMaxSettings.use_loras,
         lora_count: miniMaxSettings.lora_count,
         loras: miniMaxSettings.loras,
-        use_turbo_lora: miniMaxSettings.use_turbo_lora,
+        use_turbo_lora: (twoPass || threePass) ? false : miniMaxSettings.use_turbo_lora,
         turbo_lora_name: miniMaxSettings.turbo_lora_name,
         turbo_lora_strength: miniMaxSettings.turbo_lora_strength,
         image_paths: imagePaths,
@@ -44567,6 +44912,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       if (!promptId) throw new Error("ComfyUI queued MiniMax H3 but did not return a prompt_id.");
       let liveStageBackupsRegistered = false;
       let liveStageBackupCopying = false;
+      let livePreviewStage = 0;
       const registerLiveThreePassBackups = async () => {
         if (!threePass || liveStageBackupsRegistered || liveStageBackupCopying) return;
         const stages = await postJson("/vrgdg/workflow_runner/find_minimax_h3_stage_outputs", {
@@ -44595,6 +44941,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
             changed = true;
           }
           if (backupPath) segment[`minimax_h3_${stage}_source_path`] = sourcePath;
+          if (backupPath) segment[`minimax_h3_${stage}_backup_path`] = backupPath;
           if (copied.backup_thumbnail_path) {
             if (!Array.isArray(segment.video_backup_thumbnail_paths)) segment.video_backup_thumbnail_paths = [];
             segment.video_backup_thumbnail_paths.push(copied.backup_thumbnail_path);
@@ -44602,8 +44949,28 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         }
         liveStageBackupCopying = false;
         if (!changed) return;
-        segment.minimax_h3_stage1_path = segment.minimax_h3_stage1_source_path || segment.minimax_h3_stage1_path || "";
-        segment.minimax_h3_stage2_path = segment.minimax_h3_stage2_source_path || segment.minimax_h3_stage2_path || "";
+        segment.minimax_h3_stage1_path = segment.minimax_h3_stage1_backup_path || segment.minimax_h3_stage1_path || "";
+        segment.minimax_h3_stage2_path = segment.minimax_h3_stage2_backup_path || segment.minimax_h3_stage2_path || "";
+        const previewStage = paths.reduce((highest, [stage]) => {
+          const value = Number(String(stage || "").replace("stage", ""));
+          return Number.isFinite(value) ? Math.max(highest, value) : highest;
+        }, 0);
+        if (previewStage > livePreviewStage) {
+          const previewStagePath = previewStage === 2
+            ? segment.minimax_h3_stage2_path
+            : segment.minimax_h3_stage1_path;
+          if (previewStagePath) {
+            livePreviewStage = previewStage;
+            activateSegmentVideoPath(
+              segment,
+              previewStagePath,
+              segment.video_thumbnail_path || "",
+            );
+            segment.preview_mode = "video";
+            segment.video_cache_bust = Date.now();
+            syncPreview(segment);
+          }
+        }
         liveStageBackupsRegistered = Boolean(stages.stage1_path && stages.stage2_path);
         segment.video_cache_bust = Date.now();
         renderList();
@@ -44686,17 +45053,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       }
       if (stage1VideoPath) {
         segment.minimax_h3_stage1_path = stage1VideoPath;
-        if (!Array.isArray(segment.video_backup_paths)) segment.video_backup_paths = [];
-        if (!segment.video_backup_paths.some((item) => mediaPathKey(item) === mediaPathKey(stage1VideoPath))) {
-          segment.video_backup_paths.push(stage1VideoPath);
-        }
       }
       if (stage2VideoPath) {
         segment.minimax_h3_stage2_path = stage2VideoPath;
-        if (!Array.isArray(segment.video_backup_paths)) segment.video_backup_paths = [];
-        if (!segment.video_backup_paths.some((item) => mediaPathKey(item) === mediaPathKey(stage2VideoPath))) {
-          segment.video_backup_paths.push(stage2VideoPath);
-        }
       }
       segment.video_output = video;
       segment.video_source_path = alignedVideoPath;
@@ -44706,6 +45065,22 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         collected.video_path || exactVideoPath,
         collected.thumbnail_path || trimmed.thumbnail_path || "",
       );
+      // The collected final clip must become the active timeline selection.
+      // History normalization intentionally preserves a user's previous backup
+      // selection, so select the newly collected final path explicitly here.
+      const finalTimelineVideoPath = String(collected.video_path || exactVideoPath || "").trim();
+      const finalTimelineVideoIndex = segment.video_history.findIndex(
+        (item) => mediaPathKey(item) === mediaPathKey(finalTimelineVideoPath),
+      );
+      if (finalTimelineVideoIndex >= 0) {
+        segment.video_history_index = finalTimelineVideoIndex;
+        segment.video_path = finalTimelineVideoPath;
+        segment.video_thumbnail_path = segment.video_thumbnail_history[finalTimelineVideoIndex]
+          || collected.thumbnail_path
+          || trimmed.thumbnail_path
+          || segment.video_thumbnail_path
+          || "";
+      }
       segment.video_cache_bust = Date.now();
       segment.video_folder = collected.video_folder || collectedSceneVideoFolder();
       segment.preview_mode = "video";
@@ -52942,15 +53317,44 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           const scene = targets[index];
           const segmentIndex = segments.findIndex((item) => item.id === scene.id);
           const previousBeat = segmentIndex > 0 ? String(segments[segmentIndex - 1]?.story_beat || "") : "";
-          const nextLyrics = segmentIndex >= 0 && segmentIndex < segments.length - 1 ? String(segments[segmentIndex + 1]?.lyric_text || "") : "";
-          const base = 8 + Math.round((index / Math.max(1, targets.length)) * 84);
-          progress.set(`Scene Beat ${index + 1}/${targets.length}: ${scene.label || `Scene ${scene.scene_number || index + 1}`}`, base);
-          try {
+        const nextLyrics = segmentIndex >= 0 && segmentIndex < segments.length - 1 ? String(segments[segmentIndex + 1]?.lyric_text || "") : "";
+        const base = 8 + Math.round((index / Math.max(1, targets.length)) * 84);
+        progress.set(`Scene Beat ${index + 1}/${targets.length}: ${scene.label || `Scene ${scene.scene_number || index + 1}`}`, base);
+        try {
+            const beatStoryboardPayload = storyboardGptPayload(storyboardState, [{ ...scene, story_beat: "" }]);
+            const authoritativeMappedSingers = segmentIndex >= 0
+              ? selectedPerformerSubjectsForSegment(segments[segmentIndex], state.fluxReferenceBuilder)
+                .map((subject) => String(subject?.name || "").trim())
+                .filter(Boolean)
+              : [];
+            const mappedSingers = authoritativeMappedSingers.length
+              ? authoritativeMappedSingers
+              : (Array.isArray(scene.lyric_singers) && scene.lyric_singers.length
+                ? scene.lyric_singers
+                : (segmentIndex >= 0 && Array.isArray(segments[segmentIndex]?.lyric_singers) ? segments[segmentIndex].lyric_singers : []));
+            const visibleSubjects = Array.isArray(scene.subjects) ? scene.subjects : [];
+            const singing = Array.from(new Set(mappedSingers.map((item) => String(item || "").trim()).filter(Boolean)));
+            const silent = visibleSubjects
+              .map((item) => String(item || "").trim())
+              .filter((item) => item && !singing.some((singer) => singer.toLowerCase() === item.toLowerCase()));
+            const beatScene = beatStoryboardPayload.scenes?.[0];
+            if (beatScene) {
+              beatScene.lyric_singers = singing;
+              beatScene.performer_assignment = {
+                singing,
+                silent,
+                instruction: singing.length === 1
+                  ? `${singing[0]} is the only singing performer. Every other visible subject is silent.`
+                  : singing.length > 1
+                    ? `Only ${singing.join(", ")} sing. Every other visible subject is silent.`
+                    : "No visible subject is assigned to sing.",
+              };
+            }
             const data = await postJson("/vrgdg/storyboard/scene_story_beat", {
               ...textGemmaRunnerPayload(),
               model_file: i2vTextGemmaModelSelect.value || t2iTextGemmaModelSelect.value || "",
               story_layer: normalizeBuilderStoryLayer(state.builderStoryLayer),
-              storyboard_payload: storyboardGptPayload(storyboardState, [scene]),
+              storyboard_payload: beatStoryboardPayload,
               previous_beat: previousBeat,
               next_lyrics: nextLyrics,
               unload_after: index === targets.length - 1,
@@ -55121,7 +55525,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   async function refreshLoraChoices() {
     const data = await getJson("/vrgdg/workflow_runner/lora_list");
     const loras = data.loras || ["[none]"];
-    for (const slot of [...zLoraSlots, ...ernieLoraSlots, ...fluxLoraSlots, ...i2vLoraSlots, ...zEnhanceLoraSlots, ...krea2TwoPassLoraSlots, ...miniMaxLoraSlots]) {
+    for (const slot of [...zLoraSlots, ...ernieLoraSlots, ...fluxLoraSlots, ...i2vLoraSlots, ...zEnhanceLoraSlots, ...krea2TwoPassLoraSlots, ...miniMaxLoraSlots, { picker: miniMaxTwoPassLoraPicker }, { picker: miniMaxThreePassLoraPicker }]) {
       const current = slot.picker.input.value || "[none]";
       slot.picker.options = loras;
       slot.picker.input.value = loras.includes(current) ? current : current;
@@ -55135,6 +55539,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     miniMaxTurboLoraPicker.options = loras;
     if (!miniMaxTurboLoraPicker.input.value) {
       miniMaxTurboLoraPicker.input.value = DEFAULT_MINIMAX_H3_SETTINGS.turbo_lora_name;
+    }
+    for (const picker of [miniMaxTwoPassLoraPicker, miniMaxThreePassLoraPicker]) {
+      picker.options = loras;
     }
   }
 
@@ -55199,12 +55606,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       picker.input.value = exactOrSameBase || current || fallback;
     };
     setOptions(i2vUnetPicker, data.video_gguf_unets || data.unets, DEFAULT_I2V_UNET);
-    setOptions(i2vDiffusionModelPicker, data.video_diffusion_models || data.unets, DEFAULT_I2V_DIFFUSION_MODEL);
-    setOptions(i2vVaePicker, data.vae, "LTX23_video_vae_bf16.safetensors");
-    setOptions(i2vClip1Picker, data.clip, "gemma-3-12b-it-abliterated-sikaworld-high-fidelity-edition.safetensors");
+    const ltx25Selected = (state.i2vVideoSettings?.ltx_version || "2.5") !== "2.3";
+    setOptions(i2vDiffusionModelPicker, data.video_diffusion_models || data.unets, ltx25Selected ? "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors" : DEFAULT_I2V_DIFFUSION_MODEL);
+    setOptions(i2vVaePicker, data.vae, ltx25Selected ? "ltx-2.5-video-vae-conv-bf16.safetensors" : "LTX23_video_vae_bf16.safetensors");
+    setOptions(i2vClip1Picker, data.clip, ltx25Selected ? "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors" : "gemma-3-12b-it-abliterated-sikaworld-high-fidelity-edition.safetensors");
     setOptions(i2vClip2Picker, data.clip, "ltx-2.3_text_projection_bf16.safetensors");
-    setOptions(i2vUpscalePicker, data.upscale_models, "ltx-2.3-spatial-upscaler-x2-1.1.safetensors");
-    setOptions(i2vAudioVaePicker, data.vae, "LTX23_audio_vae_bf16.safetensors");
+    setOptions(i2vUpscalePicker, data.upscale_models, ltx25Selected ? "ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors" : "ltx-2.3-spatial-upscaler-x2-1.1.safetensors");
+    setOptions(i2vAudioVaePicker, data.vae, ltx25Selected ? "ltx-2.5-audio-vae-bf16.safetensors" : "LTX23_audio_vae_bf16.safetensors");
     const miniMaxDiffusionChoices = (data.video_diffusion_models || data.unets || [])
       .filter((item) => !/\.gguf$/i.test(String(item || "").trim()));
     setMiniMaxOptions(miniMaxDiffusionModelPicker, miniMaxDiffusionChoices, DEFAULT_MINIMAX_H3_SETTINGS.diffusion_model_name);
@@ -55341,6 +55749,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
   wireSearchablePicker(miniMaxTurboLoraPicker, saveMiniMaxH3SettingsFromPanel);
   miniMaxTurboLoraPicker.input.addEventListener("change", persistMiniMaxSettings);
+  wireSearchablePicker(miniMaxTwoPassLoraPicker, saveMiniMaxH3SettingsFromPanel);
+  miniMaxTwoPassLoraPicker.input.addEventListener("change", persistMiniMaxSettings);
+  wireSearchablePicker(miniMaxThreePassLoraPicker, saveMiniMaxH3SettingsFromPanel);
+  miniMaxThreePassLoraPicker.input.addEventListener("change", persistMiniMaxSettings);
   for (const slot of miniMaxLoraSlots) {
     wireSearchablePicker(slot.picker, saveMiniMaxH3SettingsFromPanel);
     slot.picker.input.addEventListener("change", persistMiniMaxSettings);
@@ -55370,6 +55782,16 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     miniMaxUseLoras.input,
     miniMaxLoraCount,
     miniMaxTurboLoraStrength,
+    miniMaxTwoPassLoraStrength,
+    miniMaxThreePassLoraStrength,
+    ...twoPassControls.flatMap((pass) => [
+      pass.megapixels,
+      pass.steps,
+      pass.denoise,
+      pass.sampler,
+      pass.scheduler,
+      pass.seed,
+    ]),
     ...threePassControls.flatMap((pass) => [
       pass.megapixels,
       pass.steps,
@@ -55654,8 +56076,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     showInfoModal({
       title: "Video LoRA Strengths",
       lines: [
-        "Image to Video, Text to Video, and Ingredients to Video use separate Pass 1 and Pass 2 strengths.",
-        "Reference to Video and First Last Frame use one LoRA strength only; Pass 2 is hidden and ignored in those modes.",
+        "Image to Video, Text to Video, Ingredients to Video, and LTX 2.5 Reference to Video use separate Pass 1 and Pass 2 strengths.",
+        "Legacy LTX 2.3 Reference to Video and First Last Frame use one LoRA strength only; Pass 2 is hidden and ignored in those modes.",
         "If a LoRA hurts I2V/T2V motion, lower Pass 1. If you want more LoRA detail in the final result, raise Pass 2.",
       ],
     });
@@ -55663,7 +56085,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
 
   function updateI2VLoraVisibility() {
     const count = Math.max(0, Math.min(4, Number(i2vLoraCount.value || 0)));
-    const isSinglePassMode = currentVideoMode() === "rtv" || currentVideoMode() === "flf";
+    const isSinglePassMode = currentVideoMode() === "flf" || (currentVideoMode() === "rtv" && (activeI2VVideoSettings()?.ltx_version || "2.5") === "2.3");
     i2vLoraPanel.style.display = i2vUseLora.input.checked ? "flex" : "none";
     flfTransitionLoraNote.style.display = currentVideoMode() === "flf" ? "block" : "none";
     i2vLoraRows.style.display = i2vUseLora.input.checked && count > 0 ? "flex" : "none";
@@ -55743,7 +56165,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     slot.secondPassStrength.addEventListener("input", saveI2VVideoSettingsFromPanel);
     slot.secondPassStrength.addEventListener("change", saveI2VVideoSettingsFromPanel);
   }
-  for (const control of [i2vFpsInput, i2vWidthInput, i2vHeightInput, i2vSeedInput, i2vTailLossFramesInput, i2vPreFramesInput, flfFirstGuideStrengthInput, flfLastGuideStrengthInput, flfFirstGuideFrameIndexInput, flfLastGuideFrameIndexInput, flfFirstGuideCrfInput, flfLastGuideCrfInput, flfFirstGuideBlurInput, flfLastGuideBlurInput, flfFirstAttentionStrength, flfLastAttentionStrength]) {
+  for (const control of [i2vFpsInput, i2vWidthInput, i2vHeightInput, ltx25AspectRatioSelect, ltx25MegapixelsInput, i2vSeedInput, i2vTailLossFramesInput, i2vPreFramesInput, flfFirstGuideStrengthInput, flfLastGuideStrengthInput, flfFirstGuideFrameIndexInput, flfLastGuideFrameIndexInput, flfFirstGuideCrfInput, flfLastGuideCrfInput, flfFirstGuideBlurInput, flfLastGuideBlurInput, flfFirstAttentionStrength, flfLastAttentionStrength]) {
     control.addEventListener("input", saveI2VVideoSettingsFromPanel);
     control.addEventListener("change", saveI2VVideoSettingsFromPanel);
   }

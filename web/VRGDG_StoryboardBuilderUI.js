@@ -1553,12 +1553,15 @@ function storyboardMotionFamily(motion = "") {
 
 export function storyboardCameraFlowEntry(profileKey, sceneIndex, previousMotion = "", customSequence = []) {
   const preset = STORYBOARD_CAMERA_FLOW_PRESETS[profileKey] || STORYBOARD_CAMERA_FLOW_PRESETS.balanced;
+  const customFlow = profileKey === "custom";
   const sequence = profileKey === "custom"
     ? normalizeStoryboardCustomCameraFlowSequence(customSequence)
     : (preset.sequence || []);
   if (!sequence.length) return null;
   let entry = sequence[sceneIndex % sequence.length];
-  if (previousMotion && storyboardMotionFamily(entry.camera) === storyboardMotionFamily(previousMotion)) {
+  // A custom list is an authored shot-by-shot plan. Preserve its exact order;
+  // the repetition-avoidance rule is only for generated preset sequences.
+  if (!customFlow && previousMotion && storyboardMotionFamily(entry.camera) === storyboardMotionFamily(previousMotion)) {
     entry = sequence[(sceneIndex + 1) % sequence.length] || entry;
   }
   return entry;
@@ -3022,6 +3025,19 @@ function storyboardScenesForGpt(state) {
         : "",
       lyric_line_to_sing: shouldLipSync && performanceMode === "singing" ? lyricText : "",
       line_to_say: shouldLipSync && performanceMode === "speaking" ? lyricText : "",
+      // Preserve the mapped performer assignment even in Image Prep. Image
+      // prompts intentionally disable lip-sync, but Scene Beat generation
+      // still needs to know which visible subject is the singer.
+      lyric_singers: explicitSingers,
+      performer_assignment: {
+        singing: explicitSingers,
+        silent: nonSingingSubjects,
+        instruction: explicitSingers.length === 1
+          ? `${explicitSingers[0]} is the only singing performer. Every other visible subject is silent and must not sing.`
+          : explicitSingers.length > 1
+            ? `Only these mapped performers sing: ${explicitSingers.join(", ")}. Every other visible subject is silent and must not sing.`
+            : "No mapped subject is assigned to sing. All visible subjects are silent.",
+      },
       vocal_status: {
         performance_mode: performanceMode,
         lyric_text: lyricText,
@@ -4625,7 +4641,10 @@ function openStoryboardBuilder(payload = {}) {
     ...(state.gemmaSettings || {}),
     ...overrides,
     story_layer: normalizeStoryLayer(state.storyLayer),
-    storyboard_payload: storyboardGptPayload(state, [scene]),
+    // A replacement request must not feed the old beat back to the model as
+    // if it were authoritative. Lyrics, mappings, defaults, and references
+    // remain; only the stale generated beat is cleared from this request.
+    storyboard_payload: storyboardGptPayload(state, [{ ...scene, story_beat: "" }]),
     max_new_tokens: state.videoPromptType === "flf" ? 700 : 360,
     temperature: 0.35,
     top_p: 0.90,
