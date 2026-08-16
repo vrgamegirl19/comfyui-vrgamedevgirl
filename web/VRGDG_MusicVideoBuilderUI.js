@@ -44387,7 +44387,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       progress?.set(`${batchLabel}Preparing text-to-video render...`, pct(12));
     }
     const videoSettingsForScene = i2vVideoSettingsForSegment(segment);
-    const isLtx25NativeAudio = videoMode === "t2v" && videoSettingsForScene.ltx_version !== "2.3";
+    // LTX 2.5 uses the existing custom/project-audio T2V graph with dynamic
+    // diffusion and CLIP node replacement. Native-audio T2V is not used by
+    // the Video Builder, so all LTX versions follow the same audio path.
+    const isLtx25NativeAudio = false;
     const idLoraContext = isIdLoraMode ? idLoraSceneContext(segment) : null;
     if (isIdLoraMode && idLoraContext?.dialogue) {
       segment.lyric_text = idLoraContext.dialogue;

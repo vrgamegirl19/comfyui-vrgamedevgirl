@@ -1782,10 +1782,29 @@ def _patch_t2v_api_prompt(prompt, payload):
     tail_loss_frames = _int_payload(payload, "tail_loss_frames", 25, 0, 10000)
     pre_frames = _int_payload(payload, "pre_frames", 50, 0, 10000)
 
-    _patch_ltx_video_model_loader(prompt, payload)
+    is_ltx25 = str(payload.get("ltx_version", "2.3") or "2.3").strip() == "2.5"
+    if is_ltx25:
+        # Keep the proven custom-audio T2V graph and replace only the legacy
+        # diffusion/CLIP pieces, matching the LTX 2.5 I2V and RTV adapters.
+        prompt["938"] = _ltx25_diffusion_loader_node(payload)
+        prompt["937"]["inputs"]["model"] = ["938", 0]
+        prompt.pop("939", None)
+        prompt.pop("271:215", None)
+        prompt["271:216"] = {
+            "inputs": {
+                "clip_name": str(payload.get("clip_name1", "") or ""),
+                "type": "ltxv",
+                "device": "default",
+            },
+            "class_type": "CLIPLoader",
+            "_meta": {"title": "Load LTX 2.5 CLIP"},
+        }
+    else:
+        _patch_ltx_video_model_loader(prompt, payload)
     _set_api_input(prompt, "271:256", "vae_name", str(payload.get("vae_name", "") or ""))
-    _set_api_input(prompt, "271:216", "clip_name1", str(payload.get("clip_name1", "") or ""))
-    _set_api_input(prompt, "271:216", "clip_name2", str(payload.get("clip_name2", "") or ""))
+    if not is_ltx25:
+        _set_api_input(prompt, "271:216", "clip_name1", str(payload.get("clip_name1", "") or ""))
+        _set_api_input(prompt, "271:216", "clip_name2", str(payload.get("clip_name2", "") or ""))
     _set_api_input(prompt, "271:211", "model_name", str(payload.get("upscale_model_name", "") or ""))
     _set_api_input(prompt, "271:254", "vae_name", str(payload.get("audio_vae_name", "") or ""))
 
@@ -3444,13 +3463,11 @@ def _build_i2v_api_prompt(payload):
 
 
 def _build_t2v_api_prompt(payload):
-    version = str(payload.get("ltx_version", "2.5") or "2.5").strip()
-    if version == "2.3":
-        workflow_path, prompt = _load_api_template(_t2v_api_template_path())
-        patched_prompt, output_folder = _patch_t2v_api_prompt(prompt, payload)
-    else:
-        workflow_path, prompt = _load_api_template(_t2v_25_api_template_path())
-        patched_prompt, output_folder = _patch_t2v_25_api_prompt(prompt, payload)
+    # Both versions use the custom-audio T2V graph. LTX 2.5 is adapted in the
+    # patcher by swapping the diffusion and CLIP nodes; the native-audio graph
+    # is intentionally not used by the Video Builder.
+    workflow_path, prompt = _load_api_template(_t2v_api_template_path())
+    patched_prompt, output_folder = _patch_t2v_api_prompt(prompt, payload)
     return {
         "workflow_path": workflow_path,
         "output_folder": output_folder,
