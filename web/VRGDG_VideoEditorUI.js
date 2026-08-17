@@ -381,7 +381,9 @@ function openEditor(node) {
   zimageLargeWrap.append(zimageLargeEmpty, zimageLargeImage);
   videoWrap.append(video, zimageLargeWrap);
   const globalScrubWrap = document.createElement("div");
-  globalScrubWrap.style.cssText = "display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:9px;padding:7px 12px;border-top:1px solid #27272a;background:#111113;min-height:0;";
+  globalScrubWrap.style.cssText = "display:flex;flex-direction:column;gap:5px;padding:7px 12px;border-top:1px solid #27272a;background:#111113;min-height:0;";
+  const globalScrubMainRow = document.createElement("div");
+  globalScrubMainRow.style.cssText = "display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:9px;";
   const globalScrubLabel = document.createElement("div");
   globalScrubLabel.textContent = "Global scrub";
   globalScrubLabel.style.cssText = "font-size:11px;font-weight:800;color:#d4d4d8;white-space:nowrap;";
@@ -396,7 +398,19 @@ function openEditor(node) {
   const globalScrubTime = document.createElement("div");
   globalScrubTime.textContent = "00:00.00 / 00:00.00";
   globalScrubTime.style.cssText = "font-size:11px;color:#67e8f9;font-variant-numeric:tabular-nums;white-space:nowrap;";
-  globalScrubWrap.append(globalScrubLabel, globalScrub, globalScrubTime);
+  globalScrubMainRow.append(globalScrubLabel, globalScrub, globalScrubTime);
+
+  const globalScrubSubRow = document.createElement("div");
+  globalScrubSubRow.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:11px;font-family:monospace,tabular-nums;background:#18181b;border:1px solid #27272a;border-radius:4px;padding:4px 8px;";
+  const globalScrubSceneDetail = document.createElement("div");
+  globalScrubSceneDetail.textContent = "🎬 Scene: 0.00s / 0.00s";
+  globalScrubSceneDetail.style.cssText = "color:#a5f3fc;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+  const globalScrubGlobalDetail = document.createElement("div");
+  globalScrubGlobalDetail.textContent = "Global: 00:00.00 / 00:00.00";
+  globalScrubGlobalDetail.style.cssText = "color:#94a3b8;white-space:nowrap;";
+  globalScrubSubRow.append(globalScrubSceneDetail, globalScrubGlobalDetail);
+
+  globalScrubWrap.append(globalScrubMainRow, globalScrubSubRow);
   const activeInfo = document.createElement("div");
   activeInfo.textContent = "No clip selected";
   activeInfo.style.cssText = "padding:9px 12px;border-top:1px solid #27272a;font-size:12px;color:#d4d4d8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
@@ -757,6 +771,31 @@ function openEditor(node) {
     globalScrub.disabled = !state.clips.length || state.totalDuration <= 0;
     if (!state.isGlobalScrubbing) globalScrub.value = String(Math.min(absoluteTime, state.totalDuration));
     globalScrubTime.textContent = `${formatTime(absoluteTime)} / ${formatTime(state.totalDuration)}`;
+
+    let activeClipObj = null;
+    let activeClipIdx = -1;
+    if (state.clips && state.clips.length > 0) {
+      activeClipObj = state.clips.find((c, idx) => {
+        const start = Number(c.timeline_start || 0);
+        const dur = Number(c.duration || 0);
+        if (absoluteTime >= start && absoluteTime <= start + dur) {
+          activeClipIdx = idx;
+          return true;
+        }
+        return false;
+      }) || state.clips[0];
+    }
+    if (activeClipObj) {
+      const clipStart = Number(activeClipObj.timeline_start || 0);
+      const clipDur = Number(activeClipObj.duration || 0);
+      const localSecs = Math.max(0, Math.min(clipDur, absoluteTime - clipStart));
+      const clipName = activeClipObj.title || (activeClipIdx >= 0 ? `Clip ${activeClipIdx + 1}` : "Clip");
+      globalScrubSceneDetail.textContent = `🎬 ${clipName}: ${localSecs.toFixed(2)}s / ${clipDur.toFixed(2)}s (${localSecs.toFixed(2)}s in scene)`;
+    } else {
+      globalScrubSceneDetail.textContent = "🎬 Scene: 0.00s / 0.00s";
+    }
+    globalScrubGlobalDetail.textContent = `Global: ${formatTime(absoluteTime)} / ${formatTime(state.totalDuration)}`;
+
     if (!keepVisible) return;
     const viewportLeft = timelineViewport.scrollLeft;
     const viewportRight = viewportLeft + timelineViewport.clientWidth;

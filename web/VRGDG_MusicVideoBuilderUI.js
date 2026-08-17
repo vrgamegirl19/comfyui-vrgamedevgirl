@@ -6257,8 +6257,10 @@ function openBuilder(node) {
   globalScrub.step = "0.01";
   globalScrub.value = "0";
   globalScrub.style.cssText = "width:100%;accent-color:#22d3ee;";
-  const globalScrubWrap = document.createElement("label");
-  globalScrubWrap.style.cssText = "display:grid;grid-template-columns:auto auto minmax(160px,1fr) auto;align-items:center;gap:8px;color:#d4d4d8;font-size:12px;font-weight:800;background:#18181b;border-top:1px solid #27272a;padding:8px 10px;";
+  const globalScrubWrap = document.createElement("div");
+  globalScrubWrap.style.cssText = "display:flex;flex-direction:column;gap:5px;color:#d4d4d8;font-size:12px;font-weight:800;background:#18181b;border-top:1px solid #27272a;padding:8px 10px;";
+  const globalScrubMainRow = document.createElement("div");
+  globalScrubMainRow.style.cssText = "display:grid;grid-template-columns:auto auto minmax(160px,1fr) auto;align-items:center;gap:8px;";
   const globalScrubLabel = document.createElement("span");
   globalScrubLabel.textContent = "Global audio scrub";
   globalScrubLabel.style.cssText = "white-space:nowrap;";
@@ -6269,7 +6271,19 @@ function openBuilder(node) {
   const globalScrubTime = document.createElement("span");
   globalScrubTime.textContent = "00:00.00";
   globalScrubTime.style.cssText = "color:#67e8f9;font-variant-numeric:tabular-nums;white-space:nowrap;";
-  globalScrubWrap.append(globalScrubLabel, globalAudioMuteButton, globalScrub, globalScrubTime);
+  globalScrubMainRow.append(globalScrubLabel, globalAudioMuteButton, globalScrub, globalScrubTime);
+
+  const globalScrubSubRow = document.createElement("div");
+  globalScrubSubRow.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:11px;font-family:monospace,tabular-nums;background:#111113;border:1px solid #27272a;border-radius:4px;padding:4px 8px;";
+  const globalScrubSceneDetail = document.createElement("span");
+  globalScrubSceneDetail.textContent = "🎬 Scene: 0.00s / 0.00s";
+  globalScrubSceneDetail.style.cssText = "color:#a5f3fc;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+  const globalScrubGlobalDetail = document.createElement("span");
+  globalScrubGlobalDetail.textContent = "Global: 00:00.00 / 00:00.00";
+  globalScrubGlobalDetail.style.cssText = "color:#94a3b8;white-space:nowrap;";
+  globalScrubSubRow.append(globalScrubSceneDetail, globalScrubGlobalDetail);
+
+  globalScrubWrap.append(globalScrubMainRow, globalScrubSubRow);
   preview.append(previewStage, globalScrubWrap);
   const timelineInfo = document.createElement("div");
   timelineInfo.textContent = "No audio loaded";
@@ -15414,6 +15428,20 @@ function openBuilder(node) {
   function updateAudioScrubbers() {
     const current = currentGlobalTime();
     const maxTime = playbackDuration();
+    const activeSeg = playbackSegmentAtTime(current) || segmentAtTime(current);
+    if (activeSeg) {
+      const segStart = Number(activeSeg.start || 0);
+      const segEnd = Number(activeSeg.end || 0);
+      const segDur = Math.max(0, segEnd - segStart);
+      const localSecs = Math.max(0, Math.min(segDur, current - segStart));
+      const segIdx = state.segments.findIndex((s) => s.id === activeSeg.id);
+      const sceneLabel = activeSeg.label || (segIdx >= 0 ? `Scene ${segIdx + 1}` : "Scene");
+      globalScrubSceneDetail.textContent = `🎬 ${sceneLabel}: ${localSecs.toFixed(2)}s / ${segDur.toFixed(2)}s (${localSecs.toFixed(2)}s in scene)`;
+    } else {
+      globalScrubSceneDetail.textContent = "🎬 Scene: 0.00s / 0.00s";
+    }
+    globalScrubGlobalDetail.textContent = `Global: ${formatTime(current)} / ${formatTime(maxTime)}`;
+
     const followPlayback = Boolean(isTimelinePlaying() || state.isScrubbing);
     if (followPlayback) {
       const playbackSegment = playbackSegmentAtTime(current);
