@@ -255,21 +255,35 @@ const DEFAULT_MINIMAX_H3_SETTINGS = {
   turbo_lora_name: "minimax_h3_turbo_4step_ema_ckpt850.safetensors",
   turbo_lora_strength: 1,
   ref_image_size: "max",
-  two_pass_lora_name: "minimax_h3_turbo_v4_step600_ema.safetensors",
-  two_pass_lora_strength: 0.7,
+  two_pass_lora_name: "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+  two_pass_lora_strength: 1,
+  two_pass_defaults_version: 1,
+  two_pass_final_width: 1920,
+  two_pass_final_height: 1080,
+  two_pass_latent_upscale_scale: 2,
+  two_pass_latent_upscaler_name: "minimax_h3_latent_upscaler_3d_bf16.safetensors",
+  two_pass_use_te_speed: true,
+  two_pass_te_speed_processing_control: 0.07,
+  two_pass_te_speed_start_percent: 0.1,
+  two_pass_te_speed_end_percent: 0.9,
+  two_pass_te_speed_mcs: 2,
+  two_pass_te_speed_cache_depth: 0.75,
+  two_pass_te_speed_device: "auto",
+  two_pass_final_resize_method: "nvidia_rtx_vsr",
+  two_pass_output_crf: 19,
   three_pass_lightx_lora_name: "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors",
   three_pass_lightx_lora_strength: 0.5,
   two_pass_pass1_megapixels: 0.5,
-  two_pass_pass1_steps: 15,
+  two_pass_pass1_steps: 20,
   two_pass_pass1_denoise: 1,
-  two_pass_pass1_sampler: "euler",
-  two_pass_pass1_scheduler: "beta",
+  two_pass_pass1_sampler: "res_multistep",
+  two_pass_pass1_scheduler: "simple",
   two_pass_pass1_seed: 69,
   two_pass_pass2_megapixels: 1.5,
-  two_pass_pass2_steps: 4,
+  two_pass_pass2_steps: 5,
   two_pass_pass2_denoise: 0.2,
-  two_pass_pass2_sampler: "euler",
-  two_pass_pass2_scheduler: "beta",
+  two_pass_pass2_sampler: "res_multistep",
+  two_pass_pass2_scheduler: "simple",
   two_pass_pass2_seed: 69,
   three_pass_pass1_megapixels: 0.4,
   three_pass_pass1_steps: 20,
@@ -412,6 +426,7 @@ function normalizeMiniMaxH3VideoPurpose(value) {
 
 function cloneMiniMaxH3Settings(value = {}) {
   const source = value && typeof value === "object" ? value : {};
+  const hasCurrentTwoPassDefaults = Number(source.two_pass_defaults_version || 0) >= 1;
   const sourceLoras = Array.isArray(source.loras)
     ? source.loras
     : Array.from({ length: 4 }, (_, index) => ({
@@ -422,6 +437,9 @@ function cloneMiniMaxH3Settings(value = {}) {
     .map((item) => ({
       name: String(item?.name || item?.lora_name || item?.loraName || "").trim(),
       strength: Math.max(-10, Math.min(10, Number(item?.strength ?? item?.strength_model ?? item?.strengthModel ?? 1))),
+      apply_to: ["both", "pass1", "pass2"].includes(String(item?.apply_to || item?.applyTo || "both"))
+        ? String(item?.apply_to || item?.applyTo || "both")
+        : "both",
     }))
     .filter((item) => item.name && item.name !== "[none]")
     .slice(0, 4);
@@ -474,6 +492,33 @@ function cloneMiniMaxH3Settings(value = {}) {
     ref_image_size: ["match", "max"].includes(String(source.ref_image_size || "").trim().toLowerCase())
       ? String(source.ref_image_size).trim().toLowerCase()
       : DEFAULT_MINIMAX_H3_SETTINGS.ref_image_size,
+    two_pass_final_width: Math.max(64, Math.min(16384, Math.trunc(Number(source.two_pass_final_width ?? DEFAULT_MINIMAX_H3_SETTINGS.two_pass_final_width)))),
+    two_pass_final_height: Math.max(64, Math.min(16384, Math.trunc(Number(source.two_pass_final_height ?? DEFAULT_MINIMAX_H3_SETTINGS.two_pass_final_height)))),
+    two_pass_defaults_version: DEFAULT_MINIMAX_H3_SETTINGS.two_pass_defaults_version,
+    two_pass_latent_upscale_scale: Math.max(1, Math.min(8, Number(hasCurrentTwoPassDefaults
+      ? (source.two_pass_latent_upscale_scale ?? DEFAULT_MINIMAX_H3_SETTINGS.two_pass_latent_upscale_scale)
+      : DEFAULT_MINIMAX_H3_SETTINGS.two_pass_latent_upscale_scale))),
+    two_pass_latent_upscaler_name: String(source.two_pass_latent_upscaler_name || DEFAULT_MINIMAX_H3_SETTINGS.two_pass_latent_upscaler_name),
+    two_pass_use_te_speed: Boolean(source.two_pass_use_te_speed ?? DEFAULT_MINIMAX_H3_SETTINGS.two_pass_use_te_speed),
+    two_pass_te_speed_processing_control: Math.max(0, Math.min(1, Number(source.two_pass_te_speed_processing_control ?? DEFAULT_MINIMAX_H3_SETTINGS.two_pass_te_speed_processing_control))),
+    two_pass_te_speed_start_percent: Math.max(0, Math.min(1, Number(source.two_pass_te_speed_start_percent ?? DEFAULT_MINIMAX_H3_SETTINGS.two_pass_te_speed_start_percent))),
+    two_pass_te_speed_end_percent: Math.max(0, Math.min(1, Number(source.two_pass_te_speed_end_percent ?? DEFAULT_MINIMAX_H3_SETTINGS.two_pass_te_speed_end_percent))),
+    two_pass_te_speed_mcs: Math.max(1, Math.min(64, Math.trunc(Number(source.two_pass_te_speed_mcs ?? DEFAULT_MINIMAX_H3_SETTINGS.two_pass_te_speed_mcs)))),
+    two_pass_te_speed_cache_depth: Math.max(0, Math.min(1, Number(source.two_pass_te_speed_cache_depth ?? DEFAULT_MINIMAX_H3_SETTINGS.two_pass_te_speed_cache_depth))),
+    two_pass_te_speed_device: String(source.two_pass_te_speed_device || DEFAULT_MINIMAX_H3_SETTINGS.two_pass_te_speed_device),
+    two_pass_final_resize_method: String(source.two_pass_final_resize_method || DEFAULT_MINIMAX_H3_SETTINGS.two_pass_final_resize_method),
+    two_pass_output_crf: Math.max(0, Math.min(100, Math.trunc(Number(source.two_pass_output_crf ?? DEFAULT_MINIMAX_H3_SETTINGS.two_pass_output_crf)))),
+    ...Object.fromEntries([1, 2].flatMap((pass) => {
+      const prefix = `two_pass_pass${pass}_`;
+      const defaults = DEFAULT_MINIMAX_H3_SETTINGS;
+      return [
+        [`${prefix}steps`, Math.max(1, Math.min(1000, Math.trunc(Number(hasCurrentTwoPassDefaults ? source[`${prefix}steps`] : defaults[`${prefix}steps`]) || defaults[`${prefix}steps`])))],
+        [`${prefix}denoise`, Math.max(0, Math.min(1, Number(hasCurrentTwoPassDefaults ? (source[`${prefix}denoise`] ?? defaults[`${prefix}denoise`]) : defaults[`${prefix}denoise`])))],
+        [`${prefix}sampler`, String(hasCurrentTwoPassDefaults ? (source[`${prefix}sampler`] || defaults[`${prefix}sampler`]) : defaults[`${prefix}sampler`])],
+        [`${prefix}scheduler`, String(hasCurrentTwoPassDefaults ? (source[`${prefix}scheduler`] || defaults[`${prefix}scheduler`]) : defaults[`${prefix}scheduler`])],
+        [`${prefix}seed`, hasCurrentTwoPassDefaults && Number.isFinite(Number(source[`${prefix}seed`])) ? Number(source[`${prefix}seed`]) : defaults[`${prefix}seed`]],
+      ];
+    })),
     ...Object.fromEntries([1, 2, 3].flatMap((pass) => {
       const prefix = `three_pass_pass${pass}_`;
       const defaults = DEFAULT_MINIMAX_H3_SETTINGS;
@@ -2921,11 +2966,12 @@ function openBuilder(node) {
       const behind = Math.max(0, Number(payload.behind || 0));
       const wrongBranch = Boolean(payload.expected_branch) && payload.branch !== payload.expected_branch;
       const isOutdated = Boolean(payload.outdated);
-      if (isOutdated) {
+      // A feature/PR branch is a local development checkout, not an outdated
+      // production checkout. Only offer the main-branch updater while we are
+      // actually on the branch it is designed to fast-forward.
+      if (isOutdated && !wrongBranch) {
         const countText = `${behind} commit${behind === 1 ? "" : "s"} behind`;
-        const reason = wrongBranch
-          ? `currently on ${payload.branch || "a detached checkout"}`
-          : countText;
+        const reason = countText;
         setUpdateStatusAppearance(
           "outdated",
           `AI Video Builder build ${installed} — Update available (${reason}; latest ${latest})`,
@@ -5635,11 +5681,17 @@ function openBuilder(node) {
     strength.min = "-10";
     strength.max = "10";
     strength.step = "0.01";
+    const applyTo = makeSelect([
+      { value: "both", label: "Both passes" },
+      { value: "pass1", label: "Pass 1 only" },
+      { value: "pass2", label: "Pass 2 only" },
+    ], "both");
+    const applyToField = makeField("2-pass target", applyTo);
     const row = document.createElement("div");
-    row.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) 92px;gap:8px;";
-    row.append(makeField(`MiniMax LoRA ${slot}`, picker.wrapper), makeField("Strength", strength));
+    row.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) 92px minmax(120px,0.45fr);gap:8px;";
+    row.append(makeField(`MiniMax LoRA ${slot}`, picker.wrapper), makeField("Strength", strength), applyToField);
     miniMaxLoraRows.append(row);
-    miniMaxLoraSlots.push({ row, picker, strength });
+    miniMaxLoraSlots.push({ row, picker, strength, applyTo, applyToField });
   }
   const miniMaxLoraNote = document.createElement("div");
   miniMaxLoraNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
@@ -5773,10 +5825,6 @@ function openBuilder(node) {
   });
   const twoPassControls = [1, 2].map((pass) => {
     const prefix = `two_pass_pass${pass}_`;
-    const megapixels = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS[`${prefix}megapixels`]), "number");
-    megapixels.min = "0.1";
-    megapixels.max = "16";
-    megapixels.step = "0.1";
     const steps = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS[`${prefix}steps`]), "number");
     steps.min = "1";
     steps.max = "1000";
@@ -5790,22 +5838,85 @@ function openBuilder(node) {
     const seed = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS[`${prefix}seed`]), "number");
     seed.step = "1";
     const section = makeSettingsSection(`Pass ${pass}`, [
-      makeField("Resolution (megapixels)", megapixels),
       makeField("Steps", steps),
       makeField("Sampler", sampler),
       makeField("Scheduler", scheduler),
       makeField("Denoise", denoise),
       makeField("Seed", seed),
     ], pass === 1);
-    return { prefix, megapixels, steps, denoise, sampler, scheduler, seed, section };
+    return { prefix, steps, denoise, sampler, scheduler, seed, section };
   });
+  const miniMaxTwoPassFinalWidth = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.two_pass_final_width), "number");
+  miniMaxTwoPassFinalWidth.min = "64";
+  miniMaxTwoPassFinalWidth.max = "16384";
+  miniMaxTwoPassFinalWidth.step = "1";
+  const miniMaxTwoPassFinalHeight = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.two_pass_final_height), "number");
+  miniMaxTwoPassFinalHeight.min = "64";
+  miniMaxTwoPassFinalHeight.max = "16384";
+  miniMaxTwoPassFinalHeight.step = "1";
+  const miniMaxTwoPassLatentScale = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.two_pass_latent_upscale_scale), "number");
+  miniMaxTwoPassLatentScale.min = "1";
+  miniMaxTwoPassLatentScale.max = "8";
+  miniMaxTwoPassLatentScale.step = "0.1";
+  const miniMaxTwoPassRefImageSize = makeSelect([
+    { value: "max", label: "max" },
+    { value: "match", label: "match" },
+  ], DEFAULT_MINIMAX_H3_SETTINGS.ref_image_size);
+  const miniMaxThreePassRefImageSize = makeSelect([
+    { value: "max", label: "max" },
+    { value: "match", label: "match" },
+  ], DEFAULT_MINIMAX_H3_SETTINGS.ref_image_size);
+  const miniMaxTwoPassLatentUpscalerPicker = makeSearchableLoraPicker(DEFAULT_MINIMAX_H3_SETTINGS.two_pass_latent_upscaler_name);
+  const miniMaxTwoPassUseTeSpeed = makeCheckbox("Use TE-Speed-MiniMaxH3 (OSS)", DEFAULT_MINIMAX_H3_SETTINGS.two_pass_use_te_speed);
+  const miniMaxTwoPassTeProcessingControl = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.two_pass_te_speed_processing_control), "number");
+  miniMaxTwoPassTeProcessingControl.min = "0"; miniMaxTwoPassTeProcessingControl.max = "1"; miniMaxTwoPassTeProcessingControl.step = "0.01";
+  const miniMaxTwoPassTeStart = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.two_pass_te_speed_start_percent), "number");
+  miniMaxTwoPassTeStart.min = "0"; miniMaxTwoPassTeStart.max = "1"; miniMaxTwoPassTeStart.step = "0.01";
+  const miniMaxTwoPassTeEnd = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.two_pass_te_speed_end_percent), "number");
+  miniMaxTwoPassTeEnd.min = "0"; miniMaxTwoPassTeEnd.max = "1"; miniMaxTwoPassTeEnd.step = "0.01";
+  const miniMaxTwoPassTeMcs = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.two_pass_te_speed_mcs), "number");
+  miniMaxTwoPassTeMcs.min = "1"; miniMaxTwoPassTeMcs.max = "64"; miniMaxTwoPassTeMcs.step = "1";
+  const miniMaxTwoPassTeCacheDepth = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.two_pass_te_speed_cache_depth), "number");
+  miniMaxTwoPassTeCacheDepth.min = "0"; miniMaxTwoPassTeCacheDepth.max = "1"; miniMaxTwoPassTeCacheDepth.step = "0.01";
+  const miniMaxTwoPassTeDevice = makeSelect(["auto", "cuda", "cpu"], DEFAULT_MINIMAX_H3_SETTINGS.two_pass_te_speed_device);
+  const miniMaxTwoPassResizeMethod = makeSelect(["nvidia_rtx_vsr", "lanczos", "bicubic", "bilinear", "nearest-exact"], DEFAULT_MINIMAX_H3_SETTINGS.two_pass_final_resize_method);
+  const miniMaxTwoPassOutputCrf = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.two_pass_output_crf), "number");
+  miniMaxTwoPassOutputCrf.min = "0"; miniMaxTwoPassOutputCrf.max = "100"; miniMaxTwoPassOutputCrf.step = "1";
+  const miniMaxTwoPassSpeedNote = document.createElement("div");
+  miniMaxTwoPassSpeedNote.textContent = "The selected Turbo LoRA is applied ONLY to pass 2 and makes the refinement pass MUCH faster. TE-Speed is separate optional acceleration for the model path; uncheck it to bypass the OSS speed node completely.";
+  miniMaxTwoPassSpeedNote.style.cssText = "font-size:11px;color:#facc15;line-height:1.45;";
+  const miniMaxTwoPassLatentScaleNote = document.createElement("div");
+  miniMaxTwoPassLatentScaleNote.textContent = "Learned latent scale controls how much the pass-one video latent is enlarged before pass two. A value of 2 doubles its latent width and height. Keep this at 2 for the supplied upscaler; final width and height remain the actual requested output size.";
+  miniMaxTwoPassLatentScaleNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.45;";
   const miniMaxTwoPassSettings = makeSettingsSection("Two-Pass Settings", [
-    document.createTextNode("These controls apply when Ref to Video 2 Pass is selected. Defaults match the imported workflow."),
+    miniMaxTwoPassSpeedNote,
+    makeField("Final width", miniMaxTwoPassFinalWidth),
+    makeField("Final height", miniMaxTwoPassFinalHeight),
+    makeField("Reference image sizing", miniMaxTwoPassRefImageSize, "Controls the MiniMax H3 reference-conditioning image-size mode. Default: max."),
+    makeField("Latent upscaler model", miniMaxTwoPassLatentUpscalerPicker.wrapper),
+    miniMaxTwoPassUseTeSpeed.wrapper,
     ...twoPassControls.map((item) => item.section),
+    makeSettingsSection("TE-Speed Advanced", [
+      makeField("Processing control", miniMaxTwoPassTeProcessingControl),
+      makeField("Start percent", miniMaxTwoPassTeStart),
+      makeField("End percent", miniMaxTwoPassTeEnd),
+      makeField("MCS", miniMaxTwoPassTeMcs),
+      makeField("Cache depth", miniMaxTwoPassTeCacheDepth),
+      makeField("Device", miniMaxTwoPassTeDevice),
+    ], false),
+    makeSettingsSection("Latent Upscale Advanced", [
+      miniMaxTwoPassLatentScaleNote,
+      makeField("Learned latent scale", miniMaxTwoPassLatentScale),
+    ], false),
+    makeSettingsSection("Output Advanced", [
+      makeField("Final resize method", miniMaxTwoPassResizeMethod),
+      makeField("Output CRF", miniMaxTwoPassOutputCrf),
+    ], false),
   ], false);
   miniMaxTwoPassSettings.style.display = "none";
   const miniMaxThreePassSettings = makeSettingsSection("Three-Pass Experimental Settings", [
     document.createTextNode("These controls apply when Ref to Video 3 Pass is selected. Defaults match the imported workflow."),
+    makeField("Reference image sizing", miniMaxThreePassRefImageSize, "Controls the MiniMax H3 reference-conditioning image-size mode. Default: max."),
     ...threePassControls.map((item) => item.section),
   ], false);
   miniMaxThreePassSettings.style.display = "none";
@@ -5840,8 +5951,8 @@ function openBuilder(node) {
   miniMaxTwoPassLoraStrength.min = "-10";
   miniMaxTwoPassLoraStrength.max = "10";
   miniMaxTwoPassLoraStrength.step = "0.01";
-  const miniMaxTwoPassLoraSection = makeSettingsSection("2-Pass LoRA", [
-    makeField("2-pass LoRA", miniMaxTwoPassLoraPicker.wrapper),
+  const miniMaxTwoPassLoraSection = makeSettingsSection("Pass 2 Turbo LoRA", [
+    makeField("Pass 2 Turbo LoRA", miniMaxTwoPassLoraPicker.wrapper),
     makeField("Strength", miniMaxTwoPassLoraStrength),
   ]);
   const miniMaxThreePassLoraPicker = makeSearchableLoraPicker(DEFAULT_MINIMAX_H3_SETTINGS.three_pass_lightx_lora_name);
@@ -7068,6 +7179,7 @@ function openBuilder(node) {
       .map((slot) => ({
         name: String(slot.picker.input.value || "").trim(),
         strength: Math.max(-10, Math.min(10, Number(slot.strength.value || 1))),
+        apply_to: slot.applyTo.value,
       }))
       .filter((item) => item.name && item.name !== "[none]");
     const settings = cloneMiniMaxH3Settings({
@@ -7088,13 +7200,29 @@ function openBuilder(node) {
       steps: miniMaxSteps.value,
       steps_before_turbo: turboEnabled ? currentSettings.steps_before_turbo : miniMaxSteps.value,
       denoise: miniMaxDenoise.value,
-      ref_image_size: miniMaxRefImageSize.value,
+      ref_image_size: state.miniMaxH3ThreePassEnabled
+        ? miniMaxThreePassRefImageSize.value
+        : state.miniMaxH3TwoPassEnabled
+          ? miniMaxTwoPassRefImageSize.value
+          : miniMaxRefImageSize.value,
       two_pass_lora_name: miniMaxTwoPassLoraPicker.input.value,
       two_pass_lora_strength: miniMaxTwoPassLoraStrength.value,
+      two_pass_final_width: miniMaxTwoPassFinalWidth.value,
+      two_pass_final_height: miniMaxTwoPassFinalHeight.value,
+      two_pass_latent_upscale_scale: miniMaxTwoPassLatentScale.value,
+      two_pass_latent_upscaler_name: miniMaxTwoPassLatentUpscalerPicker.input.value,
+      two_pass_use_te_speed: miniMaxTwoPassUseTeSpeed.input.checked,
+      two_pass_te_speed_processing_control: miniMaxTwoPassTeProcessingControl.value,
+      two_pass_te_speed_start_percent: miniMaxTwoPassTeStart.value,
+      two_pass_te_speed_end_percent: miniMaxTwoPassTeEnd.value,
+      two_pass_te_speed_mcs: miniMaxTwoPassTeMcs.value,
+      two_pass_te_speed_cache_depth: miniMaxTwoPassTeCacheDepth.value,
+      two_pass_te_speed_device: miniMaxTwoPassTeDevice.value,
+      two_pass_final_resize_method: miniMaxTwoPassResizeMethod.value,
+      two_pass_output_crf: miniMaxTwoPassOutputCrf.value,
       three_pass_lightx_lora_name: miniMaxThreePassLoraPicker.input.value,
       three_pass_lightx_lora_strength: miniMaxThreePassLoraStrength.value,
       ...Object.fromEntries(twoPassControls.flatMap((control) => [
-        [`${control.prefix}megapixels`, control.megapixels.value],
         [`${control.prefix}steps`, control.steps.value],
         [`${control.prefix}denoise`, control.denoise.value],
         [`${control.prefix}sampler`, control.sampler.value],
@@ -7769,12 +7897,26 @@ function openBuilder(node) {
     miniMaxSteps.value = String(settings.steps);
     miniMaxDenoise.value = String(settings.denoise);
     miniMaxRefImageSize.value = settings.ref_image_size;
+    miniMaxTwoPassRefImageSize.value = settings.ref_image_size;
+    miniMaxThreePassRefImageSize.value = settings.ref_image_size;
     miniMaxTwoPassLoraPicker.input.value = settings.two_pass_lora_name;
     miniMaxTwoPassLoraStrength.value = String(settings.two_pass_lora_strength);
+    miniMaxTwoPassFinalWidth.value = String(settings.two_pass_final_width);
+    miniMaxTwoPassFinalHeight.value = String(settings.two_pass_final_height);
+    miniMaxTwoPassLatentScale.value = String(settings.two_pass_latent_upscale_scale);
+    miniMaxTwoPassLatentUpscalerPicker.input.value = settings.two_pass_latent_upscaler_name;
+    miniMaxTwoPassUseTeSpeed.input.checked = Boolean(settings.two_pass_use_te_speed);
+    miniMaxTwoPassTeProcessingControl.value = String(settings.two_pass_te_speed_processing_control);
+    miniMaxTwoPassTeStart.value = String(settings.two_pass_te_speed_start_percent);
+    miniMaxTwoPassTeEnd.value = String(settings.two_pass_te_speed_end_percent);
+    miniMaxTwoPassTeMcs.value = String(settings.two_pass_te_speed_mcs);
+    miniMaxTwoPassTeCacheDepth.value = String(settings.two_pass_te_speed_cache_depth);
+    miniMaxTwoPassTeDevice.value = settings.two_pass_te_speed_device;
+    miniMaxTwoPassResizeMethod.value = settings.two_pass_final_resize_method;
+    miniMaxTwoPassOutputCrf.value = String(settings.two_pass_output_crf);
     miniMaxThreePassLoraPicker.input.value = settings.three_pass_lightx_lora_name;
     miniMaxThreePassLoraStrength.value = String(settings.three_pass_lightx_lora_strength);
     twoPassControls.forEach((control) => {
-      control.megapixels.value = String(settings[`${control.prefix}megapixels`]);
       control.steps.value = String(settings[`${control.prefix}steps`]);
       control.denoise.value = String(settings[`${control.prefix}denoise`]);
       control.sampler.value = settings[`${control.prefix}sampler`];
@@ -7814,6 +7956,7 @@ function openBuilder(node) {
       slot.row.style.display = settings.use_loras && index < Number(settings.lora_count || 0) ? "grid" : "none";
       slot.picker.input.value = item.name || slot.picker.input.value || "[none]";
       slot.strength.value = String(item.strength ?? slot.strength.value ?? 1);
+      slot.applyTo.value = ["both", "pass1", "pass2"].includes(item.apply_to) ? item.apply_to : "both";
     });
     miniMaxUseTurboLora.input.checked = settings.use_turbo_lora;
     miniMaxTurboLoraPicker.input.value = settings.turbo_lora_name;
@@ -7866,6 +8009,17 @@ function openBuilder(node) {
     const twoPass = Boolean(state.miniMaxH3TwoPassEnabled) && mode === "reference_to_video";
     const threePass = Boolean(state.miniMaxH3ThreePassEnabled) && mode === "reference_to_video";
     const hideMultiPassIgnoredSettings = twoPass || threePass;
+    miniMaxLoraSlots.forEach((slot) => {
+      slot.applyToField.style.display = twoPass ? "flex" : "none";
+      slot.row.style.gridTemplateColumns = twoPass
+        ? "minmax(0,1fr) 92px minmax(120px,0.45fr)"
+        : "minmax(0,1fr) 92px";
+    });
+    if (twoPass) {
+      miniMaxLoraNote.textContent = settings.use_loras
+        ? "Extra LoRAs are ON. Each can target pass 1, pass 2, or both. The required Turbo LoRA remains separate and pass-2-only."
+        : "Optional extra LoRAs are OFF. Enable them, choose a count, then select the target pass for each LoRA.";
+    }
     miniMaxMegapixelsField.style.display = hideMultiPassIgnoredSettings ? "none" : "";
     miniMaxSeedField.style.display = hideMultiPassIgnoredSettings ? "none" : "";
     miniMaxSamplerSettings.style.display = hideMultiPassIgnoredSettings ? "none" : "";
@@ -44905,17 +45059,28 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         ref_image_size: miniMaxSettings.ref_image_size,
         two_pass_lora_name: miniMaxSettings.two_pass_lora_name,
         two_pass_lora_strength: miniMaxSettings.two_pass_lora_strength,
+        final_width: twoPass ? miniMaxSettings.two_pass_final_width : undefined,
+        final_height: twoPass ? miniMaxSettings.two_pass_final_height : undefined,
+        latent_upscale_scale: twoPass ? miniMaxSettings.two_pass_latent_upscale_scale : undefined,
+        latent_upscaler_name: twoPass ? miniMaxSettings.two_pass_latent_upscaler_name : undefined,
+        two_pass_use_te_speed: twoPass ? miniMaxSettings.two_pass_use_te_speed : undefined,
+        te_speed_processing_control: twoPass ? miniMaxSettings.two_pass_te_speed_processing_control : undefined,
+        te_speed_start_percent: twoPass ? miniMaxSettings.two_pass_te_speed_start_percent : undefined,
+        te_speed_end_percent: twoPass ? miniMaxSettings.two_pass_te_speed_end_percent : undefined,
+        te_speed_mcs: twoPass ? miniMaxSettings.two_pass_te_speed_mcs : undefined,
+        te_speed_cache_depth: twoPass ? miniMaxSettings.two_pass_te_speed_cache_depth : undefined,
+        te_speed_device: twoPass ? miniMaxSettings.two_pass_te_speed_device : undefined,
+        final_resize_method: twoPass ? miniMaxSettings.two_pass_final_resize_method : undefined,
+        output_crf: twoPass ? miniMaxSettings.two_pass_output_crf : undefined,
         three_pass_lightx_lora_name: miniMaxSettings.three_pass_lightx_lora_name,
         three_pass_lightx_lora_strength: miniMaxSettings.three_pass_lightx_lora_strength,
         pass1_steps: twoPass ? miniMaxSettings.two_pass_pass1_steps : miniMaxSettings.steps,
         pass1_denoise: twoPass ? miniMaxSettings.two_pass_pass1_denoise : miniMaxSettings.denoise,
-        pass1_megapixels: twoPass ? miniMaxSettings.two_pass_pass1_megapixels : 0.5,
         pass1_sampler_name: twoPass ? miniMaxSettings.two_pass_pass1_sampler : miniMaxSettings.sampler_name,
         pass1_scheduler: twoPass ? miniMaxSettings.two_pass_pass1_scheduler : miniMaxSettings.scheduler,
         pass1_seed: twoPass ? miniMaxSettings.two_pass_pass1_seed : miniMaxSettings.seed,
         pass2_steps: twoPass ? miniMaxSettings.two_pass_pass2_steps : 4,
         pass2_denoise: twoPass ? miniMaxSettings.two_pass_pass2_denoise : 0.2,
-        pass2_megapixels: twoPass ? miniMaxSettings.two_pass_pass2_megapixels : 1.5,
         pass2_sampler_name: twoPass ? miniMaxSettings.two_pass_pass2_sampler : miniMaxSettings.sampler_name,
         pass2_scheduler: twoPass ? miniMaxSettings.two_pass_pass2_scheduler : miniMaxSettings.scheduler,
         pass2_seed: twoPass ? miniMaxSettings.two_pass_pass2_seed : miniMaxSettings.seed,
@@ -44995,7 +45160,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         `${batchLabel}${threePass ? "Queueing MiniMax H3 3 Pass (Stage 1 → Stage 2 → Stage 3)..." : twoPass ? "Queueing MiniMax H3 2 Pass (Stage 1 → Stage 2)..." : "Queueing MiniMax H3..."}\n`
         + `Timeline: ${sceneDuration.toFixed(3)}s\n`
         + `H3 render: ${Number(timing.h3_frame_count || 0)} frames`
-        + (threePass ? "\nStage 1 and Stage 2 are saved as backups; Stage 3 will be used for stitching." : twoPass ? "\nStage 1 is saved as a backup; Stage 2 will be used for stitching." : "")
+        + (threePass ? "\nStage 1 and Stage 2 are saved as backups; Stage 3 will be used for stitching." : twoPass ? "\nPass 1 is learned-latent upscaled and refined by pass 2; the final pass-2 video will be used for stitching." : "")
         + loraLine
         + turboLine
         + settingsScopeLine
@@ -45186,7 +45351,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         await autoSaveSessionQuiet(options.autoSaveReason || "MiniMax H3 scene video complete");
       }
       progress?.set(
-        `${batchLabel}${threePass ? "MiniMax H3 3 Pass complete — Stage 3 selected; Stage 1 and Stage 2 backups saved." : twoPass ? "MiniMax H3 2 Pass complete — Stage 2 selected; Stage 1 backup saved." : "MiniMax H3 scene ready."}\n${segment.video_path}\n`
+        `${batchLabel}${threePass ? "MiniMax H3 3 Pass complete — Stage 3 selected; Stage 1 and Stage 2 backups saved." : twoPass ? "MiniMax H3 learned-latent 2 Pass complete — final pass-2 video selected." : "MiniMax H3 scene ready."}\n${segment.video_path}\n`
         + `Exact duration: ${finalDuration.toFixed(3)}s`,
         pct(100),
       );
@@ -55714,6 +55879,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     setMiniMaxOptions(miniMaxClipPicker, data.clip, DEFAULT_MINIMAX_H3_SETTINGS.clip_name);
     setMiniMaxOptions(miniMaxVideoVaePicker, data.vae, DEFAULT_MINIMAX_H3_SETTINGS.video_vae_name);
     setMiniMaxOptions(miniMaxAudioVaePicker, data.vae, DEFAULT_MINIMAX_H3_SETTINGS.audio_vae_name);
+    setMiniMaxOptions(miniMaxTwoPassLatentUpscalerPicker, data.upscale_models, DEFAULT_MINIMAX_H3_SETTINGS.two_pass_latent_upscaler_name);
     saveMiniMaxH3SettingsFromPanel();
     setOptions(fluxUnetPicker, data.unets, ["flux\\flux-2-klein-4b-fp8.safetensors", "flux-2-klein-4b-fp8.safetensors"]);
     setOptions(fluxClipPicker, data.clip, ["qwen_3_4b.safetensors", "flux\\qwen_3_4b.safetensors"]);
@@ -55841,7 +56007,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     saveMiniMaxH3SettingsFromPanel();
     autoSaveSessionQuiet("MiniMax H3 project settings").catch(() => null);
   };
-  for (const picker of [miniMaxDiffusionModelPicker, miniMaxClipPicker, miniMaxVideoVaePicker, miniMaxAudioVaePicker]) {
+  for (const picker of [miniMaxDiffusionModelPicker, miniMaxClipPicker, miniMaxVideoVaePicker, miniMaxAudioVaePicker, miniMaxTwoPassLatentUpscalerPicker]) {
     wireSearchablePicker(picker, saveMiniMaxH3SettingsFromPanel);
     picker.input.addEventListener("change", persistMiniMaxSettings);
   }
@@ -55856,6 +56022,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     slot.picker.input.addEventListener("change", persistMiniMaxSettings);
     slot.strength.addEventListener("input", saveMiniMaxH3SettingsFromPanel);
     slot.strength.addEventListener("change", persistMiniMaxSettings);
+    slot.applyTo.addEventListener("change", persistMiniMaxSettings);
   }
   for (const control of [
     miniMaxAspectRatio,
@@ -55882,8 +56049,21 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     miniMaxTurboLoraStrength,
     miniMaxTwoPassLoraStrength,
     miniMaxThreePassLoraStrength,
+    miniMaxTwoPassFinalWidth,
+    miniMaxTwoPassFinalHeight,
+    miniMaxTwoPassRefImageSize,
+    miniMaxThreePassRefImageSize,
+    miniMaxTwoPassLatentScale,
+    miniMaxTwoPassUseTeSpeed.input,
+    miniMaxTwoPassTeProcessingControl,
+    miniMaxTwoPassTeStart,
+    miniMaxTwoPassTeEnd,
+    miniMaxTwoPassTeMcs,
+    miniMaxTwoPassTeCacheDepth,
+    miniMaxTwoPassTeDevice,
+    miniMaxTwoPassResizeMethod,
+    miniMaxTwoPassOutputCrf,
     ...twoPassControls.flatMap((pass) => [
-      pass.megapixels,
       pass.steps,
       pass.denoise,
       pass.sampler,
