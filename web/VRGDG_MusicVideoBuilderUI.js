@@ -5858,6 +5858,14 @@ function openBuilder(node) {
   miniMaxTwoPassLatentScale.min = "1";
   miniMaxTwoPassLatentScale.max = "8";
   miniMaxTwoPassLatentScale.step = "0.1";
+  const miniMaxTwoPassRefImageSize = makeSelect([
+    { value: "max", label: "max" },
+    { value: "match", label: "match" },
+  ], DEFAULT_MINIMAX_H3_SETTINGS.ref_image_size);
+  const miniMaxThreePassRefImageSize = makeSelect([
+    { value: "max", label: "max" },
+    { value: "match", label: "match" },
+  ], DEFAULT_MINIMAX_H3_SETTINGS.ref_image_size);
   const miniMaxTwoPassLatentUpscalerPicker = makeSearchableLoraPicker(DEFAULT_MINIMAX_H3_SETTINGS.two_pass_latent_upscaler_name);
   const miniMaxTwoPassUseTeSpeed = makeCheckbox("Use TE-Speed-MiniMaxH3 (OSS)", DEFAULT_MINIMAX_H3_SETTINGS.two_pass_use_te_speed);
   const miniMaxTwoPassTeProcessingControl = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.two_pass_te_speed_processing_control), "number");
@@ -5884,6 +5892,7 @@ function openBuilder(node) {
     miniMaxTwoPassSpeedNote,
     makeField("Final width", miniMaxTwoPassFinalWidth),
     makeField("Final height", miniMaxTwoPassFinalHeight),
+    makeField("Reference image sizing", miniMaxTwoPassRefImageSize, "Controls the MiniMax H3 reference-conditioning image-size mode. Default: max."),
     makeField("Latent upscaler model", miniMaxTwoPassLatentUpscalerPicker.wrapper),
     miniMaxTwoPassUseTeSpeed.wrapper,
     ...twoPassControls.map((item) => item.section),
@@ -5907,6 +5916,7 @@ function openBuilder(node) {
   miniMaxTwoPassSettings.style.display = "none";
   const miniMaxThreePassSettings = makeSettingsSection("Three-Pass Experimental Settings", [
     document.createTextNode("These controls apply when Ref to Video 3 Pass is selected. Defaults match the imported workflow."),
+    makeField("Reference image sizing", miniMaxThreePassRefImageSize, "Controls the MiniMax H3 reference-conditioning image-size mode. Default: max."),
     ...threePassControls.map((item) => item.section),
   ], false);
   miniMaxThreePassSettings.style.display = "none";
@@ -7190,7 +7200,11 @@ function openBuilder(node) {
       steps: miniMaxSteps.value,
       steps_before_turbo: turboEnabled ? currentSettings.steps_before_turbo : miniMaxSteps.value,
       denoise: miniMaxDenoise.value,
-      ref_image_size: miniMaxRefImageSize.value,
+      ref_image_size: state.miniMaxH3ThreePassEnabled
+        ? miniMaxThreePassRefImageSize.value
+        : state.miniMaxH3TwoPassEnabled
+          ? miniMaxTwoPassRefImageSize.value
+          : miniMaxRefImageSize.value,
       two_pass_lora_name: miniMaxTwoPassLoraPicker.input.value,
       two_pass_lora_strength: miniMaxTwoPassLoraStrength.value,
       two_pass_final_width: miniMaxTwoPassFinalWidth.value,
@@ -7883,6 +7897,8 @@ function openBuilder(node) {
     miniMaxSteps.value = String(settings.steps);
     miniMaxDenoise.value = String(settings.denoise);
     miniMaxRefImageSize.value = settings.ref_image_size;
+    miniMaxTwoPassRefImageSize.value = settings.ref_image_size;
+    miniMaxThreePassRefImageSize.value = settings.ref_image_size;
     miniMaxTwoPassLoraPicker.input.value = settings.two_pass_lora_name;
     miniMaxTwoPassLoraStrength.value = String(settings.two_pass_lora_strength);
     miniMaxTwoPassFinalWidth.value = String(settings.two_pass_final_width);
@@ -56040,6 +56056,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     miniMaxThreePassLoraStrength,
     miniMaxTwoPassFinalWidth,
     miniMaxTwoPassFinalHeight,
+    miniMaxTwoPassRefImageSize,
+    miniMaxThreePassRefImageSize,
     miniMaxTwoPassLatentScale,
     miniMaxTwoPassUseTeSpeed.input,
     miniMaxTwoPassTeProcessingControl,
