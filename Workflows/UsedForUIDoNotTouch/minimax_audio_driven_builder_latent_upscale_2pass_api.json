@@ -1,0 +1,616 @@
+{
+  "115": {
+    "inputs": {
+      "value": 1920
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "BUILDER INPUT - Desired Final Width"
+    }
+  },
+  "119": {
+    "inputs": {
+      "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load Video VAE"
+    }
+  },
+  "120": {
+    "inputs": {
+      "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load Audio VAE"
+    }
+  },
+  "122": {
+    "inputs": {
+      "samples": [
+        "194",
+        0
+      ],
+      "vae": [
+        "119",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode - Two-Pass Refined Upscaled Latent"
+    }
+  },
+  "123": {
+    "inputs": {
+      "sampler_name": "res_multistep"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "KSamplerSelect"
+    }
+  },
+  "124": {
+    "inputs": {
+      "scheduler": "simple",
+      "steps": 20,
+      "denoise": 1,
+      "model": [
+        "208",
+        0
+      ]
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {
+      "title": "BasicScheduler"
+    }
+  },
+  "125": {
+    "inputs": {
+      "noise": [
+        "129",
+        0
+      ],
+      "guider": [
+        "126",
+        0
+      ],
+      "sampler": [
+        "123",
+        0
+      ],
+      "sigmas": [
+        "124",
+        0
+      ],
+      "latent_image": [
+        "172",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "Low Resolution Generation"
+    }
+  },
+  "126": {
+    "inputs": {
+      "model": [
+        "208",
+        0
+      ],
+      "conditioning": [
+        "136",
+        0
+      ]
+    },
+    "class_type": "BasicGuider",
+    "_meta": {
+      "title": "Basic Guider"
+    }
+  },
+  "128": {
+    "inputs": {
+      "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "type": "minimax",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "129": {
+    "inputs": {
+      "noise_seed": 910588682130454
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "BUILDER INPUT - Seed"
+    }
+  },
+  "131": {
+    "inputs": {
+      "expression": "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17",
+      "values.a": [
+        "132",
+        0
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "H3 Duration To Valid Frame Count"
+    }
+  },
+  "132": {
+    "inputs": {
+      "value": 8
+    },
+    "class_type": "PrimitiveFloat",
+    "_meta": {
+      "title": "BUILDER INPUT - Duration"
+    }
+  },
+  "136": {
+    "inputs": {
+      "prompt": [
+        "138",
+        0
+      ],
+      "width": [
+        "186",
+        1
+      ],
+      "height": [
+        "187",
+        1
+      ],
+      "length": [
+        "131",
+        1
+      ],
+      "ref_image_size": "max",
+      "clip": [
+        "128",
+        0
+      ],
+      "vae": [
+        "119",
+        0
+      ],
+      "audio_vae": [
+        "120",
+        0
+      ],
+      "ref_images.ref_image_0": [
+        "180",
+        0
+      ],
+      "ref_images.ref_image_1": [
+        "180",
+        1
+      ],
+      "ref_images.ref_image_2": [
+        "180",
+        2
+      ],
+      "ref_images.ref_image_3": [
+        "180",
+        3
+      ],
+      "ref_images.ref_image_4": [
+        "180",
+        4
+      ],
+      "ref_images.ref_image_5": [
+        "180",
+        5
+      ],
+      "ref_images.ref_image_6": [
+        "180",
+        6
+      ],
+      "ref_images.ref_image_7": [
+        "180",
+        7
+      ],
+      "ref_images.ref_image_8": [
+        "180",
+        8
+      ],
+      "ref_videos.ref_video_0": [
+        "180",
+        9
+      ],
+      "ref_videos.ref_video_1": [
+        "180",
+        10
+      ],
+      "ref_videos.ref_video_2": [
+        "180",
+        11
+      ],
+      "ref_video_audios.ref_video_audio_0": [
+        "180",
+        12
+      ],
+      "ref_video_audios.ref_video_audio_1": [
+        "180",
+        13
+      ],
+      "ref_video_audios.ref_video_audio_2": [
+        "180",
+        14
+      ],
+      "ref_audios.ref_audio_0": [
+        "171",
+        0
+      ]
+    },
+    "class_type": "MiniMaxH3ReferenceToVideo",
+    "_meta": {
+      "title": "MiniMax H3 Reference to Video"
+    }
+  },
+  "138": {
+    "inputs": {
+      "value": "Generate an 8-second 16:9 photorealistic cinematic video.\n\nImage 1: character appearance and clothing reference. Preserve the woman’s exact facial features, long wavy black hair, smoky dark eye makeup, nose ring, layered necklaces, black leather jacket, black lace-up crop top, ripped black jeans with chains, and black platform boots throughout the entire video.\n\n[0s–2.5s]\nExtreme close-up of the woman’s face as she stands motionless in the middle of a modern city street during daytime. Frame from forehead to just below the lips. She looks directly into the camera with a calm, intense expression. Natural daylight reflects softly in her eyes; a light breeze moves a few strands of her black hair. The distant city background is heavily blurred with moving traffic and pedestrians far behind her. Camera makes a very subtle slow push toward her face.\n\n[2.5s–5s]\nHard cut to an upper-body medium shot, framed from her head to just below her waist. She remains in exactly the same position in the street, facing camera. Her black leather jacket, lace-up crop top, layered necklaces, and chains are clearly visible. She slightly shifts her shoulders and tilts her chin upward while maintaining the same confident expression. Cars pass in the distant background without approaching her. Camera stays mostly locked with slight natural cinematic movement.\n\n[5s–8s]\nHard cut to a full-body shot showing her from head to boots, centered in the middle of the city street. Preserve the same direction, lighting, street position, clothing, hairstyle, and accessories. Her ripped black jeans, hanging chains, and platform boots are fully visible. She stands with her feet slightly apart and arms relaxed at her sides. The camera slowly pulls backward, revealing more buildings, parked cars, traffic signals, and the broad daytime street around her. End with her still centered and staring directly into the lens.\n\nAudio: Native city ambience throughout: distant engines, tires on pavement, occasional faint horn, pedestrian movement, and a soft daytime urban breeze. A low, restrained cinematic bass pulse begins at 0s. Add subtle hard-cut impact sounds exactly at 2.5s and 5s. No dialogue. Music builds slightly during the final pullback, then ends cleanly at 8s.\n\nContinuity: The woman must remain the same person from Image 1 in every shot. Preserve her exact face, skin tone, long wavy black hairstyle, makeup, nose ring, necklaces, leather jacket, black lace-up crop top, ripped black jeans, chains, body proportions, and platform boots. She remains in the same physical spot and orientation in the street across all three cuts; only the camera framing changes."
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "BUILDER INPUT - Prompt"
+    }
+  },
+  "141": {
+    "inputs": {
+      "model_name": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+      "weight_dtype": "default",
+      "compute_dtype": "default",
+      "patch_cublaslinear": false,
+      "sage_attention": "auto",
+      "enable_fp16_accumulation": true
+    },
+    "class_type": "DiffusionModelLoaderKJ",
+    "_meta": {
+      "title": "Diffusion Model Loader KJ"
+    }
+  },
+  "142": {
+    "inputs": {
+      "frame_rate": 24,
+      "loop_count": 0,
+      "filename_prefix": "MiniMaxH3_Builder_LearnedLatentUpscale_1080p",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true,
+      "images": [
+        "183",
+        0
+      ],
+      "audio": [
+        "172",
+        1
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "BUILDER OUTPUT - Learned Latent Upscaled 1080p Video"
+    }
+  },
+  "171": {
+    "inputs": {
+      "audio_file": "Z:\\TOSHARE\\ComfyUI_windows_portable\\ComfyUI\\input\\Circle of Flames 88888.mp3",
+      "seek_seconds": 0,
+      "duration": 0
+    },
+    "class_type": "VHS_LoadAudio",
+    "_meta": {
+      "title": "BUILDER INPUT - Custom Source Audio Path"
+    }
+  },
+  "172": {
+    "inputs": {
+      "av_latent": [
+        "136",
+        1
+      ],
+      "source_audio": [
+        "171",
+        0
+      ],
+      "audio_vae": [
+        "120",
+        0
+      ]
+    },
+    "class_type": "VRGDG_MiniMaxH3AudioDrive",
+    "_meta": {
+      "title": "LOCK SOURCE AUDIO - GENERATE VIDEO ONLY"
+    }
+  },
+  "180": {
+    "inputs": {
+      "image_paths": "[]",
+      "video_references": "[]"
+    },
+    "class_type": "VRGDG_MiniMaxH3ReferenceMediaFromPaths",
+    "_meta": {
+      "title": "BUILDER INPUTS - Ordered H3 Reference Images And Videos"
+    }
+  },
+  "181": {
+    "inputs": {
+      "av_latent": [
+        "125",
+        0
+      ]
+    },
+    "class_type": "MiniMaxH3AVLatentSeparateT8",
+    "_meta": {
+      "title": "PASS 1 OUTPUT - Separate Video and Audio Latents"
+    }
+  },
+  "182": {
+    "inputs": {
+      "scale": [
+        "185",
+        0
+      ],
+      "latent": [
+        "181",
+        0
+      ],
+      "upscale_model": [
+        "188",
+        0
+      ]
+    },
+    "class_type": "VRGDG_MiniMaxH3LearnedLatentUpscale",
+    "_meta": {
+      "title": "LEARNED UPSCALE - MiniMax H3"
+    }
+  },
+  "183": {
+    "inputs": {
+      "width": [
+        "115",
+        0
+      ],
+      "height": [
+        "184",
+        0
+      ],
+      "upscale_method": "nvidia_rtx_vsr",
+      "keep_proportion": "crop",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 0,
+      "device": "cpu",
+      "image": [
+        "122",
+        0
+      ]
+    },
+    "class_type": "ImageResizeKJv2",
+    "_meta": {
+      "title": "Final Center Crop - Exact 1920x1080"
+    }
+  },
+  "184": {
+    "inputs": {
+      "value": 1080
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "BUILDER INPUT - Desired Final Height"
+    }
+  },
+  "185": {
+    "inputs": {
+      "value": 2
+    },
+    "class_type": "PrimitiveFloat",
+    "_meta": {
+      "title": "BUILDER INPUT - Learned Latent Upscale Scale"
+    }
+  },
+  "186": {
+    "inputs": {
+      "expression": "max(32, ceil((a / b) / 32) * 32)",
+      "values.a": [
+        "115",
+        0
+      ],
+      "values.b": [
+        "185",
+        0
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "AUTO - Aligned First Pass Width"
+    }
+  },
+  "187": {
+    "inputs": {
+      "expression": "max(32, ceil((a / b) / 32) * 32)",
+      "values.a": [
+        "184",
+        0
+      ],
+      "values.b": [
+        "185",
+        0
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "AUTO - Aligned First Pass Height"
+    }
+  },
+  "188": {
+    "inputs": {
+      "model_name": "minimax_h3_latent_upscaler_3d_bf16.safetensors",
+      "device": "cuda",
+      "precision": "bf16"
+    },
+    "class_type": "VRGDG_MiniMaxH3LatentUpscaleModelLoader",
+    "_meta": {
+      "title": "BUILDER INPUT - MiniMax H3 Latent Upscale Model"
+    }
+  },
+  "189": {
+    "inputs": {
+      "original_av_latent": [
+        "125",
+        0
+      ],
+      "upscaled_video_latent": [
+        "182",
+        0
+      ]
+    },
+    "class_type": "VRGDG_MiniMaxH3ReplaceUpscaledVideoLatent",
+    "_meta": {
+      "title": "PASS 2 - Restore Upscaled Video into Locked AV Latent"
+    }
+  },
+  "190": {
+    "inputs": {
+      "value": 5
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "BUILDER INPUT - Refinement Schedule Steps"
+    }
+  },
+  "191": {
+    "inputs": {
+      "value": 0.2
+    },
+    "class_type": "PrimitiveFloat",
+    "_meta": {
+      "title": "BUILDER INPUT - Refinement Denoise"
+    }
+  },
+  "192": {
+    "inputs": {
+      "scheduler": "simple",
+      "steps": [
+        "190",
+        0
+      ],
+      "denoise": [
+        "191",
+        0
+      ],
+      "model": [
+        "207",
+        0
+      ]
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {
+      "title": "PASS 2 - Adjustable Refinement Scheduler"
+    }
+  },
+  "193": {
+    "inputs": {
+      "model": [
+        "207",
+        0
+      ],
+      "conditioning": [
+        "136",
+        0
+      ]
+    },
+    "class_type": "BasicGuider",
+    "_meta": {
+      "title": "PASS 2 - Basic Guider"
+    }
+  },
+  "194": {
+    "inputs": {
+      "noise": [
+        "211",
+        0
+      ],
+      "guider": [
+        "193",
+        0
+      ],
+      "sampler": [
+        "210",
+        0
+      ],
+      "sigmas": [
+        "192",
+        0
+      ],
+      "latent_image": [
+        "189",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "PASS 2 - High Resolution Refinement"
+    }
+  },
+  "207": {
+    "inputs": {
+      "lora_name": "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+      "strength_model": 1,
+      "model": [
+        "208",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "Load LoRA"
+    }
+  },
+  "208": {
+    "inputs": {
+      "processing_control_value": 0.07,
+      "processing_percent_1": 0.1,
+      "processing_percent_2": 0.9,
+      "mcs": 2,
+      "device": "auto",
+      "cache_depth": 0.75,
+      "model": [
+        "141",
+        0
+      ]
+    },
+    "class_type": "TESpeedMiniMaxH3",
+    "_meta": {
+      "title": "TE-Speed-MiniMaxH3 (OSS)"
+    }
+  },
+  "210": {
+    "inputs": {
+      "sampler_name": "res_multistep"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "BUILDER INPUT - Pass 2 Sampler"
+    }
+  },
+  "211": {
+    "inputs": {
+      "noise_seed": 910588682130454
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "BUILDER INPUT - Pass 2 Seed"
+    }
+  }
+}
