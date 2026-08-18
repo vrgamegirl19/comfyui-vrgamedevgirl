@@ -48,7 +48,6 @@ _VRGDG_SUBMODULES = (
     ".VRGDG_SilentAudioRoutes",
     ".VRGDG_UpdateRoutes",
     ".VRGDG_VideoBuilderNodeUI",
-    ".VRGDG_FaceFixBatchNode",
     ".VRGDG_LoraDatasetCreatorNodes",
 )
 
