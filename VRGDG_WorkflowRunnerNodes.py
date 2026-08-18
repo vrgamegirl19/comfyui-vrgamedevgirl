@@ -232,7 +232,7 @@ def _minimax_h3_2pass_api_template_path():
         os.path.dirname(os.path.abspath(__file__)),
         "Workflows",
         "UsedForUIDoNotTouch",
-        "minimax_ref2video_2pass_audio_driven_api.json",
+        "minimax_audio_driven_builder_latent_upscale_2pass_api.json",
     )
 
 
@@ -3178,69 +3178,136 @@ def _build_minimax_h3_2pass_api_prompt(payload):
     clip_name = str(payload.get("clip_name") or "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors").strip()
     video_vae_name = str(payload.get("video_vae_name") or "minimax_h3_video_vae_fp16.safetensors").strip()
     audio_vae_name = str(payload.get("audio_vae_name") or "minimax_h3_audio_vae_fp32.safetensors").strip()
+    latent_upscaler_name = str(payload.get("latent_upscaler_name") or "minimax_h3_latent_upscaler_3d_bf16.safetensors").strip()
     _require_model_choice(("diffusion_models", "unet"), diffusion_model_name, "MiniMax H3 two-pass diffusion model")
     _require_model_choice(("text_encoders", "clip"), clip_name, "MiniMax H3 two-pass text encoder")
     _require_model_choice("vae", video_vae_name, "MiniMax H3 two-pass video VAE")
     _require_model_choice("vae", audio_vae_name, "MiniMax H3 two-pass audio VAE")
+    _require_model_choice("latent_upscale_models", latent_upscaler_name, "MiniMax H3 learned latent upscaler")
 
     seed = _int_payload(payload, "seed", 69, 0, 0xFFFFFFFFFFFFFFFF)
     pass1_seed = _int_payload(payload, "pass1_seed", seed, 0, 0xFFFFFFFFFFFFFFFF)
     pass2_seed = _int_payload(payload, "pass2_seed", seed, 0, 0xFFFFFFFFFFFFFFFF)
-    aspect_ratio = str(payload.get("aspect_ratio") or "16:9 (Widescreen)").strip()
-    if aspect_ratio not in _MINIMAX_H3_ASPECT_RATIOS:
-        raise ValueError(f"Unsupported MiniMax H3 two-pass aspect ratio: {aspect_ratio}")
+    final_width = _int_payload(payload, "final_width", 1920, 64, 16384)
+    final_height = _int_payload(payload, "final_height", 1080, 64, 16384)
+    latent_scale = _float_payload(payload, "latent_upscale_scale", 2.0, 1.0, 8.0)
 
-    _set_api_input(prompt, "83", "text", video_prompt)
-    # Recent ComfyUI node schemas require these fields explicitly; older
-    # exported API workflows omitted them from the JSON.
-    _set_api_input(prompt, "83", "output_mode", "string")
-    _set_api_input(prompt, "92", "expression", "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17")
-    _set_api_input(prompt, "84", "value", float(timing.workflow_duration_input_seconds))
-    _set_api_input(prompt, "9001", "audio_file", prepared_audio["audio_path"])
-    _set_api_input(prompt, "9001", "seek_seconds", 0)
-    _set_api_input(prompt, "9001", "duration", 0)
-    _set_api_input(prompt, "9000", "image_paths", json.dumps(image_paths, ensure_ascii=False))
-    _set_api_input(prompt, "9000", "video_references", json.dumps(video_references, ensure_ascii=False))
+    _set_api_input(prompt, "138", "value", video_prompt)
+    _set_api_input(prompt, "132", "value", float(timing.workflow_duration_input_seconds))
+    _set_api_input(prompt, "171", "audio_file", prepared_audio["audio_path"])
+    _set_api_input(prompt, "171", "seek_seconds", 0)
+    _set_api_input(prompt, "171", "duration", 0)
+    _set_api_input(prompt, "180", "image_paths", json.dumps(image_paths, ensure_ascii=False))
+    _set_api_input(prompt, "180", "video_references", json.dumps(video_references, ensure_ascii=False))
     ref_image_size = str(payload.get("ref_image_size") or "max").strip().lower()
-    if ref_image_size not in {"match", "max"}:
-        ref_image_size = "max"
-    _set_api_input(prompt, "108", "ref_image_size", ref_image_size)
-    _set_api_input(prompt, "105", "aspect_ratio", aspect_ratio)
-    _set_api_input(prompt, "105", "megapixels", _float_payload(payload, "pass1_megapixels", 0.5, 0.1, 16.0))
-    _set_api_input(prompt, "297", "aspect_ratio", str(payload.get("pass2_aspect_ratio") or aspect_ratio))
-    _set_api_input(prompt, "297", "megapixels", _float_payload(payload, "pass2_megapixels", 1.5, 0.1, 16.0))
-    _set_api_input(prompt, "248", "steps", _int_payload(payload, "pass1_steps", 15, 1, 1000))
-    _set_api_input(prompt, "290", "steps", _int_payload(payload, "pass2_steps", 4, 1, 1000))
-    _set_api_input(prompt, "249", "sampler_name", str(payload.get("pass1_sampler_name") or payload.get("sampler_name") or "euler").strip() or "euler")
-    _set_api_input(prompt, "289", "sampler_name", str(payload.get("pass2_sampler_name") or payload.get("sampler_name") or "euler").strip() or "euler")
-    _set_api_input(prompt, "248", "scheduler", str(payload.get("pass1_scheduler") or payload.get("scheduler") or "beta").strip() or "beta")
-    _set_api_input(prompt, "290", "scheduler", str(payload.get("pass2_scheduler") or payload.get("scheduler") or "beta").strip() or "beta")
-    _set_api_input(prompt, "248", "denoise", _float_payload(payload, "pass1_denoise", 1.0, 0.0, 1.0))
-    _set_api_input(prompt, "290", "denoise", _float_payload(payload, "pass2_denoise", 0.2, 0.0, 1.0))
-    _set_api_input(prompt, "243", "noise_seed", pass1_seed)
-    _set_api_input(prompt, "300", "noise_seed", pass2_seed)
-    _set_api_input(prompt, "9", "unet_name", diffusion_model_name)
-    _set_api_input(prompt, "4", "clip_name", clip_name)
-    _set_api_input(prompt, "5", "vae_name", video_vae_name)
-    _set_api_input(prompt, "6", "vae_name", audio_vae_name)
-    lightx_lora_name = _clean_lora_name(payload.get("two_pass_lora_name", "minimax_h3_turbo_v4_step600_ema.safetensors"))
-    if lightx_lora_name == _NONE_LORA:
-        raise ValueError("A valid Multi-Pass LightX2V LoRA must be selected.")
-    _require_model_choice("loras", lightx_lora_name, "MiniMax H3 two-pass LoRA")
-    _set_api_input(prompt, "187", "model", ["125", 0])
-    _set_api_input(prompt, "187", "lora_name", lightx_lora_name)
-    _set_api_input(prompt, "187", "strength_model", _float_payload(payload, "two_pass_lora_strength", 0.7, -10.0, 10.0))
-    for node_id in ("248", "246", "290", "294"):
-        _set_api_input(prompt, node_id, "model", ["187", 0])
-    if _bool_payload(payload, "use_loras", False):
-        _patch_minimax_h3_loras(prompt, payload)
-        pass1_model = prompt.get("248", {}).get("inputs", {}).get("model")
-        if isinstance(pass1_model, list) and len(pass1_model) == 2:
-            _set_api_input(prompt, "290", "model", list(pass1_model))
-            _set_api_input(prompt, "294", "model", list(pass1_model))
+    _set_api_input(prompt, "136", "ref_image_size", ref_image_size if ref_image_size in {"match", "max"} else "max")
+
+    _set_api_input(prompt, "115", "value", final_width)
+    _set_api_input(prompt, "184", "value", final_height)
+    _set_api_input(prompt, "185", "value", latent_scale)
+    _set_api_input(prompt, "188", "model_name", latent_upscaler_name)
+    _set_api_input(prompt, "188", "device", str(payload.get("latent_upscaler_device") or "cuda"))
+    _set_api_input(prompt, "188", "precision", str(payload.get("latent_upscaler_precision") or "bf16"))
+
+    _set_api_input(prompt, "129", "noise_seed", pass1_seed)
+    _set_api_input(prompt, "211", "noise_seed", pass2_seed)
+    _set_api_input(prompt, "123", "sampler_name", str(payload.get("pass1_sampler_name") or "res_multistep").strip() or "res_multistep")
+    _set_api_input(prompt, "210", "sampler_name", str(payload.get("pass2_sampler_name") or "res_multistep").strip() or "res_multistep")
+    _set_api_input(prompt, "124", "scheduler", str(payload.get("pass1_scheduler") or "simple").strip() or "simple")
+    _set_api_input(prompt, "124", "steps", _int_payload(payload, "pass1_steps", 20, 1, 1000))
+    _set_api_input(prompt, "124", "denoise", _float_payload(payload, "pass1_denoise", 1.0, 0.0, 1.0))
+    _set_api_input(prompt, "192", "scheduler", str(payload.get("pass2_scheduler") or "simple").strip() or "simple")
+    _set_api_input(prompt, "190", "value", _int_payload(payload, "pass2_steps", 5, 1, 1000))
+    _set_api_input(prompt, "191", "value", _float_payload(payload, "pass2_denoise", 0.2, 0.0, 1.0))
+
+    _set_api_input(prompt, "141", "model_name", diffusion_model_name)
+    _set_api_input(prompt, "141", "sage_attention", str(payload.get("sage_attention") or "auto"))
+    _set_api_input(prompt, "141", "enable_fp16_accumulation", _bool_payload(payload, "enable_fp16_accumulation", True))
+    _set_api_input(prompt, "128", "clip_name", clip_name)
+    _set_api_input(prompt, "119", "vae_name", video_vae_name)
+    _set_api_input(prompt, "120", "vae_name", audio_vae_name)
+
+    turbo_lora_name = _clean_lora_name(payload.get("two_pass_lora_name", "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors"))
+    if turbo_lora_name == _NONE_LORA:
+        raise ValueError("Select the MiniMax H3 two-pass Turbo LoRA; it is required by this fast workflow.")
+    _require_model_choice("loras", turbo_lora_name, "MiniMax H3 two-pass Turbo LoRA")
+    _set_api_input(prompt, "207", "lora_name", turbo_lora_name)
+    _set_api_input(prompt, "207", "strength_model", _float_payload(payload, "two_pass_lora_strength", 1.0, -10.0, 10.0))
+
+    use_te_speed = _bool_payload(payload, "two_pass_use_te_speed", True)
+    # Bypassing is done by routing the LoRA loader directly from the diffusion
+    # model, so the TE-Speed node is not part of the executed dependency graph.
+    _set_api_input(prompt, "207", "model", ["208", 0] if use_te_speed else ["141", 0])
+    _set_api_input(prompt, "208", "model", ["141", 0])
+    _set_api_input(prompt, "208", "processing_control_value", _float_payload(payload, "te_speed_processing_control", 0.07, 0.0, 1.0))
+    _set_api_input(prompt, "208", "processing_percent_1", _float_payload(payload, "te_speed_start_percent", 0.1, 0.0, 1.0))
+    _set_api_input(prompt, "208", "processing_percent_2", _float_payload(payload, "te_speed_end_percent", 0.9, 0.0, 1.0))
+    _set_api_input(prompt, "208", "mcs", _int_payload(payload, "te_speed_mcs", 2, 1, 64))
+    _set_api_input(prompt, "208", "cache_depth", _float_payload(payload, "te_speed_cache_depth", 0.75, 0.0, 1.0))
+    _set_api_input(prompt, "208", "device", str(payload.get("te_speed_device") or "auto"))
+    pass1_model = ["208", 0] if use_te_speed else ["141", 0]
+    pass2_model = ["207", 0]
+
+    extra_loras = []
+    if _bool_payload(payload, "use_loras", False) or _bool_payload(payload, "use_custom_loras", False):
+        raw_loras = payload.get("loras") if isinstance(payload.get("loras"), list) else []
+        lora_count = _int_payload(payload, "lora_count", len(raw_loras), 0, 4)
+        for item in raw_loras[:lora_count]:
+            if not isinstance(item, dict):
+                continue
+            name = _clean_lora_name(item.get("name") or item.get("lora_name") or item.get("loraName") or _NONE_LORA)
+            if not name or name == _NONE_LORA:
+                continue
+            if not _model_choice_exists("loras", name):
+                raise ValueError(
+                    f"MiniMax extra LoRA '{name}' was not found in ComfyUI/models/loras. "
+                    "Download it, refresh/restart ComfyUI, and select it in MiniMax Video Settings."
+                )
+            apply_to = str(item.get("apply_to") or item.get("applyTo") or "both").strip().lower()
+            if apply_to not in {"both", "pass1", "pass2"}:
+                apply_to = "both"
+            extra_loras.append({
+                "name": name,
+                "strength": _float_payload(item, "strength", 1.0, -10.0, 10.0),
+                "apply_to": apply_to,
+            })
+
+    next_lora_node_id = 9201
+    applied_extra_loras = []
+
+    def add_extra_lora(model_ref, item, target, index):
+        nonlocal next_lora_node_id
+        while str(next_lora_node_id) in prompt:
+            next_lora_node_id += 1
+        node_id = str(next_lora_node_id)
+        next_lora_node_id += 1
+        prompt[node_id] = {
+            "class_type": "LoraLoaderModelOnly",
+            "inputs": {
+                "model": list(model_ref),
+                "lora_name": item["name"],
+                "strength_model": item["strength"],
+            },
+            "_meta": {"title": f"Extra MiniMax LoRA {index} - {target}"},
+        }
+        applied_extra_loras.append({**item, "target": target, "node": node_id})
+        return [node_id, 0]
+
+    for index, item in enumerate(extra_loras, start=1):
+        if item["apply_to"] in {"both", "pass1"}:
+            pass1_model = add_extra_lora(pass1_model, item, "pass1", index)
+        if item["apply_to"] in {"both", "pass2"}:
+            pass2_model = add_extra_lora(pass2_model, item, "pass2", index)
+
+    for node_id in ("124", "126"):
+        _set_api_input(prompt, node_id, "model", list(pass1_model))
+    for node_id in ("192", "193"):
+        _set_api_input(prompt, node_id, "model", list(pass2_model))
+
+    _set_api_input(prompt, "183", "upscale_method", str(payload.get("final_resize_method") or "nvidia_rtx_vsr"))
+    _set_api_input(prompt, "142", "crf", _int_payload(payload, "output_crf", 19, 0, 100))
     output_folder, filename_prefix = _minimax_h3_output_location(project_folder, scene_number)
-    _set_api_input(prompt, "298", "filename_prefix", f"{filename_prefix}_stage1")
-    _set_api_input(prompt, "299", "filename_prefix", f"{filename_prefix}_stage2")
+    _set_api_input(prompt, "142", "filename_prefix", f"{filename_prefix}_stage2")
     return {
         "workflow_path": workflow_path,
         "output_folder": output_folder,
@@ -3251,7 +3318,15 @@ def _build_minimax_h3_2pass_api_prompt(payload):
         "prepared_audio": prepared_audio,
         "post_render_trim": {"start": timing.final_trim_start_seconds, "duration": timing.final_trim_duration_seconds},
         "reference_inputs": {"image_count": len(image_paths), "video_count": len(video_references)},
-        "two_pass": {"pass1_steps": prompt["248"]["inputs"]["steps"], "pass2_steps": prompt["290"]["inputs"]["steps"]},
+        "two_pass": {
+            "pass1_steps": prompt["124"]["inputs"]["steps"],
+            "pass2_steps": prompt["190"]["inputs"]["value"],
+            "final_width": final_width,
+            "final_height": final_height,
+            "latent_upscale_scale": latent_scale,
+            "te_speed_enabled": use_te_speed,
+            "extra_loras": applied_extra_loras,
+        },
     }
 
 
