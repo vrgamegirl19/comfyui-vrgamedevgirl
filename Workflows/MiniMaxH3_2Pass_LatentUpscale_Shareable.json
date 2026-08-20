@@ -1,0 +1,2057 @@
+{
+  "last_node_id": 209,
+  "last_link_id": 50,
+  "nodes": [
+    {
+      "id": 115,
+      "type": "PrimitiveInt",
+      "pos": [
+        850,
+        1100
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            30,
+            33
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrimitiveInt"
+      },
+      "title": "BUILDER INPUT - Desired Final Width",
+      "widgets_values": [
+        1920
+      ]
+    },
+    {
+      "id": 119,
+      "type": "VAELoader",
+      "pos": [
+        470,
+        500
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            2,
+            17
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAELoader"
+      },
+      "title": "Load Video VAE",
+      "widgets_values": [
+        "minimax_h3_video_vae_fp16.safetensors"
+      ]
+    },
+    {
+      "id": 120,
+      "type": "VAELoader",
+      "pos": [
+        860,
+        500
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            18,
+            25
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAELoader"
+      },
+      "title": "Load Audio VAE",
+      "widgets_values": [
+        "minimax_h3_audio_vae_fp32.safetensors"
+      ]
+    },
+    {
+      "id": 123,
+      "type": "KSamplerSelect",
+      "pos": [
+        2360,
+        1270
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "SAMPLER",
+          "type": "SAMPLER",
+          "links": [
+            6,
+            46
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KSamplerSelect"
+      },
+      "title": "KSamplerSelect",
+      "widgets_values": [
+        "res_multistep"
+      ]
+    },
+    {
+      "id": 128,
+      "type": "CLIPLoader",
+      "pos": [
+        80,
+        500
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            16
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPLoader"
+      },
+      "title": "Load CLIP",
+      "widgets_values": [
+        "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        "minimax",
+        "default"
+      ]
+    },
+    {
+      "id": 129,
+      "type": "RandomNoise",
+      "pos": [
+        2360,
+        1100
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "NOISE",
+          "type": "NOISE",
+          "links": [
+            4,
+            44
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RandomNoise"
+      },
+      "title": "BUILDER INPUT - Seed",
+      "widgets_values": [
+        910588682130454
+      ]
+    },
+    {
+      "id": 132,
+      "type": "PrimitiveFloat",
+      "pos": [
+        850,
+        1550
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "FLOAT",
+          "type": "FLOAT",
+          "links": [
+            11
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrimitiveFloat"
+      },
+      "title": "BUILDER INPUT - Duration",
+      "widgets_values": [
+        8
+      ]
+    },
+    {
+      "id": 138,
+      "type": "PrimitiveStringMultiline",
+      "pos": [
+        430,
+        1100
+      ],
+      "size": [
+        380,
+        650
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            12
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrimitiveStringMultiline"
+      },
+      "title": "BUILDER INPUT - Prompt",
+      "widgets_values": [
+        "Generate an 8-second 16:9 photorealistic cinematic video.\n\nImage 1: character appearance and clothing reference. Preserve the woman’s exact facial features, long wavy black hair, smoky dark eye makeup, nose ring, layered necklaces, black leather jacket, black lace-up crop top, ripped black jeans with chains, and black platform boots throughout the entire video.\n\n[0s–2.5s]\nExtreme close-up of the woman’s face as she stands motionless in the middle of a modern city street during daytime. Frame from forehead to just below the lips. She looks directly into the camera with a calm, intense expression. Natural daylight reflects softly in her eyes; a light breeze moves a few strands of her black hair. The distant city background is heavily blurred with moving traffic and pedestrians far behind her. Camera makes a very subtle slow push toward her face.\n\n[2.5s–5s]\nHard cut to an upper-body medium shot, framed from her head to just below her waist. She remains in exactly the same position in the street, facing camera. Her black leather jacket, lace-up crop top, layered necklaces, and chains are clearly visible. She slightly shifts her shoulders and tilts her chin upward while maintaining the same confident expression. Cars pass in the distant background without approaching her. Camera stays mostly locked with slight natural cinematic movement.\n\n[5s–8s]\nHard cut to a full-body shot showing her from head to boots, centered in the middle of the city street. Preserve the same direction, lighting, street position, clothing, hairstyle, and accessories. Her ripped black jeans, hanging chains, and platform boots are fully visible. She stands with her feet slightly apart and arms relaxed at her sides. The camera slowly pulls backward, revealing more buildings, parked cars, traffic signals, and the broad daytime street around her. End with her still centered and staring directly into the lens.\n\nAudio: Native city ambience throughout: distant engines, tires on pavement, occasional faint horn, pedestrian movement, and a soft daytime urban breeze. A low, restrained cinematic bass pulse begins at 0s. Add subtle hard-cut impact sounds exactly at 2.5s and 5s. No dialogue. Music builds slightly during the final pullback, then ends cleanly at 8s.\n\nContinuity: The woman must remain the same person from Image 1 in every shot. Preserve her exact face, skin tone, long wavy black hairstyle, makeup, nose ring, necklaces, leather jacket, black lace-up crop top, ripped black jeans, chains, body proportions, and platform boots. She remains in the same physical spot and orientation in the street across all three cuts; only the camera framing changes."
+      ]
+    },
+    {
+      "id": 141,
+      "type": "DiffusionModelLoaderKJ",
+      "pos": [
+        80,
+        130
+      ],
+      "size": [
+        350,
+        290
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "extra_state_dict",
+          "type": "STRING",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            50
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "DiffusionModelLoaderKJ"
+      },
+      "title": "Diffusion Model Loader KJ",
+      "widgets_values": [
+        "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+        "default",
+        "default",
+        false,
+        "auto",
+        true
+      ]
+    },
+    {
+      "id": 171,
+      "type": "VHS_LoadAudio",
+      "pos": [
+        80,
+        1430
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "links": [
+            19,
+            24
+          ]
+        },
+        {
+          "name": "duration",
+          "type": "FLOAT",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VHS_LoadAudio"
+      },
+      "title": "BUILDER INPUT - Custom Source Audio Path",
+      "widgets_values": [
+        "Z:\\TOSHARE\\ComfyUI_windows_portable\\ComfyUI\\input\\Circle of Flames 88888.mp3",
+        0,
+        0
+      ]
+    },
+    {
+      "id": 184,
+      "type": "PrimitiveInt",
+      "pos": [
+        850,
+        1250
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            31,
+            35
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrimitiveInt"
+      },
+      "title": "BUILDER INPUT - Desired Final Height",
+      "widgets_values": [
+        1080
+      ]
+    },
+    {
+      "id": 185,
+      "type": "PrimitiveFloat",
+      "pos": [
+        850,
+        1400
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "FLOAT",
+          "type": "FLOAT",
+          "links": [
+            27,
+            34,
+            36
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrimitiveFloat"
+      },
+      "title": "BUILDER INPUT - Learned Latent Upscale Scale",
+      "widgets_values": [
+        2
+      ]
+    },
+    {
+      "id": 188,
+      "type": "VRGDG_MiniMaxH3LatentUpscaleModelLoader",
+      "pos": [
+        470,
+        700
+      ],
+      "size": [
+        350,
+        230
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "upscale_model",
+          "type": "VRGDG_MINIMAX_H3_LATENT_UPSCALE_MODEL",
+          "links": [
+            29
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VRGDG_MiniMaxH3LatentUpscaleModelLoader"
+      },
+      "title": "BUILDER INPUT - MiniMax H3 Latent Upscale Model",
+      "widgets_values": [
+        "minimax_h3_latent_upscaler_3d_bf16.safetensors",
+        "cuda",
+        "bf16"
+      ]
+    },
+    {
+      "id": 190,
+      "type": "PrimitiveInt",
+      "pos": [
+        4320,
+        1100
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            39
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrimitiveInt"
+      },
+      "title": "BUILDER INPUT - Refinement Schedule Steps",
+      "widgets_values": [
+        5
+      ]
+    },
+    {
+      "id": 191,
+      "type": "PrimitiveFloat",
+      "pos": [
+        4320,
+        1250
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "FLOAT",
+          "type": "FLOAT",
+          "links": [
+            40
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrimitiveFloat"
+      },
+      "title": "BUILDER INPUT - Refinement Denoise",
+      "widgets_values": [
+        0.2
+      ]
+    },
+    {
+      "id": 209,
+      "type": "LoadImage",
+      "pos": [
+        80,
+        1100
+      ],
+      "size": [
+        320,
+        300
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            20
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "title": "REFERENCE IMAGE 1 - Select Your Image",
+      "widgets_values": [
+        "example.png",
+        "image"
+      ]
+    },
+    {
+      "id": 131,
+      "type": "ComfyMathExpression",
+      "pos": [
+        850,
+        1700
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "values.a",
+          "type": "FLOAT,INT,BOOLEAN",
+          "link": 11
+        }
+      ],
+      "outputs": [
+        {
+          "name": "FLOAT",
+          "type": "FLOAT",
+          "links": []
+        },
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            15
+          ]
+        },
+        {
+          "name": "BOOL",
+          "type": "BOOLEAN",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ComfyMathExpression"
+      },
+      "title": "H3 Duration To Valid Frame Count",
+      "widgets_values": [
+        "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17"
+      ]
+    },
+    {
+      "id": 208,
+      "type": "TESpeedMiniMaxH3",
+      "pos": [
+        470,
+        130
+      ],
+      "size": [
+        350,
+        330
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 50
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            3,
+            9,
+            42,
+            49
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TESpeedMiniMaxH3"
+      },
+      "title": "TE-Speed-MiniMaxH3 (OSS)",
+      "widgets_values": [
+        0.07,
+        0.1,
+        0.9,
+        2,
+        "auto",
+        0.75
+      ]
+    },
+    {
+      "id": 186,
+      "type": "ComfyMathExpression",
+      "pos": [
+        1170,
+        1100
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 18,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "values.a",
+          "type": "FLOAT,INT,BOOLEAN",
+          "link": 33
+        },
+        {
+          "name": "values.b",
+          "type": "FLOAT,INT,BOOLEAN",
+          "link": 34
+        }
+      ],
+      "outputs": [
+        {
+          "name": "FLOAT",
+          "type": "FLOAT",
+          "links": []
+        },
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            13
+          ]
+        },
+        {
+          "name": "BOOL",
+          "type": "BOOLEAN",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ComfyMathExpression"
+      },
+      "title": "AUTO - Aligned First Pass Width",
+      "widgets_values": [
+        "max(32, ceil((a / b) / 32) * 32)"
+      ]
+    },
+    {
+      "id": 187,
+      "type": "ComfyMathExpression",
+      "pos": [
+        1170,
+        1350
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 19,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "values.a",
+          "type": "FLOAT,INT,BOOLEAN",
+          "link": 35
+        },
+        {
+          "name": "values.b",
+          "type": "FLOAT,INT,BOOLEAN",
+          "link": 36
+        }
+      ],
+      "outputs": [
+        {
+          "name": "FLOAT",
+          "type": "FLOAT",
+          "links": []
+        },
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            14
+          ]
+        },
+        {
+          "name": "BOOL",
+          "type": "BOOLEAN",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ComfyMathExpression"
+      },
+      "title": "AUTO - Aligned First Pass Height",
+      "widgets_values": [
+        "max(32, ceil((a / b) / 32) * 32)"
+      ]
+    },
+    {
+      "id": 124,
+      "type": "BasicScheduler",
+      "pos": [
+        2360,
+        1440
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 20,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "SIGMAS",
+          "type": "SIGMAS",
+          "links": [
+            7
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "BasicScheduler"
+      },
+      "title": "BasicScheduler",
+      "widgets_values": [
+        "simple",
+        20,
+        1
+      ]
+    },
+    {
+      "id": 207,
+      "type": "LoraLoaderModelOnly",
+      "pos": [
+        860,
+        130
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 21,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 49
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            41
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoraLoaderModelOnly"
+      },
+      "title": "Load LoRA",
+      "widgets_values": [
+        "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+        1
+      ]
+    },
+    {
+      "id": 136,
+      "type": "MiniMaxH3ReferenceToVideo",
+      "pos": [
+        1550,
+        1100
+      ],
+      "size": [
+        360,
+        590
+      ],
+      "flags": {},
+      "order": 22,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 16
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 17
+        },
+        {
+          "name": "audio_vae",
+          "type": "VAE",
+          "link": 18
+        },
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": 12,
+          "widget": {
+            "name": "prompt"
+          }
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "link": 13,
+          "widget": {
+            "name": "width"
+          }
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "link": 14,
+          "widget": {
+            "name": "height"
+          }
+        },
+        {
+          "name": "length",
+          "type": "INT",
+          "link": 15,
+          "widget": {
+            "name": "length"
+          }
+        },
+        {
+          "name": "ref_audios.ref_audio_0",
+          "type": "AUDIO",
+          "link": 19
+        },
+        {
+          "name": "ref_images.ref_image_0",
+          "type": "IMAGE",
+          "link": 20
+        }
+      ],
+      "outputs": [
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "links": [
+            10,
+            43
+          ]
+        },
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            23
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MiniMaxH3ReferenceToVideo"
+      },
+      "title": "MiniMax H3 Reference to Video",
+      "widgets_values": [
+        "max"
+      ]
+    },
+    {
+      "id": 192,
+      "type": "BasicScheduler",
+      "pos": [
+        4320,
+        1430
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 23,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 41
+        },
+        {
+          "name": "steps",
+          "type": "INT",
+          "link": 39,
+          "widget": {
+            "name": "steps"
+          }
+        },
+        {
+          "name": "denoise",
+          "type": "FLOAT",
+          "link": 40,
+          "widget": {
+            "name": "denoise"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "SIGMAS",
+          "type": "SIGMAS",
+          "links": [
+            47
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "BasicScheduler"
+      },
+      "title": "PASS 2 - Adjustable Refinement Scheduler",
+      "widgets_values": [
+        "simple"
+      ]
+    },
+    {
+      "id": 126,
+      "type": "BasicGuider",
+      "pos": [
+        2740,
+        1100
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 24,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 9
+        },
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "link": 10
+        }
+      ],
+      "outputs": [
+        {
+          "name": "GUIDER",
+          "type": "GUIDER",
+          "links": [
+            5
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "BasicGuider"
+      },
+      "title": "Basic Guider"
+    },
+    {
+      "id": 172,
+      "type": "VRGDG_MiniMaxH3AudioDrive",
+      "pos": [
+        1950,
+        1100
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 25,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "av_latent",
+          "type": "LATENT",
+          "link": 23
+        },
+        {
+          "name": "source_audio",
+          "type": "AUDIO",
+          "link": 24
+        },
+        {
+          "name": "audio_vae",
+          "type": "VAE",
+          "link": 25
+        }
+      ],
+      "outputs": [
+        {
+          "name": "audio_driven_av_latent",
+          "type": "LATENT",
+          "links": [
+            8
+          ]
+        },
+        {
+          "name": "original_audio",
+          "type": "AUDIO",
+          "links": [
+            22
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VRGDG_MiniMaxH3AudioDrive"
+      },
+      "title": "LOCK SOURCE AUDIO - GENERATE VIDEO ONLY"
+    },
+    {
+      "id": 193,
+      "type": "BasicGuider",
+      "pos": [
+        4710,
+        1100
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 26,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 42
+        },
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "link": 43
+        }
+      ],
+      "outputs": [
+        {
+          "name": "GUIDER",
+          "type": "GUIDER",
+          "links": [
+            45
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "BasicGuider"
+      },
+      "title": "PASS 2 - Basic Guider"
+    },
+    {
+      "id": 125,
+      "type": "SamplerCustomAdvanced",
+      "pos": [
+        3110,
+        1100
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 27,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "noise",
+          "type": "NOISE",
+          "link": 4
+        },
+        {
+          "name": "guider",
+          "type": "GUIDER",
+          "link": 5
+        },
+        {
+          "name": "sampler",
+          "type": "SAMPLER",
+          "link": 6
+        },
+        {
+          "name": "sigmas",
+          "type": "SIGMAS",
+          "link": 7
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 8
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "LATENT",
+          "links": [
+            26,
+            37
+          ]
+        },
+        {
+          "name": "denoised_output",
+          "type": "LATENT",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SamplerCustomAdvanced"
+      },
+      "title": "Low Resolution Generation"
+    },
+    {
+      "id": 181,
+      "type": "MiniMaxH3AVLatentSeparateT8",
+      "pos": [
+        3110,
+        1420
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 28,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "av_latent",
+          "type": "LATENT",
+          "link": 26
+        }
+      ],
+      "outputs": [
+        {
+          "name": "video_latent",
+          "type": "LATENT",
+          "links": [
+            28
+          ]
+        },
+        {
+          "name": "audio_latent",
+          "type": "LATENT",
+          "links": []
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MiniMaxH3AVLatentSeparateT8"
+      },
+      "title": "PASS 1 OUTPUT - Separate Video and Audio Latents"
+    },
+    {
+      "id": 182,
+      "type": "VRGDG_MiniMaxH3LearnedLatentUpscale",
+      "pos": [
+        3550,
+        1100
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 29,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "latent",
+          "type": "LATENT",
+          "link": 28
+        },
+        {
+          "name": "upscale_model",
+          "type": "VRGDG_MINIMAX_H3_LATENT_UPSCALE_MODEL",
+          "link": 29
+        },
+        {
+          "name": "scale",
+          "type": "FLOAT",
+          "link": 27,
+          "widget": {
+            "name": "scale"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            38
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VRGDG_MiniMaxH3LearnedLatentUpscale"
+      },
+      "title": "LEARNED UPSCALE - MiniMax H3"
+    },
+    {
+      "id": 189,
+      "type": "VRGDG_MiniMaxH3ReplaceUpscaledVideoLatent",
+      "pos": [
+        3920,
+        1100
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 30,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "original_av_latent",
+          "type": "LATENT",
+          "link": 37
+        },
+        {
+          "name": "upscaled_video_latent",
+          "type": "LATENT",
+          "link": 38
+        }
+      ],
+      "outputs": [
+        {
+          "name": "upscaled_av_latent",
+          "type": "LATENT",
+          "links": [
+            48
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VRGDG_MiniMaxH3ReplaceUpscaledVideoLatent"
+      },
+      "title": "PASS 2 - Restore Upscaled Video into Locked AV Latent"
+    },
+    {
+      "id": 194,
+      "type": "SamplerCustomAdvanced",
+      "pos": [
+        5090,
+        1100
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 31,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "noise",
+          "type": "NOISE",
+          "link": 44
+        },
+        {
+          "name": "guider",
+          "type": "GUIDER",
+          "link": 45
+        },
+        {
+          "name": "sampler",
+          "type": "SAMPLER",
+          "link": 46
+        },
+        {
+          "name": "sigmas",
+          "type": "SIGMAS",
+          "link": 47
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 48
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "LATENT",
+          "links": [
+            1
+          ]
+        },
+        {
+          "name": "denoised_output",
+          "type": "LATENT",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SamplerCustomAdvanced"
+      },
+      "title": "PASS 2 - High Resolution Refinement"
+    },
+    {
+      "id": 122,
+      "type": "VAEDecode",
+      "pos": [
+        5510,
+        1100
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 32,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 1
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            32
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      },
+      "title": "VAE Decode - Two-Pass Refined Upscaled Latent"
+    },
+    {
+      "id": 183,
+      "type": "ImageResizeKJv2",
+      "pos": [
+        5840,
+        1100
+      ],
+      "size": [
+        340,
+        330
+      ],
+      "flags": {},
+      "order": 33,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 32
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "link": 30,
+          "widget": {
+            "name": "width"
+          }
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "link": 31,
+          "widget": {
+            "name": "height"
+          }
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            21
+          ]
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageResizeKJv2"
+      },
+      "title": "Final Center Crop - Exact 1920x1080",
+      "widgets_values": [
+        "nvidia_rtx_vsr",
+        "crop",
+        "0, 0, 0",
+        "center",
+        0,
+        "cpu"
+      ]
+    },
+    {
+      "id": 142,
+      "type": "VHS_VideoCombine",
+      "pos": [
+        6220,
+        1100
+      ],
+      "size": [
+        420,
+        520
+      ],
+      "flags": {},
+      "order": 34,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 21
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": 22
+        },
+        {
+          "name": "meta_batch",
+          "type": "VHS_BatchManager",
+          "link": null
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Filenames",
+          "type": "VHS_FILENAMES",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VHS_VideoCombine"
+      },
+      "title": "BUILDER OUTPUT - Learned Latent Upscaled 1080p Video",
+      "widgets_values": [
+        24,
+        0,
+        "MiniMaxH3_Builder_LearnedLatentUpscale_1080p",
+        "video/h264-mp4",
+        "yuv420p",
+        19,
+        true,
+        false,
+        false,
+        true
+      ]
+    }
+  ],
+  "links": [
+    [
+      1,
+      194,
+      0,
+      122,
+      0,
+      "LATENT"
+    ],
+    [
+      2,
+      119,
+      0,
+      122,
+      1,
+      "VAE"
+    ],
+    [
+      3,
+      208,
+      0,
+      124,
+      0,
+      "MODEL"
+    ],
+    [
+      4,
+      129,
+      0,
+      125,
+      0,
+      "NOISE"
+    ],
+    [
+      5,
+      126,
+      0,
+      125,
+      1,
+      "GUIDER"
+    ],
+    [
+      6,
+      123,
+      0,
+      125,
+      2,
+      "SAMPLER"
+    ],
+    [
+      7,
+      124,
+      0,
+      125,
+      3,
+      "SIGMAS"
+    ],
+    [
+      8,
+      172,
+      0,
+      125,
+      4,
+      "LATENT"
+    ],
+    [
+      9,
+      208,
+      0,
+      126,
+      0,
+      "MODEL"
+    ],
+    [
+      10,
+      136,
+      0,
+      126,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      11,
+      132,
+      0,
+      131,
+      0,
+      "FLOAT"
+    ],
+    [
+      12,
+      138,
+      0,
+      136,
+      3,
+      "STRING"
+    ],
+    [
+      13,
+      186,
+      1,
+      136,
+      4,
+      "INT"
+    ],
+    [
+      14,
+      187,
+      1,
+      136,
+      5,
+      "INT"
+    ],
+    [
+      15,
+      131,
+      1,
+      136,
+      6,
+      "INT"
+    ],
+    [
+      16,
+      128,
+      0,
+      136,
+      0,
+      "CLIP"
+    ],
+    [
+      17,
+      119,
+      0,
+      136,
+      1,
+      "VAE"
+    ],
+    [
+      18,
+      120,
+      0,
+      136,
+      2,
+      "VAE"
+    ],
+    [
+      19,
+      171,
+      0,
+      136,
+      7,
+      "AUDIO"
+    ],
+    [
+      20,
+      209,
+      0,
+      136,
+      8,
+      "IMAGE"
+    ],
+    [
+      21,
+      183,
+      0,
+      142,
+      0,
+      "IMAGE"
+    ],
+    [
+      22,
+      172,
+      1,
+      142,
+      1,
+      "AUDIO"
+    ],
+    [
+      23,
+      136,
+      1,
+      172,
+      0,
+      "LATENT"
+    ],
+    [
+      24,
+      171,
+      0,
+      172,
+      1,
+      "AUDIO"
+    ],
+    [
+      25,
+      120,
+      0,
+      172,
+      2,
+      "VAE"
+    ],
+    [
+      26,
+      125,
+      0,
+      181,
+      0,
+      "LATENT"
+    ],
+    [
+      27,
+      185,
+      0,
+      182,
+      2,
+      "FLOAT"
+    ],
+    [
+      28,
+      181,
+      0,
+      182,
+      0,
+      "LATENT"
+    ],
+    [
+      29,
+      188,
+      0,
+      182,
+      1,
+      "VRGDG_MINIMAX_H3_LATENT_UPSCALE_MODEL"
+    ],
+    [
+      30,
+      115,
+      0,
+      183,
+      1,
+      "INT"
+    ],
+    [
+      31,
+      184,
+      0,
+      183,
+      2,
+      "INT"
+    ],
+    [
+      32,
+      122,
+      0,
+      183,
+      0,
+      "IMAGE"
+    ],
+    [
+      33,
+      115,
+      0,
+      186,
+      0,
+      "INT"
+    ],
+    [
+      34,
+      185,
+      0,
+      186,
+      1,
+      "FLOAT"
+    ],
+    [
+      35,
+      184,
+      0,
+      187,
+      0,
+      "INT"
+    ],
+    [
+      36,
+      185,
+      0,
+      187,
+      1,
+      "FLOAT"
+    ],
+    [
+      37,
+      125,
+      0,
+      189,
+      0,
+      "LATENT"
+    ],
+    [
+      38,
+      182,
+      0,
+      189,
+      1,
+      "LATENT"
+    ],
+    [
+      39,
+      190,
+      0,
+      192,
+      1,
+      "INT"
+    ],
+    [
+      40,
+      191,
+      0,
+      192,
+      2,
+      "FLOAT"
+    ],
+    [
+      41,
+      207,
+      0,
+      192,
+      0,
+      "MODEL"
+    ],
+    [
+      42,
+      208,
+      0,
+      193,
+      0,
+      "MODEL"
+    ],
+    [
+      43,
+      136,
+      0,
+      193,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      44,
+      129,
+      0,
+      194,
+      0,
+      "NOISE"
+    ],
+    [
+      45,
+      193,
+      0,
+      194,
+      1,
+      "GUIDER"
+    ],
+    [
+      46,
+      123,
+      0,
+      194,
+      2,
+      "SAMPLER"
+    ],
+    [
+      47,
+      192,
+      0,
+      194,
+      3,
+      "SIGMAS"
+    ],
+    [
+      48,
+      189,
+      0,
+      194,
+      4,
+      "LATENT"
+    ],
+    [
+      49,
+      208,
+      0,
+      207,
+      0,
+      "MODEL"
+    ],
+    [
+      50,
+      141,
+      0,
+      208,
+      0,
+      "MODEL"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "1 · MODELS",
+      "bounding": [
+        20,
+        60,
+        1270,
+        900
+      ],
+      "color": "#3f789e",
+      "font_size": 28,
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "2 · INPUTS & AUTOMATIC RESOLUTION",
+      "bounding": [
+        20,
+        1010,
+        1480,
+        970
+      ],
+      "color": "#8a6d3b",
+      "font_size": 28,
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "title": "3 · H3 CONDITIONING & AUDIO LOCK",
+      "bounding": [
+        1500,
+        1010,
+        820,
+        970
+      ],
+      "color": "#76528b",
+      "font_size": 28,
+      "flags": {}
+    },
+    {
+      "id": 4,
+      "title": "4 · PASS 1 — LOW RESOLUTION",
+      "bounding": [
+        2310,
+        1010,
+        1160,
+        970
+      ],
+      "color": "#486b50",
+      "font_size": 28,
+      "flags": {}
+    },
+    {
+      "id": 5,
+      "title": "5 · LEARNED LATENT UPSCALE",
+      "bounding": [
+        3480,
+        1010,
+        780,
+        970
+      ],
+      "color": "#9b5a45",
+      "font_size": 28,
+      "flags": {}
+    },
+    {
+      "id": 6,
+      "title": "6 · PASS 2 — HIGH-RES REFINEMENT",
+      "bounding": [
+        4260,
+        1010,
+        1200,
+        970
+      ],
+      "color": "#4f5f91",
+      "font_size": 28,
+      "flags": {}
+    },
+    {
+      "id": 7,
+      "title": "7 · FINAL DECODE & VIDEO OUTPUT",
+      "bounding": [
+        5470,
+        1010,
+        1220,
+        970
+      ],
+      "color": "#487f7b",
+      "font_size": 28,
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.72,
+      "offset": [
+        -10,
+        -40
+      ]
+    }
+  },
+  "version": 0.4
+}

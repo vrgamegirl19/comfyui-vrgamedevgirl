@@ -1,0 +1,22 @@
+{
+  "Balanced / Built-in Baseline": "Neutral reference using Music3's familiar starting values. Expect balanced adherence and variation without pushing any stage; use this before judging another preset.",
+  "Balanced Quality": "Adds rendering steps and slightly tightens planning. Tends to sound a little more finished and deliberate while remaining broadly balanced.",
+  "Raw Live Rock": "Firm planning and stronger diffusion guidance with moderate plan emphasis. Tends toward decisive, energetic, punchy results; may become slightly rougher than baseline.",
+  "Lyrics + Structure Focus": "Tighter AR choices and stronger text guidance. Tends to follow words and section labels more closely, with somewhat less melodic and arrangement freedom.",
+  "Creative Variations": "Looser guidance, high planning diversity and gentler rendering. Tends to explore different melodies, phrasing and arrangements; lyrics or structure may wander more.",
+  "Intimate + Dry": "Strong caption guidance, constrained planning and restrained diffusion. Tends toward focused, simpler and less explosive results that leave more room around the lead.",
+  "Aggressive + Dense": "Higher diversity, rendering guidance, steps and plan strength. Tends toward thicker, more forceful and busier results; carries greater harshness or artifact risk.",
+  "Conservative / Stable": "Constrained planning with lower diffusion and plan strength. Tends to produce steadier, cleaner and less adventurous results when stronger presets become unstable.",
+  "Strict Lyrics": "The strongest lyric guidance with the narrowest token choice. Tends to prioritize word and line adherence; may sound more rigid or less inventive.",
+  "Strong Song Structure": "High AR guidance, low diversity, extra steps and stronger plan emphasis. Tends to make verses, choruses and transitions more deliberate; may reduce spontaneity.",
+  "Creative Melody": "Low AR guidance with high token diversity and moderate rendering. Tends to produce more surprising melodies and vocal phrasing while still retaining a usable structure.",
+  "Maximum Arrangement Variation": "The loosest and most exploratory preset. Tends to create the largest changes in instrumentation, pacing and section treatment; has the highest drift risk.",
+  "Stable / Low Artifact": "Constrained planning, restrained diffusion and reduced plan strength with extra steps. Tends to favor smooth, reliable rendering over impact or novelty.",
+  "Strong Acoustic Plan": "Emphasizes a fairly focused hidden music plan during diffusion. Tends to sound decisive and tightly committed to the generated arrangement; excessive emphasis can sound harsh.",
+  "Loose Acoustic Plan": "High planning diversity with low text, diffusion and plan strength. Tends to feel freer, softer and less locked-in; melody, lyrics and sections may drift.",
+  "Detailed Rendering": "Keeps baseline composition behavior but raises diffusion steps substantially. Tends to refine texture and separation rather than rewrite the composition; slower to generate.",
+  "Long-Song Stability": "Tighter planning, stronger text guidance and more rendering steps. Intended to help longer songs remain coherent across sections; may repeat ideas or feel less spontaneous.",
+  "Fast Draft": "Uses only 20 rendering steps with otherwise moderate controls. Useful for quickly testing lyrics, captions and seeds; expect less refinement than a final render.",
+  "High-Energy / Dense": "Strong diffusion, more steps, elevated diversity and plan emphasis. Tends toward louder-feeling, layered and high-impact arrangements; increased congestion or artifact risk.",
+  "Soft / Restrained": "Focused AR planning with gentle diffusion and slightly reduced plan strength. Tends toward calmer dynamics, lighter density and less aggressive rendering."
+}

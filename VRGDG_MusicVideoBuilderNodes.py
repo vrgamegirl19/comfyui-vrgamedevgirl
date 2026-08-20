@@ -9552,7 +9552,20 @@ def _delete_builder_project(payload):
 
 
 def _builder_scene_video_thumbnail_path(video_path):
-    root, _ext = os.path.splitext(os.path.abspath(str(video_path or "")))
+    video_path = os.path.abspath(str(video_path or "").strip().strip('"'))
+    root, _ext = os.path.splitext(video_path)
+    video_name = os.path.basename(root)
+    current = os.path.dirname(video_path)
+    while current and current != os.path.dirname(current):
+        if os.path.basename(current).lower() in {"rendered_scene_videos", "rendered_scene_videos_backup"}:
+            project_folder = os.path.dirname(current)
+            return os.path.join(project_folder, "scene_video_thumbnails", f"{video_name}.jpg")
+        current = os.path.dirname(current)
+    return f"{root}.jpg"
+
+
+def _builder_legacy_scene_video_thumbnail_path(video_path):
+    root, _ext = os.path.splitext(os.path.abspath(str(video_path or "").strip().strip('"')))
     return f"{root}.jpg"
 
 
@@ -9657,6 +9670,7 @@ def _restore_scene_video(payload):
     os.makedirs(target_dir, exist_ok=True)
     target_path = os.path.join(target_dir, f"video_{scene_number:04d}-audio.mp4")
     thumbnail_path = _builder_scene_video_thumbnail_path(target_path)
+    legacy_thumbnail_path = _builder_legacy_scene_video_thumbnail_path(target_path)
     backup_path = ""
     backup_thumbnail_path = ""
     if os.path.isfile(target_path) and os.path.normcase(os.path.abspath(source_path)) != os.path.normcase(os.path.abspath(target_path)):
@@ -9671,11 +9685,12 @@ def _restore_scene_video(payload):
     copied = _copy_file_if_exists(source_path, target_path)
     if not copied:
         raise RuntimeError("Could not copy the selected video into the project.")
-    if os.path.isfile(thumbnail_path):
-        try:
-            os.remove(thumbnail_path)
-        except OSError:
-            pass
+    for stale_thumbnail in (thumbnail_path, legacy_thumbnail_path):
+        if os.path.isfile(stale_thumbnail):
+            try:
+                os.remove(stale_thumbnail)
+            except OSError:
+                pass
     created_thumbnail = _ensure_builder_scene_video_thumbnail(copied)
     return {
         "video_path": copied,
@@ -9732,6 +9747,12 @@ def _scan_builder_scene_videos(project_folder):
         if os.path.isfile(path):
             key = str(int(match.group(1)))
             videos[key] = path
+            legacy_thumbnail = _builder_legacy_scene_video_thumbnail_path(path)
+            if os.path.isfile(legacy_thumbnail):
+                try:
+                    os.remove(legacy_thumbnail)
+                except OSError:
+                    pass
             thumb = _ensure_builder_scene_video_thumbnail(path)
             if thumb:
                 video_thumbnails[key] = thumb

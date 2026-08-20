@@ -22689,23 +22689,29 @@ function openBuilder(node) {
       return mapped?.label || name || "selected subject";
     };
     const labels = subjects.map(subjectLabel);
+    const performerIds = new Set(selectedPerformerSubjectsForSegment(segment).map((subject) => String(subject?.id || "").trim()).filter(Boolean));
+    const performerLabels = subjects.filter((subject) => performerIds.has(String(subject?.id || "").trim())).map(subjectLabel);
+    const featuredLabels = performerLabels.length ? performerLabels : labels;
     const shotPlan = Array.isArray(options.shotPlan) ? options.shotPlan : [];
     const lines = [
       `SELECTED CAST COVERAGE — MANDATORY: ${labels.join(", ")} are all selected visible subjects for this scene. Every selected subject must appear visibly at least once. Performer/singer assignment controls only who sings or lip-syncs; it never removes the other selected subjects from the scene. Non-singing selected subjects continue appropriate visible band, acting, reaction, movement, or instrument performance without lip-syncing.`,
+      "VISIBLE BAND PERFORMANCE — MANDATORY: whenever a selected subject whose Reference Builder name or description identifies a musician, band role, or instrument is visible, show that subject actively and believably playing their assigned instrument. Preserve the exact instrument assignment; show purposeful hand, arm, and body interaction appropriate to that instrument, and do not leave the member merely standing, posing, holding the instrument idle, or reacting. A singer who is also assigned an instrument must continue playing it while singing unless the scene direction explicitly says otherwise. Do not invent an instrument for a subject whose reference does not assign one.",
     ];
     if (shotPlan.length <= 1) {
-      lines.push(`Single-shot cast rule: keep ${labels.join(", ")} visibly present together in the continuous shot. Do not isolate one member for the entire scene.`);
+      lines.push(performerLabels.length
+        ? `Single-shot performer rule: feature ${performerLabels.join(", ")} as the primary focus throughout the continuous shot. Keep the other selected subjects visible in appropriate supporting coverage when composition allows.`
+        : `Single-shot cast rule: keep ${labels.join(", ")} visibly present together in the continuous shot. Do not isolate one member for the entire scene.`);
       return lines.join("\n");
     }
     const assignments = shotPlan.map((shot, index) => {
-      const featured = labels[index % labels.length];
+      const featured = featuredLabels[index % featuredLabels.length];
       const remaining = labels.filter((label) => label !== featured);
       return `Shot ${shot?.number || index + 1}: feature ${featured}; ${remaining.length ? `${remaining.join(", ")} may remain visible in supporting coverage` : "keep the selected subject visible"}.`;
     });
-    lines.push(
-      "CUT ROTATION — MANDATORY: every cut must change the featured band member. Never keep the same member as the primary focus across consecutive shots while another selected member is available. Cycle through the selected cast; group or supporting coverage is allowed, but it does not replace the required featured-member rotation.",
-      ...assignments,
-    );
+    lines.push(performerLabels.length
+      ? "PERFORMER FOCUS — MANDATORY: an assigned performer/singer remains the featured primary subject on every lip-sync shot. If multiple performers are assigned, rotate only among those performers. Other selected cast members may appear in supporting, reaction, group, or instrument coverage, but must not replace an assigned performer as the featured subject."
+      : "CUT ROTATION — MANDATORY: every cut must change the featured band member. Never keep the same member as the primary focus across consecutive shots while another selected member is available. Cycle through the selected cast; group or supporting coverage is allowed, but it does not replace the required featured-member rotation.",
+      ...assignments);
     return lines.join("\n");
   }
 
@@ -22713,7 +22719,10 @@ function openBuilder(node) {
     if (String(i2vVideoSettingsForSegment(segment)?.ltx_version || "2.5") === "2.3") return "";
     const base = selectedCastCoverageContract(segment);
     if (!base) return "";
-    return `${base}\nLTX 2.5 cut rule: if the prompt contains multiple shots or cuts, each new shot must feature a different selected member from the preceding shot. If there is no cut, stage all selected members together in the continuous shot.`;
+    const hasAssignedPerformer = selectedPerformerSubjectsForSegment(segment).length > 0;
+    return `${base}\n${hasAssignedPerformer
+      ? "LTX 2.5 performer cut rule: if the prompt contains multiple shots or cuts, keep an assigned performer as the featured subject after every cut; rotate only between assigned performers when more than one is selected."
+      : "LTX 2.5 cut rule: if the prompt contains multiple shots or cuts, each new shot must feature a different selected member from the preceding shot. If there is no cut, stage all selected members together in the continuous shot."}`;
   }
 
   function segmentMappedLocationText(segment) {

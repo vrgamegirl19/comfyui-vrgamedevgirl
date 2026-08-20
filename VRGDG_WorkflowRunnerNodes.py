@@ -3974,7 +3974,20 @@ def _normalize_video_canvas(ffmpeg_path, source_path, target_path, width, height
 
 
 def _scene_video_thumbnail_path(video_path):
-    root, _ext = os.path.splitext(os.path.abspath(str(video_path or "")))
+    video_path = os.path.abspath(str(video_path or "").strip().strip('"'))
+    root, _ext = os.path.splitext(video_path)
+    video_name = os.path.basename(root)
+    current = os.path.dirname(video_path)
+    while current and current != os.path.dirname(current):
+        if os.path.basename(current).lower() in {"rendered_scene_videos", "rendered_scene_videos_backup"}:
+            project_folder = os.path.dirname(current)
+            return os.path.join(project_folder, "scene_video_thumbnails", f"{video_name}.jpg")
+        current = os.path.dirname(current)
+    return f"{root}.jpg"
+
+
+def _legacy_scene_video_thumbnail_path(video_path):
+    root, _ext = os.path.splitext(os.path.abspath(str(video_path or "").strip().strip('"')))
     return f"{root}.jpg"
 
 
@@ -4170,6 +4183,7 @@ def _collect_scene_video(payload):
 
     target_path = os.path.join(target_dir, f"video_{scene_number:04d}-audio.mp4")
     target_thumbnail_path = _scene_video_thumbnail_path(target_path)
+    legacy_target_thumbnail_path = _legacy_scene_video_thumbnail_path(target_path)
     backup_path = ""
     backup_thumbnail_path = ""
     if os.path.abspath(source_path) != os.path.abspath(target_path):
@@ -4193,6 +4207,11 @@ def _collect_scene_video(payload):
                         lambda: shutil.move(target_thumbnail_path, backup_thumbnail_path),
                         f"Backing up existing scene video thumbnail '{target_thumbnail_path}'",
                     )
+                if os.path.exists(legacy_target_thumbnail_path):
+                    _retry_file_op(
+                        lambda: os.remove(legacy_target_thumbnail_path),
+                        f"Removing legacy scene video thumbnail '{legacy_target_thumbnail_path}'",
+                    )
             else:
                 _retry_file_op(
                     lambda: os.remove(target_path),
@@ -4206,7 +4225,24 @@ def _collect_scene_video(payload):
                         )
                     except Exception as exc:
                         print(f"[VRGDG WorkflowRunner] Could not remove old scene video thumbnail '{target_thumbnail_path}': {exc}")
+                if os.path.exists(legacy_target_thumbnail_path):
+                    try:
+                        _retry_file_op(
+                            lambda: os.remove(legacy_target_thumbnail_path),
+                            f"Removing legacy scene video thumbnail '{legacy_target_thumbnail_path}'",
+                        )
+                    except Exception as exc:
+                        print(f"[VRGDG WorkflowRunner] Could not remove legacy scene video thumbnail '{legacy_target_thumbnail_path}': {exc}")
         _replace_file_with_retry(source_path, target_path)
+
+    if os.path.exists(legacy_target_thumbnail_path):
+        try:
+            _retry_file_op(
+                lambda: os.remove(legacy_target_thumbnail_path),
+                f"Removing legacy scene video thumbnail '{legacy_target_thumbnail_path}'",
+            )
+        except Exception as exc:
+            print(f"[VRGDG WorkflowRunner] Could not remove legacy scene video thumbnail '{legacy_target_thumbnail_path}': {exc}")
 
     thumbnail_path = _create_scene_video_thumbnail(target_path, target_thumbnail_path)
     removed_files = []
