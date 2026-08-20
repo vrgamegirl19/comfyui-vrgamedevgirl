@@ -4179,8 +4179,10 @@ function openStoryboardBuilder(payload = {}) {
   const footerActions = document.createElement("div");
   footerActions.style.cssText = "display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:flex-end;min-width:0;max-width:100%;";
   const save = makeButton("Save Storyboard");
-  const exportPrompts = makeButton("Export Prompt Files Only", "purple");
-  exportPrompts.title = "Write TXT and JSON prompt files only. This does not create or replace Video Builder timeline segments.";
+  const exportPrompts = makeButton(state.onPromptsExported ? "Save Prompts to Timeline + Files" : "Export Prompt Files Only", "purple");
+  exportPrompts.title = state.onPromptsExported
+    ? "Copy prompts into matching Video Builder timeline segments and write TXT and JSON prompt files. This does not create or replace timeline segments."
+    : "Write TXT and JSON prompt files only. This does not create or replace Video Builder timeline segments.";
   footerActions.append(save, exportPrompts);
   footer.append(stats, footerActions);
 
@@ -7015,7 +7017,17 @@ function openStoryboardBuilder(payload = {}) {
         project_folder: state.projectFolder,
         storyboard: slimStoryboardForRequest(state),
       });
-      createToast(`Exported ${data.scene_count || 0} scene prompt rows to files only. The Video Builder timeline was not created or replaced.\n\nText:\n${data.t2i_prompts_path}\n${data.i2v_prompts_path}\nJSON:\n${data.t2i_prompts_json_path || ""}\n${data.video_prompts_json_path || ""}`);
+      if (state.onPromptsExported) {
+        state.onPromptsExported({
+          ...storyboardDefaultsPayload(),
+          story_layer: normalizeStoryLayer(state.storyLayer),
+          scenes: state.scenes.map((scene, index) => slimSceneForRequest(scene, index)),
+        });
+      }
+      const destination = state.onPromptsExported
+        ? " and copied them into matching Video Builder timeline segments. Timeline segments were not created or replaced."
+        : " to files only. The Video Builder timeline was not created or replaced.";
+      createToast(`Exported ${data.scene_count || 0} scene prompt rows${destination}\n\nText:\n${data.t2i_prompts_path}\n${data.i2v_prompts_path}\nJSON:\n${data.t2i_prompts_json_path || ""}\n${data.video_prompts_json_path || ""}`);
     } catch (error) {
       createToast(String(error?.message || error), true);
     } finally {
