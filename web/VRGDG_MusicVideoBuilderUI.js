@@ -2187,7 +2187,25 @@ function showDeleteProjectConfirm(project) {
   });
 }
 
+function normalizeOwnServerTimeoutMinutes(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 6;
+  return Math.max(1, Math.min(6, Math.round(parsed)));
+}
+
+function ownServerPayloadTimeoutMs(payload) {
+  if (!payload || typeof payload !== "object") return 0;
+  const runner = String(payload.text_runner || payload.text_gemma_runner || "").trim().toLowerCase();
+  const timeoutSec = Number(payload.own_server_timeout);
+  const hasTimeout = Number.isFinite(timeoutSec) && timeoutSec > 0;
+  if (runner !== "own_server" && runner !== "own-server" && runner !== "custom_openai" && runner !== "openai_compatible" && !hasTimeout) return 0;
+  const seconds = hasTimeout ? timeoutSec : 360;
+  return Math.round(Math.max(15, Math.min(600, seconds)) * 1000) + 15000;
+}
+
 async function postJson(url, payload, timeoutMs = 120000) {
+  const ownTimeoutMs = ownServerPayloadTimeoutMs(payload);
+  if (ownTimeoutMs) timeoutMs = Math.max(timeoutMs, ownTimeoutMs);
   const controller = new AbortController();
   let timedOut = false;
   const timeout = setTimeout(() => {
@@ -3513,7 +3531,7 @@ function openBuilder(node) {
     generateFacePrompt: async ({ referenceImage }) => {
       const modelFile = referenceDescriptionVisionModel();
       const mmprojFile = referenceDescriptionMmproj();
-      if (!["lm_studio", "llm_api"].includes(state.textGemmaRunner) && (!modelFile || !mmprojFile)) {
+      if (!["lm_studio", "llm_api", "own_server"].includes(state.textGemmaRunner) && (!modelFile || !mmprojFile)) {
         throw new Error("Choose a vision model and Vision mmproj in LLM Runner first.");
       }
       const data = await postJson("/vrgdg/music_builder/describe_reference_image", {
@@ -6962,6 +6980,12 @@ function openBuilder(node) {
     llmApiKey: "",
     llmApiKeyProject: "",
     llmApiChoices: null,
+    ownServerUrl: "http://127.0.0.1:8000/v1",
+    ownServerModel: "",
+    ownServerApiKey: "",
+    ownServerApiKeyProject: "",
+    ownServerOutputTokenLimit: 8192,
+    ownServerTimeoutMinutes: 6,
     customModelsRoot: "",
     notificationSettings: defaultNotificationSettings(),
     videoType: "singing",
@@ -10191,6 +10215,12 @@ function openBuilder(node) {
       llm_api_model: state.llmApiModel || "",
       llm_api_key_project: state.llmApiKeyProject || "",
       llm_api_key: state.llmApiKey || "",
+      own_server_url: state.ownServerUrl || "http://127.0.0.1:8000/v1",
+      own_server_model: state.ownServerModel || "",
+      own_server_api_key: state.ownServerApiKey || "",
+      own_server_api_key_project: state.ownServerApiKeyProject || "",
+      own_server_output_token_limit: normalizeOutputTokenLimit(state.ownServerOutputTokenLimit),
+      own_server_timeout: normalizeOwnServerTimeoutMinutes(state.ownServerTimeoutMinutes) * 60,
     };
   }
 
@@ -10210,6 +10240,7 @@ function openBuilder(node) {
   function gemmaRunnerLabel(options = {}) {
     if (options.forceBuiltin) return options.vision ? "Built-in GGUF vision" : "Built-in GGUF";
     if (state.textGemmaRunner === "llm_api") return options.vision ? "API LLM vision" : "LLM API";
+    if (state.textGemmaRunner === "own_server") return options.vision ? "Own server vision" : "Own server";
     if (options.vision) return state.textGemmaRunner === "lm_studio" ? "LM Studio vision" : "Built-in GGUF vision";
     return state.textGemmaRunner === "lm_studio" ? "LM Studio" : "Gemma Local";
   }
@@ -10221,6 +10252,7 @@ function openBuilder(node) {
   function promptRunnerActionName() {
     if (state.textGemmaRunner === "lm_studio") return "LM Studio";
     if (state.textGemmaRunner === "llm_api") return "API LLM";
+    if (state.textGemmaRunner === "own_server") return "Own server";
     return "Gemma";
   }
 
@@ -10257,7 +10289,7 @@ function openBuilder(node) {
     }
     const modelFile = referenceDescriptionVisionModel();
     const mmprojFile = referenceDescriptionMmproj();
-    if (!["lm_studio", "llm_api"].includes(state.textGemmaRunner) && (!modelFile || !mmprojFile)) {
+    if (!["lm_studio", "llm_api", "own_server"].includes(state.textGemmaRunner) && (!modelFile || !mmprojFile)) {
       throw new Error("Choose a Gemma vision model and Vision mmproj first.");
     }
     const data = await postJson("/vrgdg/music_builder/describe_reference_image", {
@@ -11776,6 +11808,19 @@ function openBuilder(node) {
     if (defaults.llm_api_model || defaults.llmApiModel) {
       state.llmApiModel = defaults.llm_api_model || defaults.llmApiModel || state.llmApiModel || "";
     }
+    if (defaults.own_server_url || defaults.ownServerUrl) {
+      state.ownServerUrl = defaults.own_server_url || defaults.ownServerUrl || state.ownServerUrl || "http://127.0.0.1:8000/v1";
+    }
+    if (defaults.own_server_model || defaults.ownServerModel) {
+      state.ownServerModel = defaults.own_server_model || defaults.ownServerModel || state.ownServerModel || "";
+    }
+    if (Object.prototype.hasOwnProperty.call(defaults, "own_server_output_token_limit") || Object.prototype.hasOwnProperty.call(defaults, "ownServerOutputTokenLimit")) {
+      state.ownServerOutputTokenLimit = normalizeOutputTokenLimit(defaults.own_server_output_token_limit ?? defaults.ownServerOutputTokenLimit ?? state.ownServerOutputTokenLimit);
+    }
+    if (Object.prototype.hasOwnProperty.call(defaults, "own_server_timeout") || Object.prototype.hasOwnProperty.call(defaults, "ownServerTimeoutMinutes") || Object.prototype.hasOwnProperty.call(defaults, "own_server_timeout_minutes")) {
+      const rawTimeout = defaults.ownServerTimeoutMinutes ?? defaults.own_server_timeout_minutes ?? (Number(defaults.own_server_timeout) > 15 ? Number(defaults.own_server_timeout) / 60 : defaults.own_server_timeout);
+      state.ownServerTimeoutMinutes = normalizeOwnServerTimeoutMinutes(rawTimeout ?? state.ownServerTimeoutMinutes);
+    }
     state.imageModelMode = defaults.image_model_mode || defaults.imageModelMode || defaults.flux_klein_settings?.image_model_mode || defaults.fluxKleinSettings?.image_model_mode || state.imageModelMode || "zimage";
     state.videoType = normalizeVideoType(defaults.video_type || defaults.videoType || state.videoType);
     if (defaults.zimage_settings || defaults.zimageSettings) {
@@ -11992,6 +12037,11 @@ function openBuilder(node) {
       llmApiProvider: state.llmApiProvider,
       llmApiModel: state.llmApiModel,
       llmApiKeyProject: state.llmApiKeyProject,
+      ownServerUrl: state.ownServerUrl,
+      ownServerModel: state.ownServerModel,
+      ownServerApiKeyProject: state.ownServerApiKeyProject,
+      ownServerOutputTokenLimit: normalizeOutputTokenLimit(state.ownServerOutputTokenLimit),
+      ownServerTimeoutMinutes: normalizeOwnServerTimeoutMinutes(state.ownServerTimeoutMinutes),
       notificationSettings: normalizeNotificationSettings(state.notificationSettings),
       automaticMemoryCleanup: Boolean(state.automaticMemoryCleanup),
       waveformMode: state.waveformMode,
@@ -28524,7 +28574,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         return;
       }
       const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-      if (!modelFile && !["lm_studio", "llm_api"].includes(state.textGemmaRunner)) {
+      if (!modelFile && !["lm_studio", "llm_api", "own_server"].includes(state.textGemmaRunner)) {
         toast("Choose a non-vision Gemma model first.", true);
         return;
       }
@@ -28605,7 +28655,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         return;
       }
       const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-      if (!modelFile && !["lm_studio", "llm_api"].includes(state.textGemmaRunner)) {
+      if (!modelFile && !["lm_studio", "llm_api", "own_server"].includes(state.textGemmaRunner)) {
         toast("Choose a non-vision Gemma model first.", true);
         return;
       }
@@ -28692,7 +28742,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         return;
       }
       const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-      if (!modelFile && !["lm_studio", "llm_api"].includes(state.textGemmaRunner)) {
+      if (!modelFile && !["lm_studio", "llm_api", "own_server"].includes(state.textGemmaRunner)) {
         toast("Choose a non-vision Gemma model first.", true);
         return;
       }
@@ -28833,7 +28883,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         return;
       }
       const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-      if (!modelFile && !["lm_studio", "llm_api"].includes(state.textGemmaRunner)) {
+      if (!modelFile && !["lm_studio", "llm_api", "own_server"].includes(state.textGemmaRunner)) {
         toast("Choose a non-vision Gemma model first.", true);
         return;
       }
@@ -29087,7 +29137,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         return;
       }
       const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-      if (!modelFile && !["lm_studio", "llm_api"].includes(state.textGemmaRunner)) {
+      if (!modelFile && !["lm_studio", "llm_api", "own_server"].includes(state.textGemmaRunner)) {
         toast("Choose a non-vision Gemma model first.", true);
         return;
       }
@@ -29634,8 +29684,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         return;
       }
       const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-      if (!modelFile && !["lm_studio", "llm_api"].includes(state.textGemmaRunner)) {
-        const message = "Choose a non-vision Gemma model first, or use LM Studio/LLM API in LLM Runner.";
+      if (!modelFile && !["lm_studio", "llm_api", "own_server"].includes(state.textGemmaRunner)) {
+        const message = "Choose a non-vision Gemma model first, or use LM Studio, LLM API, or your own server in LLM Runner.";
         progress.set(`Error:\n${message}`, 100);
         toast(message, true);
         extractLocations.disabled = false;
@@ -29727,8 +29777,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         return;
       }
       const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-      if (!modelFile && !["lm_studio", "llm_api"].includes(state.textGemmaRunner)) {
-        const message = "Choose a non-vision Gemma model first, or use LM Studio/LLM API in LLM Runner.";
+      if (!modelFile && !["lm_studio", "llm_api", "own_server"].includes(state.textGemmaRunner)) {
+        const message = "Choose a non-vision Gemma model first, or use LM Studio, LLM API, or your own server in LLM Runner.";
         progress.set(`Error:\n${message}`, 100);
         toast(message, true);
         extractSubjects.disabled = false;
@@ -29842,8 +29892,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         return;
       }
       const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-      if (!modelFile && !["lm_studio", "llm_api"].includes(state.textGemmaRunner)) {
-        const message = "Choose a non-vision Gemma model first, or use LM Studio/LLM API in LLM Runner.";
+      if (!modelFile && !["lm_studio", "llm_api", "own_server"].includes(state.textGemmaRunner)) {
+        const message = "Choose a non-vision Gemma model first, or use LM Studio, LLM API, or your own server in LLM Runner.";
         progress.set(`Error:\n${message}`, 100);
         toast(message, true);
         autoMapLocations.disabled = false;
@@ -32792,7 +32842,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         const lyricScenes = sceneInputs.filter((scene) => String(scene.lyric || "").trim());
         if (!planningScenes.length && !lyricScenes.length) throw new Error("Gemma Extract needs scene prompts, notes, lyrics, or timeline notes first.");
         const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-        if (!modelFile && !["lm_studio", "llm_api"].includes(state.textGemmaRunner)) throw new Error("Choose a non-vision Gemma model first, or use LM Studio/LLM API in LLM Runner.");
+        if (!modelFile && !["lm_studio", "llm_api", "own_server"].includes(state.textGemmaRunner)) throw new Error("Choose a non-vision Gemma model first, or use LM Studio, LLM API, or your own server in LLM Runner.");
         const useLyricsScout = Boolean(!planningScenes.length && lyricScenes.length);
         const styleTheme = await locationExtractionStyleTheme(locationStyleTheme.value);
         progress.set(`${useLyricsScout ? "Asking Gemma location scout to create locations from lyrics" : "Asking Gemma for reusable location descriptions"}...\n${gemmaRunnerLine()}`, 15);
@@ -33535,7 +33585,7 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
         const lyricScenes = sceneInputs.filter((scene) => String(scene.lyric || "").trim());
         if (!scenes.length && !lyricScenes.length) throw new Error("Extract needs scene prompts, notes, lyrics, or timeline notes first.");
         const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-        if (!modelFile && !["lm_studio", "llm_api"].includes(state.textGemmaRunner)) throw new Error("Choose a non-vision Gemma model first, or use LM Studio/LLM API in LLM Runner.");
+        if (!modelFile && !["lm_studio", "llm_api", "own_server"].includes(state.textGemmaRunner)) throw new Error("Choose a non-vision Gemma model first, or use LM Studio, LLM API, or your own server in LLM Runner.");
         const useLyricsScout = Boolean((wizardLocationMode && lyricScenes.length) || (!scenes.length && lyricScenes.length));
         const styleTheme = await locationExtractionStyleTheme(locationStyleTheme.value);
         progress.set(`${useLyricsScout ? "Asking Gemma location scout to create locations from lyrics" : "Asking Gemma for reusable location descriptions"}...\n${gemmaRunnerLine()}`, 15);
@@ -33622,7 +33672,7 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
           .filter((scene) => String(scene.concept || scene.notes || "").trim());
         if (!scenes.length) throw new Error("Auto Map needs scene prompts, notes, lyrics, or timeline notes first.");
         const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-        if (!modelFile && !["lm_studio", "llm_api"].includes(state.textGemmaRunner)) throw new Error("Choose a non-vision Gemma model first, or use LM Studio/LLM API in LLM Runner.");
+        if (!modelFile && !["lm_studio", "llm_api", "own_server"].includes(state.textGemmaRunner)) throw new Error("Choose a non-vision Gemma model first, or use LM Studio, LLM API, or your own server in LLM Runner.");
         progress.set(`Sending scene text and lyric fallbacks to Gemma...\n${gemmaRunnerLine()}`, 15);
         const data = await postJson("/vrgdg/music_builder/flux_reference_location_map", {
           ...textGemmaRunnerPayload(),
@@ -35992,6 +36042,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       llm_api_provider: state.llmApiProvider || "openai",
       llm_api_model: state.llmApiModel || "",
       llm_api_key_project: state.llmApiKeyProject || "",
+      own_server_url: state.ownServerUrl || "http://127.0.0.1:8000/v1",
+      own_server_model: state.ownServerModel || "",
+      own_server_api_key_project: state.ownServerApiKeyProject || "",
+      own_server_output_token_limit: normalizeOutputTokenLimit(state.ownServerOutputTokenLimit),
+      own_server_timeout: normalizeOwnServerTimeoutMinutes(state.ownServerTimeoutMinutes) * 60,
       notification_settings: normalizeNotificationSettings(state.notificationSettings),
       automatic_memory_cleanup: Boolean(state.automaticMemoryCleanup),
       scene_render_wait_hours: normalizeSceneRenderWaitHours(state.sceneRenderWaitHours),
@@ -36246,6 +36301,16 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         state.llmApiModel = data.session.llm_api_model || state.llmApiModel || "";
         state.llmApiKeyProject = data.session.llm_api_key_project || "";
         if (state.llmApiKeyProject) state.llmApiKey = state.llmApiKeyProject;
+        state.ownServerUrl = data.session.own_server_url || state.ownServerUrl || "http://127.0.0.1:8000/v1";
+        state.ownServerModel = data.session.own_server_model || state.ownServerModel || "";
+        state.ownServerApiKeyProject = data.session.own_server_api_key_project || "";
+        if (state.ownServerApiKeyProject) state.ownServerApiKey = state.ownServerApiKeyProject;
+        state.ownServerOutputTokenLimit = normalizeOutputTokenLimit(data.session.own_server_output_token_limit ?? state.ownServerOutputTokenLimit);
+        state.ownServerTimeoutMinutes = normalizeOwnServerTimeoutMinutes(
+          data.session.own_server_timeout_minutes
+          ?? (Number(data.session.own_server_timeout) > 15 ? Number(data.session.own_server_timeout) / 60 : data.session.own_server_timeout)
+          ?? state.ownServerTimeoutMinutes,
+        );
         state.builderAgentMessages = Array.isArray(data.session.builder_agent_messages) ? data.session.builder_agent_messages : state.builderAgentMessages || [];
         state.builderAgentAutoApply = data.session.builder_agent_auto_apply ?? state.builderAgentAutoApply ?? false;
         state.builderAgentPurpose = data.session.builder_agent_purpose || state.builderAgentPurpose || "scene_work";
@@ -36582,6 +36647,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.llmApiModel = session.llm_api_model || state.llmApiModel || "";
       state.llmApiKeyProject = session.llm_api_key_project || "";
       if (state.llmApiKeyProject) state.llmApiKey = state.llmApiKeyProject;
+      state.ownServerUrl = session.own_server_url || state.ownServerUrl || "http://127.0.0.1:8000/v1";
+      state.ownServerModel = session.own_server_model || state.ownServerModel || "";
+      state.ownServerApiKeyProject = session.own_server_api_key_project || "";
+      // Never carry a session-only credential into a newly loaded project's
+      // arbitrary server URL. A project key is restored only when explicitly saved.
+      state.ownServerApiKey = state.ownServerApiKeyProject;
+      state.ownServerOutputTokenLimit = normalizeOutputTokenLimit(session.own_server_output_token_limit ?? state.ownServerOutputTokenLimit);
+      state.ownServerTimeoutMinutes = normalizeOwnServerTimeoutMinutes(
+        session.own_server_timeout_minutes
+        ?? (Number(session.own_server_timeout) > 15 ? Number(session.own_server_timeout) / 60 : session.own_server_timeout)
+        ?? state.ownServerTimeoutMinutes,
+      );
       state.builderAgentMessages = Array.isArray(session.builder_agent_messages) ? session.builder_agent_messages : [];
       state.builderAgentAutoApply = Boolean(session.builder_agent_auto_apply);
       state.builderAgentPurpose = session.builder_agent_purpose || "scene_work";
@@ -48994,7 +49071,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       toast("Create or load a project before exporting it.", true);
       return;
     }
-    if (String(state.llmApiKeyProject || "").trim()) {
+    if (String(state.llmApiKeyProject || state.ownServerApiKeyProject || "").trim()) {
       const proceed = window.confirm(
         "This project contains a saved LLM API key. Exporting a shareable ZIP may include that key in the project session. Continue exporting?",
       );
@@ -50710,7 +50787,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const sendMessage = async () => {
       const message = String(input.value || "").trim();
       if (!message) return;
-      if (!["lm_studio", "llm_api"].includes(state.textGemmaRunner) && !String(t2iTextGemmaModelSelect.value || "").trim()) {
+      if (!["lm_studio", "llm_api", "own_server"].includes(state.textGemmaRunner) && !String(t2iTextGemmaModelSelect.value || "").trim()) {
         toast("Choose a non-vision text Gemma model first, or use LM Studio/LLM API in LLM Runner.", true);
         return;
       }
@@ -50901,7 +50978,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       }
       const modelFile = String(gemmaModelSelect.value || fluxGemmaModelSelect.value || nbGemmaModelSelect.value || i2vGemmaModelSelect.value || "").trim();
       const mmprojFile = String(mmprojSelect.value || fluxMmprojSelect.value || nbMmprojSelect.value || i2vMmprojSelect.value || "").trim();
-      if (!["lm_studio", "llm_api"].includes(state.textGemmaRunner) && !modelFile) {
+      if (!["lm_studio", "llm_api", "own_server"].includes(state.textGemmaRunner) && !modelFile) {
         toast("Choose a vision Gemma model first.", true);
         return;
       }
@@ -51091,17 +51168,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const backdrop = document.createElement("div");
     backdrop.style.cssText = "position:fixed;inset:0;z-index:100020;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
     const box = document.createElement("div");
-    box.style.cssText = "width:min(700px,calc(100vw - 40px));border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+    box.style.cssText = "width:min(740px,calc(100vw - 40px));max-height:calc(100vh - 36px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
     const header = document.createElement("div");
     header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
     const heading = document.createElement("div");
-    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">LLM Runner</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Choose the LLM runner for prompt writing. Image-reference video prompts can use LM Studio vision or a vision-capable LLM API model.</div>`;
+    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">LLM Runner</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Choose the LLM runner for prompt writing. Image-reference video prompts can use LM Studio vision, a vision-capable LLM API model, or your own OpenAI-compatible server.</div>`;
     const close = makeButton("Close");
     header.append(heading, close);
-    const runner = makeSelect(["builtin", "lm_studio", "llm_api"], state.textGemmaRunner || "builtin");
+    const runner = makeSelect(["builtin", "lm_studio", "llm_api", "own_server"], state.textGemmaRunner || "builtin");
     runner.options[0].textContent = "Gemma Local";
     runner.options[1].textContent = "LM Studio";
     runner.options[2].textContent = "LLM API";
+    runner.options[3].textContent = "Use my own server";
     const gemmaContextLimit = makeInput(String(normalizeGemmaContextLimit(state.gemmaContextLimit)), "number");
     gemmaContextLimit.min = "512";
     gemmaContextLimit.max = "262144";
@@ -51273,6 +51351,87 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       saveProjectApiKey,
       apiStatus,
     );
+    const ownUrl = makeInput(state.ownServerUrl || "http://127.0.0.1:8000/v1");
+    const ownModel = makeInput(state.ownServerModel || "");
+    const ownModelSelect = makeSelect([""], "");
+    const loadOwnModels = makeButton("Load Server Models");
+    const ownModelPickerRow = document.createElement("div");
+    ownModelPickerRow.style.cssText = "display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end;";
+    const ownApiKey = makeInput(state.ownServerApiKey || "", "password");
+    const ownOutputTokenLimit = makeInput(String(normalizeOutputTokenLimit(state.ownServerOutputTokenLimit)), "number");
+    ownOutputTokenLimit.min = "64";
+    ownOutputTokenLimit.max = "262144";
+    ownOutputTokenLimit.step = "256";
+    const ownTimeoutMinutes = makeInput(String(normalizeOwnServerTimeoutMinutes(state.ownServerTimeoutMinutes)), "number");
+    ownTimeoutMinutes.min = "1";
+    ownTimeoutMinutes.max = "6";
+    ownTimeoutMinutes.step = "1";
+    const ownPanel = document.createElement("div");
+    ownPanel.style.cssText = "display:flex;flex-direction:column;gap:10px;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:12px;";
+    const ownNote = document.createElement("div");
+    ownNote.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
+    ownNote.textContent = "Uses the OpenAI Chat Completions standard: POST {url}/v1/chat/completions. Text uses messages[].content as a string. Vision uses the official image_url content part with a JPEG data URL. Works with local addresses and HTTPS tunnels such as Cloudflare. An API key is optional and is only sent when filled. Enter the model id your server is serving, for example an Unsloth Gemma 4 12B IT QAT model.";
+    const testOwn = makeButton("Test own server", "primary");
+    const saveOwnProjectApiKey = makeButton("Save API Key to Project", "primary");
+    const ownStatus = document.createElement("div");
+    ownStatus.style.cssText = "font-size:12px;color:#94a3b8;min-height:16px;";
+    const ownTestOutput = document.createElement("textarea");
+    ownTestOutput.readOnly = true;
+    ownTestOutput.spellcheck = false;
+    ownTestOutput.placeholder = "Test response appears here and can be scrolled.";
+    ownTestOutput.style.cssText = "width:100%;min-height:140px;max-height:260px;resize:vertical;box-sizing:border-box;border:1px solid #334155;border-radius:6px;background:#020617;color:#e2e8f0;padding:8px;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;overflow:auto;white-space:pre-wrap;";
+    ownModelSelect.onchange = () => {
+      if (ownModelSelect.value) ownModel.value = ownModelSelect.value;
+    };
+    loadOwnModels.onclick = async () => {
+      loadOwnModels.disabled = true;
+      loadOwnModels.textContent = "Loading...";
+      try {
+        const data = await postJson("/vrgdg/music_builder/own_server_models", {
+          own_server_url: ownUrl.value || "http://127.0.0.1:8000/v1",
+          own_server_api_key: ownApiKey.value || "",
+        }, 45000);
+        const ids = Array.isArray(data?.models) ? data.models.map((item) => String(item || "").trim()).filter(Boolean) : [];
+        if (!ids.length) throw new Error("The server returned no models from GET /v1/models. Enter the model id manually.");
+        ownModelSelect.innerHTML = "";
+        ids.forEach((id) => {
+          const option = document.createElement("option");
+          option.value = id;
+          option.textContent = id;
+          ownModelSelect.append(option);
+        });
+        const current = String(ownModel.value || "").trim();
+        if (current && ids.includes(current)) ownModelSelect.value = current;
+        else {
+          ownModelSelect.value = ids[0];
+          ownModel.value = ids[0];
+        }
+        ownStatus.textContent = `Loaded ${ids.length} model${ids.length === 1 ? "" : "s"} from ${data.base_url || "the server"}.`;
+        ownStatus.style.color = "#67e8f9";
+        toast(`Loaded ${ids.length} own-server model${ids.length === 1 ? "" : "s"}.`);
+      } catch (error) {
+        ownStatus.textContent = `Could not load models: ${String(error?.message || error)}`;
+        ownStatus.style.color = "#fca5a5";
+        toast(String(error?.message || error), true);
+      } finally {
+        loadOwnModels.disabled = false;
+        loadOwnModels.textContent = "Load Server Models";
+      }
+    };
+    ownModelPickerRow.append(makeField("Available server models", ownModelSelect), loadOwnModels);
+    ownPanel.append(
+      ownNote,
+      makeField("Server URL", ownUrl),
+      ownModelPickerRow,
+      makeField("Model name", ownModel),
+      makeField("API key (optional)", ownApiKey),
+      makeField("Maximum output tokens", ownOutputTokenLimit),
+      makeField("Request timeout (minutes)", ownTimeoutMinutes),
+      testOwn,
+      saveOwnProjectApiKey,
+      ownStatus,
+      makeField("Test response", ownTestOutput),
+    );
     const syncVisibility = () => {
       state.textGemmaRunner = runner.value || "builtin";
       state.gemmaContextLimit = normalizeGemmaContextLimit(gemmaContextLimit.value);
@@ -51283,6 +51442,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       builtinPanel.style.display = runner.value === "builtin" ? "flex" : "none";
       lmPanel.style.display = runner.value === "lm_studio" ? "flex" : "none";
       apiPanel.style.display = runner.value === "llm_api" ? "flex" : "none";
+      ownPanel.style.display = runner.value === "own_server" ? "flex" : "none";
     };
     runner.onchange = syncVisibility;
     test.onclick = async () => {
@@ -51317,7 +51477,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const cancel = makeButton("Cancel");
     const save = makeButton("Save Runner", "primary");
     actions.append(cancel, save);
-    box.append(header, makeField("Text LLM runner", runner), builtinPanel, lmPanel, apiPanel, actions);
+    box.append(header, makeField("Text LLM runner", runner), builtinPanel, lmPanel, apiPanel, ownPanel, actions);
     backdrop.append(box);
     document.body.append(backdrop);
     syncVisibility();
@@ -51336,10 +51496,17 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.llmApiProvider = apiProvider.value || "openai";
       state.llmApiModel = apiModel.value || "";
       state.llmApiKey = runner.value === "llm_api" ? llmApiKey.value || "" : state.llmApiKey || "";
+      state.ownServerUrl = ownUrl.value || "http://127.0.0.1:8000/v1";
+      state.ownServerModel = ownModel.value || "";
+      state.ownServerApiKey = runner.value === "own_server" ? ownApiKey.value || "" : state.ownServerApiKey || "";
+      state.ownServerOutputTokenLimit = normalizeOutputTokenLimit(ownOutputTokenLimit.value);
+      state.ownServerTimeoutMinutes = normalizeOwnServerTimeoutMinutes(ownTimeoutMinutes.value);
       await autoSaveSessionQuiet("LLM runner settings");
       toast(state.textGemmaRunner === "llm_api"
         ? "LLM API settings saved for this session. API key was not saved with the project."
-        : state.textGemmaRunner === "lm_studio"
+        : state.textGemmaRunner === "own_server"
+          ? "Own server settings saved for this session. API key was not saved with the project unless you use Save API Key to Project."
+          : state.textGemmaRunner === "lm_studio"
           ? "Text LLM runner set to LM Studio."
           : "Text LLM runner set to Gemma Local.");
       updatePromptRunnerButtonLabels();
@@ -51385,6 +51552,84 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       } finally {
         testApi.disabled = false;
         testApi.textContent = "Test LLM API";
+      }
+    };
+    testOwn.onclick = async () => {
+      const url = ownUrl.value || "http://127.0.0.1:8000/v1";
+      const modelId = ownModel.value || "";
+      const key = ownApiKey.value || "";
+      if (!String(url).trim()) {
+        toast("Enter a server URL before testing.", true);
+        return;
+      }
+      if (!String(modelId).trim()) {
+        toast("Enter the model name your server is serving, or load models first.", true);
+        return;
+      }
+      state.textGemmaRunner = "own_server";
+      state.ownServerUrl = url;
+      state.ownServerModel = modelId;
+      state.ownServerApiKey = key;
+      state.ownServerOutputTokenLimit = normalizeOutputTokenLimit(ownOutputTokenLimit.value);
+      state.ownServerTimeoutMinutes = normalizeOwnServerTimeoutMinutes(ownTimeoutMinutes.value);
+      updatePromptRunnerButtonLabels();
+      ownTestOutput.value = "";
+      try {
+        testOwn.disabled = true;
+        testOwn.textContent = "Testing...";
+        ownStatus.textContent = `Sending a tiny test prompt to ${url}...`;
+        ownStatus.style.color = "#94a3b8";
+        const data = await postJson("/vrgdg/music_builder/test_own_server", {
+          own_server_url: url,
+          own_server_model: modelId,
+          own_server_api_key: key,
+          own_server_output_token_limit: normalizeOutputTokenLimit(ownOutputTokenLimit.value),
+          own_server_timeout: normalizeOwnServerTimeoutMinutes(ownTimeoutMinutes.value) * 60,
+          prompt: "Reply with OK only.",
+        });
+        const responseText = String(data.text || "").trim();
+        ownTestOutput.value = [
+          `Status: success`,
+          `URL: ${data.base_url || url}`,
+          `Model: ${data.used_model || modelId}`,
+          "",
+          responseText || "(empty response)",
+        ].join("\n");
+        ownStatus.textContent = `Test passed: ${data.used_model || modelId}`;
+        ownStatus.style.color = "#67e8f9";
+        toast("Own server test passed.");
+      } catch (error) {
+        const message = String(error?.message || error);
+        ownTestOutput.value = `Status: failed\nURL: ${url}\nModel: ${modelId || "(missing)"}\n\n${message}`;
+        ownStatus.textContent = `Test failed: ${message}`;
+        ownStatus.style.color = "#fca5a5";
+        toast(`Own server test failed: ${message}`, true);
+      } finally {
+        testOwn.disabled = false;
+        testOwn.textContent = "Test own server";
+      }
+    };
+    saveOwnProjectApiKey.onclick = async () => {
+      const key = String(ownApiKey.value || "").trim();
+      try {
+        saveOwnProjectApiKey.disabled = true;
+        saveOwnProjectApiKey.textContent = "Saving...";
+        state.textGemmaRunner = "own_server";
+        state.ownServerUrl = ownUrl.value || "http://127.0.0.1:8000/v1";
+        state.ownServerModel = ownModel.value || "";
+        state.ownServerApiKey = key;
+        state.ownServerApiKeyProject = key;
+        state.ownServerOutputTokenLimit = normalizeOutputTokenLimit(ownOutputTokenLimit.value);
+        state.ownServerTimeoutMinutes = normalizeOwnServerTimeoutMinutes(ownTimeoutMinutes.value);
+        await saveSession({ quiet: true, throwOnError: true });
+        toast(key
+          ? "Own server API key saved to this project. Shareable exports will warn you before including it."
+          : "Cleared the project-saved own server API key. Requests will continue without a key.");
+      } catch (error) {
+        toast(`Could not save the project API key: ${String(error?.message || error)}`, true);
+      } finally {
+        saveOwnProjectApiKey.disabled = false;
+        saveOwnProjectApiKey.textContent = "Save API Key to Project";
       }
     };
     saveProjectApiKey.onclick = async () => {
@@ -52293,12 +52538,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const runnerLabel = gemmaRunnerLabel({ vision: selectedEngine === "minimax_h3" });
       const needsKey = state.textGemmaRunner === "llm_api" && !String(state.llmApiKey || "").trim();
       const needsVisionModel = selectedEngine === "minimax_h3" && state.textGemmaRunner === "llm_api" && !llmApiVisionModelSelected();
+      const needsOwnServer = state.textGemmaRunner === "own_server" && (!String(state.ownServerUrl || "").trim() || !String(state.ownServerModel || "").trim());
       runnerStatus.textContent = needsKey
         ? `${runnerLabel} selected, but no API key is set.`
         : needsVisionModel
         ? `${runnerLabel} selected, but choose a vision-capable API model.`
+        : needsOwnServer
+        ? `${runnerLabel} selected, but the server URL or model name is missing.`
         : `Current: ${runnerLabel}`;
-      runnerStatus.style.color = needsKey || needsVisionModel ? "#fdba74" : "#94a3b8";
+      runnerStatus.style.color = needsKey || needsVisionModel || needsOwnServer ? "#fdba74" : "#94a3b8";
     };
     openRunner.onclick = () => {
       const runnerBackdrop = openGemmaRunnerModal();
@@ -52678,6 +52926,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       }
       if (state.textGemmaRunner === "lm_studio" && !String(state.lmStudioModel || "").trim()) {
         throw new Error("LM Studio is selected, but no model name is set. Open LLM Runner, load/select a model, then start Auto Build again.");
+      }
+      if (state.textGemmaRunner === "own_server") {
+        if (!String(state.ownServerUrl || "").trim()) {
+          throw new Error("Own server is selected, but no URL is set. Open LLM Runner, paste the server URL, then start Auto Build again.");
+        }
+        if (!String(state.ownServerModel || "").trim()) {
+          throw new Error("Own server is selected, but no model name is set. Open LLM Runner, enter or load the served model, then start Auto Build again.");
+        }
       }
     };
 
@@ -53198,8 +53454,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         return { added: 0, updated: 0 };
       }
       const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-      if (!modelFile && !["lm_studio", "llm_api"].includes(state.textGemmaRunner)) {
-        toast("Choose a non-vision Gemma model first, or use LM Studio/LLM API in LLM Runner.", true);
+      if (!modelFile && !["lm_studio", "llm_api", "own_server"].includes(state.textGemmaRunner)) {
+        toast("Choose a non-vision Gemma model first, or use LM Studio, LLM API, or your own server in LLM Runner.", true);
         return { added: 0, updated: 0 };
       }
       const progress = createProgressWindow("Wizard Location Scout", { zIndex: 100012 });
@@ -53255,8 +53511,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         return { mapped: 0 };
       }
       const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-      if (!modelFile && !["lm_studio", "llm_api"].includes(state.textGemmaRunner)) {
-        toast("Choose a non-vision Gemma model first, or use LM Studio/LLM API in LLM Runner.", true);
+      if (!modelFile && !["lm_studio", "llm_api", "own_server"].includes(state.textGemmaRunner)) {
+        toast("Choose a non-vision Gemma model first, or use LM Studio, LLM API, or your own server in LLM Runner.", true);
         return { mapped: 0 };
       }
       const progress = createProgressWindow("Wizard Location Mapping", { zIndex: 100012 });
