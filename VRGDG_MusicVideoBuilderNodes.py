@@ -11,7 +11,9 @@ import wave
 import base64
 import array
 import gc
+import ssl
 import urllib.error
+import urllib.parse
 import urllib.request
 import tempfile
 import zipfile
@@ -48,6 +50,8 @@ from .VRGDG_MiniMaxH3PromptInstructions import (
 _VRGDG_MUSIC_BUILDER_ROUTES_REGISTERED = False
 
 _LM_STUDIO_DEFAULT_BASE_URL = "http://127.0.0.1:1234/v1"
+_OWN_SERVER_DEFAULT_BASE_URL = "http://127.0.0.1:8000/v1"
+_EXTERNAL_LLM_RUNNERS = frozenset({"lm_studio", "llm_api", "own_server"})
 
 _T2V_INSTRUCTIONS = """Convert the user's concept prompt into a dynamic text-to-video prompt.
 
@@ -3288,9 +3292,293 @@ def _llm_runner_from_payload(payload):
         runner = "lm_studio"
     if runner in {"llmapi", "llm-api", "llm_api", "api", "outside_api", "outside_llm_api"}:
         runner = "llm_api"
-    if runner not in {"builtin", "lm_studio", "llm_api"}:
+    if runner in {"ownserver", "own-server", "own_server", "custom_openai", "openai_compatible", "custom_server", "my_server"}:
+        runner = "own_server"
+    if runner not in {"builtin", "lm_studio", "llm_api", "own_server"}:
         runner = "builtin"
     return runner
+
+def _own_server_v1_root(raw_url):
+    url = str(raw_url or "").strip()
+    if not url:
+        raise ValueError("Own server URL is empty. Open LLM Runner and paste your server URL.")
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in {"http", "https"}:
+        raise ValueError("Own server URL must start with http:// or https://.")
+    if not parsed.netloc:
+        raise ValueError("Own server URL is missing a host.")
+    path = (parsed.path or "").rstrip("/")
+    lowered = path.lower()
+    for suffix in ("/chat/completions", "/completions", "/models"):
+        if lowered.endswith(suffix):
+            path = path[: -len(suffix)]
+            lowered = path.lower()
+            break
+    if lowered.endswith("/v1"):
+        v1_path = path
+    elif path:
+        v1_path = f"{path}/v1"
+    else:
+        v1_path = "/v1"
+    return urllib.parse.urlunparse((parsed.scheme, parsed.netloc, v1_path, "", "", ""))
+
+
+def _own_server_api_key(payload):
+    payload = payload if isinstance(payload, dict) else {}
+    return str(
+        payload.get("own_server_api_key")
+        or payload.get("own_server_key")
+        or payload.get("api_key")
+        or ""
+    ).strip()
+
+
+def _own_server_model_name(payload):
+    payload = payload if isinstance(payload, dict) else {}
+    return str(
+        payload.get("own_server_model")
+        or payload.get("model")
+        or payload.get("model_file")
+        or ""
+    ).strip()
+
+
+def _own_server_timeout(payload, default=360):
+    payload = payload if isinstance(payload, dict) else {}
+    try:
+        timeout = float(payload.get("own_server_timeout") or default)
+    except (TypeError, ValueError):
+        timeout = float(default)
+    return max(15.0, min(600.0, timeout))
+
+
+def _own_server_headers(payload):
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "User-Agent": "VRGDG-OwnServer/1.0 (+ComfyUI)",
+    }
+    api_key = _own_server_api_key(payload)
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    return headers
+
+
+def _own_server_ssl_context(url):
+    if not str(url or "").lower().startswith("https://"):
+        return None
+    return ssl.create_default_context()
+
+
+def _own_server_request_json(url, payload, method="POST", body=None, timeout=180):
+    headers = _own_server_headers(payload)
+    if str(method or "POST").upper() == "GET":
+        headers.pop("Content-Type", None)
+    data = None if body is None else json.dumps(body).encode("utf-8")
+    request = urllib.request.Request(url, data=data, headers=headers, method=method)
+    ssl_context = _own_server_ssl_context(url)
+
+    def _open(context):
+        with urllib.request.urlopen(request, timeout=float(timeout), context=context) as response:
+            raw = response.read().decode("utf-8", errors="replace")
+            if not raw.strip():
+                return {}
+            return json.loads(raw)
+
+    try:
+        return _open(ssl_context)
+    except ssl.SSLError:
+        if ssl_context is None:
+            raise
+        unverified = ssl._create_unverified_context()
+        return _open(unverified)
+    except urllib.error.HTTPError as exc:
+        details = exc.read().decode("utf-8", errors="replace") if hasattr(exc, "read") else ""
+        raise RuntimeError(f"Own server request failed ({exc.code}): {details or exc.reason}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(
+            f"Could not connect to own server at {url}. Check the URL, local bind address, or Cloudflare tunnel."
+        ) from exc
+
+
+def _own_server_message_text(data):
+    if not isinstance(data, dict):
+        return ""
+    choices = data.get("choices")
+    if isinstance(choices, list) and choices:
+        message = choices[0].get("message", {}) if isinstance(choices[0], dict) else {}
+        content = message.get("content") if isinstance(message, dict) else ""
+        if isinstance(content, list):
+            parts = []
+            for item in content:
+                if isinstance(item, str):
+                    parts.append(item)
+                elif isinstance(item, dict):
+                    item_type = str(item.get("type") or "").lower()
+                    if item_type in {"text", "output_text"}:
+                        parts.append(str(item.get("text") or ""))
+                    elif isinstance(item.get("text"), str):
+                        parts.append(item.get("text"))
+                    elif isinstance(item.get("content"), str):
+                        parts.append(item.get("content"))
+            content = "".join(parts)
+        text = str(content or "").strip()
+        if text:
+            return text
+        for key in ("reasoning_content", "refusal"):
+            extra = message.get(key) if isinstance(message, dict) else None
+            if extra:
+                return str(extra).strip()
+        choice_text = choices[0].get("text") if isinstance(choices[0], dict) else None
+        if choice_text:
+            return str(choice_text).strip()
+    for key in ("output_text", "response", "text", "content"):
+        value = data.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def _own_server_chat_messages(instruction_text, pil_images=None):
+    images = [image for image in list(pil_images or []) if image is not None]
+    if not images:
+        return [{"role": "user", "content": str(instruction_text or "")}]
+    content = [{"type": "text", "text": str(instruction_text or "")}]
+    for image in images[:4]:
+        content.append({
+            "type": "image_url",
+            "image_url": {
+                "url": _pil_image_to_data_url(image, max_height=1024, quality=90),
+            },
+        })
+    return [{"role": "user", "content": content}]
+
+
+def _run_own_server_chat(payload, instruction_text, pil_images=None, temperature=0.6, top_p=0.95, max_new_tokens=1200):
+    v1_root = _own_server_v1_root(
+        payload.get("own_server_url") or payload.get("base_url") or _OWN_SERVER_DEFAULT_BASE_URL
+    )
+    model = _own_server_model_name(payload)
+    if not model:
+        raise ValueError("Own server model name is missing. Open LLM Runner and enter the served model id.")
+    body = {
+        "model": model,
+        "messages": _own_server_chat_messages(instruction_text, pil_images),
+        "temperature": float(temperature),
+        "top_p": float(top_p),
+        "stream": False,
+        "max_tokens": int(_runner_output_token_limit(payload, max_new_tokens)),
+    }
+    url = f"{v1_root}/chat/completions"
+    try:
+        data = _own_server_request_json(url, payload, body=body, timeout=_own_server_timeout(payload))
+    except RuntimeError as exc:
+        message = str(exc).lower()
+        if "max_tokens" in message and ("unknown" in message or "unsupported" in message or "400" in message):
+            retry_body = dict(body)
+            retry_body["max_completion_tokens"] = retry_body.pop("max_tokens")
+            data = _own_server_request_json(url, payload, body=retry_body, timeout=_own_server_timeout(payload))
+        else:
+            raise
+    text = _own_server_message_text(data)
+    if not text:
+        raise ValueError("Own server returned empty text.")
+    return text, {
+        "runner": "own_server_vision" if pil_images else "own_server",
+        "used_provider": "own_server",
+        "used_model": model,
+        "unloaded": False,
+        "base_url": v1_root,
+    }
+
+
+def _run_own_server_text(payload, instruction_text, temperature=0.6, top_p=0.95, max_new_tokens=1200):
+    return _run_own_server_chat(
+        payload,
+        instruction_text,
+        temperature=temperature,
+        top_p=top_p,
+        max_new_tokens=max_new_tokens,
+    )
+
+
+def _run_own_server_vision(payload, instruction_text, pil_images, temperature=0.25, top_p=0.95, max_new_tokens=1200):
+    images = list(pil_images or [])
+    if not images:
+        raise ValueError("Own server vision needs at least one image reference.")
+    return _run_own_server_chat(
+        payload,
+        instruction_text,
+        pil_images=images,
+        temperature=temperature,
+        top_p=top_p,
+        max_new_tokens=max_new_tokens,
+    )
+
+
+def _try_run_remote_vision(payload, instruction_text, pil_images, temperature=0.25, top_p=0.95, max_new_tokens=1200):
+    runner = _llm_runner_from_payload(payload)
+    if runner == "llm_api":
+        return _run_llm_api_vision(payload, instruction_text, pil_images)
+    if runner == "own_server":
+        return _run_own_server_vision(
+            payload,
+            instruction_text,
+            pil_images,
+            temperature=temperature,
+            top_p=top_p,
+            max_new_tokens=max_new_tokens,
+        )
+    if runner == "lm_studio":
+        text = _run_lm_studio_vision(
+            payload,
+            instruction_text,
+            pil_images,
+            temperature=temperature,
+            top_p=top_p,
+            max_new_tokens=max_new_tokens,
+        )
+        return text, {
+            "runner": "lm_studio_vision",
+            "used_model": str(payload.get("lmstudio_model") or "").strip(),
+            "unloaded": False,
+        }
+    return None
+
+
+def _list_own_server_models(payload):
+    v1_root = _own_server_v1_root(
+        payload.get("own_server_url") or payload.get("base_url") or _OWN_SERVER_DEFAULT_BASE_URL
+    )
+    data = _own_server_request_json(
+        f"{v1_root}/models",
+        payload,
+        method="GET",
+        timeout=min(45.0, _own_server_timeout(payload, 45)),
+    )
+    models = []
+    raw_models = data.get("data") if isinstance(data, dict) else None
+    if isinstance(raw_models, list):
+        for item in raw_models:
+            if isinstance(item, str) and item.strip():
+                models.append(item.strip())
+            elif isinstance(item, dict):
+                model_id = str(item.get("id") or item.get("name") or "").strip()
+                if model_id:
+                    models.append(model_id)
+    return {"models": models, "base_url": v1_root}
+
+
+def _test_own_server(payload):
+    prompt = str(payload.get("prompt") or "Reply with OK only.").strip() or "Reply with OK only."
+    text, info = _run_own_server_text(payload, prompt, temperature=0.1, top_p=0.9, max_new_tokens=64)
+    return {
+        "text": text,
+        "used_provider": "own_server",
+        "used_model": info.get("used_model", ""),
+        "base_url": info.get("base_url", ""),
+    }
+
 
 
 def _normalized_token_limit(value, default, minimum=64, maximum=262144):
@@ -3308,11 +3596,13 @@ def _runner_output_token_limit(payload, requested=1200):
         configured = payload.get("lmstudio_output_token_limit")
         if configured in (None, ""):
             configured = payload.get("lm_studio_output_token_limit")
+    elif runner == "own_server":
+        configured = payload.get("own_server_output_token_limit")
     elif runner == "builtin":
         configured = payload.get("gemma_output_token_limit")
     else:
         configured = None
-    if runner in {"builtin", "lm_studio"} and configured in (None, ""):
+    if runner in {"builtin", "lm_studio", "own_server"} and configured in (None, ""):
         configured = payload.get("llm_max_tokens")
     if configured not in (None, ""):
         return _normalized_token_limit(configured, requested)
@@ -4015,6 +4305,17 @@ def _run_builder_text_llm(payload, instruction_text, temperature=0.6, top_p=0.95
 
     if _llm_runner_from_payload(payload) == "llm_api":
         text, info = _run_llm_api_text(payload, instruction_text)
+        cleaned = _clean_lm_studio_plain_text(text) if preserve_paragraphs else _clean_visual_gemma_text(text)
+        return cleaned, info
+
+    if _llm_runner_from_payload(payload) == "own_server":
+        text, info = _run_own_server_text(
+            payload,
+            instruction_text,
+            temperature=temperature,
+            top_p=top_p,
+            max_new_tokens=max_new_tokens,
+        )
         cleaned = _clean_lm_studio_plain_text(text) if preserve_paragraphs else _clean_visual_gemma_text(text)
         return cleaned, info
 
@@ -5008,14 +5309,14 @@ def _generate_builder_t2i_prompt(payload):
     use_vision = bool(payload.get("use_vision"))
     has_ref_image = bool(use_vision and ((ref_image_path and os.path.isfile(ref_image_path)) or ref_image_data))
     text_runner = _llm_runner_from_payload(payload)
-    if not model_file and text_runner not in {"lm_studio", "llm_api"}:
+    if not model_file and text_runner not in _EXTERNAL_LLM_RUNNERS:
         raise ValueError("Choose a Gemma model first.")
     if use_vision and not has_ref_image:
         raise ValueError("Choose a valid reference image path/data or turn off vision reference.")
     if not has_ref_image and not user_notes:
         raise ValueError("Enter scene notes or provide a reference image.")
 
-    llm = VRGDG_SuperGemmaGGUFChat() if has_ref_image and text_runner not in {"lm_studio", "llm_api"} else None
+    llm = VRGDG_SuperGemmaGGUFChat() if has_ref_image and text_runner not in _EXTERNAL_LLM_RUNNERS else None
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else ""
     mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if llm else ""
     image = None
@@ -5106,10 +5407,8 @@ def _generate_builder_t2i_prompt(payload):
     seed = payload.get("seed")
 
     try:
-        if has_ref_image and text_runner == "llm_api":
-            text, run_info = _run_llm_api_vision(payload, prompt, [image])
-        elif has_ref_image and text_runner == "lm_studio":
-            text = _run_lm_studio_vision(
+        if has_ref_image and text_runner in _EXTERNAL_LLM_RUNNERS:
+            text, run_info = _try_run_remote_vision(
                 payload,
                 prompt,
                 [image],
@@ -5117,11 +5416,6 @@ def _generate_builder_t2i_prompt(payload):
                 top_p=top_p,
                 max_new_tokens=max_new_tokens,
             )
-            run_info = {
-                "runner": "lm_studio_vision",
-                "used_model": str(payload.get("lmstudio_model") or "").strip(),
-                "unloaded": False,
-            }
         elif has_ref_image:
             model = llm._load_gguf_model(
                 model_path=model_path,
@@ -5155,10 +5449,10 @@ def _generate_builder_t2i_prompt(payload):
         return {
             "prompt": text,
             "used_reference_image": has_ref_image,
-            "used_model": run_info.get("used_model", model_path) if has_ref_image and text_runner in {"lm_studio", "llm_api"} else model_path if has_ref_image else run_info.get("used_model", ""),
+            "used_model": run_info.get("used_model", model_path) if has_ref_image and text_runner in _EXTERNAL_LLM_RUNNERS else model_path if has_ref_image else run_info.get("used_model", ""),
             "used_mmproj": mmproj_path,
-            "runner": run_info.get("runner", "builtin") if has_ref_image and text_runner in {"lm_studio", "llm_api"} else "builtin" if has_ref_image else run_info.get("runner", "builtin"),
-            "unloaded": run_info.get("unloaded", unload_after) if has_ref_image and text_runner in {"lm_studio", "llm_api"} else unload_after if has_ref_image else run_info.get("unloaded", unload_after),
+            "runner": run_info.get("runner", "builtin") if has_ref_image and text_runner in _EXTERNAL_LLM_RUNNERS else "builtin" if has_ref_image else run_info.get("runner", "builtin"),
+            "unloaded": run_info.get("unloaded", unload_after) if has_ref_image and text_runner in _EXTERNAL_LLM_RUNNERS else unload_after if has_ref_image else run_info.get("unloaded", unload_after),
         }
     finally:
         if llm and has_ref_image and unload_after:
@@ -5215,9 +5509,9 @@ def _generate_builder_i2v_prompt(payload):
             "Use singing behavior only when the scene notes or lyric context call for a vocal performance."
         )
     text_runner = _llm_runner_from_payload(payload)
-    if not model_file and text_runner not in {"lm_studio", "llm_api"}:
+    if not model_file and text_runner not in _EXTERNAL_LLM_RUNNERS:
         raise ValueError("Choose an I2V Gemma model first.")
-    if model_file and text_runner not in {"lm_studio", "llm_api"} and not model_file.lower().endswith(".gguf"):
+    if model_file and text_runner not in _EXTERNAL_LLM_RUNNERS and not model_file.lower().endswith(".gguf"):
         raise ValueError("The I2V model field is not a GGUF model.")
 
     image = None
@@ -5230,7 +5524,7 @@ def _generate_builder_i2v_prompt(payload):
         image = Image.open(image_path).convert("RGB")
         has_image_reference = True
 
-    if has_image_reference and text_runner not in {"lm_studio", "llm_api"} and not model_file:
+    if has_image_reference and text_runner not in _EXTERNAL_LLM_RUNNERS and not model_file:
         raise ValueError("Choose an I2V vision Gemma model first.")
     if not has_image_reference and not t2i_prompt:
         raise ValueError("Create or paste a T2I prompt first, or save/load an image reference.")
@@ -5256,7 +5550,7 @@ def _generate_builder_i2v_prompt(payload):
 
     user_notes = "\n\n".join([mode_note, user_notes]).strip()
 
-    llm = VRGDG_SuperGemmaGGUFChat() if text_runner not in {"lm_studio", "llm_api"} else None
+    llm = VRGDG_SuperGemmaGGUFChat() if text_runner not in _EXTERNAL_LLM_RUNNERS else None
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else ""
     mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if has_image_reference and llm else ""
     i2v_instructions = _effective_builder_instruction(payload, "i2v", _I2V_INSTRUCTIONS)
@@ -5284,14 +5578,8 @@ def _generate_builder_i2v_prompt(payload):
     seed = payload.get("seed")
 
     try:
-        if has_image_reference and text_runner == "llm_api":
-            text, run_info = _run_llm_api_vision(
-                payload,
-                prompt,
-                [image],
-            )
-        elif has_image_reference and text_runner == "lm_studio":
-            text = _run_lm_studio_vision(
+        if has_image_reference and text_runner in _EXTERNAL_LLM_RUNNERS:
+            text, run_info = _try_run_remote_vision(
                 payload,
                 prompt,
                 [image],
@@ -5299,12 +5587,7 @@ def _generate_builder_i2v_prompt(payload):
                 top_p=top_p,
                 max_new_tokens=max_new_tokens,
             )
-            run_info = {
-                "runner": "lm_studio_vision",
-                "used_model": str(payload.get("lmstudio_model") or "").strip(),
-                "unloaded": False,
-            }
-        elif text_runner in {"lm_studio", "llm_api"}:
+        elif text_runner in _EXTERNAL_LLM_RUNNERS:
             text, run_info = _run_builder_text_llm(
                 payload,
                 prompt,
@@ -5533,9 +5816,9 @@ def _generate_builder_chained_i2v_prompt(payload):
 
     if not image_reference_data and not image_reference_path:
         raise ValueError("Chained I2V needs an extracted final-frame image.")
-    if not model_file and text_runner not in {"lm_studio", "llm_api"}:
+    if not model_file and text_runner not in _EXTERNAL_LLM_RUNNERS:
         raise ValueError("Choose an I2V vision Gemma model first.")
-    if model_file and text_runner not in {"lm_studio", "llm_api"} and not model_file.lower().endswith(".gguf"):
+    if model_file and text_runner not in _EXTERNAL_LLM_RUNNERS and not model_file.lower().endswith(".gguf"):
         raise ValueError("The I2V vision model field is not a GGUF model.")
 
     if image_reference_data:
@@ -5624,7 +5907,7 @@ def _generate_builder_chained_i2v_prompt(payload):
         f"Performance mode:\n{performance_mode or 'Use the visible scene and notes. Do not force singing unless the notes call for it.'}"
     )
 
-    llm = VRGDG_SuperGemmaGGUFChat() if text_runner not in {"lm_studio", "llm_api"} else None
+    llm = VRGDG_SuperGemmaGGUFChat() if text_runner not in _EXTERNAL_LLM_RUNNERS else None
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else ""
     mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if llm else ""
     n_ctx = int(payload.get("n_ctx") or 8000)
@@ -5639,10 +5922,8 @@ def _generate_builder_chained_i2v_prompt(payload):
 
     try:
         model = None
-        if text_runner == "llm_api":
-            text, run_info = _run_llm_api_vision(payload, instruction, [image])
-        elif text_runner == "lm_studio":
-            text = _run_lm_studio_vision(
+        if text_runner in _EXTERNAL_LLM_RUNNERS:
+            text, run_info = _try_run_remote_vision(
                 payload,
                 instruction,
                 [image],
@@ -5650,11 +5931,6 @@ def _generate_builder_chained_i2v_prompt(payload):
                 top_p=top_p,
                 max_new_tokens=max_new_tokens,
             )
-            run_info = {
-                "runner": "lm_studio_vision",
-                "used_model": str(payload.get("lmstudio_model") or "").strip(),
-                "unloaded": False,
-            }
         else:
             model = llm._load_gguf_model(
                 model_path=model_path,
@@ -5797,9 +6073,9 @@ def _generate_builder_t2v_prompt(payload):
     is_minimax_h3_shot_json_task = is_minimax_h3_prompt and scene_prompt.lstrip().startswith("MiniMax H3 shot-description task.")
     prompt_only_scene_inspiration = bool(payload.get("prompt_only_scene_inspiration"))
     text_runner = _llm_runner_from_payload(payload)
-    if not model_file and text_runner not in {"lm_studio", "llm_api"}:
+    if not model_file and text_runner not in _EXTERNAL_LLM_RUNNERS:
         raise ValueError("Choose a T2V Gemma model first.")
-    if model_file and text_runner not in {"lm_studio", "llm_api"} and not model_file.lower().endswith(".gguf"):
+    if model_file and text_runner not in _EXTERNAL_LLM_RUNNERS and not model_file.lower().endswith(".gguf"):
         raise ValueError("The T2V model field is not a GGUF model.")
     vision_images = []
     has_image_reference = False
@@ -5857,7 +6133,7 @@ def _generate_builder_t2v_prompt(payload):
         combined.paste(last_image, (first_image.width, (canvas_height - last_image.height) // 2))
         vision_images = [combined]
     has_image_reference = bool(vision_images)
-    if has_image_reference and text_runner not in {"lm_studio", "llm_api"} and not model_file:
+    if has_image_reference and text_runner not in _EXTERNAL_LLM_RUNNERS and not model_file:
         raise ValueError("Choose a T2V vision Gemma model first.")
     if has_image_reference:
         max_height = 512
@@ -6019,7 +6295,7 @@ def _generate_builder_t2v_prompt(payload):
         f"User motion/camera notes:\n{user_notes or 'Create cinematic camera movement and natural subject/environment motion that fits the scene.'}"
     )
 
-    llm = VRGDG_SuperGemmaGGUFChat() if has_image_reference and text_runner not in {"lm_studio", "llm_api"} else None
+    llm = VRGDG_SuperGemmaGGUFChat() if has_image_reference and text_runner not in _EXTERNAL_LLM_RUNNERS else None
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else ""
     mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if llm else ""
     n_ctx = int(payload.get("n_ctx") or 8000)
@@ -6033,7 +6309,7 @@ def _generate_builder_t2v_prompt(payload):
 
     try:
         model = None
-        if has_image_reference and text_runner not in {"lm_studio", "llm_api"}:
+        if has_image_reference and text_runner not in _EXTERNAL_LLM_RUNNERS:
             model = llm._load_gguf_model(
                 model_path=model_path,
                 n_ctx=n_ctx,
@@ -6044,24 +6320,17 @@ def _generate_builder_t2v_prompt(payload):
             )
 
         def run_vision_instruction(instruction_text, token_limit):
-            if text_runner == "llm_api":
+            if text_runner in _EXTERNAL_LLM_RUNNERS:
                 vision_payload = dict(payload)
                 vision_payload["max_new_tokens"] = int(token_limit)
-                return _run_llm_api_vision(vision_payload, instruction_text, vision_images)
-            if text_runner == "lm_studio":
-                result_text = _run_lm_studio_vision(
-                    payload,
+                return _try_run_remote_vision(
+                    vision_payload,
                     instruction_text,
                     vision_images,
                     temperature=temperature,
                     top_p=top_p,
                     max_new_tokens=int(token_limit),
                 )
-                return result_text, {
-                    "runner": "lm_studio_vision",
-                    "used_model": str(payload.get("lmstudio_model") or "").strip(),
-                    "unloaded": False,
-                }
             result_text = llm._run_gguf_vision_pipeline(
                 model=model,
                 pil_images=vision_images,
@@ -6442,10 +6711,8 @@ def _edit_builder_video_prompt(payload):
     model_path = ""
     mmproj_path = ""
     try:
-        if use_vision_reference and text_runner == "llm_api":
-            text, run_info = _run_llm_api_vision(payload, instruction, [image])
-        elif use_vision_reference and text_runner == "lm_studio":
-            text = _run_lm_studio_vision(
+        if use_vision_reference and text_runner in _EXTERNAL_LLM_RUNNERS:
+            text, run_info = _try_run_remote_vision(
                 payload,
                 instruction,
                 [image],
@@ -6453,11 +6720,6 @@ def _edit_builder_video_prompt(payload):
                 top_p=top_p,
                 max_new_tokens=max_new_tokens,
             )
-            run_info = {
-                "runner": "lm_studio_vision",
-                "used_model": str(payload.get("lmstudio_model") or "").strip(),
-                "unloaded": False,
-            }
         elif use_vision_reference:
             if not model_file:
                 raise ValueError("Choose an I2V vision Gemma model first.")
@@ -6682,10 +6944,8 @@ def _edit_builder_image_prompt(payload):
     model_path = ""
     mmproj_path = ""
     try:
-        if use_vision_reference and text_runner == "llm_api":
-            text, run_info = _run_llm_api_vision(payload, instruction, [image])
-        elif use_vision_reference and text_runner == "lm_studio":
-            text = _run_lm_studio_vision(
+        if use_vision_reference and text_runner in _EXTERNAL_LLM_RUNNERS:
+            text, run_info = _try_run_remote_vision(
                 payload,
                 instruction,
                 [image],
@@ -6693,11 +6953,6 @@ def _edit_builder_image_prompt(payload):
                 top_p=top_p,
                 max_new_tokens=max_new_tokens,
             )
-            run_info = {
-                "runner": "lm_studio_vision",
-                "used_model": str(payload.get("lmstudio_model") or "").strip(),
-                "unloaded": False,
-            }
         elif use_vision_reference:
             if not model_file:
                 raise ValueError("Choose a vision Gemma model first.")
@@ -6939,7 +7194,7 @@ def _generate_builder_reference_description(payload):
     object_reference_types = {"prop", "object", "vehicle", "creature", "animal", "outfit", "style", "environment", "other"}
     if reference_type not in {"subject", "character", "face", "location", "extra", *object_reference_types}:
         reference_type = "subject"
-    if text_runner not in {"lm_studio", "llm_api"} and not model_file:
+    if text_runner not in _EXTERNAL_LLM_RUNNERS and not model_file:
         raise ValueError("Choose a Gemma vision model first.")
     image = _image_from_prompt_payload(payload.get("image_path", ""), payload.get("image_data", ""), "Reference image")
 
@@ -7014,7 +7269,7 @@ def _generate_builder_reference_description(payload):
         if name_hint:
             instruction += f"\nUse this label only as the reference name if needed: {name_hint}"
 
-    llm = VRGDG_SuperGemmaGGUFChat() if text_runner not in {"lm_studio", "llm_api"} else None
+    llm = VRGDG_SuperGemmaGGUFChat() if text_runner not in _EXTERNAL_LLM_RUNNERS else None
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else str(payload.get("lmstudio_model") or "").strip()
     mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if llm else ""
     n_ctx = int(payload.get("n_ctx") or 2048)
@@ -7096,10 +7351,8 @@ def _generate_builder_reference_description(payload):
                     "\n\nPrevious output was rejected because it repeated words or was not a usable description. "
                     "Write a normal visual description with varied concrete nouns. Do not repeat any word more than twice."
                 )
-            if text_runner == "llm_api":
-                raw_text, _run_info = _run_llm_api_vision(payload, attempt_instruction, [image])
-            elif text_runner == "lm_studio":
-                raw_text = _run_lm_studio_vision(
+            if text_runner in _EXTERNAL_LLM_RUNNERS:
+                raw_text, _run_info = _try_run_remote_vision(
                     payload,
                     attempt_instruction,
                     [image],
@@ -7125,7 +7378,7 @@ def _generate_builder_reference_description(payload):
                 last_error = exc
         if last_error:
             raise last_error
-        return {"description": text, "used_model": model_path, "used_mmproj": mmproj_path, "runner": "llm_api_vision" if text_runner == "llm_api" else "lm_studio_vision" if text_runner == "lm_studio" else "builtin", "unloaded": False if text_runner in {"lm_studio", "llm_api"} else unload_after}
+        return {"description": text, "used_model": model_path, "used_mmproj": mmproj_path, "runner": "llm_api_vision" if text_runner == "llm_api" else "own_server_vision" if text_runner == "own_server" else "lm_studio_vision" if text_runner == "lm_studio" else "builtin", "unloaded": False if text_runner in _EXTERNAL_LLM_RUNNERS else unload_after}
     finally:
         if llm and unload_after:
             llm._unload_gguf_model(
@@ -7147,7 +7400,7 @@ def _generate_flux_klein_prompt(payload):
     user_notes = str(payload.get("user_notes", "") or "").strip()
     builder_instruction_key = str(payload.get("builder_instruction_key") or payload.get("instruction_key") or "flux_klein_t2i").strip()
     text_runner = _llm_runner_from_payload(payload)
-    if text_runner not in {"lm_studio", "llm_api"} and not model_file:
+    if text_runner not in _EXTERNAL_LLM_RUNNERS and not model_file:
         raise ValueError("Choose a Gemma vision model first.")
 
     ingredients = payload.get("image_ingredients") or []
@@ -7202,7 +7455,7 @@ def _generate_flux_klein_prompt(payload):
         f"User input:\n{user_notes or 'Create a new image using the available reference images.'}"
     )
 
-    llm = VRGDG_SuperGemmaGGUFChat() if text_runner not in {"lm_studio", "llm_api"} else None
+    llm = VRGDG_SuperGemmaGGUFChat() if text_runner not in _EXTERNAL_LLM_RUNNERS else None
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else str(payload.get("lmstudio_model") or "").strip()
     mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if llm else ""
     # Flux/Klein only needs one short prompt, and vision GGUF context is expensive.
@@ -7222,10 +7475,8 @@ def _generate_flux_klein_prompt(payload):
         if clear_before_load and llm:
             _clear_comfy_model_memory()
             _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
-        if text_runner == "llm_api":
-            text, run_info = _run_llm_api_vision(payload, instruction, [combined_image])
-        elif text_runner == "lm_studio":
-            text = _run_lm_studio_vision(
+        if text_runner in _EXTERNAL_LLM_RUNNERS:
+            text, run_info = _try_run_remote_vision(
                 payload,
                 instruction,
                 [combined_image],
@@ -7234,6 +7485,7 @@ def _generate_flux_klein_prompt(payload):
                 max_new_tokens=max_new_tokens,
             )
         else:
+            run_info = {}
             model = llm._load_gguf_model(
                 model_path=model_path,
                 n_ctx=n_ctx,
@@ -7253,7 +7505,7 @@ def _generate_flux_klein_prompt(payload):
             )
         text = _clean_visual_gemma_text(text)
         text = _repair_and_validate_builder_gemma_prompt(payload, text, "Flux/Klein")
-        return {"prompt": text, "used_model": run_info.get("used_model", model_path) if text_runner == "llm_api" else model_path, "used_mmproj": mmproj_path, "runner": "llm_api_vision" if text_runner == "llm_api" else "lm_studio_vision" if text_runner == "lm_studio" else "builtin", "unloaded": False if text_runner in {"lm_studio", "llm_api"} else unload_after}
+        return {"prompt": text, "used_model": run_info.get("used_model", model_path) if text_runner in _EXTERNAL_LLM_RUNNERS else model_path, "used_mmproj": mmproj_path, "runner": "llm_api_vision" if text_runner == "llm_api" else "own_server_vision" if text_runner == "own_server" else "lm_studio_vision" if text_runner == "lm_studio" else "builtin", "unloaded": False if text_runner in _EXTERNAL_LLM_RUNNERS else unload_after}
     finally:
         if llm and unload_after:
             llm._unload_gguf_model(
@@ -7276,7 +7528,7 @@ def _analyze_builder_story_references(payload):
     user_notes = str(payload.get("user_notes", "") or "").strip()
     builder_instruction_key = str(payload.get("builder_instruction_key") or payload.get("instruction_key") or "nano_b_t2i").strip()
     text_runner = _llm_runner_from_payload(payload)
-    if text_runner not in {"lm_studio", "llm_api"} and not model_file:
+    if text_runner not in _EXTERNAL_LLM_RUNNERS and not model_file:
         raise ValueError("Choose a Gemma vision model first.")
     ingredients = payload.get("image_ingredients") or []
     if isinstance(ingredients, str):
@@ -7296,7 +7548,7 @@ def _analyze_builder_story_references(payload):
     if not images:
         raise ValueError("Add at least one Story Builder reference image first.")
     batches = [images[index:index + 4] for index in range(0, len(images), 4)]
-    llm = VRGDG_SuperGemmaGGUFChat() if text_runner not in {"lm_studio", "llm_api"} else None
+    llm = VRGDG_SuperGemmaGGUFChat() if text_runner not in _EXTERNAL_LLM_RUNNERS else None
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else str(payload.get("lmstudio_model") or "").strip()
     mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if llm else ""
     n_ctx = int(payload.get("n_ctx") or 4096)
@@ -7333,10 +7585,8 @@ def _analyze_builder_story_references(payload):
                 f"Batch {batch_index} of {len(batches)}.\n"
                 f"User notes:\n{user_notes or 'Summarize the characters, locations, style, and aesthetic shown in the images.'}"
             )
-            if text_runner == "llm_api":
-                text, _run_info = _run_llm_api_vision(payload, instruction, [combined_image])
-            elif text_runner == "lm_studio":
-                text = _run_lm_studio_vision(
+            if text_runner in _EXTERNAL_LLM_RUNNERS:
+                text, _run_info = _try_run_remote_vision(
                     payload,
                     instruction,
                     [combined_image],
@@ -7359,7 +7609,7 @@ def _analyze_builder_story_references(payload):
             if text.strip():
                 prefix = f"Reference batch {batch_index}: " if len(batches) > 1 else ""
                 batch_notes.append(prefix + text.strip())
-        return {"notes": "\n\n".join(batch_notes).strip(), "used_model": model_path, "used_mmproj": mmproj_path, "runner": "llm_api_vision" if text_runner == "llm_api" else "lm_studio_vision" if text_runner == "lm_studio" else "builtin", "unloaded": False if text_runner in {"lm_studio", "llm_api"} else unload_after, "batches": len(batches)}
+        return {"notes": "\n\n".join(batch_notes).strip(), "used_model": model_path, "used_mmproj": mmproj_path, "runner": "llm_api_vision" if text_runner == "llm_api" else "own_server_vision" if text_runner == "own_server" else "lm_studio_vision" if text_runner == "lm_studio" else "builtin", "unloaded": False if text_runner in _EXTERNAL_LLM_RUNNERS else unload_after, "batches": len(batches)}
     finally:
         if llm and unload_after:
             llm._unload_gguf_model(
@@ -7387,7 +7637,7 @@ def _generate_nb_image_prompt(payload):
     prompt_label = "Flow/GPT" if is_flow_gpt else "NanoBanana"
     builder_instruction_key = str(payload.get("builder_instruction_key") or payload.get("instruction_key") or default_instruction_key).strip()
     text_runner = _llm_runner_from_payload(payload)
-    if text_runner not in {"lm_studio", "llm_api"} and not model_file:
+    if text_runner not in _EXTERNAL_LLM_RUNNERS and not model_file:
         raise ValueError(f"Choose a {prompt_label} Gemma vision model first.")
 
     ingredients = payload.get("image_ingredients") or []
@@ -7610,14 +7860,12 @@ def _generate_nb_image_prompt(payload):
         return {"prompt": text, **info}
 
     combined_image = _combine_flux_ingredient_images(images)
-    llm = VRGDG_SuperGemmaGGUFChat() if text_runner not in {"lm_studio", "llm_api"} else None
+    llm = VRGDG_SuperGemmaGGUFChat() if text_runner not in _EXTERNAL_LLM_RUNNERS else None
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else str(payload.get("lmstudio_model") or "").strip()
     mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if llm else ""
     try:
-        if text_runner == "llm_api":
-            text, info = _run_llm_api_vision(payload, instruction, [combined_image])
-        elif text_runner == "lm_studio":
-            text = _run_lm_studio_vision(
+        if text_runner in _EXTERNAL_LLM_RUNNERS:
+            text, info = _try_run_remote_vision(
                 payload,
                 instruction,
                 [combined_image],
@@ -7625,12 +7873,6 @@ def _generate_nb_image_prompt(payload):
                 top_p=top_p,
                 max_new_tokens=max_new_tokens,
             )
-            info = {
-                "runner": "lm_studio_vision",
-                "used_model": model_path,
-                "used_mmproj": "",
-                "unloaded": False,
-            }
         else:
             if clear_before_load:
                 _clear_comfy_model_memory()
@@ -7686,7 +7928,7 @@ def _generate_nb_image_prompt(payload):
 
 def _generate_flux_reference_location_map(payload):
     model_file = str(payload.get("model_file", "") or "").strip()
-    if not model_file and _llm_runner_from_payload(payload) not in {"lm_studio", "llm_api"}:
+    if not model_file and _llm_runner_from_payload(payload) not in _EXTERNAL_LLM_RUNNERS:
         raise ValueError("Choose a non-vision Gemma model first.")
 
     scenes = payload.get("scenes") or []
@@ -7809,7 +8051,7 @@ def _generate_flux_reference_location_map(payload):
 
 def _generate_flux_reference_locations(payload):
     model_file = str(payload.get("model_file", "") or "").strip()
-    if not model_file and _llm_runner_from_payload(payload) not in {"lm_studio", "llm_api"}:
+    if not model_file and _llm_runner_from_payload(payload) not in _EXTERNAL_LLM_RUNNERS:
         raise ValueError("Choose a non-vision Gemma model first.")
     scenes = payload.get("scenes") or []
     if not isinstance(scenes, list) or not scenes:
@@ -7998,7 +8240,7 @@ def _generate_flux_reference_locations(payload):
 
 def _generate_wizard_locations_from_lyrics(payload):
     model_file = str(payload.get("model_file", "") or "").strip()
-    if not model_file and _llm_runner_from_payload(payload) not in {"lm_studio", "llm_api"}:
+    if not model_file and _llm_runner_from_payload(payload) not in _EXTERNAL_LLM_RUNNERS:
         raise ValueError("Choose a non-vision Gemma model first.")
     lyrics_text = str(payload.get("lyrics_text", "") or payload.get("lyrics", "") or "").strip()
     user_input = str(payload.get("user_input", "") or payload.get("notes", "") or "").strip()
@@ -8129,7 +8371,7 @@ def _generate_wizard_locations_from_lyrics(payload):
 
 def _generate_flux_reference_subjects(payload):
     model_file = str(payload.get("model_file", "") or "").strip()
-    if not model_file and _llm_runner_from_payload(payload) not in {"lm_studio", "llm_api"}:
+    if not model_file and _llm_runner_from_payload(payload) not in _EXTERNAL_LLM_RUNNERS:
         raise ValueError("Choose a non-vision Gemma model first.")
     scenes = payload.get("scenes") or []
     if not isinstance(scenes, list) or not scenes:
@@ -8228,7 +8470,7 @@ def _generate_flux_reference_zimage_prompt(payload):
     style_theme = str(payload.get("style_theme", "") or "").strip()
     if reference_type not in {"subject", "location"}:
         raise ValueError("Reference type must be subject or location.")
-    if not model_file and _llm_runner_from_payload(payload) not in {"lm_studio", "llm_api"}:
+    if not model_file and _llm_runner_from_payload(payload) not in _EXTERNAL_LLM_RUNNERS:
         raise ValueError("Choose a non-vision Gemma model first.")
     if not source_text:
         raise ValueError("Enter a subject or location description first.")
@@ -10297,6 +10539,24 @@ def _ensure_music_builder_routes():
         try:
             payload = await request.json()
             result = await asyncio.to_thread(_test_llm_api, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/test_own_server")
+    async def vrgdg_music_builder_test_own_server(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(_test_own_server, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/own_server_models")
+    async def vrgdg_music_builder_own_server_models(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(_list_own_server_models, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
