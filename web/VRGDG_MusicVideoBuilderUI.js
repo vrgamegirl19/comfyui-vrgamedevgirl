@@ -22670,6 +22670,61 @@ function openBuilder(node) {
     return segmentSingerSubjectText(segment);
   }
 
+  function selectedSceneSubjectsForSegment(segment, refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder)) {
+    if (!segment || segment.no_character_present) return [];
+    const normalizedRefs = normalizeFluxReferenceBuilder(refs);
+    return logicalSubjectIdsForScene(normalizedRefs, segment, segmentIndexInfo(segment).index)
+      .map((id) => logicalReferenceSubjects(normalizedRefs).find((subject) => String(subject?.id || "") === String(id)))
+      .filter(Boolean);
+  }
+
+  function selectedCastCoverageContract(segment, options = {}) {
+    const subjects = selectedSceneSubjectsForSegment(segment);
+    if (!subjects.length) return "";
+    const labelMap = options.labelMap instanceof Map ? options.labelMap : null;
+    const subjectLabel = (subject) => {
+      const id = String(subject?.id || "").trim();
+      const name = String(subject?.name || "").trim();
+      const mapped = labelMap ? (labelMap.get(id) || labelMap.get(name.toLowerCase())) : null;
+      return mapped?.label || name || "selected subject";
+    };
+    const labels = subjects.map(subjectLabel);
+    const performerIds = new Set(selectedPerformerSubjectsForSegment(segment).map((subject) => String(subject?.id || "").trim()).filter(Boolean));
+    const performerLabels = subjects.filter((subject) => performerIds.has(String(subject?.id || "").trim())).map(subjectLabel);
+    const featuredLabels = performerLabels.length ? performerLabels : labels;
+    const shotPlan = Array.isArray(options.shotPlan) ? options.shotPlan : [];
+    const lines = [
+      `SELECTED CAST COVERAGE — MANDATORY: ${labels.join(", ")} are all selected visible subjects for this scene. Every selected subject must appear visibly at least once. Performer/singer assignment controls only who sings or lip-syncs; it never removes the other selected subjects from the scene. Non-singing selected subjects continue appropriate visible band, acting, reaction, movement, or instrument performance without lip-syncing.`,
+      "VISIBLE BAND PERFORMANCE — MANDATORY: whenever a selected subject whose Reference Builder name or description identifies a musician, band role, or instrument is visible, show that subject actively and believably playing their assigned instrument. Preserve the exact instrument assignment; show purposeful hand, arm, and body interaction appropriate to that instrument, and do not leave the member merely standing, posing, holding the instrument idle, or reacting. A singer who is also assigned an instrument must continue playing it while singing unless the scene direction explicitly says otherwise. Do not invent an instrument for a subject whose reference does not assign one.",
+    ];
+    if (shotPlan.length <= 1) {
+      lines.push(performerLabels.length
+        ? `Single-shot performer rule: feature ${performerLabels.join(", ")} as the primary focus throughout the continuous shot. Keep the other selected subjects visible in appropriate supporting coverage when composition allows.`
+        : `Single-shot cast rule: keep ${labels.join(", ")} visibly present together in the continuous shot. Do not isolate one member for the entire scene.`);
+      return lines.join("\n");
+    }
+    const assignments = shotPlan.map((shot, index) => {
+      const featured = featuredLabels[index % featuredLabels.length];
+      const remaining = labels.filter((label) => label !== featured);
+      return `Shot ${shot?.number || index + 1}: feature ${featured}; ${remaining.length ? `${remaining.join(", ")} may remain visible in supporting coverage` : "keep the selected subject visible"}.`;
+    });
+    lines.push(performerLabels.length
+      ? "PERFORMER FOCUS — MANDATORY: an assigned performer/singer remains the featured primary subject on every lip-sync shot. If multiple performers are assigned, rotate only among those performers. Other selected cast members may appear in supporting, reaction, group, or instrument coverage, but must not replace an assigned performer as the featured subject."
+      : "CUT ROTATION — MANDATORY: every cut must change the featured band member. Never keep the same member as the primary focus across consecutive shots while another selected member is available. Cycle through the selected cast; group or supporting coverage is allowed, but it does not replace the required featured-member rotation.",
+      ...assignments);
+    return lines.join("\n");
+  }
+
+  function ltx25SelectedCastCoverageContract(segment) {
+    if (String(i2vVideoSettingsForSegment(segment)?.ltx_version || "2.5") === "2.3") return "";
+    const base = selectedCastCoverageContract(segment);
+    if (!base) return "";
+    const hasAssignedPerformer = selectedPerformerSubjectsForSegment(segment).length > 0;
+    return `${base}\n${hasAssignedPerformer
+      ? "LTX 2.5 performer cut rule: if the prompt contains multiple shots or cuts, keep an assigned performer as the featured subject after every cut; rotate only between assigned performers when more than one is selected."
+      : "LTX 2.5 cut rule: if the prompt contains multiple shots or cuts, each new shot must feature a different selected member from the preceding shot. If there is no cut, stage all selected members together in the continuous shot."}`;
+  }
+
   function segmentMappedLocationText(segment) {
     const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
     if (!segment) return "";
@@ -38829,7 +38884,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         ? `REQUIRED USER ENDING DIRECTION:\n${String(segment.flf_custom_end_direction || "").trim()}`
         : "Choose an ending that follows naturally from the story beat and start image. Avoid revealing unseen wardrobe or anatomy unless the supplied character description specifies those details.",
     ].filter(Boolean).join("\n") : "";
-    const extraNotes = [storyboardNotes, provisionalInstructions, String(options.extraUserNotes || "").trim()].filter(Boolean).join("\n\n");
+    const selectedCastContract = ltx25SelectedCastCoverageContract(segment);
+    const extraNotes = [storyboardNotes, selectedCastContract, provisionalInstructions, String(options.extraUserNotes || "").trim()].filter(Boolean).join("\n\n");
     const mappedSubjectContext = segment.no_character_present ? "" : segmentMappedSubjectText(segment);
     const mappedLocationContext = segmentMappedLocationText(segment);
     return {
@@ -39601,6 +39657,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     } else {
       parts.push("Continuous shot: return one description only.");
     }
+    const selectedCastContract = selectedCastCoverageContract(segment, {
+      shotPlan,
+      labelMap: miniMaxH3SubjectLabelMapForSegment(segment, mode),
+    });
+    if (selectedCastContract) parts.push(selectedCastContract);
     const framingLines = miniMaxH3PerShotFramingLines(segment, shotPlan);
     if (framingLines.length) parts.push(...framingLines);
     parts.push(`Camera speed: ${Number.isFinite(cameraMotionSpeed) ? cameraMotionSpeed : 4}/10${cameraMotionGuidance ? ` - ${compact(cameraMotionGuidance, 240)}` : ""}.`);
@@ -39650,7 +39711,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       .map((line) => String(line || "").split(":")[0].trim())
       .filter(Boolean);
     if (referenceLabels.length) {
-      parts.push(`Available renderer reference labels: ${referenceLabels.join(", ")}. Mention labels only when useful in the shot text; do not define them.`);
+      parts.push(`Available renderer reference labels: ${referenceLabels.join(", ")}. Use every selected subject label required by the selected-cast coverage and per-shot rotation contract; other labels need only be mentioned when useful. Do not define labels in the shot text.`);
     }
     if (mode === "video_to_video") {
       const videoAssignments = miniMaxH3VideoAssignmentLines(segment);
