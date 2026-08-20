@@ -18,9 +18,11 @@ def load_lm_studio_helpers():
         "_normalized_token_limit",
         "_runner_output_token_limit",
         "_lm_studio_context_limit",
+        "_lm_studio_reasoning_mode",
         "_lm_studio_api_root",
         "_lm_studio_native_output_text",
         "_run_lm_studio_native_chat",
+        "_run_lm_studio_vision",
     }
     tree = ast.parse(BUILDER_BACKEND)
     nodes = []
@@ -111,6 +113,94 @@ class LmStudioSeedRetryTests(unittest.TestCase):
         self.assertEqual("Hello from LM Studio", text)
         self.assertEqual(1, urlopen_mock.call_count)
         self.assertNotIn("seed", calls[0])
+        self.assertNotIn("reasoning", calls[0])
+
+    def test_vision_requests_disable_reasoning_by_default(self):
+        calls = []
+
+        def urlopen_side_effect(request, timeout=None):
+            calls.append(json.loads(request.data.decode("utf-8")))
+            return FakeLMStudioResponse(SUCCESS_PAYLOAD)
+
+        run_vision = LM_STUDIO_HELPERS["_run_lm_studio_vision"]
+        LM_STUDIO_HELPERS["_pil_image_to_data_url"] = lambda image: "data:image/jpeg;base64,dGVzdA=="
+        payload = {"lmstudio_base_url": "http://127.0.0.1:1234/v1", "lmstudio_model": "test-model"}
+        with mock.patch("urllib.request.urlopen", side_effect=urlopen_side_effect):
+            text = run_vision(payload, "describe this image", [object()])
+
+        self.assertEqual("Hello from LM Studio", text)
+        self.assertEqual("off", calls[0]["reasoning"])
+        self.assertEqual("text", calls[0]["input"][0]["type"])
+        self.assertEqual("image", calls[0]["input"][1]["type"])
+
+    def test_explicit_vision_reasoning_mode_overrides_default(self):
+        calls = []
+
+        def urlopen_side_effect(request, timeout=None):
+            calls.append(json.loads(request.data.decode("utf-8")))
+            return FakeLMStudioResponse(SUCCESS_PAYLOAD)
+
+        run_vision = LM_STUDIO_HELPERS["_run_lm_studio_vision"]
+        LM_STUDIO_HELPERS["_pil_image_to_data_url"] = lambda image: "data:image/jpeg;base64,dGVzdA=="
+        payload = {
+            "lmstudio_base_url": "http://127.0.0.1:1234/v1",
+            "lmstudio_model": "test-model",
+            "lmstudio_reasoning": "low",
+        }
+        with mock.patch("urllib.request.urlopen", side_effect=urlopen_side_effect):
+            run_vision(payload, "describe this image", [object()])
+
+        self.assertEqual("low", calls[0]["reasoning"])
+
+    def test_vision_seed_retry_keeps_reasoning_disabled(self):
+        calls = []
+
+        def urlopen_side_effect(request, timeout=None):
+            body = json.loads(request.data.decode("utf-8"))
+            calls.append(body)
+            if "seed" in body:
+                raise make_http_error(400, {
+                    "error": {
+                        "message": "Unrecognized key(s) in object: 'seed'",
+                        "type": "invalid_request",
+                        "code": "unrecognized_keys",
+                    }
+                })
+            return FakeLMStudioResponse(SUCCESS_PAYLOAD)
+
+        run_vision = LM_STUDIO_HELPERS["_run_lm_studio_vision"]
+        LM_STUDIO_HELPERS["_pil_image_to_data_url"] = lambda image: "data:image/jpeg;base64,dGVzdA=="
+        payload = {
+            "lmstudio_base_url": "http://127.0.0.1:1234/v1",
+            "lmstudio_model": "test-model",
+            "seed": 42,
+        }
+        with mock.patch("urllib.request.urlopen", side_effect=urlopen_side_effect) as urlopen_mock:
+            text = run_vision(payload, "describe this image", [object()])
+
+        self.assertEqual("Hello from LM Studio", text)
+        self.assertEqual(2, urlopen_mock.call_count)
+        self.assertEqual("off", calls[0]["reasoning"])
+        self.assertEqual("off", calls[1]["reasoning"])
+        self.assertNotIn("seed", calls[1])
+
+    def test_invalid_reasoning_mode_cannot_reach_lm_studio(self):
+        calls = []
+
+        def urlopen_side_effect(request, timeout=None):
+            calls.append(json.loads(request.data.decode("utf-8")))
+            return FakeLMStudioResponse(SUCCESS_PAYLOAD)
+
+        run_chat = LM_STUDIO_HELPERS["_run_lm_studio_native_chat"]
+        payload = {
+            "lmstudio_base_url": "http://127.0.0.1:1234/v1",
+            "lmstudio_model": "test-model",
+            "lmstudio_reasoning": "unsupported",
+        }
+        with mock.patch("urllib.request.urlopen", side_effect=urlopen_side_effect):
+            run_chat(payload, "hello", 0.7, 0.9, 500, 30, "")
+
+        self.assertNotIn("reasoning", calls[0])
 
     def test_unrelated_bad_request_is_not_treated_as_seed_rejection(self):
         def urlopen_side_effect(request, timeout=None):
