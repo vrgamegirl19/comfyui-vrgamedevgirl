@@ -3387,15 +3387,20 @@ def _own_server_request_json(url, payload, method="POST", body=None, timeout=180
 
     try:
         return _open(ssl_context)
-    except ssl.SSLError:
-        if ssl_context is None:
-            raise
-        unverified = ssl._create_unverified_context()
-        return _open(unverified)
+    except ssl.SSLError as exc:
+        raise RuntimeError(
+            f"TLS certificate validation failed for own server at {url}. "
+            "Install a trusted certificate or use HTTP only for a server on a trusted local network."
+        ) from exc
     except urllib.error.HTTPError as exc:
         details = exc.read().decode("utf-8", errors="replace") if hasattr(exc, "read") else ""
         raise RuntimeError(f"Own server request failed ({exc.code}): {details or exc.reason}") from exc
     except urllib.error.URLError as exc:
+        if isinstance(getattr(exc, "reason", None), ssl.SSLError):
+            raise RuntimeError(
+                f"TLS certificate validation failed for own server at {url}. "
+                "Install a trusted certificate or use HTTP only for a server on a trusted local network."
+            ) from exc
         raise RuntimeError(
             f"Could not connect to own server at {url}. Check the URL, local bind address, or Cloudflare tunnel."
         ) from exc
@@ -7576,6 +7581,7 @@ def _analyze_builder_story_references(payload):
     top_p = float(payload.get("top_p") or 0.95)
     max_new_tokens = _runner_output_token_limit(payload, int(payload.get("max_new_tokens") or 500))
     unload_after = bool(payload.get("unload_after", True))
+    used_model = model_path
     try:
         model = None
         if llm:
@@ -7611,6 +7617,7 @@ def _analyze_builder_story_references(payload):
                     top_p=top_p,
                     max_new_tokens=max_new_tokens,
                 )
+                used_model = _run_info.get("used_model", used_model)
             else:
                 text = llm._run_gguf_vision_pipeline(
                     model=model,
@@ -7626,7 +7633,7 @@ def _analyze_builder_story_references(payload):
             if text.strip():
                 prefix = f"Reference batch {batch_index}: " if len(batches) > 1 else ""
                 batch_notes.append(prefix + text.strip())
-        return {"notes": "\n\n".join(batch_notes).strip(), "used_model": model_path, "used_mmproj": mmproj_path, "runner": "llm_api_vision" if text_runner == "llm_api" else "own_server_vision" if text_runner == "own_server" else "lm_studio_vision" if text_runner == "lm_studio" else "builtin", "unloaded": False if text_runner in _EXTERNAL_LLM_RUNNERS else unload_after, "batches": len(batches)}
+        return {"notes": "\n\n".join(batch_notes).strip(), "used_model": used_model, "used_mmproj": mmproj_path, "runner": "llm_api_vision" if text_runner == "llm_api" else "own_server_vision" if text_runner == "own_server" else "lm_studio_vision" if text_runner == "lm_studio" else "builtin", "unloaded": False if text_runner in _EXTERNAL_LLM_RUNNERS else unload_after, "batches": len(batches)}
     finally:
         if llm and unload_after:
             llm._unload_gguf_model(

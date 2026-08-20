@@ -1,7 +1,11 @@
 import ast
+import ssl
 import urllib
+import urllib.error
+import urllib.request
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,6 +22,9 @@ def load_own_server_helpers():
         "_own_server_chat_messages",
         "_own_server_message_text",
         "_own_server_timeout",
+        "_own_server_headers",
+        "_own_server_ssl_context",
+        "_own_server_request_json",
         "_normalized_token_limit",
         "_runner_output_token_limit",
     }
@@ -36,7 +43,6 @@ def load_own_server_helpers():
             for target in node.targets
         ):
             nodes.append(node)
-    import ssl
     import urllib.parse
     namespace = {
         "ssl": ssl,
@@ -94,6 +100,20 @@ class BuilderOwnServerLlmRunnerTests(unittest.TestCase):
         self.assertEqual(HELPERS["_own_server_api_key"]({}), "")
         self.assertEqual(HELPERS["_own_server_api_key"]({"own_server_api_key": "  sk-test  "}), "sk-test")
 
+    def test_tls_certificate_failure_does_not_retry_without_verification(self):
+        request_json = HELPERS["_own_server_request_json"]
+        certificate_error = ssl.SSLCertVerificationError(1, "certificate verify failed")
+        for failure in (certificate_error, urllib.error.URLError(certificate_error)):
+            with self.subTest(failure=type(failure).__name__):
+                with mock.patch("urllib.request.urlopen", side_effect=failure) as urlopen:
+                    with self.assertRaisesRegex(RuntimeError, "TLS certificate validation failed"):
+                        request_json(
+                            "https://example.invalid/v1/models",
+                            {"own_server_api_key": "secret"},
+                            method="GET",
+                        )
+                self.assertEqual(urlopen.call_count, 1)
+
     def test_text_messages_are_openai_chat_completions(self):
         messages = HELPERS["_own_server_chat_messages"]("Hello there")
         self.assertEqual(messages, [{"role": "user", "content": "Hello there"}])
@@ -122,6 +142,12 @@ class BuilderOwnServerLlmRunnerTests(unittest.TestCase):
         self.assertIn("OpenAI Chat Completions standard", BUILDER_UI)
         self.assertIn("image_url", BUILDER_UI)
         self.assertIn("Cloudflare", BUILDER_UI)
+
+    def test_loading_project_clears_unsaved_key_instead_of_reusing_it(self):
+        self.assertIn(
+            "state.ownServerApiKey = state.ownServerApiKeyProject;",
+            BUILDER_UI,
+        )
 
     def test_backend_registers_test_and_models_routes(self):
         self.assertIn('/vrgdg/music_builder/test_own_server', BUILDER_BACKEND)

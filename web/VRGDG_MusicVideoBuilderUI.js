@@ -36650,7 +36650,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.ownServerUrl = session.own_server_url || state.ownServerUrl || "http://127.0.0.1:8000/v1";
       state.ownServerModel = session.own_server_model || state.ownServerModel || "";
       state.ownServerApiKeyProject = session.own_server_api_key_project || "";
-      if (state.ownServerApiKeyProject) state.ownServerApiKey = state.ownServerApiKeyProject;
+      // Never carry a session-only credential into a newly loaded project's
+      // arbitrary server URL. A project key is restored only when explicitly saved.
+      state.ownServerApiKey = state.ownServerApiKeyProject;
       state.ownServerOutputTokenLimit = normalizeOutputTokenLimit(session.own_server_output_token_limit ?? state.ownServerOutputTokenLimit);
       state.ownServerTimeoutMinutes = normalizeOwnServerTimeoutMinutes(
         session.own_server_timeout_minutes
