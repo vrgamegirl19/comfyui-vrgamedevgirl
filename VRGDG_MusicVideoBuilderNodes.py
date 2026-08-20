@@ -3327,6 +3327,19 @@ def _lm_studio_context_limit(payload):
     return _normalized_token_limit(configured, 32768, minimum=512)
 
 
+def _lm_studio_reasoning_mode(payload, default=""):
+    payload = payload if isinstance(payload, dict) else {}
+    configured = payload.get("lmstudio_reasoning")
+    if configured in (None, ""):
+        configured = payload.get("lm_studio_reasoning")
+    normalized = str(configured or "").strip().lower()
+    allowed = {"off", "low", "medium", "high", "on"}
+    if normalized in allowed:
+        return normalized
+    fallback = str(default or "").strip().lower()
+    return fallback if fallback in allowed else ""
+
+
 def _lm_studio_api_root(payload):
     base_url = str(payload.get("lmstudio_base_url") or _LM_STUDIO_DEFAULT_BASE_URL).strip().rstrip("/")
     if base_url.lower().endswith("/v1"):
@@ -3356,7 +3369,7 @@ def _lm_studio_native_output_text(data):
     return "\n".join(part.strip() for part in parts if str(part or "").strip()).strip()
 
 
-def _run_lm_studio_native_chat(payload, input_value, temperature, top_p, max_new_tokens, timeout, label):
+def _run_lm_studio_native_chat(payload, input_value, temperature, top_p, max_new_tokens, timeout, label, reasoning_default=""):
     api_root = _lm_studio_api_root(payload)
     model = str(payload.get("lmstudio_model") or payload.get("model_file") or "").strip()
     api_key = str(payload.get("lmstudio_api_key") or "").strip()
@@ -3374,6 +3387,9 @@ def _run_lm_studio_native_chat(payload, input_value, temperature, top_p, max_new
         "store": False,
         "stream": False,
     }
+    reasoning_mode = _lm_studio_reasoning_mode(payload, reasoning_default)
+    if reasoning_mode:
+        body["reasoning"] = reasoning_mode
     if payload.get("seed") is not None:
         body["seed"] = int(payload.get("seed"))
     headers = {"Content-Type": "application/json"}
@@ -3571,6 +3587,7 @@ def _run_lm_studio_vision(payload, instruction_text, pil_images, temperature=0.2
         max_new_tokens,
         payload.get("lmstudio_timeout") or 300,
         "vision ",
+        reasoning_default="off",
     )
 
 
