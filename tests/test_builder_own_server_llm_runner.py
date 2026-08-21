@@ -129,9 +129,9 @@ class BuilderOwnServerLlmRunnerTests(unittest.TestCase):
             "Hello world",
         )
 
-    def test_ui_exposes_fourth_runner_and_required_fields(self):
-        self.assertIn('makeSelect(["builtin", "lm_studio", "llm_api", "own_server"]', BUILDER_UI)
-        self.assertIn('runner.options[3].textContent = "Use my own server"', BUILDER_UI)
+    def test_ui_exposes_own_server_runner_and_required_fields(self):
+        self.assertIn('makeSelect(["builtin", "qwen_local", "lm_studio", "llm_api", "own_server"]', BUILDER_UI)
+        self.assertIn('runner.options[4].textContent = "Custom Server"', BUILDER_UI)
         self.assertIn('makeField("Server URL", ownUrl)', BUILDER_UI)
         self.assertIn('makeField("API key (optional)", ownApiKey)', BUILDER_UI)
         self.assertIn('makeField("Test response", ownTestOutput)', BUILDER_UI)

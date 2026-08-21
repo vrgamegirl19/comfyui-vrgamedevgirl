@@ -83,12 +83,43 @@ class StoryArcSectionTests(unittest.TestCase):
     def test_structure_error_identifies_first_mismatch(self):
         with self.assertRaisesRegex(
             ValueError,
-            "Expected 3 headings but Gemma returned 2.*expected 'Verse', received 'Chorus'",
+            "Expected 3 headings but Qwen Local returned 2.*expected 'Verse', received 'Chorus'",
         ):
             normalize_output(
                 "Intro:\nOpening action.\nChorus:\nFinal action.",
                 ["Intro", "Verse", "Chorus"],
+                100,
+                "Qwen Local",
             )
+
+    def test_instruction_echo_preamble_is_ignored_before_valid_sections(self):
+        normalized = normalize_output(
+            "What user says preserve exactly section order and output headings:\n"
+            "Do not change the requested structure.\n"
+            "Verse 1:\nOpening action.\n"
+            "Chorus:\nFinal action.",
+            ["Verse 1", "Chorus"],
+            100,
+            "Qwen Local",
+        )
+        self.assertEqual(
+            normalized,
+            "Verse 1:\nOpening action.\n\nChorus:\nFinal action.",
+        )
+
+    def test_invented_story_heading_is_not_treated_as_instruction_echo(self):
+        with self.assertRaisesRegex(ValueError, "Qwen Local changed the lyric structure"):
+            normalize_output(
+                "Prologue:\nInvented opening.\nVerse 1:\nOpening action.",
+                ["Verse 1"],
+                100,
+                "Qwen Local",
+            )
+
+    def test_story_arc_generation_has_automatic_format_retry(self):
+        source = SOURCE_PATH.read_text(encoding="utf-8")
+        self.assertIn("CORRECTION: Your previous answer did not follow", source)
+        self.assertIn("after an automatic format retry", source)
 
 
 if __name__ == "__main__":

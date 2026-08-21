@@ -3,6 +3,57 @@
   "product": "AI Video Builder",
   "releases": [
     {
+      "id": "2026-08-21-qwen-runner-project-recovery",
+      "version": "2026.08.21-qwen-runner-project-recovery",
+      "date": "2026-08-21",
+      "title": "Qwen Local LLM support, synchronized Builder models, and project recovery fixes",
+      "commit": "a946112dbd76078656b3055bb5606ce4e1b29920",
+      "restart_required": true,
+      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
+      "sections": [
+        {
+          "title": "Added",
+          "items": [
+            "Added Qwen Local as a dedicated LLM Runner choice with its own GGUF model, optional vision mmproj, external GGUF file picker, context limit, output-token limit, and GPU-layer settings.",
+            "Added Qwen GGUF discovery across every registered models/LLM location and Qwen subfolder so installed Qwen models appear in the LLM Runner dropdown instead of being limited to one folder.",
+            "Added Builder support for sending text and image-reference prompt requests through the selected local Qwen model."
+          ]
+        },
+        {
+          "title": "Changed",
+          "items": [
+            "The model selected in LLM Runner now synchronizes with every matching Builder model field. Qwen is placed in both the non-vision text and vision model fields because it supports both uses, and its selected mmproj is synchronized with the vision fields.",
+            "Gemma Local model selections now synchronize with the Builder model fields in the same way, while external LM Studio, API, and own-server runners keep their server-managed model settings.",
+            "Builder model labels now say LLM model instead of incorrectly identifying every selected model as Gemma.",
+            "Thinking mode is explicitly disabled for both Qwen Local and Gemma Local Builder requests so prompt generation returns the requested answer without an automatic thinking section.",
+            "Builder and Storyboard windows, progress dialogs, action buttons, hints, and runner-aware errors now display the selected Gemma Local, Qwen Local, LM Studio, LLM API, or Custom Server name instead of hardcoding Gemma."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Fixed Qwen Local remaining visually stuck on Gemma after it was selected and saved in LLM Runner.",
+            "Fixed installed Qwen models not appearing in the Qwen model dropdown when they were stored in another configured LLM model location.",
+            "Fixed loaded projects showing blank or missing thumbnails by creating missing thumbnail directories before recovering preview frames from the saved media.",
+            "Fixed project loading failing with Cannot read properties of null (reading 'image_history') when a saved scene or preview entry was empty.",
+            "Fixed switching the Audio Builder to MiniMax H3 failing on the same null image_history state by restoring a valid active scene before synchronizing the MiniMax panel.",
+            "Fixed saved Qwen, Gemma, and mmproj selections being replaced by stale Builder dropdown values after loading a project or refreshing the available model lists.",
+            "Fixed Story Arc generation failing when Qwen echoed an instruction heading instead of immediately returning the exact lyric-section headings. Clearly instructional preambles are ignored when a valid arc follows, and invalid structures receive one automatic strict-format retry before an error is shown.",
+            "Fixed model-emitted <think>, Thought, Thinking, Analysis, and Reasoning preambles leaking into Builder and Storyboard output even when local thinking mode is disabled.",
+            "Story Arc format failures now include a collapsed diagnostics panel with the runner, expected headings, raw model response, cleaned response, and a copy-output button."
+          ]
+        },
+        {
+          "title": "Compatibility Notes",
+          "items": [
+            "Restart ComfyUI and hard-refresh the browser after updating so the revised Python routes, local LLM support, and Builder JavaScript are loaded.",
+            "Place Qwen GGUF and compatible mmproj files in a configured ComfyUI LLM model folder, or select an external GGUF file directly in LLM Runner.",
+            "Older projects remain compatible. When possible, missing scene thumbnails are rebuilt automatically from their saved image or video media when the project loads."
+          ]
+        }
+      ]
+    },
+    {
       "id": "2026-08-16-ltx25-minimax-three-pass",
       "version": "2026.08.16-ltx25-minimax-three-pass",
       "date": "2026-08-16",
