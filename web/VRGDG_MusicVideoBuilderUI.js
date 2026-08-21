@@ -534,13 +534,21 @@ function cloneMiniMaxH3Settings(value = {}) {
     })),
   };
 }
-const LTX_MODEL_DOWNLOADS = [
+const LTX_23_MODEL_DOWNLOADS = [
   { label: "LTX GGUF", url: "https://huggingface.co/Abiray/LTX-2.3-22B-DISTILLED-1.1-GGUF/tree/main" },
   { label: "Video VAE", url: "https://huggingface.co/Kijai/LTX2.3_comfy/tree/main/vae" },
   { label: "Gemma Clip", url: "https://huggingface.co/Sikaworld1990/gemma-3-12b-it-abliterated-sikaworld-high-fidelity-edition-Ltx-2/resolve/main/gemma-3-12b-it-abliterated-sikaworld-high-fidelity-edition.safetensors" },
   { label: "Text Projection", url: "https://huggingface.co/Kijai/LTX2.3_comfy/tree/main/text_encoders" },
   { label: "Latent Upscaler", url: "https://huggingface.co/prince-canuma/LTX-2.3-distilled/resolve/main/ltx-2.3-spatial-upscaler-x2-1.1.safetensors" },
   { label: "Audio VAE", url: "https://huggingface.co/Kijai/LTX2.3_comfy/tree/main/vae" },
+];
+const LTX_25_MODEL_DOWNLOADS = [
+  { label: "Gemma 4 E2B Text Encoder", url: "https://huggingface.co/Comfy-Org/gemma-4/resolve/main/text_encoders/gemma4_e2b_it_bf16.safetensors" },
+  { label: "Gemma 4 12B LTX 2.5 Text Encoder", url: "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors" },
+  { label: "LTX 2.5 Distilled Transformer", url: "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors" },
+  { label: "LTX 2.5 Video VAE", url: "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/vae/ltx-2.5-video-vae-bf16.safetensors" },
+  { label: "LTX 2.5 Audio VAE", url: "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/vae/ltx-2.5-audio-vae-bf16.safetensors" },
+  { label: "LTX 2.5 Latent Upscaler", url: "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors" },
 ];
 const MINIMAX_H3_MODEL_DOWNLOADS = [
   { label: "Diffusion model", url: "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors" },
@@ -659,6 +667,18 @@ models/
     LTX2.3_audio_vae_bf16.safetensors
   latent_upscale_models/
     ltx-2.3-spatial-upscaler-x2-1.1.safetensors`,
+  "LTX 2.5": `ComfyUI/
+models/
+  text_encoders/
+    gemma4_e2b_it_bf16.safetensors
+    gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors
+  diffusion_models/
+    ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors
+  vae/
+    ltx-2.5-video-vae-bf16.safetensors
+    ltx-2.5-audio-vae-bf16.safetensors
+  latent_upscale_models/
+    ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors`,
   "MiniMax H3": `ComfyUI/
 models/
   diffusion_models/
@@ -1522,9 +1542,28 @@ function showModelDownloadModal() {
   const tabs = [
     {
       id: "ltx",
-      label: "LTX + Image Models",
+      label: "LTX",
+      subTabs: [
+        {
+          id: "ltx-25",
+          label: "LTX 2.5",
+          groups: [
+            { title: "LTX 2.5", note: "LTX 2.5 distilled transformer, Gemma 4 text encoders, video/audio VAEs, and x2 latent upscaler.", downloads: LTX_25_MODEL_DOWNLOADS },
+          ],
+        },
+        {
+          id: "ltx-23",
+          label: "LTX 2.3",
+          groups: [
+            { title: "LTX 2.3", note: "Legacy LTX 2.3 model files for existing workflows.", downloads: LTX_23_MODEL_DOWNLOADS },
+          ],
+        },
+      ],
+    },
+    {
+      id: "image-models",
+      label: "Image Models",
       groups: [
-        { title: "LTX 2.3", note: "High-quality image and video generation model.", downloads: LTX_MODEL_DOWNLOADS },
         { title: "ZImage", note: "Core ZImage Turbo diffusion model, Qwen text encoder, and VAE.", downloads: ZIMAGE_MODEL_DOWNLOADS },
         { title: "Krea2", note: "Krea2 text-to-image model used by the Reference Builder Krea2 + ZImage enhancer option.", downloads: KREA2_MODEL_DOWNLOADS },
         { title: "Flux/Klein 9B", note: "9B is higher quality. 4B is smaller and lighter.", downloads: FLUX_KLEIN_9B_MODEL_DOWNLOADS },
@@ -1569,6 +1608,7 @@ function showModelDownloadModal() {
   tabBar.setAttribute("aria-label", "Model download categories");
   tabBar.style.cssText = "position:sticky;top:78px;z-index:1;display:flex;flex-wrap:wrap;gap:10px;padding:14px 20px;border-bottom:1px solid #334155;background:#0b1220;";
   const tabButtons = new Map();
+  const activeSubTabs = new Map();
 
   const renderGroups = (groups) => {
     body.replaceChildren();
@@ -1624,6 +1664,38 @@ function showModelDownloadModal() {
     }
   };
 
+  const renderTab = (tab) => {
+    if (!tab.subTabs?.length) {
+      renderGroups(tab.groups || []);
+      return;
+    }
+
+    const selectedSubTab = tab.subTabs.find((subTab) => subTab.id === activeSubTabs.get(tab.id)) || tab.subTabs[0];
+    activeSubTabs.set(tab.id, selectedSubTab.id);
+    const subTabBar = document.createElement("div");
+    subTabBar.setAttribute("role", "tablist");
+    subTabBar.setAttribute("aria-label", `${tab.label} versions`);
+    subTabBar.style.cssText = "grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px;padding:2px 0 4px;";
+
+    renderGroups(selectedSubTab.groups || []);
+    for (const subTab of tab.subTabs) {
+      const button = makeMiniButton(subTab.label);
+      const active = subTab.id === selectedSubTab.id;
+      button.setAttribute("role", "tab");
+      button.setAttribute("aria-selected", active ? "true" : "false");
+      button.tabIndex = active ? 0 : -1;
+      button.style.cssText += `;font-size:14px;font-weight:900;padding:9px 15px;border-radius:999px;background:${active ? "#7c3aed" : "#1e293b"};border-color:${active ? "#c4b5fd" : "#475569"};color:${active ? "#f5f3ff" : "#cbd5e1"};`;
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        activeSubTabs.set(tab.id, subTab.id);
+        renderTab(tab);
+      });
+      subTabBar.append(button);
+    }
+    body.prepend(subTabBar);
+  };
+
   const activateTab = (tabId) => {
     const selected = tabs.find((tab) => tab.id === tabId) || tabs[0];
     for (const [id, button] of tabButtons) {
@@ -1634,7 +1706,7 @@ function showModelDownloadModal() {
       button.style.borderColor = active ? "#22d3ee" : "#475569";
       button.style.color = active ? "#ecfeff" : "#cbd5e1";
     }
-    renderGroups(selected.groups);
+    renderTab(selected);
   };
 
   for (const tab of tabs) {

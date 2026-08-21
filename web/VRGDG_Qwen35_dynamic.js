@@ -5,6 +5,7 @@ const NODE_NAMES = new Set([
   "VRGDG_Qwen2.5",
   "VRGDG_GeneralVLM",
   "VRGDG_GeneralGGUF",
+  "VRGDG_QwenGGUF",
   "VRGDG_SuperGemmaGGUFChat",
 ]);
 

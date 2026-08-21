@@ -3432,10 +3432,14 @@ class VRGDG_GeneralGGUF(VRGDG_Qwen25):
             "stop": list(self._GEMMA_STOP_SEQUENCES),
             **kwargs,
         }
+        template_kwargs = getattr(self, "_qwen_chat_template_kwargs", None)
+        if template_kwargs:
+            call_args["chat_template_kwargs"] = dict(template_kwargs)
         try:
             response = model.create_chat_completion(**call_args)
         except TypeError:
             call_args.pop("seed", None)
+            call_args.pop("chat_template_kwargs", None)
             response = model.create_chat_completion(**call_args)
         return self._extract_gguf_text(response)
 
@@ -3465,10 +3469,14 @@ class VRGDG_GeneralGGUF(VRGDG_Qwen25):
             "stop": list(self._GEMMA_STOP_SEQUENCES),
             **kwargs,
         }
+        template_kwargs = getattr(self, "_qwen_chat_template_kwargs", None)
+        if template_kwargs:
+            call_args["chat_template_kwargs"] = dict(template_kwargs)
         try:
             response = model.create_chat_completion(**call_args)
         except TypeError:
             call_args.pop("seed", None)
+            call_args.pop("chat_template_kwargs", None)
             response = model.create_chat_completion(**call_args)
         return self._extract_gguf_text(response)
 
@@ -3565,6 +3573,170 @@ class VRGDG_GeneralGGUF(VRGDG_Qwen25):
                     chat_format=chat_format,
                     mmproj_path=mmproj_path,
                 )
+
+class VRGDG_QwenGGUF(VRGDG_GeneralGGUF):
+    """Qwen GGUF runner for text and multimodal llama.cpp models.
+
+    The custom option intentionally accepts any local GGUF file/folder or
+    Hugging Face repo, so newer Qwen quantizations do not require a code
+    update just to be selectable.
+    """
+
+    MODELS_SUBDIR = "LLM"
+
+    MODEL_PRESETS = [
+        "unsloth/Qwen3.8-27B-GGUF",
+        "custom",
+    ]
+    MM_PROJ_PRESETS = {
+        "unsloth/Qwen3.8-27B-GGUF": "mmproj-BF16.gguf",
+    }
+    _GEMMA_STOP_SEQUENCES = (
+        "<|im_end|>",
+        "<|endoftext|>",
+        "<|im_start|>",
+    )
+
+    @classmethod
+    def _qwen_models_root(cls):
+        try:
+            roots = folder_paths.get_folder_paths(cls.MODELS_SUBDIR)
+            if roots:
+                return roots[0]
+        except Exception:
+            pass
+        return os.path.join(getattr(folder_paths, "models_dir", ""), cls.MODELS_SUBDIR)
+
+    @classmethod
+    def _list_local_qwen_gguf(cls):
+        root = cls._qwen_models_root()
+        found = []
+        if root and os.path.isdir(root):
+            for dirpath, _, filenames in os.walk(root):
+                for filename in filenames:
+                    low = filename.lower()
+                    if low.endswith(".gguf") and "mmproj" not in low and "qwen" in low:
+                        found.append(os.path.relpath(os.path.join(dirpath, filename), root))
+        return sorted(set(found), key=str.lower) or ["[No Qwen GGUF found in models/LLM]"]
+
+    @classmethod
+    def _list_local_qwen_mmproj(cls):
+        root = cls._qwen_models_root()
+        found = []
+        if root and os.path.isdir(root):
+            for dirpath, _, filenames in os.walk(root):
+                for filename in filenames:
+                    if filename.lower().endswith(".gguf") and "mmproj" in filename.lower():
+                        found.append(os.path.relpath(os.path.join(dirpath, filename), root))
+        return sorted(set(found), key=str.lower) or ["[No Qwen mmproj GGUF found in models/LLM]"]
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        inputs = super().INPUT_TYPES()
+        local_models = cls._list_local_qwen_gguf()
+        local_mmproj = cls._list_local_qwen_mmproj()
+        inputs["required"]["model_file"] = (
+            local_models,
+            {"default": local_models[0], "tooltip": "Qwen GGUF files found under ComfyUI/models/LLM. Use custom_model_id for another path or Hugging Face repo."},
+        )
+        inputs["required"]["mmproj_file"] = (
+            local_mmproj,
+            {"default": local_mmproj[0], "tooltip": "Optional Qwen vision projector found under ComfyUI/models/LLM."},
+        )
+        inputs["required"]["model_preset"] = (
+            cls.MODEL_PRESETS,
+            {
+                "default": cls.MODEL_PRESETS[0],
+                "tooltip": "Choose the Qwen GGUF repo, or select custom and provide a local .gguf file/folder or another Hugging Face repo.",
+            },
+        )
+        inputs["required"]["mmproj_filename"] = (
+            "STRING",
+            {
+                "default": "",
+                "tooltip": "Optional multimodal projector (.gguf). Required only for Qwen vision GGUFs when image inputs are used.",
+            },
+        )
+        inputs["required"]["enable_thinking"] = (
+            "BOOLEAN",
+            {
+                "default": False,
+                "tooltip": "Qwen reasoning mode. Disable for a direct answer with lower latency and fewer output tokens.",
+            },
+        )
+        return inputs
+
+    def generate_prompt(self, *args, **kwargs):
+        enable_thinking = bool(kwargs.pop("enable_thinking", False))
+        model_file = str(kwargs.pop("model_file", "")).strip()
+        mmproj_file = str(kwargs.pop("mmproj_file", "")).strip()
+        root = self._qwen_models_root()
+        if model_file and not model_file.startswith("["):
+            kwargs["custom_model_id"] = os.path.join(root, model_file) if not os.path.isabs(model_file) else model_file
+            kwargs["gguf_filename"] = ""
+        if mmproj_file and not mmproj_file.startswith("["):
+            kwargs["mmproj_filename"] = os.path.join(root, mmproj_file) if not os.path.isabs(mmproj_file) else mmproj_file
+        self._qwen_chat_template_kwargs = {"enable_thinking": enable_thinking}
+        try:
+            return super().generate_prompt(*args, **kwargs)
+        finally:
+            self._qwen_chat_template_kwargs = None
+
+    def _load_gguf_model(
+        self, model_path, n_ctx, n_gpu_layers, n_threads, chat_format, mmproj_path=""
+    ):
+        """Use Qwen's native chat template for multimodal llama.cpp calls."""
+        if not str(mmproj_path or "").strip():
+            return super()._load_gguf_model(
+                model_path, n_ctx, n_gpu_layers, n_threads, chat_format, mmproj_path
+            )
+
+        # Reuse the base loader's cache and retry behavior, but provide a
+        # Qwen-compatible multimodal handler instead of Gemma turn tokens.
+        key = self._gguf_model_key(model_path, n_ctx, n_gpu_layers, n_threads, chat_format, mmproj_path)
+        cached = _GGUF_MODEL_CACHE.get(key)
+        if cached is not None:
+            return cached
+        try:
+            from llama_cpp import Llama
+            from llama_cpp.llama_chat_format import Llava15ChatHandler
+        except Exception as e:
+            raise Exception("Missing dependency: install llama-cpp-python to use the Qwen GGUF node.") from e
+
+        class QwenMTMDChatHandler(Llava15ChatHandler):
+            DEFAULT_SYSTEM_MESSAGE = None
+            CHAT_FORMAT = (
+                "{% for message in messages %}"
+                "{% if message.role == 'system' %}"
+                "<|im_start|>system\\n{{ message.content }}<|im_end|>\\n"
+                "{% elif message.role == 'user' %}"
+                "<|im_start|>user\\n"
+                "{% if message.content is string %}{{ message.content }}{% endif %}"
+                "{% if message.content is iterable %}"
+                "{% for content in message.content %}"
+                "{% if content.type == 'image_url' and content.image_url is string %}{{ content.image_url }}{% endif %}"
+                "{% if content.type == 'image_url' and content.image_url is mapping %}{{ content.image_url.url }}{% endif %}"
+                "{% if content.type == 'text' %}{{ content.text }}{% endif %}"
+                "{% endfor %}{% endif %}<|im_end|>\\n"
+                "{% elif message.role == 'assistant' %}"
+                "<|im_start|>assistant\\n{{ message.content }}<|im_end|>\\n"
+                "{% endif %}{% endfor %}<|im_start|>assistant\\n"
+                "{% if enable_thinking is defined and enable_thinking %}<think>\\n{% endif %}"
+            )
+
+        handler = QwenMTMDChatHandler(clip_model_path=str(mmproj_path), verbose=False)
+        kwargs = {
+            "model_path": str(model_path), "n_ctx": int(n_ctx),
+            "n_gpu_layers": int(n_gpu_layers), "n_threads": int(n_threads),
+            "verbose": False, "chat_handler": handler,
+        }
+        if str(chat_format or "").strip():
+            kwargs["chat_format"] = str(chat_format).strip()
+        model = Llama(**kwargs)
+        _GGUF_MODEL_CACHE[key] = model
+        _GGUF_CHAT_HANDLER_CACHE[key] = handler
+        return model
+
 
 class VRGDG_SuperGemmaGGUFChat(VRGDG_GeneralGGUF):
     MODELS_SUBDIR = "LLM"
@@ -4334,6 +4506,7 @@ NODE_CLASS_MAPPINGS = {
     "VRGDG_Qwen2.5": VRGDG_Qwen25,
     "VRGDG_GeneralVLM": VRGDG_GeneralVLM,
     "VRGDG_GeneralGGUF": VRGDG_GeneralGGUF,    
+    "VRGDG_QwenGGUF": VRGDG_QwenGGUF,
     "VRGDG_SuperGemmaGGUFChat": VRGDG_SuperGemmaGGUFChat,    
     "VRGDG_LlamaCppDoctor": VRGDG_LlamaCppDoctor,
     "VRGDG_UnloadGemmaModels": VRGDG_UnloadGemmaModels,
@@ -4347,6 +4520,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_Qwen2.5": "🧠 VRGDG Qwen 2.5 🧠",
     "VRGDG_GeneralVLM": "🧠 VRGDG General VLM 🧠",
     "VRGDG_GeneralGGUF": "🧠 VRGDG General GGUF 🧠",    
+    "VRGDG_QwenGGUF": "🧠 VRGDG Qwen GGUF 🧠",
     "VRGDG_SuperGemmaGGUFChat": "🧠 VRGDG SuperGemma GGUF Chat 🧠",    
     "VRGDG_LlamaCppDoctor": "🩺 VRGDG Llama CPP Doctor 🩺",
     "VRGDG_UnloadGemmaModels": "VRGDG Unload Gemma/GGUF Models",
