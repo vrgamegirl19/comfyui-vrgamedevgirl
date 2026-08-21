@@ -4561,6 +4561,57 @@ function openBuilder(node) {
   const miniMaxTextGemmaModelSelect = makeSelect([""], "");
   const miniMaxGemmaModelSelect = makeSelect([""], "");
   const miniMaxMmprojSelect = makeSelect([""], "");
+  const builderTextLlmModelSelects = [
+    t2iTextGemmaModelSelect,
+    ernieTextGemmaModelSelect,
+    krea2TwoPassTextGemmaModelSelect,
+    i2vTextGemmaModelSelect,
+    miniMaxTextGemmaModelSelect,
+  ];
+  const builderVisionLlmModelSelects = [
+    gemmaModelSelect,
+    ernieGemmaModelSelect,
+    krea2TwoPassGemmaModelSelect,
+    zEnhanceGemmaModelSelect,
+    i2vGemmaModelSelect,
+    miniMaxGemmaModelSelect,
+    fluxGemmaModelSelect,
+    nbGemmaModelSelect,
+  ];
+  const builderVisionMmprojSelects = [
+    mmprojSelect,
+    ernieMmprojSelect,
+    krea2TwoPassMmprojSelect,
+    zEnhanceMmprojSelect,
+    i2vMmprojSelect,
+    miniMaxMmprojSelect,
+    fluxMmprojSelect,
+    nbMmprojSelect,
+  ];
+  function selectBuilderLlmValue(select, value) {
+    const selectedValue = String(value || "").trim();
+    if (!selectedValue) return;
+    if (!Array.from(select.options).some((option) => option.value === selectedValue)) {
+      const option = document.createElement("option");
+      option.value = selectedValue;
+      option.textContent = selectedValue;
+      select.append(option);
+    }
+    select.value = selectedValue;
+  }
+  function syncBuilderLlmModelSelectsFromRunner() {
+    const runner = String(state.textGemmaRunner || "builtin").toLowerCase();
+    if (!["builtin", "qwen_local"].includes(runner)) return;
+    const modelFile = runner === "qwen_local" ? state.qwenModelFile : state.gemmaModelFile;
+    for (const select of [...builderTextLlmModelSelects, ...builderVisionLlmModelSelects]) {
+      selectBuilderLlmValue(select, modelFile);
+    }
+    if (runner === "qwen_local") {
+      for (const select of builderVisionMmprojSelects) {
+        selectBuilderLlmValue(select, state.qwenMmprojFile);
+      }
+    }
+  }
   function copySelectOptions(sourceSelect, targetSelect) {
     targetSelect.textContent = "";
     for (const option of sourceSelect.options) {
@@ -5321,8 +5372,8 @@ function openBuilder(node) {
       makeField("VAE", zVaePicker.wrapper),
     ]),
     makeSettingsSection("LLM Models", [
-      makeField("Non-Vision text Gemma model", t2iTextGemmaModelSelect),
-      makeField("Vision Gemma model", gemmaModelSelect),
+      makeField("Non-Vision text LLM model", t2iTextGemmaModelSelect),
+      makeField("Vision LLM model", gemmaModelSelect),
       makeField("Vision mmproj", mmprojSelect),
     ]),
     zUseLora.wrapper,
@@ -5374,8 +5425,8 @@ function openBuilder(node) {
           makeField("VAE", ernieVaePicker.wrapper),
         ]),
         makeSettingsSection("LLM Models", [
-          makeField("Non-Vision text Gemma model", ernieTextGemmaModelSelect),
-          makeField("Vision Gemma model", ernieGemmaModelSelect),
+          makeField("Non-Vision text LLM model", ernieTextGemmaModelSelect),
+          makeField("Vision LLM model", ernieGemmaModelSelect),
           makeField("Vision mmproj", ernieMmprojSelect),
         ]),
         ernieUseLora.wrapper,
@@ -5426,8 +5477,8 @@ function openBuilder(node) {
           krea2TwoPassLoraPanel,
         ]),
         makeSettingsSection("LLM Models", [
-          makeField("Non-Vision text Gemma model", krea2TwoPassTextGemmaModelSelect),
-          makeField("Vision Gemma model", krea2TwoPassGemmaModelSelect),
+          makeField("Non-Vision text LLM model", krea2TwoPassTextGemmaModelSelect),
+          makeField("Vision LLM model", krea2TwoPassGemmaModelSelect),
           makeField("Vision mmproj", krea2TwoPassMmprojSelect),
         ]),
         makeKrea2TwoPassCreateButton(),
@@ -6186,10 +6237,10 @@ function openBuilder(node) {
         makeField("Video VAE", miniMaxVideoVaePicker.wrapper),
         makeField("Audio VAE", miniMaxAudioVaePicker.wrapper),
         makeSettingsSection("Non-Vision LLM Models", [
-          makeField("Non-Vision text Gemma model", miniMaxTextGemmaModelSelect),
+          makeField("Non-Vision text LLM model", miniMaxTextGemmaModelSelect),
         ]),
         makeSettingsSection("Vision LLM Models", [
-          makeField("Vision Gemma model", miniMaxGemmaModelSelect),
+          makeField("Vision LLM model", miniMaxGemmaModelSelect),
           makeField("Vision mmproj", miniMaxMmprojSelect),
         ]),
       ]),
@@ -6257,10 +6308,10 @@ function openBuilder(node) {
           i2vDiffusionLoaderAdvanced,
         ]),
         makeSettingsSection("Non-Vision LLM Models", [
-          makeField("Non-Vision text Gemma model", i2vTextGemmaModelSelect),
+          makeField("Non-Vision text LLM model", i2vTextGemmaModelSelect),
         ]),
         makeSettingsSection("Vision LLM Models", [
-          makeField("Vision Gemma model", i2vGemmaModelSelect),
+          makeField("Vision LLM model", i2vGemmaModelSelect),
           makeField("Vision mmproj", i2vMmprojSelect),
         ]),
         ltxMsrRequiredPanel,
@@ -12215,6 +12266,7 @@ function openBuilder(node) {
     state.qwenModelFile = data.qwenModelFile || data.qwen_model_file || state.qwenModelFile || "";
     state.qwenMmprojFile = data.qwenMmprojFile || data.qwen_mmproj_file || state.qwenMmprojFile || "";
     state.gemmaModelFile = data.gemmaModelFile || data.gemma_model_file || state.gemmaModelFile || "";
+    syncBuilderLlmModelSelectsFromRunner();
     state.gemmaContextLimit = normalizeGemmaContextLimit(data.gemmaContextLimit ?? data.gemma_context_limit ?? data.n_ctx ?? legacyLlmMaxTokens ?? state.gemmaContextLimit);
     state.gemmaOutputTokenLimit = normalizeOutputTokenLimit(data.gemmaOutputTokenLimit ?? data.gemma_output_token_limit ?? legacyLlmMaxTokens ?? state.gemmaOutputTokenLimit);
     state.gemmaGpuLayers = normalizeGemmaGpuLayers(data.gemmaGpuLayers ?? data.gemma_gpu_layers ?? data.n_gpu_layers ?? state.gemmaGpuLayers);
@@ -51332,26 +51384,45 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     );
     qwenModelRow.append(makeField("Qwen GGUF path (optional external file)", qwenModelPath), chooseQwenModel);
     gemmaLocalRow.append(makeField("Gemma GGUF path (optional external file)", gemmaLocalPath), chooseGemmaModel);
-    gemmaLocalSelect.onchange = () => { gemmaLocalPath.value = gemmaLocalSelect.value || ""; state.gemmaModelFile = gemmaLocalPath.value; };
-    gemmaLocalPath.oninput = () => { state.gemmaModelFile = gemmaLocalPath.value || ""; };
+    gemmaLocalSelect.onchange = () => {
+      gemmaLocalPath.value = gemmaLocalSelect.value || "";
+      state.gemmaModelFile = gemmaLocalPath.value;
+      syncBuilderLlmModelSelectsFromRunner();
+    };
+    gemmaLocalPath.oninput = () => {
+      state.gemmaModelFile = gemmaLocalPath.value || "";
+      syncBuilderLlmModelSelectsFromRunner();
+    };
     chooseGemmaModel.onclick = async () => {
       try {
         const data = await postJson("/vrgdg/music_builder/pick_path", { kind: "gguf" });
-        if (data.path) { gemmaLocalPath.value = data.path; state.gemmaModelFile = data.path; }
+        if (data.path) {
+          gemmaLocalPath.value = data.path;
+          state.gemmaModelFile = data.path;
+          syncBuilderLlmModelSelectsFromRunner();
+        }
       } catch (error) { toast(String(error?.message || error), true); }
     };
     qwenModelSelect.onchange = () => {
       qwenModelPath.value = qwenModelSelect.value || "";
       state.qwenModelFile = qwenModelPath.value;
+      syncBuilderLlmModelSelectsFromRunner();
     };
-    qwenModelPath.oninput = () => { state.qwenModelFile = qwenModelPath.value || ""; };
-    qwenMmprojSelect.onchange = () => { state.qwenMmprojFile = qwenMmprojSelect.value || ""; };
+    qwenModelPath.oninput = () => {
+      state.qwenModelFile = qwenModelPath.value || "";
+      syncBuilderLlmModelSelectsFromRunner();
+    };
+    qwenMmprojSelect.onchange = () => {
+      state.qwenMmprojFile = qwenMmprojSelect.value || "";
+      syncBuilderLlmModelSelectsFromRunner();
+    };
     chooseQwenModel.onclick = async () => {
       try {
         const data = await postJson("/vrgdg/music_builder/pick_path", { kind: "gguf" });
         if (data.path) {
           qwenModelPath.value = data.path;
           state.qwenModelFile = data.path;
+          syncBuilderLlmModelSelectsFromRunner();
         }
       } catch (error) { toast(String(error?.message || error), true); }
     };
@@ -51383,6 +51454,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       }
       if (state.qwenMmprojFile && mmproj.includes(state.qwenMmprojFile)) qwenMmprojSelect.value = state.qwenMmprojFile;
       else if (mmproj.length === 1) { qwenMmprojSelect.value = mmproj[0]; state.qwenMmprojFile = mmproj[0]; }
+      syncBuilderLlmModelSelectsFromRunner();
     }).catch(() => null);
     const baseUrl = makeInput(state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1");
     const model = makeInput(state.lmStudioModel || "");
@@ -51616,6 +51688,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.gemmaGpuLayers = normalizeGemmaGpuLayers(gemmaGpuLayers.value);
       state.lmStudioContextLimit = normalizeLmStudioContextLimit(lmStudioContextLimit.value);
       state.lmStudioOutputTokenLimit = normalizeOutputTokenLimit(lmStudioOutputTokenLimit.value);
+      syncBuilderLlmModelSelectsFromRunner();
       builtinPanel.style.display = ["builtin", "qwen_local"].includes(runner.value) ? "flex" : "none";
       gemmaLocalPanel.style.display = runner.value === "builtin" ? "flex" : "none";
       qwenLocalPanel.style.display = runner.value === "qwen_local" ? "flex" : "none";
@@ -51683,6 +51756,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.ownServerApiKey = runner.value === "own_server" ? ownApiKey.value || "" : state.ownServerApiKey || "";
       state.ownServerOutputTokenLimit = normalizeOutputTokenLimit(ownOutputTokenLimit.value);
       state.ownServerTimeoutMinutes = normalizeOwnServerTimeoutMinutes(ownTimeoutMinutes.value);
+      syncBuilderLlmModelSelectsFromRunner();
       await autoSaveSessionQuiet("LLM runner settings");
       toast(state.textGemmaRunner === "llm_api"
         ? "LLM API settings saved for this session. API key was not saved with the project."
@@ -56162,6 +56236,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
     syncMiniMaxLlmSelectsFromShared();
     syncKrea2TwoPassLlmSelectsFromShared();
+    syncBuilderLlmModelSelectsFromRunner();
   }
 
   function renderSearchableSuggestions(picker, onSelect = null, renderOptions = {}) {
