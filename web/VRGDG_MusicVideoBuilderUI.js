@@ -7039,6 +7039,9 @@ function openBuilder(node) {
     storyIdeaPath: "",
     subjectScenePath: "",
     textGemmaRunner: "builtin",
+    qwenModelFile: "",
+    qwenMmprojFile: "",
+    gemmaModelFile: "",
     gemmaContextLimit: 8000,
     gemmaOutputTokenLimit: 8192,
     gemmaGpuLayers: 99,
@@ -7116,6 +7119,13 @@ function openBuilder(node) {
   };
 
   function syncProjectVideoEngineUI() {
+    // Auto Build can open while project restoration has not assigned an active
+    // scene yet. Engine-panel synchronization expects a real scene whenever
+    // the project has one, so restore that selection before refreshing panels.
+    ensureAllSegmentRuntimeFields();
+    if (!activeSegment()) {
+      state.activeId = state.segments[0]?.id || state.overlaySegments[0]?.id || "";
+    }
     const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
     if (projectVideoEngineSettingsSelect) projectVideoEngineSettingsSelect.value = miniMaxProject ? "minimax_h3" : "ltx";
     projectVideoEngineBadge.dataset.engine = miniMaxProject ? "minimax_h3" : "ltx";
@@ -10273,8 +10283,13 @@ function openBuilder(node) {
   window.addEventListener("vrgdg:builder-toast", toastNotificationHandler);
 
   function textGemmaRunnerPayload() {
+    const qwenLocal = state.textGemmaRunner === "qwen_local";
     return {
       text_runner: state.textGemmaRunner || "builtin",
+      qwen_model_file: state.qwenModelFile || "",
+      qwen_mmproj_file: state.qwenMmprojFile || "",
+      gemma_model_file: state.gemmaModelFile || "",
+      model_file: qwenLocal ? (state.qwenModelFile || "") : "",
       n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
       gemma_output_token_limit: normalizeOutputTokenLimit(state.gemmaOutputTokenLimit),
       n_gpu_layers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),
@@ -10313,6 +10328,7 @@ function openBuilder(node) {
     if (options.forceBuiltin) return options.vision ? "Built-in GGUF vision" : "Built-in GGUF";
     if (state.textGemmaRunner === "llm_api") return options.vision ? "API LLM vision" : "LLM API";
     if (state.textGemmaRunner === "own_server") return options.vision ? "Own server vision" : "Own server";
+    if (state.textGemmaRunner === "qwen_local") return options.vision ? "Qwen Local vision" : "Qwen Local";
     if (options.vision) return state.textGemmaRunner === "lm_studio" ? "LM Studio vision" : "Built-in GGUF vision";
     return state.textGemmaRunner === "lm_studio" ? "LM Studio" : "Gemma Local";
   }
@@ -10325,6 +10341,7 @@ function openBuilder(node) {
     if (state.textGemmaRunner === "lm_studio") return "LM Studio";
     if (state.textGemmaRunner === "llm_api") return "API LLM";
     if (state.textGemmaRunner === "own_server") return "Own server";
+    if (state.textGemmaRunner === "qwen_local") return "Qwen";
     return "Gemma";
   }
 
@@ -12098,6 +12115,9 @@ function openBuilder(node) {
       storyIdeaPath: state.storyIdeaPath,
       subjectScenePath: state.subjectScenePath,
       textGemmaRunner: state.textGemmaRunner,
+      qwenModelFile: state.qwenModelFile,
+      qwenMmprojFile: state.qwenMmprojFile,
+      gemmaModelFile: state.gemmaModelFile,
       gemmaContextLimit: normalizeGemmaContextLimit(state.gemmaContextLimit),
       gemmaOutputTokenLimit: normalizeOutputTokenLimit(state.gemmaOutputTokenLimit),
       gemmaGpuLayers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),
@@ -12192,6 +12212,9 @@ function openBuilder(node) {
     state.storyIdeaPath = data.storyIdeaPath || "";
     state.subjectScenePath = data.subjectScenePath || "";
     state.textGemmaRunner = data.textGemmaRunner || data.text_gemma_runner || state.textGemmaRunner || "builtin";
+    state.qwenModelFile = data.qwenModelFile || data.qwen_model_file || state.qwenModelFile || "";
+    state.qwenMmprojFile = data.qwenMmprojFile || data.qwen_mmproj_file || state.qwenMmprojFile || "";
+    state.gemmaModelFile = data.gemmaModelFile || data.gemma_model_file || state.gemmaModelFile || "";
     state.gemmaContextLimit = normalizeGemmaContextLimit(data.gemmaContextLimit ?? data.gemma_context_limit ?? data.n_ctx ?? legacyLlmMaxTokens ?? state.gemmaContextLimit);
     state.gemmaOutputTokenLimit = normalizeOutputTokenLimit(data.gemmaOutputTokenLimit ?? data.gemma_output_token_limit ?? legacyLlmMaxTokens ?? state.gemmaOutputTokenLimit);
     state.gemmaGpuLayers = normalizeGemmaGpuLayers(data.gemmaGpuLayers ?? data.gemma_gpu_layers ?? data.n_gpu_layers ?? state.gemmaGpuLayers);
@@ -15133,11 +15156,12 @@ function openBuilder(node) {
   }
 
   function selectedSegmentImageThumbnailPath(segment) {
+    if (!segment) return "";
     ensureSegmentRuntimeFields(segment);
-    return segment?.image_history?.[segment.image_history_index]
-      || segment?.image_history?.[segment.image_history.length - 1]
-      || segment?.custom_image_path
-      || segment?.approved_image_path
+    return segment.image_history?.[segment.image_history_index]
+      || segment.image_history?.[segment.image_history.length - 1]
+      || segment.custom_image_path
+      || segment.approved_image_path
       || "";
   }
 
@@ -21356,6 +21380,7 @@ function openBuilder(node) {
   }
 
   function segmentImageSource(segment) {
+    if (!segment) return null;
     ensureSegmentRuntimeFields(segment);
     const historyPath = segment.image_history?.[segment.image_history_index] || segment.image_history?.[segment.image_history.length - 1] || "";
     if (historyPath) {
@@ -51244,14 +51269,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const header = document.createElement("div");
     header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
     const heading = document.createElement("div");
-    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">LLM Runner</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Choose the LLM runner for prompt writing. Image-reference video prompts can use LM Studio vision, a vision-capable LLM API model, or your own OpenAI-compatible server.</div>`;
+    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">LLM Runner</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Choose the LLM runner for prompt writing. Image-reference video prompts can use Qwen Local with an mmproj, LM Studio vision, a vision-capable LLM API model, or your own OpenAI-compatible server.</div>`;
     const close = makeButton("Close");
     header.append(heading, close);
-    const runner = makeSelect(["builtin", "lm_studio", "llm_api", "own_server"], state.textGemmaRunner || "builtin");
+    const runner = makeSelect(["builtin", "qwen_local", "lm_studio", "llm_api", "own_server"], state.textGemmaRunner || "builtin");
     runner.options[0].textContent = "Gemma Local";
-    runner.options[1].textContent = "LM Studio";
-    runner.options[2].textContent = "LLM API";
-    runner.options[3].textContent = "Use my own server";
+    runner.options[1].textContent = "Qwen Local";
+    runner.options[2].textContent = "LM Studio";
+    runner.options[3].textContent = "LLM API";
+    runner.options[4].textContent = "Use my own server";
     const gemmaContextLimit = makeInput(String(normalizeGemmaContextLimit(state.gemmaContextLimit)), "number");
     gemmaContextLimit.min = "512";
     gemmaContextLimit.max = "262144";
@@ -51264,21 +51290,100 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     gemmaGpuLayers.min = "0";
     gemmaGpuLayers.max = "999";
     gemmaGpuLayers.step = "1";
+    const qwenModelSelect = makeSelect([""], state.qwenModelFile || "");
+    const qwenModelPath = makeInput(state.qwenModelFile || "");
+    const qwenMmprojSelect = makeSelect([""], state.qwenMmprojFile || "");
+    const chooseQwenModel = makeButton("Choose GGUF file");
+    const qwenModelRow = document.createElement("div");
+    qwenModelRow.style.cssText = "display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end;";
+    const gemmaLocalSelect = makeSelect([""], state.gemmaModelFile || "");
+    const gemmaLocalPath = makeInput(state.gemmaModelFile || "");
+    const chooseGemmaModel = makeButton("Choose GGUF file");
+    const gemmaLocalRow = document.createElement("div");
+    gemmaLocalRow.style.cssText = "display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end;";
     const builtinPanel = document.createElement("div");
     builtinPanel.style.cssText = "display:flex;flex-direction:column;gap:10px;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:12px;";
     const builtinNote = document.createElement("div");
     builtinNote.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
     builtinNote.textContent = "Advanced local GGUF settings. Context limit is the model's total input/output window; maximum output tokens is the most text one request may generate. Their combined use must fit the loaded model. Higher values can use much more RAM/VRAM and take longer.";
+    const gemmaLocalPanel = document.createElement("div");
+    gemmaLocalPanel.style.cssText = "display:flex;flex-direction:column;gap:10px;";
+    gemmaLocalPanel.append(
+      makeField("Gemma Local model in models/LLM", gemmaLocalSelect),
+      gemmaLocalRow,
+    );
+    const qwenLocalPanel = document.createElement("div");
+    qwenLocalPanel.style.cssText = "display:flex;flex-direction:column;gap:10px;";
+    qwenLocalPanel.append(
+      makeField("Qwen Local model in configured LLM folders", qwenModelSelect),
+      makeField("Qwen vision mmproj (optional)", qwenMmprojSelect),
+      qwenModelRow,
+    );
     const gpuNote = document.createElement("div");
     gpuNote.style.cssText = "font-size:12px;color:#94a3b8;line-height:1.4;";
-    gpuNote.textContent = "Lower GPU layers if Gemma Local runs out of VRAM; try 12 for 10GB cards. Higher values use more VRAM and may run faster.";
     builtinPanel.append(
       builtinNote,
+      gemmaLocalPanel,
+      qwenLocalPanel,
       makeField("Context limit / n_ctx", gemmaContextLimit),
       makeField("Maximum output tokens", gemmaOutputTokenLimit),
       gpuNote,
       makeField("GPU layers / n_gpu_layers", gemmaGpuLayers),
     );
+    qwenModelRow.append(makeField("Qwen GGUF path (optional external file)", qwenModelPath), chooseQwenModel);
+    gemmaLocalRow.append(makeField("Gemma GGUF path (optional external file)", gemmaLocalPath), chooseGemmaModel);
+    gemmaLocalSelect.onchange = () => { gemmaLocalPath.value = gemmaLocalSelect.value || ""; state.gemmaModelFile = gemmaLocalPath.value; };
+    gemmaLocalPath.oninput = () => { state.gemmaModelFile = gemmaLocalPath.value || ""; };
+    chooseGemmaModel.onclick = async () => {
+      try {
+        const data = await postJson("/vrgdg/music_builder/pick_path", { kind: "gguf" });
+        if (data.path) { gemmaLocalPath.value = data.path; state.gemmaModelFile = data.path; }
+      } catch (error) { toast(String(error?.message || error), true); }
+    };
+    qwenModelSelect.onchange = () => {
+      qwenModelPath.value = qwenModelSelect.value || "";
+      state.qwenModelFile = qwenModelPath.value;
+    };
+    qwenModelPath.oninput = () => { state.qwenModelFile = qwenModelPath.value || ""; };
+    qwenMmprojSelect.onchange = () => { state.qwenMmprojFile = qwenMmprojSelect.value || ""; };
+    chooseQwenModel.onclick = async () => {
+      try {
+        const data = await postJson("/vrgdg/music_builder/pick_path", { kind: "gguf" });
+        if (data.path) {
+          qwenModelPath.value = data.path;
+          state.qwenModelFile = data.path;
+        }
+      } catch (error) { toast(String(error?.message || error), true); }
+    };
+    getJson("/vrgdg/music_builder/gemma_choices").then((data) => {
+      const gemmaModels = Array.isArray(data.models) ? data.models.filter((item) => item && !/^\[No Gemma/i.test(item)) : [];
+      gemmaLocalSelect.innerHTML = "";
+      gemmaModels.forEach((item) => { const option = document.createElement("option"); option.value = item; option.textContent = item; gemmaLocalSelect.append(option); });
+      if (state.gemmaModelFile && gemmaModels.includes(state.gemmaModelFile)) gemmaLocalSelect.value = state.gemmaModelFile;
+      else if (gemmaModels.length && !state.gemmaModelFile) { gemmaLocalSelect.value = gemmaModels[0]; gemmaLocalPath.value = gemmaModels[0]; state.gemmaModelFile = gemmaModels[0]; }
+      const models = Array.isArray(data.qwen_models) ? data.qwen_models.filter((item) => item && !/^\[No Qwen/i.test(item)) : [];
+      const mmproj = Array.isArray(data.qwen_mmproj) ? data.qwen_mmproj.filter((item) => item && !/^\[No Qwen/i.test(item)) : [];
+      qwenModelSelect.innerHTML = "";
+      models.forEach((item) => { const option = document.createElement("option"); option.value = item; option.textContent = item; qwenModelSelect.append(option); });
+      if (!models.length) {
+        const option = document.createElement("option");
+        option.value = "";
+        option.textContent = "No Qwen GGUF found — choose a GGUF file below";
+        qwenModelSelect.append(option);
+      }
+      if (state.qwenModelFile && models.includes(state.qwenModelFile)) qwenModelSelect.value = state.qwenModelFile;
+      else if (models.length && !state.qwenModelFile) { qwenModelSelect.value = models[0]; qwenModelPath.value = models[0]; state.qwenModelFile = models[0]; }
+      qwenMmprojSelect.innerHTML = "";
+      mmproj.forEach((item) => { const option = document.createElement("option"); option.value = item; option.textContent = item; qwenMmprojSelect.append(option); });
+      if (!mmproj.length) {
+        const option = document.createElement("option");
+        option.value = "";
+        option.textContent = "No mmproj found (text-only Qwen is still supported)";
+        qwenMmprojSelect.append(option);
+      }
+      if (state.qwenMmprojFile && mmproj.includes(state.qwenMmprojFile)) qwenMmprojSelect.value = state.qwenMmprojFile;
+      else if (mmproj.length === 1) { qwenMmprojSelect.value = mmproj[0]; state.qwenMmprojFile = mmproj[0]; }
+    }).catch(() => null);
     const baseUrl = makeInput(state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1");
     const model = makeInput(state.lmStudioModel || "");
     const modelSelect = makeSelect([""], "");
@@ -51511,7 +51616,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.gemmaGpuLayers = normalizeGemmaGpuLayers(gemmaGpuLayers.value);
       state.lmStudioContextLimit = normalizeLmStudioContextLimit(lmStudioContextLimit.value);
       state.lmStudioOutputTokenLimit = normalizeOutputTokenLimit(lmStudioOutputTokenLimit.value);
-      builtinPanel.style.display = runner.value === "builtin" ? "flex" : "none";
+      builtinPanel.style.display = ["builtin", "qwen_local"].includes(runner.value) ? "flex" : "none";
+      gemmaLocalPanel.style.display = runner.value === "builtin" ? "flex" : "none";
+      qwenLocalPanel.style.display = runner.value === "qwen_local" ? "flex" : "none";
+      gpuNote.textContent = runner.value === "qwen_local"
+        ? "Lower GPU layers if Qwen Local runs out of VRAM. Higher values use more VRAM and may run faster."
+        : "Lower GPU layers if Gemma Local runs out of VRAM; try 12 for 10GB cards. Higher values use more VRAM and may run faster.";
       lmPanel.style.display = runner.value === "lm_studio" ? "flex" : "none";
       apiPanel.style.display = runner.value === "llm_api" ? "flex" : "none";
       ownPanel.style.display = runner.value === "own_server" ? "flex" : "none";
@@ -51580,6 +51690,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           ? "Own server settings saved for this session. API key was not saved with the project unless you use Save API Key to Project."
           : state.textGemmaRunner === "lm_studio"
           ? "Text LLM runner set to LM Studio."
+          : state.textGemmaRunner === "qwen_local"
+          ? "Text LLM runner set to Qwen Local."
           : "Text LLM runner set to Gemma Local.");
       updatePromptRunnerButtonLabels();
       backdrop.remove();

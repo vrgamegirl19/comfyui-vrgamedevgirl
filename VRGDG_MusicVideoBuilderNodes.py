@@ -525,6 +525,11 @@ def _open_tk_picker(kind):
                     ("All files", "*.*"),
                 ],
             )
+        elif kind == "gguf":
+            path = filedialog.askopenfilename(
+                title="Choose GGUF model file",
+                filetypes=[("GGUF model files", "*.gguf"), ("All files", "*.*")],
+            )
         elif kind in {"project_folder", "project_root"}:
             title = "Choose projects root folder" if kind == "project_root" else "Choose project folder"
             path = filedialog.askdirectory(title=title)
@@ -566,6 +571,14 @@ Add-Type -AssemblyName System.Windows.Forms
 $dialog = New-Object System.Windows.Forms.OpenFileDialog
 $dialog.Title = 'Choose video file'
 $dialog.Filter = 'Video files (*.mp4;*.mov;*.mkv;*.webm;*.avi)|*.mp4;*.mov;*.mkv;*.webm;*.avi|All files (*.*)|*.*'
+if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Write($dialog.FileName) }
+"""
+    elif kind == "gguf":
+        script = r"""
+Add-Type -AssemblyName System.Windows.Forms
+$dialog = New-Object System.Windows.Forms.OpenFileDialog
+$dialog.Title = 'Choose GGUF model file'
+$dialog.Filter = 'GGUF model files (*.gguf)|*.gguf|All files (*.*)|*.*'
 if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Write($dialog.FileName) }
 """
     elif kind == "project_folder":
@@ -3294,9 +3307,38 @@ def _llm_runner_from_payload(payload):
         runner = "llm_api"
     if runner in {"ownserver", "own-server", "own_server", "custom_openai", "openai_compatible", "custom_server", "my_server"}:
         runner = "own_server"
-    if runner not in {"builtin", "lm_studio", "llm_api", "own_server"}:
+    if runner in {"qwen", "qwen_local", "qwen-local", "qwen_gguf", "qwen_gguf_local"}:
+        runner = "qwen_local"
+    if runner not in {"builtin", "qwen_local", "lm_studio", "llm_api", "own_server"}:
         runner = "builtin"
     return runner
+
+
+def _builder_local_llm(payload):
+    from .LLM import VRGDG_QwenGGUF, VRGDG_SuperGemmaGGUFChat
+    if _llm_runner_from_payload(payload) == "qwen_local":
+        llm = VRGDG_QwenGGUF()
+    else:
+        llm = VRGDG_SuperGemmaGGUFChat()
+    # Builder prompt jobs need direct structured output, not a reasoning
+    # preamble. Set this explicitly for both local runners because model chat
+    # templates can default to thinking mode when the flag is omitted.
+    llm._qwen_chat_template_kwargs = {"enable_thinking": False}
+    return llm
+
+
+def _builder_local_model_file(payload, current=""):
+    if _llm_runner_from_payload(payload) == "qwen_local":
+        return str(payload.get("qwen_model_file") or current or "").strip()
+    if _llm_runner_from_payload(payload) == "builtin" and payload.get("gemma_model_file"):
+        return str(payload.get("gemma_model_file") or current or "").strip()
+    return str(current or "").strip()
+
+
+def _builder_local_mmproj_file(payload, current=""):
+    if _llm_runner_from_payload(payload) == "qwen_local":
+        return str(payload.get("qwen_mmproj_file") or current or "").strip()
+    return str(current or "").strip()
 
 def _own_server_v1_root(raw_url):
     url = str(raw_url or "").strip()
@@ -4346,7 +4388,8 @@ def _run_builder_text_llm(payload, instruction_text, temperature=0.6, top_p=0.95
     model_file = str(payload.get("model_file", "") or "").strip()
     if not model_file:
         raise ValueError(f"Choose a {label} model first.")
-    llm = VRGDG_SuperGemmaGGUFChat()
+    llm = _builder_local_llm(payload)
+    model_file = _builder_local_model_file(payload, model_file)
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION)
     n_ctx = int(payload.get("n_ctx") or 8000)
     n_gpu_layers = int(payload.get("n_gpu_layers") or 99)
@@ -5338,8 +5381,10 @@ def _generate_builder_t2i_prompt(payload):
     if not has_ref_image and not user_notes:
         raise ValueError("Enter scene notes or provide a reference image.")
 
-    llm = VRGDG_SuperGemmaGGUFChat() if has_ref_image and text_runner not in _EXTERNAL_LLM_RUNNERS else None
+    llm = _builder_local_llm(payload) if has_ref_image and text_runner not in _EXTERNAL_LLM_RUNNERS else None
+    model_file = _builder_local_model_file(payload, model_file)
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else ""
+    mmproj_file = _builder_local_mmproj_file(payload, mmproj_file)
     mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if llm else ""
     image = None
     if has_ref_image:
@@ -5572,8 +5617,10 @@ def _generate_builder_i2v_prompt(payload):
 
     user_notes = "\n\n".join([mode_note, user_notes]).strip()
 
-    llm = VRGDG_SuperGemmaGGUFChat() if text_runner not in _EXTERNAL_LLM_RUNNERS else None
+    llm = _builder_local_llm(payload) if text_runner not in _EXTERNAL_LLM_RUNNERS else None
+    model_file = _builder_local_model_file(payload, model_file)
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else ""
+    mmproj_file = _builder_local_mmproj_file(payload, mmproj_file)
     mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if has_image_reference and llm else ""
     i2v_instructions = _effective_builder_instruction(payload, "i2v", _I2V_INSTRUCTIONS)
     if has_image_reference:
@@ -5929,8 +5976,10 @@ def _generate_builder_chained_i2v_prompt(payload):
         f"Performance mode:\n{performance_mode or 'Use the visible scene and notes. Do not force singing unless the notes call for it.'}"
     )
 
-    llm = VRGDG_SuperGemmaGGUFChat() if text_runner not in _EXTERNAL_LLM_RUNNERS else None
+    llm = _builder_local_llm(payload) if text_runner not in _EXTERNAL_LLM_RUNNERS else None
+    model_file = _builder_local_model_file(payload, model_file)
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else ""
+    mmproj_file = _builder_local_mmproj_file(payload, mmproj_file)
     mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if llm else ""
     n_ctx = int(payload.get("n_ctx") or 8000)
     n_gpu_layers = int(payload.get("n_gpu_layers") or 99)
@@ -6317,7 +6366,8 @@ def _generate_builder_t2v_prompt(payload):
         f"User motion/camera notes:\n{user_notes or 'Create cinematic camera movement and natural subject/environment motion that fits the scene.'}"
     )
 
-    llm = VRGDG_SuperGemmaGGUFChat() if has_image_reference and text_runner not in _EXTERNAL_LLM_RUNNERS else None
+    llm = _builder_local_llm(payload) if has_image_reference and text_runner not in _EXTERNAL_LLM_RUNNERS else None
+    model_file = _builder_local_model_file(payload, model_file)
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else ""
     mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if llm else ""
     n_ctx = int(payload.get("n_ctx") or 8000)
@@ -6747,8 +6797,10 @@ def _edit_builder_video_prompt(payload):
                 raise ValueError("Choose an I2V vision Gemma model first.")
             if not model_file.lower().endswith(".gguf"):
                 raise ValueError("The I2V model field is not a GGUF model.")
-            llm = VRGDG_SuperGemmaGGUFChat()
+            llm = _builder_local_llm(payload)
+            model_file = _builder_local_model_file(payload, model_file)
             model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION)
+            mmproj_file = _builder_local_mmproj_file(payload, mmproj_file)
             mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file)
             model = llm._load_gguf_model(
                 model_path=model_path,
@@ -6980,8 +7032,10 @@ def _edit_builder_image_prompt(payload):
                 raise ValueError("Choose a vision Gemma model first.")
             if not model_file.lower().endswith(".gguf"):
                 raise ValueError("The vision Gemma model field is not a GGUF model.")
-            llm = VRGDG_SuperGemmaGGUFChat()
+            llm = _builder_local_llm(payload)
+            model_file = _builder_local_model_file(payload, model_file)
             model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION)
+            mmproj_file = _builder_local_mmproj_file(payload, mmproj_file)
             mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file)
             model = llm._load_gguf_model(
                 model_path=model_path,
@@ -7291,8 +7345,10 @@ def _generate_builder_reference_description(payload):
         if name_hint:
             instruction += f"\nUse this label only as the reference name if needed: {name_hint}"
 
-    llm = VRGDG_SuperGemmaGGUFChat() if text_runner not in _EXTERNAL_LLM_RUNNERS else None
+    llm = _builder_local_llm(payload) if text_runner not in _EXTERNAL_LLM_RUNNERS else None
+    model_file = _builder_local_model_file(payload, model_file)
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else str(payload.get("lmstudio_model") or "").strip()
+    mmproj_file = _builder_local_mmproj_file(payload, mmproj_file)
     mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if llm else ""
     n_ctx = int(payload.get("n_ctx") or 2048)
     n_gpu_layers = int(payload.get("n_gpu_layers") or 99)
@@ -7477,8 +7533,10 @@ def _generate_flux_klein_prompt(payload):
         f"User input:\n{user_notes or 'Create a new image using the available reference images.'}"
     )
 
-    llm = VRGDG_SuperGemmaGGUFChat() if text_runner not in _EXTERNAL_LLM_RUNNERS else None
+    llm = _builder_local_llm(payload) if text_runner not in _EXTERNAL_LLM_RUNNERS else None
+    model_file = _builder_local_model_file(payload, model_file)
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else str(payload.get("lmstudio_model") or "").strip()
+    mmproj_file = _builder_local_mmproj_file(payload, mmproj_file)
     mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if llm else ""
     # Flux/Klein only needs one short prompt, and vision GGUF context is expensive.
     # Keep this lower than the broader Gemma prompt tools to reduce crash risk.
@@ -7570,7 +7628,8 @@ def _analyze_builder_story_references(payload):
     if not images:
         raise ValueError("Add at least one Story Builder reference image first.")
     batches = [images[index:index + 4] for index in range(0, len(images), 4)]
-    llm = VRGDG_SuperGemmaGGUFChat() if text_runner not in _EXTERNAL_LLM_RUNNERS else None
+    llm = _builder_local_llm(payload) if text_runner not in _EXTERNAL_LLM_RUNNERS else None
+    model_file = _builder_local_model_file(payload, model_file)
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else str(payload.get("lmstudio_model") or "").strip()
     mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if llm else ""
     n_ctx = int(payload.get("n_ctx") or 4096)
@@ -7884,7 +7943,8 @@ def _generate_nb_image_prompt(payload):
         return {"prompt": text, **info}
 
     combined_image = _combine_flux_ingredient_images(images)
-    llm = VRGDG_SuperGemmaGGUFChat() if text_runner not in _EXTERNAL_LLM_RUNNERS else None
+    llm = _builder_local_llm(payload) if text_runner not in _EXTERNAL_LLM_RUNNERS else None
+    model_file = _builder_local_model_file(payload, model_file)
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else str(payload.get("lmstudio_model") or "").strip()
     mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if llm else ""
     try:
@@ -8574,16 +8634,21 @@ def _generate_flux_reference_zimage_prompt(payload):
 
 def _gemma_choices():
     register_custom_model_root()
-    from .LLM import VRGDG_SuperGemmaGGUFChat
+    from .LLM import VRGDG_SuperGemmaGGUFChat, VRGDG_QwenGGUF
 
     return {
         "models": VRGDG_SuperGemmaGGUFChat._list_local_gemma_gguf_choices(),
         "mmproj": VRGDG_SuperGemmaGGUFChat._list_local_mmproj_choices(),
+        "qwen_models": VRGDG_QwenGGUF._list_local_qwen_gguf(),
+        "qwen_mmproj": VRGDG_QwenGGUF._list_local_qwen_mmproj(),
     }
 
 
 _MODEL_DEFAULT_KEYS = (
     "text_gemma_runner",
+    "qwen_model_file",
+    "qwen_mmproj_file",
+    "gemma_model_file",
     "llm_max_tokens",
     "gemma_context_limit",
     "gemma_output_token_limit",
@@ -9843,6 +9908,10 @@ def _ensure_builder_scene_video_thumbnail(video_path):
     if os.path.isfile(thumbnail_path):
         return thumbnail_path
     try:
+        # Older Builder projects predate the dedicated thumbnail directory.
+        # Their videos are still valid, but ffmpeg cannot write the recovered
+        # thumbnail until its parent directory exists.
+        os.makedirs(os.path.dirname(thumbnail_path), exist_ok=True)
         ffmpeg_path = _find_ffmpeg_path()
         for timestamp in ("0.5", "0"):
             cmd = [

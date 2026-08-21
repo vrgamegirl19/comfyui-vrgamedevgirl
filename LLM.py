@@ -3335,6 +3335,9 @@ class VRGDG_GeneralGGUF(VRGDG_Qwen25):
         try:
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+                ipc_collect = getattr(torch.cuda, "ipc_collect", None)
+                if callable(ipc_collect):
+                    ipc_collect()
         except Exception:
             pass
 
@@ -3583,6 +3586,8 @@ class VRGDG_QwenGGUF(VRGDG_GeneralGGUF):
     """
 
     MODELS_SUBDIR = "LLM"
+    MISSING_MODEL_OPTION = "[No Qwen GGUF found in models/LLM]"
+    MISSING_MMPROJ_OPTION = "[No Qwen mmproj GGUF found in models/LLM]"
 
     MODEL_PRESETS = [
         "unsloth/Qwen3.8-27B-GGUF",
@@ -3598,37 +3603,64 @@ class VRGDG_QwenGGUF(VRGDG_GeneralGGUF):
     )
 
     @classmethod
-    def _qwen_models_root(cls):
+    def _qwen_models_roots(cls):
+        paths = []
         try:
-            roots = folder_paths.get_folder_paths(cls.MODELS_SUBDIR)
-            if roots:
-                return roots[0]
+            paths = folder_paths.get_folder_paths(cls.MODELS_SUBDIR)
         except Exception:
             pass
-        return os.path.join(getattr(folder_paths, "models_dir", ""), cls.MODELS_SUBDIR)
+        if not paths:
+            paths = [os.path.join(getattr(folder_paths, "models_dir", ""), cls.MODELS_SUBDIR)]
+        return paths
+
+    @classmethod
+    def _qwen_models_root(cls):
+        """Compatibility helper for callers that need one download root."""
+        return cls._qwen_models_roots()[0]
 
     @classmethod
     def _list_local_qwen_gguf(cls):
-        root = cls._qwen_models_root()
         found = []
-        if root and os.path.isdir(root):
+        for root in cls._qwen_models_roots():
+            if not root or not os.path.isdir(root):
+                continue
             for dirpath, _, filenames in os.walk(root):
                 for filename in filenames:
                     low = filename.lower()
-                    if low.endswith(".gguf") and "mmproj" not in low and "qwen" in low:
-                        found.append(os.path.relpath(os.path.join(dirpath, filename), root))
+                    full_path = os.path.join(dirpath, filename)
+                    relative = os.path.relpath(full_path, root)
+                    if low.endswith(".gguf") and "mmproj" not in low and "qwen" in relative.lower():
+                        found.append(relative)
         return sorted(set(found), key=str.lower) or ["[No Qwen GGUF found in models/LLM]"]
 
     @classmethod
     def _list_local_qwen_mmproj(cls):
-        root = cls._qwen_models_root()
         found = []
-        if root and os.path.isdir(root):
+        for root in cls._qwen_models_roots():
+            if not root or not os.path.isdir(root):
+                continue
             for dirpath, _, filenames in os.walk(root):
                 for filename in filenames:
                     if filename.lower().endswith(".gguf") and "mmproj" in filename.lower():
                         found.append(os.path.relpath(os.path.join(dirpath, filename), root))
         return sorted(set(found), key=str.lower) or ["[No Qwen mmproj GGUF found in models/LLM]"]
+
+    @classmethod
+    def _list_local_mmproj_choices(cls):
+        return cls._list_local_qwen_mmproj()
+
+    @classmethod
+    def _resolve_dropdown_path(cls, selected_value, missing_value):
+        selected = str(selected_value or "").strip()
+        if not selected or selected == missing_value:
+            raise Exception(f"{missing_value}. Choose a GGUF file under models/{cls.MODELS_SUBDIR} or use an absolute path.")
+        if os.path.isfile(os.path.normpath(selected)):
+            return os.path.normpath(selected)
+        for root in cls._qwen_models_roots():
+            candidate = os.path.normpath(os.path.join(root, selected))
+            if os.path.isfile(candidate):
+                return candidate
+        raise Exception(f"Selected GGUF file was not found: {selected}")
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -3670,12 +3702,11 @@ class VRGDG_QwenGGUF(VRGDG_GeneralGGUF):
         enable_thinking = bool(kwargs.pop("enable_thinking", False))
         model_file = str(kwargs.pop("model_file", "")).strip()
         mmproj_file = str(kwargs.pop("mmproj_file", "")).strip()
-        root = self._qwen_models_root()
         if model_file and not model_file.startswith("["):
-            kwargs["custom_model_id"] = os.path.join(root, model_file) if not os.path.isabs(model_file) else model_file
+            kwargs["custom_model_id"] = self._resolve_dropdown_path(model_file, self.MISSING_MODEL_OPTION)
             kwargs["gguf_filename"] = ""
         if mmproj_file and not mmproj_file.startswith("["):
-            kwargs["mmproj_filename"] = os.path.join(root, mmproj_file) if not os.path.isabs(mmproj_file) else mmproj_file
+            kwargs["mmproj_filename"] = self._resolve_dropdown_path(mmproj_file, self.MISSING_MMPROJ_OPTION)
         self._qwen_chat_template_kwargs = {"enable_thinking": enable_thinking}
         try:
             return super().generate_prompt(*args, **kwargs)
