@@ -15,9 +15,39 @@ BUILDER_GUIDE = (
 ).read_text(encoding="utf-8")
 
 
+def release_by_id(release_id):
+    return next(
+        release
+        for release in UPDATE_NOTES["releases"]
+        if release.get("id") == release_id
+    )
+
+
 class BuilderUpdateBannerNotesTests(unittest.TestCase):
-    def test_latest_release_documents_auto_build_and_singer_cues(self):
+    def test_latest_release_documents_qwen_and_project_recovery_fixes(self):
         release = UPDATE_NOTES["releases"][0]
+        self.assertEqual(release["id"], "2026-08-21-qwen-runner-project-recovery")
+        self.assertEqual(
+            release["commit"],
+            "a946112dbd76078656b3055bb5606ce4e1b29920",
+        )
+        items = "\n".join(
+            item
+            for section in release["sections"]
+            for item in section.get("items", [])
+        )
+        for expected in (
+            "Qwen Local",
+            "both the non-vision text and vision model fields",
+            "Thinking mode is explicitly disabled",
+            "blank or missing thumbnails",
+            "reading 'image_history'",
+            "switching the Audio Builder to MiniMax H3",
+        ):
+            self.assertIn(expected, items)
+
+    def test_latest_release_documents_auto_build_and_singer_cues(self):
+        release = release_by_id("2026-08-07-auto-build-minimax-singer-cues")
         self.assertEqual(
             release["id"],
             "2026-08-07-auto-build-minimax-singer-cues",
@@ -46,7 +76,7 @@ class BuilderUpdateBannerNotesTests(unittest.TestCase):
             self.assertIn(expected, items)
 
     def test_previous_release_documents_storyboard_gemma_reliability(self):
-        release = UPDATE_NOTES["releases"][1]
+        release = release_by_id("2026-08-06-storyboard-gemma-network-reliability")
         self.assertEqual(
             release["id"],
             "2026-08-06-storyboard-gemma-network-reliability",
@@ -79,13 +109,13 @@ class BuilderUpdateBannerNotesTests(unittest.TestCase):
         self.assertIn('__updated__ = "2026-08-06"', PACKAGE_INIT)
 
     def test_previous_release_documents_minimax_builder_controls(self):
-        release = UPDATE_NOTES["releases"][2]
+        release = release_by_id("2026-08-06-minimax-turbo-reference-llm-controls")
         self.assertEqual(
             release["id"],
             "2026-08-06-minimax-turbo-reference-llm-controls",
         )
         self.assertEqual(
-            UPDATE_NOTES["releases"][3]["id"],
+            release_by_id("2026-08-06-timeline-editing-minimax-prompt-reliability")["id"],
             "2026-08-06-timeline-editing-minimax-prompt-reliability",
         )
         items = "\n".join(
