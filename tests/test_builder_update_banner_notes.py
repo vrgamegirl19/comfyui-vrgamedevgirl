@@ -43,6 +43,8 @@ class BuilderUpdateBannerNotesTests(unittest.TestCase):
             "blank or missing thumbnails",
             "reading 'image_history'",
             "switching the Audio Builder to MiniMax H3",
+            "progress dialogs",
+            "one automatic strict-format retry",
         ):
             self.assertIn(expected, items)
 

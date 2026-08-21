@@ -1326,7 +1326,7 @@ function showGemmaBatchFailures(failures, options = {}) {
   document.body.append(backdrop);
 }
 
-function createProgressWindow(title, options = {}) {
+function createBaseProgressWindow(title, options = {}) {
   const box = document.createElement("div");
   const zIndex = Number(options.zIndex || 100004);
   box.style.cssText = `
@@ -10261,7 +10261,7 @@ function openBuilder(node) {
     const text = String(message || "");
     if (settings.mode === "errors") return false;
     if (settings.mode === "all") return true;
-    const batchDone = /\b(?:Build Full Video|Image All|Render All|Stitch Preview|(?:Gemma|LM Studio|API LLM) (?:T2I|I2V|T2V|Video) All|Flux\/Klein All|NanoBanana All|Ernie All|ZImage All)\b[\s\S]{0,80}\b(?:complete|finished|ready|saved)\b/i.test(text) ||
+    const batchDone = /\b(?:Build Full Video|Image All|Render All|Stitch Preview|(?:Gemma Local|Qwen Local|LM Studio|LLM API|Custom Server) (?:T2I|I2V|T2V|Video) All|Flux\/Klein All|NanoBanana All|Ernie All|ZImage All)\b[\s\S]{0,80}\b(?:complete|finished|ready|saved)\b/i.test(text) ||
       /\b(?:complete after \d+ attempts|final video|stitched video)\b/i.test(text);
     if (settings.mode === "batch") return batchDone;
     const completedThing = /\b(?:complete|completed|finished|created|ready|rendered|stitched|saved)\b/i.test(text);
@@ -10377,8 +10377,8 @@ function openBuilder(node) {
 
   function gemmaRunnerLabel(options = {}) {
     if (options.forceBuiltin) return options.vision ? "Built-in GGUF vision" : "Built-in GGUF";
-    if (state.textGemmaRunner === "llm_api") return options.vision ? "API LLM vision" : "LLM API";
-    if (state.textGemmaRunner === "own_server") return options.vision ? "Own server vision" : "Own server";
+    if (state.textGemmaRunner === "llm_api") return options.vision ? "LLM API vision" : "LLM API";
+    if (state.textGemmaRunner === "own_server") return options.vision ? "Custom Server vision" : "Custom Server";
     if (state.textGemmaRunner === "qwen_local") return options.vision ? "Qwen Local vision" : "Qwen Local";
     if (options.vision) return state.textGemmaRunner === "lm_studio" ? "LM Studio vision" : "Built-in GGUF vision";
     return state.textGemmaRunner === "lm_studio" ? "LM Studio" : "Gemma Local";
@@ -10390,16 +10390,59 @@ function openBuilder(node) {
 
   function promptRunnerActionName() {
     if (state.textGemmaRunner === "lm_studio") return "LM Studio";
-    if (state.textGemmaRunner === "llm_api") return "API LLM";
-    if (state.textGemmaRunner === "own_server") return "Own server";
-    if (state.textGemmaRunner === "qwen_local") return "Qwen";
-    return "Gemma";
+    if (state.textGemmaRunner === "llm_api") return "LLM API";
+    if (state.textGemmaRunner === "own_server") return "Custom Server";
+    if (state.textGemmaRunner === "qwen_local") return "Qwen Local";
+    return "Gemma Local";
+  }
+
+  function runnerAwareLlmText(value) {
+    return String(value || "")
+      .replace(/\b(?:Vision Gemma|Gemma Vision)\b/gi, gemmaRunnerLabel({ vision: true }))
+      .replace(/\bGemma4?\b/g, promptRunnerActionName())
+      .replace(/\bAPI LLM\b/g, "LLM API")
+      .replace(/\bOwn server\b/gi, "Custom Server");
+  }
+
+  function createProgressWindow(title, options = {}) {
+    const runnerAware = options.runnerAware !== false;
+    const displayedTitle = runnerAware ? runnerAwareLlmText(title) : title;
+    const progress = createBaseProgressWindow(displayedTitle, options);
+    if (!runnerAware) return progress;
+    return {
+      ...progress,
+      set(message, percent = null) {
+        progress.set(runnerAwareLlmText(message), percent);
+      },
+      setHtml(html, percent = null) {
+        progress.setHtml(runnerAwareLlmText(html), percent);
+      },
+    };
   }
 
   function updatePromptRunnerButtonLabels() {
     const runner = promptRunnerActionName();
     gemmaT2IAllButton.textContent = `${runner} T2I All`;
     gemmaVideoAllButton.textContent = `${runner} Video All`;
+    createT2IButton.textContent = `${runner} T2I`;
+    ernieCreateT2IButton.textContent = `${runner} T2I`;
+    krea2TwoPassCreateT2IButton.textContent = `${runner} T2I`;
+    createFluxPromptButton.textContent = `${runner} Flux Prompt`;
+    createNBPromptButton.textContent = `${runner} NB Prompt`;
+    flowGptCreatePromptButton.textContent = `${runner} Browser Prompt`;
+    zEnhanceGemmaButton.textContent = `${runner} Enhance Prompt`;
+    const mode = currentVideoMode();
+    createI2VButton.textContent = mode === "id_lora"
+      ? `${runner} ID Script`
+      : mode === "ingredients"
+        ? `${runner} Ingredients Video`
+        : mode === "flf"
+          ? `${runner} First/Last Prompt`
+          : mode === "rtv"
+            ? `${runner} Reference Video`
+            : mode === "t2v"
+              ? `${runner} T2V`
+              : `${runner} I2V`;
   }
 
   function referenceDescriptionVisionModel() {
@@ -18809,7 +18852,8 @@ function openBuilder(node) {
     i2vPass2NodePanel.style.display = isFLF || isLegacySinglePassRTV ? "none" : "";
     syncTimelineTrimModeButton();
     i2vWarmCooldownSection.style.display = isIdLora ? "none" : "";
-    createI2VButton.textContent = isIdLora ? "Gemma ID Script" : isIngredients ? "Gemma Ingredients Video" : isFLF ? "Gemma First/Last Prompt" : isRTV ? "Gemma Reference Video" : isT2V ? "Gemma T2V" : "Gemma I2V";
+    const runnerName = promptRunnerActionName();
+    createI2VButton.textContent = isIdLora ? `${runnerName} ID Script` : isIngredients ? `${runnerName} Ingredients Video` : isFLF ? `${runnerName} First/Last Prompt` : isRTV ? `${runnerName} Reference Video` : isT2V ? `${runnerName} T2V` : `${runnerName} I2V`;
     syncVideoInstructionEditorButtons();
     i2vNotesInput.placeholder = isT2V
       ? "Extra text-to-video motion notes, camera movement, character movement..."
@@ -21941,7 +21985,7 @@ function openBuilder(node) {
       try {
         gemma.disabled = true;
         gemma.textContent = "Gemma...";
-        progress = createProgressWindow(title.replace(/^Edit\s+/i, "Gemma4 "));
+        progress = createProgressWindow(title.replace(/^Edit\s+/i, "Gemma4 "), { runnerAware: false });
         progress.set(`Creating draft from your notes...\n${gemmaRunnerLine({ forceBuiltin: true })}`, 25);
         const styleTheme = gemmaTarget === "builder_story_idea" || gemmaTarget === "builder_subjects_and_scenes"
           ? await loadContextTextQuiet(themeStyleInput.value)
@@ -45746,17 +45790,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const segment = requireActiveSegment();
     if (!segment) return;
     const mode = currentVideoMode();
+    const runnerName = promptRunnerActionName();
     if (mode === "import") {
-      toast("Imported-video mode does not use Gemma prompt generation. Use Create Scene Video instead.", true);
+      toast(`Imported-video mode does not use ${runnerName} prompt generation. Use Create Scene Video instead.`, true);
       return;
     }
     const modeLabel = videoModeDisplayLabel(mode, true);
-    if (!window.confirm(`Run Gemma to replace this scene's ${modeLabel} prompt, then immediately create the video without stopping for prompt review?`)) return;
+    if (!window.confirm(`Run ${runnerName} to replace this scene's ${modeLabel} prompt, then immediately create the video without stopping for prompt review?`)) return;
     updateActiveFromInputs();
     let progress = null;
     try {
       setButtonGroupState(gemmaThenCreateVideoButtons, { disabled: true });
-      progress = createProgressWindow("Gemma → Create Scene Video");
+      progress = createProgressWindow(`${runnerName} → Create Scene Video`);
       progress.set(`Creating the ${modeLabel} prompt with Gemma...`, 8);
       await generateI2VPromptForSegment(
         segment,
@@ -50558,7 +50603,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       scope.value = "full_scene_plan";
     }
     const clear = makeButton("Clear Chat");
-    controlGrid.append(makeField("Context sent to Gemma", scope), makeField("Agent mode", mode), makeField("Purpose", purpose), clear);
+    controlGrid.append(makeField(`Context sent to ${promptRunnerActionName()}`, scope), makeField("Agent mode", mode), makeField("Purpose", purpose), clear);
     controls.append(agentTopbar, controlGrid);
     purpose.addEventListener("change", () => {
       state.builderAgentPurpose = purpose.value || "scene_work";
@@ -50585,7 +50630,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       body.style.cssText = "padding:14px;display:grid;gap:12px;font-size:12px;line-height:1.5;color:#cbd5e1;";
       const sections = [
         {
-          title: "Context sent to Gemma",
+          title: `Context sent to ${promptRunnerActionName()}`,
           lines: [
             "Active scene only: sends the selected scene details. Best when you want focused edits.",
             "Active scene + neighbors: also sends nearby scenes. Best for continuity between scenes.",
@@ -51329,7 +51374,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     runner.options[1].textContent = "Qwen Local";
     runner.options[2].textContent = "LM Studio";
     runner.options[3].textContent = "LLM API";
-    runner.options[4].textContent = "Use my own server";
+    runner.options[4].textContent = "Custom Server";
     const gemmaContextLimit = makeInput(String(normalizeGemmaContextLimit(state.gemmaContextLimit)), "number");
     gemmaContextLimit.min = "512";
     gemmaContextLimit.max = "262144";
@@ -51761,7 +51806,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       toast(state.textGemmaRunner === "llm_api"
         ? "LLM API settings saved for this session. API key was not saved with the project."
         : state.textGemmaRunner === "own_server"
-          ? "Own server settings saved for this session. API key was not saved with the project unless you use Save API Key to Project."
+          ? "Custom Server settings saved for this session. API key was not saved with the project unless you use Save API Key to Project."
           : state.textGemmaRunner === "lm_studio"
           ? "Text LLM runner set to LM Studio."
           : state.textGemmaRunner === "qwen_local"
@@ -51855,13 +51900,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         ].join("\n");
         ownStatus.textContent = `Test passed: ${data.used_model || modelId}`;
         ownStatus.style.color = "#67e8f9";
-        toast("Own server test passed.");
+        toast("Custom Server test passed.");
       } catch (error) {
         const message = String(error?.message || error);
         ownTestOutput.value = `Status: failed\nURL: ${url}\nModel: ${modelId || "(missing)"}\n\n${message}`;
         ownStatus.textContent = `Test failed: ${message}`;
         ownStatus.style.color = "#fca5a5";
-        toast(`Own server test failed: ${message}`, true);
+        toast(`Custom Server test failed: ${message}`, true);
       } finally {
         testOwn.disabled = false;
         testOwn.textContent = "Test own server";
@@ -51881,7 +51926,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         state.ownServerTimeoutMinutes = normalizeOwnServerTimeoutMinutes(ownTimeoutMinutes.value);
         await saveSession({ quiet: true, throwOnError: true });
         toast(key
-          ? "Own server API key saved to this project. Shareable exports will warn you before including it."
+          ? "Custom Server API key saved to this project. Shareable exports will warn you before including it."
           : "Cleared the project-saved own server API key. Requests will continue without a key.");
       } catch (error) {
         toast(`Could not save the project API key: ${String(error?.message || error)}`, true);
@@ -53187,10 +53232,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       }
       if (state.textGemmaRunner === "own_server") {
         if (!String(state.ownServerUrl || "").trim()) {
-          throw new Error("Own server is selected, but no URL is set. Open LLM Runner, paste the server URL, then start Auto Build again.");
+          throw new Error("Custom Server is selected, but no URL is set. Open LLM Runner, paste the server URL, then start Auto Build again.");
         }
         if (!String(state.ownServerModel || "").trim()) {
-          throw new Error("Own server is selected, but no model name is set. Open LLM Runner, enter or load the served model, then start Auto Build again.");
+          throw new Error("Custom Server is selected, but no model name is set. Open LLM Runner, enter or load the served model, then start Auto Build again.");
         }
       }
     };
@@ -54263,7 +54308,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         },
       };
       const runnerName = promptRunnerActionName();
-      const runnerGenericName = runnerName === "Gemma" ? "Gemma" : "LLM";
+      const runnerGenericName = runnerName;
       const progress = createProgressWindow(`Storyboard ${runnerName} All (${miniMaxProject ? "MiniMax H3 project/locked modes" : videoModeDisplayLabel(videoMode, true)})`, { zIndex: 100012 });
       let created = 0;
       const failurePrefix = `storyboard:${videoMode}`;

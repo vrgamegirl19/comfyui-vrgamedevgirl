@@ -3346,8 +3346,10 @@ function openStoryboardBuilder(payload = {}) {
   const promptRunnerName = () => {
     const runner = String(state.gemmaSettings?.text_runner || state.gemmaSettings?.gemma_runner || "builtin").trim().toLowerCase();
     if (runner === "lm_studio" || runner === "lmstudio" || runner === "lm-studio") return "LM Studio";
-    if (runner === "llm_api" || runner === "llmapi" || runner === "llm-api" || runner === "api") return "API LLM";
-    return "Gemma";
+    if (runner === "llm_api" || runner === "llmapi" || runner === "llm-api" || runner === "api") return "LLM API";
+    if (["qwen", "qwen_local", "qwen-local", "qwen_gguf", "qwen_gguf_local"].includes(runner)) return "Qwen Local";
+    if (["ownserver", "own-server", "own_server", "custom_openai", "openai_compatible", "custom_server", "my_server"].includes(runner)) return "Custom Server";
+    return "Gemma Local";
   };
   const imageShotFlowPresets = usesFilmPlanningProfile ? ID_LORA_IMAGE_SHOT_FLOW_PRESETS : STORYBOARD_IMAGE_SHOT_FLOW_PRESETS;
   const imageAestheticPresets = usesFilmPlanningProfile ? ID_LORA_IMAGE_AESTHETIC_PRESETS : STORYBOARD_IMAGE_AESTHETIC_PRESETS;
@@ -3415,7 +3417,7 @@ function openStoryboardBuilder(payload = {}) {
       character_guidance: storyboardSpeedGuidance(state.characterMotionSpeed, "character"),
     },
   });
-  const promptRunnerGenericName = () => promptRunnerName() === "Gemma" ? "Gemma" : "LLM";
+  const promptRunnerGenericName = () => promptRunnerName();
   const promptAllButtonText = () => {
     const kind = state.mode === "image_to_video_prep" ? "Video" : "Image";
     return `${promptRunnerName()} ${kind} All`;
@@ -3554,7 +3556,7 @@ function openStoryboardBuilder(payload = {}) {
   keepGemmaLoadedInput.type = "checkbox";
   keepGemmaLoadedInput.checked = Boolean(state.gemmaSettings?.keep_loaded_for_storyboard_all);
   keepGemmaLoadedLabel.append(keepGemmaLoadedInput, document.createTextNode("Keep local LLM loaded"));
-  keepGemmaLoadedLabel.title = "When checked, local Gemma keeps the text model loaded until the batch finishes. This has no effect on API runners.";
+  keepGemmaLoadedLabel.title = `When checked, ${promptRunnerName()} keeps a local text model loaded until the batch finishes. This has no effect on external runners.`;
   const add = makeButton("+ Add Scene", "purple");
   const close = makeButton("Close");
   headerActions.append(gptButton, importImagePromptsButton, gemmaAllButton, clearPromptsButton, clearStoryBeatsButton, keepGemmaLoadedLabel, search, add, close);
@@ -4028,7 +4030,7 @@ function openStoryboardBuilder(payload = {}) {
   const storyLayerEnabledInput = document.createElement("input");
   storyLayerEnabledInput.type = "checkbox";
   storyLayerEnabledInput.checked = state.storyLayer.enabled !== false;
-  storyLayerEnabledLabel.append(storyLayerEnabledInput, document.createTextNode("Use in Gemma prompts"));
+  storyLayerEnabledLabel.append(storyLayerEnabledInput, document.createTextNode(`Use in ${promptRunnerName()} prompts`));
   storyLayerHeader.append(storyLayerTitle, storyLayerEnabledLabel);
   const shortFilmPlanningModeWrap = document.createElement("div");
   shortFilmPlanningModeWrap.style.cssText = "grid-column:1/-1;display:none;grid-template-columns:minmax(180px,260px) minmax(0,1fr);gap:12px;align-items:start;border:1px solid #155e75;border-radius:8px;background:#071a2b;padding:12px;";
@@ -4048,7 +4050,7 @@ function openStoryboardBuilder(payload = {}) {
     "Optional short premise, e.g. A woman navigates a surreal dream world.",
     3,
   );
-  overallStoryIdeaInput.title = "Optional. Sets the overall premise, world, or theme that Gemma develops through the real lyric sections.";
+  overallStoryIdeaInput.title = `Optional. Sets the overall premise, world, or theme that ${promptRunnerName()} develops through the real lyric sections.`;
   const userStoryArcInput = makeTextarea(
     state.storyLayer.user_story_arc || "",
     usesFilmPlanningProfile ? "Short film premise, conflict, tone, character goal, or pasted script..." : "Optional user story arc, e.g. Verse 1: she feels trapped. Chorus: she breaks free...",
@@ -4056,7 +4058,7 @@ function openStoryboardBuilder(payload = {}) {
   );
   const songStoryBriefInput = makeTextarea(
     state.storyLayer.song_story_brief || "",
-    usesFilmPlanningProfile ? "LLM-created short film story brief..." : "Gemma-created song story brief...",
+    usesFilmPlanningProfile ? "LLM-created short film story brief..." : `${promptRunnerName()}-created song story brief...`,
     5,
   );
   const lyricStoryStrengthInput = makeInput(String(normalizeStoryLayer(state.storyLayer).lyric_story_strength));
@@ -4091,7 +4093,7 @@ function openStoryboardBuilder(payload = {}) {
   overallStoryIdeaField.style.gridColumn = "1/-1";
   const overallStoryIdeaHint = document.createElement("div");
   overallStoryIdeaHint.style.cssText = "font-size:11px;font-weight:500;color:#94a3b8;line-height:1.4;";
-  overallStoryIdeaHint.textContent = "Sets the overall premise, world, or theme. Gemma will develop it through the actual reference-lyric sections; leave blank for a lyric-led idea.";
+  overallStoryIdeaHint.textContent = `Sets the overall premise, world, or theme. ${promptRunnerName()} will develop it through the actual reference-lyric sections; leave blank for a lyric-led idea.`;
   overallStoryIdeaField.append(overallStoryIdeaHint);
   syncLyricStoryStrengthLabel();
   const lyricStoryStrengthRow = document.createElement("div");
@@ -4413,8 +4415,8 @@ function openStoryboardBuilder(payload = {}) {
 
   const refreshConsistencyInfo = () => {
     consistencyInfo.textContent = state.globalConsistencyPhrase
-      ? "Gemma will incorporate this phrase into every generated prompt while keeping the wording as intact as the scene allows."
-      : "Optional phrase Gemma should preserve across every prompt, such as makeup, styling, texture, wardrobe detail, or visual motif.";
+      ? `${promptRunnerName()} will incorporate this phrase into every generated prompt while keeping the wording as intact as the scene allows.`
+      : `Optional phrase ${promptRunnerName()} should preserve across every prompt, such as makeup, styling, texture, wardrobe detail, or visual motif.`;
     refreshSetupPanelSummaries();
   };
 
@@ -4422,7 +4424,7 @@ function openStoryboardBuilder(payload = {}) {
     const preset = performancePresetForMode(state.performanceStyle);
     const presetDescription = preset.description || preset.direction || preset.label || "Performance guidance";
     performanceInfo.textContent = state.performanceStyle
-      ? `${presetDescription} Used by Gemma/GPT for scenes without a per-scene ${isIdLoraMode ? "acting" : "performance"} style.`
+      ? `${presetDescription} Used by ${promptRunnerName()}/GPT for scenes without a per-scene ${isIdLoraMode ? "acting" : "performance"} style.`
       : `${presetDescription} Pick a style here to use it as the default for blank scenes.`;
     refreshSetupPanelSummaries();
   };
@@ -4436,7 +4438,7 @@ function openStoryboardBuilder(payload = {}) {
   const refreshFacialInfo = () => {
     const preset = facialPresetForMode(state.facialPerformance);
     facialInfo.textContent = state.facialPerformance
-      ? `${preset.description} Used by Gemma/GPT for scenes without a per-scene facial performance preset.`
+      ? `${preset.description} Used by ${promptRunnerName()}/GPT for scenes without a per-scene facial performance preset.`
       : `${preset.description} Pick a preset here to use it as the default for blank scenes.`;
     facialCustomInfo.textContent = state.facialPerformanceCustom
       ? "Custom facial text is appended to the selected preset, or used directly when Custom is selected."
@@ -4708,7 +4710,7 @@ function openStoryboardBuilder(payload = {}) {
         scene.flf_carry_forward = String(data.flf_carry_forward || "").trim();
         propagateFlfEndStateToNextScene(scene);
       }
-      if (!scene.story_beat) throw new Error("Gemma returned an empty scene story beat.");
+      if (!scene.story_beat) throw new Error(`${promptRunnerName()} returned an empty scene story beat.`);
       if (!quiet) createToast(`Scene story beat created for ${normalized.label || "scene"}.`);
       return scene.story_beat;
     } catch (error) {
@@ -5178,7 +5180,7 @@ function openStoryboardBuilder(payload = {}) {
         top_p: 0.92,
       }, 240000);
       const generated = Array.isArray(data.scenes) ? data.scenes : [];
-      if (!generated.length) throw new Error("Gemma returned no dialogue scenes.");
+      if (!generated.length) throw new Error(`${promptRunnerName()} returned no dialogue scenes.`);
       state.scenes = generated.map((scene, index) => {
         const normalized = normalizeScene({
           ...scene,
@@ -7830,8 +7832,8 @@ function openStoryboardBuilder(payload = {}) {
     fxInfo.textContent = state.fxPreset === ""
       ? preset.description
       : custom
-        ? `${custom.label}: ${custom.cues.length} custom cue${custom.cues.length === 1 ? "" : "s"}. The Builder injects one cue into each finished timestamped shot after Gemma returns.`
-        : `${preset.description} The Builder injects one cue into each finished timestamped shot after Gemma returns.`;
+        ? `${custom.label}: ${custom.cues.length} custom cue${custom.cues.length === 1 ? "" : "s"}. The Builder injects one cue into each finished timestamped shot after ${promptRunnerName()} returns.`
+        : `${preset.description} The Builder injects one cue into each finished timestamped shot after ${promptRunnerName()} returns.`;
     fxCustomControls.style.display = state.fxPreset === "custom" ? "flex" : "none";
     refreshSetupPanelSummaries();
   };
@@ -7928,7 +7930,7 @@ function openStoryboardBuilder(payload = {}) {
   cameraSpeedInput.addEventListener("change", notifyStoryboardDefaultsChanged);
   cameraSpeedHint.onclick = () => {
     window.alert([
-      "Camera Motion Speed controls how much movement Gemma/GPT should put into the camera plan for Video Prep.",
+      `Camera Motion Speed controls how much movement ${promptRunnerName()}/GPT should put into the camera plan for Video Prep.`,
       "",
       "0: locked-off static camera.",
       "1-3: slow, gentle camera motion; one simple move at most.",
@@ -8039,7 +8041,7 @@ function openStoryboardBuilder(payload = {}) {
   lyricStoryStrengthInput.addEventListener("change", () => syncStoryLayerFromInputs({ notify: true }));
   lyricStoryStrengthHintButton.onclick = () => {
     window.alert([
-      "Lyric Story Strength controls how literally Gemma should follow the lyrics when creating the story arc, story brief, scene beats, and prompt context.",
+      `Lyric Story Strength controls how literally ${promptRunnerName()} should follow the lyrics when creating the story arc, story brief, scene beats, and prompt context.`,
       "",
       "0: do not use lyrics as story source.",
       "1-3: use lyrics as mood and emotional timing only.",

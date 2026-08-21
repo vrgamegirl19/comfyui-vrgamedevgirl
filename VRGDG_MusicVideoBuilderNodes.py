@@ -3314,6 +3314,19 @@ def _llm_runner_from_payload(payload):
     return runner
 
 
+def _llm_runner_display_name(payload, vision=False):
+    runner = _llm_runner_from_payload(payload)
+    names = {
+        "builtin": "Gemma Local",
+        "qwen_local": "Qwen Local",
+        "lm_studio": "LM Studio",
+        "llm_api": "LLM API",
+        "own_server": "Custom Server",
+    }
+    name = names.get(runner, "Gemma Local")
+    return f"{name} vision" if vision else name
+
+
 def _builder_local_llm(payload):
     from .LLM import VRGDG_QwenGGUF, VRGDG_SuperGemmaGGUFChat
     if _llm_runner_from_payload(payload) == "qwen_local":
@@ -4415,7 +4428,7 @@ def _run_builder_text_llm(payload, instruction_text, temperature=0.6, top_p=0.95
         )
         cleaned = _clean_lm_studio_plain_text(text) if preserve_paragraphs else _clean_visual_gemma_text(text)
         return cleaned, {
-            "runner": "builtin",
+            "runner": _llm_runner_from_payload(payload),
             "used_model": model_path,
             "unloaded": unload_after,
         }

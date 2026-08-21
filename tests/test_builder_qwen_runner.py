@@ -5,6 +5,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND = (ROOT / "VRGDG_MusicVideoBuilderNodes.py").read_text(encoding="utf-8")
 UI = (ROOT / "web" / "VRGDG_MusicVideoBuilderUI.js").read_text(encoding="utf-8")
+STORYBOARD_UI = (ROOT / "web" / "VRGDG_StoryboardBuilderUI.js").read_text(encoding="utf-8")
 
 
 class BuilderQwenRunnerTests(unittest.TestCase):
@@ -42,6 +43,17 @@ class BuilderQwenRunnerTests(unittest.TestCase):
         self.assertIn('makeField("Vision LLM model"', UI)
         self.assertNotIn('makeField("Non-Vision text Gemma model"', UI)
         self.assertNotIn('makeField("Vision Gemma model"', UI)
+
+    def test_runner_names_are_dynamic_in_builder_and_storyboard_windows(self):
+        for expected in ("Gemma Local", "Qwen Local", "LM Studio", "LLM API", "Custom Server"):
+            self.assertIn(expected, UI)
+            self.assertIn(expected, STORYBOARD_UI)
+        self.assertIn('"Short Film Premise" : "Story Arc"', STORYBOARD_UI)
+        self.assertIn('${promptRunnerName()}', STORYBOARD_UI)
+        self.assertIn('document.createTextNode(`Use in ${promptRunnerName()} prompts`)', STORYBOARD_UI)
+        self.assertIn('createProgressWindow(`${runnerName} → Create Scene Video`)', UI)
+        self.assertIn("function runnerAwareLlmText(value)", UI)
+        self.assertIn("progress.set(runnerAwareLlmText(message), percent)", UI)
 
 
 if __name__ == "__main__":

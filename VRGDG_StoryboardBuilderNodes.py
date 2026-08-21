@@ -1829,14 +1829,15 @@ def _story_arc_section_word_limit(section_count):
     return max(30, min(100, 1500 // count))
 
 
-def _normalize_story_arc_output(text, required_labels, maximum_words=100):
+def _normalize_story_arc_output(text, required_labels, maximum_words=100, runner_label="LLM"):
     """Enforce the detected headings and configured per-section word limit."""
     raw = str(text or "").strip()
+    runner_label = str(runner_label or "LLM").strip() or "LLM"
     heading_pattern = re.compile(r"(?m)^\s*([^\n:]{1,80}):\s*(?:\n|$)")
     matches = list(heading_pattern.finditer(raw))
     if not matches:
         if required_labels:
-            raise ValueError("Gemma did not return the required lyric section headings. Please rerun Story Arc.")
+            raise ValueError(f"{runner_label} did not return the required lyric section headings.")
         return _cap_story_arc_words(raw, 100)
     blocks = []
     for index, match in enumerate(matches):
@@ -1883,8 +1884,22 @@ def _normalize_story_arc_output(text, required_labels, maximum_words=100):
                 "\n".join(part for part in (last_body, *pending_prefix) if part).strip(),
             )
         blocks = folded_blocks
-        returned = [label.casefold() for label, _body in blocks]
         required = [label.casefold() for label in required_labels]
+        meta_heading_pattern = re.compile(
+            r"\b(?:user|instruction|requirement|preserve|output|heading|exact sections?|"
+            r"requested format|response format|story arc request)\b",
+            re.IGNORECASE,
+        )
+        # Qwen and some server models may echo a short instruction heading
+        # before the requested answer. Ignore only clearly meta/instructional
+        # preamble blocks; invented story sections remain strict failures.
+        while blocks:
+            first_key = blocks[0][0].casefold()
+            first_matches_required = first_key == required[0] or first_key == f"{required[0]} 1"
+            if first_matches_required or not meta_heading_pattern.search(blocks[0][0]):
+                break
+            blocks.pop(0)
+        returned = [label.casefold() for label, _body in blocks]
         # Some local Gemma models add "1" to the first occurrence of a
         # heading even though only repeated occurrences are numbered.
         returned = [
@@ -1910,7 +1925,7 @@ def _normalize_story_arc_output(text, required_labels, maximum_words=100):
             missing = [label for label in required_labels if label.casefold() not in returned]
             extra = [label for label, _body in blocks if label.casefold() not in required]
             details = [
-                f"Expected {len(required_labels)} headings but Gemma returned {len(blocks)}.",
+                f"Expected {len(required_labels)} headings but {runner_label} returned {len(blocks)}.",
                 f"First mismatch at section {mismatch_index + 1}: expected '{expected_label}', received '{returned_label}'.",
             ]
             if missing:
@@ -1918,9 +1933,8 @@ def _normalize_story_arc_output(text, required_labels, maximum_words=100):
             if extra:
                 details.append("Extra: " + ", ".join(extra[:8]) + ("…" if len(extra) > 8 else "") + ".")
             raise ValueError(
-                "Gemma changed the lyric structure. "
+                f"{runner_label} changed the lyric structure. "
                 + " ".join(details)
-                + " Please rerun Story Arc."
             )
         blocks = [
             (required_labels[index], body)
@@ -2135,7 +2149,9 @@ def _build_story_layer_arc(payload):
         f"Full reference lyrics:\n{lyrics or '[not provided]'}\n\n"
         f"Scene lyric map:\n{json.dumps(compact_scenes, ensure_ascii=False, indent=2) if compact_scenes else '[not provided]'}"
     )
-    from .VRGDG_MusicVideoBuilderNodes import _run_builder_text_llm
+    from .VRGDG_MusicVideoBuilderNodes import _llm_runner_display_name, _run_builder_text_llm
+
+    runner_label = _llm_runner_display_name(payload)
 
     text, run_info = _run_builder_text_llm(
         payload,
@@ -2143,13 +2159,54 @@ def _build_story_layer_arc(payload):
         temperature=float(payload.get("temperature") or 0.45),
         top_p=float(payload.get("top_p") or 0.92),
         max_new_tokens=int(payload.get("max_new_tokens") or 2400),
-        label="Storyboard Story Arc Gemma",
+        label=f"Storyboard Story Arc {runner_label}",
         preserve_paragraphs=True,
     )
     text = _clean_scene_text(text, 14000)
     if not text:
-        raise ValueError("Gemma returned an empty story arc.")
-    text = _normalize_story_arc_output(text, required_section_labels, section_word_limit)
+        raise ValueError(f"{runner_label} returned an empty story arc.")
+    try:
+        text = _normalize_story_arc_output(text, required_section_labels, section_word_limit, runner_label)
+    except ValueError as first_error:
+        if not required_section_labels:
+            raise
+        exact_format = "\n\n".join(f"{label}:\n[one visual-story paragraph]" for label in required_section_labels)
+        retry_instruction = (
+            "CORRECTION: Your previous answer did not follow the required lyric-section output format.\n"
+            "Answer the original task again from scratch. Do not discuss, quote, summarize, or acknowledge these instructions.\n"
+            f"The very first line must be exactly: {required_section_labels[0]}:\n"
+            "Return every required heading exactly once and in this exact order, with no preamble, notes, bullets, or extra headings.\n\n"
+            f"Exact output skeleton:\n{exact_format}\n\n"
+            f"Original task:\n{instruction}"
+        )
+        retry_payload = dict(payload or {})
+        try:
+            retry_payload["seed"] = (int(payload.get("seed") or 0) + 1) % 2147483647
+        except (TypeError, ValueError):
+            retry_payload["seed"] = 1
+        retry_text, retry_info = _run_builder_text_llm(
+            retry_payload,
+            retry_instruction,
+            temperature=0.2,
+            top_p=0.85,
+            max_new_tokens=int(payload.get("max_new_tokens") or 2400),
+            label=f"Storyboard Story Arc {runner_label} format retry",
+            preserve_paragraphs=True,
+        )
+        retry_text = _clean_scene_text(retry_text, 14000)
+        try:
+            text = _normalize_story_arc_output(
+                retry_text,
+                required_section_labels,
+                section_word_limit,
+                runner_label,
+            )
+            run_info = retry_info
+        except ValueError as retry_error:
+            raise ValueError(
+                f"{runner_label} could not preserve the lyric-section structure after an automatic format retry. "
+                f"{retry_error}"
+            ) from first_error
     return {
         "story_arc": text,
         "lyrics_source": lyrics_source,
