@@ -29,7 +29,9 @@ async function postJson(url, payload = {}, timeoutMs = 120000) {
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || data?.ok === false) {
-      throw new Error(data?.error || `Request failed (${response.status})`);
+      const requestError = new Error(data?.error || `Request failed (${response.status})`);
+      if (data?.diagnostics && typeof data.diagnostics === "object") requestError.diagnostics = data.diagnostics;
+      throw requestError;
     }
     return data;
   } catch (error) {
@@ -2552,6 +2554,39 @@ function createStoryboardProgressWindow(title = "Storyboard LLM") {
       const pct = Number.isFinite(Number(percent)) ? Math.max(0, Math.min(100, Number(percent))) : 0;
       fill.style.width = `${pct}%`;
     },
+    showDiagnostics(diagnostics = {}) {
+      if (!diagnostics || typeof diagnostics !== "object") return;
+      const details = document.createElement("details");
+      details.style.cssText = "border:1px solid #475569;border-radius:7px;background:#111827;padding:9px 10px;color:#cbd5e1;font-size:12px;";
+      const summary = document.createElement("summary");
+      summary.textContent = "Show raw model output (diagnostics)";
+      summary.style.cssText = "cursor:pointer;font-weight:800;color:#bae6fd;";
+      const meta = document.createElement("div");
+      meta.style.cssText = "margin-top:8px;line-height:1.45;white-space:pre-wrap;";
+      const runner = String(diagnostics.runner || "LLM");
+      const expected = Array.isArray(diagnostics.expected_sections) ? diagnostics.expected_sections.join(" → ") : "";
+      meta.textContent = `Runner: ${runner}${expected ? `\nExpected sections: ${expected}` : ""}`;
+      const rawLabel = document.createElement("div");
+      rawLabel.textContent = "Raw response:";
+      rawLabel.style.cssText = "margin-top:8px;font-weight:800;color:#fda4af;";
+      const raw = document.createElement("pre");
+      raw.textContent = String(diagnostics.raw_output || "[empty]");
+      raw.style.cssText = "max-height:220px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;margin:4px 0 8px;padding:8px;background:#020617;border-radius:5px;color:#fecdd3;";
+      const cleanedLabel = document.createElement("div");
+      cleanedLabel.textContent = "Cleaned response:";
+      cleanedLabel.style.cssText = "font-weight:800;color:#bae6fd;";
+      const cleaned = document.createElement("pre");
+      cleaned.textContent = String(diagnostics.cleaned_output || "[empty]");
+      cleaned.style.cssText = "max-height:180px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;margin:4px 0 8px;padding:8px;background:#020617;border-radius:5px;color:#bae6fd;";
+      const copy = makeButton("Copy output");
+      copy.style.padding = "5px 9px";
+      copy.onclick = async () => {
+        try { await navigator.clipboard.writeText(String(diagnostics.raw_output || "")); copy.textContent = "Copied"; setTimeout(() => { copy.textContent = "Copy output"; }, 1200); }
+        catch { copy.textContent = "Copy failed"; }
+      };
+      details.append(summary, meta, rawLabel, raw, cleanedLabel, cleaned, copy);
+      body.insertBefore(details, track);
+    },
     close(delay = 0) {
       if (delay > 0) {
         setTimeout(() => backdrop.remove(), delay);
@@ -4650,6 +4685,7 @@ function openStoryboardBuilder(payload = {}) {
       createToast(`${authoritativeScript.enabled ? "Short-film premise" : "Story arc"} created. Seed: ${storyArcSeed}`);
     } catch (error) {
       progress.set(`Error:\n${String(error?.message || error)}`, 100);
+      progress.showDiagnostics?.(error?.diagnostics);
       createToast(`Story arc failed:\n${String(error?.message || error)}`, true);
     }
   };

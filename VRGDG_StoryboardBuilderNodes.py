@@ -1829,6 +1829,17 @@ def _story_arc_section_word_limit(section_count):
     return max(30, min(100, 1500 // count))
 
 
+class StoryArcFormatError(ValueError):
+    """Format failure carrying bounded model output for the UI diagnostics panel."""
+
+    def __init__(self, message, *, raw_output="", cleaned_output="", expected_sections=None, runner="LLM"):
+        super().__init__(message)
+        self.raw_output = str(raw_output or "")[-12000:]
+        self.cleaned_output = str(cleaned_output or "")[-12000:]
+        self.expected_sections = [str(item) for item in (expected_sections or [])]
+        self.runner = str(runner or "LLM")
+
+
 def _normalize_story_arc_output(text, required_labels, maximum_words=100, runner_label="LLM"):
     """Enforce the detected headings and configured per-section word limit."""
     raw = str(text or "").strip()
@@ -2203,9 +2214,13 @@ def _build_story_layer_arc(payload):
             )
             run_info = retry_info
         except ValueError as retry_error:
-            raise ValueError(
+            raise StoryArcFormatError(
                 f"{runner_label} could not preserve the lyric-section structure after an automatic format retry. "
-                f"{retry_error}"
+                f"{retry_error}",
+                raw_output=retry_text or text,
+                cleaned_output=retry_text or text,
+                expected_sections=required_section_labels,
+                runner=runner_label,
             ) from first_error
     return {
         "story_arc": text,
@@ -3235,6 +3250,18 @@ def _ensure_storyboard_routes():
         try:
             payload = await request.json()
             result = await asyncio.to_thread(_build_story_layer_arc, payload)
+        except StoryArcFormatError as exc:
+            return web.json_response({
+                "ok": False,
+                "error": str(exc),
+                "diagnostics": {
+                    "kind": "story_arc_format",
+                    "runner": exc.runner,
+                    "expected_sections": exc.expected_sections,
+                    "raw_output": exc.raw_output,
+                    "cleaned_output": exc.cleaned_output,
+                },
+            }, status=500)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, **result})

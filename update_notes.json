@@ -39,7 +39,8 @@
             "Fixed switching the Audio Builder to MiniMax H3 failing on the same null image_history state by restoring a valid active scene before synchronizing the MiniMax panel.",
             "Fixed saved Qwen, Gemma, and mmproj selections being replaced by stale Builder dropdown values after loading a project or refreshing the available model lists.",
             "Fixed Story Arc generation failing when Qwen echoed an instruction heading instead of immediately returning the exact lyric-section headings. Clearly instructional preambles are ignored when a valid arc follows, and invalid structures receive one automatic strict-format retry before an error is shown.",
-            "Fixed model-emitted <think>, Thought, Thinking, Analysis, and Reasoning preambles leaking into Builder and Storyboard output even when local thinking mode is disabled."
+            "Fixed model-emitted <think>, Thought, Thinking, Analysis, and Reasoning preambles leaking into Builder and Storyboard output even when local thinking mode is disabled.",
+            "Story Arc format failures now include a collapsed diagnostics panel with the runner, expected headings, raw model response, cleaned response, and a copy-output button."
           ]
         },
         {
