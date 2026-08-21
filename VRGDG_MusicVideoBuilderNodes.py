@@ -4437,6 +4437,10 @@ def _run_builder_text_llm(payload, instruction_text, temperature=0.6, top_p=0.95
     llm = _builder_local_llm(payload)
     model_file = _builder_local_model_file(payload, model_file)
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION)
+    print(
+        f"[VRGDG LLM] runner={_llm_runner_display_name(payload)} "
+        f"model={os.path.basename(str(model_path)) or str(model_path)}"
+    )
     n_ctx = int(payload.get("n_ctx") or 8000)
     n_gpu_layers = int(payload.get("n_gpu_layers") or 99)
     n_threads = int(payload.get("n_threads") or 8)
