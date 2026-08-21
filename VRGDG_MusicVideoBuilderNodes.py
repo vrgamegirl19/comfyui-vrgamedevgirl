@@ -3969,9 +3969,42 @@ def _list_lm_studio_models(payload):
     return {"models": models, "raw": data}
 
 
+def _strip_builder_thinking_text(text):
+    """Remove reasoning/control-channel text that models may emit despite disabled thinking."""
+    cleaned = str(text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    # Qwen and a few OpenAI-compatible servers can emit an unclosed block. In
+    # that case the useful answer starts after the closing marker.
+    cleaned = re.sub(r"<(?:think|thought)>.*?</(?:think|thought)>", "", cleaned, flags=re.IGNORECASE | re.DOTALL)
+    closing = re.search(r"</(?:think|thought)>", cleaned, flags=re.IGNORECASE)
+    if closing:
+        cleaned = cleaned[closing.end():].strip()
+
+    # When a model labels a reasoning preamble and then supplies a final
+    # answer, discard the whole preamble rather than only its heading.
+    thought_prefix = re.match(
+        r"^\s*(?:<\|channel\|>\s*)?(?:<\|(?:thought|thinking|analysis|reasoning)\|>\s*)?"
+        r"(?:thought(?: process)?|thinking(?: process)?|analysis|reasoning)\s*:\s*",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    final_marker = re.search(r"\n\s*(?:final(?: answer| response)?|answer|response)\s*:\s*", cleaned, flags=re.IGNORECASE)
+    if thought_prefix and final_marker and final_marker.start() >= thought_prefix.end():
+        cleaned = cleaned[final_marker.end():].strip()
+    else:
+        # Strip a leading label/control token while preserving the answer text.
+        cleaned = re.sub(
+            r"^\s*(?:<\|channel\|>\s*)?(?:<\|(?:thought|thinking|analysis|reasoning)\|>\s*)?"
+            r"(?:thought(?: process)?|thinking(?: process)?|analysis|reasoning)\s*:\s*",
+            "",
+            cleaned,
+            count=1,
+            flags=re.IGNORECASE,
+        ).strip()
+    return cleaned
+
+
 def _clean_lm_studio_plain_text(text):
-    cleaned = str(text or "").strip()
-    cleaned = re.sub(r"<think>.*?</think>", "", cleaned, flags=re.IGNORECASE | re.DOTALL).strip()
+    cleaned = _strip_builder_thinking_text(text)
     cleaned = re.sub(r"^\s*```(?:text|json)?\s*", "", cleaned, flags=re.IGNORECASE).strip()
     cleaned = re.sub(r"\s*```\s*$", "", cleaned).strip()
     cleaned = re.sub(r"^(?:Assistant|Answer|Final answer)\s*:\s*", "", cleaned, flags=re.IGNORECASE).strip()

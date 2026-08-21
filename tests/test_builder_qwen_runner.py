@@ -23,6 +23,12 @@ class BuilderQwenRunnerTests(unittest.TestCase):
         helper = BACKEND[helper_start:helper_end]
         self.assertLess(helper.index("else:"), helper.index('llm._qwen_chat_template_kwargs = {"enable_thinking": False}'))
 
+    def test_builder_output_strips_model_thinking_preambles(self):
+        self.assertIn("def _strip_builder_thinking_text(text):", BACKEND)
+        self.assertIn(r"<(?:think|thought)>.*?</(?:think|thought)>", BACKEND)
+        self.assertIn("thought(?: process)?|thinking(?: process)?|analysis|reasoning", BACKEND)
+        self.assertIn("cleaned = _strip_builder_thinking_text(text)", BACKEND)
+
     def test_choices_include_qwen_and_external_picker_support(self):
         self.assertIn('"qwen_models": VRGDG_QwenGGUF._list_local_qwen_gguf()', BACKEND)
         self.assertIn('kind == "gguf"', BACKEND)
