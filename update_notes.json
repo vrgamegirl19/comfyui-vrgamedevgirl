@@ -3,6 +3,41 @@
   "product": "AI Video Builder",
   "releases": [
     {
+      "id": "2026-08-21-pr151-minimax-qwen-save-fixes",
+      "version": "2026.08.21-pr151-minimax-qwen-save-fixes",
+      "date": "2026-08-21",
+      "title": "MiniMax two-pass diagnostics, Qwen downloads, and complete project saves",
+      "commit": "6fb6d556546769ee3c7087a6c9cd569f93d3f6de",
+      "restart_required": true,
+      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/pull/151",
+      "sections": [
+        {
+          "title": "Added",
+          "items": [
+            "MiniMax H3 two-pass progress now reports the exact Pass 1 and Pass 2 sampler steps from the built hidden workflow.",
+            "MiniMax H3 two-pass progress now reports the exact LoRAs and strengths attached to each pass in the built hidden workflow.",
+            "LLM model downloads now have separate Gemma and Qwen subtabs, with model-specific notes and folder guidance.",
+            "Qwen3.8-27B GGUF downloads now open the repository root so users can choose their preferred quantization and model files."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Fixed MiniMax two-pass settings being lost when switching scenes or starting a render; the active Pass 1 and Pass 2 controls are flushed directly into the request.",
+            "Fixed Quick Save and autosave omitting Gemma model, Qwen model, and Qwen mmproj selections from the saved project session.",
+            "Fixed Quick Save and autosave not flushing live MiniMax builder and scene settings before serialization."
+          ]
+        },
+        {
+          "title": "Compatibility Notes",
+          "items": [
+            "Restart ComfyUI and hard-refresh the browser after updating so the revised Builder JavaScript and saved-session behavior are loaded.",
+            "Qwen3.8 requires a selected GGUF model (including all shards for that quantization) and its matching vision mmproj. Rename the projector to qwen-mmproj-BF16.gguf when using it alongside Gemma."
+          ]
+        }
+      ]
+    },
+    {
       "id": "2026-08-21-qwen-runner-project-recovery",
       "version": "2026.08.21-qwen-runner-project-recovery",
       "date": "2026-08-21",
