@@ -45220,6 +45220,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     // scene one last time before taking the settings snapshot used to build
     // the hidden workflow.
     if (segment?.id === activeSegment()?.id) saveMiniMaxH3SettingsFromPanel();
+    const panelSegmentId = activeSegment()?.id;
     const progressBase = Number(options.progressBase ?? 0);
     const progressSpan = Number(options.progressSpan ?? 100);
     const batchLabel = options.batchLabel ? `${options.batchLabel}\n` : "";
@@ -45376,6 +45377,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     state.activeId = segment.id;
     segment.video_status = "running";
     renderList();
+    const activePanel = segment?.id === panelSegmentId;
+    const requestedTwoPassSteps = twoPass && activePanel
+      ? {
+        pass1: Math.max(1, Math.min(1000, Math.trunc(Number(twoPassControls[0].steps.value) || 20))),
+        pass2: Math.max(1, Math.min(1000, Math.trunc(Number(twoPassControls[1].steps.value) || 5))),
+      }
+      : null;
     progress?.set(`${batchLabel}Preparing exact MiniMax H3 scene timing and ${builtInAudio ? "native audio generation" : "input audio"}...`, pct(8));
 
     try {
@@ -45421,12 +45429,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         output_crf: twoPass ? miniMaxSettings.two_pass_output_crf : undefined,
         three_pass_lightx_lora_name: miniMaxSettings.three_pass_lightx_lora_name,
         three_pass_lightx_lora_strength: miniMaxSettings.three_pass_lightx_lora_strength,
-        pass1_steps: twoPass ? miniMaxSettings.two_pass_pass1_steps : miniMaxSettings.steps,
+        pass1_steps: twoPass ? (requestedTwoPassSteps?.pass1 ?? miniMaxSettings.two_pass_pass1_steps) : miniMaxSettings.steps,
         pass1_denoise: twoPass ? miniMaxSettings.two_pass_pass1_denoise : miniMaxSettings.denoise,
         pass1_sampler_name: twoPass ? miniMaxSettings.two_pass_pass1_sampler : miniMaxSettings.sampler_name,
         pass1_scheduler: twoPass ? miniMaxSettings.two_pass_pass1_scheduler : miniMaxSettings.scheduler,
         pass1_seed: twoPass ? miniMaxSettings.two_pass_pass1_seed : miniMaxSettings.seed,
-        pass2_steps: twoPass ? miniMaxSettings.two_pass_pass2_steps : 4,
+        pass2_steps: twoPass ? (requestedTwoPassSteps?.pass2 ?? miniMaxSettings.two_pass_pass2_steps) : 4,
         pass2_denoise: twoPass ? miniMaxSettings.two_pass_pass2_denoise : 0.2,
         pass2_sampler_name: twoPass ? miniMaxSettings.two_pass_pass2_sampler : miniMaxSettings.sampler_name,
         pass2_scheduler: twoPass ? miniMaxSettings.two_pass_pass2_scheduler : miniMaxSettings.scheduler,
@@ -45498,7 +45506,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         throw new Error("The built MiniMax H3 two-pass prompt is missing its exact sampler step values.");
       }
       const exactTwoPassStepsLine = twoPass
-        ? `\nExact built-prompt sampler steps: Pass 1 = ${exactTwoPassSteps.pass1}; Pass 2 = ${exactTwoPassSteps.pass2}`
+        ? `\nRequested panel steps: Pass 1 = ${requestedTwoPassSteps?.pass1 ?? miniMaxSettings.two_pass_pass1_steps}; Pass 2 = ${requestedTwoPassSteps?.pass2 ?? miniMaxSettings.two_pass_pass2_steps}`
+          + `\nExact built-prompt sampler steps: Pass 1 = ${exactTwoPassSteps.pass1}; Pass 2 = ${exactTwoPassSteps.pass2}`
         : "";
       const exactModelChainLoras = (modelRef) => {
         const loras = [];
