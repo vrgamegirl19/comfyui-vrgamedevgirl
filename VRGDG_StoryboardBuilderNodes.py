@@ -1985,10 +1985,11 @@ def _build_story_layer_arc(payload):
                     prompt_creator_lyrics = _clean_scene_text(handle.read(), 40000)
             except OSError:
                 prompt_creator_lyrics = ""
-    # The lyrics currently open in Line Mapping are the live user input and must
-    # win over a potentially stale project_context/full_lyrics.txt file.
-    lyrics = line_mapping_lyrics or prompt_creator_lyrics or timeline_lyrics
-    lyrics_source = "Line Mapping reference lyrics" if line_mapping_lyrics else ("Prompt Creator reference lyrics" if prompt_creator_lyrics else "timeline scene lyrics")
+    # project_context/full_lyrics.txt is the canonical, user-pasted song source.
+    # Timeline lyrics contain detected instrumental gaps and must only be a
+    # fallback when the project has no saved complete lyric text yet.
+    lyrics = prompt_creator_lyrics or line_mapping_lyrics or timeline_lyrics
+    lyrics_source = "project full_lyrics.txt" if prompt_creator_lyrics else ("Line Mapping reference lyrics" if line_mapping_lyrics else "timeline scene lyrics")
     lyric_sections = _parse_story_arc_lyric_sections(
         lyrics,
         collapse_adjacent=not bool(line_mapping_lyrics or prompt_creator_lyrics),
@@ -2052,7 +2053,6 @@ def _build_story_layer_arc(payload):
             "scene_number": normalized["scene_number"],
             "label": normalized["label"],
             "lyric_section": normalized.get("lyric_section", ""),
-            "lyrics": normalized.get("lyrics", "")[:500],
         })
         for subject in normalized.get("subject_refs") or []:
             if not isinstance(subject, dict):

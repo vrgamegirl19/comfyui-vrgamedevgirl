@@ -24748,6 +24748,12 @@ function openBuilder(node) {
       toast("Load an audio file first.", true);
       return false;
     }
+    if (String(options.referenceLyrics || "").trim()) {
+      state.lyricMapper = normalizeLyricMapper({
+        ...state.lyricMapper,
+        source_text: String(options.referenceLyrics || "").trim(),
+      });
+    }
     let progress = null;
     try {
       progress = createProgressWindow("Creating Scenes From Timestamped Lines");
@@ -24896,6 +24902,10 @@ function openBuilder(node) {
     if (!referenceLyrics) {
       throw new Error("Reference lyrics are required for Transcribe Existing Scenes so lyric lines cannot be silently omitted.");
     }
+    state.lyricMapper = normalizeLyricMapper({
+      ...state.lyricMapper,
+      source_text: referenceLyrics,
+    });
 
     if (runtime.saveTimelineFirst !== false) {
       progress?.set("Saving current scene boundaries...", 5);
@@ -53390,6 +53400,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         lyricsInput.focus();
         return;
       }
+      // Preserve exactly what the user pasted as the project's canonical song
+      // text before timestamping adds instrumental gaps to scene-level notes.
+      state.lyricMapper = normalizeLyricMapper({
+        ...state.lyricMapper,
+        source_text: lyrics,
+      });
       if (!selected.singer) {
         toast("Choose one singer reference image before starting Auto Build.", true);
         return;

@@ -669,7 +669,7 @@ def _new_builder_project(payload):
     os.makedirs(_images_folder(target), exist_ok=True)
     os.makedirs(_prompts_folder(target), exist_ok=True)
     os.makedirs(_context_folder(target), exist_ok=True)
-    for filename in ("ConceptPrompts.txt", "I2VMotionNotes.txt", "themestyle.txt", "storyconcept.txt", "subjectsandscenes.txt"):
+    for filename in ("ConceptPrompts.txt", "I2VMotionNotes.txt", "themestyle.txt", "storyconcept.txt", "subjectsandscenes.txt", "full_lyrics.txt"):
         path = os.path.join(_context_folder(target), filename)
         if not os.path.exists(path):
             with open(path, "w", encoding="utf-8") as handle:
@@ -904,6 +904,22 @@ def _prompts_folder(project_folder):
 
 def _context_folder(project_folder):
     return os.path.join(project_folder, "project_context")
+
+
+def _save_canonical_full_lyrics(project_folder, lyrics):
+    """Persist the user's complete source lyrics without timeline reconstruction."""
+    text = str(lyrics or "").strip()
+    if not text:
+        return ""
+    context_folder = _context_folder(project_folder)
+    os.makedirs(context_folder, exist_ok=True)
+    path = os.path.join(context_folder, "full_lyrics.txt")
+    temporary_path = path + ".tmp"
+    with open(temporary_path, "w", encoding="utf-8") as handle:
+        handle.write(text)
+        handle.write("\n")
+    os.replace(temporary_path, path)
+    return path
 
 
 _BUILDER_INSTRUCTION_DEFAULTS = {
@@ -8903,6 +8919,13 @@ def _save_builder_session(payload):
         "segments": segments,
     }
 
+    # The complete text pasted into Line Mapper/Auto Build is the project's
+    # canonical lyric source. Never rebuild this file from timestamped scene
+    # notes because those notes legitimately contain detected instrumental gaps
+    # and may split or repeat song sections.
+    lyric_mapper = session.get("lyric_mapper") if isinstance(session.get("lyric_mapper"), dict) else {}
+    full_lyrics_path = _save_canonical_full_lyrics(project_folder, lyric_mapper.get("source_text"))
+
     srt_text = _segments_to_srt(segments)
     _backup_session_file(project_folder)
     with open(_session_path(project_folder), "w", encoding="utf-8") as handle:
@@ -8932,6 +8955,7 @@ def _save_builder_session(payload):
         "images_folder": _images_folder(project_folder),
         "prompts_folder": _prompts_folder(project_folder),
         "context_folder": _context_folder(project_folder),
+        "full_lyrics_path": full_lyrics_path,
         "model_defaults_path": model_defaults_path,
         "scene_notes_path": scene_notes_path,
         "session": session,
