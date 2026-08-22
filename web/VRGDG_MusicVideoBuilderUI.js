@@ -36463,6 +36463,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     try {
       updateActiveFromInputs();
       saveI2VVideoSettingsFromPanel();
+      // Quick Save must capture the live builder panels before serializing the
+      // session, including MiniMax's scene/project-scoped controls.
+      if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") {
+        saveMiniMaxH3SettingsFromPanel();
+        saveMiniMaxSceneInputsFromPanel();
+      }
       ensureAllSegmentRuntimeFields();
       const projectFolder = activeProjectFolderForSave();
       if (!projectFolder) {
@@ -36664,6 +36670,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     try {
       updateActiveFromInputs();
       saveI2VVideoSettingsFromPanel();
+      if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") {
+        saveMiniMaxH3SettingsFromPanel();
+        saveMiniMaxSceneInputsFromPanel();
+      }
       const projectFolder = activeProjectFolderForSave();
       if (!projectFolder) {
         console.warn(`[VRGDG Music Builder] Autosave skipped before ${reason || "action"} because no active project is set.`);
@@ -49287,7 +49297,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         concept_match_mode: "medium",
         append_subject_to_prompts: true,
         repair_lyric_segments: false,
-        text_gemma_runner: state.textGemmaRunner || "builtin",
+      text_gemma_runner: state.textGemmaRunner || "builtin",
+      qwen_model_file: state.qwenModelFile || "",
+      qwen_mmproj_file: state.qwenMmprojFile || "",
+      gemma_model_file: state.gemmaModelFile || "",
         gemma_context_limit: normalizeGemmaContextLimit(state.gemmaContextLimit),
         gemma_output_token_limit: normalizeOutputTokenLimit(state.gemmaOutputTokenLimit),
         gemma_gpu_layers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),
