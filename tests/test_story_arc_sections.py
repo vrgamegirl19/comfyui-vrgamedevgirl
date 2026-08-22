@@ -121,6 +121,43 @@ class StoryArcSectionTests(unittest.TestCase):
         self.assertIn("CORRECTION: Your previous answer did not follow", source)
         self.assertIn("after an automatic format retry", source)
 
+    def test_inline_headings_are_accepted(self):
+        normalized = normalize_output(
+            "Verse 1: The performer enters the archive.\n"
+            "Chorus: The performer reaches the central chamber.",
+            ["Verse 1", "Chorus"],
+            100,
+            "Gemma Local",
+        )
+        self.assertEqual(
+            normalized,
+            "Verse 1:\nThe performer enters the archive.\n\n"
+            "Chorus:\nThe performer reaches the central chamber.",
+        )
+
+    def test_adjacent_repeated_sections_are_merged(self):
+        normalized = normalize_output(
+            "Instrumental: Opening atmosphere.\n"
+            "instrumental: More atmosphere.\n"
+            "Verse 1: The performer enters.\n"
+            "Chorus: The performer sings.\n"
+            "instrumental: Closing atmosphere.",
+            ["Instrumental", "Verse 1", "Chorus", "Instrumental 2"],
+            100,
+            "Gemma Local",
+        )
+        self.assertIn("Opening atmosphere. More atmosphere.", normalized)
+        self.assertIn("Closing atmosphere.", normalized)
+
+    def test_missing_headings_include_response_diagnostics(self):
+        with self.assertRaisesRegex(ValueError, "No heading lines were detected.*Response preview"):
+            normalize_output(
+                "The performer enters the archive without section labels.",
+                ["Verse 1"],
+                100,
+                "Gemma Local",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

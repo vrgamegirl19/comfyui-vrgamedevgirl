@@ -1844,11 +1844,22 @@ def _normalize_story_arc_output(text, required_labels, maximum_words=100, runner
     """Enforce the detected headings and configured per-section word limit."""
     raw = str(text or "").strip()
     runner_label = str(runner_label or "LLM").strip() or "LLM"
-    heading_pattern = re.compile(r"(?m)^\s*([^\n:]{1,80}):\s*(?:\n|$)")
+    # Local runners may put the section body on the same line as the heading.
+    # Keep the line-start anchor so ordinary colons inside prose are not treated
+    # as headings, while accepting inline and standalone heading formats.
+    heading_pattern = re.compile(r"(?m)^[ \t]*([^\n:]{1,80}):[ \t]*")
     matches = list(heading_pattern.finditer(raw))
     if not matches:
         if required_labels:
-            raise ValueError(f"{runner_label} did not return the required lyric section headings.")
+            preview = re.sub(r"\s+", " ", raw)[:240]
+            expected = ", ".join(str(label) for label in required_labels[:8])
+            if len(required_labels) > 8:
+                expected += ", …"
+            raise ValueError(
+                f"{runner_label} did not return the required lyric section headings. "
+                f"No heading lines were detected. Expected: {expected}. "
+                f"Response preview: {preview or '[empty]'}."
+            )
         return _cap_story_arc_words(raw, 100)
     blocks = []
     for index, match in enumerate(matches):
@@ -1895,6 +1906,22 @@ def _normalize_story_arc_output(text, required_labels, maximum_words=100, runner
                 "\n".join(part for part in (last_body, *pending_prefix) if part).strip(),
             )
         blocks = folded_blocks
+        # Some runners emit one heading per timeline scene. Merge only adjacent
+        # same-name runs, and only keep the merge when it produces the exact
+        # number of required sections. This preserves strict ordering checks.
+        if len(blocks) != len(required_labels):
+            merged_blocks = []
+            for label, body in blocks:
+                if merged_blocks and merged_blocks[-1][0].casefold() == label.casefold():
+                    previous_label, previous_body = merged_blocks[-1]
+                    merged_blocks[-1] = (
+                        previous_label,
+                        "\n".join(part for part in (previous_body, body) if part).strip(),
+                    )
+                else:
+                    merged_blocks.append((label, body))
+            if len(merged_blocks) == len(required_labels):
+                blocks = merged_blocks
         required = [label.casefold() for label in required_labels]
         meta_heading_pattern = re.compile(
             r"\b(?:user|instruction|requirement|preserve|output|heading|exact sections?|"
@@ -1917,8 +1944,21 @@ def _normalize_story_arc_output(text, required_labels, maximum_words=100, runner
             required[index] if index < len(required) and actual == f"{required[index]} 1" else actual
             for index, actual in enumerate(returned)
         ]
-        if len(blocks) > len(required_labels) and returned[:len(required)] == required:
-            # Gemma occasionally preserves every required lyric heading, then
+        normalized_returned = []
+        for index, actual in enumerate(returned):
+            if index < len(required):
+                expected = required[index]
+                expected_base = re.sub(r"\s+\d+$", "", expected)
+                if (
+                    re.search(r"\s+\d+$", expected)
+                    and not re.search(r"\s+\d+$", actual)
+                    and expected_base == actual
+                ):
+                    actual = expected
+            normalized_returned.append(actual)
+        returned = normalized_returned
+
+        if len(blocks) > len(required_labels) and returned[:len(required)] == required:            # Gemma occasionally preserves every required lyric heading, then
             # appends invented sections such as an extra Instrumental or Outro.
             # The required prefix is already a complete valid story arc, so
             # discard only those trailing additions instead of failing the
@@ -1938,6 +1978,7 @@ def _normalize_story_arc_output(text, required_labels, maximum_words=100, runner
             details = [
                 f"Expected {len(required_labels)} headings but {runner_label} returned {len(blocks)}.",
                 f"First mismatch at section {mismatch_index + 1}: expected '{expected_label}', received '{returned_label}'.",
+                "Detected headings: " + (", ".join(label for label, _body in blocks[:12]) or "[none]") + ("…" if len(blocks) > 12 else "") + ".",
             ]
             if missing:
                 details.append("Missing: " + ", ".join(missing[:8]) + ("…" if len(missing) > 8 else "") + ".")
