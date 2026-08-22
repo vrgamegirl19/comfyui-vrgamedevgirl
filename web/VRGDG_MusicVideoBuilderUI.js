@@ -45478,6 +45478,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const builtLoraSettings = built?.lora_settings || {};
       const builtTurboSettings = built?.turbo_settings || {};
       const builtAdvancedSettings = built?.advanced_settings || {};
+      const exactTwoPassSteps = twoPass
+        ? {
+          pass1: Number(built?.prompt?.["124"]?.inputs?.steps),
+          pass2: Number(built?.prompt?.["190"]?.inputs?.value),
+        }
+        : null;
+      if (twoPass && (!Number.isInteger(exactTwoPassSteps.pass1) || !Number.isInteger(exactTwoPassSteps.pass2))) {
+        throw new Error("The built MiniMax H3 two-pass prompt is missing its exact sampler step values.");
+      }
+      const exactTwoPassStepsLine = twoPass
+        ? `\nExact built-prompt sampler steps: Pass 1 = ${exactTwoPassSteps.pass1}; Pass 2 = ${exactTwoPassSteps.pass2}`
+        : "";
       const loraLine = builtLoraSettings.enabled
         ? `\nLoRAs: ${Number(builtLoraSettings.count || 0)} — ${(builtLoraSettings.loras || []).map((item) => `${item.name} @ ${item.strength}`).join(", ")}`
         : "\nLoRAs: OFF";
@@ -45498,6 +45510,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         + `Timeline: ${sceneDuration.toFixed(3)}s\n`
         + `H3 render: ${Number(timing.h3_frame_count || 0)} frames`
         + (threePass ? "\nStage 1 and Stage 2 are saved as backups; Stage 3 will be used for stitching." : twoPass ? "\nPass 1 is learned-latent upscaled and refined by pass 2; the final pass-2 video will be used for stitching." : "")
+        + exactTwoPassStepsLine
         + loraLine
         + turboLine
         + settingsScopeLine
@@ -45578,7 +45591,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         promptId,
         (message) => {
           void registerLiveThreePassBackups();
-          progress?.set(`${batchLabel}${threePass ? "MiniMax H3 3 Pass (Stage 1 → Stage 2 → Stage 3)\n" : twoPass ? "MiniMax H3 2 Pass (Stage 1 → Stage 2)\n" : ""}${message}\nPrompt ID: ${promptId}`, pct(62));
+          progress?.set(`${batchLabel}${threePass ? "MiniMax H3 3 Pass (Stage 1 → Stage 2 → Stage 3)\n" : twoPass ? "MiniMax H3 2 Pass (Stage 1 → Stage 2)\n" : ""}${message}${exactTwoPassStepsLine}\nPrompt ID: ${promptId}`, pct(62));
         },
         () => state.batchCancelled,
         null,
