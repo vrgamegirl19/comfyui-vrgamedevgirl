@@ -54,7 +54,7 @@ _I2V_UNET_ALIASES = {
 }
 _PLACEHOLDER_I2I_IMAGE_NAME = "vrgdg_placeholder_i2i.png"
 _PLACEHOLDER_I2I_IMAGE_BASE64 = (
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII="
 )
 
 
@@ -1006,7 +1006,16 @@ def _ensure_placeholder_load_image():
     os.makedirs(input_dir, exist_ok=True)
     target_path = os.path.join(input_dir, _PLACEHOLDER_I2I_IMAGE_NAME)
     if os.path.isfile(target_path) and os.path.getsize(target_path) > 0:
-        return _PLACEHOLDER_I2I_IMAGE_NAME
+        try:
+            from PIL import Image
+            with Image.open(target_path) as image:
+                image.verify()
+            return _PLACEHOLDER_I2I_IMAGE_NAME
+        except Exception:
+            try:
+                os.remove(target_path)
+            except OSError:
+                pass
 
     source_path = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
