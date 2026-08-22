@@ -45490,12 +45490,50 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const exactTwoPassStepsLine = twoPass
         ? `\nExact built-prompt sampler steps: Pass 1 = ${exactTwoPassSteps.pass1}; Pass 2 = ${exactTwoPassSteps.pass2}`
         : "";
-      const loraLine = builtLoraSettings.enabled
-        ? `\nLoRAs: ${Number(builtLoraSettings.count || 0)} — ${(builtLoraSettings.loras || []).map((item) => `${item.name} @ ${item.strength}`).join(", ")}`
-        : "\nLoRAs: OFF";
-      const turboLine = builtTurboSettings.enabled
-        ? `\nTurbo: ON — effective steps ${Number(builtAdvancedSettings.effective_steps || builtTurboSettings.steps || miniMaxSettings.steps)}; LoRA ${builtTurboSettings.lora_name || miniMaxSettings.turbo_lora_name} @ ${builtTurboSettings.strength ?? miniMaxSettings.turbo_lora_strength}`
-        : `\nTurbo: OFF — steps ${Number(builtAdvancedSettings.steps || miniMaxSettings.steps)}`;
+      const exactModelChainLoras = (modelRef) => {
+        const loras = [];
+        const visited = new Set();
+        let currentRef = modelRef;
+        while (Array.isArray(currentRef) && currentRef.length >= 2) {
+          const nodeId = String(currentRef[0]);
+          if (visited.has(nodeId)) break;
+          visited.add(nodeId);
+          const promptNode = built?.prompt?.[nodeId];
+          if (!promptNode?.inputs) break;
+          const loraName = String(promptNode.inputs.lora_name || "").trim();
+          if (loraName && /lora/i.test(String(promptNode.class_type || ""))) {
+            loras.push({
+              nodeId,
+              name: loraName,
+              strength: Number(promptNode.inputs.strength_model),
+            });
+          }
+          currentRef = promptNode.inputs.model;
+        }
+        return loras.reverse();
+      };
+      const exactTwoPassLoras = twoPass
+        ? {
+          pass1: exactModelChainLoras(built?.prompt?.["124"]?.inputs?.model),
+          pass2: exactModelChainLoras(built?.prompt?.["192"]?.inputs?.model),
+        }
+        : null;
+      const formatExactLoras = (loras) => loras.length
+        ? loras.map((item) => `${item.name} @ ${Number.isFinite(item.strength) ? item.strength : "unknown strength"} [node ${item.nodeId}]`).join(" → ")
+        : "none";
+      const exactTwoPassLorasLine = twoPass
+        ? `\nExact built-prompt LoRAs:\nPass 1: ${formatExactLoras(exactTwoPassLoras.pass1)}\nPass 2: ${formatExactLoras(exactTwoPassLoras.pass2)}`
+        : "";
+      const loraLine = twoPass
+        ? exactTwoPassLorasLine
+        : builtLoraSettings.enabled
+          ? `\nLoRAs: ${Number(builtLoraSettings.count || 0)} — ${(builtLoraSettings.loras || []).map((item) => `${item.name} @ ${item.strength}`).join(", ")}`
+          : "\nLoRAs: OFF";
+      const turboLine = (twoPass || threePass)
+        ? ""
+        : builtTurboSettings.enabled
+          ? `\nTurbo: ON — effective steps ${Number(builtAdvancedSettings.effective_steps || builtTurboSettings.steps || miniMaxSettings.steps)}; LoRA ${builtTurboSettings.lora_name || miniMaxSettings.turbo_lora_name} @ ${builtTurboSettings.strength ?? miniMaxSettings.turbo_lora_strength}`
+          : `\nTurbo: OFF — steps ${Number(builtAdvancedSettings.steps || miniMaxSettings.steps)}`;
       const settingsScopeLine = `\nSettings scope: ${segment?.use_scene_minimax_h3_settings ? "locked scene settings" : "project/global settings"}`;
       const finalDuration = Number(postTrim.duration);
       if (!Number.isFinite(finalDuration) || Math.abs(finalDuration - sceneDuration) > 0.001) {
@@ -45591,7 +45629,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         promptId,
         (message) => {
           void registerLiveThreePassBackups();
-          progress?.set(`${batchLabel}${threePass ? "MiniMax H3 3 Pass (Stage 1 → Stage 2 → Stage 3)\n" : twoPass ? "MiniMax H3 2 Pass (Stage 1 → Stage 2)\n" : ""}${message}${exactTwoPassStepsLine}\nPrompt ID: ${promptId}`, pct(62));
+          progress?.set(`${batchLabel}${threePass ? "MiniMax H3 3 Pass (Stage 1 → Stage 2 → Stage 3)\n" : twoPass ? "MiniMax H3 2 Pass (Stage 1 → Stage 2)\n" : ""}${message}${exactTwoPassStepsLine}${exactTwoPassLorasLine}\nPrompt ID: ${promptId}`, pct(62));
         },
         () => state.batchCancelled,
         null,
