@@ -3594,7 +3594,7 @@ class VRGDG_QwenGGUF(VRGDG_GeneralGGUF):
         "custom",
     ]
     MM_PROJ_PRESETS = {
-        "unsloth/Qwen3.8-27B-GGUF": "mmproj-BF16.gguf",
+        "unsloth/Qwen3.8-27B-GGUF": "qwen-mmproj-BF16.gguf",
     }
     _GEMMA_STOP_SEQUENCES = (
         "<|im_end|>",

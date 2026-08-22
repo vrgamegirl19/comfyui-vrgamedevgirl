@@ -603,18 +603,32 @@ const ERNIE_MODEL_DOWNLOADS = [
   { label: "Ministral text encoder", url: "https://huggingface.co/Comfy-Org/ERNIE-Image/resolve/main/text_encoders/ministral-3-3b.safetensors" },
   { label: "Ernie VAE", url: "https://huggingface.co/Comfy-Org/ERNIE-Image/resolve/main/vae/flux2-vae.safetensors" },
 ];
-const LLM_MODEL_DOWNLOADS = [
+const GEMMA_LLM_MODEL_DOWNLOADS = [
   { label: "SuperGemma GGUF", url: "https://huggingface.co/Jiunsong/supergemma4-26b-uncensored-gguf-v2/resolve/main/supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf" },
   { label: "Gemma Vision GGUF", url: "https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/resolve/main/gemma-4-26B-A4B-it-UD-IQ2_M.gguf" },
-  { label: "Vision mmproj", url: "https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/resolve/main/mmproj-BF16.gguf" },
+  { label: "Gemma Vision mmproj", url: "https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/resolve/main/mmproj-BF16.gguf" },
+];
+const QWEN_LLM_MODEL_DOWNLOADS = [
+  { label: "Qwen3.8-27B GGUF (choose a quantization/model)", url: "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/tree/main" },
+  { label: "Qwen3.8 vision mmproj (rename to qwen-mmproj-BF16.gguf)", url: "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/resolve/main/mmproj-BF16.gguf" },
 ];
 const MODEL_FOLDER_HINTS = {
-  "LLM / Vision": `ComfyUI/
+  "LLM / Gemma": `ComfyUI/
 models/
   LLM/
     supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf
     gemma-4-26B-A4B-it-UD-IQ2_M.gguf
-    mmproj-BF16.gguf`,
+    mmproj-BF16.gguf
+
+Gemma Vision requires both the model GGUF and its matching mmproj.`,
+  "LLM / Qwen": `ComfyUI/
+models/
+  LLM/
+    <chosen Qwen3.8 GGUF model files>
+    qwen-mmproj-BF16.gguf
+
+Qwen3.8 requires BOTH the chosen model GGUF (including all shards for that quantization) and its matching vision mmproj.
+Rename the downloaded Qwen projector to qwen-mmproj-BF16.gguf.`,
   "ZImage": `ComfyUI/
 models/
   text_encoders/
@@ -1574,8 +1588,21 @@ function showModelDownloadModal() {
     {
       id: "llm",
       label: "LLM Models",
-      groups: [
-        { title: "LLM / Vision", note: "Use SuperGemma for text prompting. Use Gemma Vision GGUF plus mmproj for image-reference prompting.", downloads: LLM_MODEL_DOWNLOADS },
+      subTabs: [
+        {
+          id: "gemma",
+          label: "Gemma",
+          groups: [
+            { title: "LLM / Gemma", note: "SuperGemma is used for text prompting. Gemma Vision GGUF plus its matching mmproj are used for image-reference prompting.", downloads: GEMMA_LLM_MODEL_DOWNLOADS },
+          ],
+        },
+        {
+          id: "qwen",
+          label: "Qwen",
+          groups: [
+            { title: "LLM / Qwen", note: "Qwen3.8 requires both a chosen GGUF model (including all shards for that quantization) and its matching vision mmproj. Rename the projector to qwen-mmproj-BF16.gguf so it is not confused with Gemma's mmproj-BF16.gguf.", downloads: QWEN_LLM_MODEL_DOWNLOADS },
+          ],
+        },
       ],
     },
     {
@@ -7034,6 +7061,7 @@ function openBuilder(node) {
     overlaySegments: [],
     overlayTrack: normalizeOverlayTrackState(),
     activeId: "",
+    miniMaxH3PanelSegmentId: "",
     activeTrack: "base",
     multiSelectMode: false,
     selectedSegmentIds: [],
@@ -7325,8 +7353,10 @@ function openBuilder(node) {
     }
   }
 
-  function saveMiniMaxH3SettingsFromPanel() {
-    const segment = activeSegment();
+  function saveMiniMaxH3SettingsFromPanel(targetSegment = null) {
+    // DOM event listeners pass their Event as the first argument. Only treat
+    // an actual scene object as an explicit target.
+    const segment = targetSegment?.id ? targetSegment : activeSegment();
     const currentSettings = miniMaxH3SettingsForSegment(segment);
     const loraEnabled = Boolean(miniMaxUseLoras.input.checked);
     const turboEnabled = Boolean(miniMaxUseTurboLora.input.checked) && !loraEnabled;
@@ -7364,6 +7394,7 @@ function openBuilder(node) {
           : miniMaxRefImageSize.value,
       two_pass_lora_name: miniMaxTwoPassLoraPicker.input.value,
       two_pass_lora_strength: miniMaxTwoPassLoraStrength.value,
+      two_pass_defaults_version: DEFAULT_MINIMAX_H3_SETTINGS.two_pass_defaults_version,
       two_pass_final_width: miniMaxTwoPassFinalWidth.value,
       two_pass_final_height: miniMaxTwoPassFinalHeight.value,
       two_pass_latent_upscale_scale: miniMaxTwoPassLatentScale.value,
@@ -8036,6 +8067,7 @@ function openBuilder(node) {
   function syncMiniMaxH3Panel() {
     const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
     const segment = activeSegment();
+    state.miniMaxH3PanelSegmentId = String(segment?.id || "");
     state.miniMaxH3Settings = cloneMiniMaxH3Settings(state.miniMaxH3Settings);
     const settings = miniMaxH3SettingsForSegment(segment);
     miniMaxDiffusionModelPicker.input.value = settings.diffusion_model_name;
@@ -14889,12 +14921,18 @@ function openBuilder(node) {
   }
 
   function setActiveSegment(segment) {
-    if (state.activeId && state.activeId !== segment?.id) {
-      clearSegmentLutPreview(activeSegment());
-      clearSegmentAdjustPreview(activeSegment());
-      clearSegmentFilmGrainPreview(activeSegment());
+    const displayedSegment = activeSegment();
+    if (displayedSegment && displayedSegment.id !== segment?.id) {
+      clearSegmentLutPreview(displayedSegment);
+      clearSegmentAdjustPreview(displayedSegment);
+      clearSegmentFilmGrainPreview(displayedSegment);
       updateActiveFromInputs({ skipHistory: true });
       saveI2VVideoSettingsFromPanel();
+      // Snapshot the visible MiniMax panel before changing scenes. Do not rely
+      // on state.activeId here; some selection paths update it first.
+      if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") {
+        saveMiniMaxH3SettingsFromPanel();
+      }
     }
     state.activeId = segment?.id || "";
     state.activeTrack = segment ? segmentTrack(segment) : state.activeTrack || "base";
@@ -15617,7 +15655,13 @@ function openBuilder(node) {
   }
 
   function syncInspector() {
+    const previousPanelSegmentId = String(state.miniMaxH3PanelSegmentId || "");
     const segment = activeSegment();
+    if (previousPanelSegmentId && previousPanelSegmentId !== String(segment?.id || "")
+      && normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") {
+      const previousPanelSegment = allEditableSegments().find((item) => String(item?.id || "") === previousPanelSegmentId);
+      if (previousPanelSegment) saveMiniMaxH3SettingsFromPanel(previousPanelSegment);
+    }
     startInput.dataset.vrgdgInspectorSegmentId = String(segment?.id || "");
     lyricTextInput.dataset.vrgdgInspectorSegmentId = String(segment?.id || "");
     lyricTextInput.dataset.vrgdgUserEdited = "0";
@@ -36433,6 +36477,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     try {
       updateActiveFromInputs();
       saveI2VVideoSettingsFromPanel();
+      // Quick Save must capture the live builder panels before serializing the
+      // session, including MiniMax's scene/project-scoped controls.
+      if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") {
+        saveMiniMaxH3SettingsFromPanel();
+        saveMiniMaxSceneInputsFromPanel();
+      }
       ensureAllSegmentRuntimeFields();
       const projectFolder = activeProjectFolderForSave();
       if (!projectFolder) {
@@ -36634,6 +36684,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     try {
       updateActiveFromInputs();
       saveI2VVideoSettingsFromPanel();
+      if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") {
+        saveMiniMaxH3SettingsFromPanel();
+        saveMiniMaxSceneInputsFromPanel();
+      }
       const projectFolder = activeProjectFolderForSave();
       if (!projectFolder) {
         console.warn(`[VRGDG Music Builder] Autosave skipped before ${reason || "action"} because no active project is set.`);
@@ -45207,6 +45261,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   async function renderMiniMaxSceneVideoWithProgress(segment, sceneIndex, progress, options = {}) {
+    // The panel can still contain a newer value than the project object when a
+    // render is started immediately after editing a field. Flush the active
+    // scene one last time before taking the settings snapshot used to build
+    // the hidden workflow.
+    if (segment?.id === activeSegment()?.id) saveMiniMaxH3SettingsFromPanel();
+    const panelSegmentId = activeSegment()?.id;
     const progressBase = Number(options.progressBase ?? 0);
     const progressSpan = Number(options.progressSpan ?? 100);
     const batchLabel = options.batchLabel ? `${options.batchLabel}\n` : "";
@@ -45363,6 +45423,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     state.activeId = segment.id;
     segment.video_status = "running";
     renderList();
+    const activePanel = segment?.id === panelSegmentId;
+    const requestedTwoPassSteps = twoPass && activePanel
+      ? {
+        pass1: Math.max(1, Math.min(1000, Math.trunc(Number(twoPassControls[0].steps.value) || 20))),
+        pass2: Math.max(1, Math.min(1000, Math.trunc(Number(twoPassControls[1].steps.value) || 5))),
+      }
+      : null;
     progress?.set(`${batchLabel}Preparing exact MiniMax H3 scene timing and ${builtInAudio ? "native audio generation" : "input audio"}...`, pct(8));
 
     try {
@@ -45408,12 +45475,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         output_crf: twoPass ? miniMaxSettings.two_pass_output_crf : undefined,
         three_pass_lightx_lora_name: miniMaxSettings.three_pass_lightx_lora_name,
         three_pass_lightx_lora_strength: miniMaxSettings.three_pass_lightx_lora_strength,
-        pass1_steps: twoPass ? miniMaxSettings.two_pass_pass1_steps : miniMaxSettings.steps,
+        pass1_steps: twoPass ? (requestedTwoPassSteps?.pass1 ?? miniMaxSettings.two_pass_pass1_steps) : miniMaxSettings.steps,
         pass1_denoise: twoPass ? miniMaxSettings.two_pass_pass1_denoise : miniMaxSettings.denoise,
         pass1_sampler_name: twoPass ? miniMaxSettings.two_pass_pass1_sampler : miniMaxSettings.sampler_name,
         pass1_scheduler: twoPass ? miniMaxSettings.two_pass_pass1_scheduler : miniMaxSettings.scheduler,
         pass1_seed: twoPass ? miniMaxSettings.two_pass_pass1_seed : miniMaxSettings.seed,
-        pass2_steps: twoPass ? miniMaxSettings.two_pass_pass2_steps : 4,
+        pass2_steps: twoPass ? (requestedTwoPassSteps?.pass2 ?? miniMaxSettings.two_pass_pass2_steps) : 4,
         pass2_denoise: twoPass ? miniMaxSettings.two_pass_pass2_denoise : 0.2,
         pass2_sampler_name: twoPass ? miniMaxSettings.two_pass_pass2_sampler : miniMaxSettings.sampler_name,
         pass2_scheduler: twoPass ? miniMaxSettings.two_pass_pass2_scheduler : miniMaxSettings.scheduler,
@@ -45475,12 +45542,63 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const builtLoraSettings = built?.lora_settings || {};
       const builtTurboSettings = built?.turbo_settings || {};
       const builtAdvancedSettings = built?.advanced_settings || {};
-      const loraLine = builtLoraSettings.enabled
-        ? `\nLoRAs: ${Number(builtLoraSettings.count || 0)} — ${(builtLoraSettings.loras || []).map((item) => `${item.name} @ ${item.strength}`).join(", ")}`
-        : "\nLoRAs: OFF";
-      const turboLine = builtTurboSettings.enabled
-        ? `\nTurbo: ON — effective steps ${Number(builtAdvancedSettings.effective_steps || builtTurboSettings.steps || miniMaxSettings.steps)}; LoRA ${builtTurboSettings.lora_name || miniMaxSettings.turbo_lora_name} @ ${builtTurboSettings.strength ?? miniMaxSettings.turbo_lora_strength}`
-        : `\nTurbo: OFF — steps ${Number(builtAdvancedSettings.steps || miniMaxSettings.steps)}`;
+      const exactTwoPassSteps = twoPass
+        ? {
+          pass1: Number(built?.prompt?.["124"]?.inputs?.steps),
+          pass2: Number(built?.prompt?.["190"]?.inputs?.value),
+        }
+        : null;
+      if (twoPass && (!Number.isInteger(exactTwoPassSteps.pass1) || !Number.isInteger(exactTwoPassSteps.pass2))) {
+        throw new Error("The built MiniMax H3 two-pass prompt is missing its exact sampler step values.");
+      }
+      const exactTwoPassStepsLine = twoPass
+        ? `\nRequested panel steps: Pass 1 = ${requestedTwoPassSteps?.pass1 ?? miniMaxSettings.two_pass_pass1_steps}; Pass 2 = ${requestedTwoPassSteps?.pass2 ?? miniMaxSettings.two_pass_pass2_steps}`
+          + `\nExact built-prompt sampler steps: Pass 1 = ${exactTwoPassSteps.pass1}; Pass 2 = ${exactTwoPassSteps.pass2}`
+        : "";
+      const exactModelChainLoras = (modelRef) => {
+        const loras = [];
+        const visited = new Set();
+        let currentRef = modelRef;
+        while (Array.isArray(currentRef) && currentRef.length >= 2) {
+          const nodeId = String(currentRef[0]);
+          if (visited.has(nodeId)) break;
+          visited.add(nodeId);
+          const promptNode = built?.prompt?.[nodeId];
+          if (!promptNode?.inputs) break;
+          const loraName = String(promptNode.inputs.lora_name || "").trim();
+          if (loraName && /lora/i.test(String(promptNode.class_type || ""))) {
+            loras.push({
+              nodeId,
+              name: loraName,
+              strength: Number(promptNode.inputs.strength_model),
+            });
+          }
+          currentRef = promptNode.inputs.model;
+        }
+        return loras.reverse();
+      };
+      const exactTwoPassLoras = twoPass
+        ? {
+          pass1: exactModelChainLoras(built?.prompt?.["124"]?.inputs?.model),
+          pass2: exactModelChainLoras(built?.prompt?.["192"]?.inputs?.model),
+        }
+        : null;
+      const formatExactLoras = (loras) => loras.length
+        ? loras.map((item) => `${item.name} @ ${Number.isFinite(item.strength) ? item.strength : "unknown strength"} [node ${item.nodeId}]`).join(" → ")
+        : "none";
+      const exactTwoPassLorasLine = twoPass
+        ? `\nExact built-prompt LoRAs:\nPass 1: ${formatExactLoras(exactTwoPassLoras.pass1)}\nPass 2: ${formatExactLoras(exactTwoPassLoras.pass2)}`
+        : "";
+      const loraLine = twoPass
+        ? exactTwoPassLorasLine
+        : builtLoraSettings.enabled
+          ? `\nLoRAs: ${Number(builtLoraSettings.count || 0)} — ${(builtLoraSettings.loras || []).map((item) => `${item.name} @ ${item.strength}`).join(", ")}`
+          : "\nLoRAs: OFF";
+      const turboLine = (twoPass || threePass)
+        ? ""
+        : builtTurboSettings.enabled
+          ? `\nTurbo: ON — effective steps ${Number(builtAdvancedSettings.effective_steps || builtTurboSettings.steps || miniMaxSettings.steps)}; LoRA ${builtTurboSettings.lora_name || miniMaxSettings.turbo_lora_name} @ ${builtTurboSettings.strength ?? miniMaxSettings.turbo_lora_strength}`
+          : `\nTurbo: OFF — steps ${Number(builtAdvancedSettings.steps || miniMaxSettings.steps)}`;
       const settingsScopeLine = `\nSettings scope: ${segment?.use_scene_minimax_h3_settings ? "locked scene settings" : "project/global settings"}`;
       const finalDuration = Number(postTrim.duration);
       if (!Number.isFinite(finalDuration) || Math.abs(finalDuration - sceneDuration) > 0.001) {
@@ -45495,6 +45613,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         + `Timeline: ${sceneDuration.toFixed(3)}s\n`
         + `H3 render: ${Number(timing.h3_frame_count || 0)} frames`
         + (threePass ? "\nStage 1 and Stage 2 are saved as backups; Stage 3 will be used for stitching." : twoPass ? "\nPass 1 is learned-latent upscaled and refined by pass 2; the final pass-2 video will be used for stitching." : "")
+        + exactTwoPassStepsLine
         + loraLine
         + turboLine
         + settingsScopeLine
@@ -45575,7 +45694,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         promptId,
         (message) => {
           void registerLiveThreePassBackups();
-          progress?.set(`${batchLabel}${threePass ? "MiniMax H3 3 Pass (Stage 1 → Stage 2 → Stage 3)\n" : twoPass ? "MiniMax H3 2 Pass (Stage 1 → Stage 2)\n" : ""}${message}\nPrompt ID: ${promptId}`, pct(62));
+          progress?.set(`${batchLabel}${threePass ? "MiniMax H3 3 Pass (Stage 1 → Stage 2 → Stage 3)\n" : twoPass ? "MiniMax H3 2 Pass (Stage 1 → Stage 2)\n" : ""}${message}${exactTwoPassStepsLine}${exactTwoPassLorasLine}\nPrompt ID: ${promptId}`, pct(62));
         },
         () => state.batchCancelled,
         null,
@@ -49192,7 +49311,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         concept_match_mode: "medium",
         append_subject_to_prompts: true,
         repair_lyric_segments: false,
-        text_gemma_runner: state.textGemmaRunner || "builtin",
+      text_gemma_runner: state.textGemmaRunner || "builtin",
+      qwen_model_file: state.qwenModelFile || "",
+      qwen_mmproj_file: state.qwenMmprojFile || "",
+      gemma_model_file: state.gemmaModelFile || "",
         gemma_context_limit: normalizeGemmaContextLimit(state.gemmaContextLimit),
         gemma_output_token_limit: normalizeOutputTokenLimit(state.gemmaOutputTokenLimit),
         gemma_gpu_layers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),
