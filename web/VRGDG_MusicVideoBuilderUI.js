@@ -7061,6 +7061,7 @@ function openBuilder(node) {
     overlaySegments: [],
     overlayTrack: normalizeOverlayTrackState(),
     activeId: "",
+    miniMaxH3PanelSegmentId: "",
     activeTrack: "base",
     multiSelectMode: false,
     selectedSegmentIds: [],
@@ -7352,8 +7353,8 @@ function openBuilder(node) {
     }
   }
 
-  function saveMiniMaxH3SettingsFromPanel() {
-    const segment = activeSegment();
+  function saveMiniMaxH3SettingsFromPanel(targetSegment = activeSegment()) {
+    const segment = targetSegment || activeSegment();
     const currentSettings = miniMaxH3SettingsForSegment(segment);
     const loraEnabled = Boolean(miniMaxUseLoras.input.checked);
     const turboEnabled = Boolean(miniMaxUseTurboLora.input.checked) && !loraEnabled;
@@ -8063,6 +8064,7 @@ function openBuilder(node) {
   function syncMiniMaxH3Panel() {
     const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
     const segment = activeSegment();
+    state.miniMaxH3PanelSegmentId = String(segment?.id || "");
     state.miniMaxH3Settings = cloneMiniMaxH3Settings(state.miniMaxH3Settings);
     const settings = miniMaxH3SettingsForSegment(segment);
     miniMaxDiffusionModelPicker.input.value = settings.diffusion_model_name;
@@ -15650,7 +15652,13 @@ function openBuilder(node) {
   }
 
   function syncInspector() {
+    const previousPanelSegmentId = String(state.miniMaxH3PanelSegmentId || "");
     const segment = activeSegment();
+    if (previousPanelSegmentId && previousPanelSegmentId !== String(segment?.id || "")
+      && normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") {
+      const previousPanelSegment = allEditableSegments().find((item) => String(item?.id || "") === previousPanelSegmentId);
+      if (previousPanelSegment) saveMiniMaxH3SettingsFromPanel(previousPanelSegment);
+    }
     startInput.dataset.vrgdgInspectorSegmentId = String(segment?.id || "");
     lyricTextInput.dataset.vrgdgInspectorSegmentId = String(segment?.id || "");
     lyricTextInput.dataset.vrgdgUserEdited = "0";
