@@ -603,23 +603,32 @@ const ERNIE_MODEL_DOWNLOADS = [
   { label: "Ministral text encoder", url: "https://huggingface.co/Comfy-Org/ERNIE-Image/resolve/main/text_encoders/ministral-3-3b.safetensors" },
   { label: "Ernie VAE", url: "https://huggingface.co/Comfy-Org/ERNIE-Image/resolve/main/vae/flux2-vae.safetensors" },
 ];
-const LLM_MODEL_DOWNLOADS = [
+const GEMMA_LLM_MODEL_DOWNLOADS = [
   { label: "SuperGemma GGUF", url: "https://huggingface.co/Jiunsong/supergemma4-26b-uncensored-gguf-v2/resolve/main/supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf" },
   { label: "Gemma Vision GGUF", url: "https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/resolve/main/gemma-4-26B-A4B-it-UD-IQ2_M.gguf" },
   { label: "Gemma Vision mmproj", url: "https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/resolve/main/mmproj-BF16.gguf" },
+];
+const QWEN_LLM_MODEL_DOWNLOADS = [
   { label: "Qwen3.8-27B GGUF (choose a quantization/model)", url: "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/tree/main" },
   { label: "Qwen3.8 vision mmproj (rename to qwen-mmproj-BF16.gguf)", url: "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/resolve/main/mmproj-BF16.gguf" },
 ];
 const MODEL_FOLDER_HINTS = {
-  "LLM / Vision": `ComfyUI/
+  "LLM / Gemma": `ComfyUI/
 models/
   LLM/
     supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf
     gemma-4-26B-A4B-it-UD-IQ2_M.gguf
     mmproj-BF16.gguf
 
-Qwen3.8 requires BOTH the model GGUF shards and its matching vision mmproj.
-Rename the downloaded Qwen projector to qwen-mmproj-BF16.gguf so it is not confused with Gemma's mmproj-BF16.gguf.`,
+Gemma Vision requires both the model GGUF and its matching mmproj.`,
+  "LLM / Qwen": `ComfyUI/
+models/
+  LLM/
+    <chosen Qwen3.8 GGUF model files>
+    qwen-mmproj-BF16.gguf
+
+Qwen3.8 requires BOTH the chosen model GGUF (including all shards for that quantization) and its matching vision mmproj.
+Rename the downloaded Qwen projector to qwen-mmproj-BF16.gguf.`,
   "ZImage": `ComfyUI/
 models/
   text_encoders/
@@ -1579,8 +1588,21 @@ function showModelDownloadModal() {
     {
       id: "llm",
       label: "LLM Models",
-      groups: [
-        { title: "LLM / Vision", note: "Use SuperGemma for text prompting. Use Gemma Vision GGUF plus its matching mmproj for image-reference prompting. Qwen3.8 requires both the GGUF model shards and its matching mmproj; rename the Qwen projector to qwen-mmproj-BF16.gguf so it is not confused with Gemma's mmproj-BF16.gguf.", downloads: LLM_MODEL_DOWNLOADS },
+      subTabs: [
+        {
+          id: "gemma",
+          label: "Gemma",
+          groups: [
+            { title: "LLM / Gemma", note: "SuperGemma is used for text prompting. Gemma Vision GGUF plus its matching mmproj are used for image-reference prompting.", downloads: GEMMA_LLM_MODEL_DOWNLOADS },
+          ],
+        },
+        {
+          id: "qwen",
+          label: "Qwen",
+          groups: [
+            { title: "LLM / Qwen", note: "Qwen3.8 requires both a chosen GGUF model (including all shards for that quantization) and its matching vision mmproj. Rename the projector to qwen-mmproj-BF16.gguf so it is not confused with Gemma's mmproj-BF16.gguf.", downloads: QWEN_LLM_MODEL_DOWNLOADS },
+          ],
+        },
       ],
     },
     {
