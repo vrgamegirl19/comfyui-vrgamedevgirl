@@ -14916,12 +14916,15 @@ function openBuilder(node) {
   }
 
   function setActiveSegment(segment) {
-    if (state.activeId && state.activeId !== segment?.id) {
-      clearSegmentLutPreview(activeSegment());
-      clearSegmentAdjustPreview(activeSegment());
-      clearSegmentFilmGrainPreview(activeSegment());
+    const displayedSegment = activeSegment();
+    if (displayedSegment && displayedSegment.id !== segment?.id) {
+      clearSegmentLutPreview(displayedSegment);
+      clearSegmentAdjustPreview(displayedSegment);
+      clearSegmentFilmGrainPreview(displayedSegment);
       updateActiveFromInputs({ skipHistory: true });
       saveI2VVideoSettingsFromPanel();
+      // Snapshot the visible MiniMax panel before changing scenes. Do not rely
+      // on state.activeId here; some selection paths update it first.
       if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") {
         saveMiniMaxH3SettingsFromPanel();
       }
