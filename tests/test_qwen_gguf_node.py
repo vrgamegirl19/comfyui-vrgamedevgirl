@@ -21,7 +21,7 @@ class QwenGgufNodeTests(unittest.TestCase):
         source = ast.get_source_segment(SOURCE, node)
         self.assertIn('"unsloth/Qwen3.8-27B-GGUF"', source)
         self.assertIn('"custom"', source)
-        self.assertIn('"mmproj-BF16.gguf"', source)
+        self.assertIn('"qwen-mmproj-BF16.gguf"', source)
         self.assertIn("class VRGDG_QwenGGUF(VRGDG_GeneralGGUF)", source)
 
     def test_qwen_template_and_stop_tokens_are_not_gemma_tokens(self):

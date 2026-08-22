@@ -606,7 +606,9 @@ const ERNIE_MODEL_DOWNLOADS = [
 const LLM_MODEL_DOWNLOADS = [
   { label: "SuperGemma GGUF", url: "https://huggingface.co/Jiunsong/supergemma4-26b-uncensored-gguf-v2/resolve/main/supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf" },
   { label: "Gemma Vision GGUF", url: "https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/resolve/main/gemma-4-26B-A4B-it-UD-IQ2_M.gguf" },
-  { label: "Vision mmproj", url: "https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/resolve/main/mmproj-BF16.gguf" },
+  { label: "Gemma Vision mmproj", url: "https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/resolve/main/mmproj-BF16.gguf" },
+  { label: "Qwen3.8-27B GGUF (download all Q4_K_XL shards)", url: "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/tree/main/UD-Q4_K_XL" },
+  { label: "Qwen3.8 vision mmproj (rename to qwen-mmproj-BF16.gguf)", url: "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/resolve/main/mmproj-BF16.gguf" },
 ];
 const MODEL_FOLDER_HINTS = {
   "LLM / Vision": `ComfyUI/
@@ -614,7 +616,10 @@ models/
   LLM/
     supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf
     gemma-4-26B-A4B-it-UD-IQ2_M.gguf
-    mmproj-BF16.gguf`,
+    mmproj-BF16.gguf
+
+Qwen3.8 requires BOTH the model GGUF shards and its matching vision mmproj.
+Rename the downloaded Qwen projector to qwen-mmproj-BF16.gguf so it is not confused with Gemma's mmproj-BF16.gguf.`,
   "ZImage": `ComfyUI/
 models/
   text_encoders/
@@ -1575,7 +1580,7 @@ function showModelDownloadModal() {
       id: "llm",
       label: "LLM Models",
       groups: [
-        { title: "LLM / Vision", note: "Use SuperGemma for text prompting. Use Gemma Vision GGUF plus mmproj for image-reference prompting.", downloads: LLM_MODEL_DOWNLOADS },
+        { title: "LLM / Vision", note: "Use SuperGemma for text prompting. Use Gemma Vision GGUF plus its matching mmproj for image-reference prompting. Qwen3.8 requires both the GGUF model shards and its matching mmproj; rename the Qwen projector to qwen-mmproj-BF16.gguf so it is not confused with Gemma's mmproj-BF16.gguf.", downloads: LLM_MODEL_DOWNLOADS },
       ],
     },
     {
