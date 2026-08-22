@@ -110,6 +110,12 @@ Your task is to extract and organize:
 - One simple subject implied by the story idea and optional user notes
 - A list of distinct physical locations implied by the story idea and optional user notes
 
+OPTIONAL STYLE/THEME PRIORITY
+
+The optional style/theme for location extraction has priority over the generic location rules below. If it specifies crowds, passengers, people, characters, activity, or other visible details, preserve those details.
+
+Only reject details that conflict with the optional style/theme. Do not explain or critique the choice; output the final location description only.
+
 USER NOTES PRIORITY
 
 Optional user notes have priority over inference.
