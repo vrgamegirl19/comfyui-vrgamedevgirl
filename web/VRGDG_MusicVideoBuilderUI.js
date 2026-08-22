@@ -14895,6 +14895,9 @@ function openBuilder(node) {
       clearSegmentFilmGrainPreview(activeSegment());
       updateActiveFromInputs({ skipHistory: true });
       saveI2VVideoSettingsFromPanel();
+      if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") {
+        saveMiniMaxH3SettingsFromPanel();
+      }
     }
     state.activeId = segment?.id || "";
     state.activeTrack = segment ? segmentTrack(segment) : state.activeTrack || "base";
