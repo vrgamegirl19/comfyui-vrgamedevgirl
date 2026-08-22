@@ -45215,6 +45215,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   async function renderMiniMaxSceneVideoWithProgress(segment, sceneIndex, progress, options = {}) {
+    // The panel can still contain a newer value than the project object when a
+    // render is started immediately after editing a field. Flush the active
+    // scene one last time before taking the settings snapshot used to build
+    // the hidden workflow.
+    if (segment?.id === activeSegment()?.id) saveMiniMaxH3SettingsFromPanel();
     const progressBase = Number(options.progressBase ?? 0);
     const progressSpan = Number(options.progressSpan ?? 100);
     const batchLabel = options.batchLabel ? `${options.batchLabel}\n` : "";
