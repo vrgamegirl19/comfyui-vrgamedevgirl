@@ -7353,8 +7353,10 @@ function openBuilder(node) {
     }
   }
 
-  function saveMiniMaxH3SettingsFromPanel(targetSegment = activeSegment()) {
-    const segment = targetSegment || activeSegment();
+  function saveMiniMaxH3SettingsFromPanel(targetSegment = null) {
+    // DOM event listeners pass their Event as the first argument. Only treat
+    // an actual scene object as an explicit target.
+    const segment = targetSegment?.id ? targetSegment : activeSegment();
     const currentSettings = miniMaxH3SettingsForSegment(segment);
     const loraEnabled = Boolean(miniMaxUseLoras.input.checked);
     const turboEnabled = Boolean(miniMaxUseTurboLora.input.checked) && !loraEnabled;
@@ -7392,6 +7394,7 @@ function openBuilder(node) {
           : miniMaxRefImageSize.value,
       two_pass_lora_name: miniMaxTwoPassLoraPicker.input.value,
       two_pass_lora_strength: miniMaxTwoPassLoraStrength.value,
+      two_pass_defaults_version: DEFAULT_MINIMAX_H3_SETTINGS.two_pass_defaults_version,
       two_pass_final_width: miniMaxTwoPassFinalWidth.value,
       two_pass_final_height: miniMaxTwoPassFinalHeight.value,
       two_pass_latent_upscale_scale: miniMaxTwoPassLatentScale.value,
