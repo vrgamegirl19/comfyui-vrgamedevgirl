@@ -40472,8 +40472,21 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   function miniMaxH3SentenceFragmentAfterCut(text) {
+    let clean = miniMaxH3StripLeadingCutDirective(text);
+    clean = clean.replace(/^(?:a|an|the)\s+/i, (match) => match.toLowerCase());
+    return clean;
+  }
+
+  function miniMaxH3StripLeadingCutDirective(text) {
     let clean = normalizeMiniMaxH3ShotDescription(text);
-    clean = clean.replace(/^(?:cut\s+to\s+)?(?:a|an|the)\s+/i, (match) => match.toLowerCase());
+    let previous = "";
+    // The JSON task asks only for shot descriptions, but Storyboard/Gemma can
+    // still echo one or several transition directives. The Builder owns the
+    // official cut phrase and timestamp, so remove every echoed prefix first.
+    while (clean && clean !== previous) {
+      previous = clean;
+      clean = clean.replace(/^(?:(?:the\s+camera\s+)?cuts?\s+to|cut\s+to)\s*(?::|[-–—.]|\s)*/i, "").trim();
+    }
     return clean;
   }
 
@@ -40490,7 +40503,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   function miniMaxH3PostCutShotText(text) {
-    const clean = normalizeMiniMaxH3ShotDescription(text);
+    const clean = miniMaxH3StripLeadingCutDirective(text);
     if (/^(?:the\s+)?camera\b/i.test(clean)) {
       return miniMaxH3CleanPostCutGrammar(`the camera cuts. ${clean}`);
     }
@@ -43173,7 +43186,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       add(parts, "MANDATORY exact temporal / world effect verbiage — copy word-for-word", selectedScene.temporal_world_effect_verbiage);
       if (!ltxScene) {
         const canonicalCutPlan = canonicalSegment ? miniMaxH3CutPlanForSegment(canonicalSegment) : null;
-        add(parts, "MANDATORY Storyboard editing / cut plan", canonicalCutPlan?.cue_driven ? canonicalCutPlan.instruction : selectedScene.cut_plan?.instruction);
+        add(parts, "MANDATORY Storyboard editing / cut plan", canonicalCutPlan?.instruction || selectedScene.cut_plan?.instruction);
       }
       const customMotionSummary = String(selectedScene.motion_summary || scene.motion_summary || scene.video_notes || "").trim();
       add(parts, "Storyboard motion/video summary", customMotionSummary);
