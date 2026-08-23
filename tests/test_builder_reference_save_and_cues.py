@@ -85,6 +85,18 @@ class BuilderReferenceSaveAndCueTests(unittest.TestCase):
         source = UI_SOURCE[start:end]
         self.assertLess(source.index("if (existingTimingComplete) return true;"), source.index("autoTimeMiniMaxSingerCuesForSegment(segment)"))
 
+    def test_vocal_cue_cleanup_preserves_llm_shot_prose(self):
+        start = UI_SOURCE.index("function enforceMiniMaxH3CueOnShotDescription")
+        end = UI_SOURCE.index("function miniMaxH3OfficialShotBodyFromDescriptions", start)
+        source = UI_SOURCE[start:end]
+        self.assertIn("quoted lyric", source)
+        self.assertIn("sentence splitter", source)
+        self.assertIn("const cueVariants", source)
+        self.assertIn("Remove only the duplicate lyric/tag/timing", source)
+        # Whole-sentence vocal deletion caused the observed `\"; S2 ...` corruption.
+        vocal_source = source[source.index("const cueText ="):]
+        self.assertNotIn("sentences.filter((sentence) => !vocalMarker.test(sentence))", vocal_source)
+
 
 if __name__ == "__main__":
     unittest.main()

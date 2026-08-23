@@ -40530,21 +40530,36 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const silentContract = `${performer} remains silent throughout this shot with mouth closed or naturally relaxed; no singing, lyric performance, or lip-sync occurs.`;
       return normalizeMiniMaxH3ShotDescription(`${clean.replace(/[.!?…]+$/g, "").trim()}. ${silentContract}`);
     }
-    // The application owns exact lyric placement. Remove the entire
-    // LLM-authored vocal-performance sentence, not only its dialogue tag;
-    // otherwise the same lyric appears once as prose and once as the official
-    // <d> cue appended below.
-    const sentences = text.match(/[^.!?…]+[.!?…]+|[^.!?…]+$/g) || [];
-    let clean = sentences
-      .filter((sentence) => !vocalMarker.test(sentence))
-      .join(" ")
+    // The application owns the exact lyric placement, but the LLM's shot
+    // sentence also contains valuable blocking, camera, and ensemble action.
+    // Do not delete a whole sentence based on a vocal word: quoted lyric
+    // punctuation can make a sentence splitter leave fragments such as
+    // `"; S2 plays bass...`. Remove only the duplicate lyric/tag/timing
+    // material, then append the one canonical cue below.
+    const cueText = miniMaxH3CapitalizeCueText(miniMaxH3PunctuatedCueText(cue.text));
+    const cueVariants = [String(cue.text || "").trim(), cueText.replace(/[.!?…]+$/, "").trim()]
+      .filter(Boolean)
+      .sort((left, right) => right.length - left.length);
+    for (const variant of cueVariants) {
+      const escapedCue = escapeRegExp(variant);
+      text = text
+        .replace(new RegExp(`<d>\\s*(?:\\[[^\\]]+\\]\\s*)?${escapedCue}[.!?…]*\\s*<\\/d>`, "gi"), "")
+        .replace(new RegExp(`[“"']\\s*${escapedCue}[.!?…]*\\s*[”"']`, "gi"), "")
+        .replace(new RegExp(`\\bfrom\\s+(?:\\d+(?:\\.\\d+)?s?\\s*[–—-]\\s*\\d+(?:\\.\\d+)?s?|<Audio\\s+1>)`, "gi"), "")
+        .replace(new RegExp(`\\b(?:lip[ -]?sync(?:s|ing|ed)?|sing(?:s|ing|er|ers)?|perform(?:s|ing|ed)?|speak(?:s|ing|er|ers)?)\\s+only\\s*`, "gi"), "")
+        .replace(new RegExp(`\\b(?:lip[ -]?sync(?:s|ing|ed)?|sing(?:s|ing|er|ers)?|perform(?:s|ing|ed)?|speak(?:s|ing|er|ers)?)\\s+`, "gi"), "");
+    }
+    let clean = text
       .replace(/<d>[\s\S]*?<\/d>/gi, "")
+      .replace(/\b(?:from|at)\s+\d+(?:\.\d+)?s?\s*[–—-]\s*\d+(?:\.\d+)?s?/gi, "")
+      .replace(/\b(?:otherwise|outside)\s+(?:her|his|their|the performer['’]s?)\s+(?:mouth|lips?|jaw)[^.!?;]*[.!?]?/gi, "")
       .replace(/\s+([,.;!?])/g, "$1")
+      .replace(/([.!?])\s*;+/g, "$1")
       .replace(/\s{2,}/g, " ")
+      .replace(/\s+([.!?])\s*([.!?])/g, "$1")
       .trim();
     if (!clean) clean = miniMaxH3FallbackShotDescription(segment, shotIndex, mode);
     clean = clean.replace(/[,;:]\s*([.!?…])/g, "$1").replace(/\s+,/g, ",");
-    const cueText = miniMaxH3CapitalizeCueText(miniMaxH3PunctuatedCueText(cue.text));
     const vocalContract = `${performer} is the only visible performer singing and lip-syncing <d>[English] ${cueText}</d> from <Audio 1>; every other visible performer remains silent.`;
     return normalizeMiniMaxH3ShotDescription(`${clean.replace(/[.!?…]+$/g, "").trim()}. ${vocalContract}`);
   }
