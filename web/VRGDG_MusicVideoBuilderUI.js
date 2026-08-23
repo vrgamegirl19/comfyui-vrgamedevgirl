@@ -6244,7 +6244,13 @@ function openBuilder(node) {
   const miniMaxSpeakerAssignmentList = document.createElement("div");
   miniMaxSpeakerAssignmentList.style.cssText = "display:flex;flex-direction:column;gap:8px;";
   const miniMaxAddSpeakerCueButton = makeButton("Add Dialogue Cue", "primary");
-  miniMaxSpeakerAssignmentPanel.append(miniMaxSpeakerAssignmentNote, miniMaxSpeakerAssignmentList, miniMaxAddSpeakerCueButton);
+  const miniMaxAutoTimeBeforePrompt = makeCheckbox("Auto-time lyric cues before creating prompts", false);
+  miniMaxAutoTimeBeforePrompt.wrapper.style.cssText += "border:1px solid #155e75;border-radius:7px;background:#07111f;padding:10px;";
+  miniMaxAutoTimeBeforePrompt.input.title = "Before each MiniMax H3 prompt, enable exact lyric-to-shot timing and run Stable-ts on the scene audio.";
+  const miniMaxAutoTimeBeforePromptNote = document.createElement("div");
+  miniMaxAutoTimeBeforePromptNote.textContent = "When enabled, each MiniMax prompt waits for this scene's lyric timing to finish first. Requires scene lyric text, a mapped singer, and usable scene/project audio.";
+  miniMaxAutoTimeBeforePromptNote.style.cssText = "font-size:11px;color:#94a3b8;line-height:1.45;margin:-3px 4px 2px;";
+  miniMaxSpeakerAssignmentPanel.append(miniMaxSpeakerAssignmentNote, miniMaxAutoTimeBeforePrompt.wrapper, miniMaxAutoTimeBeforePromptNote, miniMaxSpeakerAssignmentList, miniMaxAddSpeakerCueButton);
   const miniMaxAudioNote = document.createElement("div");
   miniMaxAudioNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
   const useSceneMiniMaxH3Settings = makeCheckbox("Lock MiniMax mode, models, and video settings for this scene", false);
@@ -7145,6 +7151,7 @@ function openBuilder(node) {
     videoType: "singing",
     projectVideoEngine: "ltx",
     miniMaxH3Settings: cloneMiniMaxH3Settings(),
+    autoTimeSingerCuesBeforePrompt: false,
     miniMaxH3TwoPassEnabled: false,
     miniMaxH3ThreePassEnabled: false,
     imageModelMode: "zimage",
@@ -7543,6 +7550,11 @@ function openBuilder(node) {
     const enabled = Boolean(miniMaxProject && segment && !segment.no_character_present && ((shortFilm && settings.audio_mode === "built_in_audio") || singerMode));
     const speakers = enabled ? miniMaxMappedSpeakersForSegment(segment) : [];
     miniMaxSpeakerAssignmentList.replaceChildren();
+    miniMaxAutoTimeBeforePrompt.input.checked = Boolean(state.autoTimeSingerCuesBeforePrompt);
+    miniMaxAutoTimeBeforePrompt.input.onchange = () => {
+      state.autoTimeSingerCuesBeforePrompt = Boolean(miniMaxAutoTimeBeforePrompt.input.checked);
+      autoSaveSessionQuiet("MiniMax auto-time-before-prompt setting changed").catch(() => null);
+    };
     miniMaxAddSpeakerCueButton.disabled = !enabled || !speakers.length || (singerMode && segment?.lyric_performance_mode !== "cue_map");
     miniMaxAddSpeakerCueButton.textContent = singerMode ? "Add Lyric Cue" : "Add Dialogue Cue";
     miniMaxAddSpeakerCueButton.style.display = (singerMode || isMiniMaxBuiltInSpeakerAssignmentMode(segment)) ? "none" : "";
@@ -41223,7 +41235,35 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return miniMaxH3PromptVisionImages(segment, mode);
   }
 
+  async function ensureAutoTimedSingerCuesBeforePrompt(segment) {
+    if (!state.autoTimeSingerCuesBeforePrompt || !segment || segment.no_character_present) return;
+    if (!isMiniMaxSingerAssignmentMode(segment)) return;
+    const lyric = isInstrumentalLyricText(segment.lyric_text) ? "" : flattenLyricForPrompt(segment.lyric_text);
+    const performers = selectedPerformerSubjectsForSegment(segment);
+    const existing = normalizeLyricCueMapForSegment(segment, undefined, { preserveBlank: true });
+    if (existing.length && existing.every((cue) => Number.isFinite(Number(cue.start)) && Number.isFinite(Number(cue.end)) && Number(cue.end) > Number(cue.start))) return;
+    if (!lyric) return;
+    if (!performers.length) {
+      throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: auto-time-before-prompt needs a mapped singer.`);
+    }
+    segment.lyric_shot_word_timing_enabled = true;
+    segment.lyric_performance_mode = "cue_map";
+    if (!existing.some((cue) => cue.type !== "instrumental" && flattenLyricForPrompt(cue.text))) {
+      const performer = performers[0] || {};
+      segment.lyric_cue_map = [{
+        type: "vocal",
+        text: lyric,
+        action_note: "",
+        singer_id: performer.id || "",
+        singer_name: performer.name || "",
+        start: null,
+        end: null,
+      }];
+    }
+    await autoTimeMiniMaxSingerCuesForSegment(segment);
+  }
   async function runMiniMaxH3PromptGeneration(segment, mode, options = {}) {
+    await ensureAutoTimedSingerCuesBeforePrompt(segment);
     const visionImages = miniMaxH3PromptVisionImagesForRunner(segment, mode);
     const visualOnly = segmentUsesNoLipSyncPerformance(segment);
     const promptLyricText = visualOnly || isInstrumentalLyricText(segment.lyric_text) ? "" : flattenLyricForPrompt(segment.lyric_text);
@@ -43115,6 +43155,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         lyric_text: String(scene.lyrics || scene.lyric_text || segment.lyric_text || "").trim(),
         lyric_section: String(scene.lyric_section || scene.section || scene.song_section || segment.lyric_section || "").trim(),
         lyric_singers: Array.isArray(scene.lyric_singers) ? scene.lyric_singers : segment.lyric_singers,
+        lyric_shot_word_timing_enabled: Boolean(scene.lyric_shot_word_timing_enabled ?? segment.lyric_shot_word_timing_enabled),
+        lyric_performance_mode: String(scene.lyric_performance_mode || segment.lyric_performance_mode || "together"),
+        lyric_cue_map: Array.isArray(scene.lyric_cue_map) ? scene.lyric_cue_map.map((cue) => ({ ...cue })) : (Array.isArray(segment.lyric_cue_map) ? segment.lyric_cue_map.map((cue) => ({ ...cue })) : []),
         minimax_speaker_assignments: normalizeMiniMaxSpeakerAssignments(scene.speaker_assignments || scene.minimax_speaker_assignments || segment.minimax_speaker_assignments),
         lyric_no_lip_sync: Boolean(scene.lyric_no_lip_sync || scene.no_lip_sync || segmentUsesNoLipSyncPerformance(segment)),
         no_character_present: Boolean(scene.no_character_present || scene.noCharacterPresent || segment.no_character_present),
@@ -43172,6 +43215,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const createStoryboardVideoPromptViaBuilder = async (scene = {}, options = {}) => {
       const segment = findStoryboardSegment(scene);
       if (!segment) throw new Error(`Scene ${scene.scene_number || ""}: matching Video Builder scene was not found.`);
+      await ensureAutoTimedSingerCuesBeforePrompt(segment);
       const workingSegment = storyboardSceneCloneForI2V(segment, scene);
       const extraUserNotes = storyboardVideoExtraNotes(scene, options.storyboardPayload || {});
       if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") {
