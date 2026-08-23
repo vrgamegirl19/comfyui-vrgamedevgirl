@@ -23586,7 +23586,7 @@ function openBuilder(node) {
   }
 
   async function autoTimeMiniMaxSingerCuesForSegment(segment) {
-    if (!segment || !isMiniMaxSingerAssignmentMode(segment)) return;
+    if (!segment) return;
     const progress = createProgressWindow("Auto Time Singer Cues");
     try {
       const exactShotTiming = Boolean(segment.lyric_shot_word_timing_enabled);
@@ -41237,7 +41237,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
 
   async function ensureAutoTimedSingerCuesBeforePrompt(segment) {
     if (!state.autoTimeSingerCuesBeforePrompt || !segment || segment.no_character_present) return;
-    if (!isMiniMaxSingerAssignmentMode(segment)) return;
+    if (segment.no_character_present || normalizeVideoType(segment.performance_mode || state.videoType) !== "singing") return;
     const lyric = isInstrumentalLyricText(segment.lyric_text) ? "" : flattenLyricForPrompt(segment.lyric_text);
     const performers = selectedPerformerSubjectsForSegment(segment);
     const existing = normalizeLyricCueMapForSegment(segment, undefined, { preserveBlank: true });
@@ -41773,6 +41773,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   async function generateI2VPromptForSegment(segment, progress = null, percent = 50, label = "Gemma I2V", options = {}) {
+    await ensureAutoTimedSingerCuesBeforePrompt(segment);
     const request = buildI2VPromptRequestForSegment(segment, options);
     progress?.set(request.useImageReference
       ? `${label}: creating ${request.modeLabel} prompt from reference image, concept, and motion notes...\n${gemmaRunnerLine({ vision: true })}`
@@ -43625,6 +43626,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       onPrepareStoryContext: typeof options.onPrepareStoryContext === "function" ? options.onPrepareStoryContext : null,
       onPromptsExported: applyStoryboardPrompts,
       onCreateVideoPrompt: createStoryboardVideoPromptViaBuilder,
+      onBeforeCreateVideoPrompt: async (scene) => {
+        const segment = findStoryboardSegment(scene);
+        if (segment) await ensureAutoTimedSingerCuesBeforePrompt(segment);
+      },
       onApplyIdLoraDialoguePlan: applyIdLoraDialoguePlanFromStoryboard,
       onApplyMiniMaxDialoguePlan: applyMiniMaxDialoguePlanFromStoryboard,
     }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);

@@ -3339,6 +3339,7 @@ function openStoryboardBuilder(payload = {}) {
     onApplyIdLoraDialoguePlan: typeof payload.onApplyIdLoraDialoguePlan === "function" ? payload.onApplyIdLoraDialoguePlan : null,
     onApplyMiniMaxDialoguePlan: typeof payload.onApplyMiniMaxDialoguePlan === "function" ? payload.onApplyMiniMaxDialoguePlan : null,
     onCreateVideoPrompt: typeof payload.onCreateVideoPrompt === "function" ? payload.onCreateVideoPrompt : null,
+    onBeforeCreateVideoPrompt: typeof payload.onBeforeCreateVideoPrompt === "function" ? payload.onBeforeCreateVideoPrompt : null,
     query: "",
     selected: new Set(),
     saving: false,
@@ -7587,6 +7588,14 @@ function openStoryboardBuilder(payload = {}) {
     try {
       progress?.set(`${progressLabel || normalized.label || `Scene ${normalized.scene_number}`}: sending scene card to ${runnerName}...\nThis can take a minute depending on runner/model speed.`, progressPercent);
       const callbackPayload = storyboardGptPayload(state, [scene]);
+      if (state.onBeforeCreateVideoPrompt) {
+        await state.onBeforeCreateVideoPrompt(scene, {
+          storyboardPayload: callbackPayload,
+          progress,
+          progressPercent,
+          progressLabel,
+        });
+      }
       if (state.projectVideoEngine === "minimax_h3" && !state.onCreateVideoPrompt) {
         throw new Error("Open Storyboard Builder from the Video Builder so MiniMax can use the scene's H3 mode, ordered references, exact timing, and LLM instructions.");
       }
