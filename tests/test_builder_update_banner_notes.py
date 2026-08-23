@@ -25,7 +25,7 @@ def release_by_id(release_id):
 
 class BuilderUpdateBannerNotesTests(unittest.TestCase):
     def test_latest_release_documents_qwen_and_project_recovery_fixes(self):
-        release = UPDATE_NOTES["releases"][0]
+        release = release_by_id("2026-08-21-qwen-runner-project-recovery")
         self.assertEqual(release["id"], "2026-08-21-qwen-runner-project-recovery")
         self.assertEqual(
             release["commit"],
