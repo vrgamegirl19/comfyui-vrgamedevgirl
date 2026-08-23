@@ -40287,8 +40287,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (cue) {
       const subject = performers.find((item) => String(item.id) === String(cue.singer_id)) || { id: cue.singer_id, name: cue.singer_name };
       const performer = miniMaxH3PerformerLabel(subject, labelMap);
-      const lyric = miniMaxH3CapitalizeCueText(miniMaxH3PunctuatedCueText(cue.text));
-      return normalizeMiniMaxH3ShotDescription(`A clear medium close-up shows only ${performer} ${environment}, with the face and mouth unobstructed. ${performer} precisely lip-syncs to <Audio 1>, <d>[English] ${lyric}</d>, while no other visible performer sings or lip-syncs.`);
+      return normalizeMiniMaxH3ShotDescription(`A clear medium close-up shows only ${performer} ${environment}, with the face and mouth unobstructed while the camera stages the assigned performance moment. Other visible performers remain silent and naturally reactive.`);
     }
     const subject = performers[0] ? miniMaxH3PerformerLabel(performers[0], labelMap) : "the mapped performer";
     return normalizeMiniMaxH3ShotDescription(`A cinematic shot shows ${subject} ${environment}, preserving identity, wardrobe, lighting, and location continuity while the camera stages a clear music-video performance moment.`);
@@ -40531,10 +40530,19 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const silentContract = `${performer} remains silent throughout this shot with mouth closed or naturally relaxed; no singing, lyric performance, or lip-sync occurs.`;
       return normalizeMiniMaxH3ShotDescription(`${clean.replace(/[.!?…]+$/g, "").trim()}. ${silentContract}`);
     }
-    // The application owns exact lyric placement. Remove any LLM-authored
-    // dialogue tag (which may contain a repeated or premature line), then add
-    // exactly the cue assigned to this shot once.
-    let clean = text.replace(/<d>[\s\S]*?<\/d>/gi, "").replace(/\s+([,.;!?])/g, "$1").replace(/\s{2,}/g, " ").trim();
+    // The application owns exact lyric placement. Remove the entire
+    // LLM-authored vocal-performance sentence, not only its dialogue tag;
+    // otherwise the same lyric appears once as prose and once as the official
+    // <d> cue appended below.
+    const sentences = text.match(/[^.!?…]+[.!?…]+|[^.!?…]+$/g) || [];
+    let clean = sentences
+      .filter((sentence) => !vocalMarker.test(sentence))
+      .join(" ")
+      .replace(/<d>[\s\S]*?<\/d>/gi, "")
+      .replace(/\s+([,.;!?])/g, "$1")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+    if (!clean) clean = miniMaxH3FallbackShotDescription(segment, shotIndex, mode);
     clean = clean.replace(/[,;:]\s*([.!?…])/g, "$1").replace(/\s+,/g, ",");
     const cueText = miniMaxH3CapitalizeCueText(miniMaxH3PunctuatedCueText(cue.text));
     const vocalContract = `${performer} is the only visible performer singing and lip-syncing <d>[English] ${cueText}</d> from <Audio 1>; every other visible performer remains silent.`;
