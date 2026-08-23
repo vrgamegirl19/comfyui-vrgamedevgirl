@@ -40504,13 +40504,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
 
   function miniMaxH3PostCutShotText(text) {
     const clean = miniMaxH3StripLeadingCutDirective(text);
-    if (/^(?:the\s+)?camera\b/i.test(clean)) {
-      return miniMaxH3CleanPostCutGrammar(`the camera cuts. ${clean}`);
-    }
-    if (/^(?:a|an|the)\s+[\w-]+(?:\s+[\w-]+){0,8}\s+shot(?:\s+of\b[^.]{0,120})?\s+(?:shows|captures|reveals|frames|focuses|follows|tracks|pans|pushes|orbits|opens|begins)\b/i.test(clean)) {
-      return miniMaxH3CleanPostCutGrammar(`the camera cuts. ${clean}`);
-    }
-    return miniMaxH3CleanPostCutGrammar(`the camera cuts to ${miniMaxH3SentenceFragmentAfterCut(clean)}`);
+    // LLM shot descriptions are complete clauses, not guaranteed noun phrases.
+    // A period is grammatical for both "The pursuit continues..." and
+    // "A lower angle follows..."; blindly inserting "cuts to" is not.
+    return miniMaxH3CleanPostCutGrammar(`the camera cuts. ${miniMaxH3CapitalizeCueText(clean)}`);
   }
 
   function enforceMiniMaxH3CueOnShotDescription(segment, description, shotIndex, mode = miniMaxH3ModeForSegment(segment)) {

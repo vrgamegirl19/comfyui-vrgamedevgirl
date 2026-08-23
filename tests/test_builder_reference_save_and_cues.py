@@ -73,6 +73,7 @@ class BuilderReferenceSaveAndCueTests(unittest.TestCase):
         self.assertIn("the explicit singer cue map was dropped before LLM prompting", UI_SOURCE)
         self.assertIn("miniMaxH3CapitalizeCueText(miniMaxH3PunctuatedCueText(cue.text))", UI_SOURCE)
         self.assertIn("miniMaxH3StripLeadingCutDirective(text)", UI_SOURCE)
+        self.assertIn("the camera cuts. ${miniMaxH3CapitalizeCueText(clean)}", UI_SOURCE)
         self.assertIn("canonicalCutPlan?.instruction || selectedScene.cut_plan?.instruction", UI_SOURCE)
         node_source = NODE_SOURCE.read_text(encoding="utf-8")
         self.assertIn('"actual_llm_instruction": prompt', node_source)
