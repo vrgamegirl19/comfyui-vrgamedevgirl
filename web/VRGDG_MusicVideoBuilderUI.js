@@ -6244,7 +6244,13 @@ function openBuilder(node) {
   const miniMaxSpeakerAssignmentList = document.createElement("div");
   miniMaxSpeakerAssignmentList.style.cssText = "display:flex;flex-direction:column;gap:8px;";
   const miniMaxAddSpeakerCueButton = makeButton("Add Dialogue Cue", "primary");
-  miniMaxSpeakerAssignmentPanel.append(miniMaxSpeakerAssignmentNote, miniMaxSpeakerAssignmentList, miniMaxAddSpeakerCueButton);
+  const miniMaxAutoTimeBeforePrompt = makeCheckbox("Auto-time lyric cues before creating prompts", false);
+  miniMaxAutoTimeBeforePrompt.wrapper.style.cssText += "border:1px solid #155e75;border-radius:7px;background:#07111f;padding:10px;";
+  miniMaxAutoTimeBeforePrompt.input.title = "Before each MiniMax H3 prompt, enable exact lyric-to-shot timing and run Stable-ts on the scene audio.";
+  const miniMaxAutoTimeBeforePromptNote = document.createElement("div");
+  miniMaxAutoTimeBeforePromptNote.textContent = "When enabled, each MiniMax prompt waits for this scene's lyric timing to finish first. Requires scene lyric text, a mapped singer, and usable scene/project audio.";
+  miniMaxAutoTimeBeforePromptNote.style.cssText = "font-size:11px;color:#94a3b8;line-height:1.45;margin:-3px 4px 2px;";
+  miniMaxSpeakerAssignmentPanel.append(miniMaxSpeakerAssignmentNote, miniMaxAutoTimeBeforePrompt.wrapper, miniMaxAutoTimeBeforePromptNote, miniMaxSpeakerAssignmentList, miniMaxAddSpeakerCueButton);
   const miniMaxAudioNote = document.createElement("div");
   miniMaxAudioNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
   const useSceneMiniMaxH3Settings = makeCheckbox("Lock MiniMax mode, models, and video settings for this scene", false);
@@ -7145,6 +7151,7 @@ function openBuilder(node) {
     videoType: "singing",
     projectVideoEngine: "ltx",
     miniMaxH3Settings: cloneMiniMaxH3Settings(),
+    autoTimeSingerCuesBeforePrompt: false,
     miniMaxH3TwoPassEnabled: false,
     miniMaxH3ThreePassEnabled: false,
     imageModelMode: "zimage",
@@ -7543,6 +7550,11 @@ function openBuilder(node) {
     const enabled = Boolean(miniMaxProject && segment && !segment.no_character_present && ((shortFilm && settings.audio_mode === "built_in_audio") || singerMode));
     const speakers = enabled ? miniMaxMappedSpeakersForSegment(segment) : [];
     miniMaxSpeakerAssignmentList.replaceChildren();
+    miniMaxAutoTimeBeforePrompt.input.checked = Boolean(state.autoTimeSingerCuesBeforePrompt);
+    miniMaxAutoTimeBeforePrompt.input.onchange = () => {
+      state.autoTimeSingerCuesBeforePrompt = Boolean(miniMaxAutoTimeBeforePrompt.input.checked);
+      autoSaveSessionQuiet("MiniMax auto-time-before-prompt setting changed").catch(() => null);
+    };
     miniMaxAddSpeakerCueButton.disabled = !enabled || !speakers.length || (singerMode && segment?.lyric_performance_mode !== "cue_map");
     miniMaxAddSpeakerCueButton.textContent = singerMode ? "Add Lyric Cue" : "Add Dialogue Cue";
     miniMaxAddSpeakerCueButton.style.display = (singerMode || isMiniMaxBuiltInSpeakerAssignmentMode(segment)) ? "none" : "";
@@ -7744,7 +7756,6 @@ function openBuilder(node) {
         typeSelect.addEventListener("change", () => {
           cue.type = typeSelect.value === "instrumental" ? "instrumental" : "vocal";
           if (cue.type === "instrumental") {
-            shiftCueLyricTextDown(cues, index, cue.text, selectedPerformers[index % selectedPerformers.length] || selectedPerformers[0] || speakers[0] || {});
             cue.action_note = cue.action_note || "";
             cue.text = "";
             cue.singer_id = "";
@@ -11458,17 +11469,23 @@ function openBuilder(node) {
       ? String(segment.lyric_performance_mode || "").trim()
       : "together";
     segment.lyric_cue_map = Array.isArray(segment.lyric_cue_map)
-      ? segment.lyric_cue_map.map((cue) => ({
-        type: ["instrumental", "vocal"].includes(String(cue?.type || "").trim()) ? String(cue.type).trim() : "vocal",
-        text: String(cue?.text || "").trim(),
-        action_note: String(cue?.action_note || cue?.actionNote || cue?.note || "").trim(),
-        singer_id: String(cue?.singer_id || cue?.singerId || cue?.subject_id || cue?.subjectId || "").trim(),
-        singer_name: String(cue?.singer_name || cue?.singerName || cue?.name || "").trim(),
-        start: Number.isFinite(Number(cue?.start)) ? Math.max(0, Number(cue.start)) : null,
-        end: Number.isFinite(Number(cue?.end)) ? Math.max(0, Number(cue.end)) : null,
-        vocal_start: Number.isFinite(Number(cue?.vocal_start)) ? Math.max(0, Number(cue.vocal_start)) : null,
-        vocal_end: Number.isFinite(Number(cue?.vocal_end)) ? Math.max(0, Number(cue.vocal_end)) : null,
-      })).filter((cue) => cue.type === "instrumental" || cue.text || cue.action_note)
+      ? segment.lyric_cue_map.map((cue) => {
+        const type = ["instrumental", "vocal"].includes(String(cue?.type || "").trim()) ? String(cue.type).trim() : "vocal";
+        const cueTime = (value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value))
+          ? Math.max(0, Number(value))
+          : null;
+        return {
+          type,
+          text: String(cue?.text || "").trim(),
+          action_note: String(cue?.action_note || cue?.actionNote || cue?.note || "").trim(),
+          singer_id: String(cue?.singer_id || cue?.singerId || cue?.subject_id || cue?.subjectId || "").trim(),
+          singer_name: String(cue?.singer_name || cue?.singerName || cue?.name || "").trim(),
+          start: cueTime(cue?.start),
+          end: cueTime(cue?.end),
+          vocal_start: type === "vocal" ? cueTime(cue?.vocal_start) : null,
+          vocal_end: type === "vocal" ? cueTime(cue?.vocal_end) : null,
+        };
+      }).filter((cue) => cue.type === "instrumental" || cue.text || cue.action_note)
       : [];
     segment.minimax_speaker_assignments = normalizeMiniMaxSpeakerAssignments(
       segment.minimax_speaker_assignments || segment.speaker_assignments || segment.dialogue_cues || [],
@@ -23106,9 +23123,15 @@ function openBuilder(node) {
 
   function normalizeLyricCueMapForSegment(segment, refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder), options = {}) {
     const performers = selectedPerformerSubjectsForSegment(segment, refs);
-    const allowsSoloTimedCues = performers.length === 1 && Boolean(segment?.lyric_shot_word_timing_enabled);
-    if ((!allowsSoloTimedCues && performers.length < 2) || String(segment?.lyric_performance_mode || "together") !== "cue_map") return [];
     const existing = Array.isArray(segment?.lyric_cue_map) ? segment.lyric_cue_map : [];
+    // An explicit cue map is authoritative even for one singer. The old
+    // checkbox gate silently discarded manually assigned instrumental/lyric
+    // rows, so the LLM only saw the scene's full lyric and singer name.
+    if (String(segment?.lyric_performance_mode || "together") !== "cue_map") return [];
+    // Existing rows already carry their singer ID/name and must survive even
+    // when a transient Storyboard clone has no performer list. Only generated
+    // (not manually authored) cue maps require performer discovery here.
+    if (!existing.length && (performers.length < 2 && !segment?.lyric_shot_word_timing_enabled)) return [];
     const parts = existing.length ? existing : lyricCueTextParts(segment?.lyric_text).map((text, index) => {
       const performer = performers[index % performers.length] || performers[0] || {};
       return { text, singer_id: performer.id || "", singer_name: performer.name || "" };
@@ -23119,16 +23142,19 @@ function openBuilder(node) {
         || performers.find((subject) => String(subject.name || "").toLowerCase() === String(cue?.singer_name || "").toLowerCase())
         || performers[index % performers.length]
         || null;
+      const cueTime = (value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value))
+        ? Math.max(0, Number(value))
+        : null;
       return {
         type,
         text: flattenLyricForPrompt(cue?.text),
         action_note: String(cue?.action_note || cue?.actionNote || cue?.note || "").trim(),
         singer_id: String(performer?.id || cue?.singer_id || "").trim(),
         singer_name: String(performer?.name || cue?.singer_name || "").trim(),
-        start: Number.isFinite(Number(cue?.start)) ? Math.max(0, Number(cue.start)) : null,
-        end: Number.isFinite(Number(cue?.end)) ? Math.max(0, Number(cue.end)) : null,
-        vocal_start: Number.isFinite(Number(cue?.vocal_start)) ? Math.max(0, Number(cue.vocal_start)) : null,
-        vocal_end: Number.isFinite(Number(cue?.vocal_end)) ? Math.max(0, Number(cue.vocal_end)) : null,
+        start: cueTime(cue?.start),
+        end: cueTime(cue?.end),
+        vocal_start: type === "vocal" ? cueTime(cue?.vocal_start) : null,
+        vocal_end: type === "vocal" ? cueTime(cue?.vocal_end) : null,
       };
     }).filter((cue) => options.preserveBlank || cue.type === "instrumental" || cue.text);
   }
@@ -23574,7 +23600,7 @@ function openBuilder(node) {
   }
 
   async function autoTimeMiniMaxSingerCuesForSegment(segment) {
-    if (!segment || !isMiniMaxSingerAssignmentMode(segment)) return;
+    if (!segment) return false;
     const progress = createProgressWindow("Auto Time Singer Cues");
     try {
       const exactShotTiming = Boolean(segment.lyric_shot_word_timing_enabled);
@@ -23612,10 +23638,12 @@ function openBuilder(node) {
       progress.set(`Auto timing complete.\nVocal cues: ${vocalReturned}\nInstrumental gaps: ${instrumentalReturned}${exactShotTiming && shotAligned.length ? "\nExact words matched to storyboard shots." : ""}${warning}`, 100);
       progress.close(2600);
       toast("Singer cue timing filled. Review with Play Cue before rendering.");
+      return true;
     } catch (error) {
       progress.set(`Error:\n${String(error?.message || error)}`, 100);
       progress.close(6000);
       toast(String(error?.message || error), true);
+      return false;
     }
   }
 
@@ -31366,7 +31394,6 @@ Chrome vault corridor: A sealed industrial passage...</pre>
             type.onchange = () => {
               row.type = type.value === "instrumental" ? "instrumental" : "vocal";
               if (row.type === "instrumental") {
-                shiftCueLyricTextDown(rows, index, row.text, performers[index % performers.length] || performers[0] || {});
                 row.action_note = row.action_note || "";
                 row.text = "";
                 row.singer_id = "";
@@ -32270,7 +32297,10 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       syncPerformerInspectorForSegment(activeSegment());
       syncMiniMaxH3Panel();
       render();
-      await autoSaveSessionQuiet(`${referenceBuilderTargetLabel} reference builder`);
+      // This is an explicit Save action and must work even when optional
+      // autosave is disabled. It also needs the backend's manifest/context
+      // validation before the modal can report success.
+      await saveSession({ quiet: true, throwOnError: true });
       toast(`${referenceBuilderTargetLabel} reference builder saved.`);
       backdrop.remove();
     };
@@ -36457,6 +36487,24 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return folder;
   }
 
+  async function projectContextFilesForSessionSave() {
+    const files = {};
+    const entries = [
+      ["storyconcept.txt", storyIdeaInput.value || state.storyIdeaPath],
+      ["subjectsandscenes.txt", subjectSceneInput.value || state.subjectScenePath],
+      ["themestyle.txt", themeStyleInput.value || state.themeStylePath],
+    ];
+    for (const [filename, path] of entries) {
+      let content = await loadContextTextQuiet(path);
+      // Subject/scene context is also represented by the reference builder.
+      // Keep that canonical data available even when the legacy text file was
+      // never populated or points at an old shared TextFiles location.
+      if (filename === "subjectsandscenes.txt" && !content) content = referenceBuilderSubjectLocationText();
+      files[filename] = String(content || "").trim();
+    }
+    return files;
+  }
+
   async function stopCurrentWorkflow() {
     state.batchCancelled = true;
     pauseAllAudio();
@@ -36506,6 +36554,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         audio_path: audioInput.value,
         project_folder: projectFolder,
         session: currentSessionData(),
+        project_context_files: await projectContextFilesForSessionSave(),
       }, 60000);
       await syncPromptJsonFromSegments("session save");
       await syncI2VMotionJsonFromSegments("session save");
@@ -36673,6 +36722,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       audio_path: audioInput.value,
       project_folder: projectFolder,
       session: currentSessionData(),
+      project_context_files: await projectContextFilesForSessionSave(),
     }, 60000);
     await syncPromptJsonFromSegments("scene video save");
     await syncI2VMotionJsonFromSegments("scene video save");
@@ -36708,6 +36758,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         audio_path: audioInput.value,
         project_folder: projectFolder,
         session: currentSessionData(),
+        project_context_files: await projectContextFilesForSessionSave(),
       }, 60000);
       state.projectFolder = data.project_folder || state.projectFolder;
       state.sessionPath = data.session_path || state.sessionPath;
@@ -39985,6 +40036,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     parts.push(
       `MANDATORY CHARACTER BUDGET: The Builder's required H3 sections use ${characterBudget.fixedChars} characters. The combined text inside all ${shotPlan.length} JSON description values must not exceed ${characterBudget.shotDescriptionChars} characters total (about ${perShotBudget} per shot). Stay within this combined limit; be concise without omitting required subjects, actions, camera direction, or vocal cues. Do not spend this budget repeating subject definitions, retention, soundtrack preservation, timestamps, or section boilerplate because the Builder adds those separately.`
     );
+    parts.push(
+      "SHOT PROSE QUALITY — MANDATORY: Preserve rich, concrete visual detail in every shot. Write complete grammatical cinematic prose, not notes, labels, telegraphic shorthand, compressed summaries, or fragments. Do not replace named subjects with S1/S2 shorthand, reduce actions to words such as 'mouths' or 'plays', or discard wardrobe, environment, lighting, camera movement, performer actions, and continuity details. Keep all meaningful visual detail from the scene context while avoiding only redundant lyric boilerplate."
+    );
     const cutTimes = shotPlan.slice(1).map((shot) => shot.timecode);
     if (cutTimes.length) {
       parts.push(`Builder cut times for your planning only: ${cutTimes.join(", ")}. Do not write these times.`);
@@ -40003,8 +40057,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (cameraMotionSpeed >= 7) {
       parts.push("Camera rule: use energetic, visibly active camera movement; avoid slow/static/locked-off language.");
     }
+    const cueShotContract = miniMaxH3CueShotContractText(segment, mode);
     if (characterMotionSpeed >= 4) {
-      parts.push("Character rule: include clear body action, gesture, step, or set interaction in addition to visible singing and lip sync. Mouth movement alone is not enough, but do not omit or suppress the required lip sync.");
+      parts.push(cueShotContract
+        ? "Character rule: include clear body action, gesture, step, or set interaction. Singing and lip sync occur only in vocal cue shots; instrumental cue shots remain completely non-vocal."
+        : "Character rule: include clear body action, gesture, step, or set interaction in addition to visible singing and lip sync. Mouth movement alone is not enough, but do not omit or suppress the required lip sync.");
     }
     if (segment?.no_character_present) {
       parts.push("Vocal performance: no visible character / no lip sync. Do not invent a visible singer or speaker.");
@@ -40014,13 +40071,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       parts.push("Vocal performance: speaking with exact dialogue lip sync. Use the stable visible speaker label and (S1), and place every spoken cue inside <d>[English] exact words with final punctuation.</d>. Mention the visible speaking action naturally in the shot descriptions, but do not write separate audio sections.");
       add(parts, "Exact dialogue order", miniMaxDialogueOrderText(segment) || `The assigned speaker says exactly: "${lyricText}"`);
       add(parts, "Timed native dialogue cue map", miniMaxBuiltInDialogueCueMapText(segment), 1800);
+    } else if (lyricText && cueShotContract) {
+      parts.push("TIMED VOCAL CUES ONLY: Follow the timed singer/shot contract exactly. Never place, anticipate, continue, or repeat a lyric in an instrumental shot. A performer sings and lip-syncs only inside the specifically assigned vocal cue shot.");
     } else if (lyricText) {
       parts.push("MANDATORY VOCAL PERFORMANCE: The assigned subject is visibly singing the exact supplied lyric/audio during this scene. Use the stable visible subject label and speaker ID, and place every performed lyric cue inside <d>[English] exact words with final punctuation.</d>. Show clear, natural mouth, lip, jaw, and facial movement synchronized to the audible vocal. Never describe the lips as closed, still, motionless, or sealed while the assigned vocal is being performed. Body action is required in addition to lip sync; it does not replace lip sync. Non-verbal vocals such as oooh, ah, humming, and sustained notes still require visible mouth movement. Mention the visible singing action naturally in the shot descriptions, but do not write separate audio sections or repeat boilerplate in every cut.");
       add(parts, "Exact lyric line", lyricText);
     } else {
       parts.push("Vocal performance: no exact lyric or dialogue is assigned to this scene.");
     }
-    const cueShotContract = miniMaxH3CueShotContractText(segment, mode);
     if (cueShotContract) add(parts, "Timed singer / shot contract", cueShotContract, 1800);
     const vocalCueMap = miniMaxH3VocalCueMapText(segment, mode);
     if (vocalCueMap) {
@@ -40232,8 +40290,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (cue) {
       const subject = performers.find((item) => String(item.id) === String(cue.singer_id)) || { id: cue.singer_id, name: cue.singer_name };
       const performer = miniMaxH3PerformerLabel(subject, labelMap);
-      const lyric = miniMaxH3CapitalizeCueText(miniMaxH3PunctuatedCueText(cue.text));
-      return normalizeMiniMaxH3ShotDescription(`A clear medium close-up shows only ${performer} ${environment}, with the face and mouth unobstructed. ${performer} precisely lip-syncs to <Audio 1>, <d>[English] ${lyric}</d>, while no other visible performer sings or lip-syncs.`);
+      return normalizeMiniMaxH3ShotDescription(`A clear medium close-up shows only ${performer} ${environment}, with the face and mouth unobstructed while the camera stages the assigned performance moment. Other visible performers remain silent and naturally reactive.`);
     }
     const subject = performers[0] ? miniMaxH3PerformerLabel(performers[0], labelMap) : "the mapped performer";
     return normalizeMiniMaxH3ShotDescription(`A cinematic shot shows ${subject} ${environment}, preserving identity, wardrobe, lighting, and location continuity while the camera stages a clear music-video performance moment.`);
@@ -40360,7 +40417,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       return normalizeMiniMaxH3ShotDescription(description);
     });
     const requiredExtras = miniMaxH3CombinedSubjectPlan(segment, mode).subjects.filter((item) => item.kind === "extra");
-    const normalizedDescriptions = descriptions.map((description) => {
+    const normalizedDescriptions = descriptions.map((description, index) => {
       let clean = description;
       for (const extra of requiredExtras) {
         clean = clean.replace(new RegExp(`${escapeRegExp(extra.label)}\\s*\\(S\\d+\\)`, "gi"), extra.label);
@@ -40417,8 +40474,21 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   function miniMaxH3SentenceFragmentAfterCut(text) {
+    let clean = miniMaxH3StripLeadingCutDirective(text);
+    clean = clean.replace(/^(?:a|an|the)\s+/i, (match) => match.toLowerCase());
+    return clean;
+  }
+
+  function miniMaxH3StripLeadingCutDirective(text) {
     let clean = normalizeMiniMaxH3ShotDescription(text);
-    clean = clean.replace(/^(?:cut\s+to\s+)?(?:a|an|the)\s+/i, (match) => match.toLowerCase());
+    let previous = "";
+    // The JSON task asks only for shot descriptions, but Storyboard/Gemma can
+    // still echo one or several transition directives. The Builder owns the
+    // official cut phrase and timestamp, so remove every echoed prefix first.
+    while (clean && clean !== previous) {
+      previous = clean;
+      clean = clean.replace(/^(?:(?:the\s+camera\s+)?cuts?\s+to|cut\s+to)\s*(?::|[-–—.]|\s)*/i, "").trim();
+    }
     return clean;
   }
 
@@ -40435,14 +40505,71 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   function miniMaxH3PostCutShotText(text) {
-    const clean = normalizeMiniMaxH3ShotDescription(text);
-    if (/^(?:the\s+)?camera\b/i.test(clean)) {
-      return miniMaxH3CleanPostCutGrammar(`the camera cuts. ${clean}`);
+    const clean = miniMaxH3StripLeadingCutDirective(text);
+    // LLM shot descriptions are complete clauses, not guaranteed noun phrases.
+    // A period is grammatical for both "The pursuit continues..." and
+    // "A lower angle follows..."; blindly inserting "cuts to" is not.
+    return miniMaxH3CleanPostCutGrammar(`the camera cuts. ${miniMaxH3CapitalizeCueText(clean)}`);
+  }
+
+  function enforceMiniMaxH3CueOnShotDescription(segment, description, shotIndex, mode = miniMaxH3ModeForSegment(segment)) {
+    let text = normalizeMiniMaxH3ShotDescription(description);
+    if (!isMiniMaxSingerAssignmentMode(segment) || String(segment?.lyric_performance_mode || "together") !== "cue_map") return text;
+    const cues = normalizeLyricCueMapForSegment(segment, undefined, { preserveBlank: true });
+    const cue = cues[shotIndex];
+    if (!cue) return text;
+    const performers = selectedPerformerSubjectsForSegment(segment);
+    const labelMap = miniMaxH3SubjectLabelMapForSegment(segment, mode);
+    const subject = performers.find((item) => String(item.id) === String(cue.singer_id))
+      || performers.find((item) => String(item.name || "").toLowerCase() === String(cue.singer_name || "").toLowerCase())
+      || performers[0]
+      || { id: cue.singer_id, name: cue.singer_name || "Singer" };
+    const performer = miniMaxH3PerformerLabel(subject, labelMap);
+    const vocalMarker = /<d>|<\/d>|\b(?:sings?|singing|sung|speaks?|speaking|says?|saying|performs?|performing|dialogue|lip[ -]?sync(?:s|ing|ed)?|lyrics?|vocals?|mouth\s+(?:moves?|moving|shapes?|shaping|articulates?|articulating)|lips?\s+(?:moves?|moving|shapes?|shaping)|jaw\s+(?:moves?|moving|shapes?|shaping|articulates?|articulating))\b/i;
+    if (cue.type === "instrumental") {
+      const sentences = text.match(/[^.!?…]+[.!?…]+|[^.!?…]+$/g) || [];
+      let clean = sentences.filter((sentence) => !vocalMarker.test(sentence)).join(" ").replace(/\s+/g, " ").trim();
+      if (!clean) clean = miniMaxH3FallbackShotDescription(segment, shotIndex, mode);
+      const silentContract = `${performer} remains silent throughout this shot with mouth closed or naturally relaxed; no singing, lyric performance, or lip-sync occurs.`;
+      return normalizeMiniMaxH3ShotDescription(`${clean.replace(/[.!?…]+$/g, "").trim()}. ${silentContract}`);
     }
-    if (/^(?:a|an|the)\s+[\w-]+(?:\s+[\w-]+){0,8}\s+shot(?:\s+of\b[^.]{0,120})?\s+(?:shows|captures|reveals|frames|focuses|follows|tracks|pans|pushes|orbits|opens|begins)\b/i.test(clean)) {
-      return miniMaxH3CleanPostCutGrammar(`the camera cuts. ${clean}`);
+    // The application owns the exact lyric placement, but the LLM's shot
+    // sentence also contains valuable blocking, camera, and ensemble action.
+    // Do not delete a whole sentence based on a vocal word: quoted lyric
+    // punctuation can make a sentence splitter leave fragments such as
+    // `"; S2 plays bass...`. Remove only the duplicate lyric/tag/timing
+    // material, then append the one canonical cue below.
+    const cueText = miniMaxH3CapitalizeCueText(miniMaxH3PunctuatedCueText(cue.text));
+    // Remove a previously generated canonical contract before adding the
+    // authoritative one below. This keeps retries idempotent.
+    text = text.replace(/<Subject\s+\d+>[^.\n]*?is the only visible performer singing and lip-syncing[\s\S]*?every other visible performer remains silent\.?/gi, "");
+    const cueVariants = [String(cue.text || "").trim(), cueText.replace(/[.!?…]+$/, "").trim()]
+      .filter(Boolean)
+      .sort((left, right) => right.length - left.length);
+    for (const variant of cueVariants) {
+      const escapedCue = escapeRegExp(variant);
+      const timing = "(?:\\d+(?:\\.\\d+)?s?\\s*(?:to|[–—-])\\s*\\d+(?:\\.\\d+)?s?)";
+      const vocalVerb = "(?:lip[ -]?sync(?:s|ing|ed)?|sing(?:s|ing)?|perform(?:s|ing|ed)?|speak(?:s|ing)?)";
+      // Preserve the sentence and its timing, replacing only the repeated
+      // lyric wording. For example: `she lip-syncs only \"line\" from
+      // 0.940s–1.800s` becomes `she performs the assigned vocal cue from
+      // 0.940s–1.800s`.
+      text = text
+        .replace(new RegExp(`\\b${vocalVerb}\\s+(?:only\\s+)?[“"']\\s*${escapedCue}[.!?…]*\\s*[”"']\\s+from\\s+(${timing})`, "gi"), "performs the assigned vocal cue from $1")
+        .replace(new RegExp(`<d>\\s*(?:\\[[^\\]]+\\]\\s*)?${escapedCue}[.!?…]*\\s*<\\/d>`, "gi"), "the assigned vocal cue")
+        .replace(new RegExp(`[“"']\\s*${escapedCue}[.!?…]*\\s*[”"']`, "gi"), "the assigned vocal cue");
     }
-    return miniMaxH3CleanPostCutGrammar(`the camera cuts to ${miniMaxH3SentenceFragmentAfterCut(clean)}`);
+    let clean = text
+      .replace(/<d>[\s\S]*?<\/d>/gi, "the assigned vocal cue")
+      .replace(/\s+([,.;!?])/g, "$1")
+      .replace(/([.!?])\s*;+/g, "$1")
+      .replace(/\s{2,}/g, " ")
+      .replace(/\s+([.!?])\s*([.!?])/g, "$1")
+      .trim();
+    if (!clean) clean = miniMaxH3FallbackShotDescription(segment, shotIndex, mode);
+    clean = clean.replace(/[,;:]\s*([.!?…])/g, "$1").replace(/\s+,/g, ",");
+    const vocalContract = `${performer} is the only visible performer singing and lip-syncing <d>[English] ${cueText}</d> from <Audio 1>; every other visible performer remains silent.`;
+    return normalizeMiniMaxH3ShotDescription(`${clean.replace(/[.!?…]+$/g, "").trim()}. ${vocalContract}`);
   }
 
   function miniMaxH3OfficialShotBodyFromDescriptions(segment, descriptions = []) {
@@ -40452,7 +40579,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       throw new Error(`Cannot assemble MiniMax shots: expected ${shotPlan.length} description${shotPlan.length === 1 ? "" : "s"}, got ${descriptions.length}.`);
     }
     return shotPlan.map((shot, index) => {
-      const description = normalizeMiniMaxH3ShotDescription(descriptions[index]);
+      const description = enforceMiniMaxH3CueOnShotDescription(segment, descriptions[index], index);
       if (shot.number === 1) return `[Shot 1] ${description}`.trim();
       const postCutDescription = miniMaxH3PostCutShotText(description).replace(/^\s*([a-z])/, (_match, letter) => letter.toUpperCase());
       return `[Shot ${shot.number}] At ${shot.timecode}, ${postCutDescription}`.trim();
@@ -40765,13 +40892,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const lyricText = dialogueAssignments.length
       ? dialogueAssignments.map((cue) => cue.text).join(" ")
       : isInstrumentalLyricText(segment?.lyric_text) ? "" : flattenLyricForPrompt(segment?.lyric_text);
-    const multiCueSingers = isMiniMaxSingerAssignmentMode(segment)
-      && String(segment?.lyric_performance_mode || "together") === "cue_map"
-      && selectedPerformerSubjectsForSegment(segment).length >= 2;
-    const performer = segment?.no_character_present || multiCueSingers ? "the target video" : "<Subject 1> (S1)";
+    const hasExplicitCueMap = isMiniMaxSingerAssignmentMode(segment)
+      && normalizeLyricCueMapForSegment(segment).length > 0;
+    const performer = segment?.no_character_present || hasExplicitCueMap ? "the target video" : "<Subject 1> (S1)";
     const lyricClause = lyricText && !visualOnly
       ? selectedPerformerSubjectsForSegment(segment).length >= 2
         ? ` ${miniMaxH3VocalCueMapText(segment, miniMaxH3ModeForSegment(segment), { compact: true })}`
+        : hasExplicitCueMap
+          ? ` ${miniMaxH3VocalCueMapText(segment, miniMaxH3ModeForSegment(segment), { compact: true })}`
         : ` The exact performed lyric/dialogue line is "${miniMaxH3PunctuatedCueText(lyricText)}"`
       : "";
     return `<Audio 1> is the complete synchronized song and vocal track for ${performer}, reused as the target video's complete final soundtrack and timing reference.${lyricClause}`;
@@ -40879,6 +41007,35 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       error.promptLength = text.length;
       error.promptLimit = 7000;
       throw error;
+    }
+    if (isMiniMaxSingerAssignmentMode(segment) && String(segment?.lyric_performance_mode || "together") === "cue_map") {
+      const cueMap = normalizeLyricCueMapForSegment(segment, undefined, { preserveBlank: true });
+      const creativeHeader = ["text_to_video", "image_to_video"].includes(normalizedMode)
+        ? "integrated_multimodal_description:"
+        : "detailed_description:";
+      const creativeStart = text.indexOf(creativeHeader);
+      const soundscapeStart = text.indexOf("overall_soundscape:", creativeStart);
+      const cueCreativeText = creativeStart >= 0 && soundscapeStart > creativeStart
+        ? text.slice(creativeStart + creativeHeader.length, soundscapeStart).trim()
+        : "";
+      cueMap.forEach((cue, index) => {
+        const shotLabel = `[Shot ${index + 1}]`;
+        const shotStart = cueCreativeText.indexOf(shotLabel);
+        const nextShotStart = cueCreativeText.indexOf(`[Shot ${index + 2}]`, shotStart + shotLabel.length);
+        const shotText = shotStart >= 0
+          ? cueCreativeText.slice(shotStart, nextShotStart >= 0 ? nextShotStart : cueCreativeText.length)
+          : "";
+        const dialogueTags = shotText.match(/<d>[\s\S]*?<\/d>/gi) || [];
+        if (cue.type === "instrumental" && dialogueTags.length) {
+          throw new Error(`${shotLabel} is assigned as instrumental but contains sung dialogue.`);
+        }
+        if (cue.type === "vocal") {
+          const expectedTag = `<d>[English] ${miniMaxH3CapitalizeCueText(miniMaxH3PunctuatedCueText(cue.text))}</d>`;
+          if (dialogueTags.length !== 1 || dialogueTags[0] !== expectedTag) {
+            throw new Error(`${shotLabel} must contain exactly its assigned lyric cue: ${expectedTag}`);
+          }
+        }
+      });
     }
     if (!state.failOnInvalidPromptFormats) return text;
     const headers = ["text_to_video", "image_to_video"].includes(normalizedMode)
@@ -41077,7 +41234,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       parts.push("MANDATORY CAMERA RULE: use energetic, visibly active camera movement. Slow, gentle, subtle, restrained, locked-off, static, and hold camera language contradicts this setting and must not appear.");
     }
     if (characterMotionSpeed >= 4) {
-      parts.push("MANDATORY CHARACTER ACTION RULE: include at least one clear physical body action, gesture, step, or interaction with the set in addition to visible singing and lip sync. Facial expression, blinking, breathing, and mouth movement alone do not satisfy character motion, but do not omit or suppress the required lip sync.");
+      parts.push(cueShotContract
+        ? "MANDATORY CHARACTER ACTION RULE: include at least one clear physical body action, gesture, step, or interaction with the set. Lip sync occurs only inside assigned vocal cue shots; instrumental cue shots must remain non-vocal."
+        : "MANDATORY CHARACTER ACTION RULE: include at least one clear physical body action, gesture, step, or interaction with the set in addition to visible singing and lip sync. Facial expression, blinking, breathing, and mouth movement alone do not satisfy character motion, but do not omit or suppress the required lip sync.");
     }
     if (segment?.no_character_present) {
       parts.push(
@@ -41100,6 +41259,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         nativeAudio
           ? `Native audio assignment: MiniMax generates the voices and audio. Follow the mandatory speaker assignment and dialogue order exactly. Synchronize each assigned speaker’s lips, mouth shapes, jaw movement, facial muscles, and breathing precisely to that speaker’s generated line. Do not merge speakers, reorder cues, replace, alter, repeat, extend, improvise, omit, or add words. Use silence, breathing, facial reaction, physical action, and low ambience for all remaining time.`
           : `Audio 1 assignment: use as the exact voice, timing, and lip-sync reference. ${performerLabel} says the exact line “${lyricText}”. Synchronize lips, mouth shapes, jaw movement, facial muscles, and breathing precisely to that spoken line in Audio 1. Do not replace, alter, extend, or add words.`,
+      );
+    } else if (lyricText && cueShotContract) {
+      parts.push(
+        "Vocal performance: TIMED CUE MAP ONLY.",
+        "Audio 1 is the exact timing reference. Instrumental cue shots contain no singing, speaking, lyric performance, or lip sync. The assigned performer sings only the exact words inside each vocal cue and only during that cue's stated time range. Never stretch, restart, anticipate, or repeat the full lyric across other shots.",
       );
     } else if (lyricText) {
       parts.push(
@@ -41223,7 +41387,48 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return miniMaxH3PromptVisionImages(segment, mode);
   }
 
+  async function ensureAutoTimedSingerCuesBeforePrompt(segment) {
+    if (!state.autoTimeSingerCuesBeforePrompt || !segment || segment.no_character_present) return;
+    if (segment.no_character_present || normalizeVideoType(segment.performance_mode || state.videoType) !== "singing") return;
+    const lyric = isInstrumentalLyricText(segment.lyric_text) ? "" : flattenLyricForPrompt(segment.lyric_text);
+    const performers = selectedPerformerSubjectsForSegment(segment);
+    const rawExisting = Array.isArray(segment.lyric_cue_map) ? segment.lyric_cue_map : [];
+    const existing = normalizeLyricCueMapForSegment(segment, undefined, { preserveBlank: true });
+    const timingCues = existing.length ? existing : rawExisting;
+    const existingTimingComplete = timingCues.length && timingCues.every((cue, index) => {
+      const start = Number(cue.start);
+      // The UI intentionally derives a final cue's end from the scene end when
+      // the user leaves that last End field blank. Treat that displayed timing
+      // as complete; never replace an already hand-authored cue map with a new
+      // transcription just because the final raw `end` is null.
+      const end = miniMaxEffectiveCueEnd(segment, timingCues, index, cue);
+      return Number.isFinite(start) && Number.isFinite(Number(end)) && Number(end) > start;
+    });
+    if (existingTimingComplete) return true;
+    if (!lyric) return false;
+    if (!performers.length) {
+      throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: auto-time-before-prompt needs a mapped singer.`);
+    }
+    segment.lyric_shot_word_timing_enabled = true;
+    segment.lyric_performance_mode = "cue_map";
+    if (!existing.some((cue) => cue.type !== "instrumental" && flattenLyricForPrompt(cue.text))) {
+      const performer = performers[0] || {};
+      segment.lyric_cue_map = [{
+        type: "vocal",
+        text: lyric,
+        action_note: "",
+        singer_id: performer.id || "",
+        singer_name: performer.name || "",
+        start: null,
+        end: null,
+      }];
+    }
+    const timed = await autoTimeMiniMaxSingerCuesForSegment(segment);
+    if (!timed) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: Whisper timing did not complete; prompt generation was stopped.`);
+    return true;
+  }
   async function runMiniMaxH3PromptGeneration(segment, mode, options = {}) {
+    await ensureAutoTimedSingerCuesBeforePrompt(segment);
     const visionImages = miniMaxH3PromptVisionImagesForRunner(segment, mode);
     const visualOnly = segmentUsesNoLipSyncPerformance(segment);
     const promptLyricText = visualOnly || isInstrumentalLyricText(segment.lyric_text) ? "" : flattenLyricForPrompt(segment.lyric_text);
@@ -41232,8 +41437,25 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       : String(segment.lyric_singers || "").split(/[,;\n]+/))
       .map((value) => String(value || "").trim())
       .filter(Boolean);
+    const lyricCueMap = visualOnly ? [] : normalizeLyricCueMapForSegment(segment, undefined, { preserveBlank: true });
+    const rawExplicitCueMap = !visualOnly && String(segment?.lyric_performance_mode || "") === "cue_map" && Array.isArray(segment?.lyric_cue_map)
+      ? segment.lyric_cue_map
+      : [];
+    if (rawExplicitCueMap.length && !lyricCueMap.length) {
+      throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: the explicit singer cue map was dropped before LLM prompting. Generation was stopped instead of sending incorrect vocal instructions.`);
+    }
+    const effectiveSingerNames = promptSingerNames.length
+      ? promptSingerNames
+      : Array.from(new Set(lyricCueMap.map((cue) => String(cue.singer_name || "").trim()).filter(Boolean)));
+    const vocalCueContract = visualOnly ? "" : miniMaxH3VocalCueMapText(segment, mode, { compact: false });
+    const assignmentNotes = vocalCueContract
+      ? `AUTHORITATIVE PERFORMER / VOCAL CUE MAP — obey exactly; this is part of the user assignment, not optional scene flavor:\n${vocalCueContract}`
+      : "";
     const requestedMaxNewTokens = Number(options.maxNewTokens ?? 4000);
-    let targetLimit = 6300;
+    // Give the creative shot descriptions the full H3 limit on the first
+    // attempt. Starting at 6300 made Gemma over-compress rich shot prose into
+    // telegraphic summaries even when the final prompt could fit under 7000.
+    let targetLimit = 7000;
     let lastOversizeError = null;
     for (let attempt = 1; attempt <= 3; attempt += 1) {
       const characterBudget = miniMaxH3PromptCharacterBudget(segment, mode, targetLimit);
@@ -41254,7 +41476,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         repair_model_file: miniMaxTextGemmaModelSelect.value,
         mmproj_file: visionImages.length ? miniMaxMmprojSelect.value : "",
         t2i_prompt: miniMaxH3CreativePromptContextForSegment(segment, mode, contextOptions),
-        user_notes: String(options.userNotes || ""),
+        user_notes: [String(options.userNotes || "").trim(), assignmentNotes].filter(Boolean).join("\n\n"),
         subject_context: "",
         location_context: "",
         no_character_present: Boolean(segment.no_character_present),
@@ -41262,7 +41484,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         prompt_only_scene_inspiration: options.promptOnlySceneInspiration ?? miniMaxH3SceneImageIsPromptInspiration(segment),
         performance_mode: options.performanceMode || effectiveVideoPerformanceModeForSegment(segment),
         lyric_text: promptLyricText,
-        singers: promptSingerNames,
+        singers: effectiveSingerNames,
+        lyric_cue_map: lyricCueMap,
+        performer_assignment: {
+          singing: Array.from(new Set(effectiveSingerNames)),
+          cue_map: lyricCueMap,
+        },
         audio_mode: options.audioMode || miniMaxH3SettingsForSegment(segment).audio_mode,
         speaker_assignments: Array.isArray(options.speakerAssignments)
           ? options.speakerAssignments
@@ -41279,6 +41506,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         top_p: Number(options.topP ?? 0.92),
         max_new_tokens: Math.min(requestedMaxNewTokens, budgetMaxNewTokens),
       }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
+      if (data.llm_request_audit_path) {
+        segment.minimax_h3_llm_request_audit_path = String(data.llm_request_audit_path);
+      }
       const generatedPrompt = String(data.prompt || "").trim();
       if (!generatedPrompt) {
         throw new Error(options.emptyPromptMessage || `The LLM returned an empty MiniMax ${miniMaxH3ModeLabel(mode)} prompt.`);
@@ -41459,9 +41689,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       updateMiniMaxPromptCharacterStatus(segment);
       render();
       await autoSaveSessionQuiet(`MiniMax ${modeLabel} prompt complete`);
-      progress.set(`MiniMax ${modeLabel} prompt ready.`, 100);
-      progress.close(900);
-      toast(`Created the MiniMax ${modeLabel} prompt with ${gemmaRunnerLabel({ vision: Boolean(visionImages.length) })}.`);
+      const auditPath = String(data.llm_request_audit_path || "").trim();
+      progress.set(`MiniMax ${modeLabel} prompt ready.${auditPath ? `\n\nExact LLM request and raw response:\n${auditPath}` : ""}`, 100);
+      progress.close(auditPath ? 5000 : 900);
+      if (auditPath) console.info("[VRGDG Music Builder] Exact MiniMax H3 LLM request audit:", auditPath);
+      toast(`Created the MiniMax ${modeLabel} prompt with ${gemmaRunnerLabel({ vision: Boolean(visionImages.length) })}.${auditPath ? `\nLLM request audit: ${auditPath}` : ""}`);
     } catch (error) {
       const debugPath = error?.gemmaDebugPath || await saveGemmaJunkDebug(error, { label: `MiniMax ${modeLabel} prompt`, segment });
       if (isRecoverableBuildGemmaError(error)) {
@@ -41733,6 +41965,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   async function generateI2VPromptForSegment(segment, progress = null, percent = 50, label = "Gemma I2V", options = {}) {
+    await ensureAutoTimedSingerCuesBeforePrompt(segment);
     const request = buildI2VPromptRequestForSegment(segment, options);
     progress?.set(request.useImageReference
       ? `${label}: creating ${request.modeLabel} prompt from reference image, concept, and motion notes...\n${gemmaRunnerLine({ vision: true })}`
@@ -42562,6 +42795,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           prompt_summary: promptSummary,
           motion_summary: videoNotes,
           lyric_singers: lyricSingers,
+          lyric_cue_map: normalizeLyricCueMapForSegment(segment, undefined, { preserveBlank: true }),
+          timed_lyric_cue_contract: miniMaxH3VocalCueMapText(segment, miniMaxH3ModeForSegment(segment)),
+          performer_assignment: {
+            singing: lyricSingers,
+            cue_map: normalizeLyricCueMapForSegment(segment, undefined, { preserveBlank: true }),
+          },
           speaker_assignments: normalizeMiniMaxSpeakerAssignments(segment.minimax_speaker_assignments),
           lyric_no_lip_sync: Boolean(segmentUsesNoLipSyncPerformance(segment)),
           lyric_instrumental: isInstrumentalLyricText(lyric),
@@ -42919,7 +43158,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       return segments.find((candidate) => candidate.id === scene.id)
         || segments.find((candidate, index) => Number(index + 1) === Number(scene.scene_number));
     };
-    const storyboardVideoExtraNotes = (scene = {}, storyboardPayload = {}) => {
+    const storyboardVideoExtraNotes = (scene = {}, storyboardPayload = {}, canonicalSegment = null) => {
       const selectedScene = Array.isArray(storyboardPayload?.scenes) && storyboardPayload.scenes.length ? storyboardPayload.scenes[0] : {};
       const fullyCustomShortFilm = normalizeMiniMaxShortFilmPlanningMode(storyboardPayload?.short_film_planning_mode) === "fully_custom";
       const storyLayer = selectedScene.story_layer || {};
@@ -42976,7 +43215,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       add(parts, "REQUIRED Storyboard video style", selectedScene.video_style);
       add(parts, "MANDATORY exact Storyboard video style verbiage — copy word-for-word", selectedScene.video_style_verbiage);
       add(parts, "MANDATORY exact temporal / world effect verbiage — copy word-for-word", selectedScene.temporal_world_effect_verbiage);
-      if (!ltxScene) add(parts, "MANDATORY Storyboard editing / cut plan", selectedScene.cut_plan?.instruction);
+      if (!ltxScene) {
+        const canonicalCutPlan = canonicalSegment ? miniMaxH3CutPlanForSegment(canonicalSegment) : null;
+        add(parts, "MANDATORY Storyboard editing / cut plan", canonicalCutPlan?.instruction || selectedScene.cut_plan?.instruction);
+      }
       const customMotionSummary = String(selectedScene.motion_summary || scene.motion_summary || scene.video_notes || "").trim();
       add(parts, "Storyboard motion/video summary", customMotionSummary);
       if (!customMotionSummary) add(parts, "Storyboard camera motion", selectedScene.camera_motion || scene.camera_motion);
@@ -43114,7 +43356,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         ...segment,
         lyric_text: String(scene.lyrics || scene.lyric_text || segment.lyric_text || "").trim(),
         lyric_section: String(scene.lyric_section || scene.section || scene.song_section || segment.lyric_section || "").trim(),
-        lyric_singers: Array.isArray(scene.lyric_singers) ? scene.lyric_singers : segment.lyric_singers,
+        lyric_singers: Array.isArray(segment.lyric_singers) && segment.lyric_singers.length
+          ? [...segment.lyric_singers]
+          : (Array.isArray(scene.lyric_singers) ? [...scene.lyric_singers] : []),
+        lyric_shot_word_timing_enabled: Array.isArray(segment.lyric_cue_map) && segment.lyric_cue_map.length
+          ? Boolean(segment.lyric_shot_word_timing_enabled)
+          : Boolean(scene.lyric_shot_word_timing_enabled ?? segment.lyric_shot_word_timing_enabled),
+        lyric_performance_mode: Array.isArray(segment.lyric_cue_map) && segment.lyric_cue_map.length
+          ? "cue_map"
+          : String(scene.lyric_performance_mode || segment.lyric_performance_mode || "together"),
+        lyric_cue_map: Array.isArray(segment.lyric_cue_map) && segment.lyric_cue_map.length
+          ? segment.lyric_cue_map.map((cue) => ({ ...cue }))
+          : (Array.isArray(scene.lyric_cue_map) ? scene.lyric_cue_map.map((cue) => ({ ...cue })) : []),
         minimax_speaker_assignments: normalizeMiniMaxSpeakerAssignments(scene.speaker_assignments || scene.minimax_speaker_assignments || segment.minimax_speaker_assignments),
         lyric_no_lip_sync: Boolean(scene.lyric_no_lip_sync || scene.no_lip_sync || segmentUsesNoLipSyncPerformance(segment)),
         no_character_present: Boolean(scene.no_character_present || scene.noCharacterPresent || segment.no_character_present),
@@ -43172,8 +43425,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const createStoryboardVideoPromptViaBuilder = async (scene = {}, options = {}) => {
       const segment = findStoryboardSegment(scene);
       if (!segment) throw new Error(`Scene ${scene.scene_number || ""}: matching Video Builder scene was not found.`);
+      await ensureAutoTimedSingerCuesBeforePrompt(segment);
       const workingSegment = storyboardSceneCloneForI2V(segment, scene);
-      const extraUserNotes = storyboardVideoExtraNotes(scene, options.storyboardPayload || {});
+      const extraUserNotes = storyboardVideoExtraNotes(scene, options.storyboardPayload || {}, workingSegment);
       if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") {
         const mode = miniMaxH3ModeForSegment(segment);
         const modeLabel = miniMaxH3ModeLabel(mode);
@@ -43581,6 +43835,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       onPrepareStoryContext: typeof options.onPrepareStoryContext === "function" ? options.onPrepareStoryContext : null,
       onPromptsExported: applyStoryboardPrompts,
       onCreateVideoPrompt: createStoryboardVideoPromptViaBuilder,
+      onBeforeCreateVideoPrompt: async (scene) => {
+        const segment = findStoryboardSegment(scene);
+        if (segment) await ensureAutoTimedSingerCuesBeforePrompt(segment);
+      },
       onApplyIdLoraDialoguePlan: applyIdLoraDialoguePlanFromStoryboard,
       onApplyMiniMaxDialoguePlan: applyMiniMaxDialoguePlanFromStoryboard,
     }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
@@ -54459,10 +54717,49 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           const label = `Storyboard ${runnerName} All ${index + 1}/${targetScenes.length}: ${scene.label || `Scene ${scene.scene_number || index + 1}`}`;
           try {
             progress.set(`${label}\nCreating storyboard video prompt...`, base);
+            if (segment && state.autoTimeSingerCuesBeforePrompt && !segment.no_character_present
+              && normalizeVideoType(segment.performance_mode || state.videoType) === "singing") {
+              const timed = await ensureAutoTimedSingerCuesBeforePrompt(segment);
+              if (!timed) throw new Error(`${label}: Whisper timing did not complete; prompt generation was stopped.`);
+            }
+            const promptCueMap = segment && Array.isArray(segment.lyric_cue_map)
+              ? normalizeLyricCueMapForSegment(segment, undefined, { preserveBlank: true })
+              : [];
+            const timedCueContract = promptCueMap.length
+              ? [
+                "AUTHORITATIVE TIMED LYRIC CUES — use these exact intervals; do not repeat the complete lyric in every shot:",
+                ...promptCueMap.map((cue, cueIndex) => {
+                  const start = Number(cue?.start);
+                  const end = Number(cue?.end);
+                  const range = Number.isFinite(start) && Number.isFinite(end) && end > start
+                    ? `${start.toFixed(3)}s-${end.toFixed(3)}s`
+                    : `cue ${cueIndex + 1}`;
+                  return cue.type === "instrumental"
+                    ? `[${range}] INSTRUMENTAL: no singing or lip-sync; mouth stays closed or naturally relaxed.`
+                    : `[${range}] ${cue.singer_name || "the assigned singer"} sings only: "${flattenLyricForPrompt(cue.text)}".`;
+                }),
+                "Each cue is authoritative. Assign only the words in that interval to that shot."
+              ].join("\n")
+              : "";
+            const sceneForPrompt = segment
+              ? {
+                ...scene,
+                lyrics: timedCueContract || scene.lyrics || scene.lyric_text || "",
+                timed_lyric_cue_contract: timedCueContract,
+                lyric_cue_map: promptCueMap,
+                performer_assignment: {
+                  singing: Array.from(new Set(promptCueMap.filter((cue) => cue.type !== "instrumental").map((cue) => cue.singer_name).filter(Boolean))),
+                  cue_map: promptCueMap,
+                },
+                lyric_shot_word_timing_enabled: Boolean(segment.lyric_shot_word_timing_enabled),
+                lyric_performance_mode: String(segment.lyric_performance_mode || ""),
+              }
+              : scene;
+            const promptStoryboardPayload = storyboardGptPayload(storyboardState, [sceneForPrompt]);
             const data = miniMaxProject
-              ? await createStoryboardVideoPromptViaBuilder(scene, {
+              ? await createStoryboardVideoPromptViaBuilder(sceneForPrompt, {
                 unloadAfter: index === targetScenes.length - 1,
-                storyboardPayload: storyboardGptPayload(storyboardState, [scene]),
+                storyboardPayload: promptStoryboardPayload,
                 progress,
                 progressPercent: base,
                 progressLabel: label,
@@ -54470,7 +54767,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
               : await postJson("/vrgdg/storyboard/gemma_video_prompt", {
                 ...(storyboardState.gemmaSettings || {}),
                 unload_after: index === targetScenes.length - 1,
-                storyboard_payload: storyboardGptPayload(storyboardState, [scene]),
+                storyboard_payload: promptStoryboardPayload,
                 max_new_tokens: 1400,
                 temperature: 0.35,
                 top_p: 0.90,
@@ -54480,7 +54777,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
               : segment ? finalizeVideoPromptDraftOnly(segment, data.prompt) : String(data.prompt || "").trim();
             const prompt = miniMaxProject
               ? finalizedPrompt
-              : applyWizardStoryboardTriggerPhrases(finalizedPrompt, scene);
+              : applyWizardStoryboardTriggerPhrases(finalizedPrompt, sceneForPrompt);
             if (!prompt) throw new Error(`${scene.label || `Scene ${index + 1}`}: ${runnerGenericName} returned an empty Storyboard video prompt.`);
             if (segment) {
               if (miniMaxProject) {

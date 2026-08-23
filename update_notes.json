@@ -3,6 +3,49 @@
   "product": "AI Video Builder",
   "releases": [
     {
+      "id": "2026-08-23-pr158-reference-cues-and-project-save-reliability",
+      "version": "2026.08.23-pr158-reference-cues-and-project-save-reliability",
+      "date": "2026-08-23",
+      "title": "Complete reference saves, Singer cue timing, and safer MiniMax prompts",
+      "commit": "d095329",
+      "restart_required": true,
+      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/pull/158",
+      "sections": [
+        {
+          "title": "Added",
+          "items": [
+            "Complete Reference Builder exports now save the canonical manifest, subject and location descriptions, reference-image mappings, scene-to-subject mappings, scene-to-location mappings, and non-empty project context files.",
+            "Autosave, Quick Save, Save Reference Builder, session restoration, and saved-project validation now share the same atomic save transaction and preserve the complete reference-builder state.",
+            "MiniMax H3 prompt requests now include the authoritative Singer assignment, lyric cue map, performer assignment, and an audit record containing the literal instruction sent to the LLM and its raw response."
+          ]
+        },
+        {
+          "title": "Improved",
+          "items": [
+            "Manual Singer cue maps are reused when complete; automatic timing no longer reruns Whisper for scenes that already have valid cue timing.",
+            "Cue-map prompting now preserves exact vocal-shot order, assigns the correct Singer, keeps instrumental shots non-vocal, and places canonical <d>[English] ...</d> cues in the final MiniMax H3 prompt.",
+            "MiniMax shot assembly now owns cut labels and timing, removes malformed repeated CUT TO wording, preserves detailed cinematic shot prose, and avoids duplicate lyric wording without deleting camera, blocking, wardrobe, environment, or performer action detail."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Fixed saved projects missing subject_location/reference_descriptions.json, the subject_location export structure, flux_reference_builder state, reference mappings, and project context contents.",
+            "Fixed per-scene and batch MiniMax prompt generation paths so explicit Singer cue maps are not silently dropped before the LLM request.",
+            "Fixed lyric cleanup that could remove vocal verbs or split quoted lyric punctuation into broken shot fragments such as `\"; S2 ...`."
+          ]
+        },
+        {
+          "title": "Compatibility Notes",
+          "items": [
+            "Restart ComfyUI and hard-refresh the browser after updating so the revised Python save routes and Builder JavaScript are loaded.",
+            "Existing manually completed cue maps are preserved and reused. Whisper runs only when the scene does not already have complete valid cue timing.",
+            "The exact LLM instruction and raw response can be reviewed through the saved MiniMax request audit for each generated scene."
+          ]
+        }
+      ]
+    },
+    {
       "id": "2026-08-21-pr151-minimax-qwen-save-fixes",
       "version": "2026.08.21-pr151-minimax-qwen-save-fixes",
       "date": "2026-08-21",

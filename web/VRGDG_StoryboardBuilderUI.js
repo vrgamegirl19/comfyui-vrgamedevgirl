@@ -2350,6 +2350,9 @@ function normalizeScene(scene = {}, index = 0) {
     : String(scene.lyric_singers || scene.singers || "").split(/[,;\n]+/).map((item) => item.trim()).filter(Boolean);
   const lyricNoLipSync = Boolean(scene.lyric_no_lip_sync || scene.no_lip_sync || scene.noLipSync || scene.broll || scene.b_roll);
   const lyricInstrumental = Boolean(scene.lyric_instrumental || scene.instrumental || storyboardIsInstrumentalText(lyrics));
+  const lyricCueMap = Array.isArray(scene.lyric_cue_map)
+    ? scene.lyric_cue_map.map((cue) => ({ ...cue }))
+    : [];
   const noCharacterPresent = Boolean(scene.no_character_present || scene.noCharacterPresent || scene.no_subject || scene.no_visible_subject);
   const extraSubjects = noCharacterPresent || !Array.isArray(scene.extra_subjects || scene.extraSubjects)
     ? []
@@ -2375,6 +2378,10 @@ function normalizeScene(scene = {}, index = 0) {
     flf_carry_forward: scene.flf_carry_forward || scene.carry_forward_state || "",
     performance_mode: normalizeStoryboardPerformanceMode(scene.performance_mode || scene.performanceMode || scene.video_performance_mode || scene.videoPerformanceMode),
     lyric_singers: lyricSingers,
+    lyric_cue_map: lyricCueMap,
+    lyric_shot_word_timing_enabled: Boolean(scene.lyric_shot_word_timing_enabled),
+    lyric_performance_mode: String(scene.lyric_performance_mode || ""),
+    timed_lyric_cue_contract: String(scene.timed_lyric_cue_contract || ""),
     speaker_assignments: normalizeStoryboardSpeakerAssignments(scene.speaker_assignments || scene.minimax_speaker_assignments || scene.dialogue_cues),
     lyric_no_lip_sync: lyricNoLipSync,
     lyric_instrumental: lyricInstrumental,
@@ -3097,6 +3104,10 @@ function storyboardScenesForGpt(state) {
         no_lip_sync: noLipSync,
         should_lip_sync: shouldLipSync,
         no_character_present: noCharacterPresent,
+        lyric_cue_map: normalized.lyric_cue_map,
+        lyric_shot_word_timing_enabled: normalized.lyric_shot_word_timing_enabled,
+        lyric_performance_mode: normalized.lyric_performance_mode,
+        timed_lyric_cue_contract: normalized.timed_lyric_cue_contract,
       },
       vocal_direction: {
         mode: imageMode
@@ -3339,6 +3350,7 @@ function openStoryboardBuilder(payload = {}) {
     onApplyIdLoraDialoguePlan: typeof payload.onApplyIdLoraDialoguePlan === "function" ? payload.onApplyIdLoraDialoguePlan : null,
     onApplyMiniMaxDialoguePlan: typeof payload.onApplyMiniMaxDialoguePlan === "function" ? payload.onApplyMiniMaxDialoguePlan : null,
     onCreateVideoPrompt: typeof payload.onCreateVideoPrompt === "function" ? payload.onCreateVideoPrompt : null,
+    onBeforeCreateVideoPrompt: typeof payload.onBeforeCreateVideoPrompt === "function" ? payload.onBeforeCreateVideoPrompt : null,
     query: "",
     selected: new Set(),
     saving: false,
@@ -7587,6 +7599,14 @@ function openStoryboardBuilder(payload = {}) {
     try {
       progress?.set(`${progressLabel || normalized.label || `Scene ${normalized.scene_number}`}: sending scene card to ${runnerName}...\nThis can take a minute depending on runner/model speed.`, progressPercent);
       const callbackPayload = storyboardGptPayload(state, [scene]);
+      if (state.onBeforeCreateVideoPrompt) {
+        await state.onBeforeCreateVideoPrompt(scene, {
+          storyboardPayload: callbackPayload,
+          progress,
+          progressPercent,
+          progressLabel,
+        });
+      }
       if (state.projectVideoEngine === "minimax_h3" && !state.onCreateVideoPrompt) {
         throw new Error("Open Storyboard Builder from the Video Builder so MiniMax can use the scene's H3 mode, ordered references, exact timing, and LLM instructions.");
       }
