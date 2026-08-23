@@ -40540,22 +40540,27 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     // `"; S2 plays bass...`. Remove only the duplicate lyric/tag/timing
     // material, then append the one canonical cue below.
     const cueText = miniMaxH3CapitalizeCueText(miniMaxH3PunctuatedCueText(cue.text));
+    // Remove a previously generated canonical contract before adding the
+    // authoritative one below. This keeps retries idempotent.
+    text = text.replace(/<Subject\s+\d+>[^.\n]*?is the only visible performer singing and lip-syncing[\s\S]*?every other visible performer remains silent\.?/gi, "");
     const cueVariants = [String(cue.text || "").trim(), cueText.replace(/[.!?…]+$/, "").trim()]
       .filter(Boolean)
       .sort((left, right) => right.length - left.length);
     for (const variant of cueVariants) {
       const escapedCue = escapeRegExp(variant);
+      const timing = "(?:\\d+(?:\\.\\d+)?s?\\s*(?:to|[–—-])\\s*\\d+(?:\\.\\d+)?s?)";
+      const vocalVerb = "(?:lip[ -]?sync(?:s|ing|ed)?|sing(?:s|ing)?|perform(?:s|ing|ed)?|speak(?:s|ing)?)";
+      // Preserve the sentence and its timing, replacing only the repeated
+      // lyric wording. For example: `she lip-syncs only \"line\" from
+      // 0.940s–1.800s` becomes `she performs the assigned vocal cue from
+      // 0.940s–1.800s`.
       text = text
-        .replace(new RegExp(`<d>\\s*(?:\\[[^\\]]+\\]\\s*)?${escapedCue}[.!?…]*\\s*<\\/d>`, "gi"), "")
-        .replace(new RegExp(`[“"']\\s*${escapedCue}[.!?…]*\\s*[”"']`, "gi"), "")
-        .replace(new RegExp(`\\bfrom\\s+(?:\\d+(?:\\.\\d+)?s?\\s*[–—-]\\s*\\d+(?:\\.\\d+)?s?|<Audio\\s+1>)`, "gi"), "")
-        .replace(new RegExp(`\\b(?:lip[ -]?sync(?:s|ing|ed)?|sing(?:s|ing|er|ers)?|perform(?:s|ing|ed)?|speak(?:s|ing|er|ers)?)\\s+only\\s*`, "gi"), "")
-        .replace(new RegExp(`\\b(?:lip[ -]?sync(?:s|ing|ed)?|sing(?:s|ing|er|ers)?|perform(?:s|ing|ed)?|speak(?:s|ing|er|ers)?)\\s+`, "gi"), "");
+        .replace(new RegExp(`\\b${vocalVerb}\\s+(?:only\\s+)?[“"']\\s*${escapedCue}[.!?…]*\\s*[”"']\\s+from\\s+(${timing})`, "gi"), "performs the assigned vocal cue from $1")
+        .replace(new RegExp(`<d>\\s*(?:\\[[^\\]]+\\]\\s*)?${escapedCue}[.!?…]*\\s*<\\/d>`, "gi"), "the assigned vocal cue")
+        .replace(new RegExp(`[“"']\\s*${escapedCue}[.!?…]*\\s*[”"']`, "gi"), "the assigned vocal cue");
     }
     let clean = text
-      .replace(/<d>[\s\S]*?<\/d>/gi, "")
-      .replace(/\b(?:from|at)\s+\d+(?:\.\d+)?s?\s*[–—-]\s*\d+(?:\.\d+)?s?/gi, "")
-      .replace(/\b(?:otherwise|outside)\s+(?:her|his|their|the performer['’]s?)\s+(?:mouth|lips?|jaw)[^.!?;]*[.!?]?/gi, "")
+      .replace(/<d>[\s\S]*?<\/d>/gi, "the assigned vocal cue")
       .replace(/\s+([,.;!?])/g, "$1")
       .replace(/([.!?])\s*;+/g, "$1")
       .replace(/\s{2,}/g, " ")

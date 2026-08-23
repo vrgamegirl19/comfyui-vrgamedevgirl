@@ -96,6 +96,9 @@ class BuilderReferenceSaveAndCueTests(unittest.TestCase):
         # Whole-sentence vocal deletion caused the observed `\"; S2 ...` corruption.
         vocal_source = source[source.index("const cueText ="):]
         self.assertNotIn("sentences.filter((sentence) => !vocalMarker.test(sentence))", vocal_source)
+        self.assertIn("performs the assigned vocal cue from $1", source)
+        self.assertIn("const vocalVerb", source)
+        self.assertIn("Remove a previously generated canonical contract", source)
 
     def test_minimax_generation_requires_rich_shot_prose(self):
         self.assertIn("SHOT PROSE QUALITY — MANDATORY", UI_SOURCE)
