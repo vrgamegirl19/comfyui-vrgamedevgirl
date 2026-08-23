@@ -40036,6 +40036,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     parts.push(
       `MANDATORY CHARACTER BUDGET: The Builder's required H3 sections use ${characterBudget.fixedChars} characters. The combined text inside all ${shotPlan.length} JSON description values must not exceed ${characterBudget.shotDescriptionChars} characters total (about ${perShotBudget} per shot). Stay within this combined limit; be concise without omitting required subjects, actions, camera direction, or vocal cues. Do not spend this budget repeating subject definitions, retention, soundtrack preservation, timestamps, or section boilerplate because the Builder adds those separately.`
     );
+    parts.push(
+      "SHOT PROSE QUALITY — MANDATORY: Preserve rich, concrete visual detail in every shot. Write complete grammatical cinematic prose, not notes, labels, telegraphic shorthand, compressed summaries, or fragments. Do not replace named subjects with S1/S2 shorthand, reduce actions to words such as 'mouths' or 'plays', or discard wardrobe, environment, lighting, camera movement, performer actions, and continuity details. Keep all meaningful visual detail from the scene context while avoiding only redundant lyric boilerplate."
+    );
     const cutTimes = shotPlan.slice(1).map((shot) => shot.timecode);
     if (cutTimes.length) {
       parts.push(`Builder cut times for your planning only: ${cutTimes.join(", ")}. Do not write these times.`);
@@ -41444,7 +41447,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       ? `AUTHORITATIVE PERFORMER / VOCAL CUE MAP — obey exactly; this is part of the user assignment, not optional scene flavor:\n${vocalCueContract}`
       : "";
     const requestedMaxNewTokens = Number(options.maxNewTokens ?? 4000);
-    let targetLimit = 6300;
+    // Give the creative shot descriptions the full H3 limit on the first
+    // attempt. Starting at 6300 made Gemma over-compress rich shot prose into
+    // telegraphic summaries even when the final prompt could fit under 7000.
+    let targetLimit = 7000;
     let lastOversizeError = null;
     for (let attempt = 1; attempt <= 3; attempt += 1) {
       const characterBudget = miniMaxH3PromptCharacterBudget(segment, mode, targetLimit);

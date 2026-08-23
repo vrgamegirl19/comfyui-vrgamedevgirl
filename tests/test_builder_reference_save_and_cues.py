@@ -97,6 +97,11 @@ class BuilderReferenceSaveAndCueTests(unittest.TestCase):
         vocal_source = source[source.index("const cueText ="):]
         self.assertNotIn("sentences.filter((sentence) => !vocalMarker.test(sentence))", vocal_source)
 
+    def test_minimax_generation_requires_rich_shot_prose(self):
+        self.assertIn("SHOT PROSE QUALITY — MANDATORY", UI_SOURCE)
+        self.assertIn("not notes, labels, telegraphic shorthand, compressed summaries, or fragments", UI_SOURCE)
+        self.assertIn("let targetLimit = 7000", UI_SOURCE)
+
 
 if __name__ == "__main__":
     unittest.main()
