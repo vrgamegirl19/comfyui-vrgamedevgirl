@@ -985,6 +985,57 @@ def _storyboard_prompt_mentions_visible_face(prompt):
     ))
 
 
+def _storyboard_timed_lyric_contract(scene):
+    if not isinstance(scene, dict):
+        return ""
+    vocal_status = scene.get("vocal_status") if isinstance(scene.get("vocal_status"), dict) else {}
+    cues = scene.get("lyric_cue_map") or vocal_status.get("lyric_cue_map") or []
+    if not isinstance(cues, list) or not cues:
+        return _clean_scene_text(
+            scene.get("timed_lyric_cue_contract") or vocal_status.get("timed_lyric_cue_contract") or "",
+            12000,
+        )
+    rows = []
+    starts = []
+    for index, cue in enumerate(cues, start=1):
+        if not isinstance(cue, dict):
+            continue
+        try:
+            start = float(cue.get("start"))
+            end = float(cue.get("end"))
+        except (TypeError, ValueError):
+            continue
+        if not math.isfinite(start) or not math.isfinite(end) or end <= start:
+            continue
+        cue_type = "instrumental" if str(cue.get("type") or "").strip().lower() == "instrumental" else "vocal"
+        starts.append(start)
+        if cue_type == "instrumental":
+            rows.append(
+                f"[Cue {index}] {start:.3f}s-{end:.3f}s: INSTRUMENTAL. No visible singing or lip-sync; mouths remain closed or naturally relaxed."
+            )
+            continue
+        lyric = _clean_scene_text(cue.get("text") or "", 1200)
+        if not lyric:
+            continue
+        singer = _clean_scene_text(cue.get("singer_name") or "the assigned singer", 160)
+        rows.append(
+            f'[Cue {index}] {start:.3f}s-{end:.3f}s: {singer} sings only <d>[English] {lyric}</d>. Do not add words from any other cue.'
+        )
+    if not rows:
+        return ""
+    cut_times = ", ".join(f"{value:.3f}s" for value in starts[1:])
+    cut_rule = (
+        f"Create exactly {len(rows)} chronological shot intervals with cuts at {cut_times}."
+        if cut_times else
+        "Create one continuous shot interval for this cue."
+    )
+    return "\n".join([
+        "AUTHORITATIVE WHISPER-TIMED LYRIC CUE CONTRACT — this overrides the general cut-frequency plan and full scene lyric:",
+        cut_rule,
+        *rows,
+        "Never repeat the complete scene lyric in every shot. Each shot may contain only the lyric assigned to its own timed cue; instrumental cues contain no visible singing.",
+    ])
+
 def _storyboard_scene_is_visible_singing(scene):
     if not isinstance(scene, dict) or not _storyboard_scene_has_visible_character(scene):
         return False
@@ -1415,6 +1466,7 @@ def _build_storyboard_video_prompt(payload):
             or payload.get("video_type")
             or payload.get("videoType")
         )
+        timed_lyric_contract = _storyboard_timed_lyric_contract(selected_scene)
         pronouns = _single_subject_pronouns(selected_scene)
         if pronouns:
             pronoun_contract = (
@@ -1423,7 +1475,13 @@ def _build_storyboard_video_prompt(payload):
             )
         else:
             pronoun_contract = "Use pronouns and singular/plural agreement that exactly match the mapped subject count."
-        if _storyboard_scene_is_visible_singing(selected_scene):
+        if timed_lyric_contract:
+            vocal_contract = (
+                "This scene uses an authoritative Whisper-timed lyric cue map. Visible singing occurs only inside vocal cue intervals, "
+                "using only the words assigned to that interval. Instrumental intervals have no visible singing or lip-sync. "
+                "Never repeat or restart the complete scene lyric in each shot."
+            )
+        elif _storyboard_scene_is_visible_singing(selected_scene):
             vocal_contract = (
                 "This is a visible singing/lip-sync scene. The performer must visibly vocalize the supplied lyric in sync with the audio, "
                 "using natural mouth, lip, cheek, and jaw movement. Never describe closed, still, sealed, relaxed-closed, or unmoving lips."
@@ -1469,10 +1527,11 @@ def _build_storyboard_video_prompt(payload):
         user_notes = "\n\n".join(
             part for part in [
                 ltx_one_pass_contract,
-                f"MANDATORY editing / cut plan:\n{_clean_scene_text((selected_scene.get('cut_plan') or {}).get('instruction') if isinstance(selected_scene.get('cut_plan'), dict) else '', 5000)}",
+                timed_lyric_contract,
+                f"MANDATORY editing / cut plan:\n{_clean_scene_text((selected_scene.get('cut_plan') or {}).get('instruction') if isinstance(selected_scene.get('cut_plan'), dict) else '', 5000)}" if not timed_lyric_contract else "",
                 f"Required starting shot:\n{json.dumps(selected_scene.get('starting_shot'), ensure_ascii=False)}" if _storyboard_starting_shot_value(selected_scene) else "",
                 f"Performance mode:\n{performance_mode}",
-                f"Scene lyrics:\n{_clean_scene_text(vocal_status.get('lyric_text') or '', 1000)}",
+                f"Scene lyrics:\n{_clean_scene_text(vocal_status.get('lyric_text') or '', 1000)}" if not timed_lyric_contract else "",
                 f"Lyric section:\n{_clean_scene_text(vocal_status.get('lyric_section') or story_layer.get('lyric_section') or '', 200)}",
                 f"Scene story beat:\n{_clean_scene_text(story_layer.get('scene_story_beat') or '', 1200)}",
                 f"Motion/video summary:\n{motion_summary}",
@@ -1498,6 +1557,9 @@ def _build_storyboard_video_prompt(payload):
             "image_reference_path": image_path,
             "image_reference_data": image_data,
             "user_notes": user_notes,
+            "lyric_text": "" if timed_lyric_contract else _clean_scene_text(vocal_status.get("lyric_text") or "", 1200),
+            "lyric_cue_map": selected_scene.get("lyric_cue_map") or vocal_status.get("lyric_cue_map") or [],
+            "timed_lyric_cue_contract": timed_lyric_contract,
             "performance_mode": performance_mode,
             "subject_context": subject_context,
             "location_context": location_context,

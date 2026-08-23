@@ -17,6 +17,7 @@ import urllib.parse
 import urllib.request
 import tempfile
 import zipfile
+import threading
 
 import folder_paths
 from aiohttp import web
@@ -48,6 +49,7 @@ from .VRGDG_MiniMaxH3PromptInstructions import (
 
 
 _VRGDG_MUSIC_BUILDER_ROUTES_REGISTERED = False
+_BUILDER_SAVE_LOCK = threading.RLock()
 
 _LM_STUDIO_DEFAULT_BASE_URL = "http://127.0.0.1:1234/v1"
 _OWN_SERVER_DEFAULT_BASE_URL = "http://127.0.0.1:8000/v1"
@@ -758,6 +760,135 @@ def _save_builder_project_as(payload):
 
 def _session_path(project_folder):
     return os.path.join(project_folder, "vrgdg_builder_session.json")
+
+
+def _atomic_write_text(path, content, encoding="utf-8"):
+    """Replace one project file atomically, leaving the previous file intact on error."""
+    path = os.path.abspath(path)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=f".{os.path.basename(path)}.", suffix=".tmp", dir=os.path.dirname(path))
+    try:
+        with os.fdopen(fd, "w", encoding=encoding, newline="") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    except Exception:
+        try:
+            os.unlink(temporary)
+        except OSError:
+            pass
+        raise
+
+
+def _atomic_write_json(path, value):
+    _atomic_write_text(path, json.dumps(value, indent=2, ensure_ascii=False) + "\n")
+
+
+def _fallback_project_context_text(filename, session):
+    """Build portable context from canonical session state when no legacy file exists."""
+    session = session if isinstance(session, dict) else {}
+    story_layer = session.get("builder_story_layer") if isinstance(session.get("builder_story_layer"), dict) else {}
+    storyboard = session.get("builder_storyboard_defaults") if isinstance(session.get("builder_storyboard_defaults"), dict) else {}
+    segments = session.get("segments") if isinstance(session.get("segments"), list) else []
+    refs = session.get("flux_reference_builder") if isinstance(session.get("flux_reference_builder"), dict) else {}
+
+    if filename == "storyconcept.txt":
+        lines = []
+        for label, key in (
+            ("Overall story idea", "overall_story_idea"),
+            ("Story arc", "user_story_arc"),
+            ("Song/story brief", "song_story_brief"),
+        ):
+            value = str(story_layer.get(key) or "").strip()
+            if value:
+                lines.append(f"{label}: {value}")
+        if not lines:
+            for index, segment in enumerate(segments, start=1):
+                if not isinstance(segment, dict):
+                    continue
+                value = str(segment.get("scene_summary") or segment.get("timeline_note") or segment.get("t2i_prompt") or "").strip()
+                if value:
+                    lines.append(f"Scene {index}: {value}")
+        return "\n\n".join(lines) or "Use the saved scene prompts, lyrics, and timeline order as the canonical project story."
+
+    if filename == "subjectsandscenes.txt":
+        lines = []
+        for kind, items_key in (("Subject", "subjects"), ("Location", "locations")):
+            items = refs.get(items_key) if isinstance(refs.get(items_key), list) else []
+            for index, item in enumerate(items, start=1):
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("name") or f"{kind} {index}").strip()
+                description = str(item.get("description") or "").strip()
+                lines.append(f"{kind}: {name}" + (f"\n{description}" if description else ""))
+        for map_name in ("subject_scene_map", "performer_scene_map", "scene_map", "scene_trigger_map"):
+            mapping = refs.get(map_name)
+            if isinstance(mapping, dict) and mapping:
+                lines.append(f"{map_name}:\n" + json.dumps(mapping, indent=2, ensure_ascii=False))
+        return "\n\n".join(lines) or "No subjects or locations are currently mapped; use the saved scene records as canonical scene context."
+
+    if filename == "themestyle.txt":
+        lines = []
+        for label, source, key in (
+            ("Image world style", story_layer, "image_world_style"),
+            ("Custom style direction", story_layer, "image_custom_style_direction"),
+            ("Image aesthetic", storyboard, "image_aesthetic"),
+            ("Video style", storyboard, "video_style"),
+            ("Custom video style", storyboard, "video_style_custom"),
+            ("Performance style", storyboard, "performance_style"),
+            ("Global consistency", storyboard, "global_consistency_phrase"),
+        ):
+            value = str(source.get(key) or "").strip()
+            if value:
+                lines.append(f"{label}: {value}")
+        return "\n".join(lines) or "Preserve the visual style, wardrobe, lighting, materials, and continuity established by the saved scene prompts and reference images."
+    return ""
+
+
+def _save_project_context_files(project_folder, session):
+    context_files = session.get("project_context_files") if isinstance(session, dict) else None
+    if not isinstance(context_files, dict):
+        return []
+    context = _context_folder(project_folder)
+    saved = []
+    for filename in ("storyconcept.txt", "subjectsandscenes.txt", "themestyle.txt"):
+        value = str(context_files.get(filename, "") or "").strip()
+        path = os.path.join(context, filename)
+        # A caller that did not manage to read a context file must never erase
+        # an existing non-empty project brief during autosave.
+        if not value and os.path.isfile(path):
+            with open(path, "r", encoding="utf-8-sig", errors="replace") as handle:
+                value = handle.read().strip()
+        if not value:
+            value = _fallback_project_context_text(filename, session)
+        _atomic_write_text(path, value.rstrip() + "\n")
+        saved.append(path)
+    return saved
+
+
+def _validate_saved_project(project_folder, session, context_paths):
+    required = [_session_path(project_folder), _srt_path(project_folder)]
+    required.extend(context_paths or [])
+    refs = session.get("flux_reference_builder") if isinstance(session, dict) else None
+    if isinstance(refs, dict):
+        required.append(os.path.join(project_folder, "subject_location", "reference_descriptions.json"))
+    missing = [path for path in required if not os.path.isfile(path)]
+    if missing:
+        raise IOError("Project save validation failed; missing files: " + ", ".join(missing))
+    empty = [os.path.basename(path) for path in (context_paths or []) if os.path.getsize(path) == 0]
+    if empty:
+        raise IOError("Project save validation failed; empty context files: " + ", ".join(empty))
+    if isinstance(refs, dict):
+        with open(required[-1], "r", encoding="utf-8-sig") as handle:
+            manifest = json.load(handle)
+        if not isinstance(manifest, dict) or not isinstance(manifest.get("subjects"), list) or not isinstance(manifest.get("locations"), list):
+            raise IOError("Project save validation failed; reference-builder manifest is invalid.")
+        expected = json.loads(json.dumps(refs, ensure_ascii=False))
+        expected.setdefault("subjects", [])
+        expected.setdefault("locations", [])
+        if manifest != expected:
+            raise IOError("Project save validation failed; reference-builder manifest does not match the saved session state.")
 
 
 def _scene_notes_path(project_folder):
@@ -1816,6 +1947,19 @@ def _rehydrate_builder_session(project_folder, session):
 
     session = rebase_nested_project_paths(session)
     session["project_folder"] = project_folder
+    manifest_path = os.path.join(project_folder, "subject_location", "reference_descriptions.json")
+    if not isinstance(session.get("flux_reference_builder"), dict) and os.path.isfile(manifest_path):
+        try:
+            with open(manifest_path, "r", encoding="utf-8-sig") as handle:
+                manifest = json.load(handle)
+            if isinstance(manifest, dict) and isinstance(manifest.get("subjects"), list) and isinstance(manifest.get("locations"), list):
+                session["flux_reference_builder"] = manifest
+        except Exception as exc:
+            print(f"[VRGDG Music Builder] Reference-builder manifest restore skipped: {exc}")
+    context = _context_folder(project_folder)
+    session.setdefault("theme_style_path", os.path.join(context, "themestyle.txt"))
+    session.setdefault("story_idea_path", os.path.join(context, "storyconcept.txt"))
+    session.setdefault("subject_scene_path", os.path.join(context, "subjectsandscenes.txt"))
     session["audio_path"] = _resolve_project_asset_path(project_folder, old_project_folder, session.get("audio_path", ""))
     for key in ("prompt_json_path", "theme_style_path", "story_idea_path", "subject_scene_path"):
         session[key] = _resolve_project_asset_path(project_folder, old_project_folder, session.get(key, ""))
@@ -6202,6 +6346,29 @@ def _generate_builder_t2v_prompt(payload):
     image_reference_path = str(payload.get("image_reference_path", "") or "").strip().strip('"')
     image_reference_data = str(payload.get("image_reference_data", "") or "").strip()
     user_notes = str(payload.get("user_notes", "") or "").strip()
+    lyric_cue_map = payload.get("lyric_cue_map")
+    if isinstance(lyric_cue_map, list) and lyric_cue_map:
+        # Keep the assignment in the actual LLM text context as well as in
+        # the request metadata. This makes the singer/shot handoff auditable
+        # and prevents generic scene context from replacing explicit cue rows.
+        cue_lines = []
+        for index, cue in enumerate(lyric_cue_map, start=1):
+            if not isinstance(cue, dict):
+                continue
+            cue_type = "instrumental" if str(cue.get("type") or "").strip().lower() == "instrumental" else "vocal"
+            singer = str(cue.get("singer_name") or cue.get("speaker_name") or "the assigned singer").strip()
+            text = str(cue.get("text") or "").strip()
+            start = cue.get("start")
+            end = cue.get("end")
+            timing = ""
+            if start is not None and end is not None:
+                timing = f" [{start}s-{end}s]"
+            if cue_type == "instrumental":
+                cue_lines.append(f"Cue {index}{timing}: INSTRUMENTAL — no subject sings, speaks, or lip-syncs.")
+            else:
+                cue_lines.append(f"Cue {index}{timing}: {singer} is the only singer for the exact words: {text!r}.")
+        if cue_lines:
+            user_notes = "\n\n".join(filter(None, [user_notes, "AUTHORITATIVE SINGER CUE MAP — follow exactly:\n" + "\n".join(cue_lines)]))
     subject_context = str(payload.get("subject_context", "") or "").strip()
     location_context = str(payload.get("location_context", "") or "").strip()
     no_character_present = bool(payload.get("no_character_present") or payload.get("no_subject") or payload.get("no_visible_subject"))
@@ -6432,6 +6599,30 @@ def _generate_builder_t2v_prompt(payload):
         f"User motion/camera notes:\n{user_notes or 'Create cinematic camera movement and natural subject/environment motion that fits the scene.'}"
     )
 
+    llm_request_audit_path = ""
+    llm_request_audit = None
+    if is_minimax_h3_prompt:
+        project_folder = os.path.abspath(str(payload.get("project_folder") or "").strip().strip('"')) if payload.get("project_folder") else ""
+        if project_folder and os.path.isdir(project_folder):
+            scene_id = _safe_project_name(str(payload.get("scene_id") or "scene"))
+            audit_folder = os.path.join(project_folder, "llm_request_audits")
+            llm_request_audit_path = os.path.join(audit_folder, f"last_minimax_h3_{scene_id}.json")
+            llm_request_audit = {
+                "saved_at": time.time(),
+                "scene_id": str(payload.get("scene_id") or ""),
+                "instruction_key": instruction_key,
+                "performance_mode": str(payload.get("performance_mode") or ""),
+                "audio_mode": str(payload.get("audio_mode") or ""),
+                "singers": payload.get("singers") or [],
+                "lyric_text": str(payload.get("lyric_text") or ""),
+                "lyric_cue_map": payload.get("lyric_cue_map") or [],
+                "performer_assignment": payload.get("performer_assignment") or {},
+                "scene_concept": scene_prompt,
+                "user_notes": user_notes,
+                "actual_llm_instruction": prompt,
+            }
+            _atomic_write_json(llm_request_audit_path, llm_request_audit)
+
     llm = _builder_local_llm(payload) if has_image_reference and text_runner not in _EXTERNAL_LLM_RUNNERS else None
     model_file = _builder_local_model_file(payload, model_file)
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else ""
@@ -6524,6 +6715,9 @@ def _generate_builder_t2v_prompt(payload):
                 label=f"{prompt_label} Gemma",
                 preserve_paragraphs=is_minimax_h3_prompt,
             )
+        if llm_request_audit is not None:
+            llm_request_audit["raw_llm_response"] = str(text or "")
+            _atomic_write_json(llm_request_audit_path, llm_request_audit)
         text = _clean_lm_studio_plain_text(text) if is_minimax_h3_prompt else _clean_gemma_prompt_text(text)
         if is_minimax_h3_prompt and not is_minimax_h3_shot_json_task:
             text = _format_minimax_h3_prompt(text, payload, instruction_key)
@@ -6549,6 +6743,7 @@ def _generate_builder_t2v_prompt(payload):
             "runner": run_info.get("runner", "builtin"),
             "used_image_reference": has_image_reference,
             "unloaded": run_info.get("unloaded", unload_after),
+            "llm_request_audit_path": llm_request_audit_path,
         }
     finally:
         if llm and has_image_reference and unload_after:
@@ -8808,9 +9003,7 @@ def _write_scene_notes_json(project_folder, segments):
         if isinstance(segment, dict):
             notes[f"SceneNote{index}"] = str(segment.get("timeline_note", "") or "")
     path = _scene_notes_path(project_folder)
-    with open(path, "w", encoding="utf-8") as handle:
-        json.dump(notes, handle, indent=2, ensure_ascii=False)
-        handle.write("\n")
+    _atomic_write_json(path, notes)
     return path
 
 
@@ -8843,7 +9036,12 @@ def _save_reference_descriptions(project_folder, session):
     location_dir = os.path.join(root, "location")
     os.makedirs(subject_dir, exist_ok=True)
     os.makedirs(location_dir, exist_ok=True)
-    manifest = {"subjects": [], "locations": []}
+    # Keep the complete normalized catalog, including image paths and every
+    # scene mapping.  The text files below remain convenient human-editable
+    # exports, while this manifest is the lossless restore source.
+    manifest = json.loads(json.dumps(refs, ensure_ascii=False))
+    manifest.setdefault("subjects", [])
+    manifest.setdefault("locations", [])
     for manifest_key, folder in (("subjects", subject_dir), ("locations", location_dir)):
         items = refs.get(manifest_key) if isinstance(refs.get(manifest_key), list) else []
         for index, item in enumerate(items, start=1):
@@ -8851,17 +9049,9 @@ def _save_reference_descriptions(project_folder, session):
                 continue
             name = str(item.get("name") or f"{manifest_key[:-1].title()} {index}").strip()
             description = str(item.get("description") or "").strip()
-            entry = {"name": name, "description": description}
-            if item.get("id"):
-                entry["id"] = str(item["id"])
-            manifest[manifest_key].append(entry)
-            if description:
-                with open(os.path.join(folder, f"{_safe_project_name(name)}.txt"), "w", encoding="utf-8") as handle:
-                    handle.write(description + "\n")
+            _atomic_write_text(os.path.join(folder, f"{_safe_project_name(name)}.txt"), description + ("\n" if description else ""))
     manifest_path = os.path.join(root, "reference_descriptions.json")
-    with open(manifest_path, "w", encoding="utf-8") as handle:
-        json.dump(manifest, handle, indent=2, ensure_ascii=False)
-        handle.write("\n")
+    _atomic_write_json(manifest_path, manifest)
     return manifest_path
 
 
@@ -8903,11 +9093,10 @@ Generated by the Video Builder. The session JSON is the source of truth for Mini
 - `prompts/i2v_prompts.txt` — LTX image-to-video prompts; MiniMax prompts are in the session JSON.
 - `builder_segments.srt`, `SceneNotes.json`, and other shared context files.
 """
-    with open(path, "w", encoding="utf-8") as handle:
-        handle.write(content)
+    _atomic_write_text(path, content)
     return path
 
-def _save_builder_session(payload):
+def _save_builder_session_unlocked(payload):
     audio_raw = str(payload.get("audio_path", "") or "").strip().strip('"')
     audio_path = _resolve_existing_file(audio_raw, "Audio file") if audio_raw else ""
     project_folder = str(payload.get("project_folder", "") or "").strip().strip('"')
@@ -8923,7 +9112,7 @@ def _save_builder_session(payload):
     os.makedirs(_prompts_folder(project_folder), exist_ok=True)
     os.makedirs(_context_folder(project_folder), exist_ok=True)
 
-    session = payload.get("session") if isinstance(payload.get("session"), dict) else {}
+    session = dict(payload.get("session")) if isinstance(payload.get("session"), dict) else {}
     segments = session.get("segments", [])
     if not isinstance(segments, list):
         segments = []
@@ -8933,6 +9122,20 @@ def _save_builder_session(payload):
     # loses at least half of two or more existing lyric lines. A deliberate bulk
     # clearing tool can opt out explicitly; normal one-line edits remain valid.
     session_path = _session_path(project_folder)
+    if isinstance(payload.get("project_context_files"), dict):
+        session["project_context_files"] = dict(payload["project_context_files"])
+    # Autosave requests can race a reference-builder panel update. If the
+    # incoming snapshot has a null catalog, retain the last known catalog
+    # instead of turning a valid project into a prompt-only project.
+    if session.get("flux_reference_builder") is None and os.path.isfile(session_path):
+        try:
+            with open(session_path, "r", encoding="utf-8-sig") as handle:
+                previous = json.load(handle)
+            previous_refs = previous.get("flux_reference_builder") if isinstance(previous, dict) else None
+            if isinstance(previous_refs, dict):
+                session["flux_reference_builder"] = previous_refs
+        except Exception as exc:
+            print(f"[VRGDG Music Builder] Previous reference-builder state could not be recovered: {exc}")
     if not bool(session.get("allow_bulk_lyric_clear")) and os.path.isfile(session_path):
         try:
             with open(session_path, "r", encoding="utf-8-sig") as handle:
@@ -9002,11 +9205,8 @@ def _save_builder_session(payload):
 
     srt_text = _segments_to_srt(segments)
     _backup_session_file(project_folder)
-    with open(_session_path(project_folder), "w", encoding="utf-8") as handle:
-        json.dump(session, handle, indent=2, ensure_ascii=False)
-        handle.write("\n")
-    with open(_srt_path(project_folder), "w", encoding="utf-8") as handle:
-        handle.write(srt_text)
+    _atomic_write_text(_srt_path(project_folder), srt_text)
+    context_paths = _save_project_context_files(project_folder, session)
     reference_descriptions_path = _save_reference_descriptions(project_folder, session)
     minimax_project_index_path = _write_minimax_project_index(project_folder, session)
     model_defaults_path = _save_model_defaults(session)
@@ -9019,10 +9219,13 @@ def _save_builder_session(payload):
             t2i_lines.append(str(segment.get("t2i_prompt", "")).strip())
         if str(segment.get("i2v_prompt", "")).strip():
             i2v_lines.append(str(segment.get("i2v_prompt", "")).strip())
-    with open(os.path.join(_prompts_folder(project_folder), "t2i_prompts.txt"), "w", encoding="utf-8") as handle:
-        handle.write("\n\n".join(t2i_lines).strip() + ("\n" if t2i_lines else ""))
-    with open(os.path.join(_prompts_folder(project_folder), "i2v_prompts.txt"), "w", encoding="utf-8") as handle:
-        handle.write("\n\n".join(i2v_lines).strip() + ("\n" if i2v_lines else ""))
+    _atomic_write_text(os.path.join(_prompts_folder(project_folder), "t2i_prompts.txt"), "\n\n".join(t2i_lines).strip() + ("\n" if t2i_lines else ""))
+    _atomic_write_text(os.path.join(_prompts_folder(project_folder), "i2v_prompts.txt"), "\n\n".join(i2v_lines).strip() + ("\n" if i2v_lines else ""))
+    # The session is the transaction commit marker. All derived project files
+    # are atomically replaced first, then the canonical session is replaced
+    # last so a failed save cannot advertise an uncommitted snapshot.
+    _atomic_write_json(_session_path(project_folder), session)
+    _validate_saved_project(project_folder, session, context_paths)
 
     return {
         "project_folder": project_folder,
@@ -9031,6 +9234,7 @@ def _save_builder_session(payload):
         "images_folder": _images_folder(project_folder),
         "prompts_folder": _prompts_folder(project_folder),
         "context_folder": _context_folder(project_folder),
+        "context_paths": context_paths,
         "full_lyrics_path": full_lyrics_path,
         "model_defaults_path": model_defaults_path,
         "scene_notes_path": scene_notes_path,
@@ -9038,6 +9242,14 @@ def _save_builder_session(payload):
         "minimax_project_index_path": minimax_project_index_path,
         "session": session,
     }
+
+
+def _save_builder_session(payload):
+    # Autosave, Quick Save, and Reference Builder Save share this transaction.
+    # Serialize them so their individually atomic file replacements cannot
+    # interleave into a mixed-generation project snapshot.
+    with _BUILDER_SAVE_LOCK:
+        return _save_builder_session_unlocked(payload)
 
 
 def _prepare_builder_project_export(project_folder):
