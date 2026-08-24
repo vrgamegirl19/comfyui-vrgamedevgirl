@@ -2338,6 +2338,19 @@ async function postJson(url, payload, timeoutMs = 120000) {
   }
 }
 
+// Session snapshots must commit in the same order they were created. Lyric
+// edits and performer assignments can trigger autosave while Quick Save is
+// also in flight; without this queue an older snapshot can finish last and
+// restore stale lyrics/cast assignments.
+let builderSessionSaveQueue = Promise.resolve();
+
+function saveBuilderSessionJson(payload, timeoutMs = 60000) {
+  const save = () => postJson("/vrgdg/music_builder/save_session", payload, timeoutMs);
+  const result = builderSessionSaveQueue.then(save, save);
+  builderSessionSaveQueue = result.catch(() => null);
+  return result;
+}
+
 const GEMMA_VIDEO_PROMPT_TIMEOUT_MS = 600000;
 const GEMMA_VIDEO_ENHANCE_TIMEOUT_MS = 300000;
 
@@ -31619,6 +31632,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           if (present.size) refs.subject_scene_map[segment.id] = Array.from(present);
           syncPerformerInspectorForSegment(segment);
           renderMapping();
+          autoSaveSessionQuiet("performer assignment changed").catch(() => null);
         };
         const selectedPerformerIds = Array.from(performerSelect.selectedOptions || []).map((option) => option.value);
         const performerPreview = markVisualPicker(makeMappingPreview(subjectPreviewItems(new Set(selectedPerformerIds)), "Choose singer / speaker"));
@@ -31637,6 +31651,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
             if (present.size) refs.subject_scene_map[segment.id] = Array.from(present);
             syncPerformerInspectorForSegment(segment);
             renderMapping();
+            autoSaveSessionQuiet("performer assignment changed").catch(() => null);
           },
         });
         performerPanel.append(performerTitle, performerSelect, performerPreview);
@@ -36550,7 +36565,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         return null;
       }
       await persistIngredientsSheetImages(projectFolder);
-      const data = await postJson("/vrgdg/music_builder/save_session", {
+      const data = await saveBuilderSessionJson({
         audio_path: audioInput.value,
         project_folder: projectFolder,
         session: currentSessionData(),
@@ -36718,7 +36733,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const projectFolder = activeProjectFolderForSave();
     if (!projectFolder) throw new Error("Create or load a project before rendering scene videos.");
     await persistIngredientsSheetImages(projectFolder);
-    const data = await postJson("/vrgdg/music_builder/save_session", {
+    const data = await saveBuilderSessionJson({
       audio_path: audioInput.value,
       project_folder: projectFolder,
       session: currentSessionData(),
@@ -36754,7 +36769,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         return false;
       }
       await persistIngredientsSheetImages(projectFolder);
-      const data = await postJson("/vrgdg/music_builder/save_session", {
+      const data = await saveBuilderSessionJson({
         audio_path: audioInput.value,
         project_folder: projectFolder,
         session: currentSessionData(),
