@@ -2343,8 +2343,14 @@ async function postJson(url, payload, timeoutMs = 120000) {
 // also in flight; without this queue an older snapshot can finish last and
 // restore stale lyrics/cast assignments.
 let builderSessionSaveQueue = Promise.resolve();
+let builderSessionSaveRevision = 0;
 
 function saveBuilderSessionJson(payload, timeoutMs = 60000) {
+  const revision = ++builderSessionSaveRevision;
+  payload.session = {
+    ...(payload.session || {}),
+    builder_save_revision: revision,
+  };
   const save = () => postJson("/vrgdg/music_builder/save_session", payload, timeoutMs);
   const result = builderSessionSaveQueue.then(save, save);
   builderSessionSaveQueue = result.catch(() => null);
@@ -36926,6 +36932,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         project_folder: folder,
       });
       const session = data.session || {};
+      builderSessionSaveRevision = Math.max(
+        builderSessionSaveRevision,
+        Number(session.builder_save_revision || 0) || 0,
+      );
       faceFixTool.reset?.();
       pushHistory();
       state.segments = Array.isArray(session.segments) ? session.segments : [];
@@ -43023,6 +43033,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const segments = allEditableSegments()
         .slice()
         .sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
+      // Storyboard prompt/beat application is allowed to update visual fields,
+      // but it must never import lyric text from its older storyboard payload.
+      // Keep the live line-review text as the source of truth for this operation.
+      const lyricTextBySegmentId = new Map(
+        segments.map((segment) => [String(segment.id || ""), String(segment.lyric_text || "")]),
+      );
       let applied = 0;
       let storyChanged = false;
       let facialChanged = false;
@@ -43152,6 +43168,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         if (["i2v", "id_lora", "t2v", "rtv", "ingredients"].includes(videoType)) segment.video_prompt_type = videoType;
         if (String(scene.shot_type || "").trim()) segment.shot_type = String(scene.shot_type || "").trim();
         if (String(scene.camera_motion || "").trim()) segment.camera_motion = String(scene.camera_motion || "").trim();
+      }
+      for (const segment of segments) {
+        const savedLyricText = lyricTextBySegmentId.get(String(segment.id || ""));
+        if (savedLyricText !== undefined) segment.lyric_text = savedLyricText;
       }
       if (updates.story_layer || updates.storyLayer) {
         state.builderStoryLayer = normalizeBuilderStoryLayer(updates.story_layer || updates.storyLayer);

@@ -9119,6 +9119,21 @@ def _save_builder_session_unlocked(payload):
     session_path = _session_path(project_folder)
     if isinstance(payload.get("project_context_files"), dict):
         session["project_context_files"] = dict(payload["project_context_files"])
+    incoming_revision = int(session.get("builder_save_revision") or 0)
+    if incoming_revision > 0 and os.path.isfile(session_path):
+        try:
+            with open(session_path, "r", encoding="utf-8-sig") as handle:
+                existing_session = json.load(handle)
+            existing_revision = int(existing_session.get("builder_save_revision") or 0) if isinstance(existing_session, dict) else 0
+            if existing_revision > incoming_revision:
+                print(
+                    "[VRGDG Music Builder] Ignored stale session snapshot: "
+                    f"incoming revision {incoming_revision} < saved revision {existing_revision}."
+                )
+                session = existing_session
+                segments = session.get("segments", []) if isinstance(session.get("segments"), list) else []
+        except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            print(f"[VRGDG Music Builder] Save revision check skipped: {exc}")
     # Autosave requests can race a reference-builder panel update. If the
     # incoming snapshot has a null catalog, retain the last known catalog
     # instead of turning a valid project into a prompt-only project.
