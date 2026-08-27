@@ -3,6 +3,7 @@ import base64
 import hashlib
 import importlib
 import json
+import math
 import os
 import random
 import re
@@ -3425,6 +3426,17 @@ def _build_minimax_h3_advanced_2pass_api_prompt(payload):
         if value % 32:
             raise ValueError(f"MMH3 {label} must be a multiple of 32 pixels; got {value}.")
 
+    def resolved_dimensions(target_megapixels):
+        ratio_width, ratio_height = _MINIMAX_H3_ASPECT_RATIOS[aspect_ratio]
+        scale = math.sqrt(target_megapixels * 1024 * 1024 / (ratio_width * ratio_height))
+        return (
+            round(ratio_width * scale / 32) * 32,
+            round(ratio_height * scale / 32) * 32,
+        )
+
+    pass1_width, pass1_height = resolved_dimensions(pass1_megapixels)
+    pass2_width, pass2_height = resolved_dimensions(pass2_megapixels)
+
     # Independent target resolutions for the generation and tiled refinement.
     prompt["9300"] = {
         "class_type": "ResolutionSelector",
@@ -3526,6 +3538,10 @@ def _build_minimax_h3_advanced_2pass_api_prompt(payload):
     result["advanced_two_pass"] = {
         "pass1_megapixels": pass1_megapixels,
         "pass2_megapixels": pass2_megapixels,
+        "pass1_width": pass1_width,
+        "pass1_height": pass1_height,
+        "pass2_width": pass2_width,
+        "pass2_height": pass2_height,
         "vram_preset": str(payload.get("advanced_vram_preset") or "12gb"),
         "tile_size_mode": tile_size_mode,
         "tile_width": tile_width,
@@ -3537,6 +3553,29 @@ def _build_minimax_h3_advanced_2pass_api_prompt(payload):
     }
     result.pop("two_pass", None)
     return result
+
+
+def _save_minimax_h3_advanced_2pass_debug_workflow(result, payload):
+    """Persist the exact generated API graph for inspection before execution."""
+    output_folder = os.path.abspath(str(result.get("output_folder") or "").strip())
+    if not output_folder:
+        return ""
+    os.makedirs(output_folder, exist_ok=True)
+    scene_number = _int_payload(payload, "scene_number", 1, 1, 999999)
+    debug_path = os.path.join(
+        output_folder,
+        f"scene_{scene_number:04d}_minimax_h3_advanced_2pass_api.json",
+    )
+    snapshot = {
+        "workflow_type": "minimax_h3_advanced_2pass",
+        "source_template": result.get("workflow_path", ""),
+        "advanced_two_pass": result.get("advanced_two_pass", {}),
+        "prompt": result.get("prompt", {}),
+    }
+    with open(debug_path, "w", encoding="utf-8") as handle:
+        json.dump(snapshot, handle, indent=2, ensure_ascii=False)
+        handle.write("\n")
+    return debug_path
 
 
 def _remap_api_prompt_references(prompt, prefix):
@@ -5466,6 +5505,7 @@ def _ensure_workflow_runner_routes():
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
             result = _build_minimax_h3_advanced_2pass_api_prompt(payload)
+            result["debug_workflow_path"] = _save_minimax_h3_advanced_2pass_debug_workflow(result, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})

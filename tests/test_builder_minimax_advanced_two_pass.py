@@ -1,6 +1,7 @@
 import ast
 import copy
 import json
+import math
 import unittest
 from pathlib import Path
 
@@ -31,8 +32,8 @@ class BuilderMiniMaxAdvancedTwoPassTests(unittest.TestCase):
         self.assertIn('advanced_two_pass_pass2_scheduler: "simple"', BUILDER_SOURCE)
 
     def test_resolutions_are_visible_and_expert_controls_are_collapsed(self):
-        self.assertIn('"Pass 1 resolution (megapixels)"', BUILDER_SOURCE)
-        self.assertIn('"Pass 2 resolution (megapixels)"', BUILDER_SOURCE)
+        self.assertIn('"Pass 1 resolution"', BUILDER_SOURCE)
+        self.assertIn('"Pass 2 resolution"', BUILDER_SOURCE)
         self.assertIn('makeSettingsSection("Pass Sampling (Advanced)"', BUILDER_SOURCE)
         self.assertIn('makeSettingsSection("Hidden MMH3 Advanced Settings"', BUILDER_SOURCE)
 
@@ -69,7 +70,8 @@ class BuilderMiniMaxAdvancedTwoPassTests(unittest.TestCase):
         )
         namespace = {
             "copy": copy,
-            "_MINIMAX_H3_ASPECT_RATIOS": {"16:9 (Widescreen)"},
+            "math": math,
+            "_MINIMAX_H3_ASPECT_RATIOS": {"16:9 (Widescreen)": (16, 9)},
             "_get_comfy_node_mappings": lambda: {
                 name: object() for name in (
                     "MMH3UltimateUpscale",
@@ -100,6 +102,13 @@ class BuilderMiniMaxAdvancedTwoPassTests(unittest.TestCase):
         self.assertEqual(prompt["9306"]["inputs"]["model"], prompt["192"]["inputs"]["model"])
         self.assertEqual(prompt["142"]["inputs"]["images"], ["122", 0])
         self.assertEqual(prompt["9308"]["inputs"]["images"], ["9307", 0])
+
+        result = namespace["_build_minimax_h3_advanced_2pass_api_prompt"]({
+            "advanced_pass1_megapixels": 0.4,
+            "advanced_pass2_megapixels": 2.1,
+        })
+        self.assertEqual(result["advanced_two_pass"]["pass2_width"], 1984)
+        self.assertEqual(result["advanced_two_pass"]["pass2_height"], 1120)
 
         dangling = []
         for node_id, node in prompt.items():

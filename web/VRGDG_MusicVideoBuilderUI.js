@@ -326,12 +326,14 @@ const DEFAULT_MINIMAX_H3_SETTINGS = {
   advanced_two_pass_upscaler_device: "cuda",
   advanced_two_pass_upscaler_precision: "bf16",
   advanced_two_pass_pass1_megapixels: 0.4,
+  advanced_two_pass_pass1_resolution_preset: "custom",
   advanced_two_pass_pass1_steps: 20,
   advanced_two_pass_pass1_denoise: 1,
   advanced_two_pass_pass1_sampler: "euler",
   advanced_two_pass_pass1_scheduler: "beta",
   advanced_two_pass_pass1_seed: 69,
   advanced_two_pass_pass2_megapixels: 2,
+  advanced_two_pass_pass2_resolution_preset: "custom",
   advanced_two_pass_pass2_steps: 1,
   advanced_two_pass_pass2_denoise: 0.2,
   advanced_two_pass_pass2_sampler: "sa_solver",
@@ -570,6 +572,12 @@ function cloneMiniMaxH3Settings(value = {}) {
     advanced_two_pass_upscaler_precision: ["fp32", "fp16", "bf16"].includes(String(source.advanced_two_pass_upscaler_precision || "").toLowerCase())
       ? String(source.advanced_two_pass_upscaler_precision).toLowerCase()
       : DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_upscaler_precision,
+    advanced_two_pass_pass1_resolution_preset: ["custom", "1k", "2k", "4k"].includes(String(source.advanced_two_pass_pass1_resolution_preset || "").toLowerCase())
+      ? String(source.advanced_two_pass_pass1_resolution_preset).toLowerCase()
+      : DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_pass1_resolution_preset,
+    advanced_two_pass_pass2_resolution_preset: ["custom", "1k", "2k", "4k"].includes(String(source.advanced_two_pass_pass2_resolution_preset || "").toLowerCase())
+      ? String(source.advanced_two_pass_pass2_resolution_preset).toLowerCase()
+      : DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_pass2_resolution_preset,
     advanced_two_pass_defaults_version: DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_defaults_version,
     ...Object.fromEntries([1, 2].flatMap((pass) => {
       const prefix = `advanced_two_pass_pass${pass}_`;
@@ -6058,12 +6066,33 @@ function openBuilder(node) {
     "linear_quadratic",
     "kl_optimal",
   ];
+  const advancedResolutionPresets = [
+    { value: "custom", label: "Custom megapixels" },
+    { value: "1k", label: "1K (long edge)" },
+    { value: "2k", label: "2K (long edge)" },
+    { value: "4k", label: "4K (long edge)" },
+  ];
+  const advancedPresetMegapixels = (preset, aspectRatio) => {
+    const match = String(aspectRatio || "16:9").match(/(\d+)\s*:\s*(\d+)/);
+    const ratioWidth = Number(match?.[1] || 16);
+    const ratioHeight = Number(match?.[2] || 9);
+    const longEdge = { "1k": 1024, "2k": 2048, "4k": 4096 }[String(preset || "").toLowerCase()];
+    if (!longEdge) return null;
+    const scale = longEdge / Math.max(ratioWidth, ratioHeight);
+    const width = Math.round(ratioWidth * scale / 32) * 32;
+    const height = Math.round(ratioHeight * scale / 32) * 32;
+    return Number(((width * height) / 1048576).toFixed(4));
+  };
   const advancedTwoPassControls = [1, 2].map((pass) => {
     const prefix = `advanced_two_pass_pass${pass}_`;
     const megapixels = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS[`${prefix}megapixels`]), "number");
     megapixels.min = "0.1";
     megapixels.max = "16";
     megapixels.step = "0.1";
+    const resolutionPreset = makeSelect(
+      advancedResolutionPresets,
+      DEFAULT_MINIMAX_H3_SETTINGS[`${prefix}resolution_preset`] || "custom",
+    );
     const steps = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS[`${prefix}steps`]), "number");
     steps.min = "1";
     steps.max = "1000";
@@ -6076,13 +6105,26 @@ function openBuilder(node) {
     const scheduler = makeSelect(threePassSchedulerOptions, DEFAULT_MINIMAX_H3_SETTINGS[`${prefix}scheduler`]);
     const seed = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS[`${prefix}seed`]), "number");
     seed.step = "1";
-    const resolutionField = makeField(
-      pass === 1 ? "Pass 1 resolution (megapixels)" : "Pass 2 resolution (megapixels)",
-      megapixels,
+    const resolutionField = makeSettingsSection(
+      pass === 1 ? "Pass 1 resolution" : "Pass 2 resolution",
+      [
+        makeField("Resolution preset", resolutionPreset),
+        makeField("Custom megapixels", megapixels),
+      ],
+      false,
+    );
+    const syncResolutionPreset = () => {
+      const resolved = advancedPresetMegapixels(resolutionPreset.value, miniMaxAspectRatio.value);
+      megapixels.disabled = Boolean(resolved);
+      if (resolved !== null) megapixels.value = String(resolved);
+    };
+    resolutionPreset.addEventListener("change", syncResolutionPreset);
+    miniMaxAspectRatio.addEventListener("change", syncResolutionPreset);
+    syncResolutionPreset();
+    resolutionField.title =
       pass === 1
         ? "Base-generation resolution before MMH3 upscale."
-        : "Target latent resolution produced by the MMH3 tiled upscale pass.",
-    );
+        : "Target latent resolution produced by the MMH3 tiled upscale pass.";
     const samplingFields = [
       makeField("Steps", steps),
       makeField("Sampler", sampler),
@@ -6090,7 +6132,7 @@ function openBuilder(node) {
       makeField("Denoise", denoise),
       makeField("Seed", seed),
     ];
-    return { prefix, megapixels, steps, denoise, sampler, scheduler, seed, resolutionField, samplingFields };
+    return { prefix, megapixels, resolutionPreset, syncResolutionPreset, steps, denoise, sampler, scheduler, seed, resolutionField, samplingFields };
   });
   const miniMaxAdvancedSamplingFields = makeSettingsSection("Pass Sampling (Advanced)", [
     ...advancedTwoPassControls.map((control, index) => makeSettingsSection(
@@ -7617,6 +7659,7 @@ function openBuilder(node) {
         [`${control.prefix}seed`, control.seed.value],
       ])),
       ...Object.fromEntries(advancedTwoPassControls.flatMap((control) => [
+        [`${control.prefix}resolution_preset`, control.resolutionPreset.value],
         [`${control.prefix}megapixels`, control.megapixels.value],
         [`${control.prefix}steps`, control.steps.value],
         [`${control.prefix}denoise`, control.denoise.value],
@@ -8335,7 +8378,9 @@ function openBuilder(node) {
       control.seed.value = String(settings[`${control.prefix}seed`]);
     });
     advancedTwoPassControls.forEach((control) => {
+      control.resolutionPreset.value = settings[`${control.prefix}resolution_preset`] || "custom";
       control.megapixels.value = String(settings[`${control.prefix}megapixels`]);
+      control.syncResolutionPreset();
       control.steps.value = String(settings[`${control.prefix}steps`]);
       control.denoise.value = String(settings[`${control.prefix}denoise`]);
       control.sampler.value = settings[`${control.prefix}sampler`];
@@ -46061,6 +46106,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const builtLoraSettings = built?.lora_settings || {};
       const builtTurboSettings = built?.turbo_settings || {};
       const builtAdvancedSettings = built?.advanced_settings || {};
+      const builtAdvancedResolution = built?.advanced_two_pass || {};
+      const debugWorkflowPath = String(built?.debug_workflow_path || "").trim();
       const exactTwoPassSteps = (twoPass || threePass)
         ? {
           pass1: Number(built?.prompt?.["124"]?.inputs?.steps),
@@ -46073,6 +46120,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const exactTwoPassStepsLine = (twoPass || threePass)
         ? `\nRequested panel steps: Pass 1 = ${requestedTwoPassSteps?.pass1 ?? (threePass ? miniMaxSettings.advanced_two_pass_pass1_steps : miniMaxSettings.two_pass_pass1_steps)}; Pass 2 = ${requestedTwoPassSteps?.pass2 ?? (threePass ? miniMaxSettings.advanced_two_pass_pass2_steps : miniMaxSettings.two_pass_pass2_steps)}`
           + `\nExact built-prompt sampler steps: Pass 1 = ${exactTwoPassSteps.pass1}; Pass 2 = ${exactTwoPassSteps.pass2}`
+        : "";
+      const exactAdvancedResolutionLine = threePass
+        ? `\nBuilt Pass 1 target: ${builtAdvancedResolution.pass1_width || "?"}×${builtAdvancedResolution.pass1_height || "?"} (${builtAdvancedResolution.pass1_megapixels ?? "?"} MP); Pass 2 target: ${builtAdvancedResolution.pass2_width || "?"}×${builtAdvancedResolution.pass2_height || "?"} (${builtAdvancedResolution.pass2_megapixels ?? "?"} MP)`
+          + (debugWorkflowPath ? `\nAPI workflow snapshot: ${debugWorkflowPath}` : "")
         : "";
       const exactModelChainLoras = (modelRef) => {
         const loras = [];
@@ -46212,7 +46263,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         promptId,
         (message) => {
           void registerLiveThreePassBackups();
-          progress?.set(`${batchLabel}${threePass ? "MiniMax H3 2 Pass Advanced (Base → MMH3 tiled upscale)\n" : twoPass ? "MiniMax H3 2 Pass (Stage 1 → Stage 2)\n" : ""}${message}${exactTwoPassStepsLine}${exactTwoPassLorasLine}\nPrompt ID: ${promptId}`, pct(62));
+          progress?.set(`${batchLabel}${threePass ? "MiniMax H3 2 Pass Advanced (Base → MMH3 tiled upscale)\n" : twoPass ? "MiniMax H3 2 Pass (Stage 1 → Stage 2)\n" : ""}${message}${exactTwoPassStepsLine}${exactAdvancedResolutionLine}${exactTwoPassLorasLine}\nPrompt ID: ${promptId}`, pct(62));
         },
         () => state.batchCancelled,
         null,
@@ -46322,7 +46373,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         await autoSaveSessionQuiet(options.autoSaveReason || "MiniMax H3 scene video complete");
       }
       progress?.set(
-        `${batchLabel}${threePass ? "MiniMax H3 2 Pass Advanced complete — MMH3 Pass 2 selected; Pass 1 backup saved." : twoPass ? "MiniMax H3 learned-latent 2 Pass complete — final pass-2 video selected." : "MiniMax H3 scene ready."}\n${segment.video_path}\n`
+        `${batchLabel}${threePass ? "MiniMax H3 2 Pass Advanced complete — MMH3 Pass 2 selected; Pass 1 backup saved." : twoPass ? "MiniMax H3 learned-latent 2 Pass complete — final pass-2 video selected." : "MiniMax H3 scene ready."}${exactAdvancedResolutionLine}\n${segment.video_path}\n`
         + `Exact duration: ${finalDuration.toFixed(3)}s`,
         pct(100),
       );
