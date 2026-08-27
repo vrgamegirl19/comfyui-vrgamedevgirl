@@ -642,6 +642,15 @@ const MINIMAX_H3_MODEL_DOWNLOADS = [
   { label: "MMH3 Ultimate Upscale custom nodes", url: "https://github.com/bbaudio-2025/Comfyui-MMH3-UltimateUpscale" },
   { label: "MiniMax H3 latent upscaler models", url: "https://github.com/LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler" },
 ];
+const VIDEO_BUILDER_CUSTOM_NODES = [
+  { id: "vrgdg", label: "VRGameDevGirl Video Builder", note: "The builder’s own custom-node pack. This is the pack currently providing this interface and its VRGDG nodes.", url: "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl", current: true },
+  { id: "videohelpersuite", label: "ComfyUI-VideoHelperSuite", note: "Video loading, combining, and output nodes used by the builder workflows.", url: "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite" },
+  { id: "kjnodes", label: "ComfyUI-KJNodes", note: "KJ utility, video, model-loader, and optimization nodes used by LTX and MiniMax workflows.", url: "https://github.com/kijai/ComfyUI-KJNodes" },
+  { id: "gguf", label: "ComfyUI-GGUF", note: "GGUF diffusion and text-encoder loaders used by the LTX 2.3 and local LLM options.", url: "https://github.com/city96/ComfyUI-GGUF" },
+  { id: "ltxvideo", label: "ComfyUI-LTXVideo", note: "Official LTX-Video support, including the sampler wrappers used by LTX builder workflows.", url: "https://github.com/Lightricks/ComfyUI-LTXVideo" },
+  { id: "te_speed_minimax_h3", label: "TE-Speed-MiniMaxH3-OSS", note: "Optional MiniMax H3 acceleration node used by the TE-Speed setting in two-pass workflows.", url: "https://github.com/HELPMEEADICE/TE-Speed-MiniMaxH3-OSS" },
+  { id: "mmh3_ultimate_upscale", label: "Comfyui-MMH3-UltimateUpscale", note: "Optional MiniMax H3 advanced upscale node used by the advanced upscale/refinement path.", url: "https://github.com/bbaudio-2025/Comfyui-MMH3-UltimateUpscale" },
+];
 const ZIMAGE_MODEL_DOWNLOADS = [
   { label: "Z-Image Turbo", url: "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors" },
   { label: "Qwen CLIP", url: "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors" },
@@ -1697,6 +1706,7 @@ function showModelDownloadModal() {
         { title: "MiniMax H3", note: "Required diffusion model, Qwen3-VL text encoder, video VAE, and audio VAE for MiniMax H3 rendering.", downloads: MINIMAX_H3_MODEL_DOWNLOADS },
       ],
     },
+    { id: "custom-nodes", label: "Custom Nodes", custom: true },
   ];
   const backdrop = document.createElement("div");
   backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:28px;box-sizing:border-box;";
@@ -1776,7 +1786,122 @@ function showModelDownloadModal() {
     }
   };
 
+  const renderCustomNodes = async () => {
+    body.style.display = "flex";
+    body.style.flexDirection = "column";
+    body.style.gap = "14px";
+    body.replaceChildren();
+    const intro = document.createElement("div");
+    intro.textContent = "These are the external custom-node packs used by the Video Builder workflows. Open a repository for details, or install only the missing packs with the button below.";
+    intro.style.cssText = "font-size:14px;line-height:1.45;color:#cbd5e1;";
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:flex;flex-wrap:wrap;gap:10px;";
+    const installAll = makeMiniButton("Install Missing Nodes");
+    installAll.style.cssText += ";font-size:15px;font-weight:900;padding:11px 15px;background:#15803d;border-color:#4ade80;color:#f0fdf4;";
+    const refresh = makeMiniButton("Refresh Status");
+    refresh.style.cssText += ";font-size:14px;font-weight:800;padding:11px 15px;";
+    actions.append(installAll, refresh);
+    const restartNote = document.createElement("div");
+    restartNote.textContent = "Installation runs through ComfyUI’s Python environment. Fully close and restart ComfyUI, then refresh your browser, before using newly installed nodes.";
+    restartNote.style.cssText = "padding:10px 12px;border:1px solid #854d0e;border-radius:7px;background:#422006;color:#fde68a;font-size:12px;line-height:1.4;";
+    const list = document.createElement("div");
+    list.style.cssText = "display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px;";
+    body.append(intro, actions, restartNote, list);
+
+    const draw = (statuses = []) => {
+      const byId = new Map(statuses.map((item) => [item.id, item]));
+      list.replaceChildren();
+      for (const item of VIDEO_BUILDER_CUSTOM_NODES) {
+        const status = byId.get(item.id);
+        const card = document.createElement("div");
+        card.style.cssText = "display:flex;flex-direction:column;gap:10px;border:1px solid #334155;border-radius:9px;background:#111827;padding:15px;";
+        const heading = document.createElement("div");
+        heading.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:10px;";
+        const name = document.createElement("div");
+        name.textContent = item.label;
+        name.style.cssText = "font-size:17px;font-weight:900;color:#f8fafc;";
+        const badge = document.createElement("span");
+        const installed = item.current || status?.installed;
+        badge.textContent = installed ? "Installed" : "Missing";
+        badge.style.cssText = `font-size:11px;font-weight:900;padding:4px 7px;border-radius:999px;background:${installed ? "#14532d" : "#7f1d1d"};color:${installed ? "#bbf7d0" : "#fecaca"};`;
+        heading.append(name, badge);
+        const note = document.createElement("div");
+        note.textContent = item.note;
+        note.style.cssText = "font-size:13px;line-height:1.4;color:#cbd5e1;min-height:36px;";
+        const buttons = document.createElement("div");
+        buttons.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;margin-top:auto;";
+        const repo = makeMiniButton("Open Repository");
+        repo.addEventListener("click", () => window.open(item.url, "_blank", "noopener,noreferrer"));
+        const install = makeMiniButton(item.current ? "Included" : (status?.installed ? "Reinstall Requirements" : "Install"));
+        install.disabled = Boolean(item.current);
+        install.style.background = installed ? "#334155" : "#1d4ed8";
+        install.style.borderColor = installed ? "#64748b" : "#60a5fa";
+        if (item.current) install.title = "This is the currently installed Video Builder pack.";
+        install.addEventListener("click", async () => {
+          install.disabled = true;
+          install.textContent = "Installing...";
+          try {
+            const result = await postJson("/vrgdg/video_builder/custom_nodes/install", { ids: [item.id] }, 1200000);
+            toast(`${item.label} installed. Restart ComfyUI before using it.`);
+            draw((await getJson("/vrgdg/video_builder/custom_nodes/status")).nodes || []);
+          } catch (error) {
+            toast(String(error?.message || error), true);
+          } finally {
+            install.disabled = false;
+          install.textContent = status?.installed ? "Reinstall Requirements" : "Install";
+          }
+        });
+        buttons.append(repo, install);
+        card.append(heading, note, buttons);
+        list.append(card);
+      }
+    };
+    const load = async () => {
+      refresh.disabled = true;
+      try {
+        const result = await getJson("/vrgdg/video_builder/custom_nodes/status");
+        if (result.custom_nodes_dir) {
+          intro.textContent = `Checking ComfyUI custom nodes folder: ${result.custom_nodes_dir}`;
+        }
+        draw(result.nodes || []);
+      } catch (error) {
+        draw([]);
+        toast(`Could not read custom-node status: ${String(error?.message || error)}`, true);
+      } finally {
+        refresh.disabled = false;
+      }
+    };
+    refresh.onclick = load;
+    installAll.onclick = async () => {
+      installAll.disabled = true;
+      installAll.textContent = "Installing Missing...";
+      try {
+        const current = await getJson("/vrgdg/video_builder/custom_nodes/status");
+        const missing = (current.nodes || []).filter((item) => !item.installed).map((item) => item.id);
+        if (!missing.length) {
+          toast("All Video Builder custom nodes are already installed.");
+        } else {
+          await postJson("/vrgdg/video_builder/custom_nodes/install", { ids: missing }, 3600000);
+          toast("Missing custom nodes installed. Restart ComfyUI before using them.");
+        }
+        await load();
+      } catch (error) {
+        toast(String(error?.message || error), true);
+      } finally {
+        installAll.disabled = false;
+        installAll.textContent = "Install Missing Nodes";
+      }
+    };
+    await load();
+  };
+
   const renderTab = (tab) => {
+    if (tab.custom) {
+      renderCustomNodes();
+      return;
+    }
+    body.style.display = "grid";
+    body.style.flexDirection = "";
     if (!tab.subTabs?.length) {
       renderGroups(tab.groups || []);
       return;
@@ -5921,8 +6046,8 @@ function openBuilder(node) {
   const miniMaxNoGgufNote = document.createElement("div");
   miniMaxNoGgufNote.textContent = "MiniMax H3 currently uses the standard diffusion-model loader. GGUF is not enabled yet.";
   miniMaxNoGgufNote.style.cssText = "font-size:11px;color:#fcd34d;line-height:1.4;";
-  const miniMaxUseTurboLora = makeCheckbox("Use MiniMax-H3 Turbo LoRA (4-step)", false);
-  miniMaxUseTurboLora.wrapper.title = "Conditionally injects MiniMaxH3TurboLoRA and MiniMaxH3TurboSampler into the hidden API workflow.";
+  const miniMaxUseTurboLora = makeCheckbox("Use legacy MiniMax-H3 Turbo LoRA", false);
+  miniMaxUseTurboLora.wrapper.title = "Applies the selected legacy Turbo LoRA through ComfyUI's built-in LoRA loader. It does not require a separate Turbo custom-node repository.";
   const miniMaxTurboLoraPicker = makeSearchableLoraPicker(DEFAULT_MINIMAX_H3_SETTINGS.turbo_lora_name);
   const miniMaxTurboLoraField = makeField("Turbo LoRA", miniMaxTurboLoraPicker.wrapper);
   const miniMaxTurboLoraStrength = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.turbo_lora_strength), "number");
@@ -8434,7 +8559,7 @@ function openBuilder(node) {
         ? "Normal MiniMax LoRAs are disabled while Turbo acceleration is active."
         : "Optional normal MiniMax LoRAs are OFF.";
     miniMaxTurboNote.textContent = settings.use_turbo_lora
-      ? "Turbo is ON. The hidden API workflow uses MiniMax-H3 Turbo LoRA plus the dedicated Turbo sampler and simple scheduler. Steps defaults to 4 when Turbo is switched on and remains editable down to 1 for experiments. Values below 4 are outside the Turbo LoRA's usual 4-step target. EasyCache bypass is enabled automatically; the advanced control remains editable for experiments. Normal settings are restored when Turbo is turned off."
+        ? "Turbo LoRA is ON. The selected LoRA is applied with ComfyUI's built-in LoRA loader. No separate Turbo custom-node repository is required."
       : settings.use_loras
         ? "Turbo is unavailable while normal MiniMax LoRAs are enabled."
         : "Turbo is OFF. The normal MiniMax sampler, scheduler, and step settings are used.";
