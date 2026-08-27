@@ -23,8 +23,8 @@ Rules:
 - Use the supplied subject, location, lyrics/dialogue, camera speed, character speed, and scene notes.
 - Preserve the same subject identity, outfit, location, lighting, and spatial continuity across shots.
 - If a lyric/dialogue line is supplied and the scene is not visual-only, stage the visible singer/speaker performing it naturally. Put exact performed words inside <d>[English] ...</d> only when useful.
-- If the scene context supplies a vocal cue map, obey it exactly. Only the assigned <Subject N> (SN) performs each cue; all other visible subjects remain silent, mouth closed, or naturally reacting until assigned their own cue. Do not merge, swap, repeat, omit, translate, or transfer cues between subjects.
-- If the cue map supplies instrumental or no-vocal intervals, no visible subject sings, speaks, or lip-syncs during those intervals. Subjects may still act, dance, walk, interact, or react with mouths closed or naturally relaxed.
+- If the scene context supplies a vocal cue map, obey it exactly. Only the assigned <Subject N> (SN) performs each vocal cue; use only visual action and camera direction for intervals without an assigned vocal cue. Do not merge, swap, repeat, omit, translate, or transfer cues between subjects.
+- For instrumental or otherwise non-vocal intervals, describe only the requested visible action, subject behavior, environment, and camera movement. Do not mention singing, speaking, vocals, lip-sync, mouths, or silence.
 - In multi-subject vocal scenes, use the supplied <Subject N> (SN) labels and <Audio 1> label in the shot descriptions when they are provided. Describe assigned cues as precise lip-sync to <Audio 1>, with the performed words inside <d>[English] ...</d>.
 - If the scene is visual-only, instrumental, or no-character-present, do not invent singing or speaking.
 - Make each shot meaningfully different coverage while staying in the same scene unless the user explicitly requested a scene change.
