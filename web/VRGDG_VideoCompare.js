@@ -54,6 +54,8 @@ function createCompareUI(node) {
   const root = document.createElement("div");
   root.style.cssText = [
     "width:100%",
+    `min-width:${MIN_WIDTH}px`,
+    "max-width:none",
     "height:430px",
     "display:flex",
     "flex-direction:column",
@@ -161,7 +163,7 @@ function createCompareUI(node) {
   stage.append(beforeVideo, afterClip, divider, handle, beforeLabel, afterLabel, empty);
 
   const controls = document.createElement("div");
-  controls.style.cssText = "display:grid;grid-template-columns:auto auto auto minmax(80px,1fr) auto auto;gap:7px;align-items:center;";
+  controls.style.cssText = "display:grid;grid-template-columns:auto auto auto minmax(80px,1fr) auto auto auto;gap:7px;align-items:center;";
   const playButton = createButton("▶", "Play or pause both videos");
   const restartButton = createButton("↺", "Restart both videos");
   const scrubber = document.createElement("input");
@@ -176,11 +178,12 @@ function createCompareUI(node) {
   timeLabel.style.cssText = "font:700 11px Arial,sans-serif;color:#67e8f9;white-space:nowrap;font-variant-numeric:tabular-nums;";
   const muteButton = createButton("🔇", "Mute or unmute before-video audio");
   const recordButton = createButton("● Record", "Record the labeled slider preview for the configured duration");
+  const fullscreenButton = createButton("⛶ Fullscreen", "Open the compare slider in a fullscreen viewer without recording");
   recordButton.style.background = "#7f1d1d";
   const recordStatus = document.createElement("div");
   recordStatus.textContent = "";
   recordStatus.style.cssText = "font:700 10px Arial,sans-serif;color:#fca5a5;white-space:nowrap;";
-  controls.append(playButton, restartButton, recordButton, scrubber, timeLabel, muteButton);
+  controls.append(playButton, restartButton, recordButton, scrubber, timeLabel, muteButton, fullscreenButton);
 
   const wipeRow = document.createElement("div");
   wipeRow.style.cssText = "display:grid;grid-template-columns:auto minmax(80px,1fr) auto;gap:8px;align-items:center;";
@@ -196,7 +199,18 @@ function createCompareUI(node) {
   const wipeValue = document.createElement("div");
   wipeValue.style.cssText = "min-width:34px;text-align:right;font:700 11px Arial,sans-serif;color:#d4d4d8;";
   wipeRow.append(wipeTitle, wipeSlider, wipeValue);
-  root.append(stage, controls, wipeRow, recordStatus);
+
+  const fileRow = document.createElement("div");
+  fileRow.style.cssText = "display:flex;flex-wrap:wrap;gap:7px;align-items:center;";
+  const chooseBeforeButton = createButton("Choose Before Video", "Upload a video directly from your computer as the original video");
+  const chooseAfterButton = createButton("Choose After Video", "Upload a video directly from your computer as the processed video");
+  const beforeFileInput = document.createElement("input");
+  const afterFileInput = document.createElement("input");
+  for (const input of [beforeFileInput, afterFileInput]) { input.type = "file"; input.accept = ".mp4,.mov,.webm,.mkv,.avi,.m4v,video/*"; input.style.display = "none"; }
+  const fileStatus = document.createElement("div");
+  fileStatus.style.cssText = "font:700 10px Arial,sans-serif;color:#a1a1aa;white-space:nowrap;";
+  fileRow.append(chooseBeforeButton, chooseAfterButton, beforeFileInput, afterFileInput, fileStatus);
+  root.append(stage, controls, wipeRow, fileRow, recordStatus);
 
   let dragging = false;
   let animationFrame = 0;
@@ -205,6 +219,13 @@ function createCompareUI(node) {
   let recordingTimer = 0;
   let recordingFrame = 0;
   let recordingChunks = [];
+  const selectedPaths = { before: "", after: "" };
+  let fullscreenOverlay = null;
+  let fullscreenStageStyle = "";
+  let fullscreenZoom = 1;
+  let fullscreenZoomOrigin = { x: 50, y: 50 };
+  let fullscreenZoomLabel = null;
+  let fullscreenResetButton = null;
 
   function showLabels() {
     const visible = !!widgetValue(node, "show_labels", true);
@@ -440,6 +461,93 @@ function createCompareUI(node) {
     muteButton.textContent = beforeVideo.muted ? "🔇" : "🔊";
   }
 
+  function closeFullscreen(exitBrowserFullscreen = true) {
+    if (!fullscreenOverlay) return;
+    if (exitBrowserFullscreen && document.fullscreenElement === fullscreenOverlay) {
+      document.exitFullscreen?.().catch?.(() => {});
+    }
+    if (fullscreenOverlay.parentNode) fullscreenOverlay.parentNode.removeChild(fullscreenOverlay);
+    root.insertBefore(stage, root.firstChild);
+    stage.style.cssText = fullscreenStageStyle;
+    setFullscreenZoom(1, 50, 50);
+    fullscreenZoomLabel = null;
+    fullscreenResetButton = null;
+    fullscreenOverlay = null;
+    fullscreenButton.textContent = "⛶ Fullscreen";
+    app.graph?.setDirtyCanvas?.(true, true);
+  }
+
+  function setFullscreenZoom(value, originX = fullscreenZoomOrigin.x, originY = fullscreenZoomOrigin.y) {
+    fullscreenZoom = Math.max(1, Math.min(6, Number(value) || 1));
+    fullscreenZoomOrigin = {
+      x: Math.max(0, Math.min(100, Number(originX) || 50)),
+      y: Math.max(0, Math.min(100, Number(originY) || 50)),
+    };
+    const transform = `scale(${fullscreenZoom})`;
+    beforeVideo.style.transform = transform;
+    afterVideo.style.transform = transform;
+    beforeVideo.style.transformOrigin = `${fullscreenZoomOrigin.x}% ${fullscreenZoomOrigin.y}%`;
+    afterVideo.style.transformOrigin = `${fullscreenZoomOrigin.x}% ${fullscreenZoomOrigin.y}%`;
+    if (fullscreenZoomLabel) fullscreenZoomLabel.textContent = `${Math.round(fullscreenZoom * 100)}%`;
+    if (fullscreenResetButton) {
+      fullscreenResetButton.disabled = fullscreenZoom === 1;
+      fullscreenResetButton.style.opacity = fullscreenZoom === 1 ? "0.55" : "1";
+    }
+  }
+
+  function openFullscreen() {
+    if (fullscreenOverlay) return;
+    fullscreenStageStyle = stage.style.cssText;
+    fullscreenOverlay = document.createElement("div");
+    fullscreenOverlay.style.cssText = "position:fixed;inset:0;z-index:100000;display:flex;flex-direction:column;gap:10px;padding:14px;background:#09090b;color:#f4f4f5;font-family:Arial,sans-serif;";
+    const header = document.createElement("div");
+    header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:34px;";
+    const title = document.createElement("div");
+    title.textContent = "VRGDG Video Compare Slider";
+    title.style.cssText = "font:900 15px Arial,sans-serif;color:#cffafe;";
+    fullscreenZoomLabel = document.createElement("div");
+    fullscreenZoomLabel.textContent = "100%";
+    fullscreenZoomLabel.title = "Fullscreen zoom level. Scroll over the video to zoom.";
+    fullscreenZoomLabel.style.cssText = "font:800 12px Arial,sans-serif;color:#a5f3fc;min-width:42px;text-align:center;";
+    fullscreenResetButton = createButton("Reset Zoom", "Reset fullscreen zoom to 100%");
+    fullscreenResetButton.disabled = true;
+    fullscreenResetButton.style.opacity = "0.55";
+    fullscreenResetButton.addEventListener("click", () => setFullscreenZoom(1));
+    const closeButton = createButton("✕ Exit Fullscreen", "Return to the ComfyUI node");
+    closeButton.addEventListener("click", () => closeFullscreen(true));
+    const headerActions = document.createElement("div");
+    headerActions.style.cssText = "display:flex;align-items:center;gap:8px;";
+    headerActions.append(fullscreenZoomLabel, fullscreenResetButton, closeButton);
+    header.append(title, headerActions);
+    fullscreenOverlay.append(header, stage);
+    stage.style.cssText = "position:relative;flex:1 1 auto;min-height:0;width:100%;overflow:hidden;border:1px solid #3f3f46;border-radius:8px;background:#050505;touch-action:none;cursor:ew-resize;";
+    setFullscreenZoom(1, 50, 50);
+    document.body.append(fullscreenOverlay);
+    fullscreenButton.textContent = "✕ Exit Fullscreen";
+    fullscreenOverlay.addEventListener("fullscreenchange", () => {
+      if (fullscreenOverlay && document.fullscreenElement !== fullscreenOverlay) closeFullscreen(false);
+    });
+    fullscreenOverlay.requestFullscreen?.().catch?.(() => {});
+  }
+
+  async function uploadSelectedVideo(file, slot) {
+    if (!file) return;
+    fileStatus.textContent = `Uploading ${file.name}…`;
+    const form = new FormData();
+    form.append("video", file, file.name);
+    try {
+      const response = await api.fetchApi("/vrgdg/video_compare/upload", { method: "POST", body: form });
+      const data = await response.json();
+      if (!response.ok || !data.ok || !data.path) throw new Error(data.error || `Upload failed (${response.status})`);
+      selectedPaths[slot] = data.path;
+      setWidgetValue(node, slot === "before" ? "before_selected" : "after_selected", data.path);
+      fileStatus.textContent = `${slot === "before" ? "Before" : "After"}: ${data.name || file.name}`;
+    } catch (error) {
+      fileStatus.textContent = String(error?.message || error);
+      fileStatus.style.color = "#fca5a5";
+    }
+  }
+
   stage.addEventListener("pointerdown", (event) => {
     dragging = true;
     stage.setPointerCapture?.(event.pointerId);
@@ -455,6 +563,17 @@ function createCompareUI(node) {
   stage.addEventListener("pointercancel", () => {
     dragging = false;
   });
+  stage.addEventListener("wheel", (event) => {
+    if (!fullscreenOverlay) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const direction = event.deltaY < 0 ? 1 : -1;
+    const factor = direction > 0 ? 1.12 : 1 / 1.12;
+    const rect = stage.getBoundingClientRect();
+    const originX = rect.width ? ((event.clientX - rect.left) / rect.width) * 100 : 50;
+    const originY = rect.height ? ((event.clientY - rect.top) / rect.height) * 100 : 50;
+    setFullscreenZoom(fullscreenZoom * factor, originX, originY);
+  }, { passive: false });
   wipeSlider.addEventListener("input", () => setWipe(wipeSlider.value, true));
   scrubber.addEventListener("input", () => seekBoth(scrubber.value));
   playButton.addEventListener("click", () => {
@@ -473,6 +592,11 @@ function createCompareUI(node) {
     muteButton.textContent = muted ? "🔇" : "🔊";
   });
   recordButton.addEventListener("click", startRecording);
+  chooseBeforeButton.addEventListener("click", () => beforeFileInput.click());
+  chooseAfterButton.addEventListener("click", () => afterFileInput.click());
+  beforeFileInput.addEventListener("change", () => uploadSelectedVideo(beforeFileInput.files?.[0], "before"));
+  afterFileInput.addEventListener("change", () => uploadSelectedVideo(afterFileInput.files?.[0], "after"));
+  fullscreenButton.addEventListener("click", () => { if (fullscreenOverlay) closeFullscreen(true); else openFullscreen(); });
   beforeVideo.addEventListener("loadedmetadata", calculateDuration);
   afterVideo.addEventListener("loadedmetadata", calculateDuration);
   for (const video of [beforeVideo, afterVideo]) {
@@ -530,6 +654,7 @@ function createCompareUI(node) {
       node.setDirtyCanvas?.(true, true);
     },
     destroy() {
+      closeFullscreen(true);
       if (recorder) stopRecording();
       pauseBoth();
       clearVideo(beforeVideo);
@@ -568,9 +693,22 @@ app.registerExtension({
       });
       if (domWidget) {
         domWidget.serialize = false;
-        domWidget.computeSize = (width) => [width, 430];
+        domWidget.element.style.width = "100%";
+        domWidget.element.style.minWidth = `${MIN_WIDTH}px`;
+        domWidget.element.style.maxWidth = "none";
+        ui.root.style.width = `${Math.max(MIN_WIDTH, this.size[0])}px`;
+        // LiteGraph may pass the DOM widget a default width that is narrower
+        // than the node itself.  Returning that width makes the embedded UI
+        // render in a small column and leaves the rest of the node blank.
+        // Keep the widget's measured width aligned with the node minimum.
+        domWidget.computeSize = () => [MIN_WIDTH, 430];
       }
       for (const widget of this.widgets || []) {
+        if (widget.name === "before_selected" || widget.name === "after_selected") {
+          widget.hidden = true;
+          widget.serialize = true;
+          widget.computeSize = () => [0, -4];
+        }
         if (widget.name === "video_compare" || widget._vrgdgVideoCompareBound) continue;
         const callback = widget.callback;
         widget.callback = function () {
@@ -589,6 +727,9 @@ app.registerExtension({
         Math.max(MIN_WIDTH, this.size?.[0] || MIN_WIDTH),
         Math.max(MIN_HEIGHT, this.size?.[1] || MIN_HEIGHT),
       ];
+      if (this._vrgdgVideoCompareUI?.root) {
+        this._vrgdgVideoCompareUI.root.style.width = `${Math.max(MIN_WIDTH, this.size[0])}px`;
+      }
       this._vrgdgVideoCompareUI?.applyWidgets();
       return result;
     };
@@ -608,6 +749,11 @@ app.registerExtension({
         Math.max(MIN_WIDTH, size?.[0] || MIN_WIDTH),
         Math.max(MIN_HEIGHT, size?.[1] || MIN_HEIGHT),
       ];
+      const root = this._vrgdgVideoCompareUI?.root;
+      if (root) {
+        root.style.width = `${Math.max(MIN_WIDTH, this.size[0])}px`;
+        root.style.minWidth = `${MIN_WIDTH}px`;
+      }
       return result;
     };
 

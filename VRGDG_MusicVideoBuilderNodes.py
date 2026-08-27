@@ -9116,14 +9116,24 @@ def _save_builder_session_unlocked(payload):
     segments = session.get("segments", [])
     if not isinstance(segments, list):
         segments = []
-    # A stale browser inspector/autosave must never be able to erase most of a
-    # populated transcription in one ordinary save. Preserve blanked lyric
-    # fields when the incoming session contains the same scene IDs but suddenly
-    # loses at least half of two or more existing lyric lines. A deliberate bulk
-    # clearing tool can opt out explicitly; normal one-line edits remain valid.
     session_path = _session_path(project_folder)
     if isinstance(payload.get("project_context_files"), dict):
         session["project_context_files"] = dict(payload["project_context_files"])
+    incoming_revision = int(session.get("builder_save_revision") or 0)
+    if incoming_revision > 0 and os.path.isfile(session_path):
+        try:
+            with open(session_path, "r", encoding="utf-8-sig") as handle:
+                existing_session = json.load(handle)
+            existing_revision = int(existing_session.get("builder_save_revision") or 0) if isinstance(existing_session, dict) else 0
+            if existing_revision > incoming_revision:
+                print(
+                    "[VRGDG Music Builder] Ignored stale session snapshot: "
+                    f"incoming revision {incoming_revision} < saved revision {existing_revision}."
+                )
+                session = existing_session
+                segments = session.get("segments", []) if isinstance(session.get("segments"), list) else []
+        except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            print(f"[VRGDG Music Builder] Save revision check skipped: {exc}")
     # Autosave requests can race a reference-builder panel update. If the
     # incoming snapshot has a null catalog, retain the last known catalog
     # instead of turning a valid project into a prompt-only project.
@@ -9136,52 +9146,6 @@ def _save_builder_session_unlocked(payload):
                 session["flux_reference_builder"] = previous_refs
         except Exception as exc:
             print(f"[VRGDG Music Builder] Previous reference-builder state could not be recovered: {exc}")
-    if not bool(session.get("allow_bulk_lyric_clear")) and os.path.isfile(session_path):
-        try:
-            with open(session_path, "r", encoding="utf-8-sig") as handle:
-                existing_session = json.load(handle)
-            existing_segments = existing_session.get("segments", []) if isinstance(existing_session, dict) else []
-            existing_by_id = {
-                str(item.get("id") or "").strip(): item
-                for item in existing_segments
-                if isinstance(item, dict) and str(item.get("id") or "").strip()
-            }
-            matched = [
-                (item, existing_by_id.get(str(item.get("id") or "").strip()))
-                for item in segments
-                if isinstance(item, dict)
-            ]
-            matched = [(incoming, existing) for incoming, existing in matched if isinstance(existing, dict)]
-            existing_nonblank = [
-                (incoming, existing)
-                for incoming, existing in matched
-                if str(existing.get("lyric_text") or "").strip()
-            ]
-            erased = [
-                (incoming, existing)
-                for incoming, existing in existing_nonblank
-                if not str(incoming.get("lyric_text") or "").strip()
-            ]
-            catastrophic = (
-                len(existing_nonblank) >= 2
-                and len(erased) >= 2
-                and len(erased) * 2 >= len(existing_nonblank)
-            )
-            if catastrophic:
-                lyric_fields = (
-                    "lyric_text", "lyric_no_lip_sync", "lyric_section",
-                    "lyric_singers", "performance_mode", "no_character_present",
-                )
-                for incoming, existing in erased:
-                    for key in lyric_fields:
-                        if key in existing:
-                            incoming[key] = existing[key]
-                print(
-                    "[VRGDG Music Builder] Prevented accidental bulk lyric clearing: "
-                    f"restored {len(erased)} of {len(existing_nonblank)} populated scene lines."
-                )
-        except Exception as exc:
-            print(f"[VRGDG Music Builder] Lyric save safety check skipped: {exc}")
     overlay_segments = session.get("overlay_segments", [])
     if not isinstance(overlay_segments, list):
         overlay_segments = []

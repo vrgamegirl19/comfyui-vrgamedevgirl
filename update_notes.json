@@ -3,6 +3,47 @@
   "product": "AI Video Builder",
   "releases": [
     {
+      "id": "2026-08-26-pr159-minimax-h3-advanced-upscale-and-video-compare",
+      "version": "2026.08.26-pr159-minimax-h3-advanced-upscale-and-video-compare",
+      "date": "2026-08-26",
+      "title": "MiniMax H3 Advanced 2-Pass Upscaling and Video Compare",
+      "commit": "8ec51ae",
+      "restart_required": true,
+      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/pull/159",
+      "sections": [
+        {
+          "title": "Added",
+          "items": [
+            "Added MiniMax H3 2 Pass Advanced with MMH3 temporal chunking, spatial tiling, VRAM presets, independent Pass 1 and Pass 2 resolution controls, and advanced sampler settings.",
+            "Added exact generated API workflow snapshots so users can inspect the hidden graph, node connections, and resolved target dimensions for each advanced render.",
+            "Added direct before-and-after video upload, fullscreen comparison, zoom controls, and selected-file support to Video Compare."
+          ]
+        },
+        {
+          "title": "Improved",
+          "items": [
+            "Advanced resolution controls now offer 1K, 2K, and 4K long-edge presets while retaining custom megapixel control for experienced users.",
+            "Advanced MiniMax progress now reports the exact Pass 1 and Pass 2 dimensions sent to the workflow and the saved API snapshot path.",
+            "H3 latent upscaler model selection now resolves registered model directories reliably instead of depending on one custom-node folder."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Fixed the advanced workflow resolution diagnostic that could fail with a set-object indexing error."
+          ]
+        },
+        {
+          "title": "Compatibility Notes",
+          "items": [
+            "Restart ComfyUI and hard-refresh the browser after updating so the revised Python workflow route and Builder JavaScript are loaded.",
+            "MiniMax H3 2 Pass Advanced requires the latest Comfyui-MMH3-UltimateUpscale custom nodes and the required H3 diffusion, VAE, Turbo LoRA, and latent upscaler model files.",
+            "The API workflow snapshot is written beside the scene output as scene_####_minimax_h3_advanced_2pass_api.json."
+          ]
+        }
+      ]
+    },
+    {
       "id": "2026-08-23-pr158-reference-cues-and-project-save-reliability",
       "version": "2026.08.23-pr158-reference-cues-and-project-save-reliability",
       "date": "2026-08-23",
