@@ -307,21 +307,21 @@ const DEFAULT_MINIMAX_H3_SETTINGS = {
   three_pass_pass3_seed: 69,
   three_pass_pass3_te_speed: false,
   advanced_two_pass_vram_preset: "12gb",
-  advanced_two_pass_defaults_version: 1,
-  advanced_two_pass_tile_size_mode: "specific_size",
-  advanced_two_pass_tile_width: 448,
-  advanced_two_pass_tile_height: 448,
+  advanced_two_pass_defaults_version: 2,
+  advanced_two_pass_tile_size_mode: "rows_cols",
+  advanced_two_pass_tile_width: 512,
+  advanced_two_pass_tile_height: 512,
   advanced_two_pass_grid_rows: 3,
   advanced_two_pass_grid_cols: 5,
-  advanced_two_pass_chunk_length: 68,
+  advanced_two_pass_chunk_length: 85,
   advanced_two_pass_temporal_overlap: 17,
   advanced_two_pass_anchor_strength: 0.999,
   advanced_two_pass_spatial_w_overlap: 128,
   advanced_two_pass_spatial_h_overlap: 128,
-  advanced_two_pass_fade_width: 32,
-  advanced_two_pass_fade_height: 32,
+  advanced_two_pass_fade_width: 64,
+  advanced_two_pass_fade_height: 64,
   advanced_two_pass_min_tile_size: 256,
-  advanced_two_pass_overlap_mode: "earlier",
+  advanced_two_pass_overlap_mode: "later",
   advanced_two_pass_overlap_blend: "linear",
   advanced_two_pass_upscaler_device: "cuda",
   advanced_two_pass_upscaler_precision: "bf16",
@@ -333,7 +333,7 @@ const DEFAULT_MINIMAX_H3_SETTINGS = {
   advanced_two_pass_pass1_scheduler: "beta",
   advanced_two_pass_pass1_seed: 69,
   advanced_two_pass_pass2_megapixels: 2,
-  advanced_two_pass_pass2_resolution_preset: "custom",
+  advanced_two_pass_pass2_resolution_preset: "2k",
   advanced_two_pass_pass2_steps: 1,
   advanced_two_pass_pass2_denoise: 0.2,
   advanced_two_pass_pass2_sampler: "sa_solver",
@@ -460,7 +460,7 @@ function normalizeMiniMaxH3VideoPurpose(value) {
 function cloneMiniMaxH3Settings(value = {}) {
   const source = value && typeof value === "object" ? value : {};
   const hasCurrentTwoPassDefaults = Number(source.two_pass_defaults_version || 0) >= 1;
-  const hasCurrentAdvancedTwoPassDefaults = Number(source.advanced_two_pass_defaults_version || 0) >= 1;
+  const hasCurrentAdvancedTwoPassDefaults = Number(source.advanced_two_pass_defaults_version || 0) >= 2;
   const sourceLoras = Array.isArray(source.loras)
     ? source.loras
     : Array.from({ length: 4 }, (_, index) => ({
@@ -572,10 +572,10 @@ function cloneMiniMaxH3Settings(value = {}) {
     advanced_two_pass_upscaler_precision: ["fp32", "fp16", "bf16"].includes(String(source.advanced_two_pass_upscaler_precision || "").toLowerCase())
       ? String(source.advanced_two_pass_upscaler_precision).toLowerCase()
       : DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_upscaler_precision,
-    advanced_two_pass_pass1_resolution_preset: ["custom", "1k", "2k", "4k"].includes(String(source.advanced_two_pass_pass1_resolution_preset || "").toLowerCase())
+    advanced_two_pass_pass1_resolution_preset: ["custom", "1k", "2k", "1440p", "4k"].includes(String(source.advanced_two_pass_pass1_resolution_preset || "").toLowerCase())
       ? String(source.advanced_two_pass_pass1_resolution_preset).toLowerCase()
       : DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_pass1_resolution_preset,
-    advanced_two_pass_pass2_resolution_preset: ["custom", "1k", "2k", "4k"].includes(String(source.advanced_two_pass_pass2_resolution_preset || "").toLowerCase())
+    advanced_two_pass_pass2_resolution_preset: ["custom", "1k", "2k", "1440p", "4k"].includes(String(source.advanced_two_pass_pass2_resolution_preset || "").toLowerCase())
       ? String(source.advanced_two_pass_pass2_resolution_preset).toLowerCase()
       : DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_pass2_resolution_preset,
     advanced_two_pass_defaults_version: DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_defaults_version,
@@ -6068,15 +6068,16 @@ function openBuilder(node) {
   ];
   const advancedResolutionPresets = [
     { value: "custom", label: "Custom megapixels" },
-    { value: "1k", label: "1K (long edge)" },
-    { value: "2k", label: "2K (long edge)" },
-    { value: "4k", label: "4K (long edge)" },
+    { value: "1k", label: "H3 1K (1024×576)" },
+    { value: "2k", label: "H3 2K (1920×1088)" },
+    { value: "1440p", label: "1440p (2560×1440)" },
+    { value: "4k", label: "H3 4K (3840×2176)" },
   ];
   const advancedPresetMegapixels = (preset, aspectRatio) => {
     const match = String(aspectRatio || "16:9").match(/(\d+)\s*:\s*(\d+)/);
     const ratioWidth = Number(match?.[1] || 16);
     const ratioHeight = Number(match?.[2] || 9);
-    const longEdge = { "1k": 1024, "2k": 2048, "4k": 4096 }[String(preset || "").toLowerCase()];
+    const longEdge = { "1k": 1024, "2k": 1920, "1440p": 2560, "4k": 3840 }[String(preset || "").toLowerCase()];
     if (!longEdge) return null;
     const scale = longEdge / Math.max(ratioWidth, ratioHeight);
     const width = Math.round(ratioWidth * scale / 32) * 32;
@@ -6234,8 +6235,8 @@ function openBuilder(node) {
   miniMaxTwoPassSettings.style.display = "none";
   const miniMaxAdvancedVramPreset = makeSelect([
     { value: "8gb", label: "8 GB — 352px tiles / 51 frames" },
-    { value: "12gb", label: "12 GB — 448px tiles / 68 frames" },
-    { value: "16gb", label: "16 GB — 544px tiles / 119 frames" },
+    { value: "12gb", label: "12 GB — 512px tiles / 85 frames" },
+    { value: "16gb", label: "16 GB — 576px tiles / 119 frames" },
     { value: "24gb", label: "24 GB — 672px tiles / 153 frames" },
     { value: "custom", label: "Custom — keep advanced values" },
   ], DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_vram_preset);
@@ -57508,8 +57509,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   miniMaxAdvancedVramPreset.addEventListener("change", () => {
     const preset = {
       "8gb": { tile: 352, chunk: 51 },
-      "12gb": { tile: 448, chunk: 68 },
-      "16gb": { tile: 544, chunk: 119 },
+      "12gb": { tile: 512, chunk: 85 },
+      "16gb": { tile: 576, chunk: 119 },
       "24gb": { tile: 672, chunk: 153 },
     }[miniMaxAdvancedVramPreset.value];
     if (!preset) return;

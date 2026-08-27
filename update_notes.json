@@ -22,7 +22,7 @@
         {
           "title": "Improved",
           "items": [
-            "Advanced resolution controls now offer 1K, 2K, and 4K long-edge presets while retaining custom megapixel control for experienced users.",
+            "Advanced resolution controls now offer H3-aligned 1K, 2K, 1440p, and 4K presets while retaining custom megapixel control for experienced users.",
             "Advanced MiniMax progress now reports the exact Pass 1 and Pass 2 dimensions sent to the workflow and the saved API snapshot path.",
             "H3 latent upscaler model selection now resolves registered model directories reliably instead of depending on one custom-node folder."
           ]

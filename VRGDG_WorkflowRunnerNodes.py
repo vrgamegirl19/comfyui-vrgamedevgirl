@@ -3391,22 +3391,22 @@ def _build_minimax_h3_advanced_2pass_api_prompt(payload):
     if pass2_megapixels < pass1_megapixels:
         raise ValueError("2 Pass Advanced Pass 2 resolution must be at least Pass 1 resolution.")
 
-    tile_size_mode = str(payload.get("advanced_tile_size_mode") or "specific_size").strip().lower()
+    tile_size_mode = str(payload.get("advanced_tile_size_mode") or "rows_cols").strip().lower()
     if tile_size_mode not in {"specific_size", "rows_cols"}:
         tile_size_mode = "specific_size"
-    tile_width = _int_payload(payload, "advanced_tile_width", 448, 32, 16384)
-    tile_height = _int_payload(payload, "advanced_tile_height", 448, 32, 16384)
-    grid_rows = _int_payload(payload, "advanced_grid_rows", 3, 1, 9)
-    grid_cols = _int_payload(payload, "advanced_grid_cols", 5, 1, 9)
-    chunk_length = _int_payload(payload, "advanced_chunk_length", 68, 17, 100000)
+    tile_width = _int_payload(payload, "advanced_tile_width", 512, 32, 16384)
+    tile_height = _int_payload(payload, "advanced_tile_height", 512, 32, 16384)
+    grid_rows = _int_payload(payload, "advanced_grid_rows", 2, 1, 9)
+    grid_cols = _int_payload(payload, "advanced_grid_cols", 2, 1, 9)
+    chunk_length = _int_payload(payload, "advanced_chunk_length", 85, 17, 100000)
     temporal_overlap = _int_payload(payload, "advanced_temporal_overlap", 17, 0, 100000)
     anchor_strength = _float_payload(payload, "advanced_anchor_strength", 0.999, 0.0, 1.0)
     spatial_w_overlap = _int_payload(payload, "advanced_spatial_w_overlap", 128, 0, 16384)
     spatial_h_overlap = _int_payload(payload, "advanced_spatial_h_overlap", 128, 0, 16384)
-    fade_width = _int_payload(payload, "advanced_fade_width", 32, 0, 16384)
-    fade_height = _int_payload(payload, "advanced_fade_height", 32, 0, 16384)
+    fade_width = _int_payload(payload, "advanced_fade_width", 64, 0, 16384)
+    fade_height = _int_payload(payload, "advanced_fade_height", 64, 0, 16384)
     min_tile_size = _int_payload(payload, "advanced_min_tile_size", 256, 0, 16384)
-    overlap_mode = str(payload.get("advanced_overlap_mode") or "earlier").strip().lower()
+    overlap_mode = str(payload.get("advanced_overlap_mode") or "later").strip().lower()
     overlap_blend = str(payload.get("advanced_overlap_blend") or "linear").strip().lower()
     if overlap_mode not in {"earlier", "later"}:
         overlap_mode = "earlier"

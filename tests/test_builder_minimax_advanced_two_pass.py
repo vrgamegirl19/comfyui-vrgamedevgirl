@@ -22,8 +22,8 @@ class BuilderMiniMaxAdvancedTwoPassTests(unittest.TestCase):
     def test_vram_presets_match_mmh3_starting_points(self):
         for text in (
             '"8gb": { tile: 352, chunk: 51 }',
-            '"12gb": { tile: 448, chunk: 68 }',
-            '"16gb": { tile: 544, chunk: 119 }',
+            '"12gb": { tile: 512, chunk: 85 }',
+            '"16gb": { tile: 576, chunk: 119 }',
             '"24gb": { tile: 672, chunk: 153 }',
         ):
             self.assertIn(text, BUILDER_SOURCE)
@@ -102,6 +102,14 @@ class BuilderMiniMaxAdvancedTwoPassTests(unittest.TestCase):
         self.assertEqual(prompt["9306"]["inputs"]["model"], prompt["192"]["inputs"]["model"])
         self.assertEqual(prompt["142"]["inputs"]["images"], ["122", 0])
         self.assertEqual(prompt["9308"]["inputs"]["images"], ["9307", 0])
+        self.assertEqual(prompt["9304"]["inputs"]["chunk_length"], 85)
+        self.assertEqual(prompt["9305"]["inputs"]["tile_size_mode"], "rows_cols")
+        self.assertEqual(prompt["9305"]["inputs"]["grid_rows"], 2)
+        self.assertEqual(prompt["9305"]["inputs"]["grid_cols"], 2)
+        self.assertEqual(prompt["9305"]["inputs"]["fade_width"], 64)
+        self.assertEqual(prompt["9305"]["inputs"]["overlap_mode"], "later")
+        self.assertEqual(result["advanced_two_pass"]["pass2_width"], 1920)
+        self.assertEqual(result["advanced_two_pass"]["pass2_height"], 1088)
 
         result = namespace["_build_minimax_h3_advanced_2pass_api_prompt"]({
             "advanced_pass1_megapixels": 0.4,
