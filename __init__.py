@@ -47,6 +47,7 @@ _VRGDG_SUBMODULES = (
     ".VRGDG_BrowserImageRoutes",
     ".VRGDG_SilentAudioRoutes",
     ".VRGDG_UpdateRoutes",
+    ".VRGDG_CustomNodeRoutes",
     ".VRGDG_VideoBuilderNodeUI",
     ".VRGDG_LoraDatasetCreatorNodes",
     ".VRGDG_MiniMaxMusic3Helpers",
