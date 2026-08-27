@@ -3427,7 +3427,16 @@ def _build_minimax_h3_advanced_2pass_api_prompt(payload):
             raise ValueError(f"MMH3 {label} must be a multiple of 32 pixels; got {value}.")
 
     def resolved_dimensions(target_megapixels):
-        ratio_width, ratio_height = _MINIMAX_H3_ASPECT_RATIOS[aspect_ratio]
+        ratio_width, ratio_height = {
+            "1:1 (Square)": (1, 1),
+            "2:3 (Portrait Photo)": (2, 3),
+            "3:2 (Photo)": (3, 2),
+            "3:4 (Portrait Standard)": (3, 4),
+            "4:3 (Standard)": (4, 3),
+            "9:16 (Portrait Widescreen)": (9, 16),
+            "16:9 (Widescreen)": (16, 9),
+            "21:9 (Ultrawide)": (21, 9),
+        }[aspect_ratio]
         scale = math.sqrt(target_megapixels * 1024 * 1024 / (ratio_width * ratio_height))
         return (
             round(ratio_width * scale / 32) * 32,
