@@ -1,6 +1,7 @@
 import os
 import shutil
 import subprocess
+import time
 import uuid
 
 import folder_paths
@@ -117,6 +118,34 @@ def _ensure_video_compare_routes():
     if server_instance is None or getattr(server_instance, "_vrgdg_compare_routes", False):
         return
 
+    @server_instance.routes.post("/vrgdg/video_compare/upload")
+    async def vrgdg_video_compare_upload(request):
+        try:
+            reader = await request.multipart()
+            saved_path = ""
+            async for part in reader:
+                if part.name != "video" or not part.filename:
+                    continue
+                safe_name = os.path.basename(str(part.filename)).replace(" ", "_")
+                extension = os.path.splitext(safe_name)[1].lower()
+                if extension not in _VIDEO_EXTENSIONS:
+                    raise ValueError("Unsupported video type. Use MP4, MOV, WebM, MKV, AVI, or M4V.")
+                upload_dir = folder_paths.get_input_directory()
+                os.makedirs(upload_dir, exist_ok=True)
+                saved_path = os.path.join(upload_dir, f"vrgdg_compare_{time.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}_{safe_name}")
+                with open(saved_path, "wb") as handle:
+                    while True:
+                        chunk = await part.read_chunk(size=1024 * 1024)
+                        if not chunk:
+                            break
+                        handle.write(chunk)
+                break
+            if not saved_path:
+                raise ValueError("No video file was selected.")
+            return web.json_response({"ok": True, "path": saved_path, "name": os.path.basename(saved_path)})
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+
     @server_instance.routes.post("/vrgdg/video_compare/save_recording")
     async def vrgdg_video_compare_save_recording(request):
         temporary_path = ""
@@ -226,7 +255,9 @@ class VRGDG_VideoCompareSlider:
                     "VHS_FILENAMES",
                     {"tooltip": "Legacy: connect a Filenames output for the processed video."},
                 ),
-            }
+
+                "before_selected": ("STRING", {"default": "", "tooltip": "Video selected with the Choose Before Video button."}),
+                "after_selected": ("STRING", {"default": "", "tooltip": "Video selected with the Choose After Video button."}),            }
         }
 
     RETURN_TYPES = ("VHS_FILENAMES", "VHS_FILENAMES")
@@ -248,9 +279,11 @@ class VRGDG_VideoCompareSlider:
         after_images=None,
         before_video=None,
         after_video=None,
+        before_selected="",
+        after_selected="",
     ):
-        before_path = _write_image_batch_video(before_images, "before", 24.0) if before_images is not None else _resolve_video_path(before_video, "Before")
-        after_path = _write_image_batch_video(after_images, "after", 24.0) if after_images is not None else _resolve_video_path(after_video, "After")
+        before_path = _write_image_batch_video(before_images, "before", 24.0) if before_images is not None else _resolve_video_path(before_selected or before_video, "Before")
+        after_path = _write_image_batch_video(after_images, "after", 24.0) if after_images is not None else _resolve_video_path(after_selected or after_video, "After")
         return {
             "ui": {
                 "compare_videos": [

@@ -17,6 +17,13 @@ import comfy.nested_tensor
 MODEL_TYPE = "VRGDG_MINIMAX_H3_LATENT_UPSCALE_MODEL"
 _BACKEND_MODULE_NAME = "_vrgdg_minimax_h3_learned_upscale_backend"
 _MODEL_CACHE = {}
+_LATENT_UPSCALE_FOLDER = "latent_upscale_models"
+
+if _LATENT_UPSCALE_FOLDER not in folder_paths.folder_names_and_paths:
+    folder_paths.add_model_folder_path(
+        _LATENT_UPSCALE_FOLDER,
+        os.path.join(folder_paths.models_dir, _LATENT_UPSCALE_FOLDER),
+    )
 
 
 def _backend_path():
@@ -68,6 +75,26 @@ def _resolve_model_path(model_name):
             f"Registered model folders: {searched}"
         )
     return os.path.abspath(path)
+
+
+def _resolve_registered_model_path(model_name):
+    """Resolve an H3 checkpoint across every registered model directory."""
+    requested = str(model_name or "").strip()
+    if not requested or requested.startswith("["):
+        raise FileNotFoundError("No MiniMax H3 latent-upscale model was selected.")
+    for root in folder_paths.get_folder_paths(_LATENT_UPSCALE_FOLDER):
+        candidate = os.path.abspath(os.path.join(str(root), requested))
+        if os.path.isfile(candidate):
+            return candidate
+    # ComfyUI's resolver also understands configured secondary paths and
+    # subfolder names.  Keep this fallback for custom folder-path providers.
+    resolved = folder_paths.get_full_path(_LATENT_UPSCALE_FOLDER, requested)
+    if resolved and os.path.isfile(resolved):
+        return os.path.abspath(resolved)
+    raise FileNotFoundError(
+        f"MiniMax H3 latent-upscale model '{requested}' was not found in registered "
+        f"latent_upscale_models folders: {folder_paths.get_folder_paths(_LATENT_UPSCALE_FOLDER)}"
+    )
 
 
 def _load_model(model_name, device_name, precision):
@@ -138,6 +165,47 @@ class VRGDG_MiniMaxH3LatentUpscaleModelLoader:
                 "No models were found in ComfyUI's registered latent_upscale_models folders."
             )
         return (_load_model(model_name, device, precision),)
+
+
+class VRGDG_MiniMaxH3UltimateUpscaleParams:
+    """Reliable H3 parameter node for the upstream MMH3 Ultimate Upscale node.
+
+    The upstream parameter node builds its Combo options from only one model
+    directory at import time.  This node resolves all registered directories
+    at execution time and emits the absolute checkpoint path in the shared
+    parameter dictionary, so the upstream processor can load the chosen file
+    regardless of which ComfyUI model path contains it.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        models = _model_choices()
+        if not models:
+            models = ["[no MiniMax H3 models found in registered latent_upscale_models folders]"]
+        return {
+            "required": {
+                "model_name": (models,),
+                "width": ("INT", {"default": 1280, "min": 64, "max": 4096, "step": 32}),
+                "height": ("INT", {"default": 704, "min": 64, "max": 4096, "step": 32}),
+                "device": (["cuda", "cpu"], {"default": "cuda"}),
+                "precision": (["bf16", "fp16", "fp32"], {"default": "bf16"}),
+            }
+        }
+
+    RETURN_TYPES = ("H3_UPSCALE_PARAM",)
+    RETURN_NAMES = ("latent_upscale_param",)
+    FUNCTION = "create"
+    CATEGORY = "VRGDG/Video/MiniMax H3"
+
+    def create(self, model_name, width, height, device, precision):
+        path = _resolve_registered_model_path(model_name)
+        return ({
+            "model_name": path,
+            "width": int(round(int(width) / 32.0)) * 32,
+            "height": int(round(int(height) / 32.0)) * 32,
+            "device": device,
+            "precision": precision,
+        },)
 
 
 class VRGDG_MiniMaxH3LearnedLatentUpscale:
@@ -261,12 +329,14 @@ class VRGDG_MiniMaxH3ReplaceUpscaledVideoLatent:
 
 NODE_CLASS_MAPPINGS = {
     "VRGDG_MiniMaxH3LatentUpscaleModelLoader": VRGDG_MiniMaxH3LatentUpscaleModelLoader,
+    "VRGDG_MiniMaxH3UltimateUpscaleParams": VRGDG_MiniMaxH3UltimateUpscaleParams,
     "VRGDG_MiniMaxH3LearnedLatentUpscale": VRGDG_MiniMaxH3LearnedLatentUpscale,
     "VRGDG_MiniMaxH3ReplaceUpscaledVideoLatent": VRGDG_MiniMaxH3ReplaceUpscaledVideoLatent,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_MiniMaxH3LatentUpscaleModelLoader": "Load MiniMax H3 Learned Latent Upscaler",
+    "VRGDG_MiniMaxH3UltimateUpscaleParams": "MiniMax H3 Ultimate Upscale Params (VRGDG)",
     "VRGDG_MiniMaxH3LearnedLatentUpscale": "MiniMax H3 Learned Latent Upscale",
     "VRGDG_MiniMaxH3ReplaceUpscaledVideoLatent": "MiniMax H3 Replace with Upscaled Video Latent",
 }

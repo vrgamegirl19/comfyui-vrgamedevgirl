@@ -3339,6 +3339,206 @@ def _build_minimax_h3_2pass_api_prompt(payload):
     }
 
 
+def _build_minimax_h3_advanced_2pass_api_prompt(payload):
+    """Build the MMH3 tiled/chunked advanced two-pass API prompt.
+
+    The established two-pass adapter supplies the model, reference, audio,
+    timing, LoRA, and sampler branches.  This adapter replaces its whole-frame
+    learned-upscale/refinement tail with Comfyui-MMH3-UltimateUpscale and gives
+    each pass an independent ResolutionSelector.
+    """
+    try:
+        mappings = _get_comfy_node_mappings()
+    except Exception as exc:
+        raise ValueError(
+            "Could not inspect ComfyUI custom-node registrations. Restart ComfyUI "
+            "after installing Comfyui-MMH3-UltimateUpscale."
+        ) from exc
+    required_nodes = (
+        "MMH3UltimateUpscale",
+        "VRGDG_MiniMaxH3UltimateUpscaleParams",
+        "MMH3TemporalSplitParams",
+        "MMH3SpatialSplitParams",
+    )
+    missing_nodes = [name for name in required_nodes if name not in mappings]
+    if missing_nodes:
+        raise ValueError(
+            "MiniMax H3 2 Pass Advanced requires the latest "
+            "Comfyui-MMH3-UltimateUpscale custom nodes. Missing: "
+            + ", ".join(missing_nodes)
+            + ". Install or update the repository, then restart ComfyUI."
+        )
+
+    base_payload = dict(payload)
+    # The shared adapter validates and configures this same learned-upscaler
+    # checkpoint, Turbo LoRA, references, source audio, and exact timing.
+    base_payload.setdefault("final_width", 1920)
+    base_payload.setdefault("final_height", 1080)
+    base_payload.setdefault("latent_upscale_scale", 2.0)
+    base_payload.setdefault("pass2_steps", 1)
+    base_payload.setdefault("pass2_denoise", 0.2)
+    base_payload.setdefault("pass2_sampler_name", "sa_solver")
+    base_payload.setdefault("pass2_scheduler", "simple")
+    result = _build_minimax_h3_2pass_api_prompt(base_payload)
+    prompt = result["prompt"]
+
+    aspect_ratio = str(payload.get("aspect_ratio") or "16:9 (Widescreen)").strip()
+    if aspect_ratio not in _MINIMAX_H3_ASPECT_RATIOS:
+        raise ValueError(f"Unsupported MiniMax H3 advanced two-pass aspect ratio: {aspect_ratio}")
+    pass1_megapixels = _float_payload(payload, "advanced_pass1_megapixels", 0.4, 0.1, 16.0)
+    pass2_megapixels = _float_payload(payload, "advanced_pass2_megapixels", 2.0, 0.1, 16.0)
+    if pass2_megapixels < pass1_megapixels:
+        raise ValueError("2 Pass Advanced Pass 2 resolution must be at least Pass 1 resolution.")
+
+    tile_size_mode = str(payload.get("advanced_tile_size_mode") or "specific_size").strip().lower()
+    if tile_size_mode not in {"specific_size", "rows_cols"}:
+        tile_size_mode = "specific_size"
+    tile_width = _int_payload(payload, "advanced_tile_width", 448, 32, 16384)
+    tile_height = _int_payload(payload, "advanced_tile_height", 448, 32, 16384)
+    grid_rows = _int_payload(payload, "advanced_grid_rows", 3, 1, 9)
+    grid_cols = _int_payload(payload, "advanced_grid_cols", 5, 1, 9)
+    chunk_length = _int_payload(payload, "advanced_chunk_length", 68, 17, 100000)
+    temporal_overlap = _int_payload(payload, "advanced_temporal_overlap", 17, 0, 100000)
+    anchor_strength = _float_payload(payload, "advanced_anchor_strength", 0.999, 0.0, 1.0)
+    spatial_w_overlap = _int_payload(payload, "advanced_spatial_w_overlap", 128, 0, 16384)
+    spatial_h_overlap = _int_payload(payload, "advanced_spatial_h_overlap", 128, 0, 16384)
+    fade_width = _int_payload(payload, "advanced_fade_width", 32, 0, 16384)
+    fade_height = _int_payload(payload, "advanced_fade_height", 32, 0, 16384)
+    min_tile_size = _int_payload(payload, "advanced_min_tile_size", 256, 0, 16384)
+    overlap_mode = str(payload.get("advanced_overlap_mode") or "earlier").strip().lower()
+    overlap_blend = str(payload.get("advanced_overlap_blend") or "linear").strip().lower()
+    if overlap_mode not in {"earlier", "later"}:
+        overlap_mode = "earlier"
+    if overlap_blend not in {"linear", "smoothstep", "overwrite", "midpoint"}:
+        overlap_blend = "linear"
+    if chunk_length % 17 or temporal_overlap % 17:
+        raise ValueError("MMH3 chunk length and temporal overlap must be multiples of 17 frames.")
+    if temporal_overlap >= chunk_length:
+        raise ValueError("MMH3 temporal overlap must be smaller than chunk length.")
+    for label, value in (
+        ("tile width", tile_width), ("tile height", tile_height),
+        ("spatial width overlap", spatial_w_overlap),
+        ("spatial height overlap", spatial_h_overlap),
+        ("fade width", fade_width), ("fade height", fade_height),
+        ("minimum tile size", min_tile_size),
+    ):
+        if value % 32:
+            raise ValueError(f"MMH3 {label} must be a multiple of 32 pixels; got {value}.")
+
+    # Independent target resolutions for the generation and tiled refinement.
+    prompt["9300"] = {
+        "class_type": "ResolutionSelector",
+        "inputs": {"aspect_ratio": aspect_ratio, "megapixels": pass1_megapixels, "multiple": 32},
+        "_meta": {"title": "2 Pass Advanced - Pass 1 Resolution"},
+    }
+    prompt["9301"] = {
+        "class_type": "ResolutionSelector",
+        "inputs": {"aspect_ratio": aspect_ratio, "megapixels": pass2_megapixels, "multiple": 32},
+        "_meta": {"title": "2 Pass Advanced - Pass 2 Resolution"},
+    }
+    _set_api_input(prompt, "136", "width", ["9300", 0])
+    _set_api_input(prompt, "136", "height", ["9300", 1])
+
+    pass2_conditioning = copy.deepcopy(prompt["136"])
+    pass2_conditioning["inputs"]["width"] = ["9301", 0]
+    pass2_conditioning["inputs"]["height"] = ["9301", 1]
+    pass2_conditioning["_meta"] = {"title": "2 Pass Advanced - Final Resolution Conditioning"}
+    prompt["9302"] = pass2_conditioning
+
+    prompt["9303"] = {
+        "class_type": "VRGDG_MiniMaxH3UltimateUpscaleParams",
+        "inputs": {
+            "model_name": str(payload.get("latent_upscaler_name") or "minimax_h3_latent_upscaler_3d_bf16.safetensors"),
+            "width": ["9301", 0],
+            "height": ["9301", 1],
+            "device": str(payload.get("advanced_upscaler_device") or "cuda"),
+            "precision": str(payload.get("advanced_upscaler_precision") or "bf16"),
+        },
+        "_meta": {"title": "2 Pass Advanced - H3 Learned Latent Upscale"},
+    }
+    prompt["9304"] = {
+        "class_type": "MMH3TemporalSplitParams",
+        "inputs": {
+            "chunk_length": chunk_length,
+            "temporal_overlap": temporal_overlap,
+            "anchor_strength": anchor_strength,
+        },
+        "_meta": {"title": "2 Pass Advanced - Temporal Chunks"},
+    }
+    prompt["9305"] = {
+        "class_type": "MMH3SpatialSplitParams",
+        "inputs": {
+            "upscale_width": ["9301", 0],
+            "upscale_height": ["9301", 1],
+            "tile_size_mode": tile_size_mode,
+            "tile_width": tile_width,
+            "tile_height": tile_height,
+            "grid_rows": grid_rows,
+            "grid_cols": grid_cols,
+            "spatial_w_overlap": spatial_w_overlap,
+            "spatial_h_overlap": spatial_h_overlap,
+            "fade_width": fade_width,
+            "fade_height": fade_height,
+            "min_tile_size": min_tile_size,
+            "overlap_mode": overlap_mode,
+            "overlap_blend": overlap_blend,
+        },
+        "_meta": {"title": "2 Pass Advanced - Spatial Tiles"},
+    }
+    pass2_model_ref = copy.deepcopy(prompt["192"]["inputs"]["model"])
+    prompt["9306"] = {
+        "class_type": "MMH3UltimateUpscale",
+        "inputs": {
+            "model": pass2_model_ref,
+            "conditioning": ["9302", 0],
+            "latent": ["125", 0],
+            "noise": ["211", 0],
+            "sampler": ["210", 0],
+            "sigmas": ["192", 0],
+            "cfg": 1.0,
+            "latent_upscale_param": ["9303", 0],
+            "temporal_split_param": ["9304", 0],
+            "spatial_split_param": ["9305", 0],
+        },
+        "_meta": {"title": "2 Pass Advanced - MMH3 Ultimate Upscale"},
+    }
+    _set_api_input(prompt, "122", "samples", ["9306", 0])
+    _set_api_input(prompt, "142", "images", ["122", 0])
+
+    # Expose Pass 1 as a reviewable backup while Pass 2 remains the final clip.
+    prompt["9307"] = {
+        "class_type": "VAEDecode",
+        "inputs": {"samples": ["125", 0], "vae": ["119", 0]},
+        "_meta": {"title": "2 Pass Advanced - Decode Pass 1 Preview"},
+    }
+    pass1_output = copy.deepcopy(prompt["142"])
+    pass1_output["inputs"]["images"] = ["9307", 0]
+    pass1_output["inputs"]["filename_prefix"] = str(prompt["142"]["inputs"]["filename_prefix"]).replace("_stage2", "_stage1")
+    pass1_output["_meta"] = {"title": "2 Pass Advanced - Pass 1 Backup"}
+    prompt["9308"] = pass1_output
+    prompt["142"]["inputs"]["filename_prefix"] = str(prompt["142"]["inputs"]["filename_prefix"]).replace("_stage2", "_advanced_stage2")
+
+    # Remove the original whole-frame upscale/refinement tail now replaced by MMH3.
+    for node_id in ("115", "181", "182", "183", "184", "185", "186", "187", "188", "189", "193", "194"):
+        prompt.pop(node_id, None)
+
+    result["prompt"] = prompt
+    result["advanced_two_pass"] = {
+        "pass1_megapixels": pass1_megapixels,
+        "pass2_megapixels": pass2_megapixels,
+        "vram_preset": str(payload.get("advanced_vram_preset") or "12gb"),
+        "tile_size_mode": tile_size_mode,
+        "tile_width": tile_width,
+        "tile_height": tile_height,
+        "grid_rows": grid_rows,
+        "grid_cols": grid_cols,
+        "chunk_length": chunk_length,
+        "temporal_overlap": temporal_overlap,
+    }
+    result.pop("two_pass", None)
+    return result
+
+
 def _remap_api_prompt_references(prompt, prefix):
     """Copy an API prompt under collision-free IDs and rewrite socket links."""
     mapping = {str(node_id): f"{prefix}{str(node_id).replace(':', '_')}" for node_id in prompt}
@@ -5254,6 +5454,18 @@ def _ensure_workflow_runner_routes():
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
             result = _build_minimax_h3_2pass_api_prompt(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/workflow_runner/build_minimax_h3_advanced_2pass_prompt")
+    async def vrgdg_workflow_runner_build_minimax_h3_advanced_2pass_prompt(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+        try:
+            result = _build_minimax_h3_advanced_2pass_api_prompt(payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
