@@ -105,8 +105,21 @@ def _load_model(model_name, device_name, precision):
     if cached is not None:
         return cached
 
+    dtype_map = {
+        "fp32": torch.float32,
+        "float32": torch.float32,
+        "fp16": torch.float16,
+        "float16": torch.float16,
+        "bf16": torch.bfloat16,
+        "bfloat16": torch.bfloat16,
+    }
+    if isinstance(precision, torch.dtype):
+        dtype = precision
+    else:
+        dtype = dtype_map.get(str(precision).lower(), torch.bfloat16)
+
     backend = _load_backend()
-    raw_state = backend._load_raw_sd(path)
+    raw_state = backend._load_raw_sd(path, device, dtype)
     state = backend._extract_upscaler_sd(raw_state)
     config = backend._detect_arch(state)
     model = backend.LatentResizer3D(
@@ -120,11 +133,6 @@ def _load_model(model_name, device_name, precision):
         temporal_kernel=config["temporal_kernel"],
     )
     model.load_state_dict(state, strict=True)
-    dtype = {
-        "fp32": torch.float32,
-        "fp16": torch.float16,
-        "bf16": torch.bfloat16,
-    }[precision]
     model = model.to(device=device, dtype=dtype).eval()
     loaded = {
         "model": model,
