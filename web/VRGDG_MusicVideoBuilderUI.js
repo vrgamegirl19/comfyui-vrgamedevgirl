@@ -43942,6 +43942,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     };
     storyboardPromptPipelineRunner = createStoryboardVideoPromptViaBuilder;
     ACTIVE_STORYBOARD_PROMPT_PIPELINE = createStoryboardVideoPromptViaBuilder;
+    if (options.registerPromptPipelineOnly) return;
     const applyIdLoraDialoguePlanFromStoryboard = async (updates = {}) => {
       const scenes = Array.isArray(updates.scenes)
         ? updates.scenes.filter((scene) => String(scene?.lyrics || scene?.story_beat || scene?.image_prompt || "").trim())
@@ -45556,6 +45557,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       segments: state.segments,
       global_audio_path: currentProjectAudioPath(),
       allow_missing_scene_audio: !!options.allowMissingSceneAudio,
+      srt_text_field: options.rtvLtx25 ? "lyric_text" : "label",
     }, 180000);
     if (data.srt_path) {
       state.srtPath = data.srt_path;
@@ -45568,6 +45570,17 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       srtPath: data.srt_path || state.srtPath || srtInput.value,
       usedSceneAudio: true,
     };
+  }
+
+  function ltx25RtvSceneOrdinal(segment) {
+    const ordered = (Array.isArray(state.segments) ? state.segments : [])
+      .map((item, index) => ({ item, index }))
+      .sort((left, right) => {
+        const delta = Number(left.item?.start || 0) - Number(right.item?.start || 0);
+        return Math.abs(delta) > 0.001 ? delta : left.index - right.index;
+      });
+    const ordinal = ordered.findIndex(({ item }) => item?.id === segment?.id);
+    return ordinal >= 0 ? ordinal + 1 : 1;
   }
 
   async function renderSceneVideoWithProgress(segment, sceneIndex, progress, options = {}) {
@@ -45603,6 +45616,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     // diffusion and CLIP node replacement. Native-audio T2V is not used by
     // the Video Builder, so all LTX versions follow the same audio path.
     const isLtx25NativeAudio = false;
+    const isLtx25Rtv = videoMode === "rtv" && videoSettingsForScene.ltx_version === "2.5";
     const idLoraContext = isIdLoraMode ? idLoraSceneContext(segment) : null;
     if (isIdLoraMode && idLoraContext?.dialogue) {
       segment.lyric_text = idLoraContext.dialogue;
@@ -45663,6 +45677,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       srtPath = singleSrt.srt_path || srtPath;
       promptNumberForScene = 1;
       audioModeForScene = segment.custom_audio_path ? "Custom scene audio trimmed for this scene" : "Global/project audio trimmed for this scene";
+    }
+    if (isLtx25Rtv && options.audioPathOverride) {
+      promptNumberForScene = ltx25RtvSceneOrdinal(segment);
     }
     if (!isLtx25NativeAudio && !String(audioPathForScene || "").trim()) {
       throw new Error(isIdLoraMode
@@ -45785,6 +45802,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         scene_number: slotNumber,
         prompt_number_one_based: promptNumberForScene,
         min_mtime: renderStartedAt,
+        strict_output_folder: isLtx25Rtv,
       }, 30000);
       return found.video_path || "";
     };
@@ -47077,9 +47095,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       await persistRenderLog(renderLog);
       progress.set(`Autosaving session/SRT before ${sceneScope === "selected" ? "Render Selected" : sceneScope === "from_selected" ? "Render From Selected" : "Render All"}...`, 3);
       await saveSessionForSceneVideo();
+      const ltx25RtvBatch = !miniMaxProject
+        && currentVideoMode() === "rtv"
+        && (state.i2vVideoSettings?.ltx_version || "2.5") === "2.5";
       const preparedAudio = miniMaxProject || skipFinalStitch
         ? { audioPath: "", srtPath: "" }
-        : await prepareSceneAudioMix(progress, "Preparing combined scene-audio track for LTX");
+        : await prepareSceneAudioMix(progress, "Preparing combined scene-audio track for LTX", { rtvLtx25: ltx25RtvBatch });
       const scenes = batchTargetItems(sceneScope)
         .filter(({ segment }) => forceVideos || !String(selectedSegmentVideoPath(segment) || "").trim());
       const requestedSceneCount = batchTargetItems(sceneScope).length;
