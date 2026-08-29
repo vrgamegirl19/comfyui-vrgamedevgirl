@@ -98,7 +98,10 @@ class BuilderMiniMaxAdvancedTwoPassTests(unittest.TestCase):
         result = namespace["_build_minimax_h3_advanced_2pass_api_prompt"]({})
         prompt = result["prompt"]
         self.assertEqual(prompt["136"]["inputs"]["width"], ["9300", 0])
+        self.assertEqual(prompt["136"]["inputs"]["prompt"], ["138", 0])
         self.assertEqual(prompt["9302"]["inputs"]["width"], ["9301", 0])
+        self.assertEqual(prompt["9302"]["inputs"]["prompt"], "")
+        self.assertEqual(prompt["9306"]["inputs"]["conditioning"], ["9302", 0])
         self.assertEqual(prompt["9306"]["inputs"]["model"], prompt["192"]["inputs"]["model"])
         self.assertEqual(prompt["142"]["inputs"]["images"], ["122", 0])
         self.assertEqual(prompt["9308"]["inputs"]["images"], ["9307", 0])
