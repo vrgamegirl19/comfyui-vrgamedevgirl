@@ -4688,12 +4688,13 @@ def _find_scene_video_output(payload):
                 folders.append(output_folder)
         except ValueError:
             pass
-    for name in os.listdir(project_folder):
-        path = os.path.abspath(os.path.join(project_folder, name))
-        if not os.path.isdir(path):
-            continue
-        if any(name == prefix.rstrip("_") or name.startswith(prefix) for prefix in prefixes):
-            folders.append(path)
+    if not bool(payload.get("strict_output_folder")):
+        for name in os.listdir(project_folder):
+            path = os.path.abspath(os.path.join(project_folder, name))
+            if not os.path.isdir(path):
+                continue
+            if any(name == prefix.rstrip("_") or name.startswith(prefix) for prefix in prefixes):
+                folders.append(path)
     folders = list(dict.fromkeys(folders))
 
     candidates = []

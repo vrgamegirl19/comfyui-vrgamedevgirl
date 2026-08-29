@@ -2870,13 +2870,13 @@ def _save_editable_text_file(payload):
     return {"path": file_path}
 
 
-def _segments_to_srt(segments):
+def _segments_to_srt(segments, text_field="label"):
     lines = []
     ordered = sorted(segments, key=lambda item: float(item.get("start", 0) or 0))
     for index, segment in enumerate(ordered, start=1):
         start = float(segment.get("start", 0) or 0)
         end = max(start + 0.1, float(segment.get("end", start + 4) or start + 4))
-        text = str(segment.get("label") or segment.get("t2i_prompt") or f"Scene {index}").strip()
+        text = str(segment.get(text_field) or segment.get("label") or segment.get("t2i_prompt") or f"Scene {index}").strip()
         lines.extend([str(index), f"{_format_srt_time(start)} --> {_format_srt_time(end)}", text, ""])
     return "\n".join(lines).strip() + "\n"
 
@@ -10090,7 +10090,8 @@ def _prepare_scene_audio_mix(payload):
 
     srt_path = _srt_path(project_folder)
     with open(srt_path, "w", encoding="utf-8") as handle:
-        handle.write(_segments_to_srt(segments))
+        text_field = "lyric_text" if str(payload.get("srt_text_field", "") or "").strip() == "lyric_text" else "label"
+        handle.write(_segments_to_srt(segments, text_field=text_field))
 
     shutil.rmtree(parts_folder, ignore_errors=True)
     audio_info = _read_audio_peaks(mix_path, 1600)
