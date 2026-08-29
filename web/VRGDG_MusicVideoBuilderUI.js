@@ -45974,7 +45974,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       throw new Error(`${sceneDisplayName(segment, sceneIndex)} has invalid timeline boundaries.`);
     }
 
-    const continuityInput = options.continuityInput === undefined
+    const continuityInput = mode === "image_to_video"
+      ? null
+      : options.continuityInput === undefined
       ? await prepareMiniMaxH3ContinuityReference(
         segment,
         progress,
@@ -46125,6 +46127,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         project_folder: projectFolder,
         scene_number: slotNumber,
         audio_mode: miniMaxSettings.audio_mode,
+        video_mode: mode,
         audio_path: builtInAudio ? "" : sourceAudioPath,
         prompt,
         timeline_start_seconds: timelineStart,
@@ -46231,6 +46234,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         image_paths: imagePaths,
         video_references: videoReferences,
       };
+      if (mode === "image_to_video") {
+        const lastFrame = firstLastFrameEndImageSource(segment) || {};
+        if (lastFrame.path) payload.last_frame_path = lastFrame.path;
+      }
       if (!builtInAudio && Number.isFinite(sourceDurationSeconds) && sourceDurationSeconds > 0) {
         payload.source_duration_seconds = sourceDurationSeconds;
       }

@@ -665,6 +665,41 @@ def _minimax_h3_video_references(payload):
     return references
 
 
+def _patch_minimax_h3_image_to_video_node(prompt, image_paths):
+    """Replace the H3 reference node with the native first/last-frame node.
+
+    The standard MiniMax builder graph intentionally keeps the same downstream
+    sampler/audio/output chain for both nodes: both emit positive conditioning
+    and the combined H3 video/audio latent.  The media loader's first two image
+    outputs therefore map directly to the native node's optional frame inputs.
+    """
+    node = prompt.get("136")
+    if not isinstance(node, dict):
+        raise KeyError("MiniMax H3 image-to-video node 136 was not found.")
+
+    paths = list(image_paths or [])
+    if not paths:
+        raise ValueError("MiniMax H3 image-to-video requires a first-frame image.")
+    if len(paths) > 2:
+        raise ValueError("MiniMax H3 image-to-video accepts at most a first and last frame.")
+
+    inputs = {
+        "prompt": ["138", 0],
+        "width": ["115", 0],
+        "height": ["115", 1],
+        "length": ["131", 1],
+        "clip": ["128", 0],
+        "vae": ["119", 0],
+        "first_frame": ["180", 0],
+    }
+    if len(paths) > 1:
+        inputs["last_frame"] = ["180", 1]
+
+    node["class_type"] = "MiniMaxH3ImageToVideo"
+    node["_meta"] = {"title": "MiniMax H3 Image to Video"}
+    node["inputs"] = inputs
+
+
 def _probe_media_duration_seconds(path):
     ffprobe_path = _ffprobe_path_for(_find_ffmpeg_path())
     cmd = [
@@ -3007,6 +3042,19 @@ def _build_minimax_h3_api_prompt(payload):
 
     image_paths = _minimax_h3_image_paths(payload)
     video_references = _minimax_h3_video_references(payload)
+    video_mode = str(payload.get("video_mode") or payload.get("mode") or "text_to_video").strip().lower().replace("-", "_").replace(" ", "_")
+    if video_mode == "image_to_video":
+        if not image_paths:
+            raise ValueError("MiniMax H3 image-to-video requires a scene image as the first frame.")
+        last_frame_path = str(payload.get("last_frame_path") or "").strip().strip('"')
+        if last_frame_path:
+            last_frame_path = os.path.abspath(last_frame_path)
+            if not os.path.isfile(last_frame_path):
+                raise FileNotFoundError(f"MiniMax H3 last-frame image was not found: {last_frame_path}")
+            if os.path.abspath(image_paths[0]) != last_frame_path:
+                image_paths = [image_paths[0], last_frame_path]
+        _patch_minimax_h3_image_to_video_node(prompt, image_paths)
+        video_references = []
     aspect_ratio = str(payload.get("aspect_ratio") or "16:9 (Widescreen)").strip()
     if aspect_ratio not in _MINIMAX_H3_ASPECT_RATIOS:
         raise ValueError(f"Unsupported MiniMax H3 aspect ratio: {aspect_ratio}")

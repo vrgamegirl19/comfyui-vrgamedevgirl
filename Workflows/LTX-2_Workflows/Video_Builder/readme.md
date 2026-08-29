@@ -2759,7 +2759,7 @@ Mode-specific notes:
 | Builder feature | Extra dependency notes |
 | --- | --- |
 | `Image to Video` / `Text to Video` | Requires the LTXVideo, VideoHelperSuite, GGUF, and KJNodes packs above |
-| `MiniMax H3` | Requires a current ComfyUI build with `MiniMaxH3ReferenceToVideo`, KJNodes for the standard diffusion loader, VideoHelperSuite for reference video/audio loading and combining, and this repo's H3 timing/audio/reference nodes. Built-in audio also uses the installed LTX audio VAE decode node. GGUF is not supported on this path. |
+| `MiniMax H3` | Requires a current ComfyUI build with `MiniMaxH3ReferenceToVideo` and `MiniMaxH3ImageToVideo`, KJNodes for the standard diffusion loader, VideoHelperSuite for reference video/audio loading and combining, and this repo's H3 timing/audio/reference nodes. Built-in audio also uses the installed LTX audio VAE decode node. GGUF is not supported on this path. |
 | `MiniMax-H3 Turbo` | Optional. Requires `ComfyUI-MiniMax-H3-Turbo`, the selected Turbo LoRA under `models/loras`, and a ComfyUI restart after installation/update. Standard MiniMax does not require this extension while Turbo is disabled. |
 | `First Last Frame` | Requires the same LTX stack plus the bundled `LTX2.3_FLF_API.json` hidden workflow and both start/end images |
 | `ID-LoRA I2V` | Requires LTXVideo plus the required ID-LoRA/model shown in the Video tab |
