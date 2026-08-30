@@ -39,6 +39,7 @@ from .VRGDG_FaceFix import register_face_fix_routes
 from .VRGDG_GemmaPromptSanitizer import extract_prompt_text_from_gemma_output
 from .VRGDG_StoryboardBuilderNodes import _STORYBOARD_T2I_GEMMA_INSTRUCTIONS
 from .VRGDG_MiniMaxH3PromptInstructions import (
+    MINIMAX_H3_IMAGE_REFERENCE_TO_VIDEO_INSTRUCTIONS,
     MINIMAX_H3_IMAGE_TO_VIDEO_INSTRUCTIONS,
     MINIMAX_H3_REFERENCE_TO_VIDEO_INSTRUCTIONS,
     MINIMAX_H3_TEXT_TO_VIDEO_INSTRUCTIONS,
@@ -1062,6 +1063,7 @@ _BUILDER_INSTRUCTION_DEFAULTS = {
     "i2v": _I2V_INSTRUCTIONS,
     "krea2_t2i": _STANDARD_IMAGE_T2I_INSTRUCTIONS,
     "minimax_h3_image_to_video": MINIMAX_H3_IMAGE_TO_VIDEO_INSTRUCTIONS,
+    "minimax_h3_image_reference_to_video": MINIMAX_H3_IMAGE_REFERENCE_TO_VIDEO_INSTRUCTIONS,
     "minimax_h3_reference_to_video": MINIMAX_H3_REFERENCE_TO_VIDEO_INSTRUCTIONS,
     "minimax_h3_text_to_video": MINIMAX_H3_TEXT_TO_VIDEO_INSTRUCTIONS,
     "minimax_h3_video_to_video": MINIMAX_H3_VIDEO_TO_VIDEO_INSTRUCTIONS,
@@ -1084,6 +1086,7 @@ _BUILDER_INSTRUCTION_LABELS = {
     "i2v": "Image to Video",
     "krea2_t2i": "Krea 2 Text to Image",
     "minimax_h3_image_to_video": "MiniMax H3 Image to Video",
+    "minimax_h3_image_reference_to_video": "MiniMax H3 Image + Reference to Video",
     "minimax_h3_reference_to_video": "MiniMax H3 Reference to Video",
     "minimax_h3_text_to_video": "MiniMax H3 Text to Video",
     "minimax_h3_video_to_video": "MiniMax H3 Video to Video",
