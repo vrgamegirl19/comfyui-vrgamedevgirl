@@ -48,6 +48,11 @@ Use supplied <Subject N> and <Picture N> labels only if they are listed in the s
 """
 
 
+_MINIMAX_H3_IMAGE_REFERENCE_TO_VIDEO_MODE = """MODE: IMAGE + REFERENCE TO VIDEO
+Use <Picture 1> as the exact starting frame when supplied. If a second frame is supplied, use <Picture 2> as the exact ending frame and describe the continuous path between them. Use any additional <Picture N> labels as visual references for identity, clothing, props, or scene details; do not treat those additional references as exact frame anchors. The Builder writes the standalone reference definitions, so do not output them.
+"""
+
+
 _MINIMAX_H3_VIDEO_TO_VIDEO_MODE = """MODE: VIDEO TO VIDEO
 Use supplied <Video N>, <Picture N>, and <Subject N> labels only if they are listed in the scene context. The Builder writes the standalone reference definitions, so do not output them.
 """
@@ -65,6 +70,10 @@ MINIMAX_H3_REFERENCE_TO_VIDEO_INSTRUCTIONS = (
     MINIMAX_H3_PROMPT_DIRECTOR_CORE + "\n" + _MINIMAX_H3_REFERENCE_TO_VIDEO_MODE
 )
 
+MINIMAX_H3_IMAGE_REFERENCE_TO_VIDEO_INSTRUCTIONS = (
+    MINIMAX_H3_PROMPT_DIRECTOR_CORE + "\n" + _MINIMAX_H3_IMAGE_REFERENCE_TO_VIDEO_MODE
+)
+
 MINIMAX_H3_VIDEO_TO_VIDEO_INSTRUCTIONS = (
     MINIMAX_H3_PROMPT_DIRECTOR_CORE + "\n" + _MINIMAX_H3_VIDEO_TO_VIDEO_MODE
 )
@@ -74,6 +83,7 @@ MINIMAX_H3_INSTRUCTIONS_BY_MODE = {
     "text_to_video": MINIMAX_H3_TEXT_TO_VIDEO_INSTRUCTIONS,
     "image_to_video": MINIMAX_H3_IMAGE_TO_VIDEO_INSTRUCTIONS,
     "reference_to_video": MINIMAX_H3_REFERENCE_TO_VIDEO_INSTRUCTIONS,
+    "image_reference_to_video": MINIMAX_H3_IMAGE_REFERENCE_TO_VIDEO_INSTRUCTIONS,
     "video_to_video": MINIMAX_H3_VIDEO_TO_VIDEO_INSTRUCTIONS,
 }
 
@@ -82,6 +92,7 @@ MINIMAX_H3_INSTRUCTION_KEYS_BY_MODE = {
     "text_to_video": "minimax_h3_text_to_video",
     "image_to_video": "minimax_h3_image_to_video",
     "reference_to_video": "minimax_h3_reference_to_video",
+    "image_reference_to_video": "minimax_h3_image_reference_to_video",
     "video_to_video": "minimax_h3_video_to_video",
 }
 

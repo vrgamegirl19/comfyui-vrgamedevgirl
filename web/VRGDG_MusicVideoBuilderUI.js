@@ -160,6 +160,7 @@ const MINIMAX_H3_INSTRUCTION_KEYS = {
   text_to_video: "minimax_h3_text_to_video",
   image_to_video: "minimax_h3_image_to_video",
   reference_to_video: "minimax_h3_reference_to_video",
+  image_reference_to_video: "minimax_h3_image_reference_to_video",
   video_to_video: "minimax_h3_video_to_video",
 };
 const MINIMAX_H3_VIDEO_REFERENCE_PURPOSES = [
@@ -372,6 +373,7 @@ const MINIMAX_H3_SAGE_ATTENTION_OPTIONS = [
 
 function normalizeMiniMaxH3Mode(value) {
   const clean = String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (clean === "image_reference_to_video" || clean === "image_plus_reference_to_video" || clean === "i2v_r2v") return "image_reference_to_video";
   return MINIMAX_H3_MODE_OPTIONS.some((item) => item.value === clean) ? clean : "text_to_video";
 }
 
@@ -434,6 +436,7 @@ function normalizeMiniMaxSpeakerAssignments(value = []) {
 
 function miniMaxH3ModeLabel(value) {
   const mode = normalizeMiniMaxH3Mode(value);
+  if (mode === "image_reference_to_video") return "Image + Reference 2 Pass";
   return MINIMAX_H3_MODE_OPTIONS.find((item) => item.value === mode)?.label || "Text to Video";
 }
 
@@ -17353,8 +17356,11 @@ function openBuilder(node) {
 
   function miniMaxH3MissingReferenceDescriptions(segment, mode = miniMaxH3ModeForSegment(segment)) {
     const missing = [];
-    if (normalizeMiniMaxH3Mode(mode) !== "reference_to_video" && normalizeMiniMaxH3Mode(mode) !== "video_to_video") return missing;
-    const items = miniMaxOrderedImageReferenceItemsForSegment(segment, mode)
+    const normalizedMode = normalizeMiniMaxH3Mode(mode);
+    if (!["reference_to_video", "image_reference_to_video", "video_to_video"].includes(normalizedMode)) return missing;
+    const items = (normalizedMode === "image_reference_to_video"
+      ? miniMaxH3ImageReferencePromptItems(segment)
+      : miniMaxOrderedImageReferenceItemsForSegment(segment, mode))
       .filter((item) => item?.kind === "subject" || item?.kind === "extra" || item?.kind === "location");
     items.forEach((item, index) => {
       const label = String(item?.label || `${item?.kind === "location" ? "Location" : "Character"} ${index + 1}`).trim();
@@ -17365,7 +17371,15 @@ function openBuilder(node) {
 
   function miniMaxH3ReferenceCapacityStatus(segment, mode = miniMaxH3ModeForSegment(segment)) {
     const normalizedMode = normalizeMiniMaxH3Mode(mode);
-    if (!segment || !["reference_to_video", "video_to_video"].includes(normalizedMode)) return { count: 0, overflow: 0, labels: [] };
+    if (!segment || !["reference_to_video", "image_reference_to_video", "video_to_video"].includes(normalizedMode)) return { count: 0, overflow: 0, labels: [] };
+    if (normalizedMode === "image_reference_to_video") {
+      const items = miniMaxH3ImageReferencePromptItems(segment, 99);
+      return {
+        count: items.length,
+        overflow: Math.max(0, items.length - 9),
+        labels: items.map((item, index) => String(item?.label || `Image ${index + 1}`)),
+      };
+    }
     const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
     const catalog = new Map(miniMaxReferenceBuilderCatalog(refs).map((item) => [item.key, item]));
     const seenImages = new Set();
@@ -40483,7 +40497,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     add(parts, "Story beat", segment?.story_beat);
     add(parts, "Lyric section", segment?.lyric_section);
     add(parts, "Subject", segment?.no_character_present ? "No main character is visible in this scene." : segmentMappedSubjectText(segment));
-    if (["reference_to_video", "video_to_video"].includes(normalizeMiniMaxH3Mode(mode))) {
+    if (["reference_to_video", "image_reference_to_video", "video_to_video"].includes(normalizeMiniMaxH3Mode(mode))) {
       add(parts, "Mapped extra subjects — mandatory", segmentMappedExtraSubjectText(segment, mode), 6000);
     }
     add(parts, "Location", segmentMappedLocationText(segment));
@@ -40550,11 +40564,62 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (normalizedMode === "image_to_video") {
       return ["<Picture 1>: exact start frame and authoritative opening composition, character identity, clothing, location, lighting, and visual-state anchor."];
     }
+    if (normalizedMode === "image_reference_to_video") {
+      return miniMaxH3ImageReferencePromptItems(segment).map((item, index) => {
+        const pictureLabel = `<Picture ${index + 1}>`;
+        if (item.kind === "start_frame") return `${pictureLabel}: exact start frame and authoritative opening composition, location, lighting, and visual-state anchor.`;
+        if (item.kind === "end_frame") return `${pictureLabel}: exact end frame and authoritative final composition, subject placement, lighting, and visual-state anchor.`;
+        const detail = [item.label, item.description].map((value) => String(value || "").trim()).filter(Boolean).join(" — ");
+        return `${pictureLabel}: ${miniMaxReferencePurposeText(item, segment)}${detail ? `. ${detail}` : ""}`;
+      });
+    }
     if (normalizedMode !== "reference_to_video" && normalizedMode !== "video_to_video") return [];
     return miniMaxOrderedImageReferenceItemsForSegment(segment, normalizedMode).map((item, index) => {
       const detail = [item.label, item.description].map((value) => String(value || "").trim()).filter(Boolean).join(" — ");
       return `<Picture ${index + 1}>: ${miniMaxReferencePurposeText(item, segment)}${detail ? `. ${detail}` : ""}`;
     });
+  }
+
+  function miniMaxH3ImageReferencePromptItems(segment, maxImages = 9) {
+    const ordered = [];
+    const startFrame = segmentImageSource(segment);
+    if (startFrame?.path || startFrame?.data) {
+      ordered.push({
+        key: "scene:start_frame",
+        kind: "start_frame",
+        label: "Scene start frame",
+        description: "Exact first frame and authoritative opening composition, location, lighting, and visual-state anchor.",
+        image: {
+          path: String(startFrame.path || "").trim(),
+          data: String(startFrame.data || "").trim(),
+          name: String(startFrame.name || "start_frame.png"),
+        },
+      });
+    }
+    const endFrame = firstLastFrameEndImageSource(segment);
+    if (endFrame?.path || endFrame?.data) {
+      ordered.push({
+        key: "scene:end_frame",
+        kind: "end_frame",
+        label: "Scene end frame",
+        description: "Exact last frame and authoritative final composition, subject placement, lighting, and visual-state anchor.",
+        image: {
+          path: String(endFrame.path || "").trim(),
+          data: String(endFrame.data || "").trim(),
+          name: String(endFrame.name || "end_frame.png"),
+        },
+      });
+    }
+    ordered.push(...miniMaxOrderedImageReferenceItemsForSegment(segment, "image_reference_to_video"));
+    const seen = new Set();
+    return ordered.filter((item) => {
+      const path = String(item?.image?.path || "").trim();
+      const data = String(item?.image?.data || "").trim();
+      const fingerprint = path ? `path:${mediaPathKey(path)}` : data ? `data:${data}` : "";
+      if (!fingerprint || seen.has(fingerprint)) return false;
+      seen.add(fingerprint);
+      return true;
+    }).slice(0, Math.max(0, Number(maxImages) || 9));
   }
 
   function miniMaxH3VideoAssignmentLines(segment) {
@@ -40959,18 +41024,24 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return normalizeMiniMaxH3ShotDescription(`${clean.replace(/[.!?…]+$/g, "").trim()}. ${vocalContract}`);
   }
 
-  function miniMaxH3OfficialShotBodyFromDescriptions(segment, descriptions = []) {
+  function miniMaxH3OfficialShotBodyFromDescriptions(segment, descriptions = [], mode = miniMaxH3ModeForSegment(segment)) {
     const cutPlan = miniMaxH3CutPlanForSegment(segment);
     const shotPlan = miniMaxH3OfficialShotPlan(cutPlan);
     if (descriptions.length !== shotPlan.length) {
       throw new Error(`Cannot assemble MiniMax shots: expected ${shotPlan.length} description${shotPlan.length === 1 ? "" : "s"}, got ${descriptions.length}.`);
     }
-    return shotPlan.map((shot, index) => {
+    let body = shotPlan.map((shot, index) => {
       const description = enforceMiniMaxH3CueOnShotDescription(segment, descriptions[index], index);
       if (shot.number === 1) return `[Shot 1] ${description}`.trim();
       const postCutDescription = miniMaxH3PostCutShotText(description).replace(/^\s*([a-z])/, (_match, letter) => letter.toUpperCase());
       return `[Shot ${shot.number}] At ${shot.timecode}, ${postCutDescription}`.trim();
     }).join("\n\n");
+    if (normalizeMiniMaxH3Mode(mode) === "image_reference_to_video") {
+      body = body.replace(/^\[Shot 1\]\s*/, "[Shot 1] The shot begins exactly from <Picture 1>. ");
+      const endFrame = firstLastFrameEndImageSource(segment);
+      if (endFrame?.path || endFrame?.data) body = `${body.trim()} The final motion converges exactly on <Picture 2> as the last frame.`;
+    }
+    return body;
   }
 
   function miniMaxH3OfficialReferencePlan(segment, mode = miniMaxH3ModeForSegment(segment)) {
@@ -40979,6 +41050,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const shotList = miniMaxH3OfficialShotPlan(cutPlan).map((shot) => `[Shot ${shot.number}]`).join(", ");
     const pictureItems = normalizedMode === "image_to_video"
       ? [{ kind: "start_frame", label: "opening frame", description: "the exact first frame and visual composition anchor" }]
+      : normalizedMode === "image_reference_to_video"
+        ? miniMaxH3ImageReferencePromptItems(segment)
       : (normalizedMode === "reference_to_video" || normalizedMode === "video_to_video")
         ? miniMaxOrderedImageReferenceItemsForSegment(segment, normalizedMode)
         : [];
@@ -40997,6 +41070,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       if (item?.kind === "start_frame") {
         pictureDefinitions.push(`${pictureLabel} is the first frame of [Shot 1], used as the exact opening composition and visual-state anchor.`);
         retention.push(`${pictureLabel} ([Shot 1] first frame): fully_preserved - the opening composition, subject placement, environment, lighting, and visual state are retained as the starting frame.`);
+        return;
+      }
+      if (item?.kind === "end_frame") {
+        const finalShot = miniMaxH3OfficialShotPlan(cutPlan).slice(-1)[0]?.number || 1;
+        pictureDefinitions.push(`${pictureLabel} is the last frame of [Shot ${finalShot}], used as the exact final composition and visual-state anchor.`);
+        retention.push(`${pictureLabel} ([Shot ${finalShot}] last frame): fully_preserved - the final composition, subject placement, environment, lighting, and visual state are reached exactly at the end.`);
         return;
       }
       subjectNumber += 1;
@@ -41180,7 +41259,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   function miniMaxH3CombinedSubjectPlan(segment, mode = miniMaxH3ModeForSegment(segment)) {
     const normalizedMode = normalizeMiniMaxH3Mode(mode);
     const plan = miniMaxH3OfficialReferencePlan(segment, normalizedMode);
-    if (!["reference_to_video", "video_to_video"].includes(normalizedMode)) return plan;
+    if (!["reference_to_video", "image_reference_to_video", "video_to_video"].includes(normalizedMode)) return plan;
     const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
     const mappedExtras = logicalExtraSubjectsForScene(refs, segment);
     if (!mappedExtras.length) return plan;
@@ -41249,7 +41328,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
 
   function segmentMappedExtraSubjectText(segment, mode = miniMaxH3ModeForSegment(segment)) {
     const normalizedMode = normalizeMiniMaxH3Mode(mode);
-    if (!["reference_to_video", "video_to_video"].includes(normalizedMode)) return "";
+    if (!["reference_to_video", "image_reference_to_video", "video_to_video"].includes(normalizedMode)) return "";
     const extras = miniMaxH3CombinedSubjectPlan(segment, normalizedMode).subjects.filter((item) => item.kind === "extra");
     if (!extras.length) return "";
     const lines = extras.map((item) => {
@@ -41285,8 +41364,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const normalizedMode = normalizeMiniMaxH3Mode(mode);
     const taskTypes = [];
     if (normalizedMode === "video_to_video") taskTypes.push("video editing");
-    if (normalizedMode === "image_to_video") taskTypes.push("keyframe completion");
-    if (normalizedMode === "reference_to_video" || refs.subjects.length) taskTypes.push("reference generation");
+    if (normalizedMode === "image_to_video" || normalizedMode === "image_reference_to_video") taskTypes.push("keyframe completion");
+    if (normalizedMode === "reference_to_video" || normalizedMode === "image_reference_to_video" || refs.subjects.length) taskTypes.push("reference generation");
     if (settings.audio_mode === "input_audio") taskTypes.push("audio reuse");
     if (!taskTypes.length) taskTypes.push("text generation");
     const subjectNames = refs.subjects.map((item) => item.kind === "location" ? `${item.label} (environment)` : `${item.label} (${item.name})`);
@@ -41306,7 +41385,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const targetLimit = Math.max(0, Math.min(hardLimit, Math.round(Number(requestedTargetLimit) || 6500)));
     const normalizedMode = normalizeMiniMaxH3Mode(mode);
     const shotCount = miniMaxH3OfficialShotPlan(miniMaxH3CutPlanForSegment(segment)).length;
-    const emptyCreative = miniMaxH3OfficialShotBodyFromDescriptions(segment, Array.from({ length: shotCount }, () => ""));
+    const emptyCreative = miniMaxH3OfficialShotBodyFromDescriptions(segment, Array.from({ length: shotCount }, () => ""), normalizedMode);
     let fixedPrompt = "";
     if (["text_to_video", "image_to_video"].includes(normalizedMode)) {
       fixedPrompt = [
@@ -41447,7 +41526,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       : "";
     const retentionStart = text.indexOf("retention_analysis:");
     const detailedStart = text.indexOf("detailed_description:");
-    const definitionsText = normalizedMode === "reference_to_video" || normalizedMode === "video_to_video"
+    const definitionsText = normalizedMode === "reference_to_video" || normalizedMode === "image_reference_to_video" || normalizedMode === "video_to_video"
       ? text.slice(text.indexOf("subject_definitions:") + "subject_definitions:".length, text.indexOf("summary:")).trim()
       : "";
     const retentionText = retentionStart >= 0 && detailedStart > retentionStart
@@ -41532,7 +41611,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const normalizedMode = normalizeMiniMaxH3Mode(mode);
     const cutPlan = miniMaxH3CutPlanForSegment(segment);
     const shotDescriptions = parseMiniMaxH3ShotDescriptionPayload(creativePrompt, cutPlan, segment, normalizedMode);
-    const creative = miniMaxH3OfficialShotBodyFromDescriptions(segment, shotDescriptions);
+    const creative = miniMaxH3OfficialShotBodyFromDescriptions(segment, shotDescriptions, normalizedMode);
     if (!creative) {
       throw new Error("The LLM returned no creative MiniMax scene body. Try again, or add more scene notes so it has action/camera material to write.");
     }
@@ -41682,7 +41761,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     add(performanceMode === "no_lip_sync" ? "Hidden lyric mood/story context — never performed" : "Exact supplied lyric or dialogue", lyricText);
     add("Lyric section", segment?.lyric_section);
     add("Visible character context", segment?.no_character_present ? "No main character is visible in this scene." : segmentMappedSubjectText(segment));
-    if (["reference_to_video", "video_to_video"].includes(normalizeMiniMaxH3Mode(mode))) {
+    if (["reference_to_video", "image_reference_to_video", "video_to_video"].includes(normalizeMiniMaxH3Mode(mode))) {
       add("Background extras context", segmentMappedExtraSubjectText(segment, mode));
     }
     add("Location context", segmentMappedLocationText(segment));
@@ -41692,13 +41771,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (mode === "image_to_video") {
       parts.push("Ordered image assignment:\nImage 1: exact start frame and authoritative opening composition, character identity, clothing, location, lighting, and visual-state anchor.");
     }
-    if (mode === "reference_to_video" || mode === "video_to_video") {
-      const items = miniMaxOrderedImageReferenceItemsForSegment(segment, mode);
+    if (mode === "reference_to_video" || mode === "image_reference_to_video" || mode === "video_to_video") {
+      const items = mode === "image_reference_to_video"
+        ? miniMaxH3ImageReferencePromptItems(segment)
+        : miniMaxOrderedImageReferenceItemsForSegment(segment, mode);
       const promptInspiration = mode === "reference_to_video" && miniMaxH3SceneImageIsPromptInspiration(segment);
       const assignments = items.map((item, index) => {
         const detail = [item.label, item.description].map((value) => String(value || "").trim()).filter(Boolean).join(" — ");
         const attachmentMapping = promptInspiration ? ` (attached Picture ${index + 2})` : "";
-        return `Image ${index + 1}${attachmentMapping}: ${miniMaxReferencePurposeText(item, segment)}${detail ? `. ${detail}` : ""}`;
+        const purpose = item.kind === "end_frame"
+          ? "exact end frame and authoritative final composition, subject placement, lighting, and visual-state anchor"
+          : miniMaxReferencePurposeText(item, segment);
+        return `Image ${index + 1}${attachmentMapping}: ${purpose}${detail ? `. ${detail}` : ""}`;
       });
       if (assignments.length) parts.push(`${mode === "video_to_video" ? "Ordered supporting edit-image assignments" : "Ordered image assignments"} (exact connected order):\n${assignments.join("\n")}`);
       if (promptInspiration) {
@@ -41728,6 +41812,17 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           );
         }
       }
+      if (mode === "image_reference_to_video") {
+        const endFrame = firstLastFrameEndImageSource(segment);
+        const hasEndFrame = Boolean(endFrame?.path || endFrame?.data);
+        parts.push(
+          "IMAGE + REFERENCE FRAME AUTHORITY — MANDATORY:\n"
+          + "Image 1 is the exact first frame at 0.00 seconds and controls the opening composition, camera angle, environment, lighting, and initial visual state. "
+          + (hasEndFrame
+            ? "Image 2 is the exact final frame and controls the ending composition, subject placement, lighting, and final visual state. Describe a continuous physical and camera path from Image 1 to Image 2. Images 3 and later are visual references only and must not be treated as timeline anchors."
+            : "Images 2 and later are visual references only and must not be treated as timeline anchors. Develop the action continuously forward from Image 1."),
+        );
+      }
     }
     if (mode === "video_to_video") {
       const assignments = (Array.isArray(segment?.minimax_h3_video_references) ? segment.minimax_h3_video_references : [])
@@ -41753,6 +41848,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const path = String(source?.path || selectedSegmentImagePath(segment) || "").trim();
       const data = String(source?.data || "").trim();
       return path || data ? [{ path, data }] : [];
+    }
+    if (mode === "image_reference_to_video") {
+      return miniMaxH3ImageReferencePromptItems(segment)
+        .map((item) => ({
+          path: String(item?.image?.path || "").trim(),
+          data: String(item?.image?.data || "").trim(),
+        }))
+        .filter((item) => item.path || item.data)
+        .slice(0, 9);
     }
     if (mode === "reference_to_video" || mode === "video_to_video") {
       const rendererImages = miniMaxOrderedImageReferenceItemsForSegment(segment, mode)
@@ -41965,7 +42069,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       progressPercent: 35,
       unloadAfter: true,
       });
-      if (mode === "text_to_video" || mode === "image_to_video" || mode === "reference_to_video" || mode === "video_to_video") {
+      if (mode === "text_to_video" || mode === "image_to_video" || mode === "reference_to_video" || mode === "image_reference_to_video" || mode === "video_to_video") {
         segment.minimax_h3_prompt = data.prompt;
         segment.minimax_h3_prompt_origin = "gemma";
         miniMaxPrompt.value = data.prompt;
