@@ -635,6 +635,7 @@ def _normalize_storyboard_scene(scene, fallback_number=1):
         "timeline_end": timeline_end,
         "exact_duration": exact_duration,
         "video_prompt_origin": "gemma" if str(scene.get("video_prompt_origin") or scene.get("i2v_prompt_origin") or "").strip().lower() == "gemma" else "manual",
+        "minimax_h3_pass2_prompt": _clean_scene_text(scene.get("minimax_h3_pass2_prompt") or scene.get("pass2_prompt") or "", 100000),
         "status": status,
         "image_prompt": image_prompt,
         "video_prompt": video_prompt,
@@ -908,6 +909,31 @@ def _export_storyboard_prompts(payload):
         "scene_count": len(scenes),
         "scenes": [_prompt_json_entry(scene, index, "image_prompt") for index, scene in enumerate(scenes, start=1)],
     }
+    existing_pass2 = {}
+    if os.path.isfile(video_json_path):
+        try:
+            with open(video_json_path, "r", encoding="utf-8") as handle:
+                existing_video = json.load(handle)
+            for item in (existing_video.get("scenes") or []) if isinstance(existing_video, dict) else []:
+                if not isinstance(item, dict) or "pass2_prompt" not in item:
+                    continue
+                pass2 = str(item.get("pass2_prompt") or "")
+                scene_id = str(item.get("scene_id") or "")
+                if scene_id:
+                    existing_pass2[scene_id] = pass2
+                try:
+                    existing_pass2[int(item.get("scene") or 0)] = pass2
+                except (TypeError, ValueError):
+                    pass
+        except (OSError, ValueError, TypeError):
+            existing_pass2 = {}
+
+    def _exported_pass2_prompt(scene, index):
+        text = _clean_scene_text(scene.get("minimax_h3_pass2_prompt") or scene.get("pass2_prompt") or "", 100000)
+        if text:
+            return text
+        return existing_pass2.get(str(scene.get("id") or "")) or existing_pass2.get(index) or ""
+
     video_json = {
         "version": 1,
         "exported_at": datetime.now().isoformat(timespec="seconds"),
@@ -923,6 +949,7 @@ def _export_storyboard_prompts(payload):
                 "video_style": _clean_scene_text(scene.get("video_style") or "", 160),
                 "video_style_custom": _clean_scene_text(scene.get("video_style_custom") or "", 3000),
                 "performance_mode": _normalize_performance_mode(scene.get("performance_mode") or saved.get("performance_mode")),
+                "pass2_prompt": _exported_pass2_prompt(scene, index),
             }
             for index, scene in enumerate(scenes, start=1)
         ],

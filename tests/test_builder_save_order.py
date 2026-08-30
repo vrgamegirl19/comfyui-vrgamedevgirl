@@ -31,6 +31,12 @@ class BuilderSaveOrderTests(unittest.TestCase):
         self.assertIn("lyricTextBySegmentId", UI)
         self.assertIn("Storyboard prompt/beat application is allowed to update visual fields", UI)
 
+    def test_storyboard_export_preserves_pass2_prompt(self):
+        story = (ROOT / "VRGDG_StoryboardBuilderNodes.py").read_text(encoding="utf-8")
+        self.assertIn('"minimax_h3_pass2_prompt": _clean_scene_text(scene.get("minimax_h3_pass2_prompt") or scene.get("pass2_prompt") or "", 100000)', story)
+        self.assertIn('"pass2_prompt": _exported_pass2_prompt(scene, index)', story)
+        self.assertIn("existing_pass2", story)
+
 
 if __name__ == "__main__":
     unittest.main()
