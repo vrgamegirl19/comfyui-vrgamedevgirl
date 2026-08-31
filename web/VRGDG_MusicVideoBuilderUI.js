@@ -6587,10 +6587,12 @@ function openBuilder(node) {
   const miniMaxAutoTimeBeforePrompt = makeCheckbox("Auto-time lyric cues before creating prompts", false);
   miniMaxAutoTimeBeforePrompt.wrapper.style.cssText += "border:1px solid #155e75;border-radius:7px;background:#07111f;padding:10px;";
   miniMaxAutoTimeBeforePrompt.input.title = "Before each MiniMax H3 prompt, enable exact lyric-to-shot timing and run Stable-ts on the scene audio.";
+  const miniMaxAutoTimeAllScenesButton = makeButton("Auto Time All Scenes", "primary");
+  miniMaxAutoTimeAllScenesButton.title = "Run Stable-ts lyric timing for every eligible singing scene now, so the cue timing can be reviewed before prompts are created.";
   const miniMaxAutoTimeBeforePromptNote = document.createElement("div");
-  miniMaxAutoTimeBeforePromptNote.textContent = "When enabled, each MiniMax prompt waits for this scene's lyric timing to finish first. Requires scene lyric text, a mapped singer, and usable scene/project audio.";
+  miniMaxAutoTimeBeforePromptNote.textContent = "Auto Time All Scenes fills every eligible scene now for review. The checkbox still makes each MiniMax prompt wait for that scene's timing first. Both require scene lyric text, a mapped singer, and usable scene/project audio.";
   miniMaxAutoTimeBeforePromptNote.style.cssText = "font-size:11px;color:#94a3b8;line-height:1.45;margin:-3px 4px 2px;";
-  miniMaxSpeakerAssignmentPanel.append(miniMaxSpeakerAssignmentNote, miniMaxAutoTimeBeforePrompt.wrapper, miniMaxAutoTimeBeforePromptNote, miniMaxSpeakerAssignmentList, miniMaxAddSpeakerCueButton);
+  miniMaxSpeakerAssignmentPanel.append(miniMaxSpeakerAssignmentNote, miniMaxAutoTimeBeforePrompt.wrapper, miniMaxAutoTimeAllScenesButton, miniMaxAutoTimeBeforePromptNote, miniMaxSpeakerAssignmentList, miniMaxAddSpeakerCueButton);
   const miniMaxAudioNote = document.createElement("div");
   miniMaxAudioNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
   const useSceneMiniMaxH3Settings = makeCheckbox("Lock MiniMax mode, models, and video settings for this scene", false);
@@ -24041,6 +24043,57 @@ function openBuilder(node) {
       return false;
     }
   }
+
+  async function autoTimeAllMiniMaxSingerScenes() {
+    const candidates = (Array.isArray(state.segments) ? state.segments : [])
+      .filter((segment) => segment && !segment.no_character_present)
+      .filter((segment) => normalizeVideoType(segment.performance_mode || state.videoType) === "singing")
+      .filter((segment) => !isInstrumentalLyricText(segment.lyric_text) && flattenLyricForPrompt(segment.lyric_text));
+    if (!candidates.length) {
+      toast("No singing scenes with lyric text are available to auto-time.", true);
+      return;
+    }
+    const originalLabel = miniMaxAutoTimeAllScenesButton.textContent;
+    miniMaxAutoTimeAllScenesButton.disabled = true;
+    miniMaxAutoTimeAllScenesButton.textContent = `Auto Timing 0/${candidates.length}`;
+    let completed = 0;
+    let skipped = 0;
+    const failures = [];
+    try {
+      for (let index = 0; index < candidates.length; index += 1) {
+        const segment = candidates[index];
+        miniMaxAutoTimeAllScenesButton.textContent = `Auto Timing ${index + 1}/${candidates.length}`;
+        const existing = normalizeLyricCueMapForSegment(segment, undefined, { preserveBlank: true });
+        const timingComplete = existing.length && existing.every((cue, cueIndex) => {
+          const start = Number(cue.start);
+          const end = miniMaxEffectiveCueEnd(segment, existing, cueIndex, cue);
+          return Number.isFinite(start) && Number.isFinite(Number(end)) && Number(end) > start;
+        });
+        if (timingComplete) {
+          skipped += 1;
+          continue;
+        }
+        try {
+          const timed = await ensureAutoTimedSingerCuesBeforePrompt(segment, { force: true });
+          if (timed) completed += 1;
+          else failures.push(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: no usable lyric timing was created.`);
+        } catch (error) {
+          failures.push(String(error?.message || error));
+        }
+      }
+      renderMiniMaxSpeakerAssignmentPanel();
+      syncInspector();
+      render();
+      await autoSaveSessionQuiet("MiniMax singer cues auto-timed for all scenes");
+      const summary = `Auto Time All Scenes finished. Timed: ${completed}. Already timed: ${skipped}. Failed: ${failures.length}.`;
+      toast(failures.length ? `${summary}\n${failures.slice(0, 3).join("\n")}${failures.length > 3 ? `\n…and ${failures.length - 3} more.` : ""}` : `${summary}\nReview each scene's cue rows before creating prompts.`, Boolean(failures.length));
+    } finally {
+      miniMaxAutoTimeAllScenesButton.disabled = false;
+      miniMaxAutoTimeAllScenesButton.textContent = originalLabel;
+    }
+  }
+
+  miniMaxAutoTimeAllScenesButton.onclick = () => autoTimeAllMiniMaxSingerScenes();
 
   async function autoTimeMiniMaxSpeakerCuesForSegment(segment) {
     if (!segment || !isMiniMaxBuiltInSpeakerAssignmentMode(segment)) return;
@@ -41880,8 +41933,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return miniMaxH3PromptVisionImages(segment, mode);
   }
 
-  async function ensureAutoTimedSingerCuesBeforePrompt(segment) {
-    if (!state.autoTimeSingerCuesBeforePrompt || !segment || segment.no_character_present) return;
+  async function ensureAutoTimedSingerCuesBeforePrompt(segment, options = {}) {
+    if ((!state.autoTimeSingerCuesBeforePrompt && !options.force) || !segment || segment.no_character_present) return;
     if (segment.no_character_present || normalizeVideoType(segment.performance_mode || state.videoType) !== "singing") return;
     const lyric = isInstrumentalLyricText(segment.lyric_text) ? "" : flattenLyricForPrompt(segment.lyric_text);
     const performers = selectedPerformerSubjectsForSegment(segment);
