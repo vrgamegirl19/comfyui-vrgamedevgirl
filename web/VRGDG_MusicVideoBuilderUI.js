@@ -6576,6 +6576,8 @@ function openBuilder(node) {
   miniMaxPass2Prompt.placeholder = "Optional prompt used only by Ref to Video 2 Pass Advanced...";
   miniMaxPass2Prompt.style.cssText = "min-height:110px;resize:vertical;border:1px solid #3f3f46;border-radius:6px;background:#18181b;color:#fafafa;padding:9px;font-size:12px;line-height:1.4;";
   ["keydown", "keypress", "keyup"].forEach((eventName) => miniMaxPass2Prompt.addEventListener(eventName, (event) => event.stopPropagation()));
+  const miniMaxPass2PromptField = makeField("2nd Pass Prompt", miniMaxPass2Prompt);
+  miniMaxPass2PromptField.style.display = "none";
   const miniMaxPromptActions = document.createElement("div");
   miniMaxPromptActions.style.cssText = "display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:8px;";
   const miniMaxCreatePromptButton = makeButton("Create MiniMax H3 Prompt", "primary");
@@ -6664,7 +6666,7 @@ function openBuilder(node) {
         miniMaxPromptActions,
         makeField("MiniMax H3 prompt", miniMaxPrompt),
         miniMaxPromptCharacterStatus,
-        makeField("2nd Pass Prompt", miniMaxPass2Prompt),
+        miniMaxPass2PromptField,
       ]),
     },
   ]);
@@ -8646,6 +8648,7 @@ function openBuilder(node) {
     miniMaxStartFrameReferenceNote.style.display = hasSceneImage ? "block" : "none";
     miniMaxPrompt.value = String(segment?.minimax_h3_prompt || segment?.i2v_prompt || "");
     miniMaxPass2Prompt.value = String(segment?.minimax_h3_pass2_prompt || "");
+    miniMaxPass2PromptField.style.display = threePass ? "flex" : "none";
     updateMiniMaxPromptCharacterStatus(segment);
     miniMaxCreatePromptButton.textContent = `Create MiniMax ${modeLabel} Prompt`;
     miniMaxEditInstructionsButton.textContent = `Edit ${modeLabel} Instructions`;

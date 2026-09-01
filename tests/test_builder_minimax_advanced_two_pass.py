@@ -138,6 +138,7 @@ class BuilderMiniMaxAdvancedTwoPassTests(unittest.TestCase):
 
     def test_builder_ui_exposes_and_persists_pass2_prompt(self):
         self.assertIn('makeField("2nd Pass Prompt", miniMaxPass2Prompt)', BUILDER_SOURCE)
+        self.assertIn("miniMaxPass2PromptField.style.display = threePass ? \"flex\" : \"none\"", BUILDER_SOURCE)
         self.assertIn("minimax_h3_pass2_prompt: \"\"", BUILDER_SOURCE)
         self.assertIn("if (segment.minimax_h3_pass2_prompt == null) segment.minimax_h3_pass2_prompt = \"\"", BUILDER_SOURCE)
         self.assertIn("pass2_prompt: String(segment?.minimax_h3_pass2_prompt || \"\")", BUILDER_SOURCE)
