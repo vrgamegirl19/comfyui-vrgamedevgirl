@@ -1854,8 +1854,10 @@ def _patch_t2v_api_prompt(prompt, payload):
     _set_api_input(prompt, "271:254", "vae_name", str(payload.get("audio_vae_name", "") or ""))
 
     _set_api_input(prompt, "736:424", "value", fps)
-    _set_api_input(prompt, "736:425", "value", width)
-    _set_api_input(prompt, "736:426", "value", height)
+    generation_width = int(math.ceil(width / 64.0) * 64) if is_ltx25 else width
+    generation_height = int(math.ceil(height / 64.0) * 64) if is_ltx25 else height
+    _set_api_input(prompt, "736:425", "value", generation_width)
+    _set_api_input(prompt, "736:426", "value", generation_height)
     _set_api_input(prompt, "736:449", "value", seed)
     _set_api_input(prompt, "736:551", "value", 0)
 
@@ -1881,6 +1883,14 @@ def _patch_t2v_api_prompt(prompt, payload):
     _set_api_input(prompt, "218:287", "overwrite_mode", "overwrite")
     _set_api_input(prompt, "218:287", "tail_loss_frames", tail_loss_frames)
     _set_api_input(prompt, "218:287", "pre_frames", pre_frames)
+    if is_ltx25:
+        final_resize_id = "vrgdg_ltx25_t2v_final_center_crop"
+        _replace_api_input_refs(prompt, ("936", 0), (final_resize_id, 0))
+        prompt[final_resize_id] = {
+            "class_type": "ImageScale",
+            "inputs": {"image": ["936", 0], "upscale_method": "lanczos", "width": width, "height": height, "crop": "center"},
+            "_meta": {"title": "Center crop LTX 2.5 T2V to requested output resolution"},
+        }
     _patch_ltx_two_pass_sampler_overrides(prompt, payload)
     _set_api_input(prompt, "437", "value", output_folder)
     return prompt, output_folder

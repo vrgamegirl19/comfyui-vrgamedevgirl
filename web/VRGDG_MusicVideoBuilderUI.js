@@ -6508,10 +6508,10 @@ function openBuilder(node) {
   miniMaxReferenceModeNote.textContent = "Uses ordered character, location, ingredients-sheet, or storyboard-grid images. Add and map the library from the existing Reference Builder button at the top of the Builder.";
   miniMaxReferenceModeNote.style.cssText = miniMaxTextModeNote.style.cssText;
   const miniMaxSceneImageUse = makeSelect(MINIMAX_H3_SCENE_IMAGE_USE_OPTIONS, "off");
-  const miniMaxSceneImageUseField = makeField("Scene image use — all unlocked Reference-to-Video scenes", miniMaxSceneImageUse);
+  const miniMaxSceneImageUseField = makeField("Scene image use — all unlocked Image/Reference-to-Video scenes", miniMaxSceneImageUse);
   miniMaxSceneImageUseField.title = "Choose whether each scene image is unused, becomes the exact MiniMax start frame, or is shown only to the prompt-writing vision LLM as inspiration.";
   const miniMaxStartFrameCharacterInfluence = makeSelect(MINIMAX_H3_START_FRAME_CHARACTER_INFLUENCE_OPTIONS, "full_character");
-  const miniMaxStartFrameCharacterInfluenceField = makeField("Character reference influence — all Reference-to-Video scenes", miniMaxStartFrameCharacterInfluence);
+  const miniMaxStartFrameCharacterInfluenceField = makeField("Character reference influence — all Image/Reference-to-Video scenes", miniMaxStartFrameCharacterInfluence);
   miniMaxStartFrameCharacterInfluenceField.title = "Applies this character-reference priority across every eligible base scene that uses the scene image as its exact start frame.";
   const miniMaxStartFrameReferenceNote = document.createElement("div");
   miniMaxStartFrameReferenceNote.textContent = "Choose whether the scene image is unused, becomes MiniMax's exact start frame, or is shown only to the prompt-writing vision LLM as environment inspiration.";
@@ -8580,13 +8580,13 @@ function openBuilder(node) {
       : "Scene lock is OFF — this scene follows the project-global MiniMax mode, models, and video settings.";
     miniMaxSceneImageUseField.firstElementChild.textContent = sceneMiniMaxSettingsLocked
       ? "Scene image use — this locked scene"
-      : "Scene image use — all unlocked Reference-to-Video scenes";
+      : "Scene image use — all unlocked Image/Reference-to-Video scenes";
     miniMaxSceneImageUseField.title = sceneMiniMaxSettingsLocked
       ? "Changes only this locked scene. Prompt-only inspiration is sent to the vision LLM but not to MiniMax."
       : "Applies across every eligible unlocked base scene. Locked scenes remain unchanged; prompt-only inspiration is never sent to MiniMax.";
     miniMaxStartFrameCharacterInfluenceField.firstElementChild.textContent = sceneMiniMaxSettingsLocked
       ? "Character reference influence — this locked scene"
-      : "Character reference influence — all unlocked Reference-to-Video scenes";
+      : "Character reference influence — all unlocked Image/Reference-to-Video scenes";
     miniMaxStartFrameCharacterInfluenceField.title = sceneMiniMaxSettingsLocked
       ? "Changes only this locked scene's character-reference priority."
       : "Applies this priority across eligible unlocked base scenes; locked scenes remain unchanged.";
@@ -8611,6 +8611,10 @@ function openBuilder(node) {
     miniMaxSamplerSettings.style.display = hideMultiPassIgnoredSettings ? "none" : "";
     miniMaxEasyCacheSettings.style.display = hideMultiPassIgnoredSettings ? "none" : "";
     miniMaxModelLoaderSettings.style.display = hideMultiPassIgnoredSettings ? "none" : "";
+    miniMaxReferenceConditioningSettings.style.display = !hideMultiPassIgnoredSettings
+      && ["reference_to_video", "video_to_video"].includes(mode)
+      ? ""
+      : "none";
     // Multi-pass workflows have their own optional normal-LoRA controls.
     // Turbo is a separate single-pass acceleration path and must not be offered here.
     miniMaxLoraSection.style.display = "";
@@ -18917,8 +18921,8 @@ function openBuilder(node) {
     ltx25MegapixelsInput.value = Number(settings.resolution_megapixels || 1.2);
     const isLtx25 = settings.ltx_version !== "2.3";
     const isLtx25T2V = isLtx25 && currentVideoMode() === "t2v";
-    i2vSettingsGrid.style.display = isLtx25T2V ? "none" : "grid";
-    ltx25ResolutionGrid.style.display = isLtx25T2V ? "grid" : "none";
+    i2vSettingsGrid.style.display = "grid";
+    ltx25ResolutionGrid.style.display = "none";
     i2vUseGgufModel.wrapper.style.display = isLtx25 ? "none" : "flex";
     i2vClip2Picker.wrapper.parentElement.style.display = isLtx25 ? "none" : "flex";
     i2vSeedInput.value = settings.seed || 69;
@@ -58010,7 +58014,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const sceneLocked = Boolean(segment.use_scene_minimax_h3_settings);
     const candidates = (sceneLocked ? [segment] : allEditableSegments()).filter((item) => (
       segmentTrack(item) !== "overlay"
-      && miniMaxH3ModeForSegment(item) === "reference_to_video"
+      && ["reference_to_video", "image_to_video"].includes(miniMaxH3ModeForSegment(item))
       && (sceneLocked || !item.use_scene_minimax_h3_settings)
     ));
     const blocked = exactStartFrame
@@ -58069,7 +58073,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const sceneLocked = Boolean(segment.use_scene_minimax_h3_settings);
     const targets = (sceneLocked ? [segment] : allEditableSegments()).filter((item) => (
       segmentTrack(item) !== "overlay"
-      && miniMaxH3ModeForSegment(item) === "reference_to_video"
+      && ["reference_to_video", "image_to_video"].includes(miniMaxH3ModeForSegment(item))
       && (sceneLocked || !item.use_scene_minimax_h3_settings)
     ));
     if (!targets.length) {
