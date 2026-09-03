@@ -8625,14 +8625,16 @@ function openBuilder(node) {
     miniMaxUseTurboLora.input.checked = hideMultiPassIgnoredSettings ? false : settings.use_turbo_lora;
     miniMaxUseTurboLora.input.disabled = hideMultiPassIgnoredSettings || settings.use_loras;
     for (const button of miniMaxModeButtons) {
-      const active = !twoPass && !threePass && button.dataset.minimaxH3Mode === mode;
+      const active = button.dataset.minimaxH3Mode === mode
+        && ((!twoPass && !threePass) || mode === "image_reference_to_video");
       button.style.background = active ? "#06b6d4" : "#27272a";
       button.style.borderColor = active ? "#0891b2" : "#3f3f46";
       button.style.color = active ? "#082f49" : "#f4f4f5";
     }
-    miniMaxTwoPassButton.style.background = twoPass ? "#06b6d4" : "#27272a";
-    miniMaxTwoPassButton.style.borderColor = twoPass ? "#0891b2" : "#3f3f46";
-    miniMaxTwoPassButton.style.color = twoPass ? "#082f49" : "#f4f4f5";
+    const referenceTwoPassActive = twoPass && mode === "reference_to_video";
+    miniMaxTwoPassButton.style.background = referenceTwoPassActive ? "#06b6d4" : "#27272a";
+    miniMaxTwoPassButton.style.borderColor = referenceTwoPassActive ? "#0891b2" : "#3f3f46";
+    miniMaxTwoPassButton.style.color = referenceTwoPassActive ? "#082f49" : "#f4f4f5";
     miniMaxThreePassButton.style.background = threePass ? "#06b6d4" : "#27272a";
     miniMaxThreePassButton.style.borderColor = threePass ? "#0891b2" : "#3f3f46";
     miniMaxThreePassButton.style.color = threePass ? "#082f49" : "#f4f4f5";
