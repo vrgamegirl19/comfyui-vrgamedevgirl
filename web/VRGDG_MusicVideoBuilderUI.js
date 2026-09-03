@@ -17312,7 +17312,7 @@ function openBuilder(node) {
   function miniMaxOrderedImageReferenceItemsForSegment(segment, mode = miniMaxH3ModeForSegment(segment)) {
     const normalizedMode = normalizeMiniMaxH3Mode(mode);
     const ordered = [];
-    if (normalizedMode === "reference_to_video" && segment?.minimax_h3_use_scene_image_as_start_frame) {
+    if (["reference_to_video", "image_reference_to_video"].includes(normalizedMode) && segment?.minimax_h3_use_scene_image_as_start_frame) {
       const startFrame = segmentImageSource(segment);
       if (startFrame?.path || startFrame?.data) {
         const characterInfluence = miniMaxH3StartFrameCharacterInfluenceForSegment(segment);
@@ -17417,7 +17417,7 @@ function openBuilder(node) {
     });
     const labels = desired.map((item) => item.label);
     let count = desired.length;
-    if (normalizedMode === "reference_to_video" && segment?.minimax_h3_use_scene_image_as_start_frame) {
+    if (["reference_to_video", "image_reference_to_video"].includes(normalizedMode) && segment?.minimax_h3_use_scene_image_as_start_frame) {
       const startFrame = segmentImageSource(segment);
       if (startFrame?.path || startFrame?.data) {
         const fingerprint = imageFingerprint(startFrame);
@@ -41869,7 +41869,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           + "In the finished prompt, convert permitted environmental observations into direct scene description without mentioning Attached Picture 1, inspiration, source imagery, or analysis. Renderer Image 1 is attached as Picture 2, Renderer Image 2 as Picture 3, and so on; use only the renderer Image N labels in the finished prompt.",
         );
       }
-      if (mode === "reference_to_video" && segment?.minimax_h3_use_scene_image_as_start_frame) {
+      if (["reference_to_video", "image_reference_to_video"].includes(mode) && segment?.minimax_h3_use_scene_image_as_start_frame) {
         const characterInfluence = miniMaxH3StartFrameCharacterInfluenceForSegment(segment);
         if (characterInfluence === "face_hair_only") {
           parts.push(
@@ -42194,7 +42194,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
     const rendererPromptImages = miniMaxH3PromptVisionImages(segment, mode);
     const visionImages = miniMaxH3PromptVisionImagesForRunner(segment, mode);
-    const rendererReferenceImages = mode === "reference_to_video"
+    const rendererReferenceImages = ["reference_to_video", "image_reference_to_video"].includes(mode)
       ? miniMaxOrderedImageReferenceItemsForSegment(segment, mode)
       : [];
     const sceneImageUse = miniMaxH3SceneImageUseForSegment(segment);
@@ -42203,7 +42203,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       toast("Image to Video needs a selected scene image before the LLM can create its MiniMax prompt.", true);
       return;
     }
-    if (mode === "reference_to_video" && sceneImageUse !== "off" && !sceneImageSourceAvailable) {
+    if (["reference_to_video", "image_reference_to_video"].includes(mode) && sceneImageUse !== "off" && !sceneImageSourceAvailable) {
       toast("The selected scene-image mode needs a timeline image for this scene before the LLM can create its MiniMax prompt.", true);
       return;
     }
@@ -44026,7 +44026,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           : []).map((item) => ({ ...item }));
         const rendererPromptImages = miniMaxH3PromptVisionImages(workingSegment, mode);
         const visionImages = miniMaxH3PromptVisionImagesForRunner(workingSegment, mode);
-        const rendererReferenceImages = mode === "reference_to_video"
+        const rendererReferenceImages = ["reference_to_video", "image_reference_to_video"].includes(mode)
           ? miniMaxOrderedImageReferenceItemsForSegment(workingSegment, mode)
           : [];
         const sceneImageUse = miniMaxH3SceneImageUseForSegment(workingSegment);
@@ -44034,7 +44034,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         if (mode === "image_to_video" && !rendererPromptImages.length) {
           throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: MiniMax Image to Video needs a selected scene image.`);
         }
-        if (mode === "reference_to_video" && sceneImageUse !== "off" && !sceneImageSourceAvailable) {
+        if (["reference_to_video", "image_reference_to_video"].includes(mode) && sceneImageUse !== "off" && !sceneImageSourceAvailable) {
           throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: the selected scene-image mode needs a timeline image for LLM prompting.`);
         }
         if (mode === "reference_to_video" && !rendererReferenceImages.length) {
@@ -44482,7 +44482,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (mode === "image_to_video" && !String(selectedSegmentImagePath(segment) || "").trim()) {
       missing.push(`${name}: MiniMax Image to Video needs a selected scene image.`);
     }
-    if (mode === "reference_to_video" && segment?.minimax_h3_use_scene_image_as_start_frame && !String(selectedSegmentImagePath(segment) || "").trim()) {
+    if (["reference_to_video", "image_reference_to_video"].includes(mode) && segment?.minimax_h3_use_scene_image_as_start_frame && !String(selectedSegmentImagePath(segment) || "").trim()) {
       missing.push(`${name}: MiniMax Reference to Video is set to use the scene image as its start frame, but no scene image is saved.`);
     }
     const continuityMode = miniMaxH3ContinuityModeForSegment(segment);
