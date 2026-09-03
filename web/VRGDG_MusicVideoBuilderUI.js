@@ -153,6 +153,7 @@ const BUILDER_FONT_STACK = "Segoe UI, Inter, Roboto, Arial, sans-serif";
 const MINIMAX_H3_MODE_OPTIONS = [
   { value: "text_to_video", label: "Text to Video", buttonLabel: "T2V" },
   { value: "image_to_video", label: "Image to Video", buttonLabel: "I2V" },
+  { value: "image_reference_to_video", label: "Image + Reference 2 Pass", buttonLabel: "Image + Ref\n2 Pass" },
   { value: "reference_to_video", label: "Reference to Video", buttonLabel: "Ref to\nVideo" },
   { value: "video_to_video", label: "Video to Video", buttonLabel: "V2V" },
 ];
@@ -8592,8 +8593,10 @@ function openBuilder(node) {
       : "Applies this priority across eligible unlocked base scenes; locked scenes remain unchanged.";
     const mode = settings.video_mode;
     const modeLabel = miniMaxH3ModeLabel(mode);
-    const twoPass = Boolean(state.miniMaxH3TwoPassEnabled) && mode === "reference_to_video";
-    const threePass = Boolean(state.miniMaxH3ThreePassEnabled) && mode === "reference_to_video";
+    const twoPass = Boolean(state.miniMaxH3TwoPassEnabled)
+      && ["reference_to_video", "image_reference_to_video"].includes(mode);
+    const threePass = Boolean(state.miniMaxH3ThreePassEnabled)
+      && ["reference_to_video", "image_reference_to_video"].includes(mode);
     const hideMultiPassIgnoredSettings = twoPass || threePass;
     miniMaxLoraSlots.forEach((slot) => {
       slot.applyToField.style.display = (twoPass || threePass) ? "flex" : "none";
@@ -46134,8 +46137,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const miniMaxSettings = miniMaxH3SettingsForSegment(segment);
     const builtInAudio = miniMaxSettings.audio_mode === "built_in_audio";
     const mode = normalizeMiniMaxH3Mode(options.mode ?? miniMaxSettings.video_mode);
-    const twoPass = Boolean(state.miniMaxH3TwoPassEnabled) && mode === "reference_to_video";
-    const threePass = Boolean(state.miniMaxH3ThreePassEnabled) && mode === "reference_to_video";
+    const twoPass = Boolean(state.miniMaxH3TwoPassEnabled)
+      && ["reference_to_video", "image_reference_to_video"].includes(mode);
+    const threePass = Boolean(state.miniMaxH3ThreePassEnabled)
+      && ["reference_to_video", "image_reference_to_video"].includes(mode);
     if ((twoPass || threePass) && builtInAudio) {
       throw new Error(`MiniMax H3 ${threePass ? "2 Pass Advanced" : "2 Pass"} currently supports Input Audio only. Switch Audio Mode to Input Audio before rendering.`);
     }
@@ -57925,7 +57930,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const segment = requireActiveSegment();
       if (!segment) return;
       pushHistory();
-      state.miniMaxH3TwoPassEnabled = false;
+      state.miniMaxH3TwoPassEnabled = button.dataset.minimaxH3Mode === "image_reference_to_video";
       state.miniMaxH3ThreePassEnabled = false;
       setMiniMaxH3ModeForSegment(segment, button.dataset.minimaxH3Mode);
       syncMiniMaxH3Panel();
