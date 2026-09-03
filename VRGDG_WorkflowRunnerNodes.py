@@ -3053,7 +3053,7 @@ def _build_minimax_h3_api_prompt(payload):
     image_paths = _minimax_h3_image_paths(payload)
     video_references = _minimax_h3_video_references(payload)
     video_mode = str(payload.get("video_mode") or payload.get("mode") or "text_to_video").strip().lower().replace("-", "_").replace(" ", "_")
-    if video_mode == "image_to_video":
+    if video_mode in {"image_to_video", "image_reference_to_video"}:
         if not image_paths:
             raise ValueError("MiniMax H3 image-to-video requires a scene image as the first frame.")
         last_frame_path = str(payload.get("last_frame_path") or "").strip().strip('"')

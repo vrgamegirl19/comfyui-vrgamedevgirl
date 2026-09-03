@@ -46195,7 +46195,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const normalizePathList = (value) => (Array.isArray(value) ? value : [])
       .map((item) => String(item?.path || item?.file || item || "").trim())
       .filter(Boolean);
-    const usesReferenceBuilderImages = ["reference_to_video", "video_to_video"].includes(mode);
+    const usesReferenceBuilderImages = ["reference_to_video", "image_reference_to_video", "video_to_video"].includes(mode);
     const referenceBuilderImagePaths = usesReferenceBuilderImages && options.imagePaths === undefined
       ? miniMaxReferenceBuilderImagePathsForSegment(segment)
       : [];
@@ -46213,9 +46213,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         return true;
       })
       .slice(0, 9) : [];
-    if (mode === "image_to_video") {
+    if (["image_to_video", "image_reference_to_video"].includes(mode)) {
       const selectedImage = String(selectedSegmentImagePath(segment) || "").trim();
-      if (selectedImage) imagePaths = [selectedImage];
+      if (selectedImage) imagePaths = [selectedImage, ...imagePaths.filter((path) => mediaPathKey(path) !== mediaPathKey(selectedImage))].slice(0, 9);
     }
     let continuityImageNumber = 0;
     if (continuityInput?.framePath) {
@@ -46240,7 +46240,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       ?? segment?.minimax_video_references
       ?? [];
     const videoReferences = mode === "video_to_video" && Array.isArray(rawVideoReferences) ? rawVideoReferences : [];
-    if (mode === "image_to_video" && !imagePaths.length) {
+    if (["image_to_video", "image_reference_to_video"].includes(mode) && !imagePaths.length) {
       throw new Error(`${sceneDisplayName(segment, sceneIndex)} needs a selected scene image for MiniMax Image to Video.`);
     }
     if (mode === "reference_to_video" && !imagePaths.length) {
