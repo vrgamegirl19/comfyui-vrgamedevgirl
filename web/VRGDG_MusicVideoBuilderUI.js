@@ -8643,8 +8643,17 @@ function openBuilder(node) {
     miniMaxStartFrameReferenceNote.style.display = hasSceneImage ? "block" : "none";
     miniMaxPrompt.value = String(segment?.minimax_h3_prompt || segment?.i2v_prompt || "");
     updateMiniMaxPromptCharacterStatus(segment);
-    miniMaxCreatePromptButton.textContent = `Create MiniMax ${modeLabel} Prompt`;
-    miniMaxEditInstructionsButton.textContent = `Edit ${modeLabel} Instructions`;
+    const compactMiniMaxModeLabel = mode === "reference_to_video"
+      ? "Ref2V"
+      : mode === "image_to_video"
+        ? "I2V"
+        : mode === "video_to_video"
+          ? "V2V"
+          : "T2V";
+    miniMaxCreatePromptButton.textContent = `Create ${compactMiniMaxModeLabel} Prompt`;
+    miniMaxCreatePromptButton.title = `Generate the MiniMax H3 ${modeLabel} prompt with the selected LLM. The prompt is saved to this scene; it does not render video.`;
+    miniMaxEditInstructionsButton.textContent = `Edit ${compactMiniMaxModeLabel} Instructions`;
+    miniMaxEditInstructionsButton.title = `Edit the LLM instructions used to create MiniMax H3 ${modeLabel} prompts.`;
     const assignmentTabButton = miniMaxSubTabs.wrapper.querySelector('[data-value="speakers"]');
     if (assignmentTabButton) applyCompactButtonLabel(assignmentTabButton, isMiniMaxSingerAssignmentMode(segment) ? "Singer Assignment" : "Speaker Assignment", { minWidth: 0, padding: "7px 6px" });
     miniMaxPromptRunnerNote.textContent = `Uses the existing ${gemmaRunnerLabel()} selection from LLM Runner. The result is saved only as this scene's MiniMax H3 prompt.`;
