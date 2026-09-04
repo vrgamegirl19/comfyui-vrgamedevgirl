@@ -153,7 +153,7 @@ const BUILDER_FONT_STACK = "Segoe UI, Inter, Roboto, Arial, sans-serif";
 const MINIMAX_H3_MODE_OPTIONS = [
   { value: "text_to_video", label: "Text to Video", buttonLabel: "T2V" },
   { value: "image_to_video", label: "Image to Video", buttonLabel: "I2V" },
-  { value: "image_reference_to_video", label: "Image + Reference 2 Pass", buttonLabel: "Image + Ref\n2 Pass" },
+  { value: "image_reference_to_video", label: "Image to Video 2 Pass", buttonLabel: "Image to Video\n2 Pass" },
   { value: "reference_to_video", label: "Reference to Video", buttonLabel: "Ref to\nVideo" },
   { value: "video_to_video", label: "Video to Video", buttonLabel: "V2V" },
 ];
@@ -437,7 +437,7 @@ function normalizeMiniMaxSpeakerAssignments(value = []) {
 
 function miniMaxH3ModeLabel(value) {
   const mode = normalizeMiniMaxH3Mode(value);
-  if (mode === "image_reference_to_video") return "Image + Reference 2 Pass";
+  if (mode === "image_reference_to_video") return "Image to Video 2 Pass";
   return MINIMAX_H3_MODE_OPTIONS.find((item) => item.value === mode)?.label || "Text to Video";
 }
 
@@ -6025,7 +6025,9 @@ function openBuilder(node) {
   const miniMaxModeChooser = document.createElement("div");
   miniMaxModeChooser.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;";
   const miniMaxModeButtons = MINIMAX_H3_MODE_OPTIONS.map((item) => {
-    const button = makeButton(item.buttonLabel || item.label);
+    const button = item.value === "image_reference_to_video"
+      ? makeButton("Image to Video\n2 Pass")
+      : makeButton(item.buttonLabel || item.label);
     applyCompactButtonLabel(button, item.buttonLabel || item.label, { noMap: true, minWidth: 0, padding: "7px 6px", title: item.label });
     button.dataset.minimaxH3Mode = item.value;
     miniMaxModeChooser.append(button);
@@ -6506,7 +6508,7 @@ function openBuilder(node) {
   miniMaxImageModePanel.append(miniMaxImageModeSource);
   const miniMaxReferenceModePanel = makeSettingsPanel([]);
   const miniMaxReferenceModeNote = document.createElement("div");
-  miniMaxReferenceModeNote.textContent = "Uses ordered character, location, ingredients-sheet, or storyboard-grid images. Add and map the library from the existing Reference Builder button at the top of the Builder.";
+  miniMaxReferenceModeNote.textContent = "Uses the selected scene image as the exact start frame. Reference Builder images are optional and can provide character, location, ingredient-sheet, or storyboard-grid guidance.";
   miniMaxReferenceModeNote.style.cssText = miniMaxTextModeNote.style.cssText;
   const miniMaxSceneImageUse = makeSelect(MINIMAX_H3_SCENE_IMAGE_USE_OPTIONS, "off");
   const miniMaxSceneImageUseField = makeField("Scene image use — all unlocked Image/Reference-to-Video scenes", miniMaxSceneImageUse);
@@ -8593,6 +8595,7 @@ function openBuilder(node) {
       : "Applies this priority across eligible unlocked base scenes; locked scenes remain unchanged.";
     const mode = settings.video_mode;
     const modeLabel = miniMaxH3ModeLabel(mode);
+    const imageReferenceTwoPass = mode === "image_reference_to_video";
     const twoPass = Boolean(state.miniMaxH3TwoPassEnabled)
       && ["reference_to_video", "image_reference_to_video"].includes(mode);
     const threePass = Boolean(state.miniMaxH3ThreePassEnabled)
@@ -8675,8 +8678,8 @@ function openBuilder(node) {
           ? "Begins each later scene on the previous rendered clip's exact final frame. The extracted frame and its prompt contract are injected when rendering. Do not also enable the scene-image exact start-frame option; Scene 1 is unaffected."
           : "Off: every scene starts independently from its normal MiniMax references.";
     const sceneImageUse = miniMaxH3SceneImageUseForSegment(segment);
-    miniMaxSceneImageUse.value = sceneImageUse;
-    miniMaxSceneImageUse.disabled = !segment;
+    miniMaxSceneImageUse.value = imageReferenceTwoPass ? "exact_start_frame" : sceneImageUse;
+    miniMaxSceneImageUse.disabled = !segment || imageReferenceTwoPass;
     const exactStartFrameOption = Array.from(miniMaxSceneImageUse.options).find((option) => option.value === "exact_start_frame");
     if (exactStartFrameOption) exactStartFrameOption.disabled = settings.continuity_mode === "exact_start_frame";
     const startFrameCharacterInfluence = miniMaxH3StartFrameCharacterInfluenceForSegment(segment);
@@ -41543,7 +41546,35 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const cueCreativeText = creativeStart >= 0 && soundscapeStart > creativeStart
         ? text.slice(creativeStart + creativeHeader.length, soundscapeStart).trim()
         : "";
-      cueMap.forEach((cue, index) => {
+      const normalizeCueTag = (value) => String(value || "")
+        .replace(/\\</g, "<")
+        .replace(/\\>/g, ">")
+        .replace(/\\+/g, "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .toLocaleLowerCase();
+      const reportCueMismatch = (warning, failure) => {
+        if (options.allowCueValidationWarnings) {
+          console.warn(`[VRGDG Music Builder] ${warning}`);
+          if (typeof options.onCueValidationWarning === "function") options.onCueValidationWarning(warning);
+        } else {
+          throw new Error(failure);
+        }
+      };
+      const isSingleContinuousShot = miniMaxH3OfficialShotPlan(miniMaxH3CutPlanForSegment(segment)).length === 1;
+      if (isSingleContinuousShot && cueMap.length > 1) {
+        // A continuous shot may contain several vocal cues and may also allow instrumental intervals to coexist in the same shot.
+        const expectedTags = cueMap
+          .filter((cue) => cue.type === "vocal")
+          .map((cue) => `<d>[English] ${miniMaxH3CapitalizeCueText(miniMaxH3PunctuatedCueText(cue.text))}</d>`);
+        const actualTags = cueCreativeText.match(/<d>[\s\S]*?<\/d>/gi) || [];
+        const tagsMatch = actualTags.length === expectedTags.length
+          && expectedTags.every((tag, index) => normalizeCueTag(actualTags[index]) === normalizeCueTag(tag));
+        if (!tagsMatch) {
+          const warning = `continuous-shot lyric cue mismatch. Expected ${expectedTags.join(", ") || "no <d> cues"}; found ${actualTags.join(", ") || "no <d> cues"}.`;
+          reportCueMismatch(warning, `The continuous shot must contain its assigned lyric cues in order: ${expectedTags.join(", ") || "none"}`);
+        }
+      } else cueMap.forEach((cue, index) => {
         const shotLabel = `[Shot ${index + 1}]`;
         const shotStart = cueCreativeText.indexOf(shotLabel);
         const nextShotStart = cueCreativeText.indexOf(`[Shot ${index + 2}]`, shotStart + shotLabel.length);
@@ -41556,22 +41587,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         }
         if (cue.type === "vocal") {
           const expectedTag = `<d>[English] ${miniMaxH3CapitalizeCueText(miniMaxH3PunctuatedCueText(cue.text))}</d>`;
-          const normalizeCueTag = (value) => String(value || "")
-            .replace(/\\</g, "<")
-            .replace(/\\>/g, ">")
-            .replace(/\\+/g, "")
-            .replace(/\s+/g, " ")
-            .trim()
-            .toLocaleLowerCase();
           const actualTag = dialogueTags.length === 1 ? dialogueTags[0] : "";
           if (dialogueTags.length !== 1 || normalizeCueTag(actualTag) !== normalizeCueTag(expectedTag)) {
             const warning = `${shotLabel} lyric cue mismatch. Expected ${expectedTag}; found ${actualTag || "no <d> cue"}.`;
-            if (options.allowCueValidationWarnings) {
-              console.warn(`[VRGDG Music Builder] ${warning}`);
-              if (typeof options.onCueValidationWarning === "function") options.onCueValidationWarning(warning);
-            } else {
-              throw new Error(`${shotLabel} must contain exactly its assigned lyric cue: ${expectedTag}`);
-            }
+            reportCueMismatch(warning, `${shotLabel} must contain exactly its assigned lyric cue: ${expectedTag}`);
           }
         }
       });
@@ -42203,7 +42222,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       toast("Image to Video needs a selected scene image before the LLM can create its MiniMax prompt.", true);
       return;
     }
-    if (["reference_to_video", "image_reference_to_video"].includes(mode) && sceneImageUse !== "off" && !sceneImageSourceAvailable) {
+    if (mode === "image_reference_to_video" && !sceneImageSourceAvailable) {
+      toast("Image to Video 2 Pass needs a selected scene image before the LLM can create its MiniMax prompt.", true);
+      return;
+    }
+    if (mode === "reference_to_video" && sceneImageUse !== "off" && !sceneImageSourceAvailable) {
       toast("The selected scene-image mode needs a timeline image for this scene before the LLM can create its MiniMax prompt.", true);
       return;
     }
@@ -44034,7 +44057,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         if (mode === "image_to_video" && !rendererPromptImages.length) {
           throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: MiniMax Image to Video needs a selected scene image.`);
         }
-        if (["reference_to_video", "image_reference_to_video"].includes(mode) && sceneImageUse !== "off" && !sceneImageSourceAvailable) {
+        if (mode === "image_reference_to_video" && !sceneImageSourceAvailable) {
+          throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: MiniMax Image to Video 2 Pass needs a selected scene image.`);
+        }
+        if (mode === "reference_to_video" && sceneImageUse !== "off" && !sceneImageSourceAvailable) {
           throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: the selected scene-image mode needs a timeline image for LLM prompting.`);
         }
         if (mode === "reference_to_video" && !rendererReferenceImages.length) {
@@ -58030,7 +58056,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const sceneLocked = Boolean(segment.use_scene_minimax_h3_settings);
     const candidates = (sceneLocked ? [segment] : allEditableSegments()).filter((item) => (
       segmentTrack(item) !== "overlay"
-      && ["reference_to_video", "image_to_video"].includes(miniMaxH3ModeForSegment(item))
+      && ["reference_to_video", "image_reference_to_video"].includes(miniMaxH3ModeForSegment(item))
       && (sceneLocked || !item.use_scene_minimax_h3_settings)
     ));
     const blocked = exactStartFrame
@@ -58089,7 +58115,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const sceneLocked = Boolean(segment.use_scene_minimax_h3_settings);
     const targets = (sceneLocked ? [segment] : allEditableSegments()).filter((item) => (
       segmentTrack(item) !== "overlay"
-      && ["reference_to_video", "image_to_video"].includes(miniMaxH3ModeForSegment(item))
+      && ["reference_to_video", "image_reference_to_video"].includes(miniMaxH3ModeForSegment(item))
       && (sceneLocked || !item.use_scene_minimax_h3_settings)
     ));
     if (!targets.length) {

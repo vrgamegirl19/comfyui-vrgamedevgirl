@@ -4239,7 +4239,7 @@ def _format_minimax_h3_prompt(text, payload=None, instruction_key=""):
             cleaned = f"{cleaned.rstrip()}\n\n{block}"
 
     def enforce_visual_only_timeline():
-        """Remove positive vocal actions from H3 timestamps and add a final B-roll contract."""
+        """Remove lyric-synchronised vocal actions from H3 timestamps and add a final B-roll contract."""
         nonlocal cleaned
         positive_vocal = re.compile(
             r"\b(?:sing(?:s|ing)?|sang|sung|rap(?:s|ping)?|lip[ -]?sync(?:s|ing)?|"
@@ -4269,19 +4269,19 @@ def _format_minimax_h3_prompt(text, payload=None, instruction_key=""):
             if not kept:
                 kept.append("Continue the requested visual action, camera movement, and environmental motion naturally.")
             kept.append(
-                "All visible subjects remain silent and do not sing, speak, rap, mouth words, or lip-sync; "
-                "every mouth stays naturally relaxed or closed."
+                "No visible subject sings, raps, mouths the saved lyric, or lip-syncs; any visible conversation remains natural and unsynchronised to the saved song."
             )
             return f"{match.group(1)}{' '.join(kept)}"
 
         cleaned = timeline_block_pattern.sub(clean_timeline_block, cleaned)
         safety_block = (
             "VISUAL-ONLY B-ROLL / NO-LIP-SYNC SAFETY — MANDATORY AND FINAL:\n"
-            "This scene is explicitly B-roll / visual-only. This safety block overrides any conflicting lyric, singer, "
-            "speaker, dialogue, voice, timestamp, facial-performance, or mouth instruction elsewhere in the prompt.\n"
-            "No visible subject sings, speaks, raps, whispers, lip-syncs, mouths words, or performs the saved lyric. "
-            "Keep every visible mouth naturally relaxed or closed and use only visual acting, physical action, dancing "
-            "without vocal performance, camera motion, and environmental motion.\n"
+            "This scene is explicitly B-roll / no-lip-sync. This safety block overrides any conflicting lyric, singer, "
+            "song-performance, or lyric-sync instruction elsewhere in the prompt. It does not remove visible characters "
+            "or prohibit natural non-lyric interaction.\n"
+            "No visible subject sings, raps, lip-syncs, or mouths the saved lyric. Characters may appear, act, interact, "
+            "and have natural unsynchronised conversation—for example, band members backstage talking—but no visible mouth "
+            "may synchronise to the saved song.\n"
             + (
                 "Built-in MiniMax Audio: generate only requested environmental ambience and sound effects. Do not "
                 "generate speech, singing, dialogue, lyrics, narration, voices, or vocal layers."
@@ -5364,7 +5364,7 @@ def _generate_builder_concept_prompts(payload):
         "Subject rules:\n"
         "- If lyric_singers contains names, those are the subjects/performers for that scene.\n"
         "- If mapped_subjects contains character reference names, use those as the visible subjects for that scene.\n"
-        "- If no_character_present is true, do not include any main character, singer, performer, person, mapped subject, or character reference in that scene. Start with \"No main subject\" and focus on location, props, objects, atmosphere, or environmental action.\n"
+        "- If no_character_present is true, write only the location/background, environment, architecture, props, objects, weather, lighting, atmosphere, environmental motion, and camera. Do not include, mention, imply, describe, silhouette, reflect, or refer to any person, character, subject, singer, performer, band member, crowd, body part, face, voice, or character reference.\n"
         "- If lyric_no_lip_sync is true or lyric_instrumental is true, the scene should not be treated as a singing/lip-sync performance scene.\n"
         "- If the scene note says female, start with \"Female only\".\n"
         "- If the scene note says male, start with \"Male only\".\n"
