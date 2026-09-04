@@ -108,19 +108,55 @@ class MatchGrainToReference:
                 "images": ("IMAGE",),
                 "reference_image": ("IMAGE",),
                 "strength": (
-                    "FLOAT",
-                    {"default": 1.0, "min": 0.0, "max": 2.0, "step": 0.01},
+                "FLOAT",
+                    {
+                        "default": 1.0,
+                        "min": 0.0,
+                        "max": 2.0,
+                        "step": 0.01,
+                        "tooltip": "How strongly to apply the reference grain. 0 disables the effect; 1 is the normal match; higher values exaggerate it.",
+                    },
                 ),
                 "grain_size": (
                     "INT",
-                    {"default": 2, "min": 1, "max": 8, "step": 1},
+                    {
+                        "default": 1,
+                        "min": 1,
+                        "max": 8,
+                        "step": 1,
+                        "tooltip": "Grain scale in pixels. 1 is fine film grain; larger values create softer, coarser grain.",
+                    },
                 ),
                 "chroma_amount": (
                     "FLOAT",
-                    {"default": 0.35, "min": 0.0, "max": 1.0, "step": 0.01},
+                    {
+                        "default": 0.5,
+                        "min": 0.0,
+                        "max": 1.0,
+                        "step": 0.01,
+                        "tooltip": "Amount of colored grain. 0 uses neutral monochrome grain; 1 allows full per-channel color variation from the reference.",
+                    },
                 ),
-                "seed": ("INT", {"default": 0, "min": 0, "max": 0x7FFFFFFF}),
-                "batch_size": ("INT", {"default": 8, "min": 1, "max": 64, "step": 1}),
+                "seed": (
+                    "INT",
+                    {
+                        "default": 48664090,
+                        "min": 0,
+                        "max": 0x7FFFFFFF,
+                        "control_after_generate": "randomize",
+                        "tooltip": "Random seed for the generated grain pattern. Randomize for a new pattern on each run, or fix it for repeatable output.",
+                    },
+                ),
+                "batch_size": (
+                    "INT",
+                    {
+                        "default": 8,
+                        "min": 1,
+                        "max": 64,
+                        "step": 1,
+                        "tooltip": "Number of video frames processed at once. Lower values use less VRAM; higher values can be faster.",
+                    },
+                ),
             }
         }
 
