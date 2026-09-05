@@ -1,0 +1,110 @@
+{
+  "id": "2b97a7d1-2e48-4ec0-9a55-0c2cbca9d5d2",
+  "revision": 0,
+  "last_node_id": 4,
+  "last_link_id": 4,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "VHS_LoadVideo",
+      "pos": [-760, 40],
+      "size": [280, 290],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": [1]},
+        {"name": "frame_count", "type": "INT", "links": null},
+        {"name": "audio", "type": "AUDIO", "links": [3]},
+        {"name": "video_info", "type": "VHS_VIDEOINFO", "links": null}
+      ],
+      "properties": {"Node name for S&R": "VHS_LoadVideo"},
+      "widgets_values": {
+        "video": "",
+        "force_rate": 0,
+        "custom_width": 0,
+        "custom_height": 0,
+        "frame_load_cap": 0,
+        "skip_first_frames": 0,
+        "select_every_nth": 1,
+        "format": "AnimateDiff",
+        "videopreview": {"hidden": false, "paused": false, "params": {"filename": "", "type": "input", "format": "video/"}}
+      }
+    },
+    {
+      "id": 2,
+      "type": "LoadImage",
+      "pos": [-760, 390],
+      "size": [280, 310],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": [2]},
+        {"name": "MASK", "type": "MASK", "links": null}
+      ],
+      "properties": {"Node name for S&R": "LoadImage"},
+      "widgets_values": [""]
+    },
+    {
+      "id": 3,
+      "type": "MatchGrainToReference",
+      "title": "🎞️ Match Grain To Reference",
+      "pos": [-300, 160],
+      "size": [330, 300],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {"name": "images", "type": "IMAGE", "link": 1},
+        {"name": "reference_image", "type": "IMAGE", "link": 2}
+      ],
+      "outputs": [{"name": "IMAGE", "type": "IMAGE", "links": [4]}],
+      "properties": {"cnr_id": "comfyui-vrgamedevgirl", "Node name for S&R": "MatchGrainToReference"},
+      "widgets_values": [1.0, 1, 0.5, 48664090, "randomize", 8],
+      "notes": "Strength controls effect amount. Grain size 1 is fine grain; larger values are coarser. Chroma amount controls colored versus monochrome grain. Seed controls repeatability. Batch size trades VRAM for speed. The reference supplies grain statistics only; its image content is not copied."
+    },
+    {
+      "id": 4,
+      "type": "VHS_VideoCombine",
+      "pos": [180, 170],
+      "size": [300, 470],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {"name": "images", "type": "IMAGE", "link": 4},
+        {"name": "audio", "type": "AUDIO", "link": 3},
+        {"name": "meta_batch", "type": "VHS_BatchManager", "link": null},
+        {"name": "vae", "type": "VAE", "link": null}
+      ],
+      "outputs": [{"name": "Filenames", "type": "VHS_FILENAMES", "links": null}],
+      "properties": {"cnr_id": "comfyui-videohelpersuite", "Node name for S&R": "VHS_VideoCombine"},
+      "widgets_values": {
+        "frame_rate": 24,
+        "loop_count": 0,
+        "filename_prefix": "AnimateDiff",
+        "format": "video/h264-mp4",
+        "pix_fmt": "yuv420p",
+        "crf": 19,
+        "save_metadata": true,
+        "trim_to_audio": false,
+        "pingpong": false,
+        "save_output": true
+      },
+      "notes": "Frame rate controls playback speed. Loop count 0 disables looping. Filename prefix names the output. H.264 MP4 is broadly compatible; yuv420p improves player compatibility. CRF 19 is high quality (lower is larger/better). Save metadata preserves workflow information. Trim to audio cuts video to audio duration. Pingpong appends a reversed copy. Save output writes the video to ComfyUI's output folder."
+    }
+  ],
+  "links": [
+    [1, 1, 0, 3, 0, "IMAGE"],
+    [2, 2, 0, 3, 1, "IMAGE"],
+    [3, 1, 2, 4, 1, "AUDIO"],
+    [4, 3, 0, 4, 0, "IMAGE"]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {"frontendVersion": "1.45.20"},
+  "version": 0.4
+}

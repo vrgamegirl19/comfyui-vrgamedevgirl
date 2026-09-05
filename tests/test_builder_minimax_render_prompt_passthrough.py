@@ -33,6 +33,7 @@ class BuilderMiniMaxRenderPromptPassthroughTests(unittest.TestCase):
         payload_start = RENDER_SOURCE.index("const payload = {")
         payload_end = RENDER_SOURCE.index("};", payload_start)
         self.assertIn("prompt,", RENDER_SOURCE[payload_start:payload_end])
+        self.assertIn("pass2_prompt:", RENDER_SOURCE[payload_start:payload_end])
 
     def test_workflow_runner_writes_the_complete_payload_string_to_h3(self):
         start = RUNNER_SOURCE.index("def _build_minimax_h3_api_prompt")

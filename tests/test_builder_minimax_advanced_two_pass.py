@@ -116,6 +116,10 @@ class BuilderMiniMaxAdvancedTwoPassTests(unittest.TestCase):
             "_int_payload": lambda payload, key, default, low, high: max(low, min(high, int(payload.get(key, default)))),
             "_float_payload": lambda payload, key, default, low, high: max(low, min(high, float(payload.get(key, default)))),
             "_bool_payload": lambda payload, key, default=False: bool(payload.get(key, default)),
+            "_first_payload_value": lambda payload, *keys, default=None: next(
+                (payload.get(key) for key in keys if key in payload and payload.get(key) is not None),
+                default,
+            ),
         }
 
         def set_api_input(prompt, node_id, input_name, value):
@@ -136,7 +140,10 @@ class BuilderMiniMaxAdvancedTwoPassTests(unittest.TestCase):
         result = namespace["_build_minimax_h3_advanced_2pass_api_prompt"]({})
         prompt = result["prompt"]
         self.assertEqual(prompt["136"]["inputs"]["width"], ["9300", 0])
+        self.assertEqual(prompt["136"]["inputs"]["prompt"], ["138", 0])
         self.assertEqual(prompt["9302"]["inputs"]["width"], ["9301", 0])
+        self.assertEqual(prompt["9302"]["inputs"]["prompt"], "")
+        self.assertEqual(prompt["9306"]["inputs"]["conditioning"], ["9302", 0])
         self.assertEqual(prompt["9306"]["inputs"]["model"], prompt["192"]["inputs"]["model"])
         self.assertEqual(prompt["142"]["inputs"]["images"], ["122", 0])
         self.assertEqual(prompt["9308"]["inputs"]["images"], ["9307", 0])
@@ -154,9 +161,12 @@ class BuilderMiniMaxAdvancedTwoPassTests(unittest.TestCase):
         result = namespace["_build_minimax_h3_advanced_2pass_api_prompt"]({
             "advanced_pass1_megapixels": 0.4,
             "advanced_pass2_megapixels": 2.1,
+            "pass2_prompt": "sharp focus, clear details",
         })
         self.assertEqual(result["advanced_two_pass"]["pass2_width"], 1984)
         self.assertEqual(result["advanced_two_pass"]["pass2_height"], 1120)
+        self.assertEqual(result["prompt"]["9302"]["inputs"]["prompt"], "sharp focus, clear details")
+        self.assertEqual(result["prompt"]["136"]["inputs"]["prompt"], ["138", 0])
 
         dangling = []
         for node_id, node in prompt.items():
@@ -184,6 +194,16 @@ class BuilderMiniMaxAdvancedTwoPassTests(unittest.TestCase):
         self.assertIs(inputs["brightness_match"], False)
         self.assertEqual(inputs["dynamic_fade"], "off")
         self.assertEqual(inputs["dynamic_fade_min"], 32)
+
+    def test_builder_ui_exposes_and_persists_pass2_prompt(self):
+        self.assertIn('makeField("2nd Pass Prompt", miniMaxPass2Prompt)', BUILDER_SOURCE)
+        self.assertIn("miniMaxPass2PromptField.style.display = threePass ? \"flex\" : \"none\"", BUILDER_SOURCE)
+        self.assertIn("minimax_h3_pass2_prompt: \"\"", BUILDER_SOURCE)
+        self.assertIn("if (segment.minimax_h3_pass2_prompt == null) segment.minimax_h3_pass2_prompt = \"\"", BUILDER_SOURCE)
+        self.assertIn("pass2_prompt: String(segment?.minimax_h3_pass2_prompt || \"\")", BUILDER_SOURCE)
+        self.assertIn('pass2_prompt: String(segment?.minimax_h3_pass2_prompt || ""),', BUILDER_SOURCE)
+        self.assertIn("Object.prototype.hasOwnProperty.call(scene, \"minimax_h3_pass2_prompt\")", BUILDER_SOURCE)
+        self.assertIn('"minimax_h3_prompt", "minimax_h3_pass2_prompt"', BUILDER_SOURCE)
 
 if __name__ == "__main__":
     unittest.main()
