@@ -45,6 +45,10 @@ VIDEO_BUILDER_CUSTOM_NODES = {
         "folder": "Comfyui-MMH3-UltimateUpscale",
         "url": "https://github.com/bbaudio-2025/Comfyui-MMH3-UltimateUpscale.git",
     },
+    "minimax_h3_audio_t8": {
+        "folder": "comfyui-minimax-h3-audio-T8",
+        "url": "https://github.com/T8mars/comfyui-minimax-h3-audio-T8.git",
+    },
 }
 
 

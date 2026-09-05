@@ -2751,6 +2751,7 @@ Hidden workflow requirements:
 | `ComfyUI-LTXVideo` | LTX 2.3 video, audio VAE, I2V/T2V, Reference-to-Video, Ingredients-to-Video, latent upscaling, and LTX guide/reference nodes |
 | `ComfyUI-GGUF` | GGUF model loading for video/text models. Look for nodes such as `UnetLoaderGGUF` and `DualCLIPLoaderGGUF` |
 | `ComfyUI-KJNodes` | Utility image/video nodes used by the hidden workflows, including resize, image size/count, and KJ VAE loader helpers |
+| `comfyui-minimax-h3-audio-T8` | Required by MiniMax H3 Ref to Video 2 Pass for `MiniMaxH3AVLatentSeparateT8`, which separates the pass 1 video and audio latents |
 | `comfyui_memory_cleanup` | RAM/VRAM cleanup nodes used between heavy video and image passes. Look for `RAMCleanup` and `VRAMCleanup` |
 | `erosdiffusion-eulerflowmatchingdiscretescheduler` | Custom FlowMatch scheduler used by ZImage/Krea-style image workflows. Look for `FlowMatchEulerDiscreteScheduler (Custom)` |
 
@@ -2760,6 +2761,7 @@ Mode-specific notes:
 | --- | --- |
 | `Image to Video` / `Text to Video` | Requires the LTXVideo, VideoHelperSuite, GGUF, and KJNodes packs above |
 | `MiniMax H3` | Requires a current ComfyUI build with `MiniMaxH3ReferenceToVideo` and `MiniMaxH3ImageToVideo`, KJNodes for the standard diffusion loader, VideoHelperSuite for reference video/audio loading and combining, and this repo's H3 timing/audio/reference nodes. Built-in audio also uses the installed LTX audio VAE decode node. GGUF is not supported on this path. |
+| `MiniMax H3 Ref to Video 2 Pass` | Requires `comfyui-minimax-h3-audio-T8` in addition to the standard MiniMax H3 dependencies. Install it from the Builder's Models / Custom Nodes button, then restart ComfyUI. |
 | `MiniMax-H3 Turbo` | Optional. Requires `ComfyUI-MiniMax-H3-Turbo`, the selected Turbo LoRA under `models/loras`, and a ComfyUI restart after installation/update. Standard MiniMax does not require this extension while Turbo is disabled. |
 | `First Last Frame` | Requires the same LTX stack plus the bundled `LTX2.3_FLF_API.json` hidden workflow and both start/end images |
 | `ID-LoRA I2V` | Requires LTXVideo plus the required ID-LoRA/model shown in the Video tab |
