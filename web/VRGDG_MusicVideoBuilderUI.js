@@ -153,6 +153,7 @@ const BUILDER_FONT_STACK = "Segoe UI, Inter, Roboto, Arial, sans-serif";
 const MINIMAX_H3_MODE_OPTIONS = [
   { value: "text_to_video", label: "Text to Video", buttonLabel: "T2V" },
   { value: "image_to_video", label: "Image to Video", buttonLabel: "I2V" },
+  { value: "image_reference_to_video", label: "Image to Video 2 Pass", buttonLabel: "Image to Video\n2 Pass" },
   { value: "reference_to_video", label: "Reference to Video", buttonLabel: "Ref to\nVideo" },
   { value: "video_to_video", label: "Video to Video", buttonLabel: "V2V" },
 ];
@@ -436,7 +437,7 @@ function normalizeMiniMaxSpeakerAssignments(value = []) {
 
 function miniMaxH3ModeLabel(value) {
   const mode = normalizeMiniMaxH3Mode(value);
-  if (mode === "image_reference_to_video") return "Image + Reference 2 Pass";
+  if (mode === "image_reference_to_video") return "Image to Video 2 Pass";
   return MINIMAX_H3_MODE_OPTIONS.find((item) => item.value === mode)?.label || "Text to Video";
 }
 
@@ -6025,7 +6026,9 @@ function openBuilder(node) {
   const miniMaxModeChooser = document.createElement("div");
   miniMaxModeChooser.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;";
   const miniMaxModeButtons = MINIMAX_H3_MODE_OPTIONS.map((item) => {
-    const button = makeButton(item.buttonLabel || item.label);
+    const button = item.value === "image_reference_to_video"
+      ? makeButton("Image to Video\n2 Pass")
+      : makeButton(item.buttonLabel || item.label);
     applyCompactButtonLabel(button, item.buttonLabel || item.label, { noMap: true, minWidth: 0, padding: "7px 6px", title: item.label });
     button.dataset.minimaxH3Mode = item.value;
     miniMaxModeChooser.append(button);
@@ -6506,13 +6509,13 @@ function openBuilder(node) {
   miniMaxImageModePanel.append(miniMaxImageModeSource);
   const miniMaxReferenceModePanel = makeSettingsPanel([]);
   const miniMaxReferenceModeNote = document.createElement("div");
-  miniMaxReferenceModeNote.textContent = "Uses ordered character, location, ingredients-sheet, or storyboard-grid images. Add and map the library from the existing Reference Builder button at the top of the Builder.";
+  miniMaxReferenceModeNote.textContent = "Uses the selected scene image as the exact start frame. Reference Builder images are optional and can provide character, location, ingredient-sheet, or storyboard-grid guidance.";
   miniMaxReferenceModeNote.style.cssText = miniMaxTextModeNote.style.cssText;
   const miniMaxSceneImageUse = makeSelect(MINIMAX_H3_SCENE_IMAGE_USE_OPTIONS, "off");
-  const miniMaxSceneImageUseField = makeField("Scene image use — all unlocked Reference-to-Video scenes", miniMaxSceneImageUse);
+  const miniMaxSceneImageUseField = makeField("Scene image use — all unlocked Image/Reference-to-Video scenes", miniMaxSceneImageUse);
   miniMaxSceneImageUseField.title = "Choose whether each scene image is unused, becomes the exact MiniMax start frame, or is shown only to the prompt-writing vision LLM as inspiration.";
   const miniMaxStartFrameCharacterInfluence = makeSelect(MINIMAX_H3_START_FRAME_CHARACTER_INFLUENCE_OPTIONS, "full_character");
-  const miniMaxStartFrameCharacterInfluenceField = makeField("Character reference influence — all Reference-to-Video scenes", miniMaxStartFrameCharacterInfluence);
+  const miniMaxStartFrameCharacterInfluenceField = makeField("Character reference influence — all Image/Reference-to-Video scenes", miniMaxStartFrameCharacterInfluence);
   miniMaxStartFrameCharacterInfluenceField.title = "Applies this character-reference priority across every eligible base scene that uses the scene image as its exact start frame.";
   const miniMaxStartFrameReferenceNote = document.createElement("div");
   miniMaxStartFrameReferenceNote.textContent = "Choose whether the scene image is unused, becomes MiniMax's exact start frame, or is shown only to the prompt-writing vision LLM as environment inspiration.";
@@ -8589,20 +8592,23 @@ function openBuilder(node) {
       : "Scene lock is OFF — this scene follows the project-global MiniMax mode, models, and video settings.";
     miniMaxSceneImageUseField.firstElementChild.textContent = sceneMiniMaxSettingsLocked
       ? "Scene image use — this locked scene"
-      : "Scene image use — all unlocked Reference-to-Video scenes";
+      : "Scene image use — all unlocked Image/Reference-to-Video scenes";
     miniMaxSceneImageUseField.title = sceneMiniMaxSettingsLocked
       ? "Changes only this locked scene. Prompt-only inspiration is sent to the vision LLM but not to MiniMax."
       : "Applies across every eligible unlocked base scene. Locked scenes remain unchanged; prompt-only inspiration is never sent to MiniMax.";
     miniMaxStartFrameCharacterInfluenceField.firstElementChild.textContent = sceneMiniMaxSettingsLocked
       ? "Character reference influence — this locked scene"
-      : "Character reference influence — all unlocked Reference-to-Video scenes";
+      : "Character reference influence — all unlocked Image/Reference-to-Video scenes";
     miniMaxStartFrameCharacterInfluenceField.title = sceneMiniMaxSettingsLocked
       ? "Changes only this locked scene's character-reference priority."
       : "Applies this priority across eligible unlocked base scenes; locked scenes remain unchanged.";
     const mode = settings.video_mode;
     const modeLabel = miniMaxH3ModeLabel(mode);
-    const twoPass = Boolean(state.miniMaxH3TwoPassEnabled) && mode === "reference_to_video";
-    const threePass = Boolean(state.miniMaxH3ThreePassEnabled) && mode === "reference_to_video";
+    const imageReferenceTwoPass = mode === "image_reference_to_video";
+    const twoPass = Boolean(state.miniMaxH3TwoPassEnabled)
+      && ["reference_to_video", "image_reference_to_video"].includes(mode);
+    const threePass = Boolean(state.miniMaxH3ThreePassEnabled)
+      && ["reference_to_video", "image_reference_to_video"].includes(mode);
     const hideMultiPassIgnoredSettings = twoPass || threePass;
     miniMaxLoraSlots.forEach((slot) => {
       slot.applyToField.style.display = (twoPass || threePass) ? "flex" : "none";
@@ -8620,6 +8626,10 @@ function openBuilder(node) {
     miniMaxSamplerSettings.style.display = hideMultiPassIgnoredSettings ? "none" : "";
     miniMaxEasyCacheSettings.style.display = hideMultiPassIgnoredSettings ? "none" : "";
     miniMaxModelLoaderSettings.style.display = hideMultiPassIgnoredSettings ? "none" : "";
+    miniMaxReferenceConditioningSettings.style.display = !hideMultiPassIgnoredSettings
+      && ["reference_to_video", "video_to_video"].includes(mode)
+      ? ""
+      : "none";
     // Multi-pass workflows have their own optional normal-LoRA controls.
     // Turbo is a separate single-pass acceleration path and must not be offered here.
     miniMaxLoraSection.style.display = "";
@@ -8627,14 +8637,16 @@ function openBuilder(node) {
     miniMaxUseTurboLora.input.checked = hideMultiPassIgnoredSettings ? false : settings.use_turbo_lora;
     miniMaxUseTurboLora.input.disabled = hideMultiPassIgnoredSettings || settings.use_loras;
     for (const button of miniMaxModeButtons) {
-      const active = !twoPass && !threePass && button.dataset.minimaxH3Mode === mode;
+      const active = button.dataset.minimaxH3Mode === mode
+        && ((!twoPass && !threePass) || mode === "image_reference_to_video");
       button.style.background = active ? "#06b6d4" : "#27272a";
       button.style.borderColor = active ? "#0891b2" : "#3f3f46";
       button.style.color = active ? "#082f49" : "#f4f4f5";
     }
-    miniMaxTwoPassButton.style.background = twoPass ? "#06b6d4" : "#27272a";
-    miniMaxTwoPassButton.style.borderColor = twoPass ? "#0891b2" : "#3f3f46";
-    miniMaxTwoPassButton.style.color = twoPass ? "#082f49" : "#f4f4f5";
+    const referenceTwoPassActive = twoPass && mode === "reference_to_video";
+    miniMaxTwoPassButton.style.background = referenceTwoPassActive ? "#06b6d4" : "#27272a";
+    miniMaxTwoPassButton.style.borderColor = referenceTwoPassActive ? "#0891b2" : "#3f3f46";
+    miniMaxTwoPassButton.style.color = referenceTwoPassActive ? "#082f49" : "#f4f4f5";
     miniMaxThreePassButton.style.background = threePass ? "#06b6d4" : "#27272a";
     miniMaxThreePassButton.style.borderColor = threePass ? "#0891b2" : "#3f3f46";
     miniMaxThreePassButton.style.color = threePass ? "#082f49" : "#f4f4f5";
@@ -8650,8 +8662,17 @@ function openBuilder(node) {
     miniMaxPass2Prompt.value = String(segment?.minimax_h3_pass2_prompt || "");
     miniMaxPass2PromptField.style.display = threePass ? "flex" : "none";
     updateMiniMaxPromptCharacterStatus(segment);
-    miniMaxCreatePromptButton.textContent = `Create MiniMax ${modeLabel} Prompt`;
-    miniMaxEditInstructionsButton.textContent = `Edit ${modeLabel} Instructions`;
+    const compactMiniMaxModeLabel = mode === "reference_to_video"
+      ? "Ref2V"
+      : mode === "image_to_video"
+        ? "I2V"
+        : mode === "video_to_video"
+          ? "V2V"
+          : "T2V";
+    miniMaxCreatePromptButton.textContent = `Create ${compactMiniMaxModeLabel} Prompt`;
+    miniMaxCreatePromptButton.title = `Generate the MiniMax H3 ${modeLabel} prompt with the selected LLM. The prompt is saved to this scene; it does not render video.`;
+    miniMaxEditInstructionsButton.textContent = `Edit ${compactMiniMaxModeLabel} Instructions`;
+    miniMaxEditInstructionsButton.title = `Edit the LLM instructions used to create MiniMax H3 ${modeLabel} prompts.`;
     const assignmentTabButton = miniMaxSubTabs.wrapper.querySelector('[data-value="speakers"]');
     if (assignmentTabButton) applyCompactButtonLabel(assignmentTabButton, isMiniMaxSingerAssignmentMode(segment) ? "Singer Assignment" : "Speaker Assignment", { minWidth: 0, padding: "7px 6px" });
     miniMaxPromptRunnerNote.textContent = `Uses the existing ${gemmaRunnerLabel()} selection from LLM Runner. The result is saved only as this scene's MiniMax H3 prompt.`;
@@ -8668,8 +8689,8 @@ function openBuilder(node) {
           ? "Begins each later scene on the previous rendered clip's exact final frame. The extracted frame and its prompt contract are injected when rendering. Do not also enable the scene-image exact start-frame option; Scene 1 is unaffected."
           : "Off: every scene starts independently from its normal MiniMax references.";
     const sceneImageUse = miniMaxH3SceneImageUseForSegment(segment);
-    miniMaxSceneImageUse.value = sceneImageUse;
-    miniMaxSceneImageUse.disabled = !segment;
+    miniMaxSceneImageUse.value = imageReferenceTwoPass ? "exact_start_frame" : sceneImageUse;
+    miniMaxSceneImageUse.disabled = !segment || imageReferenceTwoPass;
     const exactStartFrameOption = Array.from(miniMaxSceneImageUse.options).find((option) => option.value === "exact_start_frame");
     if (exactStartFrameOption) exactStartFrameOption.disabled = settings.continuity_mode === "exact_start_frame";
     const startFrameCharacterInfluence = miniMaxH3StartFrameCharacterInfluenceForSegment(segment);
@@ -17306,7 +17327,7 @@ function openBuilder(node) {
   function miniMaxOrderedImageReferenceItemsForSegment(segment, mode = miniMaxH3ModeForSegment(segment)) {
     const normalizedMode = normalizeMiniMaxH3Mode(mode);
     const ordered = [];
-    if (normalizedMode === "reference_to_video" && segment?.minimax_h3_use_scene_image_as_start_frame) {
+    if (["reference_to_video", "image_reference_to_video"].includes(normalizedMode) && segment?.minimax_h3_use_scene_image_as_start_frame) {
       const startFrame = segmentImageSource(segment);
       if (startFrame?.path || startFrame?.data) {
         const characterInfluence = miniMaxH3StartFrameCharacterInfluenceForSegment(segment);
@@ -17411,7 +17432,7 @@ function openBuilder(node) {
     });
     const labels = desired.map((item) => item.label);
     let count = desired.length;
-    if (normalizedMode === "reference_to_video" && segment?.minimax_h3_use_scene_image_as_start_frame) {
+    if (["reference_to_video", "image_reference_to_video"].includes(normalizedMode) && segment?.minimax_h3_use_scene_image_as_start_frame) {
       const startFrame = segmentImageSource(segment);
       if (startFrame?.path || startFrame?.data) {
         const fingerprint = imageFingerprint(startFrame);
@@ -18929,8 +18950,8 @@ function openBuilder(node) {
     ltx25MegapixelsInput.value = Number(settings.resolution_megapixels || 1.2);
     const isLtx25 = settings.ltx_version !== "2.3";
     const isLtx25T2V = isLtx25 && currentVideoMode() === "t2v";
-    i2vSettingsGrid.style.display = isLtx25T2V ? "none" : "grid";
-    ltx25ResolutionGrid.style.display = isLtx25T2V ? "grid" : "none";
+    i2vSettingsGrid.style.display = "grid";
+    ltx25ResolutionGrid.style.display = "none";
     i2vUseGgufModel.wrapper.style.display = isLtx25 ? "none" : "flex";
     i2vClip2Picker.wrapper.parentElement.style.display = isLtx25 ? "none" : "flex";
     i2vSeedInput.value = settings.seed || 69;
@@ -41580,7 +41601,35 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const cueCreativeText = creativeStart >= 0 && soundscapeStart > creativeStart
         ? text.slice(creativeStart + creativeHeader.length, soundscapeStart).trim()
         : "";
-      cueMap.forEach((cue, index) => {
+      const normalizeCueTag = (value) => String(value || "")
+        .replace(/\\</g, "<")
+        .replace(/\\>/g, ">")
+        .replace(/\\+/g, "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .toLocaleLowerCase();
+      const reportCueMismatch = (warning, failure) => {
+        if (options.allowCueValidationWarnings) {
+          console.warn(`[VRGDG Music Builder] ${warning}`);
+          if (typeof options.onCueValidationWarning === "function") options.onCueValidationWarning(warning);
+        } else {
+          throw new Error(failure);
+        }
+      };
+      const isSingleContinuousShot = miniMaxH3OfficialShotPlan(miniMaxH3CutPlanForSegment(segment)).length === 1;
+      if (isSingleContinuousShot && cueMap.length > 1) {
+        // A continuous shot may contain several vocal cues and may also allow instrumental intervals to coexist in the same shot.
+        const expectedTags = cueMap
+          .filter((cue) => cue.type === "vocal")
+          .map((cue) => `<d>[English] ${miniMaxH3CapitalizeCueText(miniMaxH3PunctuatedCueText(cue.text))}</d>`);
+        const actualTags = cueCreativeText.match(/<d>[\s\S]*?<\/d>/gi) || [];
+        const tagsMatch = actualTags.length === expectedTags.length
+          && expectedTags.every((tag, index) => normalizeCueTag(actualTags[index]) === normalizeCueTag(tag));
+        if (!tagsMatch) {
+          const warning = `continuous-shot lyric cue mismatch. Expected ${expectedTags.join(", ") || "no <d> cues"}; found ${actualTags.join(", ") || "no <d> cues"}.`;
+          reportCueMismatch(warning, `The continuous shot must contain its assigned lyric cues in order: ${expectedTags.join(", ") || "none"}`);
+        }
+      } else cueMap.forEach((cue, index) => {
         const shotLabel = `[Shot ${index + 1}]`;
         const shotStart = cueCreativeText.indexOf(shotLabel);
         const nextShotStart = cueCreativeText.indexOf(`[Shot ${index + 2}]`, shotStart + shotLabel.length);
@@ -41593,22 +41642,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         }
         if (cue.type === "vocal") {
           const expectedTag = `<d>[English] ${miniMaxH3CapitalizeCueText(miniMaxH3PunctuatedCueText(cue.text))}</d>`;
-          const normalizeCueTag = (value) => String(value || "")
-            .replace(/\\</g, "<")
-            .replace(/\\>/g, ">")
-            .replace(/\\+/g, "")
-            .replace(/\s+/g, " ")
-            .trim()
-            .toLocaleLowerCase();
           const actualTag = dialogueTags.length === 1 ? dialogueTags[0] : "";
           if (dialogueTags.length !== 1 || normalizeCueTag(actualTag) !== normalizeCueTag(expectedTag)) {
             const warning = `${shotLabel} lyric cue mismatch. Expected ${expectedTag}; found ${actualTag || "no <d> cue"}.`;
-            if (options.allowCueValidationWarnings) {
-              console.warn(`[VRGDG Music Builder] ${warning}`);
-              if (typeof options.onCueValidationWarning === "function") options.onCueValidationWarning(warning);
-            } else {
-              throw new Error(`${shotLabel} must contain exactly its assigned lyric cue: ${expectedTag}`);
-            }
+            reportCueMismatch(warning, `${shotLabel} must contain exactly its assigned lyric cue: ${expectedTag}`);
           }
         }
       });
@@ -41906,7 +41943,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           + "In the finished prompt, convert permitted environmental observations into direct scene description without mentioning Attached Picture 1, inspiration, source imagery, or analysis. Renderer Image 1 is attached as Picture 2, Renderer Image 2 as Picture 3, and so on; use only the renderer Image N labels in the finished prompt.",
         );
       }
-      if (mode === "reference_to_video" && segment?.minimax_h3_use_scene_image_as_start_frame) {
+      if (["reference_to_video", "image_reference_to_video"].includes(mode) && segment?.minimax_h3_use_scene_image_as_start_frame) {
         const characterInfluence = miniMaxH3StartFrameCharacterInfluenceForSegment(segment);
         if (characterInfluence === "face_hair_only") {
           parts.push(
@@ -42231,13 +42268,17 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
     const rendererPromptImages = miniMaxH3PromptVisionImages(segment, mode);
     const visionImages = miniMaxH3PromptVisionImagesForRunner(segment, mode);
-    const rendererReferenceImages = mode === "reference_to_video"
+    const rendererReferenceImages = ["reference_to_video", "image_reference_to_video"].includes(mode)
       ? miniMaxOrderedImageReferenceItemsForSegment(segment, mode)
       : [];
     const sceneImageUse = miniMaxH3SceneImageUseForSegment(segment);
     const sceneImageSourceAvailable = Boolean(segmentImageSource(segment)?.path || segmentImageSource(segment)?.data);
     if (mode === "image_to_video" && !rendererPromptImages.length) {
       toast("Image to Video needs a selected scene image before the LLM can create its MiniMax prompt.", true);
+      return;
+    }
+    if (mode === "image_reference_to_video" && !sceneImageSourceAvailable) {
+      toast("Image to Video 2 Pass needs a selected scene image before the LLM can create its MiniMax prompt.", true);
       return;
     }
     if (mode === "reference_to_video" && sceneImageUse !== "off" && !sceneImageSourceAvailable) {
@@ -44067,13 +44108,16 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           : []).map((item) => ({ ...item }));
         const rendererPromptImages = miniMaxH3PromptVisionImages(workingSegment, mode);
         const visionImages = miniMaxH3PromptVisionImagesForRunner(workingSegment, mode);
-        const rendererReferenceImages = mode === "reference_to_video"
+        const rendererReferenceImages = ["reference_to_video", "image_reference_to_video"].includes(mode)
           ? miniMaxOrderedImageReferenceItemsForSegment(workingSegment, mode)
           : [];
         const sceneImageUse = miniMaxH3SceneImageUseForSegment(workingSegment);
         const sceneImageSourceAvailable = Boolean(segmentImageSource(workingSegment)?.path || segmentImageSource(workingSegment)?.data);
         if (mode === "image_to_video" && !rendererPromptImages.length) {
           throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: MiniMax Image to Video needs a selected scene image.`);
+        }
+        if (mode === "image_reference_to_video" && !sceneImageSourceAvailable) {
+          throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: MiniMax Image to Video 2 Pass needs a selected scene image.`);
         }
         if (mode === "reference_to_video" && sceneImageUse !== "off" && !sceneImageSourceAvailable) {
           throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: the selected scene-image mode needs a timeline image for LLM prompting.`);
@@ -44526,7 +44570,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (mode === "image_to_video" && !String(selectedSegmentImagePath(segment) || "").trim()) {
       missing.push(`${name}: MiniMax Image to Video needs a selected scene image.`);
     }
-    if (mode === "reference_to_video" && segment?.minimax_h3_use_scene_image_as_start_frame && !String(selectedSegmentImagePath(segment) || "").trim()) {
+    if (["reference_to_video", "image_reference_to_video"].includes(mode) && segment?.minimax_h3_use_scene_image_as_start_frame && !String(selectedSegmentImagePath(segment) || "").trim()) {
       missing.push(`${name}: MiniMax Reference to Video is set to use the scene image as its start frame, but no scene image is saved.`);
     }
     const continuityMode = miniMaxH3ContinuityModeForSegment(segment);
@@ -46183,8 +46227,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const miniMaxSettings = miniMaxH3SettingsForSegment(segment);
     const builtInAudio = miniMaxSettings.audio_mode === "built_in_audio";
     const mode = normalizeMiniMaxH3Mode(options.mode ?? miniMaxSettings.video_mode);
-    const twoPass = Boolean(state.miniMaxH3TwoPassEnabled) && mode === "reference_to_video";
-    const threePass = Boolean(state.miniMaxH3ThreePassEnabled) && mode === "reference_to_video";
+    const twoPass = Boolean(state.miniMaxH3TwoPassEnabled)
+      && ["reference_to_video", "image_reference_to_video"].includes(mode);
+    const threePass = Boolean(state.miniMaxH3ThreePassEnabled)
+      && ["reference_to_video", "image_reference_to_video"].includes(mode);
     if ((twoPass || threePass) && builtInAudio) {
       throw new Error(`MiniMax H3 ${threePass ? "2 Pass Advanced" : "2 Pass"} currently supports Input Audio only. Switch Audio Mode to Input Audio before rendering.`);
     }
@@ -46237,7 +46283,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const normalizePathList = (value) => (Array.isArray(value) ? value : [])
       .map((item) => String(item?.path || item?.file || item || "").trim())
       .filter(Boolean);
-    const usesReferenceBuilderImages = ["reference_to_video", "video_to_video"].includes(mode);
+    const usesReferenceBuilderImages = ["reference_to_video", "image_reference_to_video", "video_to_video"].includes(mode);
     const referenceBuilderImagePaths = usesReferenceBuilderImages && options.imagePaths === undefined
       ? miniMaxReferenceBuilderImagePathsForSegment(segment)
       : [];
@@ -46255,9 +46301,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         return true;
       })
       .slice(0, 9) : [];
-    if (mode === "image_to_video") {
+    if (["image_to_video", "image_reference_to_video"].includes(mode)) {
       const selectedImage = String(selectedSegmentImagePath(segment) || "").trim();
-      if (selectedImage) imagePaths = [selectedImage];
+      if (selectedImage) imagePaths = [selectedImage, ...imagePaths.filter((path) => mediaPathKey(path) !== mediaPathKey(selectedImage))].slice(0, 9);
     }
     let continuityImageNumber = 0;
     if (continuityInput?.framePath) {
@@ -46282,7 +46328,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       ?? segment?.minimax_video_references
       ?? [];
     const videoReferences = mode === "video_to_video" && Array.isArray(rawVideoReferences) ? rawVideoReferences : [];
-    if (mode === "image_to_video" && !imagePaths.length) {
+    if (["image_to_video", "image_reference_to_video"].includes(mode) && !imagePaths.length) {
       throw new Error(`${sceneDisplayName(segment, sceneIndex)} needs a selected scene image for MiniMax Image to Video.`);
     }
     if (mode === "reference_to_video" && !imagePaths.length) {
@@ -57975,7 +58021,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const segment = requireActiveSegment();
       if (!segment) return;
       pushHistory();
-      state.miniMaxH3TwoPassEnabled = false;
+      state.miniMaxH3TwoPassEnabled = button.dataset.minimaxH3Mode === "image_reference_to_video";
       state.miniMaxH3ThreePassEnabled = false;
       setMiniMaxH3ModeForSegment(segment, button.dataset.minimaxH3Mode);
       syncMiniMaxH3Panel();
@@ -58075,7 +58121,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const sceneLocked = Boolean(segment.use_scene_minimax_h3_settings);
     const candidates = (sceneLocked ? [segment] : allEditableSegments()).filter((item) => (
       segmentTrack(item) !== "overlay"
-      && miniMaxH3ModeForSegment(item) === "reference_to_video"
+      && ["reference_to_video", "image_reference_to_video"].includes(miniMaxH3ModeForSegment(item))
       && (sceneLocked || !item.use_scene_minimax_h3_settings)
     ));
     const blocked = exactStartFrame
@@ -58134,7 +58180,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const sceneLocked = Boolean(segment.use_scene_minimax_h3_settings);
     const targets = (sceneLocked ? [segment] : allEditableSegments()).filter((item) => (
       segmentTrack(item) !== "overlay"
-      && miniMaxH3ModeForSegment(item) === "reference_to_video"
+      && ["reference_to_video", "image_reference_to_video"].includes(miniMaxH3ModeForSegment(item))
       && (sceneLocked || !item.use_scene_minimax_h3_settings)
     ));
     if (!targets.length) {

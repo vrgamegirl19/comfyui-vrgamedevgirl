@@ -15,6 +15,160 @@ import hashlib
 
 
 
+def _match_grain_to_reference(images, reference_image, strength, grain_size, chroma_amount, seed, batch_size=8):
+    """Apply reference-matched grain statistics to a ComfyUI IMAGE batch."""
+    if images.ndim != 4 or images.shape[-1] != 3:
+        raise ValueError("images must have shape [batch, height, width, 3].")
+    if reference_image.ndim != 4 or reference_image.shape[-1] != 3:
+        raise ValueError("reference_image must have shape [batch, height, width, 3].")
+    if images.shape[0] < 1 or reference_image.shape[0] < 1:
+        return images.clone()
+
+    device = images.device
+    target = images.to(device=device, dtype=torch.float32).clamp(0.0, 1.0)
+    reference = reference_image.to(device=device, dtype=torch.float32).clamp(0.0, 1.0)
+    target_nchw = target.permute(0, 3, 1, 2)
+    reference_nchw = reference.permute(0, 3, 1, 2)
+
+    grain_size = max(1, min(8, int(grain_size)))
+    strength = max(0.0, min(2.0, float(strength)))
+    chroma_amount = max(0.0, min(1.0, float(chroma_amount)))
+    batch_size = max(1, min(64, int(batch_size)))
+    analysis_kernel = grain_size * 2 + 1
+
+    # Measure reference statistics chunk-by-chunk so long reference videos do
+    # not require a second full-size residual tensor in memory.
+    total_pixels = 0
+    channel_sum = torch.zeros(3, device=device, dtype=torch.float64)
+    channel_sum_sq = torch.zeros(3, device=device, dtype=torch.float64)
+    mono_sum = torch.zeros(1, device=device, dtype=torch.float64)
+    mono_sum_sq = torch.zeros(1, device=device, dtype=torch.float64)
+    reference_batch_size = min(batch_size, reference_nchw.shape[0])
+    for start in range(0, reference_nchw.shape[0], reference_batch_size):
+        reference_chunk = reference_nchw[start:start + reference_batch_size]
+        blurred = F.avg_pool2d(
+            reference_chunk,
+            kernel_size=analysis_kernel,
+            stride=1,
+            padding=grain_size,
+            count_include_pad=False,
+        )
+        residual = reference_chunk - blurred
+        residual = residual - residual.mean(dim=(2, 3), keepdim=True)
+        pixels = residual.permute(0, 2, 3, 1).reshape(-1, 3).to(torch.float64)
+        mono = pixels.mean(dim=1)
+        total_pixels += pixels.shape[0]
+        channel_sum += pixels.sum(dim=0)
+        channel_sum_sq += (pixels * pixels).sum(dim=0)
+        mono_sum += mono.sum().reshape(1)
+        mono_sum_sq += (mono * mono).sum().reshape(1)
+    channel_mean = channel_sum / max(1, total_pixels)
+    channel_var = (channel_sum_sq / max(1, total_pixels) - channel_mean * channel_mean).clamp_min(1e-12)
+    mono_mean = mono_sum / max(1, total_pixels)
+    mono_var = (mono_sum_sq / max(1, total_pixels) - mono_mean * mono_mean).clamp_min(1e-12)
+    reference_std = channel_var.sqrt().to(target_nchw.dtype)
+    monochrome_std = mono_var.sqrt().to(target_nchw.dtype)
+    channel_std = (
+        chroma_amount * reference_std
+        + (1.0 - chroma_amount) * monochrome_std
+    ).view(1, 3, 1, 1)
+
+    generator = torch.Generator(device=device)
+    generator.manual_seed(int(seed) & 0x7FFFFFFFFFFFFFFF)
+    _, _, height, width = target_nchw.shape
+    scale = grain_size
+    noise_height = max(1, (height + scale - 1) // scale)
+    noise_width = max(1, (width + scale - 1) // scale)
+    output_chunks = []
+    for start in range(0, target_nchw.shape[0], batch_size):
+        target_chunk = target_nchw[start:start + batch_size]
+        chunk_count = target_chunk.shape[0]
+        noise = torch.randn(
+            (chunk_count, 3, noise_height, noise_width),
+            generator=generator,
+            device=device,
+            dtype=target_nchw.dtype,
+        )
+        if scale > 1:
+            noise = F.interpolate(noise, size=(height, width), mode="bilinear", align_corners=False)
+        gray_noise = noise.mean(dim=1, keepdim=True)
+        noise = (1.0 - chroma_amount) * gray_noise + chroma_amount * noise
+        noise_std = noise.flatten(2).std(dim=2, unbiased=False).clamp_min(1e-6)
+        noise = noise / noise_std.unsqueeze(-1).unsqueeze(-1) * channel_std
+        output_chunks.append((target_chunk + strength * noise).clamp(0.0, 1.0))
+    matched = torch.cat(output_chunks, dim=0)
+    return matched.permute(0, 2, 3, 1).to(dtype=images.dtype)
+
+
+class MatchGrainToReference:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "images": ("IMAGE",),
+                "reference_image": ("IMAGE",),
+                "strength": (
+                "FLOAT",
+                    {
+                        "default": 1.0,
+                        "min": 0.0,
+                        "max": 2.0,
+                        "step": 0.01,
+                        "tooltip": "How strongly to apply the reference grain. 0 disables the effect; 1 is the normal match; higher values exaggerate it.",
+                    },
+                ),
+                "grain_size": (
+                    "INT",
+                    {
+                        "default": 1,
+                        "min": 1,
+                        "max": 8,
+                        "step": 1,
+                        "tooltip": "Grain scale in pixels. 1 is fine film grain; larger values create softer, coarser grain.",
+                    },
+                ),
+                "chroma_amount": (
+                    "FLOAT",
+                    {
+                        "default": 0.5,
+                        "min": 0.0,
+                        "max": 1.0,
+                        "step": 0.01,
+                        "tooltip": "Amount of colored grain. 0 uses neutral monochrome grain; 1 allows full per-channel color variation from the reference.",
+                    },
+                ),
+                "seed": (
+                    "INT",
+                    {
+                        "default": 48664090,
+                        "min": 0,
+                        "max": 0x7FFFFFFF,
+                        "control_after_generate": "randomize",
+                        "tooltip": "Random seed for the generated grain pattern. Randomize for a new pattern on each run, or fix it for repeatable output.",
+                    },
+                ),
+                "batch_size": (
+                    "INT",
+                    {
+                        "default": 8,
+                        "min": 1,
+                        "max": 64,
+                        "step": 1,
+                        "tooltip": "Number of video frames processed at once. Lower values use less VRAM; higher values can be faster.",
+                    },
+                ),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    FUNCTION = "match_grain"
+    CATEGORY = "video/enhancement"
+    DESCRIPTION = "Matches reference grain strength and colorfulness without copying the reference image content."
+
+    def match_grain(self, images, reference_image, strength, grain_size, chroma_amount, seed, batch_size):
+        return (_match_grain_to_reference(images, reference_image, strength, grain_size, chroma_amount, seed, batch_size),)
+
+
 class FastFilmGrain:
     @classmethod
     def INPUT_TYPES(cls):
@@ -1880,6 +2034,7 @@ class VRGDG_LoadAudioSplit_HUMO_Transcribe:
 
 NODE_CLASS_MAPPINGS = {
      "FastFilmGrain": FastFilmGrain,
+     "MatchGrainToReference": MatchGrainToReference,
      "ColorMatchToReference": ColorMatchToReference,
      "FastUnsharpSharpen": FastUnsharpSharpen,
      "FastLaplacianSharpen": FastLaplacianSharpen,
@@ -1906,6 +2061,7 @@ NODE_CLASS_MAPPINGS = {
 
 NODE_DISPLAY_NAME_MAPPINGS = {
      "FastFilmGrain": "🎞️ Fast Film Grain",
+     "MatchGrainToReference": "🎞️ Match Grain To Reference",
      "ColorMatchToReference": "🎨 Color Match To Reference",
      "FastUnsharpSharpen": "🎯 Fast Unsharp Sharpen",
      "FastLaplacianSharpen": "🌀 Fast Laplacian Sharpen",
