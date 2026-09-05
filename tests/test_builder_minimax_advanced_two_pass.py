@@ -61,27 +61,61 @@ class BuilderMiniMaxAdvancedTwoPassTests(unittest.TestCase):
             RUNNER_SOURCE,
         )
 
-    def test_generated_advanced_graph_has_no_dangling_node_links(self):
+    _OLD_SPATIAL_INPUTS = (
+        "upscale_width", "upscale_height", "tile_size_mode", "tile_width", "tile_height",
+        "grid_rows", "grid_cols", "spatial_w_overlap", "spatial_h_overlap",
+        "fade_width", "fade_height", "min_tile_size", "overlap_mode", "overlap_blend",
+    )
+    _NEW_SPATIAL_INPUTS = (
+        "masked_area_noise", "brightness_match", "dynamic_fade", "dynamic_fade_min",
+    )
+
+    class _OldSpatialSplit:
+        @classmethod
+        def INPUT_TYPES(cls):
+            return {"required": {name: ("INT",) for name in BuilderMiniMaxAdvancedTwoPassTests._OLD_SPATIAL_INPUTS}}
+
+    class _NewSpatialSplit:
+        @classmethod
+        def INPUT_TYPES(cls):
+            required = {name: ("INT",) for name in BuilderMiniMaxAdvancedTwoPassTests._OLD_SPATIAL_INPUTS}
+            required.update({name: ("INT",) for name in BuilderMiniMaxAdvancedTwoPassTests._NEW_SPATIAL_INPUTS})
+            return {"required": required}
+
+    def _advanced_prompt_namespace(self, spatial_node_class):
         module = ast.parse(RUNNER_SOURCE)
-        function = next(
+        wanted = {
+            "_build_minimax_h3_advanced_2pass_api_prompt",
+            "_compat_node_inputs",
+            "_node_input_names",
+            "_input_names_for_node",
+        }
+        functions = [
             node for node in module.body
-            if isinstance(node, ast.FunctionDef)
-            and node.name == "_build_minimax_h3_advanced_2pass_api_prompt"
-        )
+            if isinstance(node, ast.FunctionDef) and node.name in wanted
+        ]
+        self.assertEqual({node.name for node in functions}, wanted)
         namespace = {
             "copy": copy,
+            "inspect": __import__("inspect"),
             "math": math,
             "_MINIMAX_H3_ASPECT_RATIOS": {"16:9 (Widescreen)": (16, 9)},
+            "_MMH3_DYNAMIC_FADE_MODES": {"off", "narrowing", "widening"},
+            "_MMH3_SPATIAL_SPLIT_NEW_DEFAULTS": {
+                "masked_area_noise": 0.0,
+                "brightness_match": False,
+                "dynamic_fade": "off",
+                "dynamic_fade_min": 32,
+            },
             "_get_comfy_node_mappings": lambda: {
-                name: object() for name in (
-                    "MMH3UltimateUpscale",
-                    "VRGDG_MiniMaxH3UltimateUpscaleParams",
-                    "MMH3TemporalSplitParams",
-                    "MMH3SpatialSplitParams",
-                )
+                "MMH3UltimateUpscale": object(),
+                "VRGDG_MiniMaxH3UltimateUpscaleParams": object(),
+                "MMH3TemporalSplitParams": object(),
+                "MMH3SpatialSplitParams": spatial_node_class,
             },
             "_int_payload": lambda payload, key, default, low, high: max(low, min(high, int(payload.get(key, default)))),
             "_float_payload": lambda payload, key, default, low, high: max(low, min(high, float(payload.get(key, default)))),
+            "_bool_payload": lambda payload, key, default=False: bool(payload.get(key, default)),
             "_first_payload_value": lambda payload, *keys, default=None: next(
                 (payload.get(key) for key in keys if key in payload and payload.get(key) is not None),
                 default,
@@ -98,7 +132,11 @@ class BuilderMiniMaxAdvancedTwoPassTests(unittest.TestCase):
             "prompt": copy.deepcopy(template),
             "two_pass": {},
         }
-        exec(compile(ast.Module(body=[function], type_ignores=[]), "advanced_two_pass", "exec"), namespace)
+        exec(compile(ast.Module(body=functions, type_ignores=[]), "advanced_two_pass", "exec"), namespace)
+        return namespace
+
+    def test_generated_advanced_graph_has_no_dangling_node_links(self):
+        namespace = self._advanced_prompt_namespace(object())
         result = namespace["_build_minimax_h3_advanced_2pass_api_prompt"]({})
         prompt = result["prompt"]
         self.assertEqual(prompt["136"]["inputs"]["width"], ["9300", 0])
@@ -115,6 +153,8 @@ class BuilderMiniMaxAdvancedTwoPassTests(unittest.TestCase):
         self.assertEqual(prompt["9305"]["inputs"]["grid_cols"], 2)
         self.assertEqual(prompt["9305"]["inputs"]["fade_width"], 64)
         self.assertEqual(prompt["9305"]["inputs"]["overlap_mode"], "later")
+        for name in self._NEW_SPATIAL_INPUTS:
+            self.assertNotIn(name, prompt["9305"]["inputs"])
         self.assertEqual(result["advanced_two_pass"]["pass2_width"], 1920)
         self.assertEqual(result["advanced_two_pass"]["pass2_height"], 1088)
 
@@ -136,6 +176,25 @@ class BuilderMiniMaxAdvancedTwoPassTests(unittest.TestCase):
                         dangling.append((node_id, input_name, value[0]))
         self.assertEqual(dangling, [])
 
+    def test_spatial_split_omits_new_inputs_on_old_mmh3_node(self):
+        namespace = self._advanced_prompt_namespace(self._OldSpatialSplit)
+        prompt = namespace["_build_minimax_h3_advanced_2pass_api_prompt"]({})["prompt"]
+        for name in self._OLD_SPATIAL_INPUTS:
+            self.assertIn(name, prompt["9305"]["inputs"])
+        for name in self._NEW_SPATIAL_INPUTS:
+            self.assertNotIn(name, prompt["9305"]["inputs"])
+
+    def test_spatial_split_uses_new_mmh3_defaults_when_node_declares_them(self):
+        namespace = self._advanced_prompt_namespace(self._NewSpatialSplit)
+        prompt = namespace["_build_minimax_h3_advanced_2pass_api_prompt"]({})["prompt"]
+        inputs = prompt["9305"]["inputs"]
+        for name in self._OLD_SPATIAL_INPUTS:
+            self.assertIn(name, inputs)
+        self.assertEqual(inputs["masked_area_noise"], 0.0)
+        self.assertIs(inputs["brightness_match"], False)
+        self.assertEqual(inputs["dynamic_fade"], "off")
+        self.assertEqual(inputs["dynamic_fade_min"], 32)
+
     def test_builder_ui_exposes_and_persists_pass2_prompt(self):
         self.assertIn('makeField("2nd Pass Prompt", miniMaxPass2Prompt)', BUILDER_SOURCE)
         self.assertIn("miniMaxPass2PromptField.style.display = threePass ? \"flex\" : \"none\"", BUILDER_SOURCE)
@@ -145,7 +204,6 @@ class BuilderMiniMaxAdvancedTwoPassTests(unittest.TestCase):
         self.assertIn('pass2_prompt: String(segment?.minimax_h3_pass2_prompt || ""),', BUILDER_SOURCE)
         self.assertIn("Object.prototype.hasOwnProperty.call(scene, \"minimax_h3_pass2_prompt\")", BUILDER_SOURCE)
         self.assertIn('"minimax_h3_prompt", "minimax_h3_pass2_prompt"', BUILDER_SOURCE)
-
 
 if __name__ == "__main__":
     unittest.main()

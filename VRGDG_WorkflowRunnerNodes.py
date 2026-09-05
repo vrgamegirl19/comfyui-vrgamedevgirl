@@ -2,6 +2,7 @@ import copy
 import base64
 import hashlib
 import importlib
+import inspect
 import json
 import math
 import os
@@ -2413,6 +2414,62 @@ def _input_names_for_node(class_type, mappings):
     return names
 
 
+_MMH3_SPATIAL_SPLIT_NEW_DEFAULTS = {
+    "masked_area_noise": 0.0,
+    "brightness_match": False,
+    "dynamic_fade": "off",
+    "dynamic_fade_min": 32,
+}
+_MMH3_DYNAMIC_FADE_MODES = {"off", "narrowing", "widening"}
+
+
+def _node_input_names(class_type, mappings):
+    try:
+        return list(_input_names_for_node(class_type, mappings))
+    except Exception:
+        pass
+    node_class = mappings.get(class_type) if isinstance(mappings, dict) else None
+    if node_class is None:
+        return []
+    define_schema = getattr(node_class, "define_schema", None)
+    if callable(define_schema):
+        try:
+            schema = define_schema()
+            names = []
+            for inp in getattr(schema, "inputs", None) or []:
+                name = getattr(inp, "id", None) or getattr(inp, "name", None)
+                if name:
+                    names.append(str(name))
+            if names:
+                return names
+        except Exception:
+            pass
+    execute = getattr(node_class, "execute", None)
+    if callable(execute):
+        try:
+            names = []
+            for name, param in inspect.signature(execute).parameters.items():
+                if name in {"cls", "self"}:
+                    continue
+                if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+                    continue
+                names.append(name)
+            return names
+        except (TypeError, ValueError):
+            pass
+    return []
+
+
+def _compat_node_inputs(class_type, mappings, required_inputs, extra_defaults=None):
+    """Keep required inputs, and attach extras only when the installed node declares them."""
+    inputs = dict(required_inputs)
+    names = set(_node_input_names(class_type, mappings))
+    for key, value in (extra_defaults or {}).items():
+        if key in names:
+            inputs[key] = value
+    return inputs
+
+
 def _api_widget_values(class_type, widget_values):
     values = list(widget_values or [])
     if class_type == "SamplerCustom" and len(values) >= 4:
@@ -3490,6 +3547,20 @@ def _build_minimax_h3_advanced_2pass_api_prompt(payload):
         overlap_mode = "earlier"
     if overlap_blend not in {"linear", "smoothstep", "overwrite", "midpoint"}:
         overlap_blend = "linear"
+    masked_area_noise = _float_payload(
+        payload, "advanced_masked_area_noise", _MMH3_SPATIAL_SPLIT_NEW_DEFAULTS["masked_area_noise"], 0.0, 1.0
+    )
+    brightness_match = _bool_payload(
+        payload, "advanced_brightness_match", _MMH3_SPATIAL_SPLIT_NEW_DEFAULTS["brightness_match"]
+    )
+    dynamic_fade = str(
+        payload.get("advanced_dynamic_fade") or _MMH3_SPATIAL_SPLIT_NEW_DEFAULTS["dynamic_fade"]
+    ).strip().lower()
+    if dynamic_fade not in _MMH3_DYNAMIC_FADE_MODES:
+        dynamic_fade = _MMH3_SPATIAL_SPLIT_NEW_DEFAULTS["dynamic_fade"]
+    dynamic_fade_min = _int_payload(
+        payload, "advanced_dynamic_fade_min", _MMH3_SPATIAL_SPLIT_NEW_DEFAULTS["dynamic_fade_min"], 0, 16384
+    )
     if chunk_length % 17 or temporal_overlap % 17:
         raise ValueError("MMH3 chunk length and temporal overlap must be multiples of 17 frames.")
     if temporal_overlap >= chunk_length:
@@ -3565,9 +3636,10 @@ def _build_minimax_h3_advanced_2pass_api_prompt(payload):
         },
         "_meta": {"title": "2 Pass Advanced - Temporal Chunks"},
     }
-    prompt["9305"] = {
-        "class_type": "MMH3SpatialSplitParams",
-        "inputs": {
+    spatial_inputs = _compat_node_inputs(
+        "MMH3SpatialSplitParams",
+        mappings,
+        {
             "upscale_width": ["9301", 0],
             "upscale_height": ["9301", 1],
             "tile_size_mode": tile_size_mode,
@@ -3583,6 +3655,20 @@ def _build_minimax_h3_advanced_2pass_api_prompt(payload):
             "overlap_mode": overlap_mode,
             "overlap_blend": overlap_blend,
         },
+        extra_defaults={
+            "masked_area_noise": masked_area_noise,
+            "brightness_match": brightness_match,
+            "dynamic_fade": dynamic_fade,
+            "dynamic_fade_min": dynamic_fade_min,
+        },
+    )
+    if "dynamic_fade_min" in spatial_inputs and spatial_inputs["dynamic_fade_min"] % 32:
+        raise ValueError(
+            f"MMH3 dynamic fade min must be a multiple of 32 pixels; got {spatial_inputs['dynamic_fade_min']}."
+        )
+    prompt["9305"] = {
+        "class_type": "MMH3SpatialSplitParams",
+        "inputs": spatial_inputs,
         "_meta": {"title": "2 Pass Advanced - Spatial Tiles"},
     }
     pass2_model_ref = copy.deepcopy(prompt["192"]["inputs"]["model"])
