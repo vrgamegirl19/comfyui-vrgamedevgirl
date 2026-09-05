@@ -3541,6 +3541,7 @@ def _build_minimax_h3_advanced_2pass_api_prompt(payload):
     pass2_conditioning = copy.deepcopy(prompt["136"])
     pass2_conditioning["inputs"]["width"] = ["9301", 0]
     pass2_conditioning["inputs"]["height"] = ["9301", 1]
+    pass2_conditioning["inputs"]["prompt"] = ""
     pass2_conditioning["_meta"] = {"title": "2 Pass Advanced - Final Resolution Conditioning"}
     prompt["9302"] = pass2_conditioning
 
