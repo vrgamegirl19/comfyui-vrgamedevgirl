@@ -217,6 +217,17 @@ def _interval(value):
     return int(str(value).split()[0])
 
 
+def _ltx_guarded_frame_count(source_frame_count, warm_up_frames=0, cool_down_frames=8,
+                             minimum_tail_guard=8):
+    """Return an 8n+1 length with the requested disposable boundary frames."""
+    source_frame_count = max(1, int(source_frame_count))
+    warm_up_frames = max(0, int(warm_up_frames))
+    cool_down_frames = max(0, int(cool_down_frames))
+    minimum_tail_guard = max(8, int(minimum_tail_guard))
+    minimum_total = warm_up_frames + source_frame_count + max(cool_down_frames, minimum_tail_guard)
+    return minimum_total + ((1 - minimum_total) % 8)
+
+
 def _distance_repair_strength(face_width_percent, preset, custom_threshold):
     ranges = {
         "Very far faces only": (4.0, 6.0),
@@ -245,7 +256,7 @@ class VRGDGFaceFixPrepare:
                    "48 frames", "64 frames", "96 frames", "120 frames"]
         distance_presets = ["All detected faces", "Very far faces only", "Far faces (recommended)",
                             "Far and medium faces", "Custom"]
-        return {"required": {
+        required = {
             "video_frames": ("IMAGE", {"tooltip": "Connect the IMAGE output from VHS Load Video. The complete batch is scanned for one primary face and retained for final full-resolution compositing."}),
             "detection_confidence": ("FLOAT", {"default": 0.70, "min": 0.10, "max": 0.99, "step": 0.01, "tooltip": "Minimum confidence accepted from the face detector. Higher values reduce false detections but may miss small, blurry, profile, or motion-blurred faces. Lower cautiously for distant faces. Recommended starting value: 0.70."}),
             "crop_padding": ("FLOAT", {"default": 0.10, "min": 0.0, "max": 1.5, "step": 0.01, "tooltip": "Extra area around the detected face, measured as a fraction of face size on every side. Lower values crop closer to facial features; higher values include more hair, neck, and background. Recommended starting range: 0.10–0.25."}),
@@ -255,7 +266,19 @@ class VRGDGFaceFixPrepare:
             "custom_distance_threshold": ("FLOAT", {"default": 9.0, "min": 0.1, "max": 50.0, "step": 0.1, "tooltip": "Used only when Repair Distance is Custom. Faces at or above this percentage of frame width remain unchanged. Repair fades in across the 2 percentage points below this value. Example: 9% gives full repair at 7% or smaller, fading to no repair at 9%."}),
             "anchor_interval": (presets, {"default": "16 frames (recommended)", "tooltip": "Approximate spacing between Z-Image identity/detail anchors. Smaller intervals create more anchors and stronger consistency but take longer. Larger intervals are faster but give LTX less identity guidance. The nearest valid detected face is used, and boundary anchors are included automatically."}),
             "short_gap_tracking": ("INT", {"default": 2, "min": 0, "max": 8, "tooltip": "How many consecutive missed detections may reuse the last known face position. Strength fades across the gap. Use 0 to repair only freshly detected frames. The default 2 bridges brief blur without pasting a face into long no-face sections."}),
-        }}
+        }
+        # These controls intentionally belong only to the proven original
+        # workflow node.  The newer subclasses keep their existing interfaces.
+        if cls.__name__ == "VRGDGFaceFixPrepare":
+            required["warm_up_frames"] = ("INT", {
+                "default": 8, "min": 0, "max": 64, "step": 8,
+                "tooltip": "Disposable copies added before the real face video. The first strong image guide is moved onto this outer boundary and the warm-up frames are trimmed after LTX. Use 8 to reduce an over-strong first real frame; use 0 for the original start behavior.",
+            })
+            required["cool_down_frames"] = ("INT", {
+                "default": 8, "min": 0, "max": 64, "step": 8,
+                "tooltip": "Minimum disposable copies added after the real face video. The last strong image guide is moved onto this outer boundary and the cool-down frames are trimmed after LTX. Face Fix may add up to seven more hidden frames for 8n+1 alignment and always keeps an eight-frame tail safety guard.",
+            })
+        return {"required": required}
 
     RETURN_TYPES = ("IMAGE", "IMAGE", "INT", "STRING", FACE_FIX_CONTEXT)
     RETURN_NAMES = ("face_video_512", "anchor_images", "anchor_count", "anchor_indices", "face_fix_context")
@@ -272,7 +295,7 @@ class VRGDGFaceFixPrepare:
 
     def prepare(self, video_frames, detection_confidence, crop_padding, minimum_face_pixels,
                 rotation_assist, repair_distance, custom_distance_threshold,
-                anchor_interval, short_gap_tracking):
+                anchor_interval, short_gap_tracking, warm_up_frames=8, cool_down_frames=8):
         import cv2
         if video_frames.ndim != 4 or video_frames.shape[0] < 1:
             raise ValueError("Face Fix Prepare requires a non-empty IMAGE batch from a video loader.")
@@ -340,15 +363,22 @@ class VRGDGFaceFixPrepare:
                 crops[i] = last
             else:
                 last = crops[i]
-        # LTX temporal batches are safest when their length is 8n+1 and the
-        # source video's final frame lands on index 8n.  Prefix the crop stream
-        # with copies of its first crop so the original final frame is moved to
-        # a valid boundary index.  The prefix is bookkeeping only: Composite
-        # maps the generated frames back to the unpadded source frames.
-        ltx_offset = (-(count - 1)) % 8
-        if ltx_offset:
-            crops = [crops[0]] * ltx_offset + crops
-        ltx_count = len(crops)
+        # Place the real sequence between disposable boundary frames.  The
+        # first/last strong image guides are assigned to those outer frames,
+        # then Composite trims the padding and maps the real frames exactly.
+        # The cool-down side also retains the mandatory eight-frame short-tail
+        # guard added for complete frame coverage.
+        source_crops = list(crops)
+        ltx_offset = max(0, int(warm_up_frames))
+        requested_cool_down = max(0, int(cool_down_frames))
+        ltx_count = _ltx_guarded_frame_count(count, ltx_offset, requested_cool_down)
+        tail_padding = ltx_count - ltx_offset - count
+        alignment_padding = tail_padding - max(requested_cool_down, 8)
+        crops = (
+            [source_crops[0]] * ltx_offset
+            + source_crops
+            + [source_crops[-1]] * tail_padding
+        )
         step = _interval(anchor_interval)
         desired = list(range(0, count, step))
         if desired[-1] != count - 1:
@@ -364,29 +394,49 @@ class VRGDGFaceFixPrepare:
             nearest = min(fresh_indices, key=lambda value: abs(value - target))
             if nearest not in anchors:
                 anchors.append(nearest)
-        # Always give the actual final source frame its own Z-Image identity
-        # anchor whenever it has a usable tracked crop.  The LTX boundary
-        # offset above makes that guide land on a valid 8n index, including a
-        # frame carried through a brief final detection miss.
+        # Keep a final source anchor whenever the tracked crop is usable.  Its
+        # enhanced image is later placed on the disposable cool-down boundary,
+        # so it guides the ending without locking the final real frame itself.
         if crops[-1] is not None and float(entries[-1].get("strength") or 0.0) > 0.0:
             final_index = count - 1
             if final_index not in anchors:
                 anchors.append(final_index)
         anchors.sort()
+        anchor_source_indices = list(anchors)
+        ltx_anchor_indices = [ltx_offset + value for value in anchor_source_indices]
+        if ltx_anchor_indices and ltx_offset > 0:
+            ltx_anchor_indices[0] = 0
+        if ltx_anchor_indices and tail_padding > 0:
+            if len(ltx_anchor_indices) == 1 and ltx_count > 1:
+                anchor_source_indices.append(anchor_source_indices[0])
+                ltx_anchor_indices.append(ltx_count - 1)
+            else:
+                ltx_anchor_indices[-1] = ltx_count - 1
         _log(
             f"Detection complete: {fresh_count} fresh detection(s), {tracked_count} short-gap tracked frame(s), "
             f"{missing_count} confirmed no-face frame(s), {close_skipped_count} close-face frame(s) excluded, "
-            f"{len(anchors)} anchor(s) at [{','.join(str(v) for v in anchors)}]."
+            f"{len(anchor_source_indices)} anchor(s) from source indices "
+            f"[{','.join(str(v) for v in anchor_source_indices)}], guiding LTX indices "
+            f"[{','.join(str(v) for v in ltx_anchor_indices)}]."
         )
         context = {
             "version": 1, "job_id": f"standalone_{time.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}",
-            "original_frames": video_frames, "entries": entries, "anchor_indices": anchors,
+            "original_frames": video_frames, "entries": entries,
+            "anchor_indices": ltx_anchor_indices, "anchor_source_indices": anchor_source_indices,
+            "anchor_indices_are_ltx": True,
             "frame_count": int(ltx_count), "original_frame_count": int(count),
-            "ltx_frame_offset": int(ltx_offset), "width": int(width), "height": int(height),
+            "ltx_frame_offset": int(ltx_offset), "ltx_warm_up_frames": int(ltx_offset),
+            "ltx_cool_down_frames": int(tail_padding),
+            "ltx_requested_cool_down_frames": int(requested_cool_down),
+            "ltx_alignment_padding": int(alignment_padding),
+            "ltx_tail_padding": int(tail_padding),
+            "width": int(width), "height": int(height),
         }
         crop_batch = torch.stack(crops)
-        source_crop_batch = crop_batch[ltx_offset:]
-        anchor_batch = source_crop_batch[torch.tensor(anchors, device=source_crop_batch.device, dtype=torch.long)]
+        source_crop_batch = crop_batch[ltx_offset:ltx_offset + count]
+        anchor_batch = source_crop_batch[
+            torch.tensor(anchor_source_indices, device=source_crop_batch.device, dtype=torch.long)
+        ]
         import cv2
         import folder_paths
         source_folder = os.path.join(folder_paths.get_output_directory(), "face_fix_standalone",
@@ -398,8 +448,16 @@ class VRGDGFaceFixPrepare:
             _progress(order, len(anchor_batch), "Saving source anchors")
         context["anchor_sources_folder"] = source_folder
         _log(f"Prepare finished. Job={context['job_id']}; source anchors={source_folder}")
-        _log(f"LTX boundary padding: original={count}, padded={ltx_count}, prefix_offset={ltx_offset}; original final frame maps to LTX index {ltx_offset + count - 1}.")
-        return crop_batch, anchor_batch, len(anchors), ",".join(str(value) for value in anchors), context
+        _log(
+            f"LTX boundary padding: original={count}, warm_up={ltx_offset}, "
+            f"cool_down={tail_padding} (requested={requested_cool_down}, "
+            f"alignment_extra={alignment_padding}), padded={ltx_count}; real frames map exactly "
+            f"to LTX indices {ltx_offset}-{ltx_offset + count - 1}."
+        )
+        return (
+            crop_batch, anchor_batch, len(ltx_anchor_indices),
+            ",".join(str(value) for value in ltx_anchor_indices), context,
+        )
 
 
 class VRGDGFaceFixPrepareShotAware(VRGDGFaceFixPrepare):
@@ -806,24 +864,38 @@ class VRGDGFaceFixComposite:
     )
     FUNCTION = "composite"
     CATEGORY = "VRGameDevGirl/Face Fix"
-    DESCRIPTION = "Feathers LTX face frames back into the original video frames; no-face and short LTX tail frames remain unchanged."
+    DESCRIPTION = "Feathers LTX face frames back into the original video frames and requires complete LTX coverage for every real source frame."
 
     def composite(self, ltx_face_frames, face_fix_context, feather_pixels, color_match):
         originals = face_fix_context["original_frames"]
         entries = face_fix_context["entries"]
         offset = int(face_fix_context.get("ltx_frame_offset") or 0)
-        delta = len(entries) - max(0, int(ltx_face_frames.shape[0]) - offset)
+        source_count = int(face_fix_context.get("original_frame_count") or len(entries))
+        if source_count != len(entries) or source_count != int(originals.shape[0]):
+            raise ValueError(
+                "Face Fix context frame counts do not agree: "
+                f"context={source_count}, entries={len(entries)}, originals={originals.shape[0]}."
+            )
+        received_count = int(ltx_face_frames.shape[0])
+        required_count = offset + source_count
+        missing_count = max(0, required_count - received_count)
+        discarded_tail = max(0, received_count - required_count)
         _log(
             f"Composite started. Job={face_fix_context.get('job_id', 'unknown')}; "
-            f"source_frames={len(entries)}, LTX_frames={ltx_face_frames.shape[0]}, delta={delta}, "
+            f"source_frames={source_count}, LTX_frames={received_count}, offset={offset}, "
+            f"discarded_padding={discarded_tail}, "
             f"feather={feather_pixels}, color_match={color_match:.2f}."
         )
-        if abs(delta) > 7:
-            raise ValueError(f"LTX returned {ltx_face_frames.shape[0]} frames for {len(entries)} source frames.")
+        if missing_count:
+            raise ValueError(
+                f"LTX returned {received_count} frames, but Face Fix requires at least {required_count} "
+                f"to cover all {source_count} source frames. {missing_count} source frame(s) would be "
+                "left unfixed, so no partial composite was created."
+            )
         output = originals.clone()
         masks = torch.zeros((originals.shape[0], originals.shape[1], originals.shape[2]), device=originals.device, dtype=originals.dtype)
         repaired = 0
-        usable = min(len(entries), max(0, int(ltx_face_frames.shape[0]) - offset))
+        usable = source_count
         for index in range(usable):
             entry = entries[index]
             box, strength = entry.get("box"), float(entry.get("strength", 0.0))
@@ -849,7 +921,7 @@ class VRGDGFaceFixComposite:
             _progress(index, usable, "Compositing repaired faces")
         _log(
             f"Composite finished: repaired={repaired}, unchanged={len(entries) - repaired}, "
-            f"preserved_LTX_tail={max(0, delta)}."
+            f"discarded_LTX_padding={discarded_tail}."
         )
         return output.clamp(0, 1), masks, repaired
 
@@ -1122,7 +1194,13 @@ class VRGDGFaceFixLTXInputs:
         if len(files) != len(indices):
             raise ValueError(f"Enhanced anchor folder contains {len(files)} images; expected {len(indices)}.")
         original_indices = list(indices)
-        indices = [int(value) + ltx_offset for value in indices]
+        indices_are_ltx = bool(enhanced_anchor_context.get("anchor_indices_are_ltx", False))
+        if indices_are_ltx:
+            indices = [int(value) for value in indices]
+        else:
+            # Backward compatibility for contexts created before boundary
+            # guide positions were stored as absolute padded-video indices.
+            indices = [int(value) + ltx_offset for value in indices]
         indices = self._safe_indices(indices, frame_count)
         changes = [f"{old}->{new}" for old, new in zip(original_indices, indices) if old != new]
         if changes:

@@ -3,6 +3,52 @@
   "product": "AI Video Builder",
   "releases": [
     {
+      "id": "2026-09-04-pr173-video-builder-image-reference-and-new-nodes",
+      "version": "2026.09.04-pr173-video-builder-image-reference-and-new-nodes",
+      "date": "2026-09-04",
+      "title": "Image-to-Video 2 Pass, safer prompts, and new video utility nodes",
+      "commit": "2311ba8",
+      "restart_required": true,
+      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/pull/173",
+      "sections": [
+        {
+          "title": "Added",
+          "items": [
+            "Added MiniMax H3 Image to Video 2 Pass in Video Builder. The selected scene image is always the exact opening frame, an optional end frame can anchor the finish, and ordered Reference Builder images can be added for identity, wardrobe, location, props, or visual guidance.",
+            "Added MiniMax H3 Image + Reference to Video, Text / Reference to Image, and Select Still Frame nodes for combined keyframe and reference conditioning, still-image generation, and deterministic frame selection.",
+            "Added LTX 2.5 Sigma Preset with built-in schedules and custom sigma entry, plus a dynamic node interface that exposes only the controls needed by the selected preset.",
+            "Added Video Prompt Reconstructor, which samples frames from an existing video and uses a configurable vision LLM endpoint to reconstruct a reusable generation prompt with local result caching.",
+            "Added reference-matched film grain that measures the grain strength and color character of a reference image or video and applies reproducible grain without copying its picture content.",
+            "Added H3-aware overlap preset, overlap-window construction, and overlap-output blending nodes for memory-conscious long-video processing with native VHS meta-batch support."
+          ]
+        },
+        {
+          "title": "Improved",
+          "items": [
+            "Image to Video 2 Pass now clearly identifies its required scene start frame while keeping Reference Builder images optional, and its scene-image controls apply consistently to global and scene-locked MiniMax settings.",
+            "Continuous single-shot MiniMax prompts can contain multiple ordered vocal cues while instrumental intervals coexist naturally in the same shot; cue validation still catches missing, reordered, or incorrect lyric tags.",
+            "Visual-only and no-lip-sync scenes now allow natural unsynchronized character conversation while continuing to prohibit singing, rapping, lyric mouthing, and synchronization to the saved song.",
+            "Scenes marked as having no character now receive a stricter environment-only prompt contract that excludes people, performers, crowds, body parts, faces, voices, silhouettes, and reflections."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Fixed the hidden MiniMax workflow adapter so Image to Video 2 Pass preserves the exact start frame, optional final frame, and every additional reference image instead of dropping supporting references.",
+            "Fixed reference-matched grain tensor broadcasting and added a safe default processing batch size for direct and node-based use."
+          ]
+        },
+        {
+          "title": "Compatibility Notes",
+          "items": [
+            "Restart ComfyUI and hard-refresh the browser after updating so the new Python nodes, node interfaces, and revised Video Builder JavaScript are loaded.",
+            "Image to Video 2 Pass currently follows the existing MiniMax two-pass Input Audio requirements. Reference Builder images are optional, but a selected scene image is required as the exact opening frame.",
+            "This update adds nodes and Video Builder integration only; it does not install or replace any standalone workflow JSON files."
+          ]
+        }
+      ]
+    },
+    {
       "id": "2026-08-26-pr159-minimax-h3-advanced-upscale-and-video-compare",
       "version": "2026.08.26-pr159-minimax-h3-advanced-upscale-and-video-compare",
       "date": "2026-08-26",
