@@ -5,6 +5,7 @@ dropdown behavior of ComfyUI's native latent-upscale loaders.
 """
 
 import importlib.util
+import inspect
 import os
 import sys
 
@@ -56,6 +57,55 @@ def _load_backend():
     return module
 
 
+def _load_raw_state_dict(backend, path, device, dtype):
+    """Load raw state dict across upstream and extended backend variants."""
+    load_fn = getattr(backend, "_load_raw_sd", None)
+    if not callable(load_fn):
+        raise AttributeError(f"MiniMax H3 backend does not define '_load_raw_sd': {backend}")
+
+    try:
+        sig = inspect.signature(load_fn)
+        params = list(sig.parameters.values())
+        accepts_varargs = any(
+            p.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+            for p in params
+        )
+        positional_count = len([
+            p for p in params
+            if p.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+        ])
+        has_device = "device" in sig.parameters
+        has_dtype = "dtype" in sig.parameters
+    except Exception:
+        accepts_varargs = False
+        positional_count = 1
+        has_device = False
+        has_dtype = False
+
+    if accepts_varargs or (has_device and has_dtype) or positional_count >= 3:
+        try:
+            return load_fn(path, device=device, dtype=dtype)
+        except TypeError:
+            try:
+                return load_fn(path, device, dtype)
+            except TypeError:
+                return load_fn(path)
+    elif has_device or positional_count == 2:
+        try:
+            return load_fn(path, device=device)
+        except TypeError:
+            try:
+                return load_fn(path, device)
+            except TypeError:
+                return load_fn(path)
+
+    # Standard upstream Comfyui_Minimax_h3_latent_Upscaler accepts (path) only.
+    try:
+        return load_fn(path)
+    except TypeError:
+        return load_fn(path, device, dtype)
+
+
 def _model_choices():
     names = folder_paths.get_filename_list("latent_upscale_models")
     return [
@@ -105,8 +155,21 @@ def _load_model(model_name, device_name, precision):
     if cached is not None:
         return cached
 
+    dtype_map = {
+        "fp32": torch.float32,
+        "float32": torch.float32,
+        "fp16": torch.float16,
+        "float16": torch.float16,
+        "bf16": torch.bfloat16,
+        "bfloat16": torch.bfloat16,
+    }
+    if isinstance(precision, torch.dtype):
+        dtype = precision
+    else:
+        dtype = dtype_map.get(str(precision).lower(), torch.bfloat16)
+
     backend = _load_backend()
-    raw_state = backend._load_raw_sd(path)
+    raw_state = _load_raw_state_dict(backend, path, device, dtype)
     state = backend._extract_upscaler_sd(raw_state)
     config = backend._detect_arch(state)
     model = backend.LatentResizer3D(
@@ -120,11 +183,6 @@ def _load_model(model_name, device_name, precision):
         temporal_kernel=config["temporal_kernel"],
     )
     model.load_state_dict(state, strict=True)
-    dtype = {
-        "fp32": torch.float32,
-        "fp16": torch.float16,
-        "bf16": torch.bfloat16,
-    }[precision]
     model = model.to(device=device, dtype=dtype).eval()
     loaded = {
         "model": model,
