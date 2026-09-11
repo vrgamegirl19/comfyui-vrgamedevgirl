@@ -86,7 +86,12 @@ mode, ComfyUI model unloading, and optional model-weight hash verification.
 
 For a standalone setup screen, load
 `Workflows/Yue2/VRGDG_YuE2_Setup.json`. On Windows, install Python 3.10 or
-3.11 with the `py` launcher before using **Install Everything**. The generation
+3.11 with the `py` launcher before using **Install Everything**. The installer
+node installs isolated environments, packages, and model files, but it does not
+install or modify system-wide Python. [Python 3.11.9 for
+Windows](https://www.python.org/downloads/release/python-3119/) is a compatible
+choice; confirm it is registered by running `py -3.11 --version`, then restart
+ComfyUI. The generation
 environment may use Python 3.10–3.12; the separately pinned cover environment
 uses Python 3.10 or 3.11. Full installation can take many minutes because it
 downloads CUDA-enabled Torch builds and several large model snapshots. Progress
