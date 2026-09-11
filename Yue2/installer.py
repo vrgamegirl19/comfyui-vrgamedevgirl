@@ -111,6 +111,14 @@ def _find_python(preferred_minors: tuple[int, ...]) -> tuple[list[str], str]:
         if found and found[0] == 3 and found[1] in preferred_minors:
             return candidate, f"Python {found[2]}"
     versions = ", ".join(f"3.{minor}" for minor in preferred_minors)
+    if os.name == "nt" and set(preferred_minors) == {10, 11}:
+        raise RuntimeError(
+            "SheetSage2 cover tools require Python 3.10 or 3.11; they cannot use the "
+            "Python 3.12/3.13 runtime bundled with ComfyUI. Install Python 3.11.9 from "
+            "https://www.python.org/downloads/release/python-3119/ with the Windows py "
+            "launcher enabled, confirm `py -3.11 --version` in Command Prompt, restart "
+            "ComfyUI, and run this button again."
+        )
     raise RuntimeError(f"Could not find a supported Python ({versions}). Install it with the Windows py launcher enabled.")
 
 

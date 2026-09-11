@@ -56,9 +56,14 @@ async function runInstaller(node, action) {
     install_all: "YuE2, cover tools, and all models",
     verify: "YuE2 installation verification",
   };
-  if (action !== "verify" && !window.confirm(
-    `Install ${actionNames[action]} into:\n${targetRoot}\n\nThis downloads large packages and model weights and may take a while.`
-  )) return;
+  if (action !== "verify") {
+    const coverRequirement = action === "install_cover" || action === "install_all"
+      ? "\n\nCover tools require a separately installed Python 3.10 or 3.11 with the Windows py launcher enabled. ComfyUI's bundled Python does not satisfy this prerequisite."
+      : "";
+    if (!window.confirm(
+      `Install ${actionNames[action]} into:\n${targetRoot}${coverRequirement}\n\nThis downloads large packages and model weights and may take a while.`
+    )) return;
+  }
 
   console.log(`[VRGDG/YuE2 installer] Starting ${action}:`, targetRoot);
   try {
@@ -86,8 +91,8 @@ async function runInstaller(node, action) {
 function addButtons(node) {
   const definitions = [
     ["Install Generation + Models", "install_generation", "Install the isolated YuE2 generation environment and download YuE2-3B plus YuE2-Vae."],
-    ["Install Cover Tools + Models", "install_cover", "Install the separate SheetSage2 transcription environment and download SheetSage2 plus MERT-v2-FullSong."],
-    ["Install Everything", "install_all", "Install both isolated environments and every model required by the full-song and cover workflows."],
+    ["Install Cover Tools + Models [Requires Python 3.10/3.11]", "install_cover", "Requires a separately installed Python 3.10 or 3.11 with the Windows py launcher enabled. Installs the SheetSage2 transcription environment and downloads SheetSage2 plus MERT-v2-FullSong."],
+    ["Install Everything [Cover Requires Python 3.10/3.11]", "install_all", "Installs both isolated environments and every model. The node installs packages and models, but it does not install system Python; cover tools require Python 3.10 or 3.11 first."],
     ["Verify Existing Installation", "verify", "Check Python environments, CUDA support, packages, and model files without installing or changing them."],
   ];
   for (const [name, action, tooltip] of definitions) {
