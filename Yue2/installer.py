@@ -173,6 +173,11 @@ def _install_generation(root: Path, lines: list[str]) -> Path:
     _ensure_source(root, lines)
     python = _ensure_venv(root, root / ".venv", (12, 11, 10), lines)
     _run([python, "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"], root, lines)
+    _emit(lines, "[VRGDG/YuE2 installer] Installing CUDA-enabled PyTorch 2.10.0 (CUDA 13.0)")
+    _run([
+        python, "-m", "pip", "install", "--upgrade", "torch==2.10.0+cu130",
+        "--index-url", "https://download.pytorch.org/whl/cu130",
+    ], root, lines)
     _run([python, "-m", "pip", "install", "--upgrade", "."], root, lines)
     return python
 
