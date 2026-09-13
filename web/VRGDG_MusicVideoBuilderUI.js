@@ -53510,7 +53510,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       Object.values(customOptions).forEach((option) => custom.append(option.wrapper));
       const descriptions = {
         fresh_media: "Best when you finished one version and want to create new visuals. Keeps scene order and timing, project audio, and lyrics/dialogue. Removes images, videos, histories, backups, overlays, prompts, notes, and mappings.",
-        full: "Makes a complete independent copy of the project, including current media, histories, prompts, notes, mappings, and overlays.",
+        full: "Makes a complete independent copy of the project, including Storyboard Builder data, Reference Builder files, current media, histories, prompts, notes, mappings, and overlays. The new folder does not keep paths into the original project.",
         scenes_audio: "Keeps only empty scene slots with their timing and the project audio. Lyrics, notes, prompts, mappings, images, videos, and overlays are removed.",
         custom: "Choose the extra information you want in the new copy. Scene order, timing, and project audio are always kept.",
       };
@@ -53545,10 +53545,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     });
   }
 
-  function branchProjectSession(preset, customKeep = {}) {
-    const source = currentSessionData();
-    if (preset === "full") return source;
-    const keep = preset === "custom" ? customKeep : {
+  function branchKeepFlags(preset, customKeep = {}) {
+    if (preset === "full") {
+      return { lyrics: true, notes: true, prompts: true, mappings: true, images: true, videos: true, overlays: true };
+    }
+    if (preset === "custom") return { ...customKeep };
+    return {
       lyrics: preset === "fresh_media",
       notes: false,
       prompts: false,
@@ -53557,10 +53559,16 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       videos: false,
       overlays: false,
     };
-    const imageKeys = ["custom_image_path", "custom_image_data", "custom_image_name", "approved_image_path", "image", "image_history", "image_history_index", "ref_image_path", "flux_subject_image_path", "flux_location_image_path", "image_output", "image_status"];
-    const videoKeys = ["video_path", "video_folder", "video_thumbnail_path", "video_history", "video_thumbnail_history", "video_backup_paths", "video_backup_thumbnail_paths", "video_history_index", "video_output", "video_original_path", "video_original_thumbnail_path"];
-    const noteKeys = ["timeline_note", "notes", "i2v_notes", "flux_notes", "nb_notes", "enhance_notes"];
-    const promptKeys = ["t2i_prompt", "flux_prompt", "nb_prompt", "enhance_prompt", "i2v_prompt", "flow_gpt_prompt", "minimax_h3_prompt", "minimax_h3_pass2_prompt"];
+  }
+
+  function branchProjectSession(preset, customKeep = {}) {
+    const source = currentSessionData();
+    const keep = branchKeepFlags(preset, customKeep);
+    if (preset === "full") return source;
+    const imageKeys = ["custom_image_path", "custom_image_data", "custom_image_name", "approved_image_path", "image", "image_history", "image_history_index", "ref_image_path", "flux_subject_image_path", "flux_location_image_path", "image_output", "image_status", "minimax_h3_continuity_frame_path", "adjust_preview_image_path"];
+    const videoKeys = ["video_path", "video_folder", "video_thumbnail_path", "video_history", "video_thumbnail_history", "video_backup_paths", "video_backup_thumbnail_paths", "video_history_index", "video_output", "video_original_path", "video_original_thumbnail_path", "video_source_path", "minimax_h3_continuity_source_video_path", "minimax_h3_video_references", "minimax_h3_stage1_path", "minimax_h3_stage1_source_path", "minimax_h3_stage1_backup_path", "minimax_h3_stage2_path", "minimax_h3_stage2_source_path", "minimax_h3_stage2_backup_path"];
+    const noteKeys = ["timeline_note", "notes", "i2v_notes", "flux_notes", "nb_notes", "enhance_notes", "story_beat"];
+    const promptKeys = ["t2i_prompt", "flux_prompt", "nb_prompt", "enhance_prompt", "i2v_prompt", "t2v_prompt", "flow_gpt_prompt", "ernie_t2i_prompt", "krea2_t2i_prompt", "minimax_h3_prompt", "minimax_h3_pass2_prompt"];
     const mappingKeys = ["subject_ids", "location_id", "reference_subject_ids", "reference_location_id", "flux_image_ingredients", "nb_image_ingredients", "minimax_h3_reference_keys"];
     const cleanSegment = (raw) => {
       const segment = typeof structuredClone === "function" ? structuredClone(raw) : JSON.parse(JSON.stringify(raw));
@@ -53576,6 +53584,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         videoKeys.forEach((key) => { if (key in segment) segment[key] = Array.isArray(segment[key]) ? [] : key.endsWith("_index") ? -1 : key === "video_output" ? null : ""; });
         segment.video_status = "none";
       }
+      if (!keep.images && !keep.videos) {
+        segment.custom_audio_path = "";
+        segment.custom_audio_name = "";
+      }
       return segment;
     };
     const session = { ...source, segments: source.segments.map(cleanSegment) };
@@ -53589,11 +53601,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       session.story_idea_path = "";
       session.subject_scene_path = "";
     }
-    if (!keep.mappings) session.flux_reference_builder = {};
+    if (!keep.mappings) {
+      session.flux_reference_builder = {};
+      session.id_lora_reference_builder = {};
+    }
     if (!keep.images) {
       session.flux_global_image_ingredients = [];
       session.use_flux_global_image_ingredients = false;
+      session.builder_agent_reference_images = [];
+      session.builder_story_reference_images = [];
+      session.builder_story_source_path = "";
     }
+    if (!keep.lyrics && session.lyric_mapper) session.lyric_mapper = { ...session.lyric_mapper, source_text: "" };
     return session;
   }
 
@@ -53616,6 +53635,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         project_root: getPreferredProjectRoot(),
         audio_path: audioInput.value,
         session,
+        keep: branchKeepFlags(choice.preset, choice.keep),
       }, 120000);
       await loadSessionFromProject(data.project_folder || choice.target);
       toast(`New project copy created and opened.\nYour original project was not changed.\n${state.projectFolder}`);
