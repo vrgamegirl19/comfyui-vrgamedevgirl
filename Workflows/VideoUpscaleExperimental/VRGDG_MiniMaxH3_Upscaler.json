@@ -1,0 +1,2259 @@
+{
+  "id": "5baa9444-eb0a-453e-bcbe-de0eaca752d6",
+  "revision": 0,
+  "last_node_id": 74,
+  "last_link_id": 54,
+  "nodes": [
+    {
+      "id": 20,
+      "type": "VAELoader",
+      "pos": [
+        -70,
+        -990
+      ],
+      "size": [
+        500,
+        70
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            5,
+            51
+          ]
+        }
+      ],
+      "title": "Load H3 Video VAE",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.33.0",
+        "Node name for S&R": "VAELoader"
+      },
+      "widgets_values": [
+        "minimax_h3_video_vae_fp16.safetensors"
+      ],
+      "widgets_values_named": {
+        "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+      },
+      "color": "#4b2d2d",
+      "bgcolor": "#351f1f"
+    },
+    {
+      "id": 21,
+      "type": "VAELoader",
+      "pos": [
+        -80,
+        -840
+      ],
+      "size": [
+        500,
+        70
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            7
+          ]
+        }
+      ],
+      "title": "Load H3 Audio VAE",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.33.0",
+        "Node name for S&R": "VAELoader"
+      },
+      "widgets_values": [
+        "minimax_h3_audio_vae_fp32.safetensors"
+      ],
+      "widgets_values_named": {
+        "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+      },
+      "color": "#4b2d2d",
+      "bgcolor": "#351f1f"
+    },
+    {
+      "id": 24,
+      "type": "CLIPLoader",
+      "pos": [
+        460,
+        -760
+      ],
+      "size": [
+        540,
+        110
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            16
+          ]
+        }
+      ],
+      "title": "Load H3 CLIP",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.33.0",
+        "Node name for S&R": "CLIPLoader"
+      },
+      "widgets_values": [
+        "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        "minimax",
+        "default"
+      ],
+      "widgets_values_named": {
+        "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        "type": "minimax",
+        "device": "default"
+      },
+      "color": "#3d315b",
+      "bgcolor": "#29203d"
+    },
+    {
+      "id": 25,
+      "type": "VRGDG_MiniMaxH3LatentUpscaleModelLoader",
+      "pos": [
+        480,
+        -600
+      ],
+      "size": [
+        520,
+        140
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "upscale_model",
+          "type": "VRGDG_MINIMAX_H3_LATENT_UPSCALE_MODEL",
+          "links": [
+            12
+          ]
+        }
+      ],
+      "title": "Load Learned Latent Upscaler",
+      "properties": {
+        "cnr_id": "comfyui-vrgamedevgirl",
+        "ver": "6040d7e18c8b005ac969b1bb9b105dc76f69f93b",
+        "Node name for S&R": "VRGDG_MiniMaxH3LatentUpscaleModelLoader"
+      },
+      "widgets_values": [
+        "minimax_h3_latent_upscaler_3d_bf16.safetensors",
+        "cuda",
+        "bf16"
+      ],
+      "widgets_values_named": {
+        "model_name": "minimax_h3_latent_upscaler_3d_bf16.safetensors",
+        "device": "cuda",
+        "precision": "bf16"
+      },
+      "color": "#3d315b",
+      "bgcolor": "#29203d"
+    },
+    {
+      "id": 23,
+      "type": "DiffusionModelLoaderKJ",
+      "pos": [
+        460,
+        -1010
+      ],
+      "size": [
+        540,
+        190
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "extra_state_dict",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            33
+          ]
+        }
+      ],
+      "title": "Load MiniMax H3 Diffusion Model",
+      "properties": {
+        "cnr_id": "comfyui-kjnodes",
+        "ver": "60cd6bc1870db94c6eeb05fbe455147a8e91c4e9",
+        "Node name for S&R": "DiffusionModelLoaderKJ"
+      },
+      "widgets_values": [
+        "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+        "default",
+        "default",
+        false,
+        "auto",
+        true
+      ],
+      "widgets_values_named": {
+        "model_name": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+        "weight_dtype": "default",
+        "compute_dtype": "default",
+        "patch_cublaslinear": false,
+        "sage_attention": "auto",
+        "enable_fp16_accumulation": true
+      },
+      "color": "#3d315b",
+      "bgcolor": "#29203d"
+    },
+    {
+      "id": 30,
+      "type": "MarkdownNote",
+      "pos": [
+        940,
+        -330
+      ],
+      "size": [
+        520,
+        170
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "STEP 3 - Encode and align AV clocks",
+      "properties": {
+        "Node name for S&R": "MarkdownNote"
+      },
+      "widgets_values": [
+        "## Step 3 — Feed the matching input-audio window into H3\n\nThe VHS loader exposes the full source soundtrack on every requeue. **Overlap Audio Window** uses the current overlap metadata and loaded frame rate to slice the exact audio time range matching this 73-frame model window.\n\nThe first synthetic overlap receives leading silence, later windows reuse the same source-audio overlap, and the final padded frames receive trailing silence. The aligned segment is encoded and passed to **H3 Source AV Prepare** with `audio_mode = lock`, so the model receives the real source audio while generating video and cannot rewrite it."
+      ],
+      "widgets_values_named": {
+        "text": "## Step 3 — Feed the matching input-audio window into H3\n\nThe VHS loader exposes the full source soundtrack on every requeue. **Overlap Audio Window** uses the current overlap metadata and loaded frame rate to slice the exact audio time range matching this 73-frame model window.\n\nThe first synthetic overlap receives leading silence, later windows reuse the same source-audio overlap, and the final padded frames receive trailing silence. The aligned segment is encoded and passed to **H3 Source AV Prepare** with `audio_mode = lock`, so the model receives the real source audio while generating video and cannot rewrite it."
+      },
+      "color": "#243447",
+      "bgcolor": "#15202b"
+    },
+    {
+      "id": 10,
+      "type": "MarkdownNote",
+      "pos": [
+        440,
+        -320
+      ],
+      "size": [
+        430,
+        190
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "STEP 2 - Build an overlapping H3 window",
+      "properties": {
+        "Node name for S&R": "MarkdownNote"
+      },
+      "widgets_values": [
+        "## Step 2 — Build the model window\n\nThe first window receives repeated leading context. Later windows receive the real tail carried from the previous source batch.\n\nFor the balanced preset:\n\n- Model window: **73 frames**\n- Shared overlap: **17 frames**\n- New source frames: **56 frames**\n\nThe last short window is padded by repeating its final real frame."
+      ],
+      "widgets_values_named": {
+        "text": "## Step 2 — Build the model window\n\nThe first window receives repeated leading context. Later windows receive the real tail carried from the previous source batch.\n\nFor the balanced preset:\n\n- Model window: **73 frames**\n- Shared overlap: **17 frames**\n- New source frames: **56 frames**\n\nThe last short window is padded by repeating its final real frame."
+      },
+      "color": "#243447",
+      "bgcolor": "#15202b"
+    },
+    {
+      "id": 1,
+      "type": "MarkdownNote",
+      "pos": [
+        -70,
+        -320
+      ],
+      "size": [
+        430,
+        170
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "STEP 1 - Load the source video",
+      "properties": {
+        "Node name for S&R": "MarkdownNote"
+      },
+      "widgets_values": [
+        "## Step 1 — Load video and choose a preset\n\n1. Upload the source video in **Load Video**.\n2. Leave `frame_load_cap` at **0** so VHS can stream the complete file.\n3. Start with **H3 Near 41 (39 / 5)**.\n\nThe preset sends stride **34** to the native VHS Batch Manager. VHS recognizes that native node and automatically requeues every chunk until the full source is done.\n\n`format` stays at **None** so VHS does not discard the short final batch."
+      ],
+      "widgets_values_named": {
+        "text": "## Step 1 — Load video and choose a preset\n\n1. Upload the source video in **Load Video**.\n2. Leave `frame_load_cap` at **0** so VHS can stream the complete file.\n3. Start with **H3 Near 41 (39 / 5)**.\n\nThe preset sends stride **34** to the native VHS Batch Manager. VHS recognizes that native node and automatically requeues every chunk until the full source is done.\n\n`format` stays at **None** so VHS does not discard the short final batch."
+      },
+      "color": "#243447",
+      "bgcolor": "#15202b"
+    },
+    {
+      "id": 65,
+      "type": "VHS_BatchManager",
+      "pos": [
+        -70,
+        140
+      ],
+      "size": [
+        420,
+        60
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "frames_per_batch",
+          "type": "INT",
+          "widget": {
+            "name": "frames_per_batch"
+          },
+          "link": 35
+        }
+      ],
+      "outputs": [
+        {
+          "name": "meta_batch",
+          "type": "VHS_BatchManager",
+          "links": [
+            1,
+            3,
+            29,
+            32
+          ]
+        }
+      ],
+      "title": "STEP 1B - Native VHS Batch Manager (Auto-Requeue)",
+      "properties": {
+        "cnr_id": "comfyui-videohelpersuite",
+        "ver": "2984ec4c4b93292421888f38db74a5e8802a8ff8",
+        "Node name for S&R": "VHS_BatchManager"
+      },
+      "widgets_values": {
+        "frames_per_batch": 34,
+        "count": 8
+      },
+      "widgets_values_named": {
+        "frames_per_batch": 34,
+        "count": 8
+      },
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 11,
+      "type": "VRGDGOverlapWindow",
+      "pos": [
+        460,
+        -60
+      ],
+      "size": [
+        380,
+        120
+      ],
+      "flags": {},
+      "order": 21,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 2
+        },
+        {
+          "name": "meta_batch",
+          "type": "VHS_BatchManager",
+          "link": 3
+        },
+        {
+          "name": "overlap_config",
+          "type": "VRGDG_OVERLAP_CONFIG",
+          "link": 36
+        }
+      ],
+      "outputs": [
+        {
+          "name": "window_images",
+          "type": "IMAGE",
+          "links": [
+            4
+          ]
+        },
+        {
+          "name": "overlap_info",
+          "type": "VRGDG_OVERLAP_INFO",
+          "links": [
+            28,
+            41
+          ]
+        },
+        {
+          "name": "new_frame_count",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "name": "is_final",
+          "type": "BOOLEAN",
+          "links": []
+        }
+      ],
+      "title": "STEP 2 - Carry + Pad to Valid H3 Window",
+      "properties": {
+        "cnr_id": "comfyui-vrgamedevgirl",
+        "ver": "6040d7e18c8b005ac969b1bb9b105dc76f69f93b",
+        "Node name for S&R": "VRGDGOverlapWindow"
+      },
+      "color": "#244b63",
+      "bgcolor": "#193548"
+    },
+    {
+      "id": 31,
+      "type": "VAEEncode",
+      "pos": [
+        1050,
+        -100
+      ],
+      "size": [
+        280,
+        50
+      ],
+      "flags": {},
+      "order": 23,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pixels",
+          "type": "IMAGE",
+          "link": 4
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 5
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            8
+          ]
+        }
+      ],
+      "title": "STEP 3A - Encode 73 Video Frames",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.33.0",
+        "Node name for S&R": "VAEEncode"
+      },
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 40,
+      "type": "MarkdownNote",
+      "pos": [
+        1530,
+        -330
+      ],
+      "size": [
+        470,
+        140
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "STEP 4 - Learned latent upscale",
+      "properties": {
+        "Node name for S&R": "MarkdownNote"
+      },
+      "widgets_values": [
+        "## Step 4 — Upscale the video latent\n\nThe aligned AV latent is separated. Only the video stream enters the learned 2× latent upscaler.\n\nThe upscaled video is then restored into the original aligned AV container so the refinement sampler receives valid synchronized video/audio streams."
+      ],
+      "widgets_values_named": {
+        "text": "## Step 4 — Upscale the video latent\n\nThe aligned AV latent is separated. Only the video stream enters the learned 2× latent upscaler.\n\nThe upscaled video is then restored into the original aligned AV container so the refinement sampler receives valid synchronized video/audio streams."
+      },
+      "color": "#243447",
+      "bgcolor": "#15202b"
+    },
+    {
+      "id": 41,
+      "type": "MiniMaxH3AVLatentSeparateT8",
+      "pos": [
+        1610,
+        -130
+      ],
+      "size": [
+        320,
+        70
+      ],
+      "flags": {},
+      "order": 30,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "av_latent",
+          "type": "LATENT",
+          "link": 10
+        }
+      ],
+      "outputs": [
+        {
+          "name": "video_latent",
+          "type": "LATENT",
+          "links": [
+            11
+          ]
+        },
+        {
+          "name": "audio_latent",
+          "type": "LATENT",
+          "links": []
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "title": "STEP 4A - Validate + Separate AV Latent",
+      "properties": {
+        "cnr_id": "minimax-h3-audio-t8",
+        "ver": "fe00f936baf470089e825b7551e76633cbbdc15c",
+        "Node name for S&R": "MiniMaxH3AVLatentSeparateT8",
+        "aux_id": "T8mars/comfyui-minimax-h3-audio-T8"
+      },
+      "color": "#2a363b",
+      "bgcolor": "#3f5159"
+    },
+    {
+      "id": 42,
+      "type": "VRGDG_MiniMaxH3LearnedLatentUpscale",
+      "pos": [
+        1600,
+        10
+      ],
+      "size": [
+        340,
+        80
+      ],
+      "flags": {},
+      "order": 31,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "latent",
+          "type": "LATENT",
+          "link": 11
+        },
+        {
+          "name": "upscale_model",
+          "type": "VRGDG_MINIMAX_H3_LATENT_UPSCALE_MODEL",
+          "link": 12
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            14
+          ]
+        }
+      ],
+      "title": "STEP 4B - Learned 2x Video Latent Upscale",
+      "properties": {
+        "cnr_id": "comfyui-vrgamedevgirl",
+        "ver": "6040d7e18c8b005ac969b1bb9b105dc76f69f93b",
+        "Node name for S&R": "VRGDG_MiniMaxH3LearnedLatentUpscale"
+      },
+      "widgets_values": [
+        2
+      ],
+      "widgets_values_named": {
+        "scale": 2
+      },
+      "color": "#2a363b",
+      "bgcolor": "#3f5159"
+    },
+    {
+      "id": 43,
+      "type": "VRGDG_MiniMaxH3ReplaceUpscaledVideoLatent",
+      "pos": [
+        1580,
+        180
+      ],
+      "size": [
+        370,
+        50
+      ],
+      "flags": {},
+      "order": 32,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "original_av_latent",
+          "type": "LATENT",
+          "link": 13
+        },
+        {
+          "name": "upscaled_video_latent",
+          "type": "LATENT",
+          "link": 14
+        }
+      ],
+      "outputs": [
+        {
+          "name": "upscaled_av_latent",
+          "type": "LATENT",
+          "links": [
+            24
+          ]
+        }
+      ],
+      "title": "STEP 4C - Restore Upscaled Video into AV Latent",
+      "properties": {
+        "cnr_id": "comfyui-vrgamedevgirl",
+        "ver": "6040d7e18c8b005ac969b1bb9b105dc76f69f93b",
+        "Node name for S&R": "VRGDG_MiniMaxH3ReplaceUpscaledVideoLatent"
+      },
+      "color": "#2a363b",
+      "bgcolor": "#3f5159"
+    },
+    {
+      "id": 50,
+      "type": "MarkdownNote",
+      "pos": [
+        2090,
+        -330
+      ],
+      "size": [
+        590,
+        200
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "STEP 5 - Low-denoise refinement",
+      "properties": {
+        "Node name for S&R": "MarkdownNote"
+      },
+      "widgets_values": [
+        "## Step 5 — Refine each overlapping window\n\nThe sampler runs the original low-denoise refinement after learned latent upscale.\n\nDefaults retained from the source workflow:\n\n- Steps: **5**\n- Denoise: **0.20**\n- Sampler: **SA Solver**\n- Seed: fixed\n\nKeeping denoise low helps adjacent windows remain close before overlap blending."
+      ],
+      "widgets_values_named": {
+        "text": "## Step 5 — Refine each overlapping window\n\nThe sampler runs the original low-denoise refinement after learned latent upscale.\n\nDefaults retained from the source workflow:\n\n- Steps: **5**\n- Denoise: **0.20**\n- Sampler: **SA Solver**\n- Seed: fixed\n\nKeeping denoise low helps adjacent windows remain close before overlap blending."
+      },
+      "color": "#243447",
+      "bgcolor": "#15202b"
+    },
+    {
+      "id": 53,
+      "type": "BasicGuider",
+      "pos": [
+        2120,
+        100
+      ],
+      "size": [
+        160,
+        50
+      ],
+      "flags": {},
+      "order": 27,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 46
+        },
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "link": 18
+        }
+      ],
+      "outputs": [
+        {
+          "name": "GUIDER",
+          "type": "GUIDER",
+          "links": [
+            21
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.33.0",
+        "Node name for S&R": "BasicGuider"
+      },
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 56,
+      "type": "RandomNoise",
+      "pos": [
+        2380,
+        270
+      ],
+      "size": [
+        260,
+        100
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "NOISE",
+          "type": "NOISE",
+          "links": [
+            20
+          ]
+        }
+      ],
+      "title": "Fixed Seed",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.33.0",
+        "Node name for S&R": "RandomNoise"
+      },
+      "widgets_values": [
+        1,
+        "fixed"
+      ],
+      "widgets_values_named": {
+        "noise_seed": 1,
+        "control_after_generate": "fixed"
+      },
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 60,
+      "type": "MarkdownNote",
+      "pos": [
+        2770,
+        -330
+      ],
+      "size": [
+        540,
+        180
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "STEP 6 - Blend and save",
+      "properties": {
+        "Node name for S&R": "MarkdownNote"
+      },
+      "widgets_values": [
+        "## Step 6 — Blend and save\n\nAfter decoding, the output node compares the two processed versions of every shared frame and applies the selected blend ramp.\n\nIt holds only the small overlap tail, emits every source frame once, removes final padding, and tells VHS when the stream is complete.\n\nThe final **Video Combine** still receives the untouched full soundtrack directly from **Load Video**. The windowed copy is used only to drive H3."
+      ],
+      "widgets_values_named": {
+        "text": "## Step 6 — Blend and save\n\nAfter decoding, the output node compares the two processed versions of every shared frame and applies the selected blend ramp.\n\nIt holds only the small overlap tail, emits every source frame once, removes final padding, and tells VHS when the stream is complete.\n\nThe final **Video Combine** still receives the untouched full soundtrack directly from **Load Video**. The windowed copy is used only to drive H3."
+      },
+      "color": "#243447",
+      "bgcolor": "#15202b"
+    },
+    {
+      "id": 62,
+      "type": "VRGDGOverlapBlend",
+      "pos": [
+        2880,
+        20
+      ],
+      "size": [
+        350,
+        70
+      ],
+      "flags": {},
+      "order": 35,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 52
+        },
+        {
+          "name": "overlap_info",
+          "type": "VRGDG_OVERLAP_INFO",
+          "link": 28
+        },
+        {
+          "name": "meta_batch",
+          "type": "VHS_BatchManager",
+          "link": 29
+        }
+      ],
+      "outputs": [
+        {
+          "name": "assembled_images",
+          "type": "IMAGE",
+          "links": [
+            30
+          ]
+        },
+        {
+          "name": "emitted_frame_count",
+          "type": "INT",
+          "links": []
+        }
+      ],
+      "title": "STEP 6B - Cosine Blend + Emit Unique Frames",
+      "properties": {
+        "cnr_id": "comfyui-vrgamedevgirl",
+        "ver": "6040d7e18c8b005ac969b1bb9b105dc76f69f93b",
+        "Node name for S&R": "VRGDGOverlapBlend"
+      },
+      "color": "#233",
+      "bgcolor": "#355"
+    },
+    {
+      "id": 63,
+      "type": "VHS_VideoCombine",
+      "pos": [
+        2800,
+        150
+      ],
+      "size": [
+        500,
+        618
+      ],
+      "flags": {},
+      "order": 36,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 30
+        },
+        {
+          "name": "audio",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": 31
+        },
+        {
+          "name": "meta_batch",
+          "shape": 7,
+          "type": "VHS_BatchManager",
+          "link": 32
+        },
+        {
+          "name": "vae",
+          "shape": 7,
+          "type": "VAE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Filenames",
+          "type": "VHS_FILENAMES",
+          "links": []
+        }
+      ],
+      "title": "STEP 6C - Final Meta-Batched Video",
+      "properties": {
+        "cnr_id": "comfyui-videohelpersuite",
+        "ver": "2984ec4c4b93292421888f38db74a5e8802a8ff8",
+        "Node name for S&R": "VHS_VideoCombine"
+      },
+      "widgets_values": {
+        "frame_rate": 24,
+        "loop_count": 0,
+        "filename_prefix": "MiniMaxH3_Overlap_LearnedLatentUpscale_1080p",
+        "format": "video/h264-mp4",
+        "pix_fmt": "yuv420p",
+        "crf": 19,
+        "save_metadata": true,
+        "trim_to_audio": false,
+        "pingpong": false,
+        "save_output": true,
+        "videopreview": {
+          "hidden": false,
+          "paused": true,
+          "params": {
+            "filename": "MiniMaxH3_Overlap_LearnedLatentUpscale_1080p_00047-audio.mp4",
+            "subfolder": "",
+            "type": "output",
+            "format": "video/h264-mp4",
+            "frame_rate": 24,
+            "workflow": "MiniMaxH3_Overlap_LearnedLatentUpscale_1080p_00047.png",
+            "fullpath": "Z:\\TOSHARE\\ComfyUI_windows_portable\\ComfyUI\\output\\MiniMaxH3_Overlap_LearnedLatentUpscale_1080p_00047-audio.mp4"
+          }
+        }
+      },
+      "widgets_values_named": {
+        "frame_rate": 24,
+        "loop_count": 0,
+        "filename_prefix": "MiniMaxH3_Overlap_LearnedLatentUpscale_1080p",
+        "format": "video/h264-mp4",
+        "pix_fmt": "yuv420p",
+        "crf": 19,
+        "save_metadata": true,
+        "trim_to_audio": false,
+        "pingpong": false,
+        "save_output": true,
+        "videopreview": {
+          "hidden": false,
+          "paused": true,
+          "params": {
+            "filename": "MiniMaxH3_Overlap_LearnedLatentUpscale_1080p_00047-audio.mp4",
+            "subfolder": "",
+            "type": "output",
+            "format": "video/h264-mp4",
+            "frame_rate": 24,
+            "workflow": "MiniMaxH3_Overlap_LearnedLatentUpscale_1080p_00047.png",
+            "fullpath": "Z:\\TOSHARE\\ComfyUI_windows_portable\\ComfyUI\\output\\MiniMaxH3_Overlap_LearnedLatentUpscale_1080p_00047-audio.mp4"
+          }
+        }
+      },
+      "color": "#233",
+      "bgcolor": "#355"
+    },
+    {
+      "id": 57,
+      "type": "SamplerCustomAdvanced",
+      "pos": [
+        2230,
+        440
+      ],
+      "size": [
+        290,
+        110
+      ],
+      "flags": {},
+      "order": 33,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "noise",
+          "type": "NOISE",
+          "link": 20
+        },
+        {
+          "name": "guider",
+          "type": "GUIDER",
+          "link": 21
+        },
+        {
+          "name": "sampler",
+          "type": "SAMPLER",
+          "link": 22
+        },
+        {
+          "name": "sigmas",
+          "type": "SIGMAS",
+          "link": 23
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 24
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "LATENT",
+          "links": [
+            50
+          ]
+        },
+        {
+          "name": "denoised_output",
+          "type": "LATENT",
+          "links": []
+        }
+      ],
+      "title": "STEP 5C - High Resolution Refinement",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.33.0",
+        "Node name for S&R": "SamplerCustomAdvanced"
+      },
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 67,
+      "type": "VRGDGOverlapAudioWindow",
+      "pos": [
+        970,
+        70
+      ],
+      "size": [
+        450,
+        70
+      ],
+      "flags": {},
+      "order": 24,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": 39
+        },
+        {
+          "name": "video_info",
+          "type": "VHS_VIDEOINFO",
+          "link": 40
+        },
+        {
+          "name": "overlap_info",
+          "type": "VRGDG_OVERLAP_INFO",
+          "link": 41
+        }
+      ],
+      "outputs": [
+        {
+          "name": "window_audio",
+          "type": "AUDIO",
+          "links": [
+            42
+          ]
+        }
+      ],
+      "title": "STEP 3B - Slice Matching Source Audio Window",
+      "properties": {
+        "cnr_id": "comfyui-vrgamedevgirl",
+        "ver": "6040d7e18c8b005ac969b1bb9b105dc76f69f93b",
+        "Node name for S&R": "VRGDGOverlapAudioWindow"
+      },
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 32,
+      "type": "VAEEncodeAudio",
+      "pos": [
+        990,
+        250
+      ],
+      "size": [
+        370,
+        50
+      ],
+      "flags": {},
+      "order": 26,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": 42
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            9
+          ]
+        }
+      ],
+      "title": "STEP 3C - Encode Window-Aligned Source Audio",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.33.0",
+        "Node name for S&R": "VAEEncodeAudio"
+      },
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 70,
+      "type": "H3FastVAEDecode",
+      "pos": [
+        2890,
+        -100
+      ],
+      "size": [
+        340,
+        80
+      ],
+      "flags": {},
+      "order": 34,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 50
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 51
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": [
+            52
+          ]
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-vrgamedevgirl",
+        "ver": "c4b83325b8a0a50e5507766a43d243a83fd5ee62",
+        "Node name for S&R": "H3FastVAEDecode"
+      },
+      "widgets_values": [
+        8
+      ],
+      "widgets_values_named": {
+        "tile_batch_size": 8
+      },
+      "color": "#233",
+      "bgcolor": "#355"
+    },
+    {
+      "id": 72,
+      "type": "MiniMaxChunkFeedForward",
+      "pos": [
+        1070,
+        -680
+      ],
+      "size": [
+        320,
+        90
+      ],
+      "flags": {},
+      "order": 20,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 53
+        }
+      ],
+      "outputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "links": [
+            54
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-kjnodes",
+        "ver": "60cd6bc1870db94c6eeb05fbe455147a8e91c4e9",
+        "Node name for S&R": "MiniMaxChunkFeedForward"
+      },
+      "widgets_values": [
+        2,
+        4096
+      ],
+      "widgets_values_named": {
+        "chunks": 2,
+        "seq_threshold": 4096
+      }
+    },
+    {
+      "id": 69,
+      "type": "TESpeedMiniMaxH3",
+      "pos": [
+        1490,
+        -680
+      ],
+      "size": [
+        290,
+        180
+      ],
+      "flags": {},
+      "order": 22,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 54
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            49
+          ]
+        }
+      ],
+      "title": "STEP 5A - TE-Speed H3 Model Patch",
+      "properties": {
+        "aux_id": "HELPMEEADICE/TE-Speed-MiniMaxH3-OSS",
+        "ver": "c1dacf47bc02cb9326f7b93c69280529b93d391b",
+        "Node name for S&R": "TESpeedMiniMaxH3"
+      },
+      "widgets_values": [
+        0.07,
+        0.1,
+        0.9,
+        2,
+        "auto",
+        0.75
+      ],
+      "widgets_values_named": {
+        "processing_control_value": 0.07,
+        "processing_percent_1": 0.1,
+        "processing_percent_2": 0.9,
+        "mcs": 2,
+        "device": "auto",
+        "cache_depth": 0.75
+      },
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 68,
+      "type": "BlockSparseAttention",
+      "pos": [
+        1470,
+        -1000
+      ],
+      "size": [
+        340,
+        250
+      ],
+      "flags": {},
+      "order": 25,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 49
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            46,
+            47
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.34.0",
+        "Node name for S&R": "BlockSparseAttention"
+      },
+      "widgets_values": [
+        "Sol-Attn (adaptive tau)",
+        1.3,
+        0.2,
+        1,
+        "",
+        12288,
+        256,
+        "exact_kv_and_rows",
+        false
+      ],
+      "widgets_values_named": {
+        "selection": "Sol-Attn (adaptive tau)",
+        "selection.tau": 1.3,
+        "start_percent": 0.2,
+        "end_percent": 1,
+        "dense_blocks": "",
+        "min_tokens": 12288,
+        "extra_tokens": 256,
+        "sink_conditioning": "exact_kv_and_rows",
+        "verbose": false
+      }
+    },
+    {
+      "id": 64,
+      "type": "LoraLoaderModelOnly",
+      "pos": [
+        1070,
+        -1010
+      ],
+      "size": [
+        300,
+        90
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 33
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            37
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.33.0",
+        "Node name for S&R": "LoraLoaderModelOnly"
+      },
+      "widgets_values": [
+        "minimax_h3_fl2v_turbo_4step_v1.1_768p_comfyui_bf16.safetensors",
+        1
+      ],
+      "widgets_values_named": {
+        "lora_name": "minimax_h3_fl2v_turbo_4step_v1.1_768p_comfyui_bf16.safetensors",
+        "strength_model": 1
+      },
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 54,
+      "type": "BasicScheduler",
+      "pos": [
+        2370,
+        90
+      ],
+      "size": [
+        260,
+        110
+      ],
+      "flags": {},
+      "order": 28,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 47
+        }
+      ],
+      "outputs": [
+        {
+          "name": "SIGMAS",
+          "type": "SIGMAS",
+          "links": [
+            23
+          ]
+        }
+      ],
+      "title": "5 Steps / 0.20 Denoise",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.33.0",
+        "Node name for S&R": "BasicScheduler"
+      },
+      "widgets_values": [
+        "simple",
+        1,
+        0.1
+      ],
+      "widgets_values_named": {
+        "scheduler": "simple",
+        "steps": 1,
+        "denoise": 0.1
+      },
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 33,
+      "type": "MiniMaxH3SourceAVPrepareT8",
+      "pos": [
+        960,
+        400
+      ],
+      "size": [
+        470,
+        290
+      ],
+      "flags": {},
+      "order": 29,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "video_latent",
+          "type": "LATENT",
+          "link": 8
+        },
+        {
+          "name": "audio_latent",
+          "type": "LATENT",
+          "link": 9
+        }
+      ],
+      "outputs": [
+        {
+          "name": "av_latent",
+          "type": "LATENT",
+          "links": [
+            10,
+            13
+          ]
+        },
+        {
+          "name": "video_latent",
+          "type": "LATENT",
+          "links": []
+        },
+        {
+          "name": "audio_latent",
+          "type": "LATENT",
+          "links": []
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "title": "STEP 3D - Lock Source Audio + Align AV Clock",
+      "properties": {
+        "cnr_id": "minimax-h3-audio-t8",
+        "ver": "fe00f936baf470089e825b7551e76633cbbdc15c",
+        "Node name for S&R": "MiniMaxH3SourceAVPrepareT8",
+        "aux_id": "T8mars/comfyui-minimax-h3-audio-T8"
+      },
+      "widgets_values": [
+        "remix",
+        0.45,
+        "lock",
+        0,
+        "fit_to_video_generate_tail",
+        "match_video"
+      ],
+      "widgets_values_named": {
+        "video_mode": "remix",
+        "video_denoise_strength": 0.45,
+        "audio_mode": "lock",
+        "audio_denoise_strength": 0,
+        "audio_fit_policy": "fit_to_video_generate_tail",
+        "dtype_device_policy": "match_video"
+      },
+      "color": "#5b4522",
+      "bgcolor": "#3d2f18"
+    },
+    {
+      "id": 55,
+      "type": "KSamplerSelect",
+      "pos": [
+        2080,
+        260
+      ],
+      "size": [
+        260,
+        80
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "SAMPLER",
+          "type": "SAMPLER",
+          "links": [
+            22
+          ]
+        }
+      ],
+      "title": "SA Solver",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.33.0",
+        "Node name for S&R": "KSamplerSelect"
+      },
+      "widgets_values": [
+        "sa_solver"
+      ],
+      "widgets_values_named": {
+        "sampler_name": "sa_solver"
+      },
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 2,
+      "type": "VRGDGOverlapPreset",
+      "pos": [
+        -10,
+        -100
+      ],
+      "size": [
+        290,
+        190
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "overlap_config",
+          "type": "VRGDG_OVERLAP_CONFIG",
+          "links": [
+            36
+          ]
+        },
+        {
+          "name": "window",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "name": "overlap",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "name": "stride",
+          "type": "INT",
+          "links": [
+            35
+          ]
+        }
+      ],
+      "title": "STEP 1A - Overlap Preset",
+      "properties": {
+        "cnr_id": "comfyui-vrgamedevgirl",
+        "ver": "6040d7e18c8b005ac969b1bb9b105dc76f69f93b",
+        "Node name for S&R": "VRGDGOverlapPreset"
+      },
+      "widgets_values": [
+        "H3 Balanced (73 / 17)",
+        73,
+        17,
+        "cosine"
+      ],
+      "widgets_values_named": {
+        "preset": "H3 Balanced (73 / 17)",
+        "custom_window": 73,
+        "custom_overlap": 17,
+        "blend_mode": "cosine"
+      },
+      "color": "#1f4b3f",
+      "bgcolor": "#15342c"
+    },
+    {
+      "id": 3,
+      "type": "VHS_LoadVideo",
+      "pos": [
+        -50,
+        250
+      ],
+      "size": [
+        380,
+        527
+      ],
+      "flags": {},
+      "order": 19,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "meta_batch",
+          "shape": 7,
+          "type": "VHS_BatchManager",
+          "link": 1
+        },
+        {
+          "name": "vae",
+          "shape": 7,
+          "type": "VAE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            2
+          ]
+        },
+        {
+          "name": "frame_count",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "links": [
+            31,
+            39
+          ]
+        },
+        {
+          "name": "video_info",
+          "type": "VHS_VIDEOINFO",
+          "links": [
+            40
+          ]
+        }
+      ],
+      "title": "STEP 1C - Upload Video (Any Length)",
+      "properties": {
+        "cnr_id": "comfyui-videohelpersuite",
+        "ver": "2984ec4c4b93292421888f38db74a5e8802a8ff8",
+        "Node name for S&R": "VHS_LoadVideo"
+      },
+      "widgets_values": {
+        "video": "video_0021-audio (1).mp4",
+        "force_rate": 0,
+        "custom_width": 1024,
+        "custom_height": 576,
+        "frame_load_cap": 0,
+        "skip_first_frames": 0,
+        "select_every_nth": 1,
+        "format": "AnimateDiff",
+        "videopreview": {
+          "hidden": false,
+          "paused": true,
+          "params": {
+            "filename": "video_0021-audio (1).mp4",
+            "type": "input",
+            "format": "video/mp4",
+            "force_rate": 0,
+            "frame_load_cap": 0,
+            "skip_first_frames": 0,
+            "select_every_nth": 1
+          }
+        }
+      },
+      "widgets_values_named": {
+        "video": "video_0021-audio (1).mp4",
+        "force_rate": 0,
+        "custom_width": 1024,
+        "custom_height": 576,
+        "frame_load_cap": 0,
+        "skip_first_frames": 0,
+        "select_every_nth": 1,
+        "format": "AnimateDiff",
+        "choose video to upload": null,
+        "videopreview": {
+          "hidden": false,
+          "paused": true,
+          "params": {
+            "filename": "video_0021-audio (1).mp4",
+            "type": "input",
+            "format": "video/mp4",
+            "force_rate": 0,
+            "frame_load_cap": 0,
+            "skip_first_frames": 0,
+            "select_every_nth": 1
+          }
+        }
+      },
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 66,
+      "type": "LoraLoaderModelOnly",
+      "pos": [
+        1070,
+        -850
+      ],
+      "size": [
+        300,
+        90
+      ],
+      "flags": {},
+      "order": 18,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 37
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            53
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.33.0",
+        "Node name for S&R": "LoraLoaderModelOnly"
+      },
+      "widgets_values": [
+        "minimax_h3_lms_v1.0_r64.safetensors",
+        1
+      ],
+      "widgets_values_named": {
+        "lora_name": "minimax_h3_lms_v1.0_r64.safetensors",
+        "strength_model": 1
+      },
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 52,
+      "type": "CLIPTextEncode",
+      "pos": [
+        2180,
+        -70
+      ],
+      "size": [
+        450,
+        90
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 16
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            18
+          ]
+        }
+      ],
+      "title": "STEP 5B - Optional Refinement Prompt",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.33.0",
+        "Node name for S&R": "CLIPTextEncode"
+      },
+      "widgets_values": [
+        "Enhance this video with sharp, crisp details while preserving a natural photorealistic appearance."
+      ],
+      "widgets_values_named": {
+        "text": "Enhance this video with sharp, crisp details while preserving a natural photorealistic appearance."
+      },
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 74,
+      "type": "MarkdownNote",
+      "pos": [
+        -570,
+        -1060
+      ],
+      "size": [
+        440,
+        830
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Note: Model Links",
+      "properties": {},
+      "widgets_values": [
+        "Guide: [Subgraph](https://docs.comfy.org/interface/features/subgraph)\n\n## Model Links\n\n**vae**\n\n- [minimax_h3_video_vae_fp16.safetensors](https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_video_vae_fp16.safetensors)\n- [minimax_h3_audio_vae_fp32.safetensors](https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_audio_vae_fp32.safetensors)\n\n**diffusion_models**\n\n- [minimax_h3_fl2va_pruned_int8_convrot.safetensors](https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors)\n\n**text_encoders**\n\n- [qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors](https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors)\n\n**loras**\n\n- 8 steps:  [minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors](https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors)\n-  4 steps: [minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors](https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/loras/minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors)\n- LMS Sharpen Lora:\n[Alissonerdx/Minimax-H3-ComfyUI](https://huggingface.co/Alissonerdx/Minimax-H3-ComfyUI/blob/main/loras/minimax_h3_lms_v1.0_r64.safetensors)\n\n**embeddings**\n\n- [10 style embeddings](https://huggingface.co/Comfy-Org/MiniMax-H3/tree/main/embeddings) (`minimaxh3_*.safetensors`), for example `minimaxh3_art_is_explosion`\n\n## Model Storage Location\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   ├── 📂 vae/\n│   │   ├── minimax_h3_video_vae_fp16.safetensors\n│   │   └── minimax_h3_audio_vae_fp32.safetensors\n│   ├── 📂 diffusion_models/\n│   │   └── minimax_h3_fl2va_pruned_int8_convrot.safetensors\n│   ├── 📂 text_encoders/\n│   │   └── qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors\n│   ├── 📂 loras/\n│   │   └── minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors\n│   └── 📂 embeddings/\n│       └── minimaxh3_art_is_explosion.safetensors\n```\n\n## Using Prompt Embeddings\n\nPrompt embeddings (supported since [ComfyUI#15697](https://github.com/Comfy-Org/ComfyUI/pull/15697)) add reusable style tokens to your prompt. Download one or more embeddings from the folder above into `ComfyUI/models/embeddings/`, then reference one in the prompt text with the `embedding:` prefix and the filename without its extension, for example:\n\n`embedding:minimaxh3_art_is_explosion`\n\nUsing an embedding is optional and the template runs fine without one.\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/comfyanonymous/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)\n- Workflow issues: [workflow_templates/issues](https://github.com/Comfy-Org/workflow_templates/issues)\n"
+      ],
+      "widgets_values_named": {
+        "text": "Guide: [Subgraph](https://docs.comfy.org/interface/features/subgraph)\n\n## Model Links\n\n**vae**\n\n- [minimax_h3_video_vae_fp16.safetensors](https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_video_vae_fp16.safetensors)\n- [minimax_h3_audio_vae_fp32.safetensors](https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_audio_vae_fp32.safetensors)\n\n**diffusion_models**\n\n- [minimax_h3_fl2va_pruned_int8_convrot.safetensors](https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors)\n\n**text_encoders**\n\n- [qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors](https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors)\n\n**loras**\n\n- 8 steps:  [minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors](https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors)\n-  4 steps: [minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors](https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/loras/minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors)\n- LMS Sharpen Lora:\n[Alissonerdx/Minimax-H3-ComfyUI](https://huggingface.co/Alissonerdx/Minimax-H3-ComfyUI/blob/main/loras/minimax_h3_lms_v1.0_r64.safetensors)\n\n**embeddings**\n\n- [10 style embeddings](https://huggingface.co/Comfy-Org/MiniMax-H3/tree/main/embeddings) (`minimaxh3_*.safetensors`), for example `minimaxh3_art_is_explosion`\n\n## Model Storage Location\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   ├── 📂 vae/\n│   │   ├── minimax_h3_video_vae_fp16.safetensors\n│   │   └── minimax_h3_audio_vae_fp32.safetensors\n│   ├── 📂 diffusion_models/\n│   │   └── minimax_h3_fl2va_pruned_int8_convrot.safetensors\n│   ├── 📂 text_encoders/\n│   │   └── qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors\n│   ├── 📂 loras/\n│   │   └── minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors\n│   └── 📂 embeddings/\n│       └── minimaxh3_art_is_explosion.safetensors\n```\n\n## Using Prompt Embeddings\n\nPrompt embeddings (supported since [ComfyUI#15697](https://github.com/Comfy-Org/ComfyUI/pull/15697)) add reusable style tokens to your prompt. Download one or more embeddings from the folder above into `ComfyUI/models/embeddings/`, then reference one in the prompt text with the `embedding:` prefix and the filename without its extension, for example:\n\n`embedding:minimaxh3_art_is_explosion`\n\nUsing an embedding is optional and the template runs fine without one.\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/comfyanonymous/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)\n- Workflow issues: [workflow_templates/issues](https://github.com/Comfy-Org/workflow_templates/issues)\n"
+      },
+      "color": "#432",
+      "bgcolor": "#653"
+    }
+  ],
+  "links": [
+    [
+      1,
+      65,
+      0,
+      3,
+      0,
+      "VHS_BatchManager"
+    ],
+    [
+      2,
+      3,
+      0,
+      11,
+      0,
+      "IMAGE"
+    ],
+    [
+      3,
+      65,
+      0,
+      11,
+      1,
+      "VHS_BatchManager"
+    ],
+    [
+      4,
+      11,
+      0,
+      31,
+      0,
+      "IMAGE"
+    ],
+    [
+      5,
+      20,
+      0,
+      31,
+      1,
+      "VAE"
+    ],
+    [
+      7,
+      21,
+      0,
+      32,
+      1,
+      "VAE"
+    ],
+    [
+      8,
+      31,
+      0,
+      33,
+      0,
+      "LATENT"
+    ],
+    [
+      9,
+      32,
+      0,
+      33,
+      1,
+      "LATENT"
+    ],
+    [
+      10,
+      33,
+      0,
+      41,
+      0,
+      "LATENT"
+    ],
+    [
+      11,
+      41,
+      0,
+      42,
+      0,
+      "LATENT"
+    ],
+    [
+      12,
+      25,
+      0,
+      42,
+      1,
+      "VRGDG_MINIMAX_H3_LATENT_UPSCALE_MODEL"
+    ],
+    [
+      13,
+      33,
+      0,
+      43,
+      0,
+      "LATENT"
+    ],
+    [
+      14,
+      42,
+      0,
+      43,
+      1,
+      "LATENT"
+    ],
+    [
+      16,
+      24,
+      0,
+      52,
+      0,
+      "CLIP"
+    ],
+    [
+      18,
+      52,
+      0,
+      53,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      20,
+      56,
+      0,
+      57,
+      0,
+      "NOISE"
+    ],
+    [
+      21,
+      53,
+      0,
+      57,
+      1,
+      "GUIDER"
+    ],
+    [
+      22,
+      55,
+      0,
+      57,
+      2,
+      "SAMPLER"
+    ],
+    [
+      23,
+      54,
+      0,
+      57,
+      3,
+      "SIGMAS"
+    ],
+    [
+      24,
+      43,
+      0,
+      57,
+      4,
+      "LATENT"
+    ],
+    [
+      28,
+      11,
+      1,
+      62,
+      1,
+      "VRGDG_OVERLAP_INFO"
+    ],
+    [
+      29,
+      65,
+      0,
+      62,
+      2,
+      "VHS_BatchManager"
+    ],
+    [
+      30,
+      62,
+      0,
+      63,
+      0,
+      "IMAGE"
+    ],
+    [
+      31,
+      3,
+      2,
+      63,
+      1,
+      "AUDIO"
+    ],
+    [
+      32,
+      65,
+      0,
+      63,
+      2,
+      "VHS_BatchManager"
+    ],
+    [
+      33,
+      23,
+      0,
+      64,
+      0,
+      "MODEL"
+    ],
+    [
+      35,
+      2,
+      3,
+      65,
+      0,
+      "INT"
+    ],
+    [
+      36,
+      2,
+      0,
+      11,
+      2,
+      "VRGDG_OVERLAP_CONFIG"
+    ],
+    [
+      37,
+      64,
+      0,
+      66,
+      0,
+      "MODEL"
+    ],
+    [
+      39,
+      3,
+      2,
+      67,
+      0,
+      "AUDIO"
+    ],
+    [
+      40,
+      3,
+      3,
+      67,
+      1,
+      "VHS_VIDEOINFO"
+    ],
+    [
+      41,
+      11,
+      1,
+      67,
+      2,
+      "VRGDG_OVERLAP_INFO"
+    ],
+    [
+      42,
+      67,
+      0,
+      32,
+      0,
+      "AUDIO"
+    ],
+    [
+      46,
+      68,
+      0,
+      53,
+      0,
+      "MODEL"
+    ],
+    [
+      47,
+      68,
+      0,
+      54,
+      0,
+      "MODEL"
+    ],
+    [
+      49,
+      69,
+      0,
+      68,
+      0,
+      "MODEL"
+    ],
+    [
+      50,
+      57,
+      0,
+      70,
+      0,
+      "LATENT"
+    ],
+    [
+      51,
+      20,
+      0,
+      70,
+      1,
+      "VAE"
+    ],
+    [
+      52,
+      70,
+      0,
+      62,
+      0,
+      "IMAGE"
+    ],
+    [
+      53,
+      66,
+      0,
+      72,
+      0,
+      "MODEL"
+    ],
+    [
+      54,
+      72,
+      0,
+      69,
+      0,
+      "MODEL"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "STEP 1 - VIDEO INPUT + OVERLAP PRESET",
+      "bounding": [
+        -100,
+        -410,
+        480,
+        1240
+      ],
+      "color": "#2f7d64",
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "STEP 2 - BUILD H3 OVERLAP WINDOW",
+      "bounding": [
+        420,
+        -410,
+        470,
+        530
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "title": "MODEL + VAE LOADERS",
+      "bounding": [
+        -100,
+        -1090,
+        2040,
+        660
+      ],
+      "color": "#6b4c7a",
+      "flags": {}
+    },
+    {
+      "id": 4,
+      "title": "STEP 3 - ENCODE + EXACT AV CLOCK",
+      "bounding": [
+        920,
+        -410,
+        550,
+        1140
+      ],
+      "color": "#a77b2f",
+      "flags": {}
+    },
+    {
+      "id": 5,
+      "title": "STEP 4 - LEARNED LATENT UPSCALE",
+      "bounding": [
+        1510,
+        -410,
+        520,
+        690
+      ],
+      "color": "#4f6f9f",
+      "flags": {}
+    },
+    {
+      "id": 6,
+      "title": "STEP 5 - LOW-DENOISE REFINEMENT",
+      "bounding": [
+        2070,
+        -410,
+        630,
+        1010
+      ],
+      "color": "#7b5795",
+      "flags": {}
+    },
+    {
+      "id": 7,
+      "title": "STEP 6 - BLEND + FINAL VIDEO",
+      "bounding": [
+        2750,
+        -410,
+        600,
+        1230
+      ],
+      "color": "#2f7d64",
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.37974730869469014,
+      "offset": [
+        1541.813396965467,
+        1510.1579749831822
+      ]
+    },
+    "frontendVersion": "1.51.10",
+    "VHS_latentpreview": true,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": false,
+    "VHS_KeepIntermediate": false
+  },
+  "version": 0.4
+}

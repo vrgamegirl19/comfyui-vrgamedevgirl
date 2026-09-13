@@ -48,6 +48,7 @@ _VRGDG_SUBMODULES = (
     ".VRGDG_MiniMaxH3LatentUpscaler",
     ".VRGDG_OverlapMetaBatch",
     ".VRGDG_LongVideoMetaBatch",
+    ".MinimaxUpscaler",
     ".VRGDG_MiniMaxH3ReferenceMedia",
     ".VRGDG_MiniMaxH3ImageReference",
     ".CustomLTXNodes",
