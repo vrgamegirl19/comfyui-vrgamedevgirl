@@ -3444,10 +3444,109 @@ def _build_minimax_h3_2pass_api_prompt(payload):
         if item["apply_to"] in {"both", "pass2"}:
             pass2_model = add_extra_lora(pass2_model, item, "pass2", index)
 
+    use_feedforward = _bool_payload(payload, "two_pass_use_feedforward", False)
+    use_block_sparse_attention = _bool_payload(payload, "two_pass_use_block_sparse_attention", False)
+    if use_feedforward or use_block_sparse_attention:
+        try:
+            mappings = _get_comfy_node_mappings()
+        except Exception as exc:
+            raise ValueError(
+                "Could not inspect ComfyUI node registrations for the optional MiniMax H3 model patches. "
+                "Restart ComfyUI after installing or updating their nodes."
+            ) from exc
+        required_nodes = []
+        if use_feedforward:
+            required_nodes.append("MiniMaxChunkFeedForward")
+        if use_block_sparse_attention:
+            required_nodes.append("BlockSparseAttention")
+        missing_nodes = [name for name in required_nodes if name not in mappings]
+        if missing_nodes:
+            raise ValueError(
+                "MiniMax H3 two-pass optional model patches are enabled, but these nodes are missing: "
+                + ", ".join(missing_nodes)
+                + ". Install/update ComfyUI-KJNodes and ComfyUI as needed, then restart ComfyUI."
+            )
+
+    optional_patch_nodes = []
+
+    def add_optional_model_patch(model_ref, class_type, inputs, target, title):
+        nonlocal next_lora_node_id
+        while str(next_lora_node_id) in prompt:
+            next_lora_node_id += 1
+        node_id = str(next_lora_node_id)
+        next_lora_node_id += 1
+        prompt[node_id] = {
+            "class_type": class_type,
+            "inputs": {"model": list(model_ref), **inputs},
+            "_meta": {"title": f"{title} - {target}"},
+        }
+        optional_patch_nodes.append({"node": node_id, "class_type": class_type, "target": target})
+        return [node_id, 0]
+
+    for target, model_ref in (("pass1", pass1_model), ("pass2", pass2_model)):
+        if use_feedforward:
+            model_ref = add_optional_model_patch(
+                model_ref,
+                "MiniMaxChunkFeedForward",
+                {"chunks": 8, "seq_threshold": 4096},
+                target,
+                "MiniMax H3 Chunk FeedForward",
+            )
+        if use_block_sparse_attention:
+            model_ref = add_optional_model_patch(
+                model_ref,
+                "BlockSparseAttention",
+                {
+                    "selection": "Sol-Attn (adaptive tau)",
+                    "selection.tau": 1.3,
+                    "start_percent": 0.2,
+                    "end_percent": 1.0,
+                    "dense_blocks": "",
+                    "min_tokens": 12288,
+                    "extra_tokens": 256,
+                    "sink_conditioning": "exact_kv_and_rows",
+                    "verbose": False,
+                },
+                target,
+                "Block Sparse Attention",
+            )
+        if target == "pass1":
+            pass1_model = model_ref
+        else:
+            pass2_model = model_ref
+
     for node_id in ("124", "126"):
         _set_api_input(prompt, node_id, "model", list(pass1_model))
     for node_id in ("192", "193"):
         _set_api_input(prompt, node_id, "model", list(pass2_model))
+
+    use_fast_vae_decode = _bool_payload(payload, "two_pass_use_fast_vae_decode", False)
+    if use_fast_vae_decode:
+        try:
+            mappings = _get_comfy_node_mappings()
+        except Exception as exc:
+            raise ValueError(
+                "Could not inspect ComfyUI node registrations for the fast batched MiniMax H3 VAE decoder. "
+                "Restart ComfyUI after updating VRGameDevGirl custom nodes."
+            ) from exc
+        if "H3FastVAEDecode" not in mappings:
+            raise ValueError(
+                "Fast batched MiniMax H3 VAE decode is enabled, but H3FastVAEDecode is not loaded. "
+                "Update the VRGameDevGirl custom nodes and restart ComfyUI."
+            )
+        normal_decoder = prompt.get("122")
+        if not isinstance(normal_decoder, dict) or normal_decoder.get("class_type") != "VAEDecode":
+            raise ValueError("The MiniMax H3 two-pass final VAEDecode node (122) was not found in the hidden workflow.")
+        decoder_inputs = normal_decoder.get("inputs") or {}
+        prompt["122"] = {
+            "class_type": "H3FastVAEDecode",
+            "inputs": {
+                "samples": copy.deepcopy(decoder_inputs.get("samples")),
+                "vae": copy.deepcopy(decoder_inputs.get("vae")),
+                "tile_batch_size": 8,
+            },
+            "_meta": {"title": "H3 VAE Decode Fast - Two-Pass Refined Latent"},
+        }
 
     _set_api_input(prompt, "183", "upscale_method", str(payload.get("final_resize_method") or "nvidia_rtx_vsr"))
     _set_api_input(prompt, "142", "crf", _int_payload(payload, "output_crf", 19, 0, 100))
@@ -3471,6 +3570,11 @@ def _build_minimax_h3_2pass_api_prompt(payload):
             "latent_upscale_scale": latent_scale,
             "te_speed_enabled": use_te_speed,
             "extra_loras": applied_extra_loras,
+            "feedforward_enabled": use_feedforward,
+            "block_sparse_attention_enabled": use_block_sparse_attention,
+            "optional_patch_nodes": optional_patch_nodes,
+            "fast_vae_decode_enabled": use_fast_vae_decode,
+            "fast_vae_decode_tile_batch_size": 8 if use_fast_vae_decode else None,
         },
     }
 
