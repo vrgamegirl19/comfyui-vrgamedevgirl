@@ -23,13 +23,26 @@ class BuilderMiniMaxAdvancedTwoPassTests(unittest.TestCase):
         for text in (
             '"8gb": { tile: 352, chunk: 51 }',
             '"12gb": { tile: 512, chunk: 85 }',
-            '"16gb": { tile: 576, chunk: 119 }',
+            '"16gb": { tile: 576, chunk: 272 }',
             '"24gb": { tile: 672, chunk: 153 }',
         ):
             self.assertIn(text, BUILDER_SOURCE)
         self.assertIn('advanced_two_pass_pass2_steps: 1', BUILDER_SOURCE)
         self.assertIn('advanced_two_pass_pass2_sampler: "sa_solver"', BUILDER_SOURCE)
         self.assertIn('advanced_two_pass_pass2_scheduler: "simple"', BUILDER_SOURCE)
+
+    def test_advanced_defaults_avoid_hard_tile_and_short_chunk_boundaries(self):
+        self.assertIn('advanced_two_pass_defaults_version: 3', BUILDER_SOURCE)
+        self.assertIn('advanced_two_pass_chunk_length: 272', BUILDER_SOURCE)
+        self.assertIn('advanced_two_pass_fade_width: 160', BUILDER_SOURCE)
+        self.assertIn('advanced_two_pass_fade_height: 128', BUILDER_SOURCE)
+        self.assertIn('advanced_two_pass_overlap_mode: "earlier"', BUILDER_SOURCE)
+        self.assertIn('advanced_two_pass_overlap_blend: "smoothstep"', BUILDER_SOURCE)
+        self.assertIn('const shouldMigrateLegacyAdvancedDefaults', BUILDER_SOURCE)
+        self.assertIn('miniMaxAdvancedFadeWidth.value = "128"', BUILDER_SOURCE)
+        self.assertIn('miniMaxAdvancedFadeHeight.value = "128"', BUILDER_SOURCE)
+        self.assertIn('miniMaxAdvancedOverlapMode.value = "earlier"', BUILDER_SOURCE)
+        self.assertIn('miniMaxAdvancedOverlapBlend.value = "smoothstep"', BUILDER_SOURCE)
 
     def test_resolutions_are_visible_and_expert_controls_are_collapsed(self):
         self.assertIn('"Pass 1 resolution"', BUILDER_SOURCE)
