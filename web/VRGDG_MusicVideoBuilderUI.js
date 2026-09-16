@@ -265,6 +265,9 @@ const DEFAULT_MINIMAX_H3_SETTINGS = {
   two_pass_latent_upscale_scale: 2,
   two_pass_latent_upscaler_name: "minimax_h3_latent_upscaler_3d_bf16.safetensors",
   two_pass_use_te_speed: true,
+  two_pass_use_feedforward: false,
+  two_pass_use_block_sparse_attention: false,
+  two_pass_use_fast_vae_decode: false,
   two_pass_te_speed_processing_control: 0.07,
   two_pass_te_speed_start_percent: 0.1,
   two_pass_te_speed_end_percent: 0.9,
@@ -538,6 +541,9 @@ function cloneMiniMaxH3Settings(value = {}) {
       : DEFAULT_MINIMAX_H3_SETTINGS.two_pass_latent_upscale_scale))),
     two_pass_latent_upscaler_name: String(source.two_pass_latent_upscaler_name || DEFAULT_MINIMAX_H3_SETTINGS.two_pass_latent_upscaler_name),
     two_pass_use_te_speed: Boolean(source.two_pass_use_te_speed ?? DEFAULT_MINIMAX_H3_SETTINGS.two_pass_use_te_speed),
+    two_pass_use_feedforward: Boolean(source.two_pass_use_feedforward ?? DEFAULT_MINIMAX_H3_SETTINGS.two_pass_use_feedforward),
+    two_pass_use_block_sparse_attention: Boolean(source.two_pass_use_block_sparse_attention ?? DEFAULT_MINIMAX_H3_SETTINGS.two_pass_use_block_sparse_attention),
+    two_pass_use_fast_vae_decode: Boolean(source.two_pass_use_fast_vae_decode ?? DEFAULT_MINIMAX_H3_SETTINGS.two_pass_use_fast_vae_decode),
     two_pass_te_speed_processing_control: Math.max(0, Math.min(1, Number(source.two_pass_te_speed_processing_control ?? DEFAULT_MINIMAX_H3_SETTINGS.two_pass_te_speed_processing_control))),
     two_pass_te_speed_start_percent: Math.max(0, Math.min(1, Number(source.two_pass_te_speed_start_percent ?? DEFAULT_MINIMAX_H3_SETTINGS.two_pass_te_speed_start_percent))),
     two_pass_te_speed_end_percent: Math.max(0, Math.min(1, Number(source.two_pass_te_speed_end_percent ?? DEFAULT_MINIMAX_H3_SETTINGS.two_pass_te_speed_end_percent))),
@@ -6321,6 +6327,9 @@ function openBuilder(node) {
   ], DEFAULT_MINIMAX_H3_SETTINGS.ref_image_size);
   const miniMaxTwoPassLatentUpscalerPicker = makeSearchableLoraPicker(DEFAULT_MINIMAX_H3_SETTINGS.two_pass_latent_upscaler_name);
   const miniMaxTwoPassUseTeSpeed = makeCheckbox("Use TE-Speed-MiniMaxH3 (OSS)", DEFAULT_MINIMAX_H3_SETTINGS.two_pass_use_te_speed);
+  const miniMaxTwoPassUseFeedforward = makeCheckbox("Use FeedForward (lower VRAM for longer scenes)", DEFAULT_MINIMAX_H3_SETTINGS.two_pass_use_feedforward);
+  const miniMaxTwoPassUseBlockSparseAttention = makeCheckbox("Use Block Sparse Attention (faster)", DEFAULT_MINIMAX_H3_SETTINGS.two_pass_use_block_sparse_attention);
+  const miniMaxTwoPassUseFastVaeDecode = makeCheckbox("Use Fast Batched VAE Decode (batch size 8)", DEFAULT_MINIMAX_H3_SETTINGS.two_pass_use_fast_vae_decode);
   const miniMaxTwoPassTeProcessingControl = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.two_pass_te_speed_processing_control), "number");
   miniMaxTwoPassTeProcessingControl.min = "0"; miniMaxTwoPassTeProcessingControl.max = "1"; miniMaxTwoPassTeProcessingControl.step = "0.01";
   const miniMaxTwoPassTeStart = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.two_pass_te_speed_start_percent), "number");
@@ -6348,6 +6357,9 @@ function openBuilder(node) {
     makeField("Reference image sizing", miniMaxTwoPassRefImageSize, "Controls the MiniMax H3 reference-conditioning image-size mode. Default: max."),
     makeField("Latent upscaler model", miniMaxTwoPassLatentUpscalerPicker.wrapper),
     miniMaxTwoPassUseTeSpeed.wrapper,
+    miniMaxTwoPassUseFeedforward.wrapper,
+    miniMaxTwoPassUseBlockSparseAttention.wrapper,
+    miniMaxTwoPassUseFastVaeDecode.wrapper,
     ...twoPassControls.map((item) => item.section),
     makeSettingsSection("TE-Speed Advanced", [
       makeField("Processing control", miniMaxTwoPassTeProcessingControl),
@@ -7679,6 +7691,22 @@ function openBuilder(node) {
     return mode;
   }
 
+  function clearMiniMaxImageReferenceStartFrameOnModeSwitch(segment, targetMode) {
+    if (normalizeMiniMaxH3Mode(targetMode) !== "reference_to_video") return;
+    if (miniMaxH3ModeForSegment(segment) !== "image_reference_to_video") return;
+    const sceneLocked = Boolean(segment?.use_scene_minimax_h3_settings);
+    const targets = (sceneLocked ? [segment] : allEditableSegments()).filter((item) => (
+      item
+      && segmentTrack(item) !== "overlay"
+      && !(!sceneLocked && item.use_scene_minimax_h3_settings)
+      && miniMaxH3ModeForSegment(item) === "image_reference_to_video"
+    ));
+    for (const item of targets) {
+      item.minimax_h3_scene_image_use = "off";
+      item.minimax_h3_use_scene_image_as_start_frame = false;
+    }
+  }
+
   function syncMiniMaxReferenceButtons() {
     const segment = activeSegment();
     const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
@@ -7767,6 +7795,9 @@ function openBuilder(node) {
       two_pass_use_te_speed: state.miniMaxH3ThreePassEnabled
         ? miniMaxAdvancedUseTeSpeed.input.checked
         : miniMaxTwoPassUseTeSpeed.input.checked,
+      two_pass_use_feedforward: miniMaxTwoPassUseFeedforward.input.checked,
+      two_pass_use_block_sparse_attention: miniMaxTwoPassUseBlockSparseAttention.input.checked,
+      two_pass_use_fast_vae_decode: miniMaxTwoPassUseFastVaeDecode.input.checked,
       two_pass_te_speed_processing_control: miniMaxTwoPassTeProcessingControl.value,
       two_pass_te_speed_start_percent: miniMaxTwoPassTeStart.value,
       two_pass_te_speed_end_percent: miniMaxTwoPassTeEnd.value,
@@ -8488,6 +8519,9 @@ function openBuilder(node) {
     miniMaxAdvancedLatentUpscalerPicker.input.value = settings.two_pass_latent_upscaler_name;
     miniMaxTwoPassUseTeSpeed.input.checked = Boolean(settings.two_pass_use_te_speed);
     miniMaxAdvancedUseTeSpeed.input.checked = Boolean(settings.two_pass_use_te_speed);
+    miniMaxTwoPassUseFeedforward.input.checked = Boolean(settings.two_pass_use_feedforward);
+    miniMaxTwoPassUseBlockSparseAttention.input.checked = Boolean(settings.two_pass_use_block_sparse_attention);
+    miniMaxTwoPassUseFastVaeDecode.input.checked = Boolean(settings.two_pass_use_fast_vae_decode);
     miniMaxTwoPassTeProcessingControl.value = String(settings.two_pass_te_speed_processing_control);
     miniMaxTwoPassTeStart.value = String(settings.two_pass_te_speed_start_percent);
     miniMaxTwoPassTeEnd.value = String(settings.two_pass_te_speed_end_percent);
@@ -46547,6 +46581,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         latent_upscale_scale: twoPass ? miniMaxSettings.two_pass_latent_upscale_scale : undefined,
         latent_upscaler_name: (twoPass || threePass) ? miniMaxSettings.two_pass_latent_upscaler_name : undefined,
         two_pass_use_te_speed: (twoPass || threePass) ? miniMaxSettings.two_pass_use_te_speed : undefined,
+        two_pass_use_feedforward: twoPass ? miniMaxSettings.two_pass_use_feedforward : undefined,
+        two_pass_use_block_sparse_attention: twoPass ? miniMaxSettings.two_pass_use_block_sparse_attention : undefined,
+        two_pass_use_fast_vae_decode: twoPass ? miniMaxSettings.two_pass_use_fast_vae_decode : undefined,
         te_speed_processing_control: (twoPass || threePass) ? miniMaxSettings.two_pass_te_speed_processing_control : undefined,
         te_speed_start_percent: (twoPass || threePass) ? miniMaxSettings.two_pass_te_speed_start_percent : undefined,
         te_speed_end_percent: (twoPass || threePass) ? miniMaxSettings.two_pass_te_speed_end_percent : undefined,
@@ -58043,6 +58080,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     miniMaxAdvancedUseTeSpeed.input,
     miniMaxTwoPassLatentScale,
     miniMaxTwoPassUseTeSpeed.input,
+    miniMaxTwoPassUseFeedforward.input,
+    miniMaxTwoPassUseBlockSparseAttention.input,
+    miniMaxTwoPassUseFastVaeDecode.input,
     miniMaxTwoPassTeProcessingControl,
     miniMaxTwoPassTeStart,
     miniMaxTwoPassTeEnd,
@@ -58166,6 +58206,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const segment = requireActiveSegment();
       if (!segment) return;
       pushHistory();
+      clearMiniMaxImageReferenceStartFrameOnModeSwitch(segment, button.dataset.minimaxH3Mode);
       state.miniMaxH3TwoPassEnabled = button.dataset.minimaxH3Mode === "image_reference_to_video";
       state.miniMaxH3ThreePassEnabled = false;
       setMiniMaxH3ModeForSegment(segment, button.dataset.minimaxH3Mode);
@@ -58177,6 +58218,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const segment = requireActiveSegment();
     if (!segment) return;
     pushHistory();
+    clearMiniMaxImageReferenceStartFrameOnModeSwitch(segment, "reference_to_video");
     state.miniMaxH3TwoPassEnabled = true;
     state.miniMaxH3ThreePassEnabled = false;
     setMiniMaxH3ModeForSegment(segment, "reference_to_video");
@@ -58187,6 +58229,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const segment = requireActiveSegment();
     if (!segment) return;
     pushHistory();
+    clearMiniMaxImageReferenceStartFrameOnModeSwitch(segment, "reference_to_video");
     state.miniMaxH3TwoPassEnabled = false;
     state.miniMaxH3ThreePassEnabled = true;
     setMiniMaxH3ModeForSegment(segment, "reference_to_video");
