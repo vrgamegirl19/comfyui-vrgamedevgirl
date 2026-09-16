@@ -20,6 +20,12 @@ class MiniMaxImageReferenceOptionalTests(unittest.TestCase):
         self.assertGreaterEqual(BUILDER_SOURCE.count(eligibility), 2)
         self.assertNotIn('miniMaxH3ModeForSegment(item) === "reference_to_video"', BUILDER_SOURCE)
 
+    def test_leaving_image_reference_mode_clears_forced_scene_start(self):
+        self.assertIn("function clearMiniMaxImageReferenceStartFrameOnModeSwitch", BUILDER_SOURCE)
+        self.assertIn('clearMiniMaxImageReferenceStartFrameOnModeSwitch(segment, "reference_to_video")', BUILDER_SOURCE)
+        self.assertIn('item.minimax_h3_scene_image_use = "off"', BUILDER_SOURCE)
+        self.assertIn('item.minimax_h3_use_scene_image_as_start_frame = false', BUILDER_SOURCE)
+
     def test_backend_requires_start_frame_but_not_supporting_references(self):
         self.assertIn('combined_images = [start_frame_path] + ([last_frame_path] if last_frame_path else []) + image_paths', RUNNER_SOURCE)
         self.assertNotIn("Image + Reference two-pass requires at least one Reference Builder image", RUNNER_SOURCE)

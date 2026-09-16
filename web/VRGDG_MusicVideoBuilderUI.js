@@ -7691,6 +7691,22 @@ function openBuilder(node) {
     return mode;
   }
 
+  function clearMiniMaxImageReferenceStartFrameOnModeSwitch(segment, targetMode) {
+    if (normalizeMiniMaxH3Mode(targetMode) !== "reference_to_video") return;
+    if (miniMaxH3ModeForSegment(segment) !== "image_reference_to_video") return;
+    const sceneLocked = Boolean(segment?.use_scene_minimax_h3_settings);
+    const targets = (sceneLocked ? [segment] : allEditableSegments()).filter((item) => (
+      item
+      && segmentTrack(item) !== "overlay"
+      && !(!sceneLocked && item.use_scene_minimax_h3_settings)
+      && miniMaxH3ModeForSegment(item) === "image_reference_to_video"
+    ));
+    for (const item of targets) {
+      item.minimax_h3_scene_image_use = "off";
+      item.minimax_h3_use_scene_image_as_start_frame = false;
+    }
+  }
+
   function syncMiniMaxReferenceButtons() {
     const segment = activeSegment();
     const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
@@ -58190,6 +58206,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const segment = requireActiveSegment();
       if (!segment) return;
       pushHistory();
+      clearMiniMaxImageReferenceStartFrameOnModeSwitch(segment, button.dataset.minimaxH3Mode);
       state.miniMaxH3TwoPassEnabled = button.dataset.minimaxH3Mode === "image_reference_to_video";
       state.miniMaxH3ThreePassEnabled = false;
       setMiniMaxH3ModeForSegment(segment, button.dataset.minimaxH3Mode);
@@ -58201,6 +58218,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const segment = requireActiveSegment();
     if (!segment) return;
     pushHistory();
+    clearMiniMaxImageReferenceStartFrameOnModeSwitch(segment, "reference_to_video");
     state.miniMaxH3TwoPassEnabled = true;
     state.miniMaxH3ThreePassEnabled = false;
     setMiniMaxH3ModeForSegment(segment, "reference_to_video");
@@ -58211,6 +58229,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const segment = requireActiveSegment();
     if (!segment) return;
     pushHistory();
+    clearMiniMaxImageReferenceStartFrameOnModeSwitch(segment, "reference_to_video");
     state.miniMaxH3TwoPassEnabled = false;
     state.miniMaxH3ThreePassEnabled = true;
     setMiniMaxH3ModeForSegment(segment, "reference_to_video");
