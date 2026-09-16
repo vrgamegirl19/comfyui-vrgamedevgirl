@@ -12908,7 +12908,7 @@ function openBuilder(node) {
     state.builderStoryLayer = normalizeBuilderStoryLayer(data.builderStoryLayer || data.builder_story_layer || {});
     state.builderStoryboardDefaults = normalizeBuilderStoryboardDefaults(data.builderStoryboardDefaults || data.builder_storyboard_defaults || {});
     state.autoBuildPreparation = normalizeAutoBuildPreparation(data.autoBuildPreparation || data.auto_build_preparation || {});
-    state.lyricMapper = normalizeLyricMapper(data.lyricMapper || data.lyric_mapper || state.lyricMapper);
+    state.lyricMapper = normalizeLyricMapper(data.lyricMapper || data.lyric_mapper || {});
     state.zEnhanceSettings = data.zEnhanceSettings || state.zEnhanceSettings;
     state.videoModelMode = data.videoModelMode || data.video_model_mode || state.videoModelMode || "i2v";
     state.i2vVideoSettings = cloneI2VVideoSettings(data.i2vVideoSettings || state.i2vVideoSettings);
@@ -25457,8 +25457,8 @@ function openBuilder(node) {
     }
     if (String(options.referenceLyrics || "").trim()) {
       state.lyricMapper = normalizeLyricMapper({
-        ...state.lyricMapper,
         source_text: String(options.referenceLyrics || "").trim(),
+        lines: [],
       });
     }
     let progress = null;
@@ -50320,6 +50320,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     state.flowGptBrowserSettings = defaultFlowGptBrowserSettings();
     state.ernieImageSettings = defaultErnieImageSettings();
     state.krea2TwoPassSettings = defaultKrea2TwoPassSettings();
+    state.lyricMapper = defaultLyricMapper();
     state.useFluxGlobalImageIngredients = false;
     state.fluxGlobalImageIngredients = [];
     state.fluxReferenceBuilder = defaultFluxReferenceBuilder();

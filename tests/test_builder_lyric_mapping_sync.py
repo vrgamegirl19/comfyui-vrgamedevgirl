@@ -26,3 +26,9 @@ def test_instrumental_section_is_recomputed_after_lyric_text_is_added():
     assert 'existingSection !== "instrumental"' in UI_SOURCE
     assert 'if (!lyricText || isInstrumentalLyricText(lyricText))' in UI_SOURCE
     assert 'applyLyricSectionsFromReferenceText(state.segments, state.lyricMapper?.source_text || "");' in UI_SOURCE
+
+
+def test_new_projects_and_new_reference_lyrics_clear_stale_mapper_lines():
+    assert 'state.lyricMapper = defaultLyricMapper();' in UI_SOURCE
+    assert 'normalizeLyricMapper(data.lyricMapper || data.lyric_mapper || {});' in UI_SOURCE
+    assert 'source_text: String(options.referenceLyrics || "").trim(),\n        lines: [],' in UI_SOURCE
