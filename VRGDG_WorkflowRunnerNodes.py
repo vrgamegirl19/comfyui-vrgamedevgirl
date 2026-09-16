@@ -3330,9 +3330,18 @@ def _build_minimax_h3_2pass_api_prompt(payload):
     _require_model_choice("vae", audio_vae_name, "MiniMax H3 two-pass audio VAE")
     _require_model_choice("latent_upscale_models", latent_upscaler_name, "MiniMax H3 learned latent upscaler")
 
-    seed = _int_payload(payload, "seed", 69, 0, 0xFFFFFFFFFFFFFFFF)
-    pass1_seed = _int_payload(payload, "pass1_seed", seed, 0, 0xFFFFFFFFFFFFFFFF)
-    pass2_seed = _int_payload(payload, "pass2_seed", seed, 0, 0xFFFFFFFFFFFFFFFF)
+    def _seed_payload(key, default):
+        try:
+            value = int(payload.get(key, default))
+        except Exception:
+            value = int(default)
+        if value < 0:
+            value = random.randrange(0, 0xFFFFFFFFFFFFFFFF + 1)
+        return min(max(0, value), 0xFFFFFFFFFFFFFFFF)
+
+    seed = _seed_payload("seed", 69)
+    pass1_seed = _seed_payload("pass1_seed", seed)
+    pass2_seed = _seed_payload("pass2_seed", seed)
     final_width = _int_payload(payload, "final_width", 1920, 64, 16384)
     final_height = _int_payload(payload, "final_height", 1080, 64, 16384)
     latent_scale = _float_payload(payload, "latent_upscale_scale", 2.0, 1.0, 8.0)

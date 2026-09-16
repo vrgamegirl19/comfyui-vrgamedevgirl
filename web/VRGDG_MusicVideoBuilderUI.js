@@ -16995,6 +16995,10 @@ function openBuilder(node) {
   function setMiniMaxH3SeedRandom(segment = activeSegment()) {
     const settings = miniMaxH3SettingsForSegment(segment);
     settings.seed = randomSeedValue();
+    settings.two_pass_pass1_seed = randomSeedValue();
+    settings.two_pass_pass2_seed = randomSeedValue();
+    settings.advanced_two_pass_pass1_seed = randomSeedValue();
+    settings.advanced_two_pass_pass2_seed = randomSeedValue();
     if (segment?.use_scene_minimax_h3_settings) {
       segment.minimax_h3_settings = cloneMiniMaxH3Settings(settings);
       segment.minimax_h3_mode = segment.minimax_h3_settings.video_mode;
