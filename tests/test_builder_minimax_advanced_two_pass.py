@@ -12,6 +12,21 @@ RUNNER_SOURCE = (ROOT / "VRGDG_WorkflowRunnerNodes.py").read_text(encoding="utf-
 
 
 class BuilderMiniMaxAdvancedTwoPassTests(unittest.TestCase):
+    def test_minimax_two_pass_redo_rerolls_all_seed_paths(self):
+        for assignment in (
+            "settings.two_pass_pass1_seed = randomSeedValue();",
+            "settings.two_pass_pass2_seed = randomSeedValue();",
+            "settings.advanced_two_pass_pass1_seed = randomSeedValue();",
+            "settings.advanced_two_pass_pass2_seed = randomSeedValue();",
+        ):
+            self.assertIn(assignment, BUILDER_SOURCE)
+
+        self.assertIn("def _seed_payload(key, default):", RUNNER_SOURCE)
+        self.assertIn("if value < 0:", RUNNER_SOURCE)
+        self.assertIn("random.randrange(0, 0xFFFFFFFFFFFFFFFF + 1)", RUNNER_SOURCE)
+        self.assertIn('_seed_payload("pass1_seed", seed)', RUNNER_SOURCE)
+        self.assertIn('_seed_payload("pass2_seed", seed)', RUNNER_SOURCE)
+
     def test_former_three_pass_button_is_advanced_two_pass(self):
         self.assertIn('makeButton("Ref to Video\\n2 Pass Advanced")', BUILDER_SOURCE)
         self.assertIn(
