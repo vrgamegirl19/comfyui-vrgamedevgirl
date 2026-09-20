@@ -25,6 +25,7 @@ from PIL import Image
 from server import PromptServer
 
 from .VRGDG_ModelPathSettings import register_custom_model_root
+from .VRGDG_MiniMaxH3LatentManager import SceneLatentManager, scene_latent_manager
 from .VRGDG_VideoEditorNodes import (
     _clean_gemma_prompt_text,
     _clean_visual_gemma_text,
@@ -672,6 +673,7 @@ def _new_builder_project(payload):
     os.makedirs(_images_folder(target), exist_ok=True)
     os.makedirs(_prompts_folder(target), exist_ok=True)
     os.makedirs(_context_folder(target), exist_ok=True)
+    os.makedirs(os.path.join(target, "latents"), exist_ok=True)
     for filename in ("ConceptPrompts.txt", "I2VMotionNotes.txt", "themestyle.txt", "storyconcept.txt", "subjectsandscenes.txt", "full_lyrics.txt"):
         path = os.path.join(_context_folder(target), filename)
         if not os.path.exists(path):
@@ -716,6 +718,10 @@ def _save_builder_project_as(payload):
     os.makedirs(_context_folder(target), exist_ok=True)
     if source and os.path.isdir(source):
         _copy_project_tree(source, target, keep)
+        try:
+            SceneLatentManager.copy_latents_folder(source, target)
+        except Exception as exc:
+            print(f"[VRGDG Latent] Failed to copy latents during branch: {exc}")
 
     session = payload.get("session") if isinstance(payload.get("session"), dict) else {}
     session = _apply_branch_keep_to_session(session, keep)
@@ -11193,6 +11199,79 @@ def _ensure_music_builder_routes():
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/latent_status")
+    async def vrgdg_music_builder_latent_status(request):
+        try:
+            payload = await request.json()
+            project_folder = str(payload.get("project_folder", "") or "").strip().strip('"')
+            scene_number = int(payload.get("scene_number", 1))
+            result = SceneLatentManager.get_latent_info(project_folder, scene_number)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response(result)
+
+    @server_instance.routes.post("/vrgdg/music_builder/check_latent_predecessor")
+    async def vrgdg_music_builder_check_latent_predecessor(request):
+        try:
+            payload = await request.json()
+            project_folder = str(payload.get("project_folder", "") or "").strip().strip('"')
+            scene_number = int(payload.get("scene_number", 1))
+            if scene_number <= 1:
+                return web.json_response({
+                    "ok": True,
+                    "scene_number": scene_number,
+                    "predecessor_needed": False,
+                    "predecessor_exists": True,
+                    "predecessor_scene": 0,
+                    "predecessor_path": "",
+                    "frame_count": 0,
+                    "token_count": 0,
+                    "dirty": False,
+                })
+            pred_scene = scene_number - 1
+            info = SceneLatentManager.get_latent_info(project_folder, pred_scene)
+            return web.json_response({
+                "ok": True,
+                "scene_number": scene_number,
+                "predecessor_scene": pred_scene,
+                "predecessor_needed": True,
+                "predecessor_exists": info.get("exists", False),
+                "predecessor_path": info.get("path", ""),
+                "frame_count": info.get("frame_count", 0),
+                "token_count": info.get("token_count", 0),
+                "tail_padding_known": info.get("tail_padding_frames") is not None,
+                "dirty": info.get("dirty", False),
+            })
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+
+    @server_instance.routes.post("/vrgdg/music_builder/delete_scene_latent")
+    async def vrgdg_music_builder_delete_scene_latent(request):
+        try:
+            payload = await request.json()
+            project_folder = str(payload.get("project_folder", "") or "").strip().strip('"')
+            if bool(payload.get("all", False)):
+                removed = SceneLatentManager.delete_all_latents(project_folder)
+                return web.json_response({"ok": True, "deleted": removed > 0, "removed_files": removed, "all": True})
+            scene_number = int(payload.get("scene_number", 1))
+            reindex = bool(payload.get("reindex", True))
+            deleted = SceneLatentManager.delete_latent(project_folder, scene_number)
+            if reindex:
+                SceneLatentManager.reindex_latents(project_folder, scene_number)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, "deleted": deleted, "scene_number": scene_number})
+
+    @server_instance.routes.post("/vrgdg/music_builder/list_dirty_latents")
+    async def vrgdg_music_builder_list_dirty_latents(request):
+        try:
+            payload = await request.json()
+            project_folder = str(payload.get("project_folder", "") or "").strip().strip('"')
+            dirty_scenes = SceneLatentManager.list_dirty(project_folder)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, "dirty_scenes": dirty_scenes})
 
     @server_instance.routes.post("/vrgdg/music_builder/scan_scene_videos")
     async def vrgdg_music_builder_scan_scene_videos(request):

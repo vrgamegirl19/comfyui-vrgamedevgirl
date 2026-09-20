@@ -227,6 +227,7 @@ const DEFAULT_MINIMAX_H3_SETTINGS = {
   video_mode: "text_to_video",
   audio_mode: "input_audio",
   continuity_mode: "off",
+  latent_context_frames: 22,
   diffusion_model_name: "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
   clip_name: "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
   video_vae_name: "minimax_h3_video_vae_fp16.safetensors",
@@ -348,6 +349,8 @@ const DEFAULT_MINIMAX_H3_SETTINGS = {
 
 const MINIMAX_H3_CONTINUITY_OPTIONS = [
   { value: "off", label: "Off" },
+  { value: "latent_continuation", label: "Latent Continuation (native H3 temporal context)" },
+  { value: "latent_continuation_exact_frame", label: "Latent Continuation + Exact Last Frame (H3 temporal context + image)" },
   { value: "spatial_reference", label: "Previous final frame — spatial reference" },
   { value: "exact_start_frame", label: "Previous final frame — exact start frame" },
 ];
@@ -388,9 +391,15 @@ function normalizeMiniMaxH3AudioMode(value) {
 
 function normalizeMiniMaxH3ContinuityMode(value) {
   const clean = String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (["latent_exact", "latent_exact_frame", "latent_continuation_exact", "latent_continuation_exact_frame"].includes(clean)) return "latent_continuation_exact_frame";
+  if (["latent", "latent_continuation", "continuation"].includes(clean)) return "latent_continuation";
   if (["spatial", "spatial_reference", "continuity_reference"].includes(clean)) return "spatial_reference";
   if (["exact", "exact_start", "exact_start_frame", "continuous_start"].includes(clean)) return "exact_start_frame";
   return "off";
+}
+
+function isMiniMaxH3LatentContinuationMode(mode) {
+  return mode === "latent_continuation" || mode === "latent_continuation_exact_frame";
 }
 
 function normalizeMiniMaxH3StartFrameCharacterInfluence(value) {
@@ -518,6 +527,9 @@ function cloneMiniMaxH3Settings(value = {}) {
     video_mode: normalizeMiniMaxH3Mode(source.video_mode || source.mode || DEFAULT_MINIMAX_H3_SETTINGS.video_mode),
     audio_mode: normalizeMiniMaxH3AudioMode(source.audio_mode || source.audioMode || DEFAULT_MINIMAX_H3_SETTINGS.audio_mode),
     continuity_mode: normalizeMiniMaxH3ContinuityMode(source.continuity_mode || source.continuityMode || DEFAULT_MINIMAX_H3_SETTINGS.continuity_mode),
+    latent_context_frames: [16, 22, 39, 56].includes(Number(source.latent_context_frames ?? source.latentContextFrames))
+      ? Number(source.latent_context_frames ?? source.latentContextFrames)
+      : DEFAULT_MINIMAX_H3_SETTINGS.latent_context_frames,
     diffusion_model_name: String(source.diffusion_model_name || DEFAULT_MINIMAX_H3_SETTINGS.diffusion_model_name),
     clip_name: String(source.clip_name || DEFAULT_MINIMAX_H3_SETTINGS.clip_name),
     video_vae_name: String(source.video_vae_name || DEFAULT_MINIMAX_H3_SETTINGS.video_vae_name),
@@ -6075,6 +6087,21 @@ function openBuilder(node) {
   const miniMaxAudioVaePicker = makeSearchableLoraPicker(DEFAULT_MINIMAX_H3_SETTINGS.audio_vae_name);
   const miniMaxAudioMode = makeSelect(MINIMAX_H3_AUDIO_MODE_OPTIONS, DEFAULT_MINIMAX_H3_SETTINGS.audio_mode);
   const miniMaxContinuityMode = makeSelect(MINIMAX_H3_CONTINUITY_OPTIONS, DEFAULT_MINIMAX_H3_SETTINGS.continuity_mode);
+  const MINIMAX_H3_LATENT_CONTEXT_OPTIONS = [
+    { value: "16", label: "16 frames (5 tokens)" },
+    { value: "22", label: "22 frames (7 tokens — recommended)" },
+    { value: "39", label: "39 frames (12 tokens)" },
+    { value: "56", label: "56 frames (17 tokens)" },
+  ];
+  const miniMaxLatentContextFrames = makeSelect(MINIMAX_H3_LATENT_CONTEXT_OPTIONS, String(DEFAULT_MINIMAX_H3_SETTINGS.latent_context_frames || 22));
+  miniMaxLatentContextFrames.title = "Number of trailing context frames loaded directly from the predecessor scene's saved latent.";
+  const miniMaxLatentContextField = makeField("Latent context frames", miniMaxLatentContextFrames);
+  const miniMaxLatentStatusPill = document.createElement("div");
+  miniMaxLatentStatusPill.style.cssText = "display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;border-radius:12px;padding:4px 10px;border:1px solid #334155;background:#0f172a;color:#94a3b8;margin-top:2px;";
+  miniMaxLatentStatusPill.textContent = "Checking predecessor latent...";
+  const miniMaxLatentContinuationRow = document.createElement("div");
+  miniMaxLatentContinuationRow.style.cssText = "display:flex;flex-direction:column;gap:6px;margin-top:6px;";
+  miniMaxLatentContinuationRow.append(miniMaxLatentContextField, miniMaxLatentStatusPill);
   const miniMaxContinuityNote = document.createElement("div");
   miniMaxContinuityNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
   const miniMaxNoGgufNote = document.createElement("div");
@@ -6676,6 +6703,7 @@ function openBuilder(node) {
         ]),
         makeSettingsSection("Between-scene continuity", [
           makeField("Previous rendered final frame", miniMaxContinuityMode),
+          miniMaxLatentContinuationRow,
           miniMaxContinuityNote,
         ]),
         miniMaxLoraSection,
@@ -7783,6 +7811,7 @@ function openBuilder(node) {
       video_mode: currentSettings.video_mode,
       audio_mode: miniMaxAudioMode.value,
       continuity_mode: miniMaxContinuityMode.value,
+      latent_context_frames: Number(miniMaxLatentContextFrames.value || 22),
       diffusion_model_name: miniMaxDiffusionModelPicker.input.value,
       clip_name: miniMaxClipPicker.input.value,
       video_vae_name: miniMaxVideoVaePicker.input.value,
@@ -8505,6 +8534,70 @@ function openBuilder(node) {
     });
   }
 
+  let miniMaxLatentCheckCounter = 0;
+  async function updateMiniMaxLatentPredecessorStatus(segment) {
+    const checkId = ++miniMaxLatentCheckCounter;
+    if (!segment) {
+      miniMaxLatentStatusPill.style.display = "none";
+      return;
+    }
+    const continuityMode = normalizeMiniMaxH3ContinuityMode(miniMaxContinuityMode.value);
+    if (!isMiniMaxH3LatentContinuationMode(continuityMode)) {
+      miniMaxLatentStatusPill.style.display = "none";
+      return;
+    }
+    miniMaxLatentStatusPill.style.display = "inline-flex";
+    const slotNumber = sceneSlotNumber(segment);
+    if (slotNumber <= 1) {
+      miniMaxLatentStatusPill.textContent = "Scene 1 has no predecessor — starts fresh and saves latent on render";
+      miniMaxLatentStatusPill.style.borderColor = "#0284c7";
+      miniMaxLatentStatusPill.style.background = "#0c4a6e";
+      miniMaxLatentStatusPill.style.color = "#38bdf8";
+      return;
+    }
+    const projectFolder = String(projectInput.value || state.projectFolder || "").trim();
+    if (!projectFolder) {
+      miniMaxLatentStatusPill.textContent = "Set project folder to check predecessor latent";
+      miniMaxLatentStatusPill.style.borderColor = "#334155";
+      miniMaxLatentStatusPill.style.background = "#0f172a";
+      miniMaxLatentStatusPill.style.color = "#94a3b8";
+      return;
+    }
+    miniMaxLatentStatusPill.textContent = `Checking Scene ${slotNumber - 1} latent status...`;
+    miniMaxLatentStatusPill.style.borderColor = "#334155";
+    miniMaxLatentStatusPill.style.background = "#0f172a";
+    miniMaxLatentStatusPill.style.color = "#94a3b8";
+    try {
+      const resp = await postJson("/vrgdg/music_builder/check_latent_predecessor", {
+        project_folder: projectFolder,
+        scene_number: slotNumber,
+      }, 5000);
+      if (checkId !== miniMaxLatentCheckCounter) return;
+      if (resp?.predecessor_exists) {
+        const dirtyNote = resp.dirty ? " (marked dirty)" : "";
+        // Exact Last Frame needs the predecessor's tail-padding info to find its real last frame in the latent.
+        const needsRerender = continuityMode === "latent_continuation_exact_frame" && !resp.tail_padding_known;
+        const rerenderNote = needsRerender ? " — no tail info, re-render it for an exact seam" : "";
+        miniMaxLatentStatusPill.textContent = `Predecessor Scene ${resp.predecessor_scene} latent ready (${resp.frame_count} frames, ${resp.token_count} tokens)${dirtyNote}${rerenderNote}`;
+        const warn = resp.dirty || needsRerender;
+        miniMaxLatentStatusPill.style.borderColor = warn ? "#b45309" : "#166534";
+        miniMaxLatentStatusPill.style.background = warn ? "#451a03" : "#052e16";
+        miniMaxLatentStatusPill.style.color = warn ? "#fbbf24" : "#4ade80";
+      } else {
+        miniMaxLatentStatusPill.textContent = `Scene ${resp.predecessor_scene} latent missing — render Scene ${resp.predecessor_scene} first`;
+        miniMaxLatentStatusPill.style.borderColor = "#991b1b";
+        miniMaxLatentStatusPill.style.background = "#450a0a";
+        miniMaxLatentStatusPill.style.color = "#f87171";
+      }
+    } catch (e) {
+      if (checkId !== miniMaxLatentCheckCounter) return;
+      miniMaxLatentStatusPill.textContent = `Could not verify Scene ${slotNumber - 1} latent`;
+      miniMaxLatentStatusPill.style.borderColor = "#475569";
+      miniMaxLatentStatusPill.style.background = "#1e293b";
+      miniMaxLatentStatusPill.style.color = "#cbd5e1";
+    }
+  }
+
   function syncMiniMaxH3Panel() {
     const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
     const segment = activeSegment();
@@ -8517,6 +8610,7 @@ function openBuilder(node) {
     miniMaxAudioVaePicker.input.value = settings.audio_vae_name;
     miniMaxAudioMode.value = settings.audio_mode;
     miniMaxContinuityMode.value = settings.continuity_mode;
+    miniMaxLatentContextFrames.value = String(segment?.minimax_h3_latent_context_frames || settings.latent_context_frames || 22);
     miniMaxAspectRatio.value = settings.aspect_ratio;
     miniMaxMegapixels.value = String(settings.megapixels);
     miniMaxSeed.value = String(settings.seed);
@@ -8737,25 +8831,39 @@ function openBuilder(node) {
       : "Uses custom scene audio or project audio unchanged for exact timing and lip sync. Native voice presets are hidden while Input Audio is selected.";
     const continuitySupported = ["reference_to_video", "video_to_video"].includes(mode);
     miniMaxContinuityMode.disabled = !continuitySupported;
+    const isLatentContinuation = isMiniMaxH3LatentContinuationMode(settings.continuity_mode);
+    const isLatentExactFrame = settings.continuity_mode === "latent_continuation_exact_frame";
+    miniMaxLatentContinuationRow.style.display = (continuitySupported && isLatentContinuation) ? "flex" : "none";
+    miniMaxLatentContextFrames.disabled = !continuitySupported || !isLatentContinuation;
     miniMaxContinuityNote.textContent = !continuitySupported
       ? "Available in Reference to Video and Video to Video. Those modes can receive the prior clip's extracted final frame as one additional reference image."
+      : isLatentExactFrame
+        ? `Latent Continuation + Exact Last Frame: loads about ${miniMaxLatentContextFrames.value} trailing frames of the predecessor's saved latent as temporal context, cut before any padding after its real end, and pins an image of the predecessor's exact last frame as the final warm-up frame. The warm-up is trimmed from the video and audio together. The predecessor must have been rendered with this version (it records the padding).`
+      : isLatentContinuation
+        ? `Latent Continuation: Loads ${miniMaxLatentContextFrames.value} trailing frames directly from the predecessor scene's saved latent tensor as native temporal context into MiniMax H3, bypassing pixel VAE re-encoding.`
       : settings.continuity_mode === "spatial_reference"
         ? "Recommended for a new camera angle. Preserves character blocking, orientation, screen direction, props, and environment layout without forcing the same opening composition. The extracted frame and its prompt contract are injected when rendering; Scene 1 is unaffected."
         : settings.continuity_mode === "exact_start_frame"
           ? "Begins each later scene on the previous rendered clip's exact final frame. The extracted frame and its prompt contract are injected when rendering. Do not also enable the scene-image exact start-frame option; Scene 1 is unaffected."
           : "Off: every scene starts independently from its normal MiniMax references.";
+    if (continuitySupported && isLatentContinuation) {
+      updateMiniMaxLatentPredecessorStatus(segment);
+    } else {
+      miniMaxLatentStatusPill.style.display = "none";
+    }
     const sceneImageUse = miniMaxH3SceneImageUseForSegment(segment);
     miniMaxSceneImageUse.value = imageReferenceTwoPass ? "exact_start_frame" : sceneImageUse;
     miniMaxSceneImageUse.disabled = !segment || imageReferenceTwoPass;
     const exactStartFrameOption = Array.from(miniMaxSceneImageUse.options).find((option) => option.value === "exact_start_frame");
-    if (exactStartFrameOption) exactStartFrameOption.disabled = settings.continuity_mode === "exact_start_frame";
+    if (exactStartFrameOption) exactStartFrameOption.disabled = settings.continuity_mode === "exact_start_frame" || isLatentContinuation;
     const startFrameCharacterInfluence = miniMaxH3StartFrameCharacterInfluenceForSegment(segment);
     miniMaxStartFrameCharacterInfluence.value = startFrameCharacterInfluence;
     miniMaxStartFrameCharacterInfluence.disabled = !segment
       || sceneImageUse !== "exact_start_frame"
-      || settings.continuity_mode === "exact_start_frame";
+      || settings.continuity_mode === "exact_start_frame"
+      || isLatentContinuation;
     miniMaxStartFrameCharacterInfluenceField.style.display = hasSceneImage && sceneImageUse === "exact_start_frame" ? "flex" : "none";
-    miniMaxStartFrameReferenceNote.textContent = settings.continuity_mode === "exact_start_frame"
+    miniMaxStartFrameReferenceNote.textContent = (settings.continuity_mode === "exact_start_frame" || isLatentContinuation)
       && sceneImageUse === "exact_start_frame"
       ? "The previous rendered final frame is the sole exact opening frame. Choose an LLM-only inspiration mode or Do not use instead."
       : sceneImageUse === "environment_inspiration"
@@ -12038,6 +12146,9 @@ function openBuilder(node) {
     segment.minimax_h3_continuity_source_scene_id = String(segment.minimax_h3_continuity_source_scene_id || "");
     segment.minimax_h3_continuity_mode_used = normalizeMiniMaxH3ContinuityMode(segment.minimax_h3_continuity_mode_used);
     segment.minimax_h3_continuity_image_number = Math.max(0, Math.trunc(Number(segment.minimax_h3_continuity_image_number || 0)));
+    segment.minimax_h3_latent_context_frames = [16, 22, 39, 56].includes(Number(segment.minimax_h3_latent_context_frames))
+      ? Number(segment.minimax_h3_latent_context_frames)
+      : (DEFAULT_MINIMAX_H3_SETTINGS.latent_context_frames || 22);
     segment.minimax_h3_video_references = (Array.isArray(segment.minimax_h3_video_references) ? segment.minimax_h3_video_references : [])
       .slice(0, 3)
       .map((item) => ({
@@ -20243,6 +20354,14 @@ function openBuilder(node) {
         grainBadge.onpointerdown = (event) => event.stopPropagation();
         block.append(grainBadge);
       }
+      if (!isOverlay && segment._latentDirty) {
+        const dirtyBadge = document.createElement("span");
+        dirtyBadge.textContent = "LATENT DIRTY";
+        dirtyBadge.title = "Predecessor scene was re-rendered or timeline was shifted since this latent was created. Re-rendering this scene is recommended.";
+        dirtyBadge.style.cssText = "position:absolute;left:96px;bottom:5px;min-width:76px;height:18px;display:flex;align-items:center;justify-content:center;border:1px solid #f59e0b;border-radius:4px;background:rgba(120,53,15,.92);color:#fef3c7;font-size:9px;font-weight:900;z-index:3;";
+        dirtyBadge.onpointerdown = (event) => event.stopPropagation();
+        block.append(dirtyBadge);
+      }
       const leftHandle = document.createElement("div");
       leftHandle.style.cssText = "position:absolute;left:0;top:0;bottom:0;width:8px;background:rgba(255,255,255,.25);cursor:ew-resize;z-index:4;";
       const rightHandle = document.createElement("div");
@@ -20418,6 +20537,31 @@ function openBuilder(node) {
       }
     }
     renderBeatMarkersOverlay();
+  }
+
+  async function loadDirtyLatentBadges() {
+    const projectFolder = String(projectInput.value || state.projectFolder || "").trim();
+    if (!projectFolder) return;
+    try {
+      const resp = await postJson("/vrgdg/music_builder/list_dirty_latents", {
+        project_folder: projectFolder,
+      }, 5000);
+      if (!resp?.ok || !Array.isArray(resp.dirty_scenes)) return;
+      const dirtySet = new Set(resp.dirty_scenes);
+      let changed = false;
+      state.segments.forEach((seg) => {
+        const slot = sceneSlotNumber(seg);
+        const wasDirty = Boolean(seg._latentDirty);
+        const isDirty = dirtySet.has(slot);
+        if (wasDirty !== isDirty) {
+          seg._latentDirty = isDirty;
+          changed = true;
+        }
+      });
+      if (changed) renderSegments();
+    } catch (e) {
+      // Quietly ignore background poll failures
+    }
   }
 
   function openSceneOptions(segment) {
@@ -37824,6 +37968,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       syncVideoModePanel();
       syncInspector();
       render();
+      loadDirtyLatentBadges();
       const repairedSegmentIdCount = Number(state.repairedSegmentIdCount || 0);
       if (repairedSegmentIdCount) {
         await saveSession({ quiet: true, throwOnError: true });
@@ -46366,6 +46511,52 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
     const previousSegment = previousAutoChainSourceSegment(segment);
     if (!previousSegment) return null;
+    if (isMiniMaxH3LatentContinuationMode(continuityMode)) {
+      const isExactFrame = continuityMode === "latent_continuation_exact_frame";
+      const slotNumber = sceneSlotNumber(segment);
+      if (slotNumber <= 1) {
+        throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)} is Scene 1 and cannot use Latent Continuation because there is no predecessor scene. Switch Continuity Mode to Off.`);
+      }
+      const projectFolder = String(projectInput.value || state.projectFolder || "").trim();
+      if (!projectFolder) throw new Error("Project folder is missing.");
+      progress?.set(`${label}: verifying predecessor Scene ${slotNumber - 1} latent file...`, percent);
+      const checkResp = await postJson("/vrgdg/music_builder/check_latent_predecessor", {
+        project_folder: projectFolder,
+        scene_number: slotNumber,
+      }, 10000);
+      if (!checkResp?.predecessor_exists) {
+        throw new Error(`Latent Continuation requires Scene ${slotNumber - 1} latent file, but none was found. Render Scene ${slotNumber - 1} first.`);
+      }
+      // Exact Last Frame also needs the predecessor's real last frame as an image. It is passed as its own
+      // field (not framePath) so it is never injected as a reference image or a prompt block.
+      let exactFramePath = "";
+      if (isExactFrame) {
+        const previousVideoPath = String(selectedSegmentVideoPath(previousSegment) || "").trim();
+        if (!previousVideoPath) {
+          throw new Error(`Latent Continuation + Exact Last Frame needs Scene ${slotNumber - 1}'s rendered video to read its last frame, but it has none. Render Scene ${slotNumber - 1} first, or switch to plain Latent Continuation.`);
+        }
+        progress?.set(`${label}: extracting Scene ${slotNumber - 1}'s exact last frame...`, percent);
+        const extractedFrame = await postJson("/vrgdg/music_builder/extract_video_final_frame", {
+          project_folder: projectFolder,
+          source_path: previousVideoPath,
+          scene_number: slotNumber,
+          frame_count: 1,
+        }, 120000);
+        exactFramePath = String(extractedFrame?.saved_path || "").trim();
+        if (!exactFramePath) throw new Error("Could not extract the previous scene's last frame for Latent Continuation + Exact Last Frame.");
+      }
+      segment.minimax_h3_continuity_mode_used = continuityMode;
+      segment.minimax_h3_continuity_source_scene_id = String(previousSegment.id || "");
+      return {
+        continuityMode,
+        transitionEngine: "latent_continuation",
+        overlapFrames: 0,
+        framePath: "",
+        framePaths: [],
+        exactFramePath,
+        previousSegment,
+      };
+    }
     const previousVideoPath = String(selectedSegmentVideoPath(previousSegment) || "").trim();
     if (!previousVideoPath) {
       progress?.set(`${label}: the previous scene has no rendered video, so this scene will render without a continuity frame.`, percent);
@@ -46569,12 +46760,19 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       : null;
     progress?.set(`${batchLabel}Preparing exact MiniMax H3 scene timing and ${builtInAudio ? "native audio generation" : "input audio"}...`, pct(8));
 
+    const latentContextFrames = [16, 22, 39, 56].includes(Number(segment?.minimax_h3_latent_context_frames))
+      ? Number(segment.minimax_h3_latent_context_frames)
+      : (miniMaxSettings.latent_context_frames || 22);
     try {
       const payload = {
         project_folder: projectFolder,
         scene_number: slotNumber,
         audio_mode: miniMaxSettings.audio_mode,
         video_mode: mode,
+        continuity_mode: continuityInput?.continuityMode || miniMaxSettings.continuity_mode || "off",
+        latent_context_frames: latentContextFrames,
+        minimax_h3_latent_context_frames: latentContextFrames,
+        latent_exact_frame_path: continuityInput?.exactFramePath || "",
         audio_path: builtInAudio ? "" : sourceAudioPath,
         prompt,
         pass2_prompt: String(segment?.minimax_h3_pass2_prompt || ""),
@@ -46971,6 +47169,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       segment.video_status = "done";
       syncPreview(segment);
       render();
+      loadDirtyLatentBadges();
       if (options.autoSaveAfter !== false) {
         await autoSaveSessionQuiet(options.autoSaveReason || "MiniMax H3 scene video complete");
       }
@@ -50103,9 +50302,35 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     document.body.append(backdrop);
   }
 
+  // A scene latent only matches the render that produced it, so it is removed with that video.
+  // Never reindex here: the scene keeps its slot, only its stale latent goes.
+  async function deleteStaleSceneLatents(segment = null) {
+    const projectFolder = String(state.projectFolder || projectInput?.value || "").trim();
+    if (!projectFolder) return;
+    const payload = { project_folder: projectFolder };
+    if (segment) {
+      if (segmentTrack(segment) === "overlay") return;
+      const slotNumber = sceneSlotNumber(segment);
+      if (!slotNumber) return;
+      payload.scene_number = slotNumber;
+      payload.reindex = false;
+    } else {
+      payload.all = true;
+    }
+    const resp = await postJson("/vrgdg/music_builder/delete_scene_latent", payload, 10000).catch((error) => {
+      console.warn("[VRGDG] Could not delete stale scene latent:", error);
+      return null;
+    });
+    loadDirtyLatentBadges();
+    return resp;
+  }
+
   async function deleteSegment() {
     const segment = activeSegment();
     if (!segment) return;
+    const isBase = segmentTrack(segment) !== "overlay";
+    const slotNumber = isBase ? sceneSlotNumber(segment) : null;
+    const projectFolder = String(state.projectFolder || projectInput?.value || "").trim();
     pushHistory();
     if (segmentTrack(segment) === "overlay") {
       state.overlaySegments = state.overlaySegments.filter((item) => item.id !== segment.id);
@@ -50114,6 +50339,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const removedStart = Number(segment.start || 0);
       const removedEnd = Math.max(removedStart, Number(segment.end || removedStart));
       state.segments = state.segments.filter((item) => item.id !== segment.id);
+      if (slotNumber && projectFolder) {
+        postJson("/vrgdg/music_builder/delete_scene_latent", {
+          project_folder: projectFolder,
+          scene_number: slotNumber,
+          reindex: true,
+        }, 10000).catch(() => null);
+      }
       const removedDuration = closeBaseTimelineGap(removedStart, removedEnd);
       const next = state.segments.find((item) => Number(item.start || 0) >= removedStart - 0.001) || state.segments[state.segments.length - 1] || null;
       state.activeId = next?.id || state.overlaySegments[0]?.id || "";
@@ -50122,6 +50354,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     state.activeTrack = segmentTrack(activeSegment());
     syncInspector();
     render();
+    loadDirtyLatentBadges();
     await syncPromptJsonFromSegments("segment deleted");
     await syncI2VMotionJsonFromSegments("segment deleted");
     autoSaveSessionQuiet("segment deleted");
@@ -50226,12 +50459,19 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         media.segment.preview_mode = "image";
       }
       ensureSegmentRuntimeFields(media.segment);
+      // Deleting any video of this scene makes its saved latent stale, so it goes with it.
+      let latentRemoved = false;
+      if (media.type === "video") {
+        const latentResp = await deleteStaleSceneLatents(media.segment);
+        latentRemoved = Boolean(latentResp?.deleted);
+        media.segment._latentDirty = false;
+      }
       syncPreview(media.segment);
       syncInspector();
       renderList();
       render();
       await autoSaveSessionQuiet(`${media.type} deleted`);
-      toast(`Deleted ${media.type} from project.`);
+      toast(`Deleted ${media.type} from project.${latentRemoved ? " Its saved latent was removed too." : ""}`);
     } catch (error) {
       toast(String(error?.message || error), true);
     } finally {
@@ -53725,7 +53965,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       return;
     }
     const ok = window.confirm(
-      `Remove ALL videos from the timeline?\n\nThis clears video assignments and video history from ${assignedSegments.length} scene${assignedSegments.length === 1 ? "" : "s"}.\n\nThe ${videoPaths.length} video file${videoPaths.length === 1 ? "" : "s"} and their thumbnails will NOT be deleted from the project folder. They remain on disk as backups.`
+      `Remove ALL videos from the timeline?\n\nThis clears video assignments and video history from ${assignedSegments.length} scene${assignedSegments.length === 1 ? "" : "s"}.\n\nThe ${videoPaths.length} video file${videoPaths.length === 1 ? "" : "s"} and their thumbnails will NOT be deleted from the project folder. They remain on disk as backups.\n\nSaved scene latents (Latent Continuation) are deleted too, since they no longer match any video.`
     );
     if (!ok) return;
 
@@ -53761,6 +54001,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         segment.preview_mode = "image";
         ensureSegmentRuntimeFields(segment);
       }
+      await deleteStaleSceneLatents();
+      segments.forEach((segment) => { segment._latentDirty = false; });
       previewVideo.pause();
       previewVideo.removeAttribute("src");
       previewVideo.dataset.path = "";

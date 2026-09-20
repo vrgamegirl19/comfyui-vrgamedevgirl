@@ -63,6 +63,8 @@ _VRGDG_SUBMODULES = (
     ".VRGDG_VideoBuilderNodeUI",
     ".VRGDG_LoraDatasetCreatorNodes",
     ".VRGDG_MiniMaxMusic3Helpers",
+    ".VRGDG_MiniMaxH3LatentManager",
+    ".VRGDG_MiniMaxH3LatentContinuationNodes",
     ".Yue2",
 )
 

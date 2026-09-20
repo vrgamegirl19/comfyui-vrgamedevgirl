@@ -26,6 +26,13 @@ from .VRGDG_ModelPathSettings import (
     save_custom_model_root,
 )
 from .VRGDG_MiniMaxH3Timing import calculate_minimax_h3_timing
+from .VRGDG_MiniMaxH3LatentManager import (
+    SceneLatentManager,
+    _frames_to_tokens,
+    _tokens_to_frames,
+    plan_latent_context,
+    scene_latent_manager,
+)
 
 
 _VRGDG_WORKFLOW_RUNNER_ROUTES_REGISTERED = False
@@ -2811,6 +2818,330 @@ def _require_minimax_h3_memory_efficient_sage_attention():
         ) from exc
 
 
+def _find_final_vae_decode_id(prompt):
+    video_combine_id = None
+    for candidate in ("353", "142"):
+        if candidate in prompt and prompt[candidate].get("class_type") == "VHS_VideoCombine":
+            video_combine_id = candidate
+            break
+    if not video_combine_id:
+        video_combine_id = _api_node_id_by_class(prompt, "VHS_VideoCombine", fallback="142")
+
+    if video_combine_id and video_combine_id in prompt:
+        images_ref = prompt[video_combine_id].get("inputs", {}).get("images")
+        if isinstance(images_ref, list) and len(images_ref) >= 1:
+            curr_id = str(images_ref[0])
+            visited = set()
+            while curr_id and curr_id in prompt and curr_id not in visited:
+                visited.add(curr_id)
+                curr_node = prompt.get(curr_id, {})
+                if curr_node.get("class_type") in ("VAEDecode", "MiniMaxH3AVDecodeT8"):
+                    return curr_id
+                upstream = curr_node.get("inputs", {}).get("images") or curr_node.get("inputs", {}).get("image")
+                if isinstance(upstream, list) and len(upstream) >= 1:
+                    curr_id = str(upstream[0])
+                else:
+                    break
+    return _api_node_id_by_class(prompt, "VAEDecode", fallback="122")
+
+
+def _patch_minimax_h3_save_latent(prompt, payload, timing=None):
+    project_text = str(payload.get("project_folder", "") or "").strip().strip('"')
+    if not project_text or not os.path.isdir(project_text):
+        return {"enabled": False, "reason": "No valid project folder"}
+    project_folder = os.path.abspath(project_text)
+    scene_number = _int_payload(payload, "scene_number", 1, 1, 999999)
+
+    decode_id = _find_final_vae_decode_id(prompt)
+    if not decode_id or decode_id not in prompt:
+        return {"enabled": False, "reason": "VAEDecode node not found in prompt"}
+
+    samples_input = prompt[decode_id].get("inputs", {}).get("samples")
+    if not samples_input or not isinstance(samples_input, list) or len(samples_input) < 2:
+        return {"enabled": False, "reason": "VAEDecode samples input not found or invalid"}
+
+    upstream_node_id = str(samples_input[0])
+    if upstream_node_id not in prompt:
+        return {"enabled": False, "reason": f"Upstream latent source node '{upstream_node_id}' not found in prompt"}
+
+    tail_padding = _minimax_h3_tail_padding_frames(timing) if timing is not None else None
+
+    save_id = "9850"
+    while save_id in prompt:
+        save_id = str(int(save_id) + 1)
+
+    prompt[save_id] = {
+        "class_type": "VRGDG_MiniMaxH3SaveLatent",
+        "inputs": {
+            "latent": list(samples_input),
+            "project_folder": project_folder,
+            "scene_number": scene_number,
+            "frame_count": 0,
+            "fps": 24.0,
+            "tail_padding_frames": tail_padding if tail_padding is not None else -1,
+        },
+        "_meta": {
+            "title": f"Universal Latent Auto-Save (Scene {scene_number:03d})",
+        },
+    }
+    prompt[decode_id]["inputs"]["samples"] = [save_id, 0]
+
+    return {
+        "enabled": True,
+        "save_node_id": save_id,
+        "project_folder": project_folder,
+        "scene_number": scene_number,
+    }
+
+
+_MMH3_LATENT_MODE = "latent_continuation"
+_MMH3_LATENT_EXACT_MODE = "latent_continuation_exact_frame"
+
+
+def _minimax_h3_latent_continuation_mode(payload):
+    mode = str(
+        payload.get("minimax_h3_continuity_mode")
+        or payload.get("continuity_mode")
+        or payload.get("continuityMode")
+        or ""
+    ).strip().lower().replace("-", "_").replace(" ", "_")
+    if mode in ("latent_exact", "latent_exact_frame", "latent_continuation_exact"):
+        return _MMH3_LATENT_EXACT_MODE
+    return mode
+
+
+def _minimax_h3_is_latent_mode(mode):
+    return mode in (_MMH3_LATENT_MODE, _MMH3_LATENT_EXACT_MODE)
+
+
+def _minimax_h3_latent_exact_plan(payload):
+    """Context window / warm-up / image position for the exact-last-frame mode, or None when not applicable."""
+    if _minimax_h3_latent_continuation_mode(payload) != _MMH3_LATENT_EXACT_MODE:
+        return None
+    if _int_payload(payload, "scene_number", 1, 1, 999999) <= 1:
+        return None
+    project_text = str(payload.get("project_folder", "") or "").strip().strip('"')
+    if not project_text or not os.path.isdir(project_text):
+        return None
+    pred_scene = _int_payload(payload, "scene_number", 1, 1, 999999) - 1
+    info = SceneLatentManager.get_latent_info(os.path.abspath(project_text), pred_scene)
+    total_tokens = int(info.get("token_count") or 0)
+    if not info.get("exists") or total_tokens <= 0:
+        return None
+    plan = plan_latent_context(
+        total_tokens,
+        info.get("tail_padding_frames"),
+        _minimax_h3_latent_context_frames_setting(payload),
+        exact_frame=True,
+    )
+    plan["tail_padding_known"] = info.get("tail_padding_frames") is not None
+    return plan
+
+
+def _minimax_h3_tail_padding_frames(timing):
+    """Frames at the end of this render that lie after the scene's visible last frame."""
+    data = timing.to_dict() if hasattr(timing, "to_dict") else dict(timing or {})
+    try:
+        visible = round((float(data["actual_warmup_seconds"]) + float(data["scene_duration_seconds"])) * 24)
+        return max(0, int(data["h3_frame_count"]) - int(visible))
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _minimax_h3_latent_context_frames_setting(payload):
+    raw_cf = payload.get("minimax_h3_latent_context_frames") or payload.get("latent_context_frames") or payload.get("context_frames") or 22
+    try:
+        context_frames = int(raw_cf)
+    except (ValueError, TypeError):
+        context_frames = 22
+    if context_frames not in (5, 16, 22, 39, 56):
+        context_frames = 22
+    return context_frames
+
+
+def _minimax_h3_effective_warmup_frames(payload):
+    """Warm-up frames for the timing plan.
+
+    Latent Continuation anchors the predecessor's trailing frames at frame 0 of the
+    render, so those frames (and the audio that played over them) must be a warm-up
+    in front of the scene. The timing plan then starts the audio that much earlier
+    and trims the same span off the finished video AND audio together. Without this
+    the context frames sit on top of the scene's own first lyrics and the video
+    drifts out of sync with the audio.
+    """
+    requested = _first_payload_value(payload, "warmup_frames", "pre_frames", default=0)
+    try:
+        requested = max(0, int(float(requested or 0)))
+    except (TypeError, ValueError):
+        requested = 0
+    mode = _minimax_h3_latent_continuation_mode(payload)
+    if not _minimax_h3_is_latent_mode(mode):
+        return requested
+    if _int_payload(payload, "scene_number", 1, 1, 999999) <= 1:
+        return requested
+    context_frames = _minimax_h3_latent_context_frames_setting(payload)
+    exact_plan = _minimax_h3_latent_exact_plan(payload)
+    if exact_plan is not None:
+        return max(requested, int(exact_plan["warmup_frames"]))
+    # frames the sliced tokens really cover (16 -> 5 tokens -> 17 frames)
+    return max(requested, _tokens_to_frames(_frames_to_tokens(context_frames)))
+
+
+def _patch_minimax_h3_latent_continuation(prompt, payload):
+    continuity_mode = _minimax_h3_latent_continuation_mode(payload)
+
+    if not _minimax_h3_is_latent_mode(continuity_mode):
+        return {"enabled": False, "reason": "Continuity mode is not latent_continuation"}
+    exact_frame = continuity_mode == _MMH3_LATENT_EXACT_MODE
+
+    project_text = str(payload.get("project_folder", "") or "").strip().strip('"')
+    if not project_text or not os.path.isdir(project_text):
+        return {"enabled": False, "reason": f"Project folder not found: {project_text}"}
+    project_folder = os.path.abspath(project_text)
+
+    scene_number = _int_payload(payload, "scene_number", 1, 1, 999999)
+    if scene_number <= 1:
+        return {
+            "enabled": False,
+            "scene_number": scene_number,
+            "reason": "Scene 1 is the opening scene; no predecessor latent needed",
+        }
+
+    pred_scene = scene_number - 1
+    if not SceneLatentManager.latent_exists(project_folder, pred_scene):
+        raise FileNotFoundError(
+            f"Latent Continuation for Scene {scene_number:03d} requires Scene {pred_scene:03d} latent, "
+            f"but '{SceneLatentManager.get_path(project_folder, pred_scene)}' was not found. "
+            f"Render Scene {pred_scene:03d} first."
+        )
+
+    context_frames = _minimax_h3_latent_context_frames_setting(payload)
+    exact_plan = _minimax_h3_latent_exact_plan(payload) if exact_frame else None
+    exact_image_path = ""
+    if exact_frame:
+        frame_paths = payload.get("continuity_frame_paths")
+        first_frame_path = frame_paths[0] if isinstance(frame_paths, list) and frame_paths else ""
+        exact_image_path = str(payload.get("latent_exact_frame_path") or first_frame_path or "").strip().strip('"')
+        if not exact_image_path or not os.path.isfile(exact_image_path):
+            raise FileNotFoundError(
+                f"Exact Last Frame continuation for Scene {scene_number:03d} needs an image of Scene {pred_scene:03d}'s "
+                f"last frame, but '{exact_image_path or '(none provided)'}' was not found. "
+                f"Render Scene {pred_scene:03d} first, or switch to plain Latent Continuation."
+            )
+        if exact_plan is None:
+            raise ValueError(f"Could not read Scene {pred_scene:03d}'s latent info to plan the exact-frame context.")
+
+    guider_id = _api_node_id_by_class(prompt, "BasicGuider", fallback="126")
+    if not guider_id or guider_id not in prompt:
+        return {"enabled": False, "reason": "BasicGuider node not found"}
+
+    latent_source = None
+    if "136" in prompt:
+        latent_source = ["136", 1]
+    elif "172" in prompt:
+        latent_source = ["172", 0]
+    else:
+        sampler_node = prompt.get("124") or prompt.get("125")
+        if sampler_node and "latent_image" in sampler_node.get("inputs", {}):
+            latent_source = sampler_node["inputs"]["latent_image"]
+
+    if not latent_source:
+        return {"enabled": False, "reason": "Latent source not found"}
+
+    load_id = "9210"
+    while load_id in prompt:
+        load_id = str(int(load_id) + 1)
+
+    guide_id = str(int(load_id) + 1)
+    while guide_id in prompt:
+        guide_id = str(int(guide_id) + 1)
+
+    prompt[load_id] = {
+        "class_type": "VRGDG_MiniMaxH3LoadLatent",
+        "inputs": {
+            "project_folder": project_folder,
+            "scene_number": pred_scene,
+            "context_frames": context_frames,
+            "exact_frame_mode": exact_frame,
+        },
+        "_meta": {
+            "title": f"Predecessor Latent Context (Scene {pred_scene:03d} · {context_frames} frames"
+                     f"{' · exact-frame window' if exact_frame else ''})",
+        },
+    }
+
+    guider_inputs = prompt[guider_id].setdefault("inputs", {})
+    cond_key = "conditioning" if "conditioning" in guider_inputs else "positive" if "positive" in guider_inputs else "conditioning"
+    current_positive = guider_inputs.get(cond_key)
+    if not current_positive:
+        return {"enabled": False, "reason": "Guider conditioning input not found"}
+
+    warmup_frames = _minimax_h3_effective_warmup_frames(payload)
+    # exact mode: the context block ends right where the exact last-frame image sits (the warm-up's last frame)
+    latent_frame_idx = max(0, warmup_frames - int(exact_plan["warmup_frames"])) if exact_plan else 0
+
+    prompt[guide_id] = {
+        "class_type": "VRGDG_MiniMaxH3ApplyLatentGuide",
+        "inputs": {
+            "positive": current_positive,
+            "latent": latent_source,
+            "context_latent": [load_id, 0],
+            "frame_idx": latent_frame_idx,
+        },
+        "_meta": {
+            "title": f"MiniMax H3 Latent Continuation Guide ({context_frames} frames)",
+        },
+    }
+    guider_inputs[cond_key] = [guide_id, 0]
+
+    exact_guide_id = None
+    exact_image_id = None
+    if exact_frame:
+        video_vae = (prompt.get("136", {}).get("inputs", {}) or {}).get("vae")
+        if not video_vae:
+            video_vae = [_api_node_id_by_class(prompt, "VAELoader", fallback="119"), 0]
+        exact_image_id = str(int(guide_id) + 1)
+        while exact_image_id in prompt:
+            exact_image_id = str(int(exact_image_id) + 1)
+        exact_guide_id = str(int(exact_image_id) + 1)
+        while exact_guide_id in prompt:
+            exact_guide_id = str(int(exact_guide_id) + 1)
+        prompt[exact_image_id] = {
+            "class_type": "VRGDG_MiniMaxH3LoadExactFrame",
+            "inputs": {"image_path": os.path.abspath(exact_image_path)},
+            "_meta": {"title": f"Scene {pred_scene:03d} exact last frame"},
+        }
+        prompt[exact_guide_id] = {
+            "class_type": "MiniMaxH3AddGuide",
+            "inputs": {
+                "positive": [guide_id, 0],
+                "latent": latent_source,
+                "vae": video_vae,
+                "image": [exact_image_id, 0],
+                "frame_idx": warmup_frames - 1,
+            },
+            "_meta": {"title": f"Exact last frame anchor (warm-up frame {warmup_frames - 1})"},
+        }
+        guider_inputs[cond_key] = [exact_guide_id, 0]
+
+    # The context frames are not trimmed inside the graph. They are the timing plan's
+    # warm-up (see _minimax_h3_effective_warmup_frames), so the post-render trim removes
+    # them from the video and the audio together and lip sync stays aligned.
+    return {
+        "enabled": True,
+        "mode": continuity_mode,
+        "predecessor_scene": pred_scene,
+        "context_frames": context_frames,
+        "warmup_frames": warmup_frames,
+        "load_node_id": load_id,
+        "guide_node_id": guide_id,
+        "exact_image_node_id": exact_image_id,
+        "exact_guide_node_id": exact_guide_id,
+        "exact_frame_plan": exact_plan,
+        "trim_node_id": None,
+    }
+
+
 def _patch_minimax_h3_advanced_settings(prompt, payload):
     sampler_id = _api_node_id_by_class(prompt, "KSamplerSelect", fallback="123")
     scheduler_id = _api_node_id_by_class(prompt, "BasicScheduler", fallback="124")
@@ -3094,9 +3425,7 @@ def _build_minimax_h3_api_prompt(payload):
     source_start = _first_payload_value(
         payload, "source_start_seconds", "audio_start_seconds", default=None
     )
-    warmup_frames = _first_payload_value(
-        payload, "warmup_frames", "pre_frames", default=0
-    )
+    warmup_frames = _minimax_h3_effective_warmup_frames(payload)
     cooldown_frames = _first_payload_value(
         payload, "cooldown_frames", "tail_loss_frames", default=0
     )
@@ -3216,10 +3545,14 @@ def _build_minimax_h3_api_prompt(payload):
             "effective_steps": turbo_settings["steps"],
         }
 
+    latent_continuation_settings = _patch_minimax_h3_latent_continuation(prompt, payload)
+    save_latent_settings = _patch_minimax_h3_save_latent(prompt, payload, timing)
     return {
         "workflow_path": workflow_path,
         "output_folder": output_folder,
         "prompt": prompt,
+        "latent_continuation_settings": latent_continuation_settings,
+        "save_latent_settings": save_latent_settings,
         "used_seed": seed,
         "audio_mode": audio_mode,
         "timing": timing.to_dict(),
@@ -3288,7 +3621,7 @@ def _build_minimax_h3_2pass_api_prompt(payload):
     timing = calculate_minimax_h3_timing(
         timeline_start,
         timeline_end,
-        _first_payload_value(payload, "warmup_frames", "pre_frames", default=0),
+        _minimax_h3_effective_warmup_frames(payload),
         _first_payload_value(payload, "cooldown_frames", "tail_loss_frames", default=0),
         source_start_seconds=source_start,
         source_duration_seconds=source_duration,
@@ -3561,10 +3894,17 @@ def _build_minimax_h3_2pass_api_prompt(payload):
     _set_api_input(prompt, "142", "crf", _int_payload(payload, "output_crf", 19, 0, 100))
     output_folder, filename_prefix = _minimax_h3_output_location(project_folder, scene_number)
     _set_api_input(prompt, "142", "filename_prefix", f"{filename_prefix}_stage2")
+    latent_continuation_settings = None
+    save_latent_settings = None
+    if not payload.get("_skip_latent_patches"):
+        latent_continuation_settings = _patch_minimax_h3_latent_continuation(prompt, payload)
+        save_latent_settings = _patch_minimax_h3_save_latent(prompt, payload, timing)
     return {
         "workflow_path": workflow_path,
         "output_folder": output_folder,
         "prompt": prompt,
+        "latent_continuation_settings": latent_continuation_settings,
+        "save_latent_settings": save_latent_settings,
         "used_seed": seed,
         "audio_mode": "input_audio",
         "timing": timing.to_dict(),
@@ -3628,6 +3968,7 @@ def _build_minimax_h3_advanced_2pass_api_prompt(payload):
     base_payload.setdefault("pass2_denoise", 0.2)
     base_payload.setdefault("pass2_sampler_name", "sa_solver")
     base_payload.setdefault("pass2_scheduler", "simple")
+    base_payload["_skip_latent_patches"] = True
     result = _build_minimax_h3_2pass_api_prompt(base_payload)
     prompt = result["prompt"]
 
@@ -3821,7 +4162,12 @@ def _build_minimax_h3_advanced_2pass_api_prompt(payload):
     for node_id in ("115", "181", "182", "183", "184", "185", "186", "187", "188", "189", "193", "194"):
         prompt.pop(node_id, None)
 
+    latent_continuation_settings = _patch_minimax_h3_latent_continuation(prompt, payload)
+    save_latent_settings = _patch_minimax_h3_save_latent(prompt, payload, result.get("timing"))
+
     result["prompt"] = prompt
+    result["latent_continuation_settings"] = latent_continuation_settings
+    result["save_latent_settings"] = save_latent_settings
     result["advanced_two_pass"] = {
         "pass1_megapixels": pass1_megapixels,
         "pass2_megapixels": pass2_megapixels,
@@ -3935,7 +4281,7 @@ def _build_minimax_h3_3pass_api_prompt(payload):
     timing = calculate_minimax_h3_timing(
         timeline_start,
         timeline_end,
-        _first_payload_value(payload, "warmup_frames", "pre_frames", default=0),
+        _minimax_h3_effective_warmup_frames(payload),
         _first_payload_value(payload, "cooldown_frames", "tail_loss_frames", default=0),
         source_start_seconds=source_start,
         source_duration_seconds=source_duration,
@@ -4038,10 +4384,14 @@ def _build_minimax_h3_3pass_api_prompt(payload):
     _set_api_input(prompt, "91", "filename_prefix", f"{filename_prefix}_stage1")
     _set_api_input(prompt, "299", "filename_prefix", f"{filename_prefix}_stage2")
     _set_api_input(prompt, "353", "filename_prefix", f"{filename_prefix}_stage3")
+    latent_continuation_settings = _patch_minimax_h3_latent_continuation(prompt, payload)
+    save_latent_settings = _patch_minimax_h3_save_latent(prompt, payload, timing)
     return {
         "workflow_path": workflow_path,
         "output_folder": output_folder,
         "prompt": prompt,
+        "latent_continuation_settings": latent_continuation_settings,
+        "save_latent_settings": save_latent_settings,
         "used_seed": seed,
         "audio_mode": "input_audio",
         "timing": timing.to_dict(),
