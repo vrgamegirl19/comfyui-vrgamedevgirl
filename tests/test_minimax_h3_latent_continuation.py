@@ -238,6 +238,17 @@ class BuilderLatentContinuationWiringTests(unittest.TestCase):
         self.assertIn('framePath: ""', block)
         self.assertIn("exactFramePath", block)
 
+    def test_dirty_badge_only_shows_on_scenes_that_use_latent_continuation(self):
+        start = BUILDER_SOURCE.index("async function loadDirtyLatentBadges()")
+        end = BUILDER_SOURCE.index("function openSceneOptions", start)
+        loader = BUILDER_SOURCE[start:end]
+        self.assertIn("isMiniMaxH3LatentContinuationMode(miniMaxH3ContinuityModeForSegment(seg))", loader)
+        self.assertIn("dirtySet.has(slot) && usesLatentContinuation", loader)
+        # changing a scene's continuity mode refreshes the badges straight away
+        handler_start = BUILDER_SOURCE.index('miniMaxContinuityMode.addEventListener("change"')
+        handler_end = BUILDER_SOURCE.index("miniMaxAddSpeakerCueButton.onclick", handler_start)
+        self.assertIn("loadDirtyLatentBadges()", BUILDER_SOURCE[handler_start:handler_end])
+
     def test_deleting_a_video_removes_its_stale_latent(self):
         start = BUILDER_SOURCE.index("async function deleteSelectedMedia()")
         end = BUILDER_SOURCE.index("function sendPromptToEnhance", start)

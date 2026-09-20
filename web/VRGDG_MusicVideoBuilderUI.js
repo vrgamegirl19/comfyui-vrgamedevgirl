@@ -20552,7 +20552,9 @@ function openBuilder(node) {
       state.segments.forEach((seg) => {
         const slot = sceneSlotNumber(seg);
         const wasDirty = Boolean(seg._latentDirty);
-        const isDirty = dirtySet.has(slot);
+        // Only scenes that continue from the previous scene's latent care whether it changed.
+        const usesLatentContinuation = isMiniMaxH3LatentContinuationMode(miniMaxH3ContinuityModeForSegment(seg));
+        const isDirty = dirtySet.has(slot) && usesLatentContinuation;
         if (wasDirty !== isDirty) {
           seg._latentDirty = isDirty;
           changed = true;
@@ -58527,6 +58529,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
     syncMiniMaxH3Panel();
     syncMiniMaxReferenceButtons();
+    loadDirtyLatentBadges();
     autoSaveSessionQuiet("MiniMax H3 continuity mode changed").catch(() => null);
   });
   miniMaxAddSpeakerCueButton.onclick = () => {
