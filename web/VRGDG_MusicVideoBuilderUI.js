@@ -26288,6 +26288,7 @@ function openBuilder(node) {
         "Performer/speaker choices tell Gemma who should sing, say, or carry the line depending on the global Video Type. Location connects the scene to a Reference Builder location image.",
         "Copy boundary words is optional. It appends the first word or words from the next vocal scene onto the current scene, which can help LTX warm-up and cooldown frames keep lyric context.",
         "Move end words to next is text-only. It removes the last word or words from each lyric scene and prepends them to the next vocal scene when the transcript split landed too early. If the next scene is instrumental or no-lip-sync, the words are only removed and are not added to that scene.",
+        "Move last word to start of next scene changes only that row and its immediate neighbor. Press the main Save button afterward to update the timeline, cue maps, and every saved lyric note file.",
         "Save Lines + Timing + Performers + Locations applies the edited rows to the real timeline and saves the project.",
       ],
     });
@@ -26786,6 +26787,77 @@ function openBuilder(node) {
       toast(parts.length ? `End words ${parts.join(" and ")}. Press Save to keep it.` : "No eligible lyric rows needed word moves.", !parts.length);
     };
 
+    const pendingReviewWordMoves = [];
+    const moveLastWordToNextReviewRow = (currentRow) => {
+      restoreReviewRowsToRawLyricText();
+      const rows = reviewRows();
+      const currentIndex = rows.indexOf(currentRow);
+      const nextRow = rows[currentIndex + 1] || null;
+      if (currentIndex < 0 || !nextRow) {
+        toast("There is no next scene to receive the last word.", true);
+        return;
+      }
+      const currentText = reviewRowRawLyricText(currentRow);
+      const nextText = reviewRowRawLyricText(nextRow);
+      if (reviewRowBlocksLipSync(currentRow) || isInstrumentalLyricText(currentText)) {
+        toast("This scene is instrumental or no-lip-sync, so it has no movable lyric word.", true);
+        return;
+      }
+      if (reviewRowBlocksLipSync(nextRow) || isInstrumentalLyricText(nextText)) {
+        toast("The next scene is instrumental or no-lip-sync. Change that scene before moving a lyric word into it.", true);
+        return;
+      }
+      const words = lyricWords(currentText);
+      if (!words.length) {
+        toast("This scene has no lyric word to move.", true);
+        return;
+      }
+      const movedWord = words.pop();
+      const nextWords = lyricWords(nextText);
+      setReviewRowRawLyricText(currentRow, words.join(" "));
+      if (!nextWords.length || normalizeLyricWord(nextWords[0]) !== normalizeLyricWord(movedWord)) {
+        setReviewRowRawLyricText(nextRow, `${movedWord} ${nextText}`.trim());
+      }
+      pendingReviewWordMoves.push({
+        sourceId: String(currentRow.dataset.reviewSegmentId || ""),
+        targetId: String(nextRow.dataset.reviewSegmentId || ""),
+        word: movedWord,
+      });
+      refreshBoundaryOverlapPreview();
+      toast(`Moved “${movedWord}” to the start of the next scene. Press Save Lines to update every lyric note.`);
+    };
+
+    const moveWordAcrossStructuredLyricRows = (sourceRows, targetRows, movedWord) => {
+      if (!Array.isArray(sourceRows) || !Array.isArray(targetRows) || !movedWord) return;
+      const source = [...sourceRows].reverse().find((cue) => cue && String(cue.type || "vocal") !== "instrumental" && String(cue.text || "").trim());
+      if (source) {
+        const words = lyricWords(source.text);
+        if (words.length && normalizeLyricWord(words[words.length - 1]) === normalizeLyricWord(movedWord)) {
+          words.pop();
+          source.text = words.join(" ");
+        }
+      }
+      const target = targetRows.find((cue) => cue && String(cue.type || "vocal") !== "instrumental") || null;
+      if (target) {
+        const words = lyricWords(target.text);
+        if (!words.length || normalizeLyricWord(words[0]) !== normalizeLyricWord(movedWord)) {
+          target.text = `${movedWord} ${String(target.text || "")}`.trim();
+        }
+      }
+    };
+
+    const applyPendingReviewWordMoves = (segmentsById) => {
+      for (const move of pendingReviewWordMoves) {
+        const source = segmentsById.get(move.sourceId);
+        const target = segmentsById.get(move.targetId);
+        if (!source || !target) continue;
+        moveWordAcrossStructuredLyricRows(source.lyric_cue_map, target.lyric_cue_map, move.word);
+        moveWordAcrossStructuredLyricRows(source.minimax_speaker_assignments, target.minimax_speaker_assignments, move.word);
+        moveWordAcrossStructuredLyricRows(source.speaker_assignments, target.speaker_assignments, move.word);
+        moveWordAcrossStructuredLyricRows(source.dialogue_cues, target.dialogue_cues, move.word);
+      }
+    };
+
     boundaryOverlapCheckbox.input.onchange = () => {
       boundaryOverlapCount.disabled = !boundaryOverlapCheckbox.input.checked;
       if (!boundaryOverlapCheckbox.input.checked) refreshBoundaryOverlapPreview();
@@ -26830,6 +26902,8 @@ function openBuilder(node) {
         if (segment) segment.label = label;
         const labelEl = row.querySelector("[data-review-scene-label]");
         if (labelEl) labelEl.textContent = segment?.label || label;
+        const moveWordButton = row.querySelector("[data-review-move-last-word]");
+        if (moveWordButton) moveWordButton.disabled = index >= rows.length - 1;
         syncReviewRowFromSegment(row);
       });
       state.segments.forEach((segment, index) => {
@@ -27567,18 +27641,24 @@ function openBuilder(node) {
       const play = makeButton("Play Scene");
       const playFrom = makeButton("Play From Here");
       const select = makeButton("Select");
+      const moveLastWord = makeButton("Move last word to start of next scene");
+      moveLastWord.dataset.reviewMoveLastWord = "1";
+      moveLastWord.title = "Move only this scene's final lyric word to the beginning of the next scene. Use Save Lines afterward to synchronize the timeline, cue maps, and lyric note files.";
+      moveLastWord.disabled = index >= scenes.length - 1;
       play.style.padding = "7px 8px";
       playFrom.style.padding = "7px 8px";
       select.style.padding = "7px 8px";
       play.style.width = "100%";
       playFrom.style.width = "100%";
       select.style.width = "100%";
+      moveLastWord.style.cssText = "padding:7px 8px;width:100%;font-size:10px;line-height:1.25;white-space:normal;";
       play.dataset.playLabel = "Play Scene";
       playFrom.dataset.playLabel = "Play From Here";
       play.onclick = () => playRange(segment, play);
       playFrom.onclick = () => playFromSegment(segment, playFrom);
       select.onclick = () => setActiveReviewScene(segment);
-      buttons.append(play, playFrom, select);
+      moveLastWord.onclick = () => moveLastWordToNextReviewRow(row);
+      buttons.append(play, playFrom, select, moveLastWord);
       row.append(meta, timing, text, subjectSingerPanel, facialPanel, locationWrap, flags, buttons);
       rowList.append(row);
       rememberReviewRowTiming(row);
@@ -27629,6 +27709,7 @@ function openBuilder(node) {
           if (!segment) continue;
           applyReviewRowValues(row, segment, true, { lyricTextOverride: lyricOverrides.get(segment.id) });
         }
+        applyPendingReviewWordMoves(liveSegmentsById);
         applyLyricSectionsFromReferenceText(state.segments, state.lyricMapper?.source_text || "");
         syncLyricMapperFromSegments();
         const syncedIngredients = syncIngredientsSceneMapFromSubjectMappings(state.fluxReferenceBuilder);
@@ -27643,6 +27724,7 @@ function openBuilder(node) {
         syncInspector();
         render();
         await saveSession({ quiet: true, throwOnError: true });
+        pendingReviewWordMoves.length = 0;
         showInfoModal({
           title: "Line Review Saved",
           lines: ["Lines, scene timing, performer labels, no-lip-sync/no-character flags, and location mapping were saved to the timeline."],
