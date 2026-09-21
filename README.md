@@ -6,6 +6,12 @@ The flagship tool is the **AI Video Builder**: a scene-by-scene production works
 
 ---
 
+## Resource monitor
+
+The AI Video Builder shows host RAM and NVIDIA VRAM usage in its top toolbar, refreshing about every two seconds while the Builder is open. The compact display hides automatically when the toolbar is too narrow. GPU readings require the driver's `nvidia-smi`; RAM remains available when GPU sensors are unsupported.
+
+The optional canvas strip can be enabled under **Settings → VRGDG → Resource Monitor**. It adds GPU load, temperature, RAM/VRAM bars, optional fan/clock/power details, and an idle-only **Clear memory** action. Readings come from the machine running ComfyUI.
+
 ## 🎬 AI Video Builder
 
 Add the node named **`VRGDG AI Video Builder UI`** to open the Builder.

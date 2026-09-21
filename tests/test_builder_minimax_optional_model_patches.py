@@ -14,7 +14,7 @@ TEMPLATE_PATH = ROOT / "Workflows" / "UsedForUIDoNotTouch" / "minimax_audio_driv
 BUILDER_SOURCE = (ROOT / "web" / "VRGDG_MusicVideoBuilderUI.js").read_text(encoding="utf-8")
 
 
-def load_two_pass_builder():
+def load_two_pass_builder(sparse_method="Sol-Attn (adaptive tau)"):
     module = ast.parse(RUNNER_PATH.read_text(encoding="utf-8"), filename=str(RUNNER_PATH))
     function = next(
         node for node in module.body
@@ -50,6 +50,11 @@ def load_two_pass_builder():
         "_load_api_template": lambda _path: (str(TEMPLATE_PATH), copy.deepcopy(template)),
         "_minimax_h3_2pass_api_template_path": lambda: str(TEMPLATE_PATH),
         "_first_payload_value": first_value,
+        "_minimax_h3_effective_warmup_frames": lambda payload: first_value(payload, "warmup_frames", "pre_frames", default=0),
+        "_minimax_h3_latent_continuation_mode": lambda payload: payload.get("continuity_mode", "off"),
+        "_minimax_h3_is_latent_mode": lambda mode: mode in ("latent_continuation", "latent_continuation_exact_frame"),
+        "_patch_minimax_h3_latent_continuation": lambda _prompt, _payload: {"enabled": False},
+        "_patch_minimax_h3_save_latent": lambda _prompt, _payload, _timing=None: {"enabled": False},
         "_int_payload": int_value,
         "_float_payload": float_value,
         "_bool_payload": bool_value,
@@ -65,7 +70,13 @@ def load_two_pass_builder():
         "_model_choice_exists": lambda *_args: True,
         "_get_comfy_node_mappings": lambda: {
             "MiniMaxChunkFeedForward": object(),
-            "BlockSparseAttention": object(),
+            "BlockSparseAttention": types.SimpleNamespace(INPUT_TYPES=lambda: {
+                "required": {
+                    "selection": ("COMFY_DYNAMICCOMBO_V3", {"options": [
+                        {"key": sparse_method, "inputs": {"required": {"tau": ("FLOAT", {"default": 1.3})}}},
+                    ]}),
+                },
+            }),
             "H3FastVAEDecode": object(),
         },
         "_minimax_h3_output_location": lambda _folder, _scene: (_folder, "scene_0001"),
@@ -159,6 +170,27 @@ class BuilderMiniMaxOptionalModelPatchTests(unittest.TestCase):
             self.assertEqual(feed["inputs"]["chunks"], 8)
             self.assertEqual(feed["inputs"]["seq_threshold"], 4096)
             self.assertIn(target, sparse["_meta"]["title"])
+
+    def test_updated_sparse_method_is_sent_to_both_passes(self):
+        build = load_two_pass_builder(sparse_method="sol-attn")
+        with tempfile.TemporaryDirectory() as folder:
+            audio = os.path.join(folder, "scene.wav")
+            Path(audio).touch()
+            result = build(self.payload(folder, audio, two_pass_use_block_sparse_attention=True))
+        prompt = result["prompt"]
+        for sampler_id in ("124", "192"):
+            sparse = prompt[prompt[sampler_id]["inputs"]["model"][0]]
+            self.assertEqual(sparse["class_type"], "BlockSparseAttention")
+            self.assertEqual(sparse["inputs"]["selection"], "sol-attn")
+            self.assertEqual(sparse["inputs"]["selection.tau"], 1.3)
+
+    def test_unknown_method_fails_before_queueing_instead_of_switching_algorithms(self):
+        build = load_two_pass_builder(sparse_method="vsa")
+        with tempfile.TemporaryDirectory() as folder:
+            audio = os.path.join(folder, "scene.wav")
+            Path(audio).touch()
+            with self.assertRaisesRegex(ValueError, "supported Sol-Attn method"):
+                build(self.payload(folder, audio, two_pass_use_block_sparse_attention=True))
 
 
 if __name__ == "__main__":

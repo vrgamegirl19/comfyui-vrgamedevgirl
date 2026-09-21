@@ -141,6 +141,8 @@ class BuilderMiniMaxAdvancedTwoPassTests(unittest.TestCase):
                 "MMH3TemporalSplitParams": object(),
                 "MMH3SpatialSplitParams": spatial_node_class,
             },
+            "_patch_minimax_h3_latent_continuation": lambda _prompt, _payload: {"enabled": False},
+            "_patch_minimax_h3_save_latent": lambda _prompt, _payload, _timing=None: {"enabled": False},
             "_int_payload": lambda payload, key, default, low, high: max(low, min(high, int(payload.get(key, default)))),
             "_float_payload": lambda payload, key, default, low, high: max(low, min(high, float(payload.get(key, default)))),
             "_bool_payload": lambda payload, key, default=False: bool(payload.get(key, default)),
