@@ -42,13 +42,6 @@ class MiniMaxFrameContinuityPromptTests(unittest.TestCase):
         self.assertIn("turns forward into", UI_SOURCE)
         self.assertIn("beyond the rear camera plane", UI_SOURCE)
 
-    def test_location_change_prompt_retries_nonphysical_or_incomplete_routes(self):
-        self.assertIn("validateMiniMaxH3PhysicalLocationTransition(segment, generatedPrompt)", UI_SOURCE)
-        self.assertIn("instead of physical camera travel", UI_SOURCE)
-        self.assertIn("a full-frame foreground occlusion", UI_SOURCE)
-        self.assertIn("a camera arc or turn toward the new location", UI_SOURCE)
-        self.assertIn("a final viewing direction into the new location", UI_SOURCE)
-
     def test_generation_retries_ten_times_and_never_accepts_blank(self):
         self.assertIn("attempt <= 10", UI_SOURCE)
         self.assertIn("returned an empty frame-to-frame continuity prompt", UI_SOURCE)

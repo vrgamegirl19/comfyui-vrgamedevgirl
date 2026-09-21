@@ -41069,26 +41069,6 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     );
   }
 
-  function validateMiniMaxH3PhysicalLocationTransition(segment, prompt) {
-    const contract = miniMaxH3FrameLocationContinuityContract(segment);
-    if (!contract.startsWith("LOCATION PHASE — PHYSICAL THRESHOLD TURN:")) return;
-    const text = String(prompt || "");
-    const replacementMatch = text.match(/\b(?:fade|fades|faded|fading|dissolve|dissolves|dissolved|dissolving|morph|morphs|morphed|morphing)\b/i);
-    if (replacementMatch) {
-      throw new Error(`The generated location transition used “${replacementMatch[0]}” instead of physical camera travel.`);
-    }
-    const requirements = [
-      [/(?:door(?:way|frame)?|gate(?:way)?|threshold|portal|archway|foreground\s+(?:edge|object|post|wall|vegetation|foliage))/i, "a visible physical threshold"],
-      [/(?:occlud|fills?\s+(?:the\s+)?(?:image|frame|view)|sweeps?\s+(?:fully\s+)?across)/i, "a full-frame foreground occlusion"],
-      [/(?:\barc(?:s|ing|ed)?\b|\borbit(?:s|ing|ed)?\b|\bpivot(?:s|ing|ed)?\b|\brotat(?:e|es|ing|ed)\b|\bturn(?:s|ing|ed)?\s+(?:around|forward|toward|to face))/i, "a camera arc or turn toward the new location"],
-      [/(?:rear\s+camera\s+plane|behind\s+(?:the\s+)?camera|camera\s+faces|faces?\s+(?:forward|into|down|toward)|look(?:s|ing)?\s+(?:into|down|toward|deeper))/i, "a final viewing direction into the new location"],
-    ];
-    const missing = requirements.filter(([pattern]) => !pattern.test(text)).map(([, label]) => label);
-    if (missing.length) {
-      throw new Error(`The generated location transition is missing ${missing.join(", ")}.`);
-    }
-  }
-
   function miniMaxH3CreativePromptContextForSegment(segment, mode, options = {}) {
     const settings = miniMaxH3SettingsForSegment(segment);
     const nativeAudio = settings.audio_mode === "built_in_audio";
@@ -46907,7 +46887,6 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         });
         const generatedPrompt = String(data?.prompt || "").trim();
         if (!generatedPrompt) throw new Error(`Attempt ${attempt}/10 returned an empty frame-to-frame continuity prompt.`);
-        validateMiniMaxH3PhysicalLocationTransition(segment, generatedPrompt);
         pushHistory();
         segment.minimax_h3_prompt = generatedPrompt;
         segment.minimax_h3_prompt_origin = "previous_final_frame";
