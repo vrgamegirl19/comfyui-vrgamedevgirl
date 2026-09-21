@@ -7043,10 +7043,13 @@ function openBuilder(node) {
   preview.append(previewStage, globalScrubWrap);
   const timelineInfo = document.createElement("div");
   timelineInfo.textContent = "No audio loaded";
-  timelineInfo.style.cssText = "color:#67e8f9;font-variant-numeric:tabular-nums;min-width:180px;flex:1 0 180px;";
+  timelineInfo.style.cssText = "color:#67e8f9;font-variant-numeric:tabular-nums;white-space:nowrap;flex:0 0 auto;";
   const timelineRangeInfo = document.createElement("div");
   timelineRangeInfo.textContent = "Range: none";
-  timelineRangeInfo.style.cssText = "color:#a5f3fc;font-variant-numeric:tabular-nums;min-width:220px;flex:0 0 auto;";
+  timelineRangeInfo.style.cssText = "color:#a5f3fc;font-variant-numeric:tabular-nums;white-space:nowrap;flex:0 0 auto;";
+  const timelineStatusInfo = document.createElement("div");
+  timelineStatusInfo.style.cssText = "display:flex;align-items:center;gap:12px;flex:0 0 auto;min-width:max-content;padding:0 4px;";
+  timelineStatusInfo.append(timelineInfo, timelineRangeInfo);
   const selectedMediaTools = document.createElement("div");
   selectedMediaTools.style.cssText = "margin-left:auto;display:flex;gap:8px;align-items:center;border:1px solid #27272a;border-radius:6px;background:#111113;padding:6px 8px;";
   const selectedMediaLabel = document.createElement("span");
@@ -7089,7 +7092,7 @@ function openBuilder(node) {
   addSegmentButton.textContent = "+ Segment";
   addOverlaySegmentButton.textContent = "+ Overlay Track";
   timelineToolRail.append(bulkSegmentsButton, sceneNoteButton, videoNoteButton, lyricNoteButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton);
-  timelineHeader.append(setInButton, setOutButton, clearRangeButton, closeTimelineGapsButton, snapSceneEdgeButton, splitSceneButton, idLoraTrimModeButton, overlayTrackToggleButton, overlayTrackHintButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineInfo, timelineRangeInfo, deleteSegmentButton, deleteAllSegmentsButton, selectedMediaTools);
+  timelineHeader.append(setInButton, setOutButton, clearRangeButton, closeTimelineGapsButton, snapSceneEdgeButton, idLoraTrimModeButton, overlayTrackToggleButton, overlayTrackHintButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineStatusInfo, deleteSegmentButton, deleteAllSegmentsButton, selectedMediaTools);
   const timelineBody = document.createElement("div");
   timelineBody.style.cssText = "display:grid;grid-template-columns:auto minmax(0,1fr);min-height:0;overflow:hidden;";
   const timelineViewport = document.createElement("div");
