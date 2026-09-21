@@ -23,13 +23,19 @@ class MiniMaxFrameContinuityPromptTests(unittest.TestCase):
 
     def test_location_change_contract_forbids_nonphysical_replacement(self):
         for required in (
-            "connect both locations as coherent 3D space",
-            "Reveal the new location progressively",
-            "old location visible",
+            "SINGLE ONE-WAY BOUNDARY TRANSITION",
+            "becomes the dominant environment",
             "continuous camera travel",
             "stable geometry",
         ):
             self.assertIn(required, UI_SOURCE)
+
+    def test_location_transition_runs_once_then_current_location_takes_over(self):
+        self.assertIn("previousKey && previousKey !== currentKey", UI_SOURCE)
+        self.assertIn("ESTABLISHED CURRENT LOCATION", UI_SOURCE)
+        self.assertIn("build every newly revealed environmental feature", UI_SOURCE)
+        self.assertIn("recedes behind the moving camera", UI_SOURCE)
+        self.assertIn("ending fully grounded in that location", UI_SOURCE)
 
     def test_generation_retries_ten_times_and_never_accepts_blank(self):
         self.assertIn("attempt <= 10", UI_SOURCE)

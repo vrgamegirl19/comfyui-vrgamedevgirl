@@ -41027,6 +41027,37 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     ];
   }
 
+  function miniMaxH3FrameLocationContinuityContract(segment) {
+    const previousSegment = previousAutoChainSourceSegment(segment);
+    const currentLocation = storyboardReferenceDataForSegment(segment)?.location_ref || null;
+    const previousLocation = previousSegment
+      ? storyboardReferenceDataForSegment(previousSegment)?.location_ref || null
+      : null;
+    const locationKey = (location) => String(location?.id || location?.name || location?.description || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ");
+    const currentKey = locationKey(currentLocation);
+    const previousKey = locationKey(previousLocation);
+    const currentName = String(currentLocation?.name || "the current mapped location").trim();
+    const previousName = String(previousLocation?.name || "the preceding mapped location").trim();
+    if (!currentKey) return "";
+    if (previousKey && previousKey !== currentKey) {
+      return (
+        `LOCATION PHASE — SINGLE ONE-WAY BOUNDARY TRANSITION: This scene travels physically from ${previousName} into ${currentName}. `
+        + `Begin from the attached final frame, follow one coherent camera route into ${currentName}, and progressively reveal its mapped geography through movement and parallax. `
+        + `${previousName} recedes toward the edge of frame and behind the camera while ${currentName} becomes the dominant environment by the ending frame. `
+        + `The ending establishes ${currentName} as the location inherited by the following scene.`
+      );
+    }
+    return (
+      `LOCATION PHASE — ESTABLISHED CURRENT LOCATION: ${currentName} is now the complete established environment. `
+      + `Continue forward deeper into its mapped geography and build every newly revealed environmental feature from ${currentName}. `
+      + `Any boundary architecture visible only in the attached opening frame stays physically fixed at its actual coordinates, recedes behind the moving camera, and completes its departure from view. `
+      + `Keep the camera trajectory oriented deeper into ${currentName}, ending fully grounded in that location.`
+    );
+  }
+
   function miniMaxH3CreativePromptContextForSegment(segment, mode, options = {}) {
     const settings = miniMaxH3SettingsForSegment(segment);
     const nativeAudio = settings.audio_mode === "built_in_audio";
@@ -41067,14 +41098,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (options.frameContinuityPrompt) {
       const hasPromptInspiration = mode === "reference_to_video" && miniMaxH3SceneImageIsPromptInspiration(segment);
       const firstRendererAttachment = hasPromptInspiration ? 3 : 2;
+      const locationContinuityContract = miniMaxH3FrameLocationContinuityContract(segment);
       parts.push(
         "FRAME-TO-FRAME CONTINUITY — HIGHEST PRIORITY:\n"
         + "Attached Picture 1 is the previous rendered scene's actual final frame. It is the visual truth for the first instant of this scene. Begin from its exact subject position, pose, expression, camera angle, framing, lighting, wardrobe, environment geometry, foreground layers, and camera momentum. "
         + "Continue as one seamless uninterrupted take. Begin the returned description with exactly: ‘Continuing seamlessly from the previous shot, the camera maintains its established course as’ and immediately specify the next physical camera movement. "
-        + "The current story beat, lyrics/audio timing, mapped location, and supporting references determine the destination but cannot replace the visible opening state. "
-        + "If the destination location differs, connect both locations as coherent 3D space and give the camera a real route through or around architecture, a doorway, corridor, wall, post, vegetation, hair, clothing, or another foreground occluder. Reveal the new location progressively through camera motion and parallax while keeping the old location visible long enough to prove both spaces coexist. "
+        + "The current story beat, lyrics/audio timing, mapped location, and supporting references determine the destination while the visible opening state supplies the exact starting point. "
         + "Express the complete transition through continuous camera travel, physical subject motion, stable geometry, progressive reveal, and coherent parallax. Write every finished shot sentence as a positive description of the desired visible result. Attached Picture 1 remains an LLM-only observation source; finished prose uses direct visual description and the documented renderer labels."
       );
+      if (locationContinuityContract) parts.push(locationContinuityContract);
       if (hasPromptInspiration) {
         parts.push("Attached Picture 2 is the scene-image inspiration used only under its existing environment/framing limits. Renderer Image 1 begins at Attached Picture 3.");
       } else {
