@@ -3819,6 +3819,26 @@ def _build_minimax_h3_2pass_api_prompt(payload):
                 + ". Install/update ComfyUI-KJNodes and ComfyUI as needed, then restart ComfyUI."
             )
 
+    if use_block_sparse_attention:
+        sparse_input_types = mappings["BlockSparseAttention"].INPUT_TYPES()
+        sparse_inputs = {
+            **sparse_input_types.get("required", {}),
+            **sparse_input_types.get("optional", {}),
+        }
+        selection_spec = sparse_inputs.get("selection", ())
+        selection_options = selection_spec[1].get("options", []) if len(selection_spec) > 1 else []
+        selection_keys = {option["key"] for option in selection_options}
+        # DynamicCombo keys changed when Block Sparse Attention became Model Sparse Attention.
+        sparse_selection = next(
+            (key for key in ("sol-attn", "Sol-Attn (adaptive tau)") if key in selection_keys),
+            None,
+        )
+        if sparse_selection is None:
+            raise ValueError(
+                "The installed BlockSparseAttention node does not advertise a supported Sol-Attn method. "
+                "Disable Use Block Sparse Attention or update the VRGDG nodes for this ComfyUI version."
+            )
+
     optional_patch_nodes = []
 
     def add_optional_model_patch(model_ref, class_type, inputs, target, title):
@@ -3849,7 +3869,7 @@ def _build_minimax_h3_2pass_api_prompt(payload):
                 model_ref,
                 "BlockSparseAttention",
                 {
-                    "selection": "Sol-Attn (adaptive tau)",
+                    "selection": sparse_selection,
                     "selection.tau": 1.3,
                     "start_percent": 0.2,
                     "end_percent": 1.0,

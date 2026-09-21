@@ -3136,6 +3136,9 @@ function openBuilder(node) {
   console.log(`[VRGDG Music Builder] UI version ${BUILDER_UI_VERSION}`);
   const overlay = document.createElement("div");
   let builderKeydownHandler = null;
+  let builderResourceTimer = 0;
+  let builderResourceController = null;
+  let builderResourceResizeObserver = null;
   overlay.dataset.vrgdgThemeRoot = "true";
   overlay.style.cssText = `position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;font-family:${BUILDER_FONT_STACK};`;
   const shell = document.createElement("div");
@@ -3428,6 +3431,9 @@ function openBuilder(node) {
   const closeBuilderNow = () => {
     pauseAllAudio();
     if (!previewVideo.paused) previewVideo.pause();
+    clearTimeout(builderResourceTimer);
+    builderResourceController?.abort();
+    builderResourceResizeObserver?.disconnect();
     window.removeEventListener("vrgdg:builder-toast", toastNotificationHandler);
     if (builderKeydownHandler) document.removeEventListener("keydown", builderKeydownHandler, true);
     restoreBrowserAiDownloadsQuietly().catch(() => null);
@@ -3643,8 +3649,73 @@ function openBuilder(node) {
   importActions.style.cssText = "display:flex;gap:5px;align-items:center;justify-content:center;flex-wrap:nowrap;min-width:0;overflow:visible;";
   importActions.append(wizardButton, autoBuildButton, storyboardBuilderButton, fluxReferenceBuilderButton, lyricMapperButton, gemmaRunnerButton, promptOptionsButton);
   const centerActions = document.createElement("div");
-  centerActions.style.cssText = "display:flex;gap:8px;align-items:center;justify-content:center;min-width:0;overflow:visible;";
+  centerActions.style.cssText = "position:relative;display:flex;gap:8px;align-items:center;justify-content:center;min-width:0;overflow:visible;";
   centerActions.append(importActions, batchActions);
+  const builderResourceMonitor = document.createElement("div");
+  builderResourceMonitor.setAttribute("aria-label", "Video Builder RAM and VRAM usage");
+  builderResourceMonitor.style.cssText = `position:absolute;right:0;top:50%;transform:translateY(-50%);display:none;align-items:center;gap:10px;width:250px;height:42px;box-sizing:border-box;padding:5px 9px;border:1px solid #3f3f46;border-radius:7px;background:#18181b;color:#d4d4d8;font-family:${BUILDER_FONT_STACK};font-size:10px;line-height:1.25;pointer-events:auto;`;
+  builderResourceMonitor.innerHTML = `
+    <div style="flex:1 1 0;min-width:0;">
+      <div style="display:flex;justify-content:space-between;gap:6px;"><span>VRAM</span><strong data-builder-resource-value="vram" style="color:#67e8f9;font-weight:600;white-space:nowrap;">—</strong></div>
+      <div style="height:3px;margin-top:4px;overflow:hidden;border-radius:3px;background:#3f3f46;"><i data-builder-resource-bar="vram" style="display:block;width:0;height:100%;background:#06b6d4;"></i></div>
+    </div>
+    <div style="flex:1 1 0;min-width:0;">
+      <div style="display:flex;justify-content:space-between;gap:6px;"><span>RAM</span><strong data-builder-resource-value="ram" style="color:#c4b5fd;font-weight:600;white-space:nowrap;">—</strong></div>
+      <div style="height:3px;margin-top:4px;overflow:hidden;border-radius:3px;background:#3f3f46;"><i data-builder-resource-bar="ram" style="display:block;width:0;height:100%;background:#8b5cf6;"></i></div>
+    </div>
+  `;
+  builderResourceMonitor.title = "RAM and VRAM on the machine running ComfyUI. Updated every two seconds.";
+  centerActions.append(builderResourceMonitor);
+
+  const renderBuilderResourceMetric = (key, memory) => {
+    const value = builderResourceMonitor.querySelector(`[data-builder-resource-value="${key}"]`);
+    const bar = builderResourceMonitor.querySelector(`[data-builder-resource-bar="${key}"]`);
+    const used = Number(memory?.used);
+    const total = Number(memory?.total);
+    const valid = Number.isFinite(used) && Number.isFinite(total) && total > 0;
+    const usage = valid ? Math.max(0, Math.min(100, used / total * 100)) : 0;
+    value.textContent = valid ? `${(used / 2 ** 30).toFixed(1)}/${(total / 2 ** 30).toFixed(1)} GB` : "—";
+    value.title = valid ? `${usage.toFixed(1)}% used` : "Reading unavailable";
+    bar.style.width = `${usage}%`;
+  };
+  const positionBuilderResourceMonitor = () => {
+    const centerBounds = centerActions.getBoundingClientRect();
+    const actionBounds = importActions.getBoundingClientRect();
+    const availableRight = centerBounds.right - actionBounds.right;
+    builderResourceMonitor.style.display = availableRight >= 265 ? "flex" : "none";
+  };
+  const pollBuilderResources = async () => {
+    if (!overlay.isConnected || builderResourceController) return;
+    builderResourceController = new AbortController();
+    const timeout = setTimeout(() => builderResourceController?.abort(), 5000);
+    try {
+      const response = await api.fetchApi("/vrgdg/resource-monitor", {
+        signal: builderResourceController.signal,
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      const selectedGpu = String(app.extensionManager.setting.get("VRGDG.ResourceMonitor.GPU") ?? 0);
+      const gpu = Array.isArray(data?.gpus)
+        ? (data.gpus.find((item) => String(item?.index) === selectedGpu) || data.gpus[0])
+        : null;
+      renderBuilderResourceMetric("vram", gpu);
+      renderBuilderResourceMetric("ram", data?.ram);
+      builderResourceMonitor.title = gpu
+        ? `GPU ${gpu.index} · ${gpu.name} · RAM and VRAM on the machine running ComfyUI`
+        : "RAM is available. VRAM requires NVIDIA nvidia-smi.";
+    } catch {
+      if (overlay.isConnected) {
+        renderBuilderResourceMetric("vram", null);
+        renderBuilderResourceMetric("ram", null);
+        builderResourceMonitor.title = "Resource monitor unavailable. Restart ComfyUI after installing the monitor.";
+      }
+    } finally {
+      clearTimeout(timeout);
+      builderResourceController = null;
+      if (overlay.isConnected) builderResourceTimer = setTimeout(pollBuilderResources, 2000);
+    }
+  };
   const utilityActions = document.createElement("div");
   utilityActions.style.cssText = "display:flex;gap:5px;align-items:center;justify-content:flex-end;flex-wrap:nowrap;min-width:max-content;";
   const projectVideoEngineBadge = document.createElement("div");
@@ -7054,6 +7125,11 @@ function openBuilder(node) {
   shell.append(shellHeader, main, timeline);
   overlay.append(shell);
   document.body.append(overlay);
+  builderResourceResizeObserver = new ResizeObserver(positionBuilderResourceMonitor);
+  builderResourceResizeObserver.observe(centerActions);
+  builderResourceResizeObserver.observe(importActions);
+  positionBuilderResourceMonitor();
+  void pollBuilderResources();
   refreshV10UpdateStatus();
   installFileDropNavigationGuard(shell);
   window.VRGDG_UIThemes?.registerRoot?.(overlay);
