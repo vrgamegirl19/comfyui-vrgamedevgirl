@@ -68,7 +68,7 @@ MINIMAX_H3_VIDEO_TO_VIDEO_INSTRUCTIONS = (
 MINIMAX_H3_FRAME_CONTINUITY_INSTRUCTIONS = MINIMAX_H3_PROMPT_DIRECTOR_CORE + """
 
 ACTIVE TASK: FRAME-TO-FRAME CONTINUITY
-Use the previous render's attached final frame as the authoritative opening state. Follow the resolved FRAME-TO-FRAME CONTINUITY contract in the Scene concept and write one uninterrupted continuation.
+Use the previous render's attached final frame as the authoritative opening state. Follow the resolved FRAME-TO-FRAME CONTINUITY contract in the Scene concept and write one seamless uninterrupted continuation entirely through positive descriptions of desired visual action.
 """
 
 

@@ -41070,10 +41070,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       parts.push(
         "FRAME-TO-FRAME CONTINUITY — HIGHEST PRIORITY:\n"
         + "Attached Picture 1 is the previous rendered scene's actual final frame. It is the visual truth for the first instant of this scene. Begin from its exact subject position, pose, expression, camera angle, framing, lighting, wardrobe, environment geometry, foreground layers, and camera momentum. "
-        + "Continue as one unbroken take. Begin the returned description with exactly: ‘Continuing without a cut from the previous shot, the camera stays on course...’ and then specify the next physical camera movement. "
+        + "Continue as one seamless uninterrupted take. Begin the returned description with exactly: ‘Continuing seamlessly from the previous shot, the camera maintains its established course as’ and immediately specify the next physical camera movement. "
         + "The current story beat, lyrics/audio timing, mapped location, and supporting references determine the destination but cannot replace the visible opening state. "
         + "If the destination location differs, connect both locations as coherent 3D space and give the camera a real route through or around architecture, a doorway, corridor, wall, post, vegetation, hair, clothing, or another foreground occluder. Reveal the new location progressively through camera motion and parallax while keeping the old location visible long enough to prove both spaces coexist. "
-        + "Never use a cut, fade, dissolve, morph, teleport, reset, sudden reframing, or abrupt background swap. Attached Picture 1 is LLM-only and must never be called Image 1 or any renderer Image N in the finished prompt."
+        + "Express the complete transition through continuous camera travel, physical subject motion, stable geometry, progressive reveal, and coherent parallax. Write every finished shot sentence as a positive description of the desired visible result. Attached Picture 1 remains an LLM-only observation source; finished prose uses direct visual description and the documented renderer labels."
       );
       if (hasPromptInspiration) {
         parts.push("Attached Picture 2 is the scene-image inspiration used only under its existing environment/framing limits. Renderer Image 1 begins at Attached Picture 3.");
@@ -41392,7 +41392,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const performers = selectedPerformerSubjectsForSegment(segment);
     const environment = "inside the mapped environment";
     if (cue?.type === "instrumental") {
-      return normalizeMiniMaxH3ShotDescription(`An atmospheric cinematic shot shows the scene ${environment} during an instrumental no-vocal moment. Any visible performers remain silent with closed or naturally relaxed mouths while the camera creates visual movement through posture, wind, clothing motion, and the surrounding environment.`);
+      return normalizeMiniMaxH3ShotDescription(`An atmospheric cinematic shot shows the scene ${environment} during an instrumental passage. Every visible performer maintains a naturally relaxed closed mouth while the camera creates visual movement through posture, wind, clothing motion, and the surrounding environment.`);
     }
     if (cue) {
       const subject = performers.find((item) => String(item.id) === String(cue.singer_id)) || { id: cue.singer_id, name: cue.singer_name };
@@ -41441,7 +41441,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       } else if (interaction === "background_dancing") {
         clauses.push(`${subjects} ${plural ? "perform" : "performs"} backup choreography in the background`);
       } else if (interaction === "alongside") {
-        clauses.push(`${subjects} ${plural ? "dance" : "dances"} alongside <Subject 1> without contact`);
+        clauses.push(`${subjects} ${plural ? "dance" : "dances"} alongside <Subject 1> with independent choreography and comfortable personal spacing`);
       } else {
         clauses.push(`${subjects} ${plural ? "remain" : "remains"} visibly present in the background`);
       }
@@ -41449,9 +41449,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     for (const extra of mainContactExtras) {
       const ensemble = Number(extra.count || 1) > 1;
       if (extra.interaction === "dancing_with") {
-        clauses.push(`${extra.label} performs sensual adult nightclub dancing specifically with <Subject 1>${ensemble ? ", with its members alternating close hip-led grinding, dancing behind her with hands at her hips or waist, and face-to-face body-close movement" : ", using close hip-led grinding, dancing behind her with hands at her hips or waist, or face-to-face body-close movement"}; contact among extras does not satisfy this action and they do not partner one another`);
+        clauses.push(`${extra.label} performs sensual adult nightclub dancing specifically with <Subject 1>${ensemble ? ", with its members alternating close hip-led grinding, dancing behind her with hands at her hips or waist, and face-to-face body-close movement" : ", using close hip-led grinding, dancing behind her with hands at her hips or waist, or face-to-face body-close movement"}; <Subject 1> remains the exclusive dance partner`);
       } else {
-        clauses.push(`${ensemble ? `each member of ${extra.label} takes a turn making` : `${extra.label} makes`} clearly visible physical contact specifically with <Subject 1>; contact among extras does not satisfy this action and they do not direct the mapped interaction toward one another`);
+        clauses.push(`${ensemble ? `each member of ${extra.label} takes a turn making` : `${extra.label} makes`} clearly visible physical contact specifically with <Subject 1>; <Subject 1> remains the exclusive interaction partner`);
       }
     }
     const shotSentence = shots[targetIndex].replace(/\s+$/g, "").replace(/[.!?…]+$/g, "");
@@ -41520,6 +41520,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       }
       if (/\.\s+guides\s+(?:his|her|their|the)\s+exact\s+appearance\b/i.test(description)) {
         throw new Error(`Gemma returned an orphaned reference-purpose fragment in shot ${index + 1}. Generate again so every sentence has a clear subject.`);
+      }
+      const visualProse = description.replace(/<d>[\s\S]*?<\/d>/gi, " ");
+      const negativePromptMatch = visualProse.match(/\b(?:do\s+not|don['’]t|never|without|avoid|must\s+not|cannot|can['’]t|not|no)\b/i);
+      if (negativePromptMatch) {
+        throw new Error(`Gemma used negative prompt wording (“${negativePromptMatch[0]}”) in shot ${index + 1}. Rewrite the shot entirely as positive desired visual action.`);
       }
       return normalizeMiniMaxH3ShotDescription(description);
     });
@@ -42083,10 +42088,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   function miniMaxH3OfficialSoundscape(segment) {
     const settings = miniMaxH3SettingsForSegment(segment);
     if (settings.audio_mode === "input_audio") {
-      return "overall_soundscape:\nNo additional environmental or physical sounds are added over <Audio 1>.";
+      return "overall_soundscape:\n<Audio 1> remains the sole complete audience-facing soundtrack with its original mix, timing, vocals, music, and dynamics intact.";
     }
     const audioDirection = String(segment?.audio_direction || "").trim();
-    return `overall_soundscape:\n${audioDirection || "Subtle location-appropriate ambience, physical movement sounds, breathing, and non-verbal performance sounds support the scene without adding unrequested dialogue."}`;
+    return `overall_soundscape:\n${audioDirection || "Subtle location-appropriate ambience, physical movement sounds, breathing, and expressive performance sounds support the scene."}`;
   }
 
   function miniMaxH3OfficialMusic(segment) {
@@ -42094,7 +42099,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (settings.audio_mode === "input_audio") {
       return "non_diegetic_music:\n<Audio 1> is reused as the complete audience-facing song/music track.";
     }
-    return "non_diegetic_music:\nN/A";
+    return "non_diegetic_music:\nThe scene's native soundtrack follows the requested musical and atmospheric direction.";
   }
 
   function miniMaxH3OfficialIntegratedDescription(segment, mode, creative) {

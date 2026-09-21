@@ -26,8 +26,8 @@ class MiniMaxFrameContinuityPromptTests(unittest.TestCase):
             "connect both locations as coherent 3D space",
             "Reveal the new location progressively",
             "old location visible",
-            "fade, dissolve, morph, teleport",
-            "abrupt background swap",
+            "continuous camera travel",
+            "stable geometry",
         ):
             self.assertIn(required, UI_SOURCE)
 
@@ -64,7 +64,14 @@ class MiniMaxFrameContinuityPromptTests(unittest.TestCase):
     def test_feature_forces_one_continuous_shot(self):
         self.assertIn("frequency: 0, cut_times_seconds: [], cue_driven: false", UI_SOURCE)
         self.assertIn("All listed cues occur inside the same uninterrupted shot", UI_SOURCE)
-        self.assertIn("Continuing without a cut from the previous shot, the camera stays on course", UI_SOURCE)
+        self.assertIn("Continuing seamlessly from the previous shot, the camera maintains its established course as", UI_SOURCE)
+
+    def test_generated_shot_prose_rejects_negative_prompt_words(self):
+        self.assertIn("negativePromptMatch", UI_SOURCE)
+        self.assertIn("negative prompt wording", UI_SOURCE)
+        self.assertIn("Rewrite the shot entirely as positive desired visual action", UI_SOURCE)
+        self.assertNotIn("No additional environmental or physical sounds are added", UI_SOURCE)
+        self.assertIn("remains the sole complete audience-facing soundtrack", UI_SOURCE)
 
     def test_llm_preset_contains_no_inactive_setting_branches(self):
         core = INSTRUCTION_SOURCE.split("_MINIMAX_H3_TEXT_TO_VIDEO_MODE", 1)[0]
