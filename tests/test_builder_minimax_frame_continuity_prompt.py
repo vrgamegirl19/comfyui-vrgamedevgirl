@@ -21,21 +21,33 @@ class MiniMaxFrameContinuityPromptTests(unittest.TestCase):
         self.assertIn("HIGHEST PRIORITY", UI_SOURCE)
         self.assertIn("frame_continuity_prompt", BACKEND_SOURCE)
 
-    def test_location_change_contract_forbids_nonphysical_replacement(self):
+    def test_location_change_contract_requires_physical_threshold_turn(self):
         for required in (
-            "SINGLE ONE-WAY BOUNDARY TRANSITION",
-            "becomes the dominant environment",
+            "PHYSICAL THRESHOLD TURN",
+            "natural full-frame occlusion",
+            "clear camera arc around the subject",
+            "passed fully beyond the rear camera plane",
+            "final viewing direction explicitly",
             "continuous camera travel",
             "stable geometry",
         ):
             self.assertIn(required, UI_SOURCE)
+        self.assertNotIn("recedes toward the edge of frame and behind the camera", UI_SOURCE)
 
     def test_location_transition_runs_once_then_current_location_takes_over(self):
         self.assertIn("previousKey && previousKey !== currentKey", UI_SOURCE)
         self.assertIn("ESTABLISHED CURRENT LOCATION", UI_SOURCE)
         self.assertIn("build every newly revealed environmental feature", UI_SOURCE)
-        self.assertIn("recedes behind the moving camera", UI_SOURCE)
-        self.assertIn("ending fully grounded in that location", UI_SOURCE)
+        self.assertIn("remains stationary in world space", UI_SOURCE)
+        self.assertIn("turns forward into", UI_SOURCE)
+        self.assertIn("beyond the rear camera plane", UI_SOURCE)
+
+    def test_location_change_prompt_retries_nonphysical_or_incomplete_routes(self):
+        self.assertIn("validateMiniMaxH3PhysicalLocationTransition(segment, generatedPrompt)", UI_SOURCE)
+        self.assertIn("instead of physical camera travel", UI_SOURCE)
+        self.assertIn("a full-frame foreground occlusion", UI_SOURCE)
+        self.assertIn("a camera arc or turn toward the new location", UI_SOURCE)
+        self.assertIn("a final viewing direction into the new location", UI_SOURCE)
 
     def test_generation_retries_ten_times_and_never_accepts_blank(self):
         self.assertIn("attempt <= 10", UI_SOURCE)

@@ -41039,23 +41039,54 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       .replace(/\s+/g, " ");
     const currentKey = locationKey(currentLocation);
     const previousKey = locationKey(previousLocation);
-    const currentName = String(currentLocation?.name || "the current mapped location").trim();
-    const previousName = String(previousLocation?.name || "the preceding mapped location").trim();
+    const locationIdentity = (location, fallback) => {
+      const name = String(location?.name || fallback).trim();
+      const description = String(location?.description || "").trim().replace(/\s+/g, " ");
+      if (!description) return name;
+      const firstSentence = description.match(/^.*?[.!?](?:\s|$)/)?.[0]?.trim() || description;
+      const compactDescription = firstSentence.length > 240
+        ? `${firstSentence.slice(0, 237).trim()}...`
+        : firstSentence;
+      return `${name} (${compactDescription})`;
+    };
+    const currentName = locationIdentity(currentLocation, "the current mapped location");
+    const previousName = locationIdentity(previousLocation, "the preceding mapped location");
     if (!currentKey) return "";
     if (previousKey && previousKey !== currentKey) {
       return (
-        `LOCATION PHASE — SINGLE ONE-WAY BOUNDARY TRANSITION: This scene travels physically from ${previousName} into ${currentName}. `
-        + `Begin from the attached final frame, follow one coherent camera route into ${currentName}, and progressively reveal its mapped geography through movement and parallax. `
-        + `${previousName} recedes toward the edge of frame and behind the camera while ${currentName} becomes the dominant environment by the ending frame. `
-        + `The ending establishes ${currentName} as the location inherited by the following scene.`
+        `LOCATION PHASE — PHYSICAL THRESHOLD TURN: This scene performs the single physical passage from ${previousName} into ${currentName}. `
+        + `Track the subject to a visible doorway, gateway, solid foreground edge, or natural threshold already present in the opening frame. `
+        + `After the subject crosses its plane, let that foreground edge sweep fully across the image as a natural full-frame occlusion. During that continuous occlusion, cross the threshold and execute a clear camera arc around the subject toward ${currentName}. `
+        + `As the occluding edge clears, the camera faces forward into ${currentName}; ${previousName} has passed fully beyond the rear camera plane while the subject and destination reappear through coherent motion and parallax. `
+        + `End looking deeper along ${currentName}, with its mapped geography filling the image as the location inherited by the following scene. Describe the threshold crossing, full-frame occlusion, camera arc, and final viewing direction explicitly.`
       );
     }
     return (
       `LOCATION PHASE — ESTABLISHED CURRENT LOCATION: ${currentName} is now the complete established environment. `
       + `Continue forward deeper into its mapped geography and build every newly revealed environmental feature from ${currentName}. `
-      + `Any boundary architecture visible only in the attached opening frame stays physically fixed at its actual coordinates, recedes behind the moving camera, and completes its departure from view. `
-      + `Keep the camera trajectory oriented deeper into ${currentName}, ending fully grounded in that location.`
+      + `Any threshold structure carried in the attached opening frame remains stationary in world space while the camera completes its passage beyond that structure's plane and turns forward into ${currentName}. `
+      + `The threshold travels naturally through a frame edge and beyond the rear camera plane during the opening movement beat. End looking deeper into ${currentName}, fully grounded in that location.`
     );
+  }
+
+  function validateMiniMaxH3PhysicalLocationTransition(segment, prompt) {
+    const contract = miniMaxH3FrameLocationContinuityContract(segment);
+    if (!contract.startsWith("LOCATION PHASE — PHYSICAL THRESHOLD TURN:")) return;
+    const text = String(prompt || "");
+    const replacementMatch = text.match(/\b(?:fade|fades|faded|fading|dissolve|dissolves|dissolved|dissolving|morph|morphs|morphed|morphing)\b/i);
+    if (replacementMatch) {
+      throw new Error(`The generated location transition used “${replacementMatch[0]}” instead of physical camera travel.`);
+    }
+    const requirements = [
+      [/(?:door(?:way|frame)?|gate(?:way)?|threshold|portal|archway|foreground\s+(?:edge|object|post|wall|vegetation|foliage))/i, "a visible physical threshold"],
+      [/(?:occlud|fills?\s+(?:the\s+)?(?:image|frame|view)|sweeps?\s+(?:fully\s+)?across)/i, "a full-frame foreground occlusion"],
+      [/(?:\barc(?:s|ing|ed)?\b|\borbit(?:s|ing|ed)?\b|\bpivot(?:s|ing|ed)?\b|\brotat(?:e|es|ing|ed)\b|\bturn(?:s|ing|ed)?\s+(?:around|forward|toward|to face))/i, "a camera arc or turn toward the new location"],
+      [/(?:rear\s+camera\s+plane|behind\s+(?:the\s+)?camera|camera\s+faces|faces?\s+(?:forward|into|down|toward)|look(?:s|ing)?\s+(?:into|down|toward|deeper))/i, "a final viewing direction into the new location"],
+    ];
+    const missing = requirements.filter(([pattern]) => !pattern.test(text)).map(([, label]) => label);
+    if (missing.length) {
+      throw new Error(`The generated location transition is missing ${missing.join(", ")}.`);
+    }
   }
 
   function miniMaxH3CreativePromptContextForSegment(segment, mode, options = {}) {
@@ -46876,6 +46907,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         });
         const generatedPrompt = String(data?.prompt || "").trim();
         if (!generatedPrompt) throw new Error(`Attempt ${attempt}/10 returned an empty frame-to-frame continuity prompt.`);
+        validateMiniMaxH3PhysicalLocationTransition(segment, generatedPrompt);
         pushHistory();
         segment.minimax_h3_prompt = generatedPrompt;
         segment.minimax_h3_prompt_origin = "previous_final_frame";
