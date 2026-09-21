@@ -37,10 +37,41 @@ class MiniMaxFrameContinuityPromptTests(unittest.TestCase):
     def test_location_transition_runs_once_then_current_location_takes_over(self):
         self.assertIn("previousKey && previousKey !== currentKey", UI_SOURCE)
         self.assertIn("ESTABLISHED CURRENT LOCATION", UI_SOURCE)
-        self.assertIn("build every newly revealed environmental feature", UI_SOURCE)
-        self.assertIn("remains stationary in world space", UI_SOURCE)
-        self.assertIn("turns forward into", UI_SOURCE)
-        self.assertIn("beyond the rear camera plane", UI_SOURCE)
+        self.assertIn("every newly revealed environmental feature", UI_SOURCE)
+        self.assertIn("preserve its established spatial logic", UI_SOURCE)
+        self.assertIn("End looking deeper into", UI_SOURCE)
+
+    def test_location_transition_presets_are_scene_level_and_boundary_only(self):
+        for preset in (
+            'value: "normal"',
+            'value: "surreal"',
+            'value: "cinematic"',
+            'value: "inner_world"',
+            'value: "match"',
+            'value: "motion"',
+            'value: "creative_auto"',
+            'value: "custom"',
+        ):
+            self.assertIn(preset, UI_SOURCE)
+        self.assertIn("segment.minimax_h3_location_transition_preset", UI_SOURCE)
+        self.assertIn("segment.minimax_h3_location_transition_custom", UI_SOURCE)
+        self.assertIn("if (previousKey && previousKey !== currentKey)", UI_SOURCE)
+        self.assertIn("return `${directions[preset]} ${commonEnding}`", UI_SOURCE)
+
+    def test_each_location_transition_preset_resolves_to_one_instruction(self):
+        for heading in (
+            "PHYSICAL THRESHOLD TURN",
+            "SURREAL MATERIAL TRANSFORMATION",
+            "CINEMATIC CONCEAL AND REVEAL",
+            "INNER WORLD PORTAL",
+            "VISUAL MATCH TRANSITION",
+            "MOTION-DRIVEN TRANSITION",
+            "CREATIVE IMAGE-AWARE TRANSITION",
+            "CUSTOM TRANSITION",
+        ):
+            self.assertIn(heading, UI_SOURCE)
+        self.assertIn("Apply this scene's authored transition direction", UI_SOURCE)
+        self.assertIn("miniMaxLocationTransitionCustomField.style.display", UI_SOURCE)
 
     def test_generation_retries_ten_times_and_never_accepts_blank(self):
         self.assertIn("attempt <= 10", UI_SOURCE)

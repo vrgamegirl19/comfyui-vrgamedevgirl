@@ -356,6 +356,17 @@ const MINIMAX_H3_CONTINUITY_OPTIONS = [
   { value: "exact_start_frame", label: "Previous final frame — exact start frame" },
 ];
 
+const MINIMAX_H3_LOCATION_TRANSITION_OPTIONS = [
+  { value: "normal", label: "Normal — physical route" },
+  { value: "surreal", label: "Surreal transformation" },
+  { value: "cinematic", label: "Cinematic conceal" },
+  { value: "inner_world", label: "Inner world / portal" },
+  { value: "match", label: "Match transition" },
+  { value: "motion", label: "Motion transition" },
+  { value: "creative_auto", label: "Creative auto" },
+  { value: "custom", label: "Custom" },
+];
+
 const MINIMAX_H3_START_FRAME_CHARACTER_INFLUENCE_OPTIONS = [
   { value: "face_hair_only", label: "Face + hair only (keep the rest of the start frame)" },
   { value: "full_character", label: "Full character identity (face, hair, clothing, and body)" },
@@ -397,6 +408,11 @@ function normalizeMiniMaxH3ContinuityMode(value) {
   if (["spatial", "spatial_reference", "continuity_reference"].includes(clean)) return "spatial_reference";
   if (["exact", "exact_start", "exact_start_frame", "continuous_start"].includes(clean)) return "exact_start_frame";
   return "off";
+}
+
+function normalizeMiniMaxH3LocationTransitionPreset(value) {
+  const clean = String(value || "normal").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  return MINIMAX_H3_LOCATION_TRANSITION_OPTIONS.some((item) => item.value === clean) ? clean : "normal";
 }
 
 function isMiniMaxH3LatentContinuationMode(mode) {
@@ -6171,6 +6187,19 @@ function openBuilder(node) {
   const miniMaxLatentContextField = makeField("Latent context frames", miniMaxLatentContextFrames);
   const miniMaxContinuityPromptFromLastFrame = makeCheckbox("Create each next scene prompt from the previous rendered final frame", false);
   miniMaxContinuityPromptFromLastFrame.wrapper.title = "Scene 1 keeps its authored prompt. Before rendering Scene 2 and later, the Builder extracts the predecessor's actual final frame and asks the vision LLM to create and save a complete continuous-shot prompt from it plus the scene's story, audio timing, and references.";
+  const miniMaxLocationTransitionPreset = makeSelect(MINIMAX_H3_LOCATION_TRANSITION_OPTIONS, "normal");
+  const miniMaxLocationTransitionPresetField = makeField("Location change transition", miniMaxLocationTransitionPreset);
+  miniMaxLocationTransitionPresetField.title = "Saved per scene. It is used only when this scene's mapped location differs from the preceding scene's mapped location.";
+  const miniMaxLocationTransitionCustom = document.createElement("textarea");
+  miniMaxLocationTransitionCustom.placeholder = "Describe the transition you want, such as: combine surreal transformation with a cinematic eye transition.";
+  miniMaxLocationTransitionCustom.style.cssText = "width:100%;min-height:64px;box-sizing:border-box;resize:vertical;border:1px solid #3f3f46;border-radius:6px;background:#09090b;color:#f8fafc;padding:8px;font-size:12px;line-height:1.4;";
+  const miniMaxLocationTransitionCustomField = makeField("Custom location transition", miniMaxLocationTransitionCustom);
+  const miniMaxLocationTransitionNote = document.createElement("div");
+  miniMaxLocationTransitionNote.textContent = "This scene-level preset is used only at a mapped location boundary. Same-location scenes continue through the established destination.";
+  miniMaxLocationTransitionNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
+  const miniMaxLocationTransitionControls = document.createElement("div");
+  miniMaxLocationTransitionControls.style.cssText = "display:none;flex-direction:column;gap:6px;padding:8px;border:1px solid #334155;border-radius:7px;background:#0f172a;";
+  miniMaxLocationTransitionControls.append(miniMaxLocationTransitionPresetField, miniMaxLocationTransitionCustomField, miniMaxLocationTransitionNote);
   const miniMaxEditContinuityPromptInstructionsButton = makeButton("Edit frame-continuity LLM instructions");
   miniMaxEditContinuityPromptInstructionsButton.title = "Edit the dedicated vision-LLM instructions used for automatic frame-to-frame continuation prompts.";
   const miniMaxLatentStatusPill = document.createElement("div");
@@ -6178,7 +6207,7 @@ function openBuilder(node) {
   miniMaxLatentStatusPill.textContent = "Checking predecessor latent...";
   const miniMaxLatentContinuationRow = document.createElement("div");
   miniMaxLatentContinuationRow.style.cssText = "display:flex;flex-direction:column;gap:6px;margin-top:6px;";
-  miniMaxLatentContinuationRow.append(miniMaxContinuityPromptFromLastFrame.wrapper, miniMaxEditContinuityPromptInstructionsButton, miniMaxLatentContextField, miniMaxLatentStatusPill);
+  miniMaxLatentContinuationRow.append(miniMaxContinuityPromptFromLastFrame.wrapper, miniMaxLocationTransitionControls, miniMaxEditContinuityPromptInstructionsButton, miniMaxLatentContextField, miniMaxLatentStatusPill);
   const miniMaxContinuityNote = document.createElement("div");
   miniMaxContinuityNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
   const miniMaxNoGgufNote = document.createElement("div");
@@ -8016,6 +8045,8 @@ function openBuilder(node) {
     segment.minimax_h3_start_frame_character_influence = normalizeMiniMaxH3StartFrameCharacterInfluence(
       miniMaxStartFrameCharacterInfluence.value,
     );
+    segment.minimax_h3_location_transition_preset = normalizeMiniMaxH3LocationTransitionPreset(miniMaxLocationTransitionPreset.value);
+    segment.minimax_h3_location_transition_custom = String(miniMaxLocationTransitionCustom.value || "").trim();
     segment.minimax_h3_video_references = miniMaxVideoReferenceRows
       .map((row) => ({
         path: String(row.path.value || "").trim(),
@@ -8697,6 +8728,8 @@ function openBuilder(node) {
     miniMaxAudioMode.value = settings.audio_mode;
     miniMaxContinuityMode.value = settings.continuity_mode;
     miniMaxContinuityPromptFromLastFrame.input.checked = Boolean(settings.continuity_prompt_from_last_frame);
+    miniMaxLocationTransitionPreset.value = normalizeMiniMaxH3LocationTransitionPreset(segment?.minimax_h3_location_transition_preset);
+    miniMaxLocationTransitionCustom.value = String(segment?.minimax_h3_location_transition_custom || "");
     miniMaxLatentContextFrames.value = String(segment?.minimax_h3_latent_context_frames || settings.latent_context_frames || 22);
     miniMaxAspectRatio.value = settings.aspect_ratio;
     miniMaxMegapixels.value = String(settings.megapixels);
@@ -8923,6 +8956,13 @@ function openBuilder(node) {
     miniMaxLatentContinuationRow.style.display = (continuitySupported && isLatentContinuation) ? "flex" : "none";
     miniMaxLatentContextFrames.disabled = !continuitySupported || !isLatentContinuation;
     miniMaxContinuityPromptFromLastFrame.input.disabled = !continuitySupported || !isLatentContinuation;
+    const showLocationTransitionControls = continuitySupported
+      && isLatentContinuation
+      && Boolean(settings.continuity_prompt_from_last_frame);
+    miniMaxLocationTransitionControls.style.display = showLocationTransitionControls ? "flex" : "none";
+    miniMaxLocationTransitionPreset.disabled = !showLocationTransitionControls;
+    miniMaxLocationTransitionCustomField.style.display = showLocationTransitionControls
+      && miniMaxLocationTransitionPreset.value === "custom" ? "flex" : "none";
     miniMaxContinuityNote.textContent = !continuitySupported
       ? "Available in Reference to Video and Video to Video. Those modes can receive the prior clip's extracted final frame as one additional reference image."
       : isLatentExactFrame
@@ -12237,6 +12277,8 @@ function openBuilder(node) {
     segment.minimax_h3_continuity_source_scene_id = String(segment.minimax_h3_continuity_source_scene_id || "");
     segment.minimax_h3_continuity_mode_used = normalizeMiniMaxH3ContinuityMode(segment.minimax_h3_continuity_mode_used);
     segment.minimax_h3_continuity_image_number = Math.max(0, Math.trunc(Number(segment.minimax_h3_continuity_image_number || 0)));
+    segment.minimax_h3_location_transition_preset = normalizeMiniMaxH3LocationTransitionPreset(segment.minimax_h3_location_transition_preset);
+    segment.minimax_h3_location_transition_custom = String(segment.minimax_h3_location_transition_custom || "");
     segment.minimax_h3_latent_context_frames = [16, 22, 39, 56].includes(Number(segment.minimax_h3_latent_context_frames))
       ? Number(segment.minimax_h3_latent_context_frames)
       : (DEFAULT_MINIMAX_H3_SETTINGS.latent_context_frames || 22);
@@ -41053,19 +41095,55 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const previousName = locationIdentity(previousLocation, "the preceding mapped location");
     if (!currentKey) return "";
     if (previousKey && previousKey !== currentKey) {
-      return (
-        `LOCATION PHASE — PHYSICAL THRESHOLD TURN: This scene performs the single physical passage from ${previousName} into ${currentName}. `
-        + `Track the subject to a visible doorway, gateway, solid foreground edge, or natural threshold already present in the opening frame. `
-        + `After the subject crosses its plane, let that foreground edge sweep fully across the image as a natural full-frame occlusion. During that continuous occlusion, cross the threshold and execute a clear camera arc around the subject toward ${currentName}. `
-        + `As the occluding edge clears, the camera faces forward into ${currentName}; ${previousName} has passed fully beyond the rear camera plane while the subject and destination reappear through coherent motion and parallax. `
-        + `End looking deeper along ${currentName}, with its mapped geography filling the image as the location inherited by the following scene. Describe the threshold crossing, full-frame occlusion, camera arc, and final viewing direction explicitly.`
-      );
+      const preset = normalizeMiniMaxH3LocationTransitionPreset(segment?.minimax_h3_location_transition_preset);
+      const customDirection = String(segment?.minimax_h3_location_transition_custom || "").trim();
+      const commonEnding = `Complete the transition inside this uninterrupted scene and end looking deeper into ${currentName}, with its mapped geography filling the image as the location inherited by the following scene.`;
+      const directions = {
+        normal: (
+          `LOCATION PHASE — PHYSICAL THRESHOLD TURN: This scene performs the single physical passage from ${previousName} into ${currentName}. `
+          + `Track the subject to a visible doorway, gateway, solid foreground edge, or natural threshold already present in the opening frame. `
+          + `After the subject crosses its plane, let that foreground edge sweep fully across the image as a natural full-frame occlusion. During that continuous occlusion, cross the threshold and execute a clear camera arc around the subject toward ${currentName}. `
+          + `As the occluding edge clears, the camera faces forward into ${currentName}; ${previousName} has passed fully beyond the rear camera plane while the subject and destination reappear through coherent motion and parallax. Describe the threshold crossing, full-frame occlusion, camera arc, and final viewing direction explicitly.`
+        ),
+        surreal: (
+          `LOCATION PHASE — SURREAL MATERIAL TRANSFORMATION: Transform ${previousName} progressively into ${currentName} through imaginative, visually connected material changes that travel across the frame. `
+          + `Use forms, textures, weather, particles, light, and movement visible in the actual opening image as the transformation source. Preserve the subject's continuous identity, action, position, and camera momentum while each physical element evolves into a corresponding element of ${currentName}. Make the transformation richly creative, spatially progressive, and complete.`
+        ),
+        cinematic: (
+          `LOCATION PHASE — CINEMATIC CONCEAL AND REVEAL: Choose a visually suitable detail present in the actual opening image, such as the subject's eye, hair, clothing, a shadow, bright light, fog, doorway, or foreground object. `
+          + `Move the camera into that detail until it fills the complete frame, carry the camera continuously through the concealed moment, then pull or glide outward to reveal the subject physically present in ${currentName}. Preserve the subject's action and camera momentum across the full-frame concealment.`
+        ),
+        inner_world: (
+          `LOCATION PHASE — INNER WORLD PORTAL: Reveal ${currentName} living inside a visually suitable surface already present in the opening image, such as an eye reflection, mirror, window, pool, pendant, crystal, smoke formation, or luminous opening. `
+          + `Let the destination become visibly dimensional inside that surface, move the camera continuously through it, and emerge with the subject inside the full-scale geography of ${currentName}. Treat the portal as one coherent passage with continuous scale, perspective, light, and motion.`
+        ),
+        match: (
+          `LOCATION PHASE — VISUAL MATCH TRANSITION: Inspect the actual opening image and find a strong shared shape, color, texture, light pattern, or motion that can connect ${previousName} to ${currentName}. `
+          + `Track that matching element as it fills or commands the composition, then let the same visual form resolve seamlessly as a real element in ${currentName}. Carry the subject's movement and camera trajectory through the visual correspondence with precise composition and spatial flow.`
+        ),
+        motion: (
+          `LOCATION PHASE — MOTION-DRIVEN TRANSITION: Use an energetic camera action suited to the actual opening frame, such as a whip pan, rapid orbit, fast push, foreground sweep, or close pass around the subject. `
+          + `Let directional motion and natural motion blur carry the complete image across the location boundary, then resolve the same movement and screen direction clearly inside ${currentName}. Preserve the subject's action, rhythm, and camera momentum throughout.`
+        ),
+        creative_auto: (
+          `LOCATION PHASE — CREATIVE IMAGE-AWARE TRANSITION: Inspect the actual opening image, ${previousName}, and ${currentName}, then choose the most visually convincing imaginative transition for their specific forms, materials, lighting, subject action, and camera trajectory. `
+          + `Build one explicit on-screen mechanism with readable progression and continuous movement, using a physical passage, material transformation, cinematic concealment, portal, visual match, motion bridge, or an equally coherent original idea. Make the chosen mechanism concrete in the shot description.`
+        ),
+        custom: customDirection
+          ? (
+            `LOCATION PHASE — CUSTOM TRANSITION: Apply this scene's authored transition direction: ${customDirection} `
+            + `Translate it into explicit positive visual action that carries the actual opening image from ${previousName} into ${currentName} through one coherent continuous camera experience.`
+          )
+          : (
+            `LOCATION PHASE — CUSTOM TRANSITION FALLBACK: Inspect the actual opening image, ${previousName}, and ${currentName}, then create one highly imaginative, visually readable transition whose on-screen mechanism follows the subject and camera momentum into the destination.`
+          ),
+      };
+      return `${directions[preset]} ${commonEnding}`;
     }
     return (
       `LOCATION PHASE — ESTABLISHED CURRENT LOCATION: ${currentName} is now the complete established environment. `
-      + `Continue forward deeper into its mapped geography and build every newly revealed environmental feature from ${currentName}. `
-      + `Any threshold structure carried in the attached opening frame remains stationary in world space while the camera completes its passage beyond that structure's plane and turns forward into ${currentName}. `
-      + `The threshold travels naturally through a frame edge and beyond the rear camera plane during the opening movement beat. End looking deeper into ${currentName}, fully grounded in that location.`
+      + `Continue forward through the exact visible opening state and deeper into its mapped geography. Build every newly revealed environmental feature from ${currentName}, preserve its established spatial logic, and let the camera trajectory create the next composition. `
+      + `End looking deeper into ${currentName}, fully grounded in that location.`
     );
   }
 
@@ -58835,6 +58913,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     await autoSaveSessionQuiet("MiniMax H3 2 Pass Advanced project mode");
   };
   miniMaxAudioMode.addEventListener("change", syncMiniMaxH3Panel);
+  miniMaxContinuityPromptFromLastFrame.input.addEventListener("change", syncMiniMaxH3Panel);
+  miniMaxLocationTransitionPreset.addEventListener("change", () => {
+    pushHistory();
+    saveMiniMaxSceneInputsFromPanel();
+    syncMiniMaxH3Panel();
+    autoSaveSessionQuiet("MiniMax H3 location transition preset").catch(() => null);
+  });
+  miniMaxLocationTransitionCustom.addEventListener("input", saveMiniMaxSceneInputsFromPanel);
+  miniMaxLocationTransitionCustom.addEventListener("change", () => {
+    saveMiniMaxSceneInputsFromPanel();
+    autoSaveSessionQuiet("MiniMax H3 custom location transition").catch(() => null);
+  });
   miniMaxContinuityMode.addEventListener("change", () => {
     const segment = activeSegment();
     const continuityMode = normalizeMiniMaxH3ContinuityMode(miniMaxContinuityMode.value);
