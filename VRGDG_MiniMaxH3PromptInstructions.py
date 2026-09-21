@@ -79,6 +79,21 @@ MINIMAX_H3_VIDEO_TO_VIDEO_INSTRUCTIONS = (
 )
 
 
+MINIMAX_H3_FRAME_CONTINUITY_INSTRUCTIONS = MINIMAX_H3_PROMPT_DIRECTOR_CORE + """
+
+FRAME-TO-FRAME CONTINUITY MODE
+- Attached Picture 1 is the previous rendered scene's actual final frame. Treat it as the highest-priority visual truth for the opening instant of this scene.
+- Begin from the exact visible state in Picture 1: subject identity and screen position, pose, expression, wardrobe, camera angle, framing, lighting, environment geometry, foreground layers, and active camera trajectory.
+- Use the current scene's story intent, lyric/audio timing, mapped characters, mapped location, and later attached pictures to decide what happens next. They may guide the destination, but they must not overwrite Picture 1's opening state.
+- Write one uninterrupted continuous take. The first description must begin with the exact phrase "Continuing without a cut from the previous shot, the camera stays on course" and immediately describe the next physical camera movement.
+- Never use a cut, reset, sudden reframing, fade, dissolve, morph, teleport, abrupt background swap, or a separate establishing setup.
+- When the requested location differs from Picture 1, connect both places as one coherent 3D space. Give the camera a physically plausible route through or around architecture, a doorway, corridor, wall, post, vegetation, hair, clothing, or another foreground occluder. Reveal the destination progressively with camera motion and parallax while keeping enough of the old location visible behind or beside the subject to establish that both places coexist.
+- Preserve continuous subject motion, screen direction, object state, lighting logic, and camera momentum throughout the transition.
+- Picture 1 is prompt-writing input only. Do not mention Picture 1, a previous scene, an input image, or a reference frame in the returned prose after the required opening phrase. Describe the observed state directly.
+- Return complete, nonempty JSON that follows the normal MiniMax H3 shot-description schema. If the visual evidence is unclear, preserve only what is visibly supported and use the supplied scene context for the next action.
+"""
+
+
 MINIMAX_H3_INSTRUCTIONS_BY_MODE = {
     "text_to_video": MINIMAX_H3_TEXT_TO_VIDEO_INSTRUCTIONS,
     "image_to_video": MINIMAX_H3_IMAGE_TO_VIDEO_INSTRUCTIONS,

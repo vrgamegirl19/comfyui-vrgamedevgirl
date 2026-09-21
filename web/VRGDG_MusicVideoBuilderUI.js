@@ -227,6 +227,7 @@ const DEFAULT_MINIMAX_H3_SETTINGS = {
   video_mode: "text_to_video",
   audio_mode: "input_audio",
   continuity_mode: "off",
+  continuity_prompt_from_last_frame: false,
   latent_context_frames: 22,
   diffusion_model_name: "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
   clip_name: "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
@@ -527,6 +528,7 @@ function cloneMiniMaxH3Settings(value = {}) {
     video_mode: normalizeMiniMaxH3Mode(source.video_mode || source.mode || DEFAULT_MINIMAX_H3_SETTINGS.video_mode),
     audio_mode: normalizeMiniMaxH3AudioMode(source.audio_mode || source.audioMode || DEFAULT_MINIMAX_H3_SETTINGS.audio_mode),
     continuity_mode: normalizeMiniMaxH3ContinuityMode(source.continuity_mode || source.continuityMode || DEFAULT_MINIMAX_H3_SETTINGS.continuity_mode),
+    continuity_prompt_from_last_frame: Boolean(source.continuity_prompt_from_last_frame ?? source.continuityPromptFromLastFrame ?? DEFAULT_MINIMAX_H3_SETTINGS.continuity_prompt_from_last_frame),
     latent_context_frames: [16, 22, 39, 56].includes(Number(source.latent_context_frames ?? source.latentContextFrames))
       ? Number(source.latent_context_frames ?? source.latentContextFrames)
       : DEFAULT_MINIMAX_H3_SETTINGS.latent_context_frames,
@@ -6167,12 +6169,16 @@ function openBuilder(node) {
   const miniMaxLatentContextFrames = makeSelect(MINIMAX_H3_LATENT_CONTEXT_OPTIONS, String(DEFAULT_MINIMAX_H3_SETTINGS.latent_context_frames || 22));
   miniMaxLatentContextFrames.title = "Number of trailing context frames loaded directly from the predecessor scene's saved latent.";
   const miniMaxLatentContextField = makeField("Latent context frames", miniMaxLatentContextFrames);
+  const miniMaxContinuityPromptFromLastFrame = makeCheckbox("Create each next scene prompt from the previous rendered final frame", false);
+  miniMaxContinuityPromptFromLastFrame.wrapper.title = "Scene 1 keeps its authored prompt. Before rendering Scene 2 and later, the Builder extracts the predecessor's actual final frame and asks the vision LLM to create and save a complete continuous-shot prompt from it plus the scene's story, audio timing, and references.";
+  const miniMaxEditContinuityPromptInstructionsButton = makeButton("Edit frame-continuity LLM instructions");
+  miniMaxEditContinuityPromptInstructionsButton.title = "Edit the dedicated vision-LLM instructions used for automatic frame-to-frame continuation prompts.";
   const miniMaxLatentStatusPill = document.createElement("div");
   miniMaxLatentStatusPill.style.cssText = "display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;border-radius:12px;padding:4px 10px;border:1px solid #334155;background:#0f172a;color:#94a3b8;margin-top:2px;";
   miniMaxLatentStatusPill.textContent = "Checking predecessor latent...";
   const miniMaxLatentContinuationRow = document.createElement("div");
   miniMaxLatentContinuationRow.style.cssText = "display:flex;flex-direction:column;gap:6px;margin-top:6px;";
-  miniMaxLatentContinuationRow.append(miniMaxLatentContextField, miniMaxLatentStatusPill);
+  miniMaxLatentContinuationRow.append(miniMaxContinuityPromptFromLastFrame.wrapper, miniMaxEditContinuityPromptInstructionsButton, miniMaxLatentContextField, miniMaxLatentStatusPill);
   const miniMaxContinuityNote = document.createElement("div");
   miniMaxContinuityNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
   const miniMaxNoGgufNote = document.createElement("div");
@@ -7890,6 +7896,7 @@ function openBuilder(node) {
       video_mode: currentSettings.video_mode,
       audio_mode: miniMaxAudioMode.value,
       continuity_mode: miniMaxContinuityMode.value,
+      continuity_prompt_from_last_frame: miniMaxContinuityPromptFromLastFrame.input.checked,
       latent_context_frames: Number(miniMaxLatentContextFrames.value || 22),
       diffusion_model_name: miniMaxDiffusionModelPicker.input.value,
       clip_name: miniMaxClipPicker.input.value,
@@ -8689,6 +8696,7 @@ function openBuilder(node) {
     miniMaxAudioVaePicker.input.value = settings.audio_vae_name;
     miniMaxAudioMode.value = settings.audio_mode;
     miniMaxContinuityMode.value = settings.continuity_mode;
+    miniMaxContinuityPromptFromLastFrame.input.checked = Boolean(settings.continuity_prompt_from_last_frame);
     miniMaxLatentContextFrames.value = String(segment?.minimax_h3_latent_context_frames || settings.latent_context_frames || 22);
     miniMaxAspectRatio.value = settings.aspect_ratio;
     miniMaxMegapixels.value = String(settings.megapixels);
@@ -8914,6 +8922,7 @@ function openBuilder(node) {
     const isLatentExactFrame = settings.continuity_mode === "latent_continuation_exact_frame";
     miniMaxLatentContinuationRow.style.display = (continuitySupported && isLatentContinuation) ? "flex" : "none";
     miniMaxLatentContextFrames.disabled = !continuitySupported || !isLatentContinuation;
+    miniMaxContinuityPromptFromLastFrame.input.disabled = !continuitySupported || !isLatentContinuation;
     miniMaxContinuityNote.textContent = !continuitySupported
       ? "Available in Reference to Video and Video to Video. Those modes can receive the prior clip's extracted final frame as one additional reference image."
       : isLatentExactFrame
@@ -8925,6 +8934,9 @@ function openBuilder(node) {
         : settings.continuity_mode === "exact_start_frame"
           ? "Begins each later scene on the previous rendered clip's exact final frame. The extracted frame and its prompt contract are injected when rendering. Do not also enable the scene-image exact start-frame option; Scene 1 is unaffected."
           : "Off: every scene starts independently from its normal MiniMax references.";
+    if (continuitySupported && isLatentContinuation && settings.continuity_prompt_from_last_frame) {
+      miniMaxContinuityNote.textContent += " Automatic prompt loop is ON: Scene 1 keeps your prompt. Before every later scene renders, the vision LLM uses the predecessor's actual final frame as its highest-priority opening truth, adds this scene's story/audio/reference context, saves a complete one-take prompt, and retries up to 10 times if prompting fails.";
+    }
     if (continuitySupported && isLatentContinuation) {
       updateMiniMaxLatentPredecessorStatus(segment);
     } else {
@@ -24088,6 +24100,11 @@ function openBuilder(node) {
   function miniMaxH3CutPlanForSegment(segment) {
     const duration = Math.max(0, Number(segment?.end || 0) - Number(segment?.start || 0));
     const fallback = storyboardCutPlanForDuration(duration, state.builderStoryboardDefaults?.minimax_h3_cut_frequency);
+    if (miniMaxH3FrameContinuityPromptEnabled(segment)) {
+      const continuous = { ...fallback, frequency: 0, cut_times_seconds: [], cue_driven: false };
+      continuous.instruction = miniMaxH3OfficialCutPlanInstruction(continuous);
+      return continuous;
+    }
     if (isMiniMaxBuiltInSpeakerAssignmentMode(segment)) {
       const speakerCues = normalizeMiniMaxSpeakerAssignments(segment?.minimax_speaker_assignments || segment?.speaker_assignments || segment?.dialogue_cues || [])
         .filter((cue) => cue.type === "instrumental" || cue.text);
@@ -24139,6 +24156,7 @@ function openBuilder(node) {
     const performers = selectedPerformerSubjectsForSegment(segment);
     const labelMap = miniMaxH3SubjectLabelMapForSegment(segment, mode);
     const duration = Math.max(0, Number(segment?.end || 0) - Number(segment?.start || 0));
+    const continuousFramePrompt = miniMaxH3FrameContinuityPromptEnabled(segment);
     const lines = cues.map((cue, index) => {
       const range = singerCuePlaybackRangeForCue(segment, cues, index);
       const start = Number.isFinite(Number(cue.start)) ? Number(cue.start) : range.start;
@@ -24148,7 +24166,7 @@ function openBuilder(node) {
         : `from ${start.toFixed(3)}s`;
       if (cue.type === "instrumental") {
         const note = String(cue.action_note || "").trim();
-        return `[Shot ${index + 1}] ${timing}: use only the assigned visual action and camera direction.${note ? ` Visual action note: ${note}` : ""}`;
+        return `${continuousFramePrompt ? `Continuous-shot cue ${index + 1}` : `[Shot ${index + 1}]`} ${timing}: use only the assigned visual action and camera direction.${note ? ` Visual action note: ${note}` : ""}`;
       }
       const subject = performers.find((item) => String(item.id) === String(cue.singer_id)) || { id: cue.singer_id, name: cue.singer_name };
       const vocalStart = Number(cue.vocal_start);
@@ -24156,12 +24174,14 @@ function openBuilder(node) {
       const vocalWindow = Number.isFinite(vocalStart) && Number.isFinite(vocalEnd) && vocalEnd > vocalStart
         ? ` The singer lip-syncs from ${vocalStart.toFixed(3)}s to ${vocalEnd.toFixed(3)}s.`
         : "";
-      return `[Shot ${index + 1}] ${timing}: ${miniMaxH3PerformerLabel(subject, labelMap)} is the only performer singing/lip-syncing <d>[English] ${miniMaxH3PunctuatedCueText(cue.text)}</d> from <Audio 1>.${vocalWindow} Other visible performers remain silent, mouth closed or naturally reacting.`;
+      return `${continuousFramePrompt ? `Continuous-shot cue ${index + 1}` : `[Shot ${index + 1}]`} ${timing}: ${miniMaxH3PerformerLabel(subject, labelMap)} is the only performer singing/lip-syncing <d>[English] ${miniMaxH3PunctuatedCueText(cue.text)}</d> from <Audio 1>.${vocalWindow} Other visible performers remain silent, mouth closed or naturally reacting.`;
     });
     return [
       "Timed singer/lyric shot contract — authoritative:",
       ...lines,
-      "Each listed cue is its own shot. Do not swap singers, merge lyric cues, or anticipate a later vocal cue. Apply vocal direction only to the assigned vocal row and its exact timing.",
+      continuousFramePrompt
+        ? "All listed cues occur inside the same uninterrupted shot at their assigned times. Do not add a cut, reset, or new setup between cues. Do not swap singers, merge lyric cues, or anticipate a later vocal cue."
+        : "Each listed cue is its own shot. Do not swap singers, merge lyric cues, or anticipate a later vocal cue. Apply vocal direction only to the assigned vocal row and its exact timing.",
     ].join("\n");
   }
 
@@ -40962,6 +40982,23 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       `Audio mode: ${nativeAudio ? "Built-in MiniMax audio" : "Input Audio 1 preserved by Builder"}`,
       `Shot count: ${shotPlan.length}`,
     ];
+    if (options.frameContinuityPrompt) {
+      const hasPromptInspiration = mode === "reference_to_video" && miniMaxH3SceneImageIsPromptInspiration(segment);
+      const firstRendererAttachment = hasPromptInspiration ? 3 : 2;
+      parts.push(
+        "FRAME-TO-FRAME CONTINUITY — HIGHEST PRIORITY:\n"
+        + "Attached Picture 1 is the previous rendered scene's actual final frame. It is the visual truth for the first instant of this scene. Begin from its exact subject position, pose, expression, camera angle, framing, lighting, wardrobe, environment geometry, foreground layers, and camera momentum. "
+        + "Continue as one unbroken take. Begin the returned description with exactly: ‘Continuing without a cut from the previous shot, the camera stays on course...’ and then specify the next physical camera movement. "
+        + "The current story beat, lyrics/audio timing, mapped location, and supporting references determine the destination but cannot replace the visible opening state. "
+        + "If the destination location differs, connect both locations as coherent 3D space and give the camera a real route through or around architecture, a doorway, corridor, wall, post, vegetation, hair, clothing, or another foreground occluder. Reveal the new location progressively through camera motion and parallax while keeping the old location visible long enough to prove both spaces coexist. "
+        + "Never use a cut, fade, dissolve, morph, teleport, reset, sudden reframing, or abrupt background swap. Attached Picture 1 is LLM-only and must never be called Image 1 or any renderer Image N in the finished prompt."
+      );
+      if (hasPromptInspiration) {
+        parts.push("Attached Picture 2 is the scene-image inspiration used only under its existing environment/framing limits. Renderer Image 1 begins at Attached Picture 3.");
+      } else {
+        parts.push(`Renderer Image 1 begins at Attached Picture ${firstRendererAttachment}; later renderer images follow in order.`);
+      }
+    }
     const characterBudget = miniMaxH3PromptCharacterBudget(segment, mode, options.h3TargetLimit ?? 6500);
     const perShotBudget = Math.max(1, Math.floor(characterBudget.shotDescriptionChars / Math.max(1, shotPlan.length)));
     parts.push(
@@ -41496,6 +41533,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
 
   function enforceMiniMaxH3CueOnShotDescription(segment, description, shotIndex, mode = miniMaxH3ModeForSegment(segment)) {
     let text = normalizeMiniMaxH3ShotDescription(description);
+    if (miniMaxH3FrameContinuityPromptEnabled(segment)) return text;
     if (!isMiniMaxSingerAssignmentMode(segment) || String(segment?.lyric_performance_mode || "together") !== "cue_map") return text;
     const cues = normalizeLyricCueMapForSegment(segment, undefined, { preserveBlank: true });
     const cue = cues[shotIndex];
@@ -42467,7 +42505,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
   async function runMiniMaxH3PromptGeneration(segment, mode, options = {}) {
     await ensureAutoTimedSingerCuesBeforePrompt(segment);
-    const visionImages = miniMaxH3PromptVisionImagesForRunner(segment, mode);
+    const visionImages = Array.isArray(options.visionImages)
+      ? options.visionImages.filter((item) => item && (String(item.path || "").trim() || String(item.data || "").trim()))
+      : miniMaxH3PromptVisionImagesForRunner(segment, mode);
     const visualOnly = segmentUsesNoLipSyncPerformance(segment);
     const promptLyricText = visualOnly || isInstrumentalLyricText(segment.lyric_text) ? "" : flattenLyricForPrompt(segment.lyric_text);
     const promptSingerNames = visualOnly ? [] : (Array.isArray(segment.lyric_singers)
@@ -42520,6 +42560,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         no_character_present: Boolean(segment.no_character_present),
         image_references: visionImages,
         prompt_only_scene_inspiration: options.promptOnlySceneInspiration ?? miniMaxH3SceneImageIsPromptInspiration(segment),
+        frame_continuity_prompt: Boolean(options.frameContinuityPrompt),
         performance_mode: options.performanceMode || effectiveVideoPerformanceModeForSegment(segment),
         lyric_text: promptLyricText,
         singers: effectiveSingerNames,
@@ -44967,10 +45008,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const missing = [];
     const mode = miniMaxH3ModeForSegment(segment);
     const savedPrompt = String(segment?.minimax_h3_prompt || segment?.i2v_prompt || "").trim();
-    if (!savedPrompt) {
-      missing.push(`${name}: MiniMax ${miniMaxH3ModeLabel(mode)} prompt is missing.`);
-    } else if (savedPrompt.length > 7000) {
-      missing.push(`${name}: MiniMax prompt is ${savedPrompt.length.toLocaleString()} characters and exceeds the 7,000-character maximum. Regenerate or shorten it before rendering.`);
+    const frameContinuityPromptEnabled = miniMaxH3FrameContinuityPromptEnabled(segment);
+    if (!frameContinuityPromptEnabled) {
+      if (!savedPrompt) {
+        missing.push(`${name}: MiniMax ${miniMaxH3ModeLabel(mode)} prompt is missing.`);
+      } else if (savedPrompt.length > 7000) {
+        missing.push(`${name}: MiniMax prompt is ${savedPrompt.length.toLocaleString()} characters and exceeds the 7,000-character maximum. Regenerate or shorten it before rendering.`);
+      }
     }
     if (!Number.isFinite(Number(segment?.start)) || !Number.isFinite(Number(segment?.end)) || Number(segment.end) <= Number(segment.start)) {
       missing.push(`${name}: timeline start and end times are invalid.`);
@@ -46594,6 +46638,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (!previousSegment) return null;
     if (isMiniMaxH3LatentContinuationMode(continuityMode)) {
       const isExactFrame = continuityMode === "latent_continuation_exact_frame";
+      const needsPromptFrame = Boolean(miniMaxH3SettingsForSegment(segment).continuity_prompt_from_last_frame);
       const slotNumber = sceneSlotNumber(segment);
       if (slotNumber <= 1) {
         throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)} is Scene 1 and cannot use Latent Continuation because there is no predecessor scene. Switch Continuity Mode to Off.`);
@@ -46611,20 +46656,22 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       // Exact Last Frame also needs the predecessor's real last frame as an image. It is passed as its own
       // field (not framePath) so it is never injected as a reference image or a prompt block.
       let exactFramePath = "";
-      if (isExactFrame) {
+      let promptFramePath = "";
+      if (isExactFrame || needsPromptFrame) {
         const previousVideoPath = String(selectedSegmentVideoPath(previousSegment) || "").trim();
         if (!previousVideoPath) {
-          throw new Error(`Latent Continuation + Exact Last Frame needs Scene ${slotNumber - 1}'s rendered video to read its last frame, but it has none. Render Scene ${slotNumber - 1} first, or switch to plain Latent Continuation.`);
+          throw new Error(`${needsPromptFrame ? "Frame-to-frame prompt creation" : "Latent Continuation + Exact Last Frame"} needs Scene ${slotNumber - 1}'s rendered video to read its last frame, but it has none. Render Scene ${slotNumber - 1} first.`);
         }
-        progress?.set(`${label}: extracting Scene ${slotNumber - 1}'s exact last frame...`, percent);
+        progress?.set(`${label}: extracting Scene ${slotNumber - 1}'s actual final frame...`, percent);
         const extractedFrame = await postJson("/vrgdg/music_builder/extract_video_final_frame", {
           project_folder: projectFolder,
           source_path: previousVideoPath,
           scene_number: slotNumber,
           frame_count: 1,
         }, 120000);
-        exactFramePath = String(extractedFrame?.saved_path || "").trim();
-        if (!exactFramePath) throw new Error("Could not extract the previous scene's last frame for Latent Continuation + Exact Last Frame.");
+        promptFramePath = String(extractedFrame?.saved_path || "").trim();
+        if (!promptFramePath) throw new Error("Could not extract the previous scene's last frame for frame-to-frame continuity.");
+        if (isExactFrame) exactFramePath = promptFramePath;
       }
       segment.minimax_h3_continuity_mode_used = continuityMode;
       segment.minimax_h3_continuity_source_scene_id = String(previousSegment.id || "");
@@ -46635,6 +46682,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         framePath: "",
         framePaths: [],
         exactFramePath,
+        promptFramePath,
         previousSegment,
       };
     }
@@ -46660,6 +46708,68 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     segment.minimax_h3_continuity_source_scene_id = String(previousSegment.id || "");
     segment.minimax_h3_continuity_mode_used = continuityMode;
     return { framePath, continuityMode, previousSegment, previousVideoPath };
+  }
+
+  function miniMaxH3FrameContinuityPromptEnabled(segment) {
+    if (!segment || segmentTrack(segment) === "overlay" || sceneSlotNumber(segment) <= 1) return false;
+    const settings = miniMaxH3SettingsForSegment(segment);
+    return Boolean(settings.continuity_prompt_from_last_frame)
+      && ["reference_to_video", "video_to_video"].includes(miniMaxH3ModeForSegment(segment))
+      && isMiniMaxH3LatentContinuationMode(settings.continuity_mode);
+  }
+
+  async function createMiniMaxH3FrameContinuityPrompt(segment, sceneIndex, mode, continuityInput, progress, percent = 6, label = "MiniMax continuity") {
+    const framePath = String(continuityInput?.promptFramePath || continuityInput?.exactFramePath || "").trim();
+    if (!framePath) throw new Error(`${sceneDisplayName(segment, sceneIndex)} could not find the predecessor's extracted final frame for automatic prompt creation.`);
+    const supportingImages = miniMaxH3PromptVisionImages(segment, mode);
+    const seen = new Set([mediaPathKey(framePath)]);
+    const visionImages = [{ path: framePath, frame_continuity_source: true }];
+    for (const item of supportingImages) {
+      const path = String(item?.path || "").trim();
+      const data = String(item?.data || "").trim();
+      const key = path ? mediaPathKey(path) : data;
+      if ((!path && !data) || (key && seen.has(key))) continue;
+      if (key) seen.add(key);
+      visionImages.push(item);
+      if (visionImages.length >= 10) break;
+    }
+    let lastError = null;
+    for (let attempt = 1; attempt <= 10; attempt += 1) {
+      try {
+        progress?.set(`${label}: creating Scene ${sceneSlotNumber(segment)} prompt from Scene ${sceneSlotNumber(segment) - 1}'s actual final frame (attempt ${attempt}/10)...`, percent);
+        const data = await runMiniMaxH3PromptGeneration(segment, mode, {
+          projectFolder: String(projectInput.value || state.projectFolder || "").trim(),
+          builderInstructionKey: "minimax_h3_frame_continuity",
+          visionImages,
+          frameContinuityPrompt: true,
+          promptOnlySceneInspiration: miniMaxH3SceneImageIsPromptInspiration(segment),
+          contextOptions: { frameContinuityPrompt: true },
+          unloadAfter: true,
+          finalizePrompt: (prompt) => ensureBuilderManagedFx(prompt, segment),
+          emptyPromptMessage: `Attempt ${attempt}/10 returned an empty frame-to-frame continuity prompt.`,
+        });
+        const generatedPrompt = String(data?.prompt || "").trim();
+        if (!generatedPrompt) throw new Error(`Attempt ${attempt}/10 returned an empty frame-to-frame continuity prompt.`);
+        pushHistory();
+        segment.minimax_h3_prompt = generatedPrompt;
+        segment.minimax_h3_prompt_origin = "previous_final_frame";
+        segment.minimax_h3_continuity_prompt_source_scene_id = String(continuityInput?.previousSegment?.id || "");
+        segment.minimax_h3_continuity_prompt_frame_path = framePath;
+        segment.minimax_h3_continuity_prompt_created_at = new Date().toISOString();
+        if (segment?.id === activeSegment()?.id) miniMaxPrompt.value = generatedPrompt;
+        updateMiniMaxPromptCharacterStatus(segment);
+        render();
+        await autoSaveSessionQuiet(`Scene ${sceneSlotNumber(segment)} frame-to-frame continuity prompt`);
+        return generatedPrompt;
+      } catch (error) {
+        lastError = error;
+        if (attempt >= 10) break;
+        const delayMs = Math.min(15000, attempt * 2000);
+        progress?.set(`${label}: prompt attempt ${attempt}/10 failed; retrying in ${Math.round(delayMs / 1000)} seconds...\n${String(error?.message || error)}`, percent);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+    throw new Error(`${sceneDisplayName(segment, sceneIndex)} could not create a valid frame-to-frame continuity prompt after 10 attempts. Last error: ${String(lastError?.message || lastError || "unknown error")}`);
   }
 
   async function renderMiniMaxSceneVideoWithProgress(segment, sceneIndex, progress, options = {}) {
@@ -46704,10 +46814,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       )
       : options.continuityInput;
 
-    const prompt = String(
-      options.prompt
-      ?? (segment?.minimax_h3_prompt || segment?.i2v_prompt || "")
-    ).trim();
+    const generatedContinuityPrompt = miniMaxH3FrameContinuityPromptEnabled(segment)
+      ? await createMiniMaxH3FrameContinuityPrompt(segment, sceneIndex, mode, continuityInput, progress, pct(6), `${batchLabel}MiniMax continuity`)
+      : "";
+    const prompt = String(generatedContinuityPrompt || (options.prompt ?? (segment?.minimax_h3_prompt || segment?.i2v_prompt || ""))).trim();
     if (!prompt) throw new Error(`${sceneDisplayName(segment, sceneIndex)} needs a MiniMax H3 prompt.`);
     assertValidMiniMaxH3FinalPrompt(prompt, segment, mode, {
       allowCueValidationWarnings: true,
@@ -57337,6 +57447,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (!segment) return;
     openBuilderInstructionEditor(miniMaxH3InstructionKey(miniMaxH3ModeForSegment(segment)));
   };
+  miniMaxEditContinuityPromptInstructionsButton.onclick = () => openBuilderInstructionEditor("minimax_h3_frame_continuity");
   sendT2IPromptToEnhanceButton.onclick = () => sendPromptToEnhance("T2I", t2iPrompt.value);
   ernieSendT2IPromptToEnhanceButton.onclick = () => sendPromptToEnhance("T2I", ernieT2IPrompt.value);
   krea2TwoPassSendT2IPromptToEnhanceButton.onclick = () => sendPromptToEnhance("T2I", krea2TwoPassT2IPrompt.value);
@@ -58381,6 +58492,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     miniMaxAspectRatio,
     miniMaxAudioMode,
     miniMaxContinuityMode,
+    miniMaxContinuityPromptFromLastFrame.input,
     miniMaxMegapixels,
     miniMaxSeed,
     miniMaxWarmupFrames,

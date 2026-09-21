@@ -42,6 +42,7 @@ from .VRGDG_StoryboardBuilderNodes import _STORYBOARD_T2I_GEMMA_INSTRUCTIONS
 from .VRGDG_MiniMaxH3PromptInstructions import (
     MINIMAX_H3_IMAGE_REFERENCE_TO_VIDEO_INSTRUCTIONS,
     MINIMAX_H3_IMAGE_TO_VIDEO_INSTRUCTIONS,
+    MINIMAX_H3_FRAME_CONTINUITY_INSTRUCTIONS,
     MINIMAX_H3_REFERENCE_TO_VIDEO_INSTRUCTIONS,
     MINIMAX_H3_TEXT_TO_VIDEO_INSTRUCTIONS,
     MINIMAX_H3_VIDEO_TO_VIDEO_INSTRUCTIONS,
@@ -1078,6 +1079,7 @@ _BUILDER_INSTRUCTION_DEFAULTS = {
     "i2v": _I2V_INSTRUCTIONS,
     "krea2_t2i": _STANDARD_IMAGE_T2I_INSTRUCTIONS,
     "minimax_h3_image_to_video": MINIMAX_H3_IMAGE_TO_VIDEO_INSTRUCTIONS,
+    "minimax_h3_frame_continuity": MINIMAX_H3_FRAME_CONTINUITY_INSTRUCTIONS,
     "minimax_h3_image_reference_to_video": MINIMAX_H3_IMAGE_REFERENCE_TO_VIDEO_INSTRUCTIONS,
     "minimax_h3_reference_to_video": MINIMAX_H3_REFERENCE_TO_VIDEO_INSTRUCTIONS,
     "minimax_h3_text_to_video": MINIMAX_H3_TEXT_TO_VIDEO_INSTRUCTIONS,
@@ -1101,6 +1103,7 @@ _BUILDER_INSTRUCTION_LABELS = {
     "i2v": "Image to Video",
     "krea2_t2i": "Krea 2 Text to Image",
     "minimax_h3_image_to_video": "MiniMax H3 Image to Video",
+    "minimax_h3_frame_continuity": "MiniMax H3 Frame-to-Frame Continuity",
     "minimax_h3_image_reference_to_video": "MiniMax H3 Image + Reference to Video",
     "minimax_h3_reference_to_video": "MiniMax H3 Reference to Video",
     "minimax_h3_text_to_video": "MiniMax H3 Text to Video",
@@ -6726,6 +6729,7 @@ def _generate_builder_t2v_prompt(payload):
     is_minimax_h3_prompt = instruction_key.startswith("minimax_h3_")
     is_minimax_h3_shot_json_task = is_minimax_h3_prompt and scene_prompt.lstrip().startswith("MiniMax H3 shot-description task.")
     prompt_only_scene_inspiration = bool(payload.get("prompt_only_scene_inspiration"))
+    frame_continuity_prompt = bool(payload.get("frame_continuity_prompt")) or instruction_key == "minimax_h3_frame_continuity"
     text_runner = _llm_runner_from_payload(payload)
     if not model_file and text_runner not in _EXTERNAL_LLM_RUNNERS:
         raise ValueError("Choose a T2V Gemma model first.")
@@ -6740,7 +6744,7 @@ def _generate_builder_t2v_prompt(payload):
         except Exception:
             image_references = [{"path": line.strip()} for line in image_references.splitlines() if line.strip()]
     if isinstance(image_references, list):
-        reference_limit = 10 if is_minimax_h3_prompt and prompt_only_scene_inspiration else 9 if is_minimax_h3_prompt else 4
+        reference_limit = 10 if is_minimax_h3_prompt and (prompt_only_scene_inspiration or frame_continuity_prompt) else 9 if is_minimax_h3_prompt else 4
         for index, item in enumerate(image_references[:reference_limit], start=1):
             if isinstance(item, str):
                 item = {"path": item}
@@ -6825,7 +6829,7 @@ def _generate_builder_t2v_prompt(payload):
             raise ValueError("Create or paste scene notes, mapped references, motion notes, or a T2I/concept prompt first.")
 
     t2v_instructions = _effective_builder_instruction(payload, instruction_key, _T2V_INSTRUCTIONS)
-    if is_minimax_h3_shot_json_task:
+    if is_minimax_h3_shot_json_task and not frame_continuity_prompt:
         t2v_instructions = (
             "Follow the Scene concept below as the complete output contract. "
             "Return only one valid JSON object with its exact requested shots array. "
@@ -6907,6 +6911,15 @@ def _generate_builder_t2v_prompt(payload):
                 "- Ignore lyrics, story arc, mapped descriptions, detailed endpoint prose, other scene notes, and camera presets when deciding visible action or camera travel.\n"
                 "- The application adds any required exact vocal line and facial-performance direction after this visual prompt is returned.\n\n"
             )
+    elif has_image_reference and frame_continuity_prompt:
+        image_guidance = (
+            "MiniMax H3 frame-to-frame continuity vision guidance:\n"
+            "- Attached Picture 1 is the previous rendered scene's actual final frame and is the highest-priority authority for the new scene's opening visual state.\n"
+            "- Inspect its subject position, pose, expression, camera angle, framing, lighting, wardrobe, environment geometry, foreground layers, and apparent camera trajectory.\n"
+            "- Attached Picture 1 is prompt-writing input only; it is not a MiniMax renderer reference and must not be named as Image 1 or any Image N in the finished prompt.\n"
+            "- Later attached pictures are supporting scene/reference inputs in the exact order documented by the Scene concept. They may guide identity and destination details but cannot overwrite Picture 1's opening state.\n"
+            "- Return only the requested valid JSON object. Never return a blank response, notes, analysis, or text outside the JSON.\n\n"
+        )
     elif has_image_reference and is_minimax_h3_shot_json_task:
         image_guidance = (
             "MiniMax H3 JSON-shot visual-reference guidance:\n"
