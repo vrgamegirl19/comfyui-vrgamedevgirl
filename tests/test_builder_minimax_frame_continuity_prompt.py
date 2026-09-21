@@ -21,6 +21,13 @@ class MiniMaxFrameContinuityPromptTests(unittest.TestCase):
         self.assertIn("HIGHEST PRIORITY", UI_SOURCE)
         self.assertIn("frame_continuity_prompt", BACKEND_SOURCE)
 
+    def test_subject_absent_from_last_frame_gets_physical_entrance(self):
+        self.assertIn("OPENING SUBJECT VISIBILITY — IMAGE-AWARE", UI_SOURCE)
+        self.assertIn("currently mapped subject absent from Attached Picture 1 begins physically offscreen", UI_SOURCE)
+        self.assertIn("an entrance through a frame edge, doorway, path, foreground layer", UI_SOURCE)
+        self.assertIn("the exact entrance or camera-reveal route", UI_SOURCE)
+        self.assertIn("Their first visible moment occurs through that physical entrance or reveal", UI_SOURCE)
+
     def test_location_change_contract_requires_physical_threshold_turn(self):
         for required in (
             "PHYSICAL THRESHOLD TURN",

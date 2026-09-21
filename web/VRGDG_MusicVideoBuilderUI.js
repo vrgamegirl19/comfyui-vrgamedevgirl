@@ -41195,6 +41195,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         + "The current story beat, lyrics/audio timing, mapped location, and supporting references determine the destination while the visible opening state supplies the exact starting point. "
         + "Express the complete transition through continuous camera travel, physical subject motion, stable geometry, progressive reveal, and coherent parallax. Write every finished shot sentence as a positive description of the desired visible result. Attached Picture 1 remains an LLM-only observation source; finished prose uses direct visual description and the documented renderer labels."
       );
+      parts.push(
+        "OPENING SUBJECT VISIBILITY — IMAGE-AWARE: Inspect Attached Picture 1 and inventory the human or character subjects actually visible in its opening composition. "
+        + "Visible subjects continue from their exact observed position and state. Every currently mapped subject absent from Attached Picture 1 begins physically offscreen. "
+        + "Bring an offscreen subject into view through a clearly described continuous screen-space event: an entrance through a frame edge, doorway, path, foreground layer, or the selected transition mechanism, or a camera pan, track, or orbit that reaches and reveals them in a connected position. "
+        + "State the observed empty or partially occupied opening composition first, then the exact entrance or camera-reveal route, then that subject's performance action. Their first visible moment occurs through that physical entrance or reveal."
+      );
       if (locationContinuityContract) parts.push(locationContinuityContract);
       if (hasPromptInspiration) {
         parts.push("Attached Picture 2 is the scene-image inspiration used only under its existing environment/framing limits. Renderer Image 1 begins at Attached Picture 3.");
