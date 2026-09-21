@@ -6829,15 +6829,6 @@ def _generate_builder_t2v_prompt(payload):
             raise ValueError("Create or paste scene notes, mapped references, motion notes, or a T2I/concept prompt first.")
 
     t2v_instructions = _effective_builder_instruction(payload, instruction_key, _T2V_INSTRUCTIONS)
-    if is_minimax_h3_shot_json_task and not frame_continuity_prompt:
-        t2v_instructions = (
-            "Follow the Scene concept below as the complete output contract. "
-            "Return only one valid JSON object with its exact requested shots array. "
-            "Write creative visual shot descriptions only. Do not output or append subject_definitions, summary, "
-            "retention_analysis, detailed_description, Audio, Continuity, overall_soundscape, non_diegetic_music, "
-            "markdown, commentary, or any text outside the JSON object. Keep every string properly escaped and close "
-            "every quote, array, and brace. The frontend deterministically adds the official MiniMax H3 sections afterward."
-        )
     prompt_label = (
         _BUILDER_INSTRUCTION_LABELS.get(instruction_key, "MiniMax H3")
         if is_minimax_h3_prompt
@@ -6913,12 +6904,9 @@ def _generate_builder_t2v_prompt(payload):
             )
     elif has_image_reference and frame_continuity_prompt:
         image_guidance = (
-            "MiniMax H3 frame-to-frame continuity vision guidance:\n"
-            "- Attached Picture 1 is the previous rendered scene's actual final frame and is the highest-priority authority for the new scene's opening visual state.\n"
-            "- Inspect its subject position, pose, expression, camera angle, framing, lighting, wardrobe, environment geometry, foreground layers, and apparent camera trajectory.\n"
-            "- Attached Picture 1 is prompt-writing input only; it is not a MiniMax renderer reference and must not be named as Image 1 or any Image N in the finished prompt.\n"
-            "- Later attached pictures are supporting scene/reference inputs in the exact order documented by the Scene concept. They may guide identity and destination details but cannot overwrite Picture 1's opening state.\n"
-            "- Return only the requested valid JSON object. Never return a blank response, notes, analysis, or text outside the JSON.\n\n"
+            "Vision attachment mapping:\n"
+            "- Picture 1 is the previous render's final frame and the authoritative opening state. It is prompt-writing input, not a renderer Image N label.\n"
+            "- Later pictures are the supporting inputs documented by the resolved Scene concept and cannot replace Picture 1's opening state.\n\n"
         )
     elif has_image_reference and is_minimax_h3_shot_json_task:
         image_guidance = (

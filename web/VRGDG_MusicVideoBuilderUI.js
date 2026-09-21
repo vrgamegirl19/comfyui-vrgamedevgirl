@@ -41109,9 +41109,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
     const cueShotContract = miniMaxH3CueShotContractText(segment, mode);
     if (characterMotionSpeed >= 4) {
-      parts.push(cueShotContract
-        ? "Character rule: include clear body action, gesture, step, or set interaction. Singing and lip sync occur only in vocal cue shots; instrumental cue shots remain completely non-vocal."
-        : "Character rule: include clear body action, gesture, step, or set interaction in addition to visible singing and lip sync. Mouth movement alone is not enough, but do not omit or suppress the required lip sync.");
+      if (cueShotContract) {
+        parts.push("Character rule: include clear body action, gesture, step, or set interaction. Singing and lip sync occur only in vocal cue shots; instrumental cue shots remain completely non-vocal.");
+      } else if (visualOnly || segment?.no_character_present || !lyricText) {
+        parts.push("Character rule: include clear body action, gesture, step, or set interaction when a character is visible. Do not add singing, speaking, or lip sync.");
+      } else if (performanceMode === "speaking") {
+        parts.push("Character rule: include clear body action, gesture, step, or set interaction in addition to the required dialogue lip sync. Mouth movement alone is not enough.");
+      } else {
+        parts.push("Character rule: include clear body action, gesture, step, or set interaction in addition to the required singing lip sync. Mouth movement alone is not enough.");
+      }
     }
     if (segment?.no_character_present) {
       parts.push("Vocal performance: no visible character / no lip sync. Do not invent a visible singer or speaker.");
