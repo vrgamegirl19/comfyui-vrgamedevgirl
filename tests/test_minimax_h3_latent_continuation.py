@@ -1,10 +1,17 @@
 import ast
+import hashlib
 import importlib.util
 import json
 import os
+import shutil
+import subprocess
 import tempfile
 import unittest
+import wave
+from array import array
 from pathlib import Path
+from typing import Any
+from unittest import mock
 
 import torch
 
@@ -18,6 +25,27 @@ _SPEC = importlib.util.spec_from_file_location(
 )
 MANAGER = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(MANAGER)
+
+_TIMING_SPEC = importlib.util.spec_from_file_location("h3_timing", ROOT / "VRGDG_MiniMaxH3Timing.py")
+TIMING = importlib.util.module_from_spec(_TIMING_SPEC)
+_TIMING_SPEC.loader.exec_module(TIMING)
+
+
+class UnsafeLatentPayload:
+    def __init__(self, marker):
+        self.marker = marker
+
+    def __reduce__(self):
+        return os.mkdir, (self.marker,)
+
+
+def _loader_classes():
+    module = ast.parse((ROOT / "VRGDG_MiniMaxH3LatentContinuationNodes.py").read_text(encoding="utf-8"))
+    names = {"VRGDG_MiniMaxH3LoadLatent", "VRGDG_MiniMaxH3LoadExactFrame"}
+    body = [node for node in module.body if isinstance(node, ast.ClassDef) and node.name in names]
+    namespace = {"os": os, "hashlib": hashlib, "torch": torch, "Any": Any, "SceneLatentManager": MANAGER.SceneLatentManager}
+    exec(compile(ast.Module(body=body, type_ignores=[]), "latent_loaders", "exec"), namespace)
+    return namespace
 
 
 def _runner_namespace():
@@ -95,6 +123,22 @@ class SceneLatentStorageTests(unittest.TestCase):
             self.assertEqual(info["tail_padding_frames"], 7)
             self.assertEqual(info["token_count"], 12)
 
+    def test_torch_fallback_round_trips_tensors_and_metadata_safely(self):
+        with tempfile.TemporaryDirectory() as folder, mock.patch.object(MANAGER, "HAS_SAFETENSORS", False):
+            self._save(folder, 1, metadata={"tail_padding_frames": 7})
+            loaded = MANAGER.SceneLatentManager.load_latent(folder, 1)
+            self.assertEqual(loaded["video"].shape, (1, 24, 12, 4, 4))
+            self.assertEqual(loaded["audio"].shape, (1, 32, 2, 8))
+            self.assertEqual(loaded["metadata"]["tail_padding_frames"], "7")
+
+    def test_pickle_fallback_does_not_execute_payload(self):
+        with tempfile.TemporaryDirectory() as folder:
+            marker = os.path.join(folder, "pickle_executed")
+            path = MANAGER.SceneLatentManager.get_path(folder, 1)
+            torch.save(UnsafeLatentPayload(marker), path)
+            self.assertIsNone(MANAGER.SceneLatentManager.load_latent(folder, 1))
+            self.assertFalse(os.path.exists(marker))
+
     def test_latents_saved_without_padding_report_it_as_unknown(self):
         with tempfile.TemporaryDirectory() as folder:
             self._save(folder, 3)
@@ -125,6 +169,81 @@ class SceneLatentStorageTests(unittest.TestCase):
             keep.write_text("keep", encoding="utf-8")
             self.assertGreater(MANAGER.SceneLatentManager.delete_all_latents(folder), 0)
             self.assertEqual([p.name for p in (Path(folder) / "latents").iterdir()], ["notes.txt"])
+
+
+class LatentLoaderCacheTests(unittest.TestCase):
+    def test_overwritten_files_change_both_loader_fingerprints(self):
+        classes = _loader_classes()
+        with tempfile.TemporaryDirectory() as folder:
+            cases = [
+                (Path(MANAGER.SceneLatentManager.get_path(folder, 1)),
+                 lambda: classes["VRGDG_MiniMaxH3LoadLatent"].IS_CHANGED(folder, 1, 22)),
+                (Path(folder) / "last.png",
+                 lambda: classes["VRGDG_MiniMaxH3LoadExactFrame"].IS_CHANGED(str(Path(folder) / "last.png"))),
+            ]
+            for path, fingerprint in cases:
+                with self.subTest(loader=path.name):
+                    path.write_bytes(b"first render")
+                    stat = path.stat()
+                    first = fingerprint()
+                    self.assertEqual(first, fingerprint())
+                    path.write_bytes(b"other render")
+                    os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+                    self.assertNotEqual(first, fingerprint())
+
+
+class LatentWarmupTimingTests(unittest.TestCase):
+    def test_missing_audio_handles_keep_the_full_warmup(self):
+        for source_start in (0, 0.25, 2):
+            with self.subTest(source_start=source_start):
+                plan = TIMING.calculate_minimax_h3_timing(
+                    10, 15, 22, source_start_seconds=source_start,
+                    source_duration_seconds=source_start + 5, pad_warmup=True,
+                )
+                self.assertAlmostEqual(plan.final_trim_start_seconds, 22 / 24)
+                self.assertAlmostEqual(plan.audio_leading_padding_seconds, max(0, 22 / 24 - source_start))
+                self.assertAlmostEqual(plan.audio_trim_start_seconds, max(0, source_start - 22 / 24))
+                self.assertAlmostEqual(plan.audio_trim_duration_seconds, 5 + 22 / 24)
+                self.assertEqual(plan.final_trim_duration_seconds, 5)
+
+    def test_non_latent_timing_still_clamps_the_audio_handle(self):
+        plan = TIMING.calculate_minimax_h3_timing(10, 15, 22, source_start_seconds=0)
+        self.assertEqual(plan.final_trim_start_seconds, 0)
+        self.assertEqual(plan.audio_leading_padding_seconds, 0)
+        self.assertEqual(plan.audio_trim_duration_seconds, 5)
+
+    def test_padded_warmup_still_obeys_h3_frame_limit(self):
+        with self.assertRaisesRegex(ValueError, "exceeding"):
+            TIMING.calculate_minimax_h3_timing(10, 25, 22, source_start_seconds=0, pad_warmup=True)
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg is required for audio alignment verification")
+    def test_trimmed_audio_contains_silence_then_source_at_the_planned_offset(self):
+        module = ast.parse(RUNNER_SOURCE)
+        function = next(node for node in module.body if isinstance(node, ast.FunctionDef) and node.name == "_trim_minimax_h3_audio_context")
+        namespace = {"os": os, "subprocess": subprocess, "wave": wave, "_find_ffmpeg_path": lambda: shutil.which("ffmpeg")}
+        exec(compile(ast.Module(body=[function], type_ignores=[]), "audio_context", "exec"), namespace)
+        with tempfile.TemporaryDirectory() as folder:
+            source = os.path.join(folder, "source.wav")
+            with wave.open(source, "wb") as handle:
+                handle.setnchannels(2)
+                handle.setsampwidth(2)
+                handle.setframerate(44100)
+                handle.writeframes(array("h", [1200, -1200] * (44100 * 6)).tobytes())
+            for source_start in (0, 0.25, 2):
+                with self.subTest(source_start=source_start):
+                    plan = TIMING.calculate_minimax_h3_timing(
+                        10, 11, 22, source_start_seconds=source_start,
+                        source_duration_seconds=6, pad_warmup=True,
+                    )
+                    result = namespace["_trim_minimax_h3_audio_context"](source, folder, 2, plan)
+                    with wave.open(result["audio_path"], "rb") as handle:
+                        samples = array("h", handle.readframes(handle.getnframes()))
+                    padding_samples = round(plan.audio_leading_padding_seconds * 44100) * 2
+                    self.assertTrue(all(sample == 0 for sample in samples[:max(0, padding_samples - 2)]))
+                    self.assertEqual(list(samples[padding_samples + 2:padding_samples + 4]), [1200, -1200])
+                    scene_start = round(plan.final_trim_start_seconds * 44100) * 2
+                    self.assertEqual(list(samples[scene_start:scene_start + 2]), [1200, -1200])
+                    self.assertAlmostEqual(result["duration"], plan.audio_trim_duration_seconds, delta=1 / 44100)
 
 
 class RunnerLatentContinuationTests(unittest.TestCase):
@@ -203,6 +322,32 @@ class RunnerLatentContinuationTests(unittest.TestCase):
         payload = {**self.payload, "continuity_mode": "latent_continuation_exact_frame"}
         with self.assertRaises(FileNotFoundError):
             self.ns["_patch_minimax_h3_latent_continuation"](self._prompt(), payload)
+
+    def test_all_builder_timing_calls_preserve_latent_warmup(self):
+        calls = [
+            node for node in ast.walk(ast.parse(RUNNER_SOURCE))
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+            and node.func.id == "calculate_minimax_h3_timing"
+        ]
+        self.assertEqual(len(calls), 3)  # advanced two-pass reuses the two-pass builder
+        for call in calls:
+            for mode in ("off", "latent_continuation", "latent_continuation_exact_frame"):
+                for scene in (1, 22):
+                    with self.subTest(line=call.lineno, mode=mode, scene=scene):
+                        payload = {**self.payload, "continuity_mode": mode, "scene_number": scene,
+                                   "latent_exact_frame_path": str(self.image)}
+                        warmup = self.ns["_minimax_h3_effective_warmup_frames"](payload)
+                        namespace = {**self.ns, "calculate_minimax_h3_timing": TIMING.calculate_minimax_h3_timing,
+                                     "payload": payload, "scene_number": scene, "timeline_start": 10,
+                                     "timeline_end": 15, "source_start": 0, "source_duration": 5,
+                                     "warmup_frames": warmup, "cooldown_frames": 0}
+                        timing = eval(compile(ast.Expression(call), "builder_timing", "eval"), namespace)
+                        if mode != "off" and scene > 1:
+                            guide = self.ns["_patch_minimax_h3_latent_continuation"](self._prompt(), payload)
+                            self.assertAlmostEqual(timing.final_trim_start_seconds, guide["warmup_frames"] / 24)
+                            self.assertEqual(timing.audio_leading_padding_seconds, timing.final_trim_start_seconds)
+                        else:
+                            self.assertEqual(timing.audio_leading_padding_seconds, 0)
 
     def test_missing_predecessor_latent_is_a_clear_error(self):
         payload = {**self.payload, "scene_number": 30, "continuity_mode": "latent_continuation"}

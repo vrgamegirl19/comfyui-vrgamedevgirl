@@ -6,6 +6,7 @@ for lossless, native temporal chaining across multi-scene video projects.
 
 from __future__ import annotations
 
+import hashlib
 import math
 import os
 from typing import Any
@@ -126,6 +127,13 @@ class VRGDG_MiniMaxH3SaveLatent:
 
 class VRGDG_MiniMaxH3LoadLatent:
     """Load a predecessor scene's latent and slice to the requested context frames window."""
+
+    @classmethod
+    def IS_CHANGED(cls, project_folder, scene_number, context_frames, exact_frame_mode=False):
+        folder = str(project_folder or "").strip().strip('"')
+        path = SceneLatentManager.get_path(folder, scene_number)
+        with open(path, "rb") as handle:
+            return hashlib.file_digest(handle, "sha256").hexdigest()
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -382,6 +390,12 @@ class VRGDG_MiniMaxH3TrimContinuation:
 
 class VRGDG_MiniMaxH3LoadExactFrame:
     """Load one image file (the predecessor scene's last frame) as an IMAGE tensor."""
+
+    @classmethod
+    def IS_CHANGED(cls, image_path):
+        path = os.path.abspath(str(image_path or "").strip().strip('"'))
+        with open(path, "rb") as handle:
+            return hashlib.file_digest(handle, "sha256").hexdigest()
 
     @classmethod
     def INPUT_TYPES(cls):

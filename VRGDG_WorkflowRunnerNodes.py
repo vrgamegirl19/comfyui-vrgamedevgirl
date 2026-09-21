@@ -765,6 +765,8 @@ def _trim_minimax_h3_audio_context(source_path, project_folder, scene_number, ti
         "pcm_s16le",
         target_path,
     ]
+    if timing.audio_leading_padding_seconds > 0:
+        cmd[-1:-1] = ["-af", f"adelay={timing.audio_leading_padding_seconds * 1000:.9f}:all=1"]
     result = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
     if result.returncode != 0 or not os.path.isfile(target_path):
         raise RuntimeError((result.stderr or result.stdout or "FFmpeg failed to trim MiniMax H3 scene audio.").strip())
@@ -3436,6 +3438,10 @@ def _build_minimax_h3_api_prompt(payload):
         cooldown_frames,
         source_start_seconds=source_start,
         source_duration_seconds=source_duration,
+        pad_warmup=(
+            _minimax_h3_is_latent_mode(_minimax_h3_latent_continuation_mode(payload))
+            and scene_number > 1
+        ),
     )
     prepared_audio = None
     if audio_mode == "input_audio":
@@ -3625,6 +3631,10 @@ def _build_minimax_h3_2pass_api_prompt(payload):
         _first_payload_value(payload, "cooldown_frames", "tail_loss_frames", default=0),
         source_start_seconds=source_start,
         source_duration_seconds=source_duration,
+        pad_warmup=(
+            _minimax_h3_is_latent_mode(_minimax_h3_latent_continuation_mode(payload))
+            and scene_number > 1
+        ),
     )
     prepared_audio = _trim_minimax_h3_audio_context(audio_path, project_folder, scene_number, timing)
 
@@ -4285,6 +4295,10 @@ def _build_minimax_h3_3pass_api_prompt(payload):
         _first_payload_value(payload, "cooldown_frames", "tail_loss_frames", default=0),
         source_start_seconds=source_start,
         source_duration_seconds=source_duration,
+        pad_warmup=(
+            _minimax_h3_is_latent_mode(_minimax_h3_latent_continuation_mode(payload))
+            and scene_number > 1
+        ),
     )
     prepared_audio = _trim_minimax_h3_audio_context(audio_path, project_folder, scene_number, timing)
     image_paths = _minimax_h3_image_paths(payload)

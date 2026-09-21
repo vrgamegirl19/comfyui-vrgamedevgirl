@@ -51,6 +51,8 @@ def load_two_pass_builder():
         "_minimax_h3_2pass_api_template_path": lambda: str(TEMPLATE_PATH),
         "_first_payload_value": first_value,
         "_minimax_h3_effective_warmup_frames": lambda payload: first_value(payload, "warmup_frames", "pre_frames", default=0),
+        "_minimax_h3_latent_continuation_mode": lambda payload: payload.get("continuity_mode", "off"),
+        "_minimax_h3_is_latent_mode": lambda mode: mode in ("latent_continuation", "latent_continuation_exact_frame"),
         "_patch_minimax_h3_latent_continuation": lambda _prompt, _payload: {"enabled": False},
         "_patch_minimax_h3_save_latent": lambda _prompt, _payload, _timing=None: {"enabled": False},
         "_int_payload": int_value,

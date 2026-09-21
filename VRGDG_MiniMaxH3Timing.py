@@ -78,6 +78,7 @@ class MiniMaxH3TimingPlan:
     final_trim_start_seconds: float
     final_trim_duration_seconds: float
     discard_after_scene_seconds: float
+    audio_leading_padding_seconds: float = 0.0
 
     def to_dict(self):
         return asdict(self)
@@ -93,6 +94,7 @@ def calculate_minimax_h3_timing(
     source_duration_seconds=None,
     fps=H3_FPS,
     max_frame_count=H3_MAX_FRAME_COUNT,
+    pad_warmup=False,
 ):
     """Create the complete render/trim timing plan for one Builder scene.
 
@@ -100,6 +102,8 @@ def calculate_minimax_h3_timing(
     frames and never alter ``final_trim_duration_seconds``.  If the source audio
     starts or ends too close to a boundary, only the unavailable handle is
     clamped; the selected scene itself must still exist in the source audio.
+    With pad_warmup, missing leading audio is silence so a continuation guide
+    can keep its full warm-up and be trimmed off with the audio.
 
     ``workflow_duration_input_seconds`` is intentionally based on the ceiling
     frame count.  Passing it through the current hidden workflow's seconds-to-
@@ -139,13 +143,15 @@ def calculate_minimax_h3_timing(
                 "The selected scene extends beyond the available source audio."
             )
 
-    actual_warmup = min(requested_warmup, source_start)
+    available_warmup = min(requested_warmup, source_start)
+    actual_warmup = requested_warmup if pad_warmup else available_warmup
+    audio_leading_padding = actual_warmup - available_warmup
     actual_cooldown = requested_cooldown
     if source_duration is not None:
         audio_after_scene = source_duration - (source_start + scene_duration)
         actual_cooldown = min(requested_cooldown, max(Decimal(0), audio_after_scene))
 
-    audio_trim_start = source_start - actual_warmup
+    audio_trim_start = source_start - available_warmup
     context_duration = actual_warmup + scene_duration + actual_cooldown
     context_frames = frames_covering_duration(context_duration, frame_rate)
     h3_frames = align_h3_frame_count(context_frames)
@@ -183,4 +189,5 @@ def calculate_minimax_h3_timing(
         final_trim_start_seconds=_seconds(final_trim_start),
         final_trim_duration_seconds=_seconds(scene_duration),
         discard_after_scene_seconds=_seconds(discard_after_scene),
+        audio_leading_padding_seconds=_seconds(audio_leading_padding),
     )

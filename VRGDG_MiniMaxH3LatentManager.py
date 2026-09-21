@@ -437,7 +437,7 @@ class SceneLatentManager:
 
         if video is None:
             try:
-                data = torch.load(path, map_location="cpu", weights_only=False)
+                data = torch.load(path, map_location="cpu", weights_only=True)
                 if isinstance(data, dict):
                     video = data.get("video")
                     audio = data.get("audio")
