@@ -47187,6 +47187,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         scene_number: slotNumber,
         start: Number(postTrim.start || 0),
         duration: finalDuration,
+        frames: Number(postTrim.frames || 0),
         label: "minimax_exact",
         mark_as_audio_video: true,
       }, 240000);

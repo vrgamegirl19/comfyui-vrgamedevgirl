@@ -6,7 +6,7 @@ post-render trim.
 """
 
 from dataclasses import asdict, dataclass
-from decimal import Decimal, InvalidOperation, ROUND_CEILING
+from decimal import Decimal, InvalidOperation, ROUND_CEILING, ROUND_HALF_UP
 from typing import Optional
 
 
@@ -78,6 +78,7 @@ class MiniMaxH3TimingPlan:
     final_trim_start_seconds: float
     final_trim_duration_seconds: float
     discard_after_scene_seconds: float
+    final_frame_count: int
     audio_leading_padding_seconds: float = 0.0
 
     def to_dict(self):
@@ -167,6 +168,11 @@ def calculate_minimax_h3_timing(
     alignment_padding = render_duration - context_duration
     final_trim_start = actual_warmup
     discard_after_scene = render_duration - (actual_warmup + scene_duration)
+    # frames the stitcher keeps for this scene: timeline boundaries rounded to whole frames
+    final_frame_count = max(1, int(
+        (timeline_end * frame_rate).to_integral_value(rounding=ROUND_HALF_UP)
+        - (timeline_start * frame_rate).to_integral_value(rounding=ROUND_HALF_UP)
+    ))
 
     return MiniMaxH3TimingPlan(
         timeline_start_seconds=_seconds(timeline_start),
@@ -189,5 +195,6 @@ def calculate_minimax_h3_timing(
         final_trim_start_seconds=_seconds(final_trim_start),
         final_trim_duration_seconds=_seconds(scene_duration),
         discard_after_scene_seconds=_seconds(discard_after_scene),
+        final_frame_count=final_frame_count,
         audio_leading_padding_seconds=_seconds(audio_leading_padding),
     )

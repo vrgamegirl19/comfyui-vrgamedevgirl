@@ -25,6 +25,7 @@ def load_two_pass_builder(sparse_method="Sol-Attn (adaptive tau)"):
         workflow_duration_input_seconds=5.0,
         final_trim_start_seconds=0.0,
         final_trim_duration_seconds=5.0,
+        final_frame_count=120,
         to_dict=lambda: {},
     )
 
