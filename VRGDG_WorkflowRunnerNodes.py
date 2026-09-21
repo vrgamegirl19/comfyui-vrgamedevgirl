@@ -3033,30 +3033,44 @@ def _patch_minimax_h3_latent_continuation(prompt, payload):
         if exact_plan is None:
             raise ValueError(f"Could not read Scene {pred_scene:03d}'s latent info to plan the exact-frame context.")
 
-    guider_id = _api_node_id_by_class(prompt, "BasicGuider", fallback="126")
-    if not guider_id or guider_id not in prompt:
+    guider_ids = [
+        str(node_id)
+        for node_id, node in prompt.items()
+        if node.get("class_type") == "BasicGuider"
+    ]
+    if not guider_ids:
+        fallback_guider = _api_node_id_by_class(prompt, "BasicGuider", fallback="126")
+        if fallback_guider and fallback_guider in prompt:
+            guider_ids = [fallback_guider]
+    if not guider_ids:
         return {"enabled": False, "reason": "BasicGuider node not found"}
 
-    latent_source = None
+    default_latent_source = None
     if "136" in prompt:
-        latent_source = ["136", 1]
+        default_latent_source = ["136", 1]
     elif "172" in prompt:
-        latent_source = ["172", 0]
+        default_latent_source = ["172", 0]
     else:
         sampler_node = prompt.get("124") or prompt.get("125")
         if sampler_node and "latent_image" in sampler_node.get("inputs", {}):
-            latent_source = sampler_node["inputs"]["latent_image"]
+            default_latent_source = sampler_node["inputs"]["latent_image"]
 
-    if not latent_source:
+    if not default_latent_source:
         return {"enabled": False, "reason": "Latent source not found"}
+
+    def latent_source_for_guider(guider_id):
+        guider_ref = [str(guider_id), 0]
+        for node in prompt.values():
+            if node.get("class_type") != "SamplerCustomAdvanced":
+                continue
+            inputs = node.get("inputs", {})
+            if inputs.get("guider") == guider_ref and inputs.get("latent_image"):
+                return inputs["latent_image"]
+        return default_latent_source
 
     load_id = "9210"
     while load_id in prompt:
         load_id = str(int(load_id) + 1)
-
-    guide_id = str(int(load_id) + 1)
-    while guide_id in prompt:
-        guide_id = str(int(guide_id) + 1)
 
     prompt[load_id] = {
         "class_type": "VRGDG_MiniMaxH3LoadLatent",
@@ -3072,59 +3086,78 @@ def _patch_minimax_h3_latent_continuation(prompt, payload):
         },
     }
 
-    guider_inputs = prompt[guider_id].setdefault("inputs", {})
-    cond_key = "conditioning" if "conditioning" in guider_inputs else "positive" if "positive" in guider_inputs else "conditioning"
-    current_positive = guider_inputs.get(cond_key)
-    if not current_positive:
-        return {"enabled": False, "reason": "Guider conditioning input not found"}
-
     warmup_frames = _minimax_h3_effective_warmup_frames(payload)
     # exact mode: the context block ends right where the exact last-frame image sits (the warm-up's last frame)
     latent_frame_idx = max(0, warmup_frames - int(exact_plan["warmup_frames"])) if exact_plan else 0
 
-    prompt[guide_id] = {
-        "class_type": "VRGDG_MiniMaxH3ApplyLatentGuide",
-        "inputs": {
-            "positive": current_positive,
-            "latent": latent_source,
-            "context_latent": [load_id, 0],
-            "frame_idx": latent_frame_idx,
-        },
-        "_meta": {
-            "title": f"MiniMax H3 Latent Continuation Guide ({context_frames} frames)",
-        },
-    }
-    guider_inputs[cond_key] = [guide_id, 0]
+    next_node_id = int(load_id) + 1
+    def allocate_node_id():
+        nonlocal next_node_id
+        while str(next_node_id) in prompt:
+            next_node_id += 1
+        node_id = str(next_node_id)
+        next_node_id += 1
+        return node_id
 
-    exact_guide_id = None
     exact_image_id = None
     if exact_frame:
-        video_vae = (prompt.get("136", {}).get("inputs", {}) or {}).get("vae")
-        if not video_vae:
-            video_vae = [_api_node_id_by_class(prompt, "VAELoader", fallback="119"), 0]
-        exact_image_id = str(int(guide_id) + 1)
-        while exact_image_id in prompt:
-            exact_image_id = str(int(exact_image_id) + 1)
-        exact_guide_id = str(int(exact_image_id) + 1)
-        while exact_guide_id in prompt:
-            exact_guide_id = str(int(exact_guide_id) + 1)
+        exact_image_id = allocate_node_id()
         prompt[exact_image_id] = {
             "class_type": "VRGDG_MiniMaxH3LoadExactFrame",
             "inputs": {"image_path": os.path.abspath(exact_image_path)},
             "_meta": {"title": f"Scene {pred_scene:03d} exact last frame"},
         }
-        prompt[exact_guide_id] = {
-            "class_type": "MiniMaxH3AddGuide",
+
+    guide_ids = []
+    exact_guide_ids = []
+    skipped_guider_ids = []
+    video_vae = (prompt.get("136", {}).get("inputs", {}) or {}).get("vae")
+    if exact_frame and not video_vae:
+        video_vae = [_api_node_id_by_class(prompt, "VAELoader", fallback="119"), 0]
+
+    for pass_index, guider_id in enumerate(guider_ids, start=1):
+        guider_inputs = prompt[guider_id].setdefault("inputs", {})
+        cond_key = "conditioning" if "conditioning" in guider_inputs else "positive" if "positive" in guider_inputs else "conditioning"
+        current_positive = guider_inputs.get(cond_key)
+        if not current_positive:
+            skipped_guider_ids.append(guider_id)
+            continue
+        latent_source = latent_source_for_guider(guider_id)
+        pass_suffix = f" · pass {pass_index}" if len(guider_ids) > 1 else ""
+        guide_id = allocate_node_id()
+        prompt[guide_id] = {
+            "class_type": "VRGDG_MiniMaxH3ApplyLatentGuide",
             "inputs": {
-                "positive": [guide_id, 0],
+                "positive": current_positive,
                 "latent": latent_source,
-                "vae": video_vae,
-                "image": [exact_image_id, 0],
-                "frame_idx": warmup_frames - 1,
+                "context_latent": [load_id, 0],
+                "frame_idx": latent_frame_idx,
             },
-            "_meta": {"title": f"Exact last frame anchor (warm-up frame {warmup_frames - 1})"},
+            "_meta": {
+                "title": f"MiniMax H3 Latent Continuation Guide ({context_frames} frames{pass_suffix})",
+            },
         }
-        guider_inputs[cond_key] = [exact_guide_id, 0]
+        guide_ids.append(guide_id)
+        final_conditioning_id = guide_id
+        if exact_frame:
+            exact_guide_id = allocate_node_id()
+            prompt[exact_guide_id] = {
+                "class_type": "MiniMaxH3AddGuide",
+                "inputs": {
+                    "positive": [guide_id, 0],
+                    "latent": latent_source,
+                    "vae": video_vae,
+                    "image": [exact_image_id, 0],
+                    "frame_idx": warmup_frames - 1,
+                },
+                "_meta": {"title": f"Exact last frame anchor (warm-up frame {warmup_frames - 1}{pass_suffix})"},
+            }
+            exact_guide_ids.append(exact_guide_id)
+            final_conditioning_id = exact_guide_id
+        guider_inputs[cond_key] = [final_conditioning_id, 0]
+
+    if not guide_ids:
+        return {"enabled": False, "reason": "Guider conditioning input not found"}
 
     # The context frames are not trimmed inside the graph. They are the timing plan's
     # warm-up (see _minimax_h3_effective_warmup_frames), so the post-render trim removes
@@ -3136,9 +3169,13 @@ def _patch_minimax_h3_latent_continuation(prompt, payload):
         "context_frames": context_frames,
         "warmup_frames": warmup_frames,
         "load_node_id": load_id,
-        "guide_node_id": guide_id,
+        "guide_node_id": guide_ids[0],
+        "guide_node_ids": guide_ids,
         "exact_image_node_id": exact_image_id,
-        "exact_guide_node_id": exact_guide_id,
+        "exact_guide_node_id": exact_guide_ids[0] if exact_guide_ids else None,
+        "exact_guide_node_ids": exact_guide_ids,
+        "patched_guider_ids": guider_ids,
+        "skipped_guider_ids": skipped_guider_ids,
         "exact_frame_plan": exact_plan,
         "trim_node_id": None,
     }

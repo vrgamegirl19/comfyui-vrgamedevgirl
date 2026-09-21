@@ -318,6 +318,41 @@ class RunnerLatentContinuationTests(unittest.TestCase):
         self.assertEqual(prompt[result["exact_image_node_id"]]["class_type"], "VRGDG_MiniMaxH3LoadExactFrame")
         self.assertTrue(prompt[result["load_node_id"]]["inputs"]["exact_frame_mode"])
 
+    def test_two_pass_mode_guides_each_sampler_at_its_own_latent_resolution(self):
+        prompt = self._prompt()
+        prompt.update({
+            "125": {
+                "class_type": "SamplerCustomAdvanced",
+                "inputs": {"guider": ["126", 0], "latent_image": ["172", 0]},
+            },
+            "193": {
+                "class_type": "BasicGuider",
+                "inputs": {"conditioning": ["136", 0], "model": ["207", 0]},
+            },
+            "194": {
+                "class_type": "SamplerCustomAdvanced",
+                "inputs": {"guider": ["193", 0], "latent_image": ["189", 0]},
+            },
+        })
+        result = self.ns["_patch_minimax_h3_latent_continuation"](
+            prompt,
+            {
+                **self.payload,
+                "continuity_mode": "latent_continuation_exact_frame",
+                "latent_exact_frame_path": str(self.image),
+            },
+        )
+
+        self.assertEqual(result["patched_guider_ids"], ["126", "193"])
+        self.assertEqual(len(result["guide_node_ids"]), 2)
+        self.assertEqual(len(result["exact_guide_node_ids"]), 2)
+        first_guide = prompt[result["guide_node_ids"][0]]
+        second_guide = prompt[result["guide_node_ids"][1]]
+        self.assertEqual(first_guide["inputs"]["latent"], ["172", 0])
+        self.assertEqual(second_guide["inputs"]["latent"], ["189", 0])
+        self.assertEqual(prompt["126"]["inputs"]["conditioning"], [result["exact_guide_node_ids"][0], 0])
+        self.assertEqual(prompt["193"]["inputs"]["conditioning"], [result["exact_guide_node_ids"][1], 0])
+
     def test_exact_mode_requires_the_last_frame_image(self):
         payload = {**self.payload, "continuity_mode": "latent_continuation_exact_frame"}
         with self.assertRaises(FileNotFoundError):
