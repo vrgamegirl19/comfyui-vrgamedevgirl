@@ -42321,6 +42321,26 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return assembleMiniMaxH3OfficialPromptFromCreative(segment, mode, creativePrompt);
   }
 
+  function ensureBuilderManagedFx(prompt, scene = {}) {
+    let text = String(prompt || "").trim();
+    const defaults = normalizeBuilderStoryboardDefaults(state.builderStoryboardDefaults);
+    const preset = String(defaults.fx_preset || "").trim();
+    if (!text || !preset) return text;
+    const timestampPattern = /((?:\[\s*\d+(?:\.\d+)?s?\s*[-–—]\s*\d+(?:\.\d+)?s?\s*\]|\[\s*Shot\s+\d+[^\]]*\])\s*\n?)([\s\S]*?)(?=\n\s*(?:\[\s*\d+(?:\.\d+)?s?\s*[-–—]\s*\d+(?:\.\d+)?s?\s*\]|\[\s*Shot\s+\d+[^\]]*\])|\n\s*(?:Audio(?:\s+1)?|Native\s+audio|overall_soundscape|non_diegetic_music|Continuity)\s*:|$)/gi;
+    let shotIndex = 0;
+    let matched = false;
+    text = text.replace(timestampPattern, (whole, header, body) => {
+      matched = true;
+      const contract = storyboardFxContract(preset, defaults.fx_custom_json, shotIndex++);
+      if (!contract || String(body || "").includes(contract.cue)) return whole;
+      const cue = `FX accent: ${contract.cue} Timing: ${contract.timing}. Keep the mapped subject stable and readable.`;
+      return `${header}${String(body || "").trim()} ${cue}\n`;
+    });
+    if (matched) return text.trim();
+    const contract = storyboardFxContract(preset, defaults.fx_custom_json, 0);
+    return contract ? `${text}\n\nFX accent inside this shot: ${contract.cue} Keep the mapped subject stable and readable.`.trim() : text;
+  }
+
   function miniMaxH3PromptContextForSegment(segment, mode) {
     const settings = miniMaxH3SettingsForSegment(segment);
     const nativeAudio = settings.audio_mode === "built_in_audio";
@@ -44471,25 +44491,6 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         return `${text.slice(0, firstLineEnd)}\n\n${requiredLine}\n${text.slice(firstLineEnd + 1)}`;
       }
       return `${text}\n\n${requiredLine}`;
-    };
-    const ensureBuilderManagedFx = (prompt, scene = {}) => {
-      let text = String(prompt || "").trim();
-      const defaults = normalizeBuilderStoryboardDefaults(state.builderStoryboardDefaults);
-      const preset = String(defaults.fx_preset || "").trim();
-      if (!text || !preset) return text;
-      const timestampPattern = /((?:\[\s*\d+(?:\.\d+)?s?\s*[-–—]\s*\d+(?:\.\d+)?s?\s*\]|\[\s*Shot\s+\d+[^\]]*\])\s*\n?)([\s\S]*?)(?=\n\s*(?:\[\s*\d+(?:\.\d+)?s?\s*[-–—]\s*\d+(?:\.\d+)?s?\s*\]|\[\s*Shot\s+\d+[^\]]*\])|\n\s*(?:Audio(?:\s+1)?|Native\s+audio|overall_soundscape|non_diegetic_music|Continuity)\s*:|$)/gi;
-      let shotIndex = 0;
-      let matched = false;
-      text = text.replace(timestampPattern, (whole, header, body) => {
-        matched = true;
-        const contract = storyboardFxContract(preset, defaults.fx_custom_json, shotIndex++);
-        if (!contract || String(body || "").includes(contract.cue)) return whole;
-        const cue = `FX accent: ${contract.cue} Timing: ${contract.timing}. Keep the mapped subject stable and readable.`;
-        return `${header}${String(body || "").trim()} ${cue}\n`;
-      });
-      if (matched) return text.trim();
-      const contract = storyboardFxContract(preset, defaults.fx_custom_json, 0);
-      return contract ? `${text}\n\nFX accent inside this shot: ${contract.cue} Keep the mapped subject stable and readable.`.trim() : text;
     };
     const ensureStoryboardRequiredTemporalWorldEffect = (prompt, storyboardPayload = {}, scene = {}) => {
       let text = String(prompt || "").trim();

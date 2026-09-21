@@ -86,6 +86,13 @@ class MiniMaxFrameContinuityPromptTests(unittest.TestCase):
         self.assertIn("required dialogue lip sync", UI_SOURCE)
         self.assertIn("required singing lip sync", UI_SOURCE)
 
+    def test_frame_prompt_finalizer_is_in_render_scope(self):
+        self.assertIn("  function ensureBuilderManagedFx(prompt, scene = {})", UI_SOURCE)
+        self.assertNotIn("    const ensureBuilderManagedFx =", UI_SOURCE)
+        create_start = UI_SOURCE.index("async function createMiniMaxH3FrameContinuityPrompt")
+        create_end = UI_SOURCE.index("async function renderMiniMaxSceneVideoWithProgress", create_start)
+        self.assertIn("ensureBuilderManagedFx(prompt, segment)", UI_SOURCE[create_start:create_end])
+
 
 if __name__ == "__main__":
     unittest.main()
