@@ -39,6 +39,28 @@ class MiniMaxFrameContinuityPromptTests(unittest.TestCase):
         prompt_validation = UI_SOURCE.index("if (!prompt) throw new Error", generation_call)
         self.assertLess(generation_call, prompt_validation)
 
+    def test_blank_saved_prompt_is_generated_before_render_validation(self):
+        validation_start = UI_SOURCE.index("function validateMiniMaxSceneReadyForVideo")
+        validation_end = UI_SOURCE.index("async function prepareMiniMaxH3ContinuityReference", validation_start)
+        validation_source = UI_SOURCE[validation_start:validation_end]
+        self.assertIn("if (!frameContinuityPromptEnabled)", validation_source)
+        self.assertIn("if (!savedPrompt)", validation_source)
+
+        render_start = UI_SOURCE.index("async function renderMiniMaxSceneVideoWithProgress")
+        render_end = UI_SOURCE.index("async function createMiniMaxSceneVideo", render_start)
+        render_source = UI_SOURCE[render_start:render_end]
+        generation = render_source.index("await createMiniMaxH3FrameContinuityPrompt")
+        saved_prompt_fallback = render_source.index("segment?.minimax_h3_prompt || segment?.i2v_prompt", generation)
+        empty_prompt_rejection = render_source.index("needs a MiniMax H3 prompt", saved_prompt_fallback)
+        self.assertLess(generation, saved_prompt_fallback)
+        self.assertLess(saved_prompt_fallback, empty_prompt_rejection)
+
+        create_start = UI_SOURCE.index("async function createMiniMaxH3FrameContinuityPrompt")
+        create_end = UI_SOURCE.index("async function renderMiniMaxSceneVideoWithProgress", create_start)
+        create_source = UI_SOURCE[create_start:create_end]
+        self.assertIn("segment.minimax_h3_prompt = generatedPrompt", create_source)
+        self.assertIn("await autoSaveSessionQuiet", create_source)
+
     def test_feature_forces_one_continuous_shot(self):
         self.assertIn("frequency: 0, cut_times_seconds: [], cue_driven: false", UI_SOURCE)
         self.assertIn("All listed cues occur inside the same uninterrupted shot", UI_SOURCE)
