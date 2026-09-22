@@ -3309,6 +3309,7 @@ async function copyTextToClipboard(text) {
 }
 
 function openStoryboardBuilder(payload = {}) {
+  const focusSceneId = String(payload.focusSceneId || payload.focus_scene_id || "").trim();
   const projectFolder = String(payload.projectFolder || payload.project_folder || "").trim();
   const incomingProjectVideoEngine = String(payload.projectVideoEngine || payload.project_video_engine || "").trim();
   const hasIncomingProjectVideoEngine = Boolean(incomingProjectVideoEngine);
@@ -4254,6 +4255,7 @@ function openStoryboardBuilder(payload = {}) {
   shell.append(header, note, middleContent, footer);
   backdrop.append(shell);
   document.body.append(backdrop);
+  if (focusSceneId) backdrop.style.display = "none";
 
   const setMode = (mode) => {
     state.mode = mode;
@@ -6473,7 +6475,10 @@ function openStoryboardBuilder(payload = {}) {
     );
     editorBackdrop.append(editor);
     document.body.append(editorBackdrop);
-    closeEditor.onclick = () => editorBackdrop.remove();
+    closeEditor.onclick = () => {
+      editorBackdrop.remove();
+      if (focusSceneId) backdrop.remove();
+    };
     const refreshShotPresetForVideoType = () => {
       const type = videoPromptType.value || "i2v";
       const imageToVideoType = type === "i2v" || type === "image_to_video";
@@ -6691,7 +6696,10 @@ function openStoryboardBuilder(payload = {}) {
       scene.audio_direction = audioDirection.value.trim();
       scene.continuity = continuityDirection.value.trim();
     };
-    cancel.onclick = () => editorBackdrop.remove();
+    cancel.onclick = () => {
+      editorBackdrop.remove();
+      if (focusSceneId) backdrop.remove();
+    };
     gemma.onclick = async () => {
       const previous = gemma.textContent;
       gemma.disabled = true;
@@ -6736,11 +6744,16 @@ function openStoryboardBuilder(payload = {}) {
         gemmaBeat.textContent = previous;
       }
     };
-    apply.onclick = () => {
+    apply.onclick = async () => {
       saveEditorFieldsToScene();
       syncReferenceMappingsToVideoCreator();
       syncStoryLayerFromInputs({ notify: true });
       editorBackdrop.remove();
+      if (focusSceneId) {
+        await saveStoryboard();
+        backdrop.remove();
+        return;
+      }
       renderTable();
     };
   };
@@ -8174,7 +8187,15 @@ function openStoryboardBuilder(payload = {}) {
   refreshCharacterSpeedInfo();
   refreshFacialInfo();
   setMode(state.mode || "storyboard_prompts");
-  loadExisting();
+  loadExisting().then(() => {
+    if (!focusSceneId) return;
+    const target = state.scenes.find((scene) => scene.id === focusSceneId);
+    if (target) {
+      openSceneEditor(target);
+    } else {
+      backdrop.style.display = "";
+    }
+  });
 }
 
 window.VRGDGStoryboardBuilder = window.VRGDGStoryboardBuilder || {};
