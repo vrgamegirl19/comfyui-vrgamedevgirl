@@ -53,6 +53,7 @@ function fixture(single = true) {
     rowList: { querySelectorAll: () => single ? [rows[1]] : rows },
     collectBoundaryOverlapLyricOverrides: () => new Map(rows.map(row => [row.dataset.reviewSegmentId, row.querySelector('[data-review-lyric-text]').value])),
     normalizeFluxReferenceBuilder: value => value,
+    pendingReviewWordMoves: [], applyPendingReviewWordMoves() {},
     applyLyricSectionsFromReferenceText() {}, syncLyricMapperFromSegments() {},
     syncIngredientsSceneMapFromSubjectMappings: refs => ({ refs }), currentVideoMode: () => 't2v',
     sortSegments: segments => segments.sort((a, b) => a.start - b.start),
@@ -210,4 +211,82 @@ test('manual save retains the success notice and all-scene editing', async () =>
   assert.equal(f.state.segments[2].lyric_text, 'Three');
   assert.deepEqual(f.messages, ['Line Review Saved']);
   assert.equal(f.backdrop.isConnected, true);
+});
+
+for (const direction of ['prevScene', 'nextScene']) {
+  test(`${direction} button saves before navigating`, async () => {
+    const f = fixture();
+    f.context.prevScene = {};
+    f.context.nextScene = {};
+    f.run(section('      prevScene.onclick = () => {\n        if (targetSceneIndex', '      if (audioPath)'));
+    await f.run(`${direction}.onclick()`);
+    assert.deepEqual(f.events, ['persist', 'close', direction === 'prevScene' ? 'a' : 'c']);
+  });
+}
+
+test('Open All Scenes saves the current card and focuses it in the full editor', async () => {
+  const f = fixture();
+  f.context.openAllButton = {};
+  let focus;
+  f.context.openLyricReviewModal = options => { focus = options.focusSceneId; };
+  f.run(section('      openAllButton.onclick =', '      header.append(heading, openAllButton'));
+  await f.run('openAllButton.onclick()');
+  assert.deepEqual(f.events, ['persist', 'close']);
+  assert.equal(focus, 'b');
+});
+
+test('first and last scene boundaries can be edited without missing neighbors', async () => {
+  const f = fixture();
+  f.context.reviewRows = () => [f.rows[0]];
+  f.rows[0].querySelector('[data-review-start]').value = '2';
+  await f.run('handleReviewStartEdited(rows[0])');
+  f.context.reviewRows = () => [f.rows[2]];
+  f.rows[2].querySelector('[data-review-end]').value = '33';
+  await f.run('handleReviewEndEdited(rows[2])');
+  assert.deepEqual(f.times(), [[2, 10], [10, 20], [20, 33]]);
+});
+
+test('lock-rest end edit respects the next scene video lock', async () => {
+  const f = fixture();
+  f.state.segments[2].locked = true;
+  f.rows[1].querySelector('[data-review-end]').value = '23';
+  await f.run('handleReviewEndEdited(rows[1])');
+  assert.deepEqual(f.times(), [[0, 10], [10, 20], [20, 30]]);
+});
+
+for (const retryFails of [false, true]) {
+  test(`image-history save retry preserves navigation result (failure=${retryFails})`, async () => {
+    const f = fixture();
+    let attempts = 0;
+    f.context.saveSession = async () => {
+      if (++attempts === 1) throw Error('image_history');
+      if (retryFails) throw Error('Disk full');
+    };
+    await f.run('navigateReviewScene({ singleSceneId: "c" })');
+    assert.equal(attempts, 2);
+    assert.equal(f.backdrop.isConnected, retryFails);
+    assert.equal(f.context.save.disabled, false);
+  });
+}
+
+test('splitting a locked scene leaves the scene and modal intact', async () => {
+  const f = fixture();
+  f.state.segments[1].locked = true;
+  f.run(section('    const splitReviewRowAtPlayhead =', '    const choices = referenceBuilderSubjectChoices();'));
+  await f.run('splitReviewRowAtPlayhead(rows[1], state.segments[1])');
+  assert.deepEqual(f.times(), [[0, 10], [10, 20], [20, 30]]);
+  assert.equal(f.backdrop.isConnected, true);
+});
+
+test('splitting an editable scene saves both pieces and opens the second card', async () => {
+  const f = fixture();
+  let id = 0;
+  f.context.newSegment = (start, end) => ({ id: `split-${++id}`, start, end });
+  f.context.reviewAudio.currentTime = 15;
+  f.run(section('    const copyLyricReviewFields =', '    const choices = referenceBuilderSubjectChoices();'));
+  await f.run('splitReviewRowAtPlayhead(rows[1], state.segments[1])');
+  assert.deepEqual(f.times(), [[0, 10], [10, 15], [15, 20], [20, 30]]);
+  assert.deepEqual(f.events, ['persist', 'close', 'split-2']);
+  assert.equal(f.state.fluxReferenceBuilder.scene_map['split-1'], 'location');
+  assert.equal(f.state.fluxReferenceBuilder.scene_map['split-2'], 'location');
 });
