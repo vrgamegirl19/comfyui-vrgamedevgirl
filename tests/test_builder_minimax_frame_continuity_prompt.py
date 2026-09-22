@@ -115,10 +115,14 @@ class MiniMaxFrameContinuityPromptTests(unittest.TestCase):
         self.assertIn("All listed cues occur inside the same uninterrupted shot", UI_SOURCE)
         self.assertIn("Continuing seamlessly from the previous shot, the camera maintains its established course as", UI_SOURCE)
 
-    def test_generated_shot_prose_rejects_negative_prompt_words(self):
-        self.assertIn("negativePromptMatch", UI_SOURCE)
-        self.assertIn("negative prompt wording", UI_SOURCE)
-        self.assertIn("Rewrite the shot entirely as positive desired visual action", UI_SOURCE)
+    def test_generated_shot_prose_removes_negative_sentences_without_failing(self):
+        self.assertIn("stripMiniMaxH3NegativePromptSentences", UI_SOURCE)
+        self.assertIn("Removed negative prompt wording", UI_SOURCE)
+        self.assertIn("using the positive fallback shot", UI_SOURCE)
+        self.assertNotIn("Gemma used negative prompt wording", UI_SOURCE)
+        self.assertIn("VRGDGDIALOGUE", UI_SOURCE)
+        self.assertIn("restoreDialogue", UI_SOURCE)
+        self.assertIn("The assigned performer visibly delivers", UI_SOURCE)
         self.assertNotIn("No additional environmental or physical sounds are added", UI_SOURCE)
         self.assertIn("remains the sole complete audience-facing soundtrack", UI_SOURCE)
 

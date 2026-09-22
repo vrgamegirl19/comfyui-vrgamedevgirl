@@ -41588,6 +41588,33 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return shots;
   }
 
+  function stripMiniMaxH3NegativePromptSentences(description) {
+    const text = String(description || "").trim();
+    if (!text) return "";
+    const negativeWording = /\b(?:do\s+not|don['’]t|never|without|avoid|must\s+not|cannot|can['’]t|not|no)\b/i;
+    const dialogueTags = [];
+    const maskedText = text.replace(/<d>[\s\S]*?<\/d>/gi, (tag) => {
+      const token = `VRGDGDIALOGUE${dialogueTags.length}TOKEN`;
+      dialogueTags.push(tag);
+      return token;
+    });
+    const restoreDialogue = (value) => String(value || "").replace(/VRGDGDIALOGUE(\d+)TOKEN/g, (_match, index) => dialogueTags[Number(index)] || "");
+    const sentences = maskedText.match(/[^.!?…]+[.!?…]+|[^.!?…]+$/g) || [maskedText];
+    const kept = [];
+    for (const sentence of sentences) {
+      const sentenceTokens = sentence.match(/VRGDGDIALOGUE\d+TOKEN/g) || [];
+      const visualProse = sentence.replace(/VRGDGDIALOGUE\d+TOKEN/g, " ");
+      if (!negativeWording.test(visualProse)) {
+        kept.push(restoreDialogue(sentence.trim()));
+        continue;
+      }
+      if (sentenceTokens.length) {
+        kept.push(`The assigned performer visibly delivers ${restoreDialogue(sentenceTokens.join(" "))} with natural synchronized mouth, jaw, cheek, and facial movement.`);
+      }
+    }
+    return kept.join(" ").replace(/\s{2,}/g, " ").trim();
+  }
+
   function parseMiniMaxH3ShotDescriptionPayload(rawPrompt, cutPlan = {}, segment = null, mode = miniMaxH3ModeForSegment(segment)) {
     const text = String(rawPrompt || "").trim();
     if (!text) throw new Error("The LLM returned an empty MiniMax shot-description payload.");
@@ -41648,12 +41675,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       if (/\.\s+guides\s+(?:his|her|their|the)\s+exact\s+appearance\b/i.test(description)) {
         throw new Error(`Gemma returned an orphaned reference-purpose fragment in shot ${index + 1}. Generate again so every sentence has a clear subject.`);
       }
-      const visualProse = description.replace(/<d>[\s\S]*?<\/d>/gi, " ");
-      const negativePromptMatch = visualProse.match(/\b(?:do\s+not|don['’]t|never|without|avoid|must\s+not|cannot|can['’]t|not|no)\b/i);
-      if (negativePromptMatch) {
-        throw new Error(`Gemma used negative prompt wording (“${negativePromptMatch[0]}”) in shot ${index + 1}. Rewrite the shot entirely as positive desired visual action.`);
+      const positiveDescription = stripMiniMaxH3NegativePromptSentences(description);
+      if (!positiveDescription) {
+        console.warn(`[VRGDG Music Builder] Removed all negative prompt wording from shot ${index + 1}; using the positive fallback shot.`);
+        return miniMaxH3FallbackShotDescription(segment, index, mode);
       }
-      return normalizeMiniMaxH3ShotDescription(description);
+      if (positiveDescription !== description) {
+        console.warn(`[VRGDG Music Builder] Removed negative prompt wording from shot ${index + 1} and continued with its positive visual instructions.`);
+      }
+      return normalizeMiniMaxH3ShotDescription(positiveDescription);
     });
     const requiredExtras = miniMaxH3CombinedSubjectPlan(segment, mode).subjects.filter((item) => item.kind === "extra");
     const normalizedDescriptions = descriptions.map((description, index) => {
