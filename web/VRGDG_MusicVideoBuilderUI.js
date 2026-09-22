@@ -2677,8 +2677,12 @@ function makeEditorThumbnailUrl(path) {
   return `/vrgdg/video_editor/image?path=${encodeURIComponent(path)}&thumbv=${encodeURIComponent(version)}`;
 }
 
-function makeEditorVideoUrl(path) {
-  return `/vrgdg/video_editor/video?path=${encodeURIComponent(path)}&rand=${Date.now()}`;
+function makeEditorVideoUrl(path, bust) {
+  // A stable bust value (e.g. segment.video_cache_bust, which only changes when the
+  // scene is re-rendered) lets the browser reuse a cached fetch of the same clip
+  // across preload/playback instead of re-downloading it from disk on every cut.
+  const version = bust === undefined || bust === null || bust === "" ? Date.now() : bust;
+  return `/vrgdg/video_editor/video?path=${encodeURIComponent(path)}&rand=${version}`;
 }
 
 function extractImagesFromHistory(historyPayload, promptId) {
@@ -3997,7 +4001,14 @@ function openBuilder(node) {
     pauseAllAudio();
     updateAudioScrubbers();
   });
-  previewStage.append(previewEmpty, previewImage, previewVideo, postProcessComparePreview.element, previewDecodeHint);
+  // Hidden element used only to warm the browser's cache for the next scene's
+  // clip a moment before the playhead reaches it, so the visible swap at the
+  // cut doesn't stall on a cold fetch from the local server. It never plays.
+  const preloadVideo = document.createElement("video");
+  preloadVideo.muted = true;
+  preloadVideo.preload = "auto";
+  preloadVideo.style.cssText = "display:none;width:0;height:0;";
+  previewStage.append(previewEmpty, previewImage, previewVideo, preloadVideo, postProcessComparePreview.element, previewDecodeHint);
   const customImageFileInput = document.createElement("input");
   customImageFileInput.type = "file";
   customImageFileInput.accept = "image/png,image/jpeg,image/webp";
@@ -16167,13 +16178,13 @@ function openBuilder(node) {
 
   function setPreviewVideoSource(segment, videoPath) {
     const cacheKey = selectedSegmentVideoCacheKey(segment, videoPath);
-    if (!videoPath || !cacheKey) return;
+    if (!videoPath || !cacheKey) return false;
     if (previewVideo.dataset.cacheKey !== cacheKey) {
       if (previewVideoLoadTimer) clearTimeout(previewVideoLoadTimer);
       previewVideoLoadTimer = null;
       previewDecodeHint.style.display = "none";
       previewVideo.pause();
-      previewVideo.src = makeEditorVideoUrl(videoPath);
+      previewVideo.src = makeEditorVideoUrl(videoPath, segment?.video_cache_bust);
       previewVideo.dataset.path = videoPath;
       previewVideo.dataset.cacheKey = cacheKey;
       previewVideo.dataset.segmentId = String(segment?.id || "");
@@ -16184,7 +16195,31 @@ function openBuilder(node) {
           handlePreviewVideoLoadIssue("timeout");
         }
       }, 8000);
+      return true;
     }
+    return false;
+  }
+
+  const PRELOAD_NEXT_CLIP_LEAD_SECONDS = 1.5;
+
+  // Warms the browser's HTTP cache for the upcoming scene's clip a little
+  // before the playhead reaches it. Combined with the stable video_cache_bust
+  // query param above, the real swap in setPreviewVideoSource then hits a
+  // cache instead of a cold fetch, removing most of the stall at the cut.
+  function maybePreloadNextClip(segment, current) {
+    if (!segment) return;
+    const end = Number(segment.end || 0);
+    const remaining = end - Number(current || 0);
+    if (!(remaining > 0) || remaining > PRELOAD_NEXT_CLIP_LEAD_SECONDS) return;
+    const nextSegment = playbackSegmentAtTime(end + 0.05);
+    if (!nextSegment || nextSegment.id === segment.id) return;
+    const nextPath = selectedSegmentVideoPath(nextSegment);
+    if (!nextPath) return;
+    const cacheKey = selectedSegmentVideoCacheKey(nextSegment, nextPath);
+    if (!cacheKey || preloadVideo.dataset.cacheKey === cacheKey) return;
+    preloadVideo.src = makeEditorVideoUrl(nextPath, nextSegment.video_cache_bust);
+    preloadVideo.dataset.cacheKey = cacheKey;
+    preloadVideo.load();
   }
 
   function clearPreviewVideoLoadState() {
@@ -16771,21 +16806,28 @@ function openBuilder(node) {
       return;
     }
     postProcessComparePreview.hide();
+    if (playing) maybePreloadNextClip(segment, current);
     const videoPath = selectedSegmentVideoPath(segment);
     if (!segment || !videoPath) {
       if (!previewVideo.paused) previewVideo.pause();
       previewVideo.muted = false;
       return;
     }
+    let justSwapped = false;
     if (previewVideo.dataset.cacheKey !== selectedSegmentVideoCacheKey(segment, videoPath)) {
-      setPreviewVideoSource(segment, videoPath);
+      justSwapped = setPreviewVideoSource(segment, videoPath);
       previewVideo.muted = false;
       previewVideo.style.display = "block";
       previewImage.style.display = "none";
       previewEmpty.style.display = "none";
     }
+    // Right after a fresh source swap the element has no data to seek into yet
+    // (readyState 0), and a forward cut naturally starts at/near local time 0
+    // anyway, so forcing a seek here just adds a redundant keyframe hunt on
+    // top of the reload. Let the next tick's drift check correct it once the
+    // video actually has data.
     const local = localPlaybackTime(segment, current);
-    if (Number.isFinite(local) && Math.abs(Number(previewVideo.currentTime || 0) - local) > 0.2) {
+    if (!justSwapped && Number.isFinite(local) && Math.abs(Number(previewVideo.currentTime || 0) - local) > 0.2) {
       try {
         previewVideo.currentTime = local;
       } catch {
@@ -16816,9 +16858,24 @@ function openBuilder(node) {
       const playbackSegment = playbackSegmentAtTime(current);
       if (playbackSegment && playbackSegment.id !== state.activeId) {
         state.activeId = playbackSegment.id;
-        syncInspector();
-        render();
+        // Sync the video first so the new clip starts loading immediately.
+        // syncInspector() (dozens of form fields) and render() (rebuilds every
+        // timeline block from scratch) are comparatively heavy, and running
+        // them synchronously here was blocking that load on the same frame as
+        // the cut, which is what produced the visible stutter at scene
+        // boundaries. During active playback, push them to the next frame so
+        // they stay off the swap; scrubbing (paused, dragging) stays
+        // synchronous since it needs immediate feedback.
         syncPreviewPlayback(current);
+        if (isTimelinePlaying()) {
+          requestAnimationFrame(() => {
+            syncInspector();
+            render();
+          });
+        } else {
+          syncInspector();
+          render();
+        }
         return;
       }
     }
