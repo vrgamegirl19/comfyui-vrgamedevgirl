@@ -5148,6 +5148,31 @@ function openBuilder(node) {
   const i2vPrompt = document.createElement("textarea");
   i2vPrompt.placeholder = "Image-to-video prompt...";
   i2vPrompt.style.cssText = notesInput.style.cssText;
+  const saveI2VPromptButton = makeButton("Save Updated Prompt", "primary");
+  saveI2VPromptButton.title = "Save the updated prompt to this scene and sync to the project storyboard.";
+  saveI2VPromptButton.style.width = "100%";
+  saveI2VPromptButton.style.marginTop = "4px";
+  saveI2VPromptButton.disabled = true;
+  saveI2VPromptButton.style.opacity = "0.5";
+  saveI2VPromptButton.style.cursor = "not-allowed";
+
+  function updateI2VPromptSaveButtonState() {
+    const segment = activeSegment();
+    if (!segment) {
+      saveI2VPromptButton.disabled = true;
+      saveI2VPromptButton.style.opacity = "0.5";
+      saveI2VPromptButton.style.cursor = "not-allowed";
+      return;
+    }
+    const saved = String(segment._saved_i2v_prompt ?? segment.i2v_prompt ?? "");
+    const current = String(i2vPrompt.value || "");
+    const isDirty = current !== saved;
+    saveI2VPromptButton.disabled = !isDirty;
+    saveI2VPromptButton.style.opacity = isDirty ? "1" : "0.5";
+    saveI2VPromptButton.style.cursor = isDirty ? "pointer" : "not-allowed";
+  }
+  i2vPrompt.addEventListener("input", updateI2VPromptSaveButtonState);
+  i2vPrompt.addEventListener("change", updateI2VPromptSaveButtonState);
   const videoModeChooser = document.createElement("div");
   videoModeChooser.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(4,auto);gap:6px;";
   const styleVideoModeCard = (card, column, row) => {
@@ -6731,6 +6756,31 @@ function openBuilder(node) {
   miniMaxPrompt.placeholder = "MiniMax H3 scene prompt...";
   miniMaxPrompt.style.cssText = "min-height:190px;resize:vertical;border:1px solid #3f3f46;border-radius:6px;background:#18181b;color:#fafafa;padding:9px;font-size:12px;line-height:1.4;";
   ["keydown", "keypress", "keyup"].forEach((eventName) => miniMaxPrompt.addEventListener(eventName, (event) => event.stopPropagation()));
+  const saveMiniMaxPromptButton = makeButton("Save Updated Prompt", "primary");
+  saveMiniMaxPromptButton.title = "Save the updated MiniMax prompt to this scene and sync to the project storyboard.";
+  saveMiniMaxPromptButton.style.width = "100%";
+  saveMiniMaxPromptButton.style.marginTop = "4px";
+  saveMiniMaxPromptButton.disabled = true;
+  saveMiniMaxPromptButton.style.opacity = "0.5";
+  saveMiniMaxPromptButton.style.cursor = "not-allowed";
+
+  function updateMiniMaxPromptSaveButtonState() {
+    const segment = activeSegment();
+    if (!segment) {
+      saveMiniMaxPromptButton.disabled = true;
+      saveMiniMaxPromptButton.style.opacity = "0.5";
+      saveMiniMaxPromptButton.style.cursor = "not-allowed";
+      return;
+    }
+    const saved = String(segment._saved_minimax_prompt ?? segment.minimax_h3_prompt ?? "");
+    const current = String(miniMaxPrompt.value || "");
+    const isDirty = current !== saved;
+    saveMiniMaxPromptButton.disabled = !isDirty;
+    saveMiniMaxPromptButton.style.opacity = isDirty ? "1" : "0.5";
+    saveMiniMaxPromptButton.style.cursor = isDirty ? "pointer" : "not-allowed";
+  }
+  miniMaxPrompt.addEventListener("input", updateMiniMaxPromptSaveButtonState);
+  miniMaxPrompt.addEventListener("change", updateMiniMaxPromptSaveButtonState);
   const miniMaxPromptCharacterStatus = document.createElement("div");
   miniMaxPromptCharacterStatus.style.cssText = "font-size:11px;line-height:1.4;border:1px solid #334155;border-radius:6px;background:#0f172a;padding:7px 9px;color:#86efac;";
   function updateMiniMaxPromptCharacterStatus(segment = activeSegment()) {
@@ -6839,6 +6889,7 @@ function openBuilder(node) {
         miniMaxPromptRunnerNote,
         miniMaxPromptActions,
         makeField("MiniMax H3 prompt", miniMaxPrompt),
+        saveMiniMaxPromptButton,
         miniMaxPromptCharacterStatus,
         miniMaxPass2PromptField,
       ]),
@@ -6919,6 +6970,7 @@ function openBuilder(node) {
         createI2VButton,
         editI2VPromptButton,
         makeField("Video prompt", i2vPrompt),
+        saveI2VPromptButton,
         makeSettingsSection("Advanced", [
           editI2VInstructionsButton,
           editIdLoraInstructionsButton,
@@ -8055,6 +8107,7 @@ function openBuilder(node) {
     segment.minimax_h3_prompt = miniMaxPrompt.value || "";
     segment.minimax_h3_pass2_prompt = miniMaxPass2Prompt.value || "";
     updateMiniMaxPromptCharacterStatus(segment);
+    updateMiniMaxPromptSaveButtonState();
     segment.minimax_h3_scene_image_use = normalizeMiniMaxH3SceneImageUse(miniMaxSceneImageUse.value);
     segment.minimax_h3_use_scene_image_as_start_frame = segment.minimax_h3_scene_image_use === "exact_start_frame";
     segment.minimax_h3_start_frame_character_influence = normalizeMiniMaxH3StartFrameCharacterInfluence(
@@ -8958,10 +9011,14 @@ function openBuilder(node) {
     miniMaxSceneImageUseField.style.display = hasSceneImage ? "flex" : "none";
     miniMaxStartFrameCharacterInfluenceField.style.display = hasSceneImage && miniMaxSceneImageUse.value === "exact_start_frame" ? "flex" : "none";
     miniMaxStartFrameReferenceNote.style.display = hasSceneImage ? "block" : "none";
+    if (segment) {
+      segment._saved_minimax_prompt = String(segment.minimax_h3_prompt || segment.i2v_prompt || "");
+    }
     miniMaxPrompt.value = String(segment?.minimax_h3_prompt || segment?.i2v_prompt || "");
     miniMaxPass2Prompt.value = String(segment?.minimax_h3_pass2_prompt || "");
     miniMaxPass2PromptField.style.display = threePass ? "flex" : "none";
     updateMiniMaxPromptCharacterStatus(segment);
+    updateMiniMaxPromptSaveButtonState();
     const compactMiniMaxModeLabel = mode === "reference_to_video"
       ? "Ref2V"
       : mode === "image_to_video"
@@ -16531,7 +16588,7 @@ function openBuilder(node) {
     lyricSingersInput.dataset.vrgdgInspectorSegmentId = String(segment?.id || "");
     lyricSingersInput.dataset.vrgdgUserEdited = "0";
     const disabled = !segment;
-    for (const control of [labelInput, startInput, endInput, notesInput, ernieNotesInput, krea2TwoPassNotesInput, nbNotes, lyricTextInput, lyricSingersInput, i2vNotesInput, t2iPrompt, ernieT2IPrompt, krea2TwoPassT2IPrompt, nbPrompt, i2vPrompt, zEnhanceGemmaNotes, zEnhancePromptPreview, previewButton, ernieCreateButton, previewNBButton, deleteSegmentButton, createSceneVideoButton, miniMaxSceneVideoButtons[0]]) {
+    for (const control of [labelInput, startInput, endInput, notesInput, ernieNotesInput, krea2TwoPassNotesInput, nbNotes, lyricTextInput, lyricSingersInput, i2vNotesInput, t2iPrompt, ernieT2IPrompt, krea2TwoPassT2IPrompt, nbPrompt, i2vPrompt, zEnhanceGemmaNotes, zEnhancePromptPreview, previewButton, ernieCreateButton, previewNBButton, deleteSegmentButton, createSceneVideoButton, miniMaxSceneVideoButtons[0], saveI2VPromptButton, saveMiniMaxPromptButton]) {
       control.disabled = disabled;
     }
     loadCustomImageButton.disabled = disabled;
@@ -16585,6 +16642,12 @@ function openBuilder(node) {
       nbPrompt.value = "";
       i2vPrompt.value = "";
       editI2VPromptButton.style.display = "none";
+      saveI2VPromptButton.disabled = true;
+      saveI2VPromptButton.style.opacity = "0.5";
+      saveI2VPromptButton.style.cursor = "not-allowed";
+      saveMiniMaxPromptButton.disabled = true;
+      saveMiniMaxPromptButton.style.opacity = "0.5";
+      saveMiniMaxPromptButton.style.cursor = "not-allowed";
       editImagePromptButtons.forEach((button) => {
         button.style.display = "none";
       });
@@ -16626,8 +16689,10 @@ function openBuilder(node) {
     krea2TwoPassT2IPrompt.value = segment.t2i_prompt || "";
     fluxPrompt.value = segment.t2i_prompt || segment.flux_prompt || "";
     nbPrompt.value = segment.t2i_prompt || segment.nb_prompt || "";
+    segment._saved_i2v_prompt = String(segment.i2v_prompt || "");
     i2vPrompt.value = segment.i2v_prompt || "";
     editI2VPromptButton.style.display = String(segment.i2v_prompt || "").trim() ? "" : "none";
+    updateI2VPromptSaveButtonState();
     editImagePromptButtons.forEach((button) => {
       button.style.display = String(segment.t2i_prompt || segment.flux_prompt || segment.nb_prompt || "").trim() ? "" : "none";
     });
@@ -19868,6 +19933,7 @@ function openBuilder(node) {
     segment.i2v_prompt = nextI2VPrompt;
     if (nextI2VPrompt !== previousI2VPrompt) segment.i2v_prompt_origin = "manual";
     editI2VPromptButton.style.display = String(segment.i2v_prompt || "").trim() ? "" : "none";
+    updateI2VPromptSaveButtonState();
     editImagePromptButtons.forEach((button) => {
       button.style.display = String(editedT2IPrompt || "").trim() ? "" : "none";
     });
@@ -44242,6 +44308,100 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         };
       });
   }
+
+  async function saveStoryboardScenesFromTimeline() {
+    const projectFolder = activeProjectFolderForSave();
+    if (!projectFolder) return null;
+    let existingStoryboard = {};
+    try {
+      const loadRes = await postJson("/vrgdg/storyboard/load", { project_folder: projectFolder });
+      if (loadRes?.ok && loadRes?.storyboard) {
+        existingStoryboard = loadRes.storyboard;
+      }
+    } catch (_err) {
+      // If load fails or doesn't exist yet, we will construct with current scenes
+    }
+    const currentScenes = storyboardScenePayload();
+    const existingScenes = Array.isArray(existingStoryboard.scenes) ? existingStoryboard.scenes : [];
+    const mergedScenes = currentScenes.map((fresh) => {
+      const existing = existingScenes.find((s) => s.id === fresh.id)
+        || existingScenes.find((s) => Number(s.scene_number) === Number(fresh.scene_number))
+        || {};
+      return {
+        ...existing,
+        ...fresh,
+      };
+    });
+    const payload = {
+      project_folder: projectFolder,
+      storyboard: {
+        ...existingStoryboard,
+        project_video_engine: normalizeProjectVideoEngine(state.projectVideoEngine),
+        scenes: mergedScenes,
+      },
+    };
+    return await postJson("/vrgdg/storyboard/save", payload);
+  }
+
+  saveI2VPromptButton.addEventListener("click", async () => {
+    const segment = activeSegment();
+    if (!segment) return;
+    const promptValue = i2vPrompt.value || "";
+    segment.i2v_prompt = promptValue;
+    segment.i2v_prompt_origin = "manual";
+    segment._saved_i2v_prompt = promptValue;
+    updateI2VPromptSaveButtonState();
+
+    saveI2VPromptButton.disabled = true;
+    saveI2VPromptButton.style.opacity = "0.7";
+    saveI2VPromptButton.style.cursor = "wait";
+    const origText = saveI2VPromptButton.textContent;
+    saveI2VPromptButton.textContent = "Saving...";
+    try {
+      await autoSaveSessionQuiet("Save video prompt").catch(() => null);
+      await saveStoryboardScenesFromTimeline();
+      saveI2VPromptButton.textContent = "Saved!";
+      toast("Video prompt saved to scene and storyboard.");
+      setTimeout(() => {
+        saveI2VPromptButton.textContent = origText;
+        updateI2VPromptSaveButtonState();
+      }, 1500);
+    } catch (err) {
+      saveI2VPromptButton.textContent = origText;
+      updateI2VPromptSaveButtonState();
+      toast(String(err?.message || err), true);
+    }
+  });
+
+  saveMiniMaxPromptButton.addEventListener("click", async () => {
+    const segment = activeSegment();
+    if (!segment) return;
+    const promptValue = miniMaxPrompt.value || "";
+    segment.minimax_h3_prompt = promptValue;
+    segment.minimax_h3_prompt_origin = "manual";
+    segment._saved_minimax_prompt = promptValue;
+    updateMiniMaxPromptSaveButtonState();
+
+    saveMiniMaxPromptButton.disabled = true;
+    saveMiniMaxPromptButton.style.opacity = "0.7";
+    saveMiniMaxPromptButton.style.cursor = "wait";
+    const origText = saveMiniMaxPromptButton.textContent;
+    saveMiniMaxPromptButton.textContent = "Saving...";
+    try {
+      await autoSaveSessionQuiet("Save MiniMax prompt").catch(() => null);
+      await saveStoryboardScenesFromTimeline();
+      saveMiniMaxPromptButton.textContent = "Saved!";
+      toast("MiniMax prompt saved to scene and storyboard.");
+      setTimeout(() => {
+        saveMiniMaxPromptButton.textContent = origText;
+        updateMiniMaxPromptSaveButtonState();
+      }, 1500);
+    } catch (err) {
+      saveMiniMaxPromptButton.textContent = origText;
+      updateMiniMaxPromptSaveButtonState();
+      toast(String(err?.message || err), true);
+    }
+  });
 
   function wizardStoryboardState(scenes, options = {}) {
     const defaults = normalizeBuilderStoryboardDefaults(state.builderStoryboardDefaults);
