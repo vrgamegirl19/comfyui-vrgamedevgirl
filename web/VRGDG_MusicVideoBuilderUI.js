@@ -20613,6 +20613,10 @@ function openBuilder(node) {
         block.ondblclick = (event) => {
           event.preventDefault();
           event.stopPropagation();
+          if (event.shiftKey) {
+            openStoryboardBuilderFromProject({ focusSceneId: segment.id });
+            return;
+          }
           openLyricReviewModal({ singleSceneId: segment.id });
         };
       }
@@ -45467,6 +45471,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       ? String(storyboardRunnerSettings.qwen_mmproj_file || "").trim()
       : String(i2vMmprojSelect.value || mmprojSelect.value || "").trim();
     window.VRGDGStoryboardBuilder.open({
+      focusSceneId: String(options.focusSceneId || "").trim(),
       projectFolder: projectInput.value || state.projectFolder || "",
       projectVideoEngine: normalizeProjectVideoEngine(state.projectVideoEngine),
       lineMappingLyrics: String(options.sourceLyrics || state.lyricMapper?.source_text || ""),
