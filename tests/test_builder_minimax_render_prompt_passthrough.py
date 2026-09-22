@@ -19,9 +19,13 @@ RENDER_SOURCE = BUILDER_SOURCE[RENDER_START:RENDER_END]
 
 
 class BuilderMiniMaxRenderPromptPassthroughTests(unittest.TestCase):
-    def test_render_uses_the_saved_prompt_without_rewriting_it(self):
+    def test_render_uses_saved_prompt_unless_frame_continuity_generates_one(self):
         self.assertIn(
-            "const prompt = String(\n      options.prompt\n      ?? (segment?.minimax_h3_prompt || segment?.i2v_prompt || \"\")\n    ).trim();",
+            "const generatedContinuityPrompt = miniMaxH3FrameContinuityPromptEnabled(segment)",
+            RENDER_SOURCE,
+        )
+        self.assertIn(
+            "generatedContinuityPrompt || (options.prompt ?? (segment?.minimax_h3_prompt || segment?.i2v_prompt || \"\"))",
             RENDER_SOURCE,
         )
         self.assertNotIn("applyMiniMaxH3NativeVoiceBlock", RENDER_SOURCE)
