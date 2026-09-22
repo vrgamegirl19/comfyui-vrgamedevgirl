@@ -20467,7 +20467,8 @@ function openBuilder(node) {
         if (segment.overlay_enabled === false) block.style.opacity = ".48";
         block.append(eye, lock);
       }
-      block.title = lockedByVideo ? "This scene has a generated video, so timing is locked." : "";
+      const dblClickHint = !isOverlay ? "Double-click to review line & performer mapping." : "";
+      block.title = lockedByVideo ? "This scene has a generated video, so timing is locked." : dblClickHint;
       const dragImageSource = segmentImageSource(segment);
       if (dragImageSource) {
         block.draggable = true;
@@ -20542,6 +20543,13 @@ function openBuilder(node) {
       block.append(leftHandle, rightHandle);
       block.onclick = (event) => handleSegmentPick(segment, event);
       block.oncontextmenu = (event) => openSegmentContextMenu(event, segment);
+      if (!isOverlay) {
+        block.ondblclick = (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          openLyricReviewModal({ singleSceneId: segment.id });
+        };
+      }
       enableImageDrop(block, segment);
       enableLutDrop(block, segment);
       enablePostEffectDrop(block, segment);
@@ -21823,6 +21831,8 @@ function openBuilder(node) {
   }
 
   let activeSegmentDragCleanup = null;
+  let lastTimelineSceneClickTime = 0;
+  let lastTimelineSceneClickId = "";
 
   function makeDragHandle(element, segment, mode) {
     element.style.touchAction = "none";
@@ -21915,7 +21925,18 @@ function openBuilder(node) {
         if (finishEvent?.pointerId != null && finishEvent.pointerId !== pointerId) return;
         const shouldSelectScene = finishEvent?.type === "pointerup" && mode === "move" && !dragStarted;
         cleanup();
-        if (shouldSelectScene) handleSegmentPick(segment, finishEvent);
+        if (shouldSelectScene) {
+          const now = Date.now();
+          if (now - lastTimelineSceneClickTime < 380 && lastTimelineSceneClickId === segment.id && !isOverlay) {
+            lastTimelineSceneClickTime = 0;
+            lastTimelineSceneClickId = "";
+            openLyricReviewModal({ singleSceneId: segment.id });
+          } else {
+            lastTimelineSceneClickTime = now;
+            lastTimelineSceneClickId = segment.id;
+            handleSegmentPick(segment, finishEvent);
+          }
+        }
       };
       activeSegmentDragCleanup = cleanup;
       window.addEventListener("pointermove", move, { passive: false });
@@ -26340,23 +26361,45 @@ function openBuilder(node) {
     });
   }
 
+  let activeLyricReviewBackdrop = null;
+
   function openLyricReviewModal(options = {}) {
+    if (activeLyricReviewBackdrop?.isConnected) return;
+
     const focusSceneId = String(options?.focusSceneId || options?.focus_scene_id || "").trim();
+    const singleSceneId = String(options?.singleSceneId || options?.single_scene_id || options?.sceneId || "").trim();
     ensureAllSegmentRuntimeFields();
-    const scenes = [...state.segments].sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
+    const allScenes = [...state.segments].sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
+    const targetScene = singleSceneId ? allScenes.find((item) => item.id === singleSceneId) : null;
+    const isSingleScene = Boolean(targetScene);
+    const targetSceneIndex = targetScene ? allScenes.findIndex((item) => item.id === targetScene.id) : -1;
+    const scenes = isSingleScene ? [targetScene] : allScenes;
     const backdrop = document.createElement("div");
     backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
     const box = document.createElement("div");
-    box.style.cssText = "width:min(1720px,calc(100vw - 16px));max-height:calc(100vh - 32px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box;";
+    box.style.cssText = isSingleScene
+      ? "width:min(1680px,calc(100vw - 24px));max-height:calc(100vh - 32px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box;"
+      : "width:min(1720px,calc(100vw - 16px));max-height:calc(100vh - 32px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box;";
     const header = document.createElement("div");
     header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
     const heading = document.createElement("div");
-    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Review Lines + Map Performers</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Listen scene by scene, correct transcribed lyrics/dialogue, assign performers or speakers, and mark instrumental or B-roll before running Gemma.</div>`;
+    if (isSingleScene) {
+      heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Review Lines + Map Performers — ${escapeHtml(targetScene.label || `Scene ${targetSceneIndex + 1}`)}</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Listen to this scene, correct lyrics/dialogue, assign performers or speakers, and set lip-sync or location details.</div>`;
+    } else {
+      heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Review Lines + Map Performers</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Listen scene by scene, correct transcribed lyrics/dialogue, assign performers or speakers, and mark instrumental or B-roll before running Gemma.</div>`;
+    }
     const lyricReviewHint = makeButton("?");
     lyricReviewHint.title = "Explain lyric review controls";
     lyricReviewHint.style.width = "44px";
     const close = makeButton("Close");
-    header.append(heading, lyricReviewHint, close);
+    const openAllButton = isSingleScene ? makeButton("Open All Scenes") : null;
+    if (openAllButton) {
+      openAllButton.title = "Save this scene and open the full Review Lines + Map Performers window.";
+      openAllButton.onclick = () => navigateReviewScene({ focusSceneId: targetScene.id });
+      header.append(heading, openAllButton, lyricReviewHint, close);
+    } else {
+      header.append(heading, lyricReviewHint, close);
+    }
 
     lyricReviewHint.onclick = () => showInfoModal({
       title: "Lyric Review Help",
@@ -26377,7 +26420,9 @@ function openBuilder(node) {
 
     const note = document.createElement("div");
     note.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:9px;";
-    note.textContent = "These fields are the timeline line notes Gemma uses for I2V/T2V prompting. Fix typos or timing mistakes here, then choose who performs or speaks in each scene. Use B-roll or Instrumental when nobody should lip-sync.";
+    note.textContent = isSingleScene
+      ? "These fields are the line notes Gemma uses for I2V/T2V prompting for this scene. Fix typos or timing mistakes here, then choose who performs or speaks. Use B-roll or Instrumental when nobody should lip-sync. Switching scenes saves your changes."
+      : "These fields are the timeline line notes Gemma uses for I2V/T2V prompting. Fix typos or timing mistakes here, then choose who performs or speaks in each scene. Use B-roll or Instrumental when nobody should lip-sync.";
 
     const reviewReferenceBuilder = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
     if (!reviewReferenceBuilder.subject_scene_map || typeof reviewReferenceBuilder.subject_scene_map !== "object") reviewReferenceBuilder.subject_scene_map = {};
@@ -26464,6 +26509,11 @@ function openBuilder(node) {
     moveTailWordsCheckbox.input.onchange = () => {
       moveTailWordsCount.disabled = !moveTailWordsCheckbox.input.checked;
     };
+    if (isSingleScene) {
+      lyricWordToolsWrap.style.display = "none";
+      boundaryOverlapHelp.style.display = "none";
+      timingModePanel.style.gridTemplateColumns = "minmax(220px,280px) minmax(260px,1fr)";
+    }
     timingModePanel.append(makeField("Timing edit mode", timingModeSelect), timingModeHelp, lyricWordToolsWrap, boundaryOverlapHelp);
 
     const audioPanel = document.createElement("div");
@@ -26631,11 +26681,42 @@ function openBuilder(node) {
       const index = selectedIndex();
       setActiveReviewScene(scenes[Math.min(scenes.length - 1, index + 1)]);
     };
+    if (isSingleScene) {
+      jumpSelected.textContent = "Play Scene";
+      jumpSelected.dataset.playLabel = "Play Scene";
+      jumpSelected.onclick = () => playRange(targetScene, jumpSelected);
+      prevScene.textContent = "Prev Scene";
+      nextScene.textContent = "Next Scene";
+      prevScene.title = "Save this scene and open the previous scene.";
+      nextScene.title = "Save this scene and open the next scene.";
+      prevScene.disabled = targetSceneIndex <= 0;
+      nextScene.disabled = targetSceneIndex >= allScenes.length - 1;
+      prevScene.onclick = () => {
+        if (targetSceneIndex > 0) {
+          return navigateReviewScene({ singleSceneId: allScenes[targetSceneIndex - 1].id });
+        }
+      };
+      nextScene.onclick = () => {
+        if (targetSceneIndex < allScenes.length - 1) {
+          return navigateReviewScene({ singleSceneId: allScenes[targetSceneIndex + 1].id });
+        }
+      };
+      if (audioPath) {
+        const targetStart = Math.max(0, Number(targetScene.start || 0));
+        const cueAudio = () => {
+          try { reviewAudio.currentTime = targetStart; } catch {}
+        };
+        if (reviewAudio.readyState >= 1) cueAudio();
+        else reviewAudio.addEventListener("loadedmetadata", cueAudio, { once: true });
+      }
+    }
     if (audioPath) audioPanel.append(reviewAudio);
     audioPanel.append(prevScene, jumpSelected, nextScene);
 
     const rowList = document.createElement("div");
-    rowList.style.cssText = "display:flex;flex-direction:column;gap:8px;max-height:56vh;overflow-y:auto;overflow-x:hidden;padding-right:4px;";
+    rowList.style.cssText = isSingleScene
+      ? "display:flex;flex-direction:column;gap:8px;padding-right:4px;"
+      : "display:flex;flex-direction:column;gap:8px;max-height:56vh;overflow-y:auto;overflow-x:hidden;padding-right:4px;";
 
     const reviewPlayheadTime = () => {
       if (Number.isFinite(Number(reviewAudio?.currentTime))) return Math.max(0, Number(reviewAudio.currentTime));
@@ -27152,6 +27233,22 @@ function openBuilder(node) {
       updateReviewTimingDisplay(row);
     };
 
+    const singleReviewTimingNeighbors = (row) => {
+      const ordered = [...state.segments].sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
+      const index = ordered.findIndex((item) => item.id === row.dataset.reviewSegmentId);
+      return { previous: ordered[index - 1], following: ordered.slice(index + 1) };
+    };
+
+    const canEditSingleReviewTiming = (row, affected) => {
+      if (!isSingleScene) return true;
+      if (state.timingFrozen || affected.some((segment) => segment && hasLockedVideo(segment))) {
+        toast("Unfreeze timing and unlock affected scene videos before changing timing.", true);
+        syncReviewRowFromSegment(row);
+        return false;
+      }
+      return true;
+    };
+
     const handleReviewStartEdited = async (row) => {
       const startInput = row.querySelector("[data-review-start]");
       const endInput = row.querySelector("[data-review-end]");
@@ -27166,6 +27263,13 @@ function openBuilder(node) {
       const rowIndex = rows.indexOf(row);
       const prevRow = rows[rowIndex - 1] || null;
       const segment = liveReviewSegmentForRow(row);
+      const neighbors = isSingleScene ? singleReviewTimingNeighbors(row) : null;
+      if (!canEditSingleReviewTiming(row, [segment, neighbors?.previous])) return;
+      if (neighbors?.previous && start < Number(neighbors.previous.start || 0) + 0.05) {
+        toast("Start must leave time for the previous scene. Use Open All Scenes to merge scenes.", true);
+        syncReviewRowFromSegment(row);
+        return;
+      }
       if (segment) {
         segment.start = Math.max(0, start);
         segment.end = Math.max(segment.start + 0.05, end);
@@ -27175,6 +27279,8 @@ function openBuilder(node) {
         if (prevSegment) prevSegment.end = Math.max(Number(prevSegment.start || 0) + 0.05, start);
         syncReviewRowFromSegment(prevRow);
         await maybeWarnShortReviewScene(prevRow, prevRow, row, "Do you want to merge that previous scene with this scene instead?");
+      } else if (isSingleScene) {
+        if (neighbors.previous) neighbors.previous.end = Math.max(0, start);
       }
       syncReviewRowFromSegment(row);
       state.duration = timelineDuration();
@@ -27197,6 +27303,16 @@ function openBuilder(node) {
         : Number(row.dataset.reviewLastEnd || start);
       const delta = end - previousEnd;
       const segment = liveReviewSegmentForRow(row);
+      const neighbors = isSingleScene ? singleReviewTimingNeighbors(row) : null;
+      const following = neighbors?.following || [];
+      const affected = timingModeSelect.value === "ripple" ? following : following.slice(0, 1);
+      if (!canEditSingleReviewTiming(row, [segment, ...affected])) return;
+      if (isSingleScene && timingModeSelect.value !== "ripple" && following[0]
+        && end > Number(following[0].end || 0) - 0.05) {
+        toast("End must leave time for the next scene. Use Open All Scenes to merge scenes.", true);
+        syncReviewRowFromSegment(row);
+        return;
+      }
       if (segment) {
         segment.start = Math.max(0, start);
         segment.end = Math.max(segment.start + 0.05, end);
@@ -27206,7 +27322,14 @@ function openBuilder(node) {
       const rowIndex = rows.indexOf(row);
       const nextRow = rows[rowIndex + 1] || null;
       if (timingModeSelect.value === "ripple") {
-        shiftReviewRowsAfter(row, delta);
+        if (nextRow) {
+          shiftReviewRowsAfter(row, delta);
+        } else if (isSingleScene) {
+          for (const nextSeg of following) {
+            nextSeg.start = Math.max(0, Number(nextSeg.start || 0) + delta);
+            nextSeg.end = Math.max(nextSeg.start + 0.05, Number(nextSeg.end || nextSeg.start + 0.05) + delta);
+          }
+        }
         state.duration = timelineDuration();
         syncInspector();
         render();
@@ -27220,6 +27343,8 @@ function openBuilder(node) {
         }
         syncReviewRowFromSegment(nextRow);
         await maybeWarnShortReviewScene(nextRow, row, nextRow, "Do you want to merge it with the scene you just extended?");
+      } else if (isSingleScene) {
+        if (following[0]) following[0].start = end;
       }
       state.duration = timelineDuration();
       syncInspector();
@@ -27361,6 +27486,7 @@ function openBuilder(node) {
     };
 
     const splitReviewRowAtPlayhead = async (row, segment) => {
+      if (!canEditSingleReviewTiming(row, [segment])) return;
       const segmentStart = Number(segment.start || 0);
       const segmentEnd = Number(segment.end || 0);
       const splitTime = Math.max(segmentStart, Math.min(segmentEnd, Number(reviewAudio?.currentTime || currentGlobalTime() || 0)));
@@ -27410,7 +27536,7 @@ function openBuilder(node) {
         await saveSession({ quiet: true, throwOnError: true });
         toast("Split scene at review playhead.");
         closeModal();
-        openLyricReviewModal();
+        openLyricReviewModal(isSingleScene ? { singleSceneId: after.id } : {});
       } catch (error) {
         toast(String(error?.message || error), true);
       }
@@ -27562,12 +27688,14 @@ function openBuilder(node) {
     };
 
     for (const [index, segment] of scenes.entries()) {
+      const sceneDisplayIndex = isSingleScene ? targetSceneIndex : index;
+      const sceneNumber = sceneDisplayIndex + 1;
       const row = document.createElement("div");
       row.dataset.reviewSegmentId = segment.id;
       row.style.cssText = "display:grid;grid-template-columns:96px minmax(140px,160px) minmax(240px,1fr) minmax(280px,1.15fr) minmax(210px,260px) minmax(190px,230px) minmax(150px,170px) 124px;gap:8px;align-items:start;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:8px;box-sizing:border-box;width:100%;min-width:0;";
       const meta = document.createElement("div");
       meta.style.minWidth = "0";
-      meta.innerHTML = `<div data-review-scene-label style="font-weight:900;color:#cffafe;">${escapeHtml(segment.label || `Scene ${index + 1}`)}</div><div data-review-time-display style="font-size:11px;color:#cbd5e1;margin-top:4px;">${formatTime(segment.start)} - ${formatTime(segment.end)} | ${formatDurationSeconds(segment.start, segment.end)}s</div>`;
+      meta.innerHTML = `<div data-review-scene-label style="font-weight:900;color:#cffafe;">${escapeHtml(segment.label || `Scene ${sceneNumber}`)}</div><div data-review-time-display style="font-size:11px;color:#cbd5e1;margin-top:4px;">${formatTime(segment.start)} - ${formatTime(segment.end)} | ${formatDurationSeconds(segment.start, segment.end)}s</div>`;
       const timing = document.createElement("div");
       timing.style.cssText = "display:flex;flex-direction:column;gap:6px;min-width:0;";
       const startInput = makeInput(formatTime(segment.start));
@@ -27587,6 +27715,7 @@ function openBuilder(node) {
       setEndButton.style.padding = "7px 8px";
       splitButton.style.padding = "7px 8px";
       mergeNextButton.style.padding = "7px 8px";
+      if (isSingleScene) mergeNextButton.style.display = "none";
       setStartButton.onclick = () => setReviewRowStartToPlayhead(row);
       setEndButton.onclick = () => setReviewRowEndToPlayhead(row);
       splitButton.onclick = () => splitReviewRowAtPlayhead(row, segment);
@@ -27683,7 +27812,7 @@ function openBuilder(node) {
         updateNoCharacterState();
         refreshBoundaryOverlapPreview();
       };
-      renderSubjectPresenceChoices(segment, index, presentPanel);
+      renderSubjectPresenceChoices(segment, sceneDisplayIndex, presentPanel);
       renderSingerChoices(segment, singerPanel, instrumental.input, broll.input);
       subjectSingerPanel.append(makeField("Subjects present in scene", presentPanel), makeField("Performer / speaker / lip-sync", singerPanel));
       const facialPanel = document.createElement("div");
@@ -27709,7 +27838,7 @@ function openBuilder(node) {
       for (const location of reviewLocations) {
         locationSelect.append(new Option(location.name || "Location", location.id));
       }
-      locationSelect.value = reviewLocationForSegment(segment, index);
+      locationSelect.value = reviewLocationForSegment(segment, sceneDisplayIndex);
       if (!reviewLocations.length) {
         locationSelect.disabled = true;
         locationSelect.title = "Add locations in Reference Builder first.";
@@ -27727,6 +27856,7 @@ function openBuilder(node) {
       moveLastWord.dataset.reviewMoveLastWord = "1";
       moveLastWord.title = "Move only this scene's final lyric word to the beginning of the next scene. Use Save Lines afterward to synchronize the timeline, cue maps, and lyric note files.";
       moveLastWord.disabled = index >= scenes.length - 1;
+      if (isSingleScene) moveLastWord.title = "Open All Scenes to move a word between neighboring scene cards.";
       play.style.padding = "7px 8px";
       playFrom.style.padding = "7px 8px";
       select.style.padding = "7px 8px";
@@ -27749,7 +27879,7 @@ function openBuilder(node) {
     const actions = document.createElement("div");
     actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
     const cancel = makeButton("Close");
-    const save = makeButton("Save Lines + Timing + Performers + Locations", "primary");
+    const save = makeButton(isSingleScene ? "Save Scene" : "Save Lines + Timing + Performers + Locations", "primary");
     actions.append(cancel, save);
     box.append(header, note, performerLabelPanel, timingModePanel, audioPanel, rowList, actions);
     backdrop.append(box);
@@ -27764,17 +27894,25 @@ function openBuilder(node) {
         focusRow.querySelector("[data-review-lyric-text]")?.focus({ preventScroll: true });
       });
     }
+    activeLyricReviewBackdrop = backdrop;
     const closeModal = () => {
       clearReviewStopGuards();
       reviewAudio.pause();
       backdrop.remove();
+      if (activeLyricReviewBackdrop === backdrop) activeLyricReviewBackdrop = null;
     };
     close.onclick = closeModal;
     cancel.onclick = closeModal;
     backdrop.addEventListener("pointerdown", (event) => {
       if (event.target === backdrop) closeModal();
     });
-    save.onclick = async () => {
+    const navigateReviewScene = async (nextOptions) => {
+      if (!(await saveReviewChanges(true)) || !backdrop.isConnected) return;
+      closeModal();
+      openLyricReviewModal(nextOptions);
+    };
+    const saveReviewChanges = async (quiet = false) => {
+      if (save.disabled) return false;
       try {
         save.disabled = true;
         pushHistory();
@@ -27807,11 +27945,14 @@ function openBuilder(node) {
         render();
         await saveSession({ quiet: true, throwOnError: true });
         pendingReviewWordMoves.length = 0;
-        showInfoModal({
-          title: "Line Review Saved",
-          lines: ["Lines, scene timing, performer labels, no-lip-sync/no-character flags, and location mapping were saved to the timeline."],
+        if (!quiet) showInfoModal({
+          title: isSingleScene ? `${targetScene.label || "Scene"} Saved` : "Line Review Saved",
+          lines: isSingleScene
+            ? ["Scene lines, timing, performer labels, lip-sync flags, and location mapping were saved to the timeline."]
+            : ["Lines, scene timing, performer labels, no-lip-sync/no-character flags, and location mapping were saved to the timeline."],
           confirmLabel: "OK",
         });
+        return true;
       } catch (error) {
         const message = String(error?.message || error);
         if (/image_history/i.test(message)) {
@@ -27821,19 +27962,20 @@ function openBuilder(node) {
             syncInspector();
             render();
             await saveSession({ quiet: true, throwOnError: true });
-            showInfoModal({
+            pendingReviewWordMoves.length = 0;
+            if (!quiet) showInfoModal({
               title: "Line Review Saved",
               lines: ["Lines, timing, performers, no-lip-sync/no-character flags, and locations were saved. A stale media history value was cleaned up automatically."],
               confirmLabel: "OK",
             });
-            return;
+            return true;
           } catch (retryError) {
             showInfoModal({
               title: "Line Review Save Error",
               lines: [String(retryError?.message || retryError)],
               confirmLabel: "OK",
             });
-            return;
+            return false;
           }
         }
         showInfoModal({
@@ -27841,10 +27983,12 @@ function openBuilder(node) {
           lines: [message],
           confirmLabel: "OK",
         });
+        return false;
       } finally {
         save.disabled = false;
       }
     };
+    save.onclick = () => saveReviewChanges();
   }
 
   function openLyricMappingWorkflowModal() {
