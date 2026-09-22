@@ -3980,6 +3980,7 @@ function openBuilder(node) {
   previewVideo.style.cssText = "display:none;max-width:100%;max-height:100%;object-fit:contain;background:#050505;";
   let previewVideoLoadTimer = null;
   let previewVideoSyncPause = false;
+  let previewVideoPendingSeekTarget = null;
   const previewDecodeHint = document.createElement("div");
   previewDecodeHint.style.cssText = "display:none;position:absolute;left:14px;right:14px;bottom:14px;z-index:2;padding:10px 12px;border:1px solid #ef4444;border-radius:6px;background:rgba(15,23,42,.92);color:#fee2e2;font-size:12px;line-height:1.35;box-shadow:0 12px 36px rgba(0,0,0,.45);";
   previewVideo.addEventListener("error", () => {
@@ -4000,6 +4001,18 @@ function openBuilder(node) {
     if (previewVideoSyncPause || previewVideo.ended || !isTimelinePlaying()) return;
     pauseAllAudio();
     updateAudioScrubbers();
+  });
+  previewVideo.addEventListener("seeked", () => {
+    // A newer scrub position arrived while this seek was still decoding.
+    // Jump straight to it instead of the queue of stale positions in between.
+    if (previewVideoPendingSeekTarget == null) return;
+    const target = previewVideoPendingSeekTarget;
+    previewVideoPendingSeekTarget = null;
+    try {
+      previewVideo.currentTime = target;
+    } catch {
+      // Ignore; the next scrub/timeupdate tick will retry if still needed.
+    }
   });
   // Hidden element used only to warm the browser's cache for the next scene's
   // clip a moment before the playhead reaches it, so the visible swap at the
@@ -16184,6 +16197,7 @@ function openBuilder(node) {
       previewVideoLoadTimer = null;
       previewDecodeHint.style.display = "none";
       previewVideo.pause();
+      previewVideoPendingSeekTarget = null;
       previewVideo.src = makeEditorVideoUrl(videoPath, segment?.video_cache_bust);
       previewVideo.dataset.path = videoPath;
       previewVideo.dataset.cacheKey = cacheKey;
@@ -16827,11 +16841,22 @@ function openBuilder(node) {
     // top of the reload. Let the next tick's drift check correct it once the
     // video actually has data.
     const local = localPlaybackTime(segment, current);
-    if (!justSwapped && Number.isFinite(local) && Math.abs(Number(previewVideo.currentTime || 0) - local) > 0.2) {
-      try {
-        previewVideo.currentTime = local;
-      } catch {
-        // Some browsers reject seeking until metadata is ready. The next timeupdate will retry.
+    const seekThreshold = state.isScrubbing ? 0.05 : 0.2;
+    if (!justSwapped && Number.isFinite(local) && Math.abs(Number(previewVideo.currentTime || 0) - local) > seekThreshold) {
+      // While a seek is already in flight, issuing another currentTime write on
+      // top of it doesn't jump ahead - it queues behind the one already
+      // decoding. During a fast scrub drag that means the visible frame keeps
+      // chasing a backlog of stale positions instead of the one the user is
+      // actually pointing at. Remember only the latest desired target and let
+      // the `seeked` handler below jump straight to it once the decoder is free.
+      if (previewVideo.seeking) {
+        previewVideoPendingSeekTarget = local;
+      } else {
+        try {
+          previewVideo.currentTime = local;
+        } catch {
+          // Some browsers reject seeking until metadata is ready. The next timeupdate will retry.
+        }
       }
     }
     if (isTimelinePlaying() && !state.timelineEditMenuOpen && !state.timelineTrimEditMode) {
@@ -16863,11 +16888,11 @@ function openBuilder(node) {
         // timeline block from scratch) are comparatively heavy, and running
         // them synchronously here was blocking that load on the same frame as
         // the cut, which is what produced the visible stutter at scene
-        // boundaries. During active playback, push them to the next frame so
-        // they stay off the swap; scrubbing (paused, dragging) stays
-        // synchronous since it needs immediate feedback.
+        // boundaries (and, during a scrub drag, the preview lagging behind
+        // wherever the slider actually was). Push them to the next frame
+        // instead so they stay off the video swap.
         syncPreviewPlayback(current);
-        if (isTimelinePlaying()) {
+        if (isTimelinePlaying() || state.isScrubbing) {
           requestAnimationFrame(() => {
             syncInspector();
             render();
@@ -16981,11 +17006,29 @@ function openBuilder(node) {
     if (state.timelineTrimEditMode) pauseTimelineForEditing();
     state.isScrubbing = true;
     seekGlobalTimelineFromEvent(event);
-    const move = (moveEvent) => seekGlobalTimelineFromEvent(moveEvent);
+    // Pointer events can fire far faster than the video can seek. Collapse
+    // them to at most one processed position per animation frame, always the
+    // latest one, instead of driving a seek off every raw mousemove - that
+    // backlog of superseded seeks is why the preview used to lag behind
+    // wherever the slider actually was.
+    let pendingMoveEvent = null;
+    let scrubRaf = 0;
+    const flushPendingMove = () => {
+      scrubRaf = 0;
+      if (pendingMoveEvent) {
+        seekGlobalTimelineFromEvent(pendingMoveEvent);
+        pendingMoveEvent = null;
+      }
+    };
+    const move = (moveEvent) => {
+      pendingMoveEvent = moveEvent;
+      if (!scrubRaf) scrubRaf = requestAnimationFrame(flushPendingMove);
+    };
     const up = () => {
       state.isScrubbing = false;
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      if (scrubRaf) cancelAnimationFrame(scrubRaf);
       updateAudioScrubbers();
     };
     window.addEventListener("pointermove", move);
@@ -58450,12 +58493,35 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   globalScrub.addEventListener("pointerdown", () => {
     state.isScrubbing = true;
   });
+  // The native range input can fire "input" faster than the preview video can
+  // seek. Collapse to one processed value per animation frame, same as the
+  // timeline-canvas drag, so the preview chases the latest thumb position
+  // instead of a backlog of superseded ones.
+  let globalScrubPendingValue = null;
+  let globalScrubRaf = 0;
   globalScrub.addEventListener("input", () => {
-    setGlobalPlaybackTime(Number(globalScrub.value || 0));
-    updateAudioScrubbers();
+    globalScrubPendingValue = Number(globalScrub.value || 0);
+    if (!globalScrubRaf) {
+      globalScrubRaf = requestAnimationFrame(() => {
+        globalScrubRaf = 0;
+        if (globalScrubPendingValue != null) {
+          setGlobalPlaybackTime(globalScrubPendingValue);
+          globalScrubPendingValue = null;
+          updateAudioScrubbers();
+        }
+      });
+    }
   });
   globalScrub.addEventListener("change", () => {
     state.isScrubbing = false;
+    if (globalScrubRaf) {
+      cancelAnimationFrame(globalScrubRaf);
+      globalScrubRaf = 0;
+    }
+    if (globalScrubPendingValue != null) {
+      setGlobalPlaybackTime(globalScrubPendingValue);
+      globalScrubPendingValue = null;
+    }
     updateAudioScrubbers();
   });
   waveformModeSelect.onchange = () => {
