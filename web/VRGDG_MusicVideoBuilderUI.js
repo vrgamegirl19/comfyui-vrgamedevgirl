@@ -227,6 +227,9 @@ const DEFAULT_MINIMAX_H3_SETTINGS = {
   video_mode: "text_to_video",
   audio_mode: "input_audio",
   continuity_mode: "off",
+  continuity_prompt_from_last_frame: false,
+  location_transition_preset: "normal",
+  location_transition_custom: "",
   latent_context_frames: 22,
   diffusion_model_name: "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
   clip_name: "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
@@ -355,6 +358,17 @@ const MINIMAX_H3_CONTINUITY_OPTIONS = [
   { value: "exact_start_frame", label: "Previous final frame — exact start frame" },
 ];
 
+const MINIMAX_H3_LOCATION_TRANSITION_OPTIONS = [
+  { value: "normal", label: "Normal — physical route" },
+  { value: "surreal", label: "Surreal transformation" },
+  { value: "cinematic", label: "Cinematic conceal" },
+  { value: "inner_world", label: "Inner world / portal" },
+  { value: "match", label: "Match transition" },
+  { value: "motion", label: "Motion transition" },
+  { value: "creative_auto", label: "Creative auto" },
+  { value: "custom", label: "Custom" },
+];
+
 const MINIMAX_H3_START_FRAME_CHARACTER_INFLUENCE_OPTIONS = [
   { value: "face_hair_only", label: "Face + hair only (keep the rest of the start frame)" },
   { value: "full_character", label: "Full character identity (face, hair, clothing, and body)" },
@@ -396,6 +410,11 @@ function normalizeMiniMaxH3ContinuityMode(value) {
   if (["spatial", "spatial_reference", "continuity_reference"].includes(clean)) return "spatial_reference";
   if (["exact", "exact_start", "exact_start_frame", "continuous_start"].includes(clean)) return "exact_start_frame";
   return "off";
+}
+
+function normalizeMiniMaxH3LocationTransitionPreset(value) {
+  const clean = String(value || "normal").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  return MINIMAX_H3_LOCATION_TRANSITION_OPTIONS.some((item) => item.value === clean) ? clean : "normal";
 }
 
 function isMiniMaxH3LatentContinuationMode(mode) {
@@ -527,6 +546,9 @@ function cloneMiniMaxH3Settings(value = {}) {
     video_mode: normalizeMiniMaxH3Mode(source.video_mode || source.mode || DEFAULT_MINIMAX_H3_SETTINGS.video_mode),
     audio_mode: normalizeMiniMaxH3AudioMode(source.audio_mode || source.audioMode || DEFAULT_MINIMAX_H3_SETTINGS.audio_mode),
     continuity_mode: normalizeMiniMaxH3ContinuityMode(source.continuity_mode || source.continuityMode || DEFAULT_MINIMAX_H3_SETTINGS.continuity_mode),
+    continuity_prompt_from_last_frame: Boolean(source.continuity_prompt_from_last_frame ?? source.continuityPromptFromLastFrame ?? DEFAULT_MINIMAX_H3_SETTINGS.continuity_prompt_from_last_frame),
+    location_transition_preset: normalizeMiniMaxH3LocationTransitionPreset(source.location_transition_preset ?? source.locationTransitionPreset ?? DEFAULT_MINIMAX_H3_SETTINGS.location_transition_preset),
+    location_transition_custom: String(source.location_transition_custom ?? source.locationTransitionCustom ?? DEFAULT_MINIMAX_H3_SETTINGS.location_transition_custom).trim(),
     latent_context_frames: [16, 22, 39, 56].includes(Number(source.latent_context_frames ?? source.latentContextFrames))
       ? Number(source.latent_context_frames ?? source.latentContextFrames)
       : DEFAULT_MINIMAX_H3_SETTINGS.latent_context_frames,
@@ -6167,12 +6189,29 @@ function openBuilder(node) {
   const miniMaxLatentContextFrames = makeSelect(MINIMAX_H3_LATENT_CONTEXT_OPTIONS, String(DEFAULT_MINIMAX_H3_SETTINGS.latent_context_frames || 22));
   miniMaxLatentContextFrames.title = "Number of trailing context frames loaded directly from the predecessor scene's saved latent.";
   const miniMaxLatentContextField = makeField("Latent context frames", miniMaxLatentContextFrames);
+  const miniMaxContinuityPromptFromLastFrame = makeCheckbox("Create each next scene prompt from the previous rendered final frame", false);
+  miniMaxContinuityPromptFromLastFrame.wrapper.title = "Scene 1 keeps its authored prompt. Before rendering Scene 2 and later, the Builder extracts the predecessor's actual final frame and asks the vision LLM to create and save a complete continuous-shot prompt from it plus the scene's story, audio timing, and references.";
+  const miniMaxLocationTransitionPreset = makeSelect(MINIMAX_H3_LOCATION_TRANSITION_OPTIONS, "normal");
+  const miniMaxLocationTransitionPresetField = makeField("Location change transition", miniMaxLocationTransitionPreset);
+  miniMaxLocationTransitionPresetField.title = "Applies globally to every unlocked MiniMax scene. Lock MiniMax settings on a scene to give that scene its own transition preset.";
+  const miniMaxLocationTransitionCustom = document.createElement("textarea");
+  miniMaxLocationTransitionCustom.placeholder = "Describe the transition you want, such as: combine surreal transformation with a cinematic eye transition.";
+  miniMaxLocationTransitionCustom.style.cssText = "width:100%;min-height:64px;box-sizing:border-box;resize:vertical;border:1px solid #3f3f46;border-radius:6px;background:#09090b;color:#f8fafc;padding:8px;font-size:12px;line-height:1.4;";
+  const miniMaxLocationTransitionCustomField = makeField("Custom location transition", miniMaxLocationTransitionCustom);
+  const miniMaxLocationTransitionNote = document.createElement("div");
+  miniMaxLocationTransitionNote.textContent = "Global for all unlocked scenes; the MiniMax scene lock creates an override. The preset activates only at a mapped location boundary.";
+  miniMaxLocationTransitionNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
+  const miniMaxLocationTransitionControls = document.createElement("div");
+  miniMaxLocationTransitionControls.style.cssText = "display:none;flex-direction:column;gap:6px;padding:8px;border:1px solid #334155;border-radius:7px;background:#0f172a;";
+  miniMaxLocationTransitionControls.append(miniMaxLocationTransitionPresetField, miniMaxLocationTransitionCustomField, miniMaxLocationTransitionNote);
+  const miniMaxEditContinuityPromptInstructionsButton = makeButton("Edit frame-continuity LLM instructions");
+  miniMaxEditContinuityPromptInstructionsButton.title = "Edit the dedicated vision-LLM instructions used for automatic frame-to-frame continuation prompts.";
   const miniMaxLatentStatusPill = document.createElement("div");
   miniMaxLatentStatusPill.style.cssText = "display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;border-radius:12px;padding:4px 10px;border:1px solid #334155;background:#0f172a;color:#94a3b8;margin-top:2px;";
   miniMaxLatentStatusPill.textContent = "Checking predecessor latent...";
   const miniMaxLatentContinuationRow = document.createElement("div");
   miniMaxLatentContinuationRow.style.cssText = "display:flex;flex-direction:column;gap:6px;margin-top:6px;";
-  miniMaxLatentContinuationRow.append(miniMaxLatentContextField, miniMaxLatentStatusPill);
+  miniMaxLatentContinuationRow.append(miniMaxContinuityPromptFromLastFrame.wrapper, miniMaxLocationTransitionControls, miniMaxEditContinuityPromptInstructionsButton, miniMaxLatentContextField, miniMaxLatentStatusPill);
   const miniMaxContinuityNote = document.createElement("div");
   miniMaxContinuityNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
   const miniMaxNoGgufNote = document.createElement("div");
@@ -7748,10 +7787,15 @@ function openBuilder(node) {
     const sceneSettings = segment.minimax_h3_settings && typeof segment.minimax_h3_settings === "object"
       ? segment.minimax_h3_settings
       : {};
+    const legacyPreset = normalizeMiniMaxH3LocationTransitionPreset(segment.minimax_h3_location_transition_preset);
+    const legacyCustom = String(segment.minimax_h3_location_transition_custom || "").trim();
+    const hasSceneTransitionPreset = Object.prototype.hasOwnProperty.call(sceneSettings, "location_transition_preset");
     const settings = cloneMiniMaxH3Settings({
       ...globalSettings,
       ...sceneSettings,
       video_mode: sceneSettings.video_mode || segment.minimax_h3_mode || globalSettings.video_mode,
+      location_transition_preset: hasSceneTransitionPreset ? sceneSettings.location_transition_preset : legacyPreset,
+      location_transition_custom: hasSceneTransitionPreset ? sceneSettings.location_transition_custom : legacyCustom,
     });
     const sceneHasPreTurboEasyCache = sceneSettings.easy_cache_bypass_before_turbo != null
       || sceneSettings.easyCacheBypassBeforeTurbo != null;
@@ -7761,6 +7805,10 @@ function openBuilder(node) {
     }
     segment.minimax_h3_settings = settings;
     segment.minimax_h3_mode = settings.video_mode;
+    if (!hasSceneTransitionPreset && (legacyPreset !== "normal" || legacyCustom)) {
+      segment.minimax_h3_location_transition_preset = "normal";
+      segment.minimax_h3_location_transition_custom = "";
+    }
     return settings;
   }
 
@@ -7890,6 +7938,9 @@ function openBuilder(node) {
       video_mode: currentSettings.video_mode,
       audio_mode: miniMaxAudioMode.value,
       continuity_mode: miniMaxContinuityMode.value,
+      continuity_prompt_from_last_frame: miniMaxContinuityPromptFromLastFrame.input.checked,
+      location_transition_preset: miniMaxLocationTransitionPreset.value,
+      location_transition_custom: miniMaxLocationTransitionCustom.value,
       latent_context_frames: Number(miniMaxLatentContextFrames.value || 22),
       diffusion_model_name: miniMaxDiffusionModelPicker.input.value,
       clip_name: miniMaxClipPicker.input.value,
@@ -8682,6 +8733,23 @@ function openBuilder(node) {
     const segment = activeSegment();
     state.miniMaxH3PanelSegmentId = String(segment?.id || "");
     state.miniMaxH3Settings = cloneMiniMaxH3Settings(state.miniMaxH3Settings);
+    if (state.miniMaxH3Settings.location_transition_preset === "normal") {
+      const legacyTransitionSegment = [segment, ...allEditableSegments()]
+        .filter((item, index, items) => item && items.indexOf(item) === index && !item.use_scene_minimax_h3_settings)
+        .find((item) => normalizeMiniMaxH3LocationTransitionPreset(item.minimax_h3_location_transition_preset) !== "normal");
+      if (legacyTransitionSegment) {
+        state.miniMaxH3Settings = cloneMiniMaxH3Settings({
+          ...state.miniMaxH3Settings,
+          location_transition_preset: legacyTransitionSegment.minimax_h3_location_transition_preset,
+          location_transition_custom: legacyTransitionSegment.minimax_h3_location_transition_custom,
+        });
+        for (const item of allEditableSegments()) {
+          if (item.use_scene_minimax_h3_settings) continue;
+          item.minimax_h3_location_transition_preset = "normal";
+          item.minimax_h3_location_transition_custom = "";
+        }
+      }
+    }
     const settings = miniMaxH3SettingsForSegment(segment);
     miniMaxDiffusionModelPicker.input.value = settings.diffusion_model_name;
     miniMaxClipPicker.input.value = settings.clip_name;
@@ -8689,6 +8757,9 @@ function openBuilder(node) {
     miniMaxAudioVaePicker.input.value = settings.audio_vae_name;
     miniMaxAudioMode.value = settings.audio_mode;
     miniMaxContinuityMode.value = settings.continuity_mode;
+    miniMaxContinuityPromptFromLastFrame.input.checked = Boolean(settings.continuity_prompt_from_last_frame);
+    miniMaxLocationTransitionPreset.value = settings.location_transition_preset;
+    miniMaxLocationTransitionCustom.value = settings.location_transition_custom;
     miniMaxLatentContextFrames.value = String(segment?.minimax_h3_latent_context_frames || settings.latent_context_frames || 22);
     miniMaxAspectRatio.value = settings.aspect_ratio;
     miniMaxMegapixels.value = String(settings.megapixels);
@@ -8914,6 +8985,14 @@ function openBuilder(node) {
     const isLatentExactFrame = settings.continuity_mode === "latent_continuation_exact_frame";
     miniMaxLatentContinuationRow.style.display = (continuitySupported && isLatentContinuation) ? "flex" : "none";
     miniMaxLatentContextFrames.disabled = !continuitySupported || !isLatentContinuation;
+    miniMaxContinuityPromptFromLastFrame.input.disabled = !continuitySupported || !isLatentContinuation;
+    const showLocationTransitionControls = continuitySupported
+      && isLatentContinuation
+      && Boolean(settings.continuity_prompt_from_last_frame);
+    miniMaxLocationTransitionControls.style.display = showLocationTransitionControls ? "flex" : "none";
+    miniMaxLocationTransitionPreset.disabled = !showLocationTransitionControls;
+    miniMaxLocationTransitionCustomField.style.display = showLocationTransitionControls
+      && miniMaxLocationTransitionPreset.value === "custom" ? "flex" : "none";
     miniMaxContinuityNote.textContent = !continuitySupported
       ? "Available in Reference to Video and Video to Video. Those modes can receive the prior clip's extracted final frame as one additional reference image."
       : isLatentExactFrame
@@ -8925,6 +9004,9 @@ function openBuilder(node) {
         : settings.continuity_mode === "exact_start_frame"
           ? "Begins each later scene on the previous rendered clip's exact final frame. The extracted frame and its prompt contract are injected when rendering. Do not also enable the scene-image exact start-frame option; Scene 1 is unaffected."
           : "Off: every scene starts independently from its normal MiniMax references.";
+    if (continuitySupported && isLatentContinuation && settings.continuity_prompt_from_last_frame) {
+      miniMaxContinuityNote.textContent += " Automatic prompt loop is ON: Scene 1 keeps your prompt. Before every later scene renders, the vision LLM uses the predecessor's actual final frame as its highest-priority opening truth, adds this scene's story/audio/reference context, saves a complete one-take prompt, and retries up to 10 times if prompting fails.";
+    }
     if (continuitySupported && isLatentContinuation) {
       updateMiniMaxLatentPredecessorStatus(segment);
     } else {
@@ -12197,12 +12279,22 @@ function openBuilder(node) {
       segment.minimax_h3_settings = null;
     }
     if (segment.use_scene_minimax_h3_settings) {
+      const savedSceneSettings = segment.minimax_h3_settings || {};
+      const hasSavedTransitionPreset = Object.prototype.hasOwnProperty.call(savedSceneSettings, "location_transition_preset");
+      const legacyTransitionPreset = normalizeMiniMaxH3LocationTransitionPreset(segment.minimax_h3_location_transition_preset);
+      const legacyTransitionCustom = String(segment.minimax_h3_location_transition_custom || "").trim();
       segment.minimax_h3_settings = cloneMiniMaxH3Settings({
         ...cloneMiniMaxH3Settings(state.miniMaxH3Settings),
-        ...(segment.minimax_h3_settings || {}),
-        video_mode: segment.minimax_h3_settings?.video_mode || segment.minimax_h3_mode,
+        ...savedSceneSettings,
+        video_mode: savedSceneSettings.video_mode || segment.minimax_h3_mode,
+        location_transition_preset: hasSavedTransitionPreset ? savedSceneSettings.location_transition_preset : legacyTransitionPreset,
+        location_transition_custom: hasSavedTransitionPreset ? savedSceneSettings.location_transition_custom : legacyTransitionCustom,
       });
       segment.minimax_h3_mode = segment.minimax_h3_settings.video_mode;
+      if (!hasSavedTransitionPreset && (legacyTransitionPreset !== "normal" || legacyTransitionCustom)) {
+        segment.minimax_h3_location_transition_preset = "normal";
+        segment.minimax_h3_location_transition_custom = "";
+      }
     }
     if (segment.minimax_h3_prompt == null) segment.minimax_h3_prompt = "";
     if (segment.minimax_h3_pass2_prompt == null) segment.minimax_h3_pass2_prompt = "";
@@ -12225,6 +12317,8 @@ function openBuilder(node) {
     segment.minimax_h3_continuity_source_scene_id = String(segment.minimax_h3_continuity_source_scene_id || "");
     segment.minimax_h3_continuity_mode_used = normalizeMiniMaxH3ContinuityMode(segment.minimax_h3_continuity_mode_used);
     segment.minimax_h3_continuity_image_number = Math.max(0, Math.trunc(Number(segment.minimax_h3_continuity_image_number || 0)));
+    segment.minimax_h3_location_transition_preset = normalizeMiniMaxH3LocationTransitionPreset(segment.minimax_h3_location_transition_preset);
+    segment.minimax_h3_location_transition_custom = String(segment.minimax_h3_location_transition_custom || "");
     segment.minimax_h3_latent_context_frames = [16, 22, 39, 56].includes(Number(segment.minimax_h3_latent_context_frames))
       ? Number(segment.minimax_h3_latent_context_frames)
       : (DEFAULT_MINIMAX_H3_SETTINGS.latent_context_frames || 22);
@@ -24109,6 +24203,11 @@ function openBuilder(node) {
   function miniMaxH3CutPlanForSegment(segment) {
     const duration = Math.max(0, Number(segment?.end || 0) - Number(segment?.start || 0));
     const fallback = storyboardCutPlanForDuration(duration, state.builderStoryboardDefaults?.minimax_h3_cut_frequency);
+    if (miniMaxH3FrameContinuityPromptEnabled(segment)) {
+      const continuous = { ...fallback, frequency: 0, cut_times_seconds: [], cue_driven: false };
+      continuous.instruction = miniMaxH3OfficialCutPlanInstruction(continuous);
+      return continuous;
+    }
     if (isMiniMaxBuiltInSpeakerAssignmentMode(segment)) {
       const speakerCues = normalizeMiniMaxSpeakerAssignments(segment?.minimax_speaker_assignments || segment?.speaker_assignments || segment?.dialogue_cues || [])
         .filter((cue) => cue.type === "instrumental" || cue.text);
@@ -24160,6 +24259,7 @@ function openBuilder(node) {
     const performers = selectedPerformerSubjectsForSegment(segment);
     const labelMap = miniMaxH3SubjectLabelMapForSegment(segment, mode);
     const duration = Math.max(0, Number(segment?.end || 0) - Number(segment?.start || 0));
+    const continuousFramePrompt = miniMaxH3FrameContinuityPromptEnabled(segment);
     const lines = cues.map((cue, index) => {
       const range = singerCuePlaybackRangeForCue(segment, cues, index);
       const start = Number.isFinite(Number(cue.start)) ? Number(cue.start) : range.start;
@@ -24169,7 +24269,7 @@ function openBuilder(node) {
         : `from ${start.toFixed(3)}s`;
       if (cue.type === "instrumental") {
         const note = String(cue.action_note || "").trim();
-        return `[Shot ${index + 1}] ${timing}: use only the assigned visual action and camera direction.${note ? ` Visual action note: ${note}` : ""}`;
+        return `${continuousFramePrompt ? `Continuous-shot cue ${index + 1}` : `[Shot ${index + 1}]`} ${timing}: use only the assigned visual action and camera direction.${note ? ` Visual action note: ${note}` : ""}`;
       }
       const subject = performers.find((item) => String(item.id) === String(cue.singer_id)) || { id: cue.singer_id, name: cue.singer_name };
       const vocalStart = Number(cue.vocal_start);
@@ -24177,12 +24277,14 @@ function openBuilder(node) {
       const vocalWindow = Number.isFinite(vocalStart) && Number.isFinite(vocalEnd) && vocalEnd > vocalStart
         ? ` The singer lip-syncs from ${vocalStart.toFixed(3)}s to ${vocalEnd.toFixed(3)}s.`
         : "";
-      return `[Shot ${index + 1}] ${timing}: ${miniMaxH3PerformerLabel(subject, labelMap)} is the only performer singing/lip-syncing <d>[English] ${miniMaxH3PunctuatedCueText(cue.text)}</d> from <Audio 1>.${vocalWindow} Other visible performers remain silent, mouth closed or naturally reacting.`;
+      return `${continuousFramePrompt ? `Continuous-shot cue ${index + 1}` : `[Shot ${index + 1}]`} ${timing}: ${miniMaxH3PerformerLabel(subject, labelMap)} is the only performer singing/lip-syncing <d>[English] ${miniMaxH3PunctuatedCueText(cue.text)}</d> from <Audio 1>.${vocalWindow} Other visible performers remain silent, mouth closed or naturally reacting.`;
     });
     return [
       "Timed singer/lyric shot contract — authoritative:",
       ...lines,
-      "Each listed cue is its own shot. Do not swap singers, merge lyric cues, or anticipate a later vocal cue. Apply vocal direction only to the assigned vocal row and its exact timing.",
+      continuousFramePrompt
+        ? "All listed cues occur inside the same uninterrupted shot at their assigned times. Do not add a cut, reset, or new setup between cues. Do not swap singers, merge lyric cues, or anticipate a later vocal cue."
+        : "Each listed cue is its own shot. Do not swap singers, merge lyric cues, or anticipate a later vocal cue. Apply vocal direction only to the assigned vocal row and its exact timing.",
     ].join("\n");
   }
 
@@ -26316,6 +26418,7 @@ function openBuilder(node) {
         "Performer/speaker choices tell Gemma who should sing, say, or carry the line depending on the global Video Type. Location connects the scene to a Reference Builder location image.",
         "Copy boundary words is optional. It appends the first word or words from the next vocal scene onto the current scene, which can help LTX warm-up and cooldown frames keep lyric context.",
         "Move end words to next is text-only. It removes the last word or words from each lyric scene and prepends them to the next vocal scene when the transcript split landed too early. If the next scene is instrumental or no-lip-sync, the words are only removed and are not added to that scene.",
+        "Move last word to start of next scene changes only that row and its immediate neighbor. Press the main Save button afterward to update the timeline, cue maps, and every saved lyric note file.",
         "Save Lines + Timing + Performers + Locations applies the edited rows to the real timeline and saves the project.",
       ],
     });
@@ -26854,6 +26957,77 @@ function openBuilder(node) {
       toast(parts.length ? `End words ${parts.join(" and ")}. Press Save to keep it.` : "No eligible lyric rows needed word moves.", !parts.length);
     };
 
+    const pendingReviewWordMoves = [];
+    const moveLastWordToNextReviewRow = (currentRow) => {
+      restoreReviewRowsToRawLyricText();
+      const rows = reviewRows();
+      const currentIndex = rows.indexOf(currentRow);
+      const nextRow = rows[currentIndex + 1] || null;
+      if (currentIndex < 0 || !nextRow) {
+        toast("There is no next scene to receive the last word.", true);
+        return;
+      }
+      const currentText = reviewRowRawLyricText(currentRow);
+      const nextText = reviewRowRawLyricText(nextRow);
+      if (reviewRowBlocksLipSync(currentRow) || isInstrumentalLyricText(currentText)) {
+        toast("This scene is instrumental or no-lip-sync, so it has no movable lyric word.", true);
+        return;
+      }
+      if (reviewRowBlocksLipSync(nextRow) || isInstrumentalLyricText(nextText)) {
+        toast("The next scene is instrumental or no-lip-sync. Change that scene before moving a lyric word into it.", true);
+        return;
+      }
+      const words = lyricWords(currentText);
+      if (!words.length) {
+        toast("This scene has no lyric word to move.", true);
+        return;
+      }
+      const movedWord = words.pop();
+      const nextWords = lyricWords(nextText);
+      setReviewRowRawLyricText(currentRow, words.join(" "));
+      if (!nextWords.length || normalizeLyricWord(nextWords[0]) !== normalizeLyricWord(movedWord)) {
+        setReviewRowRawLyricText(nextRow, `${movedWord} ${nextText}`.trim());
+      }
+      pendingReviewWordMoves.push({
+        sourceId: String(currentRow.dataset.reviewSegmentId || ""),
+        targetId: String(nextRow.dataset.reviewSegmentId || ""),
+        word: movedWord,
+      });
+      refreshBoundaryOverlapPreview();
+      toast(`Moved “${movedWord}” to the start of the next scene. Press Save Lines to update every lyric note.`);
+    };
+
+    const moveWordAcrossStructuredLyricRows = (sourceRows, targetRows, movedWord) => {
+      if (!Array.isArray(sourceRows) || !Array.isArray(targetRows) || !movedWord) return;
+      const source = [...sourceRows].reverse().find((cue) => cue && String(cue.type || "vocal") !== "instrumental" && String(cue.text || "").trim());
+      if (source) {
+        const words = lyricWords(source.text);
+        if (words.length && normalizeLyricWord(words[words.length - 1]) === normalizeLyricWord(movedWord)) {
+          words.pop();
+          source.text = words.join(" ");
+        }
+      }
+      const target = targetRows.find((cue) => cue && String(cue.type || "vocal") !== "instrumental") || null;
+      if (target) {
+        const words = lyricWords(target.text);
+        if (!words.length || normalizeLyricWord(words[0]) !== normalizeLyricWord(movedWord)) {
+          target.text = `${movedWord} ${String(target.text || "")}`.trim();
+        }
+      }
+    };
+
+    const applyPendingReviewWordMoves = (segmentsById) => {
+      for (const move of pendingReviewWordMoves) {
+        const source = segmentsById.get(move.sourceId);
+        const target = segmentsById.get(move.targetId);
+        if (!source || !target) continue;
+        moveWordAcrossStructuredLyricRows(source.lyric_cue_map, target.lyric_cue_map, move.word);
+        moveWordAcrossStructuredLyricRows(source.minimax_speaker_assignments, target.minimax_speaker_assignments, move.word);
+        moveWordAcrossStructuredLyricRows(source.speaker_assignments, target.speaker_assignments, move.word);
+        moveWordAcrossStructuredLyricRows(source.dialogue_cues, target.dialogue_cues, move.word);
+      }
+    };
+
     boundaryOverlapCheckbox.input.onchange = () => {
       boundaryOverlapCount.disabled = !boundaryOverlapCheckbox.input.checked;
       if (!boundaryOverlapCheckbox.input.checked) refreshBoundaryOverlapPreview();
@@ -26898,6 +27072,8 @@ function openBuilder(node) {
         if (segment) segment.label = label;
         const labelEl = row.querySelector("[data-review-scene-label]");
         if (labelEl) labelEl.textContent = segment?.label || label;
+        const moveWordButton = row.querySelector("[data-review-move-last-word]");
+        if (moveWordButton) moveWordButton.disabled = index >= rows.length - 1;
         syncReviewRowFromSegment(row);
       });
       state.segments.forEach((segment, index) => {
@@ -27669,18 +27845,24 @@ function openBuilder(node) {
       const play = makeButton("Play Scene");
       const playFrom = makeButton("Play From Here");
       const select = makeButton("Select");
+      const moveLastWord = makeButton("Move last word to start of next scene");
+      moveLastWord.dataset.reviewMoveLastWord = "1";
+      moveLastWord.title = "Move only this scene's final lyric word to the beginning of the next scene. Use Save Lines afterward to synchronize the timeline, cue maps, and lyric note files.";
+      moveLastWord.disabled = index >= scenes.length - 1;
       play.style.padding = "7px 8px";
       playFrom.style.padding = "7px 8px";
       select.style.padding = "7px 8px";
       play.style.width = "100%";
       playFrom.style.width = "100%";
       select.style.width = "100%";
+      moveLastWord.style.cssText = "padding:7px 8px;width:100%;font-size:10px;line-height:1.25;white-space:normal;";
       play.dataset.playLabel = "Play Scene";
       playFrom.dataset.playLabel = "Play From Here";
       play.onclick = () => playRange(segment, play);
       playFrom.onclick = () => playFromSegment(segment, playFrom);
       select.onclick = () => setActiveReviewScene(segment);
-      buttons.append(play, playFrom, select);
+      moveLastWord.onclick = () => moveLastWordToNextReviewRow(row);
+      buttons.append(play, playFrom, select, moveLastWord);
       row.append(meta, timing, text, subjectSingerPanel, facialPanel, locationWrap, flags, buttons);
       rowList.append(row);
       rememberReviewRowTiming(row);
@@ -27731,6 +27913,7 @@ function openBuilder(node) {
           if (!segment) continue;
           applyReviewRowValues(row, segment, true, { lyricTextOverride: lyricOverrides.get(segment.id) });
         }
+        applyPendingReviewWordMoves(liveSegmentsById);
         applyLyricSectionsFromReferenceText(state.segments, state.lyricMapper?.source_text || "");
         syncLyricMapperFromSegments();
         const syncedIngredients = syncIngredientsSceneMapFromSubjectMappings(state.fluxReferenceBuilder);
@@ -27745,6 +27928,7 @@ function openBuilder(node) {
         syncInspector();
         render();
         await saveSession({ quiet: true, throwOnError: true });
+        pendingReviewWordMoves.length = 0;
         showInfoModal({
           title: isSingleScene ? `${targetScene.label || "Scene"} Saved` : "Line Review Saved",
           lines: isSingleScene
@@ -41049,6 +41233,85 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     ];
   }
 
+  function miniMaxH3FrameLocationContinuityContract(segment) {
+    const previousSegment = previousAutoChainSourceSegment(segment);
+    const currentLocation = storyboardReferenceDataForSegment(segment)?.location_ref || null;
+    const previousLocation = previousSegment
+      ? storyboardReferenceDataForSegment(previousSegment)?.location_ref || null
+      : null;
+    const locationKey = (location) => String(location?.id || location?.name || location?.description || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ");
+    const currentKey = locationKey(currentLocation);
+    const previousKey = locationKey(previousLocation);
+    const locationIdentity = (location, fallback) => {
+      const name = String(location?.name || fallback).trim();
+      const description = String(location?.description || "").trim().replace(/\s+/g, " ");
+      if (!description) return name;
+      const firstSentence = description.match(/^.*?[.!?](?:\s|$)/)?.[0]?.trim() || description;
+      const compactDescription = firstSentence.length > 240
+        ? `${firstSentence.slice(0, 237).trim()}...`
+        : firstSentence;
+      return `${name} (${compactDescription})`;
+    };
+    const currentName = locationIdentity(currentLocation, "the current mapped location");
+    const previousName = locationIdentity(previousLocation, "the preceding mapped location");
+    if (!currentKey) return "";
+    if (previousKey && previousKey !== currentKey) {
+      const transitionSettings = miniMaxH3SettingsForSegment(segment);
+      const preset = transitionSettings.location_transition_preset;
+      const customDirection = transitionSettings.location_transition_custom;
+      const commonEnding = `Complete the transition inside this uninterrupted scene and end looking deeper into ${currentName}, with its mapped geography filling the image as the location inherited by the following scene.`;
+      const directions = {
+        normal: (
+          `LOCATION PHASE — PHYSICAL THRESHOLD TURN: This scene performs the single physical passage from ${previousName} into ${currentName}. `
+          + `Track the subject to a visible doorway, gateway, solid foreground edge, or natural threshold already present in the opening frame. `
+          + `After the subject crosses its plane, let that foreground edge sweep fully across the image as a natural full-frame occlusion. During that continuous occlusion, cross the threshold and execute a clear camera arc around the subject toward ${currentName}. `
+          + `As the occluding edge clears, the camera faces forward into ${currentName}; ${previousName} has passed fully beyond the rear camera plane while the subject and destination reappear through coherent motion and parallax. Describe the threshold crossing, full-frame occlusion, camera arc, and final viewing direction explicitly.`
+        ),
+        surreal: (
+          `LOCATION PHASE — SURREAL MATERIAL TRANSFORMATION: Transform ${previousName} progressively into ${currentName} through imaginative, visually connected material changes that travel across the frame. `
+          + `Use forms, textures, weather, particles, light, and movement visible in the actual opening image as the transformation source. Preserve the subject's continuous identity, action, position, and camera momentum while each physical element evolves into a corresponding element of ${currentName}. Make the transformation richly creative, spatially progressive, and complete.`
+        ),
+        cinematic: (
+          `LOCATION PHASE — CINEMATIC CONCEAL AND REVEAL: Choose a visually suitable detail present in the actual opening image, such as the subject's eye, hair, clothing, a shadow, bright light, fog, doorway, or foreground object. `
+          + `Move the camera into that detail until it fills the complete frame, carry the camera continuously through the concealed moment, then pull or glide outward to reveal the subject physically present in ${currentName}. Preserve the subject's action and camera momentum across the full-frame concealment.`
+        ),
+        inner_world: (
+          `LOCATION PHASE — INNER WORLD PORTAL: Reveal ${currentName} living inside a visually suitable surface already present in the opening image, such as an eye reflection, mirror, window, pool, pendant, crystal, smoke formation, or luminous opening. `
+          + `Let the destination become visibly dimensional inside that surface, move the camera continuously through it, and emerge with the subject inside the full-scale geography of ${currentName}. Treat the portal as one coherent passage with continuous scale, perspective, light, and motion.`
+        ),
+        match: (
+          `LOCATION PHASE — VISUAL MATCH TRANSITION: Inspect the actual opening image and find a strong shared shape, color, texture, light pattern, or motion that can connect ${previousName} to ${currentName}. `
+          + `Track that matching element as it fills or commands the composition, then let the same visual form resolve seamlessly as a real element in ${currentName}. Carry the subject's movement and camera trajectory through the visual correspondence with precise composition and spatial flow.`
+        ),
+        motion: (
+          `LOCATION PHASE — MOTION-DRIVEN TRANSITION: Use an energetic camera action suited to the actual opening frame, such as a whip pan, rapid orbit, fast push, foreground sweep, or close pass around the subject. `
+          + `Let directional motion and natural motion blur carry the complete image across the location boundary, then resolve the same movement and screen direction clearly inside ${currentName}. Preserve the subject's action, rhythm, and camera momentum throughout.`
+        ),
+        creative_auto: (
+          `LOCATION PHASE — CREATIVE IMAGE-AWARE TRANSITION: Inspect the actual opening image, ${previousName}, and ${currentName}, then choose the most visually convincing imaginative transition for their specific forms, materials, lighting, subject action, and camera trajectory. `
+          + `Build one explicit on-screen mechanism with readable progression and continuous movement, using a physical passage, material transformation, cinematic concealment, portal, visual match, motion bridge, or an equally coherent original idea. Make the chosen mechanism concrete in the shot description.`
+        ),
+        custom: customDirection
+          ? (
+            `LOCATION PHASE — CUSTOM TRANSITION: Apply this scene's authored transition direction: ${customDirection} `
+            + `Translate it into explicit positive visual action that carries the actual opening image from ${previousName} into ${currentName} through one coherent continuous camera experience.`
+          )
+          : (
+            `LOCATION PHASE — CUSTOM TRANSITION FALLBACK: Inspect the actual opening image, ${previousName}, and ${currentName}, then create one highly imaginative, visually readable transition whose on-screen mechanism follows the subject and camera momentum into the destination.`
+          ),
+      };
+      return `${directions[preset]} ${commonEnding}`;
+    }
+    return (
+      `LOCATION PHASE — ESTABLISHED CURRENT LOCATION: ${currentName} is now the complete established environment. `
+      + `Continue forward through the exact visible opening state and deeper into its mapped geography. Build every newly revealed environmental feature from ${currentName}, preserve its established spatial logic, and let the camera trajectory create the next composition. `
+      + `End looking deeper into ${currentName}, fully grounded in that location.`
+    );
+  }
+
   function miniMaxH3CreativePromptContextForSegment(segment, mode, options = {}) {
     const settings = miniMaxH3SettingsForSegment(segment);
     const nativeAudio = settings.audio_mode === "built_in_audio";
@@ -41086,6 +41349,30 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       `Audio mode: ${nativeAudio ? "Built-in MiniMax audio" : "Input Audio 1 preserved by Builder"}`,
       `Shot count: ${shotPlan.length}`,
     ];
+    if (options.frameContinuityPrompt) {
+      const hasPromptInspiration = mode === "reference_to_video" && miniMaxH3SceneImageIsPromptInspiration(segment);
+      const firstRendererAttachment = hasPromptInspiration ? 3 : 2;
+      const locationContinuityContract = miniMaxH3FrameLocationContinuityContract(segment);
+      parts.push(
+        "FRAME-TO-FRAME CONTINUITY — HIGHEST PRIORITY:\n"
+        + "Attached Picture 1 is the previous rendered scene's actual final frame. It is the visual truth for the first instant of this scene. Begin from its exact subject position, pose, expression, camera angle, framing, lighting, wardrobe, environment geometry, foreground layers, and camera momentum. "
+        + "Continue as one seamless uninterrupted take. Begin the returned description with exactly: ‘Continuing seamlessly from the previous shot, the camera maintains its established course as’ and immediately specify the next physical camera movement. "
+        + "The current story beat, lyrics/audio timing, mapped location, and supporting references determine the destination while the visible opening state supplies the exact starting point. "
+        + "Express the complete transition through continuous camera travel, physical subject motion, stable geometry, progressive reveal, and coherent parallax. Write every finished shot sentence as a positive description of the desired visible result. Attached Picture 1 remains an LLM-only observation source; finished prose uses direct visual description and the documented renderer labels."
+      );
+      parts.push(
+        "OPENING SUBJECT VISIBILITY — IMAGE-AWARE: Inspect Attached Picture 1 and inventory the human or character subjects actually visible in its opening composition. "
+        + "Visible subjects continue from their exact observed position and state. Every currently mapped subject absent from Attached Picture 1 begins physically offscreen. "
+        + "Bring an offscreen subject into view through a clearly described continuous screen-space event: an entrance through a frame edge, doorway, path, foreground layer, or the selected transition mechanism, or a camera pan, track, or orbit that reaches and reveals them in a connected position. "
+        + "State the observed empty or partially occupied opening composition first, then the exact entrance or camera-reveal route, then that subject's performance action. Their first visible moment occurs through that physical entrance or reveal."
+      );
+      if (locationContinuityContract) parts.push(locationContinuityContract);
+      if (hasPromptInspiration) {
+        parts.push("Attached Picture 2 is the scene-image inspiration used only under its existing environment/framing limits. Renderer Image 1 begins at Attached Picture 3.");
+      } else {
+        parts.push(`Renderer Image 1 begins at Attached Picture ${firstRendererAttachment}; later renderer images follow in order.`);
+      }
+    }
     const characterBudget = miniMaxH3PromptCharacterBudget(segment, mode, options.h3TargetLimit ?? 6500);
     const perShotBudget = Math.max(1, Math.floor(characterBudget.shotDescriptionChars / Math.max(1, shotPlan.length)));
     parts.push(
@@ -41114,9 +41401,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
     const cueShotContract = miniMaxH3CueShotContractText(segment, mode);
     if (characterMotionSpeed >= 4) {
-      parts.push(cueShotContract
-        ? "Character rule: include clear body action, gesture, step, or set interaction. Singing and lip sync occur only in vocal cue shots; instrumental cue shots remain completely non-vocal."
-        : "Character rule: include clear body action, gesture, step, or set interaction in addition to visible singing and lip sync. Mouth movement alone is not enough, but do not omit or suppress the required lip sync.");
+      if (cueShotContract) {
+        parts.push("Character rule: include clear body action, gesture, step, or set interaction. Singing and lip sync occur only in vocal cue shots; instrumental cue shots remain completely non-vocal.");
+      } else if (visualOnly || segment?.no_character_present || !lyricText) {
+        parts.push("Character rule: include clear body action, gesture, step, or set interaction when a character is visible. Do not add singing, speaking, or lip sync.");
+      } else if (performanceMode === "speaking") {
+        parts.push("Character rule: include clear body action, gesture, step, or set interaction in addition to the required dialogue lip sync. Mouth movement alone is not enough.");
+      } else {
+        parts.push("Character rule: include clear body action, gesture, step, or set interaction in addition to the required singing lip sync. Mouth movement alone is not enough.");
+      }
     }
     if (segment?.no_character_present) {
       parts.push("Vocal performance: no visible character / no lip sync. Do not invent a visible singer or speaker.");
@@ -41391,7 +41684,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const performers = selectedPerformerSubjectsForSegment(segment);
     const environment = "inside the mapped environment";
     if (cue?.type === "instrumental") {
-      return normalizeMiniMaxH3ShotDescription(`An atmospheric cinematic shot shows the scene ${environment} during an instrumental no-vocal moment. Any visible performers remain silent with closed or naturally relaxed mouths while the camera creates visual movement through posture, wind, clothing motion, and the surrounding environment.`);
+      return normalizeMiniMaxH3ShotDescription(`An atmospheric cinematic shot shows the scene ${environment} during an instrumental passage. Every visible performer maintains a naturally relaxed closed mouth while the camera creates visual movement through posture, wind, clothing motion, and the surrounding environment.`);
     }
     if (cue) {
       const subject = performers.find((item) => String(item.id) === String(cue.singer_id)) || { id: cue.singer_id, name: cue.singer_name };
@@ -41440,7 +41733,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       } else if (interaction === "background_dancing") {
         clauses.push(`${subjects} ${plural ? "perform" : "performs"} backup choreography in the background`);
       } else if (interaction === "alongside") {
-        clauses.push(`${subjects} ${plural ? "dance" : "dances"} alongside <Subject 1> without contact`);
+        clauses.push(`${subjects} ${plural ? "dance" : "dances"} alongside <Subject 1> with independent choreography and comfortable personal spacing`);
       } else {
         clauses.push(`${subjects} ${plural ? "remain" : "remains"} visibly present in the background`);
       }
@@ -41448,9 +41741,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     for (const extra of mainContactExtras) {
       const ensemble = Number(extra.count || 1) > 1;
       if (extra.interaction === "dancing_with") {
-        clauses.push(`${extra.label} performs sensual adult nightclub dancing specifically with <Subject 1>${ensemble ? ", with its members alternating close hip-led grinding, dancing behind her with hands at her hips or waist, and face-to-face body-close movement" : ", using close hip-led grinding, dancing behind her with hands at her hips or waist, or face-to-face body-close movement"}; contact among extras does not satisfy this action and they do not partner one another`);
+        clauses.push(`${extra.label} performs sensual adult nightclub dancing specifically with <Subject 1>${ensemble ? ", with its members alternating close hip-led grinding, dancing behind her with hands at her hips or waist, and face-to-face body-close movement" : ", using close hip-led grinding, dancing behind her with hands at her hips or waist, or face-to-face body-close movement"}; <Subject 1> remains the exclusive dance partner`);
       } else {
-        clauses.push(`${ensemble ? `each member of ${extra.label} takes a turn making` : `${extra.label} makes`} clearly visible physical contact specifically with <Subject 1>; contact among extras does not satisfy this action and they do not direct the mapped interaction toward one another`);
+        clauses.push(`${ensemble ? `each member of ${extra.label} takes a turn making` : `${extra.label} makes`} clearly visible physical contact specifically with <Subject 1>; <Subject 1> remains the exclusive interaction partner`);
       }
     }
     const shotSentence = shots[targetIndex].replace(/\s+$/g, "").replace(/[.!?…]+$/g, "");
@@ -41458,6 +41751,33 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const injected = `${shotSentence}. ${normalizedClauses.join("; ")}.`.trim();
     shots[targetIndex] = normalizeMiniMaxH3ShotDescription(injected);
     return shots;
+  }
+
+  function stripMiniMaxH3NegativePromptSentences(description) {
+    const text = String(description || "").trim();
+    if (!text) return "";
+    const negativeWording = /\b(?:do\s+not|don['’]t|never|without|avoid|must\s+not|cannot|can['’]t|not|no)\b/i;
+    const dialogueTags = [];
+    const maskedText = text.replace(/<d>[\s\S]*?<\/d>/gi, (tag) => {
+      const token = `VRGDGDIALOGUE${dialogueTags.length}TOKEN`;
+      dialogueTags.push(tag);
+      return token;
+    });
+    const restoreDialogue = (value) => String(value || "").replace(/VRGDGDIALOGUE(\d+)TOKEN/g, (_match, index) => dialogueTags[Number(index)] || "");
+    const sentences = maskedText.match(/[^.!?…]+[.!?…]+|[^.!?…]+$/g) || [maskedText];
+    const kept = [];
+    for (const sentence of sentences) {
+      const sentenceTokens = sentence.match(/VRGDGDIALOGUE\d+TOKEN/g) || [];
+      const visualProse = sentence.replace(/VRGDGDIALOGUE\d+TOKEN/g, " ");
+      if (!negativeWording.test(visualProse)) {
+        kept.push(restoreDialogue(sentence.trim()));
+        continue;
+      }
+      if (sentenceTokens.length) {
+        kept.push(`The assigned performer visibly delivers ${restoreDialogue(sentenceTokens.join(" "))} with natural synchronized mouth, jaw, cheek, and facial movement.`);
+      }
+    }
+    return kept.join(" ").replace(/\s{2,}/g, " ").trim();
   }
 
   function parseMiniMaxH3ShotDescriptionPayload(rawPrompt, cutPlan = {}, segment = null, mode = miniMaxH3ModeForSegment(segment)) {
@@ -41520,7 +41840,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       if (/\.\s+guides\s+(?:his|her|their|the)\s+exact\s+appearance\b/i.test(description)) {
         throw new Error(`Gemma returned an orphaned reference-purpose fragment in shot ${index + 1}. Generate again so every sentence has a clear subject.`);
       }
-      return normalizeMiniMaxH3ShotDescription(description);
+      const positiveDescription = stripMiniMaxH3NegativePromptSentences(description);
+      if (!positiveDescription) {
+        console.warn(`[VRGDG Music Builder] Removed all negative prompt wording from shot ${index + 1}; using the positive fallback shot.`);
+        return miniMaxH3FallbackShotDescription(segment, index, mode);
+      }
+      if (positiveDescription !== description) {
+        console.warn(`[VRGDG Music Builder] Removed negative prompt wording from shot ${index + 1} and continued with its positive visual instructions.`);
+      }
+      return normalizeMiniMaxH3ShotDescription(positiveDescription);
     });
     const requiredExtras = miniMaxH3CombinedSubjectPlan(segment, mode).subjects.filter((item) => item.kind === "extra");
     const normalizedDescriptions = descriptions.map((description, index) => {
@@ -41620,6 +41948,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
 
   function enforceMiniMaxH3CueOnShotDescription(segment, description, shotIndex, mode = miniMaxH3ModeForSegment(segment)) {
     let text = normalizeMiniMaxH3ShotDescription(description);
+    if (miniMaxH3FrameContinuityPromptEnabled(segment)) return text;
     if (!isMiniMaxSingerAssignmentMode(segment) || String(segment?.lyric_performance_mode || "together") !== "cue_map") return text;
     const cues = normalizeLyricCueMapForSegment(segment, undefined, { preserveBlank: true });
     const cue = cues[shotIndex];
@@ -42081,10 +42410,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   function miniMaxH3OfficialSoundscape(segment) {
     const settings = miniMaxH3SettingsForSegment(segment);
     if (settings.audio_mode === "input_audio") {
-      return "overall_soundscape:\nNo additional environmental or physical sounds are added over <Audio 1>.";
+      return "overall_soundscape:\n<Audio 1> remains the sole complete audience-facing soundtrack with its original mix, timing, vocals, music, and dynamics intact.";
     }
     const audioDirection = String(segment?.audio_direction || "").trim();
-    return `overall_soundscape:\n${audioDirection || "Subtle location-appropriate ambience, physical movement sounds, breathing, and non-verbal performance sounds support the scene without adding unrequested dialogue."}`;
+    return `overall_soundscape:\n${audioDirection || "Subtle location-appropriate ambience, physical movement sounds, breathing, and expressive performance sounds support the scene."}`;
   }
 
   function miniMaxH3OfficialMusic(segment) {
@@ -42092,7 +42421,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (settings.audio_mode === "input_audio") {
       return "non_diegetic_music:\n<Audio 1> is reused as the complete audience-facing song/music track.";
     }
-    return "non_diegetic_music:\nN/A";
+    return "non_diegetic_music:\nThe scene's native soundtrack follows the requested musical and atmospheric direction.";
   }
 
   function miniMaxH3OfficialIntegratedDescription(segment, mode, creative) {
@@ -42317,6 +42646,26 @@ Chrome vault corridor = Sealed industrial passage...</pre>
 
   function assembleMiniMaxH3PromptFromCreative(segment, mode, creativePrompt) {
     return assembleMiniMaxH3OfficialPromptFromCreative(segment, mode, creativePrompt);
+  }
+
+  function ensureBuilderManagedFx(prompt, scene = {}) {
+    let text = String(prompt || "").trim();
+    const defaults = normalizeBuilderStoryboardDefaults(state.builderStoryboardDefaults);
+    const preset = String(defaults.fx_preset || "").trim();
+    if (!text || !preset) return text;
+    const timestampPattern = /((?:\[\s*\d+(?:\.\d+)?s?\s*[-–—]\s*\d+(?:\.\d+)?s?\s*\]|\[\s*Shot\s+\d+[^\]]*\])\s*\n?)([\s\S]*?)(?=\n\s*(?:\[\s*\d+(?:\.\d+)?s?\s*[-–—]\s*\d+(?:\.\d+)?s?\s*\]|\[\s*Shot\s+\d+[^\]]*\])|\n\s*(?:Audio(?:\s+1)?|Native\s+audio|overall_soundscape|non_diegetic_music|Continuity)\s*:|$)/gi;
+    let shotIndex = 0;
+    let matched = false;
+    text = text.replace(timestampPattern, (whole, header, body) => {
+      matched = true;
+      const contract = storyboardFxContract(preset, defaults.fx_custom_json, shotIndex++);
+      if (!contract || String(body || "").includes(contract.cue)) return whole;
+      const cue = `FX accent: ${contract.cue} Timing: ${contract.timing}. Keep the mapped subject stable and readable.`;
+      return `${header}${String(body || "").trim()} ${cue}\n`;
+    });
+    if (matched) return text.trim();
+    const contract = storyboardFxContract(preset, defaults.fx_custom_json, 0);
+    return contract ? `${text}\n\nFX accent inside this shot: ${contract.cue} Keep the mapped subject stable and readable.`.trim() : text;
   }
 
   function miniMaxH3PromptContextForSegment(segment, mode) {
@@ -42591,7 +42940,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
   async function runMiniMaxH3PromptGeneration(segment, mode, options = {}) {
     await ensureAutoTimedSingerCuesBeforePrompt(segment);
-    const visionImages = miniMaxH3PromptVisionImagesForRunner(segment, mode);
+    const visionImages = Array.isArray(options.visionImages)
+      ? options.visionImages.filter((item) => item && (String(item.path || "").trim() || String(item.data || "").trim()))
+      : miniMaxH3PromptVisionImagesForRunner(segment, mode);
     const visualOnly = segmentUsesNoLipSyncPerformance(segment);
     const promptLyricText = visualOnly || isInstrumentalLyricText(segment.lyric_text) ? "" : flattenLyricForPrompt(segment.lyric_text);
     const promptSingerNames = visualOnly ? [] : (Array.isArray(segment.lyric_singers)
@@ -42644,6 +42995,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         no_character_present: Boolean(segment.no_character_present),
         image_references: visionImages,
         prompt_only_scene_inspiration: options.promptOnlySceneInspiration ?? miniMaxH3SceneImageIsPromptInspiration(segment),
+        frame_continuity_prompt: Boolean(options.frameContinuityPrompt),
         performance_mode: options.performanceMode || effectiveVideoPerformanceModeForSegment(segment),
         lyric_text: promptLyricText,
         singers: effectiveSingerNames,
@@ -44467,25 +44819,6 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       }
       return `${text}\n\n${requiredLine}`;
     };
-    const ensureBuilderManagedFx = (prompt, scene = {}) => {
-      let text = String(prompt || "").trim();
-      const defaults = normalizeBuilderStoryboardDefaults(state.builderStoryboardDefaults);
-      const preset = String(defaults.fx_preset || "").trim();
-      if (!text || !preset) return text;
-      const timestampPattern = /((?:\[\s*\d+(?:\.\d+)?s?\s*[-–—]\s*\d+(?:\.\d+)?s?\s*\]|\[\s*Shot\s+\d+[^\]]*\])\s*\n?)([\s\S]*?)(?=\n\s*(?:\[\s*\d+(?:\.\d+)?s?\s*[-–—]\s*\d+(?:\.\d+)?s?\s*\]|\[\s*Shot\s+\d+[^\]]*\])|\n\s*(?:Audio(?:\s+1)?|Native\s+audio|overall_soundscape|non_diegetic_music|Continuity)\s*:|$)/gi;
-      let shotIndex = 0;
-      let matched = false;
-      text = text.replace(timestampPattern, (whole, header, body) => {
-        matched = true;
-        const contract = storyboardFxContract(preset, defaults.fx_custom_json, shotIndex++);
-        if (!contract || String(body || "").includes(contract.cue)) return whole;
-        const cue = `FX accent: ${contract.cue} Timing: ${contract.timing}. Keep the mapped subject stable and readable.`;
-        return `${header}${String(body || "").trim()} ${cue}\n`;
-      });
-      if (matched) return text.trim();
-      const contract = storyboardFxContract(preset, defaults.fx_custom_json, 0);
-      return contract ? `${text}\n\nFX accent inside this shot: ${contract.cue} Keep the mapped subject stable and readable.`.trim() : text;
-    };
     const ensureStoryboardRequiredTemporalWorldEffect = (prompt, storyboardPayload = {}, scene = {}) => {
       let text = String(prompt || "").trim();
       const storyboardScenes = Array.isArray(storyboardPayload?.scenes) ? storyboardPayload.scenes : [];
@@ -45091,10 +45424,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const missing = [];
     const mode = miniMaxH3ModeForSegment(segment);
     const savedPrompt = String(segment?.minimax_h3_prompt || segment?.i2v_prompt || "").trim();
-    if (!savedPrompt) {
-      missing.push(`${name}: MiniMax ${miniMaxH3ModeLabel(mode)} prompt is missing.`);
-    } else if (savedPrompt.length > 7000) {
-      missing.push(`${name}: MiniMax prompt is ${savedPrompt.length.toLocaleString()} characters and exceeds the 7,000-character maximum. Regenerate or shorten it before rendering.`);
+    const frameContinuityPromptEnabled = miniMaxH3FrameContinuityPromptEnabled(segment);
+    if (!frameContinuityPromptEnabled) {
+      if (!savedPrompt) {
+        missing.push(`${name}: MiniMax ${miniMaxH3ModeLabel(mode)} prompt is missing.`);
+      } else if (savedPrompt.length > 7000) {
+        missing.push(`${name}: MiniMax prompt is ${savedPrompt.length.toLocaleString()} characters and exceeds the 7,000-character maximum. Regenerate or shorten it before rendering.`);
+      }
     }
     if (!Number.isFinite(Number(segment?.start)) || !Number.isFinite(Number(segment?.end)) || Number(segment.end) <= Number(segment.start)) {
       missing.push(`${name}: timeline start and end times are invalid.`);
@@ -46718,6 +47054,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (!previousSegment) return null;
     if (isMiniMaxH3LatentContinuationMode(continuityMode)) {
       const isExactFrame = continuityMode === "latent_continuation_exact_frame";
+      const needsPromptFrame = Boolean(miniMaxH3SettingsForSegment(segment).continuity_prompt_from_last_frame);
       const slotNumber = sceneSlotNumber(segment);
       if (slotNumber <= 1) {
         throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)} is Scene 1 and cannot use Latent Continuation because there is no predecessor scene. Switch Continuity Mode to Off.`);
@@ -46735,20 +47072,22 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       // Exact Last Frame also needs the predecessor's real last frame as an image. It is passed as its own
       // field (not framePath) so it is never injected as a reference image or a prompt block.
       let exactFramePath = "";
-      if (isExactFrame) {
+      let promptFramePath = "";
+      if (isExactFrame || needsPromptFrame) {
         const previousVideoPath = String(selectedSegmentVideoPath(previousSegment) || "").trim();
         if (!previousVideoPath) {
-          throw new Error(`Latent Continuation + Exact Last Frame needs Scene ${slotNumber - 1}'s rendered video to read its last frame, but it has none. Render Scene ${slotNumber - 1} first, or switch to plain Latent Continuation.`);
+          throw new Error(`${needsPromptFrame ? "Frame-to-frame prompt creation" : "Latent Continuation + Exact Last Frame"} needs Scene ${slotNumber - 1}'s rendered video to read its last frame, but it has none. Render Scene ${slotNumber - 1} first.`);
         }
-        progress?.set(`${label}: extracting Scene ${slotNumber - 1}'s exact last frame...`, percent);
+        progress?.set(`${label}: extracting Scene ${slotNumber - 1}'s actual final frame...`, percent);
         const extractedFrame = await postJson("/vrgdg/music_builder/extract_video_final_frame", {
           project_folder: projectFolder,
           source_path: previousVideoPath,
           scene_number: slotNumber,
           frame_count: 1,
         }, 120000);
-        exactFramePath = String(extractedFrame?.saved_path || "").trim();
-        if (!exactFramePath) throw new Error("Could not extract the previous scene's last frame for Latent Continuation + Exact Last Frame.");
+        promptFramePath = String(extractedFrame?.saved_path || "").trim();
+        if (!promptFramePath) throw new Error("Could not extract the previous scene's last frame for frame-to-frame continuity.");
+        if (isExactFrame) exactFramePath = promptFramePath;
       }
       segment.minimax_h3_continuity_mode_used = continuityMode;
       segment.minimax_h3_continuity_source_scene_id = String(previousSegment.id || "");
@@ -46759,6 +47098,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         framePath: "",
         framePaths: [],
         exactFramePath,
+        promptFramePath,
         previousSegment,
       };
     }
@@ -46784,6 +47124,68 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     segment.minimax_h3_continuity_source_scene_id = String(previousSegment.id || "");
     segment.minimax_h3_continuity_mode_used = continuityMode;
     return { framePath, continuityMode, previousSegment, previousVideoPath };
+  }
+
+  function miniMaxH3FrameContinuityPromptEnabled(segment) {
+    if (!segment || segmentTrack(segment) === "overlay" || sceneSlotNumber(segment) <= 1) return false;
+    const settings = miniMaxH3SettingsForSegment(segment);
+    return Boolean(settings.continuity_prompt_from_last_frame)
+      && ["reference_to_video", "video_to_video"].includes(miniMaxH3ModeForSegment(segment))
+      && isMiniMaxH3LatentContinuationMode(settings.continuity_mode);
+  }
+
+  async function createMiniMaxH3FrameContinuityPrompt(segment, sceneIndex, mode, continuityInput, progress, percent = 6, label = "MiniMax continuity") {
+    const framePath = String(continuityInput?.promptFramePath || continuityInput?.exactFramePath || "").trim();
+    if (!framePath) throw new Error(`${sceneDisplayName(segment, sceneIndex)} could not find the predecessor's extracted final frame for automatic prompt creation.`);
+    const supportingImages = miniMaxH3PromptVisionImages(segment, mode);
+    const seen = new Set([mediaPathKey(framePath)]);
+    const visionImages = [{ path: framePath, frame_continuity_source: true }];
+    for (const item of supportingImages) {
+      const path = String(item?.path || "").trim();
+      const data = String(item?.data || "").trim();
+      const key = path ? mediaPathKey(path) : data;
+      if ((!path && !data) || (key && seen.has(key))) continue;
+      if (key) seen.add(key);
+      visionImages.push(item);
+      if (visionImages.length >= 10) break;
+    }
+    let lastError = null;
+    for (let attempt = 1; attempt <= 10; attempt += 1) {
+      try {
+        progress?.set(`${label}: creating Scene ${sceneSlotNumber(segment)} prompt from Scene ${sceneSlotNumber(segment) - 1}'s actual final frame (attempt ${attempt}/10)...`, percent);
+        const data = await runMiniMaxH3PromptGeneration(segment, mode, {
+          projectFolder: String(projectInput.value || state.projectFolder || "").trim(),
+          builderInstructionKey: "minimax_h3_frame_continuity",
+          visionImages,
+          frameContinuityPrompt: true,
+          promptOnlySceneInspiration: miniMaxH3SceneImageIsPromptInspiration(segment),
+          contextOptions: { frameContinuityPrompt: true },
+          unloadAfter: true,
+          finalizePrompt: (prompt) => ensureBuilderManagedFx(prompt, segment),
+          emptyPromptMessage: `Attempt ${attempt}/10 returned an empty frame-to-frame continuity prompt.`,
+        });
+        const generatedPrompt = String(data?.prompt || "").trim();
+        if (!generatedPrompt) throw new Error(`Attempt ${attempt}/10 returned an empty frame-to-frame continuity prompt.`);
+        pushHistory();
+        segment.minimax_h3_prompt = generatedPrompt;
+        segment.minimax_h3_prompt_origin = "previous_final_frame";
+        segment.minimax_h3_continuity_prompt_source_scene_id = String(continuityInput?.previousSegment?.id || "");
+        segment.minimax_h3_continuity_prompt_frame_path = framePath;
+        segment.minimax_h3_continuity_prompt_created_at = new Date().toISOString();
+        if (segment?.id === activeSegment()?.id) miniMaxPrompt.value = generatedPrompt;
+        updateMiniMaxPromptCharacterStatus(segment);
+        render();
+        await autoSaveSessionQuiet(`Scene ${sceneSlotNumber(segment)} frame-to-frame continuity prompt`);
+        return generatedPrompt;
+      } catch (error) {
+        lastError = error;
+        if (attempt >= 10) break;
+        const delayMs = Math.min(15000, attempt * 2000);
+        progress?.set(`${label}: prompt attempt ${attempt}/10 failed; retrying in ${Math.round(delayMs / 1000)} seconds...\n${String(error?.message || error)}`, percent);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+    throw new Error(`${sceneDisplayName(segment, sceneIndex)} could not create a valid frame-to-frame continuity prompt after 10 attempts. Last error: ${String(lastError?.message || lastError || "unknown error")}`);
   }
 
   async function renderMiniMaxSceneVideoWithProgress(segment, sceneIndex, progress, options = {}) {
@@ -46828,10 +47230,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       )
       : options.continuityInput;
 
-    const prompt = String(
-      options.prompt
-      ?? (segment?.minimax_h3_prompt || segment?.i2v_prompt || "")
-    ).trim();
+    const generatedContinuityPrompt = miniMaxH3FrameContinuityPromptEnabled(segment)
+      ? await createMiniMaxH3FrameContinuityPrompt(segment, sceneIndex, mode, continuityInput, progress, pct(6), `${batchLabel}MiniMax continuity`)
+      : "";
+    const prompt = String(generatedContinuityPrompt || (options.prompt ?? (segment?.minimax_h3_prompt || segment?.i2v_prompt || ""))).trim();
     if (!prompt) throw new Error(`${sceneDisplayName(segment, sceneIndex)} needs a MiniMax H3 prompt.`);
     assertValidMiniMaxH3FinalPrompt(prompt, segment, mode, {
       allowCueValidationWarnings: true,
@@ -57462,6 +57864,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (!segment) return;
     openBuilderInstructionEditor(miniMaxH3InstructionKey(miniMaxH3ModeForSegment(segment)));
   };
+  miniMaxEditContinuityPromptInstructionsButton.onclick = () => openBuilderInstructionEditor("minimax_h3_frame_continuity");
   sendT2IPromptToEnhanceButton.onclick = () => sendPromptToEnhance("T2I", t2iPrompt.value);
   ernieSendT2IPromptToEnhanceButton.onclick = () => sendPromptToEnhance("T2I", ernieT2IPrompt.value);
   krea2TwoPassSendT2IPromptToEnhanceButton.onclick = () => sendPromptToEnhance("T2I", krea2TwoPassT2IPrompt.value);
@@ -58506,6 +58909,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     miniMaxAspectRatio,
     miniMaxAudioMode,
     miniMaxContinuityMode,
+    miniMaxContinuityPromptFromLastFrame.input,
     miniMaxMegapixels,
     miniMaxSeed,
     miniMaxWarmupFrames,
@@ -58711,6 +59115,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     await autoSaveSessionQuiet("MiniMax H3 2 Pass Advanced project mode");
   };
   miniMaxAudioMode.addEventListener("change", syncMiniMaxH3Panel);
+  miniMaxContinuityPromptFromLastFrame.input.addEventListener("change", syncMiniMaxH3Panel);
+  miniMaxLocationTransitionPreset.addEventListener("change", () => {
+    pushHistory();
+    saveMiniMaxH3SettingsFromPanel();
+    syncMiniMaxH3Panel();
+    autoSaveSessionQuiet("MiniMax H3 location transition preset").catch(() => null);
+  });
+  miniMaxLocationTransitionCustom.addEventListener("input", saveMiniMaxH3SettingsFromPanel);
+  miniMaxLocationTransitionCustom.addEventListener("change", () => {
+    saveMiniMaxH3SettingsFromPanel();
+    autoSaveSessionQuiet("MiniMax H3 custom location transition").catch(() => null);
+  });
   miniMaxContinuityMode.addEventListener("change", () => {
     const segment = activeSegment();
     const continuityMode = normalizeMiniMaxH3ContinuityMode(miniMaxContinuityMode.value);
