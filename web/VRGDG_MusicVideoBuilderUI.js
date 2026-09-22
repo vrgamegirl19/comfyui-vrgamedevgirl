@@ -26259,12 +26259,10 @@ function openBuilder(node) {
     });
   }
 
-  let lastLyricReviewModalOpenTime = 0;
+  let activeLyricReviewBackdrop = null;
 
   function openLyricReviewModal(options = {}) {
-    const nowModal = Date.now();
-    if (nowModal - lastLyricReviewModalOpenTime < 350) return;
-    lastLyricReviewModalOpenTime = nowModal;
+    if (activeLyricReviewBackdrop?.isConnected) return;
 
     const focusSceneId = String(options?.focusSceneId || options?.focus_scene_id || "").trim();
     const singleSceneId = String(options?.singleSceneId || options?.single_scene_id || options?.sceneId || "").trim();
@@ -26294,11 +26292,8 @@ function openBuilder(node) {
     const close = makeButton("Close");
     const openAllButton = isSingleScene ? makeButton("Open All Scenes") : null;
     if (openAllButton) {
-      openAllButton.title = "Switch to the full multi-scene Review Lines + Map Performers window.";
-      openAllButton.onclick = () => {
-        closeModal();
-        openLyricReviewModal({ focusSceneId: targetScene.id });
-      };
+      openAllButton.title = "Save this scene and open the full Review Lines + Map Performers window.";
+      openAllButton.onclick = () => navigateReviewScene({ focusSceneId: targetScene.id });
       header.append(heading, openAllButton, lyricReviewHint, close);
     } else {
       header.append(heading, lyricReviewHint, close);
@@ -26589,20 +26584,18 @@ function openBuilder(node) {
       jumpSelected.onclick = () => playRange(targetScene, jumpSelected);
       prevScene.textContent = "Prev Scene";
       nextScene.textContent = "Next Scene";
-      prevScene.title = "Open line review for the previous scene.";
-      nextScene.title = "Open line review for the next scene.";
+      prevScene.title = "Save this scene and open the previous scene.";
+      nextScene.title = "Save this scene and open the next scene.";
       prevScene.disabled = targetSceneIndex <= 0;
       nextScene.disabled = targetSceneIndex >= allScenes.length - 1;
       prevScene.onclick = () => {
         if (targetSceneIndex > 0) {
-          closeModal();
-          openLyricReviewModal({ singleSceneId: allScenes[targetSceneIndex - 1].id });
+          navigateReviewScene({ singleSceneId: allScenes[targetSceneIndex - 1].id });
         }
       };
       nextScene.onclick = () => {
         if (targetSceneIndex < allScenes.length - 1) {
-          closeModal();
-          openLyricReviewModal({ singleSceneId: allScenes[targetSceneIndex + 1].id });
+          navigateReviewScene({ singleSceneId: allScenes[targetSceneIndex + 1].id });
         }
       };
       if (audioPath) {
@@ -27064,6 +27057,22 @@ function openBuilder(node) {
       updateReviewTimingDisplay(row);
     };
 
+    const singleReviewTimingNeighbors = (row) => {
+      const ordered = [...state.segments].sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
+      const index = ordered.findIndex((item) => item.id === row.dataset.reviewSegmentId);
+      return { previous: ordered[index - 1], following: ordered.slice(index + 1) };
+    };
+
+    const canEditSingleReviewTiming = (row, affected) => {
+      if (!isSingleScene) return true;
+      if (state.timingFrozen || affected.some((segment) => segment && hasLockedVideo(segment))) {
+        toast("Unfreeze timing and unlock affected scene videos before changing timing.", true);
+        syncReviewRowFromSegment(row);
+        return false;
+      }
+      return true;
+    };
+
     const handleReviewStartEdited = async (row) => {
       const startInput = row.querySelector("[data-review-start]");
       const endInput = row.querySelector("[data-review-end]");
@@ -27078,6 +27087,13 @@ function openBuilder(node) {
       const rowIndex = rows.indexOf(row);
       const prevRow = rows[rowIndex - 1] || null;
       const segment = liveReviewSegmentForRow(row);
+      const neighbors = isSingleScene ? singleReviewTimingNeighbors(row) : null;
+      if (!canEditSingleReviewTiming(row, [segment, neighbors?.previous])) return;
+      if (neighbors?.previous && start < Number(neighbors.previous.start || 0) + 0.05) {
+        toast("Start must leave time for the previous scene. Use Open All Scenes to merge scenes.", true);
+        syncReviewRowFromSegment(row);
+        return;
+      }
       if (segment) {
         segment.start = Math.max(0, start);
         segment.end = Math.max(segment.start + 0.05, end);
@@ -27088,14 +27104,7 @@ function openBuilder(node) {
         syncReviewRowFromSegment(prevRow);
         await maybeWarnShortReviewScene(prevRow, prevRow, row, "Do you want to merge that previous scene with this scene instead?");
       } else if (isSingleScene) {
-        const allSorted = [...state.segments].sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
-        const segIdx = allSorted.findIndex((item) => item.id === segment?.id);
-        if (segIdx > 0) {
-          const prevSegment = allSorted[segIdx - 1];
-          if (prevSegment) {
-            prevSegment.end = Math.max(Number(prevSegment.start || 0) + 0.05, start);
-          }
-        }
+        if (neighbors.previous) neighbors.previous.end = Math.max(0, start);
       }
       syncReviewRowFromSegment(row);
       state.duration = timelineDuration();
@@ -27118,6 +27127,16 @@ function openBuilder(node) {
         : Number(row.dataset.reviewLastEnd || start);
       const delta = end - previousEnd;
       const segment = liveReviewSegmentForRow(row);
+      const neighbors = isSingleScene ? singleReviewTimingNeighbors(row) : null;
+      const following = neighbors?.following || [];
+      const affected = timingModeSelect.value === "ripple" ? following : following.slice(0, 1);
+      if (!canEditSingleReviewTiming(row, [segment, ...affected])) return;
+      if (isSingleScene && timingModeSelect.value !== "ripple" && following[0]
+        && end > Number(following[0].end || 0) - 0.05) {
+        toast("End must leave time for the next scene. Use Open All Scenes to merge scenes.", true);
+        syncReviewRowFromSegment(row);
+        return;
+      }
       if (segment) {
         segment.start = Math.max(0, start);
         segment.end = Math.max(segment.start + 0.05, end);
@@ -27130,14 +27149,9 @@ function openBuilder(node) {
         if (nextRow) {
           shiftReviewRowsAfter(row, delta);
         } else if (isSingleScene) {
-          const allSorted = [...state.segments].sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
-          const segIdx = allSorted.findIndex((item) => item.id === segment?.id);
-          if (segIdx >= 0) {
-            for (let i = segIdx + 1; i < allSorted.length; i++) {
-              const nextSeg = allSorted[i];
-              nextSeg.start = Math.max(0, Number(nextSeg.start || 0) + delta);
-              nextSeg.end = Math.max(nextSeg.start + 0.05, Number(nextSeg.end || nextSeg.start + 0.05) + delta);
-            }
+          for (const nextSeg of following) {
+            nextSeg.start = Math.max(0, Number(nextSeg.start || 0) + delta);
+            nextSeg.end = Math.max(nextSeg.start + 0.05, Number(nextSeg.end || nextSeg.start + 0.05) + delta);
           }
         }
         state.duration = timelineDuration();
@@ -27154,15 +27168,7 @@ function openBuilder(node) {
         syncReviewRowFromSegment(nextRow);
         await maybeWarnShortReviewScene(nextRow, row, nextRow, "Do you want to merge it with the scene you just extended?");
       } else if (isSingleScene) {
-        const allSorted = [...state.segments].sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
-        const segIdx = allSorted.findIndex((item) => item.id === segment?.id);
-        if (segIdx >= 0 && segIdx < allSorted.length - 1) {
-          const nextSegment = allSorted[segIdx + 1];
-          if (nextSegment) {
-            nextSegment.start = end;
-            nextSegment.end = Math.max(nextSegment.start + 0.05, Number(nextSegment.end || nextSegment.start + 0.05));
-          }
-        }
+        if (following[0]) following[0].start = end;
       }
       state.duration = timelineDuration();
       syncInspector();
@@ -27304,6 +27310,7 @@ function openBuilder(node) {
     };
 
     const splitReviewRowAtPlayhead = async (row, segment) => {
+      if (!canEditSingleReviewTiming(row, [segment])) return;
       const segmentStart = Number(segment.start || 0);
       const segmentEnd = Number(segment.end || 0);
       const splitTime = Math.max(segmentStart, Math.min(segmentEnd, Number(reviewAudio?.currentTime || currentGlobalTime() || 0)));
@@ -27704,17 +27711,25 @@ function openBuilder(node) {
         focusRow.querySelector("[data-review-lyric-text]")?.focus({ preventScroll: true });
       });
     }
+    activeLyricReviewBackdrop = backdrop;
     const closeModal = () => {
       clearReviewStopGuards();
       reviewAudio.pause();
       backdrop.remove();
+      if (activeLyricReviewBackdrop === backdrop) activeLyricReviewBackdrop = null;
     };
     close.onclick = closeModal;
     cancel.onclick = closeModal;
     backdrop.addEventListener("pointerdown", (event) => {
       if (event.target === backdrop) closeModal();
     });
-    save.onclick = async () => {
+    const navigateReviewScene = async (nextOptions) => {
+      if (!(await saveReviewChanges(true)) || !backdrop.isConnected) return;
+      closeModal();
+      openLyricReviewModal(nextOptions);
+    };
+    const saveReviewChanges = async (quiet = false) => {
+      if (save.disabled) return false;
       try {
         save.disabled = true;
         pushHistory();
@@ -27745,13 +27760,14 @@ function openBuilder(node) {
         syncInspector();
         render();
         await saveSession({ quiet: true, throwOnError: true });
-        showInfoModal({
+        if (!quiet) showInfoModal({
           title: isSingleScene ? `${targetScene.label || "Scene"} Saved` : "Line Review Saved",
           lines: isSingleScene
             ? ["Scene lines, timing, performer labels, lip-sync flags, and location mapping were saved to the timeline."]
             : ["Lines, scene timing, performer labels, no-lip-sync/no-character flags, and location mapping were saved to the timeline."],
           confirmLabel: "OK",
         });
+        return true;
       } catch (error) {
         const message = String(error?.message || error);
         if (/image_history/i.test(message)) {
@@ -27761,19 +27777,19 @@ function openBuilder(node) {
             syncInspector();
             render();
             await saveSession({ quiet: true, throwOnError: true });
-            showInfoModal({
+            if (!quiet) showInfoModal({
               title: "Line Review Saved",
               lines: ["Lines, timing, performers, no-lip-sync/no-character flags, and locations were saved. A stale media history value was cleaned up automatically."],
               confirmLabel: "OK",
             });
-            return;
+            return true;
           } catch (retryError) {
             showInfoModal({
               title: "Line Review Save Error",
               lines: [String(retryError?.message || retryError)],
               confirmLabel: "OK",
             });
-            return;
+            return false;
           }
         }
         showInfoModal({
@@ -27781,10 +27797,12 @@ function openBuilder(node) {
           lines: [message],
           confirmLabel: "OK",
         });
+        return false;
       } finally {
         save.disabled = false;
       }
     };
+    save.onclick = () => saveReviewChanges();
   }
 
   function openLyricMappingWorkflowModal() {

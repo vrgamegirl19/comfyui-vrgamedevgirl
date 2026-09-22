@@ -1,0 +1,19 @@
+import shutil
+import subprocess
+import unittest
+from pathlib import Path
+
+
+class BuilderSceneReviewTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("node"), "Node.js is required for UI behavior tests")
+    def test_scene_review_behavior(self):
+        result = subprocess.run(
+            ["node", "--test", str(Path(__file__).with_name("builder_scene_review.cjs"))],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+
+if __name__ == "__main__":
+    unittest.main()
