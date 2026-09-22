@@ -228,6 +228,8 @@ const DEFAULT_MINIMAX_H3_SETTINGS = {
   audio_mode: "input_audio",
   continuity_mode: "off",
   continuity_prompt_from_last_frame: false,
+  location_transition_preset: "normal",
+  location_transition_custom: "",
   latent_context_frames: 22,
   diffusion_model_name: "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
   clip_name: "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
@@ -545,6 +547,8 @@ function cloneMiniMaxH3Settings(value = {}) {
     audio_mode: normalizeMiniMaxH3AudioMode(source.audio_mode || source.audioMode || DEFAULT_MINIMAX_H3_SETTINGS.audio_mode),
     continuity_mode: normalizeMiniMaxH3ContinuityMode(source.continuity_mode || source.continuityMode || DEFAULT_MINIMAX_H3_SETTINGS.continuity_mode),
     continuity_prompt_from_last_frame: Boolean(source.continuity_prompt_from_last_frame ?? source.continuityPromptFromLastFrame ?? DEFAULT_MINIMAX_H3_SETTINGS.continuity_prompt_from_last_frame),
+    location_transition_preset: normalizeMiniMaxH3LocationTransitionPreset(source.location_transition_preset ?? source.locationTransitionPreset ?? DEFAULT_MINIMAX_H3_SETTINGS.location_transition_preset),
+    location_transition_custom: String(source.location_transition_custom ?? source.locationTransitionCustom ?? DEFAULT_MINIMAX_H3_SETTINGS.location_transition_custom).trim(),
     latent_context_frames: [16, 22, 39, 56].includes(Number(source.latent_context_frames ?? source.latentContextFrames))
       ? Number(source.latent_context_frames ?? source.latentContextFrames)
       : DEFAULT_MINIMAX_H3_SETTINGS.latent_context_frames,
@@ -6189,13 +6193,13 @@ function openBuilder(node) {
   miniMaxContinuityPromptFromLastFrame.wrapper.title = "Scene 1 keeps its authored prompt. Before rendering Scene 2 and later, the Builder extracts the predecessor's actual final frame and asks the vision LLM to create and save a complete continuous-shot prompt from it plus the scene's story, audio timing, and references.";
   const miniMaxLocationTransitionPreset = makeSelect(MINIMAX_H3_LOCATION_TRANSITION_OPTIONS, "normal");
   const miniMaxLocationTransitionPresetField = makeField("Location change transition", miniMaxLocationTransitionPreset);
-  miniMaxLocationTransitionPresetField.title = "Saved per scene. It is used only when this scene's mapped location differs from the preceding scene's mapped location.";
+  miniMaxLocationTransitionPresetField.title = "Applies globally to every unlocked MiniMax scene. Lock MiniMax settings on a scene to give that scene its own transition preset.";
   const miniMaxLocationTransitionCustom = document.createElement("textarea");
   miniMaxLocationTransitionCustom.placeholder = "Describe the transition you want, such as: combine surreal transformation with a cinematic eye transition.";
   miniMaxLocationTransitionCustom.style.cssText = "width:100%;min-height:64px;box-sizing:border-box;resize:vertical;border:1px solid #3f3f46;border-radius:6px;background:#09090b;color:#f8fafc;padding:8px;font-size:12px;line-height:1.4;";
   const miniMaxLocationTransitionCustomField = makeField("Custom location transition", miniMaxLocationTransitionCustom);
   const miniMaxLocationTransitionNote = document.createElement("div");
-  miniMaxLocationTransitionNote.textContent = "This scene-level preset is used only at a mapped location boundary. Same-location scenes continue through the established destination.";
+  miniMaxLocationTransitionNote.textContent = "Global for all unlocked scenes; the MiniMax scene lock creates an override. The preset activates only at a mapped location boundary.";
   miniMaxLocationTransitionNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
   const miniMaxLocationTransitionControls = document.createElement("div");
   miniMaxLocationTransitionControls.style.cssText = "display:none;flex-direction:column;gap:6px;padding:8px;border:1px solid #334155;border-radius:7px;background:#0f172a;";
@@ -7783,10 +7787,15 @@ function openBuilder(node) {
     const sceneSettings = segment.minimax_h3_settings && typeof segment.minimax_h3_settings === "object"
       ? segment.minimax_h3_settings
       : {};
+    const legacyPreset = normalizeMiniMaxH3LocationTransitionPreset(segment.minimax_h3_location_transition_preset);
+    const legacyCustom = String(segment.minimax_h3_location_transition_custom || "").trim();
+    const hasSceneTransitionPreset = Object.prototype.hasOwnProperty.call(sceneSettings, "location_transition_preset");
     const settings = cloneMiniMaxH3Settings({
       ...globalSettings,
       ...sceneSettings,
       video_mode: sceneSettings.video_mode || segment.minimax_h3_mode || globalSettings.video_mode,
+      location_transition_preset: hasSceneTransitionPreset ? sceneSettings.location_transition_preset : legacyPreset,
+      location_transition_custom: hasSceneTransitionPreset ? sceneSettings.location_transition_custom : legacyCustom,
     });
     const sceneHasPreTurboEasyCache = sceneSettings.easy_cache_bypass_before_turbo != null
       || sceneSettings.easyCacheBypassBeforeTurbo != null;
@@ -7796,6 +7805,10 @@ function openBuilder(node) {
     }
     segment.minimax_h3_settings = settings;
     segment.minimax_h3_mode = settings.video_mode;
+    if (!hasSceneTransitionPreset && (legacyPreset !== "normal" || legacyCustom)) {
+      segment.minimax_h3_location_transition_preset = "normal";
+      segment.minimax_h3_location_transition_custom = "";
+    }
     return settings;
   }
 
@@ -7926,6 +7939,8 @@ function openBuilder(node) {
       audio_mode: miniMaxAudioMode.value,
       continuity_mode: miniMaxContinuityMode.value,
       continuity_prompt_from_last_frame: miniMaxContinuityPromptFromLastFrame.input.checked,
+      location_transition_preset: miniMaxLocationTransitionPreset.value,
+      location_transition_custom: miniMaxLocationTransitionCustom.value,
       latent_context_frames: Number(miniMaxLatentContextFrames.value || 22),
       diffusion_model_name: miniMaxDiffusionModelPicker.input.value,
       clip_name: miniMaxClipPicker.input.value,
@@ -8045,8 +8060,6 @@ function openBuilder(node) {
     segment.minimax_h3_start_frame_character_influence = normalizeMiniMaxH3StartFrameCharacterInfluence(
       miniMaxStartFrameCharacterInfluence.value,
     );
-    segment.minimax_h3_location_transition_preset = normalizeMiniMaxH3LocationTransitionPreset(miniMaxLocationTransitionPreset.value);
-    segment.minimax_h3_location_transition_custom = String(miniMaxLocationTransitionCustom.value || "").trim();
     segment.minimax_h3_video_references = miniMaxVideoReferenceRows
       .map((row) => ({
         path: String(row.path.value || "").trim(),
@@ -8720,6 +8733,23 @@ function openBuilder(node) {
     const segment = activeSegment();
     state.miniMaxH3PanelSegmentId = String(segment?.id || "");
     state.miniMaxH3Settings = cloneMiniMaxH3Settings(state.miniMaxH3Settings);
+    if (state.miniMaxH3Settings.location_transition_preset === "normal") {
+      const legacyTransitionSegment = [segment, ...allEditableSegments()]
+        .filter((item, index, items) => item && items.indexOf(item) === index && !item.use_scene_minimax_h3_settings)
+        .find((item) => normalizeMiniMaxH3LocationTransitionPreset(item.minimax_h3_location_transition_preset) !== "normal");
+      if (legacyTransitionSegment) {
+        state.miniMaxH3Settings = cloneMiniMaxH3Settings({
+          ...state.miniMaxH3Settings,
+          location_transition_preset: legacyTransitionSegment.minimax_h3_location_transition_preset,
+          location_transition_custom: legacyTransitionSegment.minimax_h3_location_transition_custom,
+        });
+        for (const item of allEditableSegments()) {
+          if (item.use_scene_minimax_h3_settings) continue;
+          item.minimax_h3_location_transition_preset = "normal";
+          item.minimax_h3_location_transition_custom = "";
+        }
+      }
+    }
     const settings = miniMaxH3SettingsForSegment(segment);
     miniMaxDiffusionModelPicker.input.value = settings.diffusion_model_name;
     miniMaxClipPicker.input.value = settings.clip_name;
@@ -8728,8 +8758,8 @@ function openBuilder(node) {
     miniMaxAudioMode.value = settings.audio_mode;
     miniMaxContinuityMode.value = settings.continuity_mode;
     miniMaxContinuityPromptFromLastFrame.input.checked = Boolean(settings.continuity_prompt_from_last_frame);
-    miniMaxLocationTransitionPreset.value = normalizeMiniMaxH3LocationTransitionPreset(segment?.minimax_h3_location_transition_preset);
-    miniMaxLocationTransitionCustom.value = String(segment?.minimax_h3_location_transition_custom || "");
+    miniMaxLocationTransitionPreset.value = settings.location_transition_preset;
+    miniMaxLocationTransitionCustom.value = settings.location_transition_custom;
     miniMaxLatentContextFrames.value = String(segment?.minimax_h3_latent_context_frames || settings.latent_context_frames || 22);
     miniMaxAspectRatio.value = settings.aspect_ratio;
     miniMaxMegapixels.value = String(settings.megapixels);
@@ -12249,12 +12279,22 @@ function openBuilder(node) {
       segment.minimax_h3_settings = null;
     }
     if (segment.use_scene_minimax_h3_settings) {
+      const savedSceneSettings = segment.minimax_h3_settings || {};
+      const hasSavedTransitionPreset = Object.prototype.hasOwnProperty.call(savedSceneSettings, "location_transition_preset");
+      const legacyTransitionPreset = normalizeMiniMaxH3LocationTransitionPreset(segment.minimax_h3_location_transition_preset);
+      const legacyTransitionCustom = String(segment.minimax_h3_location_transition_custom || "").trim();
       segment.minimax_h3_settings = cloneMiniMaxH3Settings({
         ...cloneMiniMaxH3Settings(state.miniMaxH3Settings),
-        ...(segment.minimax_h3_settings || {}),
-        video_mode: segment.minimax_h3_settings?.video_mode || segment.minimax_h3_mode,
+        ...savedSceneSettings,
+        video_mode: savedSceneSettings.video_mode || segment.minimax_h3_mode,
+        location_transition_preset: hasSavedTransitionPreset ? savedSceneSettings.location_transition_preset : legacyTransitionPreset,
+        location_transition_custom: hasSavedTransitionPreset ? savedSceneSettings.location_transition_custom : legacyTransitionCustom,
       });
       segment.minimax_h3_mode = segment.minimax_h3_settings.video_mode;
+      if (!hasSavedTransitionPreset && (legacyTransitionPreset !== "normal" || legacyTransitionCustom)) {
+        segment.minimax_h3_location_transition_preset = "normal";
+        segment.minimax_h3_location_transition_custom = "";
+      }
     }
     if (segment.minimax_h3_prompt == null) segment.minimax_h3_prompt = "";
     if (segment.minimax_h3_pass2_prompt == null) segment.minimax_h3_pass2_prompt = "";
@@ -41095,8 +41135,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const previousName = locationIdentity(previousLocation, "the preceding mapped location");
     if (!currentKey) return "";
     if (previousKey && previousKey !== currentKey) {
-      const preset = normalizeMiniMaxH3LocationTransitionPreset(segment?.minimax_h3_location_transition_preset);
-      const customDirection = String(segment?.minimax_h3_location_transition_custom || "").trim();
+      const transitionSettings = miniMaxH3SettingsForSegment(segment);
+      const preset = transitionSettings.location_transition_preset;
+      const customDirection = transitionSettings.location_transition_custom;
       const commonEnding = `Complete the transition inside this uninterrupted scene and end looking deeper into ${currentName}, with its mapped geography filling the image as the location inherited by the following scene.`;
       const directions = {
         normal: (
@@ -58952,13 +58993,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   miniMaxContinuityPromptFromLastFrame.input.addEventListener("change", syncMiniMaxH3Panel);
   miniMaxLocationTransitionPreset.addEventListener("change", () => {
     pushHistory();
-    saveMiniMaxSceneInputsFromPanel();
+    saveMiniMaxH3SettingsFromPanel();
     syncMiniMaxH3Panel();
     autoSaveSessionQuiet("MiniMax H3 location transition preset").catch(() => null);
   });
-  miniMaxLocationTransitionCustom.addEventListener("input", saveMiniMaxSceneInputsFromPanel);
+  miniMaxLocationTransitionCustom.addEventListener("input", saveMiniMaxH3SettingsFromPanel);
   miniMaxLocationTransitionCustom.addEventListener("change", () => {
-    saveMiniMaxSceneInputsFromPanel();
+    saveMiniMaxH3SettingsFromPanel();
     autoSaveSessionQuiet("MiniMax H3 custom location transition").catch(() => null);
   });
   miniMaxContinuityMode.addEventListener("change", () => {

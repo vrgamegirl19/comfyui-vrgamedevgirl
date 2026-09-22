@@ -48,7 +48,7 @@ class MiniMaxFrameContinuityPromptTests(unittest.TestCase):
         self.assertIn("preserve its established spatial logic", UI_SOURCE)
         self.assertIn("End looking deeper into", UI_SOURCE)
 
-    def test_location_transition_presets_are_scene_level_and_boundary_only(self):
+    def test_location_transition_presets_use_global_settings_and_scene_lock(self):
         for preset in (
             'value: "normal"',
             'value: "surreal"',
@@ -60,8 +60,15 @@ class MiniMaxFrameContinuityPromptTests(unittest.TestCase):
             'value: "custom"',
         ):
             self.assertIn(preset, UI_SOURCE)
-        self.assertIn("segment.minimax_h3_location_transition_preset", UI_SOURCE)
-        self.assertIn("segment.minimax_h3_location_transition_custom", UI_SOURCE)
+        self.assertIn('location_transition_preset: "normal"', UI_SOURCE)
+        self.assertIn("location_transition_preset: miniMaxLocationTransitionPreset.value", UI_SOURCE)
+        self.assertIn("location_transition_custom: miniMaxLocationTransitionCustom.value", UI_SOURCE)
+        self.assertIn("if (segment?.use_scene_minimax_h3_settings)", UI_SOURCE)
+        self.assertIn("state.miniMaxH3Settings = settings", UI_SOURCE)
+        self.assertIn("legacyTransitionSegment", UI_SOURCE)
+        self.assertIn("hasSavedTransitionPreset", UI_SOURCE)
+        self.assertIn("const transitionSettings = miniMaxH3SettingsForSegment(segment)", UI_SOURCE)
+        self.assertIn("Global for all unlocked scenes", UI_SOURCE)
         self.assertIn("if (previousKey && previousKey !== currentKey)", UI_SOURCE)
         self.assertIn("return `${directions[preset]} ${commonEnding}`", UI_SOURCE)
 
