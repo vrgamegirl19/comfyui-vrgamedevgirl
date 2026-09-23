@@ -37,11 +37,11 @@ class BuilderDeleteAllVideosTests(unittest.TestCase):
         ):
             self.assertIn(line, DELETE_ALL_SOURCE)
 
-    def test_action_never_deletes_media_files(self):
-        self.assertNotIn("delete_project_media", DELETE_ALL_SOURCE)
-        self.assertNotIn("postJson(", DELETE_ALL_SOURCE)
-        self.assertIn("will NOT be deleted", DELETE_ALL_SOURCE)
-        self.assertIn("remain on disk as backups", DELETE_ALL_SOURCE)
+    def test_action_deletes_every_video_and_thumbnail_file(self):
+        self.assertIn("/vrgdg/music_builder/delete_project_media", DELETE_ALL_SOURCE)
+        self.assertIn("for (const path of [...videoPaths, ...thumbnailPaths])", DELETE_ALL_SOURCE)
+        self.assertIn("Permanently delete ALL", DELETE_ALL_SOURCE)
+        self.assertIn("cannot be undone", DELETE_ALL_SOURCE.lower())
 
     def test_action_is_undoable_and_saved(self):
         self.assertIn("pushHistory()", DELETE_ALL_SOURCE)

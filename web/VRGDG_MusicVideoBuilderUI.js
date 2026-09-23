@@ -7220,7 +7220,7 @@ function openBuilder(node) {
   deleteAllTimelineVideosButton.style.borderColor = "#dc2626";
   deleteAllTimelineVideosButton.style.background = "#450a0a";
   deleteAllTimelineVideosButton.style.color = "#fee2e2";
-  deleteAllTimelineVideosButton.title = "Remove every selected/generated video and video history entry from the timeline without deleting any video or thumbnail files from the project folder.";
+  deleteAllTimelineVideosButton.title = "Permanently delete every generated video, video history entry, and thumbnail for every scene from the project folder, and clear the video latents. Cannot be undone.";
   const deleteAllTimelineImagesButton = makeButton("Delete ALL Images");
   deleteAllTimelineImagesButton.style.padding = "6px 10px";
   deleteAllTimelineImagesButton.style.borderColor = "#dc2626";
@@ -54979,12 +54979,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       ...(Array.isArray(segment.video_backup_paths) ? segment.video_backup_paths : []),
       segment.video_original_path || "",
     ]).map((path) => String(path || "").trim()).filter(Boolean))];
+    const thumbnailPaths = [...new Set(assignedSegments.flatMap((segment) => [
+      segment.video_thumbnail_path || "",
+      ...(Array.isArray(segment.video_thumbnail_history) ? segment.video_thumbnail_history : []),
+      ...(Array.isArray(segment.video_backup_thumbnail_paths) ? segment.video_backup_thumbnail_paths : []),
+      segment.video_original_thumbnail_path || "",
+    ]).map((path) => String(path || "").trim()).filter(Boolean))];
     if (!assignedSegments.length) {
       toast("There are no timeline videos to remove.");
       return;
     }
     const ok = window.confirm(
-      `Remove ALL videos from the timeline?\n\nThis clears video assignments and video history from ${assignedSegments.length} scene${assignedSegments.length === 1 ? "" : "s"}.\n\nThe ${videoPaths.length} video file${videoPaths.length === 1 ? "" : "s"} and their thumbnails will NOT be deleted from the project folder. They remain on disk as backups.\n\nSaved scene latents (Latent Continuation) are deleted too, since they no longer match any video.`
+      `Permanently delete ALL ${videoPaths.length} video file${videoPaths.length === 1 ? "" : "s"} from ${assignedSegments.length} scene${assignedSegments.length === 1 ? "" : "s"}?\n\nThis deletes the video files and thumbnails from the project folder, the same as Delete Video does for one scene, but for every scene. This cannot be undone.\n\nSaved scene latents (Latent Continuation) are deleted too, since they no longer match any video.`
     );
     if (!ok) return;
 
@@ -54993,6 +54999,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       deleteAllTimelineVideosButton.textContent = "Removing ALL...";
       pauseTimelineForEditing();
       pushHistory();
+      const projectFolder = String(state.projectFolder || projectInput.value || "").trim();
+      let deleteFailures = 0;
+      for (const path of [...videoPaths, ...thumbnailPaths]) {
+        try {
+          await postJson("/vrgdg/music_builder/delete_project_media", { project_folder: projectFolder, path });
+        } catch (error) {
+          deleteFailures += 1;
+        }
+      }
       for (const segment of segments) {
         segment.video_path = "";
         segment.video_source_path = "";
@@ -55038,7 +55053,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       render();
       await autoSaveSessionQuiet("all timeline videos removed");
       updateSelectedMediaTools();
-      toast(`Removed all timeline videos from ${assignedSegments.length} scene${assignedSegments.length === 1 ? "" : "s"}. The files remain in the project folder as backups.`);
+      toast(`Deleted ${videoPaths.length} video file${videoPaths.length === 1 ? "" : "s"} from ${assignedSegments.length} scene${assignedSegments.length === 1 ? "" : "s"}.${deleteFailures ? ` ${deleteFailures} file${deleteFailures === 1 ? "" : "s"} could not be deleted.` : ""}`, Boolean(deleteFailures));
     } catch (error) {
       toast(String(error?.message || error), true);
     } finally {
