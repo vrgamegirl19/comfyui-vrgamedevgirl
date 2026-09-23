@@ -26,7 +26,7 @@ class LyricReviewMoveLastWordTests(unittest.TestCase):
         self.assertIn("moveWordAcrossStructuredLyricRows(source.minimax_speaker_assignments, target.minimax_speaker_assignments", SOURCE)
         self.assertIn("moveWordAcrossStructuredLyricRows(source.speaker_assignments, target.speaker_assignments", SOURCE)
         self.assertIn("moveWordAcrossStructuredLyricRows(source.dialogue_cues, target.dialogue_cues", SOURCE)
-        save_start = SOURCE.index("save.onclick = async () =>", SOURCE.index("function openLyricReviewModal"))
+        save_start = SOURCE.index("const saveReviewChanges =", SOURCE.index("function openLyricReviewModal"))
         save_end = SOURCE.index("function openLyricMappingWorkflowModal", save_start)
         save_source = SOURCE[save_start:save_end]
         self.assertLess(save_source.index("applyPendingReviewWordMoves"), save_source.index("saveSession({ quiet: true, throwOnError: true })"))

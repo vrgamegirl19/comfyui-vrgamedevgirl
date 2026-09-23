@@ -392,9 +392,15 @@ class RunnerLatentContinuationTests(unittest.TestCase):
     def test_tail_padding_is_the_render_length_minus_the_visible_scene(self):
         padding = self.ns["_minimax_h3_tail_padding_frames"]
         self.assertEqual(
-            padding({"actual_warmup_seconds": 0.917, "scene_duration_seconds": 7.25, "h3_frame_count": 209}), 13
+            padding({"actual_warmup_seconds": 0.917, "final_frame_count": 174, "h3_frame_count": 209}), 13
         )
         self.assertIsNone(padding({}))
+
+    def test_tail_padding_uses_the_stitched_frame_count(self):
+        # 125.49s -> 135.43s is 238.56 frames; the stitcher keeps round(3250.32) - round(3011.76) = 238
+        plan = TIMING.calculate_minimax_h3_timing(125.49, 135.43, 0, 0)
+        self.assertEqual(plan.final_frame_count, 238)
+        self.assertEqual(self.ns["_minimax_h3_tail_padding_frames"](plan), plan.h3_frame_count - 238)
 
 
 class BuilderLatentContinuationWiringTests(unittest.TestCase):
