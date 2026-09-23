@@ -3457,6 +3457,13 @@ function openBuilder(node) {
   const fullscreenButton = makeButton("Fullscreen");
   fullscreenButton.title = "Expand the Video Creator to fill the browser window without closing or resetting anything.";
   const closeButton = makeButton("Close");
+  let playStartInFlight = false;
+  let previewPlayRequest = 0;
+  function cancelPreviewPlayStart() {
+    previewPlayRequest += 1;
+    playStartInFlight = false;
+  }
+
   const closeBuilderNow = () => {
     pauseAllAudio();
     if (!previewVideo.paused) previewVideo.pause();
@@ -12277,6 +12284,7 @@ function openBuilder(node) {
   }
 
   function pauseAllAudio() {
+    cancelPreviewPlayStart();
     stopSilentTimelinePlayback();
     audio.pause();
     sceneAudio.pause();
@@ -16947,6 +16955,7 @@ function openBuilder(node) {
     // simply deferred by the browser and applied once it's ready.
     const local = localPlaybackTime(segment, current);
     const seekThreshold = state.isScrubbing ? 0.05 : 0.2;
+    previewVideoPendingSeekTarget = null;
     if (Number.isFinite(local) && Math.abs(Number(previewVideo.currentTime || 0) - local) > seekThreshold) {
       // While a seek is already in flight, issuing another currentTime write on
       // top of it doesn't jump ahead - it queues behind the one already
@@ -17028,6 +17037,7 @@ function openBuilder(node) {
   }
 
   function setGlobalPlaybackTime(value) {
+    if (playStartInFlight) cancelPreviewPlayStart();
     const maxTime = playbackDuration();
     const time = Math.max(0, Math.min(maxTime, Number(value || 0)));
     state.sceneAudioGlobalTime = time;
@@ -17130,10 +17140,11 @@ function openBuilder(node) {
       if (!scrubRaf) scrubRaf = requestAnimationFrame(flushPendingMove);
     };
     const up = () => {
+      if (scrubRaf) cancelAnimationFrame(scrubRaf);
+      flushPendingMove();
       state.isScrubbing = false;
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
-      if (scrubRaf) cancelAnimationFrame(scrubRaf);
       updateAudioScrubbers();
     };
     window.addEventListener("pointermove", move);
@@ -58611,7 +58622,6 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     event.stopPropagation();
     setGlobalTimelineAudioMuted(!(audio.muted && sceneAudio.muted));
   };
-  let playStartInFlight = false;
   playButton.onclick = async () => {
     if (state.timelineTrimEditMode) {
       state.timelineTrimEditMode = false;
@@ -58622,7 +58632,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       updateAudioScrubbers();
       return;
     }
-    if (playStartInFlight) return;
+    if (playStartInFlight) {
+      cancelPreviewPlayStart();
+      return;
+    }
+    const request = ++previewPlayRequest;
     playStartInFlight = true;
     try {
       // If the user just scrubbed here, the preview video may still be
@@ -58640,9 +58654,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         await waitForPreviewVideoReady(localPlaybackTime(startSegment, effectiveStart));
       }
     } finally {
-      playStartInFlight = false;
+      if (request === previewPlayRequest) playStartInFlight = false;
     }
-    if (isTimelinePlaying()) return;
+    if (request !== previewPlayRequest || isTimelinePlaying()) return;
     if (!state.sceneSelectionUsesGlobalAudio && usingSceneAudioPlaybackMode()) {
       audio.pause();
       const started = playSceneAudioFrom(currentGlobalTime());
