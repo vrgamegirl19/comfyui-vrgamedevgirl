@@ -16191,7 +16191,7 @@ function openBuilder(node) {
 
   function setPreviewVideoSource(segment, videoPath) {
     const cacheKey = selectedSegmentVideoCacheKey(segment, videoPath);
-    if (!videoPath || !cacheKey) return false;
+    if (!videoPath || !cacheKey) return;
     if (previewVideo.dataset.cacheKey !== cacheKey) {
       if (previewVideoLoadTimer) clearTimeout(previewVideoLoadTimer);
       previewVideoLoadTimer = null;
@@ -16209,9 +16209,7 @@ function openBuilder(node) {
           handlePreviewVideoLoadIssue("timeout");
         }
       }, 8000);
-      return true;
     }
-    return false;
   }
 
   const PRELOAD_NEXT_CLIP_LEAD_SECONDS = 1.5;
@@ -16804,6 +16802,44 @@ function openBuilder(node) {
     updateAudioScrubbers();
   }
 
+  function previewVideoIsReadyAt(local) {
+    return !previewVideo.seeking
+      && previewVideo.readyState >= 2
+      && Number.isFinite(local)
+      && Math.abs(Number(previewVideo.currentTime || 0) - local) <= 0.2;
+  }
+
+  // Waits (briefly) for the preview video to actually be showing the given
+  // local time before resolving. Used right before Play starts audio, so a
+  // scene that's still loading/seeking from a recent scrub doesn't let the
+  // audio clock run ahead of it - that's what causes the video to visibly
+  // stutter and jump forward to catch up a moment after playback starts.
+  function waitForPreviewVideoReady(local, timeoutMs = 700) {
+    return new Promise((resolve) => {
+      if (previewVideoIsReadyAt(local)) {
+        resolve();
+        return;
+      }
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        previewVideo.removeEventListener("seeked", check);
+        previewVideo.removeEventListener("canplay", check);
+        previewVideo.removeEventListener("loadeddata", check);
+        clearTimeout(timer);
+        resolve();
+      };
+      const check = () => {
+        if (previewVideoIsReadyAt(local)) finish();
+      };
+      previewVideo.addEventListener("seeked", check);
+      previewVideo.addEventListener("canplay", check);
+      previewVideo.addEventListener("loadeddata", check);
+      const timer = setTimeout(finish, timeoutMs);
+    });
+  }
+
   function syncPreviewPlayback(current) {
     const playing = isTimelinePlaying();
     const segment = playing ? playbackSegmentAtTime(current) : activeSegment();
@@ -16827,22 +16863,22 @@ function openBuilder(node) {
       previewVideo.muted = false;
       return;
     }
-    let justSwapped = false;
     if (previewVideo.dataset.cacheKey !== selectedSegmentVideoCacheKey(segment, videoPath)) {
-      justSwapped = setPreviewVideoSource(segment, videoPath);
+      setPreviewVideoSource(segment, videoPath);
       previewVideo.muted = false;
       previewVideo.style.display = "block";
       previewImage.style.display = "none";
       previewEmpty.style.display = "none";
     }
-    // Right after a fresh source swap the element has no data to seek into yet
-    // (readyState 0), and a forward cut naturally starts at/near local time 0
-    // anyway, so forcing a seek here just adds a redundant keyframe hunt on
-    // top of the reload. Let the next tick's drift check correct it once the
-    // video actually has data.
+    // A cut is detected up to one tick late, so the correct in-scene offset
+    // right after a swap isn't always ~0 - it can be off by up to a tick's
+    // worth of time, which used to land just under the resync threshold and
+    // never get corrected for the rest of that scene. Always request the
+    // right position; a seek issued before metadata loads (readyState 0) is
+    // simply deferred by the browser and applied once it's ready.
     const local = localPlaybackTime(segment, current);
     const seekThreshold = state.isScrubbing ? 0.05 : 0.2;
-    if (!justSwapped && Number.isFinite(local) && Math.abs(Number(previewVideo.currentTime || 0) - local) > seekThreshold) {
+    if (Number.isFinite(local) && Math.abs(Number(previewVideo.currentTime || 0) - local) > seekThreshold) {
       // While a seek is already in flight, issuing another currentTime write on
       // top of it doesn't jump ahead - it queues behind the one already
       // decoding. During a fast scrub drag that means the visible frame keeps
@@ -58440,7 +58476,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     event.stopPropagation();
     setGlobalTimelineAudioMuted(!(audio.muted && sceneAudio.muted));
   };
-  playButton.onclick = () => {
+  let playStartInFlight = false;
+  playButton.onclick = async () => {
     if (state.timelineTrimEditMode) {
       state.timelineTrimEditMode = false;
       syncTimelineTrimModeButton();
@@ -58450,6 +58487,27 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       updateAudioScrubbers();
       return;
     }
+    if (playStartInFlight) return;
+    playStartInFlight = true;
+    try {
+      // If the user just scrubbed here, the preview video may still be
+      // loading/seeking to this position. Kick that off (in case it hasn't
+      // already started) and wait briefly for it before starting audio, so
+      // the audio clock doesn't get a head start on a video that then has to
+      // visibly jump to catch up.
+      let effectiveStart = currentGlobalTime();
+      if (effectiveStart >= playbackDuration() - 0.025) {
+        effectiveStart = Math.max(0, Number(activeSegment()?.start || 0));
+      }
+      const startSegment = playbackSegmentAtTime(effectiveStart);
+      if (startSegment && selectedSegmentVideoPath(startSegment)) {
+        syncPreviewPlayback(effectiveStart);
+        await waitForPreviewVideoReady(localPlaybackTime(startSegment, effectiveStart));
+      }
+    } finally {
+      playStartInFlight = false;
+    }
+    if (isTimelinePlaying()) return;
     if (!state.sceneSelectionUsesGlobalAudio && usingSceneAudioPlaybackMode()) {
       audio.pause();
       const started = playSceneAudioFrom(currentGlobalTime());
