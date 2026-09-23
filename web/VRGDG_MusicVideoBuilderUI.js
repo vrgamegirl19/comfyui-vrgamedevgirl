@@ -8689,7 +8689,7 @@ function openBuilder(node) {
     miniMaxAudioVaePicker.input.value = settings.audio_vae_name;
     miniMaxAudioMode.value = settings.audio_mode;
     miniMaxContinuityMode.value = settings.continuity_mode;
-    miniMaxLatentContextFrames.value = String(segment?.minimax_h3_latent_context_frames || settings.latent_context_frames || 22);
+    miniMaxLatentContextFrames.value = String(settings.latent_context_frames);
     miniMaxAspectRatio.value = settings.aspect_ratio;
     miniMaxMegapixels.value = String(settings.megapixels);
     miniMaxSeed.value = String(settings.seed);
@@ -12225,9 +12225,6 @@ function openBuilder(node) {
     segment.minimax_h3_continuity_source_scene_id = String(segment.minimax_h3_continuity_source_scene_id || "");
     segment.minimax_h3_continuity_mode_used = normalizeMiniMaxH3ContinuityMode(segment.minimax_h3_continuity_mode_used);
     segment.minimax_h3_continuity_image_number = Math.max(0, Math.trunc(Number(segment.minimax_h3_continuity_image_number || 0)));
-    segment.minimax_h3_latent_context_frames = [16, 22, 39, 56].includes(Number(segment.minimax_h3_latent_context_frames))
-      ? Number(segment.minimax_h3_latent_context_frames)
-      : (DEFAULT_MINIMAX_H3_SETTINGS.latent_context_frames || 22);
     segment.minimax_h3_video_references = (Array.isArray(segment.minimax_h3_video_references) ? segment.minimax_h3_video_references : [])
       .slice(0, 3)
       .map((item) => ({
@@ -46841,9 +46838,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       : null;
     progress?.set(`${batchLabel}Preparing exact MiniMax H3 scene timing and ${builtInAudio ? "native audio generation" : "input audio"}...`, pct(8));
 
-    const latentContextFrames = [16, 22, 39, 56].includes(Number(segment?.minimax_h3_latent_context_frames))
-      ? Number(segment.minimax_h3_latent_context_frames)
-      : (miniMaxSettings.latent_context_frames || 22);
+    const latentContextFrames = miniMaxSettings.latent_context_frames;
     try {
       const payload = {
         project_folder: projectFolder,
@@ -58382,6 +58377,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     miniMaxAspectRatio,
     miniMaxAudioMode,
     miniMaxContinuityMode,
+    miniMaxLatentContextFrames,
     miniMaxMegapixels,
     miniMaxSeed,
     miniMaxWarmupFrames,
