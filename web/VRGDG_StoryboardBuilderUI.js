@@ -6996,15 +6996,6 @@ function openStoryboardBuilder(payload = {}) {
             temporal_world_effect_override: fresh.temporal_world_effect_override || normalized.temporal_world_effect_override || "global",
             temporal_world_effect_custom: fresh.temporal_world_effect_custom || normalized.temporal_world_effect_custom || "",
             image_path: fresh.image_path || normalized.image_path,
-            image_prompt: (incomingScenes.length && fresh.image_prompt !== undefined)
-              ? (String(fresh.image_prompt || "").trim() || normalized.image_prompt || "")
-              : (normalized.image_prompt || fresh.image_prompt || ""),
-            video_prompt: (incomingScenes.length && fresh.video_prompt !== undefined)
-              ? (String(fresh.video_prompt || "").trim() || normalized.video_prompt || "")
-              : (normalized.video_prompt || fresh.video_prompt || ""),
-            video_prompt_origin: (incomingScenes.length && fresh.video_prompt_origin !== undefined)
-              ? (fresh.video_prompt_origin || normalized.video_prompt_origin || "manual")
-              : (normalized.video_prompt_origin || fresh.video_prompt_origin || "manual"),
             no_character_present: Boolean(fresh.no_character_present || normalized.no_character_present),
             subjects,
             subject_refs: fresh.no_character_present || normalized.no_character_present ? [] : subjectRefs,
