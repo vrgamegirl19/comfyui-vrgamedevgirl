@@ -57064,6 +57064,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       return {
         projectFolder: String(projectInput.value || state.projectFolder || "").trim(),
         projectVideoEngine: normalizeProjectVideoEngine(state.projectVideoEngine),
+        miniMaxSettings: miniMaxH3SettingsForSegment(activeSegment()),
         audioPath: String(audioInput.value || state.audioPath || "").trim(),
         wizardFolder: String(projectInput.value || state.projectFolder || "").trim() ? `${String(projectInput.value || state.projectFolder || "").trim()}\\wizard` : "",
         sceneCount: allEditableSegments().length,
@@ -57210,6 +57211,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     };
     openMusicVideoWizard({
       snapshot: wizardSnapshot,
+      openMiniMaxSettings: () => {
+        syncProjectVideoEngineUI();
+        setInspectorTab("video");
+        miniMaxEnginePanel.scrollIntoView({ block: "nearest" });
+      },
       setVideoMode: setWizardVideoMode,
       setImageMode: setWizardImageMode,
       chooseAudioFile: chooseProjectAudioFile,

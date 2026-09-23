@@ -1008,14 +1008,32 @@ export function openMusicVideoWizard(api = {}) {
     header.append(titleWrap, actions);
   }
 
+  function renderMiniMaxSetup(data) {
+    const settings = data.miniMaxSettings || {};
+    const panel = card("MiniMax H3 project", "The Wizard's inline model and render controls currently support LTX. Configure and render this project with the MiniMax H3 panel; your engine and settings stay unchanged.");
+    for (const [label, value] of [
+      ["Mode", settings.video_mode], ["Audio", settings.audio_mode],
+      ["Diffusion model", settings.diffusion_model_name], ["Text encoder", settings.clip_name],
+      ["Video VAE", settings.video_vae_name], ["Audio VAE", settings.audio_vae_name],
+    ]) panel.append(el("div", "vrgdg-wizard-copy", `${label}: ${value || "Not selected"}`));
+    const open = button("Open MiniMax H3 Settings", "primary");
+    open.onclick = () => closeAndRun(() => api.openMiniMaxSettings?.(), "wizard MiniMax settings");
+    panel.append(open);
+    content.append(panel);
+  }
+
   function renderSettings(data) {
+    if (data.projectVideoEngine === "minimax_h3") {
+      renderMiniMaxSetup(data);
+      return;
+    }
     const modelOptions = data.modelOptions || {};
     const settings = data.videoSettings || {};
     const layout = el("div", "vrgdg-wizard-settings-layout");
     const settingsCard = el("div", "vrgdg-wizard-settings-card span-6");
     settingsCard.append(
       el("div", "vrgdg-wizard-settings-title", "Current Builder State"),
-      el("div", "vrgdg-wizard-settings-subtitle", "The wizard uses the settings already selected in the AI Video Builder."),
+      el("div", "vrgdg-wizard-settings-subtitle", "These are LTX settings. To use MiniMax H3, select MiniMax with the engine badge in the main Builder and reopen the Wizard."),
     );
     const statusRow = el("div", "vrgdg-wizard-status-row");
     [
@@ -1665,6 +1683,10 @@ export function openMusicVideoWizard(api = {}) {
   }
 
   function renderMode(data) {
+    if (data.projectVideoEngine === "minimax_h3") {
+      renderMiniMaxSetup(data);
+      return;
+    }
     const grid = el("div", "vrgdg-wizard-grid");
     const modes = [
       ["i2v", "Image to Video", "Creates image prompts first, generates scene images, then writes I2V prompts and renders videos.", true],
@@ -1687,6 +1709,10 @@ export function openMusicVideoWizard(api = {}) {
   }
 
   function renderReferences(data) {
+    if (data.projectVideoEngine === "minimax_h3") {
+      renderMiniMaxSetup(data);
+      return;
+    }
     const videoMode = data.videoMode || "i2v";
     const isRtv = videoMode === "rtv";
     const note = el("div", "vrgdg-wizard-note", isRtv
@@ -2358,6 +2384,10 @@ export function openMusicVideoWizard(api = {}) {
   }
 
   function renderFinish(data) {
+    if (data.projectVideoEngine === "minimax_h3") {
+      renderMiniMaxSetup(data);
+      return;
+    }
     const videoMode = data.videoMode || "i2v";
     const isRtv = videoMode === "rtv";
     const isFlowGpt = String(data.imageMode || "") === "flow_gpt";
