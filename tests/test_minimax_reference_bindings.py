@@ -4,9 +4,9 @@ import unittest
 from pathlib import Path
 
 
-class IssueRegressionTests(unittest.TestCase):
+class ReferenceBindingTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("node"), "Node.js is required for UI behavior tests")
-    def test_minimax_reference_bindings(self):
+    def test_reference_bindings(self):
         result = subprocess.run(
             ["node", "--test", str(Path(__file__).with_name("minimax_reference_bindings.cjs"))],
             capture_output=True, text=True,

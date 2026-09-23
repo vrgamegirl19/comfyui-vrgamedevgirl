@@ -6856,9 +6856,9 @@ function openBuilder(node) {
     miniMaxPromptCharacterStatus.textContent = length
       ? `H3 prompt: ${length.toLocaleString()} / 7,000 characters. Fixed format: ${budget.fixedChars.toLocaleString()}; planned shot allowance: ${budget.shotDescriptionChars.toLocaleString()}.`
       : `H3 prompt: 0 / 7,000 characters. Fixed format: ${budget.fixedChars.toLocaleString()}; planned shot allowance: ${budget.shotDescriptionChars.toLocaleString()}.`;
-    const referenceStatus = segment ? miniMaxPromptReferenceStatus(segment, miniMaxPrompt.value, mode) : "";
-    if (referenceStatus) {
-      miniMaxPromptCharacterStatus.textContent += ` ${referenceStatus} Review references before rendering.`;
+    const referenceMismatch = segment ? miniMaxPromptReferenceMismatch(segment, miniMaxPrompt.value, mode) : "";
+    if (referenceMismatch) {
+      miniMaxPromptCharacterStatus.textContent += ` ${referenceMismatch} Regenerate this scene's MiniMax prompt before rendering.`;
       miniMaxPromptCharacterStatus.style.color = "#fde68a";
     }
   }
@@ -43303,19 +43303,93 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return `${contract.length}:${hash >>> 0}`;
   }
 
-  function miniMaxPromptReferenceStatus(segment, prompt, mode, imagePaths) {
-    const signature = miniMaxPromptReferenceSignature(segment, mode);
-    if (!signature || !String(prompt || "").trim()) return "";
-    const saved = segment?.minimax_h3_prompt_reference_binding;
-    if (!saved || saved.prompt !== String(prompt).trim()) return "Reference bindings have not been verified for this prompt.";
-    if (saved.signature !== signature) return "References changed after this prompt was created or reviewed.";
-    if (imagePaths && saved.imagePaths && JSON.stringify(imagePaths) !== JSON.stringify(saved.imagePaths)) return "The render uses a different reference image list from the one reviewed.";
+  function miniMaxLegacyPromptReferenceMismatch(segment, prompt, mode, imagePaths) {
+    const text = String(prompt || "");
+    const definitions = text.match(/subject_definitions:\s*([\s\S]*?)(?=\n\s*(?:summary|retention_analysis|detailed_description|integrated_multimodal_description):|$)/i)?.[1] || "";
+    if (!definitions) return "";
+    const items = mode === "image_reference_to_video"
+      ? miniMaxH3ImageReferencePromptItems(segment)
+      : miniMaxOrderedImageReferenceItemsForSegment(segment, mode);
+    const matches = [...definitions.matchAll(/<Subject\s+\d+>\s+is\s+([^\n]*?)\s+in\s+<Picture\s+(\d+)>/gi)];
+    const frameMatches = [...definitions.matchAll(/<Picture\s+(\d+)>\s+is\s+the\s+(?:first|last)\s+frame\b/gi)];
+    const assigned = new Set([...matches.map((match) => Number(match[2])), ...frameMatches.map((match) => Number(match[1]))]);
+    if (!assigned.size) return "";
+    const available = Array.isArray(imagePaths) ? imagePaths.length : items.length;
+    const highest = Math.max(...assigned);
+    if (highest > available) return `The prompt uses <Picture ${highest}>, but this render has only ${available} image reference${available === 1 ? "" : "s"}.`;
+    if (assigned.size < items.length) return `The prompt defines ${assigned.size} image reference${assigned.size === 1 ? "" : "s"}, but the current scene maps ${items.length}.`;
+    for (const match of matches) {
+      const picture = Number(match[2]);
+      const item = items[picture - 1];
+      if (!item) continue;
+      const definition = String(match[1] || "").toLowerCase();
+      const saysEnvironment = /\benvironment\b|\blocation\b/.test(definition);
+      if (saysEnvironment && item.kind !== "location") return `<Picture ${picture}> is described as an environment, but it now maps to ${item.label || item.kind}.`;
+      if (!saysEnvironment && item.kind === "location") return `<Picture ${picture}> is described as a subject, but it now maps to the location.`;
+      if (item.kind === "subject" || item.kind === "extra") {
+        const definedName = definition.replace(/^(?:the|a|an)\s+/, "").trim();
+        const namedAt = items.findIndex((candidate) => {
+          if (candidate.kind !== "subject" && candidate.kind !== "extra") return false;
+          const name = String(candidate.label || candidate.name || "").toLowerCase().trim();
+          return name && (definedName === name || definedName.startsWith(`${name} `));
+        });
+        if (namedAt >= 0 && namedAt !== picture - 1) return `<Picture ${picture}> names ${items[namedAt].label}, but that subject is now <Picture ${namedAt + 1}>.`;
+      }
+    }
     return "";
   }
 
-  function rememberMiniMaxPromptReferences(segment, prompt, signature, imagePaths) {
+  function miniMaxPromptReferenceMismatch(segment, prompt, mode, imagePaths) {
+    const signature = miniMaxPromptReferenceSignature(segment, mode);
+    if (!signature || !String(prompt || "").trim()) return "";
+    const saved = segment?.minimax_h3_prompt_reference_binding;
+    if (saved?.prompt === String(prompt).trim() && saved.signature !== signature) {
+      return "The scene's reference order or images changed after this prompt was generated.";
+    }
+    return miniMaxLegacyPromptReferenceMismatch(segment, prompt, mode, imagePaths);
+  }
+
+  function miniMaxRenderReferenceImagePaths(segment, mode, configuredPaths) {
+    const normalizePathList = (value) => (Array.isArray(value) ? value : [])
+      .map((item) => String(item?.path || item?.file || item || "").trim())
+      .filter(Boolean);
+    const usesReferenceBuilderImages = ["reference_to_video", "image_reference_to_video", "video_to_video"].includes(mode);
+    const builderPaths = usesReferenceBuilderImages && configuredPaths === undefined
+      ? miniMaxReferenceBuilderImagePathsForSegment(segment)
+      : [];
+    const extraPaths = normalizePathList(configuredPaths !== undefined
+      ? configuredPaths
+      : (segment?.minimax_h3_image_paths ?? segment?.minimax_image_paths ?? []));
+    const seen = new Set();
+    let paths = usesReferenceBuilderImages ? [...builderPaths, ...extraPaths]
+      .filter((path) => {
+        const key = mediaPathKey(path);
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 9) : [];
+    if (["image_to_video", "image_reference_to_video"].includes(mode)) {
+      const selectedImage = String(selectedSegmentImagePath(segment) || "").trim();
+      if (selectedImage) paths = [selectedImage, ...paths.filter((path) => mediaPathKey(path) !== mediaPathKey(selectedImage))].slice(0, 9);
+    }
+    return paths;
+  }
+
+  function miniMaxBatchReferenceProblems(scenes) {
+    return scenes.map(({ segment, index }) => {
+      if (miniMaxH3FrameContinuityPromptEnabled(segment)) return "";
+      const mode = miniMaxH3ModeForSegment(segment);
+      const prompt = String(segment?.minimax_h3_prompt || segment?.i2v_prompt || "").trim();
+      const paths = miniMaxRenderReferenceImagePaths(segment, mode);
+      const mismatch = miniMaxPromptReferenceMismatch(segment, prompt, mode, paths);
+      return mismatch ? `${sceneDisplayName(segment, index)}: ${mismatch} Regenerate this scene's MiniMax prompt.` : "";
+    }).filter(Boolean);
+  }
+
+  function rememberMiniMaxPromptReferences(segment, prompt, signature) {
     if (!signature) return;
-    const binding = { prompt: String(prompt).trim(), signature, ...(imagePaths ? { imagePaths: [...imagePaths] } : {}) };
+    const binding = { prompt: String(prompt).trim(), signature };
     segment.minimax_h3_prompt_reference_binding = binding;
     const timelineSegment = allEditableSegments().find((item) => item.id === segment.id);
     if (timelineSegment) timelineSegment.minimax_h3_prompt_reference_binding = binding;
@@ -46983,6 +47057,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         }
         missing.push(...validateMiniMaxSceneReadyForVideo(segment, index));
       });
+      missing.push(...miniMaxBatchReferenceProblems(scenesToRender));
       return missing;
     }
     const idLoraMode = currentVideoMode() === "id_lora";
@@ -47702,39 +47777,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       await persistIngredientsSheetImages(projectFolder);
     }
 
-    const normalizePathList = (value) => (Array.isArray(value) ? value : [])
-      .map((item) => String(item?.path || item?.file || item || "").trim())
-      .filter(Boolean);
-    const usesReferenceBuilderImages = ["reference_to_video", "image_reference_to_video", "video_to_video"].includes(mode);
-    const referenceBuilderImagePaths = usesReferenceBuilderImages && options.imagePaths === undefined
-      ? miniMaxReferenceBuilderImagePathsForSegment(segment)
-      : [];
-    const configuredImagePaths = normalizePathList(
-      options.imagePaths !== undefined
-        ? options.imagePaths
-        : (segment?.minimax_h3_image_paths ?? segment?.minimax_image_paths ?? [])
-    );
-    const seenImagePaths = new Set();
-    let imagePaths = usesReferenceBuilderImages ? [...referenceBuilderImagePaths, ...configuredImagePaths]
-      .filter((path) => {
-        const key = mediaPathKey(path);
-        if (!key || seenImagePaths.has(key)) return false;
-        seenImagePaths.add(key);
-        return true;
-      })
-      .slice(0, 9) : [];
-    if (["image_to_video", "image_reference_to_video"].includes(mode)) {
-      const selectedImage = String(selectedSegmentImagePath(segment) || "").trim();
-      if (selectedImage) imagePaths = [selectedImage, ...imagePaths.filter((path) => mediaPathKey(path) !== mediaPathKey(selectedImage))].slice(0, 9);
-    }
-    const referenceStatus = miniMaxPromptReferenceStatus(segment, prompt, mode, imagePaths);
-    if (referenceStatus || (options.imagePaths !== undefined && miniMaxPromptReferenceSignature(segment, mode))) {
-      const mapping = imagePaths.map((path, index) => `<Picture ${index + 1}>: ${path}`).join("\n");
-      const confirmed = window.confirm(`${sceneDisplayName(segment, sceneIndex)}: ${referenceStatus || "Custom render references need review."}\n\n${mapping}\n\nReview the prompt's Picture/Subject assignments. Cancel to regenerate or edit the prompt. Render with these references anyway?`);
-      if (!confirmed) throw new Error("Render cancelled so the scene prompt's reference bindings can be reviewed.");
-      rememberMiniMaxPromptReferences(segment, prompt, miniMaxPromptReferenceSignature(segment, mode), imagePaths);
-      await autoSaveSessionQuiet("reference bindings reviewed");
-    }
+    let imagePaths = miniMaxRenderReferenceImagePaths(segment, mode, options.imagePaths);
     let continuityImageNumber = 0;
     if (continuityInput?.framePath) {
       const continuityKey = mediaPathKey(continuityInput.framePath);
@@ -47766,6 +47809,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
     if (mode === "video_to_video" && !videoReferences.some((item) => String(item?.path || "").trim())) {
       throw new Error(`${sceneDisplayName(segment, sceneIndex)} needs at least one reference video path.`);
+    }
+    const referenceMismatch = miniMaxPromptReferenceMismatch(segment, prompt, mode, imagePaths);
+    if (referenceMismatch) {
+      throw new Error(`${sceneDisplayName(segment, sceneIndex)}: ${referenceMismatch} Regenerate this scene's MiniMax prompt after updating its reference mapping.`);
     }
     const orderedReferenceItems = miniMaxOrderedImageReferenceItemsForSegment(segment, mode);
     const progressImages = imagePaths.map((path, index) => {
@@ -48819,6 +48866,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       await persistRenderLog(renderLog);
       progress.set(`Autosaving session/SRT before ${sceneScope === "selected" ? "Render Selected" : sceneScope === "from_selected" ? "Render From Selected" : "Render All"}...`, 3);
       await saveSessionForSceneVideo();
+      if (miniMaxProject) {
+        const scenesAfterSave = batchTargetItems(sceneScope)
+          .filter(({ segment }) => forceVideos || !String(selectedSegmentVideoPath(segment) || "").trim());
+        const referenceProblems = miniMaxBatchReferenceProblems(scenesAfterSave);
+        if (referenceProblems.length) {
+          throw new Error(`MiniMax reference preflight found ${referenceProblems.length} stale scene prompt${referenceProblems.length === 1 ? "" : "s"} before rendering:\n${referenceProblems.map((problem) => `- ${problem}`).join("\n")}`);
+        }
+      }
       const ltx25RtvBatch = !miniMaxProject
         && currentVideoMode() === "rtv"
         && (state.i2vVideoSettings?.ltx_version || "2.5") === "2.5";
