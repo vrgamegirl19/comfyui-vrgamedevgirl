@@ -20632,7 +20632,7 @@ function openBuilder(node) {
         if (segment.overlay_enabled === false) block.style.opacity = ".48";
         block.append(eye, lock);
       }
-      const dblClickHint = !isOverlay ? "Double-click to review line & performer mapping." : "";
+      const dblClickHint = !isOverlay ? "Double-click to review line & performer mapping. Shift + double-click to edit the Storyboard Card." : "";
       block.title = lockedByVideo ? "This scene has a generated video, so timing is locked." : dblClickHint;
       const dragImageSource = segmentImageSource(segment);
       if (dragImageSource) {
@@ -20712,7 +20712,7 @@ function openBuilder(node) {
         block.ondblclick = (event) => {
           event.preventDefault();
           event.stopPropagation();
-          openLyricReviewModal({ singleSceneId: segment.id });
+          openTimelineSceneCard(segment, event);
         };
       }
       enableImageDrop(block, segment);
@@ -21995,6 +21995,14 @@ function openBuilder(node) {
     }, 0);
   }
 
+  function openTimelineSceneCard(segment, event) {
+    if (event?.shiftKey) {
+      openStoryboardBuilderFromProject({ focusSceneId: segment.id });
+    } else {
+      openLyricReviewModal({ singleSceneId: segment.id });
+    }
+  }
+
   let activeSegmentDragCleanup = null;
   let lastTimelineSceneClickTime = 0;
   let lastTimelineSceneClickId = "";
@@ -22095,7 +22103,7 @@ function openBuilder(node) {
           if (now - lastTimelineSceneClickTime < 380 && lastTimelineSceneClickId === segment.id && !isOverlay) {
             lastTimelineSceneClickTime = 0;
             lastTimelineSceneClickId = "";
-            openLyricReviewModal({ singleSceneId: segment.id });
+            openTimelineSceneCard(segment, finishEvent);
           } else {
             lastTimelineSceneClickTime = now;
             lastTimelineSceneClickId = segment.id;
@@ -45549,6 +45557,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       ? String(storyboardRunnerSettings.qwen_mmproj_file || "").trim()
       : String(i2vMmprojSelect.value || mmprojSelect.value || "").trim();
     window.VRGDGStoryboardBuilder.open({
+      focusSceneId: String(options.focusSceneId || "").trim(),
       projectFolder: projectInput.value || state.projectFolder || "",
       projectVideoEngine: normalizeProjectVideoEngine(state.projectVideoEngine),
       lineMappingLyrics: String(options.sourceLyrics || state.lyricMapper?.source_text || ""),
