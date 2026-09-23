@@ -51,6 +51,13 @@ class BuilderMiniMaxBuiltInAudioTrimTests(unittest.TestCase):
             source,
         )
 
+    def test_scissors_button_is_mounted_in_timeline_header(self):
+        append_start = BUILDER_SOURCE.index("timelineHeader.append(")
+        append_end = BUILDER_SOURCE.index(");", append_start)
+        header_children = BUILDER_SOURCE[append_start:append_end]
+        self.assertIn("splitSceneButton", header_children)
+        self.assertIn("timelineStatusInfo", header_children)
+
     def test_left_clicking_scissors_routes_rendered_minimax_to_trim(self):
         start = BUILDER_SOURCE.index("async function splitActiveSceneAtPlayhead()")
         end = BUILDER_SOURCE.index("function setTimelineRangePoint", start)

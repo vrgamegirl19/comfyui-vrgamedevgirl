@@ -1,60 +1,46 @@
 """Default LLM instructions for MiniMax H3 Builder prompt creation.
 
-These defaults support both Builder audio paths: exact supplied input audio
-(``Audio 1``) and MiniMax-generated native audio. The scene context identifies
-which contract is active and the two paths must never be mixed.
+The Builder resolves the current scene's mode, audio, performance, timing,
+reference, and continuity choices before calling the LLM. These presets define
+only the shared response shape and the one active generation task.
 """
 
 
-MINIMAX_H3_PROMPT_DIRECTOR_CORE = """You write only the creative shot descriptions for a MiniMax H3 video prompt.
+MINIMAX_H3_PROMPT_DIRECTOR_CORE = """Write the creative shot descriptions for the active MiniMax H3 scene.
 
-The Builder will assemble the final MiniMax prompt after you answer. The Builder adds all fixed MiniMax sections, reference definitions, audio blocks, continuity blocks, safety blocks, shot labels, and cut times.
+The Scene concept already contains the Builder's resolved mode, performance, audio, timing, reference, and continuity rules. Follow only those active rules; do not invent alternate mode behavior.
 
 Return plain valid JSON only:
 {"shots":[{"description":"..."},{"description":"..."}]}
 
-Rules:
-- Return exactly the requested number of shot descriptions.
-- Each description is one complete prose string describing only the visible shot action.
-- Do not output markdown, analysis, bullets, plans, notes, or explanations.
-- Do not output section headings such as Audio, Continuity, detailed_description, subject_definitions, summary, retention_analysis, overall_soundscape, or non_diegetic_music.
-- Do not write [Shot N] labels, timestamps, time ranges, or cut times. The Builder writes those.
-- Do not add keys other than shots and description.
-- Use the supplied subject, location, lyrics/dialogue, camera speed, character speed, and scene notes.
-- Preserve the same subject identity, outfit, location, lighting, and spatial continuity across shots.
-- If a lyric/dialogue line is supplied and the scene is not visual-only, stage the visible singer/speaker performing it naturally. Put exact performed words inside <d>[English] ...</d> only when useful.
-- If the scene context supplies a vocal cue map, obey it exactly. Only the assigned <Subject N> (SN) performs each vocal cue; use only visual action and camera direction for intervals without an assigned vocal cue. Do not merge, swap, repeat, omit, translate, or transfer cues between subjects.
-- For instrumental or otherwise non-vocal intervals, describe only the requested visible action, subject behavior, environment, and camera movement. Do not mention singing, speaking, vocals, lip-sync, mouths, or silence.
-- In multi-subject vocal scenes, use the supplied <Subject N> (SN) labels and <Audio 1> label in the shot descriptions when they are provided. Describe assigned cues as precise lip-sync to <Audio 1>, with the performed words inside <d>[English] ...</d>.
-- If the scene is visual-only, instrumental, or no-character-present, do not invent singing or speaking.
-- Make each shot meaningfully different coverage while staying in the same scene unless the user explicitly requested a scene change.
-- Do not begin any description with "The camera cuts to" or "The camera...". Start with the resulting shot framing or subject action instead, such as "A panning medium shot shows..." or "<Subject 2> (S2) steps forward...".
-- After the closing JSON brace, output nothing else.
+- Return exactly the requested number of descriptions as complete cinematic prose.
+- Use only the keys `shots` and `description`.
+- Do not add shot labels, timestamps, fixed prompt sections, markdown, analysis, notes, or text outside the JSON object. The Builder adds the final structure.
 """
 
 
 _MINIMAX_H3_TEXT_TO_VIDEO_MODE = """MODE: TEXT TO VIDEO
-Use only the supplied text context. Do not mention picture or video labels unless the context supplies them.
+Use the resolved text context. Do not invent picture or video labels.
 """
 
 
 _MINIMAX_H3_IMAGE_TO_VIDEO_MODE = """MODE: IMAGE TO VIDEO
-Use <Picture 1> as the starting visual anchor when supplied. Animate it naturally without writing the standalone picture definition.
+Use the resolved starting-picture assignment as the visual anchor. Animate it naturally without writing a standalone picture definition.
 """
 
 
 _MINIMAX_H3_REFERENCE_TO_VIDEO_MODE = """MODE: REFERENCE TO VIDEO
-Use supplied <Subject N> and <Picture N> labels only if they are listed in the scene context. The Builder writes the standalone reference definitions, so do not output them.
+Use exactly the resolved <Subject N> and <Picture N> assignments. The Builder writes their standalone definitions.
 """
 
 
 _MINIMAX_H3_IMAGE_REFERENCE_TO_VIDEO_MODE = """MODE: IMAGE + REFERENCE TO VIDEO
-Use <Picture 1> as the exact starting frame when supplied. If a second frame is supplied, use <Picture 2> as the exact ending frame and describe the continuous path between them. Use any additional <Picture N> labels as visual references for identity, clothing, props, or scene details; do not treat those additional references as exact frame anchors. The Builder writes the standalone reference definitions, so do not output them.
+Follow the resolved start, end, and supporting-picture assignments exactly. The Builder writes their standalone definitions.
 """
 
 
 _MINIMAX_H3_VIDEO_TO_VIDEO_MODE = """MODE: VIDEO TO VIDEO
-Use supplied <Video N>, <Picture N>, and <Subject N> labels only if they are listed in the scene context. The Builder writes the standalone reference definitions, so do not output them.
+Use exactly the resolved <Video N>, <Picture N>, and <Subject N> assignments. The Builder writes their standalone definitions.
 """
 
 
@@ -77,6 +63,13 @@ MINIMAX_H3_IMAGE_REFERENCE_TO_VIDEO_INSTRUCTIONS = (
 MINIMAX_H3_VIDEO_TO_VIDEO_INSTRUCTIONS = (
     MINIMAX_H3_PROMPT_DIRECTOR_CORE + "\n" + _MINIMAX_H3_VIDEO_TO_VIDEO_MODE
 )
+
+
+MINIMAX_H3_FRAME_CONTINUITY_INSTRUCTIONS = MINIMAX_H3_PROMPT_DIRECTOR_CORE + """
+
+ACTIVE TASK: FRAME-TO-FRAME CONTINUITY
+Use the previous render's attached final frame as the authoritative opening state. Follow the resolved FRAME-TO-FRAME CONTINUITY contract in the Scene concept and write one seamless uninterrupted continuation entirely through positive descriptions of desired visual action.
+"""
 
 
 MINIMAX_H3_INSTRUCTIONS_BY_MODE = {
