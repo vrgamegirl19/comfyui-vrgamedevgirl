@@ -2677,8 +2677,12 @@ function makeEditorThumbnailUrl(path) {
   return `/vrgdg/video_editor/image?path=${encodeURIComponent(path)}&thumbv=${encodeURIComponent(version)}`;
 }
 
-function makeEditorVideoUrl(path) {
-  return `/vrgdg/video_editor/video?path=${encodeURIComponent(path)}&rand=${Date.now()}`;
+function makeEditorVideoUrl(path, bust) {
+  // A stable bust value (e.g. segment.video_cache_bust, which only changes when the
+  // scene is re-rendered) lets the browser reuse a cached fetch of the same clip
+  // across preload/playback instead of re-downloading it from disk on every cut.
+  const version = bust === undefined || bust === null || bust === "" ? Date.now() : bust;
+  return `/vrgdg/video_editor/video?path=${encodeURIComponent(path)}&rand=${version}`;
 }
 
 function extractImagesFromHistory(historyPayload, promptId) {
@@ -3453,6 +3457,13 @@ function openBuilder(node) {
   const fullscreenButton = makeButton("Fullscreen");
   fullscreenButton.title = "Expand the Video Creator to fill the browser window without closing or resetting anything.";
   const closeButton = makeButton("Close");
+  let playStartInFlight = false;
+  let previewPlayRequest = 0;
+  function cancelPreviewPlayStart() {
+    previewPlayRequest += 1;
+    playStartInFlight = false;
+  }
+
   const closeBuilderNow = () => {
     pauseAllAudio();
     if (!previewVideo.paused) previewVideo.pause();
@@ -3976,6 +3987,7 @@ function openBuilder(node) {
   previewVideo.style.cssText = "display:none;max-width:100%;max-height:100%;object-fit:contain;background:#050505;";
   let previewVideoLoadTimer = null;
   let previewVideoSyncPause = false;
+  let previewVideoPendingSeekTarget = null;
   const previewDecodeHint = document.createElement("div");
   previewDecodeHint.style.cssText = "display:none;position:absolute;left:14px;right:14px;bottom:14px;z-index:2;padding:10px 12px;border:1px solid #ef4444;border-radius:6px;background:rgba(15,23,42,.92);color:#fee2e2;font-size:12px;line-height:1.35;box-shadow:0 12px 36px rgba(0,0,0,.45);";
   previewVideo.addEventListener("error", () => {
@@ -3997,7 +4009,26 @@ function openBuilder(node) {
     pauseAllAudio();
     updateAudioScrubbers();
   });
-  previewStage.append(previewEmpty, previewImage, previewVideo, postProcessComparePreview.element, previewDecodeHint);
+  previewVideo.addEventListener("seeked", () => {
+    // A newer scrub position arrived while this seek was still decoding.
+    // Jump straight to it instead of the queue of stale positions in between.
+    if (previewVideoPendingSeekTarget == null) return;
+    const target = previewVideoPendingSeekTarget;
+    previewVideoPendingSeekTarget = null;
+    try {
+      previewVideo.currentTime = target;
+    } catch {
+      // Ignore; the next scrub/timeupdate tick will retry if still needed.
+    }
+  });
+  // Hidden element used only to warm the browser's cache for the next scene's
+  // clip a moment before the playhead reaches it, so the visible swap at the
+  // cut doesn't stall on a cold fetch from the local server. It never plays.
+  const preloadVideo = document.createElement("video");
+  preloadVideo.muted = true;
+  preloadVideo.preload = "auto";
+  preloadVideo.style.cssText = "display:none;width:0;height:0;";
+  previewStage.append(previewEmpty, previewImage, previewVideo, preloadVideo, postProcessComparePreview.element, previewDecodeHint);
   const customImageFileInput = document.createElement("input");
   customImageFileInput.type = "file";
   customImageFileInput.accept = "image/png,image/jpeg,image/webp";
@@ -12253,6 +12284,7 @@ function openBuilder(node) {
   }
 
   function pauseAllAudio() {
+    cancelPreviewPlayStart();
     stopSilentTimelinePlayback();
     audio.pause();
     sceneAudio.pause();
@@ -16234,7 +16266,8 @@ function openBuilder(node) {
       previewVideoLoadTimer = null;
       previewDecodeHint.style.display = "none";
       previewVideo.pause();
-      previewVideo.src = makeEditorVideoUrl(videoPath);
+      previewVideoPendingSeekTarget = null;
+      previewVideo.src = makeEditorVideoUrl(videoPath, segment?.video_cache_bust);
       previewVideo.dataset.path = videoPath;
       previewVideo.dataset.cacheKey = cacheKey;
       previewVideo.dataset.segmentId = String(segment?.id || "");
@@ -16246,6 +16279,28 @@ function openBuilder(node) {
         }
       }, 8000);
     }
+  }
+
+  const PRELOAD_NEXT_CLIP_LEAD_SECONDS = 1.5;
+
+  // Warms the browser's HTTP cache for the upcoming scene's clip a little
+  // before the playhead reaches it. Combined with the stable video_cache_bust
+  // query param above, the real swap in setPreviewVideoSource then hits a
+  // cache instead of a cold fetch, removing most of the stall at the cut.
+  function maybePreloadNextClip(segment, current) {
+    if (!segment) return;
+    const end = Number(segment.end || 0);
+    const remaining = end - Number(current || 0);
+    if (!(remaining > 0) || remaining > PRELOAD_NEXT_CLIP_LEAD_SECONDS) return;
+    const nextSegment = playbackSegmentAtTime(end + 0.05);
+    if (!nextSegment || nextSegment.id === segment.id) return;
+    const nextPath = selectedSegmentVideoPath(nextSegment);
+    if (!nextPath) return;
+    const cacheKey = selectedSegmentVideoCacheKey(nextSegment, nextPath);
+    if (!cacheKey || preloadVideo.dataset.cacheKey === cacheKey) return;
+    preloadVideo.src = makeEditorVideoUrl(nextPath, nextSegment.video_cache_bust);
+    preloadVideo.dataset.cacheKey = cacheKey;
+    preloadVideo.load();
   }
 
   function clearPreviewVideoLoadState() {
@@ -16824,6 +16879,44 @@ function openBuilder(node) {
     updateAudioScrubbers();
   }
 
+  function previewVideoIsReadyAt(local) {
+    return !previewVideo.seeking
+      && previewVideo.readyState >= 2
+      && Number.isFinite(local)
+      && Math.abs(Number(previewVideo.currentTime || 0) - local) <= 0.2;
+  }
+
+  // Waits (briefly) for the preview video to actually be showing the given
+  // local time before resolving. Used right before Play starts audio, so a
+  // scene that's still loading/seeking from a recent scrub doesn't let the
+  // audio clock run ahead of it - that's what causes the video to visibly
+  // stutter and jump forward to catch up a moment after playback starts.
+  function waitForPreviewVideoReady(local, timeoutMs = 700) {
+    return new Promise((resolve) => {
+      if (previewVideoIsReadyAt(local)) {
+        resolve();
+        return;
+      }
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        previewVideo.removeEventListener("seeked", check);
+        previewVideo.removeEventListener("canplay", check);
+        previewVideo.removeEventListener("loadeddata", check);
+        clearTimeout(timer);
+        resolve();
+      };
+      const check = () => {
+        if (previewVideoIsReadyAt(local)) finish();
+      };
+      previewVideo.addEventListener("seeked", check);
+      previewVideo.addEventListener("canplay", check);
+      previewVideo.addEventListener("loadeddata", check);
+      const timer = setTimeout(finish, timeoutMs);
+    });
+  }
+
   function syncPreviewPlayback(current) {
     const playing = isTimelinePlaying();
     const segment = playing ? playbackSegmentAtTime(current) : activeSegment();
@@ -16840,6 +16933,7 @@ function openBuilder(node) {
       return;
     }
     postProcessComparePreview.hide();
+    if (playing) maybePreloadNextClip(segment, current);
     const videoPath = selectedSegmentVideoPath(segment);
     if (!segment || !videoPath) {
       if (!previewVideo.paused) previewVideo.pause();
@@ -16853,12 +16947,30 @@ function openBuilder(node) {
       previewImage.style.display = "none";
       previewEmpty.style.display = "none";
     }
+    // A cut is detected up to one tick late, so the correct in-scene offset
+    // right after a swap isn't always ~0 - it can be off by up to a tick's
+    // worth of time, which used to land just under the resync threshold and
+    // never get corrected for the rest of that scene. Always request the
+    // right position; a seek issued before metadata loads (readyState 0) is
+    // simply deferred by the browser and applied once it's ready.
     const local = localPlaybackTime(segment, current);
-    if (Number.isFinite(local) && Math.abs(Number(previewVideo.currentTime || 0) - local) > 0.2) {
-      try {
-        previewVideo.currentTime = local;
-      } catch {
-        // Some browsers reject seeking until metadata is ready. The next timeupdate will retry.
+    const seekThreshold = state.isScrubbing ? 0.05 : 0.2;
+    previewVideoPendingSeekTarget = null;
+    if (Number.isFinite(local) && Math.abs(Number(previewVideo.currentTime || 0) - local) > seekThreshold) {
+      // While a seek is already in flight, issuing another currentTime write on
+      // top of it doesn't jump ahead - it queues behind the one already
+      // decoding. During a fast scrub drag that means the visible frame keeps
+      // chasing a backlog of stale positions instead of the one the user is
+      // actually pointing at. Remember only the latest desired target and let
+      // the `seeked` handler below jump straight to it once the decoder is free.
+      if (previewVideo.seeking) {
+        previewVideoPendingSeekTarget = local;
+      } else {
+        try {
+          previewVideo.currentTime = local;
+        } catch {
+          // Some browsers reject seeking until metadata is ready. The next timeupdate will retry.
+        }
       }
     }
     if (isTimelinePlaying() && !state.timelineEditMenuOpen && !state.timelineTrimEditMode) {
@@ -16885,9 +16997,24 @@ function openBuilder(node) {
       const playbackSegment = playbackSegmentAtTime(current);
       if (playbackSegment && playbackSegment.id !== state.activeId) {
         state.activeId = playbackSegment.id;
-        syncInspector();
-        render();
+        // Sync the video first so the new clip starts loading immediately.
+        // syncInspector() (dozens of form fields) and render() (rebuilds every
+        // timeline block from scratch) are comparatively heavy, and running
+        // them synchronously here was blocking that load on the same frame as
+        // the cut, which is what produced the visible stutter at scene
+        // boundaries (and, during a scrub drag, the preview lagging behind
+        // wherever the slider actually was). Push them to the next frame
+        // instead so they stay off the video swap.
         syncPreviewPlayback(current);
+        if (isTimelinePlaying() || state.isScrubbing) {
+          requestAnimationFrame(() => {
+            syncInspector();
+            render();
+          });
+        } else {
+          syncInspector();
+          render();
+        }
         return;
       }
     }
@@ -16910,6 +17037,7 @@ function openBuilder(node) {
   }
 
   function setGlobalPlaybackTime(value) {
+    if (playStartInFlight) cancelPreviewPlayStart();
     const maxTime = playbackDuration();
     const time = Math.max(0, Math.min(maxTime, Number(value || 0)));
     state.sceneAudioGlobalTime = time;
@@ -16993,8 +17121,27 @@ function openBuilder(node) {
     if (state.timelineTrimEditMode) pauseTimelineForEditing();
     state.isScrubbing = true;
     seekGlobalTimelineFromEvent(event);
-    const move = (moveEvent) => seekGlobalTimelineFromEvent(moveEvent);
+    // Pointer events can fire far faster than the video can seek. Collapse
+    // them to at most one processed position per animation frame, always the
+    // latest one, instead of driving a seek off every raw mousemove - that
+    // backlog of superseded seeks is why the preview used to lag behind
+    // wherever the slider actually was.
+    let pendingMoveEvent = null;
+    let scrubRaf = 0;
+    const flushPendingMove = () => {
+      scrubRaf = 0;
+      if (pendingMoveEvent) {
+        seekGlobalTimelineFromEvent(pendingMoveEvent);
+        pendingMoveEvent = null;
+      }
+    };
+    const move = (moveEvent) => {
+      pendingMoveEvent = moveEvent;
+      if (!scrubRaf) scrubRaf = requestAnimationFrame(flushPendingMove);
+    };
     const up = () => {
+      if (scrubRaf) cancelAnimationFrame(scrubRaf);
+      flushPendingMove();
       state.isScrubbing = false;
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
@@ -58475,7 +58622,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     event.stopPropagation();
     setGlobalTimelineAudioMuted(!(audio.muted && sceneAudio.muted));
   };
-  playButton.onclick = () => {
+  playButton.onclick = async () => {
     if (state.timelineTrimEditMode) {
       state.timelineTrimEditMode = false;
       syncTimelineTrimModeButton();
@@ -58485,6 +58632,31 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       updateAudioScrubbers();
       return;
     }
+    if (playStartInFlight) {
+      cancelPreviewPlayStart();
+      return;
+    }
+    const request = ++previewPlayRequest;
+    playStartInFlight = true;
+    try {
+      // If the user just scrubbed here, the preview video may still be
+      // loading/seeking to this position. Kick that off (in case it hasn't
+      // already started) and wait briefly for it before starting audio, so
+      // the audio clock doesn't get a head start on a video that then has to
+      // visibly jump to catch up.
+      let effectiveStart = currentGlobalTime();
+      if (effectiveStart >= playbackDuration() - 0.025) {
+        effectiveStart = Math.max(0, Number(activeSegment()?.start || 0));
+      }
+      const startSegment = playbackSegmentAtTime(effectiveStart);
+      if (startSegment && selectedSegmentVideoPath(startSegment)) {
+        syncPreviewPlayback(effectiveStart);
+        await waitForPreviewVideoReady(localPlaybackTime(startSegment, effectiveStart));
+      }
+    } finally {
+      if (request === previewPlayRequest) playStartInFlight = false;
+    }
+    if (request !== previewPlayRequest || isTimelinePlaying()) return;
     if (!state.sceneSelectionUsesGlobalAudio && usingSceneAudioPlaybackMode()) {
       audio.pause();
       const started = playSceneAudioFrom(currentGlobalTime());
@@ -58528,12 +58700,35 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   globalScrub.addEventListener("pointerdown", () => {
     state.isScrubbing = true;
   });
+  // The native range input can fire "input" faster than the preview video can
+  // seek. Collapse to one processed value per animation frame, same as the
+  // timeline-canvas drag, so the preview chases the latest thumb position
+  // instead of a backlog of superseded ones.
+  let globalScrubPendingValue = null;
+  let globalScrubRaf = 0;
   globalScrub.addEventListener("input", () => {
-    setGlobalPlaybackTime(Number(globalScrub.value || 0));
-    updateAudioScrubbers();
+    globalScrubPendingValue = Number(globalScrub.value || 0);
+    if (!globalScrubRaf) {
+      globalScrubRaf = requestAnimationFrame(() => {
+        globalScrubRaf = 0;
+        if (globalScrubPendingValue != null) {
+          setGlobalPlaybackTime(globalScrubPendingValue);
+          globalScrubPendingValue = null;
+          updateAudioScrubbers();
+        }
+      });
+    }
   });
   globalScrub.addEventListener("change", () => {
     state.isScrubbing = false;
+    if (globalScrubRaf) {
+      cancelAnimationFrame(globalScrubRaf);
+      globalScrubRaf = 0;
+    }
+    if (globalScrubPendingValue != null) {
+      setGlobalPlaybackTime(globalScrubPendingValue);
+      globalScrubPendingValue = null;
+    }
     updateAudioScrubbers();
   });
   waveformModeSelect.onchange = () => {
