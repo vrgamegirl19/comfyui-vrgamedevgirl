@@ -1,5 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
+import { estimateRenderETA, formatRenderETA, renderETAProfile } from "./VRGDG_RenderETA.js";
 import "./VRGDG_MusicVideoPromptCreatorUI.js";
 import {
   FACIAL_PERFORMANCE_PRESETS,
@@ -3159,6 +3160,8 @@ function openBuilder(node) {
   const overlay = document.createElement("div");
   let builderKeydownHandler = null;
   let builderResourceTimer = 0;
+  let builderETATimer = 0;
+  let liveETALog = null;
   let builderResourceController = null;
   let builderResourceResizeObserver = null;
   overlay.dataset.vrgdgThemeRoot = "true";
@@ -3454,6 +3457,8 @@ function openBuilder(node) {
     pauseAllAudio();
     if (!previewVideo.paused) previewVideo.pause();
     clearTimeout(builderResourceTimer);
+    clearInterval(builderETATimer);
+    builderETAResizeObserver.disconnect();
     builderResourceController?.abort();
     builderResourceResizeObserver?.disconnect();
     window.removeEventListener("vrgdg:builder-toast", toastNotificationHandler);
@@ -3673,6 +3678,28 @@ function openBuilder(node) {
   const centerActions = document.createElement("div");
   centerActions.style.cssText = "position:relative;display:flex;gap:8px;align-items:center;justify-content:center;min-width:0;overflow:visible;";
   centerActions.append(importActions, batchActions);
+  const builderETA = document.createElement("div");
+  builderETA.setAttribute("aria-label", "Estimated render time remaining");
+  builderETA.style.cssText = "display:none;position:absolute;left:0;top:50%;transform:translateY(-50%);width:190px;box-sizing:border-box;padding:6px 8px;border:1px solid #334155;border-radius:7px;background:#1e293b;color:#e2e8f0;font-size:12px;line-height:1.5;text-align:center;font-variant-numeric:tabular-nums;white-space:nowrap;";
+  const builderSceneETA = document.createElement("div");
+  const builderFullETA = document.createElement("div");
+  builderETA.append(builderSceneETA, builderFullETA);
+  centerActions.append(builderETA);
+  const positionBuilderETA = () => {
+    if (!liveETALog) return;
+    const room = importActions.getBoundingClientRect().left - centerActions.getBoundingClientRect().left;
+    const fits = room >= 200;
+    const parent = fits ? centerActions : topbar;
+    if (builderETA.parentElement !== parent) parent.append(builderETA);
+    builderETA.style.position = fits ? "absolute" : "static";
+    builderETA.style.transform = fits ? "translateY(-50%)" : "none";
+    builderETA.style.gridColumn = fits ? "" : "1 / -1";
+    builderETA.style.justifySelf = "center";
+  };
+  const builderETAResizeObserver = new ResizeObserver(positionBuilderETA);
+  builderETAResizeObserver.observe(centerActions);
+  builderETAResizeObserver.observe(importActions);
+
   const builderResourceMonitor = document.createElement("div");
   builderResourceMonitor.setAttribute("aria-label", "Video Builder RAM and VRAM usage");
   builderResourceMonitor.style.cssText = `position:absolute;right:0;top:50%;transform:translateY(-50%);display:none;align-items:center;gap:10px;width:250px;height:42px;box-sizing:border-box;padding:5px 9px;border:1px solid #3f3f46;border-radius:7px;background:#18181b;color:#d4d4d8;font-family:${BUILDER_FONT_STACK};font-size:10px;line-height:1.25;pointer-events:auto;`;
@@ -9055,6 +9082,76 @@ function openBuilder(node) {
     syncTimelineTrimModeButton();
   }
 
+  function renderETAScene(segment) {
+    const engine = normalizeProjectVideoEngine(state.projectVideoEngine);
+    const miniMax = engine === "minimax_h3";
+    const mode = miniMax ? miniMaxH3ModeForSegment(segment) : currentVideoMode();
+    const settings = miniMax ? miniMaxH3SettingsForSegment(segment)
+      : cloneI2VVideoSettings(segment.use_scene_i2v_video_settings ? segment.i2v_video_settings : state.i2vVideoSettings);
+    return {
+      scene_id: String(segment.id), video_mode: mode,
+      eta_duration: Math.max(0.05, Number(segment.end) - Number(segment.start)),
+      eta_profile: renderETAProfile(engine, mode, settings),
+    };
+  }
+
+  function refreshBuilderETA() {
+    if (!liveETALog || !overlay.isConnected) return;
+    builderETA.style.display = "block";
+    const log = liveETALog;
+    const fullLabel = log.scene_scope === "selected" ? "Selected Scenes" : log.scene_scope === "single" ? "This Render" : "Full Video";
+    if (log.status !== "running") {
+      const status = log.status === "complete" ? "Done" : log.status === "canceled" ? "Stopped" : "Finished with errors";
+      builderSceneETA.textContent = `Current Scene: ${status}`;
+      builderFullETA.textContent = `${fullLabel}: ${status}`;
+      clearInterval(builderETATimer);
+    } else {
+      const eta = estimateRenderETA(log, state.renderLogs);
+      const active = log.scenes.find((scene) => scene.status === "running");
+      builderSceneETA.textContent = `Current Scene: ${state.batchCancelled ? "Stopping…" : eta.stitching ? "Done" : active ? formatRenderETA(eta.sceneMs) : "Preparing…"}`;
+      builderFullETA.textContent = `${fullLabel}: ${state.batchCancelled ? "Stopping…" : eta.stitching && eta.totalMs == null ? "Stitching…" : formatRenderETA(eta.totalMs)}${eta.stitchUnknown && eta.totalMs != null ? " + stitch" : ""}`;
+      builderETA.title = "Approximate remaining time based on completed scene jobs, including preparation, rendering and cleanup. Updates every second. Different hardware and workload can change the estimate."
+        + (eta.stitchUnknown ? " Final stitching is not timed yet; + stitch excludes that step." : "")
+        + (log.scene_scope === "selected" || log.scene_scope === "single" ? " Only this render selection is included." : "");
+    }
+    positionBuilderETA();
+  }
+
+  function resetBuilderETA() {
+    clearInterval(builderETATimer);
+    liveETALog = null;
+    builderETA.style.display = "none";
+  }
+
+  function startBuilderETA(log) {
+    clearInterval(builderETATimer);
+    liveETALog = log;
+    refreshBuilderETA();
+    builderETATimer = setInterval(refreshBuilderETA, 1000);
+  }
+
+  function startSingleSceneETA(segment) {
+    const plan = renderETAScene(segment);
+    const started = new Date().toISOString();
+    const log = {
+      id: `render_single_${Date.now()}`, status: "running", scene_scope: "single", mode_label: "Render Scene",
+      video_engine: normalizeProjectVideoEngine(state.projectVideoEngine), video_mode: plan.video_mode,
+      started_at: started, skip_final_stitch: true, target_scene_count: 1, eta_plan: [plan],
+      scenes: [{ ...plan, label: segment.label || "Scene", status: "running", started_at: started }],
+    };
+    startBuilderETA(log);
+    return log;
+  }
+
+  async function finishSingleSceneETA(log, status) {
+    const now = Date.now();
+    log.status = status;
+    log.ended_at = new Date(now).toISOString();
+    Object.assign(log.scenes[0], { status, ended_at: log.ended_at, total_ms: now - Date.parse(log.started_at) });
+    await persistRenderLog(log);
+    if (liveETALog === log) refreshBuilderETA();
+  }
+
   function normalizeRenderLog(raw) {
     const value = raw && typeof raw === "object" ? raw : {};
     return {
@@ -9143,6 +9240,7 @@ function openBuilder(node) {
     state.renderLogs = logs.slice(-20);
     state.activeRenderLogId = log.id;
     state.renderLogModalRefresh?.();
+    if (liveETALog?.id === log.id) { liveETALog = log; refreshBuilderETA(); }
   }
 
   async function persistRenderLog(log) {
@@ -38235,6 +38333,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.builderStoryLayer = normalizeBuilderStoryLayer(session.builder_story_layer || {});
       state.builderStoryboardDefaults = normalizeBuilderStoryboardDefaults(session.builder_storyboard_defaults || session.builderStoryboardDefaults || {});
       state.autoBuildPreparation = normalizeAutoBuildPreparation(session.auto_build_preparation || session.autoBuildPreparation || {});
+      resetBuilderETA();
       state.renderLogs = normalizeRenderLogs(session.render_logs);
       state.activeRenderLogId = session.active_render_log_id || state.renderLogs[state.renderLogs.length - 1]?.id || "";
       state.textGemmaRunner = session.text_gemma_runner || state.textGemmaRunner || "builtin";
@@ -47978,6 +48077,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       existingVideoAction = "overwrite";
     }
     let progress = null;
+    const etaLog = startSingleSceneETA(renderTarget);
+    let etaStatus = "failed";
     try {
       state.batchCancelled = false;
       setButtonGroupState(createSceneVideoButtons, { disabled: true, text: "Creating..." });
@@ -47993,15 +48094,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         existingVideoAction,
       });
       await runClearMemoryWorkflowQuiet(progress, `${sceneDisplayName(renderTarget, renderIndex)} render`, 98);
+      etaStatus = "complete";
       progress.close(900);
       toast(`Scene video ready:\n${videoPath}`);
     } catch (error) {
       const stopped = /stopped by user/i.test(String(error?.message || error));
+      etaStatus = stopped ? "canceled" : "failed";
       renderTarget.video_status = stopped ? "none" : "error";
       progress?.set(stopped ? "Scene video creation stopped by user." : `Error:\n${String(error?.message || error)}`, 100);
       toast(stopped ? "Scene video creation stopped." : String(error?.message || error), !stopped);
       renderList();
     } finally {
+      await finishSingleSceneETA(etaLog, etaStatus);
       setButtonGroupState(createSceneVideoButtons, { disabled: false, text: "Create Scene Video" });
       setButtonGroupState(gemmaThenCreateVideoButtons, { disabled: false });
     }
@@ -48054,6 +48158,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
 
     let progress = null;
+    const etaLog = startSingleSceneETA(renderTarget);
+    let etaStatus = "failed";
     try {
       state.batchCancelled = false;
       setButtonGroupState(miniMaxSceneVideoButtons, { disabled: true, text: "Creating MiniMax H3..." });
@@ -48062,15 +48168,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         existingVideoAction,
       });
       await runClearMemoryWorkflowQuiet(progress, `${sceneDisplayName(renderTarget, renderIndex)} render`, 98);
+      etaStatus = "complete";
       progress.close(900);
       toast(`MiniMax H3 scene video ready:\n${videoPath}`);
     } catch (error) {
       const stopped = /stopped by user/i.test(String(error?.message || error));
+      etaStatus = stopped ? "canceled" : "failed";
       renderTarget.video_status = stopped ? "none" : "error";
       progress?.set(stopped ? "MiniMax H3 scene video creation stopped by user." : `Error:\n${String(error?.message || error)}`, 100);
       toast(stopped ? "MiniMax H3 scene video creation stopped." : String(error?.message || error), !stopped);
       renderList();
     } finally {
+      await finishSingleSceneETA(etaLog, etaStatus);
       setButtonGroupState(miniMaxSceneVideoButtons, { disabled: false, text: "Create MiniMax H3 Scene Video" });
     }
   }
@@ -48368,6 +48477,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       final_video_path: "",
       error: "",
     };
+    startBuilderETA(renderLog);
     upsertRenderLog(renderLog);
     try {
       state.batchCancelled = false;
@@ -48388,6 +48498,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const scenes = batchTargetItems(sceneScope)
         .filter(({ segment }) => forceVideos || !String(selectedSegmentVideoPath(segment) || "").trim());
       const requestedSceneCount = batchTargetItems(sceneScope).length;
+      renderLog.eta_plan = scenes.map(({ segment }) => renderETAScene(segment));
+      renderLog.eta_video_duration = batchTargetItems(sceneScope).reduce((sum, { segment }) => sum + Math.max(0, Number(segment.end) - Number(segment.start)), 0);
       renderLog.target_scene_count = scenes.length;
       renderLog.skipped_existing_count = Math.max(0, requestedSceneCount - scenes.length);
       if (!scenes.length) {
@@ -48422,6 +48534,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         const sceneLabel = sceneDisplayName(segment, sceneIndex);
         const sceneStartedMs = Date.now();
         currentSceneLog = {
+          ...renderETAScene(segment),
           scene_id: String(segment.id || ""),
           scene_number: sceneSlotNumber(segment),
           timeline_index: sceneIndex,
@@ -51170,6 +51283,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     state.builderStoryReferenceImages = [];
     state.builderStoryReferenceNotes = "";
     state.renderLogs = [];
+    resetBuilderETA();
     state.activeRenderLogId = "";
     state.useVrgdgTextContext = true;
     state.projectFolder = cleanProjectFolder;
