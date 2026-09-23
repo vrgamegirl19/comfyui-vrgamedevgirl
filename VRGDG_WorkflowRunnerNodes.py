@@ -2944,7 +2944,7 @@ def _minimax_h3_tail_padding_frames(timing):
     """Frames at the end of this render that lie after the scene's visible last frame."""
     data = timing.to_dict() if hasattr(timing, "to_dict") else dict(timing or {})
     try:
-        visible = round((float(data["actual_warmup_seconds"]) + float(data["scene_duration_seconds"])) * 24)
+        visible = round(float(data["actual_warmup_seconds"]) * 24) + int(data["final_frame_count"])
         return max(0, int(data["h3_frame_count"]) - int(visible))
     except (KeyError, TypeError, ValueError):
         return None
@@ -3603,6 +3603,7 @@ def _build_minimax_h3_api_prompt(payload):
         "post_render_trim": {
             "start": timing.final_trim_start_seconds,
             "duration": timing.final_trim_duration_seconds,
+            "frames": timing.final_frame_count,
         },
         "reference_inputs": {
             "image_count": len(image_paths),
@@ -3976,7 +3977,7 @@ def _build_minimax_h3_2pass_api_prompt(payload):
         "audio_mode": "input_audio",
         "timing": timing.to_dict(),
         "prepared_audio": prepared_audio,
-        "post_render_trim": {"start": timing.final_trim_start_seconds, "duration": timing.final_trim_duration_seconds},
+        "post_render_trim": {"start": timing.final_trim_start_seconds, "duration": timing.final_trim_duration_seconds, "frames": timing.final_frame_count},
         "reference_inputs": {"image_count": len(image_paths), "video_count": len(video_references)},
         "two_pass": {
             "pass1_steps": prompt["124"]["inputs"]["steps"],
@@ -4467,7 +4468,7 @@ def _build_minimax_h3_3pass_api_prompt(payload):
         "audio_mode": "input_audio",
         "timing": timing.to_dict(),
         "prepared_audio": prepared_audio,
-        "post_render_trim": {"start": timing.final_trim_start_seconds, "duration": timing.final_trim_duration_seconds},
+        "post_render_trim": {"start": timing.final_trim_start_seconds, "duration": timing.final_trim_duration_seconds, "frames": timing.final_frame_count},
         "reference_inputs": {"image_count": len(image_paths), "video_count": len(video_references)},
         "three_pass": {"pass1_steps": prompt["248"]["inputs"]["steps"], "pass2_steps": prompt["290"]["inputs"]["steps"], "pass3_steps": prompt["344"]["inputs"]["steps"]},
         "te_speed": {"pass1": pass1_speed, "pass2": pass2_speed, "pass3": pass3_speed},
@@ -5229,6 +5230,7 @@ def _trim_scene_video(payload):
     scene_number = _int_payload(payload, "scene_number", 1, 1, 999999)
     start = max(0.0, float(payload.get("start", 0) or 0))
     duration = max(0.05, float(payload.get("duration", 0) or 0))
+    frames = _int_payload(payload, "frames", 0, 0, 999999)
     label = re.sub(r"[^A-Za-z0-9_-]+", "_", str(payload.get("label", "trim") or "trim").strip().lower()).strip("_") or "trim"
     stamp = time.strftime("%Y%m%d_%H%M%S")
     audio_suffix = "-audio" if _bool_payload(payload, "mark_as_audio_video", False) else ""
@@ -5264,6 +5266,9 @@ def _trim_scene_video(payload):
         "+faststart",
         target_path,
     ]
+    if frames:
+        # match the frame count the stitcher keeps so the clip's last frame is the one shown
+        cmd[-1:-1] = ["-frames:v", str(frames)]
     result = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
     if result.returncode != 0 or not os.path.isfile(target_path):
         raise RuntimeError((result.stderr or result.stdout or "ffmpeg failed to trim scene video.").strip())

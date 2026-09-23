@@ -8760,7 +8760,7 @@ function openBuilder(node) {
     miniMaxContinuityPromptFromLastFrame.input.checked = Boolean(settings.continuity_prompt_from_last_frame);
     miniMaxLocationTransitionPreset.value = settings.location_transition_preset;
     miniMaxLocationTransitionCustom.value = settings.location_transition_custom;
-    miniMaxLatentContextFrames.value = String(segment?.minimax_h3_latent_context_frames || settings.latent_context_frames || 22);
+    miniMaxLatentContextFrames.value = String(settings.latent_context_frames);
     miniMaxAspectRatio.value = settings.aspect_ratio;
     miniMaxMegapixels.value = String(settings.megapixels);
     miniMaxSeed.value = String(settings.seed);
@@ -12319,9 +12319,6 @@ function openBuilder(node) {
     segment.minimax_h3_continuity_image_number = Math.max(0, Math.trunc(Number(segment.minimax_h3_continuity_image_number || 0)));
     segment.minimax_h3_location_transition_preset = normalizeMiniMaxH3LocationTransitionPreset(segment.minimax_h3_location_transition_preset);
     segment.minimax_h3_location_transition_custom = String(segment.minimax_h3_location_transition_custom || "");
-    segment.minimax_h3_latent_context_frames = [16, 22, 39, 56].includes(Number(segment.minimax_h3_latent_context_frames))
-      ? Number(segment.minimax_h3_latent_context_frames)
-      : (DEFAULT_MINIMAX_H3_SETTINGS.latent_context_frames || 22);
     segment.minimax_h3_video_references = (Array.isArray(segment.minimax_h3_video_references) ? segment.minimax_h3_video_references : [])
       .slice(0, 3)
       .map((item) => ({
@@ -47387,9 +47384,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       : null;
     progress?.set(`${batchLabel}Preparing exact MiniMax H3 scene timing and ${builtInAudio ? "native audio generation" : "input audio"}...`, pct(8));
 
-    const latentContextFrames = [16, 22, 39, 56].includes(Number(segment?.minimax_h3_latent_context_frames))
-      ? Number(segment.minimax_h3_latent_context_frames)
-      : (miniMaxSettings.latent_context_frames || 22);
+    const latentContextFrames = miniMaxSettings.latent_context_frames;
     try {
       const payload = {
         project_folder: projectFolder,
@@ -47733,6 +47728,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         scene_number: slotNumber,
         start: Number(postTrim.start || 0),
         duration: finalDuration,
+        frames: Number(postTrim.frames || 0),
         label: "minimax_exact",
         mark_as_audio_video: true,
       }, 240000);
@@ -58929,6 +58925,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     miniMaxAudioMode,
     miniMaxContinuityMode,
     miniMaxContinuityPromptFromLastFrame.input,
+    miniMaxLatentContextFrames,
     miniMaxMegapixels,
     miniMaxSeed,
     miniMaxWarmupFrames,
