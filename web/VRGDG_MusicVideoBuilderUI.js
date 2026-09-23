@@ -1,5 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
+import { estimateRenderETA, formatRenderETA, renderETAProfile } from "./VRGDG_RenderETA.js";
 import "./VRGDG_MusicVideoPromptCreatorUI.js";
 import {
   FACIAL_PERFORMANCE_PRESETS,
@@ -3159,6 +3160,8 @@ function openBuilder(node) {
   const overlay = document.createElement("div");
   let builderKeydownHandler = null;
   let builderResourceTimer = 0;
+  let builderETATimer = 0;
+  let liveETALog = null;
   let builderResourceController = null;
   let builderResourceResizeObserver = null;
   overlay.dataset.vrgdgThemeRoot = "true";
@@ -3454,6 +3457,8 @@ function openBuilder(node) {
     pauseAllAudio();
     if (!previewVideo.paused) previewVideo.pause();
     clearTimeout(builderResourceTimer);
+    clearInterval(builderETATimer);
+    builderETAResizeObserver.disconnect();
     builderResourceController?.abort();
     builderResourceResizeObserver?.disconnect();
     window.removeEventListener("vrgdg:builder-toast", toastNotificationHandler);
@@ -3673,6 +3678,28 @@ function openBuilder(node) {
   const centerActions = document.createElement("div");
   centerActions.style.cssText = "position:relative;display:flex;gap:8px;align-items:center;justify-content:center;min-width:0;overflow:visible;";
   centerActions.append(importActions, batchActions);
+  const builderETA = document.createElement("div");
+  builderETA.setAttribute("aria-label", "Estimated render time remaining");
+  builderETA.style.cssText = "display:none;position:absolute;left:0;top:50%;transform:translateY(-50%);width:190px;box-sizing:border-box;padding:6px 8px;border:1px solid #334155;border-radius:7px;background:#1e293b;color:#e2e8f0;font-size:12px;line-height:1.5;text-align:center;font-variant-numeric:tabular-nums;white-space:nowrap;";
+  const builderSceneETA = document.createElement("div");
+  const builderFullETA = document.createElement("div");
+  builderETA.append(builderSceneETA, builderFullETA);
+  centerActions.append(builderETA);
+  const positionBuilderETA = () => {
+    if (!liveETALog) return;
+    const room = importActions.getBoundingClientRect().left - centerActions.getBoundingClientRect().left;
+    const fits = room >= 200;
+    const parent = fits ? centerActions : topbar;
+    if (builderETA.parentElement !== parent) parent.append(builderETA);
+    builderETA.style.position = fits ? "absolute" : "static";
+    builderETA.style.transform = fits ? "translateY(-50%)" : "none";
+    builderETA.style.gridColumn = fits ? "" : "1 / -1";
+    builderETA.style.justifySelf = "center";
+  };
+  const builderETAResizeObserver = new ResizeObserver(positionBuilderETA);
+  builderETAResizeObserver.observe(centerActions);
+  builderETAResizeObserver.observe(importActions);
+
   const builderResourceMonitor = document.createElement("div");
   builderResourceMonitor.setAttribute("aria-label", "Video Builder RAM and VRAM usage");
   builderResourceMonitor.style.cssText = `position:absolute;right:0;top:50%;transform:translateY(-50%);display:none;align-items:center;gap:10px;width:250px;height:42px;box-sizing:border-box;padding:5px 9px;border:1px solid #3f3f46;border-radius:7px;background:#18181b;color:#d4d4d8;font-family:${BUILDER_FONT_STACK};font-size:10px;line-height:1.25;pointer-events:auto;`;
@@ -5148,6 +5175,35 @@ function openBuilder(node) {
   const i2vPrompt = document.createElement("textarea");
   i2vPrompt.placeholder = "Image-to-video prompt...";
   i2vPrompt.style.cssText = notesInput.style.cssText;
+  const saveI2VPromptButton = makeButton("Save Updated Prompt", "primary");
+  saveI2VPromptButton.title = "Save the updated prompt to this scene and sync to the project storyboard.";
+  saveI2VPromptButton.style.width = "100%";
+  saveI2VPromptButton.style.marginTop = "4px";
+  saveI2VPromptButton.disabled = true;
+  saveI2VPromptButton.style.opacity = "0.5";
+  saveI2VPromptButton.style.cursor = "not-allowed";
+
+  const savedI2VPrompts = new WeakMap();
+  const savedMiniMaxPrompts = new WeakMap();
+  let savingTimelinePrompt = false;
+
+  function updateI2VPromptSaveButtonState() {
+    const segment = activeSegment();
+    if (!segment) {
+      saveI2VPromptButton.disabled = true;
+      saveI2VPromptButton.style.opacity = "0.5";
+      saveI2VPromptButton.style.cursor = "not-allowed";
+      return;
+    }
+    const saved = String(savedI2VPrompts.get(segment) ?? segment.i2v_prompt ?? "");
+    const current = String(i2vPrompt.value || "");
+    const isDirty = !savingTimelinePrompt && current !== saved;
+    saveI2VPromptButton.disabled = !isDirty;
+    saveI2VPromptButton.style.opacity = isDirty ? "1" : "0.5";
+    saveI2VPromptButton.style.cursor = isDirty ? "pointer" : "not-allowed";
+  }
+  i2vPrompt.addEventListener("input", updateI2VPromptSaveButtonState);
+  i2vPrompt.addEventListener("change", updateI2VPromptSaveButtonState);
   const videoModeChooser = document.createElement("div");
   videoModeChooser.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(4,auto);gap:6px;";
   const styleVideoModeCard = (card, column, row) => {
@@ -6731,6 +6787,31 @@ function openBuilder(node) {
   miniMaxPrompt.placeholder = "MiniMax H3 scene prompt...";
   miniMaxPrompt.style.cssText = "min-height:190px;resize:vertical;border:1px solid #3f3f46;border-radius:6px;background:#18181b;color:#fafafa;padding:9px;font-size:12px;line-height:1.4;";
   ["keydown", "keypress", "keyup"].forEach((eventName) => miniMaxPrompt.addEventListener(eventName, (event) => event.stopPropagation()));
+  const saveMiniMaxPromptButton = makeButton("Save Updated Prompt", "primary");
+  saveMiniMaxPromptButton.title = "Save the updated MiniMax prompt to this scene and sync to the project storyboard.";
+  saveMiniMaxPromptButton.style.width = "100%";
+  saveMiniMaxPromptButton.style.marginTop = "4px";
+  saveMiniMaxPromptButton.disabled = true;
+  saveMiniMaxPromptButton.style.opacity = "0.5";
+  saveMiniMaxPromptButton.style.cursor = "not-allowed";
+
+  function updateMiniMaxPromptSaveButtonState() {
+    const segment = activeSegment();
+    if (!segment) {
+      saveMiniMaxPromptButton.disabled = true;
+      saveMiniMaxPromptButton.style.opacity = "0.5";
+      saveMiniMaxPromptButton.style.cursor = "not-allowed";
+      return;
+    }
+    const saved = String(savedMiniMaxPrompts.get(segment) ?? segment.minimax_h3_prompt ?? "");
+    const current = String(miniMaxPrompt.value || "");
+    const isDirty = !savingTimelinePrompt && current !== saved;
+    saveMiniMaxPromptButton.disabled = !isDirty;
+    saveMiniMaxPromptButton.style.opacity = isDirty ? "1" : "0.5";
+    saveMiniMaxPromptButton.style.cursor = isDirty ? "pointer" : "not-allowed";
+  }
+  miniMaxPrompt.addEventListener("input", updateMiniMaxPromptSaveButtonState);
+  miniMaxPrompt.addEventListener("change", updateMiniMaxPromptSaveButtonState);
   const miniMaxPromptCharacterStatus = document.createElement("div");
   miniMaxPromptCharacterStatus.style.cssText = "font-size:11px;line-height:1.4;border:1px solid #334155;border-radius:6px;background:#0f172a;padding:7px 9px;color:#86efac;";
   function updateMiniMaxPromptCharacterStatus(segment = activeSegment()) {
@@ -6839,6 +6920,7 @@ function openBuilder(node) {
         miniMaxPromptRunnerNote,
         miniMaxPromptActions,
         makeField("MiniMax H3 prompt", miniMaxPrompt),
+        saveMiniMaxPromptButton,
         miniMaxPromptCharacterStatus,
         miniMaxPass2PromptField,
       ]),
@@ -6919,6 +7001,7 @@ function openBuilder(node) {
         createI2VButton,
         editI2VPromptButton,
         makeField("Video prompt", i2vPrompt),
+        saveI2VPromptButton,
         makeSettingsSection("Advanced", [
           editI2VInstructionsButton,
           editIdLoraInstructionsButton,
@@ -8055,6 +8138,7 @@ function openBuilder(node) {
     segment.minimax_h3_prompt = miniMaxPrompt.value || "";
     segment.minimax_h3_pass2_prompt = miniMaxPass2Prompt.value || "";
     updateMiniMaxPromptCharacterStatus(segment);
+    updateMiniMaxPromptSaveButtonState();
     segment.minimax_h3_scene_image_use = normalizeMiniMaxH3SceneImageUse(miniMaxSceneImageUse.value);
     segment.minimax_h3_use_scene_image_as_start_frame = segment.minimax_h3_scene_image_use === "exact_start_frame";
     segment.minimax_h3_start_frame_character_influence = normalizeMiniMaxH3StartFrameCharacterInfluence(
@@ -8760,7 +8844,7 @@ function openBuilder(node) {
     miniMaxContinuityPromptFromLastFrame.input.checked = Boolean(settings.continuity_prompt_from_last_frame);
     miniMaxLocationTransitionPreset.value = settings.location_transition_preset;
     miniMaxLocationTransitionCustom.value = settings.location_transition_custom;
-    miniMaxLatentContextFrames.value = String(segment?.minimax_h3_latent_context_frames || settings.latent_context_frames || 22);
+    miniMaxLatentContextFrames.value = String(settings.latent_context_frames);
     miniMaxAspectRatio.value = settings.aspect_ratio;
     miniMaxMegapixels.value = String(settings.megapixels);
     miniMaxSeed.value = String(settings.seed);
@@ -8958,10 +9042,14 @@ function openBuilder(node) {
     miniMaxSceneImageUseField.style.display = hasSceneImage ? "flex" : "none";
     miniMaxStartFrameCharacterInfluenceField.style.display = hasSceneImage && miniMaxSceneImageUse.value === "exact_start_frame" ? "flex" : "none";
     miniMaxStartFrameReferenceNote.style.display = hasSceneImage ? "block" : "none";
+    if (segment) {
+      if (!savedMiniMaxPrompts.has(segment)) savedMiniMaxPrompts.set(segment, String(segment.minimax_h3_prompt || segment.i2v_prompt || ""));
+    }
     miniMaxPrompt.value = String(segment?.minimax_h3_prompt || segment?.i2v_prompt || "");
     miniMaxPass2Prompt.value = String(segment?.minimax_h3_pass2_prompt || "");
     miniMaxPass2PromptField.style.display = threePass ? "flex" : "none";
     updateMiniMaxPromptCharacterStatus(segment);
+    updateMiniMaxPromptSaveButtonState();
     const compactMiniMaxModeLabel = mode === "reference_to_video"
       ? "Ref2V"
       : mode === "image_to_video"
@@ -9055,6 +9143,76 @@ function openBuilder(node) {
     syncTimelineTrimModeButton();
   }
 
+  function renderETAScene(segment) {
+    const engine = normalizeProjectVideoEngine(state.projectVideoEngine);
+    const miniMax = engine === "minimax_h3";
+    const mode = miniMax ? miniMaxH3ModeForSegment(segment) : currentVideoMode();
+    const settings = miniMax ? miniMaxH3SettingsForSegment(segment)
+      : cloneI2VVideoSettings(segment.use_scene_i2v_video_settings ? segment.i2v_video_settings : state.i2vVideoSettings);
+    return {
+      scene_id: String(segment.id), video_mode: mode,
+      eta_duration: Math.max(0.05, Number(segment.end) - Number(segment.start)),
+      eta_profile: renderETAProfile(engine, mode, settings),
+    };
+  }
+
+  function refreshBuilderETA() {
+    if (!liveETALog || !overlay.isConnected) return;
+    builderETA.style.display = "block";
+    const log = liveETALog;
+    const fullLabel = log.scene_scope === "selected" ? "Selected Scenes" : log.scene_scope === "single" ? "This Render" : "Full Video";
+    if (log.status !== "running") {
+      const status = log.status === "complete" ? "Done" : log.status === "canceled" ? "Stopped" : "Finished with errors";
+      builderSceneETA.textContent = `Current Scene: ${status}`;
+      builderFullETA.textContent = `${fullLabel}: ${status}`;
+      clearInterval(builderETATimer);
+    } else {
+      const eta = estimateRenderETA(log, state.renderLogs);
+      const active = log.scenes.find((scene) => scene.status === "running");
+      builderSceneETA.textContent = `Current Scene: ${state.batchCancelled ? "Stopping…" : eta.stitching ? "Done" : active ? formatRenderETA(eta.sceneMs) : "Preparing…"}`;
+      builderFullETA.textContent = `${fullLabel}: ${state.batchCancelled ? "Stopping…" : eta.stitching && eta.totalMs == null ? "Stitching…" : formatRenderETA(eta.totalMs)}${eta.stitchUnknown && eta.totalMs != null ? " + stitch" : ""}`;
+      builderETA.title = "Approximate remaining time based on completed scene jobs, including preparation, rendering and cleanup. Updates every second. Different hardware and workload can change the estimate."
+        + (eta.stitchUnknown ? " Final stitching is not timed yet; + stitch excludes that step." : "")
+        + (log.scene_scope === "selected" || log.scene_scope === "single" ? " Only this render selection is included." : "");
+    }
+    positionBuilderETA();
+  }
+
+  function resetBuilderETA() {
+    clearInterval(builderETATimer);
+    liveETALog = null;
+    builderETA.style.display = "none";
+  }
+
+  function startBuilderETA(log) {
+    clearInterval(builderETATimer);
+    liveETALog = log;
+    refreshBuilderETA();
+    builderETATimer = setInterval(refreshBuilderETA, 1000);
+  }
+
+  function startSingleSceneETA(segment) {
+    const plan = renderETAScene(segment);
+    const started = new Date().toISOString();
+    const log = {
+      id: `render_single_${Date.now()}`, status: "running", scene_scope: "single", mode_label: "Render Scene",
+      video_engine: normalizeProjectVideoEngine(state.projectVideoEngine), video_mode: plan.video_mode,
+      started_at: started, skip_final_stitch: true, target_scene_count: 1, eta_plan: [plan],
+      scenes: [{ ...plan, label: segment.label || "Scene", status: "running", started_at: started }],
+    };
+    startBuilderETA(log);
+    return log;
+  }
+
+  async function finishSingleSceneETA(log, status) {
+    const now = Date.now();
+    log.status = status;
+    log.ended_at = new Date(now).toISOString();
+    Object.assign(log.scenes[0], { status, ended_at: log.ended_at, total_ms: now - Date.parse(log.started_at) });
+    await persistRenderLog(log);
+    if (liveETALog === log) refreshBuilderETA();
+  }
+
   function normalizeRenderLog(raw) {
     const value = raw && typeof raw === "object" ? raw : {};
     return {
@@ -9143,6 +9301,7 @@ function openBuilder(node) {
     state.renderLogs = logs.slice(-20);
     state.activeRenderLogId = log.id;
     state.renderLogModalRefresh?.();
+    if (liveETALog?.id === log.id) { liveETALog = log; refreshBuilderETA(); }
   }
 
   async function persistRenderLog(log) {
@@ -12319,9 +12478,6 @@ function openBuilder(node) {
     segment.minimax_h3_continuity_image_number = Math.max(0, Math.trunc(Number(segment.minimax_h3_continuity_image_number || 0)));
     segment.minimax_h3_location_transition_preset = normalizeMiniMaxH3LocationTransitionPreset(segment.minimax_h3_location_transition_preset);
     segment.minimax_h3_location_transition_custom = String(segment.minimax_h3_location_transition_custom || "");
-    segment.minimax_h3_latent_context_frames = [16, 22, 39, 56].includes(Number(segment.minimax_h3_latent_context_frames))
-      ? Number(segment.minimax_h3_latent_context_frames)
-      : (DEFAULT_MINIMAX_H3_SETTINGS.latent_context_frames || 22);
     segment.minimax_h3_video_references = (Array.isArray(segment.minimax_h3_video_references) ? segment.minimax_h3_video_references : [])
       .slice(0, 3)
       .map((item) => ({
@@ -16531,7 +16687,7 @@ function openBuilder(node) {
     lyricSingersInput.dataset.vrgdgInspectorSegmentId = String(segment?.id || "");
     lyricSingersInput.dataset.vrgdgUserEdited = "0";
     const disabled = !segment;
-    for (const control of [labelInput, startInput, endInput, notesInput, ernieNotesInput, krea2TwoPassNotesInput, nbNotes, lyricTextInput, lyricSingersInput, i2vNotesInput, t2iPrompt, ernieT2IPrompt, krea2TwoPassT2IPrompt, nbPrompt, i2vPrompt, zEnhanceGemmaNotes, zEnhancePromptPreview, previewButton, ernieCreateButton, previewNBButton, deleteSegmentButton, createSceneVideoButton, miniMaxSceneVideoButtons[0]]) {
+    for (const control of [labelInput, startInput, endInput, notesInput, ernieNotesInput, krea2TwoPassNotesInput, nbNotes, lyricTextInput, lyricSingersInput, i2vNotesInput, t2iPrompt, ernieT2IPrompt, krea2TwoPassT2IPrompt, nbPrompt, i2vPrompt, zEnhanceGemmaNotes, zEnhancePromptPreview, previewButton, ernieCreateButton, previewNBButton, deleteSegmentButton, createSceneVideoButton, miniMaxSceneVideoButtons[0], saveI2VPromptButton, saveMiniMaxPromptButton]) {
       control.disabled = disabled;
     }
     loadCustomImageButton.disabled = disabled;
@@ -16585,6 +16741,12 @@ function openBuilder(node) {
       nbPrompt.value = "";
       i2vPrompt.value = "";
       editI2VPromptButton.style.display = "none";
+      saveI2VPromptButton.disabled = true;
+      saveI2VPromptButton.style.opacity = "0.5";
+      saveI2VPromptButton.style.cursor = "not-allowed";
+      saveMiniMaxPromptButton.disabled = true;
+      saveMiniMaxPromptButton.style.opacity = "0.5";
+      saveMiniMaxPromptButton.style.cursor = "not-allowed";
       editImagePromptButtons.forEach((button) => {
         button.style.display = "none";
       });
@@ -16626,8 +16788,10 @@ function openBuilder(node) {
     krea2TwoPassT2IPrompt.value = segment.t2i_prompt || "";
     fluxPrompt.value = segment.t2i_prompt || segment.flux_prompt || "";
     nbPrompt.value = segment.t2i_prompt || segment.nb_prompt || "";
+    if (!savedI2VPrompts.has(segment)) savedI2VPrompts.set(segment, String(segment.i2v_prompt || ""));
     i2vPrompt.value = segment.i2v_prompt || "";
     editI2VPromptButton.style.display = String(segment.i2v_prompt || "").trim() ? "" : "none";
+    updateI2VPromptSaveButtonState();
     editImagePromptButtons.forEach((button) => {
       button.style.display = String(segment.t2i_prompt || segment.flux_prompt || segment.nb_prompt || "").trim() ? "" : "none";
     });
@@ -19868,6 +20032,7 @@ function openBuilder(node) {
     segment.i2v_prompt = nextI2VPrompt;
     if (nextI2VPrompt !== previousI2VPrompt) segment.i2v_prompt_origin = "manual";
     editI2VPromptButton.style.display = String(segment.i2v_prompt || "").trim() ? "" : "none";
+    updateI2VPromptSaveButtonState();
     editImagePromptButtons.forEach((button) => {
       button.style.display = String(editedT2IPrompt || "").trim() ? "" : "none";
     });
@@ -20467,7 +20632,7 @@ function openBuilder(node) {
         if (segment.overlay_enabled === false) block.style.opacity = ".48";
         block.append(eye, lock);
       }
-      const dblClickHint = !isOverlay ? "Double-click to review line & performer mapping." : "";
+      const dblClickHint = !isOverlay ? "Double-click to review line & performer mapping. Shift + double-click to edit the Storyboard Card." : "";
       block.title = lockedByVideo ? "This scene has a generated video, so timing is locked." : dblClickHint;
       const dragImageSource = segmentImageSource(segment);
       if (dragImageSource) {
@@ -20547,11 +20712,7 @@ function openBuilder(node) {
         block.ondblclick = (event) => {
           event.preventDefault();
           event.stopPropagation();
-          if (event.shiftKey) {
-            openStoryboardBuilderFromProject({ focusSceneId: segment.id });
-            return;
-          }
-          openLyricReviewModal({ singleSceneId: segment.id });
+          openTimelineSceneCard(segment, event);
         };
       }
       enableImageDrop(block, segment);
@@ -21834,6 +21995,14 @@ function openBuilder(node) {
     }, 0);
   }
 
+  function openTimelineSceneCard(segment, event) {
+    if (event?.shiftKey) {
+      openStoryboardBuilderFromProject({ focusSceneId: segment.id });
+    } else {
+      openLyricReviewModal({ singleSceneId: segment.id });
+    }
+  }
+
   let activeSegmentDragCleanup = null;
   let lastTimelineSceneClickTime = 0;
   let lastTimelineSceneClickId = "";
@@ -21934,7 +22103,7 @@ function openBuilder(node) {
           if (now - lastTimelineSceneClickTime < 380 && lastTimelineSceneClickId === segment.id && !isOverlay) {
             lastTimelineSceneClickTime = 0;
             lastTimelineSceneClickId = "";
-            openLyricReviewModal({ singleSceneId: segment.id });
+            openTimelineSceneCard(segment, finishEvent);
           } else {
             lastTimelineSceneClickTime = now;
             lastTimelineSceneClickId = segment.id;
@@ -26365,12 +26534,10 @@ function openBuilder(node) {
     });
   }
 
-  let lastLyricReviewModalOpenTime = 0;
+  let activeLyricReviewBackdrop = null;
 
   function openLyricReviewModal(options = {}) {
-    const nowModal = Date.now();
-    if (nowModal - lastLyricReviewModalOpenTime < 350) return;
-    lastLyricReviewModalOpenTime = nowModal;
+    if (activeLyricReviewBackdrop?.isConnected) return;
 
     const focusSceneId = String(options?.focusSceneId || options?.focus_scene_id || "").trim();
     const singleSceneId = String(options?.singleSceneId || options?.single_scene_id || options?.sceneId || "").trim();
@@ -26400,11 +26567,8 @@ function openBuilder(node) {
     const close = makeButton("Close");
     const openAllButton = isSingleScene ? makeButton("Open All Scenes") : null;
     if (openAllButton) {
-      openAllButton.title = "Switch to the full multi-scene Review Lines + Map Performers window.";
-      openAllButton.onclick = () => {
-        closeModal();
-        openLyricReviewModal({ focusSceneId: targetScene.id });
-      };
+      openAllButton.title = "Save this scene and open the full Review Lines + Map Performers window.";
+      openAllButton.onclick = () => navigateReviewScene({ focusSceneId: targetScene.id });
       header.append(heading, openAllButton, lyricReviewHint, close);
     } else {
       header.append(heading, lyricReviewHint, close);
@@ -26430,7 +26594,7 @@ function openBuilder(node) {
     const note = document.createElement("div");
     note.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:9px;";
     note.textContent = isSingleScene
-      ? "These fields are the line notes Gemma uses for I2V/T2V prompting for this scene. Fix typos or timing mistakes here, then choose who performs or speaks. Use B-roll or Instrumental when nobody should lip-sync."
+      ? "These fields are the line notes Gemma uses for I2V/T2V prompting for this scene. Fix typos or timing mistakes here, then choose who performs or speaks. Use B-roll or Instrumental when nobody should lip-sync. Switching scenes saves your changes."
       : "These fields are the timeline line notes Gemma uses for I2V/T2V prompting. Fix typos or timing mistakes here, then choose who performs or speaks in each scene. Use B-roll or Instrumental when nobody should lip-sync.";
 
     const reviewReferenceBuilder = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
@@ -26696,20 +26860,18 @@ function openBuilder(node) {
       jumpSelected.onclick = () => playRange(targetScene, jumpSelected);
       prevScene.textContent = "Prev Scene";
       nextScene.textContent = "Next Scene";
-      prevScene.title = "Open line review for the previous scene.";
-      nextScene.title = "Open line review for the next scene.";
+      prevScene.title = "Save this scene and open the previous scene.";
+      nextScene.title = "Save this scene and open the next scene.";
       prevScene.disabled = targetSceneIndex <= 0;
       nextScene.disabled = targetSceneIndex >= allScenes.length - 1;
       prevScene.onclick = () => {
         if (targetSceneIndex > 0) {
-          closeModal();
-          openLyricReviewModal({ singleSceneId: allScenes[targetSceneIndex - 1].id });
+          return navigateReviewScene({ singleSceneId: allScenes[targetSceneIndex - 1].id });
         }
       };
       nextScene.onclick = () => {
         if (targetSceneIndex < allScenes.length - 1) {
-          closeModal();
-          openLyricReviewModal({ singleSceneId: allScenes[targetSceneIndex + 1].id });
+          return navigateReviewScene({ singleSceneId: allScenes[targetSceneIndex + 1].id });
         }
       };
       if (audioPath) {
@@ -27244,6 +27406,22 @@ function openBuilder(node) {
       updateReviewTimingDisplay(row);
     };
 
+    const singleReviewTimingNeighbors = (row) => {
+      const ordered = [...state.segments].sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
+      const index = ordered.findIndex((item) => item.id === row.dataset.reviewSegmentId);
+      return { previous: ordered[index - 1], following: ordered.slice(index + 1) };
+    };
+
+    const canEditSingleReviewTiming = (row, affected) => {
+      if (!isSingleScene) return true;
+      if (state.timingFrozen || affected.some((segment) => segment && hasLockedVideo(segment))) {
+        toast("Unfreeze timing and unlock affected scene videos before changing timing.", true);
+        syncReviewRowFromSegment(row);
+        return false;
+      }
+      return true;
+    };
+
     const handleReviewStartEdited = async (row) => {
       const startInput = row.querySelector("[data-review-start]");
       const endInput = row.querySelector("[data-review-end]");
@@ -27258,6 +27436,13 @@ function openBuilder(node) {
       const rowIndex = rows.indexOf(row);
       const prevRow = rows[rowIndex - 1] || null;
       const segment = liveReviewSegmentForRow(row);
+      const neighbors = isSingleScene ? singleReviewTimingNeighbors(row) : null;
+      if (!canEditSingleReviewTiming(row, [segment, neighbors?.previous])) return;
+      if (neighbors?.previous && start < Number(neighbors.previous.start || 0) + 0.05) {
+        toast("Start must leave time for the previous scene. Use Open All Scenes to merge scenes.", true);
+        syncReviewRowFromSegment(row);
+        return;
+      }
       if (segment) {
         segment.start = Math.max(0, start);
         segment.end = Math.max(segment.start + 0.05, end);
@@ -27268,14 +27453,7 @@ function openBuilder(node) {
         syncReviewRowFromSegment(prevRow);
         await maybeWarnShortReviewScene(prevRow, prevRow, row, "Do you want to merge that previous scene with this scene instead?");
       } else if (isSingleScene) {
-        const allSorted = [...state.segments].sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
-        const segIdx = allSorted.findIndex((item) => item.id === segment?.id);
-        if (segIdx > 0) {
-          const prevSegment = allSorted[segIdx - 1];
-          if (prevSegment) {
-            prevSegment.end = Math.max(Number(prevSegment.start || 0) + 0.05, start);
-          }
-        }
+        if (neighbors.previous) neighbors.previous.end = Math.max(0, start);
       }
       syncReviewRowFromSegment(row);
       state.duration = timelineDuration();
@@ -27298,6 +27476,16 @@ function openBuilder(node) {
         : Number(row.dataset.reviewLastEnd || start);
       const delta = end - previousEnd;
       const segment = liveReviewSegmentForRow(row);
+      const neighbors = isSingleScene ? singleReviewTimingNeighbors(row) : null;
+      const following = neighbors?.following || [];
+      const affected = timingModeSelect.value === "ripple" ? following : following.slice(0, 1);
+      if (!canEditSingleReviewTiming(row, [segment, ...affected])) return;
+      if (isSingleScene && timingModeSelect.value !== "ripple" && following[0]
+        && end > Number(following[0].end || 0) - 0.05) {
+        toast("End must leave time for the next scene. Use Open All Scenes to merge scenes.", true);
+        syncReviewRowFromSegment(row);
+        return;
+      }
       if (segment) {
         segment.start = Math.max(0, start);
         segment.end = Math.max(segment.start + 0.05, end);
@@ -27310,14 +27498,9 @@ function openBuilder(node) {
         if (nextRow) {
           shiftReviewRowsAfter(row, delta);
         } else if (isSingleScene) {
-          const allSorted = [...state.segments].sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
-          const segIdx = allSorted.findIndex((item) => item.id === segment?.id);
-          if (segIdx >= 0) {
-            for (let i = segIdx + 1; i < allSorted.length; i++) {
-              const nextSeg = allSorted[i];
-              nextSeg.start = Math.max(0, Number(nextSeg.start || 0) + delta);
-              nextSeg.end = Math.max(nextSeg.start + 0.05, Number(nextSeg.end || nextSeg.start + 0.05) + delta);
-            }
+          for (const nextSeg of following) {
+            nextSeg.start = Math.max(0, Number(nextSeg.start || 0) + delta);
+            nextSeg.end = Math.max(nextSeg.start + 0.05, Number(nextSeg.end || nextSeg.start + 0.05) + delta);
           }
         }
         state.duration = timelineDuration();
@@ -27334,15 +27517,7 @@ function openBuilder(node) {
         syncReviewRowFromSegment(nextRow);
         await maybeWarnShortReviewScene(nextRow, row, nextRow, "Do you want to merge it with the scene you just extended?");
       } else if (isSingleScene) {
-        const allSorted = [...state.segments].sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
-        const segIdx = allSorted.findIndex((item) => item.id === segment?.id);
-        if (segIdx >= 0 && segIdx < allSorted.length - 1) {
-          const nextSegment = allSorted[segIdx + 1];
-          if (nextSegment) {
-            nextSegment.start = end;
-            nextSegment.end = Math.max(nextSegment.start + 0.05, Number(nextSegment.end || nextSegment.start + 0.05));
-          }
-        }
+        if (following[0]) following[0].start = end;
       }
       state.duration = timelineDuration();
       syncInspector();
@@ -27484,6 +27659,7 @@ function openBuilder(node) {
     };
 
     const splitReviewRowAtPlayhead = async (row, segment) => {
+      if (!canEditSingleReviewTiming(row, [segment])) return;
       const segmentStart = Number(segment.start || 0);
       const segmentEnd = Number(segment.end || 0);
       const splitTime = Math.max(segmentStart, Math.min(segmentEnd, Number(reviewAudio?.currentTime || currentGlobalTime() || 0)));
@@ -27853,6 +28029,7 @@ function openBuilder(node) {
       moveLastWord.dataset.reviewMoveLastWord = "1";
       moveLastWord.title = "Move only this scene's final lyric word to the beginning of the next scene. Use Save Lines afterward to synchronize the timeline, cue maps, and lyric note files.";
       moveLastWord.disabled = index >= scenes.length - 1;
+      if (isSingleScene) moveLastWord.title = "Open All Scenes to move a word between neighboring scene cards.";
       play.style.padding = "7px 8px";
       playFrom.style.padding = "7px 8px";
       select.style.padding = "7px 8px";
@@ -27890,17 +28067,25 @@ function openBuilder(node) {
         focusRow.querySelector("[data-review-lyric-text]")?.focus({ preventScroll: true });
       });
     }
+    activeLyricReviewBackdrop = backdrop;
     const closeModal = () => {
       clearReviewStopGuards();
       reviewAudio.pause();
       backdrop.remove();
+      if (activeLyricReviewBackdrop === backdrop) activeLyricReviewBackdrop = null;
     };
     close.onclick = closeModal;
     cancel.onclick = closeModal;
     backdrop.addEventListener("pointerdown", (event) => {
       if (event.target === backdrop) closeModal();
     });
-    save.onclick = async () => {
+    const navigateReviewScene = async (nextOptions) => {
+      if (!(await saveReviewChanges(true)) || !backdrop.isConnected) return;
+      closeModal();
+      openLyricReviewModal(nextOptions);
+    };
+    const saveReviewChanges = async (quiet = false) => {
+      if (save.disabled) return false;
       try {
         save.disabled = true;
         pushHistory();
@@ -27933,13 +28118,14 @@ function openBuilder(node) {
         render();
         await saveSession({ quiet: true, throwOnError: true });
         pendingReviewWordMoves.length = 0;
-        showInfoModal({
+        if (!quiet) showInfoModal({
           title: isSingleScene ? `${targetScene.label || "Scene"} Saved` : "Line Review Saved",
           lines: isSingleScene
             ? ["Scene lines, timing, performer labels, lip-sync flags, and location mapping were saved to the timeline."]
             : ["Lines, scene timing, performer labels, no-lip-sync/no-character flags, and location mapping were saved to the timeline."],
           confirmLabel: "OK",
         });
+        return true;
       } catch (error) {
         const message = String(error?.message || error);
         if (/image_history/i.test(message)) {
@@ -27949,19 +28135,20 @@ function openBuilder(node) {
             syncInspector();
             render();
             await saveSession({ quiet: true, throwOnError: true });
-            showInfoModal({
+            pendingReviewWordMoves.length = 0;
+            if (!quiet) showInfoModal({
               title: "Line Review Saved",
               lines: ["Lines, timing, performers, no-lip-sync/no-character flags, and locations were saved. A stale media history value was cleaned up automatically."],
               confirmLabel: "OK",
             });
-            return;
+            return true;
           } catch (retryError) {
             showInfoModal({
               title: "Line Review Save Error",
               lines: [String(retryError?.message || retryError)],
               confirmLabel: "OK",
             });
-            return;
+            return false;
           }
         }
         showInfoModal({
@@ -27969,10 +28156,12 @@ function openBuilder(node) {
           lines: [message],
           confirmLabel: "OK",
         });
+        return false;
       } finally {
         save.disabled = false;
       }
     };
+    save.onclick = () => saveReviewChanges();
   }
 
   function openLyricMappingWorkflowModal() {
@@ -38219,6 +38408,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.builderStoryLayer = normalizeBuilderStoryLayer(session.builder_story_layer || {});
       state.builderStoryboardDefaults = normalizeBuilderStoryboardDefaults(session.builder_storyboard_defaults || session.builderStoryboardDefaults || {});
       state.autoBuildPreparation = normalizeAutoBuildPreparation(session.auto_build_preparation || session.autoBuildPreparation || {});
+      resetBuilderETA();
       state.renderLogs = normalizeRenderLogs(session.render_logs);
       state.activeRenderLogId = session.active_render_log_id || state.renderLogs[state.renderLogs.length - 1]?.id || "";
       state.textGemmaRunner = session.text_gemma_runner || state.textGemmaRunner || "builtin";
@@ -44371,6 +44561,62 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       });
   }
 
+  async function saveStoryboardPromptFromTimeline(projectFolder, fresh, promptValue) {
+    const { storyboard } = await postJson("/vrgdg/storyboard/load", { project_folder: projectFolder });
+    const scenes = Array.isArray(storyboard.scenes) ? storyboard.scenes.slice() : [];
+    let index = scenes.findIndex((scene) => scene.id === fresh.id);
+    if (index < 0) index = scenes.findIndex((scene) => Number(scene.scene_number) === Number(fresh.scene_number));
+    const prompt = { video_prompt: promptValue, video_prompt_origin: "manual" };
+    if (index >= 0) scenes[index] = { ...scenes[index], ...prompt };
+    else scenes.push({ ...fresh, ...prompt });
+    await postJson("/vrgdg/storyboard/save", {
+      project_folder: projectFolder,
+      storyboard: { ...storyboard, scenes },
+    });
+  }
+
+  async function saveTimelinePrompt(kind) {
+    const segment = activeSegment();
+    if (!segment || savingTimelinePrompt) return;
+    const miniMax = kind === "minimax";
+    const input = miniMax ? miniMaxPrompt : i2vPrompt;
+    const button = miniMax ? saveMiniMaxPromptButton : saveI2VPromptButton;
+    const snapshots = miniMax ? savedMiniMaxPrompts : savedI2VPrompts;
+    const promptValue = input.value || "";
+    const projectFolder = activeProjectFolderForSave();
+    if (!projectFolder) {
+      toast("Save the project before saving a scene prompt.", true);
+      return;
+    }
+    segment[miniMax ? "minimax_h3_prompt" : "i2v_prompt"] = promptValue;
+    segment[miniMax ? "minimax_h3_prompt_origin" : "i2v_prompt_origin"] = "manual";
+    const fresh = storyboardScenePayload().find((scene) => scene.id === segment.id);
+    if (!fresh) {
+      toast("Could not find this scene in the project storyboard inputs.", true);
+      return;
+    }
+    savingTimelinePrompt = true;
+    updateI2VPromptSaveButtonState();
+    updateMiniMaxPromptSaveButtonState();
+    button.textContent = "Saving...";
+    try {
+      await saveSession({ quiet: true, throwOnError: true });
+      await saveStoryboardPromptFromTimeline(projectFolder, fresh, promptValue);
+      snapshots.set(segment, promptValue);
+      toast("Prompt saved to scene and storyboard.");
+    } catch (error) {
+      toast(String(error?.message || error), true);
+    } finally {
+      savingTimelinePrompt = false;
+      button.textContent = "Save Updated Prompt";
+      updateI2VPromptSaveButtonState();
+      updateMiniMaxPromptSaveButtonState();
+    }
+  }
+
+  saveI2VPromptButton.addEventListener("click", () => saveTimelinePrompt("i2v"));
+  saveMiniMaxPromptButton.addEventListener("click", () => saveTimelinePrompt("minimax"));
+
   function wizardStoryboardState(scenes, options = {}) {
     const defaults = normalizeBuilderStoryboardDefaults(state.builderStoryboardDefaults);
     const videoMode = options.videoMode || currentVideoMode();
@@ -47372,9 +47618,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       : null;
     progress?.set(`${batchLabel}Preparing exact MiniMax H3 scene timing and ${builtInAudio ? "native audio generation" : "input audio"}...`, pct(8));
 
-    const latentContextFrames = [16, 22, 39, 56].includes(Number(segment?.minimax_h3_latent_context_frames))
-      ? Number(segment.minimax_h3_latent_context_frames)
-      : (miniMaxSettings.latent_context_frames || 22);
+    const latentContextFrames = miniMaxSettings.latent_context_frames;
     try {
       const payload = {
         project_folder: projectFolder,
@@ -47718,6 +47962,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         scene_number: slotNumber,
         start: Number(postTrim.start || 0),
         duration: finalDuration,
+        frames: Number(postTrim.frames || 0),
         label: "minimax_exact",
         mark_as_audio_video: true,
       }, 240000);
@@ -47963,6 +48208,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       existingVideoAction = "overwrite";
     }
     let progress = null;
+    const etaLog = startSingleSceneETA(renderTarget);
+    let etaStatus = "failed";
     try {
       state.batchCancelled = false;
       setButtonGroupState(createSceneVideoButtons, { disabled: true, text: "Creating..." });
@@ -47978,15 +48225,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         existingVideoAction,
       });
       await runClearMemoryWorkflowQuiet(progress, `${sceneDisplayName(renderTarget, renderIndex)} render`, 98);
+      etaStatus = "complete";
       progress.close(900);
       toast(`Scene video ready:\n${videoPath}`);
     } catch (error) {
       const stopped = /stopped by user/i.test(String(error?.message || error));
+      etaStatus = stopped ? "canceled" : "failed";
       renderTarget.video_status = stopped ? "none" : "error";
       progress?.set(stopped ? "Scene video creation stopped by user." : `Error:\n${String(error?.message || error)}`, 100);
       toast(stopped ? "Scene video creation stopped." : String(error?.message || error), !stopped);
       renderList();
     } finally {
+      await finishSingleSceneETA(etaLog, etaStatus);
       setButtonGroupState(createSceneVideoButtons, { disabled: false, text: "Create Scene Video" });
       setButtonGroupState(gemmaThenCreateVideoButtons, { disabled: false });
     }
@@ -48039,6 +48289,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
 
     let progress = null;
+    const etaLog = startSingleSceneETA(renderTarget);
+    let etaStatus = "failed";
     try {
       state.batchCancelled = false;
       setButtonGroupState(miniMaxSceneVideoButtons, { disabled: true, text: "Creating MiniMax H3..." });
@@ -48047,15 +48299,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         existingVideoAction,
       });
       await runClearMemoryWorkflowQuiet(progress, `${sceneDisplayName(renderTarget, renderIndex)} render`, 98);
+      etaStatus = "complete";
       progress.close(900);
       toast(`MiniMax H3 scene video ready:\n${videoPath}`);
     } catch (error) {
       const stopped = /stopped by user/i.test(String(error?.message || error));
+      etaStatus = stopped ? "canceled" : "failed";
       renderTarget.video_status = stopped ? "none" : "error";
       progress?.set(stopped ? "MiniMax H3 scene video creation stopped by user." : `Error:\n${String(error?.message || error)}`, 100);
       toast(stopped ? "MiniMax H3 scene video creation stopped." : String(error?.message || error), !stopped);
       renderList();
     } finally {
+      await finishSingleSceneETA(etaLog, etaStatus);
       setButtonGroupState(miniMaxSceneVideoButtons, { disabled: false, text: "Create MiniMax H3 Scene Video" });
     }
   }
@@ -48353,6 +48608,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       final_video_path: "",
       error: "",
     };
+    startBuilderETA(renderLog);
     upsertRenderLog(renderLog);
     try {
       state.batchCancelled = false;
@@ -48373,6 +48629,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const scenes = batchTargetItems(sceneScope)
         .filter(({ segment }) => forceVideos || !String(selectedSegmentVideoPath(segment) || "").trim());
       const requestedSceneCount = batchTargetItems(sceneScope).length;
+      renderLog.eta_plan = scenes.map(({ segment }) => renderETAScene(segment));
+      renderLog.eta_video_duration = batchTargetItems(sceneScope).reduce((sum, { segment }) => sum + Math.max(0, Number(segment.end) - Number(segment.start)), 0);
       renderLog.target_scene_count = scenes.length;
       renderLog.skipped_existing_count = Math.max(0, requestedSceneCount - scenes.length);
       if (!scenes.length) {
@@ -48407,6 +48665,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         const sceneLabel = sceneDisplayName(segment, sceneIndex);
         const sceneStartedMs = Date.now();
         currentSceneLog = {
+          ...renderETAScene(segment),
           scene_id: String(segment.id || ""),
           scene_number: sceneSlotNumber(segment),
           timeline_index: sceneIndex,
@@ -51155,6 +51414,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     state.builderStoryReferenceImages = [];
     state.builderStoryReferenceNotes = "";
     state.renderLogs = [];
+    resetBuilderETA();
     state.activeRenderLogId = "";
     state.useVrgdgTextContext = true;
     state.projectFolder = cleanProjectFolder;
@@ -58914,6 +59174,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     miniMaxAudioMode,
     miniMaxContinuityMode,
     miniMaxContinuityPromptFromLastFrame.input,
+    miniMaxLatentContextFrames,
     miniMaxMegapixels,
     miniMaxSeed,
     miniMaxWarmupFrames,

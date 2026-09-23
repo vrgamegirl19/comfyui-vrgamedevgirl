@@ -3310,6 +3310,8 @@ async function copyTextToClipboard(text) {
 
 function openStoryboardBuilder(payload = {}) {
   const focusSceneId = String(payload.focusSceneId || payload.focus_scene_id || "").trim();
+  if (focusSceneId && document.querySelector("[data-vrgdg-focused-storyboard]")) return;
+  let focusedSceneOnly = Boolean(focusSceneId);
   const projectFolder = String(payload.projectFolder || payload.project_folder || "").trim();
   const incomingProjectVideoEngine = String(payload.projectVideoEngine || payload.project_video_engine || "").trim();
   const hasIncomingProjectVideoEngine = Boolean(incomingProjectVideoEngine);
@@ -3467,9 +3469,24 @@ function openStoryboardBuilder(payload = {}) {
       character_guidance: storyboardSpeedGuidance(state.characterMotionSpeed, "character"),
     },
   });
+  const getSelectedScenes = () => {
+    if (!state.selected || !state.selected.size) return [];
+    return state.scenes.filter((scene) => state.selected.has(scene.id));
+  };
+  const getSelectedScene = () => {
+    const scenes = getSelectedScenes();
+    return scenes.length === 1 ? scenes[0] : null;
+  };
   const promptRunnerGenericName = () => promptRunnerName();
   const promptAllButtonText = () => {
     const kind = state.mode === "image_to_video_prep" ? "Video" : "Image";
+    const selectedScenes = getSelectedScenes();
+    if (selectedScenes.length === 1) {
+      return `${promptRunnerName()} ${kind}`;
+    }
+    if (selectedScenes.length > 1) {
+      return `${promptRunnerName()} ${kind} (${selectedScenes.length})`;
+    }
     return `${promptRunnerName()} ${kind} All`;
   };
 
@@ -4255,7 +4272,47 @@ function openStoryboardBuilder(payload = {}) {
   shell.append(header, note, middleContent, footer);
   backdrop.append(shell);
   document.body.append(backdrop);
-  if (focusSceneId) backdrop.style.display = "none";
+  if (focusedSceneOnly) {
+    backdrop.dataset.vrgdgFocusedStoryboard = focusSceneId;
+    backdrop.style.display = "none";
+  }
+
+  const refreshActionButtons = () => {
+    const selectedScenes = getSelectedScenes();
+    const isVideoPrepMode = state.mode === "image_to_video_prep";
+    const kind = isVideoPrepMode ? "Video" : "Image";
+    const runnerName = promptRunnerName();
+    const count = selectedScenes.length;
+    if (count > 0) {
+      if (count === 1) {
+        const sceneLabel = selectedScenes[0].label || `Scene ${selectedScenes[0].scene_number || ""}`.trim();
+        replaceBeatsButton.textContent = "Replace Scene Beat";
+        replaceBeatsButton.title = `Replace the scene beat in selected ${sceneLabel} only.`;
+        gptButton.textContent = `GPT ${kind}`;
+        gptButton.title = `Copy GPT JSON for selected ${sceneLabel} only and open GPT.`;
+        gemmaAllButton.textContent = `${runnerName} ${kind}`;
+        gemmaAllButton.title = `Create ${kind.toLowerCase()} prompt for selected ${sceneLabel} only with ${runnerName}.`;
+      } else {
+        replaceBeatsButton.textContent = `Replace Scene Beats (${count})`;
+        replaceBeatsButton.title = `Replace the scene beats in ${count} selected scenes only.`;
+        gptButton.textContent = `GPT ${kind} (${count})`;
+        gptButton.title = `Copy GPT JSON for ${count} selected scenes only and open GPT.`;
+        gemmaAllButton.textContent = `${runnerName} ${kind} (${count})`;
+        gemmaAllButton.title = `Create ${kind.toLowerCase()} prompts for ${count} selected scenes only with ${runnerName}.`;
+      }
+    } else {
+      replaceBeatsButton.textContent = "Replace All Scene Beats";
+      replaceBeatsButton.title = "Replace all existing scene story beats using Gemma or your active LLM runner.";
+      gptButton.textContent = isVideoPrepMode ? "GPT Video All" : "GPT Image All";
+      gptButton.title = isVideoPrepMode
+        ? "Copy all Storyboard scene-card inputs as JSON and open the video prompt GPT."
+        : "Copy all Image Prep scene-card inputs as JSON and open the Krea 2 text-to-image prompt GPT.";
+      gemmaAllButton.textContent = `${runnerName} ${kind} All`;
+      gemmaAllButton.title = isVideoPrepMode
+        ? "Choose whether to create only missing video prompts or redo all visible scenes. If a scene has an image path, local vision uses it as guidance."
+        : "Create text-to-image prompts for the visible scenes with the selected LLM runner.";
+    }
+  };
 
   const setMode = (mode) => {
     state.mode = mode;
@@ -4274,14 +4331,7 @@ function openStoryboardBuilder(payload = {}) {
     note.textContent = mode === "image_to_video_prep"
       ? "Video Prep uses existing scene images when available, plus subjects, locations, lyrics, story beats, and motion notes to create video prompts."
       : "Image Prep creates text-to-image prompts from subjects, locations, lyrics, story beats, shot direction, and the story layer.";
-    gemmaAllButton.textContent = promptAllButtonText();
-    gemmaAllButton.title = mode === "image_to_video_prep"
-      ? "Choose whether to create only missing video prompts or redo all visible scenes. If a scene has an image path, local vision uses it as guidance."
-      : "Create text-to-image prompts for the visible scenes with the selected LLM runner.";
-    gptButton.textContent = mode === "image_to_video_prep" ? "GPT Video All" : "GPT Image All";
-    gptButton.title = mode === "image_to_video_prep"
-      ? "Copy all Storyboard scene-card inputs as JSON and open the video prompt GPT."
-      : "Copy all Image Prep scene-card inputs as JSON and open the Krea 2 text-to-image prompt GPT.";
+    refreshActionButtons();
     importImagePromptsButton.style.display = isVideoPrepMode ? "none" : "";
     imageShotControls.style.display = isVideoPrepMode ? "none" : "flex";
     imageShotInfo.style.display = isVideoPrepMode ? "none" : "";
@@ -4415,6 +4465,7 @@ function openStoryboardBuilder(payload = {}) {
     storyLayerPanel.setSummary(usesFilmPlanningProfile
       ? `${state.storyLayer.enabled === false ? "Off" : "On"} · ${isIdLoraMode ? "ID-LoRA dialogue story" : (fullyCustom ? "MiniMax fully custom film" : "MiniMax guided film")} · ${beatCount}/${state.scenes.length} beats${hasBrief ? " · brief" : ""}${hasArc ? " · premise" : ""}${filmPlannerVisible ? " · starter scenes" : ""}`
       : `${state.storyLayer.enabled === false ? "Off" : "On"} · lyric ${lyricStrength}/10 · ${beatCount}/${state.scenes.length} beats · ${sectionCount}/${state.scenes.length} sections${hasBrief ? " · brief" : ""}${hasArc ? " · user arc" : ""}`);
+    refreshActionButtons();
   };
 
   const refreshCameraFlowInfo = () => {
@@ -6477,7 +6528,7 @@ function openStoryboardBuilder(payload = {}) {
     document.body.append(editorBackdrop);
     closeEditor.onclick = () => {
       editorBackdrop.remove();
-      if (focusSceneId) backdrop.remove();
+      if (focusedSceneOnly) backdrop.remove();
     };
     const refreshShotPresetForVideoType = () => {
       const type = videoPromptType.value || "i2v";
@@ -6698,7 +6749,7 @@ function openStoryboardBuilder(payload = {}) {
     };
     cancel.onclick = () => {
       editorBackdrop.remove();
-      if (focusSceneId) backdrop.remove();
+      if (focusedSceneOnly) backdrop.remove();
     };
     gemma.onclick = async () => {
       const previous = gemma.textContent;
@@ -6745,16 +6796,25 @@ function openStoryboardBuilder(payload = {}) {
       }
     };
     apply.onclick = async () => {
-      saveEditorFieldsToScene();
-      syncReferenceMappingsToVideoCreator();
-      syncStoryLayerFromInputs({ notify: true });
-      editorBackdrop.remove();
-      if (focusSceneId) {
-        await saveStoryboard();
-        backdrop.remove();
-        return;
+      if (apply.disabled) return;
+      apply.disabled = true;
+      closeEditor.disabled = true;
+      cancel.disabled = true;
+      try {
+        saveEditorFieldsToScene();
+        if (focusedSceneOnly) await saveStoryboard({ throwOnError: true });
+        syncReferenceMappingsToVideoCreator();
+        syncStoryLayerFromInputs({ notify: true });
+        editorBackdrop.remove();
+        if (focusedSceneOnly) backdrop.remove();
+        else renderTable();
+      } catch (error) {
+        createToast(String(error?.message || error), true);
+      } finally {
+        apply.disabled = false;
+        closeEditor.disabled = false;
+        cancel.disabled = false;
       }
-      renderTable();
     };
   };
 
@@ -6763,7 +6823,7 @@ function openStoryboardBuilder(payload = {}) {
     const mode = state.mode;
     const head = mode === "image_to_video_prep"
       ? ["", "#", "Image", "Scene / Lyrics", "Motion Notes", "Video Prompt", "Subjects", "Setting", "Shot Type", "Status", "Actions"]
-      : ["#", "Reference", "Scene / Lyrics", "Prompt Summary", "Subjects", "Setting", "Shot Type", "Prompt Status", "Actions"];
+      : ["", "#", "Reference", "Scene / Lyrics", "Prompt Summary", "Subjects", "Setting", "Shot Type", "Prompt Status", "Actions"];
     const table = document.createElement("table");
     table.style.cssText = mode === "image_to_video_prep"
       ? "width:100%;border-collapse:collapse;table-layout:fixed;min-width:1567px;font-size:13px;"
@@ -6778,7 +6838,7 @@ function openStoryboardBuilder(payload = {}) {
       table.appendChild(colgroup);
     }
     const thead = document.createElement("thead");
-    thead.innerHTML = `<tr>${head.map((item) => `<th style="position:sticky;top:0;background:#111827;border-bottom:1px solid #334155;color:#cffafe;text-align:${item === "Status" ? "center" : "left"};padding:${mode === "image_to_video_prep" ? "11px 9px" : "13px"};font-weight:900;">${escapeHtml(item)}</th>`).join("")}</tr>`;
+    thead.innerHTML = `<tr>${head.map((item) => `<th style="position:sticky;top:0;background:#111827;border-bottom:1px solid #334155;color:#cffafe;text-align:${item === "Status" || item === "" ? "center" : "left"};padding:${mode === "image_to_video_prep" ? "11px 9px" : "13px"};font-weight:900;">${item === "" ? `<input type="checkbox" data-action="select-all" title="Select or deselect all visible scenes" ${rows.length && rows.every((r) => state.selected.has(r.id)) ? "checked" : ""}>` : escapeHtml(item)}</th>`).join("")}</tr>`;
     const tbody = document.createElement("tbody");
     for (const scene of rows) {
       const tr = document.createElement("tr");
@@ -6834,6 +6894,7 @@ function openStoryboardBuilder(payload = {}) {
         `;
       } else {
         tr.innerHTML = `
+          <td style="padding:13px;text-align:center;"><input type="checkbox" data-action="select" ${state.selected.has(scene.id) ? "checked" : ""}></td>
           <td style="padding:13px;font-weight:900;font-size:17px;">${String(scene.scene_number).padStart(2, "0")}</td>
           <td style="padding:13px;">${imageCell}</td>
           <td style="padding:13px;max-width:220px;"><strong style="color:#f8fafc;">${escapeHtml(scene.label)}</strong><br><span style="color:#cbd5e1;">${escapeHtml(truncate(scene.lyrics, 95))}</span>${storyPreview}</td>
@@ -6878,18 +6939,27 @@ function openStoryboardBuilder(payload = {}) {
       });
       tbody.append(tr);
     }
+    thead.querySelector('[data-action="select-all"]')?.addEventListener("change", (event) => {
+      if (event.target.checked) {
+        for (const row of rows) state.selected.add(row.id);
+      } else {
+        for (const row of rows) state.selected.delete(row.id);
+      }
+      renderTable();
+    });
     table.append(thead, tbody);
     tableWrap.replaceChildren(table);
     const readyCount = state.scenes.filter((scene) => String(scene.image_prompt || scene.video_prompt || "").trim()).length;
     const imageCount = state.scenes.filter((scene) => String(scene.image_path || "").trim()).length;
     stats.textContent = `${state.scenes.length} scenes  |  ${imageCount} images linked  |  ${readyCount} scenes with prompts  |  ${state.selected.size} selected`;
     refreshSetupPanelSummaries();
+    refreshActionButtons();
   }
 
   async function loadExisting() {
     if (!state.projectFolder) {
       renderTable();
-      return;
+      return true;
     }
     try {
       const incomingScenes = state.scenes.map((scene) => normalizeScene(scene));
@@ -7055,15 +7125,19 @@ function openStoryboardBuilder(payload = {}) {
       refreshFacialInfo();
       setMode(state.mode);
       syncReferenceMappingsToVideoCreator();
+      return true;
     } catch (error) {
       createToast(String(error?.message || error), true);
       renderTable();
+      return false;
     }
   }
 
-  async function saveStoryboard() {
+  async function saveStoryboard({ throwOnError = false } = {}) {
     if (!state.projectFolder) {
-      createToast("Save the AI Video Builder project first so Storyboard Builder knows where to write files.", true);
+      const message = "Save the AI Video Builder project first so Storyboard Builder knows where to write files.";
+      if (throwOnError) throw new Error(message);
+      createToast(message, true);
       return;
     }
     state.saving = true;
@@ -7084,6 +7158,7 @@ function openStoryboardBuilder(payload = {}) {
       syncStoryLayerFromInputs({ notify: false });
       createToast(`Storyboard saved:\n${data.storyboard?.path || ""}`);
     } catch (error) {
+      if (throwOnError) throw error;
       createToast(String(error?.message || error), true);
     } finally {
       save.disabled = false;
@@ -7127,6 +7202,21 @@ function openStoryboardBuilder(payload = {}) {
   }
 
   async function copyStoryboardForGpt() {
+    const selectedScenes = getSelectedScenes();
+    if (selectedScenes.length > 0) {
+      try {
+        const payload = storyboardGptPayload(state, selectedScenes);
+        const text = JSON.stringify(payload, null, 2);
+        await copyTextToClipboard(text);
+        openStoryboardGptUrl(payload);
+        createToast(selectedScenes.length === 1
+          ? `Copied GPT JSON for ${selectedScenes[0].label || `Scene ${selectedScenes[0].scene_number}`} and opened GPT.`
+          : `Copied GPT JSON for ${selectedScenes.length} selected scenes and opened GPT.`);
+      } catch (error) {
+        createToast(`Could not copy GPT JSON:\n${String(error?.message || error)}`, true);
+      }
+      return;
+    }
     try {
       const payload = storyboardGptPayload(state);
       const text = JSON.stringify(payload, null, 2);
@@ -7884,6 +7974,54 @@ function openStoryboardBuilder(payload = {}) {
   }
 
   async function startAllPromptsWithGemma() {
+    const selectedScenes = getSelectedScenes();
+    if (selectedScenes.length > 0) {
+      const runnerName = promptRunnerName();
+      const genericName = promptRunnerGenericName();
+      const videoMode = state.mode === "image_to_video_prep";
+      const promptKind = videoMode ? "video" : "image";
+      const progress = createStoryboardProgressWindow(`Storyboard ${runnerName}`);
+      let created = 0;
+      const failures = [];
+      const keepLoaded = Boolean(keepGemmaLoadedInput.checked);
+      const previousText = gemmaAllButton.textContent;
+      gemmaAllButton.disabled = true;
+      try {
+        progress.set(`Starting Storyboard ${runnerName} for ${selectedScenes.length} selected scene${selectedScenes.length === 1 ? "" : "s"}...\nMode: ${videoMode ? "Video Prep" : "Image Prep"}\nKeep local LLM loaded: ${keepLoaded ? "yes" : "no"}`, 5);
+        for (let index = 0; index < selectedScenes.length; index += 1) {
+          gemmaAllButton.textContent = `${runnerName} ${index + 1}/${selectedScenes.length}`;
+          const unloadAfter = keepLoaded ? index === selectedScenes.length - 1 : true;
+          const base = 8 + Math.round((index / Math.max(1, selectedScenes.length)) * 84);
+          const label = `${runnerName} ${index + 1}/${selectedScenes.length}: ${selectedScenes[index].label || `Scene ${selectedScenes[index].scene_number || index + 1}`}`;
+          try {
+            progress.set(`${label}\nCreating storyboard ${promptKind} prompt...`, base);
+            await createScenePromptForActiveMode(selectedScenes[index], { quiet: true, unloadAfter, progress, progressPercent: base, progressLabel: label });
+            created += 1;
+          } catch (error) {
+            if (!isRecoverableStoryboardBatchError(error)) throw error;
+            failures.push({ scene: selectedScenes[index], error: String(error?.message || error) });
+            progress.set(`${label} skipped. Continuing with remaining selected scenes...`, base);
+          }
+        }
+        progress.set("Saving storyboard prompts...", 96);
+        await saveStoryboard();
+        progress.set(`${runnerName} complete.\nCreated ${created} storyboard ${promptKind} prompt${created === 1 ? "" : "s"}${failures.length ? `. ${failures.length} scene${failures.length === 1 ? " was" : "s were"} skipped` : ""}.`, 100);
+        progress.close(1800);
+        createToast(`${genericName} created ${created} storyboard ${promptKind} prompt${created === 1 ? "" : "s"}${failures.length ? ` with ${failures.length} skipped scene${failures.length === 1 ? "" : "s"}` : ""}.`, Boolean(failures.length));
+      } catch (error) {
+        if (created > 0) {
+          progress.set(`Saving ${created} completed prompt${created === 1 ? "" : "s"} before stopping...`, 96);
+          await saveStoryboard();
+        }
+        progress.set(`${runnerName} stopped after ${created}/${selectedScenes.length} scenes:\n${String(error?.message || error)}`, 100);
+        createToast(`${runnerName} stopped after ${created}/${selectedScenes.length} scenes:\n${String(error?.message || error)}`, true);
+      } finally {
+        gemmaAllButton.disabled = false;
+        gemmaAllButton.textContent = previousText;
+        renderTable();
+      }
+      return;
+    }
     const scenes = currentRows();
     if (!scenes.length) {
       createToast("No storyboard scenes found.", true);
@@ -8155,8 +8293,57 @@ function openStoryboardBuilder(payload = {}) {
   songStoryBriefInput.addEventListener("change", () => syncStoryLayerFromInputs({ notify: true }));
   createStoryArcButton.onclick = createStoryArcWithGemma;
   createStoryBriefButton.onclick = createStoryBriefWithGemma;
+  const handleReplaceSceneBeats = async () => {
+    const selectedScenes = getSelectedScenes();
+    if (selectedScenes.length > 0) {
+      const isSingle = selectedScenes.length === 1;
+      const message = isSingle
+        ? "This will replace the scene beat in selected scene only."
+        : `This will replace the scene beats in ${selectedScenes.length} selected scenes only.`;
+      const confirmed = window.confirm(message);
+      if (!confirmed) return;
+      const runnerName = promptRunnerName();
+      const progress = createStoryboardProgressWindow(`Replace Scene Beats — ${runnerName}`);
+      let created = 0;
+      const failures = [];
+      try {
+        progress.set(`Replacing scene beats for ${selectedScenes.length} selected scene${isSingle ? "" : "s"}...`, 5);
+        for (let index = 0; index < selectedScenes.length; index += 1) {
+          const scene = selectedScenes[index];
+          const sceneLabel = scene.label || `Scene ${scene.scene_number || index + 1}`;
+          const base = 8 + Math.round((index / Math.max(1, selectedScenes.length)) * 84);
+          try {
+            await createSceneBeatWithGemma(scene, {
+              quiet: true,
+              unloadAfter: index === selectedScenes.length - 1,
+              progress,
+              progressPercent: base,
+              progressLabel: `Scene Beat ${index + 1}/${selectedScenes.length}: ${sceneLabel}`,
+            });
+            created += 1;
+          } catch (error) {
+            if (!isRecoverableStoryboardBatchError(error)) throw error;
+            failures.push({ scene, error: String(error?.message || error) });
+            progress.set(`Scene Beat ${index + 1}/${selectedScenes.length} skipped. Continuing...`, base);
+          }
+        }
+        progress.set("Saving story beats...", 96);
+        await saveStoryboard();
+        progress.set(`Scene beats complete.\nReplaced ${created} story beat${created === 1 ? "" : "s"}.${failures.length ? ` ${failures.length} scene${failures.length === 1 ? " was" : "s were"} skipped.` : ""}`, 100);
+        progress.close(1600);
+        createToast(`Replaced ${created} scene story beat${created === 1 ? "" : "s"}${failures.length ? ` with ${failures.length} skipped scene${failures.length === 1 ? "" : "s"}` : ""}.`, Boolean(failures.length));
+      } catch (error) {
+        progress.set(`Replace scene beats stopped after ${created}/${selectedScenes.length}:\n${String(error?.message || error)}`, 100);
+        createToast(`Replace scene beats stopped after ${created}/${selectedScenes.length}:\n${String(error?.message || error)}`, true);
+      } finally {
+        renderTable();
+      }
+      return;
+    }
+    await createAllSceneBeatsWithGemma({ overwrite: true });
+  };
   createMissingBeatsButton.onclick = () => createAllSceneBeatsWithGemma({ overwrite: false });
-  replaceBeatsButton.onclick = () => createAllSceneBeatsWithGemma({ overwrite: true });
+  replaceBeatsButton.onclick = handleReplaceSceneBeats;
   detectSectionsButton.onclick = detectLyricSections;
   openMiniMaxScriptMapperButton.onclick = openMiniMaxScriptMapper;
   planDialogueScenesButton.onclick = planFilmDialogueScenesWithLlm;
@@ -8187,12 +8374,14 @@ function openStoryboardBuilder(payload = {}) {
   refreshCharacterSpeedInfo();
   refreshFacialInfo();
   setMode(state.mode || "storyboard_prompts");
-  loadExisting().then(() => {
+  loadExisting().then((loaded) => {
     if (!focusSceneId) return;
-    const target = state.scenes.find((scene) => scene.id === focusSceneId);
+    const target = loaded && state.scenes.find((scene) => scene.id === focusSceneId);
     if (target) {
       openSceneEditor(target);
     } else {
+      focusedSceneOnly = false;
+      delete backdrop.dataset.vrgdgFocusedStoryboard;
       backdrop.style.display = "";
     }
   });
