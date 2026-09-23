@@ -5,6 +5,7 @@ dropdown behavior of ComfyUI's native latent-upscale loaders.
 """
 
 import importlib.util
+import inspect
 import os
 import sys
 
@@ -105,8 +106,20 @@ def _load_model(model_name, device_name, precision):
     if cached is not None:
         return cached
 
+    dtype = {
+        "fp32": torch.float32,
+        "fp16": torch.float16,
+        "bf16": torch.bfloat16,
+    }[precision]
     backend = _load_backend()
-    raw_state = backend._load_raw_sd(path)
+    # The upstream backend's _load_raw_sd() historically took only `path` and
+    # returned CPU fp32 tensors; newer versions accept device/dtype so they
+    # can load straight onto the target device. Support both so an older
+    # install of the backend package still works.
+    if len(inspect.signature(backend._load_raw_sd).parameters) >= 3:
+        raw_state = backend._load_raw_sd(path, device, dtype)
+    else:
+        raw_state = backend._load_raw_sd(path)
     state = backend._extract_upscaler_sd(raw_state)
     config = backend._detect_arch(state)
     model = backend.LatentResizer3D(
@@ -120,11 +133,6 @@ def _load_model(model_name, device_name, precision):
         temporal_kernel=config["temporal_kernel"],
     )
     model.load_state_dict(state, strict=True)
-    dtype = {
-        "fp32": torch.float32,
-        "fp16": torch.float16,
-        "bf16": torch.bfloat16,
-    }[precision]
     model = model.to(device=device, dtype=dtype).eval()
     loaded = {
         "model": model,
