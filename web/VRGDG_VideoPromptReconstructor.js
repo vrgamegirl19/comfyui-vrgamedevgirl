@@ -3,18 +3,18 @@ import { app } from "../../../scripts/app.js";
 const NODE_NAME = "VRGDG_VideoPromptReconstructor";
 const API_RUNNER = "LLM API";
 const API_DEFAULTS = {
-  openai: "gpt-4o",
+  openai: "gpt-6-luna",
   anthropic: "claude-sonnet-4-6",
   google: "gemini-2.5-flash",
-  openrouter: "openai/gpt-4o",
+  openrouter: "openai/gpt-6-luna",
   grok: "grok-2-vision-1212",
 };
 
 const API_MODELS = {
-  openai: ["gpt-5.6-luna", "gpt-5.5", "gpt-4o", "gpt-4.1", "gpt-4.1-mini"],
+  openai: ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-luna", "gpt-5.5", "gpt-4o", "gpt-4.1", "gpt-4.1-mini"],
   anthropic: ["claude-sonnet-4-6", "claude-opus-4-8", "claude-3-5-sonnet-20241022"],
   google: ["gemini-3.5-flash", "gemini-2.5-pro", "gemini-2.5-flash"],
-  openrouter: ["openai/gpt-4o", "anthropic/claude-3.5-sonnet", "google/gemini-2.5-flash"],
+  openrouter: ["openai/gpt-6-astra", "openai/gpt-6-sol", "openai/gpt-6-luna", "openai/gpt-4o", "anthropic/claude-3.5-sonnet", "google/gemini-2.5-flash"],
   grok: ["grok-4.6", "grok-4.5", "grok-2-vision-1212"],
 };
 

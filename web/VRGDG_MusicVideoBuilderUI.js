@@ -54131,7 +54131,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const llmProviders = () => Array.isArray(state.llmApiChoices?.providers) ? state.llmApiChoices.providers : [];
     const providerById = (id) => llmProviders().find((item) => String(item.id || "") === String(id || ""));
     const populateApiModels = () => {
-      const provider = providerById(apiProvider.value) || llmProviders()[0] || { id: "openai", label: "OpenAI", models: ["gpt-4o"], default_model: "gpt-4o" };
+      const provider = providerById(apiProvider.value) || llmProviders()[0] || { id: "openai", label: "OpenAI", models: ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-4o"], default_model: "gpt-6-luna" };
       const models = Array.isArray(provider.models) && provider.models.length ? provider.models : [provider.default_model || ""].filter(Boolean);
       apiModel.innerHTML = "";
       models.forEach((modelId) => {
@@ -54144,7 +54144,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       apiModel.value = wanted && models.includes(wanted) ? wanted : (provider.default_model || models[0] || "");
     };
     const populateApiProviders = () => {
-      const providers = llmProviders().length ? llmProviders() : [{ id: "openai", label: "OpenAI", models: ["gpt-4o"], default_model: "gpt-4o" }];
+      const providers = llmProviders().length ? llmProviders() : [{ id: "openai", label: "OpenAI", models: ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-4o"], default_model: "gpt-6-luna" }];
       apiProvider.innerHTML = "";
       providers.forEach((provider) => {
         const option = document.createElement("option");

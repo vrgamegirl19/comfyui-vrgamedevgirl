@@ -314,6 +314,9 @@ class VRGDG_LLM_Multi:
         "openai": [
             "gpt-image-2",
             "gpt-image-1",
+            "gpt-6-astra",
+            "gpt-6-sol",
+            "gpt-6-luna",
             "gpt-5.6",
             "gpt-5.6-sol",
             "gpt-5.6-terra",
@@ -363,6 +366,9 @@ class VRGDG_LLM_Multi:
             "deepseek-reasoner",
         ],
         "openrouter": [
+            "openai/gpt-6-astra",
+            "openai/gpt-6-sol",
+            "openai/gpt-6-luna",
             "openai/gpt-5.6",
             "openai/gpt-5.6-sol",
             "openai/gpt-5.6-terra",
@@ -382,12 +388,12 @@ class VRGDG_LLM_Multi:
         ],
     }
     DEFAULT_MODEL = {
-        "openai": "gpt-5.6-luna",
+        "openai": "gpt-6-luna",
         "anthropic": "claude-sonnet-4-6",
         "google": "gemini-3.5-flash",
         "grok": "grok-4.6",
         "deepseek": "deepseek-chat",
-        "openrouter": "openai/gpt-5.6-luna",
+        "openrouter": "openai/gpt-6-luna",
         "apifreellm": "apifreellm",
     }
     ALL_MODELS = [m for models in PROVIDER_MODELS.values() for m in models]
@@ -398,7 +404,7 @@ class VRGDG_LLM_Multi:
             "required": {
                 "api_key": ("STRING", {"default": ""}),
                 "provider": (list(cls.PROVIDER_MODELS.keys()), {"default": "openai"}),
-                "model": (cls.ALL_MODELS, {"default": "gpt-4o"}),
+                "model": (cls.ALL_MODELS, {"default": cls.DEFAULT_MODEL["openai"]}),
                 "prompt": ("STRING", {"default": "Write a concise answer.", "multiline": True}),
                 "custom_model": ("STRING", {"default": ""}),
             },
