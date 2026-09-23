@@ -1,5 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
+import { estimateRenderETA, formatRenderETA, renderETAProfile } from "./VRGDG_RenderETA.js";
 import "./VRGDG_MusicVideoPromptCreatorUI.js";
 import {
   FACIAL_PERFORMANCE_PRESETS,
@@ -2676,8 +2677,12 @@ function makeEditorThumbnailUrl(path) {
   return `/vrgdg/video_editor/image?path=${encodeURIComponent(path)}&thumbv=${encodeURIComponent(version)}`;
 }
 
-function makeEditorVideoUrl(path) {
-  return `/vrgdg/video_editor/video?path=${encodeURIComponent(path)}&rand=${Date.now()}`;
+function makeEditorVideoUrl(path, bust) {
+  // A stable bust value (e.g. segment.video_cache_bust, which only changes when the
+  // scene is re-rendered) lets the browser reuse a cached fetch of the same clip
+  // across preload/playback instead of re-downloading it from disk on every cut.
+  const version = bust === undefined || bust === null || bust === "" ? Date.now() : bust;
+  return `/vrgdg/video_editor/video?path=${encodeURIComponent(path)}&rand=${version}`;
 }
 
 function extractImagesFromHistory(historyPayload, promptId) {
@@ -3159,6 +3164,8 @@ function openBuilder(node) {
   const overlay = document.createElement("div");
   let builderKeydownHandler = null;
   let builderResourceTimer = 0;
+  let builderETATimer = 0;
+  let liveETALog = null;
   let builderResourceController = null;
   let builderResourceResizeObserver = null;
   overlay.dataset.vrgdgThemeRoot = "true";
@@ -3450,10 +3457,19 @@ function openBuilder(node) {
   const fullscreenButton = makeButton("Fullscreen");
   fullscreenButton.title = "Expand the Video Creator to fill the browser window without closing or resetting anything.";
   const closeButton = makeButton("Close");
+  let playStartInFlight = false;
+  let previewPlayRequest = 0;
+  function cancelPreviewPlayStart() {
+    previewPlayRequest += 1;
+    playStartInFlight = false;
+  }
+
   const closeBuilderNow = () => {
     pauseAllAudio();
     if (!previewVideo.paused) previewVideo.pause();
     clearTimeout(builderResourceTimer);
+    clearInterval(builderETATimer);
+    builderETAResizeObserver.disconnect();
     builderResourceController?.abort();
     builderResourceResizeObserver?.disconnect();
     window.removeEventListener("vrgdg:builder-toast", toastNotificationHandler);
@@ -3673,6 +3689,28 @@ function openBuilder(node) {
   const centerActions = document.createElement("div");
   centerActions.style.cssText = "position:relative;display:flex;gap:8px;align-items:center;justify-content:center;min-width:0;overflow:visible;";
   centerActions.append(importActions, batchActions);
+  const builderETA = document.createElement("div");
+  builderETA.setAttribute("aria-label", "Estimated render time remaining");
+  builderETA.style.cssText = "display:none;position:absolute;left:0;top:50%;transform:translateY(-50%);width:190px;box-sizing:border-box;padding:6px 8px;border:1px solid #334155;border-radius:7px;background:#1e293b;color:#e2e8f0;font-size:12px;line-height:1.5;text-align:center;font-variant-numeric:tabular-nums;white-space:nowrap;";
+  const builderSceneETA = document.createElement("div");
+  const builderFullETA = document.createElement("div");
+  builderETA.append(builderSceneETA, builderFullETA);
+  centerActions.append(builderETA);
+  const positionBuilderETA = () => {
+    if (!liveETALog) return;
+    const room = importActions.getBoundingClientRect().left - centerActions.getBoundingClientRect().left;
+    const fits = room >= 200;
+    const parent = fits ? centerActions : topbar;
+    if (builderETA.parentElement !== parent) parent.append(builderETA);
+    builderETA.style.position = fits ? "absolute" : "static";
+    builderETA.style.transform = fits ? "translateY(-50%)" : "none";
+    builderETA.style.gridColumn = fits ? "" : "1 / -1";
+    builderETA.style.justifySelf = "center";
+  };
+  const builderETAResizeObserver = new ResizeObserver(positionBuilderETA);
+  builderETAResizeObserver.observe(centerActions);
+  builderETAResizeObserver.observe(importActions);
+
   const builderResourceMonitor = document.createElement("div");
   builderResourceMonitor.setAttribute("aria-label", "Video Builder RAM and VRAM usage");
   builderResourceMonitor.style.cssText = `position:absolute;right:0;top:50%;transform:translateY(-50%);display:none;align-items:center;gap:10px;width:250px;height:42px;box-sizing:border-box;padding:5px 9px;border:1px solid #3f3f46;border-radius:7px;background:#18181b;color:#d4d4d8;font-family:${BUILDER_FONT_STACK};font-size:10px;line-height:1.25;pointer-events:auto;`;
@@ -3949,6 +3987,7 @@ function openBuilder(node) {
   previewVideo.style.cssText = "display:none;max-width:100%;max-height:100%;object-fit:contain;background:#050505;";
   let previewVideoLoadTimer = null;
   let previewVideoSyncPause = false;
+  let previewVideoPendingSeekTarget = null;
   const previewDecodeHint = document.createElement("div");
   previewDecodeHint.style.cssText = "display:none;position:absolute;left:14px;right:14px;bottom:14px;z-index:2;padding:10px 12px;border:1px solid #ef4444;border-radius:6px;background:rgba(15,23,42,.92);color:#fee2e2;font-size:12px;line-height:1.35;box-shadow:0 12px 36px rgba(0,0,0,.45);";
   previewVideo.addEventListener("error", () => {
@@ -3970,7 +4009,26 @@ function openBuilder(node) {
     pauseAllAudio();
     updateAudioScrubbers();
   });
-  previewStage.append(previewEmpty, previewImage, previewVideo, postProcessComparePreview.element, previewDecodeHint);
+  previewVideo.addEventListener("seeked", () => {
+    // A newer scrub position arrived while this seek was still decoding.
+    // Jump straight to it instead of the queue of stale positions in between.
+    if (previewVideoPendingSeekTarget == null) return;
+    const target = previewVideoPendingSeekTarget;
+    previewVideoPendingSeekTarget = null;
+    try {
+      previewVideo.currentTime = target;
+    } catch {
+      // Ignore; the next scrub/timeupdate tick will retry if still needed.
+    }
+  });
+  // Hidden element used only to warm the browser's cache for the next scene's
+  // clip a moment before the playhead reaches it, so the visible swap at the
+  // cut doesn't stall on a cold fetch from the local server. It never plays.
+  const preloadVideo = document.createElement("video");
+  preloadVideo.muted = true;
+  preloadVideo.preload = "auto";
+  preloadVideo.style.cssText = "display:none;width:0;height:0;";
+  previewStage.append(previewEmpty, previewImage, previewVideo, preloadVideo, postProcessComparePreview.element, previewDecodeHint);
   const customImageFileInput = document.createElement("input");
   customImageFileInput.type = "file";
   customImageFileInput.accept = "image/png,image/jpeg,image/webp";
@@ -5156,6 +5214,10 @@ function openBuilder(node) {
   saveI2VPromptButton.style.opacity = "0.5";
   saveI2VPromptButton.style.cursor = "not-allowed";
 
+  const savedI2VPrompts = new WeakMap();
+  const savedMiniMaxPrompts = new WeakMap();
+  let savingTimelinePrompt = false;
+
   function updateI2VPromptSaveButtonState() {
     const segment = activeSegment();
     if (!segment) {
@@ -5164,9 +5226,9 @@ function openBuilder(node) {
       saveI2VPromptButton.style.cursor = "not-allowed";
       return;
     }
-    const saved = String(segment._saved_i2v_prompt ?? segment.i2v_prompt ?? "");
+    const saved = String(savedI2VPrompts.get(segment) ?? segment.i2v_prompt ?? "");
     const current = String(i2vPrompt.value || "");
-    const isDirty = current !== saved;
+    const isDirty = !savingTimelinePrompt && current !== saved;
     saveI2VPromptButton.disabled = !isDirty;
     saveI2VPromptButton.style.opacity = isDirty ? "1" : "0.5";
     saveI2VPromptButton.style.cursor = isDirty ? "pointer" : "not-allowed";
@@ -6772,9 +6834,9 @@ function openBuilder(node) {
       saveMiniMaxPromptButton.style.cursor = "not-allowed";
       return;
     }
-    const saved = String(segment._saved_minimax_prompt ?? segment.minimax_h3_prompt ?? "");
+    const saved = String(savedMiniMaxPrompts.get(segment) ?? segment.minimax_h3_prompt ?? "");
     const current = String(miniMaxPrompt.value || "");
-    const isDirty = current !== saved;
+    const isDirty = !savingTimelinePrompt && current !== saved;
     saveMiniMaxPromptButton.disabled = !isDirty;
     saveMiniMaxPromptButton.style.opacity = isDirty ? "1" : "0.5";
     saveMiniMaxPromptButton.style.cursor = isDirty ? "pointer" : "not-allowed";
@@ -8813,7 +8875,7 @@ function openBuilder(node) {
     miniMaxContinuityPromptFromLastFrame.input.checked = Boolean(settings.continuity_prompt_from_last_frame);
     miniMaxLocationTransitionPreset.value = settings.location_transition_preset;
     miniMaxLocationTransitionCustom.value = settings.location_transition_custom;
-    miniMaxLatentContextFrames.value = String(segment?.minimax_h3_latent_context_frames || settings.latent_context_frames || 22);
+    miniMaxLatentContextFrames.value = String(settings.latent_context_frames);
     miniMaxAspectRatio.value = settings.aspect_ratio;
     miniMaxMegapixels.value = String(settings.megapixels);
     miniMaxSeed.value = String(settings.seed);
@@ -9012,7 +9074,7 @@ function openBuilder(node) {
     miniMaxStartFrameCharacterInfluenceField.style.display = hasSceneImage && miniMaxSceneImageUse.value === "exact_start_frame" ? "flex" : "none";
     miniMaxStartFrameReferenceNote.style.display = hasSceneImage ? "block" : "none";
     if (segment) {
-      segment._saved_minimax_prompt = String(segment.minimax_h3_prompt || segment.i2v_prompt || "");
+      if (!savedMiniMaxPrompts.has(segment)) savedMiniMaxPrompts.set(segment, String(segment.minimax_h3_prompt || segment.i2v_prompt || ""));
     }
     miniMaxPrompt.value = String(segment?.minimax_h3_prompt || segment?.i2v_prompt || "");
     miniMaxPass2Prompt.value = String(segment?.minimax_h3_pass2_prompt || "");
@@ -9112,6 +9174,76 @@ function openBuilder(node) {
     syncTimelineTrimModeButton();
   }
 
+  function renderETAScene(segment) {
+    const engine = normalizeProjectVideoEngine(state.projectVideoEngine);
+    const miniMax = engine === "minimax_h3";
+    const mode = miniMax ? miniMaxH3ModeForSegment(segment) : currentVideoMode();
+    const settings = miniMax ? miniMaxH3SettingsForSegment(segment)
+      : cloneI2VVideoSettings(segment.use_scene_i2v_video_settings ? segment.i2v_video_settings : state.i2vVideoSettings);
+    return {
+      scene_id: String(segment.id), video_mode: mode,
+      eta_duration: Math.max(0.05, Number(segment.end) - Number(segment.start)),
+      eta_profile: renderETAProfile(engine, mode, settings),
+    };
+  }
+
+  function refreshBuilderETA() {
+    if (!liveETALog || !overlay.isConnected) return;
+    builderETA.style.display = "block";
+    const log = liveETALog;
+    const fullLabel = log.scene_scope === "selected" ? "Selected Scenes" : log.scene_scope === "single" ? "This Render" : "Full Video";
+    if (log.status !== "running") {
+      const status = log.status === "complete" ? "Done" : log.status === "canceled" ? "Stopped" : "Finished with errors";
+      builderSceneETA.textContent = `Current Scene: ${status}`;
+      builderFullETA.textContent = `${fullLabel}: ${status}`;
+      clearInterval(builderETATimer);
+    } else {
+      const eta = estimateRenderETA(log, state.renderLogs);
+      const active = log.scenes.find((scene) => scene.status === "running");
+      builderSceneETA.textContent = `Current Scene: ${state.batchCancelled ? "Stopping…" : eta.stitching ? "Done" : active ? formatRenderETA(eta.sceneMs) : "Preparing…"}`;
+      builderFullETA.textContent = `${fullLabel}: ${state.batchCancelled ? "Stopping…" : eta.stitching && eta.totalMs == null ? "Stitching…" : formatRenderETA(eta.totalMs)}${eta.stitchUnknown && eta.totalMs != null ? " + stitch" : ""}`;
+      builderETA.title = "Approximate remaining time based on completed scene jobs, including preparation, rendering and cleanup. Updates every second. Different hardware and workload can change the estimate."
+        + (eta.stitchUnknown ? " Final stitching is not timed yet; + stitch excludes that step." : "")
+        + (log.scene_scope === "selected" || log.scene_scope === "single" ? " Only this render selection is included." : "");
+    }
+    positionBuilderETA();
+  }
+
+  function resetBuilderETA() {
+    clearInterval(builderETATimer);
+    liveETALog = null;
+    builderETA.style.display = "none";
+  }
+
+  function startBuilderETA(log) {
+    clearInterval(builderETATimer);
+    liveETALog = log;
+    refreshBuilderETA();
+    builderETATimer = setInterval(refreshBuilderETA, 1000);
+  }
+
+  function startSingleSceneETA(segment) {
+    const plan = renderETAScene(segment);
+    const started = new Date().toISOString();
+    const log = {
+      id: `render_single_${Date.now()}`, status: "running", scene_scope: "single", mode_label: "Render Scene",
+      video_engine: normalizeProjectVideoEngine(state.projectVideoEngine), video_mode: plan.video_mode,
+      started_at: started, skip_final_stitch: true, target_scene_count: 1, eta_plan: [plan],
+      scenes: [{ ...plan, label: segment.label || "Scene", status: "running", started_at: started }],
+    };
+    startBuilderETA(log);
+    return log;
+  }
+
+  async function finishSingleSceneETA(log, status) {
+    const now = Date.now();
+    log.status = status;
+    log.ended_at = new Date(now).toISOString();
+    Object.assign(log.scenes[0], { status, ended_at: log.ended_at, total_ms: now - Date.parse(log.started_at) });
+    await persistRenderLog(log);
+    if (liveETALog === log) refreshBuilderETA();
+  }
+
   function normalizeRenderLog(raw) {
     const value = raw && typeof raw === "object" ? raw : {};
     return {
@@ -9200,6 +9332,7 @@ function openBuilder(node) {
     state.renderLogs = logs.slice(-20);
     state.activeRenderLogId = log.id;
     state.renderLogModalRefresh?.();
+    if (liveETALog?.id === log.id) { liveETALog = log; refreshBuilderETA(); }
   }
 
   async function persistRenderLog(log) {
@@ -12151,6 +12284,7 @@ function openBuilder(node) {
   }
 
   function pauseAllAudio() {
+    cancelPreviewPlayStart();
     stopSilentTimelinePlayback();
     audio.pause();
     sceneAudio.pause();
@@ -12376,9 +12510,6 @@ function openBuilder(node) {
     segment.minimax_h3_continuity_image_number = Math.max(0, Math.trunc(Number(segment.minimax_h3_continuity_image_number || 0)));
     segment.minimax_h3_location_transition_preset = normalizeMiniMaxH3LocationTransitionPreset(segment.minimax_h3_location_transition_preset);
     segment.minimax_h3_location_transition_custom = String(segment.minimax_h3_location_transition_custom || "");
-    segment.minimax_h3_latent_context_frames = [16, 22, 39, 56].includes(Number(segment.minimax_h3_latent_context_frames))
-      ? Number(segment.minimax_h3_latent_context_frames)
-      : (DEFAULT_MINIMAX_H3_SETTINGS.latent_context_frames || 22);
     segment.minimax_h3_video_references = (Array.isArray(segment.minimax_h3_video_references) ? segment.minimax_h3_video_references : [])
       .slice(0, 3)
       .map((item) => ({
@@ -16135,7 +16266,8 @@ function openBuilder(node) {
       previewVideoLoadTimer = null;
       previewDecodeHint.style.display = "none";
       previewVideo.pause();
-      previewVideo.src = makeEditorVideoUrl(videoPath);
+      previewVideoPendingSeekTarget = null;
+      previewVideo.src = makeEditorVideoUrl(videoPath, segment?.video_cache_bust);
       previewVideo.dataset.path = videoPath;
       previewVideo.dataset.cacheKey = cacheKey;
       previewVideo.dataset.segmentId = String(segment?.id || "");
@@ -16147,6 +16279,28 @@ function openBuilder(node) {
         }
       }, 8000);
     }
+  }
+
+  const PRELOAD_NEXT_CLIP_LEAD_SECONDS = 1.5;
+
+  // Warms the browser's HTTP cache for the upcoming scene's clip a little
+  // before the playhead reaches it. Combined with the stable video_cache_bust
+  // query param above, the real swap in setPreviewVideoSource then hits a
+  // cache instead of a cold fetch, removing most of the stall at the cut.
+  function maybePreloadNextClip(segment, current) {
+    if (!segment) return;
+    const end = Number(segment.end || 0);
+    const remaining = end - Number(current || 0);
+    if (!(remaining > 0) || remaining > PRELOAD_NEXT_CLIP_LEAD_SECONDS) return;
+    const nextSegment = playbackSegmentAtTime(end + 0.05);
+    if (!nextSegment || nextSegment.id === segment.id) return;
+    const nextPath = selectedSegmentVideoPath(nextSegment);
+    if (!nextPath) return;
+    const cacheKey = selectedSegmentVideoCacheKey(nextSegment, nextPath);
+    if (!cacheKey || preloadVideo.dataset.cacheKey === cacheKey) return;
+    preloadVideo.src = makeEditorVideoUrl(nextPath, nextSegment.video_cache_bust);
+    preloadVideo.dataset.cacheKey = cacheKey;
+    preloadVideo.load();
   }
 
   function clearPreviewVideoLoadState() {
@@ -16689,7 +16843,7 @@ function openBuilder(node) {
     krea2TwoPassT2IPrompt.value = segment.t2i_prompt || "";
     fluxPrompt.value = segment.t2i_prompt || segment.flux_prompt || "";
     nbPrompt.value = segment.t2i_prompt || segment.nb_prompt || "";
-    segment._saved_i2v_prompt = String(segment.i2v_prompt || "");
+    if (!savedI2VPrompts.has(segment)) savedI2VPrompts.set(segment, String(segment.i2v_prompt || ""));
     i2vPrompt.value = segment.i2v_prompt || "";
     editI2VPromptButton.style.display = String(segment.i2v_prompt || "").trim() ? "" : "none";
     updateI2VPromptSaveButtonState();
@@ -16725,6 +16879,44 @@ function openBuilder(node) {
     updateAudioScrubbers();
   }
 
+  function previewVideoIsReadyAt(local) {
+    return !previewVideo.seeking
+      && previewVideo.readyState >= 2
+      && Number.isFinite(local)
+      && Math.abs(Number(previewVideo.currentTime || 0) - local) <= 0.2;
+  }
+
+  // Waits (briefly) for the preview video to actually be showing the given
+  // local time before resolving. Used right before Play starts audio, so a
+  // scene that's still loading/seeking from a recent scrub doesn't let the
+  // audio clock run ahead of it - that's what causes the video to visibly
+  // stutter and jump forward to catch up a moment after playback starts.
+  function waitForPreviewVideoReady(local, timeoutMs = 700) {
+    return new Promise((resolve) => {
+      if (previewVideoIsReadyAt(local)) {
+        resolve();
+        return;
+      }
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        previewVideo.removeEventListener("seeked", check);
+        previewVideo.removeEventListener("canplay", check);
+        previewVideo.removeEventListener("loadeddata", check);
+        clearTimeout(timer);
+        resolve();
+      };
+      const check = () => {
+        if (previewVideoIsReadyAt(local)) finish();
+      };
+      previewVideo.addEventListener("seeked", check);
+      previewVideo.addEventListener("canplay", check);
+      previewVideo.addEventListener("loadeddata", check);
+      const timer = setTimeout(finish, timeoutMs);
+    });
+  }
+
   function syncPreviewPlayback(current) {
     const playing = isTimelinePlaying();
     const segment = playing ? playbackSegmentAtTime(current) : activeSegment();
@@ -16741,6 +16933,7 @@ function openBuilder(node) {
       return;
     }
     postProcessComparePreview.hide();
+    if (playing) maybePreloadNextClip(segment, current);
     const videoPath = selectedSegmentVideoPath(segment);
     if (!segment || !videoPath) {
       if (!previewVideo.paused) previewVideo.pause();
@@ -16754,12 +16947,30 @@ function openBuilder(node) {
       previewImage.style.display = "none";
       previewEmpty.style.display = "none";
     }
+    // A cut is detected up to one tick late, so the correct in-scene offset
+    // right after a swap isn't always ~0 - it can be off by up to a tick's
+    // worth of time, which used to land just under the resync threshold and
+    // never get corrected for the rest of that scene. Always request the
+    // right position; a seek issued before metadata loads (readyState 0) is
+    // simply deferred by the browser and applied once it's ready.
     const local = localPlaybackTime(segment, current);
-    if (Number.isFinite(local) && Math.abs(Number(previewVideo.currentTime || 0) - local) > 0.2) {
-      try {
-        previewVideo.currentTime = local;
-      } catch {
-        // Some browsers reject seeking until metadata is ready. The next timeupdate will retry.
+    const seekThreshold = state.isScrubbing ? 0.05 : 0.2;
+    previewVideoPendingSeekTarget = null;
+    if (Number.isFinite(local) && Math.abs(Number(previewVideo.currentTime || 0) - local) > seekThreshold) {
+      // While a seek is already in flight, issuing another currentTime write on
+      // top of it doesn't jump ahead - it queues behind the one already
+      // decoding. During a fast scrub drag that means the visible frame keeps
+      // chasing a backlog of stale positions instead of the one the user is
+      // actually pointing at. Remember only the latest desired target and let
+      // the `seeked` handler below jump straight to it once the decoder is free.
+      if (previewVideo.seeking) {
+        previewVideoPendingSeekTarget = local;
+      } else {
+        try {
+          previewVideo.currentTime = local;
+        } catch {
+          // Some browsers reject seeking until metadata is ready. The next timeupdate will retry.
+        }
       }
     }
     if (isTimelinePlaying() && !state.timelineEditMenuOpen && !state.timelineTrimEditMode) {
@@ -16786,9 +16997,24 @@ function openBuilder(node) {
       const playbackSegment = playbackSegmentAtTime(current);
       if (playbackSegment && playbackSegment.id !== state.activeId) {
         state.activeId = playbackSegment.id;
-        syncInspector();
-        render();
+        // Sync the video first so the new clip starts loading immediately.
+        // syncInspector() (dozens of form fields) and render() (rebuilds every
+        // timeline block from scratch) are comparatively heavy, and running
+        // them synchronously here was blocking that load on the same frame as
+        // the cut, which is what produced the visible stutter at scene
+        // boundaries (and, during a scrub drag, the preview lagging behind
+        // wherever the slider actually was). Push them to the next frame
+        // instead so they stay off the video swap.
         syncPreviewPlayback(current);
+        if (isTimelinePlaying() || state.isScrubbing) {
+          requestAnimationFrame(() => {
+            syncInspector();
+            render();
+          });
+        } else {
+          syncInspector();
+          render();
+        }
         return;
       }
     }
@@ -16811,6 +17037,7 @@ function openBuilder(node) {
   }
 
   function setGlobalPlaybackTime(value) {
+    if (playStartInFlight) cancelPreviewPlayStart();
     const maxTime = playbackDuration();
     const time = Math.max(0, Math.min(maxTime, Number(value || 0)));
     state.sceneAudioGlobalTime = time;
@@ -16894,8 +17121,27 @@ function openBuilder(node) {
     if (state.timelineTrimEditMode) pauseTimelineForEditing();
     state.isScrubbing = true;
     seekGlobalTimelineFromEvent(event);
-    const move = (moveEvent) => seekGlobalTimelineFromEvent(moveEvent);
+    // Pointer events can fire far faster than the video can seek. Collapse
+    // them to at most one processed position per animation frame, always the
+    // latest one, instead of driving a seek off every raw mousemove - that
+    // backlog of superseded seeks is why the preview used to lag behind
+    // wherever the slider actually was.
+    let pendingMoveEvent = null;
+    let scrubRaf = 0;
+    const flushPendingMove = () => {
+      scrubRaf = 0;
+      if (pendingMoveEvent) {
+        seekGlobalTimelineFromEvent(pendingMoveEvent);
+        pendingMoveEvent = null;
+      }
+    };
+    const move = (moveEvent) => {
+      pendingMoveEvent = moveEvent;
+      if (!scrubRaf) scrubRaf = requestAnimationFrame(flushPendingMove);
+    };
     const up = () => {
+      if (scrubRaf) cancelAnimationFrame(scrubRaf);
+      flushPendingMove();
       state.isScrubbing = false;
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
@@ -20533,7 +20779,7 @@ function openBuilder(node) {
         if (segment.overlay_enabled === false) block.style.opacity = ".48";
         block.append(eye, lock);
       }
-      const dblClickHint = !isOverlay ? "Double-click to review line & performer mapping." : "";
+      const dblClickHint = !isOverlay ? "Double-click to review line & performer mapping. Shift + double-click to edit the Storyboard Card." : "";
       block.title = lockedByVideo ? "This scene has a generated video, so timing is locked." : dblClickHint;
       const dragImageSource = segmentImageSource(segment);
       if (dragImageSource) {
@@ -20613,11 +20859,7 @@ function openBuilder(node) {
         block.ondblclick = (event) => {
           event.preventDefault();
           event.stopPropagation();
-          if (event.shiftKey) {
-            openStoryboardBuilderFromProject({ focusSceneId: segment.id });
-            return;
-          }
-          openLyricReviewModal({ singleSceneId: segment.id });
+          openTimelineSceneCard(segment, event);
         };
       }
       enableImageDrop(block, segment);
@@ -21900,6 +22142,14 @@ function openBuilder(node) {
     }, 0);
   }
 
+  function openTimelineSceneCard(segment, event) {
+    if (event?.shiftKey) {
+      openStoryboardBuilderFromProject({ focusSceneId: segment.id });
+    } else {
+      openLyricReviewModal({ singleSceneId: segment.id });
+    }
+  }
+
   let activeSegmentDragCleanup = null;
   let lastTimelineSceneClickTime = 0;
   let lastTimelineSceneClickId = "";
@@ -22000,7 +22250,7 @@ function openBuilder(node) {
           if (now - lastTimelineSceneClickTime < 380 && lastTimelineSceneClickId === segment.id && !isOverlay) {
             lastTimelineSceneClickTime = 0;
             lastTimelineSceneClickId = "";
-            openLyricReviewModal({ singleSceneId: segment.id });
+            openTimelineSceneCard(segment, finishEvent);
           } else {
             lastTimelineSceneClickTime = now;
             lastTimelineSceneClickId = segment.id;
@@ -26431,12 +26681,10 @@ function openBuilder(node) {
     });
   }
 
-  let lastLyricReviewModalOpenTime = 0;
+  let activeLyricReviewBackdrop = null;
 
   function openLyricReviewModal(options = {}) {
-    const nowModal = Date.now();
-    if (nowModal - lastLyricReviewModalOpenTime < 350) return;
-    lastLyricReviewModalOpenTime = nowModal;
+    if (activeLyricReviewBackdrop?.isConnected) return;
 
     const focusSceneId = String(options?.focusSceneId || options?.focus_scene_id || "").trim();
     const singleSceneId = String(options?.singleSceneId || options?.single_scene_id || options?.sceneId || "").trim();
@@ -26466,11 +26714,8 @@ function openBuilder(node) {
     const close = makeButton("Close");
     const openAllButton = isSingleScene ? makeButton("Open All Scenes") : null;
     if (openAllButton) {
-      openAllButton.title = "Switch to the full multi-scene Review Lines + Map Performers window.";
-      openAllButton.onclick = () => {
-        closeModal();
-        openLyricReviewModal({ focusSceneId: targetScene.id });
-      };
+      openAllButton.title = "Save this scene and open the full Review Lines + Map Performers window.";
+      openAllButton.onclick = () => navigateReviewScene({ focusSceneId: targetScene.id });
       header.append(heading, openAllButton, lyricReviewHint, close);
     } else {
       header.append(heading, lyricReviewHint, close);
@@ -26496,7 +26741,7 @@ function openBuilder(node) {
     const note = document.createElement("div");
     note.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:9px;";
     note.textContent = isSingleScene
-      ? "These fields are the line notes Gemma uses for I2V/T2V prompting for this scene. Fix typos or timing mistakes here, then choose who performs or speaks. Use B-roll or Instrumental when nobody should lip-sync."
+      ? "These fields are the line notes Gemma uses for I2V/T2V prompting for this scene. Fix typos or timing mistakes here, then choose who performs or speaks. Use B-roll or Instrumental when nobody should lip-sync. Switching scenes saves your changes."
       : "These fields are the timeline line notes Gemma uses for I2V/T2V prompting. Fix typos or timing mistakes here, then choose who performs or speaks in each scene. Use B-roll or Instrumental when nobody should lip-sync.";
 
     const reviewReferenceBuilder = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
@@ -26762,20 +27007,18 @@ function openBuilder(node) {
       jumpSelected.onclick = () => playRange(targetScene, jumpSelected);
       prevScene.textContent = "Prev Scene";
       nextScene.textContent = "Next Scene";
-      prevScene.title = "Open line review for the previous scene.";
-      nextScene.title = "Open line review for the next scene.";
+      prevScene.title = "Save this scene and open the previous scene.";
+      nextScene.title = "Save this scene and open the next scene.";
       prevScene.disabled = targetSceneIndex <= 0;
       nextScene.disabled = targetSceneIndex >= allScenes.length - 1;
       prevScene.onclick = () => {
         if (targetSceneIndex > 0) {
-          closeModal();
-          openLyricReviewModal({ singleSceneId: allScenes[targetSceneIndex - 1].id });
+          return navigateReviewScene({ singleSceneId: allScenes[targetSceneIndex - 1].id });
         }
       };
       nextScene.onclick = () => {
         if (targetSceneIndex < allScenes.length - 1) {
-          closeModal();
-          openLyricReviewModal({ singleSceneId: allScenes[targetSceneIndex + 1].id });
+          return navigateReviewScene({ singleSceneId: allScenes[targetSceneIndex + 1].id });
         }
       };
       if (audioPath) {
@@ -27310,6 +27553,22 @@ function openBuilder(node) {
       updateReviewTimingDisplay(row);
     };
 
+    const singleReviewTimingNeighbors = (row) => {
+      const ordered = [...state.segments].sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
+      const index = ordered.findIndex((item) => item.id === row.dataset.reviewSegmentId);
+      return { previous: ordered[index - 1], following: ordered.slice(index + 1) };
+    };
+
+    const canEditSingleReviewTiming = (row, affected) => {
+      if (!isSingleScene) return true;
+      if (state.timingFrozen || affected.some((segment) => segment && hasLockedVideo(segment))) {
+        toast("Unfreeze timing and unlock affected scene videos before changing timing.", true);
+        syncReviewRowFromSegment(row);
+        return false;
+      }
+      return true;
+    };
+
     const handleReviewStartEdited = async (row) => {
       const startInput = row.querySelector("[data-review-start]");
       const endInput = row.querySelector("[data-review-end]");
@@ -27324,6 +27583,13 @@ function openBuilder(node) {
       const rowIndex = rows.indexOf(row);
       const prevRow = rows[rowIndex - 1] || null;
       const segment = liveReviewSegmentForRow(row);
+      const neighbors = isSingleScene ? singleReviewTimingNeighbors(row) : null;
+      if (!canEditSingleReviewTiming(row, [segment, neighbors?.previous])) return;
+      if (neighbors?.previous && start < Number(neighbors.previous.start || 0) + 0.05) {
+        toast("Start must leave time for the previous scene. Use Open All Scenes to merge scenes.", true);
+        syncReviewRowFromSegment(row);
+        return;
+      }
       if (segment) {
         segment.start = Math.max(0, start);
         segment.end = Math.max(segment.start + 0.05, end);
@@ -27334,14 +27600,7 @@ function openBuilder(node) {
         syncReviewRowFromSegment(prevRow);
         await maybeWarnShortReviewScene(prevRow, prevRow, row, "Do you want to merge that previous scene with this scene instead?");
       } else if (isSingleScene) {
-        const allSorted = [...state.segments].sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
-        const segIdx = allSorted.findIndex((item) => item.id === segment?.id);
-        if (segIdx > 0) {
-          const prevSegment = allSorted[segIdx - 1];
-          if (prevSegment) {
-            prevSegment.end = Math.max(Number(prevSegment.start || 0) + 0.05, start);
-          }
-        }
+        if (neighbors.previous) neighbors.previous.end = Math.max(0, start);
       }
       syncReviewRowFromSegment(row);
       state.duration = timelineDuration();
@@ -27364,6 +27623,16 @@ function openBuilder(node) {
         : Number(row.dataset.reviewLastEnd || start);
       const delta = end - previousEnd;
       const segment = liveReviewSegmentForRow(row);
+      const neighbors = isSingleScene ? singleReviewTimingNeighbors(row) : null;
+      const following = neighbors?.following || [];
+      const affected = timingModeSelect.value === "ripple" ? following : following.slice(0, 1);
+      if (!canEditSingleReviewTiming(row, [segment, ...affected])) return;
+      if (isSingleScene && timingModeSelect.value !== "ripple" && following[0]
+        && end > Number(following[0].end || 0) - 0.05) {
+        toast("End must leave time for the next scene. Use Open All Scenes to merge scenes.", true);
+        syncReviewRowFromSegment(row);
+        return;
+      }
       if (segment) {
         segment.start = Math.max(0, start);
         segment.end = Math.max(segment.start + 0.05, end);
@@ -27376,14 +27645,9 @@ function openBuilder(node) {
         if (nextRow) {
           shiftReviewRowsAfter(row, delta);
         } else if (isSingleScene) {
-          const allSorted = [...state.segments].sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
-          const segIdx = allSorted.findIndex((item) => item.id === segment?.id);
-          if (segIdx >= 0) {
-            for (let i = segIdx + 1; i < allSorted.length; i++) {
-              const nextSeg = allSorted[i];
-              nextSeg.start = Math.max(0, Number(nextSeg.start || 0) + delta);
-              nextSeg.end = Math.max(nextSeg.start + 0.05, Number(nextSeg.end || nextSeg.start + 0.05) + delta);
-            }
+          for (const nextSeg of following) {
+            nextSeg.start = Math.max(0, Number(nextSeg.start || 0) + delta);
+            nextSeg.end = Math.max(nextSeg.start + 0.05, Number(nextSeg.end || nextSeg.start + 0.05) + delta);
           }
         }
         state.duration = timelineDuration();
@@ -27400,15 +27664,7 @@ function openBuilder(node) {
         syncReviewRowFromSegment(nextRow);
         await maybeWarnShortReviewScene(nextRow, row, nextRow, "Do you want to merge it with the scene you just extended?");
       } else if (isSingleScene) {
-        const allSorted = [...state.segments].sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
-        const segIdx = allSorted.findIndex((item) => item.id === segment?.id);
-        if (segIdx >= 0 && segIdx < allSorted.length - 1) {
-          const nextSegment = allSorted[segIdx + 1];
-          if (nextSegment) {
-            nextSegment.start = end;
-            nextSegment.end = Math.max(nextSegment.start + 0.05, Number(nextSegment.end || nextSegment.start + 0.05));
-          }
-        }
+        if (following[0]) following[0].start = end;
       }
       state.duration = timelineDuration();
       syncInspector();
@@ -27550,6 +27806,7 @@ function openBuilder(node) {
     };
 
     const splitReviewRowAtPlayhead = async (row, segment) => {
+      if (!canEditSingleReviewTiming(row, [segment])) return;
       const segmentStart = Number(segment.start || 0);
       const segmentEnd = Number(segment.end || 0);
       const splitTime = Math.max(segmentStart, Math.min(segmentEnd, Number(reviewAudio?.currentTime || currentGlobalTime() || 0)));
@@ -27919,6 +28176,7 @@ function openBuilder(node) {
       moveLastWord.dataset.reviewMoveLastWord = "1";
       moveLastWord.title = "Move only this scene's final lyric word to the beginning of the next scene. Use Save Lines afterward to synchronize the timeline, cue maps, and lyric note files.";
       moveLastWord.disabled = index >= scenes.length - 1;
+      if (isSingleScene) moveLastWord.title = "Open All Scenes to move a word between neighboring scene cards.";
       play.style.padding = "7px 8px";
       playFrom.style.padding = "7px 8px";
       select.style.padding = "7px 8px";
@@ -27956,17 +28214,25 @@ function openBuilder(node) {
         focusRow.querySelector("[data-review-lyric-text]")?.focus({ preventScroll: true });
       });
     }
+    activeLyricReviewBackdrop = backdrop;
     const closeModal = () => {
       clearReviewStopGuards();
       reviewAudio.pause();
       backdrop.remove();
+      if (activeLyricReviewBackdrop === backdrop) activeLyricReviewBackdrop = null;
     };
     close.onclick = closeModal;
     cancel.onclick = closeModal;
     backdrop.addEventListener("pointerdown", (event) => {
       if (event.target === backdrop) closeModal();
     });
-    save.onclick = async () => {
+    const navigateReviewScene = async (nextOptions) => {
+      if (!(await saveReviewChanges(true)) || !backdrop.isConnected) return;
+      closeModal();
+      openLyricReviewModal(nextOptions);
+    };
+    const saveReviewChanges = async (quiet = false) => {
+      if (save.disabled) return false;
       try {
         save.disabled = true;
         pushHistory();
@@ -27999,13 +28265,14 @@ function openBuilder(node) {
         render();
         await saveSession({ quiet: true, throwOnError: true });
         pendingReviewWordMoves.length = 0;
-        showInfoModal({
+        if (!quiet) showInfoModal({
           title: isSingleScene ? `${targetScene.label || "Scene"} Saved` : "Line Review Saved",
           lines: isSingleScene
             ? ["Scene lines, timing, performer labels, lip-sync flags, and location mapping were saved to the timeline."]
             : ["Lines, scene timing, performer labels, no-lip-sync/no-character flags, and location mapping were saved to the timeline."],
           confirmLabel: "OK",
         });
+        return true;
       } catch (error) {
         const message = String(error?.message || error);
         if (/image_history/i.test(message)) {
@@ -28015,19 +28282,20 @@ function openBuilder(node) {
             syncInspector();
             render();
             await saveSession({ quiet: true, throwOnError: true });
-            showInfoModal({
+            pendingReviewWordMoves.length = 0;
+            if (!quiet) showInfoModal({
               title: "Line Review Saved",
               lines: ["Lines, timing, performers, no-lip-sync/no-character flags, and locations were saved. A stale media history value was cleaned up automatically."],
               confirmLabel: "OK",
             });
-            return;
+            return true;
           } catch (retryError) {
             showInfoModal({
               title: "Line Review Save Error",
               lines: [String(retryError?.message || retryError)],
               confirmLabel: "OK",
             });
-            return;
+            return false;
           }
         }
         showInfoModal({
@@ -28035,10 +28303,12 @@ function openBuilder(node) {
           lines: [message],
           confirmLabel: "OK",
         });
+        return false;
       } finally {
         save.disabled = false;
       }
     };
+    save.onclick = () => saveReviewChanges();
   }
 
   function openLyricMappingWorkflowModal() {
@@ -38285,6 +38555,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.builderStoryLayer = normalizeBuilderStoryLayer(session.builder_story_layer || {});
       state.builderStoryboardDefaults = normalizeBuilderStoryboardDefaults(session.builder_storyboard_defaults || session.builderStoryboardDefaults || {});
       state.autoBuildPreparation = normalizeAutoBuildPreparation(session.auto_build_preparation || session.autoBuildPreparation || {});
+      resetBuilderETA();
       state.renderLogs = normalizeRenderLogs(session.render_logs);
       state.activeRenderLogId = session.active_render_log_id || state.renderLogs[state.renderLogs.length - 1]?.id || "";
       state.textGemmaRunner = session.text_gemma_runner || state.textGemmaRunner || "builtin";
@@ -44437,99 +44708,61 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       });
   }
 
-  async function saveStoryboardScenesFromTimeline() {
-    const projectFolder = activeProjectFolderForSave();
-    if (!projectFolder) return null;
-    let existingStoryboard = {};
-    try {
-      const loadRes = await postJson("/vrgdg/storyboard/load", { project_folder: projectFolder });
-      if (loadRes?.ok && loadRes?.storyboard) {
-        existingStoryboard = loadRes.storyboard;
-      }
-    } catch (_err) {
-      // If load fails or doesn't exist yet, we will construct with current scenes
-    }
-    const currentScenes = storyboardScenePayload();
-    const existingScenes = Array.isArray(existingStoryboard.scenes) ? existingStoryboard.scenes : [];
-    const mergedScenes = currentScenes.map((fresh) => {
-      const existing = existingScenes.find((s) => s.id === fresh.id)
-        || existingScenes.find((s) => Number(s.scene_number) === Number(fresh.scene_number))
-        || {};
-      return {
-        ...existing,
-        ...fresh,
-      };
-    });
-    const payload = {
+  async function saveStoryboardPromptFromTimeline(projectFolder, fresh, promptValue) {
+    const { storyboard } = await postJson("/vrgdg/storyboard/load", { project_folder: projectFolder });
+    const scenes = Array.isArray(storyboard.scenes) ? storyboard.scenes.slice() : [];
+    let index = scenes.findIndex((scene) => scene.id === fresh.id);
+    if (index < 0) index = scenes.findIndex((scene) => Number(scene.scene_number) === Number(fresh.scene_number));
+    const prompt = { video_prompt: promptValue, video_prompt_origin: "manual" };
+    if (index >= 0) scenes[index] = { ...scenes[index], ...prompt };
+    else scenes.push({ ...fresh, ...prompt });
+    await postJson("/vrgdg/storyboard/save", {
       project_folder: projectFolder,
-      storyboard: {
-        ...existingStoryboard,
-        project_video_engine: normalizeProjectVideoEngine(state.projectVideoEngine),
-        scenes: mergedScenes,
-      },
-    };
-    return await postJson("/vrgdg/storyboard/save", payload);
+      storyboard: { ...storyboard, scenes },
+    });
   }
 
-  saveI2VPromptButton.addEventListener("click", async () => {
+  async function saveTimelinePrompt(kind) {
     const segment = activeSegment();
-    if (!segment) return;
-    const promptValue = i2vPrompt.value || "";
-    segment.i2v_prompt = promptValue;
-    segment.i2v_prompt_origin = "manual";
-    segment._saved_i2v_prompt = promptValue;
+    if (!segment || savingTimelinePrompt) return;
+    const miniMax = kind === "minimax";
+    const input = miniMax ? miniMaxPrompt : i2vPrompt;
+    const button = miniMax ? saveMiniMaxPromptButton : saveI2VPromptButton;
+    const snapshots = miniMax ? savedMiniMaxPrompts : savedI2VPrompts;
+    const promptValue = input.value || "";
+    const projectFolder = activeProjectFolderForSave();
+    if (!projectFolder) {
+      toast("Save the project before saving a scene prompt.", true);
+      return;
+    }
+    segment[miniMax ? "minimax_h3_prompt" : "i2v_prompt"] = promptValue;
+    segment[miniMax ? "minimax_h3_prompt_origin" : "i2v_prompt_origin"] = "manual";
+    const fresh = storyboardScenePayload().find((scene) => scene.id === segment.id);
+    if (!fresh) {
+      toast("Could not find this scene in the project storyboard inputs.", true);
+      return;
+    }
+    savingTimelinePrompt = true;
     updateI2VPromptSaveButtonState();
-
-    saveI2VPromptButton.disabled = true;
-    saveI2VPromptButton.style.opacity = "0.7";
-    saveI2VPromptButton.style.cursor = "wait";
-    const origText = saveI2VPromptButton.textContent;
-    saveI2VPromptButton.textContent = "Saving...";
-    try {
-      await autoSaveSessionQuiet("Save video prompt").catch(() => null);
-      await saveStoryboardScenesFromTimeline();
-      saveI2VPromptButton.textContent = "Saved!";
-      toast("Video prompt saved to scene and storyboard.");
-      setTimeout(() => {
-        saveI2VPromptButton.textContent = origText;
-        updateI2VPromptSaveButtonState();
-      }, 1500);
-    } catch (err) {
-      saveI2VPromptButton.textContent = origText;
-      updateI2VPromptSaveButtonState();
-      toast(String(err?.message || err), true);
-    }
-  });
-
-  saveMiniMaxPromptButton.addEventListener("click", async () => {
-    const segment = activeSegment();
-    if (!segment) return;
-    const promptValue = miniMaxPrompt.value || "";
-    segment.minimax_h3_prompt = promptValue;
-    segment.minimax_h3_prompt_origin = "manual";
-    segment._saved_minimax_prompt = promptValue;
     updateMiniMaxPromptSaveButtonState();
-
-    saveMiniMaxPromptButton.disabled = true;
-    saveMiniMaxPromptButton.style.opacity = "0.7";
-    saveMiniMaxPromptButton.style.cursor = "wait";
-    const origText = saveMiniMaxPromptButton.textContent;
-    saveMiniMaxPromptButton.textContent = "Saving...";
+    button.textContent = "Saving...";
     try {
-      await autoSaveSessionQuiet("Save MiniMax prompt").catch(() => null);
-      await saveStoryboardScenesFromTimeline();
-      saveMiniMaxPromptButton.textContent = "Saved!";
-      toast("MiniMax prompt saved to scene and storyboard.");
-      setTimeout(() => {
-        saveMiniMaxPromptButton.textContent = origText;
-        updateMiniMaxPromptSaveButtonState();
-      }, 1500);
-    } catch (err) {
-      saveMiniMaxPromptButton.textContent = origText;
+      await saveSession({ quiet: true, throwOnError: true });
+      await saveStoryboardPromptFromTimeline(projectFolder, fresh, promptValue);
+      snapshots.set(segment, promptValue);
+      toast("Prompt saved to scene and storyboard.");
+    } catch (error) {
+      toast(String(error?.message || error), true);
+    } finally {
+      savingTimelinePrompt = false;
+      button.textContent = "Save Updated Prompt";
+      updateI2VPromptSaveButtonState();
       updateMiniMaxPromptSaveButtonState();
-      toast(String(err?.message || err), true);
     }
-  });
+  }
+
+  saveI2VPromptButton.addEventListener("click", () => saveTimelinePrompt("i2v"));
+  saveMiniMaxPromptButton.addEventListener("click", () => saveTimelinePrompt("minimax"));
 
   function wizardStoryboardState(scenes, options = {}) {
     const defaults = normalizeBuilderStoryboardDefaults(state.builderStoryboardDefaults);
@@ -47532,9 +47765,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       : null;
     progress?.set(`${batchLabel}Preparing exact MiniMax H3 scene timing and ${builtInAudio ? "native audio generation" : "input audio"}...`, pct(8));
 
-    const latentContextFrames = [16, 22, 39, 56].includes(Number(segment?.minimax_h3_latent_context_frames))
-      ? Number(segment.minimax_h3_latent_context_frames)
-      : (miniMaxSettings.latent_context_frames || 22);
+    const latentContextFrames = miniMaxSettings.latent_context_frames;
     try {
       const payload = {
         project_folder: projectFolder,
@@ -48124,6 +48355,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       existingVideoAction = "overwrite";
     }
     let progress = null;
+    const etaLog = startSingleSceneETA(renderTarget);
+    let etaStatus = "failed";
     try {
       state.batchCancelled = false;
       setButtonGroupState(createSceneVideoButtons, { disabled: true, text: "Creating..." });
@@ -48139,15 +48372,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         existingVideoAction,
       });
       await runClearMemoryWorkflowQuiet(progress, `${sceneDisplayName(renderTarget, renderIndex)} render`, 98);
+      etaStatus = "complete";
       progress.close(900);
       toast(`Scene video ready:\n${videoPath}`);
     } catch (error) {
       const stopped = /stopped by user/i.test(String(error?.message || error));
+      etaStatus = stopped ? "canceled" : "failed";
       renderTarget.video_status = stopped ? "none" : "error";
       progress?.set(stopped ? "Scene video creation stopped by user." : `Error:\n${String(error?.message || error)}`, 100);
       toast(stopped ? "Scene video creation stopped." : String(error?.message || error), !stopped);
       renderList();
     } finally {
+      await finishSingleSceneETA(etaLog, etaStatus);
       setButtonGroupState(createSceneVideoButtons, { disabled: false, text: "Create Scene Video" });
       setButtonGroupState(gemmaThenCreateVideoButtons, { disabled: false });
     }
@@ -48200,6 +48436,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
 
     let progress = null;
+    const etaLog = startSingleSceneETA(renderTarget);
+    let etaStatus = "failed";
     try {
       state.batchCancelled = false;
       setButtonGroupState(miniMaxSceneVideoButtons, { disabled: true, text: "Creating MiniMax H3..." });
@@ -48208,15 +48446,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         existingVideoAction,
       });
       await runClearMemoryWorkflowQuiet(progress, `${sceneDisplayName(renderTarget, renderIndex)} render`, 98);
+      etaStatus = "complete";
       progress.close(900);
       toast(`MiniMax H3 scene video ready:\n${videoPath}`);
     } catch (error) {
       const stopped = /stopped by user/i.test(String(error?.message || error));
+      etaStatus = stopped ? "canceled" : "failed";
       renderTarget.video_status = stopped ? "none" : "error";
       progress?.set(stopped ? "MiniMax H3 scene video creation stopped by user." : `Error:\n${String(error?.message || error)}`, 100);
       toast(stopped ? "MiniMax H3 scene video creation stopped." : String(error?.message || error), !stopped);
       renderList();
     } finally {
+      await finishSingleSceneETA(etaLog, etaStatus);
       setButtonGroupState(miniMaxSceneVideoButtons, { disabled: false, text: "Create MiniMax H3 Scene Video" });
     }
   }
@@ -48514,6 +48755,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       final_video_path: "",
       error: "",
     };
+    startBuilderETA(renderLog);
     upsertRenderLog(renderLog);
     try {
       state.batchCancelled = false;
@@ -48534,6 +48776,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const scenes = batchTargetItems(sceneScope)
         .filter(({ segment }) => forceVideos || !String(selectedSegmentVideoPath(segment) || "").trim());
       const requestedSceneCount = batchTargetItems(sceneScope).length;
+      renderLog.eta_plan = scenes.map(({ segment }) => renderETAScene(segment));
+      renderLog.eta_video_duration = batchTargetItems(sceneScope).reduce((sum, { segment }) => sum + Math.max(0, Number(segment.end) - Number(segment.start)), 0);
       renderLog.target_scene_count = scenes.length;
       renderLog.skipped_existing_count = Math.max(0, requestedSceneCount - scenes.length);
       if (!scenes.length) {
@@ -48568,6 +48812,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         const sceneLabel = sceneDisplayName(segment, sceneIndex);
         const sceneStartedMs = Date.now();
         currentSceneLog = {
+          ...renderETAScene(segment),
           scene_id: String(segment.id || ""),
           scene_number: sceneSlotNumber(segment),
           timeline_index: sceneIndex,
@@ -51316,6 +51561,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     state.builderStoryReferenceImages = [];
     state.builderStoryReferenceNotes = "";
     state.renderLogs = [];
+    resetBuilderETA();
     state.activeRenderLogId = "";
     state.useVrgdgTextContext = true;
     state.projectFolder = cleanProjectFolder;
@@ -58376,7 +58622,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     event.stopPropagation();
     setGlobalTimelineAudioMuted(!(audio.muted && sceneAudio.muted));
   };
-  playButton.onclick = () => {
+  playButton.onclick = async () => {
     if (state.timelineTrimEditMode) {
       state.timelineTrimEditMode = false;
       syncTimelineTrimModeButton();
@@ -58386,6 +58632,31 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       updateAudioScrubbers();
       return;
     }
+    if (playStartInFlight) {
+      cancelPreviewPlayStart();
+      return;
+    }
+    const request = ++previewPlayRequest;
+    playStartInFlight = true;
+    try {
+      // If the user just scrubbed here, the preview video may still be
+      // loading/seeking to this position. Kick that off (in case it hasn't
+      // already started) and wait briefly for it before starting audio, so
+      // the audio clock doesn't get a head start on a video that then has to
+      // visibly jump to catch up.
+      let effectiveStart = currentGlobalTime();
+      if (effectiveStart >= playbackDuration() - 0.025) {
+        effectiveStart = Math.max(0, Number(activeSegment()?.start || 0));
+      }
+      const startSegment = playbackSegmentAtTime(effectiveStart);
+      if (startSegment && selectedSegmentVideoPath(startSegment)) {
+        syncPreviewPlayback(effectiveStart);
+        await waitForPreviewVideoReady(localPlaybackTime(startSegment, effectiveStart));
+      }
+    } finally {
+      if (request === previewPlayRequest) playStartInFlight = false;
+    }
+    if (request !== previewPlayRequest || isTimelinePlaying()) return;
     if (!state.sceneSelectionUsesGlobalAudio && usingSceneAudioPlaybackMode()) {
       audio.pause();
       const started = playSceneAudioFrom(currentGlobalTime());
@@ -58429,12 +58700,35 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   globalScrub.addEventListener("pointerdown", () => {
     state.isScrubbing = true;
   });
+  // The native range input can fire "input" faster than the preview video can
+  // seek. Collapse to one processed value per animation frame, same as the
+  // timeline-canvas drag, so the preview chases the latest thumb position
+  // instead of a backlog of superseded ones.
+  let globalScrubPendingValue = null;
+  let globalScrubRaf = 0;
   globalScrub.addEventListener("input", () => {
-    setGlobalPlaybackTime(Number(globalScrub.value || 0));
-    updateAudioScrubbers();
+    globalScrubPendingValue = Number(globalScrub.value || 0);
+    if (!globalScrubRaf) {
+      globalScrubRaf = requestAnimationFrame(() => {
+        globalScrubRaf = 0;
+        if (globalScrubPendingValue != null) {
+          setGlobalPlaybackTime(globalScrubPendingValue);
+          globalScrubPendingValue = null;
+          updateAudioScrubbers();
+        }
+      });
+    }
   });
   globalScrub.addEventListener("change", () => {
     state.isScrubbing = false;
+    if (globalScrubRaf) {
+      cancelAnimationFrame(globalScrubRaf);
+      globalScrubRaf = 0;
+    }
+    if (globalScrubPendingValue != null) {
+      setGlobalPlaybackTime(globalScrubPendingValue);
+      globalScrubPendingValue = null;
+    }
     updateAudioScrubbers();
   });
   waveformModeSelect.onchange = () => {
@@ -59075,6 +59369,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     miniMaxAudioMode,
     miniMaxContinuityMode,
     miniMaxContinuityPromptFromLastFrame.input,
+    miniMaxLatentContextFrames,
     miniMaxMegapixels,
     miniMaxSeed,
     miniMaxWarmupFrames,

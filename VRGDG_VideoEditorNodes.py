@@ -765,7 +765,13 @@ def _ensure_video_editor_routes():
         video_path = os.path.normpath(os.path.abspath(raw_path))
         if not os.path.isfile(video_path):
             return web.json_response({"ok": False, "error": "Video file was not found."}, status=404)
-        return web.FileResponse(video_path)
+        response = web.FileResponse(video_path)
+        # The client versions this URL with the scene's video_cache_bust, which only
+        # changes when the scene is re-rendered, so the same URL always means the
+        # same bytes. Mark it immutable so the browser reuses a preloaded/played
+        # clip from cache on the next cut instead of re-fetching it from disk.
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
 
     @server_instance.routes.get("/vrgdg/video_editor/image")
     async def vrgdg_video_editor_image(request):

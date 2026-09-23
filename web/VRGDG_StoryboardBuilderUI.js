@@ -3310,6 +3310,8 @@ async function copyTextToClipboard(text) {
 
 function openStoryboardBuilder(payload = {}) {
   const focusSceneId = String(payload.focusSceneId || payload.focus_scene_id || "").trim();
+  if (focusSceneId && document.querySelector("[data-vrgdg-focused-storyboard]")) return;
+  let focusedSceneOnly = Boolean(focusSceneId);
   const projectFolder = String(payload.projectFolder || payload.project_folder || "").trim();
   const incomingProjectVideoEngine = String(payload.projectVideoEngine || payload.project_video_engine || "").trim();
   const hasIncomingProjectVideoEngine = Boolean(incomingProjectVideoEngine);
@@ -4270,7 +4272,10 @@ function openStoryboardBuilder(payload = {}) {
   shell.append(header, note, middleContent, footer);
   backdrop.append(shell);
   document.body.append(backdrop);
-  if (focusSceneId) backdrop.style.display = "none";
+  if (focusedSceneOnly) {
+    backdrop.dataset.vrgdgFocusedStoryboard = focusSceneId;
+    backdrop.style.display = "none";
+  }
 
   const refreshActionButtons = () => {
     const selectedScenes = getSelectedScenes();
@@ -6523,7 +6528,7 @@ function openStoryboardBuilder(payload = {}) {
     document.body.append(editorBackdrop);
     closeEditor.onclick = () => {
       editorBackdrop.remove();
-      if (focusSceneId) backdrop.remove();
+      if (focusedSceneOnly) backdrop.remove();
     };
     const refreshShotPresetForVideoType = () => {
       const type = videoPromptType.value || "i2v";
@@ -6744,7 +6749,7 @@ function openStoryboardBuilder(payload = {}) {
     };
     cancel.onclick = () => {
       editorBackdrop.remove();
-      if (focusSceneId) backdrop.remove();
+      if (focusedSceneOnly) backdrop.remove();
     };
     gemma.onclick = async () => {
       const previous = gemma.textContent;
@@ -6791,16 +6796,25 @@ function openStoryboardBuilder(payload = {}) {
       }
     };
     apply.onclick = async () => {
-      saveEditorFieldsToScene();
-      syncReferenceMappingsToVideoCreator();
-      syncStoryLayerFromInputs({ notify: true });
-      editorBackdrop.remove();
-      if (focusSceneId) {
-        await saveStoryboard();
-        backdrop.remove();
-        return;
+      if (apply.disabled) return;
+      apply.disabled = true;
+      closeEditor.disabled = true;
+      cancel.disabled = true;
+      try {
+        saveEditorFieldsToScene();
+        if (focusedSceneOnly) await saveStoryboard({ throwOnError: true });
+        syncReferenceMappingsToVideoCreator();
+        syncStoryLayerFromInputs({ notify: true });
+        editorBackdrop.remove();
+        if (focusedSceneOnly) backdrop.remove();
+        else renderTable();
+      } catch (error) {
+        createToast(String(error?.message || error), true);
+      } finally {
+        apply.disabled = false;
+        closeEditor.disabled = false;
+        cancel.disabled = false;
       }
-      renderTable();
     };
   };
 
@@ -6945,7 +6959,7 @@ function openStoryboardBuilder(payload = {}) {
   async function loadExisting() {
     if (!state.projectFolder) {
       renderTable();
-      return;
+      return true;
     }
     try {
       const incomingScenes = state.scenes.map((scene) => normalizeScene(scene));
@@ -7009,15 +7023,6 @@ function openStoryboardBuilder(payload = {}) {
             temporal_world_effect_override: fresh.temporal_world_effect_override || normalized.temporal_world_effect_override || "global",
             temporal_world_effect_custom: fresh.temporal_world_effect_custom || normalized.temporal_world_effect_custom || "",
             image_path: fresh.image_path || normalized.image_path,
-            image_prompt: (incomingScenes.length && fresh.image_prompt !== undefined)
-              ? (String(fresh.image_prompt || "").trim() || normalized.image_prompt || "")
-              : (normalized.image_prompt || fresh.image_prompt || ""),
-            video_prompt: (incomingScenes.length && fresh.video_prompt !== undefined)
-              ? (String(fresh.video_prompt || "").trim() || normalized.video_prompt || "")
-              : (normalized.video_prompt || fresh.video_prompt || ""),
-            video_prompt_origin: (incomingScenes.length && fresh.video_prompt_origin !== undefined)
-              ? (fresh.video_prompt_origin || normalized.video_prompt_origin || "manual")
-              : (normalized.video_prompt_origin || fresh.video_prompt_origin || "manual"),
             no_character_present: Boolean(fresh.no_character_present || normalized.no_character_present),
             subjects,
             subject_refs: fresh.no_character_present || normalized.no_character_present ? [] : subjectRefs,
@@ -7120,15 +7125,19 @@ function openStoryboardBuilder(payload = {}) {
       refreshFacialInfo();
       setMode(state.mode);
       syncReferenceMappingsToVideoCreator();
+      return true;
     } catch (error) {
       createToast(String(error?.message || error), true);
       renderTable();
+      return false;
     }
   }
 
-  async function saveStoryboard() {
+  async function saveStoryboard({ throwOnError = false } = {}) {
     if (!state.projectFolder) {
-      createToast("Save the AI Video Builder project first so Storyboard Builder knows where to write files.", true);
+      const message = "Save the AI Video Builder project first so Storyboard Builder knows where to write files.";
+      if (throwOnError) throw new Error(message);
+      createToast(message, true);
       return;
     }
     state.saving = true;
@@ -7149,6 +7158,7 @@ function openStoryboardBuilder(payload = {}) {
       syncStoryLayerFromInputs({ notify: false });
       createToast(`Storyboard saved:\n${data.storyboard?.path || ""}`);
     } catch (error) {
+      if (throwOnError) throw error;
       createToast(String(error?.message || error), true);
     } finally {
       save.disabled = false;
@@ -8364,12 +8374,14 @@ function openStoryboardBuilder(payload = {}) {
   refreshCharacterSpeedInfo();
   refreshFacialInfo();
   setMode(state.mode || "storyboard_prompts");
-  loadExisting().then(() => {
+  loadExisting().then((loaded) => {
     if (!focusSceneId) return;
-    const target = state.scenes.find((scene) => scene.id === focusSceneId);
+    const target = loaded && state.scenes.find((scene) => scene.id === focusSceneId);
     if (target) {
       openSceneEditor(target);
     } else {
+      focusedSceneOnly = false;
+      delete backdrop.dataset.vrgdgFocusedStoryboard;
       backdrop.style.display = "";
     }
   });
