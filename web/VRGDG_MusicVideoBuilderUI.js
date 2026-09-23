@@ -6856,6 +6856,11 @@ function openBuilder(node) {
     miniMaxPromptCharacterStatus.textContent = length
       ? `H3 prompt: ${length.toLocaleString()} / 7,000 characters. Fixed format: ${budget.fixedChars.toLocaleString()}; planned shot allowance: ${budget.shotDescriptionChars.toLocaleString()}.`
       : `H3 prompt: 0 / 7,000 characters. Fixed format: ${budget.fixedChars.toLocaleString()}; planned shot allowance: ${budget.shotDescriptionChars.toLocaleString()}.`;
+    const referenceStatus = segment ? miniMaxPromptReferenceStatus(segment, miniMaxPrompt.value, mode) : "";
+    if (referenceStatus) {
+      miniMaxPromptCharacterStatus.textContent += ` ${referenceStatus} Review references before rendering.`;
+      miniMaxPromptCharacterStatus.style.color = "#fde68a";
+    }
   }
   const miniMaxPass2Prompt = document.createElement("textarea");
   miniMaxPass2Prompt.placeholder = "Optional prompt used only by Ref to Video 2 Pass Advanced...";
@@ -43279,8 +43284,46 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (!timed) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: Whisper timing did not complete; prompt generation was stopped.`);
     return true;
   }
+  function miniMaxPromptReferenceSignature(segment, mode = miniMaxH3ModeForSegment(segment)) {
+    if (!["reference_to_video", "image_reference_to_video", "video_to_video"].includes(mode)) return "";
+    const items = mode === "image_reference_to_video"
+      ? miniMaxH3ImageReferencePromptItems(segment)
+      : miniMaxOrderedImageReferenceItemsForSegment(segment, mode);
+    const contract = JSON.stringify({
+      mode,
+      references: items.map((item) => ({
+        kind: item.kind, id: item.source_id || item.id || "",
+        name: item.label || item.name || "", description: item.description || "",
+        path: item.image?.path || item.path || "", data: item.image?.path ? "" : (item.image?.data || ""),
+      })),
+      extraPaths: segment?.minimax_h3_image_paths ?? segment?.minimax_image_paths ?? [],
+    });
+    let hash = 2166136261;
+    for (let index = 0; index < contract.length; index += 1) hash = Math.imul(hash ^ contract.charCodeAt(index), 16777619);
+    return `${contract.length}:${hash >>> 0}`;
+  }
+
+  function miniMaxPromptReferenceStatus(segment, prompt, mode, imagePaths) {
+    const signature = miniMaxPromptReferenceSignature(segment, mode);
+    if (!signature || !String(prompt || "").trim()) return "";
+    const saved = segment?.minimax_h3_prompt_reference_binding;
+    if (!saved || saved.prompt !== String(prompt).trim()) return "Reference bindings have not been verified for this prompt.";
+    if (saved.signature !== signature) return "References changed after this prompt was created or reviewed.";
+    if (imagePaths && saved.imagePaths && JSON.stringify(imagePaths) !== JSON.stringify(saved.imagePaths)) return "The render uses a different reference image list from the one reviewed.";
+    return "";
+  }
+
+  function rememberMiniMaxPromptReferences(segment, prompt, signature, imagePaths) {
+    if (!signature) return;
+    const binding = { prompt: String(prompt).trim(), signature, ...(imagePaths ? { imagePaths: [...imagePaths] } : {}) };
+    segment.minimax_h3_prompt_reference_binding = binding;
+    const timelineSegment = allEditableSegments().find((item) => item.id === segment.id);
+    if (timelineSegment) timelineSegment.minimax_h3_prompt_reference_binding = binding;
+  }
+
   async function runMiniMaxH3PromptGeneration(segment, mode, options = {}) {
     await ensureAutoTimedSingerCuesBeforePrompt(segment);
+    const referenceSignature = miniMaxPromptReferenceSignature(segment, mode);
     const visionImages = Array.isArray(options.visionImages)
       ? options.visionImages.filter((item) => item && (String(item.path || "").trim() || String(item.data || "").trim()))
       : miniMaxH3PromptVisionImagesForRunner(segment, mode);
@@ -43380,6 +43423,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           : assembledPrompt;
         if (!prompt) throw new Error(options.emptyPromptMessage || `The LLM returned an empty MiniMax ${miniMaxH3ModeLabel(mode)} prompt.`);
         assertValidMiniMaxH3FinalPrompt(prompt, segment, mode);
+        rememberMiniMaxPromptReferences(segment, prompt, referenceSignature);
         return {
           ...data,
           prompt,
@@ -47682,6 +47726,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (["image_to_video", "image_reference_to_video"].includes(mode)) {
       const selectedImage = String(selectedSegmentImagePath(segment) || "").trim();
       if (selectedImage) imagePaths = [selectedImage, ...imagePaths.filter((path) => mediaPathKey(path) !== mediaPathKey(selectedImage))].slice(0, 9);
+    }
+    const referenceStatus = miniMaxPromptReferenceStatus(segment, prompt, mode, imagePaths);
+    if (referenceStatus || (options.imagePaths !== undefined && miniMaxPromptReferenceSignature(segment, mode))) {
+      const mapping = imagePaths.map((path, index) => `<Picture ${index + 1}>: ${path}`).join("\n");
+      const confirmed = window.confirm(`${sceneDisplayName(segment, sceneIndex)}: ${referenceStatus || "Custom render references need review."}\n\n${mapping}\n\nReview the prompt's Picture/Subject assignments. Cancel to regenerate or edit the prompt. Render with these references anyway?`);
+      if (!confirmed) throw new Error("Render cancelled so the scene prompt's reference bindings can be reviewed.");
+      rememberMiniMaxPromptReferences(segment, prompt, miniMaxPromptReferenceSignature(segment, mode), imagePaths);
+      await autoSaveSessionQuiet("reference bindings reviewed");
     }
     let continuityImageNumber = 0;
     if (continuityInput?.framePath) {
