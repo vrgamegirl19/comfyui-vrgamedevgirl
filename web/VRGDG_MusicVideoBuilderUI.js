@@ -2677,6 +2677,15 @@ function makeEditorThumbnailUrl(path) {
   return `/vrgdg/video_editor/image?path=${encodeURIComponent(path)}&thumbv=${encodeURIComponent(version)}`;
 }
 
+function renameSubjectInDescription(description, previousName, nextName) {
+  const before = String(previousName || "").trim();
+  const after = String(nextName || "").trim();
+  if (!before || !after || before === after) return String(description || "");
+  const escaped = before.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`(^|[^\\p{L}\\p{N}_])${escaped}(?=$|[^\\p{L}\\p{N}_])`, "gu");
+  return String(description || "").replace(pattern, (_, prefix) => prefix + after);
+}
+
 function makeEditorVideoUrl(path, bust) {
   // A stable bust value (e.g. segment.video_cache_bust, which only changes when the
   // scene is re-rendered) lets the browser reuse a cached fetch of the same clip
@@ -32414,6 +32423,19 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           if (refs.subjects.length <= 1) syncSingleSubjectInputsFromFirstSubject();
           renderAll();
         };
+        let previousSubjectName = String(subject.name || "");
+        name.addEventListener("change", () => {
+          const nextDescription = renameSubjectInDescription(subject.description, previousSubjectName, subject.name);
+          if (nextDescription !== String(subject.description || "") && window.confirm(`Update "${previousSubjectName}" to "${subject.name}" in this subject's description? Existing scene prompts and lyrics will stay as written.`)) {
+            subject.description = nextDescription;
+            description.value = nextDescription;
+            if (index === 0) {
+              refs.subject.description = nextDescription;
+              subjectDescription.value = nextDescription;
+            }
+          }
+          previousSubjectName = String(subject.name || "");
+        });
         name.addEventListener("input", () => {
           subject.name = name.value;
           if (index === 0) {
@@ -35238,6 +35260,15 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
         const trigger = makeInput(subject.trigger_phrase || "");
         trigger.placeholder = "Optional trigger phrase for this character...";
         const remove = makeButton("Remove");
+        let previousSubjectName = String(subject.name || "");
+        name.onchange = () => {
+          const nextDescription = renameSubjectInDescription(subject.description, previousSubjectName, subject.name);
+          if (nextDescription !== String(subject.description || "") && window.confirm(`Update "${previousSubjectName}" to "${subject.name}" in this subject's description? Existing scene prompts and lyrics will stay as written.`)) {
+            subject.description = nextDescription;
+            description.value = nextDescription;
+          }
+          previousSubjectName = String(subject.name || "");
+        };
         name.oninput = () => {
           subject.name = name.value || "";
           renderMappings();
