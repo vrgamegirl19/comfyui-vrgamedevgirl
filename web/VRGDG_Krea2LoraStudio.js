@@ -1116,7 +1116,7 @@ class Krea2Studio {
   }
 
   renderCaptionRunner() {
-    const providers = this.llmChoices.providers.length ? this.llmChoices.providers : [{ id: "openai", label: "OpenAI", models: ["gpt-4o"], default_model: "gpt-4o" }];
+    const providers = this.llmChoices.providers.length ? this.llmChoices.providers : [{ id: "openai", label: "OpenAI", models: ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-4o"], default_model: "gpt-6-luna" }];
     const activeProvider = providers.find((item) => item.id === this.llmApiProvider) || providers[0];
     const apiModels = activeProvider?.models?.length ? activeProvider.models : [activeProvider?.default_model || ""].filter(Boolean);
     return `

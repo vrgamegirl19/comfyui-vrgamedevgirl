@@ -33,8 +33,8 @@ Return only the final video prompt as plain text."""
 _RUNNER_NAMES = ("LM Studio", "LLM API", "Custom Server")
 _API_PROVIDER_NAMES = ("openai", "anthropic", "google", "openrouter", "grok")
 _MODEL_CHOICES = (
-    "gpt-5.6-luna", "gpt-5.6", "gpt-5.5", "gpt-4o", "gpt-4.1", "claude-sonnet-4-6",
-    "gemini-2.5-flash", "openai/gpt-4o", "grok-2-vision-1212",
+    "gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-luna", "gpt-5.6", "gpt-5.5", "gpt-4o", "gpt-4.1", "claude-sonnet-4-6",
+    "gemini-2.5-flash", "openai/gpt-6-astra", "openai/gpt-6-sol", "openai/gpt-6-luna", "openai/gpt-4o", "grok-2-vision-1212",
     "qwen2.5-vl-7b-instruct",
 )
 
@@ -125,7 +125,7 @@ class VRGDG_VideoPromptReconstructor:
                 "frames_to_extract": ("INT", {"default": 3, "min": 1, "max": 12, "step": 1, "tooltip": "Number of representative frames sent to the vision model. Three means first, middle, and final frame. More frames provide more coverage but use more API tokens."}),
                 "llm_runner": (list(_RUNNER_NAMES), {"tooltip": "Choose the same kind of LLM runner used by the Video Builder: LM Studio for a local server, LLM API for OpenAI/Anthropic/Google, or Custom Server for another OpenAI-compatible server."}),
                 "llm_provider": (list(_API_PROVIDER_NAMES), {"tooltip": "Provider used when llm_runner is LLM API. Choose the service that issued your API key, such as openai for an OpenAI key."}),
-                "model_name": (list(_MODEL_CHOICES), {"default": "gpt-4o", "tooltip": "Choose the vision model. The list changes with the selected API provider; LM Studio and Custom Server models are loaded from their server when available."}),
+                "model_name": (list(_MODEL_CHOICES), {"default": "gpt-6-luna", "tooltip": "Choose the vision model. The list changes with the selected API provider; LM Studio and Custom Server models are loaded from their server when available."}),
                 "api_url": ("STRING", {"default": "http://127.0.0.1:1234/v1/chat/completions", "tooltip": "Vision chat-completions endpoint. The default is for LM Studio. Other servers usually use an OpenAI-compatible /v1 endpoint."}),
                 "api_key": ("STRING", {"default": "", "password": True, "tooltip": "External API key. Usually leave blank for local LM Studio or Ollama unless authentication is enabled."}),
                 "max_prompt_length": ("INT", {"default": 1200, "min": 1, "max": 10000, "step": 1, "tooltip": "Maximum characters in the generated prompt. Larger values allow more detail; 1200 is a concise default."}),
