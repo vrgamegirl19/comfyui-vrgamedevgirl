@@ -498,6 +498,25 @@ function normalizeMiniMaxH3VideoPurpose(value) {
   return MINIMAX_H3_VIDEO_REFERENCE_PURPOSES.some((item) => item.value === clean) ? clean : "continuation";
 }
 
+function miniMaxInstalledPass2Lora(preset, installed) {
+  const candidates = Number(preset) === 8 ? [
+    "minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+    "minimax_h3_fl2v_lightx2v_turbo_8step_v1.0_resized_avg_rank_24_bf16.safetensors",
+  ] : [
+    DEFAULT_MINIMAX_H3_SETTINGS.two_pass_lora_name,
+    "minimax_h3_fl2v_turbo_4step_v1.1_768p_comfyui_bf16.safetensors",
+    "minimax_h3_ref2v_lightx2v_turbo_4step_v0.1_resized_avg_rank_20_bf16.safetensors",
+    "minimax_h3_fl2v_lightx2v_turbo_4step_v1.0_768p_resized_avg_rank_31_bf16.safetensors",
+    "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy.safetensors",
+    "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors",
+  ];
+  for (const candidate of candidates) {
+    const match = installed.find((name) => name.split(/[\\/]/).pop().toLowerCase() === candidate.toLowerCase());
+    if (match) return match;
+  }
+  return "";
+}
+
 function selectMiniMaxH3PassSettings(settings, passMode) {
   const { ref_pass_profiles = {}, ...current } = settings;
   const profiles = { ...ref_pass_profiles, [current.ref_pass_mode || "single"]: current };
@@ -6762,7 +6781,7 @@ function openBuilder(node) {
   const miniMaxTwoPassLoraPresetButtons = [4, 8].map((preset) => {
     const button = makeButton(`${preset} step`);
     button.dataset.preset = String(preset);
-    button.title = `Set Pass 2 to ${preset / 2} steps. The LoRA file is selected separately.`;
+    button.title = `Select an installed ${preset}-step Turbo LoRA and set Pass 2 to ${preset / 2} steps.`;
     miniMaxTwoPassLoraPreset.append(button);
     return button;
   });
@@ -6776,7 +6795,18 @@ function openBuilder(node) {
   const miniMaxTwoPassLoraLayout = document.createElement("div");
   miniMaxTwoPassLoraLayout.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;";
   miniMaxTwoPassLoraLayout.append(miniMaxTwoPassLoraFields, miniMaxTwoPassLoraPresetField);
-  const miniMaxTwoPassLoraSection = makeSettingsSection("Pass 2 Turbo LoRA", [miniMaxTwoPassLoraLayout]);
+  const miniMaxTwoPassLoraStatus = document.createElement("div");
+  miniMaxTwoPassLoraStatus.setAttribute("role", "status");
+  miniMaxTwoPassLoraStatus.style.cssText = "font-size:11px;color:#facc15;";
+  const miniMaxTwoPassLoraDownload = document.createElement("a");
+  miniMaxTwoPassLoraDownload.href = "https://huggingface.co/Kijai/MiniMax-H3_comfy/tree/main/loras";
+  miniMaxTwoPassLoraDownload.target = "_blank";
+  miniMaxTwoPassLoraDownload.rel = "noopener noreferrer";
+  miniMaxTwoPassLoraDownload.textContent = "Download MiniMax Turbo LoRAs";
+  miniMaxTwoPassLoraDownload.style.cssText = "font-size:11px;color:#67e8f9;";
+  const miniMaxTwoPassLoraSection = makeSettingsSection("Pass 2 Turbo LoRA", [
+    miniMaxTwoPassLoraLayout, miniMaxTwoPassLoraStatus, miniMaxTwoPassLoraDownload,
+  ]);
   const miniMaxThreePassLoraPicker = makeSearchableLoraPicker(DEFAULT_MINIMAX_H3_SETTINGS.three_pass_lightx_lora_name);
   const miniMaxThreePassLoraStrength = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.three_pass_lightx_lora_strength), "number");
   miniMaxThreePassLoraStrength.min = "-10";
@@ -8962,6 +8992,7 @@ function openBuilder(node) {
     miniMaxThreePassRefImageSize.value = settings.ref_image_size;
     miniMaxTwoPassLoraPicker.input.value = settings.two_pass_lora_name;
     miniMaxTwoPassLoraStrength.value = String(settings.two_pass_lora_strength);
+    miniMaxTwoPassLoraStatus.textContent = "";
     miniMaxTwoPassLoraPreset.dataset.preset = String(settings.two_pass_lora_preset);
     const showTwoPassLoraPreset = state.miniMaxH3TwoPassEnabled && !state.miniMaxH3ThreePassEnabled;
     miniMaxTwoPassLoraPresetField.style.display = showTwoPassLoraPreset ? "" : "none";
@@ -59558,12 +59589,29 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   for (const button of miniMaxTwoPassLoraPresetButtons) {
     button.onclick = async () => {
       if (!state.miniMaxH3TwoPassEnabled || state.miniMaxH3ThreePassEnabled) return;
-      pushHistory();
-      miniMaxTwoPassLoraPreset.dataset.preset = button.dataset.preset;
-      twoPassControls[1].steps.value = String(Number(button.dataset.preset) / 2);
-      saveMiniMaxH3SettingsFromPanel();
-      syncMiniMaxH3Panel();
-      await autoSaveSessionQuiet("MiniMax H3 Pass 2 LoRA preset");
+      for (const presetButton of miniMaxTwoPassLoraPresetButtons) presetButton.disabled = true;
+      try {
+        const data = await getJson("/vrgdg/workflow_runner/lora_list");
+        if (!state.miniMaxH3TwoPassEnabled || state.miniMaxH3ThreePassEnabled) return;
+        miniMaxTwoPassLoraPicker.options = data.loras || [];
+        const lora = miniMaxInstalledPass2Lora(button.dataset.preset, miniMaxTwoPassLoraPicker.options);
+        if (!lora) {
+          miniMaxTwoPassLoraStatus.textContent = `No matching ${button.dataset.preset}-step LoRA installed. Download one below, then click the preset again.`;
+          return;
+        }
+        pushHistory();
+        miniMaxTwoPassLoraPicker.input.value = lora;
+        miniMaxTwoPassLoraPreset.dataset.preset = button.dataset.preset;
+        twoPassControls[1].steps.value = String(Number(button.dataset.preset) / 2);
+        miniMaxTwoPassLoraStatus.textContent = "";
+        saveMiniMaxH3SettingsFromPanel();
+        syncMiniMaxH3Panel();
+        await autoSaveSessionQuiet("MiniMax H3 Pass 2 LoRA preset");
+      } catch (error) {
+        miniMaxTwoPassLoraStatus.textContent = `Could not apply LoRA preset: ${String(error?.message || error)}`;
+      } finally {
+        for (const presetButton of miniMaxTwoPassLoraPresetButtons) presetButton.disabled = false;
+      }
     };
   }
   wireSearchablePicker(miniMaxTwoPassLoraPicker, saveMiniMaxH3SettingsFromPanel);

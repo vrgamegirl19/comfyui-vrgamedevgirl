@@ -92,18 +92,24 @@ test('new two-pass settings default to two refinement steps, random seeds and ac
   assert.equal(saved.pass1_use_te_speed, true);
 });
 
-test('LoRA presets update only normal Pass 2 steps and retain manual overrides', async () => {
+test('LoRA presets select installed files, save steps, and leave missing selections unchanged', async () => {
   const c = fixture();
   let saved = c.cloneMiniMaxH3Settings({ video_mode: 'reference_to_video', ref_pass_mode: 'two_pass', two_pass_lora_name: 'chosen.safetensors', advanced_two_pass_pass2_steps: 9 });
   let saves = 0;
+  const four = 'H3/minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors';
+  const eight = 'H3/minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors';
   Object.assign(c, {
     state: { miniMaxH3TwoPassEnabled: true, miniMaxH3ThreePassEnabled: false },
     miniMaxTwoPassLoraPresetButtons: [4, 8].map(preset => ({ dataset: { preset: String(preset) } })),
     miniMaxTwoPassLoraPreset: { dataset: { preset: '4' } },
+    miniMaxTwoPassLoraPicker: { input: { value: 'chosen.safetensors' }, options: [] },
+    miniMaxTwoPassLoraStatus: { textContent: '' },
+    installed: [eight, four],
+    getJson: async () => ({ loras: c.installed }),
     twoPassControls: [{ steps: { value: '20' } }, { steps: { value: '2' } }],
     pushHistory() {}, syncMiniMaxH3Panel() {},
     saveMiniMaxH3SettingsFromPanel() {
-      saved = c.cloneMiniMaxH3Settings({ ...saved, two_pass_lora_preset: Number(c.miniMaxTwoPassLoraPreset.dataset.preset), two_pass_pass2_steps: Number(c.twoPassControls[1].steps.value) });
+      saved = c.cloneMiniMaxH3Settings({ ...saved, two_pass_lora_name: c.miniMaxTwoPassLoraPicker.input.value, two_pass_lora_preset: Number(c.miniMaxTwoPassLoraPreset.dataset.preset), two_pass_pass2_steps: Number(c.twoPassControls[1].steps.value) });
     },
     autoSaveSessionQuiet: async () => { saves++; },
   });
@@ -117,7 +123,7 @@ test('LoRA presets update only normal Pass 2 steps and retain manual overrides',
     assert.equal(saved.two_pass_lora_preset, steps * 2);
     assert.equal(c.twoPassControls[0].steps.value, '20');
     assert.equal(saved.advanced_two_pass_pass2_steps, 9);
-    assert.equal(saved.two_pass_lora_name, 'chosen.safetensors');
+    assert.equal(saved.two_pass_lora_name, index === 1 ? eight : four);
   }
   assert.equal(saves, 2);
   c.twoPassControls[1].steps.value = '7';
@@ -127,8 +133,39 @@ test('LoRA presets update only normal Pass 2 steps and retain manual overrides',
   saved = c.selectMiniMaxH3PassSettings(saved, 'two_pass');
   assert.equal(saved.two_pass_lora_preset, 4);
   assert.equal(saved.two_pass_pass2_steps, 7);
+  assert.equal(saved.two_pass_lora_name, four);
+  c.installed = [];
+  await c.miniMaxTwoPassLoraPresetButtons[1].onclick();
+  assert.equal(saved.two_pass_lora_name, four);
+  assert.equal(saved.two_pass_pass2_steps, 7);
+  assert.equal(saved.two_pass_lora_preset, 4);
+  assert.match(c.miniMaxTwoPassLoraStatus.textContent, /No matching 8-step LoRA installed/);
+  assert.equal(saves, 2);
+  assert.ok(c.miniMaxTwoPassLoraPresetButtons.every(button => !button.disabled));
   c.state.miniMaxH3ThreePassEnabled = true;
   await c.miniMaxTwoPassLoraPresetButtons[1].onclick();
   assert.equal(saved.two_pass_pass2_steps, 7);
   assert.equal(saves, 2);
+});
+
+test('installed LoRA matching respects preferred names, subfolders and recognized fallbacks', () => {
+  const c = fixture();
+  const preferred4 = 'minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors';
+  const user4 = 'minimax_h3_fl2v_turbo_4step_v1.1_768p_comfyui_bf16.safetensors';
+  const user8 = 'minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors';
+  const fallback8 = 'minimax_h3_fl2v_lightx2v_turbo_8step_v1.0_resized_avg_rank_24_bf16.safetensors';
+  assert.equal(c.miniMaxInstalledPass2Lora(4, [user4, `H3/${preferred4}`]), `H3/${preferred4}`);
+  assert.equal(c.miniMaxInstalledPass2Lora(4, [user4]), user4);
+  const windowsPath = `H3${String.fromCharCode(92)}${preferred4.toUpperCase()}`;
+  assert.equal(c.miniMaxInstalledPass2Lora(4, [windowsPath]), windowsPath);
+  assert.equal(c.miniMaxInstalledPass2Lora(8, [fallback8, user8]), user8);
+  assert.equal(c.miniMaxInstalledPass2Lora(8, [`H3/${fallback8}`]), `H3/${fallback8}`);
+  for (const name of [
+    'minimax_h3_ref2v_lightx2v_turbo_4step_v0.1_resized_avg_rank_20_bf16.safetensors',
+    'minimax_h3_fl2v_lightx2v_turbo_4step_v1.0_768p_resized_avg_rank_31_bf16.safetensors',
+    'minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy.safetensors',
+    'minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors',
+  ]) assert.equal(c.miniMaxInstalledPass2Lora(4, [name]), name);
+  assert.equal(c.miniMaxInstalledPass2Lora(8, [preferred4]), '');
+  assert.equal(c.miniMaxInstalledPass2Lora(4, [user8, 'unknown_4step.safetensors']), '');
 });
