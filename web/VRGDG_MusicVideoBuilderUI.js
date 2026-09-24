@@ -226,6 +226,7 @@ const MINIMAX_H3_VOICE_PRESETS = [
 ];
 const DEFAULT_MINIMAX_H3_SETTINGS = {
   video_mode: "text_to_video",
+  render_pass: "single",
   audio_mode: "input_audio",
   continuity_mode: "off",
   continuity_prompt_from_last_frame: false,
@@ -545,6 +546,13 @@ function cloneMiniMaxH3Settings(value = {}) {
     ...DEFAULT_MINIMAX_H3_SETTINGS,
     ...source,
     video_mode: normalizeMiniMaxH3Mode(source.video_mode || source.mode || DEFAULT_MINIMAX_H3_SETTINGS.video_mode),
+    // Pre-existing saves never had render_pass; Image + Reference 2 Pass was always a two-pass
+    // workflow by mode alone, so an absent field must still mean two_pass for that mode.
+    render_pass: ["two_pass", "three_pass"].includes(String(source.render_pass || "").trim().toLowerCase())
+      ? String(source.render_pass).trim().toLowerCase()
+      : source.render_pass == null && normalizeMiniMaxH3Mode(source.video_mode || source.mode) === "image_reference_to_video"
+        ? "two_pass"
+        : DEFAULT_MINIMAX_H3_SETTINGS.render_pass,
     audio_mode: normalizeMiniMaxH3AudioMode(source.audio_mode || source.audioMode || DEFAULT_MINIMAX_H3_SETTINGS.audio_mode),
     continuity_mode: normalizeMiniMaxH3ContinuityMode(source.continuity_mode || source.continuityMode || DEFAULT_MINIMAX_H3_SETTINGS.continuity_mode),
     continuity_prompt_from_last_frame: Boolean(source.continuity_prompt_from_last_frame ?? source.continuityPromptFromLastFrame ?? DEFAULT_MINIMAX_H3_SETTINGS.continuity_prompt_from_last_frame),
@@ -7225,7 +7233,7 @@ function openBuilder(node) {
   deleteAllTimelineVideosButton.style.borderColor = "#dc2626";
   deleteAllTimelineVideosButton.style.background = "#450a0a";
   deleteAllTimelineVideosButton.style.color = "#fee2e2";
-  deleteAllTimelineVideosButton.title = "Remove every selected/generated video and video history entry from the timeline without deleting any video or thumbnail files from the project folder.";
+  deleteAllTimelineVideosButton.title = "Permanently delete every generated video, video history entry, and thumbnail for every scene from the project folder, and clear the video latents. Cannot be undone.";
   const deleteAllTimelineImagesButton = makeButton("Delete ALL Images");
   deleteAllTimelineImagesButton.style.padding = "6px 10px";
   deleteAllTimelineImagesButton.style.borderColor = "#dc2626";
@@ -7913,6 +7921,7 @@ function openBuilder(node) {
       ...globalSettings,
       ...sceneSettings,
       video_mode: sceneSettings.video_mode || segment.minimax_h3_mode || globalSettings.video_mode,
+      render_pass: sceneSettings.render_pass ?? (normalizeMiniMaxH3Mode(sceneSettings.video_mode || segment.minimax_h3_mode) === "image_reference_to_video" ? "two_pass" : globalSettings.render_pass),
       location_transition_preset: hasSceneTransitionPreset ? sceneSettings.location_transition_preset : legacyPreset,
       location_transition_custom: hasSceneTransitionPreset ? sceneSettings.location_transition_custom : legacyCustom,
     });
@@ -7982,6 +7991,24 @@ function openBuilder(node) {
       if (segment) segment.minimax_h3_mode = mode;
     }
     return mode;
+  }
+
+  function setMiniMaxH3RenderPassForSegment(segment, value) {
+    const renderPass = ["two_pass", "three_pass"].includes(value) ? value : "single";
+    if (segment?.use_scene_minimax_h3_settings) {
+      segment.minimax_h3_settings = cloneMiniMaxH3Settings({
+        ...miniMaxH3SettingsForSegment(segment),
+        render_pass: renderPass,
+      });
+    } else {
+      state.miniMaxH3Settings = cloneMiniMaxH3Settings({
+        ...state.miniMaxH3Settings,
+        render_pass: renderPass,
+      });
+    }
+    state.miniMaxH3TwoPassEnabled = renderPass === "two_pass";
+    state.miniMaxH3ThreePassEnabled = renderPass === "three_pass";
+    return renderPass;
   }
 
   function clearMiniMaxImageReferenceStartFrameOnModeSwitch(segment, targetMode) {
@@ -8055,6 +8082,7 @@ function openBuilder(node) {
       .filter((item) => item.name && item.name !== "[none]");
     const settings = cloneMiniMaxH3Settings({
       video_mode: currentSettings.video_mode,
+      render_pass: currentSettings.render_pass,
       audio_mode: miniMaxAudioMode.value,
       continuity_mode: miniMaxContinuityMode.value,
       continuity_prompt_from_last_frame: miniMaxContinuityPromptFromLastFrame.input.checked,
@@ -8075,9 +8103,9 @@ function openBuilder(node) {
       steps: miniMaxSteps.value,
       steps_before_turbo: turboEnabled ? currentSettings.steps_before_turbo : miniMaxSteps.value,
       denoise: miniMaxDenoise.value,
-      ref_image_size: state.miniMaxH3ThreePassEnabled
+      ref_image_size: currentSettings.render_pass === "three_pass"
         ? miniMaxThreePassRefImageSize.value
-        : state.miniMaxH3TwoPassEnabled
+        : currentSettings.render_pass === "two_pass"
           ? miniMaxTwoPassRefImageSize.value
           : miniMaxRefImageSize.value,
       two_pass_lora_name: miniMaxTwoPassLoraPicker.input.value,
@@ -8086,10 +8114,10 @@ function openBuilder(node) {
       two_pass_final_width: miniMaxTwoPassFinalWidth.value,
       two_pass_final_height: miniMaxTwoPassFinalHeight.value,
       two_pass_latent_upscale_scale: miniMaxTwoPassLatentScale.value,
-      two_pass_latent_upscaler_name: state.miniMaxH3ThreePassEnabled
+      two_pass_latent_upscaler_name: currentSettings.render_pass === "three_pass"
         ? miniMaxAdvancedLatentUpscalerPicker.input.value
         : miniMaxTwoPassLatentUpscalerPicker.input.value,
-      two_pass_use_te_speed: state.miniMaxH3ThreePassEnabled
+      two_pass_use_te_speed: currentSettings.render_pass === "three_pass"
         ? miniMaxAdvancedUseTeSpeed.input.checked
         : miniMaxTwoPassUseTeSpeed.input.checked,
       two_pass_use_feedforward: miniMaxTwoPassUseFeedforward.input.checked,
@@ -8871,6 +8899,8 @@ function openBuilder(node) {
       }
     }
     const settings = miniMaxH3SettingsForSegment(segment);
+    state.miniMaxH3TwoPassEnabled = settings.render_pass === "two_pass";
+    state.miniMaxH3ThreePassEnabled = settings.render_pass === "three_pass";
     miniMaxDiffusionModelPicker.input.value = settings.diffusion_model_name;
     miniMaxClipPicker.input.value = settings.clip_name;
     miniMaxVideoVaePicker.input.value = settings.video_vae_name;
@@ -12483,6 +12513,7 @@ function openBuilder(node) {
         ...cloneMiniMaxH3Settings(state.miniMaxH3Settings),
         ...savedSceneSettings,
         video_mode: savedSceneSettings.video_mode || segment.minimax_h3_mode,
+        render_pass: savedSceneSettings.render_pass ?? (normalizeMiniMaxH3Mode(savedSceneSettings.video_mode || segment.minimax_h3_mode) === "image_reference_to_video" ? "two_pass" : state.miniMaxH3Settings.render_pass),
         location_transition_preset: hasSavedTransitionPreset ? savedSceneSettings.location_transition_preset : legacyTransitionPreset,
         location_transition_custom: hasSavedTransitionPreset ? savedSceneSettings.location_transition_custom : legacyTransitionCustom,
       });
@@ -37928,9 +37959,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       video_type: normalizeVideoType(state.videoType),
       video_engine: normalizeProjectVideoEngine(state.projectVideoEngine),
       minimax_h3_settings: cloneMiniMaxH3Settings(state.miniMaxH3Settings),
-        minimax_h3_two_pass: Boolean(state.miniMaxH3TwoPassEnabled),
-        minimax_h3_three_pass: Boolean(state.miniMaxH3ThreePassEnabled),
-        minimax_h3_advanced_two_pass: Boolean(state.miniMaxH3ThreePassEnabled),
+        minimax_h3_two_pass: state.miniMaxH3Settings.render_pass === "two_pass",
+        minimax_h3_three_pass: state.miniMaxH3Settings.render_pass === "three_pass",
+        minimax_h3_advanced_two_pass: state.miniMaxH3Settings.render_pass === "three_pass",
       image_model_mode: state.imageModelMode,
       zimage_settings: state.zimageSettings,
       reference_krea2_settings: cloneKrea2ReferenceSettings(state.referenceKrea2Settings),
@@ -38147,6 +38178,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       // one of its values. Loading a project still performs the full hydrate;
       // an explicit caller may request it here when that behavior is needed.
       if (data.session && options.refreshFromSavedSession === true) {
+        state.miniMaxH3Settings = cloneMiniMaxH3Settings(data.session.minimax_h3_settings || state.miniMaxH3Settings);
+        if (data.session.minimax_h3_settings?.render_pass == null) {
+          state.miniMaxH3Settings.render_pass = (data.session.minimax_h3_advanced_two_pass ?? data.session.minimax_h3_three_pass)
+            ? "three_pass"
+            : data.session.minimax_h3_two_pass ? "two_pass" : state.miniMaxH3Settings.render_pass;
+        }
+        state.miniMaxH3TwoPassEnabled = state.miniMaxH3Settings.render_pass === "two_pass";
+        state.miniMaxH3ThreePassEnabled = state.miniMaxH3Settings.render_pass === "three_pass";
         state.overlaySegments = Array.isArray(data.session.overlay_segments) ? data.session.overlay_segments : state.overlaySegments;
         state.overlaySegments.forEach(normalizeOverlayClip);
         state.overlayTrack = normalizeOverlayTrackState(data.session.overlay_track || state.overlayTrack);
@@ -38237,9 +38276,6 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         state.autoSaveEnabled = data.session.auto_save_enabled ?? state.autoSaveEnabled;
         state.videoType = normalizeVideoType(data.session.video_type || data.session.videoType || state.videoType);
         state.projectVideoEngine = normalizeProjectVideoEngine(data.session.video_engine ?? state.projectVideoEngine);
-        state.miniMaxH3Settings = cloneMiniMaxH3Settings(data.session.minimax_h3_settings || state.miniMaxH3Settings);
-        state.miniMaxH3TwoPassEnabled = Boolean(data.session.minimax_h3_two_pass ?? state.miniMaxH3TwoPassEnabled);
-        state.miniMaxH3ThreePassEnabled = Boolean(data.session.minimax_h3_advanced_two_pass ?? data.session.minimax_h3_three_pass ?? state.miniMaxH3ThreePassEnabled);
         state.imageModelMode = data.session.image_model_mode || data.session.flux_klein_settings?.image_model_mode || state.imageModelMode || "zimage";
         state.pxPerSecond = state.timelineZoom;
         waveformModeSelect.value = state.waveformMode;
@@ -38496,6 +38532,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       );
       faceFixTool.reset?.();
       pushHistory();
+      state.miniMaxH3Settings = cloneMiniMaxH3Settings(session.minimax_h3_settings || {});
+      if (session.minimax_h3_settings?.render_pass == null) {
+        state.miniMaxH3Settings.render_pass = (session.minimax_h3_advanced_two_pass ?? session.minimax_h3_three_pass)
+          ? "three_pass"
+          : session.minimax_h3_two_pass ? "two_pass" : state.miniMaxH3Settings.render_pass;
+      }
+      state.miniMaxH3TwoPassEnabled = state.miniMaxH3Settings.render_pass === "two_pass";
+      state.miniMaxH3ThreePassEnabled = state.miniMaxH3Settings.render_pass === "three_pass";
       state.segments = Array.isArray(session.segments) ? session.segments : [];
       state.overlaySegments = Array.isArray(session.overlay_segments) ? session.overlay_segments : [];
       state.overlaySegments.forEach(normalizeOverlayClip);
@@ -38598,9 +38642,6 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.autoSaveEnabled = session.auto_save_enabled ?? state.autoSaveEnabled ?? true;
       state.videoType = normalizeVideoType(session.video_type || session.videoType || state.videoType);
       state.projectVideoEngine = normalizeProjectVideoEngine(session.video_engine);
-      state.miniMaxH3Settings = cloneMiniMaxH3Settings(session.minimax_h3_settings || {});
-      state.miniMaxH3TwoPassEnabled = Boolean(session.minimax_h3_two_pass);
-      state.miniMaxH3ThreePassEnabled = Boolean(session.minimax_h3_advanced_two_pass ?? session.minimax_h3_three_pass);
       state.imageModelMode = session.image_model_mode || session.flux_klein_settings?.image_model_mode || state.imageModelMode || "zimage";
       state.pxPerSecond = state.timelineZoom;
       waveformModeSelect.value = state.waveformMode;
@@ -47724,9 +47765,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const miniMaxSettings = miniMaxH3SettingsForSegment(segment);
     const builtInAudio = miniMaxSettings.audio_mode === "built_in_audio";
     const mode = normalizeMiniMaxH3Mode(options.mode ?? miniMaxSettings.video_mode);
-    const twoPass = Boolean(state.miniMaxH3TwoPassEnabled)
+    const twoPass = miniMaxSettings.render_pass === "two_pass"
       && ["reference_to_video", "image_reference_to_video"].includes(mode);
-    const threePass = Boolean(state.miniMaxH3ThreePassEnabled)
+    const threePass = miniMaxSettings.render_pass === "three_pass"
       && ["reference_to_video", "image_reference_to_video"].includes(mode);
     if ((twoPass || threePass) && builtInAudio) {
       throw new Error(`MiniMax H3 ${threePass ? "2 Pass Advanced" : "2 Pass"} currently supports Input Audio only. Switch Audio Mode to Input Audio before rendering.`);
@@ -55086,12 +55127,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       ...(Array.isArray(segment.video_backup_paths) ? segment.video_backup_paths : []),
       segment.video_original_path || "",
     ]).map((path) => String(path || "").trim()).filter(Boolean))];
+    const thumbnailPaths = [...new Set(assignedSegments.flatMap((segment) => [
+      segment.video_thumbnail_path || "",
+      ...(Array.isArray(segment.video_thumbnail_history) ? segment.video_thumbnail_history : []),
+      ...(Array.isArray(segment.video_backup_thumbnail_paths) ? segment.video_backup_thumbnail_paths : []),
+      segment.video_original_thumbnail_path || "",
+    ]).map((path) => String(path || "").trim()).filter(Boolean))];
     if (!assignedSegments.length) {
       toast("There are no timeline videos to remove.");
       return;
     }
     const ok = window.confirm(
-      `Remove ALL videos from the timeline?\n\nThis clears video assignments and video history from ${assignedSegments.length} scene${assignedSegments.length === 1 ? "" : "s"}.\n\nThe ${videoPaths.length} video file${videoPaths.length === 1 ? "" : "s"} and their thumbnails will NOT be deleted from the project folder. They remain on disk as backups.\n\nSaved scene latents (Latent Continuation) are deleted too, since they no longer match any video.`
+      `Permanently delete ALL ${videoPaths.length} video file${videoPaths.length === 1 ? "" : "s"} from ${assignedSegments.length} scene${assignedSegments.length === 1 ? "" : "s"}?\n\nThis deletes the video files and thumbnails from the project folder, the same as Delete Video does for one scene, but for every scene. This cannot be undone.\n\nSaved scene latents (Latent Continuation) are deleted too, since they no longer match any video.`
     );
     if (!ok) return;
 
@@ -55100,6 +55147,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       deleteAllTimelineVideosButton.textContent = "Removing ALL...";
       pauseTimelineForEditing();
       pushHistory();
+      const projectFolder = String(state.projectFolder || projectInput.value || "").trim();
+      let deleteFailures = 0;
+      for (const path of [...videoPaths, ...thumbnailPaths]) {
+        try {
+          await postJson("/vrgdg/music_builder/delete_project_media", { project_folder: projectFolder, path });
+        } catch (error) {
+          deleteFailures += 1;
+        }
+      }
+      if (deleteFailures) {
+        throw new Error(`Some files were deleted, but ${deleteFailures} file${deleteFailures === 1 ? "" : "s"} could not be deleted. Timeline references were kept so you can retry Delete ALL Videos.`);
+      }
       for (const segment of segments) {
         segment.video_path = "";
         segment.video_source_path = "";
@@ -55145,7 +55204,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       render();
       await autoSaveSessionQuiet("all timeline videos removed");
       updateSelectedMediaTools();
-      toast(`Removed all timeline videos from ${assignedSegments.length} scene${assignedSegments.length === 1 ? "" : "s"}. The files remain in the project folder as backups.`);
+      toast(`Deleted ${videoPaths.length} video file${videoPaths.length === 1 ? "" : "s"} from ${assignedSegments.length} scene${assignedSegments.length === 1 ? "" : "s"}.${deleteFailures ? ` ${deleteFailures} file${deleteFailures === 1 ? "" : "s"} could not be deleted.` : ""}`, Boolean(deleteFailures));
     } catch (error) {
       toast(String(error?.message || error), true);
     } finally {
@@ -59652,8 +59711,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       if (!segment) return;
       pushHistory();
       clearMiniMaxImageReferenceStartFrameOnModeSwitch(segment, button.dataset.minimaxH3Mode);
-      state.miniMaxH3TwoPassEnabled = button.dataset.minimaxH3Mode === "image_reference_to_video";
-      state.miniMaxH3ThreePassEnabled = false;
+      setMiniMaxH3RenderPassForSegment(segment, button.dataset.minimaxH3Mode === "image_reference_to_video" ? "two_pass" : "single");
       setMiniMaxH3ModeForSegment(segment, button.dataset.minimaxH3Mode);
       syncMiniMaxH3Panel();
       await autoSaveSessionQuiet(segment.use_scene_minimax_h3_settings ? "MiniMax H3 locked scene mode" : "MiniMax H3 project mode");
@@ -59664,8 +59722,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (!segment) return;
     pushHistory();
     clearMiniMaxImageReferenceStartFrameOnModeSwitch(segment, "reference_to_video");
-    state.miniMaxH3TwoPassEnabled = true;
-    state.miniMaxH3ThreePassEnabled = false;
+    setMiniMaxH3RenderPassForSegment(segment, "two_pass");
     setMiniMaxH3ModeForSegment(segment, "reference_to_video");
     syncMiniMaxH3Panel();
     await autoSaveSessionQuiet("MiniMax H3 two-pass project mode");
@@ -59675,8 +59732,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (!segment) return;
     pushHistory();
     clearMiniMaxImageReferenceStartFrameOnModeSwitch(segment, "reference_to_video");
-    state.miniMaxH3TwoPassEnabled = false;
-    state.miniMaxH3ThreePassEnabled = true;
+    setMiniMaxH3RenderPassForSegment(segment, "three_pass");
     setMiniMaxH3ModeForSegment(segment, "reference_to_video");
     syncMiniMaxH3Panel();
     await autoSaveSessionQuiet("MiniMax H3 2 Pass Advanced project mode");
