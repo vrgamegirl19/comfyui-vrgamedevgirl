@@ -19,7 +19,7 @@ function fixture() {
   };
   const context = { state: { miniMaxH3Settings: { latent_context_frames: 22, video_mode: 'text_to_video' } }, saved: 0 };
   for (const name of new Set((saver + bindings).match(/\bminiMax[A-Z]\w*/g))) {
-    context[name] = { ...control(), input: control() };
+    context[name] = { ...control(), input: control(), dataset: {} };
   }
   Object.assign(context, {
     DEFAULT_MINIMAX_H3_SETTINGS: { latent_context_frames: 22 },

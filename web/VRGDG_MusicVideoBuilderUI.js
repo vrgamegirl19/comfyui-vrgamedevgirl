@@ -264,6 +264,7 @@ const DEFAULT_MINIMAX_H3_SETTINGS = {
   ref_image_size: "max",
   two_pass_lora_name: "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
   two_pass_lora_strength: 1,
+  two_pass_lora_preset: 4,
   two_pass_defaults_version: 1,
   two_pass_final_width: 1920,
   two_pass_final_height: 1080,
@@ -610,6 +611,7 @@ function cloneMiniMaxH3Settings(value = {}) {
       ? (source.two_pass_latent_upscale_scale ?? DEFAULT_MINIMAX_H3_SETTINGS.two_pass_latent_upscale_scale)
       : DEFAULT_MINIMAX_H3_SETTINGS.two_pass_latent_upscale_scale))),
     two_pass_latent_upscaler_name: String(source.two_pass_latent_upscaler_name || DEFAULT_MINIMAX_H3_SETTINGS.two_pass_latent_upscaler_name),
+    two_pass_lora_preset: Number(source.two_pass_lora_preset) === 8 ? 8 : 4,
     two_pass_use_te_speed: Boolean(source.two_pass_use_te_speed ?? DEFAULT_MINIMAX_H3_SETTINGS.two_pass_use_te_speed),
     use_feedforward: Boolean(source.use_feedforward ?? DEFAULT_MINIMAX_H3_SETTINGS.use_feedforward),
     two_pass_use_feedforward: Boolean(source.two_pass_use_feedforward ?? DEFAULT_MINIMAX_H3_SETTINGS.two_pass_use_feedforward),
@@ -6753,10 +6755,28 @@ function openBuilder(node) {
   miniMaxTwoPassLoraStrength.min = "-10";
   miniMaxTwoPassLoraStrength.max = "10";
   miniMaxTwoPassLoraStrength.step = "0.01";
-  const miniMaxTwoPassLoraSection = makeSettingsSection("Pass 2 Turbo LoRA", [
+  const miniMaxTwoPassLoraPreset = document.createElement("div");
+  miniMaxTwoPassLoraPreset.style.cssText = "display:flex;gap:8px;";
+  miniMaxTwoPassLoraPreset.setAttribute("role", "group");
+  miniMaxTwoPassLoraPreset.setAttribute("aria-label", "Pass 2 LoRA preset");
+  const miniMaxTwoPassLoraPresetButtons = [4, 8].map((preset) => {
+    const button = makeButton(`${preset} step`);
+    button.dataset.preset = String(preset);
+    button.title = `Set Pass 2 to ${preset / 2} steps. The LoRA file is selected separately.`;
+    miniMaxTwoPassLoraPreset.append(button);
+    return button;
+  });
+  const miniMaxTwoPassLoraPresetField = makeField("Pass 2 LoRA preset", miniMaxTwoPassLoraPreset);
+  const miniMaxTwoPassLoraFields = document.createElement("div");
+  miniMaxTwoPassLoraFields.style.cssText = "display:flex;flex-direction:column;gap:8px;min-width:0;";
+  miniMaxTwoPassLoraFields.append(
     makeField("Pass 2 Turbo LoRA", miniMaxTwoPassLoraPicker.wrapper),
     makeField("Strength", miniMaxTwoPassLoraStrength),
-  ]);
+  );
+  const miniMaxTwoPassLoraLayout = document.createElement("div");
+  miniMaxTwoPassLoraLayout.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;";
+  miniMaxTwoPassLoraLayout.append(miniMaxTwoPassLoraFields, miniMaxTwoPassLoraPresetField);
+  const miniMaxTwoPassLoraSection = makeSettingsSection("Pass 2 Turbo LoRA", [miniMaxTwoPassLoraLayout]);
   const miniMaxThreePassLoraPicker = makeSearchableLoraPicker(DEFAULT_MINIMAX_H3_SETTINGS.three_pass_lightx_lora_name);
   const miniMaxThreePassLoraStrength = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.three_pass_lightx_lora_strength), "number");
   miniMaxThreePassLoraStrength.min = "-10";
@@ -8117,6 +8137,7 @@ function openBuilder(node) {
           : miniMaxRefImageSize.value,
       two_pass_lora_name: miniMaxTwoPassLoraPicker.input.value,
       two_pass_lora_strength: miniMaxTwoPassLoraStrength.value,
+      two_pass_lora_preset: Number(miniMaxTwoPassLoraPreset.dataset.preset || 4),
       two_pass_defaults_version: DEFAULT_MINIMAX_H3_SETTINGS.two_pass_defaults_version,
       two_pass_final_width: miniMaxTwoPassFinalWidth.value,
       two_pass_final_height: miniMaxTwoPassFinalHeight.value,
@@ -8941,6 +8962,16 @@ function openBuilder(node) {
     miniMaxThreePassRefImageSize.value = settings.ref_image_size;
     miniMaxTwoPassLoraPicker.input.value = settings.two_pass_lora_name;
     miniMaxTwoPassLoraStrength.value = String(settings.two_pass_lora_strength);
+    miniMaxTwoPassLoraPreset.dataset.preset = String(settings.two_pass_lora_preset);
+    const showTwoPassLoraPreset = state.miniMaxH3TwoPassEnabled && !state.miniMaxH3ThreePassEnabled;
+    miniMaxTwoPassLoraPresetField.style.display = showTwoPassLoraPreset ? "" : "none";
+    miniMaxTwoPassLoraLayout.style.gridTemplateColumns = showTwoPassLoraPreset ? "minmax(0,1fr) auto" : "minmax(0,1fr)";
+    for (const button of miniMaxTwoPassLoraPresetButtons) {
+      const active = Number(button.dataset.preset) === settings.two_pass_lora_preset;
+      button.setAttribute("aria-pressed", String(active));
+      button.style.background = active ? "#06b6d4" : "#27272a";
+      button.style.color = active ? "#082f49" : "#f4f4f5";
+    }
     miniMaxTwoPassFinalWidth.value = String(settings.two_pass_final_width);
     miniMaxTwoPassFinalHeight.value = String(settings.two_pass_final_height);
     miniMaxTwoPassLatentScale.value = String(settings.two_pass_latent_upscale_scale);
@@ -59524,6 +59555,17 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
   wireSearchablePicker(miniMaxTurboLoraPicker, saveMiniMaxH3SettingsFromPanel);
   miniMaxTurboLoraPicker.input.addEventListener("change", persistMiniMaxSettings);
+  for (const button of miniMaxTwoPassLoraPresetButtons) {
+    button.onclick = async () => {
+      if (!state.miniMaxH3TwoPassEnabled || state.miniMaxH3ThreePassEnabled) return;
+      pushHistory();
+      miniMaxTwoPassLoraPreset.dataset.preset = button.dataset.preset;
+      twoPassControls[1].steps.value = String(Number(button.dataset.preset) / 2);
+      saveMiniMaxH3SettingsFromPanel();
+      syncMiniMaxH3Panel();
+      await autoSaveSessionQuiet("MiniMax H3 Pass 2 LoRA preset");
+    };
+  }
   wireSearchablePicker(miniMaxTwoPassLoraPicker, saveMiniMaxH3SettingsFromPanel);
   miniMaxTwoPassLoraPicker.input.addEventListener("change", persistMiniMaxSettings);
   wireSearchablePicker(miniMaxThreePassLoraPicker, saveMiniMaxH3SettingsFromPanel);

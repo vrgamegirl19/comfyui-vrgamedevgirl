@@ -91,3 +91,44 @@ test('new two-pass settings default to two refinement steps, random seeds and ac
   assert.equal(saved.two_pass_pass1_seed, 123);
   assert.equal(saved.pass1_use_te_speed, true);
 });
+
+test('LoRA presets update only normal Pass 2 steps and retain manual overrides', async () => {
+  const c = fixture();
+  let saved = c.cloneMiniMaxH3Settings({ video_mode: 'reference_to_video', ref_pass_mode: 'two_pass', two_pass_lora_name: 'chosen.safetensors', advanced_two_pass_pass2_steps: 9 });
+  let saves = 0;
+  Object.assign(c, {
+    state: { miniMaxH3TwoPassEnabled: true, miniMaxH3ThreePassEnabled: false },
+    miniMaxTwoPassLoraPresetButtons: [4, 8].map(preset => ({ dataset: { preset: String(preset) } })),
+    miniMaxTwoPassLoraPreset: { dataset: { preset: '4' } },
+    twoPassControls: [{ steps: { value: '20' } }, { steps: { value: '2' } }],
+    pushHistory() {}, syncMiniMaxH3Panel() {},
+    saveMiniMaxH3SettingsFromPanel() {
+      saved = c.cloneMiniMaxH3Settings({ ...saved, two_pass_lora_preset: Number(c.miniMaxTwoPassLoraPreset.dataset.preset), two_pass_pass2_steps: Number(c.twoPassControls[1].steps.value) });
+    },
+    autoSaveSessionQuiet: async () => { saves++; },
+  });
+  const start = source.indexOf('  for (const button of miniMaxTwoPassLoraPresetButtons)', source.indexOf('wireSearchablePicker(miniMaxTurboLoraPicker'));
+  const end = source.indexOf('  wireSearchablePicker(miniMaxTwoPassLoraPicker', start);
+  assert.ok(start >= 0 && end > start);
+  vm.runInContext(source.slice(start, end), c);
+  for (const [index, steps] of [[1, 4], [0, 2]]) {
+    await c.miniMaxTwoPassLoraPresetButtons[index].onclick();
+    assert.equal(saved.two_pass_pass2_steps, steps);
+    assert.equal(saved.two_pass_lora_preset, steps * 2);
+    assert.equal(c.twoPassControls[0].steps.value, '20');
+    assert.equal(saved.advanced_two_pass_pass2_steps, 9);
+    assert.equal(saved.two_pass_lora_name, 'chosen.safetensors');
+  }
+  assert.equal(saves, 2);
+  c.twoPassControls[1].steps.value = '7';
+  c.saveMiniMaxH3SettingsFromPanel();
+  saved = c.cloneMiniMaxH3Settings(JSON.parse(JSON.stringify(saved)));
+  saved = c.selectMiniMaxH3PassSettings(saved, 'single');
+  saved = c.selectMiniMaxH3PassSettings(saved, 'two_pass');
+  assert.equal(saved.two_pass_lora_preset, 4);
+  assert.equal(saved.two_pass_pass2_steps, 7);
+  c.state.miniMaxH3ThreePassEnabled = true;
+  await c.miniMaxTwoPassLoraPresetButtons[1].onclick();
+  assert.equal(saved.two_pass_pass2_steps, 7);
+  assert.equal(saves, 2);
+});
