@@ -55133,14 +55133,31 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       ...(Array.isArray(segment.video_backup_thumbnail_paths) ? segment.video_backup_thumbnail_paths : []),
       segment.video_original_thumbnail_path || "",
     ]).map((path) => String(path || "").trim()).filter(Boolean))];
-    if (!assignedSegments.length) {
-      toast("There are no timeline videos to remove.");
+    const imagePaths = [...new Set(segments.flatMap((segment) => [
+      ...(Array.isArray(segment.image_history) ? segment.image_history : []),
+      segment.approved_image_path || "",
+      segment.custom_image_path || "",
+      segment.first_last_frame_end_image_path || "",
+      segment.flf_rendered_start_frame_path || "",
+      segment.minimax_h3_continuity_frame_path || "",
+      segment.auto_img2img_source_frame_path || "",
+    ]).map((path) => String(path || "").trim()).filter(Boolean))];
+    const hasSceneImages = imagePaths.length > 0 || segments.some((segment) =>
+      segment.custom_image_data || segment.first_last_frame_end_image_data || segment.flf_rendered_start_frame_data || segment.image);
+    if (!assignedSegments.length && !hasSceneImages) {
+      toast("There are no timeline videos or scene images to remove.");
       return;
     }
     const ok = window.confirm(
       `Permanently delete ALL ${videoPaths.length} video file${videoPaths.length === 1 ? "" : "s"} from ${assignedSegments.length} scene${assignedSegments.length === 1 ? "" : "s"}?\n\nThis deletes the video files and thumbnails from the project folder, the same as Delete Video does for one scene, but for every scene. This cannot be undone.\n\nSaved scene latents (Latent Continuation) are deleted too, since they no longer match any video.`
     );
     if (!ok) return;
+
+    const deleteSceneImages = hasSceneImages && window.confirm(
+      "Also permanently delete ALL timeline scene images and image history?\n\nThis removes captured video frames, first/last frames, continuity frames, and imported or generated scene images. Older captured frames cannot be distinguished from ordinary scene images. Reference Builder assets are not included.\n\nOK = delete scene images too. Cancel = keep scene images and delete videos only."
+    );
+    if (!assignedSegments.length && !deleteSceneImages) return;
+    const mediaPaths = [...new Set([...videoPaths, ...thumbnailPaths, ...(deleteSceneImages ? imagePaths : [])])];
 
     try {
       deleteAllTimelineVideosButton.disabled = true;
@@ -55149,7 +55166,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       pushHistory();
       const projectFolder = String(state.projectFolder || projectInput.value || "").trim();
       let deleteFailures = 0;
-      for (const path of [...videoPaths, ...thumbnailPaths]) {
+      for (const path of mediaPaths) {
         try {
           await postJson("/vrgdg/music_builder/delete_project_media", { project_folder: projectFolder, path });
         } catch (error) {
@@ -55184,6 +55201,19 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         segment.minimax_h3_continuity_image_number = 0;
         segment.flf_rendered_source_video_path = "";
         segment.preview_mode = "image";
+        if (deleteSceneImages) {
+          segment.image = null;
+          segment.image_history = [];
+          segment.image_history_index = -1;
+          segment.image_assignment_cleared = true;
+          for (const key of [
+            "approved_image_path", "custom_image_path", "custom_image_data", "custom_image_name",
+            "first_last_frame_end_image_path", "first_last_frame_end_image_data", "first_last_frame_end_image_name",
+            "flf_rendered_start_frame_path", "flf_rendered_start_frame_data", "flf_rendered_start_frame_name",
+            "auto_img2img_source_frame_path", "auto_img2img_source_video_path",
+          ]) segment[key] = "";
+          segment.flf_final_prompt_ready = false;
+        }
         ensureSegmentRuntimeFields(segment);
       }
       await deleteStaleSceneLatents();
@@ -55198,13 +55228,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       sceneAudio.removeAttribute("src");
       sceneAudio.load();
       state.sceneAudioSegmentId = "";
+      if (deleteSceneImages) previewImage.removeAttribute("src");
       syncInspector();
       syncPreview(activeSegment());
       renderList();
       render();
-      await autoSaveSessionQuiet("all timeline videos removed");
+      await autoSaveSessionQuiet(deleteSceneImages ? "all timeline videos and scene images removed" : "all timeline videos removed");
       updateSelectedMediaTools();
-      toast(`Deleted ${videoPaths.length} video file${videoPaths.length === 1 ? "" : "s"} from ${assignedSegments.length} scene${assignedSegments.length === 1 ? "" : "s"}.${deleteFailures ? ` ${deleteFailures} file${deleteFailures === 1 ? "" : "s"} could not be deleted.` : ""}`, Boolean(deleteFailures));
+      toast(`Deleted ${videoPaths.length} video file${videoPaths.length === 1 ? "" : "s"} from ${assignedSegments.length} scene${assignedSegments.length === 1 ? "" : "s"}.${deleteSceneImages ? " Timeline scene images and frame histories were also deleted." : ""}${deleteFailures ? ` ${deleteFailures} file${deleteFailures === 1 ? "" : "s"} could not be deleted.` : ""}`, Boolean(deleteFailures));
     } catch (error) {
       toast(String(error?.message || error), true);
     } finally {
