@@ -24,11 +24,11 @@ class BuilderMiniMaxAdvancedTwoPassTests(unittest.TestCase):
         self.assertIn("def _seed_payload(key, default):", RUNNER_SOURCE)
         self.assertIn("if value < 0:", RUNNER_SOURCE)
         self.assertIn("random.randrange(0, 0xFFFFFFFFFFFFFFFF + 1)", RUNNER_SOURCE)
-        self.assertIn('_seed_payload("pass1_seed", seed)', RUNNER_SOURCE)
-        self.assertIn('_seed_payload("pass2_seed", seed)', RUNNER_SOURCE)
+        self.assertIn('_seed_payload("pass1_seed", -1)', RUNNER_SOURCE)
+        self.assertIn('_seed_payload("pass2_seed", -1)', RUNNER_SOURCE)
 
     def test_former_three_pass_button_is_advanced_two_pass(self):
-        self.assertIn('makeButton("Ref to Video\\n2 Pass Advanced")', BUILDER_SOURCE)
+        self.assertIn('makeButton("2 pass advanced")', BUILDER_SOURCE)
         self.assertIn(
             '"/vrgdg/workflow_runner/build_minimax_h3_advanced_2pass_prompt"',
             BUILDER_SOURCE,

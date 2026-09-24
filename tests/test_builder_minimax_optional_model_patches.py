@@ -2,6 +2,7 @@ import ast
 import copy
 import json
 import os
+import random
 import tempfile
 import types
 import unittest
@@ -46,6 +47,7 @@ def load_two_pass_builder(sparse_method="Sol-Attn (adaptive tau)"):
 
     namespace = {
         "copy": copy,
+        "random": random,
         "json": json,
         "os": os,
         "_load_api_template": lambda _path: (str(TEMPLATE_PATH), copy.deepcopy(template)),
@@ -82,8 +84,27 @@ def load_two_pass_builder(sparse_method="Sol-Attn (adaptive tau)"):
         },
         "_minimax_h3_output_location": lambda _folder, _scene: (_folder, "scene_0001"),
     }
-    exec(compile(ast.Module(body=[function], type_ignores=[]), str(RUNNER_PATH), "exec"), namespace)
+    exec(compile(ast.Module(body=[node for node in module.body if isinstance(node, ast.FunctionDef) and node.name in {"_patch_minimax_h3_optional_model_paths", "_patch_minimax_h3_te_speed", "_patch_minimax_h3_fast_decode"}] + [function], type_ignores=[]), str(RUNNER_PATH), "exec"), namespace)
     return namespace["_build_minimax_h3_2pass_api_prompt"]
+
+
+def load_single_pass_builder():
+    namespace = load_two_pass_builder().__globals__.copy()
+    module = ast.parse(RUNNER_PATH.read_text(encoding="utf-8"))
+    functions = [node for node in module.body if isinstance(node, ast.FunctionDef)
+                 and node.name in {"_build_minimax_h3_api_prompt", "_api_node_id_by_class", "_patch_minimax_h3_optional_model_paths"}]
+    namespace.update({
+        "_MINIMAX_H3_ASPECT_RATIOS": {"16:9 (Widescreen)"},
+        "_minimax_h3_api_template_path": lambda: str(TEMPLATE_PATH.parent / "minimax_audio_driven_builder_api.json"),
+        "_minimax_h3_built_in_audio_api_template_path": lambda: str(TEMPLATE_PATH.parent / "minimax_built_in_audio_builder_api.json"),
+        "_load_api_template": lambda path: (path, json.loads(Path(path).read_text(encoding="utf-8"))),
+        "_patch_minimax_h3_advanced_settings": lambda *_args: {},
+        "_patch_minimax_h3_loras": lambda *_args: {},
+        "_patch_minimax_h3_turbo": lambda *_args: {"enabled": False},
+        "_patch_minimax_h3_memory_efficient_sage_attention": lambda *_args: {"enabled": False},
+    })
+    exec(compile(ast.Module(body=functions, type_ignores=[]), str(RUNNER_PATH), "exec"), namespace)
+    return namespace["_build_minimax_h3_api_prompt"]
 
 
 class BuilderMiniMaxOptionalModelPatchTests(unittest.TestCase):
@@ -98,16 +119,50 @@ class BuilderMiniMaxOptionalModelPatchTests(unittest.TestCase):
         payload.update(updates)
         return payload
 
-    def test_ui_defaults_off_and_sends_checkbox_values(self):
-        self.assertIn("two_pass_use_feedforward: false", BUILDER_SOURCE)
-        self.assertIn("two_pass_use_block_sparse_attention: false", BUILDER_SOURCE)
-        self.assertIn("two_pass_use_fast_vae_decode: false", BUILDER_SOURCE)
-        self.assertIn('makeCheckbox("Use FeedForward (lower VRAM for longer scenes)"', BUILDER_SOURCE)
-        self.assertIn('makeCheckbox("Use Block Sparse Attention (faster)"', BUILDER_SOURCE)
-        self.assertIn('makeCheckbox("Use Fast Batched VAE Decode (batch size 8)"', BUILDER_SOURCE)
-        self.assertIn("two_pass_use_feedforward: twoPass ? miniMaxSettings.two_pass_use_feedforward : undefined", BUILDER_SOURCE)
-        self.assertIn("two_pass_use_block_sparse_attention: twoPass ? miniMaxSettings.two_pass_use_block_sparse_attention : undefined", BUILDER_SOURCE)
-        self.assertIn("two_pass_use_fast_vae_decode: twoPass ? miniMaxSettings.two_pass_use_fast_vae_decode : undefined", BUILDER_SOURCE)
+    def test_ui_sends_per_pass_options_for_both_two_pass_modes(self):
+        self.assertTrue('miniMaxAccelerationControls.flatMap' in BUILDER_SOURCE)
+        self.assertTrue('pass${pass}_use_${key}' in BUILDER_SOURCE)
+        self.assertTrue('two_pass_use_fast_vae_decode: (twoPass || threePass)' in BUILDER_SOURCE)
+
+    def test_single_pass_checkbox_combinations_and_audio_modes(self):
+        build = load_single_pass_builder()
+        with tempfile.TemporaryDirectory() as folder:
+            audio = os.path.join(folder, "scene.wav")
+            Path(audio).touch()
+            for audio_mode in ("input_audio", "built_in_audio"):
+                baseline = build(self.payload(folder, audio, audio_mode=audio_mode))["prompt"]
+                original_model = baseline["124"]["inputs"]["model"]
+                for feed, sparse in ((False, False), (True, False), (False, True), (True, True)):
+                    with self.subTest(audio_mode=audio_mode, feed=feed, sparse=sparse):
+                        result = build(self.payload(
+                            folder, audio, audio_mode=audio_mode, video_mode="reference_to_video",
+                            use_feedforward=feed, use_block_sparse_attention=sparse,
+                        ))
+                        prompt = result["prompt"]
+                        expected = (["MiniMaxChunkFeedForward"] if feed else []) + (["BlockSparseAttention"] if sparse else [])
+                        patches = result["optional_patch_nodes"]
+                        self.assertEqual([item["class_type"] for item in patches], expected)
+                        current = original_model
+                        for item in patches:
+                            self.assertEqual(prompt[item["node"]]["inputs"]["model"], current)
+                            current = [item["node"], 0]
+                        self.assertEqual(prompt["124"]["inputs"]["model"], current)
+                        self.assertEqual(prompt["126"]["inputs"]["model"], current)
+                        if not expected:
+                            self.assertEqual(prompt, baseline)
+
+    def test_single_pass_missing_nodes_fail_before_queueing(self):
+        build = load_single_pass_builder()
+        build.__globals__["_get_comfy_node_mappings"] = lambda: {}
+        with tempfile.TemporaryDirectory() as folder:
+            with self.assertRaisesRegex(ValueError, "nodes are missing: MiniMaxChunkFeedForward"):
+                build(self.payload(folder, "", audio_mode="built_in_audio", use_feedforward=True))
+
+    def test_single_pass_ui_persists_and_sends_options(self):
+        for key in ("use_feedforward", "use_block_sparse_attention", "use_te_speed"):
+            self.assertTrue(f"{key}: !twoPass && !threePass ? miniMaxSettings.{key} : undefined" in BUILDER_SOURCE)
+        self.assertTrue('...currentSettings,' in BUILDER_SOURCE)
+        self.assertTrue('miniMaxAccelerationSettings,' in BUILDER_SOURCE)
 
     def test_unchecked_prompt_keeps_hidden_graph_unchanged(self):
         build = load_two_pass_builder()
@@ -192,6 +247,87 @@ class BuilderMiniMaxOptionalModelPatchTests(unittest.TestCase):
             Path(audio).touch()
             with self.assertRaisesRegex(ValueError, "supported Sol-Attn method"):
                 build(self.payload(folder, audio, two_pass_use_block_sparse_attention=True))
+
+    def test_default_steps_acceleration_and_random_seeds(self):
+        build = load_two_pass_builder()
+        with tempfile.TemporaryDirectory() as folder:
+            audio = os.path.join(folder, "scene.wav")
+            Path(audio).touch()
+            payload = self.payload(folder, audio)
+            first = build(payload)["prompt"]
+            second = build(payload)["prompt"]
+            self.assertEqual(first["190"]["inputs"]["value"], 2)
+            for node_id in ("129", "211"):
+                self.assertGreaterEqual(first[node_id]["inputs"]["noise_seed"], 0)
+                self.assertNotEqual(first[node_id]["inputs"]["noise_seed"], second[node_id]["inputs"]["noise_seed"])
+            classes = {node["class_type"] for node in first.values()}
+            self.assertFalse(classes & {"TESpeedMiniMaxH3", "MiniMaxChunkFeedForward", "BlockSparseAttention", "H3FastVAEDecode"})
+            fixed = build({**payload, "pass1_seed": 123, "pass2_seed": 456})["prompt"]
+            self.assertEqual(fixed["129"]["inputs"]["noise_seed"], 123)
+            self.assertEqual(fixed["211"]["inputs"]["noise_seed"], 456)
+
+    def test_acceleration_is_independent_for_each_pass_and_advanced(self):
+        from test_builder_minimax_advanced_two_pass import BuilderMiniMaxAdvancedTwoPassTests
+        base = load_two_pass_builder()
+        case = BuilderMiniMaxAdvancedTwoPassTests()
+        advanced_ns = case._advanced_prompt_namespace(case._NewSpatialSplit)
+        base_mappings = base.__globals__["_get_comfy_node_mappings"]()
+        advanced_mappings = advanced_ns["_get_comfy_node_mappings"]()
+        base.__globals__["_get_comfy_node_mappings"] = lambda: {**base_mappings, **advanced_mappings}
+        advanced_ns["_build_minimax_h3_2pass_api_prompt"] = base
+        advanced = advanced_ns["_build_minimax_h3_advanced_2pass_api_prompt"]
+
+        def model_classes(prompt, node_id):
+            classes = []
+            while node_id:
+                node = prompt[node_id]
+                classes.append(node["class_type"])
+                node_id = (node["inputs"].get("model") or [None])[0]
+            return classes
+
+        with tempfile.TemporaryDirectory() as folder:
+            audio = os.path.join(folder, "scene.wav")
+            Path(audio).touch()
+            for build, final_sampler in ((base, "192"), (advanced, "9306")):
+                for key, class_type in (("te_speed", "TESpeedMiniMaxH3"), ("feedforward", "MiniMaxChunkFeedForward"), ("block_sparse_attention", "BlockSparseAttention")):
+                    for first, second in ((False, False), (True, False), (False, True), (True, True)):
+                        with self.subTest(advanced=build is advanced, option=key, first=first, second=second):
+                            payload = self.payload(folder, audio, two_pass_use_te_speed=False,
+                                two_pass_use_fast_vae_decode=True,
+                                **{f"pass1_use_{key}": first, f"pass2_use_{key}": second})
+                            prompt = build(payload)["prompt"]
+                            self.assertEqual(class_type in model_classes(prompt, "124"), first)
+                            self.assertEqual(class_type in model_classes(prompt, final_sampler), second)
+                            self.assertEqual(prompt["122"]["class_type"], "H3FastVAEDecode")
+                            if build is advanced:
+                                self.assertEqual(prompt["9307"]["class_type"], "VAEDecode")
+                            for node in prompt.values():
+                                for value in node["inputs"].values():
+                                    if isinstance(value, list) and len(value) == 2 and isinstance(value[1], int):
+                                        self.assertIn(str(value[0]), prompt)
+
+    def test_single_pass_replaces_easy_cache_and_preserves_sampler_settings(self):
+        build = load_single_pass_builder()
+        module = ast.parse(RUNNER_PATH.read_text(encoding="utf-8"))
+        wanted = {"_patch_minimax_h3_advanced_settings", "_optional_api_node_id_by_class", "_replace_api_input_refs"}
+        functions = [node for node in module.body if isinstance(node, ast.FunctionDef) and node.name in wanted]
+        build.__globals__["_MINIMAX_H3_SAGE_ATTENTION_MODES"] = {"auto"}
+        exec(compile(ast.Module(body=functions, type_ignores=[]), str(RUNNER_PATH), "exec"), build.__globals__)
+        with tempfile.TemporaryDirectory() as folder:
+            for audio_mode in ("input_audio", "built_in_audio"):
+                audio = os.path.join(folder, "scene.wav")
+                Path(audio).touch()
+                result = build(self.payload(folder, audio, audio_mode=audio_mode,
+                    video_mode="reference_to_video", use_te_speed=True, use_fast_vae_decode=True,
+                    easy_cache_bypass=False, steps=13, denoise=0.85, sampler_name="euler", scheduler="simple"))
+                prompt = result["prompt"]
+                self.assertNotIn("EasyCache", [node["class_type"] for node in prompt.values()])
+                self.assertEqual(prompt["124"]["inputs"]["steps"], 13)
+                self.assertEqual(prompt["124"]["inputs"]["denoise"], 0.85)
+                self.assertEqual(prompt["123"]["inputs"]["sampler_name"], "euler")
+                self.assertEqual(prompt["9210"]["class_type"], "TESpeedMiniMaxH3")
+                self.assertEqual(prompt["126"]["inputs"]["model"], ["9210", 0])
+                self.assertEqual(prompt["122"]["class_type"], "H3FastVAEDecode")
 
 
 if __name__ == "__main__":
