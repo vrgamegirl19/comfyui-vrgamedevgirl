@@ -3405,6 +3405,128 @@ def _patch_minimax_h3_loras(prompt, payload):
     }
 
 
+def _patch_minimax_h3_optional_model_paths(prompt, model_refs, use_feedforward, use_block_sparse_attention):
+    if use_feedforward or use_block_sparse_attention:
+        try:
+            mappings = _get_comfy_node_mappings()
+        except Exception as exc:
+            raise ValueError(
+                "Could not inspect ComfyUI node registrations for the optional MiniMax H3 model patches. "
+                "Restart ComfyUI after installing or updating their nodes."
+            ) from exc
+        required_nodes = []
+        if use_feedforward:
+            required_nodes.append("MiniMaxChunkFeedForward")
+        if use_block_sparse_attention:
+            required_nodes.append("BlockSparseAttention")
+        missing_nodes = [name for name in required_nodes if name not in mappings]
+        if missing_nodes:
+            raise ValueError(
+                "MiniMax H3 optional model patches are enabled, but these nodes are missing: "
+                + ", ".join(missing_nodes)
+                + ". Install/update ComfyUI-KJNodes and ComfyUI as needed, then restart ComfyUI."
+            )
+
+    if use_block_sparse_attention:
+        sparse_input_types = mappings["BlockSparseAttention"].INPUT_TYPES()
+        sparse_inputs = {
+            **sparse_input_types.get("required", {}),
+            **sparse_input_types.get("optional", {}),
+        }
+        selection_spec = sparse_inputs.get("selection", ())
+        selection_options = selection_spec[1].get("options", []) if len(selection_spec) > 1 else []
+        selection_keys = {option["key"] for option in selection_options}
+        # DynamicCombo keys changed when Block Sparse Attention became Model Sparse Attention.
+        sparse_selection = next(
+            (key for key in ("sol-attn", "Sol-Attn (adaptive tau)") if key in selection_keys),
+            None,
+        )
+        if sparse_selection is None:
+            raise ValueError(
+                "The installed BlockSparseAttention node does not advertise a supported Sol-Attn method. "
+                "Disable Use Block Sparse Attention or update the VRGDG nodes for this ComfyUI version."
+            )
+
+    optional_patch_nodes = []
+    next_lora_node_id = 9202
+
+    def add_optional_model_patch(model_ref, class_type, inputs, target, title):
+        nonlocal next_lora_node_id
+        while str(next_lora_node_id) in prompt:
+            next_lora_node_id += 1
+        node_id = str(next_lora_node_id)
+        next_lora_node_id += 1
+        prompt[node_id] = {
+            "class_type": class_type,
+            "inputs": {"model": list(model_ref), **inputs},
+            "_meta": {"title": f"{title} - {target}"},
+        }
+        optional_patch_nodes.append({"node": node_id, "class_type": class_type, "target": target})
+        return [node_id, 0]
+
+    for target, model_ref in model_refs.items():
+        if use_feedforward:
+            model_ref = add_optional_model_patch(
+                model_ref,
+                "MiniMaxChunkFeedForward",
+                {"chunks": 8, "seq_threshold": 4096},
+                target,
+                "MiniMax H3 Chunk FeedForward",
+            )
+        if use_block_sparse_attention:
+            model_ref = add_optional_model_patch(
+                model_ref,
+                "BlockSparseAttention",
+                {
+                    "selection": sparse_selection,
+                    "selection.tau": 1.3,
+                    "start_percent": 0.2,
+                    "end_percent": 1.0,
+                    "dense_blocks": "",
+                    "min_tokens": 12288,
+                    "extra_tokens": 256,
+                    "sink_conditioning": "exact_kv_and_rows",
+                    "verbose": False,
+                },
+                target,
+                "Block Sparse Attention",
+            )
+        model_refs[target] = model_ref
+    return optional_patch_nodes
+
+
+def _patch_minimax_h3_te_speed(prompt, model_ref, payload, node_id):
+    prompt[node_id] = {
+        "class_type": "TESpeedMiniMaxH3",
+        "inputs": {
+            "model": list(model_ref),
+            "processing_control_value": _float_payload(payload, "te_speed_processing_control", 0.07, 0.0, 1.0),
+            "processing_percent_1": _float_payload(payload, "te_speed_start_percent", 0.1, 0.0, 1.0),
+            "processing_percent_2": _float_payload(payload, "te_speed_end_percent", 0.9, 0.0, 1.0),
+            "mcs": _int_payload(payload, "te_speed_mcs", 2, 1, 64),
+            "cache_depth": _float_payload(payload, "te_speed_cache_depth", 0.75, 0.0, 1.0),
+            "device": str(payload.get("te_speed_device") or "auto"),
+        },
+        "_meta": {"title": "TE-Speed MiniMax H3"},
+    }
+    return [node_id, 0]
+
+
+def _patch_minimax_h3_fast_decode(prompt):
+    if "H3FastVAEDecode" not in _get_comfy_node_mappings():
+        raise ValueError("Fast VAE decode requires H3FastVAEDecode. Update VRGameDevGirl nodes and restart ComfyUI.")
+    decoder_inputs = prompt["122"]["inputs"]
+    prompt["122"] = {
+        "class_type": "H3FastVAEDecode",
+        "inputs": {
+            "samples": copy.deepcopy(decoder_inputs["samples"]),
+            "vae": copy.deepcopy(decoder_inputs["vae"]),
+            "tile_batch_size": 8,
+        },
+        "_meta": {"title": "H3 VAE Decode Fast - Final Output"},
+    }
+
+
 def _build_minimax_h3_api_prompt(payload):
     if _bool_payload(payload, "use_memory_efficient_sage_attention", False):
         _require_minimax_h3_memory_efficient_sage_attention()
@@ -3573,6 +3695,8 @@ def _build_minimax_h3_api_prompt(payload):
     # stream-copying H.264, which can discard final video packets before our
     # exact scene trimmer receives them.
     _set_api_input(prompt, "142", "trim_to_audio", False)
+    if str(payload.get("video_mode") or "reference_to_video") == "reference_to_video":
+        payload = {**payload, "easy_cache_bypass": True, "use_turbo_lora": False}
     advanced_settings = _patch_minimax_h3_advanced_settings(prompt, payload)
     if _bool_payload(payload, "use_memory_efficient_sage_attention", False):
         _set_api_input(prompt, "141", "sage_attention", "disabled")
@@ -3580,6 +3704,29 @@ def _build_minimax_h3_api_prompt(payload):
     lora_settings = _patch_minimax_h3_loras(prompt, payload)
     turbo_settings = _patch_minimax_h3_turbo(prompt, payload)
     memory_efficient_sage_attention = _patch_minimax_h3_memory_efficient_sage_attention(prompt, payload)
+    optional_patch_nodes = []
+    if _bool_payload(payload, "use_feedforward", False) or _bool_payload(payload, "use_block_sparse_attention", False):
+        scheduler_id = _api_node_id_by_class(prompt, "BasicScheduler", fallback="124")
+        guider_id = _api_node_id_by_class(prompt, "BasicGuider", fallback="126")
+        model_ref = prompt.get(scheduler_id, {}).get("inputs", {}).get("model")
+        if not isinstance(model_ref, list) or len(model_ref) != 2:
+            raise ValueError("MiniMax H3 optional model patches could not find the current model connection.")
+        model_refs = {"single_pass": model_ref}
+        optional_patch_nodes = _patch_minimax_h3_optional_model_paths(
+            prompt, model_refs,
+            _bool_payload(payload, "use_feedforward", False),
+            _bool_payload(payload, "use_block_sparse_attention", False),
+        )
+        for node_id in (scheduler_id, guider_id):
+            _set_api_input(prompt, node_id, "model", list(model_refs["single_pass"]))
+    if _bool_payload(payload, "use_te_speed", False):
+        scheduler_id = _api_node_id_by_class(prompt, "BasicScheduler", fallback="124")
+        guider_id = _api_node_id_by_class(prompt, "BasicGuider", fallback="126")
+        model_ref = _patch_minimax_h3_te_speed(prompt, prompt[scheduler_id]["inputs"]["model"], payload, "9210")
+        for node_id in (scheduler_id, guider_id):
+            _set_api_input(prompt, node_id, "model", list(model_ref))
+    if _bool_payload(payload, "use_fast_vae_decode", False):
+        _patch_minimax_h3_fast_decode(prompt)
     if turbo_settings["enabled"]:
         advanced_settings = {
             **advanced_settings,
@@ -3620,6 +3767,7 @@ def _build_minimax_h3_api_prompt(payload):
         "lora_settings": lora_settings,
         "turbo_settings": turbo_settings,
         "memory_efficient_sage_attention": memory_efficient_sage_attention,
+        "optional_patch_nodes": optional_patch_nodes,
     }
 
 
@@ -3721,8 +3869,8 @@ def _build_minimax_h3_2pass_api_prompt(payload):
         return min(max(0, value), 0xFFFFFFFFFFFFFFFF)
 
     seed = _seed_payload("seed", 69)
-    pass1_seed = _seed_payload("pass1_seed", seed)
-    pass2_seed = _seed_payload("pass2_seed", seed)
+    pass1_seed = _seed_payload("pass1_seed", -1)
+    pass2_seed = _seed_payload("pass2_seed", -1)
     final_width = _int_payload(payload, "final_width", 1920, 64, 16384)
     final_height = _int_payload(payload, "final_height", 1080, 64, 16384)
     latent_scale = _float_payload(payload, "latent_upscale_scale", 2.0, 1.0, 8.0)
@@ -3752,7 +3900,7 @@ def _build_minimax_h3_2pass_api_prompt(payload):
     _set_api_input(prompt, "124", "steps", _int_payload(payload, "pass1_steps", 20, 1, 1000))
     _set_api_input(prompt, "124", "denoise", _float_payload(payload, "pass1_denoise", 1.0, 0.0, 1.0))
     _set_api_input(prompt, "192", "scheduler", str(payload.get("pass2_scheduler") or "simple").strip() or "simple")
-    _set_api_input(prompt, "190", "value", _int_payload(payload, "pass2_steps", 5, 1, 1000))
+    _set_api_input(prompt, "190", "value", _int_payload(payload, "pass2_steps", 2, 1, 1000))
     _set_api_input(prompt, "191", "value", _float_payload(payload, "pass2_denoise", 0.2, 0.0, 1.0))
 
     _set_api_input(prompt, "141", "model_name", diffusion_model_name)
@@ -3769,18 +3917,10 @@ def _build_minimax_h3_2pass_api_prompt(payload):
     _set_api_input(prompt, "207", "lora_name", turbo_lora_name)
     _set_api_input(prompt, "207", "strength_model", _float_payload(payload, "two_pass_lora_strength", 1.0, -10.0, 10.0))
 
-    use_te_speed = _bool_payload(payload, "two_pass_use_te_speed", True)
-    # Bypassing is done by routing the LoRA loader directly from the diffusion
-    # model, so the TE-Speed node is not part of the executed dependency graph.
-    _set_api_input(prompt, "207", "model", ["208", 0] if use_te_speed else ["141", 0])
-    _set_api_input(prompt, "208", "model", ["141", 0])
-    _set_api_input(prompt, "208", "processing_control_value", _float_payload(payload, "te_speed_processing_control", 0.07, 0.0, 1.0))
-    _set_api_input(prompt, "208", "processing_percent_1", _float_payload(payload, "te_speed_start_percent", 0.1, 0.0, 1.0))
-    _set_api_input(prompt, "208", "processing_percent_2", _float_payload(payload, "te_speed_end_percent", 0.9, 0.0, 1.0))
-    _set_api_input(prompt, "208", "mcs", _int_payload(payload, "te_speed_mcs", 2, 1, 64))
-    _set_api_input(prompt, "208", "cache_depth", _float_payload(payload, "te_speed_cache_depth", 0.75, 0.0, 1.0))
-    _set_api_input(prompt, "208", "device", str(payload.get("te_speed_device") or "auto"))
-    pass1_model = ["208", 0] if use_te_speed else ["141", 0]
+    use_te_speed = _bool_payload(payload, "two_pass_use_te_speed", False)
+    _set_api_input(prompt, "207", "model", ["141", 0])
+    prompt.pop("208", None)
+    pass1_model = ["141", 0]
     pass2_model = ["207", 0]
 
     extra_loras = []
@@ -3836,94 +3976,27 @@ def _build_minimax_h3_2pass_api_prompt(payload):
 
     use_feedforward = _bool_payload(payload, "two_pass_use_feedforward", False)
     use_block_sparse_attention = _bool_payload(payload, "two_pass_use_block_sparse_attention", False)
-    if use_feedforward or use_block_sparse_attention:
-        try:
-            mappings = _get_comfy_node_mappings()
-        except Exception as exc:
-            raise ValueError(
-                "Could not inspect ComfyUI node registrations for the optional MiniMax H3 model patches. "
-                "Restart ComfyUI after installing or updating their nodes."
-            ) from exc
-        required_nodes = []
-        if use_feedforward:
-            required_nodes.append("MiniMaxChunkFeedForward")
-        if use_block_sparse_attention:
-            required_nodes.append("BlockSparseAttention")
-        missing_nodes = [name for name in required_nodes if name not in mappings]
-        if missing_nodes:
-            raise ValueError(
-                "MiniMax H3 two-pass optional model patches are enabled, but these nodes are missing: "
-                + ", ".join(missing_nodes)
-                + ". Install/update ComfyUI-KJNodes and ComfyUI as needed, then restart ComfyUI."
-            )
-
-    if use_block_sparse_attention:
-        sparse_input_types = mappings["BlockSparseAttention"].INPUT_TYPES()
-        sparse_inputs = {
-            **sparse_input_types.get("required", {}),
-            **sparse_input_types.get("optional", {}),
+    model_refs = {"pass1": pass1_model, "pass2": pass2_model}
+    pass_acceleration = {
+        target: {
+            "te_speed": _bool_payload(payload, f"{target}_use_te_speed", use_te_speed),
+            "feedforward": _bool_payload(payload, f"{target}_use_feedforward", use_feedforward),
+            "block_sparse_attention": _bool_payload(payload, f"{target}_use_block_sparse_attention", use_block_sparse_attention),
         }
-        selection_spec = sparse_inputs.get("selection", ())
-        selection_options = selection_spec[1].get("options", []) if len(selection_spec) > 1 else []
-        selection_keys = {option["key"] for option in selection_options}
-        # DynamicCombo keys changed when Block Sparse Attention became Model Sparse Attention.
-        sparse_selection = next(
-            (key for key in ("sol-attn", "Sol-Attn (adaptive tau)") if key in selection_keys),
-            None,
-        )
-        if sparse_selection is None:
-            raise ValueError(
-                "The installed BlockSparseAttention node does not advertise a supported Sol-Attn method. "
-                "Disable Use Block Sparse Attention or update the VRGDG nodes for this ComfyUI version."
-            )
-
+        for target in ("pass1", "pass2")
+    }
     optional_patch_nodes = []
-
-    def add_optional_model_patch(model_ref, class_type, inputs, target, title):
-        nonlocal next_lora_node_id
-        while str(next_lora_node_id) in prompt:
-            next_lora_node_id += 1
-        node_id = str(next_lora_node_id)
-        next_lora_node_id += 1
-        prompt[node_id] = {
-            "class_type": class_type,
-            "inputs": {"model": list(model_ref), **inputs},
-            "_meta": {"title": f"{title} - {target}"},
-        }
-        optional_patch_nodes.append({"node": node_id, "class_type": class_type, "target": target})
-        return [node_id, 0]
-
-    for target, model_ref in (("pass1", pass1_model), ("pass2", pass2_model)):
-        if use_feedforward:
-            model_ref = add_optional_model_patch(
-                model_ref,
-                "MiniMaxChunkFeedForward",
-                {"chunks": 8, "seq_threshold": 4096},
-                target,
-                "MiniMax H3 Chunk FeedForward",
+    for target, acceleration in pass_acceleration.items():
+        if acceleration["te_speed"]:
+            model_refs[target] = _patch_minimax_h3_te_speed(
+                prompt, model_refs[target], payload, "208" if target == "pass1" else "9211",
             )
-        if use_block_sparse_attention:
-            model_ref = add_optional_model_patch(
-                model_ref,
-                "BlockSparseAttention",
-                {
-                    "selection": sparse_selection,
-                    "selection.tau": 1.3,
-                    "start_percent": 0.2,
-                    "end_percent": 1.0,
-                    "dense_blocks": "",
-                    "min_tokens": 12288,
-                    "extra_tokens": 256,
-                    "sink_conditioning": "exact_kv_and_rows",
-                    "verbose": False,
-                },
-                target,
-                "Block Sparse Attention",
-            )
-        if target == "pass1":
-            pass1_model = model_ref
-        else:
-            pass2_model = model_ref
+        branch = {target: model_refs[target]}
+        optional_patch_nodes.extend(_patch_minimax_h3_optional_model_paths(
+            prompt, branch, acceleration["feedforward"], acceleration["block_sparse_attention"],
+        ))
+        model_refs[target] = branch[target]
+    pass1_model, pass2_model = model_refs["pass1"], model_refs["pass2"]
 
     for node_id in ("124", "126"):
         _set_api_input(prompt, node_id, "model", list(pass1_model))
@@ -3932,31 +4005,7 @@ def _build_minimax_h3_2pass_api_prompt(payload):
 
     use_fast_vae_decode = _bool_payload(payload, "two_pass_use_fast_vae_decode", False)
     if use_fast_vae_decode:
-        try:
-            mappings = _get_comfy_node_mappings()
-        except Exception as exc:
-            raise ValueError(
-                "Could not inspect ComfyUI node registrations for the fast batched MiniMax H3 VAE decoder. "
-                "Restart ComfyUI after updating VRGameDevGirl custom nodes."
-            ) from exc
-        if "H3FastVAEDecode" not in mappings:
-            raise ValueError(
-                "Fast batched MiniMax H3 VAE decode is enabled, but H3FastVAEDecode is not loaded. "
-                "Update the VRGameDevGirl custom nodes and restart ComfyUI."
-            )
-        normal_decoder = prompt.get("122")
-        if not isinstance(normal_decoder, dict) or normal_decoder.get("class_type") != "VAEDecode":
-            raise ValueError("The MiniMax H3 two-pass final VAEDecode node (122) was not found in the hidden workflow.")
-        decoder_inputs = normal_decoder.get("inputs") or {}
-        prompt["122"] = {
-            "class_type": "H3FastVAEDecode",
-            "inputs": {
-                "samples": copy.deepcopy(decoder_inputs.get("samples")),
-                "vae": copy.deepcopy(decoder_inputs.get("vae")),
-                "tile_batch_size": 8,
-            },
-            "_meta": {"title": "H3 VAE Decode Fast - Two-Pass Refined Latent"},
-        }
+        _patch_minimax_h3_fast_decode(prompt)
 
     _set_api_input(prompt, "183", "upscale_method", str(payload.get("final_resize_method") or "nvidia_rtx_vsr"))
     _set_api_input(prompt, "142", "crf", _int_payload(payload, "output_crf", 19, 0, 100))
@@ -3985,10 +4034,11 @@ def _build_minimax_h3_2pass_api_prompt(payload):
             "final_width": final_width,
             "final_height": final_height,
             "latent_upscale_scale": latent_scale,
-            "te_speed_enabled": use_te_speed,
+            "te_speed_enabled": any(item["te_speed"] for item in pass_acceleration.values()),
+            "pass_acceleration": pass_acceleration,
             "extra_loras": applied_extra_loras,
-            "feedforward_enabled": use_feedforward,
-            "block_sparse_attention_enabled": use_block_sparse_attention,
+            "feedforward_enabled": any(item["feedforward"] for item in pass_acceleration.values()),
+            "block_sparse_attention_enabled": any(item["block_sparse_attention"] for item in pass_acceleration.values()),
             "optional_patch_nodes": optional_patch_nodes,
             "fast_vae_decode_enabled": use_fast_vae_decode,
             "fast_vae_decode_tile_batch_size": 8 if use_fast_vae_decode else None,
