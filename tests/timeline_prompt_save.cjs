@@ -104,6 +104,7 @@ test("reopening storyboard keeps saved image/video prompts, including intentiona
 for (const mode of ["image_to_video_prep", "storyboard_prompts"]) {
   test(`${mode}: selected LLM action calls only checked scenes`, async () => {
     const c = { state: { mode, scenes: [{ id: "a" }, { id: "b" }, { id: "c" }], selected: new Set(["b"]) },
+      choosePromptGenerationScope: async () => "all",
       promptRunnerName: () => "LLM", promptRunnerGenericName: () => "LLM",
       createStoryboardProgressWindow: () => ({ set() {}, close() {} }),
       keepGemmaLoadedInput: { checked: true }, gemmaAllButton: {}, calls: [],

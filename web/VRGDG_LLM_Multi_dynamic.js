@@ -6,6 +6,9 @@ const PROVIDER_MODELS = {
   openai: [
     "gpt-image-2",
     "gpt-image-1",
+    "gpt-6-astra",
+    "gpt-6-sol",
+    "gpt-6-luna",
     "gpt-5.6",
     "gpt-5.6-sol",
     "gpt-5.6-terra",
@@ -52,6 +55,9 @@ const PROVIDER_MODELS = {
   ],
   deepseek: ["deepseek-chat", "deepseek-reasoner"],
   openrouter: [
+    "openai/gpt-6-astra",
+    "openai/gpt-6-sol",
+    "openai/gpt-6-luna",
     "openai/gpt-5.6",
     "openai/gpt-5.6-sol",
     "openai/gpt-5.6-terra",
@@ -70,12 +76,12 @@ const PROVIDER_MODELS = {
 };
 
 const DEFAULT_MODEL = {
-  openai: "gpt-5.6-luna",
+  openai: "gpt-6-luna",
   anthropic: "claude-sonnet-4-6",
   google: "gemini-3.5-flash",
   grok: "grok-4.6",
   deepseek: "deepseek-chat",
-  openrouter: "openai/gpt-5.6-luna",
+  openrouter: "openai/gpt-6-luna",
   apifreellm: "apifreellm",
 };
 
