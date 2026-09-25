@@ -22,7 +22,7 @@ class MiniMaxImageReferenceOptionalTests(unittest.TestCase):
 
     def test_leaving_image_reference_mode_clears_forced_scene_start(self):
         self.assertIn("function clearMiniMaxImageReferenceStartFrameOnModeSwitch", BUILDER_SOURCE)
-        self.assertIn('clearMiniMaxImageReferenceStartFrameOnModeSwitch(segment, "reference_to_video")', BUILDER_SOURCE)
+        self.assertIn('clearMiniMaxImageReferenceStartFrameOnModeSwitch(segment, button.dataset.minimaxH3Mode)', BUILDER_SOURCE)
         self.assertIn('item.minimax_h3_scene_image_use = "off"', BUILDER_SOURCE)
         self.assertIn('item.minimax_h3_use_scene_image_as_start_frame = false', BUILDER_SOURCE)
 
