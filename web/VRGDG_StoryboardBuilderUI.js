@@ -7774,8 +7774,11 @@ function openStoryboardBuilder(payload = {}) {
       : createSceneImagePromptWithGemma(scene, options);
   }
 
-  const chooseVideoPromptGenerationScope = (scenes = []) => new Promise((resolve) => {
-    const missingCount = scenes.filter((scene) => !String(scene.video_prompt || "").trim()).length;
+  const choosePromptGenerationScope = (scenes = [], selected = false) => new Promise((resolve) => {
+    const promptKind = state.mode === "image_to_video_prep" ? "video" : "image";
+    const promptField = `${promptKind}_prompt`;
+    const scopeLabel = selected ? "selected" : "visible";
+    const missingCount = scenes.filter((scene) => !String(scene[promptField] || "").trim()).length;
     const completedCount = scenes.length - missingCount;
     const runnerName = promptRunnerName();
     const choiceBackdrop = document.createElement("div");
@@ -7790,30 +7793,30 @@ function openStoryboardBuilder(payload = {}) {
     const title = document.createElement("div");
     title.id = "vrgdg-video-all-choice-title";
     title.style.cssText = "font-size:18px;font-weight:900;color:#cffafe;";
-    title.textContent = `${runnerName} Video All`;
+    title.textContent = `${runnerName} ${promptKind === "video" ? "Video" : "Image"} ${selected ? "Selected" : "All"}`;
     const subtitle = document.createElement("div");
     subtitle.style.cssText = "margin-top:4px;color:#bae6fd;font-size:12px;line-height:1.4;";
-    subtitle.textContent = "Choose whether to preserve completed video prompts or regenerate every visible scene.";
+    subtitle.textContent = `Choose whether to preserve completed ${promptKind} prompts or regenerate every ${scopeLabel} scene.`;
     header.append(title, subtitle);
     const body = document.createElement("div");
     body.style.cssText = "padding:18px;display:flex;flex-direction:column;gap:14px;";
     const counts = document.createElement("div");
     counts.style.cssText = "border:1px solid #334155;border-radius:8px;background:#07111f;padding:12px;color:#e2e8f0;font-weight:800;line-height:1.45;";
-    counts.textContent = `${missingCount} missing  •  ${completedCount} already complete  •  ${scenes.length} total visible scene${scenes.length === 1 ? "" : "s"}`;
+    counts.textContent = `${missingCount} missing  •  ${completedCount} already complete  •  ${scenes.length} total ${scopeLabel} scene${scenes.length === 1 ? "" : "s"}`;
     const guidance = document.createElement("div");
     guidance.style.cssText = "color:#cbd5e1;font-size:13px;line-height:1.5;";
-    guidance.textContent = "Only Missing keeps every existing video prompt unchanged and creates prompts only for blank scenes. Redo All replaces the generated video prompt for every visible scene.";
+    guidance.textContent = `Only Missing keeps existing ${promptKind} prompts. Replace Existing regenerates every ${scopeLabel} scene, including manually edited prompts.`;
     const actions = document.createElement("div");
     actions.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;";
-    const onlyMissing = makeButton(`Only Missing (${missingCount})`, "primary");
+    const onlyMissing = makeButton(`Only Missing (${missingCount})`, missingCount > 0 ? "primary" : "");
     onlyMissing.style.minHeight = "46px";
     onlyMissing.disabled = missingCount === 0;
     onlyMissing.title = missingCount
-      ? "Keep completed prompts and create only the missing video prompts."
-      : "Every visible scene already has a video prompt.";
-    const redoAll = makeButton(`Redo All (${scenes.length})`);
+      ? `Keep completed prompts and create only missing ${promptKind} prompts.`
+      : `Every ${scopeLabel} scene already has an ${promptKind} prompt.`;
+    const redoAll = makeButton(`Replace Existing (${scenes.length})`);
     redoAll.style.cssText += "min-height:46px;border-color:#d97706;background:#78350f;color:#fef3c7;";
-    redoAll.title = "Replace all existing video prompts for the visible scenes.";
+    redoAll.title = `Replace ${promptKind} prompts for the ${scopeLabel} scenes.`;
     const cancel = makeButton("Cancel");
     cancel.style.cssText += "grid-column:1 / -1;min-height:40px;";
     actions.append(onlyMissing, redoAll, cancel);
@@ -7974,7 +7977,19 @@ function openStoryboardBuilder(payload = {}) {
   }
 
   async function startAllPromptsWithGemma() {
-    const selectedScenes = getSelectedScenes();
+    let selectedScenes = getSelectedScenes();
+    const scenes = selectedScenes.length ? selectedScenes : currentRows();
+    if (!scenes.length) {
+      createToast("No storyboard scenes found.", true);
+      return;
+    }
+    const scope = await choosePromptGenerationScope(scenes, selectedScenes.length > 0);
+    if (!scope) return;
+    if (scope === "missing" && selectedScenes.length) {
+      const field = state.mode === "image_to_video_prep" ? "video_prompt" : "image_prompt";
+      selectedScenes = selectedScenes.filter((scene) => !String(scene[field] || "").trim());
+      if (!selectedScenes.length) return;
+    }
     if (selectedScenes.length > 0) {
       const runnerName = promptRunnerName();
       const genericName = promptRunnerGenericName();
@@ -8022,17 +8037,6 @@ function openStoryboardBuilder(payload = {}) {
       }
       return;
     }
-    const scenes = currentRows();
-    if (!scenes.length) {
-      createToast("No storyboard scenes found.", true);
-      return;
-    }
-    if (state.mode !== "image_to_video_prep") {
-      await createAllPromptsWithGemma();
-      return;
-    }
-    const scope = await chooseVideoPromptGenerationScope(scenes);
-    if (!scope) return;
     await createAllPromptsWithGemma({ onlyMissing: scope === "missing" });
   }
 
