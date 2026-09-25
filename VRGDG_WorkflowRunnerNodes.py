@@ -858,6 +858,23 @@ def _minimax_h3_output_location(project_folder, scene_number):
     return output_folder, filename_prefix
 
 
+def _cleanup_minimax_h3_output_folder(payload):
+    output_folder = os.path.abspath(str(payload.get("output_folder", "") or "").strip().strip('"'))
+    if not output_folder:
+        return {"removed": False}
+    root = os.path.abspath(os.path.join(folder_paths.get_output_directory(), "VRGDG_MiniMaxH3"))
+    try:
+        inside_root = os.path.commonpath([root, output_folder]) == root
+    except ValueError:
+        inside_root = False
+    if not inside_root:
+        raise ValueError("Output folder is outside the MiniMax H3 scratch root.")
+    if not os.path.isdir(output_folder):
+        return {"removed": False}
+    shutil.rmtree(output_folder, ignore_errors=True)
+    return {"removed": True, "output_folder": output_folder}
+
+
 def _clean_lora_name(value):
     text = str(value or _NONE_LORA).strip()
     choices = set(_lora_choices())
@@ -6494,6 +6511,18 @@ def _ensure_workflow_runner_routes():
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
             result = _find_minimax_h3_stage_outputs(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/workflow_runner/cleanup_minimax_h3_output")
+    async def vrgdg_workflow_runner_cleanup_minimax_h3_output(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+        try:
+            result = _cleanup_minimax_h3_output_folder(payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})

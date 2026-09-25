@@ -323,7 +323,7 @@ const DEFAULT_MINIMAX_H3_SETTINGS = {
   three_pass_pass3_seed: 69,
   three_pass_pass3_te_speed: false,
   advanced_two_pass_vram_preset: "custom",
-  advanced_two_pass_defaults_version: 3,
+  advanced_two_pass_defaults_version: 4,
   advanced_two_pass_tile_size_mode: "rows_cols",
   advanced_two_pass_tile_width: 512,
   advanced_two_pass_tile_height: 512,
@@ -334,8 +334,8 @@ const DEFAULT_MINIMAX_H3_SETTINGS = {
   advanced_two_pass_anchor_strength: 0.999,
   advanced_two_pass_spatial_w_overlap: 128,
   advanced_two_pass_spatial_h_overlap: 128,
-  advanced_two_pass_fade_width: 160,
-  advanced_two_pass_fade_height: 128,
+  advanced_two_pass_fade_width: 64,
+  advanced_two_pass_fade_height: 64,
   advanced_two_pass_min_tile_size: 256,
   advanced_two_pass_overlap_mode: "earlier",
   advanced_two_pass_overlap_blend: "smoothstep",
@@ -536,7 +536,7 @@ function selectMiniMaxH3PassSettings(settings, passMode) {
 function cloneMiniMaxH3Settings(value = {}) {
   const source = value && typeof value === "object" ? value : {};
   const hasCurrentTwoPassDefaults = Number(source.two_pass_defaults_version || 0) >= 1;
-  const hasCurrentAdvancedTwoPassDefaults = Number(source.advanced_two_pass_defaults_version || 0) >= 3;
+  const hasCurrentAdvancedTwoPassDefaults = Number(source.advanced_two_pass_defaults_version || 0) >= 4;
   const legacyAdvancedDefaults = {
     advanced_two_pass_vram_preset: "12gb",
     advanced_two_pass_tile_size_mode: "rows_cols",
@@ -551,10 +551,27 @@ function cloneMiniMaxH3Settings(value = {}) {
     advanced_two_pass_overlap_mode: "later",
     advanced_two_pass_overlap_blend: "linear",
   };
+  // v3 shipped fade_width/fade_height at or above spatial_w/h_overlap, which
+  // erases the frozen seam anchor and shows up as smudged tile-grid lines.
+  const legacyAdvancedDefaultsV3 = {
+    advanced_two_pass_vram_preset: "custom",
+    advanced_two_pass_tile_size_mode: "rows_cols",
+    advanced_two_pass_chunk_length: 272,
+    advanced_two_pass_temporal_overlap: 17,
+    advanced_two_pass_anchor_strength: 0.999,
+    advanced_two_pass_spatial_w_overlap: 128,
+    advanced_two_pass_spatial_h_overlap: 128,
+    advanced_two_pass_fade_width: 160,
+    advanced_two_pass_fade_height: 128,
+    advanced_two_pass_min_tile_size: 256,
+    advanced_two_pass_overlap_mode: "earlier",
+    advanced_two_pass_overlap_blend: "smoothstep",
+  };
+  const matchesAdvancedDefaults = (defaults) => Object.entries(defaults).every(([key, value]) => (
+    source[key] == null || String(source[key]) === String(value)
+  ));
   const shouldMigrateLegacyAdvancedDefaults = !hasCurrentAdvancedTwoPassDefaults
-    && Object.entries(legacyAdvancedDefaults).every(([key, value]) => (
-      source[key] == null || String(source[key]) === String(value)
-    ));
+    && (matchesAdvancedDefaults(legacyAdvancedDefaults) || matchesAdvancedDefaults(legacyAdvancedDefaultsV3));
   const advancedSource = shouldMigrateLegacyAdvancedDefaults ? {} : source;
   const sourceLoras = Array.isArray(source.loras)
     ? source.loras
@@ -658,7 +675,7 @@ function cloneMiniMaxH3Settings(value = {}) {
     two_pass_te_speed_device: String(source.two_pass_te_speed_device || DEFAULT_MINIMAX_H3_SETTINGS.two_pass_te_speed_device),
     two_pass_final_resize_method: String(source.two_pass_final_resize_method || DEFAULT_MINIMAX_H3_SETTINGS.two_pass_final_resize_method),
     two_pass_output_crf: Math.max(0, Math.min(100, Math.trunc(Number(source.two_pass_output_crf ?? DEFAULT_MINIMAX_H3_SETTINGS.two_pass_output_crf)))),
-    advanced_two_pass_vram_preset: ["8gb", "12gb", "16gb", "24gb", "custom"].includes(String(advancedSource.advanced_two_pass_vram_preset || "").toLowerCase())
+    advanced_two_pass_vram_preset: ["8gb", "12gb", "16gb", "24gb", "32gb", "custom"].includes(String(advancedSource.advanced_two_pass_vram_preset || "").toLowerCase())
       ? String(advancedSource.advanced_two_pass_vram_preset).toLowerCase()
       : DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_vram_preset,
     advanced_two_pass_tile_size_mode: ["specific_size", "rows_cols"].includes(String(advancedSource.advanced_two_pass_tile_size_mode || "").toLowerCase())
@@ -6705,6 +6722,7 @@ function openBuilder(node) {
     { value: "12gb", label: "12 GB — 512px tiles / 85 frames" },
     { value: "16gb", label: "16 GB — 576px tiles / 119 frames" },
     { value: "24gb", label: "24 GB — 672px tiles / 153 frames" },
+    { value: "32gb", label: "32 GB — 768px tiles / 170 frames" },
     { value: "custom", label: "Custom — keep advanced values" },
   ], DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_vram_preset);
   const miniMaxAdvancedTileSizeMode = makeSelect([
@@ -48417,6 +48435,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         scene_number: slotNumber,
         existing_action: options.existingVideoAction || "overwrite",
       }, 120000);
+      // The raw H3 render now lives in rendered_scene_videos; the scratch
+      // copy under output/VRGDG_MiniMaxH3 is no longer needed.
+      postJson("/vrgdg/workflow_runner/cleanup_minimax_h3_output", {
+        output_folder: built.output_folder || "",
+      }, 15000).catch(() => {});
 
       pushHistory();
       if (collected.backup_path) {
@@ -59826,8 +59849,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const preset = {
       "8gb": { tile: 352, chunk: 51 },
       "12gb": { tile: 512, chunk: 85 },
-      "16gb": { tile: 576, chunk: 272 },
+      "16gb": { tile: 576, chunk: 119 },
       "24gb": { tile: 672, chunk: 153 },
+      "32gb": { tile: 768, chunk: 170 },
     }[miniMaxAdvancedVramPreset.value];
     if (!preset) return;
     miniMaxAdvancedTileSizeMode.value = "specific_size";
@@ -59837,8 +59861,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     miniMaxAdvancedTemporalOverlap.value = "17";
     miniMaxAdvancedSpatialWOverlap.value = "128";
     miniMaxAdvancedSpatialHOverlap.value = "128";
-    miniMaxAdvancedFadeWidth.value = "128";
-    miniMaxAdvancedFadeHeight.value = "128";
+    miniMaxAdvancedFadeWidth.value = "64";
+    miniMaxAdvancedFadeHeight.value = "64";
     miniMaxAdvancedMinTileSize.value = "256";
     miniMaxAdvancedAnchorStrength.value = "0.999";
     miniMaxAdvancedOverlapMode.value = "earlier";
