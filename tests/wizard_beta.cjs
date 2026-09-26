@@ -51,21 +51,24 @@ test('starts at engine selection and advances through ordered steps', async () =
   const f = fixture();
   assert.ok(f.find('h2', '1. Engine'));
   await f.click('Next →'); assert.ok(f.input('Video mode'));
+  await f.click('Next →'); assert.ok(f.find('h2', '3. Models & LoRAs'));
+  assert.ok(f.events.includes('mount:video'));
   await f.click('Next →'); assert.ok(f.input('Audio source'));
+  assert.ok(f.events.includes('restore:video'));
   await f.click('Next →'); assert.ok(f.input('Characters (optional)'));
   assert.equal(f.input('Text-to-image model'), undefined);
 });
 
 test('image mode shows image model selection and restores native panel when leaving', async () => {
   const f = fixture({ mode: 'image_to_video' });
-  await f.click('4 Inputs'); assert.ok(f.input('Text-to-image model'));
+  await f.click('5 Inputs'); assert.ok(f.input('Text-to-image model'));
   assert.ok(f.events.includes('mount:image'));
-  await f.click('5 Models & LoRAs');
+  await f.click('3 Models & LoRAs');
   assert.ok(f.events.includes('restore:image')); assert.ok(f.events.includes('mount:video'));
 });
 
 test('timing choices replace fixed durations and skip transcription for built-in audio', async () => {
-  const f = fixture(); await f.click('3 Sound & timing');
+  const f = fixture(); await f.click('4 Sound & timing');
   assert.equal(f.input('Number of scenes'), undefined);
   assert.equal(f.input('Scene length (seconds)'), undefined);
   assert.equal(f.find('button', '1. Existing scenes').disabled, true);
@@ -77,9 +80,9 @@ test('timing choices replace fixed durations and skip transcription for built-in
 });
 
 test('input audio timing requires a file and gates choices by existing scenes', async () => {
-  const f = fixture({ audioMode: 'input_audio' }); await f.click('3 Sound & timing');
+  const f = fixture({ audioMode: 'input_audio' }); await f.click('4 Sound & timing');
   for (const label of ['1. Existing scenes', '2. No scenes yet', '3. Manual timing']) assert.equal(f.find('button', label).disabled, true);
-  f.data.audioPath = 'song.wav'; await f.click('3 Sound & timing');
+  f.data.audioPath = 'song.wav'; await f.click('4 Sound & timing');
   assert.equal(f.find('button', '1. Existing scenes').disabled, true);
   await f.click('2. No scenes yet');
   assert.equal(f.find('button', '2. No scenes yet').disabled, false);
@@ -91,13 +94,13 @@ test('input audio timing requires a file and gates choices by existing scenes', 
 });
 
 test('save does not prepare or render, preserves stage and handles failure', async () => {
-  const f = fixture(); await f.click('4 Inputs');
+  const f = fixture(); await f.click('5 Inputs');
   const characters = f.input('Characters (optional)'); characters.value = 'A detective'; characters.oninput();
   await f.click('Save Project'); assert.deepEqual(f.events, ['save']);
-  assert.equal(f.data.draft.page, 3); assert.equal(f.data.draft.characters, 'A detective');
+  assert.equal(f.data.draft.page, 4); assert.equal(f.data.draft.characters, 'A detective');
   assert.equal(f.data.draft.pageId, 'inputs');
-  assert.ok(fixture({ draft: f.data.draft }).find('h2', '4. Inputs'));
-  for (const [page, heading] of [[2, '4. Inputs'], [3, '5. Models & LoRAs'], [4, '3. Sound & timing']]) {
+  assert.ok(fixture({ draft: f.data.draft }).find('h2', '5. Inputs'));
+  for (const [page, heading] of [[2, '5. Inputs'], [3, '3. Models & LoRAs'], [4, '4. Sound & timing']]) {
     assert.ok(fixture({ draft: { page } }).find('h2', heading));
   }
   f.api.save = async () => { throw new Error('Disk full'); };
@@ -185,7 +188,7 @@ test('reference Inputs uses independent titles and descriptions below images, wi
     singer: { name: 'hero.png', data: 'data:image/png;base64,eA==', title: 'Hero', description: 'Old description' },
     locations: [{ name: 'city.png', data: 'data:image/png;base64,eA==' }, { name: 'forest.png', data: 'data:image/png;base64,eA==' }],
   } });
-  await f.click('4 Inputs');
+  await f.click('5 Inputs');
   assert.equal(f.input('Characters (optional)'), undefined);
   assert.equal(f.input('Locations (optional)'), undefined);
   assert.equal(f.input('Character title').value, 'Hero');
@@ -221,7 +224,7 @@ test('focused reference buttons save inputs first and reload edited metadata on 
   const f = fixture({ mode: 'reference_to_video', draft: { singer: { name: 'a.png', title: 'Before', data: 'a' }, locations: [] } });
   const opened = [];
   f.api.openReferences = (section, onClose) => { opened.push(section); f.data.draft.singer.title = 'Edited'; f.data.draft.subjects[0].title = 'Edited'; onClose(); };
-  await f.click('4 Inputs');
+  await f.click('5 Inputs');
   await f.click('Edit Subjects');
   assert.deepEqual(opened, ['subjects']);
   assert.equal(f.events[0], 'save');
@@ -233,7 +236,7 @@ test('focused reference buttons save inputs first and reload edited metadata on 
   await f.click('6 Scenes'); await f.click('3 Edit Mappings'); await f.click('Edit Mappings');
   assert.deepEqual(opened, ['subjects', 'locations', 'mapping']);
   f.api.save = async () => { throw new Error('Save failed'); };
-  await f.click('4 Inputs');
+  await f.click('5 Inputs');
   await f.click('Edit Subjects');
   assert.equal(opened.length, 3);
 });
@@ -278,7 +281,7 @@ test('saved reference image paths render after editor return and survive another
     f.data.draft = adapter.api.snapshot().draft;
     onClose();
   };
-  await f.click('4 Inputs');
+  await f.click('5 Inputs');
   assert.equal(f.document.body.querySelectorAll('img')[0].src, draft.singer.data);
   await f.click('Edit Subjects');
   const expected = ['hero.png', 'city.png', 'forest.png'].map(name => adapter.api.imageUrl(`C:\\My Project\\references\\${name}`));
@@ -288,7 +291,7 @@ test('saved reference image paths render after editor return and survive another
   await f.click('Save Project');
   await adapter.api.save(f.data.draft, new Map());
   const reloaded = fixture({ mode: 'reference_to_video', draft: adapter.api.snapshot().draft });
-  await reloaded.click('4 Inputs');
+  await reloaded.click('5 Inputs');
   assert.deepEqual(reloaded.document.body.querySelectorAll('img').map(img => img.src), expected);
 });
 
@@ -327,7 +330,7 @@ test('first wizard opening loads existing references and saves without duplicati
   const wizard = fixture(f.api.snapshot());
   wizard.api.save = f.api.save;
   assert.equal(wizard.find('span', 'Saved draft loaded'), undefined);
-  await wizard.click('4 Inputs');
+  await wizard.click('5 Inputs');
   assert.deepEqual(wizard.document.body.querySelectorAll('img').map(img => img.src), ['/hero.png', '/city.png'].map(f.api.imageUrl));
   await wizard.click('Save Project');
   assert.deepEqual(f.state.fluxReferenceBuilder.subjects.map(ref => ref.id), ['hero']);
@@ -344,7 +347,7 @@ test('LLM Runner stays in the header immediately before Save Project', async () 
   assert.deepEqual(header.children.filter(child => child.tagName === 'button').map(child => child.textContent), ['Configure LLM Runner', 'Save Project', 'Close']);
   await f.click('Configure LLM Runner');
   assert.equal(opened, 1);
-  for (const step of ['4 Inputs', '6 Scenes']) {
+  for (const step of ['5 Inputs', '6 Scenes']) {
     await f.click(step);
     assert.equal(f.document.body.querySelectorAll('main')[0].querySelectorAll('button').filter(child => child.textContent === 'Configure LLM Runner').length, 0);
     assert.equal(f.document.body.querySelectorAll('button').filter(child => child.textContent === 'Configure LLM Runner').length, 1);
@@ -368,7 +371,7 @@ test('subjects added in Edit Subjects remain visible in LTX and MiniMax wizard d
     assert.equal(refreshed.subjects[0].referenceId, 'editor_subject');
     assert.equal(refreshed.subjects[0].path, 'C:\\references\\hero.png');
     const wizard = fixture({ engine, mode, draft: refreshed });
-    await wizard.click('4 Inputs');
+    await wizard.click('5 Inputs');
     assert.equal(wizard.document.body.querySelectorAll('img')[0].src, adapter.api.imageUrl('C:\\references\\hero.png'));
     await adapter.api.save(refreshed, new Map());
     assert.equal(adapter.state.fluxReferenceBuilder.subjects.length, 1);
@@ -379,11 +382,11 @@ test('subjects added in Edit Subjects remain visible in LTX and MiniMax wizard d
 
 test('mapping editor is available only in Scenes after scenes exist', async () => {
   const f = fixture();
-  await f.click('4 Inputs');
+  await f.click('5 Inputs');
   assert.equal(f.find('button', 'Edit Mappings'), undefined);
   await f.click('6 Scenes');
   assert.equal(f.find('button', 'Edit Mappings'), undefined);
-  await f.click('3 Sound & timing'); await f.click('3. Manual timing'); await f.click('6 Scenes');
+  await f.click('4 Sound & timing'); await f.click('3. Manual timing'); await f.click('6 Scenes');
   await f.click('3 Edit Mappings');
   assert.equal(f.find('button', 'Edit Mappings').disabled, false);
 });
@@ -421,7 +424,7 @@ test('Scenes step opens separate storyboard windows and refreshes story on retur
   await f.click('1 Scene Defaults'); await f.click('Scene Defaults');
   await f.click('5 Story Layer'); await f.click('Story Layer');
   assert.equal(f.input('Story direction'), undefined);
-  await f.click('3 Sound & timing'); await f.click('3. Manual timing'); await f.click('6 Scenes');
+  await f.click('4 Sound & timing'); await f.click('3. Manual timing'); await f.click('6 Scenes');
   await f.click('4 Storyboard Scenes'); await f.click('Storyboard Scenes');
   assert.deepEqual(opened, ['defaults', 'story', 'scenes']);
   await f.click('Save Project');
@@ -567,7 +570,7 @@ test('reference uploads append subjects and locations, replace one, and remove o
   Element.prototype.click = function() {};
   const picker = index => f.document.body.querySelectorAll('input').filter(item => item.type === 'file')[index];
   const choose = async (index, names) => { const p = picker(index); p.files = names.map(name => ({ name })); await p.onchange(); };
-  await f.click('4 Inputs');
+  await f.click('5 Inputs');
   await choose(0, ['hero.png']);
   const title = f.input('Character title'); title.value = 'Hero'; title.oninput();
   await choose(0, ['friend.png']);
@@ -633,14 +636,14 @@ test('timing adapter routes directly to existing editors and keeps transcribed t
 });
 
 test('Models step no longer includes LLM configuration', async () => {
-  const f = fixture(); await f.click('5 Models & LoRAs');
+  const f = fixture(); await f.click('3 Models & LoRAs');
   assert.equal(f.find('button', 'Configure prompt-writing LLM'), undefined);
 });
 
 
 test('unavailable timing choices explain prerequisites and use a non-busy cursor', async () => {
   const f = fixture({ audioMode: 'input_audio' });
-  await f.click('3 Sound & timing');
+  await f.click('4 Sound & timing');
   assert.equal(f.find('button', '2. No scenes yet').title, 'Choose an audio file above first.');
   assert.ok(f.document.body.textContent.includes('Choose an audio file above first.'));
   assert.ok(source.includes('.wb-button:disabled { opacity:.5;cursor:not-allowed; }'));
@@ -681,7 +684,7 @@ test('both transcription windows prefill the saved wizard lyrics without changin
 
 test('wizard saves newly entered lyrics before opening the transcription editor', async () => {
   const f = fixture({ audioMode: 'input_audio', audioPath: 'song.wav' });
-  await f.click('3 Sound & timing');
+  await f.click('4 Sound & timing');
   const input = f.input('Lyrics or dialogue (optional)');
   input.value = 'New first line\nNew second line'; input.oninput();
   f.api.openTiming = async kind => {
@@ -783,7 +786,7 @@ test('final wizard step offers Render All and saves before rendering', async () 
 
 test('own images are assigned after scenes exist, via storyboard or the folder importer', async () => {
   const f = fixture({ engine: 'ltx', mode: 'i2v', draft: { imageSource: 'upload', startImage: { name: 'old.png', data: 'old' } } });
-  await f.click('4 Inputs');
+  await f.click('5 Inputs');
   assert.equal(f.find('strong', 'Starting image'), undefined);
   assert.ok(f.document.body.textContent.includes('After creating scenes'));
   await f.click('6 Scenes'); await f.click('4 Storyboard Scenes');

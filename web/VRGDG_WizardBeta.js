@@ -113,8 +113,8 @@ function styles() {
   document.head.append(sheet);
 }
 
-export const WIZARD_BETA_STEPS = ["Engine", "Video mode", "Sound & timing", "Inputs", "Models & LoRAs", "Scenes", "Render"];
-const WIZARD_BETA_STEP_IDS = ["engine", "mode", "sound", "inputs", "models", "scenes", "render"];
+export const WIZARD_BETA_STEPS = ["Engine", "Video mode", "Models & LoRAs", "Sound & timing", "Inputs", "Scenes", "Render"];
+const WIZARD_BETA_STEP_IDS = ["engine", "mode", "models", "sound", "inputs", "scenes", "render"];
 
 export function wizardBetaNeeds(engine, mode) {
   return {
@@ -152,7 +152,7 @@ export function openWizardBeta(api) {
   draft.removedReferenceIds = [];
   draft.locations = draft.locations.map(image => ({ ...image }));
   const savedPage = WIZARD_BETA_STEP_IDS.indexOf(initial.draft?.pageId);
-  const legacyPage = [0, 1, 3, 4, 2, 5, 6][Number(initial.draft?.page) || 0] ?? 0;
+  const legacyPage = [0, 1, 4, 2, 3, 5, 6][Number(initial.draft?.page) || 0] ?? 0;
   let page = savedPage >= 0 ? savedPage : legacyPage;
   const sceneSteps = ["Scene Defaults", "Align lyrics / dialogue (Optional)", "Edit Mappings", "Storyboard Scenes", "Story Layer", initial.engine === "minimax_h3" ? "Create MiniMax Prompts" : "Create Video Prompts"];
   const sceneStepIds = ["defaults", "lyrics", "mapping", "scenes", "story", "prompts"];
@@ -317,6 +317,9 @@ export function openWizardBeta(api) {
       main.append(node("p", "", selected?.description || ""));
       main.append(node("p", "wb-muted", "Your selection updates the existing Builder. You can go back and change it at any time."));
     } else if (page === 2) {
+      main.append(node("p", "wb-muted", "Choose project-wide models, LoRAs, quality, passes and video settings. Scenes without custom overrides use these settings. Use the normal timeline for per-scene overrides and Storyboard Scenes for prompts."));
+      mount(main, "video");
+    } else if (page === 3) {
       main.append(field("Performance", select(draft.performance, api.snapshot().performances, value => configure({ performance: value }))));
       main.append(field("Audio source", select(draft.audioMode, api.snapshot().audioModes, value => configure({ audioMode: value }))));
       main.append(node("p", "wb-muted", api.snapshot().audioHelp));
@@ -364,7 +367,7 @@ export function openWizardBeta(api) {
       }
       main.append(choices);
       if (inputAudio && !draft.song && !api.snapshot().audioPath) main.append(node("p", "wb-muted", "Choose an audio file above to enable transcription and listening-based timing."));
-    } else if (page === 3) {
+    } else if (page === 4) {
       main.append(node("p", "wb-muted", `Set up ${modeLabel()}. These inputs guide new scenes; existing scene assignments are preserved until you choose to replace the timeline.`));
       if (!needs.references) main.append(field("Characters (optional)", input(draft.characters, value => { draft.characters = value; }, true)), field("Locations (optional)", input(draft.locationsText, value => { draft.locationsText = value; }, true)));
       if (needs.images) {
@@ -387,10 +390,7 @@ export function openWizardBeta(api) {
       if (["ingredients", "id_lora"].includes(draft.mode)) main.append(button(draft.mode === "ingredients" ? "Edit Ingredients sheets" : "Edit ID-LoRA references", () => api.openReferences()));
       if (needs.video) main.append(field("Source video path", input(draft.videoPath, value => { draft.videoPath = value; }), "Full path on the ComfyUI machine. Additional video references, trimming and purpose are available in Models & LoRAs."));
       if (draft.mode === "ingredients") main.append(node("p", "wb-muted", "Use the reference editor to create your ingredients sheet and assign it to scenes."));
-      if (draft.mode === "id_lora") main.append(node("p", "wb-muted", "Configure the identity LoRA and reference voice in the next step."));
-    } else if (page === 4) {
-      main.append(node("p", "wb-muted", "Choose project-wide models, LoRAs, quality, passes and video settings. Scenes without custom overrides use these settings. Use the normal timeline for per-scene overrides and Storyboard Scenes for prompts."));
-      mount(main, "video");
+      if (draft.mode === "id_lora") main.append(node("p", "wb-muted", "Configure the identity LoRA and reference voice in Models & LoRAs."));
     } else if (page === 5) {
       sceneSteps[5] = draft.engine === "minimax_h3" ? "Create MiniMax Prompts" : "Create Video Prompts";
       const navigation = node("nav", "wb-steps");
