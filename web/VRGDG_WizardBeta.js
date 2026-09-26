@@ -151,8 +151,11 @@ export function openWizardBeta(api) {
   draft.removedReferenceIds = [];
   draft.locations = draft.locations.map(image => ({ ...image }));
   let page = Math.max(0, Math.min(6, Number(initial.draft?.page) || 0));
-  const sceneSteps = ["Scene Defaults", "Story direction", "Story Layer", "Align lyrics / dialogue (Optional)", "Edit Mappings", "Storyboard Scenes"];
-  let sceneStep = Math.max(0, Math.min(sceneSteps.length - 1, Number(initial.draft?.sceneStep) || 0));
+  const sceneSteps = ["Scene Defaults", "Align lyrics / dialogue (Optional)", "Edit Mappings", "Storyboard Scenes", "Story Layer", initial.engine === "minimax_h3" ? "Create MiniMax Prompts" : "Create Video Prompts"];
+  const sceneStepIds = ["defaults", "lyrics", "mapping", "scenes", "story", "prompts"];
+  const savedSceneStep = sceneStepIds.indexOf(initial.draft?.sceneStepId);
+  const legacySceneStep = [0, 4, 4, 1, 2, 3][Number(initial.draft?.sceneStep) || 0] ?? 0;
+  let sceneStep = savedSceneStep >= 0 ? savedSceneStep : legacySceneStep;
   let busy = false, dirty = false;
   let releasePanel = () => {};
   const sceneEdits = new Map();
@@ -198,7 +201,7 @@ export function openWizardBeta(api) {
     syncDraft();
     const issues = wizardBetaIssues(draft, api.snapshot());
     if (issues.length) throw new Error(issues.join("\n"));
-    draft.page = page; draft.sceneStep = sceneStep;
+    draft.page = page; draft.sceneStep = sceneStep; draft.sceneStepId = sceneStepIds[sceneStep];
     draft.singer = draft.subjects[0] || null;
     await api.save(draft, sceneEdits);
     draft.removedReferenceIds = [];
@@ -386,6 +389,7 @@ export function openWizardBeta(api) {
       main.append(choices);
       if (inputAudio && !draft.song && !api.snapshot().audioPath) main.append(node("p", "wb-muted", "Choose an audio file above to enable transcription and listening-based timing."));
     } else if (page === 5) {
+      sceneSteps[5] = draft.engine === "minimax_h3" ? "Create MiniMax Prompts" : "Create Video Prompts";
       const navigation = node("nav", "wb-steps");
       navigation.setAttribute("aria-label", "Scene setup steps");
       navigation.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-start;";
@@ -416,20 +420,15 @@ export function openWizardBeta(api) {
         main.append(node("p", "wb-muted", "Choose the visual and performance defaults before planning your story."));
         openStoryboard("defaults", "Scene Defaults");
       } else if (sceneStep === 1) {
-        main.append(field("Story direction", input(draft.direction, value => { draft.direction = value; }, true), "Describe the overall idea, mood and direction for your video."));
-      } else if (sceneStep === 2) {
-        main.append(node("p", "wb-muted", "Develop the story arc and scene beats with your LLM Runner."));
-        openStoryboard("story", "Story Layer");
-      } else if (sceneStep === 3) {
         main.append(node("p", "wb-muted", "Optional advanced review: correct scene lines and assign performers or speakers. Skip this if your transcription is already ready."));
         const align = button("Align lyrics / dialogue", () => run(async () => { await persist(); api.openLyrics(); }));
         align.disabled = !scenes.length; main.append(align);
-      } else if (sceneStep === 4) {
+      } else if (sceneStep === 2) {
         main.append(node("p", "wb-muted", "Choose which subjects and locations appear in each scene."));
         const mappings = button("Edit Mappings", () => editReferences("mapping"));
         mappings.disabled = !scenes.length; main.append(mappings);
-      } else {
-        main.append(node("p", "wb-muted", "Review scene cards and create image or video prompts in Storyboard Scenes."));
+      } else if (sceneStep === 3) {
+        main.append(node("p", "wb-muted", "Review scene cards and save lyrics, notes and scene details before creating story beats. Return here after Story Layer to generate or refresh image and video prompts."));
         openStoryboard("scenes", "Storyboard Scenes");
         if (needs.images && draft.imageSource === "upload") {
           main.append(node("p", "wb-muted", "Open a scene card in Storyboard Scenes to upload its image, or import a folder of numbered images into the timeline."));
@@ -445,7 +444,20 @@ export function openWizardBeta(api) {
           main.append(folder, importFolder);
         } else if (needs.images && scenes.length) main.append(button("Generate missing scene images", () => run(async () => { await persist(); await api.generateImages(); })));
       }
-      if (sceneStep >= 3 && !scenes.length) main.append(node("p", "wb-muted", "Use Sound & timing to create scenes, then return here."));
+      if (sceneStep === 4) {
+        main.append(node("p", "wb-muted", "Set Overall Story Idea (optional), then develop the story arc and scene beats from your aligned lyrics, mappings and saved scene notes. After generating beats, return to Storyboard Scenes to generate or refresh prompts."));
+        openStoryboard("story", "Story Layer");
+        main.append(button("Back to Storyboard Scenes", () => { sceneStep = 3; render(); }));
+      }
+      if (sceneStep === 5) {
+        const createPrompts = button(`${api.snapshot().promptRunnerLabel || "LLM"} Video All`, () => run(async () => {
+          await persist();
+          await api.generatePrompts();
+        }), true);
+        createPrompts.disabled = !scenes.length;
+        main.append(createPrompts);
+      }
+      if (sceneStep >= 1 && !scenes.length) main.append(node("p", "wb-muted", "Use Sound & timing to create scenes, then return here."));
     } else {
       const snapshot = api.snapshot();
       main.append(node("h3", "", `${draft.engine === "ltx" ? "LTX" : "MiniMax H3"} · ${modeLabel()}`), node("p", "", `${snapshot.scenes.length} scenes · ${snapshot.audioModes.find(item => item.value === draft.audioMode)?.label || draft.audioMode}`));
@@ -457,7 +469,7 @@ export function openWizardBeta(api) {
     footer.append(node("span", "wb-muted wb-spacer", `Step ${page + 1} of ${WIZARD_BETA_STEPS.length} · ${modeLabel()}`));
     if (page) footer.append(button("Back", () => { if (page === 5 && sceneStep > 0) sceneStep--; else page--; render(); }));
     footer.append(button("Save Project", save));
-    if (page < 6) footer.append(button(page === 5 && sceneStep === 3 ? "Skip / Next →" : "Next →", () => { if (page === 5 && sceneStep < sceneSteps.length - 1) sceneStep++; else page++; render(); }, true));
+    if (page < 6) footer.append(button(page === 5 && sceneStep === 1 ? "Skip / Next →" : "Next →", () => { if (page === 5 && sceneStep < sceneSteps.length - 1) sceneStep++; else page++; render(); }, true));
   }
   dialog.addEventListener("keydown", event => {
     if (event.key === "Escape") { event.stopPropagation(); close.onclick(); }

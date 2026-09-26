@@ -3309,6 +3309,7 @@ async function copyTextToClipboard(text) {
 }
 
 function openStoryboardBuilder(payload = {}) {
+  const promptActionOnly = payload.promptActionOnly === true;
   const focusedSection = ["defaults", "story", "scenes"].includes(payload.focusedSection) ? payload.focusedSection : "";
   const focusedTitle = { defaults: "Scene Defaults", story: "Story Layer", scenes: "Scenes" }[focusedSection];
   const allowImagePrep = !focusedSection || payload.allowImagePrep === true;
@@ -4284,6 +4285,7 @@ function openStoryboardBuilder(payload = {}) {
   shell.append(header, note, middleContent, footer);
   backdrop.append(shell);
   document.body.append(backdrop);
+  if (promptActionOnly) backdrop.style.display = "none";
   if (focusedSceneOnly) {
     backdrop.dataset.vrgdgFocusedStoryboard = focusSceneId;
     backdrop.style.display = "none";
@@ -8407,7 +8409,16 @@ function openStoryboardBuilder(payload = {}) {
   refreshCharacterSpeedInfo();
   refreshFacialInfo();
   setMode(state.mode || "storyboard_prompts");
-  loadExisting().then((loaded) => {
+  loadExisting().then(async (loaded) => {
+    if (promptActionOnly) {
+      try {
+        setMode("image_to_video_prep");
+        await startAllPromptsWithGemma();
+      } finally {
+        closeStoryboard();
+      }
+      return;
+    }
     if (!focusSceneId) return;
     const target = loaded && state.scenes.find((scene) => scene.id === focusSceneId);
     if (target) {

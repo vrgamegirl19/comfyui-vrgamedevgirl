@@ -46100,6 +46100,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       ? String(storyboardRunnerSettings.qwen_mmproj_file || "").trim()
       : String(i2vMmprojSelect.value || mmprojSelect.value || "").trim();
     window.VRGDGStoryboardBuilder.open({
+      promptActionOnly: options.promptActionOnly === true,
       focusedSection: options.focusedSection,
       allowImagePrep: options.allowImagePrep,
       onClose: options.onClose,
@@ -56738,6 +56739,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       return {
         engine, mode, modes, ltxVersion: state.i2vVideoSettings.ltx_version || "2.5", imageMode: state.imageModelMode || "zimage",
         performance: state.videoType, performances: VIDEO_TYPE_OPTIONS,
+        promptRunnerLabel: promptRunnerActionName(),
         audioMode: engine === "minimax_h3" ? mini.audio_mode : mode === "id_lora" ? "reference_voice" : ltxAudioChoice,
         audioModes: engine === "minimax_h3" ? MINIMAX_H3_AUDIO_MODE_OPTIONS.map(item => ({ ...item, disabled: inputOnly && item.value === "built_in_audio" })) : mode === "id_lora" ? [{ value: "reference_voice", label: "ID-LoRA reference voice" }] : [{ value: "input_audio", label: "Use an audio file" }, { value: "silent", label: "Silent timeline" }],
         audioHelp: engine === "minimax_h3" ? inputOnly ? "This multi-pass mode requires input audio. Choose a single-pass mode for built-in audio." : "Built-in audio generates sound from the prompt and does not require a song." : mode === "id_lora" ? "Set the reference voice in Models & LoRAs. Scene dialogue guides speech." : "The current LTX Builder supports supplied audio or silence; native generated audio is not enabled in its render path.",
@@ -56837,20 +56839,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       refs.subject_count = refs.subjects.length;
       state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
     };
-    const generatePrompts = async (missingOnly = false) => {
-        if (snapshot().engine !== "minimax_h3") return confirmAndRunGemmaVideoAll();
-        const progress = createProgressWindow("Wizard MiniMax prompts");
-        try {
-          state.batchCancelled = false;
-          const scenes = allEditableSegments().filter(scene => !missingOnly || !String(scene.minimax_h3_prompt || "").trim());
-          for (const [index, scene] of scenes.entries()) {
-            assertBatchNotStopped(); progress.set(`Scene ${index + 1}/${scenes.length}`, index / scenes.length * 100);
-            const result = await runMiniMaxH3PromptGeneration(scene, miniMaxH3ModeForSegment(scene), { projectFolder: state.projectFolder, sceneId: scene.id, unloadAfter: index === scenes.length - 1 });
-            scene.minimax_h3_prompt = result.prompt; scene.minimax_h3_prompt_origin = "gemma";
-            await autoSaveSessionQuiet("wizard beta prompt");
-          }
-        } finally { progress.close(); syncInspector(); render(); }
-      };
+    const generatePrompts = () => openStoryboardBuilderFromProject({
+      focusedSection: "scenes", allowImagePrep: false, promptActionOnly: true,
+    });
     openWizardBeta({
       snapshot, configure, flush,
       imageUrl: makeEditorImageUrl,
