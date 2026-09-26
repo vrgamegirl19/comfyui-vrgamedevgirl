@@ -24,6 +24,7 @@ import {
   sanitizeWizardReferenceLyrics,
 } from "./VRGDG_MusicVideoWizardUI.js?v=20260728-instrumental-markers";
 import { createMusicVideoBuilderLuts } from "./VRGDG_MusicVideoBuilderLUTs.js";
+import { openWizardBeta, wizardBetaNeeds } from "./VRGDG_WizardBeta.js";
 import { createPostProcessComparePreview } from "./VRGDG_PostProcessComparePreview.js";
 import { createFaceFixTool } from "./VRGDG_FaceFixUI.js?v=20260716-1";
 
@@ -3220,6 +3221,7 @@ function normalizeNotificationSettings(settings = {}) {
 }
 
 function openBuilder(node) {
+  let wizardGlobalVideoSettings = false;
   setBuilderAutomaticMemoryCleanupEnabled(false);
   console.log(`[VRGDG Music Builder] UI version ${BUILDER_UI_VERSION}`);
   const overlay = document.createElement("div");
@@ -3587,7 +3589,8 @@ function openBuilder(node) {
   const promptCreatorButton = makeButton("Prompt Creator (Legacy)");
   const autoLoadAllButton = makeButton("Import Data From Prompt Creator");
   const importSceneNotesButton = makeButton("Import Scene Notes JSON");
-  const wizardButton = makeButton("Wizard", "primary");
+  const wizardButton = makeButton("Wizard Legacy", "primary");
+  const wizardBetaButton = makeButton("Wizard Beta", "primary");
   const autoBuildButton = makeButton("Auto Build", "primary");
   const storyboardBuilderButton = makeButton("Storyboard Builder");
   const fluxReferenceBuilderButton = makeButton("Reference Builder");
@@ -3640,10 +3643,14 @@ function openBuilder(node) {
     title: "Save the current project immediately.",
   });
   styleCompactToolbarButton(wizardButton, {
-    lines: ["Wizard"],
+    lines: ["Wizard", "Legacy"],
     icon: "wizard",
-    width: 54,
-    title: "Open the guided Video Builder setup workflow.",
+    width: 58,
+    title: "Open the legacy guided Video Builder setup workflow.",
+  });
+  styleCompactToolbarButton(wizardBetaButton, {
+    lines: ["Wizard", "Beta"], icon: "wizard", width: 58,
+    title: "Open Wizard Beta: save setup, prepare scenes, review, and render.",
   });
   styleCompactToolbarButton(autoBuildButton, {
     lines: ["Auto", "Build"],
@@ -3746,7 +3753,7 @@ function openBuilder(node) {
   batchActions.style.display = "none";
   const importActions = document.createElement("div");
   importActions.style.cssText = "display:flex;gap:5px;align-items:center;justify-content:center;flex-wrap:nowrap;min-width:0;overflow:visible;";
-  importActions.append(wizardButton, autoBuildButton, storyboardBuilderButton, fluxReferenceBuilderButton, lyricMapperButton, gemmaRunnerButton, promptOptionsButton);
+  importActions.append(wizardButton, wizardBetaButton, autoBuildButton, storyboardBuilderButton, fluxReferenceBuilderButton, lyricMapperButton, gemmaRunnerButton, promptOptionsButton);
   const centerActions = document.createElement("div");
   centerActions.style.cssText = "position:relative;display:flex;gap:8px;align-items:center;justify-content:center;min-width:0;overflow:visible;";
   centerActions.append(importActions, batchActions);
@@ -7945,6 +7952,7 @@ function openBuilder(node) {
     builderStoryLayer: normalizeBuilderStoryLayer({}),
     builderStoryboardDefaults: normalizeBuilderStoryboardDefaults({}),
     autoBuildPreparation: normalizeAutoBuildPreparation({}),
+    wizardBetaDraft: null,
     postProcessTab: "luts",
     adjustLivePreview: false,
     adjustLivePreviewTimer: null,
@@ -8006,7 +8014,7 @@ function openBuilder(node) {
     void toggleProjectVideoEngineFromBadge();
   });
 
-  function miniMaxH3SettingsForSegment(segment = activeSegment()) {
+  function miniMaxH3SettingsForSegment(segment = videoSettingsSegment()) {
     const globalSettings = cloneMiniMaxH3Settings(state.miniMaxH3Settings);
     if (!segment?.use_scene_minimax_h3_settings) return globalSettings;
     const sceneSettings = segment.minimax_h3_settings && typeof segment.minimax_h3_settings === "object"
@@ -8165,7 +8173,7 @@ function openBuilder(node) {
   function saveMiniMaxH3SettingsFromPanel(targetSegment = null) {
     // DOM event listeners pass their Event as the first argument. Only treat
     // an actual scene object as an explicit target.
-    const segment = targetSegment?.id ? targetSegment : activeSegment();
+    const segment = wizardGlobalVideoSettings ? null : (targetSegment?.id ? targetSegment : activeSegment());
     const currentSettings = miniMaxH3SettingsForSegment(segment);
     const loraEnabled = Boolean(miniMaxUseLoras.input.checked);
     const turboEnabled = currentSettings.video_mode !== "reference_to_video" && Boolean(miniMaxUseTurboLora.input.checked) && !loraEnabled;
@@ -8981,7 +8989,7 @@ function openBuilder(node) {
 
   function syncMiniMaxH3Panel() {
     const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
-    const segment = activeSegment();
+    const segment = videoSettingsSegment();
     state.miniMaxH3PanelSegmentId = String(segment?.id || "");
     state.miniMaxH3Settings = cloneMiniMaxH3Settings(state.miniMaxH3Settings);
     if (state.miniMaxH3Settings.location_transition_preset === "normal") {
@@ -9158,7 +9166,7 @@ function openBuilder(node) {
     useSceneMiniMaxH3Settings.input.checked = Boolean(segment?.use_scene_minimax_h3_settings);
     useSceneMiniMaxH3Settings.input.disabled = !segment;
     const sceneMiniMaxSettingsLocked = Boolean(segment?.use_scene_minimax_h3_settings);
-    miniMaxSettingsScopeNote.textContent = sceneMiniMaxSettingsLocked
+    miniMaxSettingsScopeNote.textContent = wizardGlobalVideoSettings ? "Editing project-wide MiniMax models, LoRAs and video settings." : sceneMiniMaxSettingsLocked
       ? "Scene lock is ON — this scene uses its own MiniMax mode, models, and video settings."
       : "Scene lock is OFF — this scene follows the project-global MiniMax mode, models, and video settings.";
     miniMaxSceneImageUseField.firstElementChild.textContent = sceneMiniMaxSettingsLocked
@@ -11749,6 +11757,10 @@ function openBuilder(node) {
     return Math.max(0, info.index) + 1;
   }
 
+  function videoSettingsSegment() {
+    return wizardGlobalVideoSettings ? null : activeSegment();
+  }
+
   function activeSegment() {
     return allEditableSegments().find((segment) => segment.id === state.activeId) || null;
   }
@@ -13300,7 +13312,7 @@ function openBuilder(node) {
   }
 
   function activeI2VVideoSettings() {
-    const segment = activeSegment();
+    const segment = videoSettingsSegment();
     if (segment?.use_scene_i2v_video_settings) {
       if (!segment.i2v_video_settings) segment.i2v_video_settings = cloneI2VVideoSettings(state.i2vVideoSettings);
       return segment.i2v_video_settings;
@@ -13435,6 +13447,7 @@ function openBuilder(node) {
       builderStoryLayer: normalizeBuilderStoryLayer(state.builderStoryLayer),
       builderStoryboardDefaults: normalizeBuilderStoryboardDefaults(state.builderStoryboardDefaults),
       autoBuildPreparation: normalizeAutoBuildPreparation(state.autoBuildPreparation),
+      wizardBetaDraft: state.wizardBetaDraft,
       lyricMapper: normalizeLyricMapper(state.lyricMapper),
       zEnhanceSettings: state.zEnhanceSettings,
       videoModelMode: state.videoModelMode,
@@ -13540,6 +13553,7 @@ function openBuilder(node) {
     state.builderStoryLayer = normalizeBuilderStoryLayer(data.builderStoryLayer || data.builder_story_layer || {});
     state.builderStoryboardDefaults = normalizeBuilderStoryboardDefaults(data.builderStoryboardDefaults || data.builder_storyboard_defaults || {});
     state.autoBuildPreparation = normalizeAutoBuildPreparation(data.autoBuildPreparation || data.auto_build_preparation || {});
+    state.wizardBetaDraft = data.wizardBetaDraft || null;
     state.lyricMapper = normalizeLyricMapper(data.lyricMapper || data.lyric_mapper || {});
     state.zEnhanceSettings = data.zEnhanceSettings || state.zEnhanceSettings;
     state.videoModelMode = data.videoModelMode || data.video_model_mode || state.videoModelMode || "i2v";
@@ -19819,9 +19833,9 @@ function openBuilder(node) {
   }
 
   function syncI2VVideoSettingsPanel() {
-    const segment = activeSegment();
+    const segment = videoSettingsSegment();
     useSceneI2VVideoSettings.input.checked = Boolean(segment?.use_scene_i2v_video_settings);
-    videoSettingsScopeNote.textContent = segment?.use_scene_i2v_video_settings
+    videoSettingsScopeNote.textContent = wizardGlobalVideoSettings ? "Editing project-wide LTX models, LoRAs and video settings." : segment?.use_scene_i2v_video_settings
       ? "This scene is using custom video models, settings, and LoRAs from the Models tab."
       : "This scene is using global video models, settings, and LoRAs. Enable custom scene video settings in the Models tab.";
     const settings = repairI2VVideoSettingDimensions(activeI2VVideoSettings() || {});
@@ -19941,7 +19955,7 @@ function openBuilder(node) {
 
   function saveI2VVideoSettingsFromPanel() {
     const count = Math.max(0, Math.min(4, Number(i2vLoraCount.value || 0)));
-    const segment = activeSegment();
+    const segment = videoSettingsSegment();
     const previous = activeI2VVideoSettings() || {};
     const mode = currentVideoMode();
     const isI2VMode = mode === "i2v";
@@ -20058,7 +20072,7 @@ function openBuilder(node) {
       })),
     };
     repairI2VVideoSettingDimensions(settings);
-    if (segment?.use_scene_i2v_video_settings || hasMultiSceneBatchSelection()) {
+    if (segment?.use_scene_i2v_video_settings || (!wizardGlobalVideoSettings && hasMultiSceneBatchSelection())) {
       if (segment) {
         segment.use_scene_i2v_video_settings = true;
         segment.i2v_video_settings = settings;
@@ -20068,7 +20082,7 @@ function openBuilder(node) {
       state.videoTriggerPhrase = settings.video_trigger_phrase || "";
       state.i2vVideoSettings = settings;
     }
-    applyVideoSettingsToMultiSelection(settings);
+    if (!wizardGlobalVideoSettings) applyVideoSettingsToMultiSelection(settings);
     updateI2VLoraVisibility();
     return settings;
   }
@@ -25556,6 +25570,7 @@ function openBuilder(node) {
       note.textContent = "Full reference lyrics or dialogue are required. Their exact line order is preserved while stable-ts determines where each line belongs in the existing scenes.";
       note.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
       const lyrics = document.createElement("textarea");
+      lyrics.value = String(state.lyricMapper?.source_text || "");
       lyrics.placeholder = "Required full reference lyrics or dialogue...";
       lyrics.style.cssText = "width:100%;box-sizing:border-box;min-height:210px;resize:vertical;border:1px solid #334155;border-radius:7px;background:#020617;color:#f8fafc;padding:10px;font-size:12px;line-height:1.45;font-family:monospace;";
       const language = makeInput("english");
@@ -25674,6 +25689,7 @@ function openBuilder(node) {
       warning.style.cssText = "font-size:12px;line-height:1.45;border:1px solid #92400e;border-radius:7px;background:#451a03;color:#fed7aa;padding:9px;";
       warning.textContent = "This replaces the current base timeline scenes with timestamped lyric scenes. Existing generated images/videos are not deleted, but they may no longer line up with the new timing.";
       const lyrics = document.createElement("textarea");
+      lyrics.value = String(state.lyricMapper?.source_text || "");
       lyrics.placeholder = "Optional reference lyrics/dialogue. Put each desired scene chunk on its own line. Use [instrumental] or [instrumental break] for no-vocal sections.";
       lyrics.style.cssText = "width:100%;box-sizing:border-box;min-height:230px;resize:vertical;border:1px solid #334155;border-radius:7px;background:#020617;color:#f8fafc;padding:10px;font-size:12px;line-height:1.45;font-family:monospace;";
       const language = makeInput("english");
@@ -28471,7 +28487,7 @@ function openBuilder(node) {
     save.onclick = () => saveReviewChanges();
   }
 
-  function openLyricMappingWorkflowModal() {
+  function openLyricMappingWorkflowModal(options = {}) {
     const backdrop = document.createElement("div");
     backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
     const box = document.createElement("div");
@@ -28562,11 +28578,14 @@ function openBuilder(node) {
       return created;
     };
     const onLyricMappingKeydown = (event) => {
-      if (activeLyricMappingTab !== "manual_timing") return;
-      if (event.key !== "ArrowDown") return;
+      if (activeLyricMappingTab !== "manual_timing" || !backdrop.contains(event.target)) return;
+      if (event.key !== "ArrowDown" && event.key !== " " && event.code !== "Space") return;
+      if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
       const tag = String(event.target?.tagName || "").toLowerCase();
-      if (["input", "textarea", "select"].includes(tag)) return;
+      if (["input", "textarea", "select"].includes(tag) || event.target?.isContentEditable) return;
       event.preventDefault();
+      event.stopImmediatePropagation();
+      if (event.repeat) return;
       const button = pane.querySelector("[data-manual-timing-add-split]");
       button?.click();
     };
@@ -28676,19 +28695,50 @@ function openBuilder(node) {
         title.textContent = "Manual Timing: tap scene splits while listening";
         const copy = document.createElement("div");
         copy.style.cssText = "font-size:13px;color:#cbd5e1;line-height:1.5;margin-bottom:12px;";
-        copy.textContent = "Use this when you want to create scene timing by ear. Press Down Arrow or click Add Split At Playhead while the song plays. Nothing changes on the timeline until you click Create Scenes From Splits.";
+        copy.textContent = "Use this when you want to create scene timing by ear. Press Space or Down Arrow, or click Add Split At Playhead while the song plays. Nothing changes on the timeline until you click Create Scenes From Splits.";
         const audioPath = String(audioInput.value || state.audioPath || "").trim();
         const audioPanel = document.createElement("div");
         audioPanel.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center;border:1px solid #334155;border-radius:7px;background:#0b1220;padding:9px;margin-bottom:10px;";
         manualTimingAudio = document.createElement("audio");
-        manualTimingAudio.controls = true;
+        manualTimingAudio.controls = false;
         manualTimingAudio.preload = "metadata";
-        manualTimingAudio.style.cssText = "width:100%;height:34px;";
+        manualTimingAudio.hidden = true;
         if (audioPath) manualTimingAudio.src = audioUrl(audioPath);
         const addSplit = makeStepButton("Add Split At Playhead", "primary");
         addSplit.dataset.manualTimingAddSplit = "1";
         const undoSplit = makeStepButton("Undo Last Split");
-        audioPanel.append(manualTimingAudio, addSplit, undoSplit);
+        pane.tabIndex = -1;
+        const playback = document.createElement("div");
+        playback.style.cssText = "display:flex;gap:10px;align-items:center;min-width:0;";
+        const playPause = makeButton("Play");
+        const seek = document.createElement("input");
+        seek.type = "range"; seek.min = "0"; seek.max = "0"; seek.step = "0.01"; seek.value = "0";
+        seek.setAttribute("aria-label", "Manual timing audio position");
+        seek.style.cssText = "flex:1;min-width:60px;";
+        const playbackTime = document.createElement("span");
+        playbackTime.style.cssText = "font-size:12px;white-space:nowrap;";
+        const updatePlayback = () => {
+          const duration = Number(manualTimingAudio.duration);
+          const current = Number(manualTimingAudio.currentTime || 0);
+          seek.max = String(Number.isFinite(duration) ? duration : 0);
+          seek.value = String(current);
+          playbackTime.textContent = `${formatTime(current)} / ${formatTime(Number.isFinite(duration) ? duration : 0)}`;
+          playPause.textContent = manualTimingAudio.paused ? "Play" : "Pause";
+        };
+        playPause.onclick = async () => {
+          pane.focus();
+          try {
+            if (manualTimingAudio.paused) await manualTimingAudio.play();
+            else manualTimingAudio.pause();
+          } catch (error) { toast(`Could not play audio: ${error.message || error}`, true); }
+          updatePlayback();
+        };
+        seek.oninput = () => { manualTimingAudio.currentTime = Number(seek.value); updatePlayback(); };
+        seek.onchange = () => pane.focus();
+        for (const event of ["timeupdate", "loadedmetadata", "play", "pause", "ended"]) manualTimingAudio.addEventListener(event, updatePlayback);
+        updatePlayback();
+        playback.append(playPause, seek, playbackTime, manualTimingAudio);
+        audioPanel.append(playback, addSplit, undoSplit);
         const controls = document.createElement("div");
         controls.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px;";
         const minScene = makeInput("0.5");
@@ -28709,7 +28759,7 @@ function openBuilder(node) {
           header.style.cssText = "font-size:12px;color:#a5f3fc;font-weight:900;";
           header.textContent = splits.length
             ? `${splits.length} split marker${splits.length === 1 ? "" : "s"} | ${Math.max(1, points.length - 1)} scene${points.length - 1 === 1 ? "" : "s"} preview`
-            : "No split markers yet. Press Down Arrow or Add Split At Playhead while the audio plays.";
+            : "No split markers yet. Press Space, Down Arrow, or Add Split At Playhead while the audio plays.";
           splitList.append(header);
           if (!duration) {
             const wait = document.createElement("div");
@@ -28731,6 +28781,7 @@ function openBuilder(node) {
           }
         };
         addSplit.onclick = () => {
+          pane.focus();
           if (!audioPath) {
             toast("Load an audio file first.", true);
             return;
@@ -28771,7 +28822,7 @@ function openBuilder(node) {
         };
         const hint = document.createElement("div");
         hint.style.cssText = "font-size:12px;color:#94a3b8;line-height:1.45;margin-top:8px;";
-        hint.textContent = "Keyboard shortcut: Down Arrow adds a split only while this tab is open and your cursor is not inside a text field.";
+        hint.textContent = "Space or Down Arrow adds a split at the playhead. Hold-to-repeat is ignored. Shortcuts do not run while typing; use the audio player’s play/pause button to control playback.";
         pane.append(title, copy, audioPanel, controls, splitList, hint);
         renderSplitList();
       }
@@ -28783,23 +28834,30 @@ function openBuilder(node) {
       tabButtons.set(tab.id, button);
       tabBar.append(button);
     }
-    document.addEventListener("keydown", onLyricMappingKeydown);
+    window.addEventListener("keydown", onLyricMappingKeydown, true);
     const closeModal = () => {
-      document.removeEventListener("keydown", onLyricMappingKeydown);
+      window.removeEventListener("keydown", onLyricMappingKeydown, true);
       manualTimingAudio?.pause?.();
       backdrop.remove();
+      options.onClose?.();
     };
     close.onclick = closeModal;
-    box.append(header, warning, tabBar, pane);
+    if (options.manualOnly) {
+      heading.textContent = "Manual Timing";
+      box.append(header, pane);
+    } else box.append(header, warning, tabBar, pane);
     backdrop.append(box);
     document.body.append(backdrop);
-    setActiveTab("transcribe");
+    setActiveTab(options.manualOnly ? "manual_timing" : "transcribe");
+    if (options.manualOnly) { pane.tabIndex = -1; pane.focus(); }
     backdrop.addEventListener("pointerdown", (event) => {
       if (event.target === backdrop) closeModal();
     });
   }
 
   function openFluxReferenceBuilderModal(options = {}) {
+    const focusedSection = ["subjects", "locations", "mapping"].includes(options.focusedSection) ? options.focusedSection : "";
+    const sectionTitle = { subjects: "Subjects", locations: "Locations", mapping: "Mappings" }[focusedSection];
     const wizardLocationMode = Boolean(options?.wizardMode || options?.wizard_location_mode);
     const referenceImagesEnabled = options?.textOnlyMode !== true;
     const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
@@ -28835,7 +28893,7 @@ function openBuilder(node) {
         : miniMaxProject && miniMaxTargetMode === "reference_to_video"
           ? "Build and map ordered character, location, prop, style, and storyboard images for MiniMax Reference to Video."
           : "Map character and location descriptions to scenes for Gemma prompt writing. Flux/Nano can also use attached images when those image modes are active.";
-    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Scene Reference Builder</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">${referenceBuilderDescription}</div>`;
+    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">${sectionTitle ? `Edit ${sectionTitle}` : "Scene Reference Builder"}</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">${referenceBuilderDescription}</div>`;
     const close = makeButton("Close");
     header.append(heading, close);
 
@@ -29388,7 +29446,7 @@ function openBuilder(node) {
     ];
     const referenceTabButtons = new Map();
     const setReferenceTab = (id) => {
-      const active = referenceTabs.some((tab) => tab.id === id) ? id : "subjects";
+      const active = focusedSection || (referenceTabs.some((tab) => tab.id === id) ? id : "subjects");
       tabContent.textContent = "";
       for (const tab of referenceTabs) {
         const button = referenceTabButtons.get(tab.id);
@@ -29410,12 +29468,13 @@ function openBuilder(node) {
       referenceTabButtons.set(tab.id, button);
       tabBar.append(button);
     }
-    tabShell.append(tabBar, tabContent);
+    if (!focusedSection) tabShell.append(tabBar);
+    tabShell.append(tabContent);
     setReferenceTab(options?.initialTab || (wizardLocationMode ? "locations" : "subjects"));
     const footer = document.createElement("div");
     footer.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;flex:0 0 auto;";
     const cancel = makeButton("Cancel");
-    const save = makeButton("Save Reference Builder", "primary");
+    const save = makeButton(sectionTitle ? `Save ${sectionTitle}` : "Save Reference Builder", "primary");
     footer.append(cancel, save);
     box.append(header, inlineProgress, tabShell, footer);
     backdrop.append(box);
@@ -33921,8 +33980,9 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       if (refs.subject_count === 1) refs.subject.description = subjectDescription.value;
     });
     wireDrop(subjectDrop, imageTargetFor(refs.subject, "image", "subject"));
-    close.onclick = () => backdrop.remove();
-    cancel.onclick = () => backdrop.remove();
+    const closeReferenceBuilder = () => { backdrop.remove(); options.onClose?.(); };
+    close.onclick = closeReferenceBuilder;
+    cancel.onclick = closeReferenceBuilder;
     save.onclick = async () => {
       refs.subjects = Array.isArray(refs.subjects)
         ? refs.subjects.filter((subject) => subject && typeof subject === "object" && String(subject.id || subject.name || subject.description || subject.image?.path || subject.image?.data).trim())
@@ -34048,10 +34108,10 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       // validation before the modal can report success.
       await saveSession({ quiet: true, throwOnError: true });
       toast(`${referenceBuilderTargetLabel} reference builder saved.`);
-      backdrop.remove();
+      closeReferenceBuilder();
     };
     backdrop.addEventListener("pointerdown", (event) => {
-      if (event.target === backdrop) backdrop.remove();
+      if (event.target === backdrop) closeReferenceBuilder();
     });
     renderAll();
   }
@@ -38135,6 +38195,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       builder_story_layer: normalizeBuilderStoryLayer(state.builderStoryLayer),
       builder_storyboard_defaults: normalizeBuilderStoryboardDefaults(state.builderStoryboardDefaults),
       auto_build_preparation: normalizeAutoBuildPreparation(state.autoBuildPreparation),
+      wizard_beta_draft: state.wizardBetaDraft,
       render_logs: normalizeRenderLogs(state.renderLogs),
       active_render_log_id: state.activeRenderLogId || "",
     };
@@ -38387,6 +38448,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         state.builderStoryLayer = normalizeBuilderStoryLayer(data.session.builder_story_layer || {});
         state.builderStoryboardDefaults = normalizeBuilderStoryboardDefaults(data.session.builder_storyboard_defaults || data.session.builderStoryboardDefaults || {});
         state.autoBuildPreparation = normalizeAutoBuildPreparation(data.session.auto_build_preparation || data.session.autoBuildPreparation || {});
+        state.wizardBetaDraft = data.session.wizard_beta_draft || null;
         state.renderLogs = normalizeRenderLogs(data.session.render_logs || state.renderLogs);
         state.activeRenderLogId = data.session.active_render_log_id || state.renderLogs[state.renderLogs.length - 1]?.id || "";
         state.textGemmaRunner = data.session.text_gemma_runner || state.textGemmaRunner || "builtin";
@@ -38750,6 +38812,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.builderStoryLayer = normalizeBuilderStoryLayer(session.builder_story_layer || {});
       state.builderStoryboardDefaults = normalizeBuilderStoryboardDefaults(session.builder_storyboard_defaults || session.builderStoryboardDefaults || {});
       state.autoBuildPreparation = normalizeAutoBuildPreparation(session.auto_build_preparation || session.autoBuildPreparation || {});
+      state.wizardBetaDraft = session.wizard_beta_draft || null;
       resetBuilderETA();
       state.renderLogs = normalizeRenderLogs(session.render_logs);
       state.activeRenderLogId = session.active_render_log_id || state.renderLogs[state.renderLogs.length - 1]?.id || "";
@@ -46009,6 +46072,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       ? String(storyboardRunnerSettings.qwen_mmproj_file || "").trim()
       : String(i2vMmprojSelect.value || mmprojSelect.value || "").trim();
     window.VRGDGStoryboardBuilder.open({
+      focusedSection: options.focusedSection,
+      allowImagePrep: options.allowImagePrep,
+      onClose: options.onClose,
+      onFocusedSave: async (updates) => {
+        applyStoryboardPrompts(updates);
+        await saveSession({ quiet: true, throwOnError: true });
+      },
       focusSceneId: String(options.focusSceneId || "").trim(),
       projectFolder: projectInput.value || state.projectFolder || "",
       projectVideoEngine: normalizeProjectVideoEngine(state.projectVideoEngine),
@@ -51383,7 +51453,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     await autoSaveSessionQuiet("bulk segments");
   }
 
-  function openBulkSegmentsModal() {
+  function openBulkSegmentsModal(options = {}) {
     const backdrop = document.createElement("div");
     backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
     const box = document.createElement("div");
@@ -51405,7 +51475,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       <div><strong style="color:#bbf7d0;">Append after last scene</strong> adds duration-based scenes after the current last base scene.</div>
     `;
     explanation.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;padding:10px;color:#d4d4d8;font-size:12px;line-height:1.45;";
-    const modeSelect = makeSelect(["fixed", "fit", "durations", "ranges", "markers"], "fixed");
+    const modeSelect = makeSelect(["fixed", "fit", "durations", "ranges", "markers"], options.initialMode || "fixed");
     modeSelect.options[0].textContent = "Fixed length + scene count";
     modeSelect.options[1].textContent = "Fit to song duration";
     modeSelect.options[2].textContent = "Durations";
@@ -51502,7 +51572,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     box.append(header, body, actions);
     backdrop.append(box);
     document.body.append(backdrop);
-    const closeModal = () => backdrop.remove();
+    const closeModal = () => { backdrop.remove(); options.onClose?.(); };
     close.onclick = closeModal;
     cancel.onclick = closeModal;
     modeSelect.onchange = () => {
@@ -51894,6 +51964,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     state.videoType = "singing";
     state.projectVideoEngine = "ltx";
     state.miniMaxH3Settings = cloneMiniMaxH3Settings();
+    state.wizardBetaDraft = null;
     state.miniMaxH3TwoPassEnabled = false;
     state.miniMaxH3ThreePassEnabled = false;
     state.videoModelMode = "i2v";
@@ -56531,6 +56602,341 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     };
   }
 
+  function setBuilderLtxVersion(selectedVersion) {
+      const versionDefaults = selectedVersion === "2.5" ? {
+        use_gguf_model: false,
+        diffusion_model_name: "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+        vae_name: "ltx-2.5-video-vae-conv-bf16.safetensors",
+        audio_vae_name: "ltx-2.5-audio-vae-bf16.safetensors",
+        clip_name1: "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+        upscale_model_name: "ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors",
+        msr_lora_name: REQUIRED_LTX25_MSR_LORA,
+      } : {
+        use_gguf_model: true,
+        unet_name: DEFAULT_I2V_UNET,
+        diffusion_model_name: DEFAULT_I2V_DIFFUSION_MODEL,
+        vae_name: "LTX23_video_vae_bf16.safetensors",
+        audio_vae_name: "LTX23_audio_vae_bf16.safetensors",
+        clip_name1: "gemma-3-12b-it-abliterated-sikaworld-high-fidelity-edition.safetensors",
+        clip_name2: "ltx-2.3_text_projection_bf16.safetensors",
+        upscale_model_name: "ltx-2.3-spatial-upscaler-x2-1.1.safetensors",
+        msr_lora_name: REQUIRED_LTX_MSR_LORA,
+      };
+      state.i2vVideoSettings = cloneI2VVideoSettings({
+        ...(state.i2vVideoSettings || {}),
+        ...versionDefaults,
+        ltx_version: selectedVersion,
+      });
+      for (const segment of allEditableSegments()) {
+        if (!segment?.i2v_video_settings) continue;
+        segment.i2v_video_settings = cloneI2VVideoSettings({
+          ...segment.i2v_video_settings,
+          ...versionDefaults,
+          ltx_version: selectedVersion,
+        });
+      }
+      syncI2VVideoSettingsPanel();
+  }
+
+  function openWizardBetaFromBuilder() {
+    let ltxAudioChoice = state.wizardBetaDraft?.audioMode === "silent" ? "silent" : "input_audio";
+    const modes = {
+      ltx: [
+        { value: "i2v", label: "Image to Video", description: "Generate or supply starting images, then animate them." },
+        { value: "t2v", label: "Text to Video", description: "Describe scenes, characters and locations without requiring reference images." },
+        { value: "rtv", label: "Reference to Video", description: "Guide the video with character and location reference images." },
+        { value: "ingredients", label: "Ingredients to Video", description: "Combine the reference images assigned in your Ingredients Builder." },
+        { value: "id_lora", label: "ID-LoRA", description: "Use an identity LoRA, starting image and reference voice." },
+        { value: "flf", label: "First / Last Frame", description: "Guide each scene between starting and ending images." },
+        { value: "import", label: "Import Custom Video — not implemented in Builder", disabled: true },
+      ],
+      minimax_h3: MINIMAX_H3_MODE_OPTIONS.map(item => ({ ...item, description: {
+        text_to_video: "Create video from scene descriptions, with optional character and location context.",
+        image_to_video: "Animate generated or uploaded starting images.",
+        reference_to_video: "Use character and location reference images to guide scenes.",
+        image_reference_to_video: "Combine a starting image with references using the two-pass workflow. Requires input audio.",
+        video_to_video: "Use source videos for continuation, movement, camera or visual guidance.",
+      }[item.value] })),
+    };
+    const sync = () => {
+      syncProjectVideoEngineUI(); syncVideoModePanel(); syncI2VVideoSettingsPanel();
+      syncFluxKleinPanel(); syncZImageSettingsPanel(); syncErnieImagePanel();
+      syncKrea2TwoPassPanel(); syncNBImagePanel(); syncFlowGptBrowserPanel(); syncInspector();
+    };
+    const flush = () => {
+      if (wizardGlobalVideoSettings) {
+        if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") saveMiniMaxH3SettingsFromPanel();
+        else saveI2VVideoSettingsFromPanel();
+      }
+      if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") {
+        state.videoModelMode = ({ text_to_video: "t2v", image_to_video: "i2v", reference_to_video: "rtv", image_reference_to_video: "i2v", video_to_video: "t2v" })[state.miniMaxH3Settings.video_mode];
+      }
+      const saveImage = { zimage: saveZImageSettingsFromPanel, flux_klein: saveFluxKleinSettingsFromPanel, ernie_image: saveErnieImageSettingsFromPanel, krea2_2pass: saveKrea2TwoPassSettingsFromPanel, nano_banana: saveNBImageSettingsFromPanel, flow_gpt: saveFlowGptBrowserSettingsFromPanel }[state.imageModelMode];
+      saveImage?.();
+    };
+    const referenceDraft = (reference) => ({
+      ...reference.image,
+      name: reference.image?.name || reference.name || "Reference",
+      referenceId: reference.id,
+      title: reference.name || "",
+      description: reference.description || "",
+    });
+    const snapshot = () => {
+      const engine = normalizeProjectVideoEngine(state.projectVideoEngine);
+      const mini = cloneMiniMaxH3Settings(state.miniMaxH3Settings);
+      const mode = engine === "minimax_h3" ? mini.video_mode : currentVideoMode();
+      const inputOnly = mode === "image_reference_to_video" || (mode === "reference_to_video" && ["two_pass", "advanced"].includes(mini.ref_pass_mode));
+      const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+      const subjectReferences = refs.subjects.filter(item => item.image?.path || item.image?.data);
+      const locationReferences = refs.locations.filter(item => item.image?.path || item.image?.data);
+      return {
+        engine, mode, modes, ltxVersion: state.i2vVideoSettings.ltx_version || "2.5", imageMode: state.imageModelMode || "zimage",
+        performance: state.videoType, performances: VIDEO_TYPE_OPTIONS,
+        audioMode: engine === "minimax_h3" ? mini.audio_mode : mode === "id_lora" ? "reference_voice" : ltxAudioChoice,
+        audioModes: engine === "minimax_h3" ? MINIMAX_H3_AUDIO_MODE_OPTIONS.map(item => ({ ...item, disabled: inputOnly && item.value === "built_in_audio" })) : mode === "id_lora" ? [{ value: "reference_voice", label: "ID-LoRA reference voice" }] : [{ value: "input_audio", label: "Use an audio file" }, { value: "silent", label: "Silent timeline" }],
+        audioHelp: engine === "minimax_h3" ? inputOnly ? "This multi-pass mode requires input audio. Choose a single-pass mode for built-in audio." : "Built-in audio generates sound from the prompt and does not require a song." : mode === "id_lora" ? "Set the reference voice in Models & LoRAs. Scene dialogue guides speech." : "The current LTX Builder supports supplied audio or silence; native generated audio is not enabled in its render path.",
+        audioPath: String(audioInput.value || state.audioPath || ""),
+        lyrics: state.lyricMapper?.source_text || "", direction: state.builderStoryLayer?.overall_story_idea || "",
+        draft: state.wizardBetaDraft ? {
+          ...state.wizardBetaDraft,
+          singer: subjectReferences[0] ? referenceDraft(subjectReferences[0]) : null,
+          subjects: subjectReferences.map(referenceDraft),
+          locations: locationReferences.map(referenceDraft),
+        } : null, scenes: allEditableSegments(),
+        referenceCount: [...refs.subjects, ...refs.locations].filter(item => item.image?.path || item.image?.data).length,
+        hasVideoReference: (activeSegment()?.minimax_h3_video_references || []).some(item => item.path),
+        imageModes: ["zimage", "flux_klein", "ernie_image", "krea2_2pass", "nano_banana", "flow_gpt"].map(value => ({ value, label: imageModeDisplayLabel(value) })),
+      };
+    };
+    const configure = values => {
+      flush(); pushHistory();
+      if (values.engine) state.projectVideoEngine = normalizeProjectVideoEngine(values.engine);
+      if (values.ltxVersion) setBuilderLtxVersion(values.ltxVersion);
+      if (values.mode) {
+        if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") {
+          state.miniMaxH3Settings = cloneMiniMaxH3Settings({ ...state.miniMaxH3Settings, video_mode: values.mode });
+          state.miniMaxH3TwoPassEnabled = values.mode === "image_reference_to_video";
+          state.miniMaxH3ThreePassEnabled = false;
+        } else state.videoModelMode = values.mode;
+      }
+      if (values.imageMode) {
+        state.imageModelMode = values.imageMode;
+        state.fluxKleinSettings.image_model_mode = values.imageMode;
+        state.fluxKleinSettings.enabled = values.imageMode === "flux_klein";
+      }
+      if (values.performance) { state.videoType = normalizeVideoType(values.performance); syncVideoTypeControl(); }
+      if (values.audioMode) {
+        if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") state.miniMaxH3Settings = cloneMiniMaxH3Settings({ ...state.miniMaxH3Settings, audio_mode: values.audioMode });
+        else ltxAudioChoice = values.audioMode;
+      }
+      if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") {
+        const mode = state.miniMaxH3Settings.video_mode;
+        state.videoModelMode = ({ text_to_video: "t2v", image_to_video: "i2v", reference_to_video: "rtv", image_reference_to_video: "i2v", video_to_video: "t2v" })[mode];
+      }
+      sync();
+    };
+    const movePanel = (holder, panel) => {
+      const marker = document.createComment("Wizard Beta panel position");
+      panel.before(marker); holder.append(panel);
+      return () => { if (marker.parentNode) marker.replaceWith(panel); };
+    };
+    const openScene = id => {
+      flush(); state.activeId = id; state.activeTrack = segmentTrack(allEditableSegments().find(item => item.id === id)); sync(); setInspectorTab("video");
+      const overlay = document.createElement("div"); overlay.style.cssText = "position:fixed;inset:0;background:#000b;z-index:100008;display:grid;place-items:center;padding:24px";
+      const box = document.createElement("div"); box.style.cssText = "background:#17212c;color:white;width:min(900px,100%);max-height:90vh;overflow:auto;padding:18px;border:1px solid #64748b;border-radius:12px";
+      const close = makeButton("Back to Wizard"); const content = document.createElement("div");
+      box.append(close, content); overlay.append(box); document.body.append(overlay);
+      const restore = movePanel(content, inspector);
+      close.onclick = () => { flush(); restore(); overlay.remove(); sync(); };
+    };
+    const addReferences = draft => {
+      const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+      const upsert = (list, id, name, description, image, previousImage) => {
+        let item = list.find(item => item.id === id);
+        if (!item) { item = { id, name, description: "", reference_type: "character" }; list.push(item); }
+        item.name = name;
+        item.description = description ?? item.description;
+        if (image && (previousImage?.data !== image.data || item.image?.name !== image.name || (!item.image?.path && item.image?.data !== image.data))) item.image = { path: image.path || "", data: image.data, name: image.name };
+      };
+      const removed = new Set(draft.removedReferenceIds || []);
+      refs.subjects = refs.subjects.filter(item => !removed.has(item.id));
+      refs.locations = refs.locations.filter(item => !removed.has(item.id));
+      for (const map of [refs.subject_scene_map, refs.performer_scene_map]) {
+        for (const [id, values] of Object.entries(map || {})) map[id] = values.filter(value => !removed.has(value));
+      }
+      for (const [id, value] of Object.entries(refs.scene_map || {})) if (removed.has(value)) delete refs.scene_map[id];
+      const referenceMode = wizardBetaNeeds(draft.engine, draft.mode).references;
+      const subjects = draft.subjects || (draft.singer ? [draft.singer] : []);
+      const saveImages = (images, list, prefix) => images.forEach((image, index) => {
+        if (!image.referenceId) {
+          let id = prefix === "character" && !index ? "wizard_beta_character" : `wizard_beta_${prefix}_${index}`;
+          let suffix = index;
+          while (list.some(item => item.id === id)) id = `wizard_beta_${prefix}_${++suffix}`;
+          image.referenceId = id;
+        }
+        upsert(list, image.referenceId, image.title?.trim() || image.name.replace(/\.[^.]+$/, ""), image.description, image);
+      });
+      if (subjects.length) {
+        refs.cleared = false;
+        saveImages(subjects, refs.subjects, "character");
+      } else if (!referenceMode && draft.characters.trim()) {
+        refs.cleared = false;
+        upsert(refs.subjects, "wizard_beta_character", "Wizard character", draft.characters);
+      }
+      if (draft.locations.length || (!referenceMode && draft.locationsText.trim())) { refs.locations_cleared = false; refs.cleared = false; }
+      if (!referenceMode && draft.locationsText.trim()) upsert(refs.locations, "wizard_beta_location_text", "Wizard location", draft.locationsText);
+      saveImages(draft.locations, refs.locations, "location");
+      if (removed.size) refs.subject = refs.subjects[0] ? { ...refs.subjects[0] } : { name: "", description: "", image: { path: "", data: "", name: "" } };
+      refs.subject_count = refs.subjects.length;
+      state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
+    };
+    const generatePrompts = async (missingOnly = false) => {
+        if (snapshot().engine !== "minimax_h3") return confirmAndRunGemmaVideoAll();
+        const progress = createProgressWindow("Wizard MiniMax prompts");
+        try {
+          state.batchCancelled = false;
+          const scenes = allEditableSegments().filter(scene => !missingOnly || !String(scene.minimax_h3_prompt || "").trim());
+          for (const [index, scene] of scenes.entries()) {
+            assertBatchNotStopped(); progress.set(`Scene ${index + 1}/${scenes.length}`, index / scenes.length * 100);
+            const result = await runMiniMaxH3PromptGeneration(scene, miniMaxH3ModeForSegment(scene), { projectFolder: state.projectFolder, sceneId: scene.id, unloadAfter: index === scenes.length - 1 });
+            scene.minimax_h3_prompt = result.prompt; scene.minimax_h3_prompt_origin = "gemma";
+            await autoSaveSessionQuiet("wizard beta prompt");
+          }
+        } finally { progress.close(); syncInspector(); render(); }
+      };
+    openWizardBeta({
+      snapshot, configure, flush,
+      imageUrl: makeEditorImageUrl,
+      mountSettings: (holder, kind) => {
+        if (kind !== "video") {
+          const panel = ({ zimage: zimageSettingsPanel, flux_klein: fluxKleinPanel, ernie_image: ernieImagePanel, krea2_2pass: krea2TwoPassPanel, nano_banana: nbImagePanel, flow_gpt: flowGptModePanel })[state.imageModelMode];
+          return movePanel(holder, panel);
+        }
+        wizardGlobalVideoSettings = true;
+        syncI2VVideoSettingsPanel(); syncMiniMaxH3Panel();
+        const miniMax = snapshot().engine === "minimax_h3";
+        const source = (miniMax ? miniMaxSubTabs : videoSubTabs).wrapper.children[1];
+        const contents = Array.from(source.children).slice(0, 2);
+        const restores = [];
+        const hidden = document.createElement("div");
+        const sceneControls = miniMax
+          ? [useSceneMiniMaxH3Settings.wrapper, useSceneMiniMaxH3SettingsNote, ...Object.values(miniMaxModePanels)]
+          : [useSceneI2VVideoSettings.wrapper, useSceneI2VVideoSettingsNote, createSceneVideoActions, idLoraVoiceSettingsSection, flfGuideSettingsSection, rtvSceneImageAnchorSection];
+        for (const control of sceneControls) restores.push(movePanel(hidden, control));
+        if (!miniMax) {
+          for (const button of createSceneVideoButtons) {
+            if (contents.some(content => content.contains(button))) restores.push(movePanel(hidden, button.parentElement));
+          }
+        }
+        if (miniMax) restores.push(movePanel(holder, miniMaxPassChooser));
+        const tabs = contents.map((content, index) => {
+          const wrapper = document.createElement("div");
+          restores.push(movePanel(wrapper, content));
+          content.style.display = "flex";
+          return { label: index ? "Video Settings" : "Models", value: index ? "settings" : "models", content: wrapper };
+        });
+        holder.append(makeSubTabs(tabs).wrapper);
+        return () => {
+          flush();
+          for (const restore of restores.reverse()) restore();
+          wizardGlobalVideoSettings = false;
+          (miniMax ? miniMaxSubTabs : videoSubTabs).setActive("models");
+          syncI2VVideoSettingsPanel(); syncMiniMaxH3Panel();
+        };
+      },
+      openRunner: openGemmaRunnerModal,
+      openReferences: (focusedSection, onClose) => {
+        const { engine, mode, imageMode } = snapshot();
+        const needs = wizardBetaNeeds(engine, mode);
+        const textOnlyMode = ["t2v", "text_to_video"].includes(mode)
+          || (needs.images && !needs.references && !["nano_banana", "flux_klein", "flow_gpt"].includes(imageMode));
+        if (focusedSection) {
+          openFluxReferenceBuilderModal({ wizardMode: true, focusedSection, onClose, textOnlyMode });
+          return;
+        }
+        if (mode === "ingredients") openIngredientsReferenceBuilderModal();
+        else if (mode === "id_lora") openIdLoraReferenceBuilderModalSafely();
+        else openFluxReferenceBuilderModal({ wizardMode: true, textOnlyMode });
+      },
+      openLyrics: openLyricReviewModal,
+      openStoryboard: (focusedSection, onClose) => {
+        const { engine, mode } = snapshot();
+        openStoryboardBuilderFromProject({ focusedSection, onClose,
+          allowImagePrep: engine === "minimax_h3" ? mode === "image_to_video" : mode === "i2v" });
+      },
+      openScene,
+      save: async (draft, edits) => {
+        if (!String(projectInput.value || state.projectFolder || "").trim()) {
+          // newProject resets settings; preserve the selections made in the wizard.
+          const settings = { engine: state.projectVideoEngine, mode: state.videoModelMode, mini: cloneMiniMaxH3Settings(state.miniMaxH3Settings), ltx: cloneI2VVideoSettings(state.i2vVideoSettings), imageMode: state.imageModelMode,
+            z: state.zimageSettings, flux: state.fluxKleinSettings, ernie: state.ernieImageSettings, krea: state.krea2TwoPassSettings, nb: state.nbImageSettings, flow: state.flowGptBrowserSettings,
+            runner: Object.fromEntries([
+              "textGemmaRunner", "qwenModelFile", "qwenMmprojFile", "gemmaModelFile", "gemmaContextLimit", "gemmaOutputTokenLimit", "gemmaGpuLayers",
+              "lmStudioBaseUrl", "lmStudioModel", "lmStudioContextLimit", "lmStudioOutputTokenLimit", "llmApiProvider", "llmApiModel",
+              "ownServerUrl", "ownServerModel", "ownServerOutputTokenLimit", "ownServerTimeoutMinutes",
+            ].map(key => [key, state[key]])) };
+          if (!await newProject()) throw new Error("Choose a project folder to save.");
+          Object.assign(state, settings.runner, { projectVideoEngine: settings.engine, videoModelMode: settings.mode, miniMaxH3Settings: settings.mini, i2vVideoSettings: settings.ltx, imageModelMode: settings.imageMode, zimageSettings: settings.z, fluxKleinSettings: settings.flux, ernieImageSettings: settings.ernie, krea2TwoPassSettings: settings.krea, nbImageSettings: settings.nb, flowGptBrowserSettings: settings.flow });
+          sync();
+        }
+        if (draft.song && !await chooseProjectAudioFile(draft.song)) throw new Error("The audio file could not be saved.");
+        pushHistory(); addReferences(draft);
+        state.lyricMapper = normalizeLyricMapper({ ...state.lyricMapper, source_text: draft.lyrics });
+        state.builderStoryLayer = normalizeBuilderStoryLayer({ ...state.builderStoryLayer, overall_story_idea: draft.direction });
+        for (const [id, fields] of edits) { const scene = allEditableSegments().find(item => item.id === id); if (scene) Object.assign(scene, fields); }
+        const { song, ...savedDraft } = draft; state.wizardBetaDraft = savedDraft;
+        sync(); await saveSession({ quiet: true, throwOnError: true }); render();
+      },
+      openTiming: async (kind) => {
+        const inputAudio = snapshot().audioMode === "input_audio";
+        const previousIds = new Set(allEditableSegments().map(scene => scene.id));
+        if (kind !== "manual" && !inputAudio) throw new Error("Transcription requires input audio.");
+        if (inputAudio && !snapshot().audioPath) throw new Error("Choose an audio file first.");
+        if (kind === "existing") {
+          if (!allEditableSegments().length) throw new Error("Create scenes first or choose No scenes yet.");
+          await transcribeLyricsForTimeline();
+        } else if (kind === "new") {
+          await createScenesFromTimestampedLyrics();
+        } else if (kind === "manual") {
+          await new Promise(resolve => {
+            if (inputAudio) openLyricMappingWorkflowModal({ manualOnly: true, onClose: resolve });
+            else openBulkSegmentsModal({ initialMode: "ranges", onClose: resolve });
+          });
+        }
+        const created = allEditableSegments().filter(scene => !previousIds.has(scene.id));
+        if (created.length) {
+          const draft = state.wizardBetaDraft;
+          const needs = wizardBetaNeeds(draft.engine, draft.mode);
+          const context = [draft.direction, !needs.references && draft.characters && `Characters: ${draft.characters}`, !needs.references && draft.locationsText && `Locations: ${draft.locationsText}`, draft.sound && `Sound: ${draft.sound}`].filter(Boolean).join("\n");
+          for (const scene of created) {
+            scene.i2v_notes = [scene.i2v_notes, context].filter(Boolean).join("\n");
+            if (needs.endFrame && draft.endImage) { scene.first_last_frame_end_image_data = draft.endImage.data; scene.first_last_frame_end_image_name = draft.endImage.name; }
+            if (needs.video && draft.videoPath) scene.minimax_h3_video_references = [{ path: draft.videoPath, purpose: "continuation", start_seconds: 0, duration: 0, use_audio: false }];
+          }
+          if (draft.audioMode === "silent") await createSilentTimelineAudioForDuration(Math.max(...allEditableSegments().map(scene => Number(scene.end || 0))), { quiet: true });
+          sync(); await saveSession({ quiet: true, throwOnError: true }); render();
+        } else sync();
+      },
+      importImages: importTimelineImagesFromFolder,
+      generateImages: confirmAndRunZImageAll,
+      generatePrompts,
+      render: async () => {
+        flush();
+        const action = await chooseBatchModeAction({
+          title: "Render All?",
+          intro: "Render all scenes using their prepared prompts, images and effective video settings, then stitch the final video. Missing requirements are shown by Render All; prepare them in Storyboard Scenes before trying again.",
+          confirmLabel: "Render All",
+          choices: [
+            { value: "resume_missing", label: "Resume missing videos", description: "Keep existing videos and render only missing ones." },
+            { value: "redo_videos", label: "Redo videos", description: "Render new video versions using the prepared prompts and images." },
+          ],
+        });
+        if (!action) return;
+        await renderAllScenes({ sceneScope: "all", forceVideos: action === "redo_videos" });
+      },
+    });
+  }
+
   function openWizardFromBuilder() {
     const setWizardVideoMode = (mode) => {
       const normalized = String(mode || "").trim().toLowerCase();
@@ -58497,6 +58903,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       toast(`Video Wizard failed to open:\n${String(error?.message || error)}`, true);
     }
   };
+  wizardBetaButton.onclick = () => {
+    try { openWizardBetaFromBuilder(); }
+    catch (error) {
+      console.error("VRGDG Wizard Beta failed to open", error);
+      toast(`Wizard Beta failed to open:\n${String(error?.message || error)}`, true);
+    }
+  };
   autoBuildButton.onclick = () => {
     try {
       openAutoBuildModal();
@@ -59874,7 +60287,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     control.addEventListener("change", markCustom);
   }
   miniMaxUseLoras.input.addEventListener("change", () => {
-    const segment = activeSegment();
+    const segment = videoSettingsSegment();
     if (miniMaxUseLoras.input.checked) {
       miniMaxUseTurboLora.input.checked = false;
       if (Math.max(0, Math.trunc(Number(miniMaxLoraCount.value) || 0)) < 1) miniMaxLoraCount.value = "1";
@@ -59892,7 +60305,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     syncMiniMaxH3Panel();
   });
   miniMaxUseTurboLora.input.addEventListener("change", () => {
-    const segment = activeSegment();
+    const segment = videoSettingsSegment();
     const currentSettings = miniMaxH3SettingsForSegment(segment);
     if (miniMaxUseTurboLora.input.checked) {
       miniMaxUseLoras.input.checked = false;
@@ -59917,8 +60330,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   });
   for (const button of miniMaxModeButtons) {
     button.onclick = async () => {
-      const segment = requireActiveSegment();
-      if (!segment) return;
+      const segment = wizardGlobalVideoSettings ? null : requireActiveSegment();
+      if (!segment && !wizardGlobalVideoSettings) return;
       pushHistory();
       clearMiniMaxImageReferenceStartFrameOnModeSwitch(segment, button.dataset.minimaxH3Mode);
       setMiniMaxH3RenderPassForSegment(segment, button.dataset.minimaxH3Mode === "image_reference_to_video" ? "two_pass" : "single");
@@ -59929,16 +60342,17 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
   for (const button of miniMaxPassButtons) {
     button.onclick = async () => {
-      const segment = requireActiveSegment();
-      if (!segment) return;
+      const segment = wizardGlobalVideoSettings ? null : requireActiveSegment();
+      if (!segment && !wizardGlobalVideoSettings) return;
       pushHistory();
       clearMiniMaxImageReferenceStartFrameOnModeSwitch(segment, "reference_to_video");
       const current = saveMiniMaxH3SettingsFromPanel(segment);
       const settings = selectMiniMaxH3PassSettings(current, button.dataset.passMode);
-      if (segment.use_scene_minimax_h3_settings) segment.minimax_h3_settings = settings;
+      if (segment?.use_scene_minimax_h3_settings) segment.minimax_h3_settings = settings;
       else state.miniMaxH3Settings = settings;
-      setMiniMaxH3RenderPassForSegment(segment, button.dataset.passMode);
-      setMiniMaxH3ModeForSegment(segment, "reference_to_video");
+      if (segment) setMiniMaxH3RenderPassForSegment(segment, button.dataset.passMode);
+      if (segment) setMiniMaxH3ModeForSegment(segment, "reference_to_video");
+      else state.miniMaxH3Settings = cloneMiniMaxH3Settings({ ...settings, video_mode: "reference_to_video" });
       syncMiniMaxH3Panel();
       await autoSaveSessionQuiet("MiniMax H3 reference pass settings");
     };
