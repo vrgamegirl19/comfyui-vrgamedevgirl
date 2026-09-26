@@ -56697,6 +56697,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         audioHelp: engine === "minimax_h3" ? inputOnly ? "This multi-pass mode requires input audio. Choose a single-pass mode for built-in audio." : "Built-in audio generates sound from the prompt and does not require a song." : mode === "id_lora" ? "Set the reference voice in Models & LoRAs. Scene dialogue guides speech." : "The current LTX Builder supports supplied audio or silence; native generated audio is not enabled in its render path.",
         audioPath: String(audioInput.value || state.audioPath || ""),
         lyrics: state.lyricMapper?.source_text || "", direction: state.builderStoryLayer?.overall_story_idea || "",
+        subjects: subjectReferences.map(referenceDraft), locations: locationReferences.map(referenceDraft),
         draft: state.wizardBetaDraft ? {
           ...state.wizardBetaDraft,
           singer: subjectReferences[0] ? referenceDraft(subjectReferences[0]) : null,
@@ -56821,7 +56822,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         const hidden = document.createElement("div");
         const sceneControls = miniMax
           ? [useSceneMiniMaxH3Settings.wrapper, useSceneMiniMaxH3SettingsNote, ...Object.values(miniMaxModePanels)]
-          : [useSceneI2VVideoSettings.wrapper, useSceneI2VVideoSettingsNote, createSceneVideoActions, idLoraVoiceSettingsSection, flfGuideSettingsSection, rtvSceneImageAnchorSection];
+          : [useSceneI2VVideoSettings.wrapper, useSceneI2VVideoSettingsNote, createSceneVideoActions, rtvSceneImageAnchorSection];
         for (const control of sceneControls) restores.push(movePanel(hidden, control));
         if (!miniMax) {
           for (const button of createSceneVideoButtons) {
@@ -56868,7 +56869,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       save: async (draft, edits) => {
         if (!String(projectInput.value || state.projectFolder || "").trim()) {
           // newProject resets settings; preserve the selections made in the wizard.
-          const settings = { engine: state.projectVideoEngine, mode: state.videoModelMode, mini: cloneMiniMaxH3Settings(state.miniMaxH3Settings), ltx: cloneI2VVideoSettings(state.i2vVideoSettings), imageMode: state.imageModelMode,
+          const settings = { performance: state.videoType, engine: state.projectVideoEngine, mode: state.videoModelMode, mini: cloneMiniMaxH3Settings(state.miniMaxH3Settings), ltx: cloneI2VVideoSettings(state.i2vVideoSettings), imageMode: state.imageModelMode,
             z: state.zimageSettings, flux: state.fluxKleinSettings, ernie: state.ernieImageSettings, krea: state.krea2TwoPassSettings, nb: state.nbImageSettings, flow: state.flowGptBrowserSettings,
             runner: Object.fromEntries([
               "textGemmaRunner", "qwenModelFile", "qwenMmprojFile", "gemmaModelFile", "gemmaContextLimit", "gemmaOutputTokenLimit", "gemmaGpuLayers",
@@ -56876,7 +56877,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
               "ownServerUrl", "ownServerModel", "ownServerOutputTokenLimit", "ownServerTimeoutMinutes",
             ].map(key => [key, state[key]])) };
           if (!await newProject()) throw new Error("Choose a project folder to save.");
-          Object.assign(state, settings.runner, { projectVideoEngine: settings.engine, videoModelMode: settings.mode, miniMaxH3Settings: settings.mini, i2vVideoSettings: settings.ltx, imageModelMode: settings.imageMode, zimageSettings: settings.z, fluxKleinSettings: settings.flux, ernieImageSettings: settings.ernie, krea2TwoPassSettings: settings.krea, nbImageSettings: settings.nb, flowGptBrowserSettings: settings.flow });
+          Object.assign(state, settings.runner, { videoType: settings.performance, projectVideoEngine: settings.engine, videoModelMode: settings.mode, miniMaxH3Settings: settings.mini, i2vVideoSettings: settings.ltx, imageModelMode: settings.imageMode, zimageSettings: settings.z, fluxKleinSettings: settings.flux, ernieImageSettings: settings.ernie, krea2TwoPassSettings: settings.krea, nbImageSettings: settings.nb, flowGptBrowserSettings: settings.flow });
+          syncVideoTypeControl();
           sync();
         }
         if (draft.song && !await chooseProjectAudioFile(draft.song)) throw new Error("The audio file could not be saved.");

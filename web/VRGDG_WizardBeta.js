@@ -141,7 +141,7 @@ export function openWizardBeta(api) {
   styles();
   const initial = api.snapshot();
   const draft = {
-    singer: null, locations: [], endImage: null,
+    singer: null, subjects: initial.subjects, locations: initial.locations || [], endImage: null,
     imageSource: "generate", videoPath: "", characters: "", locationsText: "", sound: "", ...initial.draft,
     engine: initial.engine, mode: initial.mode, imageMode: initial.imageMode, audioMode: initial.audioMode,
     performance: initial.performance, lyrics: initial.lyrics || "", direction: initial.direction || "", song: null,

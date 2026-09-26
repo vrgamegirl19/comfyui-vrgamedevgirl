@@ -281,24 +281,48 @@ test('saved reference image paths render after editor return and survive another
   assert.deepEqual(reloaded.document.body.querySelectorAll('img').map(img => img.src), expected);
 });
 
-test('runner configured from the header survives creating a project on first save', async () => {
+test('runner and performance selections survive creating a project on first save', async () => {
   const f = adapterFixture();
   f.state.projectFolder = '';
   f.context.projectInput.value = '';
   f.state.textGemmaRunner = 'qwen_local';
   f.state.qwenModelFile = 'chosen.gguf';
   f.state.qwenMmprojFile = 'vision.gguf';
+  f.api.configure({ performance: 'speaking' });
+  let syncedPerformance;
+  f.context.syncVideoTypeControl = () => { syncedPerformance = f.state.videoType; };
   f.context.newProject = async () => {
     f.state.projectFolder = '/new-project';
     f.state.textGemmaRunner = 'builtin';
     f.state.qwenModelFile = '';
     f.state.qwenMmprojFile = '';
+    f.state.videoType = 'singing';
     return true;
   };
   await f.api.save({ engine: 'minimax_h3', mode: 'text_to_video', characters: '', locationsText: '', lyrics: '', direction: '', subjects: [], locations: [] }, new Map());
   assert.equal(f.state.textGemmaRunner, 'qwen_local');
   assert.equal(f.state.qwenModelFile, 'chosen.gguf');
   assert.equal(f.state.qwenMmprojFile, 'vision.gguf');
+  assert.equal(f.api.snapshot().performance, 'speaking');
+  assert.equal(syncedPerformance, 'speaking');
+});
+
+test('first wizard opening loads existing references and saves without duplicating them', async () => {
+  const f = adapterFixture();
+  f.api.configure({ mode: 'reference_to_video' });
+  f.state.wizardBetaDraft = null;
+  f.state.fluxReferenceBuilder.subjects = [{ id: 'hero', name: 'Hero', description: 'Detective', image: { path: '/hero.png', name: 'hero.png' } }];
+  f.state.fluxReferenceBuilder.locations = [{ id: 'city', name: 'City', description: 'At night', image: { path: '/city.png', name: 'city.png' } }];
+  const wizard = fixture(f.api.snapshot());
+  wizard.api.save = f.api.save;
+  assert.equal(wizard.find('span', 'Saved draft loaded'), undefined);
+  await wizard.click('3 Inputs');
+  assert.deepEqual(wizard.document.body.querySelectorAll('img').map(img => img.src), ['/hero.png', '/city.png'].map(f.api.imageUrl));
+  await wizard.click('Save Project');
+  assert.deepEqual(f.state.fluxReferenceBuilder.subjects.map(ref => ref.id), ['hero']);
+  assert.deepEqual(f.state.fluxReferenceBuilder.locations.map(ref => ref.id), ['city']);
+  assert.equal(f.state.wizardBetaDraft.subjects[0].description, 'Detective');
+  assert.equal(f.state.wizardBetaDraft.locations[0].description, 'At night');
 });
 
 test('LLM Runner stays in the header immediately before Save Project', async () => {
@@ -490,6 +514,41 @@ test('wizard video panel mounts only global tabs and restores timeline controls 
   assert.equal(source.children[1], settings);
   assert.equal(settings.children[0], c.useSceneMiniMaxH3Settings.wrapper);
   assert.equal(passHome.children[0], c.miniMaxPassChooser);
+});
+
+test('LTX wizard keeps FLF and ID-LoRA settings mounted and restores their panels', () => {
+  for (const mode of ['flf', 'id_lora']) {
+    const f = adapterFixture(), c = f.context;
+    f.api.configure({ engine: 'ltx', mode });
+    const source = new Element('panels');
+    const models = new Element('models'), settings = new Element('settings');
+    source.append(models, settings);
+    const original = new Element('tabs'); original.append(new Element('nav'), source);
+    c.videoSubTabs = { wrapper: original, setActive() {} };
+    c.useSceneI2VVideoSettings = { wrapper: new Element('sceneLock') };
+    c.useSceneI2VVideoSettingsNote = new Element('lockNote');
+    c.createSceneVideoActions = new Element('sceneActions');
+    c.rtvSceneImageAnchorSection = new Element('sceneAnchor');
+    c.idLoraVoiceSettingsSection = new Element('identitySettings');
+    c.flfGuideSettingsSection = new Element('flfSettings');
+    c.createSceneVideoButtons = [];
+    settings.append(c.useSceneI2VVideoSettings.wrapper, c.useSceneI2VVideoSettingsNote, c.createSceneVideoActions, c.rtvSceneImageAnchorSection, c.idLoraVoiceSettingsSection, c.flfGuideSettingsSection);
+    c.document = { createElement: tag => new Element(tag), createComment: () => new Element('comment') };
+    c.syncMiniMaxH3Panel = () => {};
+    c.makeSubTabs = tabs => { const wrapper = new Element('globalTabs'); for (const tab of tabs) wrapper.append(tab.content); return { wrapper }; };
+    const holder = new Element('holder');
+    const restore = f.api.mountSettings(holder, 'video');
+    assert.equal(c.wizardGlobalVideoSettings, true);
+    assert.ok(holder.querySelectorAll('identitySettings').includes(c.idLoraVoiceSettingsSection));
+    assert.ok(holder.querySelectorAll('flfSettings').includes(c.flfGuideSettingsSection));
+    assert.equal(holder.querySelectorAll('sceneLock').length, 0);
+    assert.equal(holder.querySelectorAll('sceneAnchor').length, 0);
+    restore();
+    assert.equal(c.wizardGlobalVideoSettings, false);
+    assert.equal(source.children[1], settings);
+    assert.equal(c.idLoraVoiceSettingsSection.parent, settings);
+    assert.equal(c.flfGuideSettingsSection.parent, settings);
+  }
 });
 
 test('reference uploads append subjects and locations, replace one, and remove one', async () => {
