@@ -182,3 +182,54 @@ test('installed LoRA matching respects preferred names, subfolders and recognize
   assert.equal(c.miniMaxInstalledPass2Lora(8, [preferred4]), '');
   assert.equal(c.miniMaxInstalledPass2Lora(4, [user8, 'unknown_4step.safetensors']), '');
 });
+
+
+test('old VRAM presets migrate fade only and preserve custom settings', () => {
+  const c = fixture();
+  for (const [preset, tile, chunk] of [['8gb',352,51],['12gb',512,85],['16gb',576,272],['24gb',672,153]]) {
+    const old = { advanced_two_pass_defaults_version: 3, advanced_two_pass_vram_preset: preset,
+      advanced_two_pass_tile_size_mode: 'specific_size', advanced_two_pass_tile_width: tile, advanced_two_pass_tile_height: tile,
+      advanced_two_pass_chunk_length: chunk, advanced_two_pass_fade_width: 128, advanced_two_pass_fade_height: 128,
+      advanced_two_pass_spatial_w_overlap: 128, advanced_two_pass_spatial_h_overlap: 128,
+      advanced_two_pass_overlap_mode: 'earlier', advanced_two_pass_overlap_blend: 'smoothstep' };
+    const migrated = c.cloneMiniMaxH3Settings(old);
+    assert.equal(migrated.advanced_two_pass_fade_width, 64);
+    assert.equal(migrated.advanced_two_pass_fade_height, 64);
+    assert.equal(migrated.advanced_two_pass_tile_width, tile);
+    assert.equal(migrated.advanced_two_pass_chunk_length, chunk);
+    assert.equal(migrated.advanced_two_pass_vram_preset, preset);
+    assert.equal(c.cloneMiniMaxH3Settings({...old,advanced_two_pass_fade_width:80}).advanced_two_pass_fade_width,80);
+    assert.equal(c.cloneMiniMaxH3Settings({...old,advanced_two_pass_defaults_version:4}).advanced_two_pass_fade_width,128);
+  }
+});
+
+test('final collection waits for in-flight stage backup and retains scratch on copy failure', async () => {
+  for (const fail of [false, true]) {
+    const segment = {};
+    let finishCopy, copyCalls = 0;
+    const c = vm.createContext({ twoPass:true, threePass:true, segment, built:{output_folder:'/scratch'},
+      renderStartedAt:1, projectFolder:'/project', slotNumber:1, state:{}, console,
+      mediaPathKey:p=>p, activateSegmentVideoPath(){}, syncPreview(){}, renderList(){}, render(){}, autoSaveSessionQuiet:async()=>{},
+      postJson:async (url) => {
+        if (url.endsWith('find_minimax_h3_stage_outputs')) return {stage1_path:'/scratch/stage1.mp4'};
+        copyCalls++;
+        if (fail) throw Error('copy failed');
+        await new Promise(resolve=>{finishCopy=resolve;});
+        return {backup_path:'/project/backup.mp4'};
+      }
+    });
+    const start=source.indexOf('      let liveStageBackupsRegistered = false;');
+    const end=source.indexOf('      const videos = await waitForVideos(',start);
+    vm.runInContext(source.slice(start,end)+';globalThis.register=registerLiveThreePassBackups;',c);
+    const first=c.register();
+    assert.equal(c.register(),first);
+    await new Promise(resolve=>setImmediate(resolve));
+    if (!fail) finishCopy();
+    await first;
+    const a=source.indexOf('      // Finish any in-flight backup');
+    const b=source.indexOf('      pushHistory();',a);
+    const ready=await vm.runInContext('(async()=>{'+source.slice(a,b)+'return canCleanupScratch;})()',c);
+    assert.equal(ready,!fail);
+    if (!fail) { assert.equal(segment.minimax_h3_stage1_backup_path,'/project/backup.mp4'); assert.equal(copyCalls,1); }
+  }
+});

@@ -572,7 +572,17 @@ function cloneMiniMaxH3Settings(value = {}) {
   ));
   const shouldMigrateLegacyAdvancedDefaults = !hasCurrentAdvancedTwoPassDefaults
     && (matchesAdvancedDefaults(legacyAdvancedDefaults) || matchesAdvancedDefaults(legacyAdvancedDefaultsV3));
-  const advancedSource = shouldMigrateLegacyAdvancedDefaults ? {} : source;
+  const oldPreset = { "8gb": [352, 51], "12gb": [512, 85], "16gb": [576, 272], "24gb": [672, 153] }[source.advanced_two_pass_vram_preset];
+  const migratePresetFade = !hasCurrentAdvancedTwoPassDefaults && oldPreset && matchesAdvancedDefaults({
+    ...legacyAdvancedDefaultsV3,
+    advanced_two_pass_vram_preset: source.advanced_two_pass_vram_preset,
+    advanced_two_pass_tile_size_mode: "specific_size",
+    advanced_two_pass_tile_width: oldPreset[0], advanced_two_pass_tile_height: oldPreset[0],
+    advanced_two_pass_chunk_length: oldPreset[1],
+    advanced_two_pass_fade_width: 128, advanced_two_pass_fade_height: 128,
+  });
+  const advancedSource = shouldMigrateLegacyAdvancedDefaults ? {} : migratePresetFade
+    ? { ...source, advanced_two_pass_fade_width: 64, advanced_two_pass_fade_height: 64 } : source;
   const sourceLoras = Array.isArray(source.loras)
     ? source.loras
     : Array.from({ length: 4 }, (_, index) => ({
@@ -48309,10 +48319,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const promptId = queued?.prompt_id;
       if (!promptId) throw new Error("ComfyUI queued MiniMax H3 but did not return a prompt_id.");
       let liveStageBackupsRegistered = false;
-      let liveStageBackupCopying = false;
+      let liveStageBackupTask = null;
       let livePreviewStage = 0;
-      const registerLiveThreePassBackups = async () => {
-        if (!threePass || liveStageBackupsRegistered || liveStageBackupCopying) return;
+      const copyLiveStageBackups = async () => {
+        if (!(twoPass || threePass) || liveStageBackupsRegistered) return;
         const stages = await postJson("/vrgdg/workflow_runner/find_minimax_h3_stage_outputs", {
           output_folder: built.output_folder || "",
           min_mtime: renderStartedAt,
@@ -48321,7 +48331,6 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           ["stage1", stages.stage1_path],
         ].filter(([, path]) => Boolean(path));
         if (!paths.length) return;
-        liveStageBackupCopying = true;
         let changed = false;
         if (!Array.isArray(segment.video_backup_paths)) segment.video_backup_paths = [];
         for (const [stage, sourcePath] of paths) {
@@ -48344,7 +48353,6 @@ Chrome vault corridor = Sealed industrial passage...</pre>
             segment.video_backup_thumbnail_paths.push(copied.backup_thumbnail_path);
           }
         }
-        liveStageBackupCopying = false;
         if (!changed) return;
         segment.minimax_h3_stage1_path = segment.minimax_h3_stage1_backup_path || segment.minimax_h3_stage1_path || "";
         segment.minimax_h3_stage2_path = segment.minimax_h3_stage2_path || "";
@@ -48368,16 +48376,21 @@ Chrome vault corridor = Sealed industrial passage...</pre>
             syncPreview(segment);
           }
         }
-        liveStageBackupsRegistered = Boolean(stages.stage1_path);
+        liveStageBackupsRegistered = Boolean(segment.minimax_h3_stage1_backup_path)
+          && segment.minimax_h3_stage1_source_path === stages.stage1_path;
         segment.video_cache_bust = Date.now();
         renderList();
         render();
         await autoSaveSessionQuiet("MiniMax H3 2 Pass Advanced backup available");
       };
+      const registerLiveThreePassBackups = () => {
+        if (!liveStageBackupTask) liveStageBackupTask = copyLiveStageBackups().finally(() => { liveStageBackupTask = null; });
+        return liveStageBackupTask;
+      };
       const videos = await waitForVideos(
         promptId,
         (message) => {
-          void registerLiveThreePassBackups();
+          if (threePass) void registerLiveThreePassBackups().catch(error => console.warn("MiniMax stage backup:", error));
           progress?.set(`${batchLabel}${threePass ? "MiniMax H3 2 Pass Advanced (Base → MMH3 tiled upscale)\n" : twoPass ? "MiniMax H3 2 Pass (Stage 1 → Stage 2)\n" : ""}${message}${exactTwoPassStepsLine}${exactAdvancedResolutionLine}${exactTwoPassLorasLine}\nPrompt ID: ${promptId}`, pct(62));
         },
         () => state.batchCancelled,
@@ -48435,11 +48448,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         scene_number: slotNumber,
         existing_action: options.existingVideoAction || "overwrite",
       }, 120000);
-      // The raw H3 render now lives in rendered_scene_videos; the scratch
-      // copy under output/VRGDG_MiniMaxH3 is no longer needed.
-      postJson("/vrgdg/workflow_runner/cleanup_minimax_h3_output", {
-        output_folder: built.output_folder || "",
-      }, 15000).catch(() => {});
+      // Finish any in-flight backup and retry after the render has completed.
+      if (liveStageBackupTask) await liveStageBackupTask;
+      await registerLiveThreePassBackups();
+      const canCleanupScratch = !(twoPass || threePass) || liveStageBackupsRegistered;
 
       pushHistory();
       if (collected.backup_path) {
@@ -48455,13 +48467,19 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         }
       }
       if (stage1VideoPath) {
-        segment.minimax_h3_stage1_path = stage1VideoPath;
+        segment.minimax_h3_stage1_path = canCleanupScratch ? segment.minimax_h3_stage1_backup_path : stage1VideoPath;
       }
       if (stage2VideoPath) {
-        segment.minimax_h3_stage2_path = stage2VideoPath;
+        segment.minimax_h3_stage2_path = canCleanupScratch ? (collected.video_path || exactVideoPath) : stage2VideoPath;
       }
-      segment.video_output = video;
-      segment.video_source_path = alignedVideoPath;
+      segment.video_output = canCleanupScratch ? null : video;
+      segment.video_source_path = canCleanupScratch ? (collected.video_path || exactVideoPath) : alignedVideoPath;
+      if (canCleanupScratch) {
+        segment.minimax_h3_stage1_path = segment.minimax_h3_stage1_backup_path || "";
+        segment.minimax_h3_stage1_source_path = segment.minimax_h3_stage1_path;
+        segment.minimax_h3_stage2_path = (twoPass || threePass) ? (collected.video_path || exactVideoPath) : "";
+        segment.minimax_h3_stage2_source_path = segment.minimax_h3_stage2_path;
+      }
       segment.minimax_h3_timing = timing;
       activateSegmentVideoPath(
         segment,
@@ -48493,6 +48511,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       loadDirtyLatentBadges();
       if (options.autoSaveAfter !== false) {
         await autoSaveSessionQuiet(options.autoSaveReason || "MiniMax H3 scene video complete");
+      }
+      if (canCleanupScratch) {
+        await postJson("/vrgdg/workflow_runner/cleanup_minimax_h3_output", {
+          output_folder: built.output_folder || "", project_folder: projectFolder, scene_number: slotNumber,
+        }, 120000).catch(error => console.warn("MiniMax scratch cleanup failed; files retained:", error));
       }
       progress?.set(
         `${batchLabel}${threePass ? "MiniMax H3 2 Pass Advanced complete — MMH3 Pass 2 selected; Pass 1 backup saved." : twoPass ? "MiniMax H3 learned-latent 2 Pass complete — final pass-2 video selected." : "MiniMax H3 scene ready."}${exactAdvancedResolutionLine}\n${segment.video_path}\n`

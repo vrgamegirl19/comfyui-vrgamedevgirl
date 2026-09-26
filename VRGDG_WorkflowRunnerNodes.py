@@ -837,7 +837,7 @@ def _prepare_scene_audio_clip(payload):
     }
 
 
-def _minimax_h3_output_location(project_folder, scene_number):
+def _minimax_h3_output_location(project_folder, scene_number, *, create=True):
     project_name = re.sub(
         r"[^A-Za-z0-9_-]+",
         "_",
@@ -850,7 +850,8 @@ def _minimax_h3_output_location(project_folder, scene_number):
         f"scene_{scene_number:04d}",
     )
     output_folder = os.path.join(folder_paths.get_output_directory(), relative_dir)
-    os.makedirs(output_folder, exist_ok=True)
+    if create:
+        os.makedirs(output_folder, exist_ok=True)
     filename_prefix = os.path.join(
         relative_dir,
         f"MiniMaxH3_scene_{scene_number:04d}",
@@ -859,19 +860,29 @@ def _minimax_h3_output_location(project_folder, scene_number):
 
 
 def _cleanup_minimax_h3_output_folder(payload):
-    output_folder = os.path.abspath(str(payload.get("output_folder", "") or "").strip().strip('"'))
-    if not output_folder:
-        return {"removed": False}
-    root = os.path.abspath(os.path.join(folder_paths.get_output_directory(), "VRGDG_MiniMaxH3"))
+    output_value = str(payload.get("output_folder") or "").strip().strip('"')
+    project_value = str(payload.get("project_folder") or "").strip().strip('"')
+    if not output_value or not project_value:
+        raise ValueError("Output folder and project folder are required.")
+    scene_number = int(payload.get("scene_number", 0))
+    if scene_number < 1 or scene_number > 999999:
+        raise ValueError("A valid scene number is required.")
+    project_folder = os.path.abspath(project_value)
+    expected, _ = _minimax_h3_output_location(project_folder, scene_number, create=False)
+    output_folder = os.path.abspath(output_value)
+    root = os.path.realpath(os.path.join(folder_paths.get_output_directory(), "VRGDG_MiniMaxH3"))
+    resolved = os.path.realpath(output_folder)
     try:
-        inside_root = os.path.commonpath([root, output_folder]) == root
+        inside_root = os.path.normcase(os.path.commonpath([root, resolved])) == os.path.normcase(root)
     except ValueError:
         inside_root = False
-    if not inside_root:
-        raise ValueError("Output folder is outside the MiniMax H3 scratch root.")
+    if (not inside_root or os.path.normcase(resolved) == os.path.normcase(root)
+            or os.path.normcase(output_folder) != os.path.normcase(os.path.abspath(expected))
+            or os.path.normcase(resolved) != os.path.normcase(output_folder)):
+        raise ValueError("Output folder must be the scene's MiniMax H3 scratch directory without links.")
     if not os.path.isdir(output_folder):
         return {"removed": False}
-    shutil.rmtree(output_folder, ignore_errors=True)
+    shutil.rmtree(output_folder)
     return {"removed": True, "output_folder": output_folder}
 
 
