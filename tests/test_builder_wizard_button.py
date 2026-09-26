@@ -27,6 +27,8 @@ class BuilderWizardButtonTests(unittest.TestCase):
             self.assertNotIn(handler, WIZARD_SOURCE)
 
     def test_wizard_button_surfaces_opening_errors(self):
+        self.assertIn('const wizardButton = makeButton("Wizard Legacy", "primary");', BUILDER_SOURCE)
+        self.assertIn('lines: ["Wizard", "Legacy"]', BUILDER_SOURCE)
         self.assertIn("wizardButton.onclick = () => {", BUILDER_SOURCE)
         self.assertIn("openWizardFromBuilder();", BUILDER_SOURCE)
         self.assertIn(

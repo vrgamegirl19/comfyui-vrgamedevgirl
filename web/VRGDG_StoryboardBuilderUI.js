@@ -3309,6 +3309,9 @@ async function copyTextToClipboard(text) {
 }
 
 function openStoryboardBuilder(payload = {}) {
+  const focusedSection = ["defaults", "story", "scenes"].includes(payload.focusedSection) ? payload.focusedSection : "";
+  const focusedTitle = { defaults: "Scene Defaults", story: "Story Layer", scenes: "Scenes" }[focusedSection];
+  const allowImagePrep = !focusedSection || payload.allowImagePrep === true;
   const focusSceneId = String(payload.focusSceneId || payload.focus_scene_id || "").trim();
   if (focusSceneId && document.querySelector("[data-vrgdg-focused-storyboard]")) return;
   let focusedSceneOnly = Boolean(focusSceneId);
@@ -3587,7 +3590,7 @@ function openStoryboardBuilder(payload = {}) {
     <div style="display:flex;gap:14px;align-items:center;min-width:0;">
       <div style="width:52px;height:52px;border-radius:12px;background:#164e63;color:#67e8f9;display:grid;place-items:center;font-size:28px;">▣</div>
       <div style="min-width:0;">
-        <div style="font-size:26px;font-weight:900;color:#cffafe;">Storyboard Builder <span id="vrgdg-storyboard-mode-pill" style="font-size:13px;border-radius:999px;background:#164e63;color:#a5f3fc;padding:5px 9px;vertical-align:middle;">Planning</span></div>
+        <div style="font-size:26px;font-weight:900;color:#cffafe;">${focusedTitle || "Storyboard Builder"} <span id="vrgdg-storyboard-mode-pill" style="font-size:13px;border-radius:999px;background:#164e63;color:#a5f3fc;padding:5px 9px;vertical-align:middle;">Planning</span></div>
         <div id="vrgdg-storyboard-subtitle" style="color:#cbd5e1;font-size:14px;margin-top:3px;">Write scene cards, image prompts, and video prompts before sending them to the AI Video Builder.</div>
       </div>
     </div>
@@ -4244,10 +4247,10 @@ function openStoryboardBuilder(payload = {}) {
     storyActions,
   );
 
-  const sceneDefaultsPanel = makeCollapsiblePanel("Scene Defaults", "", cameraFlowBar, { open: false });
+  const sceneDefaultsPanel = makeCollapsiblePanel("Scene Defaults", "", cameraFlowBar, { open: focusedSection === "defaults" });
   sceneDefaultsPanel.classList.add("vrgdg-storyboard-panel");
   const hasStoryLayerContent = Boolean(String(state.storyLayer.overall_story_idea || "").trim() || String(state.storyLayer.user_story_arc || "").trim() || String(state.storyLayer.song_story_brief || "").trim());
-  const storyLayerPanel = makeCollapsiblePanel("Story Layer", "", storyLayerBar, { open: hasStoryLayerContent || isMiniMaxShortFilmMode });
+  const storyLayerPanel = makeCollapsiblePanel("Story Layer", "", storyLayerBar, { open: focusedSection === "story" || hasStoryLayerContent || isMiniMaxShortFilmMode });
   storyLayerPanel.classList.add("vrgdg-storyboard-panel");
 
   const tableWrap = document.createElement("div");
@@ -4260,7 +4263,7 @@ function openStoryboardBuilder(payload = {}) {
   stats.style.cssText = "flex:1 1 260px;min-width:0;color:#cbd5e1;font-size:13px;overflow-wrap:anywhere;";
   const footerActions = document.createElement("div");
   footerActions.style.cssText = "display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:flex-end;min-width:0;max-width:100%;";
-  const save = makeButton("Save Storyboard");
+  const save = makeButton(focusedTitle ? `Save ${focusedTitle}` : "Save Storyboard");
   const exportPrompts = makeButton(state.onPromptsExported ? "Save Prompts to Timeline + Files" : "Export Prompt Files Only", "purple");
   exportPrompts.title = state.onPromptsExported
     ? "Copy prompts into matching Video Builder timeline segments and write TXT and JSON prompt files. This does not create or replace timeline segments."
@@ -4268,7 +4271,16 @@ function openStoryboardBuilder(payload = {}) {
   footerActions.append(save, exportPrompts);
   footer.append(stats, footerActions);
 
-  middleContent.append(sceneDefaultsPanel, storyLayerPanel, tableWrap);
+  if (!focusedSection || focusedSection === "defaults") middleContent.append(sceneDefaultsPanel);
+  if (!focusedSection || focusedSection === "story") middleContent.append(storyLayerPanel);
+  if (!focusedSection || focusedSection === "scenes") middleContent.append(tableWrap);
+  if (focusedSection) {
+    if (focusedSection !== "scenes") {
+      headerActions.replaceChildren(close);
+      footerActions.replaceChildren(save);
+    }
+    if (focusedSection === "story" || !allowImagePrep) steps.remove();
+  }
   shell.append(header, note, middleContent, footer);
   backdrop.append(shell);
   document.body.append(backdrop);
@@ -4315,6 +4327,7 @@ function openStoryboardBuilder(payload = {}) {
   };
 
   const setMode = (mode) => {
+    if (focusedSection && (!allowImagePrep || focusedSection === "story")) mode = "image_to_video_prep";
     state.mode = mode;
     const isVideoPrepMode = mode === "image_to_video_prep";
     const videoStyleEligible = state.projectVideoEngine === "ltx"
@@ -4331,6 +4344,13 @@ function openStoryboardBuilder(payload = {}) {
     note.textContent = mode === "image_to_video_prep"
       ? "Video Prep uses existing scene images when available, plus subjects, locations, lyrics, story beats, and motion notes to create video prompts."
       : "Image Prep creates text-to-image prompts from subjects, locations, lyrics, story beats, shot direction, and the story layer.";
+    if (focusedSection === "story") {
+      shell.querySelector("#vrgdg-storyboard-mode-pill").textContent = "Story";
+      shell.querySelector("#vrgdg-storyboard-subtitle").textContent = "Plan the story shared by your scenes.";
+      note.textContent = "Develop the overall idea, story arc and scene beats. Save to update the project.";
+    } else if (focusedSection === "defaults") {
+      shell.querySelector("#vrgdg-storyboard-subtitle").textContent = "Set project defaults. Use Fill Missing or Replace All to update existing scenes.";
+    }
     refreshActionButtons();
     importImagePromptsButton.style.display = isVideoPrepMode ? "none" : "";
     imageShotControls.style.display = isVideoPrepMode ? "none" : "flex";
@@ -7156,6 +7176,14 @@ function openStoryboardBuilder(payload = {}) {
       // The Storyboard is already saved. Do not trigger a redundant parent
       // Video Builder session save from this completed save action.
       syncStoryLayerFromInputs({ notify: false });
+      if (focusedSection && payload.onFocusedSave) await payload.onFocusedSave({
+        ...storyboardDefaultsPayload(),
+        story_layer: normalizeStoryLayer(state.storyLayer),
+        script_import: normalizeStoryboardScriptImportState(state.scriptImport),
+        facial_performance_default: state.facialPerformance || "",
+        facial_performance_custom_default: state.facialPerformanceCustom || "",
+        scenes: state.scenes.map((scene, index) => slimSceneForRequest(scene, index)),
+      });
       createToast(`Storyboard saved:\n${data.storyboard?.path || ""}`);
     } catch (error) {
       if (throwOnError) throw error;
@@ -8360,9 +8388,10 @@ function openStoryboardBuilder(payload = {}) {
   };
   save.onclick = saveStoryboard;
   exportPrompts.onclick = exportPromptFiles;
-  close.onclick = () => backdrop.remove();
+  const closeStoryboard = () => { if (state.saving) return; backdrop.remove(); payload.onClose?.(); };
+  close.onclick = closeStoryboard;
   backdrop.addEventListener("pointerdown", (event) => {
-    if (event.target === backdrop) backdrop.remove();
+    if (event.target === backdrop) closeStoryboard();
   });
   refreshCameraFlowInfo();
   refreshImageShotInfo();
