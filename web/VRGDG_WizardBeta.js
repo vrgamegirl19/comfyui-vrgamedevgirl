@@ -113,7 +113,8 @@ function styles() {
   document.head.append(sheet);
 }
 
-export const WIZARD_BETA_STEPS = ["Engine", "Video mode", "Inputs", "Models & LoRAs", "Sound & timing", "Scenes", "Render"];
+export const WIZARD_BETA_STEPS = ["Engine", "Video mode", "Sound & timing", "Inputs", "Models & LoRAs", "Scenes", "Render"];
+const WIZARD_BETA_STEP_IDS = ["engine", "mode", "sound", "inputs", "models", "scenes", "render"];
 
 export function wizardBetaNeeds(engine, mode) {
   return {
@@ -150,7 +151,9 @@ export function openWizardBeta(api) {
   draft.singer = draft.subjects[0] || null;
   draft.removedReferenceIds = [];
   draft.locations = draft.locations.map(image => ({ ...image }));
-  let page = Math.max(0, Math.min(6, Number(initial.draft?.page) || 0));
+  const savedPage = WIZARD_BETA_STEP_IDS.indexOf(initial.draft?.pageId);
+  const legacyPage = [0, 1, 3, 4, 2, 5, 6][Number(initial.draft?.page) || 0] ?? 0;
+  let page = savedPage >= 0 ? savedPage : legacyPage;
   const sceneSteps = ["Scene Defaults", "Align lyrics / dialogue (Optional)", "Edit Mappings", "Storyboard Scenes", "Story Layer", initial.engine === "minimax_h3" ? "Create MiniMax Prompts" : "Create Video Prompts"];
   const sceneStepIds = ["defaults", "lyrics", "mapping", "scenes", "story", "prompts"];
   const savedSceneStep = sceneStepIds.indexOf(initial.draft?.sceneStepId);
@@ -201,7 +204,7 @@ export function openWizardBeta(api) {
     syncDraft();
     const issues = wizardBetaIssues(draft, api.snapshot());
     if (issues.length) throw new Error(issues.join("\n"));
-    draft.page = page; draft.sceneStep = sceneStep; draft.sceneStepId = sceneStepIds[sceneStep];
+    draft.page = page; draft.pageId = WIZARD_BETA_STEP_IDS[page]; draft.sceneStep = sceneStep; draft.sceneStepId = sceneStepIds[sceneStep];
     draft.singer = draft.subjects[0] || null;
     await api.save(draft, sceneEdits);
     draft.removedReferenceIds = [];
@@ -314,33 +317,6 @@ export function openWizardBeta(api) {
       main.append(node("p", "", selected?.description || ""));
       main.append(node("p", "wb-muted", "Your selection updates the existing Builder. You can go back and change it at any time."));
     } else if (page === 2) {
-      main.append(node("p", "wb-muted", `Set up ${modeLabel()}. These inputs guide new scenes; existing scene assignments are preserved until you choose to replace the timeline.`));
-      if (!needs.references) main.append(field("Characters (optional)", input(draft.characters, value => { draft.characters = value; }, true)), field("Locations (optional)", input(draft.locationsText, value => { draft.locationsText = value; }, true)));
-      if (needs.images) {
-        main.append(field("Starting images", select(draft.imageSource, [{ value: "generate", label: "Generate scene images" }, { value: "upload", label: "Use my own images" }], value => { draft.imageSource = value; })));
-        if (draft.imageSource === "generate") {
-          main.append(field("Text-to-image model", select(draft.imageMode, api.snapshot().imageModes, value => configure({ imageMode: value }))));
-          const advanced = details("Image model settings and LoRAs"); main.append(advanced); mount(advanced, "image");
-        } else main.append(node("p", "wb-muted", "After creating scenes, upload an image for each scene in Storyboard Scenes or fill the timeline from a folder of numbered images."));
-      }
-      if (needs.endFrame) main.append(upload("End frame (optional when generated)", "endImage"));
-      if (needs.references) {
-        const pair = node("div", "wb-pair"); pair.append(upload("Subject references", "subjects", true), upload("Location references", "locations", true)); main.append(pair);
-      }
-      const referenceActions = node("div");
-      referenceActions.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;";
-      for (const [section, label] of [["subjects", "Edit Subjects"], ["locations", "Edit Locations"]]) {
-        referenceActions.append(button(label, () => editReferences(section)));
-      }
-      main.append(referenceActions, node("p", "wb-hint", "Opening an editor saves your wizard inputs. These editors share subjects, locations and scene mappings with the main Reference Builder."));
-      if (["ingredients", "id_lora"].includes(draft.mode)) main.append(button(draft.mode === "ingredients" ? "Edit Ingredients sheets" : "Edit ID-LoRA references", () => api.openReferences()));
-      if (needs.video) main.append(field("Source video path", input(draft.videoPath, value => { draft.videoPath = value; }), "Full path on the ComfyUI machine. Additional video references, trimming and purpose are available in Models & LoRAs."));
-      if (draft.mode === "ingredients") main.append(node("p", "wb-muted", "Use the reference editor to create your ingredients sheet and assign it to scenes."));
-      if (draft.mode === "id_lora") main.append(node("p", "wb-muted", "Configure the identity LoRA and reference voice in the next step."));
-    } else if (page === 3) {
-      main.append(node("p", "wb-muted", "Choose project-wide models, LoRAs, quality, passes and video settings. Scenes without custom overrides use these settings. Use the normal timeline for per-scene overrides and Storyboard Scenes for prompts."));
-      mount(main, "video");
-    } else if (page === 4) {
       main.append(field("Performance", select(draft.performance, api.snapshot().performances, value => configure({ performance: value }))));
       main.append(field("Audio source", select(draft.audioMode, api.snapshot().audioModes, value => configure({ audioMode: value }))));
       main.append(node("p", "wb-muted", api.snapshot().audioHelp));
@@ -369,7 +345,7 @@ export function openWizardBeta(api) {
             await persist();
             await api.openTiming(kind);
             draft.lyrics = api.snapshot().lyrics || "";
-            report("Timing editor finished. Continue to Scenes to review your timeline.");
+            report("Timing editor finished. Continue to Inputs to set up subjects, locations and scene mappings.");
           });
           render();
         });
@@ -388,6 +364,33 @@ export function openWizardBeta(api) {
       }
       main.append(choices);
       if (inputAudio && !draft.song && !api.snapshot().audioPath) main.append(node("p", "wb-muted", "Choose an audio file above to enable transcription and listening-based timing."));
+    } else if (page === 3) {
+      main.append(node("p", "wb-muted", `Set up ${modeLabel()}. These inputs guide new scenes; existing scene assignments are preserved until you choose to replace the timeline.`));
+      if (!needs.references) main.append(field("Characters (optional)", input(draft.characters, value => { draft.characters = value; }, true)), field("Locations (optional)", input(draft.locationsText, value => { draft.locationsText = value; }, true)));
+      if (needs.images) {
+        main.append(field("Starting images", select(draft.imageSource, [{ value: "generate", label: "Generate scene images" }, { value: "upload", label: "Use my own images" }], value => { draft.imageSource = value; })));
+        if (draft.imageSource === "generate") {
+          main.append(field("Text-to-image model", select(draft.imageMode, api.snapshot().imageModes, value => configure({ imageMode: value }))));
+          const advanced = details("Image model settings and LoRAs"); main.append(advanced); mount(advanced, "image");
+        } else main.append(node("p", "wb-muted", "After creating scenes, upload an image for each scene in Storyboard Scenes or fill the timeline from a folder of numbered images."));
+      }
+      if (needs.endFrame) main.append(upload("End frame (optional when generated)", "endImage"));
+      if (needs.references) {
+        const pair = node("div", "wb-pair"); pair.append(upload("Subject references", "subjects", true), upload("Location references", "locations", true)); main.append(pair);
+      }
+      const referenceActions = node("div");
+      referenceActions.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;";
+      for (const [section, label] of [["subjects", "Edit Subjects"], ["locations", "Edit Locations"]]) {
+        referenceActions.append(button(label, () => editReferences(section)));
+      }
+      main.append(referenceActions, node("p", "wb-hint", "Opening an editor saves your wizard inputs. These editors share subjects, locations and scene mappings with the main Reference Builder."));
+      if (["ingredients", "id_lora"].includes(draft.mode)) main.append(button(draft.mode === "ingredients" ? "Edit Ingredients sheets" : "Edit ID-LoRA references", () => api.openReferences()));
+      if (needs.video) main.append(field("Source video path", input(draft.videoPath, value => { draft.videoPath = value; }), "Full path on the ComfyUI machine. Additional video references, trimming and purpose are available in Models & LoRAs."));
+      if (draft.mode === "ingredients") main.append(node("p", "wb-muted", "Use the reference editor to create your ingredients sheet and assign it to scenes."));
+      if (draft.mode === "id_lora") main.append(node("p", "wb-muted", "Configure the identity LoRA and reference voice in the next step."));
+    } else if (page === 4) {
+      main.append(node("p", "wb-muted", "Choose project-wide models, LoRAs, quality, passes and video settings. Scenes without custom overrides use these settings. Use the normal timeline for per-scene overrides and Storyboard Scenes for prompts."));
+      mount(main, "video");
     } else if (page === 5) {
       sceneSteps[5] = draft.engine === "minimax_h3" ? "Create MiniMax Prompts" : "Create Video Prompts";
       const navigation = node("nav", "wb-steps");
