@@ -98,12 +98,16 @@ test('save does not prepare or render, preserves stage and handles failure', asy
   await f.click('Save Project'); assert.ok(f.document.body.textContent.includes('Disk full'));
 });
 
-test('story direction stays staged until save and remembers the scene substep', async () => {
-  const f = fixture({ direction: 'Before' });
-  await f.click('6 Scenes'); await f.click('2 Story direction');
-  const direction = f.input('Story direction'); direction.value = 'After'; direction.oninput();
-  assert.equal(f.data.direction, 'Before'); await f.click('Save Project');
-  assert.equal(f.data.draft.direction, 'After'); assert.equal(f.data.draft.sceneStep, 1);
+test('saved scene steps migrate by meaning and new saves use stable IDs', async () => {
+  for (const [oldStep, label, id] of [[1,'Story Layer','story'],[2,'Story Layer','story'],[3,'Align lyrics / dialogue','lyrics'],[4,'Edit Mappings','mapping'],[5,'Storyboard Scenes','scenes']]) {
+    const f = fixture({ draft: {page:5, sceneStep:oldStep}, scenes:[{id:'a'}] });
+    assert.ok(f.find('button',label));
+    assert.equal(f.input('Story direction'), undefined);
+    await f.click('Save Project');
+    assert.equal(f.data.draft.sceneStepId,id);
+    const restored = fixture({draft:f.data.draft,scenes:[{id:'a'}]});
+    assert.ok(restored.find('button',label));
+  }
 });
 
 test('every mode has the correct media requirements', () => {
@@ -123,7 +127,8 @@ function adapterFixture() {
   const events = [];
   const context = { state, wizardGlobalVideoSettings: false, audioInput: { value: '' }, projectInput: { value: '/project' }, audio: { duration: 0 },
     MINIMAX_H3_MODE_OPTIONS: modeOptions.minimax_h3, MINIMAX_H3_AUDIO_MODE_OPTIONS: [{ value: 'input_audio', label: 'Input' }, { value: 'built_in_audio', label: 'Built-in' }], VIDEO_TYPE_OPTIONS: [],
-    normalizeProjectVideoEngine: x => x, normalizeVideoType: x => x,
+    normalizeProjectVideoEngine: x => x, normalizeVideoType: x => x, promptRunnerActionName: () => "LLM API",
+    confirmAndRunGemmaVideoAll: async () => events.push("video-all"),
     makeEditorImageUrl: path => `/vrgdg/video_editor/image?path=${encodeURIComponent(path)}`,
     cloneMiniMaxH3Settings: x => ({ ...x }), cloneI2VVideoSettings: x => ({ ...x }), normalizeFluxReferenceBuilder: x => x, normalizeBuilderStoryLayer: x => x, normalizeLyricMapper: x => x,
     currentVideoMode: () => state.videoModelMode, allEditableSegments: () => state.segments, activeSegment: () => state.segments[0], imageModeDisplayLabel: x => x,
@@ -219,7 +224,7 @@ test('focused reference buttons save inputs first and reload edited metadata on 
   await f.click('Edit Locations');
   assert.equal(f.find('button', 'Edit Mappings'), undefined);
   f.data.scenes = [{ id: 'a', start: 0, end: 8 }];
-  await f.click('6 Scenes'); await f.click('5 Edit Mappings'); await f.click('Edit Mappings');
+  await f.click('6 Scenes'); await f.click('3 Edit Mappings'); await f.click('Edit Mappings');
   assert.deepEqual(opened, ['subjects', 'locations', 'mapping']);
   f.api.save = async () => { throw new Error('Save failed'); };
   await f.click('3 Inputs');
@@ -373,7 +378,7 @@ test('mapping editor is available only in Scenes after scenes exist', async () =
   await f.click('6 Scenes');
   assert.equal(f.find('button', 'Edit Mappings'), undefined);
   await f.click('5 Sound & timing'); await f.click('3. Manual timing'); await f.click('6 Scenes');
-  await f.click('5 Edit Mappings');
+  await f.click('3 Edit Mappings');
   assert.equal(f.find('button', 'Edit Mappings').disabled, false);
 });
 
@@ -405,14 +410,13 @@ test('Scenes step opens separate storyboard windows and refreshes story on retur
   const opened = [];
   f.api.openStoryboard = (section, onClose) => { opened.push(section); f.data.direction = 'Updated story'; onClose(); };
   await f.click('6 Scenes');
-  await f.click('6 Storyboard Scenes');
+  await f.click('4 Storyboard Scenes');
   assert.equal(f.find('button', 'Storyboard Scenes').disabled, true);
   await f.click('1 Scene Defaults'); await f.click('Scene Defaults');
-  await f.click('3 Story Layer'); await f.click('Story Layer');
-  await f.click('2 Story direction');
-  assert.equal(f.input('Story direction').value, 'Updated story');
+  await f.click('5 Story Layer'); await f.click('Story Layer');
+  assert.equal(f.input('Story direction'), undefined);
   await f.click('5 Sound & timing'); await f.click('3. Manual timing'); await f.click('6 Scenes');
-  await f.click('6 Storyboard Scenes'); await f.click('Storyboard Scenes');
+  await f.click('4 Storyboard Scenes'); await f.click('Storyboard Scenes');
   assert.deepEqual(opened, ['defaults', 'story', 'scenes']);
   await f.click('Save Project');
   assert.equal(f.data.draft.direction, 'Updated story');
@@ -726,14 +730,16 @@ test('Scenes guides users through ordered substeps and keeps runner available in
   assert.ok(f.find('button', 'Scene Defaults'));
   assert.equal(f.input('Story direction'), undefined);
   assert.equal(f.find('button', 'Generate video prompts'), undefined);
-  await f.click('Next →'); assert.ok(f.input('Story direction'));
-  await f.click('Next →'); assert.ok(f.find('button', 'Story Layer'));
-  await f.click('Configure LLM Runner'); assert.equal(runnerOpened, 1);
   await f.click('Next →'); assert.ok(f.find('button', 'Align lyrics / dialogue'));
-  assert.ok(f.find('h3', '4. Align lyrics / dialogue (Optional)'));
+  assert.ok(f.find('h3', '2. Align lyrics / dialogue (Optional)'));
   await f.click('Skip / Next →'); assert.ok(f.find('button', 'Edit Mappings'));
   await f.click('Next →'); assert.ok(f.find('button', 'Storyboard Scenes'));
-  assert.equal(f.input('Video prompt'), undefined);
+  await f.click('Next →'); assert.ok(f.find('button', 'Story Layer'));
+  await f.click('Configure LLM Runner'); assert.equal(runnerOpened, 1);
+  await f.click('Back to Storyboard Scenes'); assert.ok(f.find('button', 'Storyboard Scenes'));
+  await f.click('Next →'); assert.ok(f.find('button', 'Story Layer'));
+  assert.equal(f.input('Story direction'), undefined);
+  await f.click('Next →'); assert.ok(f.find('h3', '6. Create MiniMax Prompts'));
   await f.click('Next →'); assert.ok(f.find('h2', '7. Render'));
 });
 
@@ -774,10 +780,10 @@ test('own images are assigned after scenes exist, via storyboard or the folder i
   await f.click('3 Inputs');
   assert.equal(f.find('strong', 'Starting image'), undefined);
   assert.ok(f.document.body.textContent.includes('After creating scenes'));
-  await f.click('6 Scenes'); await f.click('6 Storyboard Scenes');
+  await f.click('6 Scenes'); await f.click('4 Storyboard Scenes');
   assert.equal(f.find('button', 'Fill Timeline Images From Folder').disabled, true);
   f.data.scenes = [{ id: 'a', start: 0, end: 8 }];
-  await f.click('6 Storyboard Scenes');
+  await f.click('4 Storyboard Scenes');
   assert.equal(f.find('button', 'Fill Timeline Images From Folder').disabled, false);
   assert.equal(f.find('button', 'Generate missing scene images'), undefined);
   const files = [{ name: '1.png' }, { name: '2.png' }];
@@ -788,4 +794,45 @@ test('own images are assigned after scenes exist, via storyboard or the folder i
   folder.files = files; await folder.onchange();
   assert.deepEqual(Array.from(imported), files);
   assert.equal(f.events.at(-1), 'save');
+});
+
+
+test('prompt step saves first and runs the selected runner Video All action', async () => {
+  for (const runner of ['LLM API', 'LM Studio', 'Qwen Local', 'Custom Server']) {
+    const f = fixture({promptRunnerLabel:runner, scenes:[{id:'a'}]});
+    f.api.generatePrompts=async()=>f.events.push('video-all');
+    await f.click('6 Scenes'); await f.click('6 Create MiniMax Prompts');
+    await f.click(`${runner} Video All`);
+    assert.deepEqual(f.events,['save','video-all']);
+    assert.equal(f.data.draft.sceneStepId,'prompts');
+  }
+  const empty=fixture(); await empty.click('6 Scenes'); await empty.click('6 Create MiniMax Prompts');
+  assert.equal(empty.find('button','LLM Video All').disabled,true);
+  const adapter=adapterFixture();
+  let opened;
+  adapter.context.openStoryboardBuilderFromProject = options => { opened=options; };
+  adapter.context.confirmAndRunGemmaVideoAll = () => { throw Error('Must use Storyboard prompt action'); };
+  await adapter.api.generatePrompts();
+  assert.equal(opened.promptActionOnly,true);
+  assert.equal(opened.focusedSection,'scenes');
+  assert.equal(opened.allowImagePrep,false);
+});
+
+
+test('prompt-only storyboard startup uses the existing video prompt dialog and closes its host', async () => {
+  const storyboard = fs.readFileSync(path.join(__dirname, '../web/VRGDG_StoryboardBuilderUI.js'), 'utf8');
+  const start = storyboard.lastIndexOf('  loadExisting().then(');
+  const end = storyboard.indexOf('\n}', start);
+  for (const fail of [false, true]) {
+    const calls = [];
+    const task = vm.runInNewContext(storyboard.slice(start, end), {
+      loadExisting: async () => { calls.push('loaded'); return true; },
+      promptActionOnly: true,
+      setMode: mode => calls.push(mode),
+      startAllPromptsWithGemma: async () => { calls.push('storyboard-dialog'); if (fail) throw Error('dialog failed'); },
+      closeStoryboard: () => calls.push('closed'),
+    });
+    if (fail) await assert.rejects(task, /dialog failed/); else await task;
+    assert.deepEqual(calls, ['loaded', 'image_to_video_prep', 'storyboard-dialog', 'closed']);
+  }
 });
