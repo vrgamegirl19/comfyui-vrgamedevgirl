@@ -2495,7 +2495,9 @@ LUT tips:
 - Click a LUT to apply it to the selected scene.
 - Drag a LUT onto a scene when you want to target a specific scene.
 - Use `Refresh` if you add new `.cube` files while ComfyUI is open.
-- The included LUT examples live under the repo's `LUTS/examples` folder.
+- LUT files and preview images are not bundled. Add your own licensed `.cube` files to this node pack's `LUTS` folder.
+- Optional previews you have rights to use can go in `LUTS/examples`, with the same base filename as the LUT.
+- If an existing project selected a removed LUT, choose another licensed LUT, restore your own lawfully obtained copy, or disable the LUT before rendering.
 
 `Adjust` includes temperature, tint, saturation, exposure, contrast, highlights, shadows, whites, blacks, sharpen, clarity, vignette, and fade. Enable scene adjust and change at least one value before previewing. `Live preview` updates a still frame after slider changes; `Preview Adjust` also renders only a preview frame, while `Render Adjust for Scene` processes the selected scene media. `Apply to all scenes` copies the settings project-wide. Global presets live under `output/VRGDG_AdjustPresets` and can be applied, saved, imported, or refreshed without restarting the Builder.
 

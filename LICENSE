@@ -1,16 +1,202 @@
-GNU Affero General Public License v3.0
+VRGameDevGirl Community and Commercial License — Version 1.0
+Copyright (c) 2026 Jean Thompson (VRGameDevGirl). All rights reserved.
+Project: https://github.com/vrgamegirl19/comfyui-vrgamedevgirl
+Commercial licensing contact: Jean Thompson <jeanthompson1984@gmail.com>
+Effective scope: applies from the commit first adopting this text as the root
+LICENSE, and to subsequent versions distributed with it, solely to code and
+associated documentation that Jean Thompson owns or is expressly authorized to
+license under these terms. Earlier grants and third-party licenses remain effective;
+see sections 1 and 7. No release tag or package version alone overrides those rights.
 
-Copyright (c) 2026 Jean Thompson
+1. Licensor, Software, and scope
+"Licensor" means Jean Thompson. "You" means the individual or legal entity
+exercising rights under this license. "Software" means only original code and
+associated documentation that Licensor owns or has express authority to license,
+in the release and files expressly designated as covered by this license. It
+includes covered portions incorporated into modified versions, forks, ports,
+packages, compiled forms, and derivative works, to the extent copyright applies.
 
-This ComfyUI custom node is licensed under the GNU Affero General Public License v3.0.
+The Software excludes ComfyUI, model weights, checkpoints, LoRAs, datasets,
+dependencies, third-party LUTs and other assets, vendored materials, and
+contributions or other materials owned by
+others unless their owners expressly authorize this license. Those materials
+retain their own licenses and notices. This license cannot override their rights
+or copyleft requirements. Mere inclusion in this repository does not transfer
+ownership to Licensor or establish authority to relicense third-party material.
 
-You may use, modify, and distribute this software only under the terms of the GNU Affero General Public License v3.0.
+2. Free community grant
+Subject to these terms, Licensor grants You a worldwide, non-exclusive,
+royalty-free copyright license to access, download, run, copy, study, modify, and
+make derivative works of the Software for the permitted purposes below. You may
+share and redistribute it under section 5. This grant does not authorize Software
+Commercialization as defined in section 4.
 
-Commercial use is allowed only if the user follows the AGPL-3.0 license terms.
+Permitted purposes include personal and hobby use; learning, research, and
+experimentation; developing and sharing free community modifications; evaluating
+the Software without offering a commercial software product or service; and
+creating content as expressly permitted by section 3.
 
-This means anyone who modifies, redistributes, hosts, or uses this code as part of a public app, paid service, or network-accessible tool must provide the complete corresponding source code under the same AGPL-3.0 license.
+Rights apply only to the extent Licensor has authority to grant them. No ownership
+transfer, exclusive right, endorsement, or trademark license is granted.
 
-You may not use this code in a closed-source paid app, private hosted service, SaaS product, or commercial wrapper without complying with AGPL-3.0.
+3. Express permission to create and monetize content
+You may use the Software, including Your permitted modifications, to create, edit,
+render, and export videos, images, audio, text, and other creative media ("Output")
+for personal or commercial purposes without paying a software license fee to
+Licensor. This permission applies to individuals, freelancers, studios, and other
+organizations and their employees and contractors operating on their behalf.
 
-Full license text:
-https://www.gnu.org/licenses/agpl-3.0.en.html
+Permitted examples include monetized videos and channels; advertising-supported,
+sponsored, subscription, and paywalled creative content; films and music videos;
+paid client commissions; brand campaigns and advertisements; and selling or
+licensing completed creative media. You may operate an internal production system
+for these activities, including employee access on a private network.
+
+You may charge for Your creative production work and deliver finished Output to a
+client. The client may review drafts and request revisions. This does not authorize
+selling access to the Software or operating a generation platform for clients.
+Providing customers a UI, API, bot, workflow endpoint, render queue, or equivalent
+means to initiate or control Software processing is governed by section 4, even
+when customers receive only media files. An operator-mediated service whose
+principal offering is automated generation or rendering capacity, rather than
+Your creative production work, is also governed by section 4.
+
+You may publish free or paid tutorials, demonstrations, and educational media
+about the Software without a fee to Licensor, provided this does not bundle or
+sell access to the Software or otherwise engage in section 4 activities.
+
+Output is not subject to this software license merely because the Software was
+used to create it. No payment, royalty, revenue share, credit, watermark, or
+publication of Your prompts, project files, or media is required by this license
+for permitted Output creation. Licensor claims no ownership in that Output merely
+because You used the Software. Output that itself contains copies of covered
+Software code remains subject to the terms applicable to that code.
+
+You must separately obtain any model, input, music, likeness, asset, or other
+third-party permissions needed for Your intended use. This section neither grants
+those permissions nor promises that an Output has copyright protection. A paid
+software license from Licensor does not replace model license requirements.
+
+This section controls if a general reference to revenue, business activity, or
+commercial benefit elsewhere in this license would otherwise prohibit these
+expressly permitted content-creation activities.
+
+4. Software Commercialization requires a paid commercial license
+Before Software Commercialization, You must obtain a separate written commercial
+license from Licensor and pay the fees required by that agreement. The free grant
+does not authorize the following activities involving covered Software:
+
+a. Selling, renting, leasing, sublicensing for compensation, or charging for copies,
+   downloads, installation packages, access, or rights to use the Software or a fork.
+b. Incorporating, embedding, bundling, or distributing covered code in a paid or
+   commercially monetized software product, plugin, application, appliance, or
+   service, including a product in which the Software is an unpriced component.
+c. Providing third parties hosted access, API access, SaaS, a bot, a workflow
+   endpoint, or a generation/rendering service for compensation or as part of a
+   commercially monetized offering. Compensation includes subscriptions, usage or
+   compute fees, credits, required memberships, and payments to an intermediary.
+d. Offering such software products or services through advertising, sponsorship,
+   lead generation, or other monetization, even if end users pay no access fee.
+e. Rebranding, white-labeling, reselling, or commercially licensing a version that
+   contains covered code, including within a larger software product or service.
+f. Charging for installation, customization, maintenance, or support of this
+   Software or a covered fork as a software service sold to third parties. This
+   does not include wages paid to staff for permitted internal content production,
+   permitted creative commissions, or educational media allowed by section 3.
+
+A public free trial of a monetized software offering is part of that offering.
+No minimum revenue, profit, business size, or amount of reused covered code creates
+an exemption. These terms do not restrict uncopyrightable ideas, independent
+implementations, or any use that the law permits without a copyright license.
+
+Releasing source code, providing attribution, renaming a fork, changing a UI,
+rewriting part of the Software, or routing payments through another party does
+not itself waive this requirement for remaining covered code. Classification
+turns on the activity, not merely whether You call it a hobby or nonprofit.
+Permitted content monetization under section 3 is expressly excluded.
+
+5. Community forks and redistribution
+You may fork, modify, and redistribute covered Software without charging for it,
+including through public source repositories, provided that You:
+- include this license and preserve applicable copyright and third-party notices;
+- clearly identify material modifications and avoid implying official endorsement;
+- give recipients the same permissions and restrictions for Licensor's code;
+- do not offer Licensor's code under MIT or another license granting broader rights;
+- do not use free distribution as part of Software Commercialization under section 4.
+
+Recipients receive their rights in Licensor's code directly under this license.
+Your original contributions remain Yours; this license does not assign them to
+Licensor. You may license Your separable original work independently, but You may
+not use that license to grant broader rights in Licensor's covered code.
+
+Truly optional donations supporting a free community fork are permitted if donors
+receive no exclusive Software features, priority Software access, service capacity,
+support entitlement, or other Software-related benefit in exchange. A required
+"donation," paid early access, or patron-only release is not an optional donation.
+Normal advertising displayed by an independent repository hosting platform is
+not, by itself, commercialization by a contributor who does not receive that
+advertising revenue.
+
+6. Separate commercial agreements; no automatic ownership purchase
+Commercial licenses may specify deployment, distribution, sublicensing, users,
+customers, duration, support, and fixed or usage-based fees. No price, fee schedule,
+revenue percentage, perpetual commercial entitlement, or purchase option is
+established by this community license. Obtain a signed written agreement before
+an activity requiring one; a donation or unsolicited payment is not a license.
+
+A commercial license does not sell or assign Licensor's copyright. Any purchase
+of ownership, exclusive rights, or the project itself requires a separate signed
+agreement identifying the rights transferred. Licensor may offer separate licenses
+or transfer rights Licensor owns, subject to applicable law and existing grants.
+
+7. Earlier versions and independent rights
+These terms apply only to versions and code expressly released under them. They
+do not withdraw, restrict, or replace rights already granted under AGPL, GPL, MIT,
+or another license for earlier versions or other materials. Those rights remain
+governed by their original terms. This license does not require payment from a
+person exercising independent rights under a prior license.
+
+A later version of this license does not automatically replace the terms granted
+for a copy You already received. A commercial agreement controls where it expressly
+grants its licensee different rights in the covered code.
+
+8. Contributions and attribution
+Submitting a contribution does not by itself assign ownership or authorize
+Licensor to relicense that contribution commercially. Any additional permission
+needed for commercial licensing must be obtained separately from the rightsholder.
+Do not remove notices or claim that third-party contributions belong to Licensor.
+No use of the VRGameDevGirl name or branding may imply endorsement of Your fork.
+Descriptive attribution and identification of the original project are allowed.
+
+9. Breach and termination
+Permissions under this license are conditioned on compliance. A material breach,
+including unlicensed Software Commercialization, terminates these permissions.
+Stop the unlicensed activity and use or distribution no longer covered by a valid
+license. Licensor may reinstate permissions in writing. A later license or cure
+does not automatically authorize past activity unless agreed in writing.
+
+Termination does not transfer Output ownership to Licensor or impose this license
+on previously permitted Output. It does not cancel independent rights under other
+licenses or terminate compliant recipients' direct licenses merely because their
+distributor breached. Mandatory legal rights remain unaffected.
+
+10. No warranties or support commitment
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE SOFTWARE IS PROVIDED "AS IS",
+WITHOUT EXPRESS OR IMPLIED WARRANTIES, INCLUDING MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE, NONINFRINGEMENT, ACCURACY, AVAILABILITY, OR SECURITY. NO SUPPORT,
+UPDATES, MODEL AVAILABILITY, OR PARTICULAR OUTPUT QUALITY IS PROMISED HERE.
+
+11. Limitation of liability
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, LICENSOR IS NOT LIABLE FOR CLAIMS,
+DAMAGES, OR OTHER LIABILITY ARISING FROM THE SOFTWARE OR ITS USE, WHETHER IN
+CONTRACT, TORT, OR OTHERWISE, INCLUDING LOST REVENUE, PROFITS, DATA, OR BUSINESS.
+NOTHING HERE EXCLUDES LIABILITY OR RIGHTS THAT APPLICABLE LAW MAKES NONEXCLUDABLE.
+
+12. Reserved rights and interpretation
+Rights not expressly granted are reserved. No term prevents fair use or another
+activity permitted by applicable law without a license. If a provision is
+unenforceable, the others apply to the extent permitted by law. A failure to enforce
+a provision on one occasion does not by itself waive future enforcement. Examples
+illustrate the operative rules and do not override the express Output exception.
+This is a custom source-available license, not MIT, PolyForm, or an OSI-approved
+open-source license. Do not represent it as one of those licenses.

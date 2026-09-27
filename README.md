@@ -138,8 +138,12 @@ Created by **VRGameDevGirl** ✨
 
 ## 📜 License
 
-Licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**.
+Covered original code is available under the **VRGameDevGirl Community and Commercial License**. Copyright (c) 2026 **Jean Thompson (VRGameDevGirl)**.
 
-Commercial use is allowed only when the AGPL-3.0 terms are followed. Closed-source paid apps, hosted services, SaaS products, or commercial wrappers may not use this code without complying with the license and providing the complete corresponding source code under the same license.
+**You may create, sell, and monetize videos and other creative media without paying a software license fee**, including paid client work and internal studio production. Model licenses and other third-party rights still apply.
 
-See [LICENSE](LICENSE) for the full terms.
+Free community forks and modifications are permitted under the license. **Commercializing the covered software itself requires a separate paid written license**: this includes selling the code or forks, commercial integrations, paid software access, and commercial hosted generation services.
+
+For commercial licensing, contact **Jean Thompson** at **[jeanthompson1984@gmail.com](mailto:jeanthompson1984@gmail.com)**. A usage license does not transfer copyright ownership.
+
+This is a source-available license. Models, ComfyUI, dependencies, and third-party code retain their own terms. Previously granted AGPL and other rights are not revoked. See [LICENSE](LICENSE) for the full terms and the [licensing guide](docs/licensing/README.md) for examples and transition details.

@@ -35,3 +35,7 @@ flow_automation/chatgpt_outputs/*
 # OS/editor noise
 .DS_Store
 .vscode/
+
+# User-installed/generated LUT assets must not be redistributed
+LUTS/*.[cC][uU][bB][eE]
+LUTS/examples/
