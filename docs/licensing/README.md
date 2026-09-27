@@ -90,37 +90,13 @@ change does not trigger it. Publish a new appropriately versioned registry packa
 through the existing release process when ready; prior package versions retain
 the terms under which they were distributed.
 
-## Bundled third-party LUT notices
+## User-installed LUTs
 
-The following LUT files contain third-party copyright notices and are excluded
-from Jean Thompson's original-code license. The notices are preserved unchanged.
-This inventory is not a grant of asset rights or confirmation that redistribution
-is authorized. Verify the original download/license terms and retain any required
-license documents before distributing these assets; remove or replace assets if
-permission cannot be established. The absence of a notice in another asset does
-not establish ownership or unrestricted rights.
+LUT files and preview images are not bundled with the Builder. The previous
+collection has been removed from the current repository.
 
-| File under `LUTS/` | Existing notice |
-| --- | --- |
-| `Bright_High_Contrast_Vivid_Green_Tint_Fuji_Provia.cube` | Copyright: (C) Copyright 2022 Tim Martin and Presetpro.com |
-| `Cool_Grade.cube` | Copyright: (C) Copyright 2017 PremiumBeat |
-| `Dark_High_Contrast_Vivid_Cinematic.cube` | Copyright: (C) Copyright 2017 PremiumBeat |
-| `Dark_High_Contrast_Vivid_Cinematic_2.cube` | Copyright: (C) Copyright 2017 PremiumBeat.com |
-| `Dark_High_Contrast_Vivid_Cool.cube` | Copyright: (C) Copyright 2017 PremiumBeat.com |
-| `Dark_High_Contrast_Vivid_Magenta_Tint.cube` | Copyright: (C) Copyright 2017 PremiumBeat |
-| `Dark_High_Contrast_Vivid_Warm.cube` | Copyright: (C) Copyright 2017 PremiumBeat.com |
-| `Dark_Soft_Vivid_Cinematic.cube` | Copyright: (C) Copyright 2017 PremiumBeat.com |
-| `Dark_Soft_Vivid_Cinematic_2.cube` | Copyright: (C) Copyright 2017 PremiumBeat |
-| `Dark_Soft_Vivid_Cool.cube` | Copyright: (C) Copyright 2017 PremiumBeat |
-| `Dark_Soft_Vivid_Cool_2.cube` | Copyright: (C) Copyright 2017 PremiumBeat |
-| `Dark_Soft_Vivid_Warm.cube` | Copyright: (C) Copyright 2017 PremiumBeat.com |
-| `Dark_Soft_Vivid_Warm_2.cube` | Copyright: (C) Copyright 2017 PremiumBeat.com |
-| `Dark_Vivid_Cinematic.cube` | Copyright: (C) Copyright 2017 PremiumBeat |
-| `Dark_Vivid_Magenta_Tint_Cinematic.cube` | Copyright: (C) Copyright 2017 PremiumBeat |
-| `High_Contrast_Cinematic.cube` | Copyright: (C) Copyright 2017 PremiumBeat |
-| `High_Contrast_Cinematic_Cine_Grade.cube` | Copyright Tim Martin Presetpro.com StockPresets.com |
-| `High_Contrast_Cinematic_Ektachrome.cube` | Copyright: (C) Copyright 2022 Tim Martin and Presetpro.com |
-| `High_Contrast_Muted_Cool_Green_Tint.cube` | Copyright: (C) Copyright 2017 PremiumBeat.com |
-| `High_Contrast_Vivid_Warm_Cinematic_2.cube` | Copyright: (C) Copyright 2017 PremiumBeat |
-| `High_Contrast_Vivid_Warm_Cinematic_Moody_Grade.cube` | Copyright: (C) Copyright 2022 Tim Martin and Presetpro.com |
-| `Vintage Color.cube` | Copyright: (c) Copyright Studio Orange |
+LUT support remains available for users who supply their own licensed `.cube`
+files. See [LUT installation instructions](../../LUTS/readme.txt). User-supplied
+LUTs and previews remain subject to their creators' terms and are excluded from
+Git and registry packages by default. This project's code license grants no
+rights to those assets.
