@@ -1162,7 +1162,7 @@ def _build_story_layer_scene_beat(payload):
         text = strip_cast_leaks(repaired_text if repaired_text and not cast_leaks(repaired_text, cast_guard) else text, cast_guard)
         if not text:
             names = ", ".join(cast_guard["cast_names"]) if cast_guard and cast_guard["cast_names"] else "The scene"
-            text = f"{names} stay the focus of the scene, expressed through posture, expression, and the mapped location."
+            text = f"The scene stays focused on {names}, expressed through posture, expression, and the mapped location."
     flf_fields = {key: strip_cast_leaks(value, cast_guard) for key, value in flf_fields.items()}
     return {
         "story_beat": text,

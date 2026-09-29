@@ -141,6 +141,6 @@ def strip_story_arc_entry_leaks(arc_text, guards_by_scene, cast_names_by_scene=N
         body = strip_cast_leaks(match.group(3), guard)
         if not body:
             names = ", ".join((cast_names_by_scene or {}).get(int(match.group(2)), []) or guard["cast_names"]) or "the scene"
-            body = f"{names} remain the focus of the scene."
+            body = f"The scene stays focused on {names}."
         out.append(f"{match.group(1)} — {body}")
     return "\n".join(out)
