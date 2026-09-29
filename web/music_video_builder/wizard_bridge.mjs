@@ -825,6 +825,8 @@ export function createWizardBridge({
               model_file: i2vTextGemmaModelSelect.value || t2iTextGemmaModelSelect.value || "",
               story_layer: normalizeBuilderStoryLayer(state.builderStoryLayer),
               storyboard_payload: beatStoryboardPayload,
+              all_subjects: (Array.isArray(state.fluxReferenceBuilder?.subjects) ? state.fluxReferenceBuilder.subjects : [])
+                .map((subject) => ({ name: String(subject?.name || ""), description: String(subject?.description || "") })),
               previous_beat: previousBeat,
               next_lyrics: nextLyrics,
               unload_after: index === targets.length - 1,

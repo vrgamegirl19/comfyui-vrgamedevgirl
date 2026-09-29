@@ -69,7 +69,8 @@ Prompt style:
 - If only a character reference is available, start with: Using the provided character reference, create...
 - If only a location reference is available, start with: Using the provided location reference, create...
 - If no visual reference is available, start directly with the shot and subject; do not claim a provided reference exists.
-- Use a clear cinematic shot type such as close-up, profile close-up, medium close-up, upper body shot, waist-up shot, three-quarter shot, seated shot, over-the-shoulder shot, or low-angle portrait.
+- Use a clear cinematic shot type such as wide shot, medium-wide shot, medium shot, waist-up shot, three-quarter shot, seated shot, over-the-shoulder shot, low-angle shot, upper body shot, or close-up.
+- Vary the shot scale from scene to scene. Do not default to close-ups: choose the scale that fits the scene note and story moment, including wide, medium-wide, medium, waist-up, three-quarter, over-the-shoulder, low-angle, and high-angle framings, and use a close-up only when the notes or moment call for it.
 - Use the user's scene/concept notes as the main creative direction.
 - Preserve character identity from character references when provided: face, hair, outfit, makeup, and overall identity.
 - Preserve location identity from location references when provided: environment, architecture, layout, atmosphere, and major visible setting details.
@@ -78,13 +79,13 @@ Prompt style:
 - Do not copy the character reference pose, full-body standing pose, studio background, panel layout, crop, camera angle, or lens distance.
 - Do not copy the exact location reference camera angle, framing, perspective, or composition.
 - Avoid full-body walking or standing shots unless the user specifically asks for them.
-- Prefer intimate cinematic compositions when no shot type is specified: close-up, medium close-up, profile, upper body, shallow depth of field, foreground framing, soft bokeh, rim light, atmospheric lighting.
+- When no shot type is specified, pick a varied shot scale (wide, medium-wide, medium, waist-up, over-the-shoulder, low-angle) rather than defaulting to a close-up. Use shallow depth of field, foreground framing, soft bokeh, rim light, and atmospheric lighting as fits.
 - Keep it cinematic, detailed, visually specific, and practical for image generation.
 - Do not include captions, text overlays, dialogue, markdown, labels, bullet points, or section headers.
 - Keep the prompt under 120 words.
 
 Good output examples:
-Using the provided character reference and location reference, create a close-up profile shot of the woman in the misty forest. Focus on her expression and the intricate details of her crown while the pale trees and fog appear softly blurred in the background. Use a cool moody palette, atmospheric haze, shallow depth of field, dramatic rim lighting, and high cinematic detail.
+Using the provided character reference and location reference, create a medium-wide shot of the woman standing in the misty forest. Focus on her expression and the intricate details of her crown while the pale trees and fog appear softly blurred in the background. Use a cool moody palette, atmospheric haze, shallow depth of field, dramatic rim lighting, and high cinematic detail.
 Using the provided character reference and location reference, create an intimate upper body shot of the woman framed by gnarled forest branches. Preserve her identity, hair, outfit, and crown from the character reference while using the forest reference for the white fibrous trees, mist, and eerie atmosphere. New pose, new camera angle, soft bokeh, high cinematic quality."""
 
 
@@ -94,11 +95,12 @@ Output one normal paragraph, not sections, not markdown, not labels, not explana
 
 Prompt style:
 - Use advanced Krea 2-style image prompting: concrete subject identity, wardrobe, hair, makeup, pose, camera framing, lens feel, lighting setup, environment, materials, atmosphere, color palette, texture, and cinematic finish.
-- Use a clear cinematic shot type such as close-up, profile close-up, medium close-up, upper body shot, waist-up shot, three-quarter shot, seated shot, over-the-shoulder shot, or low-angle portrait.
+- Use a clear cinematic shot type such as wide shot, medium-wide shot, medium shot, waist-up shot, three-quarter shot, seated shot, over-the-shoulder shot, low-angle shot, upper body shot, or close-up.
+- Vary the shot scale from scene to scene. Do not default to close-ups: choose the scale that fits the scene note and story moment, including wide, medium-wide, medium, waist-up, three-quarter, over-the-shoulder, low-angle, and high-angle framings, and use a close-up only when the notes or moment call for it.
 - Use the user's scene/concept notes as the main creative direction.
 - Create a new camera angle, new pose, and new composition.
 - Avoid full-body walking or standing shots unless the user specifically asks for them.
-- Prefer intimate cinematic compositions when no shot type is specified: close-up, medium close-up, profile, upper body, shallow depth of field, foreground framing, soft bokeh, rim light, atmospheric lighting.
+- When no shot type is specified, pick a varied shot scale (wide, medium-wide, medium, waist-up, over-the-shoulder, low-angle) rather than defaulting to a close-up. Use shallow depth of field, foreground framing, soft bokeh, rim light, and atmospheric lighting as fits.
 - Keep the prompt visually specific and practical for image generation.
 - Do not include captions, text overlays, dialogue, markdown, labels, bullet points, or section headers."""
 
@@ -115,7 +117,7 @@ Prompt style:
 - Create a clear still-image composition, not a video prompt.
 - Create a new camera angle, new pose, and new composition.
 - Avoid full-body walking or standing shots unless the user specifically asks for them.
-- Prefer intimate cinematic compositions when no shot type is specified: close-up, medium close-up, profile, upper body, shallow depth of field, foreground framing, soft bokeh, rim light, atmospheric lighting.
+- When no shot type is specified, pick a varied shot scale (wide, medium-wide, medium, waist-up, over-the-shoulder, low-angle) rather than defaulting to a close-up. Use shallow depth of field, foreground framing, soft bokeh, rim light, and atmospheric lighting as fits.
 - Do not include captions, text overlays, dialogue, markdown, labels, bullet points, or section headers.
 - Do not include aspect ratio text; GPT Image aspect ratio is appended separately by the browser runner."""
 

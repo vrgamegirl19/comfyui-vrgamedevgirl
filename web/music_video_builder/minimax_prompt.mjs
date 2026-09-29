@@ -21,6 +21,7 @@ import {
   isInstrumentalLyricText,
   segmentUsesNoLipSyncPerformance,
 } from "./prompt_text.mjs";
+import { castWallText, stripCastLeaks } from "./cast_guard.mjs";
 import { normalizeFluxReferenceBuilder } from "./reference_data.mjs";
 import { mediaPathKey } from "./timeline_state.mjs";
 
@@ -484,9 +485,26 @@ export function createMiniMaxPrompt({
   miniMaxH3VocalCueMapText, miniMaxOrderedImageReferenceItemsForSegment,
   miniMaxReferenceBuilderImagePathsForSegment, miniMaxReferencePurposeText, normalizeLyricCueMapForSegment,
   previousAutoChainSourceSegment, sceneDisplayName, sceneVideoConceptPromptText, segmentImageSource,
-  segmentIndexInfo, segmentMappedLocationText, segmentMappedSubjectText, selectedCastCoverageContract,
+  segmentIndexInfo, segmentMappedLocationText, segmentMappedSubjectText, sceneCastGuardForSegment, selectedCastCoverageContract,
   selectedPerformerSubjectsForSegment, selectedSegmentImagePath, state, storyboardReferenceDataForSegment,
 }) {
+  // Story beats and the story arc are written for the whole song and can name characters who are not
+  // selected for this scene. This tells the model the selected cast is the only cast.
+  function sceneCastRestrictionText(segment) {
+    if (!segment) return "";
+    const guard = sceneCastGuardForSegment(segment);
+    if (guard) return castWallText(guard);
+    if (segment.no_character_present) return "No characters are in this scene. Ignore every character named in the story beat or scene idea.";
+    const names = String(segmentMappedSubjectText(segment) || "").split(/\r?\n/).map((line) => line.split(":")[0].trim()).filter(Boolean);
+    if (!names.length) return "";
+    return `Only ${names.join(", ")} ${names.length > 1 ? "are" : "is"} in this scene. The story beat and scene idea may mention other characters from the wider story. Do not show, mention, imply, or describe any character who is not in this scene's cast.`;
+  }
+
+  // Removes any sentence that refers to a character who is not selected for this scene.
+  function castSafeText(segment, text) {
+    return stripCastLeaks(String(text || ""), sceneCastGuardForSegment(segment));
+  }
+
   function miniMaxBuiltInDialogueCueMapText(segment) {
     if (!isMiniMaxBuiltInSpeakerAssignmentMode(segment)) return "";
     const cues = normalizeMiniMaxSpeakerAssignments(segment?.minimax_speaker_assignments || segment?.speaker_assignments || segment?.dialogue_cues || []);
@@ -1005,11 +1023,12 @@ export function createMiniMaxPrompt({
         parts.push("Shot wording rule: do not begin descriptions with 'The camera cuts to' or 'The camera...'. Start with the resulting framing or subject action, e.g. 'A panning medium shot shows...' or '<Subject 2> (S2) steps forward...'.");
       }
     }
-    add(parts, "Scene idea", labelize(sceneVideoConceptPromptText(segment)));
+    add(parts, "Scene idea", labelize(castSafeText(segment, sceneVideoConceptPromptText(segment))));
     add(parts, "Scene notes", labelize(segment?.notes || segment?.director_note));
-    add(parts, "Storyboard Builder context", labelize(options.storyboardContext || options.extraStoryboardNotes), 2200);
+    add(parts, "Storyboard Builder context", labelize(castSafeText(segment, options.storyboardContext || options.extraStoryboardNotes)), 2200);
     add(parts, "Motion/camera request", labelize(segment?.i2v_notes));
-    add(parts, "Story beat", labelize(segment?.story_beat));
+    add(parts, "Story beat", labelize(castSafeText(segment, segment?.story_beat)));
+    add(parts, "Scene cast restriction (mandatory)", sceneCastRestrictionText(segment));
     add(parts, "Lyric section", segment?.lyric_section);
     add(parts, "Subject (identity context only; do not restate appearance or clothing in the shot text)", segment?.no_character_present ? "No main character is visible in this scene." : segmentMappedSubjectText(segment));
     if (["reference_to_video", "image_reference_to_video", "video_to_video"].includes(normalizeMiniMaxH3Mode(mode))) {
@@ -1860,13 +1879,14 @@ export function createMiniMaxPrompt({
       const text = String(value || "").trim();
       if (text) parts.push(`${label}:\n${text}`);
     };
-    add("Scene idea / image prompt", sceneVideoConceptPromptText(segment));
+    add("Scene idea / image prompt", castSafeText(segment, sceneVideoConceptPromptText(segment)));
     add("Scene notes", segment?.notes || segment?.director_note);
     add("Exact manual audio / sound direction", segment?.audio_direction);
     add("Exact manual continuity requirements", segment?.continuity);
     add("Director timeline note", segment?.timeline_note);
     add("Motion and camera request", segment?.i2v_notes);
-    add("Scene story beat", segment?.story_beat);
+    add("Scene story beat", castSafeText(segment, segment?.story_beat));
+    add("Scene cast restriction (mandatory)", sceneCastRestrictionText(segment));
     add(performanceMode === "no_lip_sync" ? "Hidden lyric mood/story context — never performed" : "Exact supplied lyric or dialogue", lyricText);
     add("Lyric section", segment?.lyric_section);
     add("Visible character context", segment?.no_character_present ? "No main character is visible in this scene." : segmentMappedSubjectText(segment));

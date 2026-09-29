@@ -9,6 +9,8 @@ HELPERS = {
     "_parse_story_arc_lyric_sections",
     "_cap_story_arc_words",
     "_story_arc_section_word_limit",
+    "_story_arc_entry_word_limit",
+    "_story_arc_scene_map",
     "_normalize_story_arc_output",
 }
 
@@ -29,6 +31,8 @@ HELPER_NAMESPACE = load_story_arc_helpers()
 parse_sections = HELPER_NAMESPACE["_parse_story_arc_lyric_sections"]
 section_word_limit = HELPER_NAMESPACE["_story_arc_section_word_limit"]
 normalize_output = HELPER_NAMESPACE["_normalize_story_arc_output"]
+scene_map = HELPER_NAMESPACE["_story_arc_scene_map"]
+entry_word_limit = HELPER_NAMESPACE["_story_arc_entry_word_limit"]
 
 
 class StoryArcSectionTests(unittest.TestCase):
@@ -158,6 +162,67 @@ class StoryArcSectionTests(unittest.TestCase):
                 100,
                 "Gemma Local",
             )
+
+    def test_scene_map_groups_scenes_under_matching_sections_in_order(self):
+        rows = [
+            {"scene_number": 1, "lyric_section": "Verse", "location": "Footpath"},
+            {"scene_number": 2, "lyric_section": "Verse", "location": "Pass"},
+            {"scene_number": 3, "lyric_section": "Chorus", "location": "Overlook"},
+            {"scene_number": 4, "lyric_section": "Verse", "location": "Cliffside"},
+        ]
+        mapped = scene_map(rows, ["Verse", "Chorus", "Verse 2"])
+        self.assertEqual([label for label, _rows in mapped], ["Verse", "Chorus", "Verse 2"])
+        self.assertEqual([[row["scene_number"] for row in group] for _label, group in mapped], [[1, 2], [3], [4]])
+
+    def test_scene_map_attaches_unmatched_runs_to_the_previous_section(self):
+        rows = [
+            {"scene_number": 1, "lyric_section": "Instrumental", "location": "Chamber"},
+            {"scene_number": 2, "lyric_section": "Verse", "location": "Footpath"},
+            {"scene_number": 3, "lyric_section": "Instrumental", "location": "Pass"},
+            {"scene_number": 4, "lyric_section": "Chorus", "location": "Overlook"},
+        ]
+        mapped = scene_map(rows, ["Verse", "Chorus"])
+        self.assertEqual([[row["scene_number"] for row in group] for _label, group in mapped], [[1, 2, 3], [4]])
+
+    def test_scene_map_is_empty_when_sections_cannot_be_aligned(self):
+        rows = [{"scene_number": 1, "lyric_section": "Verse", "location": "Footpath"}]
+        self.assertEqual(scene_map(rows, ["Verse", "Bridge"]), [])
+        self.assertEqual(scene_map([], ["Verse"]), [])
+
+    def test_entry_word_limit_shrinks_with_scene_count_but_keeps_a_floor(self):
+        self.assertEqual(entry_word_limit(10, 55, 1500), 55)
+        self.assertEqual(entry_word_limit(60, 55, 1500), 25)
+        self.assertEqual(entry_word_limit(500, 55, 1500), 22)
+
+    def test_scene_entries_with_stray_colons_do_not_break_section_headings(self):
+        normalized = normalize_output(
+            "Verse 1:\n"
+            "Scene 1 (Footpath) \u2014 The man tests a loose rock and steadies it.\n"
+            "Scene 2 (Pass): The pair pause on the grass and look at the saddle.\n"
+            "Chorus:\n"
+            "Scene 3 (Overlook) \u2014 He runs across the grass with arms wide.",
+            ["Verse 1", "Chorus"],
+            200,
+            "Gemma Local",
+        )
+        self.assertIn("Scene 2 (Pass) \u2014 The pair pause", normalized)
+        self.assertTrue(normalized.startswith("Verse 1:"))
+        self.assertIn("Chorus:\nScene 3 (Overlook)", normalized)
+
+    def test_scene_entries_stay_on_separate_lines(self):
+        normalized = normalize_output(
+            "Verse 1:\n"
+            "Scene 1 (Footpath) \u2014 The man tests a loose rock and steadies it.\n"
+            "Scene 2 (Pass) \u2014 The pair pause on the grass.",
+            ["Verse 1"],
+            200,
+            "Gemma Local",
+        )
+        self.assertEqual(
+            normalized,
+            "Verse 1:\nScene 1 (Footpath) \u2014 The man tests a loose rock and steadies it.\n"
+            "Scene 2 (Pass) \u2014 The pair pause on the grass.",
+        )
 
 
 if __name__ == "__main__":

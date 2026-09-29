@@ -249,7 +249,7 @@ def _normalize_story_layer(value):
     return {
         "enabled": bool(source.get("enabled", True)),
         "overall_story_idea": _clean_scene_text(source.get("overall_story_idea") or source.get("overallStoryIdea") or source.get("story_idea") or source.get("storyIdea") or "", 4000),
-        "user_story_arc": _clean_scene_text(source.get("user_story_arc") or source.get("userStoryArc") or "", 8000),
+        "user_story_arc": _clean_scene_text(source.get("user_story_arc") or source.get("userStoryArc") or "", 40000),
         "song_story_brief": _clean_scene_text(source.get("song_story_brief") or source.get("songStoryBrief") or "", 4000),
         "lyric_story_strength": lyric_story_strength,
     }
@@ -291,6 +291,15 @@ _STORY_ARC_DETAIL_PROFILES = {
     "standard": (100, 1500),
     "detailed": (160, 2400),
     "rich": (240, 3600),
+}
+
+
+# Story Arc detail level -> max words per scene entry when the arc is written scene by scene.
+_STORY_ARC_ENTRY_WORDS = {
+    "compact": 35,
+    "standard": 55,
+    "detailed": 80,
+    "rich": 110,
 }
 
 

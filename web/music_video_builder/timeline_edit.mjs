@@ -73,7 +73,8 @@ export function createTimelineEdit({
   collectedSceneVideoFolder, createProgressWindow, currentGlobalTime, currentVideoMode, deleteSegment,
   loadedGlobalAudioDuration, miniMaxH3ContinuityModeForSegment, miniMaxH3SettingsForSegment,
   nextOverlaySlotNumber, normalizeSegments, openLyricReviewModal, openStoryboardBuilderFromProject,
-  pauseTimelineForEditing, projectInput, pushHistory, reloadBeatMarkersFromAudio, render, renderSegments,
+  pauseTimelineForEditing, projectInput, pushHistory, reloadBeatMarkersFromAudio, render, renderAllScenes,
+  renderSegments, isSegmentMultiSelected, selectedSegmentsForBatch,
   sceneDisplayName, sceneSlotNumber, segmentIndexInfo, segmentTrack, setActiveSegment, setBeatMarkersVisible,
   setGlobalPlaybackTime, state, syncI2VMotionJsonFromSegments, syncInspector, syncPreview,
   syncPromptJsonFromSegments, updateHistoryButtons,
@@ -969,6 +970,20 @@ export function createTimelineEdit({
       : `Merged into ${leftScene.label || "scene"}.`);
   }
 
+  // Same path as Render All > "Selected scenes only", with Redo videos when any target already has a video.
+  async function renderScenesFromMenu(targets, redo) {
+    const previousIds = Array.isArray(state.selectedSegmentIds) ? [...state.selectedSegmentIds] : [];
+    state.selectedSegmentIds = targets.map((scene) => scene.id);
+    try {
+      await renderAllScenes({ sceneScope: "selected", forceVideos: redo, skipFinalStitch: true });
+    } catch (error) {
+      toast(String(error?.message || error), true);
+    } finally {
+      state.selectedSegmentIds = previousIds;
+      render();
+    }
+  }
+
   function openSegmentContextMenu(event, segment) {
     event.preventDefault();
     event.stopPropagation();
@@ -1017,6 +1032,18 @@ export function createTimelineEdit({
     const clickInsideScene = clickedTime > sceneStart + 0.15 && clickedTime < sceneEnd - 0.15;
     const trimTime = playheadInsideScene ? playheadTime : clickedTime;
     const trimLabel = playheadInsideScene ? "Playhead" : "Click";
+    if (!isOverlay) {
+      const multiTargets = state.multiSelectMode && isSegmentMultiSelected(segment)
+        ? selectedSegmentsForBatch({ baseOnly: true })
+        : [];
+      const renderTargets = multiTargets.length > 1 ? multiTargets : [segment];
+      const hasVideos = renderTargets.some((scene) => String(selectedSegmentVideoPath(scene) || "").trim());
+      const noun = renderTargets.length > 1 ? `${renderTargets.length} scenes` : "scene";
+      addItem(
+        `${hasVideos ? "Rerender" : "Render"} ${noun}`,
+        () => renderScenesFromMenu(renderTargets, hasVideos),
+      );
+    }
     addItem("Restore Video...", () => restoreVideoForSegment(segment), !String(state.projectFolder || projectInput.value || "").trim());
     if (baseTrimKind) {
       addItem(`Trim Left at ${trimLabel}`, () => trimBaseSceneVideoAtPlayhead(segment, "left", trimTime), !(playheadInsideScene || clickInsideScene));
@@ -1050,7 +1077,12 @@ export function createTimelineEdit({
     addItem("Close timeline gaps", closeTimelineGapsFromMenu);
     addItem("Scene options", () => openSceneOptions(segment));
     addItem("Delete scene", deleteSegment);
+    menu.style.maxHeight = `${window.innerHeight - 16}px`;
+    menu.style.overflowY = "auto";
     document.body.append(menu);
+    const menuRect = menu.getBoundingClientRect();
+    menu.style.left = `${Math.max(8, Math.min(window.innerWidth - menuRect.width - 8, event.clientX))}px`;
+    menu.style.top = `${Math.max(8, Math.min(window.innerHeight - menuRect.height - 8, event.clientY))}px`;
     setTimeout(() => {
       window.addEventListener("pointerdown", closeOnPointer, true);
       window.addEventListener("contextmenu", closeOnPointer, true);

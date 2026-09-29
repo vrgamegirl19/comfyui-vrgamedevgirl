@@ -17,6 +17,7 @@ import {
   isRecoverableBuildGemmaError,
   segmentUsesNoLipSyncPerformance,
 } from "./prompt_text.mjs";
+import { castLeaks, castWallText, stripCastLeaks } from "./cast_guard.mjs";
 import { normalizeVideoPromptOrigin } from "./segments.mjs";
 import { ACTIVE_STORYBOARD_PROMPT_PIPELINE } from "./storyboard_bridge.mjs";
 import { batchEmptyMessage, batchScopeLabel, normalizeBatchScope } from "./timeline_state.mjs";
@@ -46,7 +47,7 @@ export function createBatchPrompts({
   runClearMemoryWorkflowQuiet, runGemmaImagePromptPassWithRetry, runVideoPromptEnhancementBatch,
   saveGemmaJunkDebug, saveMiniMaxSceneInputsFromPanel, saveSessionForSceneVideo, sceneDisplayName,
   sceneVideoConceptPromptText, segmentImageSource, segmentIndexInfo, segmentMappedLocationText,
-  segmentMappedSubjectText, setVideoVisionReferenceEnabled, state, storyboardPipeline, storyboardScenePayload,
+  segmentMappedSubjectText, sceneCastGuardForSegment, setVideoVisionReferenceEnabled, state, storyboardPipeline, storyboardScenePayload,
   syncInspector, syncMiniMaxH3Panel, syncRTVSceneImageAnchorPanel, syncVideoModePanel, textGemmaRunnerPayload,
   updateActiveFromInputs, updateMiniMaxPromptCharacterStatus, videoGemmaNotesForSegment,
   videoModeDisplayLabel, videoVisionReferenceEnabled, wizardStoryboardState, zImageAllButton,
@@ -103,6 +104,9 @@ export function createBatchPrompts({
     // telegraphic summaries even when the final prompt could fit under 7000.
     let targetLimit = 7000;
     let lastOversizeError = null;
+    const castGuard = sceneCastGuardForSegment(segment);
+    let castRetries = 0;
+    let bannedTerms = [];
     for (let attempt = 1; attempt <= 3; attempt += 1) {
       const characterBudget = miniMaxH3PromptCharacterBudget(segment, mode, targetLimit);
       if (characterBudget.fixedChars >= characterBudget.hardLimit) {
@@ -122,7 +126,12 @@ export function createBatchPrompts({
         repair_model_file: miniMaxTextGemmaModelSelect.value,
         mmproj_file: visionImages.length ? miniMaxMmprojSelect.value : "",
         t2i_prompt: miniMaxH3CreativePromptContextForSegment(segment, mode, contextOptions),
-        user_notes: [String(options.userNotes || "").trim(), assignmentNotes].filter(Boolean).join("\n\n"),
+        user_notes: [
+          String(options.userNotes || "").trim(),
+          assignmentNotes,
+          castGuard ? castWallText(castGuard) : "",
+          bannedTerms.length ? `The previous draft wrongly referred to a character who is not in this scene (${bannedTerms.join(", ")}). Rewrite without any reference to them.` : "",
+        ].filter(Boolean).join("\n\n"),
         subject_context: "",
         location_context: "",
         no_character_present: Boolean(segment.no_character_present),
@@ -156,7 +165,18 @@ export function createBatchPrompts({
       if (data.llm_request_audit_path) {
         segment.minimax_h3_llm_request_audit_path = String(data.llm_request_audit_path);
       }
-      const generatedPrompt = String(data.prompt || "").trim();
+      let generatedPrompt = String(data.prompt || "").trim();
+      const leakedTerms = castLeaks(generatedPrompt, castGuard);
+      if (leakedTerms.length) {
+        if (castRetries < 2) {
+          castRetries += 1;
+          bannedTerms = leakedTerms;
+          attempt -= 1;
+          continue;
+        }
+        // The filter is the guarantee: after two retries, drop whatever still refers to an unselected character.
+        generatedPrompt = stripCastLeaks(generatedPrompt, castGuard);
+      }
       if (!generatedPrompt) {
         throw new Error(options.emptyPromptMessage || `The LLM returned an empty MiniMax ${miniMaxH3ModeLabel(mode)} prompt.`);
       }

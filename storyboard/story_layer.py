@@ -6,6 +6,7 @@ from ..llm.prompts.storyboard import (
     _storyboard_flf_endpoint_repair_instruction,
     _storyboard_flf_endpoint_schema,
     _storyboard_scene_beat_audio_language_repair_instruction,
+    _storyboard_scene_beat_cast_repair_instruction,
     _storyboard_scene_beat_extra_mapping_repair_instruction,
     _storyboard_scene_beat_instruction,
     _storyboard_scene_beat_location_repair_instruction,
@@ -16,10 +17,12 @@ from ..llm.prompts.storyboard import (
     _storyboard_story_arc_schema,
     _storyboard_story_brief_instruction,
 )
+from .cast_guard import build_cast_guard, cast_leaks, cast_wall_text, strip_cast_leaks, strip_story_arc_entry_leaks
 from .persistence import _normalize_script_import, _normalize_storyboard_scene
 from .scene_helpers import (
     _clean_scene_text,
     _STORY_ARC_DETAIL_PROFILES,
+    _STORY_ARC_ENTRY_WORDS,
     _lyric_story_strength_guidance,
     _normalize_story_arc_detail,
     _normalize_story_layer,
@@ -252,6 +255,11 @@ def _parse_story_arc_lyric_sections(lyrics, collapse_adjacent=True):
 
 
 def _cap_story_arc_words(text, maximum=100):
+    # A section written as "Scene N (...)" entries keeps one entry per line, each capped to its share of the maximum.
+    entry_lines = [line.strip() for line in str(text or "").split("\n") if line.strip()]
+    if len(entry_lines) > 1 and all(re.match(r"^(?:[-*\u2022][ \t]*)?Scene[ \t]+\d+\b", line) for line in entry_lines):
+        per_entry = max(12, -(-int(maximum) // len(entry_lines)))
+        return "\n".join(_cap_story_arc_words(line, per_entry) for line in entry_lines)
     words = re.findall(r"\S+", str(text or ""))
     if len(words) <= maximum:
         return " ".join(words)
@@ -273,6 +281,64 @@ def _story_arc_section_word_limit(section_count, per_section_max=100, total_budg
     return max(30, min(per_section_max, total_budget // count))
 
 
+def _story_arc_entry_word_limit(scene_count, per_entry_max=55, total_budget=1500):
+    """Words allowed per scene entry when the Story Arc is written scene by scene."""
+    try:
+        count = max(1, int(scene_count))
+    except (TypeError, ValueError):
+        count = 1
+    return max(22, min(per_entry_max, total_budget // count))
+
+
+def _story_arc_scene_map(scene_rows, required_labels):
+    """Group timeline scenes under the lyric section each one belongs to.
+
+    scene_rows are dicts with scene_number, lyric_section, location and lyric in timeline order.
+    Returns [(section_label, [scene_row, ...]), ...] in required_labels order, or [] when the
+    scenes cannot be aligned to the lyric sections.
+    """
+    labels = [str(label) for label in (required_labels or [])]
+    rows = [row for row in (scene_rows or []) if isinstance(row, dict)]
+    if not labels or not rows:
+        return []
+
+    def base(value):
+        return re.sub(r"\s+\d+$", "", re.sub(r"\s+", " ", str(value or "")).strip()).casefold()
+
+    runs = []
+    for row in rows:
+        key = base(row.get("lyric_section"))
+        if runs and runs[-1][0] == key:
+            runs[-1][1].append(row)
+        else:
+            runs.append([key, [row]])
+    if len(runs) == len(labels):
+        return [(label, run[1]) for label, run in zip(labels, runs)]
+    # Timeline runs and lyric sections differ in count (for example instrumental scenes), so match by
+    # section name and occurrence, then attach every unmatched run to the nearest earlier matched section.
+    run_owner = {}
+    used_runs = set()
+    for label_index, label in enumerate(labels):
+        key = base(label)
+        run_index = next((index for index, run in enumerate(runs) if run[0] == key and index not in used_runs), None)
+        if run_index is None:
+            return []
+        used_runs.add(run_index)
+        run_owner[run_index] = label_index
+    owners = []
+    current = None
+    for index in range(len(runs)):
+        if index in run_owner:
+            current = run_owner[index]
+        owners.append(current)
+    first_owner = next((owner for owner in owners if owner is not None), None)
+    owners = [first_owner if owner is None else owner for owner in owners]
+    grouped = [[] for _ in labels]
+    for index, run in enumerate(runs):
+        grouped[owners[index]].extend(run[1])
+    return [(label, group) for label, group in zip(labels, grouped)]
+
+
 class StoryArcFormatError(ValueError):
     """Format failure carrying bounded model output for the UI diagnostics panel."""
 
@@ -288,6 +354,17 @@ def _normalize_story_arc_output(text, required_labels, maximum_words=100, runner
     """Enforce the detected headings and configured per-section word limit."""
     raw = str(text or "").strip()
     runner_label = str(runner_label or "LLM").strip() or "LLM"
+    # Scene entries ("Scene 12 (Location) - ...") must never look like headings, so a stray colon in
+    # one becomes a dash before headings are detected.
+    if required_labels:
+        entry_safe_keys = {re.sub(r"\s+", " ", str(label)).strip().casefold() for label in required_labels}
+        entry_lines = []
+        for line in raw.split("\n"):
+            entry = re.match(r"^([ \t]*(?:[-*\u2022][ \t]*)?Scene[ \t]+\d+\b[^:\n]*?):[ \t]*(.*)$", line)
+            if entry and re.sub(r"\s+", " ", entry.group(1)).strip().casefold() not in entry_safe_keys:
+                line = f"{entry.group(1).rstrip()} \u2014 {entry.group(2)}".rstrip()
+            entry_lines.append(line)
+        raw = "\n".join(entry_lines)
     # Local runners may put the section body on the same line as the heading.
     # Keep the line-start anchor so ordinary colons inside prose are not treated
     # as headings, while accepting inline and standalone heading formats.
@@ -513,6 +590,8 @@ def _build_story_layer_arc(payload):
     if not isinstance(scenes, list):
         scenes = []
     compact_scenes = []
+    scene_rows = []
+    scene_casts = {}
     subjects = []
     locations = []
     seen_subjects = set()
@@ -521,10 +600,20 @@ def _build_story_layer_arc(payload):
         if not isinstance(scene, dict):
             continue
         normalized = _normalize_storyboard_scene(scene, index)
+        scene_cast = [] if normalized.get("no_character_present") else [
+            {
+                "name": _clean_scene_text(subject.get("name") or "", 120),
+                "description": _clean_scene_text(subject.get("description") or "", 500),
+            }
+            for subject in (normalized.get("subject_refs") or [])
+            if isinstance(subject, dict) and _clean_scene_text(subject.get("name") or "", 120)
+        ]
+        scene_casts[normalized["scene_number"]] = scene_cast
         compact_scenes.append({
             "scene_number": normalized["scene_number"],
             "label": normalized["label"],
             "lyric_section": normalized.get("lyric_section", ""),
+            "cast": [item["name"] for item in scene_cast] or "no characters",
         })
         for subject in normalized.get("subject_refs") or []:
             if not isinstance(subject, dict):
@@ -543,6 +632,13 @@ def _build_story_layer_arc(payload):
             if key and key not in seen_locations:
                 seen_locations.add(key)
                 locations.append({"name": name, "description": description})
+        scene_rows.append({
+            "scene_number": normalized["scene_number"],
+            "lyric_section": normalized.get("lyric_section", ""),
+            "location": _clean_scene_text(location.get("name") or "", 120) if isinstance(location, dict) else "",
+            "lyric": _clean_scene_text(normalized.get("lyrics", ""), 90),
+            "cast": [item["name"] for item in scene_cast],
+        })
     reference_builder = payload.get("reference_builder") or payload.get("referenceBuilder") or {}
     if isinstance(reference_builder, dict):
         for subject in reference_builder.get("subjects") or []:
@@ -563,9 +659,33 @@ def _build_story_layer_arc(payload):
             if key and key not in seen_locations:
                 seen_locations.add(key)
                 locations.append({"name": name, "description": description})
+    # Hard wall: a scene entry may only mention the characters selected for that scene.
+    cast_guards = {
+        number: build_cast_guard(subjects, cast)
+        for number, cast in scene_casts.items()
+    }
+    # When the timeline scenes can be matched to the lyric sections, the arc is written scene by scene so it
+    # uses every mapped location and gives each scene its own story entry.
+    section_scene_map = _story_arc_scene_map(scene_rows, required_section_labels)
+    entry_word_limit = 0
+    if section_scene_map:
+        mapped_scene_count = sum(len(rows) for _label, rows in section_scene_map)
+        entry_word_limit = _story_arc_entry_word_limit(
+            mapped_scene_count,
+            _STORY_ARC_ENTRY_WORDS[story_arc_detail],
+            _STORY_ARC_DETAIL_PROFILES[story_arc_detail][1],
+        )
+        largest_section = max(len(rows) for _label, rows in section_scene_map)
+        section_word_limit = max(section_word_limit, largest_section * entry_word_limit + 20)
+        arc_word_estimate = mapped_scene_count * entry_word_limit
+        arc_max_new_tokens = max(int(payload.get("max_new_tokens") or 2400), int(arc_word_estimate * 1.6) + 400)
+        arc_char_cap = max(14000, arc_word_estimate * 9)
     instruction = _storyboard_story_arc_instruction(
         required_section_labels=required_section_labels,
         section_word_limit=section_word_limit,
+        section_scene_map=section_scene_map,
+        entry_word_limit=entry_word_limit,
+        song_story_brief=story_layer.get("song_story_brief") or "",
         story_arc_seed=story_arc_seed,
         camera_flow=camera_flow,
         camera_motion_speed=camera_motion_speed,
@@ -645,6 +765,11 @@ def _build_story_layer_arc(payload):
                 expected_sections=required_section_labels,
                 runner=runner_label,
             ) from first_error
+    text = strip_story_arc_entry_leaks(
+        text,
+        {number: guard for number, guard in cast_guards.items() if guard},
+        {number: [item["name"] for item in cast] for number, cast in scene_casts.items()},
+    )
     return {
         "story_arc": text,
         "lyrics_source": lyrics_source,
@@ -851,6 +976,15 @@ def _build_story_layer_scene_beat(payload):
     if scene.get("no_character_present") or scene.get("noCharacterPresent") or scene.get("no_visible_subject") or scene.get("no_subject"):
         extra_subjects = []
     beat_word_limit = 100 if extra_subjects else 80
+    # Hard wall: characters not selected for this scene may not appear in its beat.
+    scene_cast = [] if (scene.get("no_character_present") or scene.get("noCharacterPresent")) else [
+        item for item in (scene.get("subject_refs") or []) if isinstance(item, dict) and str(item.get("name") or "").strip()
+    ]
+    all_project_subjects = [item for item in (payload.get("all_subjects") or []) if isinstance(item, dict)]
+    reference_builder = payload.get("reference_builder") or payload.get("referenceBuilder") or {}
+    if isinstance(reference_builder, dict):
+        all_project_subjects += [item for item in (reference_builder.get("subjects") or []) if isinstance(item, dict)]
+    cast_guard = build_cast_guard(all_project_subjects + scene_cast, scene_cast)
     instruction = _storyboard_scene_beat_instruction(
         flf_mode=flf_mode,
         beat_word_limit=beat_word_limit,
@@ -867,6 +1001,7 @@ def _build_story_layer_scene_beat(payload):
         performance_assignment_json=json.dumps({"singing": assigned_performers, "silent": silent_performers}, ensure_ascii=False, indent=2),
         extra_subjects_json=json.dumps(extra_subjects, ensure_ascii=False, indent=2) if extra_subjects else "[none]",
         scene_json=json.dumps(scene, ensure_ascii=False, indent=2),
+        cast_wall=cast_wall_text(cast_guard),
     )
     from ..llm.builder_runner import _run_builder_text_llm, _runner_supports_json_schema
 
@@ -1010,6 +1145,25 @@ def _build_story_layer_scene_beat(payload):
     text = _strip_scene_beat_audio_language(text)
     if not text:
         raise ValueError("Scene beat became empty after removing audio/performance language.")
+    leaked_terms = cast_leaks(text, cast_guard)
+    if leaked_terms:
+        repaired_text, repair_info = _run_builder_text_llm(
+            payload,
+            _storyboard_scene_beat_cast_repair_instruction(cast_wall_text(cast_guard), leaked_terms, text),
+            temperature=0.15,
+            top_p=0.80,
+            max_new_tokens=300,
+            label="Storyboard Scene Beat Cast Repair Gemma",
+            preserve_paragraphs=True,
+        )
+        repaired_text = re.sub(r"^\s*(scene\s+story\s+beat|story\s+beat|beat)\s*:\s*", "", _clean_scene_text(repaired_text, 1800), flags=re.I)
+        run_info = {**run_info, "cast_repaired": True, "cast_repair_terms": leaked_terms}
+        # The filter is the guarantee: whatever still refers to an unselected character is removed.
+        text = strip_cast_leaks(repaired_text if repaired_text and not cast_leaks(repaired_text, cast_guard) else text, cast_guard)
+        if not text:
+            names = ", ".join(cast_guard["cast_names"]) if cast_guard and cast_guard["cast_names"] else "The scene"
+            text = f"{names} stay the focus of the scene, expressed through posture, expression, and the mapped location."
+    flf_fields = {key: strip_cast_leaks(value, cast_guard) for key, value in flf_fields.items()}
     return {
         "story_beat": text,
         **flf_fields,

@@ -56,6 +56,8 @@ export function createSceneBeats({
     ...(state.gemmaSettings || {}),
     ...overrides,
     story_layer: normalizeStoryLayer(state.storyLayer),
+    all_subjects: (Array.isArray(state.referenceBuilder?.subjects) ? state.referenceBuilder.subjects : [])
+      .map((subject) => ({ name: String(subject?.name || ""), description: String(subject?.description || "") })),
     // A replacement request must not feed the old beat back to the model as
     // if it were authoritative. Lyrics, mappings, defaults, and references
     // remain; only the stale generated beat is cleared from this request.

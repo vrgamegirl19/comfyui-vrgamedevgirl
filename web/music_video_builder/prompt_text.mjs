@@ -5,6 +5,7 @@ import {
 import { storyboardCutPlanForDuration } from "../storyboard_builder/scenes.mjs";
 import { cancelComfyExecutionAndWaitIdle, postJson } from "./comfy_api.mjs";
 import { normalizeProjectVideoEngine, normalizeVideoType } from "./controls.mjs";
+import { castWallText, stripCastLeaks } from "./cast_guard.mjs";
 import { sceneConceptPromptText, sceneLyricTextForPromptValidation } from "./image_prompts.mjs";
 import { normalizeMiniMaxH3Voice } from "./minimax_h3.mjs";
 import {
@@ -387,7 +388,7 @@ export function createPromptText({
   flowGptPrompt, fluxKleinSettingsForSegment, fluxPrompt, fluxReferenceContextForSegment,
   generateTextOnlyImagePromptFallbackForSegment, idLoraSceneContext, krea2TwoPassT2IPrompt,
   nbImageSettingsForSegment, nbPrompt, render, runClearMemoryWorkflowQuiet, runImageMemoryCleanupQuiet,
-  sceneDisplayName, segmentIndexInfo, segmentMappedLocationText, segmentMappedSubjectText, state,
+  sceneDisplayName, segmentIndexInfo, segmentMappedLocationText, segmentMappedSubjectText, sceneCastGuardForSegment, state,
   storyboardScenePayload, t2iPrompt, zEnhancePromptPreview,
 }) {
   function removeNegativeAndVocalWordingFromVisualPrompt(text) {
@@ -656,7 +657,11 @@ export function createPromptText({
       add(parts, "Storyboard lyric story strength", `${storyLayer.lyric_story_strength}/10`);
     }
     add(parts, "Storyboard first-frame visual inventory", scene.image_prompt || sceneConceptPromptText(segment));
-    return parts.join("\n\n");
+    // Hard wall: the story arc, brief, and beats cover the whole song, so any sentence that refers to a
+    // character who is not selected for this scene is removed before the model sees it.
+    const castGuard = sceneCastGuardForSegment(segment);
+    if (castGuard) add(parts, "Scene cast restriction (mandatory)", castWallText(castGuard));
+    return stripCastLeaks(parts.join("\n\n"), castGuard);
   }
 
   function performerLabelForSegment(segment) {

@@ -897,7 +897,7 @@ export function createTimelineActions({
         }
         media.segment.image_assignment_cleared = !segmentImageSource(media.segment);
         if (media.segment.image_assignment_cleared) media.segment.image = null;
-        media.segment.preview_mode = "image";
+        media.segment.preview_mode = !media.segment.image_assignment_cleared || !selectedSegmentVideoPath(media.segment) ? "image" : "video";
       }
       ensureSegmentRuntimeFields(media.segment);
       // Deleting any video of this scene makes its saved latent stale, so it goes with it.

@@ -1,4 +1,5 @@
 import { storyboardCutPlanForDuration } from "../storyboard_builder/scenes.mjs";
+import { buildCastGuard } from "./cast_guard.mjs";
 import { normalizeMiniMaxSpeakerAssignments } from "./minimax_h3.mjs";
 import {
   miniMaxH3OfficialCutPlanInstruction,
@@ -513,6 +514,18 @@ export function createLyricCues({
       .filter(Boolean);
   }
 
+  // Guard for the characters left out of this scene, or null when there is nothing to wall off. A scene
+  // with no selected subjects (and not marked no-character) is left unguarded.
+  function sceneCastGuardForSegment(segment) {
+    if (!segment) return null;
+    const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+    const toPlain = (subject) => ({ name: String(subject?.name || "").trim(), description: String(subject?.description || "").trim() });
+    const everyone = logicalReferenceSubjects(refs).map(toPlain);
+    const cast = selectedSceneSubjectsForSegment(segment, refs).map(toPlain);
+    if (!cast.length && !segment.no_character_present) return null;
+    return buildCastGuard(everyone, cast);
+  }
+
   function selectedCastCoverageContract(segment, options = {}) {
     const subjects = selectedSceneSubjectsForSegment(segment);
     if (!subjects.length) return "";
@@ -863,6 +876,7 @@ export function createLyricCues({
     miniMaxH3CueShotContractText, miniMaxH3CutPlanForSegment, miniMaxH3SubjectLabelMapForSegment,
     miniMaxH3VocalCueMapText, normalizeLyricCueMapForSegment, segmentMappedLocationReference,
     segmentMappedLocationText, segmentMappedSubjectText, selectedCastCoverageContract,
-    selectedPerformerSubjectsForSegment, singerCueRelativePlayheadTime, syncPerformerInspectorForSegment,
+    sceneCastGuardForSegment, selectedPerformerSubjectsForSegment, singerCueRelativePlayheadTime,
+    syncPerformerInspectorForSegment,
   };
 }

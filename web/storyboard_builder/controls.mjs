@@ -43,6 +43,37 @@ export function makeTextarea(value = "", placeholder = "", rows = 4) {
   return textarea;
 }
 
+const sortLabelOf = (option) => String(option?.label ?? option?.value ?? option ?? "");
+const isPinnedOption = (option) => {
+  if (option === null || typeof option !== "object") return false;
+  const value = String(option.value ?? "");
+  return value === "" || /^_*custom_*$/i.test(value);
+};
+const compareLabels = (a, b) => sortLabelOf(a).localeCompare(sortLabelOf(b), undefined, { sensitivity: "base", numeric: true });
+
+// Alphabetizes a flat option list. The first entry, the blank/default entry, and Custom entries stay
+// at the top in their original order.
+export function sortOptionsAlphabetically(options) {
+  const list = Array.isArray(options) ? options : [];
+  if (list.length < 2) return list;
+  const [first, ...rest] = list;
+  const pinned = rest.filter(isPinnedOption);
+  const sorted = rest.filter((option) => !isPinnedOption(option)).sort(compareLabels);
+  return [first, ...pinned, ...sorted];
+}
+
+// Alphabetizes grouped options: groups by label, and the options inside each group. Entries without
+// options (the leading placeholder) stay at the top.
+export function sortGroupsAlphabetically(groups) {
+  const list = Array.isArray(groups) ? groups : [];
+  const loose = list.filter((group) => !group.options);
+  const grouped = list
+    .filter((group) => group.options)
+    .map((group) => ({ ...group, options: [...group.options].sort(compareLabels) }))
+    .sort(compareLabels);
+  return [...loose, ...grouped];
+}
+
 export function makeSelect(options, value = "") {
   const select = document.createElement("select");
   select.style.cssText = "width:100%;box-sizing:border-box;border:1px solid #334155;border-radius:6px;background:#18181b;color:#f8fafc;padding:9px;";

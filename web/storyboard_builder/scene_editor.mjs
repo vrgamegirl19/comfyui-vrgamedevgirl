@@ -8,6 +8,8 @@ import {
   makeSelect,
   makeTextarea,
   replaceLabeledPlanningLine,
+  sortGroupsAlphabetically,
+  sortOptionsAlphabetically,
 } from "./controls.mjs";
 import { videoPromptTypeHint } from "./prompt_generation.mjs";
 import {
@@ -73,14 +75,14 @@ export function createSceneEditor({
     const cameraGroups = isImagePrepMode ? STILL_CAMERA_STYLE_GROUPS : CAMERA_MOTION_GROUPS;
     const cameraMotionOptions = cameraGroups.flatMap((group) => group.options || []);
     const cameraMotionValue = scene.camera_motion || cameraMotionOptions.find((item) => String(scene.motion_summary || "").toLowerCase().includes(item.toLowerCase())) || "";
-    const cameraMotionPreset = makeGroupedSelect(cameraGroups, cameraMotionValue);
+    const cameraMotionPreset = makeGroupedSelect(sortGroupsAlphabetically(cameraGroups), cameraMotionValue);
     const customCameraMotion = makeInput(scene.camera_motion || "", isImagePrepMode ? "Custom still camera style" : "Custom camera motion");
     const characterMotionOptions = CHARACTER_MOTION_GROUPS.flatMap((group) => group.options || []);
     const characterMotionValue = scene.character_motion || characterMotionOptions.find((item) => String(scene.motion_summary || "").toLowerCase().includes(item.toLowerCase())) || "";
-    const characterMotionPreset = makeGroupedSelect(CHARACTER_MOTION_GROUPS, characterMotionValue);
+    const characterMotionPreset = makeGroupedSelect(sortGroupsAlphabetically(CHARACTER_MOTION_GROUPS), characterMotionValue);
     const customCharacterMotion = makeInput(scene.character_motion || "", "Custom character motion");
-    const performanceStyle = makeSelect(performanceStylePresets, scene.performance_style || "");
-    const videoStyle = makeSelect(MINIMAX_VIDEO_STYLE_PRESETS, state.videoStyle || scene.video_style || "");
+    const performanceStyle = makeSelect(sortOptionsAlphabetically(performanceStylePresets), scene.performance_style || "");
+    const videoStyle = makeSelect(sortOptionsAlphabetically(MINIMAX_VIDEO_STYLE_PRESETS), state.videoStyle || scene.video_style || "");
     videoStyle.disabled = Boolean(state.videoStyle);
     videoStyle.title = state.videoStyle ? "The global Video style is required for every eligible scene." : "Choose a style for this scene.";
     const videoStyleCustom = makeTextarea(
@@ -92,10 +94,10 @@ export function createSceneEditor({
     const temporalEffectOverride = makeSelect([
       { value: "global", label: "Use global temporal effect" },
       { value: "off", label: "Off for this scene" },
-      ...MINIMAX_TEMPORAL_WORLD_EFFECT_PRESETS.filter((item) => item.value).map((item) => ({ value: item.value, label: item.label })),
+      ...sortOptionsAlphabetically([{ value: "", label: "" }, ...MINIMAX_TEMPORAL_WORLD_EFFECT_PRESETS.filter((item) => item.value)]).slice(1).map((item) => ({ value: item.value, label: item.label })),
     ], scene.temporal_world_effect_override || "global");
     const temporalEffectCustom = makeTextarea(scene.temporal_world_effect_custom || "", "Exact custom temporal behavior for only this scene...", 3);
-    const facialPerformance = makeSelect(facialPerformancePresets, scene.facial_performance || "");
+    const facialPerformance = makeSelect(sortOptionsAlphabetically(facialPerformancePresets), scene.facial_performance || "");
     const facialPerformanceCustom = makeTextarea(scene.facial_performance_custom || "", "Optional custom facial expression/movement text for this scene...", 3);
     const includeMicLabel = document.createElement("label");
     includeMicLabel.style.cssText = "display:flex;align-items:center;gap:8px;border:1px solid #334155;border-radius:8px;background:#0f172a;color:#cbd5e1;padding:9px 10px;font-size:12px;font-weight:900;";
@@ -587,8 +589,8 @@ export function createSceneEditor({
       shotPreset.replaceChildren();
       for (const option of [
         { value: "", label: isImagePrepMode ? "Choose shot / composition preset..." : (imageToVideoType ? "Choose camera/motion preset..." : "Choose starting shot preset...") },
-        ...options.map((item) => ({ value: item, label: item })),
         { value: "__custom__", label: "Custom / keep typed value" },
+        ...[...options].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base", numeric: true })).map((item) => ({ value: item, label: item })),
       ]) {
         const item = document.createElement("option");
         item.value = option.value;

@@ -1,4 +1,4 @@
-import { makeButton, makeCollapsiblePanel, makeInput, makeSelect, makeTextarea } from "./controls.mjs";
+import { makeButton, makeCollapsiblePanel, makeInput, makeSelect, makeTextarea, sortOptionsAlphabetically } from "./controls.mjs";
 import { normalizeStoryLayer, storyboardCutFrequencyValue, storyboardSpeedValue } from "./scenes.mjs";
 import { STORYBOARD_CAMERA_FLOW_PRESETS } from "./shot_presets.mjs";
 import {
@@ -27,7 +27,7 @@ export function buildSceneDefaultsPanel({
   imageShotLabel.style.cssText = "font-weight:900;color:#cffafe;white-space:nowrap;text-align:right;min-width:160px;";
   imageShotLabel.textContent = "Still shot flow";
   const imageShotSelect = makeSelect(
-    Object.entries(imageShotFlowPresets).map(([value, preset]) => ({ value, label: preset.label })),
+    sortOptionsAlphabetically(Object.entries(imageShotFlowPresets).map(([value, preset]) => ({ value, label: preset.label }))),
     state.imageShotFlow,
   );
   imageShotSelect.style.width = "max-content";
@@ -44,7 +44,7 @@ export function buildSceneDefaultsPanel({
   const imageAestheticLabel = document.createElement("div");
   imageAestheticLabel.style.cssText = "font-weight:900;color:#cffafe;white-space:nowrap;text-align:right;min-width:160px;";
   imageAestheticLabel.textContent = "Image aesthetic";
-  const imageAestheticSelect = makeSelect(imageAestheticPresets, state.imageAesthetic);
+  const imageAestheticSelect = makeSelect(sortOptionsAlphabetically(imageAestheticPresets), state.imageAesthetic);
   imageAestheticSelect.style.width = "max-content";
   imageAestheticSelect.style.minWidth = "180px";
   const imageAestheticApply = makeButton("Fill Missing", "primary");
@@ -59,7 +59,7 @@ export function buildSceneDefaultsPanel({
   const videoStyleLabel = document.createElement("div");
   videoStyleLabel.style.cssText = "font-weight:900;color:#cffafe;white-space:nowrap;text-align:right;min-width:160px;";
   videoStyleLabel.textContent = "Video aesthetic";
-  const videoStyleSelect = makeSelect(MINIMAX_VIDEO_STYLE_PRESETS, state.videoStyle);
+  const videoStyleSelect = makeSelect(sortOptionsAlphabetically(MINIMAX_VIDEO_STYLE_PRESETS), state.videoStyle);
   videoStyleSelect.style.width = "max-content";
   videoStyleSelect.style.minWidth = "220px";
   const videoStyleApply = makeButton("Fill Missing", "primary");
@@ -86,7 +86,7 @@ export function buildSceneDefaultsPanel({
   const temporalEffectLabel = document.createElement("div");
   temporalEffectLabel.style.cssText = "font-weight:900;color:#cffafe;white-space:nowrap;text-align:right;min-width:160px;";
   temporalEffectLabel.textContent = "Temporal / world effect";
-  const temporalEffectSelect = makeSelect(MINIMAX_TEMPORAL_WORLD_EFFECT_PRESETS, state.temporalWorldEffect);
+  const temporalEffectSelect = makeSelect(sortOptionsAlphabetically(MINIMAX_TEMPORAL_WORLD_EFFECT_PRESETS), state.temporalWorldEffect);
   temporalEffectSelect.style.width = "max-content";
   temporalEffectSelect.style.minWidth = "300px";
   temporalEffectControls.append(temporalEffectLabel, temporalEffectSelect);
@@ -103,7 +103,7 @@ export function buildSceneDefaultsPanel({
   const fxLabel = document.createElement("div");
   fxLabel.style.cssText = "font-weight:900;color:#cffafe;white-space:nowrap;text-align:right;min-width:160px;";
   fxLabel.textContent = "Shot FX preset";
-  const fxSelect = makeSelect(STORYBOARD_FX_PRESETS, state.fxPreset);
+  const fxSelect = makeSelect(sortOptionsAlphabetically(STORYBOARD_FX_PRESETS), state.fxPreset);
   fxSelect.style.width = "max-content";
   fxSelect.style.minWidth = "260px";
   fxControls.append(fxLabel, fxSelect);
@@ -179,7 +179,7 @@ export function buildSceneDefaultsPanel({
   cameraFlowLabel.style.cssText = "font-weight:900;color:#cffafe;white-space:nowrap;text-align:right;min-width:160px;";
   cameraFlowLabel.textContent = "Auto camera flow";
   const cameraFlowSelect = makeSelect(
-    Object.entries(STORYBOARD_CAMERA_FLOW_PRESETS).map(([value, preset]) => ({ value, label: preset.label })),
+    sortOptionsAlphabetically(Object.entries(STORYBOARD_CAMERA_FLOW_PRESETS).map(([value, preset]) => ({ value, label: preset.label }))),
     state.cameraFlow,
   );
   cameraFlowSelect.style.width = "max-content";
@@ -234,7 +234,7 @@ export function buildSceneDefaultsPanel({
   const performanceLabel = document.createElement("div");
   performanceLabel.style.cssText = "font-weight:900;color:#cffafe;white-space:nowrap;text-align:right;min-width:160px;";
   performanceLabel.textContent = usesFilmPlanningProfile ? "Global acting style" : "Global performance style";
-  const performanceSelect = makeSelect(performanceStylePresets, state.performanceStyle);
+  const performanceSelect = makeSelect(sortOptionsAlphabetically(performanceStylePresets), state.performanceStyle);
   performanceSelect.style.width = "max-content";
   performanceSelect.style.minWidth = "180px";
   const performanceApply = makeButton("Fill Missing", "primary");
@@ -294,7 +294,7 @@ export function buildSceneDefaultsPanel({
   const facialLabel = document.createElement("div");
   facialLabel.style.cssText = "font-weight:900;color:#cffafe;white-space:nowrap;text-align:right;min-width:160px;";
   facialLabel.textContent = usesFilmPlanningProfile ? "Global screen face" : "Global facial performance";
-  const facialSelect = makeSelect(facialPerformancePresets, state.facialPerformance);
+  const facialSelect = makeSelect(sortOptionsAlphabetically(facialPerformancePresets), state.facialPerformance);
   facialSelect.style.width = "max-content";
   facialSelect.style.minWidth = "180px";
   const facialApply = makeButton("Fill Missing", "primary");

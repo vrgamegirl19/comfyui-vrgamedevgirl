@@ -109,7 +109,7 @@ def _generate_builder_concept_prompts(payload):
         "- Keep the visual world consistent across all prompts.\n\n"
         "Shot rules:\n"
         "- Instrumental scenes should usually be wide establishing shots or wide environment shots.\n"
-        "- Female-only or male-only scenes should usually be close-up, upper body, or medium shot.\n"
+        "- Female-only or male-only scenes should vary between wide, medium-wide, medium, waist-up, and upper body shots. Use a close-up only when the scene note calls for it.\n"
         "- Female and male together should usually be full body, two-shot, medium-wide, or wide shot.\n"
         "- Make the shot type fit the scene note and story moment.\n\n"
         "Location rules:\n"
