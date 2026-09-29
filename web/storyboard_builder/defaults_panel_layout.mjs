@@ -263,6 +263,32 @@ export function buildSceneDefaultsPanel({
   characterSpeedControls.append(characterSpeedLabel, characterSpeedInput, characterSpeedValue, characterSpeedHint);
   const characterSpeedInfo = document.createElement("div");
   characterSpeedInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
+  const storyArcDetailControls = document.createElement("div");
+  storyArcDetailControls.style.cssText = "display:flex;gap:8px;align-items:center;white-space:nowrap;";
+  const storyArcDetailLabel = document.createElement("div");
+  storyArcDetailLabel.style.cssText = "font-weight:900;color:#cffafe;white-space:nowrap;text-align:right;min-width:160px;";
+  storyArcDetailLabel.textContent = "Story arc detail";
+  const storyArcDetailSelect = makeSelect([
+    { value: "compact", label: "Compact (~60 words per section)" },
+    { value: "standard", label: "Standard (~100 words per section)" },
+    { value: "detailed", label: "Detailed (~160 words per section)" },
+    { value: "rich", label: "Rich (~240 words per section)" },
+  ], String(state.storyArcDetail || "standard"));
+  storyArcDetailSelect.style.minWidth = "260px";
+  storyArcDetailControls.append(storyArcDetailLabel, storyArcDetailSelect);
+  const storyArcDetailInfo = document.createElement("div");
+  storyArcDetailInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
+  const storyArcDetailGuidance = {
+    compact: "Short story arc paragraphs. Total budget about 1000 words spread across all lyric sections.",
+    standard: "Balanced story arc paragraphs. Total budget about 1500 words spread across all lyric sections.",
+    detailed: "Fuller story arc paragraphs with more staging, lighting, and texture. Total budget about 2400 words. Uses more LLM output tokens.",
+    rich: "Richest story arc paragraphs. Total budget about 3600 words, so a long song may need a large LLM context and slower generation.",
+  };
+  const refreshStoryArcDetailInfo = () => {
+    storyArcDetailInfo.textContent = `${storyArcDetailGuidance[storyArcDetailSelect.value] || storyArcDetailGuidance.standard} Applies to Generate Story Arc. Per-section length shrinks automatically for songs with many sections.`;
+  };
+  storyArcDetailSelect.addEventListener("input", refreshStoryArcDetailInfo);
+  refreshStoryArcDetailInfo();
   const facialControls = document.createElement("div");
   facialControls.style.cssText = "display:flex;gap:8px;align-items:center;white-space:nowrap;";
   const facialLabel = document.createElement("div");
@@ -334,6 +360,7 @@ export function buildSceneDefaultsPanel({
     cutFrequencyControls,
     performanceControls,
     characterSpeedControls,
+    storyArcDetailControls,
     facialControls,
     facialCustomControls,
   ];
@@ -363,6 +390,7 @@ export function buildSceneDefaultsPanel({
     cutFrequencyInput,
     performanceSelect,
     characterSpeedInput,
+    storyArcDetailSelect,
     facialSelect,
     facialCustomInput,
   ];
@@ -388,6 +416,7 @@ export function buildSceneDefaultsPanel({
     cutFrequencyInfo,
     performanceInfo,
     characterSpeedInfo,
+    storyArcDetailInfo,
     facialInfo,
     facialCustomInfo,
   ];
@@ -396,7 +425,7 @@ export function buildSceneDefaultsPanel({
     info.style.maxWidth = "100%";
     info.style.overflowWrap = "anywhere";
   }
-  cameraFlowBar.append(imageShotControls, imageShotInfo, imageAestheticControls, imageAestheticInfo, videoStyleControls, videoStyleCustomControls, videoStyleInfo, temporalEffectControls, temporalEffectCustomControls, temporalEffectOptions, temporalProtectedCustomControls, temporalEffectInfo, fxControls, fxCustomControls, fxInfo, imageWorldStyleControls, imageWorldStyleInfo, imageCustomStyleControls, imageCustomStyleInfo, consistencyControls, consistencyInfo, cameraFlowControls, cameraFlowInfo, cameraSpeedControls, cameraSpeedInfo, cutFrequencyControls, cutFrequencyInfo, performanceControls, performanceInfo, characterSpeedControls, characterSpeedInfo, facialControls, facialInfo, facialCustomControls, facialCustomInfo);
+  cameraFlowBar.append(imageShotControls, imageShotInfo, imageAestheticControls, imageAestheticInfo, videoStyleControls, videoStyleCustomControls, videoStyleInfo, temporalEffectControls, temporalEffectCustomControls, temporalEffectOptions, temporalProtectedCustomControls, temporalEffectInfo, fxControls, fxCustomControls, fxInfo, imageWorldStyleControls, imageWorldStyleInfo, imageCustomStyleControls, imageCustomStyleInfo, consistencyControls, consistencyInfo, cameraFlowControls, cameraFlowInfo, cameraSpeedControls, cameraSpeedInfo, cutFrequencyControls, cutFrequencyInfo, performanceControls, performanceInfo, characterSpeedControls, characterSpeedInfo, storyArcDetailControls, storyArcDetailInfo, facialControls, facialInfo, facialCustomControls, facialCustomInfo);
   const sceneDefaultsPanel = makeCollapsiblePanel("Scene Defaults", "", cameraFlowBar, { open: focusedSection === "defaults" });
 
   return {
@@ -411,6 +440,7 @@ export function buildSceneDefaultsPanel({
     imageShotApply, imageShotControls, imageShotInfo, imageShotReplace, imageShotSelect,
     imageWorldStyleControls, imageWorldStyleInfo, imageWorldStyleSelect, middleContent, note,
     performanceApply, performanceInfo, performanceReplace, performanceSelect, sceneDefaultsPanel,
+    storyArcDetailInfo, storyArcDetailSelect,
     temporalEffectControls, temporalEffectCustomControls, temporalEffectCustomInput, temporalEffectInfo,
     temporalEffectOptions, temporalEffectSelect, temporalEnvironmentInput, temporalExtrasInput,
     temporalIntensityInput, temporalIntensityValue, temporalProtectedCustomControls,

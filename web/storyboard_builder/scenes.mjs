@@ -317,6 +317,11 @@ export function normalizeStoryLayer(value = {}) {
   };
 }
 
+export function normalizeStoryArcDetail(value) {
+  const key = String(value || "").trim().toLowerCase();
+  return ["compact", "standard", "detailed", "rich"].includes(key) ? key : "standard";
+}
+
 export function storyboardSpeedValue(value, fallback = 4) {
   const number = Number(value);
   return Number.isFinite(number) ? Math.max(0, Math.min(10, number)) : fallback;
@@ -493,6 +498,7 @@ export function slimStoryboardForRequest(state) {
     global_consistency_phrase: state.globalConsistencyPhrase || "",
     camera_motion_speed: storyboardSpeedValue(state.cameraMotionSpeed, 4),
     character_motion_speed: storyboardSpeedValue(state.characterMotionSpeed, 4),
+    story_arc_detail: normalizeStoryArcDetail(state.storyArcDetail),
     minimax_h3_cut_frequency: storyboardCutFrequencyValue(state.cutFrequency),
     performance_style_default: state.performanceStyle || "",
     facial_performance_default: state.facialPerformance || "",

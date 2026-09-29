@@ -370,7 +370,7 @@ export function createBatchPrompts({
           userNotes: [
             "Rewrite the existing LTX video prompt as one substantially more detailed MiniMax H3 shot-description plan for the selected mode.",
             "Preserve the same scene, subjects, setting, wardrobe, action, camera intent, performance, and ending. Do not invent a different scene or change the creative intent.",
-            "Return only the required JSON shot-description payload. The Builder will assemble the final MiniMax H3 prompt sections, reference definitions, audio reuse, continuity, and safety blocks.",
+            "Return only the required JSON shot-description payload. The Builder will format the final MiniMax H3 detailed description.",
           ].join("\n"),
           temperature: 0.4,
           topP: 0.92,

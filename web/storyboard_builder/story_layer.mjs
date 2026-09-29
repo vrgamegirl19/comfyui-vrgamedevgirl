@@ -4,6 +4,7 @@ import { STORY_LAYER_CHATGPT_URL, storyLayerGptPayload } from "./gpt_payload.mjs
 import { imagePromptImportJsonText } from "./prompt_generation.mjs";
 import { normalizeReferenceBuilderCatalog } from "./references.mjs";
 import {
+  normalizeStoryArcDetail,
   normalizeScene,
   normalizeStoryLayer,
   slimSceneForRequest,
@@ -330,6 +331,7 @@ export function createStoryLayer({
         camera_motion_speed: storyboardSpeedValue(state.cameraMotionSpeed, 4),
         character_motion: storyboardSpeedValue(state.characterMotionSpeed, 4),
         character_motion_speed: storyboardSpeedValue(state.characterMotionSpeed, 4),
+        story_arc_detail: normalizeStoryArcDetail(state.storyArcDetail),
         performance_style: state.performanceStyle || "",
         facial_performance: state.facialPerformance || "",
         facial_performance_custom: state.facialPerformanceCustom || "",

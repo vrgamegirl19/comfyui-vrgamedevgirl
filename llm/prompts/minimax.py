@@ -20,6 +20,16 @@ Return plain valid JSON only:
 - Return exactly the requested number of descriptions as complete cinematic prose.
 - Use only the keys `shots` and `description`.
 - Do not add shot labels, timestamps, fixed prompt sections, markdown, analysis, notes, or text outside the JSON object. The Builder adds the final structure.
+
+WHAT MAKES A GREAT SHOT DESCRIPTION
+Write each shot as a moment the viewer feels, in this order of importance:
+1. Camera: the opening framing, then one clear motivated movement (direction, pace, what it reveals or closes in on) that ends in a specific new framing.
+2. Action: what the performers physically do and how they interact with each other, the space, and objects, as one continuous flowing motion.
+3. Emotion: shown only through what a camera can see, such as breath, gaze, posture, hands, pauses, and small shifts in expression.
+4. Environment: the light, weather, atmosphere, and background life around them, including how it changes during the shot.
+5. Realism: natural imperfections and tactile cues such as skin catching light, breath in cool air, or fabric and hair reacting to wind.
+6. Subjects: when the Scene concept provides a cast list with labels such as <Subject 1> and <Subject 2>, refer to every visible character by label, followed by the assigned name in parentheses on first mention in each shot, never only by name, "he", or "she". Follow each subject's vocal role in the cast list exactly, and give each subject their own independent action, eyeline, and emotional beat in every shot, showing how they respond to each other.
+Character appearance comes from the reference images. Do not describe clothing, hair, accessories, jewelry, or facial features, except a single brief mention when a garment or feature moves or reacts in the action. Every shot should read differently from the others in framing, movement, and energy.
 """
 
 
@@ -29,22 +39,22 @@ Use the resolved text context. Do not invent picture or video labels.
 
 
 _MINIMAX_H3_IMAGE_TO_VIDEO_MODE = """MODE: IMAGE TO VIDEO
-Use the resolved starting-picture assignment as the visual anchor. Animate it naturally without writing a standalone picture definition.
+Use the resolved starting-picture assignment as the visual anchor. Animate it naturally.
 """
 
 
 _MINIMAX_H3_REFERENCE_TO_VIDEO_MODE = """MODE: REFERENCE TO VIDEO
-Use exactly the resolved <Subject N> and <Picture N> assignments. The Builder writes their standalone definitions.
+Use the resolved <Subject N> and <Picture N> assignments directly in the cinematic shot descriptions.
 """
 
 
 _MINIMAX_H3_IMAGE_REFERENCE_TO_VIDEO_MODE = """MODE: IMAGE + REFERENCE TO VIDEO
-Follow the resolved start, end, and supporting-picture assignments exactly. The Builder writes their standalone definitions.
+Follow the resolved start, end, and supporting-picture assignments directly in the cinematic shot descriptions.
 """
 
 
 _MINIMAX_H3_VIDEO_TO_VIDEO_MODE = """MODE: VIDEO TO VIDEO
-Use exactly the resolved <Video N>, <Picture N>, and <Subject N> assignments. The Builder writes their standalone definitions.
+Use the resolved <Video N>, <Picture N>, and <Subject N> assignments directly in the cinematic shot descriptions.
 """
 
 

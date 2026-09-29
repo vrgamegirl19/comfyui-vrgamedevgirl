@@ -7,6 +7,7 @@ import {
   storyboardSubjectNamesFromRefs,
 } from "./references.mjs";
 import {
+  normalizeStoryArcDetail,
   ensureStoryboardReferenceOpening,
   normalizeScene,
   normalizeStoryboardMiniMaxH3Mode,
@@ -33,7 +34,7 @@ import {
 
 
 export function createStoryboardPersistence({
-  absorbSceneReferencesIntoCatalog, cameraFlowSelect, cameraSpeedInput, characterSpeedInput, consistencyInput,
+  absorbSceneReferencesIntoCatalog, cameraFlowSelect, cameraSpeedInput, characterSpeedInput, storyArcDetailSelect, consistencyInput,
   cutFrequencyInput, enforceStoryboardVideoFacialRequirements, exportPrompts, facialCustomInput,
   facialPerformancePresets, facialSelect, focusedSection, fxCustomInput, fxSelect, getSelectedScenes,
   imageAestheticPresets, imageAestheticSelect, imageShotFlowPresets, imageShotSelect,
@@ -196,6 +197,9 @@ export function createStoryboardPersistence({
       state.cutFrequency = storyboardCutFrequencyValue(saved.minimax_h3_cut_frequency ?? saved.cut_frequency ?? state.cutFrequency);
       cameraSpeedInput.value = String(state.cameraMotionSpeed);
       characterSpeedInput.value = String(state.characterMotionSpeed);
+      state.storyArcDetail = normalizeStoryArcDetail(saved.story_arc_detail ?? state.storyArcDetail);
+      storyArcDetailSelect.value = state.storyArcDetail;
+      storyArcDetailSelect.dispatchEvent(new Event("input"));
       cutFrequencyInput.value = String(state.cutFrequency);
       state.storyLayer = normalizeStoryLayer(saved.story_layer || saved.storyLayer || {});
       state.scriptImport = normalizeStoryboardScriptImportState(saved.script_import || saved.scriptImport || state.scriptImport || {});

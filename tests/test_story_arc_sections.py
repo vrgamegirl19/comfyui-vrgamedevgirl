@@ -119,7 +119,7 @@ class StoryArcSectionTests(unittest.TestCase):
     def test_story_arc_generation_has_automatic_format_retry(self):
         source = SOURCE_PATH.read_text(encoding="utf-8")
         llm_source = (Path(__file__).resolve().parents[1] / "llm" / "prompts" / "storyboard.py").read_text(encoding="utf-8")
-        self.assertIn("CORRECTION: Your previous answer did not follow", llm_source)
+        self.assertIn("CRITICAL FORMAT VALIDATION FAILURE", llm_source)
         self.assertIn("after an automatic format retry", source)
 
     def test_inline_headings_are_accepted(self):

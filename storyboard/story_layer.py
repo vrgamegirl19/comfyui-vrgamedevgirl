@@ -19,7 +19,9 @@ from ..llm.prompts.storyboard import (
 from .persistence import _normalize_script_import, _normalize_storyboard_scene
 from .scene_helpers import (
     _clean_scene_text,
+    _STORY_ARC_DETAIL_PROFILES,
     _lyric_story_strength_guidance,
+    _normalize_story_arc_detail,
     _normalize_story_layer,
     _selected_storyboard_scene,
     _storyboard_dialogue_reference_catalog,
@@ -260,15 +262,15 @@ def _cap_story_arc_words(text, maximum=100):
     return clipped.rstrip(" ,;:") + "…"
 
 
-def _story_arc_section_word_limit(section_count):
-    """Keep long song structures within the fixed Story Arc output budget."""
+def _story_arc_section_word_limit(section_count, per_section_max=100, total_budget=1500):
+    """Keep long song structures within the Story Arc word budget for the chosen detail level."""
     try:
         count = max(0, int(section_count))
     except (TypeError, ValueError):
         count = 0
     if count <= 0:
-        return 100
-    return max(30, min(100, 1500 // count))
+        return per_section_max
+    return max(30, min(per_section_max, total_budget // count))
 
 
 class StoryArcFormatError(ValueError):
@@ -302,7 +304,7 @@ def _normalize_story_arc_output(text, required_labels, maximum_words=100, runner
                 f"No heading lines were detected. Expected: {expected}. "
                 f"Response preview: {preview or '[empty]'}."
             )
-        return _cap_story_arc_words(raw, 100)
+        return _cap_story_arc_words(raw, maximum_words)
     blocks = []
     for index, match in enumerate(matches):
         label = re.sub(r"\s+", " ", match.group(1)).strip()
@@ -478,7 +480,14 @@ def _build_story_layer_arc(payload):
         collapse_adjacent=not bool(line_mapping_lyrics or prompt_creator_lyrics),
     )
     required_section_labels = [item[0] for item in lyric_sections]
-    section_word_limit = _story_arc_section_word_limit(len(required_section_labels))
+    story_arc_detail = _normalize_story_arc_detail(
+        payload.get("story_arc_detail") or payload.get("storyArcDetail") or storyboard.get("story_arc_detail")
+    )
+    section_word_limit = _story_arc_section_word_limit(len(required_section_labels), *_STORY_ARC_DETAIL_PROFILES[story_arc_detail])
+    # Larger detail levels need more output tokens and a higher raw-text cap than the 2400 / 14000 defaults.
+    arc_word_estimate = section_word_limit * max(1, len(required_section_labels))
+    arc_max_new_tokens = max(int(payload.get("max_new_tokens") or 2400), int(arc_word_estimate * 1.6) + 400)
+    arc_char_cap = max(14000, arc_word_estimate * 9)
     story_layer = _normalize_story_layer(payload.get("story_layer") or payload.get("storyLayer") or storyboard.get("story_layer") or {})
     story_idea = _clean_scene_text(payload.get("story_idea") or payload.get("storyIdea") or story_layer.get("overall_story_idea") or "", 4000)
     story_arc_seed = _clean_scene_text(payload.get("story_arc_seed") or payload.get("storyArcSeed") or payload.get("seed") or "", 80)
@@ -582,11 +591,11 @@ def _build_story_layer_arc(payload):
         instruction,
         temperature=float(payload.get("temperature") or 0.45),
         top_p=float(payload.get("top_p") or 0.92),
-        max_new_tokens=int(payload.get("max_new_tokens") or 2400),
+        max_new_tokens=arc_max_new_tokens,
         label=f"Storyboard Story Arc {runner_label}",
         preserve_paragraphs=True,
     )
-    text = _clean_scene_text(text, 14000)
+    text = _clean_scene_text(text, arc_char_cap)
     if not text:
         raise ValueError(f"{runner_label} returned an empty story arc.")
     try:
@@ -610,7 +619,7 @@ def _build_story_layer_arc(payload):
             retry_instruction,
             temperature=0.2,
             top_p=0.85,
-            max_new_tokens=int(payload.get("max_new_tokens") or 2400),
+            max_new_tokens=arc_max_new_tokens,
             label=f"Storyboard Story Arc {runner_label} format retry",
             preserve_paragraphs=True,
             json_schema=_storyboard_story_arc_schema(required_section_labels) if structured else None,
@@ -619,7 +628,7 @@ def _build_story_layer_arc(payload):
             if structured:
                 sections = json.loads(retry_text)
                 retry_text = "\n\n".join(f"{label}:\n{str(sections.get(label) or '').strip()}" for label in required_section_labels)
-            retry_text = _clean_scene_text(retry_text, 14000)
+            retry_text = _clean_scene_text(retry_text, arc_char_cap)
             text = _normalize_story_arc_output(
                 retry_text,
                 required_section_labels,

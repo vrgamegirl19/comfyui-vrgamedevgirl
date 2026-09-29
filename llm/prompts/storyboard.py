@@ -383,40 +383,58 @@ def _storyboard_story_arc_structure_instruction(required_section_labels):
     headers exactly, or is free to invent its own song structure.
     """
     if required_section_labels:
+        formatted_labels = "\n".join(f"- {label}" for label in required_section_labels)
         return (
-            "The reference lyrics contain explicit section headers. Preserve exactly this section order and these output headings; "
-            "do not add, remove, merge, rename, or invent sections:\n"
-            + "\n".join(f"- {label}" for label in required_section_labels)
-            + "\nRepeated sections have been numbered by occurrence so every real section has its own summary."
+            "STRUCTURAL RIGIDITY (MANDATORY):\n"
+            "The song structure is fixed. Output exactly these section headings in this exact sequence. "
+            "Do not merge, omit, rename, reorder, or add any headings:\n"
+            f"{formatted_labels}\n"
+            "Every heading represents an independent, continuous scene beat. "
+            "Write exactly one cohesive visual paragraph under each heading."
         )
     return (
-        "The reference lyrics do not contain explicit section headers. Infer a sensible compact song structure from lyrical, "
-        "emotional, and narrative changes. Do not add an Intro or Outro unless the supplied material clearly supports one."
+        "STRUCTURAL INFERENCE:\n"
+        "The lyrics lack explicit structural markers. Establish a compact, standard song structure "
+        "(e.g., Verse 1, Chorus 1, Verse 2, Chorus 2, Bridge, Chorus 3) dictated strictly by musical "
+        "energy and narrative turning points. Do not invent gratuitous Intro or Outro sections unless "
+        "explicitly supported by instrumental cues."
     )
 
 
 def _storyboard_story_arc_motion_guidance(character_motion_speed):
-    """Controls: how physically active the singer/main character should be
-    across every Story Arc section, tiered by the project's character-motion-speed setting.
+    """Controls: character kinetics tiered by motion speed, calibrated to prevent
+    diffusion artifacts (melting limbs, morphing objects) in MiniMax H3.
     """
     if character_motion_speed <= 2:
         return (
-            "Character motion level: mostly still. The singer may hold poses, but each section still needs a visible micro-action "
-            "such as reaching, turning, touching fabric, shifting weight, raising a hand, or interacting with one object."
+            "Character Kinetic Profile [Low / 1-2]:\n"
+            "- Movement: Micro-kinetics only. Avoid rapid extremity travel.\n"
+            "- Actions: Subtle weight transfers, deliberate head turns, slow postural settling, "
+            "gradual eye-line shifts, breathing motion, or fingertips grazing a static surface.\n"
+            "- Diffusion Guard: Keep limbs anchored; avoid rapid hand gestures or complex prop manipulations."
         )
     if character_motion_speed <= 5:
         return (
-            "Character motion level: moderate. Give the singer controlled performance movement: steps, turns, gestures, changes in blocking, "
-            "and occasional interaction with the set."
+            "Character Kinetic Profile [Moderate / 3-5]:\n"
+            "- Movement: Single-vector, controlled linear action.\n"
+            "- Actions: Paced steady stride in one direction, lifting or placing a single grounded prop, "
+            "deliberate pivot/turn of the torso, or a measured seated-to-standing transition.\n"
+            "- Diffusion Guard: Every movement must follow a single physical trajectory without abrupt reversals."
         )
     if character_motion_speed <= 8:
         return (
-            "Character motion level: active. The singer should usually move through the location, walk, approach, retreat, touch objects, "
-            "use architecture, cross rooms, lean into weather, or physically interact with the environment."
+            "Character Kinetic Profile [Active / 6-8]:\n"
+            "- Movement: Dynamic environmental traversal.\n"
+            "- Actions: Purposeful transit across depth planes (moving directly toward or away from the camera), "
+            "hurried strides, pushing through physical barriers (doors, curtains, weather), or rhythmic performance choreography.\n"
+            "- Diffusion Guard: Keep the subject's center of gravity readable; avoid multi-limb acrobatics."
         )
     return (
-        "Character motion level: highly active. Build big physical beats: dancing, running, climbing, struggling, sweeping gestures, "
-        "forceful environmental interaction, or kinetic performance movement."
+        "Character Kinetic Profile [High Kinetic / 9-10]:\n"
+        "- Movement: High-momentum, full-body kinetic staging.\n"
+        "- Actions: Full sprint, athletic leaps, rapid choreography with sweeping arm sweeps, forceful interactions with "
+        "the set (shoving, slamming, breaking into a run), or high-velocity rotational turns.\n"
+        "- Diffusion Guard: Stage the momentum along a sustained path so motion blur remains coherent across frames."
     )
 
 
@@ -440,105 +458,108 @@ def _storyboard_story_arc_instruction(
     subjects_json,
     locations_json,
 ):
-    """The main Story Arc generation prompt.
-    Controls: song-structure fidelity, per-section word budget, physical
-    motion level, and every subject/location/lyric input used to write the arc.
+    """The primary Story Arc generation prompt.
+    Directs the LLM as a cinematographic continuity supervisor optimized for MiniMax H3.
     """
     structure_instruction = _storyboard_story_arc_structure_instruction(required_section_labels)
     motion_guidance = _storyboard_story_arc_motion_guidance(character_motion_speed)
+
     return (
-        "You are a music video story arc generator.\n\n"
-        "Your job is to take song lyrics and turn them into a simple, short story arc for a music video.\n\n"
-        "The user may provide:\n"
-        "* Song lyrics\n"
-        "* Story idea (optional)\n"
-        "* Style/theme (optional)\n"
-        "* Character descriptions\n"
-        "* Location descriptions\n\n"
-        "All inputs are optional. If something is missing, make a strong creative choice and continue.\n\n"
-        "Your output should be clean, complete, and easy to use. Break it down by the actual song structure.\n\n"
+        "You are an expert cinematic director and visual continuity supervisor designing a scene-by-scene "
+        "music video storyboard optimized for video diffusion generation (MiniMax H3).\n\n"
+        "Your objective: Translate song lyrics, narrative themes, and performer profiles into a physically grounded, "
+        "visually continuous storyboard structured strictly by musical sections.\n\n"
+        "OUTPUT FORMAT REQUIREMENTS:\n"
+        "- Output ONLY the final story arc sections.\n"
+        "- Do not include markdown code fences, JSON blocks, conversational intros, or closing summaries.\n"
+        "- Format every section as its exact heading line ending in a colon, followed by exactly one prose paragraph:\n"
+        "  [Section Name]:\n"
+        "  [Continuous visual prose block]\n\n"
         f"{structure_instruction}\n\n"
-        "Format every section as its heading on one line ending in a colon, followed by one prose paragraph.\n\n"
-        "Rules:\n"
-        f"* Fully summarize the visual story progression of each section in no more than {section_word_limit} words.\n"
-        "* Use the entire section, not only its first lyric line.\n"
-        "* Do not summarize the lyrics line by line.\n"
-        "* Turn the lyrics into a simple visual story arc.\n"
-        "* Each section should be a cohesive visual-story paragraph, not a line-by-line list.\n"
-        "* Use cinematic, visual language.\n"
-        "* The main character or singer should not default to standing still, standing alone, staring, looking, being framed, or holding a pose.\n"
-        "* Unless the character motion level is very low, every section must include a distinct physical action by the singer or main character.\n"
-        "* Vary the action between sections. Avoid repeating stand, stare, gaze, look, walk, or turn as the only beat.\n"
-        "* Make the location support the action; do not let the location be the whole story beat.\n"
-        "* If Location descriptions are provided, use only those locations as the physical settings for the arc.\n"
-        "* Do not invent warehouses, loading docks, corridors, steel stairs, metal doors, concrete halls, or other industrial spaces unless those are explicitly present in the provided Location descriptions.\n"
-        "* To create variety, change subject actions, camera energy, props, lighting, mood, blocking, and use of the mapped locations instead of inventing unrelated places.\n"
-        "* The Scene lyric map may include mapped_extras. Use those exact extras only in the scenes where they are mapped, and use each interaction role to shape the section's larger action progression.\n"
-        "* Plan recurring extra relationships across sections when the same named extra returns, especially direct, dancing_with, and alongside roles. Background and background_dancing extras may support group progression without becoming principal singers.\n"
-        "* Extras never sing, speak, or receive dialogue unless the scene mapping explicitly identifies them as a vocal subject elsewhere. Do not move an extra into an unmapped scene.\n"
-        "* Never force a standard pop-song template over explicit lyric section headers.\n"
-        "* When a lyric header line contains several bracketed tags, only the required section heading listed above is structural. Tags such as [Whispered], [High Energy], [Dark Atmosphere], and [Explosive] are performance or mood notes, not output headings. [End] is only an end marker.\n"
-        "* Values such as [instrumental], [music only], or [no vocals] inside the Scene lyric map are timing/content markers, not additional song-section headings. Cover their visuals inside the nearest listed required section and never output those markers as separate headings.\n"
-        "* If only lyrics are provided, build the arc from the lyrics.\n"
-        "* If no lyrics are provided, build the arc from the theme or story idea.\n"
-        "* Do not ask follow-up questions unless absolutely necessary.\n"
-        "* Output only the story arc sections. No intro note, no markdown table, no JSON.\n\n"
-        f"Creative variation seed: {story_arc_seed or '[none]'}\n"
-        "Use this seed as a reroll key. If the user regenerates the story arc with a different seed, choose a meaningfully different visual interpretation, section action pattern, and location usage while still respecting the same subjects, locations, lyrics, and style.\n\n"
-        f"Scene default style settings:\n"
-        f"- Camera flow: {camera_flow or '[not provided]'}\n"
-        f"- Camera motion speed: {camera_motion_speed}/10\n"
-        f"- Character motion speed: {character_motion_speed}/10\n"
-        f"- Performance style: {performance_style or '[not provided]'}\n"
-        f"- Facial performance: {facial_performance or '[not provided]'}\n\n"
+        "DIRECTORIAL & DIFFUSION CONTINUITY RULES:\n"
+        f"1. Section Length: Write each section's visual summary between {max(20, int(section_word_limit * 0.8))} and {section_word_limit} words. Never exceed {section_word_limit} words.\n"
+        "2. Grounded Physical Action (Anti-Statue / Anti-Morph):\n"
+        "   - Never leave principal subjects in static poses, generic staring, or passive poses.\n"
+        "   - Anchor every section around ONE dominant, continuous physical action.\n"
+        "   - Avoid compound temporal sequences (e.g., do NOT write 'she enters, sits down, drinks coffee, then runs out'). "
+        "Stage a single unbroken continuous physical beat suitable for short AI video clips.\n"
+        "3. Spatial Blocking & Depth Planes:\n"
+        "   - Explicitly establish depth: specify what occupies the foreground, midground, and background.\n"
+        "   - Specify practical lighting sources (neon tubes, shafts of sunlight, rim lighting, lens flares) and atmospheric textures.\n"
+        "4. Somatic Emotion (No Abstract Poetry):\n"
+        "   - Never write internal emotional states (e.g., 'he remembers his grief', 'she feels isolated').\n"
+        "   - Render emotional subtext purely through physical cues: jaw clenching, rapid shallow breathing, averted gaze, rigid posture, or trembling hands.\n"
+        "5. Environmental & Extra Discipline:\n"
+        "   - Confine all scenes strictly to the environments described in 'Allowed Locations'. Do not invent unlisted locations or architectural transitions.\n"
+        "   - Extras must only appear in scenes where explicitly mapped, performing their designated support roles (direct, dancing_with, alongside, background). Extras never sing or speak.\n"
+        "6. Metadata Stripping:\n"
+        "   - Ignore performance tags ([Whispered], [Explosive], [Guitar Solo]) as potential structural headings. Incorporate their energy directly into the scene's lighting, tempo, and action.\n\n"
+        f"Creative Seed: {story_arc_seed or '[none]'}\n"
+        "If this seed differs from previous runs, establish distinct blocking, alternative camera elevations, and different prop interactions while maintaining identical world rules.\n\n"
+        "DIRECTORIAL PARAMETERS:\n"
+        f"- Camera Flow: {camera_flow or '[Smooth Cinematic Panning]'}\n"
+        f"- Camera Speed: {camera_motion_speed}/10\n"
+        f"- Character Kinetic Speed: {character_motion_speed}/10\n"
+        f"- Performance Style: {performance_style or '[Method Dramatic]'}\n"
+        f"- Facial Intensity: {facial_performance or '[Subtle Realism]'}\n\n"
         f"{motion_guidance}\n\n"
         f"{lyric_story_strength_guidance_text}\n\n"
-        f"Story idea:\n{story_idea or '[not provided]'}\n\n"
-        f"Previous generated story arc to avoid copying:\n{previous_story_arc or '[not provided]'}\n\n"
-        "If a previous generated story arc is provided, do not preserve its specific locations, set pieces, or section actions. Use it only as a negative example of what should change on this reroll.\n\n"
-        f"Style/theme:\n{style_theme or '[not provided]'}\n\n"
-        f"Character descriptions:\n{subjects_json}\n\n"
-        f"Location descriptions:\n{locations_json}\n\n"
-        f"Authoritative lyric source: {lyrics_source}\n"
-        f"Full reference lyrics:\n{lyrics or '[not provided]'}\n\n"
-        f"Scene lyric map:\n{compact_scenes_json}"
+        f"Story Premise:\n{story_idea or '[Derive organic premise directly from lyrics]'}\n\n"
+        f"Negative Baseline (Do Not Replicate Previous Run):\n{previous_story_arc or '[none]'}\n\n"
+        f"Visual Theme & Palette:\n{style_theme or '[Cinematic Photorealism, 35mm film stock, high contrast]'}\n\n"
+        f"Character Profiles:\n{subjects_json}\n\n"
+        f"Allowed Locations:\n{locations_json}\n\n"
+        f"Authoritative Lyrics ({lyrics_source}):\n{lyrics or '[not provided]'}\n\n"
+        f"Scene Alignment Map:\n{compact_scenes_json}"
     )
 
 
 def _storyboard_story_arc_format_retry_instruction(required_section_labels, original_instruction):
-    """Sent only after the Story Arc's first response fails heading validation.
-    Controls: forcing the retry to restart from scratch with the exact
-    required heading skeleton instead of partially correcting the bad output.
+    """Sent when the initial response fails exact heading validation.
+    Enforces a strict heading skeleton and forbids markdown/conversational output.
     """
-    exact_format = "\n\n".join(f"{label}:\n[one visual-story paragraph]" for label in required_section_labels)
+    exact_format = "\n\n".join(f"{label}:\n[Continuous visual-story paragraph]" for label in required_section_labels)
     return (
-        "CORRECTION: Your previous answer did not follow the required lyric-section output format.\n"
-        "Answer the original task again from scratch. Do not discuss, quote, summarize, or acknowledge these instructions.\n"
-        f"The very first line must be exactly: {required_section_labels[0]}:\n"
-        "Return every required heading exactly once and in this exact order, with no preamble, notes, bullets, or extra headings.\n\n"
-        f"Exact output skeleton:\n{exact_format}\n\n"
-        f"Original task:\n{original_instruction}"
+        "CRITICAL FORMAT VALIDATION FAILURE:\n"
+        "Your previous response violated the structural section heading contract.\n\n"
+        "RULES FOR THIS REGENERATION:\n"
+        f"1. Your response must begin immediately on line 1 with: '{required_section_labels[0]}:'\n"
+        "2. Include EVERY section heading listed below exactly once, in this exact sequence, followed by a colon.\n"
+        "3. Provide exactly ONE descriptive prose block per section.\n"
+        "4. Absolutely no markdown lists, code fences, introductory sentences, or summary commentary.\n\n"
+        f"REQUIRED OUTPUT SKELETON:\n{exact_format}\n\n"
+        f"ORIGINAL CONTEXT & PARAMETERS:\n{original_instruction}"
     )
 
 
 def _storyboard_story_arc_schema(required_section_labels):
-    """JSON schema for the schema-constrained Story Arc retry: one paragraph per required heading, in order."""
+    """JSON schema for strict structured-output validation.
+    Guarantees that every section label is an object property with no hallucinated extras.
+    """
     return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
-        "properties": {label: {"type": "string"} for label in required_section_labels},
+        "properties": {
+            label: {
+                "type": "string",
+                "description": f"One continuous, physically grounded visual paragraph for {label}."
+            }
+            for label in required_section_labels
+        },
         "required": list(required_section_labels),
         "additionalProperties": False,
     }
 
 
 def _storyboard_story_arc_json_retry_instruction(original_instruction):
-    """Sent with _storyboard_story_arc_schema when the first Story Arc response fails heading validation
-    on a runner that supports schemas. Controls: moving the heading structure into JSON keys.
-    """
+    """Sent with _storyboard_story_arc_schema when structured output / JSON mode is available."""
     return (
         f"{original_instruction}\n\n"
-        "OUTPUT FORMAT OVERRIDE: return a JSON object instead of heading lines. Use each required section heading as a key, "
-        "in order, and write that section's visual-story paragraph as its value. Do not repeat the heading inside the value."
+        "OUTPUT FORMAT ENFORCEMENT:\n"
+        "Return a raw, valid JSON object matching the provided schema. "
+        "Keys must be the exact section headings in their prescribed order. "
+        "Values must be single, continuous cinematic prose paragraphs describing the scene's blocking and action. "
+        "Do not wrap in markdown ```json code fences. Do not repeat the heading name inside the value string."
     )
 
 

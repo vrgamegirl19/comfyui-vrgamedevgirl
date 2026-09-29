@@ -588,7 +588,7 @@ export function createLyricCues({
       const name = String(item?.label || item?.name || "").trim();
       const value = {
         label: `<Subject ${subjectNumber}>`,
-        alias: item?.kind === "subject" ? `(S${subjectNumber})` : "",
+        alias: "",
         name,
         kind: item?.kind || "reference",
       };

@@ -7,6 +7,7 @@ import {
 } from "./performance_presets.mjs";
 import { createStoryboardReferences, normalizeReferenceBuilderCatalog } from "./references.mjs";
 import {
+  normalizeStoryArcDetail,
   normalizeStoryboardMiniMaxH3AudioMode,
   normalizeStoryboardMiniMaxH3Mode,
   normalizeStoryboardPerformanceMode,
@@ -122,6 +123,7 @@ export function openStoryboardBuilder(payload = {}) {
     facialPerformanceCustom: String(payload.facialPerformanceCustom || payload.facial_performance_custom || payload.facial_performance_custom_default || ""),
     cameraMotionSpeed: storyboardSpeedValue(payload.cameraMotionSpeed ?? payload.camera_motion_speed ?? payload.motion_defaults?.camera_motion_speed, 4),
     characterMotionSpeed: storyboardSpeedValue(payload.characterMotionSpeed ?? payload.character_motion_speed ?? payload.motion_defaults?.character_motion_speed, 4),
+    storyArcDetail: normalizeStoryArcDetail(payload.storyArcDetail ?? payload.story_arc_detail),
     cutFrequency: storyboardCutFrequencyValue(payload.cutFrequency ?? payload.minimax_h3_cut_frequency ?? payload.builderStoryboardDefaults?.minimax_h3_cut_frequency ?? payload.builder_storyboard_defaults?.minimax_h3_cut_frequency),
     performanceMode: payloadPerformanceMode,
     shortFilmPlanningMode: normalizeStoryboardShortFilmPlanningMode(
@@ -200,6 +202,7 @@ export function openStoryboardBuilder(payload = {}) {
     fx_custom_json: String(state.fxCustomJson || "").trim(),
     camera_motion_speed: storyboardSpeedValue(state.cameraMotionSpeed, 4),
     character_motion_speed: storyboardSpeedValue(state.characterMotionSpeed, 4),
+    story_arc_detail: normalizeStoryArcDetail(state.storyArcDetail),
     minimax_h3_cut_frequency: storyboardCutFrequencyValue(state.cutFrequency),
     custom_camera_flow_sequence: normalizeStoryboardCustomCameraFlowSequence(state.customCameraFlowSequence),
     motion_defaults: {
@@ -246,6 +249,7 @@ export function openStoryboardBuilder(payload = {}) {
     cameraFlowApply, cameraFlowControls, cameraFlowInfo, cameraFlowReplace, cameraFlowSelect,
     cameraSpeedControls, cameraSpeedHint, cameraSpeedInfo, cameraSpeedInput, cameraSpeedValue,
     characterSpeedControls, characterSpeedHint, characterSpeedInfo, characterSpeedInput, characterSpeedValue,
+    storyArcDetailInfo, storyArcDetailSelect,
     consistencyInfo, consistencyInput, cutFrequencyControls, cutFrequencyHint, cutFrequencyInfo,
     cutFrequencyInput, cutFrequencyValue, facialApply, facialCustomInfo, facialCustomInput, facialInfo,
     facialReplace, facialSelect, fxControls, fxCustomControls, fxCustomInput, fxInfo, fxSelect,
@@ -350,7 +354,7 @@ export function openStoryboardBuilder(payload = {}) {
   });
 
   const { copyStoryboardForGpt, exportPromptFiles, loadExisting, saveStoryboard } = createStoryboardPersistence({
-    absorbSceneReferencesIntoCatalog, cameraFlowSelect, cameraSpeedInput, characterSpeedInput,
+    absorbSceneReferencesIntoCatalog, cameraFlowSelect, cameraSpeedInput, characterSpeedInput, storyArcDetailSelect,
     consistencyInput, cutFrequencyInput, enforceStoryboardVideoFacialRequirements, exportPrompts,
     facialCustomInput, facialPerformancePresets, facialSelect, focusedSection, fxCustomInput, fxSelect,
     getSelectedScenes, imageAestheticPresets, imageAestheticSelect, imageShotFlowPresets, imageShotSelect,
@@ -550,7 +554,7 @@ export function openStoryboardBuilder(payload = {}) {
     add, adjacentLyricContextInput, applyCameraFlow, applyDialoguePlanButton, applyFacialPerformance,
     applyFilmDialoguePlanToVideoBuilder, applyImageAesthetic, applyImageShotFlow, applyPerformanceStyle,
     applyVideoStyle, cameraFlowApply, cameraFlowReplace, cameraFlowSelect, cameraSpeedHint, cameraSpeedInput,
-    characterSpeedHint, characterSpeedInput, clearAllStoryboardPrompts, clearAllStoryboardStoryBeats,
+    characterSpeedHint, characterSpeedInput, storyArcDetailSelect, clearAllStoryboardPrompts, clearAllStoryboardStoryBeats,
     clearPromptsButton, clearStoryBeatsButton, consistencyInput, copyStoryboardForGpt, copyStoryLayerForGpt,
     createAllSceneBeatsWithGemma, createMissingBeatsButton, createStoryArcButton, createStoryArcWithGemma,
     createStoryBriefButton, createStoryBriefWithGemma, cutFrequencyHint, cutFrequencyInput,

@@ -285,6 +285,20 @@ def _lyric_story_strength_guidance(story_layer):
     return f"Lyric Story Strength: {strength}/10. {guidance}"
 
 
+# Story Arc detail level -> (max words per section, total word budget across all sections).
+_STORY_ARC_DETAIL_PROFILES = {
+    "compact": (60, 1000),
+    "standard": (100, 1500),
+    "detailed": (160, 2400),
+    "rich": (240, 3600),
+}
+
+
+def _normalize_story_arc_detail(value):
+    key = str(value or "").strip().lower()
+    return key if key in _STORY_ARC_DETAIL_PROFILES else "standard"
+
+
 def _speed_value(value, fallback=4):
     try:
         speed = int(float(value))

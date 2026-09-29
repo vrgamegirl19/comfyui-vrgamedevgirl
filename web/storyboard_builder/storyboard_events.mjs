@@ -1,4 +1,5 @@
 import {
+  normalizeStoryArcDetail,
   normalizeScene,
   normalizeStoryboardShortFilmPlanningMode,
   storyboardCutFrequencyValue,
@@ -17,7 +18,7 @@ export function wireStoryboardEvents({
   add, adjacentLyricContextInput, applyCameraFlow, applyDialoguePlanButton, applyFacialPerformance,
   applyFilmDialoguePlanToVideoBuilder, applyImageAesthetic, applyImageShotFlow, applyPerformanceStyle,
   applyVideoStyle, cameraFlowApply, cameraFlowReplace, cameraFlowSelect, cameraSpeedHint, cameraSpeedInput,
-  characterSpeedHint, characterSpeedInput, clearAllStoryboardPrompts, clearAllStoryboardStoryBeats,
+  characterSpeedHint, characterSpeedInput, storyArcDetailSelect, clearAllStoryboardPrompts, clearAllStoryboardStoryBeats,
   clearPromptsButton, clearStoryBeatsButton, consistencyInput, copyStoryboardForGpt, copyStoryLayerForGpt,
   createAllSceneBeatsWithGemma, createMissingBeatsButton, createStoryArcButton, createStoryArcWithGemma,
   createStoryBriefButton, createStoryBriefWithGemma, cutFrequencyHint, cutFrequencyInput, detectLyricSections,
@@ -208,6 +209,11 @@ export function wireStoryboardEvents({
     refreshCharacterSpeedInfo();
   });
   characterSpeedInput.addEventListener("change", notifyStoryboardDefaultsChanged);
+  storyArcDetailSelect.addEventListener("change", () => {
+    state.storyArcDetail = normalizeStoryArcDetail(storyArcDetailSelect.value);
+    storyArcDetailSelect.dispatchEvent(new Event("input"));
+    notifyStoryboardDefaultsChanged();
+  });
   characterSpeedHint.onclick = () => {
     window.alert([
       "Character Motion Speed controls how active the subject's body movement should be.",

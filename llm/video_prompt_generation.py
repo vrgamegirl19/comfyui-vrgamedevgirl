@@ -1335,7 +1335,7 @@ def _generate_builder_t2v_prompt(payload):
         image_guidance = (
             "MiniMax H3 JSON-shot visual-reference guidance:\n"
             "- Inspect the attached pictures only according to the exact assignments and limits in the Scene concept.\n"
-            "- Use permitted visual facts inside the creative shot descriptions, but do not define pictures, subjects, audio, retention, continuity, or final prompt sections.\n"
+            "- Use permitted visual facts directly inside the creative shot descriptions.\n"
             "- Return only the requested valid JSON object.\n\n"
         )
     elif has_image_reference and is_minimax_h3_prompt:
