@@ -62,7 +62,7 @@ class CastGuardTests(unittest.TestCase):
     def test_fully_removed_entry_gets_a_neutral_body(self):
         guards = {1: cast_guard.build_cast_guard([MAN, WOMAN], [MAN])}
         result = cast_guard.strip_story_arc_entry_leaks("Scene 1 (Porch) \u2014 The woman waits.", guards)
-        self.assertEqual(result, "Scene 1 (Porch) \u2014 The man remain the focus of the scene.")
+        self.assertEqual(result, "Scene 1 (Porch) \u2014 The scene stays focused on The man.")
 
     def test_cast_wall_text_names_cast_and_excluded(self):
         text = cast_guard.cast_wall_text(cast_guard.build_cast_guard([MAN, WOMAN], [MAN]))
