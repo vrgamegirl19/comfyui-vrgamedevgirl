@@ -7,10 +7,12 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from builder_source import read_builder_source, read_builder_backend_source
+
 
 ROOT = Path(__file__).resolve().parents[1]
-BUILDER_UI = (ROOT / "web" / "VRGDG_MusicVideoBuilderUI.js").read_text(encoding="utf-8")
-BUILDER_BACKEND = (ROOT / "VRGDG_MusicVideoBuilderNodes.py").read_text(encoding="utf-8")
+BUILDER_UI = read_builder_source()
+BUILDER_BACKEND = read_builder_backend_source()
 
 
 def load_own_server_helpers():

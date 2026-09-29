@@ -9046,12 +9046,12 @@
           "paused": true,
           "params": {
             "filename": "video_0002_0001_00001-audio.mp4",
-            "subfolder": "Z:\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\output\\Too Loud for You_2026-03-06_20-56-02",
+            "subfolder": "",
             "type": "output",
             "format": "video/h264-mp4",
             "frame_rate": 25,
             "workflow": "video_0002_0001_00001.png",
-            "fullpath": "Z:\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\output\\Too Loud for You_2026-03-06_20-56-02\\video_0002_0001_00001-audio.mp4"
+            "fullpath": ""
           }
         }
       },

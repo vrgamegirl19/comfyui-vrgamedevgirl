@@ -1,10 +1,11 @@
+const { functionSource, readBuilderSource, readStoryboardSource } = require('./builder_source.cjs');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '../web/VRGDG_WizardBeta.js'), 'utf8');
-const builder = fs.readFileSync(path.join(__dirname, '../web/VRGDG_MusicVideoBuilderUI.js'), 'utf8');
+const builder = readBuilderSource();
 
 class Element {
   constructor(tag) { this.tagName = tag; this.children = []; this.dataset = {}; this.attributes = {}; this.disabled = false; this.value = ''; this.style = {};  }
@@ -134,7 +135,7 @@ test('every mode has the correct media requirements', () => {
 function adapterFixture() {
   const state = { projectVideoEngine: 'minimax_h3', miniMaxH3Settings: { video_mode: 'text_to_video', audio_mode: 'built_in_audio' }, videoModelMode: 't2v', imageModelMode: 'zimage', videoType: 'speaking', projectFolder: '/project', segments: [], overlaySegments: [], fluxKleinSettings: {}, fluxReferenceBuilder: { subjects: [], locations: [], subject_scene_map: {}, scene_map: {} }, i2vVideoSettings: {} };
   const events = [];
-  const context = { state, wizardGlobalVideoSettings: false, audioInput: { value: '' }, projectInput: { value: '/project' }, audio: { duration: 0 },
+  const context = { state, wizardVideoSettings: { global: false }, audioInput: { value: '' }, projectInput: { value: '/project' }, audio: { duration: 0 },
     MINIMAX_H3_MODE_OPTIONS: modeOptions.minimax_h3, MINIMAX_H3_AUDIO_MODE_OPTIONS: [{ value: 'input_audio', label: 'Input' }, { value: 'built_in_audio', label: 'Built-in' }], VIDEO_TYPE_OPTIONS: [],
     normalizeProjectVideoEngine: x => x, normalizeVideoType: x => x, promptRunnerActionName: () => "LLM API",
     confirmAndRunGemmaVideoAll: async () => events.push("video-all"),
@@ -153,9 +154,7 @@ function adapterFixture() {
   };
   for (const name of ['updateActiveFromInputs','saveI2VVideoSettingsFromPanel','saveMiniMaxH3SettingsFromPanel','saveMiniMaxSceneInputsFromPanel','saveZImageSettingsFromPanel','saveFluxKleinSettingsFromPanel','saveErnieImageSettingsFromPanel','saveKrea2TwoPassSettingsFromPanel','saveNBImageSettingsFromPanel','saveFlowGptBrowserSettingsFromPanel','syncProjectVideoEngineUI','syncVideoModePanel','syncI2VVideoSettingsPanel','syncFluxKleinPanel','syncZImageSettingsPanel','syncErnieImagePanel','syncKrea2TwoPassPanel','syncNBImagePanel','syncFlowGptBrowserPanel','syncInspector','render','pushHistory','openGemmaRunnerModal','openLyricReviewModal','openStoryboardBuilderFromProject','confirmAndRunZImageAll','importTimelineImagesFromFolder','syncVideoTypeControl','assertBatchNotStopped']) context[name] = () => {};
   vm.createContext(context);
-  const start = builder.indexOf('  function openWizardBetaFromBuilder()');
-  const end = builder.indexOf('  function openWizardFromBuilder()', start);
-  vm.runInContext(builder.slice(start, end) + '\nopenWizardBetaFromBuilder();', context);
+  vm.runInContext(functionSource(builder, 'openWizardBetaFromBuilder') + '\nopenWizardBetaFromBuilder();', context);
   return { context, state, events, api: context.api };
 }
 
@@ -444,7 +443,7 @@ test('focused storyboard routes allow Image Prep only for Image to Video', () =>
 });
 
 test('focused storyboard windows mount only their own content and relevant actions', () => {
-  const story = fs.readFileSync(path.join(__dirname, '../web/VRGDG_StoryboardBuilderUI.js'), 'utf8');
+  const story = readStoryboardSource();
   const start = story.indexOf('  if (!focusedSection || focusedSection === "defaults") middleContent.append');
   const end = story.indexOf('  shell.append(header', start);
   for (const focusedSection of ['', 'defaults', 'story', 'scenes']) {
@@ -461,20 +460,18 @@ test('focused storyboard windows mount only their own content and relevant actio
 });
 
 test('wizard global video scope reads global LTX settings despite a locked selection', () => {
-  const c = { wizardGlobalVideoSettings: true, state: { i2vVideoSettings: { width: 1280 } }, scene: { use_scene_i2v_video_settings: true, i2v_video_settings: { width: 640 } } };
+  const c = { wizardVideoSettings: { global: true }, state: { i2vVideoSettings: { width: 1280 } }, scene: { use_scene_i2v_video_settings: true, i2v_video_settings: { width: 640 } } };
   c.activeSegment = () => c.scene;
-  const helper = builder.slice(builder.indexOf('  function videoSettingsSegment()'), builder.indexOf('  function activeSegment()', builder.indexOf('  function videoSettingsSegment()')));
-  const getter = builder.slice(builder.indexOf('  function activeI2VVideoSettings()'), builder.indexOf('  function videoVisionReferenceEnabled'));
-  vm.createContext(c); vm.runInContext(helper + getter, c);
+  vm.createContext(c); vm.runInContext(functionSource(builder, 'videoSettingsSegment') + '\n' + functionSource(builder, 'activeI2VVideoSettings'), c);
   assert.equal(c.activeI2VVideoSettings().width, 1280);
-  c.wizardGlobalVideoSettings = false;
+  c.wizardVideoSettings.global = false;
   assert.equal(c.activeI2VVideoSettings().width, 640);
 });
 
 test('global LTX save bypasses multi-selection writes and preserves scene overrides', () => {
-  const start = builder.indexOf('    if (segment?.use_scene_i2v_video_settings || (!wizardGlobalVideoSettings');
+  const start = builder.indexOf('    if (segment?.use_scene_i2v_video_settings || (!wizardVideoSettings.global');
   const end = builder.indexOf('    updateI2VLoraVisibility();', start);
-  const c = { wizardGlobalVideoSettings: true, segment: null, state: {}, settings: { width: 1920 }, hasMultiSceneBatchSelection: () => true,
+  const c = { wizardVideoSettings: { global: true }, segment: null, state: {}, settings: { width: 1920 }, hasMultiSceneBatchSelection: () => true,
     applyVideoSettingsToMultiSelection: () => { throw Error('Must not overwrite selected scenes'); } };
   vm.runInNewContext(builder.slice(start, end), c);
   assert.equal(c.state.i2vVideoSettings.width, 1920);
@@ -483,12 +480,12 @@ test('global LTX save bypasses multi-selection writes and preserves scene overri
 test('MiniMax wizard pass selection works without a scene and preserves locked scene settings', async () => {
   const locked = { use_scene_minimax_h3_settings: true, minimax_h3_settings: { ref_pass_mode: 'single' } };
   const button = { dataset: { passMode: 'advanced' } };
-  const c = { wizardGlobalVideoSettings: true, miniMaxPassButtons: [button], state: { miniMaxH3Settings: {} },
+  const c = { wizardVideoSettings: { global: true }, miniMaxPassButtons: [button], state: { miniMaxH3Settings: {} },
     requireActiveSegment: () => { throw Error('Wizard must not require a scene'); },
     pushHistory() {}, clearMiniMaxImageReferenceStartFrameOnModeSwitch() {}, cloneMiniMaxH3Settings: settings => settings,
     saveMiniMaxH3SettingsFromPanel: target => { assert.equal(target, null); return {}; },
     selectMiniMaxH3PassSettings: (settings, mode) => ({ ref_pass_mode: mode }), syncMiniMaxH3Panel() {}, autoSaveSessionQuiet: async () => {}, locked };
-  const start = builder.lastIndexOf('  for (const button of miniMaxPassButtons) {');
+  const start = builder.indexOf('\n  for (const button of miniMaxPassButtons) {') + 1;
   vm.runInNewContext(builder.slice(start, builder.indexOf('  miniMaxAudioMode.addEventListener', start)), c);
   await button.onclick();
   assert.equal(c.state.miniMaxH3Settings.ref_pass_mode, 'advanced');
@@ -516,13 +513,13 @@ test('wizard video panel mounts only global tabs and restores timeline controls 
   c.makeSubTabs = tabs => { assert.deepEqual(Array.from(tabs, tab => tab.label), ['Models', 'Video Settings']); const wrapper = new Element('globalTabs'); for (const tab of tabs) wrapper.append(tab.content); return { wrapper }; };
   const holder = new Element('holder');
   const restore = f.api.mountSettings(holder, 'video');
-  assert.equal(c.wizardGlobalVideoSettings, true);
+  assert.equal(c.wizardVideoSettings.global, true);
   assert.equal(models.parent.tagName, 'div');
   assert.equal(source.children.includes(models), false);
   assert.equal(settings.children.includes(c.useSceneMiniMaxH3Settings.wrapper), false);
   assert.equal(source.children.some(child => child.tagName === 'prompt'), true);
   restore();
-  assert.equal(c.wizardGlobalVideoSettings, false);
+  assert.equal(c.wizardVideoSettings.global, false);
   assert.equal(source.children[0], models);
   assert.equal(source.children[1], settings);
   assert.equal(settings.children[0], c.useSceneMiniMaxH3Settings.wrapper);
@@ -551,13 +548,13 @@ test('LTX wizard keeps FLF and ID-LoRA settings mounted and restores their panel
     c.makeSubTabs = tabs => { const wrapper = new Element('globalTabs'); for (const tab of tabs) wrapper.append(tab.content); return { wrapper }; };
     const holder = new Element('holder');
     const restore = f.api.mountSettings(holder, 'video');
-    assert.equal(c.wizardGlobalVideoSettings, true);
+    assert.equal(c.wizardVideoSettings.global, true);
     assert.ok(holder.querySelectorAll('identitySettings').includes(c.idLoraVoiceSettingsSection));
     assert.ok(holder.querySelectorAll('flfSettings').includes(c.flfGuideSettingsSection));
     assert.equal(holder.querySelectorAll('sceneLock').length, 0);
     assert.equal(holder.querySelectorAll('sceneAnchor').length, 0);
     restore();
-    assert.equal(c.wizardGlobalVideoSettings, false);
+    assert.equal(c.wizardVideoSettings.global, false);
     assert.equal(source.children[1], settings);
     assert.equal(c.idLoraVoiceSettingsSection.parent, settings);
     assert.equal(c.flfGuideSettingsSection.parent, settings);
@@ -829,7 +826,7 @@ test('prompt step saves first and runs the selected runner Video All action', as
 
 
 test('prompt-only storyboard startup uses the existing video prompt dialog and closes its host', async () => {
-  const storyboard = fs.readFileSync(path.join(__dirname, '../web/VRGDG_StoryboardBuilderUI.js'), 'utf8');
+  const storyboard = readStoryboardSource();
   const start = storyboard.lastIndexOf('  loadExisting().then(');
   const end = storyboard.indexOf('\n}', start);
   for (const fail of [false, true]) {

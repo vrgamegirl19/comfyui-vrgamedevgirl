@@ -8,15 +8,17 @@ import types
 import unittest
 from pathlib import Path
 
+from builder_source import read_builder_source, read_runner_source
+
 
 ROOT = Path(__file__).resolve().parents[1]
-RUNNER_PATH = ROOT / "VRGDG_WorkflowRunnerNodes.py"
+RUNNER_PATH = ROOT / "runner/nodes.py"
 TEMPLATE_PATH = ROOT / "Workflows" / "UsedForUIDoNotTouch" / "minimax_audio_driven_builder_latent_upscale_2pass_api.json"
-BUILDER_SOURCE = (ROOT / "web" / "VRGDG_MusicVideoBuilderUI.js").read_text(encoding="utf-8")
+BUILDER_SOURCE = read_builder_source()
 
 
 def load_two_pass_builder(sparse_method="Sol-Attn (adaptive tau)"):
-    module = ast.parse(RUNNER_PATH.read_text(encoding="utf-8"), filename=str(RUNNER_PATH))
+    module = ast.parse(read_runner_source(), filename=str(RUNNER_PATH))
     function = next(
         node for node in module.body
         if isinstance(node, ast.FunctionDef) and node.name == "_build_minimax_h3_2pass_api_prompt"
@@ -90,7 +92,7 @@ def load_two_pass_builder(sparse_method="Sol-Attn (adaptive tau)"):
 
 def load_single_pass_builder():
     namespace = load_two_pass_builder().__globals__.copy()
-    module = ast.parse(RUNNER_PATH.read_text(encoding="utf-8"))
+    module = ast.parse(read_runner_source())
     functions = [node for node in module.body if isinstance(node, ast.FunctionDef)
                  and node.name in {"_build_minimax_h3_api_prompt", "_api_node_id_by_class", "_patch_minimax_h3_optional_model_paths"}]
     namespace.update({
@@ -308,7 +310,7 @@ class BuilderMiniMaxOptionalModelPatchTests(unittest.TestCase):
 
     def test_single_pass_replaces_easy_cache_and_preserves_sampler_settings(self):
         build = load_single_pass_builder()
-        module = ast.parse(RUNNER_PATH.read_text(encoding="utf-8"))
+        module = ast.parse(read_runner_source())
         wanted = {"_patch_minimax_h3_advanced_settings", "_optional_api_node_id_by_class", "_replace_api_input_refs"}
         functions = [node for node in module.body if isinstance(node, ast.FunctionDef) and node.name in wanted]
         build.__globals__["_MINIMAX_H3_SAGE_ATTENTION_MODES"] = {"auto"}

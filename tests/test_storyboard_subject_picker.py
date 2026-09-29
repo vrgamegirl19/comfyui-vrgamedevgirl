@@ -1,19 +1,17 @@
 import unittest
 from pathlib import Path
 
+from builder_source import read_builder_source, read_storyboard_source
+
 
 ROOT = Path(__file__).resolve().parents[1]
-STORYBOARD_SOURCE = (
-    ROOT / "web" / "VRGDG_StoryboardBuilderUI.js"
-).read_text(encoding="utf-8")
-BUILDER_SOURCE = (
-    ROOT / "web" / "VRGDG_MusicVideoBuilderUI.js"
-).read_text(encoding="utf-8")
+STORYBOARD_SOURCE = read_storyboard_source()
+BUILDER_SOURCE = read_builder_source()
 
 
 class StoryboardSubjectPickerTests(unittest.TestCase):
     def test_subject_button_opens_multi_subject_picker(self):
-        self.assertIn("const openStoryboardSubjectPicker = (scene) =>", STORYBOARD_SOURCE)
+        self.assertIn("function openStoryboardSubjectPicker(scene) {", STORYBOARD_SOURCE)
         self.assertIn("const selected = new Set(", STORYBOARD_SOURCE)
         self.assertIn("scene.subject_refs = selectedSubjects;", STORYBOARD_SOURCE)
         self.assertIn(

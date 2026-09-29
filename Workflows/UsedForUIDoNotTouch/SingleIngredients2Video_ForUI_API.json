@@ -188,7 +188,7 @@
   },
   "927": {
     "inputs": {
-      "audio_file": "Z:\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\output\\Bubblegum Riot.mp3",
+      "audio_file": "",
       "seek_seconds": 0,
       "duration": 0
     },
@@ -231,7 +231,7 @@
   },
   "935": {
     "inputs": {
-      "value": "Z:\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui-vrgamedevgirl\\srt_files\\Serpent Queen_250.srt"
+      "value": ""
     },
     "class_type": "PrimitiveString",
     "_meta": {

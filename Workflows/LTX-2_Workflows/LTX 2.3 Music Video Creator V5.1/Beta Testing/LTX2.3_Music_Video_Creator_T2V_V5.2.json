@@ -4192,12 +4192,12 @@
           "paused": true,
           "params": {
             "filename": "video_0001_0000_00001-audio.mp4",
-            "subfolder": "Z:\\TOSHARE\\ComfyUI_windows_portable\\ComfyUI\\output\\Rust on the Ferris Wheel_2026-05-12_21-15-33",
+            "subfolder": "",
             "type": "output",
             "format": "video/h264-mp4",
             "frame_rate": 24,
             "workflow": "video_0001_0000_00001.png",
-            "fullpath": "Z:\\TOSHARE\\ComfyUI_windows_portable\\ComfyUI\\output\\Rust on the Ferris Wheel_2026-05-12_21-15-33\\video_0001_0000_00001-audio.mp4"
+            "fullpath": ""
           }
         }
       },
@@ -5960,7 +5960,7 @@
         }
       },
       "widgets_values": [
-        "Z:\\TOSHARE\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui-vrgamedevgirl\\srt_files\\alone in the bar_254.srt"
+        ""
       ],
       "color": "#232",
       "bgcolor": "#353"
@@ -6054,7 +6054,7 @@
         }
       },
       "widgets_values": [
-        "Z:\\TOSHARE\\ComfyUI_windows_portable\\ComfyUI\\output\\VRGDG_AudioFiles\\Rust on the Ferris Wheel 1.mp3"
+        ""
       ],
       "color": "#2a363b",
       "bgcolor": "#3f5159"
@@ -6144,7 +6144,7 @@
         }
       },
       "widgets_values": [
-        "Z:\\TOSHARE\\ComfyUI_windows_portable\\ComfyUI\\output\\VRGDG_TEMP\\TextFiles\\Rust on the Ferris Wheel\\Rust on the Ferris Wheel.txt"
+        ""
       ],
       "color": "#223",
       "bgcolor": "#335"

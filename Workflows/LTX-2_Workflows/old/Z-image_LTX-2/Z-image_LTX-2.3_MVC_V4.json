@@ -2884,7 +2884,7 @@
         }
       },
       "widgets_values": [
-        "Z:\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\output\\VRGDG_AudioFiles\\Black.mp3"
+        ""
       ],
       "color": "#2a363b",
       "bgcolor": "#3f5159",
@@ -4809,7 +4809,7 @@
         }
       },
       "widgets_values": [
-        "Z:\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui-vrgamedevgirl\\srt_files\\Black_189.srt"
+        ""
       ],
       "color": "#232",
       "bgcolor": "#353",
@@ -7384,12 +7384,12 @@
           "paused": true,
           "params": {
             "filename": "video_0001_0000_00001-audio.mp4",
-            "subfolder": "Z:\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\output\\Black_2026-03-09_20-53-33",
+            "subfolder": "",
             "type": "output",
             "format": "video/h264-mp4",
             "frame_rate": 25,
             "workflow": "video_0001_0000_00001.png",
-            "fullpath": "Z:\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\output\\Black_2026-03-09_20-53-33\\video_0001_0000_00001-audio.mp4"
+            "fullpath": ""
           }
         }
       },

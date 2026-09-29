@@ -14,10 +14,11 @@ server = types.SimpleNamespace(PromptServer=types.SimpleNamespace(
     instance=types.SimpleNamespace(routes=types.SimpleNamespace(
         get=lambda path: lambda fn: fn, post=lambda path: lambda fn: fn))))
 spec = importlib.util.spec_from_file_location(
-    "resource_monitor", pathlib.Path(__file__).resolve().parents[1] / "VRGDG_ResourceMonitor.py")
+    "resource_monitor", pathlib.Path(__file__).resolve().parents[1] / "core/system_routes.py")
 monitor = importlib.util.module_from_spec(spec)
 with patch.dict(sys.modules, {"server": server}):
     spec.loader.exec_module(monitor)
+LLM_MODULE = f"{monitor.__package__}.llm.cache"
 
 
 class ResourceMonitorTests(unittest.TestCase):
@@ -44,8 +45,8 @@ class ResourceMonitorTests(unittest.TestCase):
 
     def test_clear_memory_requires_idle_queue(self):
         queue = types.SimpleNamespace(mutex=threading.RLock(), get_tasks_remaining=lambda: 1, set_flag=Mock())
-        llm = types.SimpleNamespace(_clear_vrgdg_llm_caches=Mock())
-        with patch.object(monitor.PromptServer.instance, "prompt_queue", queue, create=True), patch.dict(sys.modules, {"_vrgdg_custom_LLM": llm}):
+        llm = types.SimpleNamespace(_clear_vrgdg_llm_caches=Mock(), _GGUF_LOCK=threading.RLock())
+        with patch.object(monitor.PromptServer.instance, "prompt_queue", queue, create=True), patch.dict(sys.modules, {LLM_MODULE: llm}):
             response = asyncio.run(monitor.clear_memory(None))
         self.assertEqual(response.status, 409)
         queue.set_flag.assert_not_called()
@@ -54,8 +55,8 @@ class ResourceMonitorTests(unittest.TestCase):
     def test_clear_memory_uses_native_worker_and_optional_llm(self):
         for available in (False, True):
             queue = types.SimpleNamespace(mutex=threading.RLock(), get_tasks_remaining=lambda: 0, set_flag=Mock())
-            llm = types.SimpleNamespace(_clear_vrgdg_llm_caches=Mock(return_value={"gguf_models_unloaded": 2}))
-            with self.subTest(llm_available=available), patch.object(monitor.PromptServer.instance, "prompt_queue", queue, create=True), patch.dict(sys.modules, {"_vrgdg_custom_LLM": llm if available else None}):
+            llm = types.SimpleNamespace(_clear_vrgdg_llm_caches=Mock(return_value={"gguf_models_unloaded": 2}), _GGUF_LOCK=threading.RLock())
+            with self.subTest(llm_available=available), patch.object(monitor.PromptServer.instance, "prompt_queue", queue, create=True), patch.dict(sys.modules, {LLM_MODULE: llm if available else None}):
                 response = asyncio.run(monitor.clear_memory(None))
             self.assertEqual(response.status, 202)
             result = json.loads(response.text)
@@ -64,6 +65,18 @@ class ResourceMonitorTests(unittest.TestCase):
             self.assertEqual(queue.set_flag.call_args_list, [unittest.mock.call("unload_models", True), unittest.mock.call("free_memory", True)])
             if available:
                 llm._clear_vrgdg_llm_caches.assert_called_once_with(clear_cuda_cache=False, clear_hf_pipeline_cache=False)
+                self.assertTrue(llm._GGUF_LOCK.acquire(blocking=False))
+                llm._GGUF_LOCK.release()
+
+    def test_clear_memory_skips_while_llm_request_runs(self):
+        queue = types.SimpleNamespace(mutex=threading.RLock(), get_tasks_remaining=lambda: 0, set_flag=Mock())
+        llm = types.SimpleNamespace(_clear_vrgdg_llm_caches=Mock(), _GGUF_LOCK=threading.RLock())
+        with llm._GGUF_LOCK, patch.object(monitor.PromptServer.instance, "prompt_queue", queue, create=True), patch.dict(sys.modules, {LLM_MODULE: llm}):
+            response = asyncio.run(monitor.clear_memory(None))
+        self.assertEqual(response.status, 409)
+        self.assertEqual(json.loads(response.text)["error"], "Wait for the running LLM request to finish.")
+        queue.set_flag.assert_not_called()
+        llm._clear_vrgdg_llm_caches.assert_not_called()
 
     def test_multiple_gpus_and_unsupported_sensors(self):
         output = '0, "GPU, first", 0, 1024, 8192, 34, 0, 200, 20.5, 300\n1, Second GPU, 95, 2048, 4096, [N/A], [Not Supported], 1500, NaN, 250\n'

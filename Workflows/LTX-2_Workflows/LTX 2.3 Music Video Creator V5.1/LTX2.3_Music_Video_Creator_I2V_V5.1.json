@@ -2358,7 +2358,7 @@
         }
       },
       "widgets_values": [
-        "Z:\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\output\\VRGDG_AudioFiles\\Quiet Lies - Paper Thin Air - Sonauto.wav"
+        ""
       ],
       "color": "#2a363b",
       "bgcolor": "#3f5159",
@@ -5308,12 +5308,12 @@
           "paused": true,
           "params": {
             "filename": "video_0013_0012_00001-audio.mp4",
-            "subfolder": "Z:\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\output\\Quiet Lies - Paper Thin Air - Sonauto_2026-05-07_10-04-35",
+            "subfolder": "",
             "type": "output",
             "format": "video/h264-mp4",
             "frame_rate": 24,
             "workflow": "video_0013_0012_00001.png",
-            "fullpath": "Z:\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\output\\Quiet Lies - Paper Thin Air - Sonauto_2026-05-07_10-04-35\\video_0013_0012_00001-audio.mp4"
+            "fullpath": ""
           }
         }
       },
@@ -6751,7 +6751,7 @@
         }
       },
       "widgets_values": [
-        "Z:\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui-vrgamedevgirl\\srt_files\\Quiet Lies - Paper Thin Air - Sonauto_251.srt"
+        ""
       ],
       "color": "#232",
       "bgcolor": "#353",

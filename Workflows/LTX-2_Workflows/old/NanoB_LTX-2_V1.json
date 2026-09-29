@@ -3831,12 +3831,12 @@
           "paused": true,
           "params": {
             "filename": "video_0044_0043_00001-audio.mp4",
-            "subfolder": "Z:\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\output\\nanobtest002_2026-02-05_09-19-20",
+            "subfolder": "",
             "type": "output",
             "format": "video/h264-mp4",
             "frame_rate": 25,
             "workflow": "video_0044_0043_00001.png",
-            "fullpath": "Z:\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\output\\nanobtest002_2026-02-05_09-19-20\\video_0044_0043_00001-audio.mp4"
+            "fullpath": ""
           }
         }
       },

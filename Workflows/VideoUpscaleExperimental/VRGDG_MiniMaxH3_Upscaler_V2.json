@@ -918,7 +918,7 @@
             "format": "video/h264-mp4",
             "frame_rate": 24,
             "workflow": "MiniMaxH3_Overlap_LearnedLatentUpscale_1080p_00047.png",
-            "fullpath": "Z:\\TOSHARE\\ComfyUI_windows_portable\\ComfyUI\\output\\MiniMaxH3_Overlap_LearnedLatentUpscale_1080p_00047-audio.mp4"
+            "fullpath": ""
           }
         }
       },
@@ -943,7 +943,7 @@
             "format": "video/h264-mp4",
             "frame_rate": 24,
             "workflow": "MiniMaxH3_Overlap_LearnedLatentUpscale_1080p_00047.png",
-            "fullpath": "Z:\\TOSHARE\\ComfyUI_windows_portable\\ComfyUI\\output\\MiniMaxH3_Overlap_LearnedLatentUpscale_1080p_00047-audio.mp4"
+            "fullpath": ""
           }
         }
       },

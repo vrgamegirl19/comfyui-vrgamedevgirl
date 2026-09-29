@@ -10,7 +10,7 @@ except ModuleNotFoundError:
 
 
 ROOT = Path(__file__).resolve().parents[1]
-NODE_SOURCE = ROOT / "VRGDG_MiniMaxH3FastVAEDecode.py"
+NODE_SOURCE = ROOT / "minimax/nodes.py"
 INIT_SOURCE = ROOT / "__init__.py"
 
 
@@ -20,7 +20,7 @@ def comfy_root():
 
 class MiniMaxH3FastVAEDecodeTests(unittest.TestCase):
     def test_node_is_registered(self):
-        self.assertIn('".VRGDG_MiniMaxH3FastVAEDecode"', INIT_SOURCE.read_text(encoding="utf-8"))
+        self.assertIn('".minimax.nodes"', INIT_SOURCE.read_text(encoding="utf-8"))
         source = NODE_SOURCE.read_text(encoding="utf-8")
         self.assertIn('"H3FastVAEDecode": H3FastVAEDecode', source)
 

@@ -5,10 +5,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from builder_source import read_builder_source, read_builder_backend_source
+
 
 ROOT = Path(__file__).resolve().parents[1]
-NODE_SOURCE = ROOT / "VRGDG_MusicVideoBuilderNodes.py"
-UI_SOURCE = ROOT / "web" / "VRGDG_MusicVideoBuilderUI.js"
+NODE_SOURCE = ROOT / "builder/nodes.py"
+UI_SOURCE = read_builder_source()
 
 
 class _CompletedProcess:
@@ -30,7 +32,7 @@ class _RecordingSubprocess:
 
 
 def load_scene_audio_mixer(recording_subprocess):
-    tree = ast.parse(NODE_SOURCE.read_text(encoding="utf-8"), filename=str(NODE_SOURCE))
+    tree = ast.parse(read_builder_backend_source(), filename=str(NODE_SOURCE))
     names = {"_concat_file_path", "_scene_audio_mix_folder", "_prepare_scene_audio_mix"}
     helpers = [
         node
@@ -43,7 +45,7 @@ def load_scene_audio_mixer(recording_subprocess):
         "subprocess": recording_subprocess,
         "_find_ffmpeg_path": lambda: "ffmpeg",
         "_srt_path": lambda folder: os.path.join(folder, "builder_segments.srt"),
-        "_segments_to_srt": lambda _segments: "",
+        "_segments_to_srt": lambda _segments, text_field="label": "",
         "_read_audio_peaks": lambda _path, _count: {"duration": 8.0, "peaks": []},
         "_estimate_beats_from_audio": lambda *_args, **_kwargs: ([], 0.0),
     }
@@ -83,7 +85,7 @@ class BuilderHybridAudioTests(unittest.TestCase):
         self.assertTrue(result["used_scene_audio"])
 
     def test_ui_preserves_global_audio_and_prioritizes_it_for_stitch(self):
-        source = UI_SOURCE.read_text(encoding="utf-8")
+        source = UI_SOURCE
         self.assertIn("global_audio_path: currentProjectAudioPath()", source)
         self.assertIn(
             "const sceneAudioMode = !embeddedSceneAudioMode && !globalAudioPath && usingSceneAudioMode();",
@@ -97,7 +99,7 @@ class BuilderHybridAudioTests(unittest.TestCase):
         self.assertNotIn("audioInput.value = data.audio_path", prepare_source)
 
     def test_loaded_global_audio_controls_timeline_playback_and_waveform(self):
-        source = UI_SOURCE.read_text(encoding="utf-8")
+        source = UI_SOURCE
         self.assertIn(
             "return !currentProjectAudioPath() && (usingSceneAudioMode() || usingRenderedSceneAudioMode());",
             source,

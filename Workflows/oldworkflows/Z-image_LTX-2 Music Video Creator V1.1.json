@@ -4352,12 +4352,12 @@
           "paused": true,
           "params": {
             "filename": "video_0009_00001-audio.mp4",
-            "subfolder": "Z:\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\output\\VRGDG_foldername2_2026-01-21_19-48-22",
+            "subfolder": "",
             "type": "output",
             "format": "video/h264-mp4",
             "frame_rate": 24,
             "workflow": "video_0009_00001.png",
-            "fullpath": "Z:\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\output\\VRGDG_foldername2_2026-01-21_19-48-22\\video_0009_00001-audio.mp4"
+            "fullpath": ""
           }
         }
       },

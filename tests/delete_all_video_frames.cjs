@@ -1,9 +1,10 @@
+const { readBuilderSource } = require('./builder_source.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const { test } = require('node:test');
-const source = fs.readFileSync(path.join(__dirname, '../web/VRGDG_MusicVideoBuilderUI.js'), 'utf8');
+const source = readBuilderSource();
 const start = source.indexOf('async function deleteAllTimelineVideos()');
 const fn = source.slice(start, source.indexOf('async function deleteAllTimelineImages()', start));
 async function run(scene, answers, failPath = '') {

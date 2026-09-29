@@ -1,6 +1,6 @@
 param(
-    [string]$TargetRoot = "A:\MUSUBI\musubi-tuner-ltx2",
-    [string]$SourceRoot = "A:\MUSUBI\_upstream_musubi_tuner_krea2",
+    [Parameter(Mandatory = $true)][string]$TargetRoot,
+    [Parameter(Mandatory = $true)][string]$SourceRoot,
     [string]$RepoUrl = "https://github.com/kohya-ss/musubi-tuner.git",
     [string]$Branch = "main",
     [switch]$DryRun,

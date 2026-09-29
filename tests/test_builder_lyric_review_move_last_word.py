@@ -1,9 +1,12 @@
 import unittest
 from pathlib import Path
 
+from builder_source import read_builder_source
+
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = (ROOT / "web" / "VRGDG_MusicVideoBuilderUI.js").read_text(encoding="utf-8")
+SOURCE = read_builder_source()
+LYRIC_REVIEW_SOURCE = (ROOT / "web" / "music_video_builder" / "lyric_review.mjs").read_text(encoding="utf-8")
 
 
 class LyricReviewMoveLastWordTests(unittest.TestCase):
@@ -26,9 +29,7 @@ class LyricReviewMoveLastWordTests(unittest.TestCase):
         self.assertIn("moveWordAcrossStructuredLyricRows(source.minimax_speaker_assignments, target.minimax_speaker_assignments", SOURCE)
         self.assertIn("moveWordAcrossStructuredLyricRows(source.speaker_assignments, target.speaker_assignments", SOURCE)
         self.assertIn("moveWordAcrossStructuredLyricRows(source.dialogue_cues, target.dialogue_cues", SOURCE)
-        save_start = SOURCE.index("const saveReviewChanges =", SOURCE.index("function openLyricReviewModal"))
-        save_end = SOURCE.index("function openLyricMappingWorkflowModal", save_start)
-        save_source = SOURCE[save_start:save_end]
+        save_source = LYRIC_REVIEW_SOURCE[LYRIC_REVIEW_SOURCE.index("const saveReviewChanges ="):]
         self.assertLess(save_source.index("applyPendingReviewWordMoves"), save_source.index("saveSession({ quiet: true, throwOnError: true })"))
         self.assertIn('await syncLyricAndSubjectNoteFiles("session save")', SOURCE)
 

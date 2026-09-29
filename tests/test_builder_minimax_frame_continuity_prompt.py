@@ -1,11 +1,13 @@
 import unittest
 from pathlib import Path
 
+from builder_source import read_builder_source, read_builder_backend_source
+
 
 ROOT = Path(__file__).resolve().parents[1]
-UI_SOURCE = (ROOT / "web" / "VRGDG_MusicVideoBuilderUI.js").read_text(encoding="utf-8")
-BACKEND_SOURCE = (ROOT / "VRGDG_MusicVideoBuilderNodes.py").read_text(encoding="utf-8")
-INSTRUCTION_SOURCE = (ROOT / "VRGDG_MiniMaxH3PromptInstructions.py").read_text(encoding="utf-8")
+UI_SOURCE = read_builder_source()
+BACKEND_SOURCE = read_builder_backend_source()
+INSTRUCTION_SOURCE = (ROOT / "llm" / "prompts" / "minimax.py").read_text(encoding="utf-8")
 
 
 class MiniMaxFrameContinuityPromptTests(unittest.TestCase):

@@ -4,15 +4,17 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from builder_source import read_builder_source, read_builder_backend_source
+
 
 ROOT = Path(__file__).resolve().parents[1]
-NODE_SOURCE = ROOT / "VRGDG_MusicVideoBuilderNodes.py"
-STORY_SOURCE = ROOT / "VRGDG_StoryboardStoryLayer.py"
-UI_SOURCE = ROOT / "web" / "VRGDG_MusicVideoBuilderUI.js"
+NODE_SOURCE = ROOT / "builder/nodes.py"
+STORY_SOURCE = ROOT / "storyboard/story_layer.py"
+UI_SOURCE = read_builder_source()
 
 
 def load_save_helper():
-    tree = ast.parse(NODE_SOURCE.read_text(encoding="utf-8"), filename=str(NODE_SOURCE))
+    tree = ast.parse(read_builder_backend_source(), filename=str(NODE_SOURCE))
     nodes = [
         node for node in tree.body
         if isinstance(node, ast.FunctionDef) and node.name in {"_context_folder", "_save_canonical_full_lyrics"}
@@ -46,7 +48,7 @@ class BuilderCanonicalLyricsTests(unittest.TestCase):
         self.assertNotIn('"lyrics": normalized.get("lyrics"', compact_block)
 
     def test_auto_build_and_transcription_capture_reference_source(self):
-        source = UI_SOURCE.read_text(encoding="utf-8")
+        source = UI_SOURCE
         self.assertIn("source_text: referenceLyrics", source)
         self.assertIn("source_text: lyrics", source)
 

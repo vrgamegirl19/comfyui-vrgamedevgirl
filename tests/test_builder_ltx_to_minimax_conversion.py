@@ -1,12 +1,11 @@
 import unittest
 from pathlib import Path
 
+from builder_source import function_source, read_builder_source
 
-BUILDER_SOURCE = (
-    Path(__file__).resolve().parents[1]
-    / "web"
-    / "VRGDG_MusicVideoBuilderUI.js"
-).read_text(encoding="utf-8")
+
+BUILDER_SOURCE = read_builder_source()
+CONVERTER = function_source(BUILDER_SOURCE, "convertAllLtxVideoPromptsToMiniMaxH3")
 
 
 class BuilderLtxToMiniMaxConversionTests(unittest.TestCase):
@@ -29,11 +28,7 @@ class BuilderLtxToMiniMaxConversionTests(unittest.TestCase):
         self.assertNotIn("segment.i2v_prompt = prompt;\n        converted += 1", BUILDER_SOURCE)
 
     def test_converter_keeps_global_audio_as_input_audio(self):
-        self.assertIn('audio_mode: "input_audio"', BUILDER_SOURCE)
-        self.assertIn(
-            "The existing global Audio 1 file remains the only audio source and must stay completely unchanged.",
-            BUILDER_SOURCE,
-        )
+        self.assertIn('audioMode: "input_audio",', CONVERTER)
 
     def test_converter_is_limited_to_music_video_projects(self):
         self.assertIn(
@@ -46,17 +41,10 @@ class BuilderLtxToMiniMaxConversionTests(unittest.TestCase):
         )
 
     def test_converter_creates_one_undo_checkpoint_before_first_write(self):
-        converter_start = BUILDER_SOURCE.index(
-            "async function convertAllLtxVideoPromptsToMiniMaxH3()"
-        )
-        converter_end = BUILDER_SOURCE.index(
-            "async function createI2VPromptWithGemma()", converter_start
-        )
-        converter = BUILDER_SOURCE[converter_start:converter_end]
-        self.assertEqual(converter.count("pushHistory();"), 1)
+        self.assertEqual(CONVERTER.count("pushHistory();"), 1)
         self.assertLess(
-            converter.index("pushHistory();"),
-            converter.index("segment.minimax_h3_prompt = prompt"),
+            CONVERTER.index("pushHistory();"),
+            CONVERTER.index("segment.minimax_h3_prompt = prompt"),
         )
 
 

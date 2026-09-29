@@ -232,7 +232,7 @@
   },
   "925": {
     "inputs": {
-      "folder_path": "Z:\\TOSHARE\\ComfyUI_windows_portable\\ComfyUI\\output\\1111Woman in the Blue Static_2026-05-16_10-28-49\\z-image",
+      "folder_path": "",
       "index": [
         "929",
         0
@@ -245,7 +245,7 @@
   },
   "927": {
     "inputs": {
-      "audio_file": "Z:\\TOSHARE\\ComfyUI_windows_portable\\ComfyUI\\output\\VRGDG_AudioFiles\\Bad Light.mp3",
+      "audio_file": "",
       "seek_seconds": 0,
       "duration": 0
     },

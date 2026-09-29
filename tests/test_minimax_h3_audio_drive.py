@@ -1,5 +1,5 @@
 import ast
-import importlib
+import importlib.util
 import sys
 import unittest
 from pathlib import Path
@@ -11,7 +11,7 @@ except ModuleNotFoundError:
 
 
 ROOT = Path(__file__).resolve().parents[1]
-NODE_SOURCE = ROOT / "VRGDG_MiniMaxH3AudioDrive.py"
+NODE_SOURCE = ROOT / "minimax/nodes.py"
 INIT_SOURCE = ROOT / "__init__.py"
 
 
@@ -51,7 +51,7 @@ class MiniMaxH3AudioDriveTests(unittest.TestCase):
     def test_node_is_registered_and_documents_original_audio_passthrough(self):
         init_source = INIT_SOURCE.read_text(encoding="utf-8")
         node_source = NODE_SOURCE.read_text(encoding="utf-8")
-        self.assertIn('".VRGDG_MiniMaxH3AudioDrive"', init_source)
+        self.assertIn('".minimax.nodes"', init_source)
         self.assertIn('RETURN_NAMES = ("audio_driven_av_latent", "original_audio")', node_source)
         self.assertIn("torch.ones_like(video_latent)", node_source)
         self.assertIn("torch.zeros_like(encoded_audio)", node_source)
@@ -60,10 +60,11 @@ class MiniMaxH3AudioDriveTests(unittest.TestCase):
     @unittest.skipUnless(torch is not None, "Torch is provided by ComfyUI's Python environment.")
     def test_node_locks_audio_and_returns_original_waveform_object(self):
         comfyui_root = ROOT.parents[1]
-        for path in (str(comfyui_root), str(ROOT)):
-            if path not in sys.path:
-                sys.path.insert(0, path)
-        module = importlib.import_module("VRGDG_MiniMaxH3AudioDrive")
+        if str(comfyui_root) not in sys.path:
+            sys.path.insert(0, str(comfyui_root))
+        spec = importlib.util.spec_from_file_location("vrgdg_minimax_h3_nodes", NODE_SOURCE)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
 
         class FakeAudioVAE:
             audio_sample_rate = 32000

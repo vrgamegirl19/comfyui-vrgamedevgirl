@@ -6661,10 +6661,10 @@
         "Node name for S&R": "VRGDG_VideoEditorUI"
       },
       "widgets_values": [
-        "Z:\\TOSHARE\\ComfyUI_windows_portable\\ComfyUI\\output\\Velvet Teeth_2026-05-13_22-58-46",
+        "",
         ".mp4",
-        "Z:\\TOSHARE\\ComfyUI_windows_portable\\ComfyUI\\output\\Velvet Teeth_2026-05-13_22-58-46\\video_0001_0000_00001-audio.mp4",
-        "Z:\\TOSHARE\\ComfyUI_windows_portable\\ComfyUI\\output\\Velvet Teeth_2026-05-13_22-58-46\\vrgdg_temp\\editor_session.json",
+        "",
+        "",
         "gemma-4-26B-A4B-it-UD-IQ2_M.gguf",
         "mmproj-BF16.gguf",
         "",
@@ -7130,12 +7130,12 @@
           "paused": true,
           "params": {
             "filename": "video_0006_0005_00001-audio.mp4",
-            "subfolder": "Z:\\TOSHARE\\ComfyUI_windows_portable\\ComfyUI\\output\\Velvet Teeth_2026-05-13_22-58-46",
+            "subfolder": "",
             "type": "output",
             "format": "video/h264-mp4",
             "frame_rate": 24,
             "workflow": "video_0006_0005_00001.png",
-            "fullpath": "Z:\\TOSHARE\\ComfyUI_windows_portable\\ComfyUI\\output\\Velvet Teeth_2026-05-13_22-58-46\\video_0006_0005_00001-audio.mp4"
+            "fullpath": ""
           }
         }
       },

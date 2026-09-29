@@ -1,0 +1,5 @@
+kornia
+librosa
+imageio
+imageio-ffmpeg
+transformers

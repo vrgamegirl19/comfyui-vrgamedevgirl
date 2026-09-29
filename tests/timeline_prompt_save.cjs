@@ -1,9 +1,10 @@
+const { functionSource, readBuilderSource, readStoryboardSource } = require('./builder_source.cjs');
 const fs = require("node:fs");
 const vm = require("node:vm");
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const path = require("node:path");
-const source = fs.readFileSync(path.join(__dirname, "../web/VRGDG_MusicVideoBuilderUI.js"), "utf8");
+const source = readBuilderSource();
 const section = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
 function fixture() {
   const a = { id: "a", i2v_prompt: "old", minimax_h3_prompt: "old" };
@@ -30,9 +31,10 @@ function fixture() {
     toast: (message) => ctx.messages.push(message),
   };
   vm.createContext(ctx);
-  vm.runInContext(section("  const savedI2VPrompts =", '  i2vPrompt.addEventListener("input"') +
-    section("  function updateMiniMaxPromptSaveButtonState()", '  miniMaxPrompt.addEventListener("input"') +
-    section("  async function saveStoryboardPromptFromTimeline(", '  saveI2VPromptButton.addEventListener("click"'), ctx);
+  vm.runInContext(section("  // Mutable runtime state", "\n  setBuilderAutomaticMemoryCleanupEnabled") + "\n" +
+    functionSource(source, "updateI2VPromptSaveButtonState") + "\n" +
+    functionSource(source, "updateMiniMaxPromptSaveButtonState") + "\n" +
+    functionSource(source, "saveStoryboardPromptFromTimeline") + "\n" + functionSource(source, "saveTimelinePrompt"), ctx);
   vm.runInContext('savedI2VPrompts.set(a, "old"); savedMiniMaxPrompts.set(a, "old");', ctx);
   return ctx;
 }
@@ -88,7 +90,7 @@ test("missing target appends only that scene", async () => {
   assert.deepEqual(c.writes[0].storyboard.scenes.map(s => s.id), ["c", "a"]);
 });
 
-const storyboardSource = fs.readFileSync(path.join(__dirname, "../web/VRGDG_StoryboardBuilderUI.js"), "utf8");
+const storyboardSource = readStoryboardSource();
 const storyboardSection = (start, end) => storyboardSource.slice(storyboardSource.indexOf(start), storyboardSource.indexOf(end, storyboardSource.indexOf(start)));
 test("reopening storyboard keeps saved image/video prompts, including intentionally blank prompts", () => {
   for (const savedPrompt of ["newer saved prompt", ""]) {
@@ -112,8 +114,8 @@ for (const mode of ["image_to_video_prep", "storyboard_prompts"]) {
       createScenePromptForActiveMode: async s => c.calls.push(s.id),
     };
     vm.createContext(c);
-    vm.runInContext(storyboardSection("  const getSelectedScenes =", "  const getSelectedScene =") +
-      storyboardSection("  async function startAllPromptsWithGemma()", "  stepPrompts.onclick"), c);
+    vm.runInContext(["getSelectedScenes", "isRecoverableStoryboardBatchError", "showStoryboardBatchFailures", "createAllPromptsWithGemma",
+      "startAllPromptsWithGemma"].map((name) => functionSource(storyboardSource, name)).join("\n"), c);
     await c.startAllPromptsWithGemma();
     assert.deepEqual(c.calls, ["b"]);
   });

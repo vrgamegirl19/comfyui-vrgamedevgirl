@@ -4044,12 +4044,12 @@
           "paused": true,
           "params": {
             "filename": "video_0005_0004_00001-audio.mp4",
-            "subfolder": "Z:\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\output\\record001_2026-02-02_23-56-08",
+            "subfolder": "",
             "type": "output",
             "format": "video/h264-mp4",
             "frame_rate": 25,
             "workflow": "video_0005_0004_00001.png",
-            "fullpath": "Z:\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\output\\record001_2026-02-02_23-56-08\\video_0005_0004_00001-audio.mp4"
+            "fullpath": ""
           }
         }
       },
@@ -6819,7 +6819,7 @@
       },
       "widgets_values": [
         24,
-        "Z:\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui-vrgamedevgirl\\srt_files\\record.srt",
+        "",
         true,
         0,
         "backup",
@@ -10571,7 +10571,7 @@
               }
             },
             "widgets_values": [
-              "Z:\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui-vrgamedevgirl\\srt_files\\record.srt",
+              "",
               24,
               24,
               24,

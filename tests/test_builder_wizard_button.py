@@ -1,19 +1,15 @@
 import unittest
 from pathlib import Path
 
+from builder_source import function_source, read_builder_source
+
 
 ROOT = Path(__file__).resolve().parents[1]
-BUILDER_SOURCE = (ROOT / "web" / "VRGDG_MusicVideoBuilderUI.js").read_text(
-    encoding="utf-8"
-)
+BUILDER_SOURCE = read_builder_source()
 
-SETTINGS_START = BUILDER_SOURCE.index("function openSettingsModal()")
-SETTINGS_END = BUILDER_SOURCE.index("async function importPromptJson", SETTINGS_START)
-SETTINGS_SOURCE = BUILDER_SOURCE[SETTINGS_START:SETTINGS_END]
+SETTINGS_SOURCE = function_source(BUILDER_SOURCE, "openSettingsModal")
 
-WIZARD_START = BUILDER_SOURCE.index("function openWizardFromBuilder()")
-WIZARD_END = BUILDER_SOURCE.index("for (const control of [labelInput", WIZARD_START)
-WIZARD_SOURCE = BUILDER_SOURCE[WIZARD_START:WIZARD_END]
+WIZARD_SOURCE = function_source(BUILDER_SOURCE, "openWizardFromBuilder")
 
 
 class BuilderWizardButtonTests(unittest.TestCase):

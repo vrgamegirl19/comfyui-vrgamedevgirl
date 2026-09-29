@@ -1,12 +1,10 @@
 import unittest
 from pathlib import Path
 
+from builder_source import function_source, read_builder_source
 
-BUILDER_SOURCE = (
-    Path(__file__).resolve().parents[1]
-    / "web"
-    / "VRGDG_MusicVideoBuilderUI.js"
-).read_text(encoding="utf-8")
+
+BUILDER_SOURCE = read_builder_source()
 
 
 def between(start_text, end_text):
@@ -17,22 +15,19 @@ def between(start_text, end_text):
 
 class BuilderSilentTimelinePlaybackTests(unittest.TestCase):
     def test_silent_clock_advances_with_animation_frames(self):
-        source = between(
-            "function startSilentTimelinePlayback",
-            "function currentGlobalTime",
-        )
+        source = function_source(BUILDER_SOURCE, "startSilentTimelinePlayback")
         self.assertIn("performance.now()", source)
         self.assertIn("window.requestAnimationFrame(tick)", source)
         self.assertIn("state.sceneAudioGlobalTime = current", source)
         self.assertIn("updateAudioScrubbers()", source)
 
     def test_silent_clock_counts_as_timeline_playback(self):
-        source = between("function isTimelinePlaying", "function updatePlayPauseButton")
-        self.assertIn("silentTimelinePlaying", source)
+        source = function_source(BUILDER_SOURCE, "isTimelinePlaying")
+        self.assertIn("silentTimeline.playing", source)
 
     def test_no_audio_play_falls_back_to_silent_clock(self):
         source = between(
-            "playButton.onclick = () => {",
+            "playButton.onclick = async () => {",
             "multiSelectButton.onclick",
         )
         self.assertIn("if (!ensureGlobalTimelineAudioSource(startTime))", source)
@@ -44,17 +39,17 @@ class BuilderSilentTimelinePlaybackTests(unittest.TestCase):
             "audio.play().then(updatePlayPauseButton).catch(() => startSilentTimelinePlayback(startTime))",
             BUILDER_SOURCE,
         )
-        scene_source = between("function playSceneAudioFrom", "function beginGlobalTimelineScrub")
+        scene_source = function_source(BUILDER_SOURCE, "playSceneAudioFrom")
         self.assertIn("sceneAudio.play().catch(() =>", scene_source)
         self.assertIn("startSilentTimelinePlayback(state.sceneAudioGlobalTime)", scene_source)
 
     def test_no_audio_scrubbing_uses_virtual_timeline_time(self):
-        source = between("function currentGlobalTime", "function currentProjectAudioPath")
+        source = function_source(BUILDER_SOURCE, "currentGlobalTime")
         self.assertIn("if (!currentProjectAudioPath())", source)
         self.assertIn("state.sceneAudioGlobalTime", source)
 
     def test_pause_stops_the_silent_clock(self):
-        source = between("function pauseAllAudio", "function selectSegmentGlobalAudioStart")
+        source = function_source(BUILDER_SOURCE, "pauseAllAudio")
         self.assertIn("stopSilentTimelinePlayback()", source)
 
 

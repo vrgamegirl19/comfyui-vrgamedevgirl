@@ -1,11 +1,13 @@
 from pathlib import Path
 import unittest
 
+from builder_source import read_builder_source, read_storyboard_source, read_builder_backend_source
+
 
 ROOT = Path(__file__).resolve().parents[1]
-BACKEND = (ROOT / "VRGDG_MusicVideoBuilderNodes.py").read_text(encoding="utf-8")
-UI = (ROOT / "web" / "VRGDG_MusicVideoBuilderUI.js").read_text(encoding="utf-8")
-STORYBOARD_UI = (ROOT / "web" / "VRGDG_StoryboardBuilderUI.js").read_text(encoding="utf-8")
+BACKEND = read_builder_backend_source()
+UI = read_builder_source()
+STORYBOARD_UI = read_storyboard_source()
 
 
 class BuilderQwenRunnerTests(unittest.TestCase):

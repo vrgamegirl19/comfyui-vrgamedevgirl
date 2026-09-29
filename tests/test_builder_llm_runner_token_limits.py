@@ -2,12 +2,14 @@ import ast
 import unittest
 from pathlib import Path
 
+from builder_source import read_builder_source, read_builder_backend_source
+
 
 ROOT = Path(__file__).resolve().parents[1]
-BUILDER_UI = (ROOT / "web" / "VRGDG_MusicVideoBuilderUI.js").read_text(encoding="utf-8")
-PROMPT_CREATOR_UI = (ROOT / "web" / "VRGDG_MusicVideoPromptCreatorUI.js").read_text(encoding="utf-8")
-BUILDER_BACKEND = (ROOT / "VRGDG_MusicVideoBuilderNodes.py").read_text(encoding="utf-8")
-PROMPT_CREATOR_BACKEND = (ROOT / "VRGDG_MusicVideoPromptCreatorNodes.py").read_text(encoding="utf-8")
+BUILDER_UI = read_builder_source()
+PROMPT_CREATOR_UI = (ROOT / "web" / "music_video_builder" / "prompt_creator.mjs").read_text(encoding="utf-8")
+BUILDER_BACKEND = read_builder_backend_source()
+PROMPT_CREATOR_BACKEND = (ROOT / "prompt_creator/nodes.py").read_text(encoding="utf-8")
 
 
 def load_token_helpers():
@@ -18,14 +20,18 @@ def load_token_helpers():
         "_lm_studio_context_limit",
         "_lm_studio_api_root",
         "_lm_studio_native_output_text",
+        "_estimate_prompt_tokens",
+        "_fit_output_to_context",
+        "_runner_supports_json_schema",
     }
+    constants = {"_LM_STUDIO_DEFAULT_BASE_URL", "_JSON_SCHEMA_RUNNERS", "_CONTEXT_TEMPLATE_MARGIN_TOKENS", "_MIN_OUTPUT_TOKENS"}
     tree = ast.parse(BUILDER_BACKEND)
     nodes = []
     for node in tree.body:
         if isinstance(node, ast.FunctionDef) and node.name in wanted:
             nodes.append(node)
         elif isinstance(node, ast.Assign) and any(
-            isinstance(target, ast.Name) and target.id == "_LM_STUDIO_DEFAULT_BASE_URL"
+            isinstance(target, ast.Name) and target.id in constants
             for target in node.targets
         ):
             nodes.append(node)
@@ -69,9 +75,35 @@ class BuilderLlmRunnerTokenLimitTests(unittest.TestCase):
 
     def test_lm_studio_receives_context_and_output_limits(self):
         self.assertIn('f"{api_root}/api/v1/chat"', BUILDER_BACKEND)
-        self.assertIn('"context_length": _lm_studio_context_limit(payload)', BUILDER_BACKEND)
-        self.assertIn('"max_output_tokens": _runner_output_token_limit(payload, max_new_tokens)', BUILDER_BACKEND)
+        self.assertIn("context_limit = _lm_studio_context_limit(payload)", BUILDER_BACKEND)
+        self.assertIn("output_limit = _runner_output_token_limit(payload, max_new_tokens)", BUILDER_BACKEND)
+        self.assertIn('"context_length": context_limit', BUILDER_BACKEND)
+        self.assertIn('"max_output_tokens": output_limit', BUILDER_BACKEND)
         self.assertIn('"type": "image",', BUILDER_BACKEND)
+
+    def test_output_budget_is_capped_to_fit_the_context_window(self):
+        fit = TOKEN_HELPERS["_fit_output_to_context"]
+        margin = TOKEN_HELPERS["_CONTEXT_TEMPLATE_MARGIN_TOKENS"]
+        self.assertEqual(4000, fit(4000, 3000, 32768, "LM Studio"))
+        self.assertEqual(8000 - 6000 - margin, fit(32768, 6000, 8000, "GGUF model"))
+        with self.assertRaisesRegex(ValueError, "Raise the context limit in LLM Runner"):
+            fit(2000, 7900, 8000, "GGUF model")
+
+    def test_prompt_estimate_errs_high_for_remote_runners(self):
+        estimate = TOKEN_HELPERS["_estimate_prompt_tokens"]
+        text = "A fox girl with fennec ears sings on a neon rooftop. " * 40
+        self.assertGreaterEqual(estimate(text), len(text) // 4)
+        self.assertEqual(1, estimate(""))
+
+    def test_json_schema_runners_exclude_the_hosted_api_runner(self):
+        supports = TOKEN_HELPERS["_runner_supports_json_schema"]
+        for runner in ("builtin", "qwen_local", "lm_studio", "own_server"):
+            self.assertTrue(supports({"text_runner": runner}), runner)
+        self.assertFalse(supports({"text_runner": "llm_api"}))
+
+    def test_gguf_calls_are_sized_with_the_loaded_model_tokenizer(self):
+        self.assertIn('prompt_tokens = len(model.tokenize(str(instruction_text or "").encode("utf-8")))', BUILDER_BACKEND)
+        self.assertIn('_fit_output_to_context(int(max_new_tokens), prompt_tokens, model.n_ctx(), "GGUF model")', BUILDER_BACKEND)
 
     def test_configured_limits_override_old_task_defaults(self):
         output_limit = TOKEN_HELPERS["_runner_output_token_limit"]

@@ -2,12 +2,15 @@
 
 This intentionally materializes the active graph instead of carrying ComfyUI UI
 bypass state into an API prompt.  The source workflow remains untouched.
+
+usage: python build_minimax_h3_ref2va_2pass_audio_api.py "<MiniMax H3 - Reference to Video - 2 Stage (EN).json>"
 """
 
 from __future__ import annotations
 
+import argparse
 import copy
-import importlib.util
+import importlib
 import json
 import sys
 import types
@@ -16,10 +19,6 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 COMFY_ROOT = REPO_ROOT.parents[1]
-SOURCE = Path(
-    r"Z:\ComfyUI\ComfyUI_windows_portable\ComfyUI\output\MiniMax-H3-Two-Stage-Sampling\workflows"
-    + "\\MiniMax H3 - Reference to Video - 2 Stage (EN).json"
-)
 OUTPUT = REPO_ROOT / "Workflows" / "UsedForUIDoNotTouch" / "minimax_ref2video_2pass_audio_driven_api.json"
 
 
@@ -52,26 +51,23 @@ def _find_node(prompt, class_type, predicate=None):
 
 
 def main():
-    if not SOURCE.is_file():
-        raise FileNotFoundError(SOURCE)
+    parser = argparse.ArgumentParser(description="Build the MiniMax H3 Ref2VA two-pass external-audio API template.")
+    parser.add_argument("source", type=Path, help="The upstream MiniMax H3 Reference to Video 2 Stage workflow JSON.")
+    source_path = parser.parse_args().source
+    if not source_path.is_file():
+        raise FileNotFoundError(source_path)
 
+    # Only ComfyUI goes on sys.path so `import nodes` finds ComfyUI's nodes.py, not this pack's.
     sys.path.insert(0, str(COMFY_ROOT))
-    sys.path.insert(0, str(REPO_ROOT))
     # Load the runner as a synthetic package because the repository directory
     # contains hyphens and cannot be imported as a normal Python package.
     package_name = "vrgdg_builder_tools"
     package = types.ModuleType(package_name)
     package.__path__ = [str(REPO_ROOT)]
     sys.modules[package_name] = package
-    runner_spec = importlib.util.spec_from_file_location(
-        f"{package_name}.VRGDG_WorkflowRunnerNodes",
-        REPO_ROOT / "VRGDG_WorkflowRunnerNodes.py",
-    )
-    runner = importlib.util.module_from_spec(runner_spec)
-    sys.modules[runner_spec.name] = runner
-    runner_spec.loader.exec_module(runner)
+    runner = importlib.import_module(f"{package_name}.runner.api_graph")
 
-    source = json.loads(SOURCE.read_text(encoding="utf-8"))
+    source = json.loads(source_path.read_text(encoding="utf-8"))
     bypassed = {
         str(node.get("id"))
         for node in source.get("nodes", [])

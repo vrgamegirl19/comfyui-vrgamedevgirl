@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 
-SOURCE = Path(__file__).resolve().parents[1] / "VRGDG_MiniMaxH3LatentUpscaler.py"
+SOURCE = Path(__file__).resolve().parents[1] / "minimax/latent_upscaler.py"
 
 
 class FakeModel:

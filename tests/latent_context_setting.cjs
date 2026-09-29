@@ -1,12 +1,13 @@
+const { functionSource, readBuilderSource } = require('./builder_source.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const { test } = require('node:test');
-const source = fs.readFileSync(path.join(__dirname, '../web/VRGDG_MusicVideoBuilderUI.js'), 'utf8');
+const source = readBuilderSource();
 const section = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
-const getter = section('  function miniMaxH3SettingsForSegment(', '  function miniMaxH3ModeForSegment(');
-const saver = section('  function saveMiniMaxH3SettingsFromPanel(', '  function saveMiniMaxSceneInputsFromPanel(');
+const getter = functionSource(source, 'miniMaxH3SettingsForSegment');
+const saver = functionSource(source, 'saveMiniMaxH3SettingsFromPanel');
 const bindingEnd = source.indexOf('    control.addEventListener("input", saveMiniMaxH3SettingsFromPanel);');
 const bindings = source.slice(source.lastIndexOf('  for (const control of [', bindingEnd), source.indexOf('\n  }', bindingEnd) + 4);
 const panelLine = source.match(/miniMaxLatentContextFrames.value = String\([^\n]+/)[0];
@@ -22,7 +23,7 @@ function fixture() {
     context[name] = { ...control(), input: control(), dataset: {} };
   }
   Object.assign(context, {
-    wizardGlobalVideoSettings: false,
+    wizardVideoSettings: { global: false },
     DEFAULT_MINIMAX_H3_SETTINGS: { latent_context_frames: 22 },
     miniMaxLoraSlots: [], miniMaxAccelerationControls: [], twoPassControls: [], advancedTwoPassControls: [],
     selected: { id: 'a', minimax_h3_latent_context_frames: 22 },

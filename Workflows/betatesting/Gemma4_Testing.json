@@ -289,7 +289,7 @@
         "Node name for S&R": "VRGDG_ShowText"
       },
       "widgets_values": [
-        "A:\\AI Models\\LLM\\gemma-4-26B-A4B-it-UD-IQ2_M.gguf"
+        ""
       ]
     },
     {
@@ -332,7 +332,7 @@
         "Node name for S&R": "VRGDG_ShowText"
       },
       "widgets_values": [
-        "A:\\AI Models\\LLM\\supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf"
+        ""
       ]
     },
     {

@@ -2,13 +2,13 @@ import json
 import unittest
 from pathlib import Path
 
+from builder_source import read_builder_source
+
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_METADATA = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
 PACKAGE_INIT = (ROOT / "__init__.py").read_text(encoding="utf-8")
-BUILDER_SOURCE = (ROOT / "web" / "VRGDG_MusicVideoBuilderUI.js").read_text(
-    encoding="utf-8"
-)
+BUILDER_SOURCE = read_builder_source()
 UPDATE_NOTES = json.loads((ROOT / "update_notes.json").read_text(encoding="utf-8"))
 BUILDER_GUIDE = (
     ROOT / "Workflows" / "LTX-2_Workflows" / "Video_Builder" / "readme.md"

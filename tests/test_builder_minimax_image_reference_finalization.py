@@ -1,8 +1,10 @@
 from pathlib import Path
 
+from builder_source import read_builder_source
+
 
 ROOT = Path(__file__).resolve().parents[1]
-BUILDER_SOURCE = (ROOT / "web" / "VRGDG_MusicVideoBuilderUI.js").read_text(encoding="utf-8")
+BUILDER_SOURCE = read_builder_source()
 
 
 def _function_source(start_marker: str, end_marker: str) -> str:

@@ -2,16 +2,18 @@ import re
 import unittest
 from pathlib import Path
 
+from builder_source import read_builder_source, read_storyboard_source
+
 
 ROOT = Path(__file__).resolve().parents[1]
-BUILDER_SOURCE = (ROOT / "web" / "VRGDG_MusicVideoBuilderUI.js").read_text(encoding="utf-8")
-STORYBOARD_SOURCE = (ROOT / "web" / "VRGDG_StoryboardBuilderUI.js").read_text(encoding="utf-8")
+BUILDER_SOURCE = read_builder_source()
+STORYBOARD_SOURCE = read_storyboard_source()
 
 
 class StoryboardGemmaNetworkTimeoutTests(unittest.TestCase):
     def test_video_builder_storyboard_batch_uses_long_gemma_timeout(self):
         batch = re.search(
-            r"const runWizardStoryboardGemmaAll = async \(\) => \{(?P<body>.*?)\n    \};",
+            r"const runWizardStoryboardGemmaAll = async \(options = \{\}\) => \{(?P<body>.*?)\n    \};",
             BUILDER_SOURCE,
             re.DOTALL,
         )

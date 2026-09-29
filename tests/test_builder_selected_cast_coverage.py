@@ -1,9 +1,11 @@
 import unittest
 from pathlib import Path
 
+from builder_source import read_builder_source
+
 
 ROOT = Path(__file__).resolve().parents[1]
-BUILDER = (ROOT / "web" / "VRGDG_MusicVideoBuilderUI.js").read_text(encoding="utf-8")
+BUILDER = read_builder_source()
 
 
 class BuilderSelectedCastCoverageTests(unittest.TestCase):

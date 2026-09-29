@@ -7,7 +7,7 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = (ROOT / "LLM.py").read_text(encoding="utf-8")
+SOURCE = (ROOT / "llm" / "gguf.py").read_text(encoding="utf-8")
 TREE = ast.parse(SOURCE)
 
 
@@ -55,7 +55,7 @@ class QwenGgufNodeTests(unittest.TestCase):
                     models_dir=str(first.parent),
                 ),
             }
-            exec(compile(ast.Module(body=[node], type_ignores=[]), str(ROOT / "LLM.py"), "exec"), namespace)
+            exec(compile(ast.Module(body=[node], type_ignores=[]), str(ROOT / "llm" / "gguf.py"), "exec"), namespace)
             qwen = namespace["VRGDG_QwenGGUF"]
 
             choices = qwen._list_local_qwen_gguf()

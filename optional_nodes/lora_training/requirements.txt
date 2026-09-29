@@ -1,0 +1,4 @@
+opencv-python
+imageio-ffmpeg
+huggingface_hub
+llama-cpp-python

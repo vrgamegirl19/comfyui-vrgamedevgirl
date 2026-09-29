@@ -5309,12 +5309,12 @@
           "paused": true,
           "params": {
             "filename": "video_0008_0007_00001-audio.mp4",
-            "subfolder": "Z:\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\output\\WTWRFinalMix_2026-02-22_14-08-11",
+            "subfolder": "",
             "type": "output",
             "format": "video/h264-mp4",
             "frame_rate": 25,
             "workflow": "video_0008_0007_00001.png",
-            "fullpath": "Z:\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\output\\WTWRFinalMix_2026-02-22_14-08-11\\video_0008_0007_00001-audio.mp4"
+            "fullpath": ""
           }
         }
       },

@@ -1,7 +1,9 @@
 from pathlib import Path
 
+from builder_source import read_storyboard_source
 
-UI_SOURCE = (Path(__file__).parents[1] / "web" / "VRGDG_StoryboardBuilderUI.js").read_text(encoding="utf-8")
+
+UI_SOURCE = read_storyboard_source()
 
 
 def test_adjacent_lyric_context_is_optional_and_saved():

@@ -5,14 +5,12 @@ import types
 import unittest
 from pathlib import Path
 
+from builder_source import read_builder_source, read_runner_source
+
 
 ROOT = Path(__file__).resolve().parents[1]
-BUILDER_SOURCE = (ROOT / "web" / "VRGDG_MusicVideoBuilderUI.js").read_text(
-    encoding="utf-8"
-)
-RUNNER_SOURCE = (ROOT / "VRGDG_WorkflowRunnerNodes.py").read_text(
-    encoding="utf-8"
-)
+BUILDER_SOURCE = read_builder_source()
+RUNNER_SOURCE = read_runner_source()
 
 
 def _load_compat_class(folder_paths):
@@ -35,7 +33,7 @@ def _load_compat_class(folder_paths):
 class BuilderMiniMaxTurboTests(unittest.TestCase):
     def test_video_settings_exposes_turbo_checkbox_picker_and_strength(self):
         self.assertIn(
-            'makeCheckbox("Use MiniMax-H3 Turbo LoRA (4-step)"',
+            'makeCheckbox("Use legacy MiniMax-H3 Turbo LoRA"',
             BUILDER_SOURCE,
         )
         self.assertIn(
@@ -79,25 +77,13 @@ class BuilderMiniMaxTurboTests(unittest.TestCase):
             BUILDER_SOURCE,
         )
 
-    def test_hidden_api_graph_injects_both_required_custom_nodes(self):
-        self.assertIn(
-            '"class_type": "VRGDG_MiniMaxH3TurboLoRACompat"',
-            RUNNER_SOURCE,
-        )
-        self.assertIn(
-            '"class_type": "MiniMaxH3TurboSampler"',
-            RUNNER_SOURCE,
-        )
+    def test_hidden_api_graph_feeds_turbo_lora_to_scheduler_and_guider(self):
         self.assertIn(
             '_set_api_input(prompt, guider_id, "model", [turbo_lora_id, 0])',
             RUNNER_SOURCE,
         )
         self.assertIn(
             '_set_api_input(prompt, scheduler_id, "model", [turbo_lora_id, 0])',
-            RUNNER_SOURCE,
-        )
-        self.assertIn(
-            '_set_api_input(prompt, sampler_advanced_id, "sampler", [turbo_sampler_id, 0])',
             RUNNER_SOURCE,
         )
 
@@ -218,24 +204,6 @@ class BuilderMiniMaxTurboTests(unittest.TestCase):
         self.assertEqual(calls["patches"][0][1][0], "forward")
         self.assertEqual(calls["debug"], [("pruned-ref-audio-compat", "bypass")])
 
-    def test_turbo_forces_required_sampler_but_allows_experimental_low_steps(self):
-        self.assertIn(
-            '_set_api_input(prompt, scheduler_id, "scheduler", "simple")',
-            RUNNER_SOURCE,
-        )
-        self.assertIn(
-            'turbo_steps = _int_payload(payload, "steps", 4, 1, 1000)',
-            RUNNER_SOURCE,
-        )
-        self.assertIn(
-            '_set_api_input(prompt, scheduler_id, "steps", turbo_steps)',
-            RUNNER_SOURCE,
-        )
-        self.assertIn(
-            '"effective_sampler_name": "MiniMaxH3TurboSampler"',
-            RUNNER_SOURCE,
-        )
-
     def test_turbo_ui_keeps_steps_and_easy_cache_available(self):
         self.assertIn(
             'miniMaxSteps.disabled = false;',
@@ -243,10 +211,6 @@ class BuilderMiniMaxTurboTests(unittest.TestCase):
         )
         self.assertIn(
             'miniMaxSteps.min = "1";',
-            BUILDER_SOURCE,
-        )
-        self.assertIn(
-            "Steps defaults to 4 when Turbo is switched on and remains editable down to 1 for experiments",
             BUILDER_SOURCE,
         )
         self.assertIn(
@@ -278,11 +242,7 @@ class BuilderMiniMaxTurboTests(unittest.TestCase):
             RUNNER_SOURCE,
         )
 
-    def test_missing_extension_or_lora_produces_actionable_error(self):
-        self.assertIn(
-            "Install or update ComfyUI-MiniMax-H3-Turbo, then restart ComfyUI.",
-            RUNNER_SOURCE,
-        )
+    def test_missing_turbo_lora_produces_actionable_error(self):
         self.assertIn(
             "was not found in ComfyUI/models/loras",
             RUNNER_SOURCE,

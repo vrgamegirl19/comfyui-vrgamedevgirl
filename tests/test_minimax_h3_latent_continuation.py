@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 import wave
@@ -15,20 +16,20 @@ from unittest import mock
 
 import torch
 
+from builder_source import read_builder_source, read_runner_source
+
 
 ROOT = Path(__file__).resolve().parents[1]
-BUILDER_SOURCE = (ROOT / "web" / "VRGDG_MusicVideoBuilderUI.js").read_text(encoding="utf-8")
-RUNNER_SOURCE = (ROOT / "VRGDG_WorkflowRunnerNodes.py").read_text(encoding="utf-8")
+BUILDER_SOURCE = read_builder_source()
+RUNNER_SOURCE = read_runner_source()
 
 _SPEC = importlib.util.spec_from_file_location(
-    "vrgdg_minimax_h3_latent_manager", ROOT / "VRGDG_MiniMaxH3LatentManager.py"
+    "vrgdg_minimax_h3_latent_manager", ROOT / "minimax/latent_manager.py"
 )
 MANAGER = importlib.util.module_from_spec(_SPEC)
+# Dataclasses resolve their string annotations through sys.modules, as a normal import would register the module.
+sys.modules[_SPEC.name] = MANAGER
 _SPEC.loader.exec_module(MANAGER)
-
-_TIMING_SPEC = importlib.util.spec_from_file_location("h3_timing", ROOT / "VRGDG_MiniMaxH3Timing.py")
-TIMING = importlib.util.module_from_spec(_TIMING_SPEC)
-_TIMING_SPEC.loader.exec_module(TIMING)
 
 
 class UnsafeLatentPayload:
@@ -40,7 +41,7 @@ class UnsafeLatentPayload:
 
 
 def _loader_classes():
-    module = ast.parse((ROOT / "VRGDG_MiniMaxH3LatentContinuationNodes.py").read_text(encoding="utf-8"))
+    module = ast.parse((ROOT / "minimax/latent_continuation.py").read_text(encoding="utf-8"))
     names = {"VRGDG_MiniMaxH3LoadLatent", "VRGDG_MiniMaxH3LoadExactFrame"}
     body = [node for node in module.body if isinstance(node, ast.ClassDef) and node.name in names]
     namespace = {"os": os, "hashlib": hashlib, "torch": torch, "Any": Any, "SceneLatentManager": MANAGER.SceneLatentManager}
@@ -161,6 +162,16 @@ class SceneLatentStorageTests(unittest.TestCase):
             self.assertTrue(MANAGER.SceneLatentManager.latent_exists(folder, 1))
             self.assertTrue(MANAGER.SceneLatentManager.latent_exists(folder, 3))
 
+    def test_making_room_for_a_scene_shifts_it_and_later_latents_up(self):
+        with tempfile.TemporaryDirectory() as folder:
+            for scene in (1, 2, 3):
+                self._save(folder, scene, tokens=10 + scene)
+            MANAGER.SceneLatentManager.make_room_for_scene(folder, 2)
+            self.assertFalse(MANAGER.SceneLatentManager.latent_exists(folder, 2))
+            self.assertEqual(MANAGER.SceneLatentManager.get_latent_info(folder, 1)["token_count"], 11)
+            self.assertEqual(MANAGER.SceneLatentManager.get_latent_info(folder, 3)["token_count"], 12)
+            self.assertEqual(MANAGER.SceneLatentManager.get_latent_info(folder, 4)["token_count"], 13)
+
     def test_delete_all_removes_only_scene_latent_files(self):
         with tempfile.TemporaryDirectory() as folder:
             for scene in (1, 2):
@@ -196,7 +207,7 @@ class LatentWarmupTimingTests(unittest.TestCase):
     def test_missing_audio_handles_keep_the_full_warmup(self):
         for source_start in (0, 0.25, 2):
             with self.subTest(source_start=source_start):
-                plan = TIMING.calculate_minimax_h3_timing(
+                plan = MANAGER.calculate_minimax_h3_timing(
                     10, 15, 22, source_start_seconds=source_start,
                     source_duration_seconds=source_start + 5, pad_warmup=True,
                 )
@@ -207,14 +218,14 @@ class LatentWarmupTimingTests(unittest.TestCase):
                 self.assertEqual(plan.final_trim_duration_seconds, 5)
 
     def test_non_latent_timing_still_clamps_the_audio_handle(self):
-        plan = TIMING.calculate_minimax_h3_timing(10, 15, 22, source_start_seconds=0)
+        plan = MANAGER.calculate_minimax_h3_timing(10, 15, 22, source_start_seconds=0)
         self.assertEqual(plan.final_trim_start_seconds, 0)
         self.assertEqual(plan.audio_leading_padding_seconds, 0)
         self.assertEqual(plan.audio_trim_duration_seconds, 5)
 
     def test_padded_warmup_still_obeys_h3_frame_limit(self):
         with self.assertRaisesRegex(ValueError, "exceeding"):
-            TIMING.calculate_minimax_h3_timing(10, 25, 22, source_start_seconds=0, pad_warmup=True)
+            MANAGER.calculate_minimax_h3_timing(10, 25, 22, source_start_seconds=0, pad_warmup=True)
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg is required for audio alignment verification")
     def test_trimmed_audio_contains_silence_then_source_at_the_planned_offset(self):
@@ -231,7 +242,7 @@ class LatentWarmupTimingTests(unittest.TestCase):
                 handle.writeframes(array("h", [1200, -1200] * (44100 * 6)).tobytes())
             for source_start in (0, 0.25, 2):
                 with self.subTest(source_start=source_start):
-                    plan = TIMING.calculate_minimax_h3_timing(
+                    plan = MANAGER.calculate_minimax_h3_timing(
                         10, 11, 22, source_start_seconds=source_start,
                         source_duration_seconds=6, pad_warmup=True,
                     )
@@ -372,7 +383,7 @@ class RunnerLatentContinuationTests(unittest.TestCase):
                         payload = {**self.payload, "continuity_mode": mode, "scene_number": scene,
                                    "latent_exact_frame_path": str(self.image)}
                         warmup = self.ns["_minimax_h3_effective_warmup_frames"](payload)
-                        namespace = {**self.ns, "calculate_minimax_h3_timing": TIMING.calculate_minimax_h3_timing,
+                        namespace = {**self.ns, "calculate_minimax_h3_timing": MANAGER.calculate_minimax_h3_timing,
                                      "payload": payload, "scene_number": scene, "timeline_start": 10,
                                      "timeline_end": 15, "source_start": 0, "source_duration": 5,
                                      "warmup_frames": warmup, "cooldown_frames": 0}
@@ -398,7 +409,7 @@ class RunnerLatentContinuationTests(unittest.TestCase):
 
     def test_tail_padding_uses_the_stitched_frame_count(self):
         # 125.49s -> 135.43s is 238.56 frames; the stitcher keeps round(3250.32) - round(3011.76) = 238
-        plan = TIMING.calculate_minimax_h3_timing(125.49, 135.43, 0, 0)
+        plan = MANAGER.calculate_minimax_h3_timing(125.49, 135.43, 0, 0)
         self.assertEqual(plan.final_frame_count, 238)
         self.assertEqual(self.ns["_minimax_h3_tail_padding_frames"](plan), plan.h3_frame_count - 238)
 

@@ -1,17 +1,12 @@
 import unittest
 from pathlib import Path
 
+from builder_source import read_builder_source, read_builder_backend_source
+
 
 ROOT = Path(__file__).resolve().parents[1]
-BUILDER_SOURCE = (ROOT / "web" / "VRGDG_MusicVideoBuilderUI.js").read_text(
-    encoding="utf-8"
-)
-INSTRUCTION_SOURCE = (ROOT / "VRGDG_MiniMaxH3PromptInstructions.py").read_text(
-    encoding="utf-8"
-)
-NODE_SOURCE = (ROOT / "VRGDG_MusicVideoBuilderNodes.py").read_text(
-    encoding="utf-8"
-)
+BUILDER_SOURCE = read_builder_source()
+NODE_SOURCE = read_builder_backend_source()
 
 
 class BuilderMiniMaxStartFrameCharacterInfluenceTests(unittest.TestCase):
@@ -39,7 +34,7 @@ class BuilderMiniMaxStartFrameCharacterInfluenceTests(unittest.TestCase):
             BUILDER_SOURCE,
         )
         self.assertIn(
-            'miniMaxH3ModeForSegment(item) === "reference_to_video"',
+            '["reference_to_video", "image_reference_to_video"].includes(miniMaxH3ModeForSegment(item))',
             BUILDER_SOURCE,
         )
         self.assertIn(
@@ -82,10 +77,6 @@ class BuilderMiniMaxStartFrameCharacterInfluenceTests(unittest.TestCase):
             "Always ignore every visible character's identity, face, hair, body, clothing, accessories, pose, placement, and activity",
             BUILDER_SOURCE,
         )
-        self.assertIn(
-            "assigned character-reference images are the sole visual authority",
-            INSTRUCTION_SOURCE,
-        )
 
     def test_prompt_only_scene_image_is_vision_first_but_not_a_renderer_reference(self):
         self.assertIn(
@@ -101,11 +92,11 @@ class BuilderMiniMaxStartFrameCharacterInfluenceTests(unittest.TestCase):
             BUILDER_SOURCE,
         )
         self.assertIn(
-            "prompt_only_scene_inspiration: miniMaxH3SceneImageIsPromptInspiration(segment)",
+            "prompt_only_scene_inspiration: options.promptOnlySceneInspiration ?? miniMaxH3SceneImageIsPromptInspiration(segment),",
             BUILDER_SOURCE,
         )
         self.assertIn(
-            'reference_limit = 10 if is_minimax_h3_prompt and prompt_only_scene_inspiration else 9 if is_minimax_h3_prompt else 4',
+            'reference_limit = 10 if is_minimax_h3_prompt and (prompt_only_scene_inspiration or frame_continuity_prompt) else 9 if is_minimax_h3_prompt else 4',
             NODE_SOURCE,
         )
         self.assertIn(
@@ -155,42 +146,34 @@ class BuilderMiniMaxStartFrameCharacterInfluenceTests(unittest.TestCase):
             BUILDER_SOURCE,
         )
 
-    def test_permanent_reference_to_video_instructions_enforce_selected_scope(self):
+    def test_start_frame_contract_enforces_face_hair_only_scope(self):
         self.assertIn(
-            "obey the supplied `START-FRAME / CHARACTER-REFERENCE PRIORITY — MANDATORY` contract exactly",
-            INSTRUCTION_SOURCE,
+            '"START-FRAME / CHARACTER-REFERENCE PRIORITY — MANDATORY:\\n"',
+            BUILDER_SOURCE,
         )
         self.assertIn(
-            "Character-reference images are authoritative ONLY for face identity, facial features, and hair.",
-            INSTRUCTION_SOURCE,
+            "Character-reference images may override Image 1 ONLY for the subject's face identity, facial features, and hair.",
+            BUILDER_SOURCE,
         )
         self.assertIn(
-            "never import the character reference's clothing, body, pose, accessories, framing, lighting, or background",
-            INSTRUCTION_SOURCE,
+            "Never import the character reference's clothing, body, pose, accessories, framing, lighting, or background.",
+            BUILDER_SOURCE,
         )
 
-    def test_managed_subject_count_block_respects_face_hair_only_scope(self):
+    def test_reference_purposes_respect_face_hair_only_scope(self):
         self.assertIn(
-            'use those views ONLY to learn that one person\'s face identity, facial features, and hair.',
+            "face identity and hair reference only; do not copy clothing, body proportions, pose, accessories, framing, lighting, or background",
             BUILDER_SOURCE,
         )
         self.assertIn(
-            "Image 1 remains authoritative for clothing, body proportions, pose, accessories, framing, lighting, and background.",
+            "exact start frame and authority for every visible detail except face identity and hair",
             BUILDER_SOURCE,
-        )
-        self.assertIn(
-            "Extract only the character properties granted by its ordered assignment",
-            INSTRUCTION_SOURCE,
         )
 
     def test_prompt_guidance_avoids_implied_on_screen_replacement(self):
         self.assertIn(
             "Do not use temporal comparison language such as 'now featuring,' 'becomes,' 'changes into,' or 'replaced by'",
             BUILDER_SOURCE,
-        )
-        self.assertIn(
-            "do not use temporal comparison language such as `now featuring`, `becomes`, `changes into`, or `replaced by`",
-            INSTRUCTION_SOURCE,
         )
 
 

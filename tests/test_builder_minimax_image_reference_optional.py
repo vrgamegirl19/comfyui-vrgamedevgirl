@@ -1,10 +1,12 @@
 import unittest
 from pathlib import Path
 
+from builder_source import read_builder_source, read_runner_source
+
 
 ROOT = Path(__file__).resolve().parents[1]
-BUILDER_SOURCE = (ROOT / "web" / "VRGDG_MusicVideoBuilderUI.js").read_text(encoding="utf-8")
-RUNNER_SOURCE = (ROOT / "VRGDG_WorkflowRunnerNodes.py").read_text(encoding="utf-8")
+BUILDER_SOURCE = read_builder_source()
+RUNNER_SOURCE = read_runner_source()
 
 
 class MiniMaxImageReferenceOptionalTests(unittest.TestCase):

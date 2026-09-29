@@ -1,13 +1,19 @@
+const { functionSource, readBuilderSource } = require('./builder_source.cjs');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
 
-const source = fs.readFileSync(path.join(__dirname, '../web/VRGDG_MusicVideoBuilderUI.js'), 'utf8');
-const start = source.indexOf('  function miniMaxPromptReferenceSignature(');
-const end = source.indexOf('  async function runMiniMaxH3PromptGeneration(', start);
-assert.ok(start >= 0 && end > start);
+const source = readBuilderSource();
+const referenceHelpers = [
+  'miniMaxPromptReferenceSignature',
+  'miniMaxLegacyPromptReferenceMismatch',
+  'miniMaxPromptReferenceMismatch',
+  'miniMaxRenderReferenceImagePaths',
+  'miniMaxBatchReferenceProblems',
+  'rememberMiniMaxPromptReferences',
+].map((name) => functionSource(source, name)).join('\n');
 
 function fixture() {
   const segment = { id: 'scene' };
@@ -28,7 +34,7 @@ function fixture() {
     allEditableSegments: () => [segment],
   };
   vm.createContext(context);
-  vm.runInContext(source.slice(start, end), context);
+  vm.runInContext(referenceHelpers, context);
   return context;
 }
 
@@ -142,10 +148,7 @@ test('Render All preflight checks only scenes that will be rendered', () => {
     miniMaxH3SettingsForSegment: () => ({ audio_mode: 'built_in_audio' }),
     validateMiniMaxSceneReadyForVideo: () => [],
   });
-  const a = source.indexOf('  function validateRenderAllReady(');
-  const b = source.indexOf('  function audioFallbackTargetScenes(', a);
-  assert.ok(a >= 0 && b > a);
-  vm.runInContext(source.slice(a, b), c);
+  vm.runInContext(functionSource(source, 'validateRenderAllReady'), c);
   assert.deepEqual(Array.from(c.validateRenderAllReady({})).map((value) => value.match(/Scene \d+/)?.[0]), ['Scene 3']);
   assert.equal(c.validateRenderAllReady({ forceVideos: true }).filter((value) => /Scene [23]/.test(value)).length, 2);
 });

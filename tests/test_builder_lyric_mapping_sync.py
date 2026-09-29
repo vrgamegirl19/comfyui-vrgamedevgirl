@@ -1,7 +1,9 @@
 from pathlib import Path
 
+from builder_source import read_builder_source
 
-UI_SOURCE = (Path(__file__).parents[1] / "web" / "VRGDG_MusicVideoBuilderUI.js").read_text(encoding="utf-8")
+
+UI_SOURCE = read_builder_source()
 
 
 def test_mapper_apply_keeps_stable_scene_link_for_instrumental_corrections():

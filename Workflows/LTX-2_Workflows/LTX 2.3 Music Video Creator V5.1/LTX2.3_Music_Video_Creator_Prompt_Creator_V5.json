@@ -226,7 +226,7 @@
         }
       },
       "widgets_values": [
-        "Z:\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\output\\VRGDG_AudioFiles\\Quiet Lies - Paper Thin Air - Sonauto.wav"
+        ""
       ],
       "color": "#432",
       "bgcolor": "#653"
@@ -629,7 +629,7 @@
         }
       },
       "widgets_values": [
-        "Z:\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\output\\VRGDG_TEMP\\TextFiles\\ConceptPrompts\\ConceptPrompts.txt"
+        ""
       ],
       "color": "#232",
       "bgcolor": "#353"

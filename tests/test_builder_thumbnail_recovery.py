@@ -5,14 +5,16 @@ import types
 import unittest
 from pathlib import Path
 
+from builder_source import read_builder_backend_source
+
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE_PATH = ROOT / "VRGDG_MusicVideoBuilderNodes.py"
+SOURCE_PATH = ROOT / "builder/nodes.py"
 
 
 class BuilderThumbnailRecoveryTests(unittest.TestCase):
     def test_recovery_creates_thumbnail_parent_before_running_ffmpeg(self):
-        tree = ast.parse(SOURCE_PATH.read_text(encoding="utf-8"))
+        tree = ast.parse(read_builder_backend_source())
         function = next(
             node
             for node in tree.body
@@ -45,7 +47,7 @@ class BuilderThumbnailRecoveryTests(unittest.TestCase):
         self.assertTrue(keywords["exist_ok"].value)
 
     def test_recovery_writes_into_a_previously_missing_thumbnail_folder(self):
-        tree = ast.parse(SOURCE_PATH.read_text(encoding="utf-8"))
+        tree = ast.parse(read_builder_backend_source())
         function = next(
             node
             for node in tree.body

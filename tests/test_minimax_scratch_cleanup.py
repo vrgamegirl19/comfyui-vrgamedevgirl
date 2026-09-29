@@ -8,10 +8,12 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+from builder_source import read_runner_source
+
 
 class ScratchCleanupTests(unittest.TestCase):
     def test_cleanup_only_accepts_expected_scene_and_reports_errors(self):
-        source = (Path(__file__).resolve().parents[1] / "VRGDG_WorkflowRunnerNodes.py").read_text(encoding="utf-8")
+        source = read_runner_source()
         tree = ast.parse(source)
         names = {"_minimax_h3_output_location", "_cleanup_minimax_h3_output_folder"}
         code = ast.Module(body=[n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in names], type_ignores=[])

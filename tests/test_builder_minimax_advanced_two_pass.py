@@ -5,10 +5,12 @@ import math
 import unittest
 from pathlib import Path
 
+from builder_source import python_function_source, read_builder_source, read_runner_source
+
 
 ROOT = Path(__file__).resolve().parents[1]
-BUILDER_SOURCE = (ROOT / "web" / "VRGDG_MusicVideoBuilderUI.js").read_text(encoding="utf-8")
-RUNNER_SOURCE = (ROOT / "VRGDG_WorkflowRunnerNodes.py").read_text(encoding="utf-8")
+BUILDER_SOURCE = read_builder_source()
+RUNNER_SOURCE = read_runner_source()
 
 
 class BuilderMiniMaxAdvancedTwoPassTests(unittest.TestCase):
@@ -70,9 +72,11 @@ class BuilderMiniMaxAdvancedTwoPassTests(unittest.TestCase):
         self.assertIn('makeSettingsSection("Hidden MMH3 Advanced Settings"', BUILDER_SOURCE)
 
     def test_hidden_prompt_uses_independent_resolutions_and_mmh3_nodes(self):
-        start = RUNNER_SOURCE.index("def _build_minimax_h3_advanced_2pass_api_prompt")
-        end = RUNNER_SOURCE.index("def _remap_api_prompt_references", start)
-        source = RUNNER_SOURCE[start:end]
+        source = python_function_source(
+            RUNNER_SOURCE,
+            "_build_minimax_h3_advanced_2pass_api_prompt",
+            "_save_minimax_h3_advanced_2pass_debug_workflow",
+        )
         self.assertEqual(source.count('"class_type": "ResolutionSelector"'), 2)
         for node_type in (
             "VRGDG_MiniMaxH3UltimateUpscaleParams",

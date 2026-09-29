@@ -1,13 +1,19 @@
+"""Turn the shot-aware LTX 2.5 face-fix workflow into its normal-sampler variant.
+
+usage: python build_ltx25_normal_sampler_workflow.py <shot_aware_source.json> <normal_sampler_target.json>
+"""
+
+import argparse
 import json
 from pathlib import Path
 
 
-SOURCE = Path(r"Z:\ComfyUI\ComfyUI_windows_portable\ComfyUI\output\VRGDG_FaceFix_LTX25_FullCrop_OpaqueComposite_ShotAware.json")
-TARGET = Path(r"Z:\ComfyUI\ComfyUI_windows_portable\ComfyUI\output\VRGDG_FaceFix_LTX25_FullCrop_OpaqueComposite_NormalSampler.json")
-
-
 def main():
-    workflow = json.loads(SOURCE.read_text(encoding="utf-8"))
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("source", type=Path, help="VRGDG_FaceFix_LTX25_FullCrop_OpaqueComposite_ShotAware workflow JSON.")
+    parser.add_argument("target", type=Path, help="Where to write the NormalSampler workflow JSON.")
+    args = parser.parse_args()
+    workflow = json.loads(args.source.read_text(encoding="utf-8"))
     nodes = workflow["nodes"]
     prepare = next(n for n in nodes if str(n.get("id")) == "5370")
     prepare["type"] = "VRGDGFaceFixPrepareShotAware"
@@ -56,9 +62,9 @@ def main():
         "Shot-aware LTX-2.5 full-crop face repair using the normal SamplerCustomAdvanced "
         "instead of temporal looping. Opaque face composite; original audio preserved."
     )
-    TARGET.parent.mkdir(parents=True, exist_ok=True)
-    TARGET.write_text(json.dumps(workflow, indent=2), encoding="utf-8")
-    print(TARGET)
+    args.target.parent.mkdir(parents=True, exist_ok=True)
+    args.target.write_text(json.dumps(workflow, indent=2), encoding="utf-8")
+    print(args.target)
 
 
 if __name__ == "__main__":

@@ -1,13 +1,14 @@
+const { readBuilderModule, readBuilderSource } = require('./builder_source.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const { test } = require('node:test');
-const source = fs.readFileSync(path.join(__dirname, '../web/VRGDG_MusicVideoBuilderUI.js'), 'utf8');
+const source = readBuilderSource();
 const section = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
 function fixture() {
   const c = vm.createContext({});
-  vm.runInContext(section('const MINIMAX_H3_MODE_OPTIONS =', 'const LTX_23_MODEL_DOWNLOADS ='), c);
+  vm.runInContext(readBuilderModule('minimax_h3.mjs'), c);
   return c;
 }
 test('all three mode profiles survive switching and project JSON reload', () => {
@@ -64,7 +65,7 @@ test('pass selector has three exclusive buttons outside the main mode grid', asy
   let settings = c.cloneMiniMaxH3Settings({ video_mode: 'reference_to_video', render_pass: 'single' });
   const segment = { id: 'scene' };
   Object.assign(c, { miniMaxPassButtons: ['single', 'two_pass', 'three_pass'].map(passMode => ({ dataset: { passMode } })),
-    requireActiveSegment: () => segment, pushHistory() {}, state: {},
+    requireActiveSegment: () => segment, pushHistory() {}, state: {}, wizardVideoSettings: { global: false },
     clearMiniMaxImageReferenceStartFrameOnModeSwitch() {},
     setMiniMaxH3RenderPassForSegment: (scene, passMode) => { c.state.miniMaxH3Settings.render_pass = passMode; },
     setMiniMaxH3ModeForSegment: (scene, mode) => { c.state.miniMaxH3Settings.video_mode = mode; },

@@ -2,10 +2,12 @@ import ast
 import unittest
 from pathlib import Path
 
+from builder_source import read_builder_backend_source
+
 
 ROOT = Path(__file__).resolve().parents[1]
-LLM_BACKEND = (ROOT / "LLM.py").read_text(encoding="utf-8")
-BUILDER_BACKEND = (ROOT / "VRGDG_MusicVideoBuilderNodes.py").read_text(encoding="utf-8")
+LLM_BACKEND = (ROOT / "llm" / "api.py").read_text(encoding="utf-8")
+BUILDER_BACKEND = read_builder_backend_source()
 LLM_MULTI_UI = (ROOT / "web" / "VRGDG_LLM_Multi_dynamic.js").read_text(encoding="utf-8")
 
 

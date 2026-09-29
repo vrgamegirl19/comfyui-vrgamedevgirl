@@ -232,7 +232,7 @@
   },
   "927": {
     "inputs": {
-      "audio_file": "Z:\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\output\\I Become.mp3",
+      "audio_file": "",
       "seek_seconds": 0,
       "duration": 0
     },
@@ -275,7 +275,7 @@
   },
   "935": {
     "inputs": {
-      "value": "Z:\\TOSHARE\\ComfyUI_windows_portable\\ComfyUI\\output\\VRGDG_Project_2026-06-07_15-43-40\\builder_segments.srt"
+      "value": ""
     },
     "class_type": "PrimitiveString",
     "_meta": {

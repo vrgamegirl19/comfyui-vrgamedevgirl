@@ -1,4 +1,5 @@
 import ast
+import importlib.util
 import json
 import os
 import shutil
@@ -6,10 +7,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from builder_source import read_builder_source, read_builder_backend_source
+
 
 ROOT = Path(__file__).resolve().parents[1]
-NODES = (ROOT / "VRGDG_MusicVideoBuilderNodes.py").read_text(encoding="utf-8")
-UI = (ROOT / "web" / "VRGDG_MusicVideoBuilderUI.js").read_text(encoding="utf-8")
+NODES = read_builder_backend_source()
+UI = read_builder_source()
+ATOMIC_SPEC = importlib.util.spec_from_file_location("vrgdg_atomic_write", ROOT / "core/atomic_write.py")
+ATOMIC = importlib.util.module_from_spec(ATOMIC_SPEC)
+ATOMIC_SPEC.loader.exec_module(ATOMIC)
 
 HELPER_NAMES = {
     "_is_inside_folder",
@@ -33,8 +39,6 @@ HELPER_NAMES = {
     "_strip_storyboard_images",
     "_prune_unkept_project_folders",
     "_rebase_project_owned_paths",
-    "_atomic_write_text",
-    "_atomic_write_json",
 }
 
 
@@ -58,8 +62,10 @@ def load_helpers():
         "re": __import__("re"),
         "shutil": shutil,
         "tempfile": tempfile,
+        "atomic_write_json": ATOMIC.atomic_write_json,
+        "atomic_write_text": ATOMIC.atomic_write_text,
     }
-    exec(compile(module, "VRGDG_MusicVideoBuilderNodes.py", "exec"), namespace)
+    exec(compile(module, "builder/nodes.py", "exec"), namespace)
     return namespace
 
 

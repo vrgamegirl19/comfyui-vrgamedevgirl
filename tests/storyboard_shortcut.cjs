@@ -1,10 +1,11 @@
+const { functionSource, readBuilderSource, readStoryboardSource } = require('./builder_source.cjs');
 const fs = require("node:fs");
 const vm = require("node:vm");
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const path = require("node:path");
-const ui = fs.readFileSync(path.join(__dirname, "../web/VRGDG_MusicVideoBuilderUI.js"), "utf8");
-const story = fs.readFileSync(path.join(__dirname, "../web/VRGDG_StoryboardBuilderUI.js"), "utf8");
+const ui = readBuilderSource();
+const story = readStoryboardSource();
 const section = (s, a, b) => s.slice(s.indexOf(a), s.indexOf(b, s.indexOf(a)));
 for (const shiftKey of [true, false]) test(`both event paths route shift=${shiftKey} to the correct card`, () => {
   const calls = [];
@@ -15,7 +16,7 @@ for (const shiftKey of [true, false]) test(`both event paths route shift=${shift
     finishEvent: { shiftKey }, lastTimelineSceneClickTime: Date.now(), lastTimelineSceneClickId: "scene2", isOverlay: false, now: Date.now(), handleSegmentPick() {},
   };
   vm.createContext(c);
-  vm.runInContext(section(ui, "  function openTimelineSceneCard(", "  let activeSegmentDragCleanup"), c);
+  vm.runInContext(functionSource(ui, "openTimelineSceneCard"), c);
   const native = section(ui, "        block.ondblclick =", "      enableImageDrop");
   vm.runInContext(native.slice(0, native.lastIndexOf("}")), c);
   c.block.ondblclick(c.event);
@@ -30,7 +31,7 @@ test("repeated focused opens stop before constructing another builder", () => {
   });
 });
 function editorFixture(focused = true) {
-  const c = { focusedSceneOnly: focused, apply: {}, cancel: {}, closeEditor: {}, calls: [],
+  const c = { sceneFocus: { only: focused }, apply: {}, cancel: {}, closeEditor: {}, calls: [],
     saveEditorFieldsToScene: () => c.calls.push("fields"),
     saveStoryboard: async options => { assert.equal(options.throwOnError, true); c.calls.push("save"); if (c.fail) throw Error("disk full"); },
     syncReferenceMappingsToVideoCreator: () => c.calls.push("refs"),
@@ -38,7 +39,7 @@ function editorFixture(focused = true) {
     editorBackdrop: { remove: () => c.calls.push("close editor") }, backdrop: { remove: () => c.calls.push("close builder") },
     renderTable: () => c.calls.push("render"), createToast: m => c.calls.push(m),
   };
-  vm.createContext(c); vm.runInContext(section(story, "    apply.onclick = async () => {", "\n  };"), c);
+  vm.createContext(c); vm.runInContext(section(story, "    apply.onclick = async () => {", "\n  }"), c);
   return c;
 }
 test("focused Apply saves before syncing and closing", async () => {

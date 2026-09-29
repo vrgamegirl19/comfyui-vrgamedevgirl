@@ -1,4 +1,5 @@
 import ast
+import importlib.util
 import json
 import os
 import re
@@ -6,21 +7,24 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from builder_source import function_source, read_builder_source, read_builder_backend_source
+
 
 ROOT = Path(__file__).resolve().parents[1]
-NODE_SOURCE = ROOT / "VRGDG_MusicVideoBuilderNodes.py"
-UI_SOURCE = (ROOT / "web" / "VRGDG_MusicVideoBuilderUI.js").read_text(encoding="utf-8")
+NODE_SOURCE = ROOT / "builder/nodes.py"
+UI_SOURCE = read_builder_source()
+ATOMIC_SPEC = importlib.util.spec_from_file_location("vrgdg_atomic_write", ROOT / "core/atomic_write.py")
+ATOMIC = importlib.util.module_from_spec(ATOMIC_SPEC)
+ATOMIC_SPEC.loader.exec_module(ATOMIC)
 
 
 def load_save_helpers():
-    tree = ast.parse(NODE_SOURCE.read_text(encoding="utf-8"), filename=str(NODE_SOURCE))
+    tree = ast.parse(read_builder_backend_source(), filename=str(NODE_SOURCE))
     names = {
         "_safe_project_name",
         "_session_path",
         "_srt_path",
         "_context_folder",
-        "_atomic_write_text",
-        "_atomic_write_json",
         "_fallback_project_context_text",
         "_save_project_context_files",
         "_validate_saved_project",
@@ -32,6 +36,8 @@ def load_save_helpers():
         "os": os,
         "re": re,
         "tempfile": tempfile,
+        "atomic_write_json": ATOMIC.atomic_write_json,
+        "atomic_write_text": ATOMIC.atomic_write_text,
     }
     exec(compile(ast.Module(body=functions, type_ignores=[]), str(NODE_SOURCE), "exec"), namespace)
     return namespace
@@ -55,8 +61,8 @@ class BuilderReferenceSaveAndCueTests(unittest.TestCase):
             "project_context_files": {},
         }
         with tempfile.TemporaryDirectory() as folder:
-            helpers["_atomic_write_json"](helpers["_session_path"](folder), session)
-            helpers["_atomic_write_text"](helpers["_srt_path"](folder), "1\n00:00:00,000 --> 00:00:08,000\nScene\n")
+            helpers["atomic_write_json"](helpers["_session_path"](folder), session)
+            helpers["atomic_write_text"](helpers["_srt_path"](folder), "1\n00:00:00,000 --> 00:00:08,000\nScene\n")
             context_paths = helpers["_save_project_context_files"](folder, session)
             manifest_path = helpers["_save_reference_descriptions"](folder, session)
             helpers["_validate_saved_project"](folder, session, context_paths)
@@ -78,14 +84,12 @@ class BuilderReferenceSaveAndCueTests(unittest.TestCase):
         self.assertIn("isSingleContinuousShot && cueMap.length > 1", UI_SOURCE)
         self.assertIn("continuous-shot lyric cue mismatch", UI_SOURCE)
         self.assertIn("allow instrumental intervals to coexist in the same shot", UI_SOURCE)
-        node_source = NODE_SOURCE.read_text(encoding="utf-8")
+        node_source = read_builder_backend_source()
         self.assertIn('"actual_llm_instruction": prompt', node_source)
         self.assertIn('"raw_llm_response"', node_source)
 
     def test_complete_manual_timing_returns_before_transcription(self):
-        start = UI_SOURCE.index("async function ensureAutoTimedSingerCuesBeforePrompt")
-        end = UI_SOURCE.index("async function runMiniMaxH3PromptGeneration", start)
-        source = UI_SOURCE[start:end]
+        source = function_source(UI_SOURCE, "ensureAutoTimedSingerCuesBeforePrompt")
         self.assertLess(source.index("if (existingTimingComplete) return true;"), source.index("autoTimeMiniMaxSingerCuesForSegment(segment)"))
 
     def test_vocal_cue_cleanup_preserves_llm_shot_prose(self):

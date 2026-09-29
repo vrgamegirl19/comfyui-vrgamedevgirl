@@ -7,9 +7,11 @@ import urllib.request
 from pathlib import Path
 from unittest import mock
 
+from builder_source import read_builder_backend_source
+
 
 ROOT = Path(__file__).resolve().parents[1]
-BUILDER_BACKEND = (ROOT / "VRGDG_MusicVideoBuilderNodes.py").read_text(encoding="utf-8")
+BUILDER_BACKEND = read_builder_backend_source()
 
 
 def load_lm_studio_helpers():
@@ -23,14 +25,17 @@ def load_lm_studio_helpers():
         "_lm_studio_native_output_text",
         "_run_lm_studio_native_chat",
         "_run_lm_studio_vision",
+        "_estimate_prompt_tokens",
+        "_fit_output_to_context",
     }
+    constants = {"_LM_STUDIO_DEFAULT_BASE_URL", "_CONTEXT_TEMPLATE_MARGIN_TOKENS", "_MIN_OUTPUT_TOKENS"}
     tree = ast.parse(BUILDER_BACKEND)
     nodes = []
     for node in tree.body:
         if isinstance(node, ast.FunctionDef) and node.name in wanted:
             nodes.append(node)
         elif isinstance(node, ast.Assign) and any(
-            isinstance(target, ast.Name) and target.id == "_LM_STUDIO_DEFAULT_BASE_URL"
+            isinstance(target, ast.Name) and target.id in constants
             for target in node.targets
         ):
             nodes.append(node)

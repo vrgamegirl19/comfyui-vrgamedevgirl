@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import vm from 'node:vm';
+import { functionSource, readBuilderSource } from './builder_source.cjs';
 const source = readFileSync(new URL('../web/VRGDG_RenderETA.js', import.meta.url), 'utf8');
 const { estimateRenderETA, formatRenderETA, renderETAProfile } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 const now = Date.parse('2026-09-22T12:00:00Z');
@@ -101,12 +102,12 @@ test('batch setup does not display zero before targets are known', () => {
   assert.equal(estimateRenderETA(log, history, now).totalMs, null);
 });
 
-const ui = readFileSync(new URL('../web/VRGDG_MusicVideoBuilderUI.js', import.meta.url), 'utf8');
+const ui = readBuilderSource();
 function displayFixture() {
   let tick;
   let cleared = 0;
   const context = vm.createContext({
-    liveETALog: null, builderETATimer: 0, overlay: { isConnected: true },
+    builderETAState: { timer: 0, log: null }, overlay: { isConnected: true },
     builderETA: { style: {} }, builderSceneETA: {}, builderFullETA: {},
     state: { renderLogs: history, batchCancelled: false },
     formatRenderETA, estimateRenderETA: (log, logs) => estimateRenderETA(log, logs, now),
@@ -114,9 +115,7 @@ function displayFixture() {
     setInterval(callback) { tick = callback; return 1; },
     clearInterval() { cleared++; },
   });
-  const start = ui.indexOf('  function refreshBuilderETA()');
-  const end = ui.indexOf('  function startSingleSceneETA(', start);
-  vm.runInContext(ui.slice(start, end), context);
+  vm.runInContext(['refreshBuilderETA', 'resetBuilderETA', 'startBuilderETA'].map((name) => functionSource(ui, name)).join('\n'), context);
   return { context, run: code => vm.runInContext(code, context), tick: () => tick(), cleared: () => cleared };
 }
 test('header updates once per tick and labels a selected batch accurately', () => {
@@ -135,6 +134,6 @@ test('completion stops timer and project reset clears the header', () => {
   assert.equal(f.context.builderFullETA.textContent, 'Full Video: Done');
   assert.ok(f.cleared() > previous);
   f.run('resetBuilderETA()');
-  assert.equal(f.context.liveETALog, null);
+  assert.equal(f.context.builderETAState.log, null);
   assert.equal(f.context.builderETA.style.display, 'none');
 });

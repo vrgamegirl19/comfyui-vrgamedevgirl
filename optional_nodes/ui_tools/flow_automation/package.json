@@ -1,0 +1,14 @@
+{
+  "name": "vrgdg-flow-browser-automation",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Browser automation helper for VRGDG Google Flow ComfyUI nodes.",
+  "type": "module",
+  "scripts": {
+    "start": "node flow-poc.mjs",
+    "debug": "PWDEBUG=1 node flow-poc.mjs"
+  },
+  "dependencies": {
+    "playwright": "latest"
+  }
+}

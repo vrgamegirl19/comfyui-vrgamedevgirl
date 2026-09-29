@@ -1101,7 +1101,7 @@
       },
       "widgets_values": [
         10,
-        "A:\\COMFY_UI\\ComfyUI_windows_portable_nvidia\\ComfyUI_windows_portable\\ComfyUI\\output\\llm_prompt_batches",
+        "",
         "Scene",
         -1,
         true

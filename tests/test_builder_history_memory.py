@@ -1,15 +1,13 @@
 import unittest
 from pathlib import Path
 
+from builder_source import read_builder_source
 
-SOURCE = (
-    Path(__file__).resolve().parents[1]
-    / "web"
-    / "VRGDG_MusicVideoBuilderUI.js"
-).read_text(encoding="utf-8")
+
+SOURCE = read_builder_source()
 VIDEO_EDITOR_SOURCE = (
     Path(__file__).resolve().parents[1]
-    / "VRGDG_VideoEditorNodes.py"
+    / "builder/video_editor.py"
 ).read_text(encoding="utf-8")
 
 

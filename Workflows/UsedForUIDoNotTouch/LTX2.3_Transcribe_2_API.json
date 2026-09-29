@@ -34,7 +34,7 @@
     "inputs": {
       "model_name": "htdemucs_ft",
       "device": "auto",
-      "audio_file_path": "Z:\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\output\\Circuit Teeth.mp3"
+      "audio_file_path": ""
     },
     "class_type": "VRGDG_GetStems",
     "_meta": {

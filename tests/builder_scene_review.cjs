@@ -4,8 +4,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { test } = require('node:test');
 
-const source = fs.readFileSync(path.join(__dirname, '../web/VRGDG_MusicVideoBuilderUI.js'), 'utf8').replace(/\r\n/g, '\n');
-const modal = source.slice(source.indexOf('  function openLyricReviewModal('), source.indexOf('  function openLyricMappingWorkflowModal('));
+const modal = fs.readFileSync(path.join(__dirname, '../web/music_video_builder/lyric_review.mjs'), 'utf8').replace(/\r\n/g, '\n');
 function section(start, end) {
   const a = modal.indexOf(start);
   const b = modal.indexOf(end, a);

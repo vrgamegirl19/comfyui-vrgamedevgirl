@@ -1,21 +1,22 @@
+const { functionSource, readBuilderModule, readBuilderSource } = require('./builder_source.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const { test } = require('node:test');
-const source = fs.readFileSync(path.join(__dirname, '../web/VRGDG_MusicVideoBuilderUI.js'), 'utf8');
+const source = readBuilderSource();
 const section = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
 function fixture() {
   const c = vm.createContext({ state: { miniMaxH3Settings: { video_mode: 'text_to_video', render_pass: 'single' } } });
-  vm.runInContext(section('const MINIMAX_H3_MODE_OPTIONS =', 'const LTX_23_MODEL_DOWNLOADS ='), c);
-  vm.runInContext(section('function miniMaxH3SettingsForSegment(', 'function miniMaxH3ModeForSegment('), c);
+  vm.runInContext(readBuilderModule('minimax_h3.mjs'), c);
+  vm.runInContext(functionSource(source, 'miniMaxH3SettingsForSegment'), c);
   return c;
 }
 for (const renderPass of ['single', 'two_pass', 'three_pass']) {
   test(`legacy locked reference scene inherits loaded ${renderPass} project before normalization`, () => {
     const c = fixture();
     c.session = { minimax_h3_settings: { video_mode: 'reference_to_video' }, minimax_h3_two_pass: renderPass === 'two_pass', minimax_h3_advanced_two_pass: renderPass === 'three_pass' };
-    const load = section('async function loadSessionFromProject(', 'async function newProject(');
+    const load = functionSource(source, 'loadSessionFromProject');
     const start = load.indexOf('state.miniMaxH3Settings = cloneMiniMaxH3Settings(session.');
     const end = load.indexOf('state.miniMaxH3ThreePassEnabled =', start);
     assert.ok(start >= 0 && start < load.indexOf('ensureAllSegmentRuntimeFields();'));
@@ -37,7 +38,7 @@ for (const renderPass of ['single', 'two_pass', 'three_pass']) {
 test('legacy Image + Reference stays two pass through runtime normalization and scene lookup', () => {
   const c = fixture();
   c.segment = { use_scene_minimax_h3_settings: true, minimax_h3_mode: 'image_reference_to_video', minimax_h3_settings: {} };
-  const runtime = section('function ensureSegmentRuntimeFields(', 'function ensureAllSegmentRuntimeFields(');
+  const runtime = functionSource(source, 'ensureSegmentRuntimeFields');
   const start = runtime.indexOf('    if (segment.use_scene_minimax_h3_settings) {');
   const end = runtime.indexOf('    if (segment.minimax_h3_prompt == null)', start);
   vm.runInContext(runtime.slice(start, end), c);
@@ -50,7 +51,7 @@ test('save response restores project settings before normalizing scenes', () => 
 });
 test('changing a locked scene pass does not change project or another locked scene', () => {
   const c = fixture();
-  vm.runInContext(section('function setMiniMaxH3RenderPassForSegment(', 'function clearMiniMaxImageReferenceStartFrameOnModeSwitch('), c);
+  vm.runInContext(functionSource(source, 'setMiniMaxH3RenderPassForSegment'), c);
   const first = { use_scene_minimax_h3_settings: true, minimax_h3_settings: { video_mode: 'reference_to_video', render_pass: 'two_pass' } };
   const second = JSON.parse(JSON.stringify(first));
   c.setMiniMaxH3RenderPassForSegment(first, 'three_pass');

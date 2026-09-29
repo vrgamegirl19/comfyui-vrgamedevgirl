@@ -1,10 +1,12 @@
 import unittest
 from pathlib import Path
 
+from builder_source import read_builder_source, read_builder_backend_source
+
 
 ROOT = Path(__file__).resolve().parents[1]
-UI = (ROOT / "web" / "VRGDG_MusicVideoBuilderUI.js").read_text(encoding="utf-8")
-NODES = (ROOT / "VRGDG_MusicVideoBuilderNodes.py").read_text(encoding="utf-8")
+UI = read_builder_source()
+NODES = read_builder_backend_source()
 
 
 class BuilderSaveOrderTests(unittest.TestCase):
@@ -32,7 +34,7 @@ class BuilderSaveOrderTests(unittest.TestCase):
         self.assertIn("Storyboard prompt/beat application is allowed to update visual fields", UI)
 
     def test_storyboard_export_preserves_pass2_prompt(self):
-        story = (ROOT / "VRGDG_StoryboardPersistence.py").read_text(encoding="utf-8")
+        story = (ROOT / "storyboard/persistence.py").read_text(encoding="utf-8")
         self.assertIn('"minimax_h3_pass2_prompt": _clean_scene_text(scene.get("minimax_h3_pass2_prompt") or scene.get("pass2_prompt") or "", 100000)', story)
         self.assertIn('"pass2_prompt": _exported_pass2_prompt(scene, index)', story)
         self.assertIn("existing_pass2", story)

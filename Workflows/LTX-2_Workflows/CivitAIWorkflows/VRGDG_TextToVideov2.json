@@ -882,7 +882,7 @@
             "format": "video/h264-mp4",
             "frame_rate": 25,
             "workflow": "video_00069.png",
-            "fullpath": "Z:\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\output\\FantasyREalism_2026-04-12_21-31-03\\testing\\video_00069-audio.mp4"
+            "fullpath": ""
           },
           "muted": false
         }

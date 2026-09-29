@@ -2,9 +2,11 @@ import re
 import unittest
 from pathlib import Path
 
+from builder_source import read_builder_source
+
 
 ROOT = Path(__file__).resolve().parents[1]
-UI = (ROOT / "web" / "VRGDG_MusicVideoBuilderUI.js").read_text(encoding="utf-8")
+UI = read_builder_source()
 
 
 def function_body(name):

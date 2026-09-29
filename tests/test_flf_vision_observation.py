@@ -4,12 +4,14 @@ import re
 import unittest
 from pathlib import Path
 
+from builder_source import read_builder_backend_source
 
-SOURCE_PATH = Path(__file__).resolve().parents[1] / "VRGDG_MusicVideoBuilderNodes.py"
+
+SOURCE_PATH = Path(__file__).resolve().parents[1] / "builder/nodes.py"
 
 
 def load_observation_normalizer():
-    tree = ast.parse(SOURCE_PATH.read_text(encoding="utf-8"), filename=str(SOURCE_PATH))
+    tree = ast.parse(read_builder_backend_source(), filename=str(SOURCE_PATH))
     helper = next(
         node
         for node in tree.body

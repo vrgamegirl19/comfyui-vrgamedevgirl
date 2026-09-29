@@ -4192,12 +4192,12 @@
           "paused": true,
           "params": {
             "filename": "video_0003_0002_00001-audio.mp4",
-            "subfolder": "Z:\\TOSHARE\\ComfyUI_windows_portable\\ComfyUI\\output\\alone in the bar_2026-05-13_13-58-40",
+            "subfolder": "",
             "type": "output",
             "format": "video/h264-mp4",
             "frame_rate": 24,
             "workflow": "video_0003_0002_00001.png",
-            "fullpath": "Z:\\TOSHARE\\ComfyUI_windows_portable\\ComfyUI\\output\\alone in the bar_2026-05-13_13-58-40\\video_0003_0002_00001-audio.mp4"
+            "fullpath": ""
           }
         }
       },
@@ -5285,7 +5285,7 @@
         }
       },
       "widgets_values": [
-        "Z:\\TOSHARE\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui-vrgamedevgirl\\srt_files\\alone in the bar_253.srt"
+        ""
       ],
       "color": "#232",
       "bgcolor": "#353"
@@ -5379,7 +5379,7 @@
         }
       },
       "widgets_values": [
-        "Z:\\TOSHARE\\ComfyUI_windows_portable\\ComfyUI\\output\\VRGDG_AudioFiles\\alone in the bar (1).mp3"
+        ""
       ],
       "color": "#2a363b",
       "bgcolor": "#3f5159"

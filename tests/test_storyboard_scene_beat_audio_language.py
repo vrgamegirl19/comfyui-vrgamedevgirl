@@ -4,9 +4,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE_PATH = ROOT / "VRGDG_StoryboardStoryLayer.py"
+SOURCE_PATH = ROOT / "storyboard/story_layer.py"
 SOURCE = SOURCE_PATH.read_text(encoding="utf-8")
-LLM_SOURCE = (ROOT / "VRGDG_StoryboardLLMs.py").read_text(encoding="utf-8")
+LLM_SOURCE = (ROOT / "llm" / "prompts" / "storyboard.py").read_text(encoding="utf-8")
 
 
 class StoryboardSceneBeatAudioLanguageTests(unittest.TestCase):
