@@ -493,7 +493,7 @@ export function rebuildSpeakerCueMapFromTimestampedSegments(segment, currentCues
 
 export function createLyricCues({
   activeSegment, allEditableSegments, currentGlobalTime, i2vVideoSettingsForSegment,
-  isMiniMaxBuiltInSpeakerAssignmentMode, isMiniMaxSingerAssignmentMode, logicalReferenceSubjects,
+  isMiniMaxBuiltInSpeakerAssignmentMode, isMiniMaxSingerAssignmentMode, logicalExtraSubjectsForScene, logicalReferenceSubjects,
   logicalSubjectIdsForScene, lyricSingersInput, miniMaxH3FrameContinuityPromptEnabled,
   miniMaxH3ModeForSegment, miniMaxOrderedImageReferenceItemsForSegment, sceneReferenceMapArray,
   sceneReferenceMapValue, segmentIndexInfo, state,
@@ -514,16 +514,20 @@ export function createLyricCues({
       .filter(Boolean);
   }
 
-  // Guard for the characters left out of this scene, or null when there is nothing to wall off. A scene
-  // with no selected subjects (and not marked no-character) is left unguarded.
+  // Guard for the people who must not appear in this scene: characters left out of the cast plus
+  // invented unnamed people. Mapped extras are allowed. A scene with no selected subjects and no
+  // extras (and not marked no-character) is left unguarded.
   function sceneCastGuardForSegment(segment) {
     if (!segment) return null;
     const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
     const toPlain = (subject) => ({ name: String(subject?.name || "").trim(), description: String(subject?.description || "").trim() });
     const everyone = logicalReferenceSubjects(refs).map(toPlain);
     const cast = selectedSceneSubjectsForSegment(segment, refs).map(toPlain);
-    if (!cast.length && !segment.no_character_present) return null;
-    return buildCastGuard(everyone, cast);
+    const extraNames = segment.no_character_present
+      ? []
+      : logicalExtraSubjectsForScene(refs, segment).map(({ extra }) => String(extra?.title || extra?.name || "").trim()).filter(Boolean);
+    if (!cast.length && !extraNames.length && !segment.no_character_present) return null;
+    return buildCastGuard(everyone, cast, extraNames);
   }
 
   function selectedCastCoverageContract(segment, options = {}) {

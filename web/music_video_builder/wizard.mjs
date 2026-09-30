@@ -1730,18 +1730,35 @@ export function openMusicVideoWizard(api = {}) {
     const performanceOptions = Array.isArray(defaultsData.performanceStyleOptions) ? defaultsData.performanceStyleOptions : [];
     const facialOptions = Array.isArray(defaultsData.facialPerformanceOptions) ? defaultsData.facialPerformanceOptions : [];
     const defaults = card("3. Scene Defaults", "Set the same image and video defaults available in Storyboard Builder without leaving the Wizard.");
-    const sceneSettingsPayload = () => ({
-      cameraFlow: wizardState.cameraFlow || "balanced",
-      imageShotFlow: wizardState.imageShotFlow || "intimate",
-      imageAesthetic: wizardState.imageAesthetic || "",
-      globalConsistencyPhrase: wizardState.globalConsistencyPhrase || "",
-      cameraMotionSpeed: Math.max(0, Math.min(10, Number(wizardState.cameraMotionSpeed ?? 4))),
-      characterMotionSpeed: Math.max(0, Math.min(10, Number(wizardState.characterMotionSpeed ?? 4))),
-      performanceStyle: wizardState.performanceStyle || "",
-      facialPerformance: wizardState.facialPerformance || "",
-      facialPerformanceCustom: wizardState.facialPerformanceCustom || "",
-      storyLayer: { ...wizardState.storyLayer },
-    });
+    // What the person sees in the controls is the truth. A draft restored after the controls were drawn can leave
+    // wizardState behind them, so the payload reads the controls first and brings wizardState back in line.
+    const syncWizardStateFromControls = () => {
+      try {
+        wizardState.cameraFlow = cameraSelect.value || wizardState.cameraFlow;
+        wizardState.imageShotFlow = imageShotSelect.value || wizardState.imageShotFlow;
+        wizardState.imageAesthetic = imageAestheticSelect.value ?? wizardState.imageAesthetic;
+        wizardState.performanceStyle = performanceSelect.value ?? wizardState.performanceStyle;
+        wizardState.facialPerformance = facialSelect.value ?? wizardState.facialPerformance;
+        wizardState.facialPerformanceCustom = facialCustom.value ?? wizardState.facialPerformanceCustom;
+      } catch {
+        // The controls are created below this helper; before that, wizardState is the only source.
+      }
+    };
+    const sceneSettingsPayload = () => {
+      syncWizardStateFromControls();
+      return {
+        cameraFlow: wizardState.cameraFlow || "balanced",
+        imageShotFlow: wizardState.imageShotFlow || "intimate",
+        imageAesthetic: wizardState.imageAesthetic || "",
+        globalConsistencyPhrase: wizardState.globalConsistencyPhrase || "",
+        cameraMotionSpeed: Math.max(0, Math.min(10, Number(wizardState.cameraMotionSpeed ?? 4))),
+        characterMotionSpeed: Math.max(0, Math.min(10, Number(wizardState.characterMotionSpeed ?? 4))),
+        performanceStyle: wizardState.performanceStyle || "",
+        facialPerformance: wizardState.facialPerformance || "",
+        facialPerformanceCustom: wizardState.facialPerformanceCustom || "",
+        storyLayer: { ...wizardState.storyLayer },
+      };
+    };
     const persistSceneSettings = (label = "wizard scene settings") => {
       queueWizardDraftSave();
       return api.updateSceneDefaultSettings?.(sceneSettingsPayload(), label);
@@ -1763,7 +1780,7 @@ export function openMusicVideoWizard(api = {}) {
         await api.applySceneDefaults?.({
           ...sceneSettingsPayload(),
           applyCamera: false,
-          imageShotFlow: wizardState.imageShotFlow || imageShotSelect.value || "intimate",
+          imageShotFlow: imageShotSelect.value || wizardState.imageShotFlow || "intimate",
           applyImageShotFlow: true,
           overwriteImageShotFlow: false,
         });
@@ -1779,7 +1796,7 @@ export function openMusicVideoWizard(api = {}) {
         await api.applySceneDefaults?.({
           ...sceneSettingsPayload(),
           applyCamera: false,
-          imageShotFlow: wizardState.imageShotFlow || imageShotSelect.value || "intimate",
+          imageShotFlow: imageShotSelect.value || wizardState.imageShotFlow || "intimate",
           applyImageShotFlow: true,
           overwriteImageShotFlow: true,
         });
@@ -1805,7 +1822,7 @@ export function openMusicVideoWizard(api = {}) {
         await api.applySceneDefaults?.({
           ...sceneSettingsPayload(),
           applyCamera: false,
-          imageAesthetic: wizardState.imageAesthetic ?? imageAestheticSelect.value ?? "",
+          imageAesthetic: imageAestheticSelect.value ?? wizardState.imageAesthetic ?? "",
           applyImageAesthetic: true,
           overwriteImageAesthetic: false,
         });
@@ -1821,7 +1838,7 @@ export function openMusicVideoWizard(api = {}) {
         await api.applySceneDefaults?.({
           ...sceneSettingsPayload(),
           applyCamera: false,
-          imageAesthetic: wizardState.imageAesthetic ?? imageAestheticSelect.value ?? "",
+          imageAesthetic: imageAestheticSelect.value ?? wizardState.imageAesthetic ?? "",
           applyImageAesthetic: true,
           overwriteImageAesthetic: true,
         });
@@ -1866,7 +1883,7 @@ export function openMusicVideoWizard(api = {}) {
       try {
         await api.applySceneDefaults?.({
           ...sceneSettingsPayload(),
-          cameraFlow: wizardState.cameraFlow || cameraSelect.value || "balanced",
+          cameraFlow: cameraSelect.value || wizardState.cameraFlow || "balanced",
           applyCamera: true,
           overwriteCamera: false,
         });
@@ -1881,7 +1898,7 @@ export function openMusicVideoWizard(api = {}) {
       try {
         await api.applySceneDefaults?.({
           ...sceneSettingsPayload(),
-          cameraFlow: wizardState.cameraFlow || cameraSelect.value || "balanced",
+          cameraFlow: cameraSelect.value || wizardState.cameraFlow || "balanced",
           applyCamera: true,
           overwriteCamera: true,
         });
@@ -1958,7 +1975,7 @@ export function openMusicVideoWizard(api = {}) {
         await api.applySceneDefaults?.({
           ...sceneSettingsPayload(),
           applyCamera: false,
-          performanceStyle: wizardState.performanceStyle ?? performanceSelect.value ?? "",
+          performanceStyle: performanceSelect.value ?? wizardState.performanceStyle ?? "",
           applyPerformance: true,
           overwriteCamera: false,
           overwritePerformance: false,
@@ -1975,7 +1992,7 @@ export function openMusicVideoWizard(api = {}) {
         await api.applySceneDefaults?.({
           ...sceneSettingsPayload(),
           applyCamera: false,
-          performanceStyle: wizardState.performanceStyle ?? performanceSelect.value ?? "",
+          performanceStyle: performanceSelect.value ?? wizardState.performanceStyle ?? "",
           applyPerformance: true,
           overwriteCamera: false,
           overwritePerformance: true,
@@ -2006,8 +2023,8 @@ export function openMusicVideoWizard(api = {}) {
         await api.applySceneDefaults?.({
           ...sceneSettingsPayload(),
           applyCamera: false,
-          facialPerformance: wizardState.facialPerformance ?? facialSelect.value ?? "",
-          facialPerformanceCustom: wizardState.facialPerformanceCustom ?? facialCustom.value ?? "",
+          facialPerformance: facialSelect.value ?? wizardState.facialPerformance ?? "",
+          facialPerformanceCustom: facialCustom.value ?? wizardState.facialPerformanceCustom ?? "",
           applyFacialPerformance: true,
           overwriteCamera: false,
           overwriteFacialPerformance: false,
@@ -2024,8 +2041,8 @@ export function openMusicVideoWizard(api = {}) {
         await api.applySceneDefaults?.({
           ...sceneSettingsPayload(),
           applyCamera: false,
-          facialPerformance: wizardState.facialPerformance ?? facialSelect.value ?? "",
-          facialPerformanceCustom: wizardState.facialPerformanceCustom ?? facialCustom.value ?? "",
+          facialPerformance: facialSelect.value ?? wizardState.facialPerformance ?? "",
+          facialPerformanceCustom: facialCustom.value ?? wizardState.facialPerformanceCustom ?? "",
           applyFacialPerformance: true,
           overwriteCamera: false,
           overwriteFacialPerformance: true,

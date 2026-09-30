@@ -1763,6 +1763,7 @@ export function openBuilder(node) {
     allEditableSegments: (...args) => allEditableSegments(...args),
     currentGlobalTime: (...args) => currentGlobalTime(...args),
     segmentIndexInfo: (...args) => segmentIndexInfo(...args),
+    logicalExtraSubjectsForScene: (...args) => logicalExtraSubjectsForScene(...args),
     logicalReferenceSubjects: (...args) => logicalReferenceSubjects(...args),
     logicalSubjectIdsForScene: (...args) => logicalSubjectIdsForScene(...args),
     sceneReferenceMapArray: (...args) => sceneReferenceMapArray(...args),

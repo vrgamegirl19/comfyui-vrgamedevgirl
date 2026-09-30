@@ -661,7 +661,7 @@ export function createPromptText({
     // character who is not selected for this scene is removed before the model sees it.
     const castGuard = sceneCastGuardForSegment(segment);
     if (castGuard) add(parts, "Scene cast restriction (mandatory)", castWallText(castGuard));
-    return stripCastLeaks(parts.join("\n\n"), castGuard);
+    return stripCastLeaks(parts.join("\n\n"), castGuard, false);
   }
 
   function performerLabelForSegment(segment) {

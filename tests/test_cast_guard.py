@@ -16,8 +16,11 @@ BEN = {"name": "Ben", "description": "Ben plays guitar."}
 
 
 class CastGuardTests(unittest.TestCase):
-    def test_no_guard_when_everyone_is_in_the_cast(self):
-        self.assertIsNone(cast_guard.build_cast_guard([MAN, WOMAN], [MAN, WOMAN]))
+    def test_nobody_is_left_out_when_everyone_is_in_the_cast(self):
+        guard = cast_guard.build_cast_guard([MAN, WOMAN], [MAN, WOMAN])
+        self.assertIsNone(guard["pattern"])
+        self.assertEqual(guard["excluded_names"], [])
+        self.assertEqual(cast_guard.cast_leaks("The man and the woman dance.", guard), [])
 
     def test_excluded_woman_is_flagged_by_noun_and_pronoun(self):
         guard = cast_guard.build_cast_guard([MAN, WOMAN], [MAN])
@@ -30,7 +33,7 @@ class CastGuardTests(unittest.TestCase):
 
     def test_man_is_not_flagged_inside_woman(self):
         guard = cast_guard.build_cast_guard([MAN, WOMAN], [WOMAN])
-        self.assertEqual(cast_guard.cast_leaks("The woman smiles at the man.", guard), ["the man"])
+        self.assertEqual(cast_guard.cast_leaks("The woman smiles at the man.", guard, invented=False), ["the man"])
         self.assertEqual(cast_guard.cast_leaks("The woman smiles.", guard), [])
 
     def test_pronouns_are_not_used_when_cast_shares_the_gender(self):
@@ -66,8 +69,37 @@ class CastGuardTests(unittest.TestCase):
 
     def test_cast_wall_text_names_cast_and_excluded(self):
         text = cast_guard.cast_wall_text(cast_guard.build_cast_guard([MAN, WOMAN], [MAN]))
-        self.assertIn("The man", text)
-        self.assertIn("the woman", text)
+        self.assertIn("PEOPLE IN THIS SCENE: The man.", text)
+        self.assertIn("No other person exists", text)
+        self.assertIn("Not in this scene: the woman.", text)
+
+    def test_invented_people_are_flagged_even_when_the_project_has_one_subject(self):
+        guard = cast_guard.build_cast_guard([MAN], [MAN])
+        leaks = cast_guard.cast_leaks("A stranger watches from the crowd while the man waits.", guard)
+        self.assertIn("stranger", leaks)
+        self.assertIn("crowd", leaks)
+        self.assertNotIn("man", leaks)
+        self.assertEqual(cast_guard.strip_cast_leaks("The man waits. A stranger watches.", guard), "The man waits.")
+
+    def test_invented_people_words_follow_the_reference_builder_name(self):
+        kai = {"name": "Kai", "description": "Kai plays bass."}
+        self.assertEqual(cast_guard.cast_leaks("The man plays bass.", cast_guard.build_cast_guard([kai], [kai])), ["man"])
+        self.assertEqual(cast_guard.cast_leaks("The man plays bass.", cast_guard.build_cast_guard([MAN], [MAN])), [])
+
+    def test_invented_person_check_can_be_turned_off(self):
+        guard = cast_guard.build_cast_guard([MAN], [MAN])
+        self.assertEqual(cast_guard.cast_leaks("A stranger watches.", guard, invented=False), [])
+        self.assertEqual(cast_guard.strip_cast_leaks("A stranger watches.", guard, invented=False), "A stranger watches.")
+
+    def test_mapped_extras_allow_group_wording(self):
+        guard = cast_guard.build_cast_guard([MAN], [MAN], ["Dancers"])
+        self.assertEqual(cast_guard.cast_leaks("A crowd cheers around the man.", guard), [])
+        self.assertIn("Dancers (mapped extras)", cast_guard.cast_wall_text(guard))
+
+    def test_scene_without_people_walls_off_everyone(self):
+        guard = cast_guard.build_cast_guard([MAN], [])
+        self.assertIn("No people appear", cast_guard.cast_wall_text(guard))
+        self.assertIn("he", cast_guard.cast_leaks("He walks past the door.", guard))
 
 
 if __name__ == "__main__":

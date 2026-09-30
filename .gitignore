@@ -19,3 +19,7 @@ flow_automation/chatgpt_outputs/*
 # User-installed/generated LUT assets must not be redistributed
 LUTS/*.[cC][uU][bB][eE]
 LUTS/examples/
+
+# Local-only planning and standalone application (not pushed to GitHub)
+Apireport.md
+standalone_app/

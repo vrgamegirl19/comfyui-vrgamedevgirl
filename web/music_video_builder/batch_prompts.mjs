@@ -17,7 +17,7 @@ import {
   isRecoverableBuildGemmaError,
   segmentUsesNoLipSyncPerformance,
 } from "./prompt_text.mjs";
-import { castLeaks, castWallText, stripCastLeaks } from "./cast_guard.mjs";
+import { castLeaks, castWallText, feelingWordHits, stripCastLeaks } from "./cast_guard.mjs";
 import { normalizeVideoPromptOrigin } from "./segments.mjs";
 import { ACTIVE_STORYBOARD_PROMPT_PIPELINE } from "./storyboard_bridge.mjs";
 import { batchEmptyMessage, batchScopeLabel, normalizeBatchScope } from "./timeline_state.mjs";
@@ -107,6 +107,7 @@ export function createBatchPrompts({
     const castGuard = sceneCastGuardForSegment(segment);
     let castRetries = 0;
     let bannedTerms = [];
+    let feelingRetryTerms = [];
     for (let attempt = 1; attempt <= 3; attempt += 1) {
       const characterBudget = miniMaxH3PromptCharacterBudget(segment, mode, targetLimit);
       if (characterBudget.fixedChars >= characterBudget.hardLimit) {
@@ -130,7 +131,8 @@ export function createBatchPrompts({
           String(options.userNotes || "").trim(),
           assignmentNotes,
           castGuard ? castWallText(castGuard) : "",
-          bannedTerms.length ? `The previous draft wrongly referred to a character who is not in this scene (${bannedTerms.join(", ")}). Rewrite without any reference to them.` : "",
+          bannedTerms.length ? `The previous draft wrongly referred to people who are not in this scene (${bannedTerms.join(", ")}). Rewrite it with only the listed people, using their labels. Do not add any other person, hand, arm, shadow, or reflection.` : "",
+          feelingRetryTerms.length ? `The previous draft used feeling words (${feelingRetryTerms.join(", ")}). Rewrite it so it only describes what the camera sees, with mood shown as visible movement.` : "",
         ].filter(Boolean).join("\n\n"),
         subject_context: "",
         location_context: "",
@@ -167,15 +169,22 @@ export function createBatchPrompts({
       }
       let generatedPrompt = String(data.prompt || "").trim();
       const leakedTerms = castLeaks(generatedPrompt, castGuard);
-      if (leakedTerms.length) {
+      const feelingTerms = feelingWordHits(generatedPrompt);
+      if (leakedTerms.length || feelingTerms.length) {
         if (castRetries < 2) {
           castRetries += 1;
           bannedTerms = leakedTerms;
+          feelingRetryTerms = feelingTerms;
           attempt -= 1;
           continue;
         }
-        // The filter is the guarantee: after two retries, drop whatever still refers to an unselected character.
-        generatedPrompt = stripCastLeaks(generatedPrompt, castGuard);
+      }
+      if (leakedTerms.length) {
+        // The filter is the guarantee: after two retries, drop whatever still refers to a person outside the cast.
+        // Invented-person words are a softer signal, so if removing them would gut the shot text, only
+        // the named off-cast characters are removed.
+        const stripped = stripCastLeaks(generatedPrompt, castGuard);
+        generatedPrompt = stripped.length >= generatedPrompt.length * 0.6 ? stripped : stripCastLeaks(generatedPrompt, castGuard, false);
       }
       if (!generatedPrompt) {
         throw new Error(options.emptyPromptMessage || `The LLM returned an empty MiniMax ${miniMaxH3ModeLabel(mode)} prompt.`);

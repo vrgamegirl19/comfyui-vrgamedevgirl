@@ -103,6 +103,41 @@ export function miniMaxH3Timecode(seconds = 0) {
   return `${String(minutes).padStart(2, "0")}:${secs.toFixed(3).padStart(6, "0")}`;
 }
 
+const MINIMAX_H3_LIFE_MOVEMENTS_SUBTLE = [
+  "breath catching before a held note", "weight shifting from one foot to the other", "fingers tightening then loosening on an object",
+  "a glance away and back", "shoulders dropping after a held pose", "a slow blink", "a head tilt on a sustained note",
+  "a hand brushing hair or collar", "a small smile that fades", "jaw tension then release", "a lean toward or away from the camera",
+  "an unfinished gesture",
+];
+const MINIMAX_H3_LIFE_MOVEMENTS_ACTIVE = [
+  "a snap turn that whips the hair", "a quick step then a hard stop", "shoulders driving on the downbeat", "a spin that ends in a pose",
+  "a fast reach and grab", "a head throw back on the high note", "a jump landing with bent knees", "a quick glance at the other person mid-stride",
+  "hands slicing the air with the rhythm", "a lean into the camera then a push away", "a stumble that turns into a dance step",
+  "a laugh breaking out mid-motion",
+];
+
+// Picks six life-like movements scaled to the character motion speed; the segment id varies the pick between scenes.
+function miniMaxH3LifeMovementBank(characterMotionSpeed, seed = "") {
+  const bank = Number(characterMotionSpeed) >= 7
+    ? MINIMAX_H3_LIFE_MOVEMENTS_ACTIVE
+    : Number(characterMotionSpeed) >= 4 ? [...MINIMAX_H3_LIFE_MOVEMENTS_SUBTLE.slice(0, 6), ...MINIMAX_H3_LIFE_MOVEMENTS_ACTIVE.slice(0, 6)] : MINIMAX_H3_LIFE_MOVEMENTS_SUBTLE;
+  const offset = Array.from(String(seed)).reduce((total, char) => total + char.charCodeAt(0), 0) % bank.length;
+  return Array.from({ length: 6 }, (_, index) => bank[(offset + index) % bank.length]);
+}
+
+// Energy comes from the scene builder sliders, never from the scene length.
+function miniMaxH3MotionEnergyText(cameraMotionSpeed, characterMotionSpeed) {
+  const camera = Number.isFinite(Number(cameraMotionSpeed)) ? Number(cameraMotionSpeed) : 4;
+  const character = Number.isFinite(Number(characterMotionSpeed)) ? Number(characterMotionSpeed) : 4;
+  const cameraText = camera >= 7
+    ? "The camera is fast and energetic: whips, orbits, push-ins, and quick tracking."
+    : camera >= 4 ? "The camera moves at a steady pace with a clear direction." : "The camera moves slowly, or holds a locked frame.";
+  const characterText = character >= 7
+    ? "The performers are high energy: pop, fast motion, jumps, spins, runs, dance hits, and quick reactions."
+    : character >= 4 ? "The performers use steady physical action: walking, turning, reaching, and set interaction." : "The performers use small movements and held poses with life detail.";
+  return `${cameraText} ${characterText}`;
+}
+
 function miniMaxH3OfficialShotScheduleLines(cutPlan = {}) {
   const cuts = Array.isArray(cutPlan.cut_times_seconds) ? cutPlan.cut_times_seconds : [];
   const lines = ["[Shot 1] starts at 00:00.000 and has no timestamp after the label."];
@@ -501,8 +536,9 @@ export function createMiniMaxPrompt({
   }
 
   // Removes any sentence that refers to a character who is not selected for this scene.
-  function castSafeText(segment, text) {
-    return stripCastLeaks(String(text || ""), sceneCastGuardForSegment(segment));
+  // Story beats are model-written for the whole song, so they also lose sentences about invented people.
+  function castSafeText(segment, text, invented = false) {
+    return stripCastLeaks(String(text || ""), sceneCastGuardForSegment(segment), invented);
   }
 
   function miniMaxBuiltInDialogueCueMapText(segment) {
@@ -900,9 +936,20 @@ export function createMiniMaxPrompt({
     parts.push(
       `MANDATORY CHARACTER BUDGET: The combined text inside all ${shotPlan.length} JSON description values must not exceed ${characterBudget.shotDescriptionChars} characters total (about ${perShotBudget} per shot). Stay within this combined limit; be concise without omitting required subjects, actions, camera direction, or vocal cues.`
     );
+    const lifeMovements = miniMaxH3LifeMovementBank(characterMotionSpeed, String(segment?.id || segment?.label || ""));
     parts.push(
-      "SHOT PROSE QUALITY — MANDATORY: Write complete grammatical cinematic prose, not notes, labels, telegraphic shorthand, compressed summaries, or fragments. Do not replace named subjects with S1/S2 shorthand or reduce actions to words such as 'mouths' or 'plays'. Spend most of the words on what the viewer experiences: the camera movement and how it changes the framing, the physical action and interaction of the performers, the emotion shown through body and face, the living environment (light, weather, atmosphere, background motion), and the realism of the moment. "
-      + "Character appearance is already carried by the reference images and the Builder. Do not list clothing, hair, accessories, jewelry, or facial features. Mention a garment or feature only when it moves or reacts in the action (fabric catching wind, hair falling as they turn), and never more than one brief clause per shot."
+      "SHOT FORMAT — MANDATORY: Write each shot as 2 to 4 complete sentences, about 60 to 110 words, in this order. "
+      + "1) Camera: the opening framing, one named camera move with its direction and speed, and the ending framing. "
+      + "2) Subject action: each person in the cast does their own continuous physical action, written by what the body does. "
+      + `3) Life detail: one or two small human movements placed inside the action, for example ${lifeMovements.join("; ")}. `
+      + "4) Light and set: one short line using only the mapped location's own light and objects. "
+      + "Describe only what the camera sees. Show emotion only as visible movement. Do not use feeling words such as feel, grief, longing, memory, soul, or emotional. "
+      + "Write complete grammatical prose, not notes, labels, or fragments, and do not replace named subjects with S1/S2 shorthand. "
+      + "Character appearance is already carried by the reference images and the Builder. Do not list clothing, hair, accessories, jewelry, or facial features. Mention a garment or feature only when it moves or reacts in the action, in one brief clause at most."
+    );
+    parts.push(
+      `MOTION ENERGY — MANDATORY: ${miniMaxH3MotionEnergyText(cameraMotionSpeed, characterMotionSpeed)} `
+      + `This scene is ${exactDuration} seconds long. Fill the full shot length with continuous action at this energy. Do not slow down or hold still. The length sets how many actions are chained, and the speed values set how energetic each one is.`
     );
     const cutTimes = shotPlan.slice(1).map((shot) => shot.timecode);
     if (cutTimes.length) {
@@ -971,10 +1018,11 @@ export function createMiniMaxPrompt({
           const role = subjectRole(item);
           return `- ${item.label} (${item.name || "mapped subject"})${role ? `: ${role}` : ""}`;
         }),
+        `ONLY THESE PEOPLE APPEAR — MANDATORY: ${subjectLabelEntries.map((item) => `${item.label} (${item.name || "mapped subject"})`).join(", ")}. No other person, hand, arm, shadow, reflection, silhouette, or crowd appears in any shot. Refer to people only by label, never by pronoun.`,
       ].join("\n"));
       if (subjectLabelEntries.length > 1) {
         parts.push(
-          "INDEPENDENT SUBJECT ACTION — MANDATORY: In every shot, give each visible subject their own physical action, eyeline, and emotional beat that could be filmed on its own, and show how each responds to the other. "
+          "INDEPENDENT SUBJECT ACTION — MANDATORY: In every shot, give each visible subject their own physical action, eyeline, and small movement that could be filmed on its own, and show how each responds to the other. "
           + "Do not describe one subject only as a passive object of the other's action. Keep each subject's action tied to their label so the viewer can follow who does what and when."
         );
       }
@@ -1027,7 +1075,7 @@ export function createMiniMaxPrompt({
     add(parts, "Scene notes", labelize(segment?.notes || segment?.director_note));
     add(parts, "Storyboard Builder context", labelize(castSafeText(segment, options.storyboardContext || options.extraStoryboardNotes)), 2200);
     add(parts, "Motion/camera request", labelize(segment?.i2v_notes));
-    add(parts, "Story beat", labelize(castSafeText(segment, segment?.story_beat)));
+    add(parts, "Story beat", labelize(castSafeText(segment, segment?.story_beat, true)));
     add(parts, "Scene cast restriction (mandatory)", sceneCastRestrictionText(segment));
     add(parts, "Lyric section", segment?.lyric_section);
     add(parts, "Subject (identity context only; do not restate appearance or clothing in the shot text)", segment?.no_character_present ? "No main character is visible in this scene." : segmentMappedSubjectText(segment));
@@ -1885,7 +1933,7 @@ export function createMiniMaxPrompt({
     add("Exact manual continuity requirements", segment?.continuity);
     add("Director timeline note", segment?.timeline_note);
     add("Motion and camera request", segment?.i2v_notes);
-    add("Scene story beat", castSafeText(segment, segment?.story_beat));
+    add("Scene story beat", castSafeText(segment, segment?.story_beat, true));
     add("Scene cast restriction (mandatory)", sceneCastRestrictionText(segment));
     add(performanceMode === "no_lip_sync" ? "Hidden lyric mood/story context — never performed" : "Exact supplied lyric or dialogue", lyricText);
     add("Lyric section", segment?.lyric_section);

@@ -3,6 +3,7 @@ import os
 import re
 
 from ..llm.prompts.storyboard import (
+    _storyboard_feeling_word_repair_instruction,
     _storyboard_flf_endpoint_repair_instruction,
     _storyboard_flf_endpoint_schema,
     _storyboard_scene_beat_audio_language_repair_instruction,
@@ -14,6 +15,7 @@ from ..llm.prompts.storyboard import (
     _storyboard_story_arc_format_retry_instruction,
     _storyboard_story_arc_instruction,
     _storyboard_story_arc_json_retry_instruction,
+    _storyboard_story_arc_scene_entry_instruction,
     _storyboard_story_arc_schema,
     _storyboard_story_brief_instruction,
 )
@@ -520,6 +522,139 @@ def _normalize_story_arc_output(text, required_labels, maximum_words=100, runner
     )
 
 
+_FEELING_WORDS = (
+    "feel", "feels", "feeling", "feelings", "grief", "longing", "yearning", "memory", "memories",
+    "soul", "emotion", "emotions", "emotional", "nostalgia", "nostalgic", "heartbreak", "heartbroken",
+)
+
+
+def _feeling_word_hits(text, minimum=2):
+    """Distinct feeling words in text when it uses at least `minimum` of them, else []."""
+    pattern = re.compile(r"\b(?:" + "|".join(re.escape(word) for word in _FEELING_WORDS) + r")\b", re.IGNORECASE)
+    hits = [match.group(0).lower() for match in pattern.finditer(str(text or ""))]
+    return sorted(set(hits)) if len(hits) >= minimum else []
+
+
+def _split_story_arc_sections(text, labels):
+    """Split "Label:\\nbody" story arc text into {label: body} using the required labels in order."""
+    sections = {}
+    current = None
+    wanted = {str(label).strip().casefold(): str(label) for label in (labels or [])}
+    for line in str(text or "").split("\n"):
+        stripped = line.strip()
+        key = stripped[:-1].strip().casefold() if stripped.endswith(":") else ""
+        if key in wanted and wanted[key] not in sections:
+            current = wanted[key]
+            sections[current] = []
+        elif current is not None:
+            sections[current].append(line)
+    return {label: "\n".join(lines).strip() for label, lines in sections.items()}
+
+
+def _story_arc_scene_entries_enabled(payload, storyboard, detail):
+    """Pass 2 (one short note per scene) runs for the Detailed and Rich levels unless the payload sets it."""
+    explicit = payload.get("story_arc_scene_entries", payload.get("storyArcSceneEntries", storyboard.get("story_arc_scene_entries")))
+    if explicit is not None and explicit != "":
+        if isinstance(explicit, str):
+            return explicit.strip().lower() in {"1", "true", "yes", "on"}
+        return bool(explicit)
+    return detail in {"detailed", "rich"}
+
+
+def _expand_story_arc_scene_entries(
+    payload,
+    arc_text,
+    section_scene_map,
+    scene_casts,
+    cast_guards,
+    *,
+    camera_flow,
+    camera_motion_speed,
+    character_motion,
+    entry_words,
+    story_arc_seed,
+    runner_label,
+):
+    """Story Arc Pass 2: one short note per scene, with code writing the "Scene N (Location) —" prefix.
+
+    A failed scene call never fails the arc. A section with no successful entries keeps its Pass 1 paragraph.
+    """
+    from ..llm.builder_runner import _run_builder_text_llm
+
+    labels = [label for label, _rows in section_scene_map]
+    sections = _split_story_arc_sections(arc_text, labels)
+    if len(sections) != len(labels):
+        return arc_text
+    blocks = []
+    for label, rows in section_scene_map:
+        paragraph = sections.get(label, "")
+        entries = []
+        previous_entry = ""
+        for row in rows:
+            number = row.get("scene_number")
+            cast = scene_casts.get(number) or []
+            cast_names = [item["name"] for item in cast]
+            guard = cast_guards.get(number)
+            context = strip_cast_leaks(paragraph, guard, invented=False) if guard else paragraph
+            base_instruction = _storyboard_story_arc_scene_entry_instruction(
+                section_label=label,
+                section_text=context,
+                scene_number=number,
+                location_name=row.get("location") or "",
+                location_description=row.get("location_description") or "",
+                cast_wall=cast_wall_text(guard),
+                cast_names=cast_names,
+                lyric=row.get("lyric") or "",
+                previous_entry=previous_entry,
+                camera_flow=camera_flow,
+                camera_motion_speed=camera_motion_speed,
+                character_motion_speed=character_motion,
+                word_limit=entry_words,
+                story_arc_seed=story_arc_seed,
+            )
+            body = ""
+            bad_terms = []
+            try:
+                for attempt in range(2):
+                    instruction = base_instruction
+                    if bad_terms:
+                        instruction += (
+                            f"\n\nThe previous note wrongly used these words: {', '.join(bad_terms)}. "
+                            "Do not use them. Do not add any person who is not in the people list. Describe only what the camera sees."
+                        )
+                    raw, _info = _run_builder_text_llm(
+                        payload,
+                        instruction,
+                        temperature=0.4,
+                        top_p=0.9,
+                        max_new_tokens=max(200, entry_words * 3),
+                        label=f"Storyboard Story Arc Scene {number} {runner_label}",
+                        preserve_paragraphs=True,
+                    )
+                    body = re.sub(r"\s+", " ", _clean_scene_text(raw, 1500)).strip()
+                    body = re.sub(r"^(?:scene\s*\d+\s*(?:\([^)]*\))?\s*[:—–-]\s*)", "", body, flags=re.IGNORECASE).strip()
+                    bad_terms = sorted(set(cast_leaks(body, guard) + _feeling_word_hits(body)))
+                    if not bad_terms:
+                        break
+            except Exception as error:
+                print(f"[VRGDG Story Layer] Story Arc scene {number} note failed and was skipped: {error}")
+                continue
+            if guard and cast_leaks(body, guard):
+                stripped = strip_cast_leaks(body, guard)
+                if len(stripped.split()) < 12:
+                    stripped = strip_cast_leaks(body, guard, invented=False)
+                body = stripped
+            if not body:
+                continue
+            body = _cap_story_arc_words(body, entry_words)
+            location = row.get("location") or ""
+            prefix = f"Scene {number} ({location})" if location else f"Scene {number}"
+            previous_entry = body
+            entries.append(f"{prefix} — {body}")
+        blocks.append(f"{label}:\n" + ("\n".join(entries) if entries else paragraph))
+    return "\n\n".join(blocks)
+
+
 def _build_story_layer_arc(payload):
     authoritative_script = _authoritative_script_from_payload(payload)
     if authoritative_script:
@@ -592,6 +727,7 @@ def _build_story_layer_arc(payload):
     compact_scenes = []
     scene_rows = []
     scene_casts = {}
+    scene_extra_names = {}
     subjects = []
     locations = []
     seen_subjects = set()
@@ -609,6 +745,11 @@ def _build_story_layer_arc(payload):
             if isinstance(subject, dict) and _clean_scene_text(subject.get("name") or "", 120)
         ]
         scene_casts[normalized["scene_number"]] = scene_cast
+        scene_extra_names[normalized["scene_number"]] = [
+            str(item.get("name") or "").strip()
+            for item in (normalized.get("extra_subjects") or [])
+            if isinstance(item, dict) and str(item.get("name") or "").strip()
+        ]
         compact_scenes.append({
             "scene_number": normalized["scene_number"],
             "label": normalized["label"],
@@ -636,6 +777,7 @@ def _build_story_layer_arc(payload):
             "scene_number": normalized["scene_number"],
             "lyric_section": normalized.get("lyric_section", ""),
             "location": _clean_scene_text(location.get("name") or "", 120) if isinstance(location, dict) else "",
+            "location_description": _clean_scene_text(location.get("description") or "", 400) if isinstance(location, dict) else "",
             "lyric": _clean_scene_text(normalized.get("lyrics", ""), 90),
             "cast": [item["name"] for item in scene_cast],
         })
@@ -659,32 +801,18 @@ def _build_story_layer_arc(payload):
             if key and key not in seen_locations:
                 seen_locations.add(key)
                 locations.append({"name": name, "description": description})
-    # Hard wall: a scene entry may only mention the characters selected for that scene.
+    # Hard wall: a scene entry may only mention the people selected for that scene (plus its mapped extras).
     cast_guards = {
-        number: build_cast_guard(subjects, cast)
+        number: build_cast_guard(subjects, cast, scene_extra_names.get(number))
         for number, cast in scene_casts.items()
     }
-    # When the timeline scenes can be matched to the lyric sections, the arc is written scene by scene so it
-    # uses every mapped location and gives each scene its own story entry.
+    # Pass 1 writes one paragraph per lyric section. Pass 2 (Detailed and Rich levels) then writes one short
+    # note per scene, which needs the timeline scenes to be matched to the lyric sections.
     section_scene_map = _story_arc_scene_map(scene_rows, required_section_labels)
-    entry_word_limit = 0
-    if section_scene_map:
-        mapped_scene_count = sum(len(rows) for _label, rows in section_scene_map)
-        entry_word_limit = _story_arc_entry_word_limit(
-            mapped_scene_count,
-            _STORY_ARC_ENTRY_WORDS[story_arc_detail],
-            _STORY_ARC_DETAIL_PROFILES[story_arc_detail][1],
-        )
-        largest_section = max(len(rows) for _label, rows in section_scene_map)
-        section_word_limit = max(section_word_limit, largest_section * entry_word_limit + 20)
-        arc_word_estimate = mapped_scene_count * entry_word_limit
-        arc_max_new_tokens = max(int(payload.get("max_new_tokens") or 2400), int(arc_word_estimate * 1.6) + 400)
-        arc_char_cap = max(14000, arc_word_estimate * 9)
+    scene_entries_enabled = bool(section_scene_map) and _story_arc_scene_entries_enabled(payload, storyboard, story_arc_detail)
     instruction = _storyboard_story_arc_instruction(
         required_section_labels=required_section_labels,
         section_word_limit=section_word_limit,
-        section_scene_map=section_scene_map,
-        entry_word_limit=entry_word_limit,
         song_story_brief=story_layer.get("song_story_brief") or "",
         story_arc_seed=story_arc_seed,
         camera_flow=camera_flow,
@@ -706,15 +834,39 @@ def _build_story_layer_arc(payload):
 
     runner_label = _llm_runner_display_name(payload)
 
-    text, run_info = _run_builder_text_llm(
-        payload,
-        instruction,
-        temperature=float(payload.get("temperature") or 0.45),
-        top_p=float(payload.get("top_p") or 0.92),
-        max_new_tokens=arc_max_new_tokens,
-        label=f"Storyboard Story Arc {runner_label}",
-        preserve_paragraphs=True,
-    )
+    text = ""
+    run_info = {}
+    # Runners that support schemas put each required heading in a JSON key, so the headings cannot drift.
+    # If that reply cannot be used, the plain-text call below runs as before.
+    if required_section_labels and _runner_supports_json_schema(payload):
+        try:
+            structured_text, run_info = _run_builder_text_llm(
+                payload,
+                _storyboard_story_arc_json_retry_instruction(instruction),
+                temperature=float(payload.get("temperature") or 0.45),
+                top_p=float(payload.get("top_p") or 0.92),
+                max_new_tokens=arc_max_new_tokens,
+                label=f"Storyboard Story Arc {runner_label}",
+                preserve_paragraphs=True,
+                json_schema=_storyboard_story_arc_schema(required_section_labels),
+            )
+            structured_sections = json.loads(structured_text)
+            text = "\n\n".join(
+                f"{label}:\n{str(structured_sections.get(label) or '').strip()}" for label in required_section_labels
+            )
+        except Exception as structured_error:
+            print(f"[VRGDG Story Layer] Structured Story Arc reply was not usable, using plain text: {structured_error}")
+            text = ""
+    if not text:
+        text, run_info = _run_builder_text_llm(
+            payload,
+            instruction,
+            temperature=float(payload.get("temperature") or 0.45),
+            top_p=float(payload.get("top_p") or 0.92),
+            max_new_tokens=arc_max_new_tokens,
+            label=f"Storyboard Story Arc {runner_label}",
+            preserve_paragraphs=True,
+        )
     text = _clean_scene_text(text, arc_char_cap)
     if not text:
         raise ValueError(f"{runner_label} returned an empty story arc.")
@@ -765,6 +917,20 @@ def _build_story_layer_arc(payload):
                 expected_sections=required_section_labels,
                 runner=runner_label,
             ) from first_error
+    if scene_entries_enabled:
+        text = _expand_story_arc_scene_entries(
+            payload,
+            text,
+            section_scene_map,
+            scene_casts,
+            cast_guards,
+            camera_flow=camera_flow,
+            camera_motion_speed=camera_motion_speed,
+            character_motion=character_motion,
+            entry_words=_STORY_ARC_ENTRY_WORDS[story_arc_detail],
+            story_arc_seed=story_arc_seed,
+            runner_label=runner_label,
+        )
     text = strip_story_arc_entry_leaks(
         text,
         {number: guard for number, guard in cast_guards.items() if guard},
@@ -984,7 +1150,16 @@ def _build_story_layer_scene_beat(payload):
     reference_builder = payload.get("reference_builder") or payload.get("referenceBuilder") or {}
     if isinstance(reference_builder, dict):
         all_project_subjects += [item for item in (reference_builder.get("subjects") or []) if isinstance(item, dict)]
-    cast_guard = build_cast_guard(all_project_subjects + scene_cast, scene_cast)
+    cast_guard = build_cast_guard(all_project_subjects + scene_cast, scene_cast, [item["name"] for item in extra_subjects])
+    scene_location = scene.get("location_ref") if isinstance(scene.get("location_ref"), dict) else {}
+    scene_facts = "\n".join(filter(None, [
+        cast_wall_text(cast_guard),
+        (
+            f"Location: {_clean_scene_text(scene_location.get('name') or '', 120)}"
+            f" — {_clean_scene_text(scene_location.get('description') or '', 400)}"
+        ) if scene_location.get("name") else "",
+        f"Previous end state: {previous_end_state}" if previous_end_state else "",
+    ]))
     instruction = _storyboard_scene_beat_instruction(
         flf_mode=flf_mode,
         beat_word_limit=beat_word_limit,
@@ -1001,7 +1176,7 @@ def _build_story_layer_scene_beat(payload):
         performance_assignment_json=json.dumps({"singing": assigned_performers, "silent": silent_performers}, ensure_ascii=False, indent=2),
         extra_subjects_json=json.dumps(extra_subjects, ensure_ascii=False, indent=2) if extra_subjects else "[none]",
         scene_json=json.dumps(scene, ensure_ascii=False, indent=2),
-        cast_wall=cast_wall_text(cast_guard),
+        cast_wall=scene_facts,
     )
     from ..llm.builder_runner import _run_builder_text_llm, _runner_supports_json_schema
 
@@ -1110,8 +1285,8 @@ def _build_story_layer_scene_beat(payload):
         else:
             subject_hint = "The scene subject" if not scene.get("subject_refs") else _clean_scene_text((scene.get("subject_refs") or [{}])[0].get("name") or "The scene subject", 120)
             text = (
-                f"{subject_hint} channels the story arc's defiant, boundary-breaking energy inside {location_context}. "
-                "The beat focuses on tension, control, and release through posture, expression, and interaction with the mapped studio environment, without changing the physical location."
+                f"{subject_hint} moves through {location_context}, with a steady camera move following the action. "
+                "The beat stays inside the mapped location and shows the action through posture, hands, and gaze."
             )
             run_info = {
                 **run_info,
@@ -1158,12 +1333,33 @@ def _build_story_layer_scene_beat(payload):
         )
         repaired_text = re.sub(r"^\s*(scene\s+story\s+beat|story\s+beat|beat)\s*:\s*", "", _clean_scene_text(repaired_text, 1800), flags=re.I)
         run_info = {**run_info, "cast_repaired": True, "cast_repair_terms": leaked_terms}
-        # The filter is the guarantee: whatever still refers to an unselected character is removed.
-        text = strip_cast_leaks(repaired_text if repaired_text and not cast_leaks(repaired_text, cast_guard) else text, cast_guard)
+        # The filter is the guarantee: whatever still refers to a person outside the cast is removed. Invented-person
+        # words are a softer signal, so if removing them would leave too little, only named off-cast characters go.
+        candidate = repaired_text if repaired_text and not cast_leaks(repaired_text, cast_guard) else text
+        stripped = strip_cast_leaks(candidate, cast_guard)
+        if len(stripped.split()) < 30:
+            stripped = strip_cast_leaks(candidate, cast_guard, invented=False)
+        text = stripped
         if not text:
             names = ", ".join(cast_guard["cast_names"]) if cast_guard and cast_guard["cast_names"] else "The scene"
-            text = f"The scene stays focused on {names}, expressed through posture, expression, and the mapped location."
-    flf_fields = {key: strip_cast_leaks(value, cast_guard) for key, value in flf_fields.items()}
+            text = f"The scene stays focused on {names}, shown through posture, hands, and the mapped location."
+    feeling_terms = _feeling_word_hits(text)
+    if feeling_terms and not flf_mode:
+        feeling_text, feeling_info = _run_builder_text_llm(
+            payload,
+            _storyboard_feeling_word_repair_instruction(feeling_terms, text, beat_word_limit),
+            temperature=0.15,
+            top_p=0.80,
+            max_new_tokens=300,
+            label="Storyboard Scene Beat Feeling Word Repair",
+            preserve_paragraphs=True,
+        )
+        feeling_text = re.sub(r"^\s*(scene\s+story\s+beat|story\s+beat|beat)\s*:\s*", "", _clean_scene_text(feeling_text, 1800), flags=re.I)
+        # Keep the original if the rewrite is worse: empty, still full of feeling words, or bringing back off-cast people.
+        if feeling_text and not _feeling_word_hits(feeling_text) and not cast_leaks(feeling_text, cast_guard):
+            text = _strip_scene_beat_audio_language(feeling_text) or text
+            run_info = {**run_info, "feeling_words_repaired": True, "feeling_word_terms": feeling_terms}
+    flf_fields = {key: strip_cast_leaks(value, cast_guard, invented=False) for key, value in flf_fields.items()}
     return {
         "story_beat": text,
         **flf_fields,
