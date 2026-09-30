@@ -28,7 +28,7 @@ Test checklist:
 5. Story Arc at Standard (Pass 1 only) and at Detailed (Pass 1 and Pass 2). Compare time and quality.
 6. Console lines starting `[VRGDG Story Layer]` show skipped scenes or structured-output fallbacks.
 
-Baseline: `8e595af` ("Reorganize pack into feature packages for 2.0"). The hash given, `e595af5948abfaa6b03a8c335f349f081d66968`, resolves to `8e595af5948abfaa6b03a8c335f349f081d66968`.
+Baseline: `8e595af` ("Reorganize pack into feature packages for 2.0"). The hash given, `8e595af5948abfaa6b03a8c335f349f081d66968`.
 Compared against: `HEAD` (`b91981c`, branch `Beta2.0`).
 
 Findings below come from reading the diff. I have not run the LLM against either version, so F1 to F5 are likely causes, not confirmed ones. F7 and F8 match the failures you reported.

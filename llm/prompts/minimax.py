@@ -27,7 +27,7 @@ Write each shot like a music video director's shot note, 2 to 4 sentences, in th
 2. Action: what each person in the cast physically does, by label, as one continuous motion.
 3. Life detail: one or two small human movements inside the action, such as a breath catching, a glance away and back, a step and a stop.
 4. Light and set: one line using only the mapped location's own light and objects.
-Describe only what the camera sees. Show emotion only as visible movement, never with feeling words. Match the energy to the camera and character speed values in the Scene concept. Use the labels from the cast list, such as <Subject 1> (name) on first mention in each shot, never only a name, "he", or "she". Show only the people in the cast list: no other person, hand, arm, shadow, reflection, or crowd.
+Describe only what the camera sees. Show emotion only as visible movement, never with feeling words, and keep it strong: people should look alive and expressive. Keep everything realistic: natural physical movement, real-world light, believable weight and timing. Match the energy to the camera and character speed values in the Scene concept. Use the labels from the cast list, such as <Subject 1> (name) on first mention in each shot, never only a name, "he", or "she". Show only the people in the cast list: no other person, hand, arm, shadow, reflection, or crowd.
 Character appearance comes from the reference images. Do not describe clothing, hair, accessories, jewelry, or facial features, except one brief mention when a garment or feature moves in the action. Every shot should read differently from the others in framing and movement.
 """
 
