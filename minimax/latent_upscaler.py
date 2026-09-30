@@ -180,9 +180,9 @@ class VRGDG_MiniMaxH3UltimateUpscaleParams:
 
     The upstream parameter node builds its Combo options from only one model
     directory at import time.  This node resolves all registered directories
-    at execution time and emits the absolute checkpoint path in the shared
-    parameter dictionary, so the upstream processor can load the chosen file
-    regardless of which ComfyUI model path contains it.
+    at execution time and emits the registered checkpoint name in the shared
+    parameter dictionary, which the upstream processor resolves through
+    folder_paths across every registered model path.
     """
 
     @classmethod
@@ -206,9 +206,11 @@ class VRGDG_MiniMaxH3UltimateUpscaleParams:
     CATEGORY = "VRGDG/Video/MiniMax H3"
 
     def create(self, model_name, width, height, device, precision):
-        path = _resolve_registered_model_path(model_name)
+        # Validate the file exists, but hand upstream the registered name: its
+        # loader resolves names via folder_paths and rejects absolute paths.
+        _resolve_registered_model_path(model_name)
         return ({
-            "model_name": path,
+            "model_name": str(model_name).strip(),
             "width": int(round(int(width) / 32.0)) * 32,
             "height": int(round(int(height) / 32.0)) * 32,
             "device": device,

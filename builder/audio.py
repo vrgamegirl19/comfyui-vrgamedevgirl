@@ -11,6 +11,7 @@ import base64
 import array
 import folder_paths
 
+from ..core.atomic_write import atomic_write_text
 from .paths import _copy_file_into_folder, _load_json_file, _newest_file, _resolve_existing_file, _safe_project_name
 
 
@@ -44,12 +45,24 @@ def _scene_audio_path(project_folder, scene_number, extension=".wav"):
     return os.path.join(_scene_audio_folder(project_folder), f"audio_{scene:04d}{ext}")
 
 
+def _find_ffmpeg_path():
+    try:
+        subprocess.run(["ffmpeg", "-version"], capture_output=True, check=True)
+        return "ffmpeg"
+    except Exception:
+        try:
+            import imageio_ffmpeg
+            return imageio_ffmpeg.get_ffmpeg_exe()
+        except Exception as exc:
+            raise RuntimeError("ffmpeg was not found. Install ffmpeg or imageio-ffmpeg to mix scene audio.") from exc
+
+
 def _convert_audio_to_wav(source_path, target_path):
     source = _resolve_existing_file(source_path, "Audio file")
     target = os.path.abspath(str(target_path or "").strip().strip('"'))
     os.makedirs(os.path.dirname(target), exist_ok=True)
     command = [
-        "ffmpeg",
+        _find_ffmpeg_path(),
         "-hide_banner",
         "-loglevel",
         "error",
@@ -222,7 +235,7 @@ def _read_audio_peaks_with_wave(audio_path, target_peaks=1600):
 def _read_audio_peaks_with_ffmpeg(audio_path, target_peaks=1600):
     sample_rate = 16000
     command = [
-        "ffmpeg",
+        _find_ffmpeg_path(),
         "-hide_banner",
         "-loglevel",
         "error",
@@ -602,8 +615,7 @@ def _save_project_srt(payload):
     if not srt_text.strip():
         raise ValueError("SRT text is empty.")
     path = _srt_path(project_folder)
-    with open(path, "w", encoding="utf-8") as handle:
-        handle.write(srt_text)
+    atomic_write_text(path, srt_text)
     segments = _parse_srt_segments(srt_text)
     return {"srt_path": path, "segments": segments}
 
@@ -626,8 +638,7 @@ def _save_single_scene_srt(payload):
         label,
         "",
     ])
-    with open(path, "w", encoding="utf-8") as handle:
-        handle.write(text)
+    atomic_write_text(path, text)
     return {"srt_path": path, "scene_number": scene_number, "start_time": start_time, "duration": duration}
 
 
@@ -654,7 +665,7 @@ def _trim_scene_audio(payload):
     os.makedirs(folder, exist_ok=True)
     target_path = os.path.join(folder, f"scene_audio_{scene_number:04d}.wav")
     cmd = [
-        "ffmpeg",
+        _find_ffmpeg_path(),
         "-y",
         "-ss",
         str(start),
@@ -692,16 +703,6 @@ def _trim_scene_audio(payload):
     }
 
 
-def _find_ffmpeg_path():
-    try:
-        subprocess.run(["ffmpeg", "-version"], capture_output=True, check=True)
-        return "ffmpeg"
-    except Exception:
-        try:
-            import imageio_ffmpeg
-            return imageio_ffmpeg.get_ffmpeg_exe()
-        except Exception as exc:
-            raise RuntimeError("ffmpeg was not found. Install ffmpeg or imageio-ffmpeg to mix scene audio.") from exc
 
 
 def _concat_file_path(path):
@@ -865,9 +866,7 @@ def _prepare_scene_audio_mix(payload):
         raise ValueError("No scene audio parts were created.")
 
     mix_path = os.path.join(folder, "scene_audio_mix.wav")
-    with open(concat_file, "w", encoding="utf-8") as handle:
-        for path in part_paths:
-            handle.write(f"file '{_concat_file_path(path)}'\n")
+    atomic_write_text(concat_file, "".join(f"file '{_concat_file_path(path)}'\n" for path in part_paths))
     mix_cmd = [
         ffmpeg_path,
         "-y",
@@ -886,9 +885,8 @@ def _prepare_scene_audio_mix(payload):
         raise RuntimeError((result.stderr or result.stdout or "ffmpeg failed to create scene audio mix.").strip())
 
     srt_path = _srt_path(project_folder)
-    with open(srt_path, "w", encoding="utf-8") as handle:
-        text_field = "lyric_text" if str(payload.get("srt_text_field", "") or "").strip() == "lyric_text" else "label"
-        handle.write(_segments_to_srt(segments, text_field=text_field))
+    text_field = "lyric_text" if str(payload.get("srt_text_field", "") or "").strip() == "lyric_text" else "label"
+    atomic_write_text(srt_path, _segments_to_srt(segments, text_field=text_field))
 
     shutil.rmtree(parts_folder, ignore_errors=True)
     audio_info = _read_audio_peaks(mix_path, 1600)

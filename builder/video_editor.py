@@ -1,3 +1,4 @@
+import asyncio
 import os
 import re
 import base64
@@ -33,7 +34,8 @@ def _ensure_video_editor_routes():
     async def vrgdg_video_editor_video(request):
         raw_path = str(request.query.get("path", "") or "").strip()
         video_path = os.path.normpath(os.path.abspath(raw_path))
-        if not os.path.isfile(video_path):
+        is_file = await asyncio.to_thread(os.path.isfile, video_path)
+        if not is_file:
             return web.json_response({"ok": False, "error": "Video file was not found."}, status=404)
         response = web.FileResponse(video_path)
         # The client versions this URL with the scene's video_cache_bust, which only
@@ -47,7 +49,8 @@ def _ensure_video_editor_routes():
     async def vrgdg_video_editor_image(request):
         raw_path = str(request.query.get("path", "") or "").strip()
         image_path = os.path.normpath(os.path.abspath(raw_path))
-        if not os.path.isfile(image_path):
+        is_file = await asyncio.to_thread(os.path.isfile, image_path)
+        if not is_file:
             return web.json_response({"ok": False, "error": "Image file was not found."}, status=404)
         if os.path.splitext(image_path)[1].lower() not in {".png", ".jpg", ".jpeg", ".webp"}:
             return web.json_response({"ok": False, "error": "Unsupported image file type."}, status=400)

@@ -231,8 +231,7 @@ def _new_builder_project(payload):
     for filename in ("ConceptPrompts.txt", "I2VMotionNotes.txt", "themestyle.txt", "storyconcept.txt", "subjectsandscenes.txt", "full_lyrics.txt"):
         path = os.path.join(_context_folder(target), filename)
         if not os.path.exists(path):
-            with open(path, "w", encoding="utf-8") as handle:
-                handle.write("")
+            atomic_write_text(path, "")
     return {
         "project_folder": target,
         "session_path": _session_path(target),
@@ -305,12 +304,9 @@ def _save_builder_project_as(payload):
         "updated": time.time(),
         "segments": segments,
     }
-
-    with open(_session_path(target), "w", encoding="utf-8") as handle:
-        json.dump(session, handle, indent=2, ensure_ascii=False)
-        handle.write("\n")
-    with open(_srt_path(target), "w", encoding="utf-8") as handle:
-        handle.write(_segments_to_srt(segments))
+    session["revision"] = 1
+    atomic_write_json(_session_path(target), session)
+    atomic_write_text(_srt_path(target), _segments_to_srt(segments))
     scene_notes_path = _write_scene_notes_json(target, segments)
     if keep.get("mappings"):
         _save_reference_descriptions(target, session)
@@ -519,15 +515,8 @@ def _save_builder_render_log(payload):
     text_path = os.path.join(logs_folder, f"{log_id}.txt")
     log["report_json_path"] = json_path
     log["report_text_path"] = text_path
-    json_temp = json_path + ".tmp"
-    text_temp = text_path + ".tmp"
-    with open(json_temp, "w", encoding="utf-8") as handle:
-        json.dump(log, handle, indent=2, ensure_ascii=False)
-        handle.write("\n")
-    with open(text_temp, "w", encoding="utf-8") as handle:
-        handle.write(_render_log_text(log))
-    os.replace(json_temp, json_path)
-    os.replace(text_temp, text_path)
+    atomic_write_json(json_path, log)
+    atomic_write_text(text_path, _render_log_text(log))
 
     session_path = _session_path(project_folder)
     if os.path.isfile(session_path):
@@ -544,11 +533,7 @@ def _save_builder_render_log(payload):
         session["render_logs"] = logs[-20:]
         session["active_render_log_id"] = log_id if log.get("status") == "running" else ""
         session["updated"] = time.time()
-        session_temp = session_path + ".render-log.tmp"
-        with open(session_temp, "w", encoding="utf-8") as handle:
-            json.dump(session, handle, indent=2, ensure_ascii=False)
-            handle.write("\n")
-        os.replace(session_temp, session_path)
+        atomic_write_json(session_path, session)
     return {
         "log": log,
         "report_json_path": json_path,
@@ -564,11 +549,7 @@ def _save_canonical_full_lyrics(project_folder, lyrics):
     context_folder = _context_folder(project_folder)
     os.makedirs(context_folder, exist_ok=True)
     path = os.path.join(context_folder, "full_lyrics.txt")
-    temporary_path = path + ".tmp"
-    with open(temporary_path, "w", encoding="utf-8") as handle:
-        handle.write(text)
-        handle.write("\n")
-    os.replace(temporary_path, path)
+    atomic_write_text(path, text + "\n")
     return path
 
 
@@ -648,6 +629,7 @@ def _renumber_scene_assets_after_removal(project_folder, removed_scene_number):
             if _scene_asset_number(name) == removed:
                 os.makedirs(os.path.join(archive, folder_name), exist_ok=True)
                 shutil.move(os.path.join(folder, name), os.path.join(archive, folder_name, name))
+    _prune_removed_scene_assets(project_folder)
     renamed = _shift_scene_assets(project_folder, removed + 1, -1)
     SceneLatentManager.delete_latent(project_folder, removed)
     SceneLatentManager.reindex_latents(project_folder, removed)
@@ -703,6 +685,53 @@ def _scene_preview_paths(project_folder, scene_number):
     return paths
 
 
+_MAX_SESSION_BACKUPS = 25
+_MAX_REMOVED_SCENE_ASSETS = 20
+
+
+def _prune_session_backups(project_folder, max_keep=_MAX_SESSION_BACKUPS):
+    backup_folder = os.path.join(project_folder, "session_backups")
+    if not os.path.isdir(backup_folder):
+        return
+    try:
+        entries = []
+        for name in os.listdir(backup_folder):
+            if name.startswith("vrgdg_builder_session_") and name.endswith(".json"):
+                full_path = os.path.join(backup_folder, name)
+                if os.path.isfile(full_path):
+                    entries.append((os.path.getmtime(full_path), full_path))
+        entries.sort(key=lambda x: x[0])
+        while len(entries) > max_keep:
+            _, old_file = entries.pop(0)
+            try:
+                os.remove(old_file)
+            except OSError:
+                pass
+    except Exception:
+        pass
+
+
+def _prune_removed_scene_assets(project_folder, max_keep=_MAX_REMOVED_SCENE_ASSETS):
+    removed_root = os.path.join(project_folder, "removed_scene_assets")
+    if not os.path.isdir(removed_root):
+        return
+    try:
+        entries = []
+        for name in os.listdir(removed_root):
+            full_path = os.path.join(removed_root, name)
+            if os.path.isdir(full_path):
+                entries.append((os.path.getmtime(full_path), full_path))
+        entries.sort(key=lambda x: x[0])
+        while len(entries) > max_keep:
+            _, old_dir = entries.pop(0)
+            try:
+                shutil.rmtree(old_dir, ignore_errors=True)
+            except OSError:
+                pass
+    except Exception:
+        pass
+
+
 def _backup_session_file(project_folder):
     path = _session_path(project_folder)
     if not os.path.isfile(path):
@@ -716,6 +745,7 @@ def _backup_session_file(project_folder):
         target = os.path.join(backup_folder, f"vrgdg_builder_session_{stamp}_{index:02d}.json")
         index += 1
     shutil.copy2(path, target)
+    _prune_session_backups(project_folder)
     return target
 
 
@@ -962,8 +992,7 @@ def _save_editable_text_file(payload):
     if parent:
         os.makedirs(parent, exist_ok=True)
     content = str(payload.get("content", "") or "")
-    with open(file_path, "w", encoding="utf-8", newline="") as handle:
-        handle.write(content)
+    atomic_write_text(file_path, content)
     return {"path": file_path}
 
 
@@ -1028,9 +1057,7 @@ def _save_model_defaults(session):
         "saved_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "defaults": defaults,
     }
-    with open(target, "w", encoding="utf-8") as handle:
-        json.dump(payload, handle, indent=2, ensure_ascii=False)
-        handle.write("\n")
+    atomic_write_json(target, payload)
     return target
 
 
@@ -1177,20 +1204,42 @@ def _save_builder_session_unlocked(payload):
     if isinstance(payload.get("project_context_files"), dict):
         session["project_context_files"] = dict(payload["project_context_files"])
     incoming_revision = int(session.get("builder_save_revision") or 0)
-    if incoming_revision > 0 and os.path.isfile(session_path):
+    is_stale = False
+    existing_revision = 0
+    server_revision = 0
+    if os.path.isfile(session_path):
         try:
             with open(session_path, "r", encoding="utf-8-sig") as handle:
                 existing_session = json.load(handle)
-            existing_revision = int(existing_session.get("builder_save_revision") or 0) if isinstance(existing_session, dict) else 0
-            if existing_revision > incoming_revision:
-                print(
-                    "[VRGDG Music Builder] Ignored stale session snapshot: "
-                    f"incoming revision {incoming_revision} < saved revision {existing_revision}."
-                )
-                session = existing_session
-                segments = session.get("segments", []) if isinstance(session.get("segments"), list) else []
+            if isinstance(existing_session, dict):
+                existing_revision = int(existing_session.get("builder_save_revision") or 0)
+                server_revision = int(existing_session.get("revision") or existing_revision or 0)
+                if incoming_revision > 0 and existing_revision > incoming_revision:
+                    is_stale = True
+                    print(
+                        "[VRGDG Music Builder] Ignored stale session snapshot: "
+                        f"incoming revision {incoming_revision} < saved revision {existing_revision}."
+                    )
+                    session = existing_session
+                    segments = session.get("segments", []) if isinstance(session.get("segments"), list) else []
         except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
             print(f"[VRGDG Music Builder] Save revision check skipped: {exc}")
+
+    if is_stale:
+        return {
+            "ok": True,
+            "stale": True,
+            "stale_reason": f"incoming revision {incoming_revision} < saved revision {existing_revision}",
+            "current_revision": server_revision,
+            "revision": server_revision,
+            "project_folder": project_folder,
+            "session_path": session_path,
+            "srt_path": _srt_path(project_folder),
+            "session": session,
+        }
+
+    new_revision = server_revision + 1
+    session["revision"] = new_revision
     # Autosave requests can race a reference-builder panel update. If the
     # incoming snapshot has a null catalog, retain the last known catalog
     # instead of turning a valid project into a prompt-only project.
@@ -1249,6 +1298,9 @@ def _save_builder_session_unlocked(payload):
     _validate_saved_project(project_folder, session, context_paths)
 
     return {
+        "ok": True,
+        "stale": False,
+        "revision": new_revision,
         "project_folder": project_folder,
         "session_path": _session_path(project_folder),
         "srt_path": _srt_path(project_folder),
@@ -1271,6 +1323,30 @@ def _save_builder_session(payload):
     # interleave into a mixed-generation project snapshot.
     with _BUILDER_SAVE_LOCK:
         return _save_builder_session_unlocked(payload)
+
+
+def _redact_session_secrets(session):
+    """Strip API keys and credentials so exports and public structures do not leak secrets."""
+    if not isinstance(session, dict):
+        return session
+    cleaned = json.loads(json.dumps(session, ensure_ascii=False))
+    secret_keys = {
+        "lm_studio_api_key",
+        "llm_api_key_project",
+        "own_server_api_key_project",
+        "api_key",
+        "own_server_key",
+        "own_server_api_key",
+    }
+    for key in list(cleaned.keys()):
+        if key in secret_keys or key.endswith("_api_key") or key.endswith("_api_key_project"):
+            cleaned[key] = ""
+    for group in ("nb_image_settings", "llm_settings", "lm_studio_settings"):
+        if isinstance(cleaned.get(group), dict):
+            for key in list(cleaned[group].keys()):
+                if key in secret_keys or key.endswith("_api_key"):
+                    cleaned[group][key] = ""
+    return cleaned
 
 
 def _prepare_builder_project_export(project_folder):
@@ -1329,9 +1405,8 @@ def _prepare_builder_project_export(project_folder):
     session = _rebase_project_owned_paths(project_folder, old_project_folder, session)
     session["project_folder"] = project_folder
     session["updated"] = time.time()
-    with open(session_path, "w", encoding="utf-8") as handle:
-        json.dump(session, handle, indent=2, ensure_ascii=False)
-        handle.write("\n")
+    session = _redact_session_secrets(session)
+    atomic_write_json(session_path, session)
 
     project_name = _safe_project_name(os.path.basename(project_folder))
     temp_handle = tempfile.NamedTemporaryFile(prefix="vrgdg_builder_export_", suffix=".zip", delete=False)
@@ -1426,9 +1501,8 @@ def _import_builder_project_zip(zip_path, requested_name=""):
             imported_session = _rebase_project_owned_paths(target, old_folder, imported_session)
             imported_session["project_folder"] = target
             imported_session["updated"] = time.time()
-            with open(session_path, "w", encoding="utf-8") as handle:
-                json.dump(imported_session, handle, indent=2, ensure_ascii=False)
-                handle.write("\n")
+            imported_session["revision"] = int(imported_session.get("revision") or 1)
+            atomic_write_json(session_path, imported_session)
             result = _load_builder_session(target)
             result["imported_project_name"] = project_name
             return result
@@ -1451,26 +1525,21 @@ def _save_wizard_draft(payload):
         "lyrics": lyrics,
         "updated": time.time(),
     }
-    with open(_wizard_draft_path(project_folder), "w", encoding="utf-8") as handle:
-        json.dump(draft, handle, indent=2, ensure_ascii=False)
-        handle.write("\n")
-    with open(_wizard_lyrics_path(project_folder), "w", encoding="utf-8") as handle:
-        handle.write(lyrics)
-        if lyrics and not lyrics.endswith("\n"):
-            handle.write("\n")
+    atomic_write_json(_wizard_draft_path(project_folder), draft)
+    atomic_write_text(_wizard_lyrics_path(project_folder), lyrics + ("\n" if lyrics and not lyrics.endswith("\n") else ""))
     raw_outputs = payload.get("raw_outputs") if isinstance(payload.get("raw_outputs"), dict) else {}
     for name, value in raw_outputs.items():
         safe_name = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(name or "").strip()).strip("._") or "raw_output"
         if not safe_name.endswith(".txt") and not safe_name.endswith(".json"):
             safe_name += ".txt"
-        with open(os.path.join(folder, safe_name), "w", encoding="utf-8") as handle:
-            if isinstance(value, (dict, list)):
-                json.dump(value, handle, indent=2, ensure_ascii=False)
-                handle.write("\n")
-            else:
-                handle.write(str(value or ""))
-                if value and not str(value).endswith("\n"):
-                    handle.write("\n")
+        target_path = os.path.join(folder, safe_name)
+        if isinstance(value, (dict, list)):
+            atomic_write_json(target_path, value)
+        else:
+            val_text = str(value or "")
+            if val_text and not val_text.endswith("\n"):
+                val_text += "\n"
+            atomic_write_text(target_path, val_text)
     return {
         "wizard_folder": folder,
         "wizard_draft_path": _wizard_draft_path(project_folder),
@@ -1523,11 +1592,14 @@ def _load_builder_session(project_folder):
                 continue
             if not str(segment.get("timeline_note", "") or "").strip() and scene_note_fallbacks.get(index):
                 segment["timeline_note"] = scene_note_fallbacks[index]
+    if "revision" not in session:
+        session["revision"] = int(session.get("builder_save_revision") or 1)
     return {
         "project_folder": folder,
         "session_path": path,
         "srt_path": _srt_path(folder),
         "scene_notes_path": _scene_notes_path(folder),
+        "revision": int(session.get("revision") or 1),
         "session": session,
     }
 

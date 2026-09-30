@@ -48,6 +48,7 @@ def load_scene_audio_mixer(recording_subprocess):
         "_segments_to_srt": lambda _segments, text_field="label": "",
         "_read_audio_peaks": lambda _path, _count: {"duration": 8.0, "peaks": []},
         "_estimate_beats_from_audio": lambda *_args, **_kwargs: ([], 0.0),
+        "atomic_write_text": lambda path, content: Path(path).write_text(content, encoding="utf-8"),
     }
     exec(compile(ast.Module(body=helpers, type_ignores=[]), str(NODE_SOURCE), "exec"), namespace)
     return namespace["_prepare_scene_audio_mix"]

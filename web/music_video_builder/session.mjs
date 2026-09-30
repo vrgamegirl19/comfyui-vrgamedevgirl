@@ -1015,6 +1015,10 @@ export function createSession({
         session: currentSessionData(),
         project_context_files: await projectContextFilesForSessionSave(),
       }, 60000);
+      if (data?.stale) {
+        toast("Project was modified elsewhere. Snapshot was not saved to protect newer edits. Please reload the project.", true);
+        return data;
+      }
       await syncPromptJsonFromSegments("session save");
       await syncI2VMotionJsonFromSegments("session save");
       await syncLyricAndSubjectNoteFiles("session save");
@@ -1189,6 +1193,10 @@ export function createSession({
       session: currentSessionData(),
       project_context_files: await projectContextFilesForSessionSave(),
     }, 60000);
+    if (data?.stale) {
+      toast("Project was modified elsewhere. Please reload the project before rendering.", true);
+      throw new Error("Project snapshot was rejected as stale. Please reload the project.");
+    }
     await syncPromptJsonFromSegments("scene video save");
     await syncI2VMotionJsonFromSegments("scene video save");
     await syncLyricAndSubjectNoteFiles("scene video save");

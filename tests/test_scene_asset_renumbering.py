@@ -35,6 +35,7 @@ def load_renumber():
     names = {
         "_SCENE_ASSET_FOLDERS", "_SCENE_ASSET_NAME", "_scene_asset_number", "_renumbered_scene_asset_name",
         "_shift_scene_assets", "_renumber_scene_assets_after_removal", "_renumber_scene_assets_after_insert",
+        "_MAX_REMOVED_SCENE_ASSETS", "_prune_removed_scene_assets",
     }
     body = [
         node for node in tree.body

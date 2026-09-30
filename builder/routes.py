@@ -40,29 +40,32 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_analyze_audio(request):
         try:
             payload = await request.json()
-            audio_path = _resolve_existing_file(payload.get("audio_path", ""), "Audio file")
-            project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
-            if os.path.splitext(audio_path)[1].lower() == ".m4a" and project_folder:
-                audio_path = _convert_audio_to_wav(
+            def _analyze():
+                audio_path = _resolve_existing_file(payload.get("audio_path", ""), "Audio file")
+                project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
+                if os.path.splitext(audio_path)[1].lower() == ".m4a" and project_folder:
+                    audio_path = _convert_audio_to_wav(
+                        audio_path,
+                        os.path.join(project_folder, "project_audio", "project_audio.wav"),
+                    )
+                res = _read_audio_peaks(audio_path, payload.get("target_peaks", 1600))
+                res["beats"], res["tempo_bpm"] = _estimate_beats_from_audio(
                     audio_path,
-                    os.path.join(project_folder, "project_audio", "project_audio.wav"),
+                    res.get("peaks", []),
+                    res.get("duration", 0),
+                    include_tempo=True,
                 )
-            result = _read_audio_peaks(audio_path, payload.get("target_peaks", 1600))
-            result["beats"], result["tempo_bpm"] = _estimate_beats_from_audio(
-                audio_path,
-                result.get("peaks", []),
-                result.get("duration", 0),
-                include_tempo=True,
-            )
+                return {"audio_path": audio_path, **res}
+            data = await asyncio.to_thread(_analyze)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
-        return web.json_response({"ok": True, "audio_path": audio_path, **result})
+        return web.json_response({"ok": True, **data})
 
     @server_instance.routes.post("/vrgdg/music_builder/import_capcut_beats")
     async def vrgdg_music_builder_import_capcut_beats(request):
         try:
             payload = await request.json()
-            result = _find_latest_capcut_beats(payload.get("audio_duration", 0))
+            result = await asyncio.to_thread(_find_latest_capcut_beats, payload.get("audio_duration", 0))
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -71,7 +74,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_save_session(request):
         try:
             payload = await request.json()
-            result = _save_builder_session(payload)
+            result = await asyncio.to_thread(_save_builder_session, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -80,7 +83,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_save_render_log(request):
         try:
             payload = await request.json()
-            result = _save_builder_render_log(payload)
+            result = await asyncio.to_thread(_save_builder_render_log, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -89,7 +92,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_save_wizard_draft(request):
         try:
             payload = await request.json()
-            result = _save_wizard_draft(payload)
+            result = await asyncio.to_thread(_save_wizard_draft, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -98,7 +101,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_load_wizard_draft(request):
         try:
             payload = await request.json()
-            result = _load_wizard_draft(payload)
+            result = await asyncio.to_thread(_load_wizard_draft, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -106,7 +109,7 @@ def _ensure_music_builder_routes():
     @server_instance.routes.get("/vrgdg/music_builder/model_defaults")
     async def vrgdg_music_builder_model_defaults(request):
         try:
-            result = _load_model_defaults()
+            result = await asyncio.to_thread(_load_model_defaults)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -115,7 +118,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_new_project(request):
         try:
             payload = await request.json()
-            result = _new_builder_project(payload)
+            result = await asyncio.to_thread(_new_builder_project, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -124,7 +127,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_save_project_as(request):
         try:
             payload = await request.json()
-            result = _save_builder_project_as(payload)
+            result = await asyncio.to_thread(_save_builder_project_as, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -206,7 +209,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_save_scene_image(request):
         try:
             payload = await request.json()
-            result = _save_scene_image(payload)
+            result = await asyncio.to_thread(_save_scene_image, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -215,7 +218,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_delete_project_media(request):
         try:
             payload = await request.json()
-            result = _delete_project_media(payload)
+            result = await asyncio.to_thread(_delete_project_media, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -224,7 +227,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_archive_scene_image(request):
         try:
             payload = await request.json()
-            result = _archive_scene_image(payload)
+            result = await asyncio.to_thread(_archive_scene_image, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -233,7 +236,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_extract_video_final_frame(request):
         try:
             payload = await request.json()
-            result = _extract_video_final_frame_as_scene_image(payload)
+            result = await asyncio.to_thread(_extract_video_final_frame_as_scene_image, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -242,7 +245,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_save_flux_reference_image(request):
         try:
             payload = await request.json()
-            result = _save_flux_reference_image(payload)
+            result = await asyncio.to_thread(_save_flux_reference_image, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -251,7 +254,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_import_reference_subjects(request):
         try:
             payload = await request.json()
-            result = _import_reference_subjects_from_project(payload)
+            result = await asyncio.to_thread(_import_reference_subjects_from_project, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -260,7 +263,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_import_reference_locations(request):
         try:
             payload = await request.json()
-            result = _import_reference_locations_from_project(payload)
+            result = await asyncio.to_thread(_import_reference_locations_from_project, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -269,7 +272,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_save_scene_audio(request):
         try:
             payload = await request.json()
-            result = _save_scene_audio(payload)
+            result = await asyncio.to_thread(_save_scene_audio, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -278,7 +281,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_save_project_audio(request):
         try:
             payload = await request.json()
-            result = _save_project_audio(payload)
+            result = await asyncio.to_thread(_save_project_audio, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -287,7 +290,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_save_project_srt(request):
         try:
             payload = await request.json()
-            result = _save_project_srt(payload)
+            result = await asyncio.to_thread(_save_project_srt, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -296,7 +299,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_save_single_scene_srt(request):
         try:
             payload = await request.json()
-            result = _save_single_scene_srt(payload)
+            result = await asyncio.to_thread(_save_single_scene_srt, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -305,7 +308,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_trim_scene_audio(request):
         try:
             payload = await request.json()
-            result = _trim_scene_audio(payload)
+            result = await asyncio.to_thread(_trim_scene_audio, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -314,7 +317,8 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_create_silent_audio(request):
         try:
             payload = await request.json()
-            return web.json_response(_create_silent_audio(payload or {}))
+            result = await asyncio.to_thread(_create_silent_audio, payload or {})
+            return web.json_response(result)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
 
@@ -322,7 +326,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_prepare_scene_audio_mix(request):
         try:
             payload = await request.json()
-            result = _prepare_scene_audio_mix(payload)
+            result = await asyncio.to_thread(_prepare_scene_audio_mix, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -331,7 +335,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_load_session(request):
         try:
             payload = await request.json()
-            result = _load_builder_session(payload.get("project_folder", ""))
+            result = await asyncio.to_thread(_load_builder_session, payload.get("project_folder", ""))
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -339,7 +343,7 @@ def _ensure_music_builder_routes():
     @server_instance.routes.get("/vrgdg/music_builder/list_projects")
     async def vrgdg_music_builder_list_projects(request):
         try:
-            result = _list_builder_projects(request.query.get("project_root", ""))
+            result = await asyncio.to_thread(_list_builder_projects, request.query.get("project_root", ""))
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -348,7 +352,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_delete_project(request):
         try:
             payload = await request.json()
-            result = _delete_builder_project(payload)
+            result = await asyncio.to_thread(_delete_builder_project, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -359,7 +363,7 @@ def _ensure_music_builder_routes():
             payload = await request.json()
             project_folder = str(payload.get("project_folder", "") or "").strip().strip('"')
             scene_number = int(payload.get("scene_number", 1))
-            result = SceneLatentManager.get_latent_info(project_folder, scene_number)
+            result = await asyncio.to_thread(SceneLatentManager.get_latent_info, project_folder, scene_number)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response(result)
@@ -383,7 +387,7 @@ def _ensure_music_builder_routes():
                     "dirty": False,
                 })
             pred_scene = scene_number - 1
-            info = SceneLatentManager.get_latent_info(project_folder, pred_scene)
+            info = await asyncio.to_thread(SceneLatentManager.get_latent_info, project_folder, pred_scene)
             return web.json_response({
                 "ok": True,
                 "scene_number": scene_number,
@@ -405,13 +409,16 @@ def _ensure_music_builder_routes():
             payload = await request.json()
             project_folder = str(payload.get("project_folder", "") or "").strip().strip('"')
             if bool(payload.get("all", False)):
-                removed = SceneLatentManager.delete_all_latents(project_folder)
+                removed = await asyncio.to_thread(SceneLatentManager.delete_all_latents, project_folder)
                 return web.json_response({"ok": True, "deleted": removed > 0, "removed_files": removed, "all": True})
             scene_number = int(payload.get("scene_number", 1))
             reindex = bool(payload.get("reindex", True))
-            deleted = SceneLatentManager.delete_latent(project_folder, scene_number)
-            if reindex:
-                SceneLatentManager.reindex_latents(project_folder, scene_number)
+            def _delete_and_reindex(p_folder, s_num, should_reindex):
+                del_result = SceneLatentManager.delete_latent(p_folder, s_num)
+                if should_reindex:
+                    SceneLatentManager.reindex_latents(p_folder, s_num)
+                return del_result
+            deleted = await asyncio.to_thread(_delete_and_reindex, project_folder, scene_number, reindex)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, "deleted": deleted, "scene_number": scene_number})
@@ -447,7 +454,7 @@ def _ensure_music_builder_routes():
         try:
             payload = await request.json()
             project_folder = str(payload.get("project_folder", "") or "").strip().strip('"')
-            dirty_scenes = SceneLatentManager.list_dirty(project_folder)
+            dirty_scenes = await asyncio.to_thread(SceneLatentManager.list_dirty, project_folder)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, "dirty_scenes": dirty_scenes})
@@ -456,7 +463,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_scan_scene_videos(request):
         try:
             payload = await request.json()
-            result = _scan_builder_scene_videos(payload.get("project_folder", ""))
+            result = await asyncio.to_thread(_scan_builder_scene_videos, payload.get("project_folder", ""))
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -465,7 +472,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_restore_scene_video(request):
         try:
             payload = await request.json()
-            result = _restore_scene_video(payload)
+            result = await asyncio.to_thread(_restore_scene_video, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -474,7 +481,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_load_srt(request):
         try:
             payload = await request.json()
-            result = _load_srt_segments(payload.get("srt_path", ""))
+            result = await asyncio.to_thread(_load_srt_segments, payload.get("srt_path", ""))
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -483,7 +490,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_load_prompt_json(request):
         try:
             payload = await request.json()
-            result = _load_prompt_json(payload.get("prompt_json_path", ""))
+            result = await asyncio.to_thread(_load_prompt_json, payload.get("prompt_json_path", ""))
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -492,7 +499,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_load_text_file(request):
         try:
             payload = await request.json()
-            result = _load_editable_text_file(payload)
+            result = await asyncio.to_thread(_load_editable_text_file, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -501,7 +508,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_save_text_file(request):
         try:
             payload = await request.json()
-            result = _save_editable_text_file(payload)
+            result = await asyncio.to_thread(_save_editable_text_file, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -510,20 +517,24 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_open_local_file(request):
         try:
             payload = await request.json()
-            path = _open_local_file(payload.get("path", ""))
+            path = await asyncio.to_thread(_open_local_file, payload.get("path", ""))
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, "path": path})
 
     @server_instance.routes.get("/vrgdg/music_builder/default_context_paths")
     async def vrgdg_music_builder_default_context_paths(request):
-        return web.json_response({"ok": True, **_default_context_paths()})
+        try:
+            result = await asyncio.to_thread(_default_context_paths)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
 
     @server_instance.routes.post("/vrgdg/music_builder/project_prompt_creator_paths")
     async def vrgdg_music_builder_project_prompt_creator_paths(request):
         try:
             payload = await request.json()
-            result = _project_prompt_creator_paths(payload.get("project_folder", ""))
+            result = await asyncio.to_thread(_project_prompt_creator_paths, payload.get("project_folder", ""))
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -532,7 +543,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_import_latest_prompt_creator_outputs(request):
         try:
             payload = await request.json()
-            result = _copy_latest_prompt_creator_outputs(payload.get("project_folder", ""))
+            result = await asyncio.to_thread(_copy_latest_prompt_creator_outputs, payload.get("project_folder", ""))
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -541,7 +552,8 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_copy_prompt_creator_outputs(request):
         try:
             payload = await request.json()
-            result = _copy_prompt_creator_outputs_from_source(
+            result = await asyncio.to_thread(
+                _copy_prompt_creator_outputs_from_source,
                 payload.get("project_folder", ""),
                 payload.get("source_project_folder", ""),
             )
@@ -551,7 +563,11 @@ def _ensure_music_builder_routes():
 
     @server_instance.routes.get("/vrgdg/music_builder/default_audio_srt_paths")
     async def vrgdg_music_builder_default_audio_srt_paths(request):
-        return web.json_response({"ok": True, **_default_audio_srt_paths()})
+        try:
+            result = await asyncio.to_thread(_default_audio_srt_paths)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
 
     @server_instance.routes.post("/vrgdg/music_builder/pick_path")
     async def vrgdg_music_builder_pick_path(request):
@@ -568,14 +584,14 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_audio(request):
         raw_path = str(request.query.get("path", "") or "").strip()
         audio_path = os.path.normpath(os.path.abspath(raw_path))
-        if not os.path.isfile(audio_path):
+        if not await asyncio.to_thread(os.path.isfile, audio_path):
             return web.json_response({"ok": False, "error": "Audio file was not found."}, status=404)
         return web.FileResponse(audio_path)
 
     @server_instance.routes.get("/vrgdg/music_builder/gemma_choices")
     async def vrgdg_music_builder_gemma_choices(request):
         try:
-            result = _gemma_choices()
+            result = await asyncio.to_thread(_gemma_choices)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -583,7 +599,7 @@ def _ensure_music_builder_routes():
     @server_instance.routes.get("/vrgdg/music_builder/llm_api_choices")
     async def vrgdg_music_builder_llm_api_choices(request):
         try:
-            result = _llm_multi_choices()
+            result = await asyncio.to_thread(_llm_multi_choices)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -619,7 +635,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_lm_studio_models(request):
         try:
             payload = await request.json()
-            result = _list_lm_studio_models(payload)
+            result = await asyncio.to_thread(_list_lm_studio_models, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -628,7 +644,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_get_instruction(request):
         try:
             payload = await request.json()
-            result = _get_builder_instruction(payload)
+            result = await asyncio.to_thread(_get_builder_instruction, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -637,7 +653,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_save_instruction(request):
         try:
             payload = await request.json()
-            result = _save_builder_instruction(payload)
+            result = await asyncio.to_thread(_save_builder_instruction, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -646,7 +662,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_reset_instruction(request):
         try:
             payload = await request.json()
-            result = _reset_builder_instruction(payload)
+            result = await asyncio.to_thread(_reset_builder_instruction, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -655,7 +671,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_list_instruction_presets(request):
         try:
             payload = await request.json()
-            result = _list_builder_instruction_presets(payload)
+            result = await asyncio.to_thread(_list_builder_instruction_presets, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -664,7 +680,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_save_instruction_preset(request):
         try:
             payload = await request.json()
-            result = _save_builder_instruction_preset(payload)
+            result = await asyncio.to_thread(_save_builder_instruction_preset, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -673,7 +689,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_load_instruction_preset(request):
         try:
             payload = await request.json()
-            result = _load_builder_instruction_preset(payload)
+            result = await asyncio.to_thread(_load_builder_instruction_preset, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -690,7 +706,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_generate_t2i(request):
         try:
             payload = await request.json()
-            result = _generate_builder_t2i_prompt(payload)
+            result = await asyncio.to_thread(_generate_builder_t2i_prompt, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, **result})
@@ -726,7 +742,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_generate_i2v(request):
         try:
             payload = await request.json()
-            result = _generate_builder_i2v_prompt(payload)
+            result = await asyncio.to_thread(_generate_builder_i2v_prompt, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, **result})
@@ -735,7 +751,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_generate_chained_i2v(request):
         try:
             payload = await request.json()
-            result = _generate_builder_chained_i2v_prompt(payload)
+            result = await asyncio.to_thread(_generate_builder_chained_i2v_prompt, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, **result})
@@ -744,7 +760,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_generate_t2v(request):
         try:
             payload = await request.json()
-            result = _generate_builder_t2v_prompt(payload)
+            result = await asyncio.to_thread(_generate_builder_t2v_prompt, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, **result})
@@ -753,7 +769,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_enhance_video_prompt(request):
         try:
             payload = await request.json()
-            result = _enhance_builder_video_prompt(payload)
+            result = await asyncio.to_thread(_enhance_builder_video_prompt, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, **result})
@@ -762,7 +778,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_edit_video_prompt(request):
         try:
             payload = await request.json()
-            result = _edit_builder_video_prompt(payload)
+            result = await asyncio.to_thread(_edit_builder_video_prompt, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, **result})
@@ -771,7 +787,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_edit_image_prompt(request):
         try:
             payload = await request.json()
-            result = _edit_builder_image_prompt(payload)
+            result = await asyncio.to_thread(_edit_builder_image_prompt, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, **result})
