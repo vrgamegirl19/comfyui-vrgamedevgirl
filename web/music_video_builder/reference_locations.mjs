@@ -507,12 +507,12 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       .filter((scene) => String(scene.concept || scene.notes || "").trim());
     const lyricScenes = scenes.filter((scene) => String(scene.lyric || "").trim());
     if (!planningScenes.length && !lyricScenes.length) {
-      const message = "Extract Locations needs lyrics, scene notes, concept prompts, or timeline notes first.";
+      const message = "LM Extract needs lyrics, scene notes, concept prompts, or timeline notes first.";
       progress.set(`Error:\n${message}`, 100);
       toast(message, true);
       extractLocations.disabled = false;
       autoMapLocations.disabled = false;
-      extractLocations.textContent = "Gemma Extract";
+      extractLocations.textContent = "LM Extract";
       return;
     }
     const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
@@ -522,38 +522,24 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       toast(message, true);
       extractLocations.disabled = false;
       autoMapLocations.disabled = false;
-      extractLocations.textContent = "Gemma Extract";
+      extractLocations.textContent = "LM Extract";
       return;
     }
     try {
-      const useLyricsScout = Boolean((wizardLocationMode && lyricScenes.length) || (!planningScenes.length && lyricScenes.length));
       const styleTheme = await locationExtractionStyleTheme(locationStyleTheme.value);
-      progress.set(`${useLyricsScout ? "Asking Gemma location scout to create locations from lyrics" : "Asking Gemma for a reusable location list"}...\n${gemmaRunnerLine()}`, 15);
-      const data = useLyricsScout
-        ? await postJson("/vrgdg/music_builder/wizard_locations_from_lyrics", {
-          ...textGemmaRunnerPayload(),
-          model_file: modelFile,
-          lyrics_text: lyricScenes.map((scene, index) => `Scene ${index + 1}: ${scene.lyric}`).join("\n"),
-          style_theme: styleTheme,
-          subject_context: referenceSubjectContextForLocations(),
-          existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
-          max_locations: refs.max_generated_locations || 8,
-          n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
-          max_new_tokens: 2200,
-          unload_after: true,
-        }, 10 * 60 * 1000)
-        : await postJson("/vrgdg/music_builder/flux_reference_extract_locations", {
-          ...textGemmaRunnerPayload(),
-          model_file: modelFile,
-          scenes: planningScenes,
-          subject_scene_text: subjectSceneInput.value || "",
-          style_theme: styleTheme,
-          subject_context: referenceSubjectContextForLocations(),
-          existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
-          max_locations: refs.max_generated_locations || 8,
-          n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
-          unload_after: true,
-        }, 10 * 60 * 1000);
+      progress.set(`Asking the LLM location scout for locations...\n${gemmaRunnerLine()}`, 15);
+      const data = await postJson("/vrgdg/music_builder/lm_scout_locations", {
+        ...textGemmaRunnerPayload(),
+        model_file: modelFile,
+        lyrics_text: lyricScenes.map((scene, index) => `Scene ${index + 1}: ${scene.lyric}`).join("\n"),
+        scenes: planningScenes,
+        style_theme: styleTheme,
+        subject_context: referenceSubjectContextForLocations(),
+        existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
+        n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
+        max_new_tokens: 4000,
+        unload_after: true,
+      }, 10 * 60 * 1000);
       progress.set("Adding extracted locations to the Reference Builder...", 78);
       let added = 0;
       let updated = 0;
@@ -579,7 +565,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     } finally {
       extractLocations.disabled = false;
       autoMapLocations.disabled = false;
-      extractLocations.textContent = "Gemma Extract";
+      extractLocations.textContent = "LM Extract";
     }
   }
 

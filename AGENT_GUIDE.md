@@ -4,6 +4,9 @@ Welcome to **comfyui-vrgamedevgirl**. This repository is an enterprise-grade Com
 
 This guide serves as the definitive technical manual for AI coding agents and human contributors. It provides an exhaustive map of the project architecture, detailed documentation of every active core file, guidelines for strict PEP 8 compliance, separation of concerns (SoC), and actionable recipes for extending the platform safely.
 
+> [!IMPORTANT]
+> **Operating the Video Builder through its API or MCP (not editing code)?** Read [Api_Endpoints.md](Api_Endpoints.md) first: every endpoint and what it does. Then follow [MUSIC_VIDEO_AGENT_PROMPT.md](MUSIC_VIDEO_AGENT_PROMPT.md), the step-by-step playbook for turning a song into a finished video. Connected MCP clients get both as resources (`vrgdg://docs/endpoints`, `vrgdg://docs/music-video-playbook`) and the playbook as the `make_music_video` prompt. See [Agent API Subsystem](#agent-api-subsystem-agent_api).
+
 > [!NOTE]
 > Per project directives, legacy and optional standalone modules located in `optional_nodes/` are intentionally omitted from this guide. All documentation here focuses on the active core runtime registered in [__init__.py](__init__.py).
 
@@ -128,8 +131,8 @@ Every Video Builder project resides in a dedicated directory on disk:
 | [flow_automation/](flow_automation) | Node.js / Playwright / Puppeteer automation scripts for browser-driven generation workflows | `flow-poc.mjs`, `manual-bridge.mjs`, `meta-ai-poc.mjs` |
 | [web/](web) | ComfyUI web extensions, Video Builder application (79 ESM modules), Storyboard UI (22 ESM modules) | `music_video_builder/`, `storyboard_builder/`, `VRGDG_*.js` |
 | [agent_api/](agent_api) | Headless REST API (`/vrgdg/api/v1`), transactional mutations, job management, SSE events, orchestrator | `router.py`, `mutations.py`, `jobs.py`, `envelope.py`, `paths.py`, `orchestrator/` |
-| [mcp_server/](mcp_server) | Local-only (git-ignored) zero-dependency MCP server (JSON-RPC 2.0 stdio), 53 tools, resources, prompt templates | `__main__.py`, `server.py`, `tools.py`, `resources.py`, `prompts.py`, `client.py` |
-| [scripts/](scripts) | Standalone tooling, workflow generation scripts, backport utilities, Photoshop integration, contract exporters | `build_minimax_h3_ref2va_2pass_audio_api.py`, `far_face_repair_backend.py`, `export_openapi.py`, `export_minimax_defaults.mjs` |
+| [mcp_server/](mcp_server) | Local-only (git-ignored) zero-dependency MCP server (JSON-RPC 2.0 stdio): 63 named tools plus one generated `api_*` tool per other endpoint and `api_request`, doc resources, prompt templates | `__main__.py`, `server.py`, `tools.py`, `endpoint_tools.py`, `resources.py`, `prompts.py`, `client.py` |
+| [scripts/](scripts) | Standalone tooling, workflow generation scripts, backport utilities, Photoshop integration, contract exporters | `build_minimax_h3_ref2va_2pass_audio_api.py`, `far_face_repair_backend.py`, `export_openapi.py`, `export_api_endpoints.py`, `export_minimax_defaults.mjs` |
 | [tests/](tests) | 84 test suites covering Python backend logic, node collision checks, and JavaScript UI contracts | `test_node_registration.py`, `test_atomic_write.py`, `builder_source.py` |
 
 ---
@@ -543,11 +546,24 @@ The `agent_api` package provides a headless, production-grade REST API served at
   - Supports live Server-Sent Events (SSE) streaming (`GET /vrgdg/api/v1/jobs/{id}/events`).
   - Interrupted jobs left behind across ComfyUI restarts are safely recovered into `interrupted` status on startup.
 
+#### Endpoint reference (agents read this first)
+- **[Api_Endpoints.md](Api_Endpoints.md)** lists every endpoint with its method, path, what it does, and whether it is a **job** (returns `202` and a `job_id`), takes `If-Match`, or reads query parameters and body keys. Read it before calling anything. It is generated, so it always matches `router.py`.
+- **Base URL** is `http://127.0.0.1:8188/vrgdg/api/v1`. Every path in the reference is relative to it.
+- **Jobs**: an endpoint marked job returns at once. Poll `GET /jobs/{id}` until `status` is `succeeded`, `failed`, `cancelled` or `interrupted`. Run one GPU job at a time.
+- **LLM steps use the loaded model.** Story, reference, description and prompt steps run on the project's saved runner. For LM Studio that is the model already loaded, found with the read-only `GET /api/v0/models`. The API never loads, unloads or switches a model (`agent_api/llm_runtime.py`). `GET /llm/active` shows what would be used and `503 LLM_UNAVAILABLE` means nothing is loaded.
+- **The workflow** from song to final video, in order: create the project, set the MiniMax H3 settings, attach audio, set lyrics, `timeline/from-lines`, add the character, `references/{kind}/{rid}/describe`, `references/locations/extract`, `references/assign-scenes`, `story/settings`, `story/arc`, `story/brief`, `story/beats`, `minimax-prompts`, `scenes/{sid}/video/render` per scene, `stitch`. [MUSIC_VIDEO_AGENT_PROMPT.md](MUSIC_VIDEO_AGENT_PROMPT.md) spells out each call and its arguments.
+- **Keeping the reference current**: `scripts/export_api_endpoints.py` writes `Api_Endpoints.md` and `agent_api/endpoints.json` from the router and the `DESCRIPTIONS` map inside the script. It stops if a route has no description. `tests/test_api_endpoints_doc.py` fails when either file is stale. The MCP server builds its generated tools from `endpoints.json`.
+
 #### Contract and parity with the Video Builder UI
 - **OpenAPI contract (D12)**: `agent_api/openapi.json` is generated from `router.py` (parsed with `ast`, never imported) and `schemas.py` by `scripts/export_openapi.py`. Run it after changing a route, a schema, or an error code. `tests/test_agent_api_contract.py` fails when the file is stale, when registered routes and documented routes differ, or when envelopes and settings groups drift from the schemas.
 - **MiniMax H3 settings**: the UI saves every option in `session["minimax_h3_settings"]`. `minimax/h3_settings_defaults.json` lists all of them and is generated from the UI by `node scripts/export_minimax_defaults.mjs`. `minimax/settings_payload.py` validates patches, applies scene overrides, and builds the same render payload as `video_render.mjs`. A test fails when the browser payload gains a key the Python builder does not send. Agents read the full list with `GET /settings/minimax-h3/schema` and change settings with `PATCH /projects/{pid}/settings` under the `minimax_h3` group.
 - **Scene inputs**: `minimax/scene_inputs.py` resolves reference images (start frame, mapped subjects, extras, locations, ingredients), previous-scene continuity frames, reference videos and the last frame, like the browser. Reference scene maps live inside `session["flux_reference_builder"]`, where the UI reads them.
 - **Session keys the API must match**: project audio is `audio_path` (use `agent_api.paths.session_audio_path`), settings groups map to the UI's keys (see `_SETTINGS_GROUP_SESSION_KEYS` in `mutations.py`), and `builder_save_revision` (UI counter) can run ahead of `revision` (server counter). `_persist_session` stays above both and raises `REVISION_CONFLICT` instead of reporting a discarded write as saved.
+- **Files the API writes must look like the Builder's.** A rendered scene is finished the Builder's way: trim the raw render to the exact timeline length (label `minimax_exact`, marked as the audio video), then collect it as `rendered_scene_videos/video_NNNN-audio.mp4`. Record it on the segment with `agent_api/scene_video.apply_scene_video()`, which sets `video_path`, `video_thumbnail_path`, `video_history`, `video_thumbnail_history`, `video_status` and `video_cache_bust`. Setting only `video_path` leaves the timeline without a picture. Scene audio for MiniMax is cut at render time into `minimax_h3_scene_audio/`. The lyric lane shows when `show_timeline_lyric_notes` is true, which `timeline/from-lines` sets.
+- **Scene views read what the session saved.** `agent_api/projects.py` reports each scene's `lyric_text`, `story_beat`, `minimax_h3_prompt`, image, rendered video, thumbnail and scene audio from the session's own paths, with the old fixed file names only as a fallback.
+- **The Storyboard Builder reads its own copy.** It shows video prompts, story beats and the green or red status from `storyboard/storyboard.json`, not from the session. The story steps and `minimax-prompts` call `sync_storyboard_files()` (`storyboard_orchestrator.py`), which runs the same save and export as "Save Storyboard" (`storyboard/persistence.py`): `storyboard.json` with each scene's `video_prompt` and `status`, plus `prompts/i2v_prompts.txt` and `video_prompts.json`. Segments also get `video_prompt_type: "rtv"`.
+- **Lyrics are in the prompt, in double quotes.** A singing scene's shot says what is sung: `<Subject 1> (name) sings the lyric line, "the exact words"`. The task text asks for it, and `minimax/shot_prompt.ensure_quoted_lyrics()` (Python) and `miniMaxH3EnsureQuotedLyricInShot` (`minimax_prompt.mjs`, used by the normal Builder) quote a plain copy or add the sentence, so it does not depend on the LLM. Lyric lines are shared across cuts in order. Quoted words are never dropped as negative wording.
+- **MiniMax prompt format**: a saved reference-to-video prompt is `detailed_description:` plus the style line plus `[Shot N]` blocks. The renderer adds the reference definitions. `minimax/shot_prompt.py` builds, parses and validates that format and `minimax/prompt_assembly.py` uses it for reference-to-video scenes.
 - **Known gaps against the browser render**: per-scene custom audio ranges, the continuity prompt block and frame-to-frame prompt creation, and LLM prompt payload parity are not ported. Server renders use the saved prompts.
 - **Run on server (opt-in)**: "Build Full Video" offers "On the server (background job)". It saves the project, starts `pipelines/build-full-video` (`web/music_video_builder/server_pipeline.mjs`), follows the job, and reloads the project. The browser loop remains the default.
 
@@ -568,52 +584,55 @@ The `agent_api` package provides a headless, production-grade REST API served at
   - `image_orchestrator.py`: Single-scene and batch image generation (`image.generate`) across Z-Image, Flux/Klein, NanoBanana, Ernie, and Krea 2.
   - `prompt_orchestrator.py`: LLM batch prompt generation jobs (`prompt.batch_generate`).
   - `post_orchestrator.py`: Video LUT application, film grain overlay, color adjust presets, and Face Fix pipelines.
+  - `lyrics_orchestrator.py`: `lyrics.align` (Stable-ts timing through ComfyUI) and `timeline.from_lines` (Line Mapping with a min and max scene length). Pure length rules are in `builder/lyric_scenes.py`.
+  - `reference_orchestrator.py`: Gemma Describe (`reference.describe`), LM Extract for locations (`reference.extract_locations`) and Assign Scenes patterns.
+  - `storyboard_orchestrator.py`: scene defaults and story idea, then the story arc, story brief and scene beats (`storyboard.story_arc`, `storyboard.story_brief`, `storyboard.scene_beats`) through `storyboard/story_layer.py`.
+  - `minimax_prompt_orchestrator.py`: MiniMax H3 reference-to-video prompts (`minimax.prompts`) with the saved instruction and `minimax/shot_prompt.py`.
+- **[agent_api/llm_runtime.py](agent_api/llm_runtime.py)**: picks the LLM for a request. The saved runner settings become the generator keys, and for LM Studio the loaded model and its context length are used.
+- **[agent_api/scene_video.py](agent_api/scene_video.py)**: records a rendered video on a segment like the Builder does.
 
 ---
 
 ### Model Context Protocol Server (`mcp_server/`)
 
-The `mcp_server` package provides a standalone, zero-dependency Model Context Protocol (MCP) server communicating via standard input/output (stdio JSON-RPC 2.0). It allows AI assistants like Claude Desktop, Cursor, and Antigravity to operate the AI Video Builder with native tool calls.
+The `mcp_server` package is a standalone, zero-dependency Model Context Protocol (MCP) server over stdio (JSON-RPC 2.0). An MCP client such as Claude Code, Claude Desktop or LM Studio starts it as a subprocess, and it calls the Agent API on the same machine. ComfyUI must be running.
 
-#### Server Features & Design
-- **Zero External Dependencies**: Operates strictly using Python standard library packages (`json`, `urllib.request`, `sys`, `os`), ensuring compatibility across standard Python and embedded distributions (`python_embeded`).
-- **Standard Protocol**: Implements MCP protocol version `2024-11-05` using JSON-RPC 2.0 messages over stdio.
-- **Launch Command**:
+#### Server features and design
+- **Zero external dependencies**: Python standard library only, so it runs on the portable `python_embeded`.
+- **Protocol**: MCP `2024-11-05` over stdin and stdout. Nothing else may print to stdout.
+- **Start it**: a client runs the entry file. The portable Python ignores the current folder for `-m`, so do not use `-m mcp_server` with it.
   ```bash
-  python -m mcp_server
+  ..\..\..\python_embeded\python.exe mcp_server\__main__.py
   ```
-  or with ComfyUI portable Python:
-  ```bash
-  ..\..\..\python_embeded\python.exe -m mcp_server
-  ```
-- **Rule 5 Actionable Error Protocol**:
-  - Failed tool calls return `isError: True` alongside structured `next_steps` suggestions in the content text block (e.g. indicating when a predecessor scene needs rendering, a latent is dirty, or settings preflight failed). This prevents AI agents from getting stuck in unrecoverable retry loops.
+  `start_mcp_server.bat` (git-ignored) does the same, finds the portable Python and sets `VRGDG_API_URL` to the default. Settings: `VRGDG_API_URL` (default `http://127.0.0.1:8188/vrgdg/api/v1`) and `VRGDG_API_TOKEN` when a token is required.
+- **Client config**: Claude Code: `claude mcp add vrgdg -- <python_embeded\python.exe> <pack>\mcp_server\__main__.py`. LM Studio `mcp.json`: `{"mcpServers": {"vrgdg": {"command": "<python>", "args": ["<pack>/mcp_server/__main__.py"], "env": {"VRGDG_API_URL": "http://127.0.0.1:8188/vrgdg/api/v1"}}}}`.
+- **Server instructions**: the `initialize` reply carries `instructions` that point the agent to the `make_music_video` prompt and the doc resources and remind it never to change the LM Studio model.
+- **Actionable errors**: a failed call returns `isError: true` with `next_steps` in the text, so an agent is not left retrying blindly.
 
-> `mcp_server/` is local-only (listed in `.gitignore`). `tests/test_mcp_server.py` skips itself when the folder is missing. Tools added after the table below: `project_get_settings` (T51), `minimax_settings_schema` (T52), `pipeline_from_song` (T53).
+> `mcp_server/` is local-only (listed in `.gitignore`). `tests/test_mcp_server.py` and `tests/test_mcp_endpoints.py` need the folder.
 
-#### Tools Catalog (T1 to T50 listed; T51 to T53 added)
-| Category | Tools | Description |
-| :--- | :--- | :--- |
-| **Projects** | `project_list` (T1), `project_get` (T2), `project_create` (T3), `project_delete` (T4), `project_duplicate` (T5), `project_export` (T6), `project_status` (T7), `project_validate` (T8) | Project lifecycle management, status summaries, and asset validation |
-| **Audio & Lyrics** | `audio_attach` (T9), `audio_analyze` (T10), `audio_beats_get` (T11), `audio_beats_calibrate` (T12), `lyrics_get` (T13), `lyrics_set` (T14), `lyrics_transcribe` (T15) | Audio import, beat detection, BPM tempo calibration, and Whisper transcription |
-| **Timeline & Scenes** | `timeline_get` (T16), `scene_get` (T17), `scene_create` (T18), `scene_update` (T19), `scene_delete` (T20), `scene_split` (T21), `scene_merge` (T22), `scene_move` (T23), `scene_resize` (T24), `timeline_close_gaps` (T25), `timeline_snap` (T26), `timeline_bulk` (T27) | Comprehensive NLE timeline operations, beat snapping, and gap closures |
-| **References & Story** | `reference_list` (T28), `reference_upsert_subject` (T29), `reference_upsert_location` (T30), `reference_delete` (T31), `reference_map_scene` (T32), `reference_extract` (T33), `story_get` (T34), `story_put` (T35) | Reference Builder catalog management, character casting, and story arc planning |
-| **Prompts & Settings** | `prompt_context_get` (T36), `prompt_assemble` (T37), `prompt_validate` (T38), `prompt_set_field` (T39), `prompt_batch_generate` (T40), `settings_get` (T41), `settings_patch` (T42), `settings_preflight` (T43) | MiniMax H3 / LTX prompt assembly, schema validation, and mode settings |
-| **Generation & Pipeline** | `image_generate` (T44), `video_render` (T45), `latents_list_dirty` (T46), `post_apply` (T47), `stitch_final` (T48), `pipeline_build_full_video` (T49), `pipeline_plan` (T50) | Single-scene and batch render dispatch, post-processing, and full pipeline orchestration |
+#### Tools
+- **Named tools (63)**, written by hand in `tools.py`:
+  - *System and projects*: `system_health`, `list_modes`, `list_models`, `llm_active`, `project_list`, `project_create`, `project_get`, `project_summary`, `project_get_settings`, `project_update_settings`, `minimax_settings_schema`, `project_duplicate`, `project_validate`, `project_export`, `project_delete`.
+  - *Audio, lyrics, timeline*: `audio_attach`, `audio_analyze`, `lyrics_set`, `lyrics_transcribe`, `lyrics_align`, `timeline_build`, `timeline_from_lines`, `timeline_enforce_length`.
+  - *Scenes*: `scene_list`, `scene_get`, `scene_update`, `scene_insert`, `scene_delete`, `scene_split_merge_move_resize`, `scenes_bulk_edit`.
+  - *References and story*: `references_get`, `reference_upsert`, `references_extract`, `reference_describe`, `reference_extract_locations`, `reference_assign_scenes`, `reference_scene_mapping_set`, `story_get_set`, `story_generate`, `story_settings`, `story_create`.
+  - *Prompts*: `prompts_generate`, `minimax_prompts`, `instructions_get_set`.
+  - *Generation and pipelines*: `image_generate`, `image_set_from_upload`, `image_approve_revert`, `video_render`, `video_recover`, `video_select_take`, `latents_status_rebuild`, `post_apply`, `stitch_final`, `pipeline_build_full_video`, `pipeline_from_song`, `pipeline_plan`.
+  - *Jobs and files*: `job_get`, `job_wait`, `job_cancel`, `job_retry`, `asset_view`, `asset_download_url`, `upload_file`.
+- **Generated `api_*` tools**: `endpoint_tools.py` reads `agent_api/endpoints.json` and adds one tool for every endpoint the named tools do not call, for example `api_post_scenes_video_trim` or `api_get_finals`. Names are `api_<method>_<path words>`. Arguments are the path ids (`project_id`, `scene_id`, ...), an optional `body`, `query` and `if_match_revision`. Every endpoint can therefore be reached through a named tool.
+- **`api_request`**: calls any method and path directly, for example `{"method": "GET", "path": "/projects/MySong/scenes"}`.
+- **Tests that keep this honest**: `tests/test_mcp_endpoints.py` fails when a named tool calls a route the router does not have, when an endpoint has no tool, or when names collide. When you change a route, regenerate `Api_Endpoints.md` and `endpoints.json` (see above) and the generated tools follow.
 
-#### Resources & Prompt Templates
-- **Resources**:
-  - `vrgdg://projects`: Catalog of discovered projects.
-  - `vrgdg://project/{id}`: Full project session state.
-  - `vrgdg://project/{id}/scene/{sid}`: Individual scene bundle and metadata.
-  - `vrgdg://project/{id}/lyrics`: Master lyric lyrics and timecodes.
-  - `vrgdg://jobs/{id}/log`: Live streaming execution log of background jobs.
-  - `vrgdg://modes`: Catalog of supported video/image generation modes and capabilities.
-- **Prompt Templates**:
-  - `make_music_video`: Guided workflow taking user audio/lyrics through timeline creation, prompt authoring, generation, and final stitch.
-  - `review_scene`: Visual critique comparing generated images/videos against prompts and suggesting improvements.
-  - `fix_failed_render`: Diagnostic evaluation of error logs to suggest retries, parameter adjustments, or model memory cleanups.
-  - `polish_timeline`: Rhythm and pacing optimizer checking for timing gaps, beat misalignments, or short scenes.
+#### Resources and prompt templates
+- **Docs an agent can read**:
+  - `vrgdg://docs/endpoints`: [Api_Endpoints.md](Api_Endpoints.md), every endpoint and what it does.
+  - `vrgdg://docs/music-video-playbook`: [MUSIC_VIDEO_AGENT_PROMPT.md](MUSIC_VIDEO_AGENT_PROMPT.md), the song-to-video steps.
+  - `vrgdg://docs/openapi`: `agent_api/openapi.json`, the machine-readable contract.
+- **Live data**: `vrgdg://projects`, `vrgdg://modes`, `vrgdg://project/{id}`, `vrgdg://project/{id}/scene/{sid}`, `vrgdg://project/{id}/lyrics`, `vrgdg://jobs/{id}/log`.
+- **Prompts**:
+  - `make_music_video`: takes the project name, audio, lyrics, character name and image, location style theme and story idea, and returns them followed by the full playbook.
+  - `review_scene`, `fix_failed_render`, `polish_timeline`: scene critique, failed-job diagnosis and timeline pacing.
 
 ---
 
@@ -621,6 +640,7 @@ The `mcp_server` package provides a standalone, zero-dependency Model Context Pr
 
 - [scripts/build_minimax_h3_ref2va_2pass_audio_api.py](scripts/build_minimax_h3_ref2va_2pass_audio_api.py): Offline standalone generator for 2-pass MiniMax H3 reference-to-video API workflow JSON files.
 - [scripts/build_ltx25_normal_sampler_workflow.py](scripts/build_ltx25_normal_sampler_workflow.py): Generates baseline LTX 2.5 sampler API graphs.
+- [scripts/export_api_endpoints.py](scripts/export_api_endpoints.py): Writes `Api_Endpoints.md` and `agent_api/endpoints.json` from the router and the descriptions in the script. `--check` exits 1 when they are stale or a route has no description.
 - [scripts/far_face_repair_backend.py](scripts/far_face_repair_backend.py): Standalone backend testing script for small/distant face detection and super-resolution repair.
 - [scripts/Backport-Krea2ToMusubi.ps1](scripts/Backport-Krea2ToMusubi.ps1): PowerShell script for migrating dataset captions and LoRA configurations between training engines.
 
@@ -826,6 +846,13 @@ python -m unittest tests/test_node_registration.py
 
 ### Recipe 2: Registering a Backend HTTP Route
 
+When adding a route to the Agent API (`/vrgdg/api/v1`, in `agent_api/router.py`) also:
+
+1. Give the handler a one-line docstring and return `api_success(...)` or raise an `AgentApiError`.
+2. Add `"METHOD /path": "what it does"` to `DESCRIPTIONS` in `scripts/export_api_endpoints.py`.
+3. Run `scripts/export_openapi.py` and `scripts/export_api_endpoints.py`. The contract and endpoint-doc tests fail until you do.
+4. The MCP server adds an `api_*` tool for the route by itself. Add a named tool in `mcp_server/tools.py` only when a friendlier tool is worth it, and call the real route (`tests/test_mcp_endpoints.py` checks this).
+
 When adding a backend route:
 
 1. **Locate the appropriate `routes.py`** (e.g., [builder/routes.py](builder/routes.py) or [runner/routes.py](runner/routes.py)).
@@ -1008,3 +1035,5 @@ python -m unittest discover -s tests -p "test_*.py"
 5. **DO NOT modify `optional_nodes/`**: The `optional_nodes` folder is deprecated/optional. Put all new nodes in their proper domain packages (`general/`, `builder/`, `runner/`, `minimax/`, `post_process/`, `llm/`).
 6. **DO NOT forget `[VRGDG]` log prefixes**: All stdout/stderr output from custom nodes must begin with `[VRGDG]` so users and developers can filter custom node output from ComfyUI core logs.
 7. **DO NOT create global state without mutex locks**: If shared state must be cached in memory (such as GPU resource readings in `system_routes.py`), protect updates with an `asyncio.Lock()`.
+8. **DO NOT change or load an LLM model from the API.** For LM Studio use the model that is already loaded (`agent_api/llm_runtime.py`). Naming a model that is not loaded makes LM Studio load it and unload the current one.
+9. **DO NOT let API-written project files differ from the Builder's.** Use the Builder's own functions and key names, finish renders as described under "Files the API writes", and set the session keys the UI reads. A project must open in the Video Builder as if it had been built there.

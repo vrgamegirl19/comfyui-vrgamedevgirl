@@ -47,6 +47,38 @@ def _build_asset_dict(
     }
 
 
+def _asset_from_path(project_folder: str, path: Any, kind: str, asset_id: str) -> Optional[Dict[str, Any]]:
+    """An asset descriptor for a file the session points at (an absolute path), or None if it is not there."""
+    text = str(path or "").strip().strip('"')
+    if not text or not os.path.isfile(text):
+        return None
+    absolute = os.path.abspath(text)
+    root = os.path.abspath(project_folder)
+    inside = os.path.commonpath([root, absolute]) == root if os.path.splitdrive(root)[0].lower() == os.path.splitdrive(absolute)[0].lower() else False
+    relative = os.path.relpath(absolute, root) if inside else absolute
+    asset = _build_asset_dict(root if inside else os.path.dirname(absolute), relative if inside else os.path.basename(absolute), kind, asset_id)
+    if asset and not inside:
+        asset["path_rel"] = absolute.replace("\\", "/")
+    return asset
+
+
+def _first_asset(project_folder: str, paths: List[Any], kind: str, asset_id: str) -> Optional[Dict[str, Any]]:
+    for path in paths:
+        asset = _asset_from_path(project_folder, path, kind, asset_id)
+        if asset:
+            return asset
+    return None
+
+
+def _scene_image_paths(segment: Dict[str, Any]) -> List[Any]:
+    history = segment.get("image_history") if isinstance(segment.get("image_history"), list) else []
+    try:
+        selected = history[int(segment.get("image_history_index"))]
+    except (TypeError, ValueError, IndexError):
+        selected = ""
+    return [segment.get("approved_image_path"), selected, segment.get("custom_image_path"), segment.get("ref_image_path")]
+
+
 def list_projects(root: Optional[str] = None) -> List[Dict[str, Any]]:
     """List all available Video Builder projects across allowed roots."""
     roots = [os.path.abspath(root)] if root and os.path.isdir(root) else get_allowed_project_roots()
@@ -181,22 +213,18 @@ def get_project_scenes(
 
         t2i = str(segment.get("t2i_prompt") or "").strip()
         i2v = str(segment.get("i2v_prompt") or "").strip()
+        minimax_prompt = str(segment.get("minimax_h3_prompt") or "").strip()
         notes = str(segment.get("notes") or "").strip()
+        lyric_text = str(segment.get("lyric_text") or "").strip()
 
-        # Image asset
-        img_name = f"image_{index:04d}.png"
-        img_rel = os.path.join("images", img_name)
-        image_asset = _build_asset_dict(folder, img_rel, "image", f"img_{index:04d}")
-
-        # Video asset
-        vid_name = f"video_{index:04d}.mp4"
-        vid_rel = os.path.join("scene_videos", vid_name)
-        video_asset = _build_asset_dict(folder, vid_rel, "video", f"vid_{index:04d}")
-
-        # Audio asset
-        audio_name = f"audio_{index:04d}.wav"
-        audio_rel = os.path.join("scene_audio", audio_name)
-        audio_asset = _build_asset_dict(folder, audio_rel, "audio", f"aud_{index:04d}")
+        # The files the Video Builder saved on the scene. A fixed legacy name is the fallback.
+        image_asset = _first_asset(folder, _scene_image_paths(segment), "image", f"img_{index:04d}") or _build_asset_dict(
+            folder, os.path.join("images", f"image_{index:04d}.png"), "image", f"img_{index:04d}")
+        video_asset = _first_asset(folder, [segment.get("video_path"), segment.get("rendered_video_path")], "video", f"vid_{index:04d}") or _build_asset_dict(
+            folder, os.path.join("scene_videos", f"video_{index:04d}.mp4"), "video", f"vid_{index:04d}")
+        thumbnail_asset = _first_asset(folder, [segment.get("video_thumbnail_path"), segment.get("thumbnail_path")], "image", f"thumb_{index:04d}")
+        audio_asset = _build_asset_dict(folder, os.path.join("minimax_h3_scene_audio", f"scene_audio_{index:04d}.wav"), "audio", f"aud_{index:04d}") or _build_asset_dict(
+            folder, os.path.join("scene_audio", f"audio_{index:04d}.wav"), "audio", f"aud_{index:04d}")
 
         # Determine status
         scene_status = "empty"
@@ -204,7 +232,7 @@ def get_project_scenes(
             scene_status = "has_video"
         elif image_asset:
             scene_status = "has_image"
-        elif t2i or i2v:
+        elif t2i or i2v or minimax_prompt:
             scene_status = "has_prompt"
 
         # Apply filters
@@ -212,7 +240,7 @@ def get_project_scenes(
             continue
         if has_video is not None and bool(video_asset) != has_video:
             continue
-        if has_prompt is not None and bool(t2i or i2v) != has_prompt:
+        if has_prompt is not None and bool(t2i or i2v or minimax_prompt) != has_prompt:
             continue
         if status is not None and scene_status != status:
             continue
@@ -224,12 +252,15 @@ def get_project_scenes(
             "end": round(end, 3),
             "duration": round(duration, 3),
             "status": scene_status,
-            "lyrics": notes,
+            "lyrics": lyric_text or notes,
+            "story_beat": str(segment.get("story_beat") or "").strip(),
             "t2i_prompt": t2i,
             "i2v_prompt": i2v,
+            "minimax_h3_prompt": minimax_prompt,
             "enhanced_prompt": str(segment.get("enhance_prompt") or "").strip(),
             "approved_image": image_asset,
             "rendered_video": video_asset,
+            "video_thumbnail": thumbnail_asset,
             "scene_audio": audio_asset,
         })
 
@@ -258,7 +289,7 @@ def get_project_summary(project_id: str) -> Dict[str, Any]:
 
     scenes_with_image = sum(1 for s in scenes if s.get("approved_image"))
     scenes_with_video = sum(1 for s in scenes if s.get("rendered_video"))
-    scenes_with_prompt = sum(1 for s in scenes if s.get("t2i_prompt") or s.get("i2v_prompt"))
+    scenes_with_prompt = sum(1 for s in scenes if s.get("t2i_prompt") or s.get("i2v_prompt") or s.get("minimax_h3_prompt"))
 
     # Compute disk usage
     total_bytes = 0

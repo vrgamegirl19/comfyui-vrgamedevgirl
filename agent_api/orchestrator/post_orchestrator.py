@@ -20,6 +20,7 @@ from ..errors import (
 )
 from ..jobs.manager import JobManager, get_job_manager
 from ..jobs.models import Job
+from ..scene_video import apply_scene_video
 from ..mutations import _BUILDER_SAVE_LOCK, _get_active_session_and_folder, _persist_session
 from .comfy_client import extract_images_from_history, get_comfy_client
 
@@ -84,22 +85,14 @@ def _commit_post_processed_scene_video(
     with _BUILDER_SAVE_LOCK:
         _, session = _get_active_session_and_folder(project_id)
         seg = session["segments"][idx]
-        seg["video_path"] = new_video_path
-        seg["rendered_video_path"] = new_video_path
-        if thumbnail_path:
-            seg["thumbnail_path"] = thumbnail_path
-        seg["preview_mode"] = "video"
-        v_history = seg.setdefault("video_history", [])
-        if new_video_path not in v_history:
-            v_history.append(new_video_path)
-        seg["video_history_index"] = len(v_history) - 1
+        apply_scene_video(seg, new_video_path, thumbnail_path or "")
         save_res = _persist_session(folder, session)
 
     return {
         "video_path": new_video_path,
         "thumbnail_path": thumbnail_path,
         "history_index": seg["video_history_index"],
-        "history_count": len(v_history),
+        "history_count": len(seg["video_history"]),
         "revision": save_res.get("revision"),
     }
 

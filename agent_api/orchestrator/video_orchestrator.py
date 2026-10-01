@@ -24,8 +24,9 @@ from ..errors import (
 )
 from ..jobs.manager import JobManager, get_job_manager
 from ..jobs.models import Job
+from ..scene_video import apply_scene_video
 from ..mutations import _BUILDER_SAVE_LOCK, _get_active_session_and_folder, _persist_session
-from ..paths import resolve_project_folder, session_audio_path
+from ..paths import resolve_project_folder, session_audio_path, session_video_mode
 from ...minimax.scene_inputs import resolve_scene_inputs
 from ...minimax.settings_payload import (
     build_minimax_render_payload,
@@ -127,7 +128,7 @@ async def render_scene_video_async(
     duration_sec = max(0.25, end_sec - start_sec)
 
     # Mode
-    mode = str(p.get("mode") or session.get("video_mode") or "i2v").strip().lower()
+    mode = str(p.get("mode") or session_video_mode(session)).strip().lower()
 
     if manager and job:
         manager.update_progress(job.id, 5.0, "preparing", scene_id=scene_id, message=f"Preparing {mode} video render...")
@@ -359,6 +360,34 @@ async def render_scene_video_async(
     if manager and job:
         manager.update_progress(job.id, 75.0, "collecting", scene_id=scene_id, message="Collecting scene video...")
 
+    # Like the Video Builder: cut the raw render to the exact timeline length first (label
+    # "minimax_exact", marked as the audio video), then collect that clip as video_NNNN-audio.mp4.
+    # Collecting the raw render would keep its extra frames and drift the stitched video off the song.
+    trim_info = p.get("trim_params") or graph_res.get("post_render_trim") or {}
+    if p.get("trim") or trim_info:
+        if manager and job:
+            manager.update_progress(job.id, 75.0, "trimming", scene_id=scene_id, message="Trimming scene video to the exact timeline length...")
+        try:
+            trim_res = await asyncio.to_thread(
+                video_files._trim_scene_video,
+                {
+                    "project_folder": folder,
+                    "scene_number": scene_number,
+                    "source_path": source_video_path,
+                    "start": float(trim_info.get("start", p.get("trim_start", 0.0))),
+                    "duration": float(trim_info.get("duration", p.get("trim_duration", duration_sec))),
+                    "frames": int(trim_info.get("frames", 0)),
+                    "label": "minimax_exact" if "minimax" in mode else "trim",
+                    "mark_as_audio_video": "minimax" in mode,
+                },
+            )
+            source_video_path = trim_res.get("video_path") or source_video_path
+        except Exception as t_err:
+            logger.warning(f"Trimming failed for scene {scene_id}: {t_err}")
+
+    if manager and job:
+        manager.update_progress(job.id, 85.0, "collecting", scene_id=scene_id, message="Collecting scene video...")
+
     # Collect into rendered_scene_videos/ with backup per Section 24.2
     collect_payload = {
         "project_folder": folder,
@@ -376,7 +405,7 @@ async def render_scene_video_async(
         prev_video = prev_seg.get("video_path") or prev_seg.get("rendered_video_path")
         if prev_video and os.path.isfile(prev_video):
             if manager and job:
-                manager.update_progress(job.id, 85.0, "color_matching", scene_id=scene_id, message="Matching opening color to previous scene...")
+                manager.update_progress(job.id, 90.0, "color_matching", scene_id=scene_id, message="Matching opening color to previous scene...")
             try:
                 color_res = await asyncio.to_thread(
                     video_files._apply_scene_start_color_match,
@@ -393,43 +422,20 @@ async def render_scene_video_async(
             except Exception as c_err:
                 logger.warning(f"Color match failed for scene {scene_id}: {c_err}")
 
-    # Optional trimming
-    if p.get("trim") or "post_render_trim" in graph_res:
-        trim_info = p.get("trim_params") or graph_res.get("post_render_trim") or {}
-        trim_start = float(trim_info.get("start", p.get("trim_start", 0.0)))
-        trim_duration = float(trim_info.get("duration", p.get("trim_duration", duration_sec)))
-        if manager and job:
-            manager.update_progress(job.id, 90.0, "trimming", scene_id=scene_id, message="Trimming scene video...")
-        try:
-            trim_res = await asyncio.to_thread(
-                video_files._trim_scene_video,
-                {
-                    "project_folder": folder,
-                    "scene_number": scene_number,
-                    "source_path": final_video_path,
-                    "start": trim_start,
-                    "duration": trim_duration,
-                    "frames": int(trim_info.get("frames", 0)),
-                },
-            )
-            final_video_path = trim_res.get("video_path", final_video_path)
-            final_thumbnail_path = trim_res.get("thumbnail_path", final_thumbnail_path)
-        except Exception as t_err:
-            logger.warning(f"Trimming failed for scene {scene_id}: {t_err}")
-
     # Update scene in session following Section 24.2 / Section 6.9 lifecycle
     with _BUILDER_SAVE_LOCK:
         _, session = _get_active_session_and_folder(project_id)
         target_seg = session["segments"][idx]
-        target_seg["video_path"] = final_video_path
-        target_seg["rendered_video_path"] = final_video_path
-        if final_thumbnail_path:
-            target_seg["thumbnail_path"] = final_thumbnail_path
-        target_seg["preview_mode"] = "video"
-        v_history = target_seg.setdefault("video_history", [])
-        if final_video_path not in v_history:
-            v_history.append(final_video_path)
-        target_seg["video_history_index"] = len(v_history) - 1
+        apply_scene_video(target_seg, final_video_path, final_thumbnail_path if final_thumbnail_path else "")
+        # A replaced render is kept as a backup the timeline can switch back to (the UI records it the same way).
+        if collect_res.get("backup_path"):
+            backups = target_seg.setdefault("video_backup_paths", [])
+            if collect_res["backup_path"] not in backups:
+                backups.append(collect_res["backup_path"])
+            if collect_res.get("backup_thumbnail_path"):
+                thumbs = target_seg.setdefault("video_backup_thumbnail_paths", [])
+                if collect_res["backup_thumbnail_path"] not in thumbs:
+                    thumbs.append(collect_res["backup_thumbnail_path"])
         save_res = _persist_session(folder, session)
 
     if "minimax" in mode:
@@ -448,7 +454,7 @@ async def render_scene_video_async(
         "thumbnail_path": final_thumbnail_path,
         "backup_path": collect_res.get("backup_path", ""),
         "history_index": target_seg["video_history_index"],
-        "history_count": len(v_history),
+        "history_count": len(target_seg["video_history"]),
         "revision": save_res.get("revision"),
     }
 
@@ -506,15 +512,7 @@ async def run_video_trim_job(job: Job, manager: JobManager) -> Dict[str, Any]:
     with _BUILDER_SAVE_LOCK:
         _, session = _get_active_session_and_folder(job.project_id)
         target_seg = session["segments"][idx]
-        target_seg["video_path"] = res["video_path"]
-        target_seg["rendered_video_path"] = res["video_path"]
-        if res.get("thumbnail_path"):
-            target_seg["thumbnail_path"] = res["thumbnail_path"]
-        target_seg["preview_mode"] = "video"
-        v_hist = target_seg.setdefault("video_history", [])
-        if res["video_path"] not in v_hist:
-            v_hist.append(res["video_path"])
-        target_seg["video_history_index"] = len(v_hist) - 1
+        apply_scene_video(target_seg, res["video_path"], res["thumbnail_path"] if res.get("thumbnail_path") else "")
         save_res = _persist_session(folder, session)
 
     manager.update_progress(job.id, 100.0, "completed", scene_id=scene_id, message="Video trimmed.")
@@ -568,11 +566,7 @@ async def run_video_match_color_job(job: Job, manager: JobManager) -> Dict[str, 
     with _BUILDER_SAVE_LOCK:
         _, session = _get_active_session_and_folder(job.project_id)
         target_seg = session["segments"][idx]
-        target_seg["video_path"] = res["video_path"]
-        target_seg["rendered_video_path"] = res["video_path"]
-        if res.get("thumbnail_path"):
-            target_seg["thumbnail_path"] = res["thumbnail_path"]
-        target_seg["preview_mode"] = "video"
+        apply_scene_video(target_seg, res["video_path"], res["thumbnail_path"] if res.get("thumbnail_path") else "")
         save_res = _persist_session(folder, session)
 
     manager.update_progress(job.id, 100.0, "completed", scene_id=scene_id, message="Color match applied.")
@@ -624,15 +618,7 @@ def recover_scene_video(
     with _BUILDER_SAVE_LOCK:
         _, session = _get_active_session_and_folder(project_id)
         target_seg = session["segments"][idx]
-        target_seg["video_path"] = res["video_path"]
-        target_seg["rendered_video_path"] = res["video_path"]
-        if res.get("thumbnail_path"):
-            target_seg["thumbnail_path"] = res["thumbnail_path"]
-        target_seg["preview_mode"] = "video"
-        v_hist = target_seg.setdefault("video_history", [])
-        if res["video_path"] not in v_hist:
-            v_hist.append(res["video_path"])
-        target_seg["video_history_index"] = len(v_hist) - 1
+        apply_scene_video(target_seg, res["video_path"], res["thumbnail_path"] if res.get("thumbnail_path") else "")
         save_res = _persist_session(folder, session)
 
     return {
@@ -668,15 +654,7 @@ def select_scene_video(
     with _BUILDER_SAVE_LOCK:
         _, session = _get_active_session_and_folder(project_id)
         target_seg = session["segments"][idx]
-        target_seg["video_path"] = res["video_path"]
-        target_seg["rendered_video_path"] = res["video_path"]
-        if res.get("thumbnail_path"):
-            target_seg["thumbnail_path"] = res["thumbnail_path"]
-        target_seg["preview_mode"] = "video"
-        v_hist = target_seg.setdefault("video_history", [])
-        if res["video_path"] not in v_hist:
-            v_hist.append(res["video_path"])
-        target_seg["video_history_index"] = v_hist.index(res["video_path"])
+        apply_scene_video(target_seg, res["video_path"], res["thumbnail_path"] if res.get("thumbnail_path") else "")
         save_res = _persist_session(folder, session)
 
     return {
@@ -700,6 +678,8 @@ def delete_scene_video(project_id: str, scene_id: str) -> Dict[str, Any]:
         seg["video_path"] = ""
         seg["rendered_video_path"] = ""
         seg["thumbnail_path"] = ""
+        seg["video_thumbnail_path"] = ""
+        seg["video_status"] = ""
         if seg.get("preview_mode") == "video":
             seg["preview_mode"] = "image"
         save_res = _persist_session(folder, session)

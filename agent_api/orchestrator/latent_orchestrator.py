@@ -21,6 +21,7 @@ from ..errors import (
 from ..jobs.manager import JobManager, get_job_manager
 from ..jobs.models import Job
 from ..mutations import _get_active_session_and_folder
+from ..paths import session_video_mode
 from .video_orchestrator import render_scene_video_async
 
 logger = logging.getLogger("vrgdg.agent_api.latent_orchestrator")
@@ -232,7 +233,7 @@ async def run_rebuild_dirty_latents_job(
 
         render_params = dict(payload.get("render_params") or {})
         if "mode" not in render_params:
-            render_params["mode"] = seg.get("video_mode") or session.get("video_mode") or "minimax_h3"
+            render_params["mode"] = seg.get("video_mode") or session_video_mode(session)
 
         render_res = await render_scene_video_async(
             project_id=project_id,

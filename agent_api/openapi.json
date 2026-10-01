@@ -700,7 +700,7 @@
             "type": "object"
           },
           "render_pass": {
-            "default": "single",
+            "default": "two_pass",
             "enum": [
               "single",
               "two_pass",
@@ -859,7 +859,7 @@
             "type": "integer"
           },
           "two_pass_final_height": {
-            "default": 1080,
+            "default": 1088,
             "maximum": 16384,
             "minimum": 64,
             "type": "integer"
@@ -1905,6 +1905,53 @@
         "summary": "retry job",
         "tags": [
           "jobs"
+        ]
+      }
+    },
+    "/vrgdg/api/v1/llm/active": {
+      "get": {
+        "operationId": "api_llm_active",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Error. The HTTP status mirrors error.code."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {}
+        ],
+        "summary": "The LLM the API would use for this project right now. For LM Studio, the loaded model; it is never changed.",
+        "tags": [
+          "llm"
         ]
       }
     },
@@ -3242,6 +3289,120 @@
         ]
       }
     },
+    "/vrgdg/api/v1/projects/{pid}/lyrics/align": {
+      "post": {
+        "operationId": "api_lyrics_align",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Error. The HTTP status mirrors error.code."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {}
+        ],
+        "summary": "Time the project lyrics against the song (ComfyUI timestamp workflow). Runs as a job.",
+        "tags": [
+          "lyrics"
+        ]
+      }
+    },
+    "/vrgdg/api/v1/projects/{pid}/minimax-prompts": {
+      "post": {
+        "operationId": "api_minimax_prompts",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Error. The HTTP status mirrors error.code."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {}
+        ],
+        "summary": "Write MiniMax H3 reference-to-video prompts for the scenes that have none, with the project's LLM. Runs as a job.",
+        "tags": [
+          "minimax-prompts"
+        ]
+      }
+    },
     "/vrgdg/api/v1/projects/{pid}/prompts/batch": {
       "post": {
         "operationId": "api_prompt_batch",
@@ -3455,6 +3616,120 @@
           {}
         ],
         "summary": "get references",
+        "tags": [
+          "references"
+        ]
+      }
+    },
+    "/vrgdg/api/v1/projects/{pid}/references/assign-scenes": {
+      "post": {
+        "operationId": "api_reference_assign_scenes",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Error. The HTTP status mirrors error.code."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {}
+        ],
+        "summary": "Assign saved characters and locations to scenes with a pattern (Assign Scenes). Use dry_run to preview.",
+        "tags": [
+          "references"
+        ]
+      }
+    },
+    "/vrgdg/api/v1/projects/{pid}/references/locations/extract": {
+      "post": {
+        "operationId": "api_reference_extract_locations",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Error. The HTTP status mirrors error.code."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {}
+        ],
+        "summary": "Ask the project's LLM for filming locations (LM Extract) and add them to the Reference Builder. Runs as a job.",
         "tags": [
           "references"
         ]
@@ -3741,6 +4016,79 @@
           {}
         ],
         "summary": "delete reference",
+        "tags": [
+          "references"
+        ]
+      }
+    },
+    "/vrgdg/api/v1/projects/{pid}/references/{kind}/{rid}/describe": {
+      "post": {
+        "operationId": "api_reference_describe",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "rid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Error. The HTTP status mirrors error.code."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {}
+        ],
+        "summary": "Describe a subject or location image with the project's LLM (Gemma Describe). Runs as a job.",
         "tags": [
           "references"
         ]
@@ -5382,6 +5730,128 @@
         ]
       }
     },
+    "/vrgdg/api/v1/projects/{pid}/story/settings": {
+      "put": {
+        "operationId": "api_story_settings",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Error. The HTTP status mirrors error.code."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {}
+        ],
+        "summary": "Save Storyboard scene defaults and the story idea. Body: {\"defaults\": {...}, \"story\": {...}}.",
+        "tags": [
+          "story"
+        ]
+      }
+    },
+    "/vrgdg/api/v1/projects/{pid}/story/{step}": {
+      "post": {
+        "operationId": "api_story_step",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "step",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Error. The HTTP status mirrors error.code."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {}
+        ],
+        "summary": "Create the story arc, story brief or scene beats with the project's LLM. Runs as a job.",
+        "tags": [
+          "story"
+        ]
+      }
+    },
     "/vrgdg/api/v1/projects/{pid}/summary": {
       "get": {
         "operationId": "api_get_project_summary",
@@ -5604,6 +6074,125 @@
           {}
         ],
         "summary": "timeline close gaps",
+        "tags": [
+          "timeline"
+        ]
+      }
+    },
+    "/vrgdg/api/v1/projects/{pid}/timeline/enforce-length": {
+      "post": {
+        "operationId": "api_timeline_enforce_length",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "dry_run": {},
+                  "max_scene_seconds": {},
+                  "min_scene_seconds": {}
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Error. The HTTP status mirrors error.code."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {}
+        ],
+        "summary": "Merge scenes shorter than min_scene_seconds and cut scenes longer than max_scene_seconds.",
+        "tags": [
+          "timeline"
+        ]
+      }
+    },
+    "/vrgdg/api/v1/projects/{pid}/timeline/from-lines": {
+      "post": {
+        "operationId": "api_timeline_from_lines",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Error. The HTTP status mirrors error.code."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {}
+        ],
+        "summary": "Create the timeline scenes from the lyrics, like Line Mapping, with a min/max scene length. Runs as a job.",
         "tags": [
           "timeline"
         ]

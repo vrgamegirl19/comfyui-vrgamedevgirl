@@ -73,6 +73,28 @@ from .post_orchestrator import (
     run_post_lut_job,
     upload_lut_service,
 )
+from .lyrics_orchestrator import (
+    align_lyrics,
+    create_timeline_from_lines,
+    register_lyrics_orchestrator_handlers,
+)
+from .reference_orchestrator import (
+    assign_scenes,
+    describe_reference,
+    extract_locations,
+    register_reference_orchestrator_handlers,
+)
+from .minimax_prompt_orchestrator import (
+    create_minimax_prompts,
+    register_minimax_prompt_orchestrator_handlers,
+)
+from .storyboard_orchestrator import (
+    create_scene_beats,
+    create_story_arc,
+    create_story_brief,
+    register_storyboard_orchestrator_handlers,
+    set_story_settings,
+)
 from .pipeline_orchestrator import (
     get_pipeline_plan,
     register_pipeline_orchestrator_handlers,
@@ -148,5 +170,19 @@ __all__ = [
     "run_build_full_video_job",
     "run_build_flf_job",
     "register_pipeline_orchestrator_handlers",
+    "register_lyrics_orchestrator_handlers",
+    "register_reference_orchestrator_handlers",
+    "register_storyboard_orchestrator_handlers",
+    "register_minimax_prompt_orchestrator_handlers",
+    "create_minimax_prompts",
+    "create_scene_beats",
+    "create_story_arc",
+    "create_story_brief",
+    "set_story_settings",
+    "assign_scenes",
+    "describe_reference",
+    "extract_locations",
+    "align_lyrics",
+    "create_timeline_from_lines",
 ]
 

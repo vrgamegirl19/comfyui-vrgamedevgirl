@@ -1,0 +1,1793 @@
+{
+  "endpoints": [
+    {
+      "body_keys": [],
+      "description": "Server-sent events stream of job and project events, with a keep-alive every 15 seconds. Filter with `project_id`.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/events",
+      "path_params": [],
+      "query": [
+        "project_id"
+      ]
+    },
+    {
+      "body_keys": [],
+      "description": "Health check: `healthy` or `degraded`, whether ComfyUI is up, its queue depth, whether FFmpeg is found and whether a GPU is available.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/health",
+      "path_params": [],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "List the prompt-writing instructions (system prompts) the LLM steps use, with their override state.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/instructions",
+      "path_params": [],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "key",
+        "name"
+      ],
+      "description": "Save the current text of an instruction as a named preset.",
+      "if_match": false,
+      "job": false,
+      "method": "PUT",
+      "path": "/instructions/presets/{name}",
+      "path_params": [
+        "name"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "key",
+        "name"
+      ],
+      "description": "Load a named preset into an instruction.",
+      "if_match": false,
+      "job": false,
+      "method": "POST",
+      "path": "/instructions/presets/{name}/load",
+      "path_params": [
+        "name"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "One instruction's current text, its default and whether a project override is set.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/instructions/{key}",
+      "path_params": [
+        "key"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "key",
+        "project_folder",
+        "project_id"
+      ],
+      "description": "Save an instruction override for a project or for all projects.",
+      "if_match": false,
+      "job": false,
+      "method": "PUT",
+      "path": "/instructions/{key}",
+      "path_params": [
+        "key"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "key",
+        "project_folder",
+        "project_id"
+      ],
+      "description": "Remove an override and return to the built-in instruction.",
+      "if_match": false,
+      "job": false,
+      "method": "DELETE",
+      "path": "/instructions/{key}/override",
+      "path_params": [
+        "key"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "List jobs, newest first. Filter with `project_id`, `status` and `type`.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/jobs",
+      "path_params": [],
+      "query": [
+        "project_id",
+        "status",
+        "type"
+      ]
+    },
+    {
+      "body_keys": [],
+      "description": "One job: status (`queued`, `running`, `succeeded`, `failed`, `cancelled`, `interrupted`), progress, result and error.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/jobs/{id}",
+      "path_params": [
+        "id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Cancel a queued or running job. A running ComfyUI render is interrupted.",
+      "if_match": false,
+      "job": false,
+      "method": "POST",
+      "path": "/jobs/{id}/cancel",
+      "path_params": [
+        "id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "The job's progress log. Pass `since` (a sequence number) to read only new lines.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/jobs/{id}/log",
+      "path_params": [
+        "id"
+      ],
+      "query": [
+        "since"
+      ]
+    },
+    {
+      "body_keys": [
+        "resume"
+      ],
+      "description": "Start a failed or interrupted job again. `resume: true` skips work that already finished.",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/jobs/{id}/retry",
+      "path_params": [
+        "id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Which LLM the API would use right now, for a project (`project_id`) or, with none, for a new project (your saved model defaults). For LM Studio this is the model that is loaded. The API never loads or switches a model.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/llm/active",
+      "path_params": [],
+      "query": [
+        "project_id"
+      ]
+    },
+    {
+      "body_keys": [],
+      "description": "Models the configured LLM provider offers. `provider` selects LM Studio, an own server or an API provider.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/llm/models",
+      "path_params": [],
+      "query": [
+        "provider"
+      ]
+    },
+    {
+      "body_keys": [
+        "provider",
+        "text_runner"
+      ],
+      "description": "Send a short test request to the configured LLM runner and report whether it answers.",
+      "if_match": false,
+      "job": false,
+      "method": "POST",
+      "path": "/llm/test",
+      "path_params": [],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Free the memory held by the built-in LLM runners (clears their caches and the CUDA cache). It does not touch LM Studio.",
+      "if_match": false,
+      "job": false,
+      "method": "POST",
+      "path": "/llm/unload",
+      "path_params": [],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "API version (`v1`), pack version and update date, schema version and the list of capabilities (projects, scenes, prompts, videos, latents, post, face fix, pipelines, jobs, events).",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/meta",
+      "path_params": [],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Models, checkpoints and LoRAs installed in ComfyUI, grouped by type.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/models",
+      "path_params": [],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Supported image and video modes with their requirements and capabilities.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/modes",
+      "path_params": [],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "project_id",
+        "project_name"
+      ],
+      "description": "Song to final video in one job: create the project if needed, attach audio and lyrics, make the scenes, then run the full build.",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/pipelines/from-song",
+      "path_params": [],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "List the saved color and tone adjustment presets.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/post/adjust/presets",
+      "path_params": [],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "settings"
+      ],
+      "description": "Save a color and tone adjustment preset (`settings`).",
+      "if_match": false,
+      "job": false,
+      "method": "PUT",
+      "path": "/post/adjust/presets/{name}",
+      "path_params": [
+        "name"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "List the available LUT (color look-up table) files.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/post/luts",
+      "path_params": [],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Delete a LUT, grain or color preview file the API created.",
+      "if_match": false,
+      "job": false,
+      "method": "DELETE",
+      "path": "/post/luts/previews/{id}",
+      "path_params": [
+        "id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "content",
+        "data",
+        "filename"
+      ],
+      "description": "Upload a LUT file (base64 `content` and `filename`).",
+      "if_match": false,
+      "job": false,
+      "method": "POST",
+      "path": "/post/luts/upload",
+      "path_params": [],
+      "query": [
+        "filename"
+      ]
+    },
+    {
+      "body_keys": [],
+      "description": "List projects found in the allowed project roots. `root` limits the search to one root.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/projects",
+      "path_params": [],
+      "query": [
+        "root"
+      ]
+    },
+    {
+      "body_keys": [
+        "name",
+        "template_from"
+      ],
+      "description": "Create a project: folder, empty session seeded with your saved model defaults. Body: `name`, optional `template_from`.",
+      "if_match": false,
+      "job": false,
+      "method": "POST",
+      "path": "/projects",
+      "path_params": [],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Delete a project folder from disk. Needs `confirm` equal to the project id.",
+      "if_match": false,
+      "job": false,
+      "method": "DELETE",
+      "path": "/projects/{pid}",
+      "path_params": [
+        "pid"
+      ],
+      "query": [
+        "confirm"
+      ]
+    },
+    {
+      "body_keys": [],
+      "description": "The full project session. `include` limits it to some fields.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/projects/{pid}",
+      "path_params": [
+        "pid"
+      ],
+      "query": [
+        "include"
+      ]
+    },
+    {
+      "body_keys": [],
+      "description": "Files in the project folder: images, videos, thumbnails, audio and final videos.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/projects/{pid}/assets",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "audio_data",
+        "audio_name",
+        "audio_path"
+      ],
+      "description": "Attach the song: a file path (`audio_path`) or uploaded data (`audio_data`, `audio_name`). Saves the waveform peaks, beats and tempo.",
+      "if_match": true,
+      "job": false,
+      "method": "PUT",
+      "path": "/projects/{pid}/audio",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Beat markers and detected tempo.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/projects/{pid}/audio/beats",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "beats",
+        "tempo_bpm"
+      ],
+      "description": "Replace the beat markers (`beats`) and tempo (`tempo_bpm`).",
+      "if_match": true,
+      "job": false,
+      "method": "PUT",
+      "path": "/projects/{pid}/audio/beats",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "duration",
+        "scope"
+      ],
+      "description": "Create a silent audio track of a given `duration` instead of a song.",
+      "if_match": true,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{pid}/audio/silent",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Waveform peaks for drawing the audio. `peaks` sets how many.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/projects/{pid}/audio/waveform",
+      "path_params": [
+        "pid"
+      ],
+      "query": [
+        "peaks"
+      ]
+    },
+    {
+      "body_keys": [
+        "new_name",
+        "options"
+      ],
+      "description": "Copy a project to `new_name`. `options` chooses what to keep (scenes, mappings, notes, prompts, media).",
+      "if_match": false,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{pid}/duplicate",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Build a zip of the project for backup or sharing.",
+      "if_match": false,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{pid}/export",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "The project's lyrics text and the lyric text on each scene.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/projects/{pid}/lyrics",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "lyrics_text",
+        "srt_text"
+      ],
+      "description": "Set the lyrics (`lyrics_text`) or an SRT (`srt_text`). The text is the reference Line Mapping works from.",
+      "if_match": true,
+      "job": false,
+      "method": "PUT",
+      "path": "/projects/{pid}/lyrics",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Time the lyrics against the song with the Stable-ts workflow in ComfyUI and save the timed lines.",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{pid}/lyrics/align",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Write MiniMax H3 reference-to-video prompts with the project's LLM for scenes that have none (`replace_existing`, `scene_ids`, `limit`). Each singing scene's prompt has its lyric in double quotes after 'sings the lyric line,'. Saves them on the scenes and in the Storyboard Builder's copy (`storyboard/storyboard.json` and the `prompts/` files). Needs a mapped character with an image on each scene.",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{pid}/minimax-prompts",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Write image or video prompts for many scenes (`kind`, `scope`, `run_mode`, `scene_ids`).",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{pid}/prompts/batch",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Write scene concept prompts for the whole project with the LLM.",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{pid}/prompts/concepts",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Write motion and camera notes for scenes with the LLM.",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{pid}/prompts/motion-notes",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Characters, locations and the scene mappings.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/projects/{pid}/references",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Assign characters and locations to scenes by pattern (`random`, `rotate`, `blocks`, `unchanged`). `dry_run` previews.",
+      "if_match": false,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{pid}/references/assign-scenes",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Ask the project's LLM for filming locations from the lyrics and `style_theme` (LM Extract) and add them.",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{pid}/references/locations/extract",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Create or update a location (name, description, optional image).",
+      "if_match": true,
+      "job": false,
+      "method": "PUT",
+      "path": "/projects/{pid}/references/locations/{rid}",
+      "path_params": [
+        "pid",
+        "rid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Set which characters, locations, ingredients and extras each scene uses.",
+      "if_match": true,
+      "job": false,
+      "method": "PUT",
+      "path": "/projects/{pid}/references/scene-mapping",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Create or update a character (name, description, `reference_type`, voice, trigger phrase, `image`).",
+      "if_match": true,
+      "job": false,
+      "method": "PUT",
+      "path": "/projects/{pid}/references/subjects/{rid}",
+      "path_params": [
+        "pid",
+        "rid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Delete a character or location (`kind` is `subjects` or `locations`) and its scene mappings.",
+      "if_match": true,
+      "job": false,
+      "method": "DELETE",
+      "path": "/projects/{pid}/references/{kind}/{rid}",
+      "path_params": [
+        "pid",
+        "kind",
+        "rid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Describe a character or location image with the project's LLM (Gemma Describe) and save the description.",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{pid}/references/{kind}/{rid}/describe",
+      "path_params": [
+        "pid",
+        "kind",
+        "rid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "List scenes. Filter with `has_image`, `has_prompt`, `has_video` and `status`.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/projects/{pid}/scenes",
+      "path_params": [
+        "pid"
+      ],
+      "query": [
+        "has_image",
+        "has_prompt",
+        "has_video",
+        "status"
+      ]
+    },
+    {
+      "body_keys": [
+        "duration",
+        "i2v_prompt",
+        "label",
+        "notes",
+        "position",
+        "ref_scene_id",
+        "t2i_prompt"
+      ],
+      "description": "Insert a scene (`position`, `ref_scene_id`, `duration`, `label`, `notes`, prompts). Later scene files are renumbered.",
+      "if_match": true,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{pid}/scenes",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "operations"
+      ],
+      "description": "Apply several scene operations in one atomic change (`operations`).",
+      "if_match": true,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{pid}/scenes/bulk",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Delete a scene. `ripple` closes the gap. Later scene files are renumbered.",
+      "if_match": true,
+      "job": false,
+      "method": "DELETE",
+      "path": "/projects/{pid}/scenes/{sid}",
+      "path_params": [
+        "pid",
+        "sid"
+      ],
+      "query": [
+        "ripple"
+      ]
+    },
+    {
+      "body_keys": [],
+      "description": "One scene: timing, lyrics, story beat, prompts (including `minimax_h3_prompt`), approved image, rendered video with its thumbnail, and scene audio. Each file is `null` when it does not exist.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/projects/{pid}/scenes/{sid}",
+      "path_params": [
+        "pid",
+        "sid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Change scene fields such as lyrics, notes, label or per-scene settings.",
+      "if_match": true,
+      "job": false,
+      "method": "PATCH",
+      "path": "/projects/{pid}/scenes/{sid}",
+      "path_params": [
+        "pid",
+        "sid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "with_direction"
+      ],
+      "description": "Merge a scene with its neighbour (`with_direction`: previous or next). Lyrics are joined.",
+      "if_match": true,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{pid}/scenes/{sid}/merge",
+      "path_params": [
+        "pid",
+        "sid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "ripple",
+        "start_time"
+      ],
+      "description": "Move a scene to `start_time`. `ripple` shifts the others.",
+      "if_match": true,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{pid}/scenes/{sid}/move",
+      "path_params": [
+        "pid",
+        "sid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "The context brief an outside agent needs to write a prompt itself: cast, cut plan and character budget (`kind`).",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/projects/{pid}/scenes/{sid}/prompts/context",
+      "path_params": [
+        "pid",
+        "sid"
+      ],
+      "query": [
+        "kind"
+      ]
+    },
+    {
+      "body_keys": [
+        "scene_id"
+      ],
+      "description": "Rewrite an existing scene prompt following an instruction.",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{pid}/scenes/{sid}/prompts/edit",
+      "path_params": [
+        "pid",
+        "sid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "scene_id"
+      ],
+      "description": "Improve an existing scene prompt with the LLM.",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{pid}/scenes/{sid}/prompts/enhance",
+      "path_params": [
+        "pid",
+        "sid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "scene_id"
+      ],
+      "description": "Write one scene's image prompt with the LLM.",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{pid}/scenes/{sid}/prompts/image",
+      "path_params": [
+        "pid",
+        "sid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "mode",
+        "save",
+        "shots"
+      ],
+      "description": "Build a MiniMax prompt from shot descriptions you provide (`shots`, `mode`). `save` stores it.",
+      "if_match": true,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{pid}/scenes/{sid}/prompts/minimax/assemble",
+      "path_params": [
+        "pid",
+        "sid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "mode",
+        "prompt"
+      ],
+      "description": "Check a MiniMax prompt against the length and format rules.",
+      "if_match": false,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{pid}/scenes/{sid}/prompts/minimax/validate",
+      "path_params": [
+        "pid",
+        "sid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "scene_id"
+      ],
+      "description": "Write one scene's video prompt with the LLM (`mode`).",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{pid}/scenes/{sid}/prompts/video",
+      "path_params": [
+        "pid",
+        "sid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "scene_id"
+      ],
+      "description": "Write one scene's video prompt continuing from the previous scene's last frame.",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{pid}/scenes/{sid}/prompts/video-chained",
+      "path_params": [
+        "pid",
+        "sid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "origin",
+        "prompt"
+      ],
+      "description": "Set a prompt field directly (`t2i_prompt`, `i2v_prompt`, `minimax_h3_prompt`, ...). Body: `prompt`, `origin`.",
+      "if_match": true,
+      "job": false,
+      "method": "PUT",
+      "path": "/projects/{pid}/scenes/{sid}/prompts/{field}",
+      "path_params": [
+        "pid",
+        "sid",
+        "field"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "duration",
+        "end_time",
+        "ripple"
+      ],
+      "description": "Change a scene's length (`duration` or `end_time`). `ripple` shifts the others.",
+      "if_match": true,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{pid}/scenes/{sid}/resize",
+      "path_params": [
+        "pid",
+        "sid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "at_time",
+        "clear_right_media"
+      ],
+      "description": "Split a scene at `at_time`. `clear_right_media` drops the media on the new right half. Lyrics follow their words.",
+      "if_match": true,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{pid}/scenes/{sid}/split",
+      "path_params": [
+        "pid",
+        "sid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Effective settings in every group, including all MiniMax H3 options.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/projects/{pid}/settings",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Change settings by group, for example `{\"minimax_h3\": {\"render_pass\": \"two_pass\"}}`. Saved under the same keys the Video Builder uses.",
+      "if_match": true,
+      "job": false,
+      "method": "PATCH",
+      "path": "/projects/{pid}/settings",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Check the saved settings against the chosen video and image modes and report problems before rendering.",
+      "if_match": false,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{pid}/settings/preflight",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "The saved story layer: idea, arc, brief.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/projects/{pid}/story",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Replace the saved story layer.",
+      "if_match": true,
+      "job": false,
+      "method": "PUT",
+      "path": "/projects/{pid}/story",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Save the Storyboard scene defaults (`defaults`: video style, camera flow, motion speeds, cut frequency) and the story fields (`story`: idea, strength, world style).",
+      "if_match": false,
+      "job": false,
+      "method": "PUT",
+      "path": "/projects/{pid}/story/settings",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Write a story step with the project's LLM. `step` is `arc` (from the story idea), `brief` or `beats` (a beat per scene without one; `replace_existing`, `scene_ids`, `limit`). Each step also updates the Storyboard Builder's saved copy.",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{pid}/story/{step}",
+      "path_params": [
+        "pid",
+        "step"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Compact status: scene counts, how many have images, prompts and videos, total duration.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/projects/{pid}/summary",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "action",
+        "append_start",
+        "clear_media",
+        "mode",
+        "text"
+      ],
+      "description": "Rebuild or extend the whole timeline from text durations, beats or lyrics (`action`, `mode`, `text`, `append_start`, `clear_media`).",
+      "if_match": false,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{pid}/timeline/bulk",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "offset_seconds"
+      ],
+      "description": "Shift all beat markers by `offset_seconds`.",
+      "if_match": true,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{pid}/timeline/calibrate",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Remove gaps between scenes by moving later scenes earlier.",
+      "if_match": false,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{pid}/timeline/close-gaps",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "dry_run",
+        "max_scene_seconds",
+        "min_scene_seconds"
+      ],
+      "description": "Merge scenes shorter than `min_scene_seconds` and cut scenes longer than `max_scene_seconds`. `dry_run` shows the plan only. Scenes with rendered video are left alone.",
+      "if_match": false,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{pid}/timeline/enforce-length",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Make the timeline scenes from the lyrics, like Line Mapping: one scene per lyric line, short scenes merged and long ones split to fit `min_scene_seconds` and `max_scene_seconds`. Turns on the lyric lane.",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{pid}/timeline/from-lines",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "edge",
+        "scene_id",
+        "scope"
+      ],
+      "description": "Snap a scene edge to the nearest beat (`scene_id`, `edge`, `scope`).",
+      "if_match": false,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{pid}/timeline/snap",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Check the project is consistent: files exist, scene timing, references, settings.",
+      "if_match": false,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{pid}/validate",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "List the project's final videos.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/projects/{project_id}/finals",
+      "path_params": [
+        "project_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Generate images for many scenes.",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{project_id}/images/generate",
+      "path_params": [
+        "project_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Latent chain status for every scene (MiniMax continuity).",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/projects/{project_id}/latents",
+      "path_params": [
+        "project_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Scenes whose latent is out of date because an earlier scene changed.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/projects/{project_id}/latents/dirty",
+      "path_params": [
+        "project_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "project_id"
+      ],
+      "description": "Rebuild out-of-date latents in order.",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{project_id}/latents/rebuild",
+      "path_params": [
+        "project_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Delete MiniMax scratch outputs that are no longer needed.",
+      "if_match": false,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{project_id}/minimax/cleanup",
+      "path_params": [
+        "project_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Index of the MiniMax scratch outputs per scene.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/projects/{project_id}/minimax/index",
+      "path_params": [
+        "project_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "project_id"
+      ],
+      "description": "Run the first/last-frame (FLF) build for an existing project as one job.",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{project_id}/pipelines/build-flf",
+      "path_params": [
+        "project_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "project_id"
+      ],
+      "description": "Run the whole build for an existing project (prompts, images, videos, stitch) as one job.",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{project_id}/pipelines/build-full-video",
+      "path_params": [
+        "project_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Dry-run plan for the full build: steps, estimated GPU minutes and missing prerequisites.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/projects/{project_id}/pipelines/plan",
+      "path_params": [
+        "project_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "project_id"
+      ],
+      "description": "Apply the project's post-processing settings to every scene video.",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{project_id}/post/apply-all",
+      "path_params": [
+        "project_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "order",
+        "project_id",
+        "scene_id"
+      ],
+      "description": "Enhance one anchor frame (`order`).",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{project_id}/scenes/{scene_id}/face-fix/anchors/{n}/enhance",
+      "path_params": [
+        "project_id",
+        "scene_id",
+        "n"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "project_id",
+        "scene_id"
+      ],
+      "description": "Run prepare, enhance, LTX and finalize automatically.",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{project_id}/scenes/{scene_id}/face-fix/auto",
+      "path_params": [
+        "project_id",
+        "scene_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Estimate the work and GPU time to fix faces in a scene video.",
+      "if_match": false,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{project_id}/scenes/{scene_id}/face-fix/estimate",
+      "path_params": [
+        "project_id",
+        "scene_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "project_id",
+        "scene_id"
+      ],
+      "description": "Combine the fixed runs into the scene video.",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{project_id}/scenes/{scene_id}/face-fix/finalize",
+      "path_params": [
+        "project_id",
+        "scene_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "project_id",
+        "scene_id"
+      ],
+      "description": "Find the faces and prepare anchor frames.",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{project_id}/scenes/{scene_id}/face-fix/prepare",
+      "path_params": [
+        "project_id",
+        "scene_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "project_id",
+        "run_index",
+        "scene_id"
+      ],
+      "description": "Run the LTX face-fix pass for one run (`run_index`).",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{project_id}/scenes/{scene_id}/face-fix/runs/{n}/ltx",
+      "path_params": [
+        "project_id",
+        "scene_id",
+        "n"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Remove the scene's image.",
+      "if_match": false,
+      "job": false,
+      "method": "DELETE",
+      "path": "/projects/{project_id}/scenes/{scene_id}/image",
+      "path_params": [
+        "project_id",
+        "scene_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "image_data",
+        "source_path"
+      ],
+      "description": "Set the scene image from a file (`source_path`) or upload (`image_data`).",
+      "if_match": false,
+      "job": false,
+      "method": "PUT",
+      "path": "/projects/{project_id}/scenes/{scene_id}/image",
+      "path_params": [
+        "project_id",
+        "scene_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "image_path"
+      ],
+      "description": "Approve one generated image as the scene's image (`image_path`).",
+      "if_match": false,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{project_id}/scenes/{scene_id}/image/approve",
+      "path_params": [
+        "project_id",
+        "scene_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "source_video_path"
+      ],
+      "description": "Take the scene image from a frame of a video (`source_video_path`).",
+      "if_match": false,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{project_id}/scenes/{scene_id}/image/from-video-frame",
+      "path_params": [
+        "project_id",
+        "scene_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Generate a scene image with ComfyUI.",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{project_id}/scenes/{scene_id}/image/generate",
+      "path_params": [
+        "project_id",
+        "scene_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "delta",
+        "index"
+      ],
+      "description": "Step through the scene's image history (`index` or `delta`).",
+      "if_match": false,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{project_id}/scenes/{scene_id}/image/revert",
+      "path_params": [
+        "project_id",
+        "scene_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "all",
+        "reindex"
+      ],
+      "description": "Delete a scene's latent (`all`, `reindex`).",
+      "if_match": false,
+      "job": false,
+      "method": "DELETE",
+      "path": "/projects/{project_id}/scenes/{scene_id}/latent",
+      "path_params": [
+        "project_id",
+        "scene_id"
+      ],
+      "query": [
+        "all",
+        "reindex"
+      ]
+    },
+    {
+      "body_keys": [],
+      "description": "One scene's latent file and status.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/projects/{project_id}/scenes/{scene_id}/latent",
+      "path_params": [
+        "project_id",
+        "scene_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "project_id",
+        "scene_id"
+      ],
+      "description": "Apply color and tone adjustments to a scene video.",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{project_id}/scenes/{scene_id}/post/adjust",
+      "path_params": [
+        "project_id",
+        "scene_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Make a still preview of the adjustments on the scene.",
+      "if_match": false,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{project_id}/scenes/{scene_id}/post/adjust/preview",
+      "path_params": [
+        "project_id",
+        "scene_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "project_id",
+        "scene_id"
+      ],
+      "description": "Apply film grain to a scene video.",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{project_id}/scenes/{scene_id}/post/film-grain",
+      "path_params": [
+        "project_id",
+        "scene_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Make a still preview of film grain on the scene.",
+      "if_match": false,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{project_id}/scenes/{scene_id}/post/film-grain/preview",
+      "path_params": [
+        "project_id",
+        "scene_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "project_id",
+        "scene_id"
+      ],
+      "description": "Apply a LUT to a scene video.",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{project_id}/scenes/{scene_id}/post/lut",
+      "path_params": [
+        "project_id",
+        "scene_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Make a still preview of a LUT on the scene.",
+      "if_match": false,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{project_id}/scenes/{scene_id}/post/lut/preview",
+      "path_params": [
+        "project_id",
+        "scene_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Clear the scene's active video. Files stay on disk.",
+      "if_match": false,
+      "job": false,
+      "method": "DELETE",
+      "path": "/projects/{project_id}/scenes/{scene_id}/video",
+      "path_params": [
+        "project_id",
+        "scene_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Match the opening colors of a scene video to the previous scene's last frame.",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{project_id}/scenes/{scene_id}/video/match-start-color",
+      "path_params": [
+        "project_id",
+        "scene_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Recover a MiniMax pass-1 or pass-2 clip from the scratch folder.",
+      "if_match": false,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{project_id}/scenes/{scene_id}/video/minimax-stage-recover",
+      "path_params": [
+        "project_id",
+        "scene_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "source_path"
+      ],
+      "description": "Bring back a scene video from a backup or file (`source_path`).",
+      "if_match": false,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{project_id}/scenes/{scene_id}/video/recover",
+      "path_params": [
+        "project_id",
+        "scene_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Render one scene's video with ComfyUI (`mode`, e.g. `minimax_h3`). Trims to the exact timeline length and saves it as `video_NNNN-audio.mp4`.",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{project_id}/scenes/{scene_id}/video/render",
+      "path_params": [
+        "project_id",
+        "scene_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "source_path"
+      ],
+      "description": "Choose which take is the scene's active video (`source_path`).",
+      "if_match": false,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{project_id}/scenes/{scene_id}/video/select",
+      "path_params": [
+        "project_id",
+        "scene_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Trim a scene video (`start`, `duration`).",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{project_id}/scenes/{scene_id}/video/trim",
+      "path_params": [
+        "project_id",
+        "scene_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Make a video from the scene images instead of rendered clips.",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{project_id}/slideshow",
+      "path_params": [
+        "project_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Join the scenes' videos into `FINAL_VIDEO.mp4` with the project audio.",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{project_id}/stitch",
+      "path_params": [
+        "project_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Build the ComfyUI graph for a video `mode` and the given parameters without running it, to inspect what would be sent.",
+      "if_match": false,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{project_id}/video/graph",
+      "path_params": [
+        "project_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Render many scenes' videos one after another as a GPU job, and stitch them when asked.",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{project_id}/video/render",
+      "path_params": [
+        "project_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Scan the project folder for rendered scene videos and thumbnails and re-link them to scenes.",
+      "if_match": false,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{project_id}/video/scan",
+      "path_params": [
+        "project_id"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Summary of the API job queue: running, queued and finished jobs.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/queue",
+      "path_params": [],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Every MiniMax H3 video setting that can be patched under the `minimax_h3` group: type, default, allowed values and limits.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/settings/minimax-h3/schema",
+      "path_params": [],
+      "query": []
+    }
+  ]
+}

@@ -15,7 +15,7 @@ function fixture() {
 for (const renderPass of ['single', 'two_pass', 'three_pass']) {
   test(`legacy locked reference scene inherits loaded ${renderPass} project before normalization`, () => {
     const c = fixture();
-    c.session = { minimax_h3_settings: { video_mode: 'reference_to_video' }, minimax_h3_two_pass: renderPass === 'two_pass', minimax_h3_advanced_two_pass: renderPass === 'three_pass' };
+    c.session = { minimax_h3_settings: { video_mode: 'reference_to_video', ...(renderPass === 'single' ? { render_pass: 'single' } : {}) }, minimax_h3_two_pass: renderPass === 'two_pass', minimax_h3_advanced_two_pass: renderPass === 'three_pass' };
     const load = functionSource(source, 'loadSessionFromProject');
     const start = load.indexOf('state.miniMaxH3Settings = cloneMiniMaxH3Settings(session.');
     const end = load.indexOf('state.miniMaxH3ThreePassEnabled =', start);

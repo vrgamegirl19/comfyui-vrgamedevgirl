@@ -134,11 +134,38 @@ def _primary_subject(refs: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _has_meaningful_subject(refs: Dict[str, Any]) -> bool:
+    """Mirror ``hasMeaningfulSubject`` in normalizeFluxReferenceBuilder.
+
+    The UI switches subject references on by itself once a subject has a name, description,
+    trigger or image, so a project built through the API (which never sets the flag) behaves
+    like one built in the UI.
+    """
+    if refs.get("cleared"):
+        return False
+    primary = refs.get("subject") if isinstance(refs.get("subject"), dict) else {}
+    image = primary.get("image") if isinstance(primary.get("image"), dict) else {}
+    if _text(primary.get("description")) or any(_text(image.get(key)) for key in ("path", "data", "name")):
+        return True
+    if refs.get("subject_scene_map"):
+        return True
+    for subject in refs.get("subjects") or []:
+        if not isinstance(subject, dict):
+            continue
+        name = _text(subject.get("name"))
+        placeholder = name.lower().startswith("character ") and name.split(" ", 1)[1].isdigit()
+        subject_image = subject.get("image") if isinstance(subject.get("image"), dict) else {}
+        if (name and not placeholder) or _text(subject.get("description")) or _text(subject.get("trigger_phrase")) \
+                or any(_text(subject_image.get(key)) for key in ("path", "data", "name")):
+            return True
+    return False
+
+
 def _subject_items_for_segment(refs: Dict[str, Any], segment: Dict[str, Any], index: int) -> List[Dict[str, Any]]:
     """Mirror ``referenceBuilderSubjectItemsForSegment`` for MiniMax projects."""
     primary_has_image = _has_image((refs.get("subject") or {}).get("image"))
     subjects = [s for s in (refs.get("subjects") or []) if isinstance(s, dict)]
-    if not (refs.get("use_subject_reference") or primary_has_image):
+    if not (refs.get("use_subject_reference") or _has_meaningful_subject(refs) or primary_has_image):
         return []
     if segment.get("no_character_present"):
         backed = [s for s in subjects if _has_image(s.get("image"))]

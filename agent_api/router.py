@@ -29,6 +29,7 @@ from ..runner.models import _folder_choices, _lora_choices, _ltx_video_model_cho
 
 from .auth import verify_auth
 from .envelope import api_error, api_exception, api_success
+from .llm_runtime import describe_active_llm, llm_payload_from_session
 from .errors import ValidationError
 from .jobs import (
     get_event_broadcaster,
@@ -62,6 +63,12 @@ from .orchestrator import (
     recover_scene_video,
     register_image_orchestrator_handlers,
     register_latent_orchestrator_handlers,
+    assign_scenes,
+    register_lyrics_orchestrator_handlers,
+    register_reference_orchestrator_handlers,
+    register_minimax_prompt_orchestrator_handlers,
+    register_storyboard_orchestrator_handlers,
+    set_story_settings,
     register_pipeline_orchestrator_handlers,
     register_post_orchestrator_handlers,
     register_video_orchestrator_handlers,
@@ -103,6 +110,8 @@ from .mutations import (
     set_project_lyrics,
     set_scene_prompt_field_endpoint,
     split_scene,
+    _get_active_session_and_folder,
+    enforce_scene_lengths_on_project,
     timeline_bulk,
     timeline_close_gaps,
     timeline_snap,
@@ -167,6 +176,10 @@ def register_agent_api_routes(server_instance=None):
         register_latent_orchestrator_handlers(get_job_manager())
         register_post_orchestrator_handlers(get_job_manager())
         register_pipeline_orchestrator_handlers(get_job_manager())
+        register_lyrics_orchestrator_handlers(get_job_manager())
+        register_reference_orchestrator_handlers(get_job_manager())
+        register_storyboard_orchestrator_handlers(get_job_manager())
+        register_minimax_prompt_orchestrator_handlers(get_job_manager())
     except Exception as _je:
         print(f"[VRGDG API] Job handlers registration warning: {_je}")
 
@@ -511,6 +524,120 @@ def register_agent_api_routes(server_instance=None):
         return api_success(res, revision=res.get("revision"))
 
     # 6. Timeline Batch Operations
+    @server_instance.routes.post(f"{_API_V1_PREFIX}/projects/{{pid}}/references/{{kind}}/{{rid}}/describe")
+    @_api_endpoint
+    async def api_reference_describe(request: web.Request):
+        """Describe a subject or location image with the project's LLM (Gemma Describe). Runs as a job."""
+        pid, kind, rid = request.match_info["pid"], request.match_info["kind"], request.match_info["rid"]
+        payload = await request.json() if request.can_read_body else {}
+        folder = await asyncio.to_thread(resolve_project_folder, pid)
+        params = {**payload, "kind": kind, "ref_id": rid}
+        job = get_job_manager().submit_job("reference.describe", project_id=pid, params=params, is_gpu=is_llm_runner_gpu(payload, folder))
+        return api_success({"job_id": job.id, "status": job.status, "job": job.to_dict()}, status=202)
+
+    @server_instance.routes.post(f"{_API_V1_PREFIX}/projects/{{pid}}/references/locations/extract")
+    @_api_endpoint
+    async def api_reference_extract_locations(request: web.Request):
+        """Ask the project's LLM for filming locations (LM Extract) and add them to the Reference Builder. Runs as a job."""
+        pid = request.match_info["pid"]
+        payload = await request.json() if request.can_read_body else {}
+        folder = await asyncio.to_thread(resolve_project_folder, pid)
+        job = get_job_manager().submit_job("reference.extract_locations", project_id=pid, params=dict(payload), is_gpu=is_llm_runner_gpu(payload, folder))
+        return api_success({"job_id": job.id, "status": job.status, "job": job.to_dict()}, status=202)
+
+    @server_instance.routes.post(f"{_API_V1_PREFIX}/projects/{{pid}}/references/assign-scenes")
+    @_api_endpoint
+    async def api_reference_assign_scenes(request: web.Request):
+        """Assign saved characters and locations to scenes with a pattern (Assign Scenes). Use dry_run to preview."""
+        pid = request.match_info["pid"]
+        payload = await request.json() if request.can_read_body else {}
+        res = await asyncio.to_thread(assign_scenes, pid, payload)
+        return api_success(res, revision=res.get("revision"))
+
+    @server_instance.routes.put(f"{_API_V1_PREFIX}/projects/{{pid}}/story/settings")
+    @_api_endpoint
+    async def api_story_settings(request: web.Request):
+        """Save Storyboard scene defaults and the story idea. Body: {"defaults": {...}, "story": {...}}."""
+        pid = request.match_info["pid"]
+        payload = await request.json() if request.can_read_body else {}
+        res = await asyncio.to_thread(set_story_settings, pid, payload)
+        return api_success(res, revision=res.get("revision"))
+
+    @server_instance.routes.post(f"{_API_V1_PREFIX}/projects/{{pid}}/story/{{step}}")
+    @_api_endpoint
+    async def api_story_step(request: web.Request):
+        """Create the story arc, story brief or scene beats with the project's LLM. Runs as a job."""
+        pid, step = request.match_info["pid"], request.match_info["step"]
+        job_types = {"arc": "storyboard.story_arc", "brief": "storyboard.story_brief", "beats": "storyboard.scene_beats"}
+        if step not in job_types:
+            raise ValidationError("step must be one of: arc, brief, beats.")
+        payload = await request.json() if request.can_read_body else {}
+        folder = await asyncio.to_thread(resolve_project_folder, pid)
+        job = get_job_manager().submit_job(job_types[step], project_id=pid, params=dict(payload), is_gpu=is_llm_runner_gpu(payload, folder))
+        return api_success({"job_id": job.id, "status": job.status, "job": job.to_dict()}, status=202)
+
+    @server_instance.routes.post(f"{_API_V1_PREFIX}/projects/{{pid}}/minimax-prompts")
+    @_api_endpoint
+    async def api_minimax_prompts(request: web.Request):
+        """Write MiniMax H3 reference-to-video prompts for the scenes that have none, with the project's LLM. Runs as a job."""
+        pid = request.match_info["pid"]
+        payload = await request.json() if request.can_read_body else {}
+        folder = await asyncio.to_thread(resolve_project_folder, pid)
+        job = get_job_manager().submit_job("minimax.prompts", project_id=pid, params=dict(payload), is_gpu=is_llm_runner_gpu(payload, folder))
+        return api_success({"job_id": job.id, "status": job.status, "job": job.to_dict()}, status=202)
+
+    @server_instance.routes.get(f"{_API_V1_PREFIX}/llm/active")
+    @_api_endpoint
+    async def api_llm_active(request: web.Request):
+        """The LLM the API would use for this project right now. For LM Studio, the loaded model; it is never changed."""
+        pid = request.query.get("project_id", "")
+        if pid:
+            _folder, session = await asyncio.to_thread(_get_active_session_and_folder, pid)
+        else:
+            # No project yet: report what a new project would use (the saved model defaults).
+            from ..builder.project import _load_model_defaults
+
+            loaded = await asyncio.to_thread(_load_model_defaults)
+            session = dict(loaded.get("defaults") or {})
+        info = await asyncio.to_thread(describe_active_llm, llm_payload_from_session(session))
+        return api_success(info)
+
+    @server_instance.routes.post(f"{_API_V1_PREFIX}/projects/{{pid}}/timeline/enforce-length")
+    @_api_endpoint
+    async def api_timeline_enforce_length(request: web.Request):
+        """Merge scenes shorter than min_scene_seconds and cut scenes longer than max_scene_seconds."""
+        pid = request.match_info["pid"]
+        payload = await request.json() if request.can_read_body else {}
+        try:
+            min_seconds = float(payload.get("min_scene_seconds"))
+            max_seconds = float(payload.get("max_scene_seconds"))
+        except (TypeError, ValueError):
+            raise ValidationError("min_scene_seconds and max_scene_seconds are required numbers.")
+        if min_seconds <= 0 or max_seconds < min_seconds:
+            raise ValidationError("min_scene_seconds must be positive and not larger than max_scene_seconds.")
+        res = await asyncio.to_thread(
+            enforce_scene_lengths_on_project, pid, min_seconds, max_seconds, bool(payload.get("dry_run", False))
+        )
+        return api_success(res)
+
+    @server_instance.routes.post(f"{_API_V1_PREFIX}/projects/{{pid}}/lyrics/align")
+    @_api_endpoint
+    async def api_lyrics_align(request: web.Request):
+        """Time the project lyrics against the song (ComfyUI timestamp workflow). Runs as a job."""
+        pid = request.match_info["pid"]
+        payload = await request.json() if request.can_read_body else {}
+        job = get_job_manager().submit_job(job_type="lyrics.align", project_id=pid, params=dict(payload), is_gpu=True)
+        return api_success({"job_id": job.id, "status": job.status, "job": job.to_dict()}, status=202)
+
+    @server_instance.routes.post(f"{_API_V1_PREFIX}/projects/{{pid}}/timeline/from-lines")
+    @_api_endpoint
+    async def api_timeline_from_lines(request: web.Request):
+        """Create the timeline scenes from the lyrics, like Line Mapping, with a min/max scene length. Runs as a job."""
+        pid = request.match_info["pid"]
+        payload = await request.json() if request.can_read_body else {}
+        job = get_job_manager().submit_job(job_type="timeline.from_lines", project_id=pid, params=dict(payload), is_gpu=True)
+        return api_success({"job_id": job.id, "status": job.status, "job": job.to_dict()}, status=202)
+
     @server_instance.routes.post(f"{_API_V1_PREFIX}/projects/{{pid}}/timeline/close-gaps")
     @_api_endpoint
     async def api_timeline_close_gaps(request: web.Request):

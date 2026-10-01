@@ -106,3 +106,16 @@ def session_audio_path(session) -> str:
             return path
     return candidates[0] if candidates else ""
 
+
+def session_video_mode(session) -> str:
+    """Default video render mode for a project.
+
+    A MiniMax project renders with the MiniMax graphs whatever ``video_model_mode`` says (that key holds
+    the LTX mode and stays set to an old value). Other engines use their saved LTX mode.
+    """
+    if not isinstance(session, dict):
+        return "i2v"
+    if str(session.get("video_engine") or "").strip().lower() == "minimax_h3":
+        return "minimax_h3"
+    return str(session.get("video_model_mode") or session.get("video_mode") or "i2v").strip().lower()
+

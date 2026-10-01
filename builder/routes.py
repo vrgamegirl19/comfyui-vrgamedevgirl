@@ -18,7 +18,7 @@ from .project import _copy_latest_prompt_creator_outputs, _copy_prompt_creator_o
 from ..llm.builder_instructions import _get_builder_instruction, _list_builder_instruction_presets, _load_builder_instruction_preset, _reset_builder_instruction, _save_builder_instruction, _save_builder_instruction_preset
 from ..llm.builder_runner import _clear_builder_memory_direct, _gemma_choices, _list_lm_studio_models, _list_own_server_models, _llm_multi_choices, _test_llm_api, _test_own_server
 from ..llm.video_prompt_generation import _edit_builder_video_prompt, _enhance_builder_video_prompt, _generate_builder_chained_i2v_prompt, _generate_builder_i2v_prompt, _generate_builder_motion_notes, _generate_builder_t2v_prompt
-from ..llm.image_prompt_generation import _analyze_builder_story_references, _edit_builder_image_prompt, _generate_builder_concept_prompts, _generate_builder_reference_description, _generate_builder_t2i_prompt, _generate_flux_klein_prompt, _generate_flux_reference_location_map, _generate_flux_reference_locations, _generate_flux_reference_subjects, _generate_flux_reference_zimage_prompt, _generate_nb_image_prompt, _generate_wizard_locations_from_lyrics
+from ..llm.image_prompt_generation import _analyze_builder_story_references, _edit_builder_image_prompt, _generate_builder_concept_prompts, _generate_builder_reference_description, _generate_builder_t2i_prompt, _generate_flux_klein_prompt, _generate_flux_reference_location_map, _generate_flux_reference_locations, _generate_flux_reference_subjects, _generate_flux_reference_zimage_prompt, _generate_lm_scout_locations, _generate_nb_image_prompt, _generate_wizard_locations_from_lyrics
 from ..llm.builder_agent import _generate_builder_agent_reply
 from ..llm.gemma4 import _run_gemma4_prompt
 
@@ -842,6 +842,15 @@ def _ensure_music_builder_routes():
         try:
             payload = await request.json()
             result = await asyncio.to_thread(_generate_flux_reference_locations, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/lm_scout_locations")
+    async def vrgdg_music_builder_lm_scout_locations(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(_generate_lm_scout_locations, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, **result})
