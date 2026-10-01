@@ -214,7 +214,7 @@ export function createReferenceBuilder({
     const locationsTitle = document.createElement("div");
     locationsTitle.textContent = referenceImagesEnabled ? "Location Image References" : "Location Text References";
     locationsTitle.style.cssText = subjectTitle.style.cssText;
-    const extractLocations = makeButton("Gemma Extract", "primary");
+    const extractLocations = makeButton("LM Extract", "primary");
     const gptLocationScout = makeButton("GPT Scout", "primary");
     const gptLocationScoutAdvanced = makeButton("GPT Scout Advanced", "primary");
     const autoMapLocations = makeButton("Auto Map Locations with Gemma", "primary");
@@ -226,7 +226,7 @@ export function createReferenceBuilder({
     const addLocation = makeButton("Add Location", "primary");
     const arrangeLocations = makeButton("Arrange");
     const removeAllLocations = makeButton("Remove All Locations");
-    extractLocations.textContent = "Gemma Extract";
+    extractLocations.textContent = "LM Extract";
     gptLocationScout.textContent = "GPT Scout";
     gptLocationScoutAdvanced.title = "Use AFTER setting up the Storyboard story arc and brief. Then use lyrics, scene beats, subjects, style, and current mappings to assign narrative locations.";
     autoMapLocations.textContent = "Auto Map";
@@ -237,7 +237,7 @@ export function createReferenceBuilder({
     addLocation.textContent = "Add";
     arrangeLocations.textContent = "Arrange";
     removeAllLocations.textContent = "Remove";
-    extractLocations.title = "Ask Gemma to extract a reusable location list from your scenes.";
+    extractLocations.title = "Ask your LLM (Gemma, LM Studio, LLM API or own server) to scout 18-22 shootable locations from your lyrics and scenes. The optional style/theme field below steers the result, including banned locations.";
     gptLocationScout.title = "Copy lyrics/dialogue, style/theme, and character descriptions as JSON, then open the Music Video Location Scout GPT.";
     autoMapLocations.title = "Ask Gemma to assign saved locations to each scene.";
     describeMissingLocations.title = referenceImagesEnabled

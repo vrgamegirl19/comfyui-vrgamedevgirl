@@ -6,6 +6,7 @@ import re
 from PIL import Image
 from ..builder.video_editor import _image_from_data_url
 from .text_cleaning import _clean_visual_gemma_text, extract_prompt_text_from_gemma_output
+from .prompts.location_scout import _LM_LOCATION_SCOUT_INSTRUCTIONS, _LM_LOCATION_SCOUT_SCHEMA
 from .prompts.image import _FLOW_GPT_T2I_INSTRUCTIONS, _FLUX_KLEIN_T2I_INSTRUCTIONS, _NANO_B_T2I_INSTRUCTIONS, _TEXT_ONLY_T2I_INSTRUCTIONS, _VISUAL_T2I_INSTRUCTIONS
 
 from .prompts.image import _image_prompt_edit_instructions
@@ -1562,6 +1563,78 @@ def _generate_flux_reference_locations(payload):
         raise ValueError(f"Gemma returned only non-location items. Raw response preview: {preview or '(empty)'}")
     return {
         "locations": deduped[:max_locations],
+        "raw_text": text,
+        "used_model": run_info.get("used_model", ""),
+        "runner": run_info.get("runner", "builtin"),
+        "unloaded": run_info.get("unloaded", True),
+    }
+
+
+def _generate_lm_scout_locations(payload):
+    """LM Extract: location scout over lyrics + scene text, steered by the style/theme field."""
+    model_file = str(payload.get("model_file", "") or "").strip()
+    if not model_file and _llm_runner_from_payload(payload) not in _EXTERNAL_LLM_RUNNERS:
+        raise ValueError("Choose a non-vision Gemma model first, or use LM Studio, LLM API, or your own server.")
+    lyrics_text = str(payload.get("lyrics_text", "") or "").strip()
+    scene_lines = []
+    for index, scene in enumerate(payload.get("scenes") or [], start=1):
+        if not isinstance(scene, dict):
+            continue
+        concept = str(scene.get("concept", "") or "").strip()
+        notes = str(scene.get("notes", "") or "").strip()
+        if concept or notes:
+            scene_lines.append(f"Scene {index}: {concept}" + (f" | notes: {notes}" if notes else ""))
+    if not lyrics_text and not scene_lines:
+        raise ValueError("LM Extract needs lyrics, scene notes, or concept prompts first.")
+
+    style_theme = _clean_location_context_text(payload.get("style_theme", ""))
+    subject_context = _clean_location_context_text(payload.get("subject_context", ""))
+    existing_lines = []
+    for item in payload.get("existing_locations") or []:
+        existing_name = re.sub(r"\s+", " ", str(item.get("name", "") or "").strip()) if isinstance(item, dict) else ""
+        if existing_name:
+            existing_lines.append(f"- {existing_name}")
+
+    instruction = (
+        f"{_LM_LOCATION_SCOUT_INSTRUCTIONS}\n"
+        "--- PROJECT INPUTS ---\n\n"
+        f"Style/theme notes:\n{style_theme or '(none)'}\n\n"
+        f"Character notes:\n{subject_context or '(none)'}\n\n"
+        f"Existing user locations (do not repeat these):\n{chr(10).join(existing_lines) if existing_lines else '(none)'}\n\n"
+        f"Scene concepts and notes (optional extra context):\n{chr(10).join(scene_lines) if scene_lines else '(none)'}\n\n"
+        f"Song lyrics:\n{lyrics_text or '(none)'}"
+    )
+    text, run_info = _run_builder_text_llm(
+        payload,
+        instruction,
+        temperature=float(payload.get("temperature") or 0.6),
+        top_p=float(payload.get("top_p") or 0.9),
+        max_new_tokens=int(payload.get("max_new_tokens") or 4000),
+        label="Gemma",
+        json_schema=_LM_LOCATION_SCOUT_SCHEMA,
+    )
+    try:
+        data = _extract_json_object_from_text(_clean_visual_gemma_text(text))
+    except Exception:
+        data = None
+    raw_locations = data.get("locations") if isinstance(data, dict) else data
+    locations = []
+    seen = set()
+    for item in raw_locations if isinstance(raw_locations, list) else []:
+        if not isinstance(item, dict):
+            continue
+        name = re.sub(r"\s+", " ", str(item.get("name", "") or "").strip(" ,.-"))
+        description = re.sub(r"\s+", " ", str(item.get("description", "") or "").strip())
+        if name and name.lower() not in seen:
+            seen.add(name.lower())
+            locations.append({"name": name, "description": description})
+    if not locations:
+        preview = re.sub(r"\s+", " ", str(text or "")).strip()
+        if len(preview) > 700:
+            preview = preview[:697].rstrip() + "..."
+        raise ValueError(f"The LLM did not return usable location JSON. Raw response preview: {preview or '(empty)'}")
+    return {
+        "locations": locations[:50],
         "raw_text": text,
         "used_model": run_info.get("used_model", ""),
         "runner": run_info.get("runner", "builtin"),
