@@ -833,12 +833,30 @@ export function createBatchActions({
             },
           ],
         },
+        {
+          key: "runWhere",
+          label: "Where to run",
+          description: "The server option runs the build as a background job that keeps going if this tab is closed. The project must be saved inside the ComfyUI output folder.",
+          choices: [
+            {
+              value: "browser",
+              label: "In this browser tab",
+              description: "The normal build. It stops if the tab is closed or reloaded.",
+            },
+            {
+              value: "server",
+              label: "On the server (background job)",
+              description: "Runs the whole build in ComfyUI and reloads the project when it finishes. Do not edit scenes while it runs.",
+            },
+          ],
+        },
       ],
     });
     if (options?.mode) await buildFullVideoPipeline({
       buildMode: options.mode,
       videoSeedMode: options.videoSeedMode || "keep",
       sceneScope: normalizeBatchScope(options.sceneScope),
+      runOnServer: options.runWhere === "server",
     });
   }
 

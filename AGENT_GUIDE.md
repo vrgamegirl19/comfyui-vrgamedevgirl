@@ -119,7 +119,7 @@ Every Video Builder project resides in a dedicated directory on disk:
 | [builder/](builder) | AI Video Builder backend: session persistence, project branching, audio beat detection, media indexing, routes | `project.py`, `audio.py`, `media.py`, `paths.py`, `routes.py`, `nodes.py` |
 | [runner/](runner) | Dynamic workflow graph generation and rendering engine for LTX, MiniMax H3, Z-Image, Flux | `api_graph.py`, `ltx_workflows.py`, `minimax_workflows.py`, `routes.py` |
 | [llm/](llm) | Multi-provider LLM integrations (GGUF, API, Google), prompt expansion, agent chat, JSON validation | `api.py`, `gguf.py`, `builder_agent.py`, `image_prompt_generation.py` |
-| [minimax/](minimax) | MiniMax H3 video pipeline: latent caching, frame-token math, latent continuation, fast VAE decoding | `latent_manager.py`, `latent_continuation.py`, `latent_upscaler.py`, `nodes.py` |
+| [minimax/](minimax) | MiniMax H3 video pipeline: latent caching, frame-token math, latent continuation, fast VAE decoding | `latent_manager.py`, `latent_continuation.py`, `latent_upscaler.py`, `settings_payload.py`, `scene_inputs.py`, `nodes.py` |
 | [post_process/](post_process) | Face tracking, anchor enhancement, face paste-back compositing, 3D LUT grading, film grain | `face_fix.py`, `luts.py`, `lut_video_tools.py` |
 | [storyboard/](storyboard) | Storyboard generation, three-act structure planning, scene beats, dialogue allocation | `story_layer.py`, `scene_prompts.py`, `dialogue_scenes.py`, `nodes.py` |
 | [prompt_creator/](prompt_creator) | Structured prompt brainstorming, concept maps, motion notes, draft persistence routes | `nodes.py` |
@@ -128,8 +128,8 @@ Every Video Builder project resides in a dedicated directory on disk:
 | [flow_automation/](flow_automation) | Node.js / Playwright / Puppeteer automation scripts for browser-driven generation workflows | `flow-poc.mjs`, `manual-bridge.mjs`, `meta-ai-poc.mjs` |
 | [web/](web) | ComfyUI web extensions, Video Builder application (79 ESM modules), Storyboard UI (22 ESM modules) | `music_video_builder/`, `storyboard_builder/`, `VRGDG_*.js` |
 | [agent_api/](agent_api) | Headless REST API (`/vrgdg/api/v1`), transactional mutations, job management, SSE events, orchestrator | `router.py`, `mutations.py`, `jobs.py`, `envelope.py`, `paths.py`, `orchestrator/` |
-| [mcp_server/](mcp_server) | Zero-dependency MCP server (JSON-RPC 2.0 stdio), 50 tools (T1–T50), resources, prompt templates | `__main__.py`, `server.py`, `tools.py`, `resources.py`, `prompts.py`, `client.py` |
-| [scripts/](scripts) | Standalone tooling, workflow generation scripts, backport utilities, Photoshop integration | `build_minimax_h3_ref2va_2pass_audio_api.py`, `far_face_repair_backend.py` |
+| [mcp_server/](mcp_server) | Local-only (git-ignored) zero-dependency MCP server (JSON-RPC 2.0 stdio), 53 tools, resources, prompt templates | `__main__.py`, `server.py`, `tools.py`, `resources.py`, `prompts.py`, `client.py` |
+| [scripts/](scripts) | Standalone tooling, workflow generation scripts, backport utilities, Photoshop integration, contract exporters | `build_minimax_h3_ref2va_2pass_audio_api.py`, `far_face_repair_backend.py`, `export_openapi.py`, `export_minimax_defaults.mjs` |
 | [tests/](tests) | 84 test suites covering Python backend logic, node collision checks, and JavaScript UI contracts | `test_node_registration.py`, `test_atomic_write.py`, `builder_source.py` |
 
 ---
@@ -543,6 +543,14 @@ The `agent_api` package provides a headless, production-grade REST API served at
   - Supports live Server-Sent Events (SSE) streaming (`GET /vrgdg/api/v1/jobs/{id}/events`).
   - Interrupted jobs left behind across ComfyUI restarts are safely recovered into `interrupted` status on startup.
 
+#### Contract and parity with the Video Builder UI
+- **OpenAPI contract (D12)**: `agent_api/openapi.json` is generated from `router.py` (parsed with `ast`, never imported) and `schemas.py` by `scripts/export_openapi.py`. Run it after changing a route, a schema, or an error code. `tests/test_agent_api_contract.py` fails when the file is stale, when registered routes and documented routes differ, or when envelopes and settings groups drift from the schemas.
+- **MiniMax H3 settings**: the UI saves every option in `session["minimax_h3_settings"]`. `minimax/h3_settings_defaults.json` lists all of them and is generated from the UI by `node scripts/export_minimax_defaults.mjs`. `minimax/settings_payload.py` validates patches, applies scene overrides, and builds the same render payload as `video_render.mjs`. A test fails when the browser payload gains a key the Python builder does not send. Agents read the full list with `GET /settings/minimax-h3/schema` and change settings with `PATCH /projects/{pid}/settings` under the `minimax_h3` group.
+- **Scene inputs**: `minimax/scene_inputs.py` resolves reference images (start frame, mapped subjects, extras, locations, ingredients), previous-scene continuity frames, reference videos and the last frame, like the browser. Reference scene maps live inside `session["flux_reference_builder"]`, where the UI reads them.
+- **Session keys the API must match**: project audio is `audio_path` (use `agent_api.paths.session_audio_path`), settings groups map to the UI's keys (see `_SETTINGS_GROUP_SESSION_KEYS` in `mutations.py`), and `builder_save_revision` (UI counter) can run ahead of `revision` (server counter). `_persist_session` stays above both and raises `REVISION_CONFLICT` instead of reporting a discarded write as saved.
+- **Known gaps against the browser render**: per-scene custom audio ranges, the continuity prompt block and frame-to-frame prompt creation, and LLM prompt payload parity are not ported. Server renders use the saved prompts.
+- **Run on server (opt-in)**: "Build Full Video" offers "On the server (background job)". It saves the project, starts `pipelines/build-full-video` (`web/music_video_builder/server_pipeline.mjs`), follows the job, and reloads the project. The browser loop remains the default.
+
 #### Key Modules & Endpoints
 - **[agent_api/router.py](agent_api/router.py)**:
   - Registers `/vrgdg/api/v1` route endpoints across all subsystems.
@@ -555,7 +563,7 @@ The `agent_api` package provides a headless, production-grade REST API served at
 - **[agent_api/paths.py](agent_api/paths.py)**:
   - Multi-root project discovery, project ID validation, and path traversal containment safeguards.
 - **[agent_api/orchestrator/](agent_api/orchestrator)**:
-  - `pipeline_orchestrator.py`: End-to-end dry-run planning (`GET /pipelines/plan`) and full autonomous builds (`pipeline.build_full_video`, `pipeline.build_flf`).
+  - `pipeline_orchestrator.py`: End-to-end dry-run planning (`GET /pipelines/plan`) and full autonomous builds (`pipeline.build_full_video`, `pipeline.build_flf`, `pipeline.from_song`). `POST /pipelines/from-song` creates the project if needed, attaches audio and lyrics, cuts even scenes (`plan_scene_boundaries`), then runs the full build. A project that already has scenes keeps them.
   - `video_orchestrator.py`: Video rendering jobs (`video.render`), latent caching, color matching, and final video stitching.
   - `image_orchestrator.py`: Single-scene and batch image generation (`image.generate`) across Z-Image, Flux/Klein, NanoBanana, Ernie, and Krea 2.
   - `prompt_orchestrator.py`: LLM batch prompt generation jobs (`prompt.batch_generate`).
@@ -581,7 +589,9 @@ The `mcp_server` package provides a standalone, zero-dependency Model Context Pr
 - **Rule 5 Actionable Error Protocol**:
   - Failed tool calls return `isError: True` alongside structured `next_steps` suggestions in the content text block (e.g. indicating when a predecessor scene needs rendering, a latent is dirty, or settings preflight failed). This prevents AI agents from getting stuck in unrecoverable retry loops.
 
-#### Tools Catalog (50 Native Tools, T1 to T50)
+> `mcp_server/` is local-only (listed in `.gitignore`). `tests/test_mcp_server.py` skips itself when the folder is missing. Tools added after the table below: `project_get_settings` (T51), `minimax_settings_schema` (T52), `pipeline_from_song` (T53).
+
+#### Tools Catalog (T1 to T50 listed; T51 to T53 added)
 | Category | Tools | Description |
 | :--- | :--- | :--- |
 | **Projects** | `project_list` (T1), `project_get` (T2), `project_create` (T3), `project_delete` (T4), `project_duplicate` (T5), `project_export` (T6), `project_status` (T7), `project_validate` (T8) | Project lifecycle management, status summaries, and asset validation |

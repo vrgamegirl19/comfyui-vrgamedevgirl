@@ -3,6 +3,11 @@
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional
 
+from ..minimax.settings_payload import (
+    minimax_h3_defaults,
+    normalize_minimax_h3_settings,
+    validate_minimax_h3_patch,
+)
 from .errors import SettingsInvalidError
 
 
@@ -19,17 +24,6 @@ class ProjectSettings:
     auto_save_enabled: bool = True
     automatic_memory_cleanup: bool = True
     scene_render_wait_hours: float = 2.0
-
-
-@dataclass
-class MiniMaxSettings:
-    aspect_ratio: str = "16:9"
-    render_pass: str = "single"
-    audio_mode: str = "input_audio"
-    turbo_lora: bool = False
-    denoise: float = 0.7
-    steps: int = 25
-    prompt_strength: float = 1.0
 
 
 @dataclass
@@ -95,7 +89,8 @@ class PostProcessSettings:
 class EffectiveSettings:
     settings_version: int = SETTINGS_VERSION
     project: ProjectSettings = field(default_factory=ProjectSettings)
-    minimax_h3: MiniMaxSettings = field(default_factory=MiniMaxSettings)
+    # Every MiniMax H3 option the Video Builder saves (see minimax/h3_settings_defaults.json).
+    minimax_h3: Dict[str, Any] = field(default_factory=minimax_h3_defaults)
     ltx_video: LtxVideoSettings = field(default_factory=LtxVideoSettings)
     zimage: ZImageSettings = field(default_factory=ZImageSettings)
     flux_klein: FluxKleinSettings = field(default_factory=FluxKleinSettings)
@@ -123,15 +118,7 @@ def extract_effective_settings(session: Dict[str, Any]) -> Dict[str, Any]:
     )
 
     mm_raw = session.get("minimax_h3_settings") if isinstance(session.get("minimax_h3_settings"), dict) else {}
-    minimax = MiniMaxSettings(
-        aspect_ratio=str(mm_raw.get("aspect_ratio") or "16:9"),
-        render_pass=str(mm_raw.get("render_pass") or "single"),
-        audio_mode=str(mm_raw.get("audio_mode") or "input_audio"),
-        turbo_lora=bool(mm_raw.get("turbo_lora", False)),
-        denoise=float(mm_raw.get("denoise", 0.7)),
-        steps=int(mm_raw.get("steps", 25)),
-        prompt_strength=float(mm_raw.get("prompt_strength", 1.0)),
-    )
+    minimax = normalize_minimax_h3_settings(mm_raw)
 
     ltx_raw = session.get("i2v_video_settings") if isinstance(session.get("i2v_video_settings"), dict) else {}
     ltx = LtxVideoSettings(
@@ -214,6 +201,9 @@ def validate_settings_patch(patch: Dict[str, Any]) -> None:
             continue
         if not isinstance(value, dict):
             errors[key] = f"Group '{key}' must be a dictionary of settings."
+        elif key == "minimax_h3":
+            for setting, problem in validate_minimax_h3_patch(value).items():
+                errors[f"minimax_h3.{setting}"] = problem
 
     if errors:
         raise SettingsInvalidError("Settings patch contained invalid groups.", invalid_fields=errors)

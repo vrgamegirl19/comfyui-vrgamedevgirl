@@ -235,17 +235,28 @@ export function miniMaxH3FrameSize(megapixels, aspectRatio) {
   };
 }
 
-// Tile plan for a VRAM preset at a given Pass 2 size: an equal rows x cols grid
-// whose tiles are close to the preset's tile-area target, capped at 9 x 9.
+// Tile plan for a VRAM preset at a given Pass 2 size: an equal rows x cols grid (max 9 x 9).
+// Every grid is scored on how close its tile area is to the preset's target (going over the
+// target costs double, since that is what runs out of memory) and on how close the tile shape
+// is to the frame's shape, so a small frame gets one large tile instead of thin strips.
 export function miniMaxH3TilePlan(presetKey, megapixels, aspectRatio) {
   const preset = MINIMAX_H3_VRAM_PRESETS[presetKey];
   if (!preset) return null;
   const { width, height } = miniMaxH3FrameSize(megapixels, aspectRatio);
-  const tileCount = Math.max(1, (width * height) / (preset.tileMegapixels * 1048576));
-  const cols = Math.max(1, Math.min(9, Math.round(Math.sqrt(tileCount * (width / height)))));
-  const rows = Math.max(1, Math.min(9, Math.ceil(tileCount / cols)));
-  const tileSide = Math.max(32, Math.round(Math.sqrt(preset.tileMegapixels * 1048576) / 32) * 32);
-  return { rows, cols, tileSide, chunk: preset.chunk, overlap: preset.overlap, tested: preset.tested };
+  const targetArea = preset.tileMegapixels * 1048576;
+  let best = null;
+  for (let rows = 1; rows <= 9; rows += 1) {
+    for (let cols = 1; cols <= 9; cols += 1) {
+      const tileWidth = width / cols;
+      const tileHeight = height / rows;
+      const areaError = Math.log((tileWidth * tileHeight) / targetArea);
+      const shapeError = Math.log(tileWidth / tileHeight / (width / height));
+      const cost = (areaError > 0 ? 2 * areaError : -areaError) + 0.5 * Math.abs(shapeError);
+      if (!best || cost < best.cost - 1e-9) best = { rows, cols, cost };
+    }
+  }
+  const tileSide = Math.max(32, Math.round(Math.sqrt(targetArea) / 32) * 32);
+  return { rows: best.rows, cols: best.cols, tileSide, chunk: preset.chunk, overlap: preset.overlap, tested: preset.tested };
 }
 
 export const MINIMAX_H3_CONTINUITY_OPTIONS = [

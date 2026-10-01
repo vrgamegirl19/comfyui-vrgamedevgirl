@@ -264,11 +264,15 @@ test('VRAM presets size an equal tile grid from the Pass 2 resolution', () => {
   const c = fixture();
   const fourK = (key) => c.miniMaxH3TilePlan(key, 7.9688, '16:9 (Widescreen)');
   const grid = (plan) => `${plan.rows}x${plan.cols}`;
+  // The 32 GB grid is the one measured on an RTX 5090; the others follow from the same tile-area targets.
   assert.equal(grid(fourK('32gb')), '2x3');
-  assert.equal(grid(fourK('24gb')), '3x5');
-  assert.equal(grid(fourK('16gb')), '4x6');
-  assert.equal(grid(fourK('12gb')), '4x7');
-  assert.equal(grid(fourK('8gb')), '5x8');
+  assert.equal(grid(fourK('24gb')), '3x4');
+  assert.equal(grid(fourK('16gb')), '4x5');
+  assert.equal(grid(fourK('12gb')), '5x5');
+  assert.equal(grid(fourK('8gb')), '6x7');
+  // Tiles keep roughly the frame's shape: no thin strips on a smaller frame.
+  assert.equal(grid(c.miniMaxH3TilePlan('32gb', 1.9922, '16:9 (Widescreen)')), '1x1');
+  assert.equal(grid(c.miniMaxH3TilePlan('16gb', 1.9922, '16:9 (Widescreen)')), '2x2');
   assert.equal(fourK('32gb').chunk, 170);
   assert.equal(fourK('32gb').overlap, 192);
   assert.equal(fourK('custom'), null);

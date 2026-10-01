@@ -2257,6 +2257,7 @@ export function openBuilder(node) {
     fluxKleinAllScenes, krea2TwoPassImageAllScenes, nbImageAllScenes, renderAllScenes, zEnhanceAllScenes,
     zEnhanceBatchTargets, zImageAllScenes,
   } = createBatchRender({
+    loadSessionFromProject,
     activeSegment, allEditableSegments, assertBatchNotStopped, autoSaveSessionQuiet, batchTargetItems,
     canImg2ImgContinuityFromPreviousRenderedScene, createEndFrameForSegment, createErnieImageForSegment,
     createFlowGptImageForSegment, createFluxKleinImageForSegment, createFluxPromptButton,

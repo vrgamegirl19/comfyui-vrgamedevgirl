@@ -102,7 +102,7 @@ async def generate_scene_image_async(
 
     # Queue with ComfyUI
     client = get_comfy_client()
-    queue_res = client.queue_prompt(prompt_graph)
+    queue_res = await asyncio.to_thread(client.queue_prompt, prompt_graph)
     prompt_id = queue_res["prompt_id"]
 
     if manager and job:
