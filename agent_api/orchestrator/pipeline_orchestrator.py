@@ -16,6 +16,7 @@ from ..errors import (
     ValidationError,
 )
 from ..jobs.manager import JobManager, get_job_manager
+from ..paths import session_audio_path
 from ..jobs.models import Job
 from ..mutations import (
     _BUILDER_SAVE_LOCK,
@@ -188,7 +189,7 @@ def get_pipeline_plan(project_id: str, params: Optional[Dict[str, Any]] = None) 
     missing_prerequisites: List[str] = []
     warnings: List[str] = []
 
-    audio_file = session.get("audio_file") or ""
+    audio_file = session_audio_path(session)
     if not audio_file:
         missing_prerequisites.append("Project has no audio file assigned.")
     elif not os.path.isfile(audio_file):
@@ -428,7 +429,7 @@ async def run_build_full_video_job(job: Job, manager: JobManager) -> Dict[str, A
                     {
                         "project_folder": folder,
                         "scene_paths": stitch_paths,
-                        "audio_path": fresh_session.get("audio_file", ""),
+                        "audio_path": session_audio_path(fresh_session),
                     },
                 )
                 final_video_path = stitch_res.get("final_video_path", "")
@@ -591,7 +592,7 @@ async def run_build_flf_job(job: Job, manager: JobManager) -> Dict[str, Any]:
                     {
                         "project_folder": folder,
                         "scene_paths": stitch_paths,
-                        "audio_path": fresh_session.get("audio_file", ""),
+                        "audio_path": session_audio_path(fresh_session),
                     },
                 )
                 final_video_path = stitch_res.get("final_video_path", "")
@@ -610,6 +611,94 @@ async def run_build_flf_job(job: Job, manager: JobManager) -> Dict[str, Any]:
 
 
 # ==============================================================================
+# Song to video (Apireport Section 6.13, decision Q2)
+# ==============================================================================
+
+_DEFAULT_SCENE_SECONDS = 4.0
+_MIN_SCENE_SECONDS = 1.0
+
+
+def plan_scene_boundaries(duration: float, scene_seconds: float = _DEFAULT_SCENE_SECONDS) -> List[Tuple[float, float]]:
+    """Cut ``duration`` seconds into equal scenes of about ``scene_seconds``.
+
+    The last scene absorbs any remainder shorter than the minimum scene length, so no
+    scene is shorter than ``_MIN_SCENE_SECONDS`` (unless the whole song is).
+    """
+    total = max(0.0, float(duration or 0.0))
+    if total <= 0:
+        return []
+    length = max(_MIN_SCENE_SECONDS, float(scene_seconds or _DEFAULT_SCENE_SECONDS))
+    count = max(1, int(total // length))
+    if total - count * length >= _MIN_SCENE_SECONDS:
+        count += 1
+    step = total / count
+    return [(round(i * step, 3), round(total if i == count - 1 else (i + 1) * step, 3)) for i in range(count)]
+
+
+async def run_from_song_job(job: Job, manager: JobManager) -> Dict[str, Any]:
+    """Prepare a project from a song (audio, lyrics, scenes), then build the full video.
+
+    Params: ``audio_path`` (needed unless the project already has audio), ``lyrics_text``,
+    ``scene_seconds`` (default 4), ``snap_to_beats`` (default true). Every other param goes
+    to the full-video build (``build_mode``, ``scope``, ``max_auto_retries``, ``stitch`` ...).
+    A project that already has scenes keeps them.
+    """
+    from ..mutations import attach_project_audio, create_scene, set_project_lyrics, timeline_snap
+
+    project_id = job.project_id
+    if not project_id:
+        raise ValidationError("project_id is required.")
+    params = job.params
+
+    manager.update_progress(job.id, 2.0, "preparing_project", message="Checking project audio...")
+    _, session = _get_active_session_and_folder(project_id)
+    audio_path = str(params.get("audio_path") or "").strip().strip('"')
+    if audio_path:
+        await asyncio.to_thread(attach_project_audio, project_id, audio_path=audio_path)
+        _, session = _get_active_session_and_folder(project_id)
+    elif not session_audio_path(session):
+        raise ValidationError("Provide audio_path, or attach project audio before running the song pipeline.")
+
+    lyrics_text = params.get("lyrics_text")
+    if isinstance(lyrics_text, str) and lyrics_text.strip():
+        await asyncio.to_thread(set_project_lyrics, project_id, lyrics_text=lyrics_text)
+
+    if job.cancel_requested:
+        raise JobCancelledError(job.id)
+    _, session = _get_active_session_and_folder(project_id)
+    created = 0
+    if not session.get("segments"):
+        duration = float(session.get("audio_duration") or 0.0)
+        boundaries = plan_scene_boundaries(duration, float(params.get("scene_seconds") or _DEFAULT_SCENE_SECONDS))
+        if not boundaries:
+            raise ValidationError("The project audio has no readable duration, so scenes cannot be planned.")
+        for number, (start, end) in enumerate(boundaries, start=1):
+            if job.cancel_requested:
+                raise JobCancelledError(job.id)
+            manager.update_progress(
+                job.id, 5.0 + 10.0 * number / len(boundaries), "creating_scenes",
+                message=f"Creating scene {number}/{len(boundaries)}...",
+            )
+            await asyncio.to_thread(
+                create_scene, project_id, position="append", duration=end - start, label=f"Scene {number}"
+            )
+            created += 1
+        if params.get("snap_to_beats", True):
+            try:
+                await asyncio.to_thread(timeline_snap, project_id, scope="all")
+            except ValidationError:
+                pass  # no beats loaded; scenes keep their even spacing
+
+    build_params = {
+        key: value for key, value in params.items()
+        if key not in ("audio_path", "lyrics_text", "scene_seconds", "snap_to_beats", "project_name")
+    }
+    job.params = {**build_params, "project_id": project_id}
+    result = await run_build_full_video_job(job, manager)
+    return {**result, "pipeline": "from_song", "scenes_created": created}
+
+
+# ==============================================================================
 # Handler Registration
 # ==============================================================================
 
@@ -620,3 +709,4 @@ def register_pipeline_orchestrator_handlers(manager: Optional[JobManager] = None
 
     manager.register_handler("pipeline.build_full_video", run_build_full_video_job)
     manager.register_handler("pipeline.build_flf", run_build_flf_job)
+    manager.register_handler("pipeline.from_song", run_from_song_job)

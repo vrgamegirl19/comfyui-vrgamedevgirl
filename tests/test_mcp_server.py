@@ -14,6 +14,10 @@ if str(ROOT) not in sys.path:
 if str(ROOT.parent) not in sys.path:
     sys.path.insert(0, str(ROOT.parent))
 
+# mcp_server/ is git-ignored (local only), so a clean checkout does not have it.
+if not (ROOT / "mcp_server").is_dir():
+    raise unittest.SkipTest("mcp_server/ is local-only and is not present in this checkout.")
+
 from mcp_server.client import ApiClientError, VrgdgApiClient
 from mcp_server.prompts import get_prompt, list_prompts
 from mcp_server.protocol import PROTOCOL_VERSION, SERVER_NAME, format_tool_result
@@ -165,11 +169,11 @@ class TestMcpServer(unittest.TestCase):
         self.assertEqual(res["result"], {})
 
     def test_tools_list(self):
-        """Test listing all tools (T1 to T50)."""
+        """Test listing all tools (T1 to T53)."""
         req = {"jsonrpc": "2.0", "id": 3, "method": "tools/list"}
         res = self.server.handle_request(req)
         tools = res["result"]["tools"]
-        self.assertEqual(len(tools), 50)
+        self.assertEqual(len(tools), 53)
         tool_names = {t["name"] for t in tools}
         self.assertIn("system_health", tool_names)
         self.assertIn("project_create", tool_names)

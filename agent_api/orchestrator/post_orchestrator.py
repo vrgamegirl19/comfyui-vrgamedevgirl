@@ -638,7 +638,7 @@ async def run_face_fix_ltx_run_job(job: Job, manager: JobManager) -> Dict[str, A
     prompt_graph = prompt_res.get("prompt")
 
     client = get_comfy_client()
-    queue_res = client.queue_prompt(prompt_graph)
+    queue_res = await asyncio.to_thread(client.queue_prompt, prompt_graph)
     prompt_id = queue_res["prompt_id"]
 
     manager.set_current_comfy_prompt(job.id, prompt_id)
@@ -764,7 +764,7 @@ async def run_face_fix_auto_job(job: Job, manager: JobManager) -> Dict[str, Any]
         manager.update_progress(job.id, pct, f"ltx_run_{r_idx+1}", scene_id=scene_id, message=f"Running LTX FaceFix run {r_idx+1}/{total_runs}...")
 
         ltx_prompt_res = await asyncio.to_thread(face_fix.build_ltx_face_fix_prompt, {"manifest_path": manifest_path, "run_index": run_info["run_index"]})
-        queue_res = client.queue_prompt(ltx_prompt_res["prompt"])
+        queue_res = await asyncio.to_thread(client.queue_prompt, ltx_prompt_res["prompt"])
         history = await client.wait_for_prompt(queue_res["prompt_id"])
         frames = extract_images_from_history(history, queue_res["prompt_id"])
         if not frames:

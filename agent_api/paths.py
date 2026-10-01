@@ -52,11 +52,15 @@ def validate_project_id(project_id: str) -> str:
 
 
 def is_path_inside_root(path: str, root: str) -> bool:
-    """Check if target path is strictly within the root directory."""
+    """Check if target path is strictly within the root directory.
+
+    Both paths are resolved through symlinks and junctions first, so a link inside the
+    root that points elsewhere does not count as inside it.
+    """
     try:
-        norm_path = os.path.abspath(os.path.normpath(path))
-        norm_root = os.path.abspath(os.path.normpath(root))
-        return os.path.commonpath([norm_path, norm_root]) == norm_root
+        norm_path = os.path.realpath(os.path.abspath(os.path.normpath(path)))
+        norm_root = os.path.realpath(os.path.abspath(os.path.normpath(root)))
+        return os.path.normcase(os.path.commonpath([norm_path, norm_root])) == os.path.normcase(norm_root)
     except Exception:
         return False
 
@@ -85,3 +89,20 @@ def resolve_project_folder(project_id: str) -> str:
 def get_project_id(folder_path: str) -> str:
     """Derive project ID from an absolute folder path."""
     return os.path.basename(os.path.normpath(folder_path))
+
+
+def session_audio_path(session) -> str:
+    """Project audio path from a session dict.
+
+    The Video Builder saves it as ``audio_path``. ``audio_file`` is accepted for
+    sessions written by older agent code. Prefers a path that exists on disk.
+    """
+    if not isinstance(session, dict):
+        return ""
+    candidates = [str(session.get(key) or "").strip() for key in ("audio_path", "audio_file")]
+    candidates = [path for path in candidates if path]
+    for path in candidates:
+        if os.path.isfile(path):
+            return path
+    return candidates[0] if candidates else ""
+

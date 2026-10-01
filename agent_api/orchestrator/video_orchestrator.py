@@ -25,7 +25,15 @@ from ..errors import (
 from ..jobs.manager import JobManager, get_job_manager
 from ..jobs.models import Job
 from ..mutations import _BUILDER_SAVE_LOCK, _get_active_session_and_folder, _persist_session
-from ..paths import resolve_project_folder
+from ..paths import resolve_project_folder, session_audio_path
+from ...minimax.scene_inputs import resolve_scene_inputs
+from ...minimax.settings_payload import (
+    build_minimax_render_payload,
+    random_seed_value,
+    randomize_minimax_seeds,
+    minimax_h3_settings_for_scene,
+    minimax_workflow_key,
+)
 from ..schemas import extract_effective_settings
 from .comfy_client import (
     extract_videos_from_history,
@@ -48,6 +56,16 @@ def resolve_comfy_video_path(video_info: Dict[str, Any]) -> str:
         base_dir = folder_paths.get_output_directory()
     target = os.path.join(base_dir, subfolder, filename)
     return os.path.abspath(target)
+
+
+def _extract_final_frame_for_continuity(project_folder: str, video_path: str, scene_number: int) -> str:
+    """Save the last frame of ``video_path`` for scene ``scene_number`` and return its path."""
+    extracted = builder_media._extract_video_final_frame_as_scene_image({
+        "project_folder": project_folder,
+        "source_path": video_path,
+        "scene_number": scene_number,
+    })
+    return str(extracted.get("saved_path") or "").strip()
 
 
 def build_video_graph_for_mode(mode: str, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -117,7 +135,75 @@ async def render_scene_video_async(
     # Merge effective settings with parameter overrides
     effective_settings = extract_effective_settings(session)
     mode_group = "minimax_h3" if "minimax" in mode else "ltx_video"
-    payload = dict(effective_settings.get(mode_group, {}))
+    if mode_group == "minimax_h3":
+        # Use every MiniMax option the Video Builder saved (scene overrides included)
+        # so agent and UI renders match. A plain "minimax_h3" mode follows the saved
+        # render pass (single, 2 Pass, 2 Pass Advanced); an explicit pass mode wins.
+        minimax_settings = minimax_h3_settings_for_scene(session, seg)
+        if p.get("randomize_seed"):
+            # Same as the Render All "new seeds" option: fresh seeds for every pass, saved with the
+            # project (or the scene, when it has its own MiniMax settings) so the render is reproducible.
+            fresh_seeds = randomize_minimax_seeds(minimax_settings)
+            with _BUILDER_SAVE_LOCK:
+                _, live_session = _get_active_session_and_folder(project_id)
+                live_segment = live_session["segments"][idx]
+                if live_segment.get("use_scene_minimax_h3_settings") and isinstance(live_segment.get("minimax_h3_settings"), dict):
+                    live_segment["minimax_h3_settings"].update(fresh_seeds)
+                else:
+                    live_session.setdefault("minimax_h3_settings", {}).update(fresh_seeds)
+                _persist_session(folder, live_session)
+        if mode in ("minimax_h3", "minimax"):
+            mode = minimax_workflow_key(minimax_settings)
+        try:
+            payload = build_minimax_render_payload(minimax_settings)
+        except ValueError as exc:
+            raise ValidationError(str(exc)) from exc
+        pass2_prompt = str(seg.get("minimax_h3_pass2_prompt") or "").strip()
+        if pass2_prompt:
+            payload["pass2_prompt"] = pass2_prompt
+        # Scene inputs the UI resolves per render: reference images, continuity frames,
+        # reference videos and the explicit last frame (minimax/scene_inputs.py).
+        try:
+            scene_inputs = await asyncio.to_thread(
+                resolve_scene_inputs,
+                session,
+                seg,
+                minimax_settings["video_mode"],
+                idx,
+                continuity_mode=str(p.get("continuity_mode") or minimax_settings["continuity_mode"] or "off"),
+                previous_segment=segments[idx - 1] if idx > 0 else None,
+                project_folder=folder,
+                scene_number=scene_number,
+                extract_final_frame=_extract_final_frame_for_continuity,
+                configured_image_paths=p.get("image_paths"),
+                configured_video_references=p.get("video_references"),
+            )
+        except ValueError as exc:
+            raise ValidationError(f"Scene {scene_number}: {exc}") from exc
+        if scene_inputs["missing_image_paths"]:
+            raise ValidationError(
+                f"Scene {scene_number} references image files that do not exist: "
+                + ", ".join(scene_inputs["missing_image_paths"])
+            )
+        payload["continuity_mode"] = scene_inputs["continuity_mode"]
+        payload["latent_exact_frame_path"] = scene_inputs["latent_exact_frame_path"]
+        payload["image_paths"] = scene_inputs["image_paths"]
+        payload["video_references"] = scene_inputs["video_references"]
+        if scene_inputs.get("last_frame_path"):
+            payload["last_frame_path"] = scene_inputs["last_frame_path"]
+    else:
+        payload = dict(effective_settings.get(mode_group, {}))
+        if p.get("randomize_seed"):
+            # Same as setVideoSeedRandom in the UI: new seed, saved where the scene's LTX settings live.
+            payload["seed"] = random_seed_value()
+            with _BUILDER_SAVE_LOCK:
+                _, live_session = _get_active_session_and_folder(project_id)
+                live_segment = live_session["segments"][idx]
+                if live_segment.get("use_scene_i2v_video_settings") and isinstance(live_segment.get("i2v_video_settings"), dict):
+                    live_segment["i2v_video_settings"]["seed"] = payload["seed"]
+                else:
+                    live_session.setdefault("i2v_video_settings", {})["seed"] = payload["seed"]
+                _persist_session(folder, live_session)
     payload.update(p)
     payload["project_folder"] = folder
     payload["scene_number"] = scene_number
@@ -154,22 +240,29 @@ async def render_scene_video_async(
             payload["aspect_ratio"] = ar_map.get(raw_ar, raw_ar)
 
     # Prompt text
-    video_prompt = str(p.get("prompt") or seg.get("i2v_prompt") or seg.get("t2v_prompt") or seg.get("lyric_text") or "").strip()
+    if "minimax" in mode:
+        # The Video Builder renders the saved MiniMax prompt, falling back to the video prompt.
+        video_prompt = str(p.get("prompt") or seg.get("minimax_h3_prompt") or seg.get("i2v_prompt") or "").strip()
+        if not video_prompt:
+            raise ValidationError(f"Scene {scene_number} needs a MiniMax H3 prompt before it can render.")
+    else:
+        video_prompt = str(p.get("prompt") or seg.get("i2v_prompt") or seg.get("t2v_prompt") or seg.get("lyric_text") or "").strip()
     payload["i2v_prompt"] = video_prompt
     payload["t2v_prompt"] = video_prompt
     payload["prompt"] = video_prompt
 
     # Audio preparation
     audio_path = str(p.get("audio_path") or "").strip()
-    if not audio_path and session.get("audio_file") and os.path.isfile(session["audio_file"]):
+    project_audio = session_audio_path(session)
+    if not audio_path and project_audio and os.path.isfile(project_audio):
         if mode_group == "minimax_h3":
-            audio_path = session["audio_file"]
+            audio_path = project_audio
         else:
             try:
                 prep_audio_res = await asyncio.to_thread(
                     minimax_inputs._prepare_scene_audio_clip,
                     {
-                        "audio_path": session["audio_file"],
+                        "audio_path": project_audio,
                         "project_folder": folder,
                         "scene_number": scene_number,
                         "start_seconds": start_sec,
@@ -220,7 +313,7 @@ async def render_scene_video_async(
 
     # Queue with ComfyUI
     client = get_comfy_client()
-    queue_res = client.queue_prompt(prompt_graph)
+    queue_res = await asyncio.to_thread(client.queue_prompt, prompt_graph)
     prompt_id = queue_res["prompt_id"]
 
     if manager and job:
@@ -235,7 +328,10 @@ async def render_scene_video_async(
 
     # Locate generated video output
     source_video_path = ""
-    videos = extract_videos_from_history(history, prompt_id)
+    # MiniMax graphs save the final clip on node 142 and, for 2 Pass Advanced, a Pass 1 backup on
+    # another node. Take the final clip, never the backup.
+    final_node_id = graph_res.get("final_video_node_id") or ("142" if "minimax" in mode else None)
+    videos = extract_videos_from_history(history, prompt_id, node_id=final_node_id)
     if videos:
         resolved = resolve_comfy_video_path(videos[-1])
         if os.path.isfile(resolved):
@@ -699,7 +795,7 @@ async def run_batch_video_render_job(job: Job, manager: JobManager) -> Dict[str,
                     {
                         "project_folder": folder,
                         "scene_paths": scene_paths,
-                        "audio_path": fresh_session.get("audio_file", ""),
+                        "audio_path": session_audio_path(fresh_session),
                     },
                 )
                 final_video_path = stitch_res.get("final_video_path", "")
@@ -743,7 +839,7 @@ async def run_video_stitch_job(job: Job, manager: JobManager) -> Dict[str, Any]:
     stitch_payload = {
         "project_folder": folder,
         "scene_paths": scene_paths,
-        "audio_path": p.get("audio_path") or session.get("audio_file", ""),
+        "audio_path": p.get("audio_path") or session_audio_path(session),
         "output_prefix": p.get("output_prefix", "FINAL_VIDEO"),
         "overlay_items": p.get("overlays", []),
         "use_embedded_scene_audio": (p.get("audio") == "embedded"),
@@ -765,8 +861,8 @@ async def run_image_slideshow_job(job: Job, manager: JobManager) -> Dict[str, An
 
     p = dict(job.params or {})
     p["project_folder"] = folder
-    if not p.get("audio_path") and session.get("audio_file"):
-        p["audio_path"] = session["audio_file"]
+    if not p.get("audio_path") and session_audio_path(session):
+        p["audio_path"] = session_audio_path(session)
 
     res = await asyncio.to_thread(video_files._render_image_slideshow, p)
 

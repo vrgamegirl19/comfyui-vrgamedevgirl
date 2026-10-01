@@ -2,6 +2,8 @@
 
 from typing import Any, Dict
 
+from ..minimax.settings_payload import minimax_h3_defaults
+
 
 def get_modes_catalog() -> Dict[str, Any]:
     """Generate the structured /modes catalog describing supported engines, modes, and features."""
@@ -15,15 +17,8 @@ def get_modes_catalog() -> Dict[str, Any]:
                         "scene_inputs": ["approved_image", "audio"],
                         "prompt_fields": ["i2v_prompt"],
                         "settings_group": "minimax_h3",
-                        "settings_keys": [
-                            "aspect_ratio",
-                            "render_pass",
-                            "audio_mode",
-                            "turbo_lora",
-                            "denoise",
-                            "steps",
-                            "prompt_strength",
-                        ],
+                        # Full list: GET /settings/minimax-h3/schema (types, defaults, limits).
+                        "settings_keys": sorted(minimax_h3_defaults()),
                         "supports": {
                             "scene_override": True,
                             "post_process": True,

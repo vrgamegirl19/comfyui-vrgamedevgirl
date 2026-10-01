@@ -71,10 +71,19 @@ def extract_images_from_history(history: Dict[str, Any], prompt_id: str) -> List
     return images
 
 
-def extract_videos_from_history(history: Dict[str, Any], prompt_id: str) -> List[Dict[str, Any]]:
-    """Extract list of generated video descriptors from history."""
+def extract_videos_from_history(history: Dict[str, Any], prompt_id: str, node_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Extract list of generated video descriptors from history.
+
+    Some graphs save more than one video (the MiniMax 2 Pass Advanced graph also saves its
+    Pass 1 backup). ``node_id`` limits the result to the video the caller wants when that
+    node produced one; otherwise every video is returned in node order.
+    """
     root = history.get(prompt_id, history)
     outputs = root.get("outputs", {}) if isinstance(root, dict) else {}
+    if node_id is not None and isinstance(outputs.get(str(node_id)), dict):
+        wanted = extract_videos_from_history({"outputs": {str(node_id): outputs[str(node_id)]}}, prompt_id)
+        if wanted:
+            return wanted
     videos: List[Dict[str, Any]] = []
     for out in outputs.values():
         if isinstance(out, dict):
@@ -200,7 +209,7 @@ class ComfyClient:
         started = time.time()
         while time.time() - started < timeout_seconds:
             if check_cancel and check_cancel():
-                self.interrupt()
+                await asyncio.to_thread(self.interrupt)
                 raise JobCancelledError(message="Prompt cancelled by request.")
 
             history = await asyncio.to_thread(self.get_history, prompt_id)

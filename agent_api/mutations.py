@@ -79,7 +79,10 @@ def _get_active_session_and_folder(project_id: str) -> tuple:
 
 def _persist_session(folder: str, session: Dict[str, Any]) -> Dict[str, Any]:
     """Persist session changes through _save_builder_session with correct payload and revision."""
-    current_rev = int(session.get("revision") or session.get("builder_save_revision") or 0)
+    # The UI counts saves in builder_save_revision while the server counts them in
+    # revision, and the two can drift apart. Stay above both so this save is never
+    # mistaken for a stale snapshot and dropped.
+    current_rev = max(int(session.get("revision") or 0), int(session.get("builder_save_revision") or 0))
     next_rev = current_rev + 1
     session["revision"] = next_rev
     session["builder_save_revision"] = next_rev
@@ -90,7 +93,11 @@ def _persist_session(folder: str, session: Dict[str, Any]) -> Dict[str, Any]:
         "audio_path": session.get("audio_path", ""),
         "project_name": session.get("project_name", ""),
     }
-    return _save_builder_session(payload)
+    result = _save_builder_session(payload)
+    if isinstance(result, dict) and result.get("stale"):
+        # Never report success for a write the server discarded.
+        raise RevisionConflictError(int(result.get("current_revision") or 0), int(next_rev))
+    return result
 
 
 # ==============================================================================
@@ -658,6 +665,30 @@ def timeline_bulk(
 # 3. References CRUD & Mapping (Section 6.5, Section 24, T25-T33)
 # ==============================================================================
 
+# Reference scene maps the Video Builder keeps inside session["flux_reference_builder"],
+# keyed by API name. Older versions of this API wrote subjects/locations at the top level
+# of the session, where the UI never reads them, so those are migrated on write.
+_REFERENCE_MAP_KEYS = {
+    "subjects": "subject_scene_map",
+    "locations": "scene_map",
+    "ingredients": "ingredients_scene_map",
+    "extras": "extra_scene_map",
+}
+
+
+def _reference_map(session: Dict[str, Any], api_name: str) -> Dict[str, Any]:
+    """Return the live scene map for ``api_name``, folding in any legacy top-level map."""
+    key = _REFERENCE_MAP_KEYS[api_name]
+    ref_builder = session.setdefault("flux_reference_builder", {})
+    current = ref_builder.setdefault(key, {})
+    legacy = session.get(key) if api_name in ("subjects", "locations") else None
+    if isinstance(legacy, dict) and legacy:
+        for scene_id, value in legacy.items():
+            current.setdefault(scene_id, value)
+        session.pop(key, None)
+    return current
+
+
 def get_project_references(project_id: str) -> Dict[str, Any]:
     """Get all subjects, locations, and scene mappings for a project."""
     _folder, session = _get_active_session_and_folder(project_id)
@@ -665,10 +696,7 @@ def get_project_references(project_id: str) -> Dict[str, Any]:
     return {
         "subjects": ref_builder.get("subjects", []),
         "locations": ref_builder.get("locations", []),
-        "scene_mapping": {
-            "subjects": session.get("subject_scene_map", {}),
-            "locations": session.get("scene_map", {}),
-        },
+        "scene_mapping": {name: dict(_reference_map(session, name)) for name in _REFERENCE_MAP_KEYS},
     }
 
 
@@ -779,12 +807,12 @@ def delete_reference(
 
         # Clean scene mappings (Q-T5)
         if target_list_key == "subjects":
-            subj_map = session.get("subject_scene_map", {})
+            subj_map = _reference_map(session, "subjects")
             for sid, sub_list in list(subj_map.items()):
                 if isinstance(sub_list, list):
                     subj_map[sid] = [s for s in sub_list if s != ref_id]
         else:
-            loc_map = session.get("scene_map", {})
+            loc_map = _reference_map(session, "locations")
             for sid, loc_val in list(loc_map.items()):
                 if loc_val == ref_id:
                     loc_map.pop(sid, None)
@@ -810,17 +838,14 @@ def update_scene_reference_mapping(
         if if_match_revision is not None and if_match_revision != current_rev:
             raise RevisionConflictError(current_rev, if_match_revision)
 
-        if "subjects" in mapping:
-            session.setdefault("subject_scene_map", {}).update(mapping["subjects"])
-        if "locations" in mapping:
-            session.setdefault("scene_map", {}).update(mapping["locations"])
+        for api_name in _REFERENCE_MAP_KEYS:
+            current = _reference_map(session, api_name)
+            if isinstance(mapping.get(api_name), dict):
+                current.update(mapping[api_name])
 
         save_result = _persist_session(folder, session)
         return {
-            "scene_mapping": {
-                "subjects": session.get("subject_scene_map", {}),
-                "locations": session.get("scene_map", {}),
-            },
+            "scene_mapping": {name: dict(_reference_map(session, name)) for name in _REFERENCE_MAP_KEYS},
             "revision": save_result.get("revision", current_rev + 1),
         }
 
@@ -1233,6 +1258,16 @@ def preflight_project_settings(project_id: str) -> Dict[str, Any]:
     }
 
 
+# Settings groups exposed by the API and where the Video Builder keeps them in the session file.
+_SETTINGS_GROUP_SESSION_KEYS = {
+    "minimax_h3": "minimax_h3_settings",
+    "ltx_video": "i2v_video_settings",
+    "zimage": "zimage_settings",
+    "flux_klein": "flux_klein_settings",
+}
+_SETTINGS_FLAT_GROUPS = {"project", "llm", "post_process"}
+
+
 def patch_project_settings(
     project_id: str,
     patch: Dict[str, Any],
@@ -1247,14 +1282,23 @@ def patch_project_settings(
             raise RevisionConflictError(current_rev, if_match_revision)
 
         for key, val in patch.items():
-            if isinstance(val, dict) and isinstance(session.get(key), dict):
+            group_key = _SETTINGS_GROUP_SESSION_KEYS.get(key)
+            if key in _SETTINGS_FLAT_GROUPS and isinstance(val, dict):
+                # Flat groups live as top-level session keys (e.g. lut_enabled, gemma_context_limit).
+                session.update(val)
+            elif group_key and isinstance(val, dict):
+                # Nested groups live under the key the Video Builder UI saves and reads.
+                current = session.get(group_key) if isinstance(session.get(group_key), dict) else {}
+                session[group_key] = {**current, **val}
+            elif isinstance(val, dict) and isinstance(session.get(key), dict):
                 session[key].update(val)
             else:
                 session[key] = val
 
         save_result = _persist_session(folder, session)
+        saved_session = save_result.get("session") if isinstance(save_result.get("session"), dict) else session
         return {
-            "settings": save_result.get("session", {}).get("settings") or patch,
+            "settings": extract_effective_settings(saved_session),
             "revision": save_result.get("revision", current_rev + 1),
         }
 

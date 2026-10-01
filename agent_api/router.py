@@ -29,6 +29,7 @@ from ..runner.models import _folder_choices, _lora_choices, _ltx_video_model_cho
 
 from .auth import verify_auth
 from .envelope import api_error, api_exception, api_success
+from .errors import ValidationError
 from .jobs import (
     get_event_broadcaster,
     get_job_manager,
@@ -119,6 +120,7 @@ from .projects import (
     get_scene_detail,
     list_projects,
 )
+from ..minimax.settings_payload import minimax_h3_settings_schema
 from .schemas import extract_effective_settings
 
 
@@ -371,6 +373,12 @@ def register_agent_api_routes(server_instance=None):
         if_match = int(request.headers.get("If-Match")) if request.headers.get("If-Match", "").isdigit() else None
         res = await asyncio.to_thread(patch_project_settings, pid, payload, if_match_revision=if_match)
         return api_success(res.get("settings"), revision=res.get("revision"))
+
+    @server_instance.routes.get(f"{_API_V1_PREFIX}/settings/minimax-h3/schema")
+    @_api_endpoint
+    async def api_minimax_h3_settings_schema(request: web.Request):
+        """Every MiniMax H3 setting an agent can patch under the `minimax_h3` group."""
+        return api_success(minimax_h3_settings_schema())
 
     @server_instance.routes.post(f"{_API_V1_PREFIX}/projects/{{pid}}/settings/preflight")
     @_api_endpoint
@@ -1072,7 +1080,7 @@ def register_agent_api_routes(server_instance=None):
             is_gpu=True,
         )
         return api_success(
-            {"job_id": job.id, "status": job.status.value, "job": job.to_dict()},
+            {"job_id": job.id, "status": job.status, "job": job.to_dict()},
             status=202,
         )
 
@@ -1089,7 +1097,7 @@ def register_agent_api_routes(server_instance=None):
             is_gpu=True,
         )
         return api_success(
-            {"job_id": job.id, "status": job.status.value, "job": job.to_dict()},
+            {"job_id": job.id, "status": job.status, "job": job.to_dict()},
             status=202,
         )
 
@@ -1172,7 +1180,7 @@ def register_agent_api_routes(server_instance=None):
             is_gpu=True,
         )
         return api_success(
-            {"job_id": job.id, "status": job.status.value, "job": job.to_dict()},
+            {"job_id": job.id, "status": job.status, "job": job.to_dict()},
             status=202,
         )
 
@@ -1201,7 +1209,7 @@ def register_agent_api_routes(server_instance=None):
             is_gpu=False,
         )
         return api_success(
-            {"job_id": job.id, "status": job.status.value, "job": job.to_dict()},
+            {"job_id": job.id, "status": job.status, "job": job.to_dict()},
             status=202,
         )
 
@@ -1220,7 +1228,7 @@ def register_agent_api_routes(server_instance=None):
             is_gpu=False,
         )
         return api_success(
-            {"job_id": job.id, "status": job.status.value, "job": job.to_dict()},
+            {"job_id": job.id, "status": job.status, "job": job.to_dict()},
             status=202,
         )
 
@@ -1276,7 +1284,7 @@ def register_agent_api_routes(server_instance=None):
             is_gpu=True,
         )
         return api_success(
-            {"job_id": job.id, "status": job.status.value, "job": job.to_dict()},
+            {"job_id": job.id, "status": job.status, "job": job.to_dict()},
             status=202,
         )
 
@@ -1294,7 +1302,7 @@ def register_agent_api_routes(server_instance=None):
             is_gpu=False,
         )
         return api_success(
-            {"job_id": job.id, "status": job.status.value, "job": job.to_dict()},
+            {"job_id": job.id, "status": job.status, "job": job.to_dict()},
             status=202,
         )
 
@@ -1311,7 +1319,7 @@ def register_agent_api_routes(server_instance=None):
             is_gpu=False,
         )
         return api_success(
-            {"job_id": job.id, "status": job.status.value, "job": job.to_dict()},
+            {"job_id": job.id, "status": job.status, "job": job.to_dict()},
             status=202,
         )
 
@@ -1390,7 +1398,7 @@ def register_agent_api_routes(server_instance=None):
             is_gpu=True,
         )
         return api_success(
-            {"job_id": job.id, "status": job.status.value, "job": job.to_dict()},
+            {"job_id": job.id, "status": job.status, "job": job.to_dict()},
             status=202,
         )
 
@@ -1486,7 +1494,7 @@ def register_agent_api_routes(server_instance=None):
             is_gpu=False,
         )
         return api_success(
-            {"job_id": job.id, "status": job.status.value, "job": job.to_dict()},
+            {"job_id": job.id, "status": job.status, "job": job.to_dict()},
             status=202,
         )
 
@@ -1519,7 +1527,7 @@ def register_agent_api_routes(server_instance=None):
             is_gpu=False,
         )
         return api_success(
-            {"job_id": job.id, "status": job.status.value, "job": job.to_dict()},
+            {"job_id": job.id, "status": job.status, "job": job.to_dict()},
             status=202,
         )
 
@@ -1552,7 +1560,7 @@ def register_agent_api_routes(server_instance=None):
             is_gpu=False,
         )
         return api_success(
-            {"job_id": job.id, "status": job.status.value, "job": job.to_dict()},
+            {"job_id": job.id, "status": job.status, "job": job.to_dict()},
             status=202,
         )
 
@@ -1600,7 +1608,7 @@ def register_agent_api_routes(server_instance=None):
             is_gpu=False,
         )
         return api_success(
-            {"job_id": job.id, "status": job.status.value, "job": job.to_dict()},
+            {"job_id": job.id, "status": job.status, "job": job.to_dict()},
             status=202,
         )
 
@@ -1633,7 +1641,7 @@ def register_agent_api_routes(server_instance=None):
             is_gpu=False,
         )
         return api_success(
-            {"job_id": job.id, "status": job.status.value, "job": job.to_dict()},
+            {"job_id": job.id, "status": job.status, "job": job.to_dict()},
             status=202,
         )
 
@@ -1657,7 +1665,7 @@ def register_agent_api_routes(server_instance=None):
             is_gpu=True,
         )
         return api_success(
-            {"job_id": job.id, "status": job.status.value, "job": job.to_dict()},
+            {"job_id": job.id, "status": job.status, "job": job.to_dict()},
             status=202,
         )
 
@@ -1681,7 +1689,7 @@ def register_agent_api_routes(server_instance=None):
             is_gpu=True,
         )
         return api_success(
-            {"job_id": job.id, "status": job.status.value, "job": job.to_dict()},
+            {"job_id": job.id, "status": job.status, "job": job.to_dict()},
             status=202,
         )
 
@@ -1703,7 +1711,7 @@ def register_agent_api_routes(server_instance=None):
             is_gpu=False,
         )
         return api_success(
-            {"job_id": job.id, "status": job.status.value, "job": job.to_dict()},
+            {"job_id": job.id, "status": job.status, "job": job.to_dict()},
             status=202,
         )
 
@@ -1725,7 +1733,7 @@ def register_agent_api_routes(server_instance=None):
             is_gpu=True,
         )
         return api_success(
-            {"job_id": job.id, "status": job.status.value, "job": job.to_dict()},
+            {"job_id": job.id, "status": job.status, "job": job.to_dict()},
             status=202,
         )
 
@@ -1749,7 +1757,7 @@ def register_agent_api_routes(server_instance=None):
             is_gpu=True,
         )
         return api_success(
-            {"job_id": job.id, "status": job.status.value, "job": job.to_dict()},
+            {"job_id": job.id, "status": job.status, "job": job.to_dict()},
             status=202,
         )
 
@@ -1769,7 +1777,34 @@ def register_agent_api_routes(server_instance=None):
             is_gpu=True,
         )
         return api_success(
-            {"job_id": job.id, "status": job.status.value, "job": job.to_dict()},
+            {"job_id": job.id, "status": job.status, "job": job.to_dict()},
+            status=202,
+        )
+
+    @server_instance.routes.post(f"{_API_V1_PREFIX}/pipelines/from-song")
+    @_api_endpoint
+    async def api_pipeline_from_song(request: web.Request):
+        """Song to final video: create the project if needed, prepare scenes, then build the full video."""
+        payload = await request.json() if request.can_read_body else {}
+        if not isinstance(payload, dict):
+            payload = {}
+        project_id = str(payload.get("project_id") or "").strip()
+        if not project_id:
+            project_name = str(payload.get("project_name") or "").strip()
+            if not project_name:
+                raise ValidationError("Provide project_id for an existing project, or project_name to create one.")
+            created = await asyncio.to_thread(create_project, project_name)
+            project_id = created["project_id"]
+        payload["project_id"] = project_id
+        manager = get_job_manager()
+        job = manager.submit_job(
+            job_type="pipeline.from_song",
+            project_id=project_id,
+            params=payload,
+            is_gpu=True,
+        )
+        return api_success(
+            {"project_id": project_id, "job_id": job.id, "status": job.status, "job": job.to_dict()},
             status=202,
         )
 
