@@ -1,4 +1,6 @@
+import contextlib
 import os
+import sys
 
 import torch
 import folder_paths
@@ -13,12 +15,62 @@ try:
 except Exception:
     comfy_load_audio = None
 
+def _is_demucs_module(name):
+    return name == "demucs" or name.startswith("demucs.")
+
+
+def _import_real_demucs():
+    """Import the pip ``demucs`` even if another custom node shadows it.
+
+    Some custom nodes (e.g. ComfyUI-DeepExtractV2) put a trimmed ``demucs`` copy
+    at the front of ``sys.path``. Import past it, then restore the other copy so
+    that node keeps working. Returns ``(pretrained, apply_model, real_modules)``.
+    """
+    shadow = {k: v for k, v in sys.modules.items() if _is_demucs_module(k)}
+    saved_path = list(sys.path)
+    for name in shadow:
+        del sys.modules[name]
+    sys.path[:] = [p for p in saved_path if "custom_nodes" not in str(p).lower()]
+    try:
+        from demucs import pretrained as pretrained_mod
+        from demucs.apply import apply_model as apply_model_fn
+
+        real = {k: v for k, v in sys.modules.items() if _is_demucs_module(k)}
+    finally:
+        sys.path[:] = saved_path
+        for name in [k for k in sys.modules if _is_demucs_module(k)]:
+            del sys.modules[name]
+        sys.modules.update(shadow)
+    return pretrained_mod, apply_model_fn, real
+
+
+@contextlib.contextmanager
+def _real_demucs_active():
+    """Temporarily expose the real demucs modules (needed for model unpickling)."""
+    if not _REAL_DEMUCS_MODULES:
+        yield
+        return
+    shadow = {k: v for k, v in sys.modules.items() if _is_demucs_module(k)}
+    for name in shadow:
+        del sys.modules[name]
+    sys.modules.update(_REAL_DEMUCS_MODULES)
+    try:
+        yield
+    finally:
+        for name in [k for k in sys.modules if _is_demucs_module(k)]:
+            del sys.modules[name]
+        sys.modules.update(shadow)
+
+
+_DEMUCS_IMPORT_ERROR = None
+_REAL_DEMUCS_MODULES = {}
 try:
-    from demucs import pretrained
-    from demucs.apply import apply_model
-except Exception:
+    pretrained, apply_model, _REAL_DEMUCS_MODULES = _import_real_demucs()
+except Exception as _exc:
+    _DEMUCS_IMPORT_ERROR = _exc
     pretrained = None
     apply_model = None
+    print(f"[VRGDG Audio] demucs import failed: {type(_exc).__name__}: {_exc}")
 
 
 class VRGDG_GetStems:
@@ -141,13 +193,16 @@ class VRGDG_GetStems:
     def _get_model(cls, model_name, device):
         if pretrained is None:
             raise ImportError(
-                "demucs is not installed. Install with: pip install demucs torch torchaudio"
-            )
+                "demucs could not be imported "
+                f"({type(_DEMUCS_IMPORT_ERROR).__name__}: {_DEMUCS_IMPORT_ERROR}). "
+                "If it is missing, install with: pip install demucs torch torchaudio"
+            ) from _DEMUCS_IMPORT_ERROR
         key = (str(model_name), str(device))
         cached = cls._MODEL_CACHE.get(key)
         if cached is not None:
             return cached
-        model = pretrained.get_model(model_name)
+        with _real_demucs_active():
+            model = pretrained.get_model(model_name)
         model.to(device)
         model.eval()
         cls._MODEL_CACHE[key] = model
@@ -184,7 +239,7 @@ class VRGDG_GetStems:
         mix, sample_rate = self._normalize_for_demucs(waveform, sample_rate, model)
 
         mix = mix.to(device_name)
-        with torch.no_grad():
+        with torch.no_grad(), _real_demucs_active():
             try:
                 stems = apply_model(model, mix, device=device_name, progress=False)
             except TypeError:
