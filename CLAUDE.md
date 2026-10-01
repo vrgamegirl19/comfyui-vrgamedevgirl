@@ -40,7 +40,7 @@ Before modifying, designing, or debugging any code in this repository, you **MUS
    - **Services** (`project.py`, `audio.py`, `media.py`, etc.): Implement pure business logic and disk operations.
    - **Graph Compiler** (`runner/*.py`): Build ComfyUI `/prompt` API graph dictionaries independently of UI state.
    - **Agent API** (`agent_api/`): Headless REST surface (`/vrgdg/api/v1`), background job manager, SSE progress streaming, and full pipeline orchestrator.
-   - **MCP Server** (`mcp_server/`): Standard I/O bridge exposing tools (T1–T50), resources, and prompt templates to LLM coding assistants.
+   - **MCP Server** (`mcp_server/`, local-only and git-ignored): Standard I/O bridge exposing tools (T1–T53), resources, and prompt templates to LLM coding assistants.
    - **Web UI** (`web/**/*.mjs`): Interact with the backend strictly via REST APIs and WebSockets; never directly access the filesystem.
 
 6. **Consistent Logging**:
@@ -50,6 +50,8 @@ Before modifying, designing, or debugging any code in this repository, you **MUS
    - **Agent API** is served at `/vrgdg/api/v1` and returns standard envelopes (`api_success` / `api_error`).
    - Structural timeline mutations must preserve on-disk file numbering (`image_NNNN.png`, `video_NNNN.mp4`) using `TimelineJournal` rollback protection and `_renumber_scene_assets_after_insert` / `_removal`.
    - Concurrency is protected via optimistic revision checking (`If-Match` header).
+   - **Keep the Python twins of UI logic in sync.** After changing a route, schema or error code run `..\..\..\python_embeded\python.exe scripts/export_openapi.py`. After adding or renaming a MiniMax H3 setting in `web/music_video_builder/minimax_h3.mjs` run `node scripts/export_minimax_defaults.mjs`, and add any new render payload key to `minimax/settings_payload.py`. The contract and payload-parity tests fail until you do.
+   - Agent code must read and write the same session keys as the UI (`audio_path`, `minimax_h3_settings`, `flux_reference_builder.*_scene_map`). Never invent a parallel top-level key.
    - The standalone `mcp_server/` uses zero external dependencies (Python stdlib only) and communicates over stdio JSON-RPC 2.0 with actionable Rule 5 error handling (`isError=True`, `next_steps`). Launch with `python -m mcp_server`.
 
 ---

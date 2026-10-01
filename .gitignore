@@ -24,3 +24,6 @@ LUTS/examples/
 Apireport.md
 standalone_app/
 mcp_server/
+
+# Playwright MCP session logs and screenshots (can contain connection tokens)
+.playwright-mcp/
