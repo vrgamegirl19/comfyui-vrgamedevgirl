@@ -267,7 +267,8 @@ function stripMiniMaxH3NegativePromptSentences(description) {
   if (!text) return "";
   const negativeWording = /\b(?:do\s+not|don['’]t|never|without|avoid|must\s+not|cannot|can['’]t|not|no)\b/i;
   const dialogueTags = [];
-  const maskedText = text.replace(/<d>[\s\S]*?<\/d>/gi, (tag) => {
+  // Quoted lyric words are sung text, not instructions: "don't" or "no" inside quotes is never a reason to drop a sentence.
+  const maskedText = text.replace(/<d>[\s\S]*?<\/d>|["“][^"”]*["”]/gi, (tag) => {
     const token = `VRGDGDIALOGUE${dialogueTags.length}TOKEN`;
     dialogueTags.push(tag);
     return token;
@@ -1057,7 +1058,9 @@ export function createMiniMaxPrompt({
     } else if (lyricText && cueShotContract) {
       parts.push("TIMED VOCAL CUES ONLY: Follow the timed singer/shot contract exactly. Never place, anticipate, continue, or repeat a lyric in an instrumental shot. A performer sings and lip-syncs only inside the specifically assigned vocal cue shot.");
     } else if (lyricText) {
-      parts.push("MANDATORY VOCAL PERFORMANCE: The assigned subject is visibly singing the exact supplied lyric/audio during this scene. Use the stable visible subject label, and place every performed lyric cue inside <d>[English] exact words with final punctuation.</d>. Show clear, natural mouth, lip, jaw, and facial movement synchronized to the audible vocal. Never describe the lips as closed, still, motionless, or sealed while the assigned vocal is being performed. Body action is required in addition to lip sync; it does not replace lip sync. Non-verbal vocals such as oooh, ah, humming, and sustained notes still require visible mouth movement. Mention the visible singing action naturally in the shot descriptions.");
+      parts.push("MANDATORY VOCAL PERFORMANCE: The assigned subject is visibly singing the exact supplied lyric/audio during this scene. Use the stable visible subject label, " + (nativeAudio
+        ? "and place every performed lyric cue inside <d>[English] exact words with final punctuation.</d>. "
+        : "and write the exact lyric words, unchanged, inside the shot description in double quotes, introduced like this: <Subject 1> sings the lyric line, \"the exact words\". Every lyric line given below must appear in a shot, in order. ") + "Show clear, natural mouth, lip, jaw, and facial movement synchronized to the audible vocal. Never describe the lips as closed, still, motionless, or sealed while the assigned vocal is being performed. Body action is required in addition to lip sync; it does not replace lip sync. Non-verbal vocals such as oooh, ah, humming, and sustained notes still require visible mouth movement. Mention the visible singing action naturally in the shot descriptions.");
       add(parts, "Exact lyric line", lyricText);
     } else {
       parts.push("Vocal performance: no exact lyric or dialogue is assigned to this scene.");
@@ -1357,6 +1360,43 @@ export function createMiniMaxPrompt({
     return normalizeMiniMaxH3ShotDescription(`${clean.replace(/[.!?…]+$/g, "").trim()}. ${vocalContract}`);
   }
 
+  // The saved prompt must say what the character sings, so the lyric goes in the shot in double quotes. The LLM is asked
+  // to do this; this quotes a plain copy of the lyric, or adds the sentence, so it never depends on the LLM. Lyric lines
+  // are shared across the cuts in order. Only plain singing scenes on the project audio are touched.
+  function miniMaxH3EnsureQuotedLyricInShot(segment, description, shotIndex, shotCount, mode = miniMaxH3ModeForSegment(segment)) {
+    const text = String(description || "");
+    if (miniMaxH3FrameContinuityPromptEnabled(segment)) return text;
+    if (segmentUsesNoLipSyncPerformance(segment) || segment?.no_character_present) return text;
+    if (miniMaxH3SettingsForSegment(segment).audio_mode === "built_in_audio") return text;
+    if (isMiniMaxSingerAssignmentMode(segment) && String(segment?.lyric_performance_mode || "together") === "cue_map") return text;
+    if (isInstrumentalLyricText(segment?.lyric_text)) return text;
+    const lines = String(segment?.lyric_text || "").split(/\r?\n/)
+      .map((line) => line.replace(/\s+/g, " ").trim())
+      .filter((line) => line && !/^\[[^\]]*\]$/.test(line));
+    if (!lines.length) return text;
+    const count = Math.max(1, Number(shotCount) || 1);
+    const size = Math.floor(lines.length / count);
+    const extra = lines.length % count;
+    let start = 0;
+    for (let index = 0; index < shotIndex; index += 1) start += size + (index < extra ? 1 : 0);
+    const chunk = lines.slice(start, start + size + (shotIndex < extra ? 1 : 0)).join(" ");
+    if (!chunk) return text;
+    const words = (value) => String(value || "").toLowerCase().replace(/’/g, "'").match(/[a-z0-9']+/g) || [];
+    const chunkWords = words(chunk);
+    if (!chunkWords.length) return text;
+    const lead = chunkWords.slice(0, 6).join(" ");
+    for (const match of text.matchAll(/["“]([^"”]+)["”]/g)) {
+      if (words(match[1]).join(" ").includes(lead)) return text;
+    }
+    const plain = new RegExp(chunkWords.map((word) => escapeRegExp(word)).join("[\\W_]*"), "i").exec(text.replace(/’/g, "'"));
+    if (plain) {
+      return `${text.slice(0, plain.index)}"${text.slice(plain.index, plain.index + plain[0].length).trim()}"${text.slice(plain.index + plain[0].length)}`;
+    }
+    const performers = selectedPerformerSubjectsForSegment(segment);
+    const label = performers.length ? miniMaxH3PerformerLabel(performers[0], miniMaxH3SubjectLabelMapForSegment(segment, mode)) : "The singer";
+    return `${text.replace(/\s+$/g, "")} ${label} sings the lyric line, "${chunk.replace(/[ ,;]+$/g, "")}".`.trim();
+  }
+
   function miniMaxH3OfficialShotBodyFromDescriptions(segment, descriptions = [], mode = miniMaxH3ModeForSegment(segment)) {
     const cutPlan = miniMaxH3CutPlanForSegment(segment);
     const shotPlan = miniMaxH3OfficialShotPlan(cutPlan);
@@ -1364,7 +1404,7 @@ export function createMiniMaxPrompt({
       throw new Error(`Cannot assemble MiniMax shots: expected ${shotPlan.length} description${shotPlan.length === 1 ? "" : "s"}, got ${descriptions.length}.`);
     }
     let body = shotPlan.map((shot, index) => {
-      const description = enforceMiniMaxH3CueOnShotDescription(segment, descriptions[index], index);
+      const description = miniMaxH3EnsureQuotedLyricInShot(segment, enforceMiniMaxH3CueOnShotDescription(segment, descriptions[index], index), index, shotPlan.length, mode);
       if (shot.number === 1) return `[Shot 1] ${description}`.trim();
       const postCutDescription = miniMaxH3PostCutShotText(description).replace(/^\s*([a-z])/, (_match, letter) => letter.toUpperCase());
       return `[Shot ${shot.number}] At ${shot.timecode}, ${postCutDescription}`.trim();

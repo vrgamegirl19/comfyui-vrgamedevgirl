@@ -106,6 +106,25 @@ def normalize_shot_description(text: str) -> str:
     return t
 
 
+def effective_mode(segment: Dict[str, Any], session: Dict[str, Any], mode: Optional[str] = None) -> str:
+    """The scene's MiniMax mode: the caller's, else the scene's, else the project's saved ``video_mode``."""
+    settings = session.get("minimax_h3_settings") if isinstance(session.get("minimax_h3_settings"), dict) else {}
+    return normalize_minimax_mode(
+        mode or segment.get("minimax_h3_mode") or segment.get("video_mode") or settings.get("video_mode") or session.get("video_mode")
+    )
+
+
+def scene_cut_plan(segment: Dict[str, Any], session: Dict[str, Any]) -> Dict[str, Any]:
+    """The scene's shot plan from its length and the project's saved cut frequency."""
+    defaults = session.get("builder_storyboard_defaults") if isinstance(session.get("builder_storyboard_defaults"), dict) else {}
+    duration = max(0.1, float(segment.get("end", 0.0) or 0.0) - float(segment.get("start", 0.0) or 0.0))
+    try:
+        frequency = int(float(defaults.get("minimax_h3_cut_frequency") or 0))
+    except (TypeError, ValueError):
+        frequency = 0
+    return storyboard_cut_plan_for_duration(duration, frequency)
+
+
 def assemble_minimax_h3_prompt(
     segment: Dict[str, Any],
     session: Dict[str, Any],
@@ -114,12 +133,23 @@ def assemble_minimax_h3_prompt(
     apply_fx: bool = False,
 ) -> Dict[str, Any]:
     """Assemble official MiniMax prompt text from a list of shot descriptions (Section 18.3, 18.5)."""
-    norm_mode = normalize_minimax_mode(mode or segment.get("video_mode") or session.get("video_mode"))
+    norm_mode = effective_mode(segment, session, mode)
     dur = float(segment.get("end", 0.0) or 0.0) - float(segment.get("start", 0.0) or 0.0)
     dur = max(0.1, dur)
 
-    cut_plan = storyboard_cut_plan_for_duration(dur)
+    cut_plan = scene_cut_plan(segment, session)
     expected_shots = cut_plan["shot_count"]
+
+    if norm_mode == "reference_to_video":
+        # The saved format is the wrapper plus the shots; the renderer adds the reference definitions.
+        from . import shot_prompt
+
+        wanted = len(shot_prompt.shot_plan(cut_plan))
+        cleaned = [shot_prompt.normalize_description(shot_prompt.strip_negative_sentences(d)) or shot_prompt.FALLBACK_SHOT for d in descriptions][:wanted]
+        cleaned += [shot_prompt.FALLBACK_SHOT] * (wanted - len(cleaned))
+        style = str(segment.get("minimax_h3_video_style") or session.get("builder_storyboard_defaults", {}).get("video_style") or "")
+        prompt_text = shot_prompt.assemble_prompt(cleaned, cut_plan, style)
+        return {"prompt": prompt_text, "characters": len(prompt_text), "shots_used": wanted, "mode": norm_mode, "cut_plan": cut_plan}
 
     # Clean descriptions
     cleaned_descs = [normalize_shot_description(d) for d in descriptions]
@@ -225,7 +255,9 @@ def validate_minimax_h3_prompt(
                     "message": "Missing 'integrated_multimodal_description:' header in prompt.",
                 })
         else:
-            required_sections = ["subject_definitions:", "summary:", "retention_analysis:", "detailed_description:"]
+            # The renderer adds the reference definitions, so a saved prompt holds only this section.
+            required_sections = ["detailed_description:"] if norm_mode == "reference_to_video" else [
+                "subject_definitions:", "summary:", "retention_analysis:", "detailed_description:"]
             for sec in required_sections:
                 if sec not in text:
                     errors.append({
@@ -257,15 +289,15 @@ def build_minimax_prompt_context(
     mode: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Build structured context brief for an agent authoring MiniMax shot descriptions (Section 18.6, 18.7)."""
-    norm_mode = normalize_minimax_mode(mode or segment.get("video_mode") or session.get("video_mode"))
+    norm_mode = effective_mode(segment, session, mode)
     dur = float(segment.get("end", 0.0) or 0.0) - float(segment.get("start", 0.0) or 0.0)
     dur = max(0.1, dur)
 
-    cut_plan = storyboard_cut_plan_for_duration(dur)
+    cut_plan = scene_cut_plan(segment, session)
     shot_count = cut_plan["shot_count"]
 
     # Budget calculation
-    fixed_overhead = 1200 if norm_mode not in ("text_to_video", "image_to_video") else 400
+    fixed_overhead = 400 if norm_mode in ("text_to_video", "image_to_video") else (300 if norm_mode == "reference_to_video" else 1200)
     available_chars = max(500, _MAX_MINIMAX_PROMPT_CHARS - fixed_overhead)
     per_shot_chars = available_chars // shot_count
 

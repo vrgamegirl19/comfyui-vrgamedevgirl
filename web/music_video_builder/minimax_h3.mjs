@@ -73,7 +73,7 @@ export const MINIMAX_H3_VOICE_PRESETS = [
 ];
 export const DEFAULT_MINIMAX_H3_SETTINGS = {
   video_mode: "text_to_video",
-  render_pass: "single",
+  render_pass: "two_pass",
   audio_mode: "input_audio",
   continuity_mode: "off",
   continuity_prompt_from_last_frame: false,
@@ -115,7 +115,7 @@ export const DEFAULT_MINIMAX_H3_SETTINGS = {
   two_pass_lora_preset: 4,
   two_pass_defaults_version: 1,
   two_pass_final_width: 1920,
-  two_pass_final_height: 1080,
+  two_pass_final_height: 1088,
   two_pass_latent_upscale_scale: 2,
   two_pass_latent_upscaler_name: "minimax_h3_latent_upscaler_3d_bf16.safetensors",
   use_te_speed: false,
