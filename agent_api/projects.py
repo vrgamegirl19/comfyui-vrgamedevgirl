@@ -1,0 +1,325 @@
+"""Project queries, scene serialization, and asset summaries for the Agent API (6.2, 6.4)."""
+
+import json
+import os
+import urllib.parse
+from typing import Any, Dict, List, Optional
+
+from ..builder.paths import _session_path
+from ..builder.project import _load_builder_session
+from ..minimax.latent_manager import SceneLatentManager
+
+from .errors import ProjectNotFoundError, SceneNotFoundError
+from .paths import get_allowed_project_roots, get_project_id, resolve_project_folder
+from .schemas import extract_effective_settings
+
+
+def _build_asset_dict(
+    project_folder: str,
+    relative_path: str,
+    kind: str,
+    asset_id: str = "",
+) -> Optional[Dict[str, Any]]:
+    """Build a standard asset descriptor object with cache-busting URL."""
+    abs_path = os.path.join(project_folder, relative_path)
+    if not os.path.isfile(abs_path):
+        return None
+    try:
+        stat = os.stat(abs_path)
+        mtime = int(stat.st_mtime)
+        size = stat.st_size
+    except OSError:
+        return None
+
+    norm_rel = relative_path.replace("\\", "/")
+    encoded_path = urllib.parse.quote(abs_path)
+    url = f"/vrgdg/video_editor/video?path={encoded_path}&video_cache_bust={mtime}"
+
+    return {
+        "id": asset_id or os.path.splitext(os.path.basename(relative_path))[0],
+        "kind": kind,
+        "filename": os.path.basename(relative_path),
+        "path_rel": norm_rel,
+        "url": url,
+        "bytes": size,
+        "mtime": mtime,
+        "exists": True,
+    }
+
+
+def list_projects(root: Optional[str] = None) -> List[Dict[str, Any]]:
+    """List all available Video Builder projects across allowed roots."""
+    roots = [os.path.abspath(root)] if root and os.path.isdir(root) else get_allowed_project_roots()
+    projects: List[Dict[str, Any]] = []
+    seen_ids = set()
+
+    for r in roots:
+        if not os.path.isdir(r):
+            continue
+        try:
+            entries = os.listdir(r)
+        except OSError:
+            continue
+
+        for name in entries:
+            folder = os.path.join(r, name)
+            if not os.path.isdir(folder):
+                continue
+            session_file = _session_path(folder)
+            if not os.path.isfile(session_file):
+                continue
+
+            pid = name
+            if pid in seen_ids:
+                continue
+
+            try:
+                stat = os.stat(session_file)
+                mtime = stat.st_mtime
+                with open(session_file, "r", encoding="utf-8-sig") as handle:
+                    data = json.load(handle)
+                if not isinstance(data, dict):
+                    continue
+
+                segments = data.get("segments", [])
+                scene_count = len(segments) if isinstance(segments, list) else 0
+                revision = int(data.get("revision") or data.get("builder_save_revision") or 0)
+                audio_path = str(data.get("audio_path") or "").strip()
+
+                projects.append({
+                    "id": pid,
+                    "name": str(data.get("project_name") or pid),
+                    "updated": mtime,
+                    "revision": revision,
+                    "scene_count": scene_count,
+                    "has_audio": bool(audio_path and os.path.isfile(audio_path)),
+                    "video_engine": str(data.get("video_engine") or "minimax_h3"),
+                    "image_mode": str(data.get("image_model_mode") or "zimage"),
+                })
+                seen_ids.add(pid)
+            except Exception:
+                continue
+
+    projects.sort(key=lambda item: item.get("updated", 0), reverse=True)
+    return projects
+
+
+def get_project_detail(project_id: str, include: Optional[List[str]] = None) -> Dict[str, Any]:
+    """Retrieve full project details with revision and settings."""
+    folder = resolve_project_folder(project_id)
+    load_result = _load_builder_session(folder)
+    session = load_result.get("session")
+    if not isinstance(session, dict):
+        raise ProjectNotFoundError(project_id)
+
+    includes = set(item.strip().lower() for item in include) if include else None
+
+    pid = get_project_id(folder)
+    revision = int(session.get("revision") or session.get("builder_save_revision") or 0)
+
+    result: Dict[str, Any] = {
+        "id": pid,
+        "name": str(session.get("project_name") or pid),
+        "project_folder": folder,
+        "revision": revision,
+        "updated": session.get("updated", 0),
+        "video_engine": str(session.get("video_engine") or "minimax_h3"),
+        "image_mode": str(session.get("image_model_mode") or "zimage"),
+    }
+
+    if includes is None or "settings" in includes:
+        result["settings"] = extract_effective_settings(session)
+
+    if includes is None or "scenes" in includes:
+        result["scenes"] = get_project_scenes(project_id)
+
+    if includes is None or "audio" in includes:
+        audio_path = str(session.get("audio_path") or "").strip()
+        result["audio"] = {
+            "attached": bool(audio_path and os.path.isfile(audio_path)),
+            "path": audio_path if (audio_path and os.path.isfile(audio_path)) else "",
+            "duration": float(session.get("audio_duration", 0.0) or 0.0),
+        }
+
+    if includes is None or "story" in includes:
+        result["story"] = session.get("builder_story_layer") or {}
+
+    if includes is None or "references" in includes:
+        result["references"] = session.get("flux_reference_builder") or {}
+
+    return result
+
+
+def get_project_scenes(
+    project_id: str,
+    has_image: Optional[bool] = None,
+    has_video: Optional[bool] = None,
+    has_prompt: Optional[bool] = None,
+    status: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """List project scenes with resolved assets, prompts, and timing."""
+    folder = resolve_project_folder(project_id)
+    load_result = _load_builder_session(folder)
+    session = load_result.get("session")
+    if not isinstance(session, dict):
+        raise ProjectNotFoundError(project_id)
+
+    segments = session.get("segments", [])
+    if not isinstance(segments, list):
+        segments = []
+
+    scenes: List[Dict[str, Any]] = []
+
+    for index, segment in enumerate(segments, start=1):
+        if not isinstance(segment, dict):
+            continue
+
+        scene_id = str(segment.get("id") or f"seg_{index:04d}")
+        start = float(segment.get("start", 0.0) or 0.0)
+        end = float(segment.get("end", start) or start)
+        duration = max(0.0, end - start)
+
+        t2i = str(segment.get("t2i_prompt") or "").strip()
+        i2v = str(segment.get("i2v_prompt") or "").strip()
+        notes = str(segment.get("notes") or "").strip()
+
+        # Image asset
+        img_name = f"image_{index:04d}.png"
+        img_rel = os.path.join("images", img_name)
+        image_asset = _build_asset_dict(folder, img_rel, "image", f"img_{index:04d}")
+
+        # Video asset
+        vid_name = f"video_{index:04d}.mp4"
+        vid_rel = os.path.join("scene_videos", vid_name)
+        video_asset = _build_asset_dict(folder, vid_rel, "video", f"vid_{index:04d}")
+
+        # Audio asset
+        audio_name = f"audio_{index:04d}.wav"
+        audio_rel = os.path.join("scene_audio", audio_name)
+        audio_asset = _build_asset_dict(folder, audio_rel, "audio", f"aud_{index:04d}")
+
+        # Determine status
+        scene_status = "empty"
+        if video_asset:
+            scene_status = "has_video"
+        elif image_asset:
+            scene_status = "has_image"
+        elif t2i or i2v:
+            scene_status = "has_prompt"
+
+        # Apply filters
+        if has_image is not None and bool(image_asset) != has_image:
+            continue
+        if has_video is not None and bool(video_asset) != has_video:
+            continue
+        if has_prompt is not None and bool(t2i or i2v) != has_prompt:
+            continue
+        if status is not None and scene_status != status:
+            continue
+
+        scenes.append({
+            "id": scene_id,
+            "number": index,
+            "start": round(start, 3),
+            "end": round(end, 3),
+            "duration": round(duration, 3),
+            "status": scene_status,
+            "lyrics": notes,
+            "t2i_prompt": t2i,
+            "i2v_prompt": i2v,
+            "enhanced_prompt": str(segment.get("enhance_prompt") or "").strip(),
+            "approved_image": image_asset,
+            "rendered_video": video_asset,
+            "scene_audio": audio_asset,
+        })
+
+    return scenes
+
+
+def get_scene_detail(project_id: str, scene_id: str) -> Dict[str, Any]:
+    """Get single scene details by scene ID or 1-based number."""
+    scenes = get_project_scenes(project_id)
+    target = str(scene_id).strip()
+
+    for s in scenes:
+        if s["id"] == target or str(s["number"]) == target:
+            return s
+
+    raise SceneNotFoundError(scene_id, project_id)
+
+
+def get_project_summary(project_id: str) -> Dict[str, Any]:
+    """Compute lightweight summary statistics and disk usage for a project."""
+    folder = resolve_project_folder(project_id)
+    load_result = _load_builder_session(folder)
+    session = load_result.get("session", {})
+
+    scenes = get_project_scenes(project_id)
+
+    scenes_with_image = sum(1 for s in scenes if s.get("approved_image"))
+    scenes_with_video = sum(1 for s in scenes if s.get("rendered_video"))
+    scenes_with_prompt = sum(1 for s in scenes if s.get("t2i_prompt") or s.get("i2v_prompt"))
+
+    # Compute disk usage
+    total_bytes = 0
+    try:
+        for root_dir, _, filenames in os.walk(folder):
+            for fname in filenames:
+                try:
+                    total_bytes += os.path.getsize(os.path.join(root_dir, fname))
+                except OSError:
+                    pass
+    except OSError:
+        pass
+
+    # Latents check
+    dirty_latents = []
+    try:
+        dirty_latents = SceneLatentManager.list_dirty(folder)
+    except Exception:
+        pass
+
+    audio_path = str(session.get("audio_path") or "").strip()
+
+    return {
+        "project_id": get_project_id(folder),
+        "total_scenes": len(scenes),
+        "scenes_with_prompt": scenes_with_prompt,
+        "scenes_with_image": scenes_with_image,
+        "scenes_with_video": scenes_with_video,
+        "dirty_latents_count": len(dirty_latents),
+        "audio_attached": bool(audio_path and os.path.isfile(audio_path)),
+        "audio_duration": float(session.get("audio_duration", 0.0) or 0.0),
+        "disk_usage_bytes": total_bytes,
+        "revision": int(session.get("revision") or session.get("builder_save_revision") or 0),
+    }
+
+
+def get_project_assets(project_id: str) -> List[Dict[str, Any]]:
+    """Scan and list all media assets belonging to a project."""
+    folder = resolve_project_folder(project_id)
+    assets: List[Dict[str, Any]] = []
+
+    subfolders = [
+        ("images", "image"),
+        ("scene_videos", "video"),
+        ("final_videos", "video"),
+        ("scene_audio", "audio"),
+        ("project_audio", "audio"),
+        ("latents", "latent"),
+    ]
+
+    for sub, kind in subfolders:
+        dir_path = os.path.join(folder, sub)
+        if not os.path.isdir(dir_path):
+            continue
+        try:
+            for fname in sorted(os.listdir(dir_path)):
+                rel_path = os.path.join(sub, fname)
+                asset = _build_asset_dict(folder, rel_path, kind)
+                if asset:
+                    assets.append(asset)
+        except OSError:
+            continue
+
+    return assets

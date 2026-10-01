@@ -24,6 +24,7 @@ _VRGDG_SUBMODULES = (
     ".core.system_routes",
     ".minimax.latent_manager",
     ".minimax.latent_continuation",
+    ".agent_api",
 )
 
 NODE_CLASS_MAPPINGS = {}

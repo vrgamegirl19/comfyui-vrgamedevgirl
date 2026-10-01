@@ -24,6 +24,8 @@ This guide serves as the definitive technical manual for AI coding agents and hu
    - [General Custom Nodes (`general/`)](#general-custom-nodes-general)
    - [Browser AI Automation (`browser/` & `flow_automation/`)](#browser-ai-automation-browser--flow_automation)
    - [Frontend Web Applications (`web/`)](#frontend-web-applications-web)
+   - [Agent API Subsystem (`agent_api/`)](#agent-api-subsystem-agent_api)
+   - [Model Context Protocol Server (`mcp_server/`)](#model-context-protocol-server-mcp_server)
    - [Utility Scripts (`scripts/`)](#utility-scripts-scripts)
    - [Test Suites (`tests/`)](#test-suites-tests)
 3. [Separation of Concerns (SoC) Principles](#3-separation-of-concerns-soc-principles)
@@ -125,6 +127,8 @@ Every Video Builder project resides in a dedicated directory on disk:
 | [browser/](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/browser) | External browser automation nodes bridging Flow, Meta AI, and ChatGPT image generators into ComfyUI | `nodes.py` |
 | [flow_automation/](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/flow_automation) | Node.js / Playwright / Puppeteer automation scripts for browser-driven generation workflows | `flow-poc.mjs`, `manual-bridge.mjs`, `meta-ai-poc.mjs` |
 | [web/](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/web) | ComfyUI web extensions, Video Builder application (79 ESM modules), Storyboard UI (22 ESM modules) | `music_video_builder/`, `storyboard_builder/`, `VRGDG_*.js` |
+| [agent_api/](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/agent_api) | Headless REST API (`/vrgdg/api/v1`), transactional mutations, job management, SSE events, orchestrator | `router.py`, `mutations.py`, `jobs.py`, `envelope.py`, `paths.py`, `orchestrator/` |
+| [mcp_server/](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/mcp_server) | Zero-dependency MCP server (JSON-RPC 2.0 stdio), 50 tools (T1–T50), resources, prompt templates | `__main__.py`, `server.py`, `tools.py`, `resources.py`, `prompts.py`, `client.py` |
 | [scripts/](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/scripts) | Standalone tooling, workflow generation scripts, backport utilities, Photoshop integration | `build_minimax_h3_ref2va_2pass_audio_api.py`, `far_face_repair_backend.py` |
 | [tests/](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/tests) | 84 test suites covering Python backend logic, node collision checks, and JavaScript UI contracts | `test_node_registration.py`, `test_atomic_write.py`, `builder_source.py` |
 
@@ -190,15 +194,15 @@ The `builder` package contains the backend business logic and HTTP API powering 
 #### [builder/project.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/builder/project.py)
 - **Purpose**: Project serialization, initialization, asset renumbering, and migration logic.
 - **Key Functions**:
-  - `_new_builder_project(payload)`: Sets up directory scaffolding (`project_audio`, `project_images`, `scene_videos`, etc.) and writes the initial `session.json`.
+  - `_new_builder_project(payload)`: Sets up directory scaffolding (`zimage_approved`, `prompts`, `project_context`, `latents`, etc.) and writes the initial `vrgdg_builder_session.json`.
   - `_load_builder_session(payload)` / `_save_builder_session(payload)`: Reads and atomically persists project scene data, timeline markers, and render flags.
-  - `_renumber_scene_assets_after_insert(project_folder, inserted_index)`: Renumbers all disk assets (`scene_XXX.*`) backwards from the end to make room for an inserted scene without overwriting existing files.
+  - `_renumber_scene_assets_after_insert(project_folder, inserted_index)`: Renumbers all disk assets (`image_NNNN.*`, `video_NNNN.*`, etc.) backwards from the end to make room for an inserted scene without overwriting existing files.
   - `_renumber_scene_assets_after_removal(project_folder, removed_index)`: Shifts all subsequent assets forward by one to close the gap left by a deleted scene.
 
 #### [builder/project_copy.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/builder/project_copy.py)
 - **Purpose**: Non-destructive project duplication and branching.
 - **Key Functions**:
-  - `_save_builder_project_as(payload)`: Duplicates a project folder, selectively filters scene media based on user choices (e.g., keep approved images only, discard failed video renders), rewrites internal path references inside `session.json`, and clones serialized MiniMax latents.
+  - `_save_builder_project_as(payload)`: Duplicates a project folder, selectively filters scene media based on user choices (e.g., keep approved images only, discard failed video renders), rewrites internal path references inside `vrgdg_builder_session.json`, and clones serialized MiniMax latents.
 
 #### [builder/audio.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/builder/audio.py)
 - **Purpose**: Digital audio processing, waveform analysis, and beat detection.
@@ -517,6 +521,89 @@ A modular 22-file ESM (`.mjs`) application structure:
 - `scene_editor.mjs` & `scene_table.mjs`: Scene card grid and table views.
 - `shot_presets.mjs` & `video_style.mjs`: Cinematic shot presets and visual style definitions.
 - `gpt_payload.mjs` & `prompt_generation.mjs`: Prepares structured generation payloads for external LLMs.
+
+---
+
+### Agent API Subsystem (`agent_api/`)
+
+The `agent_api` package provides a headless, production-grade REST API served at `/vrgdg/api/v1` by ComfyUI. Designed for autonomous external AI agents, headless worker processes, and IDE extensions, it exposes full control over the AI Video Builder without requiring a browser session.
+
+#### Architecture & Design Principles
+- **Uniform Envelopes (D6)**:
+  - Success responses return: `{"ok": True, "data": {...}, "revision": n}`.
+  - Failure responses return structured error blocks: `{"ok": False, "error": {"code": "...", "message": "...", "details": {...}, "retryable": bool}}`.
+- **Revision-Based Optimistic Concurrency (D4)**:
+  - Every project save increments a monotonically increasing `revision` stored in `vrgdg_builder_session.json`.
+  - Mutation endpoints support optimistic concurrency via the HTTP `If-Match: <revision>` header, rejecting stale edits with `409 Conflict` (`REVISION_CONFLICT`) to prevent silent overwrites.
+- **Transactional Timeline Journal (Section 15.6)**:
+  - All structural scene operations (split, merge, insert, delete, move, resize) employ `TimelineJournal`.
+  - Disk renumbering of assets (`image_NNNN.png`, `video_NNNN.mp4`, etc.) is recorded before disk renames and rolled back automatically if an error occurs mid-transaction.
+- **SQLite Job Manager (Section 5)**:
+  - Long-running generation jobs run in background worker threads, tracked in `agent_jobs.db` located inside the project directory.
+  - Supports live Server-Sent Events (SSE) streaming (`GET /vrgdg/api/v1/jobs/{id}/events`).
+  - Interrupted jobs left behind across ComfyUI restarts are safely recovered into `interrupted` status on startup.
+
+#### Key Modules & Endpoints
+- **[agent_api/router.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/agent_api/router.py)**:
+  - Registers `/vrgdg/api/v1` route endpoints across all subsystems.
+- **[agent_api/mutations.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/agent_api/mutations.py)**:
+  - Scene CRUD, timeline snapping, gap closing, bulk edits, beat calibration, reference management, lyrics attachment, settings patching, and comprehensive project validation (`validate_project`).
+- **[agent_api/jobs.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/agent_api/jobs.py)**:
+  - Thread-safe job execution manager, log file management, status transitions, and SSE subscriber broker.
+- **[agent_api/schemas.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/agent_api/schemas.py)**:
+  - JSON Schema definitions and validator functions for mode-specific settings (LTX 6 modes, MiniMax H3 5 modes, image engines).
+- **[agent_api/paths.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/agent_api/paths.py)**:
+  - Multi-root project discovery, project ID validation, and path traversal containment safeguards.
+- **[agent_api/orchestrator/](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/agent_api/orchestrator)**:
+  - `pipeline_orchestrator.py`: End-to-end dry-run planning (`GET /pipelines/plan`) and full autonomous builds (`pipeline.build_full_video`, `pipeline.build_flf`).
+  - `video_orchestrator.py`: Video rendering jobs (`video.render`), latent caching, color matching, and final video stitching.
+  - `image_orchestrator.py`: Single-scene and batch image generation (`image.generate`) across Z-Image, Flux/Klein, NanoBanana, Ernie, and Krea 2.
+  - `prompt_orchestrator.py`: LLM batch prompt generation jobs (`prompt.batch_generate`).
+  - `post_orchestrator.py`: Video LUT application, film grain overlay, color adjust presets, and Face Fix pipelines.
+
+---
+
+### Model Context Protocol Server (`mcp_server/`)
+
+The `mcp_server` package provides a standalone, zero-dependency Model Context Protocol (MCP) server communicating via standard input/output (stdio JSON-RPC 2.0). It allows AI assistants like Claude Desktop, Cursor, and Antigravity to operate the AI Video Builder with native tool calls.
+
+#### Server Features & Design
+- **Zero External Dependencies**: Operates strictly using Python standard library packages (`json`, `urllib.request`, `sys`, `os`), ensuring compatibility across standard Python and embedded distributions (`python_embeded`).
+- **Standard Protocol**: Implements MCP protocol version `2024-11-05` using JSON-RPC 2.0 messages over stdio.
+- **Launch Command**:
+  ```bash
+  python -m mcp_server
+  ```
+  or with ComfyUI portable Python:
+  ```bash
+  ..\..\..\python_embeded\python.exe -m mcp_server
+  ```
+- **Rule 5 Actionable Error Protocol**:
+  - Failed tool calls return `isError: True` alongside structured `next_steps` suggestions in the content text block (e.g. indicating when a predecessor scene needs rendering, a latent is dirty, or settings preflight failed). This prevents AI agents from getting stuck in unrecoverable retry loops.
+
+#### Tools Catalog (50 Native Tools, T1 to T50)
+| Category | Tools | Description |
+| :--- | :--- | :--- |
+| **Projects** | `project_list` (T1), `project_get` (T2), `project_create` (T3), `project_delete` (T4), `project_duplicate` (T5), `project_export` (T6), `project_status` (T7), `project_validate` (T8) | Project lifecycle management, status summaries, and asset validation |
+| **Audio & Lyrics** | `audio_attach` (T9), `audio_analyze` (T10), `audio_beats_get` (T11), `audio_beats_calibrate` (T12), `lyrics_get` (T13), `lyrics_set` (T14), `lyrics_transcribe` (T15) | Audio import, beat detection, BPM tempo calibration, and Whisper transcription |
+| **Timeline & Scenes** | `timeline_get` (T16), `scene_get` (T17), `scene_create` (T18), `scene_update` (T19), `scene_delete` (T20), `scene_split` (T21), `scene_merge` (T22), `scene_move` (T23), `scene_resize` (T24), `timeline_close_gaps` (T25), `timeline_snap` (T26), `timeline_bulk` (T27) | Comprehensive NLE timeline operations, beat snapping, and gap closures |
+| **References & Story** | `reference_list` (T28), `reference_upsert_subject` (T29), `reference_upsert_location` (T30), `reference_delete` (T31), `reference_map_scene` (T32), `reference_extract` (T33), `story_get` (T34), `story_put` (T35) | Reference Builder catalog management, character casting, and story arc planning |
+| **Prompts & Settings** | `prompt_context_get` (T36), `prompt_assemble` (T37), `prompt_validate` (T38), `prompt_set_field` (T39), `prompt_batch_generate` (T40), `settings_get` (T41), `settings_patch` (T42), `settings_preflight` (T43) | MiniMax H3 / LTX prompt assembly, schema validation, and mode settings |
+| **Generation & Pipeline** | `image_generate` (T44), `video_render` (T45), `latents_list_dirty` (T46), `post_apply` (T47), `stitch_final` (T48), `pipeline_build_full_video` (T49), `pipeline_plan` (T50) | Single-scene and batch render dispatch, post-processing, and full pipeline orchestration |
+
+#### Resources & Prompt Templates
+- **Resources**:
+  - `vrgdg://projects`: Catalog of discovered projects.
+  - `vrgdg://project/{id}`: Full project session state.
+  - `vrgdg://project/{id}/scene/{sid}`: Individual scene bundle and metadata.
+  - `vrgdg://project/{id}/lyrics`: Master lyric lyrics and timecodes.
+  - `vrgdg://jobs/{id}/log`: Live streaming execution log of background jobs.
+  - `vrgdg://modes`: Catalog of supported video/image generation modes and capabilities.
+- **Prompt Templates**:
+  - `make_music_video`: Guided workflow taking user audio/lyrics through timeline creation, prompt authoring, generation, and final stitch.
+  - `review_scene`: Visual critique comparing generated images/videos against prompts and suggesting improvements.
+  - `fix_failed_render`: Diagnostic evaluation of error logs to suggest retries, parameter adjustments, or model memory cleanups.
+  - `polish_timeline`: Rhythm and pacing optimizer checking for timing gaps, beat misalignments, or short scenes.
 
 ---
 

@@ -429,11 +429,11 @@ export function buildMiniMaxPanel({
   ], false);
   miniMaxTwoPassSettings.style.display = "none";
   const miniMaxAdvancedVramPreset = makeSelect([
-    { value: "8gb", label: "8 GB — 352px tiles / 51 frames" },
-    { value: "12gb", label: "12 GB — 512px tiles / 85 frames" },
-    { value: "16gb", label: "16 GB — 576px tiles / 119 frames" },
-    { value: "24gb", label: "24 GB — 672px tiles / 153 frames" },
-    { value: "32gb", label: "32 GB — 768px tiles / 170 frames" },
+    { value: "8gb", label: "8 GB — ~0.2 MP tiles / 51 frames (untested)" },
+    { value: "12gb", label: "12 GB — ~0.3 MP tiles / 85 frames (untested)" },
+    { value: "16gb", label: "16 GB — ~0.43 MP tiles / 119 frames (untested)" },
+    { value: "24gb", label: "24 GB — ~0.65 MP tiles / 153 frames (untested)" },
+    { value: "32gb", label: "32 GB — ~1.6 MP tiles / 170 frames (tested on RTX 5090)" },
     { value: "custom", label: "Custom — keep advanced values" },
   ], DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_vram_preset);
   const miniMaxAdvancedTileSizeMode = makeSelect([
@@ -459,6 +459,13 @@ export function buildMiniMaxPanel({
   const miniMaxAdvancedMinTileSize = makeMiniMaxAdvancedNumber("advanced_two_pass_min_tile_size", 0, 16384, 32);
   const miniMaxAdvancedOverlapMode = makeSelect(["earlier", "later"], DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_overlap_mode);
   const miniMaxAdvancedOverlapBlend = makeSelect(["linear", "smoothstep", "overwrite", "midpoint"], DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_overlap_blend);
+  // Seam-reduction controls. Fade width/height must stay below tile overlap so a
+  // frozen anchor strip remains; dynamic fade only acts when Pass 2 has >1 step.
+  const miniMaxAdvancedBrightnessMatch = makeCheckbox("Brightness match", DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_brightness_match);
+  miniMaxAdvancedBrightnessMatch.wrapper.title = "Matches each tile's brightness to the source region to reduce color pops on the tile grid.";
+  const miniMaxAdvancedDynamicFade = makeSelect(["off", "narrowing", "widening"], DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_dynamic_fade);
+  const miniMaxAdvancedDynamicFadeMin = makeMiniMaxAdvancedNumber("advanced_two_pass_dynamic_fade_min", 0, 16384, 32);
+  const miniMaxAdvancedMaskedAreaNoise = makeMiniMaxAdvancedNumber("advanced_two_pass_masked_area_noise", 0, 1, 0.01);
   const miniMaxAdvancedUpscalerDevice = makeSelect(["cuda", "cpu"], DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_upscaler_device);
   const miniMaxAdvancedUpscalerPrecision = makeSelect(["bf16", "fp16", "fp32"], DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_upscaler_precision);
   const miniMaxAdvancedLatentUpscalerPicker = makeSearchableLoraPicker(DEFAULT_MINIMAX_H3_SETTINGS.two_pass_latent_upscaler_name);
@@ -481,12 +488,16 @@ export function buildMiniMaxPanel({
     makeField("Minimum tile size", miniMaxAdvancedMinTileSize),
     makeField("Overlap ownership", miniMaxAdvancedOverlapMode),
     makeField("Overlap blend", miniMaxAdvancedOverlapBlend),
+    miniMaxAdvancedBrightnessMatch.wrapper,
+    makeField("Dynamic fade", miniMaxAdvancedDynamicFade, "Changes the fade width over a tile's sampling. Only takes effect when Pass 2 has more than one step."),
+    makeField("Dynamic fade minimum", miniMaxAdvancedDynamicFadeMin, "Smallest fade width (pixels, multiple of 32) reached by narrowing or widening."),
+    makeField("Masked area noise", miniMaxAdvancedMaskedAreaNoise, "0 keeps the frozen overlap band fixed. Higher values let noise into it."),
     makeField("Upscaler device", miniMaxAdvancedUpscalerDevice),
     makeField("Upscaler precision", miniMaxAdvancedUpscalerPrecision),
   ], false);
   const miniMaxThreePassSettings = makeSettingsSection("2 Pass Advanced — MMH3 Ultimate Upscale", [
     miniMaxAdvancedDependencyNote,
-    makeField("VRAM preset", miniMaxAdvancedVramPreset, "Presets apply conservative tile and temporal chunk starting points from the MMH3 guide."),
+    makeField("VRAM preset", miniMaxAdvancedVramPreset, "Presets size an equal tile grid for the current Pass 2 resolution and set chunk length and overlap. Only 32 GB is tested; smaller cards are estimates, so report results."),
     makeField("Reference image sizing", miniMaxThreePassRefImageSize, "Controls the MiniMax H3 reference-conditioning image-size mode. Default: max."),
     makeField("Latent upscaler model", miniMaxAdvancedLatentUpscalerPicker.wrapper),
     ...advancedTwoPassControls.map((item) => item.resolutionField),
@@ -771,7 +782,7 @@ export function buildMiniMaxPanel({
     advancedTwoPassControls, miniMaxAccelerationControls, miniMaxAddSpeakerCueButton,
     miniMaxAdvancedAnchorStrength, miniMaxAdvancedChunkLength, miniMaxAdvancedFadeHeight,
     miniMaxAdvancedFadeWidth, miniMaxAdvancedGridCols, miniMaxAdvancedGridRows,
-    miniMaxAdvancedLatentUpscalerPicker, miniMaxAdvancedMinTileSize, miniMaxAdvancedOverlapBlend,
+    miniMaxAdvancedLatentUpscalerPicker, miniMaxAdvancedMinTileSize, miniMaxAdvancedOverlapBlend, miniMaxAdvancedBrightnessMatch, miniMaxAdvancedDynamicFade, miniMaxAdvancedDynamicFadeMin, miniMaxAdvancedMaskedAreaNoise,
     miniMaxAdvancedOverlapMode, miniMaxAdvancedSettings, miniMaxAdvancedSpatialHOverlap,
     miniMaxAdvancedSpatialWOverlap, miniMaxAdvancedTemporalOverlap, miniMaxAdvancedTileHeight,
     miniMaxAdvancedTileSizeMode, miniMaxAdvancedTileWidth, miniMaxAdvancedUpscalerDevice,

@@ -174,18 +174,23 @@ export const DEFAULT_MINIMAX_H3_SETTINGS = {
   advanced_two_pass_tile_size_mode: "rows_cols",
   advanced_two_pass_tile_width: 512,
   advanced_two_pass_tile_height: 512,
-  advanced_two_pass_grid_rows: 3,
-  advanced_two_pass_grid_cols: 5,
+  advanced_two_pass_grid_rows: 2,
+  advanced_two_pass_grid_cols: 3,
   advanced_two_pass_chunk_length: 272,
   advanced_two_pass_temporal_overlap: 17,
   advanced_two_pass_anchor_strength: 0.999,
-  advanced_two_pass_spatial_w_overlap: 128,
-  advanced_two_pass_spatial_h_overlap: 128,
+  advanced_two_pass_spatial_w_overlap: 192,
+  advanced_two_pass_spatial_h_overlap: 192,
   advanced_two_pass_fade_width: 64,
   advanced_two_pass_fade_height: 64,
   advanced_two_pass_min_tile_size: 256,
   advanced_two_pass_overlap_mode: "earlier",
   advanced_two_pass_overlap_blend: "smoothstep",
+  // Seam-reduction settings added by newer MMH3 Spatial Split Params versions.
+  advanced_two_pass_brightness_match: true,
+  advanced_two_pass_dynamic_fade: "widening",
+  advanced_two_pass_dynamic_fade_min: 32,
+  advanced_two_pass_masked_area_noise: 0,
   advanced_two_pass_upscaler_device: "cuda",
   advanced_two_pass_upscaler_precision: "bf16",
   advanced_two_pass_pass1_megapixels: 0.4,
@@ -203,6 +208,45 @@ export const DEFAULT_MINIMAX_H3_SETTINGS = {
   advanced_two_pass_pass2_scheduler: "simple",
   advanced_two_pass_pass2_seed: 69,
 };
+
+// 2 Pass Advanced VRAM presets. activations scale with chunk_length x tile area,
+// so each card gets a tile-area target (megapixels) and chunk length. Only 32 GB
+// has been measured (RTX 5090, 4K Pass 2 at 2x3 tiles, chunk 170); the smaller
+// cards are extrapolated from that point and the upstream MMH3 tuning table.
+// Overlap is about 15-25% of the resulting tile side (multiple of 32).
+export const MINIMAX_H3_VRAM_PRESETS = {
+  "8gb": { tileMegapixels: 0.2, chunk: 51, overlap: 128, tested: false },
+  "12gb": { tileMegapixels: 0.3, chunk: 85, overlap: 128, tested: false },
+  "16gb": { tileMegapixels: 0.43, chunk: 119, overlap: 128, tested: false },
+  "24gb": { tileMegapixels: 0.65, chunk: 153, overlap: 160, tested: false },
+  "32gb": { tileMegapixels: 1.6, chunk: 170, overlap: 192, tested: true },
+};
+
+// Pass 2 frame size in pixels for a megapixel target and an aspect ratio label
+// such as "16:9 (Widescreen)". Mirrors the backend's resolved_dimensions().
+export function miniMaxH3FrameSize(megapixels, aspectRatio) {
+  const match = String(aspectRatio || "16:9").match(/(\d+)\s*:\s*(\d+)/);
+  const ratioWidth = Number(match?.[1] || 16);
+  const ratioHeight = Number(match?.[2] || 9);
+  const scale = Math.sqrt((Math.max(0.1, Number(megapixels) || 2) * 1048576) / (ratioWidth * ratioHeight));
+  return {
+    width: Math.round((ratioWidth * scale) / 32) * 32,
+    height: Math.round((ratioHeight * scale) / 32) * 32,
+  };
+}
+
+// Tile plan for a VRAM preset at a given Pass 2 size: an equal rows x cols grid
+// whose tiles are close to the preset's tile-area target, capped at 9 x 9.
+export function miniMaxH3TilePlan(presetKey, megapixels, aspectRatio) {
+  const preset = MINIMAX_H3_VRAM_PRESETS[presetKey];
+  if (!preset) return null;
+  const { width, height } = miniMaxH3FrameSize(megapixels, aspectRatio);
+  const tileCount = Math.max(1, (width * height) / (preset.tileMegapixels * 1048576));
+  const cols = Math.max(1, Math.min(9, Math.round(Math.sqrt(tileCount * (width / height)))));
+  const rows = Math.max(1, Math.min(9, Math.ceil(tileCount / cols)));
+  const tileSide = Math.max(32, Math.round(Math.sqrt(preset.tileMegapixels * 1048576) / 32) * 32);
+  return { rows, cols, tileSide, chunk: preset.chunk, overlap: preset.overlap, tested: preset.tested };
+}
 
 export const MINIMAX_H3_CONTINUITY_OPTIONS = [
   { value: "off", label: "Off" },
@@ -556,6 +600,12 @@ export function cloneMiniMaxH3Settings(value = {}) {
     advanced_two_pass_overlap_blend: ["linear", "smoothstep", "overwrite", "midpoint"].includes(String(advancedSource.advanced_two_pass_overlap_blend || "").toLowerCase())
       ? String(advancedSource.advanced_two_pass_overlap_blend).toLowerCase()
       : DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_overlap_blend,
+    advanced_two_pass_brightness_match: Boolean(advancedSource.advanced_two_pass_brightness_match ?? DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_brightness_match),
+    advanced_two_pass_dynamic_fade: ["off", "narrowing", "widening"].includes(String(advancedSource.advanced_two_pass_dynamic_fade || "").toLowerCase())
+      ? String(advancedSource.advanced_two_pass_dynamic_fade).toLowerCase()
+      : DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_dynamic_fade,
+    advanced_two_pass_dynamic_fade_min: Math.max(0, Math.min(16384, Math.trunc(Number(advancedSource.advanced_two_pass_dynamic_fade_min ?? DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_dynamic_fade_min)))),
+    advanced_two_pass_masked_area_noise: Math.max(0, Math.min(1, Number(advancedSource.advanced_two_pass_masked_area_noise ?? DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_masked_area_noise))),
     advanced_two_pass_upscaler_device: ["cuda", "cpu"].includes(String(source.advanced_two_pass_upscaler_device || "").toLowerCase())
       ? String(source.advanced_two_pass_upscaler_device).toLowerCase()
       : DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_upscaler_device,

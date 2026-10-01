@@ -37,11 +37,14 @@ class BuilderMiniMaxAdvancedTwoPassTests(unittest.TestCase):
         )
 
     def test_vram_presets_match_mmh3_starting_points(self):
+        # Presets are tile-area targets (megapixels) plus chunk length; the grid
+        # is derived from the Pass 2 size. Only 32 GB has been measured.
         for text in (
-            '"8gb": { tile: 352, chunk: 51 }',
-            '"12gb": { tile: 512, chunk: 85 }',
-            '"16gb": { tile: 576, chunk: 119 }',
-            '"24gb": { tile: 672, chunk: 153 }',
+            '"8gb": { tileMegapixels: 0.2, chunk: 51, overlap: 128, tested: false }',
+            '"12gb": { tileMegapixels: 0.3, chunk: 85, overlap: 128, tested: false }',
+            '"16gb": { tileMegapixels: 0.43, chunk: 119, overlap: 128, tested: false }',
+            '"24gb": { tileMegapixels: 0.65, chunk: 153, overlap: 160, tested: false }',
+            '"32gb": { tileMegapixels: 1.6, chunk: 170, overlap: 192, tested: true }',
         ):
             self.assertIn(text, BUILDER_SOURCE)
         self.assertIn('advanced_two_pass_pass2_steps: 1', BUILDER_SOURCE)

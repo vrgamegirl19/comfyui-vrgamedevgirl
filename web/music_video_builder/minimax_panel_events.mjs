@@ -4,6 +4,7 @@ import { miniMaxNextCueStartTime } from "./lyric_cues.mjs";
 import {
   cloneMiniMaxH3Settings,
   DEFAULT_MINIMAX_H3_SETTINGS,
+  miniMaxH3TilePlan,
   miniMaxInstalledPass2Lora,
   normalizeMiniMaxH3ContinuityMode,
   normalizeMiniMaxH3SceneImageUse,
@@ -21,7 +22,7 @@ export function wireMiniMaxPanel({
   isMiniMaxSingerAssignmentMode, loadDirtyLatentBadges, miniMaxAccelerationControls,
   miniMaxAddSpeakerCueButton, miniMaxAdvancedAnchorStrength, miniMaxAdvancedChunkLength,
   miniMaxAdvancedFadeHeight, miniMaxAdvancedFadeWidth, miniMaxAdvancedGridCols, miniMaxAdvancedGridRows,
-  miniMaxAdvancedLatentUpscalerPicker, miniMaxAdvancedMinTileSize, miniMaxAdvancedOverlapBlend,
+  miniMaxAdvancedLatentUpscalerPicker, miniMaxAdvancedMinTileSize, miniMaxAdvancedOverlapBlend, miniMaxAdvancedBrightnessMatch, miniMaxAdvancedDynamicFade, miniMaxAdvancedDynamicFadeMin, miniMaxAdvancedMaskedAreaNoise,
   miniMaxAdvancedOverlapMode, miniMaxAdvancedSpatialHOverlap, miniMaxAdvancedSpatialWOverlap,
   miniMaxAdvancedTemporalOverlap, miniMaxAdvancedTileHeight, miniMaxAdvancedTileSizeMode,
   miniMaxAdvancedTileWidth, miniMaxAdvancedUpscalerDevice, miniMaxAdvancedUpscalerPrecision,
@@ -145,6 +146,10 @@ export function wireMiniMaxPanel({
     miniMaxAdvancedMinTileSize,
     miniMaxAdvancedOverlapMode,
     miniMaxAdvancedOverlapBlend,
+    miniMaxAdvancedBrightnessMatch.input,
+    miniMaxAdvancedDynamicFade,
+    miniMaxAdvancedDynamicFadeMin,
+    miniMaxAdvancedMaskedAreaNoise,
     miniMaxAdvancedUpscalerDevice,
     miniMaxAdvancedUpscalerPrecision,
     miniMaxTwoPassLatentScale,
@@ -178,30 +183,39 @@ export function wireMiniMaxPanel({
     control.addEventListener("input", saveMiniMaxH3SettingsFromPanel);
     control.addEventListener("change", persistMiniMaxSettings);
   }
-  miniMaxAdvancedVramPreset.addEventListener("change", () => {
-    const preset = {
-      "8gb": { tile: 352, chunk: 51 },
-      "12gb": { tile: 512, chunk: 85 },
-      "16gb": { tile: 576, chunk: 119 },
-      "24gb": { tile: 672, chunk: 153 },
-      "32gb": { tile: 768, chunk: 170 },
-    }[miniMaxAdvancedVramPreset.value];
-    if (!preset) return;
-    miniMaxAdvancedTileSizeMode.value = "specific_size";
-    miniMaxAdvancedTileWidth.value = String(preset.tile);
-    miniMaxAdvancedTileHeight.value = String(preset.tile);
-    miniMaxAdvancedChunkLength.value = String(preset.chunk);
+  // Applies the selected VRAM preset. The grid is derived from the current Pass 2
+  // size so the same card gets equal tiles of a similar area at 2K or 4K.
+  const applyAdvancedVramPreset = () => {
+    const pass2 = advancedTwoPassControls[1];
+    const plan = miniMaxH3TilePlan(miniMaxAdvancedVramPreset.value, pass2.megapixels.value, miniMaxAspectRatio.value);
+    if (!plan) return false;
+    miniMaxAdvancedTileSizeMode.value = "rows_cols";
+    miniMaxAdvancedGridRows.value = String(plan.rows);
+    miniMaxAdvancedGridCols.value = String(plan.cols);
+    miniMaxAdvancedTileWidth.value = String(plan.tileSide);
+    miniMaxAdvancedTileHeight.value = String(plan.tileSide);
+    miniMaxAdvancedChunkLength.value = String(plan.chunk);
     miniMaxAdvancedTemporalOverlap.value = "17";
-    miniMaxAdvancedSpatialWOverlap.value = "128";
-    miniMaxAdvancedSpatialHOverlap.value = "128";
+    miniMaxAdvancedSpatialWOverlap.value = String(plan.overlap);
+    miniMaxAdvancedSpatialHOverlap.value = String(plan.overlap);
+    miniMaxAdvancedBrightnessMatch.input.checked = true;
     miniMaxAdvancedFadeWidth.value = "64";
     miniMaxAdvancedFadeHeight.value = "64";
     miniMaxAdvancedMinTileSize.value = "256";
     miniMaxAdvancedAnchorStrength.value = "0.999";
     miniMaxAdvancedOverlapMode.value = "earlier";
     miniMaxAdvancedOverlapBlend.value = "smoothstep";
-    persistMiniMaxSettings();
+    return true;
+  };
+  miniMaxAdvancedVramPreset.addEventListener("change", () => {
+    if (applyAdvancedVramPreset()) persistMiniMaxSettings();
   });
+  // Keep the grid in step when Pass 2 size or aspect ratio changes while a preset is active.
+  for (const control of [advancedTwoPassControls[1].resolutionPreset, advancedTwoPassControls[1].megapixels, miniMaxAspectRatio]) {
+    control.addEventListener("change", () => {
+      if (applyAdvancedVramPreset()) persistMiniMaxSettings();
+    });
+  }
   for (const control of [
     miniMaxAdvancedTileSizeMode,
     miniMaxAdvancedTileWidth,
@@ -218,6 +232,10 @@ export function wireMiniMaxPanel({
     miniMaxAdvancedMinTileSize,
     miniMaxAdvancedOverlapMode,
     miniMaxAdvancedOverlapBlend,
+    miniMaxAdvancedBrightnessMatch.input,
+    miniMaxAdvancedDynamicFade,
+    miniMaxAdvancedDynamicFadeMin,
+    miniMaxAdvancedMaskedAreaNoise,
     miniMaxAdvancedUpscalerDevice,
     miniMaxAdvancedUpscalerPrecision,
   ]) {

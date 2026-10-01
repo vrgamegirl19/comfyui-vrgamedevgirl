@@ -500,7 +500,7 @@ export function createBuilderAgent({
       if (locked) skipped.push(`${locked} scene${locked === 1 ? "" : "s"} skipped because generated video timing is locked`);
       return synced > 0;
     };
-    const splitSceneIntoSubscenes = (targetScene, action = {}) => {
+    const splitSceneIntoSubscenes = async (targetScene, action = {}) => {
       if (!targetScene) {
         skipped.push("scene not found");
         return false;
@@ -538,6 +538,29 @@ export function createBuilderAgent({
       const originalNBNotes = String(targetScene.nb_notes || "").trim();
       const originalVideoNotes = String(targetScene.i2v_notes || "").trim();
       const duration = total / count;
+
+      const pid = String(state.projectFolder || projectInput?.value || "").trim().split(/[\\/]/).filter(Boolean).pop();
+      if (pid && track !== "overlay") {
+        try {
+          if (typeof autoSaveSessionQuiet === "function") {
+            await autoSaveSessionQuiet();
+          }
+          let currentTargetId = targetScene.id;
+          for (let index = 0; index < count - 1; index += 1) {
+            const splitTime = Number((start + duration * (index + 1)).toFixed(3));
+            const res = await postJson(`/vrgdg/api/v1/projects/${encodeURIComponent(pid)}/scenes/${encodeURIComponent(currentTargetId)}/split`, {
+              at_time: splitTime,
+              clear_right_media: true,
+            });
+            if (res?.ok && res?.data?.right_scene) {
+              currentTargetId = res.data.right_scene.id;
+            }
+          }
+        } catch (e) {
+          console.warn("[VRGDG Agent] Server split call failed, continuing with local update:", e);
+        }
+      }
+
       const created = [];
       for (let index = 0; index < count; index += 1) {
         const itemStart = Number((start + duration * index).toFixed(3));
@@ -562,7 +585,7 @@ export function createBuilderAgent({
       applied.push(`split ${labelPrefix} into ${count} sub-scene${count === 1 ? "" : "s"}`);
       return true;
     };
-    const mergeScenes = (action = {}) => {
+    const mergeScenes = async (action = {}) => {
       let sceneNumbers = Array.isArray(action?.scene_numbers) ? action.scene_numbers.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0) : [];
       const startNumber = Number(action?.start_scene_number);
       const endNumber = Number(action?.end_scene_number);
@@ -588,6 +611,23 @@ export function createBuilderAgent({
       const target = uniqueScenes[0];
       const start = Math.min(...uniqueScenes.map((segment) => Number(segment.start || 0)));
       const end = Math.max(...uniqueScenes.map((segment) => Number(segment.end || 0)));
+
+      const pid = String(state.projectFolder || projectInput?.value || "").trim().split(/[\\/]/).filter(Boolean).pop();
+      if (pid) {
+        try {
+          if (typeof autoSaveSessionQuiet === "function") {
+            await autoSaveSessionQuiet();
+          }
+          for (let i = 1; i < uniqueScenes.length; i += 1) {
+            await postJson(`/vrgdg/api/v1/projects/${encodeURIComponent(pid)}/scenes/${encodeURIComponent(target.id)}/merge`, {
+              with_direction: "next",
+            });
+          }
+        } catch (e) {
+          console.warn("[VRGDG Agent] Server merge call failed, continuing with local update:", e);
+        }
+      }
+
       target.start = Number(start.toFixed(3));
       target.end = Number(Math.max(start + 0.05, end).toFixed(3));
       target.label = String(action?.label || target.label || `Scene ${sceneNumbers[0] || segmentIndexInfo(target).index + 1}`).trim();
@@ -642,7 +682,7 @@ export function createBuilderAgent({
         continue;
       }
       if (type === "merge_scenes") {
-        mergeScenes(action);
+        await mergeScenes(action);
         continue;
       }
       if (type === "select_scene") {
@@ -765,7 +805,7 @@ export function createBuilderAgent({
         continue;
       }
       if (type === "split_scene_into_subscenes") {
-        splitSceneIntoSubscenes(findAgentScene(action), action);
+        await splitSceneIntoSubscenes(findAgentScene(action), action);
         continue;
       }
       if (type === "split_selected_range_into_scenes") {
@@ -774,7 +814,7 @@ export function createBuilderAgent({
         if (!range) {
           const targetScene = findAgentScene(action);
           if (targetScene && count > 1) {
-            splitSceneIntoSubscenes(targetScene, action);
+            await splitSceneIntoSubscenes(targetScene, action);
           } else if (!count && normalizeTimelineMarkers(state.timelineMarkers).some((marker) => Number(marker.end || 0) > Number(marker.start || 0))) {
             syncScenesToTimelineMarkers({ ...action, create_missing: action?.create_missing !== false }, "timeline note timing");
           } else {

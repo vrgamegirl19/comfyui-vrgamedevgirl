@@ -234,3 +234,46 @@ test('final collection waits for in-flight stage backup and retains scratch on c
     if (!fail) { assert.equal(segment.minimax_h3_stage1_backup_path,'/project/backup.mp4'); assert.equal(copyCalls,1); }
   }
 });
+
+test('2 Pass Advanced seam settings default, clamp and survive JSON reload', () => {
+  const c = fixture();
+  const defaults = c.cloneMiniMaxH3Settings({});
+  assert.equal(defaults.advanced_two_pass_brightness_match, true);
+  assert.equal(defaults.advanced_two_pass_dynamic_fade, 'widening');
+  assert.equal(defaults.advanced_two_pass_masked_area_noise, 0);
+  assert.equal(defaults.advanced_two_pass_grid_rows, 2);
+  assert.equal(defaults.advanced_two_pass_grid_cols, 3);
+  assert.equal(defaults.advanced_two_pass_spatial_w_overlap, 192);
+  const custom = c.cloneMiniMaxH3Settings({
+    advanced_two_pass_defaults_version: 4,
+    advanced_two_pass_brightness_match: false,
+    advanced_two_pass_dynamic_fade: 'Narrowing',
+    advanced_two_pass_dynamic_fade_min: 64,
+    advanced_two_pass_masked_area_noise: 5,
+  });
+  assert.equal(custom.advanced_two_pass_brightness_match, false);
+  assert.equal(custom.advanced_two_pass_dynamic_fade, 'narrowing');
+  assert.equal(custom.advanced_two_pass_dynamic_fade_min, 64);
+  assert.equal(custom.advanced_two_pass_masked_area_noise, 1);
+  assert.equal(c.cloneMiniMaxH3Settings({ advanced_two_pass_dynamic_fade: 'bogus' }).advanced_two_pass_dynamic_fade, 'widening');
+  const reloaded = c.cloneMiniMaxH3Settings(JSON.parse(JSON.stringify(custom)));
+  assert.equal(reloaded.advanced_two_pass_dynamic_fade, 'narrowing');
+});
+
+test('VRAM presets size an equal tile grid from the Pass 2 resolution', () => {
+  const c = fixture();
+  const fourK = (key) => c.miniMaxH3TilePlan(key, 7.9688, '16:9 (Widescreen)');
+  const grid = (plan) => `${plan.rows}x${plan.cols}`;
+  assert.equal(grid(fourK('32gb')), '2x3');
+  assert.equal(grid(fourK('24gb')), '3x5');
+  assert.equal(grid(fourK('16gb')), '4x6');
+  assert.equal(grid(fourK('12gb')), '4x7');
+  assert.equal(grid(fourK('8gb')), '5x8');
+  assert.equal(fourK('32gb').chunk, 170);
+  assert.equal(fourK('32gb').overlap, 192);
+  assert.equal(fourK('custom'), null);
+  // A smaller Pass 2 needs fewer tiles on the same card, and chunk stays a multiple of 17.
+  const twoK = c.miniMaxH3TilePlan('32gb', 2, '16:9 (Widescreen)');
+  assert.ok(twoK.rows * twoK.cols < 6);
+  for (const key of ['8gb', '12gb', '16gb', '24gb', '32gb']) assert.equal(fourK(key).chunk % 17, 0);
+});
