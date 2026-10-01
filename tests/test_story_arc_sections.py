@@ -12,7 +12,11 @@ HELPERS = {
     "_story_arc_entry_word_limit",
     "_story_arc_scene_map",
     "_normalize_story_arc_output",
+    "_feeling_word_hits",
+    "_split_story_arc_sections",
+    "_story_arc_scene_entries_enabled",
 }
+CONSTANTS = {"_FEELING_WORDS"}
 
 
 def load_story_arc_helpers():
@@ -20,7 +24,8 @@ def load_story_arc_helpers():
     helper_nodes = [
         node
         for node in tree.body
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in HELPERS
+        if (isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in HELPERS)
+        or (isinstance(node, ast.Assign) and any(getattr(target, "id", "") in CONSTANTS for target in node.targets))
     ]
     namespace = {"re": re}
     exec(compile(ast.Module(body=helper_nodes, type_ignores=[]), str(SOURCE_PATH), "exec"), namespace)
@@ -33,6 +38,9 @@ section_word_limit = HELPER_NAMESPACE["_story_arc_section_word_limit"]
 normalize_output = HELPER_NAMESPACE["_normalize_story_arc_output"]
 scene_map = HELPER_NAMESPACE["_story_arc_scene_map"]
 entry_word_limit = HELPER_NAMESPACE["_story_arc_entry_word_limit"]
+feeling_hits = HELPER_NAMESPACE["_feeling_word_hits"]
+split_sections = HELPER_NAMESPACE["_split_story_arc_sections"]
+entries_enabled = HELPER_NAMESPACE["_story_arc_scene_entries_enabled"]
 
 
 class StoryArcSectionTests(unittest.TestCase):
@@ -208,6 +216,21 @@ class StoryArcSectionTests(unittest.TestCase):
         self.assertIn("Scene 2 (Pass) \u2014 The pair pause", normalized)
         self.assertTrue(normalized.startswith("Verse 1:"))
         self.assertIn("Chorus:\nScene 3 (Overlook)", normalized)
+
+    def test_feeling_words_need_two_hits(self):
+        self.assertEqual(feeling_hits("She feels grief and longing."), ["feels", "grief", "longing"])
+        self.assertEqual(feeling_hits("She feels the rail and turns."), [])
+
+    def test_sections_split_by_required_labels(self):
+        text = "Verse 1:\nHe walks.\nHe stops.\n\nChorus:\nHe spins."
+        self.assertEqual(split_sections(text, ["Verse 1", "Chorus"]), {"Verse 1": "He walks.\nHe stops.", "Chorus": "He spins."})
+
+    def test_scene_notes_run_for_detailed_and_rich_unless_set(self):
+        self.assertFalse(entries_enabled({}, {}, "standard"))
+        self.assertTrue(entries_enabled({}, {}, "detailed"))
+        self.assertTrue(entries_enabled({}, {}, "rich"))
+        self.assertTrue(entries_enabled({"story_arc_scene_entries": True}, {}, "compact"))
+        self.assertFalse(entries_enabled({"story_arc_scene_entries": "off"}, {}, "rich"))
 
     def test_scene_entries_stay_on_separate_lines(self):
         normalized = normalize_output(

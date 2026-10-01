@@ -1,3 +1,4 @@
+import asyncio
 import json
 import copy
 import math
@@ -1678,114 +1679,144 @@ def _register_routes():
     @server_instance.routes.get("/vrgdg/music_prompt_creator/config")
     async def vrgdg_music_prompt_creator_config(_request):
         path = _workflow_template_path()
+        exists = await asyncio.to_thread(os.path.isfile, path)
         return _json_response({
             "workflow_template_path": path,
-            "workflow_template_exists": os.path.isfile(path),
+            "workflow_template_exists": exists,
             "llm_settings": dict(_LLM_SETTINGS),
         })
 
     @server_instance.routes.post("/vrgdg/music_prompt_creator/repair_segments")
     async def vrgdg_music_prompt_creator_repair_segments(request):
         try:
-            return _json_response(_repair_segments(await request.json()))
+            payload = await request.json()
+            result = await asyncio.to_thread(_repair_segments, payload)
+            return _json_response(result)
         except Exception as exc:
             return _json_response(error=exc, status=400)
 
     @server_instance.routes.post("/vrgdg/music_prompt_creator/create_concepts")
     async def vrgdg_music_prompt_creator_create_concepts(request):
         try:
-            return _json_response(_create_concepts(await request.json()))
+            payload = await request.json()
+            result = await asyncio.to_thread(_create_concepts, payload)
+            return _json_response(result)
         except Exception as exc:
             return _json_response(error=exc, status=400)
 
     @server_instance.routes.post("/vrgdg/music_prompt_creator/extract_subject")
     async def vrgdg_music_prompt_creator_extract_subject(request):
         try:
-            return _json_response(_extract_subject(await request.json()))
+            payload = await request.json()
+            result = await asyncio.to_thread(_extract_subject, payload)
+            return _json_response(result)
         except Exception as exc:
             return _json_response(error=exc, status=400)
 
     @server_instance.routes.post("/vrgdg/music_prompt_creator/create_i2v_motion_notes")
     async def vrgdg_music_prompt_creator_create_i2v_motion_notes(request):
         try:
-            return _json_response(_create_i2v_motion_notes(await request.json()))
+            payload = await request.json()
+            result = await asyncio.to_thread(_create_i2v_motion_notes, payload)
+            return _json_response(result)
         except Exception as exc:
             return _json_response(error=exc, status=400)
 
     @server_instance.routes.post("/vrgdg/music_prompt_creator/save_outputs")
     async def vrgdg_music_prompt_creator_save_outputs(request):
         try:
-            return _json_response(_save_prompt_creator_outputs(await request.json()))
+            payload = await request.json()
+            result = await asyncio.to_thread(_save_prompt_creator_outputs, payload)
+            return _json_response(result)
         except Exception as exc:
             return _json_response(error=exc, status=400)
 
     @server_instance.routes.post("/vrgdg/music_prompt_creator/save_draft")
     async def vrgdg_music_prompt_creator_save_draft(request):
         try:
-            return _json_response(_save_prompt_creator_draft(await request.json()))
+            payload = await request.json()
+            result = await asyncio.to_thread(_save_prompt_creator_draft, payload)
+            return _json_response(result)
         except Exception as exc:
             return _json_response(error=exc, status=400)
 
     @server_instance.routes.post("/vrgdg/music_prompt_creator/load_draft")
     async def vrgdg_music_prompt_creator_load_draft(request):
         try:
-            return _json_response(_load_prompt_creator_draft(await request.json()))
+            payload = await request.json()
+            result = await asyncio.to_thread(_load_prompt_creator_draft, payload)
+            return _json_response(result)
         except Exception as exc:
             return _json_response(error=exc, status=400)
 
     @server_instance.routes.get("/vrgdg/music_prompt_creator/list_drafts")
     async def vrgdg_music_prompt_creator_list_drafts(_request):
         try:
-            return _json_response(_list_prompt_creator_drafts())
+            result = await asyncio.to_thread(_list_prompt_creator_drafts)
+            return _json_response(result)
         except Exception as exc:
             return _json_response(error=exc, status=400)
 
     @server_instance.routes.post("/vrgdg/music_prompt_creator/get_instruction")
     async def vrgdg_music_prompt_creator_get_instruction(request):
         try:
-            return _json_response(_get_prompt_creator_instruction(await request.json()))
+            payload = await request.json()
+            result = await asyncio.to_thread(_get_prompt_creator_instruction, payload)
+            return _json_response(result)
         except Exception as exc:
             return _json_response(error=exc, status=400)
 
     @server_instance.routes.post("/vrgdg/music_prompt_creator/save_instruction")
     async def vrgdg_music_prompt_creator_save_instruction(request):
         try:
-            return _json_response(_save_prompt_creator_instruction(await request.json()))
+            payload = await request.json()
+            result = await asyncio.to_thread(_save_prompt_creator_instruction, payload)
+            return _json_response(result)
         except Exception as exc:
             return _json_response(error=exc, status=400)
 
     @server_instance.routes.post("/vrgdg/music_prompt_creator/reset_instruction")
     async def vrgdg_music_prompt_creator_reset_instruction(request):
         try:
-            return _json_response(_reset_prompt_creator_instruction(await request.json()))
+            payload = await request.json()
+            result = await asyncio.to_thread(_reset_prompt_creator_instruction, payload)
+            return _json_response(result)
         except Exception as exc:
             return _json_response(error=exc, status=400)
 
     @server_instance.routes.post("/vrgdg/music_prompt_creator/list_instruction_presets")
     async def vrgdg_music_prompt_creator_list_instruction_presets(request):
         try:
-            return _json_response(_list_prompt_creator_instruction_presets(await request.json()))
+            payload = await request.json()
+            result = await asyncio.to_thread(_list_prompt_creator_instruction_presets, payload)
+            return _json_response(result)
         except Exception as exc:
             return _json_response(error=exc, status=400)
 
     @server_instance.routes.post("/vrgdg/music_prompt_creator/save_instruction_preset")
     async def vrgdg_music_prompt_creator_save_instruction_preset(request):
         try:
-            return _json_response(_save_prompt_creator_instruction_preset(await request.json()))
+            payload = await request.json()
+            result = await asyncio.to_thread(_save_prompt_creator_instruction_preset, payload)
+            return _json_response(result)
         except Exception as exc:
             return _json_response(error=exc, status=400)
 
     @server_instance.routes.post("/vrgdg/music_prompt_creator/load_instruction_preset")
     async def vrgdg_music_prompt_creator_load_instruction_preset(request):
         try:
-            return _json_response(_load_prompt_creator_instruction_preset(await request.json()))
+            payload = await request.json()
+            result = await asyncio.to_thread(_load_prompt_creator_instruction_preset, payload)
+            return _json_response(result)
         except Exception as exc:
             return _json_response(error=exc, status=400)
 
     @server_instance.routes.post("/vrgdg/music_prompt_creator/build_whisper_prompt")
     async def vrgdg_music_prompt_creator_build_whisper_prompt(request):
         try:
-            return _json_response(_build_whisper_workflow_prompt(await request.json()))
+            payload = await request.json()
+            result = await asyncio.to_thread(_build_whisper_workflow_prompt, payload)
+            return _json_response(result)
         except Exception as exc:
             return _json_response(error=exc, status=400)
 

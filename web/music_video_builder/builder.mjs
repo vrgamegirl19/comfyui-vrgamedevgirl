@@ -1763,6 +1763,7 @@ export function openBuilder(node) {
     allEditableSegments: (...args) => allEditableSegments(...args),
     currentGlobalTime: (...args) => currentGlobalTime(...args),
     segmentIndexInfo: (...args) => segmentIndexInfo(...args),
+    logicalExtraSubjectsForScene: (...args) => logicalExtraSubjectsForScene(...args),
     logicalReferenceSubjects: (...args) => logicalReferenceSubjects(...args),
     logicalSubjectIdsForScene: (...args) => logicalSubjectIdsForScene(...args),
     sceneReferenceMapArray: (...args) => sceneReferenceMapArray(...args),
@@ -2583,6 +2584,11 @@ export function openBuilder(node) {
         session: currentSessionData(),
         project_context_files: await projectContextFilesForSessionSave(),
       }, 60000);
+      if (data?.stale) {
+        console.warn(`[VRGDG Music Builder] Autosave skipped before ${reason || "action"}: stale snapshot rejected by server.`);
+        toast("Project was modified elsewhere. Snapshot not overwritten to protect newer edits. Please reload the project.", true);
+        return false;
+      }
       state.projectFolder = data.project_folder || state.projectFolder;
       state.sessionPath = data.session_path || state.sessionPath;
       state.srtPath = data.srt_path || state.srtPath;

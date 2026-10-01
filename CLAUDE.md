@@ -2,7 +2,7 @@
 
 ## Primary Directive: Follow AGENT_GUIDE.md
 
-Before modifying, designing, or debugging any code in this repository, you **MUST** read and adhere to the guidelines, architectural boundaries, and recipes documented in [AGENT_GUIDE.md](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/AGENT_GUIDE.md).
+Before modifying, designing, or debugging any code in this repository, you **MUST** read and adhere to the guidelines, architectural boundaries, and recipes documented in [AGENT_GUIDE.md](AGENT_GUIDE.md).
 
 `AGENT_GUIDE.md` is the primary ground-truth technical specification for this repository. It defines:
 - The dual execution paradigms (ComfyUI canvas node graph vs. headless API prompt execution via the Video Builder).

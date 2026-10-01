@@ -108,8 +108,9 @@ class BuilderReferenceSaveAndCueTests(unittest.TestCase):
         self.assertIn("Remove a previously generated canonical contract", source)
 
     def test_minimax_generation_requires_rich_shot_prose(self):
-        self.assertIn("SHOT PROSE QUALITY — MANDATORY", UI_SOURCE)
-        self.assertIn("not notes, labels, telegraphic shorthand, compressed summaries, or fragments", UI_SOURCE)
+        self.assertIn("SHOT FORMAT — MANDATORY", UI_SOURCE)
+        self.assertIn("MOTION ENERGY — MANDATORY", UI_SOURCE)
+        self.assertIn("not notes, labels, or fragments", UI_SOURCE)
         self.assertIn("let targetLimit = 7000", UI_SOURCE)
 
 

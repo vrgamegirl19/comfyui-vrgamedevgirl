@@ -487,14 +487,19 @@ def _install(ids):
         results.append({"id": item_id, "folder": item["folders"][0], "action": action, "output": output[-1200:]})
     return results
 
-@PromptServer.instance.routes.get("/vrgdg/video_builder/custom_nodes/status")
-async def custom_nodes_status(request):
-    return web.json_response({
+def _collect_custom_nodes_status():
+    return {
         "ok": True,
         "custom_nodes_dir": str(_CUSTOM_NODES_DIR),
         "manager_available": _manager_available(),
         "nodes": [_node_status(item_id, item) for item_id, item in VIDEO_BUILDER_CUSTOM_NODES.items()],
-    })
+    }
+
+
+@PromptServer.instance.routes.get("/vrgdg/video_builder/custom_nodes/status")
+async def custom_nodes_status(request):
+    data = await asyncio.to_thread(_collect_custom_nodes_status)
+    return web.json_response(data)
 
 @PromptServer.instance.routes.post("/vrgdg/video_builder/custom_nodes/install")
 async def custom_nodes_install(request):

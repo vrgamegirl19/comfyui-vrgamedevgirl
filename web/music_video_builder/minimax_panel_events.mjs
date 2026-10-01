@@ -166,6 +166,7 @@ export function wireMiniMaxPanel({
       pass.seed,
     ]),
     ...advancedTwoPassControls.flatMap((pass) => [
+      pass.resolutionPreset,
       pass.megapixels,
       pass.steps,
       pass.denoise,

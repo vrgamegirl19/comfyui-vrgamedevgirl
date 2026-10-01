@@ -376,105 +376,54 @@ def _storyboard_story_brief_instruction(lyric_story_strength_guidance_text, user
 # Used by: storyboard.story_layer._build_story_layer_arc
 # Route: /vrgdg/storyboard/story_arc ("Generate Story Arc")
 # Controls: the per-lyric-section visual story arc shown in the Story Layer panel.
+# Pass 1 writes one paragraph per lyric section. Pass 2 (optional) writes one short
+# note per scene; code adds the "Scene N (Location) —" prefix.
 # ============================================================================
 
-def _storyboard_story_arc_scene_map_text(section_scene_map):
-    """Controls: the Scene Map block that tells the Story Arc which scene sits in which section and location."""
-    lines = []
-    for label, rows in section_scene_map:
-        lines.append(str(label))
-        for row in rows:
-            location = row.get("location") or "[no mapped location]"
-            lyric = f' | lyric "{row["lyric"]}"' if row.get("lyric") else ""
-            cast = ", ".join(row.get("cast") or []) or "no characters"
-            lines.append(f"  Scene {row.get('scene_number')} | {location} | cast: {cast}{lyric}")
-    return "\n".join(lines)
-
-
-def _storyboard_story_arc_structure_instruction(required_section_labels, section_scene_map=None, entry_word_limit=0):
+def _storyboard_story_arc_structure_instruction(required_section_labels):
     """Controls: whether the Story Arc must follow explicit lyric section
     headers exactly, or is free to invent its own song structure.
     """
-    if required_section_labels and section_scene_map:
-        formatted_labels = "\n".join(f"- {label}" for label in required_section_labels)
-        return (
-            "STRUCTURAL RIGIDITY (MANDATORY):\n"
-            "The song structure is fixed. Output exactly these section headings in this exact sequence. "
-            "Do not merge, omit, rename, reorder, or add any headings:\n"
-            f"{formatted_labels}\n\n"
-            "SCENE ENTRIES (MANDATORY):\n"
-            "Under every heading, write one entry for EACH scene listed for that section in the Scene Map, in the same order, one entry per line, in exactly this shape:\n"
-            "Scene <number> (<mapped location name>) \u2014 <one to three sentences of concrete, visible story action>\n"
-            "- Use each scene's mapped location exactly as listed, and stage that entry inside it. Never use a colon inside a scene entry line.\n"
-            f"- Write each entry between {max(12, int(entry_word_limit * 0.7))} and {entry_word_limit} words. Never exceed {entry_word_limit} words.\n"
-            "- Every entry must move the story forward with something new: a discovery, decision, obstacle, encounter, reversal, or consequence. Never repeat a previous entry's action.\n"
-            "- Begin each entry from the physical state the previous entry ended in (a carried object, a changed distance between the characters, weather, time of day), and show how the characters travel when the place changes.\n\n"
-            "STORY SPINE (MANDATORY):\n"
-            "Treat the whole arc as one continuous, escalating short film, not a list of separate scenes.\n"
-            "- Early sections establish who the characters are, what they want, and what stands in their way.\n"
-            "- Middle sections deepen the relationship and bring complications, setbacks, or a surprise.\n"
-            "- The Bridge, or the section nearest the two-thirds mark, is the crisis or turning point: the emotional low, a risk, or a reversal.\n"
-            "- The final sections resolve it, and the last scene pays off an image or object set up earlier.\n"
-            "- Spread these beats across ALL scenes and locations in the Scene Map so the story uses the whole world."
-        )
     if required_section_labels:
-        formatted_labels = "\n".join(f"- {label}" for label in required_section_labels)
         return (
-            "STRUCTURAL RIGIDITY (MANDATORY):\n"
-            "The song structure is fixed. Output exactly these section headings in this exact sequence. "
-            "Do not merge, omit, rename, reorder, or add any headings:\n"
-            f"{formatted_labels}\n"
-            "Every heading represents an independent, continuous scene beat. "
-            "Write exactly one cohesive visual paragraph under each heading."
+            "The reference lyrics contain explicit section headers. Preserve exactly this section order and these output headings; "
+            "do not add, remove, merge, rename, or invent sections:\n"
+            + "\n".join(f"- {label}" for label in required_section_labels)
+            + "\nRepeated sections have been numbered by occurrence so every real section has its own summary."
         )
     return (
-        "STRUCTURAL INFERENCE:\n"
-        "The lyrics lack explicit structural markers. Establish a compact, standard song structure "
-        "(e.g., Verse 1, Chorus 1, Verse 2, Chorus 2, Bridge, Chorus 3) dictated strictly by musical "
-        "energy and narrative turning points. Do not invent gratuitous Intro or Outro sections unless "
-        "explicitly supported by instrumental cues."
+        "The reference lyrics do not contain explicit section headers. Infer a sensible compact song structure from lyrical "
+        "and narrative changes. Do not add an Intro or Outro unless the supplied material clearly supports one."
     )
 
 
 def _storyboard_story_arc_motion_guidance(character_motion_speed):
-    """Controls: character kinetics tiered by motion speed, calibrated to prevent
-    diffusion artifacts (melting limbs, morphing objects) in MiniMax H3.
+    """Controls: how physically active the singer/main character should be
+    across every Story Arc section, tiered by the project's character-motion-speed setting.
+    The slider sets the energy. Nothing here caps it.
     """
     if character_motion_speed <= 2:
         return (
-            "Character Kinetic Profile [Low / 1-2]:\n"
-            "- Movement: Micro-kinetics only. Avoid rapid extremity travel.\n"
-            "- Actions: Subtle weight transfers, deliberate head turns, slow postural settling, "
-            "gradual eye-line shifts, breathing motion, or fingertips grazing a static surface.\n"
-            "- Diffusion Guard: Keep limbs anchored; avoid rapid hand gestures or complex prop manipulations."
+            "Character motion level: mostly still. The singer may hold poses, but each section still needs a visible micro-action "
+            "such as reaching, turning, touching fabric, shifting weight, raising a hand, or interacting with one object."
         )
     if character_motion_speed <= 5:
         return (
-            "Character Kinetic Profile [Moderate / 3-5]:\n"
-            "- Movement: Single-vector, controlled linear action.\n"
-            "- Actions: Paced steady stride in one direction, lifting or placing a single grounded prop, "
-            "deliberate pivot/turn of the torso, or a measured seated-to-standing transition.\n"
-            "- Diffusion Guard: Every movement must follow a single physical trajectory without abrupt reversals."
+            "Character motion level: moderate. Give the singer controlled performance movement: steps, turns, gestures, changes in blocking, "
+            "and occasional interaction with the set."
         )
     if character_motion_speed <= 8:
         return (
-            "Character Kinetic Profile [Active / 6-8]:\n"
-            "- Movement: Dynamic environmental traversal.\n"
-            "- Actions: Purposeful transit across depth planes (moving directly toward or away from the camera), "
-            "hurried strides, pushing through physical barriers (doors, curtains, weather), or rhythmic performance choreography.\n"
-            "- Diffusion Guard: Keep the subject's center of gravity readable; avoid multi-limb acrobatics."
+            "Character motion level: active. The singer should usually move through the location, walk, approach, retreat, touch objects, "
+            "use architecture, cross rooms, lean into weather, or physically interact with the environment."
         )
     return (
-        "Character Kinetic Profile [High Kinetic / 9-10]:\n"
-        "- Movement: High-momentum, full-body kinetic staging.\n"
-        "- Actions: Full sprint, athletic leaps, rapid choreography with sweeping arm sweeps, forceful interactions with "
-        "the set (shoving, slamming, breaking into a run), or high-velocity rotational turns.\n"
-        "- Diffusion Guard: Stage the momentum along a sustained path so motion blur remains coherent across frames."
+        "Character motion level: highly active. Build big physical beats: dancing, running, climbing, struggling, sweeping gestures, "
+        "forceful environmental interaction, or kinetic performance movement."
     )
 
 
 def _storyboard_story_arc_instruction(
-    *,
     required_section_labels,
     section_word_limit,
     story_arc_seed,
@@ -492,87 +441,128 @@ def _storyboard_story_arc_instruction(
     compact_scenes_json,
     subjects_json,
     locations_json,
-    section_scene_map=None,
-    entry_word_limit=0,
     song_story_brief="",
 ):
-    """The primary Story Arc generation prompt.
-    Directs the LLM as a cinematographic continuity supervisor optimized for MiniMax H3.
-    When section_scene_map is supplied the arc is written scene by scene instead of one paragraph per section.
+    """The main Story Arc generation prompt (Pass 1).
+    Controls: song-structure fidelity, per-section word budget, what each section paragraph
+    must cover, physical motion level, the cast rule, and every subject/location/lyric input.
     """
-    scene_entries = bool(required_section_labels and section_scene_map)
-    structure_instruction = _storyboard_story_arc_structure_instruction(required_section_labels, section_scene_map, entry_word_limit)
+    structure_instruction = _storyboard_story_arc_structure_instruction(required_section_labels)
     motion_guidance = _storyboard_story_arc_motion_guidance(character_motion_speed)
-    if scene_entries:
-        format_lines = (
-            "- Format every section as its exact heading line ending in a colon, followed by its scene entries, one per line:\n"
-            "  [Section Name]:\n"
-            "  Scene <number> (<mapped location name>) \u2014 [visible story action]\n\n"
-        )
-        length_rule = f"1. Entry Length: Each scene entry is at most {entry_word_limit} words. Never exceed {entry_word_limit} words.\n"
-        action_anchor = "   - Anchor every scene entry around ONE dominant, continuous physical action.\n"
-        map_block = f"Scene Map (authoritative; every scene number and location below is fixed):\n{_storyboard_story_arc_scene_map_text(section_scene_map)}"
-    else:
-        format_lines = (
-            "- Format every section as its exact heading line ending in a colon, followed by exactly one prose paragraph:\n"
-            "  [Section Name]:\n"
-            "  [Continuous visual prose block]\n\n"
-        )
-        length_rule = f"1. Section Length: Write each section's visual summary between {max(20, int(section_word_limit * 0.8))} and {section_word_limit} words. Never exceed {section_word_limit} words.\n"
-        action_anchor = "   - Anchor every section around ONE dominant, continuous physical action.\n"
-        map_block = f"Scene Alignment Map:\n{compact_scenes_json}"
-    brief_block = f"Song Story Brief (narrative anchor):\n{song_story_brief}\n\n" if song_story_brief else ""
-
+    brief_block = f"Song story brief:\n{song_story_brief}\n\n" if song_story_brief else ""
     return (
-        "You are an expert cinematic director and visual continuity supervisor designing a scene-by-scene "
-        "music video storyboard optimized for video diffusion generation (MiniMax H3).\n\n"
-        "Your objective: Translate song lyrics, narrative themes, and performer profiles into a physically grounded, "
-        "visually continuous storyboard structured strictly by musical sections.\n\n"
-        "OUTPUT FORMAT REQUIREMENTS:\n"
-        "- Output ONLY the final story arc sections.\n"
-        "- Do not include markdown code fences, JSON blocks, conversational intros, or closing summaries.\n"
-        f"{format_lines}"
+        "You are a music video story arc generator.\n\n"
+        "Your job is to take song lyrics and turn them into a simple, short story arc for a music video.\n\n"
+        "The user may provide:\n"
+        "* Song lyrics\n"
+        "* Story idea (optional)\n"
+        "* Style/theme (optional)\n"
+        "* Character descriptions\n"
+        "* Location descriptions\n\n"
+        "All inputs are optional. If something is missing, make a strong creative choice and continue.\n\n"
+        "Your output should be clean, complete, and easy to use. Break it down by the actual song structure.\n\n"
         f"{structure_instruction}\n\n"
-        "CAST WALL (MANDATORY):\n"
-        "Every scene lists its cast (the characters selected for that scene). A scene entry may name, describe, or imply ONLY the characters in its own cast. "
-        "Never mention, hint at, or refer by pronoun to a character who is not in that scene's cast, not even as a hand, shadow, voice, reflection, or off-screen presence. "
-        "A character may appear in other scenes without appearing in this one. A scene with no characters shows only the location, objects, and atmosphere.\n\n"
-        "DIRECTORIAL & DIFFUSION CONTINUITY RULES:\n"
-        f"{length_rule}"
-        "2. Grounded Physical Action (Anti-Statue / Anti-Morph):\n"
-        "   - Never leave principal subjects in static poses, generic staring, or passive poses.\n"
-        f"{action_anchor}"
-        "   - Avoid compound temporal sequences (e.g., do NOT write 'she enters, sits down, drinks coffee, then runs out'). "
-        "Stage a single unbroken continuous physical beat suitable for short AI video clips.\n"
-        "3. Spatial Blocking & Depth Planes:\n"
-        "   - Explicitly establish depth: specify what occupies the foreground, midground, and background.\n"
-        "   - Specify practical lighting sources (neon tubes, shafts of sunlight, rim lighting, lens flares) and atmospheric textures.\n"
-        "4. Somatic Emotion (No Abstract Poetry):\n"
-        "   - Never write internal emotional states (e.g., 'he remembers his grief', 'she feels isolated').\n"
-        "   - Render emotional subtext purely through physical cues: jaw clenching, rapid shallow breathing, averted gaze, rigid posture, or trembling hands.\n"
-        "5. Environmental & Extra Discipline:\n"
-        "   - Confine all scenes strictly to the environments described in 'Allowed Locations'. Do not invent unlisted locations or architectural transitions.\n"
-        "   - Extras must only appear in scenes where explicitly mapped, performing their designated support roles (direct, dancing_with, alongside, background). Extras never sing or speak.\n"
-        "6. Metadata Stripping:\n"
-        "   - Ignore performance tags ([Whispered], [Explosive], [Guitar Solo]) as potential structural headings. Incorporate their energy directly into the scene's lighting, tempo, and action.\n\n"
-        f"Creative Seed: {story_arc_seed or '[none]'}\n"
-        "If this seed differs from previous runs, establish distinct blocking, alternative camera elevations, and different prop interactions while maintaining identical world rules.\n\n"
-        "DIRECTORIAL PARAMETERS:\n"
-        f"- Camera Flow: {camera_flow or '[Smooth Cinematic Panning]'}\n"
-        f"- Camera Speed: {camera_motion_speed}/10\n"
-        f"- Character Kinetic Speed: {character_motion_speed}/10\n"
-        f"- Performance Style: {performance_style or '[Method Dramatic]'}\n"
-        f"- Facial Intensity: {facial_performance or '[Subtle Realism]'}\n\n"
+        "Format every section as its heading on one line ending in a colon, followed by one prose paragraph.\n\n"
+        "Each section paragraph covers, in this order:\n"
+        "1. Setting: the mapped location, with one light or weather detail taken from its description.\n"
+        "2. Action: one continuous physical action by the main character.\n"
+        "3. Blocking: where the character is in the space (foreground, midground, background) and how they move through it.\n"
+        "4. Small movement: one visible movement such as breath, hands, gaze, or posture.\n"
+        "5. Carry: the object, position, or light that passes into the next section.\n\n"
+        "Rules:\n"
+        f"* Fully summarize the visual story progression of each section in no more than {section_word_limit} words.\n"
+        "* Use the entire section, not only its first lyric line.\n"
+        "* Do not summarize the lyrics line by line.\n"
+        "* Write like a music video director's shot list. Describe what the camera sees. Do not describe feelings, memories, or symbolism.\n"
+        "* Use the character names from the Character descriptions, not pronouns.\n"
+        "* Each scene in the Scene lyric map lists its cast. Write each section using only the cast of that section's scenes. Do not add unnamed people, crowds, or characters who are not in those scenes.\n"
+        "* The main character or singer should not default to standing still, standing alone, staring, looking, being framed, or holding a pose.\n"
+        "* Unless the character motion level is very low, every section must include a distinct physical action by the singer or main character.\n"
+        "* Vary the action between sections. Avoid repeating stand, stare, gaze, look, walk, or turn as the only beat.\n"
+        "* Make the location support the action; do not let the location be the whole story beat.\n"
+        "* If Location descriptions are provided, use only those locations as the physical settings for the arc.\n"
+        "* Do not invent warehouses, loading docks, corridors, steel stairs, metal doors, concrete halls, or other industrial spaces unless those are explicitly present in the provided Location descriptions.\n"
+        "* To create variety, change subject actions, camera energy, props, lighting, blocking, and use of the mapped locations instead of inventing unrelated places.\n"
+        "* The Scene lyric map may include mapped_extras. Use those exact extras only in the scenes where they are mapped, and use each interaction role to shape the section's larger action progression.\n"
+        "* Plan recurring extra relationships across sections when the same named extra returns, especially direct, dancing_with, and alongside roles. Background and background_dancing extras may support group progression without becoming principal singers.\n"
+        "* Extras never sing, speak, or receive dialogue unless the scene mapping explicitly identifies them as a vocal subject elsewhere. Do not move an extra into an unmapped scene.\n"
+        "* Never force a standard pop-song template over explicit lyric section headers.\n"
+        "* When a lyric header line contains several bracketed tags, only the required section heading listed above is structural. Tags such as [Whispered], [High Energy], [Dark Atmosphere], and [Explosive] are performance or mood notes, not output headings. [End] is only an end marker.\n"
+        "* Values such as [instrumental], [music only], or [no vocals] inside the Scene lyric map are timing/content markers, not additional song-section headings. Cover their visuals inside the nearest listed required section and never output those markers as separate headings.\n"
+        "* If only lyrics are provided, build the arc from the lyrics.\n"
+        "* If no lyrics are provided, build the arc from the theme or story idea.\n"
+        "* Do not ask follow-up questions unless absolutely necessary.\n"
+        "* Output only the story arc sections. No intro note, no markdown table, no JSON.\n\n"
+        f"Creative variation seed: {story_arc_seed or '[none]'}\n"
+        "Use this seed as a reroll key. If the user regenerates the story arc with a different seed, choose a meaningfully different visual interpretation, section action pattern, and location usage while still respecting the same subjects, locations, lyrics, and style.\n\n"
+        f"Scene default style settings:\n"
+        f"- Camera flow: {camera_flow or '[not provided]'}\n"
+        f"- Camera motion speed: {camera_motion_speed}/10\n"
+        f"- Character motion speed: {character_motion_speed}/10\n"
+        f"- Performance style: {performance_style or '[not provided]'}\n"
+        f"- Facial performance: {facial_performance or '[not provided]'}\n\n"
         f"{motion_guidance}\n\n"
         f"{lyric_story_strength_guidance_text}\n\n"
-        f"Story Premise:\n{story_idea or '[Derive organic premise directly from lyrics]'}\n\n"
+        f"Story idea:\n{story_idea or '[not provided]'}\n\n"
         f"{brief_block}"
-        f"Negative Baseline (Do Not Replicate Previous Run):\n{previous_story_arc or '[none]'}\n\n"
-        f"Visual Theme & Palette:\n{style_theme or '[Cinematic Photorealism, 35mm film stock, high contrast]'}\n\n"
-        f"Character Profiles:\n{subjects_json}\n\n"
-        f"Allowed Locations:\n{locations_json}\n\n"
-        f"Authoritative Lyrics ({lyrics_source}):\n{lyrics or '[not provided]'}\n\n"
-        f"{map_block}"
+        f"Previous generated story arc to avoid copying:\n{previous_story_arc or '[not provided]'}\n\n"
+        "If a previous generated story arc is provided, do not preserve its specific locations, set pieces, or section actions. Use it only as a negative example of what should change on this reroll.\n\n"
+        f"Style/theme:\n{style_theme or '[not provided]'}\n\n"
+        f"Character descriptions:\n{subjects_json}\n\n"
+        f"Location descriptions:\n{locations_json}\n\n"
+        f"Authoritative lyric source: {lyrics_source}\n"
+        f"Full reference lyrics:\n{lyrics or '[not provided]'}\n\n"
+        f"Scene lyric map:\n{compact_scenes_json}"
+    )
+
+
+def _storyboard_story_arc_scene_entry_instruction(
+    *,
+    section_label,
+    section_text,
+    scene_number,
+    location_name,
+    location_description,
+    cast_wall,
+    cast_names,
+    lyric,
+    previous_entry,
+    camera_flow,
+    camera_motion_speed,
+    character_motion_speed,
+    word_limit,
+    story_arc_seed="",
+):
+    """Story Arc Pass 2: one short scene note. Code adds the "Scene N (Location) —" prefix.
+    Controls: the fixed note order, the cast lock, and the slider-driven energy for a single scene.
+    """
+    who = ", ".join(cast_names) if cast_names else "no one"
+    return (
+        "You write one scene note for a music video shot list.\n\n"
+        f"{cast_wall}\n\n"
+        f"Song section: {section_label}\n"
+        f"Scene number: {scene_number}\n"
+        f"Location: {location_name or '[not provided]'}\n"
+        f"Location description: {location_description or '[not provided]'}\n"
+        f"Lyric line (context only, do not quote): {lyric or '[none]'}\n"
+        f"Section story so far:\n{section_text or '[none]'}\n\n"
+        f"Previous scene note:\n{previous_entry or '[none]'}\n\n"
+        f"Camera flow: {camera_flow or '[not provided]'}\n"
+        f"Camera motion speed: {camera_motion_speed}/10\n"
+        f"Character motion speed: {character_motion_speed}/10\n"
+        f"{_storyboard_story_arc_motion_guidance(character_motion_speed)}\n\n"
+        f"Write 1 to 2 sentences, no more than {word_limit} words. Use this order:\n"
+        "1. One camera idea (shot size and one move) that fits the motion speeds above.\n"
+        f"2. What the people listed above ({who}) physically do, in one continuous action, ending in a position the next scene can start from.\n"
+        "3. One small visible movement (breath, hands, gaze, posture).\n"
+        "4. One light or set detail from the location description.\n\n"
+        "Rules:\n"
+        "- Describe what the camera sees. Do not describe feelings, memories, or symbolism.\n"
+        "- Stay inside the location above. Do not invent another place.\n"
+        "- Use names, not pronouns. Do not add any person who is not named in the people list above.\n"
+        "- Do not repeat the previous scene note's action.\n"
+        "- Output only the note text. No label, no scene number, no quotes.\n"
+        f"Variation seed: {story_arc_seed or '[none]'}"
     )
 
 
@@ -580,14 +570,14 @@ def _storyboard_story_arc_format_retry_instruction(required_section_labels, orig
     """Sent when the initial response fails exact heading validation.
     Enforces a strict heading skeleton and forbids markdown/conversational output.
     """
-    exact_format = "\n\n".join(f"{label}:\n[Section content in the format defined in the original instructions]" for label in required_section_labels)
+    exact_format = "\n\n".join(f"{label}:\n[one visual-story paragraph]" for label in required_section_labels)
     return (
         "CRITICAL FORMAT VALIDATION FAILURE:\n"
         "Your previous response violated the structural section heading contract.\n\n"
         "RULES FOR THIS REGENERATION:\n"
         f"1. Your response must begin immediately on line 1 with: '{required_section_labels[0]}:'\n"
         "2. Include EVERY section heading listed below exactly once, in this exact sequence, followed by a colon.\n"
-        "3. Write each section's content in the format defined in the original instructions (a single prose paragraph, or one scene entry per line when a Scene Map is provided).\n"
+        "3. Write one prose paragraph under each heading.\n"
         "4. Absolutely no markdown lists, code fences, introductory sentences, or summary commentary.\n\n"
         f"REQUIRED OUTPUT SKELETON:\n{exact_format}\n\n"
         f"ORIGINAL CONTEXT & PARAMETERS:\n{original_instruction}"
@@ -595,33 +585,24 @@ def _storyboard_story_arc_format_retry_instruction(required_section_labels, orig
 
 
 def _storyboard_story_arc_schema(required_section_labels):
-    """JSON schema for strict structured-output validation.
-    Guarantees that every section label is an object property with no hallucinated extras.
-    """
+    """JSON schema for the schema-constrained Story Arc retry: one paragraph per required heading, in order."""
     return {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
-        "properties": {
-            label: {
-                "type": "string",
-                "description": f"The story arc content for {label}, in the format defined in the instructions (one physically grounded paragraph, or one scene entry per line when a Scene Map is provided)."
-            }
-            for label in required_section_labels
-        },
+        "properties": {label: {"type": "string"} for label in required_section_labels},
         "required": list(required_section_labels),
         "additionalProperties": False,
     }
 
 
 def _storyboard_story_arc_json_retry_instruction(original_instruction):
-    """Sent with _storyboard_story_arc_schema when structured output / JSON mode is available."""
+    """Sent with _storyboard_story_arc_schema when the first Story Arc response fails heading validation
+    on a runner that supports schemas. Controls: moving the heading structure into JSON keys.
+    """
     return (
         f"{original_instruction}\n\n"
-        "OUTPUT FORMAT ENFORCEMENT:\n"
-        "Return a raw, valid JSON object matching the provided schema. "
-        "Keys must be the exact section headings in their prescribed order. "
-        "Values must follow the section content format from the instructions, describing blocking and action; separate scene entries with newlines. "
-        "Do not wrap in markdown ```json code fences. Do not repeat the heading name inside the value string."
+        "OUTPUT FORMAT OVERRIDE: return a JSON object instead of heading lines. Use each required section heading as a key, "
+        "in order, and write that section's visual-story paragraph as its value. Do not repeat the heading inside the value. "
+        "Do not wrap the JSON in markdown code fences."
     )
 
 
@@ -676,11 +657,12 @@ def _storyboard_scene_beat_instruction(
     return (
         "You are a music video scene-story planner.\n"
         "Create one concise scene story beat that tells the video prompt writer what this scene contributes to the larger music-video story.\n\n"
-        "Rules:\n"
+        + (f"{cast_wall}\n\n" if cast_wall else "")
+        + "Rules:\n"
         "- Use the Song Story Brief and User Story Arc as continuity anchors.\n"
-        "- If the User Story Arc contains a line that starts with this scene's number (for example \"Scene 12 (...) \u2014 ...\"), use that line as the primary story source for this beat and keep its actions, choices, and emotional turn.\n"
+        "- If the User Story Arc contains a line that starts with this scene's number (for example \"Scene 12 (...) \u2014 ...\"), use that line as the primary story source for this beat and keep its actions and choices.\n"
         "- Use the selected scene lyrics, lyric section, subject details, location details, vocal status, and no-character flag.\n"
-        "- This request creates a visual narrative Scene Story Beat only. Do not mention singing, lyrics, vocals, rapping, lip-sync, music, instrumental sections, dialogue delivery, or any other audio/performance metadata. Do not describe whether a subject is silent or vocal. Show the story through visible action, posture, expression, blocking, props, environment, and emotional stakes.\n"
+        "- This request creates a visual narrative Scene Story Beat only. Do not mention singing, lyrics, vocals, rapping, lip-sync, music, instrumental sections, dialogue delivery, or any other audio/performance metadata. Do not describe whether a subject is silent or vocal. Show the story through visible action, posture, blocking, props, environment, and one camera idea.\n"
         "- Performer and vocal assignments are downstream video-prompt metadata, not content for this beat; never copy those assignments into the story_beat.\n"
         "- The existing scene story beat, if present in the selected scene JSON, is stale draft text being replaced. Do not copy, preserve, or treat it as a fact; the Performer assignment and current scene data override it.\n"
         "- Scene defaults are authoritative when supplied: use the selected shot, camera motion/camera-flow direction, character motion, performance direction, and facial direction to shape the beat. Do not replace them with generic actions.\n"
@@ -688,16 +670,18 @@ def _storyboard_scene_beat_instruction(
         "- The scene cast is exactly the subjects in the selected scene JSON (subject_refs / subjects). The User Story Arc, Song Story Brief, previous beat, and next lyrics cover the whole song and may name other characters. Never include, mention, or imply a character who is not in this scene's cast, even if the arc places them here.\n"
         "- Do not invent or import a different place from the story arc, song brief, previous beat, or next lyrics.\n"
         "- If the story arc names a different location, translate only its emotion, tension, symbolism, or action into the selected location_ref.\n"
-        "- Describe narrative purpose, emotional state, visual symbolism, and how the scene should feel.\n"
+        "- Write like a music video director's shot note. Describe what the cast physically does, where they are in the space, how the camera moves, and the light. Show mood only as visible movement (breath, gaze, hands, posture). Do not use feeling words, memories, or symbolism.\n"
+        "- Match the energy to the scene defaults: the character and camera motion speed set how fast and big the action is.\n"
+        "- Order the paragraph: setting, action, one small human movement, what carries into the next scene.\n"
         "- Use every mapped extra listed below in the scene's action or blocking. Keep each exact extra name visible in the beat.\n"
         "- Interaction meanings are exact: background stays present without active choreography; background_dancing performs backup choreography; alongside moves beside the main subject without contact; dancing_with performs partnered or group choreography with the main subject; direct performs an explicit physical or narrative interaction.\n"
         "- Describe direct, dancing_with, and alongside extras individually. Extras sharing background or background_dancing may be combined into one concise named group.\n"
         "- Use an extra's identity only when needed to distinguish people. Do not copy full appearance or wardrobe biographies into the beat.\n"
         "- Extras do not sing, speak, or receive speaker IDs unless the selected scene explicitly supplies them as vocal sources elsewhere.\n"
         "- Do not write the final video prompt.\n"
-        "- Do not include camera technical instructions unless they are part of the story emotion.\n"
+        "- Include one camera idea that fits the scene defaults, in plain words.\n"
         "- Do not quote long lyric text.\n"
-        "- If no character is present, make the beat about location, objects, atmosphere, memory, or symbolism.\n"
+        "- If no character is present, make the beat about the location, objects, atmosphere, and light, with no person, hand, or shadow.\n"
         f"- {output_rules}\n\n"
         f"{lyric_story_strength_guidance_text}\n\n"
         f"User Story Arc:\n{user_story_arc or '[none]'}\n\n"
@@ -716,7 +700,7 @@ def _storyboard_scene_beat_instruction(
         + scene_json
         + (f"\n\n{cast_wall}" if cast_wall else "")
         + "\n\nFINAL SCENE-BEAT OVERRIDE — FOLLOW THIS LAST:\n"
-        + "Return only visual story information: setting, visible actions, blocking, props, facial emotion, atmosphere, symbolism, and continuity. Exclude all audio, lyric, vocal, singing, lip-sync, and performance-delivery language."
+        + "Return only visual information: setting, visible actions, blocking, props, small human movements, camera idea, light, and continuity. Use only the people listed in PEOPLE IN THIS SCENE. Exclude all audio, lyric, vocal, singing, lip-sync, and performance-delivery language."
     )
 
 
@@ -774,6 +758,23 @@ def _storyboard_scene_beat_location_repair_instruction(location_context, drift_t
         f"Mapped location:\n{location_context or '[none]'}\n\n"
         f"Incompatible leaked location terms:\n{', '.join(drift_terms)}\n\n"
         f"Original scene beat:\n{original_text}"
+    )
+
+
+def _storyboard_feeling_word_repair_instruction(feeling_terms, original_text, word_limit):
+    """Sent only when a scene note or beat leans on feeling words instead of what the camera sees.
+    Controls: rewriting it as a music video shot note with mood shown as visible movement.
+    """
+    return (
+        "Rewrite this music video note so it only describes what the camera sees.\n\n"
+        "Hard rules:\n"
+        "- Remove feeling words, memories, and symbolism.\n"
+        "- Show mood only as a visible movement such as breath, gaze, hands, or posture.\n"
+        "- Keep the same people, the same location, and the same action. Do not add any person, hand, or shadow.\n"
+        "- Keep one camera idea, one small human movement, and one light or set detail.\n"
+        f"- Output the note only, under {word_limit} words.\n\n"
+        f"Words to remove: {', '.join(feeling_terms)}\n\n"
+        f"Original note:\n{original_text}"
     )
 
 

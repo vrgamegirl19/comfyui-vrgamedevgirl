@@ -1,5 +1,4 @@
-"""HTTP routes for the workflow runner."""
-
+import asyncio
 import subprocess
 from aiohttp import web
 from server import PromptServer
@@ -34,27 +33,31 @@ def _ensure_workflow_runner_routes():
 
     @server_instance.routes.get("/vrgdg/workflow_runner/lora_list")
     async def vrgdg_workflow_runner_lora_list(request):
-        return web.json_response({"ok": True, "loras": _lora_choices()})
+        loras = await asyncio.to_thread(_lora_choices)
+        return web.json_response({"ok": True, "loras": loras})
 
     @server_instance.routes.get("/vrgdg/workflow_runner/i2v_choices")
     async def vrgdg_workflow_runner_i2v_choices(request):
-        video_gguf_unets, video_diffusion_models = _ltx_video_model_choices()
-        return web.json_response({
-            "ok": True,
-            "unets": _folder_choices(("unet", "diffusion_models")),
-            "video_gguf_unets": video_gguf_unets,
-            "video_diffusion_models": video_diffusion_models,
-            "vae": _folder_choices("vae"),
-            "clip": _folder_choices(("clip", "text_encoders")),
-            # LatentUpscaleModelLoader validates against latent_upscale_models,
-            # not the ESRGAN/image upscale_models category.
-            "upscale_models": _folder_choices("latent_upscale_models"),
-        })
+        def _get_choices():
+            video_gguf_unets, video_diffusion_models = _ltx_video_model_choices()
+            return {
+                "unets": _folder_choices(("unet", "diffusion_models")),
+                "video_gguf_unets": video_gguf_unets,
+                "video_diffusion_models": video_diffusion_models,
+                "vae": _folder_choices("vae"),
+                "clip": _folder_choices(("clip", "text_encoders")),
+                "upscale_models": _folder_choices("latent_upscale_models"),
+            }
+        data = await asyncio.to_thread(_get_choices)
+        return web.json_response({"ok": True, **data})
 
     @server_instance.routes.get("/vrgdg/workflow_runner/model_root")
     async def vrgdg_workflow_runner_model_root(request):
-        result = load_custom_model_root()
-        result["registered"] = register_custom_model_root(result.get("models_root", ""))
+        def _get_model_root():
+            result = load_custom_model_root()
+            result["registered"] = register_custom_model_root(result.get("models_root", ""))
+            return result
+        result = await asyncio.to_thread(_get_model_root)
         return web.json_response({"ok": True, **result})
 
     @server_instance.routes.post("/vrgdg/workflow_runner/model_root")
@@ -64,7 +67,7 @@ def _ensure_workflow_runner_routes():
         except Exception:
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
-            result = save_custom_model_root(payload.get("models_root", ""))
+            result = await asyncio.to_thread(save_custom_model_root, payload.get("models_root", ""))
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -76,7 +79,7 @@ def _ensure_workflow_runner_routes():
         except Exception:
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
-            result = _build_zimage_api_prompt(payload)
+            result = await asyncio.to_thread(_build_zimage_api_prompt, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -88,7 +91,7 @@ def _ensure_workflow_runner_routes():
         except Exception:
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
-            result = _build_krea2_api_prompt(payload)
+            result = await asyncio.to_thread(_build_krea2_api_prompt, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -100,7 +103,7 @@ def _ensure_workflow_runner_routes():
         except Exception:
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
-            result = _build_krea2_2pass_api_prompt(payload)
+            result = await asyncio.to_thread(_build_krea2_2pass_api_prompt, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -112,7 +115,7 @@ def _ensure_workflow_runner_routes():
         except Exception:
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
-            result = _build_ernie_image_api_prompt(payload)
+            result = await asyncio.to_thread(_build_ernie_image_api_prompt, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -124,7 +127,7 @@ def _ensure_workflow_runner_routes():
         except Exception:
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
-            result = _build_i2v_api_prompt(payload)
+            result = await asyncio.to_thread(_build_i2v_api_prompt, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -136,7 +139,7 @@ def _ensure_workflow_runner_routes():
         except Exception:
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
-            result = _build_t2v_api_prompt(payload)
+            result = await asyncio.to_thread(_build_t2v_api_prompt, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -148,7 +151,7 @@ def _ensure_workflow_runner_routes():
         except Exception:
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
-            result = _build_minimax_h3_api_prompt(payload)
+            result = await asyncio.to_thread(_build_minimax_h3_api_prompt, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -160,7 +163,7 @@ def _ensure_workflow_runner_routes():
         except Exception:
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
-            result = _build_minimax_h3_2pass_api_prompt(payload)
+            result = await asyncio.to_thread(_build_minimax_h3_2pass_api_prompt, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -172,8 +175,11 @@ def _ensure_workflow_runner_routes():
         except Exception:
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
-            result = _build_minimax_h3_advanced_2pass_api_prompt(payload)
-            result["debug_workflow_path"] = _save_minimax_h3_advanced_2pass_debug_workflow(result, payload)
+            def _build_adv():
+                res = _build_minimax_h3_advanced_2pass_api_prompt(payload)
+                res["debug_workflow_path"] = _save_minimax_h3_advanced_2pass_debug_workflow(res, payload)
+                return res
+            result = await asyncio.to_thread(_build_adv)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -185,7 +191,7 @@ def _ensure_workflow_runner_routes():
         except Exception:
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
-            result = _build_minimax_h3_3pass_api_prompt(payload)
+            result = await asyncio.to_thread(_build_minimax_h3_3pass_api_prompt, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -197,7 +203,7 @@ def _ensure_workflow_runner_routes():
         except Exception:
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
-            result = _build_rtv_api_prompt(payload)
+            result = await asyncio.to_thread(_build_rtv_api_prompt, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -209,7 +215,7 @@ def _ensure_workflow_runner_routes():
         except Exception:
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
-            result = _build_ingredients_api_prompt(payload)
+            result = await asyncio.to_thread(_build_ingredients_api_prompt, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -218,7 +224,7 @@ def _ensure_workflow_runner_routes():
     async def vrgdg_workflow_runner_build_flf_prompt(request):
         try:
             payload = await request.json()
-            result = _build_flf_api_prompt(payload)
+            result = await asyncio.to_thread(_build_flf_api_prompt, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -230,7 +236,7 @@ def _ensure_workflow_runner_routes():
         except Exception:
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
-            result = _build_id_lora_api_prompt(payload)
+            result = await asyncio.to_thread(_build_id_lora_api_prompt, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -242,7 +248,7 @@ def _ensure_workflow_runner_routes():
         except Exception:
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
-            result = _build_flux_klein_api_prompt(payload)
+            result = await asyncio.to_thread(_build_flux_klein_api_prompt, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -254,7 +260,7 @@ def _ensure_workflow_runner_routes():
         except Exception:
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
-            result = _build_nb_image_api_prompt(payload)
+            result = await asyncio.to_thread(_build_nb_image_api_prompt, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -266,7 +272,7 @@ def _ensure_workflow_runner_routes():
         except Exception:
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
-            result = _build_z_upscale_enhance_prompt(payload)
+            result = await asyncio.to_thread(_build_z_upscale_enhance_prompt, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -274,7 +280,7 @@ def _ensure_workflow_runner_routes():
     @server_instance.routes.post("/vrgdg/workflow_runner/build_clear_memory_prompt")
     async def vrgdg_workflow_runner_build_clear_memory_prompt(request):
         try:
-            result = _build_clear_memory_prompt()
+            result = await asyncio.to_thread(_build_clear_memory_prompt)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -286,7 +292,7 @@ def _ensure_workflow_runner_routes():
         except Exception:
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
-            result = _build_transcribe_api_prompt(payload)
+            result = await asyncio.to_thread(_build_transcribe_api_prompt, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -298,7 +304,7 @@ def _ensure_workflow_runner_routes():
         except Exception:
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
-            result = _build_timestamped_transcribe_api_prompt(payload)
+            result = await asyncio.to_thread(_build_timestamped_transcribe_api_prompt, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -310,7 +316,7 @@ def _ensure_workflow_runner_routes():
         except Exception:
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
-            result = _prepare_scene_audio_clip(payload)
+            result = await asyncio.to_thread(_prepare_scene_audio_clip, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -322,7 +328,7 @@ def _ensure_workflow_runner_routes():
         except Exception:
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
-            result = _save_generated_image(payload)
+            result = await asyncio.to_thread(_save_generated_image, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -334,7 +340,7 @@ def _ensure_workflow_runner_routes():
         except Exception:
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
-            result = _collect_scene_video(payload)
+            result = await asyncio.to_thread(_collect_scene_video, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -346,7 +352,7 @@ def _ensure_workflow_runner_routes():
         except Exception:
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
-            result = _apply_scene_start_color_match(payload)
+            result = await asyncio.to_thread(_apply_scene_start_color_match, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -358,7 +364,7 @@ def _ensure_workflow_runner_routes():
         except Exception:
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
-            result = _trim_scene_video(payload)
+            result = await asyncio.to_thread(_trim_scene_video, payload)
         except subprocess.CalledProcessError as exc:
             error = exc.stderr or exc.stdout or str(exc)
             return web.json_response({"ok": False, "error": f"FFmpeg failed:\n{error}"}, status=400)
@@ -373,7 +379,7 @@ def _ensure_workflow_runner_routes():
         except Exception:
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
-            result = _find_scene_video_output(payload)
+            result = await asyncio.to_thread(_find_scene_video_output, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -385,7 +391,7 @@ def _ensure_workflow_runner_routes():
         except Exception:
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
-            result = _collect_minimax_h3_stage_backup(payload)
+            result = await asyncio.to_thread(_collect_minimax_h3_stage_backup, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -397,7 +403,7 @@ def _ensure_workflow_runner_routes():
         except Exception:
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
-            result = _find_minimax_h3_stage_outputs(payload)
+            result = await asyncio.to_thread(_find_minimax_h3_stage_outputs, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -409,7 +415,7 @@ def _ensure_workflow_runner_routes():
         except Exception:
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
-            result = _cleanup_minimax_h3_output_folder(payload)
+            result = await asyncio.to_thread(_cleanup_minimax_h3_output_folder, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -421,7 +427,7 @@ def _ensure_workflow_runner_routes():
         except Exception:
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
-            result = _stitch_scene_videos(payload)
+            result = await asyncio.to_thread(_stitch_scene_videos, payload)
         except subprocess.CalledProcessError as exc:
             error = exc.stderr or exc.stdout or str(exc)
             return web.json_response({"ok": False, "error": f"FFmpeg failed:\n{error}"}, status=400)
@@ -436,7 +442,7 @@ def _ensure_workflow_runner_routes():
         except Exception:
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
-            result = _render_image_slideshow(payload)
+            result = await asyncio.to_thread(_render_image_slideshow, payload)
         except subprocess.CalledProcessError as exc:
             error = exc.stderr or exc.stdout or str(exc)
             return web.json_response({"ok": False, "error": f"FFmpeg failed:\n{error}"}, status=400)

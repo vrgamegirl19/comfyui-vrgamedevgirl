@@ -86,22 +86,23 @@ Every Video Builder project resides in a dedicated directory on disk:
 
 ```
 <project_root>/
-├── session.json             # Core project state (scenes, timeline, parameters, active models)
-├── project_audio/           # Extracted audio stems, full song WAV, peak data
-│   └── project_audio.wav
-├── project_srt/             # Generated or imported SRT subtitle timing files
-│   └── project_srt.srt
-├── project_latents/         # Serialized MiniMax H3 latent tensors (*.latent safetensors)
-│   ├── scene_001.latent
-│   └── scene_001.latent.json
-├── project_images/          # Reference subjects, locations, and scene starting frames
-│   ├── references/
-│   └── scenes/
-├── scene_videos/            # Rendered video clips per scene (raw and post-processed)
-│   ├── scene_001.mp4
-│   └── scene_002.mp4
-└── final_videos/            # Final assembled, stitched videos with mixed audio tracks
-    └── final_stitch_001.mp4
+├── vrgdg_builder_session.json   # Core project state (scenes, timeline, parameters, active models, revision)
+├── builder_segments.srt         # Master SRT subtitle timing file
+├── SceneNotes.json              # Per-scene prompt notes and instructions
+├── project_context/             # Context files (full_lyrics.txt, ConceptPrompts.txt, I2VMotionNotes.txt)
+│   └── full_lyrics.txt
+├── latents/                     # Serialized MiniMax H3 latent tensors (scene_001.latent)
+│   └── scene_001.latent
+├── zimage_approved/             # Approved start frame images for scenes (image_0001.png)
+├── scene_image_previews/        # Candidate image generation previews
+│   └── scene_0001/
+├── rendered_scene_videos/       # Rendered video clips per scene (video_0001-audio.mp4)
+├── rendered_scene_videos_backup/# Backup of previous renders when overwriting
+├── scene_audio/                 # Extracted audio clips per scene
+├── scene_audio_trimmed/         # Trimmed audio clips matching scene durations
+├── render_logs/                 # MiniMax / LTX render logs and diagnostics
+├── session_backups/             # Automated snapshots of session state
+└── removed_scene_assets/        # Quarantined assets from deleted scenes
 ```
 
 ---
@@ -337,7 +338,7 @@ The `minimax` package implements high-performance conditioning, latent managemen
 - **Key Symbols**:
   - `_FRAME_PER_TOKEN = (1, 4, 4, 4, 4)`: MiniMax H3 temporal latent token compression pattern.
   - `_tokens_to_frames(token_count)` & `_frames_to_tokens(frame_count)`: Performs exact conversions between video frame counts and temporal latent tokens.
-  - `class SceneLatentManager`: Manages `.latent` safetensors files in `project_latents/`, tracks dirty flags, handles predecessor dependencies, and renames latent files when scenes are reordered.
+  - `class SceneLatentManager`: Manages `.latent` safetensors files in `latents/`, tracks dirty flags, handles predecessor dependencies, and renames latent files when scenes are reordered.
   - `scene_latent_manager`: Singleton instance.
 
 #### [minimax/nodes.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/minimax/nodes.py)

@@ -365,12 +365,27 @@ def _node_input_names(class_type, mappings):
 
 
 def _compat_node_inputs(class_type, mappings, required_inputs, extra_defaults=None):
-    """Keep required inputs, and attach extras only when the installed node declares them."""
+    """Keep required inputs, and attach extras only when the installed node declares them.
+
+    Inputs added by newer node versions that we do not know about are filled
+    from the installed schema's own defaults so the prompt still validates.
+    """
     inputs = dict(required_inputs)
     names = set(_node_input_names(class_type, mappings))
     for key, value in (extra_defaults or {}).items():
         if key in names:
             inputs[key] = value
+    node_class = mappings.get(class_type) if isinstance(mappings, dict) else None
+    define_schema = getattr(node_class, "define_schema", None)
+    if callable(define_schema):
+        try:
+            for inp in getattr(define_schema(), "inputs", None) or []:
+                name = getattr(inp, "id", None) or getattr(inp, "name", None)
+                default = getattr(inp, "default", None)
+                if name and default is not None:
+                    inputs.setdefault(str(name), default)
+        except Exception:
+            pass
     return inputs
 
 

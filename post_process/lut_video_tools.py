@@ -1,3 +1,4 @@
+import asyncio
 import os
 import json
 import subprocess
@@ -1080,7 +1081,8 @@ def register_lut_routes(server_instance):
     @server_instance.routes.get("/vrgdg/music_builder/luts")
     async def vrgdg_music_builder_luts(request):
         try:
-            return web.json_response({"ok": True, **list_luts()})
+            data = await asyncio.to_thread(list_luts)
+            return web.json_response({"ok": True, **data})
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
 
@@ -1096,7 +1098,8 @@ def register_lut_routes(server_instance):
     async def vrgdg_music_builder_apply_lut_image(request):
         try:
             payload = await request.json()
-            result = apply_lut_to_image(
+            result = await asyncio.to_thread(
+                apply_lut_to_image,
                 input_path=payload.get("input_path", ""),
                 lut_name=payload.get("lut_name", ""),
                 output_path=payload.get("output_path", ""),
@@ -1112,7 +1115,8 @@ def register_lut_routes(server_instance):
     async def vrgdg_music_builder_apply_lut_video(request):
         try:
             payload = await request.json()
-            result = apply_lut_to_video(
+            result = await asyncio.to_thread(
+                apply_lut_to_video,
                 input_path=payload.get("input_path", ""),
                 lut_name=payload.get("lut_name", ""),
                 output_path=payload.get("output_path", ""),
@@ -1131,7 +1135,8 @@ def register_lut_routes(server_instance):
     async def vrgdg_music_builder_preview_lut(request):
         try:
             payload = await request.json()
-            result = preview_lut_on_media(
+            result = await asyncio.to_thread(
+                preview_lut_on_media,
                 input_path=payload.get("input_path", ""),
                 lut_name=payload.get("lut_name", ""),
                 media_type=payload.get("media_type", ""),
@@ -1148,7 +1153,8 @@ def register_lut_routes(server_instance):
     async def vrgdg_music_builder_apply_film_grain_image(request):
         try:
             payload = await request.json()
-            result = apply_film_grain_to_image(
+            result = await asyncio.to_thread(
+                apply_film_grain_to_image,
                 input_path=payload.get("input_path", ""),
                 output_path=payload.get("output_path", ""),
                 grain_intensity=payload.get("grain_intensity", 0.04),
@@ -1165,7 +1171,8 @@ def register_lut_routes(server_instance):
     async def vrgdg_music_builder_apply_film_grain_video(request):
         try:
             payload = await request.json()
-            result = apply_film_grain_to_video(
+            result = await asyncio.to_thread(
+                apply_film_grain_to_video,
                 input_path=payload.get("input_path", ""),
                 output_path=payload.get("output_path", ""),
                 grain_intensity=payload.get("grain_intensity", 0.04),
@@ -1187,7 +1194,8 @@ def register_lut_routes(server_instance):
     async def vrgdg_music_builder_preview_film_grain(request):
         try:
             payload = await request.json()
-            result = preview_film_grain_on_media(
+            result = await asyncio.to_thread(
+                preview_film_grain_on_media,
                 input_path=payload.get("input_path", ""),
                 media_type=payload.get("media_type", ""),
                 grain_intensity=payload.get("grain_intensity", 0.04),
@@ -1205,7 +1213,8 @@ def register_lut_routes(server_instance):
     async def vrgdg_music_builder_preview_adjust(request):
         try:
             payload = await request.json()
-            result = preview_adjust_on_media(
+            result = await asyncio.to_thread(
+                preview_adjust_on_media,
                 input_path=payload.get("input_path", ""),
                 media_type=payload.get("media_type", ""),
                 settings=payload.get("settings", {}),
@@ -1221,7 +1230,8 @@ def register_lut_routes(server_instance):
     async def vrgdg_music_builder_apply_adjust_video(request):
         try:
             payload = await request.json()
-            result = apply_adjust_to_video(
+            result = await asyncio.to_thread(
+                apply_adjust_to_video,
                 input_path=payload.get("input_path", ""),
                 output_path=payload.get("output_path", ""),
                 settings=payload.get("settings", {}),
@@ -1240,7 +1250,8 @@ def register_lut_routes(server_instance):
     @server_instance.routes.get("/vrgdg/music_builder/post_process/adjust/presets")
     async def vrgdg_music_builder_list_adjust_presets(request):
         try:
-            return web.json_response({"ok": True, **list_adjust_presets()})
+            presets = await asyncio.to_thread(list_adjust_presets)
+            return web.json_response({"ok": True, **presets})
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
 
@@ -1248,8 +1259,11 @@ def register_lut_routes(server_instance):
     async def vrgdg_music_builder_save_adjust_preset(request):
         try:
             payload = await request.json()
-            result = save_adjust_preset(payload.get("name", ""), payload.get("settings", {}))
-            return web.json_response({"ok": True, "preset": result, **list_adjust_presets()})
+            def _save_and_list():
+                res = save_adjust_preset(payload.get("name", ""), payload.get("settings", {}))
+                return {"preset": res, **list_adjust_presets()}
+            data = await asyncio.to_thread(_save_and_list)
+            return web.json_response({"ok": True, **data})
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
 
@@ -1257,8 +1271,11 @@ def register_lut_routes(server_instance):
     async def vrgdg_music_builder_import_adjust_preset(request):
         try:
             payload = await request.json()
-            result = import_adjust_preset(payload.get("preset", {}), payload.get("name", "Imported Adjust Preset"))
-            return web.json_response({"ok": True, "preset": result, **list_adjust_presets()})
+            def _import_and_list():
+                res = import_adjust_preset(payload.get("preset", {}), payload.get("name", "Imported Adjust Preset"))
+                return {"preset": res, **list_adjust_presets()}
+            data = await asyncio.to_thread(_import_and_list)
+            return web.json_response({"ok": True, **data})
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
 
@@ -1266,7 +1283,7 @@ def register_lut_routes(server_instance):
     async def vrgdg_music_builder_delete_lut_preview(request):
         try:
             payload = await request.json()
-            deleted = delete_lut_preview(payload.get("path", ""), payload.get("project_folder", ""))
+            deleted = await asyncio.to_thread(delete_lut_preview, payload.get("path", ""), payload.get("project_folder", ""))
             return web.json_response({"ok": True, "deleted": deleted})
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)

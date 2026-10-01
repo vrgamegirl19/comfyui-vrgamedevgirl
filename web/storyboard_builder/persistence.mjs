@@ -85,6 +85,25 @@ export function createStoryboardPersistence({
             || savedScenes.find((item) => Number(item.scene_number) === Number(fresh.scene_number))
             || null;
           if (!normalized) return normalizeScene(fresh, index);
+          // Live scenes from the Video Builder own the lyric-review flags (B-roll / no lip-sync, instrumental,
+          // no character, singers) and the Wizard / Scene Defaults fields (shot, camera, performance, facial).
+          // The saved storyboard copy can be older, so it must not overwrite them.
+          const liveOwned = incomingScenes.length
+            ? {
+              lyric_singers: fresh.lyric_singers,
+              lyric_no_lip_sync: fresh.lyric_no_lip_sync,
+              lyric_instrumental: fresh.lyric_instrumental,
+              performance_style: fresh.performance_style,
+              facial_performance: fresh.facial_performance,
+              facial_performance_custom: fresh.facial_performance_custom,
+              shot_type: fresh.shot_type || normalized.shot_type,
+              camera_motion: fresh.camera_motion || normalized.camera_motion,
+              character_motion: fresh.character_motion || normalized.character_motion,
+            }
+            : {};
+          const noCharacterPresent = incomingScenes.length
+            ? Boolean(fresh.no_character_present)
+            : Boolean(fresh.no_character_present || normalized.no_character_present);
           const subjectRefs = incomingScenes.length ? (fresh.subject_refs || []) : (fresh.subject_refs?.length ? fresh.subject_refs : normalized.subject_refs);
           const subjects = subjectRefs?.length
             ? storyboardSubjectNamesFromRefs(subjectRefs)
@@ -94,6 +113,7 @@ export function createStoryboardPersistence({
             ].map((item) => String(item || "").trim()).filter(Boolean)));
           return {
             ...normalized,
+            ...liveOwned,
             id: fresh.id || normalized.id,
             scene_number: fresh.scene_number || normalized.scene_number,
             label: fresh.label || normalized.label,
@@ -118,9 +138,9 @@ export function createStoryboardPersistence({
             temporal_world_effect_override: fresh.temporal_world_effect_override || normalized.temporal_world_effect_override || "global",
             temporal_world_effect_custom: fresh.temporal_world_effect_custom || normalized.temporal_world_effect_custom || "",
             image_path: fresh.image_path || normalized.image_path,
-            no_character_present: Boolean(fresh.no_character_present || normalized.no_character_present),
+            no_character_present: noCharacterPresent,
             subjects,
-            subject_refs: fresh.no_character_present || normalized.no_character_present ? [] : subjectRefs,
+            subject_refs: noCharacterPresent ? [] : subjectRefs,
             setting: currentLocationsCleared ? "" : (fresh.location_ref?.name || normalized.setting || fresh.setting),
             location_ref: currentLocationsCleared ? null : (incomingScenes.length ? fresh.location_ref : (fresh.location_ref || normalized.location_ref)),
           };

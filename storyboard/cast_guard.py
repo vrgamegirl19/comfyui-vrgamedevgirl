@@ -1,9 +1,15 @@
 """Hard wall that keeps characters who are not selected for a scene out of that scene's text.
 
 The story arc, story brief, and neighbouring beats describe the whole song, so an LLM can
-carry a character into a scene that does not include them. These helpers build a matcher for
-the characters left out of a scene (names, generic nouns, and gendered pronouns when that
-cannot be confused with a cast member) and remove or flag any sentence that refers to them.
+carry a character into a scene that does not include them, or invent an unnamed person
+("a woman", "a stranger", "a crowd"). These helpers build a matcher for the characters left
+out of a scene (names, generic nouns, and gendered pronouns when that cannot be confused with
+a cast member) plus a separate matcher for invented people, and remove or flag any sentence
+that refers to them.
+
+Subject names come from the Reference Builder and can be anything, so nothing here depends on
+a hardcoded name. The invented-person matcher allows every word that appears in the name of a
+selected cast member or mapped extra.
 
 The same rules are mirrored in web/music_video_builder/cast_guard.mjs.
 """
@@ -20,6 +26,16 @@ _MALE_NOUNS = ("man", "men", "boy", "boys", "gentleman", "guy", "husband", "fath
 _FEMALE_NOUNS = ("woman", "women", "girl", "girls", "lady", "wife", "mother", "sister", "daughter", "bride", "queen", "female")
 # Plural wording that implies a second person when the scene has a single cast member.
 _PLURAL_TERMS = ("they", "them", "their", "theirs", "themselves", "both", "couple", "pair", "duo", "side by side")
+# People an LLM tends to invent. Allowed only when a selected cast member or extra is named with the word.
+_INVENTED_SINGLE_TERMS = (
+    "man", "men", "woman", "women", "girl", "girls", "boy", "boys", "lady", "gentleman", "guy", "stranger", "strangers",
+    "figure", "figures", "silhouette", "silhouettes", "someone", "somebody", "companion", "companions", "lover", "lovers",
+    "partner", "partners", "child", "children", "kid", "kids", "friend", "friends", "person", "people",
+)
+# Group wording. Also allowed when the scene has mapped extras, since extras are groups of people.
+_INVENTED_GROUP_TERMS = (
+    "crowd", "crowds", "onlookers", "bystanders", "passersby", "passers-by", "audience", "others", "dancers", "fans", "spectators",
+)
 _GENERIC_TERMS = {"the", "a", "an", "and", "of", "subject", "character", "person", "singer", "performer"}
 
 
@@ -58,21 +74,34 @@ def _subject_name(subject):
     return str(subject or "").strip()
 
 
-def build_cast_guard(all_subjects, cast_subjects):
-    """Build a guard for the subjects in all_subjects that are not in cast_subjects.
+def _compile(terms):
+    ordered = sorted(terms, key=len, reverse=True)
+    return re.compile(
+        r"(?<![A-Za-z'])(?:" + "|".join(re.escape(term).replace(r"\ ", r"\s+") for term in ordered) + r")(?![A-Za-z])",
+        re.IGNORECASE,
+    )
 
-    Both arguments are lists of dicts with name/description (plain name strings are accepted).
-    Returns None when nobody is left out, otherwise {"pattern", "cast_names", "excluded_names"}.
+
+def build_cast_guard(all_subjects, cast_subjects, extra_names=()):
+    """Build a guard for the people who must not appear in a scene.
+
+    all_subjects and cast_subjects are lists of dicts with name/description (plain name strings
+    are accepted). extra_names lists mapped extras, which are allowed in the scene.
+
+    Returns {"pattern", "invented_pattern", "cast_names", "excluded_names", "extra_names"}.
+    "pattern" matches characters left out of the scene. "invented_pattern" matches unnamed people
+    the scene does not contain.
     """
     everyone = [item if isinstance(item, dict) else {"name": str(item or "")} for item in (all_subjects or [])]
     cast = [item if isinstance(item, dict) else {"name": str(item or "")} for item in (cast_subjects or [])]
+    extras = [str(item or "").strip() for item in (extra_names or []) if str(item or "").strip()]
     cast_keys = {_subject_name(item).casefold() for item in cast if _subject_name(item)}
     excluded = [item for item in everyone if _subject_name(item) and _subject_name(item).casefold() not in cast_keys]
-    if not excluded:
-        return None
     cast_terms = set()
     for item in cast:
         cast_terms |= _name_terms(_subject_name(item))
+    for name in extras:
+        cast_terms |= _name_terms(name)
     cast_words = {word for term in cast_terms for word in term.split(" ")}
     terms = set()
     for item in excluded:
@@ -85,48 +114,74 @@ def build_cast_guard(all_subjects, cast_subjects):
                 terms.update(_FEMALE_PRONOUNS + _FEMALE_NOUNS if gender == "f" else _MALE_PRONOUNS + _MALE_NOUNS)
     if len(cast) <= 1:
         terms.update(_PLURAL_TERMS)
-    if not terms:
-        return None
-    ordered = sorted(terms, key=len, reverse=True)
-    pattern = re.compile(r"(?<![A-Za-z'])(?:" + "|".join(re.escape(term).replace(r"\ ", r"\s+") for term in ordered) + r")(?![A-Za-z])", re.IGNORECASE)
+    if not cast and not extras:
+        terms.update(_MALE_PRONOUNS + _FEMALE_PRONOUNS)
+    invented = set(_INVENTED_SINGLE_TERMS)
+    if not extras:
+        invented.update(_INVENTED_GROUP_TERMS)
+    invented -= cast_words
     return {
-        "pattern": pattern,
+        "pattern": _compile(terms) if terms else None,
+        "invented_pattern": _compile(invented) if invented else None,
         "cast_names": [_subject_name(item) for item in cast if _subject_name(item)],
         "excluded_names": [_subject_name(item) for item in excluded],
+        "extra_names": extras,
     }
 
 
-def cast_leaks(text, guard):
-    """Distinct lowercase terms in text that refer to a character outside the scene cast."""
+def _patterns(guard, invented):
+    if not guard:
+        return []
+    found = [guard.get("pattern")]
+    if invented:
+        found.append(guard.get("invented_pattern"))
+    return [pattern for pattern in found if pattern]
+
+
+def cast_leaks(text, guard, invented=True):
+    """Distinct lowercase terms in text that refer to a person outside the scene cast."""
     if not guard or not text:
         return []
-    return sorted({match.group(0).lower() for match in guard["pattern"].finditer(str(text))})
+    found = set()
+    for pattern in _patterns(guard, invented):
+        found.update(match.group(0).lower() for match in pattern.finditer(str(text)))
+    return sorted(found)
 
 
-def strip_cast_leaks(text, guard):
-    """Drop every sentence that refers to a character outside the scene cast."""
-    if not guard or not text:
+def strip_cast_leaks(text, guard, invented=True):
+    """Drop every sentence that refers to a person outside the scene cast."""
+    patterns = _patterns(guard, invented)
+    if not patterns or not text:
         return str(text or "").strip()
     kept_lines = []
     for line in str(text).split("\n"):
         sentences = _SENTENCE_SPLIT_RE.split(line.strip()) if line.strip() else [""]
-        kept = [sentence for sentence in sentences if not guard["pattern"].search(sentence)]
+        kept = [sentence for sentence in sentences if not any(pattern.search(sentence) for pattern in patterns)]
         kept_lines.append(" ".join(item for item in kept if item).strip() if line.strip() else "")
     return re.sub(r"\n{3,}", "\n\n", "\n".join(kept_lines)).strip()
 
 
 def cast_wall_text(guard):
-    """Prompt text that tells the model exactly who may and may not appear."""
+    """Positive cast statement that tells the model exactly who is in the scene."""
     if not guard:
         return ""
-    cast = ", ".join(guard["cast_names"]) or "no one"
+    cast = guard["cast_names"]
+    extras = guard.get("extra_names") or []
+    if not cast and not extras:
+        return (
+            "PEOPLE IN THIS SCENE: none. No people appear in this scene. "
+            "Show only the location, objects, and light. Do not show any person, hand, arm, shadow, reflection, or silhouette."
+        )
+    people = ", ".join(cast + [f"{name} (mapped extras)" for name in extras])
     banned = ", ".join(guard["excluded_names"])
-    return (
-        f"CAST WALL (MANDATORY): the only characters in this scene are: {cast}. "
-        f"Do not mention, show, imply, or hint at {banned} in any way, including by name, pronoun, "
-        "a hand, a shadow, a reflection, a voice, an off-screen presence, or a companion. "
-        "Write the scene as if those characters do not exist."
+    text = (
+        f"PEOPLE IN THIS SCENE: {people}. No other person exists in this scene. "
+        "Do not add an unnamed man, woman, girl, boy, stranger, crowd, extra hand or arm, shadow, reflection, or silhouette of anyone else. "
+        "Refer to each person only by name, never by pronoun."
     )
+    if banned:
+        text += f" Not in this scene: {banned}."
+    return text
 
 
 def strip_story_arc_entry_leaks(arc_text, guards_by_scene, cast_names_by_scene=None):

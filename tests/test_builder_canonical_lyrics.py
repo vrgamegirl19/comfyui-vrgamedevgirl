@@ -19,7 +19,10 @@ def load_save_helper():
         node for node in tree.body
         if isinstance(node, ast.FunctionDef) and node.name in {"_context_folder", "_save_canonical_full_lyrics"}
     ]
-    namespace = {"os": os}
+    namespace = {
+        "os": os,
+        "atomic_write_text": lambda path, content: Path(path).write_text(content, encoding="utf-8"),
+    }
     exec(compile(ast.Module(body=nodes, type_ignores=[]), str(NODE_SOURCE), "exec"), namespace)
     return namespace["_save_canonical_full_lyrics"]
 
