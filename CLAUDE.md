@@ -17,7 +17,7 @@ Before modifying, designing, or debugging any code in this repository, you **MUS
 
 1. **Exclude `optional_nodes/`**:
    - The `optional_nodes/` directory contains legacy and optional standalone modules. **Do NOT edit, reference, or import from `optional_nodes/`**.
-   - Work strictly within the active core submodules defined in `_VRGDG_SUBMODULES` in [__init__.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/__init__.py).
+   - Work strictly within the active core submodules defined in `_VRGDG_SUBMODULES` in [__init__.py](__init__.py).
 
 2. **Atomic Disk Operations**:
    - **Never** write state files (e.g., `vrgdg_builder_session.json`, `storyboard.json`, settings) using raw `open(path, 'w')`.
