@@ -9,6 +9,7 @@ import { isRecoverableBuildGemmaError } from "./prompt_text.mjs";
 import { renderLogDuration, updateRenderLogSummary } from "./render_log.mjs";
 import { renderMissingListHtml } from "./scene_render_prep.mjs";
 import { selectedSegmentVideoPath } from "./selection_preview.mjs";
+import { describeJobProgress, projectIdFromFolder, runServerPipeline, serverBuildBody } from "./server_pipeline.mjs";
 import { batchEmptyMessage, batchScopeLabel, normalizeBatchScope } from "./timeline_state.mjs";
 
 
@@ -30,7 +31,7 @@ export function createBatchRender({
   generateT2IPromptForSegment, hasFirstLastFrameEndImage, i2vAllScenes, i2vAutoChainEnabled,
   i2vTextGemmaModelSelect, imageAllSegmentsForMode, imageModeDisplayLabel, imageModeImg2ImgContinuityLabel,
   imageModeSupportsImg2ImgContinuity, img2imgContinuityEnabled, krea2TwoPassCreateButtons,
-  krea2TwoPassCreateT2IButton, miniMaxBatchReferenceProblems, miniMaxH3ModeForSegment,
+  krea2TwoPassCreateT2IButton, loadSessionFromProject, miniMaxBatchReferenceProblems, miniMaxH3ModeForSegment,
   miniMaxSceneVideoButtons, nbCreateButtons, persistRenderLog, prepareAutoChainedNextScene,
   prepareAutoImg2ImgContinuityForScene, prepareFLFRenderedFrameNextScene, prepareSceneAudioMix,
   previousAutoChainSourceSegment, previousSceneStartImageIngredient, projectInput, pushHistory,
@@ -1788,7 +1789,66 @@ export function createBatchRender({
     }
   }
 
+  // Runs Build Full Video as a background job on the server (Agent API orchestrator).
+  // The job keeps going if this tab is closed or reloaded. The project is saved first so the
+  // server sees the current scenes and settings, then reloaded to show what the job produced.
+  async function buildFullVideoOnServer(options = {}) {
+    const projectFolder = String(projectInput.value || state.projectFolder || "").trim();
+    const projectId = projectIdFromFolder(projectFolder);
+    const sceneScope = normalizeBatchScope(options.sceneScope);
+    let progress = null;
+    let jobStarted = false;
+    try {
+      if (!projectId) throw new Error("Save or select a project folder before running on the server.");
+      fullBuildButton.disabled = true;
+      fullBuildButton.textContent = "Building on server...";
+      renderAllButton.disabled = true;
+      zImageAllButton.disabled = true;
+      state.batchCancelled = false;
+      if (!(await ensureAudioOrOfferSilentTimeline({ sceneScope }))) return;
+      progress = createProgressWindow("Build Full Video (server)");
+      progress.set("Saving the project so the server sees the current scenes and settings...", 2);
+      if (!(await autoSaveSessionQuiet("Build Full Video on server"))) {
+        throw new Error("The project could not be saved first. Turn Autosave on, fix the save error, and try again.");
+      }
+      jobStarted = true;
+      await runServerPipeline({
+        path: `/projects/${encodeURIComponent(projectId)}/pipelines/build-full-video`,
+        body: {
+          ...serverBuildBody({ ...options, sceneScope }),
+          // The browser knows which scenes are selected. Send them explicitly so the server never guesses.
+          ...(sceneScope === "all" ? {} : { scene_ids: batchTargetItems(sceneScope).map((item) => item.segment.id) }),
+        },
+        onUpdate: (job) => {
+          const described = describeJobProgress(job);
+          progress?.set(`${described.text}\nThis keeps running on the server if you close this tab. Do not edit scenes until it finishes.`, described.percent);
+        },
+        shouldCancel: () => state.batchCancelled,
+      });
+      progress.set("Server build finished. Loading the results...", 99);
+      await loadSessionFromProject(projectFolder);
+      progress.close?.(300);
+      progress = null;
+      toast("Build Full Video complete (ran on the server).");
+    } catch (error) {
+      const errorMessage = String(error?.message || error);
+      progress?.set(`Build Full Video stopped:\n${errorMessage}`, 100);
+      toast(`Full video build stopped:\n${errorMessage}`, true);
+      if (jobStarted) {
+        // Show whatever the server finished before it stopped.
+        try { await loadSessionFromProject(projectFolder); } catch (reloadError) { console.warn("[VRGDG Builder] Could not reload after the server build:", reloadError); }
+      }
+    } finally {
+      fullBuildButton.disabled = false;
+      fullBuildButton.textContent = "Build Full Video";
+      renderAllButton.disabled = false;
+      zImageAllButton.disabled = false;
+      state.batchCancelled = false;
+    }
+  }
+
   async function buildFullVideoPipeline(options = {}) {
+    if (options.runOnServer) return buildFullVideoOnServer(options);
     let buildMode = options.buildMode || "resume_missing";
     const maxAutoRetries = Math.max(0, Math.min(5, Number(options.maxAutoRetries ?? 3)));
     const sceneScope = normalizeBatchScope(options.sceneScope);
