@@ -20,7 +20,7 @@ export function createMiniMaxPanel({
   miniMaxAccelerationControls, miniMaxAddSpeakerCueButton, miniMaxAdvancedAnchorStrength,
   miniMaxAdvancedChunkLength, miniMaxAdvancedFadeHeight, miniMaxAdvancedFadeWidth, miniMaxAdvancedGridCols,
   miniMaxAdvancedGridRows, miniMaxAdvancedLatentUpscalerPicker, miniMaxAdvancedMinTileSize,
-  miniMaxAdvancedOverlapBlend, miniMaxAdvancedOverlapMode, miniMaxAdvancedSettings,
+  miniMaxAdvancedOverlapBlend, miniMaxAdvancedBrightnessMatch, miniMaxAdvancedDynamicFade, miniMaxAdvancedDynamicFadeMin, miniMaxAdvancedMaskedAreaNoise, miniMaxAdvancedOverlapMode, miniMaxAdvancedSettings,
   miniMaxAdvancedSpatialHOverlap, miniMaxAdvancedSpatialWOverlap, miniMaxAdvancedTemporalOverlap,
   miniMaxAdvancedTileHeight, miniMaxAdvancedTileSizeMode, miniMaxAdvancedTileWidth,
   miniMaxAdvancedUpscalerDevice, miniMaxAdvancedUpscalerPrecision, miniMaxAdvancedVramPreset,
@@ -349,6 +349,10 @@ export function createMiniMaxPanel({
       advanced_two_pass_min_tile_size: miniMaxAdvancedMinTileSize.value,
       advanced_two_pass_overlap_mode: miniMaxAdvancedOverlapMode.value,
       advanced_two_pass_overlap_blend: miniMaxAdvancedOverlapBlend.value,
+      advanced_two_pass_brightness_match: miniMaxAdvancedBrightnessMatch.input.checked,
+      advanced_two_pass_dynamic_fade: miniMaxAdvancedDynamicFade.value,
+      advanced_two_pass_dynamic_fade_min: miniMaxAdvancedDynamicFadeMin.value,
+      advanced_two_pass_masked_area_noise: miniMaxAdvancedMaskedAreaNoise.value,
       advanced_two_pass_upscaler_device: miniMaxAdvancedUpscalerDevice.value,
       advanced_two_pass_upscaler_precision: miniMaxAdvancedUpscalerPrecision.value,
       ...Object.fromEntries(twoPassControls.flatMap((control) => [
@@ -605,6 +609,10 @@ export function createMiniMaxPanel({
     miniMaxAdvancedMinTileSize.value = String(settings.advanced_two_pass_min_tile_size);
     miniMaxAdvancedOverlapMode.value = settings.advanced_two_pass_overlap_mode;
     miniMaxAdvancedOverlapBlend.value = settings.advanced_two_pass_overlap_blend;
+    miniMaxAdvancedBrightnessMatch.input.checked = Boolean(settings.advanced_two_pass_brightness_match);
+    miniMaxAdvancedDynamicFade.value = settings.advanced_two_pass_dynamic_fade;
+    miniMaxAdvancedDynamicFadeMin.value = String(settings.advanced_two_pass_dynamic_fade_min);
+    miniMaxAdvancedMaskedAreaNoise.value = String(settings.advanced_two_pass_masked_area_noise);
     miniMaxAdvancedUpscalerDevice.value = settings.advanced_two_pass_upscaler_device;
     miniMaxAdvancedUpscalerPrecision.value = settings.advanced_two_pass_upscaler_precision;
     twoPassControls.forEach((control) => {

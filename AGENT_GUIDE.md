@@ -5,7 +5,7 @@ Welcome to **comfyui-vrgamedevgirl**. This repository is an enterprise-grade Com
 This guide serves as the definitive technical manual for AI coding agents and human contributors. It provides an exhaustive map of the project architecture, detailed documentation of every active core file, guidelines for strict PEP 8 compliance, separation of concerns (SoC), and actionable recipes for extending the platform safely.
 
 > [!NOTE]
-> Per project directives, legacy and optional standalone modules located in `optional_nodes/` are intentionally omitted from this guide. All documentation here focuses on the active core runtime registered in [__init__.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/__init__.py).
+> Per project directives, legacy and optional standalone modules located in `optional_nodes/` are intentionally omitted from this guide. All documentation here focuses on the active core runtime registered in [__init__.py](__init__.py).
 
 ---
 
@@ -24,6 +24,8 @@ This guide serves as the definitive technical manual for AI coding agents and hu
    - [General Custom Nodes (`general/`)](#general-custom-nodes-general)
    - [Browser AI Automation (`browser/` & `flow_automation/`)](#browser-ai-automation-browser--flow_automation)
    - [Frontend Web Applications (`web/`)](#frontend-web-applications-web)
+   - [Agent API Subsystem (`agent_api/`)](#agent-api-subsystem-agent_api)
+   - [Model Context Protocol Server (`mcp_server/`)](#model-context-protocol-server-mcp_server)
    - [Utility Scripts (`scripts/`)](#utility-scripts-scripts)
    - [Test Suites (`tests/`)](#test-suites-tests)
 3. [Separation of Concerns (SoC) Principles](#3-separation-of-concerns-soc-principles)
@@ -70,11 +72,11 @@ This codebase operates under two distinct paradigms:
 ```
 
 1. **Canvas Node Execution**: Custom nodes (e.g., `VRGDG_ShowText`, `VRGDG_LLM_Multi`, `H3FastVAEDecode`, `VRGDG_AudioCrop`) are placed directly onto the ComfyUI canvas, connected with noodles, and executed by ComfyUI's standard execution scheduler.
-2. **Headless API Graph Compilation**: The AI Video Builder frontend ([web/music_video_builder/](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/web/music_video_builder)) acts as an integrated production studio. Instead of requiring users to wire up dozens of complex nodes manually, the builder dispatches HTTP commands to [runner/routes.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/runner/routes.py). The backend dynamically compiles complete execution graphs (in ComfyUI `/prompt` API format via [runner/api_graph.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/runner/api_graph.py)), sends them to ComfyUI's internal queue, streams progress back via WebSockets, and captures rendered frames or video clips.
+2. **Headless API Graph Compilation**: The AI Video Builder frontend ([web/music_video_builder/](web/music_video_builder)) acts as an integrated production studio. Instead of requiring users to wire up dozens of complex nodes manually, the builder dispatches HTTP commands to [runner/routes.py](runner/routes.py). The backend dynamically compiles complete execution graphs (in ComfyUI `/prompt` API format via [runner/api_graph.py](runner/api_graph.py)), sends them to ComfyUI's internal queue, streams progress back via WebSockets, and captures rendered frames or video clips.
 
 ### Initialization Sequence
 
-1. ComfyUI discovers this custom node folder and executes [__init__.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/__init__.py).
+1. ComfyUI discovers this custom node folder and executes [__init__.py](__init__.py).
 2. `_VRGDG_SUBMODULES` is iterated. Each submodule (e.g., `.builder.nodes`, `.runner.nodes`, `.core.system_routes`) is imported.
 3. Submodule import triggers route attachment to `server.PromptServer.instance.routes`.
 4. Node dictionaries (`NODE_CLASS_MAPPINGS` and `NODE_DISPLAY_NAME_MAPPINGS`) are merged into the global scope. Collisions trigger console warnings.
@@ -113,20 +115,22 @@ Every Video Builder project resides in a dedicated directory on disk:
 
 | Directory | Primary Responsibility | Key Files |
 | :--- | :--- | :--- |
-| [core/](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/core) | Shared primitives: atomic file writes, wildcard sockets, model directory resolution, resource monitoring | `atomic_write.py`, `any_type.py`, `model_paths.py`, `system_routes.py` |
-| [builder/](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/builder) | AI Video Builder backend: session persistence, project branching, audio beat detection, media indexing, routes | `project.py`, `audio.py`, `media.py`, `paths.py`, `routes.py`, `nodes.py` |
-| [runner/](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/runner) | Dynamic workflow graph generation and rendering engine for LTX, MiniMax H3, Z-Image, Flux | `api_graph.py`, `ltx_workflows.py`, `minimax_workflows.py`, `routes.py` |
-| [llm/](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/llm) | Multi-provider LLM integrations (GGUF, API, Google), prompt expansion, agent chat, JSON validation | `api.py`, `gguf.py`, `builder_agent.py`, `image_prompt_generation.py` |
-| [minimax/](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/minimax) | MiniMax H3 video pipeline: latent caching, frame-token math, latent continuation, fast VAE decoding | `latent_manager.py`, `latent_continuation.py`, `latent_upscaler.py`, `nodes.py` |
-| [post_process/](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/post_process) | Face tracking, anchor enhancement, face paste-back compositing, 3D LUT grading, film grain | `face_fix.py`, `luts.py`, `lut_video_tools.py` |
-| [storyboard/](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/storyboard) | Storyboard generation, three-act structure planning, scene beats, dialogue allocation | `story_layer.py`, `scene_prompts.py`, `dialogue_scenes.py`, `nodes.py` |
-| [prompt_creator/](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/prompt_creator) | Structured prompt brainstorming, concept maps, motion notes, draft persistence routes | `nodes.py` |
-| [general/](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/general) | General-purpose canvas nodes: lyrics extraction (stable-ts), video analysis, audio stems, LoRA utilities | `lyrics.py`, `video.py`, `audio.py`, `utility.py`, `ltx_msr_reference.py` |
-| [browser/](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/browser) | External browser automation nodes bridging Flow, Meta AI, and ChatGPT image generators into ComfyUI | `nodes.py` |
-| [flow_automation/](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/flow_automation) | Node.js / Playwright / Puppeteer automation scripts for browser-driven generation workflows | `flow-poc.mjs`, `manual-bridge.mjs`, `meta-ai-poc.mjs` |
-| [web/](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/web) | ComfyUI web extensions, Video Builder application (79 ESM modules), Storyboard UI (22 ESM modules) | `music_video_builder/`, `storyboard_builder/`, `VRGDG_*.js` |
-| [scripts/](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/scripts) | Standalone tooling, workflow generation scripts, backport utilities, Photoshop integration | `build_minimax_h3_ref2va_2pass_audio_api.py`, `far_face_repair_backend.py` |
-| [tests/](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/tests) | 84 test suites covering Python backend logic, node collision checks, and JavaScript UI contracts | `test_node_registration.py`, `test_atomic_write.py`, `builder_source.py` |
+| [core/](core) | Shared primitives: atomic file writes, wildcard sockets, model directory resolution, resource monitoring | `atomic_write.py`, `any_type.py`, `model_paths.py`, `system_routes.py` |
+| [builder/](builder) | AI Video Builder backend: session persistence, project branching, audio beat detection, media indexing, routes | `project.py`, `audio.py`, `media.py`, `paths.py`, `routes.py`, `nodes.py` |
+| [runner/](runner) | Dynamic workflow graph generation and rendering engine for LTX, MiniMax H3, Z-Image, Flux | `api_graph.py`, `ltx_workflows.py`, `minimax_workflows.py`, `routes.py` |
+| [llm/](llm) | Multi-provider LLM integrations (GGUF, API, Google), prompt expansion, agent chat, JSON validation | `api.py`, `gguf.py`, `builder_agent.py`, `image_prompt_generation.py` |
+| [minimax/](minimax) | MiniMax H3 video pipeline: latent caching, frame-token math, latent continuation, fast VAE decoding | `latent_manager.py`, `latent_continuation.py`, `latent_upscaler.py`, `nodes.py` |
+| [post_process/](post_process) | Face tracking, anchor enhancement, face paste-back compositing, 3D LUT grading, film grain | `face_fix.py`, `luts.py`, `lut_video_tools.py` |
+| [storyboard/](storyboard) | Storyboard generation, three-act structure planning, scene beats, dialogue allocation | `story_layer.py`, `scene_prompts.py`, `dialogue_scenes.py`, `nodes.py` |
+| [prompt_creator/](prompt_creator) | Structured prompt brainstorming, concept maps, motion notes, draft persistence routes | `nodes.py` |
+| [general/](general) | General-purpose canvas nodes: lyrics extraction (stable-ts), video analysis, audio stems, LoRA utilities | `lyrics.py`, `video.py`, `audio.py`, `utility.py`, `ltx_msr_reference.py` |
+| [browser/](browser) | External browser automation nodes bridging Flow, Meta AI, and ChatGPT image generators into ComfyUI | `nodes.py` |
+| [flow_automation/](flow_automation) | Node.js / Playwright / Puppeteer automation scripts for browser-driven generation workflows | `flow-poc.mjs`, `manual-bridge.mjs`, `meta-ai-poc.mjs` |
+| [web/](web) | ComfyUI web extensions, Video Builder application (79 ESM modules), Storyboard UI (22 ESM modules) | `music_video_builder/`, `storyboard_builder/`, `VRGDG_*.js` |
+| [agent_api/](agent_api) | Headless REST API (`/vrgdg/api/v1`), transactional mutations, job management, SSE events, orchestrator | `router.py`, `mutations.py`, `jobs.py`, `envelope.py`, `paths.py`, `orchestrator/` |
+| [mcp_server/](mcp_server) | Zero-dependency MCP server (JSON-RPC 2.0 stdio), 50 tools (T1–T50), resources, prompt templates | `__main__.py`, `server.py`, `tools.py`, `resources.py`, `prompts.py`, `client.py` |
+| [scripts/](scripts) | Standalone tooling, workflow generation scripts, backport utilities, Photoshop integration | `build_minimax_h3_ref2va_2pass_audio_api.py`, `far_face_repair_backend.py` |
+| [tests/](tests) | 84 test suites covering Python backend logic, node collision checks, and JavaScript UI contracts | `test_node_registration.py`, `test_atomic_write.py`, `builder_source.py` |
 
 ---
 
@@ -134,27 +138,27 @@ Every Video Builder project resides in a dedicated directory on disk:
 
 The `core` package houses critical cross-cutting utilities used across the entire codebase.
 
-#### [core/atomic_write.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/core/atomic_write.py)
+#### [core/atomic_write.py](core/atomic_write.py)
 - **Purpose**: Provides crash-safe atomic file writing. Prevents corruption of project files, session state, and settings if a crash, timeout, or power disruption occurs mid-write.
 - **Key Functions**:
   - `atomic_write_text(path, content, encoding="utf-8")`: Writes content to a hidden sibling temporary file (`.filename.tmp`) using `tempfile.mkstemp`, performs `handle.flush()` and `os.fsync()`, and replaces the target path atomically via `os.replace()`. Cleans up temporary files if an exception is raised.
   - `atomic_write_json(path, value)`: Formats data with `json.dumps(value, indent=2, ensure_ascii=False)` and calls `atomic_write_text`.
 - **Usage Rule**: **Never** use raw `open(path, 'w')` when writing state or configuration files. Always use `atomic_write_json` or `atomic_write_text`.
 
-#### [core/any_type.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/core/any_type.py)
+#### [core/any_type.py](core/any_type.py)
 - **Purpose**: Implements the ComfyUI wildcard socket type pattern.
 - **Key Symbols**:
   - `class AnyType(str)`: Overrides `__ne__(self, value)` to always return `False`.
   - `any_typ = AnyType("*")`: The singleton wildcard socket instance. When assigned to node inputs or outputs, it connects to any ComfyUI slot type regardless of type checking.
 
-#### [core/model_paths.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/core/model_paths.py)
+#### [core/model_paths.py](core/model_paths.py)
 - **Purpose**: Manages custom model directory registration, persistence, and discovery outside the standard ComfyUI `models/` directory.
 - **Key Functions**:
   - `load_custom_model_root()`: Reads `custom_model_root.json` from `VRGDG_Model_Defaults`.
   - `save_custom_model_root(value)`: Atomically writes a new custom model root directory.
   - `register_custom_model_root(root=None)`: Recursively scans and registers subfolders (`diffusion_models`, `unet`, `text_encoders`, `clip`, `vae`, `loras`, `upscale_models`, `latent_upscale_models`, `LLM`) into ComfyUI's central resolver using `folder_paths.add_model_folder_path`.
 
-#### [core/system_routes.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/core/system_routes.py)
+#### [core/system_routes.py](core/system_routes.py)
 - **Purpose**: Implements server-level system telemetry, GPU monitoring, process introspection, and memory management routes.
 - **Key Endpoints**:
   - `GET /vrgdg/resource-monitor`: Queries host RAM (via `psutil`) and GPU metrics (via `nvidia-smi` without console popups) including utilization, VRAM usage, temperature, fan speed, clock frequencies, and power draw. Readings are protected by an async mutex and throttled to 1-second intervals.
@@ -168,7 +172,7 @@ The `core` package houses critical cross-cutting utilities used across the entir
 
 The `builder` package contains the backend business logic and HTTP API powering the **AI Video Builder UI**.
 
-#### [builder/nodes.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/builder/nodes.py)
+#### [builder/nodes.py](builder/nodes.py)
 - **Purpose**: Defines the primary canvas node `VRGDG_MusicVideoBuilderUI` and triggers the registration of builder server routes.
 - **Node Registered**:
   - Class: `VRGDG_MusicVideoBuilderUI`
@@ -177,7 +181,7 @@ The `builder` package contains the backend business logic and HTTP API powering 
   - Inputs: `audio_path`, `project_folder`, `session_path`, `srt_path`
   - Outputs: `(project_folder, session_path, srt_path)`
 
-#### [builder/routes.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/builder/routes.py)
+#### [builder/routes.py](builder/routes.py)
 - **Purpose**: The central API gateway for the Video Builder frontend. Implements over 50 async REST endpoints on `server.PromptServer.instance.routes`.
 - **Key Route Categories**:
   - **Audio & Beat Analysis**: `/vrgdg/music_builder/analyze_audio`, `/vrgdg/music_builder/import_capcut_beats`, `/vrgdg/music_builder/save_scene_audio`, `/vrgdg/music_builder/trim_scene_audio`, `/vrgdg/music_builder/create_silent_audio`, `/vrgdg/music_builder/prepare_scene_audio_mix`.
@@ -187,20 +191,20 @@ The `builder` package contains the backend business logic and HTTP API powering 
   - **Timeline Asset Renumbering**: `/vrgdg/music_builder/renumber_scenes_after_removal`, `/vrgdg/music_builder/renumber_scenes_after_insert`.
   - **LLM Prompt Generation & Agent**: `/vrgdg/music_builder/generate_t2i`, `/vrgdg/music_builder/generate_i2v`, `/vrgdg/music_builder/generate_chained_i2v`, `/vrgdg/music_builder/generate_t2v`, `/vrgdg/music_builder/agent_chat`, `/vrgdg/music_builder/flux_reference_extract_subjects`, `/vrgdg/music_builder/flux_reference_extract_locations`.
 
-#### [builder/project.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/builder/project.py)
+#### [builder/project.py](builder/project.py)
 - **Purpose**: Project serialization, initialization, asset renumbering, and migration logic.
 - **Key Functions**:
-  - `_new_builder_project(payload)`: Sets up directory scaffolding (`project_audio`, `project_images`, `scene_videos`, etc.) and writes the initial `session.json`.
+  - `_new_builder_project(payload)`: Sets up directory scaffolding (`zimage_approved`, `prompts`, `project_context`, `latents`, etc.) and writes the initial `vrgdg_builder_session.json`.
   - `_load_builder_session(payload)` / `_save_builder_session(payload)`: Reads and atomically persists project scene data, timeline markers, and render flags.
-  - `_renumber_scene_assets_after_insert(project_folder, inserted_index)`: Renumbers all disk assets (`scene_XXX.*`) backwards from the end to make room for an inserted scene without overwriting existing files.
+  - `_renumber_scene_assets_after_insert(project_folder, inserted_index)`: Renumbers all disk assets (`image_NNNN.*`, `video_NNNN.*`, etc.) backwards from the end to make room for an inserted scene without overwriting existing files.
   - `_renumber_scene_assets_after_removal(project_folder, removed_index)`: Shifts all subsequent assets forward by one to close the gap left by a deleted scene.
 
-#### [builder/project_copy.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/builder/project_copy.py)
+#### [builder/project_copy.py](builder/project_copy.py)
 - **Purpose**: Non-destructive project duplication and branching.
 - **Key Functions**:
-  - `_save_builder_project_as(payload)`: Duplicates a project folder, selectively filters scene media based on user choices (e.g., keep approved images only, discard failed video renders), rewrites internal path references inside `session.json`, and clones serialized MiniMax latents.
+  - `_save_builder_project_as(payload)`: Duplicates a project folder, selectively filters scene media based on user choices (e.g., keep approved images only, discard failed video renders), rewrites internal path references inside `vrgdg_builder_session.json`, and clones serialized MiniMax latents.
 
-#### [builder/audio.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/builder/audio.py)
+#### [builder/audio.py](builder/audio.py)
 - **Purpose**: Digital audio processing, waveform analysis, and beat detection.
 - **Key Functions**:
   - `_read_audio_peaks(audio_path, target_peaks=1600)`: Extracts downsampled waveform peak envelopes for high-performance frontend timeline rendering.
@@ -208,21 +212,21 @@ The `builder` package contains the backend business logic and HTTP API powering 
   - `_convert_audio_to_wav(audio_path, target_path)`: Converts incoming audio formats (MP3, M4A, FLAC) to uncompressed 16-bit 44.1/48kHz WAV via `av` or `ffmpeg`.
   - `_trim_scene_audio(...)` & `_prepare_scene_audio_mix(...)`: Slices audio segments matching scene start/duration parameters and mixes final multi-track audio for video assembly.
 
-#### [builder/media.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/builder/media.py)
+#### [builder/media.py](builder/media.py)
 - **Purpose**: Visual asset tracking, frame extraction, and reference media management.
 - **Key Functions**:
   - `_extract_video_final_frame_as_scene_image(video_path, target_image_path)`: Uses `torchcodec` or `cv2` to grab the exact final frame of a rendered scene video to use as the starting frame of the subsequent scene (First/Last Frame continuity).
   - `_archive_scene_image(project_folder, scene_num)`: Moves superseded scene images to a history folder before new iterations overwrite them.
   - `_scan_builder_scene_videos(project_folder)`: Traverses scene video directories and indexes render versions, timestamps, and resolutions.
 
-#### [builder/paths.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/builder/paths.py)
+#### [builder/paths.py](builder/paths.py)
 - **Purpose**: Path sanitation, directory containment checks, native OS dialog integration.
 - **Key Functions**:
   - `_resolve_existing_file(path, label)`: Validates that a file exists and normalizes Windows/POSIX path separators.
   - `_open_native_picker(type="file", ...)`: Spawns the operating system's native file/folder explorer dialog.
   - `_open_local_file(path)`: Launches the default system media player or image viewer for a rendered asset.
 
-#### [builder/video_editor.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/builder/video_editor.py)
+#### [builder/video_editor.py](builder/video_editor.py)
 - **Purpose**: Static asset delivery endpoints for high-throughput video/image timeline streaming.
 - **Key Endpoints**:
   - `GET /vrgdg/video_editor/video?path=<path>`: Streams video files with `Cache-Control: public, max-age=31536000, immutable` headers keyed to scene cache busters to enable instant browser timeline playback without re-fetching.
@@ -234,14 +238,14 @@ The `builder` package contains the backend business logic and HTTP API powering 
 
 The `runner` package is the code generation and execution engine that converts project settings into executable ComfyUI workflow prompt graphs.
 
-#### [runner/nodes.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/runner/nodes.py)
+#### [runner/nodes.py](runner/nodes.py)
 - **Purpose**: Canvas UI nodes for workflow runners and system memory clearing.
 - **Nodes Registered**:
   - `VRGDG_MiniMaxH3TurboLoRACompat`: "VRGDG MiniMax-H3 Turbo LoRA Compatibility"
   - `VRGDG_ZImageWorkflowRunnerUI`: "VRGDG Z-Image Workflow Runner UI"
   - `VRGDG_ClearMemoryButtonUI`: "VRGDG Clear Memory Button"
 
-#### [runner/routes.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/runner/routes.py)
+#### [runner/routes.py](runner/routes.py)
 - **Purpose**: Compiles requested workflows and coordinates background generation jobs.
 - **Key Endpoints**:
   - `/vrgdg/workflow_runner/build_zimage_prompt`: Assembles Z-Image / SDXL / Flux prompt graphs.
@@ -252,31 +256,31 @@ The `runner` package is the code generation and execution engine that converts p
   - `/vrgdg/workflow_runner/match_scene_video_start_color`: Matches output video start frames to source image color profiles to prevent color shifts.
   - `/vrgdg/workflow_runner/stitch_scene_videos`: Invokes `ffmpeg` to stitch all approved scene video clips into a single continuous video with muxed audio.
 
-#### [runner/api_graph.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/runner/api_graph.py)
+#### [runner/api_graph.py](runner/api_graph.py)
 - **Purpose**: Graph construction builder primitives. Generates unique string node IDs, links inputs between nodes, and formats the output into the standard ComfyUI API schema: `{node_id: {"class_type": ..., "inputs": {...}}}`.
 
-#### [runner/ltx_workflows.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/runner/ltx_workflows.py)
+#### [runner/ltx_workflows.py](runner/ltx_workflows.py)
 - **Purpose**: Compiler for LTX-Video pipelines (Text-to-Video, Image-to-Video, First/Last Frame guidance, STG guidance, frame rate, and aspect ratio conditioning).
 
-#### [runner/minimax_workflows.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/runner/minimax_workflows.py)
+#### [runner/minimax_workflows.py](runner/minimax_workflows.py)
 - **Purpose**: Compiler for MiniMax H3 pipelines. Assembles model loading, text conditioning, image reference attachment, audio drive conditioning, latent upscale stages, and fast VAE decoding.
 
-#### [runner/minimax_inputs.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/runner/minimax_inputs.py)
+#### [runner/minimax_inputs.py](runner/minimax_inputs.py)
 - **Purpose**: Input parsing, validation, and token/frame duration alignment specifically for MiniMax H3 executions.
 
-#### [runner/minimax_patches.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/runner/minimax_patches.py)
+#### [runner/minimax_patches.py](runner/minimax_patches.py)
 - **Purpose**: Injects optional patches (such as Turbo LoRA or camera motion control weights) into MiniMax H3 model nodes.
 
-#### [runner/image_workflows.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/runner/image_workflows.py)
+#### [runner/image_workflows.py](runner/image_workflows.py)
 - **Purpose**: Compiles prompt graphs for image generators (Flux Schnell/Dev, Z-Image, SDXL) with support for reference conditioning images.
 
-#### [runner/utility_workflows.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/runner/utility_workflows.py)
+#### [runner/utility_workflows.py](runner/utility_workflows.py)
 - **Purpose**: Compiles background helper workflows such as Whisper speech-to-text transcription and standalone memory cleanup prompts.
 
-#### [runner/video_files.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/runner/video_files.py)
+#### [runner/video_files.py](runner/video_files.py)
 - **Purpose**: Output file handling, video trimming, format verification, and ffmpeg assembly.
 
-#### [runner/models.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/runner/models.py)
+#### [runner/models.py](runner/models.py)
 - **Purpose**: Dataclasses and type definitions representing model configurations, samplers, schedulers, and resolution settings.
 
 ---
@@ -285,46 +289,46 @@ The `runner` package is the code generation and execution engine that converts p
 
 The `llm` package provides unified text generation, prompt rewriting, concept generation, and interactive agent capabilities across multiple backends.
 
-#### [llm/api.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/llm/api.py)
+#### [llm/api.py](llm/api.py)
 - **Purpose**: Unified multi-provider API client node. Supports OpenAI, Anthropic Claude, Google Gemini, Grok (xAI), Ollama, and LM Studio.
 - **Node Registered**:
   - `VRGDG_LLM_Multi`: "🤖 VRGDG LLM Multi 🤖"
 - **Features**: Handles multimodal image inputs, system instructions, temperature/seed control, structured JSON schema enforcement, and retry loops.
 
-#### [llm/gguf.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/llm/gguf.py)
+#### [llm/gguf.py](llm/gguf.py)
 - **Purpose**: Direct local GGUF model execution using `llama-cpp-python` with CUDA acceleration.
 - **Nodes Registered**:
   - `VRGDG_QwenGGUF`: "🧠 VRGDG Qwen GGUF 🧠"
   - `VRGDG_SuperGemmaGGUFChat`: "🧠 VRGDG SuperGemma GGUF Chat 🧠"
   - `VRGDG_UnloadGemmaModels`: "VRGDG Unload Gemma/GGUF Models"
 
-#### [llm/google.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/llm/google.py)
+#### [llm/google.py](llm/google.py)
 - **Purpose**: Google Gemini and Imagen integration.
 - **Node Registered**:
   - `VRGDG_NanoBananaPro`: "🚀 VRGDG NanoBanana Pro 🚀"
 
-#### [llm/builder_agent.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/llm/builder_agent.py)
+#### [llm/builder_agent.py](llm/builder_agent.py)
 - **Purpose**: Conversational AI assistant logic embedded inside the Video Builder UI. Handles user queries about project planning, scene direction, prompt critique, and shot progression.
 
-#### [llm/builder_instructions.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/llm/builder_instructions.py)
+#### [llm/builder_instructions.py](llm/builder_instructions.py)
 - **Purpose**: Manages system prompts, persona templates, and instruction presets for image and video prompt generation.
 
-#### [llm/builder_runner.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/llm/builder_runner.py)
+#### [llm/builder_runner.py](llm/builder_runner.py)
 - **Purpose**: Dispatch router for builder LLM tasks. Dynamically routes requests to LM Studio, local GGUF, or cloud APIs with automatic fallback and seed retry.
 
-#### [llm/image_prompt_generation.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/llm/image_prompt_generation.py)
+#### [llm/image_prompt_generation.py](llm/image_prompt_generation.py)
 - **Purpose**: Domain-specific prompt expansion for image models (Flux, Z-Image, SDXL). Generates consistent character descriptions, architectural lighting details, and color palettes from raw lyrics or concept notes.
 
-#### [llm/video_prompt_generation.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/llm/video_prompt_generation.py)
+#### [llm/video_prompt_generation.py](llm/video_prompt_generation.py)
 - **Purpose**: Domain-specific prompt expansion for video models (LTX, MiniMax). Crafts dynamic camera motions (pan, tilt, crane, dolly, orbit), action beats, physical dynamics, and scene transitions.
 
-#### [llm/output_checks.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/llm/output_checks.py)
+#### [llm/output_checks.py](llm/output_checks.py)
 - **Purpose**: Resilient JSON parsing and validation. Extracts JSON payloads enclosed in markdown code fences, fixes trailing commas, validates schema fields, and recovers gracefully from truncated responses.
 
-#### [llm/text_cleaning.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/llm/text_cleaning.py)
+#### [llm/text_cleaning.py](llm/text_cleaning.py)
 - **Purpose**: Strips conversational preambles, trailing commentary, markdown formatting, and hallucinated prompt tags from raw LLM outputs.
 
-#### [llm/cache.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/llm/cache.py)
+#### [llm/cache.py](llm/cache.py)
 - **Purpose**: In-memory and disk-based caching for prompt expansions to minimize redundant API costs.
 
 ---
@@ -333,7 +337,7 @@ The `llm` package provides unified text generation, prompt rewriting, concept ge
 
 The `minimax` package implements high-performance conditioning, latent management, and decoding nodes for the MiniMax H3 video architecture.
 
-#### [minimax/latent_manager.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/minimax/latent_manager.py)
+#### [minimax/latent_manager.py](minimax/latent_manager.py)
 - **Purpose**: Serialized latent storage and frame-token math for MiniMax H3. Eliminates pixel-space VAE re-encoding drift across chained scene passes.
 - **Key Symbols**:
   - `_FRAME_PER_TOKEN = (1, 4, 4, 4, 4)`: MiniMax H3 temporal latent token compression pattern.
@@ -341,7 +345,7 @@ The `minimax` package implements high-performance conditioning, latent managemen
   - `class SceneLatentManager`: Manages `.latent` safetensors files in `latents/`, tracks dirty flags, handles predecessor dependencies, and renames latent files when scenes are reordered.
   - `scene_latent_manager`: Singleton instance.
 
-#### [minimax/nodes.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/minimax/nodes.py)
+#### [minimax/nodes.py](minimax/nodes.py)
 - **Purpose**: Core canvas nodes for MiniMax H3 generation.
 - **Nodes Registered**:
   - `H3FastVAEDecode`: "H3 VAE Decode Fast (Batched Tiles)" — Memory-efficient tiled VAE decoder preventing out-of-memory errors on long clips.
@@ -349,7 +353,7 @@ The `minimax` package implements high-performance conditioning, latent managemen
   - `VRGDG_MiniMaxH3ReferenceMediaFromPaths`: "VRGDG MiniMax H3 Reference Media From Paths" — Binds character and background reference images.
   - `VRGDG_MiniMaxH3ImageReferenceToVideo`: "MiniMax H3 Image + Reference to Video" — High-level conditioning node for Image-to-Video with multiple reference images.
 
-#### [minimax/latent_continuation.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/minimax/latent_continuation.py)
+#### [minimax/latent_continuation.py](minimax/latent_continuation.py)
 - **Purpose**: Native latent-space continuation between adjacent scenes.
 - **Nodes Registered**:
   - `VRGDG_MiniMaxH3SaveLatent`: "VRGDG H3 Save Latent"
@@ -357,7 +361,7 @@ The `minimax` package implements high-performance conditioning, latent managemen
   - `VRGDG_MiniMaxH3ApplyLatentGuide`: "VRGDG H3 Apply Latent Continuation Guide"
   - `VRGDG_MiniMaxH3LoadExactFrame`: "VRGDG H3 Load Exact Last Frame"
 
-#### [minimax/latent_upscaler.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/minimax/latent_upscaler.py)
+#### [minimax/latent_upscaler.py](minimax/latent_upscaler.py)
 - **Purpose**: Learned latent upscaling nodes operating directly on MiniMax latent tensors.
 - **Nodes Registered**:
   - `VRGDG_MiniMaxH3LatentUpscaleModelLoader`: "Load MiniMax H3 Learned Latent Upscaler"
@@ -369,15 +373,15 @@ The `minimax` package implements high-performance conditioning, latent managemen
 
 ### Post-Processing & Enhancement (`post_process/`)
 
-#### [post_process/face_fix.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/post_process/face_fix.py)
+#### [post_process/face_fix.py](post_process/face_fix.py)
 - **Purpose**: High-precision video face repair backend. Tracks faces across video frames, extracts guided anchor crops, processes crops through enhancement models, and composites repaired faces back into the source video with feathered edge masks.
 - **Key Functions**:
   - `register_face_fix_routes(server_instance)`: Registers endpoints `/vrgdg/face_fix/detect_anchors`, `/vrgdg/face_fix/accept_ltx_frames`, and `/vrgdg/face_fix/finalize`.
 
-#### [post_process/luts.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/post_process/luts.py)
+#### [post_process/luts.py](post_process/luts.py)
 - **Purpose**: 3D LUT (.cube) parsing and PyTorch tensor application with strength blending.
 
-#### [post_process/lut_video_tools.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/post_process/lut_video_tools.py)
+#### [post_process/lut_video_tools.py](post_process/lut_video_tools.py)
 - **Purpose**: Video grading and preview routes.
 - **Key Functions**:
   - `register_lut_routes(server_instance)`: Registers endpoints for LUT discovery (`/vrgdg/music_builder/luts`), LUT image/video application (`apply_image`, `apply_video`), procedural film grain generation, and color adjustments (brightness, contrast, saturation).
@@ -388,32 +392,32 @@ The `minimax` package implements high-performance conditioning, latent managemen
 
 The `storyboard` package provides script breakdown, shot planning, and narrative structure tools.
 
-#### [storyboard/nodes.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/storyboard/nodes.py)
+#### [storyboard/nodes.py](storyboard/nodes.py)
 - **Purpose**: Storyboard canvas UI node and HTTP route registration.
 - **Node Registered**:
   - `VRGDG_StoryboardBuilderUI`: "VRGDG Storyboard Builder UI"
 - **Key Routes**: `/vrgdg/storyboard/load`, `/vrgdg/storyboard/save`, `/vrgdg/storyboard/story_brief`, `/vrgdg/storyboard/story_arc`, `/vrgdg/storyboard/scene_story_beat`, `/vrgdg/storyboard/export_prompts`.
 
-#### [storyboard/story_layer.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/storyboard/story_layer.py)
+#### [storyboard/story_layer.py](storyboard/story_layer.py)
 - **Purpose**: Narrative arc management. Breaks stories into Three-Act structures, defines emotional intensity curves, and maps plot points to visual beats.
 
-#### [storyboard/scene_prompts.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/storyboard/scene_prompts.py)
+#### [storyboard/scene_prompts.py](storyboard/scene_prompts.py)
 - **Purpose**: Translates high-level storyboard cards into specific visual prompt strings for image generation and video rendering.
 
-#### [storyboard/dialogue_scenes.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/storyboard/dialogue_scenes.py)
+#### [storyboard/dialogue_scenes.py](storyboard/dialogue_scenes.py)
 - **Purpose**: Parses scripts and song lyrics to identify character dialogue, attribute speakers, and time scene transitions.
 
-#### [storyboard/persistence.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/storyboard/persistence.py)
+#### [storyboard/persistence.py](storyboard/persistence.py)
 - **Purpose**: Serialization of storyboard cards, beats, and shot configurations to `storyboard.json` using atomic writes.
 
-#### [storyboard/scene_helpers.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/storyboard/scene_helpers.py)
+#### [storyboard/scene_helpers.py](storyboard/scene_helpers.py)
 - **Purpose**: Math and timing utilities for calculating scene lengths, frame offsets, and shot classifications.
 
 ---
 
 ### Prompt Creator Subsystem (`prompt_creator/`)
 
-#### [prompt_creator/nodes.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/prompt_creator/nodes.py)
+#### [prompt_creator/nodes.py](prompt_creator/nodes.py)
 - **Purpose**: Registers backend HTTP API routes for the interactive Prompt Creator tool (`/vrgdg/music_prompt_creator/*`): concept creation, motion notes extraction, segment repair, draft saving/loading, and Whisper prompt generation.
 
 ---
@@ -422,7 +426,7 @@ The `storyboard` package provides script breakdown, shot planning, and narrative
 
 The `general` package contains modular canvas nodes that can be placed in any standard ComfyUI workflow.
 
-#### [general/lyrics.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/general/lyrics.py)
+#### [general/lyrics.py](general/lyrics.py)
 - **Purpose**: Lyric transcription, alignment, and SRT segment processing.
 - **Nodes Registered**:
   - `VRGDG_PromptTemplateBuilder`: Assembles multi-token prompt templates with variable replacement.
@@ -430,7 +434,7 @@ The `general` package contains modular canvas nodes that can be placed in any st
   - `VRGDG_ManualLyricsExtractor_SRT_Advanced`: Advanced SRT extraction with character identification.
   - `VRGDG_TimestampedLyricsExtractor`: Generates word-level timestamped SRT subtitles directly from audio using `stable-ts` / Whisper.
 
-#### [general/video.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/general/video.py)
+#### [general/video.py](general/video.py)
 - **Purpose**: Video analysis, beat-aligned scene sizing, image sequence management.
 - **Nodes Registered**:
   - `VRGDG_BuildVideoOutputPath_General_SRT`: Generates deterministic, formatted output file paths.
@@ -441,13 +445,13 @@ The `general` package contains modular canvas nodes that can be placed in any st
   - `VRGDG_LoadAudioSplit_SRTOnly`: Extracts audio matching an SRT segment's time bounds.
   - `VRGDG_TrimImageBatch_SRTOnly`: Trims image batches to match target video frame counts.
 
-#### [general/audio.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/general/audio.py)
+#### [general/audio.py](general/audio.py)
 - **Purpose**: Audio manipulation and stem separation nodes.
 - **Nodes Registered**:
   - `VRGDG_AudioCrop`: Crops audio tensors by start and end timestamps.
   - `VRGDG_GetStems`: Performs 4-stem separation (vocals, drums, bass, other) using `demucs`.
 
-#### [general/utility.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/general/utility.py)
+#### [general/utility.py](general/utility.py)
 - **Purpose**: Swiss-army utility nodes for types, strings, LoRAs, and prompt JSONs.
 - **Nodes Registered**:
   - `VRGDG_ShowText`, `VRGDG_ShowAny`, `VRGDG_TextBox`: UI display and multiline text input.
@@ -459,7 +463,7 @@ The `general` package contains modular canvas nodes that can be placed in any st
   - `VRGDG_LyricSegmentDurationMerger`: Merges short segments into coherent scenes.
   - `VRGDG_MultiReferenceConditioningFromPaths`, `VRGDG_ImageBatchMultiFromPaths`: Loads batches of reference images from paths for model conditioning.
 
-#### [general/ltx_msr_reference.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/general/ltx_msr_reference.py)
+#### [general/ltx_msr_reference.py](general/ltx_msr_reference.py)
 - **Purpose**: Multi-Scale Reference (MSR) conditioning builder for LTX-Video.
 - **Nodes Registered**:
   - `VRGDG_LTXMSRReferenceBuilder`: "VRGDG LTX MSR Reference Builder"
@@ -469,7 +473,7 @@ The `general` package contains modular canvas nodes that can be placed in any st
 
 ### Browser AI Automation (`browser/` & `flow_automation/`)
 
-#### [browser/nodes.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/browser/nodes.py)
+#### [browser/nodes.py](browser/nodes.py)
 - **Purpose**: Browser automation nodes bridging external web-based image generators (Flow, Meta AI, ChatGPT) directly into ComfyUI workflows.
 - **Nodes Registered**:
   - `VRGDG_FlowBrowserImageEdit`: "VRGDG Flow Browser Image Edit"
@@ -489,15 +493,15 @@ The `general` package contains modular canvas nodes that can be placed in any st
 
 ### Frontend Web Applications (`web/`)
 
-ComfyUI automatically loads all extensions placed in [web/](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/web) because `WEB_DIRECTORY = "./web"` is declared in [__init__.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/__init__.py).
+ComfyUI automatically loads all extensions placed in [web/](web) because `WEB_DIRECTORY = "./web"` is declared in [__init__.py](__init__.py).
 
 #### Standalone Extension Scripts
-- [web/VRGDG_MusicVideoBuilderUI.js](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/web/VRGDG_MusicVideoBuilderUI.js): Entry point registering the Video Builder modal dialog on the ComfyUI canvas node.
-- [web/VRGDG_StoryboardBuilderUI.js](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/web/VRGDG_StoryboardBuilderUI.js): Entry point registering the Storyboard Builder modal dialog.
-- [web/VRGDG_ResourceMonitor.js](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/web/VRGDG_ResourceMonitor.js): Canvas and top-bar widget rendering live host RAM and NVIDIA VRAM gauges.
-- [web/VRGDG_UIThemes.js](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/web/VRGDG_UIThemes.js): Theme engine supporting dark, cinematic, and modern styling tokens across VRGDG UI dialogs.
-- [web/VRGDG_FaceFixUI.js](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/web/VRGDG_FaceFixUI.js): Interactive face-repair preview and anchor selection interface.
-- [web/VRGDG_RenderETA.js](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/web/VRGDG_RenderETA.js): Calculates and displays remaining render time based on historical frame rendering rates.
+- [web/VRGDG_MusicVideoBuilderUI.js](web/VRGDG_MusicVideoBuilderUI.js): Entry point registering the Video Builder modal dialog on the ComfyUI canvas node.
+- [web/VRGDG_StoryboardBuilderUI.js](web/VRGDG_StoryboardBuilderUI.js): Entry point registering the Storyboard Builder modal dialog.
+- [web/VRGDG_ResourceMonitor.js](web/VRGDG_ResourceMonitor.js): Canvas and top-bar widget rendering live host RAM and NVIDIA VRAM gauges.
+- [web/VRGDG_UIThemes.js](web/VRGDG_UIThemes.js): Theme engine supporting dark, cinematic, and modern styling tokens across VRGDG UI dialogs.
+- [web/VRGDG_FaceFixUI.js](web/VRGDG_FaceFixUI.js): Interactive face-repair preview and anchor selection interface.
+- [web/VRGDG_RenderETA.js](web/VRGDG_RenderETA.js): Calculates and displays remaining render time based on historical frame rendering rates.
 
 #### Video Builder Application Modules (`web/music_video_builder/`)
 A modular 79-file ESM (`.mjs`) application structure:
@@ -520,12 +524,95 @@ A modular 22-file ESM (`.mjs`) application structure:
 
 ---
 
+### Agent API Subsystem (`agent_api/`)
+
+The `agent_api` package provides a headless, production-grade REST API served at `/vrgdg/api/v1` by ComfyUI. Designed for autonomous external AI agents, headless worker processes, and IDE extensions, it exposes full control over the AI Video Builder without requiring a browser session.
+
+#### Architecture & Design Principles
+- **Uniform Envelopes (D6)**:
+  - Success responses return: `{"ok": True, "data": {...}, "revision": n}`.
+  - Failure responses return structured error blocks: `{"ok": False, "error": {"code": "...", "message": "...", "details": {...}, "retryable": bool}}`.
+- **Revision-Based Optimistic Concurrency (D4)**:
+  - Every project save increments a monotonically increasing `revision` stored in `vrgdg_builder_session.json`.
+  - Mutation endpoints support optimistic concurrency via the HTTP `If-Match: <revision>` header, rejecting stale edits with `409 Conflict` (`REVISION_CONFLICT`) to prevent silent overwrites.
+- **Transactional Timeline Journal (Section 15.6)**:
+  - All structural scene operations (split, merge, insert, delete, move, resize) employ `TimelineJournal`.
+  - Disk renumbering of assets (`image_NNNN.png`, `video_NNNN.mp4`, etc.) is recorded before disk renames and rolled back automatically if an error occurs mid-transaction.
+- **SQLite Job Manager (Section 5)**:
+  - Long-running generation jobs run in background worker threads, tracked in `agent_jobs.db` located inside the project directory.
+  - Supports live Server-Sent Events (SSE) streaming (`GET /vrgdg/api/v1/jobs/{id}/events`).
+  - Interrupted jobs left behind across ComfyUI restarts are safely recovered into `interrupted` status on startup.
+
+#### Key Modules & Endpoints
+- **[agent_api/router.py](agent_api/router.py)**:
+  - Registers `/vrgdg/api/v1` route endpoints across all subsystems.
+- **[agent_api/mutations.py](agent_api/mutations.py)**:
+  - Scene CRUD, timeline snapping, gap closing, bulk edits, beat calibration, reference management, lyrics attachment, settings patching, and comprehensive project validation (`validate_project`).
+- **[agent_api/jobs.py](agent_api/jobs.py)**:
+  - Thread-safe job execution manager, log file management, status transitions, and SSE subscriber broker.
+- **[agent_api/schemas.py](agent_api/schemas.py)**:
+  - JSON Schema definitions and validator functions for mode-specific settings (LTX 6 modes, MiniMax H3 5 modes, image engines).
+- **[agent_api/paths.py](agent_api/paths.py)**:
+  - Multi-root project discovery, project ID validation, and path traversal containment safeguards.
+- **[agent_api/orchestrator/](agent_api/orchestrator)**:
+  - `pipeline_orchestrator.py`: End-to-end dry-run planning (`GET /pipelines/plan`) and full autonomous builds (`pipeline.build_full_video`, `pipeline.build_flf`).
+  - `video_orchestrator.py`: Video rendering jobs (`video.render`), latent caching, color matching, and final video stitching.
+  - `image_orchestrator.py`: Single-scene and batch image generation (`image.generate`) across Z-Image, Flux/Klein, NanoBanana, Ernie, and Krea 2.
+  - `prompt_orchestrator.py`: LLM batch prompt generation jobs (`prompt.batch_generate`).
+  - `post_orchestrator.py`: Video LUT application, film grain overlay, color adjust presets, and Face Fix pipelines.
+
+---
+
+### Model Context Protocol Server (`mcp_server/`)
+
+The `mcp_server` package provides a standalone, zero-dependency Model Context Protocol (MCP) server communicating via standard input/output (stdio JSON-RPC 2.0). It allows AI assistants like Claude Desktop, Cursor, and Antigravity to operate the AI Video Builder with native tool calls.
+
+#### Server Features & Design
+- **Zero External Dependencies**: Operates strictly using Python standard library packages (`json`, `urllib.request`, `sys`, `os`), ensuring compatibility across standard Python and embedded distributions (`python_embeded`).
+- **Standard Protocol**: Implements MCP protocol version `2024-11-05` using JSON-RPC 2.0 messages over stdio.
+- **Launch Command**:
+  ```bash
+  python -m mcp_server
+  ```
+  or with ComfyUI portable Python:
+  ```bash
+  ..\..\..\python_embeded\python.exe -m mcp_server
+  ```
+- **Rule 5 Actionable Error Protocol**:
+  - Failed tool calls return `isError: True` alongside structured `next_steps` suggestions in the content text block (e.g. indicating when a predecessor scene needs rendering, a latent is dirty, or settings preflight failed). This prevents AI agents from getting stuck in unrecoverable retry loops.
+
+#### Tools Catalog (50 Native Tools, T1 to T50)
+| Category | Tools | Description |
+| :--- | :--- | :--- |
+| **Projects** | `project_list` (T1), `project_get` (T2), `project_create` (T3), `project_delete` (T4), `project_duplicate` (T5), `project_export` (T6), `project_status` (T7), `project_validate` (T8) | Project lifecycle management, status summaries, and asset validation |
+| **Audio & Lyrics** | `audio_attach` (T9), `audio_analyze` (T10), `audio_beats_get` (T11), `audio_beats_calibrate` (T12), `lyrics_get` (T13), `lyrics_set` (T14), `lyrics_transcribe` (T15) | Audio import, beat detection, BPM tempo calibration, and Whisper transcription |
+| **Timeline & Scenes** | `timeline_get` (T16), `scene_get` (T17), `scene_create` (T18), `scene_update` (T19), `scene_delete` (T20), `scene_split` (T21), `scene_merge` (T22), `scene_move` (T23), `scene_resize` (T24), `timeline_close_gaps` (T25), `timeline_snap` (T26), `timeline_bulk` (T27) | Comprehensive NLE timeline operations, beat snapping, and gap closures |
+| **References & Story** | `reference_list` (T28), `reference_upsert_subject` (T29), `reference_upsert_location` (T30), `reference_delete` (T31), `reference_map_scene` (T32), `reference_extract` (T33), `story_get` (T34), `story_put` (T35) | Reference Builder catalog management, character casting, and story arc planning |
+| **Prompts & Settings** | `prompt_context_get` (T36), `prompt_assemble` (T37), `prompt_validate` (T38), `prompt_set_field` (T39), `prompt_batch_generate` (T40), `settings_get` (T41), `settings_patch` (T42), `settings_preflight` (T43) | MiniMax H3 / LTX prompt assembly, schema validation, and mode settings |
+| **Generation & Pipeline** | `image_generate` (T44), `video_render` (T45), `latents_list_dirty` (T46), `post_apply` (T47), `stitch_final` (T48), `pipeline_build_full_video` (T49), `pipeline_plan` (T50) | Single-scene and batch render dispatch, post-processing, and full pipeline orchestration |
+
+#### Resources & Prompt Templates
+- **Resources**:
+  - `vrgdg://projects`: Catalog of discovered projects.
+  - `vrgdg://project/{id}`: Full project session state.
+  - `vrgdg://project/{id}/scene/{sid}`: Individual scene bundle and metadata.
+  - `vrgdg://project/{id}/lyrics`: Master lyric lyrics and timecodes.
+  - `vrgdg://jobs/{id}/log`: Live streaming execution log of background jobs.
+  - `vrgdg://modes`: Catalog of supported video/image generation modes and capabilities.
+- **Prompt Templates**:
+  - `make_music_video`: Guided workflow taking user audio/lyrics through timeline creation, prompt authoring, generation, and final stitch.
+  - `review_scene`: Visual critique comparing generated images/videos against prompts and suggesting improvements.
+  - `fix_failed_render`: Diagnostic evaluation of error logs to suggest retries, parameter adjustments, or model memory cleanups.
+  - `polish_timeline`: Rhythm and pacing optimizer checking for timing gaps, beat misalignments, or short scenes.
+
+---
+
 ### Utility Scripts (`scripts/`)
 
-- [scripts/build_minimax_h3_ref2va_2pass_audio_api.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/scripts/build_minimax_h3_ref2va_2pass_audio_api.py): Offline standalone generator for 2-pass MiniMax H3 reference-to-video API workflow JSON files.
-- [scripts/build_ltx25_normal_sampler_workflow.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/scripts/build_ltx25_normal_sampler_workflow.py): Generates baseline LTX 2.5 sampler API graphs.
-- [scripts/far_face_repair_backend.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/scripts/far_face_repair_backend.py): Standalone backend testing script for small/distant face detection and super-resolution repair.
-- [scripts/Backport-Krea2ToMusubi.ps1](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/scripts/Backport-Krea2ToMusubi.ps1): PowerShell script for migrating dataset captions and LoRA configurations between training engines.
+- [scripts/build_minimax_h3_ref2va_2pass_audio_api.py](scripts/build_minimax_h3_ref2va_2pass_audio_api.py): Offline standalone generator for 2-pass MiniMax H3 reference-to-video API workflow JSON files.
+- [scripts/build_ltx25_normal_sampler_workflow.py](scripts/build_ltx25_normal_sampler_workflow.py): Generates baseline LTX 2.5 sampler API graphs.
+- [scripts/far_face_repair_backend.py](scripts/far_face_repair_backend.py): Standalone backend testing script for small/distant face detection and super-resolution repair.
+- [scripts/Backport-Krea2ToMusubi.ps1](scripts/Backport-Krea2ToMusubi.ps1): PowerShell script for migrating dataset captions and LoRA configurations between training engines.
 
 ---
 
@@ -533,11 +620,11 @@ A modular 22-file ESM (`.mjs`) application structure:
 
 The repository includes 84 test suites verifying backend logic, API contracts, and JavaScript source code integrity.
 
-- [tests/test_node_registration.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/tests/test_node_registration.py): Parses AST of all submodules in `_VRGDG_SUBMODULES` and asserts that every node identifier in `NODE_CLASS_MAPPINGS` and `NODE_DISPLAY_NAME_MAPPINGS` is globally unique. **Must always pass.**
-- [tests/test_atomic_write.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/tests/test_atomic_write.py): Simulates disk interruptions, asserts file replacement integrity, and verifies temp file cleanup.
-- [tests/test_builder_branch_project.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/tests/test_builder_branch_project.py): Tests non-destructive project cloning and path rewriting.
-- [tests/test_minimax_h3_latent_continuation.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/tests/test_minimax_h3_latent_continuation.py): Validates frame-to-token conversions, latent tensor guide alignment, and safetensors persistence.
-- [tests/builder_source.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/tests/builder_source.py): AST and regex extraction helper allowing Python unit tests to validate frontend JavaScript logic and contracts without spinning up a headless browser.
+- [tests/test_node_registration.py](tests/test_node_registration.py): Parses AST of all submodules in `_VRGDG_SUBMODULES` and asserts that every node identifier in `NODE_CLASS_MAPPINGS` and `NODE_DISPLAY_NAME_MAPPINGS` is globally unique. **Must always pass.**
+- [tests/test_atomic_write.py](tests/test_atomic_write.py): Simulates disk interruptions, asserts file replacement integrity, and verifies temp file cleanup.
+- [tests/test_builder_branch_project.py](tests/test_builder_branch_project.py): Tests non-destructive project cloning and path rewriting.
+- [tests/test_minimax_h3_latent_continuation.py](tests/test_minimax_h3_latent_continuation.py): Validates frame-to-token conversions, latent tensor guide alignment, and safetensors persistence.
+- [tests/builder_source.py](tests/builder_source.py): AST and regex extraction helper allowing Python unit tests to validate frontend JavaScript logic and contracts without spinning up a headless browser.
 
 ---
 
@@ -670,7 +757,7 @@ def calculate_minimax_h3_timing(
 
 When adding a new canvas node:
 
-1. **Choose the appropriate package** (e.g., [general/utility.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/general/utility.py), [general/video.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/general/video.py), or [minimax/nodes.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/minimax/nodes.py)).
+1. **Choose the appropriate package** (e.g., [general/utility.py](general/utility.py), [general/video.py](general/video.py), or [minimax/nodes.py](minimax/nodes.py)).
 2. **Implement the node class conforming to ComfyUI standards**:
 
 ```python
@@ -719,7 +806,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 }
 ```
 
-4. **Verify [__init__.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/__init__.py)**: Ensure the file containing the node is listed in `_VRGDG_SUBMODULES`.
+4. **Verify [__init__.py](__init__.py)**: Ensure the file containing the node is listed in `_VRGDG_SUBMODULES`.
 5. **Run the node registration test**:
 ```bash
 python -m unittest tests/test_node_registration.py
@@ -731,7 +818,7 @@ python -m unittest tests/test_node_registration.py
 
 When adding a backend route:
 
-1. **Locate the appropriate `routes.py`** (e.g., [builder/routes.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/builder/routes.py) or [runner/routes.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/runner/routes.py)).
+1. **Locate the appropriate `routes.py`** (e.g., [builder/routes.py](builder/routes.py) or [runner/routes.py](runner/routes.py)).
 2. **Implement an async handler wrapped in a registration guard**:
 
 ```python
@@ -774,7 +861,7 @@ _ensure_my_routes()
 
 When adding a new generation model or pipeline to the headless Workflow Runner:
 
-1. **Define the model parameters in [runner/models.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/runner/models.py)**.
+1. **Define the model parameters in [runner/models.py](runner/models.py)**.
 2. **Implement the graph compiler function** in a dedicated file (e.g. `runner/my_new_model_workflows.py`):
 
 ```python
@@ -845,14 +932,14 @@ def build_my_model_prompt_graph(
     return graph
 ```
 
-3. **Expose the compiler via [runner/routes.py](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/runner/routes.py)**:
+3. **Expose the compiler via [runner/routes.py](runner/routes.py)**:
    - Add a POST route `/vrgdg/workflow_runner/build_my_model_prompt` that accepts the JSON payload, calls your compiler, and returns the assembled graph.
 
 ---
 
 ### Recipe 4: Modifying Builder Frontend Modules
 
-When updating or adding UI features in [web/music_video_builder/](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/web/music_video_builder):
+When updating or adding UI features in [web/music_video_builder/](web/music_video_builder):
 
 1. **Follow ESM Conventions**: All files are `.mjs` modules. Use explicit imports and exports.
 2. **Never store transient UI state in `session.json`**:
@@ -867,7 +954,7 @@ When updating or adding UI features in [web/music_video_builder/](file:///c:/Use
 
 ### Recipe 5: Writing Unit & Integration Tests
 
-All new functionality must be accompanied by tests in [tests/](file:///c:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/tests):
+All new functionality must be accompanied by tests in [tests/](tests):
 
 1. **Use `unittest`**:
 2. **Mock ComfyUI Dependencies**: Many modules import `server` or `folder_paths`. Use `importlib.util` or `unittest.mock.patch` to test backend components without booting the full ComfyUI server:
