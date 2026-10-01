@@ -309,6 +309,20 @@ class AgentApiMutationsTests(unittest.TestCase):
         self.assertEqual(set_res["prompt"], "Solo artist in rain")
         self.assertEqual(set_res["origin"], "agent")
 
+    def test_reference_to_video_prompts_use_the_saved_builder_format(self):
+        """A reference-to-video scene is assembled and validated as wrapper plus shots, like the Video Builder saves it."""
+        folder, session = mutations._get_active_session_and_folder("Test_Track")
+        session["minimax_h3_settings"] = {"video_mode": "reference_to_video"}
+        session["builder_storyboard_defaults"] = {"video_style": "cinematic_realism"}
+        mutations._persist_session(folder, session)
+        asm = mutations.assemble_minimax_prompt_endpoint(
+            "Test_Track", "seg_0001", shots=["A wide shot pans across the rooftop as <Subject 1> paces the rail."], save=False)
+        self.assertEqual(asm["prompt"].split("\n\n")[0], "detailed_description:\nThe target video is in a cinematic_realism music-video style.")
+        self.assertNotIn("subject_definitions:", asm["prompt"])
+        self.assertTrue(asm["valid"], asm["errors"])
+        val = mutations.validate_minimax_prompt_endpoint("Test_Track", "seg_0001", asm["prompt"])
+        self.assertTrue(val["valid"], val["errors"])
+
     # 11. Project Preflight Settings (Section 16)
     def test_settings_preflight(self):
         pre = mutations.preflight_project_settings("Test_Track")

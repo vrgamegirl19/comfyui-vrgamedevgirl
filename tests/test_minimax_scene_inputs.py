@@ -69,6 +69,16 @@ class ReferenceImageTests(unittest.TestCase):
         self.assertEqual(paths[0], "C:/img/s1.png")
         self.assertIn("C:/refs/ava.png", paths)
 
+    def test_a_subject_added_through_the_api_is_used_without_the_flag(self):
+        """The API never sets use_subject_reference; the UI derives it from a subject with an image."""
+        session = {"flux_reference_builder": {"subjects": [{"id": "darrel", "name": "Darrel", "image": {"path": "C:/pics/darrel.png"}}]}}
+        paths = si.render_reference_image_paths(session, _segment("scene-1"), "reference_to_video", 0)
+        self.assertEqual(paths, ["C:/pics/darrel.png"])
+
+    def test_placeholder_subjects_without_content_are_not_used(self):
+        session = {"flux_reference_builder": {"subject_count": 1, "subjects": [{"id": "s", "name": "Character 1", "image": {}}]}}
+        self.assertEqual(si.render_reference_image_paths(session, _segment("scene-1"), "reference_to_video", 0), [])
+
     def test_scene_image_use_choice_enables_the_start_frame_like_the_flag(self):
         segment = _segment("scene-1", minimax_h3_scene_image_use="exact_start_frame", approved_image_path="C:/img/s1.png")
         paths = si.render_reference_image_paths(_session(), segment, "reference_to_video", 0)

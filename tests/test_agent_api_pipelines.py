@@ -41,6 +41,15 @@ class TestAgentApiPipelines(unittest.TestCase):
         self.project_dir = os.path.join(self.test_dir, "TestPipelineProject")
         os.makedirs(self.project_dir, exist_ok=True)
 
+        # Saving a session also rewrites the user's saved model defaults. Keep this test away from
+        # the real ComfyUI output folder so running the suite never changes them.
+        builder_project = importlib.import_module(f"{ROOT.name}.builder.project")
+        defaults_patch = patch.object(
+            builder_project, "_model_defaults_path", lambda: os.path.join(self.test_dir, "model_defaults.json")
+        )
+        defaults_patch.start()
+        self.addCleanup(defaults_patch.stop)
+
         # Create dummy audio file
         self.dummy_audio_path = os.path.join(self.test_dir, "dummy_audio.wav")
         import wave

@@ -2,6 +2,7 @@
 
 import os
 import re
+import copy
 import shutil
 import uuid
 from typing import Any, Dict, List, Optional
@@ -14,11 +15,19 @@ from ..builder.audio import (
     _save_project_srt,
     _srt_path,
 )
+from ..builder.lyric_scenes import (
+    apply_length_fix,
+    is_instrumental_lyric_text,
+    merge_lyric_text,
+    next_length_fix,
+    split_lyric_text,
+)
 from ..builder.project import (
     _BUILDER_SAVE_LOCK,
     _SCENE_ASSET_NAME,
     _delete_builder_project,
     _load_builder_session,
+    _load_model_defaults,
     _new_builder_project,
     _prepare_builder_project_export,
     _renumber_scene_assets_after_insert,
@@ -48,6 +57,7 @@ from ..minimax.latent_manager import SceneLatentManager
 from ..minimax.prompt_assembly import (
     assemble_minimax_h3_prompt,
     build_minimax_prompt_context,
+    effective_mode as effective_minimax_mode,
     validate_minimax_h3_prompt,
 )
 
@@ -291,6 +301,13 @@ def split_scene(
             right["end"] = round(end, 4)
             right["source"] = "split"
 
+            # Each half keeps the lyrics sung during its own part of the scene.
+            if str(left.get("lyric_text") or "").strip():
+                left_text, right_text = split_lyric_text(left.get("lyric_text"), (t - start) / max(end - start, 0.01))
+                left["lyric_text"], right["lyric_text"] = left_text, right_text
+                left["lyric_no_lip_sync"] = is_instrumental_lyric_text(left_text)
+                right["lyric_no_lip_sync"] = is_instrumental_lyric_text(right_text)
+
             if clear_right_media:
                 right.pop("approved_image_path", None)
                 right.pop("video_path", None)
@@ -369,6 +386,11 @@ def merge_scenes(
 
             notes_parts = [str(left.get("notes") or "").strip(), str(right.get("notes") or "").strip()]
             left["notes"] = "\n\n".join(p for p in notes_parts if p)
+            if str(left.get("lyric_text") or "").strip() or str(right.get("lyric_text") or "").strip():
+                left["lyric_text"] = merge_lyric_text(left.get("lyric_text"), right.get("lyric_text"))
+                left["lyric_no_lip_sync"] = is_instrumental_lyric_text(left["lyric_text"])
+            note_parts = [str(left.get("timeline_note") or "").strip(), str(right.get("timeline_note") or "").strip()]
+            left["timeline_note"] = "\n".join(p for p in note_parts if p)
 
             segments.pop(right_idx)
             renumber_generic_base_scene_labels(segments)
@@ -577,6 +599,67 @@ def timeline_close_gaps(project_id: str) -> Dict[str, Any]:
         }
 
 
+def enforce_scene_lengths_on_project(
+    project_id: str,
+    min_scene_seconds: float,
+    max_scene_seconds: float,
+    dry_run: bool = False,
+    max_edits: int = 400,
+) -> Dict[str, Any]:
+    """Merge scenes shorter than ``min`` and cut scenes longer than ``max``, using the transactional edits.
+
+    Long scenes are split into equal parts (a 12 s scene becomes 6 s + 6 s) and their lyrics are divided
+    between the parts. Short scenes are merged into the neighbor that gives the shorter result. Scenes
+    with rendered video are left alone and reported. ``dry_run`` returns the edits without making them.
+    """
+    edits: List[Dict[str, Any]] = []
+    _folder, session = _get_active_session_and_folder(project_id)
+    scenes_before = len(session.get("segments") or [])
+    working = [dict(s) for s in session.get("segments") or []] if dry_run else None
+
+    for _ in range(max(1, int(max_edits))):
+        if dry_run:
+            locked = {s.get("id") for s in working if has_locked_video(s)}
+            fix = next_length_fix(working, min_scene_seconds, max_scene_seconds, locked)
+            if fix is None:
+                break
+            apply_length_fix(working, fix)
+        else:
+            _folder, session = _get_active_session_and_folder(project_id)
+            segments = session.get("segments") or []
+            locked = {s.get("id") for s in segments if has_locked_video(s)}
+            fix = next_length_fix(segments, min_scene_seconds, max_scene_seconds, locked)
+            if fix is None:
+                break
+            if fix["op"] == "split":
+                split_scene(project_id, fix["scene_id"], fix["at_time"])
+            else:
+                merge_scenes(project_id, fix["scene_id"], with_direction=fix["with"])
+        edits.append(fix)
+    else:
+        raise ValidationError(f"Stopped after {max_edits} edits without reaching the limits; check the minimum and maximum.")
+
+    final = working if dry_run else (_get_active_session_and_folder(project_id)[1].get("segments") or [])
+    locked_ids = {s.get("id") for s in final if has_locked_video(s)}
+    lengths = [float(s.get("end", 0)) - float(s.get("start", 0)) for s in final]
+    still_outside = [
+        {"scene_id": s.get("id"), "seconds": round(float(s["end"]) - float(s["start"]), 2), "reason": "has rendered video" if s.get("id") in locked_ids else "no valid edit"}
+        for s in final
+        if (float(s["end"]) - float(s["start"]) > float(max_scene_seconds) + 0.01
+            or (len(final) > 1 and float(s["end"]) - float(s["start"]) < float(min_scene_seconds) - 0.01))
+    ]
+    return {
+        "dry_run": bool(dry_run),
+        "splits": sum(1 for e in edits if e["op"] == "split"),
+        "merges": sum(1 for e in edits if e["op"] == "merge"),
+        "scenes_before": scenes_before,
+        "scenes_after": len(final),
+        "shortest_seconds": round(min(lengths), 2) if lengths else None,
+        "longest_seconds": round(max(lengths), 2) if lengths else None,
+        "still_outside_limits": still_outside,
+    }
+
+
 def timeline_snap(
     project_id: str,
     scope: str = "edge",
@@ -587,7 +670,7 @@ def timeline_snap(
     with _BUILDER_SAVE_LOCK:
         folder, session = _get_active_session_and_folder(project_id)
         segments = session.setdefault("segments", [])
-        beats = session.get("beats") or []
+        beats = _session_beats(session)
         if not beats:
             raise ValidationError("No beats loaded in project. Analyze audio first.")
 
@@ -937,20 +1020,30 @@ def attach_project_audio(
             "project_folder": folder,
             "source_path": audio_path,
             "audio_data": audio_data,
-            "audio_name": audio_name or "audio.wav",
+            # Keep the source file's own extension (an .mp3 saved as .wav would be a mislabeled file).
+            "audio_name": audio_name or (os.path.basename(str(audio_path)) if audio_path else "") or "audio.wav",
         }
         res = _save_project_audio(payload)
-        session["audio_path"] = res.get("audio_path")
-        session["audio_duration"] = res.get("duration", 0.0)
-
-        peaks = _read_audio_peaks(res["audio_path"])
-        session["audio_peaks"] = len(peaks)
+        saved_path = res.get("saved_path") or res.get("audio_path")
+        if not saved_path:
+            raise ValidationError("The audio file could not be saved into the project.")
+        # Same keys the Video Builder saves: audio_path, audio_duration, audio_peaks, beat_markers.
+        session["audio_path"] = saved_path
+        session["audio_duration"] = float(res.get("duration") or 0.0)
+        peaks = res.get("peaks") if isinstance(res.get("peaks"), list) else []
+        session["audio_peaks"] = peaks
+        beats = res.get("beats") if isinstance(res.get("beats"), list) else []
+        session["beat_markers"] = beats
+        if res.get("tempo_bpm"):
+            session["detected_tempo_bpm"] = float(res["tempo_bpm"])
 
         save_result = _persist_session(folder, session)
         return {
-            "audio_path": res.get("audio_path"),
-            "duration": res.get("duration"),
+            "audio_path": saved_path,
+            "duration": session["audio_duration"],
             "peaks_count": len(peaks),
+            "beat_count": len(beats),
+            "tempo_bpm": session.get("detected_tempo_bpm"),
             "revision": save_result.get("revision", current_rev + 1),
         }
 
@@ -976,6 +1069,8 @@ def create_project_silent_audio(
         res = _create_silent_audio(payload)
         session["audio_path"] = res.get("audio_path")
         session["audio_duration"] = res.get("duration", 0.0)
+        if isinstance(res.get("peaks"), list):
+            session["audio_peaks"] = res["peaks"]
 
         save_result = _persist_session(folder, session)
         return {
@@ -999,12 +1094,20 @@ def get_audio_waveform(project_id: str, target_peaks: int = 1600) -> Dict[str, A
     }
 
 
+def _session_beats(session: Dict[str, Any]) -> List[Any]:
+    """Beat markers as the Video Builder saves them (``beat_markers``), falling back to the older ``beats`` key."""
+    beats = session.get("beat_markers")
+    if not isinstance(beats, list) or not beats:
+        beats = session.get("beats")
+    return beats if isinstance(beats, list) else []
+
+
 def get_audio_beats(project_id: str) -> Dict[str, Any]:
     """Get detected audio beat markers and tempo."""
     _folder, session = _get_active_session_and_folder(project_id)
     return {
-        "beats": session.get("beats", []),
-        "tempo_bpm": session.get("tempo_bpm") or session.get("bpm"),
+        "beats": _session_beats(session),
+        "tempo_bpm": session.get("detected_tempo_bpm") or session.get("tempo_bpm") or session.get("bpm"),
         "beat_calibration": session.get("beat_calibration"),
     }
 
@@ -1022,14 +1125,15 @@ def set_audio_beats(
         if if_match_revision is not None and if_match_revision != current_rev:
             raise RevisionConflictError(current_rev, if_match_revision)
 
-        session["beats"] = beats
+        session["beat_markers"] = beats
+        session.pop("beats", None)
         if tempo_bpm is not None:
-            session["tempo_bpm"] = float(tempo_bpm)
+            session["detected_tempo_bpm"] = float(tempo_bpm)
 
         save_result = _persist_session(folder, session)
         return {
             "beat_count": len(beats),
-            "tempo_bpm": session.get("tempo_bpm"),
+            "tempo_bpm": session.get("detected_tempo_bpm"),
             "revision": save_result.get("revision", current_rev + 1),
         }
 
@@ -1046,7 +1150,7 @@ def calibrate_beats(
         if if_match_revision is not None and if_match_revision != current_rev:
             raise RevisionConflictError(current_rev, if_match_revision)
 
-        beats = session.get("beats") or []
+        beats = _session_beats(session)
         offset = float(offset_seconds or 0.0)
         calibrated = []
         for b in beats:
@@ -1057,7 +1161,8 @@ def calibrate_beats(
             else:
                 calibrated.append(round(float(b) + offset, 4))
 
-        session["beats"] = calibrated
+        session["beat_markers"] = calibrated
+        session.pop("beats", None)
         session["beat_calibration"] = {
             "offset_seconds": offset,
             "calibrated": True,
@@ -1142,7 +1247,8 @@ def validate_minimax_prompt_endpoint(
     segments = session.get("segments", [])
     idx = next((i for i, s in enumerate(segments) if s.get("id") == scene_id or str(i + 1) == str(scene_id)), -1)
     segment = segments[idx] if idx >= 0 else None
-    return validate_minimax_h3_prompt(prompt, segment=segment, mode=mode, fail_on_invalid_prompt_formats=True)
+    resolved_mode = effective_minimax_mode(segment or {}, session, mode)
+    return validate_minimax_h3_prompt(prompt, segment=segment, mode=resolved_mode, fail_on_invalid_prompt_formats=True)
 
 
 def set_scene_prompt_field_endpoint(
@@ -1207,7 +1313,7 @@ def export_project(project_id: str) -> Dict[str, Any]:
 def get_project_story(project_id: str) -> Dict[str, Any]:
     """Get builder story brief, arc, and beats."""
     _folder, session = _get_active_session_and_folder(project_id)
-    return session.get("builderStoryLayer") or session.get("story") or {}
+    return session.get("builder_story_layer") or session.get("builderStoryLayer") or session.get("story") or {}
 
 
 def put_project_story(
@@ -1222,7 +1328,8 @@ def put_project_story(
         if if_match_revision is not None and if_match_revision != current_rev:
             raise RevisionConflictError(current_rev, if_match_revision)
 
-        session["builderStoryLayer"] = story_data
+        session["builder_story_layer"] = story_data
+        session.pop("builderStoryLayer", None)
         save_result = _persist_session(folder, session)
         return {
             "story": story_data,
@@ -1314,17 +1421,32 @@ def create_project(name: str, template_from: Optional[str] = None) -> Dict[str, 
     folder = created["project_folder"]
     pid = get_project_id(folder)
 
+    revision = 1
     if template_from:
         src_folder = resolve_project_folder(template_from)
         src_session_file = os.path.join(src_folder, "vrgdg_builder_session.json")
         if os.path.isfile(src_session_file):
             shutil.copy2(src_session_file, created["session_path"])
+    else:
+        # Start from the saved model defaults, like a new project in the UI. Saving a session
+        # also rewrites those defaults from the keys it contains, so an empty session would
+        # replace them with nothing.
+        defaults = copy.deepcopy(_load_model_defaults().get("defaults") or {})
+        session = {
+            **defaults,
+            "project_name": clean_name,
+            "project_folder": folder,
+            "segments": [],
+            "video_engine": defaults.get("video_engine") or "minimax_h3",
+        }
+        saved = _save_builder_session({"project_folder": folder, "project_name": clean_name, "session": session})
+        revision = int(saved.get("revision") or 1)
 
     return {
         "project_id": pid,
         "name": clean_name,
         "project_folder": folder,
-        "revision": 1,
+        "revision": revision,
     }
 
 

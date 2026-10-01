@@ -70,7 +70,7 @@ class TestMcpServer(unittest.TestCase):
                 return 200, {"ok": True, "data": {"projects": [p["project_name"] for p in self.mock_db["projects"]]}}
 
             if path == "/projects" and method == "POST":
-                p_name = json_data.get("project_name", "NewProj")
+                p_name = json_data.get("name", "NewProj")  # the real route reads `name`
                 new_p = {"project_name": p_name, "revision": 1, "segments": []}
                 self.mock_db["projects"].append(new_p)
                 return 201, {"ok": True, "data": new_p}
@@ -169,11 +169,13 @@ class TestMcpServer(unittest.TestCase):
         self.assertEqual(res["result"], {})
 
     def test_tools_list(self):
-        """Test listing all tools (T1 to T53)."""
+        """Test listing all tools (T1 to T63)."""
         req = {"jsonrpc": "2.0", "id": 3, "method": "tools/list"}
         res = self.server.handle_request(req)
         tools = res["result"]["tools"]
-        self.assertEqual(len(tools), 53)
+        # 63 named tools, one generated `api_*` tool per other endpoint (see test_mcp_endpoints.py) and `api_request`.
+        self.assertGreaterEqual(len(tools), 63 + 1)
+        self.assertEqual(sum(1 for t in tools if not t["name"].startswith("api_")), 63)
         tool_names = {t["name"] for t in tools}
         self.assertIn("system_health", tool_names)
         self.assertIn("project_create", tool_names)
@@ -362,6 +364,30 @@ class TestMcpServer(unittest.TestCase):
         msg_text = res_get["result"]["messages"][0]["content"]["text"]
         self.assertIn("EpicSong", msg_text)
         self.assertIn("project_create", msg_text)
+
+    def test_agent_docs_are_served_as_resources_and_in_the_prompt(self):
+        """Agents can read the endpoint list and the playbook, and the server tells them where to look."""
+        init = self.server.handle_request({"jsonrpc": "2.0", "id": 40, "method": "initialize", "params": {}})
+        self.assertIn("vrgdg://docs/endpoints", init["result"]["instructions"])
+        self.assertIn("make_music_video", init["result"]["instructions"])
+        for uri, needle in (
+            ("vrgdg://docs/endpoints", "/projects/{pid}/story/{step}"),
+            ("vrgdg://docs/music-video-playbook", "story_create"),
+            ("vrgdg://docs/openapi", "/minimax-prompts"),
+        ):
+            res = self.server.handle_request({"jsonrpc": "2.0", "id": 41, "method": "resources/read", "params": {"uri": uri}})
+            self.assertIn(needle, res["result"]["contents"][0]["text"], uri)
+        prompt = self.server.handle_request({"jsonrpc": "2.0", "id": 42, "method": "prompts/get", "params": {
+            "name": "make_music_video", "arguments": {"project_name": "EpicSong", "audio_file": "song.mp3", "character_name": "Darrel"}}})
+        text = prompt["result"]["messages"][0]["content"]["text"]
+        self.assertIn("character name: Darrel", text)
+        self.assertIn("minimax_prompts", text)
+        chat = self.server.handle_request({"jsonrpc": "2.0", "id": 43, "method": "prompts/get", "params": {"name": "chat_make_music_video"}})
+        chat_text = chat["result"]["messages"][0]["content"]["text"]
+        self.assertIn("Step 2: Confirm", chat_text)
+        self.assertIn("story_create", chat_text)
+        doc = self.server.handle_request({"jsonrpc": "2.0", "id": 44, "method": "resources/read", "params": {"uri": "vrgdg://docs/chat-agent-prompt"}})
+        self.assertIn("Step 1: Check, then ask", doc["result"]["contents"][0]["text"])
 
     # ==========================================================================
     # 5. Stdio Server Loop

@@ -35,6 +35,7 @@ from ..mutations import (
     _get_active_session_and_folder,
     set_scene_prompt_field_endpoint,
 )
+from ..llm_runtime import llm_payload_from_session, prepare_llm_payload
 from ..paths import resolve_project_folder
 from .manager import JobManager, get_job_manager
 from .models import Job
@@ -48,22 +49,35 @@ def is_llm_runner_gpu(params: Dict[str, Any], project_folder: Optional[str] = No
     if not runner and project_folder:
         try:
             _, session = _get_active_session_and_folder(os.path.basename(project_folder))
-            settings = session.get("settings") or {}
-            runner = str(settings.get("text_runner") or "").strip().lower()
+            runner = str(session.get("text_gemma_runner") or "").strip().lower()
         except Exception:
             pass
+    runner = runner.replace("-", "_")
+    if runner == "lmstudio":
+        runner = "lm_studio"
     if runner in _EXTERNAL_LLM_RUNNERS:
         return False
     return True
 
 
 def _prepare_llm_payload(job: Job, project_folder: str, extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Assemble standard payload dictionary for underlying generator functions."""
-    payload = dict(job.params or {})
+    """Assemble the payload the generator functions read.
+
+    The project's saved LLM runner settings come first and the request's own parameters win. For LM
+    Studio the payload is pointed at the model that is currently loaded (see ``llm_runtime``), so a
+    job never makes LM Studio load or switch a model.
+    """
+    session: Dict[str, Any] = {}
+    if job.project_id:
+        try:
+            _, session = _get_active_session_and_folder(job.project_id)
+        except Exception:
+            session = {}
+    payload = {**llm_payload_from_session(session), **(job.params or {})}
     payload["project_folder"] = project_folder
     if extra:
         payload.update(extra)
-    return payload
+    return prepare_llm_payload(payload)
 
 
 # ==============================================================================
