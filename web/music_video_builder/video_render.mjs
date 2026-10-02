@@ -943,7 +943,7 @@ export function createVideoRender({
         `${batchLabel}${threePass ? "Queueing MiniMax H3 2 Pass Advanced (Base → MMH3 tiled upscale)..." : twoPass ? "Queueing MiniMax H3 2 Pass (Stage 1 → Stage 2)..." : "Queueing MiniMax H3..."}\n`
         + `Timeline: ${sceneDuration.toFixed(3)}s\n`
         + `H3 render: ${Number(timing.h3_frame_count || 0)} frames`
-        + (threePass ? "\nPass 1 is saved as a backup; the MMH3 tiled/chunked Pass 2 video will be used for stitching." : twoPass ? "\nPass 1 is learned-latent upscaled and refined by pass 2; the final pass-2 video will be used for stitching." : "")
+        + (threePass ? "\nThe MMH3 tiled/chunked Pass 2 video will be used for stitching." : twoPass ? "\nPass 1 is learned-latent upscaled and refined by pass 2; the final pass-2 video will be used for stitching." : "")
         + exactTwoPassStepsLine
         + loraLine
         + turboLine
@@ -954,79 +954,9 @@ export function createVideoRender({
       const queued = await queueWorkflowPrompt(built.prompt);
       const promptId = queued?.prompt_id;
       if (!promptId) throw new Error("ComfyUI queued MiniMax H3 but did not return a prompt_id.");
-      let liveStageBackupsRegistered = false;
-      let liveStageBackupTask = null;
-      let livePreviewStage = 0;
-      const copyLiveStageBackups = async () => {
-        if (!(twoPass || threePass) || liveStageBackupsRegistered) return;
-        const stages = await postJson("/vrgdg/workflow_runner/find_minimax_h3_stage_outputs", {
-          output_folder: built.output_folder || "",
-          min_mtime: renderStartedAt,
-        }, 15000).catch(() => ({}));
-        const paths = [
-          ["stage1", stages.stage1_path],
-        ].filter(([, path]) => Boolean(path));
-        if (!paths.length) return;
-        let changed = false;
-        if (!Array.isArray(segment.video_backup_paths)) segment.video_backup_paths = [];
-        for (const [stage, sourcePath] of paths) {
-          if (segment[`minimax_h3_${stage}_source_path`] === sourcePath) continue;
-          const copied = await postJson("/vrgdg/workflow_runner/collect_minimax_h3_stage_backup", {
-            source_path: sourcePath,
-            project_folder: projectFolder,
-            scene_number: slotNumber,
-            stage,
-          }, 120000).catch(() => ({}));
-          const backupPath = copied.backup_path || "";
-          if (backupPath && !segment.video_backup_paths.some((item) => mediaPathKey(item) === mediaPathKey(backupPath))) {
-            segment.video_backup_paths.push(backupPath);
-            changed = true;
-          }
-          if (backupPath) segment[`minimax_h3_${stage}_source_path`] = sourcePath;
-          if (backupPath) segment[`minimax_h3_${stage}_backup_path`] = backupPath;
-          if (copied.backup_thumbnail_path) {
-            if (!Array.isArray(segment.video_backup_thumbnail_paths)) segment.video_backup_thumbnail_paths = [];
-            segment.video_backup_thumbnail_paths.push(copied.backup_thumbnail_path);
-          }
-        }
-        if (!changed) return;
-        segment.minimax_h3_stage1_path = segment.minimax_h3_stage1_backup_path || segment.minimax_h3_stage1_path || "";
-        segment.minimax_h3_stage2_path = segment.minimax_h3_stage2_path || "";
-        const previewStage = paths.reduce((highest, [stage]) => {
-          const value = Number(String(stage || "").replace("stage", ""));
-          return Number.isFinite(value) ? Math.max(highest, value) : highest;
-        }, 0);
-        if (previewStage > livePreviewStage) {
-          const previewStagePath = previewStage === 2
-            ? segment.minimax_h3_stage2_path
-            : segment.minimax_h3_stage1_path;
-          if (previewStagePath) {
-            livePreviewStage = previewStage;
-            activateSegmentVideoPath(
-              segment,
-              previewStagePath,
-              segment.video_thumbnail_path || "",
-            );
-            segment.preview_mode = "video";
-            segment.video_cache_bust = Date.now();
-            syncPreview(segment);
-          }
-        }
-        liveStageBackupsRegistered = Boolean(segment.minimax_h3_stage1_backup_path)
-          && segment.minimax_h3_stage1_source_path === stages.stage1_path;
-        segment.video_cache_bust = Date.now();
-        renderList();
-        render();
-        await autoSaveSessionQuiet("MiniMax H3 2 Pass Advanced backup available");
-      };
-      const registerLiveThreePassBackups = () => {
-        if (!liveStageBackupTask) liveStageBackupTask = copyLiveStageBackups().finally(() => { liveStageBackupTask = null; });
-        return liveStageBackupTask;
-      };
       const videos = await waitForVideos(
         promptId,
         (message) => {
-          if (threePass) void registerLiveThreePassBackups().catch(error => console.warn("MiniMax stage backup:", error));
           progress?.set(`${batchLabel}${threePass ? "MiniMax H3 2 Pass Advanced (Base → MMH3 tiled upscale)\n" : twoPass ? "MiniMax H3 2 Pass (Stage 1 → Stage 2)\n" : ""}${message}${exactTwoPassStepsLine}${exactAdvancedResolutionLine}${exactTwoPassLorasLine}\nPrompt ID: ${promptId}`, pct(62));
         },
         () => state.batchCancelled,
@@ -1045,19 +975,11 @@ export function createVideoRender({
         },
       );
       const videoName = (item) => String(item?.params?.filename || item?.filename || "").toLowerCase();
-      const stage1Video = (twoPass || threePass)
-        ? videos.find((item) => videoName(item).includes("stage1")) || null
-        : null;
-      const stage2Video = threePass
-        ? videos.find((item) => videoName(item).includes("stage2")) || null
-        : null;
       const video = threePass
         ? videos.find((item) => videoName(item).includes("stage2")) || videos[videos.length - 1] || null
         : twoPass
           ? videos.find((item) => videoName(item).includes("stage2")) || videos[videos.length - 1] || null
         : videos[videos.length - 1] || null;
-      const stage1VideoPath = stage1Video ? resolveComfyVideoPath(stage1Video) : "";
-      const stage2VideoPath = stage2Video ? resolveComfyVideoPath(stage2Video) : "";
       const alignedVideoPath = resolveComfyVideoPath(video);
       if (!alignedVideoPath) {
         throw new Error("MiniMax H3 finished, but no aligned video path was found in history.");
@@ -1084,10 +1006,6 @@ export function createVideoRender({
         scene_number: slotNumber,
         existing_action: options.existingVideoAction || "overwrite",
       }, 120000);
-      // Finish any in-flight backup and retry after the render has completed.
-      if (liveStageBackupTask) await liveStageBackupTask;
-      await registerLiveThreePassBackups();
-      const canCleanupScratch = !(twoPass || threePass) || liveStageBackupsRegistered;
 
       pushHistory();
       if (collected.backup_path) {
@@ -1102,20 +1020,13 @@ export function createVideoRender({
           segment.video_backup_thumbnail_paths.push(collected.backup_thumbnail_path);
         }
       }
-      if (stage1VideoPath) {
-        segment.minimax_h3_stage1_path = canCleanupScratch ? segment.minimax_h3_stage1_backup_path : stage1VideoPath;
-      }
-      if (stage2VideoPath) {
-        segment.minimax_h3_stage2_path = canCleanupScratch ? (collected.video_path || exactVideoPath) : stage2VideoPath;
-      }
-      segment.video_output = canCleanupScratch ? null : video;
-      segment.video_source_path = canCleanupScratch ? (collected.video_path || exactVideoPath) : alignedVideoPath;
-      if (canCleanupScratch) {
-        segment.minimax_h3_stage1_path = segment.minimax_h3_stage1_backup_path || "";
-        segment.minimax_h3_stage1_source_path = segment.minimax_h3_stage1_path;
-        segment.minimax_h3_stage2_path = (twoPass || threePass) ? (collected.video_path || exactVideoPath) : "";
-        segment.minimax_h3_stage2_source_path = segment.minimax_h3_stage2_path;
-      }
+      const finalSceneVideoPath = collected.video_path || exactVideoPath;
+      segment.video_output = null;
+      segment.video_source_path = finalSceneVideoPath;
+      segment.minimax_h3_stage1_path = "";
+      segment.minimax_h3_stage1_source_path = "";
+      segment.minimax_h3_stage2_path = (twoPass || threePass) ? finalSceneVideoPath : "";
+      segment.minimax_h3_stage2_source_path = segment.minimax_h3_stage2_path;
       segment.minimax_h3_timing = timing;
       activateSegmentVideoPath(
         segment,
@@ -1148,13 +1059,11 @@ export function createVideoRender({
       if (options.autoSaveAfter !== false) {
         await autoSaveSessionQuiet(options.autoSaveReason || "MiniMax H3 scene video complete");
       }
-      if (canCleanupScratch) {
-        await postJson("/vrgdg/workflow_runner/cleanup_minimax_h3_output", {
-          output_folder: built.output_folder || "", project_folder: projectFolder, scene_number: slotNumber,
-        }, 120000).catch(error => console.warn("MiniMax scratch cleanup failed; files retained:", error));
-      }
+      await postJson("/vrgdg/workflow_runner/cleanup_minimax_h3_output", {
+        output_folder: built.output_folder || "", project_folder: projectFolder, scene_number: slotNumber,
+      }, 120000).catch(error => console.warn("MiniMax scratch cleanup failed; files retained:", error));
       progress?.set(
-        `${batchLabel}${threePass ? "MiniMax H3 2 Pass Advanced complete — MMH3 Pass 2 selected; Pass 1 backup saved." : twoPass ? "MiniMax H3 learned-latent 2 Pass complete — final pass-2 video selected." : "MiniMax H3 scene ready."}${exactAdvancedResolutionLine}\n${segment.video_path}\n`
+        `${batchLabel}${threePass ? "MiniMax H3 2 Pass Advanced complete — MMH3 Pass 2 selected." : twoPass ? "MiniMax H3 learned-latent 2 Pass complete — final pass-2 video selected." : "MiniMax H3 scene ready."}${exactAdvancedResolutionLine}\n${segment.video_path}\n`
         + `Exact duration: ${finalDuration.toFixed(3)}s`,
         pct(100),
       );

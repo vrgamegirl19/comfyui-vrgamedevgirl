@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "vrgdg": {
+      "command": "C:/Users/NVMax/Desktop/ComfyUI_windows_portable/python_embeded/python.exe",
+      "args": [
+        "C:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/mcp_server/__main__.py"
+      ],
+      "env": {
+        "VRGDG_API_URL": "http://127.0.0.1:8188/vrgdg/api/v1"
+      }
+    }
+  }
+}

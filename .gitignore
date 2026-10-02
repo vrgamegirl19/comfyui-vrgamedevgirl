@@ -23,12 +23,8 @@ LUTS/examples/
 # Local-only planning and standalone application (not pushed to GitHub)
 Apireport.md
 LLMreverrefactor.md
-Api_Endpoints.md
-CHAT_AGENT_PROMPT.md
-MUSIC_VIDEO_AGENT_PROMPT.md
 standalone_app/
-mcp_server/
-start_mcp_server.bat
+
 
 # Playwright MCP session logs and screenshots (can contain connection tokens)
 .playwright-mcp/
