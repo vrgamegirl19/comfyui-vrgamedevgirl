@@ -65,7 +65,7 @@ test('successful bulk deletion removes videos, backups and thumbnails then clear
   const deleted = [];
   let saved = false;
   const player = { pause() {}, removeAttribute() {}, load() {}, dataset: {}, style: {} };
-  Object.assign(c, { allEditableSegments: () => [scene], window: { confirm: () => true },
+  Object.assign(c, { allEditableSegments: () => [scene], confirmDestructiveAction: async () => ({ confirmed: true, optionChecked: false }),
     deleteAllTimelineVideosButton: {}, pauseTimelineForEditing() {}, pushHistory() {}, projectInput: { value: '/project' },
     postJson: async (url, data) => { deleted.push(data.path); return { deleted: true }; },
     ensureSegmentRuntimeFields() {}, deleteStaleSceneLatents: async () => {}, previewVideo: player, sceneAudio: player,
@@ -84,7 +84,7 @@ test('partial bulk deletion retains scene references and reports failure', async
   const scene = { video_path: 'locked.mp4', video_history: ['locked.mp4', 'old.mp4'] };
   let message = '';
   const deleted = [];
-  Object.assign(c, { allEditableSegments: () => [scene], window: { confirm: () => true },
+  Object.assign(c, { allEditableSegments: () => [scene], confirmDestructiveAction: async () => ({ confirmed: true, optionChecked: false }),
     deleteAllTimelineVideosButton: {}, pauseTimelineForEditing() {}, pushHistory() {}, projectInput: { value: '/project' },
     postJson: async (url, data) => { deleted.push(data.path); if (data.path === 'locked.mp4') throw Error('locked'); },
     toast: text => { message = text; },

@@ -35,6 +35,34 @@ export function buildMiniMaxPanel({
   const miniMaxBanner = document.createElement("div");
   miniMaxBanner.innerHTML = `<div style="font-size:14px;font-weight:900;color:#cffafe;">MiniMax H3 Project</div><div style="font-size:11px;color:#a5f3fc;margin-top:3px;">Mode, models, and video settings apply to the whole project unless the active scene is locked to custom settings.</div>`;
   miniMaxBanner.style.cssText = "border:1px solid #0891b2;border-radius:7px;background:#083344;padding:10px;line-height:1.35;";
+  // Video profiles: saved sets of video settings shared by every project (see video_profiles.mjs).
+  const miniMaxVideoProfileSelect = makeSelect([{ value: "", label: "No profile" }], "");
+  miniMaxVideoProfileSelect.style.flex = "1";
+  miniMaxVideoProfileSelect.style.minWidth = "0";
+  miniMaxVideoProfileSelect.setAttribute("aria-label", "Video profile");
+  miniMaxVideoProfileSelect.title = "Choose a saved video profile to apply its video type, render pass and settings. Audio and between-scene continuity are not changed.";
+  const miniMaxVideoProfileAddButton = makeButton("+");
+  miniMaxVideoProfileAddButton.title = "Save the current video settings as a new profile";
+  miniMaxVideoProfileAddButton.setAttribute("aria-label", "Save current video settings as a profile");
+  const miniMaxVideoProfileRemoveButton = makeButton("−");
+  miniMaxVideoProfileRemoveButton.title = "Delete the selected profile";
+  miniMaxVideoProfileRemoveButton.setAttribute("aria-label", "Delete selected video profile");
+  for (const button of [miniMaxVideoProfileAddButton, miniMaxVideoProfileRemoveButton]) {
+    button.style.minWidth = "34px";
+    button.style.fontSize = "16px";
+    button.style.padding = "4px 8px";
+  }
+  const miniMaxVideoProfileLabel = document.createElement("div");
+  miniMaxVideoProfileLabel.textContent = "Video profile";
+  miniMaxVideoProfileLabel.style.cssText = "font-size:12px;font-weight:800;color:#cffafe;white-space:nowrap;";
+  const miniMaxVideoProfileRow = document.createElement("div");
+  miniMaxVideoProfileRow.style.cssText = "display:flex;align-items:center;gap:6px;";
+  miniMaxVideoProfileRow.append(miniMaxVideoProfileLabel, miniMaxVideoProfileSelect, miniMaxVideoProfileAddButton, miniMaxVideoProfileRemoveButton);
+  const miniMaxVideoProfileControls = {
+    select: miniMaxVideoProfileSelect,
+    addButton: miniMaxVideoProfileAddButton,
+    removeButton: miniMaxVideoProfileRemoveButton,
+  };
   const miniMaxModeChooser = document.createElement("div");
   miniMaxModeChooser.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;";
   const miniMaxModeButtons = MINIMAX_H3_MODE_OPTIONS.map((item) => {
@@ -133,12 +161,13 @@ export function buildMiniMaxPanel({
     strength.min = "-10";
     strength.max = "10";
     strength.step = "0.01";
+    // LoRAs go on the first pass unless the user chooses otherwise.
     const applyTo = makeSelect([
-      { value: "both", label: "Both passes" },
       { value: "pass1", label: "Pass 1 only" },
       { value: "pass2", label: "Pass 2 only" },
-    ], "both");
-    const applyToField = makeField("2-pass target", applyTo);
+      { value: "both", label: "Both passes" },
+    ], "pass1");
+    const applyToField = makeField("LoRA target", applyTo);
     const row = document.createElement("div");
     row.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) 92px minmax(120px,0.45fr);gap:8px;";
     row.append(makeField(`MiniMax LoRA ${slot}`, picker.wrapper), makeField("Strength", strength), applyToField);
@@ -724,7 +753,7 @@ export function buildMiniMaxPanel({
       ]),
     },
   ]);
-  miniMaxEnginePanel.append(miniMaxBanner, miniMaxModeChooser, miniMaxPassChooser, miniMaxSubTabs.wrapper, miniMaxSceneVideoButton);
+  miniMaxEnginePanel.append(miniMaxBanner, miniMaxVideoProfileRow, miniMaxModeChooser, miniMaxPassChooser, miniMaxSubTabs.wrapper, miniMaxSceneVideoButton);
 
   return {
     advancedTwoPassControls, miniMaxAccelerationControls, miniMaxAddSpeakerCueButton,
@@ -757,6 +786,6 @@ export function buildMiniMaxPanel({
     miniMaxTwoPassTeEnd, miniMaxTwoPassTeMcs, miniMaxTwoPassTeProcessingControl, miniMaxTwoPassTeStart,
     miniMaxTwoPassUseFastVaeDecode, miniMaxUseCurrentSceneVideoButton, miniMaxUseLoras, miniMaxUseTurboLora,
     miniMaxVideoReferenceRows, miniMaxVideoVaePicker, miniMaxWarmupFrames, saveMiniMaxPromptButton,
-    twoPassControls, useSceneMiniMaxH3Settings, useSceneMiniMaxH3SettingsNote,
+    miniMaxVideoProfileControls, twoPassControls, useSceneMiniMaxH3Settings, useSceneMiniMaxH3SettingsNote,
   };
 }

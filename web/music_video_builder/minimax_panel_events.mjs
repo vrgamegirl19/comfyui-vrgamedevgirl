@@ -1,4 +1,5 @@
-import { getJson } from "./comfy_api.mjs";
+import { getJson, postJson } from "./comfy_api.mjs";
+import { confirmDestructiveAction, promptForText } from "./confirm_dialog.mjs";
 import { toast } from "./controls.mjs";
 import { miniMaxNextCueStartTime } from "./lyric_cues.mjs";
 import {
@@ -14,6 +15,7 @@ import {
 import { syncMiniMaxSpeakerAssignmentLegacyFields } from "./minimax_speaker_cues.mjs";
 import { wireSearchablePicker } from "./model_pickers.mjs";
 import { selectedSegmentVideoPath } from "./selection_preview.mjs";
+import { createVideoProfileActions } from "./video_profiles.mjs";
 
 export function wireMiniMaxPanel({
   activeSegment, advancedTwoPassControls, allEditableSegments, autoSaveSessionQuiet,
@@ -26,7 +28,7 @@ export function wireMiniMaxPanel({
   miniMaxFp16Accumulation, miniMaxH3ContinuityModeForSegment, miniMaxH3ModeForSegment,
   miniMaxH3SceneImageUseForSegment, miniMaxH3SettingsForSegment, miniMaxLatentContextFrames,
   miniMaxLocationTransitionCustom, miniMaxLocationTransitionPreset, miniMaxLoraCount, miniMaxLoraSlots,
-  miniMaxMappedSpeakersForSegment, miniMaxMegapixels, miniMaxMemoryEfficientSageAttention, miniMaxResolutionPreset, miniMaxModeButtons,
+  miniMaxMappedSpeakersForSegment, miniMaxMegapixels, miniMaxMemoryEfficientSageAttention, miniMaxResolutionPreset, miniMaxVideoProfileControls, miniMaxModeButtons,
   miniMaxPass2Prompt, miniMaxPassButtons, miniMaxPrompt, miniMaxSageAttention, miniMaxSamplerName,
   miniMaxSceneImageUse, miniMaxScheduler, miniMaxSeed, miniMaxStartFrameCharacterInfluence, miniMaxSteps,
   miniMaxThreePassLoraPicker, miniMaxThreePassLoraStrength, miniMaxThreePassRefImageSize,
@@ -411,4 +413,14 @@ export function wireMiniMaxPanel({
     syncMiniMaxH3Panel();
     await autoSaveSessionQuiet("MiniMax H3 current scene video reference");
   };
+
+  // Video profiles (saved video settings shared by every project).
+  const videoProfiles = createVideoProfileActions({
+    controls: miniMaxVideoProfileControls,
+    state, postJson, toast, confirmDestructiveAction, promptForText, requireActiveSegment, wizardVideoSettings,
+    pushHistory, saveMiniMaxH3SettingsFromPanel, clearMiniMaxImageReferenceStartFrameOnModeSwitch,
+    setMiniMaxH3RenderPassForSegment, setMiniMaxH3ModeForSegment, syncMiniMaxH3Panel, autoSaveSessionQuiet,
+  });
+  videoProfiles.wire();
+  videoProfiles.refresh().catch((error) => console.warn("[VRGDG Music Builder] Could not load video profiles:", error));
 }

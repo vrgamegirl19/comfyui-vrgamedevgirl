@@ -277,3 +277,26 @@ test('VRAM presets size an equal tile grid from the output resolution', () => {
   assert.equal(fourK('24gb').overlap, 160);
   for (const key of ['8gb', '12gb', '16gb', '24gb']) assert.equal(fourK(key).chunk % 17, 0);
 });
+
+test('LoRAs default to the first pass and the target dropdown is labeled "LoRA target"', () => {
+  const c = fixture();
+  const settings = c.cloneMiniMaxH3Settings({
+    use_loras: true, lora_count: 4,
+    loras: [
+      { name: 'a.safetensors', strength: 1 },
+      { name: 'b.safetensors', strength: 1, apply_to: 'both' },
+      { name: 'c.safetensors', strength: 1, apply_to: 'pass2' },
+      { name: 'd.safetensors', strength: 1, apply_to: 'bogus' },
+    ],
+  });
+  assert.equal(Array.from(settings.loras, (item) => item.apply_to).join(), 'pass1,both,pass2,pass1');
+  // Explicit choices survive a project reload.
+  const reloaded = c.cloneMiniMaxH3Settings(JSON.parse(JSON.stringify(settings)));
+  assert.equal(Array.from(reloaded.loras, (item) => item.apply_to).join(), 'pass1,both,pass2,pass1');
+  const menu = section('const applyTo = makeSelect([', 'const row = document.createElement("div");');
+  assert.ok(menu.includes('], "pass1");'), 'the dropdown starts on Pass 1 only');
+  assert.ok(menu.indexOf('Pass 1 only') < menu.indexOf('Pass 2 only') && menu.indexOf('Pass 2 only') < menu.indexOf('Both passes'));
+  assert.ok(menu.includes('makeField("LoRA target", applyTo)'));
+  assert.equal(source.includes('2-pass target'), false);
+  assert.ok(source.includes('slot.applyTo.value = ["both", "pass1", "pass2"].includes(item.apply_to) ? item.apply_to : "pass1";'));
+});

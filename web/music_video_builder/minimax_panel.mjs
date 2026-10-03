@@ -613,7 +613,7 @@ export function createMiniMaxPanel({
       slot.row.style.display = settings.use_loras && index < Number(settings.lora_count || 0) ? "grid" : "none";
       slot.picker.input.value = item.name || slot.picker.input.value || "[none]";
       slot.strength.value = String(item.strength ?? slot.strength.value ?? 1);
-      slot.applyTo.value = ["both", "pass1", "pass2"].includes(item.apply_to) ? item.apply_to : "both";
+      slot.applyTo.value = ["both", "pass1", "pass2"].includes(item.apply_to) ? item.apply_to : "pass1";
     });
     miniMaxUseTurboLora.input.checked = settings.use_turbo_lora;
     miniMaxTurboLoraPicker.input.value = settings.turbo_lora_name;

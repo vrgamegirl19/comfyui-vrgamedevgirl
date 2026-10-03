@@ -119,7 +119,7 @@ Every Video Builder project resides in a dedicated directory on disk:
 | Directory | Primary Responsibility | Key Files |
 | :--- | :--- | :--- |
 | [core/](core) | Shared primitives: atomic file writes, wildcard sockets, model directory resolution, resource monitoring | `atomic_write.py`, `any_type.py`, `model_paths.py`, `system_routes.py` |
-| [builder/](builder) | AI Video Builder backend: session persistence, project branching, audio beat detection, media indexing, routes | `project.py`, `audio.py`, `media.py`, `paths.py`, `routes.py`, `nodes.py` |
+| [builder/](builder) | AI Video Builder backend: session persistence, project branching, audio beat detection, media indexing, routes | `project.py`, `audio.py`, `media.py`, `paths.py`, `routes.py`, `video_profiles.py`, `nodes.py` |
 | [runner/](runner) | Dynamic workflow graph generation and rendering engine for LTX, MiniMax H3, Z-Image, Flux | `api_graph.py`, `ltx_workflows.py`, `minimax_workflows.py`, `routes.py` |
 | [llm/](llm) | Multi-provider LLM integrations (GGUF, API, Google), prompt expansion, agent chat, JSON validation | `api.py`, `gguf.py`, `builder_agent.py`, `image_prompt_generation.py` |
 | [minimax/](minimax) | MiniMax H3 video pipeline: latent caching, frame-token math, latent continuation, fast VAE decoding | `latent_manager.py`, `latent_continuation.py`, `latent_upscaler.py`, `tile_plan.py`, `resolution.py`, `settings_payload.py`, `scene_inputs.py`, `nodes.py` |
@@ -192,7 +192,11 @@ The `builder` package contains the backend business logic and HTTP API powering 
   - **Media Asset Management**: `/vrgdg/music_builder/save_scene_image`, `/vrgdg/music_builder/archive_scene_image`, `/vrgdg/music_builder/extract_video_final_frame`, `/vrgdg/music_builder/scan_scene_videos`, `/vrgdg/music_builder/restore_scene_video`.
   - **Latent Lifecycle**: `/vrgdg/music_builder/latent_status`, `/vrgdg/music_builder/check_latent_predecessor`, `/vrgdg/music_builder/delete_scene_latent`, `/vrgdg/music_builder/list_dirty_latents`.
   - **Timeline Asset Renumbering**: `/vrgdg/music_builder/renumber_scenes_after_removal`, `/vrgdg/music_builder/renumber_scenes_after_insert`.
+  - **Video Profiles**: `/vrgdg/music_builder/list_video_profiles`, `/vrgdg/music_builder/load_video_profile`, `/vrgdg/music_builder/save_video_profile` (409 with `exists` when the name is taken and `overwrite` is not set), `/vrgdg/music_builder/delete_video_profile`. Backed by `builder/video_profiles.py`.
   - **LLM Prompt Generation & Agent**: `/vrgdg/music_builder/generate_t2i`, `/vrgdg/music_builder/generate_i2v`, `/vrgdg/music_builder/generate_chained_i2v`, `/vrgdg/music_builder/generate_t2v`, `/vrgdg/music_builder/agent_chat`, `/vrgdg/music_builder/flux_reference_extract_subjects`, `/vrgdg/music_builder/flux_reference_extract_locations`.
+
+#### [builder/video_profiles.py](builder/video_profiles.py)
+- **Purpose**: Named MiniMax H3 video profiles shared by every project. A profile is the user's video type, render pass and every setting that belongs to them, saved as one JSON file under `<ComfyUI output>/VRGDG_Video_Profiles/minimax_h3/`. `EXCLUDED_PROFILE_KEYS` lists what a profile never carries (audio mode, between-scene continuity, the per-pass cache and settings-version markers); the server filters on save and again on load. The UI is `web/music_video_builder/video_profiles.mjs` (the row above the video type buttons); it applies a profile through the same steps as the video type and pass buttons. Profiles are a Builder feature and are not part of the Agent API.
 
 #### [builder/project.py](builder/project.py)
 - **Purpose**: Project serialization, initialization, asset renumbering, and migration logic.
