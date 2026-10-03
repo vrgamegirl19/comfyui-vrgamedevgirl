@@ -242,9 +242,21 @@ def parse_bulk_time_value(raw: str) -> float:
     raise ValueError(f"Invalid time format: '{raw}'")
 
 
-def parse_bulk_timings(text: str, mode: str = "durations") -> List[Tuple[float, float]]:
-    """Parse multiline bulk timing text into a list of (start, end) tuples (Section 15.4 T16).
-    
+_TIME_TOKEN = r"\d+(?::\d+){0,2}(?:[.,]\d+)?"
+_RANGE_LINE = re.compile(
+    rf"^({_TIME_TOKEN})\s*(?:-->|->|–|—|-|to)\s*({_TIME_TOKEN})(?:\s*[|:]\s*|\s+|$)(.*)$",
+    re.IGNORECASE,
+)
+_TIME_THEN_TEXT = re.compile(rf"^({_TIME_TOKEN})(?:\s*[|:]\s*|\s+|$)(.*)$")
+
+
+def parse_bulk_scenes(text: str, mode: str = "durations") -> List[Dict[str, Any]]:
+    """Parse multiline bulk timing text into scenes: ``{"start", "end"}`` plus ``"lyric_text"`` when given.
+
+    A line may end with the words for that scene, for example ``12.5 --> 16.0 Hello darkness`` (ranges),
+    ``3.5 Hello darkness`` (durations) or ``12.5 Hello darkness`` (markers; the words belong to the scene
+    that starts at that marker).
+
     Modes:
       - 'durations': each line is a scene duration (cursor increments).
       - 'ranges': lines formatted as 'start --> end' or 'start - end' or 'start to end'.
@@ -258,51 +270,68 @@ def parse_bulk_timings(text: str, mode: str = "durations") -> List[Tuple[float, 
     if not lines:
         return []
 
-    results: List[Tuple[float, float]] = []
+    results: List[Dict[str, Any]] = []
+
+    def scene(start: float, end: float, lyric: str) -> Dict[str, Any]:
+        item: Dict[str, Any] = {"start": start, "end": end}
+        if lyric.strip():
+            item["lyric_text"] = lyric.strip()
+        return item
 
     if mode == "durations":
         cursor = 0.0
         for idx, line in enumerate(lines, start=1):
             try:
-                dur = parse_bulk_time_value(line)
+                match = _TIME_THEN_TEXT.match(line)
+                if not match:
+                    raise ValueError("Empty time value" if not line else f"Invalid time format: '{line}'")
+                dur = parse_bulk_time_value(match.group(1))
                 if dur <= 0.05:
                     raise ValueError("Duration too short")
                 start = cursor
                 end = round(cursor + dur, 4)
-                results.append((start, end))
+                results.append(scene(start, end, match.group(2)))
                 cursor = end
             except Exception as exc:
                 raise ValueError(f"Line {idx} '{line}': invalid duration ({exc})") from exc
 
     elif mode == "ranges":
-        range_split = re.compile(r"\s*(?:-->|->|–|-|to)\s*")
         for idx, line in enumerate(lines, start=1):
-            parts = range_split.split(line)
-            if len(parts) != 2:
+            match = _RANGE_LINE.match(line)
+            if not match:
                 raise ValueError(f"Line {idx} '{line}': expected 'start - end'")
             try:
-                start = parse_bulk_time_value(parts[0])
-                end = parse_bulk_time_value(parts[1])
+                start = parse_bulk_time_value(match.group(1))
+                end = parse_bulk_time_value(match.group(2))
                 if end <= start + 0.05:
                     raise ValueError("End time must be after start time")
-                results.append((round(start, 4), round(end, 4)))
+                results.append(scene(round(start, 4), round(end, 4), match.group(3)))
             except Exception as exc:
                 raise ValueError(f"Line {idx} '{line}': invalid range ({exc})") from exc
 
     elif mode == "markers":
-        timestamps: List[float] = []
+        markers: List[Tuple[float, str]] = []
         for idx, line in enumerate(lines, start=1):
             try:
-                timestamps.append(parse_bulk_time_value(line))
+                match = _TIME_THEN_TEXT.match(line)
+                if not match:
+                    raise ValueError(f"Invalid time format: '{line}'")
+                markers.append((parse_bulk_time_value(match.group(1)), match.group(2)))
             except Exception as exc:
                 raise ValueError(f"Line {idx} '{line}': invalid timestamp ({exc})") from exc
-        timestamps.sort()
-        for i in range(len(timestamps) - 1):
-            s, e = timestamps[i], timestamps[i + 1]
+        markers.sort(key=lambda item: item[0])
+        for i in range(len(markers) - 1):
+            s, lyric = markers[i]
+            e = markers[i + 1][0]
             if e > s + 0.05:
-                results.append((round(s, 4), round(e, 4)))
+                results.append(scene(round(s, 4), round(e, 4), lyric))
 
     return results
+
+
+def parse_bulk_timings(text: str, mode: str = "durations") -> List[Tuple[float, float]]:
+    """The ``(start, end)`` pairs of ``parse_bulk_scenes`` (any words on the lines are ignored here)."""
+    return [(item["start"], item["end"]) for item in parse_bulk_scenes(text, mode=mode)]
 
 
 def validate_timeline_consistency(

@@ -115,6 +115,72 @@ def split_lyric_text(text: Any, fraction: float, instrumental_text: str = DEFAUL
     return (" ".join(words[:left_count]), " ".join(words[left_count:]))
 
 
+def _overlap(a_start: float, a_end: float, b_start: float, b_end: float) -> float:
+    return max(0.0, min(a_end, b_end) - max(a_start, b_start))
+
+
+def carry_lyrics_over(old_segments: List[Dict[str, Any]], ranges: List[Tuple[float, float]]) -> List[Dict[str, Any]]:
+    """Lyrics for new scene ranges, taken from the scenes they replace.
+
+    Each old scene's lyric goes to the new range it overlaps. When several new ranges overlap one old
+    scene its lyric is divided between them in time order (lines first, then words, like splitting a
+    scene). When several old scenes land in one new range their lyrics are joined. An old scene that sits
+    in a gap goes to the nearest range. Returns one dict per range with ``lyric_text``,
+    ``lyric_singers`` and ``lyric_no_lip_sync`` (empty when nothing landed there).
+    """
+    pieces: List[List[str]] = [[] for _ in ranges]
+    singers: List[List[str]] = [[] for _ in ranges]
+    ordered = sorted(
+        (seg for seg in old_segments if isinstance(seg, dict)),
+        key=lambda seg: _number(seg.get("start")),
+    )
+    for old in ordered:
+        text = _text(old.get("lyric_text"))
+        if not text or not ranges:
+            continue
+        old_start = _number(old.get("start"))
+        old_end = max(old_start, _number(old.get("end"), old_start))
+        weights = [
+            (index, _overlap(old_start, old_end, start, end))
+            for index, (start, end) in enumerate(ranges)
+        ]
+        weights = [(index, weight) for index, weight in weights if weight > 0.0]
+        if not weights:
+            middle = (old_start + old_end) / 2.0
+            nearest = min(
+                range(len(ranges)),
+                key=lambda index: min(abs(middle - ranges[index][0]), abs(middle - ranges[index][1])),
+            )
+            weights = [(nearest, 1.0)]
+        remaining = text
+        remaining_weight = sum(weight for _, weight in weights)
+        for position, (index, weight) in enumerate(weights):
+            if position == len(weights) - 1:
+                piece = remaining
+            else:
+                piece, remaining = split_lyric_text(remaining, weight / remaining_weight)
+                remaining_weight -= weight
+            if _text(piece):
+                pieces[index].append(piece)
+            for name in old.get("lyric_singers") or []:
+                name = _text(name)
+                if name and name not in singers[index]:
+                    singers[index].append(name)
+    carried: List[Dict[str, Any]] = []
+    for index in range(len(ranges)):
+        merged = ""
+        for piece in pieces[index]:
+            merged = merge_lyric_text(merged, piece) if merged else _text(piece)
+        entry: Dict[str, Any] = {}
+        if merged:
+            entry["lyric_text"] = merged
+            entry["lyric_no_lip_sync"] = is_instrumental_lyric_text(merged)
+            if singers[index]:
+                entry["lyric_singers"] = singers[index]
+        carried.append(entry)
+    return carried
+
+
 # ---------------------------------------------------------------------------
 # Section labels (Verse 1, Bridge ...) from the pasted reference lyrics
 # ---------------------------------------------------------------------------
