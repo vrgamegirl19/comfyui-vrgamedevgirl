@@ -85,7 +85,11 @@ export function imagePromptImportJsonText(rawText) {
   return end > start ? text.slice(start, end + 1).trim() : text.slice(start).trim();
 }
 
-export function parseImagePromptImportJson(rawText) {
+export function parseVideoPromptImportJson(rawText) {
+  return parseImagePromptImportJson(rawText, ["video_prompt", "i2v_prompt", "video", "prompt", "text"]);
+}
+
+export function parseImagePromptImportJson(rawText, promptKeys = ["image_prompt", "text_to_image_prompt", "t2i_prompt", "prompt", "text"]) {
   const text = imagePromptImportJsonText(rawText);
   if (!text) return [];
   const data = JSON.parse(text);
@@ -106,14 +110,8 @@ export function parseImagePromptImportJson(rawText) {
     if (!item || typeof item !== "object") continue;
     const sceneRaw = item.scene_number ?? item.sceneNumber ?? item.scene ?? item.number ?? item.id ?? "";
     const sceneNumber = Number(String(sceneRaw).match(/\d+/)?.[0] || sceneRaw || 0);
-    const prompt = String(
-      item.image_prompt
-      ?? item.text_to_image_prompt
-      ?? item.t2i_prompt
-      ?? item.prompt
-      ?? item.text
-      ?? "",
-    ).trim();
+    const promptKey = promptKeys.find((key) => item[key] != null);
+    const prompt = String(promptKey ? item[promptKey] : "").trim();
     if (!sceneNumber || !prompt) continue;
     rows.push({ sceneNumber, prompt });
   }
@@ -249,6 +247,8 @@ export function createPromptGeneration({
   }
 
   function openImportImagePromptsFromGptModal() {
+    const isVideo = state.mode === "image_to_video_prep";
+    const kindLabel = isVideo ? "Video" : "Image";
     const importBackdrop = document.createElement("div");
     importBackdrop.style.cssText = "position:fixed;inset:0;z-index:100013;background:rgba(0,0,0,.68);display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;";
     const importBox = document.createElement("div");
@@ -256,12 +256,14 @@ export function createPromptGeneration({
     const importHeader = document.createElement("div");
     importHeader.style.cssText = "display:flex;align-items:flex-start;justify-content:space-between;gap:12px;background:#083f4f;border-bottom:1px solid #155e75;padding:13px 15px;";
     const importTitle = document.createElement("div");
-    importTitle.innerHTML = `<div style="font-size:17px;font-weight:900;color:#cffafe;">Import Image Prompts From GPT</div><div style="font-size:12px;color:#cbd5e1;margin-top:3px;">Paste the JSON code block from the Krea 2 text-to-image GPT. This updates Image Prep prompts only.</div>`;
+    importTitle.innerHTML = isVideo
+      ? `<div style="font-size:17px;font-weight:900;color:#cffafe;">Import Video Prompts From GPT</div><div style="font-size:12px;color:#cbd5e1;margin-top:3px;">Paste the JSON code block from the video prompt GPT. This updates Video Prep prompts only.</div>`
+      : `<div style="font-size:17px;font-weight:900;color:#cffafe;">Import Image Prompts From GPT</div><div style="font-size:12px;color:#cbd5e1;margin-top:3px;">Paste the JSON code block from the Krea 2 text-to-image GPT. This updates Image Prep prompts only.</div>`;
     const importClose = makeButton("Close");
     importHeader.append(importTitle, importClose);
     const help = document.createElement("div");
     help.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;color:#dbeafe;padding:10px;font-size:12px;line-height:1.45;";
-    help.innerHTML = `Accepted examples:<br><code>[{"scene":1,"image_prompt":"..."},{"scene":2,"prompt":"..."}]</code><br><code>{"scene1":"prompt text","scene2":"prompt text"}</code>`;
+    help.innerHTML = `Accepted examples:<br><code>[{"scene":1,"${isVideo ? "video_prompt" : "image_prompt"}":"..."},{"scene":2,"prompt":"..."}]</code><br><code>{"scene1":"prompt text","scene2":"prompt text"}</code>`;
     const input = document.createElement("textarea");
     input.placeholder = "Paste GPT JSON output here...";
     input.spellcheck = false;
@@ -271,7 +273,7 @@ export function createPromptGeneration({
     const actions = document.createElement("div");
     actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;";
     const cancel = makeButton("Cancel");
-    const apply = makeButton("Import Image Prompts", "purple");
+    const apply = makeButton(`Import ${kindLabel} Prompts`, "purple");
     actions.append(cancel, apply);
     const body = document.createElement("div");
     body.style.cssText = "padding:14px;display:flex;flex-direction:column;gap:10px;overflow:auto;";
@@ -287,8 +289,8 @@ export function createPromptGeneration({
     });
     apply.onclick = () => {
       try {
-        const rows = parseImagePromptImportJson(input.value);
-        if (!rows.length) throw new Error("No usable image prompts found. Make sure each row has a scene number and image_prompt or prompt.");
+        const rows = isVideo ? parseVideoPromptImportJson(input.value) : parseImagePromptImportJson(input.value);
+        if (!rows.length) throw new Error(`No usable ${kindLabel.toLowerCase()} prompts found. Make sure each row has a scene number and ${isVideo ? "video_prompt" : "image_prompt"} or prompt.`);
         let updated = 0;
         const missing = [];
         for (const row of rows) {
@@ -297,15 +299,21 @@ export function createPromptGeneration({
             missing.push(row.sceneNumber);
             continue;
           }
-          scene.image_prompt = row.prompt;
-          scene.prompt_summary = "";
-          scene.status = "image_prompt_ready";
+          if (isVideo) {
+            scene.video_prompt = row.prompt;
+            scene.video_prompt_origin = "manual";
+            scene.status = "video_prompt_ready";
+          } else {
+            scene.image_prompt = row.prompt;
+            scene.prompt_summary = "";
+            scene.status = "image_prompt_ready";
+          }
           updated += 1;
         }
         renderTable();
-        status.textContent = `Updated ${updated} Image Prep prompt${updated === 1 ? "" : "s"}${missing.length ? `; missing scenes: ${missing.join(", ")}` : ""}.`;
+        status.textContent = `Updated ${updated} ${kindLabel} Prep prompt${updated === 1 ? "" : "s"}${missing.length ? `; missing scenes: ${missing.join(", ")}` : ""}.`;
         status.style.color = updated ? "#67e8f9" : "#fbbf24";
-        createToast(`Imported ${updated} image prompt${updated === 1 ? "" : "s"} from GPT.`);
+        createToast(`Imported ${updated} ${kindLabel.toLowerCase()} prompt${updated === 1 ? "" : "s"} from GPT.`);
         if (updated) closeImport();
       } catch (error) {
         status.textContent = String(error?.message || error);

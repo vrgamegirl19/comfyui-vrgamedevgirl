@@ -358,7 +358,7 @@ export function openStoryboardBuilder(payload = {}) {
     consistencyInput, cutFrequencyInput, enforceStoryboardVideoFacialRequirements, exportPrompts,
     facialCustomInput, facialPerformancePresets, facialSelect, focusedSection, fxCustomInput, fxSelect,
     getSelectedScenes, imageAestheticPresets, imageAestheticSelect, imageShotFlowPresets, imageShotSelect,
-    incomingProjectVideoEngine, lyricStoryStrengthInput, openingMode, overallStoryIdeaInput, payload,
+    incomingProjectVideoEngine, lyricStoryStrengthInput, openImportImagePromptsFromGptModal, openingMode, overallStoryIdeaInput, payload,
     payloadVideoPromptType, performanceSelect, performanceStylePresets, refreshCameraFlowInfo,
     refreshCameraSpeedInfo, refreshCharacterSpeedInfo, refreshConsistencyInfo, refreshCutFrequencyInfo,
     refreshFacialInfo, refreshFxInfo, refreshImageAestheticInfo, refreshImageShotInfo, refreshPerformanceInfo,
@@ -494,7 +494,10 @@ export function openStoryboardBuilder(payload = {}) {
       shell.querySelector("#vrgdg-storyboard-subtitle").textContent = "Set project defaults. Use Fill Missing or Replace All to update existing scenes.";
     }
     refreshActionButtons();
-    importImagePromptsButton.style.display = isVideoPrepMode ? "none" : "";
+    importImagePromptsButton.style.display = "";
+    importImagePromptsButton.title = isVideoPrepMode
+      ? "Paste JSON from the video prompt GPT and update Video Prep prompts."
+      : "Paste JSON from the Text to Image Prompt Builder GPT and update Image Prep prompts.";
     imageShotControls.style.display = isVideoPrepMode ? "none" : "flex";
     imageShotInfo.style.display = isVideoPrepMode ? "none" : "";
     imageAestheticControls.style.display = isVideoPrepMode ? "none" : "flex";
