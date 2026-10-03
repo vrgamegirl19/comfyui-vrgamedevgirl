@@ -1,9 +1,18 @@
+Do not paste this file as is. The two paths are per install.
+Generate the exact config for your machine instead (run from the comfyui-vrgamedevgirl folder):
+
+  ..\..\..\python_embeded\python.exe mcp_server\print_config.py
+
+It prints the JSON below with your real paths, plus a ready `claude mcp add` line for Claude Code.
+
+Template:
+
 {
   "mcpServers": {
     "vrgdg": {
-      "command": "C:/Users/NVMax/Desktop/ComfyUI_windows_portable/python_embeded/python.exe",
+      "command": "<ComfyUI_windows_portable>/python_embeded/python.exe",
       "args": [
-        "C:/Users/NVMax/Desktop/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/mcp_server/__main__.py"
+        "<ComfyUI_windows_portable>/ComfyUI/custom_nodes/comfyui-vrgamedevgirl/mcp_server/__main__.py"
       ],
       "env": {
         "VRGDG_API_URL": "http://127.0.0.1:8188/vrgdg/api/v1"
