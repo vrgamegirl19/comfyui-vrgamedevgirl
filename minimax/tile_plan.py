@@ -13,13 +13,40 @@ import math
 from typing import Any, Dict, Optional, Tuple
 
 # VRAM presets: tile-area target (megapixels), temporal chunk length (frames) and
-# the desired spatial overlap (pixels). Same table as MINIMAX_H3_VRAM_PRESETS in JS.
+# the desired spatial overlap (pixels). 2 Pass Advanced is for cards up to 24 GB;
+# bigger cards should use the plain 2 Pass or single pass workflows.
 VRAM_PRESETS: Dict[str, Dict[str, Any]] = {
     "8gb": {"tile_megapixels": 0.2, "chunk": 51, "overlap": 128},
     "12gb": {"tile_megapixels": 0.3, "chunk": 85, "overlap": 128},
     "16gb": {"tile_megapixels": 0.43, "chunk": 119, "overlap": 128},
     "24gb": {"tile_megapixels": 0.65, "chunk": 153, "overlap": 160},
-    "32gb": {"tile_megapixels": 1.6, "chunk": 170, "overlap": 192},
+}
+DEFAULT_VRAM_PRESET = "16gb"
+# Saved projects from before the 24 GB cap may still hold these values.
+LEGACY_VRAM_PRESETS: Dict[str, str] = {"32gb": "24gb", "custom": "24gb"}
+
+# Output order of the VRGDG_MiniMaxH3SpatialTilePlan node. The graph builder links by
+# these names, so the node and the builder cannot drift apart.
+PLAN_OUTPUT_NAMES: Tuple[str, ...] = (
+    "grid_rows", "grid_cols", "spatial_w_overlap", "spatial_h_overlap", "fade_width", "fade_height",
+    "min_tile_size", "chunk_length", "temporal_overlap", "tile_width", "tile_height", "summary",
+)
+
+# Settings of MMH3 Spatial/Temporal Split Params and the learned upscaler that are no
+# longer user options. Values come from the tested audio workflow
+# (example_workflow_vrgdg_settings_audio_autotile.json); only the resolution-dependent
+# ones are produced by plan_spatial_tiles / VRGDG_MiniMaxH3SpatialTilePlan.
+HIDDEN_ADVANCED_SETTINGS: Dict[str, Any] = {
+    "tile_size_mode": "rows_cols",
+    "anchor_strength": 0.999,
+    "overlap_mode": "later",
+    "overlap_blend": "linear",
+    "brightness_match": False,
+    "dynamic_fade": "off",
+    "dynamic_fade_min": 32,
+    "masked_area_noise": 0.0,
+    "upscaler_device": "cuda",
+    "upscaler_precision": "bf16",
 }
 
 LATENT_TOKEN_PX = 16  # one MiniMax H3 latent token in pixels
@@ -28,6 +55,23 @@ MAX_GRID = 9
 DEFAULT_FADE_PX = 64
 DEFAULT_MIN_TILE_PX = 256
 TEMPORAL_OVERLAP_FRAMES = 17
+
+
+def normalize_vram_preset(value: Any) -> str:
+    """Return a supported preset key, mapping retired values (32gb, custom) to 24gb.
+
+    Raises:
+        ValueError: If the value is not a known or retired preset.
+    """
+    key = str(value or "").strip().lower()
+    if not key:
+        return DEFAULT_VRAM_PRESET
+    key = LEGACY_VRAM_PRESETS.get(key, key)
+    if key not in VRAM_PRESETS:
+        raise ValueError(
+            f"Unknown VRAM preset '{value}'. 2 Pass Advanced supports: {', '.join(VRAM_PRESETS)}."
+        )
+    return key
 
 
 def solve_equal_tiles(total_px: int, count: int, base_overlap_px: int,
@@ -84,7 +128,7 @@ def _best_grid(width: int, height: int, target_area: float) -> Tuple[int, int]:
     return best[1], best[2]
 
 
-def plan_spatial_tiles(width: int, height: int, vram_preset: str = "32gb") -> Dict[str, Any]:
+def plan_spatial_tiles(width: int, height: int, vram_preset: str = DEFAULT_VRAM_PRESET) -> Dict[str, Any]:
     """Compute every resolution-dependent tiling setting for a Pass 2 frame size.
 
     Args:
@@ -101,7 +145,9 @@ def plan_spatial_tiles(width: int, height: int, vram_preset: str = "32gb") -> Di
     """
     key = str(vram_preset or "").strip().lower()
     if key not in VRAM_PRESETS:
-        raise ValueError(f"Unknown VRAM preset '{vram_preset}'. Use one of: {', '.join(VRAM_PRESETS)}.")
+        raise ValueError(
+            f"Unknown VRAM preset '{vram_preset}'. 2 Pass Advanced supports: {', '.join(VRAM_PRESETS)}."
+        )
     width = int(width)
     height = int(height)
     if width <= 0 or height <= 0 or width % 32 or height % 32:

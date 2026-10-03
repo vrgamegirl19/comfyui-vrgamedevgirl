@@ -57,59 +57,99 @@ class DefaultsTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
 
-    def test_new_seam_settings_are_available(self):
+    def test_tiling_is_derived_from_the_output_resolution_not_stored(self):
         defaults = payload_mod.minimax_h3_defaults()
-        for key in (
-            "advanced_two_pass_brightness_match", "advanced_two_pass_dynamic_fade",
-            "advanced_two_pass_dynamic_fade_min", "advanced_two_pass_masked_area_noise",
-            "advanced_two_pass_pass1_resolution_preset", "advanced_two_pass_pass2_resolution_preset",
-            "advanced_two_pass_vram_preset", "advanced_two_pass_grid_rows",
-        ):
+        for key in ("resolution_preset", "megapixels", "advanced_two_pass_vram_preset", "advanced_two_pass_pass1_resolution_preset"):
             self.assertIn(key, defaults)
+        for key in ('two_pass_final_width', 'two_pass_final_height', 'advanced_two_pass_pass2_megapixels', 'advanced_two_pass_pass2_resolution_preset', 'advanced_two_pass_tile_width', 'advanced_two_pass_grid_rows', 'advanced_two_pass_chunk_length', 'advanced_two_pass_fade_width', 'advanced_two_pass_overlap_mode', 'advanced_two_pass_brightness_match', 'advanced_two_pass_dynamic_fade', 'advanced_two_pass_upscaler_device'):
+            self.assertNotIn(key, defaults)
+        self.assertEqual(defaults["resolution_preset"], "1k")
+        self.assertEqual(defaults["advanced_two_pass_vram_preset"], "16gb")
 
 
 class NormalizeAndValidateTests(unittest.TestCase):
     def test_partial_settings_fill_with_defaults_and_ignore_bad_values(self):
         settings = payload_mod.normalize_minimax_h3_settings({
-            "steps": 25, "render_pass": "three_pass", "advanced_two_pass_grid_rows": 99, "mystery": 1,
+            "steps": 25, "render_pass": "three_pass", "advanced_two_pass_vram_preset": "bogus", "mystery": 1,
+            "advanced_two_pass_grid_rows": 99,
         })
         self.assertEqual(settings["steps"], 25)
         self.assertEqual(settings["render_pass"], "three_pass")
-        self.assertEqual(settings["advanced_two_pass_grid_rows"], 2)  # invalid saved value -> default
+        self.assertEqual(settings["advanced_two_pass_vram_preset"], "16gb")  # invalid saved value -> default
         self.assertNotIn("mystery", settings)
+        self.assertNotIn("advanced_two_pass_grid_rows", settings)  # retired: ignored
+
+    def test_retired_vram_presets_map_to_24gb(self):
+        for saved, expected in (("8gb", "8gb"), ("24gb", "24gb"), ("32gb", "24gb"), ("custom", "24gb")):
+            settings = payload_mod.normalize_minimax_h3_settings({"advanced_two_pass_vram_preset": saved})
+            self.assertEqual(settings["advanced_two_pass_vram_preset"], expected, saved)
 
     def test_patch_validation_reports_each_problem(self):
         problems = payload_mod.validate_minimax_h3_patch({
+            "advanced_two_pass_vram_preset": "32gb",
+            "two_pass_final_width": 1920,
             "advanced_two_pass_grid_rows": 12,
-            "advanced_two_pass_fade_width": 50,
-            "advanced_two_pass_chunk_length": 100,
+            "resolution_preset": "8k",
             "render_pass": "five_pass",
             "use_loras": "yes",
             "loras": [{"strength": 1}],
             "no_such_setting": 1,
-            "advanced_two_pass_dynamic_fade": "widening",
+            "advanced_two_pass_pass1_resolution_preset": "1k",
         })
         self.assertEqual(
             set(problems),
-            {"advanced_two_pass_grid_rows", "advanced_two_pass_fade_width", "advanced_two_pass_chunk_length",
-             "render_pass", "use_loras", "loras", "no_such_setting"},
+            {"advanced_two_pass_vram_preset", "two_pass_final_width", "advanced_two_pass_grid_rows",
+             "resolution_preset", "render_pass", "use_loras", "loras", "no_such_setting"},
         )
+        self.assertIn("retired", problems["two_pass_final_width"])
+        self.assertIn("resolution_preset", problems["two_pass_final_width"])
 
     def test_valid_patch_passes(self):
         self.assertEqual(payload_mod.validate_minimax_h3_patch({
             "render_pass": "three_pass",
-            "advanced_two_pass_dynamic_fade": "narrowing",
-            "advanced_two_pass_spatial_w_overlap": 192,
-            "advanced_two_pass_chunk_length": 170,
-            "advanced_two_pass_masked_area_noise": 0.0,
+            "resolution_preset": "4k",
+            "advanced_two_pass_vram_preset": "24gb",
             "loras": [{"name": "style.safetensors", "strength": 0.8, "apply_to": "pass2"}],
         }), {})
 
     def test_settings_schema_describes_limits(self):
-        schema = payload_mod.minimax_h3_settings_schema()["settings"]
-        self.assertEqual(schema["advanced_two_pass_dynamic_fade"]["enum"], ["off", "narrowing", "widening"])
-        self.assertEqual(schema["advanced_two_pass_grid_cols"]["maximum"], 9)
-        self.assertEqual(schema["advanced_two_pass_fade_width"]["multipleOf"], 32)
+        full = payload_mod.minimax_h3_settings_schema()
+        schema = full["settings"]
+        self.assertEqual(schema["resolution_preset"]["enum"], ["custom", "1k", "2k", "1440p", "4k"])
+        self.assertEqual(schema["advanced_two_pass_vram_preset"]["enum"], ["8gb", "12gb", "16gb", "24gb"])
+        self.assertEqual(schema["megapixels"]["maximum"], 16)
+        self.assertIn("two_pass_final_width", full["retired_settings"])
+        self.assertNotIn("advanced_two_pass_grid_rows", schema)
+
+
+class ResolutionMigrationTests(unittest.TestCase):
+    """Older saves took the resolution of the pass type they rendered with."""
+
+    def test_new_projects_use_the_default_preset(self):
+        settings = payload_mod.normalize_minimax_h3_settings({})
+        self.assertEqual((settings["resolution_preset"], settings["megapixels"]), ("1k", 0.5625))
+
+    def test_legacy_saves_migrate_per_render_pass(self):
+        single = payload_mod.normalize_minimax_h3_settings({"render_pass": "single", "video_mode": "reference_to_video", "megapixels": 0.9})
+        self.assertEqual((single["resolution_preset"], single["megapixels"]), ("custom", 0.9))
+        two = payload_mod.normalize_minimax_h3_settings({
+            "render_pass": "two_pass", "video_mode": "reference_to_video", "two_pass_final_width": 1920, "two_pass_final_height": 1080,
+        })
+        self.assertEqual((two["resolution_preset"], two["megapixels"]), ("2k", 1.9922))
+        advanced = payload_mod.normalize_minimax_h3_settings({
+            "render_pass": "three_pass", "video_mode": "reference_to_video", "advanced_two_pass_pass2_resolution_preset": "4k",
+        })
+        self.assertEqual((advanced["resolution_preset"], advanced["megapixels"]), ("4k", 7.9688))
+        custom = payload_mod.normalize_minimax_h3_settings({
+            "render_pass": "three_pass", "video_mode": "reference_to_video",
+            "advanced_two_pass_pass2_resolution_preset": "custom", "advanced_two_pass_pass2_megapixels": 3.3,
+        })
+        self.assertEqual((custom["resolution_preset"], custom["megapixels"]), ("custom", 3.3))
+
+    def test_a_saved_preset_wins_and_follows_the_aspect_ratio(self):
+        settings = payload_mod.normalize_minimax_h3_settings({"resolution_preset": "2k", "aspect_ratio": "9:16 (Portrait Widescreen)", "megapixels": 0.3})
+        self.assertEqual((settings["resolution_preset"], settings["megapixels"]), ("2k", 1.9922))
+        self.assertEqual(payload_mod.normalize_minimax_h3_settings({"resolution_preset": "custom", "megapixels": 1.3})["megapixels"], 1.3)
 
 
 class SavedSessionCompatibilityTests(unittest.TestCase):
@@ -171,30 +211,49 @@ class RenderPayloadTests(unittest.TestCase):
             "minimax_h3",
         )
 
-    def test_advanced_payload_carries_seam_and_tile_settings(self):
+    def test_advanced_payload_uses_the_shared_resolution_and_vram_preset(self):
         settings = _settings(
             render_pass="three_pass", video_mode="reference_to_video",
-            advanced_two_pass_grid_rows=2, advanced_two_pass_grid_cols=3,
-            advanced_two_pass_spatial_w_overlap=192, advanced_two_pass_dynamic_fade="narrowing",
-            advanced_two_pass_pass2_megapixels=7.97, advanced_two_pass_pass2_steps=3,
+            resolution_preset="4k", advanced_two_pass_vram_preset="12gb", advanced_two_pass_pass2_steps=3,
         )
         payload = payload_mod.build_minimax_render_payload(settings)
-        self.assertEqual(payload["advanced_grid_rows"], 2)
-        self.assertEqual(payload["advanced_grid_cols"], 3)
-        self.assertEqual(payload["advanced_spatial_w_overlap"], 192)
-        self.assertEqual(payload["advanced_dynamic_fade"], "narrowing")
-        self.assertTrue(payload["advanced_brightness_match"])
-        self.assertEqual(payload["advanced_pass2_megapixels"], 7.97)
+        self.assertEqual(payload["advanced_pass2_megapixels"], 7.9688)
+        self.assertEqual(payload["advanced_vram_preset"], "12gb")
         self.assertEqual(payload["pass2_steps"], 3)
         self.assertEqual(payload["video_mode"], "reference_to_video")
+        # Tiles, chunks, fades and the upscaler device are planned by the graph, not sent as settings.
+        for key in ("advanced_tile_size_mode", "advanced_grid_rows", "advanced_chunk_length", "advanced_fade_width",
+                    "advanced_overlap_mode", "advanced_brightness_match", "advanced_upscaler_device"):
+            self.assertNotIn(key, payload)
 
-    def test_two_pass_uses_two_pass_values_and_final_size(self):
+    def test_retired_vram_preset_still_renders_as_24gb(self):
         payload = payload_mod.build_minimax_render_payload(
-            _settings(render_pass="two_pass", video_mode="reference_to_video", two_pass_pass2_steps=6)
+            _settings(render_pass="three_pass", video_mode="reference_to_video", advanced_two_pass_vram_preset="32gb")
+        )
+        self.assertEqual(payload["advanced_vram_preset"], "24gb")
+
+    def test_two_pass_uses_two_pass_values_and_the_shared_final_size(self):
+        payload = payload_mod.build_minimax_render_payload(
+            _settings(render_pass="two_pass", video_mode="reference_to_video", two_pass_pass2_steps=6, resolution_preset="2k")
         )
         self.assertEqual(payload["pass2_steps"], 6)
-        self.assertIn("final_width", payload)
+        self.assertEqual((payload["final_width"], payload["final_height"]), (1920, 1088))
         self.assertIn("latent_upscaler_name", payload)
+        portrait = payload_mod.build_minimax_render_payload(
+            _settings(render_pass="two_pass", video_mode="reference_to_video", resolution_preset="2k", aspect_ratio="9:16 (Portrait Widescreen)")
+        )
+        self.assertEqual((portrait["final_width"], portrait["final_height"]), (1088, 1920))
+
+    def test_one_resolution_drives_every_pass_type(self):
+        for render_pass in ("single", "two_pass", "three_pass"):
+            payload = payload_mod.build_minimax_render_payload(
+                _settings(render_pass=render_pass, video_mode="reference_to_video", resolution_preset="1k")
+            )
+            self.assertEqual(payload["megapixels"], 0.5625, render_pass)
+        advanced = payload_mod.build_minimax_render_payload(
+            _settings(render_pass="three_pass", video_mode="reference_to_video", resolution_preset="1k")
+        )
+        self.assertEqual(advanced["advanced_pass2_megapixels"], 0.5625)
 
     def test_single_pass_has_no_multipass_only_keys(self):
         payload = payload_mod.build_minimax_render_payload(_settings())
@@ -239,11 +298,11 @@ class PatchSettingsMappingTests(unittest.TestCase):
 
     def test_minimax_group_is_saved_where_the_ui_reads_it(self):
         session = {"minimax_h3_settings": {"steps": 30}}
-        result, saved = self._patch(session, {"minimax_h3": {"render_pass": "three_pass", "advanced_two_pass_dynamic_fade": "narrowing"}})
+        result, saved = self._patch(session, {"minimax_h3": {"render_pass": "three_pass", "advanced_two_pass_vram_preset": "12gb"}})
         self.assertEqual(saved["minimax_h3_settings"]["steps"], 30)
         self.assertEqual(saved["minimax_h3_settings"]["render_pass"], "three_pass")
         self.assertNotIn("minimax_h3", saved)
-        self.assertEqual(result["settings"]["minimax_h3"]["advanced_two_pass_dynamic_fade"], "narrowing")
+        self.assertEqual(result["settings"]["minimax_h3"]["advanced_two_pass_vram_preset"], "12gb")
         self.assertEqual(result["settings"]["minimax_h3"]["steps"], 30)
         self.assertEqual(result["revision"], 8)
 

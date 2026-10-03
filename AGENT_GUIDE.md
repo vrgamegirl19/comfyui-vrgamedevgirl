@@ -122,7 +122,7 @@ Every Video Builder project resides in a dedicated directory on disk:
 | [builder/](builder) | AI Video Builder backend: session persistence, project branching, audio beat detection, media indexing, routes | `project.py`, `audio.py`, `media.py`, `paths.py`, `routes.py`, `nodes.py` |
 | [runner/](runner) | Dynamic workflow graph generation and rendering engine for LTX, MiniMax H3, Z-Image, Flux | `api_graph.py`, `ltx_workflows.py`, `minimax_workflows.py`, `routes.py` |
 | [llm/](llm) | Multi-provider LLM integrations (GGUF, API, Google), prompt expansion, agent chat, JSON validation | `api.py`, `gguf.py`, `builder_agent.py`, `image_prompt_generation.py` |
-| [minimax/](minimax) | MiniMax H3 video pipeline: latent caching, frame-token math, latent continuation, fast VAE decoding | `latent_manager.py`, `latent_continuation.py`, `latent_upscaler.py`, `settings_payload.py`, `scene_inputs.py`, `nodes.py` |
+| [minimax/](minimax) | MiniMax H3 video pipeline: latent caching, frame-token math, latent continuation, fast VAE decoding | `latent_manager.py`, `latent_continuation.py`, `latent_upscaler.py`, `tile_plan.py`, `resolution.py`, `settings_payload.py`, `scene_inputs.py`, `nodes.py` |
 | [post_process/](post_process) | Face tracking, anchor enhancement, face paste-back compositing, 3D LUT grading, film grain | `face_fix.py`, `luts.py`, `lut_video_tools.py` |
 | [storyboard/](storyboard) | Storyboard generation, three-act structure planning, scene beats, dialogue allocation | `story_layer.py`, `scene_prompts.py`, `dialogue_scenes.py`, `nodes.py` |
 | [prompt_creator/](prompt_creator) | Structured prompt brainstorming, concept maps, motion notes, draft persistence routes | `nodes.py` |
@@ -364,11 +364,15 @@ The `minimax` package implements high-performance conditioning, latent managemen
   - `VRGDG_MiniMaxH3ApplyLatentGuide`: "VRGDG H3 Apply Latent Continuation Guide"
   - `VRGDG_MiniMaxH3LoadExactFrame`: "VRGDG H3 Load Exact Last Frame"
 
+#### [minimax/tile_plan.py](minimax/tile_plan.py) and [minimax/resolution.py](minimax/resolution.py)
+- **Purpose**: Pure helpers (no ComfyUI or torch imports). `resolution.py` is the one output resolution shared by single pass, 2 Pass and 2 Pass Advanced (`resolution_preset` + `megapixels`, plus the migration of older saves); its JS twins are `miniMaxH3FrameSize` and `miniMaxH3PresetMegapixels` in `minimax_h3.mjs`. `tile_plan.py` plans 2 Pass Advanced tiling from the Pass 2 size and the VRAM preset and holds the fixed (hidden) MMH3 settings; `_build_minimax_h3_advanced_2pass_api_prompt` adds `VRGDG_MiniMaxH3SpatialTilePlan` to the graph so the plan is made from the real size at run time. Keep the JS and Python copies in step (`tests/test_minimax_tile_plan.py`, `tests/test_minimax_resolution.py`, `tests/minimax_pass_settings.cjs`).
+
 #### [minimax/latent_upscaler.py](minimax/latent_upscaler.py)
 - **Purpose**: Learned latent upscaling nodes operating directly on MiniMax latent tensors.
 - **Nodes Registered**:
   - `VRGDG_MiniMaxH3LatentUpscaleModelLoader`: "Load MiniMax H3 Learned Latent Upscaler"
   - `VRGDG_MiniMaxH3UltimateUpscaleParams`: "MiniMax H3 Ultimate Upscale Params (VRGDG)"
+  - `VRGDG_MiniMaxH3SpatialTilePlan`: "MiniMax H3 Spatial Tile Plan (VRGDG)" — derives grid, overlaps, fades, minimum tile and temporal chunk settings from the Pass 2 size and a VRAM preset (8-24 GB).
   - `VRGDG_MiniMaxH3LearnedLatentUpscale`: "MiniMax H3 Learned Latent Upscale"
   - `VRGDG_MiniMaxH3ReplaceUpscaledVideoLatent`: "MiniMax H3 Replace with Upscaled Video Latent"
 

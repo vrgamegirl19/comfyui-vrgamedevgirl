@@ -6,12 +6,14 @@ import math
 import os
 import random
 from ..minimax.latent_manager import calculate_minimax_h3_timing
+from ..minimax.resolution import frame_size
+from ..minimax.tile_plan import HIDDEN_ADVANCED_SETTINGS, PLAN_OUTPUT_NAMES, normalize_vram_preset, plan_spatial_tiles
 
 from .paths import _bool_payload, _first_payload_value, _float_payload, _int_payload
 from .models import _NONE_LORA, _clean_lora_name, _model_choice_exists, _require_model_choice
 from .api_graph import _api_node_id_by_class, _compat_node_inputs, _get_comfy_node_mappings, _load_api_template, _set_api_input
 from .minimax_inputs import _MINIMAX_H3_ASPECT_RATIOS, _minimax_h3_2pass_api_template_path, _minimax_h3_3pass_api_template_path, _minimax_h3_api_template_path, _minimax_h3_built_in_audio_api_template_path, _minimax_h3_image_paths, _minimax_h3_output_location, _minimax_h3_video_references, _patch_minimax_h3_image_to_video_node, _probe_media_duration_seconds, _trim_minimax_h3_audio_context
-from .minimax_patches import _MMH3_DYNAMIC_FADE_MODES, _MMH3_SPATIAL_SPLIT_NEW_DEFAULTS, _minimax_h3_effective_warmup_frames, _minimax_h3_is_latent_mode, _minimax_h3_latent_continuation_mode, _patch_minimax_h3_advanced_settings, _patch_minimax_h3_fast_decode, _patch_minimax_h3_latent_continuation, _patch_minimax_h3_loras, _patch_minimax_h3_memory_efficient_sage_attention, _patch_minimax_h3_optional_model_paths, _patch_minimax_h3_save_latent, _patch_minimax_h3_te_speed, _patch_minimax_h3_turbo, _require_minimax_h3_memory_efficient_sage_attention
+from .minimax_patches import _minimax_h3_effective_warmup_frames, _minimax_h3_is_latent_mode, _minimax_h3_latent_continuation_mode, _patch_minimax_h3_advanced_settings, _patch_minimax_h3_fast_decode, _patch_minimax_h3_latent_continuation, _patch_minimax_h3_loras, _patch_minimax_h3_memory_efficient_sage_attention, _patch_minimax_h3_optional_model_paths, _patch_minimax_h3_save_latent, _patch_minimax_h3_te_speed, _patch_minimax_h3_turbo, _require_minimax_h3_memory_efficient_sage_attention
 
 
 def _build_minimax_h3_api_prompt(payload):
@@ -553,6 +555,7 @@ def _build_minimax_h3_advanced_2pass_api_prompt(payload):
         "VRGDG_MiniMaxH3UltimateUpscaleParams",
         "MMH3TemporalSplitParams",
         "MMH3SpatialSplitParams",
+        "VRGDG_MiniMaxH3SpatialTilePlan",
     )
     missing_nodes = [name for name in required_nodes if name not in mappings]
     if missing_nodes:
@@ -585,71 +588,13 @@ def _build_minimax_h3_advanced_2pass_api_prompt(payload):
     if pass2_megapixels < pass1_megapixels:
         raise ValueError("2 Pass Advanced Pass 2 resolution must be at least Pass 1 resolution.")
 
-    tile_size_mode = str(payload.get("advanced_tile_size_mode") or "rows_cols").strip().lower()
-    if tile_size_mode not in {"specific_size", "rows_cols"}:
-        tile_size_mode = "specific_size"
-    tile_width = _int_payload(payload, "advanced_tile_width", 512, 32, 16384)
-    tile_height = _int_payload(payload, "advanced_tile_height", 512, 32, 16384)
-    grid_rows = _int_payload(payload, "advanced_grid_rows", 2, 1, 9)
-    grid_cols = _int_payload(payload, "advanced_grid_cols", 2, 1, 9)
-    chunk_length = _int_payload(payload, "advanced_chunk_length", 85, 17, 100000)
-    temporal_overlap = _int_payload(payload, "advanced_temporal_overlap", 17, 0, 100000)
-    anchor_strength = _float_payload(payload, "advanced_anchor_strength", 0.999, 0.0, 1.0)
-    spatial_w_overlap = _int_payload(payload, "advanced_spatial_w_overlap", 128, 0, 16384)
-    spatial_h_overlap = _int_payload(payload, "advanced_spatial_h_overlap", 128, 0, 16384)
-    fade_width = _int_payload(payload, "advanced_fade_width", 64, 0, 16384)
-    fade_height = _int_payload(payload, "advanced_fade_height", 64, 0, 16384)
-    min_tile_size = _int_payload(payload, "advanced_min_tile_size", 256, 0, 16384)
-    overlap_mode = str(payload.get("advanced_overlap_mode") or "later").strip().lower()
-    overlap_blend = str(payload.get("advanced_overlap_blend") or "linear").strip().lower()
-    if overlap_mode not in {"earlier", "later"}:
-        overlap_mode = "earlier"
-    if overlap_blend not in {"linear", "smoothstep", "overwrite", "midpoint"}:
-        overlap_blend = "linear"
-    masked_area_noise = _float_payload(
-        payload, "advanced_masked_area_noise", _MMH3_SPATIAL_SPLIT_NEW_DEFAULTS["masked_area_noise"], 0.0, 1.0
-    )
-    brightness_match = _bool_payload(
-        payload, "advanced_brightness_match", _MMH3_SPATIAL_SPLIT_NEW_DEFAULTS["brightness_match"]
-    )
-    dynamic_fade = str(
-        payload.get("advanced_dynamic_fade") or _MMH3_SPATIAL_SPLIT_NEW_DEFAULTS["dynamic_fade"]
-    ).strip().lower()
-    if dynamic_fade not in _MMH3_DYNAMIC_FADE_MODES:
-        dynamic_fade = _MMH3_SPATIAL_SPLIT_NEW_DEFAULTS["dynamic_fade"]
-    dynamic_fade_min = _int_payload(
-        payload, "advanced_dynamic_fade_min", _MMH3_SPATIAL_SPLIT_NEW_DEFAULTS["dynamic_fade_min"], 0, 16384
-    )
-    if chunk_length % 17 or temporal_overlap % 17:
-        raise ValueError("MMH3 chunk length and temporal overlap must be multiples of 17 frames.")
-    if temporal_overlap >= chunk_length:
-        raise ValueError("MMH3 temporal overlap must be smaller than chunk length.")
-    for label, value in (
-        ("tile width", tile_width), ("tile height", tile_height),
-        ("spatial width overlap", spatial_w_overlap),
-        ("spatial height overlap", spatial_h_overlap),
-        ("fade width", fade_width), ("fade height", fade_height),
-        ("minimum tile size", min_tile_size),
-    ):
-        if value % 32:
-            raise ValueError(f"MMH3 {label} must be a multiple of 32 pixels; got {value}.")
+    # Every tile, chunk and fade setting is derived from the Pass 2 size at run time by
+    # VRGDG_MiniMaxH3SpatialTilePlan (see minimax/tile_plan.py). The only user choice is
+    # the VRAM preset; retired presets (32gb, custom) map to 24gb.
+    vram_preset = normalize_vram_preset(_first_payload_value(payload, "advanced_vram_preset", "vram_preset", default=""))
 
     def resolved_dimensions(target_megapixels):
-        ratio_width, ratio_height = {
-            "1:1 (Square)": (1, 1),
-            "2:3 (Portrait Photo)": (2, 3),
-            "3:2 (Photo)": (3, 2),
-            "3:4 (Portrait Standard)": (3, 4),
-            "4:3 (Standard)": (4, 3),
-            "9:16 (Portrait Widescreen)": (9, 16),
-            "16:9 (Widescreen)": (16, 9),
-            "21:9 (Ultrawide)": (21, 9),
-        }[aspect_ratio]
-        scale = math.sqrt(target_megapixels * 1024 * 1024 / (ratio_width * ratio_height))
-        return (
-            round(ratio_width * scale / 32) * 32,
-            round(ratio_height * scale / 32) * 32,
-        )
+        return frame_size(target_megapixels, aspect_ratio)
 
     pass1_width, pass1_height = resolved_dimensions(pass1_megapixels)
     pass2_width, pass2_height = resolved_dimensions(pass2_megapixels)
@@ -681,17 +626,29 @@ def _build_minimax_h3_advanced_2pass_api_prompt(payload):
             "model_name": str(payload.get("latent_upscaler_name") or "minimax_h3_latent_upscaler_3d_bf16.safetensors"),
             "width": ["9301", 0],
             "height": ["9301", 1],
-            "device": str(payload.get("advanced_upscaler_device") or "cuda"),
-            "precision": str(payload.get("advanced_upscaler_precision") or "bf16"),
+            "device": HIDDEN_ADVANCED_SETTINGS["upscaler_device"],
+            "precision": HIDDEN_ADVANCED_SETTINGS["upscaler_precision"],
         },
         "_meta": {"title": "2 Pass Advanced - H3 Learned Latent Upscale"},
     }
+
+    # Resolution-driven tiling: the plan node reads the real Pass 2 size and outputs the grid,
+    # overlaps, fades, minimum tile and temporal chunk settings for the VRAM preset.
+    prompt["9309"] = {
+        "class_type": "VRGDG_MiniMaxH3SpatialTilePlan",
+        "inputs": {"width": ["9301", 0], "height": ["9301", 1], "vram_preset": vram_preset},
+        "_meta": {"title": "2 Pass Advanced - Spatial Tile Plan"},
+    }
+
+    def plan_ref(name):
+        return ["9309", PLAN_OUTPUT_NAMES.index(name)]
+
     prompt["9304"] = {
         "class_type": "MMH3TemporalSplitParams",
         "inputs": {
-            "chunk_length": chunk_length,
-            "temporal_overlap": temporal_overlap,
-            "anchor_strength": anchor_strength,
+            "chunk_length": plan_ref("chunk_length"),
+            "temporal_overlap": plan_ref("temporal_overlap"),
+            "anchor_strength": HIDDEN_ADVANCED_SETTINGS["anchor_strength"],
         },
         "_meta": {"title": "2 Pass Advanced - Temporal Chunks"},
     }
@@ -701,30 +658,27 @@ def _build_minimax_h3_advanced_2pass_api_prompt(payload):
         {
             "upscale_width": ["9301", 0],
             "upscale_height": ["9301", 1],
-            "tile_size_mode": tile_size_mode,
-            "tile_width": tile_width,
-            "tile_height": tile_height,
-            "grid_rows": grid_rows,
-            "grid_cols": grid_cols,
-            "spatial_w_overlap": spatial_w_overlap,
-            "spatial_h_overlap": spatial_h_overlap,
-            "fade_width": fade_width,
-            "fade_height": fade_height,
-            "min_tile_size": min_tile_size,
-            "overlap_mode": overlap_mode,
-            "overlap_blend": overlap_blend,
+            "tile_size_mode": HIDDEN_ADVANCED_SETTINGS["tile_size_mode"],
+            # tile_width/tile_height are ignored in rows_cols mode; the plan node supplies the solved sizes.
+            "tile_width": plan_ref("tile_width"),
+            "tile_height": plan_ref("tile_height"),
+            "grid_rows": plan_ref("grid_rows"),
+            "grid_cols": plan_ref("grid_cols"),
+            "spatial_w_overlap": plan_ref("spatial_w_overlap"),
+            "spatial_h_overlap": plan_ref("spatial_h_overlap"),
+            "fade_width": plan_ref("fade_width"),
+            "fade_height": plan_ref("fade_height"),
+            "min_tile_size": plan_ref("min_tile_size"),
+            "overlap_mode": HIDDEN_ADVANCED_SETTINGS["overlap_mode"],
+            "overlap_blend": HIDDEN_ADVANCED_SETTINGS["overlap_blend"],
         },
         extra_defaults={
-            "masked_area_noise": masked_area_noise,
-            "brightness_match": brightness_match,
-            "dynamic_fade": dynamic_fade,
-            "dynamic_fade_min": dynamic_fade_min,
+            "masked_area_noise": HIDDEN_ADVANCED_SETTINGS["masked_area_noise"],
+            "brightness_match": HIDDEN_ADVANCED_SETTINGS["brightness_match"],
+            "dynamic_fade": HIDDEN_ADVANCED_SETTINGS["dynamic_fade"],
+            "dynamic_fade_min": HIDDEN_ADVANCED_SETTINGS["dynamic_fade_min"],
         },
     )
-    if "dynamic_fade_min" in spatial_inputs and spatial_inputs["dynamic_fade_min"] % 32:
-        raise ValueError(
-            f"MMH3 dynamic fade min must be a multiple of 32 pixels; got {spatial_inputs['dynamic_fade_min']}."
-        )
     prompt["9305"] = {
         "class_type": "MMH3SpatialSplitParams",
         "inputs": spatial_inputs,
@@ -773,6 +727,8 @@ def _build_minimax_h3_advanced_2pass_api_prompt(payload):
     result["prompt"] = prompt
     result["latent_continuation_settings"] = latent_continuation_settings
     result["save_latent_settings"] = save_latent_settings
+    # Same plan the plan node computes at run time; kept for progress text and the debug JSON.
+    plan = plan_spatial_tiles(pass2_width, pass2_height, vram_preset)
     result["advanced_two_pass"] = {
         "pass1_megapixels": pass1_megapixels,
         "pass2_megapixels": pass2_megapixels,
@@ -780,14 +736,14 @@ def _build_minimax_h3_advanced_2pass_api_prompt(payload):
         "pass1_height": pass1_height,
         "pass2_width": pass2_width,
         "pass2_height": pass2_height,
-        "vram_preset": str(payload.get("advanced_vram_preset") or "12gb"),
-        "tile_size_mode": tile_size_mode,
-        "tile_width": tile_width,
-        "tile_height": tile_height,
-        "grid_rows": grid_rows,
-        "grid_cols": grid_cols,
-        "chunk_length": chunk_length,
-        "temporal_overlap": temporal_overlap,
+        "vram_preset": vram_preset,
+        "tile_size_mode": HIDDEN_ADVANCED_SETTINGS["tile_size_mode"],
+        "tile_width": plan["tile_width"],
+        "tile_height": plan["tile_height"],
+        "grid_rows": plan["grid_rows"],
+        "grid_cols": plan["grid_cols"],
+        "chunk_length": plan["chunk_length"],
+        "temporal_overlap": plan["temporal_overlap"],
     }
     result.pop("two_pass", None)
     return result

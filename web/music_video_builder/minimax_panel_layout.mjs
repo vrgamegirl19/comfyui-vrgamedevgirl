@@ -16,10 +16,14 @@ import {
   MINIMAX_H3_CONTINUITY_OPTIONS,
   MINIMAX_H3_LOCATION_TRANSITION_OPTIONS,
   MINIMAX_H3_MODE_OPTIONS,
+  MINIMAX_H3_RESOLUTION_PRESETS,
   MINIMAX_H3_SAGE_ATTENTION_OPTIONS,
   MINIMAX_H3_SCENE_IMAGE_USE_OPTIONS,
   MINIMAX_H3_START_FRAME_CHARACTER_INFLUENCE_OPTIONS,
   MINIMAX_H3_VIDEO_REFERENCE_PURPOSES,
+  miniMaxH3FrameSize,
+  miniMaxH3PresetMegapixels,
+  miniMaxH3TilePlan,
 } from "./minimax_h3.mjs";
 
 export function buildMiniMaxPanel({
@@ -174,16 +178,23 @@ export function buildMiniMaxPanel({
   const miniMaxRenderSettingsGrid = document.createElement("div");
   miniMaxRenderSettingsGrid.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;";
   const miniMaxAspectRatioField = makeField("Aspect ratio", miniMaxAspectRatio);
-  const miniMaxMegapixelsField = makeField("Megapixels", miniMaxMegapixels);
+  // One output resolution for single pass, 2 Pass and 2 Pass Advanced (Pass 2 size).
+  const miniMaxResolutionPreset = makeSelect(MINIMAX_H3_RESOLUTION_PRESETS, DEFAULT_MINIMAX_H3_SETTINGS.resolution_preset);
+  const miniMaxResolutionPresetField = makeField("Output resolution", miniMaxResolutionPreset, "Shared by single pass, 2 Pass and 2 Pass Advanced. 2 Pass Advanced uses it as the Pass 2 size.");
+  const miniMaxResolutionSummary = document.createElement("div");
+  miniMaxResolutionSummary.style.cssText = "grid-column:1 / -1;font-size:11px;color:#a1a1aa;line-height:1.45;";
+  const miniMaxMegapixelsField = makeField("Custom megapixels", miniMaxMegapixels);
   const miniMaxSeedField = makeField("Seed", miniMaxSeed);
   const miniMaxWarmupFramesField = makeField("Warmup frames", miniMaxWarmupFrames);
   const miniMaxCooldownFramesField = makeField("Cooldown frames", miniMaxCooldownFrames);
   miniMaxRenderSettingsGrid.append(
     miniMaxAspectRatioField,
+    miniMaxResolutionPresetField,
     miniMaxMegapixelsField,
     miniMaxSeedField,
     miniMaxWarmupFramesField,
     miniMaxCooldownFramesField,
+    miniMaxResolutionSummary,
   );
   const miniMaxSamplerName = makeSelect([
     "res_multistep",
@@ -242,34 +253,19 @@ export function buildMiniMaxPanel({
     "linear_quadratic",
     "kl_optimal",
   ];
-  const advancedResolutionPresets = [
-    { value: "custom", label: "Custom megapixels" },
-    { value: "1k", label: "H3 1K (1024×576)" },
-    { value: "2k", label: "H3 2K (1920×1088)" },
-    { value: "1440p", label: "1440p (2560×1440)" },
-    { value: "4k", label: "H3 4K (3840×2176)" },
-  ];
-  const advancedPresetMegapixels = (preset, aspectRatio) => {
-    const match = String(aspectRatio || "16:9").match(/(\d+)\s*:\s*(\d+)/);
-    const ratioWidth = Number(match?.[1] || 16);
-    const ratioHeight = Number(match?.[2] || 9);
-    const longEdge = { "1k": 1024, "2k": 1920, "1440p": 2560, "4k": 3840 }[String(preset || "").toLowerCase()];
-    if (!longEdge) return null;
-    const scale = longEdge / Math.max(ratioWidth, ratioHeight);
-    const width = Math.round(ratioWidth * scale / 32) * 32;
-    const height = Math.round(ratioHeight * scale / 32) * 32;
-    return Number(((width * height) / 1048576).toFixed(4));
-  };
   const advancedTwoPassControls = [1, 2].map((pass) => {
     const prefix = `advanced_two_pass_pass${pass}_`;
-    const megapixels = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS[`${prefix}megapixels`]), "number");
-    megapixels.min = "0.1";
-    megapixels.max = "16";
-    megapixels.step = "0.1";
-    const resolutionPreset = makeSelect(
-      advancedResolutionPresets,
-      DEFAULT_MINIMAX_H3_SETTINGS[`${prefix}resolution_preset`] || "custom",
-    );
+    // Only Pass 1 has its own resolution. Pass 2 is the shared output resolution above.
+    const hasResolution = pass === 1;
+    const megapixels = hasResolution ? makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS[`${prefix}megapixels`]), "number") : null;
+    if (megapixels) {
+      megapixels.min = "0.1";
+      megapixels.max = "16";
+      megapixels.step = "0.1";
+    }
+    const resolutionPreset = hasResolution
+      ? makeSelect(MINIMAX_H3_RESOLUTION_PRESETS, DEFAULT_MINIMAX_H3_SETTINGS[`${prefix}resolution_preset`] || "custom")
+      : null;
     const steps = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS[`${prefix}steps`]), "number");
     steps.min = "1";
     steps.max = "1000";
@@ -282,26 +278,26 @@ export function buildMiniMaxPanel({
     const scheduler = makeSelect(threePassSchedulerOptions, DEFAULT_MINIMAX_H3_SETTINGS[`${prefix}scheduler`]);
     const seed = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS[`${prefix}seed`]), "number");
     seed.step = "1";
-    const resolutionField = makeSettingsSection(
-      pass === 1 ? "Pass 1 resolution" : "Pass 2 resolution",
-      [
-        makeField("Resolution preset", resolutionPreset),
-        makeField("Custom megapixels", megapixels),
-      ],
-      false,
-    );
+    // Shown in the main Render Settings grid, only for 2 Pass Advanced (the panel toggles it).
+    const resolutionField = hasResolution ? document.createElement("div") : null;
+    if (resolutionField) {
+      resolutionField.style.display = "none";
+      resolutionField.append(
+        makeField("Pass 1 resolution", resolutionPreset, "Base-generation resolution before the MMH3 upscale to the output resolution (2 Pass Advanced only)."),
+        makeField("Pass 1 custom megapixels", megapixels),
+      );
+    }
     const syncResolutionPreset = () => {
-      const resolved = advancedPresetMegapixels(resolutionPreset.value, miniMaxAspectRatio.value);
+      if (!hasResolution) return;
+      const resolved = miniMaxH3PresetMegapixels(resolutionPreset.value, miniMaxAspectRatio.value);
       megapixels.disabled = Boolean(resolved);
       if (resolved !== null) megapixels.value = String(resolved);
     };
-    resolutionPreset.addEventListener("change", syncResolutionPreset);
-    miniMaxAspectRatio.addEventListener("change", syncResolutionPreset);
-    syncResolutionPreset();
-    resolutionField.title =
-      pass === 1
-        ? "Base-generation resolution before MMH3 upscale."
-        : "Target latent resolution produced by the MMH3 tiled upscale pass.";
+    if (hasResolution) {
+      resolutionPreset.addEventListener("change", syncResolutionPreset);
+      miniMaxAspectRatio.addEventListener("change", syncResolutionPreset);
+      syncResolutionPreset();
+    }
     const samplingFields = [
       makeField("Steps", steps),
       makeField("Sampler", sampler),
@@ -318,6 +314,9 @@ export function buildMiniMaxPanel({
       false,
     )),
   ], false);
+  // display:contents keeps the wrapper out of the grid so its two fields sit in the grid cells.
+  const miniMaxPass1ResolutionFields = advancedTwoPassControls[0].resolutionField;
+  miniMaxRenderSettingsGrid.insertBefore(miniMaxPass1ResolutionFields, miniMaxSeedField);
   const twoPassControls = [1, 2].map((pass) => {
     const prefix = `two_pass_pass${pass}_`;
     const steps = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS[`${prefix}steps`]), "number");
@@ -341,14 +340,6 @@ export function buildMiniMaxPanel({
     ], pass === 1);
     return { prefix, steps, denoise, sampler, scheduler, seed, section };
   });
-  const miniMaxTwoPassFinalWidth = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.two_pass_final_width), "number");
-  miniMaxTwoPassFinalWidth.min = "64";
-  miniMaxTwoPassFinalWidth.max = "16384";
-  miniMaxTwoPassFinalWidth.step = "1";
-  const miniMaxTwoPassFinalHeight = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.two_pass_final_height), "number");
-  miniMaxTwoPassFinalHeight.min = "64";
-  miniMaxTwoPassFinalHeight.max = "16384";
-  miniMaxTwoPassFinalHeight.step = "1";
   const miniMaxTwoPassLatentScale = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.two_pass_latent_upscale_scale), "number");
   miniMaxTwoPassLatentScale.min = "1";
   miniMaxTwoPassLatentScale.max = "8";
@@ -413,8 +404,6 @@ export function buildMiniMaxPanel({
   ]);
   const miniMaxTwoPassSettings = makeSettingsSection("Two-Pass Settings", [
     miniMaxTwoPassSpeedNote,
-    makeField("Final width", miniMaxTwoPassFinalWidth),
-    makeField("Final height", miniMaxTwoPassFinalHeight),
     makeField("Reference image sizing", miniMaxTwoPassRefImageSize, "Controls the MiniMax H3 reference-conditioning image-size mode. Default: max."),
     makeField("Latent upscaler model", miniMaxTwoPassLatentUpscalerPicker.wrapper),
     ...twoPassControls.map((item) => item.section),
@@ -428,81 +417,40 @@ export function buildMiniMaxPanel({
     ], false),
   ], false);
   miniMaxTwoPassSettings.style.display = "none";
+  // Tiles, chunks, fades and the upscaler device come from the output resolution at run time
+  // (minimax/tile_plan.py). The VRAM preset is the only tiling choice; bigger cards should use 2 Pass.
   const miniMaxAdvancedVramPreset = makeSelect([
-    { value: "8gb", label: "8 GB — ~0.2 MP tiles / 51 frames (untested)" },
-    { value: "12gb", label: "12 GB — ~0.3 MP tiles / 85 frames (untested)" },
-    { value: "16gb", label: "16 GB — ~0.43 MP tiles / 119 frames (untested)" },
-    { value: "24gb", label: "24 GB — ~0.65 MP tiles / 153 frames (untested)" },
-    { value: "32gb", label: "32 GB — ~1.6 MP tiles / 170 frames (tested on RTX 5090)" },
-    { value: "custom", label: "Custom — keep advanced values" },
+    { value: "8gb", label: "8 GB — smallest tiles, shortest chunks" },
+    { value: "12gb", label: "12 GB" },
+    { value: "16gb", label: "16 GB" },
+    { value: "24gb", label: "24 GB — largest tiles" },
   ], DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_vram_preset);
-  const miniMaxAdvancedTileSizeMode = makeSelect([
-    { value: "specific_size", label: "Specific tile width / height" },
-    { value: "rows_cols", label: "Auto equal tiles by rows / columns" },
-  ], DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_tile_size_mode);
-  const makeMiniMaxAdvancedNumber = (key, min, max, step) => {
-    const input = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS[key]), "number");
-    input.min = String(min); input.max = String(max); input.step = String(step);
-    return input;
-  };
-  const miniMaxAdvancedTileWidth = makeMiniMaxAdvancedNumber("advanced_two_pass_tile_width", 32, 16384, 32);
-  const miniMaxAdvancedTileHeight = makeMiniMaxAdvancedNumber("advanced_two_pass_tile_height", 32, 16384, 32);
-  const miniMaxAdvancedGridRows = makeMiniMaxAdvancedNumber("advanced_two_pass_grid_rows", 1, 9, 1);
-  const miniMaxAdvancedGridCols = makeMiniMaxAdvancedNumber("advanced_two_pass_grid_cols", 1, 9, 1);
-  const miniMaxAdvancedChunkLength = makeMiniMaxAdvancedNumber("advanced_two_pass_chunk_length", 17, 100000, 17);
-  const miniMaxAdvancedTemporalOverlap = makeMiniMaxAdvancedNumber("advanced_two_pass_temporal_overlap", 0, 100000, 17);
-  const miniMaxAdvancedAnchorStrength = makeMiniMaxAdvancedNumber("advanced_two_pass_anchor_strength", 0, 1, 0.001);
-  const miniMaxAdvancedSpatialWOverlap = makeMiniMaxAdvancedNumber("advanced_two_pass_spatial_w_overlap", 0, 16384, 32);
-  const miniMaxAdvancedSpatialHOverlap = makeMiniMaxAdvancedNumber("advanced_two_pass_spatial_h_overlap", 0, 16384, 32);
-  const miniMaxAdvancedFadeWidth = makeMiniMaxAdvancedNumber("advanced_two_pass_fade_width", 0, 16384, 32);
-  const miniMaxAdvancedFadeHeight = makeMiniMaxAdvancedNumber("advanced_two_pass_fade_height", 0, 16384, 32);
-  const miniMaxAdvancedMinTileSize = makeMiniMaxAdvancedNumber("advanced_two_pass_min_tile_size", 0, 16384, 32);
-  const miniMaxAdvancedOverlapMode = makeSelect(["earlier", "later"], DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_overlap_mode);
-  const miniMaxAdvancedOverlapBlend = makeSelect(["linear", "smoothstep", "overwrite", "midpoint"], DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_overlap_blend);
-  // Seam-reduction controls. Fade width/height must stay below tile overlap so a
-  // frozen anchor strip remains; dynamic fade only acts when Pass 2 has >1 step.
-  const miniMaxAdvancedBrightnessMatch = makeCheckbox("Brightness match", DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_brightness_match);
-  miniMaxAdvancedBrightnessMatch.wrapper.title = "Matches each tile's brightness to the source region to reduce color pops on the tile grid.";
-  const miniMaxAdvancedDynamicFade = makeSelect(["off", "narrowing", "widening"], DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_dynamic_fade);
-  const miniMaxAdvancedDynamicFadeMin = makeMiniMaxAdvancedNumber("advanced_two_pass_dynamic_fade_min", 0, 16384, 32);
-  const miniMaxAdvancedMaskedAreaNoise = makeMiniMaxAdvancedNumber("advanced_two_pass_masked_area_noise", 0, 1, 0.01);
-  const miniMaxAdvancedUpscalerDevice = makeSelect(["cuda", "cpu"], DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_upscaler_device);
-  const miniMaxAdvancedUpscalerPrecision = makeSelect(["bf16", "fp16", "fp32"], DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_upscaler_precision);
   const miniMaxAdvancedLatentUpscalerPicker = makeSearchableLoraPicker(DEFAULT_MINIMAX_H3_SETTINGS.two_pass_latent_upscaler_name);
   const miniMaxAdvancedDependencyNote = document.createElement("div");
-  miniMaxAdvancedDependencyNote.textContent = "Requires the latest Comfyui-MMH3-UltimateUpscale. Pass 1 is saved as a backup; Pass 2 uses temporal chunks and spatial tiles and becomes the final timeline clip.";
+  miniMaxAdvancedDependencyNote.textContent = "Requires the latest Comfyui-MMH3-UltimateUpscale. Pass 2 uses temporal chunks and spatial tiles, planned automatically from the output resolution and your VRAM preset, and becomes the final timeline clip.";
   miniMaxAdvancedDependencyNote.style.cssText = "font-size:11px;color:#facc15;line-height:1.45;";
-  const miniMaxAdvancedTileFields = makeSettingsSection("Hidden MMH3 Advanced Settings", [
-    makeField("Tile sizing mode", miniMaxAdvancedTileSizeMode),
-    makeField("Tile width", miniMaxAdvancedTileWidth),
-    makeField("Tile height", miniMaxAdvancedTileHeight),
-    makeField("Grid rows", miniMaxAdvancedGridRows),
-    makeField("Grid columns", miniMaxAdvancedGridCols),
-    makeField("Chunk length (multiple of 17)", miniMaxAdvancedChunkLength),
-    makeField("Temporal overlap (multiple of 17)", miniMaxAdvancedTemporalOverlap),
-    makeField("Anchor strength", miniMaxAdvancedAnchorStrength),
-    makeField("Horizontal tile overlap", miniMaxAdvancedSpatialWOverlap),
-    makeField("Vertical tile overlap", miniMaxAdvancedSpatialHOverlap),
-    makeField("Fade width", miniMaxAdvancedFadeWidth),
-    makeField("Fade height", miniMaxAdvancedFadeHeight),
-    makeField("Minimum tile size", miniMaxAdvancedMinTileSize),
-    makeField("Overlap ownership", miniMaxAdvancedOverlapMode),
-    makeField("Overlap blend", miniMaxAdvancedOverlapBlend),
-    miniMaxAdvancedBrightnessMatch.wrapper,
-    makeField("Dynamic fade", miniMaxAdvancedDynamicFade, "Changes the fade width over a tile's sampling. Only takes effect when Pass 2 has more than one step."),
-    makeField("Dynamic fade minimum", miniMaxAdvancedDynamicFadeMin, "Smallest fade width (pixels, multiple of 32) reached by narrowing or widening."),
-    makeField("Masked area noise", miniMaxAdvancedMaskedAreaNoise, "0 keeps the frozen overlap band fixed. Higher values let noise into it."),
-    makeField("Upscaler device", miniMaxAdvancedUpscalerDevice),
-    makeField("Upscaler precision", miniMaxAdvancedUpscalerPrecision),
-  ], false);
+  const syncMiniMaxResolution = () => {
+    const resolved = miniMaxH3PresetMegapixels(miniMaxResolutionPreset.value, miniMaxAspectRatio.value);
+    miniMaxMegapixels.disabled = resolved !== null;
+    if (resolved !== null) miniMaxMegapixels.value = String(resolved);
+    const size = miniMaxH3FrameSize(miniMaxMegapixels.value, miniMaxAspectRatio.value);
+    const plan = miniMaxH3TilePlan(miniMaxAdvancedVramPreset.value, miniMaxMegapixels.value, miniMaxAspectRatio.value);
+    miniMaxResolutionSummary.textContent = `Output size: ${size.width}×${size.height}px. `
+      + `2 Pass Advanced tiling (${miniMaxAdvancedVramPreset.value.replace("gb", " GB")}): ${plan.rows}×${plan.cols} tiles, ${plan.chunk}-frame chunks.`;
+  };
+  // The panel calls this after loading saved settings into the controls.
+  miniMaxResolutionPreset.syncResolution = syncMiniMaxResolution;
+  for (const control of [miniMaxResolutionPreset, miniMaxAspectRatio, miniMaxMegapixels, miniMaxAdvancedVramPreset]) {
+    control.addEventListener("change", syncMiniMaxResolution);
+  }
+  miniMaxMegapixels.addEventListener("input", syncMiniMaxResolution);
+  syncMiniMaxResolution();
   const miniMaxThreePassSettings = makeSettingsSection("2 Pass Advanced — MMH3 Ultimate Upscale", [
     miniMaxAdvancedDependencyNote,
-    makeField("VRAM preset", miniMaxAdvancedVramPreset, "Presets size an equal tile grid for the current Pass 2 resolution and set chunk length and overlap. Only 32 GB is tested; smaller cards are estimates, so report results."),
+    makeField("VRAM preset", miniMaxAdvancedVramPreset, "Sizes an equal tile grid for the output resolution and sets chunk length and overlap. 2 Pass Advanced is for cards up to 24 GB; larger cards should use 2 Pass."),
     makeField("Reference image sizing", miniMaxThreePassRefImageSize, "Controls the MiniMax H3 reference-conditioning image-size mode. Default: max."),
     makeField("Latent upscaler model", miniMaxAdvancedLatentUpscalerPicker.wrapper),
-    ...advancedTwoPassControls.map((item) => item.resolutionField),
     miniMaxAdvancedSamplingFields,
-    miniMaxAdvancedTileFields,
   ], false);
   miniMaxThreePassSettings.style.display = "none";
   const miniMaxEasyCacheBypass = makeCheckbox("Bypass EasyCache", DEFAULT_MINIMAX_H3_SETTINGS.easy_cache_bypass);
@@ -780,13 +728,7 @@ export function buildMiniMaxPanel({
 
   return {
     advancedTwoPassControls, miniMaxAccelerationControls, miniMaxAddSpeakerCueButton,
-    miniMaxAdvancedAnchorStrength, miniMaxAdvancedChunkLength, miniMaxAdvancedFadeHeight,
-    miniMaxAdvancedFadeWidth, miniMaxAdvancedGridCols, miniMaxAdvancedGridRows,
-    miniMaxAdvancedLatentUpscalerPicker, miniMaxAdvancedMinTileSize, miniMaxAdvancedOverlapBlend, miniMaxAdvancedBrightnessMatch, miniMaxAdvancedDynamicFade, miniMaxAdvancedDynamicFadeMin, miniMaxAdvancedMaskedAreaNoise,
-    miniMaxAdvancedOverlapMode, miniMaxAdvancedSettings, miniMaxAdvancedSpatialHOverlap,
-    miniMaxAdvancedSpatialWOverlap, miniMaxAdvancedTemporalOverlap, miniMaxAdvancedTileHeight,
-    miniMaxAdvancedTileSizeMode, miniMaxAdvancedTileWidth, miniMaxAdvancedUpscalerDevice,
-    miniMaxAdvancedUpscalerPrecision, miniMaxAdvancedVramPreset, miniMaxAspectRatio, miniMaxAudioMode,
+    miniMaxAdvancedLatentUpscalerPicker, miniMaxAdvancedSettings, miniMaxAdvancedVramPreset, miniMaxAspectRatio, miniMaxAudioMode,
     miniMaxAudioNote, miniMaxAudioVaePicker, miniMaxAutoTimeAllScenesButton, miniMaxAutoTimeBeforePrompt,
     miniMaxClipPicker, miniMaxContinuityMode, miniMaxContinuityNote, miniMaxContinuityPromptFromLastFrame,
     miniMaxCooldownFrames, miniMaxCreatePromptButton, miniMaxDenoise, miniMaxDiffusionModelPicker,
@@ -796,7 +738,7 @@ export function buildMiniMaxPanel({
     miniMaxFp16Accumulation, miniMaxImageModeSource, miniMaxLatentContextFrames, miniMaxLatentContinuationRow,
     miniMaxLatentStatusPill, miniMaxLocationTransitionControls, miniMaxLocationTransitionCustom,
     miniMaxLocationTransitionCustomField, miniMaxLocationTransitionPreset, miniMaxLoraCount, miniMaxLoraNote,
-    miniMaxLoraRows, miniMaxLoraSection, miniMaxLoraSlots, miniMaxMegapixels, miniMaxMegapixelsField,
+    miniMaxLoraRows, miniMaxLoraSection, miniMaxLoraSlots, miniMaxMegapixels, miniMaxMegapixelsField, miniMaxResolutionPreset,
     miniMaxMemoryEfficientSageAttention, miniMaxModeButtons, miniMaxModelLoaderSettings, miniMaxModePanels,
     miniMaxPass2Prompt, miniMaxPass2PromptField, miniMaxPassButtons, miniMaxPassChooser, miniMaxPrompt,
     miniMaxPromptCharacterStatus, miniMaxPromptRunnerNote, miniMaxReferenceConditioningSettings,
@@ -807,8 +749,7 @@ export function buildMiniMaxPanel({
     miniMaxStartFrameReferenceNote, miniMaxSteps, miniMaxSubTabs, miniMaxThreePassLoraPicker,
     miniMaxThreePassLoraSection, miniMaxThreePassLoraStrength, miniMaxThreePassRefImageSize,
     miniMaxThreePassSettings, miniMaxTurboLoraField, miniMaxTurboLoraPicker, miniMaxTurboLoraStrength,
-    miniMaxTurboLoraStrengthField, miniMaxTurboNote, miniMaxTurboSection, miniMaxTwoPassFinalHeight,
-    miniMaxTwoPassFinalWidth, miniMaxTwoPassLatentScale, miniMaxTwoPassLatentUpscalerPicker,
+    miniMaxTurboLoraStrengthField, miniMaxTurboNote, miniMaxTurboSection, miniMaxTwoPassLatentScale, miniMaxTwoPassLatentUpscalerPicker,
     miniMaxTwoPassLoraLayout, miniMaxTwoPassLoraPicker, miniMaxTwoPassLoraPreset,
     miniMaxTwoPassLoraPresetButtons, miniMaxTwoPassLoraPresetField, miniMaxTwoPassLoraSection,
     miniMaxTwoPassLoraStatus, miniMaxTwoPassLoraStrength, miniMaxTwoPassOutputCrf, miniMaxTwoPassRefImageSize,

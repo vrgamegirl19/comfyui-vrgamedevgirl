@@ -11,17 +11,6 @@ from .models import _NONE_LORA, _clean_lora_name, _model_choice_exists
 from .api_graph import _api_node_id_by_class, _find_final_vae_decode_id, _get_comfy_node_mappings, _optional_api_node_id_by_class, _replace_api_input_refs, _set_api_input
 
 
-_MMH3_SPATIAL_SPLIT_NEW_DEFAULTS = {
-    "masked_area_noise": 0.0,
-    "brightness_match": False,
-    "dynamic_fade": "off",
-    "dynamic_fade_min": 32,
-}
-
-
-_MMH3_DYNAMIC_FADE_MODES = {"off", "narrowing", "widening"}
-
-
 _MINIMAX_H3_SAGE_ATTENTION_MODES = {
     "disabled",
     "auto",

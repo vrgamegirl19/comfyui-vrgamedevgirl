@@ -14,7 +14,7 @@ import torch
 import folder_paths
 import comfy.nested_tensor
 
-from .tile_plan import VRAM_PRESETS, describe_plan, plan_spatial_tiles
+from .tile_plan import DEFAULT_VRAM_PRESET, PLAN_OUTPUT_NAMES, VRAM_PRESETS, describe_plan, plan_spatial_tiles
 
 
 MODEL_TYPE = "VRGDG_MINIMAX_H3_LATENT_UPSCALE_MODEL"
@@ -350,15 +350,12 @@ class VRGDG_MiniMaxH3SpatialTilePlan:
                                   "tooltip": "Pass 2 (upscaled) frame width in pixels."}),
                 "height": ("INT", {"default": 1088, "min": 32, "max": 16384, "step": 32,
                                    "tooltip": "Pass 2 (upscaled) frame height in pixels."}),
-                "vram_preset": (list(VRAM_PRESETS), {"default": "32gb"}),
+                "vram_preset": (list(VRAM_PRESETS), {"default": DEFAULT_VRAM_PRESET}),
             }
         }
 
     RETURN_TYPES = ("INT", "INT", "INT", "INT", "INT", "INT", "INT", "INT", "INT", "INT", "INT", "STRING")
-    RETURN_NAMES = (
-        "grid_rows", "grid_cols", "spatial_w_overlap", "spatial_h_overlap", "fade_width", "fade_height",
-        "min_tile_size", "chunk_length", "temporal_overlap", "tile_width", "tile_height", "summary",
-    )
+    RETURN_NAMES = PLAN_OUTPUT_NAMES
     FUNCTION = "plan"
     CATEGORY = "VRGDG/Video/MiniMax H3"
     DESCRIPTION = (

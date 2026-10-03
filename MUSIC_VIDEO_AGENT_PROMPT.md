@@ -61,7 +61,7 @@ Use the project id returned by `project_create` in every later call.
 1. `system_health`, then `llm_active`. Stop if either reports a problem.
 2. `project_create` with `project_name`.
 3. `project_update_settings` with
-   `{"project": {"video_engine": "minimax_h3"}, "minimax_h3": {"video_mode": "reference_to_video", "render_pass": "two_pass", "two_pass_final_width": 1920, "two_pass_final_height": 1088}}`.
+   `{"project": {"video_engine": "minimax_h3"}, "minimax_h3": {"video_mode": "reference_to_video", "render_pass": "two_pass", "resolution_preset": "2k"}}`.
 4. `audio_attach` with `audio_file`.
 5. `lyrics_set` with the pasted lyrics.
 
