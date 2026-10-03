@@ -9,44 +9,20 @@ import {
   normalizeProjectVideoEngine,
   toast,
 } from "./controls.mjs";
+import { confirmDestructiveAction } from "./confirm_dialog.mjs";
 import { chooseBatchModeAction, timestampForProjectName } from "./project_actions.mjs";
 import { normalizeBatchScope } from "./timeline_state.mjs";
 
-export function confirmDeleteMediaAction(type, path) {
-  return new Promise((resolve) => {
-    const backdrop = document.createElement("div");
-    backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
-    const box = document.createElement("div");
-    box.style.cssText = "width:min(560px,calc(100vw - 40px));border:1px solid #7f1d1d;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
-    const heading = document.createElement("div");
-    heading.textContent = `Delete selected ${type}?`;
-    heading.style.cssText = "font-size:16px;font-weight:900;color:#fecaca;";
-    const body = document.createElement("div");
-    body.textContent = `This deletes the file from the current project folder and removes it from this scene history.`;
-    body.style.cssText = "font-size:13px;color:#d4d4d8;line-height:1.45;";
-    const pathBox = document.createElement("div");
-    pathBox.textContent = path;
-    pathBox.style.cssText = "border:1px solid #3f3f46;border-radius:6px;background:#18181b;padding:9px;color:#bae6fd;font-size:11px;overflow-wrap:anywhere;";
-    const actions = document.createElement("div");
-    actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
-    const cancel = makeButton("Cancel");
-    const confirm = makeButton(`Delete ${type}`, "danger");
-    confirm.style.borderColor = "#7f1d1d";
-    confirm.style.background = "#991b1b";
-    confirm.style.color = "#fee2e2";
-    cancel.onclick = () => {
-      backdrop.remove();
-      resolve(false);
-    };
-    confirm.onclick = () => {
-      backdrop.remove();
-      resolve(true);
-    };
-    actions.append(cancel, confirm);
-    box.append(heading, body, pathBox, actions);
-    backdrop.append(box);
-    document.body.append(backdrop);
+export async function confirmDeleteMediaAction(type, path) {
+  const { confirmed } = await confirmDestructiveAction({
+    title: `Delete selected ${type}?`,
+    message: [
+      `You are about to delete this ${type}.`,
+      "This deletes the file from the current project folder and removes it from this scene's history. This cannot be undone.",
+    ],
+    details: [path],
   });
+  return confirmed;
 }
 
 function showBranchProjectModal(defaultName = "") {
@@ -418,14 +394,29 @@ export function createBatchActions({
       toast("There are no timeline videos or scene images to remove.");
       return;
     }
-    const ok = window.confirm(
-      `Permanently delete ALL ${videoPaths.length} video file${videoPaths.length === 1 ? "" : "s"} from ${assignedSegments.length} scene${assignedSegments.length === 1 ? "" : "s"}?\n\nThis deletes the video files and thumbnails from the project folder, the same as Delete Video does for one scene, but for every scene. This cannot be undone.\n\nSaved scene latents (Latent Continuation) are deleted too, since they no longer match any video.`
-    );
-    if (!ok) return;
-
-    const deleteSceneImages = hasSceneImages && window.confirm(
-      "Also permanently delete ALL timeline scene images and image history?\n\nThis removes captured video frames, first/last frames, continuity frames, and imported or generated scene images. Older captured frames cannot be distinguished from ordinary scene images. Reference Builder assets are not included.\n\nOK = delete scene images too. Cancel = keep scene images and delete videos only."
-    );
+    const plural = (count, word) => `${count} ${word}${count === 1 ? "" : "s"}`;
+    const imagesOnly = !assignedSegments.length;
+    const answer = await confirmDestructiveAction(imagesOnly ? {
+      title: "Delete ALL timeline scene images?",
+      message: [
+        "You are about to permanently delete every timeline scene image and image history.",
+        "This removes captured video frames, first/last frames, continuity frames, and imported or generated scene images from the project folder. Reference Builder assets are not included. This cannot be undone.",
+      ],
+      details: [`${plural(imagePaths.length, "image file")}`],
+    } : {
+      title: `Delete ALL ${plural(videoPaths.length, "video file")}?`,
+      message: [
+        `You are about to permanently delete the videos of ${plural(assignedSegments.length, "scene")}.`,
+        "This deletes the video files and thumbnails from the project folder, the same as Delete Video does for one scene, but for every scene. Saved scene latents (Latent Continuation) are deleted too, since they no longer match any video. This cannot be undone.",
+      ],
+      details: [`${plural(videoPaths.length, "video file")} and ${plural(thumbnailPaths.length, "thumbnail")}`],
+      option: hasSceneImages ? {
+        label: "Also delete ALL timeline scene images and image history (captured frames, first/last frames, continuity frames, imported or generated scene images)",
+        checked: false,
+      } : null,
+    });
+    if (!answer.confirmed) return;
+    const deleteSceneImages = hasSceneImages && (imagesOnly || answer.optionChecked);
     if (!assignedSegments.length && !deleteSceneImages) return;
     const mediaPaths = [...new Set([...videoPaths, ...thumbnailPaths, ...(deleteSceneImages ? imagePaths : [])])];
 
@@ -533,10 +524,15 @@ export function createBatchActions({
       toast("There are no regular timeline images to delete.");
       return;
     }
-    const ok = window.confirm(
-      `Delete ALL timeline images?\n\nThis will clear every first frame, last frame, regular scene image, and extracted chained start frame from ${assignedCount} scene${assignedCount === 1 ? "" : "s"}, and delete ${imagePaths.length} image file${imagePaths.length === 1 ? "" : "s"} from the current project folder.\n\nThis cannot be undone.`
-    );
-    if (!ok) return;
+    const imageAnswer = await confirmDestructiveAction({
+      title: "Delete ALL timeline images?",
+      message: [
+        `You are about to permanently delete the images of ${assignedCount} scene${assignedCount === 1 ? "" : "s"}.`,
+        "This clears every first frame, last frame, regular scene image, and extracted chained start frame, and deletes the image files from the current project folder. This cannot be undone.",
+      ],
+      details: [`${imagePaths.length} image file${imagePaths.length === 1 ? "" : "s"}`],
+    });
+    if (!imageAnswer.confirmed) return;
     try {
       deleteAllTimelineImagesButton.disabled = true;
       deleteAllTimelineImagesButton.textContent = "Deleting ALL...";

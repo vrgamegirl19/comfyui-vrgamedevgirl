@@ -38,8 +38,12 @@ class BuilderDeleteAllVideosTests(unittest.TestCase):
     def test_action_deletes_every_video_and_thumbnail_file(self):
         self.assertIn("/vrgdg/music_builder/delete_project_media", DELETE_ALL_SOURCE)
         self.assertIn("for (const path of mediaPaths)", DELETE_ALL_SOURCE)
-        self.assertIn("Permanently delete ALL", DELETE_ALL_SOURCE)
+        # One OK / Cancel dialog (no native confirm); the image cleanup is a checkbox inside it.
+        self.assertIn("await confirmDestructiveAction(", DELETE_ALL_SOURCE)
+        self.assertNotIn("window.confirm(", DELETE_ALL_SOURCE)
+        self.assertIn("You are about to permanently delete", DELETE_ALL_SOURCE)
         self.assertIn("cannot be undone", DELETE_ALL_SOURCE.lower())
+        self.assertIn("if (!answer.confirmed) return;", DELETE_ALL_SOURCE)
 
     def test_action_saves_cleanup(self):
         self.assertIn("pushHistory()", DELETE_ALL_SOURCE)

@@ -11,6 +11,7 @@ from ..minimax.latent_manager import SceneLatentManager
 from ..post_process.lut_video_tools import register_lut_routes
 from ..post_process.face_fix import register_face_fix_routes
 
+from .video_profiles import ProfileExistsError, delete_video_profile, list_video_profiles, load_video_profile, save_video_profile
 from .paths import _open_local_file, _open_native_picker, _resolve_existing_file
 from .audio import _convert_audio_to_wav, _create_silent_audio, _default_audio_srt_paths, _estimate_beats_from_audio, _find_latest_capcut_beats, _load_srt_segments, _prepare_scene_audio_mix, _read_audio_peaks, _save_project_audio, _save_project_srt, _save_scene_audio, _save_single_scene_srt, _trim_scene_audio
 from .media import _archive_scene_image, _delete_project_media, _extract_video_final_frame_as_scene_image, _import_reference_locations_from_project, _import_reference_subjects_from_project, _restore_scene_video, _save_flux_reference_image, _save_scene_image, _scan_builder_scene_videos
@@ -690,6 +691,49 @@ def _ensure_music_builder_routes():
         try:
             payload = await request.json()
             result = await asyncio.to_thread(_load_builder_instruction_preset, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/list_video_profiles")
+    async def vrgdg_music_builder_list_video_profiles(request):
+        try:
+            profiles = await asyncio.to_thread(list_video_profiles)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, "profiles": profiles})
+
+    @server_instance.routes.post("/vrgdg/music_builder/load_video_profile")
+    async def vrgdg_music_builder_load_video_profile(request):
+        try:
+            payload = await request.json()
+            profile = await asyncio.to_thread(load_video_profile, payload.get("name"))
+        except FileNotFoundError as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=404)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, "profile": profile})
+
+    @server_instance.routes.post("/vrgdg/music_builder/save_video_profile")
+    async def vrgdg_music_builder_save_video_profile(request):
+        try:
+            payload = await request.json()
+            profile = await asyncio.to_thread(
+                save_video_profile, payload.get("name"), payload.get("settings"), bool(payload.get("overwrite")),
+            )
+        except ProfileExistsError as exc:
+            return web.json_response({"ok": False, "error": str(exc), "exists": True, "name": exc.name}, status=409)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, "profile": profile})
+
+    @server_instance.routes.post("/vrgdg/music_builder/delete_video_profile")
+    async def vrgdg_music_builder_delete_video_profile(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(delete_video_profile, payload.get("name"))
+        except FileNotFoundError as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=404)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})

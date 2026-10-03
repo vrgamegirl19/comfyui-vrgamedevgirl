@@ -509,9 +509,10 @@ export function cloneMiniMaxH3Settings(value = {}) {
     .map((item) => ({
       name: String(item?.name || item?.lora_name || item?.loraName || "").trim(),
       strength: Math.max(-10, Math.min(10, Number(item?.strength ?? item?.strength_model ?? item?.strengthModel ?? 1))),
-      apply_to: ["both", "pass1", "pass2"].includes(String(item?.apply_to || item?.applyTo || "both"))
-        ? String(item?.apply_to || item?.applyTo || "both")
-        : "both",
+      // A LoRA with no saved target goes on the first pass.
+      apply_to: ["both", "pass1", "pass2"].includes(String(item?.apply_to || item?.applyTo || "pass1"))
+        ? String(item?.apply_to || item?.applyTo || "pass1")
+        : "pass1",
     }))
     .filter((item) => item.name && item.name !== "[none]")
     .slice(0, 4);

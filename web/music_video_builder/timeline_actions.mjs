@@ -1,5 +1,6 @@
 import { normalizeOverlayClip, normalizeOverlayTrackState, OVERLAY_TRACK_HELP_HTML } from "../VRGDG_OverlayTrack.js";
 import { confirmDeleteMediaAction } from "./batch_actions.mjs";
+import { confirmDestructiveAction } from "./confirm_dialog.mjs";
 import { makeEditorVideoUrl, postJson } from "./comfy_api.mjs";
 import { makeButton, makeField, makeSelect, toast } from "./controls.mjs";
 import { showAddSegmentPositionModal, showLongSegmentConfirm } from "./dialogs.mjs";
@@ -809,7 +810,17 @@ export function createTimelineActions({
       toast("No segments to delete.", true);
       return;
     }
-    const confirmed = window.confirm(`Delete ALL ${total} segment${total === 1 ? "" : "s"}?\n\nThis removes ${baseCount} base segment${baseCount === 1 ? "" : "s"} and ${overlayCount} insert/overlay segment${overlayCount === 1 ? "" : "s"} from the timeline.`);
+    const { confirmed } = await confirmDestructiveAction({
+      title: `Delete ALL ${total} segment${total === 1 ? "" : "s"}?`,
+      message: [
+        "You are about to delete every segment on the timeline.",
+        "The scenes and their timing are removed from this project. Rendered image and video files stay in the project folder. You can bring the segments back with Undo.",
+      ],
+      details: [
+        `${baseCount} base segment${baseCount === 1 ? "" : "s"}`,
+        `${overlayCount} insert/overlay segment${overlayCount === 1 ? "" : "s"}`,
+      ],
+    });
     if (!confirmed) return;
     pauseTimelineForEditing();
     pushHistory();
@@ -941,6 +952,22 @@ export function createTimelineActions({
     if (!segment) return;
     const isBase = segmentTrack(segment) !== "overlay";
     const slotNumber = isBase ? sceneSlotNumber(segment) : null;
+    const segmentName = String(segment.label || "").trim() || (isBase ? `Scene ${slotNumber}` : "Insert clip");
+    const hasMedia = Boolean(selectedSegmentVideoPath(segment)) || Boolean(segment.image_history?.length) || Boolean(segment.image);
+    const { confirmed } = await confirmDestructiveAction({
+      title: isBase ? "Delete this scene?" : "Delete this insert clip?",
+      message: isBase ? [
+        "You are about to delete this scene from the timeline.",
+        "Its image and video files are moved to the project's removed_scene_assets folder, and the files of every later scene are renumbered to match. Undo history is cleared when files are renumbered.",
+      ] : [
+        "You are about to delete this insert clip from the timeline.",
+      ],
+      details: [
+        `${segmentName} (${formatTime(Number(segment.start || 0))} to ${formatTime(Number(segment.end || 0))})`,
+        ...(hasMedia ? ["This scene has generated media."] : []),
+      ],
+    });
+    if (!confirmed) return;
     const projectFolder = String(state.projectFolder || projectInput?.value || "").trim();
     // Later scenes move up one position, so their numbered files and latents must follow.
     let renamed = [];

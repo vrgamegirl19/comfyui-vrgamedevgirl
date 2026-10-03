@@ -188,7 +188,7 @@ def _check_loras(loras: List[Any]) -> None:
     for index, item in enumerate(loras):
         if not isinstance(item, dict) or not str(item.get("name") or item.get("lora_name") or "").strip():
             raise ValueError(f"item {index + 1} needs a 'name'")
-        apply_to = str(item.get("apply_to") or "both").strip().lower()
+        apply_to = str(item.get("apply_to") or "pass1").strip().lower()
         if apply_to not in _LORA_APPLY_TO:
             raise ValueError(f"item {index + 1} apply_to must be one of: {', '.join(_LORA_APPLY_TO)}")
 

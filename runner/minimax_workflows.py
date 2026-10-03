@@ -427,9 +427,10 @@ def _build_minimax_h3_2pass_api_prompt(payload):
                     f"MiniMax extra LoRA '{name}' was not found in ComfyUI/models/loras. "
                     "Download it, refresh/restart ComfyUI, and select it in MiniMax Video Settings."
                 )
-            apply_to = str(item.get("apply_to") or item.get("applyTo") or "both").strip().lower()
+            # A LoRA with no target (or an unknown one) goes on the first pass.
+            apply_to = str(item.get("apply_to") or item.get("applyTo") or "pass1").strip().lower()
             if apply_to not in {"both", "pass1", "pass2"}:
-                apply_to = "both"
+                apply_to = "pass1"
             extra_loras.append({
                 "name": name,
                 "strength": _float_payload(item, "strength", 1.0, -10.0, 10.0),

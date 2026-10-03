@@ -84,7 +84,13 @@ export async function postJson(url, payload, timeoutMs = 120000) {
       signal: controller.signal,
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok || !data?.ok) throw new Error(String(data?.error || `Request failed (${response.status})`));
+    if (!response.ok || !data?.ok) {
+      const failure = new Error(String(data?.error || `Request failed (${response.status})`));
+      // Callers that need more than the message (for example a 409 "already exists") read these.
+      failure.status = response.status;
+      failure.data = data;
+      throw failure;
+    }
     return data;
   } catch (error) {
     if (timedOut || controller.signal.aborted || error?.name === "AbortError") {

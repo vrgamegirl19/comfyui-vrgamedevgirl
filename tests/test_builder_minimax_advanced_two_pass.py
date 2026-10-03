@@ -121,6 +121,16 @@ class BuilderMiniMaxAdvancedTwoPassTests(unittest.TestCase):
             self.assertIn(f'"class_type": "{node_type}"', source)
         self.assertIn('_set_api_input(prompt, "122", "samples", ["9306", 0])', source)
 
+    def test_loras_without_a_target_go_on_the_first_pass(self):
+        self.assertIn(
+            'apply_to = str(item.get("apply_to") or item.get("applyTo") or "pass1").strip().lower()',
+            RUNNER_SOURCE,
+        )
+        # An unknown target falls back to the first pass too.
+        self.assertIn('if apply_to not in {"both", "pass1", "pass2"}:', RUNNER_SOURCE)
+        self.assertIn('                apply_to = "pass1"', RUNNER_SOURCE)
+        self.assertNotIn('apply_to = "both"', RUNNER_SOURCE)
+
     def test_existing_two_pass_route_is_preserved(self):
         self.assertIn(
             '@server_instance.routes.post("/vrgdg/workflow_runner/build_minimax_h3_2pass_prompt")',
