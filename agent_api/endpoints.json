@@ -626,6 +626,18 @@
     },
     {
       "body_keys": [],
+      "description": "Read which characters, locations, ingredients and extras each scene uses.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/projects/{pid}/references/scene-mapping",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
       "description": "Set which characters, locations, ingredients and extras each scene uses.",
       "if_match": true,
       "job": false,
@@ -758,7 +770,7 @@
     },
     {
       "body_keys": [],
-      "description": "Change scene fields such as lyrics, notes, label or per-scene settings.",
+      "description": "Change scene fields such as lyrics, notes, label, `no_character_present`, `lyric_no_lip_sync`, `lyric_singers` or per-scene settings. Scene reads return the same three flags.",
       "if_match": true,
       "job": false,
       "method": "PATCH",

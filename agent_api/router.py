@@ -727,6 +727,13 @@ def register_agent_api_routes(server_instance=None):
         res = await asyncio.to_thread(delete_reference, pid, kind, rid, if_match_revision=if_match)
         return api_success(res, revision=res.get("revision"))
 
+    @server_instance.routes.get(f"{_API_V1_PREFIX}/projects/{{pid}}/references/scene-mapping")
+    @_api_endpoint
+    async def api_get_reference_mapping(request: web.Request):
+        pid = request.match_info["pid"]
+        res = await asyncio.to_thread(get_project_references, pid)
+        return api_success(res.get("scene_mapping"))
+
     @server_instance.routes.put(f"{_API_V1_PREFIX}/projects/{{pid}}/references/scene-mapping")
     @_api_endpoint
     async def api_update_reference_mapping(request: web.Request):

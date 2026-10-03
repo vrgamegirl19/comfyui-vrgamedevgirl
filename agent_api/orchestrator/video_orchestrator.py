@@ -747,6 +747,8 @@ async def run_batch_video_render_job(job: Job, manager: JobManager) -> Dict[str,
             "batch_videos",
             stage_index=idx + 1,
             stage_count=total,
+            scene_index=idx + 1,
+            scene_count=total,
             scene_id=sid,
             message=f"Rendering video for scene {idx + 1} of {total} ({sid})...",
         )

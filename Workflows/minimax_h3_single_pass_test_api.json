@@ -1,11 +1,13 @@
 {
   "115": {
     "inputs": {
-      "value": 1920
+      "aspect_ratio": "16:9 (Widescreen)",
+      "megapixels": 0.9,
+      "multiple": 32
     },
-    "class_type": "PrimitiveInt",
+    "class_type": "ResolutionSelector",
     "_meta": {
-      "title": "BUILDER INPUT - Desired Final Width"
+      "title": "Resolution Selector (Size)"
     }
   },
   "119": {
@@ -29,7 +31,7 @@
   "122": {
     "inputs": {
       "samples": [
-        "194",
+        "125",
         0
       ],
       "vae": [
@@ -39,7 +41,7 @@
     },
     "class_type": "VAEDecode",
     "_meta": {
-      "title": "VAE Decode - Two-Pass Refined Upscaled Latent"
+      "title": "VAE Decode"
     }
   },
   "123": {
@@ -57,7 +59,7 @@
       "steps": 20,
       "denoise": 1,
       "model": [
-        "9203",
+        "141",
         0
       ]
     },
@@ -91,13 +93,13 @@
     },
     "class_type": "SamplerCustomAdvanced",
     "_meta": {
-      "title": "Low Resolution Generation"
+      "title": "SamplerCustomAdvanced"
     }
   },
   "126": {
     "inputs": {
       "model": [
-        "9203",
+        "141",
         0
       ],
       "conditioning": [
@@ -159,11 +161,11 @@
         0
       ],
       "width": [
-        "186",
-        1
+        "115",
+        0
       ],
       "height": [
-        "187",
+        "115",
         1
       ],
       "length": [
@@ -181,6 +183,10 @@
       ],
       "audio_vae": [
         "120",
+        0
+      ],
+      "ref_audios.ref_audio_0": [
+        "171",
         0
       ],
       "ref_images.ref_image_0": [
@@ -242,10 +248,6 @@
       "ref_video_audios.ref_video_audio_2": [
         "180",
         14
-      ],
-      "ref_audios.ref_audio_0": [
-        "171",
-        0
       ]
     },
     "class_type": "MiniMaxH3ReferenceToVideo",
@@ -280,7 +282,7 @@
     "inputs": {
       "frame_rate": 24,
       "loop_count": 0,
-      "filename_prefix": "MMH3_test_2pass/final",
+      "filename_prefix": "MMH3_test_single/final",
       "format": "video/h264-mp4",
       "pix_fmt": "yuv420p",
       "crf": 19,
@@ -289,7 +291,7 @@
       "pingpong": false,
       "save_output": true,
       "images": [
-        "183",
+        "122",
         0
       ],
       "audio": [
@@ -299,7 +301,7 @@
     },
     "class_type": "VHS_VideoCombine",
     "_meta": {
-      "title": "OUTPUT - 2 Pass Final (learned latent upscale + pass 2 refine)"
+      "title": "OUTPUT - Single Pass"
     }
   },
   "171": {
@@ -341,293 +343,6 @@
     "class_type": "VRGDG_MiniMaxH3ReferenceMediaFromPaths",
     "_meta": {
       "title": "BUILDER INPUTS - Ordered H3 Reference Images And Videos"
-    }
-  },
-  "181": {
-    "inputs": {
-      "av_latent": [
-        "125",
-        0
-      ]
-    },
-    "class_type": "MiniMaxH3AVLatentSeparateT8",
-    "_meta": {
-      "title": "PASS 1 OUTPUT - Separate Video and Audio Latents"
-    }
-  },
-  "182": {
-    "inputs": {
-      "scale": [
-        "185",
-        0
-      ],
-      "latent": [
-        "181",
-        0
-      ],
-      "upscale_model": [
-        "188",
-        0
-      ]
-    },
-    "class_type": "VRGDG_MiniMaxH3LearnedLatentUpscale",
-    "_meta": {
-      "title": "LEARNED UPSCALE - MiniMax H3"
-    }
-  },
-  "183": {
-    "inputs": {
-      "width": [
-        "115",
-        0
-      ],
-      "height": [
-        "184",
-        0
-      ],
-      "upscale_method": "nvidia_rtx_vsr",
-      "keep_proportion": "crop",
-      "pad_color": "0, 0, 0",
-      "crop_position": "center",
-      "divisible_by": 0,
-      "device": "cpu",
-      "image": [
-        "122",
-        0
-      ]
-    },
-    "class_type": "ImageResizeKJv2",
-    "_meta": {
-      "title": "Final Center Crop - Exact 1920x1080"
-    }
-  },
-  "184": {
-    "inputs": {
-      "value": 1080
-    },
-    "class_type": "PrimitiveInt",
-    "_meta": {
-      "title": "BUILDER INPUT - Desired Final Height"
-    }
-  },
-  "185": {
-    "inputs": {
-      "value": 2.0
-    },
-    "class_type": "PrimitiveFloat",
-    "_meta": {
-      "title": "BUILDER INPUT - Learned Latent Upscale Scale"
-    }
-  },
-  "186": {
-    "inputs": {
-      "expression": "max(32, ceil((a / b) / 32) * 32)",
-      "values.a": [
-        "115",
-        0
-      ],
-      "values.b": [
-        "185",
-        0
-      ]
-    },
-    "class_type": "ComfyMathExpression",
-    "_meta": {
-      "title": "AUTO - Aligned First Pass Width"
-    }
-  },
-  "187": {
-    "inputs": {
-      "expression": "max(32, ceil((a / b) / 32) * 32)",
-      "values.a": [
-        "184",
-        0
-      ],
-      "values.b": [
-        "185",
-        0
-      ]
-    },
-    "class_type": "ComfyMathExpression",
-    "_meta": {
-      "title": "AUTO - Aligned First Pass Height"
-    }
-  },
-  "188": {
-    "inputs": {
-      "model_name": "minimax_h3_latent_upscaler_3d_bf16.safetensors",
-      "device": "cuda",
-      "precision": "bf16"
-    },
-    "class_type": "VRGDG_MiniMaxH3LatentUpscaleModelLoader",
-    "_meta": {
-      "title": "BUILDER INPUT - MiniMax H3 Latent Upscale Model"
-    }
-  },
-  "189": {
-    "inputs": {
-      "original_av_latent": [
-        "125",
-        0
-      ],
-      "upscaled_video_latent": [
-        "182",
-        0
-      ]
-    },
-    "class_type": "VRGDG_MiniMaxH3ReplaceUpscaledVideoLatent",
-    "_meta": {
-      "title": "PASS 2 - Restore Upscaled Video into Locked AV Latent"
-    }
-  },
-  "190": {
-    "inputs": {
-      "value": 5
-    },
-    "class_type": "PrimitiveInt",
-    "_meta": {
-      "title": "BUILDER INPUT - Refinement Schedule Steps"
-    }
-  },
-  "191": {
-    "inputs": {
-      "value": 0.2
-    },
-    "class_type": "PrimitiveFloat",
-    "_meta": {
-      "title": "BUILDER INPUT - Refinement Denoise"
-    }
-  },
-  "192": {
-    "inputs": {
-      "scheduler": "simple",
-      "steps": [
-        "190",
-        0
-      ],
-      "denoise": [
-        "191",
-        0
-      ],
-      "model": [
-        "207",
-        0
-      ]
-    },
-    "class_type": "BasicScheduler",
-    "_meta": {
-      "title": "PASS 2 - Adjustable Refinement Scheduler"
-    }
-  },
-  "193": {
-    "inputs": {
-      "model": [
-        "207",
-        0
-      ],
-      "conditioning": [
-        "136",
-        0
-      ]
-    },
-    "class_type": "BasicGuider",
-    "_meta": {
-      "title": "PASS 2 - Basic Guider"
-    }
-  },
-  "194": {
-    "inputs": {
-      "noise": [
-        "211",
-        0
-      ],
-      "guider": [
-        "193",
-        0
-      ],
-      "sampler": [
-        "210",
-        0
-      ],
-      "sigmas": [
-        "192",
-        0
-      ],
-      "latent_image": [
-        "189",
-        0
-      ]
-    },
-    "class_type": "SamplerCustomAdvanced",
-    "_meta": {
-      "title": "PASS 2 - High Resolution Refinement"
-    }
-  },
-  "207": {
-    "inputs": {
-      "lora_name": "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
-      "strength_model": 1.0,
-      "model": [
-        "141",
-        0
-      ]
-    },
-    "class_type": "LoraLoaderModelOnly",
-    "_meta": {
-      "title": "Load LoRA"
-    }
-  },
-  "210": {
-    "inputs": {
-      "sampler_name": "res_multistep"
-    },
-    "class_type": "KSamplerSelect",
-    "_meta": {
-      "title": "BUILDER INPUT - Pass 2 Sampler"
-    }
-  },
-  "211": {
-    "inputs": {
-      "noise_seed": 69
-    },
-    "class_type": "RandomNoise",
-    "_meta": {
-      "title": "BUILDER INPUT - Pass 2 Seed"
-    }
-  },
-  "9202": {
-    "class_type": "MiniMaxChunkFeedForward",
-    "inputs": {
-      "model": [
-        "141",
-        0
-      ],
-      "chunks": 8,
-      "seq_threshold": 4096
-    },
-    "_meta": {
-      "title": "MiniMax H3 Chunk FeedForward - pass1"
-    }
-  },
-  "9203": {
-    "class_type": "BlockSparseAttention",
-    "inputs": {
-      "model": [
-        "9202",
-        0
-      ],
-      "selection": "sol-attn",
-      "selection.tau": 1.3,
-      "start_percent": 0.2,
-      "end_percent": 1.0,
-      "dense_blocks": "",
-      "min_tokens": 12288,
-      "extra_tokens": 256,
-      "sink_conditioning": "exact_kv_and_rows",
-      "verbose": false
-    },
-    "_meta": {
-      "title": "Block Sparse Attention - pass1"
     }
   }
 }

@@ -26,7 +26,7 @@ never load or switch models. They answer `503 LLM_UNAVAILABLE` when nothing is l
 or its 1-based number.
 
 
-**Total:** 132 endpoints.
+**Total:** 133 endpoints.
 
 ## Service and discovery
 
@@ -91,7 +91,7 @@ or its 1-based number.
 | `POST` | `/projects/{pid}/scenes/bulk` | Apply several scene operations in one atomic change (`operations`). _(If-Match; body: `operations`)_ |
 | `DELETE` | `/projects/{pid}/scenes/{sid}` | Delete a scene. `ripple` closes the gap. Later scene files are renumbered. _(If-Match; query: `ripple`)_ |
 | `GET` | `/projects/{pid}/scenes/{sid}` | One scene: timing, lyrics, story beat, prompts (including `minimax_h3_prompt`), approved image, rendered video with its thumbnail, and scene audio. Each file is `null` when it does not exist. |
-| `PATCH` | `/projects/{pid}/scenes/{sid}` | Change scene fields such as lyrics, notes, label or per-scene settings. _(If-Match)_ |
+| `PATCH` | `/projects/{pid}/scenes/{sid}` | Change scene fields such as lyrics, notes, label, `no_character_present`, `lyric_no_lip_sync`, `lyric_singers` or per-scene settings. Scene reads return the same three flags. _(If-Match)_ |
 | `POST` | `/projects/{pid}/scenes/{sid}/merge` | Merge a scene with its neighbour (`with_direction`: previous or next). Lyrics are joined. _(If-Match; body: `with_direction`)_ |
 | `POST` | `/projects/{pid}/scenes/{sid}/move` | Move a scene to `start_time`. `ripple` shifts the others. _(If-Match; body: `ripple`, `start_time`)_ |
 | `POST` | `/projects/{pid}/scenes/{sid}/resize` | Change a scene's length (`duration` or `end_time`). `ripple` shifts the others. _(If-Match; body: `duration`, `end_time`, `ripple`)_ |
@@ -105,6 +105,7 @@ or its 1-based number.
 | `POST` | `/projects/{pid}/references/assign-scenes` | Assign characters and locations to scenes by pattern (`random`, `rotate`, `blocks`, `unchanged`). `dry_run` previews. |
 | `POST` | `/projects/{pid}/references/locations/extract` | Ask the project's LLM for filming locations from the lyrics and `style_theme` (LM Extract) and add them. _(**job**)_ |
 | `PUT` | `/projects/{pid}/references/locations/{rid}` | Create or update a location (name, description, optional image). _(If-Match)_ |
+| `GET` | `/projects/{pid}/references/scene-mapping` | Read which characters, locations, ingredients and extras each scene uses. |
 | `PUT` | `/projects/{pid}/references/scene-mapping` | Set which characters, locations, ingredients and extras each scene uses. _(If-Match)_ |
 | `PUT` | `/projects/{pid}/references/subjects/{rid}` | Create or update a character (name, description, `reference_type`, voice, trigger phrase, `image`). _(If-Match)_ |
 | `DELETE` | `/projects/{pid}/references/{kind}/{rid}` | Delete a character or location (`kind` is `subjects` or `locations`) and its scene mappings. _(If-Match)_ |

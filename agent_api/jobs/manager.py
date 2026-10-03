@@ -198,10 +198,19 @@ class JobManager:
         scene_id: Optional[str] = None,
         eta_seconds: Optional[float] = None,
         project_folder: Optional[str] = None,
+        scene_index: Optional[int] = None,
+        scene_count: Optional[int] = None,
     ) -> None:
-        """Update job progress and emit SSE event."""
+        """Update job progress and emit SSE event.
+
+        ``scene_index`` / ``scene_count`` describe a batch ("scene 3 of 8"). Per-scene render steps
+        do not pass them, so the last values a batch set are kept instead of being overwritten.
+        """
         job = self.get_job(job_id)
+        previous = job.progress if isinstance(job.progress, JobProgress) else JobProgress()
         job.progress = JobProgress(
+            scene_index=previous.scene_index if scene_index is None else scene_index,
+            scene_count=previous.scene_count if scene_count is None else scene_count,
             percent=percent,
             stage=stage,
             stage_index=stage_index,

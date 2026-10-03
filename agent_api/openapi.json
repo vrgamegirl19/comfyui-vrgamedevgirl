@@ -161,6 +161,10 @@
             "default": 0.0,
             "type": "number"
           },
+          "scene_count": {
+            "default": 0,
+            "type": "integer"
+          },
           "scene_id": {
             "default": null,
             "oneOf": [
@@ -171,6 +175,10 @@
                 "type": "null"
               }
             ]
+          },
+          "scene_index": {
+            "default": 0,
+            "type": "integer"
           },
           "stage": {
             "default": "queued",
@@ -192,7 +200,9 @@
           "stage_count",
           "message",
           "scene_id",
-          "eta_seconds"
+          "eta_seconds",
+          "scene_index",
+          "scene_count"
         ],
         "type": "object"
       },
@@ -3810,6 +3820,51 @@
       }
     },
     "/vrgdg/api/v1/projects/{pid}/references/scene-mapping": {
+      "get": {
+        "operationId": "api_get_reference_mapping",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Error. The HTTP status mirrors error.code."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {}
+        ],
+        "summary": "get reference mapping",
+        "tags": [
+          "references"
+        ]
+      },
       "put": {
         "operationId": "api_update_reference_mapping",
         "parameters": [

@@ -320,6 +320,8 @@ def run_batch_prompts_job(job: Job, manager: JobManager) -> Dict[str, Any]:
             "batch_prompts",
             stage_index=idx + 1,
             stage_count=total,
+            scene_index=idx + 1,
+            scene_count=total,
             scene_id=sid,
             message=f"Generating {kind} prompt for scene {idx + 1} of {total} ({sid})...",
         )
