@@ -509,6 +509,18 @@ def patch_scene(
             if key in patch:
                 scene[key] = float(patch[key])
 
+        for key in ("no_character_present", "lyric_no_lip_sync"):
+            if key in patch:
+                scene[key] = bool(patch[key])
+
+        if "lyric_singers" in patch:
+            singers = patch["lyric_singers"]
+            if isinstance(singers, str):
+                singers = [singers]
+            if not isinstance(singers, list):
+                raise ValidationError("lyric_singers must be a list of singer names.")
+            scene["lyric_singers"] = [str(s).strip() for s in singers if str(s).strip()]
+
         for key, val in patch.items():
             if key.startswith("use_scene_") or key.endswith("_settings"):
                 scene[key] = val

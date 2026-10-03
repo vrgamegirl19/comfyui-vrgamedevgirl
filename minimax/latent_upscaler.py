@@ -14,6 +14,8 @@ import torch
 import folder_paths
 import comfy.nested_tensor
 
+from .tile_plan import VRAM_PRESETS, describe_plan, plan_spatial_tiles
+
 
 MODEL_TYPE = "VRGDG_MINIMAX_H3_LATENT_UPSCALE_MODEL"
 _BACKEND_MODULE_NAME = "_vrgdg_minimax_h3_learned_upscale_backend"
@@ -337,7 +339,47 @@ class VRGDG_MiniMaxH3ReplaceUpscaledVideoLatent:
         return (result,)
 
 
+class VRGDG_MiniMaxH3SpatialTilePlan:
+    """Derive MMH3 tiling settings from the Pass 2 resolution and a VRAM preset."""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "width": ("INT", {"default": 1920, "min": 32, "max": 16384, "step": 32,
+                                  "tooltip": "Pass 2 (upscaled) frame width in pixels."}),
+                "height": ("INT", {"default": 1088, "min": 32, "max": 16384, "step": 32,
+                                   "tooltip": "Pass 2 (upscaled) frame height in pixels."}),
+                "vram_preset": (list(VRAM_PRESETS), {"default": "32gb"}),
+            }
+        }
+
+    RETURN_TYPES = ("INT", "INT", "INT", "INT", "INT", "INT", "INT", "INT", "INT", "INT", "INT", "STRING")
+    RETURN_NAMES = (
+        "grid_rows", "grid_cols", "spatial_w_overlap", "spatial_h_overlap", "fade_width", "fade_height",
+        "min_tile_size", "chunk_length", "temporal_overlap", "tile_width", "tile_height", "summary",
+    )
+    FUNCTION = "plan"
+    CATEGORY = "VRGDG/Video/MiniMax H3"
+    DESCRIPTION = (
+        "Same tile plan the Video Builder uses for 2 Pass Advanced. Connect width/height to the same "
+        "values that feed MMH3 Latent Upscale Params, then connect the outputs to MMH3 Spatial Split "
+        "Params (rows_cols mode) and MMH3 Temporal Split Params."
+    )
+
+    def plan(self, width, height, vram_preset):
+        plan = plan_spatial_tiles(width, height, vram_preset)
+        summary = describe_plan(plan)
+        print(f"[VRGDG Tile Plan] {summary}")
+        return (
+            plan["grid_rows"], plan["grid_cols"], plan["spatial_w_overlap"], plan["spatial_h_overlap"],
+            plan["fade_width"], plan["fade_height"], plan["min_tile_size"], plan["chunk_length"],
+            plan["temporal_overlap"], plan["tile_width"], plan["tile_height"], summary,
+        )
+
+
 NODE_CLASS_MAPPINGS = {
+    "VRGDG_MiniMaxH3SpatialTilePlan": VRGDG_MiniMaxH3SpatialTilePlan,
     "VRGDG_MiniMaxH3LatentUpscaleModelLoader": VRGDG_MiniMaxH3LatentUpscaleModelLoader,
     "VRGDG_MiniMaxH3UltimateUpscaleParams": VRGDG_MiniMaxH3UltimateUpscaleParams,
     "VRGDG_MiniMaxH3LearnedLatentUpscale": VRGDG_MiniMaxH3LearnedLatentUpscale,
@@ -345,6 +387,7 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
+    "VRGDG_MiniMaxH3SpatialTilePlan": "MiniMax H3 Spatial Tile Plan (VRGDG)",
     "VRGDG_MiniMaxH3LatentUpscaleModelLoader": "Load MiniMax H3 Learned Latent Upscaler",
     "VRGDG_MiniMaxH3UltimateUpscaleParams": "MiniMax H3 Ultimate Upscale Params (VRGDG)",
     "VRGDG_MiniMaxH3LearnedLatentUpscale": "MiniMax H3 Learned Latent Upscale",

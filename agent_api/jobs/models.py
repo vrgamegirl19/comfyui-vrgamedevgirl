@@ -28,6 +28,8 @@ class JobProgress:
     message: str = ""
     scene_id: Optional[str] = None
     eta_seconds: Optional[float] = None
+    scene_index: int = 0
+    scene_count: int = 0
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -38,6 +40,8 @@ class JobProgress:
             "message": str(self.message or ""),
             "scene_id": self.scene_id,
             "eta_seconds": self.eta_seconds,
+            "scene_index": int(self.scene_index),
+            "scene_count": int(self.scene_count),
         }
 
     @classmethod
@@ -52,6 +56,8 @@ class JobProgress:
             message=str(data.get("message", "")),
             scene_id=data.get("scene_id"),
             eta_seconds=data.get("eta_seconds"),
+            scene_index=int(data.get("scene_index", 0) or 0),
+            scene_count=int(data.get("scene_count", 0) or 0),
         )
 
 

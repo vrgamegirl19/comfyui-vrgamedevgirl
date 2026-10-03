@@ -220,6 +220,8 @@ async def run_batch_image_generation_job(job: Job, manager: JobManager) -> Dict[
             "batch_images",
             stage_index=idx + 1,
             stage_count=total,
+            scene_index=idx + 1,
+            scene_count=total,
             scene_id=sid,
             message=f"Generating {mode} image for scene {idx + 1} of {total} ({sid})...",
         )
