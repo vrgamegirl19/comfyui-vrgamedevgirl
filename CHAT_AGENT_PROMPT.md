@@ -86,7 +86,7 @@ and the result. Do not paste long tool output.
 
 ### A. Project
 1. `project_create` with the project name.
-2. `project_update_settings` with `{"project": {"video_engine": "minimax_h3"}, "minimax_h3": {"video_mode": "reference_to_video", "render_pass": <"single" or "two_pass">, "two_pass_final_width": 1920, "two_pass_final_height": 1088}}`.
+2. `project_update_settings` with `{"project": {"video_engine": "minimax_h3"}, "minimax_h3": {"video_mode": "reference_to_video", "render_pass": <"single" or "two_pass">, "resolution_preset": "2k"}}`.
 3. `audio_attach` with the song path.
 4. `lyrics_set` with the lyrics.
 

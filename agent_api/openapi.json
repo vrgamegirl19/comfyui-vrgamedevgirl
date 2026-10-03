@@ -329,99 +329,9 @@
       "MiniMaxH3Settings": {
         "description": "Every MiniMax H3 video option the Video Builder saves. Send any subset under the `minimax_h3` group.",
         "properties": {
-          "advanced_two_pass_anchor_strength": {
-            "default": 0.999,
-            "maximum": 1,
-            "minimum": 0,
-            "type": "number"
-          },
-          "advanced_two_pass_brightness_match": {
-            "default": true,
-            "type": "boolean"
-          },
-          "advanced_two_pass_chunk_length": {
-            "default": 272,
-            "maximum": 100000,
-            "minimum": 17,
-            "multipleOf": 17,
-            "type": "integer"
-          },
           "advanced_two_pass_defaults_version": {
             "default": 4,
             "type": "integer"
-          },
-          "advanced_two_pass_dynamic_fade": {
-            "default": "widening",
-            "enum": [
-              "off",
-              "narrowing",
-              "widening"
-            ],
-            "type": "string"
-          },
-          "advanced_two_pass_dynamic_fade_min": {
-            "default": 32,
-            "maximum": 16384,
-            "minimum": 0,
-            "multipleOf": 32,
-            "type": "integer"
-          },
-          "advanced_two_pass_fade_height": {
-            "default": 64,
-            "maximum": 16384,
-            "minimum": 0,
-            "multipleOf": 32,
-            "type": "integer"
-          },
-          "advanced_two_pass_fade_width": {
-            "default": 64,
-            "maximum": 16384,
-            "minimum": 0,
-            "multipleOf": 32,
-            "type": "integer"
-          },
-          "advanced_two_pass_grid_cols": {
-            "default": 3,
-            "maximum": 9,
-            "minimum": 1,
-            "type": "integer"
-          },
-          "advanced_two_pass_grid_rows": {
-            "default": 2,
-            "maximum": 9,
-            "minimum": 1,
-            "type": "integer"
-          },
-          "advanced_two_pass_masked_area_noise": {
-            "default": 0,
-            "maximum": 1,
-            "minimum": 0,
-            "type": "number"
-          },
-          "advanced_two_pass_min_tile_size": {
-            "default": 256,
-            "maximum": 16384,
-            "minimum": 0,
-            "multipleOf": 32,
-            "type": "integer"
-          },
-          "advanced_two_pass_overlap_blend": {
-            "default": "smoothstep",
-            "enum": [
-              "linear",
-              "smoothstep",
-              "overwrite",
-              "midpoint"
-            ],
-            "type": "string"
-          },
-          "advanced_two_pass_overlap_mode": {
-            "default": "earlier",
-            "enum": [
-              "earlier",
-              "later"
-            ],
-            "type": "string"
           },
           "advanced_two_pass_pass1_denoise": {
             "default": 1,
@@ -470,23 +380,6 @@
             "minimum": 0,
             "type": "number"
           },
-          "advanced_two_pass_pass2_megapixels": {
-            "default": 2,
-            "maximum": 16,
-            "minimum": 0.1,
-            "type": "number"
-          },
-          "advanced_two_pass_pass2_resolution_preset": {
-            "default": "2k",
-            "enum": [
-              "custom",
-              "1k",
-              "2k",
-              "1440p",
-              "4k"
-            ],
-            "type": "string"
-          },
           "advanced_two_pass_pass2_sampler": {
             "default": "sa_solver",
             "type": "string"
@@ -505,75 +398,13 @@
             "minimum": 1,
             "type": "integer"
           },
-          "advanced_two_pass_spatial_h_overlap": {
-            "default": 192,
-            "maximum": 16384,
-            "minimum": 0,
-            "multipleOf": 32,
-            "type": "integer"
-          },
-          "advanced_two_pass_spatial_w_overlap": {
-            "default": 192,
-            "maximum": 16384,
-            "minimum": 0,
-            "multipleOf": 32,
-            "type": "integer"
-          },
-          "advanced_two_pass_temporal_overlap": {
-            "default": 17,
-            "maximum": 100000,
-            "minimum": 0,
-            "multipleOf": 17,
-            "type": "integer"
-          },
-          "advanced_two_pass_tile_height": {
-            "default": 512,
-            "maximum": 16384,
-            "minimum": 32,
-            "multipleOf": 32,
-            "type": "integer"
-          },
-          "advanced_two_pass_tile_size_mode": {
-            "default": "rows_cols",
-            "enum": [
-              "specific_size",
-              "rows_cols"
-            ],
-            "type": "string"
-          },
-          "advanced_two_pass_tile_width": {
-            "default": 512,
-            "maximum": 16384,
-            "minimum": 32,
-            "multipleOf": 32,
-            "type": "integer"
-          },
-          "advanced_two_pass_upscaler_device": {
-            "default": "cuda",
-            "enum": [
-              "cuda",
-              "cpu"
-            ],
-            "type": "string"
-          },
-          "advanced_two_pass_upscaler_precision": {
-            "default": "bf16",
-            "enum": [
-              "bf16",
-              "fp16",
-              "fp32"
-            ],
-            "type": "string"
-          },
           "advanced_two_pass_vram_preset": {
-            "default": "custom",
+            "default": "16gb",
             "enum": [
               "8gb",
               "12gb",
               "16gb",
-              "24gb",
-              "32gb",
-              "custom"
+              "24gb"
             ],
             "type": "string"
           },
@@ -668,7 +499,7 @@
             "type": "array"
           },
           "megapixels": {
-            "default": 0.9,
+            "default": 0.5625,
             "maximum": 16,
             "minimum": 0.1,
             "type": "number"
@@ -715,6 +546,17 @@
               "single",
               "two_pass",
               "three_pass"
+            ],
+            "type": "string"
+          },
+          "resolution_preset": {
+            "default": "1k",
+            "enum": [
+              "custom",
+              "1k",
+              "2k",
+              "1440p",
+              "4k"
             ],
             "type": "string"
           },
@@ -868,21 +710,9 @@
             "default": 1,
             "type": "integer"
           },
-          "two_pass_final_height": {
-            "default": 1088,
-            "maximum": 16384,
-            "minimum": 64,
-            "type": "integer"
-          },
           "two_pass_final_resize_method": {
             "default": "nvidia_rtx_vsr",
             "type": "string"
-          },
-          "two_pass_final_width": {
-            "default": 1920,
-            "maximum": 16384,
-            "minimum": 64,
-            "type": "integer"
           },
           "two_pass_latent_upscale_scale": {
             "default": 2,

@@ -12,7 +12,7 @@ import { showFinalVideoReadyModal } from "./dialogs.mjs";
 import { formatTime } from "./format.mjs";
 import { rtvReferenceImagePayload } from "./image_references.mjs";
 import { setButtonGroupState } from "./inspector.mjs";
-import { isMiniMaxH3LatentContinuationMode, miniMaxH3ModeLabel, normalizeMiniMaxH3Mode } from "./minimax_h3.mjs";
+import { isMiniMaxH3LatentContinuationMode, miniMaxH3FrameSize, miniMaxH3ModeLabel, normalizeMiniMaxH3Mode } from "./minimax_h3.mjs";
 import { miniMaxDialogueOrderText } from "./minimax_prompt.mjs";
 import { applyTriggerPhrase, segmentUsesNoLipSyncPerformance } from "./prompt_text.mjs";
 import { normalizeVideoPromptOrigin, sortSegments } from "./segments.mjs";
@@ -712,6 +712,11 @@ export function createVideoRender({
     progress?.set(`${batchLabel}Preparing exact MiniMax H3 scene timing and ${builtInAudio ? "native audio generation" : "input audio"}...`, pct(8));
 
     const latentContextFrames = miniMaxSettings.latent_context_frames;
+    // One output resolution for every pass type: single pass renders it, 2 Pass finishes at it, and
+    // 2 Pass Advanced uses it as the Pass 2 size.
+    const outputMegapixels = Number(options.megapixels ?? miniMaxSettings.megapixels);
+    const outputAspectRatio = String(options.aspectRatio ?? miniMaxSettings.aspect_ratio);
+    const outputFrame = miniMaxH3FrameSize(outputMegapixels, outputAspectRatio);
     try {
       const payload = {
         project_folder: projectFolder,
@@ -733,8 +738,8 @@ export function createVideoRender({
         pre_frames: warmupFrames,
         tail_loss_frames: cooldownFrames,
         seed: Number(options.seed ?? miniMaxSettings.seed),
-        aspect_ratio: String(options.aspectRatio ?? miniMaxSettings.aspect_ratio),
-        megapixels: Number(options.megapixels ?? miniMaxSettings.megapixels),
+        aspect_ratio: outputAspectRatio,
+        megapixels: outputMegapixels,
         diffusion_model_name: miniMaxSettings.diffusion_model_name,
         clip_name: miniMaxSettings.clip_name,
         video_vae_name: miniMaxSettings.video_vae_name,
@@ -746,8 +751,8 @@ export function createVideoRender({
         ref_image_size: miniMaxSettings.ref_image_size,
         two_pass_lora_name: miniMaxSettings.two_pass_lora_name,
         two_pass_lora_strength: miniMaxSettings.two_pass_lora_strength,
-        final_width: twoPass ? miniMaxSettings.two_pass_final_width : undefined,
-        final_height: twoPass ? miniMaxSettings.two_pass_final_height : undefined,
+        final_width: twoPass ? outputFrame.width : undefined,
+        final_height: twoPass ? outputFrame.height : undefined,
         latent_upscale_scale: twoPass ? miniMaxSettings.two_pass_latent_upscale_scale : undefined,
         latent_upscaler_name: (twoPass || threePass) ? miniMaxSettings.two_pass_latent_upscaler_name : undefined,
         use_te_speed: !twoPass && !threePass ? miniMaxSettings.use_te_speed : undefined,
@@ -802,29 +807,8 @@ export function createVideoRender({
         three_pass_pass3_seed: miniMaxSettings.three_pass_pass3_seed,
         three_pass_pass3_te_speed: miniMaxSettings.three_pass_pass3_te_speed,
         advanced_pass1_megapixels: miniMaxSettings.advanced_two_pass_pass1_megapixels,
-        advanced_pass2_megapixels: miniMaxSettings.advanced_two_pass_pass2_megapixels,
+        advanced_pass2_megapixels: outputMegapixels,
         advanced_vram_preset: miniMaxSettings.advanced_two_pass_vram_preset,
-        advanced_tile_size_mode: miniMaxSettings.advanced_two_pass_tile_size_mode,
-        advanced_tile_width: miniMaxSettings.advanced_two_pass_tile_width,
-        advanced_tile_height: miniMaxSettings.advanced_two_pass_tile_height,
-        advanced_grid_rows: miniMaxSettings.advanced_two_pass_grid_rows,
-        advanced_grid_cols: miniMaxSettings.advanced_two_pass_grid_cols,
-        advanced_chunk_length: miniMaxSettings.advanced_two_pass_chunk_length,
-        advanced_temporal_overlap: miniMaxSettings.advanced_two_pass_temporal_overlap,
-        advanced_anchor_strength: miniMaxSettings.advanced_two_pass_anchor_strength,
-        advanced_spatial_w_overlap: miniMaxSettings.advanced_two_pass_spatial_w_overlap,
-        advanced_spatial_h_overlap: miniMaxSettings.advanced_two_pass_spatial_h_overlap,
-        advanced_fade_width: miniMaxSettings.advanced_two_pass_fade_width,
-        advanced_fade_height: miniMaxSettings.advanced_two_pass_fade_height,
-        advanced_min_tile_size: miniMaxSettings.advanced_two_pass_min_tile_size,
-        advanced_overlap_mode: miniMaxSettings.advanced_two_pass_overlap_mode,
-        advanced_overlap_blend: miniMaxSettings.advanced_two_pass_overlap_blend,
-        advanced_brightness_match: miniMaxSettings.advanced_two_pass_brightness_match,
-        advanced_dynamic_fade: miniMaxSettings.advanced_two_pass_dynamic_fade,
-        advanced_dynamic_fade_min: miniMaxSettings.advanced_two_pass_dynamic_fade_min,
-        advanced_masked_area_noise: miniMaxSettings.advanced_two_pass_masked_area_noise,
-        advanced_upscaler_device: miniMaxSettings.advanced_two_pass_upscaler_device,
-        advanced_upscaler_precision: miniMaxSettings.advanced_two_pass_upscaler_precision,
         easy_cache_bypass: miniMaxSettings.easy_cache_bypass,
         easy_cache_reuse_threshold: miniMaxSettings.easy_cache_reuse_threshold,
         easy_cache_start_percent: miniMaxSettings.easy_cache_start_percent,

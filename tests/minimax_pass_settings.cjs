@@ -185,99 +185,95 @@ test('installed LoRA matching respects preferred names, subfolders and recognize
 });
 
 
-test('old VRAM presets migrate fade only and preserve custom settings', () => {
+test('retired VRAM presets map into the 8-24 GB range and tiling settings are no longer options', () => {
   const c = fixture();
-  for (const [preset, tile, chunk] of [['8gb',352,51],['12gb',512,85],['16gb',576,272],['24gb',672,153]]) {
-    const old = { advanced_two_pass_defaults_version: 3, advanced_two_pass_vram_preset: preset,
-      advanced_two_pass_tile_size_mode: 'specific_size', advanced_two_pass_tile_width: tile, advanced_two_pass_tile_height: tile,
-      advanced_two_pass_chunk_length: chunk, advanced_two_pass_fade_width: 128, advanced_two_pass_fade_height: 128,
-      advanced_two_pass_spatial_w_overlap: 128, advanced_two_pass_spatial_h_overlap: 128,
-      advanced_two_pass_overlap_mode: 'earlier', advanced_two_pass_overlap_blend: 'smoothstep' };
-    const migrated = c.cloneMiniMaxH3Settings(old);
-    assert.equal(migrated.advanced_two_pass_fade_width, 64);
-    assert.equal(migrated.advanced_two_pass_fade_height, 64);
-    assert.equal(migrated.advanced_two_pass_tile_width, tile);
-    assert.equal(migrated.advanced_two_pass_chunk_length, chunk);
-    assert.equal(migrated.advanced_two_pass_vram_preset, preset);
-    assert.equal(c.cloneMiniMaxH3Settings({...old,advanced_two_pass_fade_width:80}).advanced_two_pass_fade_width,80);
-    assert.equal(c.cloneMiniMaxH3Settings({...old,advanced_two_pass_defaults_version:4}).advanced_two_pass_fade_width,128);
+  assert.equal(c.cloneMiniMaxH3Settings({}).advanced_two_pass_vram_preset, '16gb');
+  for (const [saved, expected] of [['8gb', '8gb'], ['12gb', '12gb'], ['16gb', '16gb'], ['24gb', '24gb'], ['32gb', '24gb'], ['custom', '24gb'], ['bogus', '16gb'], [undefined, '16gb']]) {
+    assert.equal(c.cloneMiniMaxH3Settings({ advanced_two_pass_vram_preset: saved }).advanced_two_pass_vram_preset, expected, String(saved));
+  }
+  // Tiles, chunks, fades and the upscaler device are derived at run time (minimax/tile_plan.py).
+  const defaults = c.cloneMiniMaxH3Settings({});
+  for (const key of ['advanced_two_pass_tile_size_mode', 'advanced_two_pass_tile_width', 'advanced_two_pass_grid_rows',
+    'advanced_two_pass_chunk_length', 'advanced_two_pass_fade_width', 'advanced_two_pass_overlap_mode',
+    'advanced_two_pass_brightness_match', 'advanced_two_pass_dynamic_fade', 'advanced_two_pass_upscaler_device',
+    'two_pass_final_width', 'two_pass_final_height', 'advanced_two_pass_pass2_megapixels']) {
+    assert.equal(key in defaults, false, key);
   }
 });
 
-test('final collection waits for in-flight stage backup and retains scratch on copy failure', async () => {
-  for (const fail of [false, true]) {
-    const segment = {};
-    let finishCopy, copyCalls = 0;
-    const c = vm.createContext({ twoPass:true, threePass:true, segment, built:{output_folder:'/scratch'},
-      renderStartedAt:1, projectFolder:'/project', slotNumber:1, state:{}, console,
-      mediaPathKey:p=>p, activateSegmentVideoPath(){}, syncPreview(){}, renderList(){}, render(){}, autoSaveSessionQuiet:async()=>{},
-      postJson:async (url) => {
-        if (url.endsWith('find_minimax_h3_stage_outputs')) return {stage1_path:'/scratch/stage1.mp4'};
-        copyCalls++;
-        if (fail) throw Error('copy failed');
-        await new Promise(resolve=>{finishCopy=resolve;});
-        return {backup_path:'/project/backup.mp4'};
-      }
-    });
-    const start=source.indexOf('      let liveStageBackupsRegistered = false;');
-    const end=source.indexOf('      const videos = await waitForVideos(',start);
-    vm.runInContext(source.slice(start,end)+';globalThis.register=registerLiveThreePassBackups;',c);
-    const first=c.register();
-    assert.equal(c.register(),first);
-    await new Promise(resolve=>setImmediate(resolve));
-    if (!fail) finishCopy();
-    await first;
-    const a=source.indexOf('      // Finish any in-flight backup');
-    const b=source.indexOf('      pushHistory();',a);
-    const ready=await vm.runInContext('(async()=>{'+source.slice(a,b)+'return canCleanupScratch;})()',c);
-    assert.equal(ready,!fail);
-    if (!fail) { assert.equal(segment.minimax_h3_stage1_backup_path,'/project/backup.mp4'); assert.equal(copyCalls,1); }
-  }
+test('MiniMax scene render keeps only the final pass video (no pass 1 backup)', () => {
+  const start = source.indexOf('async function renderMiniMaxSceneVideoWithProgress');
+  const end = source.indexOf('async function stitchRenderedScenes', start);
+  assert.ok(start >= 0 && end > start);
+  const body = source.slice(start, end);
+  assert.equal(body.includes('collect_minimax_h3_stage_backup'), false);
+  assert.equal(body.includes('find_minimax_h3_stage_outputs'), false);
+  assert.equal(body.includes('canCleanupScratch'), false);
+  assert.ok(body.includes('cleanup_minimax_h3_output'));
 });
 
-test('2 Pass Advanced seam settings default, clamp and survive JSON reload', () => {
+test('one output resolution is shared by every pass mode and legacy saves migrate to it', () => {
   const c = fixture();
   const defaults = c.cloneMiniMaxH3Settings({});
-  assert.equal(defaults.advanced_two_pass_brightness_match, true);
-  assert.equal(defaults.advanced_two_pass_dynamic_fade, 'widening');
-  assert.equal(defaults.advanced_two_pass_masked_area_noise, 0);
-  assert.equal(defaults.advanced_two_pass_grid_rows, 2);
-  assert.equal(defaults.advanced_two_pass_grid_cols, 3);
-  assert.equal(defaults.advanced_two_pass_spatial_w_overlap, 192);
-  const custom = c.cloneMiniMaxH3Settings({
-    advanced_two_pass_defaults_version: 4,
-    advanced_two_pass_brightness_match: false,
-    advanced_two_pass_dynamic_fade: 'Narrowing',
-    advanced_two_pass_dynamic_fade_min: 64,
-    advanced_two_pass_masked_area_noise: 5,
-  });
-  assert.equal(custom.advanced_two_pass_brightness_match, false);
-  assert.equal(custom.advanced_two_pass_dynamic_fade, 'narrowing');
-  assert.equal(custom.advanced_two_pass_dynamic_fade_min, 64);
-  assert.equal(custom.advanced_two_pass_masked_area_noise, 1);
-  assert.equal(c.cloneMiniMaxH3Settings({ advanced_two_pass_dynamic_fade: 'bogus' }).advanced_two_pass_dynamic_fade, 'widening');
-  const reloaded = c.cloneMiniMaxH3Settings(JSON.parse(JSON.stringify(custom)));
-  assert.equal(reloaded.advanced_two_pass_dynamic_fade, 'narrowing');
+  assert.equal(defaults.resolution_preset, '1k');
+  assert.equal(defaults.megapixels, 0.5625);
+  // A preset resolves per aspect ratio; custom keeps the typed megapixels.
+  assert.equal(c.cloneMiniMaxH3Settings({ resolution_preset: '2k', aspect_ratio: '9:16 (Portrait Widescreen)' }).megapixels, 1.9922);
+  assert.equal(c.cloneMiniMaxH3Settings({ resolution_preset: '1k' }).megapixels, 0.5625);
+  assert.equal(c.cloneMiniMaxH3Settings({ resolution_preset: 'custom', megapixels: 1.3 }).megapixels, 1.3);
+  const size = c.miniMaxH3FrameSize(1.9922, '16:9 (Widescreen)');
+  assert.equal(size.width, 1920);
+  assert.equal(size.height, 1088);
+  // Legacy saves took the resolution of the pass type they rendered with.
+  const single = c.cloneMiniMaxH3Settings({ video_mode: 'reference_to_video', render_pass: 'single', megapixels: 0.9 });
+  assert.equal(single.resolution_preset, 'custom');
+  assert.equal(single.megapixels, 0.9);
+  const two = c.cloneMiniMaxH3Settings({ video_mode: 'reference_to_video', render_pass: 'two_pass', two_pass_final_width: 1920, two_pass_final_height: 1080 });
+  assert.equal(two.resolution_preset, '2k');
+  assert.equal(two.megapixels, 1.9922);
+  const advanced = c.cloneMiniMaxH3Settings({ video_mode: 'reference_to_video', render_pass: 'three_pass', advanced_two_pass_pass2_resolution_preset: '4k' });
+  assert.equal(advanced.resolution_preset, '4k');
+  assert.equal(advanced.megapixels, 7.9688);
+  const advancedCustom = c.cloneMiniMaxH3Settings({ video_mode: 'reference_to_video', render_pass: 'three_pass', advanced_two_pass_pass2_resolution_preset: 'custom', advanced_two_pass_pass2_megapixels: 3.3 });
+  assert.equal(advancedCustom.resolution_preset, 'custom');
+  assert.equal(advancedCustom.megapixels, 3.3);
+  // Saved settings reload unchanged.
+  const reloaded = c.cloneMiniMaxH3Settings(JSON.parse(JSON.stringify(advanced)));
+  assert.equal(reloaded.resolution_preset, '4k');
+  assert.equal(reloaded.megapixels, 7.9688);
 });
 
-test('VRAM presets size an equal tile grid from the Pass 2 resolution', () => {
+test('switching pass mode keeps the same output resolution', () => {
+  const c = fixture();
+  let settings = c.cloneMiniMaxH3Settings({ video_mode: 'reference_to_video', render_pass: 'single', resolution_preset: '1k' });
+  settings = c.selectMiniMaxH3PassSettings(settings, 'two_pass');
+  assert.equal(settings.resolution_preset, '1k');
+  settings.resolution_preset = '4k';
+  settings.megapixels = 7.9688;
+  settings = c.selectMiniMaxH3PassSettings(settings, 'three_pass');
+  assert.equal(settings.resolution_preset, '4k');
+  assert.equal(settings.megapixels, 7.9688);
+  settings = c.selectMiniMaxH3PassSettings(settings, 'single');
+  assert.equal(settings.resolution_preset, '4k');
+  assert.equal(settings.megapixels, 7.9688);
+});
+
+test('VRAM presets size an equal tile grid from the output resolution', () => {
   const c = fixture();
   const fourK = (key) => c.miniMaxH3TilePlan(key, 7.9688, '16:9 (Widescreen)');
   const grid = (plan) => `${plan.rows}x${plan.cols}`;
-  // The 32 GB grid is the one measured on an RTX 5090; the others follow from the same tile-area targets.
-  assert.equal(grid(fourK('32gb')), '2x3');
+  // Same grids as tests/test_minimax_tile_plan.py (the Python planner the graph uses).
   assert.equal(grid(fourK('24gb')), '3x4');
   assert.equal(grid(fourK('16gb')), '4x5');
   assert.equal(grid(fourK('12gb')), '5x5');
   assert.equal(grid(fourK('8gb')), '6x7');
-  // Tiles keep roughly the frame's shape: no thin strips on a smaller frame.
-  assert.equal(grid(c.miniMaxH3TilePlan('32gb', 1.9922, '16:9 (Widescreen)')), '1x1');
+  assert.equal(grid(c.miniMaxH3TilePlan('24gb', 1.9922, '16:9 (Widescreen)')), '2x2');
   assert.equal(grid(c.miniMaxH3TilePlan('16gb', 1.9922, '16:9 (Widescreen)')), '2x2');
-  assert.equal(fourK('32gb').chunk, 170);
-  assert.equal(fourK('32gb').overlap, 192);
-  assert.equal(fourK('custom'), null);
-  // A smaller Pass 2 needs fewer tiles on the same card, and chunk stays a multiple of 17.
-  const twoK = c.miniMaxH3TilePlan('32gb', 2, '16:9 (Widescreen)');
-  assert.ok(twoK.rows * twoK.cols < 6);
-  for (const key of ['8gb', '12gb', '16gb', '24gb', '32gb']) assert.equal(fourK(key).chunk % 17, 0);
+  // 2 Pass Advanced is for cards up to 24 GB: retired presets map to 24 GB and there is no 32 GB preset.
+  assert.equal(vm.runInContext("MINIMAX_H3_VRAM_PRESETS['32gb']", c), undefined);
+  assert.equal(vm.runInContext('Object.keys(MINIMAX_H3_VRAM_PRESETS).join()', c), '8gb,12gb,16gb,24gb');
+  assert.equal(grid(fourK('32gb')), grid(fourK('24gb')));
+  assert.equal(fourK('24gb').chunk, 153);
+  assert.equal(fourK('24gb').overlap, 160);
+  for (const key of ['8gb', '12gb', '16gb', '24gb']) assert.equal(fourK(key).chunk % 17, 0);
 });

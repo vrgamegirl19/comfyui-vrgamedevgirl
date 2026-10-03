@@ -17,13 +17,8 @@ import { createMiniMaxSpeakerAssignments } from "./minimax_speaker_assignments.m
 export function createMiniMaxPanel({
   activateGlobalTimelineAudioPlayback, activeSegment, advancedTwoPassControls, allEditableSegments, audio,
   autoSaveSessionQuiet, autoTimeMiniMaxSingerCuesForSegment, createProgressWindow, gemmaRunnerLabel,
-  miniMaxAccelerationControls, miniMaxAddSpeakerCueButton, miniMaxAdvancedAnchorStrength,
-  miniMaxAdvancedChunkLength, miniMaxAdvancedFadeHeight, miniMaxAdvancedFadeWidth, miniMaxAdvancedGridCols,
-  miniMaxAdvancedGridRows, miniMaxAdvancedLatentUpscalerPicker, miniMaxAdvancedMinTileSize,
-  miniMaxAdvancedOverlapBlend, miniMaxAdvancedBrightnessMatch, miniMaxAdvancedDynamicFade, miniMaxAdvancedDynamicFadeMin, miniMaxAdvancedMaskedAreaNoise, miniMaxAdvancedOverlapMode, miniMaxAdvancedSettings,
-  miniMaxAdvancedSpatialHOverlap, miniMaxAdvancedSpatialWOverlap, miniMaxAdvancedTemporalOverlap,
-  miniMaxAdvancedTileHeight, miniMaxAdvancedTileSizeMode, miniMaxAdvancedTileWidth,
-  miniMaxAdvancedUpscalerDevice, miniMaxAdvancedUpscalerPrecision, miniMaxAdvancedVramPreset,
+  miniMaxAccelerationControls, miniMaxAddSpeakerCueButton, miniMaxAdvancedLatentUpscalerPicker, miniMaxAdvancedSettings,
+  miniMaxAdvancedVramPreset,
   miniMaxAspectRatio, miniMaxAudioMode, miniMaxAudioNote, miniMaxAudioVaePicker, miniMaxAutoTimeBeforePrompt,
   miniMaxClipPicker, miniMaxContinuityMode, miniMaxContinuityNote, miniMaxContinuityPromptFromLastFrame,
   miniMaxCooldownFrames, miniMaxCreatePromptButton, miniMaxDenoise, miniMaxDesiredReferenceKeysForSegment,
@@ -34,7 +29,7 @@ export function createMiniMaxPanel({
   miniMaxLatentContextFrames, miniMaxLatentContinuationRow, miniMaxLatentStatusPill,
   miniMaxLocationTransitionControls, miniMaxLocationTransitionCustom, miniMaxLocationTransitionCustomField,
   miniMaxLocationTransitionPreset, miniMaxLoraCount, miniMaxLoraNote, miniMaxLoraRows, miniMaxLoraSection,
-  miniMaxLoraSlots, miniMaxMegapixels, miniMaxMegapixelsField, miniMaxMemoryEfficientSageAttention,
+  miniMaxLoraSlots, miniMaxMegapixels, miniMaxMegapixelsField, miniMaxResolutionPreset, miniMaxMemoryEfficientSageAttention,
   miniMaxModeButtons, miniMaxModePanels, miniMaxModelLoaderSettings,
   miniMaxOrderedImageReferenceItemsForSegment, miniMaxPass2Prompt, miniMaxPass2PromptField,
   miniMaxPassButtons, miniMaxPassChooser, miniMaxPrompt, miniMaxPromptCharacterStatus,
@@ -46,8 +41,7 @@ export function createMiniMaxPanel({
   miniMaxStartFrameReferenceNote, miniMaxSteps, miniMaxSubTabs, miniMaxThreePassLoraPicker,
   miniMaxThreePassLoraSection, miniMaxThreePassLoraStrength, miniMaxThreePassRefImageSize,
   miniMaxThreePassSettings, miniMaxTurboLoraField, miniMaxTurboLoraPicker, miniMaxTurboLoraStrength,
-  miniMaxTurboLoraStrengthField, miniMaxTurboNote, miniMaxTurboSection, miniMaxTwoPassFinalHeight,
-  miniMaxTwoPassFinalWidth, miniMaxTwoPassLatentScale, miniMaxTwoPassLatentUpscalerPicker,
+  miniMaxTurboLoraStrengthField, miniMaxTurboNote, miniMaxTurboSection, miniMaxTwoPassLatentScale, miniMaxTwoPassLatentUpscalerPicker,
   miniMaxTwoPassLoraLayout, miniMaxTwoPassLoraPicker, miniMaxTwoPassLoraPreset,
   miniMaxTwoPassLoraPresetButtons, miniMaxTwoPassLoraPresetField, miniMaxTwoPassLoraSection,
   miniMaxTwoPassLoraStatus, miniMaxTwoPassLoraStrength, miniMaxTwoPassOutputCrf, miniMaxTwoPassRefImageSize,
@@ -289,6 +283,7 @@ export function createMiniMaxPanel({
       video_vae_name: miniMaxVideoVaePicker.input.value,
       audio_vae_name: miniMaxAudioVaePicker.input.value,
       aspect_ratio: miniMaxAspectRatio.value,
+      resolution_preset: miniMaxResolutionPreset.value,
       megapixels: miniMaxMegapixels.value,
       seed: miniMaxSeed.value,
       warmup_frames: miniMaxWarmupFrames.value,
@@ -307,8 +302,6 @@ export function createMiniMaxPanel({
       two_pass_lora_strength: miniMaxTwoPassLoraStrength.value,
       two_pass_lora_preset: Number(miniMaxTwoPassLoraPreset.dataset.preset || 4),
       two_pass_defaults_version: DEFAULT_MINIMAX_H3_SETTINGS.two_pass_defaults_version,
-      two_pass_final_width: miniMaxTwoPassFinalWidth.value,
-      two_pass_final_height: miniMaxTwoPassFinalHeight.value,
       two_pass_latent_upscale_scale: miniMaxTwoPassLatentScale.value,
       two_pass_latent_upscaler_name: currentSettings.render_pass === "three_pass"
         ? miniMaxAdvancedLatentUpscalerPicker.input.value
@@ -334,27 +327,6 @@ export function createMiniMaxPanel({
       three_pass_lightx_lora_strength: miniMaxThreePassLoraStrength.value,
       advanced_two_pass_vram_preset: miniMaxAdvancedVramPreset.value,
       advanced_two_pass_defaults_version: DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_defaults_version,
-      advanced_two_pass_tile_size_mode: miniMaxAdvancedTileSizeMode.value,
-      advanced_two_pass_tile_width: miniMaxAdvancedTileWidth.value,
-      advanced_two_pass_tile_height: miniMaxAdvancedTileHeight.value,
-      advanced_two_pass_grid_rows: miniMaxAdvancedGridRows.value,
-      advanced_two_pass_grid_cols: miniMaxAdvancedGridCols.value,
-      advanced_two_pass_chunk_length: miniMaxAdvancedChunkLength.value,
-      advanced_two_pass_temporal_overlap: miniMaxAdvancedTemporalOverlap.value,
-      advanced_two_pass_anchor_strength: miniMaxAdvancedAnchorStrength.value,
-      advanced_two_pass_spatial_w_overlap: miniMaxAdvancedSpatialWOverlap.value,
-      advanced_two_pass_spatial_h_overlap: miniMaxAdvancedSpatialHOverlap.value,
-      advanced_two_pass_fade_width: miniMaxAdvancedFadeWidth.value,
-      advanced_two_pass_fade_height: miniMaxAdvancedFadeHeight.value,
-      advanced_two_pass_min_tile_size: miniMaxAdvancedMinTileSize.value,
-      advanced_two_pass_overlap_mode: miniMaxAdvancedOverlapMode.value,
-      advanced_two_pass_overlap_blend: miniMaxAdvancedOverlapBlend.value,
-      advanced_two_pass_brightness_match: miniMaxAdvancedBrightnessMatch.input.checked,
-      advanced_two_pass_dynamic_fade: miniMaxAdvancedDynamicFade.value,
-      advanced_two_pass_dynamic_fade_min: miniMaxAdvancedDynamicFadeMin.value,
-      advanced_two_pass_masked_area_noise: miniMaxAdvancedMaskedAreaNoise.value,
-      advanced_two_pass_upscaler_device: miniMaxAdvancedUpscalerDevice.value,
-      advanced_two_pass_upscaler_precision: miniMaxAdvancedUpscalerPrecision.value,
       ...Object.fromEntries(twoPassControls.flatMap((control) => [
         [`${control.prefix}steps`, control.steps.value],
         [`${control.prefix}denoise`, control.denoise.value],
@@ -363,8 +335,11 @@ export function createMiniMaxPanel({
         [`${control.prefix}seed`, control.seed.value],
       ])),
       ...Object.fromEntries(advancedTwoPassControls.flatMap((control) => [
-        [`${control.prefix}resolution_preset`, control.resolutionPreset.value],
-        [`${control.prefix}megapixels`, control.megapixels.value],
+        // Only Pass 1 has its own resolution; Pass 2 uses the shared output resolution.
+        ...(control.megapixels ? [
+          [`${control.prefix}resolution_preset`, control.resolutionPreset.value],
+          [`${control.prefix}megapixels`, control.megapixels.value],
+        ] : []),
         [`${control.prefix}steps`, control.steps.value],
         [`${control.prefix}denoise`, control.denoise.value],
         [`${control.prefix}sampler`, control.sampler.value],
@@ -542,7 +517,9 @@ export function createMiniMaxPanel({
     miniMaxLocationTransitionCustom.value = settings.location_transition_custom;
     miniMaxLatentContextFrames.value = String(settings.latent_context_frames);
     miniMaxAspectRatio.value = settings.aspect_ratio;
+    miniMaxResolutionPreset.value = settings.resolution_preset;
     miniMaxMegapixels.value = String(settings.megapixels);
+    miniMaxResolutionPreset.syncResolution();
     miniMaxSeed.value = String(settings.seed);
     miniMaxWarmupFrames.value = String(settings.warmup_frames);
     miniMaxCooldownFrames.value = String(settings.cooldown_frames);
@@ -566,8 +543,6 @@ export function createMiniMaxPanel({
       button.style.background = active ? "#06b6d4" : "#27272a";
       button.style.color = active ? "#082f49" : "#f4f4f5";
     }
-    miniMaxTwoPassFinalWidth.value = String(settings.two_pass_final_width);
-    miniMaxTwoPassFinalHeight.value = String(settings.two_pass_final_height);
     miniMaxTwoPassLatentScale.value = String(settings.two_pass_latent_upscale_scale);
     miniMaxTwoPassLatentUpscalerPicker.input.value = settings.two_pass_latent_upscaler_name;
     miniMaxAdvancedLatentUpscalerPicker.input.value = settings.two_pass_latent_upscaler_name;
@@ -594,27 +569,6 @@ export function createMiniMaxPanel({
     miniMaxThreePassLoraPicker.input.value = settings.three_pass_lightx_lora_name;
     miniMaxThreePassLoraStrength.value = String(settings.three_pass_lightx_lora_strength);
     miniMaxAdvancedVramPreset.value = settings.advanced_two_pass_vram_preset;
-    miniMaxAdvancedTileSizeMode.value = settings.advanced_two_pass_tile_size_mode;
-    miniMaxAdvancedTileWidth.value = String(settings.advanced_two_pass_tile_width);
-    miniMaxAdvancedTileHeight.value = String(settings.advanced_two_pass_tile_height);
-    miniMaxAdvancedGridRows.value = String(settings.advanced_two_pass_grid_rows);
-    miniMaxAdvancedGridCols.value = String(settings.advanced_two_pass_grid_cols);
-    miniMaxAdvancedChunkLength.value = String(settings.advanced_two_pass_chunk_length);
-    miniMaxAdvancedTemporalOverlap.value = String(settings.advanced_two_pass_temporal_overlap);
-    miniMaxAdvancedAnchorStrength.value = String(settings.advanced_two_pass_anchor_strength);
-    miniMaxAdvancedSpatialWOverlap.value = String(settings.advanced_two_pass_spatial_w_overlap);
-    miniMaxAdvancedSpatialHOverlap.value = String(settings.advanced_two_pass_spatial_h_overlap);
-    miniMaxAdvancedFadeWidth.value = String(settings.advanced_two_pass_fade_width);
-    miniMaxAdvancedFadeHeight.value = String(settings.advanced_two_pass_fade_height);
-    miniMaxAdvancedMinTileSize.value = String(settings.advanced_two_pass_min_tile_size);
-    miniMaxAdvancedOverlapMode.value = settings.advanced_two_pass_overlap_mode;
-    miniMaxAdvancedOverlapBlend.value = settings.advanced_two_pass_overlap_blend;
-    miniMaxAdvancedBrightnessMatch.input.checked = Boolean(settings.advanced_two_pass_brightness_match);
-    miniMaxAdvancedDynamicFade.value = settings.advanced_two_pass_dynamic_fade;
-    miniMaxAdvancedDynamicFadeMin.value = String(settings.advanced_two_pass_dynamic_fade_min);
-    miniMaxAdvancedMaskedAreaNoise.value = String(settings.advanced_two_pass_masked_area_noise);
-    miniMaxAdvancedUpscalerDevice.value = settings.advanced_two_pass_upscaler_device;
-    miniMaxAdvancedUpscalerPrecision.value = settings.advanced_two_pass_upscaler_precision;
     twoPassControls.forEach((control) => {
       control.steps.value = String(settings[`${control.prefix}steps`]);
       control.denoise.value = String(settings[`${control.prefix}denoise`]);
@@ -623,9 +577,11 @@ export function createMiniMaxPanel({
       control.seed.value = String(settings[`${control.prefix}seed`]);
     });
     advancedTwoPassControls.forEach((control) => {
-      control.resolutionPreset.value = settings[`${control.prefix}resolution_preset`] || "custom";
-      control.megapixels.value = String(settings[`${control.prefix}megapixels`]);
-      control.syncResolutionPreset();
+      if (control.megapixels) {
+        control.resolutionPreset.value = settings[`${control.prefix}resolution_preset`] || "custom";
+        control.megapixels.value = String(settings[`${control.prefix}megapixels`]);
+        control.syncResolutionPreset();
+      }
       control.steps.value = String(settings[`${control.prefix}steps`]);
       control.denoise.value = String(settings[`${control.prefix}denoise`]);
       control.sampler.value = settings[`${control.prefix}sampler`];
@@ -633,11 +589,12 @@ export function createMiniMaxPanel({
       control.seed.value = String(settings[`${control.prefix}seed`]);
     });
     const multiPassMode = state.miniMaxH3TwoPassEnabled || state.miniMaxH3ThreePassEnabled;
-    miniMaxMegapixelsField.style.display = multiPassMode ? "none" : "";
     miniMaxSeedField.style.display = multiPassMode ? "none" : "";
     miniMaxAdvancedSettings.style.display = multiPassMode ? "none" : "";
     miniMaxTwoPassSettings.style.display = state.miniMaxH3TwoPassEnabled ? "" : "none";
     miniMaxThreePassSettings.style.display = state.miniMaxH3ThreePassEnabled ? "" : "none";
+    // Pass 1 resolution lives in Render Settings and applies to 2 Pass Advanced only.
+    advancedTwoPassControls[0].resolutionField.style.display = state.miniMaxH3ThreePassEnabled ? "contents" : "none";
     miniMaxTwoPassLoraSection.style.display = (state.miniMaxH3TwoPassEnabled || state.miniMaxH3ThreePassEnabled) ? "" : "none";
     miniMaxThreePassLoraSection.style.display = "none";
     miniMaxEasyCacheBypass.input.checked = settings.easy_cache_bypass;
@@ -726,7 +683,6 @@ export function createMiniMaxPanel({
         ? "Extra LoRAs are ON. Each can target pass 1, pass 2, or both. The required Turbo LoRA remains separate and pass-2-only."
         : "Optional extra LoRAs are OFF. Enable them, choose a count, then select the target pass for each LoRA.";
     }
-    miniMaxMegapixelsField.style.display = hideMultiPassIgnoredSettings ? "none" : "";
     miniMaxSeedField.style.display = hideMultiPassIgnoredSettings ? "none" : "";
     miniMaxSamplerSettings.style.display = hideMultiPassIgnoredSettings ? "none" : "";
     miniMaxEasyCacheSettings.style.display = hideMultiPassIgnoredSettings || mode === "reference_to_video" ? "none" : "";

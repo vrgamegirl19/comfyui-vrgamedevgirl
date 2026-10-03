@@ -41,18 +41,17 @@ class PlanSpatialTilesTests(unittest.TestCase):
         return f"{plan['grid_rows']}x{plan['grid_cols']}"
 
     def test_grids_match_the_builder_ui_planner(self):
-        # Same expectations as tests/minimax_pass_settings.cjs (miniMaxH3TilePlan).
         four_k = frame_size(7.9688)
-        for preset, expected in (("32gb", "2x3"), ("24gb", "3x4"), ("16gb", "4x5"), ("12gb", "5x5"), ("8gb", "6x7")):
+        for preset, expected in (("24gb", "3x4"), ("16gb", "4x5"), ("12gb", "5x5"), ("8gb", "6x7")):
             self.assertEqual(self.grid(tile_plan.plan_spatial_tiles(*four_k, preset)), expected, preset)
         two_k = frame_size(1.9922)
-        self.assertEqual(self.grid(tile_plan.plan_spatial_tiles(*two_k, "32gb")), "1x1")
+        self.assertEqual(self.grid(tile_plan.plan_spatial_tiles(*two_k, "24gb")), "2x2")
         self.assertEqual(self.grid(tile_plan.plan_spatial_tiles(*two_k, "16gb")), "2x2")
 
     def test_chunk_and_overlap_come_from_the_preset(self):
-        plan = tile_plan.plan_spatial_tiles(3840, 2176, "32gb")
-        self.assertEqual(plan["chunk_length"], 170)
-        self.assertEqual(plan["spatial_w_overlap"], 192)
+        plan = tile_plan.plan_spatial_tiles(3840, 2176, "24gb")
+        self.assertEqual(plan["chunk_length"], 153)
+        self.assertEqual(plan["spatial_w_overlap"], 160)
         for preset in tile_plan.VRAM_PRESETS:
             self.assertEqual(tile_plan.plan_spatial_tiles(1920, 1088, preset)["chunk_length"] % 17, 0)
 
@@ -71,8 +70,19 @@ class PlanSpatialTilesTests(unittest.TestCase):
     def test_rejects_bad_input(self):
         with self.assertRaises(ValueError):
             tile_plan.plan_spatial_tiles(1920, 1080, "32gb")
-        with self.assertRaises(ValueError):
-            tile_plan.plan_spatial_tiles(1920, 1088, "48gb")
+        for preset in ("32gb", "48gb", "custom"):
+            with self.assertRaises(ValueError):
+                tile_plan.plan_spatial_tiles(1920, 1088, preset)
+
+    def test_32gb_is_not_a_preset(self):
+        self.assertNotIn("32gb", tile_plan.VRAM_PRESETS)
+        self.assertIn(tile_plan.DEFAULT_VRAM_PRESET, tile_plan.VRAM_PRESETS)
+
+    def test_hidden_settings_match_the_tested_workflow(self):
+        hidden = tile_plan.HIDDEN_ADVANCED_SETTINGS
+        self.assertEqual(hidden["tile_size_mode"], "rows_cols")
+        self.assertEqual((hidden["overlap_mode"], hidden["overlap_blend"]), ("later", "linear"))
+        self.assertFalse(hidden["brightness_match"])
 
 
 if __name__ == "__main__":

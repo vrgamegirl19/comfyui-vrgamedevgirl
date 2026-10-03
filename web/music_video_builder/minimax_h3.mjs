@@ -85,7 +85,10 @@ export const DEFAULT_MINIMAX_H3_SETTINGS = {
   video_vae_name: "minimax_h3_video_vae_fp16.safetensors",
   audio_vae_name: "minimax_h3_audio_vae_fp32.safetensors",
   aspect_ratio: "16:9 (Widescreen)",
-  megapixels: 0.9,
+  // One output resolution for single pass, 2 Pass and 2 Pass Advanced (Pass 2 size).
+  // `megapixels` always holds the resolved value; a preset recomputes it per aspect ratio.
+  resolution_preset: "1k",
+  megapixels: 0.5625,
   seed: 69,
   warmup_frames: 0,
   cooldown_frames: 0,
@@ -114,8 +117,6 @@ export const DEFAULT_MINIMAX_H3_SETTINGS = {
   two_pass_lora_strength: 1,
   two_pass_lora_preset: 4,
   two_pass_defaults_version: 1,
-  two_pass_final_width: 1920,
-  two_pass_final_height: 1088,
   two_pass_latent_upscale_scale: 2,
   two_pass_latent_upscaler_name: "minimax_h3_latent_upscaler_3d_bf16.safetensors",
   use_te_speed: false,
@@ -169,30 +170,10 @@ export const DEFAULT_MINIMAX_H3_SETTINGS = {
   three_pass_pass3_scheduler: "beta",
   three_pass_pass3_seed: 69,
   three_pass_pass3_te_speed: false,
-  advanced_two_pass_vram_preset: "custom",
+  // Tiles, chunks, fades and the upscaler device are derived from the output resolution at run time
+  // (minimax/tile_plan.py); the only tiling choice is the VRAM preset (8-24 GB).
+  advanced_two_pass_vram_preset: "16gb",
   advanced_two_pass_defaults_version: 4,
-  advanced_two_pass_tile_size_mode: "rows_cols",
-  advanced_two_pass_tile_width: 512,
-  advanced_two_pass_tile_height: 512,
-  advanced_two_pass_grid_rows: 2,
-  advanced_two_pass_grid_cols: 3,
-  advanced_two_pass_chunk_length: 272,
-  advanced_two_pass_temporal_overlap: 17,
-  advanced_two_pass_anchor_strength: 0.999,
-  advanced_two_pass_spatial_w_overlap: 192,
-  advanced_two_pass_spatial_h_overlap: 192,
-  advanced_two_pass_fade_width: 64,
-  advanced_two_pass_fade_height: 64,
-  advanced_two_pass_min_tile_size: 256,
-  advanced_two_pass_overlap_mode: "earlier",
-  advanced_two_pass_overlap_blend: "smoothstep",
-  // Seam-reduction settings added by newer MMH3 Spatial Split Params versions.
-  advanced_two_pass_brightness_match: true,
-  advanced_two_pass_dynamic_fade: "widening",
-  advanced_two_pass_dynamic_fade_min: 32,
-  advanced_two_pass_masked_area_noise: 0,
-  advanced_two_pass_upscaler_device: "cuda",
-  advanced_two_pass_upscaler_precision: "bf16",
   advanced_two_pass_pass1_megapixels: 0.4,
   advanced_two_pass_pass1_resolution_preset: "custom",
   advanced_two_pass_pass1_steps: 20,
@@ -200,8 +181,6 @@ export const DEFAULT_MINIMAX_H3_SETTINGS = {
   advanced_two_pass_pass1_sampler: "euler",
   advanced_two_pass_pass1_scheduler: "beta",
   advanced_two_pass_pass1_seed: 69,
-  advanced_two_pass_pass2_megapixels: 2,
-  advanced_two_pass_pass2_resolution_preset: "2k",
   advanced_two_pass_pass2_steps: 1,
   advanced_two_pass_pass2_denoise: 0.2,
   advanced_two_pass_pass2_sampler: "sa_solver",
@@ -209,21 +188,34 @@ export const DEFAULT_MINIMAX_H3_SETTINGS = {
   advanced_two_pass_pass2_seed: 69,
 };
 
-// 2 Pass Advanced VRAM presets. activations scale with chunk_length x tile area,
-// so each card gets a tile-area target (megapixels) and chunk length. Only 32 GB
-// has been measured (RTX 5090, 4K Pass 2 at 2x3 tiles, chunk 170); the smaller
-// cards are extrapolated from that point and the upstream MMH3 tuning table.
-// Overlap is about 15-25% of the resulting tile side (multiple of 32).
+// 2 Pass Advanced VRAM presets (8-24 GB: bigger cards should use 2 Pass or single pass). Activations
+// scale with chunk_length x tile area, so each card gets a tile-area target (megapixels). Mirrors
+// minimax/tile_plan.py, which builds the real tile settings at run time.
 export const MINIMAX_H3_VRAM_PRESETS = {
-  "8gb": { tileMegapixels: 0.2, chunk: 51, overlap: 128, tested: false },
-  "12gb": { tileMegapixels: 0.3, chunk: 85, overlap: 128, tested: false },
-  "16gb": { tileMegapixels: 0.43, chunk: 119, overlap: 128, tested: false },
-  "24gb": { tileMegapixels: 0.65, chunk: 153, overlap: 160, tested: false },
-  "32gb": { tileMegapixels: 1.6, chunk: 170, overlap: 192, tested: true },
+  "8gb": { tileMegapixels: 0.2, chunk: 51, overlap: 128 },
+  "12gb": { tileMegapixels: 0.3, chunk: 85, overlap: 128 },
+  "16gb": { tileMegapixels: 0.43, chunk: 119, overlap: 128 },
+  "24gb": { tileMegapixels: 0.65, chunk: 153, overlap: 160 },
 };
+export const MINIMAX_H3_DEFAULT_VRAM_PRESET = "16gb";
+export const MINIMAX_H3_RESOLUTION_PRESETS = [
+  { value: "custom", label: "Custom megapixels" },
+  { value: "1k", label: "H3 1K (1024×576)" },
+  { value: "2k", label: "H3 2K (1920×1088)" },
+  { value: "1440p", label: "1440p (2560×1440)" },
+  { value: "4k", label: "H3 4K (3840×2176)" },
+];
 
-// Pass 2 frame size in pixels for a megapixel target and an aspect ratio label
-// such as "16:9 (Widescreen)". Mirrors the backend's resolved_dimensions().
+// Saved projects from before the 24 GB cap may hold 32gb or custom.
+export function normalizeMiniMaxH3VramPreset(value) {
+  const key = String(value || "").trim().toLowerCase();
+  if (MINIMAX_H3_VRAM_PRESETS[key]) return key;
+  if (key === "32gb" || key === "custom") return "24gb";
+  return MINIMAX_H3_DEFAULT_VRAM_PRESET;
+}
+
+// Frame size in pixels (multiples of 32) for a megapixel target and an aspect ratio label such as
+// "16:9 (Widescreen)". Mirrors minimax/resolution.py frame_size().
 export function miniMaxH3FrameSize(megapixels, aspectRatio) {
   const match = String(aspectRatio || "16:9").match(/(\d+)\s*:\s*(\d+)/);
   const ratioWidth = Number(match?.[1] || 16);
@@ -235,13 +227,24 @@ export function miniMaxH3FrameSize(megapixels, aspectRatio) {
   };
 }
 
-// Tile plan for a VRAM preset at a given Pass 2 size: an equal rows x cols grid (max 9 x 9).
-// Every grid is scored on how close its tile area is to the preset's target (going over the
-// target costs double, since that is what runs out of memory) and on how close the tile shape
-// is to the frame's shape, so a small frame gets one large tile instead of thin strips.
+// Megapixels of a resolution preset at an aspect ratio, or null for "custom".
+// Mirrors minimax/resolution.py preset_megapixels().
+export function miniMaxH3PresetMegapixels(preset, aspectRatio) {
+  const match = String(aspectRatio || "16:9").match(/(\d+)\s*:\s*(\d+)/);
+  const ratioWidth = Number(match?.[1] || 16);
+  const ratioHeight = Number(match?.[2] || 9);
+  const longEdge = { "1k": 1024, "2k": 1920, "1440p": 2560, "4k": 3840 }[String(preset || "").toLowerCase()];
+  if (!longEdge) return null;
+  const scale = longEdge / Math.max(ratioWidth, ratioHeight);
+  const width = Math.round(ratioWidth * scale / 32) * 32;
+  const height = Math.round(ratioHeight * scale / 32) * 32;
+  return Number(((width * height) / 1048576).toFixed(4));
+}
+
+// Preview of the tile grid the run-time planner picks for a VRAM preset at an output size: an equal
+// rows x cols grid (max 9 x 9) scored on tile area (going over the target costs double) and tile shape.
 export function miniMaxH3TilePlan(presetKey, megapixels, aspectRatio) {
-  const preset = MINIMAX_H3_VRAM_PRESETS[presetKey];
-  if (!preset) return null;
+  const preset = MINIMAX_H3_VRAM_PRESETS[normalizeMiniMaxH3VramPreset(presetKey)];
   const { width, height } = miniMaxH3FrameSize(megapixels, aspectRatio);
   const targetArea = preset.tileMegapixels * 1048576;
   let best = null;
@@ -255,8 +258,7 @@ export function miniMaxH3TilePlan(presetKey, megapixels, aspectRatio) {
       if (!best || cost < best.cost - 1e-9) best = { rows, cols, cost };
     }
   }
-  const tileSide = Math.max(32, Math.round(Math.sqrt(targetArea) / 32) * 32);
-  return { rows: best.rows, cols: best.cols, tileSide, chunk: preset.chunk, overlap: preset.overlap, tested: preset.tested };
+  return { rows: best.rows, cols: best.cols, width, height, chunk: preset.chunk, overlap: preset.overlap };
 }
 
 export const MINIMAX_H3_CONTINUITY_OPTIONS = [
@@ -429,62 +431,74 @@ export function selectMiniMaxH3PassSettings(settings, passMode) {
   return cloneMiniMaxH3Settings({
     ...current,
     ...(profiles[passMode] || {}),
+    // The output resolution is shared by every pass mode, not stored per profile.
+    aspect_ratio: current.aspect_ratio,
+    resolution_preset: current.resolution_preset,
+    megapixels: current.megapixels,
     video_mode: "reference_to_video",
     render_pass: passMode,
     ref_pass_profiles: profiles,
   });
 }
 
+// One output resolution for every render pass. New saves carry resolution_preset; older saves took the
+// resolution of the pass type they were rendering with (single megapixels, 2 Pass final size, or
+// 2 Pass Advanced Pass 2 megapixels).
+const MINIMAX_H3_RESOLUTION_PRESET_KEYS = ["custom", "1k", "2k", "1440p", "4k"];
+function resolveMiniMaxH3Resolution(source, renderPass) {
+  const aspect = String(source.aspect_ratio || DEFAULT_MINIMAX_H3_SETTINGS.aspect_ratio);
+  const savedPreset = String(source.resolution_preset || "").trim().toLowerCase();
+  const clamp = (value) => Math.max(0.1, Math.min(16, Number(value) || DEFAULT_MINIMAX_H3_SETTINGS.megapixels));
+  if (MINIMAX_H3_RESOLUTION_PRESET_KEYS.includes(savedPreset)) {
+    const presetMegapixels = miniMaxH3PresetMegapixels(savedPreset, aspect);
+    return { resolution_preset: savedPreset, megapixels: presetMegapixels ?? clamp(source.megapixels ?? DEFAULT_MINIMAX_H3_SETTINGS.megapixels) };
+  }
+  const hasLegacyResolution = source.megapixels != null
+    || (Number(source.two_pass_final_width) > 0 && Number(source.two_pass_final_height) > 0)
+    || source.advanced_two_pass_pass2_megapixels != null
+    || source.advanced_two_pass_pass2_resolution_preset != null;
+  if (!hasLegacyResolution) {
+    // A new project: use the default preset.
+    const defaultPreset = DEFAULT_MINIMAX_H3_SETTINGS.resolution_preset;
+    return { resolution_preset: defaultPreset, megapixels: miniMaxH3PresetMegapixels(defaultPreset, aspect) ?? DEFAULT_MINIMAX_H3_SETTINGS.megapixels };
+  }
+  let preset = "custom";
+  let megapixels;
+  if (renderPass === "three_pass") {
+    const legacyPreset = String(source.advanced_two_pass_pass2_resolution_preset || "").trim().toLowerCase();
+    preset = MINIMAX_H3_RESOLUTION_PRESET_KEYS.includes(legacyPreset) ? legacyPreset : "custom";
+    megapixels = miniMaxH3PresetMegapixels(preset, aspect) ?? clamp(source.advanced_two_pass_pass2_megapixels ?? 2);
+  } else if (renderPass === "two_pass" && Number(source.two_pass_final_width) > 0 && Number(source.two_pass_final_height) > 0) {
+    megapixels = clamp((Number(source.two_pass_final_width) * Number(source.two_pass_final_height)) / 1048576);
+  } else {
+    megapixels = clamp(source.megapixels ?? 0.9);
+  }
+  if (preset === "custom") {
+    // Keep the preset label when the migrated size is exactly a preset's frame size.
+    const size = miniMaxH3FrameSize(megapixels, aspect);
+    const matching = MINIMAX_H3_RESOLUTION_PRESET_KEYS.find((key) => {
+      const presetMp = miniMaxH3PresetMegapixels(key, aspect);
+      if (presetMp == null) return false;
+      const presetSize = miniMaxH3FrameSize(presetMp, aspect);
+      return presetSize.width === size.width && presetSize.height === size.height;
+    });
+    if (matching) return { resolution_preset: matching, megapixels: miniMaxH3PresetMegapixels(matching, aspect) };
+  }
+  return { resolution_preset: preset, megapixels: Number(megapixels.toFixed(4)) };
+}
+
 export function cloneMiniMaxH3Settings(value = {}) {
   const source = value && typeof value === "object" ? value : {};
   const hasCurrentTwoPassDefaults = Number(source.two_pass_defaults_version || 0) >= 1;
   const hasCurrentAdvancedTwoPassDefaults = Number(source.advanced_two_pass_defaults_version || 0) >= 4;
-  const legacyAdvancedDefaults = {
-    advanced_two_pass_vram_preset: "12gb",
-    advanced_two_pass_tile_size_mode: "rows_cols",
-    advanced_two_pass_chunk_length: 85,
-    advanced_two_pass_temporal_overlap: 17,
-    advanced_two_pass_anchor_strength: 0.999,
-    advanced_two_pass_spatial_w_overlap: 128,
-    advanced_two_pass_spatial_h_overlap: 128,
-    advanced_two_pass_fade_width: 64,
-    advanced_two_pass_fade_height: 64,
-    advanced_two_pass_min_tile_size: 256,
-    advanced_two_pass_overlap_mode: "later",
-    advanced_two_pass_overlap_blend: "linear",
-  };
-  // v3 shipped fade_width/fade_height at or above spatial_w/h_overlap, which
-  // erases the frozen seam anchor and shows up as smudged tile-grid lines.
-  const legacyAdvancedDefaultsV3 = {
-    advanced_two_pass_vram_preset: "custom",
-    advanced_two_pass_tile_size_mode: "rows_cols",
-    advanced_two_pass_chunk_length: 272,
-    advanced_two_pass_temporal_overlap: 17,
-    advanced_two_pass_anchor_strength: 0.999,
-    advanced_two_pass_spatial_w_overlap: 128,
-    advanced_two_pass_spatial_h_overlap: 128,
-    advanced_two_pass_fade_width: 160,
-    advanced_two_pass_fade_height: 128,
-    advanced_two_pass_min_tile_size: 256,
-    advanced_two_pass_overlap_mode: "earlier",
-    advanced_two_pass_overlap_blend: "smoothstep",
-  };
-  const matchesAdvancedDefaults = (defaults) => Object.entries(defaults).every(([key, value]) => (
-    source[key] == null || String(source[key]) === String(value)
-  ));
-  const shouldMigrateLegacyAdvancedDefaults = !hasCurrentAdvancedTwoPassDefaults
-    && (matchesAdvancedDefaults(legacyAdvancedDefaults) || matchesAdvancedDefaults(legacyAdvancedDefaultsV3));
-  const oldPreset = { "8gb": [352, 51], "12gb": [512, 85], "16gb": [576, 272], "24gb": [672, 153] }[source.advanced_two_pass_vram_preset];
-  const migratePresetFade = !hasCurrentAdvancedTwoPassDefaults && oldPreset && matchesAdvancedDefaults({
-    ...legacyAdvancedDefaultsV3,
-    advanced_two_pass_vram_preset: source.advanced_two_pass_vram_preset,
-    advanced_two_pass_tile_size_mode: "specific_size",
-    advanced_two_pass_tile_width: oldPreset[0], advanced_two_pass_tile_height: oldPreset[0],
-    advanced_two_pass_chunk_length: oldPreset[1],
-    advanced_two_pass_fade_width: 128, advanced_two_pass_fade_height: 128,
-  });
-  const advancedSource = shouldMigrateLegacyAdvancedDefaults ? {} : migratePresetFade
-    ? { ...source, advanced_two_pass_fade_width: 64, advanced_two_pass_fade_height: 64 } : source;
+  const renderPass = ["single", "two_pass", "three_pass"].includes(String(source.render_pass || "").trim().toLowerCase())
+    ? String(source.render_pass).trim().toLowerCase()
+    : ["single", "two_pass", "advanced"].includes(String(source.ref_pass_mode || "").trim().toLowerCase())
+      ? (source.ref_pass_mode === "advanced" ? "three_pass" : source.ref_pass_mode)
+      : source.render_pass == null && normalizeMiniMaxH3Mode(source.video_mode || source.mode) === "image_reference_to_video"
+        ? "two_pass"
+        : DEFAULT_MINIMAX_H3_SETTINGS.render_pass;
+  const resolution = resolveMiniMaxH3Resolution(source, renderPass);
   const sourceLoras = Array.isArray(source.loras)
     ? source.loras
     : Array.from({ length: 4 }, (_, index) => ({
@@ -516,13 +530,7 @@ export function cloneMiniMaxH3Settings(value = {}) {
     video_mode: normalizeMiniMaxH3Mode(source.video_mode || source.mode || DEFAULT_MINIMAX_H3_SETTINGS.video_mode),
     // Pre-existing saves never had render_pass; Image + Reference 2 Pass was always a two-pass
     // workflow by mode alone, so an absent field must still mean two_pass for that mode.
-    render_pass: ["single", "two_pass", "three_pass"].includes(String(source.render_pass || "").trim().toLowerCase())
-      ? String(source.render_pass).trim().toLowerCase()
-      : ["single", "two_pass", "advanced"].includes(String(source.ref_pass_mode || "").trim().toLowerCase())
-        ? (source.ref_pass_mode === "advanced" ? "three_pass" : source.ref_pass_mode)
-      : source.render_pass == null && normalizeMiniMaxH3Mode(source.video_mode || source.mode) === "image_reference_to_video"
-        ? "two_pass"
-        : DEFAULT_MINIMAX_H3_SETTINGS.render_pass,
+    render_pass: renderPass,
     audio_mode: normalizeMiniMaxH3AudioMode(source.audio_mode || source.audioMode || DEFAULT_MINIMAX_H3_SETTINGS.audio_mode),
     continuity_mode: normalizeMiniMaxH3ContinuityMode(source.continuity_mode || source.continuityMode || DEFAULT_MINIMAX_H3_SETTINGS.continuity_mode),
     continuity_prompt_from_last_frame: Boolean(source.continuity_prompt_from_last_frame ?? source.continuityPromptFromLastFrame ?? DEFAULT_MINIMAX_H3_SETTINGS.continuity_prompt_from_last_frame),
@@ -536,7 +544,8 @@ export function cloneMiniMaxH3Settings(value = {}) {
     video_vae_name: String(source.video_vae_name || DEFAULT_MINIMAX_H3_SETTINGS.video_vae_name),
     audio_vae_name: String(source.audio_vae_name || DEFAULT_MINIMAX_H3_SETTINGS.audio_vae_name),
     aspect_ratio: String(source.aspect_ratio || DEFAULT_MINIMAX_H3_SETTINGS.aspect_ratio),
-    megapixels: Math.max(0.1, Number(source.megapixels ?? DEFAULT_MINIMAX_H3_SETTINGS.megapixels)),
+    resolution_preset: resolution.resolution_preset,
+    megapixels: resolution.megapixels,
     seed: Number.isFinite(Number(source.seed)) ? Number(source.seed) : DEFAULT_MINIMAX_H3_SETTINGS.seed,
     warmup_frames: Math.max(0, Math.trunc(Number(source.warmup_frames || 0))),
     cooldown_frames: Math.max(0, Math.trunc(Number(source.cooldown_frames || 0))),
@@ -565,8 +574,6 @@ export function cloneMiniMaxH3Settings(value = {}) {
     ref_image_size: ["match", "max"].includes(String(source.ref_image_size || "").trim().toLowerCase())
       ? String(source.ref_image_size).trim().toLowerCase()
       : DEFAULT_MINIMAX_H3_SETTINGS.ref_image_size,
-    two_pass_final_width: Math.max(64, Math.min(16384, Math.trunc(Number(source.two_pass_final_width ?? DEFAULT_MINIMAX_H3_SETTINGS.two_pass_final_width)))),
-    two_pass_final_height: Math.max(64, Math.min(16384, Math.trunc(Number(source.two_pass_final_height ?? DEFAULT_MINIMAX_H3_SETTINGS.two_pass_final_height)))),
     two_pass_defaults_version: DEFAULT_MINIMAX_H3_SETTINGS.two_pass_defaults_version,
     two_pass_latent_upscale_scale: Math.max(1, Math.min(8, Number(hasCurrentTwoPassDefaults
       ? (source.two_pass_latent_upscale_scale ?? DEFAULT_MINIMAX_H3_SETTINGS.two_pass_latent_upscale_scale)
@@ -587,54 +594,16 @@ export function cloneMiniMaxH3Settings(value = {}) {
     two_pass_te_speed_device: String(source.two_pass_te_speed_device || DEFAULT_MINIMAX_H3_SETTINGS.two_pass_te_speed_device),
     two_pass_final_resize_method: String(source.two_pass_final_resize_method || DEFAULT_MINIMAX_H3_SETTINGS.two_pass_final_resize_method),
     two_pass_output_crf: Math.max(0, Math.min(100, Math.trunc(Number(source.two_pass_output_crf ?? DEFAULT_MINIMAX_H3_SETTINGS.two_pass_output_crf)))),
-    advanced_two_pass_vram_preset: ["8gb", "12gb", "16gb", "24gb", "32gb", "custom"].includes(String(advancedSource.advanced_two_pass_vram_preset || "").toLowerCase())
-      ? String(advancedSource.advanced_two_pass_vram_preset).toLowerCase()
-      : DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_vram_preset,
-    advanced_two_pass_tile_size_mode: ["specific_size", "rows_cols"].includes(String(advancedSource.advanced_two_pass_tile_size_mode || "").toLowerCase())
-      ? String(advancedSource.advanced_two_pass_tile_size_mode).toLowerCase()
-      : DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_tile_size_mode,
-    advanced_two_pass_tile_width: Math.max(32, Math.min(16384, Math.trunc(Number(advancedSource.advanced_two_pass_tile_width ?? DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_tile_width)))),
-    advanced_two_pass_tile_height: Math.max(32, Math.min(16384, Math.trunc(Number(advancedSource.advanced_two_pass_tile_height ?? DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_tile_height)))),
-    advanced_two_pass_grid_rows: Math.max(1, Math.min(9, Math.trunc(Number(advancedSource.advanced_two_pass_grid_rows ?? DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_grid_rows)))),
-    advanced_two_pass_grid_cols: Math.max(1, Math.min(9, Math.trunc(Number(advancedSource.advanced_two_pass_grid_cols ?? DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_grid_cols)))),
-    advanced_two_pass_chunk_length: Math.max(17, Math.min(100000, Math.trunc(Number(advancedSource.advanced_two_pass_chunk_length ?? DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_chunk_length)))),
-    advanced_two_pass_temporal_overlap: Math.max(0, Math.min(100000, Math.trunc(Number(advancedSource.advanced_two_pass_temporal_overlap ?? DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_temporal_overlap)))),
-    advanced_two_pass_anchor_strength: Math.max(0, Math.min(1, Number(advancedSource.advanced_two_pass_anchor_strength ?? DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_anchor_strength))),
-    advanced_two_pass_spatial_w_overlap: Math.max(0, Math.min(16384, Math.trunc(Number(advancedSource.advanced_two_pass_spatial_w_overlap ?? DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_spatial_w_overlap)))),
-    advanced_two_pass_spatial_h_overlap: Math.max(0, Math.min(16384, Math.trunc(Number(advancedSource.advanced_two_pass_spatial_h_overlap ?? DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_spatial_h_overlap)))),
-    advanced_two_pass_fade_width: Math.max(0, Math.min(16384, Math.trunc(Number(advancedSource.advanced_two_pass_fade_width ?? DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_fade_width)))),
-    advanced_two_pass_fade_height: Math.max(0, Math.min(16384, Math.trunc(Number(advancedSource.advanced_two_pass_fade_height ?? DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_fade_height)))),
-    advanced_two_pass_min_tile_size: Math.max(0, Math.min(16384, Math.trunc(Number(advancedSource.advanced_two_pass_min_tile_size ?? DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_min_tile_size)))),
-    advanced_two_pass_overlap_mode: ["earlier", "later"].includes(String(advancedSource.advanced_two_pass_overlap_mode || "").toLowerCase())
-      ? String(advancedSource.advanced_two_pass_overlap_mode).toLowerCase()
-      : DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_overlap_mode,
-    advanced_two_pass_overlap_blend: ["linear", "smoothstep", "overwrite", "midpoint"].includes(String(advancedSource.advanced_two_pass_overlap_blend || "").toLowerCase())
-      ? String(advancedSource.advanced_two_pass_overlap_blend).toLowerCase()
-      : DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_overlap_blend,
-    advanced_two_pass_brightness_match: Boolean(advancedSource.advanced_two_pass_brightness_match ?? DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_brightness_match),
-    advanced_two_pass_dynamic_fade: ["off", "narrowing", "widening"].includes(String(advancedSource.advanced_two_pass_dynamic_fade || "").toLowerCase())
-      ? String(advancedSource.advanced_two_pass_dynamic_fade).toLowerCase()
-      : DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_dynamic_fade,
-    advanced_two_pass_dynamic_fade_min: Math.max(0, Math.min(16384, Math.trunc(Number(advancedSource.advanced_two_pass_dynamic_fade_min ?? DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_dynamic_fade_min)))),
-    advanced_two_pass_masked_area_noise: Math.max(0, Math.min(1, Number(advancedSource.advanced_two_pass_masked_area_noise ?? DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_masked_area_noise))),
-    advanced_two_pass_upscaler_device: ["cuda", "cpu"].includes(String(source.advanced_two_pass_upscaler_device || "").toLowerCase())
-      ? String(source.advanced_two_pass_upscaler_device).toLowerCase()
-      : DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_upscaler_device,
-    advanced_two_pass_upscaler_precision: ["fp32", "fp16", "bf16"].includes(String(source.advanced_two_pass_upscaler_precision || "").toLowerCase())
-      ? String(source.advanced_two_pass_upscaler_precision).toLowerCase()
-      : DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_upscaler_precision,
+    advanced_two_pass_vram_preset: normalizeMiniMaxH3VramPreset(source.advanced_two_pass_vram_preset),
     advanced_two_pass_pass1_resolution_preset: ["custom", "1k", "2k", "1440p", "4k"].includes(String(source.advanced_two_pass_pass1_resolution_preset || "").toLowerCase())
       ? String(source.advanced_two_pass_pass1_resolution_preset).toLowerCase()
       : DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_pass1_resolution_preset,
-    advanced_two_pass_pass2_resolution_preset: ["custom", "1k", "2k", "1440p", "4k"].includes(String(source.advanced_two_pass_pass2_resolution_preset || "").toLowerCase())
-      ? String(source.advanced_two_pass_pass2_resolution_preset).toLowerCase()
-      : DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_pass2_resolution_preset,
     advanced_two_pass_defaults_version: DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_defaults_version,
     ...Object.fromEntries([1, 2].flatMap((pass) => {
       const prefix = `advanced_two_pass_pass${pass}_`;
       const defaults = DEFAULT_MINIMAX_H3_SETTINGS;
       return [
-        [`${prefix}megapixels`, Math.max(0.1, Math.min(16, Number(source[`${prefix}megapixels`] ?? defaults[`${prefix}megapixels`])))],
+        ...(pass === 1 ? [[`${prefix}megapixels`, Math.max(0.1, Math.min(16, Number(source[`${prefix}megapixels`] ?? defaults[`${prefix}megapixels`])))]] : []),
         [`${prefix}steps`, Math.max(1, Math.min(1000, Math.trunc(Number(source[`${prefix}steps`] ?? defaults[`${prefix}steps`]) || defaults[`${prefix}steps`])))],
         [`${prefix}denoise`, Math.max(0, Math.min(1, Number(source[`${prefix}denoise`] ?? defaults[`${prefix}denoise`])))],
         [`${prefix}sampler`, String(source[`${prefix}sampler`] || defaults[`${prefix}sampler`])],

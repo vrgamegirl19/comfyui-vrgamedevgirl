@@ -19,6 +19,9 @@ import json
 import os
 from typing import Any, Dict, List, Optional, Tuple
 
+from .resolution import RESOLUTION_PRESETS, migrate_resolution, output_frame_size
+from .tile_plan import VRAM_PRESETS, normalize_vram_preset
+
 
 _DEFAULTS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "h3_settings_defaults.json")
 
@@ -27,45 +30,32 @@ SETTINGS_ENUMS: Dict[str, Tuple[str, ...]] = {
     "render_pass": ("single", "two_pass", "three_pass"),
     "audio_mode": ("input_audio", "built_in_audio"),
     "ref_image_size": ("max", "match"),
-    "advanced_two_pass_vram_preset": ("8gb", "12gb", "16gb", "24gb", "32gb", "custom"),
-    "advanced_two_pass_tile_size_mode": ("specific_size", "rows_cols"),
-    "advanced_two_pass_overlap_mode": ("earlier", "later"),
-    "advanced_two_pass_overlap_blend": ("linear", "smoothstep", "overwrite", "midpoint"),
-    "advanced_two_pass_dynamic_fade": ("off", "narrowing", "widening"),
-    "advanced_two_pass_upscaler_device": ("cuda", "cpu"),
-    "advanced_two_pass_upscaler_precision": ("bf16", "fp16", "fp32"),
-    "advanced_two_pass_pass1_resolution_preset": ("custom", "1k", "2k", "1440p", "4k"),
-    "advanced_two_pass_pass2_resolution_preset": ("custom", "1k", "2k", "1440p", "4k"),
+    "resolution_preset": RESOLUTION_PRESETS,
+    "advanced_two_pass_vram_preset": tuple(VRAM_PRESETS),
+    "advanced_two_pass_pass1_resolution_preset": RESOLUTION_PRESETS,
 }
 
 # (min, max) inclusive. Matches the clamps in cloneMiniMaxH3Settings.
-_EXPLICIT_RANGES: Dict[str, Tuple[float, float]] = {
-    "two_pass_final_width": (64, 16384),
-    "two_pass_final_height": (64, 16384),
-    "advanced_two_pass_grid_rows": (1, 9),
-    "advanced_two_pass_grid_cols": (1, 9),
-    "advanced_two_pass_chunk_length": (17, 100000),
-    "advanced_two_pass_temporal_overlap": (0, 100000),
-    "advanced_two_pass_anchor_strength": (0, 1),
-    "advanced_two_pass_masked_area_noise": (0, 1),
-    "advanced_two_pass_tile_width": (32, 16384),
-    "advanced_two_pass_tile_height": (32, 16384),
-    "advanced_two_pass_spatial_w_overlap": (0, 16384),
-    "advanced_two_pass_spatial_h_overlap": (0, 16384),
-    "advanced_two_pass_fade_width": (0, 16384),
-    "advanced_two_pass_fade_height": (0, 16384),
-    "advanced_two_pass_min_tile_size": (0, 16384),
-    "advanced_two_pass_dynamic_fade_min": (0, 16384),
-}
+_EXPLICIT_RANGES: Dict[str, Tuple[float, float]] = {}
 
-# The MMH3 graph rejects these unless they are multiples of 32 (or 17 for frames).
-_MULTIPLE_OF_32 = (
-    "advanced_two_pass_tile_width", "advanced_two_pass_tile_height",
-    "advanced_two_pass_spatial_w_overlap", "advanced_two_pass_spatial_h_overlap",
-    "advanced_two_pass_fade_width", "advanced_two_pass_fade_height",
-    "advanced_two_pass_min_tile_size", "advanced_two_pass_dynamic_fade_min",
-)
-_MULTIPLE_OF_17 = ("advanced_two_pass_chunk_length", "advanced_two_pass_temporal_overlap")
+# Settings that no longer exist. One output resolution (resolution_preset / megapixels) now drives every
+# pass type, and 2 Pass Advanced derives its tiles, chunks, fades and upscaler device from that resolution
+# and the VRAM preset (minimax/tile_plan.py). Saved values are ignored; patches get a pointer to the new key.
+RETIRED_SETTINGS: Dict[str, str] = {
+    "two_pass_final_width": "use resolution_preset / megapixels (one output resolution for every pass type)",
+    "two_pass_final_height": "use resolution_preset / megapixels (one output resolution for every pass type)",
+    "advanced_two_pass_pass2_megapixels": "use resolution_preset / megapixels (the Pass 2 size is the output resolution)",
+    "advanced_two_pass_pass2_resolution_preset": "use resolution_preset (the Pass 2 size is the output resolution)",
+    **{
+        f"advanced_two_pass_{name}": "derived from the output resolution and advanced_two_pass_vram_preset"
+        for name in (
+            "tile_size_mode", "tile_width", "tile_height", "grid_rows", "grid_cols", "chunk_length",
+            "temporal_overlap", "anchor_strength", "spatial_w_overlap", "spatial_h_overlap", "fade_width",
+            "fade_height", "min_tile_size", "overlap_mode", "overlap_blend", "brightness_match",
+            "dynamic_fade", "dynamic_fade_min", "masked_area_noise", "upscaler_device", "upscaler_precision",
+        )
+    },
+}
 
 # Saved by the UI but absent from the defaults: per-pass acceleration toggles (they fall back to
 # the matching two_pass_use_* value when unset) and the per-pass profile cache used when switching
@@ -187,10 +177,6 @@ def _check_value(key: str, value: Any, default: Any, lenient: bool = False) -> A
     if bounds is not None and isinstance(coerced, (int, float)) and not isinstance(coerced, bool):
         if not bounds[0] <= coerced <= bounds[1]:
             raise ValueError(f"must be between {bounds[0]:g} and {bounds[1]:g}")
-    if key in _MULTIPLE_OF_32 and coerced % 32:
-        raise ValueError("must be a multiple of 32")
-    if key in _MULTIPLE_OF_17 and coerced % 17:
-        raise ValueError("must be a multiple of 17 frames")
     if key == "loras":
         _check_loras(coerced)
     return coerced
@@ -212,6 +198,9 @@ def validate_minimax_h3_patch(patch: Dict[str, Any]) -> Dict[str, str]:
     defaults = {**minimax_h3_defaults(), **copy.deepcopy(_OPTIONAL_SETTINGS)}
     problems: Dict[str, str] = {}
     for key, value in patch.items():
+        if key in RETIRED_SETTINGS:
+            problems[key] = f"retired MiniMax H3 setting: {RETIRED_SETTINGS[key]}"
+            continue
         if key not in defaults:
             problems[key] = "unknown MiniMax H3 setting"
             continue
@@ -231,9 +220,14 @@ def normalize_minimax_h3_settings(raw: Optional[Dict[str, Any]]) -> Dict[str, An
         if key not in raw:
             continue
         try:
-            settings[key] = _check_value(key, raw[key], default, lenient=True)
+            value = raw[key]
+            if key == "advanced_two_pass_vram_preset":
+                value = normalize_vram_preset(value)  # retired 32gb / custom saves map to 24gb
+            settings[key] = _check_value(key, value, default, lenient=True)
         except ValueError:
             continue
+    # One output resolution for every pass type; older saves took it from the pass type they rendered with.
+    settings["resolution_preset"], settings["megapixels"] = migrate_resolution(raw, settings["render_pass"])
     for key, default in _OPTIONAL_SETTINGS.items():
         if key in raw:
             try:
@@ -359,8 +353,7 @@ def build_minimax_render_payload(settings: Dict[str, Any], overrides: Optional[D
             payload[f"pass{number}_use_{key}"] = s.get(f"pass{number}_use_{key}", s.get(f"two_pass_use_{key}"))
 
     if two_pass:
-        payload["final_width"] = s["two_pass_final_width"]
-        payload["final_height"] = s["two_pass_final_height"]
+        payload["final_width"], payload["final_height"] = output_frame_size(s)
         payload["latent_upscale_scale"] = s["two_pass_latent_upscale_scale"]
     if multi:
         payload["latent_upscaler_name"] = s["two_pass_latent_upscaler_name"]
@@ -379,17 +372,11 @@ def build_minimax_render_payload(settings: Dict[str, Any], overrides: Optional[D
         for field in ("megapixels", "steps", "denoise", "sampler", "scheduler", "seed", "te_speed"):
             payload[f"three_pass_pass{number}_{field}"] = s[f"three_pass_pass{number}_{field}"]
 
-    advanced_keys = (
-        "vram_preset", "tile_size_mode", "tile_width", "tile_height", "grid_rows", "grid_cols",
-        "chunk_length", "temporal_overlap", "anchor_strength", "spatial_w_overlap", "spatial_h_overlap",
-        "fade_width", "fade_height", "min_tile_size", "overlap_mode", "overlap_blend",
-        "brightness_match", "dynamic_fade", "dynamic_fade_min", "masked_area_noise",
-        "upscaler_device", "upscaler_precision",
-    )
+    # 2 Pass Advanced: the Pass 2 size is the shared output resolution. Tiles, chunks, fades and the
+    # upscaler device are planned from it and the VRAM preset when the graph is built.
     payload["advanced_pass1_megapixels"] = s["advanced_two_pass_pass1_megapixels"]
-    payload["advanced_pass2_megapixels"] = s["advanced_two_pass_pass2_megapixels"]
-    for key in advanced_keys:
-        payload[f"advanced_{key}"] = s[f"advanced_two_pass_{key}"]
+    payload["advanced_pass2_megapixels"] = s["megapixels"]
+    payload["advanced_vram_preset"] = normalize_vram_preset(s["advanced_two_pass_vram_preset"])
 
     if overrides:
         payload.update(overrides)
@@ -447,10 +434,6 @@ def minimax_h3_settings_schema() -> Dict[str, Any]:
         bounds = _numeric_range(key)
         if bounds is not None and kind in ("integer", "number"):
             entry["minimum"], entry["maximum"] = bounds
-        if key in _MULTIPLE_OF_32:
-            entry["multipleOf"] = 32
-        elif key in _MULTIPLE_OF_17:
-            entry["multipleOf"] = 17
         settings[key] = entry
     for key, default in _OPTIONAL_SETTINGS.items():
         settings[key] = {
@@ -458,4 +441,8 @@ def minimax_h3_settings_schema() -> Dict[str, Any]:
             "default": default,
             "optional": True,
         }
-    return {"settings": settings, "render_passes": list(SETTINGS_ENUMS["render_pass"])}
+    return {
+        "settings": settings,
+        "render_passes": list(SETTINGS_ENUMS["render_pass"]),
+        "retired_settings": dict(RETIRED_SETTINGS),
+    }

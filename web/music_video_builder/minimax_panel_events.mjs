@@ -4,7 +4,6 @@ import { miniMaxNextCueStartTime } from "./lyric_cues.mjs";
 import {
   cloneMiniMaxH3Settings,
   DEFAULT_MINIMAX_H3_SETTINGS,
-  miniMaxH3TilePlan,
   miniMaxInstalledPass2Lora,
   normalizeMiniMaxH3ContinuityMode,
   normalizeMiniMaxH3SceneImageUse,
@@ -20,25 +19,18 @@ export function wireMiniMaxPanel({
   activeSegment, advancedTwoPassControls, allEditableSegments, autoSaveSessionQuiet,
   clearMiniMaxImageReferenceStartFrameOnModeSwitch, ensureMiniMaxSpeakerAssignments,
   isMiniMaxSingerAssignmentMode, loadDirtyLatentBadges, miniMaxAccelerationControls,
-  miniMaxAddSpeakerCueButton, miniMaxAdvancedAnchorStrength, miniMaxAdvancedChunkLength,
-  miniMaxAdvancedFadeHeight, miniMaxAdvancedFadeWidth, miniMaxAdvancedGridCols, miniMaxAdvancedGridRows,
-  miniMaxAdvancedLatentUpscalerPicker, miniMaxAdvancedMinTileSize, miniMaxAdvancedOverlapBlend, miniMaxAdvancedBrightnessMatch, miniMaxAdvancedDynamicFade, miniMaxAdvancedDynamicFadeMin, miniMaxAdvancedMaskedAreaNoise,
-  miniMaxAdvancedOverlapMode, miniMaxAdvancedSpatialHOverlap, miniMaxAdvancedSpatialWOverlap,
-  miniMaxAdvancedTemporalOverlap, miniMaxAdvancedTileHeight, miniMaxAdvancedTileSizeMode,
-  miniMaxAdvancedTileWidth, miniMaxAdvancedUpscalerDevice, miniMaxAdvancedUpscalerPrecision,
-  miniMaxAdvancedVramPreset, miniMaxAspectRatio, miniMaxAudioMode, miniMaxAudioVaePicker, miniMaxClipPicker,
+  miniMaxAddSpeakerCueButton, miniMaxAdvancedLatentUpscalerPicker, miniMaxAdvancedVramPreset, miniMaxAspectRatio, miniMaxAudioMode, miniMaxAudioVaePicker, miniMaxClipPicker,
   miniMaxContinuityMode, miniMaxContinuityPromptFromLastFrame, miniMaxCooldownFrames, miniMaxDenoise,
   miniMaxDiffusionModelPicker, miniMaxEasyCacheBypass, miniMaxEasyCacheEndPercent,
   miniMaxEasyCacheReuseThreshold, miniMaxEasyCacheStartPercent, miniMaxEasyCacheVerbose,
   miniMaxFp16Accumulation, miniMaxH3ContinuityModeForSegment, miniMaxH3ModeForSegment,
   miniMaxH3SceneImageUseForSegment, miniMaxH3SettingsForSegment, miniMaxLatentContextFrames,
   miniMaxLocationTransitionCustom, miniMaxLocationTransitionPreset, miniMaxLoraCount, miniMaxLoraSlots,
-  miniMaxMappedSpeakersForSegment, miniMaxMegapixels, miniMaxMemoryEfficientSageAttention, miniMaxModeButtons,
+  miniMaxMappedSpeakersForSegment, miniMaxMegapixels, miniMaxMemoryEfficientSageAttention, miniMaxResolutionPreset, miniMaxModeButtons,
   miniMaxPass2Prompt, miniMaxPassButtons, miniMaxPrompt, miniMaxSageAttention, miniMaxSamplerName,
   miniMaxSceneImageUse, miniMaxScheduler, miniMaxSeed, miniMaxStartFrameCharacterInfluence, miniMaxSteps,
   miniMaxThreePassLoraPicker, miniMaxThreePassLoraStrength, miniMaxThreePassRefImageSize,
-  miniMaxTurboLoraPicker, miniMaxTurboLoraStrength, miniMaxTwoPassFinalHeight, miniMaxTwoPassFinalWidth,
-  miniMaxTwoPassLatentScale, miniMaxTwoPassLatentUpscalerPicker, miniMaxTwoPassLoraPicker,
+  miniMaxTurboLoraPicker, miniMaxTurboLoraStrength, miniMaxTwoPassLatentScale, miniMaxTwoPassLatentUpscalerPicker, miniMaxTwoPassLoraPicker,
   miniMaxTwoPassLoraPreset, miniMaxTwoPassLoraPresetButtons, miniMaxTwoPassLoraStatus,
   miniMaxTwoPassLoraStrength, miniMaxTwoPassOutputCrf, miniMaxTwoPassRefImageSize, miniMaxTwoPassResizeMethod,
   miniMaxTwoPassTeCacheDepth, miniMaxTwoPassTeDevice, miniMaxTwoPassTeEnd, miniMaxTwoPassTeMcs,
@@ -101,6 +93,7 @@ export function wireMiniMaxPanel({
   }
   for (const control of [
     miniMaxAspectRatio,
+    miniMaxResolutionPreset,
     miniMaxAudioMode,
     miniMaxContinuityMode,
     miniMaxContinuityPromptFromLastFrame.input,
@@ -126,32 +119,9 @@ export function wireMiniMaxPanel({
     miniMaxTurboLoraStrength,
     miniMaxTwoPassLoraStrength,
     miniMaxThreePassLoraStrength,
-    miniMaxTwoPassFinalWidth,
-    miniMaxTwoPassFinalHeight,
     miniMaxTwoPassRefImageSize,
     miniMaxThreePassRefImageSize,
     miniMaxAdvancedVramPreset,
-    miniMaxAdvancedTileSizeMode,
-    miniMaxAdvancedTileWidth,
-    miniMaxAdvancedTileHeight,
-    miniMaxAdvancedGridRows,
-    miniMaxAdvancedGridCols,
-    miniMaxAdvancedChunkLength,
-    miniMaxAdvancedTemporalOverlap,
-    miniMaxAdvancedAnchorStrength,
-    miniMaxAdvancedSpatialWOverlap,
-    miniMaxAdvancedSpatialHOverlap,
-    miniMaxAdvancedFadeWidth,
-    miniMaxAdvancedFadeHeight,
-    miniMaxAdvancedMinTileSize,
-    miniMaxAdvancedOverlapMode,
-    miniMaxAdvancedOverlapBlend,
-    miniMaxAdvancedBrightnessMatch.input,
-    miniMaxAdvancedDynamicFade,
-    miniMaxAdvancedDynamicFadeMin,
-    miniMaxAdvancedMaskedAreaNoise,
-    miniMaxAdvancedUpscalerDevice,
-    miniMaxAdvancedUpscalerPrecision,
     miniMaxTwoPassLatentScale,
     ...miniMaxAccelerationControls.flatMap(({ single, pass1, pass2 }) => [single.input, pass1.input, pass2.input]),
     miniMaxTwoPassUseFastVaeDecode.input,
@@ -171,8 +141,7 @@ export function wireMiniMaxPanel({
       pass.seed,
     ]),
     ...advancedTwoPassControls.flatMap((pass) => [
-      pass.resolutionPreset,
-      pass.megapixels,
+      ...(pass.megapixels ? [pass.resolutionPreset, pass.megapixels] : []),
       pass.steps,
       pass.denoise,
       pass.sampler,
@@ -182,71 +151,6 @@ export function wireMiniMaxPanel({
   ]) {
     control.addEventListener("input", saveMiniMaxH3SettingsFromPanel);
     control.addEventListener("change", persistMiniMaxSettings);
-  }
-  // Applies the selected VRAM preset. The grid is derived from the current Pass 2
-  // size so the same card gets equal tiles of a similar area at 2K or 4K.
-  const applyAdvancedVramPreset = () => {
-    const pass2 = advancedTwoPassControls[1];
-    const plan = miniMaxH3TilePlan(miniMaxAdvancedVramPreset.value, pass2.megapixels.value, miniMaxAspectRatio.value);
-    if (!plan) return false;
-    miniMaxAdvancedTileSizeMode.value = "rows_cols";
-    miniMaxAdvancedGridRows.value = String(plan.rows);
-    miniMaxAdvancedGridCols.value = String(plan.cols);
-    miniMaxAdvancedTileWidth.value = String(plan.tileSide);
-    miniMaxAdvancedTileHeight.value = String(plan.tileSide);
-    miniMaxAdvancedChunkLength.value = String(plan.chunk);
-    miniMaxAdvancedTemporalOverlap.value = "17";
-    miniMaxAdvancedSpatialWOverlap.value = String(plan.overlap);
-    miniMaxAdvancedSpatialHOverlap.value = String(plan.overlap);
-    miniMaxAdvancedBrightnessMatch.input.checked = true;
-    miniMaxAdvancedFadeWidth.value = "64";
-    miniMaxAdvancedFadeHeight.value = "64";
-    miniMaxAdvancedMinTileSize.value = "256";
-    miniMaxAdvancedAnchorStrength.value = "0.999";
-    miniMaxAdvancedOverlapMode.value = "earlier";
-    miniMaxAdvancedOverlapBlend.value = "smoothstep";
-    return true;
-  };
-  miniMaxAdvancedVramPreset.addEventListener("change", () => {
-    if (applyAdvancedVramPreset()) persistMiniMaxSettings();
-  });
-  // Keep the grid in step when Pass 2 size or aspect ratio changes while a preset is active.
-  for (const control of [advancedTwoPassControls[1].resolutionPreset, advancedTwoPassControls[1].megapixels, miniMaxAspectRatio]) {
-    control.addEventListener("change", () => {
-      if (applyAdvancedVramPreset()) persistMiniMaxSettings();
-    });
-  }
-  for (const control of [
-    miniMaxAdvancedTileSizeMode,
-    miniMaxAdvancedTileWidth,
-    miniMaxAdvancedTileHeight,
-    miniMaxAdvancedGridRows,
-    miniMaxAdvancedGridCols,
-    miniMaxAdvancedChunkLength,
-    miniMaxAdvancedTemporalOverlap,
-    miniMaxAdvancedAnchorStrength,
-    miniMaxAdvancedSpatialWOverlap,
-    miniMaxAdvancedSpatialHOverlap,
-    miniMaxAdvancedFadeWidth,
-    miniMaxAdvancedFadeHeight,
-    miniMaxAdvancedMinTileSize,
-    miniMaxAdvancedOverlapMode,
-    miniMaxAdvancedOverlapBlend,
-    miniMaxAdvancedBrightnessMatch.input,
-    miniMaxAdvancedDynamicFade,
-    miniMaxAdvancedDynamicFadeMin,
-    miniMaxAdvancedMaskedAreaNoise,
-    miniMaxAdvancedUpscalerDevice,
-    miniMaxAdvancedUpscalerPrecision,
-  ]) {
-    const markCustom = () => {
-      if (miniMaxAdvancedVramPreset.value === "custom") return;
-      miniMaxAdvancedVramPreset.value = "custom";
-      saveMiniMaxH3SettingsFromPanel();
-      autoSaveSessionQuiet("MiniMax H3 custom MMH3 settings").catch(() => null);
-    };
-    control.addEventListener("input", markCustom);
-    control.addEventListener("change", markCustom);
   }
   miniMaxUseLoras.input.addEventListener("change", () => {
     const segment = videoSettingsSegment();

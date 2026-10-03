@@ -1,5 +1,6 @@
 import ast
 import copy
+import importlib.util
 import json
 import math
 import unittest
@@ -9,6 +10,17 @@ from builder_source import python_function_source, read_builder_source, read_run
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _load_pure_module(name):
+    spec = importlib.util.spec_from_file_location(f"vrgdg_{name}", ROOT / "minimax" / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+TILE_PLAN = _load_pure_module("tile_plan")
+RESOLUTION = _load_pure_module("resolution")
 BUILDER_SOURCE = read_builder_source()
 RUNNER_SOURCE = read_runner_source()
 
@@ -36,43 +48,62 @@ class BuilderMiniMaxAdvancedTwoPassTests(unittest.TestCase):
             BUILDER_SOURCE,
         )
 
-    def test_vram_presets_match_mmh3_starting_points(self):
-        # Presets are tile-area targets (megapixels) plus chunk length; the grid
-        # is derived from the Pass 2 size. Only 32 GB has been measured.
+    def test_vram_presets_cover_8_to_24_gb_only(self):
+        # Presets are tile-area targets (megapixels) plus chunk length; the plan node derives the grid from
+        # the output resolution. 2 Pass Advanced is for cards up to 24 GB.
         for text in (
-            '"8gb": { tileMegapixels: 0.2, chunk: 51, overlap: 128, tested: false }',
-            '"12gb": { tileMegapixels: 0.3, chunk: 85, overlap: 128, tested: false }',
-            '"16gb": { tileMegapixels: 0.43, chunk: 119, overlap: 128, tested: false }',
-            '"24gb": { tileMegapixels: 0.65, chunk: 153, overlap: 160, tested: false }',
-            '"32gb": { tileMegapixels: 1.6, chunk: 170, overlap: 192, tested: true }',
+            '"8gb": { tileMegapixels: 0.2, chunk: 51, overlap: 128 }',
+            '"12gb": { tileMegapixels: 0.3, chunk: 85, overlap: 128 }',
+            '"16gb": { tileMegapixels: 0.43, chunk: 119, overlap: 128 }',
+            '"24gb": { tileMegapixels: 0.65, chunk: 153, overlap: 160 }',
         ):
             self.assertIn(text, BUILDER_SOURCE)
+        presets_block = BUILDER_SOURCE[BUILDER_SOURCE.index("const MINIMAX_H3_VRAM_PRESETS = {"):]
+        presets_block = presets_block[:presets_block.index("};")]
+        self.assertNotIn("32gb", presets_block)
+        # The JS preview and the Python plan must use the same table.
+        for key, preset in TILE_PLAN.VRAM_PRESETS.items():
+            self.assertIn(
+                f'"{key}": {{ tileMegapixels: {preset["tile_megapixels"]}, chunk: {preset["chunk"]}, overlap: {preset["overlap"]} }}',
+                BUILDER_SOURCE,
+            )
         self.assertIn('advanced_two_pass_pass2_steps: 1', BUILDER_SOURCE)
         self.assertIn('advanced_two_pass_pass2_sampler: "sa_solver"', BUILDER_SOURCE)
         self.assertIn('advanced_two_pass_pass2_scheduler: "simple"', BUILDER_SOURCE)
 
-    def test_advanced_defaults_avoid_hard_tile_and_short_chunk_boundaries(self):
-        # fade_width/fade_height must stay below spatial_w/h_overlap (128) so a
-        # frozen seam anchor survives; fade == overlap erases it and shows up
-        # as smudged tile-grid lines.
-        self.assertIn('advanced_two_pass_defaults_version: 4', BUILDER_SOURCE)
-        self.assertIn('advanced_two_pass_chunk_length: 272', BUILDER_SOURCE)
-        self.assertIn('advanced_two_pass_fade_width: 64', BUILDER_SOURCE)
-        self.assertIn('advanced_two_pass_fade_height: 64', BUILDER_SOURCE)
-        self.assertIn('advanced_two_pass_overlap_mode: "earlier"', BUILDER_SOURCE)
-        self.assertIn('advanced_two_pass_overlap_blend: "smoothstep"', BUILDER_SOURCE)
-        self.assertIn('const shouldMigrateLegacyAdvancedDefaults', BUILDER_SOURCE)
-        self.assertIn('const legacyAdvancedDefaultsV3', BUILDER_SOURCE)
-        self.assertIn('miniMaxAdvancedFadeWidth.value = "64"', BUILDER_SOURCE)
-        self.assertIn('miniMaxAdvancedFadeHeight.value = "64"', BUILDER_SOURCE)
-        self.assertIn('miniMaxAdvancedOverlapMode.value = "earlier"', BUILDER_SOURCE)
-        self.assertIn('miniMaxAdvancedOverlapBlend.value = "smoothstep"', BUILDER_SOURCE)
+    def test_tiling_settings_are_derived_so_no_tile_defaults_remain(self):
+        # Tiles, chunks, fades and the upscaler device come from the output resolution at run time.
+        defaults = BUILDER_SOURCE[BUILDER_SOURCE.index("const DEFAULT_MINIMAX_H3_SETTINGS = {"):]
+        defaults = defaults[:defaults.index("};")]
+        for name in (
+            "tile_size_mode", "tile_width", "grid_rows", "chunk_length", "spatial_w_overlap", "fade_width",
+            "min_tile_size", "overlap_mode", "overlap_blend", "brightness_match", "dynamic_fade",
+            "masked_area_noise", "upscaler_device",
+        ):
+            self.assertNotIn(f"advanced_two_pass_{name}", defaults, name)
+        self.assertNotIn("two_pass_final_width", defaults)
+        self.assertNotIn("advanced_two_pass_pass2_megapixels", defaults)
+        # The panel and the render payload no longer read or send them either.
+        for name in ("advanced_two_pass_tile_width", "advanced_two_pass_grid_rows", "advanced_tile_width", "advanced_grid_rows"):
+            self.assertNotIn(name, BUILDER_SOURCE, name)
+        # The fade must stay below the overlap so a frozen seam anchor survives (fade == overlap smudges the grid).
+        hidden = TILE_PLAN.HIDDEN_ADVANCED_SETTINGS
+        for preset in TILE_PLAN.VRAM_PRESETS:
+            plan = TILE_PLAN.plan_spatial_tiles(1920, 1088, preset)
+            if plan["grid_cols"] > 1:
+                self.assertLess(plan["fade_width"], plan["solved_overlap_w"], preset)
+        self.assertEqual(hidden["tile_size_mode"], "rows_cols")
 
-    def test_resolutions_are_visible_and_expert_controls_are_collapsed(self):
+    def test_one_resolution_picker_and_a_vram_preset_are_all_that_is_exposed(self):
         self.assertIn('"Pass 1 resolution"', BUILDER_SOURCE)
-        self.assertIn('"Pass 2 resolution"', BUILDER_SOURCE)
+        self.assertNotIn('"Pass 2 resolution"', BUILDER_SOURCE)
+        self.assertNotIn('makeSettingsSection("Hidden MMH3 Advanced Settings"', BUILDER_SOURCE)
+        self.assertIn('makeField("Output resolution", miniMaxResolutionPreset', BUILDER_SOURCE)
+        self.assertIn('makeField("VRAM preset", miniMaxAdvancedVramPreset', BUILDER_SOURCE)
         self.assertIn('makeSettingsSection("Pass Sampling (Advanced)"', BUILDER_SOURCE)
-        self.assertIn('makeSettingsSection("Hidden MMH3 Advanced Settings"', BUILDER_SOURCE)
+        # Every pass type shows the shared resolution: nothing hides the megapixel field per mode any more.
+        self.assertNotIn("miniMaxMegapixelsField.style.display", BUILDER_SOURCE)
+        self.assertIn("outputFrame", BUILDER_SOURCE)
 
     def test_hidden_prompt_uses_independent_resolutions_and_mmh3_nodes(self):
         source = python_function_source(
@@ -138,19 +169,18 @@ class BuilderMiniMaxAdvancedTwoPassTests(unittest.TestCase):
             "copy": copy,
             "inspect": __import__("inspect"),
             "math": math,
-            "_MINIMAX_H3_ASPECT_RATIOS": {"16:9 (Widescreen)": (16, 9)},
-            "_MMH3_DYNAMIC_FADE_MODES": {"off", "narrowing", "widening"},
-            "_MMH3_SPATIAL_SPLIT_NEW_DEFAULTS": {
-                "masked_area_noise": 0.0,
-                "brightness_match": False,
-                "dynamic_fade": "off",
-                "dynamic_fade_min": 32,
-            },
+            "_MINIMAX_H3_ASPECT_RATIOS": {"16:9 (Widescreen)": (16, 9), "9:16 (Portrait Widescreen)": (9, 16)},
+            "HIDDEN_ADVANCED_SETTINGS": TILE_PLAN.HIDDEN_ADVANCED_SETTINGS,
+            "PLAN_OUTPUT_NAMES": TILE_PLAN.PLAN_OUTPUT_NAMES,
+            "normalize_vram_preset": TILE_PLAN.normalize_vram_preset,
+            "plan_spatial_tiles": TILE_PLAN.plan_spatial_tiles,
+            "frame_size": RESOLUTION.frame_size,
             "_get_comfy_node_mappings": lambda: {
                 "MMH3UltimateUpscale": object(),
                 "VRGDG_MiniMaxH3UltimateUpscaleParams": object(),
                 "MMH3TemporalSplitParams": object(),
                 "MMH3SpatialSplitParams": spatial_node_class,
+                "VRGDG_MiniMaxH3SpatialTilePlan": object(),
             },
             "_patch_minimax_h3_latent_continuation": lambda _prompt, _payload: {"enabled": False},
             "_patch_minimax_h3_save_latent": lambda _prompt, _payload, _timing=None: {"enabled": False},
@@ -188,16 +218,27 @@ class BuilderMiniMaxAdvancedTwoPassTests(unittest.TestCase):
         self.assertEqual(prompt["9306"]["inputs"]["model"], prompt["192"]["inputs"]["model"])
         self.assertEqual(prompt["142"]["inputs"]["images"], ["122", 0])
         self.assertEqual(prompt["9308"]["inputs"]["images"], ["9307", 0])
-        self.assertEqual(prompt["9304"]["inputs"]["chunk_length"], 85)
-        self.assertEqual(prompt["9305"]["inputs"]["tile_size_mode"], "rows_cols")
-        self.assertEqual(prompt["9305"]["inputs"]["grid_rows"], 2)
-        self.assertEqual(prompt["9305"]["inputs"]["grid_cols"], 2)
-        self.assertEqual(prompt["9305"]["inputs"]["fade_width"], 64)
-        self.assertEqual(prompt["9305"]["inputs"]["overlap_mode"], "later")
+        plan_outputs = TILE_PLAN.PLAN_OUTPUT_NAMES
+        self.assertEqual(prompt["9309"]["class_type"], "VRGDG_MiniMaxH3SpatialTilePlan")
+        self.assertEqual(prompt["9309"]["inputs"], {"width": ["9301", 0], "height": ["9301", 1], "vram_preset": "16gb"})
+        self.assertEqual(prompt["9304"]["inputs"]["chunk_length"], ["9309", plan_outputs.index("chunk_length")])
+        self.assertEqual(prompt["9304"]["inputs"]["temporal_overlap"], ["9309", plan_outputs.index("temporal_overlap")])
+        self.assertEqual(prompt["9304"]["inputs"]["anchor_strength"], 0.999)
+        spatial = prompt["9305"]["inputs"]
+        self.assertEqual(spatial["tile_size_mode"], "rows_cols")
+        self.assertEqual(spatial["upscale_width"], ["9301", 0])
+        for name in ("grid_rows", "grid_cols", "spatial_w_overlap", "spatial_h_overlap", "fade_width", "fade_height",
+                     "min_tile_size", "tile_width", "tile_height"):
+            self.assertEqual(spatial[name], ["9309", plan_outputs.index(name)], name)
+        self.assertEqual((spatial["overlap_mode"], spatial["overlap_blend"]), ("later", "linear"))
+        self.assertEqual(prompt["9303"]["inputs"]["device"], "cuda")
+        self.assertEqual(prompt["9303"]["inputs"]["precision"], "bf16")
         for name in self._NEW_SPATIAL_INPUTS:
-            self.assertNotIn(name, prompt["9305"]["inputs"])
+            self.assertNotIn(name, spatial)
         self.assertEqual(result["advanced_two_pass"]["pass2_width"], 1920)
         self.assertEqual(result["advanced_two_pass"]["pass2_height"], 1088)
+        self.assertEqual(result["advanced_two_pass"]["vram_preset"], "16gb")
+        self.assertEqual(result["advanced_two_pass"]["grid_rows"], 2)
 
         result = namespace["_build_minimax_h3_advanced_2pass_api_prompt"]({
             "advanced_pass1_megapixels": 0.4,

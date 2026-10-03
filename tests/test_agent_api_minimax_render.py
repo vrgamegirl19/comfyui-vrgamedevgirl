@@ -108,11 +108,13 @@ class MiniMaxRenderPayloadTests(unittest.TestCase):
         captured = self._render({"mode": "minimax_h3"})
         payload = captured["payload"]
         self.assertEqual(captured["mode"], "minimax_h3_advanced_2pass")
-        self.assertEqual(payload["advanced_grid_rows"], 2)
-        self.assertEqual(payload["advanced_grid_cols"], 3)
-        self.assertEqual(payload["advanced_spatial_w_overlap"], 192)
-        self.assertEqual(payload["advanced_dynamic_fade"], "widening")
-        self.assertEqual(payload["advanced_pass2_megapixels"], 7.97)
+        # The fixture is a project saved before the shared resolution: its Pass 2 preset (4k) becomes the
+        # output resolution, and the old tile settings are ignored (the graph plans tiles from the resolution).
+        self.assertEqual(payload["advanced_pass2_megapixels"], 7.9688)
+        self.assertEqual(payload["megapixels"], 7.9688)
+        self.assertEqual(payload["advanced_vram_preset"], "16gb")
+        for key in ("advanced_grid_rows", "advanced_grid_cols", "advanced_spatial_w_overlap", "advanced_dynamic_fade"):
+            self.assertNotIn(key, payload)
         self.assertEqual(payload["pass2_prompt"], "sharp detail")
 
     def test_reference_images_come_from_the_saved_reference_builder(self):
