@@ -51,6 +51,7 @@ from .orchestrator import (
     get_dirty_latents,
     get_minimax_project_index,
     get_pipeline_plan,
+    list_scene_takes,
     get_project_latents_status,
     get_scene_latent_status,
     list_luts_service,
@@ -1326,6 +1327,12 @@ def register_agent_api_routes(server_instance=None):
         payload = await request.json() if request.can_read_body else {}
         source_path = payload.get("source_path")
         res = await asyncio.to_thread(recover_scene_video, project_id, scene_id, source_path=source_path)
+        return api_success(res)
+
+    @server_instance.routes.get(f"{_API_V1_PREFIX}/projects/{{project_id}}/scenes/{{scene_id}}/video/takes")
+    @_api_endpoint
+    async def api_scene_video_takes(request: web.Request):
+        res = await asyncio.to_thread(list_scene_takes, request.match_info["project_id"], request.match_info["scene_id"])
         return api_success(res)
 
     @server_instance.routes.post(f"{_API_V1_PREFIX}/projects/{{project_id}}/scenes/{{scene_id}}/video/trim")

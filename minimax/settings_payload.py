@@ -281,10 +281,10 @@ def build_minimax_render_payload(settings: Dict[str, Any], overrides: Optional[D
     two_pass = render_pass == "two_pass"
     advanced = render_pass == "three_pass"
     multi = two_pass or advanced
-    if multi and s.get("audio_mode") == "built_in_audio":
+    if advanced and s.get("audio_mode") == "built_in_audio":
         raise ValueError(
-            f"MiniMax H3 {'2 Pass Advanced' if advanced else '2 Pass'} currently supports Input Audio only. "
-            "Switch audio_mode to input_audio before rendering."
+            "MiniMax H3 2 Pass Advanced currently supports Input Audio only. "
+            "Switch audio_mode to input_audio, or use Single or 2 Pass, before rendering."
         )
 
     def pick(single: Any, two: Any, adv: Any) -> Any:

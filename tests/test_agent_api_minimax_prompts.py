@@ -51,14 +51,31 @@ class MiniMaxPromptTests(Base):
         self.assertTrue(request["t2i_prompt"].startswith("MiniMax H3 shot-description task."))
         self.assertIn("Darrel paces the rooftop.".replace("Darrel", "<Subject 1>"), request["t2i_prompt"])
         saved = self.read_session()["segments"][0]
-        self.assertEqual(saved["minimax_h3_prompt"], "detailed_description:\nThe target video is in a cinematic_realism music-video style.\n\n"
-                                                     "[Shot 1] The camera opens wide. <Subject 1> (Darrel) paces, turning at the rail. "
-                                                     '<Subject 1> (Darrel) sings the lyric line, "line 1".')
+        prompt = saved["minimax_h3_prompt"]
+        self.assertTrue(prompt.startswith("subject_definitions:\n<Subject 1> is "), prompt[:120])
+        self.assertIn("<Picture 1>", prompt)
+        self.assertIn("<Audio 1> is the complete synchronized song and vocal track", prompt)
+        self.assertIn("\n\nretention_analysis:\n", prompt)
+        self.assertIn("detailed_description:\nThe target video is in a cinematic_realism music-video style.\n\n"
+                      "[Shot 1] The camera opens wide. <Subject 1> (Darrel) paces, turning at the rail. "
+                      '<Subject 1> (Darrel) sings the lyric line, "line 1".', prompt)
+        self.assertTrue(prompt.rstrip().endswith("complete audience-facing song/music track."))
+        self.assertLessEqual(len(prompt), 7000)
         self.assertEqual(saved["video_prompt_type"], "rtv")
         self.assertEqual(saved["minimax_h3_prompt_origin"], "gemma")
         self.assertEqual(saved["minimax_h3_mode"], "reference_to_video")
         self.assertNotIn("minimax_h3_prompt", self.read_session()["segments"][2])
         self.assertEqual({m for m, _ in self.lm.requests}, {"GET"})
+
+    def test_built_in_audio_prompts_have_no_audio_reference(self):
+        session = self.read_session()
+        session["minimax_h3_settings"] = {**(session.get("minimax_h3_settings") or {}), "audio_mode": "built_in_audio"}
+        self.write_session(session)
+        self.run_with('{"shots":[{"description":"A long enough shot description for the test scene."}]}', {"limit": 1})
+        prompt = self.read_session()["segments"][0]["minimax_h3_prompt"]
+        self.assertTrue(prompt.startswith("subject_definitions:"))
+        self.assertNotIn("<Audio 1>", prompt)
+        self.assertIn("MiniMax generates the native audio", prompt)
 
     def test_the_lyric_is_in_the_prompt_in_double_quotes_even_with_a_negative_word(self):
         session = self.read_session()
@@ -77,11 +94,12 @@ class MiniMaxPromptTests(Base):
         with open(os.path.join(self.folder, "storyboard", "storyboard.json"), encoding="utf-8") as handle:
             saved = json.load(handle)
         first = saved["scenes"][0]
-        self.assertTrue(first["video_prompt"].startswith("detailed_description:"))
+        self.assertTrue(first["video_prompt"].startswith("subject_definitions:"))
+        self.assertIn("detailed_description:", first["video_prompt"])
         self.assertEqual((first["status"], first["video_prompt_origin"], first["video_prompt_type"]), ("video_prompt_ready", "gemma", "rtv"))
         self.assertEqual(saved["scenes"][2]["video_prompt"], "")
         with open(os.path.join(self.folder, "prompts", "i2v_prompts.txt"), encoding="utf-8") as handle:
-            self.assertIn("I2V1=detailed_description:", handle.read())
+            self.assertIn("I2V1=subject_definitions:", handle.read())
 
     def test_only_missing_prompts_are_written_unless_replacing(self):
         reply = '{"shots":[{"description":"A long enough shot description for the test scene."}]}'

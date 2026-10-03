@@ -357,6 +357,7 @@ async def render_scene_video_async(
             prompt_id=prompt_id,
         )
 
+    raw_render_path = source_video_path
     if manager and job:
         manager.update_progress(job.id, 75.0, "collecting", scene_id=scene_id, message="Collecting scene video...")
 
@@ -427,6 +428,12 @@ async def render_scene_video_async(
         _, session = _get_active_session_and_folder(project_id)
         target_seg = session["segments"][idx]
         apply_scene_video(target_seg, final_video_path, final_thumbnail_path if final_thumbnail_path else "")
+        # The untrimmed render, so a later re-trim (POST .../video/trim with take) can start from the whole take.
+        target_seg["raw_video_path"] = raw_render_path
+        raw_history = [str(x) for x in target_seg.get("raw_video_history") or [] if str(x).strip()]
+        if raw_render_path not in raw_history:
+            raw_history.append(raw_render_path)
+        target_seg["raw_video_history"] = raw_history
         # A replaced render is kept as a backup the timeline can switch back to (the UI records it the same way).
         if collect_res.get("backup_path"):
             backups = target_seg.setdefault("video_backup_paths", [])
@@ -474,6 +481,115 @@ async def run_scene_video_render_job(job: Job, manager: JobManager) -> Dict[str,
     return await render_scene_video_async(job.project_id, scene_id, job.params, job=job, manager=manager)
 
 
+# ==============================================================================
+# Raw takes (the untrimmed renders a scene can be re-trimmed from)
+# ==============================================================================
+
+_TAKE_FPS = 24
+
+
+def _same_file(a: str, b: str) -> bool:
+    return os.path.normcase(os.path.realpath(a)) == os.path.normcase(os.path.realpath(b))
+
+
+def _inside(folder: str, path: str) -> bool:
+    try:
+        return os.path.normcase(os.path.commonpath([os.path.realpath(folder), os.path.realpath(path)])) == os.path.normcase(os.path.realpath(folder))
+    except ValueError:
+        return False
+
+
+def _take_entry(path: str, exists: bool, recorded: bool, active_raw: str) -> Dict[str, Any]:
+    entry: Dict[str, Any] = {"path": path, "name": os.path.basename(path), "exists": exists, "recorded": recorded,
+                             "is_latest_render": bool(active_raw) and _same_file(path, active_raw)}
+    if exists:
+        stat = os.stat(path)
+        entry.update(size_bytes=stat.st_size, modified=stat.st_mtime)
+        try:
+            duration = float(minimax_inputs._probe_media_duration_seconds(path))
+            entry.update(duration_seconds=round(duration, 3), frame_count=int(round(duration * _TAKE_FPS)))
+        except Exception:
+            pass
+    return entry
+
+
+def list_scene_takes(project_id: str, scene_id: str) -> Dict[str, Any]:
+    """The scene's raw (untrimmed) renders, newest first: the ones the API recorded plus MiniMax renders found in the scene's output folder.
+
+    A take whose file is gone (the Video Builder deletes a scene's scratch folder after each of its own renders) is
+    listed with ``exists: false`` so the caller can see why it cannot be used. A take in a sibling scratch folder of
+    the same project name is listed with ``other_folder: true``.
+    """
+    folder, session = _get_active_session_and_folder(project_id)
+    segments = session.get("segments", [])
+    idx = next((i for i, s in enumerate(segments) if s.get("id") == scene_id or str(i + 1) == str(scene_id)), -1)
+    if idx < 0:
+        raise SceneNotFoundError(scene_id, project_id)
+    seg = segments[idx]
+    scene_number = idx + 1
+    scratch, _ = minimax_inputs._minimax_h3_output_location(folder, scene_number, create=False)
+    recorded = [str(x) for x in seg.get("raw_video_history") or [] if str(x).strip()]
+    active_raw = str(seg.get("raw_video_path") or "")
+    found: Dict[str, Dict[str, Any]] = {}
+    for path in recorded:
+        found[os.path.normcase(os.path.realpath(path))] = _take_entry(path, os.path.isfile(path), True, active_raw)
+    # The scratch folder name ends with a hash of the project folder text, so a project rendered under a different
+    # spelling of its path (the Video Builder's, a renamed or copied project) has its takes in a sibling folder with
+    # the same project name. Those are listed too, marked ``other_folder`` and never picked by ``latest``.
+    project_dir = os.path.dirname(scratch)
+    base, prefix = os.path.dirname(project_dir), os.path.basename(project_dir).rsplit("_", 1)[0]
+    candidates = [(scratch, False)]
+    if os.path.isdir(base):
+        for sibling in sorted(os.listdir(base)):
+            sibling_dir = os.path.join(base, sibling)
+            if sibling != os.path.basename(project_dir) and sibling.rsplit("_", 1)[0] == prefix and os.path.isdir(sibling_dir):
+                candidates.append((os.path.join(sibling_dir, os.path.basename(scratch)), True))
+    for folder_path, other in candidates:
+        if not os.path.isdir(folder_path):
+            continue
+        for name in os.listdir(folder_path):
+            path = os.path.join(folder_path, name)
+            lowered = name.lower()
+            if lowered.endswith("-audio.mp4") and "stage1" not in lowered and os.path.isfile(path):
+                key = os.path.normcase(os.path.realpath(path))
+                if key not in found:
+                    entry = _take_entry(path, True, False, active_raw)
+                    entry["other_folder"] = other
+                    found[key] = entry
+    takes = sorted(found.values(), key=lambda t: t.get("modified") or 0.0, reverse=True)
+    for index, take in enumerate(takes):
+        take["index"] = index
+    return {"scene_id": seg.get("id"), "scene_number": scene_number, "scratch_folder": scratch, "takes": takes,
+            "usable": sum(1 for t in takes if t["exists"]),
+            "note": "" if any(t["exists"] for t in takes) else
+            "No raw take is on disk. Render the scene through the API again; the Video Builder deletes its scratch renders after each render."}
+
+
+def resolve_scene_take(project_id: str, scene_id: str, take: Any) -> str:
+    """The file path of a raw take named by ``latest`` or its index in ``list_scene_takes`` (newest first)."""
+    listing = list_scene_takes(project_id, scene_id)
+    usable = [t for t in listing["takes"] if t["exists"]]
+    if not usable:
+        raise ValidationError(f"Scene '{scene_id}' has no raw take on disk to trim. {listing['note']}")
+    if str(take).strip().lower() in ("latest", "newest", ""):
+        own = [t for t in usable if not t.get("other_folder")]
+        if not own:
+            raise ValidationError(
+                f"Scene '{scene_id}' has raw takes only in another scratch folder with the same project name (rendered under a "
+                "different path spelling). Name one by its index from GET .../video/takes if it is yours.")
+        return own[0]["path"]
+    try:
+        wanted = int(take)
+    except (TypeError, ValueError):
+        raise ValidationError("take must be 'latest' or the index of a take from GET .../video/takes.")
+    match = next((t for t in listing["takes"] if t["index"] == wanted), None)
+    if match is None:
+        raise ValidationError(f"Scene '{scene_id}' has no take {wanted}; it has {len(listing['takes'])}.")
+    if not match["exists"]:
+        raise ValidationError(f"Take {wanted} of scene '{scene_id}' was recorded but its file is gone: {match['path']}")
+    return match["path"]
+
+
 async def run_video_trim_job(job: Job, manager: JobManager) -> Dict[str, Any]:
     """Execute video trimming background job (Section 6.9)."""
     if not job.project_id:
@@ -490,9 +606,25 @@ async def run_video_trim_job(job: Job, manager: JobManager) -> Dict[str, Any]:
 
     seg = segments[idx]
     scene_number = idx + 1
-    source_path = job.params.get("source_path") or seg.get("video_path") or seg.get("rendered_video_path")
+    take = job.params.get("take")
+    from_take = take is not None and not job.params.get("source_path")
+    if from_take:
+        source_path = await asyncio.to_thread(resolve_scene_take, job.project_id, scene_id, take)
+    else:
+        source_path = job.params.get("source_path") or seg.get("video_path") or seg.get("rendered_video_path")
     if not source_path or not os.path.isfile(source_path):
         raise ValidationError(f"No source video found to trim for scene '{scene_id}'.")
+
+    start = float(job.params.get("start", 0.0))
+    duration = float(job.params.get("duration", 0.0) or 0.0)
+    frames = int(job.params.get("frames", 0))
+    if job.params.get("to_end") and not duration:
+        # End on the source's last frame: the rest of the take after ``start``.
+        total = float(await asyncio.to_thread(minimax_inputs._probe_media_duration_seconds, source_path))
+        duration = max(0.05, total - start - 0.01)
+        frames = frames or int(duration * _TAKE_FPS)
+        duration = frames / _TAKE_FPS
+    duration = duration or 4.0
 
     manager.update_progress(job.id, 20.0, "trimming", scene_id=scene_id, message="Executing video trim...")
 
@@ -502,10 +634,11 @@ async def run_video_trim_job(job: Job, manager: JobManager) -> Dict[str, Any]:
             "project_folder": folder,
             "scene_number": scene_number,
             "source_path": source_path,
-            "start": float(job.params.get("start", 0.0)),
-            "duration": float(job.params.get("duration", 0.0) or 4.0),
-            "frames": int(job.params.get("frames", 0)),
-            "label": str(job.params.get("label", "trim")),
+            "start": start,
+            "duration": duration,
+            "frames": frames,
+            "label": str(job.params.get("label") or ("retrim" if from_take else "trim")),
+            "mark_as_audio_video": bool(job.params.get("mark_as_audio_video", from_take)),
         },
     )
 
@@ -520,6 +653,10 @@ async def run_video_trim_job(job: Job, manager: JobManager) -> Dict[str, Any]:
         "scene_id": scene_id,
         "video_path": res["video_path"],
         "thumbnail_path": res.get("thumbnail_path", ""),
+        "source_path": source_path,
+        "start": start,
+        "duration": duration,
+        "frames": frames,
         "revision": save_res.get("revision"),
     }
 

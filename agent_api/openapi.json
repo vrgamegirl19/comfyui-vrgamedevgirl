@@ -8527,6 +8527,61 @@
         ]
       }
     },
+    "/vrgdg/api/v1/projects/{project_id}/scenes/{scene_id}/video/takes": {
+      "get": {
+        "operationId": "api_scene_video_takes",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "scene_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Error. The HTTP status mirrors error.code."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {}
+        ],
+        "summary": "scene video takes",
+        "tags": [
+          "scenes"
+        ]
+      }
+    },
     "/vrgdg/api/v1/projects/{project_id}/scenes/{scene_id}/video/trim": {
       "post": {
         "operationId": "api_trim_scene_video",
