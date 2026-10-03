@@ -541,7 +541,7 @@
     },
     {
       "body_keys": [],
-      "description": "Write image or video prompts for many scenes (`kind`, `scope`, `run_mode`, `scene_ids`).",
+      "description": "Write image or video prompts for many scenes (`kind`, `scope`, `run_mode`, `scene_ids`). Image prompts use each scene's notes, lyric and references.",
       "if_match": false,
       "job": true,
       "method": "POST",
@@ -770,7 +770,7 @@
     },
     {
       "body_keys": [],
-      "description": "Change scene fields such as lyrics, notes, label, `no_character_present`, `lyric_no_lip_sync`, `lyric_singers` or per-scene settings. Scene reads return the same three flags.",
+      "description": "Change scene fields: `lyric_text` (sets `lyric_no_lip_sync` from the text unless you send it), `lyric_singers`, `story_beat`, prompts (`t2i_prompt`, `i2v_prompt`, `enhance_prompt`, `minimax_h3_prompt`, `minimax_h3_pass2_prompt`, `flux_prompt`, `nb_prompt`, `flow_gpt_prompt`, `ernie_t2i_prompt`), `notes`, `label`, `start`, `end`, `no_character_present`, `lyric_no_lip_sync`, or per-scene `use_scene_*` / `*_settings`. A field that cannot be patched returns a validation error that lists the supported fields, and nothing is saved.",
       "if_match": true,
       "job": false,
       "method": "PATCH",
@@ -861,7 +861,7 @@
       "body_keys": [
         "scene_id"
       ],
-      "description": "Write one scene's image prompt with the LLM.",
+      "description": "Write one scene's image prompt with the LLM, from the scene's notes, lyric and references (`user_notes` overrides them).",
       "if_match": false,
       "job": true,
       "method": "POST",
@@ -909,7 +909,7 @@
       "body_keys": [
         "scene_id"
       ],
-      "description": "Write one scene's video prompt with the LLM (`mode`).",
+      "description": "Write one scene's video prompt with the LLM (`mode`), from its image prompt, motion notes and references.",
       "if_match": false,
       "job": true,
       "method": "POST",
@@ -924,7 +924,7 @@
       "body_keys": [
         "scene_id"
       ],
-      "description": "Write one scene's video prompt continuing from the previous scene's last frame.",
+      "description": "Write one scene's video prompt continuing from the previous scene's last frame, using the scene's own prompt, notes and references.",
       "if_match": false,
       "job": true,
       "method": "POST",
@@ -1090,7 +1090,7 @@
         "mode",
         "text"
       ],
-      "description": "Rebuild or extend the whole timeline from text durations, beats or lyrics (`action`, `mode`, `text`, `append_start`, `clear_media`).",
+      "description": "Rebuild or extend the whole timeline from text. `mode` is `durations`, `ranges` or `markers`; `action` is `replace` or `append` (`append_start` sets where appended scenes begin). A line can end with the words for its scene, for example `12.5 --> 16.0 Hello darkness`. On `replace`, when no line carries words, the lyrics of the scenes being replaced move onto the new scenes by time, so they are not lost. Returns `scene_count`, `scenes_with_lyrics` and `lyrics` (`from_text`, `carried_over` or `none`).",
       "if_match": false,
       "job": false,
       "method": "POST",

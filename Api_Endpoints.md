@@ -75,7 +75,7 @@ or its 1-based number.
 
 | Method | Path | What it does |
 |---|---|---|
-| `POST` | `/projects/{pid}/timeline/bulk` | Rebuild or extend the whole timeline from text durations, beats or lyrics (`action`, `mode`, `text`, `append_start`, `clear_media`). _(body: `action`, `append_start`, `clear_media`, `mode`, `text`)_ |
+| `POST` | `/projects/{pid}/timeline/bulk` | Rebuild or extend the whole timeline from text. `mode` is `durations`, `ranges` or `markers`; `action` is `replace` or `append` (`append_start` sets where appended scenes begin). A line can end with the words for its scene, for example `12.5 --> 16.0 Hello darkness`. On `replace`, when no line carries words, the lyrics of the scenes being replaced move onto the new scenes by time, so they are not lost. Returns `scene_count`, `scenes_with_lyrics` and `lyrics` (`from_text`, `carried_over` or `none`). _(body: `action`, `append_start`, `clear_media`, `mode`, `text`)_ |
 | `POST` | `/projects/{pid}/timeline/calibrate` | Shift all beat markers by `offset_seconds`. _(If-Match; body: `offset_seconds`)_ |
 | `POST` | `/projects/{pid}/timeline/close-gaps` | Remove gaps between scenes by moving later scenes earlier. |
 | `POST` | `/projects/{pid}/timeline/enforce-length` | Merge scenes shorter than `min_scene_seconds` and cut scenes longer than `max_scene_seconds`. `dry_run` shows the plan only. Scenes with rendered video are left alone. _(body: `dry_run`, `max_scene_seconds`, `min_scene_seconds`)_ |
@@ -91,7 +91,7 @@ or its 1-based number.
 | `POST` | `/projects/{pid}/scenes/bulk` | Apply several scene operations in one atomic change (`operations`). _(If-Match; body: `operations`)_ |
 | `DELETE` | `/projects/{pid}/scenes/{sid}` | Delete a scene. `ripple` closes the gap. Later scene files are renumbered. _(If-Match; query: `ripple`)_ |
 | `GET` | `/projects/{pid}/scenes/{sid}` | One scene: timing, lyrics, story beat, prompts (including `minimax_h3_prompt`), approved image, rendered video with its thumbnail, and scene audio. Each file is `null` when it does not exist. |
-| `PATCH` | `/projects/{pid}/scenes/{sid}` | Change scene fields such as lyrics, notes, label, `no_character_present`, `lyric_no_lip_sync`, `lyric_singers` or per-scene settings. Scene reads return the same three flags. _(If-Match)_ |
+| `PATCH` | `/projects/{pid}/scenes/{sid}` | Change scene fields: `lyric_text` (sets `lyric_no_lip_sync` from the text unless you send it), `lyric_singers`, `story_beat`, prompts (`t2i_prompt`, `i2v_prompt`, `enhance_prompt`, `minimax_h3_prompt`, `minimax_h3_pass2_prompt`, `flux_prompt`, `nb_prompt`, `flow_gpt_prompt`, `ernie_t2i_prompt`), `notes`, `label`, `start`, `end`, `no_character_present`, `lyric_no_lip_sync`, or per-scene `use_scene_*` / `*_settings`. A field that cannot be patched returns a validation error that lists the supported fields, and nothing is saved. _(If-Match)_ |
 | `POST` | `/projects/{pid}/scenes/{sid}/merge` | Merge a scene with its neighbour (`with_direction`: previous or next). Lyrics are joined. _(If-Match; body: `with_direction`)_ |
 | `POST` | `/projects/{pid}/scenes/{sid}/move` | Move a scene to `start_time`. `ripple` shifts the others. _(If-Match; body: `ripple`, `start_time`)_ |
 | `POST` | `/projects/{pid}/scenes/{sid}/resize` | Change a scene's length (`duration` or `end_time`). `ripple` shifts the others. _(If-Match; body: `duration`, `end_time`, `ripple`)_ |
@@ -125,17 +125,17 @@ or its 1-based number.
 | Method | Path | What it does |
 |---|---|---|
 | `POST` | `/projects/{pid}/minimax-prompts` | Write MiniMax H3 reference-to-video prompts with the project's LLM for scenes that have none (`replace_existing`, `scene_ids`, `limit`). Each singing scene's prompt has its lyric in double quotes after 'sings the lyric line,'. Saves them on the scenes and in the Storyboard Builder's copy (`storyboard/storyboard.json` and the `prompts/` files). Needs a mapped character with an image on each scene. _(**job**)_ |
-| `POST` | `/projects/{pid}/prompts/batch` | Write image or video prompts for many scenes (`kind`, `scope`, `run_mode`, `scene_ids`). _(**job**)_ |
+| `POST` | `/projects/{pid}/prompts/batch` | Write image or video prompts for many scenes (`kind`, `scope`, `run_mode`, `scene_ids`). Image prompts use each scene's notes, lyric and references. _(**job**)_ |
 | `POST` | `/projects/{pid}/prompts/concepts` | Write scene concept prompts for the whole project with the LLM. _(**job**)_ |
 | `POST` | `/projects/{pid}/prompts/motion-notes` | Write motion and camera notes for scenes with the LLM. _(**job**)_ |
 | `GET` | `/projects/{pid}/scenes/{sid}/prompts/context` | The context brief an outside agent needs to write a prompt itself: cast, cut plan and character budget (`kind`). _(query: `kind`)_ |
 | `POST` | `/projects/{pid}/scenes/{sid}/prompts/edit` | Rewrite an existing scene prompt following an instruction. _(**job**)_ |
 | `POST` | `/projects/{pid}/scenes/{sid}/prompts/enhance` | Improve an existing scene prompt with the LLM. _(**job**)_ |
-| `POST` | `/projects/{pid}/scenes/{sid}/prompts/image` | Write one scene's image prompt with the LLM. _(**job**)_ |
+| `POST` | `/projects/{pid}/scenes/{sid}/prompts/image` | Write one scene's image prompt with the LLM, from the scene's notes, lyric and references (`user_notes` overrides them). _(**job**)_ |
 | `POST` | `/projects/{pid}/scenes/{sid}/prompts/minimax/assemble` | Build a MiniMax prompt from shot descriptions you provide (`shots`, `mode`). `save` stores it. _(If-Match; body: `mode`, `save`, `shots`)_ |
 | `POST` | `/projects/{pid}/scenes/{sid}/prompts/minimax/validate` | Check a MiniMax prompt against the length and format rules. _(body: `mode`, `prompt`)_ |
-| `POST` | `/projects/{pid}/scenes/{sid}/prompts/video` | Write one scene's video prompt with the LLM (`mode`). _(**job**)_ |
-| `POST` | `/projects/{pid}/scenes/{sid}/prompts/video-chained` | Write one scene's video prompt continuing from the previous scene's last frame. _(**job**)_ |
+| `POST` | `/projects/{pid}/scenes/{sid}/prompts/video` | Write one scene's video prompt with the LLM (`mode`), from its image prompt, motion notes and references. _(**job**)_ |
+| `POST` | `/projects/{pid}/scenes/{sid}/prompts/video-chained` | Write one scene's video prompt continuing from the previous scene's last frame, using the scene's own prompt, notes and references. _(**job**)_ |
 | `PUT` | `/projects/{pid}/scenes/{sid}/prompts/{field}` | Set a prompt field directly (`t2i_prompt`, `i2v_prompt`, `minimax_h3_prompt`, ...). Body: `prompt`, `origin`. _(If-Match; body: `origin`, `prompt`)_ |
 
 ### Images

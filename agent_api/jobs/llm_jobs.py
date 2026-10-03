@@ -31,6 +31,8 @@ from ..errors import (
     SceneNotFoundError,
     ValidationError,
 )
+from ..image_prompt_inputs import merge_request_overrides, scene_image_prompt_inputs
+from ..video_prompt_inputs import scene_video_prompt_inputs
 from ..mutations import (
     _get_active_session_and_folder,
     set_scene_prompt_field_endpoint,
@@ -78,6 +80,28 @@ def _prepare_llm_payload(job: Job, project_folder: str, extra: Optional[Dict[str
     if extra:
         payload.update(extra)
     return prepare_llm_payload(payload)
+
+
+def _prepare_scene_image_payload(job: Job, project_folder: str, scene_id: str, mode: str) -> Dict[str, Any]:
+    """The payload for one scene's image prompt: the scene's notes and references, like the Builder sends.
+
+    The writers read ``user_notes`` and the reference context from the request, not from the project, so
+    without these a request with only a scene id fails with "Enter scene notes". Fields the caller sent in
+    the request win over the scene's values.
+    """
+    _, session = _get_active_session_and_folder(job.project_id)
+    inputs = merge_request_overrides(scene_image_prompt_inputs(session, scene_id, mode), job.params or {})
+    return _prepare_llm_payload(job, project_folder, {"scene_id": scene_id, **inputs})
+
+
+def _prepare_scene_video_payload(job: Job, project_folder: str, scene_id: str, mode: str) -> Dict[str, Any]:
+    """The payload for one scene's video prompt: its T2I prompt, motion notes and references.
+
+    Same idea as ``_prepare_scene_image_payload``. Fields the caller sent in the request win.
+    """
+    _, session = _get_active_session_and_folder(job.project_id)
+    inputs = merge_request_overrides(scene_video_prompt_inputs(session, scene_id, mode), job.params or {})
+    return _prepare_llm_payload(job, project_folder, {"scene_id": scene_id, "mode": mode, **inputs})
 
 
 # ==============================================================================
@@ -130,9 +154,8 @@ def run_scene_image_prompt_job(job: Job, manager: JobManager) -> Dict[str, Any]:
         raise ValidationError("scene_id is required.")
 
     manager.update_progress(job.id, 10.0, "preparing", scene_id=scene_id, message="Loading scene data...")
-    payload = _prepare_llm_payload(job, folder, {"scene_id": scene_id})
-
     mode = str(job.params.get("mode") or "zimage").strip().lower()
+    payload = _prepare_scene_image_payload(job, folder, scene_id, mode)
     manager.update_progress(job.id, 40.0, "generating", scene_id=scene_id, message=f"Generating {mode} image prompt...")
 
     if mode in ("flux_klein", "flux"):
@@ -166,7 +189,7 @@ def run_scene_video_prompt_job(job: Job, manager: JobManager) -> Dict[str, Any]:
 
     mode = str(job.params.get("mode") or "i2v").strip().lower()
     manager.update_progress(job.id, 10.0, "preparing", scene_id=scene_id, message="Loading scene context...")
-    payload = _prepare_llm_payload(job, folder, {"scene_id": scene_id, "mode": mode})
+    payload = _prepare_scene_video_payload(job, folder, scene_id, mode)
 
     manager.update_progress(job.id, 40.0, "generating", scene_id=scene_id, message=f"Generating {mode} video prompt...")
 
@@ -199,7 +222,7 @@ def run_scene_chained_video_prompt_job(job: Job, manager: JobManager) -> Dict[st
         raise ValidationError("scene_id is required.")
 
     manager.update_progress(job.id, 10.0, "preparing", scene_id=scene_id, message="Preparing chained prompt context...")
-    payload = _prepare_llm_payload(job, folder, {"scene_id": scene_id})
+    payload = _prepare_scene_video_payload(job, folder, scene_id, "i2v")
 
     manager.update_progress(job.id, 40.0, "generating", scene_id=scene_id, message="Generating chained video prompt...")
     res = vid_gen._generate_builder_chained_i2v_prompt(payload)
@@ -327,9 +350,9 @@ def run_batch_prompts_job(job: Job, manager: JobManager) -> Dict[str, Any]:
         )
 
         try:
-            payload = _prepare_llm_payload(job, folder, {"scene_id": sid})
             if kind == "image":
                 mode = str(job.params.get("mode") or "zimage").strip().lower()
+                payload = _prepare_scene_image_payload(job, folder, sid, mode)
                 if mode in ("flux_klein", "flux"):
                     res = img_gen._generate_flux_klein_prompt(payload)
                 elif mode in ("nano_banana", "nb"):
@@ -339,6 +362,7 @@ def run_batch_prompts_job(job: Job, manager: JobManager) -> Dict[str, Any]:
                 field = "t2i_prompt"
             else:
                 mode = str(job.params.get("mode") or "i2v").strip().lower()
+                payload = _prepare_scene_video_payload(job, folder, sid, mode)
                 if mode == "t2v":
                     res = vid_gen._generate_builder_t2v_prompt(payload)
                 else:

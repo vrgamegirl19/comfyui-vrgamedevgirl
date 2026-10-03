@@ -17,6 +17,7 @@ from ..builder.audio import (
 )
 from ..builder.lyric_scenes import (
     apply_length_fix,
+    carry_lyrics_over,
     is_instrumental_lyric_text,
     merge_lyric_text,
     next_length_fix,
@@ -43,7 +44,7 @@ from ..builder.timeline import (
     has_locked_video,
     move_scene_timing,
     normalize_segments,
-    parse_bulk_timings,
+    parse_bulk_scenes,
     recover_pending_journal,
     renumber_generic_base_scene_labels,
     resize_scene_timing,
@@ -457,13 +458,68 @@ def resize_scene(
         }
 
 
+# Scene fields PATCH /scenes/{id} can change. Anything else is rejected, so a request can never report
+# success while silently saving nothing.
+_SCENE_PATCH_TEXT_FIELDS = (
+    "t2i_prompt",
+    "i2v_prompt",
+    "enhance_prompt",
+    "minimax_h3_prompt",
+    "minimax_h3_pass2_prompt",
+    "flux_prompt",
+    "nb_prompt",
+    "flow_gpt_prompt",
+    "ernie_t2i_prompt",
+    "lyric_text",
+    "story_beat",
+    "notes",
+    "label",
+    "timeline_note",
+    "video_path",
+    "video_output",
+    "video_status",
+    "approved_image_path",
+    "audio_path",
+    "custom_audio_path",
+)
+_SCENE_PATCH_NUMBER_FIELDS = ("start", "end")
+_SCENE_PATCH_FLAG_FIELDS = ("no_character_present", "lyric_no_lip_sync")
+_SCENE_PATCH_LIST_FIELDS = ("lyric_singers",)
+_SCENE_PATCH_ECHOED_FIELDS = ("id",)  # clients often send back what they read; the id cannot change
+
+
+def _unsupported_scene_fields(patch: Dict[str, Any]) -> List[str]:
+    known = set(_SCENE_PATCH_TEXT_FIELDS) | set(_SCENE_PATCH_NUMBER_FIELDS) | set(_SCENE_PATCH_FLAG_FIELDS)
+    known |= set(_SCENE_PATCH_LIST_FIELDS) | set(_SCENE_PATCH_ECHOED_FIELDS)
+    return sorted(
+        key for key in patch
+        if key not in known and not (key.startswith("use_scene_") or key.endswith("_settings"))
+    )
+
+
 def patch_scene(
     project_id: str,
     scene_id: str,
     patch: Dict[str, Any],
     if_match_revision: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """Merge-patch scene fields (prompts, timing, overrides) and mark latents dirty on edits."""
+    """Merge-patch scene fields (prompts, lyrics, timing, overrides) and mark latents dirty on edits.
+
+    Unsupported fields raise a ValidationError that lists what can be changed.
+    """
+    if not isinstance(patch, dict):
+        raise ValidationError("The scene patch must be a JSON object.")
+    unsupported = _unsupported_scene_fields(patch)
+    if unsupported:
+        supported = sorted(
+            set(_SCENE_PATCH_TEXT_FIELDS) | set(_SCENE_PATCH_NUMBER_FIELDS)
+            | set(_SCENE_PATCH_FLAG_FIELDS) | set(_SCENE_PATCH_LIST_FIELDS)
+        )
+        raise ValidationError(
+            f"Unsupported scene field{'s' if len(unsupported) > 1 else ''}: {', '.join(unsupported)}. "
+            f"Supported fields: {', '.join(supported)}, plus use_scene_* and *_settings. "
+            "POST /scenes/bulk with op=patch can write other fields."
+        )
     with _BUILDER_SAVE_LOCK:
         folder, session = _get_active_session_and_folder(project_id)
         current_rev = int(session.get("revision") or session.get("builder_save_revision") or 0)
@@ -487,31 +543,21 @@ def patch_scene(
         old_i2v = str(scene.get("i2v_prompt") or "")
         old_dur = float(scene.get("end", 0.0) or 0.0) - float(scene.get("start", 0.0) or 0.0)
 
-        for key in (
-            "t2i_prompt",
-            "i2v_prompt",
-            "enhance_prompt",
-            "minimax_h3_prompt",
-            "notes",
-            "label",
-            "timeline_note",
-            "video_path",
-            "video_output",
-            "video_status",
-            "approved_image_path",
-            "audio_path",
-            "custom_audio_path",
-        ):
+        for key in _SCENE_PATCH_TEXT_FIELDS:
             if key in patch:
                 scene[key] = str(patch[key] or "")
 
-        for key in ("start", "end"):
+        for key in _SCENE_PATCH_NUMBER_FIELDS:
             if key in patch:
                 scene[key] = float(patch[key])
 
-        for key in ("no_character_present", "lyric_no_lip_sync"):
+        for key in _SCENE_PATCH_FLAG_FIELDS:
             if key in patch:
                 scene[key] = bool(patch[key])
+
+        # Same as editing the lyric in the Builder: the scene is marked instrumental from its text.
+        if "lyric_text" in patch and "lyric_no_lip_sync" not in patch:
+            scene["lyric_no_lip_sync"] = is_instrumental_lyric_text(scene.get("lyric_text"))
 
         if "lyric_singers" in patch:
             singers = patch["lyric_singers"]
@@ -581,8 +627,11 @@ def bulk_scene_operations(
             elif op_type == "patch":
                 idx = next((i for i, s in enumerate(segments) if s.get("id") == op["scene_id"]), -1)
                 if idx >= 0:
-                    for k, v in op.get("fields", {}).items():
+                    fields = op.get("fields", {})
+                    for k, v in fields.items():
                         segments[idx][k] = v
+                    if "lyric_text" in fields and "lyric_no_lip_sync" not in fields:
+                        segments[idx]["lyric_no_lip_sync"] = is_instrumental_lyric_text(segments[idx].get("lyric_text"))
                     applied += 1
 
         save_result = _persist_session(folder, session)
@@ -707,6 +756,14 @@ def timeline_snap(
         }
 
 
+def _bulk_scene(start: float, end: float, lyric: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    scene: Dict[str, Any] = {"id": _generate_scene_id(), "start": start, "end": end, "source": "manual"}
+    for key in ("lyric_text", "lyric_no_lip_sync", "lyric_singers"):
+        if lyric and key in lyric:
+            scene[key] = lyric[key]
+    return scene
+
+
 def timeline_bulk(
     project_id: str,
     text: str,
@@ -715,36 +772,47 @@ def timeline_bulk(
     append_start: float = 0.0,
     clear_media: bool = False,
 ) -> Dict[str, Any]:
-    """Apply bulk timings from text (Section 15.4 T16)."""
-    parsed = parse_bulk_timings(text, mode=mode)
+    """Apply bulk timings from text (Section 15.4 T16).
+
+    A line can end with the words for its scene (``12.5 --> 16.0 Hello darkness``). When ``action`` is
+    ``replace`` and no line carries words, the lyrics of the scenes being replaced move onto the new
+    scenes by time, so replacing the timeline no longer wipes them.
+    """
+    parsed = parse_bulk_scenes(text, mode=mode)
     if not parsed:
         raise ValidationError("No valid timing lines found in input.")
+    if action not in ("replace", "append"):
+        raise ValidationError("action must be 'replace' or 'append'.")
 
     with _BUILDER_SAVE_LOCK:
         folder, session = _get_active_session_and_folder(project_id)
         segments = session.setdefault("segments", [])
 
+        explicit_lyrics = any(item.get("lyric_text") for item in parsed)
+        lyrics_source = "from_text" if explicit_lyrics else "none"
+        lyric_fields: List[Dict[str, Any]] = [{} for _ in parsed]
+        if explicit_lyrics:
+            for index, item in enumerate(parsed):
+                if item.get("lyric_text"):
+                    lyric_fields[index] = {
+                        "lyric_text": item["lyric_text"],
+                        "lyric_no_lip_sync": is_instrumental_lyric_text(item["lyric_text"]),
+                    }
+
+        new_segments: List[Dict[str, Any]] = []
         if action == "replace":
-            new_segments = []
-            for start, end in parsed:
-                new_segments.append({
-                    "id": _generate_scene_id(),
-                    "start": start,
-                    "end": end,
-                    "source": "manual",
-                })
+            if not explicit_lyrics and any(str(s.get("lyric_text") or "").strip() for s in segments):
+                lyric_fields = carry_lyrics_over(segments, [(item["start"], item["end"]) for item in parsed])
+                lyrics_source = "carried_over" if any(lyric_fields) else "none"
+            for item, lyric in zip(parsed, lyric_fields):
+                new_segments.append(_bulk_scene(item["start"], item["end"], lyric))
             session["segments"] = new_segments
             session["timing_frozen"] = False
-        elif action == "append":
+        else:
             start_cursor = float(append_start) if append_start > 0 else (float(segments[-1]["end"]) if segments else 0.0)
-            for dur_start, dur_end in parsed:
-                dur = dur_end - dur_start
-                new_segments.append({
-                    "id": _generate_scene_id(),
-                    "start": round(start_cursor, 4),
-                    "end": round(start_cursor + dur, 4),
-                    "source": "manual",
-                })
+            for item, lyric in zip(parsed, lyric_fields):
+                dur = item["end"] - item["start"]
+                new_segments.append(_bulk_scene(round(start_cursor, 4), round(start_cursor + dur, 4), lyric))
                 start_cursor += dur
             segments.extend(new_segments)
 
@@ -752,6 +820,8 @@ def timeline_bulk(
         save_result = _persist_session(folder, session)
         return {
             "scene_count": len(session["segments"]),
+            "scenes_with_lyrics": sum(1 for scene in new_segments if str(scene.get("lyric_text") or "").strip()),
+            "lyrics": lyrics_source,
             "revision": save_result.get("revision", 1),
         }
 
