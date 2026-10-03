@@ -365,7 +365,17 @@ def _run_own_server_chat(payload, instruction_text, pil_images=None, temperature
         data = _own_server_request_json(url, payload, body=body, timeout=_own_server_timeout(payload))
     except RuntimeError as exc:
         message = str(exc).lower()
-        if "max_tokens" in message and ("unknown" in message or "unsupported" in message or "400" in message):
+        room = re.search(r"max_tokens \(at most (\d+)", message) or re.search(r"at most (\d+) here", message)
+        if "exceeds the context" in message and room:
+            # The server reports how many tokens are left after the prompt, so retry with exactly that budget.
+            available = int(room.group(1)) - _CONTEXT_TEMPLATE_MARGIN_TOKENS
+            if available < _MIN_OUTPUT_TOKENS:
+                raise
+            print(f"[VRGDG LLM] own server output limit lowered from {body['max_tokens']} to {available} tokens to fit its context.")
+            retry_body = dict(body)
+            retry_body["max_tokens"] = available
+            data = _own_server_request_json(url, payload, body=retry_body, timeout=_own_server_timeout(payload))
+        elif "max_tokens" in message and ("unknown" in message or "unsupported" in message or "400" in message):
             retry_body = dict(body)
             retry_body["max_completion_tokens"] = retry_body.pop("max_tokens")
             data = _own_server_request_json(url, payload, body=retry_body, timeout=_own_server_timeout(payload))

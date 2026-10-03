@@ -26,7 +26,7 @@ never load or switch models. They answer `503 LLM_UNAVAILABLE` when nothing is l
 or its 1-based number.
 
 
-**Total:** 133 endpoints.
+**Total:** 134 endpoints.
 
 ## Service and discovery
 
@@ -124,7 +124,7 @@ or its 1-based number.
 
 | Method | Path | What it does |
 |---|---|---|
-| `POST` | `/projects/{pid}/minimax-prompts` | Write MiniMax H3 reference-to-video prompts with the project's LLM for scenes that have none (`replace_existing`, `scene_ids`, `limit`). Each singing scene's prompt has its lyric in double quotes after 'sings the lyric line,'. Saves them on the scenes and in the Storyboard Builder's copy (`storyboard/storyboard.json` and the `prompts/` files). Needs a mapped character with an image on each scene. _(**job**)_ |
+| `POST` | `/projects/{pid}/minimax-prompts` | Write MiniMax H3 reference-to-video prompts with the project's LLM for scenes that have none (`replace_existing`, `scene_ids`, `limit`). Each singing scene's prompt has its lyric in double quotes after 'sings the lyric line,'. Saves them on the scenes and in the Storyboard Builder's copy (`storyboard/storyboard.json` and the `prompts/` files). Needs a mapped character with an image on each scene. Each prompt is the Builder's full format: subject definitions tying `<Subject N>` to `<Picture N>`, summary, retention analysis, the shots, and the soundscape. _(**job**)_ |
 | `POST` | `/projects/{pid}/prompts/batch` | Write image or video prompts for many scenes (`kind`, `scope`, `run_mode`, `scene_ids`). Image prompts use each scene's notes, lyric and references. _(**job**)_ |
 | `POST` | `/projects/{pid}/prompts/concepts` | Write scene concept prompts for the whole project with the LLM. _(**job**)_ |
 | `POST` | `/projects/{pid}/prompts/motion-notes` | Write motion and camera notes for scenes with the LLM. _(**job**)_ |
@@ -132,7 +132,7 @@ or its 1-based number.
 | `POST` | `/projects/{pid}/scenes/{sid}/prompts/edit` | Rewrite an existing scene prompt following an instruction. _(**job**)_ |
 | `POST` | `/projects/{pid}/scenes/{sid}/prompts/enhance` | Improve an existing scene prompt with the LLM. _(**job**)_ |
 | `POST` | `/projects/{pid}/scenes/{sid}/prompts/image` | Write one scene's image prompt with the LLM, from the scene's notes, lyric and references (`user_notes` overrides them). _(**job**)_ |
-| `POST` | `/projects/{pid}/scenes/{sid}/prompts/minimax/assemble` | Build a MiniMax prompt from shot descriptions you provide (`shots`, `mode`). `save` stores it. _(If-Match; body: `mode`, `save`, `shots`)_ |
+| `POST` | `/projects/{pid}/scenes/{sid}/prompts/minimax/assemble` | Build a MiniMax prompt from shot descriptions you provide (`shots`, `mode`). `save` stores it. A reference-to-video prompt gets the same subject definitions and soundscape as `minimax-prompts`. _(If-Match; body: `mode`, `save`, `shots`)_ |
 | `POST` | `/projects/{pid}/scenes/{sid}/prompts/minimax/validate` | Check a MiniMax prompt against the length and format rules. _(body: `mode`, `prompt`)_ |
 | `POST` | `/projects/{pid}/scenes/{sid}/prompts/video` | Write one scene's video prompt with the LLM (`mode`), from its image prompt, motion notes and references. _(**job**)_ |
 | `POST` | `/projects/{pid}/scenes/{sid}/prompts/video-chained` | Write one scene's video prompt continuing from the previous scene's last frame, using the scene's own prompt, notes and references. _(**job**)_ |
@@ -159,9 +159,10 @@ or its 1-based number.
 | `POST` | `/projects/{project_id}/scenes/{scene_id}/video/match-start-color` | Match the opening colors of a scene video to the previous scene's last frame. _(**job**)_ |
 | `POST` | `/projects/{project_id}/scenes/{scene_id}/video/minimax-stage-recover` | Recover a MiniMax pass-1 or pass-2 clip from the scratch folder. |
 | `POST` | `/projects/{project_id}/scenes/{scene_id}/video/recover` | Bring back a scene video from a backup or file (`source_path`). _(body: `source_path`)_ |
-| `POST` | `/projects/{project_id}/scenes/{scene_id}/video/render` | Render one scene's video with ComfyUI (`mode`, e.g. `minimax_h3`). Trims to the exact timeline length and saves it as `video_NNNN-audio.mp4`. _(**job**)_ |
+| `POST` | `/projects/{project_id}/scenes/{scene_id}/video/render` | Render one scene's video with ComfyUI (`mode`, e.g. `minimax_h3`). Trims to the exact timeline length and saves it as `video_NNNN-audio.mp4`. Set `audio_mode: built_in_audio` in the MiniMax settings for H3 voices and sound (Single or 2 Pass; 2 Pass Advanced needs input audio). _(**job**)_ |
 | `POST` | `/projects/{project_id}/scenes/{scene_id}/video/select` | Choose which take is the scene's active video (`source_path`). _(body: `source_path`)_ |
-| `POST` | `/projects/{project_id}/scenes/{scene_id}/video/trim` | Trim a scene video (`start`, `duration`). _(**job**)_ |
+| `GET` | `/projects/{project_id}/scenes/{scene_id}/video/takes` | List the scene's raw (untrimmed) renders, newest first, with length, frame count and whether the file still exists. Takes in a sibling scratch folder with the same project name are marked `other_folder`. Only renders made through the API are always kept: the Video Builder deletes its scratch renders after each render. Use `take` on the trim call. |
+| `POST` | `/projects/{project_id}/scenes/{scene_id}/video/trim` | Trim a scene video as a job. Name the source with `source_path` (default: the scene's current video) or with `take` (`latest` or an index from `video/takes`, the raw render, so the clip can start earlier or end later than the current one). `start` is seconds into the source; give `duration` (and `frames`), or `to_end: true` to end on the source's last frame. Records the new clip on the scene and keeps the old one in its video history. _(**job**)_ |
 | `POST` | `/projects/{project_id}/slideshow` | Make a video from the scene images instead of rendered clips. _(**job**)_ |
 | `POST` | `/projects/{project_id}/stitch` | Join the scenes' videos into `FINAL_VIDEO.mp4` with the project audio. _(**job**)_ |
 | `POST` | `/projects/{project_id}/video/graph` | Build the ComfyUI graph for a video `mode` and the given parameters without running it, to inspect what would be sent. |

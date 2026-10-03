@@ -1,5 +1,5 @@
 import { postJson } from "./api.mjs";
-import { copyTextToClipboard, createToast } from "./controls.mjs";
+import { copyTextToClipboard, createToast, makeButton } from "./controls.mjs";
 import { openStoryboardGptUrl, storyboardGptPayload } from "./gpt_payload.mjs";
 import {
   mergeReferenceBuilderCatalog,
@@ -38,7 +38,7 @@ export function createStoryboardPersistence({
   cutFrequencyInput, enforceStoryboardVideoFacialRequirements, exportPrompts, facialCustomInput,
   facialPerformancePresets, facialSelect, focusedSection, fxCustomInput, fxSelect, getSelectedScenes,
   imageAestheticPresets, imageAestheticSelect, imageShotFlowPresets, imageShotSelect,
-  incomingProjectVideoEngine, lyricStoryStrengthInput, openingMode, overallStoryIdeaInput, payload,
+  incomingProjectVideoEngine, lyricStoryStrengthInput, openImportImagePromptsFromGptModal, openingMode, overallStoryIdeaInput, payload,
   payloadVideoPromptType, performanceSelect, performanceStylePresets, refreshCameraFlowInfo,
   refreshCameraSpeedInfo, refreshCharacterSpeedInfo, refreshConsistencyInfo, refreshCutFrequencyInfo,
   refreshFacialInfo, refreshFxInfo, refreshImageAestheticInfo, refreshImageShotInfo, refreshPerformanceInfo,
@@ -251,30 +251,76 @@ export function createStoryboardPersistence({
     }
   }
 
-  async function copyStoryboardForGpt() {
-    const selectedScenes = getSelectedScenes();
-    if (selectedScenes.length > 0) {
-      try {
-        const payload = storyboardGptPayload(state, selectedScenes);
-        const text = JSON.stringify(payload, null, 2);
-        await copyTextToClipboard(text);
-        openStoryboardGptUrl(payload);
-        createToast(selectedScenes.length === 1
-          ? `Copied GPT JSON for ${selectedScenes[0].label || `Scene ${selectedScenes[0].scene_number}`} and opened GPT.`
-          : `Copied GPT JSON for ${selectedScenes.length} selected scenes and opened GPT.`);
-      } catch (error) {
-        createToast(`Could not copy GPT JSON:\n${String(error?.message || error)}`, true);
-      }
-      return;
-    }
-    try {
-      const payload = storyboardGptPayload(state);
-      const text = JSON.stringify(payload, null, 2);
-      await copyTextToClipboard(text);
+  function showStoryboardGptHandoff(payload, sceneCount) {
+    const kind = state.mode === "image_to_video_prep" ? "Video" : "Image";
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100010;background:rgba(0,0,0,.68);display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(860px,calc(100vw - 48px));max-height:calc(100vh - 48px);border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 22px 80px rgba(0,0,0,.62);display:flex;flex-direction:column;overflow:hidden;";
+    const header = document.createElement("div");
+    header.style.cssText = "display:flex;align-items:flex-start;justify-content:space-between;gap:12px;background:#083f4f;border-bottom:1px solid #155e75;padding:13px 15px;";
+    const title = document.createElement("div");
+    title.innerHTML = `<div style="font-size:17px;font-weight:900;color:#cffafe;">GPT ${kind} Prompts (${sceneCount} scene${sceneCount === 1 ? "" : "s"})</div><div style="font-size:12px;color:#cbd5e1;margin-top:3px;">Copy this JSON, paste it into the GPT, then paste the GPT output back into Import.</div>`;
+    const close = makeButton("Close");
+    header.append(title, close);
+    const body = document.createElement("div");
+    body.style.cssText = "padding:14px;display:flex;flex-direction:column;gap:12px;overflow:auto;";
+    const status = document.createElement("div");
+    status.style.cssText = "font-size:12px;color:#94a3b8;min-height:18px;";
+    const text = document.createElement("textarea");
+    text.value = JSON.stringify(payload, null, 2);
+    text.spellcheck = false;
+    text.style.cssText = "min-height:300px;resize:vertical;border:1px solid #334155;border-radius:7px;background:#020617;color:#f8fafc;padding:10px;font-size:12px;font-family:monospace;line-height:1.45;white-space:pre;overflow:auto;";
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;";
+    const cancel = makeButton("Cancel");
+    const copy = makeButton("Copy JSON", "primary");
+    const continueButton = makeButton("Continue to GPT", "primary");
+    const importButton = makeButton("Continue to Import", "primary");
+    importButton.style.display = "none";
+    actions.append(cancel, copy, continueButton, importButton);
+    body.append(status, text, actions);
+    box.append(header, body);
+    backdrop.append(box);
+    document.body.append(backdrop);
+
+    const closeModal = () => backdrop.remove();
+    const copyJson = async () => {
+      const copied = await copyTextToClipboard(text.value).then(() => true, () => false);
+      status.textContent = copied
+        ? "Copied JSON to clipboard. Paste it into the GPT when it opens."
+        : "Clipboard copy was blocked. Select and copy the JSON from the box.";
+      status.style.color = copied ? "#67e8f9" : "#fbbf24";
+    };
+    close.onclick = closeModal;
+    cancel.onclick = closeModal;
+    copy.onclick = copyJson;
+    continueButton.onclick = async () => {
+      await copyJson();
       openStoryboardGptUrl(payload);
-      createToast(`Copied Storyboard GPT JSON for ${payload.scenes.length} scenes and opened GPT.`);
+      importButton.style.display = "";
+      status.textContent = "After the GPT replies, click Continue to Import and paste its JSON there.";
+      status.style.color = "#67e8f9";
+    };
+    importButton.onclick = () => {
+      closeModal();
+      setTimeout(() => openImportImagePromptsFromGptModal(), 40);
+    };
+    backdrop.addEventListener("pointerdown", (event) => {
+      if (event.target === backdrop) closeModal();
+    });
+    copyJson();
+    text.focus();
+    text.select();
+  }
+
+  function copyStoryboardForGpt() {
+    try {
+      const selectedScenes = getSelectedScenes();
+      const payload = selectedScenes.length > 0 ? storyboardGptPayload(state, selectedScenes) : storyboardGptPayload(state);
+      showStoryboardGptHandoff(payload, payload.scenes.length);
     } catch (error) {
-      createToast(`Could not copy Storyboard GPT JSON:\n${String(error?.message || error)}`, true);
+      createToast(`Could not build GPT JSON:\n${String(error?.message || error)}`, true);
     }
   }
 

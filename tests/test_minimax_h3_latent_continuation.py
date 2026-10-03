@@ -386,7 +386,7 @@ class RunnerLatentContinuationTests(unittest.TestCase):
                         namespace = {**self.ns, "calculate_minimax_h3_timing": MANAGER.calculate_minimax_h3_timing,
                                      "payload": payload, "scene_number": scene, "timeline_start": 10,
                                      "timeline_end": 15, "source_start": 0, "source_duration": 5,
-                                     "warmup_frames": warmup, "cooldown_frames": 0}
+                                     "warmup_frames": warmup, "cooldown_frames": 0, "audio_mode": "input_audio"}
                         timing = eval(compile(ast.Expression(call), "builder_timing", "eval"), namespace)
                         if mode != "off" and scene > 1:
                             guide = self.ns["_patch_minimax_h3_latent_continuation"](self._prompt(), payload)

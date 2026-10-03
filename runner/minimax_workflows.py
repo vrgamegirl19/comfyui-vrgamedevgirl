@@ -87,8 +87,8 @@ def _build_minimax_h3_api_prompt(payload):
         source_start_seconds=source_start,
         source_duration_seconds=source_duration,
         pad_warmup=(
-            _minimax_h3_is_latent_mode(_minimax_h3_latent_continuation_mode(payload))
-            and scene_number > 1
+            audio_mode == "built_in_audio"
+            or (_minimax_h3_is_latent_mode(_minimax_h3_latent_continuation_mode(payload)) and scene_number > 1)
         ),
     )
     prepared_audio = None
@@ -260,6 +260,57 @@ def _build_minimax_h3_api_prompt(payload):
     }
 
 
+def _use_minimax_h3_native_audio(prompt):
+    """Rewire the audio-driven 2-pass graph to use H3's own joint video+audio latent (built-in audio).
+
+    The template reads a project audio file: it feeds ``MiniMaxH3ReferenceToVideo`` as a reference audio and locks the
+    pass-1 latent to it through ``VRGDG_MiniMaxH3AudioDrive``. For built-in audio those inputs go away, everything that
+    read the audio-locked latent reads the Reference to Video node's own latent, and the pass-1 audio is decoded with
+    ``LTXVAudioVAEDecode`` and becomes the saved video's audio. Nodes are found by class, not by id, so the rewire
+    survives a template renumbering.
+    """
+    def by_class(class_type):
+        return [key for key, node in prompt.items() if node.get("class_type") == class_type]
+
+    r2v_nodes, drives = by_class("MiniMaxH3ReferenceToVideo"), by_class("VRGDG_MiniMaxH3AudioDrive")
+    if len(r2v_nodes) != 1 or not drives:
+        raise ValueError("The MiniMax H3 two-pass template changed: built-in audio needs one Reference to Video node and an audio drive node.")
+    r2v = r2v_nodes[0]
+    loaders = {
+        str(prompt[d]["inputs"]["source_audio"][0]) for d in drives
+        if isinstance(prompt[d]["inputs"].get("source_audio"), list)
+    }
+    for name in [n for n in prompt[r2v]["inputs"] if n.startswith("ref_audios.")]:
+        del prompt[r2v]["inputs"][name]
+    for node in prompt.values():
+        for name, value in node["inputs"].items():
+            if isinstance(value, list) and len(value) == 2 and str(value[0]) in drives and value[1] == 0:
+                node["inputs"][name] = [r2v, 1]
+    samplers = [
+        key for key in by_class("SamplerCustomAdvanced")
+        if prompt[key]["inputs"].get("latent_image") == [r2v, 1]
+    ]
+    if len(samplers) != 1:
+        raise ValueError(f"The MiniMax H3 two-pass template changed: expected one pass-1 sampler reading the H3 latent, found {samplers}.")
+    for key in [*drives, *sorted(loaders)]:
+        prompt.pop(key, None)
+    decode = str(max(int(key) for key in prompt if str(key).isdigit()) + 1)
+    prompt[decode] = {
+        "class_type": "LTXVAudioVAEDecode",
+        "_meta": {"title": "Decode MiniMax H3 native audio (pass 1)"},
+        "inputs": {"samples": [samplers[0], 0], "audio_vae": prompt[r2v]["inputs"]["audio_vae"]},
+    }
+    for key in by_class("VHS_VideoCombine"):
+        prompt[key]["inputs"]["audio"] = [decode, 0]
+    dangling = [
+        (key, name) for key, node in prompt.items() for name, value in node["inputs"].items()
+        if isinstance(value, list) and len(value) == 2 and isinstance(value[0], str) and value[0] not in prompt
+    ]
+    if dangling:
+        raise ValueError(f"The built-in audio rewire left dangling links: {dangling}")
+    return prompt
+
+
 def _build_minimax_h3_2pass_api_prompt(payload):
     """Build the cleaned external-audio MiniMax H3 two-pass API prompt.
 
@@ -272,12 +323,16 @@ def _build_minimax_h3_2pass_api_prompt(payload):
     if not video_prompt:
         raise ValueError("MiniMax H3 two-pass video prompt is empty.")
 
-    audio_path = str(_first_payload_value(payload, "audio_path", "source_audio_path", default="") or "").strip().strip('"')
-    if not audio_path:
-        raise ValueError("MiniMax H3 two-pass source audio path is empty.")
-    audio_path = os.path.abspath(audio_path)
-    if not os.path.isfile(audio_path):
-        raise FileNotFoundError(f"MiniMax H3 two-pass source audio was not found: {audio_path}")
+    raw_audio_mode = str(payload.get("audio_mode") or payload.get("audioMode") or "input_audio").strip().lower().replace("-", "_").replace(" ", "_")
+    audio_mode = "built_in_audio" if raw_audio_mode in {"built_in_audio", "native_audio", "generated_audio"} else "input_audio"
+    audio_path = ""
+    if audio_mode == "input_audio":
+        audio_path = str(_first_payload_value(payload, "audio_path", "source_audio_path", default="") or "").strip().strip('"')
+        if not audio_path:
+            raise ValueError("MiniMax H3 two-pass source audio path is empty.")
+        audio_path = os.path.abspath(audio_path)
+        if not os.path.isfile(audio_path):
+            raise FileNotFoundError(f"MiniMax H3 two-pass source audio was not found: {audio_path}")
 
     project_text = str(payload.get("project_folder", "") or "").strip().strip('"')
     if not project_text:
@@ -296,7 +351,7 @@ def _build_minimax_h3_2pass_api_prompt(payload):
         timeline_end = float(timeline_start) + float(duration)
 
     source_duration = _first_payload_value(payload, "source_duration_seconds", "audio_duration_seconds", default=None)
-    if source_duration is None:
+    if source_duration is None and audio_mode == "input_audio":
         source_duration = _probe_media_duration_seconds(audio_path)
     source_start = _first_payload_value(payload, "source_start_seconds", "audio_start_seconds", default=None)
     timing = calculate_minimax_h3_timing(
@@ -306,12 +361,13 @@ def _build_minimax_h3_2pass_api_prompt(payload):
         _first_payload_value(payload, "cooldown_frames", "tail_loss_frames", default=0),
         source_start_seconds=source_start,
         source_duration_seconds=source_duration,
+        # Built-in audio has no source file to run out of, so the warm-up is never cut short at the start.
         pad_warmup=(
-            _minimax_h3_is_latent_mode(_minimax_h3_latent_continuation_mode(payload))
-            and scene_number > 1
+            audio_mode == "built_in_audio"
+            or (_minimax_h3_is_latent_mode(_minimax_h3_latent_continuation_mode(payload)) and scene_number > 1)
         ),
     )
-    prepared_audio = _trim_minimax_h3_audio_context(audio_path, project_folder, scene_number, timing)
+    prepared_audio = _trim_minimax_h3_audio_context(audio_path, project_folder, scene_number, timing) if audio_mode == "input_audio" else None
 
     image_paths = _minimax_h3_image_paths(payload)
     video_references = _minimax_h3_video_references(payload)
@@ -366,9 +422,10 @@ def _build_minimax_h3_2pass_api_prompt(payload):
 
     _set_api_input(prompt, "138", "value", video_prompt)
     _set_api_input(prompt, "132", "value", float(timing.workflow_duration_input_seconds))
-    _set_api_input(prompt, "171", "audio_file", prepared_audio["audio_path"])
-    _set_api_input(prompt, "171", "seek_seconds", 0)
-    _set_api_input(prompt, "171", "duration", 0)
+    if prepared_audio:
+        _set_api_input(prompt, "171", "audio_file", prepared_audio["audio_path"])
+        _set_api_input(prompt, "171", "seek_seconds", 0)
+        _set_api_input(prompt, "171", "duration", 0)
     _set_api_input(prompt, "180", "image_paths", json.dumps(image_paths, ensure_ascii=False))
     _set_api_input(prompt, "180", "video_references", json.dumps(video_references, ensure_ascii=False))
     ref_image_size = str(payload.get("ref_image_size") or "max").strip().lower()
@@ -506,6 +563,8 @@ def _build_minimax_h3_2pass_api_prompt(payload):
     if not payload.get("_skip_latent_patches"):
         latent_continuation_settings = _patch_minimax_h3_latent_continuation(prompt, payload)
         save_latent_settings = _patch_minimax_h3_save_latent(prompt, payload, timing)
+    if audio_mode == "built_in_audio":
+        _use_minimax_h3_native_audio(prompt)
     return {
         "workflow_path": workflow_path,
         "output_folder": output_folder,
@@ -513,7 +572,7 @@ def _build_minimax_h3_2pass_api_prompt(payload):
         "latent_continuation_settings": latent_continuation_settings,
         "save_latent_settings": save_latent_settings,
         "used_seed": seed,
-        "audio_mode": "input_audio",
+        "audio_mode": audio_mode,
         "timing": timing.to_dict(),
         "prepared_audio": prepared_audio,
         "post_render_trim": {"start": timing.final_trim_start_seconds, "duration": timing.final_trim_duration_seconds, "frames": timing.final_frame_count},
