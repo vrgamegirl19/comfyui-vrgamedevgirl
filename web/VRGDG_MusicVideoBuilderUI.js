@@ -8580,7 +8580,7 @@ function openBuilder(node) {
     const ltx2MlxProject = engine === "ltx2mlx";
     if (projectVideoEngineSettingsSelect) projectVideoEngineSettingsSelect.value = engine;
     projectVideoEngineBadge.dataset.engine = engine;
-    projectVideoEngineBadge.textContent = miniMaxProject ? "◈ MiniMax" : ltx2MlxProject ? "◈ LTX-2 MLX" : "◈ LTX";
+    projectVideoEngineBadge.textContent = miniMaxProject ? "◈ MiniMax" : ltx2MlxProject ? "◈ LTX-MLX" : "◈ LTX";
     projectVideoEngineBadge.title = miniMaxProject
       ? "Switch project video engine: MiniMax H3"
       : ltx2MlxProject
@@ -8604,7 +8604,7 @@ function openBuilder(node) {
     state.projectVideoEngine = order[(order.indexOf(current) + 1) % order.length];
     syncProjectVideoEngineUI();
     await autoSaveSessionQuiet("project video engine badge toggle");
-    toast(`Switched this project to ${{ ltx: "LTX", minimax_h3: "MiniMax H3", ltx2mlx: "LTX-2 MLX" }[state.projectVideoEngine]}.`);
+    toast(`Switched this project to ${{ ltx: "LTX", minimax_h3: "MiniMax H3", ltx2mlx: "LTX-MLX" }[state.projectVideoEngine]}.`);
   }
 
   projectVideoEngineBadge.addEventListener("click", () => { void toggleProjectVideoEngineFromBadge(); });
