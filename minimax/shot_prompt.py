@@ -1,8 +1,10 @@
 """MiniMax H3 reference-to-video prompts, the way the Video Builder writes them.
 
 The LLM writes only creative shot descriptions (JSON). The builder owns the ``[Shot N]`` labels, the cut
-times and the ``detailed_description`` wrapper. The reference definitions (``<Subject N>`` and so on) are
-added by the renderer, so a saved prompt holds only the wrapper and the shots.
+times and the ``detailed_description`` wrapper. ``wrap_reference_prompt`` then puts the reference definitions
+(``subject_definitions``, ``summary``, ``retention_analysis``) before it and the soundscape sections after it, like the
+prompts the Video Builder saves. The render sends the saved text as it is, so without them ``<Subject N>`` would never
+be tied to ``<Picture N>``.
 
 Python twin of ``minimax_prompt.mjs`` (``miniMaxH3CreativePromptContextForSegment``,
 ``parseMiniMaxH3ShotDescriptionPayload``, ``miniMaxH3OfficialShotBodyFromDescriptions``,
@@ -220,6 +222,110 @@ def shot_body(descriptions: List[str], cut_plan: Dict[str, Any]) -> str:
 def assemble_prompt(descriptions: List[str], cut_plan: Dict[str, Any], style: str) -> str:
     """The saved prompt for a reference-to-video scene."""
     return f"{opening_wrapper(style)}{shot_body(descriptions, cut_plan)}".strip()
+
+
+AUDIO_DEFINITION = (
+    "<Audio 1> is the complete synchronized song and vocal track for the target video, reused as the target video's "
+    "complete final soundtrack and timing reference."
+)
+_PURPOSE = {
+    "subject": "character identity, face, hair, clothing, and body-proportion reference",
+    "extra": "character identity, face, hair, clothing, and body-proportion reference for this non-speaking extra",
+    "location": "environment, location, architecture, layout, and atmosphere reference",
+    "ingredients": "ordered ingredients, props, identity, or visual-detail reference",
+}
+_DEFAULT_SOUNDSCAPE = "Subtle location-appropriate ambience, physical movement sounds, breathing, and expressive performance sounds support the scene."
+
+
+def _compact_description(text: str, limit: int) -> str:
+    """A reference description cut at a clause or word boundary (``miniMaxH3CompactReferenceDescription``)."""
+    clean = re.sub(r"\s+", " ", str(text or "")).strip()
+    clean = re.sub(r"[.;,\s]+$", "", clean)
+    if len(clean) <= limit:
+        return clean
+    window = clean[: limit + 1]
+    comma = max(window.rfind(","), window.rfind(";"))
+    cut = comma if comma >= int(limit * 0.55) else window.rfind(" ")
+    return re.sub(r"[.;,\s]+$", "", window[: cut if cut > 0 else limit]).strip()
+
+
+def reference_frame(items: List[Dict[str, Any]], cut_plan: Dict[str, Any], style: str, audio_mode: str,
+                    audio_direction: str = "") -> Dict[str, str]:
+    """The text a reference-to-video prompt needs around its ``detailed_description`` section.
+
+    ``items`` are the scene's ordered reference images (``scene_inputs.ordered_reference_items``). Picture numbers
+    follow that order and subject numbers skip start/end frames, the same numbering ``reference_labels`` gives the LLM.
+    Returns ``head`` (subject_definitions, summary, retention_analysis) and ``tail`` (overall_soundscape,
+    non_diegetic_music).
+    """
+    built_in = audio_mode == "built_in_audio"
+    shots = ", ".join(f"[Shot {shot['number']}]" for shot in shot_plan(cut_plan)) or "[Shot 1]"
+    definitions: List[str] = []
+    retention: List[str] = []
+    featuring: List[str] = []
+    number = 0
+    for index, item in enumerate(items, start=1):
+        kind = str(item.get("kind") or "")
+        picture = f"<Picture {index}>"
+        if kind == "start_frame":
+            definitions.append(f"{picture} is the first frame of [Shot 1], used as the exact opening composition and visual-state anchor.")
+            retention.append(f"{picture} ([Shot 1] first frame): fully_preserved - the opening composition, subject placement, environment, lighting, and visual state are retained as the starting frame.")
+            continue
+        if kind == "end_frame":
+            last = shot_plan(cut_plan)[-1]["number"] if shot_plan(cut_plan) else 1
+            definitions.append(f"{picture} is the last frame of [Shot {last}], used as the exact final composition and visual-state anchor.")
+            retention.append(f"{picture} ([Shot {last}] last frame): fully_preserved - the final composition, subject placement, environment, lighting, and visual state are reached exactly at the end.")
+            continue
+        number += 1
+        label = f"<Subject {number}>"
+        raw_name = re.sub(r"\s+", " ", str(item.get("label") or item.get("name") or "")).strip() or ("location" if kind == "location" else "reference")
+        name = "environment" if kind == "location" else re.sub(r"^(?:the\s+)+", "the ", raw_name, flags=re.I)
+        noun = name if kind in ("subject", "extra", "location") else f"{name} reference"
+        phrase = noun if re.match(r"^(?:the|a|an)\s+", noun, re.I) else f"the {noun}"
+        purpose = _PURPOSE.get(kind, "visual reference")
+        description = _compact_description(item.get("description"), 240)
+        if kind == "subject" and number == 1:
+            definitions.append(f"{label} is {phrase} in {picture}; {picture} is the visual authority for {purpose}.")
+        else:
+            definitions.append(f"{label} is {phrase} in {picture}, used as {purpose}{': ' + description + '.' if description else '.'}")
+        if kind in ("subject", "extra"):
+            keep = "reference identity, face, hair, wardrobe, and accessories" if kind == "subject" else "identity and wardrobe"
+        else:
+            keep = (_compact_description(item.get("description"), 140) or name) + " and its reference identity"
+        retention.append(f"{label} (appears in {shots}): fully_preserved - {keep} remain consistent.")
+        featuring.append(f"{label} ({name})")
+    tasks = []
+    if any(str(i.get("kind")) == "start_frame" for i in items):
+        tasks.append("keyframe completion")
+    tasks.append("reference generation")
+    if not built_in:
+        tasks.append("audio reuse")
+        definitions.append(AUDIO_DEFINITION)
+        retention.append("<Audio 1>: fully_copy - <Audio 1> is reused 1:1 as the target video's complete final audio track.")
+    subject_text = " and ".join(featuring) if featuring else "the described target scene"
+    audio_text = (" MiniMax generates the native audio requested by the scene." if built_in
+                  else " <Audio 1> is reused as the complete soundtrack and timing reference.")
+    head = (
+        "subject_definitions:\n" + "\n".join(definitions)
+        + f"\n\nsummary:\n[{' + '.join(tasks)}] The target video is a {style or 'photorealistic cinematic'} scene featuring {subject_text}.{audio_text}"
+        + "\n\nretention_analysis:\n" + "\n".join(retention) + "\n\n"
+    )
+    if built_in:
+        tail = (f"\n\noverall_soundscape:\n{audio_direction.strip() or _DEFAULT_SOUNDSCAPE}"
+                "\n\nnon_diegetic_music:\nThe scene's native soundtrack follows the requested musical and atmospheric direction.")
+    else:
+        tail = ("\n\noverall_soundscape:\n<Audio 1> remains the sole complete audience-facing soundtrack with its original "
+                "mix, timing, vocals, music, and dynamics intact.\n\nnon_diegetic_music:\n<Audio 1> is reused as the "
+                "complete audience-facing song/music track.")
+    return {"head": head, "tail": tail}
+
+
+def wrap_reference_prompt(prompt: str, frame: Dict[str, str]) -> str:
+    """The saved prompt with its reference definitions and soundscape. A prompt that already has them is returned as is."""
+    text = str(prompt or "").strip()
+    if not text or "subject_definitions:" in text:
+        return text
+    return f"{frame['head']}{text}{frame['tail']}"
 
 
 def character_budget(cut_plan: Dict[str, Any], style: str, target_limit: int = 6500) -> Dict[str, int]:

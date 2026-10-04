@@ -141,7 +141,7 @@ def assemble_minimax_h3_prompt(
     expected_shots = cut_plan["shot_count"]
 
     if norm_mode == "reference_to_video":
-        # The saved format is the wrapper plus the shots; the renderer adds the reference definitions.
+        # The saved format is the Builder's: reference definitions, the wrapper plus the shots, then the soundscape.
         from . import shot_prompt
 
         wanted = len(shot_prompt.shot_plan(cut_plan))
@@ -149,6 +149,16 @@ def assemble_minimax_h3_prompt(
         cleaned += [shot_prompt.FALLBACK_SHOT] * (wanted - len(cleaned))
         style = str(segment.get("minimax_h3_video_style") or session.get("builder_storyboard_defaults", {}).get("video_style") or "")
         prompt_text = shot_prompt.assemble_prompt(cleaned, cut_plan, style)
+        # The render sends the saved text as it is, so it carries the reference definitions like the Builder's prompts.
+        from .scene_inputs import ordered_reference_items
+
+        ordered = sorted((x for x in session.get("segments") or [] if isinstance(x, dict)), key=lambda x: float(x.get("start") or 0.0))
+        index = next((i for i, x in enumerate(ordered) if x.get("id") == segment.get("id")), 0)
+        items = ordered_reference_items(session, segment, "reference_to_video", index)
+        if items:
+            audio_mode = str((session.get("minimax_h3_settings") or {}).get("audio_mode") or "input_audio")
+            frame = shot_prompt.reference_frame(items, cut_plan, style, audio_mode, str(segment.get("audio_direction") or ""))
+            prompt_text = shot_prompt.wrap_reference_prompt(prompt_text, frame)
         return {"prompt": prompt_text, "characters": len(prompt_text), "shots_used": wanted, "mode": norm_mode, "cut_plan": cut_plan}
 
     # Clean descriptions
@@ -255,7 +265,7 @@ def validate_minimax_h3_prompt(
                     "message": "Missing 'integrated_multimodal_description:' header in prompt.",
                 })
         else:
-            # The renderer adds the reference definitions, so a saved prompt holds only this section.
+            # Reference definitions come with the prompt (shot_prompt.wrap_reference_prompt); a bare section is accepted too.
             required_sections = ["detailed_description:"] if norm_mode == "reference_to_video" else [
                 "subject_definitions:", "summary:", "retention_analysis:", "detailed_description:"]
             for sec in required_sections:

@@ -2,7 +2,7 @@
 
 The project's LLM writes the creative shot descriptions with the saved ``minimax_h3_reference_to_video``
 instruction. The builder side (shot labels, cut times, the ``detailed_description`` wrapper and the format
-checks) is ``minimax.shot_prompt``. For LM Studio the model that is already loaded is used and never changed
+checks, and the reference definitions and soundscape around the shots) is ``minimax.shot_prompt``. For LM Studio the model that is already loaded is used and never changed
 (see ``llm_runtime``). Prompts are saved on each scene as ``minimax_h3_prompt``.
 """
 
@@ -74,7 +74,10 @@ def generate_scene_prompt(session: Dict[str, Any], folder: str, segment: Dict[st
         raise ValidationError(f"{card['label']} has no mapped Reference Builder image. Map a character to the scene first.")
     labels = sp.reference_labels(ctx["items"])
     plan = ctx["cut_plan"]
-    target_limit = sp.HARD_LIMIT
+    # The saved prompt is the Builder's full format: definitions before the shots, soundscape after. Both count
+    # toward the 7,000 characters, so the shots get what is left.
+    frame = sp.reference_frame(ctx["items"], plan, ctx["style"], ctx["audio_mode"], _text(segment.get("audio_direction")))
+    target_limit = sp.HARD_LIMIT - len(frame["head"]) - len(frame["tail"])
     last_length = 0
     for attempt in range(1, MAX_ATTEMPTS + 1):
         budget = sp.character_budget(plan, ctx["style"], target_limit)
@@ -118,9 +121,14 @@ def generate_scene_prompt(session: Dict[str, Any], folder: str, segment: Dict[st
             cast = [l for l in labels if l["kind"] == "subject"] or labels
             performer = f"{cast[0]['label']} ({cast[0]['name']})" if cast[0]["name"] else cast[0]["label"]
             descriptions = sp.ensure_quoted_lyrics(descriptions, segment.get("lyric_text") or ctx["lyric"], performer)
-        prompt = sp.assemble_prompt(descriptions, plan, ctx["style"])
+        core = sp.assemble_prompt(descriptions, plan, ctx["style"])
+        prompt = sp.wrap_reference_prompt(core, frame)
         try:
-            sp.validate_prompt(prompt, plan)
+            sp.validate_prompt(core, plan)
+            if len(prompt) > sp.HARD_LIMIT:
+                raise sp.ShotPromptError(
+                    f"The MiniMax H3 prompt is {len(prompt)} characters, over the {sp.HARD_LIMIT} maximum by {len(prompt) - sp.HARD_LIMIT}.",
+                    "MINIMAX_H3_PROMPT_TOO_LONG", len(prompt))
         except sp.ShotPromptError as exc:
             if exc.code != "MINIMAX_H3_PROMPT_TOO_LONG" or attempt >= MAX_ATTEMPTS:
                 raise
