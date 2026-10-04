@@ -1,5 +1,5 @@
 # Run from the ComfyUI root with its venv python:
-#   venv/bin/python custom_nodes/comfyui-vrgamedevgirl/tests/non_apple_mlx_regression.py
+#   venv-3.13/bin/python custom_nodes/comfyui-vrgamedevgirl/tests/non_apple_mlx_regression.py
 # Simulates Windows/Linux/Intel-Mac and checks the MLX additions never activate there.
 import sys, types, importlib, importlib.util, os, tempfile
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
