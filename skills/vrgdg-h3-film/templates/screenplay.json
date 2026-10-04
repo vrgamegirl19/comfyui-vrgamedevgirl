@@ -1,0 +1,40 @@
+{
+  "title": "UNTITLED",
+  "genre": "photorealistic tender British drama",
+  "styles": {
+    "default": "The target video is a scene from a photorealistic drama feature film, shot on anamorphic lenses with shallow depth of field, soft motivated lighting, a warm natural color grade and natural film grain. The acting is naturalistic and emotionally truthful, carried by detailed facial expressions, eyes and breathing."
+  },
+  "voices": {
+    "anna": "a warm, clear alto voice of an Englishwoman in her forties with a gentle London accent",
+    "tom": "a deep, steady, warm baritone voice of an Englishman in his fifties with a soft Yorkshire accent",
+    "radio": "a deep, warm, low adult male radio presenter voice of a man in his forties"
+  },
+  "sex": {"anna": "F", "tom": "M", "radio": "M"},
+  "cast": {
+    "anna": {"ref": "characters/REF_anna.png", "name": "Anna", "pos": "her",
+             "desc": "a 45-year-old woman with shoulder-length auburn hair and green eyes, wearing a cream knit jumper"},
+    "tom": {"ref": "characters/REF_tom.png", "name": "Tom", "pos": "his",
+            "desc": "a 55-year-old man with short grey hair and a neat grey beard, wearing a navy wool coat"}
+  },
+  "voice_only": {
+    "radio": {"name": "the radio presenter", "def": "The radio presenter is heard only as a voice from the old kitchen radio."}
+  },
+  "locations": {
+    "kitchen": {"ref": "locations/REF_kitchen.png", "name": "a farmhouse kitchen at dawn",
+                "desc": "a warm farmhouse kitchen at dawn with a wooden table, a steaming kettle and pale sunlight through a window"},
+    "kitchen_night": {"ref": null, "name": "the farmhouse kitchen at night",
+                      "desc": "the same farmhouse kitchen at night, lit only by one warm lamp over the table"}
+  },
+  "scenes": [
+    {"loc": "kitchen", "cast": ["anna"], "dur": 7.0,
+     "summary": "Anna listens to the morning radio.",
+     "sound": "Quiet kitchen room tone, a kettle starting to whistle, birdsong outside.",
+     "shots": [[0, "Medium shot of {anna} at the kitchen table holding a mug, the old radio on the windowsill beside her. {anna}'s lips stay pressed together as she listens. {say:radio|says in a deep, low, cheerful man's voice from the radio speaker|Good morning! <breath> It's going to be a beautiful day.}"]]},
+    {"loc": "kitchen", "cast": ["anna", "tom"], "dur": 8.0,
+     "summary": "Tom comes in and Anna greets him.",
+     "sound": "Kitchen room tone, the door opening, footsteps on stone.",
+     "continuity": "",
+     "shots": [[0, "Medium two-shot from the side. {tom} steps into the kitchen and {anna} turns her head toward him, her eyes fixed on his face. {tom}'s lips stay pressed together. {say:anna|says warmly, smiling at him|You're up early. <breath> Tea?}"],
+               [4.5, "Close-up of {tom} looking at {anna}, a slow smile spreading. {say:tom|says quietly in a low voice, looking at her|I couldn't sleep.}"]]}
+  ]
+}

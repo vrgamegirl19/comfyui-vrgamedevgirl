@@ -1,0 +1,31 @@
+[
+ {
+  "name": "char_anna",
+  "folder": "characters",
+  "seeds": [
+   101,
+   102,
+   103
+  ],
+  "prompt": "Photorealistic cinematic character reference photo. A 45-year-old woman named Anna stands facing the camera, framed from the knees up, arms relaxed at her sides, a calm, warm expression, eyes looking straight into the lens. She has shoulder-length auburn hair and green eyes, fair skin with realistic pores. She wears a cream knit jumper and dark trousers. She stands in front of a plain seamless mid-grey studio backdrop, lit by soft even three-point studio light. Sharp focus, 85mm lens, natural color, high detail."
+ },
+ {
+  "name": "char_tom",
+  "folder": "characters",
+  "seeds": [
+   111,
+   112,
+   113
+  ],
+  "prompt": "Photorealistic cinematic character reference photo. A 55-year-old man named Tom stands facing the camera, framed from the knees up, arms relaxed at his sides, a kind, quiet expression, eyes looking straight into the lens. He has short grey hair and a neat grey beard, fair weathered skin with realistic pores. He wears a navy wool coat over a grey jumper and dark trousers. He stands in front of a plain seamless mid-grey studio backdrop, lit by soft even three-point studio light. Sharp focus, 85mm lens, natural color, high detail."
+ },
+ {
+  "name": "loc_kitchen",
+  "folder": "locations",
+  "seeds": [
+   201,
+   202
+  ],
+  "prompt": "Photorealistic cinematic film still, wide establishing shot of an empty warm farmhouse kitchen at dawn, a long wooden table, a steaming kettle on the stove, an old radio on the windowsill, pale sunlight through the window. Anamorphic 35mm lens, shallow depth of field, warm natural palette, high detail."
+ }
+]

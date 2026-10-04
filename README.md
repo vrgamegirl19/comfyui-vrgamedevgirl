@@ -35,6 +35,14 @@ Use it to:
 
 ---
 
+## 🤖 Claude Skill: Make Whole Films with Claude
+
+The [`skills/vrgdg-h3-film`](skills/vrgdg-h3-film) folder is a skill for [Claude Code](https://claude.com/claude-code). With it, Claude writes, renders, scores, checks and edits a complete short film in your own ComfyUI through the Video Builder, using MiniMax H3 with built-in voices.
+
+Copy that folder into your Claude skills folder (`C:\Users\<you>\.claude\skills\` on Windows, `~/.claude/skills/` on Mac or Linux), then ask Claude for a film. Requirements and setup are in the [skill's README](skills/vrgdg-h3-film/README.md).
+
+---
+
 ## 🌟 Useful Nodes & Tools
 
 These are some of the most useful tools included in the pack. Many can be used on their own in a normal ComfyUI workflow.
