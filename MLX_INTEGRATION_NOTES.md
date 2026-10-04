@@ -1120,3 +1120,20 @@ the right data, and the right save-on-change behavior, but was silently
 missing the one call that makes it interactive. Worth a real click-through
 test of any dropdown/picker control, not just confirming its HTML and data
 source exist.
+
+## Follow-up session (2026-10-04): rebase onto `main`
+
+`mlx` was rebased onto `main` (281 upstream commits, 16 MLX commits replayed). Previous tip kept as
+`backup/mlx-pre-rebase`. Notes for the next rebase:
+
+- **Project engine badge now cycles three engines.** Upstream `main` made the badge a click-to-toggle
+  between LTX and MiniMax H3 (`toggleProjectVideoEngineFromBadge`). It now cycles
+  LTX → MiniMax H3 → LTX-2 MLX. The earlier note that the badge is display-only no longer applies.
+- **`LLM.py` line endings.** The Gemma MLX commit normalises CRLF → LF, so every upstream edit to
+  `LLM.py` conflicts as a whole-file rewrite. Resolve by stripping `\r` from the base, ours and theirs
+  versions and running `git merge-file`; it merges cleanly.
+- **Route conflicts in `VRGDG_WorkflowRunnerNodes.py`** are all "keep both": upstream's MiniMax H3
+  2-pass/3-pass routes plus our `build_ltx2mlx_prompt` / `ltx2mlx_capability` routes.
+- **Verification:** static only (py_compile, `node --check`, identifier counts vs. the backup branch,
+  node tests in `tests/`). `latent_context_setting.cjs` and `minimax_pass_settings.cjs` fail on `main`
+  too. No MLX engine was run end-to-end after the rebase.
