@@ -1161,3 +1161,17 @@ source exist.
   unavailable note and fails with that error rather than starting a render.
 - Not tested on a real Windows/CUDA machine.
 - Badge label: the project engine badge reads "LTX-MLX" (dropdown and error text still say "LTX-2 MLX").
+
+### Non-Apple regression check (2026-10-04)
+
+`tests/non_apple_mlx_regression.py` (run from the ComfyUI root with the venv python) simulates
+win32/AMD64, linux/x86_64 and darwin/x86_64, with `mlx_lm`/`mlx_vlm` pretended installed, and checks:
+Gemma MLX is never selected, `_load_gguf_model` reaches llama-cpp and `_run_gguf_text_pipeline` still
+passes the Gemma stop sequences, the four `_require_*_mlx_available` guards raise the Apple-Silicon
+error, and no `mlx*`/`mflux` module is imported. Also checked by diff: `LLM.py` vs `main` is pure
+additions (4 hook points, nothing removed), and the 8 scheduler workflows differ from `main` only by
+`device: "cuda"` → `"auto"` (the FlowMatch node resolves `auto` to `cuda` when available, so CUDA is
+unchanged; CPU-only machines no longer crash). LTX and MiniMax stitch inputs are unchanged.
+Caveat: the ComfyUI venv here has older `comfy-aimdo`/`comfy-kitchen` than core requires, so the full
+pack cannot be imported in it (many modules fail with `comfy_aimdo.storage` / `int8_attention_is_available`
+errors, with or without this branch). Real Windows/CUDA runs are still untested.
