@@ -915,7 +915,16 @@ site is a permanent diagnostic now — future junk-detector failures will log th
 rejected text to the browser console even if the file-based `gemma_debug` save path
 doesn't fire.
 
-### TODO (not yet done): LTX2MLX A2V trims video slightly shorter than its audio slice — scene splitting needs to account for this
+### RESOLVED (2026-10-04): LTX2MLX A2V trims video slightly shorter than its audio slice
+
+**Fix:** `stitchRenderedScenes` (`web/VRGDG_MusicVideoBuilderUI.js`) now sends `scene_timing_items` and
+`timeline_fps` for LTX-MLX projects (fps = the project's LTX-MLX `frame_rate`), the same mechanism
+MiniMax H3 already used. `stitch_scene_videos` then re-times every scene to its exact timeline slot
+(`start_frame`/`end_frame` rounded from the slot boundaries, so error never accumulates), holding the
+last frame to fill the up-to-~333ms shortfall. Scene starts stay aligned with the global audio, so lip
+sync is unaffected; only the tail of a short scene is frozen. The per-scene A2V render and the
+`comfyui-ltx2-mlx` round-down behaviour are unchanged. Not yet verified with a real multi-scene render.
+Original analysis kept below.
 
 Found while fixing an unrelated crash in the sibling `comfyui-ltx2-mlx` repo (see its own
 commit history: `4528ec3`, superseded by `e71109b`). `LTX2MLXAudioToVideo`'s

@@ -49981,6 +49981,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   async function stitchRenderedScenes(progress, options = {}) {
     const baseSegments = Array.isArray(options.segments) && options.segments.length ? options.segments : state.segments;
     const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
+    const ltx2MlxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "ltx2mlx";
+    // LTX-MLX A2V snaps frame counts down to 8k+1, so a rendered scene can be up to ~333ms shorter
+    // than its timeline slot. Pin every scene to its slot (last frame held) so audio never drifts.
+    const timelineFps = miniMaxProject ? 24 : ltx2MlxProject ? cloneLtx2MlxSettings(state.ltx2MlxSettings).frame_rate : 0;
     const overlaySegments = state.overlayTrack.enabled
       ? (Array.isArray(options.overlaySegments) ? options.overlaySegments : state.overlaySegments)
           .filter((segment) => overlayClipIsEnabled(segment, state.overlayTrack))
@@ -49997,7 +50001,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       }
     }
     const paths = baseSegments.map((segment) => String(selectedSegmentVideoPath(segment) || "").trim());
-    const sceneTimingItems = miniMaxProject ? baseSegments.map((segment) => ({
+    const sceneTimingItems = timelineFps ? baseSegments.map((segment) => ({
       start: Math.max(0, Number(segment.start || 0) - timelineOffset),
       end: Math.max(0, Number(segment.end || 0) - timelineOffset),
     })) : [];
@@ -50053,7 +50057,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       scene_audio_paths: audioPaths,
       scene_audio_items: audioItems,
       scene_timing_items: sceneTimingItems,
-      timeline_fps: miniMaxProject ? 24 : 0,
+      timeline_fps: timelineFps,
       use_embedded_scene_audio: embeddedSceneAudioMode,
       overlay_items: overlayItems,
       project_folder: projectInput.value,
