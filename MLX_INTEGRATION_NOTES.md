@@ -1137,3 +1137,18 @@ source exist.
 - **Verification:** static only (py_compile, `node --check`, identifier counts vs. the backup branch,
   node tests in `tests/`). `latent_context_setting.cjs` and `minimax_pass_settings.cjs` fail on `main`
   too. No MLX engine was run end-to-end after the rebase.
+
+### Non-Apple machines: MLX is optional (audited 2026-10-04, static check only)
+
+- `requirements.txt` is unchanged from `main`; no MLX/Apple package is declared anywhere in this repo.
+- No module imports `mlx`, `mlx_lm`, `mlx_vlm` or `mflux` at top level. The only imports are inside
+  functions in `LLM.py`, so nothing Apple-specific loads at startup.
+- Gemma MLX dispatch in `LLM.py` runs only when `_gemma_mlx_available()` is true (macOS + arm64 and
+  `mlx_lm`, plus `mlx_vlm` for vision, found via `find_spec`); otherwise it falls through to llama-cpp GGUF.
+- The LTX-MLX, Klein, Z-Image and Krea-2 engines live in separate node packs. Each has a
+  `_require_*_available()` guard in `VRGDG_WorkflowRunnerNodes.py` that raises an "Apple Silicon only"
+  error off-Mac, called before every prompt build, and the `*_capability` routes return `available: false`.
+- The LTX-MLX option is still listed in the engine dropdown on every platform; off-Mac it shows the
+  unavailable note and fails with that error rather than starting a render.
+- Not tested on a real Windows/CUDA machine.
+- Badge label: the project engine badge reads "LTX-MLX" (dropdown and error text still say "LTX-2 MLX").
