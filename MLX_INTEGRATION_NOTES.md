@@ -923,7 +923,11 @@ MiniMax H3 already used. `stitch_scene_videos` then re-times every scene to its 
 (`start_frame`/`end_frame` rounded from the slot boundaries, so error never accumulates), holding the
 last frame to fill the up-to-~333ms shortfall. Scene starts stay aligned with the global audio, so lip
 sync is unaffected; only the tail of a short scene is frozen. The per-scene A2V render and the
-`comfyui-ltx2-mlx` round-down behaviour are unchanged. Not yet verified with a real multi-scene render.
+`comfyui-ltx2-mlx` round-down behaviour are unchanged. Verified with synthetic clips through the real `_stitch_scene_videos` (3 scenes, slots 5.0/4.3/6.1s =
+15.4s, clips of 113/97/145 frames at 24fps as the 8k+1 snap-down would give): old plain concat gave
+355 frames / 14.79s (-0.61s, song audio truncated to match); timeline-pinned gave exactly 370 frames
+(15.417s) with per-scene targets 120/103/147. Frame counts only (no visual cut-point or lip-sync check),
+and not yet verified with a real multi-scene A2V render from the Builder.
 Original analysis kept below.
 
 Found while fixing an unrelated crash in the sibling `comfyui-ltx2-mlx` repo (see its own
