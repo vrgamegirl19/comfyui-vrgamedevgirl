@@ -1,0 +1,191 @@
+{
+ "comfyui": {
+  "min_version": "0.37.0",
+  "note": "needs ComfyUI's built-in MiniMax H3 and MiniMax Music 3 nodes; update ComfyUI if they are missing"
+ },
+ "custom_nodes": [
+  {
+   "name": "comfyui-vrgamedevgirl",
+   "url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl",
+   "probe": "VRGDG_MusicVideoBuilderUI",
+   "why": "the Video Builder, its routes, the H3 helper nodes and the YuE2 nodes"
+  },
+  {
+   "name": "ComfyUI-VideoHelperSuite",
+   "url": "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite",
+   "probe": "VHS_VideoCombine",
+   "why": "video and audio loading and saving inside the Builder workflows"
+  },
+  {
+   "name": "ComfyUI-KJNodes",
+   "url": "https://github.com/kijai/ComfyUI-KJNodes",
+   "probe": "DiffusionModelLoaderKJ",
+   "why": "the H3 model loader and image resize nodes"
+  },
+  {
+   "name": "comfyui-minimax-h3-audio-T8",
+   "url": "https://github.com/T8mars/comfyui-minimax-h3-audio-T8",
+   "probe": "MiniMaxH3AVLatentSeparateT8",
+   "why": "audio/video latent separation in the H3 2-pass workflow"
+  },
+  {
+   "name": "Comfyui_Minimax_h3_latent_Upscaler",
+   "url": "https://github.com/LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler",
+   "probe": "",
+   "why": "the latent-upscaler backend that the Builder's 2-pass upscale loads"
+  },
+  {
+   "name": "ComfyUI-EulerDiscreteScheduler",
+   "url": "https://github.com/erosDiffusion/ComfyUI-EulerDiscreteScheduler",
+   "probe": "FlowMatchEulerDiscreteScheduler (Custom)",
+   "why": "the scheduler used by the Builder's Z-Image 2-pass workflow"
+  }
+ ],
+ "models": [
+  {
+   "group": "h3",
+   "label": "MiniMax H3 Ref2VA diffusion model",
+   "folder": "diffusion_models",
+   "file": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+   "gb": 20.97,
+   "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+   "match": [
+    "minimax",
+    "h3",
+    "ref2va"
+   ]
+  },
+  {
+   "group": "h3",
+   "label": "MiniMax H3 Qwen3-VL text encoder",
+   "folder": "text_encoders",
+   "file": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+   "gb": 15.69,
+   "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+   "match": [
+    "qwen3vl",
+    "minimax"
+   ]
+  },
+  {
+   "group": "h3",
+   "label": "MiniMax H3 video VAE",
+   "folder": "vae",
+   "file": "minimax_h3_video_vae_fp16.safetensors",
+   "gb": 5.21,
+   "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_video_vae_fp16.safetensors",
+   "match": [
+    "minimax_h3_video_vae"
+   ]
+  },
+  {
+   "group": "h3",
+   "label": "MiniMax H3 audio VAE",
+   "folder": "vae",
+   "file": "minimax_h3_audio_vae_fp32.safetensors",
+   "gb": 0.61,
+   "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_audio_vae_fp32.safetensors",
+   "match": [
+    "minimax_h3_audio_vae"
+   ]
+  },
+  {
+   "group": "h3",
+   "label": "MiniMax H3 latent upscaler",
+   "folder": "latent_upscale_models",
+   "file": "minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors",
+   "gb": 0.69,
+   "url": "https://huggingface.co/LBH-123-AI/Minimax_h3_latent_Upscaler/resolve/main/minimax_h3_latent_upscaler_3d_conv_v1/minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors",
+   "match": [
+    "minimax_h3",
+    "latent_upscaler"
+   ]
+  },
+  {
+   "group": "h3",
+   "label": "MiniMax H3 turbo LoRA (4-step 768p v1.1)",
+   "folder": "loras",
+   "file": "minimax_h3_fl2v_turbo_4step_v1.1_768p_comfyui_bf16.safetensors",
+   "gb": 1.96,
+   "url": "https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_fl2v_turbo_4step_v1.1_768p_comfyui_bf16.safetensors",
+   "match": [
+    "minimax_h3",
+    "turbo"
+   ]
+  },
+  {
+   "group": "zimage",
+   "label": "Z-Image Turbo",
+   "folder": "diffusion_models",
+   "file": "z_image_turbo_bf16.safetensors",
+   "gb": 12.31,
+   "url": "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors",
+   "match": [
+    "z_image"
+   ]
+  },
+  {
+   "group": "zimage",
+   "label": "Z-Image Qwen 3 4B text encoder",
+   "folder": "text_encoders",
+   "file": "qwen_3_4b.safetensors",
+   "gb": 8.04,
+   "url": "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors",
+   "match": [
+    "qwen_3_4b"
+   ]
+  },
+  {
+   "group": "zimage",
+   "label": "Z-Image VAE",
+   "folder": "vae",
+   "file": "ae.safetensors",
+   "gb": 0.34,
+   "url": "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors",
+   "match": [
+    "ae."
+   ]
+  },
+  {
+   "group": "music3",
+   "label": "MiniMax Music 3 DiT",
+   "folder": "diffusion_models",
+   "file": "minimax_music3_dit_fp16.safetensors",
+   "gb": 4.91,
+   "url": "https://huggingface.co/Comfy-Org/MiniMax-Music-3/resolve/main/diffusion_models/minimax_music3_dit_fp16.safetensors",
+   "match": [
+    "minimax_music3",
+    "dit"
+   ]
+  },
+  {
+   "group": "music3",
+   "label": "MiniMax Music 3 text encoder",
+   "folder": "text_encoders",
+   "file": "minimax_music3_text_encoder_pruned_int8_convrot.safetensors",
+   "gb": 9.2,
+   "url": "https://huggingface.co/Comfy-Org/MiniMax-Music-3/resolve/main/text_encoders/minimax_music3_text_encoder_pruned_int8_convrot.safetensors",
+   "match": [
+    "minimax_music3",
+    "text_encoder"
+   ]
+  },
+  {
+   "group": "music3",
+   "label": "MiniMax Music 3 audio VAE",
+   "folder": "vae",
+   "file": "minimax_music3_dav.safetensors",
+   "gb": 0.22,
+   "url": "https://huggingface.co/Comfy-Org/MiniMax-Music-3/resolve/main/vae/minimax_music3_dav.safetensors",
+   "match": [
+    "minimax_music3",
+    "dav"
+   ]
+  }
+ ],
+ "groups": {
+  "h3": "required: video, voices and sound",
+  "zimage": "recommended: character and location reference images",
+  "music3": "optional: instrumental score (YuE2 or your own music also work)"
+ }
+}

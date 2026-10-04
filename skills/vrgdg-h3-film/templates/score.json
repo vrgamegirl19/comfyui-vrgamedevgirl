@@ -1,0 +1,38 @@
+{
+ "cues": {
+  "theme": {
+   "seconds": 90,
+   "seeds": [
+    9101,
+    9102
+   ],
+   "caption": "gentle cinematic film score, instrumental, slow tempo 70 BPM, soft piano and warm strings, tender and hopeful, quiet and sparse, fading softly into silence",
+   "lyrics": "[Intro]\n[Instrumental]\n\n[Verse]\n[Instrumental]\n\n[Outro]\n[Instrumental]"
+  }
+ },
+ "placement": [
+  {
+   "file": "audio/score/theme_9101.mp3",
+   "from_scene": 1,
+   "to_scene": "end",
+   "offset": 1.0,
+   "fade_in": 3.0,
+   "fade_out": 4.0
+  }
+ ],
+ "music_db": -16.0,
+ "end_card_seconds": 8.0,
+ "title_card": {
+  "over_scene": 1,
+  "at": 1.0,
+  "seconds": 4.0
+ },
+ "end_card": {
+  "lines": [
+   "UNTITLED",
+   "A short film by Claude",
+   "Made with MiniMax H3 and the VRGDG Video Builder for ComfyUI"
+  ]
+ },
+ "play_order": []
+}
