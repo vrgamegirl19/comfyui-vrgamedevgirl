@@ -936,7 +936,8 @@ and not yet verified with a real multi-scene A2V render from the Builder.
 5.7-9.1; 502s / 461s / 572s per scene). Rendered scenes: 65 / 57 / 81 frames (2.708 / 2.375 / 3.375s)
 vs. 3.0 / 2.7 / 3.4s slices, so the snap-down shortfall (up to ~0.3s) is real. Plain concat would have
 been 203 frames (8.46s); the pinned stitch gave exactly 218 frames (9.083s video, 9.100s audio), i.e.
-round(9.1*24). Driven through the backend routes, not the browser UI; no visual cut-point/lip-sync check.
+round(9.1*24). Driven through the backend routes, not the browser UI. The user listened to the final video: the test
+audio tone is continuous across all scene cuts with no gaps. No lip-sync check (tone audio, not vocals).
 Original analysis kept below.
 
 Found while fixing an unrelated crash in the sibling `comfyui-ltx2-mlx` repo (see its own
