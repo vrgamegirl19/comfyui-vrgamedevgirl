@@ -928,6 +928,15 @@ sync is unaffected; only the tail of a short scene is frozen. The per-scene A2V 
 355 frames / 14.79s (-0.61s, song audio truncated to match); timeline-pinned gave exactly 370 frames
 (15.417s) with per-scene targets 120/103/147. Frame counts only (no visual cut-point or lip-sync check),
 and not yet verified with a real multi-scene A2V render from the Builder.
+
+**Real render (2026-10-04):** drove the Builder's own backend sequence (`trim_scene_audio` →
+`build_ltx2mlx_prompt` a2v → `/prompt` → `collect_scene_video` → `stitch_scene_videos` with
+`scene_timing_items`, fps 24) on a fresh ComfyUI server (`venv-3.13`, port 8199) with real
+`dgrauet/ltx-2.3-mlx-q8`, two_stage, 576x320, 3 scenes over a 9.1s song (slots 0-3.0 / 3.0-5.7 /
+5.7-9.1; 502s / 461s / 572s per scene). Rendered scenes: 65 / 57 / 81 frames (2.708 / 2.375 / 3.375s)
+vs. 3.0 / 2.7 / 3.4s slices, so the snap-down shortfall (up to ~0.3s) is real. Plain concat would have
+been 203 frames (8.46s); the pinned stitch gave exactly 218 frames (9.083s video, 9.100s audio), i.e.
+round(9.1*24). Driven through the backend routes, not the browser UI; no visual cut-point/lip-sync check.
 Original analysis kept below.
 
 Found while fixing an unrelated crash in the sibling `comfyui-ltx2-mlx` repo (see its own
