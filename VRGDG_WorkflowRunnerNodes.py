@@ -5164,6 +5164,25 @@ def _require_krea2_zimage_mlx_available():
         )
 
 
+def _add_ltx2mlx_loras(prompt, payload):
+    if not _bool_payload(payload, "use_custom_loras", False):
+        return
+    lora_count = _int_payload(payload, "lora_count", 0, 0, _MAX_LORA_SLOTS)
+    lora_index = 0
+    for slot in range(1, lora_count + 1):
+        name = _clean_lora_name(payload.get(f"lora_{slot}", _NONE_LORA))
+        if name == _NONE_LORA:
+            continue
+        node_id = str(10 + slot)
+        prompt[node_id] = {
+            "inputs": {"lora_name": name, "strength": _float_payload(payload, f"strength_{slot}", 1.0)},
+            "class_type": "LTX2MLXLora",
+            "_meta": {"title": f"LTX-2 MLX LoRA {slot}"},
+        }
+        _set_api_input(prompt, "1", f"loras.lora_{lora_index}", [node_id, 0])
+        lora_index += 1
+
+
 def _patch_ltx2mlx_t2v_i2v_api_prompt(prompt, payload):
     prompt = copy.deepcopy(prompt)
     prompt_text = str(
@@ -5193,6 +5212,7 @@ def _patch_ltx2mlx_t2v_i2v_api_prompt(prompt, payload):
     _set_api_input(prompt, "1", "pipeline_type", str(payload.get("pipeline_type") or "two_stage"))
     _set_api_input(prompt, "1", "low_ram", _bool_payload(payload, "low_ram", False))
     _set_api_input(prompt, "1", "custom_model_dir", str(payload.get("custom_model_dir", "") or ""))
+    _add_ltx2mlx_loras(prompt, payload)
 
     _set_api_input(prompt, "3", "prompt", prompt_text)
     _set_api_input(prompt, "3", "height", _int_payload(payload, "height", 480, 64, 2160))
@@ -5242,6 +5262,7 @@ def _patch_ltx2mlx_a2v_api_prompt(prompt, payload):
     _set_api_input(prompt, "1", "model_dir", str(payload.get("model_dir") or "dgrauet/ltx-2.3-mlx-q8"))
     _set_api_input(prompt, "1", "low_ram", _bool_payload(payload, "low_ram", False))
     _set_api_input(prompt, "1", "custom_model_dir", str(payload.get("custom_model_dir", "") or ""))
+    _add_ltx2mlx_loras(prompt, payload)
 
     _set_api_input(prompt, "2", "audio_file", audio_path)
     _set_api_input(prompt, "2", "seek_seconds", _float_payload(payload, "audio_seek_seconds", 0.0, 0.0, 1e9))

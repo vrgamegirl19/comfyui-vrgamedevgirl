@@ -1231,3 +1231,18 @@ still untested.
 - Not integrated yet. Open design points: use the scene's existing `lyric_text` when present, and optionally
   fall back to Whisper when it is empty (`openai-whisper` is installed in `venv-3.13` but is not a declared
   dependency of this repo, and `small` is a ~461 MB download).
+
+### LoRAs for LTX-MLX (2026-10-05)
+
+- Needs `comfyui-ltx2-mlx` 0.2.0+ (`LTX2MLXLora` node, Autogrow `loras` input on both loaders, max 10 slots).
+- UI: the LTX-MLX panel has the same "Use video LoRAs?" / "Video LoRA count" / 4 slot pickers as the LTX engine,
+  with one strength per LoRA (upstream fuses each LoRA into the transformer once, so there are no per-pass
+  strengths). Saved in `ltx2mlx_settings` (`use_loras`, `lora_count`, `loras`).
+- Payload uses the shared `use_custom_loras`/`lora_count`/`lora_N`/`strength_N` fields. `_add_ltx2mlx_loras` in
+  `VRGDG_WorkflowRunnerNodes.py` adds one `LTX2MLXLora` node per non-`[none]` slot (ids `11`-`14`) and links them to
+  the loader as `loras.lora_0`, `loras.lora_1`, ... for T2V/I2V and A2V. With LoRAs off the prompt is unchanged.
+- Verified on a test server: built prompts are correct (skipped `[none]` slot, A2V loader linked, no-LoRA prompt
+  matches the template); a q4 distilled 256x256 T2V render with two stacked LoRAs succeeded, and upstream logged
+  `Fusing LoRA ... (strength=0.80)` / `(strength=1.00)`. In Playwright, the slot picker opens (45 LoRAs) and the
+  settings survive an engine-badge round trip. The render path's payload lines were checked in isolation. No full
+  Music Video Builder scene render with a LoRA has been run yet.

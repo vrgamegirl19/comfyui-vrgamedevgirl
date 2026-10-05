@@ -188,6 +188,9 @@ const DEFAULT_LTX2MLX_SETTINGS = {
   cfg_scale: 3.0,
   match_audio_length: true,
   isolate_vocals: true,
+  use_loras: false,
+  lora_count: 0,
+  loras: [],
 };
 
 function cloneLtx2MlxSettings(overrides = {}) {
@@ -7416,6 +7419,26 @@ function openBuilder(node) {
     "Isolate vocals before rendering (Demucs, better lip sync)",
     DEFAULT_LTX2MLX_SETTINGS.isolate_vocals,
   );
+  const ltx2MlxUseLora = makeCheckbox("Use video LoRAs?", DEFAULT_LTX2MLX_SETTINGS.use_loras);
+  const ltx2MlxLoraPanel = document.createElement("div");
+  ltx2MlxLoraPanel.style.cssText = "display:none;flex-direction:column;gap:8px;";
+  const ltx2MlxLoraCount = makeInput(String(DEFAULT_LTX2MLX_SETTINGS.lora_count), "number");
+  ltx2MlxLoraCount.min = "0";
+  ltx2MlxLoraCount.max = "4";
+  const ltx2MlxLoraRows = document.createElement("div");
+  ltx2MlxLoraRows.style.cssText = "display:none;flex-direction:column;gap:8px;";
+  const ltx2MlxLoraSlots = [];
+  for (let slot = 1; slot <= 4; slot++) {
+    const row = document.createElement("div");
+    row.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) 84px;gap:8px;";
+    const picker = makeSearchableLoraPicker("[none]");
+    const strength = makeInput("1", "number");
+    strength.step = "0.01";
+    row.append(makeField(`Video LoRA ${slot}`, picker.wrapper), makeField("Strength", strength));
+    ltx2MlxLoraRows.append(row);
+    ltx2MlxLoraSlots.push({ row, picker, strength });
+  }
+  ltx2MlxLoraPanel.append(makeField("Video LoRA count", ltx2MlxLoraCount), ltx2MlxLoraRows);
   const ltx2MlxDimensionsRow = document.createElement("div");
   ltx2MlxDimensionsRow.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;";
   ltx2MlxDimensionsRow.append(
@@ -7441,6 +7464,8 @@ function openBuilder(node) {
     makeField("CFG scale (t2v/i2v)", ltx2MlxCfgScale),
     ltx2MlxMatchAudioLength.wrapper,
     ltx2MlxIsolateVocals.wrapper,
+    ltx2MlxUseLora.wrapper,
+    ltx2MlxLoraPanel,
     ltx2MlxSceneVideoButton,
   );
 
@@ -7688,6 +7713,36 @@ function openBuilder(node) {
     ltx2MlxCfgScale.value = String(settings.cfg_scale);
     ltx2MlxMatchAudioLength.input.checked = Boolean(settings.match_audio_length);
     ltx2MlxIsolateVocals.input.checked = Boolean(settings.isolate_vocals);
+    ltx2MlxUseLora.input.checked = Boolean(settings.use_loras);
+    ltx2MlxLoraCount.value = String(settings.lora_count || 0);
+    ltx2MlxLoraSlots.forEach((slot, index) => {
+      const config = settings.loras?.[index] || {};
+      slot.picker.input.value = config.name || "[none]";
+      slot.strength.value = config.strength ?? 1;
+    });
+    updateLtx2MlxLoraVisibility();
+  }
+
+  function updateLtx2MlxLoraVisibility() {
+    const count = Math.max(0, Math.min(4, Number(ltx2MlxLoraCount.value || 0)));
+    ltx2MlxLoraPanel.style.display = ltx2MlxUseLora.input.checked ? "flex" : "none";
+    ltx2MlxLoraRows.style.display = ltx2MlxUseLora.input.checked && count > 0 ? "flex" : "none";
+    ltx2MlxLoraSlots.forEach((slot, index) => {
+      slot.row.style.display = index < count ? "grid" : "none";
+    });
+  }
+
+  function saveLtx2MlxLoraSettingsFromPanel() {
+    state.ltx2MlxSettings = cloneLtx2MlxSettings({
+      ...state.ltx2MlxSettings,
+      use_loras: Boolean(ltx2MlxUseLora.input.checked),
+      lora_count: Math.max(0, Math.min(4, Number(ltx2MlxLoraCount.value || 0))),
+      loras: ltx2MlxLoraSlots.map((slot) => ({
+        name: slot.picker.input.value || "[none]",
+        strength: Number(slot.strength.value || 1),
+      })),
+    });
+    autoSaveSessionQuiet("LTX-2 MLX LoRA settings changed").catch(() => null);
   }
 
   function updateLtx2MlxSetting(key, value) {
@@ -7706,6 +7761,17 @@ function openBuilder(node) {
   ltx2MlxCfgScale.addEventListener("change", () => updateLtx2MlxSetting("cfg_scale", Number(ltx2MlxCfgScale.value) || DEFAULT_LTX2MLX_SETTINGS.cfg_scale));
   ltx2MlxMatchAudioLength.input.addEventListener("change", () => updateLtx2MlxSetting("match_audio_length", ltx2MlxMatchAudioLength.input.checked));
   ltx2MlxIsolateVocals.input.addEventListener("change", () => updateLtx2MlxSetting("isolate_vocals", ltx2MlxIsolateVocals.input.checked));
+  for (const control of [ltx2MlxUseLora.input, ltx2MlxLoraCount]) {
+    control.addEventListener("change", () => {
+      updateLtx2MlxLoraVisibility();
+      saveLtx2MlxLoraSettingsFromPanel();
+    });
+  }
+  for (const slot of ltx2MlxLoraSlots) {
+    wireSearchablePicker(slot.picker, saveLtx2MlxLoraSettingsFromPanel);
+    slot.picker.input.addEventListener("change", saveLtx2MlxLoraSettingsFromPanel);
+    slot.strength.addEventListener("change", saveLtx2MlxLoraSettingsFromPanel);
+  }
 
   videoPanel.append(ltxVideoPanel, miniMaxEnginePanel, ltx2MlxEnginePanel);
   audioPanel.append(
@@ -49833,6 +49899,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       ).trim();
       if (!prompt) throw new Error(`${sceneDisplayName(segment, sceneIndex)} needs a prompt for LTX-2 MLX.`);
 
+      const loraCount = settings.use_loras ? Math.max(0, Math.min(4, Number(settings.lora_count || 0))) : 0;
       const payload = {
         ltx2mlx_mode: mode,
         prompt,
@@ -49848,7 +49915,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         cfg_scale: settings.cfg_scale,
         num_frames: settings.num_frames,
         match_audio_length: settings.match_audio_length,
+        use_custom_loras: loraCount > 0,
+        lora_count: loraCount,
       };
+      for (let index = 0; index < loraCount; index += 1) {
+        const lora = settings.loras?.[index] || {};
+        payload[`lora_${index + 1}`] = lora.name || "[none]";
+        payload[`strength_${index + 1}`] = Number(lora.strength ?? 1);
+      }
 
       if (mode === "i2v") {
         const selectedImage = String(selectedSegmentImagePath(segment) || "").trim();
@@ -61509,7 +61583,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   async function refreshLoraChoices() {
     const data = await getJson("/vrgdg/workflow_runner/lora_list");
     const loras = data.loras || ["[none]"];
-    for (const slot of [...zLoraSlots, ...ernieLoraSlots, ...fluxLoraSlots, ...flux2KleinMlxLoraSlots, ...i2vLoraSlots, ...zEnhanceLoraSlots, ...krea2TwoPassLoraSlots, ...miniMaxLoraSlots, { picker: miniMaxTwoPassLoraPicker }, { picker: miniMaxThreePassLoraPicker }]) {
+    for (const slot of [...zLoraSlots, ...ernieLoraSlots, ...fluxLoraSlots, ...flux2KleinMlxLoraSlots, ...ltx2MlxLoraSlots, ...i2vLoraSlots, ...zEnhanceLoraSlots, ...krea2TwoPassLoraSlots, ...miniMaxLoraSlots, { picker: miniMaxTwoPassLoraPicker }, { picker: miniMaxThreePassLoraPicker }]) {
       const current = slot.picker.input.value || "[none]";
       slot.picker.options = loras;
       slot.picker.input.value = loras.includes(current) ? current : current;
