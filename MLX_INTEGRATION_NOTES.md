@@ -1205,5 +1205,16 @@ still untested.
 - **Lip sync:** the user compared scene 1 rendered from the full mix against the same scene with the Demucs
   `vocals` stem as the audio (same seed/prompt/settings) and found the vocals-only clip much better; with
   the full mix the singer's mouth stayed open and did not follow the words. Demucs showed vocals present in
-  every slice, ~5 dB below the mix. Not yet implemented: an optional vocal-isolation step before the A2V
-  render (the pack already has a Demucs node in `VRGDG_AudioNodes.py`).
+  every slice, ~5 dB below the mix. Implemented below.
+
+### Vocal isolation for LTX-MLX Song Mode (2026-10-05)
+
+- New LTX-MLX setting **"Isolate vocals before rendering (Demucs, better lip sync)"** (`isolate_vocals`, default on,
+  saved with the project like the other LTX-MLX settings).
+- `trim_scene_audio` takes `isolate_vocals`; after the ffmpeg trim, `_isolate_vocals_clip` in
+  `VRGDG_WorkflowRunnerNodes.py` runs `htdemucs` on CPU (`demucs`/`soundfile` imported optionally at module
+  scope) and the A2V render uses the `scene_audio_####_vocals.wav` stem. The final stitch still uses the
+  original song audio, so only the model's conditioning changes. If demucs is missing the trim fails with a
+  clear message to install it or turn the setting off (no silent fallback). Demucs is not a new requirement.
+- Real render check (same 9.1s excerpt, 3 scenes, vocals + slice fix): scenes 73/65/89 frames, final 218 frames,
+  no `freezedetect` freezes, 475-605s per scene. Lip sync judged by the user after this run: see below.

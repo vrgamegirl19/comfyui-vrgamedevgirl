@@ -1,3 +1,4 @@
+import asyncio
 import copy
 import base64
 import hashlib
@@ -19,6 +20,14 @@ import wave
 import folder_paths
 from aiohttp import web
 from server import PromptServer
+
+try:
+    import soundfile
+    import torch
+    from demucs import pretrained as demucs_pretrained
+    from demucs.apply import apply_model as demucs_apply_model
+except ImportError:
+    demucs_pretrained = None
 
 from .VRGDG_ModelPathSettings import (
     custom_model_root_subfolders,
@@ -5035,6 +5044,24 @@ def _trim_scene_audio_clip(source_path, project_folder, scene_number, start_seco
     return {"audio_path": target_path, "start": start_seconds, "duration": actual_duration}
 
 
+def _isolate_vocals_clip(audio_path):
+    if demucs_pretrained is None:
+        raise RuntimeError("Vocal isolation needs demucs and soundfile. Install them or turn off 'Isolate vocals' in the LTX-MLX settings.")
+    samples, sample_rate = soundfile.read(audio_path, dtype="float32", always_2d=True)
+    model = demucs_pretrained.get_model("htdemucs")
+    model.eval()
+    if sample_rate != model.samplerate:
+        raise RuntimeError(f"Scene audio must be {model.samplerate} Hz for vocal isolation, got {sample_rate} Hz.")
+    mix = torch.from_numpy(samples.T.copy())
+    if mix.shape[0] == 1:
+        mix = mix.repeat(2, 1)
+    stems = demucs_apply_model(model, mix.unsqueeze(0), device="cpu", progress=False)[0]
+    vocals = stems[model.sources.index("vocals")]
+    vocals_path = os.path.splitext(audio_path)[0] + "_vocals.wav"
+    soundfile.write(vocals_path, vocals.T.numpy(), sample_rate, subtype="PCM_16")
+    return vocals_path
+
+
 def _require_ltx2mlx_available():
     if sys.platform != "darwin" or platform.machine() != "arm64":
         raise RuntimeError(
@@ -7284,6 +7311,8 @@ def _ensure_workflow_runner_routes():
             result = _trim_scene_audio_clip(
                 source_path, project_folder, scene_number, start_seconds, duration_seconds, subdir
             )
+            if _bool_payload(payload, "isolate_vocals", False):
+                result["audio_path"] = await asyncio.to_thread(_isolate_vocals_clip, result["audio_path"])
         except subprocess.CalledProcessError as exc:
             error = exc.stderr or exc.stdout or str(exc)
             return web.json_response({"ok": False, "error": f"FFmpeg failed:\n{error}"}, status=400)

@@ -187,6 +187,7 @@ const DEFAULT_LTX2MLX_SETTINGS = {
   seed: 0,
   cfg_scale: 3.0,
   match_audio_length: true,
+  isolate_vocals: true,
 };
 
 function cloneLtx2MlxSettings(overrides = {}) {
@@ -7411,6 +7412,10 @@ function openBuilder(node) {
     "Match video length to audio (Song Mode)",
     DEFAULT_LTX2MLX_SETTINGS.match_audio_length,
   );
+  const ltx2MlxIsolateVocals = makeCheckbox(
+    "Isolate vocals before rendering (Demucs, better lip sync)",
+    DEFAULT_LTX2MLX_SETTINGS.isolate_vocals,
+  );
   const ltx2MlxDimensionsRow = document.createElement("div");
   ltx2MlxDimensionsRow.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;";
   ltx2MlxDimensionsRow.append(
@@ -7435,6 +7440,7 @@ function openBuilder(node) {
     makeField("Seed", ltx2MlxSeed),
     makeField("CFG scale (t2v/i2v)", ltx2MlxCfgScale),
     ltx2MlxMatchAudioLength.wrapper,
+    ltx2MlxIsolateVocals.wrapper,
     ltx2MlxSceneVideoButton,
   );
 
@@ -7681,6 +7687,7 @@ function openBuilder(node) {
     ltx2MlxSeed.value = String(settings.seed);
     ltx2MlxCfgScale.value = String(settings.cfg_scale);
     ltx2MlxMatchAudioLength.input.checked = Boolean(settings.match_audio_length);
+    ltx2MlxIsolateVocals.input.checked = Boolean(settings.isolate_vocals);
   }
 
   function updateLtx2MlxSetting(key, value) {
@@ -7698,6 +7705,7 @@ function openBuilder(node) {
   ltx2MlxSeed.addEventListener("change", () => updateLtx2MlxSetting("seed", Number(ltx2MlxSeed.value) || 0));
   ltx2MlxCfgScale.addEventListener("change", () => updateLtx2MlxSetting("cfg_scale", Number(ltx2MlxCfgScale.value) || DEFAULT_LTX2MLX_SETTINGS.cfg_scale));
   ltx2MlxMatchAudioLength.input.addEventListener("change", () => updateLtx2MlxSetting("match_audio_length", ltx2MlxMatchAudioLength.input.checked));
+  ltx2MlxIsolateVocals.input.addEventListener("change", () => updateLtx2MlxSetting("isolate_vocals", ltx2MlxIsolateVocals.input.checked));
 
   videoPanel.append(ltxVideoPanel, miniMaxEnginePanel, ltx2MlxEnginePanel);
   audioPanel.append(
@@ -49871,7 +49879,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         const sliceFrames = 8 * Math.ceil((Math.ceil(sceneDuration * settings.frame_rate - 1e-6) - 1) / 8) + 1;
         const sliceDuration = settings.match_audio_length ? sliceFrames / settings.frame_rate + 0.02 : sceneDuration;
 
-        progress?.set(`${batchLabel}Trimming scene audio for LTX-2 MLX...`, pct(5));
+        progress?.set(`${batchLabel}${settings.isolate_vocals ? "Trimming scene audio and isolating vocals" : "Trimming scene audio"} for LTX-2 MLX...`, pct(5));
         const trimmedAudio = await postJson("/vrgdg/workflow_runner/trim_scene_audio", {
           source_path: sourceAudioPath,
           project_folder: projectFolder,
@@ -49879,6 +49887,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           start_seconds: Number.isFinite(sourceStartSeconds) ? sourceStartSeconds : 0,
           duration_seconds: sliceDuration,
           subdir: "ltx2mlx_scene_audio",
+          isolate_vocals: settings.isolate_vocals,
         }, 120000);
         payload.audio_path = String(trimmedAudio.audio_path || "").trim();
         if (!payload.audio_path) throw new Error("LTX-2 MLX audio trimming did not return an audio path.");
