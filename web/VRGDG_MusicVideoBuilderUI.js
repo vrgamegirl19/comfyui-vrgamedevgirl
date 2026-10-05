@@ -49865,13 +49865,19 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           ?? (segment?.custom_audio_path ? audioSourceStart(segment) : timelineStart)
         );
 
+        // match_audio_length rounds the frame count down to 8k+1, which would leave the scene short of its
+        // slot. Slice enough audio (real song audio, not silence) to cover the next 8k+1 frame count; the
+        // stitch trims the video back to the exact slot.
+        const sliceFrames = 8 * Math.ceil((Math.ceil(sceneDuration * settings.frame_rate - 1e-6) - 1) / 8) + 1;
+        const sliceDuration = settings.match_audio_length ? sliceFrames / settings.frame_rate + 0.02 : sceneDuration;
+
         progress?.set(`${batchLabel}Trimming scene audio for LTX-2 MLX...`, pct(5));
         const trimmedAudio = await postJson("/vrgdg/workflow_runner/trim_scene_audio", {
           source_path: sourceAudioPath,
           project_folder: projectFolder,
           scene_number: slotNumber,
           start_seconds: Number.isFinite(sourceStartSeconds) ? sourceStartSeconds : 0,
-          duration_seconds: sceneDuration,
+          duration_seconds: sliceDuration,
           subdir: "ltx2mlx_scene_audio",
         }, 120000);
         payload.audio_path = String(trimmedAudio.audio_path || "").trim();

@@ -1191,3 +1191,19 @@ the pack fails to import there). Under `venv-3.13` the test passes, and a bare i
 registers 261 nodes, loads `VRGDG_WorkflowRunnerNodes`, and imports no `mlx*`/`mflux` module; the only
 remaining import errors are `PromptServer.instance` (no running server). Real Windows/CUDA runs are
 still untested.
+
+### A2V follow-up (2026-10-05): held frames at cuts, and vocal isolation for lip sync
+
+- **Real song test** (`viva-la-vida.mp3.mp3`, excerpt from 60s, same 3 scenes as above): the stitch totals were
+  exact (218 frames), but the user saw frozen frames at the cuts: the held-last-frame padding for the
+  0.29s/0.33s snap-down shortfall (`freezedetect` confirmed freezes of 0.333s at 2.67s and 0.375s at 5.33s).
+- **Fix (`renderLtx2MlxSceneVideoWithProgress`):** when `match_audio_length` is on, the scene audio slice is
+  extended to cover the next 8k+1 frame count (`8*ceil((ceil(dur*fps)-1)/8)+1` frames, +0.02s) using real song
+  audio past the slot end, so the model renders real motion for the whole slot; the timeline-pinned stitch
+  trims the extra frames. Re-render: scenes 73/65/89 frames, final 218 frames (9.083s), `freezedetect` finds no
+  freezes. Scene 3 took 2128s that run vs ~450s for the others (cause not investigated).
+- **Lip sync:** the user compared scene 1 rendered from the full mix against the same scene with the Demucs
+  `vocals` stem as the audio (same seed/prompt/settings) and found the vocals-only clip much better; with
+  the full mix the singer's mouth stayed open and did not follow the words. Demucs showed vocals present in
+  every slice, ~5 dB below the mix. Not yet implemented: an optional vocal-isolation step before the A2V
+  render (the pack already has a Demucs node in `VRGDG_AudioNodes.py`).
