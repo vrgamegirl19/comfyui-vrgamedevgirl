@@ -205,7 +205,7 @@ export function createBaseProgressWindow(title, options = {}) {
         return label;
       };
 
-      sceneDetails.append(sectionTitle(`Reference images (${images.length})`));
+      sceneDetails.append(sectionTitle(`${String(details.imagesTitle || "Reference images")} (${images.length})`));
       if (images.length) {
         const strip = document.createElement("div");
         strip.style.cssText = "display:flex;gap:8px;overflow-x:auto;padding:2px 0 8px;";
@@ -215,12 +215,12 @@ export function createBaseProgressWindow(title, options = {}) {
           const image = document.createElement("img");
           const imagePath = String(item?.path || "").trim();
           const imageData = String(item?.data || "").trim();
-          image.src = imagePath ? makeEditorImageUrl(imagePath) : imageData;
+          image.src = String(item?.url || "").trim() || (imagePath ? makeEditorImageUrl(imagePath) : imageData);
           image.alt = String(item?.label || `Image ${index + 1}`);
           image.title = [item?.label, imagePath].filter(Boolean).join("\n");
           image.style.cssText = "display:block;width:118px;height:86px;object-fit:cover;background:#0f172a;";
           const caption = document.createElement("div");
-          caption.textContent = `Image ${index + 1}: ${String(item?.label || "Reference")}`;
+          caption.textContent = String(item?.caption || "").trim() || `Image ${index + 1}: ${String(item?.label || "Reference")}`;
           caption.title = image.title;
           caption.style.cssText = "padding:6px;font-size:10px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
           card.append(image, caption);

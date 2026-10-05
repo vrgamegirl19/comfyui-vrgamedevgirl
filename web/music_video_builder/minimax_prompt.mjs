@@ -10,6 +10,7 @@ import {
   miniMaxH3ModeLabel,
   normalizeMiniMaxH3ContinuityMode,
   normalizeMiniMaxH3Mode,
+  normalizeMiniMaxH3Pipeline,
   normalizeMiniMaxH3VideoPurpose,
   normalizeMiniMaxH3Voice,
   normalizeMiniMaxSpeakerAssignments,
@@ -23,6 +24,7 @@ import {
 } from "./prompt_text.mjs";
 import { castWallText, stripCastLeaks } from "./cast_guard.mjs";
 import { normalizeFluxReferenceBuilder } from "./reference_data.mjs";
+import { attachRefmodLabels } from "./refmod_labels.mjs";
 import { mediaPathKey } from "./timeline_state.mjs";
 
 export function miniMaxDialogueAssignmentsForSegment(segment) {
@@ -792,6 +794,40 @@ export function createMiniMaxPrompt({
     ];
   }
 
+  // Seconds a continued scene simply carries on before its own movement begins: about a third of the scene.
+  function miniMaxH3ContinuationHoldSeconds(segment) {
+    const sceneSeconds = Math.max(0, Number(segment?.end || 0) - Number(segment?.start || 0));
+    return Math.max(1, Math.min(2.5, Math.round(sceneSeconds * 0.35 * 2) / 2));
+  }
+
+  // The author's own direction for a continued scene, placed after the hold so the take is never cut.
+  function miniMaxH3ContinuationDirectionText(segment) {
+    const direction = String(segment?.minimax_h3_continuation_direction || "").replace(/\s+/g, " ").trim();
+    if (!direction) return "";
+    const holdSeconds = miniMaxH3ContinuationHoldSeconds(segment);
+    return (
+      `AUTHOR'S DIRECTION FOR THIS SCENE — MANDATORY, THE FINISHED DESCRIPTION MUST CONTAIN IT: "${direction}"\n`
+      + `Write the one shot description in two timed parts and put the timing in the text itself. First: "For the first ${holdSeconds} seconds, ..." continuing the opening frame's action with the same camera motion, framing, and pace. Then: "At about ${holdSeconds} seconds, ..." performing every action in the direction above, in the author's order and with the author's own verbs and objects, as one smooth continuous movement in the same take. `
+      + `Do not skip, soften, shorten, or replace any part of the direction. Never cut, change shot, or restart the action to reach it. Write it as the shot's one movement: if the mapped location differs from the previous scene's, let that same movement carry the shot into the new location instead of adding a second one. `
+      + `Finish by stating where the shot ends.`
+      + miniMaxH3MaskedPerformanceText(segment, "transition")
+    );
+  }
+
+  // Vocal performance the continuation must keep going. Empty for instrumental, b-roll and no lip-sync scenes.
+  function miniMaxH3MaskedPerformanceText(segment, part) {
+    if (segmentUsesNoLipSyncPerformance(segment)) return "";
+    const dialogue = miniMaxDialogueAssignmentsForSegment(segment);
+    const lyric = dialogue.length
+      ? dialogue.map((cue) => cue.text).join(" ")
+      : isInstrumentalLyricText(segment?.lyric_text) ? "" : flattenLyricForPrompt(segment?.lyric_text);
+    if (!String(lyric || "").trim()) return "";
+    const action = dialogue.length ? "speaking their dialogue" : "singing the scene's lyrics";
+    return part === "transition"
+      ? ` The performer keeps ${action} on camera through the whole movement, lips and mouth in continuous sync with <Audio 1>, and the movement keeps their face in view (it may travel around them but never hides the face for more than a moment).`
+      : ` The performer is mid-performance, so keep ${action} without a pause from the first frame, lips and mouth in continuous sync with <Audio 1>.`;
+  }
+
   function miniMaxH3FrameLocationContinuityContract(segment) {
     const previousSegment = previousAutoChainSourceSegment(segment);
     const currentLocation = storyboardReferenceDataForSegment(segment)?.location_ref || null;
@@ -821,6 +857,8 @@ export function createMiniMaxPrompt({
       const transitionSettings = miniMaxH3SettingsForSegment(segment);
       const preset = transitionSettings.location_transition_preset;
       const customDirection = transitionSettings.location_transition_custom;
+      const holdSeconds = miniMaxH3ContinuationHoldSeconds(segment);
+      const performanceLine = miniMaxH3MaskedPerformanceText(segment, "transition");
       const commonEnding = `Complete the transition inside this uninterrupted scene and end looking deeper into ${currentName}, with its mapped geography filling the image as the location inherited by the following scene.`;
       const directions = {
         normal: (
@@ -848,6 +886,11 @@ export function createMiniMaxPrompt({
         motion: (
           `LOCATION PHASE — MOTION-DRIVEN TRANSITION: Use an energetic camera action suited to the actual opening frame, such as a whip pan, rapid orbit, fast push, foreground sweep, or close pass around the subject. `
           + `Let directional motion and natural motion blur carry the complete image across the location boundary, then resolve the same movement and screen direction clearly inside ${currentName}. Preserve the subject's action, rhythm, and camera momentum throughout.`
+        ),
+        masked: (
+          `LOCATION PHASE — MASKED CONTINUATION TRANSITION: The renderer already holds the previous scene's last moments, so for the first ${holdSeconds} seconds simply continue the opening frame's action in ${previousName} with the same subject, framing, pace, and camera motion. No cut, no change of angle, and no new setup. `
+          + `At about ${holdSeconds} seconds, begin ONE smooth, motivated movement that carries the shot into ${currentName}. Choose the movement that best suits the opening frame: a camera move (push-in, pull-back, pan, tilt, track, or arc around the subject) or a natural subject move (turning, stepping through, walking on) that the camera follows. `
+          + `Let the surroundings change progressively through that movement and its parallax, with no wipe, flash, portal, morph, or cut. Describe the move and where the shot has arrived when it finishes.${performanceLine}`
         ),
         creative_auto: (
           `LOCATION PHASE — CREATIVE IMAGE-AWARE TRANSITION: Inspect the actual opening image, ${previousName}, and ${currentName}, then choose the most visually convincing imaginative transition for their specific forms, materials, lighting, subject action, and camera trajectory. `
@@ -912,8 +955,22 @@ export function createMiniMaxPrompt({
       const hasPromptInspiration = mode === "reference_to_video" && miniMaxH3SceneImageIsPromptInspiration(segment);
       const firstRendererAttachment = hasPromptInspiration ? 3 : 2;
       const locationContinuityContract = miniMaxH3FrameLocationContinuityContract(segment);
+      const maskedLatentContinuation = settings.continuity_mode === "latent_continuation_masked";
+      const hasContinuationDirection = Boolean(miniMaxH3ContinuationDirectionText(segment));
       parts.push(
-        "FRAME-TO-FRAME CONTINUITY — HIGHEST PRIORITY:\n"
+        maskedLatentContinuation
+          ? (
+            "FRAME-TO-FRAME CONTINUITY — HIGHEST PRIORITY:\n"
+            + "Attached Picture 1 is the previous rendered scene's actual final frame. The renderer already holds the last moments of the previous scene's motion and audio as the start of this render, so this scene is the very next moment of the same uninterrupted take, not a new shot. "
+            + "Begin the returned description with exactly: ‘Continuing seamlessly from the previous shot, the camera maintains its established course as’ and immediately name the same camera movement continuing at the same speed. "
+            + "Keep the subject's action, pace, pose, framing, camera angle, lighting, wardrobe, and environment exactly as Attached Picture 1 shows them, "
+            + (hasContinuationDirection ? "then carry on exactly as the AUTHOR'S DIRECTION at the end of this scene concept says. " : "then advance them one small natural step at a time. ")
+            + "Do not restage, reset, re-establish, change framing, or cut. "
+            + (hasContinuationDirection ? "The author's direction decides what happens next." : "The current story beat, lyrics/audio timing, and mapped location decide where the action goes next, reached through the continuing motion.")
+            + `${miniMaxH3MaskedPerformanceText(segment, "opening")} `
+            + "Write every finished shot sentence as a positive description of the desired visible result. Attached Picture 1 remains an LLM-only observation source; finished prose uses direct visual description and the documented renderer labels."
+          )
+          : "FRAME-TO-FRAME CONTINUITY — HIGHEST PRIORITY:\n"
         + "Attached Picture 1 is the previous rendered scene's actual final frame. It is the visual truth for the first instant of this scene. Begin from its exact subject position, pose, expression, camera angle, framing, lighting, wardrobe, environment geometry, foreground layers, and camera momentum. "
         + "Continue as one seamless uninterrupted take. Begin the returned description with exactly: ‘Continuing seamlessly from the previous shot, the camera maintains its established course as’ and immediately specify the next physical camera movement. "
         + "The current story beat, lyrics/audio timing, mapped location, and supporting references determine the destination while the visible opening state supplies the exact starting point. "
@@ -1098,6 +1155,11 @@ export function createMiniMaxPrompt({
     }
     add(parts, "Manual audio direction for staging only", segment?.audio_direction);
     add(parts, "Continuity notes for staging only", labelize(segment?.continuity));
+    if (options.frameContinuityPrompt) {
+      // Last in the concept, where the model weighs it most.
+      const continuationDirection = miniMaxH3ContinuationDirectionText(segment);
+      if (continuationDirection) parts.push(continuationDirection);
+    }
     return parts.join("\n\n");
   }
 
@@ -1822,6 +1884,19 @@ export function createMiniMaxPrompt({
     return text;
   }
 
+  // In the RefMod pipeline every reference is a saved RefMod. The prompt names the cast as <Subject n> in scene
+  // order, and each RefMod's own label (<Video n> or <Picture n>) is put next to its character so Text Encode with
+  // RefMods can tell them apart.
+  function isRefmodPipelineActive() {
+    return normalizeMiniMaxH3Pipeline(state.miniMaxH3Settings?.pipeline) === "refmod";
+  }
+
+  function relabelRefmodPrompt(segment, mode, text) {
+    if (!isRefmodPipelineActive()) return text;
+    const items = miniMaxOrderedImageReferenceItemsForSegment(segment, mode).map((item) => item.refmod).filter(Boolean);
+    return attachRefmodLabels(text, items);
+  }
+
   function assembleMiniMaxH3OfficialPromptFromCreative(segment, mode, creativePrompt) {
     const normalizedMode = normalizeMiniMaxH3Mode(mode);
     const cutPlan = miniMaxH3CutPlanForSegment(segment);
@@ -1838,7 +1913,7 @@ export function createMiniMaxPrompt({
       ].filter(Boolean).join("\n\n").trim();
       return assertValidMiniMaxH3FinalPrompt(prompt, segment, normalizedMode);
     }
-    const prompt = `detailed_description:\nThe target video is in a ${miniMaxH3OpeningStyle(segment)} music-video style.\n\n${creative}`.trim();
+    const prompt = relabelRefmodPrompt(segment, normalizedMode, `detailed_description:\nThe target video is in a ${miniMaxH3OpeningStyle(segment)} music-video style.\n\n${creative}`.trim());
     return assertValidMiniMaxH3FinalPrompt(prompt, segment, normalizedMode);
   }
 
@@ -2081,7 +2156,7 @@ export function createMiniMaxPrompt({
           path: String(item?.image?.path || "").trim(),
           data: String(item?.image?.data || "").trim(),
         }))
-        .filter((item) => item.path || item.data)
+        .filter((item) => (item.path || item.data) && !item.path.startsWith("refmod://"))
         .slice(0, 9);
       if (mode !== "reference_to_video" || !miniMaxH3SceneImageIsPromptInspiration(segment)) return rendererImages;
       const inspiration = segmentImageSource(segment);
@@ -2277,11 +2352,21 @@ export function createMiniMaxPrompt({
     } else {
       fixedPrompt = `detailed_description:\nThe target video is in a ${miniMaxH3OpeningStyle(segment)} music-video style.\n\n${emptyCreative}`.trim();
     }
-    const fixedChars = fixedPrompt.length;
+    // The RefMod pipeline adds each RefMod's label after the writer is done. A character's label is added in every
+    // shot. A RefMod the shots never name (clothing, background, style) gets one short sentence. Both are reserved here,
+    // so the writer is given room and the finished prompt stays under the limit.
+    const refmodReserve = isRefmodPipelineActive()
+      ? miniMaxOrderedImageReferenceItemsForSegment(segment, normalizedMode).map((item) => item.refmod).filter(Boolean)
+        .reduce((total, item) => total + ((item.category === "character" || item.category === "extra")
+          ? (item.label.length + 1) * shotCount
+          : item.label.length + 47), 0)
+      : 0;
+    const fixedChars = fixedPrompt.length + refmodReserve;
     return {
       hardLimit,
       targetLimit,
       fixedChars,
+      refmodReserve,
       shotDescriptionChars: Math.max(0, targetLimit - fixedChars),
       shotCount,
     };
@@ -2294,6 +2379,8 @@ export function createMiniMaxPrompt({
     if (saved?.prompt === String(prompt).trim() && saved.signature !== signature) {
       return "The scene's reference order or images changed after this prompt was generated.";
     }
+    // RefMod prompts carry <Video n> labels, so the <Picture n> numbering check does not apply.
+    if (typeof isRefmodPipelineActive === "function" && isRefmodPipelineActive()) return "";
     return miniMaxLegacyPromptReferenceMismatch(segment, prompt, mode, imagePaths);
   }
 

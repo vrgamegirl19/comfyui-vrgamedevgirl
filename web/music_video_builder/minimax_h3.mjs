@@ -71,7 +71,14 @@ export const MINIMAX_H3_VOICE_PRESETS = [
   },
   { value: "male_custom", label: "Man — Custom Voice", gender: "male", name: "", description: "" },
 ];
+// The pipeline is set for the whole project. "standard" renders from reference images. "refmod" renders from saved
+// RefMods (see refmod_labels.mjs) and offers Single and 2 Pass only, with video_mode fixed to reference_to_video.
+export const MINIMAX_H3_PIPELINE_OPTIONS = [
+  { value: "standard", label: "Standard" },
+  { value: "refmod", label: "RefMod" },
+];
 export const DEFAULT_MINIMAX_H3_SETTINGS = {
+  pipeline: "standard",
   video_mode: "text_to_video",
   render_pass: "two_pass",
   audio_mode: "input_audio",
@@ -265,6 +272,7 @@ export const MINIMAX_H3_CONTINUITY_OPTIONS = [
   { value: "off", label: "Off" },
   { value: "latent_continuation", label: "Latent Continuation (native H3 temporal context)" },
   { value: "latent_continuation_exact_frame", label: "Latent Continuation + Exact Last Frame (H3 temporal context + image)" },
+  { value: "latent_continuation_masked", label: "Latent Continuation Masked (protected predecessor latent, single pass)" },
   { value: "spatial_reference", label: "Previous final frame — spatial reference" },
   { value: "exact_start_frame", label: "Previous final frame — exact start frame" },
 ];
@@ -277,6 +285,7 @@ export const MINIMAX_H3_LOCATION_TRANSITION_OPTIONS = [
   { value: "match", label: "Match transition" },
   { value: "motion", label: "Motion transition" },
   { value: "creative_auto", label: "Creative auto" },
+  { value: "masked", label: "Masked — continue, then one smooth move (Latent Continuation Masked)" },
   { value: "custom", label: "Custom" },
 ];
 
@@ -309,6 +318,10 @@ export function normalizeMiniMaxH3Mode(value) {
   return MINIMAX_H3_MODE_OPTIONS.some((item) => item.value === clean) ? clean : "text_to_video";
 }
 
+export function normalizeMiniMaxH3Pipeline(value) {
+  return String(value || "").trim().toLowerCase() === "refmod" ? "refmod" : "standard";
+}
+
 export function normalizeMiniMaxH3AudioMode(value) {
   const clean = String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
   return ["built_in_audio", "native_audio", "generated_audio"].includes(clean) ? "built_in_audio" : "input_audio";
@@ -317,6 +330,7 @@ export function normalizeMiniMaxH3AudioMode(value) {
 export function normalizeMiniMaxH3ContinuityMode(value) {
   const clean = String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
   if (["latent_exact", "latent_exact_frame", "latent_continuation_exact", "latent_continuation_exact_frame"].includes(clean)) return "latent_continuation_exact_frame";
+  if (["latent_masked", "latent_masked_av", "latent_continuation_masked"].includes(clean)) return "latent_continuation_masked";
   if (["latent", "latent_continuation", "continuation"].includes(clean)) return "latent_continuation";
   if (["spatial", "spatial_reference", "continuity_reference"].includes(clean)) return "spatial_reference";
   if (["exact", "exact_start", "exact_start_frame", "continuous_start"].includes(clean)) return "exact_start_frame";
@@ -329,7 +343,7 @@ export function normalizeMiniMaxH3LocationTransitionPreset(value) {
 }
 
 export function isMiniMaxH3LatentContinuationMode(mode) {
-  return mode === "latent_continuation" || mode === "latent_continuation_exact_frame";
+  return mode === "latent_continuation" || mode === "latent_continuation_exact_frame" || mode === "latent_continuation_masked";
 }
 
 export function normalizeMiniMaxH3StartFrameCharacterInfluence(value) {
@@ -498,6 +512,7 @@ export function cloneMiniMaxH3Settings(value = {}) {
       : source.render_pass == null && normalizeMiniMaxH3Mode(source.video_mode || source.mode) === "image_reference_to_video"
         ? "two_pass"
         : DEFAULT_MINIMAX_H3_SETTINGS.render_pass;
+  const pipeline = normalizeMiniMaxH3Pipeline(source.pipeline);
   const resolution = resolveMiniMaxH3Resolution(source, renderPass);
   const sourceLoras = Array.isArray(source.loras)
     ? source.loras
@@ -528,16 +543,21 @@ export function cloneMiniMaxH3Settings(value = {}) {
   return {
     ...DEFAULT_MINIMAX_H3_SETTINGS,
     ...source,
-    video_mode: normalizeMiniMaxH3Mode(source.video_mode || source.mode || DEFAULT_MINIMAX_H3_SETTINGS.video_mode),
+    pipeline,
+    // The RefMod pipeline only has one mode.
+    video_mode: pipeline === "refmod" ? "reference_to_video" : normalizeMiniMaxH3Mode(source.video_mode || source.mode || DEFAULT_MINIMAX_H3_SETTINGS.video_mode),
     // Pre-existing saves never had render_pass; Image + Reference 2 Pass was always a two-pass
     // workflow by mode alone, so an absent field must still mean two_pass for that mode.
-    render_pass: renderPass,
+    render_pass: pipeline === "refmod" && renderPass === "three_pass" ? "two_pass" : renderPass,
     audio_mode: normalizeMiniMaxH3AudioMode(source.audio_mode || source.audioMode || DEFAULT_MINIMAX_H3_SETTINGS.audio_mode),
-    continuity_mode: normalizeMiniMaxH3ContinuityMode(source.continuity_mode || source.continuityMode || DEFAULT_MINIMAX_H3_SETTINGS.continuity_mode),
+    // Continuity that reuses a picture (spatial reference, exact start frame) has no picture to use with RefMods.
+    continuity_mode: pipeline === "refmod" && ["spatial_reference", "exact_start_frame"].includes(normalizeMiniMaxH3ContinuityMode(source.continuity_mode || source.continuityMode))
+      ? "off"
+      : normalizeMiniMaxH3ContinuityMode(source.continuity_mode || source.continuityMode || DEFAULT_MINIMAX_H3_SETTINGS.continuity_mode),
     continuity_prompt_from_last_frame: Boolean(source.continuity_prompt_from_last_frame ?? source.continuityPromptFromLastFrame ?? DEFAULT_MINIMAX_H3_SETTINGS.continuity_prompt_from_last_frame),
     location_transition_preset: normalizeMiniMaxH3LocationTransitionPreset(source.location_transition_preset ?? source.locationTransitionPreset ?? DEFAULT_MINIMAX_H3_SETTINGS.location_transition_preset),
     location_transition_custom: String(source.location_transition_custom ?? source.locationTransitionCustom ?? DEFAULT_MINIMAX_H3_SETTINGS.location_transition_custom).trim(),
-    latent_context_frames: [16, 22, 39, 56].includes(Number(source.latent_context_frames ?? source.latentContextFrames))
+    latent_context_frames: [16, 22, 39, 56, 90, 141, 192].includes(Number(source.latent_context_frames ?? source.latentContextFrames))
       ? Number(source.latent_context_frames ?? source.latentContextFrames)
       : DEFAULT_MINIMAX_H3_SETTINGS.latent_context_frames,
     diffusion_model_name: String(source.diffusion_model_name || DEFAULT_MINIMAX_H3_SETTINGS.diffusion_model_name),

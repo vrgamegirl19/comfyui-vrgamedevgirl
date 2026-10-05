@@ -164,6 +164,45 @@ def _normalize_reference_image(value):
     }
 
 
+def _refmod_card_fields(item):
+    """The RefMod part of a Reference Builder card (source, saved RefMod, type, clothing link), or {} for other cards.
+
+    Twin of ``refmodCardFields`` in web/music_video_builder/refmod_labels.mjs. Storyboard cards keep these so the
+    storyboard can show and send the labels a scene's RefMods will get.
+    """
+    refmod = item.get("refmod")
+    if str(item.get("source") or "").strip() != "refmod" or not isinstance(refmod, dict) or not str(refmod.get("name") or "").strip():
+        return {}
+
+    def number(value, default):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    fields = {
+        "source": "refmod",
+        "refmod": {
+            "name": _clean_scene_text(refmod.get("name"), 400),
+            "folder": _clean_scene_text(refmod.get("folder"), 80),
+            "type": _clean_scene_text(refmod.get("type"), 80),
+            "kind": "image" if str(refmod.get("kind") or "").strip() == "image" else "video",
+            "tokens": int(number(refmod.get("tokens"), 0)),
+            "frames": int(number(refmod.get("frames"), 1)),
+            "strength": min(1.0, max(0.0, number(refmod.get("strength", 1.0), 1.0))),
+        },
+    }
+    reference_type = str(item.get("reference_type") or "").strip()
+    if reference_type:
+        fields["reference_type"] = _clean_scene_text(reference_type, 40)
+    for key in ("wears", "clothing_set"):
+        if str(item.get(key) or "").strip():
+            fields[key] = _clean_scene_text(item.get(key), 160)
+    if item.get("follow") is False:
+        fields["follow"] = False
+    return fields
+
+
 def _normalize_reference_item(value, fallback_name="Reference", fallback_id="ref"):
     item = value if isinstance(value, dict) else {}
     trigger_position = str(item.get("trigger_position") or item.get("triggerPosition") or item.get("trigger_placement") or "start").strip().lower()
@@ -184,6 +223,7 @@ def _normalize_reference_item(value, fallback_name="Reference", fallback_id="ref
         "trigger_phrase": _clean_scene_text(item.get("trigger_phrase") or item.get("trigger") or item.get("Trigger") or "", 1200),
         "trigger_position": "end" if trigger_position == "end" else "start",
         "image": _normalize_reference_image(item.get("image") if isinstance(item.get("image"), dict) else {}),
+        **_refmod_card_fields(item),
     }
 
 

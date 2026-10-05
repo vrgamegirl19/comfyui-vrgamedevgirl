@@ -26,7 +26,7 @@ export function createMiniMaxPanel({
   miniMaxEasyCacheReuseThreshold, miniMaxEasyCacheSettings, miniMaxEasyCacheStartPercent,
   miniMaxEasyCacheVerbose, miniMaxEditInstructionsButton, miniMaxFp16Accumulation,
   miniMaxH3PromptCharacterBudget, miniMaxH3ReferenceCapacityStatus, miniMaxImageModeSource,
-  miniMaxLatentContextFrames, miniMaxLatentContinuationRow, miniMaxLatentStatusPill,
+  miniMaxContinuationDirection, miniMaxLatentContextFrames, miniMaxLatentContinuationRow, miniMaxLatentStatusPill,
   miniMaxLocationTransitionControls, miniMaxLocationTransitionCustom, miniMaxLocationTransitionCustomField,
   miniMaxLocationTransitionPreset, miniMaxLoraCount, miniMaxLoraNote, miniMaxLoraRows, miniMaxLoraSection,
   miniMaxLoraSlots, miniMaxMegapixels, miniMaxMegapixelsField, miniMaxResolutionPreset, miniMaxMemoryEfficientSageAttention,
@@ -79,8 +79,13 @@ export function createMiniMaxPanel({
     miniMaxPromptCharacterStatus.style.color = color;
     miniMaxPromptCharacterStatus.style.borderColor = border;
     miniMaxPromptCharacterStatus.textContent = length
-      ? `H3 prompt: ${length.toLocaleString()} / 7,000 characters. Fixed format: ${budget.fixedChars.toLocaleString()}; planned shot allowance: ${budget.shotDescriptionChars.toLocaleString()}.`
-      : `H3 prompt: 0 / 7,000 characters. Fixed format: ${budget.fixedChars.toLocaleString()}; planned shot allowance: ${budget.shotDescriptionChars.toLocaleString()}.`;
+      ? `H3 prompt: ${length.toLocaleString()} / 7,000 characters. Fixed format: ${budget.fixedChars.toLocaleString()}${budget.refmodReserve ? ` (includes ${budget.refmodReserve.toLocaleString()} reserved for RefMod labels)` : ""}; planned shot allowance: ${budget.shotDescriptionChars.toLocaleString()}.`
+      : `H3 prompt: 0 / 7,000 characters. Fixed format: ${budget.fixedChars.toLocaleString()}${budget.refmodReserve ? ` (includes ${budget.refmodReserve.toLocaleString()} reserved for RefMod labels)` : ""}; planned shot allowance: ${budget.shotDescriptionChars.toLocaleString()}.`;
+    const tokenText = segment && typeof miniMaxH3ReferenceCapacityStatus === "function" ? miniMaxH3ReferenceCapacityStatus(segment, mode).tokenText : "";
+    if (tokenText) {
+      miniMaxPromptCharacterStatus.textContent += ` ${tokenText}`;
+      if (/Over |lighter/.test(tokenText)) miniMaxPromptCharacterStatus.style.color = "#fde68a";
+    }
     const referenceMismatch = segment ? miniMaxPromptReferenceMismatch(segment, miniMaxPrompt.value, mode) : "";
     if (referenceMismatch) {
       miniMaxPromptCharacterStatus.textContent += ` ${referenceMismatch} Regenerate this scene's MiniMax prompt before rendering.`;
@@ -169,6 +174,7 @@ export function createMiniMaxPanel({
     if (!segment) return;
     segment.minimax_h3_prompt = miniMaxPrompt.value || "";
     segment.minimax_h3_pass2_prompt = miniMaxPass2Prompt.value || "";
+    segment.minimax_h3_continuation_direction = String(miniMaxContinuationDirection.value || "").trim();
     updateMiniMaxPromptCharacterStatus(segment);
     updateMiniMaxPromptSaveButtonState();
     segment.minimax_h3_scene_image_use = normalizeMiniMaxH3SceneImageUse(miniMaxSceneImageUse.value);
@@ -402,6 +408,8 @@ export function createMiniMaxPanel({
     const settings = cloneMiniMaxH3Settings({
       ...globalSettings,
       ...sceneSettings,
+      // The pipeline belongs to the whole project, so a scene with its own settings follows it.
+      pipeline: globalSettings.pipeline,
       video_mode: sceneSettings.video_mode || segment.minimax_h3_mode || globalSettings.video_mode,
       render_pass: sceneSettings.render_pass ?? (normalizeMiniMaxH3Mode(sceneSettings.video_mode || segment.minimax_h3_mode) === "image_reference_to_video" ? "two_pass" : globalSettings.render_pass),
       location_transition_preset: hasSceneTransitionPreset ? sceneSettings.location_transition_preset : legacyPreset,
@@ -478,6 +486,46 @@ export function createMiniMaxPanel({
           : `Choose MiniMax References (${capacity.count || libraryCount}/9${capacity.overflow ? " — TOO MANY" : ""})`;
       button.style.borderColor = capacity.overflow ? "#ef4444" : "";
       button.disabled = !segment;
+    }
+  }
+
+  // Scene clothing: pick what each character wears in this scene, or go back to the card defaults.
+  function renderRefmodClothing(container, segment) {
+    if (!container) return;
+    const rows = segment && typeof miniMaxH3ReferenceCapacityStatus === "function"
+      ? miniMaxH3ReferenceCapacityStatus(segment, "reference_to_video").clothing || []
+      : [];
+    container.replaceChildren();
+    container.style.display = rows.length ? "flex" : "none";
+    if (!rows.length) return;
+    const title = document.createElement("div");
+    title.textContent = "Clothing in this scene";
+    title.style.cssText = "font-size:11px;font-weight:700;color:#a5f3fc;";
+    container.append(title);
+    for (const row of rows) {
+      const label = document.createElement("label");
+      label.style.cssText = "display:grid;grid-template-columns:minmax(80px,1fr) minmax(120px,2fr);gap:8px;align-items:center;font-size:11px;color:#e2e8f0;";
+      label.append(document.createTextNode(row.character));
+      const select = document.createElement("select");
+      select.style.cssText = "border:1px solid #3f3f46;border-radius:6px;background:#09090b;color:#f8fafc;padding:5px;font-size:11px;min-width:0;";
+      select.append(new Option("Card default (follows the character)", "__default__"));
+      select.append(new Option("No clothing RefMod", ""));
+      for (const option of row.options) select.append(new Option(option.name, option.id));
+      select.value = row.overridden ? row.current : "__default__";
+      select.onchange = async () => {
+        const next = { ...(segment.refmod_clothing_override || {}) };
+        if (select.value === "__default__") delete next[row.character_id];
+        else next[row.character_id] = select.value;
+        pushHistory?.();
+        if (Object.keys(next).length) segment.refmod_clothing_override = next;
+        else delete segment.refmod_clothing_override;
+        await autoSaveSessionQuiet("scene RefMod clothing");
+        syncMiniMaxH3Panel();
+        updateMiniMaxPromptCharacterStatus(segment);
+        toast("Clothing changed. Regenerate this scene's prompt so it names the new clothing.");
+      };
+      label.append(select);
+      container.append(label);
     }
   }
 
@@ -703,6 +751,23 @@ export function createMiniMaxPanel({
       button.style.borderColor = active ? "#0891b2" : "#3f3f46";
       button.style.color = active ? "#082f49" : "#f4f4f5";
     }
+    const refmodUi = miniMaxPassButtons.refmod;
+    const refmodPipeline = settings.pipeline === "refmod";
+    if (refmodUi) {
+      refmodUi.modeChooser.style.display = refmodPipeline ? "none" : "grid";
+      refmodUi.note.style.display = refmodPipeline ? "block" : "none";
+      renderRefmodClothing(refmodUi.clothing, refmodPipeline ? segment : null);
+      for (const button of refmodUi.pipelineButtons) {
+        const active = button.dataset.minimaxH3Pipeline === (refmodPipeline ? "refmod" : "standard");
+        button.setAttribute("aria-pressed", String(active));
+        button.style.background = active ? "#06b6d4" : "#27272a";
+        button.style.borderColor = active ? "#0891b2" : "#3f3f46";
+        button.style.color = active ? "#082f49" : "#f4f4f5";
+      }
+    }
+    // 2 Pass Advanced is not offered with RefMods.
+    miniMaxPassButtons[2].style.display = refmodPipeline ? "none" : "";
+    miniMaxPassChooser.style.gridTemplateColumns = refmodPipeline ? "repeat(2,minmax(0,1fr))" : "repeat(3,minmax(0,1fr))";
     miniMaxPassChooser.style.display = mode === "reference_to_video" ? "grid" : "none";
     for (const button of miniMaxPassButtons) {
       const active = button.dataset.passMode === settings.render_pass;
@@ -716,13 +781,16 @@ export function createMiniMaxPanel({
     }
     const sceneImageSource = segmentImageSource(segment);
     const hasSceneImage = Boolean(sceneImageSource?.path || sceneImageSource?.data);
-    miniMaxSceneImageUseField.style.display = hasSceneImage ? "flex" : "none";
-    miniMaxStartFrameCharacterInfluenceField.style.display = hasSceneImage && miniMaxSceneImageUse.value === "exact_start_frame" ? "flex" : "none";
-    miniMaxStartFrameReferenceNote.style.display = hasSceneImage ? "block" : "none";
+    // RefMods have no start frame, so the scene-image controls are hidden in the RefMod pipeline.
+    miniMaxSceneImageUseField.style.display = hasSceneImage && !refmodPipeline ? "flex" : "none";
+    miniMaxStartFrameCharacterInfluenceField.style.display = hasSceneImage && !refmodPipeline && miniMaxSceneImageUse.value === "exact_start_frame" ? "flex" : "none";
+    miniMaxStartFrameReferenceNote.style.display = hasSceneImage && !refmodPipeline ? "block" : "none";
     if (segment) {
       if (!savedMiniMaxPrompts.has(segment)) savedMiniMaxPrompts.set(segment, String(segment.minimax_h3_prompt || segment.i2v_prompt || ""));
     }
     miniMaxPrompt.value = String(segment?.minimax_h3_prompt || segment?.i2v_prompt || "");
+    miniMaxContinuationDirection.value = String(segment?.minimax_h3_continuation_direction || "");
+    miniMaxContinuationDirection.disabled = !segment;
     miniMaxPass2Prompt.value = String(segment?.minimax_h3_pass2_prompt || "");
     miniMaxPass2PromptField.style.display = threePass ? "flex" : "none";
     updateMiniMaxPromptCharacterStatus(segment);
@@ -748,6 +816,7 @@ export function createMiniMaxPanel({
     miniMaxContinuityMode.disabled = !continuitySupported;
     const isLatentContinuation = isMiniMaxH3LatentContinuationMode(settings.continuity_mode);
     const isLatentExactFrame = settings.continuity_mode === "latent_continuation_exact_frame";
+    const isLatentMasked = settings.continuity_mode === "latent_continuation_masked";
     miniMaxLatentContinuationRow.style.display = (continuitySupported && isLatentContinuation) ? "flex" : "none";
     miniMaxLatentContextFrames.disabled = !continuitySupported || !isLatentContinuation;
     miniMaxContinuityPromptFromLastFrame.input.disabled = !continuitySupported || !isLatentContinuation;
@@ -760,6 +829,8 @@ export function createMiniMaxPanel({
       && miniMaxLocationTransitionPreset.value === "custom" ? "flex" : "none";
     miniMaxContinuityNote.textContent = !continuitySupported
       ? "Available in Reference to Video and Video to Video. Those modes can receive the prior clip's extracted final frame as one additional reference image."
+      : isLatentMasked
+        ? `Latent Continuation Masked: copies a phase-aligned run of the predecessor's saved latent (39 frames recommended, also 90/141/192) into the head of this scene's latent and protects it with a denoise mask, so the model keeps those frames and generates the rest. Needs ComfyUI 0.34.0 or newer and a single pass render. Other context sizes fall back to 39. The head is trimmed from the video and audio together. The predecessor must have a saved latent.`
       : isLatentExactFrame
         ? `Latent Continuation + Exact Last Frame: loads about ${miniMaxLatentContextFrames.value} trailing frames of the predecessor's saved latent as temporal context, cut before any padding after its real end, and pins an image of the predecessor's exact last frame as the final warm-up frame. The warm-up is trimmed from the video and audio together. The predecessor must have been rendered with this version (it records the padding).`
       : isLatentContinuation

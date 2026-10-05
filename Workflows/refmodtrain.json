@@ -1,0 +1,76 @@
+{
+  "1": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+    },
+    "_meta": {
+      "title": "H3 Video VAE"
+    }
+  },
+  "2": {
+    "class_type": "VRGDG_RefModImagePicker",
+    "inputs": {
+      "image_paths": "[]",
+      "max_edge": 1024
+    },
+    "_meta": {
+      "title": "VRGDG RefMod Image Picker"
+    }
+  },
+  "3": {
+    "class_type": "MiniMaxH3RefModExtract",
+    "inputs": {
+      "name": "my_concept",
+      "mode": "Compressed Reference",
+      "concept_type": "identity",
+      "refs_bundle": [
+        "2",
+        0
+      ],
+      "vae": [
+        "1",
+        0
+      ],
+      "ref_resolution": 1024,
+      "pool_h": 32,
+      "pool_w": 32,
+      "latent_frames": 16,
+      "identity": 500,
+      "merge": false,
+      "motion_only": false,
+      "multiplier": 1,
+      "max_tokens": 5120,
+      "extraction_preset": "manual",
+      "subfolder": "",
+      "description": [
+        "4",
+        0
+      ],
+      "save": true,
+      "background_retention": 0.0,
+      "budget_policy": "truncate"
+    },
+    "_meta": {
+      "title": "Create H3 RefMod"
+    }
+  },
+  "4": {
+    "class_type": "VRGDG_RefModDescribe",
+    "inputs": {
+      "refs": [
+        "2",
+        0
+      ],
+      "max_images": 6,
+      "image_edge": 768,
+      "instruction": "",
+      "name_hint": "",
+      "lm_studio_url": "http://127.0.0.1:1234/v1",
+      "concept_type": "identity"
+    },
+    "_meta": {
+      "title": "VRGDG RefMod Describe"
+    }
+  }
+}

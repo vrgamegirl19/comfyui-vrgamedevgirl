@@ -125,6 +125,72 @@ def plan_latent_context(
     }
 
 
+# Context sizes of the masked continuation. Each is 39 + 51k frames, i.e. a whole number of H3 phase groups that also
+# lands on an exact 24 fps / 40 Hz video+audio boundary (39 frames = 12 video tokens = 65 audio ticks).
+MASKED_CONTEXT_FRAMES = (39, 90, 141, 192)
+_MASKED_AUDIO_TICKS_PER_FRAME = 40 / 24
+
+
+def normalize_masked_context_frames(value: Any) -> int:
+    """Snap a requested context size to a valid masked-continuation size (39 when unknown)."""
+    try:
+        frames = int(float(value))
+    except (TypeError, ValueError):
+        return MASKED_CONTEXT_FRAMES[0]
+    return frames if frames in MASKED_CONTEXT_FRAMES else MASKED_CONTEXT_FRAMES[0]
+
+
+def plan_masked_context(
+    total_tokens: int,
+    tail_padding_frames: int | None,
+    context_frames: int,
+) -> dict[str, Any]:
+    """Pick the predecessor tail that is copied, unchanged, into the head of the next scene's latent.
+
+    The copied run must start on H3 phase 0 (a multiple of 5 tokens) so its tokens sit on the same temporal
+    phase at the head of the new latent, and it must end on a phase-2 boundary (5k + 2 tokens) so its video and
+    audio lengths are exact. The end is the latest such boundary at or before the predecessor's last visible
+    frame, so padding after the real end is never carried over. Raises ``ValueError`` when the predecessor is too
+    short for the requested context.
+
+    The window usually ends before the predecessor's last visible frame (``lost_tail_frames``, up to 16). The new
+    render's warm-up must cover those frames too (``warmup_frames`` = window + lost tail). Then the audio that plays
+    over the copied head is the audio that played over those same frames in the predecessor, and the scene's own
+    first frame lands exactly where the predecessor ended.
+    """
+    frames = normalize_masked_context_frames(context_frames)
+    wanted = 2 + 5 * ((frames - 5) // 17)
+    total = max(0, int(total_tokens))
+    pad = max(0, int(tail_padding_frames or 0))
+    visible = max(0, _tokens_to_frames(total) - pad)
+
+    end = total
+    while end >= wanted and (end % 5 != 2 or _tokens_to_frames(end) > visible):
+        end -= 1
+    if end < wanted:
+        raise ValueError(
+            f"The predecessor latent ({total} tokens, {visible} visible frames) is too short for a {frames}-frame "
+            "masked context. Pick a smaller context size or re-render the predecessor longer."
+        )
+
+    start = end - wanted
+    start_frame = _tokens_to_frames(start)
+    end_frame = _tokens_to_frames(end)
+    return {
+        "start_token": start,
+        "end_token": end,
+        "tokens": wanted,
+        "context_frames": end_frame - start_frame,
+        "warmup_frames": end_frame - start_frame + max(0, visible - end_frame),
+        "start_frame": start_frame,
+        "end_frame": end_frame,
+        "start_audio_tick": round(start_frame * _MASKED_AUDIO_TICKS_PER_FRAME),
+        "end_audio_tick": round(end_frame * _MASKED_AUDIO_TICKS_PER_FRAME),
+        "lost_tail_frames": max(0, visible - end_frame),
+        "tail_padding_frames": pad,
+    }
+
+
 # Exact scene timing for MiniMax H3 renders. It needs no ComfyUI imports, so the Builder runner can plan a render
 # before patching a hidden workflow, and the same plan drives the post-render trim.
 H3_FPS = 24

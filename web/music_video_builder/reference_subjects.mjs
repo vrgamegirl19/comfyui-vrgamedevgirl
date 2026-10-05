@@ -3,9 +3,10 @@ import { makeButton, makeCheckbox, makeField, makeInput, makeSelect, normalizeVi
 import { renameSubjectInDescription } from "./format.mjs";
 import { sceneConceptPromptText } from "./image_prompts.mjs";
 import { hasReferenceImage } from "./llm_runner.mjs";
-import { MINIMAX_H3_VOICE_PRESETS, normalizeMiniMaxH3Voice } from "./minimax_h3.mjs";
+import { MINIMAX_H3_VOICE_PRESETS, normalizeMiniMaxH3Pipeline, normalizeMiniMaxH3Voice } from "./minimax_h3.mjs";
 import { isNoLipSyncSingerChoice, loadPromptJsonFromPath } from "./prompt_text.mjs";
 import { isExtraSubjectReference, subjectExtraTargetId } from "./reference_data.mjs";
+import { buildRefmodPicker } from "./refmod_card.mjs";
 
 function subjectGenderHint(subject) {
   const text = `${subject?.name || ""} ${subject?.description || ""}`.toLowerCase();
@@ -28,6 +29,8 @@ export function createReferenceSubjects({
     && normalizeVideoType(state.videoType) === "speaking"
     && miniMaxH3SettingsForSegment(activeSegment()).audio_mode === "built_in_audio";
   const allowExtraSubjectReferences = referenceImagesEnabled && !miniMaxProject && currentVideoMode() === "rtv";
+  // In the RefMod pipeline each card picks a saved RefMod instead of an image.
+  const refmodPipeline = miniMaxProject && normalizeMiniMaxH3Pipeline(state.miniMaxH3Settings?.pipeline) === "refmod";
 
   function ensureSubjectCount(options = {}) {
     let desiredCount = Math.max(0, Math.min(12, Number(subjectCountInput.value || refs.subject_count || refs.subjects.length || 0)));
@@ -65,6 +68,7 @@ export function createReferenceSubjects({
       extra_reference_for: "",
       extra_reference_note: "",
       minimax_voice: normalizeMiniMaxH3Voice(),
+      source: refmodPipeline ? "refmod" : "image",
       image: { path: "", data: "", name: "" },
     };
     refs.subjects.push(subject);
@@ -472,6 +476,8 @@ export function createReferenceSubjects({
         const fromIndex = Number(event.dataTransfer.getData("text/plain") || draggedSubjectIndex);
         moveSubjectRow(fromIndex, index);
       });
+      const refmodCard = refmodPipeline && subject.source === "refmod";
+      const showImages = referenceImagesEnabled && !refmodCard;
       const name = makeInput(subject.name || `Character ${index + 1}`);
       const typeSelect = makeReferenceTypeSelect(subject.reference_type || "character");
       const description = document.createElement("textarea");
@@ -568,7 +574,8 @@ export function createReferenceSubjects({
           refs.subject.reference_type = subject.reference_type;
           subjectTypeSelect.value = subject.reference_type;
         }
-        renderMapping();
+        if (refmodPipeline) renderAll();
+        else renderMapping();
       });
       sameSubjectCheck.addEventListener("change", () => {
         if (sameSubjectCheck.checked) {
@@ -612,7 +619,7 @@ export function createReferenceSubjects({
           subjectDescription.value = description.value;
         }
       });
-      if (referenceImagesEnabled) buttons.append(createZImage, describeImage, upload, clear);
+      if (showImages) buttons.append(createZImage, describeImage, upload, clear);
       buttons.append(remove);
       const handle = document.createElement("button");
       handle.type = "button";
@@ -640,17 +647,25 @@ export function createReferenceSubjects({
         imageWrap.append(drop);
       }
       const mainRow = document.createElement("div");
-      mainRow.style.cssText = referenceImagesEnabled
+      mainRow.style.cssText = showImages
         ? "display:grid;grid-template-columns:28px 34px minmax(150px,0.9fr) minmax(145px,0.75fr) minmax(240px,1.2fr) minmax(230px,1fr) 148px;gap:10px;align-items:center;min-width:1060px;"
         : "display:grid;grid-template-columns:28px 34px minmax(170px,.85fr) minmax(150px,.7fr) minmax(320px,1.5fr) 108px;gap:10px;align-items:center;min-width:820px;";
       mainRow.append(handle, number, nameField, typeField, descField);
-      if (referenceImagesEnabled) mainRow.append(imageWrap);
+      if (showImages) mainRow.append(imageWrap);
       mainRow.append(buttons);
       const metaRow = document.createElement("div");
       metaRow.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;";
       metaRow.append(used);
       if (allowExtraSubjectReferences && refs.subjects.length > 1) metaRow.append(sameSubjectWrap);
       row.append(mainRow, metaRow);
+      if (refmodPipeline) {
+        row.append(buildRefmodPicker({
+          item: subject,
+          kind: "subject",
+          characters: refs.subjects.filter((card) => (card.reference_type || "character") === "character"),
+          onChange: (rebuild) => { if (rebuild) renderAll(); else renderMapping(); },
+        }));
+      }
       if (showMiniMaxNativeVoiceControls && subject.reference_type === "character" && !isExtraSubjectReference(subject)) {
         subject.minimax_voice = normalizeMiniMaxH3Voice(subject.minimax_voice);
         const voiceWrap = document.createElement("div");

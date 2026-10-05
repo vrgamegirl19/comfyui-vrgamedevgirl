@@ -226,10 +226,16 @@ def _build_minimax_h3_api_prompt(payload):
 
     latent_continuation_settings = _patch_minimax_h3_latent_continuation(prompt, payload)
     save_latent_settings = _patch_minimax_h3_save_latent(prompt, payload, timing)
+    refmod_summary = None
+    if str(payload.get("pipeline") or "").strip().lower() == "refmod":
+        from .minimax_refmod import apply_refmod_pipeline
+
+        refmod_summary = apply_refmod_pipeline(prompt, payload)
     return {
         "workflow_path": workflow_path,
         "output_folder": output_folder,
         "prompt": prompt,
+        "refmod": refmod_summary,
         "latent_continuation_settings": latent_continuation_settings,
         "save_latent_settings": save_latent_settings,
         "used_seed": seed,
@@ -565,10 +571,16 @@ def _build_minimax_h3_2pass_api_prompt(payload):
         save_latent_settings = _patch_minimax_h3_save_latent(prompt, payload, timing)
     if audio_mode == "built_in_audio":
         _use_minimax_h3_native_audio(prompt)
+    refmod_summary = None
+    if str(payload.get("pipeline") or "").strip().lower() == "refmod":
+        from .minimax_refmod import apply_refmod_pipeline
+
+        refmod_summary = apply_refmod_pipeline(prompt, payload)
     return {
         "workflow_path": workflow_path,
         "output_folder": output_folder,
         "prompt": prompt,
+        "refmod": refmod_summary,
         "latent_continuation_settings": latent_continuation_settings,
         "save_latent_settings": save_latent_settings,
         "used_seed": seed,
@@ -603,6 +615,8 @@ def _build_minimax_h3_advanced_2pass_api_prompt(payload):
     learned-upscale/refinement tail with Comfyui-MMH3-UltimateUpscale and gives
     each pass an independent ResolutionSelector.
     """
+    if str(payload.get("pipeline") or "").strip().lower() == "refmod":
+        raise ValueError("The RefMod pipeline supports Single and 2 Pass only. Choose one of those passes.")
     try:
         mappings = _get_comfy_node_mappings()
     except Exception as exc:
@@ -834,6 +848,8 @@ def _save_minimax_h3_advanced_2pass_debug_workflow(result, payload):
 
 def _build_minimax_h3_3pass_api_prompt(payload):
     """Build the experimental external-audio MiniMax H3 three-pass prompt."""
+    if str(payload.get("pipeline") or "").strip().lower() == "refmod":
+        raise ValueError("The RefMod pipeline supports Single and 2 Pass only. Choose one of those passes.")
     workflow_path, prompt = _load_api_template(_minimax_h3_3pass_api_template_path())
     prompt = copy.deepcopy(prompt)
     video_prompt = str(_first_payload_value(payload, "prompt", "video_prompt", default="") or "").strip()

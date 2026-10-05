@@ -262,6 +262,14 @@ def register_agent_api_routes(server_instance=None):
         modes = await asyncio.to_thread(get_modes_catalog)
         return api_success(modes)
 
+    @server_instance.routes.get(f"{_API_V1_PREFIX}/refmods")
+    @_api_endpoint
+    async def api_refmods(request: web.Request):
+        from ..minimax.refmod_library import list_refmods
+
+        entries = await asyncio.to_thread(list_refmods, str(request.query.get("folder", "") or ""))
+        return api_success({"refmods": [{k: v for k, v in entry.items() if k not in ("path", "directory")} for entry in entries]})
+
     @server_instance.routes.get(f"{_API_V1_PREFIX}/models")
     @_api_endpoint
     async def api_models(request: web.Request):

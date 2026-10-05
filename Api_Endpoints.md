@@ -26,7 +26,7 @@ never load or switch models. They answer `503 LLM_UNAVAILABLE` when nothing is l
 or its 1-based number.
 
 
-**Total:** 134 endpoints.
+**Total:** 135 endpoints.
 
 ## Service and discovery
 
@@ -38,6 +38,7 @@ or its 1-based number.
 | `GET` | `/models` | Models, checkpoints and LoRAs installed in ComfyUI, grouped by type. |
 | `GET` | `/modes` | Supported image and video modes with their requirements and capabilities. |
 | `GET` | `/queue` | Summary of the API job queue: running, queued and finished jobs. |
+| `GET` | `/refmods` | Saved RefMods in models/refmods with their type (folder), kind, frame count, tokens and description. Filter with `folder` (for example `identity`). A project switched to the RefMod pipeline (`pipeline: refmod` in the MiniMax H3 settings) renders from these. _(query: `folder`)_ |
 
 ## Project endpoints
 

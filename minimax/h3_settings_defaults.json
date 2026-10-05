@@ -1,4 +1,5 @@
 {
+  "pipeline": "standard",
   "video_mode": "text_to_video",
   "render_pass": "two_pass",
   "audio_mode": "input_audio",

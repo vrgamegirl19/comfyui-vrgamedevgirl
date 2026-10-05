@@ -16,6 +16,7 @@ import {
   MINIMAX_H3_CONTINUITY_OPTIONS,
   MINIMAX_H3_LOCATION_TRANSITION_OPTIONS,
   MINIMAX_H3_MODE_OPTIONS,
+  MINIMAX_H3_PIPELINE_OPTIONS,
   MINIMAX_H3_RESOLUTION_PRESETS,
   MINIMAX_H3_SAGE_ATTENTION_OPTIONS,
   MINIMAX_H3_SCENE_IMAGE_USE_OPTIONS,
@@ -63,6 +64,26 @@ export function buildMiniMaxPanel({
     addButton: miniMaxVideoProfileAddButton,
     removeButton: miniMaxVideoProfileRemoveButton,
   };
+  // Project-wide pipeline: Standard renders from reference images, RefMod renders from saved RefMods.
+  const miniMaxPipelineChooser = document.createElement("div");
+  miniMaxPipelineChooser.setAttribute("role", "group");
+  miniMaxPipelineChooser.setAttribute("aria-label", "Video pipeline");
+  miniMaxPipelineChooser.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;";
+  const miniMaxPipelineButtons = MINIMAX_H3_PIPELINE_OPTIONS.map((item) => {
+    const button = makeButton(`${item.label} pipeline`);
+    button.dataset.minimaxH3Pipeline = item.value;
+    button.title = item.value === "refmod"
+      ? "Render every scene from saved RefMods (made in RefMods Studio). Reference Builder cards pick a RefMod instead of an image."
+      : "Render every scene from reference images, as before.";
+    miniMaxPipelineChooser.append(button);
+    return button;
+  });
+  const miniMaxRefmodNote = document.createElement("div");
+  miniMaxRefmodNote.textContent = "RefMod pipeline: one mode, RefMod to Video, with Single or 2 Pass. Every scene uses the saved RefMods picked on its Reference Builder cards, and the prompt names them as <Video n> and <Picture n>.";
+  miniMaxRefmodNote.style.cssText = "display:none;font-size:11px;color:#a5f3fc;line-height:1.45;border:1px solid #155e75;border-radius:6px;background:#06202e;padding:7px 9px;";
+  // Per-scene clothing choice for each character (filled by the panel when the RefMod pipeline is on).
+  const miniMaxRefmodClothing = document.createElement("div");
+  miniMaxRefmodClothing.style.cssText = "display:none;flex-direction:column;gap:6px;border:1px solid #155e75;border-radius:6px;background:#06202e;padding:7px 9px;";
   const miniMaxModeChooser = document.createElement("div");
   miniMaxModeChooser.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;";
   const miniMaxModeButtons = MINIMAX_H3_MODE_OPTIONS.map((item) => {
@@ -97,10 +118,18 @@ export function buildMiniMaxPanel({
     { value: "22", label: "22 frames (7 tokens — recommended)" },
     { value: "39", label: "39 frames (12 tokens)" },
     { value: "56", label: "56 frames (17 tokens)" },
+    { value: "90", label: "90 frames (masked mode only)" },
+    { value: "141", label: "141 frames (masked mode only)" },
+    { value: "192", label: "192 frames (masked mode only)" },
   ];
   const miniMaxLatentContextFrames = makeSelect(MINIMAX_H3_LATENT_CONTEXT_OPTIONS, String(DEFAULT_MINIMAX_H3_SETTINGS.latent_context_frames || 22));
   miniMaxLatentContextFrames.title = "Number of trailing context frames loaded directly from the predecessor scene's saved latent.";
   const miniMaxLatentContextField = makeField("Latent context frames", miniMaxLatentContextFrames);
+  const miniMaxContinuationDirection = document.createElement("textarea");
+  miniMaxContinuationDirection.placeholder = "Optional. What this continued scene should do after it has carried on for a moment, for example: she turns toward the window and raises her hand, or the camera slowly pushes in on her face.";
+  miniMaxContinuationDirection.style.cssText = "width:100%;min-height:64px;box-sizing:border-box;resize:vertical;border:1px solid #3f3f46;border-radius:6px;background:#09090b;color:#f8fafc;padding:8px;font-size:12px;line-height:1.4;";
+  const miniMaxContinuationDirectionField = makeField("Continuation direction — this scene only", miniMaxContinuationDirection);
+  miniMaxContinuationDirectionField.title = "Saved with this scene. The prompt LLM keeps the previous scene's action going for the first part of the scene (about a third of its length), then performs this as one smooth movement, with no cut. The performer keeps singing if the scene has lyrics.";
   const miniMaxContinuityPromptFromLastFrame = makeCheckbox("Create each next scene prompt from the previous rendered final frame", false);
   miniMaxContinuityPromptFromLastFrame.wrapper.title = "Scene 1 keeps its authored prompt. Before rendering Scene 2 and later, the Builder extracts the predecessor's actual final frame and asks the vision LLM to create and save a complete continuous-shot prompt from it plus the scene's story, audio timing, and references.";
   const miniMaxLocationTransitionPreset = makeSelect(MINIMAX_H3_LOCATION_TRANSITION_OPTIONS, "normal");
@@ -123,7 +152,7 @@ export function buildMiniMaxPanel({
   miniMaxLatentStatusPill.textContent = "Checking predecessor latent...";
   const miniMaxLatentContinuationRow = document.createElement("div");
   miniMaxLatentContinuationRow.style.cssText = "display:flex;flex-direction:column;gap:6px;margin-top:6px;";
-  miniMaxLatentContinuationRow.append(miniMaxContinuityPromptFromLastFrame.wrapper, miniMaxLocationTransitionControls, miniMaxEditContinuityPromptInstructionsButton, miniMaxLatentContextField, miniMaxLatentStatusPill);
+  miniMaxLatentContinuationRow.append(miniMaxContinuityPromptFromLastFrame.wrapper, miniMaxLocationTransitionControls, miniMaxContinuationDirectionField, miniMaxEditContinuityPromptInstructionsButton, miniMaxLatentContextField, miniMaxLatentStatusPill);
   const miniMaxContinuityNote = document.createElement("div");
   miniMaxContinuityNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
   const miniMaxNoGgufNote = document.createElement("div");
@@ -753,7 +782,8 @@ export function buildMiniMaxPanel({
       ]),
     },
   ]);
-  miniMaxEnginePanel.append(miniMaxBanner, miniMaxVideoProfileRow, miniMaxModeChooser, miniMaxPassChooser, miniMaxSubTabs.wrapper, miniMaxSceneVideoButton);
+  miniMaxPassButtons.refmod = { pipelineButtons: miniMaxPipelineButtons, modeChooser: miniMaxModeChooser, note: miniMaxRefmodNote, clothing: miniMaxRefmodClothing };
+  miniMaxEnginePanel.append(miniMaxBanner, miniMaxVideoProfileRow, miniMaxPipelineChooser, miniMaxRefmodNote, miniMaxRefmodClothing, miniMaxModeChooser, miniMaxPassChooser, miniMaxSubTabs.wrapper, miniMaxSceneVideoButton);
 
   return {
     advancedTwoPassControls, miniMaxAccelerationControls, miniMaxAddSpeakerCueButton,
@@ -764,7 +794,7 @@ export function buildMiniMaxPanel({
     miniMaxEasyCacheBypass, miniMaxEasyCacheEndPercent, miniMaxEasyCacheReuseThreshold,
     miniMaxEasyCacheSettings, miniMaxEasyCacheStartPercent, miniMaxEasyCacheVerbose,
     miniMaxEditContinuityPromptInstructionsButton, miniMaxEditInstructionsButton, miniMaxEnginePanel,
-    miniMaxFp16Accumulation, miniMaxImageModeSource, miniMaxLatentContextFrames, miniMaxLatentContinuationRow,
+    miniMaxFp16Accumulation, miniMaxImageModeSource, miniMaxContinuationDirection, miniMaxLatentContextFrames, miniMaxLatentContinuationRow,
     miniMaxLatentStatusPill, miniMaxLocationTransitionControls, miniMaxLocationTransitionCustom,
     miniMaxLocationTransitionCustomField, miniMaxLocationTransitionPreset, miniMaxLoraCount, miniMaxLoraNote,
     miniMaxLoraRows, miniMaxLoraSection, miniMaxLoraSlots, miniMaxMegapixels, miniMaxMegapixelsField, miniMaxResolutionPreset,

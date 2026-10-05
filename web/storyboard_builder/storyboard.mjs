@@ -78,6 +78,8 @@ export function openStoryboardBuilder(payload = {}) {
   const state = {
     projectFolder,
     projectVideoEngine,
+    // The Video Builder project renders from saved RefMods, so scene cards show RefMod labels and the GPT payload names them.
+    refmodPipeline: Boolean(payload.refmodPipeline || payload.refmod_pipeline),
     miniMaxH3AudioMode: payloadMiniMaxH3AudioMode,
     lineMappingLyrics: String(payload.lineMappingLyrics || payload.line_mapping_lyrics || payload.lyricMapper?.source_text || payload.lyric_mapper?.source_text || ""),
     mode: openingMode,

@@ -25,7 +25,7 @@ JSON_PATH = ROOT / "agent_api" / "endpoints.json"
 
 # (section title, path prefix test) in display order. The first matching section wins.
 SECTIONS = [
-    ("Service and discovery", ("/health", "/meta", "/modes", "/models", "/events", "/queue")),
+    ("Service and discovery", ("/health", "/meta", "/modes", "/refmods", "/models", "/events", "/queue")),
     ("Projects", ("/projects", "/pipelines")),
     ("Jobs", ("/jobs",)),
     ("LLM and prompt instructions", ("/llm", "/instructions")),
@@ -38,6 +38,7 @@ DESCRIPTIONS: Dict[str, str] = {
     "GET /health": "Health check: `healthy` or `degraded`, whether ComfyUI is up, its queue depth, whether FFmpeg is found and whether a GPU is available.",
     "GET /meta": "API version (`v1`), pack version and update date, schema version and the list of capabilities (projects, scenes, prompts, videos, latents, post, face fix, pipelines, jobs, events).",
     "GET /modes": "Supported image and video modes with their requirements and capabilities.",
+    "GET /refmods": "Saved RefMods in models/refmods with their type (folder), kind, frame count, tokens and description. Filter with `folder` (for example `identity`). A project switched to the RefMod pipeline (`pipeline: refmod` in the MiniMax H3 settings) renders from these.",
     "GET /models": "Models, checkpoints and LoRAs installed in ComfyUI, grouped by type.",
     "GET /events": "Server-sent events stream of job and project events, with a keep-alive every 15 seconds. Filter with `project_id`.",
     "GET /queue": "Summary of the API job queue: running, queued and finished jobs.",

@@ -1806,6 +1806,18 @@
     },
     {
       "body_keys": [],
+      "description": "Saved RefMods in models/refmods with their type (folder), kind, frame count, tokens and description. Filter with `folder` (for example `identity`). A project switched to the RefMod pipeline (`pipeline: refmod` in the MiniMax H3 settings) renders from these.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/refmods",
+      "path_params": [],
+      "query": [
+        "folder"
+      ]
+    },
+    {
+      "body_keys": [],
       "description": "Every MiniMax H3 video setting that can be patched under the `minimax_h3` group: type, default, allowed values and limits.",
       "if_match": false,
       "job": false,

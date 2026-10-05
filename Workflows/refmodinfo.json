@@ -1,0 +1,794 @@
+{
+  "id": "4629ccdf-406c-439b-80e9-38d0364904e0",
+  "revision": 0,
+  "last_node_id": 22,
+  "last_link_id": 24,
+  "nodes": [
+    {
+      "id": 10,
+      "type": "MiniMaxH3RefModsLoader",
+      "pos": [
+        828.7787965133944,
+        596.8366342999906
+      ],
+      "size": [
+        270,
+        342
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "mods",
+          "type": "H3_REF_MODS",
+          "links": [
+            16,
+            22
+          ]
+        },
+        {
+          "name": "prompt_hint",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "title": "Details: pick the RefMod in mod_1",
+      "properties": {
+        "Node name for S&R": "MiniMaxH3RefModsLoader",
+        "refmod_visible_slots": [
+          1
+        ],
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        }
+      },
+      "widgets_values": [
+        false,
+        "my_concept",
+        1,
+        1,
+        "(none)",
+        1,
+        1,
+        "(none)",
+        1,
+        1,
+        "(none)",
+        1,
+        1,
+        "(none)",
+        1,
+        1,
+        "(none)",
+        1,
+        1,
+        "(none)",
+        1,
+        1,
+        "(none)",
+        1,
+        1,
+        0,
+        "All",
+        1,
+        1,
+        "All",
+        1,
+        1,
+        "All",
+        1,
+        1,
+        "All",
+        1,
+        1,
+        "All",
+        1,
+        1,
+        "All",
+        1,
+        1,
+        "All",
+        1,
+        1,
+        "All",
+        1,
+        1,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "widgets_values_named": {
+        "show_info": false,
+        "mod_1": "my_concept",
+        "strength_1": 1,
+        "copies_1": 1,
+        "mod_2": "(none)",
+        "strength_2": 1,
+        "copies_2": 1,
+        "mod_3": "(none)",
+        "strength_3": 1,
+        "copies_3": 1,
+        "mod_4": "(none)",
+        "strength_4": 1,
+        "copies_4": 1,
+        "mod_5": "(none)",
+        "strength_5": 1,
+        "copies_5": 1,
+        "mod_6": "(none)",
+        "strength_6": 1,
+        "copies_6": 1,
+        "mod_7": "(none)",
+        "strength_7": 1,
+        "copies_7": 1,
+        "mod_8": "(none)",
+        "strength_8": 1,
+        "copies_8": 1,
+        "max_total_tokens": 0,
+        "components_1": "All",
+        "visual_strength_1": 1,
+        "audio_strength_1": 1,
+        "components_2": "All",
+        "visual_strength_2": 1,
+        "audio_strength_2": 1,
+        "components_3": "All",
+        "visual_strength_3": 1,
+        "audio_strength_3": 1,
+        "components_4": "All",
+        "visual_strength_4": 1,
+        "audio_strength_4": 1,
+        "components_5": "All",
+        "visual_strength_5": 1,
+        "audio_strength_5": 1,
+        "components_6": "All",
+        "visual_strength_6": 1,
+        "audio_strength_6": 1,
+        "components_7": "All",
+        "visual_strength_7": 1,
+        "audio_strength_7": 1,
+        "components_8": "All",
+        "visual_strength_8": 1,
+        "audio_strength_8": 1,
+        "Remove RefMod 1": null,
+        "Remove RefMod 2": null,
+        "Remove RefMod 3": null,
+        "Remove RefMod 4": null,
+        "Remove RefMod 5": null,
+        "Remove RefMod 6": null,
+        "Remove RefMod 7": null,
+        "Remove RefMod 8": null,
+        "+ Add RefMod": null,
+        "Refresh RefMods": null,
+        "RefMod library": null
+      }
+    },
+    {
+      "id": 14,
+      "type": "VRGDG_RefModMetadata",
+      "pos": [
+        1215.575170386816,
+        910.2653045716388
+      ],
+      "size": [
+        453.90625,
+        236.203125
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mods",
+          "shape": 7,
+          "type": "H3_REF_MODS",
+          "link": 16
+        }
+      ],
+      "outputs": [
+        {
+          "name": "metadata",
+          "type": "STRING",
+          "links": [
+            21
+          ]
+        },
+        {
+          "name": "trigger_text",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "title": "Metadata (details chain)",
+      "properties": {
+        "Node name for S&R": "VRGDG_RefModMetadata",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        }
+      },
+      "widgets_values": [
+        "my_concept"
+      ],
+      "widgets_values_named": {
+        "mod_name": "my_concept"
+      }
+    },
+    {
+      "id": 15,
+      "type": "VAELoader",
+      "pos": [
+        2600.5251992054964,
+        703.9754019860966
+      ],
+      "size": [
+        270,
+        85.96875
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 4,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            19
+          ]
+        }
+      ],
+      "title": "H3 Video VAE",
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        },
+        "Node name for S&R": "VAELoader"
+      },
+      "widgets_values": [
+        "minimax_h3_video_vae_fp16.safetensors"
+      ],
+      "widgets_values_named": {
+        "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+      }
+    },
+    {
+      "id": 16,
+      "type": "VRGDG_RefModImagePicker",
+      "pos": [
+        2549.956839642246,
+        880.8750270697094
+      ],
+      "size": [
+        516.171875,
+        422.890625
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 4,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "refs",
+          "type": "H3_REF_LIST",
+          "links": [
+            17,
+            18
+          ]
+        },
+        {
+          "name": "count",
+          "type": "INT",
+          "links": null
+        }
+      ],
+      "title": "VRGDG RefMod Image Picker (6)",
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        },
+        "Node name for S&R": "VRGDG_RefModImagePicker"
+      },
+      "widgets_values": [
+        "[\n \"C:\\\\Users\\\\NVMax\\\\Pictures\\\\darrel2.png\",\n \"C:\\\\Users\\\\NVMax\\\\Pictures\\\\darrel1.png\",\n \"C:\\\\Users\\\\NVMax\\\\Pictures\\\\darrel3.png\",\n \"C:\\\\Users\\\\NVMax\\\\Pictures\\\\darrel4.png\",\n \"C:\\\\Users\\\\NVMax\\\\Pictures\\\\darrel5.png\",\n \"C:\\\\Users\\\\NVMax\\\\Pictures\\\\darrel6.png\"\n]",
+        1024,
+        null,
+        null
+      ],
+      "widgets_values_named": {
+        "image_paths": "[\n \"C:\\\\Users\\\\NVMax\\\\Pictures\\\\darrel2.png\",\n \"C:\\\\Users\\\\NVMax\\\\Pictures\\\\darrel1.png\",\n \"C:\\\\Users\\\\NVMax\\\\Pictures\\\\darrel3.png\",\n \"C:\\\\Users\\\\NVMax\\\\Pictures\\\\darrel4.png\",\n \"C:\\\\Users\\\\NVMax\\\\Pictures\\\\darrel5.png\",\n \"C:\\\\Users\\\\NVMax\\\\Pictures\\\\darrel6.png\"\n]",
+        "max_edge": 1024,
+        "Browse images...": null,
+        "Clear images": null
+      }
+    },
+    {
+      "id": 17,
+      "type": "VRGDG_RefModDescribe",
+      "pos": [
+        3120.5251992054964,
+        703.9754019860966
+      ],
+      "size": [
+        399.90625,
+        281.9375
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "refs",
+          "type": "H3_REF_LIST",
+          "link": 17
+        }
+      ],
+      "outputs": [
+        {
+          "name": "description",
+          "type": "STRING",
+          "links": [
+            20
+          ]
+        }
+      ],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        },
+        "Node name for S&R": "VRGDG_RefModDescribe"
+      },
+      "widgets_values": [
+        6,
+        768,
+        "identity",
+        "",
+        "darrel4",
+        "http://127.0.0.1:1234/v1"
+      ],
+      "widgets_values_named": {
+        "max_images": 6,
+        "image_edge": 768,
+        "concept_type": "identity",
+        "instruction": "",
+        "name_hint": "darrel4",
+        "lm_studio_url": "http://127.0.0.1:1234/v1"
+      }
+    },
+    {
+      "id": 18,
+      "type": "MiniMaxH3RefModExtract",
+      "pos": [
+        3620.5251992054964,
+        703.9754019860966
+      ],
+      "size": [
+        399.90625,
+        761.859375
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "refs_image.ref_image_0",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "refs_video.ref_video_0",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "refs_bundle",
+          "shape": 7,
+          "type": "H3_REF_LIST",
+          "link": 18
+        },
+        {
+          "name": "mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "name": "av_encoder",
+          "shape": 7,
+          "type": "MINIMAX_H3_AV_ENCODER",
+          "link": null
+        },
+        {
+          "name": "vae",
+          "shape": 7,
+          "type": "VAE",
+          "link": 19
+        },
+        {
+          "name": "mask_list",
+          "shape": 7,
+          "type": "H3_MASK_LIST",
+          "link": null
+        },
+        {
+          "name": "description",
+          "type": "STRING",
+          "widget": {
+            "name": "description"
+          },
+          "link": 20
+        }
+      ],
+      "outputs": [
+        {
+          "name": "mods",
+          "type": "H3_REF_MODS",
+          "links": null
+        },
+        {
+          "name": "details",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        },
+        "Node name for S&R": "MiniMaxH3RefModExtract"
+      },
+      "widgets_values": [
+        "my_concept",
+        "Full Reference",
+        "identity",
+        0,
+        1024,
+        32,
+        32,
+        16,
+        500,
+        false,
+        false,
+        1,
+        5120,
+        "",
+        true,
+        "identity_encode",
+        "",
+        "truncate"
+      ],
+      "widgets_values_named": {
+        "name": "my_concept",
+        "mode": "Full Reference",
+        "concept_type": "identity",
+        "background_retention": 0,
+        "ref_resolution": 1024,
+        "pool_h": 32,
+        "pool_w": 32,
+        "latent_frames": 16,
+        "identity": 500,
+        "merge": false,
+        "motion_only": false,
+        "multiplier": 1,
+        "max_tokens": 5120,
+        "description": "",
+        "save": true,
+        "extraction_preset": "identity_encode",
+        "subfolder": "",
+        "budget_policy": "truncate"
+      }
+    },
+    {
+      "id": 19,
+      "type": "ShowText|pysssss",
+      "pos": [
+        1782.0119106171373,
+        792.7987291229314
+      ],
+      "size": [
+        473.375,
+        371.296875
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 21
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        },
+        "Node name for S&R": "ShowText|pysssss"
+      },
+      "widgets_values": [
+        "name:          my_concept\nfile:          C:\\Users\\NVMax\\Desktop\\ComfyUI_windows_portable\\ComfyUI\\models\\refmods\\my_concept.safetensors\nkind:          video\nconcept_type:  identity\ndescription:   A young to middle-aged man with a dark complexion, short beard, and dreadlocks worn under a patterned black headband. He wears a hooded jacket featuring a black and white geometric or tribal pattern, paired with dark pants and gold-toned accessories including a thick chain necklace and bracelets.\ntags:          6 img, 0 vid\nmode:          encode\nsource:        stack (1x42x38 +1x42x38 +1x42x38 +1x42x38 +1x42x38 +1x42x38)\npool:          full-res 608x672px (short-edge cap 1024px)\nrefinement:    0\ntensors:       {\"latent\": [1, 24, 6, 42, 38]}"
+      ],
+      "widgets_values_named": {
+        "text_0": "name:          my_concept\nfile:          C:\\Users\\NVMax\\Desktop\\ComfyUI_windows_portable\\ComfyUI\\models\\refmods\\my_concept.safetensors\nkind:          video\nconcept_type:  identity\ndescription:   A young to middle-aged man with a dark complexion, short beard, and dreadlocks worn under a patterned black headband. He wears a hooded jacket featuring a black and white geometric or tribal pattern, paired with dark pants and gold-toned accessories including a thick chain necklace and bracelets.\ntags:          6 img, 0 vid\nmode:          encode\nsource:        stack (1x42x38 +1x42x38 +1x42x38 +1x42x38 +1x42x38 +1x42x38)\npool:          full-res 608x672px (short-edge cap 1024px)\nrefinement:    0\ntensors:       {\"latent\": [1, 24, 6, 42, 38]}"
+      }
+    },
+    {
+      "id": 20,
+      "type": "MiniMaxH3RefModInspect",
+      "pos": [
+        1204.4174910969282,
+        638.6458276039593
+      ],
+      "size": [
+        270,
+        229.953125
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mods",
+          "type": "H3_REF_MODS",
+          "link": 22
+        },
+        {
+          "name": "vae",
+          "shape": 7,
+          "type": "VAE",
+          "link": 24
+        }
+      ],
+      "outputs": [
+        {
+          "name": "details",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "image_preview",
+          "type": "IMAGE",
+          "links": [
+            23
+          ]
+        },
+        {
+          "name": "audio_preview",
+          "type": "AUDIO",
+          "links": null
+        },
+        {
+          "name": "reference_map",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        },
+        "Node name for S&R": "MiniMaxH3RefModInspect"
+      },
+      "widgets_values": [
+        0,
+        "stored",
+        0.5,
+        "first_frame"
+      ],
+      "widgets_values_named": {
+        "index": 0,
+        "preview": "stored",
+        "strength": 0.5,
+        "visual_preview": "first_frame"
+      }
+    },
+    {
+      "id": 21,
+      "type": "PreviewImage",
+      "pos": [
+        1787.2610872749678,
+        1204.666321400173
+      ],
+      "size": [
+        496.59375,
+        296.75
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 23
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": null
+        }
+      ],
+      "title": "Stored frames",
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        },
+        "Node name for S&R": "PreviewImage"
+      }
+    },
+    {
+      "id": 22,
+      "type": "VAELoader",
+      "pos": [
+        1032.6577246697036,
+        418.1800670602484
+      ],
+      "size": [
+        270,
+        85.96875
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            24
+          ]
+        }
+      ],
+      "title": "H3 Video VAE",
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        },
+        "Node name for S&R": "VAELoader"
+      },
+      "widgets_values": [
+        "minimax_h3_video_vae_fp16.safetensors"
+      ],
+      "widgets_values_named": {
+        "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+      }
+    }
+  ],
+  "links": [
+    [
+      16,
+      10,
+      0,
+      14,
+      0,
+      "H3_REF_MODS"
+    ],
+    [
+      17,
+      16,
+      0,
+      17,
+      0,
+      "H3_REF_LIST"
+    ],
+    [
+      18,
+      16,
+      0,
+      18,
+      2,
+      "H3_REF_LIST"
+    ],
+    [
+      19,
+      15,
+      0,
+      18,
+      5,
+      "VAE"
+    ],
+    [
+      20,
+      17,
+      0,
+      18,
+      7,
+      "STRING"
+    ],
+    [
+      21,
+      14,
+      0,
+      19,
+      0,
+      "STRING"
+    ],
+    [
+      22,
+      10,
+      0,
+      20,
+      0,
+      "H3_REF_MODS"
+    ],
+    [
+      23,
+      20,
+      1,
+      21,
+      0,
+      "IMAGE"
+    ],
+    [
+      24,
+      22,
+      0,
+      20,
+      1,
+      "VAE"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ue_links": [],
+    "k2cf_state_id": "k2cf_1791133249711_w3jsijzo21",
+    "ds": {
+      "scale": 0.6934334949441355,
+      "offset": [
+        -565.1064015327431,
+        353.39697144289346
+      ]
+    },
+    "anomalous_hashes": {},
+    "comfyui_mcp": {
+      "workflow_uuid": "8ca896b0-4615-46cd-b79e-42dbb748ec41"
+    },
+    "links_added_by_ue": [],
+    "frontendVersion": "1.52.7",
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": true,
+    "VHS_KeepIntermediate": true
+  },
+  "version": 0.4
+}

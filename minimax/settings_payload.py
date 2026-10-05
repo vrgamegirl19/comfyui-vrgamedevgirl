@@ -26,6 +26,7 @@ from .tile_plan import VRAM_PRESETS, normalize_vram_preset
 _DEFAULTS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "h3_settings_defaults.json")
 
 SETTINGS_ENUMS: Dict[str, Tuple[str, ...]] = {
+    "pipeline": ("standard", "refmod"),
     "video_mode": ("text_to_video", "image_to_video", "image_reference_to_video", "reference_to_video", "video_to_video"),
     "render_pass": ("single", "two_pass", "three_pass"),
     "audio_mode": ("input_audio", "built_in_audio"),
@@ -226,6 +227,13 @@ def normalize_minimax_h3_settings(raw: Optional[Dict[str, Any]]) -> Dict[str, An
             settings[key] = _check_value(key, value, default, lenient=True)
         except ValueError:
             continue
+    if settings.get("pipeline") == "refmod":
+        # The RefMod pipeline has one mode and no 2 Pass Advanced.
+        settings["video_mode"] = "reference_to_video"
+        if settings.get("render_pass") == "three_pass":
+            settings["render_pass"] = "two_pass"
+        if settings.get("continuity_mode") in ("spatial_reference", "exact_start_frame"):
+            settings["continuity_mode"] = "off"
     # One output resolution for every pass type; older saves took it from the pass type they rendered with.
     settings["resolution_preset"], settings["megapixels"] = migrate_resolution(raw, settings["render_pass"])
     for key, default in _OPTIONAL_SETTINGS.items():
@@ -249,6 +257,8 @@ def minimax_h3_settings_for_scene(session: Dict[str, Any], segment: Optional[Dic
             mode = segment.get("minimax_h3_mode")
             if mode:
                 merged["video_mode"] = mode
+        # The pipeline belongs to the whole project, so a scene with its own settings follows it.
+        merged["pipeline"] = (project_raw or {}).get("pipeline", "standard") if isinstance(project_raw, dict) else "standard"
     return normalize_minimax_h3_settings(merged)
 
 
@@ -292,6 +302,7 @@ def build_minimax_render_payload(settings: Dict[str, Any], overrides: Optional[D
 
     payload: Dict[str, Any] = {
         "audio_mode": s["audio_mode"],
+        "pipeline": s["pipeline"],
         "video_mode": s["video_mode"],
         "continuity_mode": s["continuity_mode"] or "off",
         "latent_context_frames": s["latent_context_frames"],

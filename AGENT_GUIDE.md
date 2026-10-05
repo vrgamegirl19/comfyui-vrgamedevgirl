@@ -360,6 +360,18 @@ The `minimax` package implements high-performance conditioning, latent managemen
   - `VRGDG_MiniMaxH3ReferenceMediaFromPaths`: "VRGDG MiniMax H3 Reference Media From Paths" — Binds character and background reference images.
   - `VRGDG_MiniMaxH3ImageReferenceToVideo`: "MiniMax H3 Image + Reference to Video" — High-level conditioning node for Image-to-Video with multiple reference images.
 
+#### RefMod pipeline (`minimax/refmod_*.py`, `runner/minimax_refmod.py`)
+- **Purpose**: A project-wide pipeline (`minimax_h3_settings.pipeline == "refmod"`) that renders scenes from saved RefMods (`models/refmods/<type>/<name>.safetensors`, made in RefMods Studio) instead of reference images. Full design: [docs/REFMOD_INTEGRATION_SPEC.md](docs/REFMOD_INTEGRATION_SPEC.md).
+- **Files**:
+  - `minimax/refmod_picker.py`: file-dialog image picker, describe prompts per type, metadata and combine nodes.
+  - `minimax/refmod_studio.py`: create a RefMod from images (crops, quality presets, fixed folder per type) and save a Reference Builder image as a RefMod.
+  - `minimax/refmod_library.py`: list saved RefMods and their previews (`/vrgdg/refmod/library`, `/vrgdg/refmod/preview`).
+  - `minimax/refmod_scene.py`: which RefMods a scene uses, their order and the `<Video n>` / `<Picture n>` / `<Audio n>` labels. Twin of `web/music_video_builder/refmod_labels.mjs`; both are checked against `tests/refmod_scene_cases.json`.
+  - `runner/minimax_refmod.py`: rewires a built single or 2 pass graph so the guiders read *Text Encode with RefMods* (needs ComfyUI-MiniMaxH3Mod). The scene audio becomes an audio RefMod so `<Audio 1>` still exists.
+  - `token_report` (`refmod_scene.py`) / `tokenReport` (`refmod_labels.mjs`): scene token total (warns above 6,000) and the character balance (a character under half the strongest by tokens x strength tends to be duplicated). The panel status line and the render log use it.
+  - Storyboard: `_refmod_card_fields` (`storyboard/scene_helpers.py`) and `refmodCardFields` keep RefMod fields on storyboard cards; `gpt_payload.mjs` adds `refmod_label` per subject and a `refmod_pipeline` block when the Builder opens the storyboard with `refmodPipeline`.
+- **Rules**: one mode (reference_to_video), single or 2 pass only, no scene images. Settings normalisation keeps those rules in both `minimax_h3.mjs` and `minimax/settings_payload.py`.
+
 #### [minimax/latent_continuation.py](minimax/latent_continuation.py)
 - **Purpose**: Native latent-space continuation between adjacent scenes.
 - **Nodes Registered**:
@@ -367,6 +379,8 @@ The `minimax` package implements high-performance conditioning, latent managemen
   - `VRGDG_MiniMaxH3LoadLatent`: "VRGDG H3 Load Latent"
   - `VRGDG_MiniMaxH3ApplyLatentGuide`: "VRGDG H3 Apply Latent Continuation Guide"
   - `VRGDG_MiniMaxH3LoadExactFrame`: "VRGDG H3 Load Exact Last Frame"
+  - `VRGDG_MiniMaxH3ApplyMaskedContinuation`: "VRGDG H3 Apply Masked Continuation"
+- **Latent Continuation Masked** (`continuity_mode` = `latent_continuation_masked`): single pass only. `Load Latent` (`masked_av`) slices a phase-aligned window from `plan_masked_context` (39/90/141/192 frames, starts on a 5-token boundary, ends before the predecessor's padding). `Apply Masked Continuation` copies it into the head of the sampler's input latent and zeroes the denoise mask there (needs ComfyUI PR 15375, v0.34.0+). Nothing is added to the conditioning. With Audio Drive the song audio stays locked and only the video head is protected, with built-in audio the predecessor's audio ticks are copied too. The head is trimmed through the timing plan's warm-up (`_patch_minimax_h3_latent_continuation_masked` in `runner/minimax_patches.py`). 2 Pass and 2 Pass Advanced raise a clear error.
 
 #### [minimax/tile_plan.py](minimax/tile_plan.py) and [minimax/resolution.py](minimax/resolution.py)
 - **Purpose**: Pure helpers (no ComfyUI or torch imports). `resolution.py` is the one output resolution shared by single pass, 2 Pass and 2 Pass Advanced (`resolution_preset` + `megapixels`, plus the migration of older saves); its JS twins are `miniMaxH3FrameSize` and `miniMaxH3PresetMegapixels` in `minimax_h3.mjs`. `tile_plan.py` plans 2 Pass Advanced tiling from the Pass 2 size and the VRAM preset and holds the fixed (hidden) MMH3 settings; `_build_minimax_h3_advanced_2pass_api_prompt` adds `VRGDG_MiniMaxH3SpatialTilePlan` to the graph so the plan is made from the real size at run time. Keep the JS and Python copies in step (`tests/test_minimax_tile_plan.py`, `tests/test_minimax_resolution.py`, `tests/minimax_pass_settings.cjs`).

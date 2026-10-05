@@ -17,6 +17,7 @@ import {
 } from "./controls.mjs";
 import { showModelDownloadModal } from "./dialogs.mjs";
 import { pickPath } from "./project_setup.mjs";
+import { openRefModsStudio } from "./refmods_studio.mjs";
 import { showOverlayTrackHelp } from "./timeline_actions.mjs";
 
 export function wireToolbar({
@@ -400,6 +401,8 @@ export function buildTopbar({
   const autoBuildButton = makeButton("Auto Build", "primary");
   const storyboardBuilderButton = makeButton("Storyboard Builder");
   const fluxReferenceBuilderButton = makeButton("Reference Builder");
+  const refModsStudioButton = makeButton("RefMods Studio");
+  refModsStudioButton.onclick = openRefModsStudio;
   const lyricMapperButton = makeButton("Line Mapping");
   const sendToPromptCreatorButton = makeButton("Send To Prompt Creator");
   const promptOptionsButton = makeButton("Prompt Options");
@@ -475,6 +478,12 @@ export function buildTopbar({
     icon: "reference",
     width: 54,
     title: "Open Reference Builder to manage characters and locations.",
+  });
+  styleCompactToolbarButton(refModsStudioButton, {
+    lines: ["RefMods", "Studio"],
+    icon: "reference",
+    width: 58,
+    title: "Create a RefMod from your images and save it by type under models/refmods.",
   });
   styleCompactToolbarButton(lyricMapperButton, {
     lines: ["Line", "Mapping"],
@@ -559,7 +568,7 @@ export function buildTopbar({
   batchActions.style.display = "none";
   const importActions = document.createElement("div");
   importActions.style.cssText = "display:flex;gap:5px;align-items:center;justify-content:center;flex-wrap:nowrap;min-width:0;overflow:visible;";
-  importActions.append(wizardButton, wizardBetaButton, autoBuildButton, storyboardBuilderButton, fluxReferenceBuilderButton, lyricMapperButton, gemmaRunnerButton, promptOptionsButton);
+  importActions.append(wizardButton, wizardBetaButton, autoBuildButton, storyboardBuilderButton, fluxReferenceBuilderButton, refModsStudioButton, lyricMapperButton, gemmaRunnerButton, promptOptionsButton);
   const centerActions = document.createElement("div");
   centerActions.style.cssText = "position:relative;display:flex;gap:8px;align-items:center;justify-content:center;min-width:0;overflow:visible;";
   centerActions.append(importActions, batchActions);

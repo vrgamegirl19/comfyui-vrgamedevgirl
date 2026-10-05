@@ -19,8 +19,8 @@ from typing import Any, Callable, Dict, List, Optional
 MAX_REFERENCE_IMAGES = 9
 _IMAGE_REFERENCE_MODES = ("reference_to_video", "image_reference_to_video")
 _REFERENCE_BUILDER_MODES = ("reference_to_video", "image_reference_to_video", "video_to_video")
-_CONTINUITY_MODES = ("off", "spatial_reference", "exact_start_frame", "latent_continuation", "latent_continuation_exact_frame")
-_LATENT_MODES = ("latent_continuation", "latent_continuation_exact_frame")
+_CONTINUITY_MODES = ("off", "spatial_reference", "exact_start_frame", "latent_continuation", "latent_continuation_exact_frame", "latent_continuation_masked")
+_LATENT_MODES = ("latent_continuation", "latent_continuation_exact_frame", "latent_continuation_masked")
 
 
 def media_path_key(path: Any) -> str:
@@ -36,6 +36,8 @@ def normalize_continuity_mode(value: Any) -> str:
     clean = "_".join(str(value or "").strip().lower().replace("-", " ").split())
     if clean in ("latent_exact", "latent_exact_frame", "latent_continuation_exact", "latent_continuation_exact_frame"):
         return "latent_continuation_exact_frame"
+    if clean in ("latent_masked", "latent_masked_av", "latent_continuation_masked"):
+        return "latent_continuation_masked"
     if clean in ("latent", "latent_continuation", "continuation"):
         return "latent_continuation"
     if clean in ("spatial", "spatial_reference", "continuity_reference"):

@@ -528,6 +528,14 @@
             "default": false,
             "type": "boolean"
           },
+          "pipeline": {
+            "default": "standard",
+            "enum": [
+              "standard",
+              "refmod"
+            ],
+            "type": "string"
+          },
           "ref_image_size": {
             "default": "max",
             "enum": [
@@ -8957,6 +8965,53 @@
         "summary": "get queue",
         "tags": [
           "queue"
+        ]
+      }
+    },
+    "/vrgdg/api/v1/refmods": {
+      "get": {
+        "operationId": "api_refmods",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "folder",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Error. The HTTP status mirrors error.code."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {}
+        ],
+        "summary": "refmods",
+        "tags": [
+          "refmods"
         ]
       }
     },

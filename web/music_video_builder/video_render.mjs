@@ -12,7 +12,9 @@ import { showFinalVideoReadyModal } from "./dialogs.mjs";
 import { formatTime } from "./format.mjs";
 import { rtvReferenceImagePayload } from "./image_references.mjs";
 import { setButtonGroupState } from "./inspector.mjs";
-import { isMiniMaxH3LatentContinuationMode, miniMaxH3FrameSize, miniMaxH3ModeLabel, normalizeMiniMaxH3Mode } from "./minimax_h3.mjs";
+import { isMiniMaxH3LatentContinuationMode, miniMaxH3FrameSize, miniMaxH3ModeLabel, normalizeMiniMaxH3Mode, normalizeMiniMaxH3Pipeline } from "./minimax_h3.mjs";
+import { refmodPreviewUrl } from "./refmod_card.mjs";
+import { attachRefmodLabels, referencePayload } from "./refmod_labels.mjs";
 import { miniMaxDialogueOrderText } from "./minimax_prompt.mjs";
 import { applyTriggerPhrase, segmentUsesNoLipSyncPerformance } from "./prompt_text.mjs";
 import { normalizeVideoPromptOrigin, sortSegments } from "./segments.mjs";
@@ -570,11 +572,19 @@ export function createVideoRender({
     const sceneDuration = timelineEnd - timelineStart;
     const miniMaxSettings = miniMaxH3SettingsForSegment(segment);
     const builtInAudio = miniMaxSettings.audio_mode === "built_in_audio";
-    const mode = normalizeMiniMaxH3Mode(options.mode ?? miniMaxSettings.video_mode);
+    // The pipeline belongs to the whole project, and the RefMod pipeline has one mode.
+    const refmodPipeline = normalizeMiniMaxH3Pipeline(state.miniMaxH3Settings?.pipeline) === "refmod";
+    const mode = refmodPipeline ? "reference_to_video" : normalizeMiniMaxH3Mode(options.mode ?? miniMaxSettings.video_mode);
     const twoPass = miniMaxSettings.render_pass === "two_pass"
       && ["reference_to_video", "image_reference_to_video"].includes(mode);
     const threePass = miniMaxSettings.render_pass === "three_pass"
       && ["reference_to_video", "image_reference_to_video"].includes(mode);
+    if ((twoPass || threePass) && miniMaxH3ContinuityModeForSegment(segment) === "latent_continuation_masked" && sceneSlotNumber(segment) > 1) {
+      throw new Error("Latent Continuation Masked works with Single pass only. Switch the render pass to Single, or choose Latent Continuation.");
+    }
+    if (refmodPipeline && threePass) {
+      throw new Error("The RefMod pipeline supports Single and 2 Pass only. Choose one of those passes before rendering.");
+    }
     if ((twoPass || threePass) && builtInAudio) {
       throw new Error(`MiniMax H3 ${threePass ? "2 Pass Advanced" : "2 Pass"} currently supports Input Audio only. Switch Audio Mode to Input Audio before rendering.`);
     }
@@ -597,7 +607,12 @@ export function createVideoRender({
     const generatedContinuityPrompt = miniMaxH3FrameContinuityPromptEnabled(segment)
       ? await createMiniMaxH3FrameContinuityPrompt(segment, sceneIndex, mode, continuityInput, progress, pct(6), `${batchLabel}MiniMax continuity`)
       : "";
-    const prompt = String(generatedContinuityPrompt || (options.prompt ?? (segment?.minimax_h3_prompt || segment?.i2v_prompt || ""))).trim();
+    const promptBase = String(generatedContinuityPrompt || (options.prompt ?? (segment?.minimax_h3_prompt || segment?.i2v_prompt || ""))).trim();
+    // A prompt written before the RefMod pipeline was switched on (or before its RefMods changed) may not name them yet.
+    // Putting each RefMod's label next to its character is safe to repeat, so it is done again here.
+    const prompt = refmodPipeline
+      ? attachRefmodLabels(promptBase, miniMaxOrderedImageReferenceItemsForSegment(segment, mode).map((item) => item.refmod).filter(Boolean))
+      : promptBase;
     if (!prompt) throw new Error(`${sceneDisplayName(segment, sceneIndex)} needs a MiniMax H3 prompt.`);
     assertValidMiniMaxH3FinalPrompt(prompt, segment, mode, {
       allowCueValidationWarnings: true,
@@ -624,7 +639,14 @@ export function createVideoRender({
       await persistIngredientsSheetImages(projectFolder);
     }
 
-    let imagePaths = miniMaxRenderReferenceImagePaths(segment, mode, options.imagePaths);
+    // The RefMod pipeline renders from saved RefMods, in scene order with their labels, and sends no reference images.
+    const refmodItems = refmodPipeline
+      ? miniMaxOrderedImageReferenceItemsForSegment(segment, mode).map((item) => item.refmod).filter(Boolean)
+      : [];
+    if (refmodPipeline && !refmodItems.length) {
+      throw new Error(`${sceneDisplayName(segment, sceneIndex)} needs at least one RefMod. Pick a RefMod on a Reference Builder card and map it to this scene.`);
+    }
+    let imagePaths = refmodPipeline ? [] : miniMaxRenderReferenceImagePaths(segment, mode, options.imagePaths);
     let continuityImageNumber = 0;
     if (continuityInput?.framePath) {
       const continuityKey = mediaPathKey(continuityInput.framePath);
@@ -651,7 +673,7 @@ export function createVideoRender({
     if (["image_to_video", "image_reference_to_video"].includes(mode) && !imagePaths.length) {
       throw new Error(`${sceneDisplayName(segment, sceneIndex)} needs a selected scene image for MiniMax Image to Video.`);
     }
-    if (mode === "reference_to_video" && !imagePaths.length) {
+    if (mode === "reference_to_video" && !refmodPipeline && !imagePaths.length) {
       throw new Error(`${sceneDisplayName(segment, sceneIndex)} needs at least one ordered Reference Builder image.`);
     }
     if (mode === "video_to_video" && !videoReferences.some((item) => String(item?.path || "").trim())) {
@@ -683,10 +705,17 @@ export function createVideoRender({
     const progressLyric = progressDialogue
       || String(segment?.lyric_text || "").trim()
       || (segmentUsesNoLipSyncPerformance(segment) ? "[No visible vocal / no lip sync]" : "");
+    // The RefMod pipeline shows the RefMods in this scene (preview, label, name and strength) in place of images.
+    const progressRefmods = refmodItems.map((item) => ({
+      url: refmodPreviewUrl(item.mod_name),
+      label: item.name,
+      caption: `${item.label} ${item.name}${item.strength < 1 ? ` · ${Math.round(item.strength * 100)}%` : ""}`,
+    }));
     progress?.setSceneDetails?.({
       sceneLabel: sceneDisplayName(segment, sceneIndex),
-      modeLabel: `${miniMaxH3ModeLabel(mode)} · ${builtInAudio ? "Built-in MiniMax Audio" : "Input Audio"}`,
-      images: progressImages,
+      modeLabel: `${miniMaxH3ModeLabel(mode)}${refmodPipeline ? " (RefMods)" : ""} · ${builtInAudio ? "Built-in MiniMax Audio" : "Input Audio"}`,
+      images: refmodPipeline ? progressRefmods : progressImages,
+      imagesTitle: refmodPipeline ? "RefMods" : undefined,
       lyric: progressLyric,
       prompt,
     });
@@ -825,6 +854,8 @@ export function createVideoRender({
         turbo_lora_strength: miniMaxSettings.turbo_lora_strength,
         image_paths: imagePaths,
         video_references: videoReferences,
+        pipeline: refmodPipeline ? "refmod" : "standard",
+        ...(refmodPipeline ? { refmod_references: referencePayload(refmodItems) } : {}),
       };
       if (mode === "image_to_video") {
         const lastFrame = firstLastFrameEndImageSource(segment) || {};
@@ -844,6 +875,10 @@ export function createVideoRender({
         payload,
         180000,
       );
+      const missingRefmodLabels = built?.refmod?.labels_missing_from_prompt || [];
+      if (missingRefmodLabels.length) {
+        toast(`This scene's prompt does not use ${missingRefmodLabels.join(", ")}. Regenerate the scene prompt so every RefMod is named.`, true);
+      }
       const timing = built?.timing || {};
       const postTrim = built?.post_render_trim || {};
       const builtLoraSettings = built?.lora_settings || {};

@@ -40,11 +40,26 @@ class UnsafeLatentPayload:
         return os.mkdir, (self.marker,)
 
 
+class FakeNestedTensor:
+    """Stands in for comfy.nested_tensor.NestedTensor, which needs a full ComfyUI install."""
+
+    def __init__(self, tensors):
+        self.tensors = tuple(tensors)
+
+
 def _loader_classes():
     module = ast.parse((ROOT / "minimax/latent_continuation.py").read_text(encoding="utf-8"))
-    names = {"VRGDG_MiniMaxH3LoadLatent", "VRGDG_MiniMaxH3LoadExactFrame"}
+    names = {"VRGDG_MiniMaxH3LoadLatent", "VRGDG_MiniMaxH3LoadExactFrame", "VRGDG_MiniMaxH3ApplyMaskedContinuation"}
     body = [node for node in module.body if isinstance(node, ast.ClassDef) and node.name in names]
-    namespace = {"os": os, "hashlib": hashlib, "torch": torch, "Any": Any, "SceneLatentManager": MANAGER.SceneLatentManager}
+    namespace = {
+        "os": os, "hashlib": hashlib, "torch": torch, "Any": Any,
+        "SceneLatentManager": MANAGER.SceneLatentManager,
+        "plan_latent_context": MANAGER.plan_latent_context,
+        "plan_masked_context": MANAGER.plan_masked_context,
+        "HAS_NESTED_TENSOR": True,
+        "NestedTensor": FakeNestedTensor,
+        "_require_masked_av_support": lambda: None,
+    }
     exec(compile(ast.Module(body=body, type_ignores=[]), "latent_loaders", "exec"), namespace)
     return namespace
 
@@ -63,8 +78,10 @@ def _runner_namespace():
         "_minimax_h3_tail_padding_frames",
         "_minimax_h3_effective_warmup_frames",
         "_patch_minimax_h3_latent_continuation",
+        "_patch_minimax_h3_latent_continuation_masked",
+        "_minimax_h3_masked_latent_plan",
     }
-    constants = {"_MMH3_LATENT_MODE", "_MMH3_LATENT_EXACT_MODE"}
+    constants = {"_MMH3_LATENT_MODE", "_MMH3_LATENT_EXACT_MODE", "_MMH3_LATENT_MASKED_MODE"}
     body = [
         node for node in module.body
         if (isinstance(node, ast.FunctionDef) and node.name in wanted)
@@ -75,6 +92,8 @@ def _runner_namespace():
         "os": os,
         "SceneLatentManager": MANAGER.SceneLatentManager,
         "plan_latent_context": MANAGER.plan_latent_context,
+        "plan_masked_context": MANAGER.plan_masked_context,
+        "normalize_masked_context_frames": MANAGER.normalize_masked_context_frames,
         "_frames_to_tokens": MANAGER._frames_to_tokens,
         "_tokens_to_frames": MANAGER._tokens_to_frames,
     }
@@ -110,6 +129,108 @@ class LatentContextPlanTests(unittest.TestCase):
     def test_exact_plan_falls_back_when_the_latent_is_too_short(self):
         plan = MANAGER.plan_latent_context(3, 0, 22, exact_frame=True)
         self.assertFalse(plan["exact"])
+
+
+class MaskedContextPlanTests(unittest.TestCase):
+    def test_window_is_phase_aligned_and_exact_for_every_size_and_padding(self):
+        total = 72
+        for padding in range(0, 40):
+            for frames in MANAGER.MASKED_CONTEXT_FRAMES:
+                try:
+                    plan = MANAGER.plan_masked_context(total, padding, frames)
+                except ValueError:
+                    self.assertLess(MANAGER._tokens_to_frames(total) - padding, frames + 17)
+                    continue
+                with self.subTest(padding=padding, frames=frames):
+                    self.assertEqual(plan["start_token"] % 5, 0)
+                    self.assertEqual(plan["end_token"] % 5, 2)
+                    self.assertEqual(plan["context_frames"], frames)
+                    self.assertEqual(plan["warmup_frames"], frames + plan["lost_tail_frames"])
+                    # never reaches into the padding after the real last frame
+                    self.assertLessEqual(plan["end_frame"], MANAGER._tokens_to_frames(total) - padding)
+                    self.assertLess(plan["lost_tail_frames"], 17)
+
+    def test_39_frames_is_12_tokens_and_65_audio_ticks(self):
+        plan = MANAGER.plan_masked_context(72, 0, 39)
+        self.assertEqual(plan["tokens"], 12)
+        self.assertEqual(plan["end_audio_tick"] - plan["start_audio_tick"], 65)
+
+    def test_end_snaps_back_before_tail_padding(self):
+        plan = MANAGER.plan_masked_context(72, 5, 39)
+        self.assertEqual((plan["start_token"], plan["end_token"]), (55, 67))
+        self.assertEqual(plan["lost_tail_frames"], 12)
+
+    def test_warmup_covers_the_predecessor_frames_after_the_window(self):
+        # measured render: 124 frames (37 tokens), 4 padding -> 120 visible. The window ends at frame 107, so its
+        # head sits 13 frames before the predecessor's last visible frame. The warm-up has to include those.
+        plan = MANAGER.plan_masked_context(37, 4, 39)
+        self.assertEqual((plan["start_frame"], plan["end_frame"]), (68, 107))
+        self.assertEqual(plan["lost_tail_frames"], 13)
+        self.assertEqual(plan["warmup_frames"], 52)
+
+    def test_unknown_sizes_fall_back_to_39_and_short_latents_are_rejected(self):
+        self.assertEqual(MANAGER.normalize_masked_context_frames(22), 39)
+        self.assertEqual(MANAGER.normalize_masked_context_frames("141"), 141)
+        with self.assertRaisesRegex(ValueError, "too short"):
+            MANAGER.plan_masked_context(7, 0, 39)
+
+
+class MaskedContinuationNodeTests(unittest.TestCase):
+    def setUp(self):
+        self.classes = _loader_classes()
+        self.node = self.classes["VRGDG_MiniMaxH3ApplyMaskedContinuation"]()
+
+    @staticmethod
+    def _target(video_tokens=40, audio_ticks=200, mask=None):
+        video = torch.zeros(1, 24, video_tokens, 4, 6)
+        audio = torch.ones(1, 32, 2, audio_ticks)
+        latent = {"samples": FakeNestedTensor((video, audio))}
+        if mask is not None:
+            latent["noise_mask"] = mask
+        return latent
+
+    @staticmethod
+    def _context(tokens=12, ticks=65, spatial=(4, 6)):
+        video = torch.full((1, 24, tokens, *spatial), 7.0)
+        audio = torch.full((1, 32, 2, ticks), 3.0)
+        return {"samples": FakeNestedTensor((video, audio)), "video": video, "audio": audio}
+
+    def test_head_is_copied_and_masked_and_the_rest_is_generated(self):
+        (out,) = self.node.apply(self._target(), self._context())
+        video, audio = out["samples"].tensors
+        video_mask, audio_mask = out["noise_mask"].tensors
+        self.assertTrue(torch.all(video[:, :, :12] == 7.0))
+        self.assertTrue(torch.all(video[:, :, 12:] == 0.0))
+        self.assertTrue(torch.all(video_mask[:, :, :12] == 0.0))
+        self.assertTrue(torch.all(video_mask[:, :, 12:] == 1.0))
+        # audio is generated untouched unless include_audio is set
+        self.assertTrue(torch.all(audio == 1.0))
+        self.assertTrue(torch.all(audio_mask == 1.0))
+
+    def test_audio_drive_mask_is_kept_and_audio_is_not_replaced(self):
+        base = self._target()
+        video, audio = base["samples"].tensors
+        drive_mask = FakeNestedTensor((torch.ones_like(video), torch.zeros_like(audio)))
+        (out,) = self.node.apply(self._target(mask=drive_mask), self._context())
+        video_mask, audio_mask = out["noise_mask"].tensors
+        self.assertTrue(torch.all(audio_mask == 0.0))
+        self.assertTrue(torch.all(video_mask[:, :, :12] == 0.0))
+        self.assertTrue(torch.all(video_mask[:, :, 12:] == 1.0))
+
+    def test_include_audio_copies_and_protects_the_predecessor_audio(self):
+        (out,) = self.node.apply(self._target(), self._context(), include_audio=True)
+        audio = out["samples"].tensors[1]
+        audio_mask = out["noise_mask"].tensors[1]
+        self.assertTrue(torch.all(audio[..., :65] == 3.0))
+        self.assertTrue(torch.all(audio[..., 65:] == 1.0))
+        self.assertTrue(torch.all(audio_mask[..., :65] == 0.0))
+        self.assertTrue(torch.all(audio_mask[..., 65:] == 1.0))
+
+    def test_mismatched_resolution_is_resized_and_oversized_context_is_rejected(self):
+        (out,) = self.node.apply(self._target(), self._context(spatial=(8, 12)))
+        self.assertEqual(tuple(out["samples"].tensors[0].shape), (1, 24, 40, 4, 6))
+        with self.assertRaisesRegex(ValueError, "fills the whole"):
+            self.node.apply(self._target(video_tokens=12), self._context())
 
 
 class SceneLatentStorageTests(unittest.TestCase):
@@ -364,6 +485,68 @@ class RunnerLatentContinuationTests(unittest.TestCase):
         self.assertEqual(prompt["126"]["inputs"]["conditioning"], [result["exact_guide_node_ids"][0], 0])
         self.assertEqual(prompt["193"]["inputs"]["conditioning"], [result["exact_guide_node_ids"][1], 0])
 
+    def test_masked_mode_names_and_warmup(self):
+        mode = self.ns["_minimax_h3_latent_continuation_mode"]
+        self.assertEqual(mode({"continuity_mode": "Latent Continuation Masked"}), "latent_continuation_masked")
+        self.assertEqual(mode({"continuity_mode": "latent-masked"}), "latent_continuation_masked")
+        self.assertTrue(self.ns["_minimax_h3_is_latent_mode"]("latent_continuation_masked"))
+        warmup = self.ns["_minimax_h3_effective_warmup_frames"]
+        masked = {**self.payload, "continuity_mode": "latent_continuation_masked"}
+        # 39 head frames + the 12 predecessor frames after the window (the 22 frame default is not a masked size)
+        self.assertEqual(warmup(masked), 51)
+        self.assertEqual(warmup({**masked, "latent_context_frames": 90}), 102)
+        self.assertEqual(warmup({**masked, "scene_number": 1}), 0)
+
+    @staticmethod
+    def _single_pass_prompt(audio_drive=True):
+        prompt = {
+            "136": {"class_type": "MiniMaxH3ReferenceToVideo", "inputs": {}},
+            "125": {"class_type": "SamplerCustomAdvanced", "inputs": {"guider": ["126", 0], "latent_image": ["172", 0]}},
+            "126": {"class_type": "BasicGuider", "inputs": {"conditioning": ["136", 0]}},
+        }
+        if audio_drive:
+            prompt["172"] = {"class_type": "VRGDG_MiniMaxH3AudioDrive", "inputs": {"av_latent": ["136", 1]}}
+        else:
+            prompt["125"]["inputs"]["latent_image"] = ["136", 1]
+        return prompt
+
+    def test_masked_mode_puts_the_head_in_the_sampler_latent_and_leaves_conditioning_alone(self):
+        prompt = self._single_pass_prompt()
+        result = self.ns["_patch_minimax_h3_latent_continuation"](
+            prompt, {**self.payload, "continuity_mode": "latent_continuation_masked"}
+        )
+        self.assertTrue(result["enabled"])
+        self.assertEqual(prompt["125"]["inputs"]["latent_image"], [result["apply_node_id"], 0])
+        apply = prompt[result["apply_node_id"]]
+        self.assertEqual(apply["class_type"], "VRGDG_MiniMaxH3ApplyMaskedContinuation")
+        self.assertEqual(apply["inputs"]["latent"], ["172", 0])
+        self.assertFalse(apply["inputs"]["include_audio"])
+        load = prompt[result["load_node_id"]]["inputs"]
+        self.assertTrue(load["masked_av"])
+        self.assertEqual((load["scene_number"], load["context_frames"]), (21, 39))
+        self.assertEqual(result["warmup_frames"], 51)
+        self.assertEqual(prompt["126"]["inputs"]["conditioning"], ["136", 0])
+        self.assertNotIn("VRGDG_MiniMaxH3ApplyLatentGuide", {node["class_type"] for node in prompt.values()})
+
+    def test_masked_mode_carries_the_predecessor_audio_only_without_audio_drive(self):
+        prompt = self._single_pass_prompt(audio_drive=False)
+        result = self.ns["_patch_minimax_h3_latent_continuation"](
+            prompt, {**self.payload, "continuity_mode": "latent_continuation_masked"}
+        )
+        self.assertEqual(prompt[result["apply_node_id"]]["inputs"]["latent"], ["136", 1])
+        self.assertTrue(prompt[result["apply_node_id"]]["inputs"]["include_audio"])
+
+    def test_masked_mode_rejects_multi_pass_graphs_and_missing_predecessors(self):
+        prompt = self._single_pass_prompt()
+        prompt["194"] = {"class_type": "SamplerCustomAdvanced", "inputs": {"latent_image": ["189", 0]}}
+        payload = {**self.payload, "continuity_mode": "latent_continuation_masked"}
+        with self.assertRaisesRegex(ValueError, "single pass"):
+            self.ns["_patch_minimax_h3_latent_continuation"](prompt, payload)
+        with self.assertRaises(FileNotFoundError):
+            self.ns["_patch_minimax_h3_latent_continuation"](
+                self._single_pass_prompt(), {**payload, "scene_number": 30}
+            )
+
     def test_exact_mode_requires_the_last_frame_image(self):
         payload = {**self.payload, "continuity_mode": "latent_continuation_exact_frame"}
         with self.assertRaises(FileNotFoundError):
@@ -377,7 +560,7 @@ class RunnerLatentContinuationTests(unittest.TestCase):
         ]
         self.assertEqual(len(calls), 3)  # advanced two-pass reuses the two-pass builder
         for call in calls:
-            for mode in ("off", "latent_continuation", "latent_continuation_exact_frame"):
+            for mode in ("off", "latent_continuation", "latent_continuation_exact_frame", "latent_continuation_masked"):
                 for scene in (1, 22):
                     with self.subTest(line=call.lineno, mode=mode, scene=scene):
                         payload = {**self.payload, "continuity_mode": mode, "scene_number": scene,
@@ -389,7 +572,8 @@ class RunnerLatentContinuationTests(unittest.TestCase):
                                      "warmup_frames": warmup, "cooldown_frames": 0, "audio_mode": "input_audio"}
                         timing = eval(compile(ast.Expression(call), "builder_timing", "eval"), namespace)
                         if mode != "off" and scene > 1:
-                            guide = self.ns["_patch_minimax_h3_latent_continuation"](self._prompt(), payload)
+                            prompt = self._single_pass_prompt() if mode == "latent_continuation_masked" else self._prompt()
+                            guide = self.ns["_patch_minimax_h3_latent_continuation"](prompt, payload)
                             self.assertAlmostEqual(timing.final_trim_start_seconds, guide["warmup_frames"] / 24)
                             self.assertEqual(timing.audio_leading_padding_seconds, timing.final_trim_start_seconds)
                         else:
@@ -418,7 +602,16 @@ class BuilderLatentContinuationWiringTests(unittest.TestCase):
     def test_both_modes_are_offered_and_normalised(self):
         self.assertIn('value: "latent_continuation", label: "Latent Continuation (native H3 temporal context)"', BUILDER_SOURCE)
         self.assertIn('value: "latent_continuation_exact_frame"', BUILDER_SOURCE)
+        self.assertIn('value: "latent_continuation_masked"', BUILDER_SOURCE)
+        self.assertIn('"latent_continuation_masked"', BUILDER_SOURCE)
         self.assertIn("function isMiniMaxH3LatentContinuationMode(mode)", BUILDER_SOURCE)
+
+    def test_masked_mode_has_its_own_prompt_contract_and_needs_single_pass(self):
+        # the masked head already holds the previous scene's motion, so the prompt must continue it, not transition
+        self.assertIn("this scene is the very next moment of the same uninterrupted take", BUILDER_SOURCE)
+        self.assertIn("LOCATION PHASE — MASKED CONTINUATION TRANSITION", BUILDER_SOURCE)
+        self.assertIn('continuity_mode === "latent_continuation_masked"', BUILDER_SOURCE)
+        self.assertIn("Latent Continuation Masked works with Single pass only", BUILDER_SOURCE)
 
     def test_render_payload_carries_the_latent_settings(self):
         for key in (
