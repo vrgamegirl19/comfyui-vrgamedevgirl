@@ -1221,3 +1221,13 @@ still untested.
   Likely remaining limits (untested): the test used 576x320 two_stage, so the stage-1 face is only 288x160, plus
   `stage1_steps` 30 and a prompt that never describes the singing; per-slice Demucs also has no musical context
   at slice edges.
+
+### Lyrics in the A2V prompt fix the remaining lip-sync gap (2026-10-05)
+
+- Experiment (scene 1 only, same seed/settings/vocal stem/slice as the vocals-only run): transcribed the
+  isolated vocal slice with `openai-whisper` `small` (10 words, local, not checked for accuracy) and appended
+  `The singer visibly sings the words: "<words>", mouth shapes matching the sung syllables.` to the prompt.
+  User verdict: **perfect** lip sync (vocals-only without words was better than the full mix but not perfect).
+- Not integrated yet. Open design points: use the scene's existing `lyric_text` when present, and optionally
+  fall back to Whisper when it is empty (`openai-whisper` is installed in `venv-3.13` but is not a declared
+  dependency of this repo, and `small` is a ~461 MB download).
