@@ -1217,4 +1217,7 @@ still untested.
   original song audio, so only the model's conditioning changes. If demucs is missing the trim fails with a
   clear message to install it or turn the setting off (no silent fallback). Demucs is not a new requirement.
 - Real render check (same 9.1s excerpt, 3 scenes, vocals + slice fix): scenes 73/65/89 frames, final 218 frames,
-  no `freezedetect` freezes, 475-605s per scene. Lip sync judged by the user after this run: see below.
+  no `freezedetect` freezes, 475-605s per scene. User verdict on the lip sync: clearly better than the full-mix render, but not perfect.
+  Likely remaining limits (untested): the test used 576x320 two_stage, so the stage-1 face is only 288x160, plus
+  `stage1_steps` 30 and a prompt that never describes the singing; per-slice Demucs also has no musical context
+  at slice edges.
