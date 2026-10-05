@@ -1,0 +1,42 @@
+{
+    "1": {
+        "inputs": {
+            "model_dir": "dgrauet/ltx-2.3-mlx-q8",
+            "pipeline_type": "two_stage",
+            "low_ram": false,
+            "custom_model_dir": ""
+        },
+        "class_type": "LTX2MLXModelLoader",
+        "_meta": {
+            "title": "LTX-2 MLX Model Loader (T2V/I2V)"
+        }
+    },
+    "2": {
+        "inputs": {
+            "image": "",
+            "custom_width": 0,
+            "custom_height": 0
+        },
+        "class_type": "VHS_LoadImagePath",
+        "_meta": {
+            "title": "Load Image (Path)"
+        }
+    },
+    "3": {
+        "inputs": {
+            "pipeline": ["1", 0],
+            "prompt": "",
+            "height": 480,
+            "width": 704,
+            "num_frames": 97,
+            "seed": 0,
+            "cfg_scale": 3.0,
+            "frame_rate": 24.0,
+            "filename_prefix": "ltx2mlx/t2v"
+        },
+        "class_type": "LTX2MLXGenerate",
+        "_meta": {
+            "title": "LTX-2 MLX Generate (T2V/I2V)"
+        }
+    }
+}
