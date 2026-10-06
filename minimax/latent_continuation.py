@@ -13,6 +13,7 @@ from typing import Any
 import torch
 import node_helpers
 import comfy.model_management
+import comfy.utils
 
 from .latent_manager import SceneLatentManager, plan_latent_context, plan_masked_context
 
@@ -400,6 +401,14 @@ class VRGDG_MiniMaxH3ApplyMaskedContinuation:
                         "With Audio Drive the song audio is already locked and must not be replaced."
                     ),
                 }),
+                "vae": ("VAE", {
+                    "tooltip": (
+                        "MiniMax H3 video VAE. When the predecessor was saved at a different size than this "
+                        "target (every first pass of a 2 Pass render), the head is decoded, resized as pictures "
+                        "and encoded again. Resizing the latent itself leaves ghosting and blur. Without a VAE the "
+                        "latent is resized directly."
+                    ),
+                }),
             },
         }
 
@@ -412,6 +421,29 @@ class VRGDG_MiniMaxH3ApplyMaskedContinuation:
         "target latent and sets a zero denoise mask there, so the model keeps those frames and generates the "
         "rest. Needs ComfyUI with MiniMax H3 per-token AV noise masks (PR 15375, ComfyUI 0.34.0+)."
     )
+
+    @staticmethod
+    def _resize_through_pixels(vae, video_latent: torch.Tensor, target_h: int, target_w: int) -> torch.Tensor:
+        """Decode the head, resize the pictures to the target size, and encode them again.
+
+        A latent is not an image: interpolating it spatially adds high-frequency artifacts (double edges) and
+        smears detail. The window is a whole number of H3 temporal groups, so it decodes and encodes back to the
+        same number of tokens.
+        """
+        with torch.no_grad():
+            frames = vae.decode(video_latent)
+            if frames.ndim == 5:
+                frames = frames.reshape(-1, *frames.shape[-3:])
+            pictures = frames[..., :3].movedim(-1, 1)
+            pictures = comfy.utils.common_upscale(pictures, target_w * 16, target_h * 16, "lanczos", "center")
+            encoded = vae.encode(pictures.movedim(1, -1).clamp(0.0, 1.0))
+        encoded = encoded.reshape(1, *encoded.shape[-4:]) if encoded.ndim != 5 else encoded
+        if int(encoded.shape[2]) != int(video_latent.shape[2]):
+            raise RuntimeError(
+                f"Latent Continuation Masked: re-encoding the resized head gave {int(encoded.shape[2])} tokens, "
+                f"expected {int(video_latent.shape[2])}."
+            )
+        return encoded
 
     @staticmethod
     def _mask_like(existing, template: torch.Tensor) -> torch.Tensor:
@@ -428,6 +460,7 @@ class VRGDG_MiniMaxH3ApplyMaskedContinuation:
         latent: dict[str, Any],
         context_latent: dict[str, Any],
         include_audio: bool = False,
+        vae: Any = None,
     ) -> tuple[dict[str, Any]]:
         _require_masked_av_support()
         if not HAS_NESTED_TENSOR:
@@ -447,11 +480,15 @@ class VRGDG_MiniMaxH3ApplyMaskedContinuation:
 
         target_h, target_w = int(target_video.shape[-2]), int(target_video.shape[-1])
         if (int(ctx_video.shape[-2]), int(ctx_video.shape[-1])) != (target_h, target_w):
+            route = "pictures (VAE decode, resize, encode)" if vae is not None else "latent interpolation"
             print(
-                f"[VRGDG Latent Masked] Spatially adapted predecessor latent from {int(ctx_video.shape[-2])}x"
-                f"{int(ctx_video.shape[-1])} to {target_h}x{target_w}."
+                f"[VRGDG Latent Masked] Resizing the predecessor head from {int(ctx_video.shape[-2])}x"
+                f"{int(ctx_video.shape[-1])} to {target_h}x{target_w} through {route}."
             )
-            ctx_video = SceneLatentManager.resize_latent_video(ctx_video, target_h, target_w)
+            if vae is not None:
+                ctx_video = self._resize_through_pixels(vae, ctx_video, target_h, target_w)
+            else:
+                ctx_video = SceneLatentManager.resize_latent_video(ctx_video, target_h, target_w)
 
         head = int(ctx_video.shape[2])
         if head >= int(target_video.shape[2]):

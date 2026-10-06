@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
 import wave
 from array import array
@@ -47,6 +48,29 @@ class FakeNestedTensor:
         self.tensors = tuple(tensors)
 
 
+def _fake_common_upscale(samples, width, height, upscale_method, crop):
+    return torch.nn.functional.interpolate(samples, size=(height, width), mode="bicubic", align_corners=False)
+
+
+class FakeVideoVae:
+    """Records how it is used: decode -> pictures of 16 x the latent size, encode -> one latent token per H3 group."""
+
+    def __init__(self):
+        self.calls = []
+
+    def decode(self, latent):
+        tokens = int(latent.shape[2])
+        frames = 17 * ((tokens - 2) // 5) + 5 if tokens > 2 else 5
+        self.calls.append(("decode", tuple(latent.shape)))
+        return torch.full((frames, int(latent.shape[3]) * 16, int(latent.shape[4]) * 16, 3), 0.5)
+
+    def encode(self, pictures):
+        frames, height, width = int(pictures.shape[0]), int(pictures.shape[1]), int(pictures.shape[2])
+        tokens = 2 + 5 * ((frames - 5) // 17)
+        self.calls.append(("encode", tuple(pictures.shape)))
+        return torch.full((1, 24, tokens, height // 16, width // 16), 9.0)
+
+
 def _loader_classes():
     module = ast.parse((ROOT / "minimax/latent_continuation.py").read_text(encoding="utf-8"))
     names = {"VRGDG_MiniMaxH3LoadLatent", "VRGDG_MiniMaxH3LoadExactFrame", "VRGDG_MiniMaxH3ApplyMaskedContinuation"}
@@ -56,6 +80,7 @@ def _loader_classes():
         "SceneLatentManager": MANAGER.SceneLatentManager,
         "plan_latent_context": MANAGER.plan_latent_context,
         "plan_masked_context": MANAGER.plan_masked_context,
+        "comfy": types.SimpleNamespace(utils=types.SimpleNamespace(common_upscale=_fake_common_upscale)),
         "HAS_NESTED_TENSOR": True,
         "NestedTensor": FakeNestedTensor,
         "_require_masked_av_support": lambda: None,
@@ -253,6 +278,43 @@ class ShotPromptDecimalTests(unittest.TestCase):
             module.strip_negative_sentences(text),
             "For the first 1.5 seconds, he keeps walking. At about 1.5 seconds, he points.",
         )
+
+
+class MaskedHeadResizeTests(unittest.TestCase):
+    def setUp(self):
+        self.node = _loader_classes()["VRGDG_MiniMaxH3ApplyMaskedContinuation"]()
+
+    @staticmethod
+    def _latents(target_hw, context_hw, tokens=12, target_tokens=40):
+        target = {"samples": FakeNestedTensor((torch.zeros(1, 24, target_tokens, *target_hw), torch.ones(1, 32, 2, 200)))}
+        video = torch.full((1, 24, tokens, *context_hw), 7.0)
+        context = {"samples": FakeNestedTensor((video, torch.zeros(1, 32, 2, 65))), "video": video, "audio": None}
+        return target, context
+
+    def test_a_size_mismatch_goes_through_pictures_when_a_vae_is_connected(self):
+        target, context = self._latents((56, 100), (52, 96))
+        vae = FakeVideoVae()
+        (out,) = self.node.apply(target, context, vae=vae)
+        self.assertEqual([call[0] for call in vae.calls], ["decode", "encode"])
+        self.assertEqual(vae.calls[0][1], (1, 24, 12, 52, 96))
+        # the pictures were resized to the target before they were encoded
+        self.assertEqual(vae.calls[1][1], (39, 56 * 16, 100 * 16, 3))
+        video = out["samples"].tensors[0]
+        self.assertEqual(tuple(video.shape), (1, 24, 40, 56, 100))
+        self.assertTrue(torch.all(video[:, :, :12] == 9.0))
+        self.assertTrue(torch.all(out["noise_mask"].tensors[0][:, :, :12] == 0.0))
+
+    def test_a_matching_size_never_touches_the_vae(self):
+        target, context = self._latents((56, 100), (56, 100))
+        vae = FakeVideoVae()
+        (out,) = self.node.apply(target, context, vae=vae)
+        self.assertEqual(vae.calls, [])
+        self.assertTrue(torch.all(out["samples"].tensors[0][:, :, :12] == 7.0))
+
+    def test_without_a_vae_the_latent_is_interpolated_as_before(self):
+        target, context = self._latents((56, 100), (52, 96))
+        (out,) = self.node.apply(target, context)
+        self.assertEqual(tuple(out["samples"].tensors[0].shape), (1, 24, 40, 56, 100))
 
 
 class SceneLatentStorageTests(unittest.TestCase):
@@ -589,6 +651,21 @@ class RunnerLatentContinuationTests(unittest.TestCase):
         # one predecessor window feeds both passes
         loads = [n for n in prompt.values() if n["class_type"] == "VRGDG_MiniMaxH3LoadLatent"]
         self.assertEqual(len(loads), 1)
+
+    def test_masked_mode_connects_the_video_vae_to_both_apply_nodes(self):
+        prompt = self._two_pass_prompt()
+        prompt["136"]["inputs"]["vae"] = ["119", 0]
+        result = self.ns["_patch_minimax_h3_latent_continuation"](
+            prompt, {**self.payload, "continuity_mode": "latent_continuation_masked"}
+        )
+        self.assertEqual(prompt[result["apply_node_id"]]["inputs"]["vae"], ["119", 0])
+        self.assertEqual(prompt[result["second_pass_apply_node_id"]]["inputs"]["vae"], ["119", 0])
+        # no video VAE in the graph: the input is simply left off
+        bare = self._single_pass_prompt()
+        result = self.ns["_patch_minimax_h3_latent_continuation"](
+            bare, {**self.payload, "continuity_mode": "latent_continuation_masked"}
+        )
+        self.assertNotIn("vae", bare[result["apply_node_id"]]["inputs"])
 
     def test_masked_mode_leaves_the_advanced_pass_alone(self):
         # 2 Pass Advanced has one sampler, the second pass runs inside MMH3 Ultimate Upscale

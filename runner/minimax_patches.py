@@ -302,6 +302,16 @@ def _patch_minimax_h3_latent_continuation_masked(prompt, payload):
     source_node = prompt.get(str(latent_source[0]), {})
     include_audio = source_node.get("class_type") != "VRGDG_MiniMaxH3AudioDrive"
 
+    # The head is resized through pictures when the predecessor was saved at another size, which needs the video VAE.
+    video_vae = next(
+        (
+            node["inputs"]["vae"] for node in prompt.values()
+            if node.get("class_type") == "MiniMaxH3ReferenceToVideo"
+            and isinstance(node.get("inputs", {}).get("vae"), list)
+        ),
+        None,
+    )
+
     load_id = "9210"
     while load_id in prompt:
         load_id = str(int(load_id) + 1)
@@ -326,6 +336,7 @@ def _patch_minimax_h3_latent_continuation_masked(prompt, payload):
             "latent": latent_source,
             "context_latent": [load_id, 0],
             "include_audio": include_audio,
+            **({"vae": list(video_vae)} if video_vae else {}),
         },
         "_meta": {"title": f"MiniMax H3 Latent Continuation Masked ({plan['context_frames']} frames)"},
     }
@@ -344,6 +355,7 @@ def _patch_minimax_h3_latent_continuation_masked(prompt, payload):
                 "context_latent": [load_id, 0],
                 # the audio is the locked source track in every 2 pass graph, its mask comes through the upscale
                 "include_audio": False,
+                **({"vae": list(video_vae)} if video_vae else {}),
             },
             "_meta": {"title": f"MiniMax H3 Latent Continuation Masked · Pass 2 ({plan['context_frames']} frames)"},
         }
