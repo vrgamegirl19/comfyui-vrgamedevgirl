@@ -770,7 +770,7 @@
     },
     {
       "body_keys": [],
-      "description": "Change scene fields: `lyric_text` (sets `lyric_no_lip_sync` from the text unless you send it), `lyric_singers`, `story_beat`, prompts (`t2i_prompt`, `i2v_prompt`, `enhance_prompt`, `minimax_h3_prompt`, `minimax_h3_pass2_prompt`, `flux_prompt`, `nb_prompt`, `flow_gpt_prompt`, `ernie_t2i_prompt`), `notes`, `label`, `start`, `end`, `no_character_present`, `lyric_no_lip_sync`, or per-scene `use_scene_*` / `*_settings`. A field that cannot be patched returns a validation error that lists the supported fields, and nothing is saved.",
+      "description": "Change scene fields: `lyric_text` (sets `lyric_no_lip_sync` from the text unless you send it), `lyric_singers`, `story_beat`, prompts (`t2i_prompt`, `i2v_prompt`, `enhance_prompt`, `minimax_h3_prompt`, `minimax_h3_pass2_prompt`, `flux_prompt`, `nb_prompt`, `flow_gpt_prompt`, `ernie_t2i_prompt`), `minimax_h3_continuation_direction` (what a scene continued with `latent_continuation_masked` does after its first moments, one smooth movement, no cut), `notes`, `label`, `start`, `end`, `no_character_present`, `lyric_no_lip_sync`, or per-scene `use_scene_*` / `*_settings`. A field that cannot be patched returns a validation error that lists the supported fields, and nothing is saved.",
       "if_match": true,
       "job": false,
       "method": "PATCH",
@@ -814,7 +814,7 @@
     },
     {
       "body_keys": [],
-      "description": "The context brief an outside agent needs to write a prompt itself: cast, cut plan and character budget (`kind`).",
+      "description": "The context brief an outside agent needs to write a prompt itself: cast, cut plan and character budget (`kind`). A scene continued with `latent_continuation_masked` also gets a `continuation` block: `hold_seconds`, the scene's `direction` and the `rules` for writing it as the next moment of the previous scene's take.",
       "if_match": false,
       "job": false,
       "method": "GET",
@@ -1682,7 +1682,7 @@
     },
     {
       "body_keys": [],
-      "description": "Render one scene's video with ComfyUI (`mode`, e.g. `minimax_h3`). Trims to the exact timeline length and saves it as `video_NNNN-audio.mp4`. Set `audio_mode: built_in_audio` in the MiniMax settings for H3 voices and sound (Single or 2 Pass; 2 Pass Advanced needs input audio).",
+      "description": "Render one scene's video with ComfyUI (`mode`, e.g. `minimax_h3`). Trims to the exact timeline length and saves it as `video_NNNN-audio.mp4`. Set `audio_mode: built_in_audio` in the MiniMax settings for H3 voices and sound (Single or 2 Pass; 2 Pass Advanced needs input audio). With `continuity_mode: latent_continuation_masked` the previous scene must be rendered first (`PREDECESSOR_MISSING` otherwise); it works in Single, 2 Pass and 2 Pass Advanced.",
       "if_match": false,
       "job": true,
       "method": "POST",
@@ -1818,7 +1818,7 @@
     },
     {
       "body_keys": [],
-      "description": "Every MiniMax H3 video setting that can be patched under the `minimax_h3` group: type, default, allowed values and limits.",
+      "description": "Every MiniMax H3 video setting that can be patched under the `minimax_h3` group: type, default, allowed values and limits. `continuity_mode` takes `latent_continuation_masked` (the previous scene's latent is protected at the start of the next, Single, 2 Pass and 2 Pass Advanced), `latent_context_frames` takes 39, 90, 141 or 192 for it, and `location_transition_preset` takes `masked`.",
       "if_match": false,
       "job": false,
       "method": "GET",

@@ -20,6 +20,7 @@ import os
 from typing import Any, Dict, List, Optional, Tuple
 
 from .resolution import RESOLUTION_PRESETS, migrate_resolution, output_frame_size
+from .scene_inputs import canonical_continuity_mode
 from .tile_plan import VRAM_PRESETS, normalize_vram_preset
 
 
@@ -34,6 +35,37 @@ SETTINGS_ENUMS: Dict[str, Tuple[str, ...]] = {
     "resolution_preset": RESOLUTION_PRESETS,
     "advanced_two_pass_vram_preset": tuple(VRAM_PRESETS),
     "advanced_two_pass_pass1_resolution_preset": RESOLUTION_PRESETS,
+    "continuity_mode": (
+        "off", "spatial_reference", "exact_start_frame", "latent_continuation",
+        "latent_continuation_exact_frame", "latent_continuation_masked",
+    ),
+    "location_transition_preset": (
+        "normal", "surreal", "cinematic", "inner_world", "match", "motion", "creative_auto", "masked", "custom",
+    ),
+}
+
+# Integer settings that only take one of a fixed set of values. 90, 141 and 192 belong to latent_continuation_masked
+# (39 + 51k frames, exact for video and audio); the other latent modes use 16, 22, 39 and 56.
+_INT_CHOICES: Dict[str, Tuple[int, ...]] = {
+    "latent_context_frames": (16, 22, 39, 56, 90, 141, 192),
+}
+
+# One line per setting that agents get wrong without it, shown by minimax_h3_settings_schema.
+SETTING_NOTES: Dict[str, str] = {
+    "continuity_mode": (
+        "Reference to Video and Video to Video only. latent_continuation_masked copies the previous scene's saved latent "
+        "into the head of this scene and protects it, so the scene continues the same take. It works in render_pass "
+        "single, two_pass and three_pass (pass 1 only). Aliases such as latent_masked are accepted."
+    ),
+    "latent_context_frames": (
+        "Frames of the previous scene's latent used as context. latent_continuation_masked takes 39 (recommended), 90, "
+        "141 or 192 and falls back to 39 for any other value. The other latent modes take 16, 22, 39 or 56."
+    ),
+    "location_transition_preset": (
+        "How the scene prompt moves between two different mapped locations. masked is written for "
+        "latent_continuation_masked: continue for about a third of the scene, then make one smooth move. "
+        "Only the Video Builder's automatic prompt writer uses it, agents write the shots themselves."
+    ),
 }
 
 # (min, max) inclusive. Matches the clamps in cloneMiniMaxH3Settings.
@@ -171,9 +203,14 @@ def _check_value(key: str, value: Any, default: Any, lenient: bool = False) -> A
     allowed = SETTINGS_ENUMS.get(key)
     if allowed is not None:
         text = str(coerced).strip().lower()
+        if key == "continuity_mode":
+            text = canonical_continuity_mode(text) or text
         if text not in allowed:
             raise ValueError(f"must be one of: {', '.join(allowed)}")
         return text
+    choices = _INT_CHOICES.get(key)
+    if choices is not None and coerced not in choices:
+        raise ValueError(f"must be one of: {', '.join(str(item) for item in choices)}")
     bounds = _numeric_range(key)
     if bounds is not None and isinstance(coerced, (int, float)) and not isinstance(coerced, bool):
         if not bounds[0] <= coerced <= bounds[1]:
@@ -442,6 +479,10 @@ def minimax_h3_settings_schema() -> Dict[str, Any]:
         entry: Dict[str, Any] = {"type": kind, "default": default}
         if key in SETTINGS_ENUMS:
             entry["enum"] = list(SETTINGS_ENUMS[key])
+        if key in _INT_CHOICES:
+            entry["enum"] = list(_INT_CHOICES[key])
+        if key in SETTING_NOTES:
+            entry["description"] = SETTING_NOTES[key]
         bounds = _numeric_range(key)
         if bounds is not None and kind in ("integer", "number"):
             entry["minimum"], entry["maximum"] = bounds

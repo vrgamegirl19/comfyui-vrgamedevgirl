@@ -11,8 +11,9 @@ from typing import Any, Callable, Dict, List, Optional
 from ...builder.lyric_scenes import is_instrumental_lyric_text
 from ...llm import video_prompt_generation as vid_gen
 from ...minimax import shot_prompt as sp
-from ...minimax.prompt_assembly import storyboard_cut_plan_for_duration
+from ...minimax.prompt_assembly import masked_continuation_context, storyboard_cut_plan_for_duration
 from ...minimax.scene_inputs import ordered_reference_items
+from ...minimax.settings_payload import minimax_h3_settings_for_scene
 from ..errors import ValidationError
 from ..jobs.manager import JobManager, get_job_manager
 from ..jobs.models import Job
@@ -45,7 +46,17 @@ def _scene_context(session: Dict[str, Any], segment: Dict[str, Any], card: Dict[
     lyric = _text(segment.get("lyric_text"))
     no_character = bool(segment.get("no_character_present"))
     visual_only = bool(segment.get("lyric_no_lip_sync")) or no_character or is_instrumental_lyric_text(lyric)
+    # A scene that continues the previous one with masked latent continuation is written as the next moment of that take.
+    continuation = None
+    previous_shot = ""
+    if index > 0 and minimax_h3_settings_for_scene(session, segment).get("continuity_mode") == "latent_continuation_masked":
+        ordered = sorted((s for s in session.get("segments") or [] if isinstance(s, dict)), key=lambda s: _number(s.get("start"), 0.0))
+        continuation = masked_continuation_context(segment, duration, 1, bool(lyric) and not visual_only)
+        if 0 < index <= len(ordered):
+            previous_shot = sp.last_shot_text(_text(ordered[index - 1].get("minimax_h3_prompt")))
     return {
+        "continuation": continuation,
+        "previous_shot": previous_shot,
         "items": items,
         "duration": duration,
         "cut_plan": storyboard_cut_plan_for_duration(duration, int(_number(defaults.get("minimax_h3_cut_frequency"), 0))),
@@ -91,6 +102,7 @@ def generate_scene_prompt(session: Dict[str, Any], folder: str, segment: Dict[st
             lyric_section=card.get("lyric_section", ""), scene_notes=_text(segment.get("notes") or segment.get("director_note")),
             subject_text=ctx["subject_text"], location_text=ctx["location_text"], seed=_text(segment.get("id") or card.get("label")),
             target_limit=target_limit,
+            continuation=ctx["continuation"], previous_shot=ctx["previous_shot"],
         )
         request = prepare_llm_payload({
             **llm_payload_from_session(session),

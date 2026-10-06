@@ -462,6 +462,61 @@ def ensure_quoted_lyrics(descriptions: List[str], lyric_text: str, performer: st
     return result
 
 
+def last_shot_text(saved_prompt: str, limit: int = 700) -> str:
+    """The last ``[Shot N]`` description of a saved prompt: what is on screen when the next scene starts."""
+    text = str(saved_prompt or "")
+    starts = [m.end() for m in re.finditer(r"\[Shot\s+\d+\]\s*(?:At\s+[0-9:.]+,\s*)?", text)]
+    if not starts:
+        return ""
+    block = text[starts[-1]:].split("\n\n", 1)[0]
+    block = re.sub(r"\s+", " ", block).strip()
+    return block[:limit].rstrip() + "..." if len(block) > limit else block
+
+
+def continuation_task_text(continuation: Dict[str, Any], previous_shot: str = "", has_vocals: bool = False) -> str:
+    """The rules an LLM needs to write a scene that continues the previous one with ``latent_continuation_masked``.
+
+    Python twin of the masked FRAME-TO-FRAME CONTINUITY block and the author's direction block in
+    ``web/music_video_builder/minimax_prompt.mjs``. The Builder shows its LLM the previous scene's final frame, so this
+    text-only version gives it the previous scene's last shot description instead.
+    """
+    hold = f"{float(continuation.get('hold_seconds') or 1.0):g}"
+    direction = str(continuation.get("direction") or "").strip()
+    performer = (
+        " The performer is mid-performance, so keep singing the scene's lyrics without a pause from the first frame, "
+        "lips and mouth in continuous sync with <Audio 1>."
+    ) if has_vocals else ""
+    parts = [
+        "CONTINUATION — HIGHEST PRIORITY:\n"
+        "This scene is the very next moment of the same uninterrupted take the previous scene ended on. The renderer already "
+        "holds the previous scene's last moments as the start of this render, so this is not a new shot. "
+        "Begin the returned description with exactly: ‘Continuing seamlessly from the previous shot, the camera maintains its "
+        "established course as’ and immediately name the same camera movement continuing at the same speed. "
+        "Keep the subject's action, pace, pose, framing, camera angle, lighting, and environment as the previous scene's last shot "
+        "leaves them, "
+        + ("then carry on exactly as the AUTHOR'S DIRECTION below says. " if direction else "then advance them one small natural step at a time. ")
+        + "Do not restage, reset, re-establish, change framing, or cut. The camera line of Shot 1 continues the previous "
+        "scene's camera and framing, it does not choose a new opening framing." + performer
+    ]
+    if previous_shot:
+        parts.append(f"PREVIOUS SCENE'S LAST SHOT (what is on screen when this scene starts):\n{previous_shot}")
+    if direction:
+        parts.append(
+            f"AUTHOR'S DIRECTION FOR THIS SCENE — MANDATORY, THE FINISHED DESCRIPTION MUST CONTAIN IT: \"{direction}\"\n"
+            f"Write the one shot description in two timed parts and put the timing in the text itself. First: \"For the first {hold} seconds, ...\" "
+            "continuing the opening action with the same camera motion, framing, and pace. "
+            f"Then: \"At about {hold} seconds, ...\" performing every action in the direction above, in the author's order and with the "
+            "author's own verbs and objects, as one smooth continuous movement in the same take. "
+            "If the direction needs a body position or facing different from the previous scene's last shot (for example standing up, walking, "
+            "or turning), first describe the natural movement that gets the subject there, inside the same take. "
+            "Do not skip, soften, shorten, or replace any part of the direction. Never cut, change shot, or restart the action to reach it. "
+            "Finish by stating where the shot ends."
+            + (" The performer keeps singing the scene's lyrics on camera through the whole movement, lips and mouth in continuous sync with "
+               "<Audio 1>, and the movement keeps their face in view." if has_vocals else "")
+        )
+    return "\n\n".join(parts)
+
+
 def build_shot_task(
     *,
     mode_label: str,
@@ -485,6 +540,8 @@ def build_shot_task(
     location_text: str = "",
     seed: str = "",
     target_limit: int = 7000,
+    continuation: Optional[Dict[str, Any]] = None,
+    previous_shot: str = "",
 ) -> str:
     """The ``MiniMax H3 shot-description task`` text the saved instruction expects."""
     plan = shot_plan(cut_plan)
@@ -579,4 +636,8 @@ def build_shot_task(
     pictures = [f"{l['picture']}" for l in labels]
     if pictures:
         parts.append(f"Available renderer reference labels: {', '.join(pictures)}. Do not define labels in the shot text.")
+    if continuation:
+        # Last, where the model weighs it most. The vocal rule applies only when the scene sings.
+        has_vocals = not (visual_only or no_character or not lyric_text)
+        parts.append(continuation_task_text(continuation, previous_shot, has_vocals))
     return "\n\n".join(parts)

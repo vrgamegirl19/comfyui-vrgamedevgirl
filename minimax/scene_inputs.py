@@ -31,6 +31,34 @@ def media_path_key(path: Any) -> str:
     return text.lower()
 
 
+_CONTINUITY_ALIASES = {
+    "latent_exact": "latent_continuation_exact_frame",
+    "latent_exact_frame": "latent_continuation_exact_frame",
+    "latent_continuation_exact": "latent_continuation_exact_frame",
+    "latent_continuation_exact_frame": "latent_continuation_exact_frame",
+    "latent_masked": "latent_continuation_masked",
+    "latent_masked_av": "latent_continuation_masked",
+    "latent_continuation_masked": "latent_continuation_masked",
+    "latent": "latent_continuation",
+    "latent_continuation": "latent_continuation",
+    "continuation": "latent_continuation",
+    "spatial": "spatial_reference",
+    "spatial_reference": "spatial_reference",
+    "continuity_reference": "spatial_reference",
+    "exact": "exact_start_frame",
+    "exact_start": "exact_start_frame",
+    "exact_start_frame": "exact_start_frame",
+    "continuous_start": "exact_start_frame",
+    "off": "off",
+}
+
+
+def canonical_continuity_mode(value: Any) -> Optional[str]:
+    """The canonical continuity mode for any accepted spelling, or None when the text is not a continuity mode."""
+    clean = "_".join(str(value or "").strip().lower().replace("-", " ").split())
+    return _CONTINUITY_ALIASES.get(clean)
+
+
 def normalize_continuity_mode(value: Any) -> str:
     """Mirror ``normalizeMiniMaxH3ContinuityMode``."""
     clean = "_".join(str(value or "").strip().lower().replace("-", " ").split())

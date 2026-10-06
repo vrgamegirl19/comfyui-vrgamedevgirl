@@ -466,6 +466,7 @@ _SCENE_PATCH_TEXT_FIELDS = (
     "enhance_prompt",
     "minimax_h3_prompt",
     "minimax_h3_pass2_prompt",
+    "minimax_h3_continuation_direction",
     "flux_prompt",
     "nb_prompt",
     "flow_gpt_prompt",
