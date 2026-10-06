@@ -74,7 +74,7 @@ export function createTimelineEdit({
   loadedGlobalAudioDuration, miniMaxH3ContinuityModeForSegment, miniMaxH3SettingsForSegment,
   nextOverlaySlotNumber, normalizeSegments, openLyricReviewModal, openStoryboardBuilderFromProject,
   pauseTimelineForEditing, projectInput, pushHistory, reloadBeatMarkersFromAudio, render, renderAllScenes,
-  renderSegments, isSegmentMultiSelected, selectedSegmentsForBatch,
+  renderSegments, isSegmentMultiSelected, selectedSegmentsForBatch, stitchPreviewFromSegments,
   sceneDisplayName, sceneSlotNumber, segmentIndexInfo, segmentTrack, setActiveSegment, setBeatMarkersVisible,
   setGlobalPlaybackTime, state, syncI2VMotionJsonFromSegments, syncInspector, syncPreview,
   syncPromptJsonFromSegments, updateHistoryButtons,
@@ -1043,6 +1043,12 @@ export function createTimelineEdit({
         `${hasVideos ? "Rerender" : "Render"} ${noun}`,
         () => renderScenesFromMenu(renderTargets, hasVideos),
       );
+      if (multiTargets.length > 1) {
+        addItem(
+          `Stitch preview of ${multiTargets.length} scenes`,
+          () => stitchPreviewFromSegments(multiTargets, "selected"),
+        );
+      }
     }
     addItem("Restore Video...", () => restoreVideoForSegment(segment), !String(state.projectFolder || projectInput.value || "").trim());
     if (baseTrimKind) {

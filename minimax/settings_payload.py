@@ -36,8 +36,7 @@ SETTINGS_ENUMS: Dict[str, Tuple[str, ...]] = {
     "advanced_two_pass_vram_preset": tuple(VRAM_PRESETS),
     "advanced_two_pass_pass1_resolution_preset": RESOLUTION_PRESETS,
     "continuity_mode": (
-        "off", "spatial_reference", "exact_start_frame", "latent_continuation",
-        "latent_continuation_exact_frame", "latent_continuation_masked",
+        "off", "latent_continuation_masked",
     ),
     "location_transition_preset": (
         "normal", "surreal", "cinematic", "inner_world", "match", "motion", "creative_auto", "masked", "custom",
@@ -45,7 +44,7 @@ SETTINGS_ENUMS: Dict[str, Tuple[str, ...]] = {
 }
 
 # Integer settings that only take one of a fixed set of values. 90, 141 and 192 belong to latent_continuation_masked
-# (39 + 51k frames, exact for video and audio); the other latent modes use 16, 22, 39 and 56.
+# (39 + 51k frames, exact for video and audio). 16, 22 and 56 belong to the retired latent modes and fall back to 39.
 _INT_CHOICES: Dict[str, Tuple[int, ...]] = {
     "latent_context_frames": (16, 22, 39, 56, 90, 141, 192),
 }
@@ -53,13 +52,15 @@ _INT_CHOICES: Dict[str, Tuple[int, ...]] = {
 # One line per setting that agents get wrong without it, shown by minimax_h3_settings_schema.
 SETTING_NOTES: Dict[str, str] = {
     "continuity_mode": (
-        "Reference to Video and Video to Video only. latent_continuation_masked copies the previous scene's saved latent "
-        "into the head of this scene and protects it, so the scene continues the same take. It works in render_pass "
-        "single, two_pass and three_pass (pass 1 only). Aliases such as latent_masked are accepted."
+        "latent_continuation_masked copies the previous scene's saved latent into the head of this scene and protects it, "
+        "so the scene continues the same take. It works in every video_mode except image_reference_to_video, and in render_pass "
+        "single and two_pass. It is not available in three_pass (2 Pass Advanced) and is treated as off there. The retired values latent_continuation and "
+        "latent_continuation_exact_frame are accepted and mean latent_continuation_masked, as do aliases such as latent_masked. "
+        "The retired values spatial_reference and exact_start_frame are accepted and mean off."
     ),
     "latent_context_frames": (
         "Frames of the previous scene's latent used as context. latent_continuation_masked takes 39 (recommended), 90, "
-        "141 or 192 and falls back to 39 for any other value. The other latent modes take 16, 22, 39 or 56."
+        "141 or 192 and falls back to 39 for any other value."
     ),
     "continuity_prompt_from_last_frame": (
         "With continuity_mode latent_continuation_masked, a render of scene 2 or later first writes the scene's prompt from the "
@@ -275,8 +276,6 @@ def normalize_minimax_h3_settings(raw: Optional[Dict[str, Any]]) -> Dict[str, An
         settings["video_mode"] = "reference_to_video"
         if settings.get("render_pass") == "three_pass":
             settings["render_pass"] = "two_pass"
-        if settings.get("continuity_mode") in ("spatial_reference", "exact_start_frame"):
-            settings["continuity_mode"] = "off"
     # One output resolution for every pass type; older saves took it from the pass type they rendered with.
     settings["resolution_preset"], settings["megapixels"] = migrate_resolution(raw, settings["render_pass"])
     for key, default in _OPTIONAL_SETTINGS.items():
@@ -343,6 +342,12 @@ def build_minimax_render_payload(settings: Dict[str, Any], overrides: Optional[D
     def pick(single: Any, two: Any, adv: Any) -> Any:
         return two if two_pass else adv if advanced else single
 
+    masked = (
+        s.get("continuity_mode") == "latent_continuation_masked"
+        and s.get("video_mode") != "image_reference_to_video"
+        and not advanced
+    )
+
     payload: Dict[str, Any] = {
         "audio_mode": s["audio_mode"],
         "pipeline": s["pipeline"],
@@ -350,8 +355,9 @@ def build_minimax_render_payload(settings: Dict[str, Any], overrides: Optional[D
         "continuity_mode": s["continuity_mode"] or "off",
         "latent_context_frames": s["latent_context_frames"],
         "minimax_h3_latent_context_frames": s["latent_context_frames"],
-        "pre_frames": max(0, int(s["warmup_frames"])),
-        "tail_loss_frames": max(0, int(s["cooldown_frames"])),
+        # Masked continuation plans its own warm-up and tail, so the Render settings frames do not apply.
+        "pre_frames": 0 if masked else max(0, int(s["warmup_frames"])),
+        "tail_loss_frames": 0 if masked else max(0, int(s["cooldown_frames"])),
         "seed": s["seed"],
         "aspect_ratio": s["aspect_ratio"],
         "megapixels": s["megapixels"],

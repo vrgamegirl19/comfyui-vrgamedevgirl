@@ -432,10 +432,6 @@
             "default": "off",
             "enum": [
               "off",
-              "spatial_reference",
-              "exact_start_frame",
-              "latent_continuation",
-              "latent_continuation_exact_frame",
               "latent_continuation_masked"
             ],
             "type": "string"
@@ -487,7 +483,7 @@
             "type": "boolean"
           },
           "latent_context_frames": {
-            "default": 22,
+            "default": 39,
             "enum": [
               16,
               22,

@@ -3,6 +3,7 @@ import { applyCompactButtonLabel, normalizeProjectVideoEngine, toast } from "./c
 import {
   cloneMiniMaxH3Settings,
   DEFAULT_MINIMAX_H3_SETTINGS,
+  isMiniMaxH3ContinuityAllowedForMode,
   isMiniMaxH3LatentContinuationMode,
   miniMaxH3ModeLabel,
   normalizeMiniMaxH3ContinuityMode,
@@ -106,8 +107,8 @@ export function createMiniMaxPanel({
 
   function miniMaxH3ContinuityModeForSegment(segment = activeSegment()) {
     const mode = miniMaxH3ModeForSegment(segment);
-    if (!["reference_to_video", "video_to_video"].includes(mode)) return "off";
-    return normalizeMiniMaxH3ContinuityMode(miniMaxH3SettingsForSegment(segment).continuity_mode);
+    const continuityMode = normalizeMiniMaxH3ContinuityMode(miniMaxH3SettingsForSegment(segment).continuity_mode);
+    return isMiniMaxH3ContinuityAllowedForMode(continuityMode, mode, miniMaxH3SettingsForSegment(segment).render_pass) ? continuityMode : "off";
   }
 
   function miniMaxH3SceneImageUseForSegment(segment = activeSegment()) {
@@ -235,8 +236,8 @@ export function createMiniMaxPanel({
       if (checkId !== miniMaxLatentCheckCounter) return;
       if (resp?.predecessor_exists) {
         const dirtyNote = resp.dirty ? " (marked dirty)" : "";
-        // Exact Last Frame needs the predecessor's tail-padding info to find its real last frame in the latent.
-        const needsRerender = continuityMode === "latent_continuation_exact_frame" && !resp.tail_padding_known;
+        // Masked continuation needs the predecessor's tail-padding info to cut its window before any padding.
+        const needsRerender = !resp.tail_padding_known;
         const rerenderNote = needsRerender ? " — no tail info, re-render it for an exact seam" : "";
         miniMaxLatentStatusPill.textContent = `Predecessor Scene ${resp.predecessor_scene} latent ready (${resp.frame_count} frames, ${resp.token_count} tokens)${dirtyNote}${rerenderNote}`;
         const warn = resp.dirty || needsRerender;
@@ -283,7 +284,7 @@ export function createMiniMaxPanel({
       continuity_prompt_from_last_frame: miniMaxContinuityPromptFromLastFrame.input.checked,
       location_transition_preset: miniMaxLocationTransitionPreset.value,
       location_transition_custom: miniMaxLocationTransitionCustom.value,
-      latent_context_frames: Number(miniMaxLatentContextFrames.value || 22),
+      latent_context_frames: Number(miniMaxLatentContextFrames.value || 39),
       diffusion_model_name: miniMaxDiffusionModelPicker.input.value,
       clip_name: miniMaxClipPicker.input.value,
       video_vae_name: miniMaxVideoVaePicker.input.value,
@@ -812,11 +813,20 @@ export function createMiniMaxPanel({
     miniMaxAudioNote.textContent = settings.audio_mode === "built_in_audio"
       ? "MiniMax generates the scene audio from the prompt. In Short Film mode, character voice presets are configured in Reference Builder and copied exactly into every matching scene prompt."
       : "Uses custom scene audio or project audio unchanged for exact timing and lip sync. Native voice presets are hidden while Input Audio is selected.";
-    const continuitySupported = ["reference_to_video", "video_to_video"].includes(mode);
-    miniMaxContinuityMode.disabled = !continuitySupported;
+    // Latent Continuation Masked works in every mode. The other continuity modes need R2V or V2V.
+    const continuitySupported = isMiniMaxH3ContinuityAllowedForMode(settings.continuity_mode, mode, settings.render_pass);
+    for (const option of miniMaxContinuityMode.options) {
+      option.disabled = !isMiniMaxH3ContinuityAllowedForMode(option.value, mode, settings.render_pass);
+    }
+    miniMaxContinuityMode.disabled = false;
+    // Masked continuation plans its own warm-up and tail, so the Render settings frames do not apply.
+    const maskedActive = continuitySupported && settings.continuity_mode === "latent_continuation_masked";
+    miniMaxWarmupFrames.disabled = maskedActive;
+    miniMaxCooldownFrames.disabled = maskedActive;
+    const maskedFramesTitle = maskedActive ? "Not used while Latent Continuation Masked is selected. It plans its own warm-up and tail." : "";
+    miniMaxWarmupFrames.title = maskedFramesTitle;
+    miniMaxCooldownFrames.title = maskedFramesTitle;
     const isLatentContinuation = isMiniMaxH3LatentContinuationMode(settings.continuity_mode);
-    const isLatentExactFrame = settings.continuity_mode === "latent_continuation_exact_frame";
-    const isLatentMasked = settings.continuity_mode === "latent_continuation_masked";
     miniMaxLatentContinuationRow.style.display = (continuitySupported && isLatentContinuation) ? "flex" : "none";
     miniMaxLatentContextFrames.disabled = !continuitySupported || !isLatentContinuation;
     miniMaxContinuityPromptFromLastFrame.input.disabled = !continuitySupported || !isLatentContinuation;
@@ -828,18 +838,10 @@ export function createMiniMaxPanel({
     miniMaxLocationTransitionCustomField.style.display = showLocationTransitionControls
       && miniMaxLocationTransitionPreset.value === "custom" ? "flex" : "none";
     miniMaxContinuityNote.textContent = !continuitySupported
-      ? "Available in Reference to Video and Video to Video. Those modes can receive the prior clip's extracted final frame as one additional reference image."
-      : isLatentMasked
-        ? `Latent Continuation Masked: copies a phase-aligned run of the predecessor's saved latent (39 frames recommended, also 90/141/192) into the head of this scene's latent and protects it with a denoise mask, so the model keeps those frames and generates the rest. Needs ComfyUI 0.34.0 or newer. Works in Single pass, 2 Pass (the exact head is applied again in pass 2) and 2 Pass Advanced (pass 1 only). Other context sizes fall back to 39. The head is trimmed from the video and audio together. The predecessor must have a saved latent.`
-      : isLatentExactFrame
-        ? `Latent Continuation + Exact Last Frame: loads about ${miniMaxLatentContextFrames.value} trailing frames of the predecessor's saved latent as temporal context, cut before any padding after its real end, and pins an image of the predecessor's exact last frame as the final warm-up frame. The warm-up is trimmed from the video and audio together. The predecessor must have been rendered with this version (it records the padding).`
+      ? "Latent Continuation Masked is not available in Image + Reference 2 Pass or 2 Pass Advanced. This scene renders without continuity."
       : isLatentContinuation
-        ? `Latent Continuation: Loads ${miniMaxLatentContextFrames.value} trailing frames directly from the predecessor scene's saved latent tensor as native temporal context into MiniMax H3, bypassing pixel VAE re-encoding.`
-      : settings.continuity_mode === "spatial_reference"
-        ? "Recommended for a new camera angle. Preserves character blocking, orientation, screen direction, props, and environment layout without forcing the same opening composition. The extracted frame and its prompt contract are injected when rendering; Scene 1 is unaffected."
-        : settings.continuity_mode === "exact_start_frame"
-          ? "Begins each later scene on the previous rendered clip's exact final frame. The extracted frame and its prompt contract are injected when rendering. Do not also enable the scene-image exact start-frame option; Scene 1 is unaffected."
-          : "Off: every scene starts independently from its normal MiniMax references.";
+        ? `Latent Continuation Masked: copies a phase-aligned run of the predecessor's saved latent (39 frames recommended, also 90/141/192) into the head of this scene's latent and protects it with a denoise mask, so the model keeps those frames and generates the rest. Needs ComfyUI 0.34.0 or newer. Works in Single pass and 2 Pass (the exact head is applied again in pass 2). Not available in 2 Pass Advanced. Other context sizes fall back to 39. The head is trimmed from the video and audio together. The predecessor must have a saved latent.`
+      : "Off: every scene starts independently from its normal MiniMax references.";
     if (continuitySupported && isLatentContinuation && settings.continuity_prompt_from_last_frame) {
       miniMaxContinuityNote.textContent += " Automatic prompt loop is ON: Scene 1 keeps your prompt. Before every later scene renders, the vision LLM uses the predecessor's actual final frame as its highest-priority opening truth, adds this scene's story/audio/reference context, saves a complete one-take prompt, and retries up to 10 times if prompting fails.";
     }

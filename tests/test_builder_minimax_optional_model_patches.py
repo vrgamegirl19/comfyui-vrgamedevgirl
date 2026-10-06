@@ -56,6 +56,7 @@ def load_two_pass_builder(sparse_method="Sol-Attn (adaptive tau)"):
         "_minimax_h3_2pass_api_template_path": lambda: str(TEMPLATE_PATH),
         "_first_payload_value": first_value,
         "_minimax_h3_effective_warmup_frames": lambda payload: first_value(payload, "warmup_frames", "pre_frames", default=0),
+        "_minimax_h3_cooldown_frames": lambda payload: first_value(payload, "cooldown_frames", "tail_loss_frames", default=0),
         "_minimax_h3_latent_continuation_mode": lambda payload: payload.get("continuity_mode", "off"),
         "_minimax_h3_is_latent_mode": lambda mode: mode in ("latent_continuation", "latent_continuation_exact_frame"),
         "_patch_minimax_h3_latent_continuation": lambda _prompt, _payload: {"enabled": False},

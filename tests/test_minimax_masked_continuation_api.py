@@ -107,7 +107,7 @@ class PromptContextTests(unittest.TestCase):
         segment = {"id": "s2", "start": 0.0, "end": 5.0, "lyric_no_lip_sync": True}
         rules = " ".join(assembly.build_minimax_prompt_context(segment, self._session("latent_continuation_masked"))["continuation"]["rules"])
         self.assertNotIn("keep singing", rules)
-        for mode in ("off", "latent_continuation"):
+        for mode in ("off", "spatial_reference"):
             self.assertNotIn("continuation", assembly.build_minimax_prompt_context(segment, self._session(mode)))
 
 

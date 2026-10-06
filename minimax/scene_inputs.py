@@ -4,7 +4,7 @@ Python twin of the browser logic that decides which images and videos a scene re
 receives (``minimax_references.mjs``, ``minimax_prompt.mjs`` ``miniMaxRenderReferenceImagePaths``
 and ``prepareMiniMaxH3ContinuityReference`` in ``video_render.mjs``). The Agent API
 orchestrator uses it so a server-side render sends the same ``image_paths``,
-``video_references``, ``last_frame_path`` and ``latent_exact_frame_path`` as the UI.
+``video_references`` and ``last_frame_path`` as the UI.
 
 Reference maps live inside ``session["flux_reference_builder"]`` (``scene_map``,
 ``subject_scene_map``, ``extra_scene_map``, ``ingredients_scene_map``), exactly where
@@ -19,8 +19,7 @@ from typing import Any, Callable, Dict, List, Optional
 MAX_REFERENCE_IMAGES = 9
 _IMAGE_REFERENCE_MODES = ("reference_to_video", "image_reference_to_video")
 _REFERENCE_BUILDER_MODES = ("reference_to_video", "image_reference_to_video", "video_to_video")
-_CONTINUITY_MODES = ("off", "spatial_reference", "exact_start_frame", "latent_continuation", "latent_continuation_exact_frame", "latent_continuation_masked")
-_LATENT_MODES = ("latent_continuation", "latent_continuation_exact_frame", "latent_continuation_masked")
+_CONTINUITY_MODES = ("off", "latent_continuation_masked")
 
 
 def media_path_key(path: Any) -> str:
@@ -32,23 +31,25 @@ def media_path_key(path: Any) -> str:
 
 
 _CONTINUITY_ALIASES = {
-    "latent_exact": "latent_continuation_exact_frame",
-    "latent_exact_frame": "latent_continuation_exact_frame",
-    "latent_continuation_exact": "latent_continuation_exact_frame",
-    "latent_continuation_exact_frame": "latent_continuation_exact_frame",
+    # The standard and exact-last-frame latent modes were retired. Old values continue masked.
+    "latent_exact": "latent_continuation_masked",
+    "latent_exact_frame": "latent_continuation_masked",
+    "latent_continuation_exact": "latent_continuation_masked",
+    "latent_continuation_exact_frame": "latent_continuation_masked",
     "latent_masked": "latent_continuation_masked",
     "latent_masked_av": "latent_continuation_masked",
     "latent_continuation_masked": "latent_continuation_masked",
-    "latent": "latent_continuation",
-    "latent_continuation": "latent_continuation",
-    "continuation": "latent_continuation",
-    "spatial": "spatial_reference",
-    "spatial_reference": "spatial_reference",
-    "continuity_reference": "spatial_reference",
-    "exact": "exact_start_frame",
-    "exact_start": "exact_start_frame",
-    "exact_start_frame": "exact_start_frame",
-    "continuous_start": "exact_start_frame",
+    "latent": "latent_continuation_masked",
+    "latent_continuation": "latent_continuation_masked",
+    "continuation": "latent_continuation_masked",
+    # The previous-final-frame modes were retired too. Old values mean off.
+    "spatial": "off",
+    "spatial_reference": "off",
+    "continuity_reference": "off",
+    "exact": "off",
+    "exact_start": "off",
+    "exact_start_frame": "off",
+    "continuous_start": "off",
     "off": "off",
 }
 
@@ -62,16 +63,8 @@ def canonical_continuity_mode(value: Any) -> Optional[str]:
 def normalize_continuity_mode(value: Any) -> str:
     """Mirror ``normalizeMiniMaxH3ContinuityMode``."""
     clean = "_".join(str(value or "").strip().lower().replace("-", " ").split())
-    if clean in ("latent_exact", "latent_exact_frame", "latent_continuation_exact", "latent_continuation_exact_frame"):
-        return "latent_continuation_exact_frame"
-    if clean in ("latent_masked", "latent_masked_av", "latent_continuation_masked"):
+    if _CONTINUITY_ALIASES.get(clean) == "latent_continuation_masked":
         return "latent_continuation_masked"
-    if clean in ("latent", "latent_continuation", "continuation"):
-        return "latent_continuation"
-    if clean in ("spatial", "spatial_reference", "continuity_reference"):
-        return "spatial_reference"
-    if clean in ("exact", "exact_start", "exact_start_frame", "continuous_start"):
-        return "exact_start_frame"
     return "off"
 
 
@@ -389,6 +382,17 @@ def video_references_for_scene(segment: Dict[str, Any], mode: str, configured: O
     return list(raw) if mode == "video_to_video" and isinstance(raw, list) else []
 
 
+def continuity_allowed_for_mode(continuity: str, mode: str, render_pass: str = "single") -> bool:
+    """Mirror ``isMiniMaxH3ContinuityAllowedForMode``.
+
+    Masked works in every mode but Image + Reference, and in every render pass but 2 Pass Advanced
+    (``three_pass``, which only applies to Reference to Video).
+    """
+    if continuity == "latent_continuation_masked":
+        return mode != "image_reference_to_video" and not (mode == "reference_to_video" and render_pass == "three_pass")
+    return continuity == "off"
+
+
 def last_frame_path_for_scene(segment: Dict[str, Any], mode: str) -> str:
     """Image to Video can end on an explicit last frame (``first_last_frame_end_image_path``)."""
     return _text(segment.get("first_last_frame_end_image_path")) if mode == "image_to_video" else ""
@@ -407,50 +411,24 @@ def resolve_scene_inputs(
     extract_final_frame: Callable[[str, str, int], str],
     configured_image_paths: Optional[List[Any]] = None,
     configured_video_references: Optional[List[Any]] = None,
+    render_pass: str = "single",
 ) -> Dict[str, Any]:
     """Everything scene-specific a MiniMax render needs besides settings, prompt and timing.
 
     ``extract_final_frame(project_folder, video_path, scene_number)`` must return the saved
     frame path. Raises ``ValueError`` with the browser's wording when inputs are missing.
     """
-    continuity = normalize_continuity_mode(continuity_mode) if mode in ("reference_to_video", "video_to_video") else "off"
-    if continuity == "exact_start_frame" and _uses_scene_image_as_start_frame(segment):
-        raise ValueError("A scene cannot use both its scene image and the previous rendered final frame as the exact start frame.")
+    continuity = normalize_continuity_mode(continuity_mode)
+    if not continuity_allowed_for_mode(continuity, mode, render_pass):
+        continuity = "off"
 
     image_paths = render_reference_image_paths(session, segment, mode, scene_index, configured_image_paths)
-    result: Dict[str, Any] = {"continuity_mode": continuity, "latent_exact_frame_path": "", "continuity_image_number": 0}
+    result: Dict[str, Any] = {"continuity_mode": continuity, "continuity_image_number": 0}
 
     if continuity != "off" and previous_segment is not None:
-        if continuity in _LATENT_MODES:
+        if continuity == "latent_continuation_masked":
             if scene_number <= 1:
-                raise ValueError("Scene 1 cannot use Latent Continuation because there is no predecessor scene. Set continuity to off.")
-            if continuity == "latent_continuation_exact_frame":
-                video = _text(previous_segment.get("video_path") or previous_segment.get("rendered_video_path"))
-                if not video:
-                    raise ValueError(
-                        f"Latent Continuation + Exact Last Frame needs Scene {scene_number - 1}'s rendered video to read its "
-                        f"last frame, but it has none. Render Scene {scene_number - 1} first."
-                    )
-                frame = extract_final_frame(project_folder, video, scene_number)
-                if not frame:
-                    raise ValueError("Could not extract the previous scene's last frame for exact-frame continuity.")
-                result["latent_exact_frame_path"] = frame
-        else:
-            video = _text(previous_segment.get("video_path") or previous_segment.get("rendered_video_path"))
-            if video:
-                frame = extract_final_frame(project_folder, video, scene_number)
-                if not frame:
-                    raise ValueError("MiniMax continuity final-frame extraction did not return an image path.")
-                key = media_path_key(frame)
-                if not any(media_path_key(p) == key for p in image_paths):
-                    if len(image_paths) >= MAX_REFERENCE_IMAGES:
-                        raise ValueError(
-                            "This scene has nine MiniMax image references already. Remove one Reference Builder image so the "
-                            "previous-scene continuity frame can use the reserved ninth slot."
-                        )
-                    image_paths.append(frame)
-                result["continuity_image_number"] = next(i for i, p in enumerate(image_paths) if media_path_key(p) == key) + 1
-
+                raise ValueError("Scene 1 cannot use Latent Continuation Masked because there is no predecessor scene. Set continuity to off.")
     videos = video_references_for_scene(segment, mode, configured_video_references)
     if mode in ("image_to_video", "image_reference_to_video") and not image_paths:
         raise ValueError("This scene needs a selected scene image for MiniMax Image to Video.")

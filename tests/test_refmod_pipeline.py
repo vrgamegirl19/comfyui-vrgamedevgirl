@@ -164,8 +164,11 @@ class RefModSettingsTests(unittest.TestCase):
         self.assertEqual((result["pipeline"], result["video_mode"]), ("standard", "text_to_video"))
 
     def test_latent_continuation_is_kept(self):
+        result = self.settings.normalize_minimax_h3_settings({"pipeline": "refmod", "continuity_mode": "latent_continuation_masked"})
+        self.assertEqual(result["continuity_mode"], "latent_continuation_masked")
+        # the retired standard mode continues masked
         result = self.settings.normalize_minimax_h3_settings({"pipeline": "refmod", "continuity_mode": "latent_continuation"})
-        self.assertEqual(result["continuity_mode"], "latent_continuation")
+        self.assertEqual(result["continuity_mode"], "latent_continuation_masked")
 
     def test_scene_settings_follow_the_project_pipeline(self):
         session = {"minimax_h3_settings": {"pipeline": "refmod"}}

@@ -427,11 +427,10 @@ export function createVideoRender({
     const previousSegment = previousAutoChainSourceSegment(segment);
     if (!previousSegment) return null;
     if (isMiniMaxH3LatentContinuationMode(continuityMode)) {
-      const isExactFrame = continuityMode === "latent_continuation_exact_frame";
       const needsPromptFrame = Boolean(miniMaxH3SettingsForSegment(segment).continuity_prompt_from_last_frame);
       const slotNumber = sceneSlotNumber(segment);
       if (slotNumber <= 1) {
-        throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)} is Scene 1 and cannot use Latent Continuation because there is no predecessor scene. Switch Continuity Mode to Off.`);
+        throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)} is Scene 1 and cannot use Latent Continuation Masked because there is no predecessor scene. Switch Continuity Mode to Off.`);
       }
       const projectFolder = String(projectInput.value || state.projectFolder || "").trim();
       if (!projectFolder) throw new Error("Project folder is missing.");
@@ -441,16 +440,14 @@ export function createVideoRender({
         scene_number: slotNumber,
       }, 10000);
       if (!checkResp?.predecessor_exists) {
-        throw new Error(`Latent Continuation requires Scene ${slotNumber - 1} latent file, but none was found. Render Scene ${slotNumber - 1} first.`);
+        throw new Error(`Latent Continuation Masked requires Scene ${slotNumber - 1} latent file, but none was found. Render Scene ${slotNumber - 1} first.`);
       }
-      // Exact Last Frame also needs the predecessor's real last frame as an image. It is passed as its own
-      // field (not framePath) so it is never injected as a reference image or a prompt block.
-      let exactFramePath = "";
+      // The automatic prompt loop needs the predecessor's real last frame as an image.
       let promptFramePath = "";
-      if (isExactFrame || needsPromptFrame) {
+      if (needsPromptFrame) {
         const previousVideoPath = String(selectedSegmentVideoPath(previousSegment) || "").trim();
         if (!previousVideoPath) {
-          throw new Error(`${needsPromptFrame ? "Frame-to-frame prompt creation" : "Latent Continuation + Exact Last Frame"} needs Scene ${slotNumber - 1}'s rendered video to read its last frame, but it has none. Render Scene ${slotNumber - 1} first.`);
+          throw new Error(`Frame-to-frame prompt creation needs Scene ${slotNumber - 1}'s rendered video to read its last frame, but it has none. Render Scene ${slotNumber - 1} first.`);
         }
         progress?.set(`${label}: extracting Scene ${slotNumber - 1}'s actual final frame...`, percent);
         const extractedFrame = await postJson("/vrgdg/music_builder/extract_video_final_frame", {
@@ -461,7 +458,6 @@ export function createVideoRender({
         }, 120000);
         promptFramePath = String(extractedFrame?.saved_path || "").trim();
         if (!promptFramePath) throw new Error("Could not extract the previous scene's last frame for frame-to-frame continuity.");
-        if (isExactFrame) exactFramePath = promptFramePath;
       }
       segment.minimax_h3_continuity_mode_used = continuityMode;
       segment.minimax_h3_continuity_source_scene_id = String(previousSegment.id || "");
@@ -471,7 +467,6 @@ export function createVideoRender({
         overlapFrames: 0,
         framePath: "",
         framePaths: [],
-        exactFramePath,
         promptFramePath,
         previousSegment,
       };
@@ -501,7 +496,7 @@ export function createVideoRender({
   }
 
   async function createMiniMaxH3FrameContinuityPrompt(segment, sceneIndex, mode, continuityInput, progress, percent = 6, label = "MiniMax continuity") {
-    const framePath = String(continuityInput?.promptFramePath || continuityInput?.exactFramePath || "").trim();
+    const framePath = String(continuityInput?.promptFramePath || "").trim();
     if (!framePath) throw new Error(`${sceneDisplayName(segment, sceneIndex)} could not find the predecessor's extracted final frame for automatic prompt creation.`);
     const supportingImages = miniMaxH3PromptVisionImages(segment, mode);
     const seen = new Set([mediaPathKey(framePath)]);
@@ -590,9 +585,8 @@ export function createVideoRender({
       throw new Error(`${sceneDisplayName(segment, sceneIndex)} has invalid timeline boundaries.`);
     }
 
-    const continuityInput = mode === "image_to_video"
-      ? null
-      : options.continuityInput === undefined
+    // miniMaxH3ContinuityModeForSegment is off for every mode that cannot continue, so this is a no-op there.
+    const continuityInput = options.continuityInput === undefined
       ? await prepareMiniMaxH3ContinuityReference(
         segment,
         progress,
@@ -716,11 +710,13 @@ export function createVideoRender({
       lyric: progressLyric,
       prompt,
     });
-    const warmupFrames = Math.max(0, Math.trunc(Number(
+    // Masked continuation plans its own warm-up and tail, so the Render settings frames do not apply.
+    const maskedContinuation = continuityInput?.continuityMode === "latent_continuation_masked";
+    const warmupFrames = maskedContinuation ? 0 : Math.max(0, Math.trunc(Number(
       options.warmupFrames
       ?? miniMaxSettings.warmup_frames
     ) || 0));
-    const cooldownFrames = Math.max(0, Math.trunc(Number(
+    const cooldownFrames = maskedContinuation ? 0 : Math.max(0, Math.trunc(Number(
       options.cooldownFrames
       ?? miniMaxSettings.cooldown_frames
     ) || 0));
@@ -752,7 +748,6 @@ export function createVideoRender({
         continuity_mode: continuityInput?.continuityMode || miniMaxSettings.continuity_mode || "off",
         latent_context_frames: latentContextFrames,
         minimax_h3_latent_context_frames: latentContextFrames,
-        latent_exact_frame_path: continuityInput?.exactFramePath || "",
         audio_path: builtInAudio ? "" : sourceAudioPath,
         prompt,
         pass2_prompt: String(segment?.minimax_h3_pass2_prompt || ""),
@@ -1624,7 +1619,7 @@ export function createVideoRender({
   }
 
   return {
-    createMiniMaxSceneVideo, createSceneVideo, miniMaxH3FrameContinuityPromptEnabled, openStitchPreviewModal,
+    createMiniMaxSceneVideo, createSceneVideo, miniMaxH3FrameContinuityPromptEnabled, openStitchPreviewModal, stitchPreviewFromSegments,
     renderImageSlideshowPreview, renderMiniMaxSceneVideoWithProgress, renderSceneVideoWithProgress,
     runGemmaThenCreateSceneVideo, stitchRenderedScenes,
   };

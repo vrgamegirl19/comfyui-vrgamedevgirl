@@ -114,15 +114,12 @@ export function buildMiniMaxPanel({
   const miniMaxAudioMode = makeSelect(MINIMAX_H3_AUDIO_MODE_OPTIONS, DEFAULT_MINIMAX_H3_SETTINGS.audio_mode);
   const miniMaxContinuityMode = makeSelect(MINIMAX_H3_CONTINUITY_OPTIONS, DEFAULT_MINIMAX_H3_SETTINGS.continuity_mode);
   const MINIMAX_H3_LATENT_CONTEXT_OPTIONS = [
-    { value: "16", label: "16 frames (5 tokens)" },
-    { value: "22", label: "22 frames (7 tokens — recommended)" },
-    { value: "39", label: "39 frames (12 tokens)" },
-    { value: "56", label: "56 frames (17 tokens)" },
-    { value: "90", label: "90 frames (masked mode only)" },
-    { value: "141", label: "141 frames (masked mode only)" },
-    { value: "192", label: "192 frames (masked mode only)" },
+    { value: "39", label: "39 frames (12 tokens — recommended)" },
+    { value: "90", label: "90 frames" },
+    { value: "141", label: "141 frames" },
+    { value: "192", label: "192 frames" },
   ];
-  const miniMaxLatentContextFrames = makeSelect(MINIMAX_H3_LATENT_CONTEXT_OPTIONS, String(DEFAULT_MINIMAX_H3_SETTINGS.latent_context_frames || 22));
+  const miniMaxLatentContextFrames = makeSelect(MINIMAX_H3_LATENT_CONTEXT_OPTIONS, String(DEFAULT_MINIMAX_H3_SETTINGS.latent_context_frames || 39));
   miniMaxLatentContextFrames.title = "Number of trailing context frames loaded directly from the predecessor scene's saved latent.";
   const miniMaxLatentContextField = makeField("Latent context frames", miniMaxLatentContextFrames);
   const miniMaxContinuationDirection = document.createElement("textarea");

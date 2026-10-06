@@ -78,7 +78,6 @@ def _loader_classes():
     namespace = {
         "os": os, "hashlib": hashlib, "torch": torch, "Any": Any,
         "SceneLatentManager": MANAGER.SceneLatentManager,
-        "plan_latent_context": MANAGER.plan_latent_context,
         "plan_masked_context": MANAGER.plan_masked_context,
         "comfy": types.SimpleNamespace(utils=types.SimpleNamespace(common_upscale=_fake_common_upscale)),
         "HAS_NESTED_TENSOR": True,
@@ -99,14 +98,14 @@ def _runner_namespace():
         "_minimax_h3_latent_continuation_mode",
         "_minimax_h3_is_latent_mode",
         "_minimax_h3_latent_context_frames_setting",
-        "_minimax_h3_latent_exact_plan",
         "_minimax_h3_tail_padding_frames",
         "_minimax_h3_effective_warmup_frames",
+        "_minimax_h3_cooldown_frames",
         "_patch_minimax_h3_latent_continuation",
         "_patch_minimax_h3_latent_continuation_masked",
         "_minimax_h3_masked_latent_plan",
     }
-    constants = {"_MMH3_LATENT_MODE", "_MMH3_LATENT_EXACT_MODE", "_MMH3_LATENT_MASKED_MODE"}
+    constants = {"_MMH3_LATENT_MASKED_MODE", "_MMH3_RETIRED_LATENT_MODES", "_MMH3_CONDITIONING_CLASSES"}
     body = [
         node for node in module.body
         if (isinstance(node, ast.FunctionDef) and node.name in wanted)
@@ -119,8 +118,6 @@ def _runner_namespace():
         "plan_latent_context": MANAGER.plan_latent_context,
         "plan_masked_context": MANAGER.plan_masked_context,
         "normalize_masked_context_frames": MANAGER.normalize_masked_context_frames,
-        "_frames_to_tokens": MANAGER._frames_to_tokens,
-        "_tokens_to_frames": MANAGER._tokens_to_frames,
     }
     exec(compile(ast.Module(body=body, type_ignores=[]), "latent_continuation_runner", "exec"), namespace)
     return namespace
@@ -482,92 +479,25 @@ class RunnerLatentContinuationTests(unittest.TestCase):
             "pre_frames": 0,
         }
 
-    @staticmethod
-    def _prompt():
-        return {
-            "126": {"class_type": "BasicGuider", "inputs": {"conditioning": ["136", 0], "model": ["208", 0]}},
-            "136": {"class_type": "MiniMaxH3ReferenceToVideo", "inputs": {"vae": ["119", 0]}},
-            "119": {"class_type": "VAELoader", "inputs": {}},
-        }
-
-    def test_mode_names_are_normalised(self):
+    def test_the_retired_modes_continue_masked(self):
         mode = self.ns["_minimax_h3_latent_continuation_mode"]
-        self.assertEqual(mode({"continuity_mode": "Latent Continuation"}), "latent_continuation")
-        self.assertEqual(mode({"continuity_mode": "latent-exact"}), "latent_continuation_exact_frame")
+        for name in ("Latent Continuation", "latent", "continuation", "latent-exact", "latent_continuation_exact_frame"):
+            with self.subTest(name=name):
+                self.assertEqual(mode({"continuity_mode": name}), "latent_continuation_masked")
         self.assertEqual(mode({"continuity_mode": "off"}), "off")
 
-    def test_warmup_covers_the_context_only_when_latent_continuation_is_active(self):
+    def test_warmup_covers_the_head_only_when_continuation_is_active(self):
         warmup = self.ns["_minimax_h3_effective_warmup_frames"]
         self.assertEqual(warmup({**self.payload, "continuity_mode": "off"}), 0)
-        self.assertEqual(warmup({**self.payload, "continuity_mode": "latent_continuation"}), 22)
+        self.assertEqual(warmup({**self.payload, "continuity_mode": "latent_continuation"}), 34)
         self.assertEqual(warmup({**self.payload, "continuity_mode": "latent_continuation", "scene_number": 1}), 0)
-        # the 16-frame option really covers 17 frames (5 tokens)
-        self.assertEqual(
-            warmup({**self.payload, "continuity_mode": "latent_continuation", "latent_context_frames": 16}), 17
-        )
-        # a larger user warm-up always wins
-        self.assertEqual(warmup({**self.payload, "continuity_mode": "latent_continuation", "pre_frames": 40}), 40)
-
-    def test_plain_mode_adds_a_guide_and_no_image_nodes(self):
-        prompt = self._prompt()
-        result = self.ns["_patch_minimax_h3_latent_continuation"](prompt, {**self.payload, "continuity_mode": "latent_continuation"})
-        self.assertTrue(result["enabled"])
-        self.assertEqual(prompt["126"]["inputs"]["conditioning"], [result["guide_node_id"], 0])
-        self.assertIsNone(result["exact_guide_node_id"])
-        classes = {node["class_type"] for node in prompt.values()}
-        self.assertIn("VRGDG_MiniMaxH3LoadLatent", classes)
-        self.assertNotIn("MiniMaxH3AddGuide", classes)
-
-    def test_exact_mode_chains_the_native_add_guide_on_the_last_frame(self):
-        prompt = self._prompt()
-        payload = {
-            **self.payload,
-            "continuity_mode": "latent_continuation_exact_frame",
-            "latent_exact_frame_path": str(self.image),
-        }
-        result = self.ns["_patch_minimax_h3_latent_continuation"](prompt, payload)
-        add_guide = prompt[result["exact_guide_node_id"]]
-        self.assertEqual(add_guide["class_type"], "MiniMaxH3AddGuide")
-        self.assertEqual(prompt["126"]["inputs"]["conditioning"], [result["exact_guide_node_id"], 0])
-        # the image is the last frame of the warm-up
-        self.assertEqual(add_guide["inputs"]["frame_idx"], result["warmup_frames"] - 1)
-        self.assertEqual(prompt[result["exact_image_node_id"]]["class_type"], "VRGDG_MiniMaxH3LoadExactFrame")
-        self.assertTrue(prompt[result["load_node_id"]]["inputs"]["exact_frame_mode"])
-
-    def test_two_pass_mode_guides_each_sampler_at_its_own_latent_resolution(self):
-        prompt = self._prompt()
-        prompt.update({
-            "125": {
-                "class_type": "SamplerCustomAdvanced",
-                "inputs": {"guider": ["126", 0], "latent_image": ["172", 0]},
-            },
-            "193": {
-                "class_type": "BasicGuider",
-                "inputs": {"conditioning": ["136", 0], "model": ["207", 0]},
-            },
-            "194": {
-                "class_type": "SamplerCustomAdvanced",
-                "inputs": {"guider": ["193", 0], "latent_image": ["189", 0]},
-            },
-        })
-        result = self.ns["_patch_minimax_h3_latent_continuation"](
-            prompt,
-            {
-                **self.payload,
-                "continuity_mode": "latent_continuation_exact_frame",
-                "latent_exact_frame_path": str(self.image),
-            },
-        )
-
-        self.assertEqual(result["patched_guider_ids"], ["126", "193"])
-        self.assertEqual(len(result["guide_node_ids"]), 2)
-        self.assertEqual(len(result["exact_guide_node_ids"]), 2)
-        first_guide = prompt[result["guide_node_ids"][0]]
-        second_guide = prompt[result["guide_node_ids"][1]]
-        self.assertEqual(first_guide["inputs"]["latent"], ["172", 0])
-        self.assertEqual(second_guide["inputs"]["latent"], ["189", 0])
-        self.assertEqual(prompt["126"]["inputs"]["conditioning"], [result["exact_guide_node_ids"][0], 0])
-        self.assertEqual(prompt["193"]["inputs"]["conditioning"], [result["exact_guide_node_ids"][1], 0])
+        # the Render settings warm-up and cool-down do not apply to masked continuation
+        self.assertEqual(warmup({**self.payload, "continuity_mode": "latent_continuation", "pre_frames": 40}), 34)
+        self.assertEqual(warmup({**self.payload, "continuity_mode": "off", "pre_frames": 40}), 40)
+        cooldown = self.ns["_minimax_h3_cooldown_frames"]
+        self.assertEqual(cooldown({"continuity_mode": "latent_continuation_masked", "cooldown_frames": 12}), 0)
+        self.assertEqual(cooldown({"continuity_mode": "off", "cooldown_frames": 12}), 12)
+        self.assertEqual(cooldown({"continuity_mode": "off", "tail_loss_frames": 7}), 7)
 
     def test_masked_mode_names_and_warmup(self):
         mode = self.ns["_minimax_h3_latent_continuation_mode"]
@@ -667,37 +597,52 @@ class RunnerLatentContinuationTests(unittest.TestCase):
         )
         self.assertNotIn("vae", bare[result["apply_node_id"]]["inputs"])
 
-    def test_masked_mode_leaves_the_advanced_pass_alone(self):
-        # 2 Pass Advanced has one sampler, the second pass runs inside MMH3 Ultimate Upscale
+    def test_masked_mode_works_on_the_image_to_video_node_and_drops_its_first_frame_keyframe(self):
+        payload = {**self.payload, "continuity_mode": "latent_continuation_masked"}
+        prompt = self._two_pass_prompt()
+        prompt["136"] = {
+            "class_type": "MiniMaxH3ImageToVideo",
+            "inputs": {"vae": ["119", 0], "first_frame": ["180", 0], "last_frame": ["180", 1]},
+        }
+        result = self.ns["_patch_minimax_h3_latent_continuation"](prompt, payload)
+        self.assertTrue(result["enabled"])
+        self.assertTrue(result["dropped_first_frame"])
+        # the head replaces the opening keyframe, the closing keyframe stays
+        self.assertNotIn("first_frame", prompt["136"]["inputs"])
+        self.assertEqual(prompt["136"]["inputs"]["last_frame"], ["180", 1])
+        # the video VAE is found through the image node, so a resized head can go through pictures
+        self.assertEqual(prompt[result["apply_node_id"]]["inputs"]["vae"], ["119", 0])
+        self.assertEqual(prompt[result["second_pass_apply_node_id"]]["inputs"]["vae"], ["119", 0])
+        # Reference to Video has no first frame input to drop
+        prompt = self._single_pass_prompt()
+        self.assertFalse(self.ns["_patch_minimax_h3_latent_continuation"](prompt, payload)["dropped_first_frame"])
+
+    def test_masked_mode_is_refused_for_2_pass_advanced(self):
+        # 2 Pass Advanced samples pass 2 inside MMH3 Ultimate Upscale, which builds its own masks
         prompt = self._single_pass_prompt()
         prompt["9306"] = {"class_type": "MMH3UltimateUpscale", "inputs": {"latent": ["125", 0]}}
-        result = self.ns["_patch_minimax_h3_latent_continuation"](
-            prompt, {**self.payload, "continuity_mode": "latent_continuation_masked"}
-        )
-        self.assertIsNone(result["second_pass_apply_node_id"])
-        self.assertEqual(prompt["9306"]["inputs"]["latent"], ["125", 0])
+        with self.assertRaisesRegex(ValueError, "not available in 2 Pass Advanced"):
+            self.ns["_patch_minimax_h3_latent_continuation"](
+                prompt, {**self.payload, "continuity_mode": "latent_continuation_masked"}
+            )
+        self.assertEqual(prompt["125"]["inputs"]["latent_image"], ["172", 0])
 
     def test_masked_mode_rejects_unmappable_graphs_and_missing_predecessors(self):
         payload = {**self.payload, "continuity_mode": "latent_continuation_masked"}
         # two samplers that are not a first pass plus an upscaled second pass
         prompt = self._single_pass_prompt()
         prompt["194"] = {"class_type": "SamplerCustomAdvanced", "inputs": {"latent_image": ["189", 0]}}
-        with self.assertRaisesRegex(ValueError, "supports Single pass, 2 Pass and 2 Pass Advanced"):
+        with self.assertRaisesRegex(ValueError, "supports Single pass and 2 Pass renders"):
             self.ns["_patch_minimax_h3_latent_continuation"](prompt, payload)
         # three samplers
         prompt = self._two_pass_prompt()
         prompt["300"] = {"class_type": "SamplerCustomAdvanced", "inputs": {"latent_image": ["194", 0]}}
-        with self.assertRaisesRegex(ValueError, "supports Single pass, 2 Pass and 2 Pass Advanced"):
+        with self.assertRaisesRegex(ValueError, "supports Single pass and 2 Pass renders"):
             self.ns["_patch_minimax_h3_latent_continuation"](prompt, payload)
         with self.assertRaises(FileNotFoundError):
             self.ns["_patch_minimax_h3_latent_continuation"](
                 self._single_pass_prompt(), {**payload, "scene_number": 30}
             )
-
-    def test_exact_mode_requires_the_last_frame_image(self):
-        payload = {**self.payload, "continuity_mode": "latent_continuation_exact_frame"}
-        with self.assertRaises(FileNotFoundError):
-            self.ns["_patch_minimax_h3_latent_continuation"](self._prompt(), payload)
 
     def test_all_builder_timing_calls_preserve_latent_warmup(self):
         calls = [
@@ -707,11 +652,10 @@ class RunnerLatentContinuationTests(unittest.TestCase):
         ]
         self.assertEqual(len(calls), 3)  # advanced two-pass reuses the two-pass builder
         for call in calls:
-            for mode in ("off", "latent_continuation", "latent_continuation_exact_frame", "latent_continuation_masked"):
+            for mode in ("off", "latent_continuation", "latent_continuation_masked"):
                 for scene in (1, 22):
                     with self.subTest(line=call.lineno, mode=mode, scene=scene):
-                        payload = {**self.payload, "continuity_mode": mode, "scene_number": scene,
-                                   "latent_exact_frame_path": str(self.image)}
+                        payload = {**self.payload, "continuity_mode": mode, "scene_number": scene}
                         warmup = self.ns["_minimax_h3_effective_warmup_frames"](payload)
                         namespace = {**self.ns, "calculate_minimax_h3_timing": MANAGER.calculate_minimax_h3_timing,
                                      "payload": payload, "scene_number": scene, "timeline_start": 10,
@@ -719,7 +663,7 @@ class RunnerLatentContinuationTests(unittest.TestCase):
                                      "warmup_frames": warmup, "cooldown_frames": 0, "audio_mode": "input_audio"}
                         timing = eval(compile(ast.Expression(call), "builder_timing", "eval"), namespace)
                         if mode != "off" and scene > 1:
-                            prompt = self._single_pass_prompt() if mode == "latent_continuation_masked" else self._prompt()
+                            prompt = self._single_pass_prompt()
                             guide = self.ns["_patch_minimax_h3_latent_continuation"](prompt, payload)
                             self.assertAlmostEqual(timing.final_trim_start_seconds, guide["warmup_frames"] / 24)
                             self.assertEqual(timing.audio_leading_padding_seconds, timing.final_trim_start_seconds)
@@ -727,9 +671,9 @@ class RunnerLatentContinuationTests(unittest.TestCase):
                             self.assertEqual(timing.audio_leading_padding_seconds, 0)
 
     def test_missing_predecessor_latent_is_a_clear_error(self):
-        payload = {**self.payload, "scene_number": 30, "continuity_mode": "latent_continuation"}
+        payload = {**self.payload, "scene_number": 30, "continuity_mode": "latent_continuation_masked"}
         with self.assertRaises(FileNotFoundError):
-            self.ns["_patch_minimax_h3_latent_continuation"](self._prompt(), payload)
+            self.ns["_patch_minimax_h3_latent_continuation"](self._single_pass_prompt(), payload)
 
     def test_tail_padding_is_the_render_length_minus_the_visible_scene(self):
         padding = self.ns["_minimax_h3_tail_padding_frames"]
@@ -746,11 +690,11 @@ class RunnerLatentContinuationTests(unittest.TestCase):
 
 
 class BuilderLatentContinuationWiringTests(unittest.TestCase):
-    def test_both_modes_are_offered_and_normalised(self):
-        self.assertIn('value: "latent_continuation", label: "Latent Continuation (native H3 temporal context)"', BUILDER_SOURCE)
-        self.assertIn('value: "latent_continuation_exact_frame"', BUILDER_SOURCE)
+    def test_only_the_masked_mode_is_offered_and_the_retired_ones_normalise_to_it(self):
         self.assertIn('value: "latent_continuation_masked"', BUILDER_SOURCE)
-        self.assertIn('"latent_continuation_masked"', BUILDER_SOURCE)
+        self.assertNotIn('value: "latent_continuation", label', BUILDER_SOURCE)
+        self.assertNotIn('value: "latent_continuation_exact_frame"', BUILDER_SOURCE)
+        self.assertIn('"latent", "latent_continuation", "continuation"].includes(clean)) return "latent_continuation_masked"', BUILDER_SOURCE)
         self.assertIn("function isMiniMaxH3LatentContinuationMode(mode)", BUILDER_SOURCE)
 
     def test_masked_mode_has_its_own_prompt_contract_and_is_not_limited_to_single_pass(self):
@@ -758,24 +702,24 @@ class BuilderLatentContinuationWiringTests(unittest.TestCase):
         self.assertIn("this scene is the very next moment of the same uninterrupted take", BUILDER_SOURCE)
         self.assertIn("LOCATION PHASE — MASKED CONTINUATION TRANSITION", BUILDER_SOURCE)
         self.assertIn('continuity_mode === "latent_continuation_masked"', BUILDER_SOURCE)
-        # 2 Pass and 2 Pass Advanced are allowed, the Builder no longer stops them before the graph is built
+        # 2 Pass is allowed, the Builder no longer stops it before the graph is built. 2 Pass Advanced is not available
         self.assertNotIn("Latent Continuation Masked works with Single pass only", BUILDER_SOURCE)
-        self.assertIn("2 Pass (the exact head is applied again in pass 2) and 2 Pass Advanced (pass 1 only)", BUILDER_SOURCE)
+        self.assertIn("2 Pass (the exact head is applied again in pass 2). Not available in 2 Pass Advanced.", BUILDER_SOURCE)
 
     def test_render_payload_carries_the_latent_settings(self):
         for key in (
             "continuity_mode: continuityInput?.continuityMode",
             "latent_context_frames: latentContextFrames",
-            "latent_exact_frame_path: continuityInput?.exactFramePath",
         ):
             self.assertIn(key, BUILDER_SOURCE)
 
-    def test_exact_frame_is_not_injected_as_a_reference_image_or_prompt_block(self):
+    def test_the_predecessor_frame_is_not_injected_as_a_reference_image(self):
         start = BUILDER_SOURCE.index("if (isMiniMaxH3LatentContinuationMode(continuityMode)) {")
         end = BUILDER_SOURCE.index("previousSegment,\n      };", start)
         block = BUILDER_SOURCE[start:end]
         self.assertIn('framePath: ""', block)
-        self.assertIn("exactFramePath", block)
+        self.assertIn("promptFramePath", block)
+        self.assertNotIn("exactFramePath", block)
 
     def test_dirty_badge_only_shows_on_scenes_that_use_latent_continuation(self):
         start = BUILDER_SOURCE.index("async function loadDirtyLatentBadges()")

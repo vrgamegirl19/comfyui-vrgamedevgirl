@@ -28,7 +28,7 @@ import {
   setWidgetValue,
   toast,
 } from "./controls.mjs";
-import { pickProjectSessionFile, showInfoModal, showLoadProjectModal, showTextInputModal } from "./dialogs.mjs";
+import { pickProjectSessionFile, showInfoModal, showLastProgressWindow, showLoadProjectModal, showTextInputModal } from "./dialogs.mjs";
 import { cloneMiniMaxH3Settings } from "./minimax_h3.mjs";
 import { DEFAULT_KREA2_REFERENCE_SETTINGS } from "./models.mjs";
 import { defaultNotificationSettings } from "./notifications.mjs";
@@ -313,7 +313,17 @@ export function openBuilder(node) {
   preloadVideo.muted = true;
   preloadVideo.preload = "auto";
   preloadVideo.style.cssText = "display:none;width:0;height:0;";
-  previewStage.append(previewEmpty, previewImage, previewVideo, preloadVideo, postProcessComparePreview.element, previewDecodeHint);
+  const renderStatusButton = document.createElement("button");
+  renderStatusButton.type = "button";
+  renderStatusButton.textContent = "Render status";
+  renderStatusButton.title = "Show the render status window again after closing it";
+  renderStatusButton.style.cssText = "position:absolute;left:8px;top:8px;z-index:3;padding:3px 8px;border:1px solid #155e75;border-radius:5px;background:rgba(8,51,68,.82);color:#cffafe;font-size:11px;font-weight:700;cursor:pointer;opacity:.75;";
+  renderStatusButton.onmouseenter = () => { renderStatusButton.style.opacity = "1"; };
+  renderStatusButton.onmouseleave = () => { renderStatusButton.style.opacity = ".75"; };
+  renderStatusButton.onclick = () => {
+    if (!showLastProgressWindow()) toast("No render status window is open. Start a render to see one.");
+  };
+  previewStage.append(previewEmpty, previewImage, previewVideo, preloadVideo, postProcessComparePreview.element, previewDecodeHint, renderStatusButton);
   const customImageFileInput = document.createElement("input");
   customImageFileInput.type = "file";
   customImageFileInput.accept = "image/png,image/jpeg,image/webp";
@@ -1431,6 +1441,7 @@ export function openBuilder(node) {
     sceneDisplayName: (...args) => sceneDisplayName(...args),
     render: (...args) => render(...args),
     renderAllScenes: (...args) => renderAllScenes(...args),
+    stitchPreviewFromSegments: (...args) => stitchPreviewFromSegments(...args),
     isSegmentMultiSelected: (...args) => isSegmentMultiSelected(...args),
     selectedSegmentsForBatch: (...args) => selectedSegmentsForBatch(...args),
     reloadBeatMarkersFromAudio: (...args) => reloadBeatMarkersFromAudio(...args),
@@ -2170,7 +2181,7 @@ export function openBuilder(node) {
   });
 
   const {
-    createMiniMaxSceneVideo, createSceneVideo, miniMaxH3FrameContinuityPromptEnabled, openStitchPreviewModal,
+    createMiniMaxSceneVideo, createSceneVideo, miniMaxH3FrameContinuityPromptEnabled, openStitchPreviewModal, stitchPreviewFromSegments,
     renderImageSlideshowPreview, renderMiniMaxSceneVideoWithProgress, renderSceneVideoWithProgress,
     runGemmaThenCreateSceneVideo, stitchRenderedScenes,
   } = createVideoRender({

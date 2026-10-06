@@ -356,9 +356,21 @@ export function createTimelineState({
   function handleSegmentPick(segment, event = null) {
     const ctrlPressed = Boolean(event?.ctrlKey || event?.metaKey);
     if (ctrlPressed) {
+      const enteringMultiSelect = !state.multiSelectMode;
+      if (enteringMultiSelect) {
+        // The scene we are already on joins the selection, so ctrl-clicking another scene adds to it.
+        const current = activeSegment();
+        state.selectedSegmentIds = current?.id ? [current.id] : [];
+      }
       state.multiSelectMode = true;
       state.modifierMultiSelectMode = true;
-      toggleMultiSegmentSelection(segment);
+      if (enteringMultiSelect && segment?.id && segment.id === state.activeId) {
+        // Ctrl-clicking the scene we are on keeps it selected instead of emptying the selection.
+        syncInspector();
+        render();
+      } else {
+        toggleMultiSegmentSelection(segment);
+      }
     } else if (state.multiSelectMode) {
       if (state.modifierMultiSelectMode) {
         state.multiSelectMode = false;

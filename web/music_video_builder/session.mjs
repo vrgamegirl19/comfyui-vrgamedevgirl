@@ -1288,6 +1288,10 @@ export function createSession({
       state.overlaySegments = Array.isArray(session.overlay_segments) ? session.overlay_segments : [];
       state.overlaySegments.forEach(normalizeOverlayClip);
       state.overlayTrack = normalizeOverlayTrackState(session.overlay_track || {});
+      // Nothing is rendering when a session loads, so a saved "running" status is left over from a closed render.
+      for (const item of [...state.segments, ...state.overlaySegments]) {
+        if (item?.video_status === "running") item.video_status = item.video_path ? "done" : "none";
+      }
       state.repairedSegmentIdCount = 0;
       // Load scene-keyed mappings before ID repair so a repaired duplicate keeps
       // the same subject, location, trigger, and ingredients assignments.

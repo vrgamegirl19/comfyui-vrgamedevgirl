@@ -787,9 +787,18 @@ export function createTimelineView({
       const lockedByVideo = hasLockedVideo(segment);
       const isActive = Boolean(state.activeId) && segment.id === state.activeId;
       const isMultiSelected = isSegmentMultiSelected(segment);
-      const borderColor = isActive || isMultiSelected ? "#ef4444" : lockedByVideo ? "#a3e635" : isOverlay ? "#f97316" : inserted ? "#f59e0b" : "#0891b2";
-      const borderWidth = isActive || isMultiSelected ? "3px" : "1px";
-      const shadow = isActive || isMultiSelected ? "0 0 0 2px rgba(239,68,68,.28), 0 0 18px rgba(239,68,68,.55)" : "none";
+      // Rendering now: blue glow. Rendering and selected: purple glow. Selected only: red glow.
+      const isRendering = segment.video_status === "running";
+      const isSelected = isActive || isMultiSelected;
+      const borderColor = isRendering && isSelected ? "#c084fc" : isRendering ? "#3b82f6" : isSelected ? "#ef4444" : lockedByVideo ? "#a3e635" : isOverlay ? "#f97316" : inserted ? "#f59e0b" : "#0891b2";
+      const borderWidth = isRendering || isSelected ? "3px" : "1px";
+      const shadow = isRendering && isSelected
+        ? "0 0 6px 1px rgba(192,132,252,.95), 0 0 12px 2px rgba(168,85,247,.55)"
+        : isRendering
+          ? "0 0 6px 1px rgba(96,165,250,.95), 0 0 12px 2px rgba(59,130,246,.55)"
+          : isSelected
+            ? "0 0 5px 1px rgba(239,68,68,.85)"
+            : "none";
       block.style.cssText = `
         position:absolute;left:${left}px;top:${blockTop}px;width:${width}px;height:${blockHeight}px;
         border:${borderWidth} solid ${borderColor};
@@ -1081,7 +1090,14 @@ export function createTimelineView({
     renderBeatMarkersOverlay();
   }
 
+  // Scene statuses change through renderList(), so repaint the timeline when the set of rendering scenes changes.
+  let renderingKey = "";
   function renderList() {
+    const nextRenderingKey = [...state.segments, ...state.overlaySegments].filter((segment) => segment.video_status === "running").map((segment) => segment.id).join(",");
+    if (nextRenderingKey !== renderingKey) {
+      renderingKey = nextRenderingKey;
+      renderSegments();
+    }
     sceneListPane.textContent = "";
     ensureAllSegmentRuntimeFields();
     for (const [index, segment] of state.segments.entries()) {

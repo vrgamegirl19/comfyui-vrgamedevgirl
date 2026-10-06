@@ -27,7 +27,7 @@ from ..jobs.models import Job
 from ..scene_video import apply_scene_video
 from ..mutations import _BUILDER_SAVE_LOCK, _get_active_session_and_folder, _persist_session
 from ..paths import resolve_project_folder, session_audio_path, session_video_mode
-from ...minimax.scene_inputs import resolve_scene_inputs
+from ...minimax.scene_inputs import canonical_continuity_mode, resolve_scene_inputs
 from ...minimax.settings_payload import (
     build_minimax_render_payload,
     random_seed_value,
@@ -173,8 +173,7 @@ async def render_scene_video_async(
             continuity = str(p.get("continuity_mode") or minimax_settings["continuity_mode"] or "off")
             payload["pipeline"] = "refmod"
             payload["refmod_references"] = reference_payload(items)
-            payload["continuity_mode"] = continuity if continuity in ("latent_continuation", "latent_continuation_exact_frame", "latent_continuation_masked") else "off"
-            payload["latent_exact_frame_path"] = ""
+            payload["continuity_mode"] = "latent_continuation_masked" if canonical_continuity_mode(continuity) == "latent_continuation_masked" else "off"
             payload["image_paths"] = []
             payload["video_references"] = []
         else:
@@ -194,6 +193,7 @@ async def render_scene_video_async(
                     extract_final_frame=_extract_final_frame_for_continuity,
                     configured_image_paths=p.get("image_paths"),
                     configured_video_references=p.get("video_references"),
+                    render_pass=str(minimax_settings.get("render_pass") or "single"),
                 )
             except ValueError as exc:
                 raise ValidationError(f"Scene {scene_number}: {exc}") from exc
@@ -203,7 +203,6 @@ async def render_scene_video_async(
                     + ", ".join(scene_inputs["missing_image_paths"])
                 )
             payload["continuity_mode"] = scene_inputs["continuity_mode"]
-            payload["latent_exact_frame_path"] = scene_inputs["latent_exact_frame_path"]
             payload["image_paths"] = scene_inputs["image_paths"]
             payload["video_references"] = scene_inputs["video_references"]
             if scene_inputs.get("last_frame_path"):
@@ -232,7 +231,7 @@ async def render_scene_video_async(
     if "minimax" in mode:
         continuity_mode = str(payload.get("continuity_mode") or "").strip().lower()
         use_latent = payload.get("use_latent_continuation")
-        is_latent_cont = continuity_mode in ("latent_continuation", "latent_continuation_exact_frame", "latent_continuation_masked") or bool(use_latent)
+        is_latent_cont = canonical_continuity_mode(continuity_mode) == "latent_continuation_masked" or bool(use_latent)
         if is_latent_cont and scene_number > 1:
             from ...minimax.latent_manager import SceneLatentManager
             pred_scene = scene_number - 1
