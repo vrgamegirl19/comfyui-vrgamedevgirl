@@ -109,7 +109,7 @@ or its 1-based number.
 | `POST` | `/projects/{pid}/references/locations/extract` | Ask the project's LLM for filming locations from the lyrics and `style_theme` (LM Extract) and add them. _(**job**)_ |
 | `PUT` | `/projects/{pid}/references/locations/{rid}` | Create or update a location (name, description, optional image). _(If-Match)_ |
 | `GET` | `/projects/{pid}/references/scene-mapping` | Read which characters, locations, ingredients and extras each scene uses. A scene maps to one location here. To see every reference a MiniMax scene can pick from, and the order it sends, use `GET /projects/{pid}/scenes/{sid}/minimax-references`. |
-| `PUT` | `/projects/{pid}/references/scene-mapping` | Set which characters, locations, ingredients and extras each scene uses. _(If-Match)_ |
+| `PUT` | `/projects/{pid}/references/scene-mapping` | Set which characters, locations, ingredients and extras each scene uses. Sending `subjects` or `locations` also turns on that "use reference" switch, as the Builder does. _(If-Match)_ |
 | `PUT` | `/projects/{pid}/references/subjects/{rid}` | Create or update a character (name, description, `reference_type`, voice, trigger phrase, `image`). _(If-Match)_ |
 | `DELETE` | `/projects/{pid}/references/{kind}/{rid}` | Delete a character or location (`kind` is `subjects` or `locations`) and its scene mappings. _(If-Match)_ |
 | `POST` | `/projects/{pid}/references/{kind}/{rid}/describe` | Describe a character or location image with the project's LLM (Gemma Describe) and save the description. _(**job**)_ |
