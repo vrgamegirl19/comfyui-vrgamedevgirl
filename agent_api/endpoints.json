@@ -365,7 +365,7 @@
     },
     {
       "body_keys": [],
-      "description": "The full project session. `include` limits it to some fields.",
+      "description": "The project with its settings, scenes, audio, story and references. `include` picks some of those groups and/or top-level session keys by name (e.g. `audio_path`, `detected_tempo_bpm`, `flux_reference_builder`; API keys come back blank). An unknown name is a 400 that lists it.",
       "if_match": false,
       "job": false,
       "method": "GET",

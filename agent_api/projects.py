@@ -6,10 +6,10 @@ import urllib.parse
 from typing import Any, Dict, List, Optional
 
 from ..builder.paths import _session_path
-from ..builder.project import _load_builder_session
+from ..builder.project import _load_builder_session, _redact_session_secrets
 from ..minimax.latent_manager import SceneLatentManager
 
-from .errors import ProjectNotFoundError, SceneNotFoundError
+from .errors import ProjectNotFoundError, SceneNotFoundError, ValidationError
 from .paths import get_allowed_project_roots, get_project_id, resolve_project_folder
 from .schemas import extract_effective_settings
 
@@ -136,15 +136,24 @@ def list_projects(root: Optional[str] = None) -> List[Dict[str, Any]]:
     return projects
 
 
+PROJECT_INCLUDE_GROUPS = ("settings", "scenes", "audio", "story", "references")
+
+
 def get_project_detail(project_id: str, include: Optional[List[str]] = None) -> Dict[str, Any]:
-    """Retrieve full project details with revision and settings."""
+    """Retrieve full project details with revision and settings.
+
+    ``include`` names groups (``PROJECT_INCLUDE_GROUPS``) and/or top-level session keys such as
+    ``audio_path`` or ``flux_reference_builder``, which are returned under their own name with API
+    keys blanked. A name that is neither raises ``ValidationError`` listing it.
+    """
     folder = resolve_project_folder(project_id)
     load_result = _load_builder_session(folder)
     session = load_result.get("session")
     if not isinstance(session, dict):
         raise ProjectNotFoundError(project_id)
 
-    includes = set(item.strip().lower() for item in include) if include else None
+    requested = [str(item).strip() for item in include if str(item).strip()] if include else []
+    includes = set(item.lower() for item in requested) if requested else None
 
     pid = get_project_id(folder)
     revision = int(session.get("revision") or session.get("builder_save_revision") or 0)
@@ -158,6 +167,18 @@ def get_project_detail(project_id: str, include: Optional[List[str]] = None) -> 
         "video_engine": str(session.get("video_engine") or "minimax_h3"),
         "image_mode": str(session.get("image_model_mode") or "zimage"),
     }
+
+    session_keys = [key for key in requested if key.lower() not in PROJECT_INCLUDE_GROUPS and key not in result]
+    unknown = [key for key in session_keys if key not in session]
+    if unknown:
+        raise ValidationError(
+            f"Unknown include key(s): {', '.join(unknown)}. Use a group ({', '.join(PROJECT_INCLUDE_GROUPS)}) "
+            "or a top-level key of the project session.",
+            details={"unknown": unknown, "groups": list(PROJECT_INCLUDE_GROUPS)},
+        )
+    if session_keys:
+        public = _redact_session_secrets({key: session[key] for key in session_keys})
+        result.update(public)
 
     if includes is None or "settings" in includes:
         result["settings"] = extract_effective_settings(session)
