@@ -1076,7 +1076,7 @@
     },
     {
       "body_keys": [],
-      "description": "Save the Storyboard scene defaults (`defaults`: video style, camera flow, motion speeds, cut frequency) and the story fields (`story`: idea, strength, world style).",
+      "description": "Save the Storyboard scene defaults (`defaults`: every key the Builder saves in `builder_storyboard_defaults`, e.g. video style, camera flow, motion speeds, cut frequency, short film planning, temporal and FX settings, plus `story_arc_detail`) and the story fields (`story`: every key of `builder_story_layer`, e.g. `enabled`, idea, strength, world style).",
       "if_match": false,
       "job": false,
       "method": "PUT",

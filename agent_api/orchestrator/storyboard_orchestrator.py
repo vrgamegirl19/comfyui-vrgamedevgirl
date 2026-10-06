@@ -9,6 +9,7 @@ State is saved where the UI keeps it: ``builder_story_layer``, ``builder_storybo
 ``story_beat`` field of each timeline segment.
 """
 
+import re
 from typing import Any, Callable, Dict, List, Optional
 
 from ...storyboard import persistence as storyboard_store
@@ -19,15 +20,23 @@ from ..jobs.models import Job
 from ..llm_runtime import llm_payload_from_session, prepare_llm_payload
 from ..mutations import _BUILDER_SAVE_LOCK, _get_active_session_and_folder, _persist_session
 
-STORY_LAYER_KEYS = ("overall_story_idea", "user_story_arc", "song_story_brief", "lyric_story_strength",
+# Twins of the keys the Builder saves: normalizeBuilderStoryLayer and normalizeBuilderStoryboardDefaults in
+# web/music_video_builder/model_settings.mjs. tests/test_agent_api_story_settings_fields.py fails when they drift.
+STORY_LAYER_KEYS = ("enabled", "overall_story_idea", "user_story_arc", "song_story_brief", "lyric_story_strength",
                     "image_world_style", "image_custom_style_direction")
 IMAGE_WORLD_STYLES = ("natural", "surreal_subject", "balanced_surreal", "full_surreal", "abstract", "custom")
 DEFAULT_KEYS = (
-    "video_style", "video_style_custom", "camera_flow", "camera_motion_speed", "character_motion_speed",
-    "minimax_h3_cut_frequency", "performance_style", "global_consistency_phrase", "image_aesthetic",
-    "temporal_world_effect", "temporal_world_effect_custom", "camera_guidance", "character_guidance",
+    "global_consistency_phrase", "camera_motion_speed", "character_motion_speed", "minimax_h3_cut_frequency",
+    "camera_guidance", "character_guidance", "performance_style", "short_film_planning_mode", "camera_flow",
+    "custom_camera_flow_sequence", "image_shot_flow", "image_aesthetic", "video_style", "video_style_custom",
+    "temporal_world_effect", "temporal_world_effect_custom", "temporal_allow_background_extras",
+    "temporal_background_intensity", "temporal_environment_time_passage", "temporal_protected_characters",
+    "temporal_protected_custom", "fx_preset", "fx_custom_json",
 )
-SPEED_KEYS = ("camera_motion_speed", "character_motion_speed")
+SPEED_KEYS = ("camera_motion_speed", "character_motion_speed", "temporal_background_intensity")
+BOOLEAN_DEFAULT_KEYS = ("temporal_allow_background_extras", "temporal_environment_time_passage")
+TEMPORAL_PROTECTED_CHARACTERS = ("all_referenced", "lead_only", "custom")
+SHORT_FILM_PLANNING_MODES = ("guided_film", "fully_custom")
 STORY_ARC_DETAILS = ("compact", "standard", "detailed", "rich")
 
 
@@ -249,6 +258,20 @@ def set_story_settings(project_id: str, params: Dict[str, Any]) -> Dict[str, Any
                 defaults_in[key] = max(0, min(10, float(defaults_in[key])))
             except (TypeError, ValueError):
                 raise ValidationError(f"{key} must be a number from 0 to 10.")
+    for key in BOOLEAN_DEFAULT_KEYS:
+        if key in defaults_in and not isinstance(defaults_in[key], bool):
+            raise ValidationError(f"{key} must be true or false.")
+    if "enabled" in story_in and not isinstance(story_in["enabled"], bool):
+        raise ValidationError("enabled must be true or false.")
+    if defaults_in.get("temporal_protected_characters") not in (None, *TEMPORAL_PROTECTED_CHARACTERS):
+        raise ValidationError(f"temporal_protected_characters must be one of: {', '.join(TEMPORAL_PROTECTED_CHARACTERS)}.")
+    if "short_film_planning_mode" in defaults_in:
+        # Same spelling rules as normalizeMiniMaxShortFilmPlanningMode (minimax_h3.mjs); "custom" means fully_custom.
+        mode = re.sub(r"[\s-]+", "_", _text(defaults_in["short_film_planning_mode"]).lower())
+        mode = "fully_custom" if mode == "custom" else mode
+        if mode not in SHORT_FILM_PLANNING_MODES:
+            raise ValidationError(f"short_film_planning_mode must be one of: {', '.join(SHORT_FILM_PLANNING_MODES)}.")
+        defaults_in["short_film_planning_mode"] = mode
     if defaults_in.get("story_arc_detail") not in (None, *STORY_ARC_DETAILS):
         raise ValidationError(f"story_arc_detail must be one of: {', '.join(STORY_ARC_DETAILS)}.")
     if story_in.get("image_world_style") not in (None, *IMAGE_WORLD_STYLES):
