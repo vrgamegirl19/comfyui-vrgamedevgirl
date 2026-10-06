@@ -118,7 +118,9 @@ def strip_negative_sentences(description: str) -> str:
         return f"VRGDGQUOTE{len(quotes) - 1}TOKEN"
 
     masked = re.sub(r'["“][^"”]*["”]', mask, text)
-    sentences = re.findall(r"[^.!?…]+[.!?…]+|[^.!?…]+$", masked) or [masked]
+    # A decimal point (1.5 seconds) is not a sentence end.
+    protected = re.sub(r"(\d)\.(?=\d)", lambda m: m.group(1) + "VRGDGDECIMALTOKEN", masked)
+    sentences = [s.replace("VRGDGDECIMALTOKEN", ".") for s in re.findall(r"[^.!?…]+[.!?…]+|[^.!?…]+$", protected)] or [masked]
     kept = " ".join(s.strip() for s in sentences if not negative.search(re.sub(r"VRGDGQUOTE\d+TOKEN", " ", s)))
     kept = re.sub(r"VRGDGQUOTE(\d+)TOKEN", lambda m: quotes[int(m.group(1))], kept)
     return re.sub(r"\s{2,}", " ", kept).strip()

@@ -113,6 +113,17 @@ class MiniMaxFrameContinuityPromptTests(unittest.TestCase):
         # vocals keep going through it
         self.assertIn('miniMaxH3MaskedPerformanceText(segment, "transition")', UI_SOURCE)
 
+    def test_a_continued_scene_does_not_let_a_framing_preset_restage_shot_one(self):
+        # a preset such as Intimate close-ups listed "side-lying close-up" as Shot 1 and the LLM obeyed it over the previous frame
+        self.assertIn("function miniMaxH3PerShotFramingLines(segment, shotPlan = [], continuation = false)", UI_SOURCE)
+        self.assertIn("Shot 1 framing: begin exactly as Attached Picture 1 shows it", UI_SOURCE)
+        self.assertIn("miniMaxH3PerShotFramingLines(segment, shotPlan, Boolean(options.frameContinuityPrompt))", UI_SOURCE)
+        # and the author's direction bridges to the body position it needs
+        self.assertIn("first describe the natural movement that gets the subject there", UI_SOURCE)
+
+    def test_decimal_points_are_not_sentence_ends(self):
+        self.assertIn("VRGDGDECIMALTOKEN", UI_SOURCE)
+
     def test_each_location_transition_preset_resolves_to_one_instruction(self):
         for heading in (
             "PHYSICAL THRESHOLD TURN",

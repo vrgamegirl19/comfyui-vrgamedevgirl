@@ -276,7 +276,9 @@ function stripMiniMaxH3NegativePromptSentences(description) {
     return token;
   });
   const restoreDialogue = (value) => String(value || "").replace(/VRGDGDIALOGUE(\d+)TOKEN/g, (_match, index) => dialogueTags[Number(index)] || "");
-  const sentences = maskedText.match(/[^.!?…]+[.!?…]+|[^.!?…]+$/g) || [maskedText];
+  // A decimal point (1.5 seconds) is not a sentence end.
+  const sentences = (maskedText.replace(/(\d)\.(?=\d)/g, "$1VRGDGDECIMALTOKEN").match(/[^.!?…]+[.!?…]+|[^.!?…]+$/g) || [maskedText])
+    .map((sentence) => sentence.replace(/VRGDGDECIMALTOKEN/g, "."));
   const kept = [];
   for (const sentence of sentences) {
     const sentenceTokens = sentence.match(/VRGDGDIALOGUE\d+TOKEN/g) || [];
@@ -776,10 +778,14 @@ export function createMiniMaxPrompt({
     return selectedEntries;
   }
 
-  function miniMaxH3PerShotFramingLines(segment, shotPlan = []) {
+  function miniMaxH3PerShotFramingLines(segment, shotPlan = [], continuation = false) {
     const selectedEntries = miniMaxH3SelectedFramingEntries(segment, shotPlan);
     const framingLines = selectedEntries.map((entry, index) => {
       const shot = shotPlan[index];
+      // A continued scene opens on the previous scene's last frame. The framing preset must not restage Shot 1.
+      if (continuation && shot && Number(shot.number) === 1) {
+        return "Shot 1 framing: begin exactly as Attached Picture 1 shows it, with the same shot size, camera angle, and subject pose, and keep that framing. Change it only gradually through camera movement, never by cutting.";
+      }
       return entry && shot
         ? `Shot ${shot.number} framing: ${entry.shot}${entry.camera ? ` (camera: ${entry.camera})` : ""}.`
         : "";
@@ -790,7 +796,7 @@ export function createMiniMaxPrompt({
     if (!preset?.framing_candidates) return [];
     return [
       `MANDATORY per-shot framing variety (${preset.label}):\n${framingLines.join("\n")}`,
-      preset.guidance || "Use the listed framing as exact cinematic direction for each shot. Do not choose, broaden, replace, or contradict it. Add the character's emotion, performance, and action around the specified framing. Do not repeat a framing within this segment. A previously used framing may recur only when it is the strongest contextual fit or the available framing pool has been exhausted.",
+      (continuation ? "Shot 1 follows Attached Picture 1 and the FRAME-TO-FRAME CONTINUITY contract above, not a framing preset. Any later shot uses its listed framing as exact cinematic direction." : preset.guidance) || "Use the listed framing as exact cinematic direction for each shot. Do not choose, broaden, replace, or contradict it. Add the character's emotion, performance, and action around the specified framing. Do not repeat a framing within this segment. A previously used framing may recur only when it is the strongest contextual fit or the available framing pool has been exhausted.",
     ];
   }
 
@@ -808,6 +814,7 @@ export function createMiniMaxPrompt({
     return (
       `AUTHOR'S DIRECTION FOR THIS SCENE — MANDATORY, THE FINISHED DESCRIPTION MUST CONTAIN IT: "${direction}"\n`
       + `Write the one shot description in two timed parts and put the timing in the text itself. First: "For the first ${holdSeconds} seconds, ..." continuing the opening frame's action with the same camera motion, framing, and pace. Then: "At about ${holdSeconds} seconds, ..." performing every action in the direction above, in the author's order and with the author's own verbs and objects, as one smooth continuous movement in the same take. `
+      + `If the direction needs a body position or facing different from Attached Picture 1 (for example standing up, walking, or turning), first describe the natural movement that gets the subject there, inside the same take. `
       + `Do not skip, soften, shorten, or replace any part of the direction. Never cut, change shot, or restart the action to reach it. Write it as the shot's one movement: if the mapped location differs from the previous scene's, let that same movement carry the shot into the new location instead of adding a second one. `
       + `Finish by stating where the shot ends.`
       + miniMaxH3MaskedPerformanceText(segment, "transition")
@@ -1085,7 +1092,7 @@ export function createMiniMaxPrompt({
         );
       }
     }
-    const framingLines = miniMaxH3PerShotFramingLines(segment, shotPlan);
+    const framingLines = miniMaxH3PerShotFramingLines(segment, shotPlan, Boolean(options.frameContinuityPrompt));
     if (framingLines.length) parts.push(...framingLines);
     parts.push(`Camera speed: ${Number.isFinite(cameraMotionSpeed) ? cameraMotionSpeed : 4}/10${cameraMotionGuidance ? ` - ${compact(cameraMotionGuidance, 240)}` : ""}.`);
     parts.push(`Character speed: ${Number.isFinite(characterMotionSpeed) ? characterMotionSpeed : 4}/10${characterMotionGuidance ? ` - ${compact(characterMotionGuidance, 240)}` : ""}.`);

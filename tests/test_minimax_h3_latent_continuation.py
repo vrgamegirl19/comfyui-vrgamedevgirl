@@ -233,6 +233,19 @@ class MaskedContinuationNodeTests(unittest.TestCase):
             self.node.apply(self._target(video_tokens=12), self._context())
 
 
+class ShotPromptDecimalTests(unittest.TestCase):
+    def test_decimal_seconds_survive_the_negative_sentence_filter(self):
+        spec = importlib.util.spec_from_file_location("vrgdg_shot_prompt_decimal", ROOT / "minimax/shot_prompt.py")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        text = "For the first 1.5 seconds, he keeps walking. At about 1.5 seconds, he points. He does not cut."
+        self.assertEqual(
+            module.strip_negative_sentences(text),
+            "For the first 1.5 seconds, he keeps walking. At about 1.5 seconds, he points.",
+        )
+
+
 class SceneLatentStorageTests(unittest.TestCase):
     def _save(self, folder, scene, tokens=12, **kwargs):
         latent = {"video": torch.zeros(1, 24, tokens, 4, 4), "audio": torch.zeros(1, 32, 2, 8)}
