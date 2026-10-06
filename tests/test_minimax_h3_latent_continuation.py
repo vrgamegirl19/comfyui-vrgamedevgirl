@@ -721,6 +721,24 @@ class BuilderLatentContinuationWiringTests(unittest.TestCase):
         self.assertIn("promptFramePath", block)
         self.assertNotIn("exactFramePath", block)
 
+    def test_the_continuation_direction_box_is_in_the_prompting_tab_and_swaps_with_the_prompt_box(self):
+        source = BUILDER_SOURCE.replace("\r\n", "\n")
+        # it left Between-scene continuity and sits above the prompt box in the LLM Prompting tab
+        self.assertNotIn("miniMaxLocationTransitionControls, miniMaxContinuationDirectionField", source)
+        self.assertIn(
+            'miniMaxPromptActions,\n        miniMaxContinuationDirectionField,\n        makeField("MiniMax H3 prompt", miniMaxPrompt),',
+            source,
+        )
+        # the prompt box is off exactly when the render writes the prompt from the previous scene's final frame
+        self.assertIn("const promptFromLastFrame = Boolean(segment) && miniMaxH3FrameContinuityPromptEnabled(segment);", source)
+        self.assertIn("miniMaxPrompt.disabled = promptFromLastFrame;", source)
+        self.assertIn("miniMaxContinuationDirection.disabled = !promptFromLastFrame;", source)
+        # the pop-out mirrors the box and both states
+        self.assertIn("const directionMirror = mirrorTextarea(direction, direction.placeholder);", source)
+        self.assertIn("promptMirror.disabled = prompt.disabled;", source)
+        self.assertIn("directionMirror.disabled = direction.disabled;", source)
+        self.assertIn("direction: miniMaxContinuationDirection,", source)
+
     def test_dirty_badge_only_shows_on_scenes_that_use_latent_continuation(self):
         start = BUILDER_SOURCE.index("async function loadDirtyLatentBadges()")
         end = BUILDER_SOURCE.index("function openSceneOptions", start)

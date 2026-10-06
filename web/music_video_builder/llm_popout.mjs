@@ -30,7 +30,7 @@ function mirrorTextarea(original, placeholder) {
 export function createLlmPopout({
   state, inspector, overlay, fields, autoSaveSessionQuiet, activeSegment, sceneDisplayName, segmentIndexInfo,
 }) {
-  const { prompt, saveButton, status, pass2Prompt, pass2Field } = fields;
+  const { prompt, saveButton, status, pass2Prompt, pass2Field, direction, promptAutoNote } = fields;
 
   const win = document.createElement("div");
   win.style.cssText = `position:fixed;z-index:100002;display:none;flex-direction:column;overflow:hidden;box-sizing:border-box;min-width:${MIN_WIDTH}px;min-height:${MIN_HEIGHT}px;border:1px solid #155e75;border-radius:8px;background:#202024;color:#fafafa;box-shadow:0 18px 60px rgba(0,0,0,.6);resize:both;`;
@@ -54,12 +54,24 @@ export function createLlmPopout({
   notMiniMaxNote.textContent = "LLM Prompting is part of MiniMax H3. Click the LTX badge at the top right to switch this project to MiniMax H3.";
   notMiniMaxNote.style.cssText = "display:none;font-size:12px;line-height:1.5;color:#a1a1aa;border:1px dashed #3f3f46;border-radius:8px;padding:14px;";
 
+  const directionWrap = document.createElement("div");
+  directionWrap.style.cssText = "display:flex;flex-direction:column;flex:0 0 auto;";
+  const directionLabel = document.createElement("div");
+  directionLabel.textContent = "Continuation direction \u2014 this scene only";
+  directionLabel.style.cssText = FIELD_LABEL_STYLE;
+  const directionMirror = mirrorTextarea(direction, direction.placeholder);
+  directionMirror.style.minHeight = "80px";
+  directionWrap.append(directionLabel, directionMirror);
+
   const promptLabel = document.createElement("div");
   promptLabel.textContent = "MiniMax H3 prompt";
   promptLabel.style.cssText = FIELD_LABEL_STYLE;
   const promptMirror = mirrorTextarea(prompt, prompt.placeholder);
   promptMirror.style.flex = "1 1 220px";
   promptMirror.style.minHeight = "140px";
+
+  const promptAutoNoteMirror = document.createElement("div");
+  promptAutoNoteMirror.style.cssText = `${promptAutoNote.style.cssText};flex:0 0 auto;`;
 
   const saveMirror = makeButton(saveButton.textContent || "Save Updated Prompt", "primary");
   saveMirror.style.width = "100%";
@@ -80,7 +92,7 @@ export function createLlmPopout({
 
   const content = document.createElement("div");
   content.style.cssText = "display:flex;flex-direction:column;gap:8px;flex:1 1 auto;min-height:0;";
-  content.append(promptLabel, promptMirror, saveMirror, statusMirror, pass2Wrap);
+  content.append(directionWrap, promptLabel, promptMirror, promptAutoNoteMirror, saveMirror, statusMirror, pass2Wrap);
   body.append(notMiniMaxNote, content);
   win.append(header, body);
   overlay.append(win);
@@ -171,6 +183,14 @@ export function createLlmPopout({
     }
     if (document.activeElement !== promptMirror && promptMirror.value !== prompt.value) promptMirror.value = prompt.value;
     if (document.activeElement !== pass2Mirror && pass2Mirror.value !== pass2Prompt.value) pass2Mirror.value = pass2Prompt.value;
+    if (document.activeElement !== directionMirror && directionMirror.value !== direction.value) directionMirror.value = direction.value;
+    // The panel turns the prompt box off and the direction box on while the prompt is written from the last frame.
+    promptMirror.disabled = prompt.disabled;
+    promptMirror.style.opacity = prompt.style.opacity;
+    directionMirror.disabled = direction.disabled;
+    directionWrap.style.opacity = direction.disabled ? ".55" : "1";
+    if (promptAutoNoteMirror.textContent !== promptAutoNote.textContent) promptAutoNoteMirror.textContent = promptAutoNote.textContent;
+    promptAutoNoteMirror.style.display = promptAutoNote.style.display === "none" ? "none" : "block";
     if (statusMirror.textContent !== status.textContent) statusMirror.textContent = status.textContent;
     if (statusMirror.style.cssText !== status.style.cssText) statusMirror.style.cssText = `${status.style.cssText};flex:0 0 auto;`;
     statusMirror.style.display = status.style.display === "none" || !status.textContent ? "none" : "";

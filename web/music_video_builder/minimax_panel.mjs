@@ -27,7 +27,8 @@ export function createMiniMaxPanel({
   miniMaxEasyCacheReuseThreshold, miniMaxEasyCacheSettings, miniMaxEasyCacheStartPercent,
   miniMaxEasyCacheVerbose, miniMaxEditInstructionsButton, miniMaxFp16Accumulation,
   miniMaxH3PromptCharacterBudget, miniMaxH3ReferenceCapacityStatus, miniMaxImageModeSource,
-  miniMaxContinuationDirection, miniMaxLatentContextFrames, miniMaxLatentContinuationRow, miniMaxLatentStatusPill,
+  miniMaxContinuationDirection, miniMaxContinuationDirectionField, miniMaxPromptAutoNote, miniMaxH3FrameContinuityPromptEnabled,
+  miniMaxLatentContextFrames, miniMaxLatentContinuationRow, miniMaxLatentStatusPill,
   miniMaxLocationTransitionControls, miniMaxLocationTransitionCustom, miniMaxLocationTransitionCustomField,
   miniMaxLocationTransitionPreset, miniMaxLoraCount, miniMaxLoraNote, miniMaxLoraRows, miniMaxLoraSection,
   miniMaxLoraSlots, miniMaxMegapixels, miniMaxMegapixelsField, miniMaxResolutionPreset, miniMaxMemoryEfficientSageAttention,
@@ -792,7 +793,14 @@ export function createMiniMaxPanel({
     }
     miniMaxPrompt.value = String(segment?.minimax_h3_prompt || segment?.i2v_prompt || "");
     miniMaxContinuationDirection.value = String(segment?.minimax_h3_continuation_direction || "");
-    miniMaxContinuationDirection.disabled = !segment;
+    // When this scene's prompt is written from the previous scene's final frame, the prompt box is not used and the
+    // continuation direction is what steers it. Otherwise it is the other way round. The render uses the same rule.
+    const promptFromLastFrame = Boolean(segment) && miniMaxH3FrameContinuityPromptEnabled(segment);
+    miniMaxPrompt.disabled = promptFromLastFrame;
+    miniMaxPrompt.style.opacity = promptFromLastFrame ? ".55" : "1";
+    miniMaxPromptAutoNote.style.display = promptFromLastFrame ? "block" : "none";
+    miniMaxContinuationDirection.disabled = !promptFromLastFrame;
+    miniMaxContinuationDirectionField.style.opacity = promptFromLastFrame ? "1" : ".55";
     miniMaxPass2Prompt.value = String(segment?.minimax_h3_pass2_prompt || "");
     miniMaxPass2PromptField.style.display = threePass ? "flex" : "none";
     updateMiniMaxPromptCharacterStatus(segment);

@@ -127,6 +127,10 @@ export function buildMiniMaxPanel({
   miniMaxContinuationDirection.style.cssText = "width:100%;min-height:64px;box-sizing:border-box;resize:vertical;border:1px solid #3f3f46;border-radius:6px;background:#09090b;color:#f8fafc;padding:8px;font-size:12px;line-height:1.4;";
   const miniMaxContinuationDirectionField = makeField("Continuation direction — this scene only", miniMaxContinuationDirection);
   miniMaxContinuationDirectionField.title = "Saved with this scene. The prompt LLM keeps the previous scene's action going for the first part of the scene (about a third of its length), then performs this as one smooth movement, with no cut. The performer keeps singing if the scene has lyrics.";
+  // Shown under the prompt box while the scene's prompt is written from the previous scene's final frame.
+  const miniMaxPromptAutoNote = document.createElement("div");
+  miniMaxPromptAutoNote.textContent = "This scene's prompt is written automatically from the previous scene's final frame when it renders, so this box is not used. Give the movement you want in Continuation direction above. Turn off \"Create each next scene prompt from the previous rendered final frame\" to write the prompt yourself.";
+  miniMaxPromptAutoNote.style.cssText = "display:none;font-size:11px;line-height:1.45;color:#a1a1aa;border:1px dashed #3f3f46;border-radius:6px;padding:7px 9px;";
   const miniMaxContinuityPromptFromLastFrame = makeCheckbox("Create each next scene prompt from the previous rendered final frame", false);
   miniMaxContinuityPromptFromLastFrame.wrapper.title = "Scene 1 keeps its authored prompt. Before rendering Scene 2 and later, the Builder extracts the predecessor's actual final frame and asks the vision LLM to create and save a complete continuous-shot prompt from it plus the scene's story, audio timing, and references.";
   const miniMaxLocationTransitionPreset = makeSelect(MINIMAX_H3_LOCATION_TRANSITION_OPTIONS, "normal");
@@ -149,7 +153,7 @@ export function buildMiniMaxPanel({
   miniMaxLatentStatusPill.textContent = "Checking predecessor latent...";
   const miniMaxLatentContinuationRow = document.createElement("div");
   miniMaxLatentContinuationRow.style.cssText = "display:flex;flex-direction:column;gap:6px;margin-top:6px;";
-  miniMaxLatentContinuationRow.append(miniMaxContinuityPromptFromLastFrame.wrapper, miniMaxLocationTransitionControls, miniMaxContinuationDirectionField, miniMaxEditContinuityPromptInstructionsButton, miniMaxLatentContextField, miniMaxLatentStatusPill);
+  miniMaxLatentContinuationRow.append(miniMaxContinuityPromptFromLastFrame.wrapper, miniMaxLocationTransitionControls, miniMaxEditContinuityPromptInstructionsButton, miniMaxLatentContextField, miniMaxLatentStatusPill);
   const miniMaxContinuityNote = document.createElement("div");
   miniMaxContinuityNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
   const miniMaxNoGgufNote = document.createElement("div");
@@ -772,7 +776,9 @@ export function buildMiniMaxPanel({
       content: makeSettingsPanel([
         miniMaxPromptRunnerNote,
         miniMaxPromptActions,
+        miniMaxContinuationDirectionField,
         makeField("MiniMax H3 prompt", miniMaxPrompt),
+        miniMaxPromptAutoNote,
         saveMiniMaxPromptButton,
         miniMaxPromptCharacterStatus,
         miniMaxPass2PromptField,
@@ -791,7 +797,8 @@ export function buildMiniMaxPanel({
     miniMaxEasyCacheBypass, miniMaxEasyCacheEndPercent, miniMaxEasyCacheReuseThreshold,
     miniMaxEasyCacheSettings, miniMaxEasyCacheStartPercent, miniMaxEasyCacheVerbose,
     miniMaxEditContinuityPromptInstructionsButton, miniMaxEditInstructionsButton, miniMaxEnginePanel,
-    miniMaxFp16Accumulation, miniMaxImageModeSource, miniMaxContinuationDirection, miniMaxLatentContextFrames, miniMaxLatentContinuationRow,
+    miniMaxFp16Accumulation, miniMaxImageModeSource, miniMaxContinuationDirection, miniMaxContinuationDirectionField, miniMaxPromptAutoNote,
+    miniMaxLatentContextFrames, miniMaxLatentContinuationRow,
     miniMaxLatentStatusPill, miniMaxLocationTransitionControls, miniMaxLocationTransitionCustom,
     miniMaxLocationTransitionCustomField, miniMaxLocationTransitionPreset, miniMaxLoraCount, miniMaxLoraNote,
     miniMaxLoraRows, miniMaxLoraSection, miniMaxLoraSlots, miniMaxMegapixels, miniMaxMegapixelsField, miniMaxResolutionPreset,
