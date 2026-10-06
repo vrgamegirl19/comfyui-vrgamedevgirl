@@ -676,6 +676,7 @@ export function createReferenceSubjects({
         const voiceName = makeInput(subject.minimax_voice.preset_name || "");
         voiceName.placeholder = "Exact reusable preset name, e.g. MIDNIGHT ROSE";
         const voiceDescription = document.createElement("textarea");
+        voiceDescription.value = subject.minimax_voice.description || "";
         voiceDescription.placeholder = "Exact reusable voice description: adult voice range, accent, timbre, cadence, consonants, warmth, and microphone delivery.";
         voiceDescription.style.cssText = "min-height:76px;resize:vertical;border:1px solid #3f3f46;border-radius:6px;background:#09090b;color:#f8fafc;padding:8px;font-size:12px;line-height:1.4;";
         const voiceFields = document.createElement("div");
@@ -699,7 +700,7 @@ export function createReferenceSubjects({
           voiceFields.style.display = preset.value === "none" ? "none" : "grid";
         };
         voicePreset.addEventListener("change", () => {
-          if (voicePreset.value.endsWith("_custom") && subject.minimax_voice.preset_id !== voicePreset.value) {
+          if (voicePreset.value.endsWith("_custom") && !subject.minimax_voice.preset_id?.endsWith("_custom")) {
             voiceName.value = "";
             voiceDescription.value = "";
           }

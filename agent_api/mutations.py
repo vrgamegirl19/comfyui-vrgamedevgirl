@@ -883,18 +883,22 @@ def upsert_reference_subject(
         subjects = ref_builder.setdefault("subjects", [])
 
         idx = next((i for i, s in enumerate(subjects) if s.get("id") == subject_id), -1)
+        existing = subjects[idx] if idx >= 0 else {}
+        voice = payload.get("minimax_voice")
+        if voice is None:
+            voice = existing.get("minimax_voice", "none")
         subj = {
             "id": subject_id,
-            "name": payload.get("name", "Character"),
-            "description": payload.get("description", ""),
-            "face_description": payload.get("face_description", ""),
-            "reference_type": payload.get("reference_type", "character"),
-            "minimax_voice": payload.get("minimax_voice", "none"),
-            "trigger_phrase": payload.get("trigger_phrase", ""),
-            "trigger_position": payload.get("trigger_position", "start"),
-            "extra_reference_for": payload.get("extra_reference_for", ""),
-            "extra_reference_note": payload.get("extra_reference_note", ""),
-            "image": payload.get("image", {}),
+            "name": payload.get("name", existing.get("name", "Character")),
+            "description": payload.get("description", existing.get("description", "")),
+            "face_description": payload.get("face_description", existing.get("face_description", "")),
+            "reference_type": payload.get("reference_type", existing.get("reference_type", "character")),
+            "minimax_voice": voice,
+            "trigger_phrase": payload.get("trigger_phrase", existing.get("trigger_phrase", "")),
+            "trigger_position": payload.get("trigger_position", existing.get("trigger_position", "start")),
+            "extra_reference_for": payload.get("extra_reference_for", existing.get("extra_reference_for", "")),
+            "extra_reference_note": payload.get("extra_reference_note", existing.get("extra_reference_note", "")),
+            "image": payload.get("image", existing.get("image", {})),
         }
 
         if idx >= 0:
