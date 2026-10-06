@@ -486,6 +486,8 @@ _SCENE_PATCH_TEXT_FIELDS = (
     "custom_audio_path",
 )
 _SCENE_PATCH_NUMBER_FIELDS = ("start", "end")
+# A number, or null to go back to the default (0.5 s). It is kept between 0.5 s and half of the scene when it is used.
+_SCENE_PATCH_OPTIONAL_NUMBER_FIELDS = ("minimax_h3_continuation_start_seconds",)
 _SCENE_PATCH_FLAG_FIELDS = ("no_character_present", "lyric_no_lip_sync")
 _SCENE_PATCH_LIST_FIELDS = ("lyric_singers",)
 _SCENE_PATCH_ECHOED_FIELDS = ("id",)  # clients often send back what they read; the id cannot change
@@ -493,6 +495,7 @@ _SCENE_PATCH_ECHOED_FIELDS = ("id",)  # clients often send back what they read; 
 
 def _unsupported_scene_fields(patch: Dict[str, Any]) -> List[str]:
     known = set(_SCENE_PATCH_TEXT_FIELDS) | set(_SCENE_PATCH_NUMBER_FIELDS) | set(_SCENE_PATCH_FLAG_FIELDS)
+    known |= set(_SCENE_PATCH_OPTIONAL_NUMBER_FIELDS)
     known |= set(_SCENE_PATCH_LIST_FIELDS) | set(_SCENE_PATCH_ECHOED_FIELDS)
     return sorted(
         key for key in patch
@@ -516,7 +519,7 @@ def patch_scene(
     if unsupported:
         supported = sorted(
             set(_SCENE_PATCH_TEXT_FIELDS) | set(_SCENE_PATCH_NUMBER_FIELDS)
-            | set(_SCENE_PATCH_FLAG_FIELDS) | set(_SCENE_PATCH_LIST_FIELDS)
+            | set(_SCENE_PATCH_FLAG_FIELDS) | set(_SCENE_PATCH_LIST_FIELDS) | set(_SCENE_PATCH_OPTIONAL_NUMBER_FIELDS)
         )
         raise ValidationError(
             f"Unsupported scene field{'s' if len(unsupported) > 1 else ''}: {', '.join(unsupported)}. "
@@ -557,6 +560,20 @@ def patch_scene(
         for key in _SCENE_PATCH_FLAG_FIELDS:
             if key in patch:
                 scene[key] = bool(patch[key])
+
+        for key in _SCENE_PATCH_OPTIONAL_NUMBER_FIELDS:
+            if key in patch:
+                value = patch[key]
+                if value is None or value == "":
+                    scene[key] = None
+                    continue
+                try:
+                    number = float(value)
+                except (TypeError, ValueError):
+                    raise ValidationError(f"{key} must be a number of seconds, or null for the default.")
+                if number != number or number in (float("inf"), float("-inf")) or number < 0:
+                    raise ValidationError(f"{key} must be a number of seconds that is 0 or more, or null for the default.")
+                scene[key] = round(number, 2)
 
         # Same as editing the lyric in the Builder: the scene is marked instrumental from its text.
         if "lyric_text" in patch and "lyric_no_lip_sync" not in patch:

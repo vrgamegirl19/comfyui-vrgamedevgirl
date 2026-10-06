@@ -127,6 +127,19 @@ export function buildMiniMaxPanel({
   miniMaxContinuationDirection.style.cssText = "width:100%;min-height:64px;box-sizing:border-box;resize:vertical;border:1px solid #3f3f46;border-radius:6px;background:#09090b;color:#f8fafc;padding:8px;font-size:12px;line-height:1.4;";
   const miniMaxContinuationDirectionField = makeField("Continuation direction — this scene only", miniMaxContinuationDirection);
   miniMaxContinuationDirectionField.title = "Saved with this scene. The prompt LLM keeps the previous scene's action going for the first part of the scene (about a third of its length), then performs this as one smooth movement, with no cut. The performer keeps singing if the scene has lyrics.";
+  // Where in the scene the direction starts: 0.5 s in at the earliest, half of the scene at the latest.
+  const miniMaxContinuationStart = document.createElement("input");
+  miniMaxContinuationStart.type = "range";
+  miniMaxContinuationStart.min = "0.5";
+  miniMaxContinuationStart.max = "2.5";
+  miniMaxContinuationStart.step = "0.1";
+  miniMaxContinuationStart.value = "0.5";
+  miniMaxContinuationStart.style.cssText = "flex:1;min-width:0;accent-color:#06b6d4;";
+  const miniMaxContinuationStartValue = document.createElement("div");
+  miniMaxContinuationStartValue.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
+  const miniMaxContinuationStartField = makeField("Direction starts at", miniMaxContinuationStart);
+  miniMaxContinuationStartField.title = "How many seconds into this scene the direction begins. At least 0.5 s, at most half of the scene. The scene carries on from the previous scene until then, and the direction has to finish before the scene ends, so a later start leaves less time for it. Saved with this scene.";
+  miniMaxContinuationStartField.append(miniMaxContinuationStartValue);
   // Shown under the prompt box while the scene's prompt is written from the previous scene's final frame.
   const miniMaxPromptAutoNote = document.createElement("div");
   miniMaxPromptAutoNote.textContent = "This scene's prompt is written automatically from the previous scene's final frame when it renders, so this box is not used. Give the movement you want in Continuation direction above. Turn off \"Create each next scene prompt from the previous rendered final frame\" to write the prompt yourself.";
@@ -777,6 +790,7 @@ export function buildMiniMaxPanel({
         miniMaxPromptRunnerNote,
         miniMaxPromptActions,
         miniMaxContinuationDirectionField,
+        miniMaxContinuationStartField,
         makeField("MiniMax H3 prompt", miniMaxPrompt),
         miniMaxPromptAutoNote,
         saveMiniMaxPromptButton,
@@ -798,6 +812,7 @@ export function buildMiniMaxPanel({
     miniMaxEasyCacheSettings, miniMaxEasyCacheStartPercent, miniMaxEasyCacheVerbose,
     miniMaxEditContinuityPromptInstructionsButton, miniMaxEditInstructionsButton, miniMaxEnginePanel,
     miniMaxFp16Accumulation, miniMaxImageModeSource, miniMaxContinuationDirection, miniMaxContinuationDirectionField, miniMaxPromptAutoNote,
+    miniMaxContinuationStart, miniMaxContinuationStartField, miniMaxContinuationStartValue,
     miniMaxLatentContextFrames, miniMaxLatentContinuationRow,
     miniMaxLatentStatusPill, miniMaxLocationTransitionControls, miniMaxLocationTransitionCustom,
     miniMaxLocationTransitionCustomField, miniMaxLocationTransitionPreset, miniMaxLoraCount, miniMaxLoraNote,

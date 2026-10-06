@@ -726,7 +726,7 @@ class BuilderLatentContinuationWiringTests(unittest.TestCase):
         # it left Between-scene continuity and sits above the prompt box in the LLM Prompting tab
         self.assertNotIn("miniMaxLocationTransitionControls, miniMaxContinuationDirectionField", source)
         self.assertIn(
-            'miniMaxPromptActions,\n        miniMaxContinuationDirectionField,\n        makeField("MiniMax H3 prompt", miniMaxPrompt),',
+            'miniMaxPromptActions,\n        miniMaxContinuationDirectionField,\n        miniMaxContinuationStartField,\n        makeField("MiniMax H3 prompt", miniMaxPrompt),',
             source,
         )
         # the prompt box is off exactly when the render writes the prompt from the previous scene's final frame

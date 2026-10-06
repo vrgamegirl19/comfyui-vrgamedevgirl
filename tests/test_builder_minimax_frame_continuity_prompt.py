@@ -98,6 +98,17 @@ class MiniMaxFrameContinuityPromptTests(unittest.TestCase):
         self.assertIn("miniMaxContinuationDirection.value = String(segment?.minimax_h3_continuation_direction", UI_SOURCE)
         # the LLM is told when it starts (a third of the scene, shared with the Masked preset) and that it never cuts
         self.assertIn("function miniMaxH3ContinuationHoldSeconds(segment)", UI_SOURCE)
+        # the start is the author's choice: 0.5 s by default, at most half of the scene, and the LLM is told the scene length
+        self.assertIn("segment?.minimax_h3_continuation_start_seconds", UI_SOURCE)
+        self.assertIn("Math.floor(Math.max(0, Number(sceneSeconds) || 0) * 0.5 * 10 + 1e-9) / 10", UI_SOURCE)
+        self.assertIn("SCENE TIMING: This scene is ${sceneLength} seconds long.", UI_SOURCE)
+        self.assertIn("perform its actions in quicker succession rather than leaving any out", UI_SOURCE)
+        self.assertNotIn("Do not skip, soften, shorten", UI_SOURCE)
+        # a slider under the direction box sets it, saves it only when moved, and the pop-out has the same slider
+        self.assertIn('miniMaxContinuationStart.type = "range";', UI_SOURCE)
+        self.assertIn("segment.minimax_h3_continuation_start_seconds = Number(miniMaxContinuationStart.value);", UI_SOURCE)
+        self.assertIn("miniMaxContinuationStartField,\n        makeField(\"MiniMax H3 prompt\", miniMaxPrompt)", UI_SOURCE.replace("\r\n", "\n"))
+        self.assertIn("const startMirror = document.createElement(\"input\");", UI_SOURCE)
         self.assertIn("AUTHOR'S DIRECTION FOR THIS SCENE — MANDATORY", UI_SOURCE)
         self.assertIn("Never cut, change shot, or restart the action to reach it.", UI_SOURCE)
         self.assertIn("miniMaxH3ContinuationDirectionText(segment)", UI_SOURCE)

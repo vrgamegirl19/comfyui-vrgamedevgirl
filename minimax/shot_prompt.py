@@ -605,7 +605,9 @@ def continuation_task_text(
     the LLM is shown the previous scene's final frame as Attached Picture 1, like the Builder. Without it the previous
     scene's last shot description stands in for the picture.
     """
-    hold = f"{float(continuation.get('hold_seconds') or 1.0):g}"
+    hold = f"{float(continuation.get('hold_seconds') or 0.5):g}"
+    scene_seconds = float(continuation.get("scene_seconds") or 0.0)
+    seconds_left = float(continuation.get("seconds_left") or max(0.0, scene_seconds - float(hold)))
     direction = str(continuation.get("direction") or "").strip()
     follow_up = (
         "then carry on exactly as the AUTHOR'S DIRECTION at the end of this scene concept says. " if direction
@@ -653,14 +655,22 @@ def continuation_task_text(
     if direction:
         parts.append(
             f"AUTHOR'S DIRECTION FOR THIS SCENE — MANDATORY, THE FINISHED DESCRIPTION MUST CONTAIN IT: \"{direction}\"\n"
-            f"Write the one shot description in two timed parts and put the timing in the text itself. First: \"For the first {hold} seconds, ...\" "
+            + (
+                f"SCENE TIMING: This scene is {scene_seconds:g} seconds long. The direction starts at {hold} seconds and has to be "
+                f"completely finished before the scene ends, which leaves {seconds_left:g} seconds for it. Perform every action of the "
+                f"direction in the author's order at a brisk pace that fits those {seconds_left:g} seconds, and end the shot with the "
+                "last action fully done, never cut off or left unfinished. "
+                if scene_seconds > 0 else ""
+            )
+            + f"Write the one shot description in two timed parts and put the timing in the text itself. First: \"For the first {hold} seconds, ...\" "
             "continuing the opening frame's action with the same camera motion, framing, and pace. "
             f"Then: \"At about {hold} seconds, ...\" performing every action in the direction above, in the author's order and with the "
             "author's own verbs and objects, as one smooth continuous movement in the same take. "
             "If the direction needs a body position or facing different from "
             + ("Attached Picture 1" if with_picture else "the previous scene's last shot")
             + " (for example standing up, walking, or turning), first describe the natural movement that gets the subject there, inside the same take. "
-            "Do not skip, soften, shorten, or replace any part of the direction. Never cut, change shot, or restart the action to reach it. "
+            "Do not skip or replace any action in the direction. If it is a lot for the time left, perform its actions in quicker "
+            "succession rather than leaving any out. Never cut, change shot, or restart the action to reach it. "
             "Write it as the shot's one movement: if the mapped location differs from the previous scene's, let that same movement carry the shot into the new "
             "location instead of adding a second one. Finish by stating where the shot ends."
             + performance_line(has_vocals, "transition")

@@ -72,14 +72,32 @@ class SceneFieldTests(unittest.TestCase):
         self.assertEqual(mutations._unsupported_scene_fields({"minimax_h3_continuation_direction": "he sits"}), [])
         self.assertIn("minimax_h3_continuation_direction", mutations._SCENE_PATCH_TEXT_FIELDS)
 
+    def test_the_direction_start_can_be_patched_and_reset(self):
+        self.assertEqual(mutations._unsupported_scene_fields({"minimax_h3_continuation_start_seconds": 1.2}), [])
+        self.assertIn("minimax_h3_continuation_start_seconds", mutations._SCENE_PATCH_OPTIONAL_NUMBER_FIELDS)
+
 
 class HoldTimeTests(unittest.TestCase):
-    def test_hold_is_about_a_third_of_the_scene_in_half_seconds_between_1_and_2_5(self):
-        # the same values the Video Builder computes in miniMaxH3ContinuationHoldSeconds
-        expected = {2.0: 1.0, 3.0: 1.0, 4.0: 1.5, 4.72: 1.5, 5.0: 2.0, 6.0: 2.0, 7.0: 2.5, 10.0: 2.5, 30.0: 2.5}
-        for duration, hold in expected.items():
+    def test_the_direction_starts_half_a_second_in_unless_the_author_says_otherwise(self):
+        for duration in (2.0, 4.0, 4.94, 10.0, 30.0):
             with self.subTest(duration=duration):
-                self.assertEqual(assembly.continuation_hold_seconds(duration), hold)
+                self.assertEqual(assembly.continuation_hold_seconds(duration), 0.5)
+                self.assertEqual(assembly.continuation_hold_seconds(duration, None), 0.5)
+
+    def test_the_start_can_move_from_half_a_second_up_to_half_the_scene(self):
+        # the same limits the Video Builder's slider uses (miniMaxH3ContinuationStartLimits)
+        self.assertEqual(assembly.continuation_start_limits(4.94), (0.5, 2.4))
+        self.assertEqual(assembly.continuation_start_limits(4.72), (0.5, 2.3))
+        self.assertEqual(assembly.continuation_start_limits(10.0), (0.5, 5.0))
+        self.assertEqual(assembly.continuation_start_limits(0.8), (0.5, 0.5))  # too short to move
+        self.assertEqual(assembly.continuation_start_limits(0.0), (0.5, 0.5))
+
+    def test_a_chosen_start_is_kept_between_the_limits(self):
+        cases = {1.2: 1.2, 2.4: 2.4, 9: 2.4, 0.1: 0.5, 0: 0.5, -3: 0.5, "1.7": 1.7, "bad": 0.5, "": 0.5, float("nan"): 0.5}
+        for requested, expected in cases.items():
+            with self.subTest(requested=requested):
+                self.assertEqual(assembly.continuation_hold_seconds(4.94, requested), expected)
+        self.assertEqual(assembly.continuation_hold_seconds(0.8, 0.7), 0.5)  # the limits meet, so only 0.5 s is possible
 
 
 class PromptContextTests(unittest.TestCase):
@@ -94,14 +112,31 @@ class PromptContextTests(unittest.TestCase):
         }
         context = assembly.build_minimax_prompt_context(segment, self._session("latent_masked"))
         continuation = context["continuation"]
-        self.assertEqual(continuation["hold_seconds"], 1.5)
+        self.assertEqual(continuation["hold_seconds"], 0.5)
+        self.assertEqual(continuation["start_seconds"], 0.5)
+        self.assertEqual((continuation["scene_seconds"], continuation["seconds_left"]), (4.72, 4.22))
+        self.assertEqual(continuation["start_limits"], {"min": 0.5, "max": 2.3})
+        self.assertEqual(continuation["start_field"], "minimax_h3_continuation_start_seconds")
         self.assertEqual(continuation["direction"], "he lifts his left arm, then points at the camera")
         self.assertEqual(continuation["direction_field"], "minimax_h3_continuation_direction")
         rules = " ".join(continuation["rules"])
-        self.assertIn("For the first 1.5 seconds", rules)
-        self.assertIn("At about 1.5 seconds", rules)
+        self.assertIn("For the first 0.5 seconds", rules)
+        self.assertIn("At about 0.5 seconds", rules)
+        # the agent is told how long the scene is and that the movement must finish inside it
+        self.assertIn("The scene is 4.72 seconds long, so that movement has 4.22 seconds", rules)
+        self.assertIn("completely finished before the scene ends", rules)
         self.assertIn("keep singing", rules)  # the scene has lyrics
         self.assertIn("continuation.rules", context["instruction_text"])
+
+    def test_the_authors_start_second_is_used_for_the_timing(self):
+        segment = {"id": "s2", "start": 10.0, "end": 14.94, "minimax_h3_continuation_start_seconds": 1.8,
+                   "minimax_h3_continuation_direction": "he turns and sits"}
+        continuation = assembly.build_minimax_prompt_context(segment, self._session("latent_masked"))["continuation"]
+        self.assertEqual((continuation["hold_seconds"], continuation["seconds_left"]), (1.8, 3.14))
+        self.assertIn("For the first 1.8 seconds", " ".join(continuation["rules"]))
+        # a value beyond half the scene is held at half the scene
+        segment["minimax_h3_continuation_start_seconds"] = 4.0
+        self.assertEqual(assembly.build_minimax_prompt_context(segment, self._session("latent_masked"))["continuation"]["hold_seconds"], 2.4)
 
     def test_the_vocal_rule_is_left_out_for_a_scene_without_lyrics_and_other_modes_get_no_brief(self):
         segment = {"id": "s2", "start": 0.0, "end": 5.0, "lyric_no_lip_sync": True}
@@ -122,8 +157,12 @@ class ShotTaskTests(unittest.TestCase):
         self.assertEqual(shot_prompt.last_shot_text("no shots here"), "")
 
     def test_the_task_text_carries_the_timing_the_direction_and_the_vocal_rule(self):
-        continuation = {"hold_seconds": 1.5, "direction": "he sits down on the couch"}
+        continuation = {"hold_seconds": 1.5, "scene_seconds": 4.72, "seconds_left": 3.22, "direction": "he sits down on the couch"}
         text = shot_prompt.continuation_task_text(continuation, "He walks across the roof.", has_vocals=True)
+        self.assertIn("SCENE TIMING: This scene is 4.72 seconds long. The direction starts at 1.5 seconds", text)
+        self.assertIn("leaves 3.22 seconds for it", text)
+        self.assertIn("perform its actions in quicker succession rather than leaving any out", text)
+        self.assertNotIn("soften", text)
         self.assertIn("Continuing seamlessly from the previous shot", text)
         self.assertIn("PREVIOUS SCENE'S LAST SHOT", text)
         self.assertIn("He walks across the roof.", text)

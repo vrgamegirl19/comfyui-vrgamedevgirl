@@ -108,7 +108,7 @@ Use the project id returned by `project_create` in every later call.
     previous scene's last shot). Scene 1 renders normally. Every later scene starts from the previous scene's last moments, so its
     prompt is the next moment of the same take: carry on for the first part of the scene, then make one smooth movement, never a cut.
     `minimax_prompts` already writes it that way. To direct a scene yourself, `scene_update` with
-    `patch: {"minimax_h3_continuation_direction": "he turns to the camera, then sits down"}` (the action only, no lyrics), then
+    `patch: {"minimax_h3_continuation_direction": "he turns to the camera, then sits down"}` (the action only, no lyrics). The direction starts 0.5 s into the scene; add `"minimax_h3_continuation_start_seconds": 1.2` to start later (at most half the scene). The prompt writer is told the scene length and must finish the action before it ends. Then
     `minimax_prompts` with `scene_ids: [that scene]` and `replace_existing: true`. The scenes must be rendered in timeline order with the same render pass and
     resolution. A scene whose predecessor has no saved video fails with `PREDECESSOR_MISSING`, render the predecessor first.
 16. `video_render` for every scene in timeline order, one at a time, with `params: {"mode": "minimax_h3"}`.

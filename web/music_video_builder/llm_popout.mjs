@@ -30,7 +30,7 @@ function mirrorTextarea(original, placeholder) {
 export function createLlmPopout({
   state, inspector, overlay, fields, autoSaveSessionQuiet, activeSegment, sceneDisplayName, segmentIndexInfo,
 }) {
-  const { prompt, saveButton, status, pass2Prompt, pass2Field, direction, promptAutoNote } = fields;
+  const { prompt, saveButton, status, pass2Prompt, pass2Field, direction, promptAutoNote, start, startValue } = fields;
 
   const win = document.createElement("div");
   win.style.cssText = `position:fixed;z-index:100002;display:none;flex-direction:column;overflow:hidden;box-sizing:border-box;min-width:${MIN_WIDTH}px;min-height:${MIN_HEIGHT}px;border:1px solid #155e75;border-radius:8px;background:#202024;color:#fafafa;box-shadow:0 18px 60px rgba(0,0,0,.6);resize:both;`;
@@ -61,7 +61,22 @@ export function createLlmPopout({
   directionLabel.style.cssText = FIELD_LABEL_STYLE;
   const directionMirror = mirrorTextarea(direction, direction.placeholder);
   directionMirror.style.minHeight = "80px";
-  directionWrap.append(directionLabel, directionMirror);
+  const startLabel = document.createElement("div");
+  startLabel.textContent = "Direction starts at";
+  startLabel.style.cssText = FIELD_LABEL_STYLE;
+  const startMirror = document.createElement("input");
+  startMirror.type = "range";
+  startMirror.step = start.step;
+  startMirror.style.cssText = "width:100%;accent-color:#06b6d4;";
+  // Moving it moves the real slider and fires its handler, which saves the scene's value.
+  startMirror.addEventListener("input", () => {
+    start.value = startMirror.value;
+    start.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  startMirror.addEventListener("change", () => start.dispatchEvent(new Event("change", { bubbles: true })));
+  const startNote = document.createElement("div");
+  startNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
+  directionWrap.append(directionLabel, directionMirror, startLabel, startMirror, startNote);
 
   const promptLabel = document.createElement("div");
   promptLabel.textContent = "MiniMax H3 prompt";
@@ -188,6 +203,11 @@ export function createLlmPopout({
     promptMirror.disabled = prompt.disabled;
     promptMirror.style.opacity = prompt.style.opacity;
     directionMirror.disabled = direction.disabled;
+    if (startMirror.min !== start.min) startMirror.min = start.min;
+    if (startMirror.max !== start.max) startMirror.max = start.max;
+    if (document.activeElement !== startMirror && startMirror.value !== start.value) startMirror.value = start.value;
+    startMirror.disabled = start.disabled;
+    if (startNote.textContent !== startValue.textContent) startNote.textContent = startValue.textContent;
     directionWrap.style.opacity = direction.disabled ? ".55" : "1";
     if (promptAutoNoteMirror.textContent !== promptAutoNote.textContent) promptAutoNoteMirror.textContent = promptAutoNote.textContent;
     promptAutoNoteMirror.style.display = promptAutoNote.style.display === "none" ? "none" : "block";

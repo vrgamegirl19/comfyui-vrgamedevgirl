@@ -338,6 +338,24 @@ export function normalizeMiniMaxH3LocationTransitionPreset(value) {
   return MINIMAX_H3_LOCATION_TRANSITION_OPTIONS.some((item) => item.value === clean) ? clean : "normal";
 }
 
+// Where a continued scene's own movement may begin: at least 0.5 s in, at most half of the scene. The author picks it
+// per scene (segment.minimax_h3_continuation_start_seconds), 0.5 s when nothing is set.
+// Python twin: continuation_start_limits / continuation_hold_seconds in minimax/prompt_assembly.py.
+export const MINIMAX_H3_CONTINUATION_MIN_START_SECONDS = 0.5;
+
+export function miniMaxH3ContinuationStartLimits(sceneSeconds) {
+  const low = MINIMAX_H3_CONTINUATION_MIN_START_SECONDS;
+  const high = Math.max(low, Math.floor(Math.max(0, Number(sceneSeconds) || 0) * 0.5 * 10 + 1e-9) / 10);
+  return { low, high };
+}
+
+export function miniMaxH3ContinuationStartSeconds(sceneSeconds, requested) {
+  const { low, high } = miniMaxH3ContinuationStartLimits(sceneSeconds);
+  const number = requested === null || requested === undefined || requested === "" ? NaN : Number(requested);
+  const value = Number.isFinite(number) ? number : low;
+  return Math.round(Math.min(high, Math.max(low, value)) * 10) / 10;
+}
+
 export function isMiniMaxH3LatentContinuationMode(mode) {
   return mode === "latent_continuation_masked";
 }

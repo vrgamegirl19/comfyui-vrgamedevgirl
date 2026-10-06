@@ -279,6 +279,7 @@ def get_project_scenes(
             "i2v_prompt": i2v,
             "minimax_h3_prompt": minimax_prompt,
             "minimax_h3_continuation_direction": str(segment.get("minimax_h3_continuation_direction") or "").strip(),
+            "minimax_h3_continuation_start_seconds": segment.get("minimax_h3_continuation_start_seconds"),
             "enhanced_prompt": str(segment.get("enhance_prompt") or "").strip(),
             "no_character_present": bool(segment.get("no_character_present")),
             "lyric_no_lip_sync": bool(segment.get("lyric_no_lip_sync")),

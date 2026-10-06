@@ -4,6 +4,8 @@ import {
   cloneMiniMaxH3Settings,
   DEFAULT_MINIMAX_H3_SETTINGS,
   isMiniMaxH3ContinuityAllowedForMode,
+  miniMaxH3ContinuationStartLimits,
+  miniMaxH3ContinuationStartSeconds,
   isMiniMaxH3LatentContinuationMode,
   miniMaxH3ModeLabel,
   normalizeMiniMaxH3ContinuityMode,
@@ -28,6 +30,7 @@ export function createMiniMaxPanel({
   miniMaxEasyCacheVerbose, miniMaxEditInstructionsButton, miniMaxFp16Accumulation,
   miniMaxH3PromptCharacterBudget, miniMaxH3ReferenceCapacityStatus, miniMaxImageModeSource,
   miniMaxContinuationDirection, miniMaxContinuationDirectionField, miniMaxPromptAutoNote, miniMaxH3FrameContinuityPromptEnabled,
+  miniMaxContinuationStart, miniMaxContinuationStartField, miniMaxContinuationStartValue,
   miniMaxLatentContextFrames, miniMaxLatentContinuationRow, miniMaxLatentStatusPill,
   miniMaxLocationTransitionControls, miniMaxLocationTransitionCustom, miniMaxLocationTransitionCustomField,
   miniMaxLocationTransitionPreset, miniMaxLoraCount, miniMaxLoraNote, miniMaxLoraRows, miniMaxLoraSection,
@@ -531,6 +534,22 @@ export function createMiniMaxPanel({
     }
   }
 
+  // The "Direction starts at" slider: from 0.5 s to half of this scene, on while the direction box is on.
+  function syncMiniMaxContinuationStart(segment, enabled) {
+    const sceneSeconds = segment ? Math.max(0, Number(segment.end || 0) - Number(segment.start || 0)) : 0;
+    const { low, high } = miniMaxH3ContinuationStartLimits(sceneSeconds);
+    const start = miniMaxH3ContinuationStartSeconds(sceneSeconds, segment?.minimax_h3_continuation_start_seconds);
+    miniMaxContinuationStart.min = String(low);
+    miniMaxContinuationStart.max = String(high);
+    miniMaxContinuationStart.value = String(start);
+    const fixed = high <= low;
+    miniMaxContinuationStart.disabled = !enabled || fixed;
+    miniMaxContinuationStartField.style.opacity = enabled ? "1" : ".55";
+    miniMaxContinuationStartValue.textContent = !segment
+      ? ""
+      : `${start.toFixed(1)} s into the scene. ${fixed ? "This scene is too short to move it." : `Up to ${high.toFixed(1)} s (half of this ${sceneSeconds.toFixed(2)} s scene).`} ${Math.max(0, sceneSeconds - start).toFixed(1)} s are left for the direction.`;
+  }
+
   function syncMiniMaxH3Panel() {
     state.syncLlmPopout?.();
     const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
@@ -801,6 +820,7 @@ export function createMiniMaxPanel({
     miniMaxPromptAutoNote.style.display = promptFromLastFrame ? "block" : "none";
     miniMaxContinuationDirection.disabled = !promptFromLastFrame;
     miniMaxContinuationDirectionField.style.opacity = promptFromLastFrame ? "1" : ".55";
+    syncMiniMaxContinuationStart(segment, promptFromLastFrame);
     miniMaxPass2Prompt.value = String(segment?.minimax_h3_pass2_prompt || "");
     miniMaxPass2PromptField.style.display = threePass ? "flex" : "none";
     updateMiniMaxPromptCharacterStatus(segment);

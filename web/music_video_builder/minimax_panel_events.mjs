@@ -27,7 +27,8 @@ export function wireMiniMaxPanel({
   miniMaxDiffusionModelPicker, miniMaxEasyCacheBypass, miniMaxEasyCacheEndPercent,
   miniMaxEasyCacheReuseThreshold, miniMaxEasyCacheStartPercent, miniMaxEasyCacheVerbose,
   miniMaxFp16Accumulation, miniMaxH3ContinuityModeForSegment, miniMaxH3ModeForSegment,
-  miniMaxH3SceneImageUseForSegment, miniMaxH3SettingsForSegment, miniMaxContinuationDirection, miniMaxLatentContextFrames,
+  miniMaxH3SceneImageUseForSegment, miniMaxH3SettingsForSegment, miniMaxContinuationDirection, miniMaxContinuationStart, miniMaxContinuationStartValue,
+  miniMaxLatentContextFrames,
   miniMaxLocationTransitionCustom, miniMaxLocationTransitionPreset, miniMaxLoraCount, miniMaxLoraSlots,
   miniMaxMappedSpeakersForSegment, miniMaxMegapixels, miniMaxMemoryEfficientSageAttention, miniMaxResolutionPreset, miniMaxVideoProfileControls, miniMaxModeButtons,
   miniMaxPass2Prompt, miniMaxPassButtons, miniMaxPrompt, miniMaxSageAttention, miniMaxSamplerName,
@@ -318,6 +319,15 @@ export function wireMiniMaxPanel({
     renderMiniMaxSpeakerAssignmentPanel();
     autoSaveSessionQuiet("MiniMax dialogue cue added").catch(() => null);
   };
+  // Only this slider writes the start, so other saves never turn the default into a stored value.
+  miniMaxContinuationStart.addEventListener("input", () => {
+    const segment = activeSegment();
+    if (!segment) return;
+    segment.minimax_h3_continuation_start_seconds = Number(miniMaxContinuationStart.value);
+    const sceneSeconds = Math.max(0, Number(segment.end || 0) - Number(segment.start || 0));
+    miniMaxContinuationStartValue.textContent = `${Number(miniMaxContinuationStart.value).toFixed(1)} s into the scene. ${Math.max(0, sceneSeconds - Number(miniMaxContinuationStart.value)).toFixed(1)} s are left for the direction.`;
+  });
+  miniMaxContinuationStart.addEventListener("change", () => autoSaveSessionQuiet("MiniMax H3 continuation start").catch(() => null));
   miniMaxContinuationDirection.addEventListener("input", saveMiniMaxSceneInputsFromPanel);
   miniMaxContinuationDirection.addEventListener("change", () => autoSaveSessionQuiet("MiniMax H3 continuation direction").catch(() => null));
   miniMaxPrompt.addEventListener("input", saveMiniMaxSceneInputsFromPanel);

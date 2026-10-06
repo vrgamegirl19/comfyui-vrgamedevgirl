@@ -7,6 +7,7 @@ import { normalizeVideoType, toast } from "./controls.mjs";
 import { miniMaxEffectiveCueEnd, miniMaxH3CueTimingText, miniMaxH3PerformerLabel } from "./lyric_cues.mjs";
 import {
   MINIMAX_H3_VIDEO_REFERENCE_PURPOSES,
+  miniMaxH3ContinuationStartSeconds,
   miniMaxH3ModeLabel,
   normalizeMiniMaxH3ContinuityMode,
   normalizeMiniMaxH3Mode,
@@ -800,10 +801,11 @@ export function createMiniMaxPrompt({
     ];
   }
 
-  // Seconds a continued scene simply carries on before its own movement begins: about a third of the scene.
+  // Seconds a continued scene simply carries on before its own movement begins. The author sets it per scene: at least
+  // 0.5 s in and at most half of the scene, 0.5 s when nothing is set.
   function miniMaxH3ContinuationHoldSeconds(segment) {
     const sceneSeconds = Math.max(0, Number(segment?.end || 0) - Number(segment?.start || 0));
-    return Math.max(1, Math.min(2.5, Math.round(sceneSeconds * 0.35 * 2) / 2));
+    return miniMaxH3ContinuationStartSeconds(sceneSeconds, segment?.minimax_h3_continuation_start_seconds);
   }
 
   // The author's own direction for a continued scene, placed after the hold so the take is never cut.
@@ -811,11 +813,15 @@ export function createMiniMaxPrompt({
     const direction = String(segment?.minimax_h3_continuation_direction || "").replace(/\s+/g, " ").trim();
     if (!direction) return "";
     const holdSeconds = miniMaxH3ContinuationHoldSeconds(segment);
+    const sceneSeconds = Math.max(0, Number(segment?.end || 0) - Number(segment?.start || 0));
+    const secondsLeft = Math.max(0, Math.round((sceneSeconds - holdSeconds) * 100) / 100);
+    const sceneLength = Math.round(sceneSeconds * 100) / 100;
     return (
       `AUTHOR'S DIRECTION FOR THIS SCENE — MANDATORY, THE FINISHED DESCRIPTION MUST CONTAIN IT: "${direction}"\n`
+      + `SCENE TIMING: This scene is ${sceneLength} seconds long. The direction starts at ${holdSeconds} seconds and has to be completely finished before the scene ends, which leaves ${secondsLeft} seconds for it. Perform every action of the direction in the author's order at a brisk pace that fits those ${secondsLeft} seconds, and end the shot with the last action fully done, never cut off or left unfinished. `
       + `Write the one shot description in two timed parts and put the timing in the text itself. First: "For the first ${holdSeconds} seconds, ..." continuing the opening frame's action with the same camera motion, framing, and pace. Then: "At about ${holdSeconds} seconds, ..." performing every action in the direction above, in the author's order and with the author's own verbs and objects, as one smooth continuous movement in the same take. `
       + `If the direction needs a body position or facing different from Attached Picture 1 (for example standing up, walking, or turning), first describe the natural movement that gets the subject there, inside the same take. `
-      + `Do not skip, soften, shorten, or replace any part of the direction. Never cut, change shot, or restart the action to reach it. Write it as the shot's one movement: if the mapped location differs from the previous scene's, let that same movement carry the shot into the new location instead of adding a second one. `
+      + `Do not skip or replace any action in the direction. If it is a lot for the time left, perform its actions in quicker succession rather than leaving any out. Never cut, change shot, or restart the action to reach it. Write it as the shot's one movement: if the mapped location differs from the previous scene's, let that same movement carry the shot into the new location instead of adding a second one. `
       + `Finish by stating where the shot ends.`
       + miniMaxH3MaskedPerformanceText(segment, "transition")
     );
