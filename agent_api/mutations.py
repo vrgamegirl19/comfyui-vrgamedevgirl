@@ -1015,6 +1015,16 @@ def update_scene_reference_mapping(
             if isinstance(mapping.get(api_name), dict):
                 current.update(mapping[api_name])
 
+        # Same switches the Builder sets after a scene mapping (reference_scene_mapping.mjs), so the
+        # mapped subjects and locations are actually used.
+        ref_builder = session["flux_reference_builder"]
+        for api_name, list_key, switch in (
+            ("subjects", "subjects", "use_subject_reference"),
+            ("locations", "locations", "use_location_references"),
+        ):
+            if isinstance(mapping.get(api_name), dict):
+                ref_builder[switch] = bool(ref_builder.get(list_key) or _reference_map(session, api_name))
+
         save_result = _persist_session(folder, session)
         return {
             "scene_mapping": {name: dict(_reference_map(session, name)) for name in _REFERENCE_MAP_KEYS},
