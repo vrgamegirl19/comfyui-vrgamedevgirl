@@ -354,6 +354,7 @@ export function createProjectActions({
         subjectSceneInput.value = data.subject_scene_path;
         state.subjectScenePath = data.subject_scene_path;
       }
+      await state.applyVideoProfileToNewProject?.();
       rememberLastProject(state.projectFolder);
       await saveSession({ quiet: true });
       toast(`New project created.\n${state.projectFolder}`);

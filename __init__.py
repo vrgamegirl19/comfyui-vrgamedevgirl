@@ -25,6 +25,7 @@ _VRGDG_SUBMODULES = (
     ".minimax.latent_upscaler",
     ".browser.nodes",
     ".core.system_routes",
+    ".core.static_cache",
     ".minimax.latent_manager",
     ".minimax.latent_continuation",
     ".agent_api",

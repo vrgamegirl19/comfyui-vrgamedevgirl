@@ -531,6 +531,7 @@ export function createMiniMaxPanel({
   }
 
   function syncMiniMaxH3Panel() {
+    state.syncLlmPopout?.();
     const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
     const segment = videoSettingsSegment();
     state.miniMaxH3PanelSegmentId = String(segment?.id || "");

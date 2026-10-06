@@ -21,6 +21,7 @@ from ..minimax.settings_payload import normalize_minimax_h3_settings
 PROFILE_ENGINE = "minimax_h3"
 PROFILE_VERSION = 1
 MAX_PROFILE_NAME_LENGTH = 60
+LAST_SELECTED_FILE = "_last_selected.json"
 
 # Never saved in or applied from a profile.
 EXCLUDED_PROFILE_KEYS = frozenset({
@@ -142,8 +143,31 @@ def save_video_profile(name: Any, settings: Dict[str, Any], overwrite: bool = Fa
         "saved_at": saved_at,
         "settings": filtered,
     })
+    set_last_video_profile(display_name)
     print(f"[VRGDG Video Profiles] Saved '{display_name}' ({filtered.get('video_mode')}, {filtered.get('render_pass')})")
     return {"name": display_name, "saved_at": saved_at, "settings": filtered}
+
+
+def get_last_video_profile_name() -> str:
+    """Name of the profile chosen last (selected or saved) that still exists, or an empty string."""
+    try:
+        with open(os.path.join(profile_root(), LAST_SELECTED_FILE), "r", encoding="utf-8-sig") as handle:
+            name = str(json.load(handle).get("name") or "").strip()
+    except (OSError, ValueError, AttributeError):
+        return ""
+    if not name:
+        return ""
+    data = _read_profile_file(_profile_path(name))
+    return str(data["name"]) if data is not None and str(data["name"]).strip().lower() == name.lower() else ""
+
+
+def set_last_video_profile(name: Any) -> str:
+    """Remember the profile chosen last so the Builder preselects it. An empty name means no profile."""
+    clean = str(name or "").strip()
+    if clean:
+        clean = load_video_profile(clean)["name"]
+    atomic_write_json(os.path.join(profile_root(), LAST_SELECTED_FILE), {"name": clean})
+    return clean
 
 
 def delete_video_profile(name: Any) -> Dict[str, Any]:

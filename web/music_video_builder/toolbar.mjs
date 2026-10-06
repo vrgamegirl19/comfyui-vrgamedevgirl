@@ -8,6 +8,7 @@ import {
   makeCheckbox,
   makeField,
   makeInput,
+  makeSelect,
   makeVideoTypeSelect,
   normalizeProjectVideoEngine,
   normalizeVideoType,
@@ -326,6 +327,27 @@ export function buildProjectControls({ node }) {
   videoTypeField.style.fontWeight = "500";
   videoTypeSelect.style.fontFamily = BUILDER_FONT_STACK;
   videoTypeSelect.style.fontWeight = "400";
+  // UI layout profiles: how the Builder looks (side panel, panel sizes, timeline height). Independent of video profiles.
+  const uiProfileSelect = makeSelect([{ value: "", label: "Default layout" }], "");
+  uiProfileSelect.style.flex = "1";
+  uiProfileSelect.style.minWidth = "0";
+  uiProfileSelect.setAttribute("aria-label", "UI layout");
+  uiProfileSelect.title = "Choose a saved UI layout: side panel hidden or shown, panel sizes and timeline height. The selected layout is updated as you change it and loads again next time.";
+  const uiProfileAddButton = makeButton("+");
+  uiProfileAddButton.title = "Save the current layout as a new UI layout";
+  uiProfileAddButton.setAttribute("aria-label", "Save the current layout");
+  const uiProfileRemoveButton = makeButton("\u2212");
+  uiProfileRemoveButton.title = "Delete the selected UI layout";
+  uiProfileRemoveButton.setAttribute("aria-label", "Delete the selected UI layout");
+  for (const button of [uiProfileAddButton, uiProfileRemoveButton]) button.style.padding = "7px 10px";
+  const uiProfileRow = document.createElement("div");
+  uiProfileRow.style.cssText = "display:flex;gap:4px;align-items:center;";
+  uiProfileRow.append(uiProfileSelect, uiProfileAddButton, uiProfileRemoveButton);
+  const uiProfileField = makeField("UI Layout", uiProfileRow);
+  uiProfileField.style.minWidth = "200px";
+  uiProfileField.style.fontFamily = BUILDER_FONT_STACK;
+  uiProfileField.style.fontWeight = "500";
+  const uiProfileControls = { select: uiProfileSelect, addButton: uiProfileAddButton, removeButton: uiProfileRemoveButton };
   const autoSaveControl = makeCheckbox("Auto save", true);
   autoSaveControl.wrapper.style.cssText += "border:1px solid #3f3f46;border-radius:6px;background:#18181b;padding:7px 10px;";
   const fullscreenButton = makeButton("Fullscreen");
@@ -336,8 +358,8 @@ export function buildProjectControls({ node }) {
     audioInput, autoSaveControl, branchProjectButton, closeButton, exportProjectButton, fullscreenButton,
     importProjectButton, loadButton, loadLastProjectButton, loadSessionButton, loadSrtButton, menuButton,
     newProjectButton, pickAudioButton, pickSrtButton, projectInput, reviewGuideButton, saveButton,
-    saveProjectAsButton, settingsButton, srtInput, topbar, videoTypeField, videoTypeSelect,
-    whatsNewMenuButton,
+    saveProjectAsButton, settingsButton, srtInput, topbar, uiProfileControls, uiProfileField, videoTypeField,
+    videoTypeSelect, whatsNewMenuButton,
   };
 }
 
@@ -345,7 +367,7 @@ export function buildTopbar({
   autoSaveControl, branchProjectButton, builderETAState, builderLifecycle, closeBuilderNow, closeButton,
   exportProjectButton, fullscreenButton, importProjectButton, loadLastProjectButton, loadSessionButton,
   menuButton, newProjectButton, overlay, reviewGuideButton, saveButton, saveProjectAsButton, saveSession,
-  settingsButton, topbar, videoTypeField, whatsNewMenuButton,
+  settingsButton, topbar, uiProfileField, videoTypeField, whatsNewMenuButton,
 }) {
   const confirmCloseBuilder = () => {
     const backdrop = document.createElement("div");
@@ -562,7 +584,7 @@ export function buildTopbar({
   menuDropdown.append(updateV10Row);
   const projectActions = document.createElement("div");
   projectActions.style.cssText = "display:flex;gap:6px;align-items:center;flex-wrap:nowrap;min-width:max-content;";
-  projectActions.append(menuButton, videoTypeField, saveButton);
+  projectActions.append(menuButton, videoTypeField, uiProfileField, saveButton);
   const batchActions = document.createElement("div");
   batchActions.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:nowrap;border-left:1px solid #3f3f46;border-right:1px solid #3f3f46;padding:0 10px;flex:0 0 auto;";
   batchActions.style.display = "none";

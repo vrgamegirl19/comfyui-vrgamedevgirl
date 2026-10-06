@@ -124,7 +124,9 @@ import { createMiniMaxPrompt } from "./minimax_prompt.mjs";
 import { createBatchPrompts } from "./batch_prompts.mjs";
 import { createProjectSetup } from "./project_setup.mjs";
 import { createBeatCalibration } from "./beat_calibration.mjs";
+import { createLlmPopout } from "./llm_popout.mjs";
 import { createTimelineState } from "./timeline_state.mjs";
+import { createUiProfileActions } from "./ui_profiles.mjs";
 import { createMiniMaxReferences } from "./minimax_references.mjs";
 import { createIdLoraBuilder } from "./id_lora_builder.mjs";
 import { createVideoRender } from "./video_render.mjs";
@@ -182,8 +184,8 @@ export function openBuilder(node) {
     audioInput, autoSaveControl, branchProjectButton, closeButton, exportProjectButton, fullscreenButton,
     importProjectButton, loadButton, loadLastProjectButton, loadSessionButton, loadSrtButton, menuButton,
     newProjectButton, pickAudioButton, pickSrtButton, projectInput, reviewGuideButton, saveButton,
-    saveProjectAsButton, settingsButton, srtInput, topbar, videoTypeField, videoTypeSelect,
-    whatsNewMenuButton,
+    saveProjectAsButton, settingsButton, srtInput, topbar, uiProfileControls, uiProfileField, videoTypeField,
+    videoTypeSelect, whatsNewMenuButton,
   } = buildProjectControls({
     node,
   });
@@ -215,7 +217,7 @@ export function openBuilder(node) {
     autoSaveControl, branchProjectButton, builderETAState, builderLifecycle, closeBuilderNow, closeButton,
     exportProjectButton, fullscreenButton, importProjectButton, loadLastProjectButton, loadSessionButton,
     menuButton, newProjectButton, overlay, reviewGuideButton, saveButton, saveProjectAsButton, settingsButton,
-    topbar, videoTypeField, whatsNewMenuButton,
+    topbar, uiProfileField, videoTypeField, whatsNewMenuButton,
     saveSession: (...args) => saveSession(...args),
   });
 
@@ -252,6 +254,19 @@ export function openBuilder(node) {
   });
   leftTabBar.append(scenesTabButton, toolsTabButton, lutsTabButton);
   segmentList.append(leftTabBar, sceneListPane, toolsPane, postProcessPane);
+  // A tab on the edge of the left panel hides it so the video window and timeline get the space, and shows it again.
+  const leftPanelToggle = document.createElement("button");
+  leftPanelToggle.type = "button";
+  leftPanelToggle.style.cssText = "position:absolute;top:50%;transform:translateY(-50%);z-index:6;width:16px;height:64px;padding:0;border:1px solid #155e75;border-left:0;border-radius:0 8px 8px 0;background:#083344;color:#cffafe;font-size:11px;font-weight:900;cursor:pointer;display:flex;align-items:center;justify-content:center;";
+  // Starting text and spots. applyLayoutSizes moves them, but a browser holding an older timeline_state.mjs would
+  // otherwise leave both tabs blank and stacked at the left edge.
+  leftPanelToggle.textContent = "◀";
+  leftPanelToggle.style.left = "267px";
+  const rightPanelToggle = document.createElement("button");
+  rightPanelToggle.type = "button";
+  rightPanelToggle.textContent = "▶";
+  rightPanelToggle.style.cssText = "position:absolute;top:50%;transform:translateY(-50%);z-index:6;width:16px;height:64px;padding:0;border:1px solid #155e75;border-right:0;border-radius:8px 0 0 8px;background:#083344;color:#cffafe;font-size:11px;font-weight:900;cursor:pointer;display:flex;align-items:center;justify-content:center;";
+  rightPanelToggle.style.right = "360px";
   const leftResizeHandle = document.createElement("div");
   leftResizeHandle.title = "Drag to resize scene list";
   leftResizeHandle.style.cssText = "cursor:col-resize;background:#18181b;border-left:1px solid #27272a;border-right:1px solid #27272a;";
@@ -919,6 +934,14 @@ export function openBuilder(node) {
     imageContinuityEnabled: false,
     imageContinuityStrength: "balanced",
     leftPanelWidth: 260,
+    leftPanelCollapsed: false,
+    rightPanelCollapsed: false,
+    llmPopoutOpen: false,
+    llmPopoutWidth: 460,
+    llmPopoutHeight: 460,
+    llmPopoutX: null,
+    llmPopoutY: null,
+    uiProfile: "",
     rightPanelWidth: 360,
     timelinePanelHeight: 300,
     projectFolder: projectInput.value,
@@ -1036,6 +1059,21 @@ export function openBuilder(node) {
     isRestoringHistory: false,
     batchCancelled: false,
   };
+  // A floating window with the MiniMax prompt fields, opened by a checkbox at the top of the right panel.
+  const llmPopout = createLlmPopout({
+    state, inspector, overlay,
+    fields: {
+      prompt: miniMaxPrompt,
+      saveButton: saveMiniMaxPromptButton,
+      status: miniMaxPromptCharacterStatus,
+      pass2Prompt: miniMaxPass2Prompt,
+      pass2Field: miniMaxPass2PromptField,
+    },
+    autoSaveSessionQuiet: (...args) => autoSaveSessionQuiet(...args),
+    activeSegment: (...args) => activeSegment(...args),
+    sceneDisplayName: (...args) => sceneDisplayName(...args),
+    segmentIndexInfo: (...args) => segmentIndexInfo(...args),
+  });
 
   const {
     createDetailedLocationDescriptionWithGemma, createProgressWindow, describeReferenceImageWithGemma,
@@ -1910,9 +1948,9 @@ export function openBuilder(node) {
     usingSceneAudioPlaybackMode, videoSettingsSegment,
   } = createTimelineState({
     audio, audioInput, autoSaveSessionQuiet, cancelPreviewPlayStart, currentVideoMode, drawWaveform,
-    idLoraTrimModeButton, main, miniMaxH3SettingsForSegment, multiSelectButton, playButton, previewVideo,
-    render, renderSegments, sceneAudio, sceneDisplayName, setActiveSegment, setGlobalPlaybackTime, shell,
-    silentTimeline, state, syncInspector, timelineViewport, updateAudioScrubbers, updateGlobalAudioMuteButton,
+    idLoraTrimModeButton, inspector, leftPanelToggle, leftResizeHandle, main, miniMaxH3SettingsForSegment,
+    multiSelectButton, playButton, previewVideo, render, renderSegments, rightPanelToggle, rightResizeHandle, sceneAudio, sceneDisplayName, setActiveSegment, setGlobalPlaybackTime, shell,
+    segmentList, silentTimeline, state, syncInspector, timelineViewport, updateAudioScrubbers, updateGlobalAudioMuteButton,
     wizardVideoSettings,
   });
 
@@ -2877,10 +2915,28 @@ export function openBuilder(node) {
     setMiniMaxH3RenderPassForSegment, state, syncMiniMaxH3Panel, syncMiniMaxReferenceButtons, twoPassControls,
     videoSettingsSegment, wizardVideoSettings,
   });
+  main.style.position = "relative";
+  main.append(leftPanelToggle, rightPanelToggle);
+  rightPanelToggle.onclick = () => {
+    state.rightPanelCollapsed = !state.rightPanelCollapsed;
+    applyLayoutSizes();
+    state.onLayoutChanged?.();
+    autoSaveSessionQuiet("right panel toggled");
+  };
+  leftPanelToggle.onclick = () => {
+    state.leftPanelCollapsed = !state.leftPanelCollapsed;
+    applyLayoutSizes();
+    state.onLayoutChanged?.();
+    autoSaveSessionQuiet("left panel toggled");
+  };
   makePanelResize(leftResizeHandle, "left");
   makePanelResize(rightResizeHandle, "right");
   makePanelResize(timelineResizeHandle, "timeline");
-  applyLayoutSizes();
+  llmPopout.activate();
+  // UI layout profiles. The one chosen last loads now and its layout wins over the project's saved sizes.
+  const uiProfiles = createUiProfileActions({ controls: uiProfileControls, state, toast, applyLayoutSizes, autoSaveSessionQuiet });
+  uiProfiles.wire();
+  uiProfiles.refresh().catch((error) => console.warn("[VRGDG Music Builder] Could not load UI layouts:", error));
   setInspectorTab("scene");
   wireFluxKleinControls({
     fluxClipPicker, fluxHeight, fluxLoraCount, fluxLoraSlots, fluxNotes, fluxPrompt, fluxSeed, fluxUnetPicker,
