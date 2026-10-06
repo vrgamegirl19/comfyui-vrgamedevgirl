@@ -626,6 +626,19 @@ class BuilderLatentContinuationWiringTests(unittest.TestCase):
         self.assertIn('continuity_mode === "latent_continuation_masked"', BUILDER_SOURCE)
         self.assertIn("Latent Continuation Masked works with Single pass only", BUILDER_SOURCE)
 
+    def test_preview_shifts_scene_times_by_whole_frames_so_clips_keep_their_frame_counts(self):
+        self.assertIn("const frameAlignedOffset = Math.round(timelineOffset * 24) / 24;", BUILDER_SOURCE)
+        # the rounding the Builder uses for the clip lengths: a whole-frame shift keeps every scene's frame count
+        def frames(start, end, offset=0.0):
+            return int((end - offset) * 24 + 0.5) - int((start - offset) * 24 + 0.5)
+        scenes = [(44.78, 49.22), (49.22, 54.16), (54.16, 58.98)]
+        absolute = [frames(*scene) for scene in scenes]
+        shifted = [frames(*scene, offset=round(44.78 * 24) / 24) for scene in scenes]
+        unshifted = [frames(*scene, offset=44.78) for scene in scenes]
+        self.assertEqual(absolute, [106, 119, 116])
+        self.assertEqual(shifted, absolute)
+        self.assertNotEqual(unshifted, absolute)  # the stutter: 107 / 118 / 116
+
     def test_render_payload_carries_the_latent_settings(self):
         for key in (
             "continuity_mode: continuityInput?.continuityMode",

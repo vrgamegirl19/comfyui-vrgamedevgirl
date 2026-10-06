@@ -1113,9 +1113,13 @@ export function createVideoRender({
       }
     }
     const paths = baseSegments.map((segment) => String(selectedSegmentVideoPath(segment) || "").trim());
+    // Every scene clip was cut to round(end * 24) - round(start * 24) frames of the whole project. A preview of a few
+    // scenes shifts the times, so the shift must be a whole number of frames or the rounding differs and a clip is
+    // padded with a repeated frame or loses one at the join (a stutter).
+    const frameAlignedOffset = Math.round(timelineOffset * 24) / 24;
     const sceneTimingItems = miniMaxProject ? baseSegments.map((segment) => ({
-      start: Math.max(0, Number(segment.start || 0) - timelineOffset),
-      end: Math.max(0, Number(segment.end || 0) - timelineOffset),
+      start: Math.max(0, Number(segment.start || 0) - frameAlignedOffset),
+      end: Math.max(0, Number(segment.end || 0) - frameAlignedOffset),
     })) : [];
     const overlayItems = overlaySegments
       .filter((segment) => String(selectedSegmentVideoPath(segment) || "").trim())
