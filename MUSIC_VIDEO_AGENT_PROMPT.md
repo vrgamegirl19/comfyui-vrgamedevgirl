@@ -97,8 +97,10 @@ Use the project id returned by `project_create` in every later call.
 
 ### F. Render and stitch
 15b. Only when `continue_scenes` is true: `project_update_settings` with
-    `{"minimax_h3": {"continuity_mode": "latent_continuation_masked", "latent_context_frames": 39, "location_transition_preset": "masked"}}`
-    before any prompt is written. Scene 1 renders normally. Every later scene starts from the previous scene's last moments, so its
+    `{"minimax_h3": {"continuity_mode": "latent_continuation_masked", "latent_context_frames": 39, "location_transition_preset": "masked", "continuity_prompt_from_last_frame": true}}`
+    before any prompt is written. With `continuity_prompt_from_last_frame` each continued scene's prompt is written again from the
+    previous scene's real final frame right before it renders (the loaded LLM must be able to read images, otherwise it uses the
+    previous scene's last shot). Scene 1 renders normally. Every later scene starts from the previous scene's last moments, so its
     prompt is the next moment of the same take: carry on for the first part of the scene, then make one smooth movement, never a cut.
     `minimax_prompts` already writes it that way. To direct a scene yourself, `scene_update` with
     `patch: {"minimax_h3_continuation_direction": "he turns to the camera, then sits down"}` (the action only, no lyrics), then

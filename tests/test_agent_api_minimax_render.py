@@ -24,7 +24,9 @@ video_orch_mod = importlib.import_module(f"{pkg_name}.agent_api.orchestrator.vid
 video_files_mod = importlib.import_module(f"{pkg_name}.runner.video_files")
 
 
-class MiniMaxRenderPayloadTests(unittest.TestCase):
+class _RenderScaffold(unittest.TestCase):
+    """One project on disk with a fake ComfyUI client. The tests are in the classes below."""
+
     def setUp(self):
         self.test_dir = tempfile.mkdtemp(prefix="vrgdg_minimax_render_")
         self.project_dir = os.path.join(self.test_dir, "MiniMaxProject")
@@ -104,6 +106,9 @@ class MiniMaxRenderPayloadTests(unittest.TestCase):
             asyncio.run(video_orch_mod.render_scene_video_async("MiniMaxProject", "scene_001", params or {}))
         return captured
 
+
+
+class MiniMaxRenderPayloadTests(_RenderScaffold):
     def test_advanced_project_builds_the_advanced_graph_with_saved_ui_settings(self):
         captured = self._render({"mode": "minimax_h3"})
         payload = captured["payload"]
@@ -193,6 +198,85 @@ class MiniMaxRenderPayloadTests(unittest.TestCase):
         with self.assertRaises(errors.ValidationError):
             self._render({"mode": "minimax_h3"})
 
+
+
+class ContinuedSceneRenderTests(_RenderScaffold):
+    """A scene continued with latent_continuation_masked is written from the previous scene's final frame, then rendered."""
+
+    def setUp(self):
+        super().setUp()
+        import torch
+
+        latents = importlib.import_module(f"{pkg_name}.minimax.latent_manager")
+        previous_video = os.path.join(self.test_dir, "scene1.mp4")
+        Path(previous_video).write_bytes(b"\x00\x00\x00\x20ftypisom")
+        self.previous_video = previous_video
+        session = self.session
+        session["minimax_h3_settings"] = {
+            "video_mode": "reference_to_video", "render_pass": "single",
+            "continuity_mode": "latent_continuation_masked", "continuity_prompt_from_last_frame": True,
+        }
+        session["flux_reference_builder"]["scene_map"] = {"scene_001": "l1", "scene_002": "l1"}
+        session["segments"] = [
+            {"id": "scene_001", "start": 0.0, "end": 3.0, "minimax_h3_prompt": "scene one prompt", "video_path": previous_video},
+            {"id": "scene_002", "start": 3.0, "end": 6.0, "minimax_h3_prompt": "stale prompt"},
+        ]
+        with open(os.path.join(self.project_dir, "vrgdg_builder_session.json"), "w", encoding="utf-8") as handle:
+            json.dump(session, handle)
+        latents.SceneLatentManager.save_latent(
+            self.project_dir, 1, {"video": torch.zeros(1, 24, 12, 4, 4), "audio": torch.zeros(1, 32, 2, 65)},
+            metadata={"tail_padding_frames": 0},
+        )
+
+    def _render_two(self, params=None):
+        captured = {}
+
+        def fake_build(mode, payload):
+            captured["payload"] = dict(payload)
+            return {"prompt": {"1": {"class_type": "Noop", "inputs": {}}}, "output_folder": self.project_dir}
+
+        target = os.path.join(self.project_dir, "rendered_scene_videos", "video_0002-audio.mp4")
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        shutil.copy2(self.video, target)
+        writer = importlib.import_module(f"{pkg_name}.agent_api.orchestrator.minimax_prompt_orchestrator")
+        calls = []
+
+        def fake_write(project_id, scene_id, frame, previous_scene_id="", params=None):
+            calls.append({"scene_id": scene_id, "frame": frame, "previous": previous_scene_id})
+            return {"prompt": "WRITTEN FROM THE FINAL FRAME", "warnings": []}
+
+        with patch.object(video_orch_mod, "build_video_graph_for_mode", side_effect=fake_build),                 patch.object(video_orch_mod, "resolve_comfy_video_path", return_value=self.video),                 patch.object(video_orch_mod, "_extract_final_frame_for_continuity", return_value="FRAME.png") as extract,                 patch.object(writer, "write_continued_scene_prompt", side_effect=fake_write),                 patch.object(video_files_mod, "_collect_scene_video", return_value={"video_path": target, "thumbnail_path": ""}):
+            asyncio.run(video_orch_mod.render_scene_video_async("MiniMaxProject", "scene_002", params or {"mode": "minimax_h3"}))
+        return captured, calls, extract
+
+    def test_the_prompt_is_written_from_the_previous_final_frame_before_the_render(self):
+        captured, calls, extract = self._render_two()
+        self.assertEqual(calls, [{"scene_id": "scene_002", "frame": "FRAME.png", "previous": "scene_001"}])
+        self.assertEqual(extract.call_args[0][1], self.previous_video)
+        self.assertEqual(captured["payload"]["prompt"], "WRITTEN FROM THE FINAL FRAME")
+        self.assertEqual(captured["payload"]["continuity_mode"], "latent_continuation_masked")
+
+    def test_the_saved_prompt_is_used_when_the_option_is_off_or_the_caller_sends_one(self):
+        self.session["minimax_h3_settings"]["continuity_prompt_from_last_frame"] = False
+        with open(os.path.join(self.project_dir, "vrgdg_builder_session.json"), "w", encoding="utf-8") as handle:
+            json.dump(self.session, handle)
+        captured, calls, _ = self._render_two()
+        self.assertEqual(calls, [])
+        self.assertEqual(captured["payload"]["prompt"], "stale prompt")
+        self.session["minimax_h3_settings"]["continuity_prompt_from_last_frame"] = True
+        with open(os.path.join(self.project_dir, "vrgdg_builder_session.json"), "w", encoding="utf-8") as handle:
+            json.dump(self.session, handle)
+        captured, calls, _ = self._render_two({"mode": "minimax_h3", "prompt": "mine"})
+        self.assertEqual(calls, [])
+        self.assertEqual(captured["payload"]["prompt"], "mine")
+
+    def test_a_predecessor_without_a_rendered_video_is_a_clear_error(self):
+        self.session["segments"][0].pop("video_path")
+        with open(os.path.join(self.project_dir, "vrgdg_builder_session.json"), "w", encoding="utf-8") as handle:
+            json.dump(self.session, handle)
+        with self.assertRaises(errors.ValidationError) as caught:
+            self._render_two()
+        self.assertIn("Render it first", str(caught.exception))
 
 
 class EventLoopSafetyTests(unittest.TestCase):

@@ -61,10 +61,16 @@ SETTING_NOTES: Dict[str, str] = {
         "Frames of the previous scene's latent used as context. latent_continuation_masked takes 39 (recommended), 90, "
         "141 or 192 and falls back to 39 for any other value. The other latent modes take 16, 22, 39 or 56."
     ),
+    "continuity_prompt_from_last_frame": (
+        "With continuity_mode latent_continuation_masked, a render of scene 2 or later first writes the scene's prompt from the "
+        "previous scene's rendered final frame (the loaded LLM is shown the frame), saves it on the scene, then renders it. The "
+        "previous scene must be rendered first. A loaded model that cannot read images falls back to the previous scene's last shot as text."
+    ),
     "location_transition_preset": (
         "How the scene prompt moves between two different mapped locations. masked is written for "
         "latent_continuation_masked: continue for about a third of the scene, then make one smooth move. "
-        "Only the Video Builder's automatic prompt writer uses it, agents write the shots themselves."
+        "Used by the final-frame prompt writer (the Video Builder's and the API's continuity_prompt_from_last_frame) and by "
+        "minimax-prompts for a continued scene."
     ),
 }
 

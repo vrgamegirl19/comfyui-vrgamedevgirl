@@ -258,6 +258,31 @@ async def render_scene_video_async(
 
     # Prompt text
     if "minimax" in mode:
+        # The Video Builder's "create each next scene prompt from the previous rendered final frame": a scene continued with
+        # latent_continuation_masked is written from the real last frame of the scene before it, right before it renders.
+        if (
+            mode_group == "minimax_h3" and scene_number > 1 and not p.get("prompt")
+            and str(payload.get("continuity_mode") or "") == "latent_continuation_masked"
+            and minimax_settings.get("continuity_prompt_from_last_frame")
+        ):
+            previous = segments[idx - 1]
+            previous_video = str(previous.get("video_path") or previous.get("rendered_video_path") or "").strip()
+            if not previous_video or not os.path.isfile(previous_video):
+                raise ValidationError(
+                    f"Scene {scene_number} is set to write its prompt from scene {scene_number - 1}'s final frame, "
+                    f"but scene {scene_number - 1} has no rendered video. Render it first."
+                )
+            if manager and job:
+                manager.update_progress(job.id, 6.0, "preparing", scene_id=scene_id, message=f"Writing the scene {scene_number} prompt from scene {scene_number - 1}'s final frame...")
+            frame_path = await asyncio.to_thread(_extract_final_frame_for_continuity, folder, previous_video, scene_number)
+            from .minimax_prompt_orchestrator import write_continued_scene_prompt
+
+            written = await asyncio.to_thread(
+                write_continued_scene_prompt, project_id, str(seg.get("id") or scene_id), frame_path, str(previous.get("id") or ""), p,
+            )
+            seg["minimax_h3_prompt"] = written["prompt"]
+            for warning in written.get("warnings") or []:
+                logger.warning(f"Scene {scene_number}: {warning}")
         # The Video Builder renders the saved MiniMax prompt, falling back to the video prompt.
         video_prompt = str(p.get("prompt") or seg.get("minimax_h3_prompt") or seg.get("i2v_prompt") or "").strip()
         if not video_prompt:

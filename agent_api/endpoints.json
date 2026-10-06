@@ -1682,7 +1682,7 @@
     },
     {
       "body_keys": [],
-      "description": "Render one scene's video with ComfyUI (`mode`, e.g. `minimax_h3`). Trims to the exact timeline length and saves it as `video_NNNN-audio.mp4`. Set `audio_mode: built_in_audio` in the MiniMax settings for H3 voices and sound (Single or 2 Pass; 2 Pass Advanced needs input audio). With `continuity_mode: latent_continuation_masked` the previous scene must be rendered first (`PREDECESSOR_MISSING` otherwise); it works in Single, 2 Pass and 2 Pass Advanced.",
+      "description": "Render one scene's video with ComfyUI (`mode`, e.g. `minimax_h3`). Trims to the exact timeline length and saves it as `video_NNNN-audio.mp4`. Set `audio_mode: built_in_audio` in the MiniMax settings for H3 voices and sound (Single or 2 Pass; 2 Pass Advanced needs input audio). With `continuity_mode: latent_continuation_masked` the previous scene must be rendered first (`PREDECESSOR_MISSING` otherwise); it works in Single, 2 Pass and 2 Pass Advanced. When `continuity_prompt_from_last_frame` is also true, the scene's prompt is first written by the LLM from the previous scene's rendered final frame (the Video Builder's automatic prompt), saved on the scene, and then rendered. A `prompt` in `params` skips that.",
       "if_match": false,
       "job": true,
       "method": "POST",

@@ -139,6 +139,45 @@ class ShotTaskTests(unittest.TestCase):
         self.assertNotIn("singing", plain)
 
 
+class PictureTaskTests(unittest.TestCase):
+    CONTINUATION = {"hold_seconds": 1.5, "direction": "he sits down on the couch"}
+
+    def test_with_the_final_frame_the_task_is_the_builders_masked_contract(self):
+        text = shot_prompt.continuation_task_text(self.CONTINUATION, with_picture=True, has_vocals=True)
+        self.assertIn("FRAME-TO-FRAME CONTINUITY — HIGHEST PRIORITY", text)
+        self.assertIn("Attached Picture 1 is the previous rendered scene's actual final frame", text)
+        self.assertIn("this scene is the very next moment of the same uninterrupted take, not a new shot", text)
+        self.assertIn("then carry on exactly as the AUTHOR'S DIRECTION at the end of this scene concept says", text)
+        self.assertIn("OPENING SUBJECT VISIBILITY — IMAGE-AWARE", text)
+        self.assertIn("The performer is mid-performance", text)
+        self.assertIn("first describe the natural movement that gets the subject there", text)
+        self.assertNotIn("PREVIOUS SCENE'S LAST SHOT", text)
+        # the last shot is the stand-in only when there is no picture
+        stand_in = shot_prompt.continuation_task_text(self.CONTINUATION, "He walks.", with_picture=False)
+        self.assertIn("PREVIOUS SCENE'S LAST SHOT", stand_in)
+        self.assertNotIn("Attached Picture 1 is the previous", stand_in)
+
+    def test_the_location_contract_follows_the_builders_presets(self):
+        roof = {"id": "l1", "name": "Rooftop", "description": "A neon rooftop. Wind and signs."}
+        lobby = {"id": "l2", "name": "Lobby", "description": "Polished marble."}
+        contract = shot_prompt.location_continuity_contract
+        self.assertEqual(contract(None, roof), "")
+        same = contract(roof, roof, "masked")
+        self.assertIn("LOCATION PHASE — ESTABLISHED CURRENT LOCATION: Rooftop (A neon rooftop.)", same)
+        masked = contract(lobby, roof, "masked", hold_seconds=2.0, has_vocals=True)
+        self.assertIn("LOCATION PHASE — MASKED CONTINUATION TRANSITION", masked)
+        self.assertIn("for the first 2 seconds simply continue the opening frame's action in Rooftop (A neon rooftop.)", masked)
+        self.assertIn("At about 2 seconds, begin ONE smooth, motivated movement", masked)
+        self.assertIn("keeps singing the scene's lyrics on camera through the whole movement", masked)
+        self.assertIn("end looking deeper into Lobby (Polished marble.)", masked)
+        self.assertNotIn("keeps singing", contract(lobby, roof, "masked", has_vocals=False))
+        self.assertIn("PHYSICAL THRESHOLD TURN", contract(lobby, roof, "normal"))
+        self.assertIn("Apply this scene's authored transition direction: slow dolly", contract(lobby, roof, "custom", custom="slow dolly"))
+        self.assertIn("CUSTOM TRANSITION FALLBACK", contract(lobby, roof, "custom"))
+        for preset in ("surreal", "cinematic", "inner_world", "match", "motion", "creative_auto"):
+            self.assertIn("LOCATION PHASE", contract(lobby, roof, preset))
+
+
 class PromptWriterTests(Base):
     def setUp(self):
         super().setUp()
@@ -169,6 +208,49 @@ class PromptWriterTests(Base):
         self.assertIn("The camera tracks backward. <Subject 1> walks the alley.", task)  # the previous scene's last shot
         self.assertIn("he turns to the camera and sits down", task)
         self.assertIn("THE FINISHED DESCRIPTION MUST CONTAIN IT", task)
+
+    def _write(self, frame, replies):
+        calls = []
+
+        def fake(payload):
+            calls.append(payload)
+            reply = replies.pop(0)
+            if isinstance(reply, Exception):
+                raise reply
+            return {"prompt": reply}
+
+        shot = '{"shots":[{"description":"Continuing seamlessly from the previous shot. <Subject 1> (Darrel) walks on."}]}'
+        replies = [shot if r == "ok" else r for r in replies]
+        with patch.object(mm.vid_gen, "_generate_builder_t2v_prompt", fake):
+            result = mm.write_continued_scene_prompt("Song", self.segments[1]["id"], frame, self.segments[0]["id"])
+        return result, calls
+
+    def test_the_final_frame_is_shown_to_the_llm_like_the_builder_does(self):
+        result, calls = self._write("C:/frames/last.png", ["ok"])
+        request = calls[0]
+        self.assertEqual(request["builder_instruction_key"], "minimax_h3_frame_continuity")
+        self.assertTrue(request["frame_continuity_prompt"])
+        self.assertEqual(request["image_references"], [{"path": "C:/frames/last.png", "frame_continuity_source": True}])
+        self.assertIn("Attached Picture 1 is the previous rendered scene's actual final frame", request["t2i_prompt"])
+        self.assertIn("LOCATION PHASE — ESTABLISHED CURRENT LOCATION", request["t2i_prompt"])
+        self.assertTrue(result["used_previous_frame"])
+        saved = self.read_session()["segments"][1]
+        self.assertEqual(saved["minimax_h3_prompt_origin"], "previous_final_frame")
+        self.assertEqual(saved["minimax_h3_continuity_prompt_frame_path"], "C:/frames/last.png")
+        self.assertEqual(saved["minimax_h3_continuity_prompt_source_scene_id"], self.segments[0]["id"])
+        self.assertTrue(saved["minimax_h3_continuity_prompt_created_at"])
+        self.assertIn("Continuing seamlessly from the previous shot.", saved["minimax_h3_prompt"])
+
+    def test_a_model_that_cannot_read_images_falls_back_to_the_previous_shot_and_says_so(self):
+        result, calls = self._write("C:/frames/last.png", [RuntimeError("this model does not support image input"), "ok"])
+        self.assertEqual(len(calls), 2)
+        self.assertIn("image_references", calls[0])
+        self.assertNotIn("image_references", calls[1])
+        self.assertEqual(calls[1]["builder_instruction_key"], "minimax_h3_reference_to_video")
+        self.assertIn("PREVIOUS SCENE'S LAST SHOT", calls[1]["t2i_prompt"])
+        self.assertFalse(result["used_previous_frame"])
+        self.assertIn("could not read the previous scene's final frame", result["warnings"][0])
+        self.assertEqual(self.read_session()["segments"][1]["minimax_h3_prompt_origin"], "gemma")
 
     def test_the_first_scene_and_other_modes_are_written_as_before(self):
         session = self.read_session()
