@@ -132,6 +132,32 @@ class VideoProfileTests(unittest.TestCase):
         self.assertEqual(profiles.list_video_profiles(), [])
 
 
+class PipelineIsNotPartOfAProfileTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        patcher = patch.object(profiles, "profile_root", return_value=os.path.join(self._tmp.name, "profiles"))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_neither_saving_nor_loading_carries_the_pipeline(self):
+        saved = profiles.save_video_profile("From a RefMod project", {
+            "pipeline": "refmod", "video_mode": "reference_to_video", "render_pass": "two_pass",
+        })
+        self.assertNotIn("pipeline", saved["settings"])
+        self.assertNotIn("pipeline", profiles.load_video_profile("From a RefMod project")["settings"])
+
+    def test_a_profile_file_saved_before_this_rule_cannot_bring_the_pipeline_back(self):
+        # This is what the Builder used to receive: the load filled in the default pipeline, "standard", which
+        # replaced a RefMod project's pipeline and hid the RefMod pickers.
+        profiles.save_video_profile("Old", {"video_mode": "reference_to_video", "render_pass": "two_pass"})
+        path = os.path.join(profiles.profile_root(), "old.json")
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        data["settings"]["pipeline"] = "standard"
+        Path(path).write_text(json.dumps(data), encoding="utf-8")
+        self.assertNotIn("pipeline", profiles.load_video_profile("Old")["settings"])
+
+
 class ExclusionListTests(unittest.TestCase):
     def test_excluded_keys_are_real_settings(self):
         known = set(payload_mod.minimax_h3_defaults()) | set(payload_mod._OPTIONAL_SETTINGS)
@@ -143,6 +169,9 @@ class ExclusionListTests(unittest.TestCase):
         for key in ("audio_mode", "continuity_mode", "latent_context_frames", "continuity_prompt_from_last_frame",
                     "location_transition_preset", "location_transition_custom"):
             self.assertIn(key, profiles.EXCLUDED_PROFILE_KEYS)
+
+    def test_the_project_pipeline_is_excluded_so_a_profile_cannot_switch_refmod_back_to_standard(self):
+        self.assertIn("pipeline", profiles.EXCLUDED_PROFILE_KEYS)
 
     def test_video_selection_settings_are_not_excluded(self):
         for key in ("video_mode", "render_pass", "diffusion_model_name", "resolution_preset", "megapixels",

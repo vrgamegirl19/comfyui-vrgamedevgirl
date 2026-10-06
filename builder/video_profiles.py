@@ -3,7 +3,7 @@
 A profile is a snapshot of the video settings a user chose in the Video Builder: the video type
 (text / image / reference to video), the render pass (single, 2 Pass, 2 Pass Advanced) and everything
 that belongs to it (models, resolution, sampler, LoRAs, acceleration, ...). The lock-this-scene state,
-the audio mode and the between-scene continuity settings are not part of a profile.
+the audio mode, the between-scene continuity settings and the Standard / RefMod pipeline are not part of a profile.
 
 Each profile is one JSON file under ``<ComfyUI output>/VRGDG_Video_Profiles/minimax_h3/``. This module
 only reads and writes those files; the HTTP routes live in ``builder/routes.py``.
@@ -27,6 +27,9 @@ LAST_SELECTED_FILE = "_last_selected.json"
 EXCLUDED_PROFILE_KEYS = frozenset({
     # Audio
     "audio_mode",
+    # The project's pipeline (Standard or RefMod) belongs to the project. A profile never carries it, so choosing
+    # one cannot switch a RefMod project back to Standard, which hides the RefMod pickers on the Reference Builder cards.
+    "pipeline",
     # Between-scene continuity
     "continuity_mode", "continuity_prompt_from_last_frame", "latent_context_frames",
     "location_transition_preset", "location_transition_custom",
