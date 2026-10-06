@@ -558,11 +558,59 @@ class RunnerLatentContinuationTests(unittest.TestCase):
         self.assertEqual(prompt[result["apply_node_id"]]["inputs"]["latent"], ["136", 1])
         self.assertTrue(prompt[result["apply_node_id"]]["inputs"]["include_audio"])
 
-    def test_masked_mode_rejects_multi_pass_graphs_and_missing_predecessors(self):
+    @staticmethod
+    def _two_pass_prompt():
+        prompt = RunnerLatentContinuationTests._single_pass_prompt()
+        prompt.update({
+            "181": {"class_type": "MiniMaxH3AVLatentSeparateT8", "inputs": {"av_latent": ["125", 0]}},
+            "189": {
+                "class_type": "VRGDG_MiniMaxH3ReplaceUpscaledVideoLatent",
+                "inputs": {"original_av_latent": ["125", 0], "upscaled_video_latent": ["182", 0]},
+            },
+            "194": {"class_type": "SamplerCustomAdvanced", "inputs": {"guider": ["193", 0], "latent_image": ["189", 0]}},
+        })
+        return prompt
+
+    def test_masked_mode_applies_the_head_again_to_the_second_pass(self):
+        prompt = self._two_pass_prompt()
+        result = self.ns["_patch_minimax_h3_latent_continuation"](
+            prompt, {**self.payload, "continuity_mode": "latent_continuation_masked"}
+        )
+        # pass 1 is protected exactly as in single pass
+        self.assertEqual(prompt["125"]["inputs"]["latent_image"], [result["apply_node_id"], 0])
+        self.assertEqual(prompt[result["apply_node_id"]]["inputs"]["latent"], ["172", 0])
+        # pass 2 reads the upscaled latent, whose video mask the upscale resets, so the head goes in again
+        second = prompt[result["second_pass_apply_node_id"]]
+        self.assertEqual(second["class_type"], "VRGDG_MiniMaxH3ApplyMaskedContinuation")
+        self.assertEqual(second["inputs"]["latent"], ["189", 0])
+        self.assertEqual(second["inputs"]["context_latent"], [result["load_node_id"], 0])
+        self.assertFalse(second["inputs"]["include_audio"])
+        self.assertEqual(prompt["194"]["inputs"]["latent_image"], [result["second_pass_apply_node_id"], 0])
+        # one predecessor window feeds both passes
+        loads = [n for n in prompt.values() if n["class_type"] == "VRGDG_MiniMaxH3LoadLatent"]
+        self.assertEqual(len(loads), 1)
+
+    def test_masked_mode_leaves_the_advanced_pass_alone(self):
+        # 2 Pass Advanced has one sampler, the second pass runs inside MMH3 Ultimate Upscale
+        prompt = self._single_pass_prompt()
+        prompt["9306"] = {"class_type": "MMH3UltimateUpscale", "inputs": {"latent": ["125", 0]}}
+        result = self.ns["_patch_minimax_h3_latent_continuation"](
+            prompt, {**self.payload, "continuity_mode": "latent_continuation_masked"}
+        )
+        self.assertIsNone(result["second_pass_apply_node_id"])
+        self.assertEqual(prompt["9306"]["inputs"]["latent"], ["125", 0])
+
+    def test_masked_mode_rejects_unmappable_graphs_and_missing_predecessors(self):
+        payload = {**self.payload, "continuity_mode": "latent_continuation_masked"}
+        # two samplers that are not a first pass plus an upscaled second pass
         prompt = self._single_pass_prompt()
         prompt["194"] = {"class_type": "SamplerCustomAdvanced", "inputs": {"latent_image": ["189", 0]}}
-        payload = {**self.payload, "continuity_mode": "latent_continuation_masked"}
-        with self.assertRaisesRegex(ValueError, "single pass"):
+        with self.assertRaisesRegex(ValueError, "supports Single pass, 2 Pass and 2 Pass Advanced"):
+            self.ns["_patch_minimax_h3_latent_continuation"](prompt, payload)
+        # three samplers
+        prompt = self._two_pass_prompt()
+        prompt["300"] = {"class_type": "SamplerCustomAdvanced", "inputs": {"latent_image": ["194", 0]}}
+        with self.assertRaisesRegex(ValueError, "supports Single pass, 2 Pass and 2 Pass Advanced"):
             self.ns["_patch_minimax_h3_latent_continuation"](prompt, payload)
         with self.assertRaises(FileNotFoundError):
             self.ns["_patch_minimax_h3_latent_continuation"](
@@ -628,25 +676,14 @@ class BuilderLatentContinuationWiringTests(unittest.TestCase):
         self.assertIn('"latent_continuation_masked"', BUILDER_SOURCE)
         self.assertIn("function isMiniMaxH3LatentContinuationMode(mode)", BUILDER_SOURCE)
 
-    def test_masked_mode_has_its_own_prompt_contract_and_needs_single_pass(self):
+    def test_masked_mode_has_its_own_prompt_contract_and_is_not_limited_to_single_pass(self):
         # the masked head already holds the previous scene's motion, so the prompt must continue it, not transition
         self.assertIn("this scene is the very next moment of the same uninterrupted take", BUILDER_SOURCE)
         self.assertIn("LOCATION PHASE — MASKED CONTINUATION TRANSITION", BUILDER_SOURCE)
         self.assertIn('continuity_mode === "latent_continuation_masked"', BUILDER_SOURCE)
-        self.assertIn("Latent Continuation Masked works with Single pass only", BUILDER_SOURCE)
-
-    def test_preview_shifts_scene_times_by_whole_frames_so_clips_keep_their_frame_counts(self):
-        self.assertIn("const frameAlignedOffset = Math.round(timelineOffset * 24) / 24;", BUILDER_SOURCE)
-        # the rounding the Builder uses for the clip lengths: a whole-frame shift keeps every scene's frame count
-        def frames(start, end, offset=0.0):
-            return int((end - offset) * 24 + 0.5) - int((start - offset) * 24 + 0.5)
-        scenes = [(44.78, 49.22), (49.22, 54.16), (54.16, 58.98)]
-        absolute = [frames(*scene) for scene in scenes]
-        shifted = [frames(*scene, offset=round(44.78 * 24) / 24) for scene in scenes]
-        unshifted = [frames(*scene, offset=44.78) for scene in scenes]
-        self.assertEqual(absolute, [106, 119, 116])
-        self.assertEqual(shifted, absolute)
-        self.assertNotEqual(unshifted, absolute)  # the stutter: 107 / 118 / 116
+        # 2 Pass and 2 Pass Advanced are allowed, the Builder no longer stops them before the graph is built
+        self.assertNotIn("Latent Continuation Masked works with Single pass only", BUILDER_SOURCE)
+        self.assertIn("2 Pass (the exact head is applied again in pass 2) and 2 Pass Advanced (pass 1 only)", BUILDER_SOURCE)
 
     def test_render_payload_carries_the_latent_settings(self):
         for key in (

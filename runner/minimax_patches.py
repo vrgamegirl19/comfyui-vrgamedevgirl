@@ -240,7 +240,12 @@ def _patch_minimax_h3_latent_continuation_masked(prompt, payload):
     A Load Latent node slices a phase-aligned window of the predecessor, and an Apply Masked Continuation node
     copies it into the first tokens of the sampler's input latent with a zero denoise mask. Nothing is added to
     the conditioning. The head is trimmed off through the timing plan's warm-up, like the other latent modes.
-    Single-pass graphs only.
+
+    Single pass has one sampler. 2 Pass has a second sampler fed by the learned upscale, which resets the video
+    mask on purpose, so the same window is applied again to that sampler's latent. The predecessor is saved at the
+    pass 2 size, so the second head is the exact predecessor, not the resized copy pass 1 had to use. 2 Pass
+    Advanced samples its second pass inside the MMH3 Ultimate Upscale node, which builds its own masks, so only
+    pass 1 is protected there.
     """
     project_text = str(payload.get("project_folder", "") or "").strip().strip('"')
     if not project_text or not os.path.isdir(project_text):
@@ -268,12 +273,23 @@ def _patch_minimax_h3_latent_continuation_masked(prompt, payload):
         for node_id, node in prompt.items()
         if node.get("class_type") == "SamplerCustomAdvanced"
     }
-    if len(samplers) != 1:
+    replace_ids = {
+        str(node_id) for node_id, node in prompt.items()
+        if node.get("class_type") == "VRGDG_MiniMaxH3ReplaceUpscaledVideoLatent"
+    }
+
+    def reads_upscaled_latent(node):
+        source = node.get("inputs", {}).get("latent_image")
+        return isinstance(source, list) and len(source) == 2 and str(source[0]) in replace_ids
+
+    second_pass = {sid: node for sid, node in samplers.items() if reads_upscaled_latent(node)}
+    first_pass = {sid: node for sid, node in samplers.items() if sid not in second_pass}
+    if len(first_pass) != 1 or len(second_pass) > 1:
         raise ValueError(
-            "Latent Continuation Masked currently supports single pass renders only "
-            f"(found {len(samplers)} samplers). Switch the render to single pass or use Latent Continuation."
+            "Latent Continuation Masked supports Single pass, 2 Pass and 2 Pass Advanced renders "
+            f"(found {len(samplers)} samplers it cannot map to those). Use Latent Continuation for this render."
         )
-    sampler_id, sampler = next(iter(samplers.items()))
+    sampler_id, sampler = next(iter(first_pass.items()))
     latent_source = sampler.get("inputs", {}).get("latent_image")
     if not isinstance(latent_source, list) or len(latent_source) != 2:
         return {"enabled": False, "reason": "Sampler latent input not found"}
@@ -315,6 +331,24 @@ def _patch_minimax_h3_latent_continuation_masked(prompt, payload):
     }
     sampler["inputs"]["latent_image"] = [apply_id, 0]
 
+    second_apply_id = None
+    if second_pass:
+        second_sampler_id, second_sampler = next(iter(second_pass.items()))
+        second_apply_id = str(int(apply_id) + 1)
+        while second_apply_id in prompt:
+            second_apply_id = str(int(second_apply_id) + 1)
+        prompt[second_apply_id] = {
+            "class_type": "VRGDG_MiniMaxH3ApplyMaskedContinuation",
+            "inputs": {
+                "latent": second_sampler["inputs"]["latent_image"],
+                "context_latent": [load_id, 0],
+                # the audio is the locked source track in every 2 pass graph, its mask comes through the upscale
+                "include_audio": False,
+            },
+            "_meta": {"title": f"MiniMax H3 Latent Continuation Masked · Pass 2 ({plan['context_frames']} frames)"},
+        }
+        second_sampler["inputs"]["latent_image"] = [second_apply_id, 0]
+
     return {
         "enabled": True,
         "mode": _MMH3_LATENT_MASKED_MODE,
@@ -323,6 +357,7 @@ def _patch_minimax_h3_latent_continuation_masked(prompt, payload):
         "warmup_frames": _minimax_h3_effective_warmup_frames(payload),
         "load_node_id": load_id,
         "apply_node_id": apply_id,
+        "second_pass_apply_node_id": second_apply_id,
         "sampler_node_id": sampler_id,
         "include_audio": include_audio,
         "lost_tail_frames": plan["lost_tail_frames"],

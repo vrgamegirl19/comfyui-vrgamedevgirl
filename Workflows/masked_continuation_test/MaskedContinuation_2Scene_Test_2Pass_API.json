@@ -1,13 +1,11 @@
 {
   "115": {
     "inputs": {
-      "aspect_ratio": "16:9 (Widescreen)",
-      "megapixels": 0.5625,
-      "multiple": 32
+      "value": 1920
     },
-    "class_type": "ResolutionSelector",
+    "class_type": "PrimitiveInt",
     "_meta": {
-      "title": "Scene 1 \u00b7 Resolution Selector (Size)"
+      "title": "Scene 1 \u00b7 BUILDER INPUT - Desired Final Width"
     }
   },
   "119": {
@@ -41,7 +39,7 @@
     },
     "class_type": "VAEDecode",
     "_meta": {
-      "title": "Scene 1 \u00b7 VAE Decode"
+      "title": "Scene 1 \u00b7 VAE Decode - Two-Pass Refined Upscaled Latent"
     }
   },
   "123": {
@@ -93,7 +91,7 @@
     },
     "class_type": "SamplerCustomAdvanced",
     "_meta": {
-      "title": "Scene 1 \u00b7 SamplerCustomAdvanced"
+      "title": "Scene 1 \u00b7 Low Resolution Generation"
     }
   },
   "126": {
@@ -125,7 +123,7 @@
   },
   "129": {
     "inputs": {
-      "noise_seed": 69
+      "noise_seed": 5217278770742144625
     },
     "class_type": "RandomNoise",
     "_meta": {
@@ -161,18 +159,18 @@
         0
       ],
       "width": [
-        "115",
-        0
+        "186",
+        1
       ],
       "height": [
-        "115",
+        "187",
         1
       ],
       "length": [
         "131",
         1
       ],
-      "ref_image_size": "match",
+      "ref_image_size": "max",
       "clip": [
         "128",
         0
@@ -183,10 +181,6 @@
       ],
       "audio_vae": [
         "120",
-        0
-      ],
-      "ref_audios.ref_audio_0": [
-        "171",
         0
       ],
       "ref_images.ref_image_0": [
@@ -248,6 +242,10 @@
       "ref_video_audios.ref_video_audio_2": [
         "180",
         14
+      ],
+      "ref_audios.ref_audio_0": [
+        "171",
+        0
       ]
     },
     "class_type": "MiniMaxH3ReferenceToVideo",
@@ -282,7 +280,7 @@
     "inputs": {
       "frame_rate": 24,
       "loop_count": 0,
-      "filename_prefix": "VRGDG_MiniMaxH3/MaskedContinuationTest_5ec436a9/scene_0001/MiniMaxH3_scene_0001",
+      "filename_prefix": "VRGDG_MiniMaxH3/MaskedContinuationTest_5ec436a9/scene_0001/MiniMaxH3_scene_0001_stage2",
       "format": "video/h264-mp4",
       "pix_fmt": "yuv420p",
       "crf": 19,
@@ -291,7 +289,7 @@
       "pingpong": false,
       "save_output": true,
       "images": [
-        "122",
+        "183",
         0
       ],
       "audio": [
@@ -301,7 +299,7 @@
     },
     "class_type": "VHS_VideoCombine",
     "_meta": {
-      "title": "Scene 1 \u00b7 BUILDER OUTPUT - Video Combine"
+      "title": "Scene 1 \u00b7 BUILDER OUTPUT - Learned Latent Upscaled 1080p Video"
     }
   },
   "171": {
@@ -345,11 +343,263 @@
       "title": "Scene 1 \u00b7 BUILDER INPUTS - Ordered H3 Reference Images And Videos"
     }
   },
+  "181": {
+    "inputs": {
+      "av_latent": [
+        "125",
+        0
+      ]
+    },
+    "class_type": "MiniMaxH3AVLatentSeparateT8",
+    "_meta": {
+      "title": "Scene 1 \u00b7 PASS 1 OUTPUT - Separate Video and Audio Latents"
+    }
+  },
+  "182": {
+    "inputs": {
+      "scale": [
+        "185",
+        0
+      ],
+      "latent": [
+        "181",
+        0
+      ],
+      "upscale_model": [
+        "188",
+        0
+      ]
+    },
+    "class_type": "VRGDG_MiniMaxH3LearnedLatentUpscale",
+    "_meta": {
+      "title": "Scene 1 \u00b7 LEARNED UPSCALE - MiniMax H3"
+    }
+  },
+  "183": {
+    "inputs": {
+      "width": [
+        "115",
+        0
+      ],
+      "height": [
+        "184",
+        0
+      ],
+      "upscale_method": "nvidia_rtx_vsr",
+      "keep_proportion": "crop",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 0,
+      "device": "cpu",
+      "image": [
+        "122",
+        0
+      ]
+    },
+    "class_type": "ImageResizeKJv2",
+    "_meta": {
+      "title": "Scene 1 \u00b7 Final Center Crop - Exact 1920x1080"
+    }
+  },
+  "184": {
+    "inputs": {
+      "value": 1080
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Scene 1 \u00b7 BUILDER INPUT - Desired Final Height"
+    }
+  },
+  "185": {
+    "inputs": {
+      "value": 2.0
+    },
+    "class_type": "PrimitiveFloat",
+    "_meta": {
+      "title": "Scene 1 \u00b7 BUILDER INPUT - Learned Latent Upscale Scale"
+    }
+  },
+  "186": {
+    "inputs": {
+      "expression": "max(32, ceil((a / b) / 32) * 32)",
+      "values.a": [
+        "115",
+        0
+      ],
+      "values.b": [
+        "185",
+        0
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Scene 1 \u00b7 AUTO - Aligned First Pass Width"
+    }
+  },
+  "187": {
+    "inputs": {
+      "expression": "max(32, ceil((a / b) / 32) * 32)",
+      "values.a": [
+        "184",
+        0
+      ],
+      "values.b": [
+        "185",
+        0
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Scene 1 \u00b7 AUTO - Aligned First Pass Height"
+    }
+  },
+  "188": {
+    "inputs": {
+      "model_name": "minimax_h3_latent_upscaler_3d_bf16.safetensors",
+      "device": "cuda",
+      "precision": "bf16"
+    },
+    "class_type": "VRGDG_MiniMaxH3LatentUpscaleModelLoader",
+    "_meta": {
+      "title": "BUILDER INPUT - MiniMax H3 Latent Upscale Model"
+    }
+  },
+  "189": {
+    "inputs": {
+      "original_av_latent": [
+        "125",
+        0
+      ],
+      "upscaled_video_latent": [
+        "182",
+        0
+      ]
+    },
+    "class_type": "VRGDG_MiniMaxH3ReplaceUpscaledVideoLatent",
+    "_meta": {
+      "title": "Scene 1 \u00b7 PASS 2 - Restore Upscaled Video into Locked AV Latent"
+    }
+  },
+  "190": {
+    "inputs": {
+      "value": 2
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Scene 1 \u00b7 BUILDER INPUT - Refinement Schedule Steps"
+    }
+  },
+  "191": {
+    "inputs": {
+      "value": 0.2
+    },
+    "class_type": "PrimitiveFloat",
+    "_meta": {
+      "title": "Scene 1 \u00b7 BUILDER INPUT - Refinement Denoise"
+    }
+  },
+  "192": {
+    "inputs": {
+      "scheduler": "simple",
+      "steps": [
+        "190",
+        0
+      ],
+      "denoise": [
+        "191",
+        0
+      ],
+      "model": [
+        "207",
+        0
+      ]
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {
+      "title": "Scene 1 \u00b7 PASS 2 - Adjustable Refinement Scheduler"
+    }
+  },
+  "193": {
+    "inputs": {
+      "model": [
+        "207",
+        0
+      ],
+      "conditioning": [
+        "136",
+        0
+      ]
+    },
+    "class_type": "BasicGuider",
+    "_meta": {
+      "title": "Scene 1 \u00b7 PASS 2 - Basic Guider"
+    }
+  },
+  "194": {
+    "inputs": {
+      "noise": [
+        "211",
+        0
+      ],
+      "guider": [
+        "193",
+        0
+      ],
+      "sampler": [
+        "210",
+        0
+      ],
+      "sigmas": [
+        "192",
+        0
+      ],
+      "latent_image": [
+        "189",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "Scene 1 \u00b7 PASS 2 - High Resolution Refinement"
+    }
+  },
+  "207": {
+    "inputs": {
+      "lora_name": "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+      "strength_model": 1.0,
+      "model": [
+        "141",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "Scene 1 \u00b7 Load LoRA"
+    }
+  },
+  "210": {
+    "inputs": {
+      "sampler_name": "res_multistep"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "Scene 1 \u00b7 BUILDER INPUT - Pass 2 Sampler"
+    }
+  },
+  "211": {
+    "inputs": {
+      "noise_seed": 3481440961266189263
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "Scene 1 \u00b7 BUILDER INPUT - Pass 2 Seed"
+    }
+  },
   "9850": {
     "class_type": "VRGDG_MiniMaxH3SaveLatent",
     "inputs": {
       "latent": [
-        "125",
+        "194",
         0
       ],
       "project_folder": "C:\\Users\\NVMax\\Desktop\\ComfyUI_windows_portable\\ComfyUI\\output\\MaskedContinuationTest",
@@ -364,13 +614,11 @@
   },
   "1115": {
     "inputs": {
-      "aspect_ratio": "16:9 (Widescreen)",
-      "megapixels": 0.5625,
-      "multiple": 32
+      "value": 1920
     },
-    "class_type": "ResolutionSelector",
+    "class_type": "PrimitiveInt",
     "_meta": {
-      "title": "Scene 2 \u00b7 Resolution Selector (Size)"
+      "title": "Scene 2 \u00b7 BUILDER INPUT - Desired Final Width"
     }
   },
   "1122": {
@@ -386,7 +634,7 @@
     },
     "class_type": "VAEDecode",
     "_meta": {
-      "title": "Scene 2 \u00b7 VAE Decode"
+      "title": "Scene 2 \u00b7 VAE Decode - Two-Pass Refined Upscaled Latent"
     }
   },
   "1123": {
@@ -438,7 +686,7 @@
     },
     "class_type": "SamplerCustomAdvanced",
     "_meta": {
-      "title": "Scene 2 \u00b7 SamplerCustomAdvanced"
+      "title": "Scene 2 \u00b7 Low Resolution Generation"
     }
   },
   "1126": {
@@ -459,7 +707,7 @@
   },
   "1129": {
     "inputs": {
-      "noise_seed": 69
+      "noise_seed": 10532508087749912655
     },
     "class_type": "RandomNoise",
     "_meta": {
@@ -495,18 +743,18 @@
         0
       ],
       "width": [
-        "1115",
-        0
+        "1186",
+        1
       ],
       "height": [
-        "1115",
+        "1187",
         1
       ],
       "length": [
         "1131",
         1
       ],
-      "ref_image_size": "match",
+      "ref_image_size": "max",
       "clip": [
         "128",
         0
@@ -517,10 +765,6 @@
       ],
       "audio_vae": [
         "120",
-        0
-      ],
-      "ref_audios.ref_audio_0": [
-        "1171",
         0
       ],
       "ref_images.ref_image_0": [
@@ -582,6 +826,10 @@
       "ref_video_audios.ref_video_audio_2": [
         "1180",
         14
+      ],
+      "ref_audios.ref_audio_0": [
+        "1171",
+        0
       ]
     },
     "class_type": "MiniMaxH3ReferenceToVideo",
@@ -602,7 +850,7 @@
     "inputs": {
       "frame_rate": 24,
       "loop_count": 0,
-      "filename_prefix": "VRGDG_MiniMaxH3/MaskedContinuationTest_5ec436a9/scene_0002/MiniMaxH3_scene_0002",
+      "filename_prefix": "VRGDG_MiniMaxH3/MaskedContinuationTest_5ec436a9/scene_0002/MiniMaxH3_scene_0002_stage2",
       "format": "video/h264-mp4",
       "pix_fmt": "yuv420p",
       "crf": 19,
@@ -611,7 +859,7 @@
       "pingpong": false,
       "save_output": true,
       "images": [
-        "1122",
+        "1183",
         0
       ],
       "audio": [
@@ -621,7 +869,7 @@
     },
     "class_type": "VHS_VideoCombine",
     "_meta": {
-      "title": "Scene 2 \u00b7 BUILDER OUTPUT - Video Combine"
+      "title": "Scene 2 \u00b7 BUILDER OUTPUT - Learned Latent Upscaled 1080p Video"
     }
   },
   "1171": {
@@ -665,6 +913,247 @@
       "title": "Scene 2 \u00b7 BUILDER INPUTS - Ordered H3 Reference Images And Videos"
     }
   },
+  "1181": {
+    "inputs": {
+      "av_latent": [
+        "1125",
+        0
+      ]
+    },
+    "class_type": "MiniMaxH3AVLatentSeparateT8",
+    "_meta": {
+      "title": "Scene 2 \u00b7 PASS 1 OUTPUT - Separate Video and Audio Latents"
+    }
+  },
+  "1182": {
+    "inputs": {
+      "scale": [
+        "1185",
+        0
+      ],
+      "latent": [
+        "1181",
+        0
+      ],
+      "upscale_model": [
+        "188",
+        0
+      ]
+    },
+    "class_type": "VRGDG_MiniMaxH3LearnedLatentUpscale",
+    "_meta": {
+      "title": "Scene 2 \u00b7 LEARNED UPSCALE - MiniMax H3"
+    }
+  },
+  "1183": {
+    "inputs": {
+      "width": [
+        "1115",
+        0
+      ],
+      "height": [
+        "1184",
+        0
+      ],
+      "upscale_method": "nvidia_rtx_vsr",
+      "keep_proportion": "crop",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 0,
+      "device": "cpu",
+      "image": [
+        "1122",
+        0
+      ]
+    },
+    "class_type": "ImageResizeKJv2",
+    "_meta": {
+      "title": "Scene 2 \u00b7 Final Center Crop - Exact 1920x1080"
+    }
+  },
+  "1184": {
+    "inputs": {
+      "value": 1080
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Scene 2 \u00b7 BUILDER INPUT - Desired Final Height"
+    }
+  },
+  "1185": {
+    "inputs": {
+      "value": 2.0
+    },
+    "class_type": "PrimitiveFloat",
+    "_meta": {
+      "title": "Scene 2 \u00b7 BUILDER INPUT - Learned Latent Upscale Scale"
+    }
+  },
+  "1186": {
+    "inputs": {
+      "expression": "max(32, ceil((a / b) / 32) * 32)",
+      "values.a": [
+        "1115",
+        0
+      ],
+      "values.b": [
+        "1185",
+        0
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Scene 2 \u00b7 AUTO - Aligned First Pass Width"
+    }
+  },
+  "1187": {
+    "inputs": {
+      "expression": "max(32, ceil((a / b) / 32) * 32)",
+      "values.a": [
+        "1184",
+        0
+      ],
+      "values.b": [
+        "1185",
+        0
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Scene 2 \u00b7 AUTO - Aligned First Pass Height"
+    }
+  },
+  "1189": {
+    "inputs": {
+      "original_av_latent": [
+        "1125",
+        0
+      ],
+      "upscaled_video_latent": [
+        "1182",
+        0
+      ]
+    },
+    "class_type": "VRGDG_MiniMaxH3ReplaceUpscaledVideoLatent",
+    "_meta": {
+      "title": "Scene 2 \u00b7 PASS 2 - Restore Upscaled Video into Locked AV Latent"
+    }
+  },
+  "1190": {
+    "inputs": {
+      "value": 2
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Scene 2 \u00b7 BUILDER INPUT - Refinement Schedule Steps"
+    }
+  },
+  "1191": {
+    "inputs": {
+      "value": 0.2
+    },
+    "class_type": "PrimitiveFloat",
+    "_meta": {
+      "title": "Scene 2 \u00b7 BUILDER INPUT - Refinement Denoise"
+    }
+  },
+  "1192": {
+    "inputs": {
+      "scheduler": "simple",
+      "steps": [
+        "1190",
+        0
+      ],
+      "denoise": [
+        "1191",
+        0
+      ],
+      "model": [
+        "1207",
+        0
+      ]
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {
+      "title": "Scene 2 \u00b7 PASS 2 - Adjustable Refinement Scheduler"
+    }
+  },
+  "1193": {
+    "inputs": {
+      "model": [
+        "1207",
+        0
+      ],
+      "conditioning": [
+        "1136",
+        0
+      ]
+    },
+    "class_type": "BasicGuider",
+    "_meta": {
+      "title": "Scene 2 \u00b7 PASS 2 - Basic Guider"
+    }
+  },
+  "1194": {
+    "inputs": {
+      "noise": [
+        "1211",
+        0
+      ],
+      "guider": [
+        "1193",
+        0
+      ],
+      "sampler": [
+        "1210",
+        0
+      ],
+      "sigmas": [
+        "1192",
+        0
+      ],
+      "latent_image": [
+        "10212",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "Scene 2 \u00b7 PASS 2 - High Resolution Refinement"
+    }
+  },
+  "1207": {
+    "inputs": {
+      "lora_name": "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+      "strength_model": 1.0,
+      "model": [
+        "141",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "Scene 2 \u00b7 Load LoRA"
+    }
+  },
+  "1210": {
+    "inputs": {
+      "sampler_name": "res_multistep"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "Scene 2 \u00b7 BUILDER INPUT - Pass 2 Sampler"
+    }
+  },
+  "1211": {
+    "inputs": {
+      "noise_seed": 8607259322152600949
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "Scene 2 \u00b7 BUILDER INPUT - Pass 2 Seed"
+    }
+  },
   "10210": {
     "class_type": "VRGDG_MiniMaxH3LoadLatent",
     "inputs": {
@@ -699,11 +1188,28 @@
       "title": "Scene 2 \u00b7 MiniMax H3 Latent Continuation Masked (39 frames)"
     }
   },
+  "10212": {
+    "class_type": "VRGDG_MiniMaxH3ApplyMaskedContinuation",
+    "inputs": {
+      "latent": [
+        "1189",
+        0
+      ],
+      "context_latent": [
+        "10210",
+        0
+      ],
+      "include_audio": false
+    },
+    "_meta": {
+      "title": "Scene 2 \u00b7 MiniMax H3 Latent Continuation Masked \u00b7 Pass 2 (39 frames)"
+    }
+  },
   "10850": {
     "class_type": "VRGDG_MiniMaxH3SaveLatent",
     "inputs": {
       "latent": [
-        "1125",
+        "1194",
         0
       ],
       "project_folder": "C:\\Users\\NVMax\\Desktop\\ComfyUI_windows_portable\\ComfyUI\\output\\MaskedContinuationTest",

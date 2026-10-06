@@ -32,11 +32,25 @@ from typing import Any
 
 PACKAGE_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 COMFY_ROOT = os.path.dirname(os.path.dirname(PACKAGE_ROOT))
-WORKFLOW_PATH = os.path.join(PACKAGE_ROOT, "Workflows", "masked_continuation_test", "MaskedContinuation_2Scene_Test_API.json")
-TRIM_PLAN_PATH = os.path.join(os.path.dirname(WORKFLOW_PATH), "trim_plan.json")
+WORKFLOW_DIR = os.path.join(PACKAGE_ROOT, "Workflows", "masked_continuation_test")
+# the single pass files keep their original names
+PASS_FILE_TAGS = {"single": "", "two_pass": "_2Pass"}
+# the part of a clip's file name that marks the final output of each pass setup
+PASS_CLIP_PATTERNS = {"single": "*-audio.mp4", "two_pass": "*_stage2*-audio.mp4"}
+RENDER_PASS = "single"
+
+
+def workflow_path() -> str:
+    return os.path.join(WORKFLOW_DIR, f"MaskedContinuation_2Scene_Test{PASS_FILE_TAGS[RENDER_PASS]}_API.json")
+
+
+def trim_plan_path() -> str:
+    return os.path.join(WORKFLOW_DIR, f"trim_plan{PASS_FILE_TAGS[RENDER_PASS]}.json")
+
+
 FINAL_PATH = os.path.join(COMFY_ROOT, "output", "MaskedContinuationTest", "MaskedContinuation_FINAL.mp4")
 PROJECT_NAME = "MaskedContinuationTest"
-SHARED_LOADER_CLASSES = ("DiffusionModelLoaderKJ", "CLIPLoader", "VAELoader")
+SHARED_LOADER_CLASSES = ("DiffusionModelLoaderKJ", "CLIPLoader", "VAELoader", "VRGDG_MiniMaxH3LatentUpscaleModelLoader")
 SCENE_2_ID_OFFSET = 1000
 
 DEFAULT_IMAGE = os.path.join(os.path.expanduser("~"), "Pictures", "darrel", "darrel.png")
@@ -128,7 +142,11 @@ def build_workflow(audio: str, image: str, start: float, scene_seconds: float, c
             "latent_context_frames": context_frames,
         }
 
-    first = builder._build_minimax_h3_api_prompt(payload(1, SCENE_1_SHOT, start, "off"))
+    build = {
+        "single": builder._build_minimax_h3_api_prompt,
+        "two_pass": builder._build_minimax_h3_2pass_api_prompt,
+    }[RENDER_PASS]
+    first = build(payload(1, SCENE_1_SHOT, start, "off"))
 
     # Building scene 2 checks that scene 1's latent exists. It is only written once scene 1 renders, so a stand-in
     # file is used for the build and removed again. The graph loads the real file after scene 1 has saved it.
@@ -143,7 +161,7 @@ def build_workflow(audio: str, image: str, start: float, scene_seconds: float, c
             metadata={"tail_padding_frames": 0},
         )
     try:
-        second = builder._build_minimax_h3_api_prompt(payload(2, SCENE_2_SHOT, start + scene_seconds, "latent_continuation_masked"))
+        second = build(payload(2, SCENE_2_SHOT, start + scene_seconds, "latent_continuation_masked"))
     finally:
         if standin:
             for path in (latent_path, latent_path + ".json"):
@@ -179,7 +197,7 @@ def _find_ffmpeg() -> str:
 
 
 def _latest_scene_clip(scene_number: int) -> str:
-    pattern = os.path.join(COMFY_ROOT, "output", "VRGDG_MiniMaxH3", "MaskedContinuationTest_*", f"scene_{scene_number:04d}", "*-audio.mp4")
+    pattern = os.path.join(COMFY_ROOT, "output", "VRGDG_MiniMaxH3", "MaskedContinuationTest_*", f"scene_{scene_number:04d}", PASS_CLIP_PATTERNS[RENDER_PASS])
     clips = sorted(glob.glob(pattern), key=os.path.getmtime)
     if not clips:
         raise RuntimeError(f"No rendered clip for scene {scene_number} found ({pattern}). Render the workflow first.")
@@ -188,7 +206,7 @@ def _latest_scene_clip(scene_number: int) -> str:
 
 def stitch() -> str:
     """Trim both raw clips to their scene (head and padding removed, same as the Builder) and join them."""
-    with open(TRIM_PLAN_PATH, encoding="utf-8") as handle:
+    with open(trim_plan_path(), encoding="utf-8") as handle:
         trims = json.load(handle)
     ffmpeg = _find_ffmpeg()
     work = os.path.dirname(FINAL_PATH)
@@ -257,6 +275,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--server", default="127.0.0.1:8188")
     parser.add_argument("--audio", default=os.path.join(COMFY_ROOT, "input", "02 In Bloom.mp3"))
+    parser.add_argument("--pass", dest="render_pass", choices=tuple(PASS_FILE_TAGS), default="single",
+                        help="single, or two_pass (2 Pass). 2 Pass Advanced needs the running ComfyUI to build, use the Builder")
     parser.add_argument("--image", default=DEFAULT_IMAGE, help="reference image of the character")
     parser.add_argument("--start", type=float, default=30.0, help="seconds into the audio where scene 1 starts")
     parser.add_argument("--scene-seconds", type=float, default=5.0)
@@ -264,6 +284,8 @@ def main() -> int:
     parser.add_argument("--run", action="store_true", help="also queue the workflow on the running ComfyUI, then stitch")
     parser.add_argument("--stitch", action="store_true", help="only trim and join the clips already rendered")
     args = parser.parse_args()
+    global RENDER_PASS
+    RENDER_PASS = args.render_pass
 
     if args.stitch:
         stitch()
@@ -280,12 +302,12 @@ def main() -> int:
     workflow, trims = build_workflow(
         os.path.abspath(args.audio), os.path.abspath(args.image), args.start, args.scene_seconds, args.context_frames
     )
-    os.makedirs(os.path.dirname(WORKFLOW_PATH), exist_ok=True)
-    with open(WORKFLOW_PATH, "w", encoding="utf-8") as handle:
+    os.makedirs(WORKFLOW_DIR, exist_ok=True)
+    with open(workflow_path(), "w", encoding="utf-8") as handle:
         json.dump(workflow, handle, indent=2)
-    with open(TRIM_PLAN_PATH, "w", encoding="utf-8") as handle:
+    with open(trim_plan_path(), "w", encoding="utf-8") as handle:
         json.dump(trims, handle, indent=2)
-    print(f"Workflow written: {WORKFLOW_PATH}")
+    print(f"Workflow written: {workflow_path()}")
     if not args.run:
         return 0
 

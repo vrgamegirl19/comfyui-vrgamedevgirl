@@ -272,7 +272,7 @@ export const MINIMAX_H3_CONTINUITY_OPTIONS = [
   { value: "off", label: "Off" },
   { value: "latent_continuation", label: "Latent Continuation (native H3 temporal context)" },
   { value: "latent_continuation_exact_frame", label: "Latent Continuation + Exact Last Frame (H3 temporal context + image)" },
-  { value: "latent_continuation_masked", label: "Latent Continuation Masked (protected predecessor latent, single pass)" },
+  { value: "latent_continuation_masked", label: "Latent Continuation Masked (protected predecessor latent)" },
   { value: "spatial_reference", label: "Previous final frame — spatial reference" },
   { value: "exact_start_frame", label: "Previous final frame — exact start frame" },
 ];

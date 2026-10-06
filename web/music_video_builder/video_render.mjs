@@ -579,9 +579,6 @@ export function createVideoRender({
       && ["reference_to_video", "image_reference_to_video"].includes(mode);
     const threePass = miniMaxSettings.render_pass === "three_pass"
       && ["reference_to_video", "image_reference_to_video"].includes(mode);
-    if ((twoPass || threePass) && miniMaxH3ContinuityModeForSegment(segment) === "latent_continuation_masked" && sceneSlotNumber(segment) > 1) {
-      throw new Error("Latent Continuation Masked works with Single pass only. Switch the render pass to Single, or choose Latent Continuation.");
-    }
     if (refmodPipeline && threePass) {
       throw new Error("The RefMod pipeline supports Single and 2 Pass only. Choose one of those passes before rendering.");
     }
