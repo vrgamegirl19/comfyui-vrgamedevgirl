@@ -139,34 +139,43 @@ class MaskedContextPlanTests(unittest.TestCase):
                 try:
                     plan = MANAGER.plan_masked_context(total, padding, frames)
                 except ValueError:
-                    self.assertLess(MANAGER._tokens_to_frames(total) - padding, frames + 17)
+                    self.assertLess(MANAGER._tokens_to_frames(total) - padding, frames - 17)
                     continue
+                visible = MANAGER._tokens_to_frames(total) - padding
                 with self.subTest(padding=padding, frames=frames):
                     self.assertEqual(plan["start_token"] % 5, 0)
                     self.assertEqual(plan["end_token"] % 5, 2)
                     self.assertEqual(plan["context_frames"], frames)
-                    self.assertEqual(plan["warmup_frames"], frames + plan["lost_tail_frames"])
-                    # never reaches into the padding after the real last frame
-                    self.assertLessEqual(plan["end_frame"], MANAGER._tokens_to_frames(total) - padding)
-                    self.assertLess(plan["lost_tail_frames"], 17)
+                    # the head reaches the predecessor's last visible frame, so no frame is left to regenerate
+                    self.assertGreaterEqual(plan["end_frame"], visible)
+                    self.assertEqual(plan["lost_tail_frames"], 0)
+                    self.assertLess(plan["head_tail_frames"], 17)
+                    # what the render trims: the head minus the real frames of it that lie past the visible end
+                    self.assertEqual(plan["warmup_frames"], frames - plan["head_tail_frames"])
+                    self.assertEqual(plan["end_frame"] - visible, plan["head_tail_frames"])
 
     def test_39_frames_is_12_tokens_and_65_audio_ticks(self):
         plan = MANAGER.plan_masked_context(72, 0, 39)
         self.assertEqual(plan["tokens"], 12)
         self.assertEqual(plan["end_audio_tick"] - plan["start_audio_tick"], 65)
 
-    def test_end_snaps_back_before_tail_padding(self):
+    def test_window_ends_on_the_boundary_at_or_after_the_visible_end(self):
         plan = MANAGER.plan_masked_context(72, 5, 39)
-        self.assertEqual((plan["start_token"], plan["end_token"]), (55, 67))
-        self.assertEqual(plan["lost_tail_frames"], 12)
+        self.assertEqual((plan["start_token"], plan["end_token"]), (60, 72))
+        self.assertEqual((plan["head_tail_frames"], plan["lost_tail_frames"]), (5, 0))
+        self.assertEqual(plan["warmup_frames"], 34)
 
-    def test_warmup_covers_the_predecessor_frames_after_the_window(self):
-        # measured render: 124 frames (37 tokens), 4 padding -> 120 visible. The window ends at frame 107, so its
-        # head sits 13 frames before the predecessor's last visible frame. The warm-up has to include those.
-        plan = MANAGER.plan_masked_context(37, 4, 39)
+    def test_warmup_leaves_the_first_visible_frame_on_the_predecessor_next_frame(self):
+        # measured scene 9 -> 10: 107 frames, 1 padding -> 106 visible. The old window ended at frame 90 and left 16
+        # frames to regenerate (a pop at the join). The head now ends on frame 107 (one real cool-down frame).
+        plan = MANAGER.plan_masked_context(32, 1, 39)
         self.assertEqual((plan["start_frame"], plan["end_frame"]), (68, 107))
-        self.assertEqual(plan["lost_tail_frames"], 13)
-        self.assertEqual(plan["warmup_frames"], 52)
+        self.assertEqual((plan["lost_tail_frames"], plan["head_tail_frames"], plan["warmup_frames"]), (0, 1, 38))
+        # render frame 38 is source frame 106, the frame right after the predecessor's last visible frame (105)
+        self.assertEqual(plan["start_frame"] + plan["warmup_frames"], 106)
+        # scene 10 -> 11: 175 frames, 1 padding
+        plan = MANAGER.plan_masked_context(52, 1, 39)
+        self.assertEqual(plan["start_frame"] + plan["warmup_frames"], 175 - 1)
 
     def test_unknown_sizes_fall_back_to_39_and_short_latents_are_rejected(self):
         self.assertEqual(MANAGER.normalize_masked_context_frames(22), 39)
@@ -505,9 +514,9 @@ class RunnerLatentContinuationTests(unittest.TestCase):
         self.assertTrue(self.ns["_minimax_h3_is_latent_mode"]("latent_continuation_masked"))
         warmup = self.ns["_minimax_h3_effective_warmup_frames"]
         masked = {**self.payload, "continuity_mode": "latent_continuation_masked"}
-        # 39 head frames + the 12 predecessor frames after the window (the 22 frame default is not a masked size)
-        self.assertEqual(warmup(masked), 51)
-        self.assertEqual(warmup({**masked, "latent_context_frames": 90}), 102)
+        # the 39 head frames minus the 5 real cool-down frames of them past the visible end (the 22 frame default is not a masked size)
+        self.assertEqual(warmup(masked), 34)
+        self.assertEqual(warmup({**masked, "latent_context_frames": 90}), 85)
         self.assertEqual(warmup({**masked, "scene_number": 1}), 0)
 
     @staticmethod
@@ -537,7 +546,7 @@ class RunnerLatentContinuationTests(unittest.TestCase):
         load = prompt[result["load_node_id"]]["inputs"]
         self.assertTrue(load["masked_av"])
         self.assertEqual((load["scene_number"], load["context_frames"]), (21, 39))
-        self.assertEqual(result["warmup_frames"], 51)
+        self.assertEqual(result["warmup_frames"], 34)
         self.assertEqual(prompt["126"]["inputs"]["conditioning"], ["136", 0])
         self.assertNotIn("VRGDG_MiniMaxH3ApplyLatentGuide", {node["class_type"] for node in prompt.values()})
 

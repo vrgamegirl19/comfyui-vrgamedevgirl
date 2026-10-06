@@ -145,18 +145,22 @@ def plan_masked_context(
     tail_padding_frames: int | None,
     context_frames: int,
 ) -> dict[str, Any]:
-    """Pick the predecessor tail that is copied, unchanged, into the head of the next scene's latent.
+    """Pick the predecessor frames that are copied, unchanged, into the head of the next scene's latent.
 
     The copied run must start on H3 phase 0 (a multiple of 5 tokens) so its tokens sit on the same temporal
     phase at the head of the new latent, and it must end on a phase-2 boundary (5k + 2 tokens) so its video and
-    audio lengths are exact. The end is the latest such boundary at or before the predecessor's last visible
-    frame, so padding after the real end is never carried over. Raises ``ValueError`` when the predecessor is too
-    short for the requested context.
+    audio lengths are exact. Raises ``ValueError`` when the predecessor is too short for the requested context.
 
-    The window usually ends before the predecessor's last visible frame (``lost_tail_frames``, up to 16). The new
-    render's warm-up must cover those frames too (``warmup_frames`` = window + lost tail). Then the audio that plays
-    over the copied head is the audio that played over those same frames in the predecessor, and the scene's own
-    first frame lands exactly where the predecessor ended.
+    Where the window ends decides how clean the join is. The window ends on the first such boundary at or after the
+    predecessor's last visible frame, so the head carries the predecessor's real frames right up to its end (and up
+    to 16 real frames of the cool-down after it, ``head_tail_frames``). The new scene's first visible frame is then
+    already a real, protected frame, not a regenerated one, and nothing between the two scenes is re-imagined.
+    Ending the window before the visible end instead leaves up to 16 frames (``lost_tail_frames``) that the model
+    has to regenerate differently from the predecessor, which shows as a pop at the join.
+
+    ``warmup_frames`` is what the new render trims off the front: the window minus the frames of it that lie past
+    the predecessor's visible end. Only when the latent has no boundary after the visible end does the window fall
+    back to ending before it, and the warm-up then also covers the lost frames.
     """
     frames = normalize_masked_context_frames(context_frames)
     wanted = 2 + 5 * ((frames - 5) // 17)
@@ -164,9 +168,17 @@ def plan_masked_context(
     pad = max(0, int(tail_padding_frames or 0))
     visible = max(0, _tokens_to_frames(total) - pad)
 
-    end = total
-    while end >= wanted and (end % 5 != 2 or _tokens_to_frames(end) > visible):
-        end -= 1
+    end = next(
+        (
+            token for token in range(wanted, total + 1)
+            if token % 5 == 2 and _tokens_to_frames(token) >= visible
+        ),
+        None,
+    )
+    if end is None:
+        end = total
+        while end >= wanted and (end % 5 != 2 or _tokens_to_frames(end) > visible):
+            end -= 1
     if end < wanted:
         raise ValueError(
             f"The predecessor latent ({total} tokens, {visible} visible frames) is too short for a {frames}-frame "
@@ -176,17 +188,21 @@ def plan_masked_context(
     start = end - wanted
     start_frame = _tokens_to_frames(start)
     end_frame = _tokens_to_frames(end)
+    head_frames = end_frame - start_frame
+    head_tail = max(0, end_frame - visible)
+    lost_tail = max(0, visible - end_frame)
     return {
         "start_token": start,
         "end_token": end,
         "tokens": wanted,
-        "context_frames": end_frame - start_frame,
-        "warmup_frames": end_frame - start_frame + max(0, visible - end_frame),
+        "context_frames": head_frames,
+        "warmup_frames": head_frames - head_tail + lost_tail,
         "start_frame": start_frame,
         "end_frame": end_frame,
         "start_audio_tick": round(start_frame * _MASKED_AUDIO_TICKS_PER_FRAME),
         "end_audio_tick": round(end_frame * _MASKED_AUDIO_TICKS_PER_FRAME),
-        "lost_tail_frames": max(0, visible - end_frame),
+        "lost_tail_frames": lost_tail,
+        "head_tail_frames": head_tail,
         "tail_padding_frames": pad,
     }
 
