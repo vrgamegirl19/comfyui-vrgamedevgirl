@@ -757,6 +757,20 @@ class BuilderLatentContinuationWiringTests(unittest.TestCase):
         # a video delete must never renumber the other scenes' latents
         self.assertIn("payload.reindex = false", BUILDER_SOURCE)
 
+    def test_the_timeline_card_has_a_quick_button_for_masked_continuation(self):
+        source = BUILDER_SOURCE.replace("\r\n", "\n")
+        # shown on every base scene except the first, which has no predecessor
+        self.assertIn("if (!isOverlay && state.segments.indexOf(segment) > 0) {", source)
+        self.assertIn("Promise.resolve(toggleSceneMaskedContinuation(segment)).catch", source)
+        # it locks the scene and sets masked continuity with the Masked transition, only where masked is allowed
+        self.assertIn("async function toggleSceneMaskedContinuation(segment) {", source)
+        self.assertIn('isMiniMaxH3ContinuityAllowedForMode("latent_continuation_masked", base.video_mode, base.render_pass)', source)
+        self.assertIn("segment.use_scene_minimax_h3_settings = true;", source)
+        # clicking it again turns it off and restores what the scene had before
+        self.assertIn("segment.minimax_h3_masked_quick_prev = {", source)
+        self.assertIn("delete segment.minimax_h3_masked_quick_prev;", source)
+        self.assertIn('continuity_mode: "latent_continuation_masked",\n      location_transition_preset: "masked",', source)
+
 
 if __name__ == "__main__":
     unittest.main()
