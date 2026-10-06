@@ -82,6 +82,8 @@ from .orchestrator import (
 from .paths import resolve_project_folder
 from .modes import get_modes_catalog
 from .mutations import (
+    get_scene_minimax_references,
+    set_scene_minimax_references,
     assemble_minimax_prompt_endpoint,
     attach_project_audio,
     bulk_scene_operations,
@@ -751,6 +753,28 @@ def register_agent_api_routes(server_instance=None):
         if_match = int(request.headers.get("If-Match")) if request.headers.get("If-Match", "").isdigit() else None
         res = await asyncio.to_thread(update_scene_reference_mapping, pid, payload, if_match_revision=if_match)
         return api_success(res.get("scene_mapping"), revision=res.get("revision"))
+
+    @server_instance.routes.get(f"{_API_V1_PREFIX}/projects/{{pid}}/scenes/{{sid}}/minimax-references")
+    @_api_endpoint
+    async def api_get_scene_minimax_references(request: web.Request):
+        pid = request.match_info["pid"]
+        sid = request.match_info["sid"]
+        res = await asyncio.to_thread(get_scene_minimax_references, pid, sid)
+        return api_success(res)
+
+    @server_instance.routes.put(f"{_API_V1_PREFIX}/projects/{{pid}}/scenes/{{sid}}/minimax-references")
+    @_api_endpoint
+    async def api_set_scene_minimax_references(request: web.Request):
+        pid = request.match_info["pid"]
+        sid = request.match_info["sid"]
+        payload = await request.json() if request.can_read_body else {}
+        if_match = int(request.headers.get("If-Match")) if request.headers.get("If-Match", "").isdigit() else None
+        res = await asyncio.to_thread(
+            set_scene_minimax_references, pid, sid, payload.get("keys"), bool(payload.get("automatic")),
+            if_match_revision=if_match,
+        )
+        revision = res.pop("revision", None)
+        return api_success(res, revision=revision)
 
     # 8. Lyrics, Audio, and Beats (Section 6.3)
     @server_instance.routes.get(f"{_API_V1_PREFIX}/projects/{{pid}}/lyrics")

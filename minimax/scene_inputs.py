@@ -299,6 +299,83 @@ def desired_reference_keys(refs: Dict[str, Any], segment: Dict[str, Any], index:
     return keys[:MAX_REFERENCE_IMAGES]
 
 
+def reference_choices(session: Dict[str, Any], segment: Dict[str, Any], index: int, mode: str) -> Dict[str, Any]:
+    """Everything the Video Builder's "Choose MiniMax References" picker shows for one scene.
+
+    ``available`` is every reference image the scene could use (characters, forced extras, locations and
+    ingredients sheets, as in the picker), each with its key, whether the scene's own mapping already picks it,
+    and its image number when it is selected. ``selected`` is the order that is sent to MiniMax. ``custom`` says
+    whether that order was chosen by hand (``minimax_h3_reference_keys``) or follows the scene mappings.
+    """
+    refs = _builder(session)
+    catalog = reference_catalog(refs)
+    forced = _forced_extra_keys(refs, segment, index)
+    available = [item for item in catalog if item["kind"] != "extra" or item["key"] in forced]
+    catalog_keys = {item["key"] for item in catalog}
+    start_frame_reserved = (
+        mode == "reference_to_video" and _uses_scene_image_as_start_frame(segment) and bool(segment_image_path(segment))
+    )
+    max_choices = max(0, MAX_REFERENCE_IMAGES - (1 if start_frame_reserved else 0))
+    mapped = _mapped_keys(refs, segment, index, catalog_keys)
+    selected_keys = desired_reference_keys(refs, segment, index)[:max_choices]
+    number_offset = 2 if start_frame_reserved else 1
+    position = {key: number + number_offset for number, key in enumerate(selected_keys)}
+    by_key = {item["key"]: item for item in available}
+
+    def describe(item: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "key": item["key"],
+            "kind": item["kind"],
+            "source_id": item["source_id"],
+            "label": item["label"],
+            "description": item["description"],
+            "reference_image_type": item["reference_image_type"],
+            "image_path": _text((item.get("image") or {}).get("path")),
+            "in_scene_mapping": item["key"] in mapped or item["key"] in forced,
+            "selected": item["key"] in position,
+            "image_number": position.get(item["key"]),
+        }
+
+    return {
+        "scene_id": _text(segment.get("id")),
+        "scene_number": index + 1,
+        "video_mode": mode,
+        "custom": isinstance(segment.get("minimax_h3_reference_keys"), list),
+        "available": [describe(item) for item in available],
+        "selected": [describe(by_key[key]) for key in selected_keys if key in by_key],
+        "automatic_keys": [key for key in dict.fromkeys([*mapped, *forced]) if key in by_key][:max_choices],
+        "limits": {
+            "max_images": MAX_REFERENCE_IMAGES,
+            "start_frame_image_1": start_frame_reserved,
+            "max_choices": max_choices,
+        },
+    }
+
+
+def validate_reference_keys(choices: Dict[str, Any], keys: Any) -> List[str]:
+    """The cleaned list of reference keys to save, or ``ValueError`` saying what is wrong and what is allowed."""
+    if not isinstance(keys, list):
+        raise ValueError("`keys` must be a list of reference keys such as \"location:abc\". Use `automatic: true` to follow the scene mappings.")
+    cleaned = [_text(key) for key in keys]
+    if any(not key for key in cleaned):
+        raise ValueError("`keys` must not contain empty values.")
+    duplicates = sorted({key for key in cleaned if cleaned.count(key) > 1})
+    if duplicates:
+        raise ValueError(f"Each reference can be listed once. Repeated: {', '.join(duplicates)}.")
+    allowed = [item["key"] for item in choices["available"]]
+    unknown = [key for key in cleaned if key not in allowed]
+    if unknown:
+        raise ValueError(
+            f"Not available for this scene: {', '.join(unknown)}. "
+            f"Available keys: {', '.join(allowed) if allowed else '(none, add reference images in the Reference Builder first)'}."
+        )
+    limit = int(choices["limits"]["max_choices"])
+    if len(cleaned) > limit:
+        reserved = " (Image 1 is the scene's start frame)" if choices["limits"]["start_frame_image_1"] else ""
+        raise ValueError(f"MiniMax takes at most {limit} chosen references for this scene{reserved}; {len(cleaned)} were given.")
+    return cleaned
+
+
 def segment_image_path(segment: Dict[str, Any]) -> str:
     """Mirror ``selectedSegmentImagePath``: the selected history image, else approved, else custom."""
     history = segment.get("image_history") if isinstance(segment.get("image_history"), list) else []

@@ -435,10 +435,10 @@ export function createMiniMaxPanel({
     return miniMaxH3SettingsForSegment(segment).video_mode;
   }
 
-  function miniMaxH3ContinuityReferenceReserved(segment = activeSegment()) {
-    return Boolean(segment
-      && miniMaxH3ContinuityModeForSegment(segment) !== "off"
-      && previousAutoChainSourceSegment(segment));
+  // No continuity mode adds a reference image any more: Latent Continuation Masked works on the latent, and the
+  // previous-final-frame modes were retired. So no reference slot is held back for a continuity frame.
+  function miniMaxH3ContinuityReferenceReserved() {
+    return false;
   }
 
   function miniMaxH3StartFrameCharacterInfluenceForSegment(segment = activeSegment()) {

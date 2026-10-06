@@ -26,7 +26,7 @@ never load or switch models. They answer `503 LLM_UNAVAILABLE` when nothing is l
 or its 1-based number.
 
 
-**Total:** 135 endpoints.
+**Total:** 137 endpoints.
 
 ## Service and discovery
 
@@ -94,6 +94,8 @@ or its 1-based number.
 | `GET` | `/projects/{pid}/scenes/{sid}` | One scene: timing, lyrics, story beat, prompts (including `minimax_h3_prompt`), approved image, rendered video with its thumbnail, and scene audio. Each file is `null` when it does not exist. |
 | `PATCH` | `/projects/{pid}/scenes/{sid}` | Change scene fields: `lyric_text` (sets `lyric_no_lip_sync` from the text unless you send it), `lyric_singers`, `story_beat`, prompts (`t2i_prompt`, `i2v_prompt`, `enhance_prompt`, `minimax_h3_prompt`, `minimax_h3_pass2_prompt`, `flux_prompt`, `nb_prompt`, `flow_gpt_prompt`, `ernie_t2i_prompt`), `minimax_h3_continuation_direction` (what a scene continued with `latent_continuation_masked` does after its first moments, one smooth movement, no cut), `notes`, `label`, `start`, `end`, `no_character_present`, `lyric_no_lip_sync`, or per-scene `use_scene_*` / `*_settings`. A field that cannot be patched returns a validation error that lists the supported fields, and nothing is saved. _(If-Match)_ |
 | `POST` | `/projects/{pid}/scenes/{sid}/merge` | Merge a scene with its neighbour (`with_direction`: previous or next). Lyrics are joined. _(If-Match; body: `with_direction`)_ |
+| `GET` | `/projects/{pid}/scenes/{sid}/minimax-references` | What the Video Builder's Choose MiniMax References button shows for a scene: `available` (every character, extra, location and ingredients sheet with an image, each with its `key`, whether the scene mapping already picks it, and its `image_number` when selected), `selected` (the order sent to MiniMax), `custom` (chosen by hand or following the scene mappings), `automatic_keys` and the `limits` (9 images, 8 choices when the scene image is Image 1). |
+| `PUT` | `/projects/{pid}/scenes/{sid}/minimax-references` | Choose the ordered MiniMax references for a scene: `keys` is the list from `available` (for example `["subject:ava", "location:roof", "location:alley"]`, several locations are allowed), or `automatic: true` to follow the scene mappings again. Unknown or repeated keys and too many keys are refused with the allowed keys listed. _(If-Match)_ _(If-Match; body: `automatic`, `keys`)_ |
 | `POST` | `/projects/{pid}/scenes/{sid}/move` | Move a scene to `start_time`. `ripple` shifts the others. _(If-Match; body: `ripple`, `start_time`)_ |
 | `POST` | `/projects/{pid}/scenes/{sid}/resize` | Change a scene's length (`duration` or `end_time`). `ripple` shifts the others. _(If-Match; body: `duration`, `end_time`, `ripple`)_ |
 | `POST` | `/projects/{pid}/scenes/{sid}/split` | Split a scene at `at_time`. `clear_right_media` drops the media on the new right half. Lyrics follow their words. _(If-Match; body: `at_time`, `clear_right_media`)_ |
@@ -106,7 +108,7 @@ or its 1-based number.
 | `POST` | `/projects/{pid}/references/assign-scenes` | Assign characters and locations to scenes by pattern (`random`, `rotate`, `blocks`, `unchanged`). `dry_run` previews. |
 | `POST` | `/projects/{pid}/references/locations/extract` | Ask the project's LLM for filming locations from the lyrics and `style_theme` (LM Extract) and add them. _(**job**)_ |
 | `PUT` | `/projects/{pid}/references/locations/{rid}` | Create or update a location (name, description, optional image). _(If-Match)_ |
-| `GET` | `/projects/{pid}/references/scene-mapping` | Read which characters, locations, ingredients and extras each scene uses. |
+| `GET` | `/projects/{pid}/references/scene-mapping` | Read which characters, locations, ingredients and extras each scene uses. A scene maps to one location here. To see every reference a MiniMax scene can pick from, and the order it sends, use `GET /projects/{pid}/scenes/{sid}/minimax-references`. |
 | `PUT` | `/projects/{pid}/references/scene-mapping` | Set which characters, locations, ingredients and extras each scene uses. _(If-Match)_ |
 | `PUT` | `/projects/{pid}/references/subjects/{rid}` | Create or update a character (name, description, `reference_type`, voice, trigger phrase, `image`). _(If-Match)_ |
 | `DELETE` | `/projects/{pid}/references/{kind}/{rid}` | Delete a character or location (`kind` is `subjects` or `locations`) and its scene mappings. _(If-Match)_ |

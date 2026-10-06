@@ -626,7 +626,7 @@
     },
     {
       "body_keys": [],
-      "description": "Read which characters, locations, ingredients and extras each scene uses.",
+      "description": "Read which characters, locations, ingredients and extras each scene uses. A scene maps to one location here. To see every reference a MiniMax scene can pick from, and the order it sends, use `GET /projects/{pid}/scenes/{sid}/minimax-references`.",
       "if_match": false,
       "job": false,
       "method": "GET",
@@ -790,6 +790,35 @@
       "job": false,
       "method": "POST",
       "path": "/projects/{pid}/scenes/{sid}/merge",
+      "path_params": [
+        "pid",
+        "sid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "What the Video Builder's Choose MiniMax References button shows for a scene: `available` (every character, extra, location and ingredients sheet with an image, each with its `key`, whether the scene mapping already picks it, and its `image_number` when selected), `selected` (the order sent to MiniMax), `custom` (chosen by hand or following the scene mappings), `automatic_keys` and the `limits` (9 images, 8 choices when the scene image is Image 1).",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/projects/{pid}/scenes/{sid}/minimax-references",
+      "path_params": [
+        "pid",
+        "sid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "automatic",
+        "keys"
+      ],
+      "description": "Choose the ordered MiniMax references for a scene: `keys` is the list from `available` (for example `[\"subject:ava\", \"location:roof\", \"location:alley\"]`, several locations are allowed), or `automatic: true` to follow the scene mappings again. Unknown or repeated keys and too many keys are refused with the allowed keys listed. _(If-Match)_",
+      "if_match": true,
+      "job": false,
+      "method": "PUT",
+      "path": "/projects/{pid}/scenes/{sid}/minimax-references",
       "path_params": [
         "pid",
         "sid"

@@ -81,6 +81,11 @@ Use the project id returned by `project_create` in every later call.
 10. `reference_assign_scenes` with `character_pattern: "blocks"`, `character_block_size: 1000`,
     `location_pattern: "blocks"`, `location_block_size: 4`, `replace_existing: true`.
     This puts the character on every scene and repeats each location for 4 scenes.
+    A scene's mapping holds one location. To give a MiniMax scene several references (more than one location, or a
+    different order), use `GET /projects/{pid}/scenes/{sid}/minimax-references`: `available` lists every character,
+    extra, location and ingredients sheet with its `key`, and `selected` is the order MiniMax receives. Then
+    `PUT` the same path with `{"keys": ["subject:ava", "location:roof", "location:alley"]}`, or `{"automatic": true}`
+    to follow the mappings again. At most 9 images are sent (8 chosen when the scene image is Image 1).
 
 ### D. Storyboard (story layer)
 11. `story_settings` with

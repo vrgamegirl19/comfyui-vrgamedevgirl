@@ -55,6 +55,8 @@ from ..builder.timeline import (
     validate_timeline_consistency,
 )
 from ..minimax.latent_manager import SceneLatentManager
+from ..minimax.scene_inputs import reference_choices, validate_reference_keys
+from ..minimax.settings_payload import minimax_h3_settings_for_scene
 from ..minimax.prompt_assembly import (
     assemble_minimax_h3_prompt,
     build_minimax_prompt_context,
@@ -1016,6 +1018,63 @@ def update_scene_reference_mapping(
         save_result = _persist_session(folder, session)
         return {
             "scene_mapping": {name: dict(_reference_map(session, name)) for name in _REFERENCE_MAP_KEYS},
+            "revision": save_result.get("revision", current_rev + 1),
+        }
+
+
+def _sorted_scene_with_index(session: Dict[str, Any], scene_id: str, project_id: str):
+    """The scene (by id or 1-based number) and its position in timeline order, which the reference maps use."""
+    segments = sorted(session.get("segments") or [], key=lambda s: float(s.get("start", 0.0) or 0.0))
+    index = next((i for i, s in enumerate(segments) if s.get("id") == scene_id or str(i + 1) == str(scene_id)), -1)
+    if index < 0:
+        raise SceneNotFoundError(scene_id, project_id)
+    return segments[index], index
+
+
+def _scene_reference_choices(session: Dict[str, Any], scene_id: str, project_id: str) -> Dict[str, Any]:
+    segment, index = _sorted_scene_with_index(session, scene_id, project_id)
+    mode = str(minimax_h3_settings_for_scene(session, segment).get("video_mode") or "")
+    return reference_choices(session, segment, index, mode)
+
+
+def get_scene_minimax_references(project_id: str, scene_id: str) -> Dict[str, Any]:
+    """What "Choose MiniMax References" shows for a scene: every reference it can use, and the order it sends."""
+    _folder, session = _get_active_session_and_folder(project_id)
+    return _scene_reference_choices(session, scene_id, project_id)
+
+
+def set_scene_minimax_references(
+    project_id: str,
+    scene_id: str,
+    keys: Any = None,
+    automatic: bool = False,
+    if_match_revision: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Choose the ordered MiniMax references for one scene (``keys``), or hand it back to the scene mappings."""
+    if automatic and keys is not None:
+        raise ValidationError("Send either `keys` (a chosen order) or `automatic: true`, not both.")
+    if not automatic and keys is None:
+        raise ValidationError("Send `keys` (a list of reference keys) or `automatic: true`.")
+    with _BUILDER_SAVE_LOCK:
+        folder, session = _get_active_session_and_folder(project_id)
+        current_rev = int(session.get("revision") or session.get("builder_save_revision") or 0)
+        if if_match_revision is not None and if_match_revision != current_rev:
+            raise RevisionConflictError(current_rev, if_match_revision)
+
+        segment, _index = _sorted_scene_with_index(session, scene_id, project_id)
+        if automatic:
+            segment["minimax_h3_reference_keys"] = None
+        else:
+            try:
+                segment["minimax_h3_reference_keys"] = validate_reference_keys(
+                    _scene_reference_choices(session, scene_id, project_id), keys,
+                )
+            except ValueError as exc:
+                raise ValidationError(str(exc)) from exc
+
+        save_result = _persist_session(folder, session)
+        return {
+            **_scene_reference_choices(session, scene_id, project_id),
             "revision": save_result.get("revision", current_rev + 1),
         }
 
