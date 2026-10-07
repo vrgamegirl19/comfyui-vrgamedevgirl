@@ -647,7 +647,14 @@ export function buildTopbar({
     const centerBounds = centerActions.getBoundingClientRect();
     const actionBounds = importActions.getBoundingClientRect();
     const availableRight = centerBounds.right - actionBounds.right;
-    builderResourceMonitor.style.display = availableRight >= 265 ? "flex" : "none";
+    const fits = availableRight >= 265;
+    const parent = fits ? centerActions : topbar;
+    if (builderResourceMonitor.parentElement !== parent) parent.append(builderResourceMonitor);
+    builderResourceMonitor.style.position = fits ? "absolute" : "static";
+    builderResourceMonitor.style.transform = fits ? "translateY(-50%)" : "none";
+    builderResourceMonitor.style.gridColumn = fits ? "" : "1 / -1";
+    builderResourceMonitor.style.justifySelf = fits ? "" : "center";
+    builderResourceMonitor.style.display = "flex";
   };
   const pollBuilderResources = async () => {
     if (!overlay.isConnected || builderLifecycle.resourceController) return;
