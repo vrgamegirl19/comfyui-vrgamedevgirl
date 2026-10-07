@@ -4,6 +4,7 @@ const vm = require('node:vm');
 const { functionSource, readBuilderModule } = require('./builder_source.cjs');
 
 const source = functionSource(readBuilderModule('timeline_tool_windows.mjs'), 'createTimelineToolWindows');
+const availabilitySource = functionSource(readBuilderModule('timeline_tool_windows.mjs'), 'timelineDeleteAvailability');
 
 class Element {
   constructor(label = '') {
@@ -40,11 +41,17 @@ test('timeline tools open as a draggable window and bulk deletes stay behind one
     makeButton: (label) => new Element(label),
   });
   vm.runInContext(`${source}\nglobalThis.create = createTimelineToolWindows;`, context);
-  const { toolsButton, deleteAllButton } = context.create({ overlay, toolButtons, deleteButtons });
+  let availability = { images: true, videos: true, segments: true };
+  const { toolsButton, deleteAllButton, refreshDeleteActions } = context.create({
+    overlay, toolButtons, deleteButtons, getDeleteAvailability: () => availability,
+  });
   const [toolsWindow, deleteMenu] = overlay.children;
   assert.deepEqual(toolsWindow.children[1].children, toolButtons);
   assert.deepEqual(deleteMenu.children, deleteButtons);
   assert.equal(toolsWindow.style.display, 'none');
+  assert.equal(deleteAllButton.style.display, 'none');
+  refreshDeleteActions();
+  assert.equal(deleteAllButton.style.display, '');
   toolsButton.click();
   assert.equal(toolsWindow.style.display, 'block');
   const header = toolsWindow.children[0];
@@ -59,4 +66,27 @@ test('timeline tools open as a draggable window and bulk deletes stay behind one
   assert.equal(deleteMenu.style.display, 'flex');
   deleteButtons[0].click();
   assert.equal(deleteMenu.style.display, 'none');
+  availability = { images: false, videos: false, segments: true };
+  refreshDeleteActions();
+  assert.deepEqual(deleteButtons.map((button) => button.style.display), ['none', 'none', '']);
+  deleteAllButton.click();
+  assert.equal(deleteMenu.style.display, 'flex');
+  availability = { images: false, videos: false, segments: false };
+  refreshDeleteActions();
+  assert.equal(deleteMenu.style.display, 'none');
+  assert.equal(deleteAllButton.style.display, 'none');
+});
+
+test('bulk-delete availability follows assigned images, videos, and segments', () => {
+  const context = vm.createContext({});
+  vm.runInContext(`${availabilitySource}\nglobalThis.availability = timelineDeleteAvailability;`, context);
+  const availability = (segments) => ({ ...context.availability(segments) });
+  assert.deepEqual(availability([]), { images: false, videos: false, segments: false });
+  assert.deepEqual(availability([{}]), { images: false, videos: false, segments: true });
+  assert.deepEqual(availability([{ first_last_frame_end_image_data: 'data:image/png;base64,abc' }]),
+    { images: true, videos: false, segments: true });
+  assert.deepEqual(availability([{ image_history: [' '] }, { video_backup_paths: ['saved.mp4'] }]),
+    { images: false, videos: true, segments: true });
+  assert.deepEqual(availability([{ custom_image_path: 'still.png', video_path: 'clip.mp4' }]),
+    { images: true, videos: true, segments: true });
 });

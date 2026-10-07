@@ -84,6 +84,7 @@ import {
 } from "./image_panels.mjs";
 import { createBrowserAi, wireBrowserAiPanel } from "./browser_ai.mjs";
 import { buildTimelineView, createTimelineView } from "./timeline_view.mjs";
+import { timelineDeleteAvailability } from "./timeline_tool_windows.mjs";
 import { createMediaImport, installFileDropNavigationGuard } from "./media_import.mjs";
 import { createProjectFiles, wireContextFileInputs } from "./project_files.mjs";
 import { createLyricCues } from "./lyric_cues.mjs";
@@ -859,12 +860,16 @@ export function openBuilder(node) {
     deleteAllTimelineVideosButton, deleteSegmentButton, globalAudioMuteButton,
     globalScrub, globalScrubTime, idLoraTrimModeButton, lyricNoteButton, locationThumbnailButton, multiSelectButton,
     multiSelectHintButton, overlayTrackHintButton, overlayTrackToggleButton, playButton, playhead, redoButton,
-    sceneNoteButton, segmentLayer, setInButton, setOutButton, snapSceneEdgeButton,
+    refreshDeleteActions, sceneNoteButton, segmentLayer, setInButton, setOutButton, snapSceneEdgeButton,
     snapToBeatsControl, splitSceneButton, stopButton, timeline, timelineCanvas, timelineInfo,
     timelineRangeInfo, timelineResizeHandle, timelineViewport, undoButton,
     videoNoteButton, waveformModeSelect, zoomInButton, zoomOutButton,
   } = buildTimelineView({
     overlay, preview, previewStage,
+    getDeleteAvailability: () => timelineDeleteAvailability([
+      ...(Array.isArray(state.segments) ? state.segments : []),
+      ...(Array.isArray(state.overlaySegments) ? state.overlaySegments : []),
+    ]),
   });
   const audio = document.createElement("audio");
   audio.preload = "metadata";
@@ -1197,7 +1202,7 @@ export function openBuilder(node) {
     audioInput, audioSummary, cancelPreviewPlayStart, clearSceneEndFrameButton, clearSegmentAdjustPreview,
     clearSegmentFilmGrainPreview, clearSegmentLutPreview, createFluxPromptButton, createI2VButton,
     createNBPromptButton, createSceneEndFrameButton, createSceneVideoButton, createT2IButton,
-    deleteAllTimelineVideosButton, deleteSegmentButton,
+    deleteSegmentButton, refreshDeleteActions,
     editErnieT2IInstructionsButton, editFlowGptT2IInstructionsButton, editFluxKleinT2IInstructionsButton,
     editI2VPromptButton, editIdLoraInstructionsButton, editImagePromptButtons, editKrea2T2IInstructionsButton,
     editNanoBT2IInstructionsButton, editZImageT2IInstructionsButton, endInput, ernieCreateButton,
@@ -1520,7 +1525,7 @@ export function openBuilder(node) {
     i2vNotesInput, lyricTextInput, mediaThumbnailHtml, openAudioContextMenu, openDirectorNoteContextMenu,
     openSceneOptions, openSegmentContextMenu, openTimelineSceneCard, playhead, pushHistory,
     rtvReferenceBehaviorForSegment, sceneListPane, segmentLayer, selectedSegmentImageThumbnailPath,
-    setActiveSegment, state, syncInspector, timelineCanvas, locationThumbnailButton,
+    setActiveSegment, state, syncInspector, timelineCanvas, locationThumbnailButton, refreshDeleteActions,
     currentVideoMode: (...args) => currentVideoMode(...args),
     timelineSegmentLabel: (...args) => timelineSegmentLabel(...args),
     cycleSegmentImageHistory: (...args) => cycleSegmentImageHistory(...args),

@@ -78,7 +78,7 @@ function timelineMarkerColor(type) {
   return { bg: "rgba(8,47,73,.9)", border: "#67e8f9", text: "#ecfeff" };
 }
 
-export function buildTimelineView({ overlay, preview, previewStage }) {
+export function buildTimelineView({ overlay, preview, previewStage, getDeleteAvailability }) {
   const timeline = document.createElement("div");
   timeline.style.cssText = "display:grid;grid-template-rows:7px auto 1fr;border-top:1px solid #27272a;background:#111113;min-height:0;";
   const timelineResizeHandle = document.createElement("div");
@@ -234,10 +234,11 @@ export function buildTimelineView({ overlay, preview, previewStage }) {
   deleteAllTimelineImagesButton.style.background = "#450a0a";
   deleteAllTimelineImagesButton.style.color = "#fee2e2";
   deleteAllTimelineImagesButton.title = "Delete every timeline image from every scene, including FLF first frames, last frames, and extracted chained start frames, and remove those files from the project folder.";
-  const { toolsButton, deleteAllButton } = createTimelineToolWindows({
+  const { toolsButton, deleteAllButton, refreshDeleteActions } = createTimelineToolWindows({
     overlay,
     toolButtons: [setInButton, setOutButton, clearRangeButton, closeTimelineGapsButton, snapSceneEdgeButton, overlayTrackToggleButton, overlayTrackHintButton, locationThumbnailButton],
     deleteButtons: [deleteAllTimelineImagesButton, deleteAllTimelineVideosButton, deleteAllSegmentsButton],
+    getDeleteAvailability,
   });
   const zoomWrap = document.createElement("div");
   zoomWrap.style.cssText = "display:flex;gap:4px;align-items:center;";
@@ -278,7 +279,7 @@ export function buildTimelineView({ overlay, preview, previewStage }) {
     deleteAllTimelineVideosButton, deleteSegmentButton, globalAudioMuteButton,
     globalScrub, globalScrubTime, idLoraTrimModeButton, lyricNoteButton, locationThumbnailButton, multiSelectButton,
     multiSelectHintButton, overlayTrackHintButton, overlayTrackToggleButton, playButton, playhead, redoButton,
-    sceneNoteButton, segmentLayer, setInButton, setOutButton, snapSceneEdgeButton,
+    refreshDeleteActions, sceneNoteButton, segmentLayer, setInButton, setOutButton, snapSceneEdgeButton,
     snapToBeatsControl, splitSceneButton, stopButton, timeline, timelineCanvas, timelineInfo,
     timelineRangeInfo, timelineResizeHandle, timelineViewport, undoButton,
     videoNoteButton, waveformModeSelect, zoomInButton, zoomOutButton,
@@ -296,7 +297,7 @@ export function createTimelineView({
   segmentImageSource, segmentLayer, segmentTrack, selectedSegmentImageThumbnailPath,
   selectedTimelineRangeInfo, setActiveSegment, state, syncInspector, syncLyricMapperFromSegments,
   timelineCanvas, timelineDuration, timelineSegmentLabel, toggleSegmentPreviewMode,
-  locationThumbnailButton,
+  locationThumbnailButton, refreshDeleteActions,
 }) {
   let showLocationThumbnails = false;
   locationThumbnailButton.onclick = () => {
@@ -798,6 +799,7 @@ export function createTimelineView({
   }
 
   function renderSegments() {
+    refreshDeleteActions();
     segmentLayer.textContent = "";
     ensureAllSegmentRuntimeFields();
     renderSelectedTimelineRangeOverlay();

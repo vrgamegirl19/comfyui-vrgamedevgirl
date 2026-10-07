@@ -1,6 +1,25 @@
 import { makeButton } from "./controls.mjs";
 
-export function createTimelineToolWindows({ overlay, toolButtons, deleteButtons }) {
+export function timelineDeleteAvailability(segments) {
+  const items = segments.filter((segment) => segment && typeof segment === "object" && !Array.isArray(segment));
+  const hasValue = (value) => Boolean(String(value || "").trim());
+  return {
+    images: items.some((segment) => Boolean(
+      (Array.isArray(segment.image_history) && segment.image_history.some(hasValue))
+      || ["approved_image_path", "custom_image_path", "custom_image_data", "first_last_frame_end_image_path",
+        "first_last_frame_end_image_data", "flf_rendered_start_frame_path", "flf_rendered_start_frame_data"]
+        .some((key) => hasValue(segment[key]))
+    )),
+    videos: items.some((segment) => Boolean(
+      ["video_path", "video_original_path"].some((key) => hasValue(segment[key]))
+      || ["video_history", "video_backup_paths"].some((key) =>
+        Array.isArray(segment[key]) && segment[key].some(hasValue))
+    )),
+    segments: items.length > 0,
+  };
+}
+
+export function createTimelineToolWindows({ overlay, toolButtons, deleteButtons, getDeleteAvailability }) {
   const toolsButton = makeButton("Timeline Tools");
   toolsButton.title = "Open movable timeline range, gap, track, and location controls.";
   const toolsWindow = document.createElement("div");
@@ -55,6 +74,7 @@ export function createTimelineToolWindows({ overlay, toolButtons, deleteButtons 
 
   const deleteAllButton = makeButton("Delete All…");
   deleteAllButton.title = "Open bulk timeline deletion actions. Each action asks for confirmation.";
+  deleteAllButton.style.display = "none";
   const deleteMenu = document.createElement("div");
   deleteMenu.style.cssText = "position:fixed;z-index:100004;display:none;flex-direction:column;gap:5px;min-width:190px;padding:7px;border:1px solid #7f1d1d;border-radius:7px;background:#18181b;box-shadow:0 14px 40px rgba(0,0,0,.55);";
   const closeDeleteMenu = () => {
@@ -71,8 +91,20 @@ export function createTimelineToolWindows({ overlay, toolButtons, deleteButtons 
     button.addEventListener("click", closeDeleteMenu);
     deleteMenu.append(button);
   }
+  const refreshDeleteActions = () => {
+    const availability = getDeleteAvailability();
+    const visible = [availability.images, availability.videos, availability.segments];
+    deleteButtons.forEach((button, index) => {
+      button.style.display = visible[index] ? "" : "none";
+      button.disabled = !visible[index];
+    });
+    deleteAllButton.style.display = visible.some(Boolean) ? "" : "none";
+    if (!visible.some(Boolean)) closeDeleteMenu();
+  };
   overlay.append(deleteMenu);
   deleteAllButton.onclick = () => {
+    refreshDeleteActions();
+    if (deleteAllButton.style.display === "none") return;
     if (deleteMenu.style.display !== "none") {
       closeDeleteMenu();
       return;
@@ -84,5 +116,5 @@ export function createTimelineToolWindows({ overlay, toolButtons, deleteButtons 
     window.addEventListener("pointerdown", closeOnOutside, true);
     window.addEventListener("keydown", closeOnEscape, true);
   };
-  return { toolsButton, deleteAllButton };
+  return { toolsButton, deleteAllButton, refreshDeleteActions };
 }

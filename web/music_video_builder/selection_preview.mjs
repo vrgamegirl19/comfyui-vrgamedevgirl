@@ -148,7 +148,7 @@ export function createSelectionPreview({
   activeSegment, allEditableSegments, audioInput, audioSummary, cancelPreviewPlayStart,
   clearSceneEndFrameButton, clearSegmentAdjustPreview, clearSegmentFilmGrainPreview, clearSegmentLutPreview,
   createFluxPromptButton, createI2VButton, createNBPromptButton, createSceneEndFrameButton,
-  createSceneVideoButton, createT2IButton, currentGlobalTime, deleteAllTimelineVideosButton,
+  createSceneVideoButton, createT2IButton, currentGlobalTime,
   deleteSegmentButton, editErnieT2IInstructionsButton,
   editFlowGptT2IInstructionsButton, editFluxKleinT2IInstructionsButton, editI2VPromptButton,
   editIdLoraInstructionsButton, editImagePromptButtons, editKrea2T2IInstructionsButton,
@@ -170,7 +170,7 @@ export function createSelectionPreview({
   previewVideoState, promptJsonInput, refImageInput, refImagePanel, render, renderFilmGrainPostProcessPanel,
   renderSceneAdjustPanel, renderSceneToolsPanel, rtvReferenceBehaviorGlobalValue, rtvReferenceBehaviorSelect,
   saveI2VPromptButton, saveI2VVideoSettingsFromPanel, saveMiniMaxH3SettingsFromPanel, saveMiniMaxPromptButton,
-  savedI2VPrompts, sceneAudio, segmentImageSource, segmentIndexInfo, segmentLayer, segmentTrack,
+  savedI2VPrompts, sceneAudio, segmentImageSource, segmentIndexInfo, segmentLayer, segmentTrack, refreshDeleteActions,
   selectedSegmentsForBatch, silentTimeline, srtInput, startInput,
   startSilentTimelinePlayback, state, storyIdeaInput, subjectSceneInput, syncErnieImagePanel,
   syncFluxKleinPanel, syncInspectorPanels, syncKrea2TwoPassPanel, syncMiniMaxH3Panel,
@@ -560,14 +560,7 @@ export function createSelectionPreview({
   }
 
   function updateSelectedMediaTools() {
-    const hasTimelineVideos = allEditableSegments().some((item) => Boolean(
-      String(item?.video_path || "").trim()
-      || (Array.isArray(item?.video_history) && item.video_history.some((path) => String(path || "").trim()))
-      || (Array.isArray(item?.video_backup_paths) && item.video_backup_paths.some((path) => String(path || "").trim()))
-      || String(item?.video_original_path || "").trim()
-    ));
-    deleteAllTimelineVideosButton.disabled = !hasTimelineVideos;
-    deleteAllTimelineVideosButton.style.opacity = hasTimelineVideos ? "1" : ".55";
+    refreshDeleteActions();
   }
 
   function previewVideoIsReadyAt(local) {
