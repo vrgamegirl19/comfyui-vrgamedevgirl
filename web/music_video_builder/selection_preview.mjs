@@ -149,7 +149,7 @@ export function createSelectionPreview({
   clearSceneEndFrameButton, clearSegmentAdjustPreview, clearSegmentFilmGrainPreview, clearSegmentLutPreview,
   createFluxPromptButton, createI2VButton, createNBPromptButton, createSceneEndFrameButton,
   createSceneVideoButton, createT2IButton, currentGlobalTime, deleteAllTimelineVideosButton,
-  deleteSegmentButton, deleteSelectedMediaButton, editErnieT2IInstructionsButton,
+  deleteSegmentButton, editErnieT2IInstructionsButton,
   editFlowGptT2IInstructionsButton, editFluxKleinT2IInstructionsButton, editI2VPromptButton,
   editIdLoraInstructionsButton, editImagePromptButtons, editKrea2T2IInstructionsButton,
   editNanoBT2IInstructionsButton, editZImageT2IInstructionsButton, endInput, ensureGlobalTimelineAudioSource,
@@ -171,13 +171,13 @@ export function createSelectionPreview({
   renderSceneAdjustPanel, renderSceneToolsPanel, rtvReferenceBehaviorGlobalValue, rtvReferenceBehaviorSelect,
   saveI2VPromptButton, saveI2VVideoSettingsFromPanel, saveMiniMaxH3SettingsFromPanel, saveMiniMaxPromptButton,
   savedI2VPrompts, sceneAudio, segmentImageSource, segmentIndexInfo, segmentLayer, segmentTrack,
-  selectedMediaLabel, selectedSegmentsForBatch, silentTimeline, srtInput, startInput,
+  selectedSegmentsForBatch, silentTimeline, srtInput, startInput,
   startSilentTimelinePlayback, state, storyIdeaInput, subjectSceneInput, syncErnieImagePanel,
   syncFluxKleinPanel, syncInspectorPanels, syncKrea2TwoPassPanel, syncMiniMaxH3Panel,
   syncRTVSceneImageAnchorPanel, syncVideoModePanel, syncZEnhanceSettingsPanel, syncZImageSettingsPanel,
   t2iPrompt, t2iTextGemmaModelSelect, t2vRefImagePanel, themeStyleInput, timelineAudioPathForSegment,
   timelineAudioSegmentAtTime, timelineAudioSourceStartForSegment, timelineCanvas, timelineDuration,
-  updateActiveFromInputs, updateI2VPromptSaveButtonState, useFrameAsImageButton, useI2VVisionReference,
+  updateActiveFromInputs, updateI2VPromptSaveButtonState, useI2VVisionReference,
   useSceneErnieImageSettings, useSceneFluxKleinSettings, useSceneI2VVideoSettings,
   useSceneKrea2TwoPassSettings, useSceneMiniMaxH3Settings, useSceneNBImageSettings, useSceneZImageSettings,
   useT2VVisionReference, useVisionReference, useVrgdgTextContext, usingSceneAudioPlaybackMode,
@@ -559,32 +559,13 @@ export function createSelectionPreview({
     block.append(wrap, shade);
   }
 
-  function selectedMediaForDelete() {
-    const segment = activeSegment();
-    if (!segment) return { segment: null, type: "", path: "" };
-    if (segment.preview_mode === "video") {
-      return { segment, type: "video", path: selectedSegmentVideoPath(segment) };
-    }
-    return { segment, type: "image", path: selectedSegmentImagePath(segment) };
-  }
-
   function updateSelectedMediaTools() {
-    const media = selectedMediaForDelete();
-    const segment = activeSegment();
-    const hasVideoFrameSource = Boolean(selectedSegmentVideoPath(segment));
     const hasTimelineVideos = allEditableSegments().some((item) => Boolean(
       String(item?.video_path || "").trim()
       || (Array.isArray(item?.video_history) && item.video_history.some((path) => String(path || "").trim()))
       || (Array.isArray(item?.video_backup_paths) && item.video_backup_paths.some((path) => String(path || "").trim()))
       || String(item?.video_original_path || "").trim()
     ));
-    const label = media.type ? `Selected media: ${media.type}` : "Selected media: none";
-    selectedMediaLabel.textContent = media.path ? label : `${label} missing`;
-    useFrameAsImageButton.disabled = !hasVideoFrameSource;
-    useFrameAsImageButton.style.opacity = hasVideoFrameSource ? "1" : ".55";
-    deleteSelectedMediaButton.textContent = media.type === "video" ? "Delete Video" : "Delete Image";
-    deleteSelectedMediaButton.disabled = !media.path;
-    deleteSelectedMediaButton.style.opacity = media.path ? "1" : ".55";
     deleteAllTimelineVideosButton.disabled = !hasTimelineVideos;
     deleteAllTimelineVideosButton.style.opacity = hasTimelineVideos ? "1" : ".55";
   }
@@ -1243,7 +1224,7 @@ export function createSelectionPreview({
     appendTimelineFirstLastFrameThumbnail, beginGlobalTimelineScrub, clearActiveSegment,
     clearConceptPromptNotesFromSegments, clearI2VMotionNotesFromSegments, handlePreviewVideoLoadIssue,
     mediaThumbnailHtml, moveActiveSceneSelection, openMultiSelectChooser, playSceneAudioFrom,
-    playbackSegmentAtTime, selectedMediaForDelete, selectedSegmentImagePath,
+    playbackSegmentAtTime, selectedSegmentImagePath,
     selectedSegmentImageThumbnailPath, setActiveSegment, setGlobalPlaybackTime, showAdjustPreviewImage,
     showFilmGrainPreviewImage, showLutPreviewImage, syncInspector, syncPreview, syncPreviewPlayback,
     updateAudioScrubbers, updateSelectedMediaTools, waitForPreviewVideoReady,

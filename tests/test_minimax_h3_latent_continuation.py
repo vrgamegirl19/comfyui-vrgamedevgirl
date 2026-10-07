@@ -751,7 +751,7 @@ class BuilderLatentContinuationWiringTests(unittest.TestCase):
         self.assertIn("loadDirtyLatentBadges()", BUILDER_SOURCE[handler_start:handler_end])
 
     def test_deleting_a_video_removes_its_stale_latent(self):
-        start = BUILDER_SOURCE.index("async function deleteSelectedMedia()")
+        start = BUILDER_SOURCE.index("async function deleteSelectedMedia(")
         end = BUILDER_SOURCE.index("function sendPromptToEnhance", start)
         self.assertIn("deleteStaleSceneLatents(media.segment)", BUILDER_SOURCE[start:end])
         # a video delete must never renumber the other scenes' latents

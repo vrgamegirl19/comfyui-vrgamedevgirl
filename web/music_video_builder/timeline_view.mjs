@@ -32,6 +32,7 @@ import { appendTimelineVideoThumbnail, hasLockedVideo, selectedSegmentVideoPath 
 import { parseBulkTimeValue } from "./timeline_actions.mjs";
 import { audioChunkDuration, audioTimelineStart, markerEnd, normalizeTimelineMarkers } from "./timeline_state.mjs";
 import { mappedLocation } from "./scene_locations.mjs";
+import { createTimelineToolWindows } from "./timeline_tool_windows.mjs";
 
 export function shiftSegmentTiming(segment, delta) {
   const amount = Number(delta || 0);
@@ -77,7 +78,7 @@ function timelineMarkerColor(type) {
   return { bg: "rgba(8,47,73,.9)", border: "#67e8f9", text: "#ecfeff" };
 }
 
-export function buildTimelineView({ preview, previewStage }) {
+export function buildTimelineView({ overlay, preview, previewStage }) {
   const timeline = document.createElement("div");
   timeline.style.cssText = "display:grid;grid-template-rows:7px auto 1fr;border-top:1px solid #27272a;background:#111113;min-height:0;";
   const timelineResizeHandle = document.createElement("div");
@@ -220,18 +221,6 @@ export function buildTimelineView({ preview, previewStage }) {
   const timelineStatusInfo = document.createElement("div");
   timelineStatusInfo.style.cssText = "display:flex;align-items:center;gap:12px;flex:0 0 auto;min-width:max-content;padding:0 4px;";
   timelineStatusInfo.append(timelineInfo, timelineRangeInfo);
-  const selectedMediaTools = document.createElement("div");
-  selectedMediaTools.style.cssText = "margin-left:auto;display:flex;gap:8px;align-items:center;border:1px solid #27272a;border-radius:6px;background:#111113;padding:6px 8px;";
-  const selectedMediaLabel = document.createElement("span");
-  selectedMediaLabel.textContent = "Selected media: none";
-  selectedMediaLabel.style.cssText = "font-size:12px;color:#a1a1aa;white-space:nowrap;";
-  const useFrameAsImageButton = makeButton("Use Frame as Image");
-  useFrameAsImageButton.style.padding = "6px 10px";
-  useFrameAsImageButton.title = "Save the currently selected video frame as this scene's image";
-  const deleteSelectedMediaButton = makeButton("Delete Image/Video");
-  deleteSelectedMediaButton.style.padding = "6px 10px";
-  deleteSelectedMediaButton.style.borderColor = "#7f1d1d";
-  deleteSelectedMediaButton.style.color = "#fecaca";
   const deleteAllTimelineVideosButton = makeButton("Delete ALL Videos");
   deleteAllTimelineVideosButton.style.padding = "6px 10px";
   deleteAllTimelineVideosButton.style.borderColor = "#dc2626";
@@ -244,7 +233,11 @@ export function buildTimelineView({ preview, previewStage }) {
   deleteAllTimelineImagesButton.style.background = "#450a0a";
   deleteAllTimelineImagesButton.style.color = "#fee2e2";
   deleteAllTimelineImagesButton.title = "Delete every timeline image from every scene, including FLF first frames, last frames, and extracted chained start frames, and remove those files from the project folder.";
-  selectedMediaTools.append(selectedMediaLabel, useFrameAsImageButton, deleteSelectedMediaButton, deleteAllTimelineVideosButton, deleteAllTimelineImagesButton);
+  const { toolsButton, deleteAllButton } = createTimelineToolWindows({
+    overlay,
+    toolButtons: [setInButton, setOutButton, clearRangeButton, closeTimelineGapsButton, snapSceneEdgeButton, overlayTrackToggleButton, overlayTrackHintButton, locationThumbnailButton],
+    deleteButtons: [deleteAllTimelineImagesButton, deleteAllTimelineVideosButton, deleteAllSegmentsButton],
+  });
   const zoomWrap = document.createElement("div");
   zoomWrap.style.cssText = "display:flex;gap:4px;align-items:center;";
   zoomWrap.append(zoomOutButton, zoomInButton);
@@ -262,7 +255,7 @@ export function buildTimelineView({ preview, previewStage }) {
   addSegmentButton.textContent = "+ Segment";
   addOverlaySegmentButton.textContent = "+ Overlay Track";
   timelineToolRail.append(bulkSegmentsButton, sceneNoteButton, videoNoteButton, lyricNoteButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton);
-  timelineHeader.append(setInButton, setOutButton, clearRangeButton, closeTimelineGapsButton, snapSceneEdgeButton, splitSceneButton, idLoraTrimModeButton, overlayTrackToggleButton, overlayTrackHintButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, locationThumbnailButton, zoomWrap, timelineStatusInfo, deleteSegmentButton, deleteAllSegmentsButton, selectedMediaTools);
+  timelineHeader.append(toolsButton, splitSceneButton, idLoraTrimModeButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineStatusInfo, deleteSegmentButton, deleteAllButton);
   const timelineBody = document.createElement("div");
   timelineBody.style.cssText = "display:grid;grid-template-columns:auto minmax(0,1fr);min-height:0;overflow:hidden;";
   const timelineViewport = document.createElement("div");
@@ -281,12 +274,12 @@ export function buildTimelineView({ preview, previewStage }) {
   return {
     addOverlaySegmentButton, addSegmentButton, addTimelineMarkerButton, beatMarkersButton, bulkSegmentsButton,
     clearRangeButton, closeTimelineGapsButton, deleteAllSegmentsButton, deleteAllTimelineImagesButton,
-    deleteAllTimelineVideosButton, deleteSegmentButton, deleteSelectedMediaButton, globalAudioMuteButton,
+    deleteAllTimelineVideosButton, deleteSegmentButton, globalAudioMuteButton,
     globalScrub, globalScrubTime, idLoraTrimModeButton, lyricNoteButton, locationThumbnailButton, multiSelectButton,
     multiSelectHintButton, overlayTrackHintButton, overlayTrackToggleButton, playButton, playhead, redoButton,
-    sceneNoteButton, segmentLayer, selectedMediaLabel, setInButton, setOutButton, snapSceneEdgeButton,
+    sceneNoteButton, segmentLayer, setInButton, setOutButton, snapSceneEdgeButton,
     snapToBeatsControl, splitSceneButton, stopButton, timeline, timelineCanvas, timelineInfo,
-    timelineRangeInfo, timelineResizeHandle, timelineViewport, undoButton, useFrameAsImageButton,
+    timelineRangeInfo, timelineResizeHandle, timelineViewport, undoButton,
     videoNoteButton, waveformModeSelect, zoomInButton, zoomOutButton,
   };
 }
