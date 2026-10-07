@@ -146,7 +146,7 @@ export function buildStoryLayerPanel({
   );
 
   const hasStoryLayerContent = Boolean(String(state.storyLayer.overall_story_idea || "").trim() || String(state.storyLayer.user_story_arc || "").trim() || String(state.storyLayer.song_story_brief || "").trim());
-  const storyLayerPanel = makeCollapsiblePanel("Story Layer", "", storyLayerBar, { open: focusedSection === "story" || hasStoryLayerContent || isMiniMaxShortFilmMode });
+  const storyLayerPanel = makeCollapsiblePanel("Story Layer", "", storyLayerBar, { open: !focusedSection || focusedSection === "story" || hasStoryLayerContent || isMiniMaxShortFilmMode });
   storyLayerPanel.classList.add("vrgdg-storyboard-panel");
 
   return {
