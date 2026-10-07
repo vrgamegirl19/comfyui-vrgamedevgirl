@@ -85,6 +85,7 @@ import {
 import { createBrowserAi, wireBrowserAiPanel } from "./browser_ai.mjs";
 import { buildTimelineView, createTimelineView } from "./timeline_view.mjs";
 import { timelineDeleteAvailability } from "./timeline_tool_windows.mjs";
+import { queueBuilderRefresh } from "./builder_refresh.mjs";
 import { createMediaImport, installFileDropNavigationGuard } from "./media_import.mjs";
 import { createProjectFiles, wireContextFileInputs } from "./project_files.mjs";
 import { createLyricCues } from "./lyric_cues.mjs";
@@ -134,7 +135,7 @@ import { createVideoRender } from "./video_render.mjs";
 import { createBatchRender } from "./batch_render.mjs";
 import { createModelPickers } from "./model_pickers.mjs";
 
-export function openBuilder(node) {
+export function openBuilder(node, options = {}) {
   // Mutable runtime state shared across the builder features for this open builder.
   const wizardVideoSettings = { global: false };
   const builderETAState = { timer: 0, log: null };
@@ -220,6 +221,7 @@ export function openBuilder(node) {
     menuButton, newProjectButton, overlay, reviewGuideButton, saveButton, saveProjectAsButton, settingsButton,
     topbar, uiProfileField, videoTypeField, whatsNewMenuButton,
     saveSession: (...args) => saveSession(...args),
+    refreshBuilder: (...args) => refreshBuilder(...args),
   });
 
   const {
@@ -893,7 +895,27 @@ export function openBuilder(node) {
   window.VRGDG_UIThemes?.registerRoot?.(overlay);
 
   setTimeout(() => {
-    showStartupWelcome().catch((error) => {
+    const resume = options.resume;
+    const startup = async () => {
+      if (!resume?.projectFolder) return showStartupWelcome();
+      const loaded = await loadSessionFromProject(resume.projectFolder);
+      if (!loaded) return showStartupWelcome();
+      const selected = [...state.segments, ...state.overlaySegments].find((item) => item.id === resume.activeId);
+      if (selected) {
+        state.activeId = selected.id;
+        state.activeTrack = state.overlaySegments.includes(selected) ? "overlay" : "base";
+      }
+      if (["scenes", "tools", "luts"].includes(resume.leftPanelTab)) state.leftPanelTab = resume.leftPanelTab;
+      syncLeftPanelTabs();
+      setInspectorTab(["scene", "image", "video", "audio"].includes(resume.inspectorTab) ? resume.inspectorTab : "scene");
+      syncInspector();
+      render();
+      requestAnimationFrame(() => {
+        timelineViewport.scrollLeft = Math.max(0, Number(resume.timelineScrollLeft) || 0);
+        sceneListPane.scrollTop = Math.max(0, Number(resume.sceneListScrollTop) || 0);
+      });
+    };
+    startup().catch((error) => {
       console.warn("[VRGDG Music Builder] Startup welcome failed:", error);
       toast(`Video Creator startup failed:\n${String(error?.message || error)}`, true);
     });
@@ -2664,6 +2686,29 @@ export function openBuilder(node) {
       toast(`Autosave failed before ${reason || "this action"}:\n${String(error?.message || error)}`, true);
       return false;
     }
+  }
+
+  async function refreshBuilder() {
+    const projectFolder = activeProjectFolderForSave();
+    if (!projectFolder) {
+      toast("Create or load a project before refreshing the Builder UI.", true);
+      return;
+    }
+    const saved = await saveSession({ quiet: true, throwOnError: true });
+    if (!saved || saved.stale) {
+      toast("Refresh stopped because the project could not be saved. Reload the project first.", true);
+      return;
+    }
+    queueBuilderRefresh(window.sessionStorage, {
+      projectFolder: saved.project_folder || projectFolder,
+      nodeId: node?.id ?? null,
+      activeId: state.activeId,
+      inspectorTab: state.inspectorTab,
+      leftPanelTab: state.leftPanelTab,
+      timelineScrollLeft: timelineViewport.scrollLeft,
+      sceneListScrollTop: sceneListPane.scrollTop,
+    });
+    window.location.reload();
   }
 
 

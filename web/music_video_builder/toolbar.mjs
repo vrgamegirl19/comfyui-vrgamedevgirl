@@ -367,7 +367,7 @@ export function buildTopbar({
   autoSaveControl, branchProjectButton, builderETAState, builderLifecycle, closeBuilderNow, closeButton,
   exportProjectButton, fullscreenButton, importProjectButton, loadLastProjectButton, loadSessionButton,
   menuButton, newProjectButton, overlay, reviewGuideButton, saveButton, saveProjectAsButton, saveSession,
-  settingsButton, topbar, uiProfileField, videoTypeField, whatsNewMenuButton,
+  refreshBuilder, settingsButton, topbar, uiProfileField, videoTypeField, whatsNewMenuButton,
 }) {
   const confirmCloseBuilder = () => {
     const backdrop = document.createElement("div");
@@ -415,6 +415,20 @@ export function buildTopbar({
     });
   };
   closeButton.onclick = confirmCloseBuilder;
+  const refreshBuilderButton = makeButton("Refresh Builder UI");
+  refreshBuilderButton.title = "Save this project, reload the browser to get the latest Builder UI, and reopen this project and scene automatically.";
+  refreshBuilderButton.onclick = async () => {
+    refreshBuilderButton.disabled = true;
+    refreshBuilderButton.textContent = "Saving and refreshing...";
+    try {
+      await refreshBuilder();
+    } catch (error) {
+      toast(`Could not refresh the Builder UI: ${String(error?.message || error)}`, true);
+    } finally {
+      refreshBuilderButton.disabled = false;
+      refreshBuilderButton.textContent = "Refresh Builder UI";
+    }
+  };
   const promptCreatorButton = makeButton("Prompt Creator (Legacy)");
   const autoLoadAllButton = makeButton("Import Data From Prompt Creator");
   const importSceneNotesButton = makeButton("Import Scene Notes JSON");
@@ -572,7 +586,7 @@ export function buildTopbar({
     button.style.justifyContent = "flex-start";
   };
   menuDropdown.append(buyMeACoffeeButton);
-  for (const button of [newProjectButton, loadSessionButton, loadLastProjectButton, saveProjectAsButton, branchProjectButton, exportProjectButton, importProjectButton, settingsButton, reviewGuideButton, whatsNewMenuButton, gemmaT2IAllButton, gemmaVideoAllButton, zImageAllButton, zEnhanceAllButton, renderAllButton, renderLogButton, stitchPreviewButton, slideshowPreviewButton, fullBuildButton, fullFLFBuildButton]) {
+  for (const button of [newProjectButton, loadSessionButton, loadLastProjectButton, refreshBuilderButton, saveProjectAsButton, branchProjectButton, exportProjectButton, importProjectButton, settingsButton, reviewGuideButton, whatsNewMenuButton, gemmaT2IAllButton, gemmaVideoAllButton, zImageAllButton, zEnhanceAllButton, renderAllButton, renderLogButton, stitchPreviewButton, slideshowPreviewButton, fullBuildButton, fullFLFBuildButton]) {
     styleMenuItem(button);
     menuDropdown.append(button);
   }
