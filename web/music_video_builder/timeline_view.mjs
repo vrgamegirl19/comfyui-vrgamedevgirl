@@ -25,6 +25,7 @@ import {
   sceneFilmGrainBadgeHtml,
   sceneLutBadgeHtml,
 } from "./post_process.mjs";
+import { cloneMiniMaxH3Settings, isMiniMaxH3ContinuityAllowedForMode } from "./minimax_h3.mjs";
 import { isInstrumentalLyricText } from "./prompt_text.mjs";
 import { newTimelineMarker, sortSegments } from "./segments.mjs";
 import { appendTimelineVideoThumbnail, hasLockedVideo, selectedSegmentVideoPath } from "./selection_preview.mjs";
@@ -298,6 +299,63 @@ export function createTimelineView({
   selectedTimelineRangeInfo, setActiveSegment, state, syncInspector, syncLyricMapperFromSegments,
   timelineCanvas, timelineDuration, timelineSegmentLabel, toggleSegmentPreviewMode,
 }) {
+  // The scene card's quick button: lock this scene's MiniMax settings and make it a Latent Continuation Masked scene
+  // with the Masked transition. Clicking it again puts the scene back the way it was before the first click.
+  async function toggleSceneMaskedContinuation(segment) {
+    if (!segment) return;
+    if (state.segments.indexOf(segment) <= 0) {
+      toast("The first scene has no previous scene to continue from.", true);
+      return;
+    }
+    const before = segment.minimax_h3_masked_quick_prev;
+    const maskedNow = Boolean(segment.use_scene_minimax_h3_settings)
+      && segment.minimax_h3_settings?.continuity_mode === "latent_continuation_masked";
+    if (maskedNow) {
+      pushHistory();
+      if (before && before.locked === false) {
+        segment.use_scene_minimax_h3_settings = false;
+        delete segment.minimax_h3_settings;
+      } else {
+        segment.minimax_h3_settings = cloneMiniMaxH3Settings({
+          ...segment.minimax_h3_settings,
+          continuity_mode: before?.continuity_mode || "off",
+          location_transition_preset: before?.location_transition_preset || "normal",
+        });
+      }
+      delete segment.minimax_h3_masked_quick_prev;
+      if (segment.id === state.activeId) syncInspector();
+      render();
+      await autoSaveSessionQuiet("MiniMax H3 scene masked continuation turned off");
+      toast(before && before.locked === false
+        ? "Masked continuation off. This scene follows the project MiniMax settings again."
+        : "Masked continuation off for this scene.");
+      return;
+    }
+    const base = cloneMiniMaxH3Settings(segment.use_scene_minimax_h3_settings && segment.minimax_h3_settings
+      ? segment.minimax_h3_settings
+      : state.miniMaxH3Settings);
+    if (!isMiniMaxH3ContinuityAllowedForMode("latent_continuation_masked", base.video_mode, base.render_pass)) {
+      toast("Latent Continuation Masked is not available for this scene's MiniMax mode (Image + Reference and 2 Pass Advanced are excluded).", true);
+      return;
+    }
+    pushHistory();
+    segment.minimax_h3_masked_quick_prev = {
+      locked: Boolean(segment.use_scene_minimax_h3_settings),
+      continuity_mode: base.continuity_mode,
+      location_transition_preset: base.location_transition_preset,
+    };
+    segment.use_scene_minimax_h3_settings = true;
+    segment.minimax_h3_settings = cloneMiniMaxH3Settings({
+      ...base,
+      continuity_mode: "latent_continuation_masked",
+      location_transition_preset: "masked",
+    });
+    segment.minimax_h3_mode = segment.minimax_h3_settings.video_mode;
+    if (segment.id === state.activeId) syncInspector();
+    render();
+    await autoSaveSessionQuiet("MiniMax H3 scene set to masked continuation");
+    toast("Scene locked and set to Latent Continuation Masked with the Masked transition.");
+  }
   function normalizeSegments(changedSegment, changedIndex = null) {
     sortSegments(state.segments);
     const minDuration = 0.1;
@@ -787,9 +845,18 @@ export function createTimelineView({
       const lockedByVideo = hasLockedVideo(segment);
       const isActive = Boolean(state.activeId) && segment.id === state.activeId;
       const isMultiSelected = isSegmentMultiSelected(segment);
-      const borderColor = isActive || isMultiSelected ? "#ef4444" : lockedByVideo ? "#a3e635" : isOverlay ? "#f97316" : inserted ? "#f59e0b" : "#0891b2";
-      const borderWidth = isActive || isMultiSelected ? "3px" : "1px";
-      const shadow = isActive || isMultiSelected ? "0 0 0 2px rgba(239,68,68,.28), 0 0 18px rgba(239,68,68,.55)" : "none";
+      // Rendering now: blue glow. Rendering and selected: purple glow. Selected only: red glow.
+      const isRendering = segment.video_status === "running";
+      const isSelected = isActive || isMultiSelected;
+      const borderColor = isRendering && isSelected ? "#c084fc" : isRendering ? "#3b82f6" : isSelected ? "#ef4444" : lockedByVideo ? "#a3e635" : isOverlay ? "#f97316" : inserted ? "#f59e0b" : "#0891b2";
+      const borderWidth = isRendering || isSelected ? "3px" : "1px";
+      const shadow = isRendering && isSelected
+        ? "0 0 6px 1px rgba(192,132,252,.95), 0 0 12px 2px rgba(168,85,247,.55)"
+        : isRendering
+          ? "0 0 6px 1px rgba(96,165,250,.95), 0 0 12px 2px rgba(59,130,246,.55)"
+          : isSelected
+            ? "0 0 5px 1px rgba(239,68,68,.85)"
+            : "none";
       block.style.cssText = `
         position:absolute;left:${left}px;top:${blockTop}px;width:${width}px;height:${blockHeight}px;
         border:${borderWidth} solid ${borderColor};
@@ -827,6 +894,45 @@ export function createTimelineView({
         };
         if (segment.overlay_enabled === false) block.style.opacity = ".48";
         block.append(eye, lock);
+      }
+      if (!isOverlay && state.segments.indexOf(segment) > 0) {
+        // Quick button: lock this scene and make it a Latent Continuation Masked scene with the Masked transition.
+        const maskedOn = Boolean(segment.use_scene_minimax_h3_settings)
+          && segment.minimax_h3_settings?.continuity_mode === "latent_continuation_masked";
+        const maskedButton = document.createElement("span");
+        maskedButton.textContent = "⛓";
+        maskedButton.title = maskedOn
+          ? "Locked to Latent Continuation Masked (Masked transition). Click to turn it off."
+          : "Lock this scene and set it to Latent Continuation Masked with the Masked transition (continue, then one smooth move). Click again to turn it off.";
+        maskedButton.style.cssText = `position:absolute;left:12px;top:4px;z-index:5;width:18px;height:16px;display:flex;align-items:center;justify-content:center;border:1px solid ${maskedOn ? "#a3e635" : "#67e8f9"};border-radius:4px;background:${maskedOn ? "rgba(54,83,20,.95)" : "rgba(8,47,73,.92)"};color:${maskedOn ? "#ecfccb" : "#e0f2fe"};font-size:11px;line-height:1;cursor:pointer;`;
+        maskedButton.onpointerdown = (event) => {
+          event.stopPropagation();
+          // The card is draggable, and a click that moves a pixel would start a drag and cancel the click.
+          if (block.draggable) {
+            block.draggable = false;
+            const restore = () => {
+              block.draggable = true;
+              window.removeEventListener("pointerup", restore, true);
+              window.removeEventListener("pointercancel", restore, true);
+            };
+            window.addEventListener("pointerup", restore, true);
+            window.addEventListener("pointercancel", restore, true);
+          }
+        };
+        maskedButton.ondblclick = (event) => event.stopPropagation();
+        maskedButton.onclick = (event) => {
+          event.stopPropagation();
+          try {
+            Promise.resolve(toggleSceneMaskedContinuation(segment)).catch((error) => {
+              console.error("[VRGDG Timeline] Masked continuation button failed", error);
+              toast(`Masked continuation button failed: ${String(error?.message || error)}`, true);
+            });
+          } catch (error) {
+            console.error("[VRGDG Timeline] Masked continuation button failed", error);
+            toast(`Masked continuation button failed: ${String(error?.message || error)}`, true);
+          }
+        };
+        block.append(maskedButton);
       }
       const dblClickHint = !isOverlay ? "Double-click to review line & performer mapping. Shift + double-click to edit the Storyboard Card." : "";
       block.title = lockedByVideo ? "This scene has a generated video, so timing is locked." : dblClickHint;
@@ -1081,7 +1187,14 @@ export function createTimelineView({
     renderBeatMarkersOverlay();
   }
 
+  // Scene statuses change through renderList(), so repaint the timeline when the set of rendering scenes changes.
+  let renderingKey = "";
   function renderList() {
+    const nextRenderingKey = [...state.segments, ...state.overlaySegments].filter((segment) => segment.video_status === "running").map((segment) => segment.id).join(",");
+    if (nextRenderingKey !== renderingKey) {
+      renderingKey = nextRenderingKey;
+      renderSegments();
+    }
     sceneListPane.textContent = "";
     ensureAllSegmentRuntimeFields();
     for (const [index, segment] of state.segments.entries()) {

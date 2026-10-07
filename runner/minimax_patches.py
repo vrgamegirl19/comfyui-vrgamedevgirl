@@ -4,7 +4,11 @@ import copy
 import importlib
 import os
 import sys
-from ..minimax.latent_manager import SceneLatentManager, _frames_to_tokens, _tokens_to_frames, plan_latent_context
+from ..minimax.latent_manager import (
+    SceneLatentManager,
+    normalize_masked_context_frames,
+    plan_masked_context,
+)
 
 from .paths import _bool_payload, _first_payload_value, _float_payload, _int_payload
 from .models import _NONE_LORA, _clean_lora_name, _model_choice_exists
@@ -104,10 +108,20 @@ def _patch_minimax_h3_save_latent(prompt, payload, timing=None):
     }
 
 
-_MMH3_LATENT_MODE = "latent_continuation"
+_MMH3_LATENT_MASKED_MODE = "latent_continuation_masked"
 
 
-_MMH3_LATENT_EXACT_MODE = "latent_continuation_exact_frame"
+_MMH3_RETIRED_LATENT_MODES = (
+    "latent", "latent_continuation", "continuation",
+    "latent_exact", "latent_exact_frame", "latent_continuation_exact", "latent_continuation_exact_frame",
+)
+
+
+# The conditioning nodes masked continuation supports. Image + Reference is excluded on purpose.
+_MMH3_CONDITIONING_CLASSES = (
+    "MiniMaxH3ReferenceToVideo",
+    "MiniMaxH3ImageToVideo",
+)
 
 
 def _minimax_h3_latent_continuation_mode(payload):
@@ -117,37 +131,31 @@ def _minimax_h3_latent_continuation_mode(payload):
         or payload.get("continuityMode")
         or ""
     ).strip().lower().replace("-", "_").replace(" ", "_")
-    if mode in ("latent_exact", "latent_exact_frame", "latent_continuation_exact"):
-        return _MMH3_LATENT_EXACT_MODE
+    # The standard and exact-last-frame modes were retired. Saved projects that still name them continue masked.
+    if mode in _MMH3_RETIRED_LATENT_MODES or mode in ("latent_masked", "latent_masked_av"):
+        return _MMH3_LATENT_MASKED_MODE
     return mode
 
 
 def _minimax_h3_is_latent_mode(mode):
-    return mode in (_MMH3_LATENT_MODE, _MMH3_LATENT_EXACT_MODE)
+    return mode == _MMH3_LATENT_MASKED_MODE
 
 
-def _minimax_h3_latent_exact_plan(payload):
-    """Context window / warm-up / image position for the exact-last-frame mode, or None when not applicable."""
-    if _minimax_h3_latent_continuation_mode(payload) != _MMH3_LATENT_EXACT_MODE:
-        return None
-    if _int_payload(payload, "scene_number", 1, 1, 999999) <= 1:
-        return None
+def _minimax_h3_masked_latent_plan(payload):
+    """The masked-continuation window of the predecessor's saved latent, or None when it cannot be planned."""
     project_text = str(payload.get("project_folder", "") or "").strip().strip('"')
-    if not project_text or not os.path.isdir(project_text):
+    scene_number = _int_payload(payload, "scene_number", 1, 1, 999999)
+    if scene_number <= 1 or not project_text or not os.path.isdir(project_text):
         return None
-    pred_scene = _int_payload(payload, "scene_number", 1, 1, 999999) - 1
-    info = SceneLatentManager.get_latent_info(os.path.abspath(project_text), pred_scene)
-    total_tokens = int(info.get("token_count") or 0)
-    if not info.get("exists") or total_tokens <= 0:
+    info = SceneLatentManager.get_latent_info(os.path.abspath(project_text), scene_number - 1)
+    if not info.get("exists") or int(info.get("token_count") or 0) <= 0:
         return None
-    plan = plan_latent_context(
-        total_tokens,
-        info.get("tail_padding_frames"),
-        _minimax_h3_latent_context_frames_setting(payload),
-        exact_frame=True,
-    )
-    plan["tail_padding_known"] = info.get("tail_padding_frames") is not None
-    return plan
+    try:
+        return plan_masked_context(
+            int(info["token_count"]), info.get("tail_padding_frames"), _minimax_h3_latent_context_frames_setting(payload)
+        )
+    except ValueError:
+        return None
 
 
 def _minimax_h3_tail_padding_frames(timing):
@@ -166,9 +174,14 @@ def _minimax_h3_latent_context_frames_setting(payload):
         context_frames = int(raw_cf)
     except (ValueError, TypeError):
         context_frames = 22
-    if context_frames not in (5, 16, 22, 39, 56):
-        context_frames = 22
-    return context_frames
+    return normalize_masked_context_frames(context_frames)
+
+
+def _minimax_h3_cooldown_frames(payload):
+    """Cool-down frames for the timing plan. Masked continuation plans its own tail, so the setting does not apply."""
+    if _minimax_h3_is_latent_mode(_minimax_h3_latent_continuation_mode(payload)):
+        return 0
+    return _first_payload_value(payload, "cooldown_frames", "tail_loss_frames", default=0)
 
 
 def _minimax_h3_effective_warmup_frames(payload):
@@ -189,23 +202,32 @@ def _minimax_h3_effective_warmup_frames(payload):
     mode = _minimax_h3_latent_continuation_mode(payload)
     if not _minimax_h3_is_latent_mode(mode):
         return requested
+    # Masked continuation sets its own warm-up, so the Render settings warmup frames do not apply.
+    requested = 0
     if _int_payload(payload, "scene_number", 1, 1, 999999) <= 1:
         return requested
-    context_frames = _minimax_h3_latent_context_frames_setting(payload)
-    exact_plan = _minimax_h3_latent_exact_plan(payload)
-    if exact_plan is not None:
-        return max(requested, int(exact_plan["warmup_frames"]))
-    # frames the sliced tokens really cover (16 -> 5 tokens -> 17 frames)
-    return max(requested, _tokens_to_frames(_frames_to_tokens(context_frames)))
+    # the copied window plus the predecessor frames after it, so audio and picture stay on the same timeline
+    masked_plan = _minimax_h3_masked_latent_plan(payload)
+    return max(requested, int(masked_plan["warmup_frames"]) if masked_plan else _minimax_h3_latent_context_frames_setting(payload))
 
 
-def _patch_minimax_h3_latent_continuation(prompt, payload):
-    continuity_mode = _minimax_h3_latent_continuation_mode(payload)
+def _patch_minimax_h3_latent_continuation_masked(prompt, payload):
+    """Latent Continuation Masked: the predecessor's latent becomes the protected head of the sampled latent.
 
-    if not _minimax_h3_is_latent_mode(continuity_mode):
-        return {"enabled": False, "reason": "Continuity mode is not latent_continuation"}
-    exact_frame = continuity_mode == _MMH3_LATENT_EXACT_MODE
+    A Load Latent node slices a phase-aligned window of the predecessor, and an Apply Masked Continuation node
+    copies it into the first tokens of the sampler's input latent with a zero denoise mask. Nothing is added to
+    the conditioning. The head is trimmed off through the timing plan's warm-up, like the other latent modes.
 
+    Single pass has one sampler. 2 Pass has a second sampler fed by the learned upscale, which resets the video
+    mask on purpose, so the same window is applied again to that sampler's latent. The predecessor is saved at the
+    pass 2 size, so the second head is the exact predecessor, not the resized copy pass 1 had to use. 2 Pass
+    Advanced is not supported: it samples its second pass inside the MMH3 Ultimate Upscale node, which builds its
+    own masks and would resample the head.
+    """
+    if any(node.get("class_type") == "MMH3UltimateUpscale" for node in prompt.values()):
+        raise ValueError(
+            "Latent Continuation Masked is not available in 2 Pass Advanced. Use Single pass or 2 Pass, or set continuity to off."
+        )
     project_text = str(payload.get("project_folder", "") or "").strip().strip('"')
     if not project_text or not os.path.isdir(project_text):
         return {"enabled": False, "reason": f"Project folder not found: {project_text}"}
@@ -222,65 +244,70 @@ def _patch_minimax_h3_latent_continuation(prompt, payload):
     pred_scene = scene_number - 1
     if not SceneLatentManager.latent_exists(project_folder, pred_scene):
         raise FileNotFoundError(
-            f"Latent Continuation for Scene {scene_number:03d} requires Scene {pred_scene:03d} latent, "
+            f"Latent Continuation Masked for Scene {scene_number:03d} requires Scene {pred_scene:03d} latent, "
             f"but '{SceneLatentManager.get_path(project_folder, pred_scene)}' was not found. "
             f"Render Scene {pred_scene:03d} first."
         )
 
-    context_frames = _minimax_h3_latent_context_frames_setting(payload)
-    exact_plan = _minimax_h3_latent_exact_plan(payload) if exact_frame else None
-    exact_image_path = ""
-    if exact_frame:
-        frame_paths = payload.get("continuity_frame_paths")
-        first_frame_path = frame_paths[0] if isinstance(frame_paths, list) and frame_paths else ""
-        exact_image_path = str(payload.get("latent_exact_frame_path") or first_frame_path or "").strip().strip('"')
-        if not exact_image_path or not os.path.isfile(exact_image_path):
-            raise FileNotFoundError(
-                f"Exact Last Frame continuation for Scene {scene_number:03d} needs an image of Scene {pred_scene:03d}'s "
-                f"last frame, but '{exact_image_path or '(none provided)'}' was not found. "
-                f"Render Scene {pred_scene:03d} first, or switch to plain Latent Continuation."
-            )
-        if exact_plan is None:
-            raise ValueError(f"Could not read Scene {pred_scene:03d}'s latent info to plan the exact-frame context.")
-
-    guider_ids = [
-        str(node_id)
+    samplers = {
+        str(node_id): node
         for node_id, node in prompt.items()
-        if node.get("class_type") == "BasicGuider"
+        if node.get("class_type") == "SamplerCustomAdvanced"
+    }
+    replace_ids = {
+        str(node_id) for node_id, node in prompt.items()
+        if node.get("class_type") == "VRGDG_MiniMaxH3ReplaceUpscaledVideoLatent"
+    }
+
+    def reads_upscaled_latent(node):
+        source = node.get("inputs", {}).get("latent_image")
+        return isinstance(source, list) and len(source) == 2 and str(source[0]) in replace_ids
+
+    second_pass = {sid: node for sid, node in samplers.items() if reads_upscaled_latent(node)}
+    first_pass = {sid: node for sid, node in samplers.items() if sid not in second_pass}
+    if len(first_pass) != 1 or len(second_pass) > 1:
+        raise ValueError(
+            "Latent Continuation Masked supports Single pass and 2 Pass renders "
+            f"(found {len(samplers)} samplers it cannot map to those). Use Latent Continuation for this render."
+        )
+    sampler_id, sampler = next(iter(first_pass.items()))
+    latent_source = sampler.get("inputs", {}).get("latent_image")
+    if not isinstance(latent_source, list) or len(latent_source) != 2:
+        return {"enabled": False, "reason": "Sampler latent input not found"}
+
+    context_frames = _minimax_h3_latent_context_frames_setting(payload)
+    info = SceneLatentManager.get_latent_info(project_folder, pred_scene)
+    plan = plan_masked_context(int(info.get("token_count") or 0), info.get("tail_padding_frames"), context_frames)
+
+    # With Audio Drive the song audio is already locked into the latent. Built-in audio keeps the predecessor's.
+    source_node = prompt.get(str(latent_source[0]), {})
+    include_audio = source_node.get("class_type") != "VRGDG_MiniMaxH3AudioDrive"
+
+    # The head is resized through pictures when the predecessor was saved at another size, which needs the video VAE.
+    conditioning_nodes = [
+        node for node in prompt.values()
+        if node.get("class_type") in _MMH3_CONDITIONING_CLASSES
     ]
-    if not guider_ids:
-        fallback_guider = _api_node_id_by_class(prompt, "BasicGuider", fallback="126")
-        if fallback_guider and fallback_guider in prompt:
-            guider_ids = [fallback_guider]
-    if not guider_ids:
-        return {"enabled": False, "reason": "BasicGuider node not found"}
-
-    default_latent_source = None
-    if "136" in prompt:
-        default_latent_source = ["136", 1]
-    elif "172" in prompt:
-        default_latent_source = ["172", 0]
-    else:
-        sampler_node = prompt.get("124") or prompt.get("125")
-        if sampler_node and "latent_image" in sampler_node.get("inputs", {}):
-            default_latent_source = sampler_node["inputs"]["latent_image"]
-
-    if not default_latent_source:
-        return {"enabled": False, "reason": "Latent source not found"}
-
-    def latent_source_for_guider(guider_id):
-        guider_ref = [str(guider_id), 0]
-        for node in prompt.values():
-            if node.get("class_type") != "SamplerCustomAdvanced":
-                continue
-            inputs = node.get("inputs", {})
-            if inputs.get("guider") == guider_ref and inputs.get("latent_image"):
-                return inputs["latent_image"]
-        return default_latent_source
+    video_vae = next(
+        (
+            node["inputs"]["vae"] for node in conditioning_nodes
+            if isinstance(node.get("inputs", {}).get("vae"), list)
+        ),
+        None,
+    )
+    # Image to Video pins the scene image as a keyframe at frame 0. The protected head already
+    # holds the opening frames, so that keyframe would fight it. Later scenes open on the predecessor instead.
+    dropped_first_frame = False
+    for node in conditioning_nodes:
+        if node.get("class_type") != "MiniMaxH3ReferenceToVideo" and node.get("inputs", {}).pop("first_frame", None) is not None:
+            dropped_first_frame = True
 
     load_id = "9210"
     while load_id in prompt:
         load_id = str(int(load_id) + 1)
+    apply_id = str(int(load_id) + 1)
+    while apply_id in prompt:
+        apply_id = str(int(apply_id) + 1)
 
     prompt[load_id] = {
         "class_type": "VRGDG_MiniMaxH3LoadLatent",
@@ -288,107 +315,64 @@ def _patch_minimax_h3_latent_continuation(prompt, payload):
             "project_folder": project_folder,
             "scene_number": pred_scene,
             "context_frames": context_frames,
-            "exact_frame_mode": exact_frame,
+            "exact_frame_mode": False,
+            "masked_av": True,
         },
-        "_meta": {
-            "title": f"Predecessor Latent Context (Scene {pred_scene:03d} · {context_frames} frames"
-                     f"{' · exact-frame window' if exact_frame else ''})",
-        },
+        "_meta": {"title": f"Predecessor Latent Context (Scene {pred_scene:03d} · {context_frames} frames · masked)"},
     }
+    prompt[apply_id] = {
+        "class_type": "VRGDG_MiniMaxH3ApplyMaskedContinuation",
+        "inputs": {
+            "latent": latent_source,
+            "context_latent": [load_id, 0],
+            "include_audio": include_audio,
+            **({"vae": list(video_vae)} if video_vae else {}),
+        },
+        "_meta": {"title": f"MiniMax H3 Latent Continuation Masked ({plan['context_frames']} frames)"},
+    }
+    sampler["inputs"]["latent_image"] = [apply_id, 0]
 
-    warmup_frames = _minimax_h3_effective_warmup_frames(payload)
-    # exact mode: the context block ends right where the exact last-frame image sits (the warm-up's last frame)
-    latent_frame_idx = max(0, warmup_frames - int(exact_plan["warmup_frames"])) if exact_plan else 0
-
-    next_node_id = int(load_id) + 1
-    def allocate_node_id():
-        nonlocal next_node_id
-        while str(next_node_id) in prompt:
-            next_node_id += 1
-        node_id = str(next_node_id)
-        next_node_id += 1
-        return node_id
-
-    exact_image_id = None
-    if exact_frame:
-        exact_image_id = allocate_node_id()
-        prompt[exact_image_id] = {
-            "class_type": "VRGDG_MiniMaxH3LoadExactFrame",
-            "inputs": {"image_path": os.path.abspath(exact_image_path)},
-            "_meta": {"title": f"Scene {pred_scene:03d} exact last frame"},
-        }
-
-    guide_ids = []
-    exact_guide_ids = []
-    skipped_guider_ids = []
-    video_vae = (prompt.get("136", {}).get("inputs", {}) or {}).get("vae")
-    if exact_frame and not video_vae:
-        video_vae = [_api_node_id_by_class(prompt, "VAELoader", fallback="119"), 0]
-
-    for pass_index, guider_id in enumerate(guider_ids, start=1):
-        guider_inputs = prompt[guider_id].setdefault("inputs", {})
-        cond_key = "conditioning" if "conditioning" in guider_inputs else "positive" if "positive" in guider_inputs else "conditioning"
-        current_positive = guider_inputs.get(cond_key)
-        if not current_positive:
-            skipped_guider_ids.append(guider_id)
-            continue
-        latent_source = latent_source_for_guider(guider_id)
-        pass_suffix = f" · pass {pass_index}" if len(guider_ids) > 1 else ""
-        guide_id = allocate_node_id()
-        prompt[guide_id] = {
-            "class_type": "VRGDG_MiniMaxH3ApplyLatentGuide",
+    second_apply_id = None
+    if second_pass:
+        second_sampler_id, second_sampler = next(iter(second_pass.items()))
+        second_apply_id = str(int(apply_id) + 1)
+        while second_apply_id in prompt:
+            second_apply_id = str(int(second_apply_id) + 1)
+        prompt[second_apply_id] = {
+            "class_type": "VRGDG_MiniMaxH3ApplyMaskedContinuation",
             "inputs": {
-                "positive": current_positive,
-                "latent": latent_source,
+                "latent": second_sampler["inputs"]["latent_image"],
                 "context_latent": [load_id, 0],
-                "frame_idx": latent_frame_idx,
+                # the audio is the locked source track in every 2 pass graph, its mask comes through the upscale
+                "include_audio": False,
+                **({"vae": list(video_vae)} if video_vae else {}),
             },
-            "_meta": {
-                "title": f"MiniMax H3 Latent Continuation Guide ({context_frames} frames{pass_suffix})",
-            },
+            "_meta": {"title": f"MiniMax H3 Latent Continuation Masked · Pass 2 ({plan['context_frames']} frames)"},
         }
-        guide_ids.append(guide_id)
-        final_conditioning_id = guide_id
-        if exact_frame:
-            exact_guide_id = allocate_node_id()
-            prompt[exact_guide_id] = {
-                "class_type": "MiniMaxH3AddGuide",
-                "inputs": {
-                    "positive": [guide_id, 0],
-                    "latent": latent_source,
-                    "vae": video_vae,
-                    "image": [exact_image_id, 0],
-                    "frame_idx": warmup_frames - 1,
-                },
-                "_meta": {"title": f"Exact last frame anchor (warm-up frame {warmup_frames - 1}{pass_suffix})"},
-            }
-            exact_guide_ids.append(exact_guide_id)
-            final_conditioning_id = exact_guide_id
-        guider_inputs[cond_key] = [final_conditioning_id, 0]
+        second_sampler["inputs"]["latent_image"] = [second_apply_id, 0]
 
-    if not guide_ids:
-        return {"enabled": False, "reason": "Guider conditioning input not found"}
-
-    # The context frames are not trimmed inside the graph. They are the timing plan's
-    # warm-up (see _minimax_h3_effective_warmup_frames), so the post-render trim removes
-    # them from the video and the audio together and lip sync stays aligned.
     return {
         "enabled": True,
-        "mode": continuity_mode,
+        "mode": _MMH3_LATENT_MASKED_MODE,
         "predecessor_scene": pred_scene,
-        "context_frames": context_frames,
-        "warmup_frames": warmup_frames,
+        "context_frames": plan["context_frames"],
+        "warmup_frames": _minimax_h3_effective_warmup_frames(payload),
         "load_node_id": load_id,
-        "guide_node_id": guide_ids[0],
-        "guide_node_ids": guide_ids,
-        "exact_image_node_id": exact_image_id,
-        "exact_guide_node_id": exact_guide_ids[0] if exact_guide_ids else None,
-        "exact_guide_node_ids": exact_guide_ids,
-        "patched_guider_ids": guider_ids,
-        "skipped_guider_ids": skipped_guider_ids,
-        "exact_frame_plan": exact_plan,
+        "apply_node_id": apply_id,
+        "second_pass_apply_node_id": second_apply_id,
+        "sampler_node_id": sampler_id,
+        "include_audio": include_audio,
+        "lost_tail_frames": plan["lost_tail_frames"],
+        "tail_padding_known": info.get("tail_padding_frames") is not None,
+        "dropped_first_frame": dropped_first_frame,
         "trim_node_id": None,
     }
+
+
+def _patch_minimax_h3_latent_continuation(prompt, payload):
+    if _minimax_h3_latent_continuation_mode(payload) != _MMH3_LATENT_MASKED_MODE:
+        return {"enabled": False, "reason": "Continuity mode is not latent_continuation_masked"}
+    return _patch_minimax_h3_latent_continuation_masked(prompt, payload)
 
 
 def _patch_minimax_h3_advanced_settings(prompt, payload):

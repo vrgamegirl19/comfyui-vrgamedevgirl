@@ -293,6 +293,83 @@ def validate_minimax_h3_prompt(
     }
 
 
+CONTINUATION_START_FIELD = "minimax_h3_continuation_start_seconds"
+CONTINUATION_MIN_START_SECONDS = 0.5
+
+
+def continuation_start_limits(duration: float) -> tuple:
+    """(lowest, highest) second of a continued scene where its own movement may begin.
+
+    At least 0.5 s in, at most half of the scene (rounded down to 0.1 s). Python twin of
+    ``miniMaxH3ContinuationStartLimits`` in ``web/music_video_builder/minimax_h3.mjs``.
+    """
+    low = CONTINUATION_MIN_START_SECONDS
+    high = max(low, math.floor(max(0.0, float(duration)) * 0.5 * 10 + 1e-9) / 10)
+    return low, high
+
+
+def continuation_hold_seconds(duration: float, requested: Any = None) -> float:
+    """Seconds a continued scene simply carries on before its own movement begins.
+
+    The author's choice (``minimax_h3_continuation_start_seconds``) kept between the limits, 0.5 s when nothing is
+    set. Python twin of ``miniMaxH3ContinuationHoldSeconds`` in ``web/music_video_builder/minimax_prompt.mjs``.
+    """
+    low, high = continuation_start_limits(duration)
+    try:
+        value = low if requested is None or requested == "" else float(requested)
+    except (TypeError, ValueError):
+        value = low
+    if value != value:  # NaN
+        value = low
+    return round(min(high, max(low, value)), 1)
+
+
+def masked_continuation_context(segment: Dict[str, Any], duration: float, shot_count: int, has_vocals: bool) -> Dict[str, Any]:
+    """What an agent needs to write a scene that continues the previous scene with ``latent_continuation_masked``.
+
+    The renderer already holds the previous scene's last moments as the start of this render, so the prompt has to
+    carry on from them. The Video Builder's own prompt writer gets the same rules in its LLM request.
+    """
+    hold = continuation_hold_seconds(duration, segment.get(CONTINUATION_START_FIELD))
+    scene_length = round(max(0.0, float(duration)), 2)
+    seconds_left = round(max(0.0, scene_length - hold), 2)
+    low, high = continuation_start_limits(duration)
+    direction = " ".join(str(segment.get("minimax_h3_continuation_direction") or "").split())
+    rules = [
+        "This scene continues the previous scene's saved latent. Its first frames are the previous scene's last moments, "
+        "already rendered. Write it as the very next moment of one uninterrupted take, never as a new shot.",
+        f"Write the timing into the shot text: 'For the first {hold:g} seconds, ...' carries on the previous scene's action "
+        f"with the same camera movement, framing and pace (no cut, reframe or restage), then 'At about {hold:g} seconds, ...' "
+        "gives the one smooth movement this scene makes.",
+        f"The scene is {scene_length:g} seconds long, so that movement has {seconds_left:g} seconds and must be completely "
+        "finished before the scene ends. Keep every action of the author's direction, in their order, and perform them briskly "
+        "enough to fit. Never leave one cut off or unfinished.",
+        "Start from the body position and camera in the previous scene's final frame. If the movement needs a different "
+        "position (standing up, walking, turning), describe the natural movement that gets there first.",
+        "No wipes, whip pans, portals, morphs or cuts. A change of location is one visible movement that carries the shot "
+        "into the new place.",
+    ]
+    if has_vocals:
+        rules.append(
+            "The performer is mid-performance: keep singing (or speaking) the scene's lyrics through the whole movement, "
+            "lips in sync with <Audio 1>, with the face kept in view."
+        )
+    if shot_count > 1:
+        rules.append(f"The cut plan has {shot_count} shots. A continued scene should be one continuous shot, set the cut frequency to 0.")
+    return {
+        "mode": "latent_continuation_masked",
+        "hold_seconds": hold,
+        "start_seconds": hold,
+        "scene_seconds": scene_length,
+        "seconds_left": seconds_left,
+        "start_field": CONTINUATION_START_FIELD,
+        "start_limits": {"min": low, "max": high},
+        "direction": direction,
+        "direction_field": "minimax_h3_continuation_direction",
+        "rules": rules,
+    }
+
+
 def build_minimax_prompt_context(
     segment: Dict[str, Any],
     session: Dict[str, Any],
@@ -331,7 +408,16 @@ def build_minimax_prompt_context(
         f"Target approx {per_shot_chars} characters per shot description."
     )
 
-    return {
+    # A scene that continues the previous one with masked latent continuation needs its own prompt rules.
+    from .settings_payload import minimax_h3_settings_for_scene
+
+    continuation = None
+    if minimax_h3_settings_for_scene(session, segment).get("continuity_mode") == "latent_continuation_masked":
+        has_vocals = not segment.get("lyric_no_lip_sync") and bool(str(segment.get("lyric_text") or "").strip())
+        continuation = masked_continuation_context(segment, dur, shot_count, has_vocals)
+        instruction_text += "\nThis scene continues the previous scene (latent_continuation_masked): follow continuation.rules."
+
+    context = {
         "mode": norm_mode,
         "duration_seconds": round(dur, 2),
         "shot_plan": cut_plan,
@@ -351,3 +437,6 @@ def build_minimax_prompt_context(
         "i2v_prompt": segment.get("i2v_prompt", ""),
         "instruction_text": instruction_text,
     }
+    if continuation:
+        context["continuation"] = continuation
+    return context

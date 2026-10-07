@@ -98,7 +98,18 @@ export function showGemmaBatchFailures(failures, { retryHandler }) {
   document.body.append(backdrop);
 }
 
+// The newest progress window. Close only hides it, so the video view's "Render status" button can bring it back.
+// A window is removed for good when its job finishes (close(delay)) or when a newer one replaces a hidden one.
+let lastProgressWindow = null;
+
+export function showLastProgressWindow() {
+  if (!lastProgressWindow?.isAlive()) return false;
+  lastProgressWindow.show();
+  return true;
+}
+
 export function createBaseProgressWindow(title, options = {}) {
+  if (lastProgressWindow?.isHidden()) lastProgressWindow.remove();
   const box = document.createElement("div");
   const zIndex = Number(options.zIndex || 100004);
   box.style.cssText = `
@@ -164,7 +175,22 @@ export function createBaseProgressWindow(title, options = {}) {
     restore.style.display = "none";
     box.style.display = "block";
   };
-  close.onclick = removeAll;
+  const hideForLater = () => {
+    box.style.display = "none";
+    restore.style.display = "none";
+  };
+  close.title = "Hide this window. Use the Render status button in the video view to bring it back.";
+  close.onclick = hideForLater;
+  const registration = {
+    isAlive: () => box.isConnected,
+    isHidden: () => box.isConnected && box.style.display === "none" && restore.style.display === "none",
+    remove: removeAll,
+    show() {
+      restore.style.display = "none";
+      box.style.display = "block";
+    },
+  };
+  lastProgressWindow = registration;
   return {
     set(message, percent = null) {
       status.textContent = message;
@@ -205,7 +231,7 @@ export function createBaseProgressWindow(title, options = {}) {
         return label;
       };
 
-      sceneDetails.append(sectionTitle(`Reference images (${images.length})`));
+      sceneDetails.append(sectionTitle(`${String(details.imagesTitle || "Reference images")} (${images.length})`));
       if (images.length) {
         const strip = document.createElement("div");
         strip.style.cssText = "display:flex;gap:8px;overflow-x:auto;padding:2px 0 8px;";
@@ -215,12 +241,12 @@ export function createBaseProgressWindow(title, options = {}) {
           const image = document.createElement("img");
           const imagePath = String(item?.path || "").trim();
           const imageData = String(item?.data || "").trim();
-          image.src = imagePath ? makeEditorImageUrl(imagePath) : imageData;
+          image.src = String(item?.url || "").trim() || (imagePath ? makeEditorImageUrl(imagePath) : imageData);
           image.alt = String(item?.label || `Image ${index + 1}`);
           image.title = [item?.label, imagePath].filter(Boolean).join("\n");
           image.style.cssText = "display:block;width:118px;height:86px;object-fit:cover;background:#0f172a;";
           const caption = document.createElement("div");
-          caption.textContent = `Image ${index + 1}: ${String(item?.label || "Reference")}`;
+          caption.textContent = String(item?.caption || "").trim() || `Image ${index + 1}: ${String(item?.label || "Reference")}`;
           caption.title = image.title;
           caption.style.cssText = "padding:6px;font-size:10px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
           card.append(image, caption);
@@ -253,7 +279,10 @@ export function createBaseProgressWindow(title, options = {}) {
       sceneDetails.append(promptDetails);
     },
     close(delay = 0) {
-      setTimeout(removeAll, delay);
+      setTimeout(() => {
+        removeAll();
+        if (lastProgressWindow === registration) lastProgressWindow = null;
+      }, delay);
     },
   };
 }

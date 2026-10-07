@@ -430,6 +430,10 @@
           },
           "continuity_mode": {
             "default": "off",
+            "enum": [
+              "off",
+              "latent_continuation_masked"
+            ],
             "type": "string"
           },
           "continuity_prompt_from_last_frame": {
@@ -479,7 +483,16 @@
             "type": "boolean"
           },
           "latent_context_frames": {
-            "default": 22,
+            "default": 39,
+            "enum": [
+              16,
+              22,
+              39,
+              56,
+              90,
+              141,
+              192
+            ],
             "type": "integer"
           },
           "location_transition_custom": {
@@ -488,6 +501,17 @@
           },
           "location_transition_preset": {
             "default": "normal",
+            "enum": [
+              "normal",
+              "surreal",
+              "cinematic",
+              "inner_world",
+              "match",
+              "motion",
+              "creative_auto",
+              "masked",
+              "custom"
+            ],
             "type": "string"
           },
           "lora_count": {
@@ -527,6 +551,14 @@
           "pass2_use_te_speed": {
             "default": false,
             "type": "boolean"
+          },
+          "pipeline": {
+            "default": "standard",
+            "enum": [
+              "standard",
+              "refmod"
+            ],
+            "type": "string"
           },
           "ref_image_size": {
             "default": "max",
@@ -4469,6 +4501,137 @@
           {}
         ],
         "summary": "merge scenes",
+        "tags": [
+          "scenes"
+        ]
+      }
+    },
+    "/vrgdg/api/v1/projects/{pid}/scenes/{sid}/minimax-references": {
+      "get": {
+        "operationId": "api_get_scene_minimax_references",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Error. The HTTP status mirrors error.code."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {}
+        ],
+        "summary": "get scene minimax references",
+        "tags": [
+          "scenes"
+        ]
+      },
+      "put": {
+        "operationId": "api_set_scene_minimax_references",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Project revision the caller last saw. A mismatch returns REVISION_CONFLICT.",
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "automatic": {},
+                  "keys": {}
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Error. The HTTP status mirrors error.code."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {}
+        ],
+        "summary": "set scene minimax references",
         "tags": [
           "scenes"
         ]
@@ -8957,6 +9120,53 @@
         "summary": "get queue",
         "tags": [
           "queue"
+        ]
+      }
+    },
+    "/vrgdg/api/v1/refmods": {
+      "get": {
+        "operationId": "api_refmods",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "folder",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Error. The HTTP status mirrors error.code."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {}
+        ],
+        "summary": "refmods",
+        "tags": [
+          "refmods"
         ]
       }
     },

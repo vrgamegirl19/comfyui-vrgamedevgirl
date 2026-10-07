@@ -1,0 +1,1360 @@
+[
+ {
+  "name": "characters then location",
+  "subjects": [
+   {
+    "id": "s1",
+    "name": "Brad",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Brad description",
+    "refmod": {
+     "name": "identity/brad",
+     "kind": "video",
+     "tokens": 5632,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "s2",
+    "name": "Darrel",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Darrel description",
+    "refmod": {
+     "name": "identity/darrel",
+     "kind": "video",
+     "tokens": 2394,
+     "strength": 1.0
+    }
+   }
+  ],
+  "extras": [],
+  "location": {
+   "id": "l1",
+   "name": "Alpine meadow",
+   "reference_type": "environment",
+   "source": "refmod",
+   "description": "Alpine meadow description",
+   "refmod": {
+    "name": "background/meadow",
+    "kind": "image",
+    "tokens": 600,
+    "strength": 1.0
+   }
+  },
+  "all_subjects": [
+   {
+    "id": "s1",
+    "name": "Brad",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Brad description",
+    "refmod": {
+     "name": "identity/brad",
+     "kind": "video",
+     "tokens": 5632,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "s2",
+    "name": "Darrel",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Darrel description",
+    "refmod": {
+     "name": "identity/darrel",
+     "kind": "video",
+     "tokens": 2394,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "s3",
+    "name": "Vanellope",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Vanellope description",
+    "refmod": {
+     "name": "identity/vanellope",
+     "kind": "video",
+     "tokens": 2816,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "c1",
+    "name": "charcoal suit",
+    "reference_type": "outfit",
+    "source": "refmod",
+    "description": "charcoal suit description",
+    "refmod": {
+     "name": "clothing_men/charcoal_suit",
+     "kind": "video",
+     "tokens": 1500,
+     "strength": 1.0
+    },
+    "wears": "s1"
+   },
+   {
+    "id": "c2",
+    "name": "tuxedo",
+    "reference_type": "outfit",
+    "source": "refmod",
+    "description": "tuxedo description",
+    "refmod": {
+     "name": "clothing_men/tuxedo",
+     "kind": "video",
+     "tokens": 1400,
+     "strength": 1.0
+    },
+    "wears": "s1",
+    "follow": false
+   },
+   {
+    "id": "h1",
+    "name": "red hat",
+    "reference_type": "outfit",
+    "source": "refmod",
+    "description": "red hat description",
+    "refmod": {
+     "name": "clothing_men/red_hat",
+     "kind": "image",
+     "tokens": 300,
+     "strength": 1.0
+    },
+    "wears": "s2"
+   },
+   {
+    "id": "st1",
+    "name": "Grainy film",
+    "reference_type": "style",
+    "source": "refmod",
+    "description": "Grainy film description",
+    "refmod": {
+     "name": "style/grainy",
+     "kind": "video",
+     "tokens": 800,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "o1",
+    "name": "Sword",
+    "reference_type": "object",
+    "source": "refmod",
+    "description": "Sword description",
+    "refmod": {
+     "name": "object/sword",
+     "kind": "image",
+     "tokens": 250,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "p1",
+    "name": "Photo only",
+    "reference_type": "character",
+    "source": "image",
+    "description": "Photo only description"
+   }
+  ],
+  "override": {},
+  "include_audio": false,
+  "expected": [
+   {
+    "card_id": "s1",
+    "category": "character",
+    "label": "<Video 1>",
+    "mod_name": "identity/brad"
+   },
+   {
+    "card_id": "s2",
+    "category": "character",
+    "label": "<Video 2>",
+    "mod_name": "identity/darrel"
+   },
+   {
+    "card_id": "c1",
+    "category": "clothing",
+    "label": "<Video 3>",
+    "mod_name": "clothing_men/charcoal_suit"
+   },
+   {
+    "card_id": "h1",
+    "category": "clothing",
+    "label": "<Picture 1>",
+    "mod_name": "clothing_men/red_hat"
+   },
+   {
+    "card_id": "l1",
+    "category": "background",
+    "label": "<Picture 2>",
+    "mod_name": "background/meadow"
+   }
+  ],
+  "expected_tokens": 10426
+ },
+ {
+  "name": "clothing follows its character in order of the wearers",
+  "subjects": [
+   {
+    "id": "s2",
+    "name": "Darrel",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Darrel description",
+    "refmod": {
+     "name": "identity/darrel",
+     "kind": "video",
+     "tokens": 2394,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "s1",
+    "name": "Brad",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Brad description",
+    "refmod": {
+     "name": "identity/brad",
+     "kind": "video",
+     "tokens": 5632,
+     "strength": 1.0
+    }
+   }
+  ],
+  "extras": [],
+  "location": {
+   "id": "l1",
+   "name": "Alpine meadow",
+   "reference_type": "environment",
+   "source": "refmod",
+   "description": "Alpine meadow description",
+   "refmod": {
+    "name": "background/meadow",
+    "kind": "image",
+    "tokens": 600,
+    "strength": 1.0
+   }
+  },
+  "all_subjects": [
+   {
+    "id": "s1",
+    "name": "Brad",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Brad description",
+    "refmod": {
+     "name": "identity/brad",
+     "kind": "video",
+     "tokens": 5632,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "s2",
+    "name": "Darrel",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Darrel description",
+    "refmod": {
+     "name": "identity/darrel",
+     "kind": "video",
+     "tokens": 2394,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "s3",
+    "name": "Vanellope",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Vanellope description",
+    "refmod": {
+     "name": "identity/vanellope",
+     "kind": "video",
+     "tokens": 2816,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "c1",
+    "name": "charcoal suit",
+    "reference_type": "outfit",
+    "source": "refmod",
+    "description": "charcoal suit description",
+    "refmod": {
+     "name": "clothing_men/charcoal_suit",
+     "kind": "video",
+     "tokens": 1500,
+     "strength": 1.0
+    },
+    "wears": "s1"
+   },
+   {
+    "id": "c2",
+    "name": "tuxedo",
+    "reference_type": "outfit",
+    "source": "refmod",
+    "description": "tuxedo description",
+    "refmod": {
+     "name": "clothing_men/tuxedo",
+     "kind": "video",
+     "tokens": 1400,
+     "strength": 1.0
+    },
+    "wears": "s1",
+    "follow": false
+   },
+   {
+    "id": "h1",
+    "name": "red hat",
+    "reference_type": "outfit",
+    "source": "refmod",
+    "description": "red hat description",
+    "refmod": {
+     "name": "clothing_men/red_hat",
+     "kind": "image",
+     "tokens": 300,
+     "strength": 1.0
+    },
+    "wears": "s2"
+   },
+   {
+    "id": "st1",
+    "name": "Grainy film",
+    "reference_type": "style",
+    "source": "refmod",
+    "description": "Grainy film description",
+    "refmod": {
+     "name": "style/grainy",
+     "kind": "video",
+     "tokens": 800,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "o1",
+    "name": "Sword",
+    "reference_type": "object",
+    "source": "refmod",
+    "description": "Sword description",
+    "refmod": {
+     "name": "object/sword",
+     "kind": "image",
+     "tokens": 250,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "p1",
+    "name": "Photo only",
+    "reference_type": "character",
+    "source": "image",
+    "description": "Photo only description"
+   }
+  ],
+  "override": {},
+  "include_audio": false,
+  "expected": [
+   {
+    "card_id": "s2",
+    "category": "character",
+    "label": "<Video 1>",
+    "mod_name": "identity/darrel"
+   },
+   {
+    "card_id": "s1",
+    "category": "character",
+    "label": "<Video 2>",
+    "mod_name": "identity/brad"
+   },
+   {
+    "card_id": "h1",
+    "category": "clothing",
+    "label": "<Picture 1>",
+    "mod_name": "clothing_men/red_hat"
+   },
+   {
+    "card_id": "c1",
+    "category": "clothing",
+    "label": "<Video 3>",
+    "mod_name": "clothing_men/charcoal_suit"
+   },
+   {
+    "card_id": "l1",
+    "category": "background",
+    "label": "<Picture 2>",
+    "mod_name": "background/meadow"
+   }
+  ],
+  "expected_tokens": 10426
+ },
+ {
+  "name": "scene override swaps the clothing",
+  "subjects": [
+   {
+    "id": "s1",
+    "name": "Brad",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Brad description",
+    "refmod": {
+     "name": "identity/brad",
+     "kind": "video",
+     "tokens": 5632,
+     "strength": 1.0
+    }
+   }
+  ],
+  "extras": [],
+  "location": null,
+  "all_subjects": [
+   {
+    "id": "s1",
+    "name": "Brad",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Brad description",
+    "refmod": {
+     "name": "identity/brad",
+     "kind": "video",
+     "tokens": 5632,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "s2",
+    "name": "Darrel",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Darrel description",
+    "refmod": {
+     "name": "identity/darrel",
+     "kind": "video",
+     "tokens": 2394,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "s3",
+    "name": "Vanellope",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Vanellope description",
+    "refmod": {
+     "name": "identity/vanellope",
+     "kind": "video",
+     "tokens": 2816,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "c1",
+    "name": "charcoal suit",
+    "reference_type": "outfit",
+    "source": "refmod",
+    "description": "charcoal suit description",
+    "refmod": {
+     "name": "clothing_men/charcoal_suit",
+     "kind": "video",
+     "tokens": 1500,
+     "strength": 1.0
+    },
+    "wears": "s1"
+   },
+   {
+    "id": "c2",
+    "name": "tuxedo",
+    "reference_type": "outfit",
+    "source": "refmod",
+    "description": "tuxedo description",
+    "refmod": {
+     "name": "clothing_men/tuxedo",
+     "kind": "video",
+     "tokens": 1400,
+     "strength": 1.0
+    },
+    "wears": "s1",
+    "follow": false
+   },
+   {
+    "id": "h1",
+    "name": "red hat",
+    "reference_type": "outfit",
+    "source": "refmod",
+    "description": "red hat description",
+    "refmod": {
+     "name": "clothing_men/red_hat",
+     "kind": "image",
+     "tokens": 300,
+     "strength": 1.0
+    },
+    "wears": "s2"
+   },
+   {
+    "id": "st1",
+    "name": "Grainy film",
+    "reference_type": "style",
+    "source": "refmod",
+    "description": "Grainy film description",
+    "refmod": {
+     "name": "style/grainy",
+     "kind": "video",
+     "tokens": 800,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "o1",
+    "name": "Sword",
+    "reference_type": "object",
+    "source": "refmod",
+    "description": "Sword description",
+    "refmod": {
+     "name": "object/sword",
+     "kind": "image",
+     "tokens": 250,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "p1",
+    "name": "Photo only",
+    "reference_type": "character",
+    "source": "image",
+    "description": "Photo only description"
+   }
+  ],
+  "override": {
+   "s1": "c2"
+  },
+  "include_audio": false,
+  "expected": [
+   {
+    "card_id": "s1",
+    "category": "character",
+    "label": "<Video 1>",
+    "mod_name": "identity/brad"
+   },
+   {
+    "card_id": "c2",
+    "category": "clothing",
+    "label": "<Video 2>",
+    "mod_name": "clothing_men/tuxedo"
+   }
+  ],
+  "expected_tokens": 7032
+ },
+ {
+  "name": "empty override removes tied clothing",
+  "subjects": [
+   {
+    "id": "s1",
+    "name": "Brad",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Brad description",
+    "refmod": {
+     "name": "identity/brad",
+     "kind": "video",
+     "tokens": 5632,
+     "strength": 1.0
+    }
+   }
+  ],
+  "extras": [],
+  "location": null,
+  "all_subjects": [
+   {
+    "id": "s1",
+    "name": "Brad",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Brad description",
+    "refmod": {
+     "name": "identity/brad",
+     "kind": "video",
+     "tokens": 5632,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "s2",
+    "name": "Darrel",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Darrel description",
+    "refmod": {
+     "name": "identity/darrel",
+     "kind": "video",
+     "tokens": 2394,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "s3",
+    "name": "Vanellope",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Vanellope description",
+    "refmod": {
+     "name": "identity/vanellope",
+     "kind": "video",
+     "tokens": 2816,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "c1",
+    "name": "charcoal suit",
+    "reference_type": "outfit",
+    "source": "refmod",
+    "description": "charcoal suit description",
+    "refmod": {
+     "name": "clothing_men/charcoal_suit",
+     "kind": "video",
+     "tokens": 1500,
+     "strength": 1.0
+    },
+    "wears": "s1"
+   },
+   {
+    "id": "c2",
+    "name": "tuxedo",
+    "reference_type": "outfit",
+    "source": "refmod",
+    "description": "tuxedo description",
+    "refmod": {
+     "name": "clothing_men/tuxedo",
+     "kind": "video",
+     "tokens": 1400,
+     "strength": 1.0
+    },
+    "wears": "s1",
+    "follow": false
+   },
+   {
+    "id": "h1",
+    "name": "red hat",
+    "reference_type": "outfit",
+    "source": "refmod",
+    "description": "red hat description",
+    "refmod": {
+     "name": "clothing_men/red_hat",
+     "kind": "image",
+     "tokens": 300,
+     "strength": 1.0
+    },
+    "wears": "s2"
+   },
+   {
+    "id": "st1",
+    "name": "Grainy film",
+    "reference_type": "style",
+    "source": "refmod",
+    "description": "Grainy film description",
+    "refmod": {
+     "name": "style/grainy",
+     "kind": "video",
+     "tokens": 800,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "o1",
+    "name": "Sword",
+    "reference_type": "object",
+    "source": "refmod",
+    "description": "Sword description",
+    "refmod": {
+     "name": "object/sword",
+     "kind": "image",
+     "tokens": 250,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "p1",
+    "name": "Photo only",
+    "reference_type": "character",
+    "source": "image",
+    "description": "Photo only description"
+   }
+  ],
+  "override": {
+   "s1": ""
+  },
+  "include_audio": false,
+  "expected": [
+   {
+    "card_id": "s1",
+    "category": "character",
+    "label": "<Video 1>",
+    "mod_name": "identity/brad"
+   }
+  ],
+  "expected_tokens": 5632
+ },
+ {
+  "name": "strength zero takes no number",
+  "subjects": [
+   {
+    "id": "s1",
+    "name": "Brad",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Brad description",
+    "refmod": {
+     "name": "identity/brad",
+     "kind": "video",
+     "tokens": 5632,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "s2",
+    "name": "Darrel",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Darrel description",
+    "refmod": {
+     "name": "identity/darrel",
+     "kind": "video",
+     "tokens": 2394,
+     "strength": 0
+    }
+   },
+   {
+    "id": "s3",
+    "name": "Vanellope",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Vanellope description",
+    "refmod": {
+     "name": "identity/vanellope",
+     "kind": "video",
+     "tokens": 2816,
+     "strength": 1.0
+    }
+   }
+  ],
+  "extras": [],
+  "location": null,
+  "all_subjects": [
+   {
+    "id": "s1",
+    "name": "Brad",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Brad description",
+    "refmod": {
+     "name": "identity/brad",
+     "kind": "video",
+     "tokens": 5632,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "s2",
+    "name": "Darrel",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Darrel description",
+    "refmod": {
+     "name": "identity/darrel",
+     "kind": "video",
+     "tokens": 2394,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "s3",
+    "name": "Vanellope",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Vanellope description",
+    "refmod": {
+     "name": "identity/vanellope",
+     "kind": "video",
+     "tokens": 2816,
+     "strength": 1.0
+    }
+   }
+  ],
+  "override": {},
+  "include_audio": false,
+  "expected": [
+   {
+    "card_id": "s1",
+    "category": "character",
+    "label": "<Video 1>",
+    "mod_name": "identity/brad"
+   },
+   {
+    "card_id": "s2",
+    "category": "character",
+    "label": "",
+    "mod_name": "identity/darrel"
+   },
+   {
+    "card_id": "s3",
+    "category": "character",
+    "label": "<Video 2>",
+    "mod_name": "identity/vanellope"
+   }
+  ],
+  "expected_tokens": 8448
+ },
+ {
+  "name": "scene audio is the last label",
+  "subjects": [
+   {
+    "id": "s1",
+    "name": "Brad",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Brad description",
+    "refmod": {
+     "name": "identity/brad",
+     "kind": "video",
+     "tokens": 5632,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "s2",
+    "name": "Darrel",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Darrel description",
+    "refmod": {
+     "name": "identity/darrel",
+     "kind": "video",
+     "tokens": 2394,
+     "strength": 1.0
+    }
+   }
+  ],
+  "extras": [],
+  "location": {
+   "id": "l2",
+   "name": "Castle",
+   "reference_type": "environment",
+   "source": "refmod",
+   "description": "Castle description",
+   "refmod": {
+    "name": "background/castle",
+    "kind": "image",
+    "tokens": 700,
+    "strength": 1.0
+   }
+  },
+  "all_subjects": [
+   {
+    "id": "s1",
+    "name": "Brad",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Brad description",
+    "refmod": {
+     "name": "identity/brad",
+     "kind": "video",
+     "tokens": 5632,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "s2",
+    "name": "Darrel",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Darrel description",
+    "refmod": {
+     "name": "identity/darrel",
+     "kind": "video",
+     "tokens": 2394,
+     "strength": 1.0
+    }
+   }
+  ],
+  "override": {},
+  "include_audio": true,
+  "expected": [
+   {
+    "card_id": "s1",
+    "category": "character",
+    "label": "<Video 1>",
+    "mod_name": "identity/brad"
+   },
+   {
+    "card_id": "s2",
+    "category": "character",
+    "label": "<Video 2>",
+    "mod_name": "identity/darrel"
+   },
+   {
+    "card_id": "l2",
+    "category": "background",
+    "label": "<Picture 1>",
+    "mod_name": "background/castle"
+   },
+   {
+    "card_id": "",
+    "category": "audio",
+    "label": "<Audio 1>",
+    "mod_name": ""
+   }
+  ],
+  "expected_tokens": 8726
+ },
+ {
+  "name": "image cards are ignored",
+  "subjects": [
+   {
+    "id": "p1",
+    "name": "Photo only",
+    "reference_type": "character",
+    "source": "image",
+    "description": "Photo only description"
+   },
+   {
+    "id": "s1",
+    "name": "Brad",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Brad description",
+    "refmod": {
+     "name": "identity/brad",
+     "kind": "video",
+     "tokens": 5632,
+     "strength": 1.0
+    }
+   }
+  ],
+  "extras": [],
+  "location": null,
+  "all_subjects": [
+   {
+    "id": "s1",
+    "name": "Brad",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Brad description",
+    "refmod": {
+     "name": "identity/brad",
+     "kind": "video",
+     "tokens": 5632,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "s2",
+    "name": "Darrel",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Darrel description",
+    "refmod": {
+     "name": "identity/darrel",
+     "kind": "video",
+     "tokens": 2394,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "s3",
+    "name": "Vanellope",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Vanellope description",
+    "refmod": {
+     "name": "identity/vanellope",
+     "kind": "video",
+     "tokens": 2816,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "c1",
+    "name": "charcoal suit",
+    "reference_type": "outfit",
+    "source": "refmod",
+    "description": "charcoal suit description",
+    "refmod": {
+     "name": "clothing_men/charcoal_suit",
+     "kind": "video",
+     "tokens": 1500,
+     "strength": 1.0
+    },
+    "wears": "s1"
+   },
+   {
+    "id": "c2",
+    "name": "tuxedo",
+    "reference_type": "outfit",
+    "source": "refmod",
+    "description": "tuxedo description",
+    "refmod": {
+     "name": "clothing_men/tuxedo",
+     "kind": "video",
+     "tokens": 1400,
+     "strength": 1.0
+    },
+    "wears": "s1",
+    "follow": false
+   },
+   {
+    "id": "h1",
+    "name": "red hat",
+    "reference_type": "outfit",
+    "source": "refmod",
+    "description": "red hat description",
+    "refmod": {
+     "name": "clothing_men/red_hat",
+     "kind": "image",
+     "tokens": 300,
+     "strength": 1.0
+    },
+    "wears": "s2"
+   },
+   {
+    "id": "st1",
+    "name": "Grainy film",
+    "reference_type": "style",
+    "source": "refmod",
+    "description": "Grainy film description",
+    "refmod": {
+     "name": "style/grainy",
+     "kind": "video",
+     "tokens": 800,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "o1",
+    "name": "Sword",
+    "reference_type": "object",
+    "source": "refmod",
+    "description": "Sword description",
+    "refmod": {
+     "name": "object/sword",
+     "kind": "image",
+     "tokens": 250,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "p1",
+    "name": "Photo only",
+    "reference_type": "character",
+    "source": "image",
+    "description": "Photo only description"
+   }
+  ],
+  "override": {},
+  "include_audio": false,
+  "expected": [
+   {
+    "card_id": "s1",
+    "category": "character",
+    "label": "<Video 1>",
+    "mod_name": "identity/brad"
+   },
+   {
+    "card_id": "c1",
+    "category": "clothing",
+    "label": "<Video 2>",
+    "mod_name": "clothing_men/charcoal_suit"
+   }
+  ],
+  "expected_tokens": 7132
+ },
+ {
+  "name": "mixed kinds are counted separately and ordered by category",
+  "subjects": [
+   {
+    "id": "o1",
+    "name": "Sword",
+    "reference_type": "object",
+    "source": "refmod",
+    "description": "Sword description",
+    "refmod": {
+     "name": "object/sword",
+     "kind": "image",
+     "tokens": 250,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "st1",
+    "name": "Grainy film",
+    "reference_type": "style",
+    "source": "refmod",
+    "description": "Grainy film description",
+    "refmod": {
+     "name": "style/grainy",
+     "kind": "video",
+     "tokens": 800,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "s1",
+    "name": "Brad",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Brad description",
+    "refmod": {
+     "name": "identity/brad",
+     "kind": "video",
+     "tokens": 5632,
+     "strength": 1.0
+    }
+   }
+  ],
+  "extras": [],
+  "location": {
+   "id": "l1",
+   "name": "Alpine meadow",
+   "reference_type": "environment",
+   "source": "refmod",
+   "description": "Alpine meadow description",
+   "refmod": {
+    "name": "background/meadow",
+    "kind": "image",
+    "tokens": 600,
+    "strength": 1.0
+   }
+  },
+  "all_subjects": [
+   {
+    "id": "o1",
+    "name": "Sword",
+    "reference_type": "object",
+    "source": "refmod",
+    "description": "Sword description",
+    "refmod": {
+     "name": "object/sword",
+     "kind": "image",
+     "tokens": 250,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "st1",
+    "name": "Grainy film",
+    "reference_type": "style",
+    "source": "refmod",
+    "description": "Grainy film description",
+    "refmod": {
+     "name": "style/grainy",
+     "kind": "video",
+     "tokens": 800,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "s1",
+    "name": "Brad",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Brad description",
+    "refmod": {
+     "name": "identity/brad",
+     "kind": "video",
+     "tokens": 5632,
+     "strength": 1.0
+    }
+   }
+  ],
+  "override": {},
+  "include_audio": false,
+  "expected": [
+   {
+    "card_id": "s1",
+    "category": "character",
+    "label": "<Video 1>",
+    "mod_name": "identity/brad"
+   },
+   {
+    "card_id": "o1",
+    "category": "object",
+    "label": "<Picture 1>",
+    "mod_name": "object/sword"
+   },
+   {
+    "card_id": "l1",
+    "category": "background",
+    "label": "<Picture 2>",
+    "mod_name": "background/meadow"
+   },
+   {
+    "card_id": "st1",
+    "category": "style",
+    "label": "<Video 2>",
+    "mod_name": "style/grainy"
+   }
+  ],
+  "expected_tokens": 7282
+ },
+ {
+  "name": "a card listed twice is used once",
+  "subjects": [
+   {
+    "id": "s1",
+    "name": "Brad",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Brad description",
+    "refmod": {
+     "name": "identity/brad",
+     "kind": "video",
+     "tokens": 5632,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "s1",
+    "name": "Brad",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Brad description",
+    "refmod": {
+     "name": "identity/brad",
+     "kind": "video",
+     "tokens": 5632,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "s2",
+    "name": "Darrel",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Darrel description",
+    "refmod": {
+     "name": "identity/darrel",
+     "kind": "video",
+     "tokens": 2394,
+     "strength": 1.0
+    }
+   }
+  ],
+  "extras": [],
+  "location": null,
+  "all_subjects": [
+   {
+    "id": "s1",
+    "name": "Brad",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Brad description",
+    "refmod": {
+     "name": "identity/brad",
+     "kind": "video",
+     "tokens": 5632,
+     "strength": 1.0
+    }
+   },
+   {
+    "id": "s2",
+    "name": "Darrel",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Darrel description",
+    "refmod": {
+     "name": "identity/darrel",
+     "kind": "video",
+     "tokens": 2394,
+     "strength": 1.0
+    }
+   }
+  ],
+  "override": {},
+  "include_audio": false,
+  "expected": [
+   {
+    "card_id": "s1",
+    "category": "character",
+    "label": "<Video 1>",
+    "mod_name": "identity/brad"
+   },
+   {
+    "card_id": "s2",
+    "category": "character",
+    "label": "<Video 2>",
+    "mod_name": "identity/darrel"
+   }
+  ],
+  "expected_tokens": 8026
+ },
+ {
+  "name": "extras follow the characters",
+  "subjects": [
+   {
+    "id": "s1",
+    "name": "Brad",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Brad description",
+    "refmod": {
+     "name": "identity/brad",
+     "kind": "video",
+     "tokens": 5632,
+     "strength": 1.0
+    }
+   }
+  ],
+  "extras": [
+   {
+    "id": "x1",
+    "name": "Vanellope",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Vanellope description",
+    "refmod": {
+     "name": "identity/vanellope",
+     "kind": "video",
+     "tokens": 2816,
+     "strength": 1.0
+    }
+   }
+  ],
+  "location": null,
+  "all_subjects": [
+   {
+    "id": "s1",
+    "name": "Brad",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Brad description",
+    "refmod": {
+     "name": "identity/brad",
+     "kind": "video",
+     "tokens": 5632,
+     "strength": 1.0
+    }
+   }
+  ],
+  "override": {},
+  "include_audio": false,
+  "expected": [
+   {
+    "card_id": "s1",
+    "category": "character",
+    "label": "<Video 1>",
+    "mod_name": "identity/brad"
+   },
+   {
+    "card_id": "x1",
+    "category": "extra",
+    "label": "<Video 2>",
+    "mod_name": "identity/vanellope"
+   }
+  ],
+  "expected_tokens": 8448
+ }
+]

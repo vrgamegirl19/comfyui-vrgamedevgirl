@@ -118,7 +118,9 @@ def strip_negative_sentences(description: str) -> str:
         return f"VRGDGQUOTE{len(quotes) - 1}TOKEN"
 
     masked = re.sub(r'["“][^"”]*["”]', mask, text)
-    sentences = re.findall(r"[^.!?…]+[.!?…]+|[^.!?…]+$", masked) or [masked]
+    # A decimal point (1.5 seconds) is not a sentence end.
+    protected = re.sub(r"(\d)\.(?=\d)", lambda m: m.group(1) + "VRGDGDECIMALTOKEN", masked)
+    sentences = [s.replace("VRGDGDECIMALTOKEN", ".") for s in re.findall(r"[^.!?…]+[.!?…]+|[^.!?…]+$", protected)] or [masked]
     kept = " ".join(s.strip() for s in sentences if not negative.search(re.sub(r"VRGDGQUOTE\d+TOKEN", " ", s)))
     kept = re.sub(r"VRGDGQUOTE(\d+)TOKEN", lambda m: quotes[int(m.group(1))], kept)
     return re.sub(r"\s{2,}", " ", kept).strip()
@@ -460,6 +462,222 @@ def ensure_quoted_lyrics(descriptions: List[str], lyric_text: str, performer: st
     return result
 
 
+def last_shot_text(saved_prompt: str, limit: int = 700) -> str:
+    """The last ``[Shot N]`` description of a saved prompt: what is on screen when the next scene starts."""
+    text = str(saved_prompt or "")
+    starts = [m.end() for m in re.finditer(r"\[Shot\s+\d+\]\s*(?:At\s+[0-9:.]+,\s*)?", text)]
+    if not starts:
+        return ""
+    block = text[starts[-1]:].split("\n\n", 1)[0]
+    block = re.sub(r"\s+", " ", block).strip()
+    return block[:limit].rstrip() + "..." if len(block) > limit else block
+
+
+def _location_identity(location: Optional[Dict[str, Any]], fallback: str) -> str:
+    name = str((location or {}).get("name") or "").strip() or fallback
+    description = " ".join(str((location or {}).get("description") or "").split())
+    if not description:
+        return name
+    match = re.match(r"^.*?[.!?](?:\s|$)", description)
+    first = match.group(0).strip() if match else description
+    if len(first) > 240:
+        first = first[:237].strip() + "..."
+    return f"{name} ({first})"
+
+
+def _location_key(location: Optional[Dict[str, Any]]) -> str:
+    location = location or {}
+    return " ".join(str(location.get("id") or location.get("name") or location.get("description") or "").strip().lower().split())
+
+
+def performance_line(has_vocals: bool, part: str) -> str:
+    """The sentence that keeps a singing scene singing. ``part`` is ``opening`` (the first frame) or ``transition`` (a movement)."""
+    if not has_vocals:
+        return ""
+    if part == "transition":
+        return (" The performer keeps singing the scene's lyrics on camera through the whole movement, lips and mouth in continuous "
+                "sync with <Audio 1>, and the movement keeps their face in view (it may travel around them but never hides the face "
+                "for more than a moment).")
+    return (" The performer is mid-performance, so keep singing the scene's lyrics without a pause from the first frame, lips and mouth "
+            "in continuous sync with <Audio 1>.")
+
+
+def location_continuity_contract(
+    current: Optional[Dict[str, Any]],
+    previous: Optional[Dict[str, Any]],
+    preset: str = "normal",
+    custom: str = "",
+    hold_seconds: float = 1.5,
+    has_vocals: bool = False,
+) -> str:
+    """Python twin of ``miniMaxH3FrameLocationContinuityContract`` in ``minimax_prompt.mjs``.
+
+    Stays in the established location, or at a change of mapped location performs the chosen transition once.
+    Returns "" when the scene has no mapped location.
+    """
+    current_key = _location_key(current)
+    if not current_key:
+        return ""
+    current_name = _location_identity(current, "the current mapped location")
+    previous_key = _location_key(previous)
+    if previous_key and previous_key != current_key:
+        prev = _location_identity(previous, "the preceding mapped location")
+        cur = current_name
+        hold = f"{float(hold_seconds):g}"
+        common_ending = (
+            f"Complete the transition inside this uninterrupted scene and end looking deeper into {cur}, with its mapped geography "
+            "filling the image as the location inherited by the following scene."
+        )
+        directions = {
+            "normal": (
+                f"LOCATION PHASE — PHYSICAL THRESHOLD TURN: This scene performs the single physical passage from {prev} into {cur}. "
+                "Track the subject to a visible doorway, gateway, solid foreground edge, or natural threshold already present in the opening frame. "
+                "After the subject crosses its plane, let that foreground edge sweep fully across the image as a natural full-frame occlusion. "
+                f"During that continuous occlusion, cross the threshold and execute a clear camera arc around the subject toward {cur}. "
+                f"As the occluding edge clears, the camera faces forward into {cur}; {prev} has passed fully beyond the rear camera plane while the subject "
+                "and destination reappear through coherent motion and parallax. Describe the threshold crossing, full-frame occlusion, camera arc, and final viewing direction explicitly."
+            ),
+            "surreal": (
+                f"LOCATION PHASE — SURREAL MATERIAL TRANSFORMATION: Transform {prev} progressively into {cur} through imaginative, visually connected material changes that travel across the frame. "
+                "Use forms, textures, weather, particles, light, and movement visible in the actual opening image as the transformation source. "
+                f"Preserve the subject's continuous identity, action, position, and camera momentum while each physical element evolves into a corresponding element of {cur}. "
+                "Make the transformation richly creative, spatially progressive, and complete."
+            ),
+            "cinematic": (
+                "LOCATION PHASE — CINEMATIC CONCEAL AND REVEAL: Choose a visually suitable detail present in the actual opening image, such as the subject's eye, hair, clothing, a shadow, bright light, fog, doorway, or foreground object. "
+                f"Move the camera into that detail until it fills the complete frame, carry the camera continuously through the concealed moment, then pull or glide outward to reveal the subject physically present in {cur}. "
+                "Preserve the subject's action and camera momentum across the full-frame concealment."
+            ),
+            "inner_world": (
+                f"LOCATION PHASE — INNER WORLD PORTAL: Reveal {cur} living inside a visually suitable surface already present in the opening image, such as an eye reflection, mirror, window, pool, pendant, crystal, smoke formation, or luminous opening. "
+                f"Let the destination become visibly dimensional inside that surface, move the camera continuously through it, and emerge with the subject inside the full-scale geography of {cur}. "
+                "Treat the portal as one coherent passage with continuous scale, perspective, light, and motion."
+            ),
+            "match": (
+                f"LOCATION PHASE — VISUAL MATCH TRANSITION: Inspect the actual opening image and find a strong shared shape, color, texture, light pattern, or motion that can connect {prev} to {cur}. "
+                f"Track that matching element as it fills or commands the composition, then let the same visual form resolve seamlessly as a real element in {cur}. "
+                "Carry the subject's movement and camera trajectory through the visual correspondence with precise composition and spatial flow."
+            ),
+            "motion": (
+                "LOCATION PHASE — MOTION-DRIVEN TRANSITION: Use an energetic camera action suited to the actual opening frame, such as a whip pan, rapid orbit, fast push, foreground sweep, or close pass around the subject. "
+                f"Let directional motion and natural motion blur carry the complete image across the location boundary, then resolve the same movement and screen direction clearly inside {cur}. "
+                "Preserve the subject's action, rhythm, and camera momentum throughout."
+            ),
+            "creative_auto": (
+                f"LOCATION PHASE — CREATIVE IMAGE-AWARE TRANSITION: Inspect the actual opening image, {prev}, and {cur}, then choose the most visually convincing imaginative transition for their specific forms, materials, lighting, subject action, and camera trajectory. "
+                "Build one explicit on-screen mechanism with readable progression and continuous movement, using a physical passage, material transformation, cinematic concealment, portal, visual match, motion bridge, or an equally coherent original idea. "
+                "Make the chosen mechanism concrete in the shot description."
+            ),
+            "masked": (
+                f"LOCATION PHASE — MASKED CONTINUATION TRANSITION: The renderer already holds the previous scene's last moments, so for the first {hold} seconds simply continue the opening frame's action in {prev} with the same subject, framing, pace, and camera motion. No cut, no change of angle, and no new setup. "
+                f"At about {hold} seconds, begin ONE smooth, motivated movement that carries the shot into {cur}. Choose the movement that best suits the opening frame: a camera move (push-in, pull-back, pan, tilt, track, or arc around the subject) or a natural subject move (turning, stepping through, walking on) that the camera follows. "
+                "Let the surroundings change progressively through that movement and its parallax, with no wipe, flash, portal, morph, or cut. Describe the move and where the shot has arrived when it finishes."
+                + performance_line(has_vocals, "transition")
+            ),
+        }
+        custom_text = " ".join(str(custom or "").split())
+        directions["custom"] = (
+            f"LOCATION PHASE — CUSTOM TRANSITION: Apply this scene's authored transition direction: {custom_text} "
+            f"Translate it into explicit positive visual action that carries the actual opening image from {prev} into {cur} through one coherent continuous camera experience."
+            if custom_text else
+            f"LOCATION PHASE — CUSTOM TRANSITION FALLBACK: Inspect the actual opening image, {prev}, and {cur}, then create one highly imaginative, visually readable transition whose on-screen mechanism follows the subject and camera momentum into the destination."
+        )
+        return f"{directions.get(preset) or directions['normal']} {common_ending}"
+    return (
+        f"LOCATION PHASE — ESTABLISHED CURRENT LOCATION: {current_name} is now the complete established environment. "
+        "Continue forward through the exact visible opening state and deeper into its mapped geography. "
+        f"Build every newly revealed environmental feature from {current_name}, preserve its established spatial logic, and let the camera trajectory create the next composition. "
+        f"End looking deeper into {current_name}, fully grounded in that location."
+    )
+
+
+def continuation_task_text(
+    continuation: Dict[str, Any],
+    previous_shot: str = "",
+    has_vocals: bool = False,
+    with_picture: bool = False,
+    location_contract: str = "",
+) -> str:
+    """The rules an LLM needs to write a scene that continues the previous one with ``latent_continuation_masked``.
+
+    Python twin of the masked FRAME-TO-FRAME CONTINUITY block, the opening subject visibility block, the location
+    contract and the author's direction block in ``web/music_video_builder/minimax_prompt.mjs``. With ``with_picture``
+    the LLM is shown the previous scene's final frame as Attached Picture 1, like the Builder. Without it the previous
+    scene's last shot description stands in for the picture.
+    """
+    hold = f"{float(continuation.get('hold_seconds') or 0.5):g}"
+    scene_seconds = float(continuation.get("scene_seconds") or 0.0)
+    seconds_left = float(continuation.get("seconds_left") or max(0.0, scene_seconds - float(hold)))
+    direction = str(continuation.get("direction") or "").strip()
+    follow_up = (
+        "then carry on exactly as the AUTHOR'S DIRECTION at the end of this scene concept says. " if direction
+        else "then advance them one small natural step at a time. "
+    )
+    if with_picture:
+        parts = [
+            "FRAME-TO-FRAME CONTINUITY — HIGHEST PRIORITY:\n"
+            "Attached Picture 1 is the previous rendered scene's actual final frame. The renderer already holds the last moments of the previous "
+            "scene's motion and audio as the start of this render, so this scene is the very next moment of the same uninterrupted take, not a new shot. "
+            "Begin the returned description with exactly: ‘Continuing seamlessly from the previous shot, the camera maintains its established course as’ "
+            "and immediately name the same camera movement continuing at the same speed. "
+            "Keep the subject's action, pace, pose, framing, camera angle, lighting, wardrobe, and environment exactly as Attached Picture 1 shows them, "
+            + follow_up
+            + "Do not restage, reset, re-establish, change framing, or cut. "
+            + ("The author's direction decides what happens next." if direction
+               else "The current story beat, lyrics/audio timing, and mapped location decide where the action goes next, reached through the continuing motion.")
+            + performance_line(has_vocals, "opening")
+            + " Write every finished shot sentence as a positive description of the desired visible result. Attached Picture 1 remains an LLM-only "
+            "observation source; finished prose uses direct visual description and the documented renderer labels.",
+            "OPENING SUBJECT VISIBILITY — IMAGE-AWARE: Inspect Attached Picture 1 and inventory the human or character subjects actually visible in its opening composition. "
+            "Visible subjects continue from their exact observed position and state. Every currently mapped subject absent from Attached Picture 1 begins physically offscreen. "
+            "Bring an offscreen subject into view through a clearly described continuous screen-space event: an entrance through a frame edge, doorway, path, foreground layer, "
+            "or the selected transition mechanism, or a camera pan, track, or orbit that reaches and reveals them in a connected position. "
+            "State the observed empty or partially occupied opening composition first, then the exact entrance or camera-reveal route, then that subject's performance action. "
+            "Their first visible moment occurs through that physical entrance or reveal.",
+        ]
+    else:
+        parts = [
+            "CONTINUATION — HIGHEST PRIORITY:\n"
+            "This scene is the very next moment of the same uninterrupted take the previous scene ended on. The renderer already "
+            "holds the previous scene's last moments as the start of this render, so this is not a new shot. "
+            "Begin the returned description with exactly: ‘Continuing seamlessly from the previous shot, the camera maintains its "
+            "established course as’ and immediately name the same camera movement continuing at the same speed. "
+            "Keep the subject's action, pace, pose, framing, camera angle, lighting, and environment as the previous scene's last shot "
+            "leaves them, "
+            + follow_up.replace("at the end of this scene concept", "below")
+            + "Do not restage, reset, re-establish, change framing, or cut. The camera line of Shot 1 continues the previous "
+            "scene's camera and framing, it does not choose a new opening framing." + performance_line(has_vocals, "opening")
+        ]
+        if previous_shot:
+            parts.append(f"PREVIOUS SCENE'S LAST SHOT (what is on screen when this scene starts):\n{previous_shot}")
+    if location_contract:
+        parts.append(location_contract)
+    if direction:
+        parts.append(
+            f"AUTHOR'S DIRECTION FOR THIS SCENE — MANDATORY, THE FINISHED DESCRIPTION MUST CONTAIN IT: \"{direction}\"\n"
+            + (
+                f"SCENE TIMING: This scene is {scene_seconds:g} seconds long. The direction starts at {hold} seconds and has to be "
+                f"completely finished before the scene ends, which leaves {seconds_left:g} seconds for it. Perform every action of the "
+                f"direction in the author's order at a brisk pace that fits those {seconds_left:g} seconds, and end the shot with the "
+                "last action fully done, never cut off or left unfinished. "
+                if scene_seconds > 0 else ""
+            )
+            + f"Write the one shot description in two timed parts and put the timing in the text itself. First: \"For the first {hold} seconds, ...\" "
+            "continuing the opening frame's action with the same camera motion, framing, and pace. "
+            f"Then: \"At about {hold} seconds, ...\" performing every action in the direction above, in the author's order and with the "
+            "author's own verbs and objects, as one smooth continuous movement in the same take. "
+            "If the direction needs a body position or facing different from "
+            + ("Attached Picture 1" if with_picture else "the previous scene's last shot")
+            + " (for example standing up, walking, or turning), first describe the natural movement that gets the subject there, inside the same take. "
+            "Do not skip or replace any action in the direction. If it is a lot for the time left, perform its actions in quicker "
+            "succession rather than leaving any out. Never cut, change shot, or restart the action to reach it. "
+            "Write it as the shot's one movement: if the mapped location differs from the previous scene's, let that same movement carry the shot into the new "
+            "location instead of adding a second one. Finish by stating where the shot ends."
+            + performance_line(has_vocals, "transition")
+        )
+    return "\n\n".join(parts)
+
+
 def build_shot_task(
     *,
     mode_label: str,
@@ -483,6 +701,10 @@ def build_shot_task(
     location_text: str = "",
     seed: str = "",
     target_limit: int = 7000,
+    continuation: Optional[Dict[str, Any]] = None,
+    previous_shot: str = "",
+    with_picture: bool = False,
+    location_contract: str = "",
 ) -> str:
     """The ``MiniMax H3 shot-description task`` text the saved instruction expects."""
     plan = shot_plan(cut_plan)
@@ -577,4 +799,8 @@ def build_shot_task(
     pictures = [f"{l['picture']}" for l in labels]
     if pictures:
         parts.append(f"Available renderer reference labels: {', '.join(pictures)}. Do not define labels in the shot text.")
+    if continuation:
+        # Last, where the model weighs it most. The vocal rule applies only when the scene sings.
+        has_vocals = not (visual_only or no_character or not lyric_text)
+        parts.append(continuation_task_text(continuation, previous_shot, has_vocals, with_picture, location_contract))
     return "\n\n".join(parts)

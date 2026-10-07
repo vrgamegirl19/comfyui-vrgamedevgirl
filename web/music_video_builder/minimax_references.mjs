@@ -2,7 +2,8 @@ import { makeEditorImageUrl } from "./comfy_api.mjs";
 import { escapeHtml, makeButton, normalizeProjectVideoEngine, toast } from "./controls.mjs";
 import { rtvReferenceImagePayload } from "./image_references.mjs";
 import { hasReferenceImage } from "./llm_runner.mjs";
-import { normalizeMiniMaxH3Mode } from "./minimax_h3.mjs";
+import { normalizeMiniMaxH3Mode, normalizeMiniMaxH3Pipeline } from "./minimax_h3.mjs";
+import { assignLabels, clothingChoices, composeRefmodItems, tokenStatusText } from "./refmod_labels.mjs";
 import { expandSubjectReferencesForRender, normalizeFluxReferenceBuilder } from "./reference_data.mjs";
 import { mediaPathKey } from "./timeline_state.mjs";
 
@@ -155,7 +156,41 @@ export function createMiniMaxReferences({
       .slice(0, 9);
   }
 
+  // The whole project switches pipeline at once, so the project setting decides.
+  function isRefmodPipeline() {
+    return normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3"
+      && normalizeMiniMaxH3Pipeline(state.miniMaxH3Settings?.pipeline) === "refmod";
+  }
+
+  // The scene's RefMods in render order, labelled the way Text Encode with RefMods will number them. Items with
+  // strength 0 are left out. Twin of refmod_items_for_scene in minimax/refmod_scene.py.
+  function miniMaxRefmodItemsForSegment(segment) {
+    const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+    const subjectCards = segment?.no_character_present ? [] : referenceBuilderSubjectItemsForSegment(refs, segment);
+    const locationId = String(sceneReferenceMapValue(refs.scene_map, segment) || "").trim();
+    const location = locationId ? (refs.locations || []).find((item) => String(item?.id || "") === locationId) || null : null;
+    const items = composeRefmodItems(subjectCards, [], location, refs.subjects || [], segment?.refmod_clothing_override);
+    return assignLabels(items.filter((item) => item.strength > 0));
+  }
+
+  // RefMod items in the shape the prompt writer expects for reference images. The "image path" is a marker
+  // (refmod://name) so the existing ordering, de-duplication and signature code keeps working without a picture.
+  function miniMaxRefmodPromptItemsForSegment(segment) {
+    return miniMaxRefmodItemsForSegment(segment).map((item) => ({
+      key: item.key,
+      kind: item.category === "background" ? "location" : item.category === "extra" ? "extra" : "subject",
+      source_id: item.card_id,
+      label: item.name,
+      name: item.name,
+      description: item.description,
+      reference_image_type: "single",
+      refmod: item,
+      image: { path: `refmod://${item.mod_name}`, data: "", name: item.mod_name },
+    }));
+  }
+
   function miniMaxOrderedImageReferenceItemsForSegment(segment, mode = miniMaxH3ModeForSegment(segment)) {
+    if (isRefmodPipeline()) return miniMaxRefmodPromptItemsForSegment(segment);
     const normalizedMode = normalizeMiniMaxH3Mode(mode);
     const ordered = [];
     if (["reference_to_video", "image_reference_to_video"].includes(normalizedMode) && segment?.minimax_h3_use_scene_image_as_start_frame) {
@@ -200,6 +235,9 @@ export function createMiniMaxReferences({
         ? "exact start frame and authority for every visible detail except face identity and hair"
         : "exact start frame, opening composition, pose, camera angle, environment, and lighting anchor";
     }
+    if (item?.refmod?.category === "clothing") return "clothing reference: garments, fabrics, colours, trims and accessories, worn by the character it follows";
+    if (item?.refmod?.category === "object") return "object reference: shape, material, colour, markings and scale";
+    if (item?.refmod?.category === "style") return "visual style reference: medium, palette, line quality, lighting and texture, applied to the whole scene";
     if (item?.kind === "subject") {
       return faceHairOnly
         ? "face identity and hair reference only; do not copy clothing, body proportions, pose, accessories, framing, lighting, or background"
@@ -237,6 +275,15 @@ export function createMiniMaxReferences({
 
   function miniMaxH3ReferenceCapacityStatus(segment, mode = miniMaxH3ModeForSegment(segment)) {
     const normalizedMode = normalizeMiniMaxH3Mode(mode);
+    if (isRefmodPipeline()) {
+      // RefMods have no nine-image limit. The render allows 24 per scene.
+      const items = miniMaxRefmodItemsForSegment(segment);
+      const allSubjects = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder).subjects || [];
+      return {
+        count: items.length, overflow: Math.max(0, items.length - 24), labels: items.map((item) => item.name),
+        tokenText: tokenStatusText(items), clothing: clothingChoices(items, allSubjects, segment?.refmod_clothing_override),
+      };
+    }
     if (!segment || !["reference_to_video", "image_reference_to_video", "video_to_video"].includes(normalizedMode)) return { count: 0, overflow: 0, labels: [] };
     if (normalizedMode === "image_reference_to_video") {
       const items = miniMaxH3ImageReferencePromptItems(segment, 99);
@@ -291,6 +338,9 @@ export function createMiniMaxReferences({
     assertMiniMaxH3ReferenceCapacity(segment, mode);
     const missing = miniMaxH3MissingReferenceDescriptions(segment, mode);
     if (!missing.length) return;
+    if (isRefmodPipeline()) {
+      throw new Error(`MiniMax prompt creation needs a description for every RefMod in the scene.\n\nMissing description for:\n- ${missing.join("\n- ")}\n\nOpen Reference Builder and type the description on that card (RefMods Studio can write one from the images).`);
+    }
     throw new Error(
       `MiniMax prompt creation needs Reference Builder descriptions before it can assemble the fixed Image blocks.\n\nMissing description for:\n- ${missing.join("\n- ")}\n\nOpen Reference Builder and click Gemma Describe, or type the description manually, then create the prompt again.`,
     );
@@ -579,7 +629,7 @@ export function createMiniMaxReferences({
   }
 
   return {
-    assertMiniMaxH3ReferenceCapacity, assertMiniMaxH3ReferenceDescriptionsReady,
+    assertMiniMaxH3ReferenceCapacity, assertMiniMaxH3ReferenceDescriptionsReady, isRefmodPipeline, miniMaxRefmodItemsForSegment,
     fluxReferenceContextForSegment, miniMaxDesiredReferenceKeysForSegment, miniMaxH3ReferenceCapacityStatus,
     miniMaxOrderedImageReferenceItemsForSegment, miniMaxReferenceBuilderImagePathsForSegment,
     miniMaxReferenceKeysForSegment, miniMaxReferencePurposeText, nbReferenceContextForSegment,

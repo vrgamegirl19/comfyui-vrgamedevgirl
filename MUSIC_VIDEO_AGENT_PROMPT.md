@@ -22,6 +22,7 @@ character:
 location_style_theme:    # where and what look, e.g. "Los Angeles nightlife, rooftop lounges, neon, night time"
 story_idea:              # one or two sentences the agent expands from. Leave empty to let the agent write one
                          # from the lyrics and theme.
+continue_scenes: false   # true makes every scene after the first continue the previous scene's take (see step 16)
 video:
   style: cinematic_realism           # saved as the video style key
   camera_flow: intimate_closeups
@@ -80,6 +81,11 @@ Use the project id returned by `project_create` in every later call.
 10. `reference_assign_scenes` with `character_pattern: "blocks"`, `character_block_size: 1000`,
     `location_pattern: "blocks"`, `location_block_size: 4`, `replace_existing: true`.
     This puts the character on every scene and repeats each location for 4 scenes.
+    A scene's mapping holds one location. To give a MiniMax scene several references (more than one location, or a
+    different order), use `GET /projects/{pid}/scenes/{sid}/minimax-references`: `available` lists every character,
+    extra, location and ingredients sheet with its `key`, and `selected` is the order MiniMax receives. Then
+    `PUT` the same path with `{"keys": ["subject:ava", "location:roof", "location:alley"]}`, or `{"automatic": true}`
+    to follow the mappings again. At most 9 images are sent (8 chosen when the scene image is Image 1).
 
 ### D. Storyboard (story layer)
 11. `story_settings` with
@@ -95,6 +101,16 @@ Use the project id returned by `project_create` in every later call.
     `failures`, fix the cause (usually a scene with no mapped character) and run it again.
 
 ### F. Render and stitch
+15b. Only when `continue_scenes` is true: `project_update_settings` with
+    `{"minimax_h3": {"continuity_mode": "latent_continuation_masked", "latent_context_frames": 39, "location_transition_preset": "masked", "continuity_prompt_from_last_frame": true}}`
+    before any prompt is written. With `continuity_prompt_from_last_frame` each continued scene's prompt is written again from the
+    previous scene's real final frame right before it renders (the loaded LLM must be able to read images, otherwise it uses the
+    previous scene's last shot). Scene 1 renders normally. Every later scene starts from the previous scene's last moments, so its
+    prompt is the next moment of the same take: carry on for the first part of the scene, then make one smooth movement, never a cut.
+    `minimax_prompts` already writes it that way. To direct a scene yourself, `scene_update` with
+    `patch: {"minimax_h3_continuation_direction": "he turns to the camera, then sits down"}` (the action only, no lyrics). The direction starts 0.5 s into the scene; add `"minimax_h3_continuation_start_seconds": 1.2` to start later (at most half the scene). The prompt writer is told the scene length and must finish the action before it ends. Then
+    `minimax_prompts` with `scene_ids: [that scene]` and `replace_existing: true`. The scenes must be rendered in timeline order with the same render pass and
+    resolution. A scene whose predecessor has no saved video fails with `PREDECESSOR_MISSING`, render the predecessor first.
 16. `video_render` for every scene in timeline order, one at a time, with `params: {"mode": "minimax_h3"}`.
     Wait for each job before starting the next. If a scene fails, retry it once, then continue and list it in
     your final report.

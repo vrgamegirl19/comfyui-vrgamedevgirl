@@ -1,3 +1,4 @@
+import { isRefmodCard } from "../music_video_builder/refmod_labels.mjs";
 import {
   FACIAL_PERFORMANCE_PRESETS,
   ID_LORA_FACIAL_PERFORMANCE_PRESETS,
@@ -19,6 +20,7 @@ import {
   storyboardSpeedValue,
   storyboardStillFacialDirection,
 } from "./scenes.mjs";
+import { storyboardRefmodLabels } from "./references.mjs";
 import {
   STORYBOARD_CAMERA_FLOW_PRESETS,
   storyboardCameraFlowEntry,
@@ -84,6 +86,21 @@ export function storyLayerGptPayload(state) {
   };
 }
 
+const REFMOD_PIPELINE_INSTRUCTION = "This project renders from saved RefMods instead of reference images. Each visible subject in subject_refs has a refmod_label such as <Video 1> or <Picture 2>. In every shot, write that subject's label right after the first mention of their name, for example: Brad <Video 1> walks to the window. Use only the labels listed in refmod_pipeline.references and never invent or renumber one. Name a subject only if it is listed for this scene.";
+
+// What the GPT needs to know about this scene's RefMods: each card's label and name, and how to write the labels.
+function storyboardRefmodPipelineForGpt(scene, catalogSubjects, labels) {
+  const seen = new Set();
+  const references = [];
+  for (const card of [...(scene.subject_refs || []), scene.location_ref, ...catalogSubjects]) {
+    const id = String(card?.id || "");
+    if (!id || seen.has(id) || !labels.has(id) || !isRefmodCard(card)) continue;
+    seen.add(id);
+    references.push({ label: labels.get(id), name: String(card.name || "").trim(), refmod_type: card.refmod.type || card.reference_type || "", refmod_kind: card.refmod.kind });
+  }
+  return { enabled: true, instruction: REFMOD_PIPELINE_INSTRUCTION, references };
+}
+
 function storyboardReferenceForGpt(ref, options = {}) {
   if (!ref) return null;
   const name = String(ref.name || "").trim();
@@ -97,6 +114,7 @@ function storyboardReferenceForGpt(ref, options = {}) {
     description,
     trigger_phrase: triggerPhrase,
     prompt_name_source: options.subject && triggerPhrase ? "subject_trigger_phrase" : "reference_name",
+    ...(options.refmodLabel && isRefmodCard(ref) ? { refmod_label: options.refmodLabel, refmod_kind: ref.refmod.kind, refmod_type: ref.refmod.type || ref.reference_type || "" } : {}),
   };
 }
 
@@ -215,8 +233,10 @@ function storyboardScenesForGpt(state) {
     const noLipSync = Boolean(normalized.lyric_no_lip_sync || performanceMode === "no_lip_sync");
     const noCharacterPresent = Boolean(normalized.no_character_present);
     const shouldLipSync = !imageMode && performanceMode !== "no_lip_sync" && Boolean(lyricText) && !instrumental && !noLipSync && !noCharacterPresent;
+    const refmodActive = Boolean(state.refmodPipeline) && sceneVideoEngine === "minimax_h3";
+    const refmodLabels = refmodActive ? storyboardRefmodLabels(normalized, state.referenceBuilder?.subjects || []) : new Map();
     const subjectRefs = noCharacterPresent ? [] : (Array.isArray(normalized.subject_refs) ? normalized.subject_refs : [])
-      .map((ref) => storyboardReferenceForGpt(ref, { subject: true }))
+      .map((ref) => storyboardReferenceForGpt(ref, { subject: true, refmodLabel: refmodLabels.get(String(ref?.id || "")) }))
       .filter(Boolean);
     const subjectFallbacks = noCharacterPresent ? [] : (Array.isArray(normalized.subjects) ? normalized.subjects : [])
       .map((name) => ({ name: String(name || "").trim(), description: "" }))
@@ -310,6 +330,7 @@ function storyboardScenesForGpt(state) {
                 + " Do not describe visible singing as quiet; use controlled, focused, intimate, restrained, inward, tender, or simmering intensity instead."
                 : "Do not mention singing, lip-syncing, mouth movement, or vocal performance for this scene. Every listed subject must still appear as a visible non-singing subject unless no_character_present is true.",
       },
+      ...(refmodActive && !imageMode && refmodLabels.size ? { refmod_pipeline: storyboardRefmodPipelineForGpt(normalized, state.referenceBuilder?.subjects || [], refmodLabels) } : {}),
       scene_summary: imageMode ? "" : normalized.prompt_summary,
       story_layer: {
         lyric_section: lyricSection,

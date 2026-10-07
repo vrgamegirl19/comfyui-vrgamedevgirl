@@ -201,6 +201,31 @@ export function normalizeFluxReferenceBuilder(value = {}) {
     if (["prop", "object", "vehicle", "creature", "animal", "outfit", "style", "environment", "other"].includes(text)) return text;
     return "character";
   };
+  // RefMod fields of a card. A card is a RefMod reference when source is "refmod" and it names a saved RefMod.
+  // Cards keep any image they had, so the project can switch back to the standard pipeline.
+  const normalizeRefmodFields = (item = {}) => {
+    const raw = item.refmod && typeof item.refmod === "object" ? item.refmod : null;
+    const name = String(raw?.name || "").trim();
+    // A card set to RefMod stays a RefMod card while no RefMod is picked yet, so the picker keeps showing.
+    const fields = { source: String(item.source || "") === "refmod" ? "refmod" : "image" };
+    if (raw && name) {
+      const strength = Number(raw.strength);
+      fields.refmod = {
+        name,
+        folder: String(raw.folder || (name.includes("/") ? name.split("/")[0] : "")),
+        type: String(raw.type || raw.folder || ""),
+        kind: raw.kind === "image" ? "image" : "video",
+        tokens: Math.max(0, Math.trunc(Number(raw.tokens) || 0)),
+        frames: Math.max(0, Math.trunc(Number(raw.frames) || 0)),
+        strength: Number.isFinite(strength) ? Math.min(1, Math.max(0, strength)) : 1,
+      };
+    }
+    // Clothing cards: the character who wears it, whether it follows that character into every scene, and the set it is picked from.
+    fields.wears = String(item.wears || "");
+    fields.follow = item.follow !== false;
+    fields.clothing_set = ["men", "women", "all"].includes(String(item.clothing_set || "")) ? String(item.clothing_set) : "all";
+    return fields;
+  };
   const normalizeRefImage = (item = {}) => {
     const sourceItem = item && typeof item === "object" ? item : {};
     const image = sourceItem.image && typeof sourceItem.image === "object" ? sourceItem.image : sourceItem;
@@ -305,6 +330,7 @@ export function normalizeFluxReferenceBuilder(value = {}) {
         extra_reference_note: String(item.extra_reference_note || item.extraReferenceNote || ""),
         minimax_voice: normalizeMiniMaxH3Voice(item.minimax_voice || item.miniMaxVoice),
         reference_generation_draft: normalizeReferenceGenerationDraft(item.reference_generation_draft || item.referenceGenerationDraft),
+        ...normalizeRefmodFields(item),
         image: normalizeRefImage(item),
       };
     }) : [];
@@ -432,6 +458,7 @@ export function normalizeFluxReferenceBuilder(value = {}) {
         trigger_phrase: String(item.trigger_phrase || item.trigger || item.Trigger || item.phrase || ""),
         trigger_position: String(item.trigger_position || item.triggerPosition || item.trigger_placement || "start") === "end" ? "end" : "start",
         reference_generation_draft: normalizeReferenceGenerationDraft(item.reference_generation_draft || item.referenceGenerationDraft),
+        ...normalizeRefmodFields(item),
         image: normalizeRefImage(item),
       };
     });

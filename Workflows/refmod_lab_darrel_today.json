@@ -1,0 +1,341 @@
+{
+  "115": {
+    "inputs": {
+      "aspect_ratio": "16:9 (Widescreen)",
+      "megapixels": 0.9,
+      "multiple": 32
+    },
+    "class_type": "ResolutionSelector",
+    "_meta": {
+      "title": "Resolution Selector (Size)"
+    }
+  },
+  "119": {
+    "inputs": {
+      "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load Video VAE"
+    }
+  },
+  "120": {
+    "inputs": {
+      "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load Audio VAE"
+    }
+  },
+  "122": {
+    "inputs": {
+      "samples": [
+        "125",
+        0
+      ],
+      "vae": [
+        "119",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "123": {
+    "inputs": {
+      "sampler_name": "res_multistep"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "KSamplerSelect"
+    }
+  },
+  "124": {
+    "inputs": {
+      "scheduler": "simple",
+      "steps": 20,
+      "denoise": 1,
+      "model": [
+        "141",
+        0
+      ]
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {
+      "title": "BasicScheduler"
+    }
+  },
+  "125": {
+    "inputs": {
+      "noise": [
+        "129",
+        0
+      ],
+      "guider": [
+        "126",
+        0
+      ],
+      "sampler": [
+        "123",
+        0
+      ],
+      "sigmas": [
+        "124",
+        0
+      ],
+      "latent_image": [
+        "172",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "SamplerCustomAdvanced"
+    }
+  },
+  "126": {
+    "inputs": {
+      "model": [
+        "141",
+        0
+      ],
+      "conditioning": [
+        "9304",
+        0
+      ]
+    },
+    "class_type": "BasicGuider",
+    "_meta": {
+      "title": "Basic Guider"
+    }
+  },
+  "128": {
+    "inputs": {
+      "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "type": "minimax",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "129": {
+    "inputs": {
+      "noise_seed": 69
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "BUILDER INPUT - Seed"
+    }
+  },
+  "131": {
+    "inputs": {
+      "expression": "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17",
+      "values.a": [
+        "132",
+        0
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "H3 Duration To Valid Frame Count"
+    }
+  },
+  "132": {
+    "inputs": {
+      "value": 6.375
+    },
+    "class_type": "PrimitiveFloat",
+    "_meta": {
+      "title": "BUILDER INPUT - Duration"
+    }
+  },
+  "138": {
+    "inputs": {
+      "value": "[Shot 1] The camera begins on a smooth tracking motion at chest height, slowly rising on a gentle crane arc to eye level, settling into a balanced medium shot that tracks backward as Darrel <Video 1> walks toward the lens across a vibrant alpine meadow carpeted in dense seasonal blooms, cool morning light cutting through dark evergreen pines toward rugged snow-dusted peaks. As he strides forward he sings with clear, natural lip articulation and jaw movement synchronized to <d>[English] If you see me yodelin' yodelin' yodelin' heee hooo!</d>, his jacket shifting with each step and his chest expanding with each breath. Mid-stride he turns a quarter profile, then back to camera, so the full outfit and both sides of his face are visible."
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "BUILDER INPUT - Prompt"
+    }
+  },
+  "141": {
+    "inputs": {
+      "model_name": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+      "weight_dtype": "default",
+      "compute_dtype": "default",
+      "patch_cublaslinear": false,
+      "sage_attention": "auto",
+      "enable_fp16_accumulation": true
+    },
+    "class_type": "DiffusionModelLoaderKJ",
+    "_meta": {
+      "title": "Diffusion Model Loader KJ"
+    }
+  },
+  "142": {
+    "inputs": {
+      "frame_rate": 24,
+      "loop_count": 0,
+      "filename_prefix": "MMH3_lab_darrel/today",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true,
+      "images": [
+        "122",
+        0
+      ],
+      "audio": [
+        "172",
+        1
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "OUTPUT - Single Pass"
+    }
+  },
+  "171": {
+    "inputs": {
+      "audio_file": "C:\\Users\\NVMax\\Desktop\\ComfyUI_windows_portable\\ComfyUI\\output\\Higher ground\\minimax_h3_scene_audio\\scene_audio_0006.wav",
+      "seek_seconds": 0,
+      "duration": 0
+    },
+    "class_type": "VHS_LoadAudio",
+    "_meta": {
+      "title": "BUILDER INPUT - Custom Source Audio Path"
+    }
+  },
+  "172": {
+    "inputs": {
+      "av_latent": [
+        "136",
+        0
+      ],
+      "source_audio": [
+        "171",
+        0
+      ],
+      "audio_vae": [
+        "120",
+        0
+      ]
+    },
+    "class_type": "VRGDG_MiniMaxH3AudioDrive",
+    "_meta": {
+      "title": "LOCK SOURCE AUDIO - GENERATE VIDEO ONLY"
+    }
+  },
+  "9301": {
+    "class_type": "MiniMaxH3RefModsLoader",
+    "inputs": {
+      "show_info": true,
+      "mod_1": "lab/darrel_today",
+      "strength_1": 1.0,
+      "copies_1": 1,
+      "mod_2": "(none)",
+      "strength_2": 1.0,
+      "copies_2": 1,
+      "mod_3": "(none)",
+      "strength_3": 1.0,
+      "copies_3": 1,
+      "mod_4": "(none)",
+      "strength_4": 1.0,
+      "copies_4": 1,
+      "mod_5": "(none)",
+      "strength_5": 1.0,
+      "copies_5": 1,
+      "mod_6": "(none)",
+      "strength_6": 1.0,
+      "copies_6": 1,
+      "mod_7": "(none)",
+      "strength_7": 1.0,
+      "copies_7": 1,
+      "mod_8": "(none)",
+      "strength_8": 1.0,
+      "copies_8": 1
+    },
+    "_meta": {
+      "title": "Load H3 RefMods: lab/darrel_today"
+    }
+  },
+  "9303": {
+    "class_type": "VRGDG_RefModMetadata",
+    "inputs": {
+      "mod_name": "(use mods input)",
+      "mods": [
+        "9301",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "RefMod description (display only)"
+    }
+  },
+  "9304": {
+    "class_type": "MiniMaxH3RefModTextEncode",
+    "inputs": {
+      "clip": [
+        "128",
+        0
+      ],
+      "mods": [
+        "9301",
+        0
+      ],
+      "prompt": [
+        "138",
+        0
+      ],
+      "reference_fps": 24.0,
+      "max_total_tokens": 0,
+      "vae": [
+        "119",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Text Encode with RefMods (labels the references)"
+    }
+  },
+  "9305": {
+    "class_type": "VRGDG_ShowText",
+    "inputs": {
+      "text": [
+        "9304",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "Reference map: which label is which mod"
+    }
+  },
+  "136": {
+    "class_type": "EmptyMiniMaxH3LatentAV",
+    "inputs": {
+      "width": [
+        "115",
+        0
+      ],
+      "height": [
+        "115",
+        1
+      ],
+      "length": [
+        "131",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "Empty MiniMax H3 AV Latent"
+    }
+  }
+}

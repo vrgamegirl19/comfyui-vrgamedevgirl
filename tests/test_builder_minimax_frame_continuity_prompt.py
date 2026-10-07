@@ -59,6 +59,7 @@ class MiniMaxFrameContinuityPromptTests(unittest.TestCase):
             'value: "match"',
             'value: "motion"',
             'value: "creative_auto"',
+            'value: "masked"',
             'value: "custom"',
         ):
             self.assertIn(preset, UI_SOURCE)
@@ -73,6 +74,66 @@ class MiniMaxFrameContinuityPromptTests(unittest.TestCase):
         self.assertIn("Global for all unlocked scenes", UI_SOURCE)
         self.assertIn("if (previousKey && previousKey !== currentKey)", UI_SOURCE)
         self.assertIn("return `${directions[preset]} ${commonEnding}`", UI_SOURCE)
+
+    def test_masked_preset_continues_then_makes_one_move_and_keeps_the_vocal_performance(self):
+        self.assertIn("LOCATION PHASE — MASKED CONTINUATION TRANSITION", UI_SOURCE)
+        # a set hold, then one smooth move, with no effects that stage a new shot
+        self.assertIn("for the first ${holdSeconds} seconds simply continue the opening frame's action", UI_SOURCE)
+        self.assertIn("begin ONE smooth, motivated movement", UI_SOURCE)
+        self.assertIn("with no wipe, flash, portal, morph, or cut", UI_SOURCE)
+        # singing / speaking carries through the move when the scene has vocals, and is skipped for b-roll
+        self.assertIn("function miniMaxH3MaskedPerformanceText(segment, part)", UI_SOURCE)
+        self.assertIn("if (segmentUsesNoLipSyncPerformance(segment)) return \"\";", UI_SOURCE)
+        self.assertIn("singing the scene's lyrics", UI_SOURCE)
+        self.assertIn("speaking their dialogue", UI_SOURCE)
+        self.assertIn("${performanceLine}", UI_SOURCE)
+        self.assertIn('miniMaxH3MaskedPerformanceText(segment, "opening")', UI_SOURCE)
+        # picking masked continuity selects the matching preset
+        self.assertIn('miniMaxLocationTransitionPreset.value = "masked"', UI_SOURCE)
+
+    def test_continuation_direction_is_saved_per_scene_and_placed_after_a_hold_without_a_cut(self):
+        # one textarea in the continuation row, saved on the scene like the scene prompt
+        self.assertIn("miniMaxContinuationDirection", UI_SOURCE)
+        self.assertIn("segment.minimax_h3_continuation_direction = String(miniMaxContinuationDirection.value", UI_SOURCE)
+        self.assertIn("miniMaxContinuationDirection.value = String(segment?.minimax_h3_continuation_direction", UI_SOURCE)
+        # the LLM is told when it starts (a third of the scene, shared with the Masked preset) and that it never cuts
+        self.assertIn("function miniMaxH3ContinuationHoldSeconds(segment)", UI_SOURCE)
+        # the start is the author's choice: 0.5 s by default, at most half of the scene, and the LLM is told the scene length
+        self.assertIn("segment?.minimax_h3_continuation_start_seconds", UI_SOURCE)
+        self.assertIn("Math.floor(Math.max(0, Number(sceneSeconds) || 0) * 0.5 * 10 + 1e-9) / 10", UI_SOURCE)
+        self.assertIn("SCENE TIMING: This scene is ${sceneLength} seconds long.", UI_SOURCE)
+        self.assertIn("perform its actions in quicker succession rather than leaving any out", UI_SOURCE)
+        self.assertNotIn("Do not skip, soften, shorten", UI_SOURCE)
+        # a slider under the direction box sets it, saves it only when moved, and the pop-out has the same slider
+        self.assertIn('miniMaxContinuationStart.type = "range";', UI_SOURCE)
+        self.assertIn("segment.minimax_h3_continuation_start_seconds = Number(miniMaxContinuationStart.value);", UI_SOURCE)
+        self.assertIn("miniMaxContinuationStartField,\n        makeField(\"MiniMax H3 prompt\", miniMaxPrompt)", UI_SOURCE.replace("\r\n", "\n"))
+        self.assertIn("const startMirror = document.createElement(\"input\");", UI_SOURCE)
+        self.assertIn("AUTHOR'S DIRECTION FOR THIS SCENE — MANDATORY", UI_SOURCE)
+        self.assertIn("Never cut, change shot, or restart the action to reach it.", UI_SOURCE)
+        self.assertIn("miniMaxH3ContinuationDirectionText(segment)", UI_SOURCE)
+        # the timing is written into the finished description, and the direction is last in the concept
+        self.assertIn('"For the first ${holdSeconds} seconds, ..."', UI_SOURCE)
+        self.assertIn('"At about ${holdSeconds} seconds, ..."', UI_SOURCE)
+        self.assertIn("THE FINISHED DESCRIPTION MUST CONTAIN IT", UI_SOURCE)
+        self.assertIn("then carry on exactly as the AUTHOR'S DIRECTION at the end of this scene concept says", UI_SOURCE)
+        self.assertLess(
+            UI_SOURCE.index('add(parts, "Continuity notes for staging only"'),
+            UI_SOURCE.index("if (continuationDirection) parts.push(continuationDirection);"),
+        )
+        # vocals keep going through it
+        self.assertIn('miniMaxH3MaskedPerformanceText(segment, "transition")', UI_SOURCE)
+
+    def test_a_continued_scene_does_not_let_a_framing_preset_restage_shot_one(self):
+        # a preset such as Intimate close-ups listed "side-lying close-up" as Shot 1 and the LLM obeyed it over the previous frame
+        self.assertIn("function miniMaxH3PerShotFramingLines(segment, shotPlan = [], continuation = false)", UI_SOURCE)
+        self.assertIn("Shot 1 framing: begin exactly as Attached Picture 1 shows it", UI_SOURCE)
+        self.assertIn("miniMaxH3PerShotFramingLines(segment, shotPlan, Boolean(options.frameContinuityPrompt))", UI_SOURCE)
+        # and the author's direction bridges to the body position it needs
+        self.assertIn("first describe the natural movement that gets the subject there", UI_SOURCE)
+
+    def test_decimal_points_are_not_sentence_ends(self):
+        self.assertIn("VRGDGDECIMALTOKEN", UI_SOURCE)
 
     def test_each_location_transition_preset_resolves_to_one_instruction(self):
         for heading in (

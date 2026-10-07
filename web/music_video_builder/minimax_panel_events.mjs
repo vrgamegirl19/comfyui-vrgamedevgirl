@@ -7,6 +7,7 @@ import {
   DEFAULT_MINIMAX_H3_SETTINGS,
   miniMaxInstalledPass2Lora,
   normalizeMiniMaxH3ContinuityMode,
+  normalizeMiniMaxH3Pipeline,
   normalizeMiniMaxH3SceneImageUse,
   normalizeMiniMaxH3StartFrameCharacterInfluence,
   normalizeMiniMaxSpeakerAssignments,
@@ -26,7 +27,8 @@ export function wireMiniMaxPanel({
   miniMaxDiffusionModelPicker, miniMaxEasyCacheBypass, miniMaxEasyCacheEndPercent,
   miniMaxEasyCacheReuseThreshold, miniMaxEasyCacheStartPercent, miniMaxEasyCacheVerbose,
   miniMaxFp16Accumulation, miniMaxH3ContinuityModeForSegment, miniMaxH3ModeForSegment,
-  miniMaxH3SceneImageUseForSegment, miniMaxH3SettingsForSegment, miniMaxLatentContextFrames,
+  miniMaxH3SceneImageUseForSegment, miniMaxH3SettingsForSegment, miniMaxContinuationDirection, miniMaxContinuationStart, miniMaxContinuationStartValue,
+  miniMaxLatentContextFrames,
   miniMaxLocationTransitionCustom, miniMaxLocationTransitionPreset, miniMaxLoraCount, miniMaxLoraSlots,
   miniMaxMappedSpeakersForSegment, miniMaxMegapixels, miniMaxMemoryEfficientSageAttention, miniMaxResolutionPreset, miniMaxVideoProfileControls, miniMaxModeButtons,
   miniMaxPass2Prompt, miniMaxPassButtons, miniMaxPrompt, miniMaxSageAttention, miniMaxSamplerName,
@@ -208,6 +210,23 @@ export function wireMiniMaxPanel({
       await autoSaveSessionQuiet(segment.use_scene_minimax_h3_settings ? "MiniMax H3 locked scene mode" : "MiniMax H3 project mode");
     };
   }
+  for (const button of miniMaxPassButtons.refmod?.pipelineButtons || []) {
+    button.onclick = async () => {
+      const pipeline = normalizeMiniMaxH3Pipeline(button.dataset.minimaxH3Pipeline);
+      if (normalizeMiniMaxH3Pipeline(state.miniMaxH3Settings?.pipeline) === pipeline) return;
+      pushHistory();
+      // The pipeline belongs to the whole project, so it is changed on the project settings and every scene follows.
+      const current = cloneMiniMaxH3Settings({ ...state.miniMaxH3Settings, pipeline });
+      state.miniMaxH3Settings = current;
+      state.miniMaxH3TwoPassEnabled = current.render_pass === "two_pass";
+      state.miniMaxH3ThreePassEnabled = current.render_pass === "three_pass";
+      syncMiniMaxH3Panel();
+      await autoSaveSessionQuiet(`MiniMax H3 ${pipeline} pipeline`);
+      toast(pipeline === "refmod"
+        ? "RefMod pipeline on. Every scene now renders from the RefMods picked in the Reference Builder."
+        : "Standard pipeline on. Every scene renders from reference images again.");
+    };
+  }
   for (const button of miniMaxPassButtons) {
     button.onclick = async () => {
       const segment = wizardVideoSettings.global ? null : requireActiveSegment();
@@ -258,6 +277,11 @@ export function wireMiniMaxPanel({
       miniMaxSceneImageUse.value = "off";
       toast(`Previous-frame exact continuation is now the sole exact start frame. Turned off the scene-image exact start-frame option for ${clearedStartFrames.length} scene${clearedStartFrames.length === 1 ? "" : "s"}.`);
     }
+    if (continuityMode === "latent_continuation_masked" && miniMaxLocationTransitionPreset.value !== "masked") {
+      // The other presets stage a new shot, which fights the protected head. Masked is the one written for it.
+      miniMaxLocationTransitionPreset.value = "masked";
+      saveMiniMaxH3SettingsFromPanel();
+    }
     syncMiniMaxH3Panel();
     syncMiniMaxReferenceButtons();
     loadDirtyLatentBadges();
@@ -295,6 +319,17 @@ export function wireMiniMaxPanel({
     renderMiniMaxSpeakerAssignmentPanel();
     autoSaveSessionQuiet("MiniMax dialogue cue added").catch(() => null);
   };
+  // Only this slider writes the start, so other saves never turn the default into a stored value.
+  miniMaxContinuationStart.addEventListener("input", () => {
+    const segment = activeSegment();
+    if (!segment) return;
+    segment.minimax_h3_continuation_start_seconds = Number(miniMaxContinuationStart.value);
+    const sceneSeconds = Math.max(0, Number(segment.end || 0) - Number(segment.start || 0));
+    miniMaxContinuationStartValue.textContent = `${Number(miniMaxContinuationStart.value).toFixed(1)} s into the scene. ${Math.max(0, sceneSeconds - Number(miniMaxContinuationStart.value)).toFixed(1)} s are left for the direction.`;
+  });
+  miniMaxContinuationStart.addEventListener("change", () => autoSaveSessionQuiet("MiniMax H3 continuation start").catch(() => null));
+  miniMaxContinuationDirection.addEventListener("input", saveMiniMaxSceneInputsFromPanel);
+  miniMaxContinuationDirection.addEventListener("change", () => autoSaveSessionQuiet("MiniMax H3 continuation direction").catch(() => null));
   miniMaxPrompt.addEventListener("input", saveMiniMaxSceneInputsFromPanel);
   miniMaxPrompt.addEventListener("change", () => autoSaveSessionQuiet("MiniMax H3 scene prompt").catch(() => null));
   miniMaxPass2Prompt.addEventListener("input", saveMiniMaxSceneInputsFromPanel);

@@ -28,7 +28,7 @@ import {
   setWidgetValue,
   toast,
 } from "./controls.mjs";
-import { pickProjectSessionFile, showInfoModal, showLoadProjectModal, showTextInputModal } from "./dialogs.mjs";
+import { pickProjectSessionFile, showInfoModal, showLastProgressWindow, showLoadProjectModal, showTextInputModal } from "./dialogs.mjs";
 import { cloneMiniMaxH3Settings } from "./minimax_h3.mjs";
 import { DEFAULT_KREA2_REFERENCE_SETTINGS } from "./models.mjs";
 import { defaultNotificationSettings } from "./notifications.mjs";
@@ -124,7 +124,9 @@ import { createMiniMaxPrompt } from "./minimax_prompt.mjs";
 import { createBatchPrompts } from "./batch_prompts.mjs";
 import { createProjectSetup } from "./project_setup.mjs";
 import { createBeatCalibration } from "./beat_calibration.mjs";
+import { createLlmPopout } from "./llm_popout.mjs";
 import { createTimelineState } from "./timeline_state.mjs";
+import { createUiProfileActions } from "./ui_profiles.mjs";
 import { createMiniMaxReferences } from "./minimax_references.mjs";
 import { createIdLoraBuilder } from "./id_lora_builder.mjs";
 import { createVideoRender } from "./video_render.mjs";
@@ -182,8 +184,8 @@ export function openBuilder(node) {
     audioInput, autoSaveControl, branchProjectButton, closeButton, exportProjectButton, fullscreenButton,
     importProjectButton, loadButton, loadLastProjectButton, loadSessionButton, loadSrtButton, menuButton,
     newProjectButton, pickAudioButton, pickSrtButton, projectInput, reviewGuideButton, saveButton,
-    saveProjectAsButton, settingsButton, srtInput, topbar, videoTypeField, videoTypeSelect,
-    whatsNewMenuButton,
+    saveProjectAsButton, settingsButton, srtInput, topbar, uiProfileControls, uiProfileField, videoTypeField,
+    videoTypeSelect, whatsNewMenuButton,
   } = buildProjectControls({
     node,
   });
@@ -215,7 +217,7 @@ export function openBuilder(node) {
     autoSaveControl, branchProjectButton, builderETAState, builderLifecycle, closeBuilderNow, closeButton,
     exportProjectButton, fullscreenButton, importProjectButton, loadLastProjectButton, loadSessionButton,
     menuButton, newProjectButton, overlay, reviewGuideButton, saveButton, saveProjectAsButton, settingsButton,
-    topbar, videoTypeField, whatsNewMenuButton,
+    topbar, uiProfileField, videoTypeField, whatsNewMenuButton,
     saveSession: (...args) => saveSession(...args),
   });
 
@@ -252,6 +254,19 @@ export function openBuilder(node) {
   });
   leftTabBar.append(scenesTabButton, toolsTabButton, lutsTabButton);
   segmentList.append(leftTabBar, sceneListPane, toolsPane, postProcessPane);
+  // A tab on the edge of the left panel hides it so the video window and timeline get the space, and shows it again.
+  const leftPanelToggle = document.createElement("button");
+  leftPanelToggle.type = "button";
+  leftPanelToggle.style.cssText = "position:absolute;top:50%;transform:translateY(-50%);z-index:6;width:16px;height:64px;padding:0;border:1px solid #155e75;border-left:0;border-radius:0 8px 8px 0;background:#083344;color:#cffafe;font-size:11px;font-weight:900;cursor:pointer;display:flex;align-items:center;justify-content:center;";
+  // Starting text and spots. applyLayoutSizes moves them, but a browser holding an older timeline_state.mjs would
+  // otherwise leave both tabs blank and stacked at the left edge.
+  leftPanelToggle.textContent = "◀";
+  leftPanelToggle.style.left = "267px";
+  const rightPanelToggle = document.createElement("button");
+  rightPanelToggle.type = "button";
+  rightPanelToggle.textContent = "▶";
+  rightPanelToggle.style.cssText = "position:absolute;top:50%;transform:translateY(-50%);z-index:6;width:16px;height:64px;padding:0;border:1px solid #155e75;border-right:0;border-radius:8px 0 0 8px;background:#083344;color:#cffafe;font-size:11px;font-weight:900;cursor:pointer;display:flex;align-items:center;justify-content:center;";
+  rightPanelToggle.style.right = "360px";
   const leftResizeHandle = document.createElement("div");
   leftResizeHandle.title = "Drag to resize scene list";
   leftResizeHandle.style.cssText = "cursor:col-resize;background:#18181b;border-left:1px solid #27272a;border-right:1px solid #27272a;";
@@ -313,7 +328,17 @@ export function openBuilder(node) {
   preloadVideo.muted = true;
   preloadVideo.preload = "auto";
   preloadVideo.style.cssText = "display:none;width:0;height:0;";
-  previewStage.append(previewEmpty, previewImage, previewVideo, preloadVideo, postProcessComparePreview.element, previewDecodeHint);
+  const renderStatusButton = document.createElement("button");
+  renderStatusButton.type = "button";
+  renderStatusButton.textContent = "Render status";
+  renderStatusButton.title = "Show the render status window again after closing it";
+  renderStatusButton.style.cssText = "position:absolute;left:8px;top:8px;z-index:3;padding:3px 8px;border:1px solid #155e75;border-radius:5px;background:rgba(8,51,68,.82);color:#cffafe;font-size:11px;font-weight:700;cursor:pointer;opacity:.75;";
+  renderStatusButton.onmouseenter = () => { renderStatusButton.style.opacity = "1"; };
+  renderStatusButton.onmouseleave = () => { renderStatusButton.style.opacity = ".75"; };
+  renderStatusButton.onclick = () => {
+    if (!showLastProgressWindow()) toast("No render status window is open. Start a render to see one.");
+  };
+  previewStage.append(previewEmpty, previewImage, previewVideo, preloadVideo, postProcessComparePreview.element, previewDecodeHint, renderStatusButton);
   const customImageFileInput = document.createElement("input");
   customImageFileInput.type = "file";
   customImageFileInput.accept = "image/png,image/jpeg,image/webp";
@@ -692,7 +717,9 @@ export function openBuilder(node) {
     miniMaxEasyCacheBypass, miniMaxEasyCacheEndPercent, miniMaxEasyCacheReuseThreshold,
     miniMaxEasyCacheSettings, miniMaxEasyCacheStartPercent, miniMaxEasyCacheVerbose,
     miniMaxEditContinuityPromptInstructionsButton, miniMaxEditInstructionsButton, miniMaxEnginePanel,
-    miniMaxFp16Accumulation, miniMaxImageModeSource, miniMaxLatentContextFrames, miniMaxLatentContinuationRow,
+    miniMaxFp16Accumulation, miniMaxImageModeSource, miniMaxContinuationDirection, miniMaxContinuationDirectionField, miniMaxPromptAutoNote,
+    miniMaxContinuationStart, miniMaxContinuationStartField, miniMaxContinuationStartValue,
+    miniMaxLatentContextFrames, miniMaxLatentContinuationRow,
     miniMaxLatentStatusPill, miniMaxLocationTransitionControls, miniMaxLocationTransitionCustom,
     miniMaxLocationTransitionCustomField, miniMaxLocationTransitionPreset, miniMaxLoraCount, miniMaxLoraNote,
     miniMaxLoraRows, miniMaxLoraSection, miniMaxLoraSlots, miniMaxMegapixels, miniMaxMegapixelsField, miniMaxResolutionPreset,
@@ -909,6 +936,14 @@ export function openBuilder(node) {
     imageContinuityEnabled: false,
     imageContinuityStrength: "balanced",
     leftPanelWidth: 260,
+    leftPanelCollapsed: false,
+    rightPanelCollapsed: false,
+    llmPopoutOpen: false,
+    llmPopoutWidth: 460,
+    llmPopoutHeight: 460,
+    llmPopoutX: null,
+    llmPopoutY: null,
+    uiProfile: "",
     rightPanelWidth: 360,
     timelinePanelHeight: 300,
     projectFolder: projectInput.value,
@@ -1026,6 +1061,26 @@ export function openBuilder(node) {
     isRestoringHistory: false,
     batchCancelled: false,
   };
+  // A floating window with the MiniMax prompt fields, opened by a checkbox at the top of the right panel.
+  const llmPopout = createLlmPopout({
+    state, inspector, overlay,
+    fields: {
+      prompt: miniMaxPrompt,
+      saveButton: saveMiniMaxPromptButton,
+      status: miniMaxPromptCharacterStatus,
+      pass2Prompt: miniMaxPass2Prompt,
+      pass2Field: miniMaxPass2PromptField,
+      direction: miniMaxContinuationDirection,
+      promptAutoNote: miniMaxPromptAutoNote,
+      start: miniMaxContinuationStart,
+      startValue: miniMaxContinuationStartValue,
+      startField: miniMaxContinuationStartField,
+    },
+    autoSaveSessionQuiet: (...args) => autoSaveSessionQuiet(...args),
+    activeSegment: (...args) => activeSegment(...args),
+    sceneDisplayName: (...args) => sceneDisplayName(...args),
+    segmentIndexInfo: (...args) => segmentIndexInfo(...args),
+  });
 
   const {
     createDetailedLocationDescriptionWithGemma, createProgressWindow, describeReferenceImageWithGemma,
@@ -1243,7 +1298,10 @@ export function openBuilder(node) {
     miniMaxDiffusionModelPicker, miniMaxEasyCacheBypass, miniMaxEasyCacheEndPercent,
     miniMaxEasyCacheReuseThreshold, miniMaxEasyCacheSettings, miniMaxEasyCacheStartPercent,
     miniMaxEasyCacheVerbose, miniMaxEditInstructionsButton, miniMaxFp16Accumulation, miniMaxImageModeSource,
-    miniMaxLatentContextFrames, miniMaxLatentContinuationRow, miniMaxLatentStatusPill,
+    miniMaxContinuationDirection, miniMaxContinuationDirectionField, miniMaxPromptAutoNote, miniMaxContinuationStart,
+    miniMaxContinuationStartField, miniMaxContinuationStartValue, miniMaxLatentContextFrames,
+    miniMaxLatentContinuationRow, miniMaxLatentStatusPill,
+    miniMaxH3FrameContinuityPromptEnabled: (...args) => miniMaxH3FrameContinuityPromptEnabled(...args),
     miniMaxLocationTransitionControls, miniMaxLocationTransitionCustom, miniMaxLocationTransitionCustomField,
     miniMaxLocationTransitionPreset, miniMaxLoraCount, miniMaxLoraNote, miniMaxLoraRows, miniMaxLoraSection,
     miniMaxLoraSlots, miniMaxMegapixels, miniMaxMegapixelsField, miniMaxResolutionPreset, miniMaxMemoryEfficientSageAttention,
@@ -1431,6 +1489,7 @@ export function openBuilder(node) {
     sceneDisplayName: (...args) => sceneDisplayName(...args),
     render: (...args) => render(...args),
     renderAllScenes: (...args) => renderAllScenes(...args),
+    stitchPreviewFromSegments: (...args) => stitchPreviewFromSegments(...args),
     isSegmentMultiSelected: (...args) => isSegmentMultiSelected(...args),
     selectedSegmentsForBatch: (...args) => selectedSegmentsForBatch(...args),
     reloadBeatMarkersFromAudio: (...args) => reloadBeatMarkersFromAudio(...args),
@@ -1899,9 +1958,9 @@ export function openBuilder(node) {
     usingSceneAudioPlaybackMode, videoSettingsSegment,
   } = createTimelineState({
     audio, audioInput, autoSaveSessionQuiet, cancelPreviewPlayStart, currentVideoMode, drawWaveform,
-    idLoraTrimModeButton, main, miniMaxH3SettingsForSegment, multiSelectButton, playButton, previewVideo,
-    render, renderSegments, sceneAudio, sceneDisplayName, setActiveSegment, setGlobalPlaybackTime, shell,
-    silentTimeline, state, syncInspector, timelineViewport, updateAudioScrubbers, updateGlobalAudioMuteButton,
+    idLoraTrimModeButton, inspector, leftPanelToggle, leftResizeHandle, main, miniMaxH3SettingsForSegment,
+    multiSelectButton, playButton, previewVideo, render, renderSegments, rightPanelToggle, rightResizeHandle, sceneAudio, sceneDisplayName, setActiveSegment, setGlobalPlaybackTime, shell,
+    segmentList, silentTimeline, state, syncInspector, timelineViewport, updateAudioScrubbers, updateGlobalAudioMuteButton,
     wizardVideoSettings,
   });
 
@@ -2170,7 +2229,7 @@ export function openBuilder(node) {
   });
 
   const {
-    createMiniMaxSceneVideo, createSceneVideo, miniMaxH3FrameContinuityPromptEnabled, openStitchPreviewModal,
+    createMiniMaxSceneVideo, createSceneVideo, miniMaxH3FrameContinuityPromptEnabled, openStitchPreviewModal, stitchPreviewFromSegments,
     renderImageSlideshowPreview, renderMiniMaxSceneVideoWithProgress, renderSceneVideoWithProgress,
     runGemmaThenCreateSceneVideo, stitchRenderedScenes,
   } = createVideoRender({
@@ -2846,7 +2905,8 @@ export function openBuilder(node) {
     miniMaxDiffusionModelPicker, miniMaxEasyCacheBypass, miniMaxEasyCacheEndPercent,
     miniMaxEasyCacheReuseThreshold, miniMaxEasyCacheStartPercent, miniMaxEasyCacheVerbose,
     miniMaxFp16Accumulation, miniMaxH3ContinuityModeForSegment, miniMaxH3ModeForSegment,
-    miniMaxH3SceneImageUseForSegment, miniMaxH3SettingsForSegment, miniMaxLatentContextFrames,
+    miniMaxH3SceneImageUseForSegment, miniMaxH3SettingsForSegment, miniMaxContinuationDirection, miniMaxContinuationStart,
+    miniMaxContinuationStartValue, miniMaxLatentContextFrames,
     miniMaxLocationTransitionCustom, miniMaxLocationTransitionPreset, miniMaxLoraCount, miniMaxLoraSlots,
     miniMaxMappedSpeakersForSegment, miniMaxMegapixels, miniMaxMemoryEfficientSageAttention, miniMaxResolutionPreset, miniMaxVideoProfileControls,
     miniMaxModeButtons, miniMaxPass2Prompt, miniMaxPassButtons, miniMaxPrompt, miniMaxSageAttention,
@@ -2866,10 +2926,28 @@ export function openBuilder(node) {
     setMiniMaxH3RenderPassForSegment, state, syncMiniMaxH3Panel, syncMiniMaxReferenceButtons, twoPassControls,
     videoSettingsSegment, wizardVideoSettings,
   });
+  main.style.position = "relative";
+  main.append(leftPanelToggle, rightPanelToggle);
+  rightPanelToggle.onclick = () => {
+    state.rightPanelCollapsed = !state.rightPanelCollapsed;
+    applyLayoutSizes();
+    state.onLayoutChanged?.();
+    autoSaveSessionQuiet("right panel toggled");
+  };
+  leftPanelToggle.onclick = () => {
+    state.leftPanelCollapsed = !state.leftPanelCollapsed;
+    applyLayoutSizes();
+    state.onLayoutChanged?.();
+    autoSaveSessionQuiet("left panel toggled");
+  };
   makePanelResize(leftResizeHandle, "left");
   makePanelResize(rightResizeHandle, "right");
   makePanelResize(timelineResizeHandle, "timeline");
-  applyLayoutSizes();
+  llmPopout.activate();
+  // UI layout profiles. The one chosen last loads now and its layout wins over the project's saved sizes.
+  const uiProfiles = createUiProfileActions({ controls: uiProfileControls, state, toast, applyLayoutSizes, autoSaveSessionQuiet });
+  uiProfiles.wire();
+  uiProfiles.refresh().catch((error) => console.warn("[VRGDG Music Builder] Could not load UI layouts:", error));
   setInspectorTab("scene");
   wireFluxKleinControls({
     fluxClipPicker, fluxHeight, fluxLoraCount, fluxLoraSlots, fluxNotes, fluxPrompt, fluxSeed, fluxUnetPicker,
@@ -2922,5 +3000,6 @@ export function openBuilder(node) {
   syncVideoNoteControls();
   syncLyricNoteControls();
   updateHistoryButtons();
-  render();
+  // The Builder opens filling the browser window. The fullscreen button still returns it to the floating panel.
+  applyBuilderFullscreen(true);
 }

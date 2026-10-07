@@ -113,6 +113,46 @@ class BuilderReferenceSaveAndCueTests(unittest.TestCase):
         self.assertIn("not notes, labels, or fragments", UI_SOURCE)
         self.assertIn("let targetLimit = 7000", UI_SOURCE)
 
+    def test_minimax_custom_voice_preserves_description(self):
+        self.assertIn('voiceDescription.value = subject.minimax_voice.description || "";', UI_SOURCE)
+        self.assertIn('!subject.minimax_voice.preset_id?.endsWith("_custom")', UI_SOURCE)
+
+        helpers = load_save_helpers()
+        custom_voice = {
+            "preset_id": "female_custom",
+            "gender": "female",
+            "preset_name": "LADY VALERIE",
+            "description": "An adult feminine velvety contralto with crisp diction.",
+        }
+        refs = {
+            "subjects": [{
+                "id": "char_1",
+                "name": "Valerie",
+                "description": "Lead singer",
+                "reference_type": "character",
+                "minimax_voice": custom_voice,
+                "image": {"path": "valerie.png"},
+            }],
+            "locations": [],
+            "subject_scene_map": {"scene-1": ["char_1"]},
+            "performer_scene_map": {"scene-1": ["char_1"]},
+        }
+        session = {
+            "segments": [{"id": "scene-1", "scene_summary": "Valerie speaks."}],
+            "flux_reference_builder": refs,
+            "project_context_files": {},
+        }
+        with tempfile.TemporaryDirectory() as folder:
+            helpers["atomic_write_json"](helpers["_session_path"](folder), session)
+            helpers["atomic_write_text"](helpers["_srt_path"](folder), "1\n00:00:00,000 --> 00:00:05,000\nHello\n")
+            context_paths = helpers["_save_project_context_files"](folder, session)
+            manifest_path = helpers["_save_reference_descriptions"](folder, session)
+            helpers["_validate_saved_project"](folder, session, context_paths)
+
+            saved = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+            self.assertEqual(saved["subjects"][0]["minimax_voice"], custom_voice)
+
 
 if __name__ == "__main__":
     unittest.main()
+

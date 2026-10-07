@@ -26,7 +26,7 @@ never load or switch models. They answer `503 LLM_UNAVAILABLE` when nothing is l
 or its 1-based number.
 
 
-**Total:** 134 endpoints.
+**Total:** 137 endpoints.
 
 ## Service and discovery
 
@@ -38,6 +38,7 @@ or its 1-based number.
 | `GET` | `/models` | Models, checkpoints and LoRAs installed in ComfyUI, grouped by type. |
 | `GET` | `/modes` | Supported image and video modes with their requirements and capabilities. |
 | `GET` | `/queue` | Summary of the API job queue: running, queued and finished jobs. |
+| `GET` | `/refmods` | Saved RefMods in models/refmods with their type (folder), kind, frame count, tokens and description. Filter with `folder` (for example `identity`). A project switched to the RefMod pipeline (`pipeline: refmod` in the MiniMax H3 settings) renders from these. _(query: `folder`)_ |
 
 ## Project endpoints
 
@@ -48,7 +49,7 @@ or its 1-based number.
 | `GET` | `/projects` | List projects found in the allowed project roots. `root` limits the search to one root. _(query: `root`)_ |
 | `POST` | `/projects` | Create a project: folder, empty session seeded with your saved model defaults. Body: `name`, optional `template_from`. _(body: `name`, `template_from`)_ |
 | `DELETE` | `/projects/{pid}` | Delete a project folder from disk. Needs `confirm` equal to the project id. _(query: `confirm`)_ |
-| `GET` | `/projects/{pid}` | The full project session. `include` limits it to some fields. _(query: `include`)_ |
+| `GET` | `/projects/{pid}` | The project with its settings, scenes, audio, story and references. `include` picks some of those groups and/or top-level session keys by name (e.g. `audio_path`, `detected_tempo_bpm`, `flux_reference_builder`; API keys come back blank). An unknown name is a 400 that lists it. _(query: `include`)_ |
 | `GET` | `/projects/{pid}/assets` | Files in the project folder: images, videos, thumbnails, audio and final videos. |
 | `POST` | `/projects/{pid}/duplicate` | Copy a project to `new_name`. `options` chooses what to keep (scenes, mappings, notes, prompts, media). _(body: `new_name`, `options`)_ |
 | `POST` | `/projects/{pid}/export` | Build a zip of the project for backup or sharing. |
@@ -91,8 +92,10 @@ or its 1-based number.
 | `POST` | `/projects/{pid}/scenes/bulk` | Apply several scene operations in one atomic change (`operations`). _(If-Match; body: `operations`)_ |
 | `DELETE` | `/projects/{pid}/scenes/{sid}` | Delete a scene. `ripple` closes the gap. Later scene files are renumbered. _(If-Match; query: `ripple`)_ |
 | `GET` | `/projects/{pid}/scenes/{sid}` | One scene: timing, lyrics, story beat, prompts (including `minimax_h3_prompt`), approved image, rendered video with its thumbnail, and scene audio. Each file is `null` when it does not exist. |
-| `PATCH` | `/projects/{pid}/scenes/{sid}` | Change scene fields: `lyric_text` (sets `lyric_no_lip_sync` from the text unless you send it), `lyric_singers`, `story_beat`, prompts (`t2i_prompt`, `i2v_prompt`, `enhance_prompt`, `minimax_h3_prompt`, `minimax_h3_pass2_prompt`, `flux_prompt`, `nb_prompt`, `flow_gpt_prompt`, `ernie_t2i_prompt`), `notes`, `label`, `start`, `end`, `no_character_present`, `lyric_no_lip_sync`, or per-scene `use_scene_*` / `*_settings`. A field that cannot be patched returns a validation error that lists the supported fields, and nothing is saved. _(If-Match)_ |
+| `PATCH` | `/projects/{pid}/scenes/{sid}` | Change scene fields: `lyric_text` (sets `lyric_no_lip_sync` from the text unless you send it), `lyric_singers`, `story_beat`, prompts (`t2i_prompt`, `i2v_prompt`, `enhance_prompt`, `minimax_h3_prompt`, `minimax_h3_pass2_prompt`, `flux_prompt`, `nb_prompt`, `flow_gpt_prompt`, `ernie_t2i_prompt`), `minimax_h3_continuation_direction` (what a scene continued with `latent_continuation_masked` does after its first moments, one smooth movement, no cut), `minimax_h3_continuation_start_seconds` (second of that scene where the direction starts: 0.5 by default, at most half the scene, `null` resets), `notes`, `label`, `start`, `end`, `no_character_present`, `lyric_no_lip_sync`, or per-scene `use_scene_*` / `*_settings`. A field that cannot be patched returns a validation error that lists the supported fields, and nothing is saved. _(If-Match)_ |
 | `POST` | `/projects/{pid}/scenes/{sid}/merge` | Merge a scene with its neighbour (`with_direction`: previous or next). Lyrics are joined. _(If-Match; body: `with_direction`)_ |
+| `GET` | `/projects/{pid}/scenes/{sid}/minimax-references` | What the Video Builder's Choose MiniMax References button shows for a scene: `available` (every character, extra, location and ingredients sheet with an image, each with its `key`, whether the scene mapping already picks it, and its `image_number` when selected), `selected` (the order sent to MiniMax), `custom` (chosen by hand or following the scene mappings), `automatic_keys` and the `limits` (9 images, 8 choices when the scene image is Image 1). |
+| `PUT` | `/projects/{pid}/scenes/{sid}/minimax-references` | Choose the ordered MiniMax references for a scene: `keys` is the list from `available` (for example `["subject:ava", "location:roof", "location:alley"]`, several locations are allowed), or `automatic: true` to follow the scene mappings again. Unknown or repeated keys and too many keys are refused with the allowed keys listed. _(If-Match)_ _(If-Match; body: `automatic`, `keys`)_ |
 | `POST` | `/projects/{pid}/scenes/{sid}/move` | Move a scene to `start_time`. `ripple` shifts the others. _(If-Match; body: `ripple`, `start_time`)_ |
 | `POST` | `/projects/{pid}/scenes/{sid}/resize` | Change a scene's length (`duration` or `end_time`). `ripple` shifts the others. _(If-Match; body: `duration`, `end_time`, `ripple`)_ |
 | `POST` | `/projects/{pid}/scenes/{sid}/split` | Split a scene at `at_time`. `clear_right_media` drops the media on the new right half. Lyrics follow their words. _(If-Match; body: `at_time`, `clear_right_media`)_ |
@@ -105,8 +108,8 @@ or its 1-based number.
 | `POST` | `/projects/{pid}/references/assign-scenes` | Assign characters and locations to scenes by pattern (`random`, `rotate`, `blocks`, `unchanged`). `dry_run` previews. |
 | `POST` | `/projects/{pid}/references/locations/extract` | Ask the project's LLM for filming locations from the lyrics and `style_theme` (LM Extract) and add them. _(**job**)_ |
 | `PUT` | `/projects/{pid}/references/locations/{rid}` | Create or update a location (name, description, optional image). _(If-Match)_ |
-| `GET` | `/projects/{pid}/references/scene-mapping` | Read which characters, locations, ingredients and extras each scene uses. |
-| `PUT` | `/projects/{pid}/references/scene-mapping` | Set which characters, locations, ingredients and extras each scene uses. _(If-Match)_ |
+| `GET` | `/projects/{pid}/references/scene-mapping` | Read which characters, locations, ingredients and extras each scene uses. A scene maps to one location here. To see every reference a MiniMax scene can pick from, and the order it sends, use `GET /projects/{pid}/scenes/{sid}/minimax-references`. |
+| `PUT` | `/projects/{pid}/references/scene-mapping` | Set which characters, locations, ingredients and extras each scene uses. Sending `subjects` or `locations` also turns on that "use reference" switch, as the Builder does. _(If-Match)_ |
 | `PUT` | `/projects/{pid}/references/subjects/{rid}` | Create or update a character (name, description, `reference_type`, voice, trigger phrase, `image`). _(If-Match)_ |
 | `DELETE` | `/projects/{pid}/references/{kind}/{rid}` | Delete a character or location (`kind` is `subjects` or `locations`) and its scene mappings. _(If-Match)_ |
 | `POST` | `/projects/{pid}/references/{kind}/{rid}/describe` | Describe a character or location image with the project's LLM (Gemma Describe) and save the description. _(**job**)_ |
@@ -117,7 +120,7 @@ or its 1-based number.
 |---|---|---|
 | `GET` | `/projects/{pid}/story` | The saved story layer: idea, arc, brief. |
 | `PUT` | `/projects/{pid}/story` | Replace the saved story layer. _(If-Match)_ |
-| `PUT` | `/projects/{pid}/story/settings` | Save the Storyboard scene defaults (`defaults`: video style, camera flow, motion speeds, cut frequency) and the story fields (`story`: idea, strength, world style). |
+| `PUT` | `/projects/{pid}/story/settings` | Save the Storyboard scene defaults (`defaults`: every key the Builder saves in `builder_storyboard_defaults`, e.g. video style, camera flow, motion speeds, cut frequency, short film planning, temporal and FX settings, plus `story_arc_detail`) and the story fields (`story`: every key of `builder_story_layer`, e.g. `enabled`, idea, strength, world style). |
 | `POST` | `/projects/{pid}/story/{step}` | Write a story step with the project's LLM. `step` is `arc` (from the story idea), `brief` or `beats` (a beat per scene without one; `replace_existing`, `scene_ids`, `limit`). Each step also updates the Storyboard Builder's saved copy. _(**job**)_ |
 
 ### Prompts
@@ -128,7 +131,7 @@ or its 1-based number.
 | `POST` | `/projects/{pid}/prompts/batch` | Write image or video prompts for many scenes (`kind`, `scope`, `run_mode`, `scene_ids`). Image prompts use each scene's notes, lyric and references. _(**job**)_ |
 | `POST` | `/projects/{pid}/prompts/concepts` | Write scene concept prompts for the whole project with the LLM. _(**job**)_ |
 | `POST` | `/projects/{pid}/prompts/motion-notes` | Write motion and camera notes for scenes with the LLM. _(**job**)_ |
-| `GET` | `/projects/{pid}/scenes/{sid}/prompts/context` | The context brief an outside agent needs to write a prompt itself: cast, cut plan and character budget (`kind`). _(query: `kind`)_ |
+| `GET` | `/projects/{pid}/scenes/{sid}/prompts/context` | The context brief an outside agent needs to write a prompt itself: cast, cut plan and character budget (`kind`). A scene continued with `latent_continuation_masked` also gets a `continuation` block: `hold_seconds`, the scene's `direction` and the `rules` for writing it as the next moment of the previous scene's take. _(query: `kind`)_ |
 | `POST` | `/projects/{pid}/scenes/{sid}/prompts/edit` | Rewrite an existing scene prompt following an instruction. _(**job**)_ |
 | `POST` | `/projects/{pid}/scenes/{sid}/prompts/enhance` | Improve an existing scene prompt with the LLM. _(**job**)_ |
 | `POST` | `/projects/{pid}/scenes/{sid}/prompts/image` | Write one scene's image prompt with the LLM, from the scene's notes, lyric and references (`user_notes` overrides them). _(**job**)_ |
@@ -159,7 +162,7 @@ or its 1-based number.
 | `POST` | `/projects/{project_id}/scenes/{scene_id}/video/match-start-color` | Match the opening colors of a scene video to the previous scene's last frame. _(**job**)_ |
 | `POST` | `/projects/{project_id}/scenes/{scene_id}/video/minimax-stage-recover` | Recover a MiniMax pass-1 or pass-2 clip from the scratch folder. |
 | `POST` | `/projects/{project_id}/scenes/{scene_id}/video/recover` | Bring back a scene video from a backup or file (`source_path`). _(body: `source_path`)_ |
-| `POST` | `/projects/{project_id}/scenes/{scene_id}/video/render` | Render one scene's video with ComfyUI (`mode`, e.g. `minimax_h3`). Trims to the exact timeline length and saves it as `video_NNNN-audio.mp4`. Set `audio_mode: built_in_audio` in the MiniMax settings for H3 voices and sound (Single or 2 Pass; 2 Pass Advanced needs input audio). _(**job**)_ |
+| `POST` | `/projects/{project_id}/scenes/{scene_id}/video/render` | Render one scene's video with ComfyUI (`mode`, e.g. `minimax_h3`). Trims to the exact timeline length and saves it as `video_NNNN-audio.mp4`. Set `audio_mode: built_in_audio` in the MiniMax settings for H3 voices and sound (Single or 2 Pass; 2 Pass Advanced needs input audio). With `continuity_mode: latent_continuation_masked` the previous scene must be rendered first (`PREDECESSOR_MISSING` otherwise); it works in Single and 2 Pass. When `continuity_prompt_from_last_frame` is also true, the scene's prompt is first written by the LLM from the previous scene's rendered final frame (the Video Builder's automatic prompt), saved on the scene, and then rendered. A `prompt` in `params` skips that. _(**job**)_ |
 | `POST` | `/projects/{project_id}/scenes/{scene_id}/video/select` | Choose which take is the scene's active video (`source_path`). _(body: `source_path`)_ |
 | `GET` | `/projects/{project_id}/scenes/{scene_id}/video/takes` | List the scene's raw (untrimmed) renders, newest first, with length, frame count and whether the file still exists. Takes in a sibling scratch folder with the same project name are marked `other_folder`. Only renders made through the API are always kept: the Video Builder deletes its scratch renders after each render. Use `take` on the trim call. |
 | `POST` | `/projects/{project_id}/scenes/{scene_id}/video/trim` | Trim a scene video as a job. Name the source with `source_path` (default: the scene's current video) or with `take` (`latest` or an index from `video/takes`, the raw render, so the clip can start earlier or end later than the current one). `start` is seconds into the source; give `duration` (and `frames`), or `to_end: true` to end on the source's last frame. Records the new clip on the scene and keeps the old one in its video history. _(**job**)_ |
@@ -257,4 +260,4 @@ or its 1-based number.
 
 | Method | Path | What it does |
 |---|---|---|
-| `GET` | `/settings/minimax-h3/schema` | Every MiniMax H3 video setting that can be patched under the `minimax_h3` group: type, default, allowed values and limits. |
+| `GET` | `/settings/minimax-h3/schema` | Every MiniMax H3 video setting that can be patched under the `minimax_h3` group: type, default, allowed values and limits. `continuity_mode` takes `latent_continuation_masked` (the previous scene's latent is protected at the start of the next, Single and 2 Pass), `latent_context_frames` takes 39, 90, 141 or 192 for it, and `location_transition_preset` takes `masked`. |

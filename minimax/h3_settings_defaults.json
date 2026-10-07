@@ -1,4 +1,5 @@
 {
+  "pipeline": "standard",
   "video_mode": "text_to_video",
   "render_pass": "two_pass",
   "audio_mode": "input_audio",
@@ -6,7 +7,7 @@
   "continuity_prompt_from_last_frame": false,
   "location_transition_preset": "normal",
   "location_transition_custom": "",
-  "latent_context_frames": 22,
+  "latent_context_frames": 39,
   "diffusion_model_name": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
   "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
   "video_vae_name": "minimax_h3_video_vae_fp16.safetensors",

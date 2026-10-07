@@ -3,7 +3,7 @@
 A profile is a snapshot of the video settings a user chose in the Video Builder: the video type
 (text / image / reference to video), the render pass (single, 2 Pass, 2 Pass Advanced) and everything
 that belongs to it (models, resolution, sampler, LoRAs, acceleration, ...). The lock-this-scene state,
-the audio mode and the between-scene continuity settings are not part of a profile.
+the audio mode, the between-scene continuity settings and the Standard / RefMod pipeline are not part of a profile.
 
 Each profile is one JSON file under ``<ComfyUI output>/VRGDG_Video_Profiles/minimax_h3/``. This module
 only reads and writes those files; the HTTP routes live in ``builder/routes.py``.
@@ -21,11 +21,15 @@ from ..minimax.settings_payload import normalize_minimax_h3_settings
 PROFILE_ENGINE = "minimax_h3"
 PROFILE_VERSION = 1
 MAX_PROFILE_NAME_LENGTH = 60
+LAST_SELECTED_FILE = "_last_selected.json"
 
 # Never saved in or applied from a profile.
 EXCLUDED_PROFILE_KEYS = frozenset({
     # Audio
     "audio_mode",
+    # The project's pipeline (Standard or RefMod) belongs to the project. A profile never carries it, so choosing
+    # one cannot switch a RefMod project back to Standard, which hides the RefMod pickers on the Reference Builder cards.
+    "pipeline",
     # Between-scene continuity
     "continuity_mode", "continuity_prompt_from_last_frame", "latent_context_frames",
     "location_transition_preset", "location_transition_custom",
@@ -142,8 +146,31 @@ def save_video_profile(name: Any, settings: Dict[str, Any], overwrite: bool = Fa
         "saved_at": saved_at,
         "settings": filtered,
     })
+    set_last_video_profile(display_name)
     print(f"[VRGDG Video Profiles] Saved '{display_name}' ({filtered.get('video_mode')}, {filtered.get('render_pass')})")
     return {"name": display_name, "saved_at": saved_at, "settings": filtered}
+
+
+def get_last_video_profile_name() -> str:
+    """Name of the profile chosen last (selected or saved) that still exists, or an empty string."""
+    try:
+        with open(os.path.join(profile_root(), LAST_SELECTED_FILE), "r", encoding="utf-8-sig") as handle:
+            name = str(json.load(handle).get("name") or "").strip()
+    except (OSError, ValueError, AttributeError):
+        return ""
+    if not name:
+        return ""
+    data = _read_profile_file(_profile_path(name))
+    return str(data["name"]) if data is not None and str(data["name"]).strip().lower() == name.lower() else ""
+
+
+def set_last_video_profile(name: Any) -> str:
+    """Remember the profile chosen last so the Builder preselects it. An empty name means no profile."""
+    clean = str(name or "").strip()
+    if clean:
+        clean = load_video_profile(clean)["name"]
+    atomic_write_json(os.path.join(profile_root(), LAST_SELECTED_FILE), {"name": clean})
+    return clean
 
 
 def delete_video_profile(name: Any) -> Dict[str, Any]:
