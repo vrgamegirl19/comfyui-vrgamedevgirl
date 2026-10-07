@@ -51,7 +51,7 @@ test('applying a profile sets the video selection and keeps audio, continuity an
   assert.equal(merged.pass1_use_te_speed, true);
   assert.equal(merged.two_pass_lora_strength, 0.8);
   assert.equal(merged.audio_mode, 'built_in_audio');
-  assert.equal(merged.continuity_mode, 'latent_continuation');
+  assert.equal(merged.continuity_mode, current.continuity_mode);
   assert.equal(merged.latent_context_frames, 39);
   assert.equal(merged.continuity_prompt_from_last_frame, true);
   assert.equal(merged.location_transition_preset, 'surreal');
@@ -301,7 +301,7 @@ test('the profile row sits above the video type buttons with + and - buttons', (
   assert.ok(source.includes('makeButton("+")'));
   assert.ok(source.includes('Save current video settings as a profile'));
   assert.ok(source.includes('Delete selected video profile'));
-  assert.ok(source.includes('miniMaxEnginePanel.append(miniMaxBanner, miniMaxVideoProfileRow, miniMaxModeChooser'));
+  assert.ok(source.includes('miniMaxEnginePanel.append(miniMaxBanner, miniMaxVideoProfileRow, miniMaxPipelineChooser, miniMaxRefmodNote, miniMaxRefmodClothing, miniMaxModeChooser'));
   assert.ok(source.includes('videoProfiles.wire();'));
   assert.ok(source.includes('"/vrgdg/music_builder/save_video_profile"'));
 });

@@ -8,10 +8,10 @@ export function wireTimelineControls({
   autoSaveSessionQuiet, beatCalibration, beatCalibrationCancelButton, beatCalibrationCaptureButton,
   beatCalibrationGridType, beatCalibrationTimecodeInput, beatMarkersButton, beginGlobalTimelineScrub,
   calibrateFirstBeatButton, cancelPreviewPlayStart, captureBeatCalibrationAnchor,
-  captureSelectedVideoFrameAsImage, clearActiveSegment, closeBeatCalibrationWizard, currentGlobalTime,
+  clearActiveSegment, closeBeatCalibrationWizard, currentGlobalTime,
   deleteAllSegments, deleteAllSegmentsButton, deleteAllTimelineImages, deleteAllTimelineImagesButton,
   deleteAllTimelineVideos, deleteAllTimelineVideosButton, deleteSegment, deleteSegmentButton,
-  deleteSelectedMedia, deleteSelectedMediaButton, enforceAudioTimelineEnd, ensureAutoBpmForCalibration,
+  enforceAudioTimelineEnd, ensureAutoBpmForCalibration,
   ensureCapCutBeatsForCalibration, ensureGlobalTimelineAudioSource, globalAudioMuteButton, globalScrub,
   isTimelinePlaying, lyricNoteButton, multiSelectButton, multiSelectHintButton, openBeatCalibrationWizard,
   openMultiSelectChooser, pauseAllAudio, playbackDuration, playbackSegmentAtTime, playButton, playhead,
@@ -22,13 +22,11 @@ export function wireTimelineControls({
   state, stopButton, stopSilentTimelinePlayback, syncLyricNoteControls, syncPreviewPlayback,
   syncSceneNoteControls, syncTimelineTrimModeButton, syncVideoNoteControls, timelineAudioPathForSegment,
   timelineAudioSourceStartForSegment, timelineCanvas, timelineViewport, updateAudioScrubbers,
-  updatePlayPauseButton, useFrameAsImageButton, usingSceneAudioPlaybackMode, videoNoteButton,
+  updatePlayPauseButton, usingSceneAudioPlaybackMode, videoNoteButton,
   waitForPreviewVideoReady, waveformModeSelect, zoomInButton, zoomOutButton,
 }) {
   deleteSegmentButton.onclick = deleteSegment;
   deleteAllSegmentsButton.onclick = deleteAllSegments;
-  useFrameAsImageButton.onclick = captureSelectedVideoFrameAsImage;
-  deleteSelectedMediaButton.onclick = deleteSelectedMedia;
   deleteAllTimelineVideosButton.onclick = deleteAllTimelineVideos;
   deleteAllTimelineImagesButton.onclick = deleteAllTimelineImages;
   globalAudioMuteButton.onclick = (event) => {

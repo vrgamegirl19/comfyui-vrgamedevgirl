@@ -956,6 +956,7 @@ export function createTimelineState({
     if (segment.temporal_world_effect_override == null) segment.temporal_world_effect_override = "global";
     if (segment.temporal_world_effect_custom == null) segment.temporal_world_effect_custom = "";
     segment.use_scene_minimax_h3_settings = Boolean(segment.use_scene_minimax_h3_settings);
+    segment.location_continuous_shot = Boolean(segment.location_continuous_shot);
     if (segment.minimax_h3_settings != null && typeof segment.minimax_h3_settings !== "object") {
       segment.minimax_h3_settings = null;
     }

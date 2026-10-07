@@ -145,16 +145,18 @@ export function showOverlayTrackHelp() {
 export function createTimelineActions({
   activeSegment, addOverlaySegmentButton, addSceneImageHistoryPath, allEditableSegments, audio,
   autoSaveSessionQuiet, baseSceneVideoTrimKind, chooseRenderedSceneTrimAtPlayhead, closeBaseTimelineGap,
-  currentGlobalTime, customImageFileInput, deleteSelectedMediaButton, enforceAudioTimelineEnd,
+  currentGlobalTime, customImageFileInput, enforceAudioTimelineEnd,
   ensureSegmentRuntimeFields, freezeTimingControl, loadDirtyLatentBadges, loadedGlobalAudioDuration,
   nextFreeTimelineMarkerRange, nextOverlaySlotNumber, openTimelineMarkerEditor, overlayTrackToggleButton,
   pauseTimelineForEditing, playbackSegmentAtTime, previewVideo, projectInput, pushHistory, render, renderList,
   requireActiveSegment, sceneAudio, sceneListPane, sceneSlotNumber, segmentImageSource, segmentIndexInfo,
-  segmentLayer, segmentTrack, selectedMediaForDelete, selectedTimelineRangeInfo, setActiveSegment,
+  segmentLayer, segmentTrack, selectedSegmentImagePath, selectedTimelineRangeInfo, setActiveSegment,
   snapAddedSegmentEndToNearestBeat, snapTimeToBeat, state, syncI2VMotionJsonFromSegments, syncInspector,
   syncPreview, syncPromptJsonFromSegments, syncSegmentT2IPrompt, syncTimelineTrimModeButton,
-  syncZEnhanceSettingsPanel, timelineDuration, updateHistoryButtons, updateSelectedMediaTools, useFrameAsImageButton,
+  syncZEnhanceSettingsPanel, timelineDuration, updateHistoryButtons, updateSelectedMediaTools,
 }) {
+  let frameCaptureInFlight = false;
+  let mediaDeleteInFlight = false;
   async function loadCustomImage() {
     const segment = requireActiveSegment();
     if (!segment) return;
@@ -233,8 +235,8 @@ export function createTimelineActions({
     });
   }
 
-  async function captureSelectedVideoFrameAsImage() {
-    const sourceSegment = previewVideoFrameSegment();
+  async function captureSelectedVideoFrameAsImage(sourceSegment = previewVideoFrameSegment()) {
+    if (frameCaptureInFlight) return;
     if (!sourceSegment) {
       toast("Select or scrub to a scene video frame first.", true);
       return;
@@ -244,12 +246,9 @@ export function createTimelineActions({
       toast("The current preview does not have a selected video frame to use.", true);
       return;
     }
-    const targetDefault = playbackSegmentAtTime(currentGlobalTime()) || sourceSegment;
-    const targetSegment = await chooseFrameImageTargetScene(targetDefault);
+    const targetSegment = await chooseFrameImageTargetScene(sourceSegment);
     if (!targetSegment) return;
-    const previousText = useFrameAsImageButton.textContent;
-    useFrameAsImageButton.disabled = true;
-    useFrameAsImageButton.textContent = "Saving...";
+    frameCaptureInFlight = true;
     let tempVideo = null;
     try {
       const previewHasVideo = previewVideo.dataset.path === videoPath && previewVideo.readyState >= 1;
@@ -304,8 +303,7 @@ export function createTimelineActions({
         tempVideo.removeAttribute("src");
         tempVideo.load?.();
       }
-      useFrameAsImageButton.disabled = false;
-      useFrameAsImageButton.textContent = previousText;
+      frameCaptureInFlight = false;
       updateSelectedMediaTools();
     }
   }
@@ -851,21 +849,32 @@ export function createTimelineActions({
     toast(`Deleted ${total} segment${total === 1 ? "" : "s"}.`);
   }
 
-  async function deleteSelectedMedia() {
-    const media = selectedMediaForDelete();
-    if (!media.segment || !media.path) {
+  async function deleteSelectedMedia({ segment = activeSegment(), type = segment?.preview_mode === "video" ? "video" : "image" } = {}) {
+    if (mediaDeleteInFlight) return;
+    if (!segment) {
       toast("No selected image or video to delete.", true);
       return;
     }
-    const mediaThumbnailPath = media.type === "video" ? selectedSegmentVideoThumbnailPath(media.segment) : "";
-    const ok = await confirmDeleteMediaAction(media.type, media.path);
+    const path = type === "video" ? selectedSegmentVideoPath(segment) : selectedSegmentImagePath(segment);
+    const inMemoryImage = type === "image" && !path && Boolean(segment.custom_image_data || segment.image);
+    if (!path && !inMemoryImage) {
+      toast("No selected image or video to delete.", true);
+      return;
+    }
+    const media = { segment, type, path };
+    const mediaThumbnailPath = type === "video" ? selectedSegmentVideoThumbnailPath(segment) : "";
+    const ok = inMemoryImage
+      ? (await confirmDestructiveAction({
+        title: "Delete selected image?",
+        message: "Remove this unsaved image from the scene?",
+      })).confirmed
+      : await confirmDeleteMediaAction(type, path);
     if (!ok) return;
+    mediaDeleteInFlight = true;
     try {
-      deleteSelectedMediaButton.disabled = true;
-      deleteSelectedMediaButton.textContent = "Deleting...";
-      await postJson("/vrgdg/music_builder/delete_project_media", {
+      if (path) await postJson("/vrgdg/music_builder/delete_project_media", {
         project_folder: projectInput.value,
-        path: media.path,
+        path,
       });
       if (mediaThumbnailPath) {
         await postJson("/vrgdg/music_builder/delete_project_media", {
@@ -901,7 +910,7 @@ export function createTimelineActions({
           .filter((item) => mediaPathKey(item) !== mediaPathKey(media.path));
         media.segment.image_history_index = media.segment.image_history.length - 1;
         if (mediaPathKey(media.segment.approved_image_path) === mediaPathKey(media.path)) media.segment.approved_image_path = "";
-        if (mediaPathKey(media.segment.custom_image_path) === mediaPathKey(media.path)) {
+        if (inMemoryImage || mediaPathKey(media.segment.custom_image_path) === mediaPathKey(media.path)) {
           media.segment.custom_image_path = "";
           media.segment.custom_image_data = "";
           media.segment.custom_image_name = "";
@@ -927,7 +936,7 @@ export function createTimelineActions({
     } catch (error) {
       toast(String(error?.message || error), true);
     } finally {
-      deleteSelectedMediaButton.disabled = false;
+      mediaDeleteInFlight = false;
       updateSelectedMediaTools();
     }
   }

@@ -70,12 +70,14 @@ function mergeUniqueStringArray(firstValue, secondValue) {
 
 export function createTimelineEdit({
   activeSegment, allEditableSegments, autoSaveSessionQuiet, clampTimelineMarkerToNonOverlap,
-  collectedSceneVideoFolder, createProgressWindow, currentGlobalTime, currentVideoMode, deleteSegment,
+  captureSelectedVideoFrameAsImage, collectedSceneVideoFolder, createProgressWindow, currentGlobalTime,
+  currentVideoMode, deleteSegment, deleteSelectedMedia,
   loadedGlobalAudioDuration, miniMaxH3ContinuityModeForSegment, miniMaxH3SettingsForSegment,
   nextOverlaySlotNumber, normalizeSegments, openLyricReviewModal, openStoryboardBuilderFromProject,
   pauseTimelineForEditing, projectInput, pushHistory, reloadBeatMarkersFromAudio, render, renderAllScenes,
   renderSegments, isSegmentMultiSelected, selectedSegmentsForBatch, stitchPreviewFromSegments,
-  sceneDisplayName, sceneSlotNumber, segmentIndexInfo, segmentTrack, setActiveSegment, setBeatMarkersVisible,
+  sceneDisplayName, sceneSlotNumber, segmentIndexInfo, segmentTrack, selectedSegmentImagePath,
+  setActiveSegment, setBeatMarkersVisible,
   setGlobalPlaybackTime, state, syncI2VMotionJsonFromSegments, syncInspector, syncPreview,
   syncPromptJsonFromSegments, updateHistoryButtons,
 }) {
@@ -1082,7 +1084,13 @@ export function createTimelineEdit({
     }
     addItem("Close timeline gaps", closeTimelineGapsFromMenu);
     addItem("Scene options", () => openSceneOptions(segment));
-    addItem("Delete scene", deleteSegment);
+    if (selectedSegmentVideoPath(segment)) {
+      addItem("Use frame as image", () => captureSelectedVideoFrameAsImage(segment));
+      addItem("Delete video", () => deleteSelectedMedia({ segment, type: "video" }));
+    }
+    if (selectedSegmentImagePath(segment) || segment.custom_image_data || segment.image) {
+      addItem("Delete image", () => deleteSelectedMedia({ segment, type: "image" }));
+    }
     menu.style.maxHeight = `${window.innerHeight - 16}px`;
     menu.style.overflowY = "auto";
     document.body.append(menu);
