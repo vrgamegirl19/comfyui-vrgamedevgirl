@@ -107,6 +107,30 @@ function styles() {
     .wb-save-status { font-size:12px;color:#b1c6d6; }
     .wb-project { max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:#bccbd8; }
     .wb-render-card { max-width:700px;margin:30px auto;padding:30px;border:1px solid #486076;border-radius:10px;background:#1d2b39; }
+    .wb-models-page { gap:18px; }
+    .wb-models-page>h2 { margin:0;font-size:22px; }
+    .wb-models-page>p { margin:0;max-width:850px;line-height:1.6; }
+    .wb-models-page .wb-native-settings { display:flex;flex-direction:column;gap:20px;min-width:0; }
+    .wb-pass-control>div { width:fit-content;max-width:100%;align-items:center;padding:5px;gap:4px!important;background:#101a24;border:1px solid #344757;border-radius:9px; }
+    .wb-pass-control>div::before { content:"Render passes";font-size:12px;color:#a6b7ca;padding:0 12px; }
+    .wb-pass-control>div[style*="grid"] { grid-template-columns:auto repeat(3,minmax(90px,auto))!important; }
+    .wb-pass-control button { background:transparent!important;border:1px solid transparent!important;color:#a6b7ca!important;border-radius:6px!important;padding:8px 14px!important;white-space:nowrap!important; }
+    .wb-pass-control button[aria-pressed="true"] { background:#294152!important;border-color:#426173!important;color:#e1f7ff!important; }
+    .wb-model-tabs>div:first-child { display:flex!important;position:static!important;background:transparent!important;border-bottom:1px solid #344757;gap:22px!important;padding:0!important; }
+    .wb-model-tabs>div:first-child>button { background:transparent!important;border:0!important;border-bottom:2px solid transparent!important;border-radius:0!important;padding:10px 2px!important;color:#a6b7ca!important;white-space:nowrap!important;min-height:42px; }
+    .wb-model-tabs>div:first-child>button[aria-selected="true"] { color:#76e5ff!important;border-bottom-color:#76e5ff!important; }
+    .wb-settings-tab { flex-direction:column;min-width:0;width:100%; }
+    .wb-settings-tab>div { width:100%!important;max-width:none!important;min-width:0!important;background:transparent!important;border:0!important;padding:12px 0!important;gap:16px!important; }
+    .wb-model-grid>div { display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start; }
+    .wb-model-grid>div>* { min-width:0; }
+    .wb-model-card { background:#1b2936;border:1px solid #344b5e;border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:16px; }
+    .wb-model-card h3 { margin:0;font:600 14px/1.4 system-ui;color:#e4edf5; }
+    .wb-settings-tab details { border-color:#344b5e!important;background:#1b2936!important;border-radius:10px!important; }
+    .wb-settings-tab summary { background:transparent!important;border-color:#344b5e!important;padding:14px 16px!important;font:600 13px/1.5 system-ui!important; }
+    .wb-settings-tab details>div { padding:16px!important;gap:14px!important; }
+    .wb-model-help { grid-column:1/-1;font-size:12px;color:#a6b7ca; }
+    .wb-model-help>div { color:#a6b7ca!important;font-weight:400!important; }
+    @media(max-width:800px) { .wb-model-grid>div { grid-template-columns:1fr; }.wb-pass-control>div[style*="grid"] { grid-template-columns:repeat(3,minmax(0,1fr))!important; }.wb-pass-control>div::before { grid-column:1/-1;padding:4px 8px; }.wb-pass-control button { padding:8px!important; } }
     @media(max-width:950px) { .wb-setup{grid-template-columns:1fr}.wb-aside{border-left:0;border-top:1px solid #344353}.wb-header{flex-wrap:wrap}.wb-steps{order:2;flex-basis:100%}.wb-project{display:none} }
     @media(max-width:600px) { .wb-backdrop{padding:6px}.wb-dialog{height:calc(100dvh - 12px)}.wb-main,.wb-aside,.wb-review{padding:16px}.wb-pair,.wb-scene,.wb-scene-fields{grid-template-columns:1fr}.wb-footer{flex-wrap:wrap;padding:12px}.wb-footer>.wb-muted{flex-basis:100%}.wb-header{padding:12px}.wb-header .wb-button{padding:9px}.wb-steps{gap:0;justify-content:space-between} }
   `;
@@ -132,7 +156,9 @@ export function wizardBetaIssues(draft, snapshot, preparing = false) {
   if (preparing) {
     if (draft.audioMode === "input_audio" && !snapshot.audioPath && !draft.song) issues.push("Choose an audio file or another supported audio source.");
     const needs = wizardBetaNeeds(draft.engine, draft.mode);
-    if (needs.references && !(draft.subjects?.length || draft.singer) && !draft.locations.length && !snapshot.referenceCount) issues.push("Add a reference image in Inputs or the reference editor.");
+    if (needs.references && draft.pipeline === "refmod" && draft.engine === "minimax_h3" && draft.mode === "reference_to_video") {
+      if (!snapshot.refmodCount) issues.push("Choose a saved RefMod in the Reference Builder.");
+    } else if (needs.references && !(draft.subjects?.length || draft.singer) && !draft.locations.length && !snapshot.referenceCount) issues.push("Add a reference image in Inputs or the reference editor.");
     if (needs.video && !draft.videoPath.trim() && !snapshot.hasVideoReference) issues.push("Choose a source video in Inputs.");
   }
   return issues;
@@ -144,7 +170,7 @@ export function openWizardBeta(api) {
   const draft = {
     singer: null, subjects: initial.subjects, locations: initial.locations || [], endImage: null,
     imageSource: "generate", videoPath: "", characters: "", locationsText: "", sound: "", ...initial.draft,
-    engine: initial.engine, mode: initial.mode, imageMode: initial.imageMode, audioMode: initial.audioMode,
+    engine: initial.engine, mode: initial.mode, pipeline: initial.pipeline, imageMode: initial.imageMode, audioMode: initial.audioMode,
     performance: initial.performance, lyrics: initial.lyrics || "", direction: initial.direction || "", song: null,
   };
   draft.subjects = (draft.subjects || (draft.singer ? [draft.singer] : [])).map(image => ({ ...image }));
@@ -188,7 +214,7 @@ export function openWizardBeta(api) {
   function syncDraft() {
     api.flush();
     const current = api.snapshot();
-    for (const key of ["engine", "mode", "imageMode", "audioMode", "performance"]) draft[key] = current[key];
+    for (const key of ["engine", "mode", "pipeline", "imageMode", "audioMode", "performance"]) draft[key] = current[key];
   }
   async function run(action) {
     if (busy) return;
@@ -211,7 +237,7 @@ export function openWizardBeta(api) {
     sceneEdits.clear(); draft.song = null; dirty = false; saveState.textContent = "Saved to project";
     return true;
   }
-  async function save() { return run(async () => { await persist(); report("Project and wizard progress saved."); return true; }); }
+  async function save() { return run(async () => { await persist(); report(""); return true; }); }
   function editReferences(section) {
     return run(async () => {
       await persist();
@@ -315,9 +341,16 @@ export function openWizardBeta(api) {
       main.append(field("Video mode", select(draft.mode, modes(), value => configure({ mode: value }))));
       const selected = modes().find(mode => mode.value === draft.mode);
       main.append(node("p", "", selected?.description || ""));
+      if (draft.engine === "minimax_h3" && draft.mode === "reference_to_video") {
+        const refmod = node("input"); refmod.type = "checkbox"; refmod.checked = draft.pipeline === "refmod";
+        refmod.onchange = () => { configure({ pipeline: refmod.checked ? "refmod" : "standard" }); changed(); render(); };
+        const choice = node("label", "wb-check"); choice.append(refmod, node("span", "", "Use RefMod workflow"));
+        main.append(choice, node("p", "wb-muted", "RefMod uses saved RefMods on the Reference Builder cards instead of reference images. This choice applies to every scene in the project."));
+      }
       main.append(node("p", "wb-muted", "Your selection updates the existing Builder. You can go back and change it at any time."));
     } else if (page === 2) {
-      main.append(node("p", "wb-muted", "Choose project-wide models, LoRAs, quality, passes and video settings. Scenes without custom overrides use these settings. Use the normal timeline for per-scene overrides and Storyboard Scenes for prompts."));
+      main.className += " wb-models-page";
+      main.append(node("p", "wb-muted", "Set the models and render defaults for your project. Scenes with custom settings keep their overrides."));
       mount(main, "video");
     } else if (page === 3) {
       main.append(field("Performance", select(draft.performance, api.snapshot().performances, value => configure({ performance: value }))));
@@ -378,7 +411,9 @@ export function openWizardBeta(api) {
         } else main.append(node("p", "wb-muted", "After creating scenes, upload an image for each scene in Storyboard Scenes or fill the timeline from a folder of numbered images."));
       }
       if (needs.endFrame) main.append(upload("End frame (optional when generated)", "endImage"));
-      if (needs.references) {
+      if (needs.references && draft.pipeline === "refmod" && draft.engine === "minimax_h3" && draft.mode === "reference_to_video") {
+        main.append(node("p", "wb-muted", "Choose saved RefMods for subjects and locations in the Reference Builder. The selected cards will guide your scenes."));
+      } else if (needs.references) {
         const pair = node("div", "wb-pair"); pair.append(upload("Subject references", "subjects", true), upload("Location references", "locations", true)); main.append(pair);
       }
       const referenceActions = node("div");
@@ -428,7 +463,9 @@ export function openWizardBeta(api) {
         align.disabled = !scenes.length; main.append(align);
       } else if (sceneStep === 2) {
         main.append(node("p", "wb-muted", "Choose which subjects and locations appear in each scene."));
-        const mappings = button("Edit Mappings", () => editReferences("mapping"));
+        const mapReferences = button("Map Subjects / Locations", () => editReferences("mapping_tools"));
+        mapReferences.disabled = !scenes.length; main.append(mapReferences);
+        const mappings = button("Adjust & View All Mappings", () => editReferences("mapping"));
         mappings.disabled = !scenes.length; main.append(mappings);
       } else if (sceneStep === 3) {
         main.append(node("p", "wb-muted", "Review scene cards and save lyrics, notes and scene details before creating story beats. Return here after Story Layer to generate or refresh image and video prompts."));
@@ -450,7 +487,6 @@ export function openWizardBeta(api) {
       if (sceneStep === 4) {
         main.append(node("p", "wb-muted", "Set Overall Story Idea (optional), then develop the story arc and scene beats from your aligned lyrics, mappings and saved scene notes. After generating beats, return to Storyboard Scenes to generate or refresh prompts."));
         openStoryboard("story", "Story Layer");
-        main.append(button("Back to Storyboard Scenes", () => { sceneStep = 3; render(); }));
       }
       if (sceneStep === 5) {
         const createPrompts = button(`${api.snapshot().promptRunnerLabel || "LLM"} Video All`, () => run(async () => {
@@ -471,7 +507,7 @@ export function openWizardBeta(api) {
     body.append(main);
     footer.append(node("span", "wb-muted wb-spacer", `Step ${page + 1} of ${WIZARD_BETA_STEPS.length} · ${modeLabel()}`));
     if (page) footer.append(button("Back", () => { if (page === 5 && sceneStep > 0) sceneStep--; else page--; render(); }));
-    footer.append(button("Save Project", save));
+    if (page !== 2) footer.append(button("Save Project", save));
     if (page < 6) footer.append(button(page === 5 && sceneStep === 1 ? "Skip / Next →" : "Next →", () => { if (page === 5 && sceneStep < sceneSteps.length - 1) sceneStep++; else page++; render(); }, true));
   }
   dialog.addEventListener("keydown", event => {

@@ -5,6 +5,7 @@ import {
   setupBrowserImageAutomation,
 } from "../VRGDG_BrowserImageBridge.js";
 import { openMusicVideoWizard } from "./wizard.mjs";
+import { organizeWizardVideoModels } from "./wizard_models_layout.mjs";
 import { storyboardGptPayload } from "../storyboard_builder/gpt_payload.mjs";
 import {
   FACIAL_PERFORMANCE_PRESETS,
@@ -1335,7 +1336,7 @@ export function createWizardBridge({
       }[item.value] })),
     };
     const sync = () => {
-      syncProjectVideoEngineUI(); syncVideoModePanel(); syncI2VVideoSettingsPanel();
+      syncProjectVideoEngineUI(); syncVideoModePanel(); syncI2VVideoSettingsPanel(); syncMiniMaxH3Panel();
       syncFluxKleinPanel(); syncZImageSettingsPanel(); syncErnieImagePanel();
       syncKrea2TwoPassPanel(); syncNBImagePanel(); syncFlowGptBrowserPanel(); syncInspector();
     };
@@ -1366,7 +1367,7 @@ export function createWizardBridge({
       const subjectReferences = refs.subjects.filter(item => item.image?.path || item.image?.data);
       const locationReferences = refs.locations.filter(item => item.image?.path || item.image?.data);
       return {
-        engine, mode, modes, ltxVersion: state.i2vVideoSettings.ltx_version || "2.5", imageMode: state.imageModelMode || "zimage",
+        engine, mode, pipeline: mini.pipeline, modes, ltxVersion: state.i2vVideoSettings.ltx_version || "2.5", imageMode: state.imageModelMode || "zimage",
         performance: state.videoType, performances: VIDEO_TYPE_OPTIONS,
         promptRunnerLabel: promptRunnerActionName(),
         audioMode: engine === "minimax_h3" ? mini.audio_mode : mode === "id_lora" ? "reference_voice" : ltxAudioChoice,
@@ -1382,6 +1383,7 @@ export function createWizardBridge({
           locations: locationReferences.map(referenceDraft),
         } : null, scenes: allEditableSegments(),
         referenceCount: [...refs.subjects, ...refs.locations].filter(item => item.image?.path || item.image?.data).length,
+        refmodCount: [...refs.subjects, ...refs.locations].filter(item => item.source === "refmod" && item.refmod?.name).length,
         hasVideoReference: (activeSegment()?.minimax_h3_video_references || []).some(item => item.path),
         imageModes: ["zimage", "flux_klein", "ernie_image", "krea2_2pass", "nano_banana", "flow_gpt"].map(value => ({ value, label: imageModeDisplayLabel(value) })),
       };
@@ -1392,10 +1394,17 @@ export function createWizardBridge({
       if (values.ltxVersion) setBuilderLtxVersion(values.ltxVersion);
       if (values.mode) {
         if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") {
-          state.miniMaxH3Settings = cloneMiniMaxH3Settings({ ...state.miniMaxH3Settings, video_mode: values.mode });
+          state.miniMaxH3Settings = cloneMiniMaxH3Settings({ ...state.miniMaxH3Settings,
+            pipeline: values.mode === "reference_to_video" ? state.miniMaxH3Settings.pipeline : "standard",
+            video_mode: values.mode });
           state.miniMaxH3TwoPassEnabled = values.mode === "image_reference_to_video";
           state.miniMaxH3ThreePassEnabled = false;
         } else state.videoModelMode = values.mode;
+      }
+      if (values.pipeline && normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") {
+        state.miniMaxH3Settings = cloneMiniMaxH3Settings({ ...state.miniMaxH3Settings, pipeline: values.pipeline });
+        state.miniMaxH3TwoPassEnabled = state.miniMaxH3Settings.render_pass === "two_pass";
+        state.miniMaxH3ThreePassEnabled = state.miniMaxH3Settings.render_pass === "three_pass";
       }
       if (values.imageMode) {
         state.imageModelMode = values.imageMode;
@@ -1495,14 +1504,17 @@ export function createWizardBridge({
             if (contents.some(content => content.contains(button))) restores.push(movePanel(hidden, button.parentElement));
           }
         }
-        if (miniMax) restores.push(movePanel(holder, miniMaxPassChooser));
+        restores.push(...organizeWizardVideoModels({ holder, contents, miniMax, miniMaxPassChooser, movePanel }));
         const tabs = contents.map((content, index) => {
           const wrapper = document.createElement("div");
+          wrapper.className = index ? "wb-settings-tab" : "wb-settings-tab wb-model-grid";
           restores.push(movePanel(wrapper, content));
           content.style.display = "flex";
           return { label: index ? "Video Settings" : "Models", value: index ? "settings" : "models", content: wrapper };
         });
-        holder.append(makeSubTabs(tabs).wrapper);
+        const modelTabs = makeSubTabs(tabs).wrapper;
+        modelTabs.className = "wb-model-tabs";
+        holder.append(modelTabs);
         return () => {
           flush();
           for (const restore of restores.reverse()) restore();

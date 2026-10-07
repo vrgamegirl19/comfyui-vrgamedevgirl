@@ -162,7 +162,10 @@ class BuilderLayoutWiringTests(unittest.TestCase):
         self.assertEqual(BUILDER_SOURCE.count("state.reapplyUiProfileLayout?.();"), 2)
 
     def test_the_ui_layout_selector_sits_next_to_video_type(self):
-        self.assertIn("projectActions.append(menuButton, videoTypeField, uiProfileField, saveButton);", BUILDER_SOURCE)
+        self.assertIn(
+            "projectActions.append(menuButton, videoTypeField, uiProfileField, saveButton, refreshBuilderButton);",
+            BUILDER_SOURCE,
+        )
         self.assertIn("createUiProfileActions({ controls: uiProfileControls", BUILDER_SOURCE)
 
     def test_the_last_video_profile_is_preselected_and_applied_to_new_projects_only(self):
