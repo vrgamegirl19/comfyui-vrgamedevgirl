@@ -117,60 +117,50 @@ class SceneInputsTests(unittest.TestCase):
     def test_continuity_off_makes_no_extraction(self):
         result = self._resolve(_segment("scene-2"))
         self.assertEqual(result["continuity_mode"], "off")
-        self.assertEqual(result["latent_exact_frame_path"], "")
 
-    def test_spatial_continuity_appends_the_previous_final_frame(self):
-        calls = []
+    def test_the_retired_previous_final_frame_modes_are_off_and_never_extract_a_frame(self):
+        for name in ("spatial", "spatial_reference", "exact", "exact_start_frame"):
+            with self.subTest(name=name):
+                result = self._resolve(
+                    _segment("scene-2"), continuity_mode=name, previous_segment={"video_path": "v.mp4"},
+                )
+                self.assertEqual(result["continuity_mode"], "off")
+                self.assertEqual(result["continuity_image_number"], 0)
 
-        def extract(folder, video, number):
-            calls.append((folder, video, number))
-            return "C:/proj/frames/prev_last.png"
-
+    def test_masked_continuity_is_kept_in_every_mode_except_image_reference(self):
+        for mode in ("text_to_video", "image_to_video", "reference_to_video", "video_to_video"):
+            with self.subTest(mode=mode):
+                self.assertTrue(si.continuity_allowed_for_mode("latent_continuation_masked", mode))
+        self.assertFalse(si.continuity_allowed_for_mode("latent_continuation_masked", "image_reference_to_video"))
+        # 2 Pass Advanced (three_pass) is not supported, Single and 2 Pass are
+        self.assertTrue(si.continuity_allowed_for_mode("latent_continuation_masked", "reference_to_video", "two_pass"))
+        self.assertFalse(si.continuity_allowed_for_mode("latent_continuation_masked", "reference_to_video", "three_pass"))
         result = self._resolve(
-            _segment("scene-2"), continuity_mode="spatial",
-            previous_segment={"video_path": "C:/proj/rendered_scene_videos/video_0001.mp4"}, extract_final_frame=extract,
+            _segment("scene-2"), continuity_mode="latent_masked", previous_segment={"video_path": "v.mp4"}, render_pass="three_pass",
         )
-        self.assertEqual(calls, [("C:/proj", "C:/proj/rendered_scene_videos/video_0001.mp4", 2)])
-        self.assertEqual(result["image_paths"][-1], "C:/proj/frames/prev_last.png")
-        self.assertEqual(result["continuity_image_number"], len(result["image_paths"]))
-        self.assertEqual(result["continuity_mode"], "spatial_reference")
-
-    def test_continuity_without_previous_video_renders_without_a_frame(self):
-        result = self._resolve(_segment("scene-2"), continuity_mode="exact_start_frame", previous_segment={})
-        self.assertEqual(result["continuity_image_number"], 0)
-
-    def test_ninth_slot_error_when_full(self):
-        configured = [f"C:/x/{i}.png" for i in range(9)]
-        with self.assertRaises(ValueError):
-            si.resolve_scene_inputs(
-                _session(), _segment("scene-2"), "reference_to_video", 1,
-                continuity_mode="spatial_reference", previous_segment={"video_path": "v.mp4"},
-                project_folder="C:/proj", scene_number=2,
-                extract_final_frame=lambda *_: "C:/proj/new.png", configured_image_paths=configured,
-            )
-
-    def test_exact_start_cannot_combine_with_scene_image_start_frame(self):
-        with self.assertRaises(ValueError):
-            self._resolve(
-                _segment("scene-2", minimax_h3_use_scene_image_as_start_frame=True),
-                continuity_mode="exact_start_frame", previous_segment={"video_path": "v.mp4"},
-            )
-
-    def test_latent_exact_frame_is_a_separate_field_not_an_image(self):
+        self.assertEqual(result["continuity_mode"], "off")
+        for mode in ("text_to_video", "image_to_video", "image_reference_to_video", "reference_to_video", "video_to_video"):
+            self.assertTrue(si.continuity_allowed_for_mode("off", mode))
         result = self._resolve(
-            _segment("scene-2"), continuity_mode="latent_exact",
-            previous_segment={"video_path": "C:/proj/v1.mp4"}, extract_final_frame=lambda *_: "C:/proj/exact.png",
+            _segment("scene-2"), mode="text_to_video", continuity_mode="latent_masked", previous_segment={"video_path": "v.mp4"},
         )
-        self.assertEqual(result["latent_exact_frame_path"], "C:/proj/exact.png")
-        self.assertNotIn("C:/proj/exact.png", result["image_paths"])
+        self.assertEqual(result["continuity_mode"], "latent_continuation_masked")
+        result = self._resolve(
+            _segment("scene-2"), mode="image_reference_to_video", continuity_mode="latent_masked",
+            previous_segment={"video_path": "v.mp4"}, configured_image_paths=["C:/x/a.png"],
+        )
+        self.assertEqual(result["continuity_mode"], "off")
+
+    def test_the_retired_latent_modes_continue_masked_without_extracting_a_frame(self):
+        for name in ("latent", "latent_continuation", "latent_exact", "latent_continuation_exact_frame"):
+            with self.subTest(name=name):
+                result = self._resolve(_segment("scene-2"), continuity_mode=name, previous_segment={"video_path": "v.mp4"})
+                self.assertEqual(result["continuity_mode"], "latent_continuation_masked")
+                self.assertEqual(result["continuity_image_number"], 0)
 
     def test_latent_continuation_rejects_scene_one(self):
         with self.assertRaises(ValueError):
             self._resolve(_segment("scene-1"), continuity_mode="latent", previous_segment={}, scene_number=1)
-
-    def test_latent_exact_needs_a_rendered_previous_video(self):
-        with self.assertRaises(ValueError):
-            self._resolve(_segment("scene-2"), continuity_mode="latent_exact", previous_segment={})
 
     def test_video_to_video_requires_a_reference_video(self):
         with self.assertRaises(ValueError):
@@ -213,8 +203,9 @@ class SceneInputsTests(unittest.TestCase):
 class ContinuityModeTests(unittest.TestCase):
     def test_aliases_match_the_ui(self):
         for raw, expected in (
-            ("latent", "latent_continuation"), ("latent-exact", "latent_continuation_exact_frame"),
-            ("spatial", "spatial_reference"), ("exact", "exact_start_frame"), ("nonsense", "off"), (None, "off"),
+            ("latent", "latent_continuation_masked"), ("latent-exact", "latent_continuation_masked"),
+            ("latent_masked", "latent_continuation_masked"), ("spatial", "off"), ("exact", "off"),
+            ("nonsense", "off"), (None, "off"),
         ):
             self.assertEqual(si.normalize_continuity_mode(raw), expected)
 

@@ -825,6 +825,13 @@ export function createSession({
       detected_tempo_bpm: Math.max(0, Number(state.detectedTempoBpm || 0)),
       beat_calibration: state.beatCalibration,
       left_panel_width: state.leftPanelWidth,
+      left_panel_collapsed: Boolean(state.leftPanelCollapsed),
+      right_panel_collapsed: Boolean(state.rightPanelCollapsed),
+      llm_popout_open: Boolean(state.llmPopoutOpen),
+      llm_popout_width: state.llmPopoutWidth,
+      llm_popout_height: state.llmPopoutHeight,
+      llm_popout_x: state.llmPopoutX,
+      llm_popout_y: state.llmPopoutY,
       left_panel_tab: state.leftPanelTab === "tools" || state.leftPanelTab === "luts" ? state.leftPanelTab : "scenes",
       right_panel_width: state.rightPanelWidth,
       timeline_panel_height: state.timelinePanelHeight,
@@ -1123,6 +1130,13 @@ export function createSession({
         state.beatCalibration = data.session.beat_calibration || null;
         setBeatMarkersVisible(data.session.show_beat_markers ?? state.showBeatMarkers);
         state.leftPanelWidth = data.session.left_panel_width || state.leftPanelWidth;
+        state.leftPanelCollapsed = Boolean(data.session.left_panel_collapsed ?? state.leftPanelCollapsed);
+        state.rightPanelCollapsed = Boolean(data.session.right_panel_collapsed ?? state.rightPanelCollapsed);
+        state.llmPopoutOpen = Boolean(data.session.llm_popout_open ?? state.llmPopoutOpen);
+        state.llmPopoutWidth = data.session.llm_popout_width || state.llmPopoutWidth;
+        state.llmPopoutHeight = data.session.llm_popout_height || state.llmPopoutHeight;
+        state.llmPopoutX = Number.isFinite(Number(data.session.llm_popout_x)) && data.session.llm_popout_x !== null ? Number(data.session.llm_popout_x) : state.llmPopoutX;
+        state.llmPopoutY = Number.isFinite(Number(data.session.llm_popout_y)) && data.session.llm_popout_y !== null ? Number(data.session.llm_popout_y) : state.llmPopoutY;
         state.leftPanelTab = data.session.left_panel_tab === "tools" || data.session.left_panel_tab === "luts" ? data.session.left_panel_tab : "scenes";
         state.rightPanelWidth = data.session.right_panel_width || state.rightPanelWidth;
         state.timelinePanelHeight = data.session.timeline_panel_height || state.timelinePanelHeight;
@@ -1141,6 +1155,9 @@ export function createSession({
         syncVideoTypeControl();
         syncProjectVideoEngineUI();
         syncLeftPanelTabs();
+        // The selected UI layout profile wins over the sizes saved with the project.
+        state.reapplyUiProfileLayout?.();
+        state.syncLlmPopout?.();
         applyLayoutSizes();
         state.zimageSettings = scrubGlobalImageToImageSourceForProject(cloneZImageSettings(data.session.zimage_settings || state.zimageSettings), state.projectFolder);
         state.referenceKrea2Settings = cloneKrea2ReferenceSettings(data.session.reference_krea2_settings || state.referenceKrea2Settings);
@@ -1288,6 +1305,10 @@ export function createSession({
       state.overlaySegments = Array.isArray(session.overlay_segments) ? session.overlay_segments : [];
       state.overlaySegments.forEach(normalizeOverlayClip);
       state.overlayTrack = normalizeOverlayTrackState(session.overlay_track || {});
+      // Nothing is rendering when a session loads, so a saved "running" status is left over from a closed render.
+      for (const item of [...state.segments, ...state.overlaySegments]) {
+        if (item?.video_status === "running") item.video_status = item.video_path ? "done" : "none";
+      }
       state.repairedSegmentIdCount = 0;
       // Load scene-keyed mappings before ID repair so a repaired duplicate keeps
       // the same subject, location, trigger, and ingredients assignments.
@@ -1380,6 +1401,13 @@ export function createSession({
       state.beatCalibration = session.beat_calibration || null;
       setBeatMarkersVisible(session.show_beat_markers ?? state.showBeatMarkers ?? false);
       state.leftPanelWidth = session.left_panel_width || state.leftPanelWidth || 260;
+      state.leftPanelCollapsed = Boolean(session.left_panel_collapsed ?? state.leftPanelCollapsed);
+      state.rightPanelCollapsed = Boolean(session.right_panel_collapsed ?? state.rightPanelCollapsed);
+      state.llmPopoutOpen = Boolean(session.llm_popout_open ?? state.llmPopoutOpen);
+      state.llmPopoutWidth = session.llm_popout_width || state.llmPopoutWidth || 460;
+      state.llmPopoutHeight = session.llm_popout_height || state.llmPopoutHeight || 460;
+      state.llmPopoutX = Number.isFinite(Number(session.llm_popout_x)) && session.llm_popout_x !== null ? Number(session.llm_popout_x) : state.llmPopoutX;
+      state.llmPopoutY = Number.isFinite(Number(session.llm_popout_y)) && session.llm_popout_y !== null ? Number(session.llm_popout_y) : state.llmPopoutY;
       state.leftPanelTab = session.left_panel_tab === "tools" || session.left_panel_tab === "luts" ? session.left_panel_tab : "scenes";
       state.rightPanelWidth = session.right_panel_width || state.rightPanelWidth || 360;
       state.timelinePanelHeight = session.timeline_panel_height || state.timelinePanelHeight || 300;
@@ -1398,6 +1426,9 @@ export function createSession({
       syncVideoTypeControl();
       syncProjectVideoEngineUI();
       syncLeftPanelTabs();
+      // The selected UI layout profile wins over the sizes saved with the project.
+      state.reapplyUiProfileLayout?.();
+      state.syncLlmPopout?.();
       applyLayoutSizes();
       state.zimageSettings = scrubGlobalImageToImageSourceForProject(cloneZImageSettings(session.zimage_settings || state.zimageSettings), state.projectFolder);
       state.referenceKrea2Settings = cloneKrea2ReferenceSettings(session.reference_krea2_settings || state.referenceKrea2Settings);

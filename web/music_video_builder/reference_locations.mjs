@@ -1,6 +1,8 @@
 import { postJson } from "./comfy_api.mjs";
 import { LOCATION_MAPPER_GPT_URL } from "./constants.mjs";
-import { makeButton, makeField, makeGptLinkButton, makeInput, toast } from "./controls.mjs";
+import { makeButton, makeField, makeGptLinkButton, makeInput, normalizeProjectVideoEngine, toast } from "./controls.mjs";
+import { normalizeMiniMaxH3Pipeline } from "./minimax_h3.mjs";
+import { buildRefmodPicker } from "./refmod_card.mjs";
 import { sceneConceptPromptText } from "./image_prompts.mjs";
 import { normalizeGemmaContextLimit } from "./prompt_text.mjs";
 import { normalizeFluxReferenceBuilder } from "./reference_data.mjs";
@@ -88,12 +90,17 @@ export function createReferenceLocations({
   subjectDrop, subjectSceneInput, t2iTextGemmaModelSelect, textGemmaRunnerPayload, uploadFor, useLocations,
   wireDrop, wizardLocationMode,
 }) {
+  // In the RefMod pipeline each location card picks a saved background RefMod instead of an image.
+  const refmodPipeline = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3"
+    && normalizeMiniMaxH3Pipeline(state.miniMaxH3Settings?.pipeline) === "refmod";
+
   function createLocation(name = "", description = "") {
     refs.locations_cleared = false;
     const location = {
       id: `loc_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
       name: String(name || `Location ${refs.locations.length + 1}`).trim(),
       description: String(description || "").trim(),
+      source: refmodPipeline ? "refmod" : "image",
       image: { path: "", data: "", name: "" },
     };
     refs.locations.push(location);
@@ -767,6 +774,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         const fromIndex = Number(event.dataTransfer.getData("text/plain") || draggedLocationIndex);
         moveLocationRow(fromIndex, index);
       });
+      const refmodCard = refmodPipeline && location.source === "refmod";
+      const showImages = referenceImagesEnabled && !refmodCard;
       const name = makeInput(location.name || `Location ${index + 1}`);
       const description = document.createElement("textarea");
       description.value = location.description || "";
@@ -824,7 +833,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       description.addEventListener("input", () => {
         location.description = description.value;
       });
-      if (referenceImagesEnabled) buttons.append(createZImage, describeImage, detailedDescription, upload, clear);
+      if (showImages) buttons.append(createZImage, describeImage, detailedDescription, upload, clear);
       else buttons.append(detailedDescription);
       buttons.append(remove);
       const handle = document.createElement("button");
@@ -842,16 +851,23 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       imageWrap.style.cssText = "min-width:230px;";
       imageWrap.append(drop);
       const mainRow = document.createElement("div");
-      mainRow.style.cssText = referenceImagesEnabled
+      mainRow.style.cssText = showImages
         ? "display:grid;grid-template-columns:28px 34px minmax(180px,0.9fr) minmax(340px,1.5fr) minmax(230px,1fr) 148px;gap:10px;align-items:center;min-width:970px;"
         : "display:grid;grid-template-columns:28px 34px minmax(200px,.8fr) minmax(420px,1.5fr) 108px;gap:10px;align-items:center;min-width:790px;";
       mainRow.append(handle, number, nameField, descField);
-      if (referenceImagesEnabled) mainRow.append(imageWrap);
+      if (showImages) mainRow.append(imageWrap);
       mainRow.append(buttons);
       const metaRow = document.createElement("div");
       metaRow.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;";
       metaRow.append(used);
       row.append(mainRow, metaRow);
+      if (refmodPipeline) {
+        row.append(buildRefmodPicker({
+          item: location,
+          kind: "location",
+          onChange: (rebuild) => { if (rebuild) renderAll(); else renderMapping(); },
+        }));
+      }
       locationsList.append(row);
     });
   }

@@ -27,6 +27,18 @@ def get_modes_catalog() -> Dict[str, Any]:
                             "continuity": ["off", "i2v_chain"],
                         },
                     },
+                    "refmod_pipeline": {
+                        "name": "RefMod pipeline",
+                        "description": (
+                            "Set `pipeline` to `refmod` in the MiniMax H3 settings. The whole project then renders from saved "
+                            "RefMods (GET /refmods) picked on Reference Builder cards (`source: refmod`, `refmod: {name, strength}`): "
+                            "one mode (reference_to_video), single or 2 pass, no scene images."
+                        ),
+                        "scene_inputs": ["refmods", "audio"],
+                        "render_pass": ["single", "two_pass"],
+                        "limits": {"refmods_per_scene": 24},
+                        "supports": {"audio_drive": True, "latent_continuation": True},
+                    },
                     "reference_to_video": {
                         "name": "Reference to Video",
                         "scene_inputs": ["reference_images", "audio"],

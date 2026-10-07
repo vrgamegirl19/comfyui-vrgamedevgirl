@@ -250,9 +250,9 @@ function importedSrtTextFromSegment(segment) {
 
 export function createTimelineState({
   audio, audioInput, autoSaveSessionQuiet, cancelPreviewPlayStart, currentVideoMode, drawWaveform,
-  idLoraTrimModeButton, main, miniMaxH3SettingsForSegment, multiSelectButton, playButton, previewVideo,
-  render, renderSegments, sceneAudio, sceneDisplayName, setActiveSegment, setGlobalPlaybackTime, shell,
-  silentTimeline, state, syncInspector, timelineViewport, updateAudioScrubbers, updateGlobalAudioMuteButton,
+  idLoraTrimModeButton, inspector, leftPanelToggle, leftResizeHandle, main, miniMaxH3SettingsForSegment,
+  multiSelectButton, playButton, previewVideo, render, renderSegments, rightPanelToggle, rightResizeHandle, sceneAudio, sceneDisplayName, setActiveSegment, setGlobalPlaybackTime, shell,
+  segmentList, silentTimeline, state, syncInspector, timelineViewport, updateAudioScrubbers, updateGlobalAudioMuteButton,
   wizardVideoSettings,
 }) {
   function allEditableSegments() {
@@ -356,9 +356,21 @@ export function createTimelineState({
   function handleSegmentPick(segment, event = null) {
     const ctrlPressed = Boolean(event?.ctrlKey || event?.metaKey);
     if (ctrlPressed) {
+      const enteringMultiSelect = !state.multiSelectMode;
+      if (enteringMultiSelect) {
+        // The scene we are already on joins the selection, so ctrl-clicking another scene adds to it.
+        const current = activeSegment();
+        state.selectedSegmentIds = current?.id ? [current.id] : [];
+      }
       state.multiSelectMode = true;
       state.modifierMultiSelectMode = true;
-      toggleMultiSegmentSelection(segment);
+      if (enteringMultiSelect && segment?.id && segment.id === state.activeId) {
+        // Ctrl-clicking the scene we are on keeps it selected instead of emptying the selection.
+        syncInspector();
+        render();
+      } else {
+        toggleMultiSegmentSelection(segment);
+      }
     } else if (state.multiSelectMode) {
       if (state.modifierMultiSelectMode) {
         state.multiSelectMode = false;
@@ -804,12 +816,31 @@ export function createTimelineState({
   function applyLayoutSizes() {
     const left = Math.max(180, Math.min(520, Number(state.leftPanelWidth || 260)));
     const right = Math.max(280, Math.min(720, Number(state.rightPanelWidth || 360)));
-    const timelineHeight = Math.max(190, Math.min(520, Number(state.timelinePanelHeight || 300)));
+    // The timeline can grow until only a strip is left for the top bar and the video window.
+    const timelineMax = Math.max(300, (shell.clientHeight || window.innerHeight) - 230);
+    const timelineHeight = Math.max(190, Math.min(timelineMax, Number(state.timelinePanelHeight || 300)));
+    const collapsed = Boolean(state.leftPanelCollapsed);
+    const rightCollapsed = Boolean(state.rightPanelCollapsed);
     state.leftPanelWidth = left;
     state.rightPanelWidth = right;
     state.timelinePanelHeight = timelineHeight;
-    main.style.gridTemplateColumns = `${left}px 7px minmax(0,1fr) 7px ${right}px`;
+    main.style.gridTemplateColumns = `${collapsed ? 0 : left}px ${collapsed ? 0 : 7}px minmax(0,1fr) ${rightCollapsed ? 0 : 7}px ${rightCollapsed ? 0 : right}px`;
     shell.style.gridTemplateRows = `auto minmax(0,1fr) ${timelineHeight}px`;
+    // These elements are flex columns, so showing them means display:flex, not clearing the value.
+    segmentList.style.display = collapsed ? "none" : "flex";
+    leftResizeHandle.style.display = collapsed ? "none" : "block";
+    inspector.style.display = rightCollapsed ? "none" : "flex";
+    rightResizeHandle.style.display = rightCollapsed ? "none" : "block";
+    // The columns belong to this grid, so they are set here too. A browser that kept an older inspector.mjs
+    // (which once used columns 6 and 7) would otherwise leave the panel outside the grid.
+    rightResizeHandle.style.gridColumn = "4";
+    inspector.style.gridColumn = "5";
+    rightPanelToggle.textContent = rightCollapsed ? "\u25C0" : "\u25B6";
+    rightPanelToggle.title = rightCollapsed ? "Show the settings panel" : "Hide the settings panel";
+    rightPanelToggle.style.right = rightCollapsed ? "0px" : `${right}px`;
+    leftPanelToggle.textContent = collapsed ? "\u25B6" : "\u25C0";
+    leftPanelToggle.title = collapsed ? "Show the Scenes, Tools and Post Processing panel" : "Hide the Scenes, Tools and Post Processing panel";
+    leftPanelToggle.style.left = collapsed ? "0px" : `${left + 7}px`;
     drawWaveform();
   }
 
@@ -849,6 +880,7 @@ export function createTimelineState({
       const up = () => {
         window.removeEventListener("pointermove", move);
         window.removeEventListener("pointerup", up);
+        state.onLayoutChanged?.();
         autoSaveSessionQuiet("layout resized");
       };
       window.addEventListener("pointermove", move);

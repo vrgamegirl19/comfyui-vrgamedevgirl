@@ -3,6 +3,9 @@ import { applyCompactButtonLabel, normalizeProjectVideoEngine, toast } from "./c
 import {
   cloneMiniMaxH3Settings,
   DEFAULT_MINIMAX_H3_SETTINGS,
+  isMiniMaxH3ContinuityAllowedForMode,
+  miniMaxH3ContinuationStartLimits,
+  miniMaxH3ContinuationStartSeconds,
   isMiniMaxH3LatentContinuationMode,
   miniMaxH3ModeLabel,
   normalizeMiniMaxH3ContinuityMode,
@@ -26,6 +29,8 @@ export function createMiniMaxPanel({
   miniMaxEasyCacheReuseThreshold, miniMaxEasyCacheSettings, miniMaxEasyCacheStartPercent,
   miniMaxEasyCacheVerbose, miniMaxEditInstructionsButton, miniMaxFp16Accumulation,
   miniMaxH3PromptCharacterBudget, miniMaxH3ReferenceCapacityStatus, miniMaxImageModeSource,
+  miniMaxContinuationDirection, miniMaxContinuationDirectionField, miniMaxPromptAutoNote, miniMaxH3FrameContinuityPromptEnabled,
+  miniMaxContinuationStart, miniMaxContinuationStartField, miniMaxContinuationStartValue,
   miniMaxLatentContextFrames, miniMaxLatentContinuationRow, miniMaxLatentStatusPill,
   miniMaxLocationTransitionControls, miniMaxLocationTransitionCustom, miniMaxLocationTransitionCustomField,
   miniMaxLocationTransitionPreset, miniMaxLoraCount, miniMaxLoraNote, miniMaxLoraRows, miniMaxLoraSection,
@@ -79,8 +84,13 @@ export function createMiniMaxPanel({
     miniMaxPromptCharacterStatus.style.color = color;
     miniMaxPromptCharacterStatus.style.borderColor = border;
     miniMaxPromptCharacterStatus.textContent = length
-      ? `H3 prompt: ${length.toLocaleString()} / 7,000 characters. Fixed format: ${budget.fixedChars.toLocaleString()}; planned shot allowance: ${budget.shotDescriptionChars.toLocaleString()}.`
-      : `H3 prompt: 0 / 7,000 characters. Fixed format: ${budget.fixedChars.toLocaleString()}; planned shot allowance: ${budget.shotDescriptionChars.toLocaleString()}.`;
+      ? `H3 prompt: ${length.toLocaleString()} / 7,000 characters. Fixed format: ${budget.fixedChars.toLocaleString()}${budget.refmodReserve ? ` (includes ${budget.refmodReserve.toLocaleString()} reserved for RefMod labels)` : ""}; planned shot allowance: ${budget.shotDescriptionChars.toLocaleString()}.`
+      : `H3 prompt: 0 / 7,000 characters. Fixed format: ${budget.fixedChars.toLocaleString()}${budget.refmodReserve ? ` (includes ${budget.refmodReserve.toLocaleString()} reserved for RefMod labels)` : ""}; planned shot allowance: ${budget.shotDescriptionChars.toLocaleString()}.`;
+    const tokenText = segment && typeof miniMaxH3ReferenceCapacityStatus === "function" ? miniMaxH3ReferenceCapacityStatus(segment, mode).tokenText : "";
+    if (tokenText) {
+      miniMaxPromptCharacterStatus.textContent += ` ${tokenText}`;
+      if (/Over |lighter/.test(tokenText)) miniMaxPromptCharacterStatus.style.color = "#fde68a";
+    }
     const referenceMismatch = segment ? miniMaxPromptReferenceMismatch(segment, miniMaxPrompt.value, mode) : "";
     if (referenceMismatch) {
       miniMaxPromptCharacterStatus.textContent += ` ${referenceMismatch} Regenerate this scene's MiniMax prompt before rendering.`;
@@ -101,8 +111,8 @@ export function createMiniMaxPanel({
 
   function miniMaxH3ContinuityModeForSegment(segment = activeSegment()) {
     const mode = miniMaxH3ModeForSegment(segment);
-    if (!["reference_to_video", "video_to_video"].includes(mode)) return "off";
-    return normalizeMiniMaxH3ContinuityMode(miniMaxH3SettingsForSegment(segment).continuity_mode);
+    const continuityMode = normalizeMiniMaxH3ContinuityMode(miniMaxH3SettingsForSegment(segment).continuity_mode);
+    return isMiniMaxH3ContinuityAllowedForMode(continuityMode, mode, miniMaxH3SettingsForSegment(segment).render_pass) ? continuityMode : "off";
   }
 
   function miniMaxH3SceneImageUseForSegment(segment = activeSegment()) {
@@ -169,6 +179,7 @@ export function createMiniMaxPanel({
     if (!segment) return;
     segment.minimax_h3_prompt = miniMaxPrompt.value || "";
     segment.minimax_h3_pass2_prompt = miniMaxPass2Prompt.value || "";
+    segment.minimax_h3_continuation_direction = String(miniMaxContinuationDirection.value || "").trim();
     updateMiniMaxPromptCharacterStatus(segment);
     updateMiniMaxPromptSaveButtonState();
     segment.minimax_h3_scene_image_use = normalizeMiniMaxH3SceneImageUse(miniMaxSceneImageUse.value);
@@ -229,8 +240,8 @@ export function createMiniMaxPanel({
       if (checkId !== miniMaxLatentCheckCounter) return;
       if (resp?.predecessor_exists) {
         const dirtyNote = resp.dirty ? " (marked dirty)" : "";
-        // Exact Last Frame needs the predecessor's tail-padding info to find its real last frame in the latent.
-        const needsRerender = continuityMode === "latent_continuation_exact_frame" && !resp.tail_padding_known;
+        // Masked continuation needs the predecessor's tail-padding info to cut its window before any padding.
+        const needsRerender = !resp.tail_padding_known;
         const rerenderNote = needsRerender ? " — no tail info, re-render it for an exact seam" : "";
         miniMaxLatentStatusPill.textContent = `Predecessor Scene ${resp.predecessor_scene} latent ready (${resp.frame_count} frames, ${resp.token_count} tokens)${dirtyNote}${rerenderNote}`;
         const warn = resp.dirty || needsRerender;
@@ -277,7 +288,7 @@ export function createMiniMaxPanel({
       continuity_prompt_from_last_frame: miniMaxContinuityPromptFromLastFrame.input.checked,
       location_transition_preset: miniMaxLocationTransitionPreset.value,
       location_transition_custom: miniMaxLocationTransitionCustom.value,
-      latent_context_frames: Number(miniMaxLatentContextFrames.value || 22),
+      latent_context_frames: Number(miniMaxLatentContextFrames.value || 39),
       diffusion_model_name: miniMaxDiffusionModelPicker.input.value,
       clip_name: miniMaxClipPicker.input.value,
       video_vae_name: miniMaxVideoVaePicker.input.value,
@@ -402,6 +413,8 @@ export function createMiniMaxPanel({
     const settings = cloneMiniMaxH3Settings({
       ...globalSettings,
       ...sceneSettings,
+      // The pipeline belongs to the whole project, so a scene with its own settings follows it.
+      pipeline: globalSettings.pipeline,
       video_mode: sceneSettings.video_mode || segment.minimax_h3_mode || globalSettings.video_mode,
       render_pass: sceneSettings.render_pass ?? (normalizeMiniMaxH3Mode(sceneSettings.video_mode || segment.minimax_h3_mode) === "image_reference_to_video" ? "two_pass" : globalSettings.render_pass),
       location_transition_preset: hasSceneTransitionPreset ? sceneSettings.location_transition_preset : legacyPreset,
@@ -426,10 +439,10 @@ export function createMiniMaxPanel({
     return miniMaxH3SettingsForSegment(segment).video_mode;
   }
 
-  function miniMaxH3ContinuityReferenceReserved(segment = activeSegment()) {
-    return Boolean(segment
-      && miniMaxH3ContinuityModeForSegment(segment) !== "off"
-      && previousAutoChainSourceSegment(segment));
+  // No continuity mode adds a reference image any more: Latent Continuation Masked works on the latent, and the
+  // previous-final-frame modes were retired. So no reference slot is held back for a continuity frame.
+  function miniMaxH3ContinuityReferenceReserved() {
+    return false;
   }
 
   function miniMaxH3StartFrameCharacterInfluenceForSegment(segment = activeSegment()) {
@@ -481,7 +494,64 @@ export function createMiniMaxPanel({
     }
   }
 
+  // Scene clothing: pick what each character wears in this scene, or go back to the card defaults.
+  function renderRefmodClothing(container, segment) {
+    if (!container) return;
+    const rows = segment && typeof miniMaxH3ReferenceCapacityStatus === "function"
+      ? miniMaxH3ReferenceCapacityStatus(segment, "reference_to_video").clothing || []
+      : [];
+    container.replaceChildren();
+    container.style.display = rows.length ? "flex" : "none";
+    if (!rows.length) return;
+    const title = document.createElement("div");
+    title.textContent = "Clothing in this scene";
+    title.style.cssText = "font-size:11px;font-weight:700;color:#a5f3fc;";
+    container.append(title);
+    for (const row of rows) {
+      const label = document.createElement("label");
+      label.style.cssText = "display:grid;grid-template-columns:minmax(80px,1fr) minmax(120px,2fr);gap:8px;align-items:center;font-size:11px;color:#e2e8f0;";
+      label.append(document.createTextNode(row.character));
+      const select = document.createElement("select");
+      select.style.cssText = "border:1px solid #3f3f46;border-radius:6px;background:#09090b;color:#f8fafc;padding:5px;font-size:11px;min-width:0;";
+      select.append(new Option("Card default (follows the character)", "__default__"));
+      select.append(new Option("No clothing RefMod", ""));
+      for (const option of row.options) select.append(new Option(option.name, option.id));
+      select.value = row.overridden ? row.current : "__default__";
+      select.onchange = async () => {
+        const next = { ...(segment.refmod_clothing_override || {}) };
+        if (select.value === "__default__") delete next[row.character_id];
+        else next[row.character_id] = select.value;
+        pushHistory?.();
+        if (Object.keys(next).length) segment.refmod_clothing_override = next;
+        else delete segment.refmod_clothing_override;
+        await autoSaveSessionQuiet("scene RefMod clothing");
+        syncMiniMaxH3Panel();
+        updateMiniMaxPromptCharacterStatus(segment);
+        toast("Clothing changed. Regenerate this scene's prompt so it names the new clothing.");
+      };
+      label.append(select);
+      container.append(label);
+    }
+  }
+
+  // The "Direction starts at" slider: from 0.5 s to half of this scene, on while the direction box is on.
+  function syncMiniMaxContinuationStart(segment, enabled) {
+    const sceneSeconds = segment ? Math.max(0, Number(segment.end || 0) - Number(segment.start || 0)) : 0;
+    const { low, high } = miniMaxH3ContinuationStartLimits(sceneSeconds);
+    const start = miniMaxH3ContinuationStartSeconds(sceneSeconds, segment?.minimax_h3_continuation_start_seconds);
+    miniMaxContinuationStart.min = String(low);
+    miniMaxContinuationStart.max = String(high);
+    miniMaxContinuationStart.value = String(start);
+    const fixed = high <= low;
+    miniMaxContinuationStart.disabled = !enabled || fixed;
+    miniMaxContinuationStartField.style.opacity = enabled ? "1" : ".55";
+    miniMaxContinuationStartValue.textContent = !segment
+      ? ""
+      : `${start.toFixed(1)} s into the scene. ${fixed ? "This scene is too short to move it." : `Up to ${high.toFixed(1)} s (half of this ${sceneSeconds.toFixed(2)} s scene).`} ${Math.max(0, sceneSeconds - start).toFixed(1)} s are left for the direction.`;
+  }
+
   function syncMiniMaxH3Panel() {
+    state.syncLlmPopout?.();
     const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
     const segment = videoSettingsSegment();
     state.miniMaxH3PanelSegmentId = String(segment?.id || "");
@@ -703,6 +773,23 @@ export function createMiniMaxPanel({
       button.style.borderColor = active ? "#0891b2" : "#3f3f46";
       button.style.color = active ? "#082f49" : "#f4f4f5";
     }
+    const refmodUi = miniMaxPassButtons.refmod;
+    const refmodPipeline = settings.pipeline === "refmod";
+    if (refmodUi) {
+      refmodUi.modeChooser.style.display = refmodPipeline ? "none" : "grid";
+      refmodUi.note.style.display = refmodPipeline ? "block" : "none";
+      renderRefmodClothing(refmodUi.clothing, refmodPipeline ? segment : null);
+      for (const button of refmodUi.pipelineButtons) {
+        const active = button.dataset.minimaxH3Pipeline === (refmodPipeline ? "refmod" : "standard");
+        button.setAttribute("aria-pressed", String(active));
+        button.style.background = active ? "#06b6d4" : "#27272a";
+        button.style.borderColor = active ? "#0891b2" : "#3f3f46";
+        button.style.color = active ? "#082f49" : "#f4f4f5";
+      }
+    }
+    // 2 Pass Advanced is not offered with RefMods.
+    miniMaxPassButtons[2].style.display = refmodPipeline ? "none" : "";
+    miniMaxPassChooser.style.gridTemplateColumns = refmodPipeline ? "repeat(2,minmax(0,1fr))" : "repeat(3,minmax(0,1fr))";
     miniMaxPassChooser.style.display = mode === "reference_to_video" ? "grid" : "none";
     for (const button of miniMaxPassButtons) {
       const active = button.dataset.passMode === settings.render_pass;
@@ -716,13 +803,24 @@ export function createMiniMaxPanel({
     }
     const sceneImageSource = segmentImageSource(segment);
     const hasSceneImage = Boolean(sceneImageSource?.path || sceneImageSource?.data);
-    miniMaxSceneImageUseField.style.display = hasSceneImage ? "flex" : "none";
-    miniMaxStartFrameCharacterInfluenceField.style.display = hasSceneImage && miniMaxSceneImageUse.value === "exact_start_frame" ? "flex" : "none";
-    miniMaxStartFrameReferenceNote.style.display = hasSceneImage ? "block" : "none";
+    // RefMods have no start frame, so the scene-image controls are hidden in the RefMod pipeline.
+    miniMaxSceneImageUseField.style.display = hasSceneImage && !refmodPipeline ? "flex" : "none";
+    miniMaxStartFrameCharacterInfluenceField.style.display = hasSceneImage && !refmodPipeline && miniMaxSceneImageUse.value === "exact_start_frame" ? "flex" : "none";
+    miniMaxStartFrameReferenceNote.style.display = hasSceneImage && !refmodPipeline ? "block" : "none";
     if (segment) {
       if (!savedMiniMaxPrompts.has(segment)) savedMiniMaxPrompts.set(segment, String(segment.minimax_h3_prompt || segment.i2v_prompt || ""));
     }
     miniMaxPrompt.value = String(segment?.minimax_h3_prompt || segment?.i2v_prompt || "");
+    miniMaxContinuationDirection.value = String(segment?.minimax_h3_continuation_direction || "");
+    // When this scene's prompt is written from the previous scene's final frame, the prompt box is not used and the
+    // continuation direction is what steers it. Otherwise it is the other way round. The render uses the same rule.
+    const promptFromLastFrame = Boolean(segment) && miniMaxH3FrameContinuityPromptEnabled(segment);
+    miniMaxPrompt.disabled = promptFromLastFrame;
+    miniMaxPrompt.style.opacity = promptFromLastFrame ? ".55" : "1";
+    miniMaxPromptAutoNote.style.display = promptFromLastFrame ? "block" : "none";
+    miniMaxContinuationDirection.disabled = !promptFromLastFrame;
+    miniMaxContinuationDirectionField.style.opacity = promptFromLastFrame ? "1" : ".55";
+    syncMiniMaxContinuationStart(segment, promptFromLastFrame);
     miniMaxPass2Prompt.value = String(segment?.minimax_h3_pass2_prompt || "");
     miniMaxPass2PromptField.style.display = threePass ? "flex" : "none";
     updateMiniMaxPromptCharacterStatus(segment);
@@ -744,10 +842,20 @@ export function createMiniMaxPanel({
     miniMaxAudioNote.textContent = settings.audio_mode === "built_in_audio"
       ? "MiniMax generates the scene audio from the prompt. In Short Film mode, character voice presets are configured in Reference Builder and copied exactly into every matching scene prompt."
       : "Uses custom scene audio or project audio unchanged for exact timing and lip sync. Native voice presets are hidden while Input Audio is selected.";
-    const continuitySupported = ["reference_to_video", "video_to_video"].includes(mode);
-    miniMaxContinuityMode.disabled = !continuitySupported;
+    // Latent Continuation Masked works in every mode. The other continuity modes need R2V or V2V.
+    const continuitySupported = isMiniMaxH3ContinuityAllowedForMode(settings.continuity_mode, mode, settings.render_pass);
+    for (const option of miniMaxContinuityMode.options) {
+      option.disabled = !isMiniMaxH3ContinuityAllowedForMode(option.value, mode, settings.render_pass);
+    }
+    miniMaxContinuityMode.disabled = false;
+    // Masked continuation plans its own warm-up and tail, so the Render settings frames do not apply.
+    const maskedActive = continuitySupported && settings.continuity_mode === "latent_continuation_masked";
+    miniMaxWarmupFrames.disabled = maskedActive;
+    miniMaxCooldownFrames.disabled = maskedActive;
+    const maskedFramesTitle = maskedActive ? "Not used while Latent Continuation Masked is selected. It plans its own warm-up and tail." : "";
+    miniMaxWarmupFrames.title = maskedFramesTitle;
+    miniMaxCooldownFrames.title = maskedFramesTitle;
     const isLatentContinuation = isMiniMaxH3LatentContinuationMode(settings.continuity_mode);
-    const isLatentExactFrame = settings.continuity_mode === "latent_continuation_exact_frame";
     miniMaxLatentContinuationRow.style.display = (continuitySupported && isLatentContinuation) ? "flex" : "none";
     miniMaxLatentContextFrames.disabled = !continuitySupported || !isLatentContinuation;
     miniMaxContinuityPromptFromLastFrame.input.disabled = !continuitySupported || !isLatentContinuation;
@@ -759,16 +867,10 @@ export function createMiniMaxPanel({
     miniMaxLocationTransitionCustomField.style.display = showLocationTransitionControls
       && miniMaxLocationTransitionPreset.value === "custom" ? "flex" : "none";
     miniMaxContinuityNote.textContent = !continuitySupported
-      ? "Available in Reference to Video and Video to Video. Those modes can receive the prior clip's extracted final frame as one additional reference image."
-      : isLatentExactFrame
-        ? `Latent Continuation + Exact Last Frame: loads about ${miniMaxLatentContextFrames.value} trailing frames of the predecessor's saved latent as temporal context, cut before any padding after its real end, and pins an image of the predecessor's exact last frame as the final warm-up frame. The warm-up is trimmed from the video and audio together. The predecessor must have been rendered with this version (it records the padding).`
+      ? "Latent Continuation Masked is not available in Image + Reference 2 Pass or 2 Pass Advanced. This scene renders without continuity."
       : isLatentContinuation
-        ? `Latent Continuation: Loads ${miniMaxLatentContextFrames.value} trailing frames directly from the predecessor scene's saved latent tensor as native temporal context into MiniMax H3, bypassing pixel VAE re-encoding.`
-      : settings.continuity_mode === "spatial_reference"
-        ? "Recommended for a new camera angle. Preserves character blocking, orientation, screen direction, props, and environment layout without forcing the same opening composition. The extracted frame and its prompt contract are injected when rendering; Scene 1 is unaffected."
-        : settings.continuity_mode === "exact_start_frame"
-          ? "Begins each later scene on the previous rendered clip's exact final frame. The extracted frame and its prompt contract are injected when rendering. Do not also enable the scene-image exact start-frame option; Scene 1 is unaffected."
-          : "Off: every scene starts independently from its normal MiniMax references.";
+        ? `Latent Continuation Masked: copies a phase-aligned run of the predecessor's saved latent (39 frames recommended, also 90/141/192) into the head of this scene's latent and protects it with a denoise mask, so the model keeps those frames and generates the rest. Needs ComfyUI 0.34.0 or newer. Works in Single pass and 2 Pass (the exact head is applied again in pass 2). Not available in 2 Pass Advanced. Other context sizes fall back to 39. The head is trimmed from the video and audio together. The predecessor must have a saved latent.`
+      : "Off: every scene starts independently from its normal MiniMax references.";
     if (continuitySupported && isLatentContinuation && settings.continuity_prompt_from_last_frame) {
       miniMaxContinuityNote.textContent += " Automatic prompt loop is ON: Scene 1 keeps your prompt. Before every later scene renders, the vision LLM uses the predecessor's actual final frame as its highest-priority opening truth, adds this scene's story/audio/reference context, saves a complete one-take prompt, and retries up to 10 times if prompting fails.";
     }

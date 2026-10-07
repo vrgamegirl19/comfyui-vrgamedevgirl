@@ -1,3 +1,4 @@
+import { assignLabels, composeRefmodItems, isRefmodCard, refmodCardFields } from "../music_video_builder/refmod_labels.mjs";
 import { postJson } from "./api.mjs";
 import { createToast, escapeHtml, makeButton, makeInput, makeTextarea, tagsHtml } from "./controls.mjs";
 import { normalizeStoryboardSpeakerAssignments } from "./scenes.mjs";
@@ -66,24 +67,39 @@ export function readStoryboardImageFile(file) {
   });
 }
 
-export function referenceChipHtml(ref, fallbackLabel = "Reference") {
+// Labels a scene's RefMod cards would get at render time ("card id" -> "<Video 1>"). Cards come from the scene itself,
+// clothing that follows a character from the whole catalog. A preview: the Video Builder works them out again to render.
+export function storyboardRefmodLabels(scene, catalogSubjects = []) {
+  const subjects = Array.isArray(scene?.subject_refs) ? scene.subject_refs : [];
+  const location = scene?.location_ref && typeof scene.location_ref === "object" ? scene.location_ref : null;
+  const items = composeRefmodItems(scene?.no_character_present ? [] : subjects, [], location, [...subjects, ...catalogSubjects], scene?.refmod_clothing_override);
+  const labels = new Map();
+  for (const item of assignLabels(items)) if (item.label) labels.set(item.card_id, item.label);
+  return labels;
+}
+
+export function referenceChipHtml(ref, fallbackLabel = "Reference", refmodLabel = "") {
   const image = storyboardReferenceImageSrc(ref?.image);
   const label = String(ref?.name || fallbackLabel || "Reference").trim();
+  const badge = isRefmodCard(ref)
+    ? `<span title="Rendered from the saved RefMod ${escapeHtml(ref.refmod.name)}" style="flex:0 0 auto;border:1px solid #0891b2;border-radius:999px;color:#a5f3fc;font-size:10px;font-weight:900;padding:1px 6px;">◈ ${escapeHtml(refmodLabel || "RefMod")}</span>`
+    : "";
   const thumb = image
     ? `<span style="width:34px;height:34px;border-radius:6px;border:1px solid #334155;background:#0f172a url('${escapeHtml(image)}') center/cover no-repeat;flex:0 0 auto;"></span>`
     : `<span style="width:34px;height:34px;border-radius:6px;border:1px dashed #334155;background:#07111f;color:#67e8f9;display:grid;place-items:center;font-size:12px;flex:0 0 auto;">▣</span>`;
-  return `<span title="${escapeHtml(label)}" style="display:inline-flex;align-items:center;gap:7px;max-width:190px;border:1px solid #334155;border-radius:7px;background:#0f172a;color:#e5e7eb;padding:4px 7px;margin:3px 3px 3px 0;vertical-align:middle;">${thumb}<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-weight:800;">${escapeHtml(label)}</span></span>`;
+  return `<span title="${escapeHtml(label)}" style="display:inline-flex;align-items:center;gap:7px;max-width:190px;border:1px solid #334155;border-radius:7px;background:#0f172a;color:#e5e7eb;padding:4px 7px;margin:3px 3px 3px 0;vertical-align:middle;">${thumb}<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-weight:800;">${escapeHtml(label)}</span>${badge}</span>`;
 }
 
-export function subjectRefsHtml(scene) {
+export function subjectRefsHtml(scene, catalogSubjects = []) {
   const refs = Array.isArray(scene.subject_refs) ? scene.subject_refs : [];
-  if (refs.length) return refs.map((ref, index) => referenceChipHtml(ref, `Subject ${index + 1}`)).join("");
+  const labels = storyboardRefmodLabels(scene, catalogSubjects);
+  if (refs.length) return refs.map((ref, index) => referenceChipHtml(ref, `Subject ${index + 1}`, labels.get(String(ref?.id || "")))).join("");
   return tagsHtml(scene.subjects);
 }
 
 export function settingRefHtml(scene) {
   if (scene.location_ref && typeof scene.location_ref === "object" && String(scene.location_ref.name || scene.location_ref.image?.path || scene.location_ref.image?.data || "").trim()) {
-    return referenceChipHtml(scene.location_ref, scene.setting || "Location");
+    return referenceChipHtml(scene.location_ref, scene.setting || "Location", storyboardRefmodLabels(scene).get(String(scene.location_ref.id || "")));
   }
   return escapeHtml(scene.setting || "-");
 }
@@ -121,6 +137,7 @@ export function normalizeReferenceBuilderCatalog(value = {}) {
       minimax_voice: item.minimax_voice && typeof item.minimax_voice === "object" ? { ...item.minimax_voice } : {},
       trigger_phrase: String(item.trigger_phrase || item.trigger || item.Trigger || ""),
       trigger_position: String(item.trigger_position || item.triggerPosition || item.trigger_placement || "start") === "end" ? "end" : "start",
+      ...refmodCardFields(item),
       extra_reference_for: String(item.extra_reference_for || item.extraReferenceFor || item.same_subject_as || item.sameSubjectAs || ""),
       image: normalizeReferenceImage(item),
     })).filter((item) => !item.extra_reference_for) : []);
@@ -132,6 +149,7 @@ export function normalizeReferenceBuilderCatalog(value = {}) {
       description: String(item.description || ""),
       trigger_phrase: String(item.trigger_phrase || item.trigger || item.Trigger || ""),
       trigger_position: String(item.trigger_position || item.triggerPosition || item.trigger_placement || "start") === "end" ? "end" : "start",
+      ...refmodCardFields(item),
       image: normalizeReferenceImage(item),
     })) : []);
   return {

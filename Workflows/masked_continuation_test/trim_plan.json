@@ -1,0 +1,12 @@
+{
+  "scene_1": {
+    "start": 0.0,
+    "duration": 5.0,
+    "frames": 120
+  },
+  "scene_2": {
+    "start": 1.458333333,
+    "duration": 5.0,
+    "frames": 120
+  }
+}

@@ -13,14 +13,28 @@ from typing import Any
 import torch
 import node_helpers
 import comfy.model_management
+import comfy.utils
 
-from .latent_manager import SceneLatentManager, plan_latent_context
+from .latent_manager import SceneLatentManager, plan_latent_context, plan_masked_context
 
 try:
     from comfy.nested_tensor import NestedTensor
     HAS_NESTED_TENSOR = True
 except ImportError:
     HAS_NESTED_TENSOR = False
+
+
+def _require_masked_av_support() -> None:
+    """Fail clearly when ComfyUI predates the H3 per-token AV noise masks (PR 15375, ComfyUI 0.34.0)."""
+    try:
+        import comfy.ldm.minimax.model as h3_model
+    except Exception as exc:
+        raise RuntimeError(f"Latent Continuation Masked could not import ComfyUI's MiniMax H3 model: {exc}") from exc
+    if not hasattr(h3_model, "mask_row_values"):
+        raise RuntimeError(
+            "Latent Continuation Masked needs a ComfyUI build with MiniMax H3 per-token AV noise masks "
+            "(PR 15375, ComfyUI 0.34.0 or newer). Update ComfyUI and restart it."
+        )
 
 
 class VRGDG_MiniMaxH3SaveLatent:
@@ -113,9 +127,12 @@ class VRGDG_MiniMaxH3LoadLatent:
     """Load a predecessor scene's latent and slice to the requested context frames window."""
 
     @classmethod
-    def IS_CHANGED(cls, project_folder, scene_number, context_frames, exact_frame_mode=False):
+    def IS_CHANGED(cls, project_folder, scene_number, context_frames, exact_frame_mode=False, masked_av=False, run_after=None):
         folder = str(project_folder or "").strip().strip('"')
         path = SceneLatentManager.get_path(folder, scene_number)
+        if not os.path.isfile(path):
+            # A graph can save the predecessor in the same run (see run_after), so the file may not exist yet.
+            return "missing"
         with open(path, "rb") as handle:
             return hashlib.file_digest(handle, "sha256").hexdigest()
 
@@ -137,9 +154,12 @@ class VRGDG_MiniMaxH3LoadLatent:
                 "context_frames": ("INT", {
                     "default": 22,
                     "min": 1,
-                    "max": 141,
+                    "max": 192,
                     "step": 1,
-                    "tooltip": "Number of temporal context frames to slice from the tail (16, 22, 39, 56)",
+                    "tooltip": (
+                        "Number of temporal context frames to slice from the tail (16, 22, 39, 56). "
+                        "Masked mode uses 39, 90, 141 or 192."
+                    ),
                 }),
             },
             "optional": {
@@ -149,6 +169,20 @@ class VRGDG_MiniMaxH3LoadLatent:
                         "Cut the context so it ends just before the predecessor's real last visible frame "
                         "(skipping any padding after it) on the model's 5-token grid, leaving that last frame "
                         "to be supplied as an exact image."
+                    ),
+                }),
+                "masked_av": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": (
+                        "Latent Continuation Masked: slice a phase-aligned run (starts on a 5-token boundary, ends "
+                        "before the predecessor's padding) with exactly matching audio ticks, for "
+                        "VRGDG H3 Apply Masked Continuation."
+                    ),
+                }),
+                "run_after": ("*", {
+                    "tooltip": (
+                        "Optional. Connect the LATENT output of the Save Latent node that writes the predecessor in "
+                        "the same graph, so this node loads the file only after it has been saved."
                     ),
                 }),
             },
@@ -169,6 +203,8 @@ class VRGDG_MiniMaxH3LoadLatent:
         scene_number: int = 1,
         context_frames: int = 22,
         exact_frame_mode: bool = False,
+        masked_av: bool = False,
+        run_after: Any = None,
     ) -> tuple[dict[str, Any], int]:
         clean_folder = str(project_folder or "").strip().strip('"')
         if not clean_folder:
@@ -190,7 +226,10 @@ class VRGDG_MiniMaxH3LoadLatent:
             tail_padding = int(float(raw_padding)) if raw_padding not in (None, "") else None
         except (TypeError, ValueError):
             tail_padding = None
-        plan = plan_latent_context(total_tokens, tail_padding, context_frames, exact_frame=bool(exact_frame_mode))
+        if masked_av:
+            plan = plan_masked_context(total_tokens, tail_padding, context_frames)
+        else:
+            plan = plan_latent_context(total_tokens, tail_padding, context_frames, exact_frame=bool(exact_frame_mode))
         tokens_to_slice = int(plan["tokens"])
 
         # Slice the planned token window along the time axis (dim 2)
@@ -203,7 +242,13 @@ class VRGDG_MiniMaxH3LoadLatent:
             )
 
         sliced_audio = None
-        if isinstance(audio, torch.Tensor) and audio.ndim >= 2:
+        if isinstance(audio, torch.Tensor) and audio.ndim >= 2 and masked_av:
+            # The audio ticks that played over exactly the sliced video frames (40 Hz grid)
+            total_audio_steps = int(audio.shape[-1])
+            a1 = max(1, min(total_audio_steps, int(plan["end_audio_tick"])))
+            a0 = max(0, min(a1 - 1, int(plan["start_audio_tick"])))
+            sliced_audio = audio[..., a0:a1].clone()
+        elif isinstance(audio, torch.Tensor) and audio.ndim >= 2:
             # Audio latent temporal rate is approx 40 Hz (rescaled from 24 fps)
             audio_steps = max(1, round(context_frames * 40 / 24))
             total_audio_steps = int(audio.shape[-1])
@@ -223,6 +268,12 @@ class VRGDG_MiniMaxH3LoadLatent:
             "video": sliced_video,
             "audio": sliced_audio,
         }
+        if masked_av:
+            print(
+                f"[VRGDG Latent Load] Masked window: tokens {plan['start_token']}-{plan['end_token']} of {total_tokens} "
+                f"({plan['context_frames']} frames, {plan['lost_tail_frames']}f of the predecessor's visible tail "
+                f"after the window, tail padding {'unknown' if tail_padding is None else str(tail_padding) + 'f'})"
+            )
         print(
             f"[VRGDG Latent Load] Loaded scene {scene_number:03d}: sliced {tokens_to_slice} tokens "
             f"({plan['context_frames']} frames context window)"
@@ -328,6 +379,155 @@ class VRGDG_MiniMaxH3ApplyLatentGuide:
         return (patched_positive, latent)
 
 
+class VRGDG_MiniMaxH3ApplyMaskedContinuation:
+    """Write the predecessor's latent into the head of the target latent and protect it with a denoise mask."""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "latent": ("LATENT", {
+                    "tooltip": "Target AV latent about to be sampled (after Audio Drive when the audio is locked).",
+                }),
+                "context_latent": ("LATENT", {
+                    "tooltip": "Predecessor window from VRGDG H3 Load Latent with masked_av enabled.",
+                }),
+            },
+            "optional": {
+                "include_audio": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": (
+                        "Also copy and protect the predecessor's audio ticks. Use only with built-in audio. "
+                        "With Audio Drive the song audio is already locked and must not be replaced."
+                    ),
+                }),
+                "vae": ("VAE", {
+                    "tooltip": (
+                        "MiniMax H3 video VAE. When the predecessor was saved at a different size than this "
+                        "target (every first pass of a 2 Pass render), the head is decoded, resized as pictures "
+                        "and encoded again. Resizing the latent itself leaves ghosting and blur. Without a VAE the "
+                        "latent is resized directly."
+                    ),
+                }),
+            },
+        }
+
+    RETURN_TYPES = ("LATENT",)
+    RETURN_NAMES = ("latent",)
+    FUNCTION = "apply"
+    CATEGORY = "VRGDG/MiniMax H3 Latent Continuation"
+    DESCRIPTION = (
+        "Latent Continuation Masked: copies the predecessor's raw video latent into the first tokens of the "
+        "target latent and sets a zero denoise mask there, so the model keeps those frames and generates the "
+        "rest. Needs ComfyUI with MiniMax H3 per-token AV noise masks (PR 15375, ComfyUI 0.34.0+)."
+    )
+
+    @staticmethod
+    def _resize_through_pixels(vae, video_latent: torch.Tensor, target_h: int, target_w: int) -> torch.Tensor:
+        """Decode the head, resize the pictures to the target size, and encode them again.
+
+        A latent is not an image: interpolating it spatially adds high-frequency artifacts (double edges) and
+        smears detail. The window is a whole number of H3 temporal groups, so it decodes and encodes back to the
+        same number of tokens.
+        """
+        with torch.no_grad():
+            frames = vae.decode(video_latent)
+            if frames.ndim == 5:
+                frames = frames.reshape(-1, *frames.shape[-3:])
+            pictures = frames[..., :3].movedim(-1, 1)
+            pictures = comfy.utils.common_upscale(pictures, target_w * 16, target_h * 16, "lanczos", "center")
+            encoded = vae.encode(pictures.movedim(1, -1).clamp(0.0, 1.0))
+        encoded = encoded.reshape(1, *encoded.shape[-4:]) if encoded.ndim != 5 else encoded
+        if int(encoded.shape[2]) != int(video_latent.shape[2]):
+            raise RuntimeError(
+                f"Latent Continuation Masked: re-encoding the resized head gave {int(encoded.shape[2])} tokens, "
+                f"expected {int(video_latent.shape[2])}."
+            )
+        return encoded
+
+    @staticmethod
+    def _mask_like(existing, template: torch.Tensor) -> torch.Tensor:
+        if (
+            isinstance(existing, torch.Tensor)
+            and tuple(existing.shape[2:]) == tuple(template.shape[2:])
+            and int(existing.shape[0]) == 1
+        ):
+            return existing.clone().to(torch.float32)
+        return torch.ones((1, 1, *template.shape[2:]), dtype=torch.float32, device=template.device)
+
+    def apply(
+        self,
+        latent: dict[str, Any],
+        context_latent: dict[str, Any],
+        include_audio: bool = False,
+        vae: Any = None,
+    ) -> tuple[dict[str, Any]]:
+        _require_masked_av_support()
+        if not HAS_NESTED_TENSOR:
+            raise RuntimeError("Latent Continuation Masked needs ComfyUI's NestedTensor support.")
+
+        target_video, target_audio = SceneLatentManager._extract_streams(latent)
+        if not isinstance(target_audio, torch.Tensor):
+            raise ValueError("Latent Continuation Masked needs a joint video+audio target latent.")
+        ctx_video, ctx_audio = SceneLatentManager._extract_streams(context_latent)
+        if int(target_video.shape[0]) != 1 or int(ctx_video.shape[0]) != 1:
+            raise ValueError("Latent Continuation Masked supports batch size 1 only.")
+        if int(ctx_video.shape[1]) != int(target_video.shape[1]):
+            raise ValueError(
+                f"Latent Continuation Masked: predecessor has {int(ctx_video.shape[1])} latent channels, "
+                f"target has {int(target_video.shape[1])}."
+            )
+
+        target_h, target_w = int(target_video.shape[-2]), int(target_video.shape[-1])
+        if (int(ctx_video.shape[-2]), int(ctx_video.shape[-1])) != (target_h, target_w):
+            route = "pictures (VAE decode, resize, encode)" if vae is not None else "latent interpolation"
+            print(
+                f"[VRGDG Latent Masked] Resizing the predecessor head from {int(ctx_video.shape[-2])}x"
+                f"{int(ctx_video.shape[-1])} to {target_h}x{target_w} through {route}."
+            )
+            if vae is not None:
+                ctx_video = self._resize_through_pixels(vae, ctx_video, target_h, target_w)
+            else:
+                ctx_video = SceneLatentManager.resize_latent_video(ctx_video, target_h, target_w)
+
+        head = int(ctx_video.shape[2])
+        if head >= int(target_video.shape[2]):
+            raise ValueError(
+                f"Latent Continuation Masked: the {head}-token context fills the whole {int(target_video.shape[2])}-token "
+                "target. Render a longer scene or use a smaller context."
+            )
+
+        out_video = target_video.clone()
+        out_audio = target_audio.clone()
+        out_video[:, :, :head] = ctx_video.to(device=out_video.device, dtype=out_video.dtype)
+
+        existing_video_mask, existing_audio_mask = None, None
+        if latent.get("noise_mask") is not None:
+            try:
+                existing_video_mask, existing_audio_mask = SceneLatentManager._extract_streams(latent["noise_mask"])
+            except ValueError:
+                pass
+        video_mask = self._mask_like(existing_video_mask, out_video)
+        audio_mask = self._mask_like(existing_audio_mask, out_audio)
+        video_mask[:, :, :head] = 0.0
+
+        audio_ticks = 0
+        if include_audio and isinstance(ctx_audio, torch.Tensor):
+            audio_ticks = min(int(ctx_audio.shape[-1]), int(out_audio.shape[-1]) - 1)
+            out_audio[..., :audio_ticks] = ctx_audio[..., :audio_ticks].to(device=out_audio.device, dtype=out_audio.dtype)
+            audio_mask[..., :audio_ticks] = 0.0
+
+        out = dict(latent)
+        out["samples"] = NestedTensor((out_video, out_audio))
+        out["noise_mask"] = NestedTensor((video_mask, audio_mask))
+        audio_note = f"copied, {audio_ticks} ticks" if audio_ticks else "left to the audio drive / generated"
+        print(
+            f"[VRGDG Latent Masked] Protected {head} predecessor tokens at the head of {int(out_video.shape[2])} "
+            f"(audio {audio_note})"
+        )
+        return (out,)
+
+
 class VRGDG_MiniMaxH3LoadExactFrame:
     """Load one image file (the predecessor scene's last frame) as an IMAGE tensor."""
 
@@ -370,6 +570,7 @@ NODE_CLASS_MAPPINGS = {
     "VRGDG_MiniMaxH3SaveLatent": VRGDG_MiniMaxH3SaveLatent,
     "VRGDG_MiniMaxH3LoadLatent": VRGDG_MiniMaxH3LoadLatent,
     "VRGDG_MiniMaxH3ApplyLatentGuide": VRGDG_MiniMaxH3ApplyLatentGuide,
+    "VRGDG_MiniMaxH3ApplyMaskedContinuation": VRGDG_MiniMaxH3ApplyMaskedContinuation,
     "VRGDG_MiniMaxH3LoadExactFrame": VRGDG_MiniMaxH3LoadExactFrame,
 }
 
@@ -377,5 +578,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_MiniMaxH3SaveLatent": "VRGDG H3 Save Latent",
     "VRGDG_MiniMaxH3LoadLatent": "VRGDG H3 Load Latent",
     "VRGDG_MiniMaxH3ApplyLatentGuide": "VRGDG H3 Apply Latent Continuation Guide",
+    "VRGDG_MiniMaxH3ApplyMaskedContinuation": "VRGDG H3 Apply Masked Continuation",
     "VRGDG_MiniMaxH3LoadExactFrame": "VRGDG H3 Load Exact Last Frame",
 }

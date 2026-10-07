@@ -27,7 +27,7 @@ from ..jobs.models import Job
 from ..scene_video import apply_scene_video
 from ..mutations import _BUILDER_SAVE_LOCK, _get_active_session_and_folder, _persist_session
 from ..paths import resolve_project_folder, session_audio_path, session_video_mode
-from ...minimax.scene_inputs import resolve_scene_inputs
+from ...minimax.scene_inputs import canonical_continuity_mode, resolve_scene_inputs
 from ...minimax.settings_payload import (
     build_minimax_render_payload,
     random_seed_value,
@@ -162,36 +162,51 @@ async def render_scene_video_async(
         pass2_prompt = str(seg.get("minimax_h3_pass2_prompt") or "").strip()
         if pass2_prompt:
             payload["pass2_prompt"] = pass2_prompt
-        # Scene inputs the UI resolves per render: reference images, continuity frames,
-        # reference videos and the explicit last frame (minimax/scene_inputs.py).
-        try:
-            scene_inputs = await asyncio.to_thread(
-                resolve_scene_inputs,
-                session,
-                seg,
-                minimax_settings["video_mode"],
-                idx,
-                continuity_mode=str(p.get("continuity_mode") or minimax_settings["continuity_mode"] or "off"),
-                previous_segment=segments[idx - 1] if idx > 0 else None,
-                project_folder=folder,
-                scene_number=scene_number,
-                extract_final_frame=_extract_final_frame_for_continuity,
-                configured_image_paths=p.get("image_paths"),
-                configured_video_references=p.get("video_references"),
-            )
-        except ValueError as exc:
-            raise ValidationError(f"Scene {scene_number}: {exc}") from exc
-        if scene_inputs["missing_image_paths"]:
-            raise ValidationError(
-                f"Scene {scene_number} references image files that do not exist: "
-                + ", ".join(scene_inputs["missing_image_paths"])
-            )
-        payload["continuity_mode"] = scene_inputs["continuity_mode"]
-        payload["latent_exact_frame_path"] = scene_inputs["latent_exact_frame_path"]
-        payload["image_paths"] = scene_inputs["image_paths"]
-        payload["video_references"] = scene_inputs["video_references"]
-        if scene_inputs.get("last_frame_path"):
-            payload["last_frame_path"] = scene_inputs["last_frame_path"]
+        if minimax_settings.get("pipeline") == "refmod":
+            # The RefMod pipeline renders from saved RefMods in scene order (minimax/refmod_scene.py), with no images.
+            from ...minimax.refmod_scene import assign_labels, reference_payload, refmod_items_for_scene
+
+            items = assign_labels([i for i in refmod_items_for_scene(session, seg, idx) if i["strength"] > 0])
+            if not items:
+                raise ValidationError(
+                    f"Scene {scene_number} needs at least one RefMod. Pick a RefMod on a Reference Builder card and map it to the scene.")
+            continuity = str(p.get("continuity_mode") or minimax_settings["continuity_mode"] or "off")
+            payload["pipeline"] = "refmod"
+            payload["refmod_references"] = reference_payload(items)
+            payload["continuity_mode"] = "latent_continuation_masked" if canonical_continuity_mode(continuity) == "latent_continuation_masked" else "off"
+            payload["image_paths"] = []
+            payload["video_references"] = []
+        else:
+            # Scene inputs the UI resolves per render: reference images, continuity frames,
+            # reference videos and the explicit last frame (minimax/scene_inputs.py).
+            try:
+                scene_inputs = await asyncio.to_thread(
+                    resolve_scene_inputs,
+                    session,
+                    seg,
+                    minimax_settings["video_mode"],
+                    idx,
+                    continuity_mode=str(p.get("continuity_mode") or minimax_settings["continuity_mode"] or "off"),
+                    previous_segment=segments[idx - 1] if idx > 0 else None,
+                    project_folder=folder,
+                    scene_number=scene_number,
+                    extract_final_frame=_extract_final_frame_for_continuity,
+                    configured_image_paths=p.get("image_paths"),
+                    configured_video_references=p.get("video_references"),
+                    render_pass=str(minimax_settings.get("render_pass") or "single"),
+                )
+            except ValueError as exc:
+                raise ValidationError(f"Scene {scene_number}: {exc}") from exc
+            if scene_inputs["missing_image_paths"]:
+                raise ValidationError(
+                    f"Scene {scene_number} references image files that do not exist: "
+                    + ", ".join(scene_inputs["missing_image_paths"])
+                )
+            payload["continuity_mode"] = scene_inputs["continuity_mode"]
+            payload["image_paths"] = scene_inputs["image_paths"]
+            payload["video_references"] = scene_inputs["video_references"]
+            if scene_inputs.get("last_frame_path"):
+                payload["last_frame_path"] = scene_inputs["last_frame_path"]
     else:
         payload = dict(effective_settings.get(mode_group, {}))
         if p.get("randomize_seed"):
@@ -216,7 +231,7 @@ async def render_scene_video_async(
     if "minimax" in mode:
         continuity_mode = str(payload.get("continuity_mode") or "").strip().lower()
         use_latent = payload.get("use_latent_continuation")
-        is_latent_cont = continuity_mode in ("latent_continuation", "latent_continuation_exact_frame") or bool(use_latent)
+        is_latent_cont = canonical_continuity_mode(continuity_mode) == "latent_continuation_masked" or bool(use_latent)
         if is_latent_cont and scene_number > 1:
             from ...minimax.latent_manager import SceneLatentManager
             pred_scene = scene_number - 1
@@ -242,6 +257,31 @@ async def render_scene_video_async(
 
     # Prompt text
     if "minimax" in mode:
+        # The Video Builder's "create each next scene prompt from the previous rendered final frame": a scene continued with
+        # latent_continuation_masked is written from the real last frame of the scene before it, right before it renders.
+        if (
+            mode_group == "minimax_h3" and scene_number > 1 and not p.get("prompt")
+            and str(payload.get("continuity_mode") or "") == "latent_continuation_masked"
+            and minimax_settings.get("continuity_prompt_from_last_frame")
+        ):
+            previous = segments[idx - 1]
+            previous_video = str(previous.get("video_path") or previous.get("rendered_video_path") or "").strip()
+            if not previous_video or not os.path.isfile(previous_video):
+                raise ValidationError(
+                    f"Scene {scene_number} is set to write its prompt from scene {scene_number - 1}'s final frame, "
+                    f"but scene {scene_number - 1} has no rendered video. Render it first."
+                )
+            if manager and job:
+                manager.update_progress(job.id, 6.0, "preparing", scene_id=scene_id, message=f"Writing the scene {scene_number} prompt from scene {scene_number - 1}'s final frame...")
+            frame_path = await asyncio.to_thread(_extract_final_frame_for_continuity, folder, previous_video, scene_number)
+            from .minimax_prompt_orchestrator import write_continued_scene_prompt
+
+            written = await asyncio.to_thread(
+                write_continued_scene_prompt, project_id, str(seg.get("id") or scene_id), frame_path, str(previous.get("id") or ""), p,
+            )
+            seg["minimax_h3_prompt"] = written["prompt"]
+            for warning in written.get("warnings") or []:
+                logger.warning(f"Scene {scene_number}: {warning}")
         # The Video Builder renders the saved MiniMax prompt, falling back to the video prompt.
         video_prompt = str(p.get("prompt") or seg.get("minimax_h3_prompt") or seg.get("i2v_prompt") or "").strip()
         if not video_prompt:

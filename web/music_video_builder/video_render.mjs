@@ -12,7 +12,9 @@ import { showFinalVideoReadyModal } from "./dialogs.mjs";
 import { formatTime } from "./format.mjs";
 import { rtvReferenceImagePayload } from "./image_references.mjs";
 import { setButtonGroupState } from "./inspector.mjs";
-import { isMiniMaxH3LatentContinuationMode, miniMaxH3FrameSize, miniMaxH3ModeLabel, normalizeMiniMaxH3Mode } from "./minimax_h3.mjs";
+import { isMiniMaxH3LatentContinuationMode, miniMaxH3FrameSize, miniMaxH3ModeLabel, normalizeMiniMaxH3Mode, normalizeMiniMaxH3Pipeline } from "./minimax_h3.mjs";
+import { refmodPreviewUrl } from "./refmod_card.mjs";
+import { attachRefmodLabels, referencePayload } from "./refmod_labels.mjs";
 import { miniMaxDialogueOrderText } from "./minimax_prompt.mjs";
 import { applyTriggerPhrase, segmentUsesNoLipSyncPerformance } from "./prompt_text.mjs";
 import { normalizeVideoPromptOrigin, sortSegments } from "./segments.mjs";
@@ -425,11 +427,10 @@ export function createVideoRender({
     const previousSegment = previousAutoChainSourceSegment(segment);
     if (!previousSegment) return null;
     if (isMiniMaxH3LatentContinuationMode(continuityMode)) {
-      const isExactFrame = continuityMode === "latent_continuation_exact_frame";
       const needsPromptFrame = Boolean(miniMaxH3SettingsForSegment(segment).continuity_prompt_from_last_frame);
       const slotNumber = sceneSlotNumber(segment);
       if (slotNumber <= 1) {
-        throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)} is Scene 1 and cannot use Latent Continuation because there is no predecessor scene. Switch Continuity Mode to Off.`);
+        throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)} is Scene 1 and cannot use Latent Continuation Masked because there is no predecessor scene. Switch Continuity Mode to Off.`);
       }
       const projectFolder = String(projectInput.value || state.projectFolder || "").trim();
       if (!projectFolder) throw new Error("Project folder is missing.");
@@ -439,16 +440,14 @@ export function createVideoRender({
         scene_number: slotNumber,
       }, 10000);
       if (!checkResp?.predecessor_exists) {
-        throw new Error(`Latent Continuation requires Scene ${slotNumber - 1} latent file, but none was found. Render Scene ${slotNumber - 1} first.`);
+        throw new Error(`Latent Continuation Masked requires Scene ${slotNumber - 1} latent file, but none was found. Render Scene ${slotNumber - 1} first.`);
       }
-      // Exact Last Frame also needs the predecessor's real last frame as an image. It is passed as its own
-      // field (not framePath) so it is never injected as a reference image or a prompt block.
-      let exactFramePath = "";
+      // The automatic prompt loop needs the predecessor's real last frame as an image.
       let promptFramePath = "";
-      if (isExactFrame || needsPromptFrame) {
+      if (needsPromptFrame) {
         const previousVideoPath = String(selectedSegmentVideoPath(previousSegment) || "").trim();
         if (!previousVideoPath) {
-          throw new Error(`${needsPromptFrame ? "Frame-to-frame prompt creation" : "Latent Continuation + Exact Last Frame"} needs Scene ${slotNumber - 1}'s rendered video to read its last frame, but it has none. Render Scene ${slotNumber - 1} first.`);
+          throw new Error(`Frame-to-frame prompt creation needs Scene ${slotNumber - 1}'s rendered video to read its last frame, but it has none. Render Scene ${slotNumber - 1} first.`);
         }
         progress?.set(`${label}: extracting Scene ${slotNumber - 1}'s actual final frame...`, percent);
         const extractedFrame = await postJson("/vrgdg/music_builder/extract_video_final_frame", {
@@ -459,7 +458,6 @@ export function createVideoRender({
         }, 120000);
         promptFramePath = String(extractedFrame?.saved_path || "").trim();
         if (!promptFramePath) throw new Error("Could not extract the previous scene's last frame for frame-to-frame continuity.");
-        if (isExactFrame) exactFramePath = promptFramePath;
       }
       segment.minimax_h3_continuity_mode_used = continuityMode;
       segment.minimax_h3_continuity_source_scene_id = String(previousSegment.id || "");
@@ -469,7 +467,6 @@ export function createVideoRender({
         overlapFrames: 0,
         framePath: "",
         framePaths: [],
-        exactFramePath,
         promptFramePath,
         previousSegment,
       };
@@ -499,7 +496,7 @@ export function createVideoRender({
   }
 
   async function createMiniMaxH3FrameContinuityPrompt(segment, sceneIndex, mode, continuityInput, progress, percent = 6, label = "MiniMax continuity") {
-    const framePath = String(continuityInput?.promptFramePath || continuityInput?.exactFramePath || "").trim();
+    const framePath = String(continuityInput?.promptFramePath || "").trim();
     if (!framePath) throw new Error(`${sceneDisplayName(segment, sceneIndex)} could not find the predecessor's extracted final frame for automatic prompt creation.`);
     const supportingImages = miniMaxH3PromptVisionImages(segment, mode);
     const seen = new Set([mediaPathKey(framePath)]);
@@ -570,11 +567,16 @@ export function createVideoRender({
     const sceneDuration = timelineEnd - timelineStart;
     const miniMaxSettings = miniMaxH3SettingsForSegment(segment);
     const builtInAudio = miniMaxSettings.audio_mode === "built_in_audio";
-    const mode = normalizeMiniMaxH3Mode(options.mode ?? miniMaxSettings.video_mode);
+    // The pipeline belongs to the whole project, and the RefMod pipeline has one mode.
+    const refmodPipeline = normalizeMiniMaxH3Pipeline(state.miniMaxH3Settings?.pipeline) === "refmod";
+    const mode = refmodPipeline ? "reference_to_video" : normalizeMiniMaxH3Mode(options.mode ?? miniMaxSettings.video_mode);
     const twoPass = miniMaxSettings.render_pass === "two_pass"
       && ["reference_to_video", "image_reference_to_video"].includes(mode);
     const threePass = miniMaxSettings.render_pass === "three_pass"
       && ["reference_to_video", "image_reference_to_video"].includes(mode);
+    if (refmodPipeline && threePass) {
+      throw new Error("The RefMod pipeline supports Single and 2 Pass only. Choose one of those passes before rendering.");
+    }
     if ((twoPass || threePass) && builtInAudio) {
       throw new Error(`MiniMax H3 ${threePass ? "2 Pass Advanced" : "2 Pass"} currently supports Input Audio only. Switch Audio Mode to Input Audio before rendering.`);
     }
@@ -583,9 +585,8 @@ export function createVideoRender({
       throw new Error(`${sceneDisplayName(segment, sceneIndex)} has invalid timeline boundaries.`);
     }
 
-    const continuityInput = mode === "image_to_video"
-      ? null
-      : options.continuityInput === undefined
+    // miniMaxH3ContinuityModeForSegment is off for every mode that cannot continue, so this is a no-op there.
+    const continuityInput = options.continuityInput === undefined
       ? await prepareMiniMaxH3ContinuityReference(
         segment,
         progress,
@@ -597,7 +598,12 @@ export function createVideoRender({
     const generatedContinuityPrompt = miniMaxH3FrameContinuityPromptEnabled(segment)
       ? await createMiniMaxH3FrameContinuityPrompt(segment, sceneIndex, mode, continuityInput, progress, pct(6), `${batchLabel}MiniMax continuity`)
       : "";
-    const prompt = String(generatedContinuityPrompt || (options.prompt ?? (segment?.minimax_h3_prompt || segment?.i2v_prompt || ""))).trim();
+    const promptBase = String(generatedContinuityPrompt || (options.prompt ?? (segment?.minimax_h3_prompt || segment?.i2v_prompt || ""))).trim();
+    // A prompt written before the RefMod pipeline was switched on (or before its RefMods changed) may not name them yet.
+    // Putting each RefMod's label next to its character is safe to repeat, so it is done again here.
+    const prompt = refmodPipeline
+      ? attachRefmodLabels(promptBase, miniMaxOrderedImageReferenceItemsForSegment(segment, mode).map((item) => item.refmod).filter(Boolean))
+      : promptBase;
     if (!prompt) throw new Error(`${sceneDisplayName(segment, sceneIndex)} needs a MiniMax H3 prompt.`);
     assertValidMiniMaxH3FinalPrompt(prompt, segment, mode, {
       allowCueValidationWarnings: true,
@@ -624,7 +630,14 @@ export function createVideoRender({
       await persistIngredientsSheetImages(projectFolder);
     }
 
-    let imagePaths = miniMaxRenderReferenceImagePaths(segment, mode, options.imagePaths);
+    // The RefMod pipeline renders from saved RefMods, in scene order with their labels, and sends no reference images.
+    const refmodItems = refmodPipeline
+      ? miniMaxOrderedImageReferenceItemsForSegment(segment, mode).map((item) => item.refmod).filter(Boolean)
+      : [];
+    if (refmodPipeline && !refmodItems.length) {
+      throw new Error(`${sceneDisplayName(segment, sceneIndex)} needs at least one RefMod. Pick a RefMod on a Reference Builder card and map it to this scene.`);
+    }
+    let imagePaths = refmodPipeline ? [] : miniMaxRenderReferenceImagePaths(segment, mode, options.imagePaths);
     let continuityImageNumber = 0;
     if (continuityInput?.framePath) {
       const continuityKey = mediaPathKey(continuityInput.framePath);
@@ -651,7 +664,7 @@ export function createVideoRender({
     if (["image_to_video", "image_reference_to_video"].includes(mode) && !imagePaths.length) {
       throw new Error(`${sceneDisplayName(segment, sceneIndex)} needs a selected scene image for MiniMax Image to Video.`);
     }
-    if (mode === "reference_to_video" && !imagePaths.length) {
+    if (mode === "reference_to_video" && !refmodPipeline && !imagePaths.length) {
       throw new Error(`${sceneDisplayName(segment, sceneIndex)} needs at least one ordered Reference Builder image.`);
     }
     if (mode === "video_to_video" && !videoReferences.some((item) => String(item?.path || "").trim())) {
@@ -683,18 +696,27 @@ export function createVideoRender({
     const progressLyric = progressDialogue
       || String(segment?.lyric_text || "").trim()
       || (segmentUsesNoLipSyncPerformance(segment) ? "[No visible vocal / no lip sync]" : "");
+    // The RefMod pipeline shows the RefMods in this scene (preview, label, name and strength) in place of images.
+    const progressRefmods = refmodItems.map((item) => ({
+      url: refmodPreviewUrl(item.mod_name),
+      label: item.name,
+      caption: `${item.label} ${item.name}${item.strength < 1 ? ` · ${Math.round(item.strength * 100)}%` : ""}`,
+    }));
     progress?.setSceneDetails?.({
       sceneLabel: sceneDisplayName(segment, sceneIndex),
-      modeLabel: `${miniMaxH3ModeLabel(mode)} · ${builtInAudio ? "Built-in MiniMax Audio" : "Input Audio"}`,
-      images: progressImages,
+      modeLabel: `${miniMaxH3ModeLabel(mode)}${refmodPipeline ? " (RefMods)" : ""} · ${builtInAudio ? "Built-in MiniMax Audio" : "Input Audio"}`,
+      images: refmodPipeline ? progressRefmods : progressImages,
+      imagesTitle: refmodPipeline ? "RefMods" : undefined,
       lyric: progressLyric,
       prompt,
     });
-    const warmupFrames = Math.max(0, Math.trunc(Number(
+    // Masked continuation plans its own warm-up and tail, so the Render settings frames do not apply.
+    const maskedContinuation = continuityInput?.continuityMode === "latent_continuation_masked";
+    const warmupFrames = maskedContinuation ? 0 : Math.max(0, Math.trunc(Number(
       options.warmupFrames
       ?? miniMaxSettings.warmup_frames
     ) || 0));
-    const cooldownFrames = Math.max(0, Math.trunc(Number(
+    const cooldownFrames = maskedContinuation ? 0 : Math.max(0, Math.trunc(Number(
       options.cooldownFrames
       ?? miniMaxSettings.cooldown_frames
     ) || 0));
@@ -726,7 +748,6 @@ export function createVideoRender({
         continuity_mode: continuityInput?.continuityMode || miniMaxSettings.continuity_mode || "off",
         latent_context_frames: latentContextFrames,
         minimax_h3_latent_context_frames: latentContextFrames,
-        latent_exact_frame_path: continuityInput?.exactFramePath || "",
         audio_path: builtInAudio ? "" : sourceAudioPath,
         prompt,
         pass2_prompt: String(segment?.minimax_h3_pass2_prompt || ""),
@@ -825,6 +846,8 @@ export function createVideoRender({
         turbo_lora_strength: miniMaxSettings.turbo_lora_strength,
         image_paths: imagePaths,
         video_references: videoReferences,
+        pipeline: refmodPipeline ? "refmod" : "standard",
+        ...(refmodPipeline ? { refmod_references: referencePayload(refmodItems) } : {}),
       };
       if (mode === "image_to_video") {
         const lastFrame = firstLastFrameEndImageSource(segment) || {};
@@ -844,6 +867,10 @@ export function createVideoRender({
         payload,
         180000,
       );
+      const missingRefmodLabels = built?.refmod?.labels_missing_from_prompt || [];
+      if (missingRefmodLabels.length) {
+        toast(`This scene's prompt does not use ${missingRefmodLabels.join(", ")}. Regenerate the scene prompt so every RefMod is named.`, true);
+      }
       const timing = built?.timing || {};
       const postTrim = built?.post_render_trim || {};
       const builtLoraSettings = built?.lora_settings || {};
@@ -1078,9 +1105,13 @@ export function createVideoRender({
       }
     }
     const paths = baseSegments.map((segment) => String(selectedSegmentVideoPath(segment) || "").trim());
+    // Every scene clip was cut to round(end * 24) - round(start * 24) frames of the whole project. A preview of a few
+    // scenes shifts the times, so the shift must be a whole number of frames or the rounding differs and a clip is
+    // padded with a repeated frame or loses one at the join (a stutter).
+    const frameAlignedOffset = Math.round(timelineOffset * 24) / 24;
     const sceneTimingItems = miniMaxProject ? baseSegments.map((segment) => ({
-      start: Math.max(0, Number(segment.start || 0) - timelineOffset),
-      end: Math.max(0, Number(segment.end || 0) - timelineOffset),
+      start: Math.max(0, Number(segment.start || 0) - frameAlignedOffset),
+      end: Math.max(0, Number(segment.end || 0) - frameAlignedOffset),
     })) : [];
     const overlayItems = overlaySegments
       .filter((segment) => String(selectedSegmentVideoPath(segment) || "").trim())
@@ -1588,7 +1619,7 @@ export function createVideoRender({
   }
 
   return {
-    createMiniMaxSceneVideo, createSceneVideo, miniMaxH3FrameContinuityPromptEnabled, openStitchPreviewModal,
+    createMiniMaxSceneVideo, createSceneVideo, miniMaxH3FrameContinuityPromptEnabled, openStitchPreviewModal, stitchPreviewFromSegments,
     renderImageSlideshowPreview, renderMiniMaxSceneVideoWithProgress, renderSceneVideoWithProgress,
     runGemmaThenCreateSceneVideo, stitchRenderedScenes,
   };

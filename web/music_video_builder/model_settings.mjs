@@ -887,6 +887,7 @@ export function createModelSettings({
     if (settingsModalControls.projectVideoEngineSelect) settingsModalControls.projectVideoEngineSelect.value = miniMaxProject ? "minimax_h3" : "ltx";
     projectVideoEngineBadge.dataset.engine = miniMaxProject ? "minimax_h3" : "ltx";
     projectVideoEngineBadge.textContent = miniMaxProject ? "◈ MiniMax" : "◈ LTX";
+    if (miniMaxProject && String(state.miniMaxH3Settings?.pipeline || "") === "refmod") projectVideoEngineBadge.textContent = "◈ MiniMax · RefMod";
     projectVideoEngineBadge.title = miniMaxProject
       ? "Switch project video engine: MiniMax H3"
       : "Switch project video engine: LTX";

@@ -55,6 +55,8 @@ from ..builder.timeline import (
     validate_timeline_consistency,
 )
 from ..minimax.latent_manager import SceneLatentManager
+from ..minimax.scene_inputs import reference_choices, validate_reference_keys
+from ..minimax.settings_payload import minimax_h3_settings_for_scene
 from ..minimax.prompt_assembly import (
     assemble_minimax_h3_prompt,
     build_minimax_prompt_context,
@@ -466,6 +468,7 @@ _SCENE_PATCH_TEXT_FIELDS = (
     "enhance_prompt",
     "minimax_h3_prompt",
     "minimax_h3_pass2_prompt",
+    "minimax_h3_continuation_direction",
     "flux_prompt",
     "nb_prompt",
     "flow_gpt_prompt",
@@ -483,6 +486,8 @@ _SCENE_PATCH_TEXT_FIELDS = (
     "custom_audio_path",
 )
 _SCENE_PATCH_NUMBER_FIELDS = ("start", "end")
+# A number, or null to go back to the default (0.5 s). It is kept between 0.5 s and half of the scene when it is used.
+_SCENE_PATCH_OPTIONAL_NUMBER_FIELDS = ("minimax_h3_continuation_start_seconds",)
 _SCENE_PATCH_FLAG_FIELDS = ("no_character_present", "lyric_no_lip_sync")
 _SCENE_PATCH_LIST_FIELDS = ("lyric_singers",)
 _SCENE_PATCH_ECHOED_FIELDS = ("id",)  # clients often send back what they read; the id cannot change
@@ -490,6 +495,7 @@ _SCENE_PATCH_ECHOED_FIELDS = ("id",)  # clients often send back what they read; 
 
 def _unsupported_scene_fields(patch: Dict[str, Any]) -> List[str]:
     known = set(_SCENE_PATCH_TEXT_FIELDS) | set(_SCENE_PATCH_NUMBER_FIELDS) | set(_SCENE_PATCH_FLAG_FIELDS)
+    known |= set(_SCENE_PATCH_OPTIONAL_NUMBER_FIELDS)
     known |= set(_SCENE_PATCH_LIST_FIELDS) | set(_SCENE_PATCH_ECHOED_FIELDS)
     return sorted(
         key for key in patch
@@ -513,7 +519,7 @@ def patch_scene(
     if unsupported:
         supported = sorted(
             set(_SCENE_PATCH_TEXT_FIELDS) | set(_SCENE_PATCH_NUMBER_FIELDS)
-            | set(_SCENE_PATCH_FLAG_FIELDS) | set(_SCENE_PATCH_LIST_FIELDS)
+            | set(_SCENE_PATCH_FLAG_FIELDS) | set(_SCENE_PATCH_LIST_FIELDS) | set(_SCENE_PATCH_OPTIONAL_NUMBER_FIELDS)
         )
         raise ValidationError(
             f"Unsupported scene field{'s' if len(unsupported) > 1 else ''}: {', '.join(unsupported)}. "
@@ -554,6 +560,20 @@ def patch_scene(
         for key in _SCENE_PATCH_FLAG_FIELDS:
             if key in patch:
                 scene[key] = bool(patch[key])
+
+        for key in _SCENE_PATCH_OPTIONAL_NUMBER_FIELDS:
+            if key in patch:
+                value = patch[key]
+                if value is None or value == "":
+                    scene[key] = None
+                    continue
+                try:
+                    number = float(value)
+                except (TypeError, ValueError):
+                    raise ValidationError(f"{key} must be a number of seconds, or null for the default.")
+                if number != number or number in (float("inf"), float("-inf")) or number < 0:
+                    raise ValidationError(f"{key} must be a number of seconds that is 0 or more, or null for the default.")
+                scene[key] = round(number, 2)
 
         # Same as editing the lyric in the Builder: the scene is marked instrumental from its text.
         if "lyric_text" in patch and "lyric_no_lip_sync" not in patch:
@@ -882,18 +902,22 @@ def upsert_reference_subject(
         subjects = ref_builder.setdefault("subjects", [])
 
         idx = next((i for i, s in enumerate(subjects) if s.get("id") == subject_id), -1)
+        existing = subjects[idx] if idx >= 0 else {}
+        voice = payload.get("minimax_voice")
+        if voice is None:
+            voice = existing.get("minimax_voice", "none")
         subj = {
             "id": subject_id,
-            "name": payload.get("name", "Character"),
-            "description": payload.get("description", ""),
-            "face_description": payload.get("face_description", ""),
-            "reference_type": payload.get("reference_type", "character"),
-            "minimax_voice": payload.get("minimax_voice", "none"),
-            "trigger_phrase": payload.get("trigger_phrase", ""),
-            "trigger_position": payload.get("trigger_position", "start"),
-            "extra_reference_for": payload.get("extra_reference_for", ""),
-            "extra_reference_note": payload.get("extra_reference_note", ""),
-            "image": payload.get("image", {}),
+            "name": payload.get("name", existing.get("name", "Character")),
+            "description": payload.get("description", existing.get("description", "")),
+            "face_description": payload.get("face_description", existing.get("face_description", "")),
+            "reference_type": payload.get("reference_type", existing.get("reference_type", "character")),
+            "minimax_voice": voice,
+            "trigger_phrase": payload.get("trigger_phrase", existing.get("trigger_phrase", "")),
+            "trigger_position": payload.get("trigger_position", existing.get("trigger_position", "start")),
+            "extra_reference_for": payload.get("extra_reference_for", existing.get("extra_reference_for", "")),
+            "extra_reference_note": payload.get("extra_reference_note", existing.get("extra_reference_note", "")),
+            "image": payload.get("image", existing.get("image", {})),
         }
 
         if idx >= 0:
@@ -1008,9 +1032,76 @@ def update_scene_reference_mapping(
             if isinstance(mapping.get(api_name), dict):
                 current.update(mapping[api_name])
 
+        # Same switches the Builder sets after a scene mapping (reference_scene_mapping.mjs), so the
+        # mapped subjects and locations are actually used.
+        ref_builder = session["flux_reference_builder"]
+        for api_name, list_key, switch in (
+            ("subjects", "subjects", "use_subject_reference"),
+            ("locations", "locations", "use_location_references"),
+        ):
+            if isinstance(mapping.get(api_name), dict):
+                ref_builder[switch] = bool(ref_builder.get(list_key) or _reference_map(session, api_name))
+
         save_result = _persist_session(folder, session)
         return {
             "scene_mapping": {name: dict(_reference_map(session, name)) for name in _REFERENCE_MAP_KEYS},
+            "revision": save_result.get("revision", current_rev + 1),
+        }
+
+
+def _sorted_scene_with_index(session: Dict[str, Any], scene_id: str, project_id: str):
+    """The scene (by id or 1-based number) and its position in timeline order, which the reference maps use."""
+    segments = sorted(session.get("segments") or [], key=lambda s: float(s.get("start", 0.0) or 0.0))
+    index = next((i for i, s in enumerate(segments) if s.get("id") == scene_id or str(i + 1) == str(scene_id)), -1)
+    if index < 0:
+        raise SceneNotFoundError(scene_id, project_id)
+    return segments[index], index
+
+
+def _scene_reference_choices(session: Dict[str, Any], scene_id: str, project_id: str) -> Dict[str, Any]:
+    segment, index = _sorted_scene_with_index(session, scene_id, project_id)
+    mode = str(minimax_h3_settings_for_scene(session, segment).get("video_mode") or "")
+    return reference_choices(session, segment, index, mode)
+
+
+def get_scene_minimax_references(project_id: str, scene_id: str) -> Dict[str, Any]:
+    """What "Choose MiniMax References" shows for a scene: every reference it can use, and the order it sends."""
+    _folder, session = _get_active_session_and_folder(project_id)
+    return _scene_reference_choices(session, scene_id, project_id)
+
+
+def set_scene_minimax_references(
+    project_id: str,
+    scene_id: str,
+    keys: Any = None,
+    automatic: bool = False,
+    if_match_revision: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Choose the ordered MiniMax references for one scene (``keys``), or hand it back to the scene mappings."""
+    if automatic and keys is not None:
+        raise ValidationError("Send either `keys` (a chosen order) or `automatic: true`, not both.")
+    if not automatic and keys is None:
+        raise ValidationError("Send `keys` (a list of reference keys) or `automatic: true`.")
+    with _BUILDER_SAVE_LOCK:
+        folder, session = _get_active_session_and_folder(project_id)
+        current_rev = int(session.get("revision") or session.get("builder_save_revision") or 0)
+        if if_match_revision is not None and if_match_revision != current_rev:
+            raise RevisionConflictError(current_rev, if_match_revision)
+
+        segment, _index = _sorted_scene_with_index(session, scene_id, project_id)
+        if automatic:
+            segment["minimax_h3_reference_keys"] = None
+        else:
+            try:
+                segment["minimax_h3_reference_keys"] = validate_reference_keys(
+                    _scene_reference_choices(session, scene_id, project_id), keys,
+                )
+            except ValueError as exc:
+                raise ValidationError(str(exc)) from exc
+
+        save_result = _persist_session(folder, session)
+        return {
+            **_scene_reference_choices(session, scene_id, project_id),
             "revision": save_result.get("revision", current_rev + 1),
         }
 

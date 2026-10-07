@@ -25,7 +25,7 @@ JSON_PATH = ROOT / "agent_api" / "endpoints.json"
 
 # (section title, path prefix test) in display order. The first matching section wins.
 SECTIONS = [
-    ("Service and discovery", ("/health", "/meta", "/modes", "/models", "/events", "/queue")),
+    ("Service and discovery", ("/health", "/meta", "/modes", "/refmods", "/models", "/events", "/queue")),
     ("Projects", ("/projects", "/pipelines")),
     ("Jobs", ("/jobs",)),
     ("LLM and prompt instructions", ("/llm", "/instructions")),
@@ -38,6 +38,7 @@ DESCRIPTIONS: Dict[str, str] = {
     "GET /health": "Health check: `healthy` or `degraded`, whether ComfyUI is up, its queue depth, whether FFmpeg is found and whether a GPU is available.",
     "GET /meta": "API version (`v1`), pack version and update date, schema version and the list of capabilities (projects, scenes, prompts, videos, latents, post, face fix, pipelines, jobs, events).",
     "GET /modes": "Supported image and video modes with their requirements and capabilities.",
+    "GET /refmods": "Saved RefMods in models/refmods with their type (folder), kind, frame count, tokens and description. Filter with `folder` (for example `identity`). A project switched to the RefMod pipeline (`pipeline: refmod` in the MiniMax H3 settings) renders from these.",
     "GET /models": "Models, checkpoints and LoRAs installed in ComfyUI, grouped by type.",
     "GET /events": "Server-sent events stream of job and project events, with a keep-alive every 15 seconds. Filter with `project_id`.",
     "GET /queue": "Summary of the API job queue: running, queued and finished jobs.",
@@ -65,7 +66,7 @@ DESCRIPTIONS: Dict[str, str] = {
     "GET /post/adjust/presets": "List the saved color and tone adjustment presets.",
     "PUT /post/adjust/presets/{name}": "Save a color and tone adjustment preset (`settings`).",
     # --- Settings schema -------------------------------------------------------------------
-    "GET /settings/minimax-h3/schema": "Every MiniMax H3 video setting that can be patched under the `minimax_h3` group: type, default, allowed values and limits.",
+    "GET /settings/minimax-h3/schema": "Every MiniMax H3 video setting that can be patched under the `minimax_h3` group: type, default, allowed values and limits. `continuity_mode` takes `latent_continuation_masked` (the previous scene's latent is protected at the start of the next, Single and 2 Pass), `latent_context_frames` takes 39, 90, 141 or 192 for it, and `location_transition_preset` takes `masked`.",
     # --- Pipelines -------------------------------------------------------------------------
     "POST /pipelines/from-song": "Song to final video in one job: create the project if needed, attach audio and lyrics, make the scenes, then run the full build.",
     "GET /projects/{project_id}/pipelines/plan": "Dry-run plan for the full build: steps, estimated GPU minutes and missing prerequisites.",
@@ -74,7 +75,7 @@ DESCRIPTIONS: Dict[str, str] = {
     # --- Projects --------------------------------------------------------------------------
     "GET /projects": "List projects found in the allowed project roots. `root` limits the search to one root.",
     "POST /projects": "Create a project: folder, empty session seeded with your saved model defaults. Body: `name`, optional `template_from`.",
-    "GET /projects/{pid}": "The full project session. `include` limits it to some fields.",
+    "GET /projects/{pid}": "The project with its settings, scenes, audio, story and references. `include` picks some of those groups and/or top-level session keys by name (e.g. `audio_path`, `detected_tempo_bpm`, `flux_reference_builder`; API keys come back blank). An unknown name is a 400 that lists it.",
     "DELETE /projects/{pid}": "Delete a project folder from disk. Needs `confirm` equal to the project id.",
     "POST /projects/{pid}/duplicate": "Copy a project to `new_name`. `options` chooses what to keep (scenes, mappings, notes, prompts, media).",
     "POST /projects/{pid}/export": "Build a zip of the project for backup or sharing.",
@@ -105,7 +106,7 @@ DESCRIPTIONS: Dict[str, str] = {
     "POST /projects/{pid}/scenes": "Insert a scene (`position`, `ref_scene_id`, `duration`, `label`, `notes`, prompts). Later scene files are renumbered.",
     "POST /projects/{pid}/scenes/bulk": "Apply several scene operations in one atomic change (`operations`).",
     "GET /projects/{pid}/scenes/{sid}": "One scene: timing, lyrics, story beat, prompts (including `minimax_h3_prompt`), approved image, rendered video with its thumbnail, and scene audio. Each file is `null` when it does not exist.",
-    "PATCH /projects/{pid}/scenes/{sid}": "Change scene fields: `lyric_text` (sets `lyric_no_lip_sync` from the text unless you send it), `lyric_singers`, `story_beat`, prompts (`t2i_prompt`, `i2v_prompt`, `enhance_prompt`, `minimax_h3_prompt`, `minimax_h3_pass2_prompt`, `flux_prompt`, `nb_prompt`, `flow_gpt_prompt`, `ernie_t2i_prompt`), `notes`, `label`, `start`, `end`, `no_character_present`, `lyric_no_lip_sync`, or per-scene `use_scene_*` / `*_settings`. A field that cannot be patched returns a validation error that lists the supported fields, and nothing is saved.",
+    "PATCH /projects/{pid}/scenes/{sid}": "Change scene fields: `lyric_text` (sets `lyric_no_lip_sync` from the text unless you send it), `lyric_singers`, `story_beat`, prompts (`t2i_prompt`, `i2v_prompt`, `enhance_prompt`, `minimax_h3_prompt`, `minimax_h3_pass2_prompt`, `flux_prompt`, `nb_prompt`, `flow_gpt_prompt`, `ernie_t2i_prompt`), `minimax_h3_continuation_direction` (what a scene continued with `latent_continuation_masked` does after its first moments, one smooth movement, no cut), `minimax_h3_continuation_start_seconds` (second of that scene where the direction starts: 0.5 by default, at most half the scene, `null` resets), `notes`, `label`, `start`, `end`, `no_character_present`, `lyric_no_lip_sync`, or per-scene `use_scene_*` / `*_settings`. A field that cannot be patched returns a validation error that lists the supported fields, and nothing is saved.",
     "DELETE /projects/{pid}/scenes/{sid}": "Delete a scene. `ripple` closes the gap. Later scene files are renumbered.",
     "POST /projects/{pid}/scenes/{sid}/split": "Split a scene at `at_time`. `clear_right_media` drops the media on the new right half. Lyrics follow their words.",
     "POST /projects/{pid}/scenes/{sid}/merge": "Merge a scene with its neighbour (`with_direction`: previous or next). Lyrics are joined.",
@@ -116,15 +117,17 @@ DESCRIPTIONS: Dict[str, str] = {
     "PUT /projects/{pid}/references/subjects/{rid}": "Create or update a character (name, description, `reference_type`, voice, trigger phrase, `image`).",
     "PUT /projects/{pid}/references/locations/{rid}": "Create or update a location (name, description, optional image).",
     "DELETE /projects/{pid}/references/{kind}/{rid}": "Delete a character or location (`kind` is `subjects` or `locations`) and its scene mappings.",
-    "GET /projects/{pid}/references/scene-mapping": "Read which characters, locations, ingredients and extras each scene uses.",
-    "PUT /projects/{pid}/references/scene-mapping": "Set which characters, locations, ingredients and extras each scene uses.",
+    "GET /projects/{pid}/references/scene-mapping": "Read which characters, locations, ingredients and extras each scene uses. A scene maps to one location here. To see every reference a MiniMax scene can pick from, and the order it sends, use `GET /projects/{pid}/scenes/{sid}/minimax-references`.",
+    "PUT /projects/{pid}/references/scene-mapping": "Set which characters, locations, ingredients and extras each scene uses. Sending `subjects` or `locations` also turns on that \"use reference\" switch, as the Builder does.",
+    "GET /projects/{pid}/scenes/{sid}/minimax-references": "What the Video Builder's Choose MiniMax References button shows for a scene: `available` (every character, extra, location and ingredients sheet with an image, each with its `key`, whether the scene mapping already picks it, and its `image_number` when selected), `selected` (the order sent to MiniMax), `custom` (chosen by hand or following the scene mappings), `automatic_keys` and the `limits` (9 images, 8 choices when the scene image is Image 1).",
+    "PUT /projects/{pid}/scenes/{sid}/minimax-references": "Choose the ordered MiniMax references for a scene: `keys` is the list from `available` (for example `[\"subject:ava\", \"location:roof\", \"location:alley\"]`, several locations are allowed), or `automatic: true` to follow the scene mappings again. Unknown or repeated keys and too many keys are refused with the allowed keys listed. _(If-Match)_",
     "POST /projects/{pid}/references/{kind}/{rid}/describe": "Describe a character or location image with the project's LLM (Gemma Describe) and save the description.",
     "POST /projects/{pid}/references/locations/extract": "Ask the project's LLM for filming locations from the lyrics and `style_theme` (LM Extract) and add them.",
     "POST /projects/{pid}/references/assign-scenes": "Assign characters and locations to scenes by pattern (`random`, `rotate`, `blocks`, `unchanged`). `dry_run` previews.",
     # --- Story -----------------------------------------------------------------------------
     "GET /projects/{pid}/story": "The saved story layer: idea, arc, brief.",
     "PUT /projects/{pid}/story": "Replace the saved story layer.",
-    "PUT /projects/{pid}/story/settings": "Save the Storyboard scene defaults (`defaults`: video style, camera flow, motion speeds, cut frequency) and the story fields (`story`: idea, strength, world style).",
+    "PUT /projects/{pid}/story/settings": "Save the Storyboard scene defaults (`defaults`: every key the Builder saves in `builder_storyboard_defaults`, e.g. video style, camera flow, motion speeds, cut frequency, short film planning, temporal and FX settings, plus `story_arc_detail`) and the story fields (`story`: every key of `builder_story_layer`, e.g. `enabled`, idea, strength, world style).",
     "POST /projects/{pid}/story/{step}": "Write a story step with the project's LLM. `step` is `arc` (from the story idea), `brief` or `beats` (a beat per scene without one; `replace_existing`, `scene_ids`, `limit`). Each step also updates the Storyboard Builder's saved copy.",
     # --- Prompts ---------------------------------------------------------------------------
     "POST /projects/{pid}/minimax-prompts": "Write MiniMax H3 reference-to-video prompts with the project's LLM for scenes that have none (`replace_existing`, `scene_ids`, `limit`). Each singing scene's prompt has its lyric in double quotes after 'sings the lyric line,'. Saves them on the scenes and in the Storyboard Builder's copy (`storyboard/storyboard.json` and the `prompts/` files). Needs a mapped character with an image on each scene. Each prompt is the Builder's full format: subject definitions tying `<Subject N>` to `<Picture N>`, summary, retention analysis, the shots, and the soundscape.",
@@ -136,7 +139,7 @@ DESCRIPTIONS: Dict[str, str] = {
     "POST /projects/{pid}/scenes/{sid}/prompts/video-chained": "Write one scene's video prompt continuing from the previous scene's last frame, using the scene's own prompt, notes and references.",
     "POST /projects/{pid}/scenes/{sid}/prompts/enhance": "Improve an existing scene prompt with the LLM.",
     "POST /projects/{pid}/scenes/{sid}/prompts/edit": "Rewrite an existing scene prompt following an instruction.",
-    "GET /projects/{pid}/scenes/{sid}/prompts/context": "The context brief an outside agent needs to write a prompt itself: cast, cut plan and character budget (`kind`).",
+    "GET /projects/{pid}/scenes/{sid}/prompts/context": "The context brief an outside agent needs to write a prompt itself: cast, cut plan and character budget (`kind`). A scene continued with `latent_continuation_masked` also gets a `continuation` block: `hold_seconds`, the scene's `direction` and the `rules` for writing it as the next moment of the previous scene's take.",
     "POST /projects/{pid}/scenes/{sid}/prompts/minimax/assemble": "Build a MiniMax prompt from shot descriptions you provide (`shots`, `mode`). `save` stores it. A reference-to-video prompt gets the same subject definitions and soundscape as `minimax-prompts`.",
     "POST /projects/{pid}/scenes/{sid}/prompts/minimax/validate": "Check a MiniMax prompt against the length and format rules.",
     "PUT /projects/{pid}/scenes/{sid}/prompts/{field}": "Set a prompt field directly (`t2i_prompt`, `i2v_prompt`, `minimax_h3_prompt`, ...). Body: `prompt`, `origin`.",
@@ -149,7 +152,7 @@ DESCRIPTIONS: Dict[str, str] = {
     "DELETE /projects/{project_id}/scenes/{scene_id}/image": "Remove the scene's image.",
     "POST /projects/{project_id}/scenes/{scene_id}/image/from-video-frame": "Take the scene image from a frame of a video (`source_video_path`).",
     # --- Video -----------------------------------------------------------------------------
-    "POST /projects/{project_id}/scenes/{scene_id}/video/render": "Render one scene's video with ComfyUI (`mode`, e.g. `minimax_h3`). Trims to the exact timeline length and saves it as `video_NNNN-audio.mp4`. Set `audio_mode: built_in_audio` in the MiniMax settings for H3 voices and sound (Single or 2 Pass; 2 Pass Advanced needs input audio).",
+    "POST /projects/{project_id}/scenes/{scene_id}/video/render": "Render one scene's video with ComfyUI (`mode`, e.g. `minimax_h3`). Trims to the exact timeline length and saves it as `video_NNNN-audio.mp4`. Set `audio_mode: built_in_audio` in the MiniMax settings for H3 voices and sound (Single or 2 Pass; 2 Pass Advanced needs input audio). With `continuity_mode: latent_continuation_masked` the previous scene must be rendered first (`PREDECESSOR_MISSING` otherwise); it works in Single and 2 Pass. When `continuity_prompt_from_last_frame` is also true, the scene's prompt is first written by the LLM from the previous scene's rendered final frame (the Video Builder's automatic prompt), saved on the scene, and then rendered. A `prompt` in `params` skips that.",
     "POST /projects/{project_id}/video/render": "Render many scenes' videos one after another as a GPU job, and stitch them when asked.",
     "POST /projects/{project_id}/video/graph": "Build the ComfyUI graph for a video `mode` and the given parameters without running it, to inspect what would be sent.",
     "GET /projects/{project_id}/scenes/{scene_id}/video/takes": "List the scene's raw (untrimmed) renders, newest first, with length, frame count and whether the file still exists. Takes in a sibling scratch folder with the same project name are marked `other_folder`. Only renders made through the API are always kept: the Video Builder deletes its scratch renders after each render. Use `take` on the trim call.",

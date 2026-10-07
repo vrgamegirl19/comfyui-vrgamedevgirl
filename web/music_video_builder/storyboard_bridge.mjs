@@ -982,6 +982,7 @@ export function createStoryboardBridge({
       },
       scenes: storyboardScenePayload(),
       referenceBuilder: storyboardReferenceBuilderWithIdLoraRefs(state.fluxReferenceBuilder),
+      refmodPipeline: normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3" && state.miniMaxH3Settings?.pipeline === "refmod",
       storyLayer: normalizeBuilderStoryLayer(state.builderStoryLayer),
       gemmaSettings: {
         ...storyboardRunnerSettings,

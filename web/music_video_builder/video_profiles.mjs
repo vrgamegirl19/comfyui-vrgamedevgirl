@@ -71,7 +71,8 @@ export function createVideoProfileActions({
   async function refresh(preferredName = state.miniMaxVideoProfile || "") {
     const data = await postJson("/vrgdg/music_builder/list_video_profiles", {});
     profiles = Array.isArray(data?.profiles) ? data.profiles : [];
-    renderOptions(preferredName);
+    // Without a choice in this session, start with the profile chosen last so it does not have to be picked again.
+    renderOptions(preferredName || data?.last || "");
     return profiles;
   }
 
@@ -120,7 +121,11 @@ export function createVideoProfileActions({
     const name = selectedName();
     state.miniMaxVideoProfile = name;
     syncButtons();
-    if (!name) return;
+    if (!name) {
+      // Choosing no profile is remembered too, so the next start does not bring one back.
+      postJson("/vrgdg/music_builder/set_last_video_profile", { name: "" }).catch(() => null);
+      return;
+    }
     const segment = wizardVideoSettings.global ? null : requireActiveSegment();
     if (!segment && !wizardVideoSettings.global) return;
     try {
@@ -141,6 +146,27 @@ export function createVideoProfileActions({
       toast(`Applied video profile "${profile.name || name}".`);
     } catch (error) {
       toast(`Could not apply the video profile: ${error?.message || error}`, true);
+    }
+  }
+
+  // A new project starts with the selected profile's video settings. Existing projects keep their own.
+  async function applyToNewProject() {
+    const name = selectedName();
+    if (!name) return;
+    try {
+      const data = await postJson("/vrgdg/music_builder/load_video_profile", { name });
+      const profile = data?.profile;
+      if (!profile?.settings) throw new Error("The profile has no settings.");
+      const current = saveMiniMaxH3SettingsFromPanel(null);
+      const merged = applyVideoProfileSettings(current, profile.settings);
+      clearMiniMaxImageReferenceStartFrameOnModeSwitch(null, merged.video_mode);
+      state.miniMaxH3Settings = merged;
+      setMiniMaxH3RenderPassForSegment(null, merged.render_pass);
+      setMiniMaxH3ModeForSegment(null, merged.video_mode);
+      syncMiniMaxH3Panel();
+      toast(`New project started with video profile "${profile.name || name}".`);
+    } catch (error) {
+      toast(`Could not apply the video profile to the new project: ${error?.message || error}`, true);
     }
   }
 
@@ -173,6 +199,7 @@ export function createVideoProfileActions({
     select.addEventListener("change", () => { applySelectedProfile(); });
     addButton.onclick = () => saveCurrentAsProfile();
     removeButton.onclick = () => deleteSelectedProfile();
+    state.applyVideoProfileToNewProject = applyToNewProject;
     syncButtons();
   }
 
