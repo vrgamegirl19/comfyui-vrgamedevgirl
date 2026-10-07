@@ -2276,8 +2276,10 @@ export function openMusicVideoWizard(api = {}) {
           wizardState.storyLayer = { ...wizardState.storyLayer, ...updated };
           arcText.value = wizardState.storyLayer.user_story_arc || "";
         }
-        done.add("story");
-        await saveWizardProgress("wizard story arc");
+        if (updated) {
+          done.add("story");
+          await saveWizardProgress("wizard story arc");
+        }
       } finally {
         arcButton.disabled = false;
       }
@@ -2287,7 +2289,6 @@ export function openMusicVideoWizard(api = {}) {
       lyricStrengthRow,
       field("Overall Story Idea (optional)", overallStoryIdea, "Sets the premise, world, or theme. Leave blank for a lyric-led idea."),
       field("User Story Arc", arcText),
-      arcButton,
     );
     const brief = card("2. Song Story Brief", "A compact Gemma summary of the song's premise, emotional arc, motifs, and scene guidance.");
     const briefText = textarea(wizardState.storyLayer.song_story_brief || "", "Create or edit the song story brief...");
@@ -2315,13 +2316,15 @@ export function openMusicVideoWizard(api = {}) {
           wizardState.storyLayer = { ...wizardState.storyLayer, ...updated };
           briefText.value = wizardState.storyLayer.song_story_brief || "";
         }
-        done.add("story");
-        await saveWizardProgress("wizard story brief");
+        if (updated) {
+          done.add("story");
+          await saveWizardProgress("wizard story brief");
+        }
       } finally {
         briefButton.disabled = false;
       }
     };
-    brief.append(briefText, briefButton);
+    brief.append(briefText);
     const beats = card("3. Scene Story Beats", "Create short per-scene narrative beats using lyrics, sections, subjects, locations, and the story brief.");
     const beatStatus = el("div", "vrgdg-wizard-copy", `Lyric sections: ${Number(data.lyricSectionCount || 0)} / ${Number(data.sceneCount || 0)} | Scene beats: ${Number(data.storyBeatCount || 0)} / ${Number(data.sceneCount || 0)}`);
     const detect = button("Detect Lyric Sections", "primary");
@@ -2345,7 +2348,8 @@ export function openMusicVideoWizard(api = {}) {
         wizardState.storyLayer.song_story_brief = briefText.value;
         wizardState.storyLayer.lyric_story_strength = lyricStoryStrengthValue(lyricStrength.value);
         await api.updateStoryLayer?.(wizardState.storyLayer);
-        await api.createSceneBeats?.({ overwrite: false });
+        const result = await api.createSceneBeats?.({ overwrite: false });
+        if (result?.error) return;
         done.add("story");
         render();
       } finally {
@@ -2368,10 +2372,53 @@ export function openMusicVideoWizard(api = {}) {
       }
     };
     const beatActions = el("div", "vrgdg-wizard-button-row");
-    beatActions.append(detect, missing, replace);
+    beatActions.append(detect, replace);
     beats.append(beatStatus, beatActions);
+    const createAll = button("Create Arc → Brief → Missing Beats", "primary");
+    const storyActions = el("div", "vrgdg-wizard-button-row");
+    storyActions.style.justifyContent = "flex-end";
+    createAll.style.marginRight = "auto";
+    storyActions.append(createAll, arcButton, briefButton, missing);
+    createAll.onclick = async () => {
+      const buttons = [createAll, arcButton, briefButton, missing, replace];
+      buttons.forEach((control) => { control.disabled = true; });
+      try {
+        wizardState.storyLayer = {
+          ...wizardState.storyLayer,
+          enabled: Boolean(enabled.checked),
+          overall_story_idea: overallStoryIdea.value,
+          user_story_arc: arcText.value,
+          song_story_brief: briefText.value,
+          lyric_story_strength: lyricStoryStrengthValue(lyricStrength.value),
+        };
+        const arcResult = await api.createStoryArc?.({
+          storyLayer: wizardState.storyLayer,
+          userStoryArc: arcText.value,
+          storyIdea: overallStoryIdea.value,
+          characterMotion: wizardState.characterMotionSpeed,
+        });
+        if (!arcResult?.user_story_arc) return;
+        wizardState.storyLayer = { ...wizardState.storyLayer, ...arcResult };
+        arcText.value = wizardState.storyLayer.user_story_arc;
+        const briefResult = await api.createStoryBrief?.({
+          storyLayer: wizardState.storyLayer,
+          userStoryArc: arcText.value,
+        });
+        if (!briefResult?.song_story_brief) return;
+        wizardState.storyLayer = { ...wizardState.storyLayer, ...briefResult };
+        briefText.value = wizardState.storyLayer.song_story_brief;
+        await api.updateStoryLayer?.(wizardState.storyLayer);
+        const beatsResult = await api.createSceneBeats?.({ overwrite: false });
+        if (beatsResult?.error) return;
+        done.add("story");
+        await saveWizardProgress("wizard arc brief and missing beats");
+        render();
+      } finally {
+        buttons.forEach((control) => { control.disabled = false; });
+      }
+    };
     grid.append(arc, brief, beats);
-    content.append(note, grid);
+    content.append(note, storyActions, grid);
   }
 
   function renderFinish(data) {

@@ -397,8 +397,8 @@ export function createReferenceBuilder({
     });
 
     const { launchAdvancedLineMapping, openSceneAssignmentDialog } = createSceneAssignment({
-      allEditableSegments, backdrop, logicalReferenceSubjects, logicalSubjectIdsForScene, openLyricReviewModal,
-      pushHistory, refs, renderAll, selectedSegmentsForBatch, state,
+      allEditableSegments, autoSaveSessionQuiet, backdrop, logicalReferenceSubjects, logicalSubjectIdsForScene,
+      openLyricReviewModal, pushHistory, refs, renderAll, selectedSegmentsForBatch, state, syncInspector,
     });
 
     const { exportSceneMappingContextForGpt, openImportGptSceneMapDialog, renderMapping } = createReferenceSceneMapping({

@@ -445,7 +445,7 @@ export function createSceneOutput({
         }));
         const promptSummary = storyboardSummaryForSegment(segment, imagePrompt, videoPrompt, referenceData);
         const cutPlan = miniMaxProject
-          ? storyboardCutPlanForDuration(timelineSegmentDuration(segment), defaults.minimax_h3_cut_frequency)
+          ? storyboardCutPlanForDuration(timelineSegmentDuration(segment), segment.location_continuous_shot ? 0 : defaults.minimax_h3_cut_frequency)
           : null;
         const subjectRefNames = (referenceData.subject_refs || [])
           .map((subject) => String(subject?.name || "").trim())

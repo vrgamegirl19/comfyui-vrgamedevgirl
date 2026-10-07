@@ -56,7 +56,11 @@ class BuilderMiniMaxCutFrequencyTests(unittest.TestCase):
             BUILDER_SOURCE,
         )
         self.assertIn(
-            "storyboardCutPlanForDuration(duration, state.builderStoryboardDefaults?.minimax_h3_cut_frequency)",
+            "const fallback = storyboardCutPlanForDuration(duration, segment?.location_continuous_shot",
+            BUILDER_SOURCE,
+        )
+        self.assertIn(
+            "? 0 : state.builderStoryboardDefaults?.minimax_h3_cut_frequency);",
             BUILDER_SOURCE,
         )
         self.assertIn("cutPlan.instruction,", BUILDER_SOURCE)

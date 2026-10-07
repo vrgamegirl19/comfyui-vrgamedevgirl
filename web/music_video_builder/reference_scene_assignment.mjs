@@ -1,5 +1,7 @@
-import { makeButton, makeCheckbox, makeField, makeInput, makeSelect, toast } from "./controls.mjs";
+import { makeButton, makeCheckbox, makeField, makeInput, makeSelect, normalizeProjectVideoEngine, toast } from "./controls.mjs";
 import { normalizeFluxReferenceBuilder } from "./reference_data.mjs";
+import { cloneMiniMaxH3Settings } from "./minimax_h3.mjs";
+import { eligibleSharedLocationRuns, sharedLocationRuns } from "./scene_locations.mjs";
 
 export function createSceneAssignment({
   allEditableSegments, backdrop, logicalReferenceSubjects, logicalSubjectIdsForScene, openLyricReviewModal,
@@ -74,11 +76,13 @@ export function createSceneAssignment({
     note.style.cssText = "font-size:11px;color:#94a3b8;line-height:1.4;";
     note.textContent = "Scenes marked No character present keep their character mapping empty. Fill-empty mode preserves existing character and location assignments.";
     const actions = document.createElement("div");
-    actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;";
+    actions.style.cssText = "display:grid;grid-template-columns:repeat(4,1fr);gap:9px;";
     const cancelAssign = makeButton("Cancel");
     const shuffle = makeButton("Preview / Shuffle", "primary");
     const apply = makeButton("Apply Mapping", "primary");
-    actions.append(cancelAssign, shuffle, apply);
+    const autoContinuous = makeButton("Auto Continuous Shots", "primary");
+    autoContinuous.title = "Use one continuous shot for each adjacent location group; continue later scenes from the previous scene when MiniMax mode allows it.";
+    actions.append(cancelAssign, shuffle, apply, autoContinuous);
     panel.append(titleRow, grid, note, preview, actions);
     dialogBackdrop.append(panel);
     document.body.append(dialogBackdrop);
@@ -205,6 +209,42 @@ export function createSceneAssignment({
       renderAll();
       dialogBackdrop.remove();
       toast(`Assigned character/location mappings for ${proposal.length} scene${proposal.length === 1 ? "" : "s"}.`);
+    };
+    autoContinuous.onclick = async () => {
+      if (normalizeProjectVideoEngine(state.projectVideoEngine) !== "minimax_h3") {
+        toast("Automatic continuous shots require the MiniMax H3 video engine.", true);
+        return;
+      }
+      const runs = sharedLocationRuns(refs, scenes);
+      if (!runs.length) {
+        toast("No adjacent scenes share a mapped location.", true);
+        return;
+      }
+      const eligible = eligibleSharedLocationRuns(refs, scenes, state.miniMaxH3Settings);
+      if (!eligible.length) {
+        toast("Shared locations found, but their MiniMax modes do not allow latent continuation.", true);
+        return;
+      }
+      pushHistory();
+      for (const run of eligible) {
+        for (const [index, scene] of run.entries()) {
+          scene.location_continuous_shot = true;
+          if (index === 0) continue;
+          const base = cloneMiniMaxH3Settings(scene.use_scene_minimax_h3_settings && scene.minimax_h3_settings
+            ? scene.minimax_h3_settings : state.miniMaxH3Settings);
+          scene.use_scene_minimax_h3_settings = true;
+          scene.minimax_h3_settings = cloneMiniMaxH3Settings({
+            ...base,
+            continuity_mode: "latent_continuation_masked",
+            location_transition_preset: "masked",
+          });
+          scene.minimax_h3_mode = scene.minimax_h3_settings.video_mode;
+        }
+      }
+      syncInspector();
+      renderAll();
+      await autoSaveSessionQuiet("continuous shots applied to shared locations");
+      toast(`Applied continuous shots to ${eligible.length} location group${eligible.length === 1 ? "" : "s"}.`);
     };
     syncOptions();
   }
