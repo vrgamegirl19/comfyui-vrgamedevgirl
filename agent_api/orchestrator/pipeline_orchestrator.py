@@ -25,7 +25,7 @@ from ..mutations import (
     set_scene_prompt_field_endpoint,
 )
 from .image_orchestrator import approve_scene_image, generate_scene_image_async
-from .video_orchestrator import render_scene_video_async
+from .video_orchestrator import build_stitch_payload, render_scene_video_async
 
 logger = logging.getLogger("vrgdg.agent_api.pipeline_orchestrator")
 
@@ -414,25 +414,10 @@ async def run_build_full_video_job(job: Job, manager: JobManager) -> Dict[str, A
         manager.update_progress(job.id, 88.0, "stitching", message="Stitching scene videos into final video...")
         try:
             _, fresh_session = _get_active_session_and_folder(project_id)
-            fresh_segments = fresh_session.get("segments", [])
-
-            # Collect all scene video paths in sequential order
-            stitch_paths = []
-            for s in fresh_segments:
-                v = s.get("video_path") or s.get("rendered_video_path")
-                if v and os.path.isfile(v):
-                    stitch_paths.append(v)
-
-            if stitch_paths:
-                stitch_res = await asyncio.to_thread(
-                    video_files._stitch_scene_videos,
-                    {
-                        "project_folder": folder,
-                        "scene_paths": stitch_paths,
-                        "audio_path": session_audio_path(fresh_session),
-                    },
-                )
-                final_video_path = stitch_res.get("final_video_path", "")
+            # Same payload as the stitch route and the Builder's Render All stitch (frame sync, scene audio).
+            stitch_payload, _summary = build_stitch_payload(folder, fresh_session, {}, strict=False)
+            stitch_res = await asyncio.to_thread(video_files._stitch_scene_videos, stitch_payload)
+            final_video_path = stitch_res.get("final_video_path", "")
         except Exception as stitch_err:
             logger.warning(f"Final video stitch after full pipeline failed: {stitch_err}")
 
@@ -581,21 +566,10 @@ async def run_build_flf_job(job: Job, manager: JobManager) -> Dict[str, Any]:
         manager.update_progress(job.id, 88.0, "flf_stitching", message="Stitching FLF scene videos...")
         try:
             _, fresh_session = _get_active_session_and_folder(project_id)
-            stitch_paths = [
-                s.get("video_path")
-                for s in fresh_session.get("segments", [])
-                if s.get("video_path") and os.path.isfile(s.get("video_path"))
-            ]
-            if stitch_paths:
-                stitch_res = await asyncio.to_thread(
-                    video_files._stitch_scene_videos,
-                    {
-                        "project_folder": folder,
-                        "scene_paths": stitch_paths,
-                        "audio_path": session_audio_path(fresh_session),
-                    },
-                )
-                final_video_path = stitch_res.get("final_video_path", "")
+            # Same payload as the stitch route and the Builder's Render All stitch (frame sync, scene audio).
+            stitch_payload, _summary = build_stitch_payload(folder, fresh_session, {}, strict=False)
+            stitch_res = await asyncio.to_thread(video_files._stitch_scene_videos, stitch_payload)
+            final_video_path = stitch_res.get("final_video_path", "")
         except Exception as stitch_err:
             logger.warning(f"Final video stitch after FLF pipeline failed: {stitch_err}")
 

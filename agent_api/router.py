@@ -77,6 +77,7 @@ from .orchestrator import (
     save_scene_image_custom,
     scan_project_scene_videos,
     select_scene_video,
+    validate_stitch_request,
     upload_lut_service,
 )
 from .paths import resolve_project_folder
@@ -1468,11 +1469,29 @@ def register_agent_api_routes(server_instance=None):
     async def api_stitch_project_video(request: web.Request):
         project_id = request.match_info["project_id"]
         payload = await request.json() if request.can_read_body else {}
+        if not isinstance(payload, dict):
+            raise ValidationError("The stitch body must be a JSON object.")
+        params = {
+            "scene_ids": payload.get("scene_ids"),
+            "output_prefix": payload.get("output_prefix"),
+            "audio": payload.get("audio"),
+            "audio_path": payload.get("audio_path"),
+            "overlays": payload.get("overlays"),
+        }
+        unknown = sorted(str(key) for key in payload if key not in params)
+        if unknown:
+            raise ValidationError(
+                f"Unknown stitch field(s): {', '.join(unknown)}. Supported: {', '.join(params)}.",
+                details={"unknown": unknown, "supported": list(params)},
+            )
+        params = {key: value for key, value in params.items() if value is not None}
+        # Check the scenes, audio mode and audio file now, so a bad request is a 400 instead of a failed job.
+        validate_stitch_request(project_id, params)
         manager = get_job_manager()
         job = manager.submit_job(
             job_type="video.stitch",
             project_id=project_id,
-            params=payload,
+            params=params,
             is_gpu=False,
         )
         return api_success(
