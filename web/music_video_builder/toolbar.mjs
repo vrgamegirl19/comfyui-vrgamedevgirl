@@ -419,14 +419,16 @@ export function buildTopbar({
   refreshBuilderButton.title = "Save this project, reload the browser to get the latest Builder UI, and reopen this project and scene automatically.";
   refreshBuilderButton.onclick = async () => {
     refreshBuilderButton.disabled = true;
-    refreshBuilderButton.textContent = "Saving and refreshing...";
+    refreshBuilderButton.setAttribute("aria-busy", "true");
+    refreshBuilderButton.title = "Saving and refreshing the Builder UI...";
     try {
       await refreshBuilder();
     } catch (error) {
       toast(`Could not refresh the Builder UI: ${String(error?.message || error)}`, true);
     } finally {
       refreshBuilderButton.disabled = false;
-      refreshBuilderButton.textContent = "Refresh Builder UI";
+      refreshBuilderButton.removeAttribute("aria-busy");
+      refreshBuilderButton.title = "Save this project, reload the browser to get the latest Builder UI, and reopen this project and scene automatically.";
     }
   };
   const promptCreatorButton = makeButton("Prompt Creator (Legacy)");
@@ -486,6 +488,13 @@ export function buildTopbar({
     icon: "save",
     width: 54,
     title: "Save the current project immediately.",
+  });
+  styleCompactToolbarButton(refreshBuilderButton, {
+    icon: "refresh",
+    iconOnly: true,
+    width: 40,
+    ariaLabel: "Refresh Builder UI",
+    title: "Save, refresh the Builder UI, and reopen this project and scene.",
   });
   styleCompactToolbarButton(wizardButton, {
     lines: ["Wizard", "Legacy"],
@@ -586,7 +595,7 @@ export function buildTopbar({
     button.style.justifyContent = "flex-start";
   };
   menuDropdown.append(buyMeACoffeeButton);
-  for (const button of [newProjectButton, loadSessionButton, loadLastProjectButton, refreshBuilderButton, saveProjectAsButton, branchProjectButton, exportProjectButton, importProjectButton, settingsButton, reviewGuideButton, whatsNewMenuButton, gemmaT2IAllButton, gemmaVideoAllButton, zImageAllButton, zEnhanceAllButton, renderAllButton, renderLogButton, stitchPreviewButton, slideshowPreviewButton, fullBuildButton, fullFLFBuildButton]) {
+  for (const button of [newProjectButton, loadSessionButton, loadLastProjectButton, saveProjectAsButton, branchProjectButton, exportProjectButton, importProjectButton, settingsButton, reviewGuideButton, whatsNewMenuButton, gemmaT2IAllButton, gemmaVideoAllButton, zImageAllButton, zEnhanceAllButton, renderAllButton, renderLogButton, stitchPreviewButton, slideshowPreviewButton, fullBuildButton, fullFLFBuildButton]) {
     styleMenuItem(button);
     menuDropdown.append(button);
   }
@@ -598,7 +607,7 @@ export function buildTopbar({
   menuDropdown.append(updateV10Row);
   const projectActions = document.createElement("div");
   projectActions.style.cssText = "display:flex;gap:6px;align-items:center;flex-wrap:nowrap;min-width:max-content;";
-  projectActions.append(menuButton, videoTypeField, uiProfileField, saveButton);
+  projectActions.append(menuButton, videoTypeField, uiProfileField, saveButton, refreshBuilderButton);
   const batchActions = document.createElement("div");
   batchActions.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:nowrap;border-left:1px solid #3f3f46;border-right:1px solid #3f3f46;padding:0 10px;flex:0 0 auto;";
   batchActions.style.display = "none";
