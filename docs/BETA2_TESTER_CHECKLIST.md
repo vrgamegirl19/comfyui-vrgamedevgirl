@@ -1,6 +1,8 @@
 # Beta2.0 tester checklist
 
-Use one copy of this document per tester and project. Replace the blanks as you go. For every test, mark **Pass**, **Fail**, or **Not tested**. If it fails, paste the **exact error message** (or write “no message”), say what happened, and attach a screenshot or log when useful. “Not tested” is appropriate when a model, GPU, service, or account is unavailable; say which prerequisite is missing.
+**Interactive form:** [Report a Beta2.0 feature test](https://form.typeform.com/to/c55P0jKl). Choose the feature ID, mark whether it passed, failed, or could not be tested, and submit one form response per feature. The form asks for the exact error and reproduction steps only when you mark **Fail**. The test steps below are your reference while filling it out.
+
+If you prefer to work offline, use one copy of this document per tester and project and replace the blanks as you go. For every test, mark **Pass**, **Fail**, or **Not tested**. If it fails, paste the **exact error message** (or write “no message”), say what happened, and attach a screenshot or log when useful. “Not tested” is appropriate when a model, GPU, service, or account is unavailable; say which prerequisite is missing.
 
 This covers the user-facing Beta2.0 changes merged through PR #239. It is a hands-on checklist, not a requirement to render every model on every machine. Use a **copy of a small project** (about 3–6 scenes) for tests that alter or delete media. Do not include API keys, private paths, or personal media in a shared report.
 
