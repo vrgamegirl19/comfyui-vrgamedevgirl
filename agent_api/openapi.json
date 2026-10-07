@@ -5789,6 +5789,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Project revision the caller last saw. A mismatch returns REVISION_CONFLICT.",
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
           }
         ],
         "requestBody": {

@@ -15,7 +15,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from ...storyboard import persistence as storyboard_store
 from ...storyboard import story_layer as story_funcs
-from ..errors import ValidationError
+from ..errors import RevisionConflictError, ValidationError
 from ..jobs.manager import JobManager, get_job_manager
 from ..jobs.models import Job
 from ..llm_runtime import llm_payload_from_session, prepare_llm_payload
@@ -251,10 +251,15 @@ def sync_storyboard_files(project_id: str) -> Dict[str, Any]:
 # Scene defaults and the story idea
 # ---------------------------------------------------------------------------
 
-def set_story_settings(project_id: str, params: Dict[str, Any]) -> Dict[str, Any]:
+def set_story_settings(
+    project_id: str,
+    params: Dict[str, Any],
+    if_match_revision: Optional[int] = None,
+) -> Dict[str, Any]:
     """Save Storyboard scene defaults (video style, camera flow, motion speeds) and the story idea.
 
     ``defaults`` holds scene-default fields, ``story`` holds story-layer fields. Both are optional.
+    ``if_match_revision`` (the If-Match header) must equal the saved revision when given.
     """
     defaults_in = params.get("defaults") if isinstance(params.get("defaults"), dict) else {}
     story_in = params.get("story") if isinstance(params.get("story"), dict) else {}
@@ -290,6 +295,9 @@ def set_story_settings(project_id: str, params: Dict[str, Any]) -> Dict[str, Any
 
     with _BUILDER_SAVE_LOCK:
         folder, session = _get_active_session_and_folder(project_id)
+        current_rev = int(session.get("revision") or session.get("builder_save_revision") or 0)
+        if if_match_revision is not None and if_match_revision != current_rev:
+            raise RevisionConflictError(current_rev, if_match_revision)
         defaults = dict(_defaults(session))
         defaults.update(defaults_in)
         session["builder_storyboard_defaults"] = defaults

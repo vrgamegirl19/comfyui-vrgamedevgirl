@@ -571,7 +571,8 @@ def register_agent_api_routes(server_instance=None):
         """Save Storyboard scene defaults and the story idea. Body: {"defaults": {...}, "story": {...}}."""
         pid = request.match_info["pid"]
         payload = await request.json() if request.can_read_body else {}
-        res = await asyncio.to_thread(set_story_settings, pid, payload)
+        if_match = int(request.headers.get("If-Match")) if request.headers.get("If-Match", "").isdigit() else None
+        res = await asyncio.to_thread(set_story_settings, pid, payload, if_match_revision=if_match)
         return api_success(res, revision=res.get("revision"))
 
     @server_instance.routes.post(f"{_API_V1_PREFIX}/projects/{{pid}}/story/{{step}}")
