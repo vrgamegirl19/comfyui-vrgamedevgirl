@@ -79,13 +79,14 @@ class StorySettingsFieldTests(Base):
         self.assertEqual(layer["overall_story_idea"], "idea")
 
     def test_new_fields_are_checked_like_the_builder(self):
-        story.set_story_settings("Song", {"defaults": {"temporal_background_intensity": 14,
+        story.set_story_settings("Song", {"defaults": {"temporal_background_intensity": 9,
                                                        "short_film_planning_mode": "Fully Custom"}})
         saved = self.read_session()["builder_storyboard_defaults"]
-        self.assertEqual(saved["temporal_background_intensity"], 10, "intensity clamps to 0-10")
+        self.assertEqual(saved["temporal_background_intensity"], 9)
         self.assertEqual(saved["short_film_planning_mode"], "fully_custom")
         for bad in ({"temporal_protected_characters": "everyone"}, {"short_film_planning_mode": "bogus"},
-                    {"temporal_allow_background_extras": "no"}, {"temporal_background_intensity": "lots"}):
+                    {"temporal_allow_background_extras": "no"}, {"temporal_background_intensity": "lots"},
+                    {"temporal_background_intensity": 14}):
             with self.assertRaises(errors.ValidationError, msg=bad):
                 story.set_story_settings("Song", {"defaults": bad})
         with self.assertRaises(errors.ValidationError):
