@@ -645,11 +645,13 @@ export function buildTopbar({
   };
   const positionBuilderResourceMonitor = () => {
     const centerBounds = centerActions.getBoundingClientRect();
-    const actionBounds = importActions.getBoundingClientRect();
-    const availableRight = centerBounds.right - actionBounds.right;
-    const fits = availableRight >= 265;
+    const actionRight = Math.max(importActions.getBoundingClientRect().right, batchActions.getBoundingClientRect().right);
+    const availableRight = centerBounds.right - actionRight;
+    const topRowWidth = Math.min(250, Math.max(0, availableRight - 8));
+    const fits = topRowWidth >= 210;
     const parent = fits ? centerActions : topbar;
     if (builderResourceMonitor.parentElement !== parent) parent.append(builderResourceMonitor);
+    builderResourceMonitor.style.width = fits ? `${topRowWidth}px` : "250px";
     builderResourceMonitor.style.position = fits ? "absolute" : "static";
     builderResourceMonitor.style.transform = fits ? "translateY(-50%)" : "none";
     builderResourceMonitor.style.gridColumn = fits ? "" : "1 / -1";
