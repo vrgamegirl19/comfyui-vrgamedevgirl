@@ -1356,5 +1356,72 @@
    }
   ],
   "expected_tokens": 8448
+ },
+ {
+  "name": "a no-character scene sends no subject, so the location is the first video",
+  "scene": {
+   "no_character_present": true
+  },
+  "subjects": [
+   {
+    "id": "character_a",
+    "name": "Ayame",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Ayame description",
+    "refmod": {
+     "name": "identity/Ayame_Realistic",
+     "kind": "video",
+     "tokens": 3072,
+     "strength": 1.0
+    }
+   }
+  ],
+  "extras": [],
+  "location": {
+   "id": "loc_safehouse",
+   "name": "Safehouse floors",
+   "reference_type": "environment",
+   "source": "refmod",
+   "description": "Safehouse floors description",
+   "refmod": {
+    "name": "background/safehouse_floors",
+    "kind": "video",
+    "tokens": 1536,
+    "strength": 1.0
+   }
+  },
+  "all_subjects": [
+   {
+    "id": "character_a",
+    "name": "Ayame",
+    "reference_type": "character",
+    "source": "refmod",
+    "description": "Ayame description",
+    "refmod": {
+     "name": "identity/Ayame_Realistic",
+     "kind": "video",
+     "tokens": 3072,
+     "strength": 1.0
+    }
+   }
+  ],
+  "override": {},
+  "include_audio": true,
+  "expected": [
+   {
+    "card_id": "loc_safehouse",
+    "category": "background",
+    "label": "<Video 1>",
+    "mod_name": "background/safehouse_floors"
+   },
+   {
+    "card_id": "",
+    "category": "audio",
+    "label": "<Audio 1>",
+    "mod_name": ""
+   }
+  ],
+  "expected_tokens": 1536
  }
 ]
