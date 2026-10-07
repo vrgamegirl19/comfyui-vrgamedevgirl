@@ -3,6 +3,7 @@ import { BUILDER_FONT_STACK } from "./constants.mjs";
 import { makeEditorImageUrl } from "./comfy_api.mjs";
 import { confirmDestructiveAction } from "./confirm_dialog.mjs";
 import { makeButton, makeCheckbox, makeField, makeInput, toast } from "./controls.mjs";
+import { refmodLibraryChanged } from "./refmod_card.mjs";
 import {
   clampBox, DEFAULT_QUALITY, estimateTokens, expandBox, MIN_CROP_SIZE, QUALITY_PRESETS, REF_TOKEN_CAP, trimBoxFromPixels,
 } from "./refmod_trim.mjs";
@@ -1181,6 +1182,8 @@ export function openRefModsStudio() {
         ({ response, result } = await createRefMod(true));
       }
       if (!response.ok || !result.ok) throw new Error(result.error || "The RefMod could not be created.");
+      // Reference Builder cards built from now on list it straight away (an open dropdown re-reads when opened).
+      refmodLibraryChanged();
       const canvasNote = result.canvas ? `, ${result.quality || studio.quality} quality, canvas ${result.canvas[0]}x${result.canvas[1]}` : "";
       studio.statusText = `Saved ${result.path} (${result.tokens} tokens${canvasNote}).`;
       toast(`RefMod saved to models/refmods/${result.folder}/${result.name}.safetensors`);
