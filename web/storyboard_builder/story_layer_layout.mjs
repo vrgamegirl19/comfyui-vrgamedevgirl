@@ -120,6 +120,8 @@ export function buildStoryLayerPanel({
     ? "OPTIONAL STORY PLANNING TOOLS — not required when using an imported authoritative script"
     : "OPTIONAL STORY PLANNING TOOLS";
   const createStoryArcButton = makeButton("Create User Story Arc", "primary");
+  const createStorySequenceButton = makeButton("Create Arc → Brief → Missing Beats", "primary");
+  createStorySequenceButton.style.marginRight = "auto";
   const createStoryBriefButton = makeButton("Create Story Brief", "primary");
   const gptStoryButton = makeButton("GPT Story");
   gptStoryButton.title = "Copy all story, lyric, scene, reference, and preset details as JSON, then open the Storyboard GPT.";
@@ -128,7 +130,7 @@ export function buildStoryLayerPanel({
   const createMissingBeatsButton = makeButton("Create Missing Scene Beats", "purple");
   const replaceBeatsButton = makeButton("Replace All Scene Beats");
   const detectSectionsButton = makeButton("Detect Lyric Sections");
-  storyActions.append(storyActionsLabel, createStoryArcButton, createStoryBriefButton, createMissingBeatsButton, replaceBeatsButton, detectSectionsButton, gptStoryButton, importStoryJsonButton);
+  storyActions.append(storyActionsLabel, createStorySequenceButton, createStoryArcButton, createStoryBriefButton, createMissingBeatsButton, replaceBeatsButton, detectSectionsButton, gptStoryButton, importStoryJsonButton);
   storyLayerBar.append(
     storyLayerHeader,
     shortFilmPlanningModeWrap,
@@ -149,6 +151,7 @@ export function buildStoryLayerPanel({
 
   return {
     adjacentLyricContextInput, applyDialoguePlanButton, createMissingBeatsButton, createStoryArcButton,
+    createStorySequenceButton,
     createStoryBriefButton, detectSectionsButton, gptStoryButton, idLoraDialoguePlanner,
     idLoraDialoguePlannerText, idLoraDialogueSceneCount, importStoryJsonButton, lyricStoryStrengthHintButton,
     lyricStoryStrengthInput, lyricStoryStrengthValue, miniMaxGuidedWorkflowSteps, miniMaxScriptImporter,

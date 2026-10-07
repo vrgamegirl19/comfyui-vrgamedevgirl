@@ -70,7 +70,6 @@ import {
   normalizeGemmaGpuLayers,
 } from "./prompt_text.mjs";
 import { normalizeFluxReferenceBuilder, normalizeLyricMapper } from "./reference_data.mjs";
-import { hasMappedSceneLocation } from "./scene_locations.mjs";
 
 
 
@@ -679,7 +678,6 @@ export function createWizardBridge({
       return text;
     };
     const createWizardStoryBrief = async (draft = {}) => {
-      if (!requireWizardMappedLocation()) return null;
       const layer = normalizeBuilderStoryLayer({
         ...state.builderStoryLayer,
         ...(draft?.storyLayer || draft?.story_layer || {}),
@@ -699,7 +697,6 @@ export function createWizardBridge({
           unload_after: true,
           max_new_tokens: 800,
         }, 240000);
-        if (!String(data.story_brief || "").trim()) throw new Error("The LLM returned an empty story brief.");
         state.builderStoryLayer = normalizeBuilderStoryLayer({
           ...layer,
           song_story_brief: data.story_brief || "",
@@ -712,16 +709,10 @@ export function createWizardBridge({
       } catch (error) {
         progress.set(`Error:\n${String(error?.message || error)}`, 100);
         toast(String(error?.message || error), true);
-        return null;
+        return normalizeBuilderStoryLayer(state.builderStoryLayer);
       }
     };
-    const requireWizardMappedLocation = () => {
-      if (hasMappedSceneLocation(storyboardReferenceBuilderWithIdLoraRefs(state.fluxReferenceBuilder), allEditableSegments())) return true;
-      toast("No locations have been mapped yet. Map locations to scenes before creating the story arc, story brief, or scene beats.", true);
-      return false;
-    };
     const createWizardStoryArc = async (draft = {}) => {
-      if (!requireWizardMappedLocation()) return null;
       const layer = normalizeBuilderStoryLayer({
         ...state.builderStoryLayer,
         ...(draft?.storyLayer || draft?.story_layer || {}),
@@ -745,7 +736,6 @@ export function createWizardBridge({
           unload_after: true,
           max_new_tokens: 900,
         }, 240000);
-        if (!String(data.story_arc || "").trim()) throw new Error("The LLM returned an empty story arc.");
         state.builderStoryLayer = normalizeBuilderStoryLayer({
           ...layer,
           user_story_arc: data.story_arc || "",
@@ -758,7 +748,7 @@ export function createWizardBridge({
       } catch (error) {
         progress.set(`Error:\n${String(error?.message || error)}`, 100);
         toast(String(error?.message || error), true);
-        return null;
+        return normalizeBuilderStoryLayer(state.builderStoryLayer);
       }
     };
     const detectWizardLyricSections = async (referenceLyrics = "") => {
@@ -772,7 +762,6 @@ export function createWizardBridge({
       return applied;
     };
     const createWizardSceneBeats = async ({ overwrite = false, failedIds = [] } = {}) => {
-      if (!requireWizardMappedLocation()) return { created: 0, error: "No locations have been mapped yet." };
       const segments = allEditableSegments()
         .slice()
         .sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
