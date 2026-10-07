@@ -177,7 +177,8 @@ export function buildTimelineView({ overlay, preview, previewStage }) {
     button.style.width = "34px";
   }
   const waveformModeSelect = makeSelect(Object.keys(WAVEFORM_MODES), "medium");
-  waveformModeSelect.style.minWidth = "126px";
+  waveformModeSelect.style.width = "max-content";
+  waveformModeSelect.style.flex = "0 0 auto";
   for (const option of waveformModeSelect.options) {
     option.textContent = WAVEFORM_MODES[option.value]?.label || option.value;
   }
