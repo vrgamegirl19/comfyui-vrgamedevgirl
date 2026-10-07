@@ -1,5 +1,6 @@
 """Project queries, scene serialization, and asset summaries for the Agent API (6.2, 6.4)."""
 
+import copy
 import json
 import os
 import urllib.parse
@@ -12,6 +13,7 @@ from ..minimax.latent_manager import SceneLatentManager
 from .errors import ProjectNotFoundError, SceneNotFoundError, ValidationError
 from .paths import get_allowed_project_roots, get_project_id, resolve_project_folder
 from .schemas import extract_effective_settings
+from .session_keys import KNOWN_SESSION_KEYS, UNSAVED_SESSION_DEFAULTS
 
 
 def _build_asset_dict(
@@ -144,7 +146,8 @@ def get_project_detail(project_id: str, include: Optional[List[str]] = None) -> 
 
     ``include`` names groups (``PROJECT_INCLUDE_GROUPS``) and/or top-level session keys such as
     ``audio_path`` or ``flux_reference_builder``, which are returned under their own name with API
-    keys blanked. A name that is neither raises ``ValidationError`` listing it.
+    keys blanked. A Builder session key (``session_keys.KNOWN_SESSION_KEYS``) the project has not saved
+    yet is returned empty. A name that is none of these raises ``ValidationError`` listing it.
     """
     folder = resolve_project_folder(project_id)
     load_result = _load_builder_session(folder)
@@ -169,7 +172,7 @@ def get_project_detail(project_id: str, include: Optional[List[str]] = None) -> 
     }
 
     session_keys = [key for key in requested if key.lower() not in PROJECT_INCLUDE_GROUPS and key not in result]
-    unknown = [key for key in session_keys if key not in session]
+    unknown = [key for key in session_keys if key not in session and key not in KNOWN_SESSION_KEYS]
     if unknown:
         raise ValidationError(
             f"Unknown include key(s): {', '.join(unknown)}. Use a group ({', '.join(PROJECT_INCLUDE_GROUPS)}) "
@@ -177,8 +180,12 @@ def get_project_detail(project_id: str, include: Optional[List[str]] = None) -> 
             details={"unknown": unknown, "groups": list(PROJECT_INCLUDE_GROUPS)},
         )
     if session_keys:
-        public = _redact_session_secrets({key: session[key] for key in session_keys})
-        result.update(public)
+        # A Builder key this project has not saved yet reads as its empty value (null for most).
+        values = {
+            key: session[key] if key in session else copy.deepcopy(UNSAVED_SESSION_DEFAULTS.get(key))
+            for key in session_keys
+        }
+        result.update(_redact_session_secrets(values))
 
     if includes is None or "settings" in includes:
         result["settings"] = extract_effective_settings(session)

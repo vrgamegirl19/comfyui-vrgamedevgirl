@@ -619,6 +619,7 @@ The `agent_api` package provides a headless, production-grade REST API served at
   - `minimax_prompt_orchestrator.py`: MiniMax H3 reference-to-video prompts (`minimax.prompts`) with the saved instruction and `minimax/shot_prompt.py`.
 - **[agent_api/llm_runtime.py](agent_api/llm_runtime.py)**: picks the LLM for a request. The saved runner settings become the generator keys, and for LM Studio the loaded model and its context length are used.
 - **[agent_api/scene_video.py](agent_api/scene_video.py)**: records a rendered video on a segment like the Builder does.
+- **[agent_api/session_keys.py](agent_api/session_keys.py)**: the top-level keys of the Builder session, a Python twin of `currentSessionData()` in `web/music_video_builder/session.mjs` (`tests/test_agent_api_project_include_fresh.py` fails when they drift). `GET /projects/{pid}?include=` accepts these even before a project has saved them.
 
 ---
 
