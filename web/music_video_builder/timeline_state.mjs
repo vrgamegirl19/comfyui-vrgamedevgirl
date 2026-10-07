@@ -378,20 +378,18 @@ export function createTimelineState({
     const ctrlPressed = Boolean(event?.ctrlKey || event?.metaKey);
     if (ctrlPressed) {
       const enteringMultiSelect = !state.multiSelectMode;
-      if (enteringMultiSelect) {
-        // The scene we are already on joins the selection and starts the range, so click 17 then ctrl-click 20
-        // selects 17 to 20.
-        const current = activeSegment();
-        state.selectedSegmentIds = current?.id ? [current.id] : [];
-        state.rangeAnchorId = current?.id || "";
-      }
-      state.multiSelectMode = true;
-      state.modifierMultiSelectMode = true;
-      if (!isSegmentMultiSelected(segment) && selectSegmentRangeFromAnchor(segment)) {
+      if (!enteringMultiSelect && !isSegmentMultiSelected(segment) && selectSegmentRangeFromAnchor(segment)) {
         state.rangeAnchorId = segment.id;
         return;
       }
       state.rangeAnchorId = segment?.id || "";
+      if (enteringMultiSelect) {
+        // The scene we are already on joins the selection, so ctrl-clicking another scene adds to it.
+        const current = activeSegment();
+        state.selectedSegmentIds = current?.id ? [current.id] : [];
+      }
+      state.multiSelectMode = true;
+      state.modifierMultiSelectMode = true;
       if (enteringMultiSelect && segment?.id && segment.id === state.activeId) {
         // Ctrl-clicking the scene we are on keeps it selected instead of emptying the selection.
         syncInspector();
