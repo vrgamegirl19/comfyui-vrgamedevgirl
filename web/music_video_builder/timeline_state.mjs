@@ -353,10 +353,36 @@ export function createTimelineState({
     render();
   }
 
+  // Ctrl-clicking a scene after another ctrl-clicked scene selects every scene between them on the same track.
+  // Returns false when there is no earlier ctrl-clicked scene to range from, so the click is a normal toggle.
+  function selectSegmentRangeFromAnchor(segment) {
+    const anchor = allEditableSegments().find((item) => item.id === state.rangeAnchorId);
+    if (!anchor || !segment?.id || anchor.id === segment.id) return false;
+    const anchorInfo = segmentIndexInfo(anchor);
+    const targetInfo = segmentIndexInfo(segment);
+    if (anchorInfo.track !== targetInfo.track || anchorInfo.index < 0 || targetInfo.index < 0) return false;
+    const track = targetInfo.track === "overlay" ? state.overlaySegments : state.segments;
+    const low = Math.min(anchorInfo.index, targetInfo.index);
+    const high = Math.max(anchorInfo.index, targetInfo.index);
+    const ids = new Set(Array.isArray(state.selectedSegmentIds) ? state.selectedSegmentIds : []);
+    for (let index = low; index <= high; index += 1) if (track[index]?.id) ids.add(track[index].id);
+    state.selectedSegmentIds = Array.from(ids);
+    state.activeId = segment.id;
+    state.activeTrack = targetInfo.track;
+    syncInspector();
+    render();
+    return true;
+  }
+
   function handleSegmentPick(segment, event = null) {
     const ctrlPressed = Boolean(event?.ctrlKey || event?.metaKey);
     if (ctrlPressed) {
       const enteringMultiSelect = !state.multiSelectMode;
+      if (!enteringMultiSelect && !isSegmentMultiSelected(segment) && selectSegmentRangeFromAnchor(segment)) {
+        state.rangeAnchorId = segment.id;
+        return;
+      }
+      state.rangeAnchorId = segment?.id || "";
       if (enteringMultiSelect) {
         // The scene we are already on joins the selection, so ctrl-clicking another scene adds to it.
         const current = activeSegment();
@@ -375,6 +401,7 @@ export function createTimelineState({
       if (state.modifierMultiSelectMode) {
         state.multiSelectMode = false;
         state.modifierMultiSelectMode = false;
+        state.rangeAnchorId = "";
         state.selectedSegmentIds = [];
         setActiveSegment(segment);
         selectSegmentGlobalAudioStart(segment);
