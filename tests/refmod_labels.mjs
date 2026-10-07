@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { assignLabels, attachRefmodLabels, composeRefmodItems, clothingChoices, referencePayload, tokenReport, tokenStatusText, totalTokens } from '../web/music_video_builder/refmod_labels.mjs';
+import { assignLabels, attachRefmodLabels, composeRefmodItems, clothingChoices, referencePayload, sceneSubjectCards, tokenReport, tokenStatusText, totalTokens } from '../web/music_video_builder/refmod_labels.mjs';
 
 const cases = JSON.parse(readFileSync(new URL('./refmod_scene_cases.json', import.meta.url), 'utf8'));
 
 for (const testCase of cases) {
   test(`shared case: ${testCase.name}`, () => {
-    const items = composeRefmodItems(testCase.subjects, testCase.extras, testCase.location, testCase.all_subjects, testCase.override);
+    const subjects = sceneSubjectCards(testCase.scene || {}, testCase.subjects);
+    const items = composeRefmodItems(subjects, testCase.extras, testCase.location, testCase.all_subjects, testCase.override);
     const labelled = assignLabels(items, testCase.include_audio);
     const actual = labelled.map((item) => ({ card_id: item.card_id, category: item.category, label: item.label, mod_name: item.mod_name }));
     assert.deepEqual(actual, testCase.expected);

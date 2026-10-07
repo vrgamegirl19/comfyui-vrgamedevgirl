@@ -29,7 +29,8 @@ class RefModSceneTests(unittest.TestCase):
     def test_shared_cases(self):
         for case in CASES:
             with self.subTest(case["name"]):
-                items = scene.compose_items(case["subjects"], case["extras"], case["location"], case["all_subjects"], case["override"])
+                subjects = scene.scene_subject_cards(case.get("scene") or {}, case["subjects"])
+                items = scene.compose_items(subjects, case["extras"], case["location"], case["all_subjects"], case["override"])
                 labelled = scene.assign_labels(items, include_audio=case["include_audio"])
                 actual = [{"card_id": i["card_id"], "category": i["category"], "label": i["label"], "mod_name": i["mod_name"]} for i in labelled]
                 self.assertEqual(actual, case["expected"])
@@ -62,6 +63,25 @@ class RefModSceneTests(unittest.TestCase):
         self.assertEqual([i["mod_name"] for i in second], ["identity/darrel"])
         labels = [i["label"] for i in scene.assign_labels(first, include_audio=True)]
         self.assertEqual(labels, ["<Video 1>", "<Video 2>", "<Picture 1>", "<Audio 1>"])
+
+    def test_a_no_character_scene_uses_no_character_refmod(self):
+        # Cut and Gun, Scene 4: no_character_present with a RefMod location; Ayame is the project's first character.
+        ayame = {"id": "character_a", "name": "Ayame", "reference_type": "character", "source": "refmod",
+                 "image": {"path": "C:/refs/ayame.png"},
+                 "refmod": {"name": "identity/Ayame_Realistic", "kind": "video", "tokens": 3072, "strength": 1}}
+        floors = {"id": "loc_safehouse", "name": "Safehouse floors", "reference_type": "environment", "source": "refmod",
+                  "refmod": {"name": "background/safehouse_floors", "kind": "video", "tokens": 1536, "strength": 1}}
+        session = {"flux_reference_builder": {
+            "use_subject_reference": True, "subject_count": 1, "subjects": [ayame], "locations": [floors],
+            "subject_scene_map": {"seg_a": ["character_a"]}, "scene_map": {"seg_5d0f59ee3de8": "loc_safehouse"},
+        }}
+        segment = {"id": "seg_5d0f59ee3de8", "no_character_present": True}
+        items = scene.assign_labels(scene.refmod_items_for_scene(session, segment, 3), include_audio=True)
+        self.assertEqual([(i["key"], i["label"]) for i in items],
+                         [("location:loc_safehouse", "<Video 1>"), ("audio:scene", "<Audio 1>")])
+        # The same project's character scenes still get Ayame first.
+        sung = scene.assign_labels(scene.refmod_items_for_scene(session, {"id": "seg_a"}, 0))
+        self.assertEqual([i["mod_name"] for i in sung], ["identity/Ayame_Realistic"])
 
     def test_payload_lists_visual_mods_only(self):
         card = {"id": "s1", "name": "Brad", "reference_type": "character", "source": "refmod",
