@@ -61,7 +61,7 @@ def build_form():
     choices = [{"ref": case_id.lower().replace("-", "_"),
                 "label": f"{case_id} — {title}"} for case_id, title, _ in cases]
     return {
-        "title": "Beta2.0 Video Builder — feature test report",
+        "title": "VRGDG Beta2.0 — feature test report",
         "type": "form",
         "settings": {"language": "en", "is_public": False, "show_progress_bar": True,
                      "show_question_number": True, "autosave_progress": True},
