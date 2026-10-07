@@ -3000,5 +3000,6 @@ export function openBuilder(node) {
   syncVideoNoteControls();
   syncLyricNoteControls();
   updateHistoryButtons();
-  render();
+  // The Builder opens filling the browser window. The fullscreen button still returns it to the floating panel.
+  applyBuilderFullscreen(true);
 }
