@@ -37,6 +37,7 @@ export function makeButton(label, kind = "neutral") {
 
 export const COMPACT_TOOLBAR_ICONS = {
   save: '<path d="M13 2H5a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8z"/><path d="M13 2v6h6"/><path d="M8 13h8v6H8z"/>',
+  refresh: '<path d="M20 11a8 8 0 1 0-2.3 6.7"/><path d="M20 4v7h-7"/>',
   wizard: '<path d="m15 4 5 5L7 22l-5-5Z"/><path d="m14 5 5 5"/><path d="M6 3v4"/><path d="M4 5h4"/><path d="M19 14v4"/><path d="M17 16h4"/>',
   auto: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m7 5 2 4 2-4 2 4 2-4 2 4 2-4"/><path d="M8 13h4"/><path d="M10 11v4"/><path d="M17 12v4"/><path d="M15 14h4"/>',
   story: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 4v16"/><path d="M16 4v16"/><path d="M3 9h5"/><path d="M16 15h5"/>',

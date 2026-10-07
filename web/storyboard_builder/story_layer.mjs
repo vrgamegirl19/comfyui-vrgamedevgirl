@@ -12,6 +12,7 @@ import {
   storyboardSpeedValue,
 } from "./scenes.mjs";
 import { normalizeStoryboardScriptImportState } from "./script_import.mjs";
+import { hasMappedStoryboardLocation, NO_MAPPED_LOCATIONS_MESSAGE } from "./story_workflow.mjs";
 import {
   storyboardMiniMaxVideoStylePreset,
   storyboardMiniMaxVideoStyleVerbiage,
@@ -263,7 +264,11 @@ export function createStoryLayer({
 
   async function createStoryBriefWithGemma() {
     syncStoryLayerFromInputs();
-    if (!confirmStoryStepRerun("story brief", state.storyLayer.song_story_brief)) return;
+    if (!hasMappedStoryboardLocation(state)) {
+      createToast(NO_MAPPED_LOCATIONS_MESSAGE, true);
+      return null;
+    }
+    if (!confirmStoryStepRerun("story brief", state.storyLayer.song_story_brief)) return null;
     const authoritativeScript = normalizeStoryboardScriptImportState(state.scriptImport);
     const progress = createStoryboardProgressWindow(`Story Brief — ${promptRunnerName()}`);
     try {
@@ -282,21 +287,28 @@ export function createStoryLayer({
         unload_after: true,
         max_new_tokens: authoritativeScript.enabled ? 1200 : 800,
       }, 240000);
+      if (!String(data.story_brief || "").trim()) throw new Error("The LLM returned an empty story brief.");
       state.storyLayer.song_story_brief = String(data.story_brief || "").trim();
       songStoryBriefInput.value = state.storyLayer.song_story_brief;
       syncStoryLayerFromInputs({ notify: true });
       progress.set("Story brief saved into the Story Layer.", 100);
       progress.close(1600);
       createToast("Story brief created.");
+      return state.storyLayer.song_story_brief;
     } catch (error) {
       progress.set(`Error:\n${String(error?.message || error)}`, 100);
       createToast(`Story brief failed:\n${String(error?.message || error)}`, true);
+      return null;
     }
   }
 
   async function createStoryArcWithGemma() {
     syncStoryLayerFromInputs();
-    if (!confirmStoryStepRerun("story arc", state.storyLayer.user_story_arc)) return;
+    if (!hasMappedStoryboardLocation(state)) {
+      createToast(NO_MAPPED_LOCATIONS_MESSAGE, true);
+      return null;
+    }
+    if (!confirmStoryStepRerun("story arc", state.storyLayer.user_story_arc)) return null;
     const authoritativeScript = normalizeStoryboardScriptImportState(state.scriptImport);
     const progress = createStoryboardProgressWindow(`${authoritativeScript.enabled ? "Short Film Premise" : "Story Arc"} — ${promptRunnerName()}`);
     const storyArcSeed = Math.floor(Math.random() * 2147483647);
@@ -338,16 +350,19 @@ export function createStoryLayer({
         unload_after: true,
         max_new_tokens: 2400,
       }, 240000);
+      if (!String(data.story_arc || "").trim()) throw new Error("The LLM returned an empty story arc.");
       state.storyLayer.user_story_arc = String(data.story_arc || "").trim();
       userStoryArcInput.value = state.storyLayer.user_story_arc;
       syncStoryLayerFromInputs({ notify: true });
       progress.set(`${authoritativeScript.enabled ? "Short-film premise" : "Story arc"} saved into the Story Layer.\nSeed: ${storyArcSeed}`, 100);
       progress.close(1600);
       createToast(`${authoritativeScript.enabled ? "Short-film premise" : "Story arc"} created. Seed: ${storyArcSeed}`);
+      return state.storyLayer.user_story_arc;
     } catch (error) {
       progress.set(`Error:\n${String(error?.message || error)}`, 100);
       progress.showDiagnostics?.(error?.diagnostics);
       createToast(`Story arc failed:\n${String(error?.message || error)}`, true);
+      return null;
     }
   }
 

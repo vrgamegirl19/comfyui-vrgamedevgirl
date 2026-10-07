@@ -29,7 +29,7 @@ const modeOptions = {
 };
 function fixture(overrides = {}) {
   const document = { createElement: tag => new Element(tag), createTextNode: text => { const node = new Element('#text'); node.textContent = text; return node; }, getElementById: () => null, body: new Element('body'), head: new Element('head') };
-  const data = { engine: 'minimax_h3', mode: 'text_to_video', performance: 'speaking', performances: [{ value: 'speaking', label: 'Speaking' }], audioMode: 'built_in_audio', audioModes: [{ value: 'input_audio', label: 'Input audio' }, { value: 'built_in_audio', label: 'Built-in audio' }], imageMode: 'zimage', imageModes: [{ value: 'zimage', label: 'ZImage' }], modes: modeOptions, lyrics: '', direction: '', scenes: [], referenceCount: 0, ...overrides };
+  const data = { engine: 'minimax_h3', mode: 'text_to_video', pipeline: 'standard', performance: 'speaking', performances: [{ value: 'speaking', label: 'Speaking' }], audioMode: 'built_in_audio', audioModes: [{ value: 'input_audio', label: 'Input audio' }, { value: 'built_in_audio', label: 'Built-in audio' }], imageMode: 'zimage', imageModes: [{ value: 'zimage', label: 'ZImage' }], modes: modeOptions, lyrics: '', direction: '', scenes: [], referenceCount: 0, ...overrides };
   const events = [];
   const api = {
     snapshot: () => data, flush() {}, configure: values => Object.assign(data, values),
@@ -66,6 +66,36 @@ test('image mode shows image model selection and restores native panel when leav
   assert.ok(f.events.includes('mount:image'));
   await f.click('3 Models & LoRAs');
   assert.ok(f.events.includes('restore:image')); assert.ok(f.events.includes('mount:video'));
+});
+
+test('MiniMax Reference to Video asks whether to use the project RefMod workflow', async () => {
+  const f = fixture({ mode: 'reference_to_video' });
+  await f.click('2 Video mode');
+  let checkbox = f.document.body.querySelectorAll('input').find(input => input.type === 'checkbox');
+  assert.ok(checkbox);
+  assert.equal(checkbox.checked, false);
+  assert.ok(f.document.body.textContent.includes('Use RefMod workflow'));
+  checkbox.checked = true; checkbox.onchange();
+  assert.equal(f.data.pipeline, 'refmod');
+  checkbox = f.document.body.querySelectorAll('input').find(input => input.type === 'checkbox');
+  assert.equal(checkbox.checked, true);
+  checkbox.checked = false; checkbox.onchange();
+  assert.equal(f.data.pipeline, 'standard');
+  const ltx = fixture({ engine: 'ltx', mode: 'rtv' });
+  await ltx.click('2 Video mode');
+  assert.equal(ltx.document.body.textContent.includes('Use RefMod workflow'), false);
+});
+
+test('RefMod Inputs directs users to saved RefMods and validates their presence', async () => {
+  const f = fixture({ mode: 'reference_to_video', pipeline: 'refmod' });
+  await f.click('5 Inputs');
+  assert.equal(f.document.body.textContent.includes('Subject references'), false);
+  assert.ok(f.find('button', 'Edit Subjects'));
+  assert.ok(f.find('button', 'Edit Locations'));
+  const issues = f.context.wizardBetaIssues({ engine: 'minimax_h3', mode: 'reference_to_video', pipeline: 'refmod', audioMode: 'built_in_audio', locations: [], subjects: [] }, f.data, true);
+  assert.ok(issues.includes('Choose a saved RefMod in the Reference Builder.'));
+  f.data.refmodCount = 1;
+  assert.equal(f.context.wizardBetaIssues({ engine: 'minimax_h3', mode: 'reference_to_video', pipeline: 'refmod', audioMode: 'built_in_audio', locations: [], subjects: [] }, f.data, true).length, 0);
 });
 
 test('timing choices replace fixed durations and skip transcription for built-in audio', async () => {
@@ -109,7 +139,7 @@ test('save does not prepare or render, preserves stage and handles failure', asy
 });
 
 test('saved scene steps migrate by meaning and new saves use stable IDs', async () => {
-  for (const [oldStep, label, id] of [[1,'Story Layer','story'],[2,'Story Layer','story'],[3,'Align lyrics / dialogue','lyrics'],[4,'Edit Mappings','mapping'],[5,'Storyboard Scenes','scenes']]) {
+  for (const [oldStep, label, id] of [[1,'Story Layer','story'],[2,'Story Layer','story'],[3,'Align lyrics / dialogue','lyrics'],[4,'Adjust & View All Mappings','mapping'],[5,'Storyboard Scenes','scenes']]) {
     const f = fixture({ draft: {page:5, sceneStep:oldStep}, scenes:[{id:'a'}] });
     assert.ok(f.find('button',label));
     assert.equal(f.input('Story direction'), undefined);
@@ -133,9 +163,9 @@ test('every mode has the correct media requirements', () => {
 });
 
 function adapterFixture() {
-  const state = { projectVideoEngine: 'minimax_h3', miniMaxH3Settings: { video_mode: 'text_to_video', audio_mode: 'built_in_audio' }, videoModelMode: 't2v', imageModelMode: 'zimage', videoType: 'speaking', projectFolder: '/project', segments: [], overlaySegments: [], fluxKleinSettings: {}, fluxReferenceBuilder: { subjects: [], locations: [], subject_scene_map: {}, scene_map: {} }, i2vVideoSettings: {} };
+  const state = { projectVideoEngine: 'minimax_h3', miniMaxH3Settings: { pipeline: 'standard', video_mode: 'text_to_video', audio_mode: 'built_in_audio' }, videoModelMode: 't2v', imageModelMode: 'zimage', videoType: 'speaking', projectFolder: '/project', segments: [], overlaySegments: [], fluxKleinSettings: {}, fluxReferenceBuilder: { subjects: [], locations: [], subject_scene_map: {}, scene_map: {} }, i2vVideoSettings: {} };
   const events = [];
-  const context = { state, wizardVideoSettings: { global: false }, audioInput: { value: '' }, projectInput: { value: '/project' }, audio: { duration: 0 },
+  const context = { state, wizardVideoSettings: { global: false }, miniMaxPassChooser: null, audioInput: { value: '' }, projectInput: { value: '/project' }, audio: { duration: 0 },
     MINIMAX_H3_MODE_OPTIONS: modeOptions.minimax_h3, MINIMAX_H3_AUDIO_MODE_OPTIONS: [{ value: 'input_audio', label: 'Input' }, { value: 'built_in_audio', label: 'Built-in' }], VIDEO_TYPE_OPTIONS: [],
     normalizeProjectVideoEngine: x => x, normalizeVideoType: x => x, promptRunnerActionName: () => "LLM API",
     confirmAndRunGemmaVideoAll: async () => events.push("video-all"),
@@ -152,9 +182,9 @@ function adapterFixture() {
     runMiniMaxH3PromptGeneration: async (scene, mode) => { events.push(`prompt:${mode}`); return { prompt: 'Native MiniMax prompt' }; },
     autoSaveSessionQuiet: async () => {},
   };
-  for (const name of ['updateActiveFromInputs','saveI2VVideoSettingsFromPanel','saveMiniMaxH3SettingsFromPanel','saveMiniMaxSceneInputsFromPanel','saveZImageSettingsFromPanel','saveFluxKleinSettingsFromPanel','saveErnieImageSettingsFromPanel','saveKrea2TwoPassSettingsFromPanel','saveNBImageSettingsFromPanel','saveFlowGptBrowserSettingsFromPanel','syncProjectVideoEngineUI','syncVideoModePanel','syncI2VVideoSettingsPanel','syncFluxKleinPanel','syncZImageSettingsPanel','syncErnieImagePanel','syncKrea2TwoPassPanel','syncNBImagePanel','syncFlowGptBrowserPanel','syncInspector','render','pushHistory','openGemmaRunnerModal','openLyricReviewModal','openStoryboardBuilderFromProject','confirmAndRunZImageAll','importTimelineImagesFromFolder','syncVideoTypeControl','assertBatchNotStopped']) context[name] = () => {};
+  for (const name of ['updateActiveFromInputs','saveI2VVideoSettingsFromPanel','saveMiniMaxH3SettingsFromPanel','saveMiniMaxSceneInputsFromPanel','saveZImageSettingsFromPanel','saveFluxKleinSettingsFromPanel','saveErnieImageSettingsFromPanel','saveKrea2TwoPassSettingsFromPanel','saveNBImageSettingsFromPanel','saveFlowGptBrowserSettingsFromPanel','syncProjectVideoEngineUI','syncVideoModePanel','syncI2VVideoSettingsPanel','syncMiniMaxH3Panel','syncFluxKleinPanel','syncZImageSettingsPanel','syncErnieImagePanel','syncKrea2TwoPassPanel','syncNBImagePanel','syncFlowGptBrowserPanel','syncInspector','render','pushHistory','openGemmaRunnerModal','openLyricReviewModal','openStoryboardBuilderFromProject','confirmAndRunZImageAll','importTimelineImagesFromFolder','syncVideoTypeControl','assertBatchNotStopped']) context[name] = () => {};
   vm.createContext(context);
-  vm.runInContext(functionSource(builder, 'openWizardBetaFromBuilder') + '\nopenWizardBetaFromBuilder();', context);
+  vm.runInContext(functionSource(builder, 'organizeWizardVideoModels') + '\n' + functionSource(builder, 'openWizardBetaFromBuilder') + '\nopenWizardBetaFromBuilder();', context);
   return { context, state, events, api: context.api };
 }
 
@@ -179,6 +209,18 @@ test('adapter exposes all LTX modes and constrains multipass MiniMax audio', () 
   f.api.configure({ engine: 'minimax_h3', mode: 'image_reference_to_video' });
   assert.equal(f.state.videoModelMode, 'i2v');
   assert.equal(f.api.snapshot().audioModes.find(item => item.value === 'built_in_audio').disabled, true);
+});
+
+test('wizard pipeline choice updates project settings used by Reference Builder', () => {
+  const f = adapterFixture();
+  f.api.configure({ mode: 'reference_to_video', pipeline: 'refmod' });
+  assert.equal(f.api.snapshot().pipeline, 'refmod');
+  assert.equal(f.state.miniMaxH3Settings.pipeline, 'refmod');
+  assert.equal(f.state.videoModelMode, 'rtv');
+  f.api.configure({ mode: 'image_to_video' });
+  assert.equal(f.api.snapshot().pipeline, 'standard');
+  f.api.configure({ mode: 'reference_to_video' });
+  assert.equal(f.api.snapshot().pipeline, 'standard');
 });
 
 
@@ -230,23 +272,26 @@ test('focused reference buttons save inputs first and reload edited metadata on 
   await f.click('Save Project');
   assert.equal(f.data.draft.singer.title, 'Edited');
   await f.click('Edit Locations');
-  assert.equal(f.find('button', 'Edit Mappings'), undefined);
+  assert.equal(f.find('button', 'Map Subjects / Locations'), undefined);
   f.data.scenes = [{ id: 'a', start: 0, end: 8 }];
-  await f.click('6 Scenes'); await f.click('3 Edit Mappings'); await f.click('Edit Mappings');
-  assert.deepEqual(opened, ['subjects', 'locations', 'mapping']);
+  await f.click('6 Scenes'); await f.click('3 Edit Mappings');
+  await f.click('Map Subjects / Locations');
+  await f.click('Adjust & View All Mappings');
+  assert.deepEqual(opened, ['subjects', 'locations', 'mapping_tools', 'mapping']);
   f.api.save = async () => { throw new Error('Save failed'); };
   await f.click('5 Inputs');
   await f.click('Edit Subjects');
-  assert.equal(opened.length, 3);
+  assert.equal(opened.length, 4);
 });
 
 test('focused reference editor only mounts its selected section; full editor keeps all tabs', () => {
   const start = builder.indexOf('    const referenceTabs = [');
   const end = builder.indexOf('    const footer =', start);
-  for (const section of ['', 'subjects', 'locations', 'mapping']) {
+  for (const section of ['', 'subjects', 'locations', 'mapping', 'mapping_tools']) {
     const context = vm.createContext({
       document: { createElement: tag => new Element(tag) }, focusedSection: section,
       miniMaxProject: true, options: {}, wizardLocationMode: false,
+      mappingTools: section === 'mapping_tools' ? { card: new Element('mapping_tools') } : null,
       subjectCard: new Element('subjects'), extrasCard: new Element('extras'),
       locationsCard: new Element('locations'), mappingCard: new Element('mapping'),
       tabBar: new Element('nav'), tabContent: new Element('main'), tabShell: new Element('section'),
@@ -382,12 +427,13 @@ test('subjects added in Edit Subjects remain visible in LTX and MiniMax wizard d
 test('mapping editor is available only in Scenes after scenes exist', async () => {
   const f = fixture();
   await f.click('5 Inputs');
-  assert.equal(f.find('button', 'Edit Mappings'), undefined);
+  assert.equal(f.find('button', 'Map Subjects / Locations'), undefined);
   await f.click('6 Scenes');
-  assert.equal(f.find('button', 'Edit Mappings'), undefined);
+  assert.equal(f.find('button', 'Map Subjects / Locations'), undefined);
   await f.click('4 Sound & timing'); await f.click('3. Manual timing'); await f.click('6 Scenes');
   await f.click('3 Edit Mappings');
-  assert.equal(f.find('button', 'Edit Mappings').disabled, false);
+  assert.equal(f.find('button', 'Map Subjects / Locations').disabled, false);
+  assert.equal(f.find('button', 'Adjust & View All Mappings').disabled, false);
 });
 
 test('image-to-video reference editors respect image model capabilities for both engines', () => {
@@ -444,7 +490,7 @@ test('focused storyboard routes allow Image Prep only for Image to Video', () =>
 
 test('focused storyboard windows mount only their own content and relevant actions', () => {
   const story = readStoryboardSource();
-  const start = story.indexOf('  if (!focusedSection || focusedSection === "defaults") middleContent.append');
+  const start = story.indexOf('  if (!focusedSection || focusedSection === "story") middleContent.append');
   const end = story.indexOf('  shell.append(header', start);
   for (const focusedSection of ['', 'defaults', 'story', 'scenes']) {
     for (const allowImagePrep of [true, false]) {
@@ -452,7 +498,7 @@ test('focused storyboard windows mount only their own content and relevant actio
       for (const key of ['middleContent', 'sceneDefaultsPanel', 'storyLayerPanel', 'tableWrap', 'headerActions', 'footerActions', 'close', 'save', 'steps', 'header']) c[key] = new Element(key);
       c.header.append(c.steps);
       vm.runInNewContext(story.slice(start, end), c);
-      assert.deepEqual(c.middleContent.children.map(x => x.tagName), focusedSection ? [{ defaults: 'sceneDefaultsPanel', story: 'storyLayerPanel', scenes: 'tableWrap' }[focusedSection]] : ['sceneDefaultsPanel', 'storyLayerPanel', 'tableWrap']);
+      assert.deepEqual(c.middleContent.children.map(x => x.tagName), focusedSection ? [{ defaults: 'sceneDefaultsPanel', story: 'storyLayerPanel', scenes: 'tableWrap' }[focusedSection]] : ['storyLayerPanel', 'sceneDefaultsPanel', 'tableWrap']);
       assert.equal(c.header.children.includes(c.steps), !focusedSection || (focusedSection !== 'story' && allowImagePrep));
       if (focusedSection && focusedSection !== 'scenes') assert.deepEqual(c.footerActions.children, [c.save]);
     }
@@ -500,6 +546,11 @@ test('wizard video panel mounts only global tabs and restores timeline controls 
   Element.prototype.replaceWith = function(other) { this.before(other); this.remove(); };
   const source = new Element('panels');
   const models = new Element('models'), settings = new Element('settings');
+  const modelFields = ['compatibility', 'diffusion', 'clip', 'videoVae', 'audioVae', 'textLlm', 'visionLlm'].map(tag => new Element(tag));
+  for (const [index, title] of [[5, 'Non-Vision LLM Models'], [6, 'Vision LLM Models']]) {
+    const summary = new Element('summary'); summary.textContent = title; modelFields[index].append(summary);
+  }
+  models.append(...modelFields);
   source.append(models, settings, new Element('speakers'), new Element('prompt'));
   const original = new Element('tabs'); original.append(new Element('nav'), source);
   const passHome = new Element('passHome'); c.miniMaxPassChooser = new Element('passes'); passHome.append(c.miniMaxPassChooser);
@@ -518,12 +569,19 @@ test('wizard video panel mounts only global tabs and restores timeline controls 
   assert.equal(source.children.includes(models), false);
   assert.equal(settings.children.includes(c.useSceneMiniMaxH3Settings.wrapper), false);
   assert.equal(source.children.some(child => child.tagName === 'prompt'), true);
+  assert.equal(models.children[0].className, 'wb-model-card');
+  assert.equal(modelFields[1].parent, models.children[0]);
+  assert.equal(modelFields[4].parent, models.children[1]);
+  assert.equal(modelFields[0].parent.className, 'wb-model-help');
+  assert.equal(models.children.includes(modelFields[5]), false);
+  assert.equal(models.children.includes(modelFields[6]), false);
   restore();
   assert.equal(c.wizardVideoSettings.global, false);
   assert.equal(source.children[0], models);
   assert.equal(source.children[1], settings);
   assert.equal(settings.children[0], c.useSceneMiniMaxH3Settings.wrapper);
   assert.equal(passHome.children[0], c.miniMaxPassChooser);
+  assert.deepEqual(models.children, modelFields);
 });
 
 test('LTX wizard keeps FLF and ID-LoRA settings mounted and restores their panels', () => {
@@ -738,11 +796,11 @@ test('Scenes guides users through ordered substeps and keeps runner available in
   assert.equal(f.find('button', 'Generate video prompts'), undefined);
   await f.click('Next →'); assert.ok(f.find('button', 'Align lyrics / dialogue'));
   assert.ok(f.find('h3', '2. Align lyrics / dialogue (Optional)'));
-  await f.click('Skip / Next →'); assert.ok(f.find('button', 'Edit Mappings'));
+  await f.click('Skip / Next →'); assert.ok(f.find('button', 'Map Subjects / Locations'));
   await f.click('Next →'); assert.ok(f.find('button', 'Storyboard Scenes'));
   await f.click('Next →'); assert.ok(f.find('button', 'Story Layer'));
   await f.click('Configure LLM Runner'); assert.equal(runnerOpened, 1);
-  await f.click('Back to Storyboard Scenes'); assert.ok(f.find('button', 'Storyboard Scenes'));
+  await f.click('Back'); assert.ok(f.find('button', 'Storyboard Scenes'));
   await f.click('Next →'); assert.ok(f.find('button', 'Story Layer'));
   assert.equal(f.input('Story direction'), undefined);
   await f.click('Next →'); assert.ok(f.find('h3', '6. Create MiniMax Prompts'));

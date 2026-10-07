@@ -654,8 +654,9 @@ export function createLyricCues({
 
   function miniMaxH3CutPlanForSegment(segment) {
     const duration = Math.max(0, Number(segment?.end || 0) - Number(segment?.start || 0));
-    const fallback = storyboardCutPlanForDuration(duration, state.builderStoryboardDefaults?.minimax_h3_cut_frequency);
-    if (miniMaxH3FrameContinuityPromptEnabled(segment)) {
+    const fallback = storyboardCutPlanForDuration(duration, segment?.location_continuous_shot
+      ? 0 : state.builderStoryboardDefaults?.minimax_h3_cut_frequency);
+    if (segment?.location_continuous_shot || miniMaxH3FrameContinuityPromptEnabled(segment)) {
       const continuous = { ...fallback, frequency: 0, cut_times_seconds: [], cue_driven: false };
       continuous.instruction = miniMaxH3OfficialCutPlanInstruction(continuous);
       return continuous;

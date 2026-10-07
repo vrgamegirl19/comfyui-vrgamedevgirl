@@ -1,5 +1,7 @@
-import { makeButton, makeCheckbox, makeField, makeInput, makeSelect, toast } from "./controls.mjs";
+import { makeButton, makeCheckbox, makeField, makeInput, makeSelect, normalizeProjectVideoEngine, toast } from "./controls.mjs";
 import { normalizeFluxReferenceBuilder } from "./reference_data.mjs";
+import { cloneMiniMaxH3Settings } from "./minimax_h3.mjs";
+import { eligibleSharedLocationRuns } from "./scene_locations.mjs";
 
 export function createSceneAssignment({
   allEditableSegments, backdrop, logicalReferenceSubjects, logicalSubjectIdsForScene, openLyricReviewModal,
@@ -56,6 +58,9 @@ export function createSceneAssignment({
     locationBlockSize.min = "1";
     const replaceExisting = makeCheckbox("Replace existing mappings", false);
     const avoidLocationRepeat = makeCheckbox("Avoid consecutive location repeats", true);
+    const autoContinuous = makeCheckbox("Auto continuous shots for shared locations", false);
+    autoContinuous.wrapper.title = "With Apply Mapping, use one shot across each consecutive location group. Later scenes continue from their predecessor when MiniMax H3 allows it.";
+    autoContinuous.input.disabled = normalizeProjectVideoEngine(state.projectVideoEngine) !== "minimax_h3";
     grid.append(
       makeField("Scenes to assign", scope),
       makeField("Scene range start", rangeStart),
@@ -66,6 +71,7 @@ export function createSceneAssignment({
       makeField("Scenes per location block", locationBlockSize),
       replaceExisting.wrapper,
       avoidLocationRepeat.wrapper,
+      autoContinuous.wrapper,
     );
     const preview = document.createElement("textarea");
     preview.readOnly = true;
@@ -74,7 +80,7 @@ export function createSceneAssignment({
     note.style.cssText = "font-size:11px;color:#94a3b8;line-height:1.4;";
     note.textContent = "Scenes marked No character present keep their character mapping empty. Fill-empty mode preserves existing character and location assignments.";
     const actions = document.createElement("div");
-    actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;";
+    actions.style.cssText = "display:grid;grid-template-columns:repeat(3,1fr);gap:9px;";
     const cancelAssign = makeButton("Cancel");
     const shuffle = makeButton("Preview / Shuffle", "primary");
     const apply = makeButton("Apply Mapping", "primary");
@@ -101,6 +107,7 @@ export function createSceneAssignment({
             <div><b style="color:#67e8f9;">Scenes per location block</b><br>Controls how long each location is reused when Repeat each location for X scenes is selected. For example, a value of 4 assigns Location 1 to target scenes 1–4, Location 2 to target scenes 5–8, and so on. Once all saved locations are used, the same ordered cycle starts again. For a range or multi-selection, counting follows only the targeted scenes in timeline order.</div>
             <div><b style="color:#67e8f9;">Replace existing mappings</b><br>Off is the safe default: only empty character or location mappings are filled. Turn it on to overwrite mappings that are already assigned in the target scenes.</div>
             <div><b style="color:#67e8f9;">Avoid consecutive location repeats</b><br>When Random location is selected and at least two locations exist, this prevents two neighboring target scenes from receiving the same location.</div>
+            <div><b style="color:#67e8f9;">Auto continuous shots for shared locations</b><br>With MiniMax H3, Apply Mapping sets consecutive scenes with the same mapped location to one shot. The first scene starts a new take; each later scene continues from its predecessor when its mode allows masked continuation. Location changes and timeline gaps start new takes.</div>
             <div><b style="color:#67e8f9;">No character present scenes</b><br>Scenes explicitly marked No character present always keep their character mapping empty. Their location can still be assigned.</div>
             <div><b style="color:#67e8f9;">Preview / Shuffle</b><br>Builds a preview without changing saved mappings. With random patterns, click it again to generate a different arrangement.</div>
             <div><b style="color:#67e8f9;">Apply Mapping</b><br>Applies the exact arrangement currently shown in the preview. One Undo history point is created before the mappings are changed.</div>
@@ -185,7 +192,7 @@ export function createSceneAssignment({
     dialogBackdrop.addEventListener("pointerdown", (event) => {
       if (event.target === dialogBackdrop) dialogBackdrop.remove();
     });
-    apply.onclick = () => {
+    apply.onclick = async () => {
       if (!proposal.length) createProposal();
       pushHistory();
       refs.subject_scene_map = refs.subject_scene_map && typeof refs.subject_scene_map === "object" ? refs.subject_scene_map : {};
@@ -202,9 +209,31 @@ export function createSceneAssignment({
       }
       refs.use_subject_reference = Boolean(subjects.length);
       refs.use_location_references = Boolean(locations.length);
+      let continuityGroups = 0;
+      if (autoContinuous.input.checked) {
+        const eligible = eligibleSharedLocationRuns(refs, scenes, state.miniMaxH3Settings);
+        for (const run of eligible) {
+          for (const [index, scene] of run.entries()) {
+            scene.location_continuous_shot = true;
+            if (index === 0) continue;
+            const base = cloneMiniMaxH3Settings(scene.use_scene_minimax_h3_settings && scene.minimax_h3_settings
+              ? scene.minimax_h3_settings : state.miniMaxH3Settings);
+            scene.use_scene_minimax_h3_settings = true;
+            scene.minimax_h3_settings = cloneMiniMaxH3Settings({
+              ...base,
+              continuity_mode: "latent_continuation_masked",
+              location_transition_preset: "masked",
+            });
+            scene.minimax_h3_mode = scene.minimax_h3_settings.video_mode;
+          }
+        }
+        continuityGroups = eligible.length;
+        syncInspector();
+      }
       renderAll();
       dialogBackdrop.remove();
-      toast(`Assigned character/location mappings for ${proposal.length} scene${proposal.length === 1 ? "" : "s"}.`);
+      if (autoContinuous.input.checked) await autoSaveSessionQuiet("scene mappings and shared-location continuity applied");
+      toast(`Assigned mappings for ${proposal.length} scene${proposal.length === 1 ? "" : "s"}.${autoContinuous.input.checked ? ` Continuous shots applied to ${continuityGroups} location group${continuityGroups === 1 ? "" : "s"}.` : ""}`);
     };
     syncOptions();
   }

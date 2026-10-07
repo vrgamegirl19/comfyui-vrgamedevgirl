@@ -1,4 +1,5 @@
 import { app } from "../../scripts/app.js";
+import { takeBuilderRefresh } from "./music_video_builder/builder_refresh.mjs";
 
 // The builder lives in .mjs modules so ComfyUI does not load it on every page;
 // it is imported the first time the builder is opened.
@@ -35,9 +36,9 @@ function hideInternalWidgets(node) {
   app.graph?.setDirtyCanvas?.(true, true);
 }
 
-async function openBuilder(node) {
+async function openBuilder(node, options) {
   const { openBuilder } = await import("./music_video_builder/builder.mjs");
-  openBuilder(node);
+  openBuilder(node, options);
 }
 
 function ensureButton(node) {
@@ -51,6 +52,18 @@ function ensureButton(node) {
 
 app.registerExtension({
   name: "vrgdg.MusicVideoBuilderUI",
+  setup() {
+    const resume = takeBuilderRefresh(window.sessionStorage);
+    if (!resume) return;
+    // Let ComfyUI restore its graph before bringing the Builder back to the front.
+    window.setTimeout(() => {
+      const node = app.graph?._nodes?.find((item) =>
+        item.id === resume.nodeId && (item.comfyClass || item.type) === NODE_NAME) || null;
+      openBuilder(node, { resume }).catch((error) => {
+        console.error("VRGDG Video Builder could not resume after refresh:", error);
+      });
+    }, 1500);
+  },
   loadedGraphNode(node) {
     if ((node?.comfyClass || node?.type) === NODE_NAME) ensureButton(node);
   },

@@ -367,7 +367,7 @@ export function buildTopbar({
   autoSaveControl, branchProjectButton, builderETAState, builderLifecycle, closeBuilderNow, closeButton,
   exportProjectButton, fullscreenButton, importProjectButton, loadLastProjectButton, loadSessionButton,
   menuButton, newProjectButton, overlay, reviewGuideButton, saveButton, saveProjectAsButton, saveSession,
-  settingsButton, topbar, uiProfileField, videoTypeField, whatsNewMenuButton,
+  refreshBuilder, settingsButton, topbar, uiProfileField, videoTypeField, whatsNewMenuButton,
 }) {
   const confirmCloseBuilder = () => {
     const backdrop = document.createElement("div");
@@ -415,6 +415,22 @@ export function buildTopbar({
     });
   };
   closeButton.onclick = confirmCloseBuilder;
+  const refreshBuilderButton = makeButton("Refresh Builder UI");
+  refreshBuilderButton.title = "Save this project, reload the browser to get the latest Builder UI, and reopen this project and scene automatically.";
+  refreshBuilderButton.onclick = async () => {
+    refreshBuilderButton.disabled = true;
+    refreshBuilderButton.setAttribute("aria-busy", "true");
+    refreshBuilderButton.title = "Saving and refreshing the Builder UI...";
+    try {
+      await refreshBuilder();
+    } catch (error) {
+      toast(`Could not refresh the Builder UI: ${String(error?.message || error)}`, true);
+    } finally {
+      refreshBuilderButton.disabled = false;
+      refreshBuilderButton.removeAttribute("aria-busy");
+      refreshBuilderButton.title = "Save this project, reload the browser to get the latest Builder UI, and reopen this project and scene automatically.";
+    }
+  };
   const promptCreatorButton = makeButton("Prompt Creator (Legacy)");
   const autoLoadAllButton = makeButton("Import Data From Prompt Creator");
   const importSceneNotesButton = makeButton("Import Scene Notes JSON");
@@ -472,6 +488,13 @@ export function buildTopbar({
     icon: "save",
     width: 54,
     title: "Save the current project immediately.",
+  });
+  styleCompactToolbarButton(refreshBuilderButton, {
+    icon: "refresh",
+    iconOnly: true,
+    width: 40,
+    ariaLabel: "Refresh Builder UI",
+    title: "Save, refresh the Builder UI, and reopen this project and scene.",
   });
   styleCompactToolbarButton(wizardButton, {
     lines: ["Wizard", "Legacy"],
@@ -584,7 +607,7 @@ export function buildTopbar({
   menuDropdown.append(updateV10Row);
   const projectActions = document.createElement("div");
   projectActions.style.cssText = "display:flex;gap:6px;align-items:center;flex-wrap:nowrap;min-width:max-content;";
-  projectActions.append(menuButton, videoTypeField, uiProfileField, saveButton);
+  projectActions.append(menuButton, videoTypeField, uiProfileField, saveButton, refreshBuilderButton);
   const batchActions = document.createElement("div");
   batchActions.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:nowrap;border-left:1px solid #3f3f46;border-right:1px solid #3f3f46;padding:0 10px;flex:0 0 auto;";
   batchActions.style.display = "none";
@@ -645,9 +668,18 @@ export function buildTopbar({
   };
   const positionBuilderResourceMonitor = () => {
     const centerBounds = centerActions.getBoundingClientRect();
-    const actionBounds = importActions.getBoundingClientRect();
-    const availableRight = centerBounds.right - actionBounds.right;
-    builderResourceMonitor.style.display = availableRight >= 265 ? "flex" : "none";
+    const actionRight = Math.max(importActions.getBoundingClientRect().right, batchActions.getBoundingClientRect().right);
+    const availableRight = centerBounds.right - actionRight;
+    const topRowWidth = Math.min(250, Math.max(0, availableRight - 8));
+    const fits = topRowWidth >= 210;
+    const parent = fits ? centerActions : topbar;
+    if (builderResourceMonitor.parentElement !== parent) parent.append(builderResourceMonitor);
+    builderResourceMonitor.style.width = fits ? `${topRowWidth}px` : "250px";
+    builderResourceMonitor.style.position = fits ? "absolute" : "static";
+    builderResourceMonitor.style.transform = fits ? "translateY(-50%)" : "none";
+    builderResourceMonitor.style.gridColumn = fits ? "" : "1 / -1";
+    builderResourceMonitor.style.justifySelf = fits ? "" : "center";
+    builderResourceMonitor.style.display = "flex";
   };
   const pollBuilderResources = async () => {
     if (!overlay.isConnected || builderLifecycle.resourceController) return;

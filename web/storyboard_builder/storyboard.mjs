@@ -1,4 +1,4 @@
-import { makeButton, setButtonDisabled, setButtonVariant } from "./controls.mjs";
+import { createToast, makeButton, setButtonDisabled, setButtonVariant } from "./controls.mjs";
 import {
   FACIAL_PERFORMANCE_PRESETS,
   ID_LORA_FACIAL_PERFORMANCE_PRESETS,
@@ -47,6 +47,7 @@ import { wireStoryboardEvents } from "./storyboard_events.mjs";
 import { buildStoryLayerPanel } from "./story_layer_layout.mjs";
 import { buildSceneDefaultsPanel } from "./defaults_panel_layout.mjs";
 import { buildStoryboardShell } from "./storyboard_layout.mjs";
+import { hasMappedStoryboardLocation, NO_MAPPED_LOCATIONS_MESSAGE, runStoryGenerationSequence } from "./story_workflow.mjs";
 
 export function openStoryboardBuilder(payload = {}) {
   const promptActionOnly = payload.promptActionOnly === true;
@@ -273,6 +274,7 @@ export function openStoryboardBuilder(payload = {}) {
 
   const {
     adjacentLyricContextInput, applyDialoguePlanButton, createMissingBeatsButton, createStoryArcButton,
+    createStorySequenceButton,
     createStoryBriefButton, detectSectionsButton, gptStoryButton, idLoraDialoguePlanner,
     idLoraDialoguePlannerText, idLoraDialogueSceneCount, importStoryJsonButton, lyricStoryStrengthHintButton,
     lyricStoryStrengthInput, lyricStoryStrengthValue, miniMaxGuidedWorkflowSteps, miniMaxScriptImporter,
@@ -387,6 +389,28 @@ export function openStoryboardBuilder(payload = {}) {
     userStoryArcInput,
   });
 
+  async function createStorySequenceWithGemma() {
+    if (!hasMappedStoryboardLocation(state)) {
+      createToast(NO_MAPPED_LOCATIONS_MESSAGE, true);
+      return;
+    }
+    const buttons = [createStorySequenceButton, createStoryArcButton, createStoryBriefButton, createMissingBeatsButton];
+    buttons.forEach((button) => { button.disabled = true; });
+    try {
+      const result = await runStoryGenerationSequence({
+        createArc: createStoryArcWithGemma,
+        createBrief: createStoryBriefWithGemma,
+        createBeats: createAllSceneBeatsWithGemma,
+        save: () => saveStoryboard({ throwOnError: true }),
+      });
+      if (result.completed) createToast("Story arc, brief, and missing scene beats are ready.");
+    } catch (error) {
+      createToast(`Story creation stopped: ${String(error?.message || error)}`, true);
+    } finally {
+      buttons.forEach((button) => { button.disabled = false; });
+    }
+  }
+
   const { openSceneEditor } = createSceneEditor({
     absorbSceneReferencesIntoCatalog, addStoryboardReferenceFromFile, backdrop, createSceneBeatWithGemma,
     createScenePromptForActiveMode, facialPerformancePresets, isFullyCustomShortFilm, isMiniMaxShortFilmMode,
@@ -401,8 +425,8 @@ export function openStoryboardBuilder(payload = {}) {
   footerActions.append(save, exportPrompts);
   footer.append(stats, footerActions);
 
-  if (!focusedSection || focusedSection === "defaults") middleContent.append(sceneDefaultsPanel);
   if (!focusedSection || focusedSection === "story") middleContent.append(storyLayerPanel);
+  if (!focusedSection || focusedSection === "defaults") middleContent.append(sceneDefaultsPanel);
   if (!focusedSection || focusedSection === "scenes") middleContent.append(tableWrap);
   if (focusedSection) {
     if (focusedSection !== "scenes") {
@@ -562,6 +586,7 @@ export function openStoryboardBuilder(payload = {}) {
     characterSpeedHint, characterSpeedInput, storyArcDetailSelect, clearAllStoryboardPrompts, clearAllStoryboardStoryBeats,
     clearPromptsButton, clearStoryBeatsButton, consistencyInput, copyStoryboardForGpt, copyStoryLayerForGpt,
     createAllSceneBeatsWithGemma, createMissingBeatsButton, createStoryArcButton, createStoryArcWithGemma,
+    createStorySequenceButton, createStorySequenceWithGemma,
     createStoryBriefButton, createStoryBriefWithGemma, cutFrequencyHint, cutFrequencyInput,
     detectLyricSections, detectSectionsButton, exportPromptFiles, exportPrompts, facialApply,
     facialCustomInput, facialReplace, facialSelect, fxCustomInput, fxSelect, gemmaAllButton, gptButton,

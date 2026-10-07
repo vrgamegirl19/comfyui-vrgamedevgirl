@@ -84,6 +84,8 @@ import {
 } from "./image_panels.mjs";
 import { createBrowserAi, wireBrowserAiPanel } from "./browser_ai.mjs";
 import { buildTimelineView, createTimelineView } from "./timeline_view.mjs";
+import { timelineDeleteAvailability } from "./timeline_tool_windows.mjs";
+import { queueBuilderRefresh } from "./builder_refresh.mjs";
 import { createMediaImport, installFileDropNavigationGuard } from "./media_import.mjs";
 import { createProjectFiles, wireContextFileInputs } from "./project_files.mjs";
 import { createLyricCues } from "./lyric_cues.mjs";
@@ -133,7 +135,7 @@ import { createVideoRender } from "./video_render.mjs";
 import { createBatchRender } from "./batch_render.mjs";
 import { createModelPickers } from "./model_pickers.mjs";
 
-export function openBuilder(node) {
+export function openBuilder(node, options = {}) {
   // Mutable runtime state shared across the builder features for this open builder.
   const wizardVideoSettings = { global: false };
   const builderETAState = { timer: 0, log: null };
@@ -219,6 +221,7 @@ export function openBuilder(node) {
     menuButton, newProjectButton, overlay, reviewGuideButton, saveButton, saveProjectAsButton, settingsButton,
     topbar, uiProfileField, videoTypeField, whatsNewMenuButton,
     saveSession: (...args) => saveSession(...args),
+    refreshBuilder: (...args) => refreshBuilder(...args),
   });
 
   const {
@@ -856,15 +859,19 @@ export function openBuilder(node) {
   const {
     addOverlaySegmentButton, addSegmentButton, addTimelineMarkerButton, beatMarkersButton, bulkSegmentsButton,
     clearRangeButton, closeTimelineGapsButton, deleteAllSegmentsButton, deleteAllTimelineImagesButton,
-    deleteAllTimelineVideosButton, deleteSegmentButton, deleteSelectedMediaButton, globalAudioMuteButton,
-    globalScrub, globalScrubTime, idLoraTrimModeButton, lyricNoteButton, multiSelectButton,
+    deleteAllTimelineVideosButton, deleteSegmentButton, globalAudioMuteButton,
+    globalScrub, globalScrubTime, idLoraTrimModeButton, lyricNoteButton, locationThumbnailButton, multiSelectButton,
     multiSelectHintButton, overlayTrackHintButton, overlayTrackToggleButton, playButton, playhead, redoButton,
-    sceneNoteButton, segmentLayer, selectedMediaLabel, setInButton, setOutButton, snapSceneEdgeButton,
+    refreshDeleteActions, sceneNoteButton, segmentLayer, setInButton, setOutButton, snapSceneEdgeButton,
     snapToBeatsControl, splitSceneButton, stopButton, timeline, timelineCanvas, timelineInfo,
-    timelineRangeInfo, timelineResizeHandle, timelineViewport, undoButton, useFrameAsImageButton,
+    timelineRangeInfo, timelineResizeHandle, timelineViewport, undoButton,
     videoNoteButton, waveformModeSelect, zoomInButton, zoomOutButton,
   } = buildTimelineView({
-    preview, previewStage,
+    overlay, preview, previewStage,
+    getDeleteAvailability: () => timelineDeleteAvailability([
+      ...(Array.isArray(state.segments) ? state.segments : []),
+      ...(Array.isArray(state.overlaySegments) ? state.overlaySegments : []),
+    ]),
   });
   const audio = document.createElement("audio");
   audio.preload = "metadata";
@@ -888,7 +895,27 @@ export function openBuilder(node) {
   window.VRGDG_UIThemes?.registerRoot?.(overlay);
 
   setTimeout(() => {
-    showStartupWelcome().catch((error) => {
+    const resume = options.resume;
+    const startup = async () => {
+      if (!resume?.projectFolder) return showStartupWelcome();
+      const loaded = await loadSessionFromProject(resume.projectFolder);
+      if (!loaded) return showStartupWelcome();
+      const selected = [...state.segments, ...state.overlaySegments].find((item) => item.id === resume.activeId);
+      if (selected) {
+        state.activeId = selected.id;
+        state.activeTrack = state.overlaySegments.includes(selected) ? "overlay" : "base";
+      }
+      if (["scenes", "tools", "luts"].includes(resume.leftPanelTab)) state.leftPanelTab = resume.leftPanelTab;
+      syncLeftPanelTabs();
+      setInspectorTab(["scene", "image", "video", "audio"].includes(resume.inspectorTab) ? resume.inspectorTab : "scene");
+      syncInspector();
+      render();
+      requestAnimationFrame(() => {
+        timelineViewport.scrollLeft = Math.max(0, Number(resume.timelineScrollLeft) || 0);
+        sceneListPane.scrollTop = Math.max(0, Number(resume.sceneListScrollTop) || 0);
+      });
+    };
+    startup().catch((error) => {
       console.warn("[VRGDG Music Builder] Startup welcome failed:", error);
       toast(`Video Creator startup failed:\n${String(error?.message || error)}`, true);
     });
@@ -1189,7 +1216,7 @@ export function openBuilder(node) {
     appendTimelineFirstLastFrameThumbnail, beginGlobalTimelineScrub, clearActiveSegment,
     clearConceptPromptNotesFromSegments, clearI2VMotionNotesFromSegments, handlePreviewVideoLoadIssue,
     mediaThumbnailHtml, moveActiveSceneSelection, openMultiSelectChooser, playSceneAudioFrom,
-    playbackSegmentAtTime, selectedMediaForDelete, selectedSegmentImagePath,
+    playbackSegmentAtTime, selectedSegmentImagePath,
     selectedSegmentImageThumbnailPath, setActiveSegment, setGlobalPlaybackTime, showAdjustPreviewImage,
     showFilmGrainPreviewImage, showLutPreviewImage, syncInspector, syncPreview, syncPreviewPlayback,
     updateAudioScrubbers, updateSelectedMediaTools, waitForPreviewVideoReady,
@@ -1197,7 +1224,7 @@ export function openBuilder(node) {
     audioInput, audioSummary, cancelPreviewPlayStart, clearSceneEndFrameButton, clearSegmentAdjustPreview,
     clearSegmentFilmGrainPreview, clearSegmentLutPreview, createFluxPromptButton, createI2VButton,
     createNBPromptButton, createSceneEndFrameButton, createSceneVideoButton, createT2IButton,
-    deleteAllTimelineVideosButton, deleteSegmentButton, deleteSelectedMediaButton,
+    deleteSegmentButton, refreshDeleteActions,
     editErnieT2IInstructionsButton, editFlowGptT2IInstructionsButton, editFluxKleinT2IInstructionsButton,
     editI2VPromptButton, editIdLoraInstructionsButton, editImagePromptButtons, editKrea2T2IInstructionsButton,
     editNanoBT2IInstructionsButton, editZImageT2IInstructionsButton, endInput, ernieCreateButton,
@@ -1216,9 +1243,9 @@ export function openBuilder(node) {
     previewButton, previewDecodeHint, previewEmpty, previewImage, previewNBButton, previewVideo,
     previewVideoState, promptJsonInput, refImageInput, refImagePanel, renderFilmGrainPostProcessPanel,
     renderSceneAdjustPanel, renderSceneToolsPanel, rtvReferenceBehaviorSelect, savedI2VPrompts,
-    saveI2VPromptButton, saveMiniMaxPromptButton, sceneAudio, segmentLayer, selectedMediaLabel,
+    saveI2VPromptButton, saveMiniMaxPromptButton, sceneAudio, segmentLayer,
     silentTimeline, srtInput, startInput, state, storyIdeaInput, subjectSceneInput, t2iPrompt,
-    t2iTextGemmaModelSelect, t2vRefImagePanel, themeStyleInput, timelineCanvas, useFrameAsImageButton,
+    t2iTextGemmaModelSelect, t2vRefImagePanel, themeStyleInput, timelineCanvas,
     useI2VVisionReference, useSceneErnieImageSettings, useSceneFluxKleinSettings, useSceneI2VVideoSettings,
     useSceneKrea2TwoPassSettings, useSceneMiniMaxH3Settings, useSceneNBImageSettings, useSceneZImageSettings,
     useT2VVisionReference, useVisionReference, useVrgdgTextContext, zEnhanceGemmaButton,
@@ -1504,6 +1531,9 @@ export function openBuilder(node) {
     sceneSlotNumber: (...args) => sceneSlotNumber(...args),
     segmentIndexInfo: (...args) => segmentIndexInfo(...args),
     segmentTrack: (...args) => segmentTrack(...args),
+    selectedSegmentImagePath: (...args) => selectedSegmentImagePath(...args),
+    captureSelectedVideoFrameAsImage: (...args) => captureSelectedVideoFrameAsImage(...args),
+    deleteSelectedMedia: (...args) => deleteSelectedMedia(...args),
     syncI2VMotionJsonFromSegments: (...args) => syncI2VMotionJsonFromSegments(...args),
     syncPromptJsonFromSegments: (...args) => syncPromptJsonFromSegments(...args),
     deleteSegment: (...args) => deleteSegment(...args),
@@ -1517,7 +1547,7 @@ export function openBuilder(node) {
     i2vNotesInput, lyricTextInput, mediaThumbnailHtml, openAudioContextMenu, openDirectorNoteContextMenu,
     openSceneOptions, openSegmentContextMenu, openTimelineSceneCard, playhead, pushHistory,
     rtvReferenceBehaviorForSegment, sceneListPane, segmentLayer, selectedSegmentImageThumbnailPath,
-    setActiveSegment, state, syncInspector, timelineCanvas,
+    setActiveSegment, state, syncInspector, timelineCanvas, locationThumbnailButton, refreshDeleteActions,
     currentVideoMode: (...args) => currentVideoMode(...args),
     timelineSegmentLabel: (...args) => timelineSegmentLabel(...args),
     cycleSegmentImageHistory: (...args) => cycleSegmentImageHistory(...args),
@@ -2348,15 +2378,15 @@ export function openBuilder(node) {
   } = createTimelineActions({
     activeSegment, addOverlaySegmentButton, addSceneImageHistoryPath, allEditableSegments, audio,
     autoSaveSessionQuiet, baseSceneVideoTrimKind, chooseRenderedSceneTrimAtPlayhead, closeBaseTimelineGap,
-    currentGlobalTime, customImageFileInput, deleteSelectedMediaButton, enforceAudioTimelineEnd,
+    currentGlobalTime, customImageFileInput, enforceAudioTimelineEnd,
     ensureSegmentRuntimeFields, freezeTimingControl, loadDirtyLatentBadges, loadedGlobalAudioDuration,
     nextFreeTimelineMarkerRange, nextOverlaySlotNumber, openTimelineMarkerEditor, overlayTrackToggleButton,
     pauseTimelineForEditing, playbackSegmentAtTime, previewVideo, projectInput, pushHistory, render,
     renderList, requireActiveSegment, sceneAudio, sceneListPane, sceneSlotNumber, segmentImageSource,
-    segmentIndexInfo, segmentLayer, segmentTrack, selectedMediaForDelete, selectedTimelineRangeInfo,
+    segmentIndexInfo, segmentLayer, segmentTrack, selectedSegmentImagePath, selectedTimelineRangeInfo,
     setActiveSegment, snapAddedSegmentEndToNearestBeat, snapTimeToBeat, state, syncI2VMotionJsonFromSegments,
     syncInspector, syncPreview, syncPromptJsonFromSegments, syncSegmentT2IPrompt, syncTimelineTrimModeButton,
-    syncZEnhanceSettingsPanel, timelineDuration, updateHistoryButtons, updateSelectedMediaTools, useFrameAsImageButton,
+    syncZEnhanceSettingsPanel, timelineDuration, updateHistoryButtons, updateSelectedMediaTools,
   });
 
   const {
@@ -2658,6 +2688,29 @@ export function openBuilder(node) {
     }
   }
 
+  async function refreshBuilder() {
+    const projectFolder = activeProjectFolderForSave();
+    if (!projectFolder) {
+      toast("Create or load a project before refreshing the Builder UI.", true);
+      return;
+    }
+    const saved = await saveSession({ quiet: true, throwOnError: true });
+    if (!saved || saved.stale) {
+      toast("Refresh stopped because the project could not be saved. Reload the project first.", true);
+      return;
+    }
+    queueBuilderRefresh(window.sessionStorage, {
+      projectFolder: saved.project_folder || projectFolder,
+      nodeId: node?.id ?? null,
+      activeId: state.activeId,
+      inspectorTab: state.inspectorTab,
+      leftPanelTab: state.leftPanelTab,
+      timelineScrollLeft: timelineViewport.scrollLeft,
+      sceneListScrollTop: sceneListPane.scrollTop,
+    });
+    window.location.reload();
+  }
+
 
   projectBatchButton.onclick = () => {
     projectBatchPanel.style.display = projectBatchPanel.style.display === "none" ? "flex" : "none";
@@ -2848,10 +2901,10 @@ export function openBuilder(node) {
     autoSaveSessionQuiet, beatCalibration, beatCalibrationCancelButton, beatCalibrationCaptureButton,
     beatCalibrationGridType, beatCalibrationTimecodeInput, beatMarkersButton, beginGlobalTimelineScrub,
     calibrateFirstBeatButton, cancelPreviewPlayStart, captureBeatCalibrationAnchor,
-    captureSelectedVideoFrameAsImage, clearActiveSegment, closeBeatCalibrationWizard, currentGlobalTime,
+    clearActiveSegment, closeBeatCalibrationWizard, currentGlobalTime,
     deleteAllSegments, deleteAllSegmentsButton, deleteAllTimelineImages, deleteAllTimelineImagesButton,
     deleteAllTimelineVideos, deleteAllTimelineVideosButton, deleteSegment, deleteSegmentButton,
-    deleteSelectedMedia, deleteSelectedMediaButton, enforceAudioTimelineEnd, ensureAutoBpmForCalibration,
+    enforceAudioTimelineEnd, ensureAutoBpmForCalibration,
     ensureCapCutBeatsForCalibration, ensureGlobalTimelineAudioSource, globalAudioMuteButton, globalScrub,
     isTimelinePlaying, lyricNoteButton, multiSelectButton, multiSelectHintButton, openBeatCalibrationWizard,
     openMultiSelectChooser, pauseAllAudio, playbackDuration, playbackSegmentAtTime, playButton, playhead,
@@ -2862,7 +2915,7 @@ export function openBuilder(node) {
     startSilentTimelinePlayback, state, stopButton, stopSilentTimelinePlayback, syncLyricNoteControls,
     syncPreviewPlayback, syncSceneNoteControls, syncTimelineTrimModeButton, syncVideoNoteControls,
     timelineAudioPathForSegment, timelineAudioSourceStartForSegment, timelineCanvas, timelineViewport,
-    updateAudioScrubbers, updatePlayPauseButton, useFrameAsImageButton, usingSceneAudioPlaybackMode,
+    updateAudioScrubbers, updatePlayPauseButton, usingSceneAudioPlaybackMode,
     videoNoteButton, waitForPreviewVideoReady, waveformModeSelect, zoomInButton, zoomOutButton,
   });
   wireKeyboardShortcuts({

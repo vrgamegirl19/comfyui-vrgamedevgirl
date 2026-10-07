@@ -21,7 +21,8 @@ export function wireStoryboardEvents({
   characterSpeedHint, characterSpeedInput, storyArcDetailSelect, clearAllStoryboardPrompts, clearAllStoryboardStoryBeats,
   clearPromptsButton, clearStoryBeatsButton, consistencyInput, copyStoryboardForGpt, copyStoryLayerForGpt,
   createAllSceneBeatsWithGemma, createMissingBeatsButton, createStoryArcButton, createStoryArcWithGemma,
-  createStoryBriefButton, createStoryBriefWithGemma, cutFrequencyHint, cutFrequencyInput, detectLyricSections,
+  createStoryBriefButton, createStoryBriefWithGemma, createStorySequenceButton, createStorySequenceWithGemma,
+  cutFrequencyHint, cutFrequencyInput, detectLyricSections,
   detectSectionsButton, exportPromptFiles, exportPrompts, facialApply, facialCustomInput, facialReplace,
   facialSelect, fxCustomInput, fxSelect, gemmaAllButton, gptButton, gptStoryButton, handleReplaceSceneBeats,
   imageAestheticApply, imageAestheticPresets, imageAestheticReplace, imageAestheticSelect,
@@ -297,6 +298,7 @@ export function wireStoryboardEvents({
   songStoryBriefInput.addEventListener("change", () => syncStoryLayerFromInputs({ notify: true }));
   createStoryArcButton.onclick = createStoryArcWithGemma;
   createStoryBriefButton.onclick = createStoryBriefWithGemma;
+  createStorySequenceButton.onclick = createStorySequenceWithGemma;
   createMissingBeatsButton.onclick = () => createAllSceneBeatsWithGemma();
   replaceBeatsButton.onclick = handleReplaceSceneBeats;
   detectSectionsButton.onclick = detectLyricSections;

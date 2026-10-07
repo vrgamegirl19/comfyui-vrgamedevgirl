@@ -1,5 +1,5 @@
 import { normalizeOverlayClip } from "../VRGDG_OverlayTrack.js";
-import { makeEditorThumbnailUrl } from "./comfy_api.mjs";
+import { makeEditorImageUrl, makeEditorThumbnailUrl } from "./comfy_api.mjs";
 import {
   TIMELINE_HEIGHT,
   TIMELINE_MARKER_HEIGHT,
@@ -31,6 +31,8 @@ import { newTimelineMarker, sortSegments } from "./segments.mjs";
 import { appendTimelineVideoThumbnail, hasLockedVideo, selectedSegmentVideoPath } from "./selection_preview.mjs";
 import { parseBulkTimeValue } from "./timeline_actions.mjs";
 import { audioChunkDuration, audioTimelineStart, markerEnd, normalizeTimelineMarkers } from "./timeline_state.mjs";
+import { mappedLocation } from "./scene_locations.mjs";
+import { createTimelineToolWindows } from "./timeline_tool_windows.mjs";
 
 export function shiftSegmentTiming(segment, delta) {
   const amount = Number(delta || 0);
@@ -76,7 +78,7 @@ function timelineMarkerColor(type) {
   return { bg: "rgba(8,47,73,.9)", border: "#67e8f9", text: "#ecfeff" };
 }
 
-export function buildTimelineView({ preview, previewStage }) {
+export function buildTimelineView({ overlay, preview, previewStage, getDeleteAvailability }) {
   const timeline = document.createElement("div");
   timeline.style.cssText = "display:grid;grid-template-rows:7px auto 1fr;border-top:1px solid #27272a;background:#111113;min-height:0;";
   const timelineResizeHandle = document.createElement("div");
@@ -175,7 +177,8 @@ export function buildTimelineView({ preview, previewStage }) {
     button.style.width = "34px";
   }
   const waveformModeSelect = makeSelect(Object.keys(WAVEFORM_MODES), "medium");
-  waveformModeSelect.style.minWidth = "126px";
+  waveformModeSelect.style.width = "max-content";
+  waveformModeSelect.style.flex = "0 0 auto";
   for (const option of waveformModeSelect.options) {
     option.textContent = WAVEFORM_MODES[option.value]?.label || option.value;
   }
@@ -186,6 +189,9 @@ export function buildTimelineView({ preview, previewStage }) {
   beatMarkersButton.title = "Show or hide beat markers";
   beatMarkersButton.style.width = "34px";
   beatMarkersButton.style.padding = "7px 10px";
+  const locationThumbnailButton = makeButton("Locations: Off");
+  locationThumbnailButton.title = "Show each scene's mapped location image or text title on the timeline.";
+  locationThumbnailButton.style.padding = "7px 10px";
   const globalScrub = document.createElement("input");
   globalScrub.type = "range";
   globalScrub.min = "0";
@@ -216,18 +222,6 @@ export function buildTimelineView({ preview, previewStage }) {
   const timelineStatusInfo = document.createElement("div");
   timelineStatusInfo.style.cssText = "display:flex;align-items:center;gap:12px;flex:0 0 auto;min-width:max-content;padding:0 4px;";
   timelineStatusInfo.append(timelineInfo, timelineRangeInfo);
-  const selectedMediaTools = document.createElement("div");
-  selectedMediaTools.style.cssText = "margin-left:auto;display:flex;gap:8px;align-items:center;border:1px solid #27272a;border-radius:6px;background:#111113;padding:6px 8px;";
-  const selectedMediaLabel = document.createElement("span");
-  selectedMediaLabel.textContent = "Selected media: none";
-  selectedMediaLabel.style.cssText = "font-size:12px;color:#a1a1aa;white-space:nowrap;";
-  const useFrameAsImageButton = makeButton("Use Frame as Image");
-  useFrameAsImageButton.style.padding = "6px 10px";
-  useFrameAsImageButton.title = "Save the currently selected video frame as this scene's image";
-  const deleteSelectedMediaButton = makeButton("Delete Image/Video");
-  deleteSelectedMediaButton.style.padding = "6px 10px";
-  deleteSelectedMediaButton.style.borderColor = "#7f1d1d";
-  deleteSelectedMediaButton.style.color = "#fecaca";
   const deleteAllTimelineVideosButton = makeButton("Delete ALL Videos");
   deleteAllTimelineVideosButton.style.padding = "6px 10px";
   deleteAllTimelineVideosButton.style.borderColor = "#dc2626";
@@ -240,7 +234,12 @@ export function buildTimelineView({ preview, previewStage }) {
   deleteAllTimelineImagesButton.style.background = "#450a0a";
   deleteAllTimelineImagesButton.style.color = "#fee2e2";
   deleteAllTimelineImagesButton.title = "Delete every timeline image from every scene, including FLF first frames, last frames, and extracted chained start frames, and remove those files from the project folder.";
-  selectedMediaTools.append(selectedMediaLabel, useFrameAsImageButton, deleteSelectedMediaButton, deleteAllTimelineVideosButton, deleteAllTimelineImagesButton);
+  const { toolsButton, deleteAllButton, refreshDeleteActions } = createTimelineToolWindows({
+    overlay,
+    toolButtons: [setInButton, setOutButton, clearRangeButton, closeTimelineGapsButton, snapSceneEdgeButton, overlayTrackToggleButton, overlayTrackHintButton, locationThumbnailButton],
+    deleteButtons: [deleteAllTimelineImagesButton, deleteAllTimelineVideosButton, deleteAllSegmentsButton],
+    getDeleteAvailability,
+  });
   const zoomWrap = document.createElement("div");
   zoomWrap.style.cssText = "display:flex;gap:4px;align-items:center;";
   zoomWrap.append(zoomOutButton, zoomInButton);
@@ -258,7 +257,7 @@ export function buildTimelineView({ preview, previewStage }) {
   addSegmentButton.textContent = "+ Segment";
   addOverlaySegmentButton.textContent = "+ Overlay Track";
   timelineToolRail.append(bulkSegmentsButton, sceneNoteButton, videoNoteButton, lyricNoteButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton);
-  timelineHeader.append(setInButton, setOutButton, clearRangeButton, closeTimelineGapsButton, snapSceneEdgeButton, splitSceneButton, idLoraTrimModeButton, overlayTrackToggleButton, overlayTrackHintButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineStatusInfo, deleteSegmentButton, deleteAllSegmentsButton, selectedMediaTools);
+  timelineHeader.append(toolsButton, splitSceneButton, idLoraTrimModeButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineStatusInfo, deleteSegmentButton, deleteAllButton);
   const timelineBody = document.createElement("div");
   timelineBody.style.cssText = "display:grid;grid-template-columns:auto minmax(0,1fr);min-height:0;overflow:hidden;";
   const timelineViewport = document.createElement("div");
@@ -277,12 +276,12 @@ export function buildTimelineView({ preview, previewStage }) {
   return {
     addOverlaySegmentButton, addSegmentButton, addTimelineMarkerButton, beatMarkersButton, bulkSegmentsButton,
     clearRangeButton, closeTimelineGapsButton, deleteAllSegmentsButton, deleteAllTimelineImagesButton,
-    deleteAllTimelineVideosButton, deleteSegmentButton, deleteSelectedMediaButton, globalAudioMuteButton,
-    globalScrub, globalScrubTime, idLoraTrimModeButton, lyricNoteButton, multiSelectButton,
+    deleteAllTimelineVideosButton, deleteSegmentButton, globalAudioMuteButton,
+    globalScrub, globalScrubTime, idLoraTrimModeButton, lyricNoteButton, locationThumbnailButton, multiSelectButton,
     multiSelectHintButton, overlayTrackHintButton, overlayTrackToggleButton, playButton, playhead, redoButton,
-    sceneNoteButton, segmentLayer, selectedMediaLabel, setInButton, setOutButton, snapSceneEdgeButton,
+    refreshDeleteActions, sceneNoteButton, segmentLayer, setInButton, setOutButton, snapSceneEdgeButton,
     snapToBeatsControl, splitSceneButton, stopButton, timeline, timelineCanvas, timelineInfo,
-    timelineRangeInfo, timelineResizeHandle, timelineViewport, undoButton, useFrameAsImageButton,
+    timelineRangeInfo, timelineResizeHandle, timelineViewport, undoButton,
     videoNoteButton, waveformModeSelect, zoomInButton, zoomOutButton,
   };
 }
@@ -298,7 +297,14 @@ export function createTimelineView({
   segmentImageSource, segmentLayer, segmentTrack, selectedSegmentImageThumbnailPath,
   selectedTimelineRangeInfo, setActiveSegment, state, syncInspector, syncLyricMapperFromSegments,
   timelineCanvas, timelineDuration, timelineSegmentLabel, toggleSegmentPreviewMode,
+  locationThumbnailButton, refreshDeleteActions,
 }) {
+  let showLocationThumbnails = false;
+  locationThumbnailButton.onclick = () => {
+    showLocationThumbnails = !showLocationThumbnails;
+    locationThumbnailButton.textContent = `Locations: ${showLocationThumbnails ? "On" : "Off"}`;
+    render();
+  };
   // The scene card's quick button: lock this scene's MiniMax settings and make it a Latent Continuation Masked scene
   // with the Masked transition. Clicking it again puts the scene back the way it was before the first click.
   async function toggleSceneMaskedContinuation(segment) {
@@ -793,6 +799,7 @@ export function createTimelineView({
   }
 
   function renderSegments() {
+    refreshDeleteActions();
     segmentLayer.textContent = "";
     ensureAllSegmentRuntimeFields();
     renderSelectedTimelineRangeOverlay();
@@ -839,7 +846,10 @@ export function createTimelineView({
         || (videoMode === "rtv" && rtvReferenceBehaviorForSegment(segment) === "first_last_frame")
       );
       const previewThumbPath = selectedSegmentImageThumbnailPath(segment);
-      const thumb = !showFirstLastFrameThumb && previewThumbPath ? makeEditorThumbnailUrl(previewThumbPath) : "";
+      const location = !isOverlay && showLocationThumbnails
+        ? mappedLocation(state.fluxReferenceBuilder, segment, state.segments.indexOf(segment)) : null;
+      const locationImage = location?.image?.data || (location?.image?.path ? makeEditorImageUrl(location.image.path) : "");
+      const thumb = showLocationThumbnails ? "" : !showFirstLastFrameThumb && previewThumbPath ? makeEditorThumbnailUrl(previewThumbPath) : "";
       const hasVideoPreview = Boolean(selectedSegmentVideoPath(segment));
       const inserted = !isOverlay && state.srtMode && segment.source !== "srt";
       const lockedByVideo = hasLockedVideo(segment);
@@ -864,7 +874,19 @@ export function createTimelineView({
         color:#f4f4f5;font-size:11px;font-weight:800;overflow:hidden;cursor:pointer;pointer-events:auto;
         box-shadow:${shadow};
       `;
-      if (showFirstLastFrameThumb) appendTimelineFirstLastFrameThumbnail(block, segment);
+      if (showLocationThumbnails && !isOverlay) {
+        if (locationImage) {
+          const image = document.createElement("img");
+          image.src = locationImage;
+          image.alt = location?.name || "Mapped location";
+          image.style.cssText = "position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none;";
+          block.prepend(image);
+        }
+        const label = document.createElement("span");
+        label.textContent = location?.name || "No location mapped";
+        label.style.cssText = "position:absolute;left:4px;right:4px;bottom:4px;z-index:3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:rgba(2,6,23,.82);padding:2px 4px;border-radius:3px;font-size:10px;text-align:left;";
+        block.append(label);
+      } else if (showFirstLastFrameThumb) appendTimelineFirstLastFrameThumbnail(block, segment);
       else if (!thumb && hasVideoPreview) appendTimelineVideoThumbnail(block, segment);
       if (isOverlay) {
         normalizeOverlayClip(segment);

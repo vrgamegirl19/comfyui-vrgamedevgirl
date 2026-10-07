@@ -8,7 +8,7 @@ import {
   normalizeProjectVideoEngine,
   toast,
 } from "./controls.mjs";
-import { normalizeMiniMaxH3Mode, normalizeMiniMaxH3Voice } from "./minimax_h3.mjs";
+import { normalizeMiniMaxH3Mode, normalizeMiniMaxH3Pipeline, normalizeMiniMaxH3Voice } from "./minimax_h3.mjs";
 import { normalizeFluxReferenceBuilder, subjectExtraTargetId } from "./reference_data.mjs";
 import { createReferenceSceneMapping } from "./reference_scene_mapping.mjs";
 import { createReferenceGeneration } from "./reference_generation.mjs";
@@ -16,6 +16,7 @@ import { createReferenceImages } from "./reference_images.mjs";
 import { createReferenceLocations } from "./reference_locations.mjs";
 import { createReferenceSubjects } from "./reference_subjects.mjs";
 import { createSceneAssignment } from "./reference_scene_assignment.mjs";
+import { createWizardMappingTools } from "./reference_mapping_tools.mjs";
 
 export function createReferenceBuilder({
   activeSegment, advanceZImageSeedAfterRun, allEditableSegments, autoSaveSessionQuiet,
@@ -34,12 +35,13 @@ export function createReferenceBuilder({
   zVaePicker,
 }) {
   function openFluxReferenceBuilderModal(options = {}) {
-    const focusedSection = ["subjects", "locations", "mapping"].includes(options.focusedSection) ? options.focusedSection : "";
-    const sectionTitle = { subjects: "Subjects", locations: "Locations", mapping: "Mappings" }[focusedSection];
+    const focusedSection = ["subjects", "locations", "mapping", "mapping_tools"].includes(options.focusedSection) ? options.focusedSection : "";
+    const sectionTitle = { subjects: "Subjects", locations: "Locations", mapping: "Mappings", mapping_tools: "Subject / Location Mappings" }[focusedSection];
     const wizardLocationMode = Boolean(options?.wizardMode || options?.wizard_location_mode);
     const referenceImagesEnabled = options?.textOnlyMode !== true;
     const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
     const miniMaxTargetMode = normalizeMiniMaxH3Mode(options?.miniMaxTargetMode || miniMaxH3ModeForSegment(activeSegment()));
+    const refmodPipeline = miniMaxProject && normalizeMiniMaxH3Pipeline(state.miniMaxH3Settings?.pipeline) === "refmod";
     const referenceBuilderTargetLabel = !referenceImagesEnabled
       ? "Gemma scene text mapping"
       : miniMaxProject && miniMaxTargetMode === "video_to_video"
@@ -65,9 +67,11 @@ export function createReferenceBuilder({
       : miniMaxProject && miniMaxTargetMode === "video_to_video"
         ? "Build and map character, background, location, prop, and style images that MiniMax can use alongside the source video for replacements and edits."
         : miniMaxProject && miniMaxTargetMode === "reference_to_video"
-          ? "Build and map ordered character, location, prop, style, and storyboard images for MiniMax Reference to Video."
+          ? refmodPipeline
+            ? "Choose saved RefMods on character, location, prop, and style cards, then map those cards to scenes."
+            : "Build and map ordered character, location, prop, style, and storyboard images for MiniMax Reference to Video."
           : "Map character and location descriptions to scenes for Gemma prompt writing. Flux/Nano can also use attached images when those image modes are active.";
-    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">${sectionTitle ? `Edit ${sectionTitle}` : "Scene Reference Builder"}</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">${referenceBuilderDescription}</div>`;
+    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">${focusedSection === "mapping_tools" ? "Map Subjects / Locations" : sectionTitle ? `Edit ${sectionTitle}` : "Scene Reference Builder"}</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">${referenceBuilderDescription}</div>`;
     const close = makeButton("Close");
     header.append(heading, close);
 
@@ -323,11 +327,15 @@ export function createReferenceBuilder({
     mappingCard.append(mappingHeader, mappingNote, globalPerformanceControls, mappingList);
     openAdvancedLineMapping.onclick = () => launchAdvancedLineMapping();
 
+    const mappingTools = focusedSection === "mapping_tools"
+      ? createWizardMappingTools({ cardStyle, assignScenes, extractLocations, autoMapLocations, locationStyleTheme })
+      : null;
     const referenceTabs = [
       { id: "subjects", label: "Subjects", node: subjectCard },
       ...(miniMaxProject ? [{ id: "extras", label: "Extra Subjects", node: extrasCard }] : []),
       { id: "locations", label: "Locations", node: locationsCard },
       { id: "mapping", label: "Mapping", node: mappingCard },
+      ...(mappingTools ? [{ id: "mapping_tools", label: "Map Subjects / Locations", node: mappingTools.card }] : []),
     ];
     const referenceTabButtons = new Map();
     function setReferenceTab(id) {
@@ -397,8 +405,8 @@ export function createReferenceBuilder({
     });
 
     const { launchAdvancedLineMapping, openSceneAssignmentDialog } = createSceneAssignment({
-      allEditableSegments, backdrop, logicalReferenceSubjects, logicalSubjectIdsForScene, openLyricReviewModal,
-      pushHistory, refs, renderAll, selectedSegmentsForBatch, state,
+      allEditableSegments, autoSaveSessionQuiet, backdrop, logicalReferenceSubjects, logicalSubjectIdsForScene,
+      openLyricReviewModal, pushHistory, refs, renderAll, selectedSegmentsForBatch, state, syncInspector,
     });
 
     const { exportSceneMappingContextForGpt, openImportGptSceneMapDialog, renderMapping } = createReferenceSceneMapping({
@@ -496,6 +504,7 @@ export function createReferenceBuilder({
       renderExtras();
       renderLocations();
       renderMapping();
+      mappingTools?.render();
     }
 
     uploadSubject.onclick = () => uploadFor(imageTargetFor(refs.subject, "image", "subject"));

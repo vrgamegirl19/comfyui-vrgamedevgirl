@@ -641,7 +641,7 @@ export function createPromptText({
     if (!customMotionSummary) add(parts, "Storyboard camera motion", scene.camera_motion || segment.camera_motion || segment.motion_preset);
     add(parts, "Storyboard camera motion speed guidance", defaults.camera_guidance || builderMotionSpeedGuidance(defaults.camera_motion_speed, "camera"));
     if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") {
-      const cutPlan = storyboardCutPlanForDuration(timelineSegmentDuration(segment), defaults.minimax_h3_cut_frequency);
+      const cutPlan = storyboardCutPlanForDuration(timelineSegmentDuration(segment), segment.location_continuous_shot ? 0 : defaults.minimax_h3_cut_frequency);
       add(parts, "Mandatory MiniMax editing / cut plan", cutPlan.instruction);
     }
     add(parts, "Storyboard character motion guidance", segment.character_motion || defaults.character_guidance || builderMotionSpeedGuidance(defaults.character_motion_speed, "character"));
