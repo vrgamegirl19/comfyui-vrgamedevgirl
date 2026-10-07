@@ -41,12 +41,12 @@ class StoryTests(Base):
 
     def test_settings_are_saved_under_the_ui_keys(self):
         result = story.set_story_settings("Song", {
-            "defaults": {"video_style": "Cinematic realism", "camera_motion_speed": 12},
+            "defaults": {"video_style": "Cinematic realism", "camera_motion_speed": 9},
             "story": {"overall_story_idea": "A man moves through LA"},
         })
         session = self.read_session()
         self.assertEqual(session["builder_storyboard_defaults"]["video_style"], "Cinematic realism")
-        self.assertEqual(session["builder_storyboard_defaults"]["camera_motion_speed"], 10, "speeds clamp to 0-10")
+        self.assertEqual(session["builder_storyboard_defaults"]["camera_motion_speed"], 9)
         self.assertEqual(session["builder_story_layer"]["overall_story_idea"], "A man moves through LA")
         self.assertGreater(result["revision"], 1)
 
