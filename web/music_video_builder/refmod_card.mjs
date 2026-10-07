@@ -289,7 +289,7 @@ Replace it?`)) return;
       return;
     }
     info.style.color = "#a5f3fc";
-    info.textContent = `${entry.kind === "image" ? "Single image" : `${entry.frames} images`} · ${entry.canvas[0]}x${entry.canvas[1]} · ${entry.tokens.toLocaleString()} tokens`
+    info.textContent = `${entry.kind === "image" ? "Single image" : `${entry.frames} frames`} · ${entry.canvas[0]}x${entry.canvas[1]} · ${entry.tokens.toLocaleString()} tokens`
       + (entry.kind === "image" ? " · labelled <Picture n>" : " · labelled <Video n>");
     useDescription.style.display = entry.description ? "" : "none";
     preview.replaceChildren();
@@ -345,7 +345,8 @@ Replace it?`)) return;
   loadRefmodLibrary().then((library) => {
     const folders = new Set(refmodFoldersFor(item, kind));
     entries = library;
-    const choices = library.filter((entry) => folders.has(entry.folder) || entry.name === item.refmod?.name);
+    // A RefMod saved loose in models/refmods has no folder, so its saved type places it.
+    const choices = library.filter((entry) => folders.has(entry.folder || entry.type) || entry.name === item.refmod?.name);
     modSelect.replaceChildren(new Option(choices.length ? "(choose a RefMod)" : `No RefMods in ${[...folders].join(" or ")} yet. Make one in RefMods Studio.`, ""));
     for (const entry of choices) {
       modSelect.append(new Option(`${prettyName(entry.name)}  ·  ${entry.folder}  ·  ${entry.tokens.toLocaleString()} tokens`, entry.name));

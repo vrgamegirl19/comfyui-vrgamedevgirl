@@ -130,6 +130,30 @@ class RefModPipelineTests(unittest.TestCase):
         _, summary = self.apply("minimax_audio_driven_builder_api.json", prompt="Brad <Video 1> only")
         self.assertIn("<Picture 1>", summary["labels_missing_from_prompt"])
 
+    def apply_labelled(self, entries):
+        """Run the pipeline the way the runner does: the scene prompt is already in node 138, cards carry their labels."""
+        refs = [{"name": "identity/brad", "strength": 1.0, "label": "<Video 1>"},
+                {"name": "identity/darrel", "strength": 0.8, "label": "<Video 2>"},
+                {"name": "background/meadow", "strength": 1.0, "label": "<Picture 1>"}]
+        data = payload(refmod_references=refs)
+        prompt = template("minimax_audio_driven_builder_api.json")
+        prompt["138"]["inputs"]["value"] = data["prompt"]
+        with mock.patch.object(refmod, "find_refmod", entries.get):
+            summary = refmod.apply_refmod_pipeline(prompt, data)
+        return prompt["138"]["inputs"]["value"], summary
+
+    def test_stale_card_labels_are_relabelled(self):
+        # The meadow card was picked as a single image (<Picture 1>), then the mod was saved again as a stack.
+        text, summary = self.apply_labelled({**ENTRIES, "background/meadow": {"name": "background/meadow", "kind": "video", "tokens": 600}})
+        self.assertEqual(summary["labels_relabelled"], {"<Picture 1>": "<Video 3>"})
+        self.assertEqual(text, "Brad <Video 1> and Darrel <Video 2> in <Video 3> <Audio 1>")
+        self.assertEqual(summary["labels_missing_from_prompt"], [])
+
+    def test_matching_labels_are_left_alone(self):
+        text, summary = self.apply_labelled(ENTRIES)
+        self.assertEqual(summary["labels_relabelled"], {})
+        self.assertEqual(text, "Brad <Video 1> and Darrel <Video 2> in <Picture 1> <Audio 1>")
+
     def test_errors_are_clear(self):
         with mock.patch.object(refmod, "find_refmod", fake_find):
             with self.assertRaises(ValueError):
