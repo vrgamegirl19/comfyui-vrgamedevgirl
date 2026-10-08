@@ -798,7 +798,7 @@ export function createReferenceData({
     }).filter(Boolean);
   }
 
-  function applyLyricMapperToSegments({ overwriteSingers = true } = {}) {
+  function applyLyricMapperToSegments({ overwriteSingers = true, overwriteLyrics = true } = {}) {
     state.lyricMapper = normalizeLyricMapper(state.lyricMapper);
     const mapperLines = state.lyricMapper.lines || [];
     if (!mapperLines.length) return 0;
@@ -843,14 +843,18 @@ export function createReferenceData({
       const segment = assignments.get(line.id);
       if (!segment) continue;
       segment.lyric_mapper_line_id = line.id;
-      if (line.instrumental) {
-        segment.lyric_text = "[instrumental]";
-        segment.lyric_section = "instrumental";
+      if (overwriteLyrics ? line.instrumental : isInstrumentalLyricText(segment.lyric_text)) {
+        if (overwriteLyrics) {
+          segment.lyric_text = "[instrumental]";
+          segment.lyric_section = "instrumental";
+        }
         if (overwriteSingers) segment.lyric_singers = [];
         segment.lyric_no_lip_sync = true;
       } else {
-        segment.lyric_text = String(line.text || "").trim();
-        if (String(segment.lyric_section || "").trim().toLowerCase() === "instrumental") segment.lyric_section = "";
+        if (overwriteLyrics) {
+          segment.lyric_text = String(line.text || "").trim();
+          if (String(segment.lyric_section || "").trim().toLowerCase() === "instrumental") segment.lyric_section = "";
+        }
         if (overwriteSingers || !Array.isArray(segment.lyric_singers) || !segment.lyric_singers.length) {
         const singers = Array.isArray(line.singers) ? [...line.singers] : [];
         if (line.no_lip_sync || singers.some(isNoLipSyncSingerChoice)) {

@@ -448,7 +448,7 @@ export function buildTimelineView({ overlay, preview, previewStage, getDeleteAva
     getDeleteAvailability,
   });
   const audioMaskButton = makeButton("Audio Mask");
-  const stemVisibilityButton = makeButton("Hide Stems");
+  const stemVisibilityButton = makeButton("Show Stems");
   stemVisibilityButton.title = "Hide or show the stem tracks under the scenes. Hiding only changes what the timeline shows. The stems and masks stay as they are.";
   const stemMonitorButton = makeButton("Hear Stems");
   stemMonitorButton.title = "Play the masked stem mix of a scene from the timeline instead of the main audio, so you hear what the stem choices sound like. Scenes without a stem mix keep playing the main audio.";
