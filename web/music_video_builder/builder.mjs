@@ -1949,6 +1949,7 @@ export function openBuilder(node, options = {}) {
     startSilentTimelinePlayback: (...args) => startSilentTimelinePlayback(...args),
     updatePlayPauseButton: (...args) => updatePlayPauseButton(...args),
     applyLyricMapperToSegments: (...args) => applyLyricMapperToSegments(...args),
+    syncLyricMapperFromSegments: (...args) => syncLyricMapperFromSegments(...args),
     logicalSubjectIdsForScene: (...args) => logicalSubjectIdsForScene(...args),
   });
 

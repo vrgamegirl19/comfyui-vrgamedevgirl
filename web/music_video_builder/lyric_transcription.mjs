@@ -518,7 +518,7 @@ export function createLyricTranscription({
   previousAutoChainSourceSegment, projectInput, projectPromptsPath, pushHistory, render,
   renderMiniMaxSpeakerAssignmentPanel, saveSession, sceneDisplayName, sceneSlotNumber, segmentIndexInfo,
   segmentMappedLocationReference, segmentMappedLocationText, selectedPerformerSubjectsForSegment,
-  startSilentTimelinePlayback, state, syncInspector, syncLyricNoteControls, updateAudioScrubbers,
+  startSilentTimelinePlayback, state, syncInspector, syncLyricMapperFromSegments, syncLyricNoteControls, updateAudioScrubbers,
   updatePlayPauseButton,
 }) {
   const singerCuePlayback = { button: null, label: "" };
@@ -1392,7 +1392,8 @@ export function createLyricTranscription({
       applied += 1;
     }
     const sectioned = applyLyricSectionsFromReferenceText(segments, referenceLyrics);
-    const mapped = applyLyricMapperToSegments({ overwriteSingers: true });
+    const mapped = applyLyricMapperToSegments({ overwriteSingers: true, overwriteLyrics: false });
+    syncLyricMapperFromSegments();
     state.showTimelineLyricNotes = true;
     syncLyricNoteControls();
     const lyricPath = projectLyricNotesPath();
