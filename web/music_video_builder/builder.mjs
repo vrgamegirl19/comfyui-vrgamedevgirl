@@ -86,6 +86,8 @@ import {
 import { createBrowserAi, wireBrowserAiPanel } from "./browser_ai.mjs";
 import { buildTimelineView, createTimelineView } from "./timeline_view.mjs";
 import { timelineDeleteAvailability } from "./timeline_tool_windows.mjs";
+import { createAudioMask } from "./audio_mask.mjs";
+import { onStemLanesChange } from "./audio_mask_store.mjs";
 import { queueBuilderRefresh } from "./builder_refresh.mjs";
 import { createMediaImport, installFileDropNavigationGuard } from "./media_import.mjs";
 import { createProjectFiles, wireContextFileInputs } from "./project_files.mjs";
@@ -858,7 +860,7 @@ export function openBuilder(node, options = {}) {
   inspector.append(inspectorTabs, noSceneNotice, scenePanel, imagePanel, videoPanel, audioPanel);
 
   const {
-    addOverlaySegmentButton, addSegmentButton, addTimelineMarkerButton, beatMarkersButton, bulkSegmentsButton,
+    addOverlaySegmentButton, addSegmentButton, addTimelineMarkerButton, audioMaskButton, beatMarkersButton, bulkSegmentsButton, stemMonitorButton, stemVisibilityButton, stemLayer,
     clearRangeButton, closeTimelineGapsButton, deleteAllSegmentsButton, deleteAllTimelineImagesButton,
     deleteAllTimelineVideosButton, deleteSegmentButton, globalAudioMuteButton,
     globalScrub, globalScrubTime, idLoraTrimModeButton, lyricNoteButton, locationThumbnailButton, multiSelectButton,
@@ -959,6 +961,7 @@ export function openBuilder(node, options = {}) {
     snapToBeats: true,
     showBeatMarkers: false,
     showTimelineSceneNotes: false,
+    audioMaskAuto: { enabled: true, model_name: "htdemucs_6s", input_gain_db: 0 },
     showTimelineVideoNotes: false,
     showTimelineLyricNotes: false,
     imageContinuityEnabled: false,
@@ -1546,7 +1549,7 @@ export function openBuilder(node, options = {}) {
     snapAddedSegmentEndToNearestBeat, snapTimeToBeat,
   } = createTimelineView({
     miniMaxH3ModeForSegment,
-    appendTimelineFirstLastFrameThumbnail, autoSaveSessionQuiet, enableLutDrop, enablePostEffectDrop,
+    appendTimelineFirstLastFrameThumbnail, autoSaveSessionQuiet, enableLutDrop, enablePostEffectDrop, stemLayer, timelineViewport,
     i2vNotesInput, lyricTextInput, mediaThumbnailHtml, openAudioContextMenu, openDirectorNoteContextMenu,
     openSceneOptions, openSegmentContextMenu, openTimelineSceneCard, playhead, pushHistory,
     rtvReferenceBehaviorForSegment, sceneListPane, segmentLayer, selectedSegmentImageThumbnailPath,
@@ -2858,7 +2861,8 @@ export function openBuilder(node, options = {}) {
     setInButton, setOutButton, setTimelineRangePoint, settingsButton, silentAudioDurationInput,
     slideshowPreviewButton, snapSceneEdgeButton, splitActiveSceneAtPlayhead, splitSceneButton, state,
     stitchPreviewButton, stopCurrentWorkflow, stopWorkflowButton, storyboardBuilderButton,
-    syncGlobalAudioModeControls, syncTimelineTrimModeButton, syncVideoTypeControl, toggleOverlayTrack, undo,
+    syncGlobalAudioModeControls, syncTimelineTrimModeButton, syncVideoTypeControl, textGemmaRunnerPayload,
+    toggleOverlayTrack, undo,
     undoButton, updateAudioScrubbers, updatePromptRunnerButtonLabels, updateStatus, updateStatusAction,
     updateV10Button, updateV10HintButton, updateWhatsNewAction, videoTypeSelect, whatsNewMenuButton,
     wizardBetaButton, wizardButton, zEnhanceAllButton, zEnhanceAllToolButton, zImageAllButton,
@@ -3052,6 +3056,27 @@ export function openBuilder(node, options = {}) {
     syncRTVSceneImageAnchorPanel, updateI2VLoraVisibility, wireI2VStrengthPair,
   });
   updateI2VLoraVisibility();
+
+  createAudioMask({
+    button: audioMaskButton, monitorButton: stemMonitorButton, visibilityButton: stemVisibilityButton, overlay, state, activeSegment, currentProjectAudioPath, autoSaveSessionQuiet,
+    currentGlobalTime, isTimelinePlaying, audio, sceneAudio,
+    getProjectFolder: () => String(projectInput.value || state.projectFolder || "").trim(),
+  });
+  // Stem tracks under a scene appear, change and disappear as the Audio Mask window works on them. Several scenes can
+  // change within a moment (the tracks load one scene at a time), so the redraws are combined into one, and none happens
+  // while the timeline is playing: a full redraw in the middle of playback stalls the video.
+  let stemRedrawTimer = 0;
+  const redrawStemTracks = () => {
+    window.clearTimeout(stemRedrawTimer);
+    stemRedrawTimer = window.setTimeout(() => {
+      if (isTimelinePlaying()) {
+        redrawStemTracks();
+        return;
+      }
+      render();
+    }, 200);
+  };
+  onStemLanesChange(redrawStemTracks);
 
   syncInspector();
   syncZImageSettingsPanel();

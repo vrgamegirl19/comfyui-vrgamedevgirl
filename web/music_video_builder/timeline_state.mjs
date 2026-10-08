@@ -871,7 +871,9 @@ export function createTimelineState({
     drawWaveform();
   }
 
-  function setTimelineZoom(value, anchorTime = currentGlobalTime()) {
+  // The time ``anchorTime`` stays where it is on screen while the timeline zooms. ``save: false`` is for a wheel gesture,
+  // which zooms many times a second and saves once when it stops.
+  function setTimelineZoom(value, anchorTime = currentGlobalTime(), { save = true } = {}) {
     const oldZoom = Math.max(1, Number(state.pxPerSecond || 45));
     const zoom = Math.max(8, Math.min(260, Number(value || 45)));
     state.timelineZoom = zoom;
@@ -882,7 +884,7 @@ export function createTimelineState({
     const anchorX = anchorTime * oldZoom;
     const viewportAnchor = anchorX - previousScroll;
     timelineViewport.scrollLeft = Math.max(0, anchorTime * zoom - viewportAnchor);
-    autoSaveSessionQuiet("timeline zoom changed");
+    if (save) autoSaveSessionQuiet("timeline zoom changed");
   }
 
   function makePanelResize(handle, mode) {

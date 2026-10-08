@@ -3,6 +3,7 @@
 import asyncio
 import copy
 import logging
+import math
 import os
 import re
 import shutil
@@ -11,7 +12,7 @@ from typing import Any, Callable, Dict, List, Optional
 import folder_paths
 
 from ...builder.audio import _find_ffmpeg_path
-from ...builder import media as builder_media
+from ...builder import audio_stems, media as builder_media
 from ...runner import ltx_workflows, minimax_inputs, minimax_workflows, video_files
 from ..errors import (
     ComfyExecutionError,
@@ -313,6 +314,18 @@ async def render_scene_video_async(
                 audio_path = prep_audio_res.get("audio_path", "")
             except Exception as exc:
                 logger.warning(f"Could not prepare scene audio clip for scene {scene_id}: {exc}")
+    # An enabled Audio Mask renders with its masked mix (kept vocals plus the music). The finished clip gets the real audio back.
+    mask_restore: Dict[str, Any] = {}
+    if mode_group == "minimax_h3" and audio_path and str(payload.get("audio_mode") or "input_audio") != "built_in_audio":
+        try:
+            masked_audio = audio_stems.audio_override_for_scene(seg, folder, duration_sec)
+        except ValueError as exc:
+            raise ValidationError(f"Scene {scene_number}: {exc}") from exc
+        if masked_audio:
+            mask_restore = {"restore_audio_path": audio_path, "restore_audio_start_seconds": start_sec}
+            audio_path = masked_audio["path"]
+            payload["source_start_seconds"] = 0.0
+            payload["source_duration_seconds"] = masked_audio["duration_seconds"]
     payload["audio_path"] = audio_path
 
     # SRT preparation
@@ -420,6 +433,7 @@ async def render_scene_video_async(
                     "frames": int(trim_info.get("frames", 0)),
                     "label": "minimax_exact" if "minimax" in mode else "trim",
                     "mark_as_audio_video": "minimax" in mode,
+                    **mask_restore,
                 },
             )
             source_video_path = trim_res.get("video_path") or source_video_path
@@ -943,21 +957,10 @@ async def run_batch_video_render_job(job: Job, manager: JobManager) -> Dict[str,
         manager.update_progress(job.id, 92.0, "stitching", message="Stitching final project video...")
         try:
             _, fresh_session = _get_active_session_and_folder(job.project_id)
-            scene_paths = [
-                s.get("video_path")
-                for s in fresh_session.get("segments", [])
-                if s.get("video_path") and os.path.isfile(s.get("video_path"))
-            ]
-            if scene_paths:
-                stitch_res = await asyncio.to_thread(
-                    video_files._stitch_scene_videos,
-                    {
-                        "project_folder": folder,
-                        "scene_paths": scene_paths,
-                        "audio_path": session_audio_path(fresh_session),
-                    },
-                )
-                final_video_path = stitch_res.get("final_video_path", "")
+            # Same payload as the stitch route and the Builder's Render All stitch (frame sync, scene audio).
+            stitch_payload, _summary = build_stitch_payload(folder, fresh_session, {}, strict=False)
+            stitch_res = await asyncio.to_thread(video_files._stitch_scene_videos, stitch_payload)
+            final_video_path = stitch_res.get("final_video_path", "")
         except Exception as s_err:
             logger.warning(f"Final video stitch after batch render failed: {s_err}")
 
@@ -970,44 +973,237 @@ async def run_batch_video_render_job(job: Job, manager: JobManager) -> Dict[str,
     }
 
 
+# The Video Builder's MiniMax H3 stitch syncs every clip to the timeline at this rate
+# (web/music_video_builder/video_render.mjs stitchRenderedScenes: timeline_fps 24).
+STITCH_TIMELINE_FPS = 24
+STITCH_AUDIO_MODES = ("auto", "embedded", "project")
+STITCH_BODY_KEYS = ("scene_ids", "output_prefix", "audio", "audio_path", "overlays")
+_LTX_INGREDIENTS_CANVAS = (768, 448)  # DEFAULT_LTX_INGREDIENTS_WIDTH / _HEIGHT in web/music_video_builder/constants.mjs
+
+
+def _round_half_up(value: float) -> int:
+    """``Math.round`` for the non-negative times used here (Python's ``round`` rounds half to even)."""
+    return int(math.floor(float(value) + 0.5))
+
+
+def _segment_time(segment: Dict[str, Any], key: str) -> float:
+    try:
+        return float(segment.get(key) or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _select_stitch_segments(segments: List[Dict[str, Any]], scene_ids: Any) -> List[int]:
+    """Indexes into ``segments`` for ``scene_ids`` (scene numbers, 1 = first, or scene ids), in timeline order.
+
+    No ``scene_ids`` selects every scene. A name that matches no scene is an error that lists it.
+    """
+    if scene_ids is None or scene_ids == []:
+        indexes = list(range(len(segments)))
+    else:
+        if not isinstance(scene_ids, list):
+            raise ValidationError("scene_ids must be a list of scene numbers (1 = first scene) or scene ids.")
+        by_key: Dict[str, int] = {}
+        for index, segment in enumerate(segments):
+            by_key.setdefault(str(index + 1), index)
+        for index, segment in enumerate(segments):
+            sid = str(segment.get("id") or "").strip()
+            if sid:
+                by_key[sid] = index
+        chosen, unknown = set(), []
+        for raw in scene_ids:
+            if isinstance(raw, bool) or not isinstance(raw, (str, int)):
+                raise ValidationError("scene_ids must be a list of scene numbers (1 = first scene) or scene ids.")
+            key = str(raw).strip()
+            if key in by_key:
+                chosen.add(by_key[key])
+            else:
+                unknown.append(key)
+        if unknown:
+            raise ValidationError(
+                f"Unknown scene(s) for stitch: {', '.join(unknown)}. Use a scene number (1 = first scene, "
+                f"{len(segments)} scenes) or a scene id.",
+                details={"unknown_scene_ids": unknown},
+            )
+        indexes = list(chosen)
+    # Like the Builder's preview stitch, play the scenes in timeline order whatever order they were named in.
+    return sorted(indexes, key=lambda i: (_segment_time(segments[i], "start"), i))
+
+
+def _stitch_canvas(session: Dict[str, Any], minimax_project: bool) -> tuple:
+    """Output size the Builder passes: 0x0 (keep the clips' size) for MiniMax, the LTX render size otherwise."""
+    if minimax_project:
+        return 0, 0
+    settings = session.get("i2v_video_settings") if isinstance(session.get("i2v_video_settings"), dict) else {}
+    try:
+        if session_video_mode(session) == "ingredients":
+            return (int(settings.get("ingredients_width") or _LTX_INGREDIENTS_CANVAS[0]),
+                    int(settings.get("ingredients_height") or _LTX_INGREDIENTS_CANVAS[1]))
+        return int(settings.get("width") or 1920), int(settings.get("height") or 1080)
+    except (TypeError, ValueError):
+        return 0, 0
+
+
+def build_stitch_payload(
+    folder: str,
+    session: Dict[str, Any],
+    params: Optional[Dict[str, Any]] = None,
+    strict: bool = True,
+) -> tuple:
+    """Build the ``_stitch_scene_videos`` payload the Video Builder would send, plus a summary for the job result.
+
+    Mirrors ``stitchRenderedScenes`` in web/music_video_builder/video_render.mjs:
+
+    * MiniMax H3 project: one timing item per scene and ``timeline_fps`` 24. The stitcher then cuts or pads
+      every clip to ``round(end * 24) - round(start * 24)`` frames and muxes without ``-shortest``, so the
+      output has exactly the timeline's frames. Without timing items it muxes with ``-shortest`` and a
+      scene audio track a few ms shorter than the video cuts the last frame (the 870-of-871 bug).
+    * A preview of some scenes (``scene_ids``) shifts the timing by a whole number of frames, and cuts the
+      project song to the selected scenes (``audio_start`` / ``audio_duration``).
+    * ``audio``: ``auto`` (default) uses the scenes' own audio when every selected MiniMax scene renders
+      with built-in audio (or the LTX mode is ID-LoRA), the project song otherwise. ``embedded`` and
+      ``project`` force one or the other.
+
+    ``strict`` (the stitch route) makes a selected scene without a video file an error. The stitch at the end
+    of a batch render or pipeline passes ``strict=False`` and leaves such scenes out, as it did before.
+    """
+    p = dict(params or {})
+    segments = [s for s in (session.get("segments") or []) if isinstance(s, dict)]
+
+    audio = str(p.get("audio") or "auto").strip().lower()
+    if audio not in STITCH_AUDIO_MODES:
+        raise ValidationError(
+            f"audio must be one of {', '.join(STITCH_AUDIO_MODES)} (got {p.get('audio')!r}).",
+            details={"allowed": list(STITCH_AUDIO_MODES)},
+        )
+    overlays = p.get("overlays") or []
+    if not isinstance(overlays, list):
+        raise ValidationError("overlays must be a list of {path, start, end, source_start} items.")
+    output_prefix = p.get("output_prefix") or "FINAL_VIDEO"
+    if not isinstance(output_prefix, str):
+        raise ValidationError("output_prefix must be a string.")
+
+    explicit_selection = bool(p.get("scene_ids"))
+    indexes = _select_stitch_segments(segments, p.get("scene_ids"))
+
+    selected: List[tuple] = []
+    missing: List[str] = []
+    for index in indexes:
+        segment = segments[index]
+        path = str(segment.get("video_path") or segment.get("rendered_video_path") or "").strip()
+        if not path or not os.path.isfile(path):
+            missing.append(str(segment.get("id") or index + 1))
+            continue
+        selected.append((index, segment, path))
+    if missing and strict:
+        raise ValidationError(
+            f"Scene(s) without a rendered video: {', '.join(missing)}. Render them or leave them out of scene_ids.",
+            details={"scenes_without_video": missing},
+        )
+    if not selected:
+        raise ValidationError("No scene video files available to stitch.")
+
+    minimax_project = str(session.get("video_engine") or "").strip().lower() == "minimax_h3"
+    if audio == "auto":
+        built_in = minimax_project and all(
+            str(minimax_h3_settings_for_scene(session, segment).get("audio_mode") or "") == "built_in_audio"
+            for _index, segment, _path in selected
+        )
+        embedded = built_in or (not minimax_project and session_video_mode(session) == "id_lora")
+    else:
+        embedded = audio == "embedded"
+
+    audio_path = ""
+    if not embedded:
+        audio_path = str(p.get("audio_path") or session_audio_path(session) or "").strip()
+        if not audio_path or not os.path.isfile(audio_path):
+            raise ValidationError(
+                "The project has no audio file to stitch with. Attach the song, pass audio_path, or use audio: embedded.",
+                details={"audio_path": audio_path},
+            )
+
+    start_time = min(_segment_time(segment, "start") for _i, segment, _p in selected)
+    end_time = max(_segment_time(segment, "end") for _i, segment, _p in selected)
+    audio_start = 0.0
+    audio_duration = 0.0
+    timeline_offset = 0.0
+    if explicit_selection:
+        positions = [index for index, _segment, _path in selected]
+        contiguous = all(b == a + 1 for a, b in zip(positions, positions[1:]))
+        if not embedded and not contiguous:
+            raise ValidationError(
+                "A stitch with the project song needs contiguous scenes, so one window of the song fits them. "
+                "Pick one continuous scene range, or use audio: embedded.",
+            )
+        timeline_offset = start_time
+        audio_start = start_time
+        audio_duration = max(0.1, end_time - start_time)
+
+    timing_items: List[Dict[str, float]] = []
+    expected_frames = None
+    if minimax_project:
+        # A whole number of frames, so each clip rounds to the same frame count as on the full timeline.
+        aligned_offset = _round_half_up(timeline_offset * STITCH_TIMELINE_FPS) / STITCH_TIMELINE_FPS
+        expected_frames = 0
+        for _index, segment, _path in selected:
+            start = max(0.0, _segment_time(segment, "start") - aligned_offset)
+            end = max(0.0, _segment_time(segment, "end") - aligned_offset)
+            timing_items.append({"start": start, "end": end})
+            # Same rounding as the stitcher (runner/video_files.py _stitch_scene_videos).
+            expected_frames += max(1, int(max(start, end) * STITCH_TIMELINE_FPS + 0.5) - int(start * STITCH_TIMELINE_FPS + 0.5))
+
+    width, height = _stitch_canvas(session, minimax_project)
+    payload = {
+        "project_folder": folder,
+        "scene_paths": [path for _index, _segment, path in selected],
+        "audio_path": audio_path,
+        "scene_audio_paths": [],
+        "scene_audio_items": [],
+        "scene_timing_items": timing_items,
+        "timeline_fps": STITCH_TIMELINE_FPS if minimax_project else 0,
+        "use_embedded_scene_audio": embedded,
+        "overlay_items": overlays,
+        "width": width,
+        "height": height,
+        "audio_start": audio_start,
+        "audio_duration": audio_duration,
+        "output_prefix": output_prefix,
+    }
+    summary = {
+        "scene_ids": [str(segment.get("id") or index + 1) for index, segment, _path in selected],
+        "scene_numbers": [index + 1 for index, _segment, _path in selected],
+        "skipped_scene_ids": missing,
+        "audio": "embedded" if embedded else "project",
+        "audio_start": audio_start,
+        "audio_duration": audio_duration,
+        "expected_frame_count": expected_frames,
+    }
+    return payload, summary
+
+
+def validate_stitch_request(project_id: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    """Check a stitch request against the project before its job starts. Raises ``ValidationError``."""
+    folder, session = _get_active_session_and_folder(project_id)
+    _payload, summary = build_stitch_payload(folder, session, params, strict=True)
+    return summary
+
+
 async def run_video_stitch_job(job: Job, manager: JobManager) -> Dict[str, Any]:
-    """Execute final video stitch job (Section 6.12, stitch_scene_videos)."""
+    """Execute final video stitch job (Section 6.12, stitch_scene_videos), frame-accurate like the Builder."""
     if not job.project_id:
         raise ValidationError("project_id is required.")
     folder, session = _get_active_session_and_folder(job.project_id)
-    segments = session.get("segments", [])
+    stitch_payload, summary = build_stitch_payload(folder, session, job.params, strict=True)
 
-    p = dict(job.params or {})
-    scene_ids = set(p.get("scene_ids") or [])
-
-    if scene_ids:
-        target_segments = [s for s in segments if (s.get("id") in scene_ids or str(segments.index(s) + 1) in scene_ids)]
-    else:
-        target_segments = segments
-
-    scene_paths = [
-        s.get("video_path") or s.get("rendered_video_path")
-        for s in target_segments
-        if s.get("video_path") or s.get("rendered_video_path")
-    ]
-    if not scene_paths:
-        raise ValidationError("No scene video files available to stitch.")
-
-    manager.update_progress(job.id, 20.0, "stitching", message=f"Stitching {len(scene_paths)} scene videos...")
-
-    stitch_payload = {
-        "project_folder": folder,
-        "scene_paths": scene_paths,
-        "audio_path": p.get("audio_path") or session_audio_path(session),
-        "output_prefix": p.get("output_prefix", "FINAL_VIDEO"),
-        "overlay_items": p.get("overlays", []),
-        "use_embedded_scene_audio": (p.get("audio") == "embedded"),
-    }
-
+    manager.update_progress(
+        job.id, 20.0, "stitching", message=f"Stitching {len(stitch_payload['scene_paths'])} scene videos..."
+    )
     res = await asyncio.to_thread(video_files._stitch_scene_videos, stitch_payload)
 
     manager.update_progress(job.id, 100.0, "completed", message="Stitch completed.")
-    return res
+    result = dict(res or {})
+    result.update(summary)
+    return result
 
 
 async def run_image_slideshow_job(job: Job, manager: JobManager) -> Dict[str, Any]:

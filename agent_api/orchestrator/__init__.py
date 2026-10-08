@@ -40,6 +40,8 @@ from .video_orchestrator import (
     run_video_trim_job,
     scan_project_scene_videos,
     select_scene_video,
+    validate_stitch_request,
+    build_stitch_payload,
 )
 from .latent_orchestrator import (
     cleanup_minimax_output,
@@ -130,6 +132,8 @@ __all__ = [
     "run_video_trim_job",
     "run_video_match_color_job",
     "run_video_stitch_job",
+    "validate_stitch_request",
+    "build_stitch_payload",
     "run_image_slideshow_job",
     "recover_scene_video",
     "select_scene_video",

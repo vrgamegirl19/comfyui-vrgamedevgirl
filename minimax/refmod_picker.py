@@ -185,14 +185,16 @@ def _pick_images_to_describe(images: List[Image.Image], concept_type: str, max_i
 
 def describe_images(images: List[Image.Image], concept_type: str = "identity", instruction: str = "",
                     name_hint: str = "", lm_studio_url: str = "http://127.0.0.1:1234/v1",
-                    max_images: int = 6, image_edge: int = 768) -> str:
-    """Describe images with the vision model LM Studio already has loaded.
+                    max_images: int = 6, image_edge: int = 768, llm: Optional[Dict[str, Any]] = None) -> str:
+    """Describe images with the vision model of the LLM Runner the Video Builder has selected.
 
     The question asked depends on ``concept_type`` (see ``DESCRIBE_INSTRUCTIONS``). A non-empty ``instruction``
-    replaces it. This never loads or switches LM Studio models.
+    replaces it. ``llm`` holds the runner settings (``textGemmaRunnerPayload``). LM Studio, LLM API and Custom
+    Server are used as selected. Without ``llm``, or with a local runner, LM Studio at ``lm_studio_url`` is used.
+    This never loads or switches LM Studio models.
     """
-    from ..agent_api.llm_runtime import prepare_lm_studio_payload
-    from ..llm.builder_runner import _run_lm_studio_vision, _strip_builder_thinking_text
+    from ..agent_api.llm_runtime import prepare_llm_payload
+    from ..llm.builder_runner import _llm_runner_from_payload, _strip_builder_thinking_text, _try_run_remote_vision
 
     if not images:
         raise ValueError("[VRGDG RefMod] No reference images to describe.")
@@ -202,9 +204,13 @@ def describe_images(images: List[Image.Image], concept_type: str = "identity", i
     text = str(instruction or "").strip() or DESCRIBE_INSTRUCTIONS[concept_type]
     if str(name_hint or "").strip():
         text += f"\nThe subject is: {str(name_hint).strip()}."
-    payload = prepare_lm_studio_payload({"text_runner": "lm_studio", "lmstudio_base_url": lm_studio_url})
-    print(f"[VRGDG RefMod] Describing {len(chosen)} image(s) as {concept_type} with LM Studio model {payload['lmstudio_model']}.")
-    result = _run_lm_studio_vision(payload, text, [_downscale(pil, image_edge) for pil in chosen], max_new_tokens=400)
+    payload = dict(llm or {})
+    if _llm_runner_from_payload(payload) not in ("lm_studio", "llm_api", "own_server"):
+        payload = {"text_runner": "lm_studio", "lmstudio_base_url": lm_studio_url}
+    payload = prepare_llm_payload(payload)
+    runner = _llm_runner_from_payload(payload)
+    print(f"[VRGDG RefMod] Describing {len(chosen)} image(s) as {concept_type} with the {runner} runner.")
+    result, _info = _try_run_remote_vision(payload, text, [_downscale(pil, image_edge) for pil in chosen], max_new_tokens=400)
     description = _strip_builder_thinking_text(result)
     if not description:
         raise RuntimeError("[VRGDG RefMod] The vision model returned an empty description.")
@@ -292,7 +298,8 @@ def _register_routes() -> None:
                         images.append(img.convert("RGB"))
                 return describe_images(
                     images, concept_type=str(body.get("concept_type") or "identity"),
-                    name_hint=str(body.get("name_hint") or ""))
+                    name_hint=str(body.get("name_hint") or ""),
+                    llm=body.get("llm") if isinstance(body.get("llm"), dict) else None)
 
             description = await asyncio.to_thread(run)
         except Exception as exc:

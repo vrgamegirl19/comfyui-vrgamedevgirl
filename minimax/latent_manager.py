@@ -210,6 +210,7 @@ def plan_masked_context(
 # Exact scene timing for MiniMax H3 renders. It needs no ComfyUI imports, so the Builder runner can plan a render
 # before patching a hidden workflow, and the same plan drives the post-render trim.
 H3_FPS = 24
+SOURCE_AUDIO_TOLERANCE_SECONDS = Decimal("0.001")
 H3_FRAME_STEP = 17
 H3_FRAME_OFFSET = 5
 H3_MIN_FRAME_COUNT = 5
@@ -338,7 +339,9 @@ def calculate_minimax_h3_timing(
         source_duration = _decimal(source_duration_seconds, "source_duration_seconds")
         if source_duration < 0:
             raise ValueError("source_duration_seconds must not be negative.")
-        if source_start + scene_duration > source_duration:
+        # A scene-length audio file (a masked mix) can be a few microseconds short of the scene: float timeline
+        # boundaries such as 79.96000000000001 and whole audio samples both round. That is not a missing scene.
+        if source_start + scene_duration > source_duration + SOURCE_AUDIO_TOLERANCE_SECONDS:
             raise ValueError(
                 "The selected scene extends beyond the available source audio."
             )

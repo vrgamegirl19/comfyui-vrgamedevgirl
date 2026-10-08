@@ -21,6 +21,7 @@ import {
   toast,
 } from "./controls.mjs";
 import { showLoadProjectModal, showWelcomeProjectModal } from "./dialogs.mjs";
+import { normalizeAudioMaskAuto } from "./audio_mask_store.mjs";
 import { cloneMiniMaxH3Settings } from "./minimax_h3.mjs";
 import {
   cloneErnieImageSettings,
@@ -814,6 +815,7 @@ export function createSession({
       snap_to_beats: state.snapToBeats,
       show_beat_markers: state.showBeatMarkers,
       show_timeline_scene_notes: state.showTimelineSceneNotes,
+      audio_mask_auto: state.audioMaskAuto,
       show_timeline_video_notes: state.showTimelineVideoNotes,
       show_timeline_lyric_notes: state.showTimelineLyricNotes,
       selected_timeline_range: normalizeTimelineRange(state.selectedTimelineRange),
@@ -1119,6 +1121,7 @@ export function createSession({
         state.waveformMode = data.session.waveform_mode || state.waveformMode;
         state.snapToBeats = data.session.snap_to_beats ?? state.snapToBeats;
         state.showTimelineSceneNotes = data.session.show_timeline_scene_notes ?? state.showTimelineSceneNotes ?? false;
+        state.audioMaskAuto = normalizeAudioMaskAuto(data.session.audio_mask_auto ?? state.audioMaskAuto);
         state.showTimelineVideoNotes = data.session.show_timeline_video_notes ?? state.showTimelineVideoNotes ?? false;
         state.showTimelineLyricNotes = data.session.show_timeline_lyric_notes ?? state.showTimelineLyricNotes ?? false;
         state.selectedTimelineRange = normalizeTimelineRange(data.session.selected_timeline_range || state.selectedTimelineRange);
@@ -1388,6 +1391,7 @@ export function createSession({
       state.waveformMode = session.waveform_mode || state.waveformMode || "medium";
       state.snapToBeats = session.snap_to_beats ?? state.snapToBeats ?? true;
       state.showTimelineSceneNotes = session.show_timeline_scene_notes ?? state.showTimelineSceneNotes ?? false;
+      state.audioMaskAuto = normalizeAudioMaskAuto(session.audio_mask_auto ?? state.audioMaskAuto);
       state.showTimelineVideoNotes = session.show_timeline_video_notes ?? state.showTimelineVideoNotes ?? false;
       state.showTimelineLyricNotes = session.show_timeline_lyric_notes ?? state.showTimelineLyricNotes ?? false;
       state.selectedTimelineRange = normalizeTimelineRange(session.selected_timeline_range || {});

@@ -8917,6 +8917,13 @@
           "content": {
             "application/json": {
               "schema": {
+                "properties": {
+                  "audio": {},
+                  "audio_path": {},
+                  "output_prefix": {},
+                  "overlays": {},
+                  "scene_ids": {}
+                },
                 "type": "object"
               }
             }

@@ -21,6 +21,7 @@ from .video_profiles import (
 )
 from .paths import _open_local_file, _open_native_picker, _resolve_existing_file
 from .audio import _convert_audio_to_wav, _create_silent_audio, _default_audio_srt_paths, _estimate_beats_from_audio, _find_latest_capcut_beats, _load_srt_segments, _prepare_scene_audio_mix, _read_audio_peaks, _save_project_audio, _save_project_srt, _save_scene_audio, _save_single_scene_srt, _trim_scene_audio
+from .audio_stems import delete_scene_stems, list_scene_stems, render_masked_mix, scene_state, scene_states, separate_scene_stems
 from .media import _archive_scene_image, _delete_project_media, _extract_video_final_frame_as_scene_image, _import_reference_locations_from_project, _import_reference_subjects_from_project, _restore_scene_video, _save_flux_reference_image, _save_scene_image, _scan_builder_scene_videos
 from .project import _copy_latest_prompt_creator_outputs, _copy_prompt_creator_outputs_from_source, _default_context_paths, _delete_builder_project, _import_builder_project_zip, _list_builder_projects, _load_builder_session, _load_editable_text_file, _load_model_defaults, _load_prompt_json, _load_wizard_draft, _new_builder_project, _prepare_builder_project_export, _project_prompt_creator_paths, _renumber_scene_assets_after_insert, _renumber_scene_assets_after_removal, _save_builder_project_as, _save_builder_render_log, _save_builder_session, _save_editable_text_file, _save_wizard_draft
 from ..llm.builder_instructions import _get_builder_instruction, _list_builder_instruction_presets, _load_builder_instruction_preset, _reset_builder_instruction, _save_builder_instruction, _save_builder_instruction_preset
@@ -338,6 +339,61 @@ def _ensure_music_builder_routes():
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
+
+    # Audio Mask window: split a scene's audio into stems and build the masked mix the video model hears.
+    @server_instance.routes.post("/vrgdg/music_builder/audio_mask/state")
+    async def vrgdg_music_builder_audio_mask_state(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(scene_state, payload or {})
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response(result)
+
+    @server_instance.routes.post("/vrgdg/music_builder/audio_mask/states")
+    async def vrgdg_music_builder_audio_mask_states(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(scene_states, payload or {})
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response(result)
+
+    @server_instance.routes.post("/vrgdg/music_builder/audio_mask/separate")
+    async def vrgdg_music_builder_audio_mask_separate(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(separate_scene_stems, payload or {})
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response(result)
+
+    @server_instance.routes.post("/vrgdg/music_builder/audio_mask/render")
+    async def vrgdg_music_builder_audio_mask_render(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(render_masked_mix, payload or {})
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response(result)
+
+    @server_instance.routes.post("/vrgdg/music_builder/audio_mask/list")
+    async def vrgdg_music_builder_audio_mask_list(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(list_scene_stems, payload or {})
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response(result)
+
+    @server_instance.routes.post("/vrgdg/music_builder/audio_mask/delete")
+    async def vrgdg_music_builder_audio_mask_delete(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(delete_scene_stems, payload or {})
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response(result)
 
     @server_instance.routes.post("/vrgdg/music_builder/load_session")
     async def vrgdg_music_builder_load_session(request):
