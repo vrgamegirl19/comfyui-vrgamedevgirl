@@ -437,12 +437,26 @@ export function createVideoRender({
       const projectFolder = String(projectInput.value || state.projectFolder || "").trim();
       if (!projectFolder) throw new Error("Project folder is missing.");
       progress?.set(`${label}: verifying predecessor Scene ${slotNumber - 1} latent file...`, percent);
+      // Each take of the predecessor keeps its own latent, so the one of the take selected there is used.
+      const predecessorVideoPath = String(selectedSegmentVideoPath(previousSegment) || "").trim();
       const checkResp = await postJson("/vrgdg/music_builder/check_latent_predecessor", {
         project_folder: projectFolder,
         scene_number: slotNumber,
+        predecessor_video_path: predecessorVideoPath,
       }, 10000);
       if (!checkResp?.predecessor_exists) {
         throw new Error(`Latent Continuation Masked requires Scene ${slotNumber - 1} latent file, but none was found. Render Scene ${slotNumber - 1} first.`);
+      }
+      const predecessorHistory = Array.isArray(previousSegment.video_history) ? previousSegment.video_history : [];
+      const takeLabel = predecessorHistory.length > 1 ? `take ${Number(previousSegment.video_history_index || 0) + 1}/${predecessorHistory.length}` : "its take";
+      if (checkResp.take_status === "no_archive") {
+        throw new Error(
+          `Scene ${slotNumber - 1}'s selected clip (${takeLabel}) has no saved latent, so Scene ${slotNumber} cannot continue from it. `
+          + `Re-render Scene ${slotNumber - 1}, or select one of its takes that has a latent.`
+        );
+      }
+      if (checkResp.take_status === "activated") {
+        progress?.set(`${label}: continuing from Scene ${slotNumber - 1} ${takeLabel}'s latent...`, percent);
       }
       // The automatic prompt loop needs the predecessor's real last frame as an image.
       let promptFramePath = "";

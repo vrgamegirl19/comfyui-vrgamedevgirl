@@ -30,6 +30,12 @@ try:
 except ImportError:
     HAS_NESTED_TENSOR = False
 
+try:
+    from . import latent_takes
+except ImportError:  # loaded on its own (tests, tools): the per-take archive is skipped
+    class latent_takes:  # noqa: N801
+        archive_latent = delete_scene_takes = delete_all_takes = shift_takes = copy_takes = staticmethod(lambda *args, **kwargs: None)
+
 
 # MiniMax H3 token to frame conversion table
 _FRAME_PER_TOKEN = (1, 4, 4, 4, 4)
@@ -671,6 +677,12 @@ class SceneLatentManager:
         except Exception as exc:
             print(f"[VRGDG Latent] Failed to write latent info {sidecar_path}: {exc}")
 
+        # Keep this render's latent as its own take, so selecting an older take later can bring its latent back.
+        try:
+            latent_takes.archive_latent(os.path.dirname(target_path), scene_number, target_path)
+        except Exception as exc:
+            print(f"[VRGDG Latent Takes] Could not archive scene {int(scene_number):03d}'s latent: {exc}")
+
         # Clear any dirty flag for this scene since it was just freshly rendered
         cls.clear_dirty(project_folder, scene_number)
 
@@ -813,6 +825,7 @@ class SceneLatentManager:
                     deleted = True
                 except OSError as exc:
                     print(f"[VRGDG Latent] Failed to delete {p}: {exc}")
+        latent_takes.delete_scene_takes(os.path.dirname(path), scene_number)
         if reindex:
             cls.reindex_latents(project_folder, scene_number)
         return deleted
@@ -826,6 +839,7 @@ class SceneLatentManager:
         if not os.path.isdir(folder):
             return 0
         removed = 0
+        latent_takes.delete_all_takes(folder)
         for fname in os.listdir(folder):
             if not fname.startswith("scene_") or not fname.endswith((".latent", ".latent.json", ".dirty")):
                 continue
@@ -871,6 +885,7 @@ class SceneLatentManager:
                         os.rename(old_file, new_file)
                     except OSError as exc:
                         print(f"[VRGDG Latent] Reindex rename failed {old_file} -> {new_file}: {exc}")
+        latent_takes.shift_takes(folder, del_num + 1, -1)
 
     @classmethod
     def make_room_for_scene(cls, project_folder: str, scene_number: int) -> None:
@@ -889,6 +904,7 @@ class SceneLatentManager:
             for ext in (".latent", ".latent.json", ".dirty"):
                 if os.path.isfile(old_base + ext):
                     os.rename(old_base + ext, new_base + ext)
+        latent_takes.shift_takes(folder, first, 1)
 
     @classmethod
     def copy_latents_folder(cls, source_project_folder: str, target_project_folder: str) -> None:
@@ -909,6 +925,7 @@ class SceneLatentManager:
                     shutil.copy2(s_path, d_path)
                 except Exception as exc:
                     print(f"[VRGDG Latent] Copy latent failed {s_path} -> {d_path}: {exc}")
+        latent_takes.copy_takes(src_dir, dst_dir)
 
 
 scene_latent_manager = SceneLatentManager()
