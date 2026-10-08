@@ -21,6 +21,7 @@ from ..llm.prompts.storyboard import (
     _storyboard_video_ltx_one_pass_contract,
     _storyboard_video_prompt_writing_rules,
     _storyboard_video_pronoun_contract,
+    _STORYBOARD_SCENE_CARD_CONTEXT_INSTRUCTIONS,
     _storyboard_video_vocal_contract,
 )
 
@@ -380,6 +381,7 @@ def _build_storyboard_image_prompt(payload):
 
         instruction_text = _effective_builder_instruction(payload, instruction_key, _STANDARD_IMAGE_T2I_INSTRUCTIONS)
     selected_scene = _selected_storyboard_scene(scene_bundle)
+    instruction_text += "\n\n" + _STORYBOARD_SCENE_CARD_CONTEXT_INSTRUCTIONS
     image_world_style = str(payload.get("image_world_style") or "natural").strip().lower()
     image_custom_style_direction = _clean_scene_text(payload.get("image_custom_style_direction") or "", 3000)
     instruction_text += _storyboard_image_world_style_contract(image_world_style, image_custom_style_direction)
@@ -491,6 +493,11 @@ def _build_storyboard_video_prompt(payload):
         user_notes = "\n\n".join(
             part for part in [
                 ltx_one_pass_contract,
+                _STORYBOARD_SCENE_CARD_CONTEXT_INSTRUCTIONS,
+                "Complete scene_card:\n" + json.dumps(
+                    selected_scene.get("scene_card") or selected_scene,
+                    indent=2, ensure_ascii=False,
+                ),
                 timed_lyric_contract,
                 f"MANDATORY editing / cut plan:\n{_clean_scene_text((selected_scene.get('cut_plan') or {}).get('instruction') if isinstance(selected_scene.get('cut_plan'), dict) else '', 5000)}" if not timed_lyric_contract else "",
                 f"Required starting shot:\n{json.dumps(selected_scene.get('starting_shot'), ensure_ascii=False)}" if _storyboard_starting_shot_value(selected_scene) else "",
@@ -545,6 +552,7 @@ def _build_storyboard_video_prompt(payload):
 
     instruction = (
         _STORYBOARD_T2V_GEMMA_INSTRUCTIONS
+        + "\n\n" + _STORYBOARD_SCENE_CARD_CONTEXT_INSTRUCTIONS
         + "\n\nScene-card JSON:\n"
         + json.dumps(scene_bundle, indent=2, ensure_ascii=False)
     )

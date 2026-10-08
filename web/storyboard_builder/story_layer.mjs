@@ -10,6 +10,7 @@ import {
   slimSceneForRequest,
   slimStoryboardForRequest,
   storyboardSpeedValue,
+  storyboardTimelineNotesForRequest,
 } from "./scenes.mjs";
 import { normalizeStoryboardScriptImportState } from "./script_import.mjs";
 import { hasMappedStoryboardLocation, NO_MAPPED_LOCATIONS_MESSAGE } from "./story_workflow.mjs";
@@ -334,6 +335,7 @@ export function createStoryLayer({
         storyboard: slimStoryboardForRequest(state),
         story_idea: overallStoryIdea,
         previous_story_arc: existingStoryArcText,
+        timeline_markers: storyboardTimelineNotesForRequest(state),
         lyrics: lyricsForStoryBrief(),
         project_folder: state.projectFolder,
         line_mapping_lyrics: state.lineMappingLyrics,

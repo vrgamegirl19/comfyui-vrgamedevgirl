@@ -1151,7 +1151,8 @@ export function createMiniMaxPrompt({
     }
     add(parts, "Scene idea", labelize(castSafeText(segment, sceneVideoConceptPromptText(segment))));
     add(parts, "Scene notes", labelize(segment?.notes || segment?.director_note));
-    add(parts, "Storyboard Builder context", labelize(castSafeText(segment, options.storyboardContext || options.extraStoryboardNotes)), 2200);
+    const storyboardContext = String(options.storyboardContext || options.extraStoryboardNotes || "").trim();
+    if (storyboardContext) parts.push(`Storyboard Builder context:\n${storyboardContext}`);
     add(parts, "Motion/camera request", labelize(segment?.i2v_notes));
     add(parts, "Story beat", labelize(castSafeText(segment, segment?.story_beat, true)));
     add(parts, "Scene cast restriction (mandatory)", sceneCastRestrictionText(segment));

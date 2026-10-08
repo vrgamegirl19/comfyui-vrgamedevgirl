@@ -54,7 +54,9 @@ async function saveStoryboardPromptFromTimeline(projectFolder, fresh, promptValu
   const { storyboard } = await postJson("/vrgdg/storyboard/load", { project_folder: projectFolder });
   const scenes = Array.isArray(storyboard.scenes) ? storyboard.scenes.slice() : [];
   let index = scenes.findIndex((scene) => scene.id === fresh.id);
-  if (index < 0) index = scenes.findIndex((scene) => Number(scene.scene_number) === Number(fresh.scene_number));
+  if (index < 0 && !Array.isArray(storyboard.source_scene_ids)) {
+    index = scenes.findIndex((scene) => Number(scene.scene_number) === Number(fresh.scene_number));
+  }
   const prompt = { video_prompt: promptValue, video_prompt_origin: "manual" };
   if (index >= 0) scenes[index] = { ...scenes[index], ...prompt };
   else scenes.push({ ...fresh, ...prompt });
@@ -316,7 +318,8 @@ export function createSceneOutput({
     updateMiniMaxPromptSaveButtonState();
     button.textContent = "Saving...";
     try {
-      await saveSession({ quiet: true, throwOnError: true });
+      const result = await saveSession({ quiet: true, throwOnError: true });
+      if (result?.stale) throw new Error("The project changed during save. Save the prompt again to keep the latest edits.");
       await saveStoryboardPromptFromTimeline(projectFolder, fresh, promptValue);
       snapshots.set(segment, promptValue);
       toast("Prompt saved to scene and storyboard.");
@@ -427,8 +430,8 @@ export function createSceneOutput({
         const index = info.index >= 0 ? info.index : sortedIndex;
         const label = sceneDisplayName(segment, index).replace(/^\d+\.\s*/, "");
         const lyric = String(segment.lyric_text || segment.lyric_note || segment.lyrics || "").trim();
-        const videoNotes = String(segment.video_notes || segment.i2v_notes || "").trim();
-        const sceneNotes = String(segment.notes || segment.director_note || "").trim();
+        const videoNotes = String(segment.i2v_notes ?? segment.video_notes ?? "").trim();
+        const sceneNotes = String(segment.notes ?? segment.director_note ?? "").trim();
         const imagePrompt = storyboardPromptForSegment(segment);
         const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
         const videoPrompt = String(miniMaxProject
@@ -522,6 +525,7 @@ export function createSceneOutput({
           image_path: imageReference.path || selectedSegmentImagePath(segment),
           image_data: imageReference.data || "",
           notes: sceneNotes,
+          timeline_note: String(segment.timeline_note ?? ""),
           audio_direction: String(segment.audio_direction || "").trim(),
           continuity: String(segment.continuity || "").trim(),
         };

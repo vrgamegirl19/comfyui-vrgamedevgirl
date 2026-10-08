@@ -31,7 +31,7 @@ test("repeated focused opens stop before constructing another builder", () => {
   });
 });
 function editorFixture(focused = true) {
-  const c = { sceneFocus: { only: focused }, apply: {}, cancel: {}, closeEditor: {}, calls: [],
+  const c = { sceneFocus: { only: focused }, state: {}, apply: {}, cancel: {}, closeEditor: {}, calls: [],
     saveEditorFieldsToScene: () => c.calls.push("fields"),
     saveStoryboard: async options => { assert.equal(options.throwOnError, true); c.calls.push("save"); if (c.fail) throw Error("disk full"); },
     syncReferenceMappingsToVideoCreator: () => c.calls.push("refs"),
@@ -53,9 +53,33 @@ test("failed Apply keeps editor open and can be retried", async () => {
   c.fail = false; c.calls.length = 0; await c.apply.onclick();
   assert.equal(c.calls.at(-1), "close builder");
 });
-test("ordinary Scene Card Apply retains its existing in-memory behavior", async () => {
+test("standalone Scene Card Apply retains its in-memory behavior", async () => {
   const c = editorFixture(false); await c.apply.onclick();
   assert.deepEqual(c.calls, ["fields", "refs", "story", "close editor", "render"]);
+});
+
+test("ordinary Scene Card Apply syncs its edits before closing", async () => {
+  const c = editorFixture(false);
+  c.scene = { id: "scene2", timeline_note: "Director note", motion_summary: "Video note" };
+  c.editorSceneIndex = 1;
+  c.slimSceneForRequest = scene => scene;
+  c.state.onSceneChanged = async scene => {
+    assert.equal(scene.timeline_note, "Director note");
+    assert.equal(scene.motion_summary, "Video note");
+    c.calls.push("save scene");
+  };
+  await c.apply.onclick();
+  assert.deepEqual(c.calls, ["fields", "save scene", "refs", "story", "close editor", "render"]);
+});
+
+test("failed ordinary card sync keeps the editor open for retry", async () => {
+  const c = editorFixture(false);
+  c.scene = { id: "scene2" }; c.editorSceneIndex = 1;
+  c.slimSceneForRequest = scene => scene;
+  c.state.onSceneChanged = async () => { throw Error("save failed"); };
+  await c.apply.onclick();
+  assert.deepEqual(c.calls, ["fields", "save failed"]);
+  assert.equal(c.apply.disabled, false);
 });
 test("Apply cannot run twice while saving", async () => {
   const c = editorFixture(); let finish;

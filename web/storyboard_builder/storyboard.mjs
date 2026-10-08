@@ -83,6 +83,8 @@ export function openStoryboardBuilder(payload = {}) {
     refmodPipeline: Boolean(payload.refmodPipeline || payload.refmod_pipeline),
     miniMaxH3AudioMode: payloadMiniMaxH3AudioMode,
     lineMappingLyrics: String(payload.lineMappingLyrics || payload.line_mapping_lyrics || payload.lyricMapper?.source_text || payload.lyric_mapper?.source_text || ""),
+    timelineMarkers: payload.timelineMarkers || payload.timeline_markers || [],
+    getTimelineMarkers: typeof payload.getTimelineMarkers === "function" ? payload.getTimelineMarkers : null,
     mode: openingMode,
     scenes: scenesFromBuilderPayload(payload).map((scene) => ({
       ...scene,
@@ -100,6 +102,7 @@ export function openStoryboardBuilder(payload = {}) {
     onApplyMiniMaxDialoguePlan: typeof payload.onApplyMiniMaxDialoguePlan === "function" ? payload.onApplyMiniMaxDialoguePlan : null,
     onCreateVideoPrompt: typeof payload.onCreateVideoPrompt === "function" ? payload.onCreateVideoPrompt : null,
     onBeforeCreateVideoPrompt: typeof payload.onBeforeCreateVideoPrompt === "function" ? payload.onBeforeCreateVideoPrompt : null,
+    onSceneChanged: typeof payload.onSceneChanged === "function" ? payload.onSceneChanged : null,
     query: "",
     selected: new Set(),
     saving: false,
@@ -358,14 +361,15 @@ export function openStoryboardBuilder(payload = {}) {
   });
 
   const { copyStoryboardForGpt, exportPromptFiles, loadExisting, saveStoryboard } = createStoryboardPersistence({
-    absorbSceneReferencesIntoCatalog, cameraFlowSelect, cameraSpeedInput, characterSpeedInput, storyArcDetailSelect,
+    absorbSceneReferencesIntoCatalog, adjacentLyricContextInput, cameraFlowSelect, cameraSpeedInput, characterSpeedInput, storyArcDetailSelect,
     consistencyInput, cutFrequencyInput, enforceStoryboardVideoFacialRequirements, exportPrompts,
-    facialCustomInput, facialPerformancePresets, facialSelect, focusedSection, fxCustomInput, fxSelect,
-    getSelectedScenes, imageAestheticPresets, imageAestheticSelect, imageShotFlowPresets, imageShotSelect,
-    incomingProjectVideoEngine, lyricStoryStrengthInput, openImportImagePromptsFromGptModal, openingMode, overallStoryIdeaInput, payload,
+    facialCustomInput, facialPerformancePresets, facialSelect, fxCustomInput, fxSelect,
+    getSelectedScenes, imageAestheticPresets, imageAestheticSelect, imageCustomStyleInput, imageShotFlowPresets, imageShotSelect,
+    imageWorldStyleSelect,
+    incomingProjectVideoEngine, keepGemmaLoadedInput, lyricStoryStrengthInput, openImportImagePromptsFromGptModal, openingMode, overallStoryIdeaInput, payload,
     payloadVideoPromptType, performanceSelect, performanceStylePresets, refreshCameraFlowInfo,
     refreshCameraSpeedInfo, refreshCharacterSpeedInfo, refreshConsistencyInfo, refreshCutFrequencyInfo,
-    refreshFacialInfo, refreshFxInfo, refreshImageAestheticInfo, refreshImageShotInfo, refreshPerformanceInfo,
+    refreshFacialInfo, refreshFxInfo, refreshImageAestheticInfo, refreshImageShotInfo, refreshImageWorldStyleInfo, refreshPerformanceInfo,
     refreshTemporalEffectInfo, refreshVideoStyleInfo, renderTable, save, setMode, shortFilmPlanningModeSelect,
     songStoryBriefInput, state, storyLayerEnabledInput, storyboardDefaultsPayload,
     syncLyricStoryStrengthLabel, syncReferenceMappingsToVideoCreator, syncStoryLayerFromInputs,

@@ -73,7 +73,7 @@ def _normalize_storyboard_scene(scene, fallback_number=1):
     image_data = str(scene.get("image_data") or scene.get("image_reference_data") or "").strip()
     image_name = _clean_scene_text(scene.get("image_name") or scene.get("image_reference_name") or "", 260)
     motion_summary = _clean_scene_text(scene.get("motion_summary") or scene.get("video_notes") or scene.get("i2v_notes") or "", 3000)
-    prompt_summary = _clean_scene_text(scene.get("prompt_summary") or scene.get("summary") or image_prompt[:260], 1000)
+    prompt_summary = _clean_scene_text(scene.get("prompt_summary", scene.get("summary", image_prompt[:260])), 1000)
     subjects = _normalize_tags(scene.get("subjects") or scene.get("singers") or scene.get("mapped_subjects"))
     subject_refs = _normalize_reference_items(scene.get("subject_refs"))
     speaker_assignments = _normalize_speaker_assignments(
@@ -92,7 +92,7 @@ def _normalize_storyboard_scene(scene, fallback_number=1):
     include_microphone = bool(scene.get("include_microphone") or scene.get("use_microphone") or scene.get("microphone"))
     trigger_position = str(scene.get("trigger_position") or scene.get("triggerPosition") or scene.get("trigger_placement") or "start").strip().lower()
     video_prompt_type = _clean_scene_text(scene.get("video_prompt_type") or scene.get("video_type") or scene.get("mode") or "", 40)
-    if video_prompt_type not in {"i2v", "id_lora", "t2v", "rtv", "ingredients"}:
+    if video_prompt_type not in {"i2v", "id_lora", "t2v", "rtv", "ingredients", "flf"}:
         video_prompt_type = "i2v"
     project_video_engine = "minimax_h3" if str(scene.get("project_video_engine") or scene.get("projectVideoEngine") or "").strip().lower() == "minimax_h3" else "ltx"
     minimax_h3_mode = str(scene.get("minimax_h3_mode") or scene.get("minimaxH3Mode") or "").strip().lower().replace("-", "_").replace(" ", "_")
@@ -146,7 +146,22 @@ def _normalize_storyboard_scene(scene, fallback_number=1):
         "lyrics": lyrics,
         "lyric_section": lyric_section,
         "story_beat": story_beat,
+        "flf_start_state": _clean_scene_text(scene.get("flf_start_state") or "", 4000),
+        "flf_transformation": _clean_scene_text(scene.get("flf_transformation") or "", 4000),
+        "flf_end_state": _clean_scene_text(scene.get("flf_end_state") or "", 4000),
+        "flf_carry_forward": _clean_scene_text(scene.get("flf_carry_forward") or "", 4000),
         "performance_mode": performance_mode,
+        "lyric_singers": _normalize_tags(scene.get("lyric_singers") or []),
+        "lyric_no_lip_sync": bool(scene.get("lyric_no_lip_sync")),
+        "lyric_instrumental": bool(scene.get("lyric_instrumental")),
+        "no_character_present": bool(scene.get("no_character_present")),
+        "lyric_cue_map": (
+            scene.get("lyric_cue_map")
+            if isinstance(scene.get("lyric_cue_map"), list) else []
+        ),
+        "lyric_shot_word_timing_enabled": bool(scene.get("lyric_shot_word_timing_enabled")),
+        "lyric_performance_mode": _clean_scene_text(scene.get("lyric_performance_mode") or "", 40),
+        "timed_lyric_cue_contract": _clean_scene_text(scene.get("timed_lyric_cue_contract") or "", 12000),
         "prompt_summary": prompt_summary,
         "motion_summary": motion_summary,
         "subjects": subjects,
@@ -186,6 +201,7 @@ def _normalize_storyboard_scene(scene, fallback_number=1):
         "image_data": image_data,
         "image_name": image_name,
         "notes": _clean_scene_text(scene.get("notes") or "", 4000),
+        "timeline_note": _clean_scene_text(scene.get("timeline_note") or "", 4000),
         "audio_direction": _clean_scene_text(scene.get("audio_direction") or scene.get("audioDirection") or "", 4000),
         "continuity": _clean_scene_text(scene.get("continuity") or scene.get("continuity_direction") or scene.get("continuityDirection") or "", 4000),
         "id_lora_character_id": _clean_scene_text(scene.get("id_lora_character_id") or scene.get("character_id") or scene.get("subject_id") or "", 180),
@@ -360,9 +376,11 @@ def _load_storyboard(payload):
         data["short_film_planning_mode"] = _normalize_short_film_planning_mode(data.get("short_film_planning_mode") or data.get("shortFilmPlanningMode"))
         data["reference_builder"] = _normalize_reference_catalog(data.get("reference_builder") or data.get("referenceBuilder") or {})
         data["path"] = path
+        data["exists"] = True
         return data
     data = _default_storyboard(payload)
     data["path"] = path
+    data["exists"] = False
     return data
 
 
@@ -374,6 +392,12 @@ def _save_storyboard(payload):
     scenes = storyboard.get("scenes", [])
     if not isinstance(scenes, list):
         scenes = []
+    source_scene_ids = storyboard.get("source_scene_ids", [])
+    if not isinstance(source_scene_ids, list):
+        source_scene_ids = []
+    custom_camera_flow = storyboard.get("custom_camera_flow_sequence", [])
+    if not isinstance(custom_camera_flow, list):
+        custom_camera_flow = []
     data = {
         "version": 1,
         "created_at": storyboard.get("created_at") or datetime.now().isoformat(timespec="seconds"),
@@ -381,9 +405,22 @@ def _save_storyboard(payload):
         "project_folder": project_folder,
         "project_video_engine": "minimax_h3" if str(storyboard.get("project_video_engine") or storyboard.get("projectVideoEngine") or "").strip().lower() == "minimax_h3" else "ltx",
         "mode": storyboard.get("mode") or "storyboard_prompts",
+        "source_scene_ids": [
+            str(scene_id) for scene_id in source_scene_ids
+        ],
         "performance_mode": _normalize_performance_mode(storyboard.get("performance_mode") or storyboard.get("performanceMode") or storyboard.get("video_type") or storyboard.get("videoType")),
         "short_film_planning_mode": _normalize_short_film_planning_mode(storyboard.get("short_film_planning_mode") or storyboard.get("shortFilmPlanningMode")),
         "camera_flow": _clean_scene_text(storyboard.get("camera_flow") or "balanced", 80),
+        "send_adjacent_lyric_context": bool(storyboard.get("send_adjacent_lyric_context")),
+        "keep_loaded_for_storyboard_all": bool(storyboard.get("keep_loaded_for_storyboard_all")),
+        "custom_camera_flow_sequence": [
+            {"shot": _clean_scene_text(item.get("shot") or "", 500),
+             "camera": _clean_scene_text(item.get("camera") or "", 500)}
+            for item in custom_camera_flow if isinstance(item, dict)
+        ],
+        "minimax_h3_cut_frequency": _speed_value(storyboard.get("minimax_h3_cut_frequency"), 0),
+        "fx_preset": _clean_scene_text(storyboard.get("fx_preset") or "", 120),
+        "fx_custom_json": str(storyboard.get("fx_custom_json") or ""),
         "image_shot_flow": _clean_scene_text(storyboard.get("image_shot_flow") or "intimate", 80),
         "image_aesthetic": _clean_scene_text(storyboard.get("image_aesthetic") or "", 120),
         "video_style": _clean_scene_text(storyboard.get("video_style") or storyboard.get("videoStyle") or "", 160),
@@ -396,8 +433,8 @@ def _save_storyboard(payload):
         "temporal_protected_characters": _clean_scene_text(storyboard.get("temporal_protected_characters") or storyboard.get("temporalProtectedCharacters") or "all_referenced", 80),
         "temporal_protected_custom": _clean_scene_text(storyboard.get("temporal_protected_custom") or storyboard.get("temporalProtectedCustom") or "", 1000),
         "global_consistency_phrase": _clean_scene_text(storyboard.get("global_consistency_phrase") or "", 1200),
-        "camera_motion_speed": _speed_value(storyboard.get("camera_motion_speed") or storyboard.get("cameraMotionSpeed")),
-        "character_motion_speed": _speed_value(storyboard.get("character_motion_speed") or storyboard.get("characterMotionSpeed")),
+        "camera_motion_speed": _speed_value(storyboard.get("camera_motion_speed", storyboard.get("cameraMotionSpeed"))),
+        "character_motion_speed": _speed_value(storyboard.get("character_motion_speed", storyboard.get("characterMotionSpeed"))),
         "story_arc_detail": _normalize_story_arc_detail(storyboard.get("story_arc_detail") or storyboard.get("storyArcDetail")),
         "performance_style_default": _clean_scene_text(storyboard.get("performance_style_default") or storyboard.get("performance_style") or storyboard.get("performanceStyle") or "", 120),
         "facial_performance_default": _clean_scene_text(storyboard.get("facial_performance_default") or storyboard.get("facial_performance") or "", 120),

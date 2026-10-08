@@ -1088,7 +1088,7 @@
     },
     {
       "body_keys": [],
-      "description": "Write a story step with the project's LLM. `step` is `arc` (from the story idea), `brief` or `beats` (a beat per scene without one; `replace_existing`, `scene_ids`, `limit`). Each step also updates the Storyboard Builder's saved copy.",
+      "description": "Write a story step with the project's LLM. `step` is `arc` (from the story idea, lyrics and saved timed Timeline Notes), `brief` or `beats` (a beat per scene without one; `replace_existing`, `scene_ids`, `limit`). Each step also updates the Storyboard Builder's saved copy.",
       "if_match": false,
       "job": true,
       "method": "POST",

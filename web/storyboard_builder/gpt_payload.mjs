@@ -14,6 +14,9 @@ import {
   normalizeStoryLayer,
   slimReferenceForRequest,
   slimSceneForRequest,
+  storyboardSceneCardContext,
+  storyboardTimelineNotesForRequest,
+  STORYBOARD_SCENE_CARD_CONTEXT_INSTRUCTION,
   storyboardCameraMotionForSpeed,
   storyboardCutPlanForDuration,
   storyboardSpeedGuidance,
@@ -77,6 +80,8 @@ export function storyLayerGptPayload(state) {
       source_lyrics: sourceLyrics,
       lyrics_instruction: "When scenes are present, use ordered_lyrics for scene alignment. When ordered_lyrics is empty, use source_lyrics as the complete pasted song/script and create the lyric sections yourself from its headings and structure.",
       lyric_sections: lyricSections,
+      timeline_markers: storyboardTimelineNotesForRequest(state),
+      timeline_notes_instruction: "Use Timeline Notes as user story-event and timing guidance. Apply each note to the scenes and lyric sections overlapping its start/end seconds; a note without an end marks an event at its start. Preserve the required lyric-section order, mapped cast and locations, and exact imported dialogue. Do not spread a timed event across unrelated sections.",
       subjects: (state.referenceBuilder?.subjects || []).map(slimReferenceForRequest).filter(Boolean),
       locations: (state.referenceBuilder?.locations || []).map(slimReferenceForRequest).filter(Boolean),
       preset_details: presetDetails,
@@ -262,6 +267,9 @@ function storyboardScenesForGpt(state) {
     const locationRef = storyboardReferenceForGpt(normalized.location_ref);
     return {
       scene_number: normalized.scene_number,
+      scene_card: storyboardSceneCardContext(normalized, index),
+      scene_card_instruction: STORYBOARD_SCENE_CARD_CONTEXT_INSTRUCTION,
+      director_note: normalized.timeline_note,
       label: normalized.label,
       lyric_section: lyricSection,
       prompt_type: imageMode ? "text to image" : storyboardVideoPromptTypeLabel(normalized.video_prompt_type),

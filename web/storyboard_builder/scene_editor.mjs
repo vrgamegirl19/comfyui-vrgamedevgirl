@@ -25,6 +25,7 @@ import {
   normalizeStoryboardPerformanceMode,
   normalizeStoryboardSpeakerAssignments,
   normalizeVideoPromptOrigin,
+  slimSceneForRequest,
 } from "./scenes.mjs";
 import {
   CAMERA_MOTION_GROUPS,
@@ -216,6 +217,7 @@ export function createSceneEditor({
       { value: "end", label: "Add trigger to end" },
     ], scene.trigger_position || "start");
     const notes = makeTextarea(scene.notes, "Extra planning notes...", 3);
+    const timelineNote = makeTextarea(scene.timeline_note || "", "Director note shown on the timeline...", 3);
     const audioDirection = makeTextarea(scene.audio_direction || "", "Exact ambience, sound effects, silence, breathing, or audio behavior for this scene...", 4);
     const continuityDirection = makeTextarea(scene.continuity || "", "Exact identity, wardrobe, prop, location, screen-direction, and spatial continuity requirements...", 4);
     const selectedSubjectIds = scene.no_character_present ? [] : (Array.isArray(scene.subject_refs) ? scene.subject_refs : [])
@@ -547,7 +549,7 @@ export function createSceneEditor({
       advancedGrid.append(t2iPromptField, field("Character details", subjectDetails), field("Location details", locationDetails), field("Still photography notes", motion));
     }
     const notesWrap = document.createElement("div");
-    notesWrap.append(notes);
+    notesWrap.append(field("Scene Note (timeline)", timelineNote), field("Planning Notes", notes));
     const flfBeatGrid = twoCol();
     flfBeatGrid.append(
       field(editorSceneIndex > 0 ? "Start-frame state (inherited from previous end)" : "Start-frame state", flfStartState),
@@ -712,13 +714,13 @@ export function createSceneEditor({
       scene.flf_end_state = flfEndState.value.trim();
       scene.flf_carry_forward = flfCarryForward.value.trim();
       propagateFlfEndStateToNextScene(scene);
-      scene.prompt_summary = isVideoPrepMode ? summary.value.trim() : "";
+      if (isVideoPrepMode) scene.prompt_summary = summary.value.trim();
       scene.motion_summary = motion.value.trim();
       if (isVideoPrepMode && miniMaxProject) {
         scene.minimax_h3_mode = normalizeStoryboardMiniMaxH3Mode(videoPromptType.value);
         scene.project_video_engine = "minimax_h3";
-      } else {
-        scene.video_prompt_type = isVideoPrepMode ? (videoPromptType.value || "i2v") : "i2v";
+      } else if (isVideoPrepMode) {
+        scene.video_prompt_type = videoPromptType.value || "i2v";
       }
       scene.no_character_present = Boolean(noCharacterInput.checked);
       scene.subjects = scene.no_character_present ? [] : subjects.value.split(/[,;\n]+/).map((item) => item.trim()).filter(Boolean);
@@ -766,7 +768,7 @@ export function createSceneEditor({
       }
       scene.shot_type = shot.value.trim();
       scene.camera_motion = customCameraMotion.value.trim() || cameraMotionPreset.value.trim();
-      scene.character_motion = isVideoPrepMode ? (customCharacterMotion.value.trim() || characterMotionPreset.value.trim()) : "";
+      if (isVideoPrepMode) scene.character_motion = customCharacterMotion.value.trim() || characterMotionPreset.value.trim();
       scene.performance_style = performanceStyle.value || "";
       scene.video_style = videoStyle.value || "";
       scene.video_style_custom = videoStyle.value === "custom" ? videoStyleCustom.value.trim() : "";
@@ -792,6 +794,7 @@ export function createSceneEditor({
         syncSpeakerAssignmentLegacy();
       }
       scene.notes = notes.value.trim();
+      scene.timeline_note = timelineNote.value.trim();
       scene.audio_direction = audioDirection.value.trim();
       scene.continuity = continuityDirection.value.trim();
     };
@@ -851,6 +854,7 @@ export function createSceneEditor({
       try {
         saveEditorFieldsToScene();
         if (sceneFocus.only) await saveStoryboard({ throwOnError: true });
+        else if (state.onSceneChanged) await state.onSceneChanged(slimSceneForRequest(scene, editorSceneIndex));
         syncReferenceMappingsToVideoCreator();
         syncStoryLayerFromInputs({ notify: true });
         editorBackdrop.remove();

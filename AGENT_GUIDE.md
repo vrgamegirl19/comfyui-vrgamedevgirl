@@ -439,6 +439,9 @@ The `storyboard` package provides script breakdown, shot planning, and narrative
 #### [storyboard/story_layer.py](storyboard/story_layer.py)
 - **Purpose**: Narrative arc management. Breaks stories into Three-Act structures, defines emotional intensity curves, and maps plot points to visual beats.
 
+#### [storyboard/timeline_notes.py](storyboard/timeline_notes.py)
+- **Purpose**: Preserves user Timeline Notes and their timestamps, and maps range or point notes to overlapping scene cards for Story Arc planning. The UI supplies current `timeline_markers`; the Agent API uses the project's saved markers. Story Arc format retries and detailed scene entries keep this timing context.
+
 #### [storyboard/scene_prompts.py](storyboard/scene_prompts.py)
 - **Purpose**: Translates high-level storyboard cards into specific visual prompt strings for image generation and video rendering.
 

@@ -273,6 +273,7 @@ def _normalize_reference_catalog(value):
     return {
         "subjects": normalize_list(source.get("subjects"), "Subject", "subject"),
         "locations": normalize_list(source.get("locations"), "Location", "location"),
+        "locations_cleared": bool(source.get("locations_cleared")),
         "trigger_position": "end" if trigger_position == "end" else "start",
         "subject_trigger_position": "end" if subject_trigger_position == "end" else "start",
         "location_trigger_position": "end" if location_trigger_position == "end" else "start",
@@ -281,6 +282,16 @@ def _normalize_reference_catalog(value):
 
 def _normalize_story_layer(value):
     source = value if isinstance(value, dict) else {}
+    image_world_style = str(
+        source.get("image_world_style")
+        or source.get("imageWorldStyle")
+        or "natural"
+    )
+    if image_world_style not in {
+        "natural", "surreal_subject", "balanced_surreal",
+        "full_surreal", "abstract", "custom",
+    }:
+        image_world_style = "natural"
     try:
         lyric_story_strength = int(float(source.get("lyric_story_strength", source.get("lyricStoryStrength", 7))))
     except Exception:
@@ -292,6 +303,12 @@ def _normalize_story_layer(value):
         "user_story_arc": _clean_scene_text(source.get("user_story_arc") or source.get("userStoryArc") or "", 40000),
         "song_story_brief": _clean_scene_text(source.get("song_story_brief") or source.get("songStoryBrief") or "", 4000),
         "lyric_story_strength": lyric_story_strength,
+        "image_world_style": image_world_style,
+        "image_custom_style_direction": _clean_scene_text(
+            source.get("image_custom_style_direction")
+            or source.get("imageCustomStyleDirection") or "",
+            3000,
+        ),
     }
 
 
