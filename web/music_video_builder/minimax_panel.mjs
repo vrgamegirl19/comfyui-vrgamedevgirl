@@ -23,12 +23,12 @@ export function createMiniMaxPanel({
   miniMaxAccelerationControls, miniMaxAddSpeakerCueButton, miniMaxAdvancedLatentUpscalerPicker, miniMaxAdvancedSettings,
   miniMaxAdvancedVramPreset,
   miniMaxAspectRatio, miniMaxAudioMode, miniMaxAudioNote, miniMaxAudioVaePicker, miniMaxAutoTimeBeforePrompt,
-  miniMaxClipPicker, miniMaxContinuityMode, miniMaxContinuityNote, miniMaxContinuityPromptFromLastFrame,
+  miniMaxClipPicker, miniMaxContinuityMode, miniMaxContinuityNote, miniMaxContinuitySection, miniMaxContinuityPromptFromLastFrame,
   miniMaxCooldownFrames, miniMaxCreatePromptButton, miniMaxDenoise, miniMaxDesiredReferenceKeysForSegment,
   miniMaxDiffusionModelPicker, miniMaxEasyCacheBypass, miniMaxEasyCacheEndPercent,
   miniMaxEasyCacheReuseThreshold, miniMaxEasyCacheSettings, miniMaxEasyCacheStartPercent,
   miniMaxEasyCacheVerbose, miniMaxEditInstructionsButton, miniMaxFp16Accumulation,
-  miniMaxH3PromptCharacterBudget, miniMaxH3ReferenceCapacityStatus, miniMaxImageModeSource,
+  miniMaxH3PromptCharacterBudget, miniMaxH3ReferenceCapacityStatus, miniMaxImageModeSource, miniMaxKeyframes,
   miniMaxContinuationDirection, miniMaxContinuationDirectionField, miniMaxPromptAutoNote, miniMaxH3FrameContinuityPromptEnabled,
   miniMaxContinuationStart, miniMaxContinuationStartField, miniMaxContinuationStartValue,
   miniMaxLatentContextFrames, miniMaxLatentContinuationRow, miniMaxLatentStatusPill,
@@ -124,16 +124,26 @@ export function createMiniMaxPanel({
 
   function setMiniMaxH3ModeForSegment(segment, value) {
     const mode = normalizeMiniMaxH3Mode(value);
+    const current = miniMaxH3SettingsForSegment(segment);
+    const modeDefaults = mode === "reference_to_video" && current.video_mode === "image_to_video"
+      ? {
+        diffusion_model_name: current.diffusion_model_name === "minimax_h3_fl2va_pruned_int8_convrot.safetensors"
+          ? DEFAULT_MINIMAX_H3_SETTINGS.diffusion_model_name : current.diffusion_model_name,
+        two_pass_lora_name: current.two_pass_lora_name === "minimax_h3_fl2v_turbo_4step_v1.1_768p_comfyui_bf16.safetensors"
+          ? DEFAULT_MINIMAX_H3_SETTINGS.two_pass_lora_name : current.two_pass_lora_name,
+      } : {};
     if (segment?.use_scene_minimax_h3_settings) {
       segment.minimax_h3_settings = cloneMiniMaxH3Settings({
         ...miniMaxH3SettingsForSegment(segment),
         video_mode: mode,
+        ...modeDefaults,
       });
       segment.minimax_h3_mode = mode;
     } else {
       state.miniMaxH3Settings = cloneMiniMaxH3Settings({
         ...state.miniMaxH3Settings,
         video_mode: mode,
+        ...modeDefaults,
       });
       if (segment) segment.minimax_h3_mode = mode;
     }
@@ -286,6 +296,8 @@ export function createMiniMaxPanel({
       audio_mode: miniMaxAudioMode.value,
       continuity_mode: miniMaxContinuityMode.value,
       continuity_prompt_from_last_frame: miniMaxContinuityPromptFromLastFrame.input.checked,
+      i2v_transition_style: miniMaxKeyframes.transitionStyle.value,
+      i2v_transition_direction: miniMaxKeyframes.transitionDirection.value,
       location_transition_preset: miniMaxLocationTransitionPreset.value,
       location_transition_custom: miniMaxLocationTransitionCustom.value,
       latent_context_frames: Number(miniMaxLatentContextFrames.value || 39),
@@ -735,7 +747,7 @@ export function createMiniMaxPanel({
     const modeLabel = miniMaxH3ModeLabel(mode);
     const imageReferenceTwoPass = mode === "image_reference_to_video";
     const twoPass = Boolean(state.miniMaxH3TwoPassEnabled)
-      && ["reference_to_video", "image_reference_to_video"].includes(mode);
+      && ["reference_to_video", "image_reference_to_video", "image_to_video"].includes(mode);
     const threePass = Boolean(state.miniMaxH3ThreePassEnabled)
       && ["reference_to_video", "image_reference_to_video"].includes(mode);
     const hideMultiPassIgnoredSettings = twoPass || threePass;
@@ -788,9 +800,10 @@ export function createMiniMaxPanel({
       }
     }
     // 2 Pass Advanced is not offered with RefMods.
-    miniMaxPassButtons[2].style.display = refmodPipeline ? "none" : "";
-    miniMaxPassChooser.style.gridTemplateColumns = refmodPipeline ? "repeat(2,minmax(0,1fr))" : "repeat(3,minmax(0,1fr))";
-    miniMaxPassChooser.style.display = mode === "reference_to_video" ? "grid" : "none";
+    const singleOrTwoPassOnly = refmodPipeline || mode === "image_to_video";
+    miniMaxPassButtons[2].style.display = singleOrTwoPassOnly ? "none" : "";
+    miniMaxPassChooser.style.gridTemplateColumns = singleOrTwoPassOnly ? "repeat(2,minmax(0,1fr))" : "repeat(3,minmax(0,1fr))";
+    miniMaxPassChooser.style.display = ["reference_to_video", "image_to_video"].includes(mode) ? "grid" : "none";
     for (const button of miniMaxPassButtons) {
       const active = button.dataset.passMode === settings.render_pass;
       button.setAttribute("aria-pressed", String(active));
@@ -802,6 +815,7 @@ export function createMiniMaxPanel({
       panel.style.display = panelMode === mode ? "flex" : "none";
     }
     const sceneImageSource = segmentImageSource(segment);
+    miniMaxKeyframes.sync(segment, mode, settings);
     const hasSceneImage = Boolean(sceneImageSource?.path || sceneImageSource?.data);
     // RefMods have no start frame, so the scene-image controls are hidden in the RefMod pipeline.
     miniMaxSceneImageUseField.style.display = hasSceneImage && !refmodPipeline ? "flex" : "none";
@@ -815,6 +829,9 @@ export function createMiniMaxPanel({
     // When this scene's prompt is written from the previous scene's final frame, the prompt box is not used and the
     // continuation direction is what steers it. Otherwise it is the other way round. The render uses the same rule.
     const promptFromLastFrame = Boolean(segment) && miniMaxH3FrameContinuityPromptEnabled(segment);
+    miniMaxContinuationDirectionField.style.display = promptFromLastFrame ? "flex" : "none";
+    miniMaxContinuationStartField.style.display = promptFromLastFrame ? "flex" : "none";
+    miniMaxContinuitySection.style.display = ["image_to_video", "image_reference_to_video"].includes(mode) ? "none" : "";
     miniMaxPrompt.disabled = promptFromLastFrame;
     miniMaxPrompt.style.opacity = promptFromLastFrame ? ".55" : "1";
     miniMaxPromptAutoNote.style.display = promptFromLastFrame ? "block" : "none";
@@ -842,7 +859,7 @@ export function createMiniMaxPanel({
     miniMaxAudioNote.textContent = settings.audio_mode === "built_in_audio"
       ? "MiniMax generates the scene audio from the prompt. In Short Film mode, character voice presets are configured in Reference Builder and copied exactly into every matching scene prompt."
       : "Uses custom scene audio or project audio unchanged for exact timing and lip sync. Native voice presets are hidden while Input Audio is selected.";
-    // Latent Continuation Masked works in every mode. The other continuity modes need R2V or V2V.
+    // Image modes use per-scene frames and do not support between-scene continuation.
     const continuitySupported = isMiniMaxH3ContinuityAllowedForMode(settings.continuity_mode, mode, settings.render_pass);
     for (const option of miniMaxContinuityMode.options) {
       option.disabled = !isMiniMaxH3ContinuityAllowedForMode(option.value, mode, settings.render_pass);

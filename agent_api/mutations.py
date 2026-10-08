@@ -468,6 +468,8 @@ _SCENE_PATCH_TEXT_FIELDS = (
     "enhance_prompt",
     "minimax_h3_prompt",
     "minimax_h3_pass2_prompt",
+    "minimax_h3_i2v_frame_mode",
+    "first_last_frame_end_image_path",
     "minimax_h3_continuation_direction",
     "flux_prompt",
     "nb_prompt",
@@ -515,6 +517,8 @@ def patch_scene(
     """
     if not isinstance(patch, dict):
         raise ValidationError("The scene patch must be a JSON object.")
+    if "minimax_h3_i2v_frame_mode" in patch and patch["minimax_h3_i2v_frame_mode"] not in ("normal", "flf", "", None):
+        raise ValidationError("minimax_h3_i2v_frame_mode must be normal or flf.")
     unsupported = _unsupported_scene_fields(patch)
     if unsupported:
         supported = sorted(

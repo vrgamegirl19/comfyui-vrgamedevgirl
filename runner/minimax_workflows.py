@@ -5,6 +5,8 @@ import json
 import math
 import os
 import random
+
+from .minimax_keyframes import patch_i2v_keyframe_timing
 from ..minimax.latent_manager import calculate_minimax_h3_timing
 from ..minimax.resolution import frame_size
 from ..minimax.tile_plan import HIDDEN_ADVANCED_SETTINGS, PLAN_OUTPUT_NAMES, normalize_vram_preset, plan_spatial_tiles
@@ -123,7 +125,7 @@ def _build_minimax_h3_api_prompt(payload):
                 has_last_frame=bool(last_frame_path),
             )
         else:
-            if last_frame_path and os.path.abspath(image_paths[0]) != last_frame_path:
+            if last_frame_path:
                 image_paths = [image_paths[0], last_frame_path]
             _patch_minimax_h3_image_to_video_node(prompt, image_paths)
         video_references = []
@@ -229,6 +231,8 @@ def _build_minimax_h3_api_prompt(payload):
         from .minimax_refmod import apply_refmod_pipeline
 
         refmod_summary = apply_refmod_pipeline(prompt, payload)
+    if video_mode == "image_to_video":
+        patch_i2v_keyframe_timing(prompt, timing)
     return {
         "workflow_path": workflow_path,
         "output_folder": output_folder,
@@ -321,7 +325,11 @@ def _build_minimax_h3_2pass_api_prompt(payload):
     This intentionally has its own adapter instead of reusing the one-pass
     node IDs or mutating the existing MiniMax template path.
     """
-    workflow_path, prompt = _load_api_template(_minimax_h3_2pass_api_template_path())
+    video_mode = (
+        str(payload.get("video_mode") or payload.get("mode") or "reference_to_video")
+        .strip().lower().replace("-", "_").replace(" ", "_")
+    )
+    workflow_path, prompt = _load_api_template(_minimax_h3_2pass_api_template_path(video_mode))
     prompt = copy.deepcopy(prompt)
     video_prompt = str(_first_payload_value(payload, "prompt", "video_prompt", default="") or "").strip()
     if not video_prompt:
@@ -329,6 +337,8 @@ def _build_minimax_h3_2pass_api_prompt(payload):
 
     raw_audio_mode = str(payload.get("audio_mode") or payload.get("audioMode") or "input_audio").strip().lower().replace("-", "_").replace(" ", "_")
     audio_mode = "built_in_audio" if raw_audio_mode in {"built_in_audio", "native_audio", "generated_audio"} else "input_audio"
+    if video_mode == "image_to_video" and audio_mode == "built_in_audio":
+        raise ValueError("MiniMax H3 Image to Video 2 Pass currently supports Input Audio only.")
     audio_path = ""
     if audio_mode == "input_audio":
         audio_path = str(_first_payload_value(payload, "audio_path", "source_audio_path", default="") or "").strip().strip('"')
@@ -375,8 +385,7 @@ def _build_minimax_h3_2pass_api_prompt(payload):
 
     image_paths = _minimax_h3_image_paths(payload)
     video_references = _minimax_h3_video_references(payload)
-    video_mode = str(payload.get("video_mode") or payload.get("mode") or "reference_to_video").strip().lower().replace("-", "_").replace(" ", "_")
-    if video_mode == "image_reference_to_video":
+    if video_mode in {"image_to_video", "image_reference_to_video"}:
         if not image_paths:
             raise ValueError("MiniMax H3 image-to-video requires a scene image as the first frame.")
         start_frame_path = image_paths[0]
@@ -386,18 +395,32 @@ def _build_minimax_h3_2pass_api_prompt(payload):
             last_frame_path = os.path.abspath(last_frame_path)
             if not os.path.isfile(last_frame_path):
                 raise FileNotFoundError(f"MiniMax H3 last-frame image was not found: {last_frame_path}")
-            if os.path.abspath(start_frame_path) == last_frame_path:
+            if video_mode != "image_to_video" and os.path.abspath(start_frame_path) == last_frame_path:
                 last_frame_path = ""
-        combined_images = [start_frame_path] + ([last_frame_path] if last_frame_path else []) + image_paths
+        combined_images = [start_frame_path] + ([last_frame_path] if last_frame_path else [])
+        if video_mode == "image_reference_to_video":
+            combined_images += image_paths
         image_paths = combined_images
         _patch_minimax_h3_image_to_video_node(
             prompt,
             image_paths,
-            include_references=True,
+            include_references=video_mode == "image_reference_to_video",
             has_last_frame=bool(last_frame_path),
         )
+        _set_api_input(prompt, "136", "width", ["186", 1])
+        _set_api_input(prompt, "136", "height", ["187", 1])
+        if video_mode == "image_to_video":
+            # Keyframe latents must match each sampler's actual spatial resolution.
+            prompt["214"] = copy.deepcopy(prompt["136"])
+            _set_api_input(prompt, "214", "width", ["212", 1])
+            _set_api_input(prompt, "214", "height", ["213", 1])
+            prompt["214"]["_meta"] = {"title": "I2V Pass 2 - Upscaled Frame Conditioning"}
         video_references = []
-    diffusion_model_name = str(payload.get("diffusion_model_name") or "minimax_h3_ref2va_pruned_int8_convrot.safetensors").strip()
+    default_model = (
+        "minimax_h3_fl2va_pruned_int8_convrot.safetensors" if video_mode == "image_to_video"
+        else "minimax_h3_ref2va_pruned_int8_convrot.safetensors"
+    )
+    diffusion_model_name = str(payload.get("diffusion_model_name") or default_model).strip()
     clip_name = str(payload.get("clip_name") or "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors").strip()
     video_vae_name = str(payload.get("video_vae_name") or "minimax_h3_video_vae_fp16.safetensors").strip()
     audio_vae_name = str(payload.get("audio_vae_name") or "minimax_h3_audio_vae_fp32.safetensors").strip()
@@ -433,7 +456,8 @@ def _build_minimax_h3_2pass_api_prompt(payload):
     _set_api_input(prompt, "180", "image_paths", json.dumps(image_paths, ensure_ascii=False))
     _set_api_input(prompt, "180", "video_references", json.dumps(video_references, ensure_ascii=False))
     ref_image_size = str(payload.get("ref_image_size") or "max").strip().lower()
-    _set_api_input(prompt, "136", "ref_image_size", ref_image_size if ref_image_size in {"match", "max"} else "max")
+    if video_mode != "image_to_video":
+        _set_api_input(prompt, "136", "ref_image_size", ref_image_size if ref_image_size in {"match", "max"} else "max")
 
     _set_api_input(prompt, "115", "value", final_width)
     _set_api_input(prompt, "184", "value", final_height)
@@ -460,7 +484,13 @@ def _build_minimax_h3_2pass_api_prompt(payload):
     _set_api_input(prompt, "119", "vae_name", video_vae_name)
     _set_api_input(prompt, "120", "vae_name", audio_vae_name)
 
-    turbo_lora_name = _clean_lora_name(payload.get("two_pass_lora_name", "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors"))
+    default_lora = (
+        "minimax_h3_fl2v_turbo_4step_v1.1_768p_comfyui_bf16.safetensors" if video_mode == "image_to_video"
+        else "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors"
+    )
+    turbo_lora_name = _clean_lora_name(payload.get("two_pass_lora_name", default_lora))
+    if video_mode == "image_to_video" and "ref2v" in os.path.basename(turbo_lora_name).lower():
+        raise ValueError("Image to Video 2 Pass requires an FL2V/I2V Turbo LoRA, not a Reference-to-Video LoRA.")
     if turbo_lora_name == _NONE_LORA:
         raise ValueError("Select the MiniMax H3 two-pass Turbo LoRA; it is required by this fast workflow.")
     _require_model_choice("loras", turbo_lora_name, "MiniMax H3 two-pass Turbo LoRA")
@@ -569,6 +599,8 @@ def _build_minimax_h3_2pass_api_prompt(payload):
         save_latent_settings = _patch_minimax_h3_save_latent(prompt, payload, timing)
     if audio_mode == "built_in_audio":
         _use_minimax_h3_native_audio(prompt)
+    if video_mode == "image_to_video":
+        patch_i2v_keyframe_timing(prompt, timing)
     refmod_summary = None
     if str(payload.get("pipeline") or "").strip().lower() == "refmod":
         from .minimax_refmod import apply_refmod_pipeline
@@ -613,6 +645,8 @@ def _build_minimax_h3_advanced_2pass_api_prompt(payload):
     learned-upscale/refinement tail with Comfyui-MMH3-UltimateUpscale and gives
     each pass an independent ResolutionSelector.
     """
+    if str(payload.get("video_mode") or payload.get("mode") or "").strip().lower() == "image_to_video":
+        raise ValueError("Image to Video supports Single and 2 Pass only; 2 Pass Advanced is not supported.")
     if str(payload.get("pipeline") or "").strip().lower() == "refmod":
         raise ValueError("The RefMod pipeline supports Single and 2 Pass only. Choose one of those passes.")
     try:

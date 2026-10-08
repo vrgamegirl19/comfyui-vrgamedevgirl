@@ -120,6 +120,8 @@ test('LoRA presets select installed files, save steps, and leave missing selecti
     miniMaxTwoPassLoraStatus: { textContent: '' },
     installed: [eight, four],
     getJson: async () => ({ loras: c.installed }),
+    videoSettingsSegment: () => null,
+    miniMaxH3ModeForSegment: () => saved.video_mode,
     twoPassControls: [{ steps: { value: '20' } }, { steps: { value: '2' } }],
     pushHistory() {}, syncMiniMaxH3Panel() {},
     saveMiniMaxH3SettingsFromPanel() {
@@ -299,4 +301,109 @@ test('LoRAs default to the first pass and the target dropdown is labeled "LoRA t
   assert.ok(menu.includes('makeField("LoRA target", applyTo)'));
   assert.equal(source.includes('2-pass target'), false);
   assert.ok(source.includes('slot.applyTo.value = ["both", "pass1", "pass2"].includes(item.apply_to) ? item.apply_to : "pass1";'));
+});
+
+
+test('I2V pass switching keeps its mode and settings separate from reference profiles', () => {
+  const c = fixture();
+  let settings = c.cloneMiniMaxH3Settings({ video_mode: 'image_to_video', render_pass: 'single',
+    i2v_pass_settings_version: 1, steps: 17, ref_pass_profiles: { two_pass: { two_pass_pass1_steps: 99, diffusion_model_name: 'ref-custom.safetensors' } } });
+  settings = c.selectMiniMaxH3PassSettings(settings, 'two_pass');
+  assert.equal(settings.video_mode, 'image_to_video');
+  assert.equal(settings.render_pass, 'two_pass');
+  assert.equal(settings.two_pass_pass1_steps, 20);
+  assert.match(settings.diffusion_model_name, /fl2va/);
+  assert.match(settings.two_pass_lora_name, /fl2v/);
+  settings.two_pass_pass1_steps = 31;
+  settings.two_pass_pass2_steps = 7;
+  settings.two_pass_pass2_seed = 123;
+  settings.two_pass_lora_name = 'custom-i2v.safetensors';
+  settings = c.selectMiniMaxH3PassSettings(settings, 'single');
+  assert.equal(settings.steps, 17);
+  settings = c.cloneMiniMaxH3Settings(JSON.parse(JSON.stringify(settings)));
+  settings = c.selectMiniMaxH3PassSettings(settings, 'two_pass');
+  assert.equal(settings.video_mode, 'image_to_video');
+  assert.equal(settings.two_pass_pass1_steps, 31);
+  assert.equal(settings.two_pass_pass2_steps, 7);
+  assert.equal(settings.two_pass_pass2_seed, 123);
+  assert.equal(settings.two_pass_lora_name, 'custom-i2v.safetensors');
+  assert.equal(settings.ref_pass_profiles.two_pass.two_pass_pass1_steps, 99);
+  for (const profile of Object.values(settings.i2v_pass_profiles)) {
+    assert.equal(profile.i2v_pass_profiles, undefined);
+    assert.equal(profile.ref_pass_profiles, undefined);
+  }
+});
+
+test('legacy I2V saves stay single pass and advanced is not offered for new I2V settings', () => {
+  const c = fixture();
+  const legacy = c.cloneMiniMaxH3Settings({ video_mode: 'image_to_video', render_pass: 'two_pass' });
+  assert.equal(legacy.render_pass, 'single');
+  assert.equal(legacy.i2v_pass_settings_version, 1);
+  const selected = c.selectMiniMaxH3PassSettings(legacy, 'two_pass');
+  assert.equal(c.cloneMiniMaxH3Settings(JSON.parse(JSON.stringify(selected))).render_pass, 'two_pass');
+  assert.equal(c.selectMiniMaxH3PassSettings(selected, 'three_pass').render_pass, 'two_pass');
+});
+
+test('I2V LoRA presets skip reference-to-video adapters', () => {
+  const c = fixture();
+  const ref = 'minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors';
+  const i2v = 'H3/minimax_h3_fl2v_turbo_4step_v1.1_768p_comfyui_bf16.safetensors';
+  assert.equal(c.miniMaxInstalledPass2Lora(4, [ref, i2v], 'image_to_video'), i2v);
+  assert.equal(c.miniMaxInstalledPass2Lora(4, [ref], 'image_to_video'), '');
+  assert.equal(c.miniMaxInstalledPass2Lora(4, [ref, i2v], 'reference_to_video'), ref);
+});
+
+
+test('actual pass-button handlers keep global and locked-scene I2V settings in I2V', async () => {
+  for (const locked of [false, true]) {
+    const c = fixture();
+    const globalSettings = c.cloneMiniMaxH3Settings({ video_mode: locked ? 'reference_to_video' : 'image_to_video', render_pass: 'single', i2v_pass_settings_version: 1 });
+    const scene = locked ? { use_scene_minimax_h3_settings: true, minimax_h3_settings: c.cloneMiniMaxH3Settings({ video_mode: 'image_to_video', render_pass: 'single', i2v_pass_settings_version: 1 }) } : null;
+    Object.assign(c, {
+      state: { miniMaxH3Settings: globalSettings },
+      wizardVideoSettings: { global: !locked },
+      miniMaxPassButtons: [{ dataset: { passMode: 'two_pass' } }],
+      requireActiveSegment: () => scene,
+      pushHistory() {}, clearMiniMaxImageReferenceStartFrameOnModeSwitch() {}, syncMiniMaxH3Panel() {},
+      saveMiniMaxH3SettingsFromPanel: () => locked ? scene.minimax_h3_settings : c.state.miniMaxH3Settings,
+      setMiniMaxH3RenderPassForSegment() {},
+      setMiniMaxH3ModeForSegment: (segment, mode) => { segment.minimax_h3_settings.video_mode = mode; },
+      autoSaveSessionQuiet: async () => {},
+    });
+    const start = source.indexOf('  for (const button of miniMaxPassButtons) {', source.indexOf('  for (const button of miniMaxPassButtons.refmod'));
+    const end = source.indexOf('  miniMaxAudioMode.addEventListener', start);
+    vm.runInContext(source.slice(start, end), c);
+    await c.miniMaxPassButtons[0].onclick();
+    const selected = locked ? scene.minimax_h3_settings : c.state.miniMaxH3Settings;
+    assert.equal(selected.video_mode, 'image_to_video');
+    assert.equal(selected.render_pass, 'two_pass');
+    if (locked) {
+      assert.equal(c.state.miniMaxH3Settings.video_mode, 'reference_to_video');
+      assert.equal(c.state.miniMaxH3Settings.render_pass, 'single');
+    }
+  }
+});
+test('I2V rejects saved between-scene continuity for both passes', () => {
+  const c = vm.createContext({});
+  vm.runInContext(readBuilderModule('minimax_h3.mjs'), c);
+  for (const pass of ['single', 'two_pass']) {
+    assert.equal(c.isMiniMaxH3ContinuityAllowedForMode('latent_continuation_masked', 'image_to_video', pass), false);
+    assert.equal(c.isMiniMaxH3ContinuityAllowedForMode('off', 'image_to_video', pass), true);
+    assert.equal(c.isMiniMaxH3ContinuityAllowedForMode('latent_continuation_masked', 'reference_to_video', pass), true);
+  }
+});
+
+test('panel hides direction controls without a continuity prompt and hides I2V continuity settings', () => {
+  const panel = readBuilderModule('minimax_panel.mjs');
+  const start = panel.indexOf('const promptFromLastFrame =');
+  const end = panel.indexOf('miniMaxPrompt.disabled', start);
+  const code = panel.slice(start, end);
+  for (const [mode, enabled] of [['image_to_video', false], ['reference_to_video', false], ['reference_to_video', true]]) {
+    const c = vm.createContext({ mode, segment: {}, miniMaxH3FrameContinuityPromptEnabled: () => enabled,
+      miniMaxContinuationDirectionField: {style: {}}, miniMaxContinuationStartField: {style: {}}, miniMaxContinuitySection: {style: {}} });
+    vm.runInContext(code, c);
+    assert.equal(c.miniMaxContinuationDirectionField.style.display, enabled ? 'flex' : 'none');
+    assert.equal(c.miniMaxContinuationStartField.style.display, enabled ? 'flex' : 'none');
+    assert.equal(c.miniMaxContinuitySection.style.display, mode === 'image_to_video' ? 'none' : '');
+  }
 });

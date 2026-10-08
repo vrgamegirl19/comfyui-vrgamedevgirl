@@ -35,7 +35,8 @@ EXCLUDED_PROFILE_KEYS = frozenset({
     "location_transition_preset", "location_transition_custom",
     # Internal bookkeeping: the per-pass cache and the settings-version markers. Applying a stale
     # version marker would make the Builder reset newer defaults on load.
-    "ref_pass_profiles", "ref_pass_mode", "two_pass_defaults_version", "advanced_two_pass_defaults_version",
+    "ref_pass_profiles", "i2v_pass_profiles", "ref_pass_mode",
+    "two_pass_defaults_version", "advanced_two_pass_defaults_version",
 })
 
 

@@ -185,6 +185,16 @@ class AgentApiMutationsTests(unittest.TestCase):
         res = mutations.patch_scene("Test_Track", "seg_0001", {"t2i_prompt": "New enhanced prompt"})
         self.assertEqual(res["scene"]["t2i_prompt"], "New enhanced prompt")
 
+    def test_patch_scene_saves_i2v_keyframes_and_rejects_invalid_mode(self):
+        mutations.patch_scene("Test_Track", "seg_0001", {
+            "minimax_h3_i2v_frame_mode": "flf", "first_last_frame_end_image_path": "last.png",
+        })
+        saved = json.loads(Path(self.session_file).read_text(encoding="utf-8"))
+        self.assertEqual(saved["segments"][0]["minimax_h3_i2v_frame_mode"], "flf")
+        self.assertEqual(saved["segments"][0]["first_last_frame_end_image_path"], "last.png")
+        with self.assertRaises(errors.ValidationError):
+            mutations.patch_scene("Test_Track", "seg_0001", {"minimax_h3_i2v_frame_mode": "chain"})
+
     # 6. Timeline Batch: Snap, Close Gaps, Bulk
     def test_timeline_close_gaps(self):
         # Lock scene 1 video so rolling edits don't stretch it, then move scene 2 to create a 2s gap

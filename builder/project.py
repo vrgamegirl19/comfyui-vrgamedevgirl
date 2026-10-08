@@ -855,6 +855,7 @@ def _rehydrate_builder_session(project_folder, session):
         for key in (
             "approved_image_path",
             "custom_image_path",
+            "first_last_frame_end_image_path",
             "ref_image_path",
             "flux_subject_image_path",
             "flux_location_image_path",
@@ -915,6 +916,7 @@ def _rehydrate_builder_session(project_folder, session):
         for key in (
             "approved_image_path",
             "custom_image_path",
+            "first_last_frame_end_image_path",
             "ref_image_path",
             "flux_subject_image_path",
             "flux_location_image_path",
