@@ -14,7 +14,8 @@ import {
   TIMELINE_SEGMENT_TOP,
   WAVEFORM_MODES,
 } from "./constants.mjs";
-import { escapeHtml, makeButton, makeCheckbox, makeInput, makeSelect, toast } from "./controls.mjs";
+import { escapeHtml, makeButton, makeCheckbox, makeInput, makeSelect, normalizeProjectVideoEngine, toast } from "./controls.mjs";
+import { miniMaxI2VFLFEnabled } from "./minimax_keyframe_state.mjs";
 import { formatDurationSeconds, formatTime } from "./format.mjs";
 import { applyLyricSectionsFromReferenceText } from "./lyric_transcription.mjs";
 import {
@@ -294,7 +295,7 @@ export function createTimelineView({
   loadedGlobalAudioDuration, lyricTextInput, makeDragHandle, markerVisualEnd, mediaThumbnailHtml,
   openAudioContextMenu, openDirectorNoteContextMenu, openSceneOptions, openSegmentContextMenu,
   openTimelineSceneCard, playhead, pushHistory, render, rtvReferenceBehaviorForSegment, sceneListPane,
-  segmentImageSource, segmentLayer, segmentTrack, selectedSegmentImageThumbnailPath,
+  segmentImageSource, segmentLayer, segmentTrack, selectedSegmentImageThumbnailPath, miniMaxH3ModeForSegment,
   selectedTimelineRangeInfo, setActiveSegment, state, syncInspector, syncLyricMapperFromSegments,
   timelineCanvas, timelineDuration, timelineSegmentLabel, toggleSegmentPreviewMode,
   locationThumbnailButton, refreshDeleteActions,
@@ -841,9 +842,13 @@ export function createTimelineView({
       const left = segment.start * state.pxPerSecond;
       const width = Math.max(24, (segment.end - segment.start) * state.pxPerSecond);
       const videoMode = currentVideoMode();
+      const engine = normalizeProjectVideoEngine(state.projectVideoEngine);
+      const miniMaxFLF = engine === "minimax_h3" && miniMaxI2VFLFEnabled(segment, engine, miniMaxH3ModeForSegment(segment));
       const showFirstLastFrameThumb = !isOverlay && (
-        videoMode === "flf"
-        || (videoMode === "rtv" && rtvReferenceBehaviorForSegment(segment) === "first_last_frame")
+        miniMaxFLF || (engine !== "minimax_h3" && (
+          videoMode === "flf"
+          || (videoMode === "rtv" && rtvReferenceBehaviorForSegment(segment) === "first_last_frame")
+        ))
       );
       const previewThumbPath = selectedSegmentImageThumbnailPath(segment);
       const location = !isOverlay && showLocationThumbnails

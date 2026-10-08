@@ -47,6 +47,20 @@ def _settings(**overrides):
 
 
 class DefaultsTests(unittest.TestCase):
+    def test_flf_transition_settings_normalize_and_survive_json_reload(self):
+        import json
+
+        settings = _settings(i2v_transition_style=" SURREAL_MORPH ",
+                             i2v_transition_direction="  petals become stars  ")
+        reloaded = _settings(**json.loads(json.dumps(settings)))
+        self.assertEqual(reloaded["i2v_transition_style"], "surreal_morph")
+        self.assertEqual(reloaded["i2v_transition_direction"], "petals become stars")
+        self.assertEqual(_settings(i2v_transition_style="invalid")["i2v_transition_style"], "natural")
+        self.assertEqual(payload_mod.SETTINGS_ENUMS["i2v_transition_style"], (
+            "natural", "surreal_morph", "dreamlike_dissolve",
+            "environment_transformation", "camera_reveal", "custom",
+        ))
+
     def test_defaults_file_matches_the_ui(self):
         node = shutil.which("node")
         if not node:

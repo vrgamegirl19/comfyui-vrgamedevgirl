@@ -55,6 +55,7 @@ import {
 } from "./model_settings.mjs";
 import { createMiniMaxPanel } from "./minimax_panel.mjs";
 import { wireMiniMaxPanel } from "./minimax_panel_events.mjs";
+import { wireMiniMaxKeyframes } from "./minimax_keyframes.mjs";
 import { buildMiniMaxPanel } from "./minimax_panel_layout.mjs";
 import { createRenderLog } from "./render_log.mjs";
 import { buildPostProcessPane, createPostProcess } from "./post_process.mjs";
@@ -715,12 +716,12 @@ export function openBuilder(node, options = {}) {
     advancedTwoPassControls, miniMaxAccelerationControls, miniMaxAddSpeakerCueButton,
     miniMaxAdvancedLatentUpscalerPicker, miniMaxAdvancedSettings, miniMaxAdvancedVramPreset, miniMaxAspectRatio, miniMaxAudioMode,
     miniMaxAudioNote, miniMaxAudioVaePicker, miniMaxAutoTimeAllScenesButton, miniMaxAutoTimeBeforePrompt,
-    miniMaxClipPicker, miniMaxContinuityMode, miniMaxContinuityNote, miniMaxContinuityPromptFromLastFrame,
+    miniMaxClipPicker, miniMaxContinuityMode, miniMaxContinuityNote, miniMaxContinuitySection, miniMaxContinuityPromptFromLastFrame,
     miniMaxCooldownFrames, miniMaxCreatePromptButton, miniMaxDenoise, miniMaxDiffusionModelPicker,
     miniMaxEasyCacheBypass, miniMaxEasyCacheEndPercent, miniMaxEasyCacheReuseThreshold,
     miniMaxEasyCacheSettings, miniMaxEasyCacheStartPercent, miniMaxEasyCacheVerbose,
     miniMaxEditContinuityPromptInstructionsButton, miniMaxEditInstructionsButton, miniMaxEnginePanel,
-    miniMaxFp16Accumulation, miniMaxImageModeSource, miniMaxContinuationDirection, miniMaxContinuationDirectionField, miniMaxPromptAutoNote,
+    miniMaxFp16Accumulation, miniMaxImageModeSource, miniMaxKeyframes, miniMaxContinuationDirection, miniMaxContinuationDirectionField, miniMaxPromptAutoNote,
     miniMaxContinuationStart, miniMaxContinuationStartField, miniMaxContinuationStartValue,
     miniMaxLatentContextFrames, miniMaxLatentContinuationRow,
     miniMaxLatentStatusPill, miniMaxLocationTransitionControls, miniMaxLocationTransitionCustom,
@@ -1221,6 +1222,7 @@ export function openBuilder(node, options = {}) {
     showFilmGrainPreviewImage, showLutPreviewImage, syncInspector, syncPreview, syncPreviewPlayback,
     updateAudioScrubbers, updateSelectedMediaTools, waitForPreviewVideoReady,
   } = createSelectionPreview({
+    miniMaxH3ModeForSegment: (...args) => miniMaxH3ModeForSegment(...args),
     audioInput, audioSummary, cancelPreviewPlayStart, clearSceneEndFrameButton, clearSegmentAdjustPreview,
     clearSegmentFilmGrainPreview, clearSegmentLutPreview, createFluxPromptButton, createI2VButton,
     createNBPromptButton, createSceneEndFrameButton, createSceneVideoButton, createT2IButton,
@@ -1320,11 +1322,11 @@ export function openBuilder(node, options = {}) {
     miniMaxAccelerationControls, miniMaxAddSpeakerCueButton, miniMaxAdvancedLatentUpscalerPicker, miniMaxAdvancedSettings,
     miniMaxAdvancedVramPreset,
     miniMaxAspectRatio, miniMaxAudioMode, miniMaxAudioNote, miniMaxAudioVaePicker,
-    miniMaxAutoTimeBeforePrompt, miniMaxClipPicker, miniMaxContinuityMode, miniMaxContinuityNote,
+    miniMaxAutoTimeBeforePrompt, miniMaxClipPicker, miniMaxContinuityMode, miniMaxContinuityNote, miniMaxContinuitySection,
     miniMaxContinuityPromptFromLastFrame, miniMaxCooldownFrames, miniMaxCreatePromptButton, miniMaxDenoise,
     miniMaxDiffusionModelPicker, miniMaxEasyCacheBypass, miniMaxEasyCacheEndPercent,
     miniMaxEasyCacheReuseThreshold, miniMaxEasyCacheSettings, miniMaxEasyCacheStartPercent,
-    miniMaxEasyCacheVerbose, miniMaxEditInstructionsButton, miniMaxFp16Accumulation, miniMaxImageModeSource,
+    miniMaxEasyCacheVerbose, miniMaxEditInstructionsButton, miniMaxFp16Accumulation, miniMaxImageModeSource, miniMaxKeyframes,
     miniMaxContinuationDirection, miniMaxContinuationDirectionField, miniMaxPromptAutoNote, miniMaxContinuationStart,
     miniMaxContinuationStartField, miniMaxContinuationStartValue, miniMaxLatentContextFrames,
     miniMaxLatentContinuationRow, miniMaxLatentStatusPill,
@@ -1543,6 +1545,7 @@ export function openBuilder(node, options = {}) {
     drawWaveform, normalizeSegments, openTimelineMarkerEditor, renderList, renderSegments,
     snapAddedSegmentEndToNearestBeat, snapTimeToBeat,
   } = createTimelineView({
+    miniMaxH3ModeForSegment,
     appendTimelineFirstLastFrameThumbnail, autoSaveSessionQuiet, enableLutDrop, enablePostEffectDrop,
     i2vNotesInput, lyricTextInput, mediaThumbnailHtml, openAudioContextMenu, openDirectorNoteContextMenu,
     openSceneOptions, openSegmentContextMenu, openTimelineSceneCard, playhead, pushHistory,
@@ -2949,6 +2952,13 @@ export function openBuilder(node, options = {}) {
     zFirstWidth, zI2IPath, zI2ISlider, zI2IStartStep, zLoraCount, zLoraSlots, zSecondHeight, zSecondWidth,
     zSeed, zSeedMode, zUnetPicker, zUseImageToImage, zUseLora, zVaePicker,
   });
+  wireMiniMaxKeyframes({
+    controls: miniMaxKeyframes, activeSegment, segmentImageSource, allEditableSegments,
+    loadCustomImageFile, loadFirstLastFrameEndFile,
+    projectFolder: () => String(projectInput.value || state.projectFolder || "").trim(),
+    sceneSlotNumber, pushHistory, autoSaveSessionQuiet, syncMiniMaxH3Panel, renderList,
+    renderTimeline: renderSegments,
+  });
   wireMiniMaxPanel({
     activeSegment, advancedTwoPassControls, allEditableSegments, autoSaveSessionQuiet,
     clearMiniMaxImageReferenceStartFrameOnModeSwitch, ensureMiniMaxSpeakerAssignments,
@@ -2959,7 +2969,7 @@ export function openBuilder(node, options = {}) {
     miniMaxEasyCacheReuseThreshold, miniMaxEasyCacheStartPercent, miniMaxEasyCacheVerbose,
     miniMaxFp16Accumulation, miniMaxH3ContinuityModeForSegment, miniMaxH3ModeForSegment,
     miniMaxH3SceneImageUseForSegment, miniMaxH3SettingsForSegment, miniMaxContinuationDirection, miniMaxContinuationStart,
-    miniMaxContinuationStartValue, miniMaxLatentContextFrames,
+    miniMaxContinuationStartValue, miniMaxLatentContextFrames, miniMaxKeyframes,
     miniMaxLocationTransitionCustom, miniMaxLocationTransitionPreset, miniMaxLoraCount, miniMaxLoraSlots,
     miniMaxMappedSpeakersForSegment, miniMaxMegapixels, miniMaxMemoryEfficientSageAttention, miniMaxResolutionPreset, miniMaxVideoProfileControls,
     miniMaxModeButtons, miniMaxPass2Prompt, miniMaxPassButtons, miniMaxPrompt, miniMaxSageAttention,

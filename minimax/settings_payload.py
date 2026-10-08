@@ -20,7 +20,7 @@ import os
 from typing import Any, Dict, List, Optional, Tuple
 
 from .resolution import RESOLUTION_PRESETS, migrate_resolution, output_frame_size
-from .scene_inputs import canonical_continuity_mode
+from .scene_inputs import canonical_continuity_mode, continuity_allowed_for_mode
 from .tile_plan import VRAM_PRESETS, normalize_vram_preset
 
 
@@ -31,6 +31,7 @@ SETTINGS_ENUMS: Dict[str, Tuple[str, ...]] = {
     "video_mode": ("text_to_video", "image_to_video", "image_reference_to_video", "reference_to_video", "video_to_video"),
     "render_pass": ("single", "two_pass", "three_pass"),
     "audio_mode": ("input_audio", "built_in_audio"),
+    "i2v_transition_style": ("natural", "surreal_morph", "dreamlike_dissolve", "environment_transformation", "camera_reveal", "custom"),
     "ref_image_size": ("max", "match"),
     "resolution_preset": RESOLUTION_PRESETS,
     "advanced_two_pass_vram_preset": tuple(VRAM_PRESETS),
@@ -51,6 +52,8 @@ _INT_CHOICES: Dict[str, Tuple[int, ...]] = {
 
 # One line per setting that agents get wrong without it, shown by minimax_h3_settings_schema.
 SETTING_NOTES: Dict[str, str] = {
+    "i2v_transition_style": "FLF Create Prompt guidance, global unless scene settings are locked. Regenerate the prompt after changing; does not change sampler settings.",
+    "i2v_transition_direction": "Optional FLF transition instructions, global unless scene settings are locked. First and last images remain per scene.",
     "continuity_mode": (
         "latent_continuation_masked copies the previous scene's saved latent into the head of this scene and protects it, "
         "so the scene continues the same take. It works in every video_mode except image_reference_to_video, and in render_pass "
@@ -197,6 +200,10 @@ def _coerce(key: str, value: Any, default: Any) -> Any:
         if not isinstance(value, list):
             raise ValueError("must be a list")
         return value
+    if isinstance(default, dict):
+        if not isinstance(value, dict):
+            raise ValueError("must be an object")
+        return value
     return value
 
 
@@ -207,6 +214,8 @@ def _check_value(key: str, value: Any, default: Any, lenient: bool = False) -> A
     API patches stay strict so an agent gets a clear error instead of a silent conversion.
     """
     coerced = _coerce(key, _lenient(value, default) if lenient else value, default)
+    if key == "i2v_transition_direction":
+        coerced = coerced.strip()
     allowed = SETTINGS_ENUMS.get(key)
     if allowed is not None:
         text = str(coerced).strip().lower()
@@ -276,6 +285,22 @@ def normalize_minimax_h3_settings(raw: Optional[Dict[str, Any]]) -> Dict[str, An
         settings["video_mode"] = "reference_to_video"
         if settings.get("render_pass") == "three_pass":
             settings["render_pass"] = "two_pass"
+    elif settings.get("video_mode") == "image_to_video":
+        # Old I2V saves carried render_pass but always rendered single pass.
+        try:
+            i2v_version = int(raw.get("i2v_pass_settings_version") or 0)
+        except (TypeError, ValueError):
+            i2v_version = 0
+        if i2v_version < 1:
+            settings["render_pass"] = "single"
+        elif settings["render_pass"] == "three_pass":
+            settings["render_pass"] = "two_pass"
+        settings["i2v_pass_settings_version"] = 1
+        defaults = minimax_h3_defaults()
+        if settings["diffusion_model_name"] == defaults["diffusion_model_name"]:
+            settings["diffusion_model_name"] = "minimax_h3_fl2va_pruned_int8_convrot.safetensors"
+        if settings["two_pass_lora_name"] == defaults["two_pass_lora_name"]:
+            settings["two_pass_lora_name"] = "minimax_h3_fl2v_turbo_4step_v1.1_768p_comfyui_bf16.safetensors"
     # One output resolution for every pass type; older saves took it from the pass type they rendered with.
     settings["resolution_preset"], settings["megapixels"] = migrate_resolution(raw, settings["render_pass"])
     for key, default in _OPTIONAL_SETTINGS.items():
@@ -305,8 +330,10 @@ def minimax_h3_settings_for_scene(session: Dict[str, Any], segment: Optional[Dic
 
 
 def minimax_render_pass(settings: Dict[str, Any]) -> str:
-    """Return ``single``, ``two_pass`` or ``three_pass``. Multi-pass only applies to reference modes."""
+    """Resolve supported passes: I2V has Single/2 Pass; reference modes also have Advanced."""
     render_pass = str(settings.get("render_pass") or "single")
+    if render_pass == "two_pass" and settings.get("video_mode") == "image_to_video":
+        return render_pass
     if render_pass in ("two_pass", "three_pass") and settings.get("video_mode") in _REFERENCE_MODES:
         return render_pass
     return "single"
@@ -342,17 +369,18 @@ def build_minimax_render_payload(settings: Dict[str, Any], overrides: Optional[D
     def pick(single: Any, two: Any, adv: Any) -> Any:
         return two if two_pass else adv if advanced else single
 
-    masked = (
-        s.get("continuity_mode") == "latent_continuation_masked"
-        and s.get("video_mode") != "image_reference_to_video"
-        and not advanced
-    )
+    continuity = s["continuity_mode"] or "off"
+    if s["video_mode"] in ("image_to_video", "image_reference_to_video") and not continuity_allowed_for_mode(
+        continuity, s["video_mode"], s["render_pass"]
+    ):
+        continuity = "off"
+    masked = continuity == "latent_continuation_masked" and not advanced
 
     payload: Dict[str, Any] = {
         "audio_mode": s["audio_mode"],
         "pipeline": s["pipeline"],
         "video_mode": s["video_mode"],
-        "continuity_mode": s["continuity_mode"] or "off",
+        "continuity_mode": continuity,
         "latent_context_frames": s["latent_context_frames"],
         "minimax_h3_latent_context_frames": s["latent_context_frames"],
         # Masked continuation plans its own warm-up and tail, so the Render settings frames do not apply.

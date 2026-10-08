@@ -7,6 +7,7 @@ import {
   makeImageViewUrl,
 } from "./comfy_api.mjs";
 import { escapeHtml, makeButton, makeField, makeSelect, normalizeProjectVideoEngine, toast } from "./controls.mjs";
+import { miniMaxI2VFLFEnabled, miniMaxI2VLastFrame } from "./minimax_keyframe_state.mjs";
 import { formatDurationSeconds, formatTime } from "./format.mjs";
 import {
   audioTimelineEnd,
@@ -162,7 +163,7 @@ export function createSelectionPreview({
   i2vPrompt, i2vTextGemmaModelSelect, i2vUseGgufModel, isSegmentMultiSelected, isTimelinePlaying,
   krea2TwoPassCreateT2IButton, krea2TwoPassNotesInput, krea2TwoPassRefImagePanel, krea2TwoPassT2IPrompt,
   krea2TwoPassUseVisionReference, labelInput, loadCustomImageButton, lyricSingersInput, lyricTextInput,
-  miniMaxGemmaModelSelect, miniMaxMmprojSelect, miniMaxSceneVideoButtons, miniMaxTextGemmaModelSelect,
+  miniMaxGemmaModelSelect, miniMaxMmprojSelect, miniMaxSceneVideoButtons, miniMaxTextGemmaModelSelect, miniMaxH3ModeForSegment,
   mmprojSelect, nbApiKey, nbGemmaModelSelect, nbMmprojSelect, nbModelSelect, nbNotes, nbPrompt,
   nbUseDirectorNotes, nbUseTextOnlyGemmaPrompt, notesInput, openSceneAudioOptionsButton,
   pauseTimelineForEditing, playStart, playbackDuration, playhead, postProcessComparePreview, preloadVideo,
@@ -513,19 +514,21 @@ export function createSelectionPreview({
   }
 
   function appendTimelineFirstLastFrameThumbnail(block, segment) {
-    const promptStart = firstLastFramePromptReferences(segment)[0] || {};
-    const resolvedStart = firstLastFrameStartImageSource(segment) || {};
+    const engine = normalizeProjectVideoEngine(state.projectVideoEngine);
+    const miniMaxFLF = engine === "minimax_h3" && miniMaxI2VFLFEnabled(segment, engine, miniMaxH3ModeForSegment(segment));
+    const promptStart = miniMaxFLF ? {} : firstLastFramePromptReferences(segment)[0] || {};
+    const resolvedStart = miniMaxFLF ? segmentImageSource(segment) || {} : firstLastFrameStartImageSource(segment) || {};
     const firstSource = (resolvedStart.path || resolvedStart.data)
       ? resolvedStart
       : (promptStart.path || promptStart.data)
         ? promptStart
         : segmentImageSource(segment) || {};
-    const lastSource = firstLastFrameResolvedEndImageSource(segment) || {};
+    const lastSource = miniMaxFLF ? miniMaxI2VLastFrame(segment) : firstLastFrameResolvedEndImageSource(segment) || {};
     const firstUrl = timelineImageSourceUrl(firstSource);
     const lastUrl = timelineImageSourceUrl(lastSource);
     const wrap = document.createElement("span");
     wrap.title = lastUrl
-      ? "First Last Frame: first frame on the left, generated end frame on the right."
+      ? "First Last Frame: first frame on the left, last frame on the right."
       : "First Last Frame: end frame is missing.";
     wrap.style.cssText = "position:absolute;inset:0;display:grid;grid-template-columns:minmax(0,1fr) 13px minmax(0,1fr);background:#020617;pointer-events:none;z-index:0;";
     const makeSlot = (url, label, missing = false) => {

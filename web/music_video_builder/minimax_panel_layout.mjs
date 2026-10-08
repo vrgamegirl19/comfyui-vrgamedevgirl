@@ -1,3 +1,4 @@
+import { createMiniMaxKeyframes } from "./minimax_keyframes.mjs";
 import {
   applyCompactButtonLabel,
   makeButton,
@@ -169,6 +170,11 @@ export function buildMiniMaxPanel({
   miniMaxLatentContinuationRow.append(miniMaxContinuityPromptFromLastFrame.wrapper, miniMaxLocationTransitionControls, miniMaxEditContinuityPromptInstructionsButton, miniMaxLatentContextField, miniMaxLatentStatusPill);
   const miniMaxContinuityNote = document.createElement("div");
   miniMaxContinuityNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
+  const miniMaxContinuitySection = makeSettingsSection("Between-scene continuity", [
+    makeField("Previous rendered final frame", miniMaxContinuityMode),
+    miniMaxLatentContinuationRow,
+    miniMaxContinuityNote,
+  ]);
   const miniMaxNoGgufNote = document.createElement("div");
   miniMaxNoGgufNote.textContent = "MiniMax H3 currently uses the standard diffusion-model loader. GGUF is not enabled yet.";
   miniMaxNoGgufNote.style.cssText = "font-size:11px;color:#fcd34d;line-height:1.4;";
@@ -626,9 +632,10 @@ export function buildMiniMaxPanel({
   miniMaxTextModeNote.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
   miniMaxTextModePanel.append(miniMaxTextModeNote);
   const miniMaxImageModePanel = makeSettingsPanel([]);
+  const miniMaxKeyframes = createMiniMaxKeyframes();
   const miniMaxImageModeSource = document.createElement("div");
   miniMaxImageModeSource.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;overflow-wrap:anywhere;";
-  miniMaxImageModePanel.append(miniMaxImageModeSource);
+  miniMaxImageModePanel.append(miniMaxKeyframes.wrapper, miniMaxImageModeSource);
   const miniMaxReferenceModePanel = makeSettingsPanel([]);
   const miniMaxReferenceModeNote = document.createElement("div");
   miniMaxReferenceModeNote.textContent = "Uses the selected scene image as the exact start frame. Reference Builder images are optional and can provide character, location, ingredient-sheet, or storyboard-grid guidance.";
@@ -761,11 +768,7 @@ export function buildMiniMaxPanel({
           makeField("Audio mode", miniMaxAudioMode),
           miniMaxAudioNote,
         ]),
-        makeSettingsSection("Between-scene continuity", [
-          makeField("Previous rendered final frame", miniMaxContinuityMode),
-          miniMaxLatentContinuationRow,
-          miniMaxContinuityNote,
-        ]),
+        miniMaxContinuitySection,
         miniMaxLoraSection,
         miniMaxTwoPassLoraSection,
         miniMaxThreePassLoraSection,
@@ -806,12 +809,12 @@ export function buildMiniMaxPanel({
     advancedTwoPassControls, miniMaxAccelerationControls, miniMaxAddSpeakerCueButton,
     miniMaxAdvancedLatentUpscalerPicker, miniMaxAdvancedSettings, miniMaxAdvancedVramPreset, miniMaxAspectRatio, miniMaxAudioMode,
     miniMaxAudioNote, miniMaxAudioVaePicker, miniMaxAutoTimeAllScenesButton, miniMaxAutoTimeBeforePrompt,
-    miniMaxClipPicker, miniMaxContinuityMode, miniMaxContinuityNote, miniMaxContinuityPromptFromLastFrame,
+    miniMaxClipPicker, miniMaxContinuityMode, miniMaxContinuityNote, miniMaxContinuitySection, miniMaxContinuityPromptFromLastFrame,
     miniMaxCooldownFrames, miniMaxCreatePromptButton, miniMaxDenoise, miniMaxDiffusionModelPicker,
     miniMaxEasyCacheBypass, miniMaxEasyCacheEndPercent, miniMaxEasyCacheReuseThreshold,
     miniMaxEasyCacheSettings, miniMaxEasyCacheStartPercent, miniMaxEasyCacheVerbose,
     miniMaxEditContinuityPromptInstructionsButton, miniMaxEditInstructionsButton, miniMaxEnginePanel,
-    miniMaxFp16Accumulation, miniMaxImageModeSource, miniMaxContinuationDirection, miniMaxContinuationDirectionField, miniMaxPromptAutoNote,
+    miniMaxFp16Accumulation, miniMaxImageModeSource, miniMaxKeyframes, miniMaxContinuationDirection, miniMaxContinuationDirectionField, miniMaxPromptAutoNote,
     miniMaxContinuationStart, miniMaxContinuationStartField, miniMaxContinuationStartValue,
     miniMaxLatentContextFrames, miniMaxLatentContinuationRow,
     miniMaxLatentStatusPill, miniMaxLocationTransitionControls, miniMaxLocationTransitionCustom,

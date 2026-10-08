@@ -62,7 +62,9 @@ class MiniMaxH3AudioDriveTests(unittest.TestCase):
         comfyui_root = ROOT.parents[1]
         if str(comfyui_root) not in sys.path:
             sys.path.insert(0, str(comfyui_root))
-        spec = importlib.util.spec_from_file_location("vrgdg_minimax_h3_nodes", NODE_SOURCE)
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        spec = importlib.util.spec_from_file_location("minimax.nodes", NODE_SOURCE)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
 

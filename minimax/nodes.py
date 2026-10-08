@@ -24,59 +24,25 @@ from comfy.ldm.minimax.vae import MiniMaxH3VideoVAE
 from comfy_api.latest import io
 from PIL import Image, ImageOps
 
+from .keyframes import align_i2v_keyframes
+from .vae_decode import tiled_decode_batched
 
-def tiled_decode_batched(model, z, tile_batch_size):
-    height, width = z.shape[-2] * model.vae_ratio, z.shape[-1] * model.vae_ratio
-    y_idx, y_len, y_overlap = model.split_tiles(height)
-    x_idx, x_len, x_overlap = model.split_tiles(width)
-    tiles = [(i, j, yp // model.vae_ratio, yl // model.vae_ratio,
-              xp // model.vae_ratio, xl // model.vae_ratio)
-             for i, (yp, yl) in enumerate(zip(y_idx, y_len))
-             for j, (xp, xl) in enumerate(zip(x_idx, x_len))]
-    canvas = None
-    row_tails = []
-    new_tails = []
-    left_tail = None
-    out_y = 0
-    out_x = 0
-    start = 0
-    while start < len(tiles):
-        mm.throw_exception_if_processing_interrupted()
-        end = start + 1
-        shape = (tiles[start][3], tiles[start][5])
-        while end < min(start + tile_batch_size, len(tiles)):
-            if (tiles[end][3], tiles[end][5]) != shape:
-                break
-            end += 1
-        batch = torch.cat([z[..., yp:yp + yl, xp:xp + xl]
-                           for _, _, yp, yl, xp, xl in tiles[start:end]], dim=0)
-        decoded = model._decode_pixels(batch)
-        for k, (i, j, _, _, _, _) in enumerate(tiles[start:end]):
-            tile = decoded[k * z.shape[0]:(k + 1) * z.shape[0]]
-            if i < len(y_idx) - 1:
-                new_tails.append(tile[..., -y_overlap[i]:, :].clone())
-            next_left_tail = tile[..., :, -x_overlap[j]:].clone() if j < len(x_idx) - 1 else None
-            if i > 0:
-                tile = model.blend(row_tails[j], tile, y_overlap[i - 1], dim=-2)
-            if j > 0:
-                tile = model.blend(left_tail, tile, x_overlap[j - 1], dim=-1)
-            left_tail = next_left_tail
-            if i < len(y_idx) - 1:
-                tile = tile[..., :-y_overlap[i], :]
-            if j < len(x_idx) - 1:
-                tile = tile[..., :, :-x_overlap[j]]
-            if canvas is None:
-                canvas = torch.empty(*tile.shape[:-2], height, width, dtype=tile.dtype, device=tile.device)
-            canvas[..., out_y:out_y + tile.shape[-2], out_x:out_x + tile.shape[-1]].copy_(tile)
-            out_x += tile.shape[-1]
-            if j == len(x_idx) - 1:
-                row_tails = new_tails
-                new_tails = []
-                out_y += tile.shape[-2]
-                out_x = 0
-        del tile, decoded, batch
-        start = end
-    return canvas
+
+class VRGDG_MiniMaxH3KeyframeTiming:
+    @classmethod
+    def INPUT_TYPES(cls) -> dict:
+        return {"required": {
+            "conditioning": ("CONDITIONING",),
+            "first_frame_index": ("INT", {"default": 0, "min": 0}),
+            "last_frame_index": ("INT", {"default": 47, "min": 0}),
+        }}
+
+    RETURN_TYPES = ("CONDITIONING",)
+    FUNCTION = "align"
+    CATEGORY = "VRGDG/MiniMax H3"
+
+    def align(self, conditioning: list, first_frame_index: int, last_frame_index: int) -> tuple:
+        return (align_i2v_keyframes(conditioning, first_frame_index, last_frame_index),)
 
 
 class H3FastVAEDecode:
@@ -674,6 +640,7 @@ class VRGDG_MiniMaxH3ImageReferenceToVideo(io.ComfyNode):
         return io.NodeOutput(cond, latent)
 
 NODE_CLASS_MAPPINGS = {
+    "VRGDG_MiniMaxH3KeyframeTiming": VRGDG_MiniMaxH3KeyframeTiming,
     "H3FastVAEDecode": H3FastVAEDecode,
     "VRGDG_MiniMaxH3AudioDrive": VRGDG_MiniMaxH3AudioDrive,
     "VRGDG_MiniMaxH3ReferenceMediaFromPaths": VRGDG_MiniMaxH3ReferenceMediaFromPaths,
@@ -681,6 +648,7 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
+    "VRGDG_MiniMaxH3KeyframeTiming": "MiniMax H3 Per-scene Keyframe Timing",
     "H3FastVAEDecode": "H3 VAE Decode Fast (Batched Tiles)",
     "VRGDG_MiniMaxH3AudioDrive": "VRGDG MiniMax H3 Audio Drive",
     "VRGDG_MiniMaxH3ReferenceMediaFromPaths": "VRGDG MiniMax H3 Reference Media From Paths",

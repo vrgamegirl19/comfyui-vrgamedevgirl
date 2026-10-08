@@ -32,7 +32,7 @@ class MiniMaxH3FastVAEDecodeTests(unittest.TestCase):
 
         from comfy.ldm.minimax.vae import MiniMaxH3VideoVAE
 
-        spec = importlib.util.spec_from_file_location("vrgdg_h3_fast_vae", NODE_SOURCE)
+        spec = importlib.util.spec_from_file_location("vrgdg_h3_fast_vae", ROOT / "minimax/vae_decode.py")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
 
@@ -42,6 +42,8 @@ class MiniMaxH3FastVAEDecodeTests(unittest.TestCase):
             tile_overlap_min = 2
             split_tiles = MiniMaxH3VideoVAE.split_tiles
             blend = MiniMaxH3VideoVAE.blend
+            if hasattr(MiniMaxH3VideoVAE, "_decode_tile_row"):
+                _decode_tile_row = MiniMaxH3VideoVAE._decode_tile_row
 
             def _decode_pixels(self, z):
                 z = z.contiguous()

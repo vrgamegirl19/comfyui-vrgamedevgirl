@@ -127,11 +127,20 @@ class SceneInputsTests(unittest.TestCase):
                 self.assertEqual(result["continuity_mode"], "off")
                 self.assertEqual(result["continuity_image_number"], 0)
 
-    def test_masked_continuity_is_kept_in_every_mode_except_image_reference(self):
-        for mode in ("text_to_video", "image_to_video", "reference_to_video", "video_to_video"):
+    def test_masked_continuity_is_unavailable_in_image_modes(self):
+        for mode in ("text_to_video", "reference_to_video", "video_to_video"):
             with self.subTest(mode=mode):
                 self.assertTrue(si.continuity_allowed_for_mode("latent_continuation_masked", mode))
         self.assertFalse(si.continuity_allowed_for_mode("latent_continuation_masked", "image_reference_to_video"))
+        self.assertFalse(si.continuity_allowed_for_mode("latent_continuation_masked", "image_to_video"))
+        for render_pass in ("single", "two_pass"):
+            result = self._resolve(
+                _segment("scene-2", approved_image_path="C:/x/a.png"), mode="image_to_video", continuity_mode="latent_masked",
+                previous_segment={"video_path": "v.mp4"}, configured_image_paths=["C:/x/a.png"],
+                render_pass=render_pass,
+            )
+            self.assertEqual(result["continuity_mode"], "off")
+            self.assertEqual(result["continuity_image_number"], 0)
         # 2 Pass Advanced (three_pass) is not supported, Single and 2 Pass are
         self.assertTrue(si.continuity_allowed_for_mode("latent_continuation_masked", "reference_to_video", "two_pass"))
         self.assertFalse(si.continuity_allowed_for_mode("latent_continuation_masked", "reference_to_video", "three_pass"))
@@ -183,6 +192,7 @@ class SceneInputsTests(unittest.TestCase):
             first = os.path.join(tmp, "first.png")
             last = os.path.join(tmp, "last.png")
             Path(first).write_bytes(b"x")
+            Path(last).write_bytes(b"x")
             segment = _segment("x", approved_image_path=first, first_last_frame_end_image_path=last)
             result = si.resolve_scene_inputs(
                 {}, segment, "image_to_video", 0, continuity_mode="spatial", previous_segment=None,
@@ -198,6 +208,20 @@ class SceneInputsTests(unittest.TestCase):
                 project_folder=tmp, scene_number=1, extract_final_frame=_never_extract,
             )
             self.assertEqual(gone["missing_image_paths"], [segment["approved_image_path"]])
+            segment["approved_image_path"] = first
+            segment["minimax_h3_i2v_frame_mode"] = "normal"
+            normal = si.resolve_scene_inputs(
+                {}, segment, "image_to_video", 0, continuity_mode="off", previous_segment=None,
+                project_folder=tmp, scene_number=1, extract_final_frame=_never_extract,
+            )
+            self.assertNotIn("last_frame_path", normal)
+            segment["minimax_h3_i2v_frame_mode"] = "flf"
+            segment["first_last_frame_end_image_path"] = ""
+            with self.assertRaisesRegex(ValueError, "saved last-frame"):
+                si.resolve_scene_inputs(
+                    {}, segment, "image_to_video", 0, continuity_mode="off", previous_segment=None,
+                    project_folder=tmp, scene_number=1, extract_final_frame=_never_extract,
+                )
 
 
 class ContinuityModeTests(unittest.TestCase):

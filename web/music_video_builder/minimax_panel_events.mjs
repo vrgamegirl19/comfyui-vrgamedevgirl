@@ -28,7 +28,7 @@ export function wireMiniMaxPanel({
   miniMaxEasyCacheReuseThreshold, miniMaxEasyCacheStartPercent, miniMaxEasyCacheVerbose,
   miniMaxFp16Accumulation, miniMaxH3ContinuityModeForSegment, miniMaxH3ModeForSegment,
   miniMaxH3SceneImageUseForSegment, miniMaxH3SettingsForSegment, miniMaxContinuationDirection, miniMaxContinuationStart, miniMaxContinuationStartValue,
-  miniMaxLatentContextFrames,
+  miniMaxLatentContextFrames, miniMaxKeyframes,
   miniMaxLocationTransitionCustom, miniMaxLocationTransitionPreset, miniMaxLoraCount, miniMaxLoraSlots,
   miniMaxMappedSpeakersForSegment, miniMaxMegapixels, miniMaxMemoryEfficientSageAttention, miniMaxResolutionPreset, miniMaxVideoProfileControls, miniMaxModeButtons,
   miniMaxPass2Prompt, miniMaxPassButtons, miniMaxPrompt, miniMaxSageAttention, miniMaxSamplerName,
@@ -64,7 +64,7 @@ export function wireMiniMaxPanel({
         const data = await getJson("/vrgdg/workflow_runner/lora_list");
         if (!state.miniMaxH3TwoPassEnabled || state.miniMaxH3ThreePassEnabled) return;
         miniMaxTwoPassLoraPicker.options = data.loras || [];
-        const lora = miniMaxInstalledPass2Lora(button.dataset.preset, miniMaxTwoPassLoraPicker.options);
+        const lora = miniMaxInstalledPass2Lora(button.dataset.preset, miniMaxTwoPassLoraPicker.options, miniMaxH3ModeForSegment(videoSettingsSegment()));
         if (!lora) {
           miniMaxTwoPassLoraStatus.textContent = `No matching ${button.dataset.preset}-step LoRA installed. Download one below, then click the preset again.`;
           return;
@@ -156,6 +156,10 @@ export function wireMiniMaxPanel({
     control.addEventListener("input", saveMiniMaxH3SettingsFromPanel);
     control.addEventListener("change", persistMiniMaxSettings);
   }
+  for (const control of [miniMaxKeyframes.transitionStyle, miniMaxKeyframes.transitionDirection]) {
+    control.addEventListener("input", saveMiniMaxH3SettingsFromPanel);
+    control.addEventListener("change", persistMiniMaxSettings);
+  }
   miniMaxUseLoras.input.addEventListener("change", () => {
     const segment = videoSettingsSegment();
     if (miniMaxUseLoras.input.checked) {
@@ -207,7 +211,7 @@ export function wireMiniMaxPanel({
       setMiniMaxH3RenderPassForSegment(segment, button.dataset.minimaxH3Mode === "image_reference_to_video" ? "two_pass" : "single");
       setMiniMaxH3ModeForSegment(segment, button.dataset.minimaxH3Mode);
       syncMiniMaxH3Panel();
-      await autoSaveSessionQuiet(segment.use_scene_minimax_h3_settings ? "MiniMax H3 locked scene mode" : "MiniMax H3 project mode");
+      await autoSaveSessionQuiet(segment?.use_scene_minimax_h3_settings ? "MiniMax H3 locked scene mode" : "MiniMax H3 project mode");
     };
   }
   for (const button of miniMaxPassButtons.refmod?.pipelineButtons || []) {
@@ -232,16 +236,17 @@ export function wireMiniMaxPanel({
       const segment = wizardVideoSettings.global ? null : requireActiveSegment();
       if (!segment && !wizardVideoSettings.global) return;
       pushHistory();
-      clearMiniMaxImageReferenceStartFrameOnModeSwitch(segment, "reference_to_video");
       const current = saveMiniMaxH3SettingsFromPanel(segment);
+      const mode = current.video_mode === "image_to_video" ? "image_to_video" : "reference_to_video";
+      clearMiniMaxImageReferenceStartFrameOnModeSwitch(segment, mode);
       const settings = selectMiniMaxH3PassSettings(current, button.dataset.passMode);
       if (segment?.use_scene_minimax_h3_settings) segment.minimax_h3_settings = settings;
       else state.miniMaxH3Settings = settings;
       if (segment) setMiniMaxH3RenderPassForSegment(segment, button.dataset.passMode);
-      if (segment) setMiniMaxH3ModeForSegment(segment, "reference_to_video");
-      else state.miniMaxH3Settings = cloneMiniMaxH3Settings({ ...settings, video_mode: "reference_to_video" });
+      if (segment) setMiniMaxH3ModeForSegment(segment, mode);
+      else state.miniMaxH3Settings = cloneMiniMaxH3Settings({ ...settings, video_mode: mode });
       syncMiniMaxH3Panel();
-      await autoSaveSessionQuiet("MiniMax H3 reference pass settings");
+      await autoSaveSessionQuiet("MiniMax H3 video pass settings");
     };
   }
   miniMaxAudioMode.addEventListener("change", syncMiniMaxH3Panel);

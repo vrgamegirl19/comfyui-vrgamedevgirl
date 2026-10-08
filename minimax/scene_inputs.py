@@ -462,17 +462,21 @@ def video_references_for_scene(segment: Dict[str, Any], mode: str, configured: O
 def continuity_allowed_for_mode(continuity: str, mode: str, render_pass: str = "single") -> bool:
     """Mirror ``isMiniMaxH3ContinuityAllowedForMode``.
 
-    Masked works in every mode but Image + Reference, and in every render pass but 2 Pass Advanced
+    Masked is unavailable in I2V and Image + Reference, and in 2 Pass Advanced
     (``three_pass``, which only applies to Reference to Video).
     """
     if continuity == "latent_continuation_masked":
-        return mode != "image_reference_to_video" and not (mode == "reference_to_video" and render_pass == "three_pass")
+        return mode not in ("image_to_video", "image_reference_to_video") and not (
+            mode == "reference_to_video" and render_pass == "three_pass"
+        )
     return continuity == "off"
 
 
 def last_frame_path_for_scene(segment: Dict[str, Any], mode: str) -> str:
     """Image to Video can end on an explicit last frame (``first_last_frame_end_image_path``)."""
-    return _text(segment.get("first_last_frame_end_image_path")) if mode == "image_to_video" else ""
+    if mode != "image_to_video" or segment.get("minimax_h3_i2v_frame_mode") == "normal":
+        return ""
+    return _text(segment.get("first_last_frame_end_image_path"))
 
 
 def resolve_scene_inputs(
@@ -519,6 +523,10 @@ def resolve_scene_inputs(
     result["image_paths"] = image_paths
     result["video_references"] = videos
     last_frame = last_frame_path_for_scene(segment, mode)
+    if mode == "image_to_video" and segment.get("minimax_h3_i2v_frame_mode") == "flf" and not last_frame:
+        raise ValueError("First–Last Frame needs a saved last-frame image. Choose or upload it before rendering.")
     if last_frame:
         result["last_frame_path"] = last_frame
+        if not os.path.isfile(last_frame):
+            result["missing_image_paths"].append(last_frame)
     return result
