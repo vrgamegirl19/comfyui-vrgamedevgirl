@@ -52,7 +52,7 @@ export function wireToolbar({
   setTimelineRangePoint, settingsButton, silentAudioDurationInput, slideshowPreviewButton,
   snapSceneEdgeButton, splitActiveSceneAtPlayhead, splitSceneButton, state, stitchPreviewButton,
   stopCurrentWorkflow, stopWorkflowButton, storyboardBuilderButton, syncGlobalAudioModeControls,
-  syncTimelineTrimModeButton, syncVideoTypeControl, toggleOverlayTrack, undo, undoButton,
+  syncTimelineTrimModeButton, textGemmaRunnerPayload, syncVideoTypeControl, toggleOverlayTrack, undo, undoButton,
   updateAudioScrubbers, updatePromptRunnerButtonLabels, updateStatus, updateStatusAction, updateV10Button,
   updateV10HintButton, updateWhatsNewAction, videoTypeSelect, whatsNewMenuButton, wizardBetaButton,
   wizardButton, zEnhanceAllButton, zEnhanceAllToolButton, zImageAllButton,
@@ -440,7 +440,7 @@ export function buildTopbar({
   const storyboardBuilderButton = makeButton("Storyboard Builder");
   const fluxReferenceBuilderButton = makeButton("Reference Builder");
   const refModsStudioButton = makeButton("RefMods Studio");
-  refModsStudioButton.onclick = openRefModsStudio;
+  refModsStudioButton.onclick = () => openRefModsStudio({ runnerPayload: textGemmaRunnerPayload });
   const lyricMapperButton = makeButton("Line Mapping");
   const sendToPromptCreatorButton = makeButton("Send To Prompt Creator");
   const promptOptionsButton = makeButton("Prompt Options");

@@ -22,7 +22,7 @@ BUILDER_SESSION_DATA_KEYS = (
     "llm_api_provider", "llm_api_model", "llm_api_key_project", "own_server_url", "own_server_model",
     "own_server_api_key_project", "own_server_output_token_limit", "own_server_timeout",
     "notification_settings", "automatic_memory_cleanup", "scene_render_wait_hours", "waveform_mode",
-    "snap_to_beats", "show_beat_markers", "show_timeline_scene_notes", "show_timeline_video_notes",
+    "snap_to_beats", "show_beat_markers", "audio_mask_auto", "show_timeline_scene_notes", "show_timeline_video_notes",
     "show_timeline_lyric_notes", "selected_timeline_range", "timeline_markers", "active_timeline_marker_id",
     "audio_duration", "audio_peaks", "beat_markers", "detected_tempo_bpm", "beat_calibration",
     "left_panel_width", "left_panel_collapsed", "right_panel_collapsed", "llm_popout_open", "llm_popout_width",

@@ -167,6 +167,32 @@ export function wireTimelineControls({
   };
   zoomOutButton.onclick = () => setTimelineZoom(state.pxPerSecond / 1.25);
   zoomInButton.onclick = () => setTimelineZoom(state.pxPerSecond * 1.25);
+  // Ctrl + mouse wheel over the timeline zooms the timeline only (not the page), around the time under the pointer.
+  // Wheel events arrive many times a second, so they are combined into one zoom per frame and saved once after the last.
+  let wheelFactor = 1;
+  let wheelAnchorTime = 0;
+  let wheelFrame = 0;
+  let wheelSaveTimer = 0;
+  timelineViewport.addEventListener("wheel", (event) => {
+    if (!event.ctrlKey && !event.metaKey) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const rect = timelineViewport.getBoundingClientRect();
+    const zoom = Math.max(1, Number(state.pxPerSecond || 45));
+    // 12 px is the timeline's left padding inside the viewport.
+    wheelAnchorTime = Math.max(0, (timelineViewport.scrollLeft + event.clientX - rect.left - 12) / zoom);
+    const pixels = event.deltaMode === 1 ? event.deltaY * 33 : event.deltaY;
+    wheelFactor *= Math.exp(-pixels * 0.0015);
+    if (wheelFrame) return;
+    wheelFrame = window.requestAnimationFrame(() => {
+      wheelFrame = 0;
+      const factor = wheelFactor;
+      wheelFactor = 1;
+      setTimelineZoom(state.pxPerSecond * factor, wheelAnchorTime, { save: false });
+      window.clearTimeout(wheelSaveTimer);
+      wheelSaveTimer = window.setTimeout(() => autoSaveSessionQuiet("timeline zoom changed"), 500);
+    });
+  }, { passive: false });
   beatMarkersButton.onclick = async () => {
     if (state.showBeatMarkers && (!state.beats || !state.beats.length)) {
       const loaded = await reloadBeatMarkersFromAudio();

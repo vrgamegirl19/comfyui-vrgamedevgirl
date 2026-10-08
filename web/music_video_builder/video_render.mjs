@@ -496,6 +496,21 @@ export function createVideoRender({
     return { framePath, continuityMode, previousSegment, previousVideoPath };
   }
 
+  // The saved masked mix of a scene whose Audio Mask is on, or null when the mask is off. Refuses a mix that was never
+  // built or that no longer matches the scene's length, so a render never uses stale audio.
+  async function audioMaskRenderOverride(segment, projectFolder, sceneSeconds, sceneLabel) {
+    if (!segment?.audio_mask?.enabled) return null;
+    const saved = await postJson("/vrgdg/music_builder/audio_mask/state", { project_folder: projectFolder, scene_id: segment.id }, 60000);
+    const path = String(saved?.files?.masked_mix || "").trim();
+    if (!saved?.exists || !saved.mix || !path) {
+      throw new Error(`${sceneLabel}: Audio Mask is on but its masked mix has not been built. Open Audio Mask and build it, or turn the mask off.`);
+    }
+    if (Math.abs(Number(saved.mix.duration_seconds) - sceneSeconds) > 0.02) {
+      throw new Error(`${sceneLabel}: the scene length changed after its Audio Mask was built. Open Audio Mask, split again and rebuild.`);
+    }
+    return { path };
+  }
+
   async function createMiniMaxH3FrameContinuityPrompt(segment, sceneIndex, mode, continuityInput, progress, percent = 6, label = "MiniMax continuity") {
     const framePath = String(continuityInput?.promptFramePath || "").trim();
     if (!framePath) throw new Error(`${sceneDisplayName(segment, sceneIndex)} could not find the predecessor's extracted final frame for automatic prompt creation.`);
@@ -625,6 +640,9 @@ export function createVideoRender({
       ?? audioSourceDurationForScene(segment)
       ?? 0
     );
+
+    // An enabled Audio Mask renders with its masked mix (kept vocals plus the music). The finished clip gets the real audio back.
+    const maskedAudio = builtInAudio ? null : await audioMaskRenderOverride(segment, projectFolder, sceneDuration, sceneDisplayName(segment, sceneIndex));
 
     if (["reference_to_video", "video_to_video"].includes(mode) && miniMaxReferenceKeysForSegment(segment).length) {
       progress?.set(`${batchLabel}Preparing MiniMax H3 Reference Builder images...`, pct(4));
@@ -763,14 +781,16 @@ export function createVideoRender({
         continuity_mode: continuityInput?.continuityMode || miniMaxSettings.continuity_mode || "off",
         latent_context_frames: latentContextFrames,
         minimax_h3_latent_context_frames: latentContextFrames,
-        audio_path: builtInAudio ? "" : sourceAudioPath,
+        audio_path: builtInAudio ? "" : (maskedAudio?.path || sourceAudioPath),
         prompt,
         pass2_prompt: String(segment?.minimax_h3_pass2_prompt || ""),
         timeline_start_seconds: timelineStart,
         timeline_end_seconds: timelineEnd,
         source_start_seconds: builtInAudio
           ? timelineStart
-          : (Number.isFinite(sourceStartSeconds) ? Math.max(0, sourceStartSeconds) : timelineStart),
+          : maskedAudio
+            ? 0
+            : (Number.isFinite(sourceStartSeconds) ? Math.max(0, sourceStartSeconds) : timelineStart),
         pre_frames: warmupFrames,
         tail_loss_frames: cooldownFrames,
         seed: Number(options.seed ?? miniMaxSettings.seed),
@@ -867,7 +887,9 @@ export function createVideoRender({
       if (mode === "image_to_video") {
         if (i2vLastFramePath) payload.last_frame_path = i2vLastFramePath;
       }
-      if (!builtInAudio && Number.isFinite(sourceDurationSeconds) && sourceDurationSeconds > 0) {
+      if (maskedAudio) {
+        payload.source_duration_seconds = sceneDuration;
+      } else if (!builtInAudio && Number.isFinite(sourceDurationSeconds) && sourceDurationSeconds > 0) {
         payload.source_duration_seconds = sourceDurationSeconds;
       }
 
@@ -1020,6 +1042,9 @@ export function createVideoRender({
         frames: Number(postTrim.frames || 0),
         label: "minimax_exact",
         mark_as_audio_video: true,
+        ...(maskedAudio
+          ? { restore_audio_path: sourceAudioPath, restore_audio_start_seconds: Number.isFinite(sourceStartSeconds) ? Math.max(0, sourceStartSeconds) : timelineStart }
+          : {}),
       }, 240000);
       const exactVideoPath = String(trimmed.video_path || "").trim();
       if (!exactVideoPath) throw new Error("MiniMax H3 exact trimming did not return a video path.");

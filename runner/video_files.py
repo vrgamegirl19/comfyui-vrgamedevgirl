@@ -386,6 +386,13 @@ def _trim_scene_video(payload):
         target_path = os.path.join(target_dir, f"video_{scene_number:04d}-{label}_{stamp}_{index:02d}{audio_suffix}.mp4")
         index += 1
 
+    # A scene rendered with a masked Audio Mask mix gets the real scene audio back on the finished clip.
+    restore_text = str(payload.get("restore_audio_path", "") or "").strip().strip('"')
+    restore_audio = os.path.abspath(restore_text) if restore_text else ""
+    if restore_audio and not os.path.isfile(restore_audio):
+        raise FileNotFoundError(f"Scene audio to restore was not found: {restore_audio}")
+    restore_start = max(0.0, float(payload.get("restore_audio_start_seconds", 0) or 0))
+
     ffmpeg_path = _find_ffmpeg_path()
     cmd = [
         ffmpeg_path,
@@ -394,12 +401,16 @@ def _trim_scene_video(payload):
         f"{start:.6f}",
         "-i",
         source_path,
+    ]
+    if restore_audio:
+        cmd += ["-ss", f"{restore_start:.6f}", "-i", restore_audio]
+    cmd += [
         "-t",
         f"{duration:.6f}",
         "-map",
         "0:v:0",
         "-map",
-        "0:a?",
+        "1:a:0" if restore_audio else "0:a?",
         "-c:v",
         "libx264",
         "-pix_fmt",

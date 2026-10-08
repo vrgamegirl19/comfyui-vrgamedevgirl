@@ -12,7 +12,7 @@ from typing import Any, Callable, Dict, List, Optional
 import folder_paths
 
 from ...builder.audio import _find_ffmpeg_path
-from ...builder import media as builder_media
+from ...builder import audio_stems, media as builder_media
 from ...runner import ltx_workflows, minimax_inputs, minimax_workflows, video_files
 from ..errors import (
     ComfyExecutionError,
@@ -314,6 +314,18 @@ async def render_scene_video_async(
                 audio_path = prep_audio_res.get("audio_path", "")
             except Exception as exc:
                 logger.warning(f"Could not prepare scene audio clip for scene {scene_id}: {exc}")
+    # An enabled Audio Mask renders with its masked mix (kept vocals plus the music). The finished clip gets the real audio back.
+    mask_restore: Dict[str, Any] = {}
+    if mode_group == "minimax_h3" and audio_path and str(payload.get("audio_mode") or "input_audio") != "built_in_audio":
+        try:
+            masked_audio = audio_stems.audio_override_for_scene(seg, folder, duration_sec)
+        except ValueError as exc:
+            raise ValidationError(f"Scene {scene_number}: {exc}") from exc
+        if masked_audio:
+            mask_restore = {"restore_audio_path": audio_path, "restore_audio_start_seconds": start_sec}
+            audio_path = masked_audio["path"]
+            payload["source_start_seconds"] = 0.0
+            payload["source_duration_seconds"] = masked_audio["duration_seconds"]
     payload["audio_path"] = audio_path
 
     # SRT preparation
@@ -421,6 +433,7 @@ async def render_scene_video_async(
                     "frames": int(trim_info.get("frames", 0)),
                     "label": "minimax_exact" if "minimax" in mode else "trim",
                     "mark_as_audio_video": "minimax" in mode,
+                    **mask_restore,
                 },
             )
             source_video_path = trim_res.get("video_path") or source_video_path

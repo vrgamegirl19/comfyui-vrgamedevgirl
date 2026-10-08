@@ -34,6 +34,20 @@ import { parseBulkTimeValue } from "./timeline_actions.mjs";
 import { audioChunkDuration, audioTimelineStart, markerEnd, normalizeTimelineMarkers } from "./timeline_state.mjs";
 import { mappedLocation } from "./scene_locations.mjs";
 import { createTimelineToolWindows } from "./timeline_tool_windows.mjs";
+import {
+  STEM_COLORS, STEM_LABELS, getStemLanes, requestOpenAudioMask, requestStemEdit, stemRowNames,
+} from "./audio_mask_store.mjs";
+
+// One track per stem (vocals, drums, bass, guitar, piano, other) and a masked mix track, under the scenes that have been
+// split in the Audio Mask window. A track is as wide as its scene and as tall as a waveform row.
+const STEM_ROW_HEIGHT = TIMELINE_SEGMENT_HEIGHT; // as tall as a scene block
+const STEM_ROW_GAP = 4;
+const STEM_EDGE_GRAB_PX = 6;
+const STEM_MIN_REGION_SECONDS = 0.02;
+// The rows shown, top to bottom ("mix" is last), and the height of the band between the scene-audio row and everything
+// below it. Both are empty or 0 when no stem tracks are shown.
+let stemRowList = [];
+let stemBandHeight = 0;
 
 export function shiftSegmentTiming(segment, delta) {
   const amount = Number(delta || 0);
@@ -46,7 +60,199 @@ export function shiftSegmentTiming(segment, delta) {
 }
 
 function timelineNoteTop() {
-  return TIMELINE_SCENE_AUDIO_TOP + TIMELINE_SCENE_AUDIO_HEIGHT + TIMELINE_NOTE_GAP;
+  return TIMELINE_SCENE_AUDIO_TOP + TIMELINE_SCENE_AUDIO_HEIGHT + stemBandHeight + TIMELINE_NOTE_GAP;
+}
+
+// Drawn stem tracks, reused between timeline redraws while nothing about them has changed. A redraw happens on every scene
+// change, and drawing every track of every scene each time would stall playback.
+const stemRowCache = new Map();
+
+// A track is drawn when it is about to scroll into view, not when the timeline is built: a project with many scenes has
+// hundreds of tracks and only a few are on screen. A drawn track stays drawn (it is in the cache above).
+const stemDrawWaiting = new WeakMap();
+const stemDrawObserver = typeof IntersectionObserver === "function"
+  ? new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      const draw = stemDrawWaiting.get(entry.target);
+      stemDrawWaiting.delete(entry.target);
+      stemDrawObserver.unobserve(entry.target);
+      if (draw) draw();
+    }
+  }, { rootMargin: "400px" })
+  : null;
+
+function drawStemRowWhenVisible(canvas, draw) {
+  if (!stemDrawObserver) {
+    draw();
+    return;
+  }
+  stemDrawWaiting.set(canvas, draw);
+  stemDrawObserver.observe(canvas);
+}
+
+// What a track looks like depends on exactly these things.
+function stemRowSignature(rowName, lanes, stem, width) {
+  const peaks = stem ? stem.peaks : lanes.mix?.peaks;
+  const regions = stem ? stem.regions.map((region) => `${region.start}-${region.end}`).join(",") : "";
+  return [width, rowName, stem ? `${stem.mask ? 1 : 0}${stem.mute ? 1 : 0}|${stem.db}|${regions}` : "", lanes.duration, Boolean(lanes.enabled)].join("|")
+    + `|${Array.isArray(peaks) ? peaks.length : 0}`;
+}
+
+// Draws one stem track for one scene. ``regions`` is what to show as kept (the stored ones, or the ones being dragged).
+function drawStemRow(canvas, rowName, lanes, stem, regions) {
+  const ctx = canvas.getContext("2d");
+  const width = canvas.width;
+  const height = canvas.height;
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = "rgba(17,17,19,.96)";
+  ctx.fillRect(0, 0, width, height);
+  const color = STEM_COLORS[rowName] || STEM_COLORS.mix;
+  const peaks = Array.isArray(stem ? stem.peaks : lanes.mix?.peaks) ? (stem ? stem.peaks : lanes.mix.peaks) : [];
+  const duration = Math.max(0.05, Number(lanes.duration) || 1);
+  const masked = Boolean(stem?.mask);
+  const muted = Boolean(stem?.mute);
+  const mid = height / 2;
+  // Which columns are kept, worked out per region instead of testing every region at every column.
+  const keptColumns = masked ? new Uint8Array(width) : null;
+  if (keptColumns) {
+    for (const region of regions) {
+      keptColumns.fill(1, Math.max(0, Math.floor((region.start / duration) * width)), Math.min(width, Math.ceil((region.end / duration) * width)));
+    }
+  }
+  // One path for the kept columns and one for the dimmed ones: two fills instead of one per column.
+  const keptPath = new Path2D();
+  const dimPath = new Path2D();
+  for (let x = 0; x < width; x += 1) {
+    const level = Math.min(1, peaks[Math.floor((x / width) * peaks.length)] || 0);
+    const half = Math.max(0.5, level * (height / 2 - 2));
+    (!keptColumns || keptColumns[x] ? keptPath : dimPath).rect(x, mid - half, 1, half * 2);
+  }
+  ctx.fillStyle = color;
+  ctx.globalAlpha = muted ? 0.12 : 1;
+  ctx.fill(keptPath);
+  ctx.globalAlpha = muted ? 0.12 : 0.2;
+  ctx.fill(dimPath);
+  ctx.globalAlpha = 1;
+  if (masked && !muted) {
+    for (const region of regions) {
+      const x = (region.start / duration) * width;
+      const regionWidth = Math.max(1, ((region.end - region.start) / duration) * width);
+      ctx.fillStyle = "rgba(34,197,94,.16)";
+      ctx.fillRect(x, 0, regionWidth, height);
+      ctx.fillStyle = "#22c55e";
+      ctx.fillRect(x, 0, 2, height);
+      ctx.fillRect(x + regionWidth - 2, 0, 2, height);
+    }
+  }
+  if (width > 70) {
+    const label = stem
+      ? `${STEM_LABELS[rowName] || rowName}${muted ? " · muted, double-click to turn on" : masked && !regions.length ? " · silent, double-click to turn on" : masked ? " · only regions" : ""}${stem.db ? ` · ${stem.db > 0 ? "+" : ""}${stem.db} dB` : ""}`
+      : peaks.length ? "Masked mix" : "Masked mix (press Build)";
+    ctx.font = "bold 12px sans-serif";
+    ctx.fillStyle = "rgba(9,9,11,.7)";
+    ctx.fillRect(2, 2, Math.min(width - 4, ctx.measureText(label).width + 8), 17);
+    ctx.fillStyle = "rgba(244,244,245,.95)";
+    ctx.fillText(label, 6, 14);
+  }
+}
+
+// Drag on a stem track to keep that part of the stem, drag a region's edges to resize it or its middle to move it, and
+// double-click a region to delete it. The change is sent to Audio Mask, which saves it and rebuilds the mix.
+function attachStemEditing(canvas, sceneId, rowName, lanes, stem) {
+  const duration = Math.max(0.05, Number(lanes.duration) || 1);
+  let working = stem.mask ? stem.regions.map((region) => ({ ...region })) : [];
+  let drag = null;
+  const timeAt = (event) => {
+    const rect = canvas.getBoundingClientRect();
+    return Math.max(0, Math.min(duration, ((event.clientX - rect.left) / Math.max(1, rect.width)) * duration));
+  };
+  const hit = (event) => {
+    if (!stem.mask) return { kind: "new", index: -1 };
+    const rect = canvas.getBoundingClientRect();
+    const grab = (STEM_EDGE_GRAB_PX / Math.max(1, rect.width)) * duration;
+    const time = timeAt(event);
+    for (let index = 0; index < working.length; index += 1) {
+      if (Math.abs(time - working[index].start) <= grab) return { kind: "start", index };
+      if (Math.abs(time - working[index].end) <= grab) return { kind: "end", index };
+    }
+    const inside = working.findIndex((region) => time > region.start && time < region.end);
+    return inside >= 0 ? { kind: "move", index: inside } : { kind: "new", index: -1 };
+  };
+  const round = (value) => Math.round(value * 1000) / 1000;
+  const send = (regions) => requestStemEdit(sceneId, rowName, { mask: true, regions });
+
+  canvas.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    event.stopPropagation();
+    const target = hit(event);
+    const time = timeAt(event);
+    if (target.kind === "new") {
+      working.push({ start: round(time), end: round(time), fade_ms: 30 });
+      drag = { kind: "end", index: working.length - 1, anchor: time, created: true };
+    } else {
+      const region = working[target.index];
+      drag = { kind: target.kind, index: target.index, offset: time - region.start, length: region.end - region.start };
+    }
+    canvas.setPointerCapture(event.pointerId);
+  });
+  canvas.addEventListener("pointermove", (event) => {
+    if (!drag) {
+      const target = hit(event);
+      canvas.style.cursor = target.kind === "start" || target.kind === "end" ? "ew-resize" : target.kind === "move" ? "grab" : "crosshair";
+      return;
+    }
+    const time = timeAt(event);
+    const region = working[drag.index];
+    if (drag.created) {
+      region.start = round(Math.min(drag.anchor, time));
+      region.end = round(Math.max(drag.anchor, time));
+    } else if (drag.kind === "start") {
+      region.start = round(Math.min(time, region.end - STEM_MIN_REGION_SECONDS));
+    } else if (drag.kind === "end") {
+      region.end = round(Math.max(time, region.start + STEM_MIN_REGION_SECONDS));
+    } else {
+      const start = Math.max(0, Math.min(duration - drag.length, time - drag.offset));
+      region.start = round(start);
+      region.end = round(start + drag.length);
+    }
+    drawStemRow(canvas, rowName, lanes, stem, working);
+  });
+  const finish = () => {
+    if (!drag) return;
+    const kept = working.filter((region) => region.end - region.start >= STEM_MIN_REGION_SECONDS);
+    // A plain click changes nothing and must send nothing: the timeline redraws on every edit, which would replace
+    // this canvas in the middle of a double-click.
+    const before = stem.mask ? stem.regions : [];
+    const changed = kept.length !== before.length
+      || kept.some((region, index) => Math.abs(region.start - before[index].start) > 0.0005 || Math.abs(region.end - before[index].end) > 0.0005);
+    drag = null;
+    if (changed) send(kept);
+    else {
+      working = stem.mask ? stem.regions.map((region) => ({ ...region })) : [];
+      drawStemRow(canvas, rowName, lanes, stem, working);
+    }
+  };
+  canvas.addEventListener("pointerup", finish);
+  canvas.addEventListener("pointercancel", finish);
+  canvas.addEventListener("dblclick", (event) => {
+    event.stopPropagation();
+    // A double-click is an on/off switch for the whole stem, except inside a region, where it deletes that region.
+    if (stem.mute) {
+      requestStemEdit(sceneId, rowName, { mute: false });
+      return;
+    }
+    if (stem.mask && !stem.regions.length) {
+      // Masked with no region left, so silent: play the whole stem again (the saved masking is switched off).
+      requestStemEdit(sceneId, rowName, { mask: false });
+      return;
+    }
+    const time = timeAt(event);
+    const remaining = stem.mask ? stem.regions.filter((region) => !(time >= region.start && time <= region.end)) : stem.regions;
+    if (remaining.length !== stem.regions.length) send(remaining);
+    else requestStemEdit(sceneId, rowName, { mute: true });
+  });
+  return () => drawStemRow(canvas, rowName, lanes, stem, working);
 }
 
 function drawSegmentAudioWaveform(canvas, peaks) {
@@ -241,12 +447,17 @@ export function buildTimelineView({ overlay, preview, previewStage, getDeleteAva
     deleteButtons: [deleteAllTimelineImagesButton, deleteAllTimelineVideosButton, deleteAllSegmentsButton],
     getDeleteAvailability,
   });
+  const audioMaskButton = makeButton("Audio Mask");
+  const stemVisibilityButton = makeButton("Hide Stems");
+  stemVisibilityButton.title = "Hide or show the stem tracks under the scenes. Hiding only changes what the timeline shows. The stems and masks stay as they are.";
+  const stemMonitorButton = makeButton("Hear Stems");
+  stemMonitorButton.title = "Play the masked stem mix of a scene from the timeline instead of the main audio, so you hear what the stem choices sound like. Scenes without a stem mix keep playing the main audio.";
   const zoomWrap = document.createElement("div");
   zoomWrap.style.cssText = "display:flex;gap:4px;align-items:center;";
   zoomWrap.append(zoomOutButton, zoomInButton);
   const timelineToolRail = document.createElement("div");
   timelineToolRail.style.cssText = "display:flex;flex-direction:column;gap:4px;padding:12px 5px 12px 6px;border-right:1px solid #27272a;background:#09090b;overflow-y:auto;overflow-x:hidden;min-height:0;scrollbar-width:thin;";
-  for (const button of [bulkSegmentsButton, sceneNoteButton, videoNoteButton, lyricNoteButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton]) {
+  for (const button of [bulkSegmentsButton, sceneNoteButton, videoNoteButton, lyricNoteButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton, audioMaskButton, stemMonitorButton, stemVisibilityButton]) {
     button.style.width = "96px";
     button.style.minHeight = "40px";
     button.style.padding = "6px 7px";
@@ -257,7 +468,7 @@ export function buildTimelineView({ overlay, preview, previewStage, getDeleteAva
   bulkSegmentsButton.textContent = "Bulk";
   addSegmentButton.textContent = "+ Segment";
   addOverlaySegmentButton.textContent = "+ Overlay Track";
-  timelineToolRail.append(bulkSegmentsButton, sceneNoteButton, videoNoteButton, lyricNoteButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton);
+  timelineToolRail.append(bulkSegmentsButton, sceneNoteButton, videoNoteButton, lyricNoteButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton, audioMaskButton, stemMonitorButton, stemVisibilityButton);
   timelineHeader.append(toolsButton, splitSceneButton, idLoraTrimModeButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineStatusInfo, deleteSegmentButton, deleteAllButton);
   const timelineBody = document.createElement("div");
   timelineBody.style.cssText = "display:grid;grid-template-columns:auto minmax(0,1fr);min-height:0;overflow:hidden;";
@@ -270,25 +481,28 @@ export function buildTimelineView({ overlay, preview, previewStage, getDeleteAva
   segmentLayer.style.cssText = `position:absolute;left:12px;top:12px;height:${TIMELINE_HEIGHT}px;pointer-events:none;`;
   const playhead = document.createElement("div");
   playhead.style.cssText = `position:absolute;left:12px;top:12px;height:${TIMELINE_HEIGHT}px;width:3px;background:#f4f4f5;box-shadow:0 0 10px rgba(103,232,249,.8);cursor:ew-resize;z-index:5;`;
-  timelineViewport.append(timelineCanvas, segmentLayer, playhead);
+  // Stem tracks live in their own layer. A timeline redraw (it happens at every scene change) leaves it alone.
+  const stemLayer = document.createElement("div");
+  stemLayer.style.cssText = `position:absolute;left:12px;top:12px;height:${TIMELINE_HEIGHT}px;pointer-events:none;contain:layout style;`;
+  timelineViewport.append(timelineCanvas, segmentLayer, stemLayer, playhead);
   timelineBody.append(timelineToolRail, timelineViewport);
   timeline.append(timelineResizeHandle, timelineHeader, timelineBody);
 
   return {
-    addOverlaySegmentButton, addSegmentButton, addTimelineMarkerButton, beatMarkersButton, bulkSegmentsButton,
+    addOverlaySegmentButton, addSegmentButton, addTimelineMarkerButton, audioMaskButton, beatMarkersButton, bulkSegmentsButton, stemMonitorButton, stemVisibilityButton,
     clearRangeButton, closeTimelineGapsButton, deleteAllSegmentsButton, deleteAllTimelineImagesButton,
     deleteAllTimelineVideosButton, deleteSegmentButton, globalAudioMuteButton,
     globalScrub, globalScrubTime, idLoraTrimModeButton, lyricNoteButton, locationThumbnailButton, multiSelectButton,
     multiSelectHintButton, overlayTrackHintButton, overlayTrackToggleButton, playButton, playhead, redoButton,
     refreshDeleteActions, sceneNoteButton, segmentLayer, setInButton, setOutButton, snapSceneEdgeButton,
     snapToBeatsControl, splitSceneButton, stopButton, timeline, timelineCanvas, timelineInfo,
-    timelineRangeInfo, timelineResizeHandle, timelineViewport, undoButton,
+    stemLayer, timelineRangeInfo, timelineResizeHandle, timelineViewport, undoButton,
     videoNoteButton, waveformModeSelect, zoomInButton, zoomOutButton,
   };
 }
 
 export function createTimelineView({
-  activeSegment, appendTimelineFirstLastFrameThumbnail, autoSaveSessionQuiet, clampTimelineMarkerToNonOverlap,
+  stemLayer, timelineViewport, activeSegment, appendTimelineFirstLastFrameThumbnail, autoSaveSessionQuiet, clampTimelineMarkerToNonOverlap,
   currentGlobalTime, currentProjectAudioPath, currentVideoMode, cycleSegmentImageHistory,
   cycleSegmentVideoHistory, enableImageDrop, enableLutDrop, enablePostEffectDrop,
   ensureAllSegmentRuntimeFields, handleSegmentPick, i2vNotesInput, isSegmentMultiSelected,
@@ -412,7 +626,104 @@ export function createTimelineView({
     sortSegments(state.segments);
   }
 
+  // The band for stem lanes exists only while some scene has stems and the Audio Mask window's switch is on.
+  function refreshStemBand() {
+    const names = state.showTimelineStems !== false ? stemRowNames(state.segments.map((segment) => segment.id)) : [];
+    stemRowList = names.length ? [...names, "mix"] : [];
+    stemBandHeight = stemRowList.length ? stemRowList.length * (STEM_ROW_HEIGHT + STEM_ROW_GAP) + 6 : 0;
+  }
+
+  // Only tracks near the visible part of the timeline exist, and the layer is rebuilt only when what it shows changes
+  // (zoom, scroll to a new scene, an edit, stems arriving). Drawn tracks are reused from the cache.
+  const STEM_RENDER_MARGIN_PX = 900;
+  let stemLayerKey = "";
+
+  function createStemRowCanvas(item) {
+    const { segment, rowName, stem, lanes } = item;
+    const rowCanvas = document.createElement("canvas");
+    rowCanvas.width = item.rowWidth;
+    rowCanvas.height = STEM_ROW_HEIGHT;
+    rowCanvas.style.cssText = `
+      position:absolute;left:${item.left}px;top:${item.top}px;width:${rowCanvas.width}px;height:${STEM_ROW_HEIGHT}px;
+      z-index:1;pointer-events:auto;cursor:crosshair;border:1px solid ${lanes.enabled ? "#22d3ee" : "rgba(103,232,249,.25)"};border-radius:4px;
+    `;
+    if (stem) {
+      rowCanvas.title = `${STEM_LABELS[rowName]}: drag to keep a part of this stem, drag a region's edges or middle to change it, double-click a region to delete it. Double-click anywhere else on the track to mute the stem, and double-click a muted or silent stem to turn it back on. Use the Audio Mask button for exact times, levels and mute.`;
+      drawStemRowWhenVisible(rowCanvas, attachStemEditing(rowCanvas, segment.id, rowName, lanes, stem));
+    } else {
+      rowCanvas.style.cursor = "pointer";
+      rowCanvas.title = "Masked mix: the stems added together with every mask, level and mute applied. Click to open Audio Mask.";
+      rowCanvas.onclick = (event) => {
+        event.stopPropagation();
+        setActiveSegment(segment);
+        requestOpenAudioMask(segment.id);
+      };
+      drawStemRowWhenVisible(rowCanvas, () => drawStemRow(rowCanvas, "mix", lanes, null, []));
+    }
+    return rowCanvas;
+  }
+
+  function renderStemTracks() {
+    const items = [];
+    if (stemRowList.length) {
+      const from = timelineViewport.scrollLeft - STEM_RENDER_MARGIN_PX;
+      const to = timelineViewport.scrollLeft + timelineViewport.clientWidth + STEM_RENDER_MARGIN_PX;
+      const bandTop = TIMELINE_SCENE_AUDIO_TOP + TIMELINE_SCENE_AUDIO_HEIGHT + 4;
+      for (const segment of state.segments) {
+        const left = segment.start * state.pxPerSecond;
+        const rowWidth = Math.max(24, Math.floor((segment.end - segment.start) * state.pxPerSecond));
+        if (left + rowWidth < from || left > to) continue;
+        const lanes = getStemLanes(segment.id);
+        // Stems made for a different scene length (merged, split or resized) would be drawn stretched.
+        if (!lanes || Math.abs(Number(lanes.duration) - (segment.end - segment.start)) > 0.02) continue;
+        stemRowList.forEach((rowName, rowIndex) => {
+          const stem = rowName === "mix" ? null : lanes.stems.find((candidate) => candidate.name === rowName);
+          if (rowName !== "mix" && !stem) return; // the model this scene was split with has no such stem
+          items.push({
+            segment, rowName, stem, lanes, rowWidth, left, top: bandTop + rowIndex * (STEM_ROW_HEIGHT + STEM_ROW_GAP),
+            key: `${segment.id}|${rowName}`, peaks: stem ? stem.peaks : lanes.mix?.peaks,
+            signature: stemRowSignature(rowName, lanes, stem, rowWidth),
+          });
+        });
+      }
+    }
+    const layoutKey = items.map((item) => `${item.key}@${item.left}:${item.top}:${item.signature}`).join(";");
+    if (layoutKey === stemLayerKey) return;
+    stemLayerKey = layoutKey;
+    const used = new Set();
+    const fragment = document.createDocumentFragment();
+    for (const item of items) {
+      let entry = stemRowCache.get(item.key);
+      if (!entry || entry.signature !== item.signature || entry.peaks !== item.peaks) {
+        if (entry) stemDrawObserver?.unobserve(entry.canvas);
+        entry = { signature: item.signature, peaks: item.peaks, canvas: createStemRowCanvas(item) };
+        stemRowCache.set(item.key, entry);
+      }
+      entry.canvas.style.left = `${item.left}px`;
+      entry.canvas.style.top = `${item.top}px`;
+      fragment.append(entry.canvas);
+      used.add(item.key);
+    }
+    stemLayer.replaceChildren(fragment);
+    for (const [key, entry] of stemRowCache) {
+      if (used.has(key)) continue;
+      stemDrawObserver?.unobserve(entry.canvas);
+      stemRowCache.delete(key);
+    }
+  }
+
+  // Scrolling to scenes whose tracks do not exist yet creates them, a frame at a time.
+  let stemScrollFrame = 0;
+  timelineViewport.addEventListener("scroll", () => {
+    if (stemScrollFrame || !stemRowList.length) return;
+    stemScrollFrame = window.requestAnimationFrame(() => {
+      stemScrollFrame = 0;
+      renderStemTracks();
+    });
+  }, { passive: true });
+
   function timelineHeight() {
+    refreshStemBand();
     const baseHeight = WAVEFORM_MODES[state.waveformMode]?.height || WAVEFORM_MODES.medium.height;
     const waveExtra = Math.max(48, baseHeight - 140);
     return timelineWaveTop() + waveExtra + 10;
@@ -439,7 +750,7 @@ export function createTimelineView({
     if (timelineMarkerLaneVisible()) return timelineMarkerTop() + TIMELINE_MARKER_HEIGHT + 14;
     if (state.showTimelineVideoNotes) return timelineVideoNoteTop() + TIMELINE_NOTE_HEIGHT + 14;
     if (state.showTimelineSceneNotes) return timelineNoteTop() + TIMELINE_NOTE_HEIGHT + 14;
-    return TIMELINE_SCENE_AUDIO_TOP + TIMELINE_SCENE_AUDIO_HEIGHT + 14;
+    return TIMELINE_SCENE_AUDIO_TOP + TIMELINE_SCENE_AUDIO_HEIGHT + stemBandHeight + 14;
   }
 
   function snapTimeToBeat(time) {
@@ -758,16 +1069,29 @@ export function createTimelineView({
     };
   }
 
+  // What the song waveform canvas was last drawn from. Drawing it again from the same things only repeats the work.
+  let drawnWaveformKey = "";
+  let drawnWaveformPeaks = null;
+
   function drawWaveform() {
     const height = timelineHeight();
     const width = Math.max(900, Math.ceil(Math.max(1, timelineDuration()) * state.pxPerSecond));
-    timelineCanvas.height = height;
-    timelineCanvas.width = width;
     timelineCanvas.style.height = `${height}px`;
     timelineCanvas.style.width = `${width}px`;
     segmentLayer.style.height = `${height}px`;
     segmentLayer.style.width = `${width}px`;
+    stemLayer.style.height = `${height}px`;
+    stemLayer.style.width = `${width}px`;
     playhead.style.height = `${height}px`;
+    // The timeline redraws at every scene change. Resizing and repainting a canvas as wide as the song and as tall as
+    // the stem tracks each time stalls playback, so it is only done when something it shows has changed.
+    const waveformKey = [width, height, state.pxPerSecond, state.waveformMode, timelineDuration(), timelineWaveTop(),
+      currentProjectAudioPath() ? 1 : 0, state.peaks.length].join("|");
+    if (waveformKey === drawnWaveformKey && state.peaks === drawnWaveformPeaks) return;
+    drawnWaveformKey = waveformKey;
+    drawnWaveformPeaks = state.peaks;
+    timelineCanvas.height = height;
+    timelineCanvas.width = width;
     const ctx = timelineCanvas.getContext("2d");
     ctx.clearRect(0, 0, width, timelineCanvas.height);
     ctx.fillStyle = "#09090b";
@@ -801,6 +1125,7 @@ export function createTimelineView({
 
   function renderSegments() {
     refreshDeleteActions();
+    refreshStemBand();
     segmentLayer.textContent = "";
     ensureAllSegmentRuntimeFields();
     renderSelectedTimelineRangeOverlay();
@@ -1211,6 +1536,7 @@ export function createTimelineView({
         drawSegmentAudioWaveform(audioWave, segment.custom_audio_peaks);
       }
     }
+    renderStemTracks();
     renderBeatMarkersOverlay();
   }
 

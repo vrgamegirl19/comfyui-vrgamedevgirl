@@ -192,7 +192,7 @@ function uploadWithProgress(file, onProgress) {
 
 const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
-export function openRefModsStudio() {
+export function openRefModsStudio({ runnerPayload } = {}) {
   if (document.getElementById("vrgdg-refmods-studio")) return;
 
   ensureBusyStyle();
@@ -1119,13 +1119,15 @@ export function openRefModsStudio() {
     const paths = readyPaths();
     if (!paths.length || studio.describing) return;
     studio.describing = true;
-    describeStatus.textContent = `Asking the model loaded in LM Studio to describe the ${studio.type}...`;
+    const llm = typeof runnerPayload === "function" ? runnerPayload() : null;
+    const runnerName = { llm_api: "the LLM API model", own_server: "your custom server model" }[llm?.text_runner] || "the model loaded in LM Studio";
+    describeStatus.textContent = `Asking ${runnerName} to describe the ${studio.type}...`;
     refreshActions();
     try {
       const response = await api.fetchApi("/vrgdg/refmod/describe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paths, concept_type: studio.type }),
+        body: JSON.stringify({ paths, concept_type: studio.type, llm }),
       });
       const result = await response.json();
       if (!response.ok || !result.ok) throw new Error(result.error || "The description failed.");
