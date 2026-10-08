@@ -963,6 +963,7 @@ export function openBuilder(node, options = {}) {
     snapToBeats: true,
     showBeatMarkers: false,
     showTimelineSceneNotes: false,
+    showTimelineStems: false,
     audioMaskAuto: { enabled: true, model_name: "htdemucs_6s", input_gain_db: 0 },
     showTimelineVideoNotes: false,
     showTimelineLyricNotes: false,
