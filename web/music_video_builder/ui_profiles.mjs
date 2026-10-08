@@ -43,6 +43,8 @@ export function createUiProfileActions({ controls, state, toast, applyLayoutSize
   let busy = false;
   let activeLayout = null;
   let saveTimer = null;
+  // Layout changes while the saved layout is still loading would overwrite it with the startup layout.
+  let loaded = false;
 
   function selectedName() {
     return String(select.value || "");
@@ -71,8 +73,9 @@ export function createUiProfileActions({ controls, state, toast, applyLayoutSize
     syncButtons();
   }
 
+  // The selected profile's layout, or with "Default layout" the one kept globally. Without either, the project's own applies.
   function applyActiveLayout() {
-    if (!state.uiProfile || !activeLayout) return;
+    if (!activeLayout) return;
     applyLayoutToState(state, activeLayout);
     state.syncLlmPopout?.();
     applyLayoutSizes();
@@ -81,8 +84,10 @@ export function createUiProfileActions({ controls, state, toast, applyLayoutSize
   async function activate(name) {
     state.uiProfile = name;
     if (!name) {
-      activeLayout = null;
       await postJson("/vrgdg/music_builder/set_last_ui_profile", { name: "" });
+      const saved = await postJson("/vrgdg/music_builder/load_default_ui_layout", {});
+      activeLayout = saved?.layout || null;
+      applyActiveLayout();
       return;
     }
     const data = await postJson("/vrgdg/music_builder/load_ui_profile", { name });
@@ -96,18 +101,19 @@ export function createUiProfileActions({ controls, state, toast, applyLayoutSize
     profiles = Array.isArray(data?.profiles) ? data.profiles : [];
     renderOptions(preferredName || data?.last || "");
     await activate(selectedName());
+    loaded = true;
     return profiles;
   }
 
   function queueLayoutSave() {
-    if (!state.uiProfile) return;
+    if (!loaded) return;
     clearTimeout(saveTimer);
     saveTimer = setTimeout(async () => {
       const name = state.uiProfile;
-      if (!name) return;
       activeLayout = layoutFromState(state);
       try {
-        await postJson("/vrgdg/music_builder/update_ui_profile_layout", { name, layout: activeLayout });
+        if (name) await postJson("/vrgdg/music_builder/update_ui_profile_layout", { name, layout: activeLayout });
+        else await postJson("/vrgdg/music_builder/save_default_ui_layout", { layout: activeLayout });
       } catch (error) {
         console.warn("[VRGDG Music Builder] Could not update the UI layout profile:", error);
       }

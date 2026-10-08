@@ -9,6 +9,7 @@ import {
 import { DEFAULT_LTX_INGREDIENTS_HEIGHT, DEFAULT_LTX_INGREDIENTS_WIDTH } from "./constants.mjs";
 import { makeButton, makeField, makeInput, normalizeProjectVideoEngine, toast } from "./controls.mjs";
 import { showFinalVideoReadyModal } from "./dialogs.mjs";
+import { audioMaskInUse } from "./audio_mask_store.mjs";
 import { formatTime } from "./format.mjs";
 import { rtvReferenceImagePayload } from "./image_references.mjs";
 import { miniMaxI2VLastFrame, miniMaxI2VFramePaths } from "./minimax_keyframe_state.mjs";
@@ -499,7 +500,7 @@ export function createVideoRender({
   // The saved masked mix of a scene whose Audio Mask is on, or null when the mask is off. Refuses a mix that was never
   // built or that no longer matches the scene's length, so a render never uses stale audio.
   async function audioMaskRenderOverride(segment, projectFolder, sceneSeconds, sceneLabel) {
-    if (!segment?.audio_mask?.enabled) return null;
+    if (!audioMaskInUse(segment)) return null;
     const saved = await postJson("/vrgdg/music_builder/audio_mask/state", { project_folder: projectFolder, scene_id: segment.id }, 60000);
     const path = String(saved?.files?.masked_mix || "").trim();
     if (!saved?.exists || !saved.mix || !path) {
@@ -643,6 +644,13 @@ export function createVideoRender({
 
     // An enabled Audio Mask renders with its masked mix (kept vocals plus the music). The finished clip gets the real audio back.
     const maskedAudio = builtInAudio ? null : await audioMaskRenderOverride(segment, projectFolder, sceneDuration, sceneDisplayName(segment, sceneIndex));
+    const maskLine = builtInAudio
+      ? "Audio Mask: not used (built-in MiniMax audio)"
+      : maskedAudio
+        ? `Audio Mask: ON, rendering with ${maskedAudio.path}`
+        : `Audio Mask: OFF for ${sceneDisplayName(segment, sceneIndex)} (audio_mask.enabled=${String(segment?.audio_mask?.enabled)}), rendering with the full scene audio`;
+    console.log(`[VRGDG Audio Mask] ${maskLine}`);
+    progress?.set(`${batchLabel}${maskLine}`, pct(5));
 
     if (["reference_to_video", "video_to_video"].includes(mode) && miniMaxReferenceKeysForSegment(segment).length) {
       progress?.set(`${batchLabel}Preparing MiniMax H3 Reference Builder images...`, pct(4));
