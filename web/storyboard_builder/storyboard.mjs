@@ -425,8 +425,8 @@ export function openStoryboardBuilder(payload = {}) {
   footerActions.append(save, exportPrompts);
   footer.append(stats, footerActions);
 
-  if (!focusedSection || focusedSection === "story") middleContent.append(storyLayerPanel);
   if (!focusedSection || focusedSection === "defaults") middleContent.append(sceneDefaultsPanel);
+  if (!focusedSection || focusedSection === "story") middleContent.append(storyLayerPanel);
   if (!focusedSection || focusedSection === "scenes") middleContent.append(tableWrap);
   if (focusedSection) {
     if (focusedSection !== "scenes") {
