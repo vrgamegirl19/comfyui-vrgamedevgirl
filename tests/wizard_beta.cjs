@@ -490,7 +490,7 @@ test('focused storyboard routes allow Image Prep only for Image to Video', () =>
 
 test('focused storyboard windows mount only their own content and relevant actions', () => {
   const story = readStoryboardSource();
-  const start = story.indexOf('  if (!focusedSection || focusedSection === "story") middleContent.append');
+  const start = story.indexOf('  if (!focusedSection || focusedSection === "defaults") middleContent.append');
   const end = story.indexOf('  shell.append(header', start);
   for (const focusedSection of ['', 'defaults', 'story', 'scenes']) {
     for (const allowImagePrep of [true, false]) {
@@ -498,7 +498,7 @@ test('focused storyboard windows mount only their own content and relevant actio
       for (const key of ['middleContent', 'sceneDefaultsPanel', 'storyLayerPanel', 'tableWrap', 'headerActions', 'footerActions', 'close', 'save', 'steps', 'header']) c[key] = new Element(key);
       c.header.append(c.steps);
       vm.runInNewContext(story.slice(start, end), c);
-      assert.deepEqual(c.middleContent.children.map(x => x.tagName), focusedSection ? [{ defaults: 'sceneDefaultsPanel', story: 'storyLayerPanel', scenes: 'tableWrap' }[focusedSection]] : ['storyLayerPanel', 'sceneDefaultsPanel', 'tableWrap']);
+      assert.deepEqual(c.middleContent.children.map(x => x.tagName), focusedSection ? [{ defaults: 'sceneDefaultsPanel', story: 'storyLayerPanel', scenes: 'tableWrap' }[focusedSection]] : ['sceneDefaultsPanel', 'storyLayerPanel', 'tableWrap']);
       assert.equal(c.header.children.includes(c.steps), !focusedSection || (focusedSection !== 'story' && allowImagePrep));
       if (focusedSection && focusedSection !== 'scenes') assert.deepEqual(c.footerActions.children, [c.save]);
     }
