@@ -7,13 +7,14 @@ import tempfile
 import zipfile
 from aiohttp import web
 from server import PromptServer
+from ..minimax import latent_takes
 from ..minimax.latent_manager import SceneLatentManager
 from ..post_process.lut_video_tools import register_lut_routes
 from ..post_process.face_fix import register_face_fix_routes
 
 from .ui_profiles import (
     UiProfileExistsError, delete_ui_profile, get_last_ui_profile_name, list_ui_profiles, load_ui_profile, save_ui_profile,
-    set_last_ui_profile, update_ui_profile_layout,
+    load_default_ui_layout, save_default_ui_layout, set_last_ui_profile, update_ui_profile_layout,
 )
 from .video_profiles import (
     ProfileExistsError, delete_video_profile, get_last_video_profile_name, list_video_profiles, load_video_profile,
@@ -432,6 +433,17 @@ def _ensure_music_builder_routes():
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response(result)
 
+    @server_instance.routes.post("/vrgdg/music_builder/list_scene_latent_takes")
+    async def vrgdg_music_builder_list_scene_latent_takes(request):
+        try:
+            payload = await request.json()
+            project_folder = str(payload.get("project_folder", "") or "").strip().strip('"')
+            scene_number = int(payload.get("scene_number", 1))
+            takes = await asyncio.to_thread(latent_takes.list_takes, project_folder, scene_number)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, "scene_number": scene_number, "takes": takes})
+
     @server_instance.routes.post("/vrgdg/music_builder/check_latent_predecessor")
     async def vrgdg_music_builder_check_latent_predecessor(request):
         try:
@@ -451,8 +463,15 @@ def _ensure_music_builder_routes():
                     "dirty": False,
                 })
             pred_scene = scene_number - 1
+            # Each take keeps its own latent. Bring back the one of the take the predecessor has selected.
+            take = {"status": "unchecked"}
+            predecessor_video = str(payload.get("predecessor_video_path", "") or "").strip().strip('"')
+            if predecessor_video:
+                take = await asyncio.to_thread(latent_takes.activate_for_video, project_folder, pred_scene, predecessor_video)
             info = await asyncio.to_thread(SceneLatentManager.get_latent_info, project_folder, pred_scene)
             return web.json_response({
+                "take_status": take.get("status"),
+                "take_count": take.get("take_count", 0),
                 "ok": True,
                 "scene_number": scene_number,
                 "predecessor_scene": pred_scene,
@@ -822,6 +841,23 @@ def _ensure_music_builder_routes():
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, "profiles": profiles, "last": last})
+
+    @server_instance.routes.post("/vrgdg/music_builder/load_default_ui_layout")
+    async def vrgdg_music_builder_load_default_ui_layout(request):
+        try:
+            layout = await asyncio.to_thread(load_default_ui_layout)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, "layout": layout})
+
+    @server_instance.routes.post("/vrgdg/music_builder/save_default_ui_layout")
+    async def vrgdg_music_builder_save_default_ui_layout(request):
+        try:
+            payload = await request.json()
+            layout = await asyncio.to_thread(save_default_ui_layout, payload.get("layout"))
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, "layout": layout})
 
     @server_instance.routes.post("/vrgdg/music_builder/load_ui_profile")
     async def vrgdg_music_builder_load_ui_profile(request):

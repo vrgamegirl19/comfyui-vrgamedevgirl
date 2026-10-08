@@ -20,6 +20,7 @@ from ..core.atomic_write import atomic_write_json
 PROFILE_VERSION = 1
 MAX_PROFILE_NAME_LENGTH = 60
 LAST_SELECTED_FILE = "_last_selected.json"
+DEFAULT_LAYOUT_FILE = "_default_layout.json"
 
 # (minimum, maximum) pixels. The timeline maximum is generous because the browser window limits it further.
 PANEL_LIMITS = {
@@ -192,6 +193,24 @@ def set_last_ui_profile(name: Any) -> str:
         clean = load_ui_profile(clean)["name"]
     atomic_write_json(os.path.join(profile_root(), LAST_SELECTED_FILE), {"name": clean})
     return clean
+
+
+def load_default_ui_layout() -> Optional[Dict[str, Any]]:
+    """The layout kept for "Default layout" (no profile selected), or None when it was never saved."""
+    try:
+        with open(os.path.join(profile_root(), DEFAULT_LAYOUT_FILE), "r", encoding="utf-8-sig") as handle:
+            data = json.load(handle)
+    except (OSError, ValueError):
+        return None
+    return normalize_layout(data.get("layout")) if isinstance(data, dict) and isinstance(data.get("layout"), dict) else None
+
+
+def save_default_ui_layout(layout: Any) -> Dict[str, Any]:
+    """Keep the layout used when no profile is selected, so the Builder comes back the way it was left."""
+    normalized = normalize_layout(layout)
+    os.makedirs(profile_root(), exist_ok=True)
+    atomic_write_json(os.path.join(profile_root(), DEFAULT_LAYOUT_FILE), {"version": PROFILE_VERSION, "layout": normalized})
+    return normalized
 
 
 def delete_ui_profile(name: Any) -> Dict[str, Any]:

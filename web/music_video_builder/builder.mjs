@@ -130,6 +130,7 @@ import { createBatchPrompts } from "./batch_prompts.mjs";
 import { createProjectSetup } from "./project_setup.mjs";
 import { createBeatCalibration } from "./beat_calibration.mjs";
 import { createLlmPopout } from "./llm_popout.mjs";
+import { createVideoPopout } from "./video_popout.mjs";
 import { createTimelineState } from "./timeline_state.mjs";
 import { createUiProfileActions } from "./ui_profiles.mjs";
 import { createMiniMaxReferences } from "./minimax_references.mjs";
@@ -345,6 +346,7 @@ export function openBuilder(node, options = {}) {
     if (!showLastProgressWindow()) toast("No render status window is open. Start a render to see one.");
   };
   previewStage.append(previewEmpty, previewImage, previewVideo, preloadVideo, postProcessComparePreview.element, previewDecodeHint, renderStatusButton);
+  previewStage.append(createVideoPopout({ previewStage, previewVideo, previewVideoState, toast }).button);
   const customImageFileInput = document.createElement("input");
   customImageFileInput.type = "file";
   customImageFileInput.accept = "image/png,image/jpeg,image/webp";

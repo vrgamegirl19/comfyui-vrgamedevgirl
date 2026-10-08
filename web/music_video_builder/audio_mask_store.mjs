@@ -83,3 +83,13 @@ export function normalizeAudioMaskAuto(value) {
     input_gain_db: Number.isFinite(gain) ? Math.max(-24, Math.min(24, gain)) : 0,
   };
 }
+
+// Whether a scene renders with its masked mix: any masked, muted or re-leveled stem turns it on, and only an explicit
+// "off" (the Audio Mask window's switch) turns it back off.
+export function audioMaskInUse(segment) {
+  const mask = segment?.audio_mask && typeof segment.audio_mask === "object" ? segment.audio_mask : null;
+  if (!mask || mask.user_off) return false;
+  if (mask.enabled) return true;
+  return Object.values(mask.stems && typeof mask.stems === "object" ? mask.stems : {})
+    .some((stem) => stem && (stem.mask || stem.mute || Number(stem.db) || 0));
+}

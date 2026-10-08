@@ -1,5 +1,5 @@
 import {
-  STEM_COLORS, STEM_LABELS, STEM_ORDER, clearStemLanes, normalizeAudioMaskAuto, onOpenAudioMaskRequest, onStemEditRequest, refreshStemLanes,
+  STEM_COLORS, STEM_LABELS, STEM_ORDER, audioMaskInUse, clearStemLanes, normalizeAudioMaskAuto, onOpenAudioMaskRequest, onStemEditRequest, refreshStemLanes,
   setStemLanes,
 } from "./audio_mask_store.mjs";
 import { audioUrl, postJson } from "./comfy_api.mjs";
@@ -86,7 +86,9 @@ function maskSettings(segment) {
   }
   return {
     version: MASK_VERSION,
-    enabled: Boolean(saved.enabled),
+    // Masking, muting or changing a stem means the scene renders with that audio. Only an explicit "off" keeps it from doing so.
+    user_off: Boolean(saved.user_off),
+    enabled: !saved.user_off && (Boolean(saved.enabled) || STEM_ORDER.some((name) => !isDefaultStem(stems[name]))),
     model_name: STEMS_BY_MODEL[saved.model_name] ? saved.model_name : "htdemucs_6s",
     input_gain_db: clamp(finite(saved.input_gain_db, 0), -24, 24),
     stems,
@@ -348,7 +350,13 @@ export function createAudioMask({
   // Change one scene's settings from anywhere (the timeline, the window), then save, redraw and rebuild.
   function changeSettings(item, mutate) {
     const settings = maskSettings(item);
+    const before = stemSignature(settings.stems, STEM_ORDER);
     mutate(settings);
+    // Editing a stem (mask, regions, level, mute) switches the render on again, even after it was turned off by hand.
+    if (stemSignature(settings.stems, STEM_ORDER) !== before && STEM_ORDER.some((name) => !isDefaultStem(settings.stems[name]))) {
+      settings.user_off = false;
+      settings.enabled = true;
+    }
     item.audio_mask = settings;
     saveSoon();
     publish(item);
@@ -589,6 +597,7 @@ export function createAudioMask({
     if (!open) return;
     const item = loaded();
     title.textContent = item ? `Audio Mask — ${sceneLabel()}` : "Audio Mask";
+    if (item) useCheck.input.checked = maskSettings(item).enabled;
     renderStemRows();
     refreshStatus();
     refreshInfo();
@@ -596,7 +605,7 @@ export function createAudioMask({
 
   function refreshButton() {
     const active = activeSegment();
-    const on = Boolean(active?.audio_mask?.enabled);
+    const on = audioMaskInUse(active);
     button.textContent = on ? "Audio Mask ●" : "Audio Mask";
     button.style.borderColor = on ? "#22d3ee" : "";
   }
@@ -642,7 +651,7 @@ export function createAudioMask({
     if (!item || !window.confirm("Remove this scene's stems and masked mix? The settings stay saved.")) return;
     run("Removing stems...", async () => {
       await postJson("/vrgdg/music_builder/audio_mask/delete", { project_folder: folder(), scene_id: item.id }, 60000);
-      changeSettings(item, (next) => { next.enabled = false; });
+      changeSettings(item, (next) => { next.enabled = false; next.user_off = true; });
       await fetchScene(item);
       publish(item);
     });
@@ -656,7 +665,7 @@ export function createAudioMask({
       toast("Split this scene's audio first, then build the masked mix.", true);
       return;
     }
-    changeSettings(item, (next) => { next.enabled = useCheck.input.checked; });
+    changeSettings(item, (next) => { next.enabled = useCheck.input.checked; next.user_off = !useCheck.input.checked; });
     if (useCheck.input.checked && mixStale(item, loadedData())) run("Building the masked mix...", () => buildScene(item));
   });
   // The project's auto stems option takes the model and input gain shown here.

@@ -348,6 +348,13 @@ def _collect_scene_video(payload):
             print(f"[VRGDG WorkflowRunner] Could not remove legacy scene video thumbnail '{legacy_target_thumbnail_path}': {exc}")
 
     thumbnail_path = _create_scene_video_thumbnail(target_path, target_thumbnail_path)
+    try:
+        # The latent this render saved belongs to the video just collected.
+        from ..minimax.latent_takes import attach_video
+
+        attach_video(project_folder, scene_number, target_path)
+    except Exception as exc:
+        print(f"[VRGDG Latent Takes] Could not tie scene {scene_number:03d}'s latent to its video: {exc}")
     removed_files = []
     removed_folder = ""
     removed_scratch_folders = []
@@ -528,7 +535,16 @@ def _apply_scene_start_color_match(payload):
         ], "FFmpeg could not apply the opening color match.")
         if not os.path.isfile(output_path) or os.path.getsize(output_path) <= 0:
             raise RuntimeError("Opening color match did not create a valid video.")
+        from ..minimax.latent_takes import rename_video, video_fingerprint
+
+        before_fingerprint = video_fingerprint(video_path)
         os.replace(output_path, video_path)
+        try:
+            scene_match = re.match(r"video_(\d+)", os.path.basename(video_path))
+            if scene_match:
+                rename_video(project_folder, int(scene_match.group(1)), before_fingerprint, video_fingerprint(video_path))
+        except Exception as exc:
+            print(f"[VRGDG Latent Takes] Could not keep the scene's latent take after the color match: {exc}")
         thumbnail_path = _create_scene_video_thumbnail(video_path, _scene_video_thumbnail_path(video_path))
         return {
             "video_path": video_path,

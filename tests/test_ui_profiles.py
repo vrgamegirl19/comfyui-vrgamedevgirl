@@ -47,6 +47,12 @@ class UiProfileTests(unittest.TestCase):
         loaded = ui_profiles.load_ui_profile("wide TIMELINE")  # names are not case sensitive
         self.assertEqual(loaded["layout"], self._layout())
 
+    def test_default_layout_is_kept_without_a_profile(self):
+        self.assertIsNone(ui_profiles.load_default_ui_layout())
+        ui_profiles.save_default_ui_layout(self._layout())
+        self.assertEqual(ui_profiles.load_default_ui_layout(), self._layout())
+        self.assertEqual(ui_profiles.list_ui_profiles(), [], "the default layout is not a named profile")
+
     def test_the_timeline_can_be_taller_than_the_old_520_pixel_limit(self):
         layout = ui_profiles.normalize_layout({"timeline_panel_height": 900})
         self.assertEqual(layout["timeline_panel_height"], 900)
