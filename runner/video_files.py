@@ -1,11 +1,13 @@
 """Rendered scene video files: collecting, trimming, color matching, thumbnails, stitching and slideshows."""
 
+import math
 import os
 import re
 import shutil
 import subprocess
 import tempfile
 import time
+from fractions import Fraction
 
 from .paths import _bool_payload, _ffprobe_path_for, _find_ffmpeg_path, _int_payload, _resolve_comfy_image_path, _resolve_save_folder, _unique_copy_path
 
@@ -670,6 +672,109 @@ def _find_minimax_h3_stage_outputs(payload):
     return {f"{stage}_path": found.get(stage, (0, ""))[1] for stage in ("stage1", "stage2", "stage3")}
 
 
+EMBEDDED_AUDIO_SAMPLE_RATE = 48000
+
+
+def _probe_stream_fields(path, ffmpeg_path, stream, fields, count_packets=False):
+    """ffprobe ``fields`` of the first ``stream`` (``v:0`` or ``a:0``) as a dict; empty when there is no such stream."""
+    cmd = [_ffprobe_path_for(ffmpeg_path), "-v", "error", "-select_streams", stream]
+    if count_packets:
+        cmd.append("-count_packets")
+    cmd += ["-show_entries", "stream=" + ",".join(fields), "-of", "default=noprint_wrappers=1", path]
+    result = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
+    if result.returncode != 0:
+        # Fail loudly: reading "no audio stream" from a failed probe would silence the scene.
+        raise RuntimeError((result.stderr or f"ffprobe could not read {path}").strip())
+    values = {}
+    for line in (result.stdout or "").splitlines():
+        if "=" in line:
+            key, value = line.split("=", 1)
+            values[key.strip()] = value.strip()
+    return values
+
+
+def _probe_float(values, key, default=0.0):
+    try:
+        return float(values.get(key))
+    except (TypeError, ValueError):
+        return default
+
+
+def _clip_frame_length(path, ffmpeg_path):
+    """``(frames, fps)`` of a clip's video stream, so its length is exactly ``frames / fps`` seconds."""
+    values = _probe_stream_fields(path, ffmpeg_path, "v:0", ["nb_read_packets", "r_frame_rate", "avg_frame_rate"], count_packets=True)
+    fps = Fraction(0)
+    for key in ("r_frame_rate", "avg_frame_rate"):
+        try:
+            fps = Fraction(values.get(key, "0/1"))
+        except (ValueError, ZeroDivisionError):
+            fps = Fraction(0)
+        if fps > 0:
+            break
+    try:
+        frames = int(values.get("nb_read_packets") or 0)
+    except ValueError:
+        frames = 0
+    if frames <= 0 or fps <= 0:
+        raise RuntimeError(f"Could not read the frame count and frame rate of scene video: {path}")
+    return frames, fps
+
+
+def _embedded_scene_audio_track(ffmpeg_path, scene_paths, frame_lengths, target_dir, temp_files):
+    """Join the scenes' own audio as one PCM track that lines up with the joined video at every scene start.
+
+    Each scene's audio is padded with silence or cut to exactly its clip's ``frames / fps`` (sample counts
+    from the running total, so 44.1 kHz rounding cannot build up), a scene without an audio stream becomes
+    silence of that length, and the parts are joined as PCM. The caller encodes the result once, so no
+    per-scene encoder priming or AAC frame padding lands between scenes.
+    """
+    sample_rate = EMBEDDED_AUDIO_SAMPLE_RATE
+    elapsed = Fraction(0)
+    start_sample = 0
+    part_paths = []
+    for index, (path, (frames, fps)) in enumerate(zip(scene_paths, frame_lengths), start=1):
+        elapsed += Fraction(int(frames)) / Fraction(fps)
+        end_sample = int(math.floor(elapsed * sample_rate + Fraction(1, 2)))
+        samples = max(1, end_sample - start_sample)
+        start_sample = end_sample
+        part_path = os.path.join(target_dir, f"_temp_scene_audio_{index:04d}.wav")
+        temp_files.append(part_path)
+        audio_info = _probe_stream_fields(path, ffmpeg_path, "a:0", ["index", "start_time"])
+        if audio_info.get("index", "") != "":
+            # Keep the audio where it sits against the clip's first frame (normally both start at 0).
+            video_info = _probe_stream_fields(path, ffmpeg_path, "v:0", ["start_time"])
+            lead = _probe_float(audio_info, "start_time") - _probe_float(video_info, "start_time")
+            filters = [f"aresample={sample_rate}", "aformat=sample_fmts=s16:channel_layouts=stereo"]
+            if lead > 0.0005:
+                filters.append(f"adelay={lead * 1000:.3f}:all=1")
+            elif lead < -0.0005:
+                filters.append(f"atrim=start={-lead:.6f},asetpts=PTS-STARTPTS")
+            filters += [f"apad=whole_len={samples}", f"atrim=end_sample={samples}"]
+            cmd = [ffmpeg_path, "-y", "-i", path, "-map", "0:a:0", "-vn", "-af", ",".join(filters), "-c:a", "pcm_s16le", part_path]
+        else:
+            # No audio stream: silence for the clip's length, so the later scenes do not move up.
+            cmd = [
+                ffmpeg_path, "-y", "-f", "lavfi", "-i", f"anullsrc=r={sample_rate}:cl=stereo",
+                "-af", f"atrim=end_sample={samples}", "-c:a", "pcm_s16le", part_path,
+            ]
+        result = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
+        if result.returncode != 0 or not os.path.isfile(part_path):
+            raise RuntimeError((result.stderr or result.stdout or f"FFmpeg failed to prepare scene {index} audio.").strip())
+        part_paths.append(part_path)
+
+    list_path = os.path.join(target_dir, "_temp_scene_audio_list.txt")
+    joined_path = os.path.join(target_dir, "_temp_scene_audio_joined.wav")
+    temp_files.extend([list_path, joined_path])
+    with open(list_path, "w", encoding="utf-8") as handle:
+        for part_path in part_paths:
+            handle.write(f"file '{_concat_file_path(part_path)}'\n")
+    subprocess.run(
+        [ffmpeg_path, "-y", "-f", "concat", "-safe", "0", "-i", list_path, "-c:a", "copy", joined_path],
+        capture_output=True, text=True, errors="replace", check=True,
+    )
+    return joined_path
+
+
 def _stitch_scene_videos(payload):
     raw_paths = payload.get("scene_paths", [])
     if not isinstance(raw_paths, list) or not raw_paths:
@@ -738,6 +843,7 @@ def _stitch_scene_videos(payload):
     ffmpeg_path = _find_ffmpeg_path()
     timeline_sync_paths = []
     timeline_sync_frame_count = 0
+    timeline_frame_lengths = []
     concat_scene_paths = scene_paths
     if raw_scene_timing_items:
         if timeline_fps <= 0:
@@ -755,6 +861,7 @@ def _stitch_scene_videos(payload):
             end_frame = int(end * timeline_fps + 0.5)
             target_frames = max(1, end_frame - start_frame)
             timeline_sync_frame_count += target_frames
+            timeline_frame_lengths.append((target_frames, Fraction(timeline_fps)))
             sync_path = os.path.join(target_dir, f"_temp_timeline_scene_{index:04d}.mp4")
             sync_filter = (
                 f"fps={timeline_fps},"
@@ -917,7 +1024,16 @@ def _stitch_scene_videos(payload):
             temp_video = normalized_video
 
     mux_audio_path = audio_path
-    if scene_audio_paths:
+    audio_matches_video = False
+    if scene_audio_items and all(item.get("embedded") for item in scene_audio_items):
+        # Each clip's own audio, cut or padded to the clip's exact length: the timeline frame count when the
+        # clips were synced to the timeline, otherwise the clip's own frames / fps.
+        frame_lengths = timeline_frame_lengths if timeline_sync_paths else [
+            _clip_frame_length(path, ffmpeg_path) for path in scene_paths
+        ]
+        mux_audio_path = _embedded_scene_audio_track(ffmpeg_path, scene_paths, frame_lengths, target_dir, temp_audio_parts)
+        audio_matches_video = True
+    elif scene_audio_paths:
         with open(audio_concat_file, "w", encoding="utf-8") as handle:
             for index, item in enumerate(scene_audio_items, start=1):
                 path = item["path"]
@@ -978,7 +1094,9 @@ def _stitch_scene_videos(payload):
         "-c:a",
         "aac",
     ]
-    if not timeline_sync_paths:
+    if not timeline_sync_paths and not audio_matches_video:
+        # -shortest ends the file at the shorter stream. The joined embedded audio is already exactly the
+        # video's length, and -shortest would clip its last few ms with the last frame's duration.
         mux_cmd.append("-shortest")
     mux_cmd.append(final_output)
     try:
