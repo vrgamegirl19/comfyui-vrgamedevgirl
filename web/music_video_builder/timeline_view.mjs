@@ -541,6 +541,7 @@ export function createTimelineView({
           ...segment.minimax_h3_settings,
           continuity_mode: before?.continuity_mode || "off",
           location_transition_preset: before?.location_transition_preset || "normal",
+          continuity_prompt_from_last_frame: Boolean(before?.continuity_prompt_from_last_frame),
         });
       }
       delete segment.minimax_h3_masked_quick_prev;
@@ -564,12 +565,14 @@ export function createTimelineView({
       locked: Boolean(segment.use_scene_minimax_h3_settings),
       continuity_mode: base.continuity_mode,
       location_transition_preset: base.location_transition_preset,
+      continuity_prompt_from_last_frame: Boolean(base.continuity_prompt_from_last_frame),
     };
     segment.use_scene_minimax_h3_settings = true;
     segment.minimax_h3_settings = cloneMiniMaxH3Settings({
       ...base,
       continuity_mode: "latent_continuation_masked",
       location_transition_preset: "masked",
+      continuity_prompt_from_last_frame: true,
     });
     segment.minimax_h3_mode = segment.minimax_h3_settings.video_mode;
     if (segment.id === state.activeId) syncInspector();
