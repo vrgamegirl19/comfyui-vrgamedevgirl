@@ -11,6 +11,7 @@ import { makeButton, makeField, makeInput, normalizeProjectVideoEngine, toast } 
 import { showFinalVideoReadyModal } from "./dialogs.mjs";
 import { formatTime } from "./format.mjs";
 import { rtvReferenceImagePayload } from "./image_references.mjs";
+import { miniMaxI2VLastFrame, miniMaxI2VFramePaths } from "./minimax_keyframe_state.mjs";
 import { setButtonGroupState } from "./inspector.mjs";
 import { isMiniMaxH3LatentContinuationMode, miniMaxH3FrameSize, miniMaxH3ModeLabel, normalizeMiniMaxH3Mode, normalizeMiniMaxH3Pipeline } from "./minimax_h3.mjs";
 import { refmodPreviewUrl } from "./refmod_card.mjs";
@@ -571,7 +572,7 @@ export function createVideoRender({
     const refmodPipeline = normalizeMiniMaxH3Pipeline(state.miniMaxH3Settings?.pipeline) === "refmod";
     const mode = refmodPipeline ? "reference_to_video" : normalizeMiniMaxH3Mode(options.mode ?? miniMaxSettings.video_mode);
     const twoPass = miniMaxSettings.render_pass === "two_pass"
-      && ["reference_to_video", "image_reference_to_video"].includes(mode);
+      && ["reference_to_video", "image_reference_to_video", "image_to_video"].includes(mode);
     const threePass = miniMaxSettings.render_pass === "three_pass"
       && ["reference_to_video", "image_reference_to_video"].includes(mode);
     if (refmodPipeline && threePass) {
@@ -638,6 +639,20 @@ export function createVideoRender({
       throw new Error(`${sceneDisplayName(segment, sceneIndex)} needs at least one RefMod. Pick a RefMod on a Reference Builder card and map it to this scene.`);
     }
     let imagePaths = refmodPipeline ? [] : miniMaxRenderReferenceImagePaths(segment, mode, options.imagePaths);
+    let i2vLastFramePath = "";
+    if (mode === "image_to_video") {
+      const last = miniMaxI2VLastFrame(segment);
+      if (!last.path && last.data) {
+        const archived = await postJson("/vrgdg/music_builder/archive_scene_image", {
+          project_folder: projectFolder, scene_number: slotNumber, image_data: last.data,
+        });
+        segment.first_last_frame_end_image_path = archived.saved_path;
+        segment.first_last_frame_end_image_data = "";
+        await autoSaveSessionQuiet("MiniMax last frame saved");
+      }
+      i2vLastFramePath = miniMaxI2VFramePaths(segment, imagePaths[0]).last;
+      imagePaths = [imagePaths[0], ...(i2vLastFramePath ? [i2vLastFramePath] : [])];
+    }
     let continuityImageNumber = 0;
     if (continuityInput?.framePath) {
       const continuityKey = mediaPathKey(continuityInput.framePath);
@@ -850,8 +865,7 @@ export function createVideoRender({
         ...(refmodPipeline ? { refmod_references: referencePayload(refmodItems) } : {}),
       };
       if (mode === "image_to_video") {
-        const lastFrame = firstLastFrameEndImageSource(segment) || {};
-        if (lastFrame.path) payload.last_frame_path = lastFrame.path;
+        if (i2vLastFramePath) payload.last_frame_path = i2vLastFramePath;
       }
       if (!builtInAudio && Number.isFinite(sourceDurationSeconds) && sourceDurationSeconds > 0) {
         payload.source_duration_seconds = sourceDurationSeconds;

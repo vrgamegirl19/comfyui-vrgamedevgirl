@@ -482,6 +482,30 @@
             "default": true,
             "type": "boolean"
           },
+          "i2v_pass_profiles": {
+            "default": {},
+            "type": "object"
+          },
+          "i2v_pass_settings_version": {
+            "default": 1,
+            "type": "integer"
+          },
+          "i2v_transition_direction": {
+            "default": "",
+            "type": "string"
+          },
+          "i2v_transition_style": {
+            "default": "natural",
+            "enum": [
+              "natural",
+              "surreal_morph",
+              "dreamlike_dissolve",
+              "environment_transformation",
+              "camera_reveal",
+              "custom"
+            ],
+            "type": "string"
+          },
           "latent_context_frames": {
             "default": 39,
             "enum": [

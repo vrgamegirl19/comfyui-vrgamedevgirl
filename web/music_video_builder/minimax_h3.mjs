@@ -77,10 +77,26 @@ export const MINIMAX_H3_PIPELINE_OPTIONS = [
   { value: "standard", label: "Standard" },
   { value: "refmod", label: "RefMod" },
 ];
+export const MINIMAX_I2V_TRANSITION_OPTIONS = [
+  {value: "natural", label: "Natural movement"},
+  {value: "surreal_morph", label: "Surreal morph"},
+  {value: "dreamlike_dissolve", label: "Dreamlike dissolve"},
+  {value: "environment_transformation", label: "Environment transformation"},
+  {value: "camera_reveal", label: "Camera reveal"},
+  {value: "custom", label: "Custom"},
+];
+export function normalizeMiniMaxI2VTransitionStyle(value) {
+  const style = String(value || "").trim().toLowerCase();
+  return MINIMAX_I2V_TRANSITION_OPTIONS.some(option => option.value === style) ? style : "natural";
+}
 export const DEFAULT_MINIMAX_H3_SETTINGS = {
   pipeline: "standard",
   video_mode: "text_to_video",
   render_pass: "two_pass",
+  i2v_transition_style: "natural",
+  i2v_transition_direction: "",
+  i2v_pass_settings_version: 1,
+  i2v_pass_profiles: {},
   audio_mode: "input_audio",
   continuity_mode: "off",
   continuity_prompt_from_last_frame: false,
@@ -360,14 +376,15 @@ export function isMiniMaxH3LatentContinuationMode(mode) {
   return mode === "latent_continuation_masked";
 }
 
-// Latent Continuation Masked works in every MiniMax mode except Image + Reference 2 Pass, and in every render pass
+// I2V scenes use their own frames; between-scene continuation is unavailable in either image mode.
+// Latent Continuation Masked works in the other MiniMax modes, and in every render pass
 // except 2 Pass Advanced (render_pass "three_pass", which only applies to Reference to Video).
 // Python twin: minimax.scene_inputs.continuity_allowed_for_mode.
 export function isMiniMaxH3ContinuityAllowedForMode(continuityMode, videoMode, renderPass = "single") {
   const continuity = normalizeMiniMaxH3ContinuityMode(continuityMode);
   const mode = normalizeMiniMaxH3Mode(videoMode);
   if (continuity === "latent_continuation_masked") {
-    return mode !== "image_reference_to_video" && !(mode === "reference_to_video" && renderPass === "three_pass");
+    return !["image_to_video", "image_reference_to_video"].includes(mode) && !(mode === "reference_to_video" && renderPass === "three_pass");
   }
   return continuity === "off";
 }
@@ -443,7 +460,7 @@ export function normalizeMiniMaxH3VideoPurpose(value) {
   return MINIMAX_H3_VIDEO_REFERENCE_PURPOSES.some((item) => item.value === clean) ? clean : "continuation";
 }
 
-export function miniMaxInstalledPass2Lora(preset, installed) {
+export function miniMaxInstalledPass2Lora(preset, installed, mode = "reference_to_video") {
   const candidates = Number(preset) === 8 ? [
     "minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
     "minimax_h3_fl2v_lightx2v_turbo_8step_v1.0_resized_avg_rank_24_bf16.safetensors",
@@ -456,6 +473,7 @@ export function miniMaxInstalledPass2Lora(preset, installed) {
     "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors",
   ];
   for (const candidate of candidates) {
+    if (mode === "image_to_video" && candidate.includes("ref2v")) continue;
     const match = installed.find((name) => name.split(/[\\/]/).pop().toLowerCase() === candidate.toLowerCase());
     if (match) return match;
   }
@@ -463,8 +481,9 @@ export function miniMaxInstalledPass2Lora(preset, installed) {
 }
 
 export function selectMiniMaxH3PassSettings(settings, passMode) {
-  const { ref_pass_profiles = {}, ref_pass_mode: _legacyPassMode, ...current } = settings;
-  const profiles = { ...ref_pass_profiles };
+  const { ref_pass_profiles = {}, i2v_pass_profiles = {}, ref_pass_mode: _legacyPassMode, ...current } = settings;
+  const isI2V = normalizeMiniMaxH3Mode(current.video_mode) === "image_to_video";
+  const profiles = { ...(isI2V ? i2v_pass_profiles : ref_pass_profiles) };
   if (profiles.advanced && !profiles.three_pass) profiles.three_pass = profiles.advanced;
   delete profiles.advanced;
   profiles[current.render_pass || "single"] = current;
@@ -472,12 +491,16 @@ export function selectMiniMaxH3PassSettings(settings, passMode) {
     ...current,
     ...(profiles[passMode] || {}),
     // The output resolution is shared by every pass mode, not stored per profile.
+    i2v_transition_style: current.i2v_transition_style,
+    i2v_transition_direction: current.i2v_transition_direction,
     aspect_ratio: current.aspect_ratio,
     resolution_preset: current.resolution_preset,
     megapixels: current.megapixels,
-    video_mode: "reference_to_video",
-    render_pass: passMode,
-    ref_pass_profiles: profiles,
+    video_mode: isI2V ? "image_to_video" : "reference_to_video",
+    render_pass: isI2V && passMode === "three_pass" ? "two_pass" : passMode,
+    i2v_pass_settings_version: 1,
+    ref_pass_profiles: isI2V ? ref_pass_profiles : profiles,
+    i2v_pass_profiles: isI2V ? profiles : i2v_pass_profiles,
   });
 }
 
@@ -531,7 +554,7 @@ export function cloneMiniMaxH3Settings(value = {}) {
   const source = value && typeof value === "object" ? value : {};
   const hasCurrentTwoPassDefaults = Number(source.two_pass_defaults_version || 0) >= 1;
   const hasCurrentAdvancedTwoPassDefaults = Number(source.advanced_two_pass_defaults_version || 0) >= 4;
-  const renderPass = ["single", "two_pass", "three_pass"].includes(String(source.render_pass || "").trim().toLowerCase())
+  let renderPass = ["single", "two_pass", "three_pass"].includes(String(source.render_pass || "").trim().toLowerCase())
     ? String(source.render_pass).trim().toLowerCase()
     : ["single", "two_pass", "advanced"].includes(String(source.ref_pass_mode || "").trim().toLowerCase())
       ? (source.ref_pass_mode === "advanced" ? "three_pass" : source.ref_pass_mode)
@@ -539,6 +562,10 @@ export function cloneMiniMaxH3Settings(value = {}) {
         ? "two_pass"
         : DEFAULT_MINIMAX_H3_SETTINGS.render_pass;
   const pipeline = normalizeMiniMaxH3Pipeline(source.pipeline);
+  const isI2V = pipeline !== "refmod" && normalizeMiniMaxH3Mode(source.video_mode || source.mode) === "image_to_video";
+  // I2V previously ignored render_pass, even when a save carried the global two-pass default.
+  if (isI2V && Number(source.i2v_pass_settings_version || 0) < 1) renderPass = "single";
+  if (isI2V && renderPass === "three_pass") renderPass = "two_pass";
   const resolution = resolveMiniMaxH3Resolution(source, renderPass);
   const sourceLoras = Array.isArray(source.loras)
     ? source.loras
@@ -575,6 +602,8 @@ export function cloneMiniMaxH3Settings(value = {}) {
     // Pre-existing saves never had render_pass; Image + Reference 2 Pass was always a two-pass
     // workflow by mode alone, so an absent field must still mean two_pass for that mode.
     render_pass: pipeline === "refmod" && renderPass === "three_pass" ? "two_pass" : renderPass,
+    i2v_transition_style: normalizeMiniMaxI2VTransitionStyle(source.i2v_transition_style),
+    i2v_transition_direction: String(source.i2v_transition_direction || "").trim(),
     audio_mode: normalizeMiniMaxH3AudioMode(source.audio_mode || source.audioMode || DEFAULT_MINIMAX_H3_SETTINGS.audio_mode),
     continuity_mode: normalizeMiniMaxH3ContinuityMode(source.continuity_mode || source.continuityMode || DEFAULT_MINIMAX_H3_SETTINGS.continuity_mode),
     continuity_prompt_from_last_frame: Boolean(source.continuity_prompt_from_last_frame ?? source.continuityPromptFromLastFrame ?? DEFAULT_MINIMAX_H3_SETTINGS.continuity_prompt_from_last_frame),
@@ -583,7 +612,15 @@ export function cloneMiniMaxH3Settings(value = {}) {
     latent_context_frames: [39, 90, 141, 192].includes(Number(source.latent_context_frames ?? source.latentContextFrames))
       ? Number(source.latent_context_frames ?? source.latentContextFrames)
       : DEFAULT_MINIMAX_H3_SETTINGS.latent_context_frames,
-    diffusion_model_name: String(source.diffusion_model_name || DEFAULT_MINIMAX_H3_SETTINGS.diffusion_model_name),
+    diffusion_model_name: isI2V && (!source.diffusion_model_name || source.diffusion_model_name === DEFAULT_MINIMAX_H3_SETTINGS.diffusion_model_name)
+      ? "minimax_h3_fl2va_pruned_int8_convrot.safetensors"
+      : String(source.diffusion_model_name || DEFAULT_MINIMAX_H3_SETTINGS.diffusion_model_name),
+    two_pass_lora_name: isI2V && (!source.two_pass_lora_name || source.two_pass_lora_name === DEFAULT_MINIMAX_H3_SETTINGS.two_pass_lora_name)
+      ? "minimax_h3_fl2v_turbo_4step_v1.1_768p_comfyui_bf16.safetensors"
+      : String(source.two_pass_lora_name || DEFAULT_MINIMAX_H3_SETTINGS.two_pass_lora_name),
+    i2v_pass_settings_version: 1,
+    i2v_pass_profiles: source.i2v_pass_profiles && typeof source.i2v_pass_profiles === "object" && !Array.isArray(source.i2v_pass_profiles)
+      ? source.i2v_pass_profiles : {},
     clip_name: String(source.clip_name || DEFAULT_MINIMAX_H3_SETTINGS.clip_name),
     video_vae_name: String(source.video_vae_name || DEFAULT_MINIMAX_H3_SETTINGS.video_vae_name),
     audio_vae_name: String(source.audio_vae_name || DEFAULT_MINIMAX_H3_SETTINGS.audio_vae_name),

@@ -53,7 +53,7 @@ def load_two_pass_builder(sparse_method="Sol-Attn (adaptive tau)"):
         "json": json,
         "os": os,
         "_load_api_template": lambda _path: (str(TEMPLATE_PATH), copy.deepcopy(template)),
-        "_minimax_h3_2pass_api_template_path": lambda: str(TEMPLATE_PATH),
+        "_minimax_h3_2pass_api_template_path": lambda _mode="reference_to_video": str(TEMPLATE_PATH),
         "_first_payload_value": first_value,
         "_minimax_h3_effective_warmup_frames": lambda payload: first_value(payload, "warmup_frames", "pre_frames", default=0),
         "_minimax_h3_cooldown_frames": lambda payload: first_value(payload, "cooldown_frames", "tail_loss_frames", default=0),

@@ -39,12 +39,14 @@ def _minimax_h3_api_template_path():
     )
 
 
-def _minimax_h3_2pass_api_template_path():
+def _minimax_h3_2pass_api_template_path(video_mode: str = "reference_to_video") -> str:
     return os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
         "Workflows",
         "UsedForUIDoNotTouch",
-        "minimax_audio_driven_builder_latent_upscale_2pass_api.json",
+        "minimax_i2v_audio_driven_builder_latent_upscale_2pass_api.json"
+        if video_mode == "image_to_video"
+        else "minimax_audio_driven_builder_latent_upscale_2pass_api.json",
     )
 
 

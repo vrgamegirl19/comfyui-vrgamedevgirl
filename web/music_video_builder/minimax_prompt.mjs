@@ -1,3 +1,5 @@
+import { miniMaxI2VTransitionPrompt } from "./minimax_i2v_transition.mjs";
+import { miniMaxI2VFrameMode, miniMaxI2VLastFrame } from "./minimax_keyframe_state.mjs";
 import {
   normalizeStoryboardCustomCameraFlowSequence,
   STORYBOARD_CAMERA_FLOW_PRESETS,
@@ -1176,13 +1178,18 @@ export function createMiniMaxPrompt({
       const continuationDirection = miniMaxH3ContinuationDirectionText(segment);
       if (continuationDirection) parts.push(continuationDirection);
     }
+    const i2vTransition = miniMaxI2VTransitionPrompt(segment, mode, settings);
+    if (i2vTransition) parts.push(i2vTransition);
     return parts.join("\n\n");
   }
 
   function miniMaxH3ReferenceAssignmentLines(segment, mode = miniMaxH3ModeForSegment(segment)) {
     const normalizedMode = normalizeMiniMaxH3Mode(mode);
     if (normalizedMode === "image_to_video") {
-      return ["<Picture 1>: exact start frame and authoritative opening composition, character identity, clothing, location, lighting, and visual-state anchor."];
+      const lines = ["<Picture 1>: exact start frame and authoritative opening composition, character identity, clothing, location, lighting, and visual-state anchor."];
+      const last = miniMaxI2VLastFrame(segment);
+      if (last.path || last.data) lines.push("<Picture 2>: exact last frame of this scene. Reach its final composition through one continuous movement from Picture 1. No previous-scene continuation.");
+      return lines;
     }
     if (normalizedMode === "image_reference_to_video") {
       return miniMaxH3ImageReferencePromptItems(segment).map((item, index) => {
@@ -1507,6 +1514,10 @@ export function createMiniMaxPrompt({
       : (normalizedMode === "reference_to_video" || normalizedMode === "video_to_video")
         ? miniMaxOrderedImageReferenceItemsForSegment(segment, normalizedMode)
         : [];
+    if (normalizedMode === "image_to_video") {
+      const last = miniMaxI2VLastFrame(segment);
+      if (last.path || last.data) pictureItems.push({kind: "end_frame", label: "ending frame", description: "the exact last frame of this scene"});
+    }
     let subjectNumber = 0;
     const pictureDefinitions = [];
     const subjectDefinitions = [];
@@ -2079,6 +2090,8 @@ export function createMiniMaxPrompt({
 
     if (mode === "image_to_video") {
       parts.push("Ordered image assignment:\nImage 1: exact start frame and authoritative opening composition, character identity, clothing, location, lighting, and visual-state anchor.");
+      const last = miniMaxI2VLastFrame(segment);
+      if (last.path || last.data) parts.push("Image 2: the exact last frame of this scene. Describe one continuous movement from Image 1 to Image 2, reaching Image 2 at the end. Both images belong to this scene; do not continue a previous scene.");
     }
     if (mode === "reference_to_video" || mode === "image_reference_to_video" || mode === "video_to_video") {
       const items = mode === "image_reference_to_video"
@@ -2148,6 +2161,8 @@ export function createMiniMaxPrompt({
         });
       if (assignments.length) parts.push(`Ordered video assignments (exact connected order):\n${assignments.join("\n")}`);
     }
+    const i2vTransition = miniMaxI2VTransitionPrompt(segment, mode, settings);
+    if (i2vTransition) parts.push(i2vTransition);
     return parts.join("\n\n");
   }
 
@@ -2156,7 +2171,10 @@ export function createMiniMaxPrompt({
       const source = segmentImageSource(segment);
       const path = String(source?.path || selectedSegmentImagePath(segment) || "").trim();
       const data = String(source?.data || "").trim();
-      return path || data ? [{ path, data }] : [];
+      const last = miniMaxI2VLastFrame(segment);
+      if (miniMaxI2VFrameMode(segment) === "flf" && !(path || data)) throw new Error("First–Last Frame needs a first-frame image before creating its prompt.");
+      if (miniMaxI2VFrameMode(segment) === "flf" && !(last.path || last.data)) throw new Error("First–Last Frame needs a last-frame image before creating its prompt.");
+      return [...(path || data ? [{ path, data }] : []), ...(last.path || last.data ? [last] : [])];
     }
     if (mode === "image_reference_to_video") {
       return miniMaxH3ImageReferencePromptItems(segment)

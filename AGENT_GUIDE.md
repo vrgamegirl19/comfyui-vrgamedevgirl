@@ -279,6 +279,7 @@ The `runner` package is the code generation and execution engine that converts p
 
 #### [runner/minimax_inputs.py](runner/minimax_inputs.py)
 - **Purpose**: Input parsing, validation, and token/frame duration alignment specifically for MiniMax H3 executions.
+- **I2V 2 Pass**: selects `minimax_i2v_audio_driven_builder_latent_upscale_2pass_api.json` in `Workflows/UsedForUIDoNotTouch`. The shared two-pass compiler applies the same video settings as Reference to Video, using FL2VA/FL2V model and LoRA choices and separate first-frame conditioning at each pass's resolution. Input audio only; 2 Pass Advanced is not offered for I2V.
 
 #### [runner/minimax_patches.py](runner/minimax_patches.py)
 - **Purpose**: Injects optional patches (such as Turbo LoRA or camera motion control weights) into MiniMax H3 model nodes.
@@ -348,6 +349,13 @@ The `llm` package provides unified text generation, prompt rewriting, concept ge
 ### MiniMax H3 Video Engine (`minimax/`)
 
 The `minimax` package implements high-performance conditioning, latent management, and decoding nodes for the MiniMax H3 video architecture.
+
+- `minimax/vae_decode.py` owns batched spatial VAE decoding; `H3FastVAEDecode` delegates to it. Its seam blending follows the installed stock VAE's policy, including newer ComfyUI versions that blend already-composited overlap strips.
+- I2V stores its Single/2 Pass caches in `i2v_pass_profiles`, separate from `ref_pass_profiles`. `i2v_pass_settings_version` migrates older I2V saves to Single because their saved `render_pass` was previously ignored. Keep these migrations and mode-specific defaults synchronized in `minimax_h3.mjs` and `minimax/settings_payload.py`.
+- Image to Video and Image + Reference use per-scene frames and do not support between-scene continuity. Hide the continuity settings section in these modes; show continuation direction/timing only while final-frame prompt continuation is active. Keep frontend eligibility and `minimax/scene_inputs.py` synchronized, and ignore saved continuity modes when building image-mode render payloads.
+- FLF transition style and optional direction are shared MiniMax settings (`i2v_transition_style`, `i2v_transition_direction`), inherited globally unless the existing scene settings lock is enabled. `minimax_h3.mjs` owns presets/default normalization; `minimax_i2v_transition.mjs` owns creative prompt guidance; keyframe UI controls save through the existing panel and event modules. Normal I2V ignores these settings. Changing them requires regenerating Create Prompt and does not change frame conditioning or sampler settings. Transition settings stay shared when switching Single / 2 Pass.
+- I2V Normal / FLF is stored per scene as `minimax_h3_i2v_frame_mode`; the selected scene image is the first frame and `first_last_frame_end_image_path` is its independent last frame. Legacy last images imply FLF until an explicit mode is saved. `minimax_keyframe_state.mjs` owns eligibility/validation, and `minimax_keyframes.mjs` owns the pickers/previews. Existing image generators and scene image history supply frame choices. Both passes accept these same inputs. `runner/minimax_keyframes.py` inserts `VRGDG_MiniMaxH3KeyframeTiming`, whose service in `minimax/keyframes.py` aligns conditioning to the range retained by exact scene trimming without copying latent tensors. Normal ignores saved last images; FLF requires both frames. No previous-scene frame resolution is used.
+- MiniMax I2V FLF uses the existing A → B timeline thumbnail layout. Eligibility uses the effective MiniMax mode for that scene and `miniMaxI2VFLFEnabled`; its thumbnail sources are the selected scene image and explicit last image, never LTX chaining resolvers. Keyframe edits repaint timeline segments directly as well as the scene list.
 
 #### [minimax/latent_manager.py](minimax/latent_manager.py)
 - **Purpose**: Serialized latent storage and frame-token math for MiniMax H3. Eliminates pixel-space VAE re-encoding drift across chained scene passes.

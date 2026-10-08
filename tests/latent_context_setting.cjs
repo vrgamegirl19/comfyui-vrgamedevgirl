@@ -23,6 +23,7 @@ function fixture() {
     context[name] = { ...control(), input: control(), dataset: {} };
   }
   Object.assign(context, {
+    miniMaxKeyframes: {transitionStyle: {...control(), value: "natural"}, transitionDirection: control()},
     wizardVideoSettings: { global: false },
     DEFAULT_MINIMAX_H3_SETTINGS: { latent_context_frames: 22 },
     miniMaxLoraSlots: [], miniMaxAccelerationControls: [], twoPassControls: [], advancedTwoPassControls: [],
@@ -36,7 +37,8 @@ function fixture() {
   vm.createContext(context);
   vm.runInContext(getter + saver
     + section('  const persistMiniMaxSettings =', '  for (const picker of [miniMaxDiffusionModelPicker')
-    + bindings, context);
+    + bindings
+    + section('  for (const control of [miniMaxKeyframes.transitionStyle', '  miniMaxUseLoras.input.addEventListener'), context);
   return {
     context,
     choose(value) { context.miniMaxLatentContextFrames.value = String(value); context.miniMaxLatentContextFrames.events.change(); },
@@ -78,4 +80,37 @@ test('saved project and scene settings survive serialization', () => {
   f.context.selected = { id: 'loaded', minimax_h3_latent_context_frames: 22 };
   assert.equal(f.display(), '56');
   assert.equal(f.renderValue(), 56);
+});
+
+
+test('transition event handlers save globally, lock overrides, and reload without losing either scope', () => {
+  const f = fixture();
+  const c = f.context;
+  c.miniMaxKeyframes.transitionStyle.value = 'surreal_morph';
+  c.miniMaxKeyframes.transitionDirection.value = 'petals become stars';
+  c.miniMaxKeyframes.transitionStyle.events.change();
+  assert.equal(c.saved, 1);
+  assert.equal(c.state.miniMaxH3Settings.i2v_transition_style, 'surreal_morph');
+  assert.equal(c.selected.minimax_h3_settings, undefined);
+  c.selected = {id:'locked',use_scene_minimax_h3_settings:true,minimax_h3_settings:{}};
+  c.miniMaxKeyframes.transitionStyle.value = 'camera_reveal';
+  c.miniMaxKeyframes.transitionDirection.value = 'orbit right';
+  c.miniMaxKeyframes.transitionDirection.events.change();
+  assert.equal(c.saved, 2);
+  c.state = JSON.parse(JSON.stringify(c.state));
+  c.selected = JSON.parse(JSON.stringify(c.selected));
+  assert.equal(c.miniMaxH3SettingsForSegment(c.selected).i2v_transition_direction, 'orbit right');
+  assert.equal(c.state.miniMaxH3Settings.i2v_transition_direction, 'petals become stars');
+  c.selected.use_scene_minimax_h3_settings = false;
+  assert.equal(c.miniMaxH3SettingsForSegment(c.selected).i2v_transition_style, 'surreal_morph');
+});
+
+test('global wizard transition edits target project settings even with a locked selected scene', () => {
+  const c = fixture().context;
+  c.wizardVideoSettings.global = true;
+  c.selected = {id:'locked',use_scene_minimax_h3_settings:true,minimax_h3_settings:{i2v_transition_style:'custom'}};
+  c.miniMaxKeyframes.transitionStyle.value = 'dreamlike_dissolve';
+  c.miniMaxKeyframes.transitionStyle.events.change();
+  assert.equal(c.state.miniMaxH3Settings.i2v_transition_style, 'dreamlike_dissolve');
+  assert.equal(c.selected.minimax_h3_settings.i2v_transition_style, 'custom');
 });

@@ -286,6 +286,10 @@ def get_project_scenes(
             "i2v_prompt": i2v,
             "minimax_h3_prompt": minimax_prompt,
             "minimax_h3_continuation_direction": str(segment.get("minimax_h3_continuation_direction") or "").strip(),
+            "minimax_h3_i2v_frame_mode": str(segment.get("minimax_h3_i2v_frame_mode") or (
+                "flf" if segment.get("first_last_frame_end_image_path") else "normal"
+            )),
+            "first_last_frame_end_image_path": str(segment.get("first_last_frame_end_image_path") or ""),
             "minimax_h3_continuation_start_seconds": segment.get("minimax_h3_continuation_start_seconds"),
             "enhanced_prompt": str(segment.get("enhance_prompt") or "").strip(),
             "no_character_present": bool(segment.get("no_character_present")),
