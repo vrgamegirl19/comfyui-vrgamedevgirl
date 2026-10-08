@@ -21,6 +21,10 @@ import { pickPath } from "./project_setup.mjs";
 import { openRefModsStudio } from "./refmods_studio.mjs";
 import { showOverlayTrackHelp } from "./timeline_actions.mjs";
 
+// The RefMods Studio button is made in buildProjectControls, before the Builder's LLM runner exists, so wireToolbar hands
+// the runner settings over here.
+let currentRunnerPayload = null;
+
 export function wireToolbar({
   activeSegment, addOverlaySegment, addOverlaySegmentButton, addSegment, addSegmentButton,
   addTimelineMarkerButton, addTimelineMarkerFromSelection, applyBuilderFullscreen, autoBuildButton,
@@ -57,6 +61,7 @@ export function wireToolbar({
   updateV10HintButton, updateWhatsNewAction, videoTypeSelect, whatsNewMenuButton, wizardBetaButton,
   wizardButton, zEnhanceAllButton, zEnhanceAllToolButton, zImageAllButton,
 }) {
+  currentRunnerPayload = textGemmaRunnerPayload;
   menuButton.onclick = (event) => {
     event.stopPropagation();
     menuDropdown.style.display = menuDropdown.style.display === "flex" ? "none" : "flex";
@@ -440,7 +445,7 @@ export function buildTopbar({
   const storyboardBuilderButton = makeButton("Storyboard Builder");
   const fluxReferenceBuilderButton = makeButton("Reference Builder");
   const refModsStudioButton = makeButton("RefMods Studio");
-  refModsStudioButton.onclick = () => openRefModsStudio({ runnerPayload: textGemmaRunnerPayload });
+  refModsStudioButton.onclick = () => openRefModsStudio({ runnerPayload: () => currentRunnerPayload?.() });
   const lyricMapperButton = makeButton("Line Mapping");
   const sendToPromptCreatorButton = makeButton("Send To Prompt Creator");
   const promptOptionsButton = makeButton("Prompt Options");
