@@ -59,6 +59,7 @@ def validate_references(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
         checked.append({
             "name": name, "strength": strength, "kind": entry["kind"], "tokens": entry["tokens"],
             "display_name": str(reference.get("display_name") or name), "category": str(reference.get("category") or ""),
+            "prompt_label": str(reference.get("label") or "").strip(),
         })
     return checked
 
@@ -161,6 +162,10 @@ def apply_refmod_pipeline(prompt: Dict[str, Any], payload: Dict[str, Any]) -> Di
     if report["over_limit"]:
         print(f"[VRGDG RefMod] Scene uses {report['total']} RefMod tokens (above {report['limit']}).")
     text = str(payload.get("prompt") or "")
+    relabelled = _relabel_prompt(prompt, prompt_node, references, labels)
+    if relabelled:
+        text = prompt[prompt_node[0]]["inputs"]["value"]
+        print(f"[VRGDG RefMod] Prompt labels updated to match the saved RefMods: {relabelled}")
     return {
         "references": [{"name": item["name"], "strength": item["strength"], "kind": item["kind"], "tokens": item["tokens"]} for item in references],
         "labels": labels,
@@ -170,4 +175,29 @@ def apply_refmod_pipeline(prompt: Dict[str, Any], payload: Dict[str, Any]) -> Di
         "token_report": report,
         "scene_audio_mod": bool(with_audio),
         "guiders_rewired": rewired,
+        "labels_relabelled": relabelled,
     }
+
+
+def _relabel_prompt(prompt: Dict[str, Any], prompt_node: List[Any], references: List[Dict[str, Any]], labels: List[str]) -> Dict[str, str]:
+    """Swap labels the prompt was written with for the labels the render gives, when they differ.
+
+    The prompt is written with the kind a card saved when its RefMod was picked. If the file was saved again since
+    (one image became several), ``<Picture 1>`` is now ``<Video 1>`` and the prompt would name the wrong reference.
+    Returns ``{old: new}`` for every label it changed.
+    """
+    mapping = {
+        item["prompt_label"]: label for item, label in zip(references, labels)
+        if item.get("prompt_label") and label and item["prompt_label"] != label
+    }
+    node = prompt.get(str(prompt_node[0])) or {}
+    value = node.get("inputs", {}).get("value")
+    if not mapping or not isinstance(value, str):
+        return {}
+    # Two steps, so swapping <Picture 1> and <Video 1> does not turn both into the same label.
+    for index, old in enumerate(mapping):
+        value = value.replace(old, f"\x00refmod{index}\x00")
+    for index, new in enumerate(mapping.values()):
+        value = value.replace(f"\x00refmod{index}\x00", new)
+    node["inputs"]["value"] = value
+    return mapping

@@ -88,6 +88,12 @@ export function orderItems(items) {
   return keyed.map((entry) => entry.item);
 }
 
+// The subject cards a scene sends: none when the scene is marked "no character present", even though the standard
+// subject fallback still picks the project's first character for it. Twin of scene_subject_cards in refmod_scene.py.
+export function sceneSubjectCards(scene, subjectCards) {
+  return scene?.no_character_present ? [] : (subjectCards || []);
+}
+
 // Turn the cards a scene uses into ordered RefMod items.
 //   subjectCards: the subject cards the scene maps to, in map order
 //   extraCards:   extras sent to MiniMax

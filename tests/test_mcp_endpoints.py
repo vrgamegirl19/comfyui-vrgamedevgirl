@@ -119,5 +119,49 @@ class EndpointToolsTests(unittest.TestCase):
             self.assertTrue(res["isError"], bad)
 
 
+class ToolDescriptionTests(unittest.TestCase):
+    """What an agent reads about a tool: ids that say where to get them, body fields as schema, and safety annotations."""
+
+    def test_path_ids_and_body_fields_are_described_in_the_schema(self):
+        schema = tools.ALL_TOOLS["api_put_scenes_minimax_references"].input_schema
+        self.assertIn("scene_list", schema["properties"]["scene_id"]["description"])
+        body = schema["properties"]["body"]
+        self.assertEqual(sorted(body["properties"]), ["automatic", "keys"])
+        self.assertIn("description", body["properties"]["keys"])
+        self.assertTrue(body["additionalProperties"])  # a hint must never make a valid call fail a client's schema check
+        self.assertNotIn("type", body["properties"]["keys"])
+
+    def test_query_parameters_are_listed_as_properties(self):
+        query = tools.ALL_TOOLS["api_get_jobs"].input_schema["properties"]["query"]
+        self.assertEqual(sorted(query["properties"]), ["project_id", "status", "type"])
+
+    def test_an_endpoint_without_known_body_fields_points_to_the_docs(self):
+        body = tools.ALL_TOOLS["api_post_scenes_video_trim"].input_schema["properties"]["body"]
+        self.assertNotIn("properties", body)
+        self.assertIn("vrgdg://docs/endpoints", body["description"])
+
+    def test_every_tool_carries_annotations_in_the_tool_list(self):
+        for name, tool in tools.ALL_TOOLS.items():
+            with self.subTest(tool=name):
+                self.assertIn("annotations", tool.to_mcp_dict())
+
+    def test_methods_decide_the_hints_of_generated_tools(self):
+        def hints(name):
+            return tools.ALL_TOOLS[name].to_mcp_dict()["annotations"]
+        self.assertTrue(hints("api_get_jobs")["readOnlyHint"])
+        self.assertFalse(hints("api_put_scenes_minimax_references")["destructiveHint"])
+        self.assertTrue(hints("api_put_scenes_minimax_references")["idempotentHint"])
+        self.assertTrue(hints("api_delete_scenes_video")["destructiveHint"])
+        self.assertTrue(hints("api_post_scenes_video_trim")["destructiveHint"])
+        self.assertTrue(hints("api_request")["destructiveHint"])
+
+    def test_hand_written_tools_that_read_are_marked_and_the_ones_that_delete_are_too(self):
+        for name in ("project_get", "scene_list", "job_wait"):
+            self.assertTrue(tools.ALL_TOOLS[name].annotations["readOnlyHint"], name)
+        for name in ("project_delete", "scene_delete"):
+            self.assertTrue(tools.ALL_TOOLS[name].annotations["destructiveHint"], name)
+        self.assertFalse(tools.ALL_TOOLS["scene_update"].annotations["readOnlyHint"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -97,11 +97,21 @@ export function buildCastGuard(allSubjects, castSubjects, extraNames = []) {
 const matcher = (source, flags = "gi") => new RegExp(`(?<![A-Za-z'])(?:${source})(?![A-Za-z])`, flags);
 const sources = (guard, invented) => [guard?.source, invented ? guard?.inventedSource : ""].filter(Boolean);
 
+// Sung lyrics and dialogue are not scene wording: "They talk about us" never adds a person. The text inside quotes
+// (escaped quotes included) is blanked to "x" at the same length, so no word in it matches and no sentence ends in it.
+// "both" before a body part ("both hands") is one person's movement, not a second person.
+const BODY_PARTS = "hands|arms|eyes|feet|legs|fists|palms|shoulders|sides|fingers|knees|hips|elbows|wrists|ears|cheeks|lips";
+function guardView(text) {
+  return String(text || "")
+    .replace(/(["“])((?:\\.|[^"”\\])*)(["”])/g, (_match, open, inner, close) => `${open}${"x".repeat(inner.length)}${close}`)
+    .replace(new RegExp(`\\bboth(?=\\s+(?:${BODY_PARTS})\\b)`, "gi"), (word) => "x".repeat(word.length));
+}
+
 export function castLeaks(text, guard, invented = true) {
   if (!guard || !text) return [];
   const found = new Set();
   for (const source of sources(guard, invented)) {
-    for (const match of String(text).matchAll(matcher(source))) found.add(match[0].toLowerCase());
+    for (const match of guardView(text).matchAll(matcher(source))) found.add(match[0].toLowerCase());
   }
   return [...found].sort();
 }
@@ -111,7 +121,18 @@ export function stripCastLeaks(text, guard, invented = true) {
   if (!tests.length || !text) return String(text || "").trim();
   const lines = String(text).split("\n").map((line) => {
     if (!line.trim()) return "";
-    return line.trim().split(/(?<=[.!?])\s+/).filter((sentence) => !tests.some((test) => test.test(sentence))).join(" ").trim();
+    const original = line.trim();
+    const view = guardView(original);
+    // Split on the blanked copy so a "?" inside a quoted lyric never ends a sentence; slice the original at the same spots.
+    const kept = [];
+    let start = 0;
+    for (const boundary of view.matchAll(/[.!?]+(?=\s|$)/g)) {
+      const end = boundary.index + boundary[0].length;
+      if (!tests.some((test) => test.test(view.slice(start, end)))) kept.push(original.slice(start, end).trim());
+      start = end;
+    }
+    if (start < original.length && !tests.some((test) => test.test(view.slice(start)))) kept.push(original.slice(start).trim());
+    return kept.filter(Boolean).join(" ").trim();
   });
   return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }

@@ -75,7 +75,7 @@ DESCRIPTIONS: Dict[str, str] = {
     # --- Projects --------------------------------------------------------------------------
     "GET /projects": "List projects found in the allowed project roots. `root` limits the search to one root.",
     "POST /projects": "Create a project: folder, empty session seeded with your saved model defaults. Body: `name`, optional `template_from`.",
-    "GET /projects/{pid}": "The project with its settings, scenes, audio, story and references. `include` picks some of those groups and/or top-level session keys by name (e.g. `audio_path`, `detected_tempo_bpm`, `flux_reference_builder`; API keys come back blank). An unknown name is a 400 that lists it.",
+    "GET /projects/{pid}": "The project with its settings, scenes, audio, story and references. `include` picks some of those groups and/or top-level session keys by name (e.g. `audio_path`, `detected_tempo_bpm`, `flux_reference_builder`; API keys come back blank). A Builder session key the project has not saved yet comes back empty (`{}` for `flux_reference_builder`, `builder_story_layer` and `builder_storyboard_defaults`, otherwise `null`). A name that is not a Builder session key is a 400 that lists it.",
     "DELETE /projects/{pid}": "Delete a project folder from disk. Needs `confirm` equal to the project id.",
     "POST /projects/{pid}/duplicate": "Copy a project to `new_name`. `options` chooses what to keep (scenes, mappings, notes, prompts, media).",
     "POST /projects/{pid}/export": "Build a zip of the project for backup or sharing.",

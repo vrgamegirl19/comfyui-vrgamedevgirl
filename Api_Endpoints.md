@@ -49,7 +49,7 @@ or its 1-based number.
 | `GET` | `/projects` | List projects found in the allowed project roots. `root` limits the search to one root. _(query: `root`)_ |
 | `POST` | `/projects` | Create a project: folder, empty session seeded with your saved model defaults. Body: `name`, optional `template_from`. _(body: `name`, `template_from`)_ |
 | `DELETE` | `/projects/{pid}` | Delete a project folder from disk. Needs `confirm` equal to the project id. _(query: `confirm`)_ |
-| `GET` | `/projects/{pid}` | The project with its settings, scenes, audio, story and references. `include` picks some of those groups and/or top-level session keys by name (e.g. `audio_path`, `detected_tempo_bpm`, `flux_reference_builder`; API keys come back blank). An unknown name is a 400 that lists it. _(query: `include`)_ |
+| `GET` | `/projects/{pid}` | The project with its settings, scenes, audio, story and references. `include` picks some of those groups and/or top-level session keys by name (e.g. `audio_path`, `detected_tempo_bpm`, `flux_reference_builder`; API keys come back blank). A Builder session key the project has not saved yet comes back empty (`{}` for `flux_reference_builder`, `builder_story_layer` and `builder_storyboard_defaults`, otherwise `null`). A name that is not a Builder session key is a 400 that lists it. _(query: `include`)_ |
 | `GET` | `/projects/{pid}/assets` | Files in the project folder: images, videos, thumbnails, audio and final videos. |
 | `POST` | `/projects/{pid}/duplicate` | Copy a project to `new_name`. `options` chooses what to keep (scenes, mappings, notes, prompts, media). _(body: `new_name`, `options`)_ |
 | `POST` | `/projects/{pid}/export` | Build a zip of the project for backup or sharing. |
@@ -120,7 +120,7 @@ or its 1-based number.
 |---|---|---|
 | `GET` | `/projects/{pid}/story` | The saved story layer: idea, arc, brief. |
 | `PUT` | `/projects/{pid}/story` | Replace the saved story layer. _(If-Match)_ |
-| `PUT` | `/projects/{pid}/story/settings` | Save the Storyboard scene defaults (`defaults`: every key the Builder saves in `builder_storyboard_defaults`, e.g. video style, camera flow, motion speeds, cut frequency, short film planning, temporal and FX settings, plus `story_arc_detail`) and the story fields (`story`: every key of `builder_story_layer`, e.g. `enabled`, idea, strength, world style). |
+| `PUT` | `/projects/{pid}/story/settings` | Save the Storyboard scene defaults (`defaults`: every key the Builder saves in `builder_storyboard_defaults`, e.g. video style, camera flow, motion speeds, cut frequency, short film planning, temporal and FX settings, plus `story_arc_detail`) and the story fields (`story`: every key of `builder_story_layer`, e.g. `enabled`, idea, strength, world style). _(If-Match)_ |
 | `POST` | `/projects/{pid}/story/{step}` | Write a story step with the project's LLM. `step` is `arc` (from the story idea), `brief` or `beats` (a beat per scene without one; `replace_existing`, `scene_ids`, `limit`). Each step also updates the Storyboard Builder's saved copy. _(**job**)_ |
 
 ### Prompts

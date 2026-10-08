@@ -22,6 +22,66 @@ _PARAM = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
 _ARG_NAMES = {"pid": "project_id", "sid": "scene_id", "rid": "reference_id"}
 
 
+# What an agent needs to know about the arguments the endpoints share. Only wording, never a type: the route decides what
+# it accepts, so a hint here cannot make a valid call fail a client's schema check.
+_ARG_HINTS = {
+    "project_id": "The project's id (its folder name). Get it from project_list.",
+    "scene_id": "The scene's id, e.g. seg_1. Get it from scene_list.",
+    "reference_id": "The reference card's id. Get it from references_get.",
+    "job_id": "A job id returned by a call that runs as a job.",
+    "id": "The id from the path.",
+    "name": "The name from the path (a preset or file name).",
+    "field": "Which prompt field to write, e.g. t2i_prompt or i2v_prompt.",
+    "kind": "The reference group named in the path, e.g. subjects or locations.",
+    "n": "The number from the path (an anchor or run index).",
+}
+_BODY_HINTS = {
+    "keys": "Reference keys to use, as listed by the matching GET (`available` / `selected`).",
+    "automatic": "true lets the Builder choose the references itself; false uses `keys`.",
+    "prompt": "The prompt text.",
+    "mode": "The MiniMax H3 mode, e.g. text_to_video, image_to_video, reference_to_video.",
+    "save": "true stores the result on the scene; false only returns it.",
+    "shots": "The shot list to assemble, in order.",
+    "origin": "Where the text came from, e.g. llm or manual.",
+    "beats": "Beat times in seconds, ascending.",
+    "tempo_bpm": "Tempo in beats per minute.",
+    "offset_seconds": "Seconds to shift the beat grid by.",
+    "scope": "Which scenes to touch, e.g. selected or all.",
+    "edge": "Which scene edge to snap, start or end.",
+    "settings": "The settings object to save.",
+    "provider": "The LLM provider name.",
+    "source_video_path": "Path of the rendered video to take the frame from.",
+    "run_index": "Which face-fix run to use.",
+    "order": "Which anchor, by order.",
+}
+_QUERY_HINTS = {
+    "project_id": "Only this project.",
+    "status": "Only jobs in this status, e.g. running, queued, done, error.",
+    "type": "Only jobs of this type.",
+    "since": "Return log lines after this position.",
+    "include": "Comma-separated groups and/or top-level session keys.",
+    "peaks": "How many waveform points to return.",
+    "provider": "The LLM provider name.",
+    "kind": "Which prompt context to return.",
+    "folder": "RefMod folder to list.",
+}
+# Calls that overwrite or remove something that cannot be brought back from the tool result.
+_DESTRUCTIVE_POSTS = ("/minimax/cleanup", "/llm/unload", "/video/trim")
+
+
+def _annotations(method: str, path: str) -> Dict[str, Any]:
+    """MCP tool annotations from the method: GET reads, DELETE removes, PUT sets, POST changes (idempotent only for PUT)."""
+    if method == "GET":
+        return {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
+    destructive = method == "DELETE" or any(path.endswith(tail) for tail in _DESTRUCTIVE_POSTS)
+    return {
+        "readOnlyHint": False,
+        "destructiveHint": destructive,
+        "idempotentHint": method in ("PUT", "DELETE"),
+        "openWorldHint": False,
+    }
+
+
 def _normalize(path: str) -> str:
     return _PARAM.sub("{}", path.split("?")[0])
 
@@ -98,18 +158,31 @@ def _unique_names(endpoints: List[Dict[str, Any]], taken: Set[str]) -> Dict[int,
 def _build_tool(endpoint: Dict[str, Any], name: str) -> ToolDefinition:
     method, path = endpoint["method"], endpoint["path"]
     arg_for = {param: _arg_name(param, path) for param in endpoint["path_params"]}
-    properties: Dict[str, Any] = {arg: {"type": "string"} for arg in arg_for.values()}
+    properties: Dict[str, Any] = {
+        arg: ({"type": "string", "description": _ARG_HINTS[arg]} if arg in _ARG_HINTS else {"type": "string"})
+        for arg in arg_for.values()
+    }
     required = list(arg_for.values())
     if method in ("POST", "PUT", "PATCH", "DELETE"):
-        keys = endpoint["body_keys"]
-        properties["body"] = {
+        # The ids in the path are arguments of their own, so they are not repeated as body keys.
+        keys = [key for key in endpoint["body_keys"] if key not in arg_for.values() and key not in endpoint["path_params"]]
+        body: Dict[str, Any] = {
             "type": "object",
-            "description": "JSON request body." + (f" Known keys: {', '.join(keys)}." if keys else ""),
+            "description": "JSON request body." + (
+                f" Fields: {', '.join(keys)}." if keys
+                else " This endpoint's fields are not listed here: see its entry in resource vrgdg://docs/endpoints."
+            ),
         }
+        if keys:
+            body["properties"] = {key: ({"description": _BODY_HINTS[key]} if key in _BODY_HINTS else {}) for key in keys}
+            body["additionalProperties"] = True
+        properties["body"] = body
     if endpoint["query"]:
         properties["query"] = {
             "type": "object",
             "description": f"Query parameters: {', '.join(endpoint['query'])}.",
+            "properties": {key: ({"description": _QUERY_HINTS[key]} if key in _QUERY_HINTS else {}) for key in endpoint["query"]},
+            "additionalProperties": True,
         }
     if endpoint["if_match"]:
         properties["if_match_revision"] = {"type": "integer", "description": "Fail with a conflict if the project revision differs."}
@@ -134,7 +207,11 @@ def _build_tool(endpoint: Dict[str, Any], name: str) -> ToolDefinition:
             res = getattr(client, method.lower())(real_path, json_data=body if body is not None else {}, params=query, if_match_revision=revision)
         return format_tool_result(res)
 
-    return ToolDefinition(name=name, description=description, input_schema={"type": "object", "properties": properties, "required": required}, handler=handler)
+    return ToolDefinition(
+        name=name, description=description,
+        input_schema={"type": "object", "properties": properties, "required": required},
+        handler=handler, annotations=_annotations(method, path),
+    )
 
 
 @_safe_call
@@ -175,7 +252,7 @@ API_REQUEST_TOOL = ToolDefinition(
         },
         "required": ["method", "path"],
     },
-    handler=_api_request,
+    handler=_api_request, annotations={"readOnlyHint": False, "destructiveHint": True, "openWorldHint": False},
 )
 
 

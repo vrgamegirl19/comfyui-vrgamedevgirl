@@ -83,6 +83,15 @@ def _item(card: Dict[str, Any], kind: str) -> Dict[str, Any]:
     }
 
 
+def scene_subject_cards(segment: Dict[str, Any], subject_cards: List[Any]) -> List[Any]:
+    """The subject cards a scene sends: none for a "no character present" scene. Twin of ``sceneSubjectCards``.
+
+    ``_subject_items_for_segment`` (shared with the standard pipeline) still returns the project's first character
+    for such a scene, so RefMod selection drops it here, like the browser does.
+    """
+    return [] if isinstance(segment, dict) and segment.get("no_character_present") else list(subject_cards or [])
+
+
 def compose_items(
     subject_cards: List[Any],
     extra_cards: List[Any],
@@ -138,7 +147,8 @@ def refmod_items_for_scene(session: Dict[str, Any], segment: Dict[str, Any], ind
     """The scene's RefMod references in render order, with no labels yet.
 
     Selects cards with the same scene maps as the standard pipeline (``subject_scene_map``, ``extra_scene_map``,
-    ``scene_map``), then orders them with :func:`compose_items`.
+    ``scene_map``), leaves out subjects when the scene has no character (:func:`scene_subject_cards`), then orders
+    them with :func:`compose_items`.
     """
     refs = _builder(session)
     subjects = [s for s in (refs.get("subjects") or []) if isinstance(s, dict)]
@@ -147,7 +157,7 @@ def refmod_items_for_scene(session: Dict[str, Any], segment: Dict[str, Any], ind
     location_id = _text(scene_map_value(refs.get("scene_map"), segment, index))
     location = next((l for l in (refs.get("locations") or []) if isinstance(l, dict) and _text(l.get("id")) == location_id), None) if location_id else None
     return compose_items(
-        _subject_items_for_segment(refs, segment, index), extra_cards, location, subjects,
+        scene_subject_cards(segment, _subject_items_for_segment(refs, segment, index)), extra_cards, location, subjects,
         segment.get("refmod_clothing_override"),
     )
 

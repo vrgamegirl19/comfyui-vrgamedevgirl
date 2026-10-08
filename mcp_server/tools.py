@@ -22,18 +22,23 @@ class ToolDefinition:
         description: str,
         input_schema: Dict[str, Any],
         handler: Callable[[VrgdgApiClient, Dict[str, Any]], Dict[str, Any]],
+        annotations: Optional[Dict[str, Any]] = None,
     ):
         self.name = name
         self.description = description
         self.input_schema = input_schema
         self.handler = handler
+        self.annotations = annotations
 
     def to_mcp_dict(self) -> Dict[str, Any]:
-        return {
+        result: Dict[str, Any] = {
             "name": self.name,
             "description": self.description,
             "inputSchema": self.input_schema,
         }
+        if self.annotations:
+            result["annotations"] = dict(self.annotations)
+        return result
 
 
 # ==============================================================================
@@ -1613,3 +1618,24 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
 from .endpoint_tools import build_endpoint_tools  # noqa: E402  (needs ToolDefinition and _safe_call defined above)
 
 ALL_TOOLS.update(build_endpoint_tools(ALL_TOOLS))
+
+# MCP tool annotations for the hand-written tools. Clients use them to decide what needs a confirmation: a tool without
+# ``readOnlyHint`` may change the project, and ``destructiveHint`` marks one that deletes or overwrites. A tool in neither
+# list is only marked as not read-only, so a client treats it with care. The ``api_*`` tools set their own from the method.
+_READ_ONLY_TOOLS = (
+    "system_health", "list_modes", "list_models", "project_list", "project_get", "project_summary", "project_get_settings",
+    "minimax_settings_schema", "scene_list", "scene_get", "references_get", "llm_active", "job_get", "job_wait",
+    "asset_view", "asset_download_url",
+)
+_DESTRUCTIVE_TOOLS = (
+    "project_delete", "scene_delete", "scenes_bulk_edit", "scene_split_merge_move_resize", "job_cancel",
+)
+for _name, _tool in ALL_TOOLS.items():
+    if _tool.annotations is not None or _name.startswith("api_"):
+        continue
+    if _name in _READ_ONLY_TOOLS:
+        _tool.annotations = {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
+    elif _name in _DESTRUCTIVE_TOOLS:
+        _tool.annotations = {"readOnlyHint": False, "destructiveHint": True, "openWorldHint": False}
+    else:
+        _tool.annotations = {"readOnlyHint": False, "openWorldHint": False}

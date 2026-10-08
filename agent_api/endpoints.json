@@ -365,7 +365,7 @@
     },
     {
       "body_keys": [],
-      "description": "The project with its settings, scenes, audio, story and references. `include` picks some of those groups and/or top-level session keys by name (e.g. `audio_path`, `detected_tempo_bpm`, `flux_reference_builder`; API keys come back blank). An unknown name is a 400 that lists it.",
+      "description": "The project with its settings, scenes, audio, story and references. `include` picks some of those groups and/or top-level session keys by name (e.g. `audio_path`, `detected_tempo_bpm`, `flux_reference_builder`; API keys come back blank). A Builder session key the project has not saved yet comes back empty (`{}` for `flux_reference_builder`, `builder_story_layer` and `builder_storyboard_defaults`, otherwise `null`). A name that is not a Builder session key is a 400 that lists it.",
       "if_match": false,
       "job": false,
       "method": "GET",
@@ -1077,7 +1077,7 @@
     {
       "body_keys": [],
       "description": "Save the Storyboard scene defaults (`defaults`: every key the Builder saves in `builder_storyboard_defaults`, e.g. video style, camera flow, motion speeds, cut frequency, short film planning, temporal and FX settings, plus `story_arc_detail`) and the story fields (`story`: every key of `builder_story_layer`, e.g. `enabled`, idea, strength, world style).",
-      "if_match": false,
+      "if_match": true,
       "job": false,
       "method": "PUT",
       "path": "/projects/{pid}/story/settings",

@@ -265,10 +265,13 @@ function miniMaxH3InjectMissingExtraLabels(descriptions, extras = []) {
   return shots;
 }
 
+const MINIMAX_H3_NEGATIVE_CLEANUP_ENABLED = false;
+
 function stripMiniMaxH3NegativePromptSentences(description) {
   const text = String(description || "").trim();
   if (!text) return "";
-  const negativeWording = /\b(?:do\s+not|don['’]t|never|without|avoid|must\s+not|cannot|can['’]t|not|no)\b/i;
+  // "no" is negative wording only as a determiner ("no cuts"). "gesturing a no", "shaking his head no while singing" are visible actions.
+  const negativeWording = /\b(?:do\s+not|don['’]t|never|without|avoid|must\s+not|cannot|can['’]t|not)\b|(?<!\b(?:a|the|head|says?|saying|said)\s)\bno\b(?!\s*(?:[,.!?…;:)]|$|(?:while|as|and|then|with|before|after|when|but|or)\b))/i;
   const dialogueTags = [];
   // Quoted lyric words are sung text, not instructions: "don't" or "no" inside quotes is never a reason to drop a sentence.
   const maskedText = text.replace(/<d>[\s\S]*?<\/d>|["“][^"”]*["”]/gi, (tag) => {
@@ -1354,7 +1357,8 @@ export function createMiniMaxPrompt({
       if (/\.\s+guides\s+(?:his|her|their|the)\s+exact\s+appearance\b/i.test(description)) {
         throw new Error(`Gemma returned an orphaned reference-purpose fragment in shot ${index + 1}. Generate again so every sentence has a clear subject.`);
       }
-      const positiveDescription = stripMiniMaxH3NegativePromptSentences(description);
+      // Negative-sentence cleanup is disabled for testing: it was deleting whole sentences, including the author's direction.
+      const positiveDescription = MINIMAX_H3_NEGATIVE_CLEANUP_ENABLED ? stripMiniMaxH3NegativePromptSentences(description) : description;
       if (!positiveDescription) {
         console.warn(`[VRGDG Music Builder] Removed all negative prompt wording from shot ${index + 1}; using the positive fallback shot.`);
         return miniMaxH3FallbackShotDescription(segment, index, mode);
@@ -1440,7 +1444,7 @@ export function createMiniMaxPrompt({
   // are shared across the cuts in order. Only plain singing scenes on the project audio are touched.
   function miniMaxH3EnsureQuotedLyricInShot(segment, description, shotIndex, shotCount, mode = miniMaxH3ModeForSegment(segment)) {
     const text = String(description || "");
-    if (miniMaxH3FrameContinuityPromptEnabled(segment)) return text;
+    // Continued scenes get the same safety net: if the lyric is missing from the shot, the Builder puts it back.
     if (segmentUsesNoLipSyncPerformance(segment) || segment?.no_character_present) return text;
     if (miniMaxH3SettingsForSegment(segment).audio_mode === "built_in_audio") return text;
     if (isMiniMaxSingerAssignmentMode(segment) && String(segment?.lyric_performance_mode || "together") === "cue_map") return text;

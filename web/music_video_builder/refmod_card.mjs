@@ -28,17 +28,40 @@ export function refmodFoldersFor(item, kind = "subject") {
   return REFMOD_FOLDERS_BY_REFERENCE_TYPE[type] || REFMOD_FOLDERS_BY_REFERENCE_TYPE.other;
 }
 
-let libraryPromise = null;
+let libraryPromise = null; // the latest read of the library, settled or not
+let libraryInFlight = null; // the read in flight, shared by every load made while it runs
+let lastLibrary = []; // the last list read successfully, kept when a later read fails
 
-// The saved RefMods, fetched once and reused. Pass true to read the folders again.
+function readRefmodLibrary() {
+  const request = api.fetchApi("/vrgdg/refmod/library")
+    .then((response) => response.json())
+    .then((result) => {
+      const library = result?.ok ? result.refmods || [] : [];
+      if (libraryPromise === request) lastLibrary = library;
+      return library;
+    })
+    .catch(() => lastLibrary)
+    .finally(() => {
+      if (libraryInFlight === request) libraryInFlight = null;
+    });
+  libraryPromise = request;
+  libraryInFlight = request;
+  return request;
+}
+
+// The saved RefMods. Without `force` the last read is reused; with it the folders are read again. A read already in
+// flight is shared either way, so cards opened together make one request.
 export function loadRefmodLibrary(force = false) {
-  if (force || !libraryPromise) {
-    libraryPromise = api.fetchApi("/vrgdg/refmod/library")
-      .then((response) => response.json())
-      .then((result) => (result?.ok ? result.refmods || [] : []))
-      .catch(() => []);
-  }
+  if (libraryInFlight) return libraryInFlight;
+  if (force || !libraryPromise) return readRefmodLibrary();
   return libraryPromise;
+}
+
+// Call after creating, replacing or deleting a RefMod: the next load reads the folders again, and a read that was
+// already in flight (and may have missed the change) is not shared with it.
+export function refmodLibraryChanged() {
+  libraryPromise = null;
+  libraryInFlight = null;
 }
 
 export function refmodPreviewUrl(name) {
@@ -183,6 +206,7 @@ Replace it?`)) return;
             ({ response, result } = await send(true));
           }
           if (!response.ok || !result.ok) throw new Error(result.error || "The RefMod could not be saved.");
+          refmodLibraryChanged();
           const library = await loadRefmodLibrary(true);
           const saved = library.find((entry) => entry.path === result.path || entry.name === `${result.folder}/${result.name}`);
           item.source = "refmod";
@@ -289,7 +313,7 @@ Replace it?`)) return;
       return;
     }
     info.style.color = "#a5f3fc";
-    info.textContent = `${entry.kind === "image" ? "Single image" : `${entry.frames} images`} · ${entry.canvas[0]}x${entry.canvas[1]} · ${entry.tokens.toLocaleString()} tokens`
+    info.textContent = `${entry.kind === "image" ? "Single image" : `${entry.frames} frames`} · ${entry.canvas[0]}x${entry.canvas[1]} · ${entry.tokens.toLocaleString()} tokens`
       + (entry.kind === "image" ? " · labelled <Picture n>" : " · labelled <Video n>");
     useDescription.style.display = entry.description ? "" : "none";
     preview.replaceChildren();
@@ -342,17 +366,31 @@ Replace it?`)) return;
     onChange(true);
   };
 
-  loadRefmodLibrary().then((library) => {
+  let shownOptions = null;
+  const showLibrary = (library) => {
     const folders = new Set(refmodFoldersFor(item, kind));
     entries = library;
-    const choices = library.filter((entry) => folders.has(entry.folder) || entry.name === item.refmod?.name);
-    modSelect.replaceChildren(new Option(choices.length ? "(choose a RefMod)" : `No RefMods in ${[...folders].join(" or ")} yet. Make one in RefMods Studio.`, ""));
-    for (const entry of choices) {
-      modSelect.append(new Option(`${prettyName(entry.name)}  ·  ${entry.folder}  ·  ${entry.tokens.toLocaleString()} tokens`, entry.name));
+    // A RefMod saved loose in models/refmods has no folder, so its saved type places it.
+    const choices = library.filter((entry) => folders.has(entry.folder || entry.type) || entry.name === item.refmod?.name);
+    const options = [
+      [choices.length ? "(choose a RefMod)" : `No RefMods in ${[...folders].join(" or ")} yet. Make one in RefMods Studio.`, ""],
+      ...choices.map((entry) => [`${prettyName(entry.name)}  ·  ${entry.folder}  ·  ${entry.tokens.toLocaleString()} tokens`, entry.name]),
+    ];
+    // Leave an open dropdown alone when nothing changed.
+    const signature = JSON.stringify(options);
+    if (signature !== shownOptions) {
+      shownOptions = signature;
+      modSelect.replaceChildren(...options.map(([label, value]) => new Option(label, value)));
     }
     modSelect.value = item.refmod?.name || "";
     refreshInfo();
-  });
+  };
+  loadRefmodLibrary().then(showLibrary);
+  // Opening the dropdown reads the folders again, so RefMods made in RefMods Studio, another tab or the API (and
+  // renames and deletes) show up without reloading the page. Pointer and focus events of one click share the request.
+  const refreshLibrary = () => loadRefmodLibrary(true).then(showLibrary);
+  modSelect.addEventListener("pointerdown", refreshLibrary);
+  modSelect.addEventListener("focus", refreshLibrary);
   refreshInfo();
   return panel;
 }

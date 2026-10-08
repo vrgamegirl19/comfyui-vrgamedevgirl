@@ -3,7 +3,7 @@ import { escapeHtml, makeButton, normalizeProjectVideoEngine, toast } from "./co
 import { rtvReferenceImagePayload } from "./image_references.mjs";
 import { hasReferenceImage } from "./llm_runner.mjs";
 import { normalizeMiniMaxH3Mode, normalizeMiniMaxH3Pipeline } from "./minimax_h3.mjs";
-import { assignLabels, clothingChoices, composeRefmodItems, tokenStatusText } from "./refmod_labels.mjs";
+import { assignLabels, clothingChoices, composeRefmodItems, sceneSubjectCards, tokenStatusText } from "./refmod_labels.mjs";
 import { expandSubjectReferencesForRender, normalizeFluxReferenceBuilder } from "./reference_data.mjs";
 import { mediaPathKey } from "./timeline_state.mjs";
 
@@ -166,7 +166,7 @@ export function createMiniMaxReferences({
   // strength 0 are left out. Twin of refmod_items_for_scene in minimax/refmod_scene.py.
   function miniMaxRefmodItemsForSegment(segment) {
     const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
-    const subjectCards = segment?.no_character_present ? [] : referenceBuilderSubjectItemsForSegment(refs, segment);
+    const subjectCards = sceneSubjectCards(segment, referenceBuilderSubjectItemsForSegment(refs, segment));
     const locationId = String(sceneReferenceMapValue(refs.scene_map, segment) || "").trim();
     const location = locationId ? (refs.locations || []).find((item) => String(item?.id || "") === locationId) || null : null;
     const items = composeRefmodItems(subjectCards, [], location, refs.subjects || [], segment?.refmod_clothing_override);

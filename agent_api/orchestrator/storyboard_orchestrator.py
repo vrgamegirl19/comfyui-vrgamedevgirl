@@ -9,12 +9,13 @@ State is saved where the UI keeps it: ``builder_story_layer``, ``builder_storybo
 ``story_beat`` field of each timeline segment.
 """
 
+import math
 import re
 from typing import Any, Callable, Dict, List, Optional
 
 from ...storyboard import persistence as storyboard_store
 from ...storyboard import story_layer as story_funcs
-from ..errors import ValidationError
+from ..errors import RevisionConflictError, ValidationError
 from ..jobs.manager import JobManager, get_job_manager
 from ..jobs.models import Job
 from ..llm_runtime import llm_payload_from_session, prepare_llm_payload
@@ -58,6 +59,17 @@ def _story_layer(session: Dict[str, Any]) -> Dict[str, Any]:
 def _save_story_layer(session: Dict[str, Any], layer: Dict[str, Any]) -> None:
     session["builder_story_layer"] = layer
     session.pop("builderStoryLayer", None)
+
+
+def _number_0_to_10(value: Any, key: str) -> float:
+    """A 0-10 slider value (the Builder's speed, intensity and strength sliders). Out of range is an error."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        number = math.nan
+    if not 0 <= number <= 10:  # also false for NaN
+        raise ValidationError(f"{key} must be a number from 0 to 10.")
+    return number
 
 
 def _defaults(session: Dict[str, Any]) -> Dict[str, Any]:
@@ -239,10 +251,15 @@ def sync_storyboard_files(project_id: str) -> Dict[str, Any]:
 # Scene defaults and the story idea
 # ---------------------------------------------------------------------------
 
-def set_story_settings(project_id: str, params: Dict[str, Any]) -> Dict[str, Any]:
+def set_story_settings(
+    project_id: str,
+    params: Dict[str, Any],
+    if_match_revision: Optional[int] = None,
+) -> Dict[str, Any]:
     """Save Storyboard scene defaults (video style, camera flow, motion speeds) and the story idea.
 
     ``defaults`` holds scene-default fields, ``story`` holds story-layer fields. Both are optional.
+    ``if_match_revision`` (the If-Match header) must equal the saved revision when given.
     """
     defaults_in = params.get("defaults") if isinstance(params.get("defaults"), dict) else {}
     story_in = params.get("story") if isinstance(params.get("story"), dict) else {}
@@ -254,10 +271,7 @@ def set_story_settings(project_id: str, params: Dict[str, Any]) -> Dict[str, Any
         raise ValidationError(f"Unknown story field(s): {', '.join(unknown_story)}. Allowed: {', '.join(STORY_LAYER_KEYS)}.")
     for key in SPEED_KEYS:
         if key in defaults_in:
-            try:
-                defaults_in[key] = max(0, min(10, float(defaults_in[key])))
-            except (TypeError, ValueError):
-                raise ValidationError(f"{key} must be a number from 0 to 10.")
+            defaults_in[key] = _number_0_to_10(defaults_in[key], key)
     for key in BOOLEAN_DEFAULT_KEYS:
         if key in defaults_in and not isinstance(defaults_in[key], bool):
             raise ValidationError(f"{key} must be true or false.")
@@ -277,13 +291,13 @@ def set_story_settings(project_id: str, params: Dict[str, Any]) -> Dict[str, Any
     if story_in.get("image_world_style") not in (None, *IMAGE_WORLD_STYLES):
         raise ValidationError(f"image_world_style must be one of: {', '.join(IMAGE_WORLD_STYLES)}.")
     if "lyric_story_strength" in story_in:
-        try:
-            story_in["lyric_story_strength"] = max(0, min(10, float(story_in["lyric_story_strength"])))
-        except (TypeError, ValueError):
-            raise ValidationError("lyric_story_strength must be a number from 0 to 10.")
+        story_in["lyric_story_strength"] = _number_0_to_10(story_in["lyric_story_strength"], "lyric_story_strength")
 
     with _BUILDER_SAVE_LOCK:
         folder, session = _get_active_session_and_folder(project_id)
+        current_rev = int(session.get("revision") or session.get("builder_save_revision") or 0)
+        if if_match_revision is not None and if_match_revision != current_rev:
+            raise RevisionConflictError(current_rev, if_match_revision)
         defaults = dict(_defaults(session))
         defaults.update(defaults_in)
         session["builder_storyboard_defaults"] = defaults
