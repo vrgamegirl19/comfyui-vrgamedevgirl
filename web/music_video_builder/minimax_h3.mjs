@@ -593,6 +593,9 @@ export function cloneMiniMaxH3Settings(value = {}) {
     && rawSteps === DEFAULT_MINIMAX_H3_SETTINGS.steps;
   const hasSavedPreTurboEasyCache = source.easy_cache_bypass_before_turbo != null || source.easyCacheBypassBeforeTurbo != null;
   const rawEasyCacheBypass = Boolean(source.easy_cache_bypass ?? DEFAULT_MINIMAX_H3_SETTINGS.easy_cache_bypass);
+  const continuityMode = normalizeMiniMaxH3ContinuityMode(source.continuity_mode || source.continuityMode || DEFAULT_MINIMAX_H3_SETTINGS.continuity_mode);
+  // Masked continuation plans its own head and tail; extra render frames stay at zero.
+  const maskedContinuation = continuityMode === "latent_continuation_masked";
   return {
     ...DEFAULT_MINIMAX_H3_SETTINGS,
     ...source,
@@ -605,7 +608,7 @@ export function cloneMiniMaxH3Settings(value = {}) {
     i2v_transition_style: normalizeMiniMaxI2VTransitionStyle(source.i2v_transition_style),
     i2v_transition_direction: String(source.i2v_transition_direction || "").trim(),
     audio_mode: normalizeMiniMaxH3AudioMode(source.audio_mode || source.audioMode || DEFAULT_MINIMAX_H3_SETTINGS.audio_mode),
-    continuity_mode: normalizeMiniMaxH3ContinuityMode(source.continuity_mode || source.continuityMode || DEFAULT_MINIMAX_H3_SETTINGS.continuity_mode),
+    continuity_mode: continuityMode,
     continuity_prompt_from_last_frame: Boolean(source.continuity_prompt_from_last_frame ?? source.continuityPromptFromLastFrame ?? DEFAULT_MINIMAX_H3_SETTINGS.continuity_prompt_from_last_frame),
     location_transition_preset: normalizeMiniMaxH3LocationTransitionPreset(source.location_transition_preset ?? source.locationTransitionPreset ?? DEFAULT_MINIMAX_H3_SETTINGS.location_transition_preset),
     location_transition_custom: String(source.location_transition_custom ?? source.locationTransitionCustom ?? DEFAULT_MINIMAX_H3_SETTINGS.location_transition_custom).trim(),
@@ -628,8 +631,8 @@ export function cloneMiniMaxH3Settings(value = {}) {
     resolution_preset: resolution.resolution_preset,
     megapixels: resolution.megapixels,
     seed: Number.isFinite(Number(source.seed)) ? Number(source.seed) : DEFAULT_MINIMAX_H3_SETTINGS.seed,
-    warmup_frames: Math.max(0, Math.trunc(Number(source.warmup_frames || 0))),
-    cooldown_frames: Math.max(0, Math.trunc(Number(source.cooldown_frames || 0))),
+    warmup_frames: maskedContinuation ? 0 : Math.max(0, Math.trunc(Number(source.warmup_frames || 0))),
+    cooldown_frames: maskedContinuation ? 0 : Math.max(0, Math.trunc(Number(source.cooldown_frames || 0))),
     sampler_name: String(source.sampler_name || DEFAULT_MINIMAX_H3_SETTINGS.sampler_name),
     scheduler: String(source.scheduler || DEFAULT_MINIMAX_H3_SETTINGS.scheduler),
     steps: migrateOldTurboDefault ? 4 : rawSteps,

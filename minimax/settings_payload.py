@@ -309,6 +309,10 @@ def normalize_minimax_h3_settings(raw: Optional[Dict[str, Any]]) -> Dict[str, An
                 settings[key] = _check_value(key, raw[key], default, lenient=True)
             except ValueError:
                 continue
+    # Match the UI: masked continuation plans its own head and tail.
+    if settings["continuity_mode"] == "latent_continuation_masked":
+        settings["warmup_frames"] = 0
+        settings["cooldown_frames"] = 0
     return settings
 
 

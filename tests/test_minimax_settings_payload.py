@@ -47,6 +47,23 @@ def _settings(**overrides):
 
 
 class DefaultsTests(unittest.TestCase):
+    def test_masked_continuation_resets_extra_frames_on_save_and_reload(self) -> None:
+        import json
+
+        for mode in ("latent_continuation_masked", "latent_masked"):
+            with self.subTest(mode=mode):
+                settings = _settings(continuity_mode=mode, warmup_frames=12, cooldown_frames=8)
+                reloaded = _settings(**json.loads(json.dumps(settings)))
+                for saved in (settings, reloaded):
+                    self.assertEqual(saved["warmup_frames"], 0)
+                    self.assertEqual(saved["cooldown_frames"], 0)
+                    payload = payload_mod.build_minimax_render_payload(saved)
+                    self.assertEqual(payload["pre_frames"], 0)
+                    self.assertEqual(payload["tail_loss_frames"], 0)
+        independent = _settings(continuity_mode="off", warmup_frames=12, cooldown_frames=8)
+        self.assertEqual(independent["warmup_frames"], 12)
+        self.assertEqual(independent["cooldown_frames"], 8)
+
     def test_flf_transition_settings_normalize_and_survive_json_reload(self):
         import json
 
