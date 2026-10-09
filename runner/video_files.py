@@ -146,9 +146,11 @@ def _unique_final_video_path(project_folder, prefix="FINAL_VIDEO"):
     candidate = os.path.join(project_folder, f"{safe_prefix}.mp4")
     if not os.path.exists(candidate):
         return candidate
+    # ``<prefix>_<n>`` from 2, like the repo's other free-name helpers (runner/paths.py _unique_copy_path). A bare
+    # number would run into the prefix: PREVIEW_SCENES_007-008 + 2 read as PREVIEW_SCENES_007-0082.
     index = 2
     while True:
-        candidate = os.path.join(project_folder, f"{safe_prefix}{index}.mp4")
+        candidate = os.path.join(project_folder, f"{safe_prefix}_{index}.mp4")
         if not os.path.exists(candidate):
             return candidate
         index += 1
