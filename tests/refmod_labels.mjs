@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { assignLabels, attachRefmodLabels, enforceCastLabels, composeRefmodItems, clothingChoices, referencePayload, sceneSubjectCards, tokenReport, tokenStatusText, totalTokens } from '../web/music_video_builder/refmod_labels.mjs';
+import { assignLabels, attachRefmodLabels, enforceCastLabels, isIdentityCard, composeRefmodItems, clothingChoices, referencePayload, sceneSubjectCards, tokenReport, tokenStatusText, totalTokens } from '../web/music_video_builder/refmod_labels.mjs';
 
 const cases = JSON.parse(readFileSync(new URL('./refmod_scene_cases.json', import.meta.url), 'utf8'));
 
@@ -119,6 +119,15 @@ test('a garment the writer names in plain words gets its label, with no second w
     result,
     '[Shot 1] A close-up opens on <Video 1> (Darrel Noclothes), wearing <Video 2> (Warm Clothing), as a push moves; <Video 1> (Darrel Noclothes) sings, "Next.", while shifting.',
   );
+});
+
+test('only identities are performers: clothing, props and vehicles RefMods are not', () => {
+  const refmod = (referenceType) => ({ id: 'x', name: 'x', source: 'refmod', reference_type: referenceType, refmod: { name: 'a/b', kind: 'video' } });
+  assert.equal(isIdentityCard(refmod('character')), true);
+  assert.equal(isIdentityCard({ id: 'plain', name: 'Plain card' }), true);
+  for (const type of ['outfit', 'prop', 'vehicle', 'object', 'creature', 'style', 'environment']) {
+    assert.equal(isIdentityCard(refmod(type)), false, type);
+  }
 });
 
 test('items without a label (strength 0) are ignored', () => {

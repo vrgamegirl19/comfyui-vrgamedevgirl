@@ -3,6 +3,7 @@ import { audioUrl } from "./comfy_api.mjs";
 import { escapeHtml, makeButton, makeCheckbox, makeField, makeInput, makeSelect, toast } from "./controls.mjs";
 import { showInfoModal } from "./dialogs.mjs";
 import { formatDurationSeconds, formatTime } from "./format.mjs";
+import { isIdentityCard } from "./refmod_labels.mjs";
 import { newSegment, sortSegments } from "./segments.mjs";
 
 export function createLyricReview({
@@ -30,7 +31,7 @@ export function createLyricReview({
     const box = document.createElement("div");
     box.style.cssText = isSingleScene
       ? "width:min(1680px,calc(100vw - 24px));max-height:calc(100vh - 32px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box;"
-      : "width:min(1720px,calc(100vw - 16px));max-height:calc(100vh - 32px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box;";
+      : "width:min(1840px,calc(100vw - 16px));max-height:calc(100vh - 32px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box;";
     const header = document.createElement("div");
     header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
     const heading = document.createElement("div");
@@ -1198,7 +1199,7 @@ export function createLyricReview({
     const subjectIdsForReviewChoice = (choice) => {
       const subjects = Array.isArray(reviewReferenceBuilder.subjects) ? reviewReferenceBuilder.subjects : [];
       if (!choice || isNoLipSyncSingerChoice(choice.label)) return [];
-      if (choice.id === "group") return subjects.map((subject) => subject.id).filter(Boolean);
+      if (choice.id === "group") return subjects.filter(isIdentityCard).map((subject) => subject.id).filter(Boolean);
       const byId = subjects.find((subject) => subject.id === choice.id);
       if (byId?.id) return [byId.id];
       const cleanLabel = String(choice.label || "").trim().toLowerCase();
@@ -1223,13 +1224,17 @@ export function createLyricReview({
         .map((subject) => subject.id)
         .filter(Boolean);
     };
-    const renderSubjectPresenceChoices = (segment, index, container) => {
+    // Identities (people) and props (clothing, objects, vehicles and the like) are listed apart. Both are scene
+    // subjects, so both use the same checkbox marker and are saved into the same scene map.
+    const reviewAllSubjects = () => (Array.isArray(reviewReferenceBuilder.subjects) ? reviewReferenceBuilder.subjects : []);
+    const reviewHasProps = () => reviewAllSubjects().some((subject) => !isIdentityCard(subject));
+    const renderSubjectPresenceChoices = (segment, index, container, group = "identities") => {
       container.textContent = "";
-      const subjects = Array.isArray(reviewReferenceBuilder.subjects) ? reviewReferenceBuilder.subjects : [];
+      const subjects = reviewAllSubjects().filter((subject) => (group === "props" ? !isIdentityCard(subject) : isIdentityCard(subject)));
       const selected = new Set(reviewSubjectIdsForSegment(segment, index));
       if (!subjects.length) {
         const empty = document.createElement("div");
-        empty.textContent = "No Reference Builder subjects yet.";
+        empty.textContent = group === "props" ? "No props, clothing or vehicles yet." : "No Reference Builder subjects yet.";
         empty.style.cssText = "font-size:11px;color:#94a3b8;";
         container.append(empty);
         return;
@@ -1247,7 +1252,7 @@ export function createLyricReview({
         input.checked = selected.has(subjectId);
         input.style.cssText = "margin:0;";
         const name = document.createElement("span");
-        name.textContent = subject.name || "Subject";
+        name.textContent = subject.name || (group === "props" ? "Prop" : "Subject");
         label.append(input, name);
         container.append(label);
       }
@@ -1343,7 +1348,7 @@ export function createLyricReview({
       const sceneNumber = sceneDisplayIndex + 1;
       const row = document.createElement("div");
       row.dataset.reviewSegmentId = segment.id;
-      row.style.cssText = "display:grid;grid-template-columns:96px minmax(140px,160px) minmax(240px,1fr) minmax(280px,1.15fr) minmax(210px,260px) minmax(190px,230px) minmax(150px,170px) 124px;gap:8px;align-items:start;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:8px;box-sizing:border-box;width:100%;min-width:0;";
+      row.style.cssText = "display:grid;grid-template-columns:96px minmax(140px,160px) minmax(240px,1fr) minmax(280px,1.15fr) minmax(250px,320px) minmax(190px,230px) minmax(150px,170px) 124px;gap:8px;align-items:start;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:8px;box-sizing:border-box;width:100%;min-width:0;";
       const meta = document.createElement("div");
       meta.style.minWidth = "0";
       meta.innerHTML = `<div data-review-scene-label style="font-weight:900;color:#cffafe;">${escapeHtml(segment.label || `Scene ${sceneNumber}`)}</div><div data-review-time-display style="font-size:11px;color:#cbd5e1;margin-top:4px;">${formatTime(segment.start)} - ${formatTime(segment.end)} | ${formatDurationSeconds(segment.start, segment.end)}s</div>`;
@@ -1419,6 +1424,8 @@ export function createLyricReview({
       subjectSingerPanel.style.cssText = "display:flex;flex-direction:column;gap:7px;min-width:0;";
       const presentPanel = document.createElement("div");
       presentPanel.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;border:1px solid #3f3f46;border-radius:6px;background:#18181b;padding:7px;min-height:42px;box-sizing:border-box;";
+      const propsPanel = document.createElement("div");
+      propsPanel.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;border:1px solid #3f3f46;border-radius:6px;background:#18181b;padding:7px;min-height:42px;box-sizing:border-box;";
       const singerPanel = document.createElement("div");
       singerPanel.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;border:1px solid #3f3f46;border-radius:6px;background:#18181b;padding:7px;min-height:42px;box-sizing:border-box;";
       const flags = document.createElement("div");
@@ -1432,7 +1439,7 @@ export function createLyricReview({
       flags.append(instrumental.wrapper, broll.wrapper, noCharacter.wrapper);
       const updateNoCharacterState = () => {
         const disabled = Boolean(noCharacter.input.checked);
-        for (const input of presentPanel.querySelectorAll("[data-review-present-subject='1']")) {
+        for (const input of [...presentPanel.querySelectorAll("[data-review-present-subject='1']"), ...propsPanel.querySelectorAll("[data-review-present-subject='1']")]) {
           input.disabled = disabled;
           if (disabled) input.checked = false;
         }
@@ -1442,6 +1449,7 @@ export function createLyricReview({
           if (disabled || noLipSync) input.checked = false;
         }
         presentPanel.style.opacity = disabled ? "0.55" : "1";
+        propsPanel.style.opacity = disabled ? "0.55" : "1";
         singerPanel.style.opacity = (disabled || noLipSync) ? "0.55" : "1";
       };
       const updateDisabled = () => {
@@ -1463,9 +1471,12 @@ export function createLyricReview({
         updateNoCharacterState();
         refreshBoundaryOverlapPreview();
       };
-      renderSubjectPresenceChoices(segment, sceneDisplayIndex, presentPanel);
+      renderSubjectPresenceChoices(segment, sceneDisplayIndex, presentPanel, "identities");
+      renderSubjectPresenceChoices(segment, sceneDisplayIndex, propsPanel, "props");
       renderSingerChoices(segment, singerPanel, instrumental.input, broll.input);
-      subjectSingerPanel.append(makeField("Subjects present in scene", presentPanel), makeField("Performer / speaker / lip-sync", singerPanel));
+      subjectSingerPanel.append(makeField("Identities in scene", presentPanel));
+      if (reviewHasProps()) subjectSingerPanel.append(makeField("Props, clothing and vehicles in scene", propsPanel));
+      subjectSingerPanel.append(makeField("Performer / speaker / lip-sync (identities only)", singerPanel));
       const facialPanel = document.createElement("div");
       facialPanel.style.cssText = "display:flex;flex-direction:column;gap:6px;min-width:0;";
       const facialSelect = makeSelect(FACIAL_PERFORMANCE_PRESETS, segment.facial_performance || "");

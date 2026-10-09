@@ -4,6 +4,7 @@ import { copyTextToClipboard, makeButton, toast } from "./controls.mjs";
 import { sceneConceptPromptText } from "./image_prompts.mjs";
 import { normalizeMiniMaxH3Voice } from "./minimax_h3.mjs";
 import { normalizeBuilderStoryLayer } from "./model_settings.mjs";
+import { isIdentityCard } from "./refmod_labels.mjs";
 import {
   defaultFluxReferenceBuilder,
   isInstrumentalLyricText,
@@ -723,7 +724,8 @@ export function createReferenceData({
       seen.add(cleanId);
       choices.push({ id: cleanId, label: cleanLabel });
     };
-    for (const subject of logicalReferenceSubjects(refs)) {
+    // Only identities can sing, speak or lip sync. Clothing, props and vehicles are things in the scene.
+    for (const subject of logicalReferenceSubjects(refs).filter(isIdentityCard)) {
       const subjectName = String(subject.name || "").trim();
       add(subject.id, subjectName && subjectName !== "Character 1" ? subjectName : "the performer");
     }
