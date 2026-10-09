@@ -757,7 +757,7 @@
     },
     {
       "body_keys": [],
-      "description": "One scene: timing, lyrics, story beat, prompts (including `minimax_h3_prompt`), approved image, rendered video with its thumbnail, and scene audio. Each file is `null` when it does not exist.",
+      "description": "One scene: timing, lyrics, story beat, prompts (including `minimax_h3_prompt`), approved image, rendered video with its thumbnail, and scene audio. Each file is `null` when it does not exist. `scene_card` is the complete Storyboard scene card with every field PATCH can edit (Director Notes `timeline_note`, Video Notes `motion_summary`, Planning Notes `notes`, camera, performance, references, triggers and prompts).",
       "if_match": false,
       "job": false,
       "method": "GET",
@@ -770,7 +770,7 @@
     },
     {
       "body_keys": [],
-      "description": "Change scene fields: `lyric_text` (sets `lyric_no_lip_sync` from the text unless you send it), `lyric_singers`, `story_beat`, prompts (`t2i_prompt`, `i2v_prompt`, `enhance_prompt`, `minimax_h3_prompt`, `minimax_h3_pass2_prompt`, `flux_prompt`, `nb_prompt`, `flow_gpt_prompt`, `ernie_t2i_prompt`), `minimax_h3_i2v_frame_mode` (`normal` or `flf`, per scene), `first_last_frame_end_image_path` (explicit last image for I2V FLF), `minimax_h3_continuation_direction` (what a scene continued with `latent_continuation_masked` does after its first moments, one smooth movement, no cut), `minimax_h3_continuation_start_seconds` (second of that scene where the direction starts: 0.5 by default, at most half the scene, `null` resets), `notes`, `label`, `start`, `end`, `no_character_present`, `lyric_no_lip_sync`, or per-scene `use_scene_*` / `*_settings`. A field that cannot be patched returns a validation error that lists the supported fields, and nothing is saved.",
+      "description": "Edit a scene card. Scene-card fields are saved on the timeline scene with the Builder's keys and on the Storyboard card (when the project has a saved Storyboard, or the field is one only the card stores), and the open Video Builder and Storyboard show the change: `timeline_note` (Director Notes; alias `director_note`), `i2v_notes` (Video Notes; saved as `motion_summary` on the card; aliases `video_notes`, `motion_summary`), `notes` (Planning Notes), `prompt_summary` (card only), `label`, `lyric_text` (alias `lyrics`; sets `lyric_no_lip_sync` from the text unless you send it), `lyric_section`, `story_beat`, `lyric_singers`, `lyric_cue_map`, `lyric_no_lip_sync`, `lyric_instrumental`, `lyric_performance_mode`, `lyric_shot_word_timing_enabled`, `speaker_assignments`, `shot_type`, `camera_motion`, `character_motion`, `no_character_present`, `performance_mode` (`singing`, `speaking`, `no_lip_sync`), `performance_style`, `facial_performance`, `facial_performance_custom`, `include_microphone`, `audio_direction`, `continuity`, `flf_start_state`, `flf_transformation`, `flf_end_state`, `flf_carry_forward`, `video_style`, `video_style_custom`, `temporal_world_effect_override`, `temporal_world_effect_custom`, `trigger_phrase`, `trigger_position` (card only), `video_prompt_type`, `subject_ids` (the scene's characters) and `location_id` (the Reference Builder scene maps), `image_prompt` and `video_prompt` (written like a Builder prompt edit for the project's image model and video engine; `video_prompt_origin`), `minimax_h3_pass2_prompt`. Also the single fields `t2i_prompt`, `i2v_prompt`, `enhance_prompt`, `minimax_h3_prompt`, `flux_prompt`, `nb_prompt`, `flow_gpt_prompt`, `ernie_t2i_prompt`, `minimax_h3_i2v_frame_mode` (`normal` or `flf`, per scene), `first_last_frame_end_image_path` (explicit last image for I2V FLF), `minimax_h3_continuation_direction` (what a scene continued with `latent_continuation_masked` does after its first moments, one smooth movement, no cut), `minimax_h3_continuation_start_seconds` (second of that scene where the direction starts: 0.5 by default, at most half the scene, `null` resets), `start`, `end`, or per-scene `use_scene_*` / `*_settings`. Only the keys sent change; an empty string, `false`, `0` or `[]` is saved as sent, so a field can be cleared or turned off. A field that cannot be patched returns a validation error that lists the supported fields, and nothing is saved. `storyboard_card` in the reply lists the Storyboard card fields that changed.",
       "if_match": true,
       "job": false,
       "method": "PATCH",
@@ -1180,6 +1180,56 @@
       "path": "/projects/{pid}/timeline/from-lines",
       "path_params": [
         "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "The timed Timeline Notes (the Builder's `+ Timeline Note` markers, saved as `timeline_markers`): `id`, `start` and `end` seconds (`end` is `null` for a point note), `type`, `label`, `note`, and `scene_ids`, the scenes each note overlaps. Story Arc generation uses them as timed story events.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/projects/{pid}/timeline/notes",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Add a timed Timeline Note. `start` (seconds, required), `end` (later than `start`; leave out or `null` for a point note), `type`, `label`, `note`, optional `id`. The open Video Builder shows it.",
+      "if_match": true,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{pid}/timeline/notes",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Delete a timed Timeline Note.",
+      "if_match": true,
+      "job": false,
+      "method": "DELETE",
+      "path": "/projects/{pid}/timeline/notes/{nid}",
+      "path_params": [
+        "pid",
+        "nid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Change the sent fields of a timed Timeline Note (`start`, `end`, `type`, `label`, `note`). The id never changes; `end: null` makes it a point note.",
+      "if_match": true,
+      "job": false,
+      "method": "PATCH",
+      "path": "/projects/{pid}/timeline/notes/{nid}",
+      "path_params": [
+        "pid",
+        "nid"
       ],
       "query": []
     },

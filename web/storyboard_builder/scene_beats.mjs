@@ -1,4 +1,4 @@
-import { postJson } from "./api.mjs";
+import { postJson, saveStoryboardFile } from "./api.mjs";
 import { createStoryboardProgressWindow, createToast, makeButton } from "./controls.mjs";
 import { storyboardGptPayload } from "./gpt_payload.mjs";
 import { isRecoverableStoryboardBatchError, showStoryboardBatchFailures } from "./prompt_generation.mjs";
@@ -215,10 +215,7 @@ export function createSceneBeats({
     }
     if (state.projectFolder) {
       try {
-        await postJson("/vrgdg/storyboard/save", {
-          project_folder: state.projectFolder,
-          storyboard: slimStoryboardForRequest(state),
-        });
+        await saveStoryboardFile(state, slimStoryboardForRequest(state));
         createToast(`Cleared story beats in ${changed} scene${changed === 1 ? "" : "s"} and saved Storyboard.`);
       } catch (error) {
         createToast(`Cleared story beats in this session, but could not save Storyboard:\n${String(error?.message || error)}`, true);

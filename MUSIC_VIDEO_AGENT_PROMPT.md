@@ -92,6 +92,12 @@ Use the project id returned by `project_create` in every later call.
     `defaults: {"video_style": <video.style>, "camera_flow": <video.camera_flow>, "camera_motion_speed": ..., "character_motion_speed": ...}`
     and `story: {"overall_story_idea": <story_idea>}`.
     If `story_idea` is empty, write one or two sentences from the lyrics and `location_style_theme`.
+11b. Optional story events at exact times: `timeline_note_create` with `start` and `end` seconds (leave `end` out for a
+    moment) and the event in `note`, for example `{"start": 42, "end": 58, "label": "Reveal", "note": "She finds the letter"}`.
+    The arc applies each note to the scenes it overlaps. Per-scene directions go on the scene card instead:
+    `scene_update` with `timeline_note` (Director Notes), `i2v_notes` (Video Notes), `notes` (Planning Notes),
+    camera, performance, audio and continuity fields; `scene_get` shows the whole card as `scene_card`. The open
+    Video Builder and Storyboard show these edits.
 12. `story_create` with `step: "arc"`. Wait for the job.
 13. `story_create` with `step: "brief"`. Wait for the job.
 14. `story_create` with `step: "beats"` (all scenes in one call, no `limit`). Wait for the job.

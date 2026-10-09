@@ -11,6 +11,7 @@ from typing import Any, Dict, List
 
 from ..builder.lyric_scenes import is_instrumental_lyric_text
 from .errors import ValidationError
+from .scene_card_context import scene_card_block
 
 # Same mapping as builderImageInstructionKey in image_prompts.mjs, so a saved custom instruction applies.
 IMAGE_INSTRUCTION_KEYS = {
@@ -51,6 +52,16 @@ def _find_segment(session: Dict[str, Any], scene_id: Any) -> Dict[str, Any]:
     raise ValidationError(f"Scene '{scene_id}' was not found in the project.")
 
 
+def scene_card_for(session: Dict[str, Any], segment: Dict[str, Any], scene_cards: Any) -> Dict[str, Any]:
+    """The segment's complete scene card, including what only the saved Storyboard keeps."""
+    folder = _text(session.get("project_folder"))
+    try:
+        cards = scene_cards(session, folder)
+    except (OSError, ValueError):  # an unreadable storyboard.json: the timeline fields are still known
+        cards = scene_cards(session)
+    return next((item for item in cards if _text(item.get("id")) == _text(segment.get("id"))), {})
+
+
 def _reference_lines(refs: List[Dict[str, Any]]) -> str:
     return "\n".join(
         f"{_text(ref.get('name'))}: {_text(ref.get('description'))}" if _text(ref.get("description")) else _text(ref.get("name"))
@@ -71,6 +82,7 @@ def scene_image_notes(session: Dict[str, Any], segment: Dict[str, Any], card: Di
     location = card.get("location_ref") or {}
     lyric = _text(segment.get("lyric_text") or segment.get("lyrics"))
     add("Scene notes", segment.get("notes"))
+    add("Director note (timeline)", segment.get("timeline_note"))
     add("Flux/Klein notes", segment.get("flux_notes"))
     add("NanoBanana notes", segment.get("nb_notes"))
     add("Mapped subject / character", ", ".join(_text(ref.get("name")) for ref in refs if _text(ref.get("name"))))
@@ -90,6 +102,9 @@ def scene_image_notes(session: Dict[str, Any], segment: Dict[str, Any], card: Di
     if not parts:
         parts.append(f"Scene:\n{_text(card.get('label')) or _text(segment.get('label')) or 'This scene'}")
         parts.append("Direction:\nCreate a cinematic image prompt that fits this scene.")
+    if card:
+        # The complete scene card, as the Storyboard sends it; the instruction keeps it a still image.
+        parts.append(scene_card_block(card))
     parts.append(f"Image Prep rule:\n{IMAGE_PREP_RULE}")
     return "\n\n".join(parts)
 
@@ -100,7 +115,7 @@ def scene_image_prompt_inputs(session: Dict[str, Any], scene_id: Any, mode: Any 
 
     image_mode = normalize_image_mode(mode)
     segment = _find_segment(session, scene_id)
-    card = next((item for item in scene_cards(session) if _text(item.get("id")) == _text(segment.get("id"))), {})
+    card = scene_card_for(session, segment, scene_cards)
     refs = card.get("subject_refs") or []
     location = card.get("location_ref") or {}
     subject_description = _reference_lines(refs) if not segment.get("no_character_present") else ""

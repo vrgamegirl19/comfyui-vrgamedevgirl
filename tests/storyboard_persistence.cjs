@@ -21,6 +21,9 @@ function fixture(state, parentSave = async () => {}) {
       return { storyboard: JSON.parse(result.stdout) };
     },
   });
+  // api.mjs is not loaded here; its save helper sends the same request through this fixture's postJson.
+  context.saveStoryboardFile = (state, storyboard, url = "/vrgdg/storyboard/save") =>
+    context.postJson(url, { project_folder: state.projectFolder, storyboard });
   for (const file of ["music_video_builder/refmod_labels.mjs", "storyboard_builder/script_import.mjs",
     "storyboard_builder/video_style.mjs", "storyboard_builder/shot_presets.mjs",
     "storyboard_builder/scenes.mjs", "storyboard_builder/references.mjs", "storyboard_builder/persistence.mjs"]) {

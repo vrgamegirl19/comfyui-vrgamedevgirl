@@ -15,8 +15,11 @@ import {
   queueWorkflowPrompt,
   saveBuilderSessionJson,
   setBuilderAutomaticMemoryCleanupEnabled,
+  syncBuilderSessionSaveRevision,
   waitForImages,
+  whenBuilderSessionSavesIdle,
 } from "./comfy_api.mjs";
+import { createExternalChangeSync } from "./external_changes.mjs";
 import { BUILDER_FONT_STACK, BUILDER_UI_VERSION } from "./constants.mjs";
 import {
   makeButton,
@@ -131,7 +134,7 @@ import { createProjectSetup } from "./project_setup.mjs";
 import { createBeatCalibration } from "./beat_calibration.mjs";
 import { createLlmPopout } from "./llm_popout.mjs";
 import { createVideoPopout } from "./video_popout.mjs";
-import { createTimelineState } from "./timeline_state.mjs";
+import { createTimelineState, normalizeTimelineMarkers } from "./timeline_state.mjs";
 import { createUiProfileActions } from "./ui_profiles.mjs";
 import { createMiniMaxReferences } from "./minimax_references.mjs";
 import { createIdLoraBuilder } from "./id_lora_builder.mjs";
@@ -205,6 +208,7 @@ export function openBuilder(node, options = {}) {
     builderLifecycle.resourceController?.abort();
     builderLifecycle.resourceResizeObserver?.disconnect();
     window.removeEventListener("vrgdg:builder-toast", toastNotificationHandler);
+    builderLifecycle.externalChangeSync?.dispose();
     if (builderLifecycle.keydownHandler) document.removeEventListener("keydown", builderLifecycle.keydownHandler, true);
     restoreBrowserAiDownloadsQuietly().catch(() => null);
     overlay.remove();
@@ -524,7 +528,7 @@ export function openBuilder(node, options = {}) {
   toolsPane.append(makeToolRow(faceFixTool.button, "Repair blurry distant faces with Z-Enhanced anchors and temporally consistent LTX face-video processing."));
   const {
     editI2VMotionJsonButton, editPromptJsonButton, editStoryIdeaButton, editSubjectSceneButton,
-    editThemeStyleButton, ernieImageTriggerInput, fluxImageTriggerInput, freezeTimingControl,
+    editThemeStyleButton, ernieImageTriggerInput, fluxImageTriggerInput,
     i2iImageFileInput, i2vMotionJsonInput, imageFolderFileInput, imageTriggerInput, importI2VMotionJsonButton,
     importPromptJsonButton, inspector, krea2TwoPassImageTriggerInput, labelInput, loadVrgdgContextButton,
     projectAudioFileInput, projectSrtFileInput, promptJsonInput, rightResizeHandle, storyIdeaInput,
@@ -664,9 +668,8 @@ export function openBuilder(node, options = {}) {
   syncGlobalAudioModeControls();
   const {
     audioPanel, audioTabButton, imagePanel, imageTabButton, inspectorTabs, noSceneNotice, sceneAdjustPanel,
-    sceneDetailsPanel, scenePanel, sceneTabButton, sceneToolsPanel, videoPanel, videoTabButton,
+    sceneDetailsPanel, scenePanel, sceneToolsPanel, videoPanel, videoTabButton,
   } = buildInspectorTabs();
-  sceneTabButton.onclick = () => setInspectorTab("scene");
   imageTabButton.onclick = () => setInspectorTab("image");
   videoTabButton.onclick = () => setInspectorTab("video");
   audioTabButton.onclick = () => setInspectorTab("audio");
@@ -690,7 +693,7 @@ export function openBuilder(node, options = {}) {
     flowGptTimeout, fluxClipPicker, fluxGemmaModelSelect, fluxGrid, fluxImageRefsPanel, fluxImageTriggerInput,
     fluxKleinModePanel, fluxKleinPanel, fluxLoraPanel, fluxMmprojSelect, fluxNotes, fluxPrompt,
     fluxUnetPicker, fluxUseDirectorNotes, fluxUseLora, fluxUseTextOnlyGemmaPrompt, fluxVaePicker,
-    freezeTimingControl, gemmaModelSelect, i2vMotionJsonInput, idLoraIdentityGrid, idLoraReferenceAudioField,
+    gemmaModelSelect, i2vMotionJsonInput, idLoraIdentityGrid, idLoraReferenceAudioField,
     idLoraReferenceAudioNote, imageModelChooserWrap, imagePanel, imageTriggerInput, importI2VMotionJsonButton,
     importPromptJsonButton, inspectorActions, krea2TwoPassClipPicker, krea2TwoPassCreateButton,
     krea2TwoPassCreateT2IButton, krea2TwoPassGemmaModelSelect, krea2TwoPassI2IPanel,
@@ -859,12 +862,12 @@ export function openBuilder(node, options = {}) {
       globalAudioGuide,
     ], false),
   );
-  inspector.append(inspectorTabs, noSceneNotice, scenePanel, imagePanel, videoPanel, audioPanel);
+  inspector.append(inspectorTabs, noSceneNotice, imagePanel, videoPanel, audioPanel);
 
   const {
     addOverlaySegmentButton, addSegmentButton, addTimelineMarkerButton, audioMaskButton, beatMarkersButton, bulkSegmentsButton, stemMonitorButton, stemVisibilityButton, stemLayer,
     clearRangeButton, closeTimelineGapsButton, deleteAllSegmentsButton, deleteAllTimelineImagesButton,
-    deleteAllTimelineVideosButton, deleteSegmentButton, globalAudioMuteButton,
+    deleteAllTimelineVideosButton, deleteSegmentButton, freezeTimingControl, globalAudioMuteButton,
     globalScrub, globalScrubTime, idLoraTrimModeButton, lyricNoteButton, locationThumbnailButton, multiSelectButton,
     multiSelectHintButton, overlayTrackHintButton, overlayTrackToggleButton, playButton, playhead, redoButton,
     refreshDeleteActions, sceneNoteButton, segmentLayer, setInButton, setOutButton, snapSceneEdgeButton,
@@ -912,7 +915,7 @@ export function openBuilder(node, options = {}) {
       }
       if (["scenes", "tools", "luts"].includes(resume.leftPanelTab)) state.leftPanelTab = resume.leftPanelTab;
       syncLeftPanelTabs();
-      setInspectorTab(["scene", "image", "video", "audio"].includes(resume.inspectorTab) ? resume.inspectorTab : "scene");
+      setInspectorTab(["image", "video", "audio"].includes(resume.inspectorTab) ? resume.inspectorTab : "image");
       syncInspector();
       render();
       requestAnimationFrame(() => {
@@ -952,7 +955,7 @@ export function openBuilder(node, options = {}) {
     multiSelectMode: false,
     modifierMultiSelectMode: false,
     selectedSegmentIds: [],
-    inspectorTab: "scene",
+    inspectorTab: "image",
     leftPanelTab: "scenes",
     pxPerSecond: 45,
     timelineZoom: 45,
@@ -1961,7 +1964,7 @@ export function openBuilder(node, options = {}) {
     activeProjectFolderForSave, audio, audioInput, autoSaveSessionQuiet, createSilentTimelineAudioButton,
     drawWaveform, freezeTimingControl, getPreferredProjectRoot, globalScrub, loadButton, loadSrtButton,
     lutsTools, node, pickAudioButton, pickSrtButton, playBuilderNotification, projectInput,
-    projectLyricNotesPath, pushHistory, renderList, renderSegments, saveSession, setPreferredProjectRoot,
+    projectLyricNotesPath, pushHistory, renderList, renderSegments, saveSession, scenePanel, setPreferredProjectRoot,
     settingsModalControls, silentAudioDurationInput, srtInput, state, syncI2VVideoSettingsPanel,
     syncInspector, syncLyricAndSubjectNoteFiles, timelineInfo, timelineRangeInfo, updateSelectedMediaTools,
     showBeatMarkersIfAvailable: (...args) => showBeatMarkersIfAvailable(...args),
@@ -2309,8 +2312,8 @@ export function openBuilder(node, options = {}) {
     i2vMmprojSelect, i2vPrompt, i2vTextGemmaModelSelect, imagePanel, imageTabButton, inspectorTabs,
     krea2TwoPassGemmaModelSelect, krea2TwoPassMmprojSelect, krea2TwoPassTextGemmaModelSelect,
     miniMaxGemmaModelSelect, miniMaxMmprojSelect, miniMaxTextGemmaModelSelect, mmprojSelect,
-    nbGemmaModelSelect, nbMmprojSelect, noSceneNotice, savedI2VPrompts, saveI2VPromptButton, scenePanel,
-    sceneTabButton, state, t2iTextGemmaModelSelect, timelinePromptSave, videoPanel, videoTabButton,
+    nbGemmaModelSelect, nbMmprojSelect, noSceneNotice, savedI2VPrompts, saveI2VPromptButton,
+    state, t2iTextGemmaModelSelect, timelinePromptSave, videoPanel, videoTabButton,
     zEnhanceGemmaModelSelect, zEnhanceMmprojSelect,
   });
 
@@ -2641,6 +2644,13 @@ export function openBuilder(node, options = {}) {
   };
   window.addEventListener("vrgdg:builder-toast", toastNotificationHandler);
 
+  // Agent API / MCP edits to the open project appear here without discarding unsaved edits.
+  builderLifecycle.externalChangeSync = createExternalChangeSync({
+    api, state, overlay, currentSessionData, loadSessionFromProject, postJson, syncBuilderSessionSaveRevision,
+    whenBuilderSessionSavesIdle, normalizeTimelineMarkers, normalizeFluxReferenceBuilder, ensureAllSegmentRuntimeFields,
+    syncInspector, render, toast,
+  });
+
   function updateGlobalAudioMuteButton() {
     const muted = Boolean(audio.muted && sceneAudio.muted);
     globalAudioMuteButton.textContent = muted ? "🔇" : "🔊";
@@ -2773,7 +2783,7 @@ export function openBuilder(node, options = {}) {
   saveMiniMaxPromptButton.addEventListener("click", () => saveTimelinePrompt("minimax"));
 
   wireSceneInputs({
-    endInput, ernieNotesInput, ernieT2IPrompt, freezeTimingControl, i2vMotionJsonInput, i2vNotesInput,
+    endInput, ernieNotesInput, ernieT2IPrompt, i2vMotionJsonInput, i2vNotesInput,
     i2vPrompt, krea2TwoPassNotesInput, krea2TwoPassT2IPrompt, labelInput, lyricSingersInput, lyricTextInput,
     notesInput, promptJsonInput, pushHistory, render, startInput, state, syncInspector, t2iPrompt,
     updateActiveFromInputs, zEnhanceGemmaNotes, zEnhancePromptPreview,
@@ -2915,15 +2925,15 @@ export function openBuilder(node, options = {}) {
     clearActiveSegment, closeBeatCalibrationWizard, currentGlobalTime,
     deleteAllSegments, deleteAllSegmentsButton, deleteAllTimelineImages, deleteAllTimelineImagesButton,
     deleteAllTimelineVideos, deleteAllTimelineVideosButton, deleteSegment, deleteSegmentButton,
-    enforceAudioTimelineEnd, ensureAutoBpmForCalibration,
+    enforceAudioTimelineEnd, ensureAutoBpmForCalibration, freezeTimingControl,
     ensureCapCutBeatsForCalibration, ensureGlobalTimelineAudioSource, globalAudioMuteButton, globalScrub,
     isTimelinePlaying, lyricNoteButton, multiSelectButton, multiSelectHintButton, openBeatCalibrationWizard,
     openMultiSelectChooser, pauseAllAudio, playbackDuration, playbackSegmentAtTime, playButton, playhead,
-    playSceneAudioFrom, playStart, previewEmpty, previewStage, previewVideo, reloadBeatMarkersFromAudio,
+    playSceneAudioFrom, playStart, previewEmpty, previewStage, previewVideo, pushHistory, reloadBeatMarkersFromAudio,
     render, renderBeatCalibrationWizard, sceneAudio, sceneListPane, sceneNoteButton, seekAudioWhenReady,
     setBeatMarkersVisible, setGlobalPlaybackTime, setGlobalTimelineAudioMuted, setTimelineZoom,
     snapAllSceneStartsButton, snapAllSceneStartsToNearestBeats, snapToBeatsControl,
-    startSilentTimelinePlayback, state, stopButton, stopSilentTimelinePlayback, syncLyricNoteControls,
+    startSilentTimelinePlayback, state, stopButton, stopSilentTimelinePlayback, syncInspector, syncLyricNoteControls,
     syncPreviewPlayback, syncSceneNoteControls, syncTimelineTrimModeButton, syncVideoNoteControls,
     timelineAudioPathForSegment, timelineAudioSourceStartForSegment, timelineCanvas, timelineViewport,
     updateAudioScrubbers, updatePlayPauseButton, usingSceneAudioPlaybackMode,
@@ -3019,7 +3029,7 @@ export function openBuilder(node, options = {}) {
   const uiProfiles = createUiProfileActions({ controls: uiProfileControls, state, toast, applyLayoutSizes, autoSaveSessionQuiet });
   uiProfiles.wire();
   uiProfiles.refresh().catch((error) => console.warn("[VRGDG Music Builder] Could not load UI layouts:", error));
-  setInspectorTab("scene");
+  setInspectorTab("image");
   wireFluxKleinControls({
     fluxClipPicker, fluxHeight, fluxLoraCount, fluxLoraSlots, fluxNotes, fluxPrompt, fluxSeed, fluxUnetPicker,
     fluxUseLora, fluxVaePicker, fluxWidth, saveFluxKleinSettingsFromPanel, useFluxKlein,

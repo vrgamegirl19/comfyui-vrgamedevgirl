@@ -94,6 +94,7 @@
           "REVISION_CONFLICT",
           "SCENE_NOT_FOUND",
           "SETTINGS_INVALID",
+          "TIMELINE_NOTE_NOT_FOUND",
           "VALIDATION_ERROR"
         ],
         "type": "string"
@@ -6274,6 +6275,253 @@
           {}
         ],
         "summary": "Create the timeline scenes from the lyrics, like Line Mapping, with a min/max scene length. Runs as a job.",
+        "tags": [
+          "timeline"
+        ]
+      }
+    },
+    "/vrgdg/api/v1/projects/{pid}/timeline/notes": {
+      "get": {
+        "operationId": "api_list_timeline_notes",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Error. The HTTP status mirrors error.code."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {}
+        ],
+        "summary": "List the project's timed Timeline Notes with the scenes each one overlaps.",
+        "tags": [
+          "timeline"
+        ]
+      },
+      "post": {
+        "operationId": "api_create_timeline_note",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Project revision the caller last saw. A mismatch returns REVISION_CONFLICT.",
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Error. The HTTP status mirrors error.code."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {}
+        ],
+        "summary": "Add a timed Timeline Note: start (required), end (omit or null for a point note), type, label, note.",
+        "tags": [
+          "timeline"
+        ]
+      }
+    },
+    "/vrgdg/api/v1/projects/{pid}/timeline/notes/{nid}": {
+      "delete": {
+        "operationId": "api_delete_timeline_note",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "nid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Project revision the caller last saw. A mismatch returns REVISION_CONFLICT.",
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Error. The HTTP status mirrors error.code."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {}
+        ],
+        "summary": "Delete a timed Timeline Note.",
+        "tags": [
+          "timeline"
+        ]
+      },
+      "patch": {
+        "operationId": "api_update_timeline_note",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "nid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Project revision the caller last saw. A mismatch returns REVISION_CONFLICT.",
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Error. The HTTP status mirrors error.code."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {}
+        ],
+        "summary": "Change the given fields of a timed Timeline Note. end: null makes it a point note.",
         "tags": [
           "timeline"
         ]

@@ -292,6 +292,9 @@ export function buildTimelineView({ overlay, preview, previewStage, getDeleteAva
   timelineResizeHandle.title = "Drag to resize timeline";
   timelineResizeHandle.style.cssText = "cursor:row-resize;background:#18181b;border-bottom:1px solid #27272a;";
   const timelineHeader = document.createElement("div");
+  const freezeTimingControl = makeCheckbox("Freeze SRT timing", false);
+  freezeTimingControl.wrapper.style.cssText += "margin-left:auto;flex:0 0 auto;";
+  freezeTimingControl.wrapper.title = "Lock all scene start/end times. Uncheck to adjust scene lengths.";
   timelineHeader.style.cssText = "display:flex;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid #27272a;font-size:12px;overflow-x:auto;overflow-y:hidden;white-space:nowrap;";
   const bulkSegmentsButton = makeButton("Bulk Segments");
   const sceneNoteButton = makeButton("+ Scene Note");
@@ -470,6 +473,7 @@ export function buildTimelineView({ overlay, preview, previewStage, getDeleteAva
   addOverlaySegmentButton.textContent = "+ Overlay Track";
   timelineToolRail.append(bulkSegmentsButton, sceneNoteButton, videoNoteButton, lyricNoteButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton, audioMaskButton, stemMonitorButton, stemVisibilityButton);
   timelineHeader.append(toolsButton, splitSceneButton, idLoraTrimModeButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineStatusInfo, deleteSegmentButton, deleteAllButton);
+  timelineHeader.append(freezeTimingControl.wrapper);
   const timelineBody = document.createElement("div");
   timelineBody.style.cssText = "display:grid;grid-template-columns:auto minmax(0,1fr);min-height:0;overflow:hidden;";
   const timelineViewport = document.createElement("div");
@@ -491,7 +495,7 @@ export function buildTimelineView({ overlay, preview, previewStage, getDeleteAva
   return {
     addOverlaySegmentButton, addSegmentButton, addTimelineMarkerButton, audioMaskButton, beatMarkersButton, bulkSegmentsButton, stemMonitorButton, stemVisibilityButton,
     clearRangeButton, closeTimelineGapsButton, deleteAllSegmentsButton, deleteAllTimelineImagesButton,
-    deleteAllTimelineVideosButton, deleteSegmentButton, globalAudioMuteButton,
+    deleteAllTimelineVideosButton, deleteSegmentButton, freezeTimingControl, globalAudioMuteButton,
     globalScrub, globalScrubTime, idLoraTrimModeButton, lyricNoteButton, locationThumbnailButton, multiSelectButton,
     multiSelectHintButton, overlayTrackHintButton, overlayTrackToggleButton, playButton, playhead, redoButton,
     refreshDeleteActions, sceneNoteButton, segmentLayer, setInButton, setOutButton, snapSceneEdgeButton,
@@ -1079,6 +1083,8 @@ export function createTimelineView({
   function drawWaveform() {
     const height = timelineHeight();
     const width = Math.max(900, Math.ceil(Math.max(1, timelineDuration()) * state.pxPerSecond));
+    const audioWidth = currentProjectAudioPath() && state.peaks.length
+      ? Math.max(0, loadedGlobalAudioDuration()) * state.pxPerSecond : 0;
     timelineCanvas.style.height = `${height}px`;
     timelineCanvas.style.width = `${width}px`;
     segmentLayer.style.height = `${height}px`;
@@ -1088,7 +1094,7 @@ export function createTimelineView({
     playhead.style.height = `${height}px`;
     // The timeline redraws at every scene change. Resizing and repainting a canvas as wide as the song and as tall as
     // the stem tracks each time stalls playback, so it is only done when something it shows has changed.
-    const waveformKey = [width, height, state.pxPerSecond, state.waveformMode, timelineDuration(), timelineWaveTop(),
+    const waveformKey = [width, audioWidth, height, state.pxPerSecond, state.waveformMode, timelineDuration(), timelineWaveTop(),
       currentProjectAudioPath() ? 1 : 0, state.peaks.length].join("|");
     if (waveformKey === drawnWaveformKey && state.peaks === drawnWaveformPeaks) return;
     drawnWaveformKey = waveformKey;
@@ -1108,8 +1114,9 @@ export function createTimelineView({
     const mid = waveTop + waveHeight / 2;
     const peaks = currentProjectAudioPath() && state.peaks.length ? state.peaks : [0];
     const gain = WAVEFORM_MODES[state.waveformMode]?.gain || 1;
-    for (let x = 0; x < width; x++) {
-      const index = Math.floor((x / width) * peaks.length);
+    // Canvas padding is empty timeline space, not additional audio time.
+    for (let x = 0; x < Math.min(width, audioWidth); x++) {
+      const index = Math.floor((x / audioWidth) * peaks.length);
       const amp = Math.min(1, Math.max(0.02, (peaks[index] || 0) * gain));
       ctx.moveTo(x, mid - amp * (waveHeight / 2));
       ctx.lineTo(x, mid + amp * (waveHeight / 2));

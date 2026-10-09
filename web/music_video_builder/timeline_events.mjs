@@ -11,20 +11,28 @@ export function wireTimelineControls({
   clearActiveSegment, closeBeatCalibrationWizard, currentGlobalTime,
   deleteAllSegments, deleteAllSegmentsButton, deleteAllTimelineImages, deleteAllTimelineImagesButton,
   deleteAllTimelineVideos, deleteAllTimelineVideosButton, deleteSegment, deleteSegmentButton,
-  enforceAudioTimelineEnd, ensureAutoBpmForCalibration,
+  enforceAudioTimelineEnd, ensureAutoBpmForCalibration, freezeTimingControl,
   ensureCapCutBeatsForCalibration, ensureGlobalTimelineAudioSource, globalAudioMuteButton, globalScrub,
   isTimelinePlaying, lyricNoteButton, multiSelectButton, multiSelectHintButton, openBeatCalibrationWizard,
   openMultiSelectChooser, pauseAllAudio, playbackDuration, playbackSegmentAtTime, playButton, playhead,
-  playSceneAudioFrom, playStart, previewEmpty, previewStage, previewVideo, reloadBeatMarkersFromAudio, render,
+  playSceneAudioFrom, playStart, previewEmpty, previewStage, previewVideo, pushHistory, reloadBeatMarkersFromAudio, render,
   renderBeatCalibrationWizard, sceneAudio, sceneListPane, sceneNoteButton, seekAudioWhenReady,
   setBeatMarkersVisible, setGlobalPlaybackTime, setGlobalTimelineAudioMuted, setTimelineZoom,
   snapAllSceneStartsButton, snapAllSceneStartsToNearestBeats, snapToBeatsControl, startSilentTimelinePlayback,
-  state, stopButton, stopSilentTimelinePlayback, syncLyricNoteControls, syncPreviewPlayback,
+  state, stopButton, stopSilentTimelinePlayback, syncInspector, syncLyricNoteControls, syncPreviewPlayback,
   syncSceneNoteControls, syncTimelineTrimModeButton, syncVideoNoteControls, timelineAudioPathForSegment,
   timelineAudioSourceStartForSegment, timelineCanvas, timelineViewport, updateAudioScrubbers,
   updatePlayPauseButton, usingSceneAudioPlaybackMode, videoNoteButton,
   waitForPreviewVideoReady, waveformModeSelect, zoomInButton, zoomOutButton,
 }) {
+  freezeTimingControl.input.addEventListener("change", () => {
+    pushHistory();
+    state.timingFrozen = Boolean(freezeTimingControl.input.checked);
+    syncInspector();
+    render();
+    toast(state.timingFrozen ? "All scene timing frozen." : "Scene timing unlocked for editing.");
+    autoSaveSessionQuiet("global scene timing lock changed").catch((error) => toast(String(error), true));
+  });
   deleteSegmentButton.onclick = deleteSegment;
   deleteAllSegmentsButton.onclick = deleteAllSegments;
   deleteAllTimelineVideosButton.onclick = deleteAllTimelineVideos;

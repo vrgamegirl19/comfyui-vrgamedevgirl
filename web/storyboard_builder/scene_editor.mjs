@@ -51,6 +51,8 @@ export function createSceneEditor({
     if ((state.videoPromptType === "flf" || scene.video_prompt_type === "flf") && inheritedFlfStart) scene.flf_start_state = inheritedFlfStart;
     absorbSceneReferencesIntoCatalog([scene]);
     const editorBackdrop = document.createElement("div");
+    // Agent API / MCP edits that arrive while this editor is open leave this card alone (external_changes.mjs).
+    state.openSceneEditor = { id: String(scene.id || ""), element: editorBackdrop };
     editorBackdrop.style.cssText = "position:fixed;inset:0;z-index:100012;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:18px;";
     const editor = document.createElement("div");
     editor.style.cssText = "width:min(1420px,calc(100vw - 42px));max-height:calc(100vh - 42px);overflow:auto;border:1px solid #0e7490;border-radius:16px;background:linear-gradient(135deg,#07111f,#0f172a 46%,#071827);color:#f8fafc;box-shadow:0 28px 90px rgba(0,0,0,.68);padding:18px;display:flex;flex-direction:column;gap:12px;";

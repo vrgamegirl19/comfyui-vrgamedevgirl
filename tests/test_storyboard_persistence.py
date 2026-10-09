@@ -30,7 +30,7 @@ def load_persistence() -> dict:
     )
     source = ROOT / "storyboard/persistence.py"
     tree = ast.parse(source.read_text(encoding="utf-8"))
-    functions = [node for node in tree.body if isinstance(node, ast.FunctionDef)]
+    functions = [node for node in tree.body if isinstance(node, (ast.FunctionDef, ast.ClassDef))]
     namespace["datetime"] = datetime
     exec(
         compile(ast.Module(body=functions, type_ignores=[]), str(source), "exec"),

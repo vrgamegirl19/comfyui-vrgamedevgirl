@@ -1,5 +1,6 @@
 import { normalizeOverlayClip, normalizeOverlayTrackState } from "../VRGDG_OverlayTrack.js";
 import {
+  announceBuilderEvent,
   audioUrl,
   cancelComfyExecutionAndWaitIdle,
   getJson,
@@ -1280,7 +1281,10 @@ export function createSession({
     return restored;
   }
 
-  async function loadSessionFromProject(projectFolder) {
+  // options.preserveSelection keeps the selected scene (an external API/MCP edit reloading the project);
+  // options.quiet skips the "Loaded builder session" toast.
+  async function loadSessionFromProject(projectFolder, options = {}) {
+    const previousActiveId = state.activeId;
     try {
       await restoreBrowserAiDownloadsQuietly();
       closeBeatCalibrationWizard();
@@ -1514,7 +1518,9 @@ export function createSession({
         }
       }
       state.activeTrack = session.active_track || "base";
-      state.activeId = state.segments[0]?.id || state.overlaySegments[0]?.id || "";
+      const keepActive = options.preserveSelection
+        && [...state.segments, ...state.overlaySegments].some((item) => item?.id && item.id === previousActiveId);
+      state.activeId = keepActive ? previousActiveId : (state.segments[0]?.id || state.overlaySegments[0]?.id || "");
       syncZImageSettingsPanel();
       syncFluxKleinPanel();
       syncErnieImagePanel();
@@ -1530,9 +1536,13 @@ export function createSession({
         await saveSession({ quiet: true, throwOnError: true });
         state.repairedSegmentIdCount = 0;
       }
-      toast(repairedSegmentIdCount
-        ? `Loaded builder session and repaired ${repairedSegmentIdCount} duplicate scene ID${repairedSegmentIdCount === 1 ? "" : "s"}.\n${state.sessionPath}`
-        : `Loaded builder session.\n${state.sessionPath}`);
+      if (!options.quiet || repairedSegmentIdCount) {
+        toast(repairedSegmentIdCount
+          ? `Loaded builder session and repaired ${repairedSegmentIdCount} duplicate scene ID${repairedSegmentIdCount === 1 ? "" : "s"}.\n${state.sessionPath}`
+          : `Loaded builder session.\n${state.sessionPath}`);
+      }
+      // external_changes.mjs records this as the project's last known saved state.
+      announceBuilderEvent("vrgdg:builder-session-loaded", { projectFolder: state.projectFolder, revision: Number(session.revision || 0) });
       return true;
     } catch (error) {
       toast(String(error?.message || error), true);
