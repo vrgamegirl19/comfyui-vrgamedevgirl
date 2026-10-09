@@ -1114,7 +1114,14 @@ def build_stitch_payload(
         embedded = audio == "embedded"
 
     audio_path = ""
-    if not embedded:
+    song_path = ""
+    if embedded:
+        # The scenes play their own audio; the song only fills audio that runs short, or plays continuously
+        # when the clips' audio is the song (runner/video_files.py _embedded_scene_audio_track).
+        song_path = str(p.get("audio_path") or session_audio_path(session) or "").strip()
+        if not os.path.isfile(song_path):
+            song_path = ""
+    else:
         audio_path = str(p.get("audio_path") or session_audio_path(session) or "").strip()
         if not audio_path or not os.path.isfile(audio_path):
             raise ValidationError(
@@ -1157,6 +1164,7 @@ def build_stitch_payload(
         "project_folder": folder,
         "scene_paths": [path for _index, _segment, path in selected],
         "audio_path": audio_path,
+        "song_path": song_path,
         "scene_audio_paths": [],
         "scene_audio_items": [],
         "scene_timing_items": timing_items,

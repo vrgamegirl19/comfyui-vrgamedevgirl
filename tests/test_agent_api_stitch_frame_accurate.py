@@ -184,11 +184,15 @@ class StitchPayloadTests(StitchBase):
         # MiniMax built-in audio: the scenes' own audio, as the Builder does.
         self.assertTrue(payload["use_embedded_scene_audio"])
         self.assertEqual(payload["audio_path"], "")
+        # The song still goes along: it fills scene audio that runs short and plays continuously when the
+        # clips' audio is the song (no jumps at the cuts).
+        self.assertEqual(payload["song_path"], self.song)
 
     def test_project_audio_is_trimmed_to_the_selected_scenes(self):
         payload = self.captured_payload({"scene_ids": ["2", "3", "4"], "audio": "project"})
         self.assertFalse(payload["use_embedded_scene_audio"])
         self.assertEqual(payload["audio_path"], self.song)
+        self.assertEqual(payload["song_path"], "")
         start, end = self.timeline[1][0], self.timeline[3][1]
         self.assertAlmostEqual(payload["audio_start"], start, places=6)
         self.assertAlmostEqual(payload["audio_duration"], end - start, places=6)
