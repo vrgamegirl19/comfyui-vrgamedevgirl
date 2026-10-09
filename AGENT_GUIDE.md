@@ -216,6 +216,17 @@ The `builder` package contains the backend business logic and HTTP API powering 
 - **Key Functions**:
   - `_save_builder_project_as(payload)`: Duplicates a project folder, selectively filters scene media based on user choices (e.g., keep approved images only, discard failed video renders), rewrites internal path references inside `vrgdg_builder_session.json`, and clones serialized MiniMax latents.
 
+#### [builder/audio_clips.py](builder/audio_clips.py)
+- **Purpose**: Builds a cached, atomic PCM mix from non-destructive timeline audio pieces. Gaps are silence;
+  original source files remain unchanged. `/vrgdg/music_builder/prepare_audio_clip_mix` offloads this service
+  to a worker thread. UI playback, scene renders, and Agent API rendering/stitching share this mix.
+- **Persistence**: Session `audio_clips` is an array of pieces with `id`, `scene_id`, `path`, `name`, `start`,
+  `source_start`, `duration`, `full_duration`, and waveform `peaks`. `null` keeps legacy per-scene audio;
+  an empty array explicitly means silence. Derived mix paths and cache keys are not saved.
+- **Frontend**: `audio_clip_editor.mjs` owns clip selection, playhead splitting, movement, edge trimming,
+  and mix preparation. Speaking-mode imports from Clip Audio or the Audio panel use this shared track;
+  edits participate in session saving and undo/redo without resizing scenes.
+
 #### [builder/audio.py](builder/audio.py)
 - **Purpose**: Digital audio processing, waveform analysis, and beat detection.
 - **Key Functions**:

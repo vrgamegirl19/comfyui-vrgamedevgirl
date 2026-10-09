@@ -69,6 +69,7 @@ function mergeUniqueStringArray(firstValue, secondValue) {
 }
 
 export function createTimelineEdit({
+  registerSceneAudio,
   activeSegment, allEditableSegments, autoSaveSessionQuiet, clampTimelineMarkerToNonOverlap,
   captureSelectedVideoFrameAsImage, collectedSceneVideoFolder, createProgressWindow, currentGlobalTime,
   currentVideoMode, deleteSegment, deleteSelectedMedia,
@@ -145,7 +146,9 @@ export function createTimelineEdit({
     sceneSilencePanel.style.cssText = "display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end;";
     sceneSilencePanel.append(makeField("Silence duration seconds", sceneSilenceDurationInput), createSceneSilence);
     const note = document.createElement("div");
-    note.textContent = "Drop or load an audio file for this scene, or create silence. It will be copied into the project folder, sent to LTX for this scene, and used for final stitching when scene-audio mode is active.";
+    note.textContent = state.videoType === "speaking"
+      ? "Load audio, then drag its purple timeline clip to move it. Drag its edges to trim, or click it to split at the playhead. Gaps are silent; the original file is preserved."
+      : "Drop or load an audio file for this scene, or create silence. It will be copied into the project folder, sent to LTX for this scene, and used for final stitching when scene-audio mode is active.";
     note.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
     const actions = document.createElement("div");
     actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;";
@@ -169,7 +172,9 @@ export function createTimelineEdit({
             scene_number: sceneNumber,
             audio_data: String(reader.result || ""),
             audio_name: file.name || "scene_audio.wav",
+            preserve_source: state.videoType === "speaking" || Array.isArray(state.audioClips),
           }, 180000);
+          if ((projectInput.value || state.projectFolder) !== projectFolder || !state.segments.includes(segment)) return;
           pushHistory();
           segment.custom_audio_path = data.saved_path || "";
           segment.custom_audio_name = file.name || "";
@@ -179,7 +184,8 @@ export function createTimelineEdit({
           segment.custom_audio_source_start = 0;
           segment.custom_audio_peaks = Array.isArray(data.peaks) ? data.peaks : [];
           segment.custom_audio_beats = Array.isArray(data.beats) ? data.beats : [];
-          if (segment.custom_audio_duration > 0 && !hasLockedVideo(segment)) {
+          registerSceneAudio?.(segment);
+          if (state.videoType !== "speaking" && segment.custom_audio_duration > 0 && !hasLockedVideo(segment)) {
             segment.end = Number(segment.start || 0) + segment.custom_audio_duration;
             normalizeSegments(segment);
           }
@@ -218,7 +224,8 @@ export function createTimelineEdit({
         segment.custom_audio_source_start = 0;
         segment.custom_audio_peaks = Array.isArray(data.peaks) ? data.peaks : [];
         segment.custom_audio_beats = Array.isArray(data.beats) ? data.beats : [];
-        if (segment.custom_audio_duration > 0 && !hasLockedVideo(segment)) {
+        registerSceneAudio?.(segment);
+        if (state.videoType !== "speaking" && segment.custom_audio_duration > 0 && !hasLockedVideo(segment)) {
           segment.end = Number(segment.start || 0) + segment.custom_audio_duration;
           normalizeSegments(segment);
         }
@@ -265,6 +272,7 @@ export function createTimelineEdit({
       segment.custom_audio_source_start = 0;
       segment.custom_audio_peaks = [];
       segment.custom_audio_beats = [];
+      registerSceneAudio?.(segment);
       updateCustomAudioStatus();
       render();
     };

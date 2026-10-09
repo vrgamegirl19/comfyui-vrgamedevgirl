@@ -511,7 +511,7 @@ export function createTimelineView({
   cycleSegmentVideoHistory, enableImageDrop, enableLutDrop, enablePostEffectDrop,
   ensureAllSegmentRuntimeFields, handleSegmentPick, i2vNotesInput, isSegmentMultiSelected,
   loadedGlobalAudioDuration, lyricTextInput, makeDragHandle, markerVisualEnd, mediaThumbnailHtml,
-  openAudioContextMenu, openDirectorNoteContextMenu, openSceneOptions, openSegmentContextMenu,
+  openAudioContextMenu, openDirectorNoteContextMenu, openSceneOptions, openSegmentContextMenu, renderAudioClips,
   openTimelineSceneCard, playhead, pushHistory, render, rtvReferenceBehaviorForSegment, sceneListPane,
   segmentImageSource, segmentLayer, segmentTrack, selectedSegmentImageThumbnailPath, miniMaxH3ModeForSegment,
   selectedTimelineRangeInfo, setActiveSegment, state, syncInspector, syncLyricMapperFromSegments,
@@ -1081,9 +1081,10 @@ export function createTimelineView({
   let drawnWaveformPeaks = null;
 
   function drawWaveform() {
+    const waveformPeaks = Array.isArray(state.audioClips) ? (state.audioClipMixPeaks || []) : state.peaks;
     const height = timelineHeight();
     const width = Math.max(900, Math.ceil(Math.max(1, timelineDuration()) * state.pxPerSecond));
-    const audioWidth = currentProjectAudioPath() && state.peaks.length
+    const audioWidth = currentProjectAudioPath() && waveformPeaks.length
       ? Math.max(0, loadedGlobalAudioDuration()) * state.pxPerSecond : 0;
     timelineCanvas.style.height = `${height}px`;
     timelineCanvas.style.width = `${width}px`;
@@ -1095,10 +1096,10 @@ export function createTimelineView({
     // The timeline redraws at every scene change. Resizing and repainting a canvas as wide as the song and as tall as
     // the stem tracks each time stalls playback, so it is only done when something it shows has changed.
     const waveformKey = [width, audioWidth, height, state.pxPerSecond, state.waveformMode, timelineDuration(), timelineWaveTop(),
-      currentProjectAudioPath() ? 1 : 0, state.peaks.length].join("|");
-    if (waveformKey === drawnWaveformKey && state.peaks === drawnWaveformPeaks) return;
+      currentProjectAudioPath() ? 1 : 0, waveformPeaks.length].join("|");
+    if (waveformKey === drawnWaveformKey && waveformPeaks === drawnWaveformPeaks) return;
     drawnWaveformKey = waveformKey;
-    drawnWaveformPeaks = state.peaks;
+    drawnWaveformPeaks = waveformPeaks;
     timelineCanvas.height = height;
     timelineCanvas.width = width;
     const ctx = timelineCanvas.getContext("2d");
@@ -1112,7 +1113,7 @@ export function createTimelineView({
     const waveBottom = timelineCanvas.height - 10;
     const waveHeight = Math.max(24, waveBottom - waveTop);
     const mid = waveTop + waveHeight / 2;
-    const peaks = currentProjectAudioPath() && state.peaks.length ? state.peaks : [0];
+    const peaks = currentProjectAudioPath() && waveformPeaks.length ? waveformPeaks : [0];
     const gain = WAVEFORM_MODES[state.waveformMode]?.gain || 1;
     // Canvas padding is empty timeline space, not additional audio time.
     for (let x = 0; x < Math.min(width, audioWidth); x++) {
@@ -1527,7 +1528,7 @@ export function createTimelineView({
         };
         segmentLayer.append(lyricBox);
       }
-      if (!isOverlay && segment.custom_audio_peaks?.length) {
+      if (!isOverlay && segment.custom_audio_peaks?.length && state.videoType !== "speaking" && !Array.isArray(state.audioClips)) {
         const audioStart = audioTimelineStart(segment);
         const audioDuration = Math.max(0.1, audioChunkDuration(segment));
         const audioLeft = audioStart * state.pxPerSecond;
@@ -1546,6 +1547,7 @@ export function createTimelineView({
         drawSegmentAudioWaveform(audioWave, segment.custom_audio_peaks);
       }
     }
+    renderAudioClips?.(segmentLayer);
     renderStemTracks();
     renderBeatMarkersOverlay();
   }

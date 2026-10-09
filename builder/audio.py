@@ -9,6 +9,7 @@ import sys
 import wave
 import base64
 import array
+import uuid
 import folder_paths
 
 from ..core.atomic_write import atomic_write_text
@@ -550,11 +551,20 @@ def _save_scene_audio(payload):
     audio_data = str(payload.get("audio_data", "") or "").strip()
     if audio_data:
         target_path = _scene_audio_path(project_folder, scene_number, source_ext or ".wav")
+        if payload.get("preserve_source"):
+            folder = os.path.join(_scene_audio_folder(project_folder), "sources")
+            os.makedirs(folder, exist_ok=True)
+            target_path = os.path.join(folder, f"source_{uuid.uuid4().hex}{source_ext or '.wav'}")
         with open(target_path, "wb") as handle:
             handle.write(_audio_bytes_from_data_url(audio_data))
     else:
         source_path = _resolve_existing_file(payload.get("source_path", ""), "Audio file")
         target_path = _scene_audio_path(project_folder, scene_number, os.path.splitext(source_path)[1] or ".wav")
+        if payload.get("preserve_source"):
+            folder = os.path.join(_scene_audio_folder(project_folder), "sources")
+            os.makedirs(folder, exist_ok=True)
+            extension = os.path.splitext(source_path)[1] or ".wav"
+            target_path = os.path.join(folder, f"source_{uuid.uuid4().hex}{extension}")
         shutil.copy2(source_path, target_path)
 
     audio_info = _read_audio_peaks(target_path, 600)

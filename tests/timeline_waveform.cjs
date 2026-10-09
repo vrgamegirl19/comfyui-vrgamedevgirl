@@ -68,3 +68,13 @@ test("a timeline without audio does not draw a fake waveform", () => {
   f.draw();
   assert.equal(f.strokes.length, 0);
 });
+test("edited audio draws its silent gaps instead of the original waveform", () => {
+  const f = fixture(20, 20);
+  f.state.audioClips = [];
+  f.state.audioClipMixPeaks = [0, 0.5, 0, 0.8];
+  f.draw();
+  assert.equal(f.strokes[0].y, 69.6);
+  assert.equal(f.strokes[100].y, 60);
+  assert.equal(f.strokes[200].y, 69.6);
+  assert.equal(f.strokes[300].y, 54);
+});

@@ -76,6 +76,7 @@ export function createHistory({
   function historySnapshot() {
     return JSON.stringify({
       segments: state.segments,
+      audioClips: state.audioClips,
       overlaySegments: state.overlaySegments,
       overlayTrack: normalizeOverlayTrackState(state.overlayTrack),
       activeId: state.activeId,
@@ -165,6 +166,9 @@ export function createHistory({
     const legacyLlmMaxTokens = data.llmMaxTokens ?? data.llm_max_tokens;
     state.isRestoringHistory = true;
     state.segments = data.segments || [];
+    state.audioClips = Array.isArray(data.audioClips) ? data.audioClips : null;
+    state.audioClipMixPath = "";
+    state.audioClipMixKey = "";
     state.overlaySegments = data.overlaySegments || data.overlay_segments || [];
     state.overlaySegments.forEach(normalizeOverlayClip);
     state.overlayTrack = normalizeOverlayTrackState(data.overlayTrack || data.overlay_track || state.overlayTrack);

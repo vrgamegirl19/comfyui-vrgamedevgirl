@@ -765,6 +765,7 @@ export function createSession({
     enforceAudioTimelineEnd();
     return {
       segments: sanitizedSessionSegments(state.segments, "base"),
+      audio_clips: Array.isArray(state.audioClips) ? state.audioClips : null,
       overlay_segments: sanitizedSessionSegments(state.overlaySegments, "overlay"),
       overlay_track: normalizeOverlayTrackState(state.overlayTrack),
       active_track: state.activeTrack,
@@ -1054,6 +1055,9 @@ export function createSession({
         state.overlayTrack = normalizeOverlayTrackState(data.session.overlay_track || state.overlayTrack);
         ensureAllSegmentRuntimeFields();
         state.activeTrack = data.session.active_track || state.activeTrack || "base";
+        state.audioClips = Array.isArray(data.session.audio_clips) ? data.session.audio_clips : null;
+        state.audioClipMixPath = "";
+        state.audioClipMixKey = "";
         state.timingFrozen = Boolean(data.session.timing_frozen);
         state.srtMode = Boolean(data.session.srt_mode);
         state.promptJsonPath = data.session.prompt_json_path || state.promptJsonPath;
@@ -1309,6 +1313,9 @@ export function createSession({
       state.miniMaxH3TwoPassEnabled = state.miniMaxH3Settings.render_pass === "two_pass";
       state.miniMaxH3ThreePassEnabled = state.miniMaxH3Settings.render_pass === "three_pass";
       state.segments = Array.isArray(session.segments) ? session.segments : [];
+      state.audioClips = Array.isArray(session.audio_clips) ? session.audio_clips : null;
+      state.audioClipMixPath = "";
+      state.audioClipMixKey = "";
       state.overlaySegments = Array.isArray(session.overlay_segments) ? session.overlay_segments : [];
       state.overlaySegments.forEach(normalizeOverlayClip);
       state.overlayTrack = normalizeOverlayTrackState(session.overlay_track || {});

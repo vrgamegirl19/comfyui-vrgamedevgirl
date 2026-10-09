@@ -16,6 +16,7 @@ function playFixture() {
   const waits=[],calls=[];
   const c={waits,calls,state:{sceneSelectionUsesGlobalAudio:true},playButton:{},stopButton:{},playing:false,isTimelinePlaying:()=>c.playing,stopSilentTimelinePlayback:()=>{c.playing=false;},updatePlayPauseButton(){},updateAudioScrubbers(){},currentGlobalTime:()=>0,playbackDuration:()=>20,activeSegment:()=>({start:0}),playbackSegmentAtTime:()=>({}),selectedSegmentVideoPath:()=> 'clip',syncPreviewPlayback(){},waitForPreviewVideoReady:()=>new Promise(r=>waits.push(r)),localPlaybackTime:()=>0,ensureGlobalTimelineAudioSource:()=>false,startSilentTimelinePlayback:()=>{c.playing=true;calls.push('play');},audio:{currentTime:0,pause(){}},sceneAudio:{currentTime:0,pause(){}},previewVideo:{paused:true}};
   vm.createContext(c);
+  c.prepareAudioEdits = undefined;
   vm.runInContext(part('  const playStart = { inFlight: false, request: 0 };', '\n')+'\n'+functionSource(s, 'cancelPreviewPlayStart')+'\n'+functionSource(s, 'pauseAllAudio')+part('  playButton.onclick = async','  multiSelectButton.onclick')+part('  stopButton.onclick =','  timelineCanvas.addEventListener("pointerdown"'),c);
   return c;
 }
@@ -35,6 +36,19 @@ test('cancelled old request cannot clear or start a newer request',async()=>{
 });
 test('uncancelled Play starts once after readiness',async()=>{
   const c=playFixture();const p=c.playButton.onclick();assert.deepEqual(c.calls,[]);c.waits.shift()();await p;assert.deepEqual(c.calls,['play']);
+});
+test('Stop cancels Play while preparing edited audio', async () => {
+  const c = playFixture();
+  let resolveMix;
+  c.prepareAudioEdits = () => new Promise(resolve => { resolveMix = resolve; });
+  c.setGlobalPlaybackTime = () => {};
+  c.render = () => {};
+  const pending = c.playButton.onclick();
+  c.stopButton.onclick();
+  resolveMix({ audio_path: 'mix.wav' });
+  await pending;
+  assert.deepEqual(c.calls, []);
+  assert.equal(c.waits.length, 0);
 });
 for (const latest of [5,12]) test(`seek queue respects latest requested position ${latest}`,()=>{
   const handlers={};const video={currentTime:5,seeking:true,readyState:2,paused:true,dataset:{cacheKey:'clip'},style:{},addEventListener:(n,f)=>handlers[n]=f};

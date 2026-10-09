@@ -296,6 +296,14 @@ async def render_scene_video_async(
     # Audio preparation
     audio_path = str(p.get("audio_path") or "").strip()
     project_audio = session_audio_path(session)
+    if not audio_path and isinstance(session.get("audio_clips"), list):
+        from ...builder.audio_clips import prepare_audio_clip_mix
+
+        edited = await asyncio.to_thread(prepare_audio_clip_mix, {
+            "project_folder": folder, "clips": session["audio_clips"],
+            "duration": max([0.05] + [float(scene.get("end", 0)) for scene in session.get("segments", [])]),
+        })
+        project_audio = edited["audio_path"]
     if not audio_path and project_audio and os.path.isfile(project_audio):
         if mode_group == "minimax_h3":
             audio_path = project_audio
@@ -1116,7 +1124,7 @@ def build_stitch_payload(
     audio_path = ""
     if not embedded:
         audio_path = str(p.get("audio_path") or session_audio_path(session) or "").strip()
-        if not audio_path or not os.path.isfile(audio_path):
+        if (not audio_path or not os.path.isfile(audio_path)) and not isinstance(session.get("audio_clips"), list):
             raise ValidationError(
                 "The project has no audio file to stitch with. Attach the song, pass audio_path, or use audio: embedded.",
                 details={"audio_path": audio_path},
@@ -1194,6 +1202,18 @@ async def run_video_stitch_job(job: Job, manager: JobManager) -> Dict[str, Any]:
         raise ValidationError("project_id is required.")
     folder, session = _get_active_session_and_folder(job.project_id)
     stitch_payload, summary = build_stitch_payload(folder, session, job.params, strict=True)
+    if (
+        not stitch_payload.get("use_embedded_scene_audio")
+        and not job.params.get("audio_path")
+        and isinstance(session.get("audio_clips"), list)
+    ):
+        from ...builder.audio_clips import prepare_audio_clip_mix
+
+        edited = await asyncio.to_thread(prepare_audio_clip_mix, {
+            "project_folder": folder, "clips": session["audio_clips"],
+            "duration": max([0.05] + [float(scene.get("end", 0)) for scene in session.get("segments", [])]),
+        })
+        stitch_payload["audio_path"] = edited["audio_path"]
 
     manager.update_progress(
         job.id, 20.0, "stitching", message=f"Stitching {len(stitch_payload['scene_paths'])} scene videos..."

@@ -521,6 +521,7 @@ export function createTimelineState({
 
   function timelineAudioPathForSegment(segment) {
     if (!segment) return "";
+    if (Array.isArray(state.audioClips)) return currentProjectAudioPath();
     const customAudioPath = String(segment.custom_audio_path || "").trim();
     if (customAudioPath) return customAudioPath;
     if (!currentProjectAudioPath() && segmentUsesRenderedTimelineAudio(segment)) return String(selectedSegmentVideoPath(segment) || "").trim();
@@ -530,6 +531,7 @@ export function createTimelineState({
 
   function timelineAudioSourceStartForSegment(segment) {
     if (!segment) return 0;
+    if (Array.isArray(state.audioClips)) return Math.max(0, Number(segment.start || 0));
     if (String(segment.custom_audio_path || "").trim()) return audioSourceStart(segment);
     if (!currentProjectAudioPath() && segmentUsesRenderedTimelineAudio(segment)) return 0;
     return Math.max(0, Number(segment.start || 0));
@@ -566,10 +568,14 @@ export function createTimelineState({
     const rangeEnd = Number.isFinite(Number(range.out)) ? Number(range.out) : 0;
     const audioEnd = loadedGlobalAudioDuration();
     if (audioEnd > 0) return audioEnd;
-    return Math.max(segmentEnd, overlayEnd, sceneAudioEnd, markerEnd, rangeEnd, Number(state.duration || 0));
+    const editedAudioEnd = (state.audioClips || []).reduce((end, clip) => Math.max(end, clip.start + clip.duration), 0);
+    return Math.max(segmentEnd, overlayEnd, sceneAudioEnd, editedAudioEnd, markerEnd, rangeEnd, Number(state.duration || 0));
   }
 
   function loadedGlobalAudioDuration() {
+    if (Array.isArray(state.audioClips)) return Math.max(0.05,
+      ...state.segments.map(scene => Number(scene.end || 0)),
+      ...state.audioClips.map(clip => clip.start + clip.duration));
     const analyzedDuration = Number(state.audioDuration);
     if (Number.isFinite(analyzedDuration) && analyzedDuration > 0) return analyzedDuration;
     const mediaDuration = Number(audio.duration);
@@ -585,6 +591,7 @@ export function createTimelineState({
   }
 
   function enforceAudioTimelineEnd() {
+    if (Array.isArray(state.audioClips)) return { trimmed: 0, removed: 0 };
     const audioEnd = loadedGlobalAudioDuration();
     if (!(audioEnd > 0)) return { trimmed: 0, removed: 0 };
     let trimmed = 0;
@@ -709,10 +716,12 @@ export function createTimelineState({
   }
 
   function currentProjectAudioPath() {
+    if (Array.isArray(state.audioClips)) return String(state.audioClipMixPath || "");
     return String(audioInput.value || state.audioPath || "").trim();
   }
 
   function usingSceneAudioPlaybackMode() {
+    if (Array.isArray(state.audioClips)) return false;
     return !currentProjectAudioPath() && (usingSceneAudioMode() || usingRenderedSceneAudioMode());
   }
 
