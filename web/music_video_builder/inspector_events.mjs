@@ -10,7 +10,7 @@ import {
 } from "./model_settings.mjs";
 
 export function wireSceneInputs({
-  endInput, ernieNotesInput, ernieT2IPrompt, freezeTimingControl, i2vMotionJsonInput, i2vNotesInput,
+  endInput, ernieNotesInput, ernieT2IPrompt, i2vMotionJsonInput, i2vNotesInput,
   i2vPrompt, krea2TwoPassNotesInput, krea2TwoPassT2IPrompt, labelInput, lyricSingersInput, lyricTextInput,
   notesInput, promptJsonInput, pushHistory, render, startInput, state, syncInspector, t2iPrompt,
   updateActiveFromInputs, zEnhanceGemmaNotes, zEnhancePromptPreview,
@@ -37,13 +37,6 @@ export function wireSceneInputs({
   lyricSingersInput.addEventListener("change", () => {
     lyricSingersInput.dataset.vrgdgUserEdited = "1";
     updateActiveFromInputs({ skipHistory: true });
-  });
-  freezeTimingControl.input.addEventListener("change", () => {
-    pushHistory();
-    state.timingFrozen = Boolean(freezeTimingControl.input.checked);
-    syncInspector();
-    render();
-    toast(state.timingFrozen ? "Timing frozen." : "Timing unlocked for editing.");
   });
   promptJsonInput.addEventListener("input", () => {
     pushHistory();

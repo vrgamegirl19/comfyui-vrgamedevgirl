@@ -292,6 +292,9 @@ export function buildTimelineView({ overlay, preview, previewStage, getDeleteAva
   timelineResizeHandle.title = "Drag to resize timeline";
   timelineResizeHandle.style.cssText = "cursor:row-resize;background:#18181b;border-bottom:1px solid #27272a;";
   const timelineHeader = document.createElement("div");
+  const freezeTimingControl = makeCheckbox("Freeze SRT timing", false);
+  freezeTimingControl.wrapper.style.cssText += "margin-left:auto;flex:0 0 auto;";
+  freezeTimingControl.wrapper.title = "Lock all scene start/end times. Uncheck to adjust scene lengths.";
   timelineHeader.style.cssText = "display:flex;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid #27272a;font-size:12px;overflow-x:auto;overflow-y:hidden;white-space:nowrap;";
   const bulkSegmentsButton = makeButton("Bulk Segments");
   const sceneNoteButton = makeButton("+ Scene Note");
@@ -470,6 +473,7 @@ export function buildTimelineView({ overlay, preview, previewStage, getDeleteAva
   addOverlaySegmentButton.textContent = "+ Overlay Track";
   timelineToolRail.append(bulkSegmentsButton, sceneNoteButton, videoNoteButton, lyricNoteButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton, audioMaskButton, stemMonitorButton, stemVisibilityButton);
   timelineHeader.append(toolsButton, splitSceneButton, idLoraTrimModeButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineStatusInfo, deleteSegmentButton, deleteAllButton);
+  timelineHeader.append(freezeTimingControl.wrapper);
   const timelineBody = document.createElement("div");
   timelineBody.style.cssText = "display:grid;grid-template-columns:auto minmax(0,1fr);min-height:0;overflow:hidden;";
   const timelineViewport = document.createElement("div");
@@ -491,7 +495,7 @@ export function buildTimelineView({ overlay, preview, previewStage, getDeleteAva
   return {
     addOverlaySegmentButton, addSegmentButton, addTimelineMarkerButton, audioMaskButton, beatMarkersButton, bulkSegmentsButton, stemMonitorButton, stemVisibilityButton,
     clearRangeButton, closeTimelineGapsButton, deleteAllSegmentsButton, deleteAllTimelineImagesButton,
-    deleteAllTimelineVideosButton, deleteSegmentButton, globalAudioMuteButton,
+    deleteAllTimelineVideosButton, deleteSegmentButton, freezeTimingControl, globalAudioMuteButton,
     globalScrub, globalScrubTime, idLoraTrimModeButton, lyricNoteButton, locationThumbnailButton, multiSelectButton,
     multiSelectHintButton, overlayTrackHintButton, overlayTrackToggleButton, playButton, playhead, redoButton,
     refreshDeleteActions, sceneNoteButton, segmentLayer, setInButton, setOutButton, snapSceneEdgeButton,

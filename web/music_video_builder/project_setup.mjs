@@ -54,7 +54,7 @@ export function createProjectSetup({
   freezeTimingControl, getPreferredProjectRoot, globalScrub, loadButton, loadSrtButton,
   loadedGlobalAudioDuration, lutsTools, node, normalizeImportedSrtSegments, pickAudioButton, pickSrtButton,
   playBuilderNotification, projectInput, projectLyricNotesPath, pushHistory, refreshGemmaChoices,
-  refreshLoraChoices, refreshModelChoices, renderList, renderSegments, saveSession, selectedTimelineRangeInfo,
+  refreshLoraChoices, refreshModelChoices, renderList, renderSegments, saveSession, scenePanel, selectedTimelineRangeInfo,
   setPreferredProjectRoot, settingsModalControls, showBeatMarkersIfAvailable, silentAudioDurationInput,
   srtInput, state, syncI2VVideoSettingsPanel, syncInspector, syncLyricAndSubjectNoteFiles,
   syncLyricNoteControls, syncOverlayTrackControls, syncProjectVideoEngineUI, timelineDuration, timelineInfo,
@@ -233,6 +233,7 @@ export function createProjectSetup({
   }
 
   function openSettingsModal() {
+    syncInspector();
     const backdrop = document.createElement("div");
     backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.58);display:flex;align-items:center;justify-content:center;";
     const box = document.createElement("div");
@@ -635,7 +636,11 @@ export function createProjectSetup({
     testErrorSound.onclick = () => playBuilderNotification("error", true);
     syncCustomAudioLabels();
     syncContinuityModeVisibility();
-    box.append(header, pathGrid, actions, note, projectStoragePanel, projectVideoEnginePanel, ltxVersionPanel, renderWaitingPanel, themePanel, memoryManagementPanel, autoChainPanel, notificationPanel);
+    const sceneOptionsNote = document.createElement("div");
+    sceneOptionsNote.textContent = "Scene details, tools, and adjustments apply to the currently selected scene. Select a scene on the timeline before opening these options.";
+    sceneOptionsNote.style.cssText = "font-size:12px;color:#a1a1aa;line-height:1.45;";
+    const sceneOptionsPanel = makeSettingsSection("Scene Options", [sceneOptionsNote, scenePanel], false);
+    box.append(header, pathGrid, actions, note, sceneOptionsPanel, projectStoragePanel, projectVideoEnginePanel, ltxVersionPanel, renderWaitingPanel, themePanel, memoryManagementPanel, autoChainPanel, notificationPanel);
     backdrop.append(box);
     document.body.append(backdrop);
     modalClose.onclick = () => backdrop.remove();
@@ -737,6 +742,7 @@ export function createProjectSetup({
   }
 
   function render() {
+    freezeTimingControl.input.checked = Boolean(state.timingFrozen);
     enforceAudioTimelineEnd();
     syncOverlayTrackControls();
     drawWaveform();
