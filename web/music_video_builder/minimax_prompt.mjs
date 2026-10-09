@@ -27,7 +27,7 @@ import {
 } from "./prompt_text.mjs";
 import { castWallText, stripCastLeaks } from "./cast_guard.mjs";
 import { normalizeFluxReferenceBuilder } from "./reference_data.mjs";
-import { attachRefmodLabels } from "./refmod_labels.mjs";
+import { attachRefmodLabels, enforceCastLabels } from "./refmod_labels.mjs";
 import { mediaPathKey } from "./timeline_state.mjs";
 
 export function miniMaxDialogueAssignmentsForSegment(segment) {
@@ -2004,10 +2004,22 @@ export function createMiniMaxPrompt({
     return attachRefmodLabels(text, items);
   }
 
+  // In the RefMod pipeline the labels are attached to the writer's <Subject n> tags, so a shot that names a person without
+  // the tag is repaired first, and a garment written as if it were a person is dropped (see enforceCastLabels).
+  function repairRefmodShotDescriptions(segment, mode, descriptions) {
+    if (!isRefmodPipelineActive() || !Array.isArray(descriptions)) return descriptions;
+    const entries = Array.from(new Map(
+      Array.from(miniMaxH3SubjectLabelMapForSegment(segment, mode).values()).filter((item) => item.label).map((item) => [item.label, item]),
+    ).values());
+    const people = entries.filter((item) => item.kind === "subject" || item.kind === "extra");
+    const garments = entries.filter((item) => item.kind === "clothing");
+    return descriptions.map((description) => (typeof description === "string" ? enforceCastLabels(description, people, garments) : description));
+  }
+
   function assembleMiniMaxH3OfficialPromptFromCreative(segment, mode, creativePrompt) {
     const normalizedMode = normalizeMiniMaxH3Mode(mode);
     const cutPlan = miniMaxH3CutPlanForSegment(segment);
-    const shotDescriptions = parseMiniMaxH3ShotDescriptionPayload(creativePrompt, cutPlan, segment, normalizedMode);
+    const shotDescriptions = repairRefmodShotDescriptions(segment, normalizedMode, parseMiniMaxH3ShotDescriptionPayload(creativePrompt, cutPlan, segment, normalizedMode));
     const creative = miniMaxH3OfficialShotBodyFromDescriptions(segment, shotDescriptions, normalizedMode);
     if (!creative) {
       throw new Error("The LLM returned no creative MiniMax scene body. Try again, or add more scene notes so it has action/camera material to write.");

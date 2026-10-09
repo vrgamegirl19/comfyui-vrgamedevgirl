@@ -4,6 +4,7 @@ import { makeEditorImageUrl } from "./comfy_api.mjs";
 import { confirmDestructiveAction } from "./confirm_dialog.mjs";
 import { makeButton, makeCheckbox, makeField, makeInput, toast } from "./controls.mjs";
 import { refmodLibraryChanged } from "./refmod_card.mjs";
+import { openRefModsRules } from "./refmods_rules.mjs";
 import {
   clampBox, DEFAULT_QUALITY, estimateTokens, expandBox, MIN_CROP_SIZE, QUALITY_PRESETS, REF_TOKEN_CAP, trimBoxFromPixels,
 } from "./refmod_trim.mjs";
@@ -241,7 +242,13 @@ export function openRefModsStudio({ runnerPayload } = {}) {
   title.style.cssText = "font-size:18px;font-weight:900;";
   titleWrap.append(title, noteText("Create a RefMod from your own images. It is saved under models/refmods in a folder named after its type."));
   const closeButton = makeButton("Close");
-  header.append(titleWrap, closeButton);
+  const rulesButton = makeButton("Rules and uses");
+  rulesButton.title = "How RefMods work, what goes in each type, and how to fix common problems.";
+  rulesButton.onclick = openRefModsRules;
+  const headerButtons = document.createElement("div");
+  headerButtons.style.cssText = "display:flex;align-items:center;gap:8px;";
+  headerButtons.append(rulesButton, closeButton);
+  header.append(titleWrap, headerButtons);
 
   const columns = document.createElement("div");
   columns.style.cssText = "display:grid;grid-template-columns:400px minmax(0,1fr);gap:14px;flex:1 1 auto;min-height:0;";

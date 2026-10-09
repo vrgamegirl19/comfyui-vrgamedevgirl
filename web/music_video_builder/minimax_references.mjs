@@ -262,6 +262,9 @@ export function createMiniMaxReferences({
     const missing = [];
     const normalizedMode = normalizeMiniMaxH3Mode(mode);
     if (!["reference_to_video", "image_reference_to_video", "video_to_video"].includes(normalizedMode)) return missing;
+    // A RefMod is shown to the encoder as <Video n> or <Picture n> and is named by its card, so a missing description
+    // only means the prompt has less to say about it. It never blocks prompt creation.
+    if (isRefmodPipeline()) return missing;
     const items = (normalizedMode === "image_reference_to_video"
       ? miniMaxH3ImageReferencePromptItems(segment)
       : miniMaxOrderedImageReferenceItemsForSegment(segment, mode))

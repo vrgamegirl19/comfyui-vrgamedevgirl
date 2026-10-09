@@ -215,40 +215,25 @@ export function tokenStatusText(items) {
 
 // The prompt writer names cast members as <Subject n> (name), numbered in scene order, so <Subject n> is the n-th
 // RefMod item. Text Encode with RefMods only binds a RefMod to the words around its real label (<Video n>, <Picture n>),
-// so each label is put right after the first mention of its <Subject n> in every shot: "<Subject 1> (The man) <Video 1>".
+// so every <Subject n> mention is replaced by the label with the name beside it: "<Video 1> (The man)".
 // A RefMod the shots never name gets one short sentence in the first shot instead (clothing goes after its wearer).
 // Call this once, on freshly assembled prompt text. Running it again changes nothing.
 export function attachRefmodLabels(promptText, items) {
   let text = String(promptText ?? "");
   const labelled = (items || []).filter((item) => item.label);
   if (!labelled.length) return text;
-  const starts = [...text.matchAll(/\[Shot \d+\]/g)].map((match) => match.index);
-  const blocks = starts.length
-    ? [text.slice(0, starts[0]), ...starts.map((start, index) => text.slice(start, index + 1 < starts.length ? starts[index + 1] : text.length))]
-    : [text];
-  const firstShot = starts.length ? 1 : 0;
-  const attach = (block, tag, label) => {
-    let from = 0;
-    while (true) {
-      const at = block.indexOf(tag, from);
-      if (at < 0) return block;
-      const after = at + tag.length;
-      const named = block.slice(after).match(/^\s*\([^)]*\)/);
-      const end = named ? after + named[0].length : after;
-      if (block.slice(end).trimStart().startsWith(label)) return block;
-      return `${block.slice(0, end)} ${label}${block.slice(end)}`;
-    }
-  };
-  const subjectTag = (item) => `<Subject ${(items.indexOf(item) + 1)}>`;
-  for (let index = firstShot; index < blocks.length; index += 1) {
-    for (const item of labelled) blocks[index] = attach(blocks[index], subjectTag(item), item.label);
+  // Every <Subject n> becomes the RefMod's own label with its name beside it, on every mention: "<Video 1> (Darrel)".
+  // The text encoder binds a RefMod to the words around its real label, so the label replaces the writer's tag.
+  const escapeTag = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  for (const item of labelled) {
+    const tag = `<Subject ${(items.indexOf(item) + 1)}>`;
+    text = text.replace(new RegExp(`${escapeTag(tag)}(?:\\s*\\([^)]*\\))?`, "g"), () => `${item.label} (${item.name})`);
   }
-  text = blocks.join("");
   // A RefMod the writer never named is placed the way its kind belongs in a scene: clothing is worn by its character,
   // a vehicle is stood beside by the main character, a prop is placed next to them, and only people are "in the scene".
   const mainLabel = () => {
     const main = labelled.find((candidate) => candidate.category === "character");
-    return main ? main.label : "";
+    return main ? `${main.label} (${main.name})` : "";
   };
   const sentenceFor = (item) => {
     if (item.category === "background") return `The setting is ${item.label}.`;
@@ -273,7 +258,7 @@ export function attachRefmodLabels(promptText, items) {
       const named = text.slice(afterLabel).match(/^\s*\([^)]*\)/);
       const end = named ? afterLabel + named[0].length : afterLabel;
       const closing = /^\s*[.,;]/.test(text.slice(end)) ? "" : ",";
-      text = `${text.slice(0, end)}, wearing ${item.label}${closing}${text.slice(end)}`;
+      text = `${text.slice(0, end)}, wearing ${item.label} (${item.name})${closing}${text.slice(end)}`;
       continue;
     }
     const extra = sentenceFor(item);
@@ -288,6 +273,44 @@ export function attachRefmodLabels(promptText, items) {
     text = `${text.slice(0, shots[0])}${block.slice(0, block.length - trailing.length)} ${extra}${trailing}${text.slice(end)}`;
   }
   return text;
+}
+
+// The writer sometimes names a person without their <Subject n> label ("Darrel (Darrel)") and sometimes writes a garment
+// as if it were a person ("Warm Clothing remains still beside him"). This repairs one shot's text before the RefMod
+// labels are attached: a person is named by label with the name in parentheses on first mention and by label after
+// that (quoted lyrics are left alone), and a sentence that starts with a garment doing something a person does is dropped.
+//   people:   [{ label: "<Subject 1>", name: "Darrel" }]
+//   garments: [{ label: "<Subject 2>", name: "Warm Clothing" }]
+export function enforceCastLabels(shotText, people = [], garments = []) {
+  let result = String(shotText ?? "");
+  const escape = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const outsideQuotes = (value, change) => value.split(/(“[^”]*”|"[^"]*")/).map((chunk, index) => (index % 2 ? chunk : change(chunk))).join("");
+  for (const person of people) {
+    const label = text(person?.label);
+    const name = text(person?.name);
+    if (!label || !name || result.includes(label)) continue;
+    const pattern = new RegExp(`\\b${escape(name)}(?:\\s*\\(\\s*${escape(name)}\\s*\\))?(?!\\w)`, "gi");
+    let first = true;
+    result = outsideQuotes(result, (chunk) => chunk.replace(pattern, () => {
+      const replacement = first ? `${label} (${name})` : label;
+      first = false;
+      return replacement;
+    }));
+  }
+  const doing = "(?:remain|stand|sit|rest|stay|wait|watch|observ|look|lie|lean|hover|float|appear|is|are)\\w*";
+  for (const garment of garments) {
+    const names = [text(garment?.label), text(garment?.name)].filter(Boolean).map(escape).join("|");
+    if (!names) continue;
+    result = result.replace(new RegExp(`(^|[.!?]\\s+)(?:${names})(?:\\s*\\([^)]*\\))?\\s+${doing}\\b[^.!?]*[.!?]\\s*`, "gi"), "$1");
+    // A garment the writer still names ("wearing Warm Clothing") gets its tag, so it ends up as "<Video 2> (Warm Clothing)".
+    const label = text(garment?.label);
+    const name = text(garment?.name);
+    if (label && name && !result.includes(label)) {
+      const plain = new RegExp(`(?<![\\w(])${escape(name)}(?:\\s*\\(\\s*${escape(name)}\\s*\\))?(?![\\w)])`, "i");
+      result = outsideQuotes(result, (chunk) => chunk.replace(plain, `${label} (${name})`));
+    }
+  }
+  return result.replace(/ {2,}/g, " ").trim();
 }
 
 // The ordered list the render payload carries (visual mods only).

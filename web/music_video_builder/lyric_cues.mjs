@@ -8,6 +8,7 @@ import {
 } from "./minimax_prompt.mjs";
 import { flattenLyricForPrompt, isInstrumentalLyricText, segmentUsesNoLipSyncPerformance } from "./prompt_text.mjs";
 import { normalizeFluxReferenceBuilder } from "./reference_data.mjs";
+import { cardCategory, isRefmodCard } from "./refmod_labels.mjs";
 import { newSegment } from "./segments.mjs";
 import { timelineSegmentDuration } from "./timeline_state.mjs";
 
@@ -511,7 +512,13 @@ export function createLyricCues({
     const normalizedRefs = normalizeFluxReferenceBuilder(refs);
     return logicalSubjectIdsForScene(normalizedRefs, segment, segmentIndexInfo(segment).index)
       .map((id) => logicalReferenceSubjects(normalizedRefs).find((subject) => String(subject?.id || "") === String(id)))
-      .filter(Boolean);
+      .filter(Boolean)
+      .filter(isPersonSubject);
+  }
+
+  // A RefMod card for clothing, a prop or a vehicle is something in the scene, not someone in the cast.
+  function isPersonSubject(subject) {
+    return !isRefmodCard(subject) || cardCategory(subject) === "character";
   }
 
   // Guard for the people who must not appear in this scene: characters left out of the cast plus
@@ -521,7 +528,7 @@ export function createLyricCues({
     if (!segment) return null;
     const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
     const toPlain = (subject) => ({ name: String(subject?.name || "").trim(), description: String(subject?.description || "").trim() });
-    const everyone = logicalReferenceSubjects(refs).map(toPlain);
+    const everyone = logicalReferenceSubjects(refs).filter(isPersonSubject).map(toPlain);
     const cast = selectedSceneSubjectsForSegment(segment, refs).map(toPlain);
     const extraNames = segment.no_character_present
       ? []
