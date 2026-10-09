@@ -10,6 +10,7 @@ AUTH_DISABLED = "AUTH_DISABLED"
 PATH_OUTSIDE_ROOT = "PATH_OUTSIDE_ROOT"
 PROJECT_NOT_FOUND = "PROJECT_NOT_FOUND"
 SCENE_NOT_FOUND = "SCENE_NOT_FOUND"
+TIMELINE_NOTE_NOT_FOUND = "TIMELINE_NOTE_NOT_FOUND"
 ASSET_NOT_FOUND = "ASSET_NOT_FOUND"
 REVISION_CONFLICT = "REVISION_CONFLICT"
 PROJECT_BUSY = "PROJECT_BUSY"
@@ -103,6 +104,15 @@ class SceneNotFoundError(NotFoundError):
             f"Scene '{scene_id}' was not found in project '{project_id}'.",
             code=SCENE_NOT_FOUND,
             details={"scene_id": scene_id, "project_id": project_id},
+        )
+
+
+class TimelineNoteNotFoundError(NotFoundError):
+    def __init__(self, note_id: str, project_id: str = ""):
+        super().__init__(
+            f"Timeline note '{note_id}' was not found in project '{project_id}'.",
+            code=TIMELINE_NOTE_NOT_FOUND,
+            details={"note_id": note_id, "project_id": project_id},
         )
 
 

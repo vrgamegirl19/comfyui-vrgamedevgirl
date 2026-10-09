@@ -305,13 +305,22 @@ def get_project_scenes(
 
 
 def get_scene_detail(project_id: str, scene_id: str) -> Dict[str, Any]:
-    """Get single scene details by scene ID or 1-based number."""
+    """Get single scene details by scene ID or 1-based number, with its complete scene card.
+
+    ``scene_card`` holds every field PATCH /scenes/{id} can edit (Director Notes, Video Notes, Planning
+    Notes, camera, performance, references, ...), as the Storyboard shows it.
+    """
+    from .orchestrator.storyboard_orchestrator import scene_cards  # imported late: it imports the job layer
+
     scenes = get_project_scenes(project_id)
     target = str(scene_id).strip()
 
     for s in scenes:
         if s["id"] == target or str(s["number"]) == target:
-            return s
+            folder = resolve_project_folder(project_id)
+            session = _load_builder_session(folder).get("session") or {}
+            card = next((c for c in scene_cards(session, folder) if str(c.get("id")) == s["id"]), None)
+            return {**s, "scene_card": card}
 
     raise SceneNotFoundError(scene_id, project_id)
 

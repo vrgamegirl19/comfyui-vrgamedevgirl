@@ -15,8 +15,11 @@ import {
   queueWorkflowPrompt,
   saveBuilderSessionJson,
   setBuilderAutomaticMemoryCleanupEnabled,
+  syncBuilderSessionSaveRevision,
   waitForImages,
+  whenBuilderSessionSavesIdle,
 } from "./comfy_api.mjs";
+import { createExternalChangeSync } from "./external_changes.mjs";
 import { BUILDER_FONT_STACK, BUILDER_UI_VERSION } from "./constants.mjs";
 import {
   makeButton,
@@ -131,7 +134,7 @@ import { createProjectSetup } from "./project_setup.mjs";
 import { createBeatCalibration } from "./beat_calibration.mjs";
 import { createLlmPopout } from "./llm_popout.mjs";
 import { createVideoPopout } from "./video_popout.mjs";
-import { createTimelineState } from "./timeline_state.mjs";
+import { createTimelineState, normalizeTimelineMarkers } from "./timeline_state.mjs";
 import { createUiProfileActions } from "./ui_profiles.mjs";
 import { createMiniMaxReferences } from "./minimax_references.mjs";
 import { createIdLoraBuilder } from "./id_lora_builder.mjs";
@@ -205,6 +208,7 @@ export function openBuilder(node, options = {}) {
     builderLifecycle.resourceController?.abort();
     builderLifecycle.resourceResizeObserver?.disconnect();
     window.removeEventListener("vrgdg:builder-toast", toastNotificationHandler);
+    builderLifecycle.externalChangeSync?.dispose();
     if (builderLifecycle.keydownHandler) document.removeEventListener("keydown", builderLifecycle.keydownHandler, true);
     restoreBrowserAiDownloadsQuietly().catch(() => null);
     overlay.remove();
@@ -2640,6 +2644,13 @@ export function openBuilder(node, options = {}) {
     playBuilderNotification(isError ? "error" : "success");
   };
   window.addEventListener("vrgdg:builder-toast", toastNotificationHandler);
+
+  // Agent API / MCP edits to the open project appear here without discarding unsaved edits.
+  builderLifecycle.externalChangeSync = createExternalChangeSync({
+    api, state, overlay, currentSessionData, loadSessionFromProject, postJson, syncBuilderSessionSaveRevision,
+    whenBuilderSessionSavesIdle, normalizeTimelineMarkers, normalizeFluxReferenceBuilder, ensureAllSegmentRuntimeFields,
+    syncInspector, render, toast,
+  });
 
   function updateGlobalAudioMuteButton() {
     const muted = Boolean(audio.muted && sceneAudio.muted);

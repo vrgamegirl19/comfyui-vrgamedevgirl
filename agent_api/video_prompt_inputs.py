@@ -10,7 +10,8 @@ from typing import Any, Dict
 
 from ..builder.lyric_scenes import is_instrumental_lyric_text
 from .errors import ValidationError
-from .image_prompt_inputs import _find_segment, _reference_lines, _text
+from .image_prompt_inputs import _find_segment, _reference_lines, _text, scene_card_for
+from .scene_card_context import storyboard_video_context
 
 _T2I_FIELDS = ("t2i_prompt", "flux_prompt", "nb_prompt", "flow_gpt_prompt", "ernie_t2i_prompt")
 _NO_CHARACTER_NOTE = (
@@ -94,7 +95,7 @@ def scene_video_prompt_inputs(session: Dict[str, Any], scene_id: Any, mode: Any 
 
     video_mode = normalize_video_mode(mode)
     segment = _find_segment(session, scene_id)
-    card = next((item for item in scene_cards(session) if _text(item.get("id")) == _text(segment.get("id"))), {})
+    card = scene_card_for(session, segment, scene_cards)
     no_character = bool(segment.get("no_character_present"))
     subject = "" if no_character else _reference_lines(card.get("subject_refs") or [])
     location = card.get("location_ref") or {}
@@ -122,6 +123,8 @@ def scene_video_prompt_inputs(session: Dict[str, Any], scene_id: Any, mode: Any 
         performance_note,
         _INSTRUMENTAL_NOTE if instrumental else "",
         _text(segment.get("i2v_notes")),
+        # The scene card's directions and the complete card, as the Storyboard sends them with a video prompt.
+        storyboard_video_context(card) if card else "",
     ) if part)
     return {
         "t2i_prompt": t2i_prompt,
@@ -135,7 +138,7 @@ def scene_video_prompt_inputs(session: Dict[str, Any], scene_id: Any, mode: Any 
         "lyric_section": _text(segment.get("lyric_section")),
         "story_beat": _text(segment.get("story_beat")),
         "scene_notes": _text(segment.get("notes")),
-        "director_note": _text(segment.get("director_note")),
+        "director_note": _text(segment.get("timeline_note") or segment.get("director_note")),
         "image_reference_path": "",
         "image_reference_data": "",
         "use_vision": False,

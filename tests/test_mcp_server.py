@@ -169,19 +169,20 @@ class TestMcpServer(unittest.TestCase):
         self.assertEqual(res["result"], {})
 
     def test_tools_list(self):
-        """Test listing all tools (T1 to T63)."""
+        """Test listing all tools (T1 to T67)."""
         req = {"jsonrpc": "2.0", "id": 3, "method": "tools/list"}
         res = self.server.handle_request(req)
         tools = res["result"]["tools"]
-        # 63 named tools, one generated `api_*` tool per other endpoint (see test_mcp_endpoints.py) and `api_request`.
-        self.assertGreaterEqual(len(tools), 63 + 1)
-        self.assertEqual(sum(1 for t in tools if not t["name"].startswith("api_")), 63)
+        # 67 named tools, one generated `api_*` tool per other endpoint (see test_mcp_endpoints.py) and `api_request`.
+        self.assertGreaterEqual(len(tools), 67 + 1)
+        self.assertEqual(sum(1 for t in tools if not t["name"].startswith("api_")), 67)
         tool_names = {t["name"] for t in tools}
         self.assertIn("system_health", tool_names)
         self.assertIn("project_create", tool_names)
         self.assertIn("timeline_build", tool_names)
         self.assertIn("pipeline_build_full_video", tool_names)
         self.assertIn("upload_file", tool_names)
+        self.assertIn("timeline_note_create", tool_names)
 
     def test_unknown_method(self):
         """Test unknown method returns -32601 error."""

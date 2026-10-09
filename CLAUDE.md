@@ -48,7 +48,7 @@ If the task is to *use* the Video Builder through `/vrgdg/api/v1` or the MCP ser
    - **Services** (`project.py`, `audio.py`, `media.py`, etc.): Implement pure business logic and disk operations.
    - **Graph Compiler** (`runner/*.py`): Build ComfyUI `/prompt` API graph dictionaries independently of UI state.
    - **Agent API** (`agent_api/`): Headless REST surface (`/vrgdg/api/v1`), background job manager, SSE progress streaming, and full pipeline orchestrator.
-   - **MCP Server** (`mcp_server/`, local-only and git-ignored): Standard I/O bridge exposing tools (T1–T53), resources, and prompt templates to LLM coding assistants.
+   - **MCP Server** (`mcp_server/`, local-only and git-ignored): Standard I/O bridge exposing tools (T1–T67), resources, and prompt templates to LLM coding assistants.
    - **Web UI** (`web/**/*.mjs`): Interact with the backend strictly via REST APIs and WebSockets; never directly access the filesystem.
 
 6. **Consistent Logging**:

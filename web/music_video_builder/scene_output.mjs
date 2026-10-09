@@ -63,6 +63,8 @@ async function saveStoryboardPromptFromTimeline(projectFolder, fresh, promptValu
   await postJson("/vrgdg/storyboard/save", {
     project_folder: projectFolder,
     storyboard: { ...storyboard, scenes },
+    // Refused if the Agent API changed the Storyboard between this load and save.
+    expected_revision: Number(storyboard.revision || 0),
   });
 }
 
@@ -478,6 +480,8 @@ export function createSceneOutput({
           motion_summary: videoNotes,
           lyric_singers: lyricSingers,
           lyric_cue_map: normalizeLyricCueMapForSegment(segment, undefined, { preserveBlank: true }),
+          lyric_shot_word_timing_enabled: Boolean(segment.lyric_shot_word_timing_enabled),
+          lyric_performance_mode: String(segment.lyric_performance_mode || ""),
           timed_lyric_cue_contract: miniMaxH3VocalCueMapText(segment, miniMaxH3ModeForSegment(segment)),
           performer_assignment: {
             singing: lyricSingers,
@@ -514,6 +518,8 @@ export function createSceneOutput({
           location_ref: referenceData.location_ref,
           shot_type: String(segment.shot_type || "").trim(),
           camera_motion: String(segment.camera_motion || segment.motion_preset || "").trim(),
+          character_motion: String(segment.character_motion || "").trim(),
+          include_microphone: Boolean(segment.include_microphone),
           camera_motion_speed: Number(defaults.camera_motion_speed ?? 4),
           character_motion_speed: Number(defaults.character_motion_speed ?? 4),
           image_prompt: imagePrompt,

@@ -560,6 +560,37 @@ def _t56_timeline_enforce_length(client: VrgdgApiClient, args: Dict[str, Any]) -
     res = client.post(f"/projects/{pid}/timeline/enforce-length", json_data=payload)
     return format_tool_result(res)
 
+_TIMELINE_NOTE_FIELDS = ("id", "start", "end", "type", "label", "note")
+
+
+@_safe_call
+def _t64_timeline_notes_list(client: VrgdgApiClient, args: Dict[str, Any]) -> Dict[str, Any]:
+    pid = args["project_id"]
+    res = client.get(f"/projects/{pid}/timeline/notes")
+    return format_tool_result(res)
+
+@_safe_call
+def _t65_timeline_note_create(client: VrgdgApiClient, args: Dict[str, Any]) -> Dict[str, Any]:
+    pid = args["project_id"]
+    payload = {k: args[k] for k in _TIMELINE_NOTE_FIELDS if k in args}
+    res = client.post(f"/projects/{pid}/timeline/notes", json_data=payload,
+                      if_match_revision=args.get("if_match_revision"))
+    return format_tool_result(res)
+
+@_safe_call
+def _t66_timeline_note_update(client: VrgdgApiClient, args: Dict[str, Any]) -> Dict[str, Any]:
+    pid, nid = args["project_id"], args["note_id"]
+    payload = {k: args[k] for k in _TIMELINE_NOTE_FIELDS if k in args and k != "id"}
+    res = client.patch(f"/projects/{pid}/timeline/notes/{nid}", json_data=payload,
+                       if_match_revision=args.get("if_match_revision"))
+    return format_tool_result(res)
+
+@_safe_call
+def _t67_timeline_note_delete(client: VrgdgApiClient, args: Dict[str, Any]) -> Dict[str, Any]:
+    pid, nid = args["project_id"], args["note_id"]
+    res = client.delete(f"/projects/{pid}/timeline/notes/{nid}", if_match_revision=args.get("if_match_revision"))
+    return format_tool_result(res)
+
 @_safe_call
 def _t57_reference_describe(client: VrgdgApiClient, args: Dict[str, Any]) -> Dict[str, Any]:
     pid, kind, rid = args["project_id"], args.get("kind", "subjects"), args["ref_id"]
@@ -964,13 +995,28 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
     ),
     "scene_update": ToolDefinition(
         name="scene_update",
-        description="Update scene properties such as lyrics, prompts, and notes (T20).",
+        description=(
+            "Edit a scene card (T20). The change is saved on the timeline scene and on its Storyboard card, the way "
+            "the Builder saves an edit, and appears in the open Video Builder and Storyboard. Only the keys sent "
+            "change; an empty string, false or [] clears or disables a field. Read the current card with scene_get "
+            "(scene_card). Notes: timeline_note (Director Notes), i2v_notes (Video Notes), notes (Planning Notes), "
+            "prompt_summary. Lyrics: lyric_text, lyric_section, lyric_singers, lyric_cue_map, lyric_no_lip_sync, "
+            "lyric_instrumental, lyric_performance_mode, lyric_shot_word_timing_enabled, speaker_assignments. "
+            "Camera and character: shot_type, camera_motion, character_motion, no_character_present. Performance: "
+            "performance_mode (singing|speaking|no_lip_sync), performance_style, facial_performance, "
+            "facial_performance_custom, include_microphone. Audio and continuity: audio_direction, continuity, "
+            "flf_start_state, flf_transformation, flf_end_state, flf_carry_forward. Look: video_style, "
+            "video_style_custom, temporal_world_effect_override, temporal_world_effect_custom, trigger_phrase, "
+            "trigger_position. References: subject_ids (list of character ids), location_id. Prompts: image_prompt, "
+            "video_prompt, video_prompt_origin, minimax_h3_pass2_prompt, plus the single prompt fields and timing. "
+            "Timed Timeline Notes are separate: use timeline_note_create."
+        ),
         input_schema={
             "type": "object",
             "properties": {
                 "project_id": {"type": "string"},
                 "scene_id": {"type": "string"},
-                "patch": {"type": "object"},
+                "patch": {"type": "object", "description": "Scene-card fields to set, for example {\"timeline_note\": \"...\", \"include_microphone\": false}."},
                 "if_match_revision": {"type": "integer"},
             },
             "required": ["project_id", "scene_id", "patch"],
@@ -1361,6 +1407,78 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
         },
         handler=_t56_timeline_enforce_length,
     ),
+    "timeline_notes_list": ToolDefinition(
+        name="timeline_notes_list",
+        description=(
+            "List the project's timed Timeline Notes (the Builder's + Timeline Note markers, T64): id, start and end "
+            "seconds (end is null for a point note), type, label, note text and the scene_ids each note overlaps. "
+            "Story Arc generation (story_create step arc) uses them as timed story events."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {"project_id": {"type": "string"}},
+            "required": ["project_id"],
+        },
+        handler=_t64_timeline_notes_list,
+    ),
+    "timeline_note_create": ToolDefinition(
+        name="timeline_note_create",
+        description=(
+            "Add a timed Timeline Note (T65). start is seconds on the project timeline. Give end for a range note or "
+            "leave it out for a point note (an event at start). The open Video Builder shows it right away."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "project_id": {"type": "string"},
+                "start": {"type": "number", "minimum": 0},
+                "end": {"type": ["number", "null"], "description": "Later than start; omit or null for a point note."},
+                "type": {"type": "string", "description": "Free text, for example note, chorus, verse, beat, female vocal."},
+                "label": {"type": "string"},
+                "note": {"type": "string", "description": "The story direction for this moment."},
+                "id": {"type": "string", "description": "Optional id; one is made when omitted."},
+                "if_match_revision": {"type": "integer"},
+            },
+            "required": ["project_id", "start"],
+        },
+        handler=_t65_timeline_note_create,
+    ),
+    "timeline_note_update": ToolDefinition(
+        name="timeline_note_update",
+        description=(
+            "Change a timed Timeline Note (T66). Only the fields sent change; the id never changes. Send end: null to "
+            "turn a range note into a point note."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "project_id": {"type": "string"},
+                "note_id": {"type": "string"},
+                "start": {"type": "number", "minimum": 0},
+                "end": {"type": ["number", "null"]},
+                "type": {"type": "string"},
+                "label": {"type": "string"},
+                "note": {"type": "string"},
+                "if_match_revision": {"type": "integer"},
+            },
+            "required": ["project_id", "note_id"],
+        },
+        handler=_t66_timeline_note_update,
+    ),
+    "timeline_note_delete": ToolDefinition(
+        name="timeline_note_delete",
+        description="Delete a timed Timeline Note (T67).",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "project_id": {"type": "string"},
+                "note_id": {"type": "string"},
+                "if_match_revision": {"type": "integer"},
+            },
+            "required": ["project_id", "note_id"],
+        },
+        handler=_t67_timeline_note_delete,
+    ),
     "reference_describe": ToolDefinition(
         name="reference_describe",
         description=(
@@ -1625,10 +1743,11 @@ ALL_TOOLS.update(build_endpoint_tools(ALL_TOOLS))
 _READ_ONLY_TOOLS = (
     "system_health", "list_modes", "list_models", "project_list", "project_get", "project_summary", "project_get_settings",
     "minimax_settings_schema", "scene_list", "scene_get", "references_get", "llm_active", "job_get", "job_wait",
-    "asset_view", "asset_download_url",
+    "asset_view", "asset_download_url", "timeline_notes_list",
 )
 _DESTRUCTIVE_TOOLS = (
     "project_delete", "scene_delete", "scenes_bulk_edit", "scene_split_merge_move_resize", "job_cancel",
+    "timeline_note_delete",
 )
 for _name, _tool in ALL_TOOLS.items():
     if _tool.annotations is not None or _name.startswith("api_"):

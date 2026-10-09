@@ -705,8 +705,17 @@ def build_shot_task(
     previous_shot: str = "",
     with_picture: bool = False,
     location_contract: str = "",
+    motion_request: str = "",
+    audio_direction: str = "",
+    continuity: str = "",
+    storyboard_context: str = "",
 ) -> str:
-    """The ``MiniMax H3 shot-description task`` text the saved instruction expects."""
+    """The ``MiniMax H3 shot-description task`` text the saved instruction expects.
+
+    ``motion_request`` (the scene's Video Notes), ``audio_direction``, ``continuity`` and
+    ``storyboard_context`` (the scene-card block) are the Builder's "Motion/camera request", staging
+    notes and "Storyboard Builder context" sections (``minimax_prompt.mjs``).
+    """
     plan = shot_plan(cut_plan)
     exact = f"{round(float(duration), 3):g}"
     budget = character_budget(cut_plan, style, target_limit)
@@ -789,13 +798,18 @@ def build_shot_task(
         ("Story beat", labelize(story_beat), 900),
         ("Lyric section", lyric_section, 900),
         ("Scene notes", labelize(scene_notes), 900),
+        ("Motion/camera request", labelize(motion_request), 900),
         ("Subject (identity context only; do not restate appearance or clothing in the shot text)",
          "No main character is visible in this scene." if no_character else subject_text, 900),
         ("Location", location_text, 900),
+        ("Manual audio direction for staging only", audio_direction, 900),
+        ("Continuity notes for staging only", labelize(continuity), 900),
     ):
         text = compact(value, limit)
         if text:
             parts.append(f"{label}:\n{text}")
+    if str(storyboard_context or "").strip():
+        parts.append(f"Storyboard Builder context:\n{str(storyboard_context).strip()}")
     pictures = [f"{l['picture']}" for l in labels]
     if pictures:
         parts.append(f"Available renderer reference labels: {', '.join(pictures)}. Do not define labels in the shot text.")

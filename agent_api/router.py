@@ -103,7 +103,11 @@ from .mutations import (
     get_project_references,
     get_project_story,
     get_prompt_context,
+    create_timeline_note,
+    delete_timeline_note,
+    list_timeline_notes,
     merge_scenes,
+    update_timeline_note,
     move_scene,
     patch_project_settings,
     patch_scene,
@@ -519,7 +523,7 @@ def register_agent_api_routes(server_instance=None):
         payload = await request.json() if request.can_read_body else {}
         if_match = int(request.headers.get("If-Match")) if request.headers.get("If-Match", "").isdigit() else None
         res = await asyncio.to_thread(patch_scene, pid, sid, payload, if_match_revision=if_match)
-        return api_success(res.get("scene"), revision=res.get("revision"))
+        return api_success(res.get("scene"), revision=res.get("revision"), storyboard_card=res.get("storyboard_card"))
 
     @server_instance.routes.post(f"{_API_V1_PREFIX}/projects/{{pid}}/scenes/bulk")
     @_api_endpoint
@@ -700,6 +704,44 @@ def register_agent_api_routes(server_instance=None):
             offset_seconds=float(payload.get("offset_seconds", 0.0)),
             if_match_revision=if_match,
         )
+        return api_success(res, revision=res.get("revision"))
+
+    # 6b. Timed Timeline Notes (the Builder's "+ Timeline Note" markers, saved as timeline_markers)
+    @server_instance.routes.get(f"{_API_V1_PREFIX}/projects/{{pid}}/timeline/notes")
+    @_api_endpoint
+    async def api_list_timeline_notes(request: web.Request):
+        """List the project's timed Timeline Notes with the scenes each one overlaps."""
+        pid = request.match_info["pid"]
+        res = await asyncio.to_thread(list_timeline_notes, pid)
+        return api_success(res, revision=res.get("revision"))
+
+    @server_instance.routes.post(f"{_API_V1_PREFIX}/projects/{{pid}}/timeline/notes")
+    @_api_endpoint
+    async def api_create_timeline_note(request: web.Request):
+        """Add a timed Timeline Note: start (required), end (omit or null for a point note), type, label, note."""
+        pid = request.match_info["pid"]
+        payload = await request.json() if request.can_read_body else {}
+        if_match = int(request.headers.get("If-Match")) if request.headers.get("If-Match", "").isdigit() else None
+        res = await asyncio.to_thread(create_timeline_note, pid, payload, if_match_revision=if_match)
+        return api_success(res, revision=res.get("revision"), status=201)
+
+    @server_instance.routes.patch(f"{_API_V1_PREFIX}/projects/{{pid}}/timeline/notes/{{nid}}")
+    @_api_endpoint
+    async def api_update_timeline_note(request: web.Request):
+        """Change the given fields of a timed Timeline Note. end: null makes it a point note."""
+        pid, nid = request.match_info["pid"], request.match_info["nid"]
+        payload = await request.json() if request.can_read_body else {}
+        if_match = int(request.headers.get("If-Match")) if request.headers.get("If-Match", "").isdigit() else None
+        res = await asyncio.to_thread(update_timeline_note, pid, nid, payload, if_match_revision=if_match)
+        return api_success(res, revision=res.get("revision"))
+
+    @server_instance.routes.delete(f"{_API_V1_PREFIX}/projects/{{pid}}/timeline/notes/{{nid}}")
+    @_api_endpoint
+    async def api_delete_timeline_note(request: web.Request):
+        """Delete a timed Timeline Note."""
+        pid, nid = request.match_info["pid"], request.match_info["nid"]
+        if_match = int(request.headers.get("If-Match")) if request.headers.get("If-Match", "").isdigit() else None
+        res = await asyncio.to_thread(delete_timeline_note, pid, nid, if_match_revision=if_match)
         return api_success(res, revision=res.get("revision"))
 
     # 7. References CRUD (Section 6.5)
