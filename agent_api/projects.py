@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 from ..builder.paths import _session_path
 from ..builder.project import _load_builder_session, _redact_session_secrets
 from ..minimax.latent_manager import SceneLatentManager
+from ..minimax.scene_inputs import normalize_continuity_mode
 
 from .errors import ProjectNotFoundError, SceneNotFoundError, ValidationError
 from .paths import get_allowed_project_roots, get_project_id, resolve_project_folder
@@ -210,14 +211,39 @@ def get_project_detail(project_id: str, include: Optional[List[str]] = None) -> 
     return result
 
 
+def _scene_locked_settings(segment: Dict[str, Any]) -> Dict[str, Any]:
+    """The scene's Audio Mask and locked MiniMax H3 settings, under the session names the Video Builder saves.
+
+    Read-only copies for the scene GET: ``audio_mask`` (``audio_mask.mjs``), the scene settings lock
+    (``use_scene_minimax_h3_settings`` + the scene's own ``minimax_h3_settings``) and the continuity the last render
+    recorded (``minimax_h3_continuity_mode_used`` normalized like ``timeline_state.mjs`` reads it, and
+    ``minimax_h3_continuity_source_scene_id``). A field the scene never saved is ``None`` (objects), ``False``,
+    ``"off"`` or ``""``.
+    """
+    mask = segment.get("audio_mask")
+    scene_settings = segment.get("minimax_h3_settings")
+    return {
+        "audio_mask": copy.deepcopy(mask) if isinstance(mask, dict) else None,
+        "use_scene_minimax_h3_settings": bool(segment.get("use_scene_minimax_h3_settings")),
+        "minimax_h3_settings": copy.deepcopy(scene_settings) if isinstance(scene_settings, dict) else None,
+        "minimax_h3_continuity_mode_used": normalize_continuity_mode(segment.get("minimax_h3_continuity_mode_used")),
+        "minimax_h3_continuity_source_scene_id": str(segment.get("minimax_h3_continuity_source_scene_id") or ""),
+    }
+
+
 def get_project_scenes(
     project_id: str,
     has_image: Optional[bool] = None,
     has_video: Optional[bool] = None,
     has_prompt: Optional[bool] = None,
     status: Optional[str] = None,
+    locked_settings: bool = False,
 ) -> List[Dict[str, Any]]:
-    """List project scenes with resolved assets, prompts, and timing."""
+    """List project scenes with resolved assets, prompts, and timing.
+
+    ``locked_settings`` adds the scene's Audio Mask and locked MiniMax H3 settings (``_scene_locked_settings``). The
+    scene GET asks for them; the scene list leaves them out to stay small.
+    """
     folder = resolve_project_folder(project_id)
     load_result = _load_builder_session(folder)
     session = load_result.get("session")
@@ -300,13 +326,15 @@ def get_project_scenes(
             "video_thumbnail": thumbnail_asset,
             "scene_audio": audio_asset,
         })
+        if locked_settings:
+            scenes[-1].update(_scene_locked_settings(segment))
 
     return scenes
 
 
 def get_scene_detail(project_id: str, scene_id: str) -> Dict[str, Any]:
-    """Get single scene details by scene ID or 1-based number."""
-    scenes = get_project_scenes(project_id)
+    """Get single scene details by scene ID or 1-based number, with its Audio Mask and locked MiniMax H3 settings."""
+    scenes = get_project_scenes(project_id, locked_settings=True)
     target = str(scene_id).strip()
 
     for s in scenes:

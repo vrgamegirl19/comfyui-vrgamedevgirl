@@ -757,7 +757,7 @@
     },
     {
       "body_keys": [],
-      "description": "One scene: timing, lyrics, story beat, prompts (including `minimax_h3_prompt`), approved image, rendered video with its thumbnail, and scene audio. Each file is `null` when it does not exist.",
+      "description": "One scene: timing, lyrics, story beat, prompts (including `minimax_h3_prompt`), approved image, rendered video with its thumbnail, and scene audio. Each file is `null` when it does not exist. Read-only, under the Builder's own names: `audio_mask` (the scene's Audio Mask stems, or `null`), `use_scene_minimax_h3_settings` and the scene's own `minimax_h3_settings` (its locked MiniMax H3 settings such as `continuity_mode`, or `null`), and the continuity its last render used, `minimax_h3_continuity_mode_used` and `minimax_h3_continuity_source_scene_id`. The scene list leaves these out.",
       "if_match": false,
       "job": false,
       "method": "GET",
