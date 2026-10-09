@@ -63,7 +63,8 @@ export function wireTimelineControls({
         const position = currentGlobalTime();
         if (await prepareAudioEdits()) {
           if (request !== playStart.request) return;
-          setGlobalPlaybackTime(position);
+          // Restoring the clock after preparing audio is part of this Play request, not a user scrub.
+          setGlobalPlaybackTime(position, { preservePlayStart: true });
           render();
         }
       }

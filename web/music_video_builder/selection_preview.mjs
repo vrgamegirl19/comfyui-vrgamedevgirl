@@ -1180,8 +1180,8 @@ export function createSelectionPreview({
     syncPreviewPlayback(current);
   }
 
-  function setGlobalPlaybackTime(value) {
-    if (playStart.inFlight) cancelPreviewPlayStart();
+  function setGlobalPlaybackTime(value, options = {}) {
+    if (playStart.inFlight && !options.preservePlayStart) cancelPreviewPlayStart();
     const maxTime = playbackDuration();
     const time = Math.max(0, Math.min(maxTime, Number(value || 0)));
     state.sceneAudioGlobalTime = time;

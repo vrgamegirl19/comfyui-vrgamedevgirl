@@ -50,6 +50,32 @@ test('Stop cancels Play while preparing edited audio', async () => {
   assert.deepEqual(c.calls, []);
   assert.equal(c.waits.length, 0);
 });
+function editedAudioPlayFixture() {
+  const c = playFixture();
+  Object.assign(c, { prepareAudioEdits: async () => ({ audio_path: 'mix.wav' }),
+    silentTimeline: { playing: false }, usingSceneAudioPlaybackMode: () => false,
+    render() {}, toast(message) { assert.fail(message); } });
+  vm.runInContext(functionSource(s, 'setGlobalPlaybackTime'), c);
+  return c;
+}
+test('Play after preparing edited audio preserves its own pending request', async () => {
+  const c = editedAudioPlayFixture();
+  const pending = c.playButton.onclick();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(c.waits.length, 1);
+  c.waits.shift()();
+  await pending;
+  assert.deepEqual(c.calls, ['play']);
+});
+test('manual scrubbing still cancels Play after audio preparation', async () => {
+  const c = editedAudioPlayFixture();
+  const pending = c.playButton.onclick();
+  await new Promise(resolve => setImmediate(resolve));
+  c.setGlobalPlaybackTime(4);
+  c.waits.shift()();
+  await pending;
+  assert.deepEqual(c.calls, []);
+});
 for (const latest of [5,12]) test(`seek queue respects latest requested position ${latest}`,()=>{
   const handlers={};const video={currentTime:5,seeking:true,readyState:2,paused:true,dataset:{cacheKey:'clip'},style:{},addEventListener:(n,f)=>handlers[n]=f};
   const c={previewVideo:video,state:{isScrubbing:true},isTimelinePlaying:()=>false,activeSegment:()=>({}),postProcessComparePreview:{hide(){}},selectedSegmentVideoPath:()=> 'clip',selectedSegmentVideoCacheKey:()=> 'clip',localPlaybackTime:(_,time)=>time};
