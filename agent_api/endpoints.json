@@ -478,6 +478,90 @@
     },
     {
       "body_keys": [],
+      "description": "Speaking mode only: read whether an ElevenLabs API key is saved to this project, plus revision. Never returns the key.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/projects/{pid}/elevenlabs",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "api_key"
+      ],
+      "description": "Speaking mode only: explicitly save `api_key` to `elevenlabs_api_key_project`, like the Builder's LLM runner key. An empty string clears it. Stored in the project session; existing export credential handling applies. Supports If-Match. Never echoes the key.",
+      "if_match": true,
+      "job": false,
+      "method": "PUT",
+      "path": "/projects/{pid}/elevenlabs",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Speaking mode only: test the saved API key's Voices read access. Returns connected: true on success. Does not save a key or generate speech.",
+      "if_match": false,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{pid}/elevenlabs/test",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "generated_voice_id",
+        "voice_description",
+        "voice_name"
+      ],
+      "description": "Speaking mode only: explicitly create an account voice from a chosen preview. Accepts voice_name (1\u2013256), voice_description (20\u20131000) and generated_voice_id. Returns permanent voice_id and name. Does not assign it or mutate the project. Assign with PUT references/subjects/{rid} elevenlabs_voice and If-Match. Never retries account creation automatically; after an ambiguous failure refresh voices before retrying.",
+      "if_match": false,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{pid}/elevenlabs/voice-design/create",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "model_id",
+        "text",
+        "voice_description"
+      ],
+      "description": "Speaking mode only: generate ElevenLabs Voice Design previews using the saved project key. Accepts voice_description (20\u20131000 characters), model_id (eleven_ttv_v3 default or eleven_multilingual_ttv_v2), and optional text (100\u20131000 characters; blank generates sample dialogue). Returns temporary generated_voice_id and base64 MP3 candidates. Uses account credits; does not save a voice or project state.",
+      "if_match": false,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{pid}/elevenlabs/voice-design/previews",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Speaking mode only: list one page of account voices using the saved project key. Returns voice_id, name, category, public HTTPS preview_url, has_more and next_page_token. Pass next_page_token for another page. Does not generate speech.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/projects/{pid}/elevenlabs/voices",
+      "path_params": [
+        "pid"
+      ],
+      "query": [
+        "next_page_token"
+      ]
+    },
+    {
+      "body_keys": [],
       "description": "Build a zip of the project for backup or sharing.",
       "if_match": false,
       "job": false,
@@ -650,11 +734,26 @@
     },
     {
       "body_keys": [],
-      "description": "Create or update a character (name, description, `reference_type`, voice, trigger phrase, `image`).",
+      "description": "Create or update a character (name, description, `reference_type`, voice, trigger phrase, `image`). In Speaking mode also accepts `elevenlabs_voice`: {enabled: boolean, voice_id: string, name: string}. Enabled assignments require a voice ID and a primary character reference. Also accepts elevenlabs_voice_design editing fields: user_input, voice_description, preview_text, voice_name, model_id. Only durable draft fields are stored; preview audio and temporary IDs are discarded. Preserves existing voice and design fields when omitted; supports If-Match.",
       "if_match": true,
       "job": false,
       "method": "PUT",
       "path": "/projects/{pid}/references/subjects/{rid}",
+      "path_params": [
+        "pid",
+        "rid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "user_input"
+      ],
+      "description": "Speaking mode only: submit an LLM job to turn user_input (1\u20134000 characters) and an existing primary character into a reviewable voice_description. Uses the project's saved LLM Runner, and only an already loaded LM Studio model. Does not call ElevenLabs or persist the result. Wait for the returned job ID.",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{pid}/references/subjects/{rid}/voice-design/description",
       "path_params": [
         "pid",
         "rid"
@@ -775,6 +874,68 @@
       "job": false,
       "method": "PATCH",
       "path": "/projects/{pid}/scenes/{sid}",
+      "path_params": [
+        "pid",
+        "sid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Speaking mode only: read scene overrides, effective/project settings, scene-owned dialogue clips, audio span, padded total duration, current scene duration, needs_render and the scene_dialogue editor draft. Uses the scene ID, not its position.",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/projects/{pid}/scenes/{sid}/audio-settings",
+      "path_params": [
+        "pid",
+        "sid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "audio_data",
+        "audio_name",
+        "clear_audio",
+        "dialogue",
+        "settings"
+      ],
+      "description": "Speaking mode only: patch `settings` (`use_project_defaults`, `fit_duration`: booleans; `silence_before`, `silence_after`: 0\u201360 seconds). Optionally import base64/data-URL `audio_data` with `audio_name`, or remove owned dialogue with `clear_audio: true`. Also accepts a `dialogue` draft (speaker_id, text, delivery, allow_rewrite, model_id) saved on that scene as scene_dialogue. Generated audio and API keys are never stored in the draft. Fits duration to dialogue plus silence and ripples later scenes and attached audio; independent tracks stay fixed. Originals are preserved. Supports If-Match; frozen timelines and running scene renders reject edits.",
+      "if_match": true,
+      "job": false,
+      "method": "PATCH",
+      "path": "/projects/{pid}/scenes/{sid}/audio-settings",
+      "path_params": [
+        "pid",
+        "sid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "dialogue"
+      ],
+      "description": "Speaking only: create an LLM job using the saved runner, assigned character voice and elevenlabs_dialogue instruction preset. Optional dialogue object overrides the saved scene draft: speaker_id, text, delivery, allow_rewrite (default false), model_id (eleven_v4 default or eleven_v3). Returns editable tagged text; preserves spoken words unless rewriting is explicitly allowed. Does not call ElevenLabs or save the draft. Wait for the returned job ID.",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{pid}/scenes/{sid}/dialogue/craft",
+      "path_params": [
+        "pid",
+        "sid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "dialogue"
+      ],
+      "description": "Speaking only: explicitly generate one MP3 take with the saved ElevenLabs key and the chosen character's enabled voice. Optional dialogue overrides the saved scene_dialogue draft. Returns audio_data (MP3 data URL), audio_name, voice_id and dialogue. Uses credits; never retries automatically and does not write project state. Preview, then import via PATCH audio-settings with audio_data, audio_name, dialogue and If-Match to fit/ripple the scene.",
+      "if_match": false,
+      "job": false,
+      "method": "POST",
+      "path": "/projects/{pid}/scenes/{sid}/dialogue/generate",
       "path_params": [
         "pid",
         "sid"
@@ -1045,6 +1206,32 @@
       "job": false,
       "method": "POST",
       "path": "/projects/{pid}/settings/preflight",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
+      "description": "Speaking mode only: read project defaults for `silence_before`, `silence_after` (seconds, initially 0) and `fit_duration` (initially true).",
+      "if_match": false,
+      "job": false,
+      "method": "GET",
+      "path": "/projects/{pid}/speaking-audio/defaults",
+      "path_params": [
+        "pid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [
+        "settings"
+      ],
+      "description": "Speaking mode only: patch `settings` (`silence_before`, `silence_after`: 0\u201360 seconds; `fit_duration`: boolean). Reposition scene-owned dialogue and resize/ripple scenes inheriting defaults. Independent music/effect tracks stay fixed. Source files and scene numbering are preserved. Supports If-Match; frozen timelines and running scene renders reject edits.",
+      "if_match": true,
+      "job": false,
+      "method": "PATCH",
+      "path": "/projects/{pid}/speaking-audio/defaults",
       "path_params": [
         "pid"
       ],

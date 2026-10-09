@@ -46,9 +46,11 @@ function fixture() {
     createTimelineToolWindows: () => ({ toolsButton: new Element('button'),
       deleteAllButton: new Element('button'), refreshDeleteActions() {} }) });
   for (const name of ['makeButton', 'makeInput', 'makeCheckbox', 'makeSelect', 'makeField',
-    'makePickerField', 'makeSettingsSection', 'normalizeProjectVideoEngine']) {
+    'makePickerField', 'makeSettingsSection', 'normalizeProjectVideoEngine', 'normalizeVideoType']) {
     vm.runInContext(functionSource(readBuilderModule('controls.mjs'), name), c);
   }
+  vm.runInContext(readBuilderModule('elevenlabs_voice_design.mjs'), c);
+vm.runInContext(readBuilderModule('elevenlabs.mjs'), c);
   return c;
 }
 

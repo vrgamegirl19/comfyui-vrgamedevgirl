@@ -24,6 +24,7 @@ import {
   setWidgetValue,
   toast,
 } from "./controls.mjs";
+import { makeElevenLabsSettings, refreshElevenLabsUI } from "./elevenlabs.mjs";
 import { formatTime } from "./format.mjs";
 import { cloneI2VVideoSettings } from "./model_settings.mjs";
 import { normalizeNotificationSettings } from "./notifications.mjs";
@@ -641,6 +642,8 @@ export function createProjectSetup({
     sceneOptionsNote.style.cssText = "font-size:12px;color:#a1a1aa;line-height:1.45;";
     const sceneOptionsPanel = makeSettingsSection("Scene Options", [sceneOptionsNote, scenePanel], false);
     box.append(header, pathGrid, actions, note, sceneOptionsPanel, projectStoragePanel, projectVideoEnginePanel, ltxVersionPanel, renderWaitingPanel, themePanel, memoryManagementPanel, autoChainPanel, notificationPanel);
+    const elevenLabsPanel = makeElevenLabsSettings({ state, projectInput, saveSession });
+    if (elevenLabsPanel) box.insertBefore(elevenLabsPanel, sceneOptionsPanel);
     backdrop.append(box);
     document.body.append(backdrop);
     modalClose.onclick = () => backdrop.remove();
@@ -742,6 +745,7 @@ export function createProjectSetup({
   }
 
   function render() {
+    refreshElevenLabsUI(state);
     freezeTimingControl.input.checked = Boolean(state.timingFrozen);
     enforceAudioTimelineEnd();
     syncOverlayTrackControls();

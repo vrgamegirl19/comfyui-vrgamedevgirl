@@ -1,3 +1,5 @@
+import { normalizeElevenLabsDesignDraft } from "./elevenlabs_voice_design.mjs";
+import { normalizeElevenLabsVoice, isElevenLabsSpeaking } from "./elevenlabs.mjs";
 import { makeEditorImageUrl, postJson } from "./comfy_api.mjs";
 import {
   makeButton,
@@ -716,10 +718,17 @@ export function createReferenceBuilder({
       if (refs.subject_count === 1) refs.subject.description = subjectDescription.value;
     });
     wireDrop(subjectDrop, imageTargetFor(refs.subject, "image", "subject"));
-    function closeReferenceBuilder() { backdrop.remove(); options.onClose?.(); }
+    function closeReferenceBuilder() {
+      backdrop.querySelectorAll("audio").forEach(player => { player.pause(); player.removeAttribute("src"); player.load(); });
+      backdrop.remove(); options.onClose?.();
+    }
     close.onclick = closeReferenceBuilder;
     cancel.onclick = closeReferenceBuilder;
     save.onclick = async () => {
+      if (isElevenLabsSpeaking(state) && refs.subjects.some(subject => subject.reference_type === "character" && !subject.extra_reference_for && subject.elevenlabs_voice?.enabled && !subject.elevenlabs_voice.voice_id)) {
+        toast("Choose a voice for each enabled ElevenLabs character, or uncheck Use ElevenLabs voice.", true);
+        return;
+      }
       refs.subjects = Array.isArray(refs.subjects)
         ? refs.subjects.filter((subject) => subject && typeof subject === "object" && String(subject.id || subject.name || subject.description || subject.image?.path || subject.image?.data).trim())
         : [];
@@ -732,6 +741,8 @@ export function createReferenceBuilder({
           description: primarySubject.description || "",
           reference_type: primarySubject.reference_type || "character",
           minimax_voice: normalizeMiniMaxH3Voice(primarySubject.minimax_voice),
+          elevenlabs_voice: normalizeElevenLabsVoice(primarySubject.elevenlabs_voice),
+          elevenlabs_voice_design: normalizeElevenLabsDesignDraft(primarySubject.elevenlabs_voice_design),
           reference_generation_draft: primarySubject.reference_generation_draft || refs.subject.reference_generation_draft || {},
           image: { ...(primarySubject.image || { path: "", data: "", name: "" }) },
         };
@@ -742,6 +753,8 @@ export function createReferenceBuilder({
           description: refs.subjects[0].description || "",
           reference_type: refs.subjects[0].reference_type || "character",
           minimax_voice: normalizeMiniMaxH3Voice(refs.subjects[0].minimax_voice),
+          elevenlabs_voice: normalizeElevenLabsVoice(refs.subjects[0].elevenlabs_voice),
+          elevenlabs_voice_design: normalizeElevenLabsDesignDraft(refs.subjects[0].elevenlabs_voice_design),
           image: { ...(refs.subjects[0].image || { path: "", data: "", name: "" }) },
         };
       } else {
@@ -750,6 +763,8 @@ export function createReferenceBuilder({
           description: "",
           reference_type: "character",
           minimax_voice: normalizeMiniMaxH3Voice(),
+          elevenlabs_voice: normalizeElevenLabsVoice(),
+          elevenlabs_voice_design: normalizeElevenLabsDesignDraft(),
           image: { path: "", data: "", name: "" },
         };
       }
@@ -842,7 +857,16 @@ export function createReferenceBuilder({
       // This is an explicit Save action and must work even when optional
       // autosave is disabled. It also needs the backend's manifest/context
       // validation before the modal can report success.
-      await saveSession({ quiet: true, throwOnError: true });
+      try {
+        const result = await saveSession({ quiet: true, throwOnError: true });
+        if (result?.stale) {
+          toast("Project was modified elsewhere. Reload it before saving Reference Builder.", true);
+          return;
+        }
+      } catch (error) {
+        toast(String(error?.message || error), true);
+        return;
+      }
       toast(`${referenceBuilderTargetLabel} reference builder saved.`);
       closeReferenceBuilder();
     };

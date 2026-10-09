@@ -1,3 +1,5 @@
+import { normalizeElevenLabsDesignDraft } from "./elevenlabs_voice_design.mjs";
+import { makeElevenLabsVoicePicker, normalizeElevenLabsVoice } from "./elevenlabs.mjs";
 import { postJson } from "./comfy_api.mjs";
 import { makeButton, makeCheckbox, makeField, makeInput, makeSelect, normalizeVideoType, toast } from "./controls.mjs";
 import { renameSubjectInDescription } from "./format.mjs";
@@ -48,6 +50,8 @@ export function createReferenceSubjects({
         extra_reference_for: "",
         extra_reference_note: "",
         minimax_voice: normalizeMiniMaxH3Voice(),
+        elevenlabs_voice: normalizeElevenLabsVoice(),
+        elevenlabs_voice_design: normalizeElevenLabsDesignDraft(),
         image: { path: "", data: "", name: "" },
       });
     }
@@ -68,6 +72,8 @@ export function createReferenceSubjects({
       extra_reference_for: "",
       extra_reference_note: "",
       minimax_voice: normalizeMiniMaxH3Voice(),
+      elevenlabs_voice: normalizeElevenLabsVoice(),
+      elevenlabs_voice_design: normalizeElevenLabsDesignDraft(),
       source: refmodPipeline ? "refmod" : "image",
       image: { path: "", data: "", name: "" },
     };
@@ -87,6 +93,8 @@ export function createReferenceSubjects({
         description: "",
         reference_type: "character",
         minimax_voice: normalizeMiniMaxH3Voice(),
+        elevenlabs_voice: normalizeElevenLabsVoice(),
+        elevenlabs_voice_design: normalizeElevenLabsDesignDraft(),
         image: { path: "", data: "", name: "" },
       };
       return;
@@ -99,6 +107,8 @@ export function createReferenceSubjects({
       description: first.description || "",
       reference_type: first.reference_type || "character",
       minimax_voice: normalizeMiniMaxH3Voice(first.minimax_voice),
+      elevenlabs_voice: normalizeElevenLabsVoice(first.elevenlabs_voice),
+      elevenlabs_voice_design: normalizeElevenLabsDesignDraft(first.elevenlabs_voice_design),
       image: { ...(first.image || { path: "", data: "", name: "" }) },
     };
   }
@@ -427,6 +437,7 @@ export function createReferenceSubjects({
       updateSubjectDrop();
       return;
     }
+    subjectsList.querySelectorAll("audio").forEach(player => { player.pause(); player.removeAttribute("src"); player.load(); });
     subjectsList.innerHTML = "";
     if (!refs.subjects.length) {
       const empty = document.createElement("div");
@@ -726,6 +737,11 @@ export function createReferenceSubjects({
         voiceWrap.append(voiceHeading, makeField("Voice preset", voicePreset), voiceFields);
         row.append(voiceWrap);
       }
+      const elevenLabsPicker = makeElevenLabsVoicePicker({ state, subject, getLlmPayload: () => ({
+        ...textGemmaRunnerPayload(),
+        model_file: state.textGemmaRunner === "qwen_local" ? state.qwenModelFile : (t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || state.gemmaModelFile || ""),
+      }) });
+      if (elevenLabsPicker) row.append(elevenLabsPicker);
       subjectsList.append(row);
     });
   }

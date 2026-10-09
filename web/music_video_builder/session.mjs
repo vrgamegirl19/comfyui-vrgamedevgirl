@@ -766,6 +766,7 @@ export function createSession({
     return {
       segments: sanitizedSessionSegments(state.segments, "base"),
       audio_clips: Array.isArray(state.audioClips) ? state.audioClips : null,
+      speaking_audio_defaults: state.speakingAudioDefaults || {},
       overlay_segments: sanitizedSessionSegments(state.overlaySegments, "overlay"),
       overlay_track: normalizeOverlayTrackState(state.overlayTrack),
       active_track: state.activeTrack,
@@ -805,6 +806,7 @@ export function createSession({
       llm_api_provider: state.llmApiProvider || "openai",
       llm_api_model: state.llmApiModel || "",
       llm_api_key_project: state.llmApiKeyProject || "",
+      elevenlabs_api_key_project: state.elevenLabsApiKeyProject || "",
       own_server_url: state.ownServerUrl || "http://127.0.0.1:8000/v1",
       own_server_model: state.ownServerModel || "",
       own_server_api_key_project: state.ownServerApiKeyProject || "",
@@ -1056,6 +1058,7 @@ export function createSession({
         ensureAllSegmentRuntimeFields();
         state.activeTrack = data.session.active_track || state.activeTrack || "base";
         state.audioClips = Array.isArray(data.session.audio_clips) ? data.session.audio_clips : null;
+        state.speakingAudioDefaults = data.session.speaking_audio_defaults || {};
         state.audioClipMixPath = "";
         state.audioClipMixKey = "";
         state.audioClipGenerationMixPath = "";
@@ -1088,6 +1091,8 @@ export function createSession({
         state.subjectScenePath = data.session.subject_scene_path || state.subjectScenePath;
         state.llmApiProvider = data.session.llm_api_provider || state.llmApiProvider || "openai";
         state.llmApiModel = data.session.llm_api_model || state.llmApiModel || "";
+        state.elevenLabsApiKeyProject = data.session.elevenlabs_api_key_project || "";
+        state.elevenLabsApiKey = state.elevenLabsApiKeyProject;
         state.llmApiKeyProject = data.session.llm_api_key_project || "";
         if (state.llmApiKeyProject) state.llmApiKey = state.llmApiKeyProject;
         state.ownServerUrl = data.session.own_server_url || state.ownServerUrl || "http://127.0.0.1:8000/v1";
@@ -1316,6 +1321,7 @@ export function createSession({
       state.miniMaxH3ThreePassEnabled = state.miniMaxH3Settings.render_pass === "three_pass";
       state.segments = Array.isArray(session.segments) ? session.segments : [];
       state.audioClips = Array.isArray(session.audio_clips) ? session.audio_clips : null;
+      state.speakingAudioDefaults = session.speaking_audio_defaults || {};
       state.audioClipMixPath = "";
       state.audioClipMixKey = "";
       state.audioClipGenerationMixPath = "";
@@ -1363,6 +1369,8 @@ export function createSession({
       state.subjectScenePath = session.subject_scene_path || "";
       state.llmApiProvider = session.llm_api_provider || state.llmApiProvider || "openai";
       state.llmApiModel = session.llm_api_model || state.llmApiModel || "";
+      state.elevenLabsApiKeyProject = session.elevenlabs_api_key_project || "";
+      state.elevenLabsApiKey = state.elevenLabsApiKeyProject;
       state.llmApiKeyProject = session.llm_api_key_project || "";
       if (state.llmApiKeyProject) state.llmApiKey = state.llmApiKeyProject;
       state.ownServerUrl = session.own_server_url || state.ownServerUrl || "http://127.0.0.1:8000/v1";
