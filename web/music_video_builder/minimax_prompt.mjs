@@ -27,7 +27,7 @@ import {
 } from "./prompt_text.mjs";
 import { castWallText, stripCastLeaks } from "./cast_guard.mjs";
 import { normalizeFluxReferenceBuilder } from "./reference_data.mjs";
-import { attachRefmodLabels } from "./refmod_labels.mjs";
+import { attachRefmodLabels, enforceCastLabels } from "./refmod_labels.mjs";
 import { mediaPathKey } from "./timeline_state.mjs";
 
 export function miniMaxDialogueAssignmentsForSegment(segment) {
@@ -1096,6 +1096,28 @@ export function createMiniMaxPrompt({
         }),
         `ONLY THESE PEOPLE APPEAR — MANDATORY: ${subjectLabelEntries.map((item) => `${item.label} (${item.name || "mapped subject"})`).join(", ")}. No other person, hand, arm, shadow, reflection, silhouette, or crowd appears in any shot. Refer to people only by label, never by pronoun.`,
       ].join("\n"));
+      // Clothing, props and vehicles are things in the scene, not cast members: say how each one appears.
+      const accessoryEntries = Array.from(new Map(
+        Array.from(subjectLabelMap.values())
+          .filter((item) => (item.kind === "clothing" || item.kind === "object") && item.label)
+          .map((item) => [item.label, item]),
+      ).values());
+      if (accessoryEntries.length) {
+        const mainLabel = subjectLabelEntries[0]?.label || "the main character";
+        parts.push([
+          "WARDROBE AND PROPS — MANDATORY: These labels are things, not people. Never give one a face, a pose, an action, dialogue or a place of its own, and never list one among the people in a shot. Name each one only as part of what a person wears, holds or stands beside.",
+          ...accessoryEntries.map((item) => {
+            const label = `${item.label} (${item.name || "reference"})`;
+            if (item.kind === "clothing") {
+              const wearer = subjectLabelEntries.find((entry) => item.wears && entry.cardId === item.wears)?.label || mainLabel;
+              return `- ${label} is clothing worn by ${wearer}: write ${wearer} wearing it in every shot where ${wearer} appears.`;
+            }
+            if (item.referenceType === "vehicle") return `- ${label} is a vehicle: show ${mainLabel} driving it, or standing in front of or beside it.`;
+            if (item.referenceType === "creature" || item.referenceType === "animal") return `- ${label} is a ${item.referenceType} present in the scene next to ${mainLabel}; it moves as a ${item.referenceType} would and never speaks or sings.`;
+            return `- ${label} is a prop: place it in the scene and show ${mainLabel} holding it, using it, or standing next to it.`;
+          }),
+        ].join("\n"));
+      }
       if (subjectLabelEntries.length > 1) {
         parts.push(
           "INDEPENDENT SUBJECT ACTION — MANDATORY: In every shot, give each visible subject their own physical action, eyeline, and small movement that could be filmed on its own, and show how each responds to the other. "
@@ -1504,6 +1526,47 @@ export function createMiniMaxPrompt({
     return body;
   }
 
+  // In the RefMod pipeline clothing, props and vehicles are not cast members. The prompt writer is told how each one
+  // appears: clothing is worn by its character, a vehicle is driven by or stood beside by the main character, and a
+  // prop is placed in the scene next to them. Returns null for everything else (people, extras, setting, style).
+  function miniMaxH3RefmodRoleText(item, { subjectLabel, pictureLabel, pictureItems, shotList, name }) {
+    const refmod = item?.refmod;
+    if (!refmod || !["clothing", "object"].includes(refmod.category)) return null;
+    const labelAt = (position) => (position >= 0 ? `<Subject ${position + 1}>` : "");
+    const mainLabel = labelAt(pictureItems.findIndex((other) => other?.refmod?.category === "character"));
+    const wearerLabel = refmod.category === "clothing"
+      ? labelAt(pictureItems.findIndex((other) => other?.refmod?.category === "character" && other.refmod.card_id === refmod.wears)) || mainLabel
+      : "";
+    const detail = miniMaxH3CompactReferenceDescription(String(item?.description || "").trim(), 160);
+    const detailText = detail ? ` ${detail}.` : "";
+    const person = mainLabel || "the main character";
+    if (refmod.category === "clothing") {
+      const wearer = wearerLabel || "the character";
+      return {
+        role: "clothing",
+        wearerLabel,
+        definition: `${subjectLabel} is the clothing "${name}" shown in ${pictureLabel}, worn by ${wearer}. It is an outfit, not a person: write ${wearer} wearing it. Never give it a face, a pose, an action, dialogue or a place of its own in the scene.${detailText}`,
+        retention: `${subjectLabel} (worn by ${wearer} in ${shotList || "[Shot 1]"}): fully_preserved - the garments, fabrics, colours and fit remain consistent while ${wearer} wears them.`,
+      };
+    }
+    const type = String(refmod.reference_type || "").toLowerCase();
+    let placement = `Place it in the scene and show ${person} holding it, using it, or standing next to it. It never acts on its own.`;
+    let noun = "prop";
+    if (type === "vehicle") {
+      noun = "vehicle";
+      placement = `Place it in the scene and show ${person} driving it, or standing in front of or beside it. It never moves or acts without ${person}.`;
+    } else if (type === "creature" || type === "animal") {
+      noun = type;
+      placement = `It is present in the scene next to ${person}, moving only as a ${type} would. It never speaks or sings.`;
+    }
+    return {
+      role: noun,
+      wearerLabel: "",
+      definition: `${subjectLabel} is the ${noun} "${name}" shown in ${pictureLabel}. ${placement}${detailText}`,
+      retention: `${subjectLabel} (appears in ${shotList || "[Shot 1]"}): fully_preserved - its shape, material, colours and markings remain consistent.`,
+    };
+  }
+
   function miniMaxH3OfficialReferencePlan(segment, mode = miniMaxH3ModeForSegment(segment)) {
     const normalizedMode = normalizeMiniMaxH3Mode(mode);
     const cutPlan = miniMaxH3CutPlanForSegment(segment);
@@ -1544,6 +1607,16 @@ export function createMiniMaxPrompt({
       }
       subjectNumber += 1;
       const subjectLabel = `<Subject ${subjectNumber}>`;
+      const roleText = miniMaxH3RefmodRoleText(item, { subjectLabel, pictureLabel, pictureItems, shotList, name: displayName });
+      if (roleText) {
+        subjectDefinitions.push(roleText.definition);
+        retention.push(roleText.retention);
+        subjects.push({
+          label: subjectLabel, name: displayName, kind: item.refmod.category, role: roleText.role, wearer: roleText.wearerLabel,
+          description, pictureLabel, extraId: "",
+        });
+        return;
+      }
       const noun = isLocation
         ? "environment"
         : item?.kind === "subject" || item?.kind === "extra"
@@ -1704,8 +1777,13 @@ export function createMiniMaxPrompt({
     if (normalizedMode === "reference_to_video" || normalizedMode === "image_reference_to_video" || refs.subjects.length) taskTypes.push("reference generation");
     if (settings.audio_mode === "input_audio") taskTypes.push("audio reuse");
     if (!taskTypes.length) taskTypes.push("text generation");
-    const subjectNames = refs.subjects.map((item) => item.kind === "location" ? `${item.label} (environment)` : `${item.label} (${item.name})`);
-    const subjectText = subjectNames.length ? subjectNames.join(" and ") : "the described target scene";
+    const isAccessory = (item) => item.kind === "clothing" || item.kind === "object";
+    const subjectNames = refs.subjects.filter((item) => !isAccessory(item)).map((item) => item.kind === "location" ? `${item.label} (environment)` : `${item.label} (${item.name})`);
+    const worn = refs.subjects.filter((item) => item.kind === "clothing").map((item) => `${item.label} (${item.name})`);
+    const placed = refs.subjects.filter((item) => item.kind === "object").map((item) => `${item.label} (${item.name})`);
+    const subjectText = (subjectNames.length ? subjectNames.join(" and ") : "the described target scene")
+      + (worn.length ? `, wearing ${worn.join(" and ")}` : "")
+      + (placed.length ? `, with ${placed.join(" and ")} in the scene` : "");
     const audioText = settings.audio_mode === "input_audio"
       ? " <Audio 1> is reused as the complete soundtrack and timing reference."
       : " MiniMax generates the native audio requested by the scene.";
@@ -1926,10 +2004,22 @@ export function createMiniMaxPrompt({
     return attachRefmodLabels(text, items);
   }
 
+  // In the RefMod pipeline the labels are attached to the writer's <Subject n> tags, so a shot that names a person without
+  // the tag is repaired first, and a garment written as if it were a person is dropped (see enforceCastLabels).
+  function repairRefmodShotDescriptions(segment, mode, descriptions) {
+    if (!isRefmodPipelineActive() || !Array.isArray(descriptions)) return descriptions;
+    const entries = Array.from(new Map(
+      Array.from(miniMaxH3SubjectLabelMapForSegment(segment, mode).values()).filter((item) => item.label).map((item) => [item.label, item]),
+    ).values());
+    const people = entries.filter((item) => item.kind === "subject" || item.kind === "extra");
+    const garments = entries.filter((item) => item.kind === "clothing");
+    return descriptions.map((description) => (typeof description === "string" ? enforceCastLabels(description, people, garments) : description));
+  }
+
   function assembleMiniMaxH3OfficialPromptFromCreative(segment, mode, creativePrompt) {
     const normalizedMode = normalizeMiniMaxH3Mode(mode);
     const cutPlan = miniMaxH3CutPlanForSegment(segment);
-    const shotDescriptions = parseMiniMaxH3ShotDescriptionPayload(creativePrompt, cutPlan, segment, normalizedMode);
+    const shotDescriptions = repairRefmodShotDescriptions(segment, normalizedMode, parseMiniMaxH3ShotDescriptionPayload(creativePrompt, cutPlan, segment, normalizedMode));
     const creative = miniMaxH3OfficialShotBodyFromDescriptions(segment, shotDescriptions, normalizedMode);
     if (!creative) {
       throw new Error("The LLM returned no creative MiniMax scene body. Try again, or add more scene notes so it has action/camera material to write.");

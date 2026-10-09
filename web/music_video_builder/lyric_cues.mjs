@@ -8,6 +8,7 @@ import {
 } from "./minimax_prompt.mjs";
 import { flattenLyricForPrompt, isInstrumentalLyricText, segmentUsesNoLipSyncPerformance } from "./prompt_text.mjs";
 import { normalizeFluxReferenceBuilder } from "./reference_data.mjs";
+import { cardCategory, isRefmodCard } from "./refmod_labels.mjs";
 import { newSegment } from "./segments.mjs";
 import { timelineSegmentDuration } from "./timeline_state.mjs";
 
@@ -511,7 +512,13 @@ export function createLyricCues({
     const normalizedRefs = normalizeFluxReferenceBuilder(refs);
     return logicalSubjectIdsForScene(normalizedRefs, segment, segmentIndexInfo(segment).index)
       .map((id) => logicalReferenceSubjects(normalizedRefs).find((subject) => String(subject?.id || "") === String(id)))
-      .filter(Boolean);
+      .filter(Boolean)
+      .filter(isPersonSubject);
+  }
+
+  // A RefMod card for clothing, a prop or a vehicle is something in the scene, not someone in the cast.
+  function isPersonSubject(subject) {
+    return !isRefmodCard(subject) || cardCategory(subject) === "character";
   }
 
   // Guard for the people who must not appear in this scene: characters left out of the cast plus
@@ -521,7 +528,7 @@ export function createLyricCues({
     if (!segment) return null;
     const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
     const toPlain = (subject) => ({ name: String(subject?.name || "").trim(), description: String(subject?.description || "").trim() });
-    const everyone = logicalReferenceSubjects(refs).map(toPlain);
+    const everyone = logicalReferenceSubjects(refs).filter(isPersonSubject).map(toPlain);
     const cast = selectedSceneSubjectsForSegment(segment, refs).map(toPlain);
     const extraNames = segment.no_character_present
       ? []
@@ -603,11 +610,16 @@ export function createLyricCues({
       const rawKey = String(item?.key || "").trim();
       const subjectId = String(item?.id || item?.subject_id || item?.subjectId || rawKey.replace(/^subject:/, "") || "").trim();
       const name = String(item?.label || item?.name || "").trim();
+      // Clothing and props are not people: their kind says so, so they never join the cast, the performers or the speakers.
+      const refmodCategory = item?.refmod?.category;
       const value = {
         label: `<Subject ${subjectNumber}>`,
         alias: "",
         name,
-        kind: item?.kind || "reference",
+        kind: refmodCategory === "clothing" || refmodCategory === "object" ? refmodCategory : (item?.kind || "reference"),
+        cardId: String(item?.refmod?.card_id || ""),
+        wears: String(item?.refmod?.wears || ""),
+        referenceType: String(item?.refmod?.reference_type || ""),
       };
       if (subjectId) map.set(subjectId, value);
       if (name) map.set(name.toLowerCase(), value);
