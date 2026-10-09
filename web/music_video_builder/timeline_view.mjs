@@ -1079,6 +1079,8 @@ export function createTimelineView({
   function drawWaveform() {
     const height = timelineHeight();
     const width = Math.max(900, Math.ceil(Math.max(1, timelineDuration()) * state.pxPerSecond));
+    const audioWidth = currentProjectAudioPath() && state.peaks.length
+      ? Math.max(0, loadedGlobalAudioDuration()) * state.pxPerSecond : 0;
     timelineCanvas.style.height = `${height}px`;
     timelineCanvas.style.width = `${width}px`;
     segmentLayer.style.height = `${height}px`;
@@ -1088,7 +1090,7 @@ export function createTimelineView({
     playhead.style.height = `${height}px`;
     // The timeline redraws at every scene change. Resizing and repainting a canvas as wide as the song and as tall as
     // the stem tracks each time stalls playback, so it is only done when something it shows has changed.
-    const waveformKey = [width, height, state.pxPerSecond, state.waveformMode, timelineDuration(), timelineWaveTop(),
+    const waveformKey = [width, audioWidth, height, state.pxPerSecond, state.waveformMode, timelineDuration(), timelineWaveTop(),
       currentProjectAudioPath() ? 1 : 0, state.peaks.length].join("|");
     if (waveformKey === drawnWaveformKey && state.peaks === drawnWaveformPeaks) return;
     drawnWaveformKey = waveformKey;
@@ -1108,8 +1110,9 @@ export function createTimelineView({
     const mid = waveTop + waveHeight / 2;
     const peaks = currentProjectAudioPath() && state.peaks.length ? state.peaks : [0];
     const gain = WAVEFORM_MODES[state.waveformMode]?.gain || 1;
-    for (let x = 0; x < width; x++) {
-      const index = Math.floor((x / width) * peaks.length);
+    // Canvas padding is empty timeline space, not additional audio time.
+    for (let x = 0; x < Math.min(width, audioWidth); x++) {
+      const index = Math.floor((x / audioWidth) * peaks.length);
       const amp = Math.min(1, Math.max(0.02, (peaks[index] || 0) * gain));
       ctx.moveTo(x, mid - amp * (waveHeight / 2));
       ctx.lineTo(x, mid + amp * (waveHeight / 2));
