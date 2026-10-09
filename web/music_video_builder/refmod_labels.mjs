@@ -244,16 +244,36 @@ export function attachRefmodLabels(promptText, items) {
     for (const item of labelled) blocks[index] = attach(blocks[index], subjectTag(item), item.label);
   }
   text = blocks.join("");
+  // A RefMod the writer never named is placed the way its kind belongs in a scene: clothing is worn by its character,
+  // a vehicle is stood beside by the main character, a prop is placed next to them, and only people are "in the scene".
+  const mainLabel = () => {
+    const main = labelled.find((candidate) => candidate.category === "character");
+    return main ? main.label : "";
+  };
   const sentenceFor = (item) => {
     if (item.category === "background") return `The setting is ${item.label}.`;
     if (item.category === "style") return `The visual style follows ${item.label}.`;
+    const main = mainLabel();
+    if (item.category === "clothing") return main ? `${main} wears ${item.label} (${item.name}).` : `${item.label} (${item.name}) is worn in the scene.`;
+    if (item.category === "object") {
+      const type = String(item.reference_type ?? "").trim();
+      if (type === "vehicle") return main ? `${main} stands beside ${item.label} (${item.name}).` : `${item.label} (${item.name}) is parked in the scene.`;
+      if (type === "creature" || type === "animal") return `${item.label} (${item.name}) is in the scene${main ? ` beside ${main}` : ""}.`;
+      return `${item.label} (${item.name}) is placed in the scene${main ? ` next to ${main}` : ""}.`;
+    }
     return `${item.label} (${item.name}) is in the scene.`;
   };
   const missing = labelled.filter((item) => !text.includes(item.label));
   for (const item of missing) {
     const wearer = item.category === "clothing" ? labelled.find((candidate) => candidate.card_id === item.wears && text.includes(candidate.label)) : null;
     if (wearer) {
-      text = text.replace(wearer.label, `${wearer.label}, wearing ${item.label},`);
+      // After the wearer's label and its "(name)", so the name stays next to the person it names.
+      const at = text.indexOf(wearer.label);
+      const afterLabel = at + wearer.label.length;
+      const named = text.slice(afterLabel).match(/^\s*\([^)]*\)/);
+      const end = named ? afterLabel + named[0].length : afterLabel;
+      const closing = /^\s*[.,;]/.test(text.slice(end)) ? "" : ",";
+      text = `${text.slice(0, end)}, wearing ${item.label}${closing}${text.slice(end)}`;
       continue;
     }
     const extra = sentenceFor(item);

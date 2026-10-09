@@ -60,6 +60,28 @@ test('clothing goes right after the character who wears it', () => {
   assert.match(result, /<Picture 1>, wearing <Picture 3>,/);
 });
 
+test('clothing the writer never named is worn by its character, with the name kept beside the character', () => {
+  const items = [
+    { card_id: 'a', name: 'Darrel', category: 'character', label: '<Video 1>', wears: '' },
+    { card_id: 'c', name: 'Warm Clothing', category: 'clothing', label: '<Video 2>', wears: 'a' },
+  ];
+  const result = attachRefmodLabels('[Shot 1] A close-up of the hillside at dusk.', items);
+  assert.match(result, /<Video 1> \(Darrel\), wearing <Video 2>[,.]/);
+  assert.doesNotMatch(result, /<Video 1>, wearing <Video 2>, \(Darrel\)/);
+  assert.equal(attachRefmodLabels(result, items), result);
+});
+
+test('a prop is placed next to the main character and a vehicle is stood beside, never "in the scene" as a person', () => {
+  const items = [
+    { card_id: 'a', name: 'Darrel', category: 'character', label: '<Video 1>', wears: '' },
+    { card_id: 'p', name: 'Gold Chain', category: 'object', reference_type: 'prop', label: '<Picture 1>', wears: '' },
+    { card_id: 'v', name: 'Black Charger', category: 'object', reference_type: 'vehicle', label: '<Picture 2>', wears: '' },
+  ];
+  const result = attachRefmodLabels('[Shot 1] <Subject 1> (Darrel) sings.', items);
+  assert.match(result, /<Picture 1> \(Gold Chain\) is placed in the scene next to <Video 1>\./);
+  assert.match(result, /<Video 1> stands beside <Picture 2> \(Black Charger\)\./);
+});
+
 test('items without a label (strength 0) are ignored', () => {
   const items = [{ card_id: 'a', name: 'The man', category: 'character', label: '', wears: '' }];
   assert.equal(attachRefmodLabels('[Shot 1] <Subject 1> (The man) sings.', items), '[Shot 1] <Subject 1> (The man) sings.');

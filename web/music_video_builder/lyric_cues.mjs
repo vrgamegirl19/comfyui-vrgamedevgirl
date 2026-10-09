@@ -603,11 +603,16 @@ export function createLyricCues({
       const rawKey = String(item?.key || "").trim();
       const subjectId = String(item?.id || item?.subject_id || item?.subjectId || rawKey.replace(/^subject:/, "") || "").trim();
       const name = String(item?.label || item?.name || "").trim();
+      // Clothing and props are not people: their kind says so, so they never join the cast, the performers or the speakers.
+      const refmodCategory = item?.refmod?.category;
       const value = {
         label: `<Subject ${subjectNumber}>`,
         alias: "",
         name,
-        kind: item?.kind || "reference",
+        kind: refmodCategory === "clothing" || refmodCategory === "object" ? refmodCategory : (item?.kind || "reference"),
+        cardId: String(item?.refmod?.card_id || ""),
+        wears: String(item?.refmod?.wears || ""),
+        referenceType: String(item?.refmod?.reference_type || ""),
       };
       if (subjectId) map.set(subjectId, value);
       if (name) map.set(name.toLowerCase(), value);
