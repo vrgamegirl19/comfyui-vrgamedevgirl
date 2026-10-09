@@ -15,6 +15,9 @@ from ..builder.audio import (
     _save_project_srt,
     _srt_path,
 )
+from ..builder.elevenlabs import normalize_voice, validate_voice
+from ..builder.elevenlabs_voice_design import normalize_design_draft, validate_design_draft
+from ..builder.scene_audio_settings import require_speaking
 from ..builder.lyric_scenes import (
     apply_length_fix,
     carry_lyrics_over,
@@ -1133,6 +1136,27 @@ def upsert_reference_subject(
         voice = payload.get("minimax_voice")
         if voice is None:
             voice = existing.get("minimax_voice", "none")
+        elevenlabs_voice = normalize_voice(existing.get("elevenlabs_voice"))
+        design_draft = normalize_design_draft(existing.get("elevenlabs_voice_design"))
+        if "elevenlabs_voice_design" in payload:
+            try:
+                require_speaking(session)
+                if payload.get("reference_type", existing.get("reference_type", "character")) != "character" or payload.get("extra_reference_for", existing.get("extra_reference_for", "")):
+                    raise ValueError("Voice Design requires a primary character reference.")
+                design_draft = validate_design_draft(payload["elevenlabs_voice_design"])
+            except ValueError as exc:
+                raise ValidationError(str(exc)) from exc
+        if "elevenlabs_voice" in payload:
+            try:
+                require_speaking(session)
+                elevenlabs_voice = validate_voice(payload["elevenlabs_voice"])
+                if elevenlabs_voice["enabled"] and (
+                    payload.get("reference_type", existing.get("reference_type", "character")) != "character"
+                    or payload.get("extra_reference_for", existing.get("extra_reference_for", ""))
+                ):
+                    raise ValueError("ElevenLabs voices can only be assigned to primary characters.")
+            except ValueError as exc:
+                raise ValidationError(str(exc)) from exc
         subj = {
             "id": subject_id,
             "name": payload.get("name", existing.get("name", "Character")),
@@ -1140,6 +1164,8 @@ def upsert_reference_subject(
             "face_description": payload.get("face_description", existing.get("face_description", "")),
             "reference_type": payload.get("reference_type", existing.get("reference_type", "character")),
             "minimax_voice": voice,
+            "elevenlabs_voice": elevenlabs_voice,
+            "elevenlabs_voice_design": design_draft,
             "trigger_phrase": payload.get("trigger_phrase", existing.get("trigger_phrase", "")),
             "trigger_position": payload.get("trigger_position", existing.get("trigger_position", "start")),
             "extra_reference_for": payload.get("extra_reference_for", existing.get("extra_reference_for", "")),
@@ -1153,6 +1179,10 @@ def upsert_reference_subject(
         else:
             subjects.append(subj)
             item = subj
+
+        if subjects and item is subjects[0]:
+            ref_builder.setdefault("subject", {})["elevenlabs_voice"] = dict(elevenlabs_voice)
+            ref_builder["subject"]["elevenlabs_voice_design"] = dict(design_draft)
 
         save_result = _persist_session(folder, session)
         return {

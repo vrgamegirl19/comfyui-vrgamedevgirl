@@ -28,6 +28,12 @@ from ..llm.builder_runner import (
 from ..runner.models import _folder_choices, _lora_choices, _ltx_video_model_choices
 
 from .auth import verify_auth
+from .scene_audio import get_audio_settings, patch_audio_settings
+from .scene_dialogue import dialogue_request, generate_project_speech, run_craft_dialogue_job
+from .elevenlabs import (
+    project_credentials, project_voices, project_voice_design,
+    voice_description_request, run_voice_description_job,
+)
 from .envelope import api_error, api_exception, api_success
 from .llm_runtime import describe_active_llm, llm_payload_from_session
 from .errors import ValidationError
@@ -179,6 +185,8 @@ def register_agent_api_routes(server_instance=None):
     # Register background job handlers
     try:
         register_llm_job_handlers(get_job_manager())
+        get_job_manager().register_handler("elevenlabs.voice_description", run_voice_description_job)
+        get_job_manager().register_handler("elevenlabs.craft_dialogue", run_craft_dialogue_job)
         register_image_orchestrator_handlers(get_job_manager())
         register_video_orchestrator_handlers(get_job_manager())
         register_latent_orchestrator_handlers(get_job_manager())
@@ -497,6 +505,73 @@ def register_agent_api_routes(server_instance=None):
         )
         return api_success(res.get("scene"), revision=res.get("revision"))
 
+    @server_instance.routes.get(f"{_API_V1_PREFIX}/projects/{{pid}}/speaking-audio/defaults")
+    @_api_endpoint
+    async def api_get_speaking_audio_defaults(request: web.Request):
+        """Read Speaking-mode project silence and duration defaults."""
+        res = await asyncio.to_thread(get_audio_settings, request.match_info["pid"])
+        return api_success(res["settings"], revision=res["revision"])
+
+    @server_instance.routes.patch(f"{_API_V1_PREFIX}/projects/{{pid}}/speaking-audio/defaults")
+    @_api_endpoint
+    async def api_patch_speaking_audio_defaults(request: web.Request):
+        """Update Speaking defaults and ripple scenes that inherit them."""
+        payload = await request.json()
+        if_match = int(request.headers.get("If-Match")) if request.headers.get("If-Match", "").isdigit() else None
+        res = await asyncio.to_thread(
+            patch_audio_settings, request.match_info["pid"], payload.get("settings", {}),
+            if_match_revision=if_match,
+        )
+        return api_success(res["settings"], revision=res["revision"])
+
+    @server_instance.routes.get(f"{_API_V1_PREFIX}/projects/{{pid}}/scenes/{{sid}}/audio-settings")
+    @_api_endpoint
+    async def api_get_scene_audio_settings(request: web.Request):
+        """Read one Speaking scene's settings and owned dialogue clips."""
+        res = await asyncio.to_thread(get_audio_settings, request.match_info["pid"], request.match_info["sid"])
+        return api_success(res["settings"], revision=res["revision"])
+
+    @server_instance.routes.patch(f"{_API_V1_PREFIX}/projects/{{pid}}/scenes/{{sid}}/audio-settings")
+    @_api_endpoint
+    async def api_patch_scene_audio_settings(request: web.Request):
+        """Edit one Speaking scene's audio, with optional import/removal and ripple timing."""
+        payload = await request.json()
+        if_match = int(request.headers.get("If-Match")) if request.headers.get("If-Match", "").isdigit() else None
+        res = await asyncio.to_thread(
+            patch_audio_settings, request.match_info["pid"], payload.get("settings", {}),
+            scene_id=request.match_info["sid"], if_match_revision=if_match,
+            audio_data=payload.get("audio_data"), audio_name=payload.get("audio_name", "scene_audio.wav"),
+            clear_audio=payload.get("clear_audio", False),
+            dialogue=payload.get("dialogue"),
+        )
+        return api_success(res["settings"], revision=res["revision"])
+
+    @server_instance.routes.post(f"{_API_V1_PREFIX}/projects/{{pid}}/scenes/{{sid}}/dialogue/craft")
+    @_api_endpoint
+    async def api_craft_scene_dialogue(request: web.Request):
+        """Prepare tagged dialogue as an LLM job; returns editable text without saving it."""
+        pid, sid = request.match_info["pid"], request.match_info["sid"]
+        payload = await request.json() if request.can_read_body else {}
+        resolved = await asyncio.to_thread(dialogue_request, pid, sid, payload.get("dialogue"))
+        folder = resolved["project_folder"]
+        job = get_job_manager().submit_job(
+            "elevenlabs.craft_dialogue", project_id=pid,
+            params={"scene_id": sid, "dialogue": resolved["dialogue"]},
+            is_gpu=await asyncio.to_thread(is_llm_runner_gpu, {}, folder),
+        )
+        return api_success({"job_id": job.id, "status": job.status, "job": job.to_dict()}, status=202)
+
+    @server_instance.routes.post(f"{_API_V1_PREFIX}/projects/{{pid}}/scenes/{{sid}}/dialogue/generate")
+    @_api_endpoint
+    async def api_generate_scene_speech(request: web.Request):
+        """Generate a single MP3 take using the saved key and character voice; no import."""
+        payload = await request.json() if request.can_read_body else {}
+        result = await asyncio.to_thread(
+            generate_project_speech, request.match_info["pid"], request.match_info["sid"],
+            payload.get("dialogue"),
+        )
+        return api_success(result)
+
     @server_instance.routes.post(f"{_API_V1_PREFIX}/projects/{{pid}}/scenes/{{sid}}/resize")
     @_api_endpoint
     async def api_resize_scene(request: web.Request):
@@ -743,6 +818,79 @@ def register_agent_api_routes(server_instance=None):
         if_match = int(request.headers.get("If-Match")) if request.headers.get("If-Match", "").isdigit() else None
         res = await asyncio.to_thread(delete_timeline_note, pid, nid, if_match_revision=if_match)
         return api_success(res, revision=res.get("revision"))
+
+    @server_instance.routes.get(f"{_API_V1_PREFIX}/projects/{{pid}}/elevenlabs")
+    @_api_endpoint
+    async def api_elevenlabs_status(request: web.Request):
+        """Read ElevenLabs credential status without returning the key; Speaking only."""
+        res = await asyncio.to_thread(project_credentials, request.match_info["pid"])
+        return api_success(res, revision=res.get("revision"))
+
+    @server_instance.routes.put(f"{_API_V1_PREFIX}/projects/{{pid}}/elevenlabs")
+    @_api_endpoint
+    async def api_elevenlabs_save_key(request: web.Request):
+        """Explicitly save or clear a project API key; Speaking only, supports If-Match."""
+        payload = await request.json() if request.can_read_body else {}
+        if "api_key" not in payload or payload["api_key"] is None:
+            raise ValidationError("api_key is required; use an empty string to clear it.")
+        if_match = int(request.headers.get("If-Match")) if request.headers.get("If-Match", "").isdigit() else None
+        res = await asyncio.to_thread(
+            project_credentials, request.match_info["pid"], payload.get("api_key"), if_match,
+        )
+        return api_success(res, revision=res.get("revision"))
+
+    @server_instance.routes.get(f"{_API_V1_PREFIX}/projects/{{pid}}/elevenlabs/voices")
+    @_api_endpoint
+    async def api_elevenlabs_voices(request: web.Request):
+        """List one page of voices using the saved project key; Speaking only."""
+        res = await asyncio.to_thread(
+            project_voices, request.match_info["pid"], request.query.get("next_page_token", ""),
+        )
+        return api_success(res)
+
+    @server_instance.routes.post(f"{_API_V1_PREFIX}/projects/{{pid}}/elevenlabs/test")
+    @_api_endpoint
+    async def api_elevenlabs_test(request: web.Request):
+        """Test saved project key voice access without generating speech; Speaking only."""
+        res = await asyncio.to_thread(project_voices, request.match_info["pid"], test=True)
+        return api_success(res)
+
+    @server_instance.routes.post(f"{_API_V1_PREFIX}/projects/{{pid}}/references/subjects/{{rid}}/voice-design/description")
+    @_api_endpoint
+    async def api_voice_design_description(request: web.Request):
+        """Write a reviewable voice description using the project's LLM; runs as a job."""
+        pid, rid = request.match_info["pid"], request.match_info["rid"]
+        payload = await request.json() if request.can_read_body else {}
+        await asyncio.to_thread(voice_description_request, pid, rid, payload.get("user_input", ""))
+        folder = await asyncio.to_thread(resolve_project_folder, pid)
+        job = get_job_manager().submit_job(
+            "elevenlabs.voice_description", project_id=pid,
+            params={"subject_id": rid, "user_input": payload.get("user_input", "")},
+            is_gpu=await asyncio.to_thread(is_llm_runner_gpu, {}, folder),
+        )
+        return api_success({"job_id": job.id, "status": job.status, "job": job.to_dict()}, status=202)
+
+    @server_instance.routes.post(f"{_API_V1_PREFIX}/projects/{{pid}}/elevenlabs/voice-design/previews")
+    @_api_endpoint
+    async def api_voice_design_previews(request: web.Request):
+        """Generate ElevenLabs voice previews from a reviewed description; Speaking only."""
+        payload = await request.json() if request.can_read_body else {}
+        res = await asyncio.to_thread(project_voice_design, request.match_info["pid"], {
+            "voice_description": payload.get("voice_description"), "text": payload.get("text", ""),
+            "model_id": payload.get("model_id", "eleven_ttv_v3"),
+        })
+        return api_success(res)
+
+    @server_instance.routes.post(f"{_API_V1_PREFIX}/projects/{{pid}}/elevenlabs/voice-design/create")
+    @_api_endpoint
+    async def api_voice_design_create(request: web.Request):
+        """Explicitly save a selected preview to the account; assign it using subject upsert."""
+        payload = await request.json() if request.can_read_body else {}
+        res = await asyncio.to_thread(project_voice_design, request.match_info["pid"], {
+            "voice_name": payload.get("voice_name"), "voice_description": payload.get("voice_description"),
+            "generated_voice_id": payload.get("generated_voice_id"),
+        }, save=True)
+        return api_success(res, status=201)
 
     # 7. References CRUD (Section 6.5)
     @server_instance.routes.get(f"{_API_V1_PREFIX}/projects/{{pid}}/references")

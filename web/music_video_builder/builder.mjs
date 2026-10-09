@@ -89,6 +89,7 @@ import {
 import { createBrowserAi, wireBrowserAiPanel } from "./browser_ai.mjs";
 import { buildTimelineView, createTimelineView } from "./timeline_view.mjs";
 import { createAudioClipEditor, prepareEditedAudio } from "./audio_clip_editor.mjs";
+import { createSceneAudioSettings } from "./scene_audio_settings.mjs";
 import { timelineDeleteAvailability } from "./timeline_tool_windows.mjs";
 import { createAudioMask } from "./audio_mask.mjs";
 import { onStemLanesChange } from "./audio_mask_store.mjs";
@@ -210,6 +211,7 @@ export function openBuilder(node, options = {}) {
     builderLifecycle.resourceResizeObserver?.disconnect();
     window.removeEventListener("vrgdg:builder-toast", toastNotificationHandler);
     builderLifecycle.externalChangeSync?.dispose();
+    builderLifecycle.sceneAudioSettings?.dispose();
     if (builderLifecycle.keydownHandler) document.removeEventListener("keydown", builderLifecycle.keydownHandler, true);
     restoreBrowserAiDownloadsQuietly().catch(() => null);
     overlay.remove();
@@ -1034,6 +1036,8 @@ export function openBuilder(node, options = {}) {
     llmApiModel: "",
     llmApiKey: "",
     llmApiKeyProject: "",
+    elevenLabsApiKey: "",
+    elevenLabsApiKeyProject: "",
     llmApiChoices: null,
     ownServerUrl: "http://127.0.0.1:8000/v1",
     ownServerModel: "",
@@ -1511,7 +1515,20 @@ export function openBuilder(node, options = {}) {
     videoTriggerPhraseForSegment: (...args) => videoTriggerPhraseForSegment(...args),
   });
 
+  const sceneAudioSettings = createSceneAudioSettings({
+    state, projectInput, overlay, projectDefaultsAnchor: openSceneAudioOptionsButton, pushHistory,
+    pauseTimelineForEditing: (...args) => pauseTimelineForEditing(...args),
+    render: (...args) => render(...args),
+    saveSession: (...args) => saveSession(...args),
+    sceneSlotNumber: (...args) => sceneSlotNumber(...args),
+    getLlmPayload: () => ({ ...textGemmaRunnerPayload(), model_file: state.textGemmaRunner === "qwen_local"
+      ? state.qwenModelFile : (t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || state.gemmaModelFile || "") }),
+    openInstructions: (...args) => openBuilderInstructionEditor(...args),
+  });
+  builderLifecycle.sceneAudioSettings = sceneAudioSettings;
+  const { openSceneAudioSettings } = sceneAudioSettings;
   const { renderAudioClips, registerSceneAudio } = createAudioClipEditor({
+    refreshAudioSettings: sceneAudioSettings.refresh,
     state, projectInput, pushHistory, addAudioClipButton,
     currentGlobalTime: (...args) => currentGlobalTime(...args),
     render: (...args) => render(...args),
@@ -1525,6 +1542,7 @@ export function openBuilder(node, options = {}) {
     openSceneOptions, openSegmentContextMenu, openSnapSceneEdgeMenu, openTimelineSceneCard,
     snapAllSceneStartsToNearestBeats, snapSceneEdgeToNearestBeat,
   } = createTimelineEdit({
+    openSceneAudioSettings,
     registerSceneAudio,
     autoSaveSessionQuiet, createProgressWindow, miniMaxH3ContinuityModeForSegment,
     miniMaxH3SettingsForSegment, openLyricReviewModal, openStoryboardBuilderFromProject, projectInput,

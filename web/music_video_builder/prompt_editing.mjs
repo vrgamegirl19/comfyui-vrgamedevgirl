@@ -23,6 +23,7 @@ async function chooseBuilderInstructionPreset(key) {
   return new Promise((resolve) => {
     const backdrop = document.createElement("div");
     backdrop.style.cssText = "position:fixed;inset:0;z-index:100008;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
+    if (key === "elevenlabs_dialogue") backdrop.style.zIndex = "100031";
     const box = document.createElement("div");
     box.style.cssText = "width:min(620px,calc(100vw - 36px));max-height:calc(100vh - 42px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:10px;box-sizing:border-box;";
     const header = document.createElement("div");
@@ -361,8 +362,9 @@ export function createPromptEditing({
     return { path: "", data: "" };
   }
 
-  async function openBuilderInstructionEditor(key = "i2v") {
-    const segment = requireActiveSegment();
+  async function openBuilderInstructionEditor(key = "i2v", requestedSegment = null) {
+    if (key === "elevenlabs_dialogue" && state.videoType !== "speaking") return;
+    const segment = requestedSegment || requireActiveSegment();
     if (!segment) return;
     updateActiveFromInputs();
     const projectFolder = activeProjectFolderForSave();
@@ -382,14 +384,17 @@ export function createPromptEditing({
       return;
     }
 
+    if (key === "elevenlabs_dialogue" && state.videoType !== "speaking") return;
+
     const backdrop = document.createElement("div");
     backdrop.style.cssText = "position:fixed;inset:0;z-index:100007;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
+    if (key === "elevenlabs_dialogue") backdrop.style.zIndex = "100030";
     const box = document.createElement("div");
     box.style.cssText = "width:min(920px,calc(100vw - 36px));max-height:calc(100vh - 42px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box;";
     const header = document.createElement("div");
     header.style.cssText = "display:flex;align-items:flex-start;justify-content:space-between;gap:12px;";
     const title = document.createElement("div");
-    title.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Edit ${escapeHtml(data.label || "I2V")} Gemma Instructions</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">${escapeHtml(sceneDisplayName(segment, segmentIndexInfo(segment).index))}</div>`;
+    title.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Edit ${escapeHtml(data.label || "I2V")} ${key === "elevenlabs_dialogue" ? "LLM" : "Gemma"} Instructions</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">${escapeHtml(sceneDisplayName(segment, segmentIndexInfo(segment).index))}</div>`;
     const close = makeButton("Close");
     header.append(title, close);
     const status = document.createElement("div");

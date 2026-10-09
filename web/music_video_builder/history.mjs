@@ -77,6 +77,7 @@ export function createHistory({
     return JSON.stringify({
       segments: state.segments,
       audioClips: state.audioClips,
+      speakingAudioDefaults: state.speakingAudioDefaults || {},
       overlaySegments: state.overlaySegments,
       overlayTrack: normalizeOverlayTrackState(state.overlayTrack),
       activeId: state.activeId,
@@ -113,6 +114,7 @@ export function createHistory({
       llmApiProvider: state.llmApiProvider,
       llmApiModel: state.llmApiModel,
       llmApiKeyProject: state.llmApiKeyProject,
+      elevenLabsApiKeyProject: state.elevenLabsApiKeyProject,
       ownServerUrl: state.ownServerUrl,
       ownServerModel: state.ownServerModel,
       ownServerApiKeyProject: state.ownServerApiKeyProject,
@@ -167,6 +169,7 @@ export function createHistory({
     state.isRestoringHistory = true;
     state.segments = data.segments || [];
     state.audioClips = Array.isArray(data.audioClips) ? data.audioClips : null;
+    state.speakingAudioDefaults = data.speakingAudioDefaults || {};
     state.audioClipMixPath = "";
     state.audioClipMixKey = "";
     state.audioClipGenerationMixPath = "";
@@ -216,6 +219,9 @@ export function createHistory({
     state.lmStudioOutputTokenLimit = normalizeOutputTokenLimit(data.lmStudioOutputTokenLimit ?? data.lm_studio_output_token_limit ?? legacyLlmMaxTokens ?? state.lmStudioOutputTokenLimit);
     state.llmApiProvider = data.llmApiProvider || data.llm_api_provider || state.llmApiProvider || "openai";
     state.llmApiModel = data.llmApiModel || data.llm_api_model || state.llmApiModel || "";
+    const previousElevenLabsProjectKey = state.elevenLabsApiKeyProject || "";
+    state.elevenLabsApiKeyProject = data.elevenLabsApiKeyProject ?? data.elevenlabs_api_key_project ?? "";
+    if (previousElevenLabsProjectKey !== state.elevenLabsApiKeyProject) state.elevenLabsApiKey = state.elevenLabsApiKeyProject;
     state.llmApiKeyProject = data.llmApiKeyProject || data.llm_api_key_project || state.llmApiKeyProject || "";
     if (state.llmApiKeyProject) state.llmApiKey = state.llmApiKeyProject;
     state.notificationSettings = normalizeNotificationSettings(data.notificationSettings || data.notification_settings || state.notificationSettings);

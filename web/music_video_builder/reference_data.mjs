@@ -1,3 +1,5 @@
+import { normalizeElevenLabsDesignDraft } from "./elevenlabs_voice_design.mjs";
+import { normalizeElevenLabsVoice } from "./elevenlabs.mjs";
 import { postJson } from "./comfy_api.mjs";
 import { LOCATION_SCOUT_ADVANCED_CHATGPT_URL, LOCATION_SCOUT_GPT_URL } from "./constants.mjs";
 import { copyTextToClipboard, makeButton, toast } from "./controls.mjs";
@@ -267,6 +269,8 @@ export function normalizeFluxReferenceBuilder(value = {}) {
         extra_reference_for: existing.extra_reference_for || item.extra_reference_for || item.extraReferenceFor || item.same_subject_as || item.sameSubjectAs,
         extra_reference_note: existing.extra_reference_note || item.extra_reference_note || item.extraReferenceNote,
         minimax_voice: existing.minimax_voice || item.minimax_voice || item.miniMaxVoice,
+        elevenlabs_voice: existing.elevenlabs_voice || item.elevenlabs_voice,
+        elevenlabs_voice_design: existing.elevenlabs_voice_design || item.elevenlabs_voice_design,
         image: {
           ...(item.image || {}),
           ...(existing.image || {}),
@@ -311,6 +315,8 @@ export function normalizeFluxReferenceBuilder(value = {}) {
     face_description_source_key: String(subject.face_description_source_key || subject.faceDescriptionSourceKey || ""),
     reference_type: normalizeReferenceType(subject.reference_type || subject.referenceType || subject.type || "character"),
     minimax_voice: normalizeMiniMaxH3Voice(subject.minimax_voice || subject.miniMaxVoice),
+    elevenlabs_voice: normalizeElevenLabsVoice(subject.elevenlabs_voice),
+    elevenlabs_voice_design: normalizeElevenLabsDesignDraft(subject.elevenlabs_voice_design),
     reference_generation_draft: normalizeReferenceGenerationDraft(subject.reference_generation_draft || subject.referenceGenerationDraft),
     image: normalizeRefImage(subject),
   };
@@ -330,6 +336,8 @@ export function normalizeFluxReferenceBuilder(value = {}) {
         extra_reference_for: String(item.extra_reference_for || item.extraReferenceFor || item.same_subject_as || item.sameSubjectAs || ""),
         extra_reference_note: String(item.extra_reference_note || item.extraReferenceNote || ""),
         minimax_voice: normalizeMiniMaxH3Voice(item.minimax_voice || item.miniMaxVoice),
+        elevenlabs_voice: normalizeElevenLabsVoice(item.elevenlabs_voice),
+        elevenlabs_voice_design: normalizeElevenLabsDesignDraft(item.elevenlabs_voice_design),
         reference_generation_draft: normalizeReferenceGenerationDraft(item.reference_generation_draft || item.referenceGenerationDraft),
         ...normalizeRefmodFields(item),
         image: normalizeRefImage(item),
@@ -348,6 +356,8 @@ export function normalizeFluxReferenceBuilder(value = {}) {
       extra_reference_for: "",
       extra_reference_note: "",
       minimax_voice: normalizeMiniMaxH3Voice(subject.minimax_voice || subject.miniMaxVoice),
+      elevenlabs_voice: normalizeElevenLabsVoice(subject.elevenlabs_voice),
+      elevenlabs_voice_design: normalizeElevenLabsDesignDraft(subject.elevenlabs_voice_design),
       reference_generation_draft: normalizeReferenceGenerationDraft(subject.reference_generation_draft || subject.referenceGenerationDraft),
       image: { ...normalized.subject.image },
     });
@@ -363,6 +373,8 @@ export function normalizeFluxReferenceBuilder(value = {}) {
       extra_reference_for: "",
       extra_reference_note: "",
       minimax_voice: normalizeMiniMaxH3Voice(),
+      elevenlabs_voice: normalizeElevenLabsVoice(),
+      elevenlabs_voice_design: normalizeElevenLabsDesignDraft(),
       reference_generation_draft: normalizeReferenceGenerationDraft(),
       image: { path: "", data: "", name: "" },
     });
@@ -383,6 +395,8 @@ export function normalizeFluxReferenceBuilder(value = {}) {
       description: "",
       reference_type: normalized.subject.reference_type || "character",
       minimax_voice: normalized.subject.minimax_voice || normalizeMiniMaxH3Voice(),
+      elevenlabs_voice: normalized.subject.elevenlabs_voice || normalizeElevenLabsVoice(),
+      elevenlabs_voice_design: normalized.subject.elevenlabs_voice_design || normalizeElevenLabsDesignDraft(),
       reference_generation_draft: normalized.subject.reference_generation_draft || normalizeReferenceGenerationDraft(),
       image: { path: "", data: "", name: "" },
     };
@@ -395,6 +409,8 @@ export function normalizeFluxReferenceBuilder(value = {}) {
       face_description_source_key: firstSubject.face_description_source_key || normalized.subject.face_description_source_key || "",
       reference_type: firstSubject.reference_type || normalized.subject.reference_type || "character",
       minimax_voice: normalizeMiniMaxH3Voice(firstSubject.minimax_voice || normalized.subject.minimax_voice),
+      elevenlabs_voice: normalizeElevenLabsVoice(firstSubject.elevenlabs_voice || normalized.subject.elevenlabs_voice),
+      elevenlabs_voice_design: normalizeElevenLabsDesignDraft(firstSubject.elevenlabs_voice_design || normalized.subject.elevenlabs_voice_design),
       reference_generation_draft: firstSubject.reference_generation_draft || normalized.subject.reference_generation_draft || normalizeReferenceGenerationDraft(),
       image: (firstSubject.image?.path || firstSubject.image?.data || firstSubject.image?.name)
         ? { ...(firstSubject.image || { path: "", data: "", name: "" }) }

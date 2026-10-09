@@ -21,6 +21,12 @@ from .video_profiles import (
     save_video_profile, set_last_video_profile,
 )
 from .paths import _open_local_file, _open_native_picker, _resolve_existing_file
+from .elevenlabs import list_voices
+from .elevenlabs_voice_design import create_designed_voice, design_voice
+from ..llm.voice_design import generate_voice_description
+from ..llm.scene_dialogue import craft_dialogue
+from .elevenlabs_speech import dialogue_speaker, generate_speech, validate_dialogue
+from .scene_audio_settings import require_speaking
 from .audio import _convert_audio_to_wav, _create_silent_audio, _default_audio_srt_paths, _estimate_beats_from_audio, _find_latest_capcut_beats, _load_srt_segments, _prepare_scene_audio_mix, _read_audio_peaks, _save_project_audio, _save_project_srt, _save_scene_audio, _save_single_scene_srt, _trim_scene_audio
 from .audio_stems import delete_scene_stems, list_scene_stems, render_masked_mix, scene_state, scene_states, separate_scene_stems
 from .media import _archive_scene_image, _delete_project_media, _extract_video_final_frame_as_scene_image, _import_reference_locations_from_project, _import_reference_subjects_from_project, _restore_scene_video, _save_flux_reference_image, _save_scene_image, _scan_builder_scene_videos
@@ -45,6 +51,113 @@ def _ensure_music_builder_routes():
         return
     register_lut_routes(server_instance)
     register_face_fix_routes(server_instance)
+
+    @server_instance.routes.post("/vrgdg/music_builder/craft_scene_dialogue")
+    async def vrgdg_craft_scene_dialogue(request: web.Request) -> web.Response:
+        """Prepare reviewed dialogue with the selected runner and instruction preset."""
+        payload = {}
+        try:
+            data = await request.json()
+            if not isinstance(data, dict):
+                raise ValueError("Dialogue request must be an object.")
+            payload = data
+            require_speaking({"video_type": payload.get("video_type")})
+
+            def craft() -> dict:
+                from ..agent_api.llm_runtime import prepare_llm_payload
+                return craft_dialogue(prepare_llm_payload(payload))
+
+            result = await asyncio.to_thread(craft)
+        except Exception as exc:
+            message = str(exc)
+            for field in ("llm_api_key", "llm_api_key_project", "own_server_api_key", "own_server_api_key_project", "lmstudio_api_key"):
+                secret = str(payload.get(field) or "")
+                if secret:
+                    message = message.replace(secret, "[redacted]")
+            return web.json_response({"ok": False, "error": message}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/generate_scene_speech")
+    async def vrgdg_generate_scene_speech(request: web.Request) -> web.Response:
+        """Generate a transient MP3 preview, without importing or saving the project."""
+        try:
+            payload = await request.json()
+            require_speaking({"video_type": payload.get("video_type")})
+            draft = validate_dialogue(payload.get("dialogue"), require_text=True)
+            speaker = dialogue_speaker(payload.get("references"), draft["speaker_id"])
+            result = await asyncio.to_thread(generate_speech, payload.get("api_key", ""), speaker["voice_id"], draft)
+        except ValueError as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        except Exception:
+            return web.json_response({"ok": False, "error": "Could not generate scene speech."}, status=500)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/elevenlabs_voices")
+    async def vrgdg_elevenlabs_voices(request: web.Request) -> web.Response:
+        """List account voices or test a transient key; no credential is saved here."""
+        try:
+            payload = await request.json()
+            require_speaking({"video_type": payload.get("video_type", "")})
+            result = await asyncio.to_thread(
+                list_voices, payload.get("api_key", ""), payload.get("next_page_token", ""),
+            )
+        except ValueError as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        except Exception:
+            return web.json_response({"ok": False, "error": "Could not retrieve ElevenLabs voices."}, status=500)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/elevenlabs_voice_description")
+    async def vrgdg_elevenlabs_voice_description(request: web.Request) -> web.Response:
+        """Write an editable voice description using the selected Builder LLM."""
+        payload = {}
+        try:
+            data = await request.json()
+            if not isinstance(data, dict):
+                raise ValueError("Voice description request must be an object.")
+            payload = data
+            require_speaking({"video_type": payload.get("video_type")})
+
+            def generate() -> dict:
+                from ..agent_api.llm_runtime import prepare_llm_payload
+                return generate_voice_description(prepare_llm_payload(payload))
+
+            result = await asyncio.to_thread(generate)
+        except Exception as exc:
+            # Runner errors may include remote bodies. Never echo credentials.
+            message = str(exc)
+            for field in ("llm_api_key", "llm_api_key_project", "own_server_api_key", "own_server_api_key_project", "lmstudio_api_key"):
+                secret = str(payload.get(field) or "")
+                if secret:
+                    message = message.replace(secret, "[redacted]")
+            return web.json_response({"ok": False, "error": message}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/elevenlabs_voice_design")
+    async def vrgdg_elevenlabs_voice_design(request: web.Request) -> web.Response:
+        """Generate Voice Design previews; do not save any voice to the account."""
+        try:
+            payload = await request.json()
+            require_speaking({"video_type": payload.get("video_type")})
+            result = await asyncio.to_thread(design_voice, payload.get("api_key", ""), payload)
+        except ValueError as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        except Exception:
+            return web.json_response({"ok": False, "error": "Could not generate voice previews."}, status=500)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/elevenlabs_voice_create")
+    async def vrgdg_elevenlabs_voice_create(request: web.Request) -> web.Response:
+        """Explicitly save a chosen generated voice to the ElevenLabs account."""
+        try:
+            payload = await request.json()
+            require_speaking({"video_type": payload.get("video_type")})
+            result = await asyncio.to_thread(create_designed_voice, payload.get("api_key", ""), payload)
+        except ValueError as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        except Exception:
+            return web.json_response({"ok": False, "error": "Could not save the voice. Refresh account voices before trying again."}, status=500)
+        return web.json_response({"ok": True, "voice": result})
 
     @server_instance.routes.post("/vrgdg/music_builder/analyze_audio")
     async def vrgdg_music_builder_analyze_audio(request):
@@ -352,6 +465,21 @@ def _ensure_music_builder_routes():
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/preview_scene_audio_settings")
+    async def vrgdg_preview_scene_audio_settings(request: web.Request) -> web.Response:
+        """Calculate Speaking audio edits without writing the browser's project snapshot."""
+        from .scene_audio_settings import update_audio_settings
+
+        try:
+            payload = await request.json()
+            session = await asyncio.to_thread(
+                update_audio_settings, payload["session"], payload.get("settings", {}),
+                payload.get("scene_id"), payload.get("attachment"), payload.get("dialogue"),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, "session": session})
 
     # Audio Mask window: split a scene's audio into stems and build the masked mix the video model hears.
     @server_instance.routes.post("/vrgdg/music_builder/audio_mask/state")

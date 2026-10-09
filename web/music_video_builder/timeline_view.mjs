@@ -1582,7 +1582,8 @@ export function createTimelineView({
       const historyStatus = imageHistory.length ? `<span style="border:1px solid #67e8f9;border-radius:4px;padding:2px 5px;font-size:10px;font-weight:900;color:#bae6fd;">IMG ${imageHistory.length}</span>` : "";
       const videoHistoryStatus = videoHistory.length ? `<span style="border:1px solid #a78bfa;border-radius:4px;padding:2px 5px;font-size:10px;font-weight:900;color:#f3e8ff;">VID ${videoHistory.length}</span>` : "";
       const zStatus = segment.use_scene_zimage_settings ? `<span style="border:1px solid #f59e0b;border-radius:4px;padding:2px 5px;font-size:10px;font-weight:900;color:#fde68a;">Z custom</span>` : "";
-      const audioStatus = segment.custom_audio_path ? `<span style="border:1px solid #a78bfa;border-radius:4px;padding:2px 5px;font-size:10px;font-weight:900;color:#ddd6fe;">AUD</span>` : "";
+      const audioStatus = (segment.custom_audio_path ? `<span style="border:1px solid #a78bfa;border-radius:4px;padding:2px 5px;font-size:10px;font-weight:900;color:#ddd6fe;">AUD</span>` : "")
+        + (state.videoType === "speaking" && segment.scene_audio_render_dirty ? `<span title="Audio timing changed; render this scene again" style="border:1px solid #f59e0b;border-radius:4px;padding:2px 5px;font-size:10px;color:#fcd34d;">Audio changed</span>` : "");
       const lutStatus = sceneLutBadgeHtml(segment);
       const grainStatus = sceneFilmGrainBadgeHtml(segment);
       const status = `
