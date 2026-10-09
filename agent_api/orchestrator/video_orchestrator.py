@@ -1203,6 +1203,12 @@ async def run_video_stitch_job(job: Job, manager: JobManager) -> Dict[str, Any]:
     manager.update_progress(job.id, 100.0, "completed", message="Stitch completed.")
     result = dict(res or {})
     result.update(summary)
+    # The song window the selection asked for, under its own name; audio_duration is the audio actually in
+    # the file (ffprobe), which in embedded mode follows the clips' frames rather than the window.
+    result["requested_audio_start"] = summary["audio_start"]
+    result["requested_audio_duration"] = summary["audio_duration"]
+    if "output_audio_duration" in result:
+        result["audio_duration"] = result["output_audio_duration"]
     return result
 
 
