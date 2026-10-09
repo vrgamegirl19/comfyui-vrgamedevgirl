@@ -70,6 +70,39 @@ def _extract_final_frame_for_continuity(project_folder: str, video_path: str, sc
     return str(extracted.get("saved_path") or "").strip()
 
 
+def _continuity_used(
+    payload: Dict[str, Any],
+    graph_res: Dict[str, Any],
+    segments: List[Dict[str, Any]],
+    scene_number: int,
+) -> Dict[str, str]:
+    """The continuity a MiniMax render really used, as the Video Builder records it on the scene.
+
+    Twin of ``prepareMiniMaxH3ContinuityReference`` in ``web/music_video_builder/video_render.mjs``, which saves
+    ``minimax_h3_continuity_mode_used`` and ``minimax_h3_continuity_source_scene_id``. The answer comes from the
+    graph that was built: its ``latent_continuation_settings`` (``runner/minimax_patches.py``) say whether a
+    predecessor latent was loaded and from which scene. A graph that does not report it falls back to the
+    payload's resolved mode, which comes from the scene's own locked settings when it has them, never the project
+    default alone.
+    """
+    report = graph_res.get("latent_continuation_settings")
+    if isinstance(report, dict):
+        used = bool(report.get("enabled"))
+        try:
+            predecessor = int(report.get("predecessor_scene") or scene_number - 1)
+        except (TypeError, ValueError):
+            predecessor = scene_number - 1
+    else:
+        used = canonical_continuity_mode(payload.get("continuity_mode")) == "latent_continuation_masked" and scene_number > 1
+        predecessor = scene_number - 1
+    if not used or not 1 <= predecessor <= len(segments):
+        return {"minimax_h3_continuity_mode_used": "off", "minimax_h3_continuity_source_scene_id": ""}
+    return {
+        "minimax_h3_continuity_mode_used": "latent_continuation_masked",
+        "minimax_h3_continuity_source_scene_id": str(segments[predecessor - 1].get("id") or ""),
+    }
+
+
 def build_video_graph_for_mode(mode: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     """Compile ComfyUI prompt graph for the requested video mode (Section 6.9)."""
     m = str(mode or "i2v").strip().lower()
@@ -482,6 +515,9 @@ async def render_scene_video_async(
         _, session = _get_active_session_and_folder(project_id)
         target_seg = session["segments"][idx]
         apply_scene_video(target_seg, final_video_path, final_thumbnail_path if final_thumbnail_path else "")
+        if "minimax" in mode:
+            # Record the continuity this graph used, like the Builder does after its render.
+            target_seg.update(_continuity_used(payload, graph_res, session["segments"], scene_number))
         # The untrimmed render, so a later re-trim (POST .../video/trim with take) can start from the whole take.
         target_seg["raw_video_path"] = raw_render_path
         raw_history = [str(x) for x in target_seg.get("raw_video_history") or [] if str(x).strip()]
