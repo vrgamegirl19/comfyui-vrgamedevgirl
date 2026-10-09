@@ -24,7 +24,6 @@ import { normalizeFluxReferenceBuilder } from "./reference_data.mjs";
 import { selectedSegmentVideoPath } from "./selection_preview.mjs";
 import {
   activateSegmentVideoPath,
-  audioTimelineStart,
   batchEmptyMessage,
   mediaPathKey,
   normalizeBatchScope,
@@ -1217,7 +1216,8 @@ export function createSceneRenderPrep({
     const timelineSegments = allEditableSegments()
       .filter((item) => segmentTrack(item) === track)
       .sort((a, b) => {
-        const startDiff = audioTimelineStart(a) - audioTimelineStart(b);
+        // Visual continuity follows scene order, independent of moved or stale audio positions.
+        const startDiff = Number(a.start || 0) - Number(b.start || 0);
         if (Math.abs(startDiff) > 0.001) return startDiff;
         return segmentIndexInfo(a).index - segmentIndexInfo(b).index;
       });
