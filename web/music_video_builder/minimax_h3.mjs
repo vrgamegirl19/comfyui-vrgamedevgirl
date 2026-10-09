@@ -594,14 +594,17 @@ export function cloneMiniMaxH3Settings(value = {}) {
   const hasSavedPreTurboEasyCache = source.easy_cache_bypass_before_turbo != null || source.easyCacheBypassBeforeTurbo != null;
   const rawEasyCacheBypass = Boolean(source.easy_cache_bypass ?? DEFAULT_MINIMAX_H3_SETTINGS.easy_cache_bypass);
   const continuityMode = normalizeMiniMaxH3ContinuityMode(source.continuity_mode || source.continuityMode || DEFAULT_MINIMAX_H3_SETTINGS.continuity_mode);
+  const videoMode = pipeline === "refmod" ? "reference_to_video" : normalizeMiniMaxH3Mode(source.video_mode || source.mode || DEFAULT_MINIMAX_H3_SETTINGS.video_mode);
   // Masked continuation plans its own head and tail; extra render frames stay at zero.
-  const maskedContinuation = continuityMode === "latent_continuation_masked";
+  const maskedContinuation = continuityMode === "latent_continuation_masked"
+    && isMiniMaxH3ContinuityAllowedForMode(continuityMode, videoMode,
+      pipeline === "refmod" && renderPass === "three_pass" ? "two_pass" : renderPass);
   return {
     ...DEFAULT_MINIMAX_H3_SETTINGS,
     ...source,
     pipeline,
     // The RefMod pipeline only has one mode.
-    video_mode: pipeline === "refmod" ? "reference_to_video" : normalizeMiniMaxH3Mode(source.video_mode || source.mode || DEFAULT_MINIMAX_H3_SETTINGS.video_mode),
+    video_mode: videoMode,
     // Pre-existing saves never had render_pass; Image + Reference 2 Pass was always a two-pass
     // workflow by mode alone, so an absent field must still mean two_pass for that mode.
     render_pass: pipeline === "refmod" && renderPass === "three_pass" ? "two_pass" : renderPass,
