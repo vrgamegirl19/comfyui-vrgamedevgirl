@@ -23,7 +23,7 @@ export function wireTimelineControls({
   syncSceneNoteControls, syncTimelineTrimModeButton, syncVideoNoteControls, timelineAudioPathForSegment,
   timelineAudioSourceStartForSegment, timelineCanvas, timelineViewport, updateAudioScrubbers,
   updatePlayPauseButton, usingSceneAudioPlaybackMode, videoNoteButton,
-  waitForPreviewVideoReady, waveformModeSelect, zoomInButton, zoomOutButton,
+  waitForPreviewVideoReady, waveformModeSelect, zoomInButton, zoomOutButton, prepareAudioEdits,
 }) {
   freezeTimingControl.input.addEventListener("change", () => {
     pushHistory();
@@ -59,6 +59,15 @@ export function wireTimelineControls({
     const request = ++playStart.request;
     playStart.inFlight = true;
     try {
+      if (prepareAudioEdits) {
+        const position = currentGlobalTime();
+        if (await prepareAudioEdits()) {
+          if (request !== playStart.request) return;
+          // Restoring the clock after preparing audio is part of this Play request, not a user scrub.
+          setGlobalPlaybackTime(position, { preservePlayStart: true });
+          render();
+        }
+      }
       // If the user just scrubbed here, the preview video may still be
       // loading/seeking to this position. Kick that off (in case it hasn't
       // already started) and wait briefly for it before starting audio, so
@@ -73,6 +82,9 @@ export function wireTimelineControls({
         syncPreviewPlayback(effectiveStart);
         await waitForPreviewVideoReady(localPlaybackTime(startSegment, effectiveStart));
       }
+    } catch (error) {
+      toast(String(error.message || error), true);
+      return;
     } finally {
       if (request === playStart.request) playStart.inFlight = false;
     }

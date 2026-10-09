@@ -88,6 +88,7 @@ import {
 } from "./image_panels.mjs";
 import { createBrowserAi, wireBrowserAiPanel } from "./browser_ai.mjs";
 import { buildTimelineView, createTimelineView } from "./timeline_view.mjs";
+import { createAudioClipEditor, prepareEditedAudio } from "./audio_clip_editor.mjs";
 import { timelineDeleteAvailability } from "./timeline_tool_windows.mjs";
 import { createAudioMask } from "./audio_mask.mjs";
 import { onStemLanesChange } from "./audio_mask_store.mjs";
@@ -867,7 +868,7 @@ export function openBuilder(node, options = {}) {
   const {
     addOverlaySegmentButton, addSegmentButton, addTimelineMarkerButton, audioMaskButton, beatMarkersButton, bulkSegmentsButton, stemMonitorButton, stemVisibilityButton, stemLayer,
     clearRangeButton, closeTimelineGapsButton, deleteAllSegmentsButton, deleteAllTimelineImagesButton,
-    deleteAllTimelineVideosButton, deleteSegmentButton, freezeTimingControl, globalAudioMuteButton,
+    deleteAllTimelineVideosButton, deleteSegmentButton, freezeTimingControl, globalAudioMuteButton, addAudioClipButton,
     globalScrub, globalScrubTime, idLoraTrimModeButton, lyricNoteButton, locationThumbnailButton, multiSelectButton,
     multiSelectHintButton, overlayTrackHintButton, overlayTrackToggleButton, playButton, playhead, redoButton,
     refreshDeleteActions, sceneNoteButton, segmentLayer, setInButton, setOutButton, snapSceneEdgeButton,
@@ -1510,12 +1511,21 @@ export function openBuilder(node, options = {}) {
     videoTriggerPhraseForSegment: (...args) => videoTriggerPhraseForSegment(...args),
   });
 
+  const { renderAudioClips, registerSceneAudio } = createAudioClipEditor({
+    state, projectInput, pushHistory, addAudioClipButton,
+    currentGlobalTime: (...args) => currentGlobalTime(...args),
+    render: (...args) => render(...args),
+    autoSaveSessionQuiet: (...args) => autoSaveSessionQuiet(...args),
+    pauseTimelineForEditing: (...args) => pauseTimelineForEditing(...args),
+    setActiveSegment: (...args) => setActiveSegment(...args),
+  });
   const {
     baseSceneVideoTrimKind, chooseRenderedSceneTrimAtPlayhead, closeBaseTimelineGap,
     closeTimelineGapsFromMenu, loadDirtyLatentBadges, openAudioContextMenu, openDirectorNoteContextMenu,
     openSceneOptions, openSegmentContextMenu, openSnapSceneEdgeMenu, openTimelineSceneCard,
     snapAllSceneStartsToNearestBeats, snapSceneEdgeToNearestBeat,
   } = createTimelineEdit({
+    registerSceneAudio,
     autoSaveSessionQuiet, createProgressWindow, miniMaxH3ContinuityModeForSegment,
     miniMaxH3SettingsForSegment, openLyricReviewModal, openStoryboardBuilderFromProject, projectInput,
     pushHistory, setActiveSegment, setGlobalPlaybackTime, state, syncInspector, syncPreview,
@@ -1556,7 +1566,7 @@ export function openBuilder(node, options = {}) {
   } = createTimelineView({
     miniMaxH3ModeForSegment,
     appendTimelineFirstLastFrameThumbnail, autoSaveSessionQuiet, enableLutDrop, enablePostEffectDrop, stemLayer, timelineViewport,
-    i2vNotesInput, lyricTextInput, mediaThumbnailHtml, openAudioContextMenu, openDirectorNoteContextMenu,
+    i2vNotesInput, lyricTextInput, mediaThumbnailHtml, openAudioContextMenu, openDirectorNoteContextMenu, renderAudioClips,
     openSceneOptions, openSegmentContextMenu, openTimelineSceneCard, playhead, pushHistory,
     rtvReferenceBehaviorForSegment, sceneListPane, segmentLayer, selectedSegmentImageThumbnailPath,
     setActiveSegment, state, syncInspector, timelineCanvas, locationThumbnailButton, refreshDeleteActions,
@@ -2845,6 +2855,7 @@ export function openBuilder(node, options = {}) {
     useVisionReference,
   });
   wireToolbar({
+    render,
     activeSegment, addOverlaySegment, addOverlaySegmentButton, addSegment, addSegmentButton,
     addTimelineMarkerButton, addTimelineMarkerFromSelection, applyBuilderFullscreen, autoBuildButton,
     autoLoadAll, autoLoadAllButton, autoSaveControl, autoSaveSessionQuiet, branchProject, branchProjectButton,
@@ -2918,6 +2929,7 @@ export function openBuilder(node, options = {}) {
     zI2ILoadButton, zImageCard,
   });
   wireTimelineControls({
+    prepareAudioEdits: () => prepareEditedAudio(state, projectInput.value || state.projectFolder),
     activeSegment, applyAutoBpmCalibration, applyCapCutBeatImport, applyThreePointBeatCalibration, audio,
     autoSaveSessionQuiet, beatCalibration, beatCalibrationCancelButton, beatCalibrationCaptureButton,
     beatCalibrationGridType, beatCalibrationTimecodeInput, beatMarkersButton, beginGlobalTimelineScrub,

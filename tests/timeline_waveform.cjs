@@ -12,6 +12,7 @@ function fixture(audioDuration, zoom, timelineDuration = audioDuration) {
   const canvas = { style: {}, getContext: () => context2d };
   const state = { pxPerSecond: zoom, waveformMode: "medium", peaks: [0.1, 0.2, 0.3, 0.4] };
   const context = vm.createContext({ state, timelineCanvas: canvas, segmentLayer: { style: {} },
+    speakingAudioEditsActive: state => state.videoType === 'speaking' && Array.isArray(state.audioClips),
     stemLayer: { style: {} }, playhead: { style: {} }, timelineHeight: () => 100,
     timelineWaveTop: () => 50, timelineDuration: () => timelineDuration,
     loadedGlobalAudioDuration: () => audioDuration, currentProjectAudioPath: () => "song.mp3",
@@ -67,4 +68,15 @@ test("a timeline without audio does not draw a fake waveform", () => {
   f.context.currentProjectAudioPath = () => "";
   f.draw();
   assert.equal(f.strokes.length, 0);
+});
+test("edited audio draws its silent gaps instead of the original waveform", () => {
+  const f = fixture(20, 20);
+  f.state.audioClips = [];
+  f.state.videoType = 'speaking';
+  f.state.audioClipMixPeaks = [0, 0.5, 0, 0.8];
+  f.draw();
+  assert.equal(f.strokes[0].y, 69.6);
+  assert.equal(f.strokes[100].y, 60);
+  assert.equal(f.strokes[200].y, 69.6);
+  assert.equal(f.strokes[300].y, 54);
 });

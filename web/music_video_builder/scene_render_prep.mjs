@@ -1,3 +1,4 @@
+import { speakingAudioEditsActive } from "./audio_clip_editor.mjs";
 import { GEMMA_VIDEO_PROMPT_TIMEOUT_MS, postJson } from "./comfy_api.mjs";
 import { escapeHtml, normalizeProjectVideoEngine, setWidgetValue, toast } from "./controls.mjs";
 import { formatTime } from "./format.mjs";
@@ -23,7 +24,6 @@ import { normalizeFluxReferenceBuilder } from "./reference_data.mjs";
 import { selectedSegmentVideoPath } from "./selection_preview.mjs";
 import {
   activateSegmentVideoPath,
-  audioTimelineStart,
   batchEmptyMessage,
   mediaPathKey,
   normalizeBatchScope,
@@ -1093,6 +1093,7 @@ export function createSceneRenderPrep({
   }
 
   async function ensureAudioOrOfferSilentTimeline(options = {}) {
+    if (speakingAudioEditsActive(state)) return true;
     if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") {
       const targetScenes = audioFallbackTargetScenes(options);
       if (targetScenes.length && targetScenes.every((segment) => miniMaxH3SettingsForSegment(segment).audio_mode === "built_in_audio")) return true;
@@ -1164,6 +1165,11 @@ export function createSceneRenderPrep({
   }
 
   async function prepareSceneAudioMix(progress, label = "Preparing scene audio mix", options = {}) {
+    if (speakingAudioEditsActive(state)) {
+      const { prepareEditedAudio } = await import("./audio_clip_editor.mjs");
+      const edited = await prepareEditedAudio(state, projectInput.value || state.projectFolder, { generation: true });
+      return { audioPath: edited.audio_path, srtPath: state.srtPath || srtInput.value, usedSceneAudio: true };
+    }
     const sceneAudioMode = usingSceneAudioMode();
     if (!sceneAudioMode) {
       return {
@@ -1210,7 +1216,8 @@ export function createSceneRenderPrep({
     const timelineSegments = allEditableSegments()
       .filter((item) => segmentTrack(item) === track)
       .sort((a, b) => {
-        const startDiff = audioTimelineStart(a) - audioTimelineStart(b);
+        // Visual continuity follows scene order, independent of moved or stale audio positions.
+        const startDiff = Number(a.start || 0) - Number(b.start || 0);
         if (Math.abs(startDiff) > 0.001) return startDiff;
         return segmentIndexInfo(a).index - segmentIndexInfo(b).index;
       });

@@ -106,7 +106,7 @@ class BuilderHybridAudioTests(unittest.TestCase):
             source,
         )
         self.assertIn(
-            "const peaks = currentProjectAudioPath() && state.peaks.length ? state.peaks : [0];",
+            "const peaks = currentProjectAudioPath() && waveformPeaks.length ? waveformPeaks : [0];",
             source,
         )
         self.assertGreaterEqual(source.count("activateGlobalTimelineAudioPlayback(0);"), 4)
