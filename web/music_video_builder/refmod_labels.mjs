@@ -106,8 +106,9 @@ export function sceneSubjectCards(scene, subjectCards) {
 //   locationCard: the scene's location card or null
 //   allSubjects:  every subject card (clothing cards are found here)
 //   override:     { characterId: clothing card id(s) } chosen for this scene ("" means none)
-// A clothing card tied to a character (wears) follows that character into the scene unless it has follow: false or the
-// override chose other clothing. An override names its cards whatever their follow setting.
+// Clothing is used in a scene only when the scene selects it (it is one of subjectCards). Its "wears" link says who wears
+// it, and decides where it sits in the order and how the prompt words it, but never adds it to a scene by itself, so an
+// unselected clothing card is not sent to the render. An override (no longer set by any control) can still name cards.
 export function composeRefmodItems(subjectCards, extraCards, locationCard, allSubjects, override = {}) {
   const chosenFor = override && typeof override === "object" ? override : {};
   let items = [];
@@ -129,10 +130,6 @@ export function composeRefmodItems(subjectCards, extraCards, locationCard, allSu
       items = items.filter((item) => !(item.category === "clothing" && item.wears === characterId && !chosen.has(item.card_id)));
       for (const card of subjects) {
         if (chosen.has(text(card.id))) add(card, "subject");
-      }
-    } else {
-      for (const card of subjects) {
-        if (text(card.wears) === characterId && cardCategory(card) === "clothing" && card.follow !== false) add(card, "subject");
       }
     }
   }

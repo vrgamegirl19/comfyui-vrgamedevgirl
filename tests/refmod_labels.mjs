@@ -162,7 +162,7 @@ test('clothing choices list every RefMod clothing card per character and what th
   const dress = { id: 'd', name: 'Dress', reference_type: 'outfit', source: 'refmod', refmod: { name: 'clothing_women/dress' } };
   const man = { id: 'a', name: 'The man', reference_type: 'character', source: 'refmod', refmod: { name: 'identity/man', kind: 'image', tokens: 500, strength: 1 } };
   const subjects = [man, hat, dress];
-  const items = composeRefmodItems([man], [], null, subjects, undefined);
+  const items = composeRefmodItems([man, hat], [], null, subjects, undefined);
   let [row] = clothingChoices(items, subjects, undefined);
   assert.equal(row.character, 'The man');
   assert.equal(row.current, 'h');
@@ -173,4 +173,11 @@ test('clothing choices list every RefMod clothing card per character and what th
   assert.equal(row.current, 'd');
   assert.equal(row.overridden, true);
   assert.deepEqual(clothingChoices(composeRefmodItems([man], [], null, [man], undefined), [man], undefined), []);
+});
+
+test('clothing is sent only when the scene selects it, even though a character in the scene wears it', () => {
+  const hat = { id: 'h', name: 'Red hat', reference_type: 'outfit', source: 'refmod', refmod: { name: 'clothing_men/hat', kind: 'image', tokens: 300, strength: 1 }, wears: 'a' };
+  const man = { id: 'a', name: 'The man', reference_type: 'character', source: 'refmod', refmod: { name: 'identity/man', kind: 'image', tokens: 500, strength: 1 } };
+  assert.deepEqual(composeRefmodItems([man], [], null, [man, hat]).map((item) => item.name), ['The man']);
+  assert.deepEqual(composeRefmodItems([man, hat], [], null, [man, hat]).map((item) => item.name), ['The man', 'Red hat']);
 });

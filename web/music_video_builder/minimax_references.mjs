@@ -169,7 +169,9 @@ export function createMiniMaxReferences({
     const subjectCards = sceneSubjectCards(segment, referenceBuilderSubjectItemsForSegment(refs, segment));
     const locationId = String(sceneReferenceMapValue(refs.scene_map, segment) || "").trim();
     const location = locationId ? (refs.locations || []).find((item) => String(item?.id || "") === locationId) || null : null;
-    const items = composeRefmodItems(subjectCards, [], location, refs.subjects || [], segment?.refmod_clothing_override);
+    // A scene's clothing comes from its scene mapping and from each clothing card's "Worn by" link. The old per-scene
+    // clothing choice (segment.refmod_clothing_override) no longer has a control, so it is not applied.
+    const items = composeRefmodItems(subjectCards, [], location, refs.subjects || []);
     return assignLabels(items.filter((item) => item.strength > 0));
   }
 
@@ -284,7 +286,7 @@ export function createMiniMaxReferences({
       const allSubjects = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder).subjects || [];
       return {
         count: items.length, overflow: Math.max(0, items.length - 24), labels: items.map((item) => item.name),
-        tokenText: tokenStatusText(items), clothing: clothingChoices(items, allSubjects, segment?.refmod_clothing_override),
+        tokenText: tokenStatusText(items), clothing: clothingChoices(items, allSubjects, undefined),
       };
     }
     if (!segment || !["reference_to_video", "image_reference_to_video", "video_to_video"].includes(normalizedMode)) return { count: 0, overflow: 0, labels: [] };

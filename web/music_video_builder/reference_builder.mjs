@@ -634,7 +634,7 @@ export function createReferenceBuilder({
       }
     };
     addLocation.onclick = () => {
-      createLocation();
+      createLocation("", "", { source: "refmod" });
       refs.locations_cleared = false;
       refs.use_location_references = true;
       useLocations.input.checked = true;

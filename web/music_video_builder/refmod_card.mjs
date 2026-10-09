@@ -228,7 +228,7 @@ Replace it?`)) return;
     return panel;
   }
 
-  // Clothing: which set it is picked from, who wears it, and whether it follows that character into every scene.
+  // Clothing: which set it is picked from and who wears it. A scene uses the clothing only when the scene selects it.
   if (kind === "subject" && String(item.reference_type) === "outfit") {
     const setSelect = makeNativeSelect([["all", "All clothing"], ["men", "Men's clothing"], ["women", "Women's clothing"]], item.clothing_set || "all");
     setSelect.onchange = () => {
@@ -243,19 +243,9 @@ Replace it?`)) return;
       item.wears = wearsSelect.value;
       onChange(false);
     };
-    const follow = document.createElement("label");
-    follow.style.cssText = "display:flex;gap:7px;align-items:center;font-size:12px;color:#e2e8f0;";
-    const followInput = document.createElement("input");
-    followInput.type = "checkbox";
-    followInput.checked = item.follow !== false;
-    followInput.onchange = () => {
-      item.follow = followInput.checked;
-      onChange(false);
-    };
-    follow.append(followInput, document.createTextNode("Goes with this character into every scene they are in"));
     const clothingRow = document.createElement("div");
     clothingRow.style.cssText = "display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;align-items:end;";
-    clothingRow.append(labelled("Clothing set", setSelect), labelled("Worn by", wearsSelect), follow);
+    clothingRow.append(labelled("Clothing set", setSelect), labelled("Worn by", wearsSelect));
     panel.append(clothingRow);
   }
 

@@ -406,7 +406,7 @@ Built
 - Library routes: `GET /vrgdg/refmod/library`, `GET /vrgdg/refmod/preview`, `POST /vrgdg/refmod/from_image`.
 
 - Scene status line: RefMod token total, warning above 6,000 tokens, character balance warning (`tokenReport` in `refmod_labels.mjs`, twin `token_report` in `minimax/refmod_scene.py`). The render logs the same warnings and returns `token_report` in its summary.
-- Scene clothing control in the MiniMax panel: per character, "Card default", "No clothing RefMod" or any saved-RefMod clothing card (writes `segment.refmod_clothing_override`; regenerate the prompt after a change).
+- Scene clothing control in the MiniMax panel: removed. Clothing is chosen by the scene mapping (Review Lines + Map Performers) and each clothing card's "Worn by" link. A saved `segment.refmod_clothing_override` is ignored.
 - Reference Builder "Save this image as a RefMod": quality choice and "Add more images" (extra images are uploaded and sent as `extra_images`; one image gives a light RefMod).
 - Storyboard Builder (D11): RefMod fields survive the storyboard catalog and saved scenes (`refmodCardFields`, `_refmod_card_fields`), scene chips show a `◈ <Video n>` badge, and the GPT payload carries `refmod_label`, `refmod_kind`, `refmod_type` per subject plus a `refmod_pipeline` block (labels and how to write them) when the project uses the RefMod pipeline. Labels there are previews, the Video Builder works them out again at render.
 
