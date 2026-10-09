@@ -33,6 +33,7 @@ def apply_scene_video(segment: Dict[str, Any], video_path: str, thumbnail_path: 
     segment["rendered_video_path"] = video_path
     segment["video_folder"] = os.path.dirname(video_path)
     segment["video_status"] = "done"
+    segment["scene_audio_render_dirty"] = False
     segment["preview_mode"] = "video"
     if thumbnail:
         segment["thumbnail_path"] = thumbnail

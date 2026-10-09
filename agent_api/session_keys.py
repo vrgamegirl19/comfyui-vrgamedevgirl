@@ -10,7 +10,7 @@ key has to be added here too. ``SERVER_SESSION_KEYS`` are the keys the save itse
 from typing import Any, Dict, FrozenSet
 
 BUILDER_SESSION_DATA_KEYS = (
-    "segments", "audio_clips", "overlay_segments", "overlay_track", "active_track", "timing_frozen", "srt_mode",
+    "segments", "audio_clips", "speaking_audio_defaults", "overlay_segments", "overlay_track", "active_track", "timing_frozen", "srt_mode",
     "prompt_json_path", "i2v_motion_json_path", "image_trigger_phrase", "video_trigger_phrase",
     "default_facial_performance", "default_facial_performance_custom", "use_i2v_prompt_enhancement_pass",
     "fail_on_invalid_prompt_formats", "continuity_mode", "auto_img2img_start_step", "auto_img2img_creativity",
@@ -19,7 +19,7 @@ BUILDER_SESSION_DATA_KEYS = (
     "use_vrgdg_text_context", "theme_style_path", "story_idea_path", "subject_scene_path", "text_gemma_runner",
     "gemma_context_limit", "gemma_output_token_limit", "gemma_gpu_layers", "lm_studio_base_url",
     "lm_studio_model", "lm_studio_api_key", "lm_studio_context_limit", "lm_studio_output_token_limit",
-    "llm_api_provider", "llm_api_model", "llm_api_key_project", "own_server_url", "own_server_model",
+    "llm_api_provider", "llm_api_model", "llm_api_key_project", "elevenlabs_api_key_project", "own_server_url", "own_server_model",
     "own_server_api_key_project", "own_server_output_token_limit", "own_server_timeout",
     "notification_settings", "automatic_memory_cleanup", "scene_render_wait_hours", "waveform_mode",
     "snap_to_beats", "show_beat_markers", "audio_mask_auto", "show_timeline_scene_notes", "show_timeline_video_notes",

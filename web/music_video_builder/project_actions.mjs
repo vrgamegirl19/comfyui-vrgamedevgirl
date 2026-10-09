@@ -222,6 +222,7 @@ export function createProjectActions({
     state.srtMode = false;
     state.timingFrozen = false;
     state.audioClips = null;
+    state.speakingAudioDefaults = {};
     state.audioClipMixPath = "";
     state.audioClipMixKey = "";
     state.audioClipGenerationMixPath = "";
@@ -253,6 +254,8 @@ export function createProjectActions({
     state.srtPath = srtPath || "";
     state.llmApiKey = "";
     state.llmApiKeyProject = "";
+    state.elevenLabsApiKey = "";
+    state.elevenLabsApiKeyProject = "";
     state.segments = [newSegment(0, 4)];
     state.overlaySegments = [];
     state.activeTrack = "base";
@@ -544,9 +547,9 @@ export function createProjectActions({
       toast("Create or load a project before exporting it.", true);
       return;
     }
-    if (String(state.llmApiKeyProject || state.ownServerApiKeyProject || "").trim()) {
+    if (String(state.llmApiKeyProject || state.ownServerApiKeyProject || state.elevenLabsApiKeyProject || "").trim()) {
       const proceed = window.confirm(
-        "This project contains a saved LLM API key. Exporting a shareable ZIP may include that key in the project session. Continue exporting?",
+        "This project contains a saved API key. Exporting a shareable ZIP may include that key in the project session. Continue exporting?",
       );
       if (!proceed) return;
     }

@@ -411,6 +411,7 @@ export function createVideoRender({
     segment.video_folder = collected.video_folder || collectedSceneVideoFolder();
     segment.preview_mode = "video";
     segment.video_status = "done";
+    segment.scene_audio_render_dirty = false;
     syncPreview(segment);
     render();
     if (options.autoSaveAfter !== false) {
@@ -1134,6 +1135,7 @@ export function createVideoRender({
       segment.video_folder = collected.video_folder || collectedSceneVideoFolder();
       segment.preview_mode = "video";
       segment.video_status = "done";
+      segment.scene_audio_render_dirty = false;
       syncPreview(segment);
       render();
       loadDirtyLatentBadges();

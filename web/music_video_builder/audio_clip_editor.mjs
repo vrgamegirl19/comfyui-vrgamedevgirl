@@ -81,7 +81,7 @@ export async function prepareEmbeddedAudioWithClips(state, projectFolder, scenes
 }
 
 export function createAudioClipEditor({ state, projectInput, currentGlobalTime, pushHistory,
-  render, autoSaveSessionQuiet, pauseTimelineForEditing, setActiveSegment, addAudioClipButton }) {
+  render, autoSaveSessionQuiet, pauseTimelineForEditing, setActiveSegment, addAudioClipButton, refreshAudioSettings }) {
   let selectedId = "";
   let importBox = null;
   let clipMenuBox = null;
@@ -288,6 +288,7 @@ export function createAudioClipEditor({ state, projectInput, currentGlobalTime, 
     window.addEventListener("blur", finish);
   }
   function renderAudioClips(layer) {
+    refreshAudioSettings?.();
     if (addAudioClipButton) addAudioClipButton.style.display = state.videoType === "speaking" ? "" : "none";
     if (state.videoType !== "speaking") {
       importBox?.remove(); clipMenuBox?.remove();

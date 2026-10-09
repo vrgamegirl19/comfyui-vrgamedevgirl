@@ -69,6 +69,7 @@ function mergeUniqueStringArray(firstValue, secondValue) {
 }
 
 export function createTimelineEdit({
+  openSceneAudioSettings,
   registerSceneAudio,
   activeSegment, allEditableSegments, autoSaveSessionQuiet, clampTimelineMarkerToNonOverlap,
   captureSelectedVideoFrameAsImage, collectedSceneVideoFolder, createProgressWindow, currentGlobalTime,
@@ -111,6 +112,10 @@ export function createTimelineEdit({
 
   function openSceneOptions(segment) {
     if (!segment) return;
+    if (state.videoType === "speaking" && state.segments.includes(segment)) {
+      openSceneAudioSettings(segment);
+      return;
+    }
     const backdrop = document.createElement("div");
     backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;";
     const box = document.createElement("div");
@@ -1031,6 +1036,9 @@ export function createTimelineEdit({
       menu.append(button);
     };
     const isOverlay = segmentTrack(segment) === "overlay";
+    if (!isOverlay && state.videoType === "speaking") {
+      addItem("Audio Settings…", () => openSceneAudioSettings(segment));
+    }
     const baseTrimKind = !isOverlay ? baseSceneVideoTrimKind(segment) : "";
     const playheadTime = currentGlobalTime();
     const sceneStart = Number(segment.start || 0);

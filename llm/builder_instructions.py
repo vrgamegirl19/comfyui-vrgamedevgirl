@@ -8,9 +8,12 @@ from .prompts.video import _I2V_INSTRUCTIONS, _ID_LORA_INSTRUCTIONS, _T2V_INSTRU
 from .prompts.minimax import MINIMAX_H3_IMAGE_REFERENCE_TO_VIDEO_INSTRUCTIONS, MINIMAX_H3_IMAGE_TO_VIDEO_INSTRUCTIONS, MINIMAX_H3_FRAME_CONTINUITY_INSTRUCTIONS, MINIMAX_H3_REFERENCE_TO_VIDEO_INSTRUCTIONS, MINIMAX_H3_TEXT_TO_VIDEO_INSTRUCTIONS, MINIMAX_H3_VIDEO_TO_VIDEO_INSTRUCTIONS, MINIMAX_H3_SHORT_FILM_GUIDED_INSTRUCTIONS_BY_MODE, MINIMAX_H3_SHORT_FILM_CUSTOM_INSTRUCTIONS_BY_MODE
 
 from ..builder.paths import _context_folder, _project_folder_from_builder_payload, _safe_builder_scene_id
+from ..core.atomic_write import atomic_write_text
+from .prompts.speech import ELEVENLABS_DIALOGUE_INSTRUCTIONS
 
 
 _BUILDER_INSTRUCTION_DEFAULTS = {
+    "elevenlabs_dialogue": ELEVENLABS_DIALOGUE_INSTRUCTIONS,
     "flux_klein_t2i": _FLUX_KLEIN_T2I_INSTRUCTIONS,
     "flow_gpt_t2i": _FLOW_GPT_T2I_INSTRUCTIONS,
     "ernie_t2i": _STANDARD_IMAGE_T2I_INSTRUCTIONS,
@@ -40,6 +43,7 @@ for _minimax_mode, _instructions in MINIMAX_H3_SHORT_FILM_CUSTOM_INSTRUCTIONS_BY
 
 
 _BUILDER_INSTRUCTION_LABELS = {
+    "elevenlabs_dialogue": "ElevenLabs Dialogue",
     "flux_klein_t2i": "Flux/Klein Text to Image",
     "flow_gpt_t2i": "Flow/GPT Text to Image",
     "ernie_t2i": "Ernie Text to Image",
@@ -212,9 +216,7 @@ def _save_builder_instruction(payload):
     else:
         path = _builder_instruction_scene_path(project_folder, key, payload.get("scene_id", ""))
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as handle:
-        handle.write(text)
-        handle.write("\n")
+    atomic_write_text(path, text + "\n")
     return _get_builder_instruction({"project_folder": project_folder, "key": key, "scene_id": payload.get("scene_id", "")})
 
 
@@ -279,9 +281,7 @@ def _save_builder_instruction_preset(payload):
         raise ValueError("Preset instruction text is empty.")
     path = _builder_instruction_preset_path(key, name)
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as handle:
-        handle.write(text)
-        handle.write("\n")
+    atomic_write_text(path, text + "\n")
     return {
         "key": key,
         "name": name,
