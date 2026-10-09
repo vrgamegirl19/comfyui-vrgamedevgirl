@@ -1237,6 +1237,8 @@ export function createVideoRender({
     const data = await postJson("/vrgdg/workflow_runner/stitch_scene_videos", {
       scene_paths: paths,
       audio_path: embeddedSceneAudioMode ? "" : globalAudioPath,
+      // Embedded audio: the song fills scene audio that runs short and plays continuously when the clips carry it.
+      song_path: embeddedSceneAudioMode ? globalAudioPath : "",
       scene_audio_paths: audioPaths,
       scene_audio_items: audioItems,
       scene_timing_items: sceneTimingItems,

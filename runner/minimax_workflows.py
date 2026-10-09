@@ -951,6 +951,9 @@ def _build_minimax_h3_3pass_api_prompt(payload):
         ref_image_size = "max"
     _set_api_input(prompt, "108", "ref_image_size", ref_image_size)
     _set_api_input(prompt, "330", "model_name", diffusion_model_name)
+    # The Model Loader settings (Sage Attention, fp16 accumulation) apply to this layout too. The template's own "auto" used to win.
+    _set_api_input(prompt, "330", "sage_attention", str(payload.get("sage_attention") or "auto"))
+    _set_api_input(prompt, "330", "enable_fp16_accumulation", _bool_payload(payload, "enable_fp16_accumulation", True))
     _set_api_input(prompt, "4", "clip_name", clip_name)
     _set_api_input(prompt, "5", "vae_name", video_vae_name)
     _set_api_input(prompt, "6", "vae_name", audio_vae_name)

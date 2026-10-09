@@ -38,6 +38,12 @@ export function refmodCardFields(card) {
   return fields;
 }
 
+// A card that is somebody: every card that is not a RefMod, and RefMods of the character type. Clothing, props, vehicles,
+// creatures, styles and settings are things in a scene, so they are never performers, speakers or part of the cast.
+export function isIdentityCard(card) {
+  return !isRefmodCard(card) || cardCategory(card) === "character";
+}
+
 export function cardCategory(card, kind = "subject") {
   if (kind === "extra") return "extra";
   if (kind === "location") return "background";

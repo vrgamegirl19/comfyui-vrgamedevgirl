@@ -672,7 +672,9 @@ export function createMiniMaxPanel({
     });
     const multiPassMode = state.miniMaxH3TwoPassEnabled || state.miniMaxH3ThreePassEnabled;
     miniMaxSeedField.style.display = multiPassMode ? "none" : "";
-    miniMaxAdvancedSettings.style.display = multiPassMode ? "none" : "";
+    // Advanced Settings stays visible in multi-pass so Sage Attention and fp16 accumulation can be changed. The sampler,
+    // EasyCache and reference parts of it hide themselves for multi-pass in the mode update below.
+    miniMaxAdvancedSettings.style.display = "";
     miniMaxTwoPassSettings.style.display = state.miniMaxH3TwoPassEnabled ? "" : "none";
     miniMaxThreePassSettings.style.display = state.miniMaxH3ThreePassEnabled ? "" : "none";
     // Pass 1 resolution lives in Render Settings and applies to 2 Pass Advanced only.
@@ -768,7 +770,9 @@ export function createMiniMaxPanel({
     miniMaxSeedField.style.display = hideMultiPassIgnoredSettings ? "none" : "";
     miniMaxSamplerSettings.style.display = hideMultiPassIgnoredSettings ? "none" : "";
     miniMaxEasyCacheSettings.style.display = hideMultiPassIgnoredSettings || mode === "reference_to_video" ? "none" : "";
-    miniMaxModelLoaderSettings.style.display = hideMultiPassIgnoredSettings ? "none" : "";
+    // Sage Attention and fp16 accumulation apply to every pass layout. The memory-efficient patch is single pass only.
+    miniMaxModelLoaderSettings.style.display = "";
+    miniMaxMemoryEfficientSageAttention.wrapper.style.display = hideMultiPassIgnoredSettings ? "none" : "";
     miniMaxReferenceConditioningSettings.style.display = !hideMultiPassIgnoredSettings
       && ["reference_to_video", "video_to_video"].includes(mode)
       ? ""

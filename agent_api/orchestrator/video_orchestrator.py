@@ -70,6 +70,39 @@ def _extract_final_frame_for_continuity(project_folder: str, video_path: str, sc
     return str(extracted.get("saved_path") or "").strip()
 
 
+def _continuity_used(
+    payload: Dict[str, Any],
+    graph_res: Dict[str, Any],
+    segments: List[Dict[str, Any]],
+    scene_number: int,
+) -> Dict[str, str]:
+    """The continuity a MiniMax render really used, as the Video Builder records it on the scene.
+
+    Twin of ``prepareMiniMaxH3ContinuityReference`` in ``web/music_video_builder/video_render.mjs``, which saves
+    ``minimax_h3_continuity_mode_used`` and ``minimax_h3_continuity_source_scene_id``. The answer comes from the
+    graph that was built: its ``latent_continuation_settings`` (``runner/minimax_patches.py``) say whether a
+    predecessor latent was loaded and from which scene. A graph that does not report it falls back to the
+    payload's resolved mode, which comes from the scene's own locked settings when it has them, never the project
+    default alone.
+    """
+    report = graph_res.get("latent_continuation_settings")
+    if isinstance(report, dict):
+        used = bool(report.get("enabled"))
+        try:
+            predecessor = int(report.get("predecessor_scene") or scene_number - 1)
+        except (TypeError, ValueError):
+            predecessor = scene_number - 1
+    else:
+        used = canonical_continuity_mode(payload.get("continuity_mode")) == "latent_continuation_masked" and scene_number > 1
+        predecessor = scene_number - 1
+    if not used or not 1 <= predecessor <= len(segments):
+        return {"minimax_h3_continuity_mode_used": "off", "minimax_h3_continuity_source_scene_id": ""}
+    return {
+        "minimax_h3_continuity_mode_used": "latent_continuation_masked",
+        "minimax_h3_continuity_source_scene_id": str(segments[predecessor - 1].get("id") or ""),
+    }
+
+
 def build_video_graph_for_mode(mode: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     """Compile ComfyUI prompt graph for the requested video mode (Section 6.9)."""
     m = str(mode or "i2v").strip().lower()
@@ -491,6 +524,9 @@ async def render_scene_video_async(
         _, session = _get_active_session_and_folder(project_id)
         target_seg = session["segments"][idx]
         apply_scene_video(target_seg, final_video_path, final_thumbnail_path if final_thumbnail_path else "")
+        if "minimax" in mode:
+            # Record the continuity this graph used, like the Builder does after its render.
+            target_seg.update(_continuity_used(payload, graph_res, session["segments"], scene_number))
         # The untrimmed render, so a later re-trim (POST .../video/trim with take) can start from the whole take.
         target_seg["raw_video_path"] = raw_render_path
         raw_history = [str(x) for x in target_seg.get("raw_video_history") or [] if str(x).strip()]
@@ -1123,7 +1159,14 @@ def build_stitch_payload(
         embedded = audio == "embedded"
 
     audio_path = ""
-    if not embedded:
+    song_path = ""
+    if embedded:
+        # The scenes play their own audio; the song only fills audio that runs short, or plays continuously
+        # when the clips' audio is the song (runner/video_files.py _embedded_scene_audio_track).
+        song_path = str(p.get("audio_path") or session_audio_path(session) or "").strip()
+        if not os.path.isfile(song_path):
+            song_path = ""
+    else:
         audio_path = str(p.get("audio_path") or session_audio_path(session) or "").strip()
         speaking_clips = session.get("video_type") == "speaking" and isinstance(session.get("audio_clips"), list)
         if (not audio_path or not os.path.isfile(audio_path)) and not speaking_clips:
@@ -1170,6 +1213,7 @@ def build_stitch_payload(
         "project_folder": folder,
         "scene_paths": [path for _index, _segment, path in selected],
         "audio_path": audio_path,
+        "song_path": song_path,
         "scene_audio_paths": [],
         "scene_audio_items": [],
         "scene_timing_items": timing_items,
@@ -1244,6 +1288,12 @@ async def run_video_stitch_job(job: Job, manager: JobManager) -> Dict[str, Any]:
     manager.update_progress(job.id, 100.0, "completed", message="Stitch completed.")
     result = dict(res or {})
     result.update(summary)
+    # The song window the selection asked for, under its own name; audio_duration is the audio actually in
+    # the file (ffprobe), which in embedded mode follows the clips' frames rather than the window.
+    result["requested_audio_start"] = summary["audio_start"]
+    result["requested_audio_duration"] = summary["audio_duration"]
+    if "output_audio_duration" in result:
+        result["audio_duration"] = result["output_audio_duration"]
     return result
 
 

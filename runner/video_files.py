@@ -1,5 +1,6 @@
 """Rendered scene video files: collecting, trimming, color matching, thumbnails, stitching and slideshows."""
 
+import json
 import math
 import os
 import re
@@ -41,6 +42,33 @@ def _probe_video_size(video_path, ffmpeg_path=None):
     text = (result.stdout or "").strip().splitlines()[0]
     width_text, height_text = text.lower().split("x", 1)
     return int(width_text), int(height_text)
+
+
+def _probe_output_media(video_path, ffmpeg_path=None):
+    """Width, height, video duration and audio duration of a written file, from ffprobe (0 where unknown)."""
+    info = {"width": 0, "height": 0, "video_duration": 0.0, "audio_duration": 0.0}
+    cmd = [
+        _ffprobe_path_for(ffmpeg_path), "-v", "error",
+        "-show_entries", "stream=codec_type,width,height,duration", "-of", "json", video_path,
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, errors="replace", check=True)
+        streams = json.loads(result.stdout or "{}").get("streams") or []
+    except (OSError, subprocess.CalledProcessError, ValueError):
+        return info
+    for stream in streams:
+        kind = stream.get("codec_type")
+        try:
+            duration = float(stream.get("duration") or 0)
+        except (TypeError, ValueError):
+            duration = 0.0
+        if kind == "video" and not info["width"]:
+            info["width"] = int(stream.get("width") or 0)
+            info["height"] = int(stream.get("height") or 0)
+            info["video_duration"] = duration
+        elif kind == "audio" and not info["audio_duration"]:
+            info["audio_duration"] = duration
+    return info
 
 
 def _normalize_video_canvas(ffmpeg_path, source_path, target_path, width, height):
@@ -146,9 +174,11 @@ def _unique_final_video_path(project_folder, prefix="FINAL_VIDEO"):
     candidate = os.path.join(project_folder, f"{safe_prefix}.mp4")
     if not os.path.exists(candidate):
         return candidate
+    # ``<prefix>_<n>`` from 2, like the repo's other free-name helpers (runner/paths.py _unique_copy_path). A bare
+    # number would run into the prefix: PREVIEW_SCENES_007-008 + 2 read as PREVIEW_SCENES_007-0082.
     index = 2
     while True:
-        candidate = os.path.join(project_folder, f"{safe_prefix}{index}.mp4")
+        candidate = os.path.join(project_folder, f"{safe_prefix}_{index}.mp4")
         if not os.path.exists(candidate):
             return candidate
         index += 1
@@ -747,59 +777,184 @@ def _clip_frame_length(path, ffmpeg_path):
     return frames, fps
 
 
-def _embedded_scene_audio_track(ffmpeg_path, scene_paths, frame_lengths, target_dir, temp_files):
+EMBEDDED_AUDIO_CROSSFADE_SECONDS = 0.008
+# A clip's audio counts as "the project song" when a stretch of it matches the song at the scene's song time
+# (within this search, normalized correlation at least EMBEDDED_SONG_MATCH).
+EMBEDDED_SONG_SEARCH_SECONDS = 0.025
+EMBEDDED_SONG_MATCH = 0.8
+# Decoded samples below this level count as digital silence; a silent clip tail up to this long is codec padding.
+EMBEDDED_SILENCE_LEVEL = 1e-4
+EMBEDDED_PADDING_SAMPLES = 2048
+
+
+def _decode_audio_samples(ffmpeg_path, path, filters=None, stream="0:a:0"):
+    """Decode ``path``'s audio to float32 stereo at EMBEDDED_AUDIO_SAMPLE_RATE as a ``(samples, 2)`` array."""
+    import numpy as np
+
+    chain = [f"aresample={EMBEDDED_AUDIO_SAMPLE_RATE}", "aformat=sample_fmts=flt:channel_layouts=stereo"] + list(filters or [])
+    cmd = [ffmpeg_path, "-v", "error", "-i", path, "-map", stream, "-vn", "-af", ",".join(chain), "-f", "f32le", "-acodec", "pcm_f32le", "-"]
+    result = subprocess.run(cmd, capture_output=True)
+    if result.returncode != 0:
+        raise RuntimeError((result.stderr or b"").decode("utf-8", "replace").strip() or f"FFmpeg could not decode audio: {path}")
+    data = np.frombuffer(result.stdout, dtype=np.float32)
+    return data[: len(data) // 2 * 2].reshape(-1, 2)
+
+
+def _clip_audio_samples(ffmpeg_path, path):
+    """A clip's audio placed against its first frame, or ``None`` when the clip has no audio stream."""
+    audio_info = _probe_stream_fields(path, ffmpeg_path, "a:0", ["index", "start_time"])
+    if audio_info.get("index", "") == "":
+        return None
+    # Keep the audio where it sits against the clip's first frame (normally both start at 0). No input -ss:
+    # a seek, even to 0, moves AAC audio by its priming.
+    video_info = _probe_stream_fields(path, ffmpeg_path, "v:0", ["start_time"])
+    lead = _probe_float(audio_info, "start_time") - _probe_float(video_info, "start_time")
+    filters = []
+    if lead > 0.0005:
+        filters.append(f"adelay={lead * 1000:.3f}:all=1")
+    elif lead < -0.0005:
+        filters.append(f"atrim=start={-lead:.6f},asetpts=PTS-STARTPTS")
+    samples = _decode_audio_samples(ffmpeg_path, path, filters)
+    # An AAC stream can decode with up to one frame of encoder padding (near-digital silence) past the real
+    # audio. Drop such a short silent tail so it is filled like any other shortfall; longer silence is content.
+    import numpy as np
+
+    loud = np.nonzero(np.max(np.abs(samples), axis=1) >= EMBEDDED_SILENCE_LEVEL)[0] if len(samples) else []
+    end = int(loud[-1]) + 1 if len(loud) else 0
+    if len(samples) - end <= EMBEDDED_PADDING_SAMPLES:
+        samples = samples[:end]
+    return samples
+
+
+def _slice_padded(samples, start, count):
+    """``samples[start:start + count]`` with zeros wherever that range falls outside ``samples``."""
+    import numpy as np
+
+    out = np.zeros((max(0, count), 2), dtype=np.float32)
+    if samples is None or count <= 0:
+        return out
+    lo, hi = max(0, start), min(len(samples), start + count)
+    if hi > lo:
+        out[lo - start:hi - start] = samples[lo:hi]
+    return out
+
+
+def _matches_song(clip, song, song_start):
+    """True when ``clip`` is the project song from ``song_start`` (sample index), give or take a few ms."""
+    import numpy as np
+
+    sr = EMBEDDED_AUDIO_SAMPLE_RATE
+    mono = clip.mean(axis=1)
+    lo = int(0.1 * sr)
+    hi = min(len(mono) - int(0.05 * sr), lo + 2 * sr)
+    if hi - lo < int(0.25 * sr):
+        return False
+    block = mono[lo:hi].astype(np.float64)
+    if not np.any(block):
+        return False
+    search = int(EMBEDDED_SONG_SEARCH_SECONDS * sr)
+    seg_lo = song_start + lo - search
+    seg = _slice_padded(song, seg_lo, len(block) + 2 * search).mean(axis=1).astype(np.float64)
+    size = 1 << int(np.ceil(np.log2(len(seg) + len(block))))
+    corr = np.fft.irfft(np.fft.rfft(seg, size) * np.conj(np.fft.rfft(block, size)), size)[: len(seg) - len(block) + 1]
+    energy = np.cumsum(np.concatenate([[0.0], seg ** 2]))
+    norm = np.sqrt(np.maximum(energy[len(block):] - energy[:-len(block)], 0.0)) * np.linalg.norm(block) + 1e-12
+    return float(np.max(corr / norm)) >= EMBEDDED_SONG_MATCH
+
+
+def _write_pcm_wav(path, samples):
+    import wave
+
+    import numpy as np
+
+    data = (np.clip(samples, -1.0, 1.0) * 32767.0).round().astype("<i2")
+    with wave.open(path, "wb") as handle:
+        handle.setnchannels(2)
+        handle.setsampwidth(2)
+        handle.setframerate(EMBEDDED_AUDIO_SAMPLE_RATE)
+        handle.writeframes(data.tobytes())
+
+
+def _embedded_scene_audio_track(ffmpeg_path, scene_paths, frame_lengths, target_dir, temp_files,
+                                song_path="", song_starts=None, song_origin=None):
     """Join the scenes' own audio as one PCM track that lines up with the joined video at every scene start.
 
-    Each scene's audio is padded with silence or cut to exactly its clip's ``frames / fps`` (sample counts
-    from the running total, so 44.1 kHz rounding cannot build up), a scene without an audio stream becomes
-    silence of that length, and the parts are joined as PCM. The caller encodes the result once, so no
-    per-scene encoder priming or AAC frame padding lands between scenes.
-    """
-    sample_rate = EMBEDDED_AUDIO_SAMPLE_RATE
-    elapsed = Fraction(0)
-    start_sample = 0
-    part_paths = []
-    for index, (path, (frames, fps)) in enumerate(zip(scene_paths, frame_lengths), start=1):
-        elapsed += Fraction(int(frames)) / Fraction(fps)
-        end_sample = int(math.floor(elapsed * sample_rate + Fraction(1, 2)))
-        samples = max(1, end_sample - start_sample)
-        start_sample = end_sample
-        part_path = os.path.join(target_dir, f"_temp_scene_audio_{index:04d}.wav")
-        temp_files.append(part_path)
-        audio_info = _probe_stream_fields(path, ffmpeg_path, "a:0", ["index", "start_time"])
-        if audio_info.get("index", "") != "":
-            # Keep the audio where it sits against the clip's first frame (normally both start at 0).
-            video_info = _probe_stream_fields(path, ffmpeg_path, "v:0", ["start_time"])
-            lead = _probe_float(audio_info, "start_time") - _probe_float(video_info, "start_time")
-            filters = [f"aresample={sample_rate}", "aformat=sample_fmts=s16:channel_layouts=stereo"]
-            if lead > 0.0005:
-                filters.append(f"adelay={lead * 1000:.3f}:all=1")
-            elif lead < -0.0005:
-                filters.append(f"atrim=start={-lead:.6f},asetpts=PTS-STARTPTS")
-            filters += [f"apad=whole_len={samples}", f"atrim=end_sample={samples}"]
-            cmd = [ffmpeg_path, "-y", "-i", path, "-map", "0:a:0", "-vn", "-af", ",".join(filters), "-c:a", "pcm_s16le", part_path]
-        else:
-            # No audio stream: silence for the clip's length, so the later scenes do not move up.
-            cmd = [
-                ffmpeg_path, "-y", "-f", "lavfi", "-i", f"anullsrc=r={sample_rate}:cl=stereo",
-                "-af", f"atrim=end_sample={samples}", "-c:a", "pcm_s16le", part_path,
-            ]
-        result = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
-        if result.returncode != 0 or not os.path.isfile(part_path):
-            raise RuntimeError((result.stderr or result.stdout or f"FFmpeg failed to prepare scene {index} audio.").strip())
-        part_paths.append(part_path)
+    Returns ``(wav_path, mode)``. Each scene gets exactly its clip's ``frames / fps`` of audio (sample counts
+    from the running total, so 44.1 kHz rounding cannot build up) and starts on the clip's first frame.
 
-    list_path = os.path.join(target_dir, "_temp_scene_audio_list.txt")
+    * ``continuous_song``: when ``song_path`` is given, the scenes sit back to back in the song
+      (``song_origin`` is not ``None``) and every clip's audio is the song at its scene's song time, the
+      track is one continuous read of the song from ``song_origin`` laid against the frame-exact timeline.
+      The clips' frame counts do not match their fractional song windows, so joining their audio would jump
+      or repeat the music by up to half a frame at every cut; one read cannot. Each scene's song window
+      starts within half a frame of the scene's first frame.
+    * ``per_scene``: each scene plays its own audio cut to its length. Audio shorter than the picture is
+      continued from the song at the scene's song time (``song_starts``, seconds) instead of silence, a clip
+      with no audio is the song for its length, and each join gets a short linear crossfade from the outgoing
+      scene's continuation. Silence is used only when there is no song.
+
+    The caller encodes the result once, so no per-scene encoder priming or AAC frame padding lands between scenes.
+    """
+    import numpy as np
+
+    sr = EMBEDDED_AUDIO_SAMPLE_RATE
+    elapsed = Fraction(0)
+    bounds = [0]
+    for frames, fps in frame_lengths:
+        elapsed += Fraction(int(frames)) / Fraction(fps)
+        bounds.append(max(bounds[-1] + 1, int(math.floor(elapsed * sr + Fraction(1, 2)))))
+    total = bounds[-1]
+
+    song = None
+    if song_path and os.path.isfile(song_path):
+        song = _decode_audio_samples(ffmpeg_path, song_path)
+    clips = [_clip_audio_samples(ffmpeg_path, path) for path in scene_paths]
+    starts = [int(round(float(s) * sr)) for s in (song_starts or [])]
+    if song is not None and len(starts) != len(scene_paths):
+        song = None
+
+    mode = "per_scene"
+    if song is not None and song_origin is not None and all(
+        clip is None or _matches_song(clip, song, start) for clip, start in zip(clips, starts)
+    ):
+        mode = "continuous_song"
+        track = _slice_padded(song, int(round(float(song_origin) * sr)), total)
+    else:
+        fade = max(1, int(round(EMBEDDED_AUDIO_CROSSFADE_SECONDS * sr)))
+        ramp = ((np.arange(fade, dtype=np.float32) + 0.5) / fade)[:, None]
+        track = np.zeros((total, 2), dtype=np.float32)
+        tails = []  # what each scene would have played next, for the crossfade into the following scene
+        for index, clip in enumerate(clips):
+            count = bounds[index + 1] - bounds[index]
+            start = starts[index] if song is not None else 0
+            if clip is None:
+                part = _slice_padded(song, start, count + fade) if song is not None else np.zeros((count + fade, 2), np.float32)
+            else:
+                part = _slice_padded(clip, 0, count + fade)
+                have = len(clip)
+                if have < count + fade and song is not None:
+                    # Continue the music from the song where the clip's audio runs out, with a short blend.
+                    blend = min(fade, have)
+                    part[have:] = _slice_padded(song, start + have, count + fade - have)
+                    if blend:
+                        w = ((np.arange(blend, dtype=np.float32) + 0.5) / blend)[:, None]
+                        lo = have - blend
+                        part[lo:have] = clip[lo:have] * (1.0 - w) + _slice_padded(song, start + lo, blend) * w
+            track[bounds[index]:bounds[index + 1]] = part[:count]
+            tails.append(part[count:])
+        for index in range(1, len(clips)):
+            tail = tails[index - 1]
+            if float(np.max(np.abs(tail), initial=0.0)) < 1e-3:
+                continue  # nothing was playing on: keep the next scene's first sample exact
+            cut = bounds[index]
+            width = min(fade, bounds[index + 1] - cut)
+            w = ramp[:width]
+            track[cut:cut + width] = track[cut:cut + width] * w + tail[:width] * (1.0 - w)
+
     joined_path = os.path.join(target_dir, "_temp_scene_audio_joined.wav")
-    temp_files.extend([list_path, joined_path])
-    with open(list_path, "w", encoding="utf-8") as handle:
-        for part_path in part_paths:
-            handle.write(f"file '{_concat_file_path(part_path)}'\n")
-    subprocess.run(
-        [ffmpeg_path, "-y", "-f", "concat", "-safe", "0", "-i", list_path, "-c:a", "copy", joined_path],
-        capture_output=True, text=True, errors="replace", check=True,
-    )
-    return joined_path
+    temp_files.append(joined_path)
+    _write_pcm_wav(joined_path, track)
+    return joined_path, mode
 
 
 def _stitch_scene_videos(payload):
@@ -826,6 +981,11 @@ def _stitch_scene_videos(payload):
     target_height = _int_payload(payload, "height", 0, 0, 8192)
     use_embedded_scene_audio = bool(payload.get("use_embedded_scene_audio"))
     timeline_fps = _int_payload(payload, "timeline_fps", 0, 0, 120)
+    # The project song, for embedded-audio stitches: fills scene audio that runs short and lets clips whose
+    # audio is the song play as one continuous read. Older callers send it as audio_path.
+    song_path = os.path.abspath(str(payload.get("song_path", "") or "").strip().strip('"')) if str(payload.get("song_path", "") or "").strip() else ""
+    if not (song_path and os.path.isfile(song_path)):
+        song_path = audio_path if os.path.isfile(audio_path) else ""
 
     scene_paths = []
     for index, raw_path in enumerate(raw_paths, start=1):
@@ -871,6 +1031,7 @@ def _stitch_scene_videos(payload):
     timeline_sync_paths = []
     timeline_sync_frame_count = 0
     timeline_frame_lengths = []
+    timeline_windows = []
     concat_scene_paths = scene_paths
     if raw_scene_timing_items:
         if timeline_fps <= 0:
@@ -889,6 +1050,7 @@ def _stitch_scene_videos(payload):
             target_frames = max(1, end_frame - start_frame)
             timeline_sync_frame_count += target_frames
             timeline_frame_lengths.append((target_frames, Fraction(timeline_fps)))
+            timeline_windows.append((start, end))
             sync_path = os.path.join(target_dir, f"_temp_timeline_scene_{index:04d}.mp4")
             sync_filter = (
                 f"fps={timeline_fps},"
@@ -1052,13 +1214,30 @@ def _stitch_scene_videos(payload):
 
     mux_audio_path = audio_path
     audio_matches_video = False
+    embedded_audio_mode = ""
     if scene_audio_items and all(item.get("embedded") for item in scene_audio_items):
         # Each clip's own audio, cut or padded to the clip's exact length: the timeline frame count when the
         # clips were synced to the timeline, otherwise the clip's own frames / fps.
         frame_lengths = timeline_frame_lengths if timeline_sync_paths else [
             _clip_frame_length(path, ffmpeg_path) for path in scene_paths
         ]
-        mux_audio_path = _embedded_scene_audio_track(ffmpeg_path, scene_paths, frame_lengths, target_dir, temp_audio_parts)
+        # Where each scene sits in the song. Timing items are relative to the preview start shifted to a whole
+        # frame (audio_start rounded to the frame grid); plain clips follow each other from audio_start.
+        if timeline_sync_paths:
+            song_origin = math.floor(preview_audio_start * timeline_fps + 0.5) / timeline_fps
+            song_starts = [song_origin + start for start, _end in timeline_windows]
+            if any(abs(nxt[0] - cur[1]) > 0.001 for cur, nxt in zip(timeline_windows, timeline_windows[1:])):
+                song_origin = None  # a gap or overlap between scenes: no single song read fits
+        else:
+            song_origin = preview_audio_start
+            song_starts, elapsed = [], Fraction(0)
+            for frames, fps in frame_lengths:
+                song_starts.append(preview_audio_start + float(elapsed))
+                elapsed += Fraction(int(frames)) / Fraction(fps)
+        mux_audio_path, embedded_audio_mode = _embedded_scene_audio_track(
+            ffmpeg_path, scene_paths, frame_lengths, target_dir, temp_audio_parts,
+            song_path=song_path, song_starts=song_starts, song_origin=song_origin,
+        )
         audio_matches_video = True
     elif scene_audio_paths:
         with open(audio_concat_file, "w", encoding="utf-8") as handle:
@@ -1172,6 +1351,8 @@ def _stitch_scene_videos(payload):
             except Exception:
                 pass
     removed_scratch_folders = _cleanup_video_scratch_folders(project_folder, keep_folders=[target_dir])
+    # Describe the file that was written, not the request (a MiniMax stitch asks for no canvas size: 0 x 0).
+    output_media = _probe_output_media(final_output, ffmpeg_path)
 
     return {
         "final_video_path": final_output,
@@ -1181,12 +1362,15 @@ def _stitch_scene_videos(payload):
         "insert_count": len(insert_items),
         "used_scene_audio": bool(scene_audio_paths),
         "used_embedded_scene_audio": bool(use_embedded_scene_audio and scene_audio_paths),
+        "embedded_audio_mode": embedded_audio_mode,
         "normalized_canvas": normalized_canvas,
         "timeline_frame_sync": bool(timeline_sync_paths),
         "timeline_fps": timeline_fps if timeline_sync_paths else 0,
         "timeline_frame_count": timeline_sync_frame_count,
-        "output_width": target_width,
-        "output_height": target_height,
+        "output_width": output_media["width"] or target_width,
+        "output_height": output_media["height"] or target_height,
+        "output_duration": output_media["video_duration"],
+        "output_audio_duration": output_media["audio_duration"],
         "removed_scratch_folders": removed_scratch_folders,
     }
 
