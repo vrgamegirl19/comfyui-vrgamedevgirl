@@ -67,7 +67,7 @@ export function buildInspectorPanels({
   flowGptSetupActions, flowGptSetupNote, flowGptStatusText, flowGptTimeout, fluxClipPicker,
   fluxGemmaModelSelect, fluxGrid, fluxImageRefsPanel, fluxImageTriggerInput, fluxKleinModePanel,
   fluxKleinPanel, fluxLoraPanel, fluxMmprojSelect, fluxNotes, fluxPrompt, fluxUnetPicker,
-  fluxUseDirectorNotes, fluxUseLora, fluxUseTextOnlyGemmaPrompt, fluxVaePicker, freezeTimingControl,
+  fluxUseDirectorNotes, fluxUseLora, fluxUseTextOnlyGemmaPrompt, fluxVaePicker,
   gemmaModelSelect, i2vMotionJsonInput, idLoraIdentityGrid, idLoraReferenceAudioField,
   idLoraReferenceAudioNote, imageModelChooserWrap, imagePanel, imageTriggerInput, importI2VMotionJsonButton,
   importPromptJsonButton, inspectorActions, krea2TwoPassClipPicker, krea2TwoPassCreateButton,
@@ -439,7 +439,6 @@ export function buildInspectorPanels({
   );
   sceneDetailsPanel.append(
     makeField("Scene label", labelInput),
-    freezeTimingControl.wrapper,
     timingGrid,
     makeEditField("Prompt JSON path", promptJsonInput, editPromptJsonButton),
     importPromptJsonButton,
@@ -490,12 +489,11 @@ export function buildInspectorPanels({
 
 export function buildInspectorTabs() {
   const inspectorTabs = document.createElement("div");
-  inspectorTabs.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;position:sticky;top:0;z-index:3;background:#202024;padding-bottom:2px;";
-  const sceneTabButton = makeButton("Scene");
+  inspectorTabs.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;position:sticky;top:0;z-index:3;background:#202024;padding-bottom:2px;";
   const imageTabButton = makeButton("Image");
   const videoTabButton = makeButton("Video");
   const audioTabButton = makeButton("Audio");
-  inspectorTabs.append(sceneTabButton, imageTabButton, videoTabButton, audioTabButton);
+  inspectorTabs.append(imageTabButton, videoTabButton, audioTabButton);
   const scenePanel = document.createElement("div");
   const sceneDetailsPanel = document.createElement("div");
   const sceneToolsPanel = document.createElement("div");
@@ -515,7 +513,7 @@ export function buildInspectorTabs() {
 
   return {
     audioPanel, audioTabButton, imagePanel, imageTabButton, inspectorTabs, noSceneNotice, sceneAdjustPanel,
-    sceneDetailsPanel, scenePanel, sceneTabButton, sceneToolsPanel, videoPanel, videoTabButton,
+    sceneDetailsPanel, scenePanel, sceneToolsPanel, videoPanel, videoTabButton,
   };
 }
 
@@ -558,7 +556,6 @@ export function buildInspectorInputs({ leftResizeHandle, main, preview, segmentL
   main.append(segmentList, leftResizeHandle, preview, rightResizeHandle, inspector);
 
   const labelInput = makeInput("");
-  const freezeTimingControl = makeCheckbox("Freeze SRT timing", false);
   const promptJsonInput = makeInput("");
   const importPromptJsonButton = makeButton("Import Prompt JSON", "primary");
   const editPromptJsonButton = makeButton("Edit");
@@ -596,7 +593,7 @@ export function buildInspectorInputs({ leftResizeHandle, main, preview, segmentL
 
   return {
     editI2VMotionJsonButton, editPromptJsonButton, editStoryIdeaButton, editSubjectSceneButton,
-    editThemeStyleButton, ernieImageTriggerInput, fluxImageTriggerInput, freezeTimingControl,
+    editThemeStyleButton, ernieImageTriggerInput, fluxImageTriggerInput,
     i2iImageFileInput, i2vMotionJsonInput, imageFolderFileInput, imageTriggerInput, importI2VMotionJsonButton,
     importPromptJsonButton, inspector, krea2TwoPassImageTriggerInput, labelInput, loadVrgdgContextButton,
     projectAudioFileInput, projectSrtFileInput, promptJsonInput, rightResizeHandle, storyIdeaInput,
@@ -658,7 +655,7 @@ export function createInspector({
   i2vMmprojSelect, i2vPrompt, i2vTextGemmaModelSelect, imagePanel, imageTabButton, inspectorTabs,
   krea2TwoPassGemmaModelSelect, krea2TwoPassMmprojSelect, krea2TwoPassTextGemmaModelSelect,
   miniMaxGemmaModelSelect, miniMaxMmprojSelect, miniMaxTextGemmaModelSelect, mmprojSelect, nbGemmaModelSelect,
-  nbMmprojSelect, noSceneNotice, saveI2VPromptButton, savedI2VPrompts, scenePanel, sceneTabButton, state,
+  nbMmprojSelect, noSceneNotice, saveI2VPromptButton, savedI2VPrompts, state,
   t2iTextGemmaModelSelect, timelinePromptSave, videoPanel, videoTabButton, zEnhanceGemmaModelSelect,
   zEnhanceMmprojSelect,
 }) {
@@ -704,16 +701,17 @@ export function createInspector({
   }
   function syncInspectorPanels() {
     const hasScene = Boolean(activeSegment());
-    const tabName = state.inspectorTab || "scene";
+    const tabName = state.inspectorTab || "image";
     noSceneNotice.style.display = hasScene ? "none" : "flex";
     inspectorTabs.style.opacity = hasScene ? "1" : ".45";
     inspectorTabs.style.pointerEvents = hasScene ? "auto" : "none";
-    scenePanel.style.display = hasScene && tabName === "scene" ? "flex" : "none";
     imagePanel.style.display = hasScene && tabName === "image" ? "flex" : "none";
     videoPanel.style.display = hasScene && tabName === "video" ? "flex" : "none";
     audioPanel.style.display = hasScene && tabName === "audio" ? "flex" : "none";
   }
   function setInspectorTab(tabName) {
+    // Older pop-out state may still name the Scene tab, which now lives in Settings.
+    if (!["image", "video", "audio"].includes(tabName)) tabName = "image";
     const activeColor = "#06b6d4";
     const inactiveColor = "#27272a";
     state.inspectorTab = tabName;
@@ -722,7 +720,7 @@ export function createInspector({
       state.rightPanelWidth = Math.max(state.rightPanelWidth || 360, 460);
     }
     applyLayoutSizes();
-    for (const [button, name] of [[sceneTabButton, "scene"], [imageTabButton, "image"], [videoTabButton, "video"], [audioTabButton, "audio"]]) {
+    for (const [button, name] of [[imageTabButton, "image"], [videoTabButton, "video"], [audioTabButton, "audio"]]) {
       const active = name === tabName;
       button.style.background = active ? activeColor : inactiveColor;
       button.style.borderColor = active ? "#0891b2" : "#3f3f46";
