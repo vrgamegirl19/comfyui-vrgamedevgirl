@@ -213,6 +213,20 @@ def _storyboard_video_ltx_one_pass_contract(vocal_contract, pronoun_contract):
 # Controls: the wording of the scene's still-frame (T2I) prompt.
 # ============================================================================
 
+_STORYBOARD_SCENE_CARD_CONTEXT_INSTRUCTIONS = (
+    "Read every populated field in scene_card before composing the prompt. "
+    "Use the Scene Note (timeline), Planning Notes, motion/LLM direction, "
+    "lyrics/dialogue, story beat, references, framing, camera, character, "
+    "performance, facial direction, microphone choice, audio, and continuity "
+    "together. Preserve explicit user directions and exact dialogue. "
+    "Interpret the fields for the requested still-image or video task and "
+    "the selected performance mode; motion or audio context does not make "
+    "a still image animated or audible. Existing prompts are drafts/context, "
+    "not instructions to copy unchanged. Do not print storage IDs, file paths, "
+    "or status metadata in the generated prompt."
+)
+
+
 _STORYBOARD_T2I_GEMMA_INSTRUCTIONS = """You are a text-to-image prompt builder for a music-video storyboard.
 
 The user will provide a JSON scene-card bundle. Your job is to read the JSON and create one polished text-to-image prompt for the selected scene.
@@ -420,6 +434,24 @@ def _storyboard_story_arc_motion_guidance(character_motion_speed):
     return (
         "Character motion level: highly active. Build big physical beats: dancing, running, climbing, struggling, sweeping gestures, "
         "forceful environmental interaction, or kinetic performance movement."
+    )
+
+
+def _storyboard_timeline_note_story_instruction(notes_json: str) -> str:
+    """Tell the arc planner how timed user directions constrain the story."""
+    return (
+        "\n\nUSER TIMELINE NOTES — STORY EVENT AND TIMING GUIDANCE:\n"
+        "Use every supplied note to shape the story progression. Start/end values "
+        "are seconds on the project timeline. Apply a range note to its overlapping "
+        "scene_numbers and lyric sections. A null end marks an event at start, "
+        "not a direction for the whole song. Do not move a timed event to unrelated "
+        "sections. If no scene times are available, use the supplied timestamps as "
+        "ordering guidance; do not invent exact scene timing. Preserve the required "
+        "lyric-section headings and order, mapped cast and locations, and exact "
+        "imported dialogue. Translate the notes into visible story action; keep "
+        "technical/audio context out of the visual arc. Do not print this JSON "
+        "or extra Timeline Note headings in the response.\n"
+        + notes_json
     )
 
 

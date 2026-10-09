@@ -1,4 +1,5 @@
 import { normalizeStoryboardScriptImportState } from "./script_import.mjs";
+import { refmodCardFields } from "../music_video_builder/refmod_labels.mjs";
 import { storyboardTemporalIntensity, storyboardTemporalProtectedMode } from "./video_style.mjs";
 
 function statusMeta(scene) {
@@ -132,7 +133,7 @@ export function normalizeScene(scene = {}, index = 0) {
     lyric_instrumental: lyricInstrumental,
     no_character_present: noCharacterPresent,
     prompt_summary: scene.prompt_summary || scene.summary || "",
-    motion_summary: scene.motion_summary || scene.video_notes || scene.i2v_notes || "",
+    motion_summary: scene.motion_summary ?? scene.i2v_notes ?? scene.video_notes ?? "",
     subjects: Array.isArray(scene.subjects) ? scene.subjects : String(scene.subjects || "").split(/[,;\n]+/).map((item) => item.trim()).filter(Boolean),
     subject_refs: noCharacterPresent ? [] : Array.isArray(scene.subject_refs) ? scene.subject_refs.filter((item) => item && typeof item === "object") : [],
     extra_subjects: extraSubjects,
@@ -159,12 +160,15 @@ export function normalizeScene(scene = {}, index = 0) {
     facial_performance_custom: scene.facial_performance_custom || scene.facialPerformanceCustom || scene.facial_expression_custom || scene.facialExpressionCustom || "",
     include_microphone: Boolean(scene.include_microphone || scene.use_microphone || scene.microphone),
     status: scene.status || "draft",
-    image_prompt: scene.image_prompt || scene.t2i_prompt || "",
-    video_prompt: scene.video_prompt || scene.i2v_prompt || scene.t2v_prompt || "",
+    image_prompt: scene.image_prompt ?? scene.t2i_prompt ?? "",
+    video_prompt: scene.video_prompt ?? scene.i2v_prompt ?? scene.t2v_prompt ?? "",
     video_prompt_origin: normalizeVideoPromptOrigin(scene.video_prompt_origin || scene.i2v_prompt_origin),
+    minimax_h3_pass2_prompt: String(scene.minimax_h3_pass2_prompt ?? scene.pass2_prompt ?? ""),
     image_path: scene.image_path || scene.approved_image_path || "",
     image_data: scene.image_data || scene.image_reference_data || "",
+    image_name: String(scene.image_name || scene.image_reference_name || ""),
     notes: scene.notes || "",
+    timeline_note: String(scene.timeline_note ?? ""),
     audio_direction: scene.audio_direction || scene.audioDirection || "",
     continuity: scene.continuity || scene.continuity_direction || scene.continuityDirection || "",
     id_lora_character_id: scene.id_lora_character_id || scene.character_id || scene.subject_id || "",
@@ -226,12 +230,16 @@ export function scenesFromBuilderPayload(payload = {}) {
     flf_carry_forward: scene.flf_carry_forward || scene.carry_forward_state || "",
     performance_mode: scene.performance_mode || scene.performanceMode || payload.performance_mode || payload.performanceMode || "",
     lyric_singers: scene.lyric_singers || scene.singers || [],
+    lyric_cue_map: scene.lyric_cue_map || [],
+    lyric_shot_word_timing_enabled: Boolean(scene.lyric_shot_word_timing_enabled),
+    lyric_performance_mode: scene.lyric_performance_mode || "",
+    timed_lyric_cue_contract: scene.timed_lyric_cue_contract || "",
     speaker_assignments: scene.speaker_assignments || scene.minimax_speaker_assignments || scene.dialogue_cues || [],
     lyric_no_lip_sync: Boolean(scene.lyric_no_lip_sync || scene.no_lip_sync),
     lyric_instrumental: Boolean(scene.lyric_instrumental || scene.instrumental),
     no_character_present: Boolean(scene.no_character_present || scene.noCharacterPresent || scene.no_subject || scene.no_visible_subject),
-    prompt_summary: scene.notes || scene.director_note || scene.t2i_prompt || "",
-    motion_summary: scene.video_notes || scene.i2v_notes || "",
+    prompt_summary: scene.prompt_summary ?? scene.notes ?? scene.director_note ?? "",
+    motion_summary: scene.motion_summary ?? scene.i2v_notes ?? scene.video_notes ?? "",
     subjects: scene.lyric_singers || scene.subjects || "",
     subject_refs: scene.subject_refs || [],
     setting: scene.location || scene.location_ref?.description || scene.location_ref?.name || "",
@@ -254,12 +262,15 @@ export function scenesFromBuilderPayload(payload = {}) {
       facial_performance: scene.facial_performance || scene.facialPerformance || scene.facial_expression || scene.facialExpression || "",
       facial_performance_custom: scene.facial_performance_custom || scene.facialPerformanceCustom || scene.facial_expression_custom || scene.facialExpressionCustom || "",
       include_microphone: Boolean(scene.include_microphone || scene.use_microphone || scene.microphone),
-      image_prompt: scene.t2i_prompt || "",
-    video_prompt: scene.i2v_prompt || scene.t2v_prompt || "",
+      image_prompt: scene.image_prompt ?? scene.t2i_prompt ?? "",
+    video_prompt: scene.video_prompt ?? scene.i2v_prompt ?? scene.t2v_prompt ?? "",
     video_prompt_origin: normalizeVideoPromptOrigin(scene.video_prompt_origin || scene.i2v_prompt_origin),
     image_path: scene.image_path || scene.approved_image_path || "",
     image_data: scene.image_data || scene.image_reference_data || "",
+    image_name: scene.image_name || scene.image_reference_name || "",
+    minimax_h3_pass2_prompt: scene.minimax_h3_pass2_prompt ?? scene.pass2_prompt ?? "",
     notes: scene.notes || "",
+    timeline_note: String(scene.timeline_note ?? ""),
     audio_direction: scene.audio_direction || "",
     continuity: scene.continuity || scene.continuity_direction || "",
   }, index));
@@ -278,13 +289,14 @@ export function slimReferenceForRequest(ref) {
     id: String(ref.id || ""),
     name: String(ref.name || ""),
     description: String(ref.description || ""),
+    ...refmodCardFields(ref),
     minimax_voice: ref.minimax_voice && typeof ref.minimax_voice === "object" ? { ...ref.minimax_voice } : {},
     trigger_phrase: String(ref.trigger_phrase || ref.trigger || ref.Trigger || ""),
     trigger_position: String(ref.trigger_position || ref.triggerPosition || ref.trigger_placement || "start") === "end" ? "end" : "start",
     image: {
       path: String(ref.image?.path || ""),
       name: String(ref.image?.name || ""),
-      data: "",
+      data: String(ref.image?.data || ""),
     },
   };
 }
@@ -298,6 +310,46 @@ export function slimSceneForRequest(scene, index = 0) {
       .filter(Boolean),
     location_ref: slimReferenceForRequest(normalized.location_ref),
   };
+}
+
+export const STORYBOARD_SCENE_CARD_CONTEXT_INSTRUCTION = "Read every populated field in scene_card before composing the prompt. Use the Scene Note (timeline), Planning Notes, motion/LLM direction, lyrics/dialogue, story beat, references, framing, camera, character, performance, facial direction, microphone choice, audio, and continuity together. Preserve explicit user directions and exact dialogue. Interpret the fields for the requested still-image or video task and the selected performance mode; receiving motion or audio context does not make a still image animated or audible. Existing prompts are drafts/context, not instructions to copy them unchanged. Do not print storage IDs, file paths, or status metadata in the generated prompt.";
+
+export function storyboardSceneCardContext(scene, index = 0) {
+  const card = slimSceneForRequest(scene, index);
+  const describeImage = (image = {}) => ({
+    path: String(image.path || ""),
+    name: String(image.name || ""),
+    has_inline_image: Boolean(image.data),
+  });
+  const describeReference = (ref) => ref ? { ...ref, image: describeImage(ref.image) } : null;
+  // Send image content through the existing vision inputs, not as base64 text.
+  const { image_data, ...context } = card;
+  return {
+    ...context,
+    has_inline_image: Boolean(image_data),
+    subject_refs: card.subject_refs.map(describeReference),
+    location_ref: describeReference(card.location_ref),
+  };
+}
+
+export function storyboardTimelineNotesForRequest(state = {}) {
+  const markers = typeof state.getTimelineMarkers === "function"
+    ? state.getTimelineMarkers() : state.timelineMarkers;
+  return (Array.isArray(markers) ? markers : [])
+    .filter((marker) => marker && typeof marker === "object" && String(marker.note || "").trim())
+    .map((marker) => {
+      const start = Number(marker.start ?? 0);
+      const end = marker.end == null || marker.end === "" ? null : Number(marker.end);
+      return {
+        start: Number.isFinite(start) ? Math.max(0, start) : null,
+        end: Number.isFinite(end) && end > Math.max(0, start) ? end : null,
+        type: String(marker.type || "note").trim(),
+        label: String(marker.label || "Timeline note").trim(),
+        note: String(marker.note).trim(),
+      };
+    })
+    .filter((marker) => marker.start !== null)
+    .sort((a, b) => a.start - b.start);
 }
 
 export function normalizeStoryLayer(value = {}) {
@@ -480,10 +532,16 @@ function mergeStoryLayers(primary = {}, fallback = {}) {
 export function slimStoryboardForRequest(state) {
   return {
     mode: state.mode,
+    source_scene_ids: Array.isArray(state.sourceSceneIds) ? [...state.sourceSceneIds] : [],
     project_video_engine: normalizeStoryboardProjectVideoEngine(state.projectVideoEngine),
     performance_mode: normalizeStoryboardPerformanceMode(state.performanceMode || state.performance_mode),
     short_film_planning_mode: normalizeStoryboardShortFilmPlanningMode(state.shortFilmPlanningMode),
+    send_adjacent_lyric_context: Boolean(state.sendAdjacentLyricContext),
+    keep_loaded_for_storyboard_all: Boolean(state.gemmaSettings?.keep_loaded_for_storyboard_all),
     camera_flow: state.cameraFlow || "balanced",
+    custom_camera_flow_sequence: state.customCameraFlowSequence || [],
+    fx_preset: state.fxPreset || "",
+    fx_custom_json: state.fxCustomJson || "",
     image_shot_flow: state.imageShotFlow || "intimate",
     image_aesthetic: state.imageAesthetic || "",
     video_style: state.videoStyle || "",
@@ -508,6 +566,10 @@ export function slimStoryboardForRequest(state) {
     reference_builder: {
       subjects: (state.referenceBuilder?.subjects || []).map(slimReferenceForRequest).filter(Boolean),
       locations: (state.referenceBuilder?.locations || []).map(slimReferenceForRequest).filter(Boolean),
+      locations_cleared: Boolean(state.referenceBuilder?.locations_cleared),
+      trigger_position: state.referenceBuilder?.trigger_position || "start",
+      subject_trigger_position: state.referenceBuilder?.subject_trigger_position || "start",
+      location_trigger_position: state.referenceBuilder?.location_trigger_position || "start",
     },
     motion_defaults: {
       camera_motion_speed: storyboardSpeedValue(state.cameraMotionSpeed, 4),

@@ -62,6 +62,9 @@ class StoryTests(Base):
 
     def test_arc_is_written_by_the_llm_with_the_loaded_model_and_saved(self):
         seen = {}
+        session = self.read_session()
+        session["timeline_markers"] = [{"start": 5, "end": 10, "note": "Reveal the conflict"}]
+        self.write_session(session)
 
         def fake_arc(payload):
             seen.update(payload)
@@ -73,6 +76,7 @@ class StoryTests(Base):
         self.assertEqual(seen["story_idea"], "A man who never stays")
         self.assertEqual(len(seen["scenes"]), 10)
         self.assertEqual(seen["line_mapping_lyrics"], "line 1\nline 2")
+        self.assertEqual(seen["timeline_markers"], session["timeline_markers"])
         self.assertEqual(result["story_arc"], "Act one. Act two.")
         layer = self.read_session()["builder_story_layer"]
         self.assertEqual(layer["user_story_arc"], "Act one. Act two.")

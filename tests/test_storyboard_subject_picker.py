@@ -25,7 +25,7 @@ class StoryboardSubjectPickerTests(unittest.TestCase):
             BUILDER_SOURCE,
         )
         self.assertIn(
-            "if (incomingRefs.locations.length && !refs.locations_cleared) {",
+            "if (!replaceCatalog && incomingRefs.locations.length && !refs.locations_cleared) {",
             BUILDER_SOURCE,
         )
         self.assertNotIn(

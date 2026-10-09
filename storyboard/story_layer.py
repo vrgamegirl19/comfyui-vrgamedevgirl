@@ -18,6 +18,7 @@ from ..llm.prompts.storyboard import (
     _storyboard_story_arc_scene_entry_instruction,
     _storyboard_story_arc_schema,
     _storyboard_story_brief_instruction,
+    _storyboard_timeline_note_story_instruction,
 )
 from .cast_guard import build_cast_guard, cast_leaks, cast_wall_text, strip_cast_leaks, strip_story_arc_entry_leaks
 from .persistence import _normalize_script_import, _normalize_storyboard_scene
@@ -31,6 +32,7 @@ from .scene_helpers import (
     _selected_storyboard_scene,
     _storyboard_dialogue_reference_catalog,
 )
+from .timeline_notes import story_arc_timeline_notes
 
 
 def _authoritative_script_from_payload(payload):
@@ -86,6 +88,11 @@ def _build_short_film_script_story_text(payload, script_import, purpose="premise
         script_text,
         json.dumps(compact_plan, ensure_ascii=False, indent=2),
     )
+    timeline_notes = story_arc_timeline_notes(payload)
+    if purpose == "premise" and timeline_notes:
+        instruction += _storyboard_timeline_note_story_instruction(
+            json.dumps(timeline_notes, ensure_ascii=False, indent=2)
+        )
     from ..llm.builder_runner import _run_builder_text_llm
 
     text, run_info = _run_builder_text_llm(
@@ -586,6 +593,7 @@ def _expand_story_arc_scene_entries(
     if len(sections) != len(labels):
         return arc_text
     blocks = []
+    timeline_notes = story_arc_timeline_notes(payload)
     for label, rows in section_scene_map:
         paragraph = sections.get(label, "")
         entries = []
@@ -612,6 +620,11 @@ def _expand_story_arc_scene_entries(
                 word_limit=entry_words,
                 story_arc_seed=story_arc_seed,
             )
+            scene_notes = [note for note in timeline_notes if number in note["scene_numbers"]]
+            if scene_notes:
+                base_instruction += _storyboard_timeline_note_story_instruction(
+                    json.dumps(scene_notes, ensure_ascii=False, indent=2)
+                )
             body = ""
             bad_terms = []
             try:
@@ -831,6 +844,12 @@ def _build_story_layer_arc(payload):
         locations_json=json.dumps(locations[:40], ensure_ascii=False, indent=2) if locations else "[not provided]",
     )
     from ..llm.builder_runner import _llm_runner_display_name, _run_builder_text_llm, _runner_supports_json_schema
+
+    timeline_notes = story_arc_timeline_notes(payload)
+    if timeline_notes:
+        instruction += _storyboard_timeline_note_story_instruction(
+            json.dumps(timeline_notes, ensure_ascii=False, indent=2)
+        )
 
     runner_label = _llm_runner_display_name(payload)
 
