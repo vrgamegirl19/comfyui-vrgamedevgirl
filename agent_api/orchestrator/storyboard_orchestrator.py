@@ -14,12 +14,15 @@ import re
 from typing import Any, Callable, Dict, List, Optional
 
 from ...storyboard import persistence as storyboard_store
+from ...storyboard import session_sync
 from ...storyboard import story_layer as story_funcs
 from ..errors import RevisionConflictError, ValidationError
 from ..jobs.manager import JobManager, get_job_manager
 from ..jobs.models import Job
 from ..llm_runtime import llm_payload_from_session, prepare_llm_payload
-from ..mutations import _BUILDER_SAVE_LOCK, _get_active_session_and_folder, _persist_session
+from ..mutations import _BUILDER_SAVE_LOCK, _get_active_session_and_folder, _persist_session, scene_field_change
+from ..project_events import notify_project_changed
+from ..scene_card_context import beat_scene
 
 # Twins of the keys the Builder saves: normalizeBuilderStoryLayer and normalizeBuilderStoryboardDefaults in
 # web/music_video_builder/model_settings.mjs. tests/test_agent_api_story_settings_fields.py fails when they drift.
@@ -81,78 +84,20 @@ def _defaults(session: Dict[str, Any]) -> Dict[str, Any]:
 # Scene cards (the Storyboard's view of the timeline)
 # ---------------------------------------------------------------------------
 
-def _slim_reference(ref: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    if not isinstance(ref, dict):
-        return None
-    image = ref.get("image") if isinstance(ref.get("image"), dict) else {}
-    return {
-        "id": _text(ref.get("id")),
-        "name": _text(ref.get("name")),
-        "description": _text(ref.get("description")),
-        "minimax_voice": ref.get("minimax_voice") if isinstance(ref.get("minimax_voice"), dict) else {},
-        "trigger_phrase": _text(ref.get("trigger_phrase")),
-        "trigger_position": "end" if _text(ref.get("trigger_position")) == "end" else "start",
-        "image": {"path": _text(image.get("path")), "name": _text(image.get("name")), "data": ""},
-    }
+def scene_cards(session: Dict[str, Any], folder: str = "") -> List[Dict[str, Any]]:
+    """One complete Storyboard scene card per timeline scene.
 
-
-def _id_list(value: Any) -> List[str]:
-    if isinstance(value, list):
-        return [_text(item) for item in value if _text(item)]
-    return [part.strip() for part in _text(value).split(",") if part.strip()]
-
-
-def scene_cards(session: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """One Storyboard scene card per timeline scene, with its mapped characters and location."""
-    refs = session.get("flux_reference_builder") if isinstance(session.get("flux_reference_builder"), dict) else {}
-    subjects = {_text(s.get("id")): s for s in refs.get("subjects") or [] if isinstance(s, dict)}
-    locations = {_text(l.get("id")): l for l in refs.get("locations") or [] if isinstance(l, dict)}
-    subject_map = refs.get("subject_scene_map") if isinstance(refs.get("subject_scene_map"), dict) else {}
-    location_map = refs.get("scene_map") if isinstance(refs.get("scene_map"), dict) else {}
-    defaults = _defaults(session)
-    segments = [s for s in session.get("segments") or [] if isinstance(s, dict)]
-    segments.sort(key=lambda s: float(s.get("start") or 0))
-    cards: List[Dict[str, Any]] = []
-    for index, segment in enumerate(segments):
-        no_character = bool(segment.get("no_character_present"))
-        mapped = [] if no_character else [
-            _slim_reference(subjects[i]) for i in _id_list(subject_map.get(segment.get("id"))) if i in subjects
-        ]
-        location = _slim_reference(locations.get(_text(location_map.get(segment.get("id")))))
-        start, end = float(segment.get("start") or 0), float(segment.get("end") or 0)
-        singers = [] if no_character else [r["name"] for r in mapped if r and r["name"]]
-        cards.append({
-            "id": segment.get("id") or f"scene_{index + 1}",
-            "scene_number": index + 1,
-            "label": _text(segment.get("label")) or f"Scene {index + 1}",
-            "lyrics": _text(segment.get("lyric_text") or segment.get("lyrics")),
-            "lyric_section": _text(segment.get("lyric_section")),
-            "story_beat": _text(segment.get("story_beat")),
-            "flf_start_state": _text(segment.get("flf_start_state")),
-            "flf_transformation": _text(segment.get("flf_transformation")),
-            "flf_end_state": _text(segment.get("flf_end_state")),
-            "flf_carry_forward": _text(segment.get("flf_carry_forward")),
-            "lyric_singers": singers,
-            "lyric_no_lip_sync": bool(segment.get("lyric_no_lip_sync")),
-            "no_character_present": no_character,
-            "subjects": [r["name"] for r in mapped if r],
-            "subject_refs": [r for r in mapped if r],
-            "setting": (location or {}).get("description") or (location or {}).get("name") or "",
-            "location_ref": location,
-            "timeline_start": start,
-            "timeline_end": end,
-            "exact_duration": max(0.0, end - start),
-            "shot_type": _text(segment.get("shot_type")),
-            "camera_motion": _text(segment.get("camera_motion")),
-            "character_motion": _text(segment.get("character_motion")),
-            "performance_style": _text(segment.get("performance_style") or defaults.get("performance_style")),
-            "facial_performance": _text(segment.get("facial_performance")),
-            "facial_performance_custom": _text(segment.get("facial_performance_custom")),
-            "video_style": _text(segment.get("video_style") or defaults.get("video_style")),
-            "video_prompt_type": "i2v",
-            "extra_subjects": [],
-        })
-    return cards
+    With ``folder`` the cards also carry what only the Storyboard saves (Summary, triggers, speaker plan),
+    merged the way the Storyboard merges them when it opens.
+    """
+    cards = session_sync.scene_cards(session)
+    if not folder:
+        return cards
+    saved = storyboard_store._load_storyboard({"project_folder": folder})
+    if not saved.get("exists"):
+        return cards
+    merged = {card.get("id"): card for card in session_sync.merge_scene_cards(saved, cards)}
+    return [merged.get(card["id"], card) for card in cards]
 
 
 def _storyboard_summary(session: Dict[str, Any], cards: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -173,8 +118,8 @@ def _storyboard_summary(session: Dict[str, Any], cards: List[Dict[str, Any]]) ->
         "performance_style_default": defaults.get("performance_style") or "",
         "story_layer": _story_layer(session),
         "reference_builder": {
-            "subjects": [_slim_reference(s) for s in refs.get("subjects") or [] if isinstance(s, dict)],
-            "locations": [_slim_reference(l) for l in refs.get("locations") or [] if isinstance(l, dict)],
+            "subjects": [session_sync._slim_reference(s) for s in refs.get("subjects") or [] if isinstance(s, dict)],
+            "locations": [session_sync._slim_reference(l) for l in refs.get("locations") or [] if isinstance(l, dict)],
         },
         "scenes": cards,
     }
@@ -202,46 +147,24 @@ def sync_storyboard_files(project_id: str) -> Dict[str, Any]:
     the story or prompt step itself has already succeeded.
     """
     try:
-        folder, session = _get_active_session_and_folder(project_id)
-        cards = scene_cards(session)
-        segments = {s.get("id"): s for s in session.get("segments") or [] if isinstance(s, dict)}
-        settings = session.get("minimax_h3_settings") if isinstance(session.get("minimax_h3_settings"), dict) else {}
-        defaults = _defaults(session)
-        scenes = []
-        for card in cards:
-            segment = segments.get(card["id"], {})
-            prompt = _text(segment.get("minimax_h3_prompt"))
-            visual_only = bool(card.get("lyric_no_lip_sync")) or card.get("no_character_present")
-            scenes.append({
-                **card,
-                "video_prompt": prompt,
-                "video_prompt_origin": _text(segment.get("minimax_h3_prompt_origin")) or ("gemma" if prompt else ""),
-                "video_prompt_type": "rtv",
-                "project_video_engine": "minimax_h3",
-                "minimax_h3_mode": _text(segment.get("minimax_h3_mode")) or "reference_to_video",
-                "minimax_h3_audio_mode": _text(settings.get("audio_mode")) or "input_audio",
-                "performance_mode": "no_lip_sync" if visual_only else "singing",
-                "status": "video_prompt_ready" if prompt else "draft",
-            })
-        storyboard = {
-            "project_video_engine": "minimax_h3",
-            "mode": "image_to_video_prep",
-            "performance_mode": "singing",
-            "camera_flow": defaults.get("camera_flow") or "balanced",
-            "video_style": defaults.get("video_style") or "",
-            "video_style_custom": defaults.get("video_style_custom") or "",
-            "global_consistency_phrase": defaults.get("global_consistency_phrase") or "",
-            "camera_motion_speed": defaults.get("camera_motion_speed", 4),
-            "character_motion_speed": defaults.get("character_motion_speed", 4),
-            "story_arc_detail": defaults.get("story_arc_detail") or "standard",
-            "performance_style_default": defaults.get("performance_style") or "",
-            "story_layer": _story_layer(session),
-            "reference_builder": _storyboard_summary(session, cards)["reference_builder"],
-            "scenes": scenes,
-        }
-        result = storyboard_store._export_storyboard_prompts({"project_folder": folder, "storyboard": storyboard})
-        return {"saved": True, "scenes": len(scenes), "with_video_prompt": sum(1 for sc in scenes if sc["video_prompt"]),
-                "path": result.get("path") if isinstance(result, dict) else ""}
+        with _BUILDER_SAVE_LOCK:
+            folder, session = _get_active_session_and_folder(project_id)
+            cards = session_sync.scene_cards(session)
+            settings = session.get("minimax_h3_settings")
+            settings = settings if isinstance(settings, dict) else {}
+            for card in cards:
+                card["minimax_h3_audio_mode"] = _text(settings.get("audio_mode")) or "input_audio"
+            saved = storyboard_store._load_storyboard({"project_folder": folder})
+            # Merge into the saved copy: Storyboard-only cards, deleted cards, Summary, triggers and
+            # storyboard settings stay as the user left them.
+            storyboard = session_sync.merge_storyboard(saved if saved.get("exists") else None, session, cards)
+            storyboard.setdefault("story_layer", _story_layer(session))
+            result = storyboard_store._export_storyboard_prompts({"project_folder": folder, "storyboard": storyboard})
+        scenes = storyboard["scenes"]
+        notify_project_changed(folder, session, {"kind": "storyboard", "storyboard": True})
+        with_prompt = sum(1 for scene in scenes if _text(scene.get("video_prompt")))
+        return {"saved": True, "scenes": len(scenes), "with_video_prompt": with_prompt,
+                "path": result.get("storyboard_path") if isinstance(result, dict) else ""}
     except Exception as exc:  # the step that called this has already succeeded
         print(f"[VRGDG API] Storyboard sync failed: {exc}")
         return {"saved": False, "error": str(exc)}
@@ -413,7 +336,7 @@ def create_scene_beats(
     """
     params = dict(params or {})
     folder, session = _get_active_session_and_folder(project_id)
-    cards = scene_cards(session)
+    cards = scene_cards(session, folder)
     _require_scenes(cards)
     layer = _story_layer(session)
     if not (layer["user_story_arc"] or layer["song_story_brief"] or layer["overall_story_idea"]):
@@ -445,7 +368,8 @@ def create_scene_beats(
             max_new_tokens=int(params.get("max_new_tokens") or 360),
             story_layer=layer,
             all_subjects=all_subjects,
-            storyboard_payload={"scenes": [{**card, "story_beat": ""}], "selected_scene_number": number, "story_layer": layer},
+            # The complete scene card, as the Storyboard sends it (Director Note, notes, camera, performance...).
+            storyboard_payload={"scenes": [beat_scene(card)], "selected_scene_number": number, "story_layer": layer},
             previous_beat=(previous or {}).get("story_beat", ""),
             previous_lyrics=_adjacent_line((previous or {}).get("lyrics", ""), True),
             current_lyrics=card["lyrics"],
@@ -463,7 +387,7 @@ def create_scene_beats(
             for segment in session.get("segments") or []:
                 if isinstance(segment, dict) and segment.get("id") == card["id"]:
                     segment["story_beat"] = beat
-            revision = _persist_session(folder, session).get("revision")
+            revision = _persist_session(folder, session, scene_field_change(card["id"], ["story_beat"])).get("revision")
         beats.append({"scene_id": card["id"], "scene_number": number, "story_beat": beat})
     if progress:
         progress(len(targets), len(targets), "done")

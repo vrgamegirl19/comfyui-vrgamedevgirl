@@ -1054,6 +1054,8 @@ export function createStoryboardBridge({
         unload_after: true,
       },
       onReferenceMappingsChanged: applyStoryboardReferenceMappings,
+      // The live timeline's scene cards, for Agent API / MCP edits merged while the Storyboard is open.
+      getBuilderScenes: () => (activeProjectFolderForSave() === storyboardProjectFolder ? storyboardScenePayload() : []),
       onSceneChanged: async (scene) => {
         applyStoryboardPrompts({ scenes: [scene] }, { saveSceneEdits: true });
         const result = await saveSession({ quiet: true, throwOnError: true });

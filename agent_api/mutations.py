@@ -64,14 +64,22 @@ from ..minimax.prompt_assembly import (
     validate_minimax_h3_prompt,
 )
 
+from ..builder import timeline_markers as markers_service
+from ..core.atomic_write import atomic_write_text
+from ..storyboard import persistence as storyboard_store
+from ..storyboard import scene_card_fields as card_fields
+from ..storyboard import session_sync
+
 from .errors import (
     ProjectNotFoundError,
     RevisionConflictError,
     SceneNotFoundError,
     SettingsInvalidError,
+    TimelineNoteNotFoundError,
     ValidationError,
 )
 from .paths import get_project_id, resolve_project_folder
+from .project_events import notify_project_changed
 from .schemas import extract_effective_settings, validate_settings_patch
 
 
@@ -90,8 +98,12 @@ def _get_active_session_and_folder(project_id: str) -> tuple:
     return folder, session
 
 
-def _persist_session(folder: str, session: Dict[str, Any]) -> Dict[str, Any]:
-    """Persist session changes through _save_builder_session with correct payload and revision."""
+def _persist_session(folder: str, session: Dict[str, Any], change: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Persist session changes through _save_builder_session with correct payload and revision.
+
+    Open Video Builder windows are told about the save (``project_events``); ``change`` says what changed
+    so they can merge it instead of reloading the whole project.
+    """
     # The UI counts saves in builder_save_revision while the server counts them in
     # revision, and the two can drift apart. Stay above both so this save is never
     # mistaken for a stale snapshot and dropped.
@@ -110,7 +122,18 @@ def _persist_session(folder: str, session: Dict[str, Any]) -> Dict[str, Any]:
     if isinstance(result, dict) and result.get("stale"):
         # Never report success for a write the server discarded.
         raise RevisionConflictError(int(result.get("current_revision") or 0), int(next_rev))
+    saved = result.get("session") if isinstance(result, dict) and isinstance(result.get("session"), dict) else session
+    notify_project_changed(folder, saved, change)
     return result
+
+
+def scene_field_change(scene_id: str, segment_keys: List[str], card_keys: Optional[List[str]] = None) -> Dict[str, Any]:
+    """A ``scene_fields`` change notice for one scene (see ``project_events``)."""
+    return {
+        "kind": "scene_fields",
+        "scenes": {str(scene_id): {"segment": sorted(segment_keys), "card": sorted(card_keys or []), "references": []}},
+        "storyboard": bool(card_keys),
+    }
 
 
 # ==============================================================================
@@ -461,13 +484,13 @@ def resize_scene(
 
 
 # Scene fields PATCH /scenes/{id} can change. Anything else is rejected, so a request can never report
-# success while silently saving nothing.
+# success while silently saving nothing. Scene-card fields (notes, camera, performance, references, ...) are
+# listed in ``storyboard/scene_card_fields.py`` and are saved on both the timeline and the Storyboard card.
 _SCENE_PATCH_TEXT_FIELDS = (
     "t2i_prompt",
     "i2v_prompt",
     "enhance_prompt",
     "minimax_h3_prompt",
-    "minimax_h3_pass2_prompt",
     "minimax_h3_i2v_frame_mode",
     "first_last_frame_end_image_path",
     "minimax_h3_continuation_direction",
@@ -475,11 +498,6 @@ _SCENE_PATCH_TEXT_FIELDS = (
     "nb_prompt",
     "flow_gpt_prompt",
     "ernie_t2i_prompt",
-    "lyric_text",
-    "story_beat",
-    "notes",
-    "label",
-    "timeline_note",
     "video_path",
     "video_output",
     "video_status",
@@ -490,19 +508,139 @@ _SCENE_PATCH_TEXT_FIELDS = (
 _SCENE_PATCH_NUMBER_FIELDS = ("start", "end")
 # A number, or null to go back to the default (0.5 s). It is kept between 0.5 s and half of the scene when it is used.
 _SCENE_PATCH_OPTIONAL_NUMBER_FIELDS = ("minimax_h3_continuation_start_seconds",)
-_SCENE_PATCH_FLAG_FIELDS = ("no_character_present", "lyric_no_lip_sync")
-_SCENE_PATCH_LIST_FIELDS = ("lyric_singers",)
 _SCENE_PATCH_ECHOED_FIELDS = ("id",)  # clients often send back what they read; the id cannot change
+_PROMPT_KEYS = ("t2i_prompt", "i2v_prompt", "minimax_h3_prompt", "minimax_h3_pass2_prompt")
+
+
+def _supported_scene_fields() -> List[str]:
+    return sorted(
+        set(_SCENE_PATCH_TEXT_FIELDS) | set(_SCENE_PATCH_NUMBER_FIELDS)
+        | set(_SCENE_PATCH_OPTIONAL_NUMBER_FIELDS) | set(card_fields.field_names())
+    )
 
 
 def _unsupported_scene_fields(patch: Dict[str, Any]) -> List[str]:
-    known = set(_SCENE_PATCH_TEXT_FIELDS) | set(_SCENE_PATCH_NUMBER_FIELDS) | set(_SCENE_PATCH_FLAG_FIELDS)
-    known |= set(_SCENE_PATCH_OPTIONAL_NUMBER_FIELDS)
-    known |= set(_SCENE_PATCH_LIST_FIELDS) | set(_SCENE_PATCH_ECHOED_FIELDS)
+    known = set(_supported_scene_fields()) | set(_SCENE_PATCH_ECHOED_FIELDS)
     return sorted(
         key for key in patch
         if key not in known and not (key.startswith("use_scene_") or key.endswith("_settings"))
     )
+
+
+def _apply_scene_references(session: Dict[str, Any], scene_id: str, values: Dict[str, Any]) -> List[str]:
+    """Map the scene's characters (``subject_ids``) and location (``location_id``) like the Reference Builder.
+
+    An empty list or empty id is saved as an explicit "none" for this scene, so it does not fall back to an
+    older number-keyed mapping. Returns the scene maps that changed ("subjects", "locations").
+    """
+    refs = session.setdefault("flux_reference_builder", {})
+    changed = []
+    for name, api_name, list_key, switch in (
+        ("subject_ids", "subjects", "subjects", "use_subject_reference"),
+        ("location_id", "locations", "locations", "use_location_references"),
+    ):
+        if name not in values:
+            continue
+        known = {str(item.get("id")) for item in refs.get(list_key) or [] if isinstance(item, dict)}
+        wanted = values[name] if name == "subject_ids" else ([values[name]] if values[name] else [])
+        unknown = [item for item in wanted if item not in known]
+        if unknown:
+            raise ValidationError(
+                f"Unknown {list_key[:-1]} id{'s' if len(unknown) > 1 else ''}: {', '.join(unknown)}. "
+                f"Known: {', '.join(sorted(known)) or 'none'}."
+            )
+        scene_map = _reference_map(session, api_name)
+        new_value = list(values[name]) if name == "subject_ids" else values[name]
+        if scene_map.get(scene_id) != new_value:
+            scene_map[scene_id] = new_value
+            changed.append(api_name)
+        refs[switch] = bool(refs.get(list_key) or any(scene_map.values()))
+    return changed
+
+
+def _storyboard_card_updates(session: Dict[str, Any], scene: Dict[str, Any], values: Dict[str, Any],
+                             legacy: Dict[str, Any], references_changed: List[str]) -> Dict[str, Any]:
+    """Storyboard card keys to write for a scene patch, keyed by card field."""
+    updates: Dict[str, Any] = {}
+    plain = {name: value for name, value in values.items() if name not in ("subject_ids", "location_id")}
+    card = {}
+    card_fields.apply_to_card(card, plain)
+    updates.update(card)
+    engine = session_sync.video_engine(session)
+    if any(key in legacy for key in ("t2i_prompt", "flux_prompt", "nb_prompt", "flow_gpt_prompt", "ernie_t2i_prompt")):
+        # The card shows the prompt the Builder picks for the project's image model.
+        updates["image_prompt"] = session_sync.storyboard_prompt_for_segment(scene, session_sync.image_mode(session))
+    prompt_key, origin_key = card_fields.video_prompt_keys(engine)
+    if prompt_key in legacy:
+        updates["video_prompt"] = str(scene.get(prompt_key) or "")
+        updates["video_prompt_origin"] = "gemma" if str(scene.get(origin_key) or "").lower() == "gemma" else "manual"
+    if references_changed or "no_character_present" in values:
+        fresh = next((c for c in session_sync.scene_cards(session) if c["id"] == scene.get("id")), None)
+        if fresh:
+            for key in ("subject_refs", "subjects", "location_ref", "setting"):
+                updates[key] = fresh[key]
+    return updates
+
+
+def _write_storyboard_card(folder: str, session: Dict[str, Any], scene_id: str, updates: Dict[str, Any],
+                           card_only: List[str]) -> tuple:
+    """Save the card changes into ``storyboard.json``. Returns (changed card keys, undo).
+
+    Without a saved Storyboard nothing is written unless a field only the card stores is set; the Storyboard
+    then starts from the timeline, as it does when it opens. A card the user deleted from the Storyboard stays
+    deleted, and setting a card-only field on it is an error.
+    """
+    if not updates:
+        return [], None
+    saved = storyboard_store._load_storyboard({"project_folder": folder})
+    exists = bool(saved.get("exists"))
+    if not exists and not card_only:
+        return [], None
+    if exists:
+        storyboard = {key: value for key, value in saved.items() if key not in ("path", "exists")}
+    else:
+        storyboard = session_sync.merge_storyboard(None, session)
+    scenes = storyboard.setdefault("scenes", [])
+    card = next((item for item in scenes if isinstance(item, dict) and item.get("id") == scene_id), None)
+    if card is None:
+        source_ids = storyboard.get("source_scene_ids")
+        if isinstance(source_ids, list) and scene_id in source_ids:
+            if card_only:
+                raise ValidationError(
+                    f"Scene {scene_id} was removed from the Storyboard, so {', '.join(card_only)} cannot be saved "
+                    "on its card. The timeline fields were not changed either."
+                )
+            return [], None
+        card = next((dict(c) for c in session_sync.scene_cards(session) if c["id"] == scene_id), None)
+        if card is None:
+            return [], None
+        card["status"] = session_sync.video_prompt_status(card)
+        scenes.append(card)
+        storyboard["source_scene_ids"] = list(source_ids or []) + [scene_id]
+    before = copy.deepcopy(card)
+    card.update(copy.deepcopy(updates))
+    # A timeline scene's card uses the project's engine (the Storyboard sets it when it opens); an LTX card
+    # would get LTX facial wording added to its video prompt on save.
+    card["project_video_engine"] = session_sync.video_engine(session)
+    if "video_prompt" in updates:
+        card["status"] = session_sync.video_prompt_status(card, str(before.get("status") or ""))
+    changed = sorted(key for key in set(before) | set(card) if before.get(key) != card.get(key))
+    if not changed and exists:
+        return [], None
+    path = saved.get("path") or ""
+    previous = None
+    if exists and path and os.path.isfile(path):
+        with open(path, "r", encoding="utf-8") as handle:
+            previous = handle.read()
+    storyboard_store._save_storyboard({"project_folder": folder, "storyboard": storyboard})
+
+    def undo() -> None:
+        if previous is not None:
+            atomic_write_text(path, previous)
+        elif path and os.path.isfile(path):
+            os.remove(path)
+
+    return changed, undo
 
 
 def patch_scene(
@@ -511,23 +649,25 @@ def patch_scene(
     patch: Dict[str, Any],
     if_match_revision: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """Merge-patch scene fields (prompts, lyrics, timing, overrides) and mark latents dirty on edits.
+    """Merge-patch scene fields (prompts, scene-card fields, timing, overrides) and mark latents dirty on edits.
 
-    Unsupported fields raise a ValidationError that lists what can be changed.
+    Scene-card fields are written with the Builder's keys on the timeline segment and, when the project has a
+    saved Storyboard (or a field only the card stores is set), on the Storyboard card too. Unsupported fields
+    raise a ValidationError that lists what can be changed; nothing is saved then.
     """
     if not isinstance(patch, dict):
         raise ValidationError("The scene patch must be a JSON object.")
     if "minimax_h3_i2v_frame_mode" in patch and patch["minimax_h3_i2v_frame_mode"] not in ("normal", "flf", "", None):
         raise ValidationError("minimax_h3_i2v_frame_mode must be normal or flf.")
-    unsupported = _unsupported_scene_fields(patch)
+    try:
+        values, legacy = card_fields.parse_scene_card_patch(patch)
+    except card_fields.SceneCardFieldError as exc:
+        raise ValidationError(str(exc)) from None
+    unsupported = _unsupported_scene_fields(legacy)
     if unsupported:
-        supported = sorted(
-            set(_SCENE_PATCH_TEXT_FIELDS) | set(_SCENE_PATCH_NUMBER_FIELDS)
-            | set(_SCENE_PATCH_FLAG_FIELDS) | set(_SCENE_PATCH_LIST_FIELDS) | set(_SCENE_PATCH_OPTIONAL_NUMBER_FIELDS)
-        )
         raise ValidationError(
             f"Unsupported scene field{'s' if len(unsupported) > 1 else ''}: {', '.join(unsupported)}. "
-            f"Supported fields: {', '.join(supported)}, plus use_scene_* and *_settings. "
+            f"Supported fields: {', '.join(_supported_scene_fields())}, plus use_scene_* and *_settings. "
             "POST /scenes/bulk with op=patch can write other fields."
         )
     with _BUILDER_SAVE_LOCK:
@@ -545,29 +685,20 @@ def patch_scene(
 
         scene = segments[idx]
         slot_number = idx + 1
-
-        prompt_changed = False
-        duration_changed = False
-
-        old_t2i = str(scene.get("t2i_prompt") or "")
-        old_i2v = str(scene.get("i2v_prompt") or "")
-        old_dur = float(scene.get("end", 0.0) or 0.0) - float(scene.get("start", 0.0) or 0.0)
+        resolved_id = str(scene.get("id") or scene_id)
+        before = copy.deepcopy(scene)
 
         for key in _SCENE_PATCH_TEXT_FIELDS:
-            if key in patch:
-                scene[key] = str(patch[key] or "")
+            if key in legacy:
+                scene[key] = str(legacy[key] or "")
 
         for key in _SCENE_PATCH_NUMBER_FIELDS:
-            if key in patch:
-                scene[key] = float(patch[key])
-
-        for key in _SCENE_PATCH_FLAG_FIELDS:
-            if key in patch:
-                scene[key] = bool(patch[key])
+            if key in legacy:
+                scene[key] = float(legacy[key])
 
         for key in _SCENE_PATCH_OPTIONAL_NUMBER_FIELDS:
-            if key in patch:
-                value = patch[key]
+            if key in legacy:
+                value = legacy[key]
                 if value is None or value == "":
                     scene[key] = None
                     continue
@@ -579,30 +710,26 @@ def patch_scene(
                     raise ValidationError(f"{key} must be a number of seconds that is 0 or more, or null for the default.")
                 scene[key] = round(number, 2)
 
+        references_changed = _apply_scene_references(session, resolved_id, values)
+        card_fields.apply_to_segment(
+            scene,
+            {name: value for name, value in values.items() if name not in ("subject_ids", "location_id")},
+            video_engine=session_sync.video_engine(session),
+            image_mode=session_sync.image_mode(session),
+        )
+
         # Same as editing the lyric in the Builder: the scene is marked instrumental from its text.
-        if "lyric_text" in patch and "lyric_no_lip_sync" not in patch:
+        if "lyric_text" in values and "lyric_no_lip_sync" not in values:
             scene["lyric_no_lip_sync"] = is_instrumental_lyric_text(scene.get("lyric_text"))
 
-        if "lyric_singers" in patch:
-            singers = patch["lyric_singers"]
-            if isinstance(singers, str):
-                singers = [singers]
-            if not isinstance(singers, list):
-                raise ValidationError("lyric_singers must be a list of singer names.")
-            scene["lyric_singers"] = [str(s).strip() for s in singers if str(s).strip()]
-
-        for key, val in patch.items():
+        for key, val in legacy.items():
             if key.startswith("use_scene_") or key.endswith("_settings"):
                 scene[key] = val
 
-        new_t2i = str(scene.get("t2i_prompt") or "")
-        new_i2v = str(scene.get("i2v_prompt") or "")
+        prompt_changed = any(str(before.get(key) or "") != str(scene.get(key) or "") for key in _PROMPT_KEYS)
+        old_dur = float(before.get("end", 0.0) or 0.0) - float(before.get("start", 0.0) or 0.0)
         new_dur = float(scene.get("end", 0.0) or 0.0) - float(scene.get("start", 0.0) or 0.0)
-
-        if old_t2i != new_t2i or old_i2v != new_i2v:
-            prompt_changed = True
-        if abs(old_dur - new_dur) > 0.05:
-            duration_changed = True
+        duration_changed = abs(old_dur - new_dur) > 0.05
 
         if prompt_changed or duration_changed:
             try:
@@ -610,12 +737,31 @@ def patch_scene(
             except Exception:
                 pass
 
-        if "start" in patch or "end" in patch:
+        if "start" in legacy or "end" in legacy:
             normalize_segments(segments, active_index=idx)
 
-        save_result = _persist_session(folder, session)
+        segment_changed = sorted(key for key in set(before) | set(scene) if before.get(key) != scene.get(key))
+        card_updates = _storyboard_card_updates(session, scene, values, legacy, references_changed)
+        card_changed, undo_card = _write_storyboard_card(
+            folder, session, resolved_id, card_updates, card_fields.card_only_names(values)
+        )
+        timing_changed = "start" in legacy or "end" in legacy
+        change = {
+            "kind": "project" if timing_changed else "scene_fields",
+            "scenes": {resolved_id: {
+                "segment": segment_changed, "card": card_changed, "references": references_changed,
+            }},
+            "storyboard": bool(card_changed),
+        }
+        try:
+            save_result = _persist_session(folder, session, change)
+        except Exception:
+            if undo_card:
+                undo_card()
+            raise
         return {
             "scene": scene,
+            "storyboard_card": card_changed,
             "revision": save_result.get("revision", current_rev + 1),
         }
 
@@ -848,6 +994,83 @@ def timeline_bulk(
             "lyrics": lyrics_source,
             "revision": save_result.get("revision", 1),
         }
+
+
+# ==============================================================================
+# 2b. Timed Timeline Notes (the Builder's "+ Timeline Note" markers)
+# ==============================================================================
+
+def _timeline_note_view(marker: Dict[str, Any], segments: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """A saved note plus the scenes it overlaps (the scenes Story Arc planning applies it to)."""
+    return {**marker, "scene_ids": markers_service.overlapping_scene_ids(marker, segments)}
+
+
+def list_timeline_notes(project_id: str) -> Dict[str, Any]:
+    """The project's timed Timeline Notes, sorted by start time."""
+    _folder, session = _get_active_session_and_folder(project_id)
+    segments = [s for s in session.get("segments") or [] if isinstance(s, dict)]
+    notes = markers_service.normalize_markers(session.get("timeline_markers"))
+    return {
+        "notes": [_timeline_note_view(marker, segments) for marker in notes],
+        "count": len(notes),
+        "revision": int(session.get("revision") or session.get("builder_save_revision") or 0),
+    }
+
+
+def _edit_timeline_notes(project_id: str, if_match_revision: Optional[int], edit) -> Dict[str, Any]:
+    """Load the notes under the save lock, apply ``edit(notes) -> (note, marker_id)``, save and notify."""
+    with _BUILDER_SAVE_LOCK:
+        folder, session = _get_active_session_and_folder(project_id)
+        current_rev = int(session.get("revision") or session.get("builder_save_revision") or 0)
+        if if_match_revision is not None and if_match_revision != current_rev:
+            raise RevisionConflictError(current_rev, if_match_revision)
+        notes = markers_service.normalize_markers(session.get("timeline_markers"))
+        try:
+            note, marker_id = edit(notes, session)
+        except markers_service.TimelineMarkerError as exc:
+            raise ValidationError(str(exc)) from None
+        except KeyError as exc:
+            raise TimelineNoteNotFoundError(str(exc.args[0]), project_id) from None
+        session["timeline_markers"] = notes
+        save_result = _persist_session(folder, session, {"kind": "timeline_markers", "marker_ids": [marker_id]})
+        segments = [s for s in session.get("segments") or [] if isinstance(s, dict)]
+        return {
+            "note": _timeline_note_view(note, segments) if note else None,
+            "notes": [_timeline_note_view(marker, segments) for marker in notes],
+            "revision": save_result.get("revision", current_rev + 1),
+        }
+
+
+def create_timeline_note(
+    project_id: str,
+    fields: Dict[str, Any],
+    if_match_revision: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Add a timed note. ``start`` is required; leave ``end`` out (or null) for a point note."""
+    def edit(notes, _session):
+        note = markers_service.create_marker(notes, fields)
+        return note, note["id"]
+    return _edit_timeline_notes(project_id, if_match_revision, edit)
+
+
+def update_timeline_note(project_id: str, note_id: str, fields: Dict[str, Any],
+                         if_match_revision: Optional[int] = None) -> Dict[str, Any]:
+    """Change only the given fields of a note. ``end: null`` turns a range note into a point note."""
+    def edit(notes, _session):
+        return markers_service.update_marker(notes, note_id, fields), note_id
+    return _edit_timeline_notes(project_id, if_match_revision, edit)
+
+
+def delete_timeline_note(project_id: str, note_id: str, if_match_revision: Optional[int] = None) -> Dict[str, Any]:
+    """Remove a note. The Builder's active-note selection is cleared when it pointed at it."""
+    def edit(notes, session):
+        removed = markers_service.delete_marker(notes, note_id)
+        if session.get("active_timeline_marker_id") == note_id:
+            session["active_timeline_marker_id"] = ""
+        return removed, note_id
+    result = _edit_timeline_notes(project_id, if_match_revision, edit)
+    result["deleted"] = result.pop("note")
+    return result
 
 
 # ==============================================================================

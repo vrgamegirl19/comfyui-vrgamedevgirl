@@ -1,4 +1,4 @@
-import { postJson } from "./api.mjs";
+import { postJson, saveStoryboardFile } from "./api.mjs";
 import {
   copyTextToClipboard,
   createStoryboardProgressWindow,
@@ -350,10 +350,7 @@ export function createScriptMapper({
         refreshSetupPanelSummaries();
         notifyStoryboardDefaultsChanged();
         if (state.projectFolder) {
-          await postJson("/vrgdg/storyboard/save", {
-            project_folder: state.projectFolder,
-            storyboard: slimStoryboardForRequest(state),
-          });
+          await saveStoryboardFile(state, slimStoryboardForRequest(state));
         }
         closeMapper();
         createToast(`Authoritative script activated: ${state.scriptImport.cues.length} exact cue${state.scriptImport.cues.length === 1 ? "" : "s"} across ${state.scriptImport.scene_plan.scene_count} planned MiniMax segment${state.scriptImport.scene_plan.scene_count === 1 ? "" : "s"}.`);
@@ -371,10 +368,7 @@ export function createScriptMapper({
         refreshSetupPanelSummaries();
         notifyStoryboardDefaultsChanged();
         if (state.projectFolder) {
-          await postJson("/vrgdg/storyboard/save", {
-            project_folder: state.projectFolder,
-            storyboard: slimStoryboardForRequest(state),
-          });
+          await saveStoryboardFile(state, slimStoryboardForRequest(state));
         }
         closeMapper();
         createToast("Authoritative script removed. Existing scenes were not changed.");

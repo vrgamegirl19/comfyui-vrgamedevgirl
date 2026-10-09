@@ -18,7 +18,8 @@ from ..errors import ValidationError
 from ..jobs.manager import JobManager, get_job_manager
 from ..jobs.models import Job
 from ..llm_runtime import llm_payload_from_session, prepare_llm_payload
-from ..mutations import _BUILDER_SAVE_LOCK, _get_active_session_and_folder, _persist_session
+from ..mutations import _BUILDER_SAVE_LOCK, _get_active_session_and_folder, _persist_session, scene_field_change
+from ..scene_card_context import storyboard_video_context
 from .storyboard_orchestrator import scene_cards, sync_storyboard_files
 
 MODE = "reference_to_video"
@@ -127,6 +128,8 @@ def generate_scene_prompt(session: Dict[str, Any], folder: str, segment: Dict[st
                 target_limit=target_limit,
                 continuation=ctx["continuation"], previous_shot="" if with_picture else ctx["previous_shot"],
                 with_picture=with_picture, location_contract=ctx["location_contract"],
+                motion_request=_text(segment.get("i2v_notes")), audio_direction=_text(segment.get("audio_direction")),
+                continuity=_text(segment.get("continuity")), storyboard_context=storyboard_video_context(card),
             )
             body: Dict[str, Any] = {
                 **llm_payload_from_session(session),
@@ -195,14 +198,17 @@ def _save_scene_prompt(project_id: str, scene_id: str, prompt: str, origin: str 
     """Save a written prompt on its scene the way the Video Builder does. Returns the new revision."""
     with _BUILDER_SAVE_LOCK:
         folder, session = _get_active_session_and_folder(project_id)
+        fields = {
+            "minimax_h3_prompt": prompt,
+            "minimax_h3_prompt_origin": origin,
+            "minimax_h3_mode": MODE,
+            "video_prompt_type": "rtv",  # what the Video Builder saves for reference-to-video scenes
+            **(extra or {}),
+        }
         for stored in session.get("segments") or []:
             if isinstance(stored, dict) and stored.get("id") == scene_id:
-                stored["minimax_h3_prompt"] = prompt
-                stored["minimax_h3_prompt_origin"] = origin
-                stored["minimax_h3_mode"] = MODE
-                stored["video_prompt_type"] = "rtv"  # what the Video Builder saves for reference-to-video scenes
-                stored.update(extra or {})
-        return _persist_session(folder, session).get("revision")
+                stored.update(fields)
+        return _persist_session(folder, session, scene_field_change(scene_id, list(fields))).get("revision")
 
 
 def write_continued_scene_prompt(project_id: str, scene_id: str, previous_frame: str, previous_scene_id: str = "",
@@ -212,7 +218,7 @@ def write_continued_scene_prompt(project_id: str, scene_id: str, previous_frame:
     Used right before a scene renders with ``latent_continuation_masked`` and ``continuity_prompt_from_last_frame``.
     """
     folder, session = _get_active_session_and_folder(project_id)
-    cards = {str(c["id"]): c for c in scene_cards(session)}
+    cards = {str(c["id"]): c for c in scene_cards(session, folder)}
     ordered = sorted((x for x in session.get("segments") or [] if isinstance(x, dict)), key=lambda x: _number(x.get("start"), 0.0))
     position = next((i for i, x in enumerate(ordered) if x.get("id") == scene_id or str(i + 1) == str(scene_id)), -1)
     if position < 0 or str(ordered[position].get("id")) not in cards:
@@ -246,7 +252,7 @@ def create_minimax_prompts(
     """
     params = dict(params or {})
     folder, session = _get_active_session_and_folder(project_id)
-    cards = scene_cards(session)
+    cards = scene_cards(session, folder)
     if not cards:
         raise ValidationError("The project has no scenes. Create the timeline first.")
     wanted = {str(x) for x in (params.get("scene_ids") or [])}

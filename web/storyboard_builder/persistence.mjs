@@ -1,4 +1,4 @@
-import { postJson } from "./api.mjs";
+import { postJson, saveStoryboardFile } from "./api.mjs";
 import { copyTextToClipboard, createToast, makeButton } from "./controls.mjs";
 import { openStoryboardGptUrl, storyboardGptPayload } from "./gpt_payload.mjs";
 import {
@@ -62,6 +62,8 @@ export function createStoryboardPersistence({
       const incomingScenes = state.scenes.map((scene) => normalizeScene(scene));
       const data = await postJson("/vrgdg/storyboard/load", { project_folder: state.projectFolder });
       const saved = data.storyboard || {};
+      // The revision every later save sends, so a newer Agent API / MCP edit is not overwritten silently.
+      state.storyboardRevision = Number(saved.revision || 0);
       if (saved.exists === false) {
         setMode(openingMode);
         return true;
@@ -422,10 +424,7 @@ export function createStoryboardPersistence({
           scene.video_prompt = enforceStoryboardVideoFacialRequirements(scene.video_prompt, scene);
         }
       });
-      const data = await postJson("/vrgdg/storyboard/save", {
-        project_folder: state.projectFolder,
-        storyboard: slimStoryboardForRequest(state),
-      });
+      const data = await saveStoryboardFile(state, slimStoryboardForRequest(state));
       syncStoryLayerFromInputs({ notify: false });
       if (payload.onFocusedSave) await payload.onFocusedSave({
         ...storyboardDefaultsPayload(),
@@ -459,10 +458,7 @@ export function createStoryboardPersistence({
           scene.video_prompt = enforceStoryboardVideoFacialRequirements(scene.video_prompt, scene);
         }
       });
-      const data = await postJson("/vrgdg/storyboard/export_prompts", {
-        project_folder: state.projectFolder,
-        storyboard: slimStoryboardForRequest(state),
-      });
+      const data = await saveStoryboardFile(state, slimStoryboardForRequest(state), "/vrgdg/storyboard/export_prompts");
       if (state.onPromptsExported) {
         state.onPromptsExported({
           ...storyboardDefaultsPayload(),

@@ -1,4 +1,4 @@
-import { postJson, STORYBOARD_GEMMA_TIMEOUT_MS } from "./api.mjs";
+import { postJson, STORYBOARD_GEMMA_TIMEOUT_MS, saveStoryboardFile } from "./api.mjs";
 import { createStoryboardProgressWindow, createToast, makeButton } from "./controls.mjs";
 import { storyboardGptPayload } from "./gpt_payload.mjs";
 import { normalizeReferenceBuilderCatalog } from "./references.mjs";
@@ -233,10 +233,7 @@ export function createPromptGeneration({
     syncReferenceMappingsToVideoCreator();
     if (state.projectFolder) {
       try {
-        await postJson("/vrgdg/storyboard/save", {
-          project_folder: state.projectFolder,
-          storyboard: slimStoryboardForRequest(state),
-        });
+        await saveStoryboardFile(state, slimStoryboardForRequest(state));
         createToast(`Cleared prompts/notes in ${changed} scene${changed === 1 ? "" : "s"} and saved Storyboard.`);
       } catch (error) {
         createToast(`Cleared prompts/notes in this session, but could not save Storyboard:\n${String(error?.message || error)}`, true);

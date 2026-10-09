@@ -3,7 +3,7 @@ import os
 import re
 from datetime import datetime
 
-from ..core.atomic_write import atomic_write_json
+from ..core.atomic_write import atomic_write_json, atomic_write_text
 from .scene_helpers import (
     _clean_scene_text,
     _decode_image_data_url,
@@ -384,11 +384,42 @@ def _load_storyboard(payload):
     return data
 
 
+class StoryboardConflictError(ValueError):
+    """The saved storyboard changed after the caller loaded it (for example through the Agent API)."""
+
+    def __init__(self, current_revision, expected_revision):
+        super().__init__(
+            f"The Storyboard was changed elsewhere (saved revision {current_revision}, this window has "
+            f"{expected_revision}). Its scene cards were refreshed; review them and save again."
+        )
+        self.current_revision = current_revision
+
+
+def _saved_storyboard_revision(path):
+    """The revision counter of the storyboard on disk (0 when there is none yet)."""
+    if not os.path.isfile(path):
+        return 0
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            return int((json.load(handle) or {}).get("revision") or 0)
+    except (OSError, TypeError, ValueError, AttributeError):
+        return 0
+
+
 def _save_storyboard(payload):
+    """Save the storyboard atomically and count the save in its ``revision``.
+
+    When ``expected_revision`` is given and the file has a different revision, nothing is written and
+    ``StoryboardConflictError`` is raised, so an older window cannot overwrite newer card edits.
+    """
     project_folder = _safe_project_folder(payload.get("project_folder", ""))
     storyboard = payload.get("storyboard", {})
     if not isinstance(storyboard, dict):
         raise ValueError("Storyboard payload is invalid.")
+    current_revision = _saved_storyboard_revision(_storyboard_path(project_folder))
+    expected_revision = payload.get("expected_revision")
+    if expected_revision is not None and int(expected_revision) != current_revision:
+        raise StoryboardConflictError(current_revision, int(expected_revision))
     scenes = storyboard.get("scenes", [])
     if not isinstance(scenes, list):
         scenes = []
@@ -400,6 +431,7 @@ def _save_storyboard(payload):
         custom_camera_flow = []
     data = {
         "version": 1,
+        "revision": current_revision + 1,
         "created_at": storyboard.get("created_at") or datetime.now().isoformat(timespec="seconds"),
         "updated_at": datetime.now().isoformat(timespec="seconds"),
         "project_folder": project_folder,
@@ -451,11 +483,12 @@ def _save_storyboard(payload):
 
 
 def _write_key_value_file(path, prefix, scenes, field):
-    with open(path, "w", encoding="utf-8") as handle:
-        for index, scene in enumerate(scenes, start=1):
-            text_limit = 100000 if field == "video_prompt" else 12000
-            text = _clean_scene_text(scene.get(field) or "", text_limit)
-            handle.write(f"{prefix}{index}={text}\n")
+    text_limit = 100000 if field == "video_prompt" else 12000
+    lines = [
+        f"{prefix}{index}={_clean_scene_text(scene.get(field) or '', text_limit)}\n"
+        for index, scene in enumerate(scenes, start=1)
+    ]
+    atomic_write_text(path, "".join(lines))
 
 
 def _prompt_json_entry(scene, index, field):
@@ -535,22 +568,20 @@ def _export_storyboard_prompts(payload):
             for index, scene in enumerate(scenes, start=1)
         ],
     }
-    with open(t2i_json_path, "w", encoding="utf-8") as handle:
-        json.dump(t2i_json, handle, indent=2, ensure_ascii=False)
-    with open(video_json_path, "w", encoding="utf-8") as handle:
-        json.dump(video_json, handle, indent=2, ensure_ascii=False)
-    with open(summary_path, "w", encoding="utf-8") as handle:
-        json.dump({
-            "version": 1,
-            "exported_at": datetime.now().isoformat(timespec="seconds"),
-            "t2i_prompts": t2i_path,
-            "i2v_prompts": i2v_path,
-            "t2i_prompts_json": t2i_json_path,
-            "video_prompts_json": video_json_path,
-            "scenes": scenes,
-        }, handle, indent=2, ensure_ascii=False)
+    atomic_write_json(t2i_json_path, t2i_json)
+    atomic_write_json(video_json_path, video_json)
+    atomic_write_json(summary_path, {
+        "version": 1,
+        "exported_at": datetime.now().isoformat(timespec="seconds"),
+        "t2i_prompts": t2i_path,
+        "i2v_prompts": i2v_path,
+        "t2i_prompts_json": t2i_json_path,
+        "video_prompts_json": video_json_path,
+        "scenes": scenes,
+    })
     return {
         "storyboard_path": saved.get("path", ""),
+        "storyboard_revision": saved.get("revision", 0),
         "t2i_prompts_path": t2i_path,
         "i2v_prompts_path": i2v_path,
         "t2i_prompts_json_path": t2i_json_path,

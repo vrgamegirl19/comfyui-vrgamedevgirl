@@ -13,6 +13,7 @@ import {
   normalizeStoryboardPerformanceMode,
   normalizeStoryboardProjectVideoEngine,
   normalizeStoryboardShortFilmPlanningMode,
+  normalizeScene,
   normalizeStoryLayer,
   scenesFromBuilderPayload,
   storyboardCutFrequencyValue,
@@ -42,6 +43,8 @@ import { createSceneBeats, sceneStoryBeatMissing } from "./scene_beats.mjs";
 import { createScriptMapper } from "./script_mapper.mjs";
 import { createSettingsPanel } from "./settings_panel.mjs";
 import { createStoryboardPersistence } from "./persistence.mjs";
+import { postJson } from "./api.mjs";
+import { createStoryboardExternalSync, STORYBOARD_EXTERNAL_CHANGE_EVENT } from "./external_changes.mjs";
 import { createSceneEditor } from "./scene_editor.mjs";
 import { wireStoryboardEvents } from "./storyboard_events.mjs";
 import { buildStoryLayerPanel } from "./story_layer_layout.mjs";
@@ -360,7 +363,7 @@ export function openStoryboardBuilder(payload = {}) {
     saveStoryboard: (...args) => saveStoryboard(...args),
   });
 
-  const { copyStoryboardForGpt, exportPromptFiles, loadExisting, saveStoryboard } = createStoryboardPersistence({
+  const { copyStoryboardForGpt, exportPromptFiles, loadExisting: loadSavedStoryboard, saveStoryboard } = createStoryboardPersistence({
     absorbSceneReferencesIntoCatalog, adjacentLyricContextInput, cameraFlowSelect, cameraSpeedInput, characterSpeedInput, storyArcDetailSelect,
     consistencyInput, cutFrequencyInput, enforceStoryboardVideoFacialRequirements, exportPrompts,
     facialCustomInput, facialPerformancePresets, facialSelect, fxCustomInput, fxSelect,
@@ -612,7 +615,40 @@ export function openStoryboardBuilder(payload = {}) {
     temporalProtectedSelect, userStoryArcInput, videoStyleApply, videoStyleCustomInput, videoStyleReplace,
     videoStyleSelect,
   });
-  function closeStoryboard() { if (state.saving) return; backdrop.remove(); payload.onClose?.(); }
+  // Agent API / MCP scene-card edits merged by the Video Builder also appear in this window.
+  const externalSync = createStoryboardExternalSync({
+    state, postJson, normalizeScene, scenesFromBuilderPayload, getBuilderScenes: payload.getBuilderScenes, renderTable,
+    createToast, isOpen: () => backdrop.isConnected,
+  });
+  state.onStoryboardFileSaved = () => externalSync.markClean();
+  if (state.onSceneChanged) {
+    const applySceneToTimeline = state.onSceneChanged;
+    state.onSceneChanged = async (scene) => {
+      await applySceneToTimeline(scene);
+      externalSync.markClean(scene.id);
+    };
+  }
+  const projectKey = (folder) => String(folder || "").trim().replace(/\//g, "\\").replace(/\\+$/, "").toLowerCase();
+  const onExternalChange = (event) => {
+    if (!backdrop.isConnected) {
+      window.removeEventListener(STORYBOARD_EXTERNAL_CHANGE_EVENT, onExternalChange);
+      return;
+    }
+    if (projectKey(event.detail?.projectFolder) !== projectKey(state.projectFolder)) return;
+    externalSync.apply(event.detail).catch((error) => createToast(`Could not show the Agent API / MCP change: ${String(error?.message || error)}`, true));
+  };
+  window.addEventListener(STORYBOARD_EXTERNAL_CHANGE_EVENT, onExternalChange);
+  // The loaded cards are what later external edits are compared against.
+  const loadExisting = () => loadSavedStoryboard().then((loaded) => {
+    externalSync.markClean();
+    return loaded;
+  });
+  function closeStoryboard() {
+    if (state.saving) return;
+    window.removeEventListener(STORYBOARD_EXTERNAL_CHANGE_EVENT, onExternalChange);
+    backdrop.remove();
+    payload.onClose?.();
+  }
   close.onclick = closeStoryboard;
   backdrop.addEventListener("pointerdown", (event) => {
     if (event.target === backdrop) closeStoryboard();

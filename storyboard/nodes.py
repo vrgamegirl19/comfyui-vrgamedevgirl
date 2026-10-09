@@ -3,8 +3,10 @@ import asyncio
 from aiohttp import web
 from server import PromptServer
 
+from ..builder.project import _BUILDER_SAVE_LOCK
 from .dialogue_scenes import _build_id_lora_dialogue_scenes, _build_minimax_dialogue_scenes
 from .persistence import (
+    StoryboardConflictError,
     _export_storyboard_prompts,
     _import_storyboard_reference_image,
     _load_storyboard,
@@ -41,9 +43,19 @@ def _ensure_storyboard_routes():
 
     @server_instance.routes.post("/vrgdg/storyboard/save")
     async def vrgdg_storyboard_save(request):
+        def save_locked(payload):
+            # Agent API scene edits write storyboard.json under the same lock.
+            with _BUILDER_SAVE_LOCK:
+                return _save_storyboard(payload)
+
         try:
             payload = await request.json()
-            result = await asyncio.to_thread(_save_storyboard, payload)
+            result = await asyncio.to_thread(save_locked, payload)
+        except StoryboardConflictError as exc:
+            return web.json_response(
+                {"ok": False, "conflict": True, "error": str(exc), "current_revision": exc.current_revision},
+                status=409,
+            )
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, "storyboard": result})
@@ -59,9 +71,18 @@ def _ensure_storyboard_routes():
 
     @server_instance.routes.post("/vrgdg/storyboard/export_prompts")
     async def vrgdg_storyboard_export_prompts(request):
+        def export_locked(payload):
+            with _BUILDER_SAVE_LOCK:
+                return _export_storyboard_prompts(payload)
+
         try:
             payload = await request.json()
-            result = await asyncio.to_thread(_export_storyboard_prompts, payload)
+            result = await asyncio.to_thread(export_locked, payload)
+        except StoryboardConflictError as exc:
+            return web.json_response(
+                {"ok": False, "conflict": True, "error": str(exc), "current_revision": exc.current_revision},
+                status=409,
+            )
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, **result})

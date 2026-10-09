@@ -123,9 +123,28 @@ export function saveBuilderSessionJson(payload, timeoutMs = 60000) {
     builder_save_revision: revision,
   };
   const save = () => postJson("/vrgdg/music_builder/save_session", payload, timeoutMs);
-  const result = builderSessionSaveQueue.then(save, save);
+  const result = builderSessionSaveQueue.then(save, save).then((data) => {
+    // external_changes.mjs records the saved snapshot as the project's last known saved state.
+    if (data && !data.stale) {
+      announceBuilderEvent("vrgdg:builder-session-saved", {
+        projectFolder: data.project_folder || payload.project_folder || "", revision: Number(data.revision || 0), session: payload.session,
+      });
+    }
+    return data;
+  });
   builderSessionSaveQueue = result.catch(() => null);
   return result;
+}
+
+// A window event for other Builder modules (a no-op outside a browser).
+export function announceBuilderEvent(name, detail) {
+  if (typeof window === "undefined" || typeof CustomEvent !== "function") return;
+  window.dispatchEvent(new CustomEvent(name, { detail }));
+}
+
+// Resolves once every queued session save has finished.
+export function whenBuilderSessionSavesIdle() {
+  return builderSessionSaveQueue.then(() => null, () => null);
 }
 
 export function syncBuilderSessionSaveRevision(revision) {
