@@ -26,6 +26,7 @@ import { showOverlayTrackHelp } from "./timeline_actions.mjs";
 let currentRunnerPayload = null;
 
 export function wireToolbar({
+  render,
   activeSegment, addOverlaySegment, addOverlaySegmentButton, addSegment, addSegmentButton,
   addTimelineMarkerButton, addTimelineMarkerFromSelection, applyBuilderFullscreen, autoBuildButton,
   autoLoadAll, autoLoadAllButton, autoSaveControl, autoSaveSessionQuiet, branchProject, branchProjectButton,
@@ -127,8 +128,10 @@ export function wireToolbar({
     menuDropdown.style.display = "none";
   });
   videoTypeSelect.onchange = async () => {
+    pauseTimelineForEditing();
     state.videoType = normalizeVideoType(videoTypeSelect.value);
     syncVideoTypeControl();
+    render();
     await autoSaveSessionQuiet("video type changed");
     toast(`Video Type set to ${VIDEO_TYPE_OPTIONS.find((item) => item.value === state.videoType)?.label || "Singing (music video)"}.`);
   };

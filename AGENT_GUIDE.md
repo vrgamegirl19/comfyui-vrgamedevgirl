@@ -226,6 +226,12 @@ The `builder` package contains the backend business logic and HTTP API powering 
 - **Frontend**: `audio_clip_editor.mjs` owns clip selection, playhead splitting, movement, edge trimming,
   and mix preparation. Speaking-mode imports from Clip Audio or the Audio panel use this shared track;
   edits participate in session saving and undo/redo without resizing scenes.
+- **Speaking only**: `+ Audio Clip` appends files on independent lanes. Pieces also store `lane`, `role`
+  (`dialogue`, `music`, `effect`), `volume` (0–2), `muted`, and `include_in_generation`. Legacy dialogue
+  defaults to lane 0, 100% volume, and generation enabled. New scores start at 25% volume and stay out
+  of speaking generation; playback and final stitching include them. `generation_only` selects the
+  generation mix, separately cached in the UI. Generated embedded dialogue can also be mixed with scores
+  at final stitch. Other video types hide the editor and ignore the saved speaking clip track.
 
 #### [builder/audio.py](builder/audio.py)
 - **Purpose**: Digital audio processing, waveform analysis, and beat detection.

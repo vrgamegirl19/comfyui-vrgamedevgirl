@@ -5,7 +5,7 @@ import {
 import { audioUrl, postJson } from "./comfy_api.mjs";
 import { makeButton, makeCheckbox, makeInput, makeSelect, toast } from "./controls.mjs";
 import { audioSourceStart, timelineSegmentDuration } from "./timeline_state.mjs";
-import { prepareEditedAudio } from "./audio_clip_editor.mjs";
+import { prepareEditedAudio, speakingAudioEditsActive } from "./audio_clip_editor.mjs";
 
 // Audio Mask. A scene's audio is split into stems (vocals, drums, bass, other, and with the 6 stem model also guitar and
 // piano). For every stem the scene keeps: a mask switch (only its regions are audible), the regions, a level and mute. The
@@ -120,9 +120,9 @@ export function createAudioMask({
   const folder = () => String(getProjectFolder() || "").trim();
   const sceneById = (id) => [...(state.segments || []), ...(state.overlaySegments || [])].find((item) => item?.id === id) || null;
   const sceneSource = (item) => {
-    const custom = Array.isArray(state.audioClips) ? "" : String(item?.custom_audio_path || "").trim();
+    const custom = speakingAudioEditsActive(state) ? "" : String(item?.custom_audio_path || "").trim();
     return {
-      audioPath: custom || String(currentProjectAudioPath() || "").trim(),
+      audioPath: speakingAudioEditsActive(state) ? String(state.audioClipGenerationMixPath || "") : custom || String(currentProjectAudioPath() || "").trim(),
       start: custom ? audioSourceStart(item) : Number(item?.start || 0),
       duration: timelineSegmentDuration(item),
     };
@@ -173,7 +173,7 @@ export function createAudioMask({
   }
 
   async function buildScene(item) {
-    await prepareEditedAudio(state, folder());
+    await prepareEditedAudio(state, folder(), { generation: true });
     if (splitStale(item, cache.get(item.id))) {
       throw new Error("Audio changed after splitting stems. Split the scene again before building its mask.");
     }
@@ -296,10 +296,10 @@ export function createAudioMask({
   async function autoSplitTick() {
     const auto = normalizeAudioMaskAuto(state.audioMaskAuto);
     if (!auto.enabled || busy || !folder() || anySceneRendering() || playbackBusy()) return;
-    if (Array.isArray(state.audioClips) && !state.audioClipMixPath) {
+    if (speakingAudioEditsActive(state) && !state.audioClipGenerationMixPath) {
       if (preparingEditedAudio) return;
       preparingEditedAudio = true;
-      try { await prepareEditedAudio(state, folder()); }
+      try { await prepareEditedAudio(state, folder(), { generation: true }); }
       catch (error) { setStatus(String(error?.message || error), true); return; }
       finally { preparingEditedAudio = false; }
     }
@@ -643,7 +643,7 @@ export function createAudioMask({
     const item = loaded();
     if (!item) return;
     run("Splitting the scene audio into stems (the first time also loads the Demucs model)...", async () => {
-      await prepareEditedAudio(state, folder());
+      await prepareEditedAudio(state, folder(), { generation: true });
       const source = sceneSource(item);
       const data = await postJson("/vrgdg/music_builder/audio_mask/separate", {
         project_folder: folder(), scene_id: item.id, audio_path: source.audioPath, start_seconds: source.start,
@@ -733,7 +733,7 @@ export function createAudioMask({
   // ---- loading the selected scene ----
   async function loadWindow() {
     stopPreview();
-    try { await prepareEditedAudio(state, folder()); }
+    try { await prepareEditedAudio(state, folder(), { generation: true }); }
     catch (error) { setStatus(String(error?.message || error), true); return; }
     const item = activeSegment();
     loadedId = item?.id || "";

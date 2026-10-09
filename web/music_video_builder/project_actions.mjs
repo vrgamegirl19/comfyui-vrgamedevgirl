@@ -224,6 +224,8 @@ export function createProjectActions({
     state.audioClips = null;
     state.audioClipMixPath = "";
     state.audioClipMixKey = "";
+    state.audioClipGenerationMixPath = "";
+    state.audioClipGenerationMixKey = "";
     state.selectedTimelineRange = { in: null, out: null };
     state.timelineMarkers = [];
     state.activeTimelineMarkerId = "";

@@ -27,14 +27,16 @@ function editorFixture() {
   const state = { videoType: 'speaking', pxPerSecond: 20, audioClips: [{ ...clip }],
     segments: [{ id: 's', start: 0, end: 10 }] };
   const history = [];
-  const editor = c.createAudioClipEditor({ state, projectInput: { value: 'project' }, currentGlobalTime: () => 5,
+  const addButton = new Element();
+  const editor = c.createAudioClipEditor({ state, addAudioClipButton: addButton,
+    projectInput: { value: 'project' }, currentGlobalTime: () => 5,
     pushHistory: () => history.push(JSON.stringify(state)), render() {}, pauseTimelineForEditing() {},
     setActiveSegment() {}, autoSaveSessionQuiet: async reason => { saves.push(reason); } });
   const layer = new Element();
   editor.renderAudioClips(layer);
   const event = x => ({ button: 0, pointerId: 1, clientX: x, clientY: 100,
     preventDefault() {}, stopPropagation() {} });
-  return { c, state, history, saves, editor, layer, events, event };
+  return { c, state, history, saves, editor, layer, events, event, addButton };
 }
 const clip = { id: 'a', scene_id: 's', path: 'original.wav', start: 3, source_start: 2,
   duration: 4, full_duration: 10, peaks: [0, .5, 1], name: 'Speech' };
@@ -102,7 +104,7 @@ test('clip menu splits at the playhead and deletion does not restore source audi
 });
 test('mix preparation is cached and rejects results after newer edits', async () => {
   const c = fixture();
-  const state = { audioClips: [clip], segments: [{ end: 10 }] };
+  const state = { videoType: 'speaking', audioClips: [clip], segments: [{ end: 10 }] };
   let calls = 0;
   c.postJson = async () => { calls++; return { audio_path: 'mix.wav', peaks: [] }; };
   await c.prepareEditedAudio(state, 'project');
@@ -118,7 +120,8 @@ test('mix preparation is cached and rejects results after newer edits', async ()
 });
 test('edited tracks cannot fall back to the original per-scene audio', () => {
   const source = readBuilderModule('timeline_state.mjs');
-  const c = vm.createContext({ state: { audioClips: [], audioClipMixPath: 'edited.wav' },
+  const c = vm.createContext({ state: { videoType: 'speaking', audioClips: [], audioClipMixPath: 'edited.wav' },
+    speakingAudioEditsActive: state => state.videoType === 'speaking' && Array.isArray(state.audioClips),
     audioInput: { value: 'original.wav' }, usingSceneAudioMode: () => true });
   for (const name of ['currentProjectAudioPath', 'usingSceneAudioPlaybackMode',
     'timelineAudioPathForSegment', 'timelineAudioSourceStartForSegment']) {
@@ -130,4 +133,106 @@ test('edited tracks cannot fall back to the original per-scene audio', () => {
   c.state.audioClipMixPath = '';
   assert.equal(c.currentProjectAudioPath(), '');
   assert.equal(c.timelineAudioPathForSegment({ custom_audio_path: 'old.wav' }), '');
+});
+test('additional clips append independent lanes without replacing dialogue', async () => {
+  const f = editorFixture();
+  f.c.FileReader = class {
+    readAsDataURL(file) { this.result = `data:audio/wav;base64,${file.name}`; this.onload(); }
+  };
+  let calls = 0;
+  f.c.postJson = async (route, payload) => {
+    assert.equal(payload.preserve_source, true);
+    calls++;
+    return { saved_path: `source_${calls}.wav`, duration: 8, peaks: [0.2] };
+  };
+  await f.editor.importAdditionalAudio([{ name: 'score.wav' }, { name: 'another.wav' }]);
+  assert.equal(f.state.audioClips.length, 3);
+  assert.equal(f.state.audioClips[0].path, 'original.wav');
+  assert.equal(f.state.audioClips[1].lane, 1);
+  assert.equal(f.state.audioClips[2].lane, 2);
+  assert.equal(f.state.audioClips[1].start, 5);
+  assert.equal(f.state.audioClips[1].volume, 0.25);
+  assert.equal(f.state.audioClips[1].include_in_generation, false);
+  const reloaded = JSON.parse(JSON.stringify(f.state));
+  assert.equal(reloaded.audioClips[2].lane, 2);
+  const layer = { children: [], append(item) { this.children.push(item); } };
+  f.editor.renderAudioClips(layer);
+  assert.match(layer.children[1].style.cssText, /top:142px/);
+  assert.match(layer.children[2].style.cssText, /top:174px/);
+});
+test('controls and clip edits are disabled for every other video type', async () => {
+  const f = editorFixture();
+  const types = ['singing', 'no_lip_sync', 'music', 'instrumental', 'music_video', ''];
+  for (const type of types) {
+    f.state.videoType = type;
+    const layer = { append() { assert.fail('Audio editor appeared outside speaking'); } };
+    f.editor.renderAudioClips(layer);
+    assert.equal(f.addButton.style.display, 'none');
+    await f.editor.importAdditionalAudio([{ name: 'score.wav' }]);
+    assert.equal(await f.c.prepareEditedAudio(f.state, 'project'), null);
+    assert.equal(f.c.speakingAudioLaneCount(f.state), 1);
+  }
+  assert.equal(f.state.audioClips.length, 1);
+  assert.equal(f.history.length, 0);
+});
+test('volume zero and mute survive splitting and reload', () => {
+  const f = editorFixture();
+  const piece = { ...clip, volume: 0, muted: true, lane: 2, role: 'music', include_in_generation: false };
+  const pieces = JSON.parse(JSON.stringify(f.c.splitAudioClip(piece, 5)));
+  for (const part of pieces) {
+    assert.equal(part.volume, 0); assert.equal(part.muted, true);
+    assert.equal(part.lane, 2); assert.equal(part.include_in_generation, false);
+  }
+});
+test('generation and playback use separately cached mixes', async () => {
+  const c = fixture(), requests = [];
+  c.postJson = async (route, payload) => {
+    requests.push(payload);
+    return { audio_path: payload.generation_only ? 'voice.wav' : 'voice_score.wav' };
+  };
+  const state = { videoType: 'speaking', audioClips: [clip], segments: [{ end: 10 }] };
+  await c.prepareEditedAudio(state, 'project');
+  await c.prepareEditedAudio(state, 'project', { generation: true });
+  await c.prepareEditedAudio(state, 'project');
+  assert.equal(requests.length, 2);
+  assert.equal(state.audioClipMixPath, 'voice_score.wav');
+  assert.equal(state.audioClipGenerationMixPath, 'voice.wav');
+});
+test('score joins generated scene audio at final stitch without duplicating dialogue', async () => {
+  const c = fixture(); let payload;
+  c.postJson = async (route, request) => { payload = request; return { audio_path: 'combined.wav' }; };
+  const scenes = [{ id: 's', start: 0, end: 4 }];
+  const state = { videoType: 'speaking', segments: scenes, audioClips: [
+    { ...clip, role: 'dialogue' }, { ...clip, role: 'music', volume: 0.2 } ] };
+  await c.prepareEmbeddedAudioWithClips(state, 'project', scenes, ['rendered.mp4']);
+  assert.equal(payload.clips.length, 2);
+  assert.equal(payload.clips[0].path, 'rendered.mp4');
+  assert.equal(payload.clips[1].volume, 0.2);
+  state.videoType = 'singing';
+  assert.equal(await c.prepareEmbeddedAudioWithClips(state, 'project', scenes, ['rendered.mp4']), null);
+});
+test('volume and mute controls update only the selected audio piece', () => {
+  const f = editorFixture();
+  f.layer.children[0].oncontextmenu(f.event(100));
+  const menu = f.c.document.body.children[0];
+  const volume = menu.children[3].children[1];
+  volume.value = '0'; volume.onchange();
+  assert.equal(f.state.audioClips[0].volume, 0);
+  menu.children[4].onclick();
+  assert.equal(f.state.audioClips[0].muted, true);
+  assert.equal(f.state.segments[0].end, 10);
+});
+test('switching away from speaking immediately redraws and hides the audio editor', async () => {
+  const f = editorFixture(), calls = [];
+  const source = readBuilderModule('toolbar.mjs');
+  const start = source.indexOf('  videoTypeSelect.onchange = async');
+  Object.assign(f.c, { state: f.state, videoTypeSelect: { value: 'no_lip_sync' },
+    normalizeVideoType: value => value, syncVideoTypeControl() {},
+    pauseTimelineForEditing: () => calls.push('pause'),
+    autoSaveSessionQuiet: async () => {}, VIDEO_TYPE_OPTIONS: [],
+    render: () => { f.editor.renderAudioClips({ append() {} }); calls.push('render'); } });
+  vm.runInContext(source.slice(start, source.indexOf('  loadButton.onclick', start)), f.c);
+  await f.c.videoTypeSelect.onchange();
+  assert.deepEqual(calls, ['pause', 'render']);
+  assert.equal(f.addButton.style.display, 'none');
 });

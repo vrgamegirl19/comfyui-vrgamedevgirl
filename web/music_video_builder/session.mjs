@@ -1058,6 +1058,8 @@ export function createSession({
         state.audioClips = Array.isArray(data.session.audio_clips) ? data.session.audio_clips : null;
         state.audioClipMixPath = "";
         state.audioClipMixKey = "";
+        state.audioClipGenerationMixPath = "";
+        state.audioClipGenerationMixKey = "";
         state.timingFrozen = Boolean(data.session.timing_frozen);
         state.srtMode = Boolean(data.session.srt_mode);
         state.promptJsonPath = data.session.prompt_json_path || state.promptJsonPath;
@@ -1316,6 +1318,8 @@ export function createSession({
       state.audioClips = Array.isArray(session.audio_clips) ? session.audio_clips : null;
       state.audioClipMixPath = "";
       state.audioClipMixKey = "";
+      state.audioClipGenerationMixPath = "";
+      state.audioClipGenerationMixKey = "";
       state.overlaySegments = Array.isArray(session.overlay_segments) ? session.overlay_segments : [];
       state.overlaySegments.forEach(normalizeOverlayClip);
       state.overlayTrack = normalizeOverlayTrackState(session.overlay_track || {});

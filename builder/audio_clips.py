@@ -24,6 +24,12 @@ def prepare_audio_clip_mix(payload: dict[str, Any]) -> dict[str, Any]:
     for clip in clips:
         if not isinstance(clip, dict):
             raise ValueError("Each audio clip must be an object.")
+        volume = float(clip.get("volume", 1))
+        if not math.isfinite(volume) or not 0 <= volume <= 2:
+            raise ValueError("Audio clip volume must be between 0 and 2 (0% to 200%).")
+        if clip.get("muted"):
+            volume = 0
+        included = clip.get("include_in_generation", clip.get("role", "dialogue") == "dialogue")
         path = os.path.abspath(str(clip.get("path") or ""))
         start = float(clip.get("start", 0))
         source_start = float(clip.get("source_start", 0))
@@ -35,8 +41,10 @@ def prepare_audio_clip_mix(payload: dict[str, Any]) -> dict[str, Any]:
         if not os.path.isfile(path):
             raise FileNotFoundError(f"Audio clip source not found: {path}")
         duration = max(duration, start + length)
+        if payload.get("generation_only") and not included:
+            continue
         normalized.append({"path": path, "start": start, "source_start": source_start,
-                           "duration": length, "mtime": os.stat(path).st_mtime_ns})
+                           "duration": length, "volume": volume, "mtime": os.stat(path).st_mtime_ns})
     key = hashlib.sha256(json.dumps([normalized, duration], sort_keys=True).encode()).hexdigest()[:24]
     folder = os.path.join(os.path.abspath(project), "project_audio", "clip_edits")
     os.makedirs(folder, exist_ok=True)
@@ -52,6 +60,7 @@ def prepare_audio_clip_mix(payload: dict[str, Any]) -> dict[str, Any]:
         delay = round(clip["start"] * 44100)
         filters.append(f"[{index}:a]aresample=44100,aformat=channel_layouts=stereo,"
                        f"atrim=duration={clip['duration']:.9f},asetpts=PTS-STARTPTS,"
+                       f"volume={clip['volume']:.9f},"
                        f"adelay={delay}S:all=1[c{index}]")
     inputs = "[silence]" + "".join(f"[c{index}]" for index in range(1, len(normalized) + 1))
     filters.append(f"{inputs}amix=inputs={len(normalized) + 1}:duration=first:normalize=0[out]")

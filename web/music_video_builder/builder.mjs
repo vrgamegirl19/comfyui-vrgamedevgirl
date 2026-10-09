@@ -868,7 +868,7 @@ export function openBuilder(node, options = {}) {
   const {
     addOverlaySegmentButton, addSegmentButton, addTimelineMarkerButton, audioMaskButton, beatMarkersButton, bulkSegmentsButton, stemMonitorButton, stemVisibilityButton, stemLayer,
     clearRangeButton, closeTimelineGapsButton, deleteAllSegmentsButton, deleteAllTimelineImagesButton,
-    deleteAllTimelineVideosButton, deleteSegmentButton, freezeTimingControl, globalAudioMuteButton,
+    deleteAllTimelineVideosButton, deleteSegmentButton, freezeTimingControl, globalAudioMuteButton, addAudioClipButton,
     globalScrub, globalScrubTime, idLoraTrimModeButton, lyricNoteButton, locationThumbnailButton, multiSelectButton,
     multiSelectHintButton, overlayTrackHintButton, overlayTrackToggleButton, playButton, playhead, redoButton,
     refreshDeleteActions, sceneNoteButton, segmentLayer, setInButton, setOutButton, snapSceneEdgeButton,
@@ -1512,7 +1512,7 @@ export function openBuilder(node, options = {}) {
   });
 
   const { renderAudioClips, registerSceneAudio } = createAudioClipEditor({
-    state, projectInput, pushHistory,
+    state, projectInput, pushHistory, addAudioClipButton,
     currentGlobalTime: (...args) => currentGlobalTime(...args),
     render: (...args) => render(...args),
     autoSaveSessionQuiet: (...args) => autoSaveSessionQuiet(...args),
@@ -2855,6 +2855,7 @@ export function openBuilder(node, options = {}) {
     useVisionReference,
   });
   wireToolbar({
+    render,
     activeSegment, addOverlaySegment, addOverlaySegmentButton, addSegment, addSegmentButton,
     addTimelineMarkerButton, addTimelineMarkerFromSelection, applyBuilderFullscreen, autoBuildButton,
     autoLoadAll, autoLoadAllButton, autoSaveControl, autoSaveSessionQuiet, branchProject, branchProjectButton,

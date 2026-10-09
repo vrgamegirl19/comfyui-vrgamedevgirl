@@ -1,3 +1,4 @@
+import { speakingAudioEditsActive } from "./audio_clip_editor.mjs";
 import { GEMMA_VIDEO_PROMPT_TIMEOUT_MS, postJson } from "./comfy_api.mjs";
 import { escapeHtml, normalizeProjectVideoEngine, setWidgetValue, toast } from "./controls.mjs";
 import { formatTime } from "./format.mjs";
@@ -1093,7 +1094,7 @@ export function createSceneRenderPrep({
   }
 
   async function ensureAudioOrOfferSilentTimeline(options = {}) {
-    if (Array.isArray(state.audioClips)) return true;
+    if (speakingAudioEditsActive(state)) return true;
     if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") {
       const targetScenes = audioFallbackTargetScenes(options);
       if (targetScenes.length && targetScenes.every((segment) => miniMaxH3SettingsForSegment(segment).audio_mode === "built_in_audio")) return true;
@@ -1165,9 +1166,9 @@ export function createSceneRenderPrep({
   }
 
   async function prepareSceneAudioMix(progress, label = "Preparing scene audio mix", options = {}) {
-    if (Array.isArray(state.audioClips)) {
+    if (speakingAudioEditsActive(state)) {
       const { prepareEditedAudio } = await import("./audio_clip_editor.mjs");
-      const edited = await prepareEditedAudio(state, projectInput.value || state.projectFolder);
+      const edited = await prepareEditedAudio(state, projectInput.value || state.projectFolder, { generation: true });
       return { audioPath: edited.audio_path, srtPath: state.srtPath || srtInput.value, usedSceneAudio: true };
     }
     const sceneAudioMode = usingSceneAudioMode();

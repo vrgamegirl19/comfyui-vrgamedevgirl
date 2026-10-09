@@ -169,6 +169,8 @@ export function createHistory({
     state.audioClips = Array.isArray(data.audioClips) ? data.audioClips : null;
     state.audioClipMixPath = "";
     state.audioClipMixKey = "";
+    state.audioClipGenerationMixPath = "";
+    state.audioClipGenerationMixKey = "";
     state.overlaySegments = data.overlaySegments || data.overlay_segments || [];
     state.overlaySegments.forEach(normalizeOverlayClip);
     state.overlayTrack = normalizeOverlayTrackState(data.overlayTrack || data.overlay_track || state.overlayTrack);

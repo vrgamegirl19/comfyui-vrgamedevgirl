@@ -34,6 +34,7 @@ import { parseBulkTimeValue } from "./timeline_actions.mjs";
 import { audioChunkDuration, audioTimelineStart, markerEnd, normalizeTimelineMarkers } from "./timeline_state.mjs";
 import { mappedLocation } from "./scene_locations.mjs";
 import { createTimelineToolWindows } from "./timeline_tool_windows.mjs";
+import { speakingAudioEditsActive, speakingAudioLaneCount } from "./audio_clip_editor.mjs";
 import {
   STEM_COLORS, STEM_LABELS, getStemLanes, requestOpenAudioMask, requestStemEdit, stemRowNames,
 } from "./audio_mask_store.mjs";
@@ -48,6 +49,7 @@ const STEM_MIN_REGION_SECONDS = 0.02;
 // below it. Both are empty or 0 when no stem tracks are shown.
 let stemRowList = [];
 let stemBandHeight = 0;
+let additionalAudioHeight = 0;
 
 export function shiftSegmentTiming(segment, delta) {
   const amount = Number(delta || 0);
@@ -60,7 +62,7 @@ export function shiftSegmentTiming(segment, delta) {
 }
 
 function timelineNoteTop() {
-  return TIMELINE_SCENE_AUDIO_TOP + TIMELINE_SCENE_AUDIO_HEIGHT + stemBandHeight + TIMELINE_NOTE_GAP;
+  return TIMELINE_SCENE_AUDIO_TOP + TIMELINE_SCENE_AUDIO_HEIGHT + additionalAudioHeight + stemBandHeight + TIMELINE_NOTE_GAP;
 }
 
 // Drawn stem tracks, reused between timeline redraws while nothing about them has changed. A redraw happens on every scene
@@ -292,6 +294,9 @@ export function buildTimelineView({ overlay, preview, previewStage, getDeleteAva
   timelineResizeHandle.title = "Drag to resize timeline";
   timelineResizeHandle.style.cssText = "cursor:row-resize;background:#18181b;border-bottom:1px solid #27272a;";
   const timelineHeader = document.createElement("div");
+  const addAudioClipButton = makeButton("+ Audio Clip");
+  addAudioClipButton.style.display = "none";
+  addAudioClipButton.title = "Speaking / Short Film: add dialogue, music, or effects at the playhead.";
   const freezeTimingControl = makeCheckbox("Freeze SRT timing", false);
   freezeTimingControl.wrapper.style.cssText += "margin-left:auto;flex:0 0 auto;";
   freezeTimingControl.wrapper.title = "Lock all scene start/end times. Uncheck to adjust scene lengths.";
@@ -473,7 +478,7 @@ export function buildTimelineView({ overlay, preview, previewStage, getDeleteAva
   addOverlaySegmentButton.textContent = "+ Overlay Track";
   timelineToolRail.append(bulkSegmentsButton, sceneNoteButton, videoNoteButton, lyricNoteButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton, audioMaskButton, stemMonitorButton, stemVisibilityButton);
   timelineHeader.append(toolsButton, splitSceneButton, idLoraTrimModeButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineStatusInfo, deleteSegmentButton, deleteAllButton);
-  timelineHeader.append(freezeTimingControl.wrapper);
+  timelineHeader.append(addAudioClipButton, freezeTimingControl.wrapper);
   const timelineBody = document.createElement("div");
   timelineBody.style.cssText = "display:grid;grid-template-columns:auto minmax(0,1fr);min-height:0;overflow:hidden;";
   const timelineViewport = document.createElement("div");
@@ -495,7 +500,7 @@ export function buildTimelineView({ overlay, preview, previewStage, getDeleteAva
   return {
     addOverlaySegmentButton, addSegmentButton, addTimelineMarkerButton, audioMaskButton, beatMarkersButton, bulkSegmentsButton, stemMonitorButton, stemVisibilityButton,
     clearRangeButton, closeTimelineGapsButton, deleteAllSegmentsButton, deleteAllTimelineImagesButton,
-    deleteAllTimelineVideosButton, deleteSegmentButton, freezeTimingControl, globalAudioMuteButton,
+    deleteAllTimelineVideosButton, deleteSegmentButton, freezeTimingControl, globalAudioMuteButton, addAudioClipButton,
     globalScrub, globalScrubTime, idLoraTrimModeButton, lyricNoteButton, locationThumbnailButton, multiSelectButton,
     multiSelectHintButton, overlayTrackHintButton, overlayTrackToggleButton, playButton, playhead, redoButton,
     refreshDeleteActions, sceneNoteButton, segmentLayer, setInButton, setOutButton, snapSceneEdgeButton,
@@ -635,6 +640,7 @@ export function createTimelineView({
 
   // The band for stem lanes exists only while some scene has stems and the Audio Mask window's switch is on.
   function refreshStemBand() {
+    additionalAudioHeight = (speakingAudioLaneCount(state) - 1) * (TIMELINE_SCENE_AUDIO_HEIGHT + 4);
     const names = state.showTimelineStems !== false ? stemRowNames(state.segments.map((segment) => segment.id)) : [];
     stemRowList = names.length ? [...names, "mix"] : [];
     stemBandHeight = stemRowList.length ? stemRowList.length * (STEM_ROW_HEIGHT + STEM_ROW_GAP) + 6 : 0;
@@ -675,7 +681,7 @@ export function createTimelineView({
     if (stemRowList.length) {
       const from = timelineViewport.scrollLeft - STEM_RENDER_MARGIN_PX;
       const to = timelineViewport.scrollLeft + timelineViewport.clientWidth + STEM_RENDER_MARGIN_PX;
-      const bandTop = TIMELINE_SCENE_AUDIO_TOP + TIMELINE_SCENE_AUDIO_HEIGHT + 4;
+      const bandTop = TIMELINE_SCENE_AUDIO_TOP + TIMELINE_SCENE_AUDIO_HEIGHT + additionalAudioHeight + 4;
       for (const segment of state.segments) {
         const left = segment.start * state.pxPerSecond;
         const rowWidth = Math.max(24, Math.floor((segment.end - segment.start) * state.pxPerSecond));
@@ -757,7 +763,7 @@ export function createTimelineView({
     if (timelineMarkerLaneVisible()) return timelineMarkerTop() + TIMELINE_MARKER_HEIGHT + 14;
     if (state.showTimelineVideoNotes) return timelineVideoNoteTop() + TIMELINE_NOTE_HEIGHT + 14;
     if (state.showTimelineSceneNotes) return timelineNoteTop() + TIMELINE_NOTE_HEIGHT + 14;
-    return TIMELINE_SCENE_AUDIO_TOP + TIMELINE_SCENE_AUDIO_HEIGHT + stemBandHeight + 14;
+    return TIMELINE_SCENE_AUDIO_TOP + TIMELINE_SCENE_AUDIO_HEIGHT + additionalAudioHeight + stemBandHeight + 14;
   }
 
   function snapTimeToBeat(time) {
@@ -1081,7 +1087,7 @@ export function createTimelineView({
   let drawnWaveformPeaks = null;
 
   function drawWaveform() {
-    const waveformPeaks = Array.isArray(state.audioClips) ? (state.audioClipMixPeaks || []) : state.peaks;
+    const waveformPeaks = speakingAudioEditsActive(state) ? (state.audioClipMixPeaks || []) : state.peaks;
     const height = timelineHeight();
     const width = Math.max(900, Math.ceil(Math.max(1, timelineDuration()) * state.pxPerSecond));
     const audioWidth = currentProjectAudioPath() && waveformPeaks.length
@@ -1528,7 +1534,7 @@ export function createTimelineView({
         };
         segmentLayer.append(lyricBox);
       }
-      if (!isOverlay && segment.custom_audio_peaks?.length && state.videoType !== "speaking" && !Array.isArray(state.audioClips)) {
+      if (!isOverlay && segment.custom_audio_peaks?.length && state.videoType !== "speaking") {
         const audioStart = audioTimelineStart(segment);
         const audioDuration = Math.max(0.1, audioChunkDuration(segment));
         const audioLeft = audioStart * state.pxPerSecond;

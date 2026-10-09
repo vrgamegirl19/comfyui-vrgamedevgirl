@@ -10,7 +10,7 @@ import { DEFAULT_LTX_INGREDIENTS_HEIGHT, DEFAULT_LTX_INGREDIENTS_WIDTH } from ".
 import { makeButton, makeField, makeInput, normalizeProjectVideoEngine, toast } from "./controls.mjs";
 import { showFinalVideoReadyModal } from "./dialogs.mjs";
 import { audioMaskInUse } from "./audio_mask_store.mjs";
-import { prepareEditedAudio } from "./audio_clip_editor.mjs";
+import { prepareEditedAudio, prepareEmbeddedAudioWithClips, speakingAudioEditsActive } from "./audio_clip_editor.mjs";
 import { formatTime } from "./format.mjs";
 import { rtvReferenceImagePayload } from "./image_references.mjs";
 import { miniMaxI2VLastFrame, miniMaxI2VFramePaths } from "./minimax_keyframe_state.mjs";
@@ -92,7 +92,7 @@ export function createVideoRender({
   validateSrtTimingForSceneVideo, videoModeDisplayLabel, videoTriggerPhraseForSegment,
 }) {
   async function renderSceneVideoWithProgress(segment, sceneIndex, progress, options = {}) {
-    const editedAudio = await prepareEditedAudio(state, projectInput.value || state.projectFolder);
+    const editedAudio = await prepareEditedAudio(state, projectInput.value || state.projectFolder, { generation: true });
     const progressBase = Number(options.progressBase ?? 0);
     const progressSpan = Number(options.progressSpan ?? 100);
     const batchLabel = options.batchLabel ? `${options.batchLabel}\n` : "";
@@ -525,8 +525,8 @@ export function createVideoRender({
     if (Math.abs(Number(saved.mix.duration_seconds) - sceneSeconds) > 0.02) {
       throw new Error(`${sceneLabel}: the scene length changed after its Audio Mask was built. Open Audio Mask, split again and rebuild.`);
     }
-    if (Array.isArray(state.audioClips) && (
-      saved.separation?.source_path !== state.audioClipMixPath
+    if (speakingAudioEditsActive(state) && (
+      saved.separation?.source_path !== state.audioClipGenerationMixPath
       || Math.abs(Number(saved.separation?.start_seconds) - Number(segment.start || 0)) > 0.02
     )) {
       throw new Error(`${sceneLabel}: audio clips changed after its Audio Mask was built. Split again and rebuild the mask.`);
@@ -589,7 +589,7 @@ export function createVideoRender({
   }
 
   async function renderMiniMaxSceneVideoWithProgress(segment, sceneIndex, progress, options = {}) {
-    const editedAudio = await prepareEditedAudio(state, projectInput.value || state.projectFolder);
+    const editedAudio = await prepareEditedAudio(state, projectInput.value || state.projectFolder, { generation: true });
     // The panel can still contain a newer value than the project object when a
     // render is started immediately after editing a field. Flush the active
     // scene one last time before taking the settings snapshot used to build
@@ -1193,10 +1193,14 @@ export function createVideoRender({
         source_start: Math.max(0, Number(segment.overlay_source_start || 0)),
         label: segment.label || `Insert ${index + 1}`,
       }));
-    const globalAudioPath = currentProjectAudioPath();
+    let globalAudioPath = currentProjectAudioPath();
     const miniMaxBuiltInAudioMode = miniMaxProject && baseSegments.length > 0
       && baseSegments.every((segment) => miniMaxH3SettingsForSegment(segment).audio_mode === "built_in_audio");
-    const embeddedSceneAudioMode = miniMaxBuiltInAudioMode || (!miniMaxProject && currentVideoMode() === "id_lora") || !!options.useEmbeddedSceneAudio;
+    let embeddedSceneAudioMode = miniMaxBuiltInAudioMode || (!miniMaxProject && currentVideoMode() === "id_lora") || !!options.useEmbeddedSceneAudio;
+    if (embeddedSceneAudioMode && paths.every(Boolean)) {
+      const mixed = await prepareEmbeddedAudioWithClips(state, projectInput.value || state.projectFolder, baseSegments, paths);
+      if (mixed) { globalAudioPath = mixed.audio_path; embeddedSceneAudioMode = false; }
+    }
     const sceneAudioMode = !embeddedSceneAudioMode && !globalAudioPath && usingSceneAudioMode();
     const audioPaths = sceneAudioMode ? baseSegments.map((segment) => String(segment.custom_audio_path || "").trim()) : [];
     const audioItems = sceneAudioMode ? baseSegments.map((segment) => ({
@@ -1298,7 +1302,7 @@ export function createVideoRender({
     if (!idLoraMode && !(await ensureAudioOrOfferSilentTimeline({ segment }))) return;
     const missing = [
       ...validateSceneReadyForVideo(segment, sceneIndex),
-      ...(!idLoraMode && ((!Array.isArray(state.audioClips) && !String(segment.custom_audio_path || currentProjectAudioPath() || audioInput.value || "").trim()) || !String(projectInput.value || "").trim()) ? ["Load global audio or add custom audio for this scene, and set the project folder first."] : []),
+      ...(!idLoraMode && ((!speakingAudioEditsActive(state) && !String(segment.custom_audio_path || currentProjectAudioPath() || audioInput.value || "").trim()) || !String(projectInput.value || "").trim()) ? ["Load global audio or add custom audio for this scene, and set the project folder first."] : []),
       ...(idLoraMode && !String(projectInput.value || "").trim() ? ["Project folder is missing."] : []),
     ];
     if (missing.length) {
@@ -1377,7 +1381,7 @@ export function createVideoRender({
     const missing = validateMiniMaxSceneReadyForVideo(segment, sceneIndex);
     if (!String(projectInput.value || state.projectFolder || "").trim()) missing.push("Project folder is missing.");
     if (miniMaxH3SettingsForSegment(segment).audio_mode !== "built_in_audio"
-      && !Array.isArray(state.audioClips)
+      && !speakingAudioEditsActive(state)
       && !String(segment.custom_audio_path || currentProjectAudioPath() || audioInput.value || "").trim()) {
       missing.push("Load global audio or add custom audio for this scene.");
     }

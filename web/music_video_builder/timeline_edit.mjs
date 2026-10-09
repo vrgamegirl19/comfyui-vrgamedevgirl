@@ -172,7 +172,7 @@ export function createTimelineEdit({
             scene_number: sceneNumber,
             audio_data: String(reader.result || ""),
             audio_name: file.name || "scene_audio.wav",
-            preserve_source: state.videoType === "speaking" || Array.isArray(state.audioClips),
+            preserve_source: state.videoType === "speaking",
           }, 180000);
           if ((projectInput.value || state.projectFolder) !== projectFolder || !state.segments.includes(segment)) return;
           pushHistory();
