@@ -11,6 +11,26 @@ function fixture() {
   vm.runInContext(readBuilderModule('minimax_h3.mjs'), c);
   return c;
 }
+
+test('masked continuation resets extra frames on selection and project reload', () => {
+  const c = fixture();
+  for (const continuity_mode of ['latent_continuation_masked', 'latent_masked']) {
+    const settings = c.cloneMiniMaxH3Settings({ continuity_mode, warmup_frames: 12, cooldown_frames: 8 });
+    assert.equal(settings.warmup_frames, 0);
+    assert.equal(settings.cooldown_frames, 0);
+    const reloaded = c.cloneMiniMaxH3Settings(JSON.parse(JSON.stringify(settings)));
+    assert.equal(reloaded.warmup_frames, 0);
+    assert.equal(reloaded.cooldown_frames, 0);
+  }
+  const independent = c.cloneMiniMaxH3Settings({ continuity_mode: 'off', warmup_frames: 12, cooldown_frames: 8 });
+  assert.equal(independent.warmup_frames, 12);
+  assert.equal(independent.cooldown_frames, 8);
+  for (const video_mode of ['image_to_video', 'image_reference_to_video']) {
+    const unsupported = c.cloneMiniMaxH3Settings({ video_mode, continuity_mode: 'latent_continuation_masked', warmup_frames: 12, cooldown_frames: 8 });
+    assert.equal(unsupported.warmup_frames, 12);
+    assert.equal(unsupported.cooldown_frames, 8);
+  }
+});
 test('all three mode profiles survive switching and project JSON reload', () => {
   const c = fixture();
   let settings = c.cloneMiniMaxH3Settings({ video_mode: 'reference_to_video', render_pass: 'single', steps: 17, use_te_speed: true, ref_image_size: 'match' });
