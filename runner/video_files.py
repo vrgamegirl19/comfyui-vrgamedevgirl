@@ -1,5 +1,6 @@
 """Rendered scene video files: collecting, trimming, color matching, thumbnails, stitching and slideshows."""
 
+import json
 import math
 import os
 import re
@@ -41,6 +42,33 @@ def _probe_video_size(video_path, ffmpeg_path=None):
     text = (result.stdout or "").strip().splitlines()[0]
     width_text, height_text = text.lower().split("x", 1)
     return int(width_text), int(height_text)
+
+
+def _probe_output_media(video_path, ffmpeg_path=None):
+    """Width, height, video duration and audio duration of a written file, from ffprobe (0 where unknown)."""
+    info = {"width": 0, "height": 0, "video_duration": 0.0, "audio_duration": 0.0}
+    cmd = [
+        _ffprobe_path_for(ffmpeg_path), "-v", "error",
+        "-show_entries", "stream=codec_type,width,height,duration", "-of", "json", video_path,
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, errors="replace", check=True)
+        streams = json.loads(result.stdout or "{}").get("streams") or []
+    except (OSError, subprocess.CalledProcessError, ValueError):
+        return info
+    for stream in streams:
+        kind = stream.get("codec_type")
+        try:
+            duration = float(stream.get("duration") or 0)
+        except (TypeError, ValueError):
+            duration = 0.0
+        if kind == "video" and not info["width"]:
+            info["width"] = int(stream.get("width") or 0)
+            info["height"] = int(stream.get("height") or 0)
+            info["video_duration"] = duration
+        elif kind == "audio" and not info["audio_duration"]:
+            info["audio_duration"] = duration
+    return info
 
 
 def _normalize_video_canvas(ffmpeg_path, source_path, target_path, width, height):
@@ -1174,6 +1202,8 @@ def _stitch_scene_videos(payload):
             except Exception:
                 pass
     removed_scratch_folders = _cleanup_video_scratch_folders(project_folder, keep_folders=[target_dir])
+    # Describe the file that was written, not the request (a MiniMax stitch asks for no canvas size: 0 x 0).
+    output_media = _probe_output_media(final_output, ffmpeg_path)
 
     return {
         "final_video_path": final_output,
@@ -1187,8 +1217,10 @@ def _stitch_scene_videos(payload):
         "timeline_frame_sync": bool(timeline_sync_paths),
         "timeline_fps": timeline_fps if timeline_sync_paths else 0,
         "timeline_frame_count": timeline_sync_frame_count,
-        "output_width": target_width,
-        "output_height": target_height,
+        "output_width": output_media["width"] or target_width,
+        "output_height": output_media["height"] or target_height,
+        "output_duration": output_media["video_duration"],
+        "output_audio_duration": output_media["audio_duration"],
         "removed_scratch_folders": removed_scratch_folders,
     }
 
