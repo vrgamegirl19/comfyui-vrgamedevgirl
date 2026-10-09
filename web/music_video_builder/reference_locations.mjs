@@ -94,13 +94,16 @@ export function createReferenceLocations({
   const refmodPipeline = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3"
     && normalizeMiniMaxH3Pipeline(state.miniMaxH3Settings?.pipeline) === "refmod";
 
-  function createLocation(name = "", description = "") {
+  // A location starts as a reference image card. Only the Add Location button passes { source: "refmod" } in the RefMod
+  // pipeline, because that location is going to pick a saved background RefMod. A location that comes from text (a GPT or
+  // Gemma list, an imported file or a scene map) has no images to build a RefMod from, so it stays an image card.
+  function createLocation(name = "", description = "", { source = "image" } = {}) {
     refs.locations_cleared = false;
     const location = {
       id: `loc_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
       name: String(name || `Location ${refs.locations.length + 1}`).trim(),
       description: String(description || "").trim(),
-      source: refmodPipeline ? "refmod" : "image",
+      source: refmodPipeline && source === "refmod" ? "refmod" : "image",
       image: { path: "", data: "", name: "" },
     };
     refs.locations.push(location);
