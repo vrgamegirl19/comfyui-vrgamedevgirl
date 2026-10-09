@@ -24,6 +24,8 @@ import {
   normalizeIdLoraReferenceBuilder,
 } from "./reference_data.mjs";
 import { newSegment, normalizeVideoPromptOrigin, sortSegments } from "./segments.mjs";
+import { refmodCardFields } from "./refmod_labels.mjs";
+import { storyboardSceneCardContext, STORYBOARD_SCENE_CARD_CONTEXT_INSTRUCTION } from "../storyboard_builder/scenes.mjs";
 
 export let ACTIVE_STORYBOARD_PROMPT_PIPELINE = null;
 
@@ -53,7 +55,7 @@ export function createStoryboardBridge({
     const storyboardOpeningMiniMaxMode = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3"
       ? miniMaxH3ModeForSegment(activeSegment())
       : "";
-    const applyStoryboardReferenceMappings = (updates = {}) => {
+    const applyStoryboardReferenceMappings = (updates = {}, { saveProject = true, replaceCatalog = false } = {}) => {
       const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
       const incomingSource = updates.reference_builder || updates.referenceBuilder || {};
       const normalizeIncomingImage = (item = {}) => {
@@ -83,6 +85,8 @@ export function createStoryboardBridge({
               id: String(item.id || item.name || `storyboard_ref_${index + 1}`),
               name: String(item.name || `Reference ${index + 1}`),
               description: String(item.description || ""),
+              minimax_voice: item.minimax_voice && typeof item.minimax_voice === "object" ? { ...item.minimax_voice } : {},
+              ...refmodCardFields(item),
               trigger_phrase: String(item.trigger_phrase || item.trigger || item.Trigger || ""),
               trigger_position: String(item.trigger_position || item.triggerPosition || item.trigger_placement || "start") === "end" ? "end" : "start",
               image: normalizeIncomingImage(item),
@@ -115,11 +119,18 @@ export function createStoryboardBridge({
         }
         return Array.from(byKey.values());
       };
-      if (incomingRefs.subjects.length) {
+      if (replaceCatalog) {
+        const subjectIds = new Set(incomingRefs.subjects.map((item) => item.id));
+        const linkedReferences = refs.subjects.filter((item) => subjectIds.has(item.extra_reference_for));
+        refs.subjects = [...incomingRefs.subjects, ...linkedReferences];
+        refs.subject_count = refs.subjects.length;
+        refs.locations = incomingRefs.locations;
+        refs.locations_cleared = Boolean(incomingSource.locations_cleared);
+      } else if (incomingRefs.subjects.length) {
         refs.subjects = mergeReferenceList(refs.subjects, incomingRefs.subjects);
         refs.subject_count = refs.subjects.length;
       }
-      if (incomingRefs.locations.length && !refs.locations_cleared) {
+      if (!replaceCatalog && incomingRefs.locations.length && !refs.locations_cleared) {
         refs.locations = mergeReferenceList(refs.locations, incomingRefs.locations);
       }
       if (!refs.subject_scene_map || typeof refs.subject_scene_map !== "object") refs.subject_scene_map = {};
@@ -128,7 +139,7 @@ export function createStoryboardBridge({
       const segments = allEditableSegments();
       for (const item of Array.isArray(updates.scenes) ? updates.scenes : []) {
         const segment = segments.find((candidate) => candidate.id === item.id)
-          || segments.find((candidate, index) => Number(index + 1) === Number(item.scene_number));
+          || (!replaceCatalog && !item.id && segments.find((candidate, index) => Number(index + 1) === Number(item.scene_number)));
         if (!segment) continue;
         segment.no_character_present = Boolean(item.no_character_present || item.noCharacterPresent || item.no_subject || item.no_visible_subject);
         const validSubjectIds = new Set((refs.subjects || []).map((subject) => String(subject.id || "").trim()).filter(Boolean));
@@ -146,15 +157,15 @@ export function createStoryboardBridge({
       }
       state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
       render();
-      autoSaveSessionQuiet("Storyboard reference mapping update");
+      if (saveProject) autoSaveSessionQuiet("Storyboard reference mapping update");
     };
-    const applyStoryboardPrompts = (updates = {}) => {
+    const applyStoryboardPrompts = (updates = {}, { saveSceneEdits = false } = {}) => {
       const segments = allEditableSegments()
         .slice()
         .sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
       // Storyboard prompt/beat application is allowed to update visual fields,
-      // but it must never import lyric text from its older storyboard payload.
-      // Keep the live line-review text as the source of truth for this operation.
+      // Keep live lyrics during implicit prompt/beat exports. Explicit Save
+      // Storyboard opts into applying the user's current scene edits below.
       const lyricTextBySegmentId = new Map(
         segments.map((segment) => [String(segment.id || ""), String(segment.lyric_text || "")]),
       );
@@ -224,7 +235,7 @@ export function createStoryboardBridge({
       }
       for (const scene of Array.isArray(updates.scenes) ? updates.scenes : []) {
         const segment = segments.find((candidate) => candidate.id === scene.id)
-          || segments.find((candidate, index) => Number(index + 1) === Number(scene.scene_number));
+          || (!saveSceneEdits && segments.find((candidate, index) => Number(index + 1) === Number(scene.scene_number)));
         if (!segment) continue;
         ensureSegmentRuntimeFields(segment);
         if (Object.prototype.hasOwnProperty.call(scene, "lyric_no_lip_sync") || Object.prototype.hasOwnProperty.call(scene, "no_lip_sync")) {
@@ -234,6 +245,31 @@ export function createStoryboardBridge({
           segment.minimax_speaker_assignments = normalizeMiniMaxSpeakerAssignments(scene.speaker_assignments || scene.minimax_speaker_assignments || scene.dialogue_cues);
           syncMiniMaxSpeakerAssignmentLegacyFields(segment);
           speakerChanged = true;
+        }
+        if (saveSceneEdits) {
+          segment.label = String(scene.label ?? segment.label);
+          segment.lyric_text = String(scene.lyrics ?? segment.lyric_text);
+          segment.lyric_section = String(scene.lyric_section ?? "");
+          segment.lyric_singers = Array.isArray(scene.lyric_singers) ? [...scene.lyric_singers] : [];
+          segment.lyric_instrumental = Boolean(scene.lyric_instrumental);
+          segment.lyric_cue_map = Array.isArray(scene.lyric_cue_map) ? scene.lyric_cue_map.map((cue) => ({ ...cue })) : [];
+          segment.lyric_shot_word_timing_enabled = Boolean(scene.lyric_shot_word_timing_enabled);
+          segment.lyric_performance_mode = String(scene.lyric_performance_mode ?? "");
+          segment.performance_mode = scene.performance_mode;
+          segment.performance_style = scene.performance_style;
+          segment.character_motion = String(scene.character_motion ?? "");
+          segment.shot_type = String(scene.shot_type ?? "");
+          segment.camera_motion = String(scene.camera_motion ?? "");
+          segment.include_microphone = Boolean(scene.include_microphone);
+          segment.flf_start_state = String(scene.flf_start_state ?? "");
+          segment.flf_transformation = String(scene.flf_transformation ?? "");
+          segment.flf_end_state = String(scene.flf_end_state ?? "");
+          segment.flf_carry_forward = String(scene.flf_carry_forward ?? "");
+          segment.notes = String(scene.notes ?? "");
+          segment.timeline_note = String(scene.timeline_note ?? "");
+          segment.i2v_notes = String(scene.motion_summary ?? "");
+          segment.video_notes = segment.i2v_notes;
+          lyricTextBySegmentId.set(String(segment.id || ""), segment.lyric_text);
         }
         const imagePrompt = String(scene.image_prompt || "").trim();
         const videoPrompt = String(scene.video_prompt || scene.i2v_prompt || scene.t2v_prompt || "").trim();
@@ -269,13 +305,13 @@ export function createStoryboardBridge({
         if (Object.prototype.hasOwnProperty.call(scene, "video_style_custom")) segment.minimax_h3_video_style_custom = String(scene.video_style_custom || "").trim();
         if (Object.prototype.hasOwnProperty.call(scene, "temporal_world_effect_override")) segment.temporal_world_effect_override = String(scene.temporal_world_effect_override || "global").trim();
         if (Object.prototype.hasOwnProperty.call(scene, "temporal_world_effect_custom")) segment.temporal_world_effect_custom = String(scene.temporal_world_effect_custom || "").trim();
-        if (imagePrompt) {
+        if (imagePrompt || saveSceneEdits) {
           setSegmentPromptForEdit(segment, "t2i", imagePrompt);
           applied += 1;
         }
-        if (videoPrompt) {
+        if (videoPrompt || saveSceneEdits) {
           if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") {
-            segment.minimax_h3_prompt = applyMiniMaxH3NativeVoiceBlock(videoPrompt, segment);
+            segment.minimax_h3_prompt = videoPrompt ? applyMiniMaxH3NativeVoiceBlock(videoPrompt, segment) : "";
             segment.minimax_h3_prompt_origin = normalizeVideoPromptOrigin(scene.video_prompt_origin);
           } else {
             setSegmentPromptForEdit(segment, "i2v", videoPrompt, {
@@ -303,7 +339,7 @@ export function createStoryboardBridge({
         ensureAllSegmentRuntimeFields();
         syncInspector();
         render();
-        autoSaveSessionQuiet(applied ? "Storyboard prompt export" : "Storyboard scene beat export");
+        if (!saveSceneEdits) autoSaveSessionQuiet(applied ? "Storyboard prompt export" : "Storyboard scene beat export");
         if (applied) toast(`Storyboard prompts copied into Video Builder for ${applied} prompt field${applied === 1 ? "" : "s"}.`);
         else if (beatChanged) toast("Storyboard scene beats copied into Video Builder.");
       }
@@ -388,6 +424,7 @@ export function createStoryboardBridge({
       add(parts, "Storyboard first-frame visual inventory", selectedScene.first_frame_visual_inventory?.text || "");
       add(parts, "Exact manual audio / sound direction", selectedScene.audio_direction || scene.audio_direction);
       add(parts, "Exact manual continuity requirements", selectedScene.continuity || scene.continuity || scene.continuity_direction);
+      parts.push(`${STORYBOARD_SCENE_CARD_CONTEXT_INSTRUCTION}\nComplete scene_card:\n${JSON.stringify(storyboardSceneCardContext(scene), null, 2)}`);
       return parts.join("\n\n");
     };
     const ensureStoryboardRequiredStartingShot = (prompt, segment, scene = {}, storyboardPayload = {}) => {
@@ -492,7 +529,10 @@ export function createStoryboardBridge({
     const storyboardSceneCloneForI2V = (segment, scene = {}) => {
       const clone = {
         ...segment,
-        lyric_text: String(scene.lyrics || scene.lyric_text || segment.lyric_text || "").trim(),
+        timeline_note: String(scene.timeline_note ?? segment.timeline_note ?? ""),
+        notes: String(scene.notes ?? segment.notes ?? ""),
+        i2v_notes: String(scene.motion_summary ?? segment.i2v_notes ?? ""),
+        lyric_text: String(scene.lyrics ?? scene.lyric_text ?? segment.lyric_text ?? "").trim(),
         lyric_section: String(scene.lyric_section || scene.section || scene.song_section || segment.lyric_section || "").trim(),
         lyric_singers: Array.isArray(segment.lyric_singers) && segment.lyric_singers.length
           ? [...segment.lyric_singers]
@@ -554,8 +594,8 @@ export function createStoryboardBridge({
       if (imagePrompt) {
         clone.t2i_prompt = imagePrompt;
         clone.flux_prompt = imagePrompt;
-        clone.notes = imagePrompt;
-      } else if (clone.prompt_summary && !String(clone.notes || "").trim()) {
+        if (!Object.prototype.hasOwnProperty.call(scene, "notes")) clone.notes = imagePrompt;
+      } else if (!Object.prototype.hasOwnProperty.call(scene, "notes") && clone.prompt_summary && !String(clone.notes || "").trim()) {
         clone.notes = clone.prompt_summary;
       }
       return clone;
@@ -924,6 +964,7 @@ export function createStoryboardBridge({
       return { message: `Created ${nextSegments.length} MiniMax timeline segment${nextSegments.length === 1 ? "" : "s"} from the reviewed storyboard.` };
     };
     const storyboardRunnerSettings = textGemmaRunnerPayload();
+    const storyboardProjectFolder = activeProjectFolderForSave();
     const storyboardUsesQwen = state.textGemmaRunner === "qwen_local";
     const storyboardSelectedModel = storyboardUsesQwen
       ? String(storyboardRunnerSettings.qwen_model_file || "").trim()
@@ -937,15 +978,33 @@ export function createStoryboardBridge({
       allowImagePrep: options.allowImagePrep,
       onClose: options.onClose,
       onFocusedSave: async (updates) => {
-        applyStoryboardPrompts(updates);
-        await saveSession({ quiet: true, throwOnError: true });
+        applyStoryboardReferenceMappings({
+          ...updates,
+          scenes: updates.scenes.map((scene) => ({
+            ...scene,
+            subject_ids: (scene.subject_refs || []).map((ref) => ref.id),
+            location_id: scene.location_ref?.id || "",
+          })),
+        }, { saveProject: false, replaceCatalog: true });
+        applyStoryboardPrompts(updates, { saveSceneEdits: true });
+        const result = await saveSession({ quiet: true, throwOnError: true });
+        if (result?.stale) throw new Error("The project changed during save. Press Save Storyboard again to save the latest edits.");
       },
       focusSceneId: String(options.focusSceneId || "").trim(),
       projectFolder: projectInput.value || state.projectFolder || "",
       projectVideoEngine: normalizeProjectVideoEngine(state.projectVideoEngine),
       renderedSceneCount: state.segments.filter((segment) => String(segment.video_path || "").trim()).length,
       lineMappingLyrics: String(options.sourceLyrics || state.lyricMapper?.source_text || ""),
+      timelineMarkers: state.timelineMarkers || [],
+      getTimelineMarkers: () => {
+        if (activeProjectFolderForSave() !== storyboardProjectFolder) throw new Error("The project changed. Reopen the Storyboard before creating its story arc.");
+        return state.timelineMarkers || [];
+      },
       imageMode: state.imageModelMode || "zimage",
+      builderStoryboardDefaults: normalizeBuilderStoryboardDefaults(state.builderStoryboardDefaults),
+      cameraFlow: state.builderStoryboardDefaults?.camera_flow || "balanced",
+      imageShotFlow: state.builderStoryboardDefaults?.image_shot_flow,
+      imageAesthetic: state.builderStoryboardDefaults?.image_aesthetic,
       imageModeLabel: imageModeDisplayLabel(state.imageModelMode || "zimage"),
       videoPromptType: currentVideoMode(),
       miniMaxH3Mode: storyboardOpeningMiniMaxMode,
@@ -995,6 +1054,11 @@ export function createStoryboardBridge({
         unload_after: true,
       },
       onReferenceMappingsChanged: applyStoryboardReferenceMappings,
+      onSceneChanged: async (scene) => {
+        applyStoryboardPrompts({ scenes: [scene] }, { saveSceneEdits: true });
+        const result = await saveSession({ quiet: true, throwOnError: true });
+        if (result?.stale) throw new Error("The project changed during save. Apply the scene edits again to save the latest changes.");
+      },
       onStoryLayerChanged: applyStoryboardPrompts,
       onPrepareStoryContext: typeof options.onPrepareStoryContext === "function" ? options.onPrepareStoryContext : null,
       onPromptsExported: applyStoryboardPrompts,

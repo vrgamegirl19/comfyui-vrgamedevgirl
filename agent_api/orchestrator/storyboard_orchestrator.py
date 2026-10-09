@@ -340,6 +340,7 @@ def create_story_arc(project_id: str, params: Optional[Dict[str, Any]] = None) -
         storyboard=storyboard,
         story_idea=idea,
         previous_story_arc=_text(params.get("previous_story_arc")),
+        timeline_markers=session.get("timeline_markers") or [],
         project_folder=folder,
         scenes=cards,
         camera_flow=defaults.get("camera_flow") or "balanced",

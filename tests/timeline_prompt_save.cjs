@@ -90,13 +90,31 @@ test("missing target appends only that scene", async () => {
   assert.deepEqual(c.writes[0].storyboard.scenes.map(s => s.id), ["c", "a"]);
 });
 
+test("saving a prompt never overwrites a different authored card with the same number", async () => {
+  const c = fixture();
+  c.saved.source_scene_ids = ["a"];
+  c.saved.scenes[0].id = "authored-card";
+  await c.saveTimelinePrompt("i2v");
+  assert.equal(c.writes[0].storyboard.scenes[0].id, "authored-card");
+  assert.equal(c.writes[0].storyboard.scenes.at(-1).id, "a");
+});
+
+test("a stale project save keeps the prompt dirty and does not write the storyboard", async () => {
+  const c = fixture();
+  c.saveSession = async () => ({ stale: true });
+  await c.saveTimelinePrompt("i2v");
+  assert.equal(c.writes.length, 0);
+  assert.equal(c.messages.some(message => message.includes("Prompt saved")), false);
+  assert.equal(c.saveI2VPromptButton.disabled, false);
+});
+
 const storyboardSource = readStoryboardSource();
 const storyboardSection = (start, end) => storyboardSource.slice(storyboardSource.indexOf(start), storyboardSource.indexOf(end, storyboardSource.indexOf(start)));
-test("reopening storyboard keeps saved image/video prompts, including intentionally blank prompts", () => {
+test("reopening storyboard uses the current timeline prompts, including intentionally blank prompts", () => {
   for (const savedPrompt of ["newer saved prompt", ""]) {
-    const savedScene = { id: "a", scene_number: 1, image_prompt: savedPrompt, video_prompt: savedPrompt, video_prompt_origin: "manual" };
-    const fresh = { id: "a", scene_number: 1, image_prompt: "stale", video_prompt: "stale", subject_refs: [] };
-    const c = { state: {}, scenesToShow: [fresh], savedScenes: [savedScene], incomingScenes: [fresh], payloadVideoPromptType: "", currentLocationsCleared: false,
+    const savedScene = { id: "a", scene_number: 1, image_prompt: "old prompt", video_prompt: "old prompt", video_prompt_origin: "manual" };
+    const fresh = { id: "a", scene_number: 1, image_prompt: savedPrompt, video_prompt: savedPrompt, subject_refs: [] };
+    const c = { state: {}, scenesToShow: [fresh], savedScenes: [savedScene], incomingScenes: [fresh], incomingById: new Map([["a", fresh]]), sourceIds: null, payloadVideoPromptType: "", currentLocationsCleared: false,
       normalizeStoryboardMiniMaxH3Mode: x => x, normalizeScene: x => x };
     vm.runInNewContext(storyboardSection("        state.scenes = scenesToShow.map(", "        if (currentLocationsCleared)"), c);
     assert.equal(c.state.scenes[0].video_prompt, savedPrompt);

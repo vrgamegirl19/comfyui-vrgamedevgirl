@@ -121,7 +121,7 @@ or its 1-based number.
 | `GET` | `/projects/{pid}/story` | The saved story layer: idea, arc, brief. |
 | `PUT` | `/projects/{pid}/story` | Replace the saved story layer. _(If-Match)_ |
 | `PUT` | `/projects/{pid}/story/settings` | Save the Storyboard scene defaults (`defaults`: every key the Builder saves in `builder_storyboard_defaults`, e.g. video style, camera flow, motion speeds, cut frequency, short film planning, temporal and FX settings, plus `story_arc_detail`) and the story fields (`story`: every key of `builder_story_layer`, e.g. `enabled`, idea, strength, world style). _(If-Match)_ |
-| `POST` | `/projects/{pid}/story/{step}` | Write a story step with the project's LLM. `step` is `arc` (from the story idea), `brief` or `beats` (a beat per scene without one; `replace_existing`, `scene_ids`, `limit`). Each step also updates the Storyboard Builder's saved copy. _(**job**)_ |
+| `POST` | `/projects/{pid}/story/{step}` | Write a story step with the project's LLM. `step` is `arc` (from the story idea, lyrics and saved timed Timeline Notes), `brief` or `beats` (a beat per scene without one; `replace_existing`, `scene_ids`, `limit`). Each step also updates the Storyboard Builder's saved copy. _(**job**)_ |
 
 ### Prompts
 
