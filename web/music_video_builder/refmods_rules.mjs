@@ -41,7 +41,7 @@ export const REFMOD_RULES_SECTIONS = [
       "In the Reference Builder, pick a RefMod on a card, map the card to the scenes that use it, and set its strength from 0 to 1. A strength of 0 leaves it out.",
       "A scene can hold up to 24 RefMods. The scene shows its token total and warns above 6,000. A very large RefMod can dominate a smaller one.",
       "Order in a scene: characters, extras, clothing, objects, background, then style. Labels are numbered per kind in that order, so the prompt and the render always agree.",
-      "Clothing follows the character it is linked to. To dress a character differently in a scene, map that scene to the clothing card in Review Lines + Map Performers (the props, clothing and vehicles box).",
+      "Clothing is used only in the scenes that select it. Tick its card in Review Lines + Map Performers (the props, clothing and vehicles box). \"Worn by\" says who wears it. A clothing card a scene does not select is not sent to the render.",
     ],
   },
   {

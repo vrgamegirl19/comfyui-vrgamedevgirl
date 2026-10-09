@@ -103,9 +103,9 @@ def compose_items(
 
     ``subject_cards``: the subject cards the scene maps to, in map order. ``extra_cards``: extras sent to MiniMax.
     ``location_card``: the scene's location card or None. ``all_subjects``: every subject card (clothing cards are
-    found here). A clothing card tied to a character (``wears``) follows that character into the scene unless the
-    card has ``follow: false`` or ``override`` (``{character_id: clothing card id(s)}``, an empty string for none)
-    chose other clothing. An override names its cards whatever their ``follow`` setting.
+    found here). Clothing is used in a scene only when the scene selects it (it is one of ``subject_cards``). Its
+    ``wears`` link says who wears it, which decides its place in the order, but never adds it to a scene by itself.
+    ``override`` (``{character_id: clothing card id(s)}``, an empty string for none) is no longer set by any control.
     Cards that are not RefMods are ignored.
     """
     override = override if isinstance(override, dict) else {}
@@ -133,10 +133,6 @@ def compose_items(
             items = [i for i in items if not (i["category"] == "clothing" and i["wears"] == character_id and i["card_id"] not in chosen)]
             for card in subjects:
                 if _text(card.get("id")) in chosen:
-                    add(card, "subject")
-        else:
-            for card in subjects:
-                if _text(card.get("wears")) == character_id and card_category(card) == "clothing" and card.get("follow") is not False:
                     add(card, "subject")
 
     add(location_card, "location")
