@@ -82,9 +82,6 @@ export function buildMiniMaxPanel({
   const miniMaxRefmodNote = document.createElement("div");
   miniMaxRefmodNote.textContent = "RefMod pipeline: one mode, RefMod to Video, with Single or 2 Pass. Every scene uses the saved RefMods picked on its Reference Builder cards, and the prompt names them as <Video n> and <Picture n>.";
   miniMaxRefmodNote.style.cssText = "display:none;font-size:11px;color:#a5f3fc;line-height:1.45;border:1px solid #155e75;border-radius:6px;background:#06202e;padding:7px 9px;";
-  // Per-scene clothing choice for each character (filled by the panel when the RefMod pipeline is on).
-  const miniMaxRefmodClothing = document.createElement("div");
-  miniMaxRefmodClothing.style.cssText = "display:none;flex-direction:column;gap:6px;border:1px solid #155e75;border-radius:6px;background:#06202e;padding:7px 9px;";
   const miniMaxModeChooser = document.createElement("div");
   miniMaxModeChooser.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;";
   const miniMaxModeButtons = MINIMAX_H3_MODE_OPTIONS.map((item) => {
@@ -802,8 +799,8 @@ export function buildMiniMaxPanel({
       ]),
     },
   ]);
-  miniMaxPassButtons.refmod = { pipelineButtons: miniMaxPipelineButtons, modeChooser: miniMaxModeChooser, note: miniMaxRefmodNote, clothing: miniMaxRefmodClothing };
-  miniMaxEnginePanel.append(miniMaxBanner, miniMaxVideoProfileRow, miniMaxPipelineChooser, miniMaxRefmodNote, miniMaxRefmodClothing, miniMaxModeChooser, miniMaxPassChooser, miniMaxSubTabs.wrapper, miniMaxSceneVideoButton);
+  miniMaxPassButtons.refmod = { pipelineButtons: miniMaxPipelineButtons, modeChooser: miniMaxModeChooser, note: miniMaxRefmodNote };
+  miniMaxEnginePanel.append(miniMaxBanner, miniMaxVideoProfileRow, miniMaxPipelineChooser, miniMaxRefmodNote, miniMaxModeChooser, miniMaxPassChooser, miniMaxSubTabs.wrapper, miniMaxSceneVideoButton);
 
   return {
     advancedTwoPassControls, miniMaxAccelerationControls, miniMaxAddSpeakerCueButton,

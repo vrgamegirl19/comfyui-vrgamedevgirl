@@ -72,7 +72,7 @@ export function readStoryboardImageFile(file) {
 export function storyboardRefmodLabels(scene, catalogSubjects = []) {
   const subjects = Array.isArray(scene?.subject_refs) ? scene.subject_refs : [];
   const location = scene?.location_ref && typeof scene.location_ref === "object" ? scene.location_ref : null;
-  const items = composeRefmodItems(scene?.no_character_present ? [] : subjects, [], location, [...subjects, ...catalogSubjects], scene?.refmod_clothing_override);
+  const items = composeRefmodItems(scene?.no_character_present ? [] : subjects, [], location, [...subjects, ...catalogSubjects]);
   const labels = new Map();
   for (const item of assignLabels(items)) if (item.label) labels.set(item.card_id, item.label);
   return labels;

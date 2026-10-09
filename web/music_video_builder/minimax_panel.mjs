@@ -506,46 +506,6 @@ export function createMiniMaxPanel({
     }
   }
 
-  // Scene clothing: pick what each character wears in this scene, or go back to the card defaults.
-  function renderRefmodClothing(container, segment) {
-    if (!container) return;
-    const rows = segment && typeof miniMaxH3ReferenceCapacityStatus === "function"
-      ? miniMaxH3ReferenceCapacityStatus(segment, "reference_to_video").clothing || []
-      : [];
-    container.replaceChildren();
-    container.style.display = rows.length ? "flex" : "none";
-    if (!rows.length) return;
-    const title = document.createElement("div");
-    title.textContent = "Clothing in this scene";
-    title.style.cssText = "font-size:11px;font-weight:700;color:#a5f3fc;";
-    container.append(title);
-    for (const row of rows) {
-      const label = document.createElement("label");
-      label.style.cssText = "display:grid;grid-template-columns:minmax(80px,1fr) minmax(120px,2fr);gap:8px;align-items:center;font-size:11px;color:#e2e8f0;";
-      label.append(document.createTextNode(row.character));
-      const select = document.createElement("select");
-      select.style.cssText = "border:1px solid #3f3f46;border-radius:6px;background:#09090b;color:#f8fafc;padding:5px;font-size:11px;min-width:0;";
-      select.append(new Option("Card default (follows the character)", "__default__"));
-      select.append(new Option("No clothing RefMod", ""));
-      for (const option of row.options) select.append(new Option(option.name, option.id));
-      select.value = row.overridden ? row.current : "__default__";
-      select.onchange = async () => {
-        const next = { ...(segment.refmod_clothing_override || {}) };
-        if (select.value === "__default__") delete next[row.character_id];
-        else next[row.character_id] = select.value;
-        pushHistory?.();
-        if (Object.keys(next).length) segment.refmod_clothing_override = next;
-        else delete segment.refmod_clothing_override;
-        await autoSaveSessionQuiet("scene RefMod clothing");
-        syncMiniMaxH3Panel();
-        updateMiniMaxPromptCharacterStatus(segment);
-        toast("Clothing changed. Regenerate this scene's prompt so it names the new clothing.");
-      };
-      label.append(select);
-      container.append(label);
-    }
-  }
-
   // The "Direction starts at" slider: from 0.5 s to half of this scene, on while the direction box is on.
   function syncMiniMaxContinuationStart(segment, enabled) {
     const sceneSeconds = segment ? Math.max(0, Number(segment.end || 0) - Number(segment.start || 0)) : 0;
@@ -794,7 +754,6 @@ export function createMiniMaxPanel({
     if (refmodUi) {
       refmodUi.modeChooser.style.display = refmodPipeline ? "none" : "grid";
       refmodUi.note.style.display = refmodPipeline ? "block" : "none";
-      renderRefmodClothing(refmodUi.clothing, refmodPipeline ? segment : null);
       for (const button of refmodUi.pipelineButtons) {
         const active = button.dataset.minimaxH3Pipeline === (refmodPipeline ? "refmod" : "standard");
         button.setAttribute("aria-pressed", String(active));
