@@ -341,6 +341,18 @@ def _ensure_music_builder_routes():
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
 
+    @server_instance.routes.post("/vrgdg/music_builder/prepare_audio_clip_mix")
+    async def vrgdg_music_builder_prepare_audio_clip_mix(request: web.Request) -> web.Response:
+        """Prepare the audio clip arrangement for playback and rendering."""
+        from .audio_clips import prepare_audio_clip_mix
+
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(prepare_audio_clip_mix, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
     # Audio Mask window: split a scene's audio into stems and build the masked mix the video model hears.
     @server_instance.routes.post("/vrgdg/music_builder/audio_mask/state")
     async def vrgdg_music_builder_audio_mask_state(request):

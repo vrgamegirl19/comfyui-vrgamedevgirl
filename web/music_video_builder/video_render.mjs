@@ -10,6 +10,7 @@ import { DEFAULT_LTX_INGREDIENTS_HEIGHT, DEFAULT_LTX_INGREDIENTS_WIDTH } from ".
 import { makeButton, makeField, makeInput, normalizeProjectVideoEngine, toast } from "./controls.mjs";
 import { showFinalVideoReadyModal } from "./dialogs.mjs";
 import { audioMaskInUse } from "./audio_mask_store.mjs";
+import { prepareEditedAudio, prepareEmbeddedAudioWithClips, speakingAudioEditsActive } from "./audio_clip_editor.mjs";
 import { formatTime } from "./format.mjs";
 import { rtvReferenceImagePayload } from "./image_references.mjs";
 import { miniMaxI2VLastFrame, miniMaxI2VFramePaths } from "./minimax_keyframe_state.mjs";
@@ -91,6 +92,7 @@ export function createVideoRender({
   validateSrtTimingForSceneVideo, videoModeDisplayLabel, videoTriggerPhraseForSegment,
 }) {
   async function renderSceneVideoWithProgress(segment, sceneIndex, progress, options = {}) {
+    const editedAudio = await prepareEditedAudio(state, projectInput.value || state.projectFolder, { generation: true });
     const progressBase = Number(options.progressBase ?? 0);
     const progressSpan = Number(options.progressSpan ?? 100);
     const batchLabel = options.batchLabel ? `${options.batchLabel}\n` : "";
@@ -148,10 +150,10 @@ export function createVideoRender({
       const fpsForPreroll = Math.max(1, Number(videoSettingsForScene.fps || 24));
       const requestedPreFrames = autoChainPreFrames > 0 ? autoChainPreFrames : Math.max(0, Number(videoSettingsForScene.pre_frames ?? 0));
       const requestedPreSeconds = requestedPreFrames / fpsForPreroll;
-      const sourceAudioPath = segment.custom_audio_path || audioInput.value;
+      const sourceAudioPath = editedAudio?.audio_path || segment.custom_audio_path || audioInput.value;
       const sceneDuration = Math.max(0.1, timelineSegmentDuration(segment) || 4);
-      const sourceStart = segment.custom_audio_path ? audioSourceStart(segment) : Number(segment.start || 0);
-      const sourceDuration = audioSourceDurationForScene(segment);
+      const sourceStart = editedAudio ? Number(segment.start || 0) : segment.custom_audio_path ? audioSourceStart(segment) : Number(segment.start || 0);
+      const sourceDuration = editedAudio?.duration || audioSourceDurationForScene(segment);
       if (sourceDuration > 0 && sourceStart >= sourceDuration - 0.01) {
         const sourceLabel = segment.custom_audio_path ? "custom scene audio" : "global/project audio";
         throw new Error(
@@ -523,6 +525,12 @@ export function createVideoRender({
     if (Math.abs(Number(saved.mix.duration_seconds) - sceneSeconds) > 0.02) {
       throw new Error(`${sceneLabel}: the scene length changed after its Audio Mask was built. Open Audio Mask, split again and rebuild.`);
     }
+    if (speakingAudioEditsActive(state) && (
+      saved.separation?.source_path !== state.audioClipGenerationMixPath
+      || Math.abs(Number(saved.separation?.start_seconds) - Number(segment.start || 0)) > 0.02
+    )) {
+      throw new Error(`${sceneLabel}: audio clips changed after its Audio Mask was built. Split again and rebuild the mask.`);
+    }
     return { path };
   }
 
@@ -581,6 +589,7 @@ export function createVideoRender({
   }
 
   async function renderMiniMaxSceneVideoWithProgress(segment, sceneIndex, progress, options = {}) {
+    const editedAudio = await prepareEditedAudio(state, projectInput.value || state.projectFolder, { generation: true });
     // The panel can still contain a newer value than the project object when a
     // render is started immediately after editing a field. Flush the active
     // scene one last time before taking the settings snapshot used to build
@@ -643,15 +652,16 @@ export function createVideoRender({
 
     const sourceAudioPath = String(
       options.audioPath
-      ?? (segment?.custom_audio_path || currentProjectAudioPath() || audioInput.value || "")
+      ?? (editedAudio?.audio_path || segment?.custom_audio_path || currentProjectAudioPath() || audioInput.value || "")
     ).trim();
     if (!builtInAudio && !sourceAudioPath) throw new Error(`${sceneDisplayName(segment, sceneIndex)} needs source audio for MiniMax H3.`);
     const sourceStartSeconds = Number(
       options.sourceStartSeconds
-      ?? (segment?.custom_audio_path ? audioSourceStart(segment) : timelineStart)
+      ?? (editedAudio ? timelineStart : segment?.custom_audio_path ? audioSourceStart(segment) : timelineStart)
     );
     const sourceDurationSeconds = Number(
       options.sourceDurationSeconds
+      ?? editedAudio?.duration
       ?? audioSourceDurationForScene(segment)
       ?? 0
     );
@@ -765,13 +775,12 @@ export function createVideoRender({
       lyric: progressLyric,
       prompt,
     });
-    // Masked continuation plans its own warm-up and tail, so the Render settings frames do not apply.
-    const maskedContinuation = continuityInput?.continuityMode === "latent_continuation_masked";
-    const warmupFrames = maskedContinuation ? 0 : Math.max(0, Math.trunc(Number(
+    // Masked continuation defaults these to 0; the server keeps a continued scene's masked head warm-up.
+    const warmupFrames = Math.max(0, Math.trunc(Number(
       options.warmupFrames
       ?? miniMaxSettings.warmup_frames
     ) || 0));
-    const cooldownFrames = maskedContinuation ? 0 : Math.max(0, Math.trunc(Number(
+    const cooldownFrames = Math.max(0, Math.trunc(Number(
       options.cooldownFrames
       ?? miniMaxSettings.cooldown_frames
     ) || 0));
@@ -1148,6 +1157,7 @@ export function createVideoRender({
   }
 
   async function stitchRenderedScenes(progress, options = {}) {
+    await prepareEditedAudio(state, projectInput.value || state.projectFolder);
     const baseSegments = Array.isArray(options.segments) && options.segments.length ? options.segments : state.segments;
     const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
     const overlaySegments = state.overlayTrack.enabled
@@ -1183,10 +1193,14 @@ export function createVideoRender({
         source_start: Math.max(0, Number(segment.overlay_source_start || 0)),
         label: segment.label || `Insert ${index + 1}`,
       }));
-    const globalAudioPath = currentProjectAudioPath();
+    let globalAudioPath = currentProjectAudioPath();
     const miniMaxBuiltInAudioMode = miniMaxProject && baseSegments.length > 0
       && baseSegments.every((segment) => miniMaxH3SettingsForSegment(segment).audio_mode === "built_in_audio");
-    const embeddedSceneAudioMode = miniMaxBuiltInAudioMode || (!miniMaxProject && currentVideoMode() === "id_lora") || !!options.useEmbeddedSceneAudio;
+    let embeddedSceneAudioMode = miniMaxBuiltInAudioMode || (!miniMaxProject && currentVideoMode() === "id_lora") || !!options.useEmbeddedSceneAudio;
+    if (embeddedSceneAudioMode && paths.every(Boolean)) {
+      const mixed = await prepareEmbeddedAudioWithClips(state, projectInput.value || state.projectFolder, baseSegments, paths);
+      if (mixed) { globalAudioPath = mixed.audio_path; embeddedSceneAudioMode = false; }
+    }
     const sceneAudioMode = !embeddedSceneAudioMode && !globalAudioPath && usingSceneAudioMode();
     const audioPaths = sceneAudioMode ? baseSegments.map((segment) => String(segment.custom_audio_path || "").trim()) : [];
     const audioItems = sceneAudioMode ? baseSegments.map((segment) => ({
@@ -1290,7 +1304,7 @@ export function createVideoRender({
     if (!idLoraMode && !(await ensureAudioOrOfferSilentTimeline({ segment }))) return;
     const missing = [
       ...validateSceneReadyForVideo(segment, sceneIndex),
-      ...(!idLoraMode && (!String(segment.custom_audio_path || audioInput.value || "").trim() || !String(projectInput.value || "").trim()) ? ["Load global audio or add custom audio for this scene, and set the project folder first."] : []),
+      ...(!idLoraMode && ((!speakingAudioEditsActive(state) && !String(segment.custom_audio_path || currentProjectAudioPath() || audioInput.value || "").trim()) || !String(projectInput.value || "").trim()) ? ["Load global audio or add custom audio for this scene, and set the project folder first."] : []),
       ...(idLoraMode && !String(projectInput.value || "").trim() ? ["Project folder is missing."] : []),
     ];
     if (missing.length) {
@@ -1369,6 +1383,7 @@ export function createVideoRender({
     const missing = validateMiniMaxSceneReadyForVideo(segment, sceneIndex);
     if (!String(projectInput.value || state.projectFolder || "").trim()) missing.push("Project folder is missing.");
     if (miniMaxH3SettingsForSegment(segment).audio_mode !== "built_in_audio"
+      && !speakingAudioEditsActive(state)
       && !String(segment.custom_audio_path || currentProjectAudioPath() || audioInput.value || "").trim()) {
       missing.push("Load global audio or add custom audio for this scene.");
     }
@@ -1438,6 +1453,7 @@ export function createVideoRender({
   }
 
   async function stitchPreviewFromSegments(segments, label = "selected") {
+    await prepareEditedAudio(state, projectInput.value || state.projectFolder);
     const baseSegments = (Array.isArray(segments) ? segments : []).filter((segment) => segmentTrack(segment) !== "overlay");
     if (!baseSegments.length) {
       toast("Choose at least one base scene for the preview stitch.", true);

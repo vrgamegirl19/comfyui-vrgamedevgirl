@@ -323,6 +323,7 @@ export function createTimelineActions({
     if (!renamed.length) return;
     rewriteRenamedScenePaths(state.segments, renamed);
     rewriteRenamedScenePaths(state.overlaySegments, renamed);
+    if (Array.isArray(state.audioClips)) rewriteRenamedScenePaths(state.audioClips, renamed);
     // Undo would restore the old numbering while the files keep the new names.
     state.undoStack = [];
     state.redoStack = [];
@@ -1002,6 +1003,7 @@ export function createTimelineActions({
       if (renamed.length) {
         rewriteRenamedScenePaths(state.segments, renamed);
         rewriteRenamedScenePaths(state.overlaySegments, renamed);
+        if (Array.isArray(state.audioClips)) rewriteRenamedScenePaths(state.audioClips, renamed);
         // Undo would restore the old numbering while the files keep the new names.
         state.undoStack = [];
         state.redoStack = [];

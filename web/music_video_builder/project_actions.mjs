@@ -221,6 +221,11 @@ export function createProjectActions({
     setBeatMarkersVisible(false);
     state.srtMode = false;
     state.timingFrozen = false;
+    state.audioClips = null;
+    state.audioClipMixPath = "";
+    state.audioClipMixKey = "";
+    state.audioClipGenerationMixPath = "";
+    state.audioClipGenerationMixKey = "";
     state.selectedTimelineRange = { in: null, out: null };
     state.timelineMarkers = [];
     state.activeTimelineMarkerId = "";

@@ -329,6 +329,15 @@ async def render_scene_video_async(
     # Audio preparation
     audio_path = str(p.get("audio_path") or "").strip()
     project_audio = session_audio_path(session)
+    speaking_clips = session.get("video_type") == "speaking" and isinstance(session.get("audio_clips"), list)
+    if not audio_path and speaking_clips:
+        from ...builder.audio_clips import prepare_audio_clip_mix
+
+        edited = await asyncio.to_thread(prepare_audio_clip_mix, {
+            "project_folder": folder, "clips": session["audio_clips"], "generation_only": True,
+            "duration": max([0.05] + [float(scene.get("end", 0)) for scene in session.get("segments", [])]),
+        })
+        project_audio = edited["audio_path"]
     if not audio_path and project_audio and os.path.isfile(project_audio):
         if mode_group == "minimax_h3":
             audio_path = project_audio
@@ -1159,7 +1168,8 @@ def build_stitch_payload(
             song_path = ""
     else:
         audio_path = str(p.get("audio_path") or session_audio_path(session) or "").strip()
-        if not audio_path or not os.path.isfile(audio_path):
+        speaking_clips = session.get("video_type") == "speaking" and isinstance(session.get("audio_clips"), list)
+        if (not audio_path or not os.path.isfile(audio_path)) and not speaking_clips:
             raise ValidationError(
                 "The project has no audio file to stitch with. Attach the song, pass audio_path, or use audio: embedded.",
                 details={"audio_path": audio_path},
@@ -1173,7 +1183,10 @@ def build_stitch_payload(
     if explicit_selection:
         positions = [index for index, _segment, _path in selected]
         contiguous = all(b == a + 1 for a, b in zip(positions, positions[1:]))
-        if not embedded and not contiguous:
+        background_clips = session.get("video_type") == "speaking" and any(
+            clip.get("role") and clip["role"] != "dialogue" for clip in session.get("audio_clips") or []
+        )
+        if (not embedded or background_clips) and not contiguous:
             raise ValidationError(
                 "A stitch with the project song needs contiguous scenes, so one window of the song fits them. "
                 "Pick one continuous scene range, or use audio: embedded.",
@@ -1238,6 +1251,34 @@ async def run_video_stitch_job(job: Job, manager: JobManager) -> Dict[str, Any]:
         raise ValidationError("project_id is required.")
     folder, session = _get_active_session_and_folder(job.project_id)
     stitch_payload, summary = build_stitch_payload(folder, session, job.params, strict=True)
+    if (
+        not job.params.get("audio_path")
+        and session.get("video_type") == "speaking"
+        and isinstance(session.get("audio_clips"), list)
+    ):
+        from ...builder.audio_clips import prepare_audio_clip_mix
+
+        clips = session["audio_clips"]
+        embedded = stitch_payload.get("use_embedded_scene_audio")
+        if embedded:
+            background = [clip for clip in clips if clip.get("role") and clip["role"] != "dialogue"]
+            clips = background
+            if background:
+                by_id = {str(scene.get("id") or index + 1): scene
+                         for index, scene in enumerate(session.get("segments", []))}
+                scenes = [by_id[scene_id] for scene_id in summary["scene_ids"]]
+                clips = background + [
+                    {"path": path, "start": float(scene.get("start", 0)), "source_start": 0,
+                     "duration": float(scene.get("end", 0)) - float(scene.get("start", 0))}
+                    for scene, path in zip(scenes, stitch_payload["scene_paths"])
+                ]
+        if not embedded or clips:
+            edited = await asyncio.to_thread(prepare_audio_clip_mix, {
+                "project_folder": folder, "clips": clips,
+                "duration": max([0.05] + [float(scene.get("end", 0)) for scene in session.get("segments", [])]),
+            })
+            stitch_payload["audio_path"] = edited["audio_path"]
+            stitch_payload["use_embedded_scene_audio"] = False
 
     manager.update_progress(
         job.id, 20.0, "stitching", message=f"Stitching {len(stitch_payload['scene_paths'])} scene videos..."
