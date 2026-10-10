@@ -416,7 +416,8 @@ The `minimax` package implements high-performance conditioning, latent managemen
 - **Files**:
   - `minimax/refmod_picker.py`: file-dialog image picker, describe prompts per type, metadata and combine nodes.
   - `minimax/refmod_studio.py`: create a RefMod from images (crops, quality presets, fixed folder per type) and save a Reference Builder image as a RefMod.
-  - `minimax/refmod_library.py`: list saved RefMods and their previews (`/vrgdg/refmod/library`, `/vrgdg/refmod/preview`).
+  - `minimax/refmod_library.py`: list saved RefMods and their previews (`/vrgdg/refmod/library`, `/vrgdg/refmod/preview`) and delete one with its preview (`POST /vrgdg/refmod/delete`, `delete_refmod`; the MiniMaxH3Mod pack folder is protected).
+  - `web/music_video_builder/refmods_viewer.mjs` (+ `refmods_viewer_data.mjs`, pure helpers tested by `tests/refmods_viewer.mjs`): the RefMods Viewer next to the RefMods Studio button; categories, picture cards and details from `/vrgdg/refmod/library` and `/vrgdg/refmod/preview`, and a Delete button behind `confirmDestructiveAction`.
   - `minimax/refmod_scene.py`: which RefMods a scene uses, their order and the `<Video n>` / `<Picture n>` / `<Audio n>` labels. Twin of `web/music_video_builder/refmod_labels.mjs`; both are checked against `tests/refmod_scene_cases.json`.
   - `runner/minimax_refmod.py`: rewires a built single or 2 pass graph so the guiders read *Text Encode with RefMods* (needs ComfyUI-MiniMaxH3Mod). The scene audio becomes an audio RefMod so `<Audio 1>` still exists.
   - `token_report` (`refmod_scene.py`) / `tokenReport` (`refmod_labels.mjs`): scene token total (warns above 6,000) and the character balance (a character under half the strongest by tokens x strength tends to be duplicated). The panel status line and the render log use it.

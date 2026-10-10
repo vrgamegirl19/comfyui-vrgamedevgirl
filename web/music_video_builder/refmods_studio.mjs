@@ -4,6 +4,7 @@ import { makeEditorImageUrl } from "./comfy_api.mjs";
 import { confirmDestructiveAction } from "./confirm_dialog.mjs";
 import { makeButton, makeCheckbox, makeField, makeInput, toast } from "./controls.mjs";
 import { refmodLibraryChanged } from "./refmod_card.mjs";
+import { showRefmodCreatedCard } from "./refmod_created_card.mjs";
 import { openRefModsRules } from "./refmods_rules.mjs";
 import {
   clampBox, DEFAULT_QUALITY, estimateTokens, expandBox, MIN_CROP_SIZE, QUALITY_PRESETS, REF_TOKEN_CAP, trimBoxFromPixels,
@@ -401,6 +402,7 @@ export function openRefModsStudio({ runnerPayload } = {}) {
   backdrop.append(box);
   document.body.append(backdrop);
 
+  let creationSignature = () => "";
   const requirementText = () => {
     if (!sanitizeName(studio.name)) return "Enter a name to create the RefMod.";
     if (!readyPaths().length) return "Add at least one image.";
@@ -421,9 +423,12 @@ export function openRefModsStudio({ runnerPayload } = {}) {
     setButtonEnabled(describeButton, !busy && !uploading && readyPaths().length > 0);
     describeButton.textContent = studio.describing ? "Describing..." : "Describe from images";
     const requirement = requirementText();
-    setButtonEnabled(createButton, !busy && !uploading && !requirement);
-    createButton.textContent = studio.creating ? "Creating..." : "Create RefMod";
-    footerNote.textContent = studio.statusText || (uploading ? "Preparing images..." : requirement);
+    // Right after a RefMod is created the same request would only replace it, so the button stays off until the name,
+    // images or settings change.
+    const alreadyCreated = Boolean(studio.createdSignature) && !requirement && !uploading && creationSignature() === studio.createdSignature;
+    setButtonEnabled(createButton, !busy && !uploading && !requirement && !alreadyCreated);
+    createButton.textContent = studio.creating ? "Creating..." : alreadyCreated ? "RefMod created" : "Create RefMod";
+    footerNote.textContent = studio.statusText || (uploading ? "Preparing images..." : requirement || (alreadyCreated ? "Change the name, images or settings to create another." : ""));
     createBusy.show(studio.creating || uploading);
     describeBusy.show(studio.describing);
     updateBusyStrip();
@@ -1149,27 +1154,31 @@ export function openRefModsStudio({ runnerPayload } = {}) {
     }
   };
 
+  // Everything the create request is built from, so an identical second request can be told from a changed one.
+  const creationRequest = () => ({
+    type: studio.type,
+    name: sanitizeName(studio.name),
+    paths: readyPaths(),
+    crops: readyImages().map((image) => {
+      const box = studio.trim.show ? trimmedBoxFor(image) : null;
+      return box ? [Math.round(box.x0), Math.round(box.y0), Math.round(box.x1), Math.round(box.y1)] : null;
+    }),
+    quality: studio.quality,
+    description: descriptionInput.value.trim(),
+    mode: modeSelect.value,
+    steps: Number(stepsInput.value) || 0,
+  });
+  creationSignature = () => JSON.stringify(creationRequest());
   const createRefMod = async (overwrite) => {
     const response = await api.fetchApi("/vrgdg/refmod/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        type: studio.type,
-        name: sanitizeName(studio.name),
-        paths: readyPaths(),
-        crops: readyImages().map((image) => {
-          const box = studio.trim.show ? trimmedBoxFor(image) : null;
-          return box ? [Math.round(box.x0), Math.round(box.y0), Math.round(box.x1), Math.round(box.y1)] : null;
-        }),
-        quality: studio.quality,
-        description: descriptionInput.value.trim(),
-        mode: modeSelect.value,
-        steps: Number(stepsInput.value) || 0,
-        overwrite,
-      }),
+      body: JSON.stringify({ ...creationRequest(), overwrite }),
     });
     return { response, result: await response.json() };
   };
+  for (const input of [descriptionInput, stepsInput]) input.addEventListener("input", refreshActions);
+  modeSelect.addEventListener("change", refreshActions);
   createButton.onclick = async () => {
     if (createButton.disabled) return;
     studio.creating = true;
@@ -1195,7 +1204,16 @@ export function openRefModsStudio({ runnerPayload } = {}) {
       refmodLibraryChanged();
       const canvasNote = result.canvas ? `, ${result.quality || studio.quality} quality, canvas ${result.canvas[0]}x${result.canvas[1]}` : "";
       studio.statusText = `Saved ${result.path} (${result.tokens} tokens${canvasNote}).`;
-      toast(`RefMod saved to models/refmods/${result.folder}/${result.name}.safetensors`);
+      studio.createdSignature = creationSignature();
+      studio.creating = false;
+      refreshActions();
+      await showRefmodCreatedCard({
+        ...result,
+        imageCount: readyPaths().length,
+        mode: modeSelect.value,
+        description: descriptionInput.value.trim(),
+        typeLabel: REFMOD_ACTIVE_TYPES.find((item) => item.value === studio.type)?.label,
+      });
     } catch (error) {
       studio.statusText = "";
       toast(`Could not create the RefMod: ${error?.message || error}`, true);

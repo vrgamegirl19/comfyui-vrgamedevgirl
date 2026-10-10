@@ -19,6 +19,7 @@ import {
 import { showModelDownloadModal } from "./dialogs.mjs";
 import { pickPath } from "./project_setup.mjs";
 import { openRefModsStudio } from "./refmods_studio.mjs";
+import { openRefModsViewer } from "./refmods_viewer.mjs";
 import { showOverlayTrackHelp } from "./timeline_actions.mjs";
 
 // The RefMods Studio button is made in buildProjectControls, before the Builder's LLM runner exists, so wireToolbar hands
@@ -449,6 +450,8 @@ export function buildTopbar({
   const fluxReferenceBuilderButton = makeButton("Reference Builder");
   const refModsStudioButton = makeButton("RefMods Studio");
   refModsStudioButton.onclick = () => openRefModsStudio({ runnerPayload: () => currentRunnerPayload?.() });
+  const refModsViewerButton = makeButton("RefMods Viewer");
+  refModsViewerButton.onclick = () => openRefModsViewer({ onOpenStudio: () => openRefModsStudio({ runnerPayload: () => currentRunnerPayload?.() }) });
   const lyricMapperButton = makeButton("Line Mapping");
   const sendToPromptCreatorButton = makeButton("Send To Prompt Creator");
   const promptOptionsButton = makeButton("Prompt Options");
@@ -538,6 +541,12 @@ export function buildTopbar({
     width: 58,
     title: "Create a RefMod from your images and save it by type under models/refmods.",
   });
+  styleCompactToolbarButton(refModsViewerButton, {
+    lines: ["RefMods", "Viewer"],
+    icon: "reference",
+    width: 58,
+    title: "Browse your saved RefMods by category with their pictures.",
+  });
   styleCompactToolbarButton(lyricMapperButton, {
     lines: ["Line", "Mapping"],
     icon: "mapping",
@@ -621,7 +630,7 @@ export function buildTopbar({
   batchActions.style.display = "none";
   const importActions = document.createElement("div");
   importActions.style.cssText = "display:flex;gap:5px;align-items:center;justify-content:center;flex-wrap:nowrap;min-width:0;overflow:visible;";
-  importActions.append(wizardButton, wizardBetaButton, autoBuildButton, storyboardBuilderButton, fluxReferenceBuilderButton, refModsStudioButton, lyricMapperButton, gemmaRunnerButton, promptOptionsButton);
+  importActions.append(wizardButton, wizardBetaButton, autoBuildButton, storyboardBuilderButton, fluxReferenceBuilderButton, refModsStudioButton, refModsViewerButton, lyricMapperButton, gemmaRunnerButton, promptOptionsButton);
   const centerActions = document.createElement("div");
   centerActions.style.cssText = "position:relative;display:flex;gap:8px;align-items:center;justify-content:center;min-width:0;overflow:visible;";
   centerActions.append(importActions, batchActions);
