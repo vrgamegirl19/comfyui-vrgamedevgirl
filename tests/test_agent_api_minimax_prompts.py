@@ -78,6 +78,24 @@ class MiniMaxPromptTests(Base):
         self.assertNotIn("<Audio 1>", prompt)
         self.assertIn("MiniMax generates the native audio", prompt)
 
+    def test_request_carries_the_actual_fractional_scene_duration(self):
+        session = self.read_session()
+        session["segments"][0].update(start=34.25, end=37.17)
+        self.write_session(session)
+        result, calls = self.run_with(
+            '{"shots":[{"description":"The camera tracks as <Subject 1> walks across the rooftop."}]}',
+            {"scene_ids": [session["segments"][0]["id"]]},
+        )
+        self.assertEqual(result["created"], 1)
+        task = calls[0]["t2i_prompt"]
+        self.assertIn("Duration: 2.92s", task)
+        self.assertIn("Shot 1: 0–2.92s (2.92 seconds available).", task)
+        self.assertIn("Reserve time for the required singing or speaking", task)
+        self.assertIn("H3 follows the final wording literally", task)
+        self.assertIn("her boot, worn on her foot", task)
+        self.assertIn("one anatomically connected person at normal scale and consistent depth", task)
+        self.assertNotIn("60 to 110", task)
+
     def test_default_compact_prompt_uses_pictures_in_shot_prose_and_grounding_rules(self):
         session = self.read_session()
         session.pop("use_structured_outputs", None)
