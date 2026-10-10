@@ -59,3 +59,36 @@ test('the created card lists only the details it has', () => {
   ]);
   assert.deepEqual(createdCardRows({ folder: 'clothing_men', kind: 'image' }), [['Category', 'Clothing Men'], ['Kind', 'Picture']]);
 });
+
+test('quick add: backgrounds are locations, the rest subjects, and fields follow the RefMod', async () => {
+  const { cardFieldsFromRefmod, entriesForScope, quickAddScopeOf, usedRefmodNames } = await import('../web/music_video_builder/refmod_quick_add_data.mjs');
+  const library = [
+    { name: 'identity/darrel', folder: 'identity', type: 'identity', kind: 'video', frames: 4, tokens: 3000, description: 'Tall man' },
+    { name: 'clothing_women/red_dress', folder: 'clothing_women', type: 'clothing_women', kind: 'image', frames: 1, tokens: 800, description: '' },
+    { name: 'background/meadow', folder: 'background', type: 'background', kind: 'image', frames: 1, tokens: 600, description: 'A meadow' },
+    { name: 'pose_motion/dance', folder: 'pose_motion', type: 'pose_motion', kind: 'video', frames: 8, tokens: 900, description: '' },
+  ];
+  assert.equal(quickAddScopeOf(library[2]), 'location');
+  assert.deepEqual(entriesForScope(library, 'location').map((entry) => entry.name), ['background/meadow']);
+  assert.deepEqual(entriesForScope(library, 'subject').map((entry) => entry.name), ['identity/darrel', 'clothing_women/red_dress', 'pose_motion/dance']);
+
+  const character = cardFieldsFromRefmod(library[0]);
+  assert.equal(character.name, 'Darrel');
+  assert.equal(character.description, 'Tall man');
+  assert.equal(character.reference_type, 'character');
+  assert.equal(character.source, 'refmod');
+  assert.deepEqual(character.refmod, { name: 'identity/darrel', folder: 'identity', type: 'identity', kind: 'video', tokens: 3000, frames: 4, strength: 1 });
+
+  const dress = cardFieldsFromRefmod(library[1]);
+  assert.equal(dress.reference_type, 'outfit');
+  assert.equal(dress.clothing_set, 'women');
+  assert.equal(dress.refmod.kind, 'image');
+  assert.equal(cardFieldsFromRefmod(library[3]).reference_type, 'other');
+
+  const place = cardFieldsFromRefmod(library[2]);
+  assert.equal(place.reference_type, undefined);
+  assert.equal(place.source, 'refmod');
+
+  const used = usedRefmodNames({ subjects: [{ refmod: { name: 'identity/darrel' } }, { name: 'blank' }], locations: [{ refmod: { name: 'background/meadow' } }] });
+  assert.deepEqual([...used].sort(), ['background/meadow', 'identity/darrel']);
+});

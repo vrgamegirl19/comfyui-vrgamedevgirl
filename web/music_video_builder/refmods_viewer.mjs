@@ -31,7 +31,7 @@ const div = (css, text) => {
 const badge = (text, background, color) => div(`${BADGE_STYLE}background:${background};color:${color};`, text);
 
 // A picture that falls back to the first letter of the name when the RefMod has no preview or it fails to load.
-function pictureElement(item, css) {
+export function pictureElement(item, css) {
   const wrap = div(`${css}position:relative;overflow:hidden;background:#09090b;display:flex;align-items:center;justify-content:center;`);
   const placeholder = div("font-size:34px;font-weight:900;color:#3f3f46;", prettyRefmodName(item.name).charAt(0) || "?");
   wrap.append(placeholder);

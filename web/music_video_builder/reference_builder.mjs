@@ -13,6 +13,8 @@ import {
 import { normalizeMiniMaxH3Mode, normalizeMiniMaxH3Pipeline, normalizeMiniMaxH3Voice } from "./minimax_h3.mjs";
 import { normalizeFluxReferenceBuilder, subjectExtraTargetId } from "./reference_data.mjs";
 import { createReferenceSceneMapping } from "./reference_scene_mapping.mjs";
+import { openRefmodQuickAdd } from "./refmod_quick_add.mjs";
+import { cardFieldsFromRefmod, usedRefmodNames } from "./refmod_quick_add_data.mjs";
 import { createReferenceGeneration } from "./reference_generation.mjs";
 import { createReferenceImages } from "./reference_images.mjs";
 import { createReferenceLocations } from "./reference_locations.mjs";
@@ -124,6 +126,9 @@ export function createReferenceBuilder({
     const createAllMissingSubjectImages = makeButton("Generate Missing Images", "primary");
     const importSubjects = makeButton("Import Subjects", "primary");
     const addSubjectButton = makeButton("Add Subject", "primary");
+    const quickAddSubjectButton = makeButton("Quick Add RefMod", "primary");
+    quickAddSubjectButton.title = "Pick saved RefMods and add each as a ready card with its name, description and type filled in.";
+    quickAddSubjectButton.style.display = refmodPipeline ? "" : "none";
     const arrangeSubjects = makeButton("Arrange");
     const removeAllSubjects = makeButton("Remove All Subjects");
     const subjectActions = document.createElement("div");
@@ -135,7 +140,7 @@ export function createReferenceBuilder({
     importSubjects.title = "Import subject images and matching .txt descriptions from this project's subject_location/subject folder.";
     addSubjectButton.title = "Add one blank subject/reference row.";
     arrangeSubjects.title = "Open a reorder window for subject/reference image cards.";
-    subjectActions.append(extractSubjects, describeMissingSubjects, createAllMissingSubjectImages, importSubjects, addSubjectButton, arrangeSubjects, removeAllSubjects);
+    subjectActions.append(extractSubjects, describeMissingSubjects, createAllMissingSubjectImages, importSubjects, quickAddSubjectButton, addSubjectButton, arrangeSubjects, removeAllSubjects);
     createAllMissingSubjectImages.style.display = referenceImagesEnabled ? "" : "none";
     importSubjects.style.display = referenceImagesEnabled ? "" : "none";
     subjectHeader.append(subjectTitle, subjectActions);
@@ -230,6 +235,9 @@ export function createReferenceBuilder({
     const uploadLocationImages = makeButton("Upload Images", "primary");
     const createAllMissingLocationZImages = makeButton("Generate Missing Images", "primary");
     const addLocation = makeButton("Add Location", "primary");
+    const quickAddLocation = makeButton("Quick Add RefMod", "primary");
+    quickAddLocation.title = "Pick saved background RefMods and add each as a location card with its name and description filled in.";
+    quickAddLocation.style.display = refmodPipeline ? "" : "none";
     const arrangeLocations = makeButton("Arrange");
     const removeAllLocations = makeButton("Remove All Locations");
     extractLocations.textContent = "LM Extract";
@@ -287,7 +295,7 @@ export function createReferenceBuilder({
     }
     locationActions.append(
       locationActionGroup("Gemma / GPT", [extractLocations, gptLocationScout, gptLocationScoutAdvanced, autoMapLocations, describeMissingLocations], makeField("Optional style/theme for location extraction", locationStyleTheme)),
-      locationActionGroup("Manage", [importLocations, exportLocations, uploadLocationImages, createAllMissingLocationZImages, addLocation, arrangeLocations, removeAllLocations])
+      locationActionGroup("Manage", [importLocations, exportLocations, uploadLocationImages, createAllMissingLocationZImages, quickAddLocation, addLocation, arrangeLocations, removeAllLocations])
     );
     locationsHeader.append(locationsTitle, locationActions);
     const keepGemmaLoadedForLocations = makeCheckbox("Keep Gemma loaded while creating location prompts", true);
@@ -510,6 +518,32 @@ export function createReferenceBuilder({
     }
 
     uploadSubject.onclick = () => uploadFor(imageTargetFor(refs.subject, "image", "subject"));
+    // Quick Add RefMod: each picked RefMod becomes a card that already uses it, named and described from the RefMod.
+    const quickAddRefmods = (scope) => openRefmodQuickAdd({
+      scope,
+      usedNames: usedRefmodNames(refs),
+      onAdd: (entries) => {
+        for (const entry of entries) {
+          const fields = cardFieldsFromRefmod(entry);
+          const card = scope === "location"
+            ? createLocation(fields.name, fields.description, { source: "refmod" })
+            : createSubject(fields.name, fields.description);
+          Object.assign(card, fields);
+        }
+        if (scope === "location") {
+          refs.locations_cleared = false;
+          refs.use_location_references = true;
+          useLocations.input.checked = true;
+        } else {
+          refs.use_subject_reference = true;
+          useSubject.input.checked = true;
+        }
+        renderAll();
+        toast(`Added ${entries.length} RefMod${entries.length === 1 ? "" : "s"} as ${scope === "location" ? "location" : "reference"} card${entries.length === 1 ? "" : "s"}.`);
+      },
+    });
+    quickAddSubjectButton.onclick = () => quickAddRefmods("subject");
+    quickAddLocation.onclick = () => quickAddRefmods("location");
     addSubjectButton.onclick = () => {
       createSubject();
       refs.use_subject_reference = true;
