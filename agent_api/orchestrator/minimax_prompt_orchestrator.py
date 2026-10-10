@@ -191,6 +191,9 @@ def generate_scene_prompt(session: Dict[str, Any], folder: str, segment: Dict[st
             cast = [l for l in labels if l["kind"] == "subject"] or labels
             performer = f"{cast[0]['label']} ({cast[0]['name']})" if cast[0]["name"] else cast[0]["label"]
             descriptions = sp.ensure_quoted_lyrics(descriptions, segment.get("lyric_text") or ctx["lyric"], performer)
+        if (ctx["audio_mode"] != "built_in_audio"
+                and str(segment.get("performance_mode") or session.get("video_type") or "singing") == "singing"):
+            descriptions = [lfp.strip_singing_articulation(text) for text in descriptions]
         core = sp.assemble_prompt(descriptions, plan, ctx["style"])
         prompt = sp.wrap_reference_prompt(core, frame) if structured else sp.compact_reference_prompt(core, ctx["items"])
         try:

@@ -373,6 +373,21 @@ test("MiniMax requests resolve ambiguous foreground clothing and physical owners
   }
 });
 
+test("MiniMax scene-card framing overrides stale automatic telephoto rotation", () => {
+  const { functionSource, readBuilderModule } = require("./builder_source.cjs");
+  const context = vm.createContext({ state: { builderStoryboardDefaults: { camera_flow: "music_video" } } });
+  const source = readBuilderModule("minimax_prompt.mjs");
+  for (const name of ["miniMaxH3SelectedFramingEntries", "miniMaxH3PerShotFramingLines"]) {
+    vm.runInContext(functionSource(source, name), context);
+  }
+  const scene = { shot_type: "wide-angle hero performance shot", camera_motion: "slow forward dolly glide", minimax_h3_framing_shot_ids: ["music_video_telephoto"] };
+  const result = context.miniMaxH3PerShotFramingLines(scene, [{ number: 1, time: 0 }]);
+  assert.match(result.join("\n"), /wide-angle hero performance shot/);
+  assert.match(result.join("\n"), /slow forward dolly glide/);
+  assert.doesNotMatch(result.join("\n"), /telephoto|compressed lateral/);
+  assert.deepEqual(scene.minimax_h3_framing_shot_ids, ["music_video_telephoto"]);
+});
+
 test("Reopening retains added cards and deleted cards without losing new timeline scenes", async () => {
   const folder = path.join(project, "structure");
   const state = stateFor(folder);

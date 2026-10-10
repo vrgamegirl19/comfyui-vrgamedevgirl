@@ -154,6 +154,9 @@ def assemble_minimax_h3_prompt(
     from . import lyric_free_performance as lfp
 
     omit_lyrics = lfp.scene_enabled(session, segment)
+    from .settings_payload import minimax_h3_settings_for_scene
+    supplied_singing = (str(segment.get("performance_mode") or session.get("video_type") or "singing") == "singing"
+                        and minimax_h3_settings_for_scene(session, segment).get("audio_mode") != "built_in_audio")
     performer, labels = lfp.scene_performers(session, segment, norm_mode) if omit_lyrics else ("", {})
     expected_shots = cut_plan["shot_count"]
 
@@ -167,6 +170,8 @@ def assemble_minimax_h3_prompt(
         style = str(segment.get("minimax_h3_video_style") or session.get("builder_storyboard_defaults", {}).get("video_style") or "")
         if omit_lyrics:
             cleaned = lfp.apply_shots(cleaned, segment, cut_plan, performer, labels, session)
+        if supplied_singing:
+            cleaned = [lfp.strip_singing_articulation(text) for text in cleaned]
         prompt_text = shot_prompt.assemble_prompt(cleaned, cut_plan, style)
         # Rendering sends the saved text unchanged, so both formats carry picture assignments.
         from .scene_inputs import ordered_reference_items
@@ -194,6 +199,8 @@ def assemble_minimax_h3_prompt(
 
     if omit_lyrics:
         cleaned_descs = lfp.apply_shots(cleaned_descs, segment, cut_plan, performer, labels, session)
+    if supplied_singing:
+        cleaned_descs = [lfp.strip_singing_articulation(text) for text in cleaned_descs]
 
     # Build shot body
     shots_body_parts = []

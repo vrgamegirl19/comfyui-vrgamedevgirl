@@ -1,6 +1,6 @@
 import { hasEmotionExpressionInput } from "./emotion_expression.mjs";
 import { storyboardFacialPerformancePreset } from "../storyboard_builder/performance_presets.mjs";
-import { lyricFreePerformanceEnabled, cleanLyricFreeDescription, cleanLyricFreeFacialDirection, lyricFreeShotDirection, lyricFreePromptContext, remainingLyricFreeContract } from "./lyric_free_performance.mjs";
+import { lyricFreePerformanceEnabled, cleanLyricFreeDescription, cleanLyricFreeFacialDirection, lyricFreeShotDirection, lyricFreePromptContext, mergeLyricFreeContract, stripSingingArticulation } from "./lyric_free_performance.mjs";
 import { miniMaxI2VTransitionPrompt } from "./minimax_i2v_transition.mjs";
 import { miniMaxI2VFrameMode, miniMaxI2VLastFrame } from "./minimax_keyframe_state.mjs";
 import {
@@ -641,14 +641,18 @@ export function createMiniMaxPrompt({
     const lyrics = [flattenLyricForPrompt(segment?.lyric_text), ...String(segment?.lyric_text || "").split(/\r?\n/), ...cues.map((cue) => cue.text)];
     const emotion = hasEmotionExpressionInput(segment, state);
     let contracts = lyricFreeDirections(segment, mode, index);
-    const clean = cleanLyricFreeDescription(description, lyrics, {
+    let clean = cleanLyricFreeDescription(description, lyrics, {
       preservePerformance: emotion && contracts.length > 0,
       singleShot: miniMaxH3OfficialShotPlan(miniMaxH3CutPlanForSegment(segment)).length === 1,
     }) || "The camera follows continuous physical action through the scene.";
     if (emotion) contracts = contracts.map((text) => text
       .replace("sings with passion", "sings")
       .replace(/ (?:[^.]+?'s )?engaged eyes and expressive brows convey the song's intensity\./i, ""));
-    if (emotion) contracts = contracts.map(text => remainingLyricFreeContract(clean, text));
+    if (emotion) contracts = contracts.map(text => {
+      const [merged, remaining] = mergeLyricFreeContract(clean, text);
+      clean = merged;
+      return remaining;
+    });
     return [clean, emotion ? "" : lyricFreeFacialText(segment), ...contracts].filter(Boolean).join(" ");
   }
 
@@ -808,6 +812,10 @@ export function createMiniMaxPrompt({
 
   function miniMaxH3SelectedFramingEntries(segment, shotPlan = []) {
     if (!Array.isArray(shotPlan) || !shotPlan.length) return [];
+    // A populated scene card is authoritative; rotation is only a fallback.
+    if (String(segment?.shot_type || "").trim() || String(segment?.camera_motion || "").trim()) {
+      return shotPlan.map(() => ({ shot: String(segment?.shot_type || "").trim(), camera: String(segment?.camera_motion || "").trim() }));
+    }
     const cameraFlowKey = String(state.builderStoryboardDefaults?.camera_flow || segment?.camera_flow || "").trim();
     const preset = STORYBOARD_CAMERA_FLOW_PRESETS[cameraFlowKey];
     if (!preset?.framing_candidates) return shotPlan.map(() => null);
@@ -913,6 +921,10 @@ export function createMiniMaxPrompt({
         : "";
     }).filter(Boolean);
     if (!framingLines.length) return [];
+    if (String(segment?.shot_type || "").trim() || String(segment?.camera_motion || "").trim()) {
+      return [`SCENE CARD FRAMING / CAMERA — AUTHORITATIVE:\n${framingLines.join("\n")}`,
+        "Follow these scene directions. Automatic framing candidates are fallback ideas and must not replace the scene card's angle, lens, framing or camera path."];
+    }
     const cameraFlowKey = String(state.builderStoryboardDefaults?.camera_flow || segment?.camera_flow || "").trim();
     const preset = STORYBOARD_CAMERA_FLOW_PRESETS[cameraFlowKey];
     if (!preset?.framing_candidates) return [];
@@ -1321,6 +1333,9 @@ export function createMiniMaxPrompt({
     }
     const i2vTransition = miniMaxI2VTransitionPrompt(segment, mode, settings);
     if (i2vTransition) parts.push(i2vTransition);
+    if (!nativeAudio && performanceMode === "singing") {
+      parts.push("SUPPLIED-AUDIO SINGING: Include the assigned singer and Audio 1 synchronization cue once, only during audible vocals. Do not describe mouth, lip or jaw movement or ask for singing from the first frame. Preserve any supplied vocal timing; introductory silence remains non-vocal.");
+    }
     parts.push(miniMaxH3LiteralSceneInstruction());
     const context = parts.join("\n\n");
     return omitLyricsForSegment(segment) ? lyricFreeContextForSegment(segment, mode, context) : context;
@@ -1640,9 +1655,12 @@ export function createMiniMaxPrompt({
       throw new Error(`Cannot assemble MiniMax shots: expected ${shotPlan.length} description${shotPlan.length === 1 ? "" : "s"}, got ${descriptions.length}.`);
     }
     let body = shotPlan.map((shot, index) => {
-      const description = omitLyricsForSegment(segment)
+      let description = omitLyricsForSegment(segment)
         ? lyricFreeShot(segment, descriptions[index], index, mode)
         : miniMaxH3EnsureQuotedLyricInShot(segment, enforceMiniMaxH3CueOnShotDescription(segment, descriptions[index], index), index, shotPlan.length, mode);
+      if ((segment?.performance_mode || state.videoType) === "singing" && miniMaxH3SettingsForSegment(segment).audio_mode !== "built_in_audio") {
+        description = stripSingingArticulation(description);
+      }
       if (shot.number === 1) return `[Shot 1] ${description}`.trim();
       const postCutDescription = miniMaxH3PostCutShotText(description).replace(/^\s*([a-z])/, (_match, letter) => letter.toUpperCase());
       return `[Shot ${shot.number}] At ${shot.timecode}, ${postCutDescription}`.trim();

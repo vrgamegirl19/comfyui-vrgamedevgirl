@@ -928,6 +928,9 @@ def build_shot_task(
             "Do not add a standalone reference-definition paragraph to the shot description."
         )
     parts.append(literal_scene_instruction())
+    if audio_mode != "built_in_audio" and not visual_only and not no_character:
+        parts.append("SUPPLIED-AUDIO SINGING: Include the assigned singer and Audio 1 synchronization cue once, only during audible vocals. "
+                     "Do not describe mouth, lip or jaw movement or ask for singing from the first frame. Preserve any supplied vocal timing; introductory silence remains non-vocal.")
     if continuation:
         # Last, where the model weighs it most. The vocal rule applies only when the scene sings.
         has_vocals = not (visual_only or no_character or not lyric_text)

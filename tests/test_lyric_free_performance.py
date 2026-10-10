@@ -14,6 +14,37 @@ pa = importlib.import_module(f"{ROOT.name}.minimax.prompt_assembly")
 
 
 class LyricFreePerformanceTests(unittest.TestCase):
+    def test_inline_singing_merges_audio_once_and_removes_articulation(self):
+        draft = ("<Subject 1> walks slowly alongside the table; <Subject 1> sings passionately in sync with the audible vocals, "
+                 "with natural mouth and jaw articulation, narrowed eyes, and brows drawn in a defiant expression. Dust drifts.")
+        scene = {"lyric_text": "Secret song words", "facial_performance_custom": "Rock/Punk"}
+        result = lfp.apply_shots([draft], scene, {"exact_duration_seconds": 4}, "<Subject 1>")[0]
+        self.assertEqual(result.count("sings "), 1)
+        self.assertEqual(result.count("<Audio 1>"), 1)
+        self.assertNotRegex(result, r"mouth|lips?|jaw")
+        for text in ("walks slowly alongside the table", "narrowed eyes", "brows drawn", "Dust drifts"):
+            self.assertIn(text, result)
+
+    def test_articulation_removal_preserves_quoted_words_and_sentence_boundaries(self):
+        result = lfp.strip_singing_articulation('She walks, her mouth and jaw moving to the vocals. She sings "My lips are sealed."')
+        self.assertIn("She walks.", result)
+        self.assertIn('"My lips are sealed."', result)
+        self.assertNotIn("jaw moving", result)
+
+    def test_distinct_vocal_intervals_for_one_singer_remain_distinct(self):
+        first = "<Subject 1> sings in sync with the vocals in <Audio 1> during 1s–2s."
+        second = "<Subject 1> sings in sync with the vocals in <Audio 1> during 3s–4s."
+        self.assertEqual(lfp.merge_contract(first, second), (first, second))
+
+    def test_lyrics_included_still_removes_articulation_but_not_exact_words(self):
+        scene = {"start": 0, "end": 4, "lyric_text": "My lips are sealed"}
+        session = {"video_type": "singing", "omit_lyrics_from_video_prompts": False}
+        result = pa.assemble_minimax_h3_prompt(scene, session,
+            ['She sings "My lips are sealed". Her mouth and jaw move to the vocals. The camera tracks left.'], "text_to_video")
+        self.assertIn('"My lips are sealed"', result["prompt"])
+        self.assertNotIn("jaw", result["prompt"])
+        self.assertIn("camera tracks left", result["prompt"])
+
     def test_owned_acting_keeps_one_performance_instruction(self):
         scene = {"lyric_text": "Secret song words", "facial_performance": "custom", "facial_performance_custom": "angry"}
         draft = ("<Subject 1> sings in sync with <Audio 1> [angry, singing] while she grips the zipper pull with her right hand. "
@@ -21,7 +52,7 @@ class LyricFreePerformanceTests(unittest.TestCase):
                  "<Subject 1>'s mouth follows only the audible vocal phrasing.")
         result = lfp.apply_shots([draft], scene, {"exact_duration_seconds": 4}, "<Subject 1>")[0]
         self.assertEqual(result.count("sings "), 1)
-        self.assertEqual(result.count("audible vocal phrasing"), 1)
+        self.assertNotRegex(result, r"mouth|lips?|jaw|audible vocal phrasing")
         self.assertIn("she grips the zipper pull with her right hand", result)
 
     def test_deduplication_requires_correct_actor_and_timing(self):
@@ -55,7 +86,7 @@ class LyricFreePerformanceTests(unittest.TestCase):
         plan = {**self.plan, "cut_times_seconds": []}
         result = lfp.apply_shots(["A camera tracks left."], self.scene, plan)[0]
         self.assertIn("during 2s–4s", result)
-        self.assertIn("mouth and jaw movement follows only the audible vocal", result)
+        self.assertNotRegex(result, r"mouth|lips?|jaw")
 
     def test_instrumental_and_visual_only(self):
         for scene in [{"lyric_text": "[instrumental]"}, {**self.scene, "lyric_no_lip_sync": True},
