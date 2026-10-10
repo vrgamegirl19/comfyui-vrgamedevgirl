@@ -3,6 +3,52 @@ export function lyricFreePerformanceEnabled(enabled, performanceMode, audioMode)
   return Boolean(enabled) && performanceMode === "singing" && audioMode !== "built_in_audio";
 }
 
+export function stripSingingArticulation(text) {
+  const saved = [];
+  let clean = String(text || '').replace(/<d>[\s\S]*?<\/d>|“[^”]*”|"[^"]*"|\[[^\]]*\]/gi, value => {
+    saved.push(value);
+    return `VRGDGPROTECTED${saved.length - 1}TOKEN`;
+  }).replace(/(\d)\.(?=\d)/g, '$1VRGDGDECIMALTOKEN');
+  // Keep the adjacent eye/brow expression when an articulation clause introduces it.
+  clean = clean.replace(/\bwith\s+(?:natural\s+)?(?:mouth|lips?|jaw)\b[^,;.!?]*,\s*/gi, 'with ');
+  clean = clean.split(/(?<=[.!?…])\s+/).map(sentence => {
+    const parts = sentence.split(/([,;])\s*/);
+    let result = '';
+    for (let i = 0; i < parts.length; i += 2) {
+      const clause = parts[i].replace(/\s+(?:with|and|while)\s+(?:(?:her|his|their|natural)\s+)*(?:mouth|lips?|jaw)\b[^.!?]*/gi, '').trim();
+      if (!clause || /\b(?:mouth\w*|lips?|jaw)\b/i.test(clause)) continue;
+      result += (result ? `${parts[i - 1] || ','} ` : '') + clause;
+    }
+    result = result.replace(/[,;]\s*([.!?])/g, '$1').replace(/[ ,;]+$/, '');
+    if (result && /[.!?…]$/.test(sentence) && !/[.!?…]$/.test(result)) result += sentence.slice(-1);
+    return result;
+  }).filter(Boolean).join(' ');
+  return clean.replace(/VRGDGDECIMALTOKEN/g, '.').replace(/VRGDGPROTECTED(\d+)TOKEN/g, (_m, i) => saved[Number(i)])
+    .replace(/\s+/g, ' ').trim();
+}
+
+export function mergeLyricFreeContract(description, contract) {
+  const protect = value => value.replace(/(\d)\.(?=\d)/g, '$1DECIMAL');
+  const [singing, ...rest] = protect(contract).split(/(?<=[.!?])\s+/);
+  const actor = singing.match(/^(.*?) sings\b/i)?.[1];
+  if (!actor) return [description, contract];
+  const escaped = actor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const owned = new RegExp(`${escaped}\\s+sings(?:\\s+[a-z]+ly|\\s+with passion)?\\b`, 'i');
+  const sentences = protect(description).split(/(?<=[.!?])\s+/);
+  const requestedTime = singing.match(/ during (.+)\.$/)?.[1];
+  const index = sentences.findIndex(sentence => {
+    const existingTime = sentence.match(/ during (\d+(?:DECIMAL\d+)?s\s*[–—-]\s*\d+(?:DECIMAL\d+)?s)/)?.[1];
+    return owned.test(sentence) && (!requestedTime || !existingTime || existingTime === requestedTime);
+  });
+  if (index < 0) return [description, contract];
+  const sync = singing.replace(/^.*? sings(?: with passion)?\s*/i, '').replace(/\.$/, '');
+  sentences[index] = sentences[index]
+    .replace(/\s+in sync with\s+(?:the\s+)?(?:audible\s+)?(?:vocals(?:\s+in)?\s*(?:<Audio 1>)?|<Audio 1>)/gi, '')
+    .replace(/\s+during\s+\d+(?:DECIMAL\d+)?s\s*[–—-]\s*\d+(?:DECIMAL\d+)?s/gi, '')
+    .replace(owned, match => `${match} ${sync}`);
+  return [sentences.join(' ').replace(/DECIMAL/g, '.'), rest.join(' ').replace(/DECIMAL/g, '.')];
+}
+
 export function cleanLyricFreeDescription(text, lyrics = [], options = {}) {
   let clean = String(text || "").replace(/<d>[\s\S]*?<\/d>/gi, "");
   for (const lyric of lyrics.filter(Boolean).sort((a, b) => b.length - a.length)) {
@@ -15,9 +61,7 @@ export function cleanLyricFreeDescription(text, lyrics = [], options = {}) {
   const protectedText = clean.replace(/(\d)\.(?=\d)/g, "$1VRGDGDECIMALTOKEN");
   if (options.preservePerformance) {
     // Keep LLM-chosen emotion tags and acting rather than replacing them with stock prose.
-    const safe = options.singleShot ? protectedText : protectedText.split(/(?<=[.!?…])\s+/).map((sentence) =>
-      sentence.split(",").filter((clause) => !/\b(?:mouth\w*|lips?|jaw)\b/i.test(clause)).join(",")
-    ).join(" ");
+    const safe = stripSingingArticulation(protectedText);
     return safe.replace(/VRGDGDECIMALTOKEN/g, ".").replace(/\s+/g, " ").trim();
   }
   return (protectedText.match(/[^.!?…]+[.!?…]+|[^.!?…]+$/g) || [])
@@ -33,7 +77,6 @@ export function cleanLyricFreeFacialDirection(text) {
 
 export function lyricFreeShotDirection(performer, singleShot, timing = "", includeExpression = true) {
   return `${performer} sings with passion in sync with the vocals in <Audio 1>${timing ? ` during ${timing}` : ""}.`
-    + (singleShot ? ` ${performer}'s natural mouth and jaw movement follows only the audible vocal phrasing.` : "")
     + (includeExpression ? ` ${performer}'s engaged eyes and expressive brows convey the song's intensity.` : "");
 }
 
@@ -59,5 +102,5 @@ export function lyricFreePromptContext(text, lyrics, directions, singleShot) {
   let clean = context;
   for (const lyric of lyrics.filter(Boolean).sort((a, b) => b.length - a.length)) clean = clean.split(lyric).join("[audio vocal cue]");
   clean = clean.replace(/[^\n.!?]*\b(?:mouth\w*|lips?|jaw)\b[^\n.!?]*[.!?]?/gi, "");
-  return `${clean}\n\nLYRIC-FREE CUSTOM AUDIO — MANDATORY:\nDo not quote, invent, or add lyric lines or <d> tags. ${singleShot ? "Mouth and jaw synchronization is allowed only during audible vocals." : "Do not mention mouth, lip, or jaw movement anywhere in this multi-shot prompt."} Instrumental intervals use only visual action and camera direction; do not mention singing in them. Preserve the supplied audio unchanged. Use selected facial direction through eyes, brows and expression.\n${directions.join("\n")}`;
+  return `${clean}\n\nLYRIC-FREE CUSTOM AUDIO — MANDATORY:\nDo not quote, invent, or add lyric lines or <d> tags. Do not mention mouth, lip, or jaw movement anywhere in this prompt. Write each assigned singing cue once, only during its audible vocals in Audio 1. Instrumental intervals use only visual action and camera direction; do not mention singing in them. Preserve the supplied audio unchanged. Use selected facial direction through eyes, brows and expression.\n${directions.join("\n")}`;
 }

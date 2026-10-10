@@ -9,6 +9,60 @@ def enabled(value: bool, performance_mode: str, audio_mode: str) -> bool:
     return bool(value) and performance_mode == "singing" and audio_mode != "built_in_audio"
 
 
+def strip_singing_articulation(text: str) -> str:
+    """Remove oral movement directions while retaining action, emotion and quoted words."""
+    saved = []
+
+    def protect(match):
+        saved.append(match[0])
+        return f"VRGDGPROTECTED{len(saved) - 1}TOKEN"
+
+    clean = re.sub(r'<d>[\s\S]*?</d>|“[^”]*”|"[^"]*"|\[[^\]]*\]', protect, str(text or ""), flags=re.I)
+    clean = re.sub(r"(\d)\.(?=\d)", r"\1VRGDGDECIMALTOKEN", clean)
+    clean = re.sub(r"\bwith\s+(?:natural\s+)?(?:mouth|lips?|jaw)\b[^,;.!?]*,\s*", "with ", clean, flags=re.I)
+    result = []
+    for sentence in re.split(r"(?<=[.!?…])\s+", clean):
+        parts = re.split(r"([,;])\s*", sentence)
+        rebuilt = ""
+        for i in range(0, len(parts), 2):
+            clause = parts[i]
+            clause = re.sub(r"\s+(?:with|and|while)\s+(?:(?:her|his|their|natural)\s+)*(?:mouth|lips?|jaw)\b[^.!?]*",
+                            "", clause, flags=re.I).strip()
+            if clause and not re.search(r"\b(?:mouth\w*|lips?|jaw)\b", clause, re.I):
+                rebuilt += ((parts[i - 1] or ",") + " " if rebuilt else "") + clause
+        rebuilt = re.sub(r"[,;]\s*([.!?])", r"\1", rebuilt).rstrip(" ,;")
+        if rebuilt and re.search(r"[.!?…]$", sentence) and not re.search(r"[.!?…]$", rebuilt):
+            rebuilt += sentence[-1]
+        result.append(rebuilt)
+    clean = " ".join(filter(None, result)).replace("VRGDGDECIMALTOKEN", ".")
+    clean = re.sub(r"VRGDGPROTECTED(\d+)TOKEN", lambda m: saved[int(m[1])], clean)
+    return re.sub(r"\s+", " ", clean).strip()
+
+
+def merge_contract(description: str, contract: str) -> Tuple[str, str]:
+    """Put authoritative audio and timing on an existing owned singing cue once."""
+    protect = lambda v: re.sub(r"(\d)\.(?=\d)", r"\1DECIMAL", v)
+    singing, *rest = re.split(r"(?<=[.!?])\s+", protect(contract))
+    actor = re.match(r"(.*?) sings\b", singing, re.I)
+    if not actor:
+        return description, contract
+    owned = re.compile(re.escape(actor[1]) + r"\s+sings(?:\s+[a-z]+ly|\s+with passion)?\b", re.I)
+    sentences = re.split(r"(?<=[.!?])\s+", protect(description))
+    requested_time = re.search(r" during (.+)\.$", singing)
+    def compatible(sentence):
+        existing_time = re.search(r" during (\d+(?:DECIMAL\d+)?s\s*[–—-]\s*\d+(?:DECIMAL\d+)?s)", sentence)
+        return owned.search(sentence) and (not requested_time or not existing_time or existing_time[1] == requested_time[1])
+    index = next((i for i, sentence in enumerate(sentences) if compatible(sentence)), None)
+    if index is None:
+        return description, contract
+    sync = re.sub(r"^.*? sings(?: with passion)?\s*", "", singing, flags=re.I).rstrip(".")
+    sentence = re.sub(r"\s+in sync with\s+(?:the\s+)?(?:audible\s+)?(?:vocals(?:\s+in)?\s*(?:<Audio 1>)?|<Audio 1>)",
+                      "", sentences[index], flags=re.I)
+    sentence = re.sub(r"\s+during\s+\d+(?:DECIMAL\d+)?s\s*[–—-]\s*\d+(?:DECIMAL\d+)?s", "", sentence, flags=re.I)
+    sentences[index] = owned.sub(lambda m: f"{m[0]} {sync}", sentence, count=1)
+    return " ".join(sentences).replace("DECIMAL", "."), " ".join(rest).replace("DECIMAL", ".")
+
+
 def clean_description(text: str, lyrics: List[str], preserve_performance: bool = False,
                       single_shot: bool = False) -> str:
     """Remove stale lyric and vocal movement sentences before adding timed direction."""
@@ -20,11 +74,7 @@ def clean_description(text: str, lyrics: List[str], preserve_performance: bool =
     vocal = re.compile(r"\b(?:sing\w*|sang|sung|lip[ -]?sync\w*|lyrics?|vocals?|dialogue|mouth\w*|lips?|jaw)\b", re.I)
     protected = re.sub(r"(\d)\.(?=\d)", r"\1VRGDGDECIMALTOKEN", clean)
     if preserve_performance:
-        if not single_shot:
-            sentences = re.split(r"(?<=[.!?…])\s+", protected)
-            protected = " ".join(
-                ",".join(c for c in sentence.split(",") if not re.search(
-                    r"\b(?:mouth\w*|lips?|jaw)\b", c, re.I)) for sentence in sentences)
+        protected = strip_singing_articulation(protected)
         return re.sub(r"\s+", " ", protected).replace("VRGDGDECIMALTOKEN", ".").strip()
     sentences = re.findall(r"[^.!?…]+[.!?…]+|[^.!?…]+$", protected)
     kept = " ".join(s for s in sentences if not vocal.search(s))
@@ -33,11 +83,10 @@ def clean_description(text: str, lyrics: List[str], preserve_performance: bool =
 
 def shot_direction(performer: str, single_shot: bool, timing: str = "",
                    include_expression: bool = True) -> str:
-    """Visible singing direction, with explicit articulation only for a single shot."""
+    """One audio-based singing direction without explicit articulation."""
     return (
         f"{performer} sings with passion in sync with the vocals in <Audio 1>"
         + (f" during {timing}" if timing else "") + "."
-        + (f" {performer}'s natural mouth and jaw movement follows only the audible vocal phrasing." if single_shot else "")
         + (f" {performer}'s engaged eyes and expressive brows convey the song's intensity." if include_expression else "")
     )
 
@@ -212,7 +261,11 @@ def apply_shots(descriptions: List[str], segment: Dict[str, Any], cut_plan: Dict
         if interpret_emotion:
             contracts = [re.sub(r" (?:[^.]+?'s )?engaged eyes and expressive brows convey the song's intensity\.", "", c.replace("sings with passion", "sings"), flags=re.I)
                          for c in contracts]
-            contracts = [remaining_contract(clean, c) for c in contracts]
+            remaining = []
+            for contract in contracts:
+                clean, extra = merge_contract(clean, contract)
+                remaining.append(extra)
+            contracts = remaining
         result.append(" ".join(filter(None, [clean or
                       "The camera follows continuous physical action through the scene.",
                       "" if interpret_emotion else facial_text(segment, session), *contracts])))
@@ -233,8 +286,7 @@ def prompt_context(text: str, segment: Dict[str, Any], cut_plan: Dict[str, Any],
         clean = clean.replace(lyric, "[audio vocal cue]")
     clean = re.sub(r"[^\n.!?]*\b(?:mouth\w*|lips?|jaw)\b[^\n.!?]*[.!?]?", "", clean, flags=re.I)
     single = not cut_plan.get("cut_times_seconds")
-    rule = ("Mouth and jaw synchronization is allowed only during audible vocals." if single else
-            "Do not mention mouth, lip, or jaw movement anywhere in this multi-shot prompt.")
+    rule = "Do not mention mouth, lip, or jaw movement anywhere in this prompt. Write each assigned singing cue once, only during its audible vocals in Audio 1."
     return (clean + "\n\nLYRIC-FREE CUSTOM AUDIO — MANDATORY:\n"
             "Do not quote, invent, or add lyric lines or <d> tags. " + rule +
             " Instrumental intervals use only visual action and camera direction; do not mention singing in them. "

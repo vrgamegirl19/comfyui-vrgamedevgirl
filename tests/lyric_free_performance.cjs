@@ -44,13 +44,43 @@ const mixed = {
   ],
 };
 
+test('inline singing is merged once, without oral directives or losing physical action', async () => {
+  const run = await harness({ single: true, performers: [{ id: 'a', name: 'Alice' }] });
+  const draft = '<Subject 1> walks slowly alongside the table; <Subject 1> sings passionately in sync with the audible vocals, with natural mouth and jaw articulation, narrowed eyes, and brows drawn in a defiant expression. Dust drifts through the warehouse.';
+  const out = run({ lyric_text: 'Secret song words', facial_performance_custom: 'Rock/Punk' }, [draft]);
+  assert.equal((out.match(/sings\b/g) || []).length, 1);
+  assert.equal((out.match(/<Audio 1>/g) || []).length, 1);
+  assert.doesNotMatch(out, /mouth|lips?|jaw/i);
+  assert.match(out, /walks slowly alongside the table/);
+  assert.match(out, /narrowed eyes/);
+  assert.match(out, /brows drawn/);
+  assert.match(out, /Dust drifts/);
+});
+
+test('articulation removal protects exact words inside dialogue tags and quotes', async () => {
+  const { stripSingingArticulation } = await import('../web/music_video_builder/lyric_free_performance.mjs');
+  const out = stripSingingArticulation('She walks, her mouth and jaw moving to the vocals. She sings <d>[English, angry] My lips are sealed.</d> and holds a note.');
+  assert.match(out, /She walks\./);
+  assert.match(out, /<d>\[English, angry\] My lips are sealed\.<\/d>/);
+  assert.doesNotMatch(out, /jaw moving/);
+});
+
+test('merging one singer never overwrites a different scheduled vocal interval', async () => {
+  const { mergeLyricFreeContract } = await import('../web/music_video_builder/lyric_free_performance.mjs');
+  const first = '<Subject 1> sings in sync with the vocals in <Audio 1> during 1s–2s.';
+  const second = '<Subject 1> sings in sync with the vocals in <Audio 1> during 3s–4s.';
+  const [text, remaining] = mergeLyricFreeContract(first, second);
+  assert.equal(text, first);
+  assert.equal(remaining, second);
+});
+
 test('single-shot assembly keeps owned acting without repeating singing or articulation', async () => {
   const run = await harness({ single: true, performers: [{ id: 'a', name: 'Alice' }] });
   const scene = { lyric_text: 'Secret song words', facial_performance: 'custom', facial_performance_custom: 'angry' };
   const draft = '<Subject 1> sings in sync with <Audio 1> [angry, singing] while she grips the zipper pull with her right hand. <Subject 1> looks down at the zipper, then toward the camera. <Subject 1>\'s mouth follows only the audible vocal phrasing.';
   const out = run(scene, [draft]);
   assert.equal((out.match(/sings\b/g) || []).length, 1);
-  assert.equal((out.match(/audible vocal phrasing/g) || []).length, 1);
+  assert.doesNotMatch(out, /mouth|lips?|jaw|audible vocal phrasing/i);
   assert.match(out, /she grips the zipper pull with her right hand/);
   assert.match(out, /<Subject 1> looks down at the zipper/);
 });
@@ -69,16 +99,17 @@ test('multi-shot final assembly omits lyrics and articulation, and keeps opening
   assert.doesNotMatch(out, /Secret song words|mouth|lips?|jaw|<d>/i);
   assert.doesNotMatch(out.split('[Shot 2]')[0], /sings|singing/i);
   assert.match(out, /<Subject 2> sings in sync.*<Audio 1> during 2s–4s/);
+  assert.equal((out.match(/sings\b/g) || []).length, 1);
   assert.match(out, /\[sad, singing\] with watery eyes/);
   assert.match(out, /eyes water/);
   assert.match(out, /wide camera tracks left/);
 });
 
-test('single continuous shot preserves delayed vocal timing and permits articulation', async () => {
+test('single continuous shot preserves delayed vocal timing without articulation', async () => {
   const run = await harness({ single: true });
   const out = run(mixed, ['A camera tracks left.']);
   assert.match(out, /during 2s–4s/);
-  assert.match(out, /mouth and jaw movement follows only the audible vocal/);
+  assert.doesNotMatch(out, /mouth|lips?|jaw/i);
   assert.doesNotMatch(out, /Secret song words/);
 });
 

@@ -6,8 +6,8 @@ The option defaults to unchecked and is saved with the project, including undo/r
 Older projects open with the option unchecked.
 
 - Vocal shots describe passionate singing synchronized to `<Audio 1>`.
-- Single-shot prompts may describe mouth and jaw synchronization during audible vocals.
-- Multi-shot prompts omit explicit mouth, lip and jaw movement wording throughout.
+- Both single- and multi-shot supplied-audio singing prompts omit explicit mouth, lip and jaw movement wording. Singing cues follow the audible vocals and any supplied timing.
+- Assembly merges audio/timing into an existing assigned singer's cue instead of appending a duplicate. It retains the scene's physical action and eye/brow expression.
 - Instrumental cue ranges, B-roll and scenes without characters receive no singing direction.
 - Existing facial presets and custom directions contribute eyes, brows and visible expression.
 - Saved lyrics, cue timing and singer assignments remain available to the builder.

@@ -1,6 +1,6 @@
 import { hasEmotionExpressionInput } from "./emotion_expression.mjs";
 import { storyboardFacialPerformancePreset } from "../storyboard_builder/performance_presets.mjs";
-import { lyricFreePerformanceEnabled, cleanLyricFreeDescription, cleanLyricFreeFacialDirection, lyricFreeShotDirection, lyricFreePromptContext, remainingLyricFreeContract } from "./lyric_free_performance.mjs";
+import { lyricFreePerformanceEnabled, cleanLyricFreeDescription, cleanLyricFreeFacialDirection, lyricFreeShotDirection, lyricFreePromptContext, mergeLyricFreeContract, stripSingingArticulation } from "./lyric_free_performance.mjs";
 import { miniMaxI2VTransitionPrompt } from "./minimax_i2v_transition.mjs";
 import { miniMaxI2VFrameMode, miniMaxI2VLastFrame } from "./minimax_keyframe_state.mjs";
 import {
@@ -138,12 +138,27 @@ function miniMaxH3MotionEnergyText(cameraMotionSpeed, characterMotionSpeed) {
   const camera = Number.isFinite(Number(cameraMotionSpeed)) ? Number(cameraMotionSpeed) : 4;
   const character = Number.isFinite(Number(characterMotionSpeed)) ? Number(characterMotionSpeed) : 4;
   const cameraText = camera >= 7
-    ? "The camera is fast and energetic: whips, orbits, push-ins, and quick tracking."
+    ? "The requested camera movement is fast and energetic."
     : camera >= 4 ? "The camera moves at a steady pace with a clear direction." : "The camera moves slowly, or holds a locked frame.";
   const characterText = character >= 7
-    ? "The performers are high energy: pop, fast motion, jumps, spins, runs, dance hits, and quick reactions."
-    : character >= 4 ? "The performers use steady physical action: walking, turning, reaching, and set interaction." : "The performers use small movements and held poses with life detail.";
+    ? "The requested performer action has high energy and decisive physical movement."
+    : character >= 4 ? "The requested performer action has steady physical energy." : "The performers use small movements and held poses with life detail.";
   return `${cameraText} ${characterText}`;
+}
+
+export function miniMaxH3SceneTimingInstruction(duration, cutPlan = {}) {
+  const exact = Number(Number(duration).toFixed(3));
+  const plan = miniMaxH3OfficialShotPlan(cutPlan);
+  const windows = plan.map((shot, index) => {
+    const start = Number(shot.time || 0);
+    const end = Number(plan[index + 1]?.time ?? exact);
+    return `Shot ${index + 1}: ${Number(start.toFixed(3))}–${Number(end.toFixed(3))}s (${Number(Math.max(0, end - start).toFixed(3))} seconds available).`;
+  });
+  return [
+    `SCENE TIMING — MANDATORY: The complete scene lasts exactly ${exact} seconds.`,
+    ...windows,
+    "Use the scene beat and storyboard directions together to stage only what can physically finish within each shot's available time. Reserve time for the required singing or speaking and any supplied entrance, reveal, or transition. For a brief shot, express the essential beat through one economical continuous action and the requested camera move; let performance and camera movement happen together where physically possible. Keep optional gestures and reactions only when time remains. Do not invent sequential steps, pivots, glances, or framing changes to fill a checklist. Preserve explicitly requested action and exact vocal words; simplify optional choreography rather than rushing required performance. Motion speed sets the energy of the chosen movement, not the number of actions. Before returning, check that the opening, action, camera travel, and ending fit the available time without an extra cut, rushed final beat, or action continuing beyond the shot.",
+  ].join("\n");
 }
 
 function miniMaxH3OfficialShotScheduleLines(cutPlan = {}) {
@@ -334,6 +349,10 @@ function miniMaxH3CapitalizeCueText(value) {
 function miniMaxH3CleanSubjectNoun(value, fallback = "reference") {
   const text = String(value || "").replace(/\s+/g, " ").trim() || fallback;
   return text.replace(/^(?:the\s+)+/i, "the ");
+}
+
+export function miniMaxH3LiteralSceneInstruction() {
+  return "LITERAL SCENE CLARITY — MANDATORY: Write natural, fluent shot prose that H3 can follow literally. Lead physical action with the person doing it; use their possessive for a body part or worn item and clear pronouns afterward. For example: '<Subject 1> steps past the ground-level camera, her boot briefly crossing the foreground.' Describe how the camera films that same action instead of independently placing a body part in the foreground and its owner elsewhere. A close-up identifies whose body part is framed; describe cropping only when needed to understand the shot. Keep ownership and spatial checks in your reasoning; finished sentences describe visible action, not explanations of anatomy or routine clothing attachment. Rewrite ambiguous scene-card or image-prompt wording into ordinary action-led sentences rather than copying it. Keep character, camera and prop positions consistent from the opening through the ending. Place loose props explicitly and use only objects supported by this scene's directions or mapped references. Carry an object from an adjacent scene only when the current scene explicitly does so. Before returning, read the shot by itself: every action has an actor, every item has a clear owner or placement, and the camera movement fits the same physical action. Resolve uncertainty with clear verbs and possessives, not explanatory qualifiers. Return only the requested shot JSON with natural visual prose.";
 }
 
 function miniMaxH3ReferenceSceneGroundingContract() {
@@ -622,14 +641,18 @@ export function createMiniMaxPrompt({
     const lyrics = [flattenLyricForPrompt(segment?.lyric_text), ...String(segment?.lyric_text || "").split(/\r?\n/), ...cues.map((cue) => cue.text)];
     const emotion = hasEmotionExpressionInput(segment, state);
     let contracts = lyricFreeDirections(segment, mode, index);
-    const clean = cleanLyricFreeDescription(description, lyrics, {
+    let clean = cleanLyricFreeDescription(description, lyrics, {
       preservePerformance: emotion && contracts.length > 0,
       singleShot: miniMaxH3OfficialShotPlan(miniMaxH3CutPlanForSegment(segment)).length === 1,
     }) || "The camera follows continuous physical action through the scene.";
     if (emotion) contracts = contracts.map((text) => text
       .replace("sings with passion", "sings")
       .replace(/ (?:[^.]+?'s )?engaged eyes and expressive brows convey the song's intensity\./i, ""));
-    if (emotion) contracts = contracts.map(text => remainingLyricFreeContract(clean, text));
+    if (emotion) contracts = contracts.map(text => {
+      const [merged, remaining] = mergeLyricFreeContract(clean, text);
+      clean = merged;
+      return remaining;
+    });
     return [clean, emotion ? "" : lyricFreeFacialText(segment), ...contracts].filter(Boolean).join(" ");
   }
 
@@ -789,6 +812,10 @@ export function createMiniMaxPrompt({
 
   function miniMaxH3SelectedFramingEntries(segment, shotPlan = []) {
     if (!Array.isArray(shotPlan) || !shotPlan.length) return [];
+    // A populated scene card is authoritative; rotation is only a fallback.
+    if (String(segment?.shot_type || "").trim() || String(segment?.camera_motion || "").trim()) {
+      return shotPlan.map(() => ({ shot: String(segment?.shot_type || "").trim(), camera: String(segment?.camera_motion || "").trim() }));
+    }
     const cameraFlowKey = String(state.builderStoryboardDefaults?.camera_flow || segment?.camera_flow || "").trim();
     const preset = STORYBOARD_CAMERA_FLOW_PRESETS[cameraFlowKey];
     if (!preset?.framing_candidates) return shotPlan.map(() => null);
@@ -894,6 +921,10 @@ export function createMiniMaxPrompt({
         : "";
     }).filter(Boolean);
     if (!framingLines.length) return [];
+    if (String(segment?.shot_type || "").trim() || String(segment?.camera_motion || "").trim()) {
+      return [`SCENE CARD FRAMING / CAMERA — AUTHORITATIVE:\n${framingLines.join("\n")}`,
+        "Follow these scene directions. Automatic framing candidates are fallback ideas and must not replace the scene card's angle, lens, framing or camera path."];
+    }
     const cameraFlowKey = String(state.builderStoryboardDefaults?.camera_flow || segment?.camera_flow || "").trim();
     const preset = STORYBOARD_CAMERA_FLOW_PRESETS[cameraFlowKey];
     if (!preset?.framing_candidates) return [];
@@ -1109,12 +1140,11 @@ export function createMiniMaxPrompt({
     parts.push(
       `MANDATORY CHARACTER BUDGET: The combined text inside all ${shotPlan.length} JSON description values must not exceed ${characterBudget.shotDescriptionChars} characters total (about ${perShotBudget} per shot). Stay within this combined limit; be concise without omitting required subjects, actions, camera direction, or vocal cues.`
     );
-    const lifeMovements = miniMaxH3LifeMovementBank(characterMotionSpeed, String(segment?.id || segment?.label || ""));
     parts.push(
-      "SHOT FORMAT — MANDATORY: Write each shot as 2 to 4 complete sentences, about 60 to 110 words, in this order. "
+      "SHOT FORMAT — MANDATORY: Write concise complete sentences, with length and action complexity suited to the available shot time, in this order. "
       + "1) Camera: the opening framing, one named camera move with its direction and speed, and the ending framing. "
       + "2) Subject action: each person in the cast does their own continuous physical action, written by what the body does. "
-      + `3) Life detail: one or two small human movements placed inside the action, for example ${lifeMovements.join("; ")}. `
+      + "3) Acting detail: include only context-supported expression or reaction that fits naturally inside the existing action and available time. "
       + "4) Light and set: one short line using only the mapped location's own light and objects. "
       + "Describe only what the camera sees. Show emotion through visible acting; requested emotion descriptors are permitted inside performance tags. Avoid abstract feeling words such as feel, grief, longing, memory, soul, or emotional in the visual prose. "
       + "Write complete grammatical prose, not notes, labels, or fragments, and do not replace named subjects with S1/S2 shorthand. "
@@ -1122,8 +1152,9 @@ export function createMiniMaxPrompt({
     );
     parts.push(
       `MOTION ENERGY — MANDATORY: ${miniMaxH3MotionEnergyText(cameraMotionSpeed, characterMotionSpeed)} `
-      + `This scene is ${exactDuration} seconds long. Fill the full shot length with continuous action at this energy. Do not slow down or hold still. The length sets how many actions are chained, and the speed values set how energetic each one is.`
+      + "Apply this energy to the requested action within the available time; speed does not require additional actions."
     );
+    parts.push(miniMaxH3SceneTimingInstruction(duration, cutPlan));
     const cutTimes = shotPlan.slice(1).map((shot) => shot.timecode);
     if (cutTimes.length) {
       parts.push(`Builder cut times for your planning only: ${cutTimes.join(", ")}. Do not write these times.`);
@@ -1302,6 +1333,10 @@ export function createMiniMaxPrompt({
     }
     const i2vTransition = miniMaxI2VTransitionPrompt(segment, mode, settings);
     if (i2vTransition) parts.push(i2vTransition);
+    if (!nativeAudio && performanceMode === "singing") {
+      parts.push("SUPPLIED-AUDIO SINGING: Include the assigned singer and Audio 1 synchronization cue once, only during audible vocals. Do not describe mouth, lip or jaw movement or ask for singing from the first frame. Preserve any supplied vocal timing; introductory silence remains non-vocal.");
+    }
+    parts.push(miniMaxH3LiteralSceneInstruction());
     const context = parts.join("\n\n");
     return omitLyricsForSegment(segment) ? lyricFreeContextForSegment(segment, mode, context) : context;
   }
@@ -1620,9 +1655,12 @@ export function createMiniMaxPrompt({
       throw new Error(`Cannot assemble MiniMax shots: expected ${shotPlan.length} description${shotPlan.length === 1 ? "" : "s"}, got ${descriptions.length}.`);
     }
     let body = shotPlan.map((shot, index) => {
-      const description = omitLyricsForSegment(segment)
+      let description = omitLyricsForSegment(segment)
         ? lyricFreeShot(segment, descriptions[index], index, mode)
         : miniMaxH3EnsureQuotedLyricInShot(segment, enforceMiniMaxH3CueOnShotDescription(segment, descriptions[index], index), index, shotPlan.length, mode);
+      if ((segment?.performance_mode || state.videoType) === "singing" && miniMaxH3SettingsForSegment(segment).audio_mode !== "built_in_audio") {
+        description = stripSingingArticulation(description);
+      }
       if (shot.number === 1) return `[Shot 1] ${description}`.trim();
       const postCutDescription = miniMaxH3PostCutShotText(description).replace(/^\s*([a-z])/, (_match, letter) => letter.toUpperCase());
       return `[Shot ${shot.number}] At ${shot.timecode}, ${postCutDescription}`.trim();
@@ -2252,6 +2290,7 @@ export function createMiniMaxPrompt({
       `Character motion speed: ${Number.isFinite(characterMotionSpeed) ? characterMotionSpeed : 4}/10.`,
       characterMotionGuidance || "Include physical character action appropriate to the selected character-motion speed.",
       cutPlan.instruction,
+      miniMaxH3SceneTimingInstruction(duration, cutPlan),
     );
     const cueShotContract = miniMaxH3CueShotContractText(segment, mode);
     if (cueShotContract) parts.push(cueShotContract);
@@ -2260,8 +2299,8 @@ export function createMiniMaxPrompt({
     }
     if (characterMotionSpeed >= 4) {
       parts.push(cueShotContract
-        ? "MANDATORY CHARACTER ACTION RULE: include at least one clear physical body action, gesture, step, or interaction with the set. Lip sync occurs only inside assigned vocal cue shots; instrumental cue shots must remain non-vocal."
-        : "MANDATORY CHARACTER ACTION RULE: include at least one clear physical body action, gesture, step, or interaction with the set in addition to visible singing and lip sync. Facial expression, blinking, breathing, and mouth movement alone do not satisfy character motion, but do not omit or suppress the required lip sync.");
+        ? "CHARACTER ACTION: use the scene beat and storyboard action at the selected energy within the available shot time. Lip sync occurs only inside assigned vocal cue shots; instrumental cue shots must remain non-vocal."
+        : "CHARACTER ACTION: combine the scene beat and storyboard action with the required singing or lip sync within the available shot time. Add optional gestures only when time remains.");
     }
     if (segment?.no_character_present) {
       parts.push(
@@ -2401,6 +2440,7 @@ export function createMiniMaxPrompt({
     }
     const i2vTransition = miniMaxI2VTransitionPrompt(segment, mode, settings);
     if (i2vTransition) parts.push(i2vTransition);
+    parts.push(miniMaxH3LiteralSceneInstruction());
     const context = parts.join("\n\n");
     return omitLyricsForSegment(segment) ? lyricFreeContextForSegment(segment, mode, context) : context;
   }

@@ -12,7 +12,7 @@ For H3 singing with supplied audio:
 
 - With **Do not add lyric lines to prompt** checked, lyrics remain available to the LLM for interpretation but are excluded from the generated video prompt. The LLM can write `[angry, singing]` alongside visible expressions synchronized with `<Audio 1>`.
 - With lyrics included, a single shot may use `<d>[English, angry, singing] exact lyric words.</d>`. The assembly preserves these descriptors and avoids duplicating the lyric. The actual language must match the lyric.
-- Instrumental and visual-only shots have no singing cues. Multi-shot lyric-free assembly removes mouth, lip, and jaw references. A single continuous shot allows articulation only during audible vocals.
+- Instrumental and visual-only shots have no singing cues. Supplied-audio singing assembly removes explicit mouth, lip, and jaw movement wording even in one continuous shot. It merges a single audio/timing assignment into each existing owned singing cue, retaining acting and distinct scheduled intervals.
 - Emotion transitions are staged in time, rather than flattening `Start happy, then end sad` into one simultaneous state. Supplied audio remains unchanged.
 
 Existing prompts are unchanged until regenerated. Tags are prompting guidance; their visual effect depends on the generation model.
