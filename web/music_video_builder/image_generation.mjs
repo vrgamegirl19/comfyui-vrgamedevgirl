@@ -1,4 +1,5 @@
 import { buildBrowserImagePrompt } from "../VRGDG_BrowserImageBridge.js";
+import { runBrowserImageWithFallback } from "./browser_image_fallback.mjs";
 import { postJson, queueWorkflowPrompt, waitForImages } from "./comfy_api.mjs";
 import { DEFAULT_NB_IMAGE_MODEL, FLUX_GEMMA_TIMEOUT_MS } from "./constants.mjs";
 import { toast } from "./controls.mjs";
@@ -65,6 +66,21 @@ function browserImageReferencePrompt(prompt, settings = {}) {
     : "";
   const instruction = `Using the provided ${joined} as visual context, create the requested scene image.${continuity}`;
   if (text.toLowerCase().startsWith(instruction.toLowerCase())) return text;
+  const opening = text.split(/[.!?\n]/, 1)[0];
+  const hasReferenceOpening = /^(?:using|use|based on)\b/i.test(opening);
+  const referencesAlreadyExplained = hasReferenceOpening && labels.every((label) => {
+    if (label === "character reference") return /\b(?:character|subject)\s+reference\b/i.test(opening);
+    if (label === "location reference") return /\blocation\s+reference\b/i.test(opening);
+    // The separate continuity guidance identifies the previous scene image.
+    if (label === "last scene image reference") return Boolean(continuity);
+    return /\breference\s+images?\b/i.test(opening);
+  });
+  if (referencesAlreadyExplained) {
+    const guidance = continuity.trim();
+    return guidance && !text.toLowerCase().includes(guidance.toLowerCase())
+      ? `${text}\n\n${guidance}`
+      : text;
+  }
   return `${instruction}\n\n${text}`.trim();
 }
 
@@ -619,31 +635,42 @@ export function createImageGeneration({
     const savedPrompt = syncSegmentFlowGptPrompt(segment, settings.prompt || "");
     if (!savedPrompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: Flow/GPT prompt is missing.`);
     const prompt = browserImageReferencePrompt(savedPrompt, settings);
-    const priorAttempt = Math.max(0, Number(segment.flow_gpt_generation_attempt || 0));
-    const generationAttempt = priorAttempt + 1;
-    segment.flow_gpt_generation_attempt = generationAttempt;
-    const configuredTimeout = Math.max(60, Math.min(2400, Number(settings.timeout_seconds || 600)));
-    const cacheBustTimeout = configuredTimeout >= 2400
-      ? configuredTimeout - (generationAttempt % 2)
-      : configuredTimeout + (generationAttempt % 2);
-    progress?.set(`${label}: building hidden browser image workflow${settings.previous_scene_image_attached ? ` with previous scene reference (${settings.previous_scene_image_label})` : ""}...`, percentBase + percentSpan * 0.25);
-    const built = await buildBrowserImagePrompt({
-      provider: settings.provider,
-      prompt,
-      aspect_ratio: settings.aspect_ratio || "16:9",
-      image_ingredients: settings.image_ingredients || [],
-      timeout_seconds: cacheBustTimeout,
-      reuse_open_project: options.reuseOpenProject === true,
-    });
-    if (settings.previous_scene_image_attached && Number(built.image_count || 0) < 1) {
-      throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: previous-scene continuity was requested, but Browser AI received zero reference images.`);
-    }
-    progress?.set(`${label}: queueing ${built.provider_label || "browser image"} workflow...`, percentBase + percentSpan * 0.45);
-    const queued = await queueWorkflowPrompt(built.prompt);
-    const promptId = queued?.prompt_id;
-    if (!promptId) throw new Error("ComfyUI queued the Flow/GPT image but did not return a prompt_id.");
-    const images = await waitForImages(promptId, (message) => {
-      progress?.set(`${label}: ${message}\nPrompt ID: ${promptId}`, percentBase + percentSpan * 0.72);
+    const shouldCancel = () => Boolean(state.batchCancelled || options.shouldCancel?.());
+    const { images, provider: successfulProvider } = await runBrowserImageWithFallback(settings, async (providerSettings) => {
+      const providerLabel = browserImageProviderLabel(providerSettings.provider);
+      const priorAttempt = Math.max(0, Number(segment.flow_gpt_generation_attempt || 0));
+      const generationAttempt = priorAttempt + 1;
+      segment.flow_gpt_generation_attempt = generationAttempt;
+      const configuredTimeout = Math.max(60, Math.min(2400, Number(browserImageProviderTimeout(providerSettings) || 600)));
+      const cacheBustTimeout = configuredTimeout >= 2400
+        ? configuredTimeout - (generationAttempt % 2)
+        : configuredTimeout + (generationAttempt % 2);
+      progress?.set(`${label}: building ${providerLabel} image workflow${settings.previous_scene_image_attached ? ` with previous scene reference (${settings.previous_scene_image_label})` : ""}...`, percentBase + percentSpan * 0.25);
+      const built = await buildBrowserImagePrompt({
+        provider: providerSettings.provider,
+        prompt,
+        aspect_ratio: settings.aspect_ratio || "16:9",
+        image_ingredients: settings.image_ingredients || [],
+        timeout_seconds: cacheBustTimeout,
+        reuse_open_project: options.reuseOpenProject === true,
+      });
+      if (settings.previous_scene_image_attached && Number(built.image_count || 0) < 1) {
+        throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: previous-scene continuity was requested, but Browser AI received zero reference images.`);
+      }
+      if (shouldCancel()) throw new Error("Stopped by user.");
+      progress?.set(`${label}: queueing ${built.provider_label || providerLabel} workflow...`, percentBase + percentSpan * 0.45);
+      const queued = await queueWorkflowPrompt(built.prompt);
+      const promptId = queued?.prompt_id;
+      if (!promptId) throw new Error(`ComfyUI queued the ${providerLabel} image but did not return a prompt_id.`);
+      return await waitForImages(promptId, (message) => {
+        progress?.set(`${label}: ${providerLabel}: ${message}\nPrompt ID: ${promptId}`, percentBase + percentSpan * 0.72);
+      }, shouldCancel);
+    }, {
+      shouldCancel,
+      providerLabel: browserImageProviderLabel,
+      onFallback: (failed, next, error) => {
+        progress?.set(`${label}: ${browserImageProviderLabel(failed)} failed. Trying ${browserImageProviderLabel(next)}...\n${String(error?.message || error)}`, percentBase + percentSpan * 0.2);
+      },
     });
     pushHistory();
     segment.image = images[images.length - 1] || null;
@@ -658,6 +685,7 @@ export function createImageGeneration({
       syncPreview(segment);
     }
     render();
+    progress?.set(`${label}: ${browserImageProviderLabel(successfulProvider)} image ready.`, percentBase + percentSpan);
     return images;
   }
 
