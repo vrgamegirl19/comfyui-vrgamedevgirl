@@ -48,6 +48,8 @@ export function createStoryboardBridge({
   function openStoryboardBuilderFromProject(options = {}) {
     if (!window.VRGDGStoryboardBuilder?.open) {
       toast("Storyboard Builder UI is not loaded yet. Refresh ComfyUI and try again.", true);
+      options.onSceneActionsDone?.(false);
+      options.onClose?.();
       return;
     }
     updateActiveFromInputs();
@@ -977,7 +979,10 @@ export function createStoryboardBridge({
       focusedSection: options.focusedSection,
       allowImagePrep: options.allowImagePrep,
       onClose: options.onClose,
-      onFocusedSave: async (updates) => {
+      sceneActions: options.sceneActions,
+      onSceneActionsDone: options.onSceneActionsDone,
+      // A single-scene replace writes back through onSceneChanged (that scene only), never the all-scenes sync below.
+      onFocusedSave: options.sceneActions ? null : async (updates) => {
         applyStoryboardReferenceMappings({
           ...updates,
           scenes: updates.scenes.map((scene) => ({

@@ -1,4 +1,4 @@
-import { createToast, makeButton, setButtonDisabled, setButtonVariant } from "./controls.mjs";
+import { createStoryboardProgressWindow, createToast, makeButton, setButtonDisabled, setButtonVariant } from "./controls.mjs";
 import {
   FACIAL_PERFORMANCE_PRESETS,
   ID_LORA_FACIAL_PERFORMANCE_PRESETS,
@@ -16,6 +16,7 @@ import {
   normalizeScene,
   normalizeStoryLayer,
   scenesFromBuilderPayload,
+  slimSceneForRequest,
   storyboardCutFrequencyValue,
   storyboardSpeedGuidance,
   storyboardSpeedValue,
@@ -54,6 +55,16 @@ import { hasMappedStoryboardLocation, NO_MAPPED_LOCATIONS_MESSAGE, runStoryGener
 
 export function openStoryboardBuilder(payload = {}) {
   const promptActionOnly = payload.promptActionOnly === true;
+  // { sceneId, beat, prompt }: replace the scene beat and/or the LLM prompt of that one scene, without showing this window.
+  const sceneActionsRaw = payload.sceneActions && typeof payload.sceneActions === "object" ? payload.sceneActions : null;
+  const sceneActions = sceneActionsRaw && String(sceneActionsRaw.sceneId || "").trim()
+    ? { sceneId: String(sceneActionsRaw.sceneId).trim(), beat: sceneActionsRaw.beat !== false, prompt: sceneActionsRaw.prompt !== false }
+    : null;
+  if (sceneActions && document.querySelector("[data-vrgdg-scene-actions]")) {
+    createToast("A scene beat / LLM replace is already running.", true);
+    payload.onClose?.();
+    return;
+  }
   const focusedSection = ["defaults", "story", "scenes"].includes(payload.focusedSection) ? payload.focusedSection : "";
   const focusedTitle = { defaults: "Scene Defaults", story: "Story Layer", scenes: "Scenes" }[focusedSection];
   const allowImagePrep = !focusedSection || payload.allowImagePrep === true;
@@ -446,6 +457,10 @@ export function openStoryboardBuilder(payload = {}) {
   backdrop.append(shell);
   document.body.append(backdrop);
   if (promptActionOnly) backdrop.style.display = "none";
+  if (sceneActions) {
+    backdrop.dataset.vrgdgSceneActions = sceneActions.sceneId;
+    backdrop.style.display = "none";
+  }
   if (sceneFocus.only) {
     backdrop.dataset.vrgdgFocusedStoryboard = focusSceneId;
     backdrop.style.display = "none";
@@ -667,7 +682,55 @@ export function openStoryboardBuilder(payload = {}) {
   refreshCharacterSpeedInfo();
   refreshFacialInfo();
   setMode(state.mode || "storyboard_prompts");
+  // The same work as selecting this one scene and pressing Replace Scene Beat, then the LLM button. Only this scene is
+  // selected, generated and written back to the timeline.
+  async function replaceSingleSceneStory(spec) {
+    const scene = state.scenes.find((item) => item.id === spec.sceneId);
+    if (!scene) throw new Error("This scene is not in the Storyboard. Open the Story Builder once for this project, then try again.");
+    const sceneIndex = state.scenes.indexOf(scene);
+    const sceneLabel = scene.label || `Scene ${scene.scene_number || sceneIndex + 1}`;
+    const what = spec.beat && spec.prompt ? "scene beat + LLM prompt" : spec.beat ? "scene beat" : "LLM prompt";
+    state.selected = new Set([scene.id]);
+    setMode("image_to_video_prep");
+    const progress = createStoryboardProgressWindow(`${sceneLabel}: replace ${what} — ${promptRunnerName()}`);
+    try {
+      if (spec.beat) {
+        await createSceneBeatWithGemma(scene, {
+          quiet: true, unloadAfter: !spec.prompt, progress, progressPercent: 10, progressLabel: `${sceneLabel} scene beat`,
+        });
+      }
+      if (spec.prompt) {
+        await createScenePromptForActiveMode(scene, {
+          quiet: true, unloadAfter: true, progress, progressPercent: spec.beat ? 55 : 10, progressLabel: `${sceneLabel} LLM prompt`,
+        });
+      }
+      progress.set("Saving the Storyboard...", 92);
+      await saveStoryboard({ throwOnError: true });
+      if (state.onSceneChanged) await state.onSceneChanged(slimSceneForRequest(scene, sceneIndex));
+      progress.set(`${sceneLabel}: ${what} replaced.`, 100);
+      progress.close(1400);
+      createToast(`Replaced the ${what} for ${sceneLabel} only.`);
+    } catch (error) {
+      progress.set(`${sceneLabel}: replace ${what} stopped:\n${String(error?.message || error)}`, 100);
+      createToast(`Replace ${what} stopped for ${sceneLabel}:\n${String(error?.message || error)}`, true);
+      throw error;
+    }
+  }
+
   loadExisting().then(async (loaded) => {
+    if (sceneActions) {
+      let replaced = false;
+      try {
+        await replaceSingleSceneStory(sceneActions);
+        replaced = true;
+      } catch (error) {
+        // The toast and the progress window already say what went wrong.
+      } finally {
+        payload.onSceneActionsDone?.(replaced);
+        closeStoryboard();
+      }
+      return;
+    }
     if (promptActionOnly) {
       try {
         setMode("image_to_video_prep");

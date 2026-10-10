@@ -41,6 +41,7 @@ function fixture(single = true) {
     isSingleScene: single, targetScene: state.segments[1], targetSceneIndex: 1, allScenes: state.segments,
     save: { disabled: false }, close: {}, cancel: {}, activeLyricReviewBackdrop: null,
     reviewAudio: { pause() {} }, clearReviewStopGuards() {},
+    refreshStoryActionButtons() {}, releaseStoryBaselines() {}, scenesNeedingReplace: () => [],
     reviewRows: () => single ? [rows[1]] : rows,
     liveReviewSegmentForRow: row => state.segments.find(s => s.id === row.dataset.reviewSegmentId),
     parseBulkTimeValue: Number, formatTime: String,
@@ -56,7 +57,7 @@ function fixture(single = true) {
     applyLyricSectionsFromReferenceText() {}, syncLyricMapperFromSegments() {},
     syncIngredientsSceneMapFromSubjectMappings: refs => ({ refs }), currentVideoMode: () => 't2v',
     sortSegments: segments => segments.sort((a, b) => a.start - b.start),
-    saveSession: async () => { events.push('persist'); }, showInfoModal: info => messages.push(info.title),
+    saveSession: async () => { events.push('persist'); }, showInfoModal: info => messages.push(info.title), showConfirmModal: async () => true,
     openLyricReviewModal: options => { events.push(options.singleSceneId || 'all'); },
   });
   vm.runInContext(section('    const syncReviewRowFromSegment =', '    const syncAllReviewRowsFromSegments =')
