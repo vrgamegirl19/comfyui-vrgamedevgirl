@@ -314,7 +314,7 @@ function creativeContextFixture() {
     miniMaxI2VTransitionPrompt: () => "",
   });
   const source = readBuilderModule("minimax_prompt.mjs");
-  for (const name of ["miniMaxH3Timecode", "miniMaxH3OfficialShotPlan", "miniMaxH3SceneTimingInstruction", "miniMaxH3ReferenceSceneGroundingContract", "miniMaxH3CreativePromptContextForSegment"]) {
+  for (const name of ["miniMaxH3Timecode", "miniMaxH3OfficialShotPlan", "miniMaxH3SceneTimingInstruction", "miniMaxH3LiteralSceneInstruction", "miniMaxH3ReferenceSceneGroundingContract", "miniMaxH3CreativePromptContextForSegment"]) {
     vm.runInContext(functionSource(source, name), context);
   }
   return context;
@@ -349,6 +349,26 @@ test("MiniMax creative requests budget the actual short scene and each scheduled
   assert.match(cutResult, /Return exactly 2 JSON shot descriptions/);
   const longResult = create({ ...scene, end: 44.25 }, "reference_to_video");
   assert.match(longResult, /Shot 2: 2\.32–10s \(7\.68 seconds available\)/);
+});
+
+test("MiniMax requests resolve ambiguous foreground clothing and physical ownership in every mode", () => {
+  const context = creativeContextFixture();
+  const create = vm.runInContext("miniMaxH3CreativePromptContextForSegment", context);
+  const scene = { start: 34.25, end: 37.17, story_beat: "The paper strip from the previous shot lies caught in a roof seam." };
+  const card = "A black boot fills the near foreground with the woman beyond it; boots step past the lens.";
+  for (const mode of ["reference_to_video", "image_to_video", "text_to_video"]) {
+    const result = create(scene, mode, { storyboardContext: card });
+    assert.ok(result.includes(card), "Keep the scene direction as context for rewriting");
+    assert.match(result, /H3 follows the final wording literally/);
+    assert.match(result, /Rewrite ambiguous scene-card or image-prompt wording/);
+    assert.match(result, /Establish the actor before describing their body parts or worn clothing/);
+    assert.match(result, /her boot, worn on her foot/);
+    assert.match(result, /one anatomically connected person at normal scale and consistent depth/);
+    assert.match(result, /If the body is cropped, describe the close framing/);
+    assert.match(result, /carry an object forward only when the current scene explicitly does so/);
+    assert.match(result, /read the shot alone as literal staging/);
+    assert.ok(result.indexOf("LITERAL SCENE CLARITY") > result.indexOf(card), "Check the literal staging after reading the inputs");
+  }
 });
 
 test("Reopening retains added cards and deleted cards without losing new timeline scenes", async () => {

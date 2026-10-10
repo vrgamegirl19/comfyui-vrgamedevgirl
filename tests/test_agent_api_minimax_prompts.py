@@ -91,6 +91,9 @@ class MiniMaxPromptTests(Base):
         self.assertIn("Duration: 2.92s", task)
         self.assertIn("Shot 1: 0–2.92s (2.92 seconds available).", task)
         self.assertIn("Reserve time for the required singing or speaking", task)
+        self.assertIn("H3 follows the final wording literally", task)
+        self.assertIn("her boot, worn on her foot", task)
+        self.assertIn("one anatomically connected person at normal scale and consistent depth", task)
         self.assertNotIn("60 to 110", task)
 
     def test_default_compact_prompt_uses_pictures_in_shot_prose_and_grounding_rules(self):

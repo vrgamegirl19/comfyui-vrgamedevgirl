@@ -351,6 +351,10 @@ function miniMaxH3CleanSubjectNoun(value, fallback = "reference") {
   return text.replace(/^(?:the\s+)+/i, "the ");
 }
 
+export function miniMaxH3LiteralSceneInstruction() {
+  return "LITERAL SCENE CLARITY — MANDATORY: H3 follows the final wording literally; it cannot fill in unstated ownership or spatial connections from your reasoning. Rewrite ambiguous scene-card or image-prompt wording into a self-contained physical description rather than copying it. Establish the actor before describing their body parts or worn clothing; use that actor's possessive at first mention and unambiguous pronouns afterward. A worn boot belongs to a foot on that same person's leg, a glove is worn on their hand, and a facial reaction belongs to their face. For example: '<Subject 1> strides past the ground-level camera; her boot, worn on her foot, passes close to the lens during that stride.' Keep foreground limbs and the rest of their owner as one anatomically connected person at normal scale and consistent depth. A close camera can enlarge a nearby foot by perspective, but must not stage it as a separate object beside a distant copy of its owner. If the body is cropped, describe the close framing of that person's body part; do not introduce another body elsewhere. A genuinely loose garment or detached prop must be explicitly introduced as such and placed on a surface or in someone's possession. Keep positions consistent as the person and camera move; the ending must be reachable from the opening through the described action. Use only objects supported by this scene's directions or mapped references. Adjacent scenes supply context; carry an object forward only when the current scene explicitly does so. Before returning, read the shot alone as literal staging: identify who owns every limb, garment, expression and gesture, where each object is, and whether all positions and movements can coexist. Rewrite any ambiguity without adding a new person, prop or action. Return only the requested shot JSON, not this check.";
+}
+
 function miniMaxH3ReferenceSceneGroundingContract() {
   return "REFERENCE SCENE GROUNDING — MANDATORY: Generate and describe a complete new scene using the assigned character and environment pictures. "
     + "Character pictures supply identity and appearance; environment pictures supply the set. The prompt determines opening framing, camera angle, staging, pose, composition, and action. Never use a reference picture's composition, framing, camera angle, or pose as the opening shot. A separately enabled continuation task follows its own previous-frame rules. A saved image prompt is a proposed scene idea, not proof that its props, poses, or layout exist in a supplied picture. "
@@ -1317,6 +1321,7 @@ export function createMiniMaxPrompt({
     }
     const i2vTransition = miniMaxI2VTransitionPrompt(segment, mode, settings);
     if (i2vTransition) parts.push(i2vTransition);
+    parts.push(miniMaxH3LiteralSceneInstruction());
     const context = parts.join("\n\n");
     return omitLyricsForSegment(segment) ? lyricFreeContextForSegment(segment, mode, context) : context;
   }
@@ -2417,6 +2422,7 @@ export function createMiniMaxPrompt({
     }
     const i2vTransition = miniMaxI2VTransitionPrompt(segment, mode, settings);
     if (i2vTransition) parts.push(i2vTransition);
+    parts.push(miniMaxH3LiteralSceneInstruction());
     const context = parts.join("\n\n");
     return omitLyricsForSegment(segment) ? lyricFreeContextForSegment(segment, mode, context) : context;
   }

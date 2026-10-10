@@ -76,6 +76,30 @@ def cut_plan_instruction(cut_plan: Dict[str, Any]) -> str:
     )
 
 
+def literal_scene_instruction() -> str:
+    """Require explicit anatomy, ownership and spatial continuity in shot prose."""
+    return (
+        "LITERAL SCENE CLARITY — MANDATORY: H3 follows the final wording literally; it cannot fill in unstated "
+        "ownership or spatial connections from your reasoning. Rewrite ambiguous scene-card or image-prompt wording "
+        "into a self-contained physical description rather than copying it. Establish the actor before describing "
+        "their body parts or worn clothing; use that actor's possessive at first mention and unambiguous pronouns "
+        "afterward. A worn boot belongs to a foot on that same person's leg, a glove is worn on their hand, and a "
+        "facial reaction belongs to their face. For example: '<Subject 1> strides past the ground-level camera; her "
+        "boot, worn on her foot, passes close to the lens during that stride.' Keep foreground limbs and the rest of "
+        "their owner as one anatomically connected person at normal scale and consistent depth. A close camera can "
+        "enlarge a nearby foot by perspective, but must not stage it as a separate object beside a distant copy of "
+        "its owner. If the body is cropped, describe the close framing of that person's body part; do not introduce "
+        "another body elsewhere. A genuinely loose garment or detached prop must be explicitly introduced as such and "
+        "placed on a surface or in someone's possession. Keep positions consistent as the person and camera move; the "
+        "ending must be reachable from the opening through the described action. Use only objects supported by this "
+        "scene's directions or mapped references. Adjacent scenes supply context; carry an object forward only when "
+        "the current scene explicitly does so. Before returning, read the shot alone as literal staging: identify who "
+        "owns every limb, garment, expression and gesture, where each object is, and whether all positions and "
+        "movements can coexist. Rewrite any ambiguity without adding a new person, prop or action. Return only the "
+        "requested shot JSON, not this check."
+    )
+
+
 def scene_timing_instruction(duration: float, cut_plan: Dict[str, Any]) -> str:
     """Give the creative LLM the real scene and per-shot action budgets."""
     exact = round(float(duration), 3)
@@ -907,6 +931,7 @@ def build_shot_task(
             "Do not append character names or picture origins in parentheses. "
             "Do not add a standalone reference-definition paragraph to the shot description."
         )
+    parts.append(literal_scene_instruction())
     if continuation:
         # Last, where the model weighs it most. The vocal rule applies only when the scene sings.
         has_vocals = not (visual_only or no_character or not lyric_text)

@@ -3,6 +3,18 @@ const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const { readBuilderModule, functionSource } = require('./builder_source.cjs');
 
+test('browser and API use the same literal ownership and spatial clarity contract', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const context = vm.createContext({});
+  vm.runInContext(functionSource(readBuilderModule('minimax_prompt.mjs'), 'miniMaxH3LiteralSceneInstruction'), context);
+  const py = fs.readFileSync(path.join(__dirname, '../minimax/shot_prompt.py'), 'utf8').replace(/\r\n/g, '\n');
+  const block = py.split('def literal_scene_instruction()')[1].split('\n\ndef ')[0];
+  const pythonContract = block.split(/\r?\n/).filter(line => /^\s*"/.test(line) && !line.includes('"""'))
+    .map(line => JSON.parse(line.trim())).join('');
+  assert.equal(context.miniMaxH3LiteralSceneInstruction(), pythonContract);
+});
+
 function fixture(audioMode = 'input_audio', pipeline = 'standard', structured = true) {
   const c = vm.createContext({});
   vm.runInContext(readBuilderModule('minimax_h3.mjs'), c);
