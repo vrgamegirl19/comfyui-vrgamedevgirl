@@ -281,7 +281,7 @@ test("Builder video prompting includes complete card context for both LTX and Mi
   }
 });
 
-test("MiniMax creative input preserves complete long storyboard context", () => {
+function creativeContextFixture() {
   const { functionSource, readBuilderModule } = require("./builder_source.cjs");
   const context = vm.createContext({
     omitLyricsForSegment: () => false,
@@ -296,7 +296,6 @@ test("MiniMax creative input preserves complete long storyboard context", () => 
     miniMaxH3OfficialShotPlan: () => [{ timecode: 0 }],
     miniMaxH3ModeLabel: value => value,
     miniMaxH3PromptCharacterBudget: () => ({ shotDescriptionChars: 6500 }),
-    miniMaxH3LifeMovementBank: () => ["blink"],
     miniMaxH3MotionEnergyText: () => "",
     selectedCastCoverageContract: () => "",
     miniMaxH3SubjectLabelMapForSegment: () => new Map(),
@@ -314,12 +313,42 @@ test("MiniMax creative input preserves complete long storyboard context", () => 
     miniMaxH3ReferenceAssignmentLines: () => [],
     miniMaxI2VTransitionPrompt: () => "",
   });
-  vm.runInContext(functionSource(readBuilderModule("minimax_prompt.mjs"),
-    "miniMaxH3CreativePromptContextForSegment"), context);
+  const source = readBuilderModule("minimax_prompt.mjs");
+  for (const name of ["miniMaxH3Timecode", "miniMaxH3OfficialShotPlan", "miniMaxH3SceneTimingInstruction", "miniMaxH3ReferenceSceneGroundingContract", "miniMaxH3CreativePromptContextForSegment"]) {
+    vm.runInContext(functionSource(source, name), context);
+  }
+  return context;
+}
+
+test("MiniMax creative input preserves complete long storyboard context", () => {
+  const context = creativeContextFixture();
   const sceneCard = JSON.stringify({ notes: "n".repeat(4500), timeline_note: "Director at the end" }, null, 2);
   const result = vm.runInContext("miniMaxH3CreativePromptContextForSegment", context)(
     { start: 0, end: 5 }, "text_to_video", { storyboardContext: sceneCard });
   assert.ok(result.includes(sceneCard), "The full card must reach the creative LLM without clipping");
+});
+
+test("MiniMax creative requests budget the actual short scene and each scheduled shot", () => {
+  const context = creativeContextFixture();
+  const create = vm.runInContext("miniMaxH3CreativePromptContextForSegment", context);
+  const scene = { start: 34.25, end: 37.17, story_beat: "The paper trembles as the camera glides along the seam." };
+  const result = create(scene, "reference_to_video", { storyboardContext: "Boots step past the lens." });
+  assert.match(result, /Duration: 2\.92s/);
+  assert.match(result, /Shot 1: 0–2\.92s \(2\.92 seconds available\)/);
+  assert.match(result, /The paper trembles/);
+  assert.match(result, /Boots step past the lens/);
+  assert.match(result, /Reserve time for the required singing or speaking/);
+  assert.match(result, /Keep optional gestures and reactions only when time remains/);
+  assert.match(result, /Motion speed sets the energy of the chosen movement, not the number of actions/);
+  assert.doesNotMatch(result, /60 to 110|one or two small human movements|Do not slow down or hold still/);
+
+  context.miniMaxH3CutPlanForSegment = () => ({ cut_times_seconds: [2.32] });
+  const cutResult = create(scene, "reference_to_video");
+  assert.match(cutResult, /Shot 1: 0–2\.32s \(2\.32 seconds available\)/);
+  assert.match(cutResult, /Shot 2: 2\.32–2\.92s \(0\.6 seconds available\)/);
+  assert.match(cutResult, /Return exactly 2 JSON shot descriptions/);
+  const longResult = create({ ...scene, end: 44.25 }, "reference_to_video");
+  assert.match(longResult, /Shot 2: 2\.32–10s \(7\.68 seconds available\)/);
 });
 
 test("Reopening retains added cards and deleted cards without losing new timeline scenes", async () => {

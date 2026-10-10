@@ -117,6 +117,33 @@ class ShotPromptTests(unittest.TestCase):
         self.assertIn("<Subject 1> walks.", task, "names in the scene text become labels")
         self.assertIn("Camera rule", task)
 
+    def test_short_scene_task_uses_duration_without_an_action_checklist(self):
+        task = sp.build_shot_task(
+            mode_label="Reference to Video", duration=2.92, aspect_ratio="16:9", audio_mode="input_audio",
+            cut_plan=self.plan(2.92), style="grunge", labels=[], camera_speed=4, character_speed=4,
+            lyric_text="Growing fruit made of time", story_beat="The paper trembles along the roof seam.",
+            storyboard_context="Boots step past the lens.",
+        )
+        self.assertIn("Duration: 2.92s", task)
+        self.assertIn("Shot 1: 0–2.92s (2.92 seconds available).", task)
+        self.assertIn("The paper trembles", task)
+        self.assertIn("Boots step past the lens.", task)
+        self.assertIn("Growing fruit made of time", task)
+        self.assertIn("Reserve time for the required singing or speaking", task)
+        self.assertIn("Keep optional gestures and reactions only when time remains", task)
+        self.assertNotIn("60 to 110", task)
+        self.assertNotIn("one or two small human movements", task)
+        self.assertNotIn("Do not slow down or hold still", task)
+
+    def test_each_shot_gets_its_own_time_budget_including_a_subsecond_tail(self):
+        cut_plan = {"exact_duration_seconds": 2.92, "cut_times_seconds": [2.32]}
+        timing = sp.scene_timing_instruction(2.92, cut_plan)
+        self.assertIn("Shot 1: 0–2.32s (2.32 seconds available).", timing)
+        self.assertIn("Shot 2: 2.32–2.92s (0.6 seconds available).", timing)
+        self.assertIn("not the number of actions", timing)
+        longer = sp.scene_timing_instruction(10, cut_plan)
+        self.assertIn("Shot 2: 2.32–10s (7.68 seconds available).", longer)
+
     def test_reference_props_are_grounded_and_picture_mentions_survive(self):
         items = [{"kind": "subject", "label": "woman"}, {"kind": "location", "label": "warehouse"}]
         task = sp.build_shot_task(mode_label="Reference to Video", duration=4, aspect_ratio="16:9", audio_mode="input_audio",

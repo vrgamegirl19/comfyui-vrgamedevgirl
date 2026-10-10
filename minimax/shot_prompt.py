@@ -76,11 +76,36 @@ def cut_plan_instruction(cut_plan: Dict[str, Any]) -> str:
     )
 
 
+def scene_timing_instruction(duration: float, cut_plan: Dict[str, Any]) -> str:
+    """Give the creative LLM the real scene and per-shot action budgets."""
+    exact = round(float(duration), 3)
+    plan = shot_plan(cut_plan)
+    windows = []
+    for index, shot in enumerate(plan):
+        start = float(shot["time"])
+        end = float(plan[index + 1]["time"]) if index + 1 < len(plan) else exact
+        available = round(max(0.0, end - start), 3)
+        windows.append(f"Shot {index + 1}: {start:g}–{end:g}s ({available:g} seconds available).")
+    return "\n".join([
+        f"SCENE TIMING — MANDATORY: The complete scene lasts exactly {exact:g} seconds.",
+        *windows,
+        "Use the scene beat and storyboard directions together to stage only what can physically finish within each "
+        "shot's available time. Reserve time for the required singing or speaking and any supplied entrance, reveal, "
+        "or transition. For a brief shot, express the essential beat through one economical continuous action and the "
+        "requested camera move; let performance and camera movement happen together where physically possible. Keep "
+        "optional gestures and reactions only when time remains. Do not invent sequential steps, pivots, glances, or "
+        "framing changes to fill a checklist. Preserve explicitly requested action and exact vocal words; simplify "
+        "optional choreography rather than rushing required performance. Motion speed sets the energy of the chosen "
+        "movement, not the number of actions. Before returning, check that the opening, action, camera travel, and "
+        "ending fit the available time without an extra cut, rushed final beat, or action continuing beyond the shot.",
+    ])
+
+
 def motion_energy_text(camera_speed: float, character_speed: float) -> str:
-    camera = "The camera is fast and energetic: whips, orbits, push-ins, and quick tracking." if camera_speed >= 7 else (
+    camera = "The requested camera movement is fast and energetic." if camera_speed >= 7 else (
         "The camera moves at a steady pace with a clear direction." if camera_speed >= 4 else "The camera moves slowly, or holds a locked frame.")
-    character = "The performers are high energy: pop, fast motion, jumps, spins, runs, dance hits, and quick reactions." if character_speed >= 7 else (
-        "The performers use steady physical action: walking, turning, reaching, and set interaction." if character_speed >= 4
+    character = "The requested performer action has high energy and decisive physical movement." if character_speed >= 7 else (
+        "The requested performer action has steady physical energy." if character_speed >= 4
         else "The performers use small movements and held poses with life detail.")
     return f"{camera} {character}"
 
@@ -779,17 +804,18 @@ def build_shot_task(
         cut_plan_instruction(cut_plan),
         f"MANDATORY CHARACTER BUDGET: The combined text inside all {len(plan)} JSON description values must not exceed {budget['shot_chars']} "
         f"characters total (about {per_shot} per shot). Stay within this combined limit; be concise without omitting required subjects, actions, or camera direction.",
-        "SHOT FORMAT — MANDATORY: Write each shot as 2 to 4 complete sentences, about 60 to 110 words, in this order. "
+        "SHOT FORMAT — MANDATORY: Write concise complete sentences, with length and action complexity suited to the available shot time, in this order. "
         "1) Camera: the opening framing, one named camera move with its direction and speed, and the ending framing. "
         "2) Subject action: each person in the cast does their own continuous physical action, written by what the body does. "
-        f"3) Life detail: one or two small human movements placed inside the action, for example {'; '.join(life_movements(character_speed, seed))}. "
+        "3) Acting detail: include only context-supported expression or reaction that fits naturally inside the existing action and available time. "
         "4) Light and set: one short line using only the mapped location's own light and objects. "
         "Describe only what the camera sees. Show emotion only as visible movement. Do not use feeling words such as feel, grief, longing, memory, soul, or emotional. "
         "Write complete grammatical prose, not notes, labels, or fragments. "
         "Character appearance is already carried by the reference images and the Builder. Do not list clothing, hair, accessories, jewelry, or facial features. "
         "Mention a garment or feature only when it moves or reacts in the action, in one brief clause at most.",
         f"MOTION ENERGY — MANDATORY: {motion_energy_text(camera_speed, character_speed)} This scene is {exact} seconds long. "
-        "Fill the full shot length with continuous action at this energy. Do not slow down or hold still.",
+        "Apply this energy to the requested action within the available time; speed does not require additional actions.",
+        scene_timing_instruction(duration, cut_plan),
     ]
     cut_times = [s["timecode"] for s in plan[1:]]
     parts.append(f"Builder cut times for your planning only: {', '.join(cut_times)}. Do not write these times." if cut_times

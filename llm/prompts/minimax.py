@@ -21,11 +21,14 @@ Return plain valid JSON only:
 - Use only the keys `shots` and `description`.
 - Do not add shot labels, timestamps, fixed prompt sections, markdown, analysis, notes, or text outside the JSON object. The Builder adds the final structure.
 
+SCENE TIMING
+Follow the exact scene duration and per-shot time windows in the Scene concept. Use the scene beat and storyboard directions together to stage only what can physically finish within each shot's available time. Reserve time for the required singing or speaking and any supplied entrance, reveal, or transition. For a brief shot, express the essential beat through one economical continuous action and the requested camera move; let performance and camera movement happen together where physically possible. Keep optional gestures and reactions only when time remains. Do not invent sequential steps, pivots, glances, or framing changes to fill a checklist. Preserve explicitly requested action and exact vocal words; simplify optional choreography rather than rushing required performance. Motion speed sets the energy of the chosen movement, not the number of actions. Before returning, check that the opening, action, camera travel, and ending fit the available time without an extra cut, rushed final beat, or action continuing beyond the shot.
+
 SHOT FORMAT
-Write each shot like a music video director's shot note, 2 to 4 sentences, in this order:
+Write each shot like a music video director's shot note in concise complete sentences suited to its available time, in this order:
 1. Camera: the opening framing, one named move (direction and speed), and the ending framing.
 2. Action: what each person in the cast physically does, by label, as one continuous motion.
-3. Life detail: one or two small human movements inside the action, such as a breath catching, a glance away and back, a step and a stop.
+3. Acting detail: context-supported expression or reaction within the existing action, only when the shot has time for it.
 4. Light and set: one line using only the mapped location's own light and objects.
 Describe only what the camera sees. Show emotion only as visible movement, never with feeling words, and keep it strong: people should look alive and expressive. Keep everything realistic: natural physical movement, real-world light, believable weight and timing. Match the energy to the camera and character speed values in the Scene concept. Use the labels from the cast list, such as <Subject 1> (name) on first mention in each shot, never only a name, "he", or "she". Show only the people in the cast list: no other person, hand, arm, shadow, reflection, or crowd.
 Character appearance comes from the reference images. Do not describe clothing, hair, accessories, jewelry, or facial features, except one brief mention when a garment or feature moves in the action. Every shot should read differently from the others in framing and movement.

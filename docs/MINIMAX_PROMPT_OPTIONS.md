@@ -6,4 +6,6 @@ Reference-to-video uses character pictures for identity and environment pictures
 
 Shot instructions establish props and their physical placement before referring to them, attach actions to the correct actor, and describe the camera path in chronological order. Each character is introduced by label in each shot; subsequent unambiguous actions use natural pronouns. Multiple-character scenes repeat labels when needed to identify a new actor or speaker. These instructions guide the LLM; final prose still warrants review.
 
+Prompt generation supplies the exact timeline duration and each scheduled shot's available seconds. The LLM uses the scene beat and storyboard together to fit camera travel, required action and vocal performance within that time. Brief shots use economical continuous action; optional reactions need spare time. Motion speed controls energy, rather than requiring more actions. There is no fixed word count or mandatory extra-movement checklist. These are generation instructions, not a physical timing guarantee; regenerate existing prompts to apply them.
+
 **Do not add lyric lines to prompt** applies to singing with supplied audio. Built-in audio and speaking retain their spoken or sung words. See [lyric-free prompts](LYRIC_FREE_VIDEO_PROMPTS.md) and [emotion and speech tags](EMOTION_EXPRESSION_TAGS.md).
