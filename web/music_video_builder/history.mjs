@@ -76,6 +76,7 @@ export function createHistory({
   function historySnapshot() {
     return JSON.stringify({
       segments: state.segments,
+      miniMaxH3Settings: state.miniMaxH3Settings,
       audioClips: state.audioClips,
       speakingAudioDefaults: state.speakingAudioDefaults || {},
       overlaySegments: state.overlaySegments,
@@ -260,6 +261,7 @@ export function createHistory({
     syncLyricNoteControls();
     autoSaveControl.input.checked = Boolean(state.autoSaveEnabled);
     applyLayoutSizes();
+    state.miniMaxH3Settings = data.miniMaxH3Settings || state.miniMaxH3Settings;
     state.zimageSettings = data.zimageSettings || state.zimageSettings;
     state.referenceKrea2Settings = cloneKrea2ReferenceSettings(data.referenceKrea2Settings || data.reference_krea2_settings || state.referenceKrea2Settings);
     state.fluxKleinSettings = data.fluxKleinSettings || state.fluxKleinSettings;
