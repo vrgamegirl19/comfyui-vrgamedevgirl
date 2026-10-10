@@ -359,14 +359,16 @@ test("MiniMax requests resolve ambiguous foreground clothing and physical owners
   for (const mode of ["reference_to_video", "image_to_video", "text_to_video"]) {
     const result = create(scene, mode, { storyboardContext: card });
     assert.ok(result.includes(card), "Keep the scene direction as context for rewriting");
-    assert.match(result, /H3 follows the final wording literally/);
+    assert.match(result, /Write natural, fluent shot prose that H3 can follow literally/);
     assert.match(result, /Rewrite ambiguous scene-card or image-prompt wording/);
-    assert.match(result, /Establish the actor before describing their body parts or worn clothing/);
-    assert.match(result, /her boot, worn on her foot/);
-    assert.match(result, /one anatomically connected person at normal scale and consistent depth/);
-    assert.match(result, /If the body is cropped, describe the close framing/);
-    assert.match(result, /carry an object forward only when the current scene explicitly does so/);
-    assert.match(result, /read the shot alone as literal staging/);
+    assert.match(result, /Lead physical action with the person doing it/);
+    assert.match(result, /her boot briefly crossing the foreground/);
+    assert.match(result, /Keep ownership and spatial checks in your reasoning/);
+    assert.match(result, /A close-up identifies whose body part is framed/);
+    assert.match(result, /Carry an object from an adjacent scene only when the current scene explicitly does so/);
+    assert.match(result, /read the shot by itself/);
+    assert.match(result, /finished sentences describe visible action, not explanations of anatomy/);
+    assert.doesNotMatch(result, /anatomically connected|worn on her foot/);
     assert.ok(result.indexOf("LITERAL SCENE CLARITY") > result.indexOf(card), "Check the literal staging after reading the inputs");
   }
 });

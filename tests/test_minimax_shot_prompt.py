@@ -154,13 +154,16 @@ class ShotPromptTests(unittest.TestCase):
                     storyboard_context=card,
                 )
                 self.assertIn(card, task)
-                self.assertIn("H3 follows the final wording literally", task)
+                self.assertIn("Write natural, fluent shot prose that H3 can follow literally", task)
                 self.assertIn("Rewrite ambiguous scene-card or image-prompt wording", task)
-                self.assertIn("her boot, worn on her foot", task)
-                self.assertIn("one anatomically connected person at normal scale and consistent depth", task)
-                self.assertIn("If the body is cropped, describe the close framing", task)
-                self.assertIn("carry an object forward only when the current scene explicitly does so", task)
-                self.assertIn("read the shot alone as literal staging", task)
+                self.assertIn("her boot briefly crossing the foreground", task)
+                self.assertIn("Keep ownership and spatial checks in your reasoning", task)
+                self.assertIn("A close-up identifies whose body part is framed", task)
+                self.assertIn("Carry an object from an adjacent scene only when the current scene explicitly does so", task)
+                self.assertIn("read the shot by itself", task)
+                self.assertIn("Resolve uncertainty with clear verbs and possessives, not explanatory qualifiers", task)
+                self.assertNotIn("anatomically connected", task)
+                self.assertNotIn("worn on her foot", task)
                 self.assertGreater(task.index("LITERAL SCENE CLARITY"), task.index(card))
 
     def test_reference_props_are_grounded_and_picture_mentions_survive(self):
