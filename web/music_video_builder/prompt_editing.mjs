@@ -1,3 +1,4 @@
+import { emotionExpressionInput } from "./emotion_expression.mjs";
 import { GEMMA_VIDEO_ENHANCE_TIMEOUT_MS, postJson } from "./comfy_api.mjs";
 import { escapeHtml, makeButton, makeCheckbox, makeField, toast } from "./controls.mjs";
 import { recordGemmaBatchFailure, showGemmaBatchFailures } from "./dialogs.mjs";
@@ -541,6 +542,7 @@ export function createPromptEditing({
     progress?.set(`${label}: improving ${modeLabel} prompt shape...\n${gemmaRunnerLine()}`, percent);
     const data = await postJson("/vrgdg/music_builder/enhance_video_prompt", {
       ...textGemmaRunnerPayload(),
+      ...emotionExpressionInput(segment, state),
       model_file: i2vTextGemmaModelSelect.value,
       repair_model_file: i2vTextGemmaModelSelect.value,
       draft_prompt: base,
@@ -655,6 +657,8 @@ export function createPromptEditing({
       useImageReference,
       payload: {
         ...textGemmaRunnerPayload(),
+        ...emotionExpressionInput(segment, state),
+        lyric_text: String(segment.lyric_text || ""),
         project_folder: activeProjectFolderForSave(),
         scene_id: segment.id || "",
         builder_instruction_key: provisionalMotionPlan ? "i2v" : isIdLora ? "id_lora" : isIngredients ? "ingredients" : isRTV ? "rtv" : isT2V ? "t2v" : "i2v",

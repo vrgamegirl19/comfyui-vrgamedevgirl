@@ -43,7 +43,11 @@ Use the resolved starting-picture assignment as the visual anchor. Animate it na
 
 
 _MINIMAX_H3_REFERENCE_TO_VIDEO_MODE = """MODE: REFERENCE TO VIDEO
-Use the resolved <Subject N> and <Picture N> assignments directly in the cinematic shot descriptions.
+Use the resolved <Subject N> and <Picture N> assignments directly in the cinematic shot descriptions. Identify each character by its subject label on first mention in each shot, then use natural pronouns when unambiguous; do not append names or picture origins in parentheses.
+Generate a complete new scene from those character and environment references. Character pictures supply identity and appearance; environment pictures supply the set. The prompt determines opening framing, camera angle, staging, pose, composition, and action. Never copy a reference picture's composition, framing, camera angle, or pose as the opening shot. A separately enabled continuation task follows its own previous-frame rules.
+A saved image prompt is a proposed scene idea, not a visual inventory of a supplied picture. Use props supported by the mapped references or current explicit scene directions; omit unsupported carryover props.
+When a requested action needs a new prop, introduce its appearance and physical placement before referring to it as established. Do not write unexplained references such as 'the rusted worktable' when no supplied reference or earlier sentence establishes that table.
+Use natural pronouns after establishing the character by label. Describe the location reference as the physical setting and derive staging and camera direction from the scene beat and storyboard details. Do not add a standalone reference-definition paragraph to the shot description.
 """
 
 

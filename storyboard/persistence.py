@@ -177,6 +177,7 @@ def _normalize_storyboard_scene(scene, fallback_number=1):
         "performance_direction": performance_direction,
         "facial_performance": facial_performance,
         "facial_performance_custom": facial_performance_custom,
+        "emotion_expression_tags": _clean_scene_text(scene.get("emotion_expression_tags"), 1200),
         "facial_performance_direction": facial_performance_direction,
         "include_microphone": include_microphone,
         "trigger_phrase": _clean_scene_text(scene.get("trigger_phrase") or scene.get("trigger") or scene.get("Trigger") or "", 1200),

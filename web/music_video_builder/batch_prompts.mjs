@@ -1,3 +1,5 @@
+import { emotionExpressionInput, hasEmotionExpressionInput } from "./emotion_expression.mjs";
+import { lyricFreePerformanceEnabled } from "./lyric_free_performance.mjs";
 import { storyboardGptPayload } from "../storyboard_builder/gpt_payload.mjs";
 import { GEMMA_VIDEO_PROMPT_TIMEOUT_MS, postJson } from "./comfy_api.mjs";
 import { USE_STORYBOARD_PROMPT_PIPELINE_FOR_SIDE_PANEL } from "./constants.mjs";
@@ -94,7 +96,8 @@ export function createBatchPrompts({
     const effectiveSingerNames = promptSingerNames.length
       ? promptSingerNames
       : Array.from(new Set(lyricCueMap.map((cue) => String(cue.singer_name || "").trim()).filter(Boolean)));
-    const vocalCueContract = visualOnly ? "" : miniMaxH3VocalCueMapText(segment, mode, { compact: false });
+    const omitLyrics = lyricFreePerformanceEnabled(state.omitLyricsFromVideoPrompts, options.performanceMode || effectiveVideoPerformanceModeForSegment(segment), options.audioMode || miniMaxH3SettingsForSegment(segment).audio_mode);
+    const vocalCueContract = visualOnly || omitLyrics ? "" : miniMaxH3VocalCueMapText(segment, mode, { compact: false });
     const assignmentNotes = vocalCueContract
       ? `AUTHORITATIVE PERFORMER / VOCAL CUE MAP — obey exactly; this is part of the user assignment, not optional scene flavor:\n${vocalCueContract}`
       : "";
@@ -104,6 +107,7 @@ export function createBatchPrompts({
     // telegraphic summaries even when the final prompt could fit under 7000.
     let targetLimit = 7000;
     let lastOversizeError = null;
+    let speechDeliveryRetryNote = "";
     const castGuard = sceneCastGuardForSegment(segment);
     let castRetries = 0;
     let bannedTerms = [];
@@ -130,6 +134,7 @@ export function createBatchPrompts({
         user_notes: [
           String(options.userNotes || "").trim(),
           assignmentNotes,
+          speechDeliveryRetryNote,
           castGuard ? castWallText(castGuard) : "",
           bannedTerms.length ? `The previous draft wrongly referred to people who are not in this scene (${bannedTerms.join(", ")}). Rewrite it with only the listed people, using their labels. Do not add any other person, hand, arm, shadow, or reflection.` : "",
           feelingRetryTerms.length ? `The previous draft used feeling words (${feelingRetryTerms.join(", ")}). Rewrite it so it only describes what the camera sees, with mood shown as visible movement.` : "",
@@ -142,6 +147,8 @@ export function createBatchPrompts({
         frame_continuity_prompt: Boolean(options.frameContinuityPrompt),
         performance_mode: options.performanceMode || effectiveVideoPerformanceModeForSegment(segment),
         lyric_text: promptLyricText,
+        ...emotionExpressionInput(segment, state),
+        omit_lyrics_from_video_prompts: omitLyrics,
         singers: effectiveSingerNames,
         lyric_cue_map: lyricCueMap,
         performer_assignment: {
@@ -169,7 +176,8 @@ export function createBatchPrompts({
       }
       let generatedPrompt = String(data.prompt || "").trim();
       const leakedTerms = castLeaks(generatedPrompt, castGuard);
-      const feelingTerms = feelingWordHits(generatedPrompt);
+      const feelingTerms = feelingWordHits(hasEmotionExpressionInput(segment, state)
+        ? generatedPrompt.replace(/\[[^\]]+\]/g, "") : generatedPrompt);
       if (leakedTerms.length || feelingTerms.length) {
         if (castRetries < 2) {
           castRetries += 1;
@@ -200,7 +208,7 @@ export function createBatchPrompts({
           ? String(options.finalizePrompt(assembledPrompt) || "").trim()
           : assembledPrompt;
         if (!prompt) throw new Error(options.emptyPromptMessage || `The LLM returned an empty MiniMax ${miniMaxH3ModeLabel(mode)} prompt.`);
-        assertValidMiniMaxH3FinalPrompt(prompt, segment, mode);
+        assertValidMiniMaxH3FinalPrompt(prompt, segment, mode, { requireNativeSpeechDelivery: true });
         rememberMiniMaxPromptReferences(segment, prompt, referenceSignature);
         return {
           ...data,
@@ -212,6 +220,15 @@ export function createBatchPrompts({
           h3_prompt_generation_attempts: attempt,
         };
       } catch (error) {
+        if (error?.code === "MINIMAX_H3_SPEECH_DELIVERY_MISSING") {
+          if (attempt >= 3) throw error;
+          speechDeliveryRetryNote = `REWRITE REQUIRED: ${error.message} Put the selected delivery tags inside <d>, not in the visual prose.`;
+          continue;
+        }
+        if (error?.code === "MINIMAX_H3_REFERENCE_COMPOSITION_LEAK") {
+          if (attempt >= 3) throw error;
+          continue;
+        }
         if (error?.code !== "MINIMAX_H3_PROMPT_TOO_LONG") throw error;
         lastOversizeError = error;
         if (attempt >= 3) break;

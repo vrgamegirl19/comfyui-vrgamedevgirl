@@ -871,7 +871,7 @@ export function openBuilder(node, options = {}) {
     addOverlaySegmentButton, addSegmentButton, addTimelineMarkerButton, audioMaskButton, beatMarkersButton, bulkSegmentsButton, stemMonitorButton, stemVisibilityButton, stemLayer,
     clearRangeButton, closeTimelineGapsButton, deleteAllSegmentsButton, deleteAllTimelineImagesButton,
     deleteAllTimelineVideosButton, deleteSegmentButton, freezeTimingControl, globalAudioMuteButton, addAudioClipButton,
-    globalScrub, globalScrubTime, idLoraTrimModeButton, lyricNoteButton, locationThumbnailButton, multiSelectButton,
+    globalScrub, globalScrubTime, idLoraTrimModeButton, lyricNoteButton, emotionTagButton, locationThumbnailButton, multiSelectButton,
     multiSelectHintButton, overlayTrackHintButton, overlayTrackToggleButton, playButton, playhead, redoButton,
     refreshDeleteActions, sceneNoteButton, segmentLayer, setInButton, setOutButton, snapSceneEdgeButton,
     snapToBeatsControl, splitSceneButton, stopButton, timeline, timelineCanvas, timelineInfo,
@@ -973,6 +973,7 @@ export function openBuilder(node, options = {}) {
     audioMaskAuto: { enabled: true, model_name: "htdemucs_6s", input_gain_db: 0 },
     showTimelineVideoNotes: false,
     showTimelineLyricNotes: false,
+    showTimelineEmotionTags: false,
     imageContinuityEnabled: false,
     imageContinuityStrength: "balanced",
     leftPanelWidth: 260,
@@ -993,6 +994,8 @@ export function openBuilder(node, options = {}) {
     // Testing option: relaxed mode accepts externally authored MiniMax prompts
     // but still enforces the provider's hard 7,000-character limit.
     failOnInvalidPromptFormats: false,
+    omitLyricsFromVideoPrompts: false,
+    useStructuredOutputs: false,
     automaticMemoryCleanup: false,
     sceneRenderWaitHours: DEFAULT_SCENE_RENDER_WAIT_HOURS,
     isScrubbing: false,
@@ -2069,7 +2072,7 @@ export function openBuilder(node, options = {}) {
     beatCalibrationFpsInput, beatCalibrationGridType, beatCalibrationGridTypeHint, beatCalibrationInstruction,
     beatCalibrationTimecodeGrid, beatCalibrationTimecodeHint, beatCalibrationTimecodeInput,
     beatCalibrationWizard, beatMarkersButton, currentGlobalTime, enforceAudioTimelineEnd,
-    loadedGlobalAudioDuration, lyricNoteButton, node, pauseTimelineForEditing, projectInput, pushHistory,
+    loadedGlobalAudioDuration, lyricNoteButton, emotionTagButton, node, pauseTimelineForEditing, projectInput, pushHistory,
     render, sceneNoteButton, setGlobalPlaybackTime, state, videoNoteButton,
   });
 
@@ -2958,7 +2961,7 @@ export function openBuilder(node, options = {}) {
     deleteAllTimelineVideos, deleteAllTimelineVideosButton, deleteSegment, deleteSegmentButton,
     enforceAudioTimelineEnd, ensureAutoBpmForCalibration, freezeTimingControl,
     ensureCapCutBeatsForCalibration, ensureGlobalTimelineAudioSource, globalAudioMuteButton, globalScrub,
-    isTimelinePlaying, lyricNoteButton, multiSelectButton, multiSelectHintButton, openBeatCalibrationWizard,
+    isTimelinePlaying, lyricNoteButton, emotionTagButton, multiSelectButton, multiSelectHintButton, openBeatCalibrationWizard,
     openMultiSelectChooser, pauseAllAudio, playbackDuration, playbackSegmentAtTime, playButton, playhead,
     playSceneAudioFrom, playStart, previewEmpty, previewStage, previewVideo, pushHistory, reloadBeatMarkersFromAudio,
     render, renderBeatCalibrationWizard, sceneAudio, sceneListPane, sceneNoteButton, seekAudioWhenReady,

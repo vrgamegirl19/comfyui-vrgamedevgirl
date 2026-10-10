@@ -133,6 +133,7 @@ class ReferenceFrameTests(unittest.TestCase):
 
     def test_the_assemble_route_wraps_reference_to_video_prompts(self):
         session = {
+            "use_structured_outputs": True,
             "minimax_h3_settings": {"audio_mode": "input_audio"},
             "builder_storyboard_defaults": {"video_style": "cinematic_realism", "minimax_h3_cut_frequency": 0},
             "flux_reference_builder": {
@@ -146,6 +147,15 @@ class ReferenceFrameTests(unittest.TestCase):
         self.assertTrue(prompt.startswith("subject_definitions:\n<Subject 1> is the Darrel in <Picture 1>"), prompt[:100])
         self.assertIn("detailed_description:\nThe target video is in a cinematic_realism music-video style.", prompt)
         self.assertEqual(result["characters"], len(prompt))
+        session.pop("use_structured_outputs")
+        compact = assembly.assemble_minimax_h3_prompt(session["segments"][0], session, ["<Subject 1> (Darrel) paces the rooftop at night."], "reference_to_video")["prompt"]
+        self.assertTrue(compact.startswith("detailed_description:"))
+        self.assertIn("[Shot 1] <Subject 1> paces", compact)
+        self.assertNotIn("<Subject 1> (", compact)
+        self.assertNotIn("<Subject 1> is", compact)
+        for header in ("subject_definitions:", "summary:", "retention_analysis:", "overall_soundscape:", "non_diegetic_music:"):
+            self.assertNotIn(header, compact)
+        self.assertNotIn("first frame", compact)
 
 
 if __name__ == "__main__":

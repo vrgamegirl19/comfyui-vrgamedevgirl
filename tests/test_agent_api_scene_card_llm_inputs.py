@@ -36,6 +36,7 @@ CARD = {
     "character_motion": "CHARACTER SENTINEL turns away",
     "performance_style": "PERFORMANCE SENTINEL restrained",
     "facial_performance_custom": "FACE SENTINEL jaw tight",
+    "emotion_expression_tags": "Angry, then end sad",
     "audio_direction": "AUDIO SENTINEL rain on glass",
     "continuity": "CONTINUITY SENTINEL coat stays wet",
     "include_microphone": False,
@@ -108,6 +109,8 @@ class SceneCardLlmInputTests(Base):
                 patch.object(vid_mod, "_repair_and_validate_builder_gemma_prompt", lambda payload, text, label: text):
             vid_mod._generate_builder_i2v_prompt(payload)
         instruction = "\n".join(self.captured)
+        self.assertIn("Scene emotion/expression input: Angry, then end sad", instruction)
+        self.assertIn("Lyrics available for interpretation", instruction)
         self.assertDirections(instruction)
         self.assertIn("Exact manual audio / sound direction:\nAUDIO SENTINEL", instruction)
         self.assertIn("Storyboard character motion guidance:\nCHARACTER SENTINEL", instruction)

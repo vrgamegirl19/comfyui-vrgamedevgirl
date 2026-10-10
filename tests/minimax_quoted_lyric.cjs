@@ -8,6 +8,8 @@ const quote = functionSource(source, 'miniMaxH3EnsureQuotedLyricInShot');
 
 function run(segment, description, shotIndex = 0, shotCount = 1, settings = { audio_mode: 'input_audio' }) {
   const context = vm.createContext({
+    state: {},
+    hasEmotionExpressionInput: (s) => Boolean(s.emotion_expression_tags || s.facial_performance_custom),
     miniMaxH3FrameContinuityPromptEnabled: () => false,
     segmentUsesNoLipSyncPerformance: (s) => Boolean(s.lyric_no_lip_sync),
     miniMaxH3SettingsForSegment: () => settings,
@@ -38,6 +40,11 @@ test('a shot without the lyric gets the sung line added in quotes', () => {
 test('an already quoted lyric is left alone', () => {
   const said = 'He sings the lyric line, "If you open up your eyes and feel the dark, Like the heavy world is falling all apart".';
   assert.equal(run({ lyric_text: lyric }, said), said);
+});
+
+test('emotion-tagged exact lyrics stay intact without extra quotation or repetition', () => {
+  const said = '<Subject 1> sings with pleading eyes. <d>[English, desperate, singing] If you open up your eyes and feel the dark, Like the heavy world is falling all apart.</d>';
+  assert.equal(run({ lyric_text: lyric, emotion_expression_tags: 'Desperate' }, said), said);
 });
 
 test('lyric lines are shared across cuts in order', () => {

@@ -11,7 +11,9 @@ from typing import Any, Callable, Dict, List, Optional
 from ...builder.lyric_scenes import is_instrumental_lyric_text
 from ...llm import video_prompt_generation as vid_gen
 from ...minimax import shot_prompt as sp
-from ...minimax.prompt_assembly import masked_continuation_context, storyboard_cut_plan_for_duration
+from ...minimax import lyric_free_performance as lfp
+from ...llm.prompts.emotion_expression import emotion_expression_input
+from ...minimax.prompt_assembly import masked_continuation_context, scene_cut_plan, storyboard_cut_plan_for_duration
 from ...minimax.scene_inputs import ordered_reference_items
 from ...minimax.settings_payload import minimax_h3_settings_for_scene
 from ..errors import ValidationError
@@ -106,10 +108,18 @@ def generate_scene_prompt(session: Dict[str, Any], folder: str, segment: Dict[st
         raise ValidationError(f"{card['label']} has no mapped Reference Builder image. Map a character to the scene first.")
     labels = sp.reference_labels(ctx["items"])
     plan = ctx["cut_plan"]
-    # The saved prompt is the Builder's full format: definitions before the shots, soundscape after. Both count
-    # toward the 7,000 characters, so the shots get what is left.
+    omit_lyrics = lfp.scene_enabled(session, segment)
+    if omit_lyrics:
+        plan = scene_cut_plan(segment, session)
+        if ctx["continuation"]:
+            plan = storyboard_cut_plan_for_duration(ctx["duration"], 0)
+    performer, performer_labels = lfp.scene_performers(session, segment, MODE) if omit_lyrics else ("", {})
+    # Reserve space for the selected output format before asking for the creative shots.
     frame = sp.reference_frame(ctx["items"], plan, ctx["style"], ctx["audio_mode"], _text(segment.get("audio_direction")))
-    target_limit = sp.HARD_LIMIT - len(frame["head"]) - len(frame["tail"])
+    structured = bool(session.get("use_structured_outputs", False))
+    compact_core = sp.assemble_prompt([""] * len(sp.shot_plan(plan)), plan, ctx["style"])
+    compact_overhead = len(sp.compact_reference_prompt(compact_core, ctx["items"])) - len(compact_core)
+    target_limit = sp.HARD_LIMIT - (len(frame["head"]) + len(frame["tail"]) if structured else compact_overhead)
     last_length = 0
     use_picture = bool(previous_frame and ctx["continuation"])
     warnings: List[str] = []
@@ -131,6 +141,8 @@ def generate_scene_prompt(session: Dict[str, Any], folder: str, segment: Dict[st
                 motion_request=_text(segment.get("i2v_notes")), audio_direction=_text(segment.get("audio_direction")),
                 continuity=_text(segment.get("continuity")), storyboard_context=storyboard_video_context(card),
             )
+            if omit_lyrics:
+                task = lfp.prompt_context(task, segment, plan, performer, performer_labels, session)
             body: Dict[str, Any] = {
                 **llm_payload_from_session(session),
                 "project_folder": folder,
@@ -143,6 +155,9 @@ def generate_scene_prompt(session: Dict[str, Any], folder: str, segment: Dict[st
                 "no_character_present": ctx["no_character"],
                 "performance_mode": "no_lip_sync" if ctx["visual_only"] else "singing",
                 "lyric_text": ctx["lyric"],
+                **emotion_expression_input(segment, session),
+                "omit_lyrics_from_video_prompts": omit_lyrics,
+                "lyric_cue_map": (segment.get("lyric_cue_map") or []) if omit_lyrics else [],
                 "singers": ctx["singers"],
                 "audio_mode": ctx["audio_mode"],
                 "camera_motion_speed": ctx["camera_speed"],
@@ -169,13 +184,15 @@ def generate_scene_prompt(session: Dict[str, Any], folder: str, segment: Dict[st
             result = vid_gen._generate_builder_t2v_prompt(request)
         raw = _text(result.get("prompt") if isinstance(result, dict) else result)
         descriptions = sp.parse_shot_descriptions(raw, budget["shot_count"])
-        if ctx["lyric"] and ctx["audio_mode"] != "built_in_audio" and labels:
+        if omit_lyrics:
+            descriptions = lfp.apply_shots(descriptions, segment, plan, performer, performer_labels, session)
+        elif ctx["lyric"] and ctx["audio_mode"] != "built_in_audio" and labels:
             # The prompt must say what the character sings: the lyric goes in the shot in double quotes.
             cast = [l for l in labels if l["kind"] == "subject"] or labels
             performer = f"{cast[0]['label']} ({cast[0]['name']})" if cast[0]["name"] else cast[0]["label"]
             descriptions = sp.ensure_quoted_lyrics(descriptions, segment.get("lyric_text") or ctx["lyric"], performer)
         core = sp.assemble_prompt(descriptions, plan, ctx["style"])
-        prompt = sp.wrap_reference_prompt(core, frame)
+        prompt = sp.wrap_reference_prompt(core, frame) if structured else sp.compact_reference_prompt(core, ctx["items"])
         try:
             sp.validate_prompt(core, plan)
             if len(prompt) > sp.HARD_LIMIT:
@@ -183,6 +200,8 @@ def generate_scene_prompt(session: Dict[str, Any], folder: str, segment: Dict[st
                     f"The MiniMax H3 prompt is {len(prompt)} characters, over the {sp.HARD_LIMIT} maximum by {len(prompt) - sp.HARD_LIMIT}.",
                     "MINIMAX_H3_PROMPT_TOO_LONG", len(prompt))
         except sp.ShotPromptError as exc:
+            if exc.code == "MINIMAX_H3_REFERENCE_COMPOSITION_LEAK" and attempt < MAX_ATTEMPTS:
+                continue
             if exc.code != "MINIMAX_H3_PROMPT_TOO_LONG" or attempt >= MAX_ATTEMPTS:
                 raise
             last_length = exc.length

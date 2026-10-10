@@ -780,6 +780,8 @@ export function createSession({
       default_facial_performance_custom: state.defaultFacialPerformanceCustom || "",
       use_i2v_prompt_enhancement_pass: Boolean(state.useI2VPromptEnhancementPass),
       fail_on_invalid_prompt_formats: Boolean(state.failOnInvalidPromptFormats),
+      omit_lyrics_from_video_prompts: Boolean(state.omitLyricsFromVideoPrompts),
+      use_structured_outputs: Boolean(state.useStructuredOutputs),
       continuity_mode: normalizeContinuityMode(state.continuityMode, state.autoChainLastFrame),
       auto_img2img_start_step: normalizeAutoImg2ImgStartStep(state.autoImg2ImgStartStep),
       auto_img2img_creativity: normalizeAutoImg2ImgCreativity(state.autoImg2ImgCreativity),
@@ -822,6 +824,7 @@ export function createSession({
       audio_mask_auto: state.audioMaskAuto,
       show_timeline_video_notes: state.showTimelineVideoNotes,
       show_timeline_lyric_notes: state.showTimelineLyricNotes,
+      show_timeline_emotion_tags: state.showTimelineEmotionTags,
       selected_timeline_range: normalizeTimelineRange(state.selectedTimelineRange),
       timeline_markers: normalizeTimelineMarkers(state.timelineMarkers),
       active_timeline_marker_id: state.activeTimelineMarkerId || "",
@@ -1073,6 +1076,8 @@ export function createSession({
         state.defaultFacialPerformanceCustom = data.session.default_facial_performance_custom || data.session.defaultFacialPerformanceCustom || state.defaultFacialPerformanceCustom || "";
         state.useI2VPromptEnhancementPass = data.session.use_i2v_prompt_enhancement_pass ?? state.useI2VPromptEnhancementPass ?? false;
         state.failOnInvalidPromptFormats = data.session.fail_on_invalid_prompt_formats ?? state.failOnInvalidPromptFormats ?? false;
+        state.omitLyricsFromVideoPrompts = Boolean(data.session.omit_lyrics_from_video_prompts ?? false);
+        state.useStructuredOutputs = Boolean(data.session.use_structured_outputs ?? false);
         state.autoChainLastFrame = data.session.auto_chain_last_frame ?? state.autoChainLastFrame ?? false;
         state.imageContinuityEnabled = data.session.image_continuity_enabled ?? state.imageContinuityEnabled ?? false;
         state.imageContinuityStrength = data.session.image_continuity_strength || state.imageContinuityStrength || "balanced";
@@ -1136,6 +1141,7 @@ export function createSession({
         state.audioMaskAuto = normalizeAudioMaskAuto(data.session.audio_mask_auto ?? state.audioMaskAuto);
         state.showTimelineVideoNotes = data.session.show_timeline_video_notes ?? state.showTimelineVideoNotes ?? false;
         state.showTimelineLyricNotes = data.session.show_timeline_lyric_notes ?? state.showTimelineLyricNotes ?? false;
+        state.showTimelineEmotionTags = data.session.show_timeline_emotion_tags ?? state.showTimelineEmotionTags ?? false;
         state.selectedTimelineRange = normalizeTimelineRange(data.session.selected_timeline_range || state.selectedTimelineRange);
         state.timelineMarkers = normalizeTimelineMarkers(data.session.timeline_markers || state.timelineMarkers);
         state.activeTimelineMarkerId = data.session.active_timeline_marker_id || state.activeTimelineMarkerId || "";
@@ -1351,6 +1357,8 @@ export function createSession({
       state.defaultFacialPerformanceCustom = session.default_facial_performance_custom || session.defaultFacialPerformanceCustom || "";
       state.useI2VPromptEnhancementPass = session.use_i2v_prompt_enhancement_pass ?? state.useI2VPromptEnhancementPass ?? false;
       state.failOnInvalidPromptFormats = session.fail_on_invalid_prompt_formats ?? state.failOnInvalidPromptFormats ?? false;
+      state.omitLyricsFromVideoPrompts = Boolean(session.omit_lyrics_from_video_prompts ?? false);
+      state.useStructuredOutputs = Boolean(session.use_structured_outputs ?? false);
       state.autoChainLastFrame = session.auto_chain_last_frame ?? state.autoChainLastFrame ?? false;
       state.imageContinuityEnabled = session.image_continuity_enabled ?? state.imageContinuityEnabled ?? false;
       state.imageContinuityStrength = session.image_continuity_strength || state.imageContinuityStrength || "balanced";
@@ -1417,6 +1425,7 @@ export function createSession({
       state.audioMaskAuto = normalizeAudioMaskAuto(session.audio_mask_auto ?? state.audioMaskAuto);
       state.showTimelineVideoNotes = session.show_timeline_video_notes ?? state.showTimelineVideoNotes ?? false;
       state.showTimelineLyricNotes = session.show_timeline_lyric_notes ?? state.showTimelineLyricNotes ?? false;
+      state.showTimelineEmotionTags = session.show_timeline_emotion_tags ?? state.showTimelineEmotionTags ?? false;
       state.selectedTimelineRange = normalizeTimelineRange(session.selected_timeline_range || {});
       state.timelineMarkers = normalizeTimelineMarkers(session.timeline_markers || []);
       state.activeTimelineMarkerId = session.active_timeline_marker_id || "";
