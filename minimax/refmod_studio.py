@@ -270,6 +270,7 @@ def create_refmod(payload: Dict[str, Any]) -> Dict[str, Any]:
         "tokens": details.get("tokens"),
         "canvas": [canvas[0], canvas[1]],
         "quality": request["quality"],
+        "size": os.path.getsize(saved),
     }
 
 

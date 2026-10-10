@@ -102,6 +102,24 @@ def preview_path(name: str) -> Optional[str]:
     return os.path.splitext(entry["path"])[0] + PREVIEW_SUFFIX if entry else None
 
 
+def delete_refmod(name: str) -> Dict[str, Any]:
+    """Delete one RefMod file and its preview. Raises ``ValueError`` for an unknown name or a protected folder.
+
+    The pack's own ``ComfyUI-MiniMaxH3Mod/mods`` folder is not the user's library, so RefMods there are never deleted.
+    """
+    entry = find_refmod(name)
+    if not entry:
+        raise ValueError(f"No RefMod named '{name}'.")
+    if os.path.basename(os.path.dirname(entry["directory"])) == "ComfyUI-MiniMaxH3Mod":
+        raise ValueError(f"'{entry['name']}' belongs to the MiniMaxH3Mod pack and cannot be deleted here.")
+    preview = os.path.splitext(entry["path"])[0] + PREVIEW_SUFFIX
+    os.remove(entry["path"])
+    if os.path.isfile(preview):
+        os.remove(preview)
+    print(f"[VRGDG RefMod] Deleted {entry['name']}")
+    return {"name": entry["name"]}
+
+
 def save_preview(image, destination: str) -> None:
     """Write a PIL image as a preview PNG no larger than ``PREVIEW_MAX_SIDE`` on its longest side."""
     from PIL import Image
@@ -131,6 +149,17 @@ def _register_routes() -> None:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         public = [{key: value for key, value in entry.items() if key not in ("path", "directory")} for entry in entries]
         return web.json_response({"ok": True, "refmods": public})
+
+    @instance.routes.post("/vrgdg/refmod/delete")
+    async def vrgdg_refmod_delete(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(delete_refmod, str((payload or {}).get("name", "") or ""))
+        except ValueError as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+        return web.json_response({"ok": True, **result})
 
     @instance.routes.get("/vrgdg/refmod/preview")
     async def vrgdg_refmod_preview(request):
