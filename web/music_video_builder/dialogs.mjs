@@ -787,6 +787,45 @@ export function showInfoModal({ title, lines = [], confirmLabel = "Got it" } = {
   });
 }
 
+export function showConfirmModal({ title, lines = [], confirmLabel = "OK", cancelLabel = "Cancel" } = {}) {
+  return new Promise((resolve) => {
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100007;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(520px,calc(100vw - 40px));border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+    const heading = document.createElement("div");
+    heading.textContent = title || "Confirm";
+    heading.style.cssText = "font-size:16px;font-weight:900;color:#cffafe;";
+    const body = document.createElement("div");
+    body.style.cssText = "display:flex;flex-direction:column;gap:9px;font-size:13px;color:#d4d4d8;line-height:1.45;";
+    for (const line of lines) {
+      const item = document.createElement("div");
+      item.textContent = line;
+      body.append(item);
+    }
+    const buttons = document.createElement("div");
+    buttons.style.cssText = "display:flex;gap:8px;justify-content:flex-end;";
+    const cancel = makeButton(cancelLabel);
+    const confirm = makeButton(confirmLabel, "primary");
+    const finish = (answer) => {
+      document.removeEventListener("keydown", onKey, true);
+      backdrop.remove();
+      resolve(answer);
+    };
+    const onKey = (event) => {
+      if (event.key === "Escape") { event.stopPropagation(); finish(false); }
+    };
+    document.addEventListener("keydown", onKey, true);
+    cancel.onclick = () => finish(false);
+    confirm.onclick = () => finish(true);
+    buttons.append(cancel, confirm);
+    box.append(heading, body, buttons);
+    backdrop.append(box);
+    document.body.append(backdrop);
+    confirm.focus();
+  });
+}
+
 export function showAddSegmentPositionModal(sceneLabel = "selected scene") {
   return new Promise((resolve) => {
     const backdrop = document.createElement("div");

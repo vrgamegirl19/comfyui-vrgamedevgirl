@@ -1,8 +1,9 @@
 import { FACIAL_PERFORMANCE_PRESETS } from "../storyboard_builder/performance_presets.mjs";
-import { audioUrl } from "./comfy_api.mjs";
+import { audioUrl, makeEditorImageUrl } from "./comfy_api.mjs";
 import { escapeHtml, makeButton, makeCheckbox, makeField, makeInput, makeSelect, toast } from "./controls.mjs";
-import { showInfoModal } from "./dialogs.mjs";
+import { showConfirmModal, showInfoModal } from "./dialogs.mjs";
 import { formatDurationSeconds, formatTime } from "./format.mjs";
+import { refmodPreviewUrl } from "./refmod_card.mjs";
 import { isIdentityCard } from "./refmod_labels.mjs";
 import { newSegment, sortSegments } from "./segments.mjs";
 
@@ -10,10 +11,14 @@ export function createLyricReview({
   activeSegment, applyIngredientsReferenceMappings, applyLyricSectionsFromReferenceText, audioInput,
   currentGlobalTime, currentVideoMode, ensureAllSegmentRuntimeFields, ensureSegmentRuntimeFields,
   hasLockedVideo, isInstrumentalLyricText, isNoLipSyncSingerChoice, normalizeFluxReferenceBuilder,
-  parseBulkTimeValue, pushHistory, referenceBuilderSubjectChoices, render, saveSession, segmentTrack, state,
+  openStoryboardBuilderFromProject, parseBulkTimeValue, pushHistory, referenceBuilderSubjectChoices, render, saveSession, segmentTrack, state,
   syncIngredientsSceneMapFromSubjectMappings, syncInspector, syncLyricMapperFromSegments, timelineDuration,
 }) {
   let activeLyricReviewBackdrop = null;
+  // What each scene looked like when its scene beat / LLM prompt were last replaced (or first seen): sceneId -> { beat, llm }
+  // snapshots. A button is red only while the scene differs from its snapshot, so undoing an edit clears the red.
+  // It outlives the window, so a scene stays red when the window is closed and opened again.
+  const storyBaselines = new Map();
 
   function openLyricReviewModal(options = {}) {
     if (activeLyricReviewBackdrop?.isConnected) return;
@@ -30,8 +35,8 @@ export function createLyricReview({
     backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
     const box = document.createElement("div");
     box.style.cssText = isSingleScene
-      ? "width:min(1680px,calc(100vw - 24px));max-height:calc(100vh - 32px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box;"
-      : "width:min(1840px,calc(100vw - 16px));max-height:calc(100vh - 32px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box;";
+      ? "width:min(calc(1680px + var(--vrg-identity-extra,0px)),calc(100vw - 24px));max-height:calc(100vh - 32px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box;"
+      : "width:min(calc(1840px + var(--vrg-identity-extra,0px)),calc(100vw - 16px));max-height:calc(100vh - 32px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box;";
     const header = document.createElement("div");
     header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
     const heading = document.createElement("div");
@@ -1247,6 +1252,7 @@ export function createLyricReview({
         const input = document.createElement("input");
         input.type = "checkbox";
         input.dataset.reviewPresentSubject = "1";
+        input.dataset.reviewPresentGroup = group;
         input.dataset.reviewSubjectId = subjectId;
         input.value = subjectId;
         input.checked = selected.has(subjectId);
@@ -1348,7 +1354,7 @@ export function createLyricReview({
       const sceneNumber = sceneDisplayIndex + 1;
       const row = document.createElement("div");
       row.dataset.reviewSegmentId = segment.id;
-      row.style.cssText = "display:grid;grid-template-columns:96px minmax(140px,160px) minmax(240px,1fr) minmax(280px,1.15fr) minmax(250px,320px) minmax(190px,230px) minmax(150px,170px) 124px;gap:8px;align-items:start;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:8px;box-sizing:border-box;width:100%;min-width:0;";
+      row.style.cssText = "display:grid;grid-template-columns:96px minmax(140px,160px) minmax(240px,1fr) minmax(280px,1.15fr) var(--vrg-identity-col,110px) minmax(210px,260px) minmax(190px,230px) minmax(150px,170px) 124px;gap:8px;align-items:start;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:8px;box-sizing:border-box;width:100%;min-width:0;";
       const meta = document.createElement("div");
       meta.style.minWidth = "0";
       meta.innerHTML = `<div data-review-scene-label style="font-weight:900;color:#cffafe;">${escapeHtml(segment.label || `Scene ${sceneNumber}`)}</div><div data-review-time-display style="font-size:11px;color:#cbd5e1;margin-top:4px;">${formatTime(segment.start)} - ${formatTime(segment.end)} | ${formatDurationSeconds(segment.start, segment.end)}s</div>`;
@@ -1532,8 +1538,25 @@ export function createLyricReview({
       playFrom.onclick = () => playFromSegment(segment, playFrom);
       select.onclick = () => setActiveReviewScene(segment);
       moveLastWord.onclick = () => moveLastWordToNextReviewRow(row);
-      buttons.append(play, playFrom, select, moveLastWord);
-      row.append(meta, timing, text, subjectSingerPanel, facialPanel, locationWrap, flags, buttons);
+      // Replace this scene's scene beat and/or LLM prompt, the same as selecting only this scene in the Story Builder.
+      const replaceBeat = makeButton("Replace Scene Beat");
+      const replaceLlm = makeButton("Replace LLM Prompt");
+      for (const [button, beat, prompt, hint] of [
+        [replaceBeat, true, false, "Replace the scene beat of this scene only with the selected LLM."],
+        [replaceLlm, false, true, "Replace the video prompt of this scene only with the selected LLM."],
+      ]) {
+        button.dataset.reviewStoryAction = "1";
+        button.dataset.reviewStoryKind = beat ? "beat" : "llm";
+        button.style.cssText = "padding:7px 8px;width:100%;font-size:11px;line-height:1.25;white-space:normal;";
+        button.dataset.reviewBaseStyle = button.style.cssText;
+        button.title = `${hint} Your edits in this window are saved first.`;
+        button.onclick = () => runSceneStoryAction(row, segment, { beat, prompt });
+      }
+      buttons.append(play, playFrom, select, moveLastWord, replaceBeat, replaceLlm);
+      const identityStrip = document.createElement("div");
+      identityStrip.dataset.reviewIdentityStrip = "1";
+      identityStrip.style.cssText = "display:flex;flex-direction:column;gap:8px;min-width:0;";
+      row.append(meta, timing, text, subjectSingerPanel, identityStrip, facialPanel, locationWrap, flags, buttons);
       rowList.append(row);
       rememberReviewRowTiming(row);
     }
@@ -1543,7 +1566,135 @@ export function createLyricReview({
     const cancel = makeButton("Close");
     const save = makeButton(isSingleScene ? "Save Scene" : "Save Lines + Timing + Performers + Locations", "primary");
     actions.append(cancel, save);
+    // Pictures of what is checked in a scene (identities in one row, props, clothing and vehicles in another), between the
+    // identity boxes and the facial performance choice. The column is as wide as the scene with the most pictures in a row,
+    // and the window grows with it.
+    const IDENTITY_THUMB = 64;
+    const IDENTITY_GAP = 6;
+    const IDENTITY_MIN_COLUMN = 110;
+    const identityThumbUrl = (subject) => {
+      const refmodName = String(subject?.refmod?.name || "").trim();
+      if (subject?.source === "refmod" && refmodName) return refmodPreviewUrl(refmodName);
+      const image = subject?.image || {};
+      return String(image.data || "").trim() || (image.path ? makeEditorImageUrl(image.path) : "");
+    };
+    // One picture card for a subject: its preview or image, with its name underneath.
+    const identityPictureCard = (subject, fallbackName) => {
+      const name = String(subject.name || fallbackName);
+      const card = document.createElement("div");
+      card.title = name;
+      card.style.cssText = `display:flex;flex-direction:column;gap:3px;align-items:center;width:${IDENTITY_THUMB}px;flex:0 0 ${IDENTITY_THUMB}px;`;
+      const url = identityThumbUrl(subject);
+      const frame = document.createElement("div");
+      frame.style.cssText = `width:${IDENTITY_THUMB}px;height:${IDENTITY_THUMB}px;border:1px solid #334155;border-radius:6px;background:#0b1220;overflow:hidden;display:flex;align-items:center;justify-content:center;color:#64748b;font-size:10px;`;
+      if (url) {
+        const image = document.createElement("img");
+        image.src = url;
+        image.alt = name;
+        image.style.cssText = "width:100%;height:100%;object-fit:cover;display:block;";
+        image.onerror = () => { image.remove(); frame.textContent = "No image"; };
+        frame.append(image);
+      } else {
+        frame.textContent = "No image";
+      }
+      const caption = document.createElement("div");
+      caption.textContent = name;
+      caption.style.cssText = `width:${IDENTITY_THUMB}px;font-size:10px;color:#cbd5e1;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;`;
+      card.append(frame, caption);
+      return card;
+    };
+    const refreshIdentityStrips = () => {
+      const subjects = reviewAllSubjects();
+      let most = 0;
+      for (const row of reviewRows()) {
+        const strip = row.querySelector("[data-review-identity-strip='1']");
+        if (!strip) continue;
+        strip.textContent = "";
+        // Identities first, then the props, clothing and vehicles checked for the scene, each in its own row.
+        for (const [group, fallbackName] of [["identities", "Identity"], ["props", "Prop"]]) {
+          const ids = [...row.querySelectorAll(`[data-review-present-group='${group}']`)]
+            .filter((input) => input.checked && !input.disabled)
+            .map((input) => String(input.value || ""));
+          most = Math.max(most, ids.length);
+          if (!ids.length) continue;
+          const line = document.createElement("div");
+          line.dataset.reviewPictureGroup = group;
+          line.style.cssText = `display:flex;flex-wrap:nowrap;gap:${IDENTITY_GAP}px;align-items:flex-start;`;
+          for (const id of ids) {
+            const subject = subjects.find((item) => String(item?.id || "") === id);
+            if (subject) line.append(identityPictureCard(subject, fallbackName));
+          }
+          strip.append(line);
+        }
+      }
+      const column = Math.max(IDENTITY_MIN_COLUMN, most * (IDENTITY_THUMB + IDENTITY_GAP) - IDENTITY_GAP);
+      rowList.style.setProperty("--vrg-identity-col", `${column}px`);
+      box.style.setProperty("--vrg-identity-extra", `${column - IDENTITY_MIN_COLUMN}px`);
+    };
+    // What a scene's beat and prompt are written from: its line, timing, who is in it and who performs, its flags, facial
+    // performance and location. A change to any of them means the beat and the LLM prompt are out of date.
+    const rowStorySnapshot = (row) => JSON.stringify([
+      row.querySelector("[data-review-lyric-text]")?.value ?? "",
+      row.querySelector("[data-review-start]")?.value ?? "",
+      row.querySelector("[data-review-end]")?.value ?? "",
+      [...row.querySelectorAll("[data-review-present-subject='1']")].filter((input) => input.checked).map((input) => input.value).sort(),
+      [...row.querySelectorAll("[data-review-singer-choice='1']")].filter((input) => input.checked).map((input) => input.value).sort(),
+      ["[data-review-instrumental]", "[data-review-broll]", "[data-review-no-character]"].map((selector) => Boolean(row.querySelector(selector)?.checked)),
+      row.querySelector("[data-review-facial-performance='1']")?.value ?? "",
+      row.querySelector("[data-review-facial-performance-custom='1']")?.value ?? "",
+      row.querySelector("[data-review-location]")?.value ?? "",
+    ]);
+    const STORY_KINDS = ["beat", "llm"];
+    const storyBaselineFor = (id) => {
+      let entry = storyBaselines.get(id);
+      if (!entry) {
+        entry = {};
+        storyBaselines.set(id, entry);
+      }
+      return entry;
+    };
+    const storyKindIsRed = (row, kind) => {
+      const entry = storyBaselines.get(String(row.dataset.reviewSegmentId || ""));
+      return Boolean(entry && entry[kind] !== undefined && entry[kind] !== rowStorySnapshot(row));
+    };
+    const refreshStoryActionButtons = () => {
+      for (const row of reviewRows()) {
+        for (const button of row.querySelectorAll("[data-review-story-action='1']")) {
+          button.style.cssText = storyKindIsRed(row, button.dataset.reviewStoryKind)
+            ? `${button.dataset.reviewBaseStyle}background:#b91c1c;border-color:#ef4444;color:#fff;font-weight:800;`
+            : button.dataset.reviewBaseStyle;
+        }
+      }
+    };
+    // Scenes that are red and so need their scene beat / LLM prompt replaced.
+    const scenesNeedingReplace = () => reviewRows()
+      .filter((row) => STORY_KINDS.some((kind) => storyKindIsRed(row, kind)))
+      .map((row) => {
+        const id = String(row.dataset.reviewSegmentId || "");
+        return (Array.isArray(state.segments) ? state.segments : []).find((item) => item?.id === id)?.label || "A scene";
+      });
+    // Forgets baselines that match the scene again, so the next open starts from what the scene is then.
+    const releaseStoryBaselines = () => {
+      for (const row of reviewRows()) {
+        const id = String(row.dataset.reviewSegmentId || "");
+        const entry = storyBaselines.get(id);
+        if (!entry) continue;
+        const now = rowStorySnapshot(row);
+        for (const kind of STORY_KINDS) if (entry[kind] === now) delete entry[kind];
+        if (!STORY_KINDS.some((kind) => entry[kind] !== undefined)) storyBaselines.delete(id);
+      }
+    };
+    rowList.addEventListener("change", () => { refreshIdentityStrips(); refreshStoryActionButtons(); });
+    rowList.addEventListener("input", refreshStoryActionButtons);
     box.append(header, note, performerLabelPanel, timingModePanel, audioPanel, rowList, actions);
+    refreshIdentityStrips();
+    for (const row of reviewRows()) {
+      const id = String(row.dataset.reviewSegmentId || "");
+      const entry = storyBaselineFor(id);
+      const now = rowStorySnapshot(row);
+      for (const kind of STORY_KINDS) if (entry[kind] === undefined) entry[kind] = now;
+    }
+    refreshStoryActionButtons();
     backdrop.append(box);
     document.body.append(backdrop);
     if (focusSceneId) {
@@ -1558,6 +1709,7 @@ export function createLyricReview({
     }
     activeLyricReviewBackdrop = backdrop;
     const closeModal = () => {
+      releaseStoryBaselines();
       clearReviewStopGuards();
       reviewAudio.pause();
       backdrop.remove();
@@ -1568,7 +1720,23 @@ export function createLyricReview({
     backdrop.addEventListener("pointerdown", (event) => {
       if (event.target === backdrop) closeModal();
     });
+    // Edited scenes whose scene beat or LLM prompt were not replaced: the render keeps using the old ones. OK keeps the
+    // edits and goes on, Cancel leaves the window as it is.
+    const confirmUnreplacedStory = async () => {
+      refreshStoryActionButtons();
+      const names = scenesNeedingReplace();
+      if (!names.length) return true;
+      return showConfirmModal({
+        title: "Unreplaced Changes",
+        lines: [
+          "Changes will not be applied to renders unless Replace Scene Beat and Replace LLM Prompt are run for the changed scenes.",
+          `Changed: ${names.join(", ")}`,
+          "OK saves your changes and closes. Cancel keeps this window open.",
+        ],
+      });
+    };
     const navigateReviewScene = async (nextOptions) => {
+      if (!(await confirmUnreplacedStory())) return;
       if (!(await saveReviewChanges(true)) || !backdrop.isConnected) return;
       closeModal();
       openLyricReviewModal(nextOptions);
@@ -1650,7 +1818,55 @@ export function createLyricReview({
         save.disabled = false;
       }
     };
-    save.onclick = () => saveReviewChanges();
+    save.onclick = async () => {
+      if (scenesNeedingReplace().length) {
+        if (!(await confirmUnreplacedStory())) return;
+        if (await saveReviewChanges(true) && backdrop.isConnected) closeModal();
+        return;
+      }
+      return saveReviewChanges();
+    };
+    // Saves this window, then runs the Story Builder's Replace Scene Beat and/or LLM for this one scene.
+    async function runSceneStoryAction(row, segment, { beat, prompt }) {
+      if (typeof openStoryboardBuilderFromProject !== "function") {
+        toast("The Story Builder is not available here.", true);
+        return;
+      }
+      const sceneName = segment.label || "this scene";
+      const what = beat && prompt ? "scene beat and LLM prompt" : beat ? "scene beat" : "LLM prompt";
+      const go = await showConfirmModal({
+        title: `Replace for ${sceneName}`,
+        lines: [`Replace the ${what} for ${sceneName} only?`, "Your edits in this window are saved first. No other scene is changed."],
+      });
+      if (!go) return;
+      if (!(await saveReviewChanges(true)) || !backdrop.isConnected) return;
+      const live = (Array.isArray(state.segments) ? state.segments : []).find((item) => item?.id === segment.id);
+      if (!live) {
+        toast("Could not find this scene after saving.", true);
+        return;
+      }
+      const actionButtons = [...row.querySelectorAll("[data-review-story-action='1']")];
+      actionButtons.forEach((button) => { button.disabled = true; });
+      const replacedSnapshot = rowStorySnapshot(row);
+      let replaced = false;
+      try {
+        await new Promise((resolve) => {
+          openStoryboardBuilderFromProject({
+            sceneActions: { sceneId: live.id, beat, prompt },
+            onSceneActionsDone: (ok) => { replaced = Boolean(ok); },
+            onClose: resolve,
+          });
+        });
+      } finally {
+        actionButtons.forEach((button) => { button.disabled = false; });
+      }
+      if (replaced) {
+        const entry = storyBaselineFor(String(live.id));
+        if (beat) entry.beat = replacedSnapshot;
+        if (prompt) entry.llm = replacedSnapshot;
+        refreshStoryActionButtons();
+      }
+    }
   }
 
   return { openLyricReviewModal };

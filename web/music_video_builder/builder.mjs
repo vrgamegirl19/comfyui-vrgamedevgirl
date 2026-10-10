@@ -1303,6 +1303,7 @@ export function openBuilder(node, options = {}) {
   });
 
   const { openLyricReviewModal } = createLyricReview({
+    openStoryboardBuilderFromProject: (...args) => openStoryboardBuilderFromProject(...args),
     applyLyricSectionsFromReferenceText, audioInput, hasLockedVideo, isInstrumentalLyricText,
     isNoLipSyncSingerChoice, normalizeFluxReferenceBuilder, parseBulkTimeValue, pushHistory, state,
     syncInspector,

@@ -892,6 +892,7 @@ test('prompt-only storyboard startup uses the existing video prompt dialog and c
     const task = vm.runInNewContext(storyboard.slice(start, end), {
       loadExisting: async () => { calls.push('loaded'); return true; },
       promptActionOnly: true,
+      sceneActions: null,
       setMode: mode => calls.push(mode),
       startAllPromptsWithGemma: async () => { calls.push('storyboard-dialog'); if (fail) throw Error('dialog failed'); },
       closeStoryboard: () => calls.push('closed'),
