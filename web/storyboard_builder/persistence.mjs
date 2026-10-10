@@ -115,6 +115,7 @@ export function createStoryboardPersistence({
               performance_style: fresh.performance_style,
               facial_performance: fresh.facial_performance,
               facial_performance_custom: fresh.facial_performance_custom,
+              emotion_expression_tags: fresh.emotion_expression_tags,
               shot_type: fresh.shot_type || normalized.shot_type,
               camera_motion: fresh.camera_motion || normalized.camera_motion,
               character_motion: fresh.character_motion || normalized.character_motion,

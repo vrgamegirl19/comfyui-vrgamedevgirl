@@ -126,7 +126,10 @@ def scene_video_prompt_inputs(session: Dict[str, Any], scene_id: Any, mode: Any 
         # The scene card's directions and the complete card, as the Storyboard sends them with a video prompt.
         storyboard_video_context(card) if card else "",
     ) if part)
+    from ..llm.prompts.emotion_expression import emotion_expression_input
+
     return {
+        **emotion_expression_input(segment, session),
         "t2i_prompt": t2i_prompt,
         "user_notes": notes,
         "builder_instruction_key": video_mode,

@@ -43,6 +43,7 @@ FULL_PATCH = {
     "performance_style": "Restrained",
     "facial_performance": "determined",
     "facial_performance_custom": "jaw set, eyes wet",
+    "emotion_expression_tags": "Start happy, then end sad",
     "include_microphone": True,
     "audio_direction": "Rain on tin roof.",
     "continuity": "Red coat stays buttoned.",

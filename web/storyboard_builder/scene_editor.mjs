@@ -101,6 +101,7 @@ export function createSceneEditor({
     ], scene.temporal_world_effect_override || "global");
     const temporalEffectCustom = makeTextarea(scene.temporal_world_effect_custom || "", "Exact custom temporal behavior for only this scene...", 3);
     const facialPerformance = makeSelect(sortOptionsAlphabetically(facialPerformancePresets), scene.facial_performance || "");
+    const emotionExpressionTags = makeTextarea(scene.emotion_expression_tags || "", "Angry; Sad; Start happy, then end sad. The LLM interprets this with the lyrics.", 3);
     const facialPerformanceCustom = makeTextarea(scene.facial_performance_custom || "", "Optional custom facial expression/movement text for this scene...", 3);
     const includeMicLabel = document.createElement("label");
     includeMicLabel.style.cssText = "display:flex;align-items:center;gap:8px;border:1px solid #334155;border-radius:8px;background:#0f172a;color:#cbd5e1;padding:9px 10px;font-size:12px;font-weight:900;";
@@ -301,13 +302,14 @@ export function createSceneEditor({
     const temporalEffectCustomField = field("Custom temporal wording", temporalEffectCustom);
     const facialPerformanceField = field("Facial performance", facialPerformance);
     const facialPerformanceCustomField = field("Custom facial performance", facialPerformanceCustom);
+    const emotionExpressionTagsField = field("Emotion/Expression Tags", emotionExpressionTags);
     const imagePathField = field("Starting image", startingImageControl);
     const motionField = field(isImagePrepMode ? "Still photography notes" : "Motion Notes / LLM Direction", motion);
     const t2iPromptField = field("T2I prompt", imagePrompt);
     if (isVideoPrepMode) {
-      grid.append(field("Video prompt type", videoPromptType), videoStyleField, videoStyleCustomField, field("Setting", setting), videoTypeHint, field("Subjects", subjects), performanceStyleField, facialPerformanceField, facialPerformanceCustomField, includeMicLabel, noCharacterLabel, shotPresetField, shotCustomField, cameraMotionField, characterMotionField, customCharacterMotionField, imagePathField, field("Scene trigger phrase", triggerPhrase), field("Trigger placement", triggerPosition));
+      grid.append(field("Video prompt type", videoPromptType), videoStyleField, videoStyleCustomField, field("Setting", setting), videoTypeHint, field("Subjects", subjects), performanceStyleField, facialPerformanceField, facialPerformanceCustomField, emotionExpressionTagsField, includeMicLabel, noCharacterLabel, shotPresetField, shotCustomField, cameraMotionField, characterMotionField, customCharacterMotionField, imagePathField, field("Scene trigger phrase", triggerPhrase), field("Trigger placement", triggerPosition));
     } else {
-      grid.append(field("Setting", setting), field("Subjects", subjects), performanceStyleField, facialPerformanceField, facialPerformanceCustomField, includeMicLabel, noCharacterLabel, shotPresetField, shotCustomField, cameraMotionField, field("Scene trigger phrase", triggerPhrase), field("Trigger placement", triggerPosition));
+      grid.append(field("Setting", setting), field("Subjects", subjects), performanceStyleField, facialPerformanceField, facialPerformanceCustomField, emotionExpressionTagsField, includeMicLabel, noCharacterLabel, shotPresetField, shotCustomField, cameraMotionField, field("Scene trigger phrase", triggerPhrase), field("Trigger placement", triggerPosition));
     }
     const referenceGrid = document.createElement("div");
     referenceGrid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:16px 28px;";
@@ -344,11 +346,11 @@ export function createSceneEditor({
     const basicsGrid = twoCol();
     basicsGrid.append(field("Scene label", label), field("Lyric section", lyricSection), field("Scene / lyrics", lyrics), field("Scene story beat", storyBeat));
     if (isVideoPrepMode) {
-      basicsGrid.append(field("Prompt mode", iconField("▣", videoPromptType)), videoStyleField, videoStyleCustomField, temporalEffectField, temporalEffectCustomField, field("Performance / song style", performanceStyle), field("Facial performance", facialPerformance), field("Custom facial performance", facialPerformanceCustom), includeMicLabel, noCharacterLabel, videoTypeHint);
+      basicsGrid.append(field("Prompt mode", iconField("▣", videoPromptType)), videoStyleField, videoStyleCustomField, temporalEffectField, temporalEffectCustomField, field("Performance / song style", performanceStyle), field("Facial performance", facialPerformance), field("Custom facial performance", facialPerformanceCustom), emotionExpressionTagsField, includeMicLabel, noCharacterLabel, videoTypeHint);
     } else {
       const imagePromptType = makeInput("Text to Image", "Text to Image");
       imagePromptType.readOnly = true;
-      basicsGrid.append(field("Image prompt type", iconField("▣", imagePromptType)), field("Performance / song style", performanceStyle), field("Facial performance", facialPerformance), field("Custom facial performance", facialPerformanceCustom), includeMicLabel, noCharacterLabel);
+      basicsGrid.append(field("Image prompt type", iconField("▣", imagePromptType)), field("Performance / song style", performanceStyle), field("Facial performance", facialPerformance), field("Custom facial performance", facialPerformanceCustom), emotionExpressionTagsField, includeMicLabel, noCharacterLabel);
     }
 
     const addSubject = makeButton("+ Add subject");
@@ -778,6 +780,7 @@ export function createSceneEditor({
       scene.temporal_world_effect_custom = temporalEffectOverride.value === "custom" ? temporalEffectCustom.value.trim() : "";
       scene.facial_performance = facialPerformance.value || "";
       scene.facial_performance_custom = facialPerformanceCustom.value.trim();
+      scene.emotion_expression_tags = emotionExpressionTags.value.trim();
       scene.include_microphone = Boolean(includeMic.checked);
       scene.trigger_phrase = triggerPhrase.value.trim();
       scene.trigger_position = triggerPosition.value === "end" ? "end" : "start";

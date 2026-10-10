@@ -1135,6 +1135,7 @@ def _build_story_layer_scene_beat(payload):
         "character_motion": _clean_scene_text(scene.get("character_motion") or scene.get("character_motion_preset") or "", 700),
         "performance_direction": _clean_scene_text(scene.get("performance_direction") or scene.get("performance_style") or "", 1000),
         "facial_performance_direction": _clean_scene_text(scene.get("facial_performance_direction") or scene.get("facial_performance_custom") or scene.get("facial_performance") or "", 1200),
+        "emotion_expression_tags": _clean_scene_text(scene.get("emotion_expression_tags") or "", 1200),
     }
     raw_extra_subjects = scene.get("extra_subjects") or scene.get("extraSubjects") or []
     extra_subjects = []

@@ -284,6 +284,7 @@ test("Builder video prompting includes complete card context for both LTX and Mi
 test("MiniMax creative input preserves complete long storyboard context", () => {
   const { functionSource, readBuilderModule } = require("./builder_source.cjs");
   const context = vm.createContext({
+    omitLyricsForSegment: () => false,
     state: { videoType: "no_lip_sync", builderStoryboardDefaults: {} },
     miniMaxH3SettingsForSegment: () => ({ audio_mode: "input_audio", aspect_ratio: "16:9" }),
     segmentUsesNoLipSyncPerformance: () => true,

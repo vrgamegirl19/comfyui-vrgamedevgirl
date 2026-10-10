@@ -34,6 +34,7 @@ import { parseBulkTimeValue } from "./timeline_actions.mjs";
 import { audioChunkDuration, audioTimelineStart, markerEnd, normalizeTimelineMarkers } from "./timeline_state.mjs";
 import { mappedLocation } from "./scene_locations.mjs";
 import { createTimelineToolWindows } from "./timeline_tool_windows.mjs";
+import { createTimelineEmotionNote, timelineEmotionNotesVisible } from "./timeline_emotion_notes.mjs";
 import { speakingAudioEditsActive, speakingAudioLaneCount } from "./audio_clip_editor.mjs";
 import {
   STEM_COLORS, STEM_LABELS, getStemLanes, requestOpenAudioMask, requestStemEdit, stemRowNames,
@@ -305,6 +306,9 @@ export function buildTimelineView({ overlay, preview, previewStage, getDeleteAva
   const sceneNoteButton = makeButton("+ Scene Note");
   const videoNoteButton = makeButton("+ Video Note");
   const lyricNoteButton = makeButton("+ Line Note");
+  const emotionTagButton = makeButton("+ Emotion Tag");
+  emotionTagButton.style.display = "none";
+  emotionTagButton.title = "Speaking mode: show per-scene mood, emotion, and expression direction beneath Line Notes.";
   const setInButton = makeButton("Set In");
   const setOutButton = makeButton("Set Out");
   const clearRangeButton = makeButton("Clear Range");
@@ -367,7 +371,7 @@ export function buildTimelineView({ overlay, preview, previewStage, getDeleteAva
   deleteSegmentButton.style.color = "#fecaca";
   deleteAllSegmentsButton.style.borderColor = "#7f1d1d";
   deleteAllSegmentsButton.style.color = "#fecaca";
-  for (const button of [bulkSegmentsButton, sceneNoteButton, videoNoteButton, lyricNoteButton, setInButton, setOutButton, clearRangeButton, closeTimelineGapsButton, snapSceneEdgeButton, splitSceneButton, idLoraTrimModeButton, overlayTrackToggleButton, overlayTrackHintButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, deleteSegmentButton, deleteAllSegmentsButton, zoomOutButton, zoomInButton]) {
+  for (const button of [bulkSegmentsButton, sceneNoteButton, videoNoteButton, lyricNoteButton, emotionTagButton, setInButton, setOutButton, clearRangeButton, closeTimelineGapsButton, snapSceneEdgeButton, splitSceneButton, idLoraTrimModeButton, overlayTrackToggleButton, overlayTrackHintButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, deleteSegmentButton, deleteAllSegmentsButton, zoomOutButton, zoomInButton]) {
     button.style.padding = "7px 10px";
     button.style.minWidth = "0";
     button.style.flex = "0 0 auto";
@@ -465,7 +469,7 @@ export function buildTimelineView({ overlay, preview, previewStage, getDeleteAva
   zoomWrap.append(zoomOutButton, zoomInButton);
   const timelineToolRail = document.createElement("div");
   timelineToolRail.style.cssText = "display:flex;flex-direction:column;gap:4px;padding:12px 5px 12px 6px;border-right:1px solid #27272a;background:#09090b;overflow-y:auto;overflow-x:hidden;min-height:0;scrollbar-width:thin;";
-  for (const button of [bulkSegmentsButton, sceneNoteButton, videoNoteButton, lyricNoteButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton, audioMaskButton, stemMonitorButton, stemVisibilityButton]) {
+  for (const button of [bulkSegmentsButton, sceneNoteButton, videoNoteButton, lyricNoteButton, emotionTagButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton, audioMaskButton, stemMonitorButton, stemVisibilityButton]) {
     button.style.width = "96px";
     button.style.minHeight = "40px";
     button.style.padding = "6px 7px";
@@ -476,7 +480,7 @@ export function buildTimelineView({ overlay, preview, previewStage, getDeleteAva
   bulkSegmentsButton.textContent = "Bulk";
   addSegmentButton.textContent = "+ Segment";
   addOverlaySegmentButton.textContent = "+ Overlay Track";
-  timelineToolRail.append(bulkSegmentsButton, sceneNoteButton, videoNoteButton, lyricNoteButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton, audioMaskButton, stemMonitorButton, stemVisibilityButton);
+  timelineToolRail.append(bulkSegmentsButton, sceneNoteButton, videoNoteButton, lyricNoteButton, emotionTagButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton, audioMaskButton, stemMonitorButton, stemVisibilityButton);
   timelineHeader.append(toolsButton, splitSceneButton, idLoraTrimModeButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineStatusInfo, deleteSegmentButton, deleteAllButton);
   timelineHeader.append(addAudioClipButton, freezeTimingControl.wrapper);
   const timelineBody = document.createElement("div");
@@ -501,7 +505,7 @@ export function buildTimelineView({ overlay, preview, previewStage, getDeleteAva
     addOverlaySegmentButton, addSegmentButton, addTimelineMarkerButton, audioMaskButton, beatMarkersButton, bulkSegmentsButton, stemMonitorButton, stemVisibilityButton,
     clearRangeButton, closeTimelineGapsButton, deleteAllSegmentsButton, deleteAllTimelineImagesButton,
     deleteAllTimelineVideosButton, deleteSegmentButton, freezeTimingControl, globalAudioMuteButton, addAudioClipButton,
-    globalScrub, globalScrubTime, idLoraTrimModeButton, lyricNoteButton, locationThumbnailButton, multiSelectButton,
+    globalScrub, globalScrubTime, idLoraTrimModeButton, lyricNoteButton, emotionTagButton, locationThumbnailButton, multiSelectButton,
     multiSelectHintButton, overlayTrackHintButton, overlayTrackToggleButton, playButton, playhead, redoButton,
     refreshDeleteActions, sceneNoteButton, segmentLayer, setInButton, setOutButton, snapSceneEdgeButton,
     snapToBeatsControl, splitSceneButton, stopButton, timeline, timelineCanvas, timelineInfo,
@@ -759,11 +763,16 @@ export function createTimelineView({
   }
 
   function timelineWaveTop() {
+    if (timelineEmotionNotesVisible(state)) return timelineEmotionNoteTop() + TIMELINE_NOTE_HEIGHT + 14;
     if (state.showTimelineLyricNotes) return timelineLyricNoteTop() + TIMELINE_NOTE_HEIGHT + 14;
     if (timelineMarkerLaneVisible()) return timelineMarkerTop() + TIMELINE_MARKER_HEIGHT + 14;
     if (state.showTimelineVideoNotes) return timelineVideoNoteTop() + TIMELINE_NOTE_HEIGHT + 14;
     if (state.showTimelineSceneNotes) return timelineNoteTop() + TIMELINE_NOTE_HEIGHT + 14;
     return TIMELINE_SCENE_AUDIO_TOP + TIMELINE_SCENE_AUDIO_HEIGHT + additionalAudioHeight + stemBandHeight + 14;
+  }
+
+  function timelineEmotionNoteTop() {
+    return timelineLyricNoteTop() + (state.showTimelineLyricNotes ? TIMELINE_NOTE_HEIGHT + TIMELINE_NOTE_GAP : 0);
   }
 
   function snapTimeToBeat(time) {
@@ -1173,6 +1182,12 @@ export function createTimelineView({
       lyricLabel.style.cssText = `position:absolute;left:4px;top:${timelineLyricNoteTop() - 12}px;color:#f0abfc;font-size:10px;font-weight:900;letter-spacing:.08em;pointer-events:none;text-shadow:0 1px 2px #020617;`;
       segmentLayer.append(lyricLabel);
     }
+    if (timelineEmotionNotesVisible(state)) {
+      const label = document.createElement("div");
+      label.textContent = "EMOTION TAGS";
+      label.style.cssText = `position:absolute;left:4px;top:${timelineEmotionNoteTop() - 12}px;color:#fde68a;font-size:10px;font-weight:900;letter-spacing:.08em;pointer-events:none;text-shadow:0 1px 2px #020617;`;
+      segmentLayer.append(label);
+    }
     const visibleTimelineOverlays = state.overlayTrack.enabled ? state.overlaySegments : [];
     for (const segment of [...visibleTimelineOverlays, ...state.segments]) {
       const isOverlay = segmentTrack(segment) === "overlay";
@@ -1533,6 +1548,10 @@ export function createTimelineView({
           if (lyricBox.dataset.savedValue !== lyricBox.value) saveTimelineLyricEdit();
         };
         segmentLayer.append(lyricBox);
+      }
+      if (!isOverlay && timelineEmotionNotesVisible(state)) {
+        segmentLayer.append(createTimelineEmotionNote({ segment, state, left, width,
+          top: timelineEmotionNoteTop(), height: TIMELINE_NOTE_HEIGHT, isActive, pushHistory, autoSaveSessionQuiet }));
       }
       if (!isOverlay && segment.custom_audio_peaks?.length && state.videoType !== "speaking") {
         const audioStart = audioTimelineStart(segment);

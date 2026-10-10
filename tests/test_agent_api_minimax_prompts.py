@@ -29,6 +29,7 @@ class MiniMaxPromptTests(Base):
         refs["subject_scene_map"] = {s["id"]: ["darrel"] for s in self.segments}
         refs["scene_map"] = {s["id"]: "loc1" for s in self.segments}
         session["builder_storyboard_defaults"] = {"video_style": "cinematic_realism"}
+        session["use_structured_outputs"] = True
         session["segments"][0]["story_beat"] = "Darrel paces the rooftop."
         self.write_session(session)
 
@@ -77,6 +78,67 @@ class MiniMaxPromptTests(Base):
         self.assertNotIn("<Audio 1>", prompt)
         self.assertIn("MiniMax generates the native audio", prompt)
 
+    def test_default_compact_prompt_uses_pictures_in_shot_prose_and_grounding_rules(self):
+        session = self.read_session()
+        session.pop("use_structured_outputs", None)
+        location_image = os.path.join(self.temp, "rooftop.png")
+        Path(location_image).write_bytes(b"png")
+        session["flux_reference_builder"]["locations"][0]["image"] = {"path": location_image}
+        self.write_session(session)
+        result, calls = self.run_with('{"shots":[{"description":"<Subject 1> (Darrel) walks toward the rooftop rail."}]}', {"limit": 1})
+        self.assertEqual(result["failed"], 0, result)
+        prompt = self.read_session()["segments"][0]["minimax_h3_prompt"]
+        self.assertTrue(prompt.startswith("detailed_description:"))
+        self.assertIn("[Shot 1] <Subject 1> walks", prompt)
+        self.assertNotIn("<Subject 1> (", prompt)
+        self.assertIn("environment from <Picture 2>", prompt)
+        self.assertNotIn("<Subject 1> is", prompt)
+        self.assertNotIn("subject_definitions:", prompt)
+        self.assertIn("omit unsupported carryover props", calls[0]["t2i_prompt"])
+        self.assertIn("introduce its appearance and physical placement", calls[0]["t2i_prompt"])
+
+    def test_reference_composition_copy_is_retried_before_saving(self):
+        count = 0
+
+        def reply(_payload):
+            nonlocal count
+            count += 1
+            description = ("Opening at eye level in the composition of <Picture 1>, a tight frame holds <Subject 1>."
+                           if count == 1 else "An eye-level tight shot shows <Subject 1> (Darrel) turning toward the camera.")
+            return json.dumps({"shots": [{"description": description}]})
+
+        result, calls = self.run_with(reply, {"limit": 1})
+        self.assertEqual(result["failed"], 0, result)
+        self.assertEqual(len(calls), 2)
+        self.assertNotIn("composition of <Picture 1>", self.read_session()["segments"][0]["minimax_h3_prompt"])
+
+    def test_lyric_free_option_preserves_instrumental_opening_and_singer_timing(self):
+        session = self.read_session()
+        session["omit_lyrics_from_video_prompts"] = True
+        session["video_type"] = "singing"
+        scene = session["segments"][0]
+        scene.update(lyric_text="Secret song words", lyric_performance_mode="cue_map",
+                     facial_performance="sad_wounded", lyric_cue_map=[
+                         {"type": "instrumental", "start": 0, "end": 1},
+                         {"type": "vocal", "start": 1, "end": 2, "text": "Secret song words",
+                          "singer_id": "darrel", "singer_name": "Darrel"},
+                     ])
+        self.write_session(session)
+        reply = json.dumps({"shots": [
+            {"description": "The camera tracks left. His mouth moves."},
+            {"description": 'He sings [sad, singing] with watery eyes. A dolly pushes closer.'},
+        ]})
+        result, calls = self.run_with(reply, {"limit": 1})
+        self.assertEqual(result["failed"], 0, result)
+        self.assertTrue(calls[0]["omit_lyrics_from_video_prompts"])
+        prompt = self.read_session()["segments"][0]["minimax_h3_prompt"]
+        self.assertNotRegex(prompt, r"Secret song words|mouth|lip|jaw|<d>")
+        self.assertNotIn("sings", prompt.split("[Shot 2]")[0])
+        self.assertIn("<Subject 1> sings in sync", prompt)
+        self.assertIn("[sad, singing]", prompt)
+        self.assertIn("during 1s–2s", prompt)
+        self.assertIn("watery eyes", prompt)
+
     def test_the_lyric_is_in_the_prompt_in_double_quotes_even_with_a_negative_word(self):
         session = self.read_session()
         session["segments"][0]["lyric_text"] = "Don't you ever feel like you are on your own,\nI am right here waiting"
@@ -86,6 +148,25 @@ class MiniMaxPromptTests(Base):
         self.run_with(reply, {"limit": 1})
         prompt = self.read_session()["segments"][0]["minimax_h3_prompt"]
         self.assertIn('"Don\'t you ever feel like you are on your own, I am right here waiting"', prompt)
+
+    def test_scene_emotion_and_custom_facial_inputs_reach_llm_and_tagged_lyric_is_preserved(self):
+        session = self.read_session()
+        scene = session["segments"][0]
+        scene.update(facial_performance="custom", facial_performance_custom="Angry",
+                     emotion_expression_tags="Start angry, then end sad")
+        self.write_session(session)
+        reply = json.dumps({"shots": [{"description":
+            '<Subject 1> sings with a challenging stare. <d>[English, angry, singing] line 1.</d> '
+            'By the end his gaze falls, [sad, singing].'}]})
+        result, calls = self.run_with(reply, {"limit": 1})
+        self.assertEqual(result["failed"], 0, result)
+        self.assertEqual(calls[0]["emotion_expression_tags"], "Start angry, then end sad")
+        self.assertEqual(calls[0]["facial_performance_custom"], "Angry")
+        self.assertEqual(calls[0]["lyric_text"], "line 1")
+        prompt = self.read_session()["segments"][0]["minimax_h3_prompt"]
+        self.assertRegex(prompt, r"<d>\[English, angry, singing\] line 1\.\s*</d>")
+        self.assertNotIn('"line 1"', prompt)
+        self.assertIn("By the end his gaze falls, [sad, singing]", prompt)
 
     def test_the_storyboard_builder_gets_the_video_prompts_and_beats(self):
         reply = '{"shots":[{"description":"A long enough shot description for the test scene."}]}'

@@ -153,8 +153,8 @@ export function createSceneRenderPrep({
     if (mode === "image_to_video" && !String(selectedSegmentImagePath(segment) || "").trim()) {
       missing.push(`${name}: MiniMax Image to Video needs a selected scene image.`);
     }
-    if (["reference_to_video", "image_reference_to_video"].includes(mode) && segment?.minimax_h3_use_scene_image_as_start_frame && !String(selectedSegmentImagePath(segment) || "").trim()) {
-      missing.push(`${name}: MiniMax Reference to Video is set to use the scene image as its start frame, but no scene image is saved.`);
+    if (mode === "image_reference_to_video" && !String(selectedSegmentImagePath(segment) || "").trim()) {
+      missing.push(`${name}: MiniMax Image + Reference to Video needs a scene start image.`);
     }
     const continuityMode = miniMaxH3ContinuityModeForSegment(segment);
     const continuityReserved = miniMaxH3ContinuityReferenceReserved(segment);
@@ -166,7 +166,7 @@ export function createSceneRenderPrep({
       missing.push(`${name}: MiniMax continuity needs one image slot. Remove one Reference Builder image so the total stays at nine.`);
     }
     if (mode === "reference_to_video" && !orderedReferenceCount && !continuityReserved) {
-      missing.push(`${name}: MiniMax Reference to Video needs a start frame or at least one ordered Reference Builder image.`);
+      missing.push(`${name}: MiniMax Reference to Video needs at least one ordered Reference Builder image.`);
     }
     if (mode === "video_to_video" && !(segment?.minimax_h3_video_references || []).some((item) => String(item?.path || "").trim())) {
       missing.push(`${name}: MiniMax Video to Video needs at least one reference-video path.`);

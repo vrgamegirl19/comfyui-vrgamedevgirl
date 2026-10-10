@@ -379,6 +379,7 @@ function storyboardScenesForGpt(state) {
       facial_performance: !selectedFacialPerformance || selectedFacialPerformance === "off" ? "" : facialPreset.label,
       facial_performance_direction: !selectedFacialPerformance ? "" : (imageMode ? storyboardStillFacialDirection(facialDirection) : facialDirection),
       facial_performance_custom: !selectedFacialPerformance || selectedFacialPerformance === "off" ? "" : (imageMode ? storyboardStillFacialDirection(facialCustom) : facialCustom),
+      emotion_expression_tags: String(normalized.emotion_expression_tags || "").trim(),
       microphone: {
         include: Boolean(normalized.include_microphone),
         instruction: normalized.include_microphone

@@ -28,10 +28,11 @@ def load_prompt_functions() -> dict:
         "_STORYBOARD_SCENE_CARD_CONTEXT_INSTRUCTIONS",
         "_STORYBOARD_IMAGE_WORLD_STYLE_PRESETS",
     }
-    for relative in ("llm/prompts/storyboard.py", "storyboard/scene_prompts.py"):
+    for relative in ("llm/prompts/emotion_expression.py", "llm/prompts/storyboard.py", "storyboard/scene_prompts.py"):
         source = ROOT / relative
         tree = ast.parse(source.read_text(encoding="utf-8"))
         body = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+                or isinstance(node, ast.ImportFrom) and node.module == "typing"
                 or (isinstance(node, ast.Assign) and any(
                     isinstance(target, ast.Name) and target.id in constants
                     for target in node.targets))]

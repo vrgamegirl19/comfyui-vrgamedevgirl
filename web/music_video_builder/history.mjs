@@ -90,6 +90,8 @@ export function createHistory({
       videoTriggerPhrase: state.videoTriggerPhrase,
       useI2VPromptEnhancementPass: state.useI2VPromptEnhancementPass,
       failOnInvalidPromptFormats: Boolean(state.failOnInvalidPromptFormats),
+      omitLyricsFromVideoPrompts: Boolean(state.omitLyricsFromVideoPrompts),
+      useStructuredOutputs: Boolean(state.useStructuredOutputs),
       autoChainLastFrame: state.autoChainLastFrame,
       autoChainStyle: state.autoChainStyle,
       autoChainDirection: state.autoChainDirection,
@@ -131,6 +133,7 @@ export function createHistory({
       showTimelineSceneNotes: state.showTimelineSceneNotes,
       showTimelineVideoNotes: state.showTimelineVideoNotes,
       showTimelineLyricNotes: state.showTimelineLyricNotes,
+      showTimelineEmotionTags: state.showTimelineEmotionTags,
       selectedTimelineRange: state.selectedTimelineRange,
       timelineMarkers: state.timelineMarkers,
       activeTimelineMarkerId: state.activeTimelineMarkerId,
@@ -188,6 +191,8 @@ export function createHistory({
     state.videoTriggerPhrase = data.videoTriggerPhrase || "";
     state.useI2VPromptEnhancementPass = data.useI2VPromptEnhancementPass ?? data.use_i2v_prompt_enhancement_pass ?? state.useI2VPromptEnhancementPass ?? false;
     state.failOnInvalidPromptFormats = data.failOnInvalidPromptFormats ?? data.fail_on_invalid_prompt_formats ?? state.failOnInvalidPromptFormats ?? false;
+    state.omitLyricsFromVideoPrompts = Boolean(data.omitLyricsFromVideoPrompts ?? data.omit_lyrics_from_video_prompts ?? false);
+    state.useStructuredOutputs = Boolean(data.useStructuredOutputs ?? data.use_structured_outputs ?? false);
     state.autoChainLastFrame = data.autoChainLastFrame ?? data.auto_chain_last_frame ?? state.autoChainLastFrame ?? false;
     state.imageContinuityEnabled = data.image_continuity_enabled ?? state.imageContinuityEnabled ?? false;
     state.imageContinuityStrength = ["close", "balanced", "creative"].includes(data.image_continuity_strength) ? data.image_continuity_strength : (state.imageContinuityStrength || "balanced");
@@ -232,6 +237,7 @@ export function createHistory({
     state.showTimelineSceneNotes = data.showTimelineSceneNotes ?? state.showTimelineSceneNotes ?? false;
     state.showTimelineVideoNotes = data.showTimelineVideoNotes ?? state.showTimelineVideoNotes ?? false;
     state.showTimelineLyricNotes = data.showTimelineLyricNotes ?? state.showTimelineLyricNotes ?? false;
+    state.showTimelineEmotionTags = data.showTimelineEmotionTags ?? state.showTimelineEmotionTags ?? false;
     state.selectedTimelineRange = normalizeTimelineRange(data.selectedTimelineRange || data.selected_timeline_range || state.selectedTimelineRange);
     state.timelineMarkers = normalizeTimelineMarkers(data.timelineMarkers || data.timeline_markers || state.timelineMarkers);
     state.activeTimelineMarkerId = data.activeTimelineMarkerId || data.active_timeline_marker_id || "";

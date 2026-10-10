@@ -3,6 +3,7 @@ import math
 import re
 
 from ..llm.text_cleaning import extract_prompt_text_from_gemma_output
+from ..llm.prompts.emotion_expression import emotion_expression_input, emotion_expression_instruction
 from .scene_helpers import (
     _clean_scene_text,
     _fix_single_subject_prompt_pronouns,
@@ -515,6 +516,7 @@ def _build_storyboard_video_prompt(payload):
                 f"Character motion guidance:\n{_clean_scene_text(selected_scene.get('character_motion_guidance') or '', 1000)}",
                 f"Performance direction:\n{_clean_scene_text(selected_scene.get('performance_direction') or selected_scene.get('performance_style') or '', 1000)}",
                 f"Facial performance direction:\n{_clean_scene_text(selected_scene.get('facial_performance_direction') or selected_scene.get('facial_performance_custom') or selected_scene.get('facial_performance') or '', 1600)}",
+                f"Emotion/Expression Tags:\n{_clean_scene_text(selected_scene.get('emotion_expression_tags') or '', 1200)}",
                 f"First-frame visual inventory:\n{_clean_scene_text(first_frame_inventory, 1600)}" if first_frame_inventory else "",
                 _storyboard_video_prompt_writing_rules(),
             ]
@@ -522,13 +524,14 @@ def _build_storyboard_video_prompt(payload):
         )
         vision_payload = {
             **payload,
+            **emotion_expression_input(selected_scene, {}),
             "model_file": payload.get("vision_model_file") or payload.get("vision_model") or payload.get("model_file") or "",
             "mmproj_file": payload.get("mmproj_file") or payload.get("mmproj") or "",
             "t2i_prompt": "",
             "image_reference_path": image_path,
             "image_reference_data": image_data,
             "user_notes": user_notes,
-            "lyric_text": "" if timed_lyric_contract else _clean_scene_text(vocal_status.get("lyric_text") or "", 1200),
+            "lyric_text": _clean_scene_text(vocal_status.get("lyric_text") or selected_scene.get("lyrics") or "", 1200),
             "lyric_cue_map": selected_scene.get("lyric_cue_map") or vocal_status.get("lyric_cue_map") or [],
             "timed_lyric_cue_contract": timed_lyric_contract,
             "performance_mode": performance_mode,
@@ -555,6 +558,10 @@ def _build_storyboard_video_prompt(payload):
         + "\n\n" + _STORYBOARD_SCENE_CARD_CONTEXT_INSTRUCTIONS
         + "\n\nScene-card JSON:\n"
         + json.dumps(scene_bundle, indent=2, ensure_ascii=False)
+        + "\n\n" + emotion_expression_instruction({
+            **emotion_expression_input(selected_scene, {}),
+            "lyric_text": (selected_scene.get("vocal_status") or {}).get("lyric_text") or selected_scene.get("lyrics") or "",
+        })
     )
     from ..llm.builder_runner import _run_builder_text_llm
 

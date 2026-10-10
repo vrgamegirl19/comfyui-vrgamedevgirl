@@ -195,7 +195,7 @@ export function createMiniMaxReferences({
     if (isRefmodPipeline()) return miniMaxRefmodPromptItemsForSegment(segment);
     const normalizedMode = normalizeMiniMaxH3Mode(mode);
     const ordered = [];
-    if (["reference_to_video", "image_reference_to_video"].includes(normalizedMode) && segment?.minimax_h3_use_scene_image_as_start_frame) {
+    if (normalizedMode === "image_reference_to_video" && segment?.minimax_h3_use_scene_image_as_start_frame) {
       const startFrame = segmentImageSource(segment);
       if (startFrame?.path || startFrame?.data) {
         const characterInfluence = miniMaxH3StartFrameCharacterInfluenceForSegment(segment);
@@ -230,6 +230,7 @@ export function createMiniMaxReferences({
   function miniMaxReferencePurposeText(item, segment = null) {
     const faceHairOnly = Boolean(
       segment?.minimax_h3_use_scene_image_as_start_frame
+      && miniMaxH3ModeForSegment(segment) === "image_reference_to_video"
       && miniMaxH3StartFrameCharacterInfluenceForSegment(segment) === "face_hair_only"
     );
     if (item?.kind === "start_frame") {
@@ -315,7 +316,7 @@ export function createMiniMaxReferences({
     });
     const labels = desired.map((item) => item.label);
     let count = desired.length;
-    if (["reference_to_video", "image_reference_to_video"].includes(normalizedMode) && segment?.minimax_h3_use_scene_image_as_start_frame) {
+    if (normalizedMode === "image_reference_to_video" && segment?.minimax_h3_use_scene_image_as_start_frame) {
       const startFrame = segmentImageSource(segment);
       if (startFrame?.path || startFrame?.data) {
         const fingerprint = imageFingerprint(startFrame);
@@ -361,7 +362,7 @@ export function createMiniMaxReferences({
     const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
     const forcedExtraKeys = new Set(miniMaxForcedExtraReferenceKeysForSegment(segment, refs));
     const catalog = miniMaxReferenceBuilderCatalog(refs).filter((item) => item.kind !== "extra" || forcedExtraKeys.has(item.key));
-    const startFrameReserved = miniMaxH3ModeForSegment(segment) === "reference_to_video"
+    const startFrameReserved = miniMaxH3ModeForSegment(segment) === "image_reference_to_video"
       && Boolean(segment.minimax_h3_use_scene_image_as_start_frame)
       && Boolean(segmentImageSource(segment)?.path || segmentImageSource(segment)?.data);
     const promptInspiration = miniMaxH3ModeForSegment(segment) === "reference_to_video"

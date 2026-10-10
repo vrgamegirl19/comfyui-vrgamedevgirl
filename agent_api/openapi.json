@@ -1015,11 +1015,19 @@
             "default": "zimage",
             "type": "string"
           },
+          "omit_lyrics_from_video_prompts": {
+            "default": false,
+            "type": "boolean"
+          },
           "scene_render_wait_hours": {
             "default": 2.0,
             "type": "number"
           },
           "timing_frozen": {
+            "default": false,
+            "type": "boolean"
+          },
+          "use_structured_outputs": {
             "default": false,
             "type": "boolean"
           },
@@ -1038,6 +1046,8 @@
           "image_model_mode",
           "continuity_mode",
           "timing_frozen",
+          "omit_lyrics_from_video_prompts",
+          "use_structured_outputs",
           "auto_save_enabled",
           "automatic_memory_cleanup",
           "scene_render_wait_hours"

@@ -493,6 +493,7 @@ export function createSceneOutput({
           no_character_present: Boolean(segment.no_character_present),
           facial_performance: String(segment.facial_performance || "").trim(),
           facial_performance_custom: String(segment.facial_performance_custom || "").trim(),
+          emotion_expression_tags: String(segment.emotion_expression_tags || "").trim(),
           performance_style: String(segment.performance_style || defaults.performance_style || "").trim(),
           project_video_engine: normalizeProjectVideoEngine(state.projectVideoEngine),
           minimax_h3_mode: miniMaxH3ModeForSegment(segment),

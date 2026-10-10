@@ -746,6 +746,7 @@ export function createProjectSetup({
 
   function render() {
     refreshElevenLabsUI(state);
+    syncLyricNoteControls();
     freezeTimingControl.input.checked = Boolean(state.timingFrozen);
     enforceAudioTimelineEnd();
     syncOverlayTrackControls();

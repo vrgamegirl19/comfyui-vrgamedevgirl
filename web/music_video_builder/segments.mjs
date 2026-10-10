@@ -41,6 +41,7 @@ export function newSegment(start = 0, end = 4) {
     minimax_speaker_assignments: [],
     facial_performance: "",
     facial_performance_custom: "",
+    emotion_expression_tags: "",
     no_character_present: false,
     i2v_notes: "",
     t2i_prompt: "",
