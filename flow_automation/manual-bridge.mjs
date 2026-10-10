@@ -1,4 +1,6 @@
 import { chromium } from "playwright";
+import { dismissFlowAnnouncement } from "./flow-announcements.mjs";
+import { addUploadedFlowImageToPrompt } from "./flow-upload-selection.mjs";
 import path from "node:path";
 import fs from "node:fs/promises";
 
@@ -57,6 +59,7 @@ if (action === "upload" || action === "submit") {
     console.log("Waiting for Meta AI to finish preparing all manual attachments...");
     await page.waitForTimeout(2000);
   }
+  if (provider === "flow_nano_banana") await dismissFlowAnnouncement(page);
   if (prompt) {
     console.log(`${action === "submit" ? "Entering" : "Copying"} manual chat prompt into the provider composer...`);
     await fillManualChatPrompt(page, prompt);
@@ -184,6 +187,7 @@ async function fillManualChatPrompt(page, promptText) {
 }
 
 async function submitManualChatPrompt(page, providerName) {
+  if (providerName === "flow_nano_banana") await dismissFlowAnnouncement(page);
   const locators = providerName === "gpt_image"
     ? [
         page.getByRole("button", { name: /^send prompt$/i }),
@@ -200,6 +204,7 @@ async function submitManualChatPrompt(page, providerName) {
           page.locator("button[aria-label*='Generate' i]"),
         ]
       : [
+          page.getByRole("button", { name: /^start generation$/i }),
           page.getByRole("button", { name: /submit|send|create|generate/i }),
           page.locator("button[aria-label*='Submit' i]"),
           page.locator("button[aria-label*='Send' i]"),
@@ -222,7 +227,7 @@ async function getOrCreateProviderPage(context, providerName) {
     ? (candidate) => candidate.url().startsWith("https://chatgpt.com/")
     : providerName === "meta_ai"
       ? (candidate) => candidate.url().startsWith("https://www.meta.ai/") || candidate.url().startsWith("https://meta.ai/")
-      : (candidate) => candidate.url().startsWith("https://labs.google/") && !candidate.url().includes("/signin");
+      : (candidate) => (candidate.url().startsWith("https://labs.google/") || candidate.url().startsWith("https://flow.google.com/")) && !candidate.url().includes("/signin");
   const providerPages = pages.filter(matcher);
   return providerPages[providerPages.length - 1]
     || pages.find((candidate) => candidate.url() !== "about:blank")
@@ -237,7 +242,7 @@ async function ensureProviderPage(page, providerName, targetUrl) {
     ? currentUrl.startsWith("https://chatgpt.com/")
     : providerName === "meta_ai"
       ? currentUrl.startsWith("https://www.meta.ai/") || currentUrl.startsWith("https://meta.ai/")
-      : currentUrl.startsWith("https://labs.google/");
+      : currentUrl.startsWith("https://labs.google/") || currentUrl.startsWith("https://flow.google.com/");
   if (!valid) {
     await page.goto(targetUrl, { waitUntil: "domcontentloaded" });
     await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
@@ -258,6 +263,7 @@ async function allowDownloadsForAttachedChrome(context, page, downloadPath, requ
 async function ensureFlowProjectPage(page) {
   await page.bringToFront().catch(() => {});
   await page.waitForLoadState("domcontentloaded").catch(() => {});
+  await dismissFlowAnnouncement(page, 3000);
   if (await findFlowPromptBox(page)) return;
   const newProjectClicked = await clickFirstVisible([
     page.getByRole("button", { name: /(?:new|create) project/i }),
@@ -271,6 +277,7 @@ async function ensureFlowProjectPage(page) {
   await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
   const deadline = Date.now() + 60000;
   while (Date.now() < deadline) {
+    await dismissFlowAnnouncement(page);
     if (await findFlowPromptBox(page)) return;
     await page.waitForTimeout(1000);
   }
@@ -334,17 +341,18 @@ async function restoreNormalDownloadsForAttachedChrome(context, page, required =
 }
 
 async function uploadFlowImageAndAddToPrompt(page, filePath) {
+  await dismissFlowAnnouncement(page);
   await fs.access(filePath).catch(() => {
     throw new Error(`Image file does not exist: ${filePath}`);
   });
-  const beforeUrls = new Set(await getPromptAttachmentUrls(page));
   const opened = await clickFirstVisible([
+    page.getByRole("button", { name: /^add ingredients(?: to the prompt box)?$/i }),
     page.getByRole("button", { name: /^create$/i }),
     page.locator("button[aria-haspopup='dialog']:has(i.google-symbols:text-is('add_2'))"),
     page.locator("button:has(i.google-symbols:text-is('add_2'))"),
     page.locator("button:has(i.google-symbols:text-is('add'))"),
   ], 12000);
-  if (!opened) throw new Error("Could not find the bottom + / Create button to open media upload.");
+  if (!opened) throw new Error("Could not find the Add ingredients / Create button to open media upload.");
 
   await page.waitForTimeout(800);
   const uploadTarget = await findVisibleLocator([
@@ -362,8 +370,7 @@ async function uploadFlowImageAndAddToPrompt(page, filePath) {
   await chooser.setFiles(filePath);
   await page.waitForTimeout(10000);
 
-  const addToPrompt = await findAddToPromptAfterUpload(page, beforeUrls, 90000);
-  await addToPrompt.click();
+  await addUploadedFlowImageToPrompt(page, filePath);
   await page.waitForTimeout(3000);
 }
 
@@ -512,34 +519,6 @@ async function getPromptAttachmentUrls(page) {
     .map((img) => img.currentSrc || img.src || "")
     .filter(Boolean)
     .slice(-80)).catch(() => []);
-}
-
-async function findAddToPromptAfterUpload(page, beforeUrls, maxMs) {
-  const started = Date.now();
-  while (Date.now() - started < maxMs) {
-    const candidate = await findVisibleLocator([
-      page.getByRole("button", { name: /add to prompt/i }),
-      page.locator("button:has-text('Add to Prompt')"),
-      page.locator("button:has-text('Add to prompt')"),
-      page.locator("[role='button']:has-text('Add to Prompt')"),
-      page.locator("[role='button']:has-text('Add to prompt')"),
-    ], 1000);
-    if (candidate) {
-      const disabled = await candidate.getAttribute("aria-disabled").catch(() => null);
-      if (disabled !== "true") return candidate;
-    }
-    const urls = await getPromptAttachmentUrls(page);
-    if (urls.some((candidateUrl) => !beforeUrls.has(candidateUrl))) {
-      const afterUpload = await findVisibleLocator([
-        page.getByRole("button", { name: /add to prompt/i }),
-        page.locator("button:has-text('Add to Prompt')"),
-        page.locator("button:has-text('Add to prompt')"),
-      ], 3000);
-      if (afterUpload) return afterUpload;
-    }
-    await page.waitForTimeout(1000);
-  }
-  throw new Error("Uploaded image appeared to finish, but Flow did not show Add to prompt.");
 }
 
 async function clickFirstVisible(locators, timeoutMs = 30000) {

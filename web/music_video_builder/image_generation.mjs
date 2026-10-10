@@ -65,6 +65,21 @@ function browserImageReferencePrompt(prompt, settings = {}) {
     : "";
   const instruction = `Using the provided ${joined} as visual context, create the requested scene image.${continuity}`;
   if (text.toLowerCase().startsWith(instruction.toLowerCase())) return text;
+  const opening = text.split(/[.!?\n]/, 1)[0];
+  const hasReferenceOpening = /^(?:using|use|based on)\b/i.test(opening);
+  const referencesAlreadyExplained = hasReferenceOpening && labels.every((label) => {
+    if (label === "character reference") return /\b(?:character|subject)\s+reference\b/i.test(opening);
+    if (label === "location reference") return /\blocation\s+reference\b/i.test(opening);
+    // The separate continuity guidance identifies the previous scene image.
+    if (label === "last scene image reference") return Boolean(continuity);
+    return /\breference\s+images?\b/i.test(opening);
+  });
+  if (referencesAlreadyExplained) {
+    const guidance = continuity.trim();
+    return guidance && !text.toLowerCase().includes(guidance.toLowerCase())
+      ? `${text}\n\n${guidance}`
+      : text;
+  }
   return `${instruction}\n\n${text}`.trim();
 }
 

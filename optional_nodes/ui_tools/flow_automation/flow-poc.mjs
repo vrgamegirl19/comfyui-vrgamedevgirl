@@ -1,4 +1,6 @@
 import { chromium } from "playwright";
+import { dismissFlowAnnouncement } from "./flow-announcements.mjs";
+import { addUploadedFlowImageToPrompt } from "./flow-upload-selection.mjs";
 import path from "node:path";
 import fs from "node:fs/promises";
 
@@ -60,6 +62,7 @@ if (imagePaths.length > 0) {
   }
 }
 
+await dismissFlowAnnouncement(page);
 console.log("Finding prompt box...");
 const promptBox = await findPromptBox(page);
 if (promptBox) {
@@ -74,14 +77,12 @@ await page.waitForTimeout(2000);
 const beforeImageUrls = new Set(await getGeneratedImageUrls(page));
 console.log(`Generated images before submit: ${beforeImageUrls.size}`);
 
+await dismissFlowAnnouncement(page);
 console.log("Submitting prompt...");
 const submitted = await clickFirstVisible(submitLocators(page));
 if (!submitted) {
   await page.keyboard.press("Enter");
 }
-
-console.log("Waiting 30 seconds before checking output...");
-await page.waitForTimeout(30000);
 
 console.log("Waiting for a new generated image URL...");
 const imageUrl = await waitForNewGeneratedImageUrl(page, beforeImageUrls, timeout);
@@ -141,7 +142,7 @@ function parseArgs(raw) {
 
 async function getOrCreatePage(context) {
   const pages = context.pages();
-  const flowPage = pages.find((candidate) => candidate.url().startsWith("https://labs.google/") && !candidate.url().includes("/signin"));
+  const flowPage = pages.find((candidate) => (candidate.url().startsWith("https://labs.google/") || candidate.url().startsWith("https://flow.google.com/")) && !candidate.url().includes("/signin"));
   if (flowPage) return flowPage;
   const nonBlank = pages.find((candidate) => candidate.url() !== "about:blank");
   return nonBlank || pages[0] || await context.newPage();
@@ -157,6 +158,7 @@ async function allowDownloadsForAttachedChrome(context, page, downloadPath) {
 async function ensureProjectPage(page) {
   await page.bringToFront().catch(() => {});
   await page.waitForLoadState("domcontentloaded").catch(() => {});
+  await dismissFlowAnnouncement(page, 3000);
   if (await findPromptBox(page)) return;
 
   const newProjectClicked = await clickFirstVisible([
@@ -182,6 +184,7 @@ async function ensureProjectPage(page) {
 async function waitForPromptBox(page, maxMs) {
   const started = Date.now();
   while (Date.now() - started < maxMs) {
+    await dismissFlowAnnouncement(page);
     const found = await findPromptBox(page);
     if (found) return found;
     await page.waitForTimeout(1000);
@@ -287,6 +290,7 @@ async function promptLooksEntered(locator, normalizedText) {
 
 function submitLocators(page) {
   return [
+    page.getByRole("button", { name: /^start generation$/i }),
     page.getByRole("button", { name: /submit|send|create|generate/i }),
     page.locator("button[aria-label*='Submit' i]"),
     page.locator("button[aria-label*='Send' i]"),
@@ -329,20 +333,38 @@ async function getGeneratedImageUrls(page) {
       const alt = img.getAttribute("alt") || "";
       const rect = img.getBoundingClientRect();
       const visible = rect.width > 50 && rect.height > 50 && getComputedStyle(img).display !== "none" && getComputedStyle(img).visibility !== "hidden";
-      const isGenerated = alt.toLowerCase().includes("generated image") || src.includes("media.getMediaUrlRedirect");
-      if (!visible || !isGenerated || !src) continue;
+      const tile = img.closest("flow-grid-tile-container");
+      // The new Flow grid uses the same alt text for uploads and generated images.
+      // Generated tiles expose Reuse prompt; uploaded reference tiles do not.
+      const isGenerated = tile
+        ? Boolean(tile.querySelector('button[aria-label="Reuse prompt"]'))
+        : alt.toLowerCase().includes("generated image") || src.includes("media.getMediaUrlRedirect");
+      if (!visible || !isGenerated || !src || !img.complete || img.naturalWidth === 0) continue;
       urls.push(new URL(src, window.location.href).href);
     }
     return urls;
   }).catch(() => []);
 }
 
+function flowImageUrlKey(value) {
+  const url = new URL(value);
+  if (url.hostname === "flow-content.google" && url.pathname.startsWith("/image/")) {
+    return url.pathname;
+  }
+  // CDN signatures and display sizes can change while the media stays the same.
+  if (url.hostname === "flow.google.com" && url.pathname.startsWith("/asb/")) {
+    return url.pathname.replace(/=s\d+(?:-[a-z]+)*$/i, "");
+  }
+  return value;
+}
+
 async function waitForNewGeneratedImageUrl(page, beforeUrls, maxMs) {
   const started = Date.now();
   let lastUrls = [];
+  const beforeKeys = new Set([...beforeUrls].map(flowImageUrlKey));
   while (Date.now() - started < maxMs) {
     lastUrls = await getGeneratedImageUrls(page);
-    const freshUrls = lastUrls.filter((candidate) => !beforeUrls.has(candidate));
+    const freshUrls = lastUrls.filter((candidate) => !beforeKeys.has(flowImageUrlKey(candidate)));
     if (freshUrls.length > 0) {
       const newest = freshUrls[freshUrls.length - 1];
       console.log(`Found new generated image URL: ${newest}`);
@@ -352,12 +374,7 @@ async function waitForNewGeneratedImageUrl(page, beforeUrls, maxMs) {
     await page.waitForTimeout(2500);
   }
 
-  if (lastUrls.length > 0) {
-    console.log("No brand-new image URL was detected; using newest visible generated image as fallback.");
-    return lastUrls[lastUrls.length - 1];
-  }
-
-  throw new Error("Timed out waiting for a generated image URL.");
+  throw new Error("Timed out waiting for a new completed Flow image; existing images were not downloaded.");
 }
 
 async function waitForImageUrlToSettle(page, imageUrl, maxMs) {
@@ -532,18 +549,20 @@ async function findImageElementForUrl(page, imageUrl) {
   return null;
 }
 async function saveGeneratedImageUrl(page, imageUrl, downloadPath, promptText) {
-  const result = await page.evaluate(async (url) => {
-    const response = await fetch(url, { credentials: "include" });
-    if (!response.ok) {
-      return { error: `${response.status} ${response.statusText}`, url };
-    }
-    const buffer = await response.arrayBuffer();
-    return {
-      url,
-      contentType: response.headers.get("content-type") || "image/png",
-      bytes: Array.from(new Uint8Array(buffer)),
-    };
-  }, imageUrl).catch((error) => ({ error: error.message, url: imageUrl }));
+  // Navigate a temporary browser tab to the CDN image. Chrome handles cookies
+  // and certificate trust, and a top-level image request is not blocked by CORS.
+  const downloadPage = await page.context().newPage();
+  let result;
+  try {
+    const response = await downloadPage.goto(imageUrl, { waitUntil: "load", timeout: 60000 });
+    const contentType = response?.headers()["content-type"] || "";
+    result = response?.ok() && contentType.toLowerCase().startsWith("image/") ? {
+      contentType,
+      bytes: await response.body(),
+    } : { error: response ? `${response.status()} ${contentType || response.statusText()}` : "no image response" };
+  } finally {
+    await downloadPage.close();
+  }
 
   if (!result || result.error || !result.bytes?.length) {
     throw new Error(`Direct image save failed: ${result?.error || "no data"}`);
@@ -564,20 +583,21 @@ function extensionForContentType(contentType) {
 }
 
 async function uploadImageAndAddToPrompt(page, filePath) {
+  await dismissFlowAnnouncement(page);
   await fs.access(filePath).catch(() => {
     throw new Error(`Image file does not exist: ${filePath}`);
   });
 
-  const beforeUrls = new Set(await getPromptAttachmentUrls(page));
 
-  const opened = await clickFirstVisible([
+  const opened = await waitAndClickFirstVisible([
+    page.getByRole("button", { name: /^add ingredients(?: to the prompt box)?$/i }),
     page.getByRole("button", { name: /^create$/i }),
     page.locator("button[aria-haspopup='dialog']:has(i.google-symbols:text-is('add_2'))"),
     page.locator("button:has(i.google-symbols:text-is('add_2'))"),
     page.locator("button:has(i.google-symbols:text-is('add'))"),
-  ]);
+  ], 12000);
   if (!opened) {
-    throw new Error("Could not find the bottom + / Create button to open media upload.");
+    throw new Error("Could not find the Add ingredients / Create button to open media upload.");
   }
 
   await page.waitForTimeout(800);
@@ -600,42 +620,9 @@ async function uploadImageAndAddToPrompt(page, filePath) {
   console.log("Upload selected; waiting 10 seconds for Flow to process it...");
   await page.waitForTimeout(10000);
 
-  const addToPrompt = await findAddToPromptAfterUpload(page, beforeUrls, 90000);
-  await addToPrompt.click();
+  await addUploadedFlowImageToPrompt(page, filePath);
   console.log("Uploaded image added to prompt; waiting 3 seconds for Flow to settle.");
   await page.waitForTimeout(3000);
-}
-
-async function findAddToPromptAfterUpload(page, beforeUrls, maxMs) {
-  const started = Date.now();
-  while (Date.now() - started < maxMs) {
-    const candidate = await findVisibleLocator([
-      page.getByRole("button", { name: /add to prompt/i }),
-      page.locator("button:has-text('Add to Prompt')"),
-      page.locator("button:has-text('Add to prompt')"),
-      page.locator("[role='button']:has-text('Add to Prompt')"),
-      page.locator("[role='button']:has-text('Add to prompt')"),
-    ], 1000);
-    if (candidate) {
-      const disabled = await candidate.getAttribute("aria-disabled").catch(() => null);
-      if (disabled !== "true") return candidate;
-    }
-
-    const urls = await getPromptAttachmentUrls(page);
-    const hasNewUpload = urls.some((candidateUrl) => !beforeUrls.has(candidateUrl));
-    if (hasNewUpload) {
-      const candidateAfterUpload = await findVisibleLocator([
-        page.getByRole("button", { name: /add to prompt/i }),
-        page.locator("button:has-text('Add to Prompt')"),
-        page.locator("button:has-text('Add to prompt')"),
-      ], 3000);
-      if (candidateAfterUpload) return candidateAfterUpload;
-    }
-
-    await page.waitForTimeout(1000);
-  }
-  await dumpVisibleMenuText(page);
-  throw new Error("Uploaded image did not become ready for Add to Prompt within 90 seconds.");
 }
 
 async function getPromptAttachmentUrls(page) {
