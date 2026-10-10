@@ -1,4 +1,5 @@
 import { chromium } from "playwright";
+import { closeBrowserImageViewer, waitForBrowserChat } from "./browser-image-viewer.mjs";
 import path from "node:path";
 import fs from "node:fs/promises";
 
@@ -47,6 +48,7 @@ if (noNavigate) {
   await page.waitForLoadState("networkidle", { timeout: 60000 }).catch(() => {});
 }
 await allowDownloadsForAttachedChrome(context, page, outputDir);
+if (noNavigate) await closeBrowserImageViewer(page);
 await ensureComposerReady(page);
 
 if (imagePaths.length > 0) {
@@ -73,15 +75,19 @@ if (!submitted) await page.keyboard.press("Enter");
 console.log("Waiting for generated image...");
 const image = await waitForNewImage(page, beforeKeys, timeout);
 console.log("Generated image is visible; trying to save it immediately...");
-const downloaded = await retryOpenViewerAndDownload(page, image, outputDir, prompt, 5, 5000);
-if (downloaded) {
-  console.log(`Saved: ${downloaded}`);
-} else {
-  console.log("Viewer download did not produce a file; trying direct image save.");
-  const imageUrl = await newestVisibleImageUrl(page);
-  const outputPath = await saveImageUrl(page, imageUrl, outputDir, prompt);
-  console.log(`Saved: ${outputPath}`);
+let outputPath;
+try {
+  outputPath = await retryOpenViewerAndDownload(page, image, outputDir, prompt, 5, 5000);
+  if (!outputPath) {
+    console.log("Viewer download did not produce a file; trying direct image save.");
+    const imageUrl = await newestVisibleImageUrl(page);
+    outputPath = await saveImageUrl(page, imageUrl, outputDir, prompt);
+  }
+} finally {
+  await closeBrowserImageViewer(page);
 }
+await waitForBrowserChat(page, findComposer, "ChatGPT Images");
+console.log(`Saved: ${outputPath}`);
 
 if (shouldCloseContext) {
   await context.close();
@@ -489,14 +495,7 @@ async function clickGeneratedImage(page, imageInfo) {
 }
 
 async function closeImageViewer(page) {
-  const closed = await clickFirstVisible([
-    page.getByRole("button", { name: /^close$/i }),
-    page.locator("button[aria-label*='Close' i]"),
-  ]).catch(() => false);
-  if (!closed) {
-    await page.keyboard.press("Escape").catch(() => {});
-  }
-  await page.waitForTimeout(1500);
+  await closeBrowserImageViewer(page);
 }
 
 async function newestVisibleImageUrl(page) {

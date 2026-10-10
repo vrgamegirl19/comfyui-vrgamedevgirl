@@ -1,4 +1,5 @@
 import { chromium } from "playwright";
+import { closeBrowserImageViewer, waitForBrowserChat } from "./browser-image-viewer.mjs";
 import path from "node:path";
 import fs from "node:fs/promises";
 
@@ -47,6 +48,7 @@ if (noNavigate) {
   await page.waitForLoadState("networkidle", { timeout: 60000 }).catch(() => {});
 }
 await allowDownloadsForAttachedChrome(context, page, outputDir);
+if (noNavigate) await closeBrowserImageViewer(page);
 await ensureComposerReady(page);
 
 if (imagePaths.length > 0) {
@@ -83,8 +85,14 @@ page = generated.page;
 const image = generated.image;
 console.log("Saving newly generated image directly...");
 if (!image?.src) throw new Error("Meta AI generated an image, but its image URL was unavailable.");
-const buttonDownload = await downloadGeneratedImageFromOverlay(page, image, outputDir, prompt);
-const outputPath = buttonDownload || await saveImageUrl(page, image.src, outputDir, prompt);
+let outputPath;
+try {
+  const buttonDownload = await downloadGeneratedImageFromOverlay(page, image, outputDir, prompt);
+  outputPath = buttonDownload || await saveImageUrl(page, image.src, outputDir, prompt);
+} finally {
+  await closeBrowserImageViewer(page);
+}
+await waitForBrowserChat(page, findComposer, "Meta AI");
 console.log(`Saved: ${outputPath}`);
 
 if (shouldCloseContext) {
@@ -763,14 +771,7 @@ async function clickGeneratedImage(page, imageInfo) {
 }
 
 async function closeImageViewer(page) {
-  const closed = await clickFirstVisible([
-    page.getByRole("button", { name: /^close$/i }),
-    page.locator("button[aria-label*='Close' i]"),
-  ]).catch(() => false);
-  if (!closed) {
-    await page.keyboard.press("Escape").catch(() => {});
-  }
-  await page.waitForTimeout(1500);
+  await closeBrowserImageViewer(page);
 }
 
 async function newestVisibleImageUrl(page) {

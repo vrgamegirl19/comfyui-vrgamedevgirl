@@ -11,6 +11,7 @@ import {
   defaultKrea2TwoPassSettings,
   defaultZEnhanceSettings,
   defaultZImageSettings,
+  normalizeBuilderStoryLayer,
 } from "./model_settings.mjs";
 import { DEFAULT_KREA2_REFERENCE_SETTINGS } from "./models.mjs";
 import {
@@ -245,6 +246,7 @@ export function createProjectActions({
     state.builderStorySourcePreview = "";
     state.builderStoryReferenceImages = [];
     state.builderStoryReferenceNotes = "";
+    state.builderStoryLayer = normalizeBuilderStoryLayer({});
     state.renderLogs = [];
     resetBuilderETA();
     state.activeRenderLogId = "";
