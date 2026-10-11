@@ -7,6 +7,7 @@ never loads or switches a model. Results are saved in ``builder_story_layer`` li
 from typing import Any, Callable, Dict, List, Optional
 
 from ...storyboard import story_book as book_funcs
+from ...storyboard import story_locations as location_funcs
 from ...storyboard import story_plan as plan_funcs
 from ...storyboard.story_acts import validate_story_acts
 from ...storyboard.story_mode import (
@@ -20,6 +21,7 @@ from ..errors import ValidationError
 from ..jobs.manager import JobManager, get_job_manager
 from ..jobs.models import Job
 from ..mutations import _BUILDER_SAVE_LOCK, _get_active_session_and_folder, _persist_session, scene_field_change
+from .reference_orchestrator import _new_location_id, location_style_theme_text
 from .storyboard_orchestrator import (
     _llm_request,
     _lyrics_blocks,
@@ -31,7 +33,7 @@ from .storyboard_orchestrator import (
     sync_storyboard_files,
 )
 
-STORY_MODE_STEPS = ("book", "chapter", "split", "cast", "acts", "plan")
+STORY_MODE_STEPS = ("book", "chapter", "split", "cast", "acts", "plan", "locations")
 # Story Mode fields an agent may send to PUT /story/settings. Each is checked before it is saved.
 STORY_MODE_EDIT_KEYS = ("story_book_text", "story_settings", "story_acts", "story_scene_plan", "story_spot_min_scenes")
 
@@ -182,6 +184,48 @@ def create_story_scene_plan(project_id: str, params: Optional[Dict[str, Any]] = 
     return {"story_scene_plan": result["story_layer"]["story_scene_plan"], "model": result.get("used_model"), **saved}
 
 
+def create_story_locations(project_id: str, params: Optional[Dict[str, Any]] = None,
+                           progress: Optional[Callable[[int, int, str], None]] = None) -> Dict[str, Any]:
+    """Give each chapter setting a look and each planned spot a location card, then map every scene to its spot.
+
+    Uses the story, the scene plan and the style/theme notes only; the lyrics are not sent. Existing cards with the
+    same name keep their image (and their description unless ``replace_descriptions``).
+    """
+    params = dict(params or {})
+    folder, session = _get_active_session_and_folder(project_id)
+    cards = scene_cards(session)
+    _require_scenes(cards)
+    refs = session.get("flux_reference_builder") if isinstance(session.get("flux_reference_builder"), dict) else {}
+    local_notes = str(params.get("style_theme") or refs.get("location_style_theme") or "").strip()
+    request = _request(session, params, cards, style_theme=location_style_theme_text(folder, session, local_notes),
+                       regenerate_looks=bool(params.get("regenerate_looks")))
+    try:
+        result = location_funcs.build_story_locations(request, progress=progress)
+    except ValueError as error:
+        raise ValidationError(str(error)) from error
+    with _BUILDER_SAVE_LOCK:
+        folder, session = _get_active_session_and_folder(project_id)
+        merged, counts = location_funcs.apply_story_locations(
+            session.get("flux_reference_builder"), result["locations"], _new_location_id,
+            replace_descriptions=bool(params.get("replace_descriptions")),
+        )
+        session["flux_reference_builder"] = merged
+        layer = _story_layer(session)
+        layer.update(result["story_layer"])
+        _save_story_layer(session, layer)
+        saved = _persist_session(folder, session)
+    names = {card["id"]: card["name"] for card in merged.get("locations") or []}
+    return {
+        "locations": [{"name": item["name"], "scenes": len(item["scene_ids"])} for item in result["locations"]],
+        "added": counts["added"],
+        "updated": counts["updated"],
+        "scene_map": {sid: names.get(lid, lid) for sid, lid in (merged.get("scene_map") or {}).items()},
+        "model": result.get("used_model"),
+        "revision": saved.get("revision"),
+        "storyboard": sync_storyboard_files(project_id),
+    }
+
+
 def story_mode_edit_fields(session: Dict[str, Any], layer: Dict[str, Any], story_in: Dict[str, Any]) -> Dict[str, Any]:
     """Checked Story Mode fields for PUT /story/settings. Raises ValidationError on acts that break the rules."""
     fields = normalize_story_mode_fields({key: story_in[key] for key in STORY_MODE_EDIT_KEYS if key in story_in})
@@ -247,6 +291,10 @@ def run_story_plan_job(job: Job, manager: JobManager) -> Dict[str, Any]:
     return create_story_scene_plan(job.project_id, job.params, progress=_progress(job, manager, "story_plan", "Acts"))
 
 
+def run_story_locations_job(job: Job, manager: JobManager) -> Dict[str, Any]:
+    return create_story_locations(job.project_id, job.params, progress=_progress(job, manager, "story_locations", "Settings"))
+
+
 STORY_MODE_JOB_TYPES = {
     "book": "storyboard.story_book",
     "chapter": "storyboard.story_chapter",
@@ -254,6 +302,7 @@ STORY_MODE_JOB_TYPES = {
     "cast": "storyboard.story_cast",
     "acts": "storyboard.story_acts",
     "plan": "storyboard.story_plan",
+    "locations": "storyboard.story_locations",
 }
 
 
@@ -265,3 +314,4 @@ def register_story_mode_handlers(manager: Optional[JobManager] = None) -> None:
     manager.register_handler("storyboard.story_cast", run_story_cast_job)
     manager.register_handler("storyboard.story_acts", run_story_acts_job)
     manager.register_handler("storyboard.story_plan", run_story_plan_job)
+    manager.register_handler("storyboard.story_locations", run_story_locations_job)

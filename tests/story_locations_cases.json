@@ -1,0 +1,55 @@
+{
+  "card_names": [
+    {"setting": "Home", "spot": "Kitchen", "name": "Home - Kitchen"},
+    {"setting": "Home", "spot": "home", "name": "Home"},
+    {"setting": "Home", "spot": "", "name": "Home"},
+    {"setting": "", "spot": "Porch", "name": "Porch"}
+  ],
+  "apply": [
+    {
+      "name": "new cards are added, a same-name card keeps its image and text, scenes are mapped",
+      "refs": {
+        "locations": [
+          {"id": "loc_old", "name": "Home - Kitchen", "description": "User text.", "image": {"path": "C:/kitchen.png", "data": "", "name": "kitchen.png"}},
+          {"id": "loc_other", "name": "Rooftop", "description": "", "image": {"path": "", "data": "", "name": ""}}
+        ],
+        "scene_map": {"s9": "loc_other"},
+        "locations_cleared": true
+      },
+      "locations": [
+        {"name": "Home - Kitchen", "description": "Story text.", "story_setting_id": "setting_home", "story_act_ids": ["act_1"], "scene_ids": ["s1", "s2"]},
+        {"name": "Home - Porch", "description": "Wooden porch.", "story_setting_id": "setting_home", "story_act_ids": ["act_2"], "scene_ids": ["s3"]}
+      ],
+      "replace_descriptions": false,
+      "refs_after": {
+        "locations": [
+          {"id": "loc_old", "name": "Home - Kitchen", "description": "User text.", "image": {"path": "C:/kitchen.png", "data": "", "name": "kitchen.png"},
+           "story_setting_id": "setting_home", "story_act_ids": ["act_1"]},
+          {"id": "loc_other", "name": "Rooftop", "description": "", "image": {"path": "", "data": "", "name": ""}},
+          {"id": "loc_new_1", "name": "Home - Porch", "description": "Wooden porch.", "image": {"path": "", "data": "", "name": ""},
+           "story_setting_id": "setting_home", "story_act_ids": ["act_2"]}
+        ],
+        "scene_map": {"s9": "loc_other", "s1": "loc_old", "s2": "loc_old", "s3": "loc_new_1"},
+        "locations_cleared": false,
+        "use_location_references": true
+      },
+      "added": 1,
+      "updated": 0
+    },
+    {
+      "name": "replace_descriptions rewrites card text",
+      "refs": {"locations": [{"id": "loc_a", "name": "Home", "description": "Old.", "image": {"path": "", "data": "", "name": ""}}]},
+      "locations": [{"name": "Home", "description": "New.", "story_setting_id": "setting_home", "story_act_ids": [], "scene_ids": ["s1"]}],
+      "replace_descriptions": true,
+      "refs_after": {
+        "locations": [{"id": "loc_a", "name": "Home", "description": "New.", "image": {"path": "", "data": "", "name": ""},
+                       "story_setting_id": "setting_home", "story_act_ids": []}],
+        "scene_map": {"s1": "loc_a"},
+        "locations_cleared": false,
+        "use_location_references": true
+      },
+      "added": 0,
+      "updated": 1
+    }
+  ]
+}

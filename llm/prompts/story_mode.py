@@ -290,3 +290,79 @@ STORY_SCENE_PLAN_SCHEMA = {
     "required": ["scenes"],
     "additionalProperties": False,
 }
+
+
+def story_setting_looks_instruction(*, settings_text, book_summary, style_theme, cast_text):
+    """One shared look per general setting, so every spot inside it matches. No lyrics are sent."""
+    return (
+        "You are a production designer for a music video that tells the story below.\n\n"
+        "For each general setting, write its look: the one visual world every spot inside it shares.\n\n"
+        "Rules:\n"
+        "- look: 2-3 sentences of physical design only: era, region, architecture, materials, colour palette, "
+        "light sources and quality, weather. No people, no actions, no story events.\n"
+        "- The look must fit the story's world and the style notes. Obey every ban in the style notes.\n"
+        "- Settings in the same story should feel like the same world.\n"
+        "Return JSON only: {\"settings\": [{\"name\": \"...\", \"look\": \"...\"}]} with every setting listed below, "
+        "names unchanged.\n\n"
+        f"Style and theme notes (look and banned places):\n{style_theme or '[none]'}\n\n"
+        f"Cast:\n{cast_text or '[none]'}\n\n"
+        f"Story:\n{book_summary}\n\n"
+        f"Settings:\n{settings_text}"
+    )
+
+
+STORY_SETTING_LOOKS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "settings": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"name": {"type": "string"}, "look": {"type": "string"}},
+                "required": ["name", "look"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["settings"],
+    "additionalProperties": False,
+}
+
+
+def story_spots_instruction(*, setting_name, setting_look, spots_text, style_theme):
+    """One location card per spot inside a setting, built on the setting's look. No lyrics are sent."""
+    return (
+        "You are a music video location scout. Every spot below is a place inside the same setting, so all of them "
+        "share the setting's look.\n\n"
+        "For each spot write a description for its location reference card.\n\n"
+        "Rules:\n"
+        "- Exactly one sentence of 20-38 words.\n"
+        "- Physical only: architecture, fixtures, surfaces, light sources, colours, weather, atmosphere. "
+        "No people, clothing, actions or story events.\n"
+        "- Start from the setting's look so every spot matches, then add what is specific to this spot.\n"
+        "- The spot must suit what happens there in the story. Obey every ban in the style notes.\n"
+        "Return JSON only: {\"spots\": [{\"name\": \"...\", \"description\": \"...\"}]} with every spot listed below, "
+        "names unchanged.\n\n"
+        f"Setting: {setting_name}\n"
+        f"Setting look: {setting_look or '[none yet]'}\n\n"
+        f"Style and theme notes:\n{style_theme or '[none]'}\n\n"
+        f"Spots and what happens there:\n{spots_text}"
+    )
+
+
+STORY_SPOTS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "spots": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"name": {"type": "string"}, "description": {"type": "string"}},
+                "required": ["name", "description"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["spots"],
+    "additionalProperties": False,
+}

@@ -476,6 +476,11 @@ export function normalizeFluxReferenceBuilder(value = {}) {
         trigger_position: String(item.trigger_position || item.triggerPosition || item.trigger_placement || "start") === "end" ? "end" : "start",
         reference_generation_draft: normalizeReferenceGenerationDraft(item.reference_generation_draft || item.referenceGenerationDraft),
         ...normalizeRefmodFields(item),
+        // Story Mode: which chapter setting and acts this location card was built for.
+        ...(item.story_setting_id ? {
+          story_setting_id: String(item.story_setting_id),
+          story_act_ids: (Array.isArray(item.story_act_ids) ? item.story_act_ids : []).map(String),
+        } : {}),
         image: normalizeRefImage(item),
       };
     });
