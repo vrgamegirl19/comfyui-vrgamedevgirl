@@ -43,7 +43,7 @@ function fixture(audioMode = 'input_audio', pipeline = 'standard', structured = 
     enforceCastLabels: text => text,
   });
   const source = readBuilderModule('minimax_prompt.mjs');
-  for (const name of ['miniMaxH3CleanSubjectNoun', 'miniMaxH3ReferenceSceneGroundingContract', 'miniMaxH3CompactReferenceShots', 'miniMaxH3OfficialShotPlan',
+  for (const name of ['miniMaxH3CleanSubjectNoun', 'miniMaxH3ReferenceSceneGroundingContract', 'miniMaxH3CompactReferenceShots', 'miniMaxH3CharacterReferenceBindings', 'miniMaxH3OfficialShotPlan',
     'miniMaxH3OfficialReferencePlan', 'miniMaxH3CombinedSubjectPlan', 'miniMaxH3OfficialAudioDefinition',
     'miniMaxH3OfficialSummary', 'miniMaxH3OpeningStyle', 'miniMaxH3OfficialSoundscape',
     'miniMaxH3OfficialMusic', 'isRefmodPipelineActive', 'relabelRefmodPrompt',
@@ -260,4 +260,60 @@ test('Prompt Options checkbox starts off and saves changes with undo history', (
   checkbox.input.checked = false;
   checkbox.input.change();
   assert.equal(c.state.useStructuredOutputs, false);
+});
+
+
+test('compact image/reference binds only characters used by the shot with exact frame offsets', () => {
+  const c = fixture('input_audio', 'standard', false);
+  c.items = Array.from({ length: 4 }, (_, i) => ({ kind: 'subject', label: `character ${i + 1}` }));
+  let prompt = c.assembleMiniMaxH3OfficialPromptFromCreative(scene, 'image_reference_to_video', '<Subject 1> walks beside the stage and turns toward <Subject 3> as the camera moves slowly forward.');
+  assert.match(prompt, /Use <Picture 2> for <Subject 1>'s character identity/);
+  assert.match(prompt, /Use <Picture 4> for <Subject 3>'s character identity/);
+  assert.doesNotMatch(prompt, /<Subject 2>|<Subject 4>|subject_definitions:|retention_analysis:/);
+  c.miniMaxH3ImageReferencePromptItems = () => [{ kind: 'start_frame' }, { kind: 'end_frame' }, ...c.items];
+  prompt = c.assembleMiniMaxH3OfficialPromptFromCreative(scene, 'image_reference_to_video', '<Subject 1> turns toward the stage as the camera moves slowly forward.');
+  assert.match(prompt, /Use <Picture 3> for <Subject 1>/);
+  c.miniMaxReferencePurposeText = () => 'face identity and hair reference only; do not copy clothing';
+  prompt = c.assembleMiniMaxH3OfficialPromptFromCreative(scene, 'image_reference_to_video', '<Subject 1> turns toward the stage as the camera moves slowly forward.');
+  assert.match(prompt, /Use <Picture 3> for <Subject 1>'s face identity and hair\./);
+  assert.doesNotMatch(prompt, /clothing|body-proportion/);
+});
+
+test('image/reference sends ordered images to both local and external vision writers', () => {
+  const c = fixture();
+  const images = [{ path: 'start.png' }, { path: 'character.png' }];
+  c.miniMaxH3PromptVisionImages = () => images;
+  vm.runInContext(functionSource(readBuilderModule('minimax_prompt.mjs'), 'miniMaxH3PromptVisionImagesForRunner'), c);
+  for (const runner of ['builtin', 'lm_studio', 'llm_api', 'own_server']) {
+    c.state.textGemmaRunner = runner;
+    assert.equal(c.miniMaxH3PromptVisionImagesForRunner(scene, 'image_reference_to_video'), images);
+  }
+  c.state.textGemmaRunner = 'builtin';
+  assert.equal(c.miniMaxH3PromptVisionImagesForRunner(scene, 'reference_to_video').length, 0);
+});
+
+test('compact image/reference budget reserves all potential character assignments', () => {
+  const c = fixture('input_audio', 'standard', false);
+  const budget = c.miniMaxH3PromptCharacterBudget(scene, 'image_reference_to_video', 7000);
+  const wrapper = c.miniMaxH3OfficialReferencePrompt(scene, 'image_reference_to_video', '[Shot 1]');
+  const reserved = c.miniMaxH3CharacterReferenceBindings('', c.miniMaxH3CombinedSubjectPlan(scene, 'image_reference_to_video').subjects, true);
+  assert.equal(budget.fixedChars, wrapper.length + reserved.length + 2);
+});
+
+test('vision attachments keep start/end frames and four character pictures in renderer order', () => {
+  const c = fixture();
+  c.items = Array.from({ length: 4 }, (_, i) => ({ kind: 'subject', label: `character ${i + 1}`, image: { path: `character${i + 1}.png` } }));
+  c.segmentImageSource = () => ({ path: 'start.png' });
+  c.firstLastFrameEndImageSource = () => ({});
+  c.mediaPathKey = value => value;
+  const source = readBuilderModule('minimax_prompt.mjs');
+  for (const name of ['miniMaxH3ImageReferencePromptItems', 'miniMaxH3PromptVisionImages', 'miniMaxH3PromptVisionImagesForRunner']) {
+    vm.runInContext(functionSource(source, name), c);
+  }
+  c.state.textGemmaRunner = 'builtin';
+  let images = c.miniMaxH3PromptVisionImagesForRunner(scene, 'image_reference_to_video');
+  assert.deepEqual(Array.from(images, image => image.path), ['start.png', 'character1.png', 'character2.png', 'character3.png', 'character4.png']);
+  c.firstLastFrameEndImageSource = () => ({ path: 'end.png' });
+  images = c.miniMaxH3PromptVisionImagesForRunner(scene, 'image_reference_to_video');
+  assert.deepEqual(Array.from(images, image => image.path), ['start.png', 'end.png', 'character1.png', 'character2.png', 'character3.png', 'character4.png']);
 });

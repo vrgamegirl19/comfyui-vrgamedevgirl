@@ -329,7 +329,7 @@ def reference_frame(items: List[Dict[str, Any]], cut_plan: Dict[str, Any], style
         name = "environment" if kind == "location" else re.sub(r"^(?:the\s+)+", "the ", raw_name, flags=re.I)
         noun = name if kind in ("subject", "extra", "location") else f"{name} reference"
         phrase = noun if re.match(r"^(?:the|a|an)\s+", noun, re.I) else f"the {noun}"
-        purpose = _PURPOSE.get(kind, "visual reference")
+        purpose = str(item.get("purpose") or _PURPOSE.get(kind, "visual reference"))
         description = _compact_description(item.get("description"), 240)
         if kind == "subject" and number == 1:
             definitions.append(f"{label} is {phrase} in {picture}; {picture} is the visual authority for {purpose}.")
@@ -436,6 +436,24 @@ def reference_labels(items: List[Dict[str, Any]]) -> List[Dict[str, str]]:
             "name": str(item.get("label") or item.get("name") or "").strip(),
         })
     return labels
+
+
+def character_reference_bindings(creative: str, items: List[Dict[str, Any]]) -> str:
+    """Keep used character/picture assignments outside the shot action."""
+    bindings = []
+    number = 0
+    for picture, item in enumerate(items, start=1):
+        kind = str(item.get("kind") or "")
+        if kind in ("start_frame", "end_frame"):
+            continue
+        number += 1
+        label = f"<Subject {number}>"
+        if kind not in ("subject", "extra") or label not in creative:
+            continue
+        purpose = str(item.get("purpose") or _PURPOSE.get(kind, "character appearance reference")).split(";")[0]
+        purpose = re.sub(r"\s+reference(?:\s+only)?(?:\s+for.*)?$", "", purpose, flags=re.I)
+        bindings.append(f"Use <Picture {picture}> for {label}'s {purpose}.")
+    return " ".join(bindings)
 
 
 def compact_reference_prompt(prompt: str, items: List[Dict[str, Any]]) -> str:

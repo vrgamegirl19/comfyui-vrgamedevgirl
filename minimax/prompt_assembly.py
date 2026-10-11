@@ -217,7 +217,46 @@ def assemble_minimax_h3_prompt(
 
     style = str(segment.get("minimax_h3_video_style") or session.get("builder_storyboard_defaults", {}).get("video_style") or "photorealistic")
 
-    if norm_mode in ("text_to_video", "image_to_video"):
+    if norm_mode == "image_reference_to_video":
+        from . import shot_prompt
+        from .scene_inputs import ordered_reference_items, segment_image_path
+
+        ordered = sorted((x for x in session.get("segments") or [] if isinstance(x, dict)), key=lambda x: float(x.get("start") or 0.0))
+        index = next((i for i, x in enumerate(ordered) if x.get("id") == segment.get("id")), 0)
+        refs = ordered_reference_items(session, segment, norm_mode, index)
+        items = []
+        start = segment_image_path(segment)
+        end = str(segment.get("first_last_frame_end_image_path") or "")
+        if start:
+            items.append({"kind": "start_frame", "image": {"path": start}})
+        if end and end != start:
+            items.append({"kind": "end_frame", "image": {"path": end}})
+        seen = {str((item.get("image") or {}).get("path") or "") for item in items}
+        for item in refs:
+            path = str((item.get("image") or {}).get("path") or "")
+            if item.get("kind") in ("start_frame", "end_frame") or path in seen:
+                continue
+            seen.add(path)
+            item = dict(item)
+            if (item.get("kind") == "subject" and segment.get("minimax_h3_use_scene_image_as_start_frame")
+                    and segment.get("minimax_h3_start_frame_character_influence") == "face_hair_only"):
+                item["purpose"] = "face identity and hair reference only"
+            items.append(item)
+        items = items[:9]
+        shots_body = shots_body.replace("[Shot 1] ", "[Shot 1] The shot begins exactly from <Picture 1>. ", 1)
+        if end and end != start:
+            shots_body += " The final motion converges exactly on <Picture 2> as the last frame."
+        detailed = f"detailed_description:\nThe target video is in a {style} music-video style.\n\n{shots_body}"
+        if session.get("use_structured_outputs", False):
+            settings = minimax_h3_settings_for_scene(session, segment)
+            frame = shot_prompt.reference_frame(items, cut_plan, style, str(settings.get("audio_mode") or "input_audio"), str(segment.get("audio_direction") or ""))
+            prompt_text = shot_prompt.wrap_reference_prompt(detailed, frame)
+        else:
+            bindings = shot_prompt.character_reference_bindings(shots_body, items)
+            prompt_text = shot_prompt.compact_reference_prompt(detailed, items)
+            if bindings:
+                prompt_text = prompt_text.replace("\n\n[Shot 1]", f"\n\n{bindings}\n\n[Shot 1]", 1)
+    elif norm_mode in ("text_to_video", "image_to_video"):
         header = f"integrated_multimodal_description:\nGenerate a {round(dur, 1)}-second 16:9 {style} video."
         if norm_mode == "image_to_video":
             header += " <Picture 1> is the exact opening composition, character identity, and visual anchor."
