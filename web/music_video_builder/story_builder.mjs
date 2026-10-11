@@ -366,7 +366,42 @@ export function createStoryBuilder({
       const current = layer();
       const blocked = blockerNote("story");
       if (blocked) content.append(blocked);
-      const idea = card("Premise", "A sentence or a full outline. The LLM writes the book from it, using your cast.");
+      // Who the story is about. No ids saved means every card; the LLM gets only the picked cards.
+      const people = card("Characters in this story", "Tick who the story is about. The story uses exactly these people and no one else unless you allow new people below.");
+      const cards = (normalizeFluxReferenceBuilder(state.fluxReferenceBuilder).subjects || []).filter((subject) => subject && !subject.extra_reference_for);
+      const savedIds = new Set(current.story_cast_ids || []);
+      const useAll = !cards.some((subject) => savedIds.has(subject.id));
+      const boxes = cards.map((subject) => {
+        const label = el("label", "display:flex;gap:8px;font-size:12px;color:#e2e8f0;align-items:center;");
+        const box = document.createElement("input");
+        box.type = "checkbox";
+        box.checked = useAll || savedIds.has(subject.id);
+        label.append(box, el("span", "", `${subject.name || subject.id} (${subject.reference_type || "character"})`));
+        people.append(label);
+        return { box, subject };
+      });
+      if (!cards.length) people.append(el("div", "font-size:12px;color:#fbbf24;", "No cast yet. Add your characters in the Cast tab first."));
+      const allowLabel = el("label", "display:flex;gap:8px;font-size:12px;color:#e2e8f0;align-items:center;");
+      const allowBox = document.createElement("input");
+      allowBox.type = "checkbox";
+      allowBox.checked = Boolean(current.story_allow_new_cast);
+      allowLabel.append(allowBox, el("span", "", "Let the story add new people (you add their cards with Find Cast In Story)"));
+      people.append(allowLabel);
+      const saveCast = async () => {
+        const picked = boxes.filter((item) => item.box.checked).map((item) => item.subject.id);
+        if (cards.length && !picked.length) {
+          toast("Pick at least one character for the story.", true);
+          return;
+        }
+        await saveLayer({
+          story_cast_ids: picked.length === cards.length ? [] : picked,
+          story_allow_new_cast: allowBox.checked,
+        }, "story builder story cast");
+      };
+      for (const { box } of boxes) box.onchange = saveCast;
+      allowBox.onchange = saveCast;
+
+      const idea = card("Premise", "A sentence or a full outline. The LLM writes the book from it, using only the characters ticked above.");
       const premise = textarea(current.overall_story_idea, "A son rides the night train home to find out why his father left.", 70);
       const tone = makeInput("");
       tone.placeholder = "Tone, genre, world (optional), e.g. 1970s rural Ohio, bittersweet";
@@ -470,11 +505,20 @@ export function createStoryBuilder({
             return;
           }
           pushHistory();
+          const addedIds = [];
           for (const character of chosen) {
-            refs.subjects.push(storySubjectCard(character, `subj_${Date.now()}_${Math.floor(Math.random() * 10000)}`));
+            const subject = storySubjectCard(character, `subj_${Date.now()}_${Math.floor(Math.random() * 10000)}`);
+            refs.subjects.push(subject);
+            addedIds.push(subject.id);
           }
           refs.subject_count = refs.subjects.length;
           state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
+          // A picked story cast gets the new people too.
+          if (current.story_cast_ids?.length) {
+            state.builderStoryLayer = normalizeBuilderStoryLayer({
+              ...state.builderStoryLayer, story_cast_ids: [...current.story_cast_ids, ...addedIds],
+            });
+          }
           await autoSaveSessionQuiet("story builder cast added");
           toast(`Added ${chosen.length} character${chosen.length === 1 ? "" : "s"}. Make their images now, or give them a RefMod.`);
           // New cast has no images yet: go straight to making them.
@@ -483,7 +527,7 @@ export function createStoryBuilder({
         found.append(row(addCast));
       };
       cast.append(row(find), found);
-      content.append(idea, own, book, chapters, cast);
+      content.append(people, idea, own, book, chapters, cast);
     }
 
     // ---------------------------------------------------------------- Acts

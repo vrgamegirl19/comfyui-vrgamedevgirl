@@ -238,6 +238,29 @@ test('Reference to Video blocks prompts for scenes with no image and opens the i
   await tick();
 });
 
+test('the story cast checklist saves who the story is about', async () => {
+  const { state, builder } = setup();
+  state.fluxReferenceBuilder.subjects.push({ id: 'joe', name: 'Joe', reference_type: 'character', image: {} });
+  builder.openStoryBuilder({ tab: 'story' });
+  await tick();
+  const boxes = document.body.all().filter((node) => node.tagName === 'INPUT' && node.type === 'checkbox');
+  const [mara, joe, allowNew] = boxes;
+  assert.equal(mara.checked && joe.checked, true, 'every card is ticked when none were picked');
+  assert.equal(allowNew.checked, false, 'new people are off by default');
+  joe.checked = false;
+  await joe.onchange();
+  assert.deepEqual(state.builderStoryLayer.story_cast_ids, ['mara']);
+  assert.equal(state.builderStoryLayer.story_allow_new_cast, false);
+  allowNew.checked = true;
+  await allowNew.onchange();
+  assert.equal(state.builderStoryLayer.story_allow_new_cast, true);
+  mara.checked = false;
+  await mara.onchange();
+  assert.deepEqual(state.builderStoryLayer.story_cast_ids, ['mara'], 'unticking everyone is refused');
+  findButton('Close').onclick();
+  await tick();
+});
+
 test('saving the scene plan sets each scene performance and keeps the notes', async () => {
   const { state, calls, builder } = setup();
   builder.openStoryBuilder({ tab: 'scenes' });

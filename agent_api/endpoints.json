@@ -1263,7 +1263,7 @@
     },
     {
       "body_keys": [],
-      "description": "Save the Storyboard scene defaults (`defaults`: every key the Builder saves in `builder_storyboard_defaults`, e.g. video style, camera flow, motion speeds, cut frequency, short film planning, temporal and FX settings, plus `story_arc_detail`) and the story fields (`story`: every key of `builder_story_layer`, e.g. `enabled`, idea, strength, world style). Story Mode fields: `story_book_text` replaces the book (parsed into chapters and settings: `Chapter N: title`, then `Setting: name`), `story_settings` (setting looks), `story_acts` (refused unless every scene is in exactly one act, in order), `story_scene_plan` (also sets each scene's performance) and `story_spot_min_scenes` (1-20).",
+      "description": "Save the Storyboard scene defaults (`defaults`: every key the Builder saves in `builder_storyboard_defaults`, e.g. video style, camera flow, motion speeds, cut frequency, short film planning, temporal and FX settings, plus `story_arc_detail`) and the story fields (`story`: every key of `builder_story_layer`, e.g. `enabled`, idea, strength, world style). Story Mode fields: `story_book_text` replaces the book (parsed into chapters and settings: `Chapter N: title`, then `Setting: name`), `story_settings` (setting looks), `story_acts` (refused unless every scene is in exactly one act, in order), `story_scene_plan` (also sets each scene's performance) `story_spot_min_scenes` (1-20), `story_cast_ids` (subject ids the story is about; empty means every card) and `story_allow_new_cast` (true lets the story add people with no card).",
       "if_match": true,
       "job": false,
       "method": "PUT",

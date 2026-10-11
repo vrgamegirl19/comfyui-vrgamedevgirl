@@ -3,7 +3,7 @@
 
 export const STORY_FLOW_VERSION = 2;
 export const STORY_MODE_KEYS = ["story_flow_version", "story_book", "story_book_text", "story_settings", "story_acts", "story_scene_plan",
-  "story_spot_min_scenes"];
+  "story_spot_min_scenes", "story_cast_ids", "story_allow_new_cast"];
 export const DEFAULT_SPOT_MIN_SCENES = 3;
 export const PLAN_PERFORMANCE_MODES = ["singing", "speaking", "no_lip_sync", "instrumental"];
 
@@ -122,6 +122,10 @@ export function normalizeStoryModeFields(source) {
   if ("story_acts" in value) result.story_acts = normalizeStoryActs(value.story_acts);
   if ("story_scene_plan" in value) result.story_scene_plan = normalizeStoryScenePlan(value.story_scene_plan);
   if ("story_spot_min_scenes" in value) result.story_spot_min_scenes = normalizeSpotMinScenes(value.story_spot_min_scenes);
+  if ("story_cast_ids" in value) result.story_cast_ids = storyIdList(value.story_cast_ids, 40);
+  if ("story_allow_new_cast" in value) {
+    result.story_allow_new_cast = value.story_allow_new_cast === true || String(value.story_allow_new_cast).trim().toLowerCase() === "true";
+  }
   return result;
 }
 

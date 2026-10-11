@@ -82,11 +82,23 @@ def _scene_count(payload, scenes):
     return given or len(scenes)
 
 
+def story_cast(payload):
+    """The subject cards the story is about: the ones picked in ``story_cast_ids``, or every card when none are."""
+    subjects, _locations = _storyboard_dialogue_reference_catalog(payload)
+    chosen = set(_layer(payload).get("story_cast_ids") or [])
+    picked = [subject for subject in subjects if subject.get("id") in chosen]
+    return picked if chosen and picked else subjects
+
+
+def allow_new_cast(payload):
+    """True when the LLM may add people who have no cast card."""
+    return bool(_layer(payload).get("story_allow_new_cast"))
+
+
 def cast_lines(payload):
     """``Name (type): description`` for every character card the story can use."""
-    subjects, _locations = _storyboard_dialogue_reference_catalog(payload)
     lines = []
-    for subject in subjects:
+    for subject in story_cast(payload):
         kind = subject.get("reference_type") or "character"
         description = subject.get("description") or ""
         lines.append(f"- {subject['name']} ({kind})" + (f": {description}" if description else ""))
@@ -137,6 +149,7 @@ def draft_story_book(payload):
     instruction = story_book_instruction(
         premise=premise,
         cast_text=cast_lines(payload),
+        allow_new_cast=allow_new_cast(payload),
         tone_notes=_clean_scene_text(payload.get("tone_notes") or payload.get("style_theme") or "", 2000),
         scene_count=scene_count,
         song_seconds=_song_seconds(payload, scenes),
@@ -178,6 +191,7 @@ def rewrite_story_chapter(payload):
         chapter_text=chapter_text,
         direction=_clean_scene_text(payload.get("direction") or "", 2000),
         cast_text=cast_lines(payload),
+        allow_new_cast=allow_new_cast(payload),
         lyric_guidance=story_mode_lyric_guidance(strength),
     )
     text, run_info = _run(payload, instruction, label="Story Mode Chapter", max_new_tokens=2400)

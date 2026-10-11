@@ -51,8 +51,21 @@ def story_book_size(scene_count):
     return chapters, paragraphs
 
 
+def story_cast_rule(cast_text, allow_new_cast):
+    """The cast rule line for the book and chapter prompts."""
+    if allow_new_cast or not cast_text:
+        return ("Use the cast names below. Main characters drive the story. You may add a few new minor people when "
+                "the story needs them; give each a name.")
+    count = len([line for line in cast_text.splitlines() if line.strip()])
+    people = "1 character" if count == 1 else f"{count} characters"
+    return (f"The story has exactly {people}: the cast below, and no one else. Do not add, name or describe any other "
+            "person, not even a minor one (no friends, partners, strangers, staff or family who are not in the cast). "
+            "Places that would hold people (a club, a street, a restaurant) stay empty or have only a blurred, unnamed "
+            "crowd that never speaks, acts or matters to the story. Every event happens to or through the cast.")
+
+
 def story_book_instruction(*, premise, cast_text, tone_notes, scene_count, song_seconds, lyric_guidance, lyrics,
-                           previous_book, seed):
+                           previous_book, seed, allow_new_cast=False):
     """Draft the whole story book from the user's premise."""
     chapters, paragraphs = story_book_size(scene_count)
     return (
@@ -65,8 +78,7 @@ def story_book_instruction(*, premise, cast_text, tone_notes, scene_count, song_
         "- Every chapter happens in ONE general setting, named on its Setting line. A new setting starts a new chapter. "
         "Inside a setting the story can move between specific spots (kitchen, bedroom, porch).\n"
         "- Each paragraph is 2-5 sentences of things that visibly happen: actions, choices, meetings, discoveries.\n"
-        "- Use the cast names below. Main characters drive the story. You may add a few new minor people when the "
-        "story needs them; give each a name.\n"
+        f"- {story_cast_rule(cast_text, allow_new_cast)}\n"
         "- Third person. Present or past tense, but keep the same tense throughout.\n"
         "- No camera directions, no shot language, no song-section words (Intro, Verse, Chorus, Bridge, Outro), "
         "no scene numbers.\n"
@@ -83,7 +95,8 @@ def story_book_instruction(*, premise, cast_text, tone_notes, scene_count, song_
     )
 
 
-def story_chapter_rewrite_instruction(*, book_text, chapter_number, chapter_text, direction, cast_text, lyric_guidance):
+def story_chapter_rewrite_instruction(*, book_text, chapter_number, chapter_text, direction, cast_text, lyric_guidance,
+                                      allow_new_cast=False):
     """Rewrite or expand one chapter, keeping the rest of the book as context."""
     return (
         "You are a novelist revising one chapter of a story that a music video will tell.\n\n"
@@ -91,6 +104,7 @@ def story_chapter_rewrite_instruction(*, book_text, chapter_number, chapter_text
         "around it, keep its setting unless the direction says otherwise, and keep the cast names.\n\n"
         "Rules:\n"
         "- Plain prose paragraphs of things that visibly happen. No camera or song-section words.\n"
+        f"- {story_cast_rule(cast_text, allow_new_cast)}\n"
         f"- {lyric_guidance}\n"
         "- Output only the chapter in exactly this format:\n\n"
         f"Chapter {chapter_number}: <chapter title>\n"
