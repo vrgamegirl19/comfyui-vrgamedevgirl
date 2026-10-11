@@ -94,6 +94,7 @@ import { timelineDeleteAvailability } from "./timeline_tool_windows.mjs";
 import { createAudioMask } from "./audio_mask.mjs";
 import { onStemLanesChange } from "./audio_mask_store.mjs";
 import { queueBuilderRefresh } from "./builder_refresh.mjs";
+import { rememberVideoMode, recordSavedVideoMode } from "./video_mode_resume.mjs";
 import { createMediaImport, installFileDropNavigationGuard } from "./media_import.mjs";
 import { createProjectFiles, wireContextFileInputs } from "./project_files.mjs";
 import { createLyricCues } from "./lyric_cues.mjs";
@@ -203,6 +204,7 @@ export function openBuilder(node, options = {}) {
   });
 
   const closeBuilderNow = () => {
+    rememberVideoMode(localStorage, state);
     pauseAllAudio();
     if (!previewVideo.paused) previewVideo.pause();
     clearTimeout(builderLifecycle.resourceTimer);
@@ -211,6 +213,7 @@ export function openBuilder(node, options = {}) {
     builderLifecycle.resourceController?.abort();
     builderLifecycle.resourceResizeObserver?.disconnect();
     window.removeEventListener("vrgdg:builder-toast", toastNotificationHandler);
+    window.removeEventListener("vrgdg:builder-session-saved", videoModeSavedHandler);
     builderLifecycle.externalChangeSync?.dispose();
     builderLifecycle.sceneAudioSettings?.dispose();
     if (builderLifecycle.keydownHandler) document.removeEventListener("keydown", builderLifecycle.keydownHandler, true);
@@ -872,9 +875,9 @@ export function openBuilder(node, options = {}) {
     addOverlaySegmentButton, addSegmentButton, addTimelineMarkerButton, audioMaskButton, beatMarkersButton, bulkSegmentsButton, stemMonitorButton, stemVisibilityButton, stemLayer,
     clearRangeButton, closeTimelineGapsButton, deleteAllSegmentsButton, deleteAllTimelineImagesButton,
     deleteAllTimelineVideosButton, deleteSegmentButton, freezeTimingControl, globalAudioMuteButton, addAudioClipButton,
-    globalScrub, globalScrubTime, idLoraTrimModeButton, lyricNoteButton, locationThumbnailButton, multiSelectButton,
+    globalScrub, globalScrubTime, idLoraTrimModeButton, lyricNoteButton, emotionTagButton, locationThumbnailButton, multiSelectButton,
     multiSelectHintButton, overlayTrackHintButton, overlayTrackToggleButton, playButton, playhead, redoButton,
-    refreshDeleteActions, sceneNoteButton, segmentLayer, setInButton, setOutButton, snapSceneEdgeButton,
+    latentContinuationOffAllButton, unlockAllScenesButton, refreshDeleteActions, sceneNoteButton, segmentLayer, setInButton, setOutButton, snapSceneEdgeButton,
     snapToBeatsControl, splitSceneButton, stopButton, timeline, timelineCanvas, timelineInfo,
     timelineRangeInfo, timelineResizeHandle, timelineViewport, undoButton,
     videoNoteButton, waveformModeSelect, zoomInButton, zoomOutButton,
@@ -974,6 +977,7 @@ export function openBuilder(node, options = {}) {
     audioMaskAuto: { enabled: true, model_name: "htdemucs_6s", input_gain_db: 0 },
     showTimelineVideoNotes: false,
     showTimelineLyricNotes: false,
+    showTimelineEmotionTags: false,
     imageContinuityEnabled: false,
     imageContinuityStrength: "balanced",
     leftPanelWidth: 260,
@@ -994,6 +998,8 @@ export function openBuilder(node, options = {}) {
     // Testing option: relaxed mode accepts externally authored MiniMax prompts
     // but still enforces the provider's hard 7,000-character limit.
     failOnInvalidPromptFormats: false,
+    omitLyricsFromVideoPrompts: false,
+    useStructuredOutputs: false,
     automaticMemoryCleanup: false,
     sceneRenderWaitHours: DEFAULT_SCENE_RENDER_WAIT_HOURS,
     isScrubbing: false,
@@ -1584,7 +1590,7 @@ export function openBuilder(node, options = {}) {
     drawWaveform, normalizeSegments, openTimelineMarkerEditor, renderList, renderSegments,
     snapAddedSegmentEndToNearestBeat, snapTimeToBeat,
   } = createTimelineView({
-    miniMaxH3ModeForSegment,
+    miniMaxH3ModeForSegment, latentContinuationOffAllButton, unlockAllScenesButton,
     appendTimelineFirstLastFrameThumbnail, autoSaveSessionQuiet, enableLutDrop, enablePostEffectDrop, stemLayer, timelineViewport,
     i2vNotesInput, lyricTextInput, mediaThumbnailHtml, openAudioContextMenu, openDirectorNoteContextMenu, renderAudioClips,
     openSceneOptions, openSegmentContextMenu, openTimelineSceneCard, playhead, pushHistory,
@@ -2070,7 +2076,7 @@ export function openBuilder(node, options = {}) {
     beatCalibrationFpsInput, beatCalibrationGridType, beatCalibrationGridTypeHint, beatCalibrationInstruction,
     beatCalibrationTimecodeGrid, beatCalibrationTimecodeHint, beatCalibrationTimecodeInput,
     beatCalibrationWizard, beatMarkersButton, currentGlobalTime, enforceAudioTimelineEnd,
-    loadedGlobalAudioDuration, lyricNoteButton, node, pauseTimelineForEditing, projectInput, pushHistory,
+    loadedGlobalAudioDuration, lyricNoteButton, emotionTagButton, node, pauseTimelineForEditing, projectInput, pushHistory,
     render, sceneNoteButton, setGlobalPlaybackTime, state, videoNoteButton,
   });
 
@@ -2657,6 +2663,7 @@ export function openBuilder(node, options = {}) {
   syncLeftPanelTabs();
 
   window.addEventListener("beforeunload", () => {
+    if (overlay.isConnected) rememberVideoMode(localStorage, state);
     restoreBrowserAiDownloadsQuietly().catch(() => null);
     const segments = [
       ...(Array.isArray(state.segments) ? state.segments : []),
@@ -2689,6 +2696,8 @@ export function openBuilder(node, options = {}) {
     playBuilderNotification(isError ? "error" : "success");
   };
   window.addEventListener("vrgdg:builder-toast", toastNotificationHandler);
+  const videoModeSavedHandler = event => recordSavedVideoMode(state, event.detail, localStorage);
+  window.addEventListener("vrgdg:builder-session-saved", videoModeSavedHandler);
 
   // Agent API / MCP edits to the open project appear here without discarding unsaved edits.
   builderLifecycle.externalChangeSync = createExternalChangeSync({
@@ -2975,7 +2984,7 @@ export function openBuilder(node, options = {}) {
     deleteAllTimelineVideos, deleteAllTimelineVideosButton, deleteSegment, deleteSegmentButton,
     enforceAudioTimelineEnd, ensureAutoBpmForCalibration, freezeTimingControl,
     ensureCapCutBeatsForCalibration, ensureGlobalTimelineAudioSource, globalAudioMuteButton, globalScrub,
-    isTimelinePlaying, lyricNoteButton, multiSelectButton, multiSelectHintButton, openBeatCalibrationWizard,
+    isTimelinePlaying, lyricNoteButton, emotionTagButton, multiSelectButton, multiSelectHintButton, openBeatCalibrationWizard,
     openMultiSelectChooser, pauseAllAudio, playbackDuration, playbackSegmentAtTime, playButton, playhead,
     playSceneAudioFrom, playStart, previewEmpty, previewStage, previewVideo, pushHistory, reloadBeatMarkersFromAudio,
     render, renderBeatCalibrationWizard, sceneAudio, sceneListPane, sceneNoteButton, seekAudioWhenReady,

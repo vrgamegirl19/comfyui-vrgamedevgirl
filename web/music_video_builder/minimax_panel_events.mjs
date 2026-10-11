@@ -237,7 +237,7 @@ export function wireMiniMaxPanel({
       if (!segment && !wizardVideoSettings.global) return;
       pushHistory();
       const current = saveMiniMaxH3SettingsFromPanel(segment);
-      const mode = current.video_mode === "image_to_video" ? "image_to_video" : "reference_to_video";
+      const mode = current.video_mode;
       clearMiniMaxImageReferenceStartFrameOnModeSwitch(segment, mode);
       const settings = selectMiniMaxH3PassSettings(current, button.dataset.passMode);
       if (segment?.use_scene_minimax_h3_settings) segment.minimax_h3_settings = settings;

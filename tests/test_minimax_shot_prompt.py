@@ -83,6 +83,10 @@ class ShotPromptTests(unittest.TestCase):
         self.assertIn("LYRIC IN THE SHOT", task)
         self.assertIn('<Subject 1> (dave) sings the lyric line, "the exact words"', task)
         self.assertIn("Exact lyric line:\nline one line two", task)
+        self.assertIn("subject label on first mention in each shot", task)
+        self.assertIn("use natural pronouns and possessives", task)
+        self.assertIn("repeat a label when the actor or speaker changes", task)
+        self.assertNotIn("Never refer to a character only by name or pronoun", task)
 
     def test_too_long_and_incomplete_prompts_fail_validation(self):
         plan = self.plan(4.0)
@@ -112,6 +116,89 @@ class ShotPromptTests(unittest.TestCase):
         self.assertIn("one smooth, continuous", task)
         self.assertIn("<Subject 1> walks.", task, "names in the scene text become labels")
         self.assertIn("Camera rule", task)
+
+    def test_short_scene_task_uses_duration_without_an_action_checklist(self):
+        task = sp.build_shot_task(
+            mode_label="Reference to Video", duration=2.92, aspect_ratio="16:9", audio_mode="input_audio",
+            cut_plan=self.plan(2.92), style="grunge", labels=[], camera_speed=4, character_speed=4,
+            lyric_text="Growing fruit made of time", story_beat="The paper trembles along the roof seam.",
+            storyboard_context="Boots step past the lens.",
+        )
+        self.assertIn("Duration: 2.92s", task)
+        self.assertIn("Shot 1: 0–2.92s (2.92 seconds available).", task)
+        self.assertIn("The paper trembles", task)
+        self.assertIn("Boots step past the lens.", task)
+        self.assertIn("Growing fruit made of time", task)
+        self.assertIn("Reserve time for the required singing or speaking", task)
+        self.assertIn("Keep optional gestures and reactions only when time remains", task)
+        self.assertNotIn("60 to 110", task)
+        self.assertNotIn("one or two small human movements", task)
+        self.assertNotIn("Do not slow down or hold still", task)
+
+    def test_each_shot_gets_its_own_time_budget_including_a_subsecond_tail(self):
+        cut_plan = {"exact_duration_seconds": 2.92, "cut_times_seconds": [2.32]}
+        timing = sp.scene_timing_instruction(2.92, cut_plan)
+        self.assertIn("Shot 1: 0–2.32s (2.32 seconds available).", timing)
+        self.assertIn("Shot 2: 2.32–2.92s (0.6 seconds available).", timing)
+        self.assertIn("not the number of actions", timing)
+        longer = sp.scene_timing_instruction(10, cut_plan)
+        self.assertIn("Shot 2: 2.32–10s (7.68 seconds available).", longer)
+
+    def test_literal_ownership_contract_reaches_every_mode_after_ambiguous_context(self):
+        card = "A black boot fills the foreground with the woman beyond it; boots step past the lens."
+        for mode in ("Reference to Video", "Image to Video", "Text to Video"):
+            with self.subTest(mode=mode):
+                task = sp.build_shot_task(
+                    mode_label=mode, duration=2.92, aspect_ratio="16:9", audio_mode="input_audio",
+                    cut_plan=self.plan(2.92), style="grunge", labels=[], camera_speed=4, character_speed=4,
+                    storyboard_context=card,
+                )
+                self.assertIn(card, task)
+                self.assertIn("Write natural, fluent shot prose that H3 can follow literally", task)
+                self.assertIn("Rewrite ambiguous scene-card or image-prompt wording", task)
+                self.assertIn("her boot briefly crossing the foreground", task)
+                self.assertIn("Keep ownership and spatial checks in your reasoning", task)
+                self.assertIn("A close-up identifies whose body part is framed", task)
+                self.assertIn("Carry an object from an adjacent scene only when the current scene explicitly does so", task)
+                self.assertIn("read the shot by itself", task)
+                self.assertIn("Resolve uncertainty with clear verbs and possessives, not explanatory qualifiers", task)
+                self.assertNotIn("anatomically connected", task)
+                self.assertNotIn("worn on her foot", task)
+                self.assertGreater(task.index("LITERAL SCENE CLARITY"), task.index(card))
+
+    def test_reference_props_are_grounded_and_picture_mentions_survive(self):
+        items = [{"kind": "subject", "label": "woman"}, {"kind": "location", "label": "warehouse"}]
+        task = sp.build_shot_task(mode_label="Reference to Video", duration=4, aspect_ratio="16:9", audio_mode="input_audio",
+                                 cut_plan=self.plan(4), style="grunge", labels=sp.reference_labels(items),
+                                 camera_speed=3, character_speed=3)
+        self.assertIn("saved image prompt is a proposed scene idea, not proof", task)
+        self.assertIn("omit unsupported carryover props", task)
+        self.assertIn("STAGING AND ACTION OWNERSHIP", task)
+        self.assertIn("self-contained, physically coherent shot", task)
+        self.assertIn("before any action or camera instruction refers to it", task)
+        self.assertIn("final framing in chronological order", task)
+        self.assertIn("Preserve the beat's intended visual emphasis and endpoint", task)
+        self.assertIn("Make the character the actor", task)
+        self.assertIn("Do not invent gloves or accessories", task)
+        self.assertIn("physical setting around the character", task)
+        self.assertIn("bind the location picture to that setting", task)
+        self.assertIn("Then describe the camera independently", task)
+        self.assertIn("scene's story beat, storyboard details, scene-card directions, and selected camera settings", task)
+        self.assertNotIn("Do not default", task)
+        self.assertNotIn("streaks into bokeh", task)
+        self.assertIn("introduce its appearance and physical placement", task)
+        self.assertIn("Do not add a standalone reference-definition paragraph", task)
+        prompt = sp.compact_reference_prompt(sp.assemble_prompt(["<Subject 1> (the woman) walks between old machines."], self.plan(4), "grunge"), items)
+        self.assertIn("[Shot 1] <Subject 1> walks", prompt)
+        self.assertNotIn("<Subject 1> (", prompt)
+        self.assertIn("environment from <Picture 2>", prompt)
+        self.assertNotIn("<Subject 1> is", prompt)
+        self.assertNotIn("table", prompt)
+        self.assertEqual(sp.normalize_description("The woman from Image 1 walks through Image 2."),
+                         "The woman from <Picture 1> walks through <Picture 2>.")
+        with self.assertRaises(sp.ShotPromptError) as error:
+            sp.validate_prompt(sp.assemble_prompt(["Opening at eye level in the composition of <Picture 1>, a tight shot shows the woman."], self.plan(4), "grunge"), self.plan(4))
+        self.assertEqual(error.exception.code, "MINIMAX_H3_REFERENCE_COMPOSITION_LEAK")
 
 
 if __name__ == "__main__":

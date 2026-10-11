@@ -1,0 +1,23 @@
+# MiniMax prompt options and reference scenes
+
+**Prompt Options → Use Structured outputs** defaults to off. Reference-to-video prompts use a compact `detailed_description` with shot prose and location picture references. Enable the option to include subject definitions, summary, retention analysis and audio sections. It is saved as `use_structured_outputs` and supports undo. Regenerate existing prompts to apply a changed option.
+
+Reference-to-video uses character pictures for identity and environment pictures for the setting. The scene beat, storyboard directions and camera settings determine the new shot's staging, framing and movement. Changing from either image mode to reference-to-video clears legacy start-frame requirements. Reference mode also ignores stale flags that would prepend the scene image or copy its composition.
+
+Shot instructions establish props and their physical placement before referring to them, attach actions to the correct actor, and describe the camera path in chronological order. Each character is introduced by label in each shot; subsequent unambiguous actions use natural pronouns. Multiple-character scenes repeat labels when needed to identify a new actor or speaker. These instructions guide the LLM; final prose still warrants review.
+
+Prompt generation supplies the exact timeline duration and each scheduled shot's available seconds. The LLM uses the scene beat and storyboard together to fit camera travel, required action and vocal performance within that time. Brief shots use economical continuous action; optional reactions need spare time. Motion speed controls energy, rather than requiring more actions. There is no fixed word count or mandatory extra-movement checklist. These are generation instructions, not a physical timing guarantee; regenerate existing prompts to apply them.
+
+H3 shot wording must also work literally. Use natural action-led prose: establish who acts, use clear possessives for clothing and body parts, and describe how the camera films that same action. Ownership and spatial checks belong in the LLM's reasoning; shot text describes visible action without anatomy explanations or routine clothing-attachment clauses. The browser and API append the same clarity check after scene context, asking the LLM to rewrite ambiguous source wording and maintain positions through the action. Props from adjacent scenes require explicit carryover in the current scene. These checks guide generation; they do not semantically validate the rendered result.
+
+**Do not add lyric lines to prompt** applies to singing with supplied audio. Built-in audio and speaking retain their spoken or sung words. See [lyric-free prompts](LYRIC_FREE_VIDEO_PROMPTS.md) and [emotion and speech tags](EMOTION_EXPRESSION_TAGS.md).
+
+Populated scene-card shot and camera directions take priority over automatic framing rotation, including stale saved rotation choices. Supplied-audio singing assembly strips oral movement directives regardless of the lyric-omission option; exact quoted lyric words are protected.
+
+Image + Reference prompts retain the scene image as `<Picture 1>` and place character references after the start frame (and optional end frame). Compact output adds one brief picture-to-character appearance assignment for each character used in the shot text. Face/hair-only influence remains limited to face and hair. Unused character references do not introduce extra people into the action. Structured output keeps its full definitions instead.
+
+For Image + Reference with normal image references, the prompt writer receives all connected images in order, including when using the built-in local vision runner. Configure the vision model and matching MMProj for the local runner. RefMod inputs retain their existing behavior.
+
+With full-character influence, the character sheet controls the complete outfit, footwear, accessories, and body proportions throughout the shot, including details revealed beyond the opening crop. All panels of a multi-view sheet represent one character.
+
+Image + Reference two-pass rendering re-encodes start/end-frame conditioning and reference images at each sampler's resolution. Pass 2 uses the actual learned-upscaler dimensions (including rounding), rather than reusing pass-1 keyframe latents. Reference image sizing is preserved on both passes. Native audio wiring follows the pass-1 latent connection when multiple conditioning nodes are present.

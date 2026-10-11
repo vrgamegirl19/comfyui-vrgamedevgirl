@@ -16,6 +16,7 @@ export const SEGMENT_TO_CARD_KEYS = {
   shot_type: "shot_type", camera_motion: "camera_motion", character_motion: "character_motion",
   performance_mode: "performance_mode", performance_style: "performance_style",
   facial_performance: "facial_performance", facial_performance_custom: "facial_performance_custom",
+  emotion_expression_tags: "emotion_expression_tags",
   include_microphone: "include_microphone", audio_direction: "audio_direction", continuity: "continuity",
   flf_start_state: "flf_start_state", flf_transformation: "flf_transformation", flf_end_state: "flf_end_state",
   flf_carry_forward: "flf_carry_forward", minimax_h3_video_style: "video_style",

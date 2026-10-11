@@ -1,3 +1,6 @@
+import { hasEmotionExpressionInput } from "./emotion_expression.mjs";
+import { storyboardFacialPerformancePreset } from "../storyboard_builder/performance_presets.mjs";
+import { lyricFreePerformanceEnabled, cleanLyricFreeDescription, cleanLyricFreeFacialDirection, lyricFreeShotDirection, lyricFreePromptContext, mergeLyricFreeContract, stripSingingArticulation } from "./lyric_free_performance.mjs";
 import { miniMaxI2VTransitionPrompt } from "./minimax_i2v_transition.mjs";
 import { miniMaxI2VFrameMode, miniMaxI2VLastFrame } from "./minimax_keyframe_state.mjs";
 import {
@@ -135,12 +138,27 @@ function miniMaxH3MotionEnergyText(cameraMotionSpeed, characterMotionSpeed) {
   const camera = Number.isFinite(Number(cameraMotionSpeed)) ? Number(cameraMotionSpeed) : 4;
   const character = Number.isFinite(Number(characterMotionSpeed)) ? Number(characterMotionSpeed) : 4;
   const cameraText = camera >= 7
-    ? "The camera is fast and energetic: whips, orbits, push-ins, and quick tracking."
+    ? "The requested camera movement is fast and energetic."
     : camera >= 4 ? "The camera moves at a steady pace with a clear direction." : "The camera moves slowly, or holds a locked frame.";
   const characterText = character >= 7
-    ? "The performers are high energy: pop, fast motion, jumps, spins, runs, dance hits, and quick reactions."
-    : character >= 4 ? "The performers use steady physical action: walking, turning, reaching, and set interaction." : "The performers use small movements and held poses with life detail.";
+    ? "The requested performer action has high energy and decisive physical movement."
+    : character >= 4 ? "The requested performer action has steady physical energy." : "The performers use small movements and held poses with life detail.";
   return `${cameraText} ${characterText}`;
+}
+
+export function miniMaxH3SceneTimingInstruction(duration, cutPlan = {}) {
+  const exact = Number(Number(duration).toFixed(3));
+  const plan = miniMaxH3OfficialShotPlan(cutPlan);
+  const windows = plan.map((shot, index) => {
+    const start = Number(shot.time || 0);
+    const end = Number(plan[index + 1]?.time ?? exact);
+    return `Shot ${index + 1}: ${Number(start.toFixed(3))}–${Number(end.toFixed(3))}s (${Number(Math.max(0, end - start).toFixed(3))} seconds available).`;
+  });
+  return [
+    `SCENE TIMING — MANDATORY: The complete scene lasts exactly ${exact} seconds.`,
+    ...windows,
+    "Use the scene beat and storyboard directions together to stage only what can physically finish within each shot's available time. Reserve time for the required singing or speaking and any supplied entrance, reveal, or transition. For a brief shot, express the essential beat through one economical continuous action and the requested camera move; let performance and camera movement happen together where physically possible. Keep optional gestures and reactions only when time remains. Do not invent sequential steps, pivots, glances, or framing changes to fill a checklist. Preserve explicitly requested action and exact vocal words; simplify optional choreography rather than rushing required performance. Motion speed sets the energy of the chosen movement, not the number of actions. Before returning, check that the opening, action, camera travel, and ending fit the available time without an extra cut, rushed final beat, or action continuing beyond the shot.",
+  ].join("\n");
 }
 
 function miniMaxH3OfficialShotScheduleLines(cutPlan = {}) {
@@ -305,11 +323,11 @@ function normalizeMiniMaxH3DialogueTags(text) {
   .replace(/<\|[^<>]*\|>/g, "")
   .replace(/<\s*tool_call\|?>+/gi, "")
   .replace(/<d>\s*\[+\s*([A-Za-z][A-Za-z -]{1,30})\]\s*/gi, "<d>[$1] ")
-  .replace(/<d>\s*\[([^\]]+)\]\s*([^<]*?)\s*<\/d>/gi, (_match, language, lyric) => {
+  .replace(/<d>\s*\[([^\]]+)\]\s*([\s\S]*?)\s*<\/d>/gi, (_match, language, lyric) => {
     const cleanLanguage = String(language || "English").trim() || "English";
     const cleanLyric = miniMaxH3CapitalizeCueText(miniMaxH3PunctuatedCueText(lyric));
     return cleanLyric ? `<d>[${cleanLanguage}] ${cleanLyric}</d>` : "";
-  }).replace(/<d>\s*(?!\[[^\]]+\]\s*)([^<]*?)\s*<\/d>/gi, (_match, lyric) => {
+  }).replace(/<d>\s*(?!\[[^\]]+\]\s*)([\s\S]*?)\s*<\/d>/gi, (_match, lyric) => {
     const cleanLyric = miniMaxH3CapitalizeCueText(miniMaxH3PunctuatedCueText(lyric));
     return cleanLyric ? `<d>[English] ${cleanLyric}</d>` : "";
   });
@@ -317,7 +335,10 @@ function normalizeMiniMaxH3DialogueTags(text) {
 
 export function miniMaxH3PunctuatedCueText(value) {
   let text = String(value || "").trim();
-  if (text && !/[.!?…]["')\]]?$/.test(text)) text += ".";
+  if (text && !/[.!?…]["')\]]?$/.test(text.replace(/<[^>]+>/g, "").trim())) {
+    const trailingTags = text.match(/(?:\s*<[^>]+>)+$/)?.[0] || "";
+    text = trailingTags ? `${text.slice(0, -trailingTags.length).trimEnd()}.${trailingTags}` : `${text}.`;
+  }
   return text;
 }
 
@@ -328,6 +349,53 @@ function miniMaxH3CapitalizeCueText(value) {
 function miniMaxH3CleanSubjectNoun(value, fallback = "reference") {
   const text = String(value || "").replace(/\s+/g, " ").trim() || fallback;
   return text.replace(/^(?:the\s+)+/i, "the ");
+}
+
+export function miniMaxH3LiteralSceneInstruction() {
+  return "LITERAL SCENE CLARITY — MANDATORY: Write natural, fluent shot prose that H3 can follow literally. Lead physical action with the person doing it; use their possessive for a body part or worn item and clear pronouns afterward. For example: '<Subject 1> steps past the ground-level camera, her boot briefly crossing the foreground.' Describe how the camera films that same action instead of independently placing a body part in the foreground and its owner elsewhere. A close-up identifies whose body part is framed; describe cropping only when needed to understand the shot. Keep ownership and spatial checks in your reasoning; finished sentences describe visible action, not explanations of anatomy or routine clothing attachment. Rewrite ambiguous scene-card or image-prompt wording into ordinary action-led sentences rather than copying it. Keep character, camera and prop positions consistent from the opening through the ending. Place loose props explicitly and use only objects supported by this scene's directions or mapped references. Carry an object from an adjacent scene only when the current scene explicitly does so. Before returning, read the shot by itself: every action has an actor, every item has a clear owner or placement, and the camera movement fits the same physical action. Resolve uncertainty with clear verbs and possessives, not explanatory qualifiers. Return only the requested shot JSON with natural visual prose.";
+}
+
+function miniMaxH3ReferenceSceneGroundingContract() {
+  return "REFERENCE SCENE GROUNDING — MANDATORY: Generate and describe a complete new scene using the assigned character and environment pictures. "
+    + "Character pictures supply identity and appearance; environment pictures supply the set. The prompt determines opening framing, camera angle, staging, pose, composition, and action. Never use a reference picture's composition, framing, camera angle, or pose as the opening shot. A separately enabled continuation task follows its own previous-frame rules. A saved image prompt is a proposed scene idea, not proof that its props, poses, or layout exist in a supplied picture. "
+    + "Use props supported by the mapped reference pictures or current explicit scene directions. Omit unsupported props; do not carry them over as established facts from an earlier image-to-video setup. "
+    + "When an authored action requires a new prop, introduce its appearance and physical placement before using it, for example 'a waist-high rusted steel worktable beside the machinery', rather than an unexplained 'the table'. "
+    + "COHERENT SHOT WRITING: Treat the story beat and scene card as story context to translate into a self-contained, physically coherent shot, not prose to splice into a camera template. Introduce each prop, its owner or containing object, and its placement before any action or camera instruction refers to it. For a coat-and-zipper beat, establish 'a battered coat lies across a rusted worktable, its zipper caught half-open' before referring to 'the zipper'. Establish any character's position relative to those objects before describing interaction. Write the opening setup, action, camera movement, and final framing in chronological order; do not describe the camera's ending before establishing its target. Ensure the final framing is physically possible from the stated character and prop positions. Preserve the beat's intended visual emphasis and endpoint; do not replace a prop-focused ending with a generic singing close-up or invent prop handling merely because a singer is present. Integrate a required performance only through staging consistent with the scene directions. Before returning the shot, reread it independently of the beat and resolve every unexplained object, gesture, spatial relationship, and camera target. "
+    + "STAGING AND ACTION OWNERSHIP: Establish where each character stands and where any handled prop is relative to them. Make the character the actor: '<Subject 1> grips the zipper pull with her gloved right hand', not 'a studded glove grips the zipper'. Attribute every gesture and facial reaction to that character; use '<Subject 1> looks down at the zipper, then back toward the camera', not unowned 'eyes flick down and back'. Do not invent gloves or accessories. Describe the environment as a physical setting around the character, with concrete spatial and lighting relationships; a picture label identifies the environment reference, not a moving background object. State each singing/audio synchronization direction once, integrated into the action. "
+    + "LOCATION REFERENCE: Establish the physical setting and bind the location picture to that setting. Then describe the camera independently. Derive framing, focus, camera motion, staging, and how much of the location is visible from this scene's story beat, storyboard details, scene-card directions, and selected camera settings. The location picture supplies the environment's visual appearance; the scene directions determine how it is filmed. "
+    + "Identify each character by its subject label on first mention in each shot, then use natural pronouns and possessives when the actor is unambiguous. For a single character, continue with she/he/they and her/his/their rather than repeating the label for every action. With multiple characters, repeat a label when the actor or speaker changes or a pronoun would be ambiguous. Do not append character names or picture origins in parentheses. Do not output subject definitions or a reference inventory inside the shot description.";
+}
+
+function miniMaxH3CompactReferenceShots(creative, subjects) {
+  return String(creative || "").split(/(?=\[Shot\s+\d+\])/).map((shot) => {
+    if (!/^\[Shot\s+\d+\]/.test(shot)) return shot;
+    let text = shot.trim();
+    for (const item of subjects) {
+      if (item.kind !== "location") {
+        text = text.replace(new RegExp(`${escapeRegExp(item.label)}\\s*\\(([^)]*)\\)`, "g"),
+          (match, annotation) => /^\s*S\d+\s*$/i.test(annotation) ? match : item.label);
+      } else if (item.pictureLabel && !text.includes(item.pictureLabel)) {
+        text += ` The action takes place in the environment from ${item.pictureLabel}.`;
+      }
+    }
+    return text;
+  }).join("\n\n").trim();
+}
+
+function miniMaxH3CharacterReferenceBindings(creative, subjects, reserveAll = false) {
+  return subjects.filter(item => (item.kind === "subject" || item.kind === "extra")
+    && item.pictureLabel && (reserveAll || String(creative).includes(item.label)))
+    .map(item => {
+      const purpose = String(item.purpose || "character identity, face, hair, clothing, and body-proportion reference")
+        .split(";")[0].replace(/\s+reference(?:\s+only)?(?:\s+for.*)?$/i, "");
+      return `Use ${item.pictureLabel} for ${item.label}'s ${purpose}.`;
+    }).join(" ");
+}
+
+function miniMaxH3ReferenceCompositionLeak(text) {
+  return /\b(?:in|from|matching|copying|reproducing|preserving|using|following)\s+(?:the\s+)?(?:exact\s+)?(?:composition|framing|camera\s+angle|pose)\s+(?:of|from|in)\s+<Picture\s+\d+>/i.test(text)
+    || /<Picture\s+\d+>\s+(?:is|defines|controls|sets)\s+(?:the\s+)?(?:exact\s+)?(?:first|start|opening)\s+(?:frame|composition|framing)/i.test(text)
+    || /\b(?:begin|begins|start|starts|open|opens)\s+(?:exactly\s+)?(?:from|on|with)\s+<Picture\s+\d+>/i.test(text);
 }
 
 function normalizeMiniMaxH3ShotDescription(text) {
@@ -341,7 +409,7 @@ function normalizeMiniMaxH3ShotDescription(text) {
     .replace(/\bin\s+Audio\s+1\b/gi, "in <Audio 1>")
     .replace(/\bAudio\s+1\b/g, "<Audio 1>")
     .replace(/<+Audio 1>+/g, "<Audio 1>")
-    .replace(/\bImage\s+\d+\b[,.]?/gi, "")
+    .replace(/\bImage\s+(\d+)\b/gi, "<Picture $1>")
     .replace(/\s+/g, " ")
     .trim());
 }
@@ -536,6 +604,68 @@ export function createMiniMaxPrompt({
 }) {
   // Story beats and the story arc are written for the whole song and can name characters who are not
   // selected for this scene. This tells the model the selected cast is the only cast.
+  function omitLyricsForSegment(segment) {
+    return lyricFreePerformanceEnabled(state.omitLyricsFromVideoPrompts,
+      normalizeVideoType(segment?.performance_mode || state.videoType), miniMaxH3SettingsForSegment(segment).audio_mode);
+  }
+
+  function lyricFreeDirections(segment, mode, shotIndex = null) {
+    if (segmentUsesNoLipSyncPerformance(segment) || segment?.no_character_present || isInstrumentalLyricText(segment?.lyric_text)) return [];
+    const cutPlan = miniMaxH3CutPlanForSegment(segment);
+    const plan = miniMaxH3OfficialShotPlan(cutPlan);
+    const cues = normalizeLyricCueMapForSegment(segment, undefined, { preserveBlank: true });
+    const performers = selectedPerformerSubjectsForSegment(segment);
+    const labels = miniMaxH3SubjectLabelMapForSegment(segment, mode);
+    const label = (cue) => {
+      const person = performers.find((p) => String(p.id) === String(cue?.singer_id))
+        || performers.find((p) => p.name === cue?.singer_name) || performers[0];
+      return person ? miniMaxH3PerformerLabel(person, labels) : "The assigned performer";
+    };
+    const selected = cues.filter((cue, index) => {
+      if (shotIndex === null) return true;
+      if (cue.start == null || cue.end == null) return plan.length === 1 || index === shotIndex;
+      return Number(cue.vocal_start ?? cue.start) < Number(plan[shotIndex + 1]?.time ?? cutPlan.exact_duration_seconds)
+        && Number(cue.vocal_end ?? cue.end) > Number(plan[shotIndex].time);
+    });
+    if (cues.length) return selected.filter((cue) => cue.type === "vocal").map((cue) =>
+      lyricFreeShotDirection(label(cue), plan.length === 1, cue.start == null || cue.end == null ? "" : `${cue.vocal_start ?? cue.start}s–${cue.vocal_end ?? cue.end}s`));
+    return String(segment?.lyric_text || "").trim() ? [lyricFreeShotDirection(performers.length ? performers.map((person) => miniMaxH3PerformerLabel(person, labels)).join(" and ") : label(), plan.length === 1)] : [];
+  }
+
+  function lyricFreeContextForSegment(segment, mode, text) {
+    const cues = normalizeLyricCueMapForSegment(segment, undefined, { preserveBlank: true });
+    const lyrics = [flattenLyricForPrompt(segment?.lyric_text), ...String(segment?.lyric_text || "").split(/\r?\n/), ...cues.map((cue) => cue.text)];
+    return lyricFreePromptContext([text, lyricFreeFacialText(segment)].filter(Boolean).join("\n\n"), lyrics, lyricFreeDirections(segment, mode), miniMaxH3OfficialShotPlan(miniMaxH3CutPlanForSegment(segment)).length === 1);
+  }
+
+  function lyricFreeFacialText(segment) {
+    const key = String(segment?.facial_performance || state.defaultFacialPerformance || "");
+    if (key === "off") return "";
+    const custom = String(segment?.facial_performance_custom || state.defaultFacialPerformanceCustom || "");
+    const text = key === "custom" ? custom : [storyboardFacialPerformancePreset(key).direction, custom].filter(Boolean).join(" ");
+    return cleanLyricFreeFacialDirection(text);
+  }
+
+  function lyricFreeShot(segment, description, index, mode) {
+    const cues = normalizeLyricCueMapForSegment(segment, undefined, { preserveBlank: true });
+    const lyrics = [flattenLyricForPrompt(segment?.lyric_text), ...String(segment?.lyric_text || "").split(/\r?\n/), ...cues.map((cue) => cue.text)];
+    const emotion = hasEmotionExpressionInput(segment, state);
+    let contracts = lyricFreeDirections(segment, mode, index);
+    let clean = cleanLyricFreeDescription(description, lyrics, {
+      preservePerformance: emotion && contracts.length > 0,
+      singleShot: miniMaxH3OfficialShotPlan(miniMaxH3CutPlanForSegment(segment)).length === 1,
+    }) || "The camera follows continuous physical action through the scene.";
+    if (emotion) contracts = contracts.map((text) => text
+      .replace("sings with passion", "sings")
+      .replace(/ (?:[^.]+?'s )?engaged eyes and expressive brows convey the song's intensity\./i, ""));
+    if (emotion) contracts = contracts.map(text => {
+      const [merged, remaining] = mergeLyricFreeContract(clean, text);
+      clean = merged;
+      return remaining;
+    });
+    return [clean, emotion ? "" : lyricFreeFacialText(segment), ...contracts].filter(Boolean).join(" ");
+  }
+
   function sceneCastRestrictionText(segment) {
     if (!segment) return "";
     const guard = sceneCastGuardForSegment(segment);
@@ -692,6 +822,10 @@ export function createMiniMaxPrompt({
 
   function miniMaxH3SelectedFramingEntries(segment, shotPlan = []) {
     if (!Array.isArray(shotPlan) || !shotPlan.length) return [];
+    // A populated scene card is authoritative; rotation is only a fallback.
+    if (String(segment?.shot_type || "").trim() || String(segment?.camera_motion || "").trim()) {
+      return shotPlan.map(() => ({ shot: String(segment?.shot_type || "").trim(), camera: String(segment?.camera_motion || "").trim() }));
+    }
     const cameraFlowKey = String(state.builderStoryboardDefaults?.camera_flow || segment?.camera_flow || "").trim();
     const preset = STORYBOARD_CAMERA_FLOW_PRESETS[cameraFlowKey];
     if (!preset?.framing_candidates) return shotPlan.map(() => null);
@@ -797,6 +931,10 @@ export function createMiniMaxPrompt({
         : "";
     }).filter(Boolean);
     if (!framingLines.length) return [];
+    if (String(segment?.shot_type || "").trim() || String(segment?.camera_motion || "").trim()) {
+      return [`SCENE CARD FRAMING / CAMERA — AUTHORITATIVE:\n${framingLines.join("\n")}`,
+        "Follow these scene directions. Automatic framing candidates are fallback ideas and must not replace the scene card's angle, lens, framing or camera path."];
+    }
     const cameraFlowKey = String(state.builderStoryboardDefaults?.camera_flow || segment?.camera_flow || "").trim();
     const preset = STORYBOARD_CAMERA_FLOW_PRESETS[cameraFlowKey];
     if (!preset?.framing_candidates) return [];
@@ -1012,21 +1150,21 @@ export function createMiniMaxPrompt({
     parts.push(
       `MANDATORY CHARACTER BUDGET: The combined text inside all ${shotPlan.length} JSON description values must not exceed ${characterBudget.shotDescriptionChars} characters total (about ${perShotBudget} per shot). Stay within this combined limit; be concise without omitting required subjects, actions, camera direction, or vocal cues.`
     );
-    const lifeMovements = miniMaxH3LifeMovementBank(characterMotionSpeed, String(segment?.id || segment?.label || ""));
     parts.push(
-      "SHOT FORMAT — MANDATORY: Write each shot as 2 to 4 complete sentences, about 60 to 110 words, in this order. "
+      "SHOT FORMAT — MANDATORY: Write concise complete sentences, with length and action complexity suited to the available shot time, in this order. "
       + "1) Camera: the opening framing, one named camera move with its direction and speed, and the ending framing. "
       + "2) Subject action: each person in the cast does their own continuous physical action, written by what the body does. "
-      + `3) Life detail: one or two small human movements placed inside the action, for example ${lifeMovements.join("; ")}. `
+      + "3) Acting detail: include only context-supported expression or reaction that fits naturally inside the existing action and available time. "
       + "4) Light and set: one short line using only the mapped location's own light and objects. "
-      + "Describe only what the camera sees. Show emotion only as visible movement. Do not use feeling words such as feel, grief, longing, memory, soul, or emotional. "
+      + "Describe only what the camera sees. Show emotion through visible acting; requested emotion descriptors are permitted inside performance tags. Avoid abstract feeling words such as feel, grief, longing, memory, soul, or emotional in the visual prose. "
       + "Write complete grammatical prose, not notes, labels, or fragments, and do not replace named subjects with S1/S2 shorthand. "
       + "Character appearance is already carried by the reference images and the Builder. Do not list clothing, hair, accessories, jewelry, or facial features. Mention a garment or feature only when it moves or reacts in the action, in one brief clause at most."
     );
     parts.push(
       `MOTION ENERGY — MANDATORY: ${miniMaxH3MotionEnergyText(cameraMotionSpeed, characterMotionSpeed)} `
-      + `This scene is ${exactDuration} seconds long. Fill the full shot length with continuous action at this energy. Do not slow down or hold still. The length sets how many actions are chained, and the speed values set how energetic each one is.`
+      + "Apply this energy to the requested action within the available time; speed does not require additional actions."
     );
+    parts.push(miniMaxH3SceneTimingInstruction(duration, cutPlan));
     const cutTimes = shotPlan.slice(1).map((shot) => shot.timecode);
     if (cutTimes.length) {
       parts.push(`Builder cut times for your planning only: ${cutTimes.join(", ")}. Do not write these times.`);
@@ -1087,14 +1225,13 @@ export function createMiniMaxPrompt({
       }).join("");
     };
     if (subjectLabelEntries.length) {
-      const firstEntry = subjectLabelEntries[0];
       parts.push([
-        `CAST FOR THIS SCENE — MANDATORY: Character names in the scene text below have been replaced by these labels. Refer to every character in the shot text by label, writing the label followed by the assigned name in parentheses on its first mention in each shot, for example "${firstEntry.label} (${firstEntry.name || "assigned name"})", then the label alone. Never refer to a character only by name, "he", or "she". Each role below comes from the user's Map Performers and Review Lines settings and must be followed exactly.`,
+        "CAST FOR THIS SCENE — MANDATORY: Character names in the scene text below have been replaced by these labels. Identify each character by its subject label on first mention in each shot, then use natural pronouns and possessives when the actor is unambiguous. For a single character, continue with she/he/they and her/his/their rather than repeating the label for every action. With multiple characters, repeat a label when the actor or speaker changes or a pronoun would be ambiguous. Do not append character names or picture origins in parentheses. Each role below comes from the user's Map Performers and Review Lines settings and must be followed exactly.",
         ...subjectLabelEntries.map((item) => {
           const role = subjectRole(item);
           return `- ${item.label} (${item.name || "mapped subject"})${role ? `: ${role}` : ""}`;
         }),
-        `ONLY THESE PEOPLE APPEAR — MANDATORY: ${subjectLabelEntries.map((item) => `${item.label} (${item.name || "mapped subject"})`).join(", ")}. No other person, hand, arm, shadow, reflection, silhouette, or crowd appears in any shot. Refer to people only by label, never by pronoun.`,
+        `ONLY THESE PEOPLE APPEAR — MANDATORY: ${subjectLabelEntries.map((item) => `${item.label} (${item.name || "mapped subject"})`).join(", ")}. No other person, hand, arm, shadow, reflection, silhouette, or crowd appears in any shot. Labels and subsequent pronouns refer to the same established characters.`,
       ].join("\n"));
       // Clothing, props and vehicles are things in the scene, not cast members: say how each one appears.
       const accessoryEntries = Array.from(new Map(
@@ -1184,12 +1321,18 @@ export function createMiniMaxPrompt({
       add(parts, "Mapped extra subjects — mandatory (who must appear; do not restate appearance or clothing in the shot text)", segmentMappedExtraSubjectText(segment, mode), 6000);
     }
     add(parts, "Location", segmentMappedLocationText(segment));
-    const referenceLabels = miniMaxH3ReferenceAssignmentLines(segment, mode)
+    const referenceAssignments = miniMaxH3ReferenceAssignmentLines(segment, mode);
+    if (normalizeMiniMaxH3Mode(mode) === "image_reference_to_video") {
+      parts.push("IMAGE + CHARACTER REFERENCE PLANNING: Inspect the attached start frame and each attached character reference using their exact connected Picture numbers. The start frame establishes the opening composition, pose, environment, and lighting. Character references provide their assigned appearance role; respect the selected face/hair-only or full-character influence. With full-character influence, keep the complete outfit, lower-body clothing, footwear, accessories, and body proportions from the character sheet, including details initially outside the start-frame crop and later revealed by camera movement. Multiple panels depict the same character, not additional people; use their appearance without copying the sheet layout or reference pose. Use the mapped subject labels for the characters required by this scene and describe their actions from the start-frame setup. Reference-only characters are not automatically additional people in the shot. The builder adds one concise picture-to-character assignment for each subject used in your descriptions; do not repeat that assignment or add picture-origin parentheses in the shot action.");
+    }
+    const referenceLabels = referenceAssignments
       .map((line) => String(line || "").split(":")[0].trim())
       .filter(Boolean);
     if (referenceLabels.length) {
+      parts.push(`Renderer picture assignments for planning only:\n${referenceAssignments.join("\n")}`);
       parts.push(`Available renderer reference labels: ${referenceLabels.join(", ")}. Use every selected subject label required by the selected-cast coverage and per-shot rotation contract; other labels need only be mentioned when useful. Do not define labels in the shot text.`);
     }
+    if (mode === "reference_to_video") parts.push(miniMaxH3ReferenceSceneGroundingContract());
     if (mode === "video_to_video") {
       const videoAssignments = miniMaxH3VideoAssignmentLines(segment);
       if (videoAssignments.length) parts.push(`Available video reference labels: ${videoAssignments.map((line) => String(line || "").split(":")[0].trim()).filter(Boolean).join(", ")}.`);
@@ -1203,7 +1346,12 @@ export function createMiniMaxPrompt({
     }
     const i2vTransition = miniMaxI2VTransitionPrompt(segment, mode, settings);
     if (i2vTransition) parts.push(i2vTransition);
-    return parts.join("\n\n");
+    if (!nativeAudio && performanceMode === "singing") {
+      parts.push("SUPPLIED-AUDIO SINGING: Include the assigned singer and Audio 1 synchronization cue once, only during audible vocals. Do not describe mouth, lip or jaw movement or ask for singing from the first frame. Preserve any supplied vocal timing; introductory silence remains non-vocal.");
+    }
+    parts.push(miniMaxH3LiteralSceneInstruction());
+    const context = parts.join("\n\n");
+    return omitLyricsForSegment(segment) ? lyricFreeContextForSegment(segment, mode, context) : context;
   }
 
   function miniMaxH3ReferenceAssignmentLines(segment, mode = miniMaxH3ModeForSegment(segment)) {
@@ -1437,6 +1585,8 @@ export function createMiniMaxPrompt({
     // `"; S2 plays bass...`. Remove only the duplicate lyric/tag/timing
     // material, then append the one canonical cue below.
     const cueText = miniMaxH3CapitalizeCueText(miniMaxH3PunctuatedCueText(cue.text));
+    const emotionDescriptor = hasEmotionExpressionInput(segment, state)
+      ? (text.match(/<d>\s*\[([^\]]+)\]/i)?.[1] || "English") : "English";
     // Remove a previously generated canonical contract before adding the
     // authoritative one below. This keeps retries idempotent.
     text = text.replace(/<Subject\s+\d+>[^.\n]*?is the only visible performer singing and lip-syncing[\s\S]*?every other visible performer remains silent\.?/gi, "");
@@ -1465,7 +1615,7 @@ export function createMiniMaxPrompt({
       .trim();
     if (!clean) clean = miniMaxH3FallbackShotDescription(segment, shotIndex, mode);
     clean = clean.replace(/[,;:]\s*([.!?…])/g, "$1").replace(/\s+,/g, ",");
-    const vocalContract = `${performer} is the only visible performer singing and lip-syncing <d>[English] ${cueText}</d> from <Audio 1>; every other visible performer remains silent.`;
+    const vocalContract = `${performer} is the only visible performer singing and lip-syncing <d>[${emotionDescriptor}] ${cueText}</d> from <Audio 1>; every other visible performer remains silent.`;
     return normalizeMiniMaxH3ShotDescription(`${clean.replace(/[.!?…]+$/g, "").trim()}. ${vocalContract}`);
   }
 
@@ -1490,10 +1640,15 @@ export function createMiniMaxPrompt({
     for (let index = 0; index < shotIndex; index += 1) start += size + (index < extra ? 1 : 0);
     const chunk = lines.slice(start, start + size + (shotIndex < extra ? 1 : 0)).join(" ");
     if (!chunk) return text;
-    const words = (value) => String(value || "").toLowerCase().replace(/’/g, "'").match(/[a-z0-9']+/g) || [];
+    const words = (value) => String(value || "").replace(/<[^>]+>/g, "").toLowerCase().replace(/’/g, "'").match(/[a-z0-9']+/g) || [];
     const chunkWords = words(chunk);
     if (!chunkWords.length) return text;
     const lead = chunkWords.slice(0, 6).join(" ");
+    {
+      for (const match of text.matchAll(/<d>\s*\[[^\]]+\]\s*([\s\S]*?)<\/d>/gi)) {
+        if (words(match[1]).join(" ").includes(chunkWords.join(" "))) return text;
+      }
+    }
     for (const match of text.matchAll(/["“]([^"”]+)["”]/g)) {
       if (words(match[1]).join(" ").includes(lead)) return text;
     }
@@ -1513,7 +1668,12 @@ export function createMiniMaxPrompt({
       throw new Error(`Cannot assemble MiniMax shots: expected ${shotPlan.length} description${shotPlan.length === 1 ? "" : "s"}, got ${descriptions.length}.`);
     }
     let body = shotPlan.map((shot, index) => {
-      const description = miniMaxH3EnsureQuotedLyricInShot(segment, enforceMiniMaxH3CueOnShotDescription(segment, descriptions[index], index), index, shotPlan.length, mode);
+      let description = omitLyricsForSegment(segment)
+        ? lyricFreeShot(segment, descriptions[index], index, mode)
+        : miniMaxH3EnsureQuotedLyricInShot(segment, enforceMiniMaxH3CueOnShotDescription(segment, descriptions[index], index), index, shotPlan.length, mode);
+      if ((segment?.performance_mode || state.videoType) === "singing" && miniMaxH3SettingsForSegment(segment).audio_mode !== "built_in_audio") {
+        description = stripSingingArticulation(description);
+      }
       if (shot.number === 1) return `[Shot 1] ${description}`.trim();
       const postCutDescription = miniMaxH3PostCutShotText(description).replace(/^\s*([a-z])/, (_match, letter) => letter.toUpperCase());
       return `[Shot ${shot.number}] At ${shot.timecode}, ${postCutDescription}`.trim();
@@ -1648,6 +1808,7 @@ export function createMiniMaxPrompt({
         kind: item?.kind || "reference",
         description,
         pictureLabel,
+        purpose,
         extraId: item?.kind === "extra" ? String(item?.source_id || "") : "",
       });
     });
@@ -1811,11 +1972,50 @@ export function createMiniMaxPrompt({
     return "non_diegetic_music:\nThe scene's native soundtrack follows the requested musical and atmospheric direction.";
   }
 
+  function miniMaxH3OfficialReferencePrompt(segment, mode, creative) {
+    const detailed = `detailed_description:\nThe target video is in a ${miniMaxH3OpeningStyle(segment)} music-video style.\n\n${creative}`.trim();
+    if (isRefmodPipelineActive()) return relabelRefmodPrompt(segment, mode, detailed);
+    const refs = miniMaxH3CombinedSubjectPlan(segment, mode);
+    if (!state.useStructuredOutputs) {
+      const bindings = normalizeMiniMaxH3Mode(mode) === "image_reference_to_video"
+        ? miniMaxH3CharacterReferenceBindings(creative, refs.subjects) : "";
+      return `detailed_description:\nThe target video is in a ${miniMaxH3OpeningStyle(segment)} music-video style.\n\n${bindings ? `${bindings}\n\n` : ""}${miniMaxH3CompactReferenceShots(creative, refs.subjects)}`.trim();
+    }
+    const audioDefinition = miniMaxH3OfficialAudioDefinition(segment);
+    return [
+      `subject_definitions:\n${[...refs.subjectDefinitions, ...refs.pictureDefinitions, ...refs.videoDefinitions, audioDefinition].filter(Boolean).join("\n")}`,
+      `summary:\n${miniMaxH3OfficialSummary(segment, mode, refs)}`,
+      `retention_analysis:\n${[...refs.retention, audioDefinition ? "<Audio 1>: fully_copy - <Audio 1> is reused 1:1 as the target video's complete final audio track." : ""].filter(Boolean).join("\n")}`,
+      detailed,
+      miniMaxH3OfficialSoundscape(segment),
+      miniMaxH3OfficialMusic(segment),
+    ].filter(Boolean).join("\n\n").trim();
+  }
+
   function assertValidMiniMaxH3FinalPrompt(prompt, segment, mode = miniMaxH3ModeForSegment(segment), options = {}) {
     const text = String(prompt || "").trim();
     const normalizedMode = normalizeMiniMaxH3Mode(mode);
     if (!text) throw new Error("The assembled MiniMax H3 prompt is empty.");
     assertMiniMaxH3ReferenceCapacity(segment, normalizedMode);
+    if (options.requireNativeSpeechDelivery
+      && miniMaxH3SettingsForSegment(segment).audio_mode === "built_in_audio"
+      && normalizeVideoType(segment?.performance_mode || state.videoType) === "speaking") {
+      const inlineDelivery = /<(?:pause|long pause|breath|inhale|exhale|catches breath|deep breath|laughs|chuckle|sighs|uh|stutter|gasp|coughs|clears throat|sniff|pant|pants|softer|mhm|phew|smacks lips|i|whisper|humming)>/i;
+      const missingDelivery = text.split(/(?=\[Shot\s+\d+\])/).find(shot => {
+        const dialogue = Array.from(shot.matchAll(/<d>([\s\S]*?)<\/d>/gi));
+        return dialogue.length && !dialogue.some(cue => inlineDelivery.test(cue[1]));
+      });
+      if (missingDelivery) {
+        const error = new Error("Built-in speech is missing inline delivery cues inside its dialogue. Choose phrase-level pauses, breathing, or emphasis from the scene and dialogue; an emotion header alone is incomplete. Preserve every spoken word.");
+        error.code = "MINIMAX_H3_SPEECH_DELIVERY_MISSING";
+        throw error;
+      }
+    }
+    if (normalizedMode === "reference_to_video" && miniMaxH3ReferenceCompositionLeak(text)) {
+      const error = new Error("Reference to Video cannot use a reference picture as the opening frame or composition. Choose the shot's framing and staging in the prompt; use pictures only for character appearance and environment.");
+      error.code = "MINIMAX_H3_REFERENCE_COMPOSITION_LEAK";
+      throw error;
+    }
     if (text.length > 7000) {
       const error = new Error(`The MiniMax H3 prompt is ${text.length} characters, exceeding the 7,000-character maximum by ${text.length - 7000}.`);
       error.code = "MINIMAX_H3_PROMPT_TOO_LONG";
@@ -1823,7 +2023,7 @@ export function createMiniMaxPrompt({
       error.promptLimit = 7000;
       throw error;
     }
-    if (isMiniMaxSingerAssignmentMode(segment) && String(segment?.lyric_performance_mode || "together") === "cue_map") {
+    if (!omitLyricsForSegment(segment) && isMiniMaxSingerAssignmentMode(segment) && String(segment?.lyric_performance_mode || "together") === "cue_map") {
       const cueMap = normalizeLyricCueMapForSegment(segment, undefined, { preserveBlank: true });
       const creativeHeader = ["text_to_video", "image_to_video"].includes(normalizedMode)
         ? "integrated_multimodal_description:"
@@ -1837,6 +2037,7 @@ export function createMiniMaxPrompt({
         .replace(/\\</g, "<")
         .replace(/\\>/g, ">")
         .replace(/\\+/g, "")
+        .replace(hasEmotionExpressionInput(segment, state) ? /<d>\s*\[[^\]]+\]/gi : /$^/g, "<d>[English]")
         .replace(/\s+/g, " ")
         .trim()
         .toLocaleLowerCase();
@@ -1975,7 +2176,7 @@ export function createMiniMaxPrompt({
     const dialogueOpenCount = (text.match(/<d>/g) || []).length;
     const dialogueCloseCount = (text.match(/<\/d>/g) || []).length;
     if (dialogueOpenCount !== dialogueCloseCount) throw new Error("The MiniMax H3 prompt contains an incomplete <d> dialogue or lyric tag.");
-    const invalidDialogue = Array.from(text.matchAll(/<d>([\s\S]*?)<\/d>/g)).find((match) => !/^\[[^\]\r\n]+\]\s+[^\r\n]+[.!?]\s*$/.test(match[1].trim()));
+    const invalidDialogue = Array.from(text.matchAll(/<d>([\s\S]*?)<\/d>/g)).find((match) => !/^\[[^\]\r\n]+\]\s+[^\r\n]+[.!?…]\s*$/.test(match[1].replace(/<[^>]+>/g, "").trim()));
     if (invalidDialogue) throw new Error("The MiniMax H3 prompt is not compliant: every <d> cue must include a [Language] tag and end with punctuation before </d>.");
     const finalShotLabel = `[Shot ${shotPlan[shotPlan.length - 1]?.number || 1}]`;
     const finalShotStart = creativeText.indexOf(finalShotLabel);
@@ -2032,7 +2233,7 @@ export function createMiniMaxPrompt({
       ].filter(Boolean).join("\n\n").trim();
       return assertValidMiniMaxH3FinalPrompt(prompt, segment, normalizedMode);
     }
-    const prompt = relabelRefmodPrompt(segment, normalizedMode, `detailed_description:\nThe target video is in a ${miniMaxH3OpeningStyle(segment)} music-video style.\n\n${creative}`.trim());
+    const prompt = miniMaxH3OfficialReferencePrompt(segment, normalizedMode, creative);
     return assertValidMiniMaxH3FinalPrompt(prompt, segment, normalizedMode);
   }
 
@@ -2105,6 +2306,7 @@ export function createMiniMaxPrompt({
       `Character motion speed: ${Number.isFinite(characterMotionSpeed) ? characterMotionSpeed : 4}/10.`,
       characterMotionGuidance || "Include physical character action appropriate to the selected character-motion speed.",
       cutPlan.instruction,
+      miniMaxH3SceneTimingInstruction(duration, cutPlan),
     );
     const cueShotContract = miniMaxH3CueShotContractText(segment, mode);
     if (cueShotContract) parts.push(cueShotContract);
@@ -2113,8 +2315,8 @@ export function createMiniMaxPrompt({
     }
     if (characterMotionSpeed >= 4) {
       parts.push(cueShotContract
-        ? "MANDATORY CHARACTER ACTION RULE: include at least one clear physical body action, gesture, step, or interaction with the set. Lip sync occurs only inside assigned vocal cue shots; instrumental cue shots must remain non-vocal."
-        : "MANDATORY CHARACTER ACTION RULE: include at least one clear physical body action, gesture, step, or interaction with the set in addition to visible singing and lip sync. Facial expression, blinking, breathing, and mouth movement alone do not satisfy character motion, but do not omit or suppress the required lip sync.");
+        ? "CHARACTER ACTION: use the scene beat and storyboard action at the selected energy within the available shot time. Lip sync occurs only inside assigned vocal cue shots; instrumental cue shots must remain non-vocal."
+        : "CHARACTER ACTION: combine the scene beat and storyboard action with the required singing or lip sync within the available shot time. Add optional gestures only when time remains.");
     }
     if (segment?.no_character_present) {
       parts.push(
@@ -2211,7 +2413,7 @@ export function createMiniMaxPrompt({
           + "In the finished prompt, convert permitted environmental observations into direct scene description without mentioning Attached Picture 1, inspiration, source imagery, or analysis. Renderer Image 1 is attached as Picture 2, Renderer Image 2 as Picture 3, and so on; use only the renderer Image N labels in the finished prompt.",
         );
       }
-      if (["reference_to_video", "image_reference_to_video"].includes(mode) && segment?.minimax_h3_use_scene_image_as_start_frame) {
+      if (mode === "image_reference_to_video" && segment?.minimax_h3_use_scene_image_as_start_frame) {
         const characterInfluence = miniMaxH3StartFrameCharacterInfluenceForSegment(segment);
         if (characterInfluence === "face_hair_only") {
           parts.push(
@@ -2254,7 +2456,9 @@ export function createMiniMaxPrompt({
     }
     const i2vTransition = miniMaxI2VTransitionPrompt(segment, mode, settings);
     if (i2vTransition) parts.push(i2vTransition);
-    return parts.join("\n\n");
+    parts.push(miniMaxH3LiteralSceneInstruction());
+    const context = parts.join("\n\n");
+    return omitLyricsForSegment(segment) ? lyricFreeContextForSegment(segment, mode, context) : context;
   }
 
   function miniMaxH3PromptVisionImages(segment, mode) {
@@ -2294,7 +2498,8 @@ export function createMiniMaxPrompt({
   }
 
   function miniMaxH3PromptVisionImagesForRunner(segment, mode) {
-    if ((state.textGemmaRunner || "builtin") === "builtin") return [];
+    if ((state.textGemmaRunner || "builtin") === "builtin"
+      && (normalizeMiniMaxH3Mode(mode) !== "image_reference_to_video" || isRefmodPipelineActive())) return [];
     return miniMaxH3PromptVisionImages(segment, mode);
   }
 
@@ -2476,7 +2681,7 @@ export function createMiniMaxPrompt({
         miniMaxH3OfficialMusic(segment),
       ].filter(Boolean).join("\n\n").trim();
     } else {
-      fixedPrompt = `detailed_description:\nThe target video is in a ${miniMaxH3OpeningStyle(segment)} music-video style.\n\n${emptyCreative}`.trim();
+      fixedPrompt = miniMaxH3OfficialReferencePrompt(segment, normalizedMode, emptyCreative);
     }
     // The RefMod pipeline adds each RefMod's label after the writer is done. A character's label is added in every
     // shot. A RefMod the shots never name (clothing, background, style) gets one short sentence. Both are reserved here,
@@ -2487,7 +2692,9 @@ export function createMiniMaxPrompt({
           ? (item.label.length + 1) * shotCount
           : item.label.length + 47), 0)
       : 0;
-    const fixedChars = fixedPrompt.length + refmodReserve;
+    const characterBindingReserve = normalizedMode === "image_reference_to_video" && !state.useStructuredOutputs && !isRefmodPipelineActive()
+      ? miniMaxH3CharacterReferenceBindings("", miniMaxH3CombinedSubjectPlan(segment, normalizedMode).subjects, true).length + 2 : 0;
+    const fixedChars = fixedPrompt.length + refmodReserve + characterBindingReserve;
     return {
       hardLimit,
       targetLimit,

@@ -1,3 +1,4 @@
+import { sceneDefaultTargets } from "./defaults_actions.mjs";
 import { assignLabels, composeRefmodItems, isRefmodCard, refmodCardFields } from "../music_video_builder/refmod_labels.mjs";
 import { postJson } from "./api.mjs";
 import { createToast, escapeHtml, makeButton, makeInput, makeTextarea, tagsHtml } from "./controls.mjs";
@@ -300,12 +301,19 @@ export function createStoryboardReferences({ renderTable, state }) {
     for (const scene of scenes || []) {
       let location = scene?.location_ref;
       if ((!location || typeof location !== "object") && String(scene?.setting || "").trim()) {
-        location = {
-          id: "",
-          name: String(scene.setting || "").trim(),
-          description: String(scene.setting || "").trim(),
-          image: { path: "", data: "", name: "" },
-        };
+        const setting = String(scene.setting).trim();
+        location = locationByName.get(setting.toLowerCase().replace(/\s+/g, " "))
+          || refs.locations.find((item) => String(item.description || "").trim() === setting);
+        if (!location) {
+          let number = refs.locations.length + 1;
+          while (locationByName.has(`location ${number}`)) number += 1;
+          location = {
+            id: "",
+            name: `Location ${number}`,
+            description: setting,
+            image: { path: "", data: "", name: "" },
+          };
+        }
       }
     if (location && typeof location === "object" && String(location.id || location.name || location.description || "").trim()) {
       const locationNameKey = String(location.name || scene.setting || "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -426,7 +434,7 @@ export function createStoryboardReferences({ renderTable, state }) {
     return ref;
   }
 
-  function applyVideoStyle({ overwrite = false } = {}) {
+  function applyVideoStyle({ overwrite = false, selectedOnly = false } = {}) {
     if (state.mode !== "image_to_video_prep") {
       createToast("Video style is only available in Video Prep.");
       return;
@@ -440,8 +448,10 @@ export function createStoryboardReferences({ renderTable, state }) {
       createToast("Type the exact custom style wording first.");
       return;
     }
+    const targets = sceneDefaultTargets(state, selectedOnly, createToast);
+    if (!targets) return;
     let changed = 0;
-    state.scenes.forEach((scene) => {
+    targets.forEach(({ scene }) => {
       if (!storyboardSceneSupportsVideoStyle(scene)) return;
       if (!overwrite && String(scene.video_style || "").trim()) return;
       scene.video_style = value;

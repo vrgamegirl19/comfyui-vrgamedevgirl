@@ -79,10 +79,13 @@ class ReferenceImageTests(unittest.TestCase):
         session = {"flux_reference_builder": {"subject_count": 1, "subjects": [{"id": "s", "name": "Character 1", "image": {}}]}}
         self.assertEqual(si.render_reference_image_paths(session, _segment("scene-1"), "reference_to_video", 0), [])
 
-    def test_scene_image_use_choice_enables_the_start_frame_like_the_flag(self):
+    def test_reference_mode_ignores_legacy_scene_start_flags_and_choices(self):
         segment = _segment("scene-1", minimax_h3_scene_image_use="exact_start_frame", approved_image_path="C:/img/s1.png")
-        paths = si.render_reference_image_paths(_session(), segment, "reference_to_video", 0)
-        self.assertEqual(paths[0], "C:/img/s1.png")
+        for legacy_flag in (False, True):
+            segment["minimax_h3_use_scene_image_as_start_frame"] = legacy_flag
+            paths = si.render_reference_image_paths(_session(), segment, "reference_to_video", 0)
+            self.assertEqual(paths[0], "C:/refs/ava.png")
+            self.assertNotIn("C:/img/s1.png", paths)
 
     def test_image_to_video_uses_only_the_selected_scene_image(self):
         segment = _segment("scene-1", image_history=["C:/img/a.png", "C:/img/b.png"], image_history_index=1)

@@ -158,6 +158,7 @@ export function createStoryLayer({
     refreshSetupPanelSummaries();
   }
   function notifyStoryboardDefaultsChanged() {
+    if (state.applyingDefaultsPreset) return;
     if (!state.onStoryLayerChanged) return;
     state.onStoryLayerChanged({
       ...storyboardDefaultsPayload(),

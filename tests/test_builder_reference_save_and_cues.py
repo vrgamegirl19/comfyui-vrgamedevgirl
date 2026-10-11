@@ -1,4 +1,5 @@
 import ast
+import hashlib
 import importlib.util
 import json
 import os
@@ -32,6 +33,7 @@ def load_save_helpers():
     }
     functions = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in names]
     namespace = {
+        "hashlib": hashlib,
         "json": json,
         "os": os,
         "re": re,
@@ -44,6 +46,29 @@ def load_save_helpers():
 
 
 class BuilderReferenceSaveAndCueTests(unittest.TestCase):
+    def test_long_reference_names_save_without_collisions(self):
+        helpers = load_save_helpers()
+        names = ["A detailed location description " * 20 + ending for ending in ("east", "west")]
+        refs = {
+            "subjects": [{"name": "Singer", "description": "Lead singer"}],
+            "locations": [
+                {"id": f"loc_{index}", "name": name, "description": f"Description {index}"}
+                for index, name in enumerate(names)
+            ],
+        }
+        with tempfile.TemporaryDirectory() as root:
+            folder = os.path.join(root, "project_" + "x" * 80)
+            manifest = helpers["_save_reference_descriptions"](folder, {"flux_reference_builder": refs})
+            locations = Path(folder) / "subject_location" / "location"
+            files = sorted(locations.glob("*.txt"))
+            self.assertEqual(len(files), 2)
+            self.assertTrue(all(len(path.stem) <= 120 and len(str(path)) + 14 <= 240 for path in files))
+            self.assertEqual({path.read_text().strip() for path in files}, {"Description 0", "Description 1"})
+            self.assertTrue((Path(folder) / "subject_location" / "subject" / "Singer.txt").is_file())
+            self.assertEqual(json.loads(Path(manifest).read_text(encoding="utf-8")), refs)
+            helpers["_save_reference_descriptions"](folder, {"flux_reference_builder": refs})
+            self.assertEqual(sorted(locations.glob("*.txt")), files)
+
     def test_reference_manifest_context_and_mappings_round_trip(self):
         helpers = load_save_helpers()
         refs = {

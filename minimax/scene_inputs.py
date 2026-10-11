@@ -313,7 +313,7 @@ def reference_choices(session: Dict[str, Any], segment: Dict[str, Any], index: i
     available = [item for item in catalog if item["kind"] != "extra" or item["key"] in forced]
     catalog_keys = {item["key"] for item in catalog}
     start_frame_reserved = (
-        mode == "reference_to_video" and _uses_scene_image_as_start_frame(segment) and bool(segment_image_path(segment))
+        mode == "image_reference_to_video" and _uses_scene_image_as_start_frame(segment) and bool(segment_image_path(segment))
     )
     max_choices = max(0, MAX_REFERENCE_IMAGES - (1 if start_frame_reserved else 0))
     mapped = _mapped_keys(refs, segment, index, catalog_keys)
@@ -390,7 +390,7 @@ def ordered_reference_items(session: Dict[str, Any], segment: Dict[str, Any], mo
     """Mirror ``miniMaxOrderedImageReferenceItemsForSegment``: start frame first, then mapped references, max 9."""
     refs = _builder(session)
     ordered: List[Dict[str, Any]] = []
-    if mode in _IMAGE_REFERENCE_MODES and _uses_scene_image_as_start_frame(segment):
+    if mode == "image_reference_to_video" and _uses_scene_image_as_start_frame(segment):
         start = segment_image_path(segment)
         if start:
             ordered.append({"key": "scene:start_frame", "kind": "start_frame", "label": "Scene start frame", "image": {"path": start}})

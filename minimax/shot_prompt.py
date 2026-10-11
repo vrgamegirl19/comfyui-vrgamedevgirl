@@ -76,11 +76,56 @@ def cut_plan_instruction(cut_plan: Dict[str, Any]) -> str:
     )
 
 
+def literal_scene_instruction() -> str:
+    """Require natural action-led prose with clear actors and placement."""
+    return (
+        "LITERAL SCENE CLARITY — MANDATORY: Write natural, fluent shot prose that H3 can follow literally. Lead "
+        "physical action with the person doing it; use their possessive for a body part or worn item and clear "
+        "pronouns afterward. For example: '<Subject 1> steps past the ground-level camera, her boot briefly crossing "
+        "the foreground.' Describe how the camera films that same action instead of independently placing a body part "
+        "in the foreground and its owner elsewhere. A close-up identifies whose body part is framed; describe "
+        "cropping only when needed to understand the shot. Keep ownership and spatial checks in your reasoning; "
+        "finished sentences describe visible action, not explanations of anatomy or routine clothing attachment. "
+        "Rewrite ambiguous scene-card or image-prompt wording into ordinary action-led sentences rather than copying "
+        "it. Keep character, camera and prop positions consistent from the opening through the ending. Place loose "
+        "props explicitly and use only objects supported by this scene's directions or mapped references. Carry an "
+        "object from an adjacent scene only when the current scene explicitly does so. Before returning, read the "
+        "shot by itself: every action has an actor, every item has a clear owner or placement, and the camera "
+        "movement fits the same physical action. Resolve uncertainty with clear verbs and possessives, not "
+        "explanatory qualifiers. Return only the requested shot JSON with natural visual prose."
+    )
+
+
+def scene_timing_instruction(duration: float, cut_plan: Dict[str, Any]) -> str:
+    """Give the creative LLM the real scene and per-shot action budgets."""
+    exact = round(float(duration), 3)
+    plan = shot_plan(cut_plan)
+    windows = []
+    for index, shot in enumerate(plan):
+        start = float(shot["time"])
+        end = float(plan[index + 1]["time"]) if index + 1 < len(plan) else exact
+        available = round(max(0.0, end - start), 3)
+        windows.append(f"Shot {index + 1}: {start:g}–{end:g}s ({available:g} seconds available).")
+    return "\n".join([
+        f"SCENE TIMING — MANDATORY: The complete scene lasts exactly {exact:g} seconds.",
+        *windows,
+        "Use the scene beat and storyboard directions together to stage only what can physically finish within each "
+        "shot's available time. Reserve time for the required singing or speaking and any supplied entrance, reveal, "
+        "or transition. For a brief shot, express the essential beat through one economical continuous action and the "
+        "requested camera move; let performance and camera movement happen together where physically possible. Keep "
+        "optional gestures and reactions only when time remains. Do not invent sequential steps, pivots, glances, or "
+        "framing changes to fill a checklist. Preserve explicitly requested action and exact vocal words; simplify "
+        "optional choreography rather than rushing required performance. Motion speed sets the energy of the chosen "
+        "movement, not the number of actions. Before returning, check that the opening, action, camera travel, and "
+        "ending fit the available time without an extra cut, rushed final beat, or action continuing beyond the shot.",
+    ])
+
+
 def motion_energy_text(camera_speed: float, character_speed: float) -> str:
-    camera = "The camera is fast and energetic: whips, orbits, push-ins, and quick tracking." if camera_speed >= 7 else (
+    camera = "The requested camera movement is fast and energetic." if camera_speed >= 7 else (
         "The camera moves at a steady pace with a clear direction." if camera_speed >= 4 else "The camera moves slowly, or holds a locked frame.")
-    character = "The performers are high energy: pop, fast motion, jumps, spins, runs, dance hits, and quick reactions." if character_speed >= 7 else (
-        "The performers use steady physical action: walking, turning, reaching, and set interaction." if character_speed >= 4
+    character = "The requested performer action has high energy and decisive physical movement." if character_speed >= 7 else (
+        "The requested performer action has steady physical energy." if character_speed >= 4
         else "The performers use small movements and held poses with life detail.")
     return f"{camera} {character}"
 
@@ -134,7 +179,7 @@ def normalize_description(text: str) -> str:
     clean = re.sub(r"(?<!<)\bSubject\s+(\d+)\b(?!\s*>)", r"<Subject \1>", clean, flags=re.I)
     clean = re.sub(r"\bAudio\s+1\b", "<Audio 1>", clean)
     clean = re.sub(r"<+Audio 1>+", "<Audio 1>", clean)
-    clean = re.sub(r"\bImage\s+\d+\b[,.]?", "", clean, flags=re.I)
+    clean = re.sub(r"\bImage\s+(\d+)\b", r"<Picture \1>", clean, flags=re.I)
     if clean.count('"') % 2:
         clean = clean.replace('"', "")  # an unpaired quote is LLM noise, not a quotation
     return re.sub(r"\s+", " ", clean).strip()
@@ -284,7 +329,7 @@ def reference_frame(items: List[Dict[str, Any]], cut_plan: Dict[str, Any], style
         name = "environment" if kind == "location" else re.sub(r"^(?:the\s+)+", "the ", raw_name, flags=re.I)
         noun = name if kind in ("subject", "extra", "location") else f"{name} reference"
         phrase = noun if re.match(r"^(?:the|a|an)\s+", noun, re.I) else f"the {noun}"
-        purpose = _PURPOSE.get(kind, "visual reference")
+        purpose = str(item.get("purpose") or _PURPOSE.get(kind, "visual reference"))
         description = _compact_description(item.get("description"), 240)
         if kind == "subject" and number == 1:
             definitions.append(f"{label} is {phrase} in {picture}; {picture} is the visual authority for {purpose}.")
@@ -343,6 +388,13 @@ def validate_prompt(prompt: str, cut_plan: Dict[str, Any]) -> str:
     text = str(prompt or "").strip()
     if not text:
         raise ShotPromptError("The assembled MiniMax H3 prompt is empty.", "EMPTY_PROMPT")
+    anchor_patterns = (
+        r"\b(?:in|from|matching|copying|reproducing|preserving|using|following)\s+(?:the\s+)?(?:exact\s+)?(?:composition|framing|camera\s+angle|pose)\s+(?:of|from|in)\s+<Picture\s+\d+>",
+        r"<Picture\s+\d+>\s+(?:is|defines|controls|sets)\s+(?:the\s+)?(?:exact\s+)?(?:first|start|opening)\s+(?:frame|composition|framing)",
+        r"\b(?:begin|begins|start|starts|open|opens)\s+(?:exactly\s+)?(?:from|on|with)\s+<Picture\s+\d+>",
+    )
+    if any(re.search(pattern, text, re.I) for pattern in anchor_patterns):
+        raise ShotPromptError("Reference to Video cannot use a reference picture as the opening frame or composition.", "MINIMAX_H3_REFERENCE_COMPOSITION_LEAK")
     if len(text) > HARD_LIMIT:
         raise ShotPromptError(f"The MiniMax H3 prompt is {len(text)} characters, over the {HARD_LIMIT} maximum by {len(text) - HARD_LIMIT}.",
                               "MINIMAX_H3_PROMPT_TOO_LONG", len(text))
@@ -384,6 +436,42 @@ def reference_labels(items: List[Dict[str, Any]]) -> List[Dict[str, str]]:
             "name": str(item.get("label") or item.get("name") or "").strip(),
         })
     return labels
+
+
+def character_reference_bindings(creative: str, items: List[Dict[str, Any]]) -> str:
+    """Keep used character/picture assignments outside the shot action."""
+    bindings = []
+    number = 0
+    for picture, item in enumerate(items, start=1):
+        kind = str(item.get("kind") or "")
+        if kind in ("start_frame", "end_frame"):
+            continue
+        number += 1
+        label = f"<Subject {number}>"
+        if kind not in ("subject", "extra") or label not in creative:
+            continue
+        purpose = str(item.get("purpose") or _PURPOSE.get(kind, "character appearance reference")).split(";")[0]
+        purpose = re.sub(r"\s+reference(?:\s+only)?(?:\s+for.*)?$", "", purpose, flags=re.I)
+        bindings.append(f"Use <Picture {picture}> for {label}'s {purpose}.")
+    return " ".join(bindings)
+
+
+def compact_reference_prompt(prompt: str, items: List[Dict[str, Any]]) -> str:
+    """Bind pictures within the shot prose, without a reference-definition paragraph."""
+    labels = reference_labels(items)
+    blocks = re.split(r"(?=\[Shot\s+\d+\])", str(prompt or ""))
+    for index, block in enumerate(blocks):
+        if not re.match(r"\[Shot\s+\d+\]", block):
+            continue
+        text = block.strip()
+        for item in labels:
+            if item["kind"] != "location":
+                pattern = re.escape(item["label"]) + r"\s*\(([^)]*)\)"
+                text = re.sub(pattern, lambda m: m.group(0) if re.fullmatch(r"\s*S\d+\s*", m.group(1), re.I) else item["label"], text)
+            elif item["picture"] not in text:
+                text += f" The action takes place in the environment from {item['picture']}."
+        blocks[index] = text
+    return "\n\n".join(block.strip() for block in blocks if block.strip())
 
 
 def lyric_lines(lyric_text: str) -> List[str]:
@@ -448,7 +536,16 @@ def ensure_quoted_lyrics(descriptions: List[str], lyric_text: str, performer: st
     """
     chunks = lyric_chunks(lyric_text, len(descriptions))
     result = []
+
+    def normalize(value: str) -> str:
+        return re.sub(r"[^\w']+", " ", value.lower().replace("’", "'")).strip()
+
     for description, chunk in zip(descriptions, chunks):
+        tagged_lyrics = re.findall(r"<d>\s*\[[^\]]+\]\s*(.*?)</d>", description, re.I | re.S)
+        normalized_chunk = normalize(chunk)
+        if normalized_chunk and any(normalized_chunk in normalize(re.sub(r"<[^>]+>", "", tagged)) for tagged in tagged_lyrics):
+            result.append(description)
+            continue
         if not chunk or _has_quoted_lyric(description, chunk):
             result.append(description)
             continue
@@ -745,27 +842,29 @@ def build_shot_task(
         cut_plan_instruction(cut_plan),
         f"MANDATORY CHARACTER BUDGET: The combined text inside all {len(plan)} JSON description values must not exceed {budget['shot_chars']} "
         f"characters total (about {per_shot} per shot). Stay within this combined limit; be concise without omitting required subjects, actions, or camera direction.",
-        "SHOT FORMAT — MANDATORY: Write each shot as 2 to 4 complete sentences, about 60 to 110 words, in this order. "
+        "SHOT FORMAT — MANDATORY: Write concise complete sentences, with length and action complexity suited to the available shot time, in this order. "
         "1) Camera: the opening framing, one named camera move with its direction and speed, and the ending framing. "
         "2) Subject action: each person in the cast does their own continuous physical action, written by what the body does. "
-        f"3) Life detail: one or two small human movements placed inside the action, for example {'; '.join(life_movements(character_speed, seed))}. "
+        "3) Acting detail: include only context-supported expression or reaction that fits naturally inside the existing action and available time. "
         "4) Light and set: one short line using only the mapped location's own light and objects. "
         "Describe only what the camera sees. Show emotion only as visible movement. Do not use feeling words such as feel, grief, longing, memory, soul, or emotional. "
         "Write complete grammatical prose, not notes, labels, or fragments. "
         "Character appearance is already carried by the reference images and the Builder. Do not list clothing, hair, accessories, jewelry, or facial features. "
         "Mention a garment or feature only when it moves or reacts in the action, in one brief clause at most.",
         f"MOTION ENERGY — MANDATORY: {motion_energy_text(camera_speed, character_speed)} This scene is {exact} seconds long. "
-        "Fill the full shot length with continuous action at this energy. Do not slow down or hold still.",
+        "Apply this energy to the requested action within the available time; speed does not require additional actions.",
+        scene_timing_instruction(duration, cut_plan),
     ]
     cut_times = [s["timecode"] for s in plan[1:]]
     parts.append(f"Builder cut times for your planning only: {', '.join(cut_times)}. Do not write these times." if cut_times
                  else "Continuous shot: return one description only.")
     if cast:
-        first = cast[0]
         lines = [
-            f'CAST FOR THIS SCENE — MANDATORY: Character names in the scene text below have been replaced by these labels. Refer to every character in the shot text by label, '
-            f'writing the label followed by the assigned name in parentheses on its first mention in each shot, for example "{first["label"]} ({first["name"] or "assigned name"})", '
-            "then the label alone. Never refer to a character only by name or pronoun."
+            "CAST FOR THIS SCENE — MANDATORY: Character names in the scene text below have been replaced by these labels. "
+            "Identify each character by its subject label on first mention in each shot, then use natural pronouns and possessives when the actor is unambiguous. "
+            "For a single character, continue with she/he/they and her/his/their rather than repeating the label for every action. "
+            "With multiple characters, repeat a label when the actor or speaker changes or a pronoun would be ambiguous. "
+            "Do not append character names or picture origins in parentheses."
         ]
         for item in cast:
             role = "does not sing, speak, or lip sync; acts and reacts silently with a relaxed closed mouth" if (visual_only or not lyric_text) \
@@ -813,6 +912,43 @@ def build_shot_task(
     pictures = [f"{l['picture']}" for l in labels]
     if pictures:
         parts.append(f"Available renderer reference labels: {', '.join(pictures)}. Do not define labels in the shot text.")
+        parts.append("Renderer picture assignments for planning only:\n" + "\n".join(
+            f"{item['picture']}: {item['label']} ({item['name']}), {item['kind']} reference." for item in labels))
+    if mode_label == "Reference to Video":
+        parts.append(
+            "REFERENCE SCENE GROUNDING — MANDATORY: Generate a complete new scene from the assigned character and environment pictures. "
+            "Character pictures supply identity and appearance; environment pictures supply the set. The prompt determines opening framing, camera angle, staging, pose, composition, and action. Never copy a reference picture's composition, framing, camera angle, or pose as the opening shot. A separately enabled continuation task follows its own previous-frame rules. "
+            "A saved image prompt is a proposed scene idea, not proof that its props, poses, or layout exist in a supplied picture. "
+            "Use props supported by the mapped references or current explicit scene directions; omit unsupported carryover props. "
+            "When a requested action needs a new prop, introduce its appearance and physical placement before using it, rather than an unexplained 'the rusted worktable'. "
+            "COHERENT SHOT WRITING: Treat the story beat and scene card as story context to translate into a self-contained, physically coherent shot, "
+            "not prose to splice into a camera template. Introduce each prop, its owner or containing object, and its placement before any action or camera instruction refers to it. "
+            "For a coat-and-zipper beat, establish 'a battered coat lies across a rusted worktable, its zipper caught half-open' before referring to 'the zipper'. "
+            "Establish any character's position relative to those objects before describing interaction. Write the opening setup, action, camera movement, "
+            "and final framing in chronological order; do not describe the camera's ending before establishing its target. "
+            "Ensure the final framing is physically possible from the stated character and prop positions. Preserve the beat's intended visual emphasis and endpoint; "
+            "do not replace a prop-focused ending with a generic singing close-up or invent prop handling merely because a singer is present. "
+            "Integrate a required performance only through staging consistent with the scene directions. Before returning the shot, reread it independently "
+            "of the beat and resolve every unexplained object, gesture, spatial relationship, and camera target. "
+            "STAGING AND ACTION OWNERSHIP: Establish where each character stands and where any handled prop is relative to them. "
+            "Make the character the actor: '<Subject 1> grips the zipper pull with her gloved right hand', not 'a studded glove grips the zipper'. "
+            "Attribute every gesture and facial reaction to that character; use '<Subject 1> looks down at the zipper, then back toward the camera', not unowned 'eyes flick down and back'. "
+            "Do not invent gloves or accessories. Describe the environment as a physical setting around the character, with concrete spatial and lighting relationships; "
+            "a picture label identifies the environment reference, not a moving background object. State each singing/audio synchronization direction once, integrated into the action. "
+            "LOCATION REFERENCE: Establish the physical setting and bind the location picture to that setting. "
+            "Then describe the camera independently. Derive framing, focus, camera motion, staging, and how much of the location is visible "
+            "from this scene's story beat, storyboard details, scene-card directions, and selected camera settings. "
+            "The location picture supplies the environment's visual appearance; the scene directions determine how it is filmed. "
+            "Identify each character by its subject label on first mention in each shot, then use natural pronouns and possessives when the actor is unambiguous. "
+            "For a single character, continue with she/he/they and her/his/their rather than repeating the label for every action. "
+            "With multiple characters, repeat a label when the actor or speaker changes or a pronoun would be ambiguous. "
+            "Do not append character names or picture origins in parentheses. "
+            "Do not add a standalone reference-definition paragraph to the shot description."
+        )
+    parts.append(literal_scene_instruction())
+    if audio_mode != "built_in_audio" and not visual_only and not no_character:
+        parts.append("SUPPLIED-AUDIO SINGING: Include the assigned singer and Audio 1 synchronization cue once, only during audible vocals. "
+                     "Do not describe mouth, lip or jaw movement or ask for singing from the first frame. Preserve any supplied vocal timing; introductory silence remains non-vocal.")
     if continuation:
         # Last, where the model weighs it most. The vocal rule applies only when the scene sings.
         has_vocals = not (visual_only or no_character or not lyric_text)

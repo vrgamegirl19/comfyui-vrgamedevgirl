@@ -1067,6 +1067,7 @@ export function createLyricReview({
       segment.no_character_present = noCharacterPresent;
       segment.facial_performance = String(row.querySelector("[data-review-facial-performance='1']")?.value || "").trim();
       segment.facial_performance_custom = String(row.querySelector("[data-review-facial-performance-custom='1']")?.value || "").trim();
+      segment.emotion_expression_tags = String(row.querySelector("[data-review-emotion-expression-tags='1']")?.value || "").trim();
       const checkedSingerInputs = [...row.querySelectorAll("[data-review-singer-choice='1']")]
         .filter((input) => !instrumental && !broll && !noCharacterPresent && input.checked);
       segment.lyric_singers = checkedSingerInputs
@@ -1138,6 +1139,7 @@ export function createLyricReview({
       target.no_character_present = Boolean(source.no_character_present);
       target.facial_performance = source.facial_performance || "";
       target.facial_performance_custom = source.facial_performance_custom || "";
+      target.emotion_expression_tags = source.emotion_expression_tags || "";
       target.i2v_notes = source.i2v_notes || "";
       return target;
     };
@@ -1492,7 +1494,18 @@ export function createLyricReview({
       facialCustom.value = String(segment.facial_performance_custom || "");
       facialCustom.placeholder = "Custom facial text...";
       facialCustom.style.cssText = "width:100%;box-sizing:border-box;min-height:42px;resize:vertical;border:1px solid #3f3f46;border-radius:6px;background:#09090b;color:#f8fafc;padding:8px;font-size:12px;line-height:1.35;min-width:0;";
-      facialPanel.append(facialSelect, facialCustom);
+      const emotionTags = document.createElement("textarea");
+      emotionTags.dataset.reviewEmotionExpressionTags = "1";
+      emotionTags.value = String(segment.emotion_expression_tags || "");
+      emotionTags.placeholder = "Emotion/Expression Tags: Angry; Sad; Start happy, then end sad";
+      emotionTags.setAttribute("aria-label", "Emotion/Expression Tags");
+      emotionTags.title = "The LLM interprets this direction together with the lyrics. Overrides the facial preset for this scene.";
+      emotionTags.style.cssText = facialCustom.style.cssText;
+      const emotionLabel = document.createElement("label");
+      emotionLabel.textContent = "Emotion/Expression Tags";
+      emotionLabel.style.cssText = "display:flex;flex-direction:column;gap:4px;font-size:12px;";
+      emotionLabel.append(emotionTags);
+      facialPanel.append(facialSelect, facialCustom, emotionLabel);
       instrumental.input.onchange = updateDisabled;
       broll.input.onchange = updateDisabled;
       noCharacter.input.onchange = updateDisabled;

@@ -28,7 +28,7 @@ export function createBeatCalibration({
   beatCalibrationFpsInput, beatCalibrationGridType, beatCalibrationGridTypeHint, beatCalibrationInstruction,
   beatCalibrationTimecodeGrid, beatCalibrationTimecodeHint, beatCalibrationTimecodeInput,
   beatCalibrationWizard, beatMarkersButton, currentGlobalTime, enforceAudioTimelineEnd,
-  loadedGlobalAudioDuration, lyricNoteButton, node, pauseTimelineForEditing, projectInput, pushHistory,
+  loadedGlobalAudioDuration, lyricNoteButton, emotionTagButton, node, pauseTimelineForEditing, projectInput, pushHistory,
   render, sceneNoteButton, setGlobalPlaybackTime, state, videoNoteButton,
 }) {
   function showBeatMarkersIfAvailable() {
@@ -560,6 +560,11 @@ export function createBeatCalibration({
     lyricNoteButton.style.borderColor = state.showTimelineLyricNotes ? "#0891b2" : "#3f3f46";
     lyricNoteButton.style.color = state.showTimelineLyricNotes ? "#cffafe" : "#f4f4f5";
     lyricNoteButton.textContent = state.showTimelineLyricNotes ? "Hide Line Notes" : "+ Line Note";
+    emotionTagButton.style.display = state.videoType === "speaking" ? "" : "none";
+    emotionTagButton.textContent = state.showTimelineEmotionTags ? "Hide Emotion Tags" : "+ Emotion Tag";
+    emotionTagButton.style.background = state.showTimelineEmotionTags ? "#713f12" : "#27272a";
+    emotionTagButton.style.borderColor = state.showTimelineEmotionTags ? "#ca8a04" : "#3f3f46";
+    emotionTagButton.style.color = state.showTimelineEmotionTags ? "#fef3c7" : "#f4f4f5";
   }
 
   return {

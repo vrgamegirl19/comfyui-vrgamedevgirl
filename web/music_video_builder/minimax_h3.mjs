@@ -496,7 +496,7 @@ export function selectMiniMaxH3PassSettings(settings, passMode) {
     aspect_ratio: current.aspect_ratio,
     resolution_preset: current.resolution_preset,
     megapixels: current.megapixels,
-    video_mode: isI2V ? "image_to_video" : "reference_to_video",
+    video_mode: normalizeMiniMaxH3Mode(current.video_mode),
     render_pass: isI2V && passMode === "three_pass" ? "two_pass" : passMode,
     i2v_pass_settings_version: 1,
     ref_pass_profiles: isI2V ? ref_pass_profiles : profiles,

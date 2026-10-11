@@ -1,3 +1,4 @@
+import { sceneDefaultTargets } from "./defaults_actions.mjs";
 import { createToast, makeButton, replaceLabeledPlanningLine } from "./controls.mjs";
 import { FACIAL_PERFORMANCE_PRESETS, PERFORMANCE_STYLE_PRESETS } from "./performance_presets.mjs";
 import {
@@ -305,7 +306,7 @@ export function createSettingsPanel({
     refreshSetupPanelSummaries();
   }
 
-  function applyCameraFlow({ overwrite = false } = {}) {
+  function applyCameraFlow({ overwrite = false, selectedOnly = false } = {}) {
     if (state.mode !== "image_to_video_prep") {
       createToast("Auto camera flow is only available in Video Prep.");
       return;
@@ -316,8 +317,10 @@ export function createSettingsPanel({
       return;
     }
     let previousMotion = "";
+    const targets = sceneDefaultTargets(state, selectedOnly, createToast);
+    if (!targets) return;
     let changed = 0;
-    state.scenes.forEach((scene, index) => {
+    targets.forEach(({ scene, index }) => {
       const entry = cameraFlowEntryForScene(profileKey, index, previousMotion);
       if (!entry) return;
       const hadShot = Boolean(String(scene.shot_type || "").trim());
@@ -340,7 +343,7 @@ export function createSettingsPanel({
     }
   }
 
-  function applyImageShotFlow({ overwrite = false } = {}) {
+  function applyImageShotFlow({ overwrite = false, selectedOnly = false } = {}) {
     if (state.mode === "image_to_video_prep") {
       createToast("Still shot flow is only available in Image Prep.");
       return;
@@ -350,8 +353,10 @@ export function createSettingsPanel({
       createToast("Still shot flow is off.");
       return;
     }
+    const targets = sceneDefaultTargets(state, selectedOnly, createToast);
+    if (!targets) return;
     let changed = 0;
-    state.scenes.forEach((scene, index) => {
+    targets.forEach(({ scene, index }) => {
       const sequence = imageShotFlowPresetForMode(profileKey).sequence || [];
       const shot = sequence[index % sequence.length] || "";
       if (!shot) return;
@@ -367,7 +372,7 @@ export function createSettingsPanel({
     }
   }
 
-  function applyImageAesthetic({ overwrite = false } = {}) {
+  function applyImageAesthetic({ overwrite = false, selectedOnly = false } = {}) {
     if (state.mode === "image_to_video_prep") {
       createToast("Image aesthetic is only available in Image Prep.");
       return;
@@ -378,8 +383,10 @@ export function createSettingsPanel({
       createToast("Choose an image aesthetic first.");
       return;
     }
+    const targets = sceneDefaultTargets(state, selectedOnly, createToast);
+    if (!targets) return;
     let changed = 0;
-    state.scenes.forEach((scene) => {
+    targets.forEach(({ scene }) => {
       const existing = String(scene.motion_summary || "");
       const hasAesthetic = existing.split(/\r?\n/).some((line) => line.trim().toLowerCase().startsWith("image aesthetic:"));
       if (!overwrite && hasAesthetic) return;
@@ -394,14 +401,16 @@ export function createSettingsPanel({
     }
   }
 
-  function applyPerformanceStyle({ overwrite = false } = {}) {
+  function applyPerformanceStyle({ overwrite = false, selectedOnly = false } = {}) {
     const value = String(state.performanceStyle || "").trim();
     if (!value) {
       createToast(isIdLoraMode ? "Choose a global acting style first." : "Choose a global performance style first.");
       return;
     }
+    const targets = sceneDefaultTargets(state, selectedOnly, createToast);
+    if (!targets) return;
     let changed = 0;
-    state.scenes.forEach((scene) => {
+    targets.forEach(({ scene }) => {
       if (!overwrite && String(scene.performance_style || "").trim()) return;
       scene.performance_style = value;
       changed += 1;
@@ -414,15 +423,17 @@ export function createSettingsPanel({
     }
   }
 
-  function applyFacialPerformance({ overwrite = false } = {}) {
+  function applyFacialPerformance({ overwrite = false, selectedOnly = false } = {}) {
     const value = String(state.facialPerformance || "").trim();
     const custom = String(state.facialPerformanceCustom || "").trim();
     if (!value && !custom) {
       createToast("Choose a global facial performance preset or enter custom facial text first.");
       return;
     }
+    const targets = sceneDefaultTargets(state, selectedOnly, createToast);
+    if (!targets) return;
     let changed = 0;
-    state.scenes.forEach((scene) => {
+    targets.forEach(({ scene }) => {
       const hasPreset = String(scene.facial_performance || "").trim();
       const hasCustom = String(scene.facial_performance_custom || "").trim();
       if (!overwrite && (hasPreset || hasCustom)) return;

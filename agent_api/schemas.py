@@ -21,6 +21,8 @@ class ProjectSettings:
     image_model_mode: str = "zimage"
     continuity_mode: str = "off"
     timing_frozen: bool = False
+    omit_lyrics_from_video_prompts: bool = False
+    use_structured_outputs: bool = False
     auto_save_enabled: bool = True
     automatic_memory_cleanup: bool = True
     scene_render_wait_hours: float = 2.0
@@ -113,6 +115,8 @@ def extract_effective_settings(session: Dict[str, Any]) -> Dict[str, Any]:
         continuity_mode=str(session.get("continuity_mode") or "off"),
         timing_frozen=bool(session.get("timing_frozen", False)),
         auto_save_enabled=bool(session.get("auto_save_enabled", True)),
+        omit_lyrics_from_video_prompts=bool(session.get("omit_lyrics_from_video_prompts", False)),
+        use_structured_outputs=bool(session.get("use_structured_outputs", False)),
         automatic_memory_cleanup=bool(session.get("automatic_memory_cleanup", True)),
         scene_render_wait_hours=float(session.get("scene_render_wait_hours", 2.0)),
     )

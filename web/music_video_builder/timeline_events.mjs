@@ -13,7 +13,7 @@ export function wireTimelineControls({
   deleteAllTimelineVideos, deleteAllTimelineVideosButton, deleteSegment, deleteSegmentButton,
   enforceAudioTimelineEnd, ensureAutoBpmForCalibration, freezeTimingControl,
   ensureCapCutBeatsForCalibration, ensureGlobalTimelineAudioSource, globalAudioMuteButton, globalScrub,
-  isTimelinePlaying, lyricNoteButton, multiSelectButton, multiSelectHintButton, openBeatCalibrationWizard,
+  isTimelinePlaying, lyricNoteButton, emotionTagButton, multiSelectButton, multiSelectHintButton, openBeatCalibrationWizard,
   openMultiSelectChooser, pauseAllAudio, playbackDuration, playbackSegmentAtTime, playButton, playhead,
   playSceneAudioFrom, playStart, previewEmpty, previewStage, previewVideo, pushHistory, reloadBeatMarkersFromAudio, render,
   renderBeatCalibrationWizard, sceneAudio, sceneListPane, sceneNoteButton, seekAudioWhenReady,
@@ -184,6 +184,15 @@ export function wireTimelineControls({
     syncLyricNoteControls();
     render();
     autoSaveSessionQuiet(state.showTimelineLyricNotes ? "timeline line notes shown" : "timeline line notes hidden");
+  };
+  emotionTagButton.onclick = () => {
+    if (state.videoType !== "speaking") return;
+    pushHistory();
+    state.showTimelineEmotionTags = !state.showTimelineEmotionTags;
+    if (state.showTimelineEmotionTags) state.showTimelineLyricNotes = true;
+    syncLyricNoteControls();
+    render();
+    autoSaveSessionQuiet(state.showTimelineEmotionTags ? "timeline emotion tags shown" : "timeline emotion tags hidden");
   };
   zoomOutButton.onclick = () => setTimelineZoom(state.pxPerSecond / 1.25);
   zoomInButton.onclick = () => setTimelineZoom(state.pxPerSecond * 1.25);

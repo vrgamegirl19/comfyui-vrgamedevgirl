@@ -122,7 +122,20 @@ def scene_cut_plan(segment: Dict[str, Any], session: Dict[str, Any]) -> Dict[str
         frequency = int(float(defaults.get("minimax_h3_cut_frequency") or 0))
     except (TypeError, ValueError):
         frequency = 0
-    return storyboard_cut_plan_for_duration(duration, frequency)
+    plan = storyboard_cut_plan_for_duration(duration, frequency)
+    from . import lyric_free_performance as lfp
+
+    if lfp.scene_enabled(session, segment):
+        if segment.get("location_continuous_shot"):
+            return storyboard_cut_plan_for_duration(duration, 0)
+        if segment.get("lyric_performance_mode") == "cue_map":
+            starts = [float(c["start"]) for c in (segment.get("lyric_cue_map") or [])[1:]
+                      if c.get("start") is not None and 0.04 < float(c["start"]) < duration - 0.04]
+            cuts = sorted(set(starts))
+            if cuts:
+                plan.update(cut_times_seconds=cuts, cut_count=len(cuts), shot_count=len(cuts) + 1,
+                            continuous_shot=False, cue_driven=True)
+    return plan
 
 
 def assemble_minimax_h3_prompt(
@@ -138,18 +151,29 @@ def assemble_minimax_h3_prompt(
     dur = max(0.1, dur)
 
     cut_plan = scene_cut_plan(segment, session)
+    from . import lyric_free_performance as lfp
+
+    omit_lyrics = lfp.scene_enabled(session, segment)
+    from .settings_payload import minimax_h3_settings_for_scene
+    supplied_singing = (str(segment.get("performance_mode") or session.get("video_type") or "singing") == "singing"
+                        and minimax_h3_settings_for_scene(session, segment).get("audio_mode") != "built_in_audio")
+    performer, labels = lfp.scene_performers(session, segment, norm_mode) if omit_lyrics else ("", {})
     expected_shots = cut_plan["shot_count"]
 
     if norm_mode == "reference_to_video":
-        # The saved format is the Builder's: reference definitions, the wrapper plus the shots, then the soundscape.
+        # Match the Builder's compact or structured format, using the project's prompt option.
         from . import shot_prompt
 
         wanted = len(shot_prompt.shot_plan(cut_plan))
         cleaned = [shot_prompt.normalize_description(shot_prompt.strip_negative_sentences(d)) or shot_prompt.FALLBACK_SHOT for d in descriptions][:wanted]
         cleaned += [shot_prompt.FALLBACK_SHOT] * (wanted - len(cleaned))
         style = str(segment.get("minimax_h3_video_style") or session.get("builder_storyboard_defaults", {}).get("video_style") or "")
+        if omit_lyrics:
+            cleaned = lfp.apply_shots(cleaned, segment, cut_plan, performer, labels, session)
+        if supplied_singing:
+            cleaned = [lfp.strip_singing_articulation(text) for text in cleaned]
         prompt_text = shot_prompt.assemble_prompt(cleaned, cut_plan, style)
-        # The render sends the saved text as it is, so it carries the reference definitions like the Builder's prompts.
+        # Rendering sends the saved text unchanged, so both formats carry picture assignments.
         from .scene_inputs import ordered_reference_items
 
         ordered = sorted((x for x in session.get("segments") or [] if isinstance(x, dict)), key=lambda x: float(x.get("start") or 0.0))
@@ -158,7 +182,10 @@ def assemble_minimax_h3_prompt(
         if items:
             audio_mode = str((session.get("minimax_h3_settings") or {}).get("audio_mode") or "input_audio")
             frame = shot_prompt.reference_frame(items, cut_plan, style, audio_mode, str(segment.get("audio_direction") or ""))
-            prompt_text = shot_prompt.wrap_reference_prompt(prompt_text, frame)
+            if session.get("use_structured_outputs", False):
+                prompt_text = shot_prompt.wrap_reference_prompt(prompt_text, frame)
+            else:
+                prompt_text = shot_prompt.compact_reference_prompt(prompt_text, items)
         return {"prompt": prompt_text, "characters": len(prompt_text), "shots_used": wanted, "mode": norm_mode, "cut_plan": cut_plan}
 
     # Clean descriptions
@@ -169,6 +196,11 @@ def assemble_minimax_h3_prompt(
             cleaned_descs.append("A stable cinematic shot with natural camera movement.")
     elif len(cleaned_descs) > expected_shots:
         cleaned_descs = cleaned_descs[:expected_shots]
+
+    if omit_lyrics:
+        cleaned_descs = lfp.apply_shots(cleaned_descs, segment, cut_plan, performer, labels, session)
+    if supplied_singing:
+        cleaned_descs = [lfp.strip_singing_articulation(text) for text in cleaned_descs]
 
     # Build shot body
     shots_body_parts = []
@@ -185,7 +217,48 @@ def assemble_minimax_h3_prompt(
 
     style = str(segment.get("minimax_h3_video_style") or session.get("builder_storyboard_defaults", {}).get("video_style") or "photorealistic")
 
-    if norm_mode in ("text_to_video", "image_to_video"):
+    if norm_mode == "image_reference_to_video":
+        from . import shot_prompt
+        from .scene_inputs import ordered_reference_items, segment_image_path
+
+        ordered = sorted((x for x in session.get("segments") or [] if isinstance(x, dict)), key=lambda x: float(x.get("start") or 0.0))
+        index = next((i for i, x in enumerate(ordered) if x.get("id") == segment.get("id")), 0)
+        refs = ordered_reference_items(session, segment, norm_mode, index)
+        items = []
+        start = segment_image_path(segment)
+        end = str(segment.get("first_last_frame_end_image_path") or "")
+        if start:
+            items.append({"kind": "start_frame", "image": {"path": start}})
+        if end and end != start:
+            items.append({"kind": "end_frame", "image": {"path": end}})
+        seen = {str((item.get("image") or {}).get("path") or "") for item in items}
+        for item in refs:
+            path = str((item.get("image") or {}).get("path") or "")
+            if item.get("kind") in ("start_frame", "end_frame") or path in seen:
+                continue
+            seen.add(path)
+            item = dict(item)
+            if (item.get("kind") == "subject" and segment.get("minimax_h3_use_scene_image_as_start_frame")
+                    and segment.get("minimax_h3_start_frame_character_influence") == "face_hair_only"):
+                item["purpose"] = "face identity and hair reference only"
+            elif item.get("kind") == "subject":
+                item["purpose"] = "character identity, face, hair, complete outfit, footwear, accessories, and body-proportion reference"
+            items.append(item)
+        items = items[:9]
+        shots_body = shots_body.replace("[Shot 1] ", "[Shot 1] The shot begins exactly from <Picture 1>. ", 1)
+        if end and end != start:
+            shots_body += " The final motion converges exactly on <Picture 2> as the last frame."
+        detailed = f"detailed_description:\nThe target video is in a {style} music-video style.\n\n{shots_body}"
+        if session.get("use_structured_outputs", False):
+            settings = minimax_h3_settings_for_scene(session, segment)
+            frame = shot_prompt.reference_frame(items, cut_plan, style, str(settings.get("audio_mode") or "input_audio"), str(segment.get("audio_direction") or ""))
+            prompt_text = shot_prompt.wrap_reference_prompt(detailed, frame)
+        else:
+            bindings = shot_prompt.character_reference_bindings(shots_body, items)
+            prompt_text = shot_prompt.compact_reference_prompt(detailed, items)
+            if bindings:
+                prompt_text = prompt_text.replace("\n\n[Shot 1]", f"\n\n{bindings}\n\n[Shot 1]", 1)
+    elif norm_mode in ("text_to_video", "image_to_video"):
         header = f"integrated_multimodal_description:\nGenerate a {round(dur, 1)}-second 16:9 {style} video."
         if norm_mode == "image_to_video":
             header += " <Picture 1> is the exact opening composition, character identity, and visual anchor."
@@ -439,4 +512,16 @@ def build_minimax_prompt_context(
     }
     if continuation:
         context["continuation"] = continuation
+    from . import lyric_free_performance as lfp
+
+    context["omit_lyrics_from_video_prompts"] = lfp.scene_enabled(session, segment)
+    if context["omit_lyrics_from_video_prompts"]:
+        context["instruction_text"] = lfp.prompt_context(instruction_text, segment, cut_plan, session=session)
+        context["lyric_cue_map"] = [{k: v for k, v in cue.items() if k != "text"}
+                                    for cue in segment.get("lyric_cue_map") or []]
+    from ..llm.prompts.emotion_expression import emotion_expression_input, emotion_expression_instruction
+
+    context["lyric_text"] = str(segment.get("lyric_text") or "")
+    context.update(emotion_expression_input(segment, session))
+    context["instruction_text"] += "\n\n" + emotion_expression_instruction(context)
     return context

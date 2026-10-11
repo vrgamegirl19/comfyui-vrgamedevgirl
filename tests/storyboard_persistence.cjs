@@ -304,9 +304,10 @@ test("Builder video prompting includes complete card context for both LTX and Mi
   }
 });
 
-test("MiniMax creative input preserves complete long storyboard context", () => {
+function creativeContextFixture() {
   const { functionSource, readBuilderModule } = require("./builder_source.cjs");
   const context = vm.createContext({
+    omitLyricsForSegment: () => false,
     state: { videoType: "no_lip_sync", builderStoryboardDefaults: {} },
     miniMaxH3SettingsForSegment: () => ({ audio_mode: "input_audio", aspect_ratio: "16:9" }),
     segmentUsesNoLipSyncPerformance: () => true,
@@ -318,7 +319,6 @@ test("MiniMax creative input preserves complete long storyboard context", () => 
     miniMaxH3OfficialShotPlan: () => [{ timecode: 0 }],
     miniMaxH3ModeLabel: value => value,
     miniMaxH3PromptCharacterBudget: () => ({ shotDescriptionChars: 6500 }),
-    miniMaxH3LifeMovementBank: () => ["blink"],
     miniMaxH3MotionEnergyText: () => "",
     selectedCastCoverageContract: () => "",
     miniMaxH3SubjectLabelMapForSegment: () => new Map(),
@@ -336,12 +336,79 @@ test("MiniMax creative input preserves complete long storyboard context", () => 
     miniMaxH3ReferenceAssignmentLines: () => [],
     miniMaxI2VTransitionPrompt: () => "",
   });
-  vm.runInContext(functionSource(readBuilderModule("minimax_prompt.mjs"),
-    "miniMaxH3CreativePromptContextForSegment"), context);
+  const source = readBuilderModule("minimax_prompt.mjs");
+  for (const name of ["miniMaxH3Timecode", "miniMaxH3OfficialShotPlan", "miniMaxH3SceneTimingInstruction", "miniMaxH3LiteralSceneInstruction", "miniMaxH3ReferenceSceneGroundingContract", "miniMaxH3CreativePromptContextForSegment"]) {
+    vm.runInContext(functionSource(source, name), context);
+  }
+  return context;
+}
+
+test("MiniMax creative input preserves complete long storyboard context", () => {
+  const context = creativeContextFixture();
   const sceneCard = JSON.stringify({ notes: "n".repeat(4500), timeline_note: "Director at the end" }, null, 2);
   const result = vm.runInContext("miniMaxH3CreativePromptContextForSegment", context)(
     { start: 0, end: 5 }, "text_to_video", { storyboardContext: sceneCard });
   assert.ok(result.includes(sceneCard), "The full card must reach the creative LLM without clipping");
+});
+
+test("MiniMax creative requests budget the actual short scene and each scheduled shot", () => {
+  const context = creativeContextFixture();
+  const create = vm.runInContext("miniMaxH3CreativePromptContextForSegment", context);
+  const scene = { start: 34.25, end: 37.17, story_beat: "The paper trembles as the camera glides along the seam." };
+  const result = create(scene, "reference_to_video", { storyboardContext: "Boots step past the lens." });
+  assert.match(result, /Duration: 2\.92s/);
+  assert.match(result, /Shot 1: 0–2\.92s \(2\.92 seconds available\)/);
+  assert.match(result, /The paper trembles/);
+  assert.match(result, /Boots step past the lens/);
+  assert.match(result, /Reserve time for the required singing or speaking/);
+  assert.match(result, /Keep optional gestures and reactions only when time remains/);
+  assert.match(result, /Motion speed sets the energy of the chosen movement, not the number of actions/);
+  assert.doesNotMatch(result, /60 to 110|one or two small human movements|Do not slow down or hold still/);
+
+  context.miniMaxH3CutPlanForSegment = () => ({ cut_times_seconds: [2.32] });
+  const cutResult = create(scene, "reference_to_video");
+  assert.match(cutResult, /Shot 1: 0–2\.32s \(2\.32 seconds available\)/);
+  assert.match(cutResult, /Shot 2: 2\.32–2\.92s \(0\.6 seconds available\)/);
+  assert.match(cutResult, /Return exactly 2 JSON shot descriptions/);
+  const longResult = create({ ...scene, end: 44.25 }, "reference_to_video");
+  assert.match(longResult, /Shot 2: 2\.32–10s \(7\.68 seconds available\)/);
+});
+
+test("MiniMax requests resolve ambiguous foreground clothing and physical ownership in every mode", () => {
+  const context = creativeContextFixture();
+  const create = vm.runInContext("miniMaxH3CreativePromptContextForSegment", context);
+  const scene = { start: 34.25, end: 37.17, story_beat: "The paper strip from the previous shot lies caught in a roof seam." };
+  const card = "A black boot fills the near foreground with the woman beyond it; boots step past the lens.";
+  for (const mode of ["reference_to_video", "image_to_video", "text_to_video"]) {
+    const result = create(scene, mode, { storyboardContext: card });
+    assert.ok(result.includes(card), "Keep the scene direction as context for rewriting");
+    assert.match(result, /Write natural, fluent shot prose that H3 can follow literally/);
+    assert.match(result, /Rewrite ambiguous scene-card or image-prompt wording/);
+    assert.match(result, /Lead physical action with the person doing it/);
+    assert.match(result, /her boot briefly crossing the foreground/);
+    assert.match(result, /Keep ownership and spatial checks in your reasoning/);
+    assert.match(result, /A close-up identifies whose body part is framed/);
+    assert.match(result, /Carry an object from an adjacent scene only when the current scene explicitly does so/);
+    assert.match(result, /read the shot by itself/);
+    assert.match(result, /finished sentences describe visible action, not explanations of anatomy/);
+    assert.doesNotMatch(result, /anatomically connected|worn on her foot/);
+    assert.ok(result.indexOf("LITERAL SCENE CLARITY") > result.indexOf(card), "Check the literal staging after reading the inputs");
+  }
+});
+
+test("MiniMax scene-card framing overrides stale automatic telephoto rotation", () => {
+  const { functionSource, readBuilderModule } = require("./builder_source.cjs");
+  const context = vm.createContext({ state: { builderStoryboardDefaults: { camera_flow: "music_video" } } });
+  const source = readBuilderModule("minimax_prompt.mjs");
+  for (const name of ["miniMaxH3SelectedFramingEntries", "miniMaxH3PerShotFramingLines"]) {
+    vm.runInContext(functionSource(source, name), context);
+  }
+  const scene = { shot_type: "wide-angle hero performance shot", camera_motion: "slow forward dolly glide", minimax_h3_framing_shot_ids: ["music_video_telephoto"] };
+  const result = context.miniMaxH3PerShotFramingLines(scene, [{ number: 1, time: 0 }]);
+  assert.match(result.join("\n"), /wide-angle hero performance shot/);
+  assert.match(result.join("\n"), /slow forward dolly glide/);
+  assert.doesNotMatch(result.join("\n"), /telephoto|compressed lateral/);
+  assert.deepEqual(scene.minimax_h3_framing_shot_ids, ["music_video_telephoto"]);
 });
 
 test("Reopening retains added cards and deleted cards without losing new timeline scenes", async () => {

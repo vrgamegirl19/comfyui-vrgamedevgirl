@@ -380,7 +380,7 @@ export function createPromptCreators({
     const backdrop = document.createElement("div");
     backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
     const box = document.createElement("div");
-    box.style.cssText = "width:min(620px,calc(100vw - 40px));border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+    box.style.cssText = "width:min(620px,calc(100vw - 40px));max-height:calc(100vh - 40px);overflow-y:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
     const header = document.createElement("div");
     header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
     const heading = document.createElement("div");
@@ -432,7 +432,25 @@ export function createPromptCreators({
     clearI2V.style.borderColor = "#7f1d1d";
     clearI2V.style.color = "#fecaca";
     imageGroup.append(imageHeading, createConceptPrompts, editT2I, reloadT2I, originalT2I, clearT2I);
-    videoGroup.append(videoHeading, createMotionNotes, editI2V, reloadI2V, originalI2V, clearI2V, editMiniMax, reloadMiniMax);
+    const omitLyrics = makeCheckbox("Do not add lyric lines to prompt", Boolean(state.omitLyricsFromVideoPrompts));
+    const structuredOutputs = makeCheckbox("Use Structured outputs", Boolean(state.useStructuredOutputs));
+    const structuredOutputsNote = document.createElement("div");
+    structuredOutputsNote.textContent = "Off by default: MiniMax reference prompts use compact prose with picture assignments. Turn on to include reference definitions, summary, retention, and audio sections when generating prompts.";
+    structuredOutputsNote.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
+    structuredOutputs.input.addEventListener("change", () => {
+      pushHistory();
+      state.useStructuredOutputs = Boolean(structuredOutputs.input.checked);
+      void autoSaveSessionQuiet("Structured prompt output option changed");
+    });
+    const omitLyricsNote = document.createElement("div");
+    omitLyricsNote.textContent = "MiniMax H3 music video with supplied audio: sing in sync with Audio 1 without quoted lyrics. Instrumental shots stay visual-only. Applies when generating prompts again.";
+    omitLyricsNote.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
+    omitLyrics.input.addEventListener("change", () => {
+      pushHistory();
+      state.omitLyricsFromVideoPrompts = Boolean(omitLyrics.input.checked);
+      void autoSaveSessionQuiet("Video prompt lyric option changed");
+    });
+    videoGroup.append(videoHeading, structuredOutputs.wrapper, structuredOutputsNote, omitLyrics.wrapper, omitLyricsNote, createMotionNotes, editI2V, reloadI2V, originalI2V, clearI2V, editMiniMax, reloadMiniMax);
     grid.append(imageGroup, videoGroup);
     const replaceGroup = document.createElement("div");
     replaceGroup.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;padding:10px;display:flex;flex-direction:column;gap:9px;";

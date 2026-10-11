@@ -116,10 +116,19 @@ export function createMiniMaxPanel({
   }
 
   function miniMaxH3SceneImageUseForSegment(segment = activeSegment()) {
-    return normalizeMiniMaxH3SceneImageUse(
+    const use = normalizeMiniMaxH3SceneImageUse(
       segment?.minimax_h3_scene_image_use,
       Boolean(segment?.minimax_h3_use_scene_image_as_start_frame),
     );
+    if (miniMaxH3ModeForSegment(segment) !== "reference_to_video") return use;
+    // Reference mode stages a new shot; legacy scene-image settings cannot anchor its composition.
+    const referenceUse = use === "exact_start_frame" ? "off"
+      : use === "environment_framing_inspiration" ? "environment_inspiration" : use;
+    if (segment) {
+      segment.minimax_h3_scene_image_use = referenceUse;
+      segment.minimax_h3_use_scene_image_as_start_frame = false;
+    }
+    return referenceUse;
   }
 
   function setMiniMaxH3ModeForSegment(segment, value) {
@@ -170,13 +179,16 @@ export function createMiniMaxPanel({
 
   function clearMiniMaxImageReferenceStartFrameOnModeSwitch(segment, targetMode) {
     if (normalizeMiniMaxH3Mode(targetMode) !== "reference_to_video") return;
-    if (miniMaxH3ModeForSegment(segment) !== "image_reference_to_video") return;
+    // Image + Reference can leave its forced start-frame setting behind when
+    // the user visits ordinary I2V before switching to references only.
+    const imageModes = ["image_to_video", "image_reference_to_video"];
+    if (!imageModes.includes(miniMaxH3ModeForSegment(segment))) return;
     const sceneLocked = Boolean(segment?.use_scene_minimax_h3_settings);
     const targets = (sceneLocked ? [segment] : allEditableSegments()).filter((item) => (
       item
       && segmentTrack(item) !== "overlay"
       && !(!sceneLocked && item.use_scene_minimax_h3_settings)
-      && miniMaxH3ModeForSegment(item) === "image_reference_to_video"
+      && imageModes.includes(miniMaxH3ModeForSegment(item))
     ));
     for (const item of targets) {
       item.minimax_h3_scene_image_use = "off";
@@ -490,7 +502,7 @@ export function createMiniMaxPanel({
       : libraryCount;
     const hasStartFrame = Boolean(
       segment?.minimax_h3_use_scene_image_as_start_frame
-      && effectiveMode === "reference_to_video"
+      && effectiveMode === "image_reference_to_video"
       && (segmentImageSource(segment)?.path || segmentImageSource(segment)?.data)
     );
     const hasContinuityReservation = miniMaxH3ContinuityReferenceReserved(segment);
@@ -863,7 +875,9 @@ export function createMiniMaxPanel({
     miniMaxSceneImageUse.value = imageReferenceTwoPass ? "exact_start_frame" : sceneImageUse;
     miniMaxSceneImageUse.disabled = !segment || imageReferenceTwoPass;
     const exactStartFrameOption = Array.from(miniMaxSceneImageUse.options).find((option) => option.value === "exact_start_frame");
-    if (exactStartFrameOption) exactStartFrameOption.disabled = settings.continuity_mode === "exact_start_frame" || isLatentContinuation;
+    if (exactStartFrameOption) exactStartFrameOption.disabled = mode === "reference_to_video" || settings.continuity_mode === "exact_start_frame" || isLatentContinuation;
+    const framingInspirationOption = Array.from(miniMaxSceneImageUse.options).find((option) => option.value === "environment_framing_inspiration");
+    if (framingInspirationOption) framingInspirationOption.disabled = mode === "reference_to_video";
     const startFrameCharacterInfluence = miniMaxH3StartFrameCharacterInfluenceForSegment(segment);
     miniMaxStartFrameCharacterInfluence.value = startFrameCharacterInfluence;
     miniMaxStartFrameCharacterInfluence.disabled = !segment

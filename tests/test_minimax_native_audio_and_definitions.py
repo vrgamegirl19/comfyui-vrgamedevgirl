@@ -110,6 +110,32 @@ class ReferenceFrameTests(unittest.TestCase):
         self.assertIn("MiniMax generates the native audio requested by the scene.", frame["head"])
         self.assertIn("overall_soundscape:\nRoom tone and a kettle.", frame["tail"])
 
+    def test_image_reference_compact_character_assignments_follow_connected_order(self):
+        segment = {"id": "s1", "start": 0.0, "end": 4.0, "approved_image_path": "start.png", "minimax_h3_use_scene_image_as_start_frame": True}
+        subjects = [{"id": str(i), "name": f"Character {i}", "description": "A character.", "image": {"path": f"char{i}.png"}} for i in range(1, 5)]
+        session = {"segments": [segment], "builder_storyboard_defaults": {"video_style": "1990s_grunge"},
+                   "minimax_h3_settings": {"audio_mode": "input_audio"},
+                   "flux_reference_builder": {"subjects": subjects, "locations": [], "subject_scene_map": {"s1": ["1", "2", "3", "4"]}, "scene_map": {}}}
+        descriptions = ["<Subject 1> turns toward <Subject 3> beside the stage."]
+        compact = assembly.assemble_minimax_h3_prompt(segment, session, descriptions, "image_reference_to_video")["prompt"]
+        self.assertIn("Use <Picture 2> for <Subject 1>'s character identity", compact)
+        self.assertIn("Use <Picture 4> for <Subject 3>'s character identity", compact)
+        self.assertIn("[Shot 1] The shot begins exactly from <Picture 1>.", compact)
+        self.assertNotIn("<Subject 2>", compact)
+        self.assertNotIn("<Subject 4>", compact)
+        self.assertNotIn("subject_definitions:", compact)
+        segment["first_last_frame_end_image_path"] = "end.png"
+        segment["minimax_h3_start_frame_character_influence"] = "face_hair_only"
+        compact = assembly.assemble_minimax_h3_prompt(segment, session, descriptions, "image_reference_to_video")["prompt"]
+        self.assertIn("Use <Picture 3> for <Subject 1>'s face identity and hair.", compact)
+        self.assertIn("Use <Picture 5> for <Subject 3>'s face identity and hair.", compact)
+        self.assertIn("<Picture 2> as the last frame", compact)
+        self.assertNotIn("clothing", compact)
+        session["use_structured_outputs"] = True
+        structured = assembly.assemble_minimax_h3_prompt(segment, session, descriptions, "image_reference_to_video")["prompt"]
+        self.assertIn("subject_definitions:", structured)
+        self.assertIn("<Subject 1> is the Character 1 in <Picture 3>", structured)
+
     def test_start_frames_are_pictures_but_not_subjects(self):
         items = [{"kind": "start_frame", "label": "Scene start frame"}, *ITEMS[:1]]
         head = sp.reference_frame(items, PLAN, "style", "input_audio")["head"]
@@ -133,6 +159,7 @@ class ReferenceFrameTests(unittest.TestCase):
 
     def test_the_assemble_route_wraps_reference_to_video_prompts(self):
         session = {
+            "use_structured_outputs": True,
             "minimax_h3_settings": {"audio_mode": "input_audio"},
             "builder_storyboard_defaults": {"video_style": "cinematic_realism", "minimax_h3_cut_frequency": 0},
             "flux_reference_builder": {
@@ -146,6 +173,15 @@ class ReferenceFrameTests(unittest.TestCase):
         self.assertTrue(prompt.startswith("subject_definitions:\n<Subject 1> is the Darrel in <Picture 1>"), prompt[:100])
         self.assertIn("detailed_description:\nThe target video is in a cinematic_realism music-video style.", prompt)
         self.assertEqual(result["characters"], len(prompt))
+        session.pop("use_structured_outputs")
+        compact = assembly.assemble_minimax_h3_prompt(session["segments"][0], session, ["<Subject 1> (Darrel) paces the rooftop at night."], "reference_to_video")["prompt"]
+        self.assertTrue(compact.startswith("detailed_description:"))
+        self.assertIn("[Shot 1] <Subject 1> paces", compact)
+        self.assertNotIn("<Subject 1> (", compact)
+        self.assertNotIn("<Subject 1> is", compact)
+        for header in ("subject_definitions:", "summary:", "retention_analysis:", "overall_soundscape:", "non_diegetic_music:"):
+            self.assertNotIn(header, compact)
+        self.assertNotIn("first frame", compact)
 
 
 if __name__ == "__main__":

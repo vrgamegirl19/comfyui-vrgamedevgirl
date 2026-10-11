@@ -271,42 +271,52 @@ def _build_minimax_h3_api_prompt(payload):
 def _use_minimax_h3_native_audio(prompt):
     """Rewire the audio-driven 2-pass graph to use H3's own joint video+audio latent (built-in audio).
 
-    The template reads a project audio file: it feeds ``MiniMaxH3ReferenceToVideo`` as a reference audio and locks the
-    pass-1 latent to it through ``VRGDG_MiniMaxH3AudioDrive``. For built-in audio those inputs go away, everything that
-    read the audio-locked latent reads the Reference to Video node's own latent, and the pass-1 audio is decoded with
-    ``LTXVAudioVAEDecode`` and becomes the saved video's audio. Nodes are found by class, not by id, so the rewire
-    survives a template renumbering.
+    The template reads a project audio file and locks the pass-1 latent to it through ``VRGDG_MiniMaxH3AudioDrive``
+    (Reference to Video also gets it as a reference audio). For built-in audio those inputs go away, everything that
+    read the audio-locked latent reads the H3 conditioning node's own latent, and the pass-1 audio is decoded with
+    ``LTXVAudioVAEDecode`` and becomes the saved video's audio. Pass 2 keeps the audio half locked, so the pass-1
+    audio is the final audio. Every H3 conditioning node (Reference to Video, Image to Video, Image + Reference)
+    outputs a joint latent, so the H3 node is whatever feeds the drive. Nodes are found by class and link, not by
+    id, so the rewire survives a template renumbering. Run it before any patch that rewires the pass-1 latent.
     """
     def by_class(class_type):
         return [key for key, node in prompt.items() if node.get("class_type") == class_type]
 
-    r2v_nodes, drives = by_class("MiniMaxH3ReferenceToVideo"), by_class("VRGDG_MiniMaxH3AudioDrive")
-    if len(r2v_nodes) != 1 or not drives:
-        raise ValueError("The MiniMax H3 two-pass template changed: built-in audio needs one Reference to Video node and an audio drive node.")
-    r2v = r2v_nodes[0]
+    drives = by_class("VRGDG_MiniMaxH3AudioDrive")
+    if not drives:
+        raise ValueError("The MiniMax H3 two-pass template changed: built-in audio needs an audio drive node.")
+    h3_nodes = {
+        str(prompt[d]["inputs"]["av_latent"][0]) for d in drives
+        if isinstance(prompt[d]["inputs"].get("av_latent"), list) and prompt[d]["inputs"]["av_latent"][1] == 1
+    }
+    audio_vaes = [prompt[d]["inputs"].get("audio_vae") for d in drives if isinstance(prompt[d]["inputs"].get("audio_vae"), list)]
+    if len(h3_nodes) != 1 or not audio_vaes:
+        raise ValueError("The MiniMax H3 two-pass template changed: the audio drive must read one H3 node's latent and the audio VAE.")
+    h3 = h3_nodes.pop()
+    samplers = [
+        key for key in by_class("SamplerCustomAdvanced")
+        if isinstance(prompt[key]["inputs"].get("latent_image"), list)
+        and str(prompt[key]["inputs"]["latent_image"][0]) in drives
+    ]
+    if len(samplers) != 1:
+        raise ValueError(f"The MiniMax H3 two-pass template changed: expected one pass-1 sampler reading the audio drive, found {samplers}.")
     loaders = {
         str(prompt[d]["inputs"]["source_audio"][0]) for d in drives
         if isinstance(prompt[d]["inputs"].get("source_audio"), list)
     }
-    for name in [n for n in prompt[r2v]["inputs"] if n.startswith("ref_audios.")]:
-        del prompt[r2v]["inputs"][name]
+    for name in [n for n in prompt[h3]["inputs"] if n.startswith("ref_audios.")]:
+        del prompt[h3]["inputs"][name]
     for node in prompt.values():
         for name, value in node["inputs"].items():
             if isinstance(value, list) and len(value) == 2 and str(value[0]) in drives and value[1] == 0:
-                node["inputs"][name] = [r2v, 1]
-    samplers = [
-        key for key in by_class("SamplerCustomAdvanced")
-        if prompt[key]["inputs"].get("latent_image") == [r2v, 1]
-    ]
-    if len(samplers) != 1:
-        raise ValueError(f"The MiniMax H3 two-pass template changed: expected one pass-1 sampler reading the H3 latent, found {samplers}.")
+                node["inputs"][name] = [h3, 1]
     for key in [*drives, *sorted(loaders)]:
         prompt.pop(key, None)
     decode = str(max(int(key) for key in prompt if str(key).isdigit()) + 1)
     prompt[decode] = {
         "class_type": "LTXVAudioVAEDecode",
         "_meta": {"title": "Decode MiniMax H3 native audio (pass 1)"},
-        "inputs": {"samples": [samplers[0], 0], "audio_vae": prompt[r2v]["inputs"]["audio_vae"]},
+        "inputs": {"samples": [samplers[0], 0], "audio_vae": list(audio_vaes[0])},
     }
     for key in by_class("VHS_VideoCombine"):
         prompt[key]["inputs"]["audio"] = [decode, 0]
@@ -409,12 +419,6 @@ def _build_minimax_h3_2pass_api_prompt(payload):
         )
         _set_api_input(prompt, "136", "width", ["186", 1])
         _set_api_input(prompt, "136", "height", ["187", 1])
-        if video_mode == "image_to_video":
-            # Keyframe latents must match each sampler's actual spatial resolution.
-            prompt["214"] = copy.deepcopy(prompt["136"])
-            _set_api_input(prompt, "214", "width", ["212", 1])
-            _set_api_input(prompt, "214", "height", ["213", 1])
-            prompt["214"]["_meta"] = {"title": "I2V Pass 2 - Upscaled Frame Conditioning"}
         video_references = []
     default_model = (
         "minimax_h3_fl2va_pruned_int8_convrot.safetensors" if video_mode == "image_to_video"
@@ -458,6 +462,29 @@ def _build_minimax_h3_2pass_api_prompt(payload):
     ref_image_size = str(payload.get("ref_image_size") or "max").strip().lower()
     if video_mode != "image_to_video":
         _set_api_input(prompt, "136", "ref_image_size", ref_image_size if ref_image_size in {"match", "max"} else "max")
+
+    if video_mode in {"image_to_video", "image_reference_to_video"}:
+        # A keyframe's latent must match the spatial grid used by its sampler.
+        # Use actual upscaled dimensions, including rounding, rather than the
+        # requested output size (the final decoded resize happens afterwards).
+        dimensions = (("212", "186", "Width"), ("213", "187", "Height"))
+        for node_id, source, label in dimensions:
+            prompt[node_id] = {
+                "class_type": "ComfyMathExpression",
+                "inputs": {
+                    "expression": "round(a / 16 * b) * 16",
+                    "values.a": [source, 1],
+                    "values.b": ["185", 0],
+                },
+                "_meta": {"title": f"I2V Pass 2 - Actual Upscaled {label}"},
+            }
+        prompt["214"] = copy.deepcopy(prompt["136"])
+        _set_api_input(prompt, "214", "width", ["212", 1])
+        _set_api_input(prompt, "214", "height", ["213", 1])
+        prompt["214"]["_meta"] = {
+            "title": "I2V Pass 2 - Upscaled Frame and Reference Conditioning"
+        }
+        _set_api_input(prompt, "193", "conditioning", ["214", 0])
 
     _set_api_input(prompt, "115", "value", final_width)
     _set_api_input(prompt, "184", "value", final_height)
@@ -592,13 +619,13 @@ def _build_minimax_h3_2pass_api_prompt(payload):
     _set_api_input(prompt, "142", "crf", _int_payload(payload, "output_crf", 19, 0, 100))
     output_folder, filename_prefix = _minimax_h3_output_location(project_folder, scene_number)
     _set_api_input(prompt, "142", "filename_prefix", f"{filename_prefix}_stage2")
+    if audio_mode == "built_in_audio":
+        _use_minimax_h3_native_audio(prompt)
     latent_continuation_settings = None
     save_latent_settings = None
     if not payload.get("_skip_latent_patches"):
         latent_continuation_settings = _patch_minimax_h3_latent_continuation(prompt, payload)
         save_latent_settings = _patch_minimax_h3_save_latent(prompt, payload, timing)
-    if audio_mode == "built_in_audio":
-        _use_minimax_h3_native_audio(prompt)
     if video_mode == "image_to_video":
         patch_i2v_keyframe_timing(prompt, timing)
     refmod_summary = None

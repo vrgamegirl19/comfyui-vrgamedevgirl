@@ -486,6 +486,26 @@ export const STORYBOARD_CAMERA_FLOW_PRESETS = {
       { shot: "wide shot framed from behind foreground foliage or columns, revealing the subject centered in clear space", camera: "smooth parallax slide" }
     ],
   },
+  medium_shots: {
+    label: "Medium shots",
+    framing_candidates: true,
+    description: "A varied mix of comfortable head-and-shoulders close-ups and upper-body shots, with occasional full-body shots. No wide shots or extreme close-ups.",
+    guidance: "Favor upper-body framing, mix in close-up headshots showing the complete head and shoulders with comfortable headroom, and use full-body shots only occasionally. Keep the subject prominent and facial expressions readable. Full-body shots must fit the subject from head to toe with minimal surrounding space. Never use wide, medium-wide, establishing, or distant environmental shots, and never crop into eyes-only, macro, or extreme close-ups. Maintain these framing limits throughout every camera move, cut, and ending composition. Use lateral tracking, modest arcs, focus changes, and held compositions for variety; any push-in or pullback must stay within these limits.",
+    sequence: [
+      { shot: "eye-level medium upper-body shot framed from the waist up, showing the complete head and readable hand gestures", camera: "lateral tracking slide maintaining waist-up framing" },
+      { shot: "close-up headshot showing the complete head and shoulders with comfortable headroom, face clearly readable", camera: "modest orbital arc maintaining head-and-shoulders framing" },
+      { shot: "three-quarter medium upper-body shot framed from the waist up, both shoulders and hands visible", camera: "rack focus to the face within fixed waist-up framing" },
+      { shot: "slightly low-angle medium upper-body shot framed from the waist up, complete head kept comfortably inside the frame", camera: "held waist-up composition" },
+      { shot: "profile close-up headshot showing the complete head and shoulders with comfortable headroom", camera: "parallel tracking glide maintaining head-and-shoulders framing" },
+      { shot: "full-body shot fitting the subject from head to toe with minimal headroom and surrounding space, subject filling the frame vertically", camera: "modest arc maintaining the same head-to-toe subject size" },
+      { shot: "seated medium upper-body shot framed from the waist up, face and natural arm gestures clearly visible", camera: "rack focus to the face within fixed upper-body framing" },
+      { shot: "three-quarter close-up headshot showing the complete head and shoulders with comfortable headroom", camera: "held head-and-shoulders composition" },
+      { shot: "slightly high-angle medium upper-body shot framed from the waist up, complete head and shoulders clearly visible", camera: "lateral dolly glide maintaining waist-up framing" },
+      { shot: "frontal medium upper-body shot framed from the waist up, keeping facial expression and hand gestures readable", camera: "modest orbital arc maintaining upper-body framing" },
+      { shot: "close-up headshot from a slightly low angle, complete head and shoulders visible with comfortable headroom", camera: "rack focus to the face within fixed head-and-shoulders framing" },
+      { shot: "full-body shot from a three-quarter angle, subject filling the frame from head to toe with minimal surrounding space", camera: "held head-to-toe composition" },
+    ],
+  },
     intimate_closeups: {
       label: "Intimate close-ups",
       framing_candidates: true,

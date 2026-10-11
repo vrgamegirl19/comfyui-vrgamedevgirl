@@ -71,6 +71,7 @@ SCENE_CARD_FIELDS: Tuple[SceneCardField, ...] = (
     _text_field("performance_style", limit=120),
     _text_field("facial_performance", limit=120),
     _text_field("facial_performance_custom", limit=1200),
+    _text_field("emotion_expression_tags", limit=1200),
     _flag("include_microphone"),
     # Audio and continuity.
     _text_field("audio_direction", limit=4000),

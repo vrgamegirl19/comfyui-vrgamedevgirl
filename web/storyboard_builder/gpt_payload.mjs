@@ -33,6 +33,7 @@ import {
   storyboardMiniMaxVideoStylePreset,
   storyboardMiniMaxVideoStyleVerbiage,
   storyboardSceneSupportsVideoStyle,
+  storyboardSceneVideoStyle,
   storyboardTemporalWorldEffectForScene,
 } from "./video_style.mjs";
 
@@ -220,10 +221,9 @@ function storyboardScenesForGpt(state) {
     const selectedPerformanceStyle = normalized.performance_style || (fullyCustomShortFilm ? "" : state.performanceStyle);
     const selectedPerformancePreset = performancePreset(selectedPerformanceStyle);
     const supportsVideoStyle = storyboardSceneSupportsVideoStyle(normalized);
-    const selectedVideoStyle = supportsVideoStyle ? String(state.videoStyle || normalized.video_style || "") : "";
-    const selectedVideoStyleCustom = selectedVideoStyle === "custom"
-      ? String(state.videoStyle === "custom" ? state.videoStyleCustom : (normalized.video_style_custom || state.videoStyleCustom || "")).trim()
-      : "";
+    const sceneVideoStyle = supportsVideoStyle ? storyboardSceneVideoStyle(normalized, state) : { value: "", custom: "" };
+    const selectedVideoStyle = sceneVideoStyle.value;
+    const selectedVideoStyleCustom = sceneVideoStyle.custom;
     const selectedVideoStylePreset = storyboardMiniMaxVideoStylePreset(selectedVideoStyle);
     const selectedVideoStyleVerbiage = storyboardMiniMaxVideoStyleVerbiage(selectedVideoStyle, selectedVideoStyleCustom);
     const temporalWorldEffect = !imageMode ? storyboardTemporalWorldEffectForScene(normalized, state) : null;
@@ -379,6 +379,7 @@ function storyboardScenesForGpt(state) {
       facial_performance: !selectedFacialPerformance || selectedFacialPerformance === "off" ? "" : facialPreset.label,
       facial_performance_direction: !selectedFacialPerformance ? "" : (imageMode ? storyboardStillFacialDirection(facialDirection) : facialDirection),
       facial_performance_custom: !selectedFacialPerformance || selectedFacialPerformance === "off" ? "" : (imageMode ? storyboardStillFacialDirection(facialCustom) : facialCustom),
+      emotion_expression_tags: String(normalized.emotion_expression_tags || "").trim(),
       microphone: {
         include: Boolean(normalized.include_microphone),
         instruction: normalized.include_microphone

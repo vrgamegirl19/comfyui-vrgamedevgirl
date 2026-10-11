@@ -7,6 +7,8 @@ import time
 from PIL import Image
 from ..core.atomic_write import atomic_write_json
 from ..builder.video_editor import _image_from_data_url
+from ..minimax.lyric_free_performance import enabled as lyric_free_enabled
+from .prompts.emotion_expression import emotion_expression_instruction
 from .text_cleaning import _clean_gemma_prompt_text
 from .prompts.video import _I2V_INSTRUCTIONS, _T2V_INSTRUCTIONS
 
@@ -21,6 +23,11 @@ from .builder_runner import _EXTERNAL_LLM_RUNNERS, _builder_local_llm, _builder_
 def _format_minimax_h3_prompt(text, payload=None, instruction_key=""):
     """Keep H3 prompts readable and enforce the selected MiniMax audio contract."""
     payload = payload if isinstance(payload, dict) else {}
+    if lyric_free_enabled(payload.get("omit_lyrics_from_video_prompts", False),
+                          str(payload.get("performance_mode") or "singing"),
+                          str(payload.get("audio_mode") or "input_audio")):
+        # The caller owns timed shot assembly; do not reinsert lyrics or global mouth instructions.
+        return _clean_lm_studio_plain_text(text).strip()
     cleaned = _clean_lm_studio_plain_text(text).replace("\r\n", "\n").replace("\r", "\n")
     cleaned = re.sub(r"<\s*Picture\s+(\d+)\s*>", r"Image \1", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"<\s*Video\s+(\d+)\s*>", r"Video \1", cleaned, flags=re.IGNORECASE)
@@ -621,6 +628,7 @@ def _generate_builder_i2v_prompt(payload):
     else:
         prompt = f"{i2v_instructions}\n\nText-to-image prompt:\n{t2i_prompt}\n\n"
     prompt += f"User motion/camera notes:\n{user_notes or 'Create fast cinematic performance motion that fits the scene.'}"
+    prompt += "\n\n" + emotion_expression_instruction(payload)
 
     n_ctx = int(payload.get("n_ctx") or 8000)
     n_gpu_layers = int(payload.get("n_gpu_layers") or 99)
@@ -1122,6 +1130,9 @@ def _generate_builder_t2v_prompt(payload):
     image_reference_path = str(payload.get("image_reference_path", "") or "").strip().strip('"')
     image_reference_data = str(payload.get("image_reference_data", "") or "").strip()
     user_notes = str(payload.get("user_notes", "") or "").strip()
+    omit_lyrics = lyric_free_enabled(payload.get("omit_lyrics_from_video_prompts", False),
+                                    str(payload.get("performance_mode") or "singing"),
+                                    str(payload.get("audio_mode") or "input_audio"))
     lyric_cue_map = payload.get("lyric_cue_map")
     if isinstance(lyric_cue_map, list) and lyric_cue_map:
         # Keep the assignment in the actual LLM text context as well as in
@@ -1141,6 +1152,8 @@ def _generate_builder_t2v_prompt(payload):
                 timing = f" [{start}s-{end}s]"
             if cue_type == "instrumental":
                 cue_lines.append(f"Cue {index}{timing}: INSTRUMENTAL — no subject sings, speaks, or lip-syncs.")
+            elif omit_lyrics:
+                cue_lines.append(f"Cue {index}{timing}: {singer} sings with passion in sync with <Audio 1> only during this vocal interval; omit lyric words.")
             else:
                 cue_lines.append(f"Cue {index}{timing}: {singer} is the only singer for the exact words: {text!r}.")
         if cue_lines:
@@ -1373,6 +1386,13 @@ def _generate_builder_t2v_prompt(payload):
         f"User motion/camera notes:\n{user_notes or 'Create cinematic camera movement and natural subject/environment motion that fits the scene.'}"
     )
 
+    if omit_lyrics:
+        prompt += "\n\nLYRIC-FREE CUSTOM AUDIO: Follow the scene shot contract. Omit all lyric quotations and <d> tags. Use passionate singing in sync with <Audio 1> only for assigned vocal intervals. Instrumental shots describe only visual action. For multiple shots, never describe mouth, lip or jaw movement anywhere. For a single shot, articulation may follow audible vocals only. Use expressive eyes and brows and the selected facial acting direction. Preserve supplied audio unchanged."
+
+    if omit_lyrics and payload.get("lyric_text"):
+        prompt += "\n\nLYRIC CONTEXT FOR INTERPRETATION ONLY (omit these words from the final prompt):\n" + str(payload["lyric_text"])
+    prompt += "\n\n" + emotion_expression_instruction(payload)
+
     llm_request_audit_path = ""
     llm_request_audit = None
     if is_minimax_h3_prompt:
@@ -1541,6 +1561,7 @@ def _enhance_builder_video_prompt(payload):
         payload = dict(payload)
         payload["model_file"] = model_file
     instruction = _video_prompt_enhancement_instructions(payload)
+    instruction += "\n\n" + emotion_expression_instruction(payload)
     text, run_info = _run_builder_text_llm(
         payload,
         instruction,

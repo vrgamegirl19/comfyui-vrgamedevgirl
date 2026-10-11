@@ -985,6 +985,7 @@ export function createTimelineState({
     }
     if (segment.facial_performance == null) segment.facial_performance = "";
     if (segment.facial_performance_custom == null) segment.facial_performance_custom = "";
+    if (segment.emotion_expression_tags == null) segment.emotion_expression_tags = "";
     segment.lyric_no_lip_sync = Boolean(segment.lyric_no_lip_sync);
     segment.no_character_present = Boolean(segment.no_character_present || segment.no_subject || segment.no_visible_subject);
     if (segment.timeline_note == null) segment.timeline_note = "";

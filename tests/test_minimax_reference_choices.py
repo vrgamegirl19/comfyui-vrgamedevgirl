@@ -113,13 +113,13 @@ class ReferenceChoicesTests(unittest.TestCase):
         with self.assertRaises(errors.SceneNotFoundError):
             mutations.get_scene_minimax_references("Refs", "seg_99")
 
-    def test_the_start_frame_takes_image_1_and_one_choice(self):
+    def test_reference_mode_ignores_legacy_start_flag_in_picker_numbering(self):
         session = self._saved()
         session["segments"][0]["minimax_h3_use_scene_image_as_start_frame"] = True
         Path(self.folder, "vrgdg_builder_session.json").write_text(json.dumps(session), encoding="utf-8")
         choices = mutations.get_scene_minimax_references("Refs", "seg_1")
-        self.assertEqual(choices["limits"], {"max_images": 9, "start_frame_image_1": True, "max_choices": 8})
-        self.assertEqual([item["image_number"] for item in choices["selected"]], [2, 3, 4])
+        self.assertEqual(choices["limits"], {"max_images": 9, "start_frame_image_1": False, "max_choices": 9})
+        self.assertEqual([item["image_number"] for item in choices["selected"]], [1, 2, 3])
 
     # ---- writing
     def test_several_locations_can_be_chosen_in_a_custom_order(self):
