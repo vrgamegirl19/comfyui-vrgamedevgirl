@@ -6,8 +6,10 @@ import { escapeHtml, makeButton, makeField, makeInput, makeSelect, normalizeProj
 import { normalizeFluxReferenceBuilder } from "./reference_data.mjs";
 import { mergeActs, moveActBorder, splitAct, validateStoryActs } from "./story_acts_data.mjs";
 import {
-  STORY_BUILDER_TABS, castWithoutImages, storyBuilderBlocker, storyBuilderProgress, storySubjectCard,
+  STORY_BUILDER_TABS, castWithoutImages, referenceImageGaps, sceneRangeText, storyBuilderBlocker, storyBuilderProgress,
+  storySubjectCard,
 } from "./story_builder_data.mjs";
+import { normalizeMiniMaxH3Mode } from "./minimax_h3.mjs";
 import { applyStoryLocations } from "./story_locations_data.mjs";
 import {
   applyStoryBookText, fillSceneCast, normalizeSpotMinScenes, normalizeStoryActs, normalizeStoryBook,
@@ -68,6 +70,18 @@ export function createStoryBuilder({
 
   function layer() {
     return normalizeBuilderStoryLayer(state.builderStoryLayer);
+  }
+
+  // Reference to Video (MiniMax) and RTV / Ingredients (LTX) send the card images, so every scene needs one.
+  function referenceImagesRequired() {
+    if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") {
+      return ["reference_to_video", "image_reference_to_video"].includes(normalizeMiniMaxH3Mode(state.miniMaxH3Settings?.video_mode));
+    }
+    return ["rtv", "ingredients"].includes(String(state.videoModelMode || ""));
+  }
+
+  function imageGaps() {
+    return referenceImageGaps(normalizeFluxReferenceBuilder(state.fluxReferenceBuilder), segments().map((segment) => segment.id));
   }
 
   async function saveLayer(fields, label) {
@@ -244,6 +258,34 @@ export function createStoryBuilder({
       hosted = openFluxReferenceBuilderModal({ focusedSection, host: container, onSaved: refreshProgress }) || null;
     }
 
+    // Opens the Cast or Places tab and its Reference Builder's Generate Missing Images window.
+    async function generateMissingImages(kind) {
+      const tab = kind === "locations" ? "places" : "cast";
+      if (activeTab !== tab || !hosted) await show(tab);
+      if (kind === "locations") hosted?.generateMissingLocationImages?.();
+      else hosted?.generateMissingSubjectImages?.();
+    }
+
+    function imageButton(kind) {
+      const button = makeButton(kind === "locations" ? "Generate Missing Location Images" : "Generate Missing Character Images", "primary");
+      button.onclick = () => generateMissingImages(kind);
+      return button;
+    }
+
+    // An amber note naming the cards without an image, with the button that makes them; null when none are missing.
+    function imageNotice(kind) {
+      const names = kind === "locations" ? imageGaps().locations : castWithoutImages(normalizeFluxReferenceBuilder(state.fluxReferenceBuilder));
+      if (!names.length) return null;
+      const what = kind === "locations" ? "location" : "character";
+      const why = referenceImagesRequired()
+        ? "Reference to Video sends these images, so each one needs an image before prompts and renders."
+        : "Make them now so every card is ready.";
+      const note = el("div", "font-size:12px;color:#fbbf24;border:1px solid #78350f;border-radius:7px;background:#1c1207;padding:9px;display:flex;flex-direction:column;gap:8px;",
+        `${names.length} ${what}${names.length === 1 ? "" : "s"} ${kind === "locations" ? "used by your scenes " : ""}${names.length === 1 ? "has" : "have"} no image yet: ${names.join(", ")}. ${why}`);
+      note.append(row(imageButton(kind)));
+      return note;
+    }
+
     // ---------------------------------------------------------------- Song
     function renderSong() {
       const all = segments();
@@ -311,9 +353,9 @@ export function createStoryBuilder({
 
     // ---------------------------------------------------------------- Cast
     function renderCast() {
-      const missing = castWithoutImages(normalizeFluxReferenceBuilder(state.fluxReferenceBuilder));
       const intro = card("Cast", "Add the main characters before writing the story so it can use their names. You can add more cast from the Story tab.");
-      if (missing.length) intro.append(el("div", "font-size:12px;color:#fbbf24;", `Needs an image or RefMod before rendering: ${missing.join(", ")}`));
+      const missing = imageNotice("characters");
+      if (missing) intro.append(missing);
       const host = el("div", "flex:1 1 auto;min-height:560px;display:flex;");
       content.append(intro, host);
       hostReferenceBuilder(host, "subjects");
@@ -434,8 +476,9 @@ export function createStoryBuilder({
           refs.subject_count = refs.subjects.length;
           state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
           await autoSaveSessionQuiet("story builder cast added");
-          toast(`Added ${chosen.length} character${chosen.length === 1 ? "" : "s"}. Give each an image or RefMod in the Cast tab.`);
-          show("story");
+          toast(`Added ${chosen.length} character${chosen.length === 1 ? "" : "s"}. Make their images now, or give them a RefMod.`);
+          // New cast has no images yet: go straight to making them.
+          await generateMissingImages("characters");
         };
         found.append(row(addCast));
       };
@@ -656,9 +699,13 @@ export function createStoryBuilder({
         state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(merged.refs);
         await saveLayer(data.story_layer || {}, "story builder locations");
         toast(`Locations ready: ${merged.added} added, ${merged.updated} updated. Every scene is mapped to its spot.`);
-        show("places");
+        // New cards have no images yet: go straight to making them.
+        if (imageGaps().locations.length) await generateMissingImages("locations");
+        else show("places");
       };
       top.append(makeField("Style and theme", theme), row(regenerate, build));
+      const missingPlaces = imageNotice("locations");
+      if (missingPlaces) top.append(missingPlaces);
       const looks = card("Setting looks", "Edit a look to change how every spot of that setting is described next time you build.");
       const lookInputs = normalizeStorySettings(current.story_settings).map((setting) => {
         const input = textarea(setting.look, "The shared look of this setting.", 50);
@@ -702,8 +749,21 @@ export function createStoryBuilder({
       beats.append(row(missingBeats, allBeats));
 
       const prompts = card("Video prompts", `${withPrompt} of ${all.length} scenes have a video prompt. Creating prompts writes one for every scene from its beat, replacing what is there. Create the beats first.`);
+      // Reference to Video cannot write or render a scene that has no image to send.
+      const gaps = imageGaps();
+      const required = referenceImagesRequired();
+      const imagesBlock = required && gaps.scenes.length > 0;
+      if (gaps.characters.length || gaps.locations.length || (required && gaps.scenes.length)) {
+        const message = imagesBlock
+          ? `${sceneRangeText(gaps.scenes)} ${gaps.scenes.length === 1 ? "has" : "have"} no character or location image, and Reference to Video needs at least one. ${gaps.characters.length || gaps.locations.length ? "Make the missing images first." : "Map a character or location to them in the Cast or Places tab."}`
+          : `Some cards used by your scenes have no image yet${gaps.characters.length ? `. Characters: ${gaps.characters.join(", ")}` : ""}${gaps.locations.length ? `. Locations: ${gaps.locations.join(", ")}` : ""}.`;
+        const note = el("div", `font-size:12px;color:${imagesBlock ? "#fca5a5" : "#fbbf24"};border:1px solid ${imagesBlock ? "#7f1d1d" : "#78350f"};border-radius:7px;background:${imagesBlock ? "#1f0808" : "#1c1207"};padding:9px;display:flex;flex-direction:column;gap:8px;`, message);
+        note.append(row(gaps.characters.length ? imageButton("characters") : null, gaps.locations.length ? imageButton("locations") : null));
+        prompts.append(note);
+      }
       const createPrompts = makeButton("Create Video Prompts", "primary");
-      createPrompts.disabled = Boolean(blocked) || !withBeat;
+      createPrompts.disabled = Boolean(blocked) || !withBeat || imagesBlock;
+      if (imagesBlock) createPrompts.title = "Make the missing images first.";
       createPrompts.onclick = () => {
         if (withPrompt && window.confirm?.(`Replace the video prompts of all ${all.length} scenes?`) === false) return;
         runAndRefresh(() => createVideoPrompts());

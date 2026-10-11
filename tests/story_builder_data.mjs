@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  STORY_BUILDER_TABS, castWithoutImages, storyBuilderBlocker, storyBuilderProgress, storySubjectCard,
+  STORY_BUILDER_TABS, castWithoutImages, referenceImageGaps, sceneRangeText, storyBuilderBlocker, storyBuilderProgress,
+  storySubjectCard,
 } from '../web/music_video_builder/story_builder_data.mjs';
 
 const sceneIds = ['s1', 's2', 's3'];
@@ -37,6 +38,29 @@ test('progress moves tab by tab', () => {
   });
   assert.deepEqual(castWithoutImages(refs), ['Joe']);
   assert.equal(storyBuilderBlocker('places', progress), '');
+});
+
+test('image gaps name the cards scenes use without an image, and the scenes with none', () => {
+  const refs = {
+    subjects: [{ id: 'mara', name: 'Mara', image: { path: 'C:/m.png' } }, { id: 'joe', name: 'Joe', image: {} },
+      { id: 'ann', name: 'Ann', image: {} }, { id: 'ref', name: 'Ref', source: 'refmod', refmod: { name: 'Ref' } }],
+    locations: [{ id: 'loc_1', name: 'Home - Kitchen', image: {} }, { id: 'loc_2', name: 'Street', image: { data: 'x' } }],
+    subject_scene_map: { s1: ['mara', 'joe'], s2: ['joe'], s3: ['ref'], s4: 'joe' },
+    scene_map: { s1: 'loc_1', s2: 'loc_1', s4: 'loc_2' },
+  };
+  assert.deepEqual(referenceImageGaps(refs, ['s1', 's2', 's3', 's4', 's5']), {
+    characters: ['Joe'], locations: ['Home - Kitchen'], scenes: [2, 5],
+  });
+  assert.equal(sceneRangeText([48, 49, 50, 52]), 'Scenes 48-50, 52');
+  assert.equal(sceneRangeText([7]), 'Scene 7');
+});
+
+test('places stay in progress while a mapped story location has no image', () => {
+  const refs = { locations: [{ id: 'loc_1', name: 'Home - Kitchen', story_setting_id: 'setting_home', image: {} }],
+    scene_map: { s1: 'loc_1', s2: 'loc_1', s3: 'loc_1' } };
+  assert.equal(storyBuilderProgress({ sceneIds, refs }).places, 'progress');
+  refs.locations[0].image = { path: 'C:/k.png' };
+  assert.equal(storyBuilderProgress({ sceneIds, refs }).places, 'done');
 });
 
 test('broken acts block the scene plan', () => {

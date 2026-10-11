@@ -106,7 +106,7 @@ function project() {
 
 function setup() {
   const state = project();
-  const calls = { saves: [], hosted: [], storyboard: 0, errors: [], order: [], beats: [], prompts: 0 };
+  const calls = { saves: [], hosted: [], storyboard: 0, errors: [], order: [], beats: [], prompts: 0, generated: [] };
   const builder = createStoryBuilder({
     autoSaveSessionQuiet: async (label) => { calls.saves.push(label); },
     createProgressWindow: () => ({ set() {}, close() {} }),
@@ -119,7 +119,9 @@ function setup() {
       assert.ok(options.host instanceof FakeElement, 'the Reference Builder is hosted inside the tab');
       // Like the real one: Save writes back the copy of the cards taken when it opened.
       const copy = JSON.parse(JSON.stringify(state.fluxReferenceBuilder));
-      return { save: async () => { calls.order.push('hosted save'); state.fluxReferenceBuilder = copy; }, close() {} };
+      return { save: async () => { calls.order.push('hosted save'); state.fluxReferenceBuilder = copy; }, close() {},
+        generateMissingSubjectImages: () => calls.generated.push('characters'),
+        generateMissingLocationImages: () => calls.generated.push('locations') };
     },
     openLyricMappingWorkflowModal() {},
     openLyricReviewModal() {},
@@ -206,6 +208,32 @@ test('beats and prompts tab creates beats and prompts and saves edits', async ()
   assert.equal(state.segments[0].minimax_h3_prompt_origin, 'manual');
   assert.equal(state.segments[1].minimax_h3_prompt_origin, undefined, 'unchanged prompts keep their origin');
   assert.ok(calls.saves.includes('story builder beats and prompts edited'));
+  findButton('Close').onclick();
+  await tick();
+});
+
+test('Reference to Video blocks prompts for scenes with no image and opens the image generator', async () => {
+  const { state, calls, builder } = setup();
+  state.projectVideoEngine = 'minimax_h3';
+  state.miniMaxH3Settings = { video_mode: 'reference_to_video' };
+  state.segments[0].story_beat = 'A beat.';
+  // Mara has an image and is mapped to scenes 1-3; scenes 4-6 only have an imageless location.
+  state.fluxReferenceBuilder.subject_scene_map = { seg_1: ['mara'], seg_2: ['mara'], seg_3: ['mara'] };
+  state.fluxReferenceBuilder.locations = [{ id: 'loc_1', name: 'Train - Sleeper Car', story_setting_id: 'setting_train', image: {} }];
+  state.fluxReferenceBuilder.scene_map = { seg_4: 'loc_1', seg_5: 'loc_1', seg_6: 'loc_1' };
+  builder.openStoryBuilder({ tab: 'prompts' });
+  await tick();
+  assert.equal(findButton('Create Video Prompts').disabled, true);
+  assert.ok(document.body.textContent.includes('Scenes 4-6 have no character or location image'));
+  await findButton('Generate Missing Location Images').onclick();
+  await tick();
+  assert.deepEqual(calls.generated, ['locations'], 'it opens the Places tab and its image generator');
+  builder.openStoryBuilder({ tab: 'prompts' });
+  await tick();
+  state.fluxReferenceBuilder.locations[0].image = { path: 'C:/car.png' };
+  builder.openStoryBuilder({ tab: 'prompts' });
+  await tick();
+  assert.equal(findButton('Create Video Prompts').disabled, false);
   findButton('Close').onclick();
   await tick();
 });

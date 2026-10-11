@@ -926,7 +926,11 @@ export function createReferenceBuilder({
       });
     }
     renderAll();
-    return { close: closeReferenceBuilder, save: () => save.onclick(), renderAll };
+    return {
+      close: closeReferenceBuilder, save: () => save.onclick(), renderAll,
+      generateMissingSubjectImages: openMissingSubjectImageGeneratorDialog,
+      generateMissingLocationImages: openMissingLocationImageGeneratorDialog,
+    };
   }
 
   return { openFluxReferenceBuilderModal };

@@ -31,6 +31,7 @@ export function storyBuilderProgress({ sceneIds = [], refs = {}, layer = {}, seg
   const sceneMap = refs?.scene_map || {};
   const storyCards = new Set((refs?.locations || []).filter((card) => card?.story_setting_id).map((card) => card.id));
   const mappedToStory = sceneIds.filter((id) => storyCards.has(sceneMap[id])).length;
+  const placesWithoutImages = referenceImageGaps(refs, sceneIds).locations.length;
   const withBeat = segments.filter((segment) => String(segment?.story_beat || "").trim()).length;
   const level = (count, total) => (!count ? "empty" : count >= total ? "done" : "progress");
   return {
@@ -39,7 +40,7 @@ export function storyBuilderProgress({ sceneIds = [], refs = {}, layer = {}, seg
     story: chapters.some((chapter) => chapter.paragraphs.length) ? "done" : "empty",
     acts: !acts.length ? "empty" : validateStoryActs(acts, chapters, sceneIds).length ? "progress" : "done",
     scenes: level(sceneIds.filter((id) => planned.has(id)).length, sceneIds.length || 1),
-    places: level(mappedToStory, sceneIds.length || 1),
+    places: placesWithoutImages && mappedToStory ? "progress" : level(mappedToStory, sceneIds.length || 1),
     prompts: level(withBeat, segments.length || 1),
   };
 }
@@ -63,6 +64,37 @@ export function storyBuilderBlocker(tabId, progress) {
 // Characters that still need an image or RefMod before rendering.
 export function castWithoutImages(refs) {
   return characters(refs).filter((subject) => !hasImage(subject)).map((subject) => subject.name || subject.id);
+}
+
+// Cards used by the scenes that still have no image, and the scenes (1-based) with no image at all to send.
+export function referenceImageGaps(refs, sceneIds = []) {
+  const subjects = new Map((refs?.subjects || []).filter((card) => card && !card.extra_reference_for).map((card) => [card.id, card]));
+  const locations = new Map((refs?.locations || []).filter(Boolean).map((card) => [card.id, card]));
+  const subjectMap = refs?.subject_scene_map || {};
+  const sceneMap = refs?.scene_map || {};
+  const missingCharacters = new Set();
+  const missingLocations = new Set();
+  const scenes = [];
+  sceneIds.forEach((id, index) => {
+    const cast = (Array.isArray(subjectMap[id]) ? subjectMap[id] : [subjectMap[id]]).map((key) => subjects.get(key)).filter(Boolean);
+    const place = locations.get(sceneMap[id]);
+    for (const card of cast) if (!hasImage(card)) missingCharacters.add(card.name || card.id);
+    if (place && !hasImage(place)) missingLocations.add(place.name || place.id);
+    if (!cast.some(hasImage) && !(place && hasImage(place))) scenes.push(index + 1);
+  });
+  return { characters: [...missingCharacters], locations: [...missingLocations], scenes };
+}
+
+// "Scenes 48-50, 52" from [48, 49, 50, 52].
+export function sceneRangeText(numbers) {
+  const parts = [];
+  for (const number of numbers) {
+    const last = parts[parts.length - 1];
+    if (last && number === last[1] + 1) last[1] = number;
+    else parts.push([number, number]);
+  }
+  const text = parts.map(([start, end]) => (start === end ? `${start}` : `${start}-${end}`)).join(", ");
+  return `${numbers.length === 1 ? "Scene" : "Scenes"} ${text}`;
 }
 
 // A Reference Builder subject card for a character found in the story.
