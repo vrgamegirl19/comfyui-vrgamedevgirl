@@ -637,8 +637,14 @@ export function createStoryBuilder({
       const build = makeButton("Build Locations From Story", "primary");
       build.disabled = Boolean(blocked);
       build.onclick = async () => {
+        // Save and close the hosted Reference Builder first. It holds its own copy of the cards, and saving that
+        // copy after the build would overwrite the new locations.
+        await leaveHostedTab();
         const data = await runStep("locations", { style_theme: theme.value, regenerate_looks: regenerateBox.checked }, "Building the locations");
-        if (!data?.locations) return;
+        if (!data?.locations) {
+          show("places");
+          return;
+        }
         pushHistory();
         const merged = applyStoryLocations(normalizeFluxReferenceBuilder(state.fluxReferenceBuilder), data.locations, (taken) => {
           let id = "";

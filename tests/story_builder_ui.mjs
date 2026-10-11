@@ -7,7 +7,7 @@ import { test } from 'node:test';
 registerHooks({
   resolve(specifier, context, nextResolve) {
     if (/scripts\/(app|api)\.js$/.test(specifier)) {
-      return { url: 'data:text/javascript,export const app = {}; export const api = {};', shortCircuit: true };
+      return { url: 'data:text/javascript,export const app = {}; export const api = (globalThis.fakeComfyApi ||= {});', shortCircuit: true };
     }
     return nextResolve(specifier, context);
   },
@@ -106,7 +106,7 @@ function project() {
 
 function setup() {
   const state = project();
-  const calls = { saves: [], hosted: [], storyboard: 0, errors: [] };
+  const calls = { saves: [], hosted: [], storyboard: 0, errors: [], order: [] };
   const builder = createStoryBuilder({
     autoSaveSessionQuiet: async (label) => { calls.saves.push(label); },
     createProgressWindow: () => ({ set() {}, close() {} }),
@@ -115,7 +115,9 @@ function setup() {
     openFluxReferenceBuilderModal: (options) => {
       calls.hosted.push(options.focusedSection);
       assert.ok(options.host instanceof FakeElement, 'the Reference Builder is hosted inside the tab');
-      return { save: async () => {}, close() {} };
+      // Like the real one: Save writes back the copy of the cards taken when it opened.
+      const copy = JSON.parse(JSON.stringify(state.fluxReferenceBuilder));
+      return { save: async () => { calls.order.push('hosted save'); state.fluxReferenceBuilder = copy; }, close() {} };
     },
     openLyricMappingWorkflowModal() {},
     openLyricReviewModal() {},
@@ -154,6 +156,30 @@ test('every tab renders without an error', async () => {
   findButton('Close').onclick();
   await tick();
   assert.equal(document.body.children.length, 0, 'closing removes the window');
+});
+
+test('building locations keeps the new cards when the hosted Reference Builder saves its copy', async () => {
+  const { state, calls, builder } = setup();
+  globalThis.fakeComfyApi.fetchApi = async () => {
+    calls.order.push('build');
+    return { ok: true, json: async () => ({ ok: true, story_layer: {}, locations: [
+      { name: 'Home - Kitchen', description: 'Pine kitchen.', story_setting_id: 'setting_home', story_act_ids: ['act_1'], scene_ids: ['seg_1', 'seg_2'] },
+    ] }) };
+  };
+  try {
+    builder.openStoryBuilder({ tab: 'places' });
+    await tick();
+    await findButton('Build Locations From Story').onclick();
+    await tick();
+    assert.deepEqual(calls.order.slice(0, 2), ['hosted save', 'build'], 'the hosted builder is saved before the build');
+    assert.deepEqual(state.fluxReferenceBuilder.locations.map((card) => card.name), ['Home - Kitchen']);
+    assert.equal(state.fluxReferenceBuilder.scene_map.seg_1, state.fluxReferenceBuilder.locations[0].id);
+    findButton('Close').onclick();
+    await tick();
+    assert.deepEqual(state.fluxReferenceBuilder.locations.map((card) => card.name), ['Home - Kitchen'], 'closing keeps the cards');
+  } finally {
+    delete globalThis.fakeComfyApi.fetchApi;
+  }
 });
 
 test('saving the scene plan sets each scene performance and keeps the notes', async () => {
