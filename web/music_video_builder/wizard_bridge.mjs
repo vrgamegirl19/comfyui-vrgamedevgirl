@@ -469,7 +469,8 @@ export function createWizardBridge({
         state.defaultFacialPerformanceCustom = String(settings.facialPerformanceCustom ?? settings.facial_performance_custom ?? "");
       }
       if (settings.storyLayer || settings.story_layer) {
-        state.builderStoryLayer = normalizeBuilderStoryLayer(settings.storyLayer || settings.story_layer);
+        // Merge so Story Mode data the wizard does not edit (book, acts, scene plan) is kept.
+        state.builderStoryLayer = normalizeBuilderStoryLayer({ ...state.builderStoryLayer, ...(settings.storyLayer || settings.story_layer) });
       }
       return {
         sceneDefaults: normalizeBuilderStoryboardDefaults(state.builderStoryboardDefaults),
@@ -1261,7 +1262,7 @@ export function createWizardBridge({
       createStoryBrief: createWizardStoryBrief,
       createSceneBeats: createWizardSceneBeats,
       updateStoryLayer: async (storyLayer = {}) => {
-        state.builderStoryLayer = normalizeBuilderStoryLayer(storyLayer);
+        state.builderStoryLayer = normalizeBuilderStoryLayer({ ...state.builderStoryLayer, ...storyLayer });
         await autoSaveSessionQuiet("wizard story layer updated");
         return normalizeBuilderStoryLayer(state.builderStoryLayer);
       },

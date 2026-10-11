@@ -1,5 +1,6 @@
 import { normalizeStoryboardScriptImportState } from "./script_import.mjs";
 import { refmodCardFields } from "../music_video_builder/refmod_labels.mjs";
+import { normalizeStoryModeFields } from "../music_video_builder/story_mode_data.mjs";
 import { storyboardTemporalIntensity, storyboardTemporalProtectedMode } from "./video_style.mjs";
 
 function statusMeta(scene) {
@@ -366,6 +367,7 @@ export function normalizeStoryLayer(value = {}) {
     lyric_story_strength: Number.isFinite(lyricStoryStrength) ? lyricStoryStrength : 7,
     image_world_style: imageWorldStyle,
     image_custom_style_direction: String(source.image_custom_style_direction || source.imageCustomStyleDirection || ""),
+    ...normalizeStoryModeFields(source),
   };
 }
 

@@ -1572,14 +1572,21 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
             "Write a story layer step with the project's LLM, as a background job (T62). step 'arc' writes the story arc from the "
             "story idea, 'brief' writes the song story brief, 'beats' writes a beat per scene (only scenes without one unless "
             "replace_existing; limit caps the count). Returns a job id for job_wait. Order: arc, brief, beats. "
+            "Story Mode (video_type 'story') uses its own steps: 'book' writes the story book from story_idea, 'split' turns "
+            "a story you pass as text into chapters without changing a word, 'chapter' rewrites chapter_id following "
+            "direction, 'cast' lists story characters that have no card (nothing saved). "
             "For LM Studio the loaded model is used and never changed."
         ),
         input_schema={
             "type": "object",
             "properties": {
                 "project_id": {"type": "string"},
-                "step": {"type": "string", "enum": ["arc", "brief", "beats"]},
-                "story_idea": {"type": "string", "description": "arc only; defaults to the saved idea."},
+                "step": {"type": "string", "enum": ["arc", "brief", "beats", "book", "split", "chapter", "cast"]},
+                "story_idea": {"type": "string", "description": "arc and book; defaults to the saved idea."},
+                "tone_notes": {"type": "string", "description": "book only: tone, genre and world notes."},
+                "text": {"type": "string", "description": "split only: the full story to divide into chapters."},
+                "chapter_id": {"type": "string", "description": "chapter only: story_book.chapters[].id."},
+                "direction": {"type": "string", "description": "chapter only: what to change."},
                 "story_arc_detail": {"type": "string", "enum": ["compact", "standard", "detailed", "rich"]},
                 "scene_ids": {"type": "array", "items": {"type": "string"}},
                 "replace_existing": {"type": "boolean", "default": False},

@@ -1,0 +1,77 @@
+{
+  "parse": [
+    {
+      "name": "title, premise, chapters with settings, a non-numeric heading and a Premise line inside a chapter",
+      "text": "Title: The Last Train North\nPremise: Mara follows her father's trail.\n\nChapter 1: The Station\nSetting: The Night Train\n\nMara waits on the platform.\nShe checks the watch.\n\nThe train arrives.\n\n## Chapter Two - Home\nSetting: Home\nPremise: not a premise here\n\nThe kitchen is cold.",
+      "book": {
+        "title": "The Last Train North",
+        "premise": "Mara follows her father's trail.",
+        "chapters": [
+          {"id": "ch_1", "title": "The Station", "setting_id": "setting_the_night_train",
+           "paragraphs": ["Mara waits on the platform.\nShe checks the watch.", "The train arrives."]},
+          {"id": "ch_2", "title": "Home", "setting_id": "setting_home",
+           "paragraphs": ["Premise: not a premise here", "The kitchen is cold."]}
+        ]
+      },
+      "setting_names": {"setting_the_night_train": "The Night Train", "setting_home": "Home"},
+      "text_out": "Title: The Last Train North\nPremise: Mara follows her father's trail.\n\nChapter 1: The Station\nSetting: The Night Train\n\nMara waits on the platform.\nShe checks the watch.\n\nThe train arrives.\n\nChapter 2: Home\nSetting: Home\n\nPremise: not a premise here\n\nThe kitchen is cold."
+    },
+    {
+      "name": "text without headings or blank lines is one chapter, one paragraph per line",
+      "text": "one line\nsecond line",
+      "book": {"title": "", "premise": "", "chapters": [
+        {"id": "ch_1", "title": "Chapter 1", "setting_id": "", "paragraphs": ["one line", "second line"]}
+      ]},
+      "setting_names": {},
+      "text_out": "Chapter 1: Chapter 1\n\none line\n\nsecond line"
+    },
+    {
+      "name": "a sentence that starts with Chapter is not a heading",
+      "text": "Chapter 1\nChapter by chapter she read the letters.",
+      "book": {"title": "", "premise": "", "chapters": [
+        {"id": "ch_1", "title": "Chapter 1", "setting_id": "", "paragraphs": ["Chapter by chapter she read the letters."]}
+      ]},
+      "setting_names": {},
+      "text_out": "Chapter 1: Chapter 1\n\nChapter by chapter she read the letters."
+    }
+  ],
+  "split": [
+    {
+      "name": "starts are sorted, the first chapter is added at paragraph 1, bad starts are dropped",
+      "paragraphs": ["a", "b", "c", "d"],
+      "split": [{"start_paragraph": 3, "title": "Two", "setting": "Home"}, {"start_paragraph": 9}, {"start_paragraph": "x"}],
+      "chapters": [
+        {"id": "ch_1", "title": "Chapter 1", "setting_id": "", "paragraphs": ["a", "b"]},
+        {"id": "ch_2", "title": "Two", "setting_id": "setting_home", "paragraphs": ["c", "d"]}
+      ],
+      "setting_names": {"setting_home": "Home"}
+    }
+  ],
+  "normalize": [
+    {
+      "name": "only keys present are returned, values are cleaned",
+      "input": {
+        "story_flow_version": "2",
+        "story_settings": [{"name": "Home", "look": " warm wood "}, {"id": "setting_home", "name": "Dup"}, {"name": ""}],
+        "story_scene_plan": [
+          {"scene_id": "s1", "performance_mode": "Story Only", "spot": "  Kitchen  "},
+          {"scene_id": "s1", "performance_mode": "speaking"},
+          {"scene_id": "s2", "performance_mode": "music only"}
+        ]
+      },
+      "output": {
+        "story_flow_version": 2,
+        "story_settings": [{"id": "setting_home", "name": "Home", "look": "warm wood"}],
+        "story_scene_plan": [
+          {"scene_id": "s1", "act_id": "", "story_slice": "", "spot": "Kitchen", "mood": "", "performance_mode": "no_lip_sync", "note_sources": []},
+          {"scene_id": "s2", "act_id": "", "story_slice": "", "spot": "", "mood": "", "performance_mode": "instrumental", "note_sources": []}
+        ]
+      }
+    },
+    {
+      "name": "an old story layer has no Story Mode keys",
+      "input": {"overall_story_idea": "idea", "user_story_arc": "Verse 1: ..."},
+      "output": {}
+    }
+  ]
+}

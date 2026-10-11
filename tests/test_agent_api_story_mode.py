@@ -1,0 +1,166 @@
+"""Story Mode story steps for agents: book, chapter rewrite, pasted story split and cast scan."""
+
+import importlib
+import json
+import sys
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT.parent) not in sys.path:
+    sys.path.insert(0, str(ROOT.parent))
+if str(ROOT / "tests") not in sys.path:
+    sys.path.insert(0, str(ROOT / "tests"))
+
+pkg_name = ROOT.name
+errors = importlib.import_module(f"{pkg_name}.agent_api.errors")
+story = importlib.import_module(f"{pkg_name}.agent_api.orchestrator.storyboard_orchestrator")
+story_mode = importlib.import_module(f"{pkg_name}.agent_api.orchestrator.story_mode_orchestrator")
+book_funcs = importlib.import_module(f"{pkg_name}.storyboard.story_book")
+from test_agent_api_references_llm import Base  # noqa: E402
+
+BOOK = """Title: The Last Train North
+Premise: Darrel follows his father's trail.
+
+Chapter 1: The Station
+Setting: The Night Train
+
+Darrel waits on the empty platform.
+
+The conductor waves him aboard.
+
+Chapter 2: Coming Home
+Setting: Home
+
+Darrel opens the kitchen door.
+"""
+
+
+class FakeLLM:
+    def __init__(self, *replies):
+        self.replies = list(replies)
+        self.instructions = []
+
+    def __call__(self, payload, instruction, **kwargs):
+        self.instructions.append(instruction)
+        return self.replies.pop(0), {"runner": "lm_studio", "used_model": payload.get("lmstudio_model", "")}
+
+
+class StoryModeStepTests(Base):
+    def layer(self):
+        return self.read_session()["builder_story_layer"]
+
+    def test_book_is_drafted_from_the_premise_and_saved(self):
+        session = self.read_session()
+        session["builder_story_layer"] = {"user_story_arc": "Verse 1: old arc", "lyric_story_strength": 7}
+        self.write_session(session)
+        llm = FakeLLM(BOOK)
+        with patch.object(book_funcs, "_run", llm):
+            result = story_mode.create_story_book("Song", {"story_idea": "A son searches for his father"})
+        prompt = llm.instructions[0]
+        self.assertIn("A son searches for his father", prompt)
+        self.assertIn("Darrel", prompt, "the cast is sent")
+        self.assertIn("10 scenes", prompt)
+        self.assertIn("emotion only", prompt)
+        layer = self.layer()
+        self.assertEqual(layer["story_flow_version"], 2)
+        self.assertEqual(layer["lyric_story_strength"], 5, "Story Mode starts at the emotion-only default")
+        self.assertEqual(layer["user_story_arc"], "Verse 1: old arc", "older story fields are kept")
+        self.assertEqual([c["setting_id"] for c in layer["story_book"]["chapters"]],
+                         ["setting_the_night_train", "setting_home"])
+        self.assertEqual([s["name"] for s in layer["story_settings"]], ["The Night Train", "Home"])
+        self.assertEqual(layer["story_acts"], [])
+        self.assertTrue(layer["story_book_text"].startswith("Title: The Last Train North"))
+        self.assertEqual(result["story_book"]["title"], "The Last Train North")
+
+    def test_a_reply_without_a_story_is_an_error(self):
+        with patch.object(book_funcs, "_run", FakeLLM("")):
+            with self.assertRaises(ValueError):
+                story_mode.create_story_book("Song", {"story_idea": "idea"})
+
+    def test_pasted_story_keeps_every_word(self):
+        text = "Darrel waits on the platform.\n\nThe train comes.\n\nHe walks home.\n\nThe kitchen is cold."
+        split = {"chapters": [{"start_paragraph": 1, "title": "The Station", "setting": "The Night Train"},
+                              {"start_paragraph": 3, "title": "Home Again", "setting": "Home"}]}
+        with patch.object(book_funcs, "_run", FakeLLM(json.dumps(split))):
+            story_mode.split_story("Song", {"text": text})
+        chapters = self.layer()["story_book"]["chapters"]
+        self.assertEqual([c["paragraphs"] for c in chapters],
+                         [["Darrel waits on the platform.", "The train comes."], ["He walks home.", "The kitchen is cold."]])
+        self.assertEqual(chapters[1]["setting_id"], "setting_home")
+
+    def test_pasted_story_with_headings_keeps_them(self):
+        split = {"chapters": [{"start_paragraph": 1, "title": "Other", "setting": "Station"},
+                              {"start_paragraph": 3, "title": "Other", "setting": "House"}]}
+        with patch.object(book_funcs, "_run", FakeLLM(json.dumps(split))):
+            story_mode.split_story("Song", {"text": BOOK})
+        chapters = self.layer()["story_book"]["chapters"]
+        self.assertEqual([c["title"] for c in chapters], ["The Station", "Coming Home"])
+        self.assertEqual([c["setting_id"] for c in chapters], ["setting_the_night_train", "setting_home"],
+                         "settings the user wrote win over the LLM's")
+
+    def test_chapter_rewrite_replaces_one_chapter_and_clears_its_acts(self):
+        session = self.read_session()
+        session["builder_story_layer"] = {
+            "story_flow_version": 2,
+            "story_book": {"title": "T", "chapters": [
+                {"id": "ch_1", "title": "One", "setting_id": "setting_home", "paragraphs": ["old"]},
+                {"id": "ch_2", "title": "Two", "setting_id": "setting_home", "paragraphs": ["keep"]},
+            ]},
+            "story_settings": [{"id": "setting_home", "name": "Home", "look": "warm wood"}],
+            "story_acts": [{"id": "act_1", "chapter_id": "ch_1"}, {"id": "act_2", "chapter_id": "ch_2"}],
+            "story_scene_plan": [{"scene_id": "s1", "act_id": "act_1"}, {"scene_id": "s2", "act_id": "act_2"}],
+        }
+        self.write_session(session)
+        llm = FakeLLM("Chapter 1: One Again\n\nA new first chapter.")
+        with patch.object(book_funcs, "_run", llm):
+            story_mode.rewrite_story_chapter("Song", {"chapter_id": "ch_1", "direction": "make it rain"})
+        self.assertIn("make it rain", llm.instructions[0])
+        layer = self.layer()
+        chapters = layer["story_book"]["chapters"]
+        self.assertEqual(chapters[0]["paragraphs"], ["A new first chapter."])
+        self.assertEqual(chapters[0]["setting_id"], "setting_home", "a rewrite without a Setting line keeps the setting")
+        self.assertEqual(chapters[1]["paragraphs"], ["keep"])
+        self.assertEqual([a["id"] for a in layer["story_acts"]], ["act_2"])
+        self.assertEqual([p["scene_id"] for p in layer["story_scene_plan"]], ["s2"])
+        self.assertEqual(layer["story_settings"][0]["look"], "warm wood")
+
+    def test_chapter_rewrite_needs_a_known_chapter(self):
+        with self.assertRaises(errors.ValidationError):
+            story_mode.rewrite_story_chapter("Song", {})
+        with self.assertRaises(errors.ValidationError):
+            story_mode.rewrite_story_chapter("Song", {"chapter_id": "ch_9"})
+
+    def test_cast_scan_lists_only_people_without_a_card(self):
+        session = self.read_session()
+        session["builder_story_layer"] = {"story_flow_version": 2, "story_book_text": BOOK,
+                                          **story_mode.story_mode_text_fields({}, {"story_book_text": BOOK})}
+        self.write_session(session)
+        found = {"characters": [
+            {"name": "Darrel", "role": "main", "description": "already cast"},
+            {"name": "The Conductor", "role": "supporting", "description": "Older man in a navy uniform."},
+            {"name": "the conductor", "role": "supporting", "description": "duplicate"},
+        ]}
+        with patch.object(book_funcs, "_run", FakeLLM(json.dumps(found))):
+            result = story_mode.scan_story_cast("Song", {})
+        self.assertEqual(result["characters"], [
+            {"name": "The Conductor", "role": "supporting", "description": "Older man in a navy uniform."},
+        ])
+
+    def test_book_text_can_be_edited_through_story_settings(self):
+        story.set_story_settings("Song", {"story": {"story_book_text": BOOK}})
+        layer = self.layer()
+        self.assertEqual(layer["story_flow_version"], 2)
+        self.assertEqual(len(layer["story_book"]["chapters"]), 2)
+        with self.assertRaises(errors.ValidationError):
+            story.set_story_settings("Song", {"story": {"story_acts": []}})
+
+    def test_router_offers_the_story_mode_steps(self):
+        source = (ROOT / "agent_api" / "router.py").read_text(encoding="utf-8")
+        self.assertIn("**STORY_MODE_JOB_TYPES", source)
+        self.assertEqual(set(story_mode.STORY_MODE_JOB_TYPES), set(story_mode.STORY_MODE_STEPS))
+
+
+if __name__ == "__main__":
+    unittest.main()

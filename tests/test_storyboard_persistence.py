@@ -1,6 +1,7 @@
 """Storyboard settings and scene data survive a disk save and reopen."""
 
 import ast
+import importlib
 import importlib.util
 import json
 import os
@@ -8,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
 from datetime import datetime
 from pathlib import Path
@@ -18,13 +20,16 @@ ROOT = Path(__file__).resolve().parents[1]
 def load_persistence() -> dict:
     """Load the real disk helpers without starting ComfyUI or loading models."""
     namespace = {"os": os, "json": json}
-    for relative in ("core/atomic_write.py", "storyboard/scene_helpers.py"):
-        spec = importlib.util.spec_from_file_location(
-            Path(relative).stem, ROOT / relative
-        )
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        namespace.update(vars(module))
+    spec = importlib.util.spec_from_file_location("atomic_write", ROOT / "core/atomic_write.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    namespace.update(vars(module))
+    # scene_helpers imports the pure storyboard/story_mode.py, so load it inside a stand-in package.
+    if "storyboard_pure" not in sys.modules:
+        package = types.ModuleType("storyboard_pure")
+        package.__path__ = [str(ROOT / "storyboard")]
+        sys.modules["storyboard_pure"] = package
+    namespace.update(vars(importlib.import_module("storyboard_pure.scene_helpers")))
     namespace["_enforce_storyboard_video_facial_requirements"] = (
         lambda prompt, scene: prompt
     )

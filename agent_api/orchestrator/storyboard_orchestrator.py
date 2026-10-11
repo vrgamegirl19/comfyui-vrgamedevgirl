@@ -28,6 +28,8 @@ from ..scene_card_context import beat_scene
 # web/music_video_builder/model_settings.mjs. tests/test_agent_api_story_settings_fields.py fails when they drift.
 STORY_LAYER_KEYS = ("enabled", "overall_story_idea", "user_story_arc", "song_story_brief", "lyric_story_strength",
                     "image_world_style", "image_custom_style_direction")
+# Story Mode fields an agent may edit directly; the rest are written by the story steps.
+STORY_MODE_EDIT_KEYS = ("story_book_text",)
 IMAGE_WORLD_STYLES = ("natural", "surreal_subject", "balanced_surreal", "full_surreal", "abstract", "custom")
 DEFAULT_KEYS = (
     "global_consistency_phrase", "camera_motion_speed", "character_motion_speed", "minimax_h3_cut_frequency",
@@ -189,9 +191,10 @@ def set_story_settings(
     unknown = sorted(set(defaults_in) - set(DEFAULT_KEYS) - {"story_arc_detail"})
     if unknown:
         raise ValidationError(f"Unknown scene default(s): {', '.join(unknown)}. Allowed: {', '.join(DEFAULT_KEYS)}, story_arc_detail.")
-    unknown_story = sorted(set(story_in) - set(STORY_LAYER_KEYS))
+    unknown_story = sorted(set(story_in) - set(STORY_LAYER_KEYS) - set(STORY_MODE_EDIT_KEYS))
     if unknown_story:
-        raise ValidationError(f"Unknown story field(s): {', '.join(unknown_story)}. Allowed: {', '.join(STORY_LAYER_KEYS)}.")
+        allowed = ", ".join((*STORY_LAYER_KEYS, *STORY_MODE_EDIT_KEYS))
+        raise ValidationError(f"Unknown story field(s): {', '.join(unknown_story)}. Allowed: {allowed}.")
     for key in SPEED_KEYS:
         if key in defaults_in:
             defaults_in[key] = _number_0_to_10(defaults_in[key], key)
@@ -225,6 +228,11 @@ def set_story_settings(
         defaults.update(defaults_in)
         session["builder_storyboard_defaults"] = defaults
         layer = _story_layer(session)
+        if "story_book_text" in story_in:
+            # Story Mode: the edited book text is parsed into chapters and settings (the Story tab's editor).
+            from .story_mode_orchestrator import story_mode_text_fields
+
+            story_in = {**story_in, **story_mode_text_fields(layer, story_in)}
         layer.update(story_in)
         _save_story_layer(session, layer)
         saved = _persist_session(folder, session)
@@ -420,3 +428,6 @@ def register_storyboard_orchestrator_handlers(manager: Optional[JobManager] = No
     manager.register_handler("storyboard.story_arc", run_story_arc_job)
     manager.register_handler("storyboard.story_brief", run_story_brief_job)
     manager.register_handler("storyboard.scene_beats", run_scene_beats_job)
+    from .story_mode_orchestrator import register_story_mode_handlers
+
+    register_story_mode_handlers(manager)

@@ -19,6 +19,7 @@ import {
 import { normalizeProjectVideoEngine, normalizeProjectVideoType } from "./controls.mjs";
 import { defaultNBImageSettings } from "./llm_runner.mjs";
 import { normalizeMiniMaxShortFilmPlanningMode } from "./minimax_h3.mjs";
+import { normalizeStoryModeFields } from "./story_mode_data.mjs";
 import { cloneKrea2ReferenceSettings } from "./models.mjs";
 import {
   normalizeGemmaContextLimit,
@@ -326,6 +327,7 @@ export function normalizeBuilderStoryLayer(value = {}) {
     lyric_story_strength: Number.isFinite(lyricStoryStrength) ? lyricStoryStrength : 7,
     image_world_style: imageWorldStyle,
     image_custom_style_direction: String(source.image_custom_style_direction || source.imageCustomStyleDirection || ""),
+    ...normalizeStoryModeFields(source),
   };
 }
 

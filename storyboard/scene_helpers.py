@@ -2,6 +2,8 @@ import base64
 import os
 import re
 
+from .story_mode import normalize_story_mode_fields
+
 
 def _safe_project_folder(path):
     folder = os.path.abspath(str(path or "").strip().strip('"'))
@@ -309,6 +311,7 @@ def _normalize_story_layer(value):
             or source.get("imageCustomStyleDirection") or "",
             3000,
         ),
+        **normalize_story_mode_fields(source),
     }
 
 

@@ -13,6 +13,7 @@ from .persistence import (
     _save_storyboard,
 )
 from .scene_prompts import _build_storyboard_image_prompt, _build_storyboard_video_prompt
+from .story_book import draft_story_book, rewrite_story_chapter, scan_story_cast, split_pasted_story
 from .story_layer import (
     StoryArcFormatError,
     _build_story_layer_arc,
@@ -22,6 +23,14 @@ from .story_layer import (
 
 
 _VRGDG_STORYBOARD_ROUTES_REGISTERED = False
+
+# Story Mode steps behind /vrgdg/storyboard/story_mode/{action}. Each returns the story layer fields to save.
+STORY_MODE_ACTIONS = {
+    "book": draft_story_book,
+    "chapter": rewrite_story_chapter,
+    "split": split_pasted_story,
+    "cast": scan_story_cast,
+}
 
 
 def _ensure_storyboard_routes():
@@ -131,6 +140,19 @@ def _ensure_storyboard_routes():
                     "cleaned_output": exc.cleaned_output,
                 },
             }, status=500)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/storyboard/story_mode/{action}")
+    async def vrgdg_storyboard_story_mode(request):
+        action = STORY_MODE_ACTIONS.get(request.match_info.get("action", ""))
+        if action is None:
+            choices = ", ".join(STORY_MODE_ACTIONS)
+            return web.json_response({"ok": False, "error": f"Unknown Story Mode step. Use one of: {choices}."}, status=400)
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(action, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, **result})

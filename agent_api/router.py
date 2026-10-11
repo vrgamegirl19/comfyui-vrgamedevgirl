@@ -86,6 +86,7 @@ from .orchestrator import (
     validate_stitch_request,
     upload_lut_service,
 )
+from .orchestrator.story_mode_orchestrator import STORY_MODE_JOB_TYPES
 from .paths import resolve_project_folder
 from .modes import get_modes_catalog
 from .mutations import (
@@ -660,9 +661,10 @@ def register_agent_api_routes(server_instance=None):
     async def api_story_step(request: web.Request):
         """Create the story arc, story brief or scene beats with the project's LLM. Runs as a job."""
         pid, step = request.match_info["pid"], request.match_info["step"]
-        job_types = {"arc": "storyboard.story_arc", "brief": "storyboard.story_brief", "beats": "storyboard.scene_beats"}
+        job_types = {"arc": "storyboard.story_arc", "brief": "storyboard.story_brief", "beats": "storyboard.scene_beats",
+                     **STORY_MODE_JOB_TYPES}
         if step not in job_types:
-            raise ValidationError("step must be one of: arc, brief, beats.")
+            raise ValidationError(f"step must be one of: {', '.join(job_types)}.")
         payload = await request.json() if request.can_read_body else {}
         folder = await asyncio.to_thread(resolve_project_folder, pid)
         job = get_job_manager().submit_job(job_types[step], project_id=pid, params=dict(payload), is_gpu=is_llm_runner_gpu(payload, folder))
