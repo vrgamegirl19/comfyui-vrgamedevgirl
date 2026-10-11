@@ -1,4 +1,4 @@
-const { readBuilderModule, readBuilderSource } = require('./builder_source.cjs');
+const { functionSource, readBuilderModule, readBuilderSource } = require('./builder_source.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -93,7 +93,7 @@ test('pass selector has three exclusive buttons outside the main mode grid', asy
     syncMiniMaxH3Panel() { settings = c.state.miniMaxH3Settings; },
     autoSaveSessionQuiet: async () => {},
   });
-  const start = source.indexOf('  for (const button of miniMaxPassButtons) {', source.indexOf('  miniMaxUseTurboLora.input.addEventListener'));
+  const start = source.indexOf('  for (const button of miniMaxPassButtons) {', source.indexOf('function wireMiniMaxPanel('));
   const end = source.indexOf('  miniMaxAudioMode.addEventListener', start);
   vm.runInContext(source.slice(start, end), c);
   for (const button of c.miniMaxPassButtons) {
@@ -149,7 +149,7 @@ test('LoRA presets select installed files, save steps, and leave missing selecti
     },
     autoSaveSessionQuiet: async () => { saves++; },
   });
-  const start = source.indexOf('  for (const button of miniMaxTwoPassLoraPresetButtons)', source.indexOf('wireSearchablePicker(miniMaxTurboLoraPicker'));
+  const start = source.indexOf('  for (const button of miniMaxTwoPassLoraPresetButtons)', source.indexOf('function wireMiniMaxPanel('));
   const end = source.indexOf('  wireSearchablePicker(miniMaxTwoPassLoraPicker', start);
   assert.ok(start >= 0 && end > start);
   vm.runInContext(source.slice(start, end), c);
@@ -426,4 +426,49 @@ test('panel hides direction controls without a continuity prompt and hides I2V c
     assert.equal(c.miniMaxContinuationStartField.style.display, enabled ? 'flex' : 'none');
     assert.equal(c.miniMaxContinuitySection.style.display, mode === 'image_to_video' ? 'none' : '');
   }
+});
+
+function editableFixture() {
+  const c = fixture();
+  vm.runInContext(functionSource(readBuilderModule('minimax_panel.mjs'), 'editableMiniMaxH3Settings'), c);
+  return c;
+}
+
+test('retired single-pass Turbo settings become one ordinary LoRA with the same file, strength and effective steps', () => {
+  const c = editableFixture();
+  const old = { use_turbo_lora: true, turbo_lora_name: 'H3/my_turbo.safetensors', turbo_lora_strength: 0,
+    render_pass: 'single', steps: 6, steps_before_turbo: 20, sampler_name: 'euler', scheduler: 'beta', easy_cache_bypass: true };
+  const settings = c.editableMiniMaxH3Settings(old);
+  assert.equal(settings.use_turbo_lora, false);
+  assert.equal(settings.use_loras, true); assert.equal(settings.lora_count, 1);
+  assert.equal(settings.loras[0].name, old.turbo_lora_name); assert.equal(settings.loras[0].strength, 0);
+  assert.equal(settings.steps, 6); assert.equal(settings.sampler_name, 'euler'); assert.equal(settings.scheduler, 'beta');
+  assert.equal(settings.easy_cache_bypass, true); assert.equal(old.use_turbo_lora, true);
+  assert.equal(JSON.stringify(c.editableMiniMaxH3Settings(settings)), JSON.stringify(settings));
+});
+
+test('retiring Turbo preserves ordinary stacks and does not activate a previously ignored legacy LoRA in multi-pass', () => {
+  const c = editableFixture();
+  const normal = { use_loras: true, loras: [{ name: 'style.safetensors', strength: 0.6, apply_to: 'pass1' }], lora_count: 1 };
+  assert.equal(JSON.stringify(c.editableMiniMaxH3Settings(normal)), JSON.stringify(c.cloneMiniMaxH3Settings(normal)));
+  for (const render_pass of ['two_pass', 'three_pass']) {
+    const settings = c.editableMiniMaxH3Settings({ use_turbo_lora: true, render_pass });
+    assert.equal(settings.use_turbo_lora, false); assert.equal(settings.use_loras, false);
+    assert.equal(settings.lora_count, 0); assert.equal(settings.render_pass, render_pass);
+  }
+});
+
+test('global and locked-scene settings both use the editable LoRA migration', () => {
+  const c = editableFixture();
+  c.videoSettingsSegment = () => null;
+  c.state = { miniMaxH3Settings: { use_turbo_lora: true, render_pass: 'single', turbo_lora_name: 'global.safetensors', turbo_lora_strength: 0.9 } };
+  vm.runInContext(functionSource(readBuilderModule('minimax_panel.mjs'), 'miniMaxH3SettingsForSegment'), c);
+  const global = c.miniMaxH3SettingsForSegment(null);
+  assert.equal(global.use_turbo_lora, false); assert.equal(global.loras[0].name, 'global.safetensors');
+  const scene = { use_scene_minimax_h3_settings: true, minimax_h3_settings: {
+    use_turbo_lora: true, turbo_lora_name: 'scene.safetensors', turbo_lora_strength: -0.5, steps: 5, render_pass: 'single' } };
+  const own = c.miniMaxH3SettingsForSegment(scene);
+  assert.equal(own.use_turbo_lora, false); assert.equal(own.loras[0].name, 'scene.safetensors');
+  assert.equal(own.loras[0].strength, -0.5); assert.equal(own.steps, 5);
+  assert.equal(scene.minimax_h3_settings.use_turbo_lora, false);
 });

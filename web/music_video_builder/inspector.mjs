@@ -99,11 +99,6 @@ export function buildInspectorPanels({
       makeField("CLIP", zClipPicker.wrapper),
       makeField("VAE", zVaePicker.wrapper),
     ]),
-    makeSettingsSection("LLM Models", [
-      makeField("Non-Vision text LLM model", t2iTextGemmaModelSelect),
-      makeField("Vision LLM model", gemmaModelSelect),
-      makeField("Vision mmproj", mmprojSelect),
-    ]),
     zUseLora.wrapper,
     zLoraPanel,
     makeZCreateButton(),
@@ -152,11 +147,6 @@ export function buildInspectorPanels({
           makeField("CLIP", ernieClipPicker.wrapper),
           makeField("VAE", ernieVaePicker.wrapper),
         ]),
-        makeSettingsSection("LLM Models", [
-          makeField("Non-Vision text LLM model", ernieTextGemmaModelSelect),
-          makeField("Vision LLM model", ernieGemmaModelSelect),
-          makeField("Vision mmproj", ernieMmprojSelect),
-        ]),
         ernieUseLora.wrapper,
         ernieLoraPanel,
         makeErnieCreateButton(),
@@ -204,11 +194,6 @@ export function buildInspectorPanels({
           krea2TwoPassUseLora.wrapper,
           krea2TwoPassLoraPanel,
         ]),
-        makeSettingsSection("LLM Models", [
-          makeField("Non-Vision text LLM model", krea2TwoPassTextGemmaModelSelect),
-          makeField("Vision LLM model", krea2TwoPassGemmaModelSelect),
-          makeField("Vision mmproj", krea2TwoPassMmprojSelect),
-        ]),
         makeKrea2TwoPassCreateButton(),
       ]),
     },
@@ -250,10 +235,6 @@ export function buildInspectorPanels({
           makeField("Flux model", fluxUnetPicker.wrapper),
           makeField("Flux CLIP", fluxClipPicker.wrapper),
           makeField("Flux VAE", fluxVaePicker.wrapper),
-        ]),
-        makeSettingsSection("Vision LLM Models", [
-        makeField("Vision LLM model", fluxGemmaModelSelect),
-          makeField("Vision mmproj", fluxMmprojSelect),
         ]),
         fluxUseLora.wrapper,
         fluxLoraPanel,
@@ -299,10 +280,6 @@ export function buildInspectorPanels({
         makeSettingsSection("NanoBanana", [
           makeField("Google Cloud API key", nbApiKey),
           makeField("Model", nbModelSelect),
-        ]),
-        makeSettingsSection("Vision LLM Models", [
-        makeField("Vision LLM model", nbGemmaModelSelect),
-          makeField("Vision mmproj", nbMmprojSelect),
         ]),
         makeNBCreateButton(),
       ]),
@@ -404,10 +381,6 @@ export function buildInspectorPanels({
         makeField("ZImage model", zEnhanceUnetPicker.wrapper),
         makeField("CLIP", zEnhanceClipPicker.wrapper),
         makeField("VAE", zEnhanceVaePicker.wrapper),
-        makeSettingsSection("Vision LLM Models", [
-        makeField("Vision LLM model", zEnhanceGemmaModelSelect),
-          makeField("Vision mmproj", zEnhanceMmprojSelect),
-        ]),
         zEnhanceUseLora.wrapper,
         zEnhanceLoraPanel,
       ]),
@@ -693,10 +666,9 @@ export function createInspector({
     for (const select of [...builderTextLlmModelSelects, ...builderVisionLlmModelSelects]) {
       selectBuilderLlmValue(select, modelFile);
     }
-    if (runner === "qwen_local") {
-      for (const select of builderVisionMmprojSelects) {
-        selectBuilderLlmValue(select, state.qwenMmprojFile);
-      }
+    const mmprojFile = runner === "qwen_local" ? state.qwenMmprojFile : mmprojSelect.value;
+    for (const select of builderVisionMmprojSelects) {
+      selectBuilderLlmValue(select, mmprojFile);
     }
   }
   function syncInspectorPanels() {

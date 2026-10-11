@@ -31,37 +31,18 @@ def _load_compat_class(folder_paths):
 
 
 class BuilderMiniMaxTurboTests(unittest.TestCase):
-    def test_video_settings_exposes_turbo_checkbox_picker_and_strength(self):
-        self.assertIn(
-            'makeCheckbox("Use legacy MiniMax-H3 Turbo LoRA"',
-            BUILDER_SOURCE,
-        )
-        self.assertIn(
-            'turbo_lora_name: "minimax_h3_turbo_4step_ema_ckpt850.safetensors"',
-            BUILDER_SOURCE,
-        )
-        self.assertIn(
-            'const miniMaxTurboSection = makeSettingsSection("Turbo acceleration"',
-            BUILDER_SOURCE,
-        )
+    def test_video_settings_use_the_optional_lora_area_instead_of_legacy_turbo_controls(self):
+        self.assertNotIn('makeCheckbox("Use legacy MiniMax-H3 Turbo LoRA"', BUILDER_SOURCE)
+        self.assertNotIn('makeSettingsSection("Turbo acceleration"', BUILDER_SOURCE)
+        self.assertNotIn("miniMaxTurboLoraPicker", BUILDER_SOURCE)
+        self.assertIn('makeCheckbox("Use MiniMax LoRAs?"', BUILDER_SOURCE)
 
-    def test_turbo_settings_follow_existing_global_or_locked_scene_settings(self):
-        self.assertIn(
-            "use_turbo_lora: turboEnabled",
-            BUILDER_SOURCE,
-        )
-        self.assertIn(
-            "turbo_lora_name: miniMaxTurboLoraPicker.input.value",
-            BUILDER_SOURCE,
-        )
-        self.assertIn(
-            "turbo_lora_strength: miniMaxTurboLoraStrength.value",
-            BUILDER_SOURCE,
-        )
-        self.assertIn(
-            "if (segment?.use_scene_minimax_h3_settings)",
-            BUILDER_SOURCE,
-        )
+    def test_saved_legacy_settings_are_adapted_for_global_and_locked_scenes(self):
+        self.assertIn("function editableMiniMaxH3Settings(source = {})", BUILDER_SOURCE)
+        self.assertIn("use_turbo_lora: false", BUILDER_SOURCE)
+        self.assertIn("name: settings.turbo_lora_name, strength: settings.turbo_lora_strength", BUILDER_SOURCE)
+        self.assertIn("editableMiniMaxH3Settings(state.miniMaxH3Settings)", BUILDER_SOURCE)
+        self.assertIn("if (segment?.use_scene_minimax_h3_settings)", BUILDER_SOURCE)
 
     def test_render_payload_sends_turbo_settings_to_hidden_workflow_builder(self):
         self.assertIn(
@@ -204,43 +185,15 @@ class BuilderMiniMaxTurboTests(unittest.TestCase):
         self.assertEqual(calls["patches"][0][1][0], "forward")
         self.assertEqual(calls["debug"], [("pruned-ref-audio-compat", "bypass")])
 
-    def test_turbo_ui_keeps_steps_and_easy_cache_available(self):
-        self.assertIn(
-            'miniMaxSteps.disabled = false;',
-            BUILDER_SOURCE,
-        )
-        self.assertIn(
-            'miniMaxSteps.min = "1";',
-            BUILDER_SOURCE,
-        )
-        self.assertIn(
-            'miniMaxSteps.value = "4";',
-            BUILDER_SOURCE,
-        )
-        self.assertIn(
-            "currentSettings.steps_before_turbo",
-            BUILDER_SOURCE,
-        )
-        self.assertIn(
-            "migrateOldTurboDefault ? 4 : rawSteps",
-            BUILDER_SOURCE,
-        )
-        self.assertIn(
-            "miniMaxEasyCacheBypass.input.checked = true;",
-            BUILDER_SOURCE,
-        )
-        self.assertIn(
-            "currentSettings.easy_cache_bypass_before_turbo",
-            BUILDER_SOURCE,
-        )
-        self.assertIn(
-            "settings.use_turbo_lora && !sceneHasPreTurboEasyCache",
-            BUILDER_SOURCE,
-        )
-        self.assertIn(
-            'model_ref = scheduler_inputs.get("model")',
-            RUNNER_SOURCE,
-        )
+    def test_optional_lora_ui_keeps_sampler_scheduler_steps_and_cache_editable(self):
+        for text in ('miniMaxSteps.disabled = false;', 'miniMaxSteps.min = "1";',
+                     'miniMaxSamplerName.disabled = false;', 'miniMaxScheduler.disabled = false;',
+                     'miniMaxUseLoras.input.disabled = false;'):
+            self.assertIn(text, BUILDER_SOURCE)
+        self.assertNotIn('miniMaxSteps.value = "4";', BUILDER_SOURCE)
+        # Legacy normalization remains compatible; the removed checkbox no longer changes steps/cache.
+        self.assertIn("migrateOldTurboDefault ? 4 : rawSteps", BUILDER_SOURCE)
+        self.assertIn('model_ref = scheduler_inputs.get("model")', RUNNER_SOURCE)
 
     def test_missing_turbo_lora_produces_actionable_error(self):
         self.assertIn(

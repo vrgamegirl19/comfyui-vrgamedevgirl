@@ -942,8 +942,6 @@ export function buildImageModeCards({
   const imageModelChooserLabel = document.createElement("div");
   imageModelChooserLabel.textContent = "Model";
   imageModelChooserLabel.style.cssText = "font-size:11px;font-weight:900;color:#bae6fd;letter-spacing:0;";
-  const imageModelChooser = document.createElement("div");
-  imageModelChooser.style.cssText = "display:flex;gap:6px;overflow-x:auto;overflow-y:hidden;max-width:100%;padding:0 0 3px;scrollbar-width:thin;";
   const zImageCard = makeImageModelCard("ZImage", "zimage");
   const fluxKleinCard = makeImageModelCard("Flux Klein", "flux_klein");
   const nbImageCard = makeImageModelCard("Nano B", "nano_banana");
@@ -953,8 +951,20 @@ export function buildImageModeCards({
   const zEnhanceCard = makeImageModelCard("Enhance", "z_enhance");
   const loadCustomImageButton = makeImageModelCard("+ Custom", "custom_image");
   loadCustomImageButton.title = "Load a custom image for the selected scene";
-  imageModelChooser.append(zImageCard, fluxKleinCard, nbImageCard, ernieImageCard, krea2TwoPassCard, flowGptCard, zEnhanceCard, loadCustomImageButton);
-  imageModelChooserWrap.append(imageModelChooserLabel, imageModelChooser);
+  const imageModeActions = [zImageCard, fluxKleinCard, nbImageCard, ernieImageCard, krea2TwoPassCard, flowGptCard, zEnhanceCard, loadCustomImageButton];
+  const imageModelSelect = makeSelect(imageModeActions.map((card) => ({ value: card.dataset.model, label: card.textContent })), "zimage");
+  imageModelSelect.setAttribute("aria-label", "Image mode");
+  imageModelSelect.style.width = "100%";
+  imageModelSelect.style.minWidth = "0";
+  imageModelSelect.dataset.activeMode = "zimage";
+  imageModelSelect.onchange = () => {
+    const action = imageModeActions.find((card) => card.dataset.model === imageModelSelect.value);
+    // Custom imports an image; it is not a saved model mode. The existing mode
+    // handlers resync this select after switching, undoing or loading a project.
+    imageModelSelect.value = imageModelSelect.dataset.activeMode;
+    action?.click();
+  };
+  imageModelChooserWrap.append(imageModelChooserLabel, imageModelSelect);
   const zImageModePanel = document.createElement("div");
   zImageModePanel.style.cssText = "display:flex;flex-direction:column;gap:10px;";
   const fluxKleinModePanel = document.createElement("div");
@@ -1148,7 +1158,7 @@ export function buildImageModeCards({
     ernieRefImagePanel, ernieSendT2IPromptToEnhanceButton, ernieT2IPrompt, ernieTextGemmaModelSelect,
     ernieUseVisionReference, flfTransitionTypeField, flfTransitionTypeSelect, flowGptCard, fluxKleinCard,
     fluxKleinModePanel, gemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect, i2vNotesInput, i2vPrompt,
-    i2vPromptEnhancementNote, i2vReferenceNote, i2vTextGemmaModelSelect, imageModelChooserWrap,
+    i2vPromptEnhancementNote, i2vReferenceNote, i2vTextGemmaModelSelect, imageModelChooserWrap, imageModelSelect,
     krea2TwoPassCard, krea2TwoPassCreateT2IButton, krea2TwoPassGemmaModelSelect, krea2TwoPassMmprojSelect,
     krea2TwoPassModePanel, krea2TwoPassNotesInput, krea2TwoPassRefImageDrop, krea2TwoPassRefImageLoadButton,
     krea2TwoPassRefImagePanel, krea2TwoPassSendT2IPromptToEnhanceButton, krea2TwoPassT2IPrompt,
@@ -1164,6 +1174,7 @@ export function buildImageModeCards({
 }
 
 export function createImagePanels({
+  imageModelSelect,
   activeErnieImageSettings, activeFluxKleinSettings, activeKrea2TwoPassSettings, activeNBImageSettings,
   activeSegment, activeZImageSettings, applyImageSettingsToMultiSelection, autoSaveSessionQuiet,
   browserAiGroupPrompt, currentVideoMode, ernieBatchSize, ernieClipPicker, ernieCreateButton, ernieHeight,
@@ -1753,6 +1764,8 @@ export function createImagePanels({
     useSceneFluxKleinSettings.input.checked = Boolean(segment?.use_scene_flux_klein_settings);
     fluxImageTriggerInput.value = settings.image_trigger_phrase || "";
     const mode = state.imageModelMode || settings.image_model_mode || "zimage";
+    imageModelSelect.value = mode;
+    imageModelSelect.dataset.activeMode = mode;
     state.imageModelMode = mode;
     settings.image_model_mode = mode;
     settings.enabled = mode === "flux_klein";
