@@ -300,12 +300,19 @@ export function createStoryboardReferences({ renderTable, state }) {
     for (const scene of scenes || []) {
       let location = scene?.location_ref;
       if ((!location || typeof location !== "object") && String(scene?.setting || "").trim()) {
-        location = {
-          id: "",
-          name: String(scene.setting || "").trim(),
-          description: String(scene.setting || "").trim(),
-          image: { path: "", data: "", name: "" },
-        };
+        const setting = String(scene.setting).trim();
+        location = locationByName.get(setting.toLowerCase().replace(/\s+/g, " "))
+          || refs.locations.find((item) => String(item.description || "").trim() === setting);
+        if (!location) {
+          let number = refs.locations.length + 1;
+          while (locationByName.has(`location ${number}`)) number += 1;
+          location = {
+            id: "",
+            name: `Location ${number}`,
+            description: setting,
+            image: { path: "", data: "", name: "" },
+          };
+        }
       }
     if (location && typeof location === "object" && String(location.id || location.name || location.description || "").trim()) {
       const locationNameKey = String(location.name || scene.setting || "").trim().toLowerCase().replace(/\s+/g, " ");
