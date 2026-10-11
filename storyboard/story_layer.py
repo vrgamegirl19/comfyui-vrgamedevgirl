@@ -20,6 +20,7 @@ from ..llm.prompts.storyboard import (
     _storyboard_story_brief_instruction,
     _storyboard_timeline_note_story_instruction,
 )
+from ..llm.prompts.story_mode import story_mode_lyric_guidance
 from .cast_guard import build_cast_guard, cast_leaks, cast_wall_text, strip_cast_leaks, strip_story_arc_entry_leaks
 from .persistence import _normalize_script_import, _normalize_storyboard_scene
 from .scene_helpers import (
@@ -32,6 +33,7 @@ from .scene_helpers import (
     _selected_storyboard_scene,
     _storyboard_dialogue_reference_catalog,
 )
+from .story_mode import is_story_mode_layer, story_beat_context
 from .timeline_notes import story_arc_timeline_notes
 
 
@@ -1179,12 +1181,23 @@ def _build_story_layer_scene_beat(payload):
         ) if scene_location.get("name") else "",
         f"Previous end state: {previous_end_state}" if previous_end_state else "",
     ]))
+    # Story Mode: the beat follows this scene's planned story slice instead of the song-section arc.
+    story_context = None
+    if is_story_mode_layer(story_layer):
+        story_context = story_beat_context(story_layer, scene.get("id"), scene.get("scene_number"))
+    if story_context:
+        arc_text, brief_text = story_context
+        lyric_guidance = story_mode_lyric_guidance(story_layer.get("lyric_story_strength", 5))
+    else:
+        arc_text = story_layer.get("user_story_arc") or ""
+        brief_text = story_layer.get("song_story_brief") or ""
+        lyric_guidance = _lyric_story_strength_guidance(story_layer)
     instruction = _storyboard_scene_beat_instruction(
         flf_mode=flf_mode,
         beat_word_limit=beat_word_limit,
-        lyric_story_strength_guidance_text=_lyric_story_strength_guidance(story_layer),
-        user_story_arc=story_layer.get("user_story_arc") or "",
-        song_story_brief=story_layer.get("song_story_brief") or "",
+        lyric_story_strength_guidance_text=lyric_guidance,
+        user_story_arc=arc_text,
+        song_story_brief=brief_text,
         previous_beat=previous_beat,
         previous_lyrics=previous_lyrics,
         previous_end_state=previous_end_state,
@@ -1196,6 +1209,7 @@ def _build_story_layer_scene_beat(payload):
         extra_subjects_json=json.dumps(extra_subjects, ensure_ascii=False, indent=2) if extra_subjects else "[none]",
         scene_json=json.dumps(scene, ensure_ascii=False, indent=2),
         cast_wall=scene_facts,
+        story_mode=bool(story_context),
     )
     from ..llm.builder_runner import _run_builder_text_llm, _runner_supports_json_schema
 

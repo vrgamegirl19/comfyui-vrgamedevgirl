@@ -680,12 +680,18 @@ def _storyboard_scene_beat_instruction(
     extra_subjects_json,
     scene_json,
     cast_wall="",
+    story_mode=False,
 ):
     """The main Scene Story Beat prompt.
     Controls: keeping the beat purely visual (no audio/vocal language),
     respecting scene defaults, mapped extras, and the mapped location.
     """
     output_rules = _storyboard_scene_beat_output_rules(flf_mode, beat_word_limit)
+    # Story Mode: the story comes from the scene plan; the lyric only sets mood and emotion.
+    lyric_label = (
+        "CURRENT scene lyric text (mood and emotion only, never events or places)" if story_mode
+        else "CURRENT scene lyric text (main authority)"
+    )
     return (
         "You are a music video scene-story planner.\n"
         "Create one concise scene story beat that tells the video prompt writer what this scene contributes to the larger music-video story.\n\n"
@@ -722,7 +728,7 @@ def _storyboard_scene_beat_instruction(
         f"Previous scene lyric text (continuity only):\n{previous_lyrics or '[none]'}\n\n"
         f"Previous FLF end state (required opening state when present):\n{previous_end_state or '[none — this is the first scene]'}\n\n"
         f"Previous FLF carry-forward constraints:\n{previous_carry_forward or '[none]'}\n\n"
-        f"CURRENT scene lyric text (main authority):\n{current_lyrics or '[none]'}\n\n"
+        f"{lyric_label}:\n{current_lyrics or '[none]'}\n\n"
         f"Next scene lyric text:\n{next_lyrics or '[none]'}\n\n"
         f"Scene defaults and motion direction (authoritative when supplied):\n{scene_defaults_json}\n\n"
         "Performance assignment metadata (do not mention this in the story beat):\n"

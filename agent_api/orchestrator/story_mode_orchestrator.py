@@ -12,6 +12,7 @@ from ...storyboard import story_plan as plan_funcs
 from ...storyboard.story_acts import validate_story_acts
 from ...storyboard.story_mode import (
     apply_story_book_text,
+    fill_scene_cast,
     normalize_story_book,
     normalize_story_mode_fields,
     plan_segment_fields,
@@ -65,6 +66,17 @@ def apply_plan_to_segments(session: Dict[str, Any], plan: List[Dict[str, Any]]) 
     return changed
 
 
+def fill_cast_from_acts(session: Dict[str, Any], acts: List[Dict[str, Any]]) -> List[str]:
+    """Map each act's cast onto its scenes that have no characters yet (the Reference Builder's subject_scene_map)."""
+    refs = session.setdefault("flux_reference_builder", {})
+    subject_ids = [s.get("id") for s in refs.get("subjects") or [] if isinstance(s, dict) and s.get("id")]
+    mapped, changed = fill_scene_cast(refs.get("subject_scene_map") or {}, acts, subject_ids)
+    if changed:
+        refs["subject_scene_map"] = mapped
+        refs["use_subject_reference"] = True
+    return changed
+
+
 def _save_fields(project_id: str, fields: Dict[str, Any]) -> Dict[str, Any]:
     with _BUILDER_SAVE_LOCK:
         folder, session = _get_active_session_and_folder(project_id)
@@ -72,6 +84,8 @@ def _save_fields(project_id: str, fields: Dict[str, Any]) -> Dict[str, Any]:
         layer.update(fields)
         _save_story_layer(session, layer)
         changed = apply_plan_to_segments(session, fields["story_scene_plan"]) if fields.get("story_scene_plan") else []
+        if fields.get("story_scene_plan"):
+            fill_cast_from_acts(session, layer.get("story_acts") or [])
         if len(changed) == 1:
             saved = _persist_session(folder, session, scene_field_change(changed[0], ["performance_mode", "lyric_no_lip_sync"]))
         else:

@@ -1,19 +1,94 @@
 {
-  "chapters": [{"id": "ch_1"}, {"id": "ch_2"}],
-  "scene_ids": ["s1", "s2", "s3", "s4", "s5", "s6"],
+  "chapters": [
+    {
+      "id": "ch_1"
+    },
+    {
+      "id": "ch_2"
+    }
+  ],
+  "scene_ids": [
+    "s1",
+    "s2",
+    "s3",
+    "s4",
+    "s5",
+    "s6"
+  ],
   "acts": [
-    {"id": "act_1", "chapter_id": "ch_1", "title": "Wait", "summary": "She waits.", "cast_ids": ["mara"], "scene_ids": ["s1", "s2"]},
-    {"id": "act_2", "chapter_id": "ch_1", "title": "Board", "summary": "She boards.", "cast_ids": ["conductor"], "scene_ids": ["s3"]},
-    {"id": "act_3", "chapter_id": "ch_2", "title": "Home", "summary": "She is home.", "cast_ids": [], "scene_ids": ["s4", "s5", "s6"]}
+    {
+      "id": "act_1",
+      "chapter_id": "ch_1",
+      "title": "Wait",
+      "summary": "She waits.",
+      "cast_ids": [
+        "mara"
+      ],
+      "scene_ids": [
+        "s1",
+        "s2"
+      ]
+    },
+    {
+      "id": "act_2",
+      "chapter_id": "ch_1",
+      "title": "Board",
+      "summary": "She boards.",
+      "cast_ids": [
+        "conductor"
+      ],
+      "scene_ids": [
+        "s3"
+      ]
+    },
+    {
+      "id": "act_3",
+      "chapter_id": "ch_2",
+      "title": "Home",
+      "summary": "She is home.",
+      "cast_ids": [],
+      "scene_ids": [
+        "s4",
+        "s5",
+        "s6"
+      ]
+    }
   ],
   "validate": [
-    {"name": "valid acts", "acts": "base", "problems": []},
+    {
+      "name": "valid acts",
+      "acts": "base",
+      "problems": []
+    },
     {
       "name": "gap, overlap, unknown chapter and order",
       "acts": [
-        {"id": "a", "chapter_id": "ch_2", "title": "Late", "scene_ids": ["s1", "s3"]},
-        {"id": "b", "chapter_id": "ch_1", "title": "Early", "scene_ids": ["s3", "s4"]},
-        {"id": "c", "chapter_id": "ch_9", "title": "Lost", "scene_ids": ["s5"]}
+        {
+          "id": "a",
+          "chapter_id": "ch_2",
+          "title": "Late",
+          "scene_ids": [
+            "s1",
+            "s3"
+          ]
+        },
+        {
+          "id": "b",
+          "chapter_id": "ch_1",
+          "title": "Early",
+          "scene_ids": [
+            "s3",
+            "s4"
+          ]
+        },
+        {
+          "id": "c",
+          "chapter_id": "ch_9",
+          "title": "Lost",
+          "scene_ids": [
+            "s5"
+          ]
+        }
       ],
       "problems": [
         "Late skips scenes; an act's scenes must be next to each other.",
@@ -26,25 +101,261 @@
     }
   ],
   "move": [
-    {"name": "border moves inside a chapter", "act_index": 1, "scene_id": "s2",
-     "scene_ids_after": [["s1"], ["s2", "s3"], ["s4", "s5", "s6"]]},
-    {"name": "border between chapters does not move", "act_index": 2, "scene_id": "s3",
-     "scene_ids_after": [["s1", "s2"], ["s3"], ["s4", "s5", "s6"]]}
+    {
+      "name": "border moves inside a chapter",
+      "act_index": 1,
+      "scene_id": "s2",
+      "scene_ids_after": [
+        [
+          "s1"
+        ],
+        [
+          "s2",
+          "s3"
+        ],
+        [
+          "s4",
+          "s5",
+          "s6"
+        ]
+      ]
+    },
+    {
+      "name": "border between chapters does not move",
+      "act_index": 2,
+      "scene_id": "s3",
+      "scene_ids_after": [
+        [
+          "s1",
+          "s2"
+        ],
+        [
+          "s3"
+        ],
+        [
+          "s4",
+          "s5",
+          "s6"
+        ]
+      ]
+    }
   ],
   "merge": [
-    {"name": "merge inside a chapter", "act_index": 1,
-     "ids_after": ["act_1", "act_2"], "scene_ids_after": [["s1", "s2", "s3"], ["s4", "s5", "s6"]],
-     "cast_after": [["mara", "conductor"], []], "summary_after": ["She waits. She boards.", "She is home."]},
-    {"name": "merge across chapters does nothing", "act_index": 2,
-     "ids_after": ["act_1", "act_2", "act_3"], "scene_ids_after": [["s1", "s2"], ["s3"], ["s4", "s5", "s6"]],
-     "cast_after": [["mara"], ["conductor"], []], "summary_after": ["She waits.", "She boards.", "She is home."]}
+    {
+      "name": "merge inside a chapter",
+      "act_index": 1,
+      "ids_after": [
+        "act_1",
+        "act_2"
+      ],
+      "scene_ids_after": [
+        [
+          "s1",
+          "s2",
+          "s3"
+        ],
+        [
+          "s4",
+          "s5",
+          "s6"
+        ]
+      ],
+      "cast_after": [
+        [
+          "mara",
+          "conductor"
+        ],
+        []
+      ],
+      "summary_after": [
+        "She waits. She boards.",
+        "She is home."
+      ]
+    },
+    {
+      "name": "merge across chapters does nothing",
+      "act_index": 2,
+      "ids_after": [
+        "act_1",
+        "act_2",
+        "act_3"
+      ],
+      "scene_ids_after": [
+        [
+          "s1",
+          "s2"
+        ],
+        [
+          "s3"
+        ],
+        [
+          "s4",
+          "s5",
+          "s6"
+        ]
+      ],
+      "cast_after": [
+        [
+          "mara"
+        ],
+        [
+          "conductor"
+        ],
+        []
+      ],
+      "summary_after": [
+        "She waits.",
+        "She boards.",
+        "She is home."
+      ]
+    }
   ],
   "split": [
-    {"name": "split an act", "act_index": 2, "scene_id": "s5",
-     "ids_after": ["act_1", "act_2", "act_3", "act_4"], "scene_ids_after": [["s1", "s2"], ["s3"], ["s4"], ["s5", "s6"]],
-     "titles_after": ["Wait", "Board", "Home", "Home (continued)"]},
-    {"name": "split at the first scene does nothing", "act_index": 2, "scene_id": "s4",
-     "ids_after": ["act_1", "act_2", "act_3"], "scene_ids_after": [["s1", "s2"], ["s3"], ["s4", "s5", "s6"]],
-     "titles_after": ["Wait", "Board", "Home"]}
-  ]
+    {
+      "name": "split an act",
+      "act_index": 2,
+      "scene_id": "s5",
+      "ids_after": [
+        "act_1",
+        "act_2",
+        "act_3",
+        "act_4"
+      ],
+      "scene_ids_after": [
+        [
+          "s1",
+          "s2"
+        ],
+        [
+          "s3"
+        ],
+        [
+          "s4"
+        ],
+        [
+          "s5",
+          "s6"
+        ]
+      ],
+      "titles_after": [
+        "Wait",
+        "Board",
+        "Home",
+        "Home (continued)"
+      ]
+    },
+    {
+      "name": "split at the first scene does nothing",
+      "act_index": 2,
+      "scene_id": "s4",
+      "ids_after": [
+        "act_1",
+        "act_2",
+        "act_3"
+      ],
+      "scene_ids_after": [
+        [
+          "s1",
+          "s2"
+        ],
+        [
+          "s3"
+        ],
+        [
+          "s4",
+          "s5",
+          "s6"
+        ]
+      ],
+      "titles_after": [
+        "Wait",
+        "Board",
+        "Home"
+      ]
+    }
+  ],
+  "fill_cast": {
+    "name": "act cast fills empty scenes only, unknown ids are skipped",
+    "subject_scene_map": {
+      "s1": [
+        "user_pick"
+      ],
+      "s2": [],
+      "s4": ""
+    },
+    "subject_ids": [
+      "mara",
+      "conductor",
+      "user_pick"
+    ],
+    "map_after": {
+      "s1": [
+        "user_pick"
+      ],
+      "s2": [
+        "mara"
+      ],
+      "s4": [
+        "mara"
+      ],
+      "s3": [
+        "conductor"
+      ],
+      "s5": [
+        "mara"
+      ],
+      "s6": [
+        "mara"
+      ]
+    },
+    "changed": [
+      "s2",
+      "s3",
+      "s4",
+      "s5",
+      "s6"
+    ],
+    "acts": [
+      {
+        "id": "act_1",
+        "chapter_id": "ch_1",
+        "title": "Wait",
+        "summary": "She waits.",
+        "cast_ids": [
+          "mara"
+        ],
+        "scene_ids": [
+          "s1",
+          "s2"
+        ]
+      },
+      {
+        "id": "act_2",
+        "chapter_id": "ch_1",
+        "title": "Board",
+        "summary": "She boards.",
+        "cast_ids": [
+          "conductor"
+        ],
+        "scene_ids": [
+          "s3"
+        ]
+      },
+      {
+        "id": "act_3",
+        "chapter_id": "ch_2",
+        "title": "Home",
+        "summary": "She is home.",
+        "cast_ids": [
+          "mara",
+          "ghost"
+        ],
+        "scene_ids": [
+          "s4",
+          "s5",
+          "s6"
+        ]
+      }
+    ]
+  }
 }

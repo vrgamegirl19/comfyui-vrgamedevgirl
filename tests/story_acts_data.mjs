@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { mergeActs, moveActBorder, splitAct, validateStoryActs } from '../web/music_video_builder/story_acts_data.mjs';
-import { normalizeSpotMinScenes, planSegmentFields } from '../web/music_video_builder/story_mode_data.mjs';
+import { fillSceneCast, normalizeSpotMinScenes, planSegmentFields } from '../web/music_video_builder/story_mode_data.mjs';
 
 // Same cases as tests/test_story_acts.py runs against storyboard/story_acts.py.
 const CASES = JSON.parse(readFileSync(new URL('./story_acts_cases.json', import.meta.url), 'utf8'));
@@ -53,4 +53,11 @@ test('scenes per spot is kept between 1 and 20', () => {
   assert.equal(normalizeSpotMinScenes(99), 20);
   assert.equal(normalizeSpotMinScenes(''), 3);
   assert.equal(normalizeSpotMinScenes('x'), 3);
+});
+
+test(`fill cast: ${CASES.fill_cast.name}`, () => {
+  const item = CASES.fill_cast;
+  const { map, changed } = fillSceneCast(item.subject_scene_map, item.acts, item.subject_ids);
+  assert.deepEqual(map, item.map_after);
+  assert.deepEqual(changed, item.changed);
 });

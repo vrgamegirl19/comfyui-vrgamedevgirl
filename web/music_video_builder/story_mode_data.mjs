@@ -237,3 +237,22 @@ export function applyStoryBookText(layer, value) {
     story_settings: settings,
   };
 }
+
+// Characters for scenes that have none: each act's cast goes onto its scenes. User mappings are kept.
+export function fillSceneCast(subjectSceneMap, acts, subjectIds) {
+  const result = {};
+  for (const [key, value] of Object.entries(subjectSceneMap || {})) result[key] = Array.isArray(value) ? [...value] : value;
+  const valid = new Set(subjectIds);
+  const changed = [];
+  for (const act of normalizeStoryActs(acts)) {
+    const cast = act.cast_ids.filter((id) => valid.has(id));
+    if (!cast.length) continue;
+    for (const sceneId of act.scene_ids) {
+      const current = result[sceneId];
+      if ((Array.isArray(current) && current.length) || (typeof current === "string" && current.trim())) continue;
+      result[sceneId] = [...cast];
+      changed.push(sceneId);
+    }
+  }
+  return { map: result, changed };
+}

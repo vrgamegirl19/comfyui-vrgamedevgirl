@@ -203,6 +203,63 @@ class StoryModeStepTests(Base):
         with self.assertRaises(errors.ValidationError):
             story_mode.create_story_scene_plan("Song", {})
 
+    def test_whole_story_mode_flow_through_the_api(self):
+        import re
+        plan_funcs = importlib.import_module(f"{pkg_name}.storyboard.story_plan")
+        location_funcs = importlib.import_module(f"{pkg_name}.storyboard.story_locations")
+        runner = importlib.import_module(f"{pkg_name}.llm.builder_runner")
+        session = self.read_session()
+        session["video_type"] = "story"
+        for index, segment in enumerate(session["segments"]):
+            segment["lyric_text"] = f"under the parking garage lights {index + 1}"
+        self.write_session(session)
+
+        def acts_and_plan(payload, instruction, *, label, **kwargs):
+            numbers = [int(n) for n in re.findall(r"^Scene (\d+) \(", instruction, re.M)]
+            if label == "Story Mode Acts":
+                return json.dumps({"acts": [{"first_scene": numbers[0], "title": "Arrive", "summary": "Darrel arrives.",
+                                             "cast": ["Darrel"]}]}), {}
+            return json.dumps({"scenes": [{"scene": n, "story_slice": f"Darrel does step {n}.", "spot": "Platform" if n < 6 else "Kitchen",
+                                           "mood": "hopeful", "performance": "singing"} for n in numbers]}), {}
+
+        def spots(payload, instruction, *, label, **kwargs):
+            if label == "Story Mode Setting Looks":
+                return json.dumps({"settings": [{"name": "The Night Train", "look": "Brass and velvet."},
+                                                {"name": "Home", "look": "Pine and lamplight."}]}), {}
+            names = [line[2:].split(":")[0] for line in instruction.splitlines() if line.startswith("- ") and ":" in line]
+            return json.dumps({"spots": [{"name": n, "description": f"{n} card."} for n in names]}), {}
+
+        beat_prompts = []
+
+        def beat(payload, instruction, **kwargs):
+            beat_prompts.append(instruction)
+            return "Darrel steps forward under warm light.", {"runner": "fake", "used_model": "m"}
+
+        with patch.object(book_funcs, "_run", FakeLLM(BOOK)), patch.object(plan_funcs, "_run", acts_and_plan),                 patch.object(location_funcs, "_run", spots), patch.object(runner, "_run_builder_text_llm", beat):
+            story_mode.create_story_book("Song", {"story_idea": "A son goes home"})
+            story_mode.create_story_acts("Song", {})
+            story_mode.create_story_scene_plan("Song", {})
+            located = story_mode.create_story_locations("Song", {})
+            beats = story.create_scene_beats("Song", {})
+        self.assertEqual(beats["created"], 10)
+        cards = {c["name"] for c in self.read_session()["flux_reference_builder"]["locations"]}
+        self.assertTrue({"The Night Train - Platform", "Home - Kitchen"} <= cards, cards)
+        self.assertFalse(any("garage" in name.lower() for name in cards))
+        self.assertEqual(located["added"], 2)
+        self.assertEqual(len(beat_prompts), 10, "no cast repair: the act cast was mapped onto every scene")
+        third = beat_prompts[2]
+        self.assertIn("Scene 3 (Platform) - Darrel does step 3.", third)
+        self.assertIn("mood and emotion only", third)
+        self.assertIn("The Night Train - Platform", third, "the beat uses the scene's spot card")
+        self.assertIn("Home - Kitchen", beat_prompts[7])
+        subject_map = self.read_session()["flux_reference_builder"]["subject_scene_map"]
+        self.assertTrue(all(subject_map.get(seg["id"]) for seg in self.read_session()["segments"]))
+
+    def test_beats_in_story_mode_need_the_plan(self):
+        self.write_book()
+        with self.assertRaises(errors.ValidationError):
+            story.create_scene_beats("Song", {})
+
     def test_router_offers_the_story_mode_steps(self):
         source = (ROOT / "agent_api" / "router.py").read_text(encoding="utf-8")
         self.assertIn("**STORY_MODE_JOB_TYPES", source)

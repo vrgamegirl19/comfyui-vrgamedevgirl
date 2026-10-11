@@ -347,7 +347,11 @@ def create_scene_beats(
     cards = scene_cards(session, folder)
     _require_scenes(cards)
     layer = _story_layer(session)
-    if not (layer["user_story_arc"] or layer["song_story_brief"] or layer["overall_story_idea"]):
+    if int(layer.get("story_flow_version") or 0) >= 2:
+        # Story Mode: each beat follows its scene's planned story slice.
+        if not layer.get("story_scene_plan"):
+            raise ValidationError("Story Mode: create the scene plan (story step 'plan') before scene beats.")
+    elif not (layer["user_story_arc"] or layer["song_story_brief"] or layer["overall_story_idea"]):
         raise ValidationError("Create the story arc (and brief) before scene beats.")
     wanted = {str(x) for x in (params.get("scene_ids") or [])}
     replace = bool(params.get("replace_existing"))

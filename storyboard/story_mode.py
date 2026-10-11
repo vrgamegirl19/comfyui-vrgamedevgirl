@@ -369,3 +369,70 @@ def chapters_keep_text(paragraphs, chapters):
     """True when the chapters hold exactly the pasted paragraphs, in order."""
     joined = [p for chapter in chapters for p in chapter.get("paragraphs") or []]
     return joined == list(paragraphs)
+
+
+def story_beat_context(layer, scene_id, scene_number):
+    """Story Mode text for one scene's beat, or ``None`` when the scene has no plan entry.
+
+    Returns ``(arc_text, brief_text)``. The arc text holds the act and the previous, current and next scene slices as
+    ``Scene N (Spot) - slice`` lines (the beat prompt uses this scene's line as its main story source); the brief text
+    holds the book premise and the setting's look.
+    """
+    layer = layer or {}
+    plan = normalize_story_scene_plan(layer.get("story_scene_plan"))
+    index = next((i for i, entry in enumerate(plan) if entry["scene_id"] == str(scene_id)), -1)
+    if index < 0:
+        return None
+    entry = plan[index]
+    acts = {act["id"]: act for act in normalize_story_acts(layer.get("story_acts"))}
+    act = acts.get(entry["act_id"]) or {}
+    book = normalize_story_book(layer.get("story_book"))
+    chapter = next((c for c in book["chapters"] if c["id"] == act.get("chapter_id")), {})
+    settings = {item["id"]: item for item in normalize_story_settings(layer.get("story_settings"))}
+    setting = settings.get(chapter.get("setting_id", "")) or {}
+    try:
+        number = int(scene_number)
+    except (TypeError, ValueError):
+        number = index + 1
+    lines = []
+    if act:
+        lines.append(f"Act: {act['title']} - {act['summary']}".strip(" -"))
+    for offset in (-1, 0, 1):
+        position = index + offset
+        if 0 <= position < len(plan):
+            other = plan[position]
+            spot = other["spot"] or setting.get("name", "")
+            lines.append(f"Scene {number + offset} ({spot}) - {other['story_slice']}")
+    brief = []
+    if book["premise"]:
+        brief.append(f"Story premise: {book['premise']}")
+    if chapter:
+        brief.append(f"Chapter: {chapter.get('title', '')}" + (f", set in {setting['name']}" if setting.get("name") else ""))
+    if setting.get("look"):
+        brief.append(f"Setting look: {setting['look']}")
+    if entry["mood"]:
+        brief.append(f"Scene mood: {entry['mood']}")
+    if layer.get("song_story_brief"):
+        brief.append(str(layer["song_story_brief"]))
+    return "\n".join(lines), "\n".join(brief)
+
+
+def fill_scene_cast(subject_scene_map, acts, subject_ids):
+    """Characters for scenes that have none: each act's cast goes onto its scenes. User mappings are kept.
+
+    Returns ``(new_map, changed_scene_ids)``. Only ids in ``subject_ids`` are used.
+    """
+    result = {key: list(value) if isinstance(value, list) else value for key, value in (subject_scene_map or {}).items()}
+    valid = set(subject_ids)
+    changed = []
+    for act in normalize_story_acts(acts):
+        cast = [cast_id for cast_id in act["cast_ids"] if cast_id in valid]
+        if not cast:
+            continue
+        for scene_id in act["scene_ids"]:
+            current = result.get(scene_id)
+            if (isinstance(current, list) and current) or (isinstance(current, str) and current.strip()):
+                continue
+            result[scene_id] = list(cast)
+            changed.append(scene_id)
+    return result, changed

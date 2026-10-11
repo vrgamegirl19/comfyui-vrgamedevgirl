@@ -46,6 +46,13 @@ class ActRuleTests(unittest.TestCase):
                 self.assertEqual([a["scene_ids"] for a in acts], item["scene_ids_after"])
                 self.assertEqual([a["title"] for a in acts], item["titles_after"])
 
+    def test_fill_cast_case(self):
+        story_mode = importlib.import_module(f"{ROOT.name}.storyboard.story_mode")
+        item = CASES["fill_cast"]
+        mapped, changed = story_mode.fill_scene_cast(item["subject_scene_map"], item["acts"], item["subject_ids"])
+        self.assertEqual(mapped, item["map_after"])
+        self.assertEqual(changed, item["changed"])
+
     def test_chapter_allocation(self):
         self.assertEqual(acts_rules.allocate_chapter_scenes([3, 1, 2], 20), [9, 4, 7])
         self.assertEqual(acts_rules.allocate_chapter_scenes([1] * 5, 3), [1, 1, 1, 0, 0])
