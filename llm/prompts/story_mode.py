@@ -90,7 +90,8 @@ def story_book_instruction(*, premise, cast_text, tone_notes, scene_count, song_
         f"Cast:\n{cast_text or '[none, invent a small cast]'}\n\n"
         f"Tone, genre and world notes:\n{tone_notes or '[none]'}\n\n"
         f"Song lyrics (mood and emotion only):\n{lyrics or '[none]'}\n\n"
-        f"Previous draft to move away from on this reroll:\n{previous_book or '[none]'}\n\n"
+        "Previous draft to move away from on this reroll (do not reuse anyone from it who is not in the cast):\n"
+        f"{previous_book or '[none]'}\n\n"
         f"Variation seed: {seed or '[none]'}"
     )
 
@@ -160,6 +161,25 @@ STORY_SPLIT_SCHEMA = {
     "required": ["chapters"],
     "additionalProperties": False,
 }
+
+
+def story_remove_people_instruction(*, story_text, cast_text, names):
+    """Rewrite a story (or one chapter) so the named people are gone and only the cast remains."""
+    return (
+        "You are a novelist editing a story that a music video will tell.\n\n"
+        f"Rewrite the text so these people are gone: {', '.join(names)}. Afterwards only the cast below appears, acts, "
+        "speaks or is named.\n\n"
+        "Rules:\n"
+        "- Keep every chapter in the same order, with its 'Chapter N: title' line and its 'Setting:' line unchanged. "
+        "Keep the Title and Premise lines when the text has them; rewrite the premise only to drop removed people.\n"
+        "- Keep the cast's actions and about the same length.\n"
+        "- Where a removed person did something, the cast does it alone, or it shows through things: a message on a "
+        "phone, an empty seat, a door closing, a voice off screen with no name.\n"
+        "- No new people. A crowd may only be a blurred, unnamed background that never acts.\n"
+        "- Output only the rewritten text in the same format, starting with its first line, with no notes.\n\n"
+        f"Cast:\n{cast_text or '[none]'}\n\n"
+        f"Text:\n{story_text}"
+    )
 
 
 def story_cast_scan_instruction(*, book_text, known_names):

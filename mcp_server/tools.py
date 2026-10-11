@@ -1575,7 +1575,8 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
             "Story Mode (video_type 'story') uses its own steps: 'book' writes the story book from story_idea, 'split' turns "
             "a story you pass as text into chapters without changing a word, 'convert' does the same with an older project's "
             "story arc, 'chapter' rewrites chapter_id following "
-            "direction, 'cast' lists story characters that have no card (nothing saved), 'acts' splits every chapter (or "
+            "direction, 'cast' lists story characters that have no card (nothing saved), 'remove_people' rewrites the book "
+            "without the people in names, 'acts' splits every chapter (or "
             "chapter_id) into acts, 'plan' gives every scene (or act_id's scenes) a story slice, spot, mood and performance, "
             "'locations' makes a location card per spot (from the story, never the lyrics) and maps the scenes. "
             "For LM Studio the loaded model is used and never changed."
@@ -1584,7 +1585,7 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
             "type": "object",
             "properties": {
                 "project_id": {"type": "string"},
-                "step": {"type": "string", "enum": ["arc", "brief", "beats", "book", "split", "convert", "chapter", "cast", "acts", "plan", "locations"]},
+                "step": {"type": "string", "enum": ["arc", "brief", "beats", "book", "split", "convert", "chapter", "cast", "remove_people", "acts", "plan", "locations"]},
                 "style_theme": {"type": "string", "description": "locations only: look and banned places."},
                 "act_id": {"type": "string", "description": "plan only: rebuild one act's scenes."},
                 "spot_min_scenes": {"type": "integer", "description": "plan only: fewest scenes in a row at one spot."},
@@ -1593,6 +1594,7 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
                 "text": {"type": "string", "description": "split only: the full story to divide into chapters."},
                 "chapter_id": {"type": "string", "description": "chapter and acts: story_book.chapters[].id."},
                 "direction": {"type": "string", "description": "chapter only: what to change."},
+                "names": {"type": "array", "items": {"type": "string"}, "description": "remove_people only: who to write out."},
                 "story_arc_detail": {"type": "string", "enum": ["compact", "standard", "detailed", "rich"]},
                 "scene_ids": {"type": "array", "items": {"type": "string"}},
                 "replace_existing": {"type": "boolean", "default": False},

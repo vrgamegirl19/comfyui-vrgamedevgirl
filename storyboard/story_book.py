@@ -13,6 +13,7 @@ from ..llm.prompts.story_mode import (
     story_cast_scan_instruction,
     story_chapter_rewrite_instruction,
     story_mode_lyric_guidance,
+    story_remove_people_instruction,
     story_split_instruction,
 )
 from .scene_helpers import _clean_scene_text, _normalize_story_layer, _storyboard_dialogue_reference_catalog
@@ -162,6 +163,7 @@ def draft_story_book(payload):
     book, names = parse_story_book_text(text)
     if not book["chapters"] or not any(chapter["paragraphs"] for chapter in book["chapters"]):
         raise ValueError("The LLM did not return a story with chapters. Try again or write the story yourself.")
+    book, names, removed = _keep_book_to_cast(payload, book, names)
     fields = {
         **_first_story_mode_fields(layer),
         **_book_fields(layer, book, names),
@@ -169,7 +171,7 @@ def draft_story_book(payload):
         "story_acts": [],
         "story_scene_plan": [],
     }
-    return {"story_layer": fields, "story_book": book, **_runner_fields(run_info)}
+    return {"story_layer": fields, "story_book": book, "removed_people": removed, **_runner_fields(run_info)}
 
 
 def rewrite_story_chapter(payload):
@@ -198,6 +200,7 @@ def rewrite_story_chapter(payload):
     rewritten, names = parse_story_book_text(text)
     if not rewritten["chapters"] or not rewritten["chapters"][0]["paragraphs"]:
         raise ValueError("The LLM did not return the chapter. Try again.")
+    rewritten, names, removed = _keep_book_to_cast(payload, rewritten, names)
     new_chapter = rewritten["chapters"][0]
     old_chapter = book["chapters"][index]
     new_chapter["id"] = old_chapter["id"]
@@ -215,7 +218,7 @@ def rewrite_story_chapter(payload):
         "story_acts": acts,
         "story_scene_plan": plan,
     }
-    return {"story_layer": fields, "chapter": new_chapter, **_runner_fields(run_info)}
+    return {"story_layer": fields, "chapter": new_chapter, "removed_people": removed, **_runner_fields(run_info)}
 
 
 def _fixed_chapter_starts(text):
@@ -310,28 +313,110 @@ def convert_story_arc(payload):
     return split_pasted_story({**payload, "text": text})
 
 
-def scan_story_cast(payload):
-    """People in the story who have no character card, each with a drafted look."""
-    layer = _layer(payload)
-    book = normalize_story_book(layer.get("story_book"))
-    if not book["chapters"]:
-        raise ValueError("Write the story first.")
-    subjects, _locations = _storyboard_dialogue_reference_catalog(payload)
+def _known_people(payload):
+    """Names the story may use: the story cast (every card when new people are allowed) and the extras."""
+    if allow_new_cast(payload):
+        subjects, _locations = _storyboard_dialogue_reference_catalog(payload)
+    else:
+        subjects = story_cast(payload)
     extras = (payload.get("reference_builder") or {}).get("extras") or []
     known = [subject["name"] for subject in subjects] + [
         _clean_scene_text(extra.get("name") or "", 160) for extra in extras if isinstance(extra, dict)
     ]
-    known = [name for name in known if name]
+    return [name for name in known if name]
+
+
+def _scan_people(payload, text, known, *, label):
+    """LLM list of people in ``text`` who are not in ``known``, and the run info."""
     instruction = story_cast_scan_instruction(
-        book_text=story_book_to_text(book, layer.get("story_settings"))[:60000],
+        book_text=text[:60000],
         known_names="\n".join(f"- {name}" for name in known),
     )
-    raw, run_info = _run(payload, instruction, label="Story Mode Cast Scan", max_new_tokens=1600, temperature=0.2,
+    raw, run_info = _run(payload, instruction, label=label, max_new_tokens=1600, temperature=0.2,
                          json_schema=STORY_CAST_SCAN_SCHEMA)
     try:
         found = (_extract_json_object_from_text(raw) or {}).get("characters") or []
     except Exception as error:
         raise ValueError(f"The LLM did not return a character list: {error}") from error
+    return found, run_info
+
+
+def _without_people(payload, book, setting_names, people):
+    """The book rewritten by the LLM so ``people`` are gone. ``ok`` is False when the reply was unusable."""
+    settings = sync_story_settings(book, setting_names, _layer(payload).get("story_settings"))
+    instruction = story_remove_people_instruction(
+        story_text=story_book_to_text(book, settings), cast_text=cast_lines(payload), names=people,
+    )
+    size = sum(len(paragraph) for chapter in book["chapters"] for paragraph in chapter["paragraphs"])
+    text, _run_info = _run(payload, instruction, label="Story Mode Remove People", temperature=0.5,
+                           max_new_tokens=max(1600, min(8000, size // 2)))
+    fixed, fixed_names = parse_story_book_text(text)
+    if len(fixed["chapters"]) != len(book["chapters"]) or not all(chapter["paragraphs"] for chapter in fixed["chapters"]):
+        return book, setting_names, False
+    for new, old in zip(fixed["chapters"], book["chapters"]):
+        new["id"] = old["id"]
+        if not new["setting_id"]:
+            new["setting_id"] = old["setting_id"]
+    fixed["title"] = fixed["title"] or book["title"]
+    fixed["premise"] = fixed["premise"] or book["premise"]
+    return fixed, {**setting_names, **fixed_names}, True
+
+
+def _keep_book_to_cast(payload, book, setting_names):
+    """With new people off, rewrite out anyone outside the story cast. Returns the book, setting names, removed."""
+    if allow_new_cast(payload) or not story_cast(payload):
+        return book, setting_names, []
+    settings = sync_story_settings(book, setting_names, _layer(payload).get("story_settings"))
+    known = _known_people(payload)
+    try:
+        found, _run_info = _scan_people(payload, story_book_to_text(book, settings), known, label="Story Mode Cast Check")
+    except ValueError as error:
+        print(f"[VRGDG Story Mode] Cast check skipped, the reply was not a list: {error}")
+        return book, setting_names, []
+    known_lower = {name.lower() for name in known}
+    people = []
+    for item in found:
+        name = _clean_scene_text(item.get("name") or "", 120) if isinstance(item, dict) else ""
+        if name and name.lower() not in known_lower and name not in people:
+            people.append(name)
+    if not people:
+        return book, setting_names, []
+    fixed, names, ok = _without_people(payload, book, setting_names, people)
+    return (fixed, names, people) if ok else (book, setting_names, [])
+
+
+def remove_story_people(payload):
+    """Rewrite the book without the named people (``names``), so only the story cast remains."""
+    layer = _layer(payload)
+    book = normalize_story_book(layer.get("story_book"))
+    if not book["chapters"]:
+        raise ValueError("Write the story first.")
+    names = payload.get("names") if isinstance(payload.get("names"), list) else []
+    people = [_clean_scene_text(name, 120) for name in names if _clean_scene_text(name, 120)]
+    if not people:
+        raise ValueError("Name the people to remove from the story.")
+    known = {item.get("id"): item.get("name") for item in layer.get("story_settings") or [] if isinstance(item, dict)}
+    fixed, setting_names, ok = _without_people(payload, book, known, people)
+    if not ok:
+        raise ValueError("The LLM did not return the whole story. Nothing was changed; try again.")
+    fields = {
+        **_first_story_mode_fields(layer),
+        **_book_fields(layer, fixed, setting_names),
+        "story_acts": [],
+        "story_scene_plan": [],
+    }
+    return {"story_layer": fields, "story_book": fixed, "removed_people": people}
+
+
+def scan_story_cast(payload):
+    """People in the story with no character card, or, with new people off, who are not in the story cast."""
+    layer = _layer(payload)
+    book = normalize_story_book(layer.get("story_book"))
+    if not book["chapters"]:
+        raise ValueError("Write the story first.")
+    known = _known_people(payload)
+    found, run_info = _scan_people(payload, story_book_to_text(book, layer.get("story_settings")), known,
+                                   label="Story Mode Cast Scan")
     known_lower = {name.lower() for name in known}
     characters, seen = [], set()
     for item in found:

@@ -43,6 +43,9 @@ class FakeLLM:
         self.instructions = []
 
     def __call__(self, payload, instruction, **kwargs):
+        # The cast check after a book or chapter finds no one outside the cast.
+        if kwargs.get("label") == "Story Mode Cast Check":
+            return '{"characters": []}', {}
         self.instructions.append(instruction)
         return self.replies.pop(0), {"runner": "lm_studio", "used_model": payload.get("lmstudio_model", "")}
 

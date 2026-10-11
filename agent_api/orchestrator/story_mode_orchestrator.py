@@ -34,7 +34,7 @@ from .storyboard_orchestrator import (
     sync_storyboard_files,
 )
 
-STORY_MODE_STEPS = ("book", "chapter", "split", "convert", "cast", "acts", "plan", "locations")
+STORY_MODE_STEPS = ("book", "chapter", "split", "convert", "cast", "remove_people", "acts", "plan", "locations")
 # Story Mode fields an agent may send to PUT /story/settings. Each is checked before it is saved.
 STORY_MODE_EDIT_KEYS = ("story_book_text", "story_settings", "story_acts", "story_scene_plan", "story_spot_min_scenes",
                         "story_cast_ids", "story_allow_new_cast")
@@ -110,7 +110,8 @@ def create_story_book(project_id: str, params: Optional[Dict[str, Any]] = None) 
     result = book_funcs.draft_story_book(request)
     saved = _save_fields(project_id, result["story_layer"])
     return {"story_book": result["story_book"], "story_book_text": result["story_layer"]["story_book_text"],
-            "story_settings": result["story_layer"]["story_settings"], "model": result.get("used_model"), **saved}
+            "story_settings": result["story_layer"]["story_settings"], "removed_people": result.get("removed_people", []),
+            "model": result.get("used_model"), **saved}
 
 
 def rewrite_story_chapter(project_id: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -128,7 +129,7 @@ def rewrite_story_chapter(project_id: str, params: Optional[Dict[str, Any]] = No
         raise ValidationError(str(error)) from error
     saved = _save_fields(project_id, result["story_layer"])
     return {"chapter": result["chapter"], "story_book_text": result["story_layer"]["story_book_text"],
-            "model": result.get("used_model"), **saved}
+            "removed_people": result.get("removed_people", []), "model": result.get("used_model"), **saved}
 
 
 def split_story(project_id: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -161,6 +162,24 @@ def convert_story_arc(project_id: str, params: Optional[Dict[str, Any]] = None) 
     saved = _save_fields(project_id, result["story_layer"])
     return {"story_book": result["story_book"], "story_book_text": result["story_layer"]["story_book_text"],
             "story_settings": result["story_layer"]["story_settings"], "model": result.get("used_model"), **saved}
+
+
+def remove_story_people(project_id: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Rewrite the book without the people in ``names`` and save it. Acts and the scene plan are cleared."""
+    params = dict(params or {})
+    names = params.get("names")
+    if not isinstance(names, list) or not any(str(name or "").strip() for name in names):
+        raise ValidationError("names is required: the people to remove (from the cast step's characters[].name).")
+    _folder, session = _get_active_session_and_folder(project_id)
+    cards = scene_cards(session)
+    request = _request(session, params, cards, names=names)
+    try:
+        result = book_funcs.remove_story_people(request)
+    except ValueError as error:
+        raise ValidationError(str(error)) from error
+    saved = _save_fields(project_id, result["story_layer"])
+    return {"story_book": result["story_book"], "story_book_text": result["story_layer"]["story_book_text"],
+            "removed_people": result["removed_people"], **saved}
 
 
 def scan_story_cast(project_id: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -307,6 +326,11 @@ def run_story_convert_job(job: Job, manager: JobManager) -> Dict[str, Any]:
     return convert_story_arc(job.project_id, job.params)
 
 
+def run_story_remove_people_job(job: Job, manager: JobManager) -> Dict[str, Any]:
+    manager.update_progress(job.id, 10.0, "story_remove_people", message="Rewriting the story without those people...")
+    return remove_story_people(job.project_id, job.params)
+
+
 def run_story_cast_job(job: Job, manager: JobManager) -> Dict[str, Any]:
     manager.update_progress(job.id, 10.0, "story_cast", message="Finding story characters without a card...")
     return scan_story_cast(job.project_id, job.params)
@@ -336,6 +360,7 @@ STORY_MODE_JOB_TYPES = {
     "split": "storyboard.story_split",
     "convert": "storyboard.story_convert",
     "cast": "storyboard.story_cast",
+    "remove_people": "storyboard.story_remove_people",
     "acts": "storyboard.story_acts",
     "plan": "storyboard.story_plan",
     "locations": "storyboard.story_locations",
@@ -349,6 +374,7 @@ def register_story_mode_handlers(manager: Optional[JobManager] = None) -> None:
     manager.register_handler("storyboard.story_split", run_story_split_job)
     manager.register_handler("storyboard.story_convert", run_story_convert_job)
     manager.register_handler("storyboard.story_cast", run_story_cast_job)
+    manager.register_handler("storyboard.story_remove_people", run_story_remove_people_job)
     manager.register_handler("storyboard.story_acts", run_story_acts_job)
     manager.register_handler("storyboard.story_plan", run_story_plan_job)
     manager.register_handler("storyboard.story_locations", run_story_locations_job)

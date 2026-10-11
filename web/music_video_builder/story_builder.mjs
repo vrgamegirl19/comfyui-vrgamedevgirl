@@ -80,6 +80,12 @@ export function createStoryBuilder({
     return ["rtv", "ingredients"].includes(String(state.videoModelMode || ""));
   }
 
+  // Toast text for a book or chapter step that wrote people outside the story cast out of the story.
+  function removedNote(data, done) {
+    const removed = Array.isArray(data?.removed_people) ? data.removed_people : [];
+    return removed.length ? `${done} Kept to your cast: wrote out ${removed.join(", ")}.` : done;
+  }
+
   function imageGaps() {
     return referenceImageGaps(normalizeFluxReferenceBuilder(state.fluxReferenceBuilder), segments().map((segment) => segment.id));
   }
@@ -413,7 +419,7 @@ export function createStoryBuilder({
           previous_book: current.story_book_text || "", seed: String(Date.now()) }, "Writing the story");
         if (data?.story_layer) {
           await saveLayer(data.story_layer, "story builder story drafted");
-          toast("Story written. Review it, then create the acts.");
+          toast(removedNote(data, "Story written. Review it, then create the acts."));
           show("story");
         }
       };
@@ -469,6 +475,7 @@ export function createStoryBuilder({
           const data = await runStep("chapter", { chapter_id: chapter.id, direction: direction.value }, `Rewriting chapter ${index + 1}`);
           if (data?.story_layer) {
             await saveLayer(data.story_layer, "story builder chapter rewritten");
+            toast(removedNote(data, "Chapter rewritten."));
             show("story");
           }
         };
@@ -476,27 +483,35 @@ export function createStoryBuilder({
           row(direction, rewrite));
       }
 
-      const cast = card("Cast in the story", "Find people in the story who have no character card, and add the ones you want.");
-      const find = makeButton("Find Cast In Story", "primary");
+      const keepToCast = !current.story_allow_new_cast;
+      const cast = card("Cast in the story", keepToCast
+        ? "Check the story for anyone outside the characters ticked above, and write them out."
+        : "Find people in the story who have no character card, and add the ones you want.");
+      const find = makeButton(keepToCast ? "Check Story For Other People" : "Find Cast In Story", "primary");
       const found = el("div", "display:flex;flex-direction:column;gap:6px;");
       find.onclick = async () => {
         const data = await runStep("cast", {}, "Finding story characters");
         found.textContent = "";
         const characters = data?.characters || [];
         if (!characters.length) {
-          found.append(el("div", "font-size:12px;color:#94a3b8;", "Everyone in the story already has a card."));
+          found.append(el("div", "font-size:12px;color:#94a3b8;", keepToCast
+            ? "Only your story cast is in the story."
+            : "Everyone in the story already has a card."));
           return;
+        }
+        if (keepToCast) {
+          found.append(el("div", "font-size:12px;color:#fbbf24;", "These people are in the story but not in your story cast. Rewrite the story without them, or add them to the cast."));
         }
         const boxes = characters.map((character) => {
           const label = el("label", "display:flex;gap:8px;font-size:12px;color:#e2e8f0;align-items:flex-start;");
           const box = document.createElement("input");
           box.type = "checkbox";
-          box.checked = character.role !== "background";
+          box.checked = keepToCast || character.role !== "background";
           label.append(box, el("span", "", `${character.name} (${character.role}): ${character.description}`));
           found.append(label);
           return { box, character };
         });
-        const addCast = makeButton("Add Selected To Cast", "primary");
+        const addCast = makeButton(keepToCast ? "Add Selected To Cast Instead" : "Add Selected To Cast", keepToCast ? "" : "primary");
         addCast.onclick = async () => {
           const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
           const chosen = boxes.filter((item) => item.box.checked).map((item) => item.character);
@@ -524,7 +539,22 @@ export function createStoryBuilder({
           // New cast has no images yet: go straight to making them.
           await generateMissingImages("characters");
         };
-        found.append(row(addCast));
+        const removeThem = makeButton("Rewrite Without Them", "primary");
+        removeThem.title = "The LLM rewrites the story so only your story cast is in it. Acts and the scene plan are cleared.";
+        removeThem.onclick = async () => {
+          const names = boxes.filter((item) => item.box.checked).map((item) => item.character.name);
+          if (!names.length) {
+            toast("Tick the people to write out.", true);
+            return;
+          }
+          const data = await runStep("remove_people", { names }, "Rewriting the story without them");
+          if (data?.story_layer) {
+            await saveLayer(data.story_layer, "story builder people removed");
+            toast(`Removed ${names.join(", ")}. Create the acts again.`);
+            show("story");
+          }
+        };
+        found.append(keepToCast ? row(removeThem, addCast) : row(addCast));
       };
       cast.append(row(find), found);
       content.append(people, idea, own, book, chapters, cast);
