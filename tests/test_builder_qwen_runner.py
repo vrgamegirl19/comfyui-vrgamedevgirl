@@ -46,9 +46,10 @@ class BuilderQwenRunnerTests(unittest.TestCase):
     def test_runner_model_selection_syncs_builder_text_and_vision_fields(self):
         self.assertIn("function syncBuilderLlmModelSelectsFromRunner()", UI)
         self.assertIn("...builderTextLlmModelSelects, ...builderVisionLlmModelSelects", UI)
-        self.assertIn("selectBuilderLlmValue(select, state.qwenMmprojFile)", UI)
-        self.assertIn('makeField("Non-Vision text LLM model"', UI)
-        self.assertIn('makeField("Vision LLM model"', UI)
+        self.assertIn("selectBuilderLlmValue(select, mmprojFile)", UI)
+        self.assertNotIn('makeField("Non-Vision text LLM model"', UI)
+        self.assertNotIn('makeField("Vision LLM model"', UI)
+        self.assertIn('makeField("Gemma vision mmproj (for image-reference prompts)"', UI)
         self.assertNotIn('makeField("Non-Vision text Gemma model"', UI)
         self.assertNotIn('makeField("Vision Gemma model"', UI)
 

@@ -1,3 +1,4 @@
+import { reportProjectError } from "./music_video_builder/error_log.mjs";
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 
@@ -73,6 +74,7 @@ function hideInternalWidgets(node) {
 }
 
 function toast(message, isError = false) {
+  if (isError) reportProjectError(message, { component: "Workflow Runner Toast" });
   const element = document.createElement("div");
   element.textContent = message;
   element.style.cssText = `

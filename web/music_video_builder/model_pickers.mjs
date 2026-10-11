@@ -193,7 +193,7 @@ export function createModelPickers({
   ltxIdLoraPicker, ltxIngredientsLoraPicker, ltxMsrLoraPicker, miniMaxAdvancedLatentUpscalerPicker,
   miniMaxAudioVaePicker, miniMaxClipPicker, miniMaxDiffusionModelPicker, miniMaxGemmaModelSelect,
   miniMaxLoraSlots, miniMaxMmprojSelect, miniMaxTextGemmaModelSelect, miniMaxThreePassLoraPicker,
-  miniMaxTurboLoraPicker, miniMaxTwoPassLatentUpscalerPicker, miniMaxTwoPassLoraPicker, miniMaxVideoVaePicker,
+  miniMaxTwoPassLatentUpscalerPicker, miniMaxTwoPassLoraPicker, miniMaxVideoVaePicker,
   mmprojSelect, nbGemmaModelSelect, nbMmprojSelect, openPromptCreatorPanel, pushHistory, renderList,
   saveI2VVideoSettingsFromPanel, saveMiniMaxH3SettingsFromPanel, setVisionReferenceSource, state,
   syncBuilderLlmModelSelectsFromRunner, syncI2VVideoSettingsPanel, syncKrea2TwoPassLlmSelectsFromShared,
@@ -323,10 +323,6 @@ export function createModelPickers({
     if (!ltxIngredientsLoraPicker.input.value) ltxIngredientsLoraPicker.input.value = REQUIRED_LTX_INGREDIENTS_LORA;
     ltxIdLoraPicker.options = loras;
     if (!ltxIdLoraPicker.input.value) ltxIdLoraPicker.input.value = REQUIRED_LTX_ID_LORA;
-    miniMaxTurboLoraPicker.options = loras;
-    if (!miniMaxTurboLoraPicker.input.value) {
-      miniMaxTurboLoraPicker.input.value = DEFAULT_MINIMAX_H3_SETTINGS.turbo_lora_name;
-    }
     for (const picker of [miniMaxTwoPassLoraPicker, miniMaxThreePassLoraPicker]) {
       picker.options = loras;
     }

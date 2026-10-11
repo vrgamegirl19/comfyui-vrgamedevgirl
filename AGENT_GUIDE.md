@@ -175,6 +175,8 @@ The `core` package houses critical cross-cutting utilities used across the entir
 
 The `builder` package contains the backend business logic and HTTP API powering the **AI Video Builder UI**.
 
+- `builder/error_log.py` owns the local append-only `logs/error_log.txt` in each saved project; `error_log_routes.py` handles read/append/clear and project API failure capture. `web/music_video_builder/error_log.mjs` captures redacted browser errors and owns **View Error Log**, **Copy Log**, and confirmed **Clear Log**. Background jobs and Builder-polled ComfyUI failures retain available tracebacks. See [Project error log](docs/PROJECT_ERROR_LOG.md).
+
 #### [builder/nodes.py](builder/nodes.py)
 - **Purpose**: Defines the primary canvas node `VRGDG_MusicVideoBuilderUI` and triggers the registration of builder server routes.
 - **Node Registered**:
@@ -285,6 +287,7 @@ The `builder` package contains the backend business logic and HTTP API powering 
 - **Purpose**: Static asset delivery endpoints for high-throughput video/image timeline streaming.
 - **Key Endpoints**:
   - `GET /vrgdg/video_editor/video?path=<path>`: Streams video files with `Cache-Control: public, max-age=31536000, immutable` headers keyed to scene cache busters to enable instant browser timeline playback without re-fetching.
+    - Preview downloads include an inline Content-Disposition with the actual basename. MP4/M4V clips explicitly use `video/mp4` and an `.mp4` download filename; other containers retain their own extensions. FileResponse preserves range playback. `makeEditorVideoUrl` adds stable `v=2` to bypass cached responses with older MIME/filename headers.
   - `GET /vrgdg/video_editor/image?path=<path>`: Serves image files and thumbnails.
 
 ---
@@ -602,6 +605,9 @@ A modular 79-file ESM (`.mjs`) application structure:
 - **Timeline & Playback**: `timeline_view.mjs`, `timeline_state.mjs`, `timeline_actions.mjs`, `timeline_events.mjs`, `timeline_edit.mjs`, `beat_calibration.mjs`.
 - **Inspector & Settings**: `inspector.mjs`, `inspector_events.mjs`, `video_settings_panel.mjs`, `model_settings.mjs`, `model_pickers.mjs`.
 - **Media & References**: `media_import.mjs`, `image_panels.mjs`, `reference_builder.mjs`, `reference_data.mjs`, `reference_subjects.mjs`, `reference_locations.mjs`, `reference_scene_mapping.mjs`.
+  - MiniMax has one optional LoRA stack for single-pass LoRAs, including Turbo files; the separate legacy Turbo checkbox, picker, strength field and acceleration section are retired. `editableMiniMaxH3Settings` in `minimax_panel.mjs` adapts saved single-pass Turbo configurations to that ordinary stack, preserving the file, strength and effective steps/cache settings. Ignored legacy Turbo flags in multi-pass are cleared without activating a LoRA. Sampler, scheduler and normal-LoRA controls stay editable. Backend legacy payload compatibility and the dedicated two/advanced-pass LoRA selectors remain intact. Verify with `tests/minimax_pass_settings.cjs` and `tests/test_builder_minimax_turbo.py`.
+  - Image and Video model tabs show render-model settings only. Configure prompt-writing models through `gemma_runner.mjs` (LLM Runner), including Gemma Local's shared vision mmproj and Qwen Local's model/mmproj. The legacy select objects remain internal payload adapters: `syncBuilderLlmModelSelectsFromRunner` in `inspector.mjs` synchronizes local model and projector values without presenting duplicate LLM sections or changing saved setting shapes.
+  - The Image model chooser in `image_panels.mjs` is a single native dropdown for ZImage, Flux Klein, Nano B, Ernie, Krea 2, Browser AI, Enhance and + Custom. It delegates to the existing mode/import button handlers, retaining history, persistence and panel behavior. `imageModelSelect` is passed through `builder.mjs` to `createImagePanels`; `syncFluxKleinPanel` updates its value when modes, projects or undo state change. + Custom invokes image import and restores the current model selection; no new saved setting is introduced.
 - **Prompting & LLM**: `prompt_editing.mjs`, `prompt_creator.mjs`, `builder_agent.mjs`, `llm_runner.mjs`, `gemma_runner.mjs`.
 - **Rendering & Output**: `batch_render.mjs`, `scene_render_prep.mjs`, `video_render.mjs`, `render_log.mjs`, `post_process.mjs`.
 - **MiniMax H3 Panel**: `minimax_panel.mjs`, `minimax_panel_layout.mjs`, `minimax_panel_events.mjs`, `minimax_prompt.mjs`, `minimax_references.mjs`, `minimax_h3.mjs`.

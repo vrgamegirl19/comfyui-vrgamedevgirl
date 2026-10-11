@@ -10,7 +10,7 @@ import {
 
 export function createGemmaRunner({
   autoSaveSessionQuiet, createProgressWindow, saveSession, state, syncBuilderLlmModelSelectsFromRunner,
-  t2iTextGemmaModelSelect, textGemmaRunnerPayload, updatePromptRunnerButtonLabels,
+  mmprojSelect, t2iTextGemmaModelSelect, textGemmaRunnerPayload, updatePromptRunnerButtonLabels,
 }) {
   function openGemmaRunnerModal() {
     const backdrop = document.createElement("div");
@@ -62,6 +62,7 @@ export function createGemmaRunner({
     gemmaLocalPanel.append(
       makeField("Gemma Local model in models/LLM", gemmaLocalSelect),
       gemmaLocalRow,
+      makeField("Gemma vision mmproj (for image-reference prompts)", mmprojSelect),
     );
     const qwenLocalPanel = document.createElement("div");
     qwenLocalPanel.style.cssText = "display:flex;flex-direction:column;gap:10px;";

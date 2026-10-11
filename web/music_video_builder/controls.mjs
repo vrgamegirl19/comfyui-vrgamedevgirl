@@ -1,5 +1,6 @@
 import { app } from "../../../scripts/app.js";
 import { BUILDER_FONT_STACK, BUY_ME_A_COFFEE_URL } from "./constants.mjs";
+import { reportProjectError } from "./error_log.mjs";
 
 export function getWidget(node, name) {
   return (node?.widgets || []).find((widget) => widget?.name === name);
@@ -438,6 +439,7 @@ export function makeSubTabs(tabs = []) {
 }
 
 export function toast(message, isError = false) {
+  if (isError) reportProjectError(message, { component: "Video Builder Toast" });
   window.dispatchEvent(new CustomEvent("vrgdg:builder-toast", {
     detail: { message: String(message || ""), isError: Boolean(isError) },
   }));

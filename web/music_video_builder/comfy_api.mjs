@@ -1,3 +1,4 @@
+import { errorLogContext, errorLogHeaders, reportProjectError } from "./error_log.mjs";
 import { api } from "../../../scripts/api.js";
 import { app } from "../../../scripts/app.js";
 
@@ -68,6 +69,7 @@ function ownServerPayloadTimeoutMs(payload) {
 }
 
 export async function postJson(url, payload, timeoutMs = 120000) {
+  const logContext = errorLogContext(payload);
   const ownTimeoutMs = ownServerPayloadTimeoutMs(payload);
   if (ownTimeoutMs) timeoutMs = Math.max(timeoutMs, ownTimeoutMs);
   const controller = new AbortController();
@@ -79,7 +81,7 @@ export async function postJson(url, payload, timeoutMs = 120000) {
   try {
     const response = await api.fetchApi(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...errorLogHeaders(logContext) },
       body: JSON.stringify(payload),
       signal: controller.signal,
     });
@@ -88,22 +90,26 @@ export async function postJson(url, payload, timeoutMs = 120000) {
       const failure = new Error(String(data?.error || `Request failed (${response.status})`));
       // Callers that need more than the message (for example a 409 "already exists") read these.
       failure.status = response.status;
+      failure.projectErrorLogged = response.headers.get("X-VRGDG-Error-Logged") === "1";
       failure.data = data;
       throw failure;
     }
     return data;
   } catch (error) {
+    let failure = error;
     if (timedOut || controller.signal.aborted || error?.name === "AbortError") {
       const timeoutSeconds = Math.max(1, Math.round(timeoutMs / 1000));
       const timeoutAmount = timeoutSeconds >= 60 ? Math.round(timeoutSeconds / 60) : timeoutSeconds;
       const timeoutUnit = timeoutSeconds >= 60 ? "minute" : "second";
-      throw new Error(`Request timed out after ${timeoutAmount} ${timeoutUnit}${timeoutAmount === 1 ? "" : "s"}. The backend may still be processing it.`);
+      failure = new Error(`Request timed out after ${timeoutAmount} ${timeoutUnit}${timeoutAmount === 1 ? "" : "s"}. The backend may still be processing it.`);
+    } else if (/NetworkError|Failed to fetch|fetch resource|Load failed/i.test(String(error?.message || error || ""))) {
+      failure = new Error("Connection to the ComfyUI backend was lost. Check that ComfyUI is still running and inspect its console. If this happened while loading a local LLM, lower its GPU layers or context limit and try again.");
     }
-    const message = String(error?.message || error || "");
-    if (/NetworkError|Failed to fetch|fetch resource|Load failed/i.test(message)) {
-      throw new Error("Connection to the ComfyUI backend was lost. Check that ComfyUI is still running and inspect its console. If this happened while loading a local LLM, lower its GPU layers or context limit and try again.");
-    }
-    throw error;
+    reportProjectError(failure, {
+      source: "API", component: url, stage: url.split("/").pop(), logged: error?.projectErrorLogged,
+      details: String(error?.message || error), stack: error?.stack || failure?.stack,
+    }, logContext);
+    throw failure;
   } finally {
     clearTimeout(timeout);
   }
@@ -155,10 +161,20 @@ export const GEMMA_VIDEO_PROMPT_TIMEOUT_MS = 600000;
 export const GEMMA_VIDEO_ENHANCE_TIMEOUT_MS = 300000;
 
 export async function getJson(url) {
-  const response = await api.fetchApi(url);
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok || !data?.ok) throw new Error(String(data?.error || `Request failed (${response.status})`));
-  return data;
+  const logContext = errorLogContext();
+  try {
+    const response = await api.fetchApi(url, { headers: errorLogHeaders(logContext) });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data?.ok) {
+      const error = new Error(String(data?.error || `Request failed (${response.status})`));
+      error.projectErrorLogged = response.headers.get("X-VRGDG-Error-Logged") === "1";
+      throw error;
+    }
+    return data;
+  } catch (error) {
+    reportProjectError(error, { source: "API", component: url, logged: error?.projectErrorLogged }, logContext);
+    throw error;
+  }
 }
 
 export function makeImageViewUrl(image) {
@@ -200,7 +216,8 @@ export function makeEditorVideoUrl(path, bust) {
   // scene is re-rendered) lets the browser reuse a cached fetch of the same clip
   // across preload/playback instead of re-downloading it from disk on every cut.
   const version = bust === undefined || bust === null || bust === "" ? Date.now() : bust;
-  return `/vrgdg/video_editor/video?path=${encodeURIComponent(path)}&rand=${version}`;
+  // Invalidate older immutable responses that lacked the MP4 download headers.
+  return `/vrgdg/video_editor/video?path=${encodeURIComponent(path)}&rand=${version}&v=2`;
 }
 
 function extractImagesFromHistory(historyPayload, promptId) {
@@ -224,6 +241,8 @@ function extractPromptErrorFromHistory(historyPayload, promptId) {
   }
   const candidates = [
     root?.error,
+    root?.traceback,
+    status?.traceback,
     status?.error,
     status?.exception_message,
     status?.message,
@@ -240,7 +259,7 @@ function extractPromptErrorFromHistory(historyPayload, promptId) {
       return;
     }
     if (typeof value === "object") {
-      for (const key of ["exception_message", "error", "message", "node_id", "node_type", "class_type"]) {
+      for (const key of ["exception_message", "error", "message", "node_id", "node_type", "class_type", "traceback"]) {
         if (value[key] != null) visit(value[key]);
       }
     }
@@ -337,6 +356,7 @@ export function sceneVideoTimeoutMessage({
 }
 
 export async function waitForVideos(promptId, onStatus, shouldCancel, findOutputFallback = null, options = {}) {
+  const logContext = errorLogContext();
   const started = Date.now();
   const timeoutHours = normalizeSceneRenderWaitHours(options.timeoutHours);
   const timeoutMs = timeoutHours * 60 * 60 * 1000;
@@ -347,7 +367,11 @@ export async function waitForVideos(promptId, onStatus, shouldCancel, findOutput
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(`History request failed (${response.status})`);
     const promptError = extractPromptErrorFromHistory(data, promptId);
-    if (promptError) throw new Error(`Scene video workflow failed:\n${promptError}`);
+    if (promptError) {
+      const error = new Error(`Scene video workflow failed:\n${promptError}`);
+      reportProjectError(error, { source: "ComfyUI", stage: "Video Generation", component: "Prompt Execution", details: promptError }, logContext);
+      throw error;
+    }
     const videos = extractVideosFromHistory(data, promptId);
     if (videos.length) return videos;
     if (typeof findOutputFallback === "function" && Date.now() - lastFallbackCheck > 10000) {
@@ -372,6 +396,7 @@ export async function waitForVideos(promptId, onStatus, shouldCancel, findOutput
 }
 
 export async function waitForImages(promptId, onStatus, shouldCancel) {
+  const logContext = errorLogContext();
   const started = Date.now();
   while (Date.now() - started < 20 * 60 * 1000) {
     if (shouldCancel?.()) throw new Error("Stopped by user.");
@@ -379,7 +404,11 @@ export async function waitForImages(promptId, onStatus, shouldCancel) {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(`History request failed (${response.status})`);
     const promptError = extractPromptErrorFromHistory(data, promptId);
-    if (promptError) throw new Error(`Image workflow failed:\n${promptError}`);
+    if (promptError) {
+      const error = new Error(`Image workflow failed:\n${promptError}`);
+      reportProjectError(error, { source: "ComfyUI", stage: "Image Generation", component: "Prompt Execution", details: promptError }, logContext);
+      throw error;
+    }
     const images = extractImagesFromHistory(data, promptId);
     if (images.length) return images;
     if (promptHistoryFinished(data, promptId)) {
@@ -392,6 +421,7 @@ export async function waitForImages(promptId, onStatus, shouldCancel) {
 }
 
 export async function waitForText(promptId, onStatus, shouldCancel, timeoutMs = 5 * 60 * 1000) {
+  const logContext = errorLogContext();
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
     if (shouldCancel?.()) throw new Error("Stopped by user.");
@@ -399,7 +429,11 @@ export async function waitForText(promptId, onStatus, shouldCancel, timeoutMs = 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(`History request failed (${response.status})`);
     const promptError = extractPromptErrorFromHistory(data, promptId);
-    if (promptError) throw new Error(`Text workflow failed:\n${promptError}`);
+    if (promptError) {
+      const error = new Error(`Text workflow failed:\n${promptError}`);
+      reportProjectError(error, { source: "ComfyUI", stage: "Prompt Generation", component: "Prompt Execution", details: promptError }, logContext);
+      throw error;
+    }
     const text = extractTextFromHistory(data, promptId);
     if (text.length) return text;
     if (promptHistoryFinished(data, promptId)) {
@@ -461,6 +495,7 @@ export async function cancelComfyExecutionAndWaitIdle(onStatus, options = {}) {
 }
 
 export async function queueWorkflowPrompt(prompt, options = {}) {
+  const logContext = errorLogContext();
   await waitForComfyQueueIdle(options.onStatus, {
     timeoutMs: options.idleTimeoutMs,
     shouldCancel: options.shouldCancel,
@@ -482,7 +517,9 @@ export async function queueWorkflowPrompt(prompt, options = {}) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data?.error) {
-    throw new Error(data?.error?.message || data?.error || `Queue failed (${response.status})`);
+    const error = new Error(data?.error?.message || data?.error || `Queue failed (${response.status})`);
+    reportProjectError(error, { source: "ComfyUI", component: "Prompt Queue" }, logContext);
+    throw error;
   }
   if (data?.node_errors && Object.keys(data.node_errors).length) {
     const details = Object.entries(data.node_errors).map(([nodeId, error]) => {
@@ -494,7 +531,9 @@ export async function queueWorkflowPrompt(prompt, options = {}) {
         : [];
       return `Node ${nodeId}: ${[...messages, ...inputErrors].join(" | ") || JSON.stringify(error)}`;
     }).join("\n");
-    throw new Error(`Workflow validation failed:\n${details}`);
+    const error = new Error(`Workflow validation failed:\n${details}`);
+    reportProjectError(error, { source: "ComfyUI", component: "Workflow Validation", details }, logContext);
+    throw error;
   }
   return data;
 }

@@ -34,12 +34,12 @@ export function wireMiniMaxPanel({
   miniMaxPass2Prompt, miniMaxPassButtons, miniMaxPrompt, miniMaxSageAttention, miniMaxSamplerName,
   miniMaxSceneImageUse, miniMaxScheduler, miniMaxSeed, miniMaxStartFrameCharacterInfluence, miniMaxSteps,
   miniMaxThreePassLoraPicker, miniMaxThreePassLoraStrength, miniMaxThreePassRefImageSize,
-  miniMaxTurboLoraPicker, miniMaxTurboLoraStrength, miniMaxTwoPassLatentScale, miniMaxTwoPassLatentUpscalerPicker, miniMaxTwoPassLoraPicker,
+  miniMaxTwoPassLatentScale, miniMaxTwoPassLatentUpscalerPicker, miniMaxTwoPassLoraPicker,
   miniMaxTwoPassLoraPreset, miniMaxTwoPassLoraPresetButtons, miniMaxTwoPassLoraStatus,
   miniMaxTwoPassLoraStrength, miniMaxTwoPassOutputCrf, miniMaxTwoPassRefImageSize, miniMaxTwoPassResizeMethod,
   miniMaxTwoPassTeCacheDepth, miniMaxTwoPassTeDevice, miniMaxTwoPassTeEnd, miniMaxTwoPassTeMcs,
   miniMaxTwoPassTeProcessingControl, miniMaxTwoPassTeStart, miniMaxTwoPassUseFastVaeDecode,
-  miniMaxUseCurrentSceneVideoButton, miniMaxUseLoras, miniMaxUseTurboLora, miniMaxVideoReferenceRows,
+  miniMaxUseCurrentSceneVideoButton, miniMaxUseLoras, miniMaxVideoReferenceRows,
   miniMaxVideoVaePicker, miniMaxWarmupFrames, pushHistory, renderMiniMaxSpeakerAssignmentPanel,
   requireActiveSegment, saveMiniMaxH3SettingsFromPanel, saveMiniMaxSceneInputsFromPanel, segmentImageSource,
   segmentTrack, selectedPerformerSubjectsForSegment, setMiniMaxH3ModeForSegment,
@@ -54,8 +54,6 @@ export function wireMiniMaxPanel({
     wireSearchablePicker(picker, saveMiniMaxH3SettingsFromPanel);
     picker.input.addEventListener("change", persistMiniMaxSettings);
   }
-  wireSearchablePicker(miniMaxTurboLoraPicker, saveMiniMaxH3SettingsFromPanel);
-  miniMaxTurboLoraPicker.input.addEventListener("change", persistMiniMaxSettings);
   for (const button of miniMaxTwoPassLoraPresetButtons) {
     button.onclick = async () => {
       if (!state.miniMaxH3TwoPassEnabled || state.miniMaxH3ThreePassEnabled) return;
@@ -120,7 +118,6 @@ export function wireMiniMaxPanel({
     miniMaxFp16Accumulation.input,
     miniMaxUseLoras.input,
     miniMaxLoraCount,
-    miniMaxTurboLoraStrength,
     miniMaxTwoPassLoraStrength,
     miniMaxThreePassLoraStrength,
     miniMaxTwoPassRefImageSize,
@@ -163,7 +160,6 @@ export function wireMiniMaxPanel({
   miniMaxUseLoras.input.addEventListener("change", () => {
     const segment = videoSettingsSegment();
     if (miniMaxUseLoras.input.checked) {
-      miniMaxUseTurboLora.input.checked = false;
       if (Math.max(0, Math.trunc(Number(miniMaxLoraCount.value) || 0)) < 1) miniMaxLoraCount.value = "1";
     }
     const settings = saveMiniMaxH3SettingsFromPanel();
@@ -177,30 +173,6 @@ export function wireMiniMaxPanel({
     if (Number(miniMaxLoraCount.value || 0) > 0) miniMaxUseLoras.input.checked = true;
     persistMiniMaxSettings();
     syncMiniMaxH3Panel();
-  });
-  miniMaxUseTurboLora.input.addEventListener("change", () => {
-    const segment = videoSettingsSegment();
-    const currentSettings = miniMaxH3SettingsForSegment(segment);
-    if (miniMaxUseTurboLora.input.checked) {
-      miniMaxUseLoras.input.checked = false;
-      currentSettings.steps_before_turbo = Math.max(1, Math.trunc(Number(miniMaxSteps.value) || DEFAULT_MINIMAX_H3_SETTINGS.steps));
-      currentSettings.easy_cache_bypass_before_turbo = miniMaxEasyCacheBypass.input.checked;
-      miniMaxSteps.value = "4";
-      miniMaxEasyCacheBypass.input.checked = true;
-    } else {
-      miniMaxSteps.value = String(currentSettings.steps_before_turbo || DEFAULT_MINIMAX_H3_SETTINGS.steps);
-      miniMaxEasyCacheBypass.input.checked = Boolean(currentSettings.easy_cache_bypass_before_turbo);
-    }
-    const settings = saveMiniMaxH3SettingsFromPanel();
-    settings.steps_before_turbo = currentSettings.steps_before_turbo;
-    settings.easy_cache_bypass_before_turbo = currentSettings.easy_cache_bypass_before_turbo;
-    if (segment?.use_scene_minimax_h3_settings) {
-      segment.minimax_h3_settings = settings;
-    } else {
-      state.miniMaxH3Settings = settings;
-    }
-    syncMiniMaxH3Panel();
-    autoSaveSessionQuiet("MiniMax H3 Turbo setting").catch(() => null);
   });
   for (const button of miniMaxModeButtons) {
     button.onclick = async () => {

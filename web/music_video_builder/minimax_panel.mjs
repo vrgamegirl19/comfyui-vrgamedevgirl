@@ -17,6 +17,21 @@ import {
 } from "./minimax_h3.mjs";
 import { createMiniMaxSpeakerAssignments } from "./minimax_speaker_assignments.mjs";
 
+// Adapt old single-pass Turbo settings to the same editable LoRA stack used by
+// every optional MiniMax LoRA. Backend legacy payload support stays compatible.
+export function editableMiniMaxH3Settings(source = {}) {
+  const settings = cloneMiniMaxH3Settings(source);
+  if (!settings.use_turbo_lora) return settings;
+  if (settings.render_pass !== "single") return cloneMiniMaxH3Settings({ ...settings, use_turbo_lora: false });
+  return cloneMiniMaxH3Settings({
+    ...settings,
+    use_turbo_lora: false,
+    use_loras: true,
+    lora_count: 1,
+    loras: [{ name: settings.turbo_lora_name, strength: settings.turbo_lora_strength, apply_to: "pass1" }],
+  });
+}
+
 export function createMiniMaxPanel({
   activateGlobalTimelineAudioPlayback, activeSegment, advancedTwoPassControls, allEditableSegments, audio,
   autoSaveSessionQuiet, autoTimeMiniMaxSingerCuesForSegment, createProgressWindow, gemmaRunnerLabel,
@@ -45,14 +60,14 @@ export function createMiniMaxPanel({
   miniMaxStartFrameCharacterInfluence, miniMaxStartFrameCharacterInfluenceField,
   miniMaxStartFrameReferenceNote, miniMaxSteps, miniMaxSubTabs, miniMaxThreePassLoraPicker,
   miniMaxThreePassLoraSection, miniMaxThreePassLoraStrength, miniMaxThreePassRefImageSize,
-  miniMaxThreePassSettings, miniMaxTurboLoraField, miniMaxTurboLoraPicker, miniMaxTurboLoraStrength,
-  miniMaxTurboLoraStrengthField, miniMaxTurboNote, miniMaxTurboSection, miniMaxTwoPassLatentScale, miniMaxTwoPassLatentUpscalerPicker,
+  miniMaxThreePassSettings,
+  miniMaxTwoPassLatentScale, miniMaxTwoPassLatentUpscalerPicker,
   miniMaxTwoPassLoraLayout, miniMaxTwoPassLoraPicker, miniMaxTwoPassLoraPreset,
   miniMaxTwoPassLoraPresetButtons, miniMaxTwoPassLoraPresetField, miniMaxTwoPassLoraSection,
   miniMaxTwoPassLoraStatus, miniMaxTwoPassLoraStrength, miniMaxTwoPassOutputCrf, miniMaxTwoPassRefImageSize,
   miniMaxTwoPassResizeMethod, miniMaxTwoPassSettings, miniMaxTwoPassTeCacheDepth, miniMaxTwoPassTeDevice,
   miniMaxTwoPassTeEnd, miniMaxTwoPassTeMcs, miniMaxTwoPassTeProcessingControl, miniMaxTwoPassTeStart,
-  miniMaxTwoPassUseFastVaeDecode, miniMaxUseLoras, miniMaxUseTurboLora, miniMaxVideoReferenceRows,
+  miniMaxTwoPassUseFastVaeDecode, miniMaxUseLoras, miniMaxVideoReferenceRows,
   miniMaxVideoReferencesButton, miniMaxVideoVaePicker, miniMaxWarmupFrames, normalizeLyricCueMapForSegment,
   playSceneAudioFrom, playSingerCueRange, prepareSceneAudioClipForTimestamping,
   previousAutoChainSourceSegment, projectInput, pushHistory, render, saveMiniMaxPromptButton,
@@ -291,7 +306,6 @@ export function createMiniMaxPanel({
     const segment = wizardVideoSettings.global ? null : (targetSegment?.id ? targetSegment : activeSegment());
     const currentSettings = miniMaxH3SettingsForSegment(segment);
     const loraEnabled = Boolean(miniMaxUseLoras.input.checked);
-    const turboEnabled = currentSettings.video_mode !== "reference_to_video" && Boolean(miniMaxUseTurboLora.input.checked) && !loraEnabled;
     const loraCount = loraEnabled ? Math.max(0, Math.min(4, Math.trunc(Number(miniMaxLoraCount.value || 0)))) : 0;
     const loras = miniMaxLoraSlots
       .slice(0, loraCount)
@@ -326,7 +340,6 @@ export function createMiniMaxPanel({
       sampler_name: miniMaxSamplerName.value,
       scheduler: miniMaxScheduler.value,
       steps: miniMaxSteps.value,
-      steps_before_turbo: turboEnabled ? currentSettings.steps_before_turbo : miniMaxSteps.value,
       denoise: miniMaxDenoise.value,
       ref_image_size: currentSettings.render_pass === "three_pass"
         ? miniMaxThreePassRefImageSize.value
@@ -382,9 +395,6 @@ export function createMiniMaxPanel({
         [`${control.prefix}seed`, control.seed.value],
       ])),
       easy_cache_bypass: miniMaxEasyCacheBypass.input.checked,
-      easy_cache_bypass_before_turbo: turboEnabled
-        ? currentSettings.easy_cache_bypass_before_turbo
-        : miniMaxEasyCacheBypass.input.checked,
       easy_cache_reuse_threshold: miniMaxEasyCacheReuseThreshold.value,
       easy_cache_start_percent: miniMaxEasyCacheStartPercent.value,
       easy_cache_end_percent: miniMaxEasyCacheEndPercent.value,
@@ -395,9 +405,7 @@ export function createMiniMaxPanel({
       use_loras: loraEnabled,
       lora_count: loraCount,
       loras,
-      use_turbo_lora: turboEnabled,
-      turbo_lora_name: miniMaxTurboLoraPicker.input.value,
-      turbo_lora_strength: miniMaxTurboLoraStrength.value,
+      use_turbo_lora: false,
     });
     if (segment?.use_scene_minimax_h3_settings) {
       segment.minimax_h3_settings = settings;
@@ -426,7 +434,7 @@ export function createMiniMaxPanel({
   }
 
   function miniMaxH3SettingsForSegment(segment = videoSettingsSegment()) {
-    const globalSettings = cloneMiniMaxH3Settings(state.miniMaxH3Settings);
+    const globalSettings = editableMiniMaxH3Settings(state.miniMaxH3Settings);
     if (!segment?.use_scene_minimax_h3_settings) return globalSettings;
     const sceneSettings = segment.minimax_h3_settings && typeof segment.minimax_h3_settings === "object"
       ? segment.minimax_h3_settings
@@ -434,7 +442,7 @@ export function createMiniMaxPanel({
     const legacyPreset = normalizeMiniMaxH3LocationTransitionPreset(segment.minimax_h3_location_transition_preset);
     const legacyCustom = String(segment.minimax_h3_location_transition_custom || "").trim();
     const hasSceneTransitionPreset = Object.prototype.hasOwnProperty.call(sceneSettings, "location_transition_preset");
-    const settings = cloneMiniMaxH3Settings({
+    const settings = editableMiniMaxH3Settings({
       ...globalSettings,
       ...sceneSettings,
       // The pipeline belongs to the whole project, so a scene with its own settings follows it.
@@ -444,12 +452,6 @@ export function createMiniMaxPanel({
       location_transition_preset: hasSceneTransitionPreset ? sceneSettings.location_transition_preset : legacyPreset,
       location_transition_custom: hasSceneTransitionPreset ? sceneSettings.location_transition_custom : legacyCustom,
     });
-    const sceneHasPreTurboEasyCache = sceneSettings.easy_cache_bypass_before_turbo != null
-      || sceneSettings.easyCacheBypassBeforeTurbo != null;
-    if (settings.use_turbo_lora && !sceneHasPreTurboEasyCache) {
-      settings.easy_cache_bypass_before_turbo = Boolean(sceneSettings.easy_cache_bypass ?? globalSettings.easy_cache_bypass);
-      settings.easy_cache_bypass = true;
-    }
     segment.minimax_h3_settings = settings;
     segment.minimax_h3_mode = settings.video_mode;
     if (!hasSceneTransitionPreset && (legacyPreset !== "normal" || legacyCustom)) {
@@ -671,32 +673,18 @@ export function createMiniMaxPanel({
       slot.strength.value = String(item.strength ?? slot.strength.value ?? 1);
       slot.applyTo.value = ["both", "pass1", "pass2"].includes(item.apply_to) ? item.apply_to : "pass1";
     });
-    miniMaxUseTurboLora.input.checked = settings.use_turbo_lora;
-    miniMaxTurboLoraPicker.input.value = settings.turbo_lora_name;
-    miniMaxTurboLoraStrength.value = String(settings.turbo_lora_strength);
-    miniMaxUseTurboLora.input.disabled = settings.use_loras;
-    miniMaxTurboSection.style.opacity = settings.use_loras ? ".55" : "";
-    miniMaxUseLoras.input.disabled = settings.use_turbo_lora;
-    miniMaxLoraSection.style.opacity = settings.use_turbo_lora ? ".55" : "";
-    miniMaxLoraCount.disabled = !settings.use_loras || settings.use_turbo_lora;
+    miniMaxUseLoras.input.disabled = false;
+    miniMaxLoraSection.style.opacity = "";
+    miniMaxLoraCount.disabled = !settings.use_loras;
     miniMaxLoraSlots.forEach((slot) => {
-      slot.picker.input.disabled = !settings.use_loras || settings.use_turbo_lora;
-      slot.strength.disabled = !settings.use_loras || settings.use_turbo_lora;
+      slot.picker.input.disabled = !settings.use_loras;
+      slot.strength.disabled = !settings.use_loras;
     });
-    miniMaxTurboLoraField.style.display = settings.use_turbo_lora ? "flex" : "none";
-    miniMaxTurboLoraStrengthField.style.display = settings.use_turbo_lora ? "flex" : "none";
     miniMaxLoraNote.textContent = settings.use_loras
-      ? "Normal MiniMax LoRAs are ON. Turbo acceleration is disabled while this stack is active."
-      : settings.use_turbo_lora
-        ? "Normal MiniMax LoRAs are disabled while Turbo acceleration is active."
-        : "Optional normal MiniMax LoRAs are OFF.";
-    miniMaxTurboNote.textContent = settings.use_turbo_lora
-        ? "Turbo LoRA is ON. The selected LoRA is applied with ComfyUI's built-in LoRA loader. No separate Turbo custom-node repository is required."
-      : settings.use_loras
-        ? "Turbo is unavailable while normal MiniMax LoRAs are enabled."
-        : "Turbo is OFF. The normal MiniMax sampler, scheduler, and step settings are used.";
-    miniMaxSamplerName.disabled = settings.use_turbo_lora;
-    miniMaxScheduler.disabled = settings.use_turbo_lora;
+      ? "Optional MiniMax LoRAs are ON. Turbo LoRAs can be selected here like any other LoRA; set sampler and steps for your chosen LoRA."
+      : "Optional MiniMax LoRAs are OFF. Enable this area to select any MiniMax LoRA, including Turbo LoRAs.";
+    miniMaxSamplerName.disabled = false;
+    miniMaxScheduler.disabled = false;
     miniMaxSteps.disabled = false;
     miniMaxSteps.min = "1";
     useSceneMiniMaxH3Settings.input.checked = Boolean(segment?.use_scene_minimax_h3_settings);
@@ -749,12 +737,8 @@ export function createMiniMaxPanel({
       && ["reference_to_video", "video_to_video"].includes(mode)
       ? ""
       : "none";
-    // Multi-pass workflows have their own optional normal-LoRA controls.
-    // Turbo is a separate single-pass acceleration path and must not be offered here.
+    // Single-pass and multi-pass share the optional LoRA area.
     miniMaxLoraSection.style.display = "";
-    miniMaxTurboSection.style.display = hideMultiPassIgnoredSettings || mode === "reference_to_video" ? "none" : "";
-    miniMaxUseTurboLora.input.checked = hideMultiPassIgnoredSettings ? false : settings.use_turbo_lora;
-    miniMaxUseTurboLora.input.disabled = hideMultiPassIgnoredSettings || settings.use_loras;
     for (const button of miniMaxModeButtons) {
       const active = button.dataset.minimaxH3Mode === mode;
       button.style.background = active ? "#06b6d4" : "#27272a";

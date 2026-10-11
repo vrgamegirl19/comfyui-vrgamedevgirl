@@ -1,3 +1,5 @@
+import { reportProjectError } from "../music_video_builder/error_log.mjs";
+
 const BUTTON_COLORS = {
   primary: ["#12b5cb", "#0891b2"],
   purple: ["#0e7490", "#06b6d4"],
@@ -203,6 +205,7 @@ export function tagsHtml(tags) {
 }
 
 export function createToast(message, error = false) {
+  if (error) reportProjectError(message, { component: "Storyboard Toast" });
   const toast = document.createElement("div");
   toast.textContent = message;
   toast.style.cssText = `position:fixed;right:24px;bottom:24px;z-index:100020;max-width:520px;border:1px solid ${error ? "#991b1b" : "#155e75"};border-radius:8px;background:${error ? "#3f0808" : "#083344"};color:#f8fafc;padding:12px 14px;box-shadow:0 12px 40px rgba(0,0,0,.45);white-space:pre-wrap;font-size:13px;`;
