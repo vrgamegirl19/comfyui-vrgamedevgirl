@@ -147,6 +147,358 @@ export function createWizardBridge({
       syncI2VVideoSettingsPanel();
   }
 
+  // Scene beats and video prompts for every scene. Used by the wizard and the Story Builder.
+  const enforceWizardStoryboardVideoFacialRequirements = (prompt, scene = {}) => {
+    let text = String(prompt || "").trim();
+    const promptMentionsFace = /\b(?:woman|man|girl|boy|person|subject|singer|rapper|performer|speaker|character|face|eyes?|brows?|gaze|mouth|jaw|cheeks?|expression|smile|frown|sings?|singing|says|speaks?)\b/i.test(text);
+    const hasCharacter = !scene.no_character_present && !scene.noCharacterPresent && (
+      (Array.isArray(scene.subject_refs) && scene.subject_refs.length)
+      || (Array.isArray(scene.subjects) && scene.subjects.length)
+      || (Array.isArray(scene.visible_subjects) && scene.visible_subjects.length)
+      || promptMentionsFace
+    );
+    if (!text || !hasCharacter) return text;
+    const vocalStatus = scene.vocal_status || {};
+    const promptSaysSinging = /\b(?:sings?|singing|raps?|rapping)\b/i.test(text);
+    const isSinging = promptSaysSinging || (String(scene.performance_mode || vocalStatus.performance_mode || normalizeVideoType(state.videoType)).trim() === "singing"
+      && vocalStatus.should_lip_sync !== false
+      && !vocalStatus.instrumental
+      && !vocalStatus.no_lip_sync
+      && !scene.lyric_no_lip_sync
+      && Boolean(String(vocalStatus.lyric_text || scene.lyrics || scene.lyric_text || "").trim()));
+    if (isSinging) {
+      text = text
+        .replace(/\bwith\s+a\s+quiet,\s*internal\s+intensity\b/gi, "with controlled internal intensity")
+        .replace(/\bwith\s+quiet\s+internal\s+intensity\b/gi, "with controlled internal intensity")
+        .replace(/\bquiet,\s*internal\s+intensity\b/gi, "controlled internal intensity")
+        .replace(/\bquiet\s+internal\s+intensity\b/gi, "controlled internal intensity")
+        .replace(/\bquiet\s+intensity\b/gi, "controlled intensity")
+        .replace(/\bquiet\s+performance\b/gi, "controlled performance")
+        .replace(/\bquiet\s+emotion\b/gi, "restrained emotion")
+        .replace(/\bquiet\s+singing\b/gi, "focused singing");
+    }
+    const hasBlink = /\bblink\w*\b/i.test(text);
+    const hasEyeMovement = /\beye\s+movement\b|\beyes?\s+(?:shift|move|track|glance|flick|dart)\b/i.test(text);
+    const additions = [];
+    if (!hasEyeMovement) additions.push("subtle natural eye movement");
+    if (!hasBlink) additions.push("occasional natural blinking");
+    if (additions.length) {
+      const insert = `, ${additions.join(", ")}`;
+      const faceSentence = text.match(/([^.]*(?:face|eyes?|brows?|gaze|expression)[^.]*)(\.)/i);
+      if (faceSentence && typeof faceSentence.index === "number") {
+        const nextSentence = `${faceSentence[1].trimEnd()}${insert}`;
+        text = `${text.slice(0, faceSentence.index)}${nextSentence}${text.slice(faceSentence.index + faceSentence[1].length)}`;
+      } else {
+        text = `${text.replace(/\.+\s*$/, "")} with ${additions.join(", ")}.`;
+      }
+    }
+    return text.replace(/\s{2,}/g, " ").trim();
+  };
+  const applyWizardStoryboardTriggerPhrases = (prompt, scene) => {
+    let text = enforceWizardStoryboardVideoFacialRequirements(prompt, scene);
+    const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+    const parts = { start: [], end: [] };
+    const add = (trigger, position = "start") => {
+      const value = String(trigger || "").trim();
+      if (!value) return;
+      const key = position === "end" ? "end" : "start";
+      if (!parts[key].some((item) => item.toLowerCase() === value.toLowerCase())) parts[key].push(value);
+    };
+    const subjectPosition = refs.subject_trigger_position === "end" ? "end" : "start";
+    const locationPosition = refs.location_trigger_position === "end" ? "end" : "start";
+    (Array.isArray(scene.subject_refs) ? scene.subject_refs : []).forEach((subject) => {
+      add(subject.trigger_phrase || subject.trigger || subject.Trigger, subjectPosition);
+    });
+    if (scene.location_ref) {
+      add(scene.location_ref.trigger_phrase || scene.location_ref.trigger || scene.location_ref.Trigger, locationPosition);
+    }
+    add(scene.trigger_phrase || scene.trigger || scene.Trigger, scene.trigger_position === "end" ? "end" : "start");
+    const stripBoundaryTrigger = (value, trigger) => {
+      let current = String(value || "").trim();
+      const escaped = String(trigger || "").trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      if (!escaped) return current;
+      const leading = new RegExp(`^\\s*${escaped}\\s*(?:,\\s*)?`, "i");
+      const trailing = new RegExp(`(?:,\\s*)?${escaped}\\s*$`, "i");
+      let previous = "";
+      while (current && current !== previous) {
+        previous = current;
+        current = current.replace(leading, "").replace(trailing, "").trim();
+      }
+      return current;
+    };
+    [...parts.start, ...parts.end]
+      .sort((a, b) => b.length - a.length)
+      .forEach((trigger) => {
+        text = stripBoundaryTrigger(text, trigger);
+      });
+    if (parts.start.length) {
+      const prefix = parts.start.join(", ");
+      if (!text.toLowerCase().startsWith(prefix.toLowerCase())) text = text ? `${prefix}, ${text}` : prefix;
+    }
+    if (parts.end.length) {
+      const suffix = parts.end.join(", ");
+      if (!text.toLowerCase().endsWith(suffix.toLowerCase())) text = text ? `${text}, ${suffix}` : suffix;
+    }
+    return text;
+  };
+  const createWizardSceneBeats = async ({ overwrite = false, failedIds = [] } = {}) => {
+    const segments = allEditableSegments()
+      .slice()
+      .sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
+    const scenes = storyboardScenePayload();
+    const retryIds = new Set(failedIds.map((value) => String(value)));
+    const targets = scenes.filter((scene) => {
+      const segment = segments.find((item) => item.id === scene.id);
+      return retryIds.size
+        ? retryIds.has(String(scene.id || ""))
+        : overwrite || !String(segment?.story_beat || scene.story_beat || "").trim();
+    });
+    if (!targets.length) {
+      toast(overwrite ? "No scenes found." : "No scene story beats are missing.");
+      return { created: 0 };
+    }
+    const storyboardState = wizardStoryboardState(scenes, { promptMode: "image" });
+    const progress = createProgressWindow(overwrite ? "Replace Scene Story Beats" : "Create Missing Scene Story Beats", { zIndex: 100012 });
+    let created = 0;
+    const failures = [];
+    try {
+      progress.set(`${retryIds.size ? "Retrying failed" : "Creating"} ${targets.length} scene story beat${targets.length === 1 ? "" : "s"}...`, 5);
+      for (let index = 0; index < targets.length; index += 1) {
+        const scene = targets[index];
+        const segmentIndex = segments.findIndex((item) => item.id === scene.id);
+        const previousBeat = segmentIndex > 0 ? String(segments[segmentIndex - 1]?.story_beat || "") : "";
+      const nextLyrics = segmentIndex >= 0 && segmentIndex < segments.length - 1 ? String(segments[segmentIndex + 1]?.lyric_text || "") : "";
+      const base = 8 + Math.round((index / Math.max(1, targets.length)) * 84);
+      progress.set(`Scene Beat ${index + 1}/${targets.length}: ${scene.label || `Scene ${scene.scene_number || index + 1}`}`, base);
+      try {
+          const beatStoryboardPayload = storyboardGptPayload(storyboardState, [{ ...scene, story_beat: "" }]);
+          const authoritativeMappedSingers = segmentIndex >= 0
+            ? selectedPerformerSubjectsForSegment(segments[segmentIndex], state.fluxReferenceBuilder)
+              .map((subject) => String(subject?.name || "").trim())
+              .filter(Boolean)
+            : [];
+          const mappedSingers = authoritativeMappedSingers.length
+            ? authoritativeMappedSingers
+            : (Array.isArray(scene.lyric_singers) && scene.lyric_singers.length
+              ? scene.lyric_singers
+              : (segmentIndex >= 0 && Array.isArray(segments[segmentIndex]?.lyric_singers) ? segments[segmentIndex].lyric_singers : []));
+          const visibleSubjects = Array.isArray(scene.subjects) ? scene.subjects : [];
+          const singing = Array.from(new Set(mappedSingers.map((item) => String(item || "").trim()).filter(Boolean)));
+          const silent = visibleSubjects
+            .map((item) => String(item || "").trim())
+            .filter((item) => item && !singing.some((singer) => singer.toLowerCase() === item.toLowerCase()));
+          const beatScene = beatStoryboardPayload.scenes?.[0];
+          if (beatScene) {
+            beatScene.lyric_singers = singing;
+            beatScene.performer_assignment = {
+              singing,
+              silent,
+              instruction: singing.length === 1
+                ? `${singing[0]} is the only singing performer. Every other visible subject is silent.`
+                : singing.length > 1
+                  ? `Only ${singing.join(", ")} sing. Every other visible subject is silent.`
+                  : "No visible subject is assigned to sing.",
+            };
+          }
+          const data = await postJson("/vrgdg/storyboard/scene_story_beat", {
+            ...textGemmaRunnerPayload(),
+            model_file: i2vTextGemmaModelSelect.value || t2iTextGemmaModelSelect.value || "",
+            story_layer: normalizeBuilderStoryLayer(state.builderStoryLayer),
+            storyboard_payload: beatStoryboardPayload,
+            all_subjects: (Array.isArray(state.fluxReferenceBuilder?.subjects) ? state.fluxReferenceBuilder.subjects : [])
+              .map((subject) => ({ name: String(subject?.name || ""), description: String(subject?.description || "") })),
+            previous_beat: previousBeat,
+            next_lyrics: nextLyrics,
+            unload_after: index === targets.length - 1,
+            max_new_tokens: 360,
+          }, 240000);
+          const segment = segments.find((item) => item.id === scene.id);
+          if (segment) segment.story_beat = String(data.story_beat || "").trim();
+          created += 1;
+        } catch (error) {
+          if (!isRecoverableBuildGemmaError(error)) throw error;
+          failures.push({
+            key: `storybeat:${scene.id}`,
+            segmentId: String(scene.id || ""),
+            sceneLabel: scene.label || `Scene ${scene.scene_number || index + 1}`,
+            error: String(error?.message || error),
+            raw: String(error?.message || error),
+          });
+          progress.set(`Scene Beat ${index + 1}/${targets.length} skipped. Continuing with the remaining scenes...`, base);
+        }
+      }
+      syncInspector();
+      render();
+      await autoSaveSessionQuiet("wizard scene story beats");
+      progress.set(`Scene story beats complete.\nCreated ${created}.${failures.length ? ` ${failures.length} scene${failures.length === 1 ? " was" : "s were"} skipped.` : ""}`, 100);
+      progress.close(1400);
+      toast(`Created ${created} scene story beat${created === 1 ? "" : "s"}${failures.length ? ` with ${failures.length} skipped scene${failures.length === 1 ? "" : "s"}` : ""}.`, Boolean(failures.length));
+      if (failures.length) showGemmaBatchFailures(failures, {
+        retryHandler: (items) => createWizardSceneBeats({ failedIds: items.map((item) => item.segmentId) }),
+      });
+      return { created, failures };
+    } catch (error) {
+      progress.set(`Scene story beats stopped after ${created}/${targets.length}:\n${String(error?.message || error)}`, 100);
+      toast(String(error?.message || error), true);
+      return { created, error: String(error?.message || error) };
+    }
+  };
+  const runWizardStoryboardGemmaAll = async (options = {}) => {
+    updateActiveFromInputs();
+    saveI2VVideoSettingsFromPanel();
+    const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
+    const videoMode = currentVideoMode();
+    const segments = allEditableSegments()
+      .slice()
+      .sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
+    const scenes = storyboardScenePayload();
+    if (!scenes.length) {
+      toast("No storyboard scenes found.", true);
+      return;
+    }
+    const segmentById = new Map(segments.map((segment) => [String(segment.id || ""), segment]));
+    const failedIds = new Set((options.failedIds || []).map((value) => String(value)));
+    const targetScenes = failedIds.size
+      ? scenes.filter((scene) => failedIds.has(String(scene.id || "")))
+      : scenes;
+    const storyboardState = {
+      ...wizardStoryboardState(scenes, { promptMode: "video", videoMode }),
+      gemmaSettings: {
+        ...textGemmaRunnerPayload(),
+        model_file: i2vTextGemmaModelSelect.value || t2iTextGemmaModelSelect.value || "",
+        vision_model_file: i2vGemmaModelSelect.value || gemmaModelSelect.value || "",
+        mmproj_file: i2vMmprojSelect.value || mmprojSelect.value || "",
+        n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
+        n_gpu_layers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),
+        n_threads: 8,
+        unload_after: true,
+      },
+    };
+    const runnerName = promptRunnerActionName();
+    const runnerGenericName = runnerName;
+    const progress = createProgressWindow(`Storyboard ${runnerName} All (${miniMaxProject ? "MiniMax H3 project/locked modes" : videoModeDisplayLabel(videoMode, true)})`, { zIndex: 100012 });
+    let created = 0;
+    const failurePrefix = `storyboard:${videoMode}`;
+    try {
+      progress.set(`${failedIds.size ? "Retrying failed Storyboard scenes" : `Starting Storyboard ${runnerName} All`}...\nScenes: ${targetScenes.length}\nUsing the same prompt writer as Storyboard Builder.`, 5);
+      for (let index = 0; index < targetScenes.length; index += 1) {
+        const scene = targetScenes[index];
+        const segment = segmentById.get(String(scene.id || "")) || segments.find((item) => String(item.id || "") === String(scene.id || "")) || segments[index];
+        const base = 8 + Math.round((index / Math.max(1, targetScenes.length)) * 84);
+        const label = `Storyboard ${runnerName} All ${index + 1}/${targetScenes.length}: ${scene.label || `Scene ${scene.scene_number || index + 1}`}`;
+        try {
+          progress.set(`${label}\nCreating storyboard video prompt...`, base);
+          if (segment && state.autoTimeSingerCuesBeforePrompt && !segment.no_character_present
+            && normalizeVideoType(segment.performance_mode || state.videoType) === "singing") {
+            const timed = await ensureAutoTimedSingerCuesBeforePrompt(segment);
+            if (!timed) throw new Error(`${label}: Whisper timing did not complete; prompt generation was stopped.`);
+          }
+          const promptCueMap = segment && Array.isArray(segment.lyric_cue_map)
+            ? normalizeLyricCueMapForSegment(segment, undefined, { preserveBlank: true })
+            : [];
+          const timedCueContract = promptCueMap.length
+            ? [
+              "AUTHORITATIVE TIMED LYRIC CUES — use these exact intervals; do not repeat the complete lyric in every shot:",
+              ...promptCueMap.map((cue, cueIndex) => {
+                const start = Number(cue?.start);
+                const end = Number(cue?.end);
+                const range = Number.isFinite(start) && Number.isFinite(end) && end > start
+                  ? `${start.toFixed(3)}s-${end.toFixed(3)}s`
+                  : `cue ${cueIndex + 1}`;
+                return cue.type === "instrumental"
+                  ? `[${range}] Use only the assigned visual action and camera direction.`
+                  : `[${range}] ${cue.singer_name || "the assigned singer"} sings only: "${flattenLyricForPrompt(cue.text)}".`;
+              }),
+              "Each cue is authoritative. Assign only the words in that interval to that shot."
+            ].join("\n")
+            : "";
+          const sceneForPrompt = segment
+            ? {
+              ...scene,
+              lyrics: timedCueContract || scene.lyrics || scene.lyric_text || "",
+              timed_lyric_cue_contract: timedCueContract,
+              lyric_cue_map: promptCueMap,
+              performer_assignment: {
+                singing: Array.from(new Set(promptCueMap.filter((cue) => cue.type !== "instrumental").map((cue) => cue.singer_name).filter(Boolean))),
+                cue_map: promptCueMap,
+              },
+              lyric_shot_word_timing_enabled: Boolean(segment.lyric_shot_word_timing_enabled),
+              lyric_performance_mode: String(segment.lyric_performance_mode || ""),
+            }
+            : scene;
+          const promptStoryboardPayload = storyboardGptPayload(storyboardState, [sceneForPrompt]);
+          const data = miniMaxProject
+            ? await storyboardPromptPipeline()(sceneForPrompt, {
+              unloadAfter: index === targetScenes.length - 1,
+              storyboardPayload: promptStoryboardPayload,
+              progress,
+              progressPercent: base,
+              progressLabel: label,
+            })
+            : await postJson("/vrgdg/storyboard/gemma_video_prompt", {
+              ...(storyboardState.gemmaSettings || {}),
+              unload_after: index === targetScenes.length - 1,
+              storyboard_payload: promptStoryboardPayload,
+              max_new_tokens: 1400,
+              temperature: 0.35,
+              top_p: 0.90,
+            }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
+          const finalizedPrompt = miniMaxProject
+            ? String(data.prompt || "").trim()
+            : segment ? finalizeVideoPromptDraftOnly(segment, data.prompt) : String(data.prompt || "").trim();
+          const prompt = miniMaxProject
+            ? finalizedPrompt
+            : applyWizardStoryboardTriggerPhrases(finalizedPrompt, sceneForPrompt);
+          if (!prompt) throw new Error(`${scene.label || `Scene ${index + 1}`}: ${runnerGenericName} returned an empty Storyboard video prompt.`);
+          if (segment) {
+            if (miniMaxProject) {
+              segment.minimax_h3_prompt = prompt;
+              segment.minimax_h3_prompt_origin = "gemma";
+            } else {
+              setSegmentPromptForEdit(segment, "i2v", prompt, { origin: "gemma" });
+              segment.video_prompt_type = videoMode;
+            }
+          }
+          scene.video_prompt = prompt;
+          scene.video_prompt_origin = "gemma";
+          gemmaBatchFailureStore()[`${failurePrefix}:${scene.id}`] = undefined;
+          created += 1;
+          await autoSaveSessionQuiet(`${runnerName} Storyboard ${scene.label || `Scene ${index + 1}`}`);
+          progress.set(`${label}\nSaved prompt into the Video Builder scene.`, Math.min(96, base + 6));
+        } catch (error) {
+          if (!isRecoverableBuildGemmaError(error)) throw error;
+          let debugPath = String(error?.gemmaDebugPath || "");
+          if (!debugPath) {
+            try {
+              debugPath = await saveGemmaJunkDebug(error, { label, segment });
+            } catch (debugError) {
+              console.warn("[VRGDG Music Builder] Could not save recoverable Storyboard prompt debug output:", debugError);
+            }
+          }
+          recordGemmaBatchFailure(`${failurePrefix}:${scene.id}`, segment, sceneDisplayName(segment), error, debugPath);
+          progress.set(`${label} skipped. Continuing with the remaining scenes...`, base);
+        }
+      }
+      ensureAllSegmentRuntimeFields();
+      syncInspector();
+      render();
+      progress.set("Saving storyboard prompts into the project...", 96);
+      await autoSaveSessionQuiet("wizard storyboard llm all");
+      const failures = targetScenes.map((scene) => gemmaBatchFailureStore()[`${failurePrefix}:${scene.id}`]).filter(Boolean);
+      progress.set(`Storyboard ${runnerName} All complete.\nCreated ${created} video prompt${created === 1 ? "" : "s"}.${failures.length ? ` ${failures.length} scene${failures.length === 1 ? " was" : "s were"} skipped.` : ""}`, 100);
+      progress.close(1800);
+      toast(`Storyboard ${runnerName} All created ${created} video prompt${created === 1 ? "" : "s"}${failures.length ? ` with ${failures.length} skipped scene${failures.length === 1 ? "" : "s"}` : ""}.`, Boolean(failures.length));
+      if (failures.length) {
+        showGemmaBatchFailures(failures, {
+          retryHandler: (items) => runWizardStoryboardGemmaAll({ failedIds: items.map((item) => item.segmentId) }),
+        });
+      }
+    } catch (error) {
+      progress.set(`Storyboard ${runnerName} All stopped after ${created}/${targetScenes.length} scenes:\n${String(error?.message || error)}`, 100);
+      toast(`Storyboard ${runnerName} All stopped after ${created}/${targetScenes.length} scenes:\n${String(error?.message || error)}`, true);
+    }
+  };
+
   function openWizardFromBuilder() {
     const setWizardVideoMode = (mode) => {
       const normalized = String(mode || "").trim().toLowerCase();
@@ -588,99 +940,6 @@ export function createWizardBridge({
       toast(`Wizard scene defaults applied.\nImage shots: ${imageShotChanged}\nImage aesthetics: ${imageAestheticChanged}\nCamera fields: ${cameraChanged}\nPerformance scenes: ${performanceChanged}\nFacial scenes: ${facialChanged}`);
       return { imageShotChanged, imageAestheticChanged, cameraChanged, performanceChanged, facialChanged };
     };
-    const enforceWizardStoryboardVideoFacialRequirements = (prompt, scene = {}) => {
-      let text = String(prompt || "").trim();
-      const promptMentionsFace = /\b(?:woman|man|girl|boy|person|subject|singer|rapper|performer|speaker|character|face|eyes?|brows?|gaze|mouth|jaw|cheeks?|expression|smile|frown|sings?|singing|says|speaks?)\b/i.test(text);
-      const hasCharacter = !scene.no_character_present && !scene.noCharacterPresent && (
-        (Array.isArray(scene.subject_refs) && scene.subject_refs.length)
-        || (Array.isArray(scene.subjects) && scene.subjects.length)
-        || (Array.isArray(scene.visible_subjects) && scene.visible_subjects.length)
-        || promptMentionsFace
-      );
-      if (!text || !hasCharacter) return text;
-      const vocalStatus = scene.vocal_status || {};
-      const promptSaysSinging = /\b(?:sings?|singing|raps?|rapping)\b/i.test(text);
-      const isSinging = promptSaysSinging || (String(scene.performance_mode || vocalStatus.performance_mode || normalizeVideoType(state.videoType)).trim() === "singing"
-        && vocalStatus.should_lip_sync !== false
-        && !vocalStatus.instrumental
-        && !vocalStatus.no_lip_sync
-        && !scene.lyric_no_lip_sync
-        && Boolean(String(vocalStatus.lyric_text || scene.lyrics || scene.lyric_text || "").trim()));
-      if (isSinging) {
-        text = text
-          .replace(/\bwith\s+a\s+quiet,\s*internal\s+intensity\b/gi, "with controlled internal intensity")
-          .replace(/\bwith\s+quiet\s+internal\s+intensity\b/gi, "with controlled internal intensity")
-          .replace(/\bquiet,\s*internal\s+intensity\b/gi, "controlled internal intensity")
-          .replace(/\bquiet\s+internal\s+intensity\b/gi, "controlled internal intensity")
-          .replace(/\bquiet\s+intensity\b/gi, "controlled intensity")
-          .replace(/\bquiet\s+performance\b/gi, "controlled performance")
-          .replace(/\bquiet\s+emotion\b/gi, "restrained emotion")
-          .replace(/\bquiet\s+singing\b/gi, "focused singing");
-      }
-      const hasBlink = /\bblink\w*\b/i.test(text);
-      const hasEyeMovement = /\beye\s+movement\b|\beyes?\s+(?:shift|move|track|glance|flick|dart)\b/i.test(text);
-      const additions = [];
-      if (!hasEyeMovement) additions.push("subtle natural eye movement");
-      if (!hasBlink) additions.push("occasional natural blinking");
-      if (additions.length) {
-        const insert = `, ${additions.join(", ")}`;
-        const faceSentence = text.match(/([^.]*(?:face|eyes?|brows?|gaze|expression)[^.]*)(\.)/i);
-        if (faceSentence && typeof faceSentence.index === "number") {
-          const nextSentence = `${faceSentence[1].trimEnd()}${insert}`;
-          text = `${text.slice(0, faceSentence.index)}${nextSentence}${text.slice(faceSentence.index + faceSentence[1].length)}`;
-        } else {
-          text = `${text.replace(/\.+\s*$/, "")} with ${additions.join(", ")}.`;
-        }
-      }
-      return text.replace(/\s{2,}/g, " ").trim();
-    };
-    const applyWizardStoryboardTriggerPhrases = (prompt, scene) => {
-      let text = enforceWizardStoryboardVideoFacialRequirements(prompt, scene);
-      const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
-      const parts = { start: [], end: [] };
-      const add = (trigger, position = "start") => {
-        const value = String(trigger || "").trim();
-        if (!value) return;
-        const key = position === "end" ? "end" : "start";
-        if (!parts[key].some((item) => item.toLowerCase() === value.toLowerCase())) parts[key].push(value);
-      };
-      const subjectPosition = refs.subject_trigger_position === "end" ? "end" : "start";
-      const locationPosition = refs.location_trigger_position === "end" ? "end" : "start";
-      (Array.isArray(scene.subject_refs) ? scene.subject_refs : []).forEach((subject) => {
-        add(subject.trigger_phrase || subject.trigger || subject.Trigger, subjectPosition);
-      });
-      if (scene.location_ref) {
-        add(scene.location_ref.trigger_phrase || scene.location_ref.trigger || scene.location_ref.Trigger, locationPosition);
-      }
-      add(scene.trigger_phrase || scene.trigger || scene.Trigger, scene.trigger_position === "end" ? "end" : "start");
-      const stripBoundaryTrigger = (value, trigger) => {
-        let current = String(value || "").trim();
-        const escaped = String(trigger || "").trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        if (!escaped) return current;
-        const leading = new RegExp(`^\\s*${escaped}\\s*(?:,\\s*)?`, "i");
-        const trailing = new RegExp(`(?:,\\s*)?${escaped}\\s*$`, "i");
-        let previous = "";
-        while (current && current !== previous) {
-          previous = current;
-          current = current.replace(leading, "").replace(trailing, "").trim();
-        }
-        return current;
-      };
-      [...parts.start, ...parts.end]
-        .sort((a, b) => b.length - a.length)
-        .forEach((trigger) => {
-          text = stripBoundaryTrigger(text, trigger);
-        });
-      if (parts.start.length) {
-        const prefix = parts.start.join(", ");
-        if (!text.toLowerCase().startsWith(prefix.toLowerCase())) text = text ? `${prefix}, ${text}` : prefix;
-      }
-      if (parts.end.length) {
-        const suffix = parts.end.join(", ");
-        if (!text.toLowerCase().endsWith(suffix.toLowerCase())) text = text ? `${text}, ${suffix}` : suffix;
-      }
-      return text;
-    };
     const createWizardStoryBrief = async (draft = {}) => {
       const layer = normalizeBuilderStoryLayer({
         ...state.builderStoryLayer,
@@ -764,263 +1023,6 @@ export function createWizardBridge({
       }
       toast(applied ? `Detected lyric sections for ${applied} scene${applied === 1 ? "" : "s"}.` : "No missing lyric sections were detected.");
       return applied;
-    };
-    const createWizardSceneBeats = async ({ overwrite = false, failedIds = [] } = {}) => {
-      const segments = allEditableSegments()
-        .slice()
-        .sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
-      const scenes = storyboardScenePayload();
-      const retryIds = new Set(failedIds.map((value) => String(value)));
-      const targets = scenes.filter((scene) => {
-        const segment = segments.find((item) => item.id === scene.id);
-        return retryIds.size
-          ? retryIds.has(String(scene.id || ""))
-          : overwrite || !String(segment?.story_beat || scene.story_beat || "").trim();
-      });
-      if (!targets.length) {
-        toast(overwrite ? "No scenes found." : "No scene story beats are missing.");
-        return { created: 0 };
-      }
-      const storyboardState = wizardStoryboardState(scenes, { promptMode: "image" });
-      const progress = createProgressWindow(overwrite ? "Replace Scene Story Beats" : "Create Missing Scene Story Beats", { zIndex: 100012 });
-      let created = 0;
-      const failures = [];
-      try {
-        progress.set(`${retryIds.size ? "Retrying failed" : "Creating"} ${targets.length} scene story beat${targets.length === 1 ? "" : "s"}...`, 5);
-        for (let index = 0; index < targets.length; index += 1) {
-          const scene = targets[index];
-          const segmentIndex = segments.findIndex((item) => item.id === scene.id);
-          const previousBeat = segmentIndex > 0 ? String(segments[segmentIndex - 1]?.story_beat || "") : "";
-        const nextLyrics = segmentIndex >= 0 && segmentIndex < segments.length - 1 ? String(segments[segmentIndex + 1]?.lyric_text || "") : "";
-        const base = 8 + Math.round((index / Math.max(1, targets.length)) * 84);
-        progress.set(`Scene Beat ${index + 1}/${targets.length}: ${scene.label || `Scene ${scene.scene_number || index + 1}`}`, base);
-        try {
-            const beatStoryboardPayload = storyboardGptPayload(storyboardState, [{ ...scene, story_beat: "" }]);
-            const authoritativeMappedSingers = segmentIndex >= 0
-              ? selectedPerformerSubjectsForSegment(segments[segmentIndex], state.fluxReferenceBuilder)
-                .map((subject) => String(subject?.name || "").trim())
-                .filter(Boolean)
-              : [];
-            const mappedSingers = authoritativeMappedSingers.length
-              ? authoritativeMappedSingers
-              : (Array.isArray(scene.lyric_singers) && scene.lyric_singers.length
-                ? scene.lyric_singers
-                : (segmentIndex >= 0 && Array.isArray(segments[segmentIndex]?.lyric_singers) ? segments[segmentIndex].lyric_singers : []));
-            const visibleSubjects = Array.isArray(scene.subjects) ? scene.subjects : [];
-            const singing = Array.from(new Set(mappedSingers.map((item) => String(item || "").trim()).filter(Boolean)));
-            const silent = visibleSubjects
-              .map((item) => String(item || "").trim())
-              .filter((item) => item && !singing.some((singer) => singer.toLowerCase() === item.toLowerCase()));
-            const beatScene = beatStoryboardPayload.scenes?.[0];
-            if (beatScene) {
-              beatScene.lyric_singers = singing;
-              beatScene.performer_assignment = {
-                singing,
-                silent,
-                instruction: singing.length === 1
-                  ? `${singing[0]} is the only singing performer. Every other visible subject is silent.`
-                  : singing.length > 1
-                    ? `Only ${singing.join(", ")} sing. Every other visible subject is silent.`
-                    : "No visible subject is assigned to sing.",
-              };
-            }
-            const data = await postJson("/vrgdg/storyboard/scene_story_beat", {
-              ...textGemmaRunnerPayload(),
-              model_file: i2vTextGemmaModelSelect.value || t2iTextGemmaModelSelect.value || "",
-              story_layer: normalizeBuilderStoryLayer(state.builderStoryLayer),
-              storyboard_payload: beatStoryboardPayload,
-              all_subjects: (Array.isArray(state.fluxReferenceBuilder?.subjects) ? state.fluxReferenceBuilder.subjects : [])
-                .map((subject) => ({ name: String(subject?.name || ""), description: String(subject?.description || "") })),
-              previous_beat: previousBeat,
-              next_lyrics: nextLyrics,
-              unload_after: index === targets.length - 1,
-              max_new_tokens: 360,
-            }, 240000);
-            const segment = segments.find((item) => item.id === scene.id);
-            if (segment) segment.story_beat = String(data.story_beat || "").trim();
-            created += 1;
-          } catch (error) {
-            if (!isRecoverableBuildGemmaError(error)) throw error;
-            failures.push({
-              key: `storybeat:${scene.id}`,
-              segmentId: String(scene.id || ""),
-              sceneLabel: scene.label || `Scene ${scene.scene_number || index + 1}`,
-              error: String(error?.message || error),
-              raw: String(error?.message || error),
-            });
-            progress.set(`Scene Beat ${index + 1}/${targets.length} skipped. Continuing with the remaining scenes...`, base);
-          }
-        }
-        syncInspector();
-        render();
-        await autoSaveSessionQuiet("wizard scene story beats");
-        progress.set(`Scene story beats complete.\nCreated ${created}.${failures.length ? ` ${failures.length} scene${failures.length === 1 ? " was" : "s were"} skipped.` : ""}`, 100);
-        progress.close(1400);
-        toast(`Created ${created} scene story beat${created === 1 ? "" : "s"}${failures.length ? ` with ${failures.length} skipped scene${failures.length === 1 ? "" : "s"}` : ""}.`, Boolean(failures.length));
-        if (failures.length) showGemmaBatchFailures(failures, {
-          retryHandler: (items) => createWizardSceneBeats({ failedIds: items.map((item) => item.segmentId) }),
-        });
-        return { created, failures };
-      } catch (error) {
-        progress.set(`Scene story beats stopped after ${created}/${targets.length}:\n${String(error?.message || error)}`, 100);
-        toast(String(error?.message || error), true);
-        return { created, error: String(error?.message || error) };
-      }
-    };
-    const runWizardStoryboardGemmaAll = async (options = {}) => {
-      updateActiveFromInputs();
-      saveI2VVideoSettingsFromPanel();
-      const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
-      const videoMode = currentVideoMode();
-      const segments = allEditableSegments()
-        .slice()
-        .sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
-      const scenes = storyboardScenePayload();
-      if (!scenes.length) {
-        toast("No storyboard scenes found.", true);
-        return;
-      }
-      const segmentById = new Map(segments.map((segment) => [String(segment.id || ""), segment]));
-      const failedIds = new Set((options.failedIds || []).map((value) => String(value)));
-      const targetScenes = failedIds.size
-        ? scenes.filter((scene) => failedIds.has(String(scene.id || "")))
-        : scenes;
-      const storyboardState = {
-        ...wizardStoryboardState(scenes, { promptMode: "video", videoMode }),
-        gemmaSettings: {
-          ...textGemmaRunnerPayload(),
-          model_file: i2vTextGemmaModelSelect.value || t2iTextGemmaModelSelect.value || "",
-          vision_model_file: i2vGemmaModelSelect.value || gemmaModelSelect.value || "",
-          mmproj_file: i2vMmprojSelect.value || mmprojSelect.value || "",
-          n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
-          n_gpu_layers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),
-          n_threads: 8,
-          unload_after: true,
-        },
-      };
-      const runnerName = promptRunnerActionName();
-      const runnerGenericName = runnerName;
-      const progress = createProgressWindow(`Storyboard ${runnerName} All (${miniMaxProject ? "MiniMax H3 project/locked modes" : videoModeDisplayLabel(videoMode, true)})`, { zIndex: 100012 });
-      let created = 0;
-      const failurePrefix = `storyboard:${videoMode}`;
-      try {
-        progress.set(`${failedIds.size ? "Retrying failed Storyboard scenes" : `Starting Storyboard ${runnerName} All`}...\nScenes: ${targetScenes.length}\nUsing the same prompt writer as Storyboard Builder.`, 5);
-        for (let index = 0; index < targetScenes.length; index += 1) {
-          const scene = targetScenes[index];
-          const segment = segmentById.get(String(scene.id || "")) || segments.find((item) => String(item.id || "") === String(scene.id || "")) || segments[index];
-          const base = 8 + Math.round((index / Math.max(1, targetScenes.length)) * 84);
-          const label = `Storyboard ${runnerName} All ${index + 1}/${targetScenes.length}: ${scene.label || `Scene ${scene.scene_number || index + 1}`}`;
-          try {
-            progress.set(`${label}\nCreating storyboard video prompt...`, base);
-            if (segment && state.autoTimeSingerCuesBeforePrompt && !segment.no_character_present
-              && normalizeVideoType(segment.performance_mode || state.videoType) === "singing") {
-              const timed = await ensureAutoTimedSingerCuesBeforePrompt(segment);
-              if (!timed) throw new Error(`${label}: Whisper timing did not complete; prompt generation was stopped.`);
-            }
-            const promptCueMap = segment && Array.isArray(segment.lyric_cue_map)
-              ? normalizeLyricCueMapForSegment(segment, undefined, { preserveBlank: true })
-              : [];
-            const timedCueContract = promptCueMap.length
-              ? [
-                "AUTHORITATIVE TIMED LYRIC CUES — use these exact intervals; do not repeat the complete lyric in every shot:",
-                ...promptCueMap.map((cue, cueIndex) => {
-                  const start = Number(cue?.start);
-                  const end = Number(cue?.end);
-                  const range = Number.isFinite(start) && Number.isFinite(end) && end > start
-                    ? `${start.toFixed(3)}s-${end.toFixed(3)}s`
-                    : `cue ${cueIndex + 1}`;
-                  return cue.type === "instrumental"
-                    ? `[${range}] Use only the assigned visual action and camera direction.`
-                    : `[${range}] ${cue.singer_name || "the assigned singer"} sings only: "${flattenLyricForPrompt(cue.text)}".`;
-                }),
-                "Each cue is authoritative. Assign only the words in that interval to that shot."
-              ].join("\n")
-              : "";
-            const sceneForPrompt = segment
-              ? {
-                ...scene,
-                lyrics: timedCueContract || scene.lyrics || scene.lyric_text || "",
-                timed_lyric_cue_contract: timedCueContract,
-                lyric_cue_map: promptCueMap,
-                performer_assignment: {
-                  singing: Array.from(new Set(promptCueMap.filter((cue) => cue.type !== "instrumental").map((cue) => cue.singer_name).filter(Boolean))),
-                  cue_map: promptCueMap,
-                },
-                lyric_shot_word_timing_enabled: Boolean(segment.lyric_shot_word_timing_enabled),
-                lyric_performance_mode: String(segment.lyric_performance_mode || ""),
-              }
-              : scene;
-            const promptStoryboardPayload = storyboardGptPayload(storyboardState, [sceneForPrompt]);
-            const data = miniMaxProject
-              ? await storyboardPromptPipeline()(sceneForPrompt, {
-                unloadAfter: index === targetScenes.length - 1,
-                storyboardPayload: promptStoryboardPayload,
-                progress,
-                progressPercent: base,
-                progressLabel: label,
-              })
-              : await postJson("/vrgdg/storyboard/gemma_video_prompt", {
-                ...(storyboardState.gemmaSettings || {}),
-                unload_after: index === targetScenes.length - 1,
-                storyboard_payload: promptStoryboardPayload,
-                max_new_tokens: 1400,
-                temperature: 0.35,
-                top_p: 0.90,
-              }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
-            const finalizedPrompt = miniMaxProject
-              ? String(data.prompt || "").trim()
-              : segment ? finalizeVideoPromptDraftOnly(segment, data.prompt) : String(data.prompt || "").trim();
-            const prompt = miniMaxProject
-              ? finalizedPrompt
-              : applyWizardStoryboardTriggerPhrases(finalizedPrompt, sceneForPrompt);
-            if (!prompt) throw new Error(`${scene.label || `Scene ${index + 1}`}: ${runnerGenericName} returned an empty Storyboard video prompt.`);
-            if (segment) {
-              if (miniMaxProject) {
-                segment.minimax_h3_prompt = prompt;
-                segment.minimax_h3_prompt_origin = "gemma";
-              } else {
-                setSegmentPromptForEdit(segment, "i2v", prompt, { origin: "gemma" });
-                segment.video_prompt_type = videoMode;
-              }
-            }
-            scene.video_prompt = prompt;
-            scene.video_prompt_origin = "gemma";
-            gemmaBatchFailureStore()[`${failurePrefix}:${scene.id}`] = undefined;
-            created += 1;
-            await autoSaveSessionQuiet(`${runnerName} Storyboard ${scene.label || `Scene ${index + 1}`}`);
-            progress.set(`${label}\nSaved prompt into the Video Builder scene.`, Math.min(96, base + 6));
-          } catch (error) {
-            if (!isRecoverableBuildGemmaError(error)) throw error;
-            let debugPath = String(error?.gemmaDebugPath || "");
-            if (!debugPath) {
-              try {
-                debugPath = await saveGemmaJunkDebug(error, { label, segment });
-              } catch (debugError) {
-                console.warn("[VRGDG Music Builder] Could not save recoverable Storyboard prompt debug output:", debugError);
-              }
-            }
-            recordGemmaBatchFailure(`${failurePrefix}:${scene.id}`, segment, sceneDisplayName(segment), error, debugPath);
-            progress.set(`${label} skipped. Continuing with the remaining scenes...`, base);
-          }
-        }
-        ensureAllSegmentRuntimeFields();
-        syncInspector();
-        render();
-        progress.set("Saving storyboard prompts into the project...", 96);
-        await autoSaveSessionQuiet("wizard storyboard llm all");
-        const failures = targetScenes.map((scene) => gemmaBatchFailureStore()[`${failurePrefix}:${scene.id}`]).filter(Boolean);
-        progress.set(`Storyboard ${runnerName} All complete.\nCreated ${created} video prompt${created === 1 ? "" : "s"}.${failures.length ? ` ${failures.length} scene${failures.length === 1 ? " was" : "s were"} skipped.` : ""}`, 100);
-        progress.close(1800);
-        toast(`Storyboard ${runnerName} All created ${created} video prompt${created === 1 ? "" : "s"}${failures.length ? ` with ${failures.length} skipped scene${failures.length === 1 ? "" : "s"}` : ""}.`, Boolean(failures.length));
-        if (failures.length) {
-          showGemmaBatchFailures(failures, {
-            retryHandler: (items) => runWizardStoryboardGemmaAll({ failedIds: items.map((item) => item.segmentId) }),
-          });
-        }
-      } catch (error) {
-        progress.set(`Storyboard ${runnerName} All stopped after ${created}/${targetScenes.length} scenes:\n${String(error?.message || error)}`, 100);
-        toast(`Storyboard ${runnerName} All stopped after ${created}/${targetScenes.length} scenes:\n${String(error?.message || error)}`, true);
-      }
     };
     const wizardSnapshot = () => {
       const refs = storyboardReferenceBuilderWithIdLoraRefs(state.fluxReferenceBuilder);
@@ -1622,5 +1624,8 @@ export function createWizardBridge({
     });
   }
 
-  return { openWizardBetaFromBuilder, openWizardFromBuilder };
+  return {
+    createSceneBeats: createWizardSceneBeats, createVideoPrompts: runWizardStoryboardGemmaAll,
+    openWizardBetaFromBuilder, openWizardFromBuilder,
+  };
 }

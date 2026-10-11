@@ -2,7 +2,7 @@
 // (Song, Cast, Story, Acts, Scenes, Places, Beats & Prompts). It reads and writes the same session state as the
 // Video Builder and calls /vrgdg/storyboard/story_mode/{action} for the LLM steps.
 import { postJson } from "./comfy_api.mjs";
-import { escapeHtml, makeButton, makeField, makeInput, makeSelect, toast } from "./controls.mjs";
+import { escapeHtml, makeButton, makeField, makeInput, makeSelect, normalizeProjectVideoEngine, toast } from "./controls.mjs";
 import { normalizeFluxReferenceBuilder } from "./reference_data.mjs";
 import { mergeActs, moveActBorder, splitAct, validateStoryActs } from "./story_acts_data.mjs";
 import {
@@ -55,7 +55,7 @@ function clock(seconds) {
 }
 
 export function createStoryBuilder({
-  autoSaveSessionQuiet, createProgressWindow, getLlmPayload, normalizeBuilderStoryLayer,
+  autoSaveSessionQuiet, createProgressWindow, createSceneBeats, createVideoPrompts, getLlmPayload, normalizeBuilderStoryLayer,
   openFluxReferenceBuilderModal, openLyricMappingWorkflowModal, openLyricReviewModal, openStoryboardClassic,
   pushHistory, referenceBuilderPayload, render, state, storyboardScenePayload,
 }) {
@@ -680,15 +680,76 @@ export function createStoryBuilder({
     function renderPrompts() {
       const blocked = blockerNote("prompts");
       if (blocked) content.append(blocked);
-      const info = card("Beats and prompts", "Scene beats now follow each scene's story slice and spot. Open the Storyboard to create the beats and the video prompts, then render from the Video Builder.");
       const all = segments();
+      const promptKey = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3" ? "minimax_h3_prompt" : "i2v_prompt";
       const withBeat = all.filter((segment) => String(segment.story_beat || "").trim()).length;
-      info.append(el("div", "font-size:12px;color:#e2e8f0;", `${withBeat} of ${all.length} scenes have a story beat.`));
-      const openBoard = makeButton("Open Storyboard", "primary");
+      const withPrompt = all.filter((segment) => String(segment[promptKey] || "").trim()).length;
+      const runAndRefresh = async (task) => {
+        await task();
+        show("prompts");
+      };
+
+      const beats = card("Scene beats", `${withBeat} of ${all.length} scenes have a beat. Each beat follows its scene's part of the story and its spot; the lyric only sets the mood.`);
+      const missingBeats = makeButton("Create Missing Beats", "primary");
+      missingBeats.disabled = Boolean(blocked);
+      missingBeats.onclick = () => runAndRefresh(() => createSceneBeats({ overwrite: false }));
+      const allBeats = makeButton("Recreate All Beats");
+      allBeats.disabled = Boolean(blocked);
+      allBeats.onclick = () => {
+        if (window.confirm?.("Replace the beat of every scene?") === false) return;
+        runAndRefresh(() => createSceneBeats({ overwrite: true }));
+      };
+      beats.append(row(missingBeats, allBeats));
+
+      const prompts = card("Video prompts", `${withPrompt} of ${all.length} scenes have a video prompt. Creating prompts writes one for every scene from its beat, replacing what is there. Create the beats first.`);
+      const createPrompts = makeButton("Create Video Prompts", "primary");
+      createPrompts.disabled = Boolean(blocked) || !withBeat;
+      createPrompts.onclick = () => {
+        if (withPrompt && window.confirm?.(`Replace the video prompts of all ${all.length} scenes?`) === false) return;
+        runAndRefresh(() => createVideoPrompts());
+      };
+      const openBoard = makeButton("Open Storyboard");
+      openBoard.title = "The full Storyboard, for per-scene settings and single-scene prompts.";
       openBoard.disabled = Boolean(blocked);
       openBoard.onclick = () => openStoryboardClassic();
-      info.append(row(openBoard));
-      content.append(info);
+      prompts.append(row(createPrompts, openBoard));
+
+      const list = card("Scenes", "Edit any beat or prompt, then save.");
+      const current = layer();
+      const plan = Object.fromEntries(normalizeStoryScenePlan(current.story_scene_plan).map((entry) => [entry.scene_id, entry]));
+      const actTitles = Object.fromEntries(normalizeStoryActs(current.story_acts).map((act) => [act.id, act.title]));
+      const editors = all.map((segment, index) => {
+        const entry = plan[segment.id] || {};
+        const item = el("div", "border:1px solid #1e293b;border-radius:7px;padding:8px;display:flex;flex-direction:column;gap:6px;");
+        const head = el("button", "border:0;background:transparent;color:#cffafe;text-align:left;padding:0;font-size:12px;font-weight:800;cursor:pointer;",
+          `Scene ${index + 1} (${clock(segment.start)} - ${clock(segment.end)})  ${[actTitles[entry.act_id], entry.spot, entry.performance_mode].filter(Boolean).join(" · ")}`);
+        head.type = "button";
+        head.onclick = () => selectScene(segment.id);
+        const beat = textarea(segment.story_beat, "No beat yet.", 50);
+        const prompt = textarea(segment[promptKey], "No video prompt yet.", 70);
+        item.append(head, el("div", "font-size:11px;color:#94a3b8;", `Lyric (mood): ${segment.lyric_text || "[instrumental]"}`),
+          el("div", "font-size:11px;color:#94a3b8;", "Beat"), beat, el("div", "font-size:11px;color:#94a3b8;", "Video prompt"), prompt);
+        list.append(item);
+        return { segment, beat, prompt };
+      });
+      const save = makeButton("Save Beats And Prompts", "primary");
+      save.onclick = async () => {
+        pushHistory();
+        for (const { segment, beat, prompt } of editors) {
+          segment.story_beat = beat.value.trim();
+          const text = prompt.value.trim();
+          if (text !== String(segment[promptKey] || "").trim()) {
+            segment[promptKey] = text;
+            segment[`${promptKey}_origin`] = "manual";
+          }
+        }
+        render();
+        await autoSaveSessionQuiet("story builder beats and prompts edited");
+        toast("Beats and prompts saved.");
+        show("prompts");
+      };
+      list.append(row(save));
+      content.append(beats, prompts, list);
     }
 
     const renderers = {

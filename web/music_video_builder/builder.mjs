@@ -2167,6 +2167,9 @@ export function openBuilder(node, options = {}) {
     getLlmPayload: () => ({ ...textGemmaRunnerPayload(), model_file: state.textGemmaRunner === "qwen_local"
       ? state.qwenModelFile : (t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || state.gemmaModelFile || "") }),
     openStoryboardClassic: () => openStoryboardBuilderFromProject(),
+    // The wizard bridge is created further down; these run only after a click.
+    createSceneBeats: (...args) => createSceneBeats(...args),
+    createVideoPrompts: (...args) => createVideoPrompts(...args),
     referenceBuilderPayload: () => storyboardReferenceBuilderWithIdLoraRefs(state.fluxReferenceBuilder),
     render: (...args) => render(...args),
     storyboardScenePayload: (...args) => storyboardScenePayload(...args),
@@ -2474,7 +2477,7 @@ export function openBuilder(node, options = {}) {
     syncVideoTypeControl, transcribeExistingScenesWithOptions,
   });
 
-  const { openWizardBetaFromBuilder, openWizardFromBuilder } = createWizardBridge({
+  const { createSceneBeats, createVideoPrompts, openWizardBetaFromBuilder, openWizardFromBuilder } = createWizardBridge({
     openStoryBuilder,
     activeI2VVideoSettings, activeProjectFolderForSave, activeSegment, allEditableSegments, audioInput,
     autoSaveSessionQuiet, chooseProjectAudioFile, confirmAndRunFullBuild, confirmAndRunGemmaT2IAll,

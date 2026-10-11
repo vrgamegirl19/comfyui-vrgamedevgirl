@@ -13,7 +13,7 @@ STORYBOARD_SOURCE = read_storyboard_source()
 class StoryboardGemmaNetworkTimeoutTests(unittest.TestCase):
     def test_video_builder_storyboard_batch_uses_long_gemma_timeout(self):
         batch = re.search(
-            r"const runWizardStoryboardGemmaAll = async \(options = \{\}\) => \{(?P<body>.*?)\n    \};",
+            r"const runWizardStoryboardGemmaAll = async \(options = \{\}\) => \{(?P<body>.*?)\n  \};",
             BUILDER_SOURCE,
             re.DOTALL,
         )

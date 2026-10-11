@@ -106,10 +106,12 @@ function project() {
 
 function setup() {
   const state = project();
-  const calls = { saves: [], hosted: [], storyboard: 0, errors: [], order: [] };
+  const calls = { saves: [], hosted: [], storyboard: 0, errors: [], order: [], beats: [], prompts: 0 };
   const builder = createStoryBuilder({
     autoSaveSessionQuiet: async (label) => { calls.saves.push(label); },
     createProgressWindow: () => ({ set() {}, close() {} }),
+    createSceneBeats: async (options) => { calls.beats.push(options); state.segments[0].story_beat = 'Mara folds a shirt.'; },
+    createVideoPrompts: async () => { calls.prompts += 1; },
     getLlmPayload: () => ({ llm_runner: 'lm_studio' }),
     normalizeBuilderStoryLayer,
     openFluxReferenceBuilderModal: (options) => {
@@ -180,6 +182,32 @@ test('building locations keeps the new cards when the hosted Reference Builder s
   } finally {
     delete globalThis.fakeComfyApi.fetchApi;
   }
+});
+
+test('beats and prompts tab creates beats and prompts and saves edits', async () => {
+  const { state, calls, builder } = setup();
+  state.projectVideoEngine = 'minimax_h3';
+  builder.openStoryBuilder({ tab: 'prompts' });
+  await tick();
+  assert.equal(findButton('Create Video Prompts').disabled, true, 'prompts need a beat first');
+  await findButton('Create Missing Beats').onclick();
+  await tick();
+  assert.deepEqual(calls.beats, [{ overwrite: false }]);
+  assert.equal(findButton('Create Video Prompts').disabled, false);
+  await findButton('Create Video Prompts').onclick();
+  await tick();
+  assert.equal(calls.prompts, 1);
+  const boxes = document.body.all().filter((node) => node.tagName === 'TEXTAREA');
+  assert.equal(boxes.length, state.segments.length * 2, 'a beat and a prompt box per scene');
+  assert.equal(boxes[0].value, 'Mara folds a shirt.');
+  boxes[1].value = 'Close-up, Mara folds a shirt.';
+  await findButton('Save Beats And Prompts').onclick();
+  assert.equal(state.segments[0].minimax_h3_prompt, 'Close-up, Mara folds a shirt.');
+  assert.equal(state.segments[0].minimax_h3_prompt_origin, 'manual');
+  assert.equal(state.segments[1].minimax_h3_prompt_origin, undefined, 'unchanged prompts keep their origin');
+  assert.ok(calls.saves.includes('story builder beats and prompts edited'));
+  findButton('Close').onclick();
+  await tick();
 });
 
 test('saving the scene plan sets each scene performance and keeps the notes', async () => {
