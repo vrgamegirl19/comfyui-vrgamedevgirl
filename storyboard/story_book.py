@@ -24,6 +24,7 @@ from .story_mode import (
     chapters_keep_text,
     is_story_mode_layer,
     normalize_story_book,
+    normalize_story_video_style,
     parse_story_book_text,
     split_paragraphs,
     story_arc_to_story_text,
@@ -106,6 +107,58 @@ def cast_lines(payload):
     return "\n".join(lines)
 
 
+def _clock(seconds):
+    seconds = max(0, int(round(seconds)))
+    return f"{seconds // 60}:{seconds % 60:02d}"
+
+
+def _number(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def song_map(scenes):
+    """The song in order, one line per section: ``0:12-0:40 Verse 1: lyric / lyric``.
+
+    Neighbouring scenes with the same section label are one section. Scenes without a label are grouped into
+    runs of vocal or instrumental scenes.
+    """
+    groups = []
+    for scene in scenes:
+        lyric = _clean_scene_text(scene.get("lyrics") or scene.get("lyric_text") or "", 300).replace("\n", " / ")
+        instrumental = bool(scene.get("lyric_instrumental")) or not lyric or lyric.strip("[] ").lower() == "instrumental"
+        section = _clean_scene_text(scene.get("lyric_section") or "", 60)
+        key = section.lower() or ("instrumental" if instrumental else "vocal")
+        start = _number(scene.get("timeline_start", scene.get("start")))
+        end = _number(scene.get("timeline_end", scene.get("end")))
+        if groups and groups[-1]["key"] == key:
+            groups[-1]["end"] = max(groups[-1]["end"], end)
+            if not instrumental:
+                groups[-1]["lyrics"].append(lyric)
+            continue
+        groups.append({"key": key, "label": section or ("Instrumental" if instrumental else "Vocals"),
+                       "start": start, "end": end, "lyrics": [] if instrumental else [lyric]})
+    lines = []
+    for group in groups:
+        words = " / ".join(group["lyrics"])[:600]
+        lines.append(f"{_clock(group['start'])}-{_clock(group['end'])} {group['label']}"
+                     + (f": {words}" if words else " (no vocals)"))
+    return "\n".join(lines)
+
+
+def video_style(payload):
+    """How the story is told on screen (``music_video``, ``spoken`` or ``story_only``)."""
+    return normalize_story_video_style(_layer(payload).get("story_video_style"))
+
+
+def lead_name(payload):
+    """The first story cast name, used as the performer in the prompts."""
+    cast = story_cast(payload)
+    return cast[0]["name"] if cast else ""
+
+
 def _lyrics(payload, scenes):
     lyrics = _clean_scene_text(payload.get("lyrics") or payload.get("lyrics_text") or "", 12000)
     if lyrics:
@@ -155,7 +208,9 @@ def draft_story_book(payload):
         scene_count=scene_count,
         song_seconds=_song_seconds(payload, scenes),
         lyric_guidance=story_mode_lyric_guidance(strength),
-        lyrics=_lyrics(payload, scenes),
+        lyrics=song_map(scenes) or _lyrics(payload, scenes),
+        video_style=video_style(payload),
+        lead_name=lead_name(payload),
         previous_book=_clean_scene_text(payload.get("previous_book") or "", 8000),
         seed=_clean_scene_text(payload.get("seed") or "", 80),
     )
@@ -195,6 +250,8 @@ def rewrite_story_chapter(payload):
         cast_text=cast_lines(payload),
         allow_new_cast=allow_new_cast(payload),
         lyric_guidance=story_mode_lyric_guidance(strength),
+        video_style=video_style(payload),
+        lead_name=lead_name(payload),
     )
     text, run_info = _run(payload, instruction, label="Story Mode Chapter", max_new_tokens=2400)
     rewritten, names = parse_story_book_text(text)

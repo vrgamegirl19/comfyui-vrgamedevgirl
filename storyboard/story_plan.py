@@ -26,7 +26,7 @@ from .story_acts import (
     validate_story_acts,
 )
 from .story_book import _run, cast_lines
-from .story_mode import normalize_plan_performance, normalize_story_book
+from .story_mode import normalize_plan_performance, normalize_story_book, normalize_story_video_style
 from .timeline_notes import story_arc_timeline_notes
 
 PLAN_NOTE_FIELDS = (("director", "timeline_note"), ("video", "motion_summary"), ("planning", "notes"))
@@ -230,6 +230,15 @@ def _default_performance(scene):
     return "instrumental" if scene.get("lyric_instrumental") or not lyric else "singing"
 
 
+def style_performance(performance, style):
+    """A scene performance that fits the video style: spoken never sings, story only never sings or speaks."""
+    if style == "spoken" and performance == "singing":
+        return "speaking"
+    if style == "story_only" and performance in ("singing", "speaking"):
+        return "no_lip_sync"
+    return performance
+
+
 def build_story_scene_plan(payload, progress=None):
     """A plan entry for every scene of every act (or only ``act_id``), with spots kept for at least
     ``spot_min_scenes`` scenes in a row."""
@@ -259,6 +268,7 @@ def build_story_scene_plan(payload, progress=None):
     chapter_by_id = {chapter["id"]: chapter for chapter in chapters}
     guidance = story_mode_lyric_guidance(layer.get("lyric_story_strength", 5))
     cast_text = cast_lines(payload)
+    style = normalize_story_video_style(layer.get("story_video_style"))
     plan = {entry["scene_id"]: dict(entry) for entry in layer.get("story_scene_plan") or []}
     run_info = {}
     todo = [act for act in acts if not only or act["id"] == only]
@@ -284,6 +294,7 @@ def build_story_scene_plan(payload, progress=None):
             previous_spot=previous_spot,
             lyric_guidance=guidance,
             known_spots=", ".join(known_spots),
+            video_style=style,
         )
         replies = {}
         try:
@@ -300,6 +311,7 @@ def build_story_scene_plan(payload, progress=None):
             scene = scenes[number - 1]
             item = replies.get(number) or {}
             performance = normalize_plan_performance(item.get("performance") or _default_performance(scene))
+            performance = style_performance(performance, style)
             if _default_performance(scene) == "instrumental":
                 performance = "instrumental"
             sources = list(_scene_notes(scene))

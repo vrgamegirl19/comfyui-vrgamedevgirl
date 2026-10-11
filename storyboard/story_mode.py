@@ -13,6 +13,8 @@ Shape inside ``builder_story_layer`` (only present when the project has used Sto
 - ``story_spot_min_scenes``: the fewest scenes in a row at one spot (the Builder's "scenes per location").
 - ``story_cast_ids``: subject card ids the story is about. Empty means every character card.
 - ``story_allow_new_cast``: true lets the LLM add people who have no card. False keeps the story to the cast.
+- ``story_video_style``: how the story is told on screen: ``music_video`` (the cast performs the song),
+  ``spoken`` (the characters talk) or ``story_only`` (no one sings or speaks on camera).
 
 JS twin: ``web/music_video_builder/story_mode_data.mjs``. Both are checked against
 ``tests/story_mode_cases.json``.
@@ -23,8 +25,9 @@ import re
 STORY_FLOW_VERSION = 2
 STORY_MODE_KEYS = (
     "story_flow_version", "story_book", "story_book_text", "story_settings", "story_acts", "story_scene_plan",
-    "story_spot_min_scenes", "story_cast_ids", "story_allow_new_cast",
+    "story_spot_min_scenes", "story_cast_ids", "story_allow_new_cast", "story_video_style",
 )
+STORY_VIDEO_STYLES = ("music_video", "spoken", "story_only")
 DEFAULT_SPOT_MIN_SCENES = 3
 PLAN_PERFORMANCE_MODES = ("singing", "speaking", "no_lip_sync", "instrumental")
 
@@ -173,7 +176,15 @@ def normalize_story_mode_fields(source):
     if "story_allow_new_cast" in source:
         value = source.get("story_allow_new_cast")
         result["story_allow_new_cast"] = value is True or str(value).strip().lower() == "true"
+    if "story_video_style" in source:
+        result["story_video_style"] = normalize_story_video_style(source.get("story_video_style"))
     return result
+
+
+def normalize_story_video_style(value):
+    """``music_video``, ``spoken`` or ``story_only``; anything else is ``music_video``."""
+    text = re.sub(r"[\s-]+", "_", _line(value).lower())
+    return text if text in STORY_VIDEO_STYLES else "music_video"
 
 
 def normalize_spot_min_scenes(value):

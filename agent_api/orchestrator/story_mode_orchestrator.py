@@ -37,7 +37,7 @@ from .storyboard_orchestrator import (
 STORY_MODE_STEPS = ("book", "chapter", "split", "convert", "cast", "remove_people", "acts", "plan", "locations")
 # Story Mode fields an agent may send to PUT /story/settings. Each is checked before it is saved.
 STORY_MODE_EDIT_KEYS = ("story_book_text", "story_settings", "story_acts", "story_scene_plan", "story_spot_min_scenes",
-                        "story_cast_ids", "story_allow_new_cast")
+                        "story_cast_ids", "story_allow_new_cast", "story_video_style")
 
 
 def _request(session: Dict[str, Any], params: Dict[str, Any], cards, **extra: Any) -> Dict[str, Any]:

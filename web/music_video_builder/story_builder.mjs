@@ -13,7 +13,8 @@ import { normalizeMiniMaxH3Mode } from "./minimax_h3.mjs";
 import { applyStoryLocations } from "./story_locations_data.mjs";
 import {
   applyStoryBookText, fillSceneCast, normalizeSpotMinScenes, normalizeStoryActs, normalizeStoryBook,
-  normalizeStoryScenePlan, normalizeStorySettings, planSegmentFields, STORY_CHAPTER_COLORS, STORY_FLOW_VERSION,
+  normalizeStoryScenePlan, normalizeStorySettings, normalizeStoryVideoStyle, planSegmentFields, STORY_CHAPTER_COLORS,
+  STORY_FLOW_VERSION, STORY_VIDEO_STYLES,
 } from "./story_mode_data.mjs";
 import { normalizeTimelineMarkers } from "./timeline_state.mjs";
 
@@ -423,7 +424,16 @@ export function createStoryBuilder({
           show("story");
         }
       };
-      idea.append(premise, tone, row(draft));
+      const telling = makeSelect(STORY_VIDEO_STYLES, normalizeStoryVideoStyle(current.story_video_style));
+      for (const option of telling.options) {
+        option.textContent = {
+          music_video: "Music video: the cast performs the song inside the story",
+          spoken: "Spoken: the characters talk, no one sings",
+          story_only: "Story only: no singing or speaking on camera",
+        }[option.value] || option.value;
+      }
+      telling.onchange = () => saveLayer({ story_video_style: telling.value }, "story builder video style");
+      idea.append(premise, tone, makeField("How the story is told (the story follows the song's flow either way)", telling), row(draft));
 
       const own = card("Use your own story", "Paste a finished story. Every word is kept; it is only divided into chapters with a setting each.");
       const pasted = textarea("", "Paste your story here. Chapter headings like 'Chapter 1: The Station' are kept.", 120);

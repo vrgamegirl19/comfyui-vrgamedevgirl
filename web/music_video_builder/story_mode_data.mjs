@@ -3,7 +3,8 @@
 
 export const STORY_FLOW_VERSION = 2;
 export const STORY_MODE_KEYS = ["story_flow_version", "story_book", "story_book_text", "story_settings", "story_acts", "story_scene_plan",
-  "story_spot_min_scenes", "story_cast_ids", "story_allow_new_cast"];
+  "story_spot_min_scenes", "story_cast_ids", "story_allow_new_cast", "story_video_style"];
+export const STORY_VIDEO_STYLES = ["music_video", "spoken", "story_only"];
 export const DEFAULT_SPOT_MIN_SCENES = 3;
 export const PLAN_PERFORMANCE_MODES = ["singing", "speaking", "no_lip_sync", "instrumental"];
 
@@ -126,7 +127,14 @@ export function normalizeStoryModeFields(source) {
   if ("story_allow_new_cast" in value) {
     result.story_allow_new_cast = value.story_allow_new_cast === true || String(value.story_allow_new_cast).trim().toLowerCase() === "true";
   }
+  if ("story_video_style" in value) result.story_video_style = normalizeStoryVideoStyle(value.story_video_style);
   return result;
+}
+
+// "music_video", "spoken" or "story_only"; anything else is "music_video".
+export function normalizeStoryVideoStyle(value) {
+  const text = storyLine(value).toLowerCase().replace(/[\s-]+/g, "_");
+  return STORY_VIDEO_STYLES.includes(text) ? text : "music_video";
 }
 
 export function normalizeSpotMinScenes(value) {

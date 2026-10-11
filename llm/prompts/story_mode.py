@@ -64,14 +64,31 @@ def story_cast_rule(cast_text, allow_new_cast):
             "crowd that never speaks, acts or matters to the story. Every event happens to or through the cast.")
 
 
+def story_medium_rule(video_style, lead_name=""):
+    """How the story is told on screen, for the book and chapter prompts."""
+    lead = lead_name or "the main character"
+    if video_style == "spoken":
+        return (f"This is a spoken story set to music. The characters talk: write the lines they say in quotes, and "
+                f"let the story move through what {lead} and the others say and do. No one sings.")
+    if video_style == "story_only":
+        return ("This story plays out to the song with no one singing or speaking on camera. Everything is told "
+                "through action, faces, places and objects.")
+    return (f"This is the story of a music video. {lead} performs the song inside the story: write the moments where "
+            f"{lead} sings, alone, to the camera, or to someone in the scene, woven into what is "
+            "happening (singing in the rain on the street, singing alone in the empty room). Put the biggest of these "
+            "moments on the chorus.")
+
+
 def story_book_instruction(*, premise, cast_text, tone_notes, scene_count, song_seconds, lyric_guidance, lyrics,
-                           previous_book, seed, allow_new_cast=False):
+                           previous_book, seed, allow_new_cast=False, video_style="music_video", lead_name=""):
     """Draft the whole story book from the user's premise."""
     chapters, paragraphs = story_book_size(scene_count)
     return (
-        "You are a novelist writing the story that a music video will tell.\n\n"
+        "You are a novelist writing the story that a music video will tell, so a director can read it and see the "
+        "video play out with the song.\n\n"
         "Write a short book: a title, a premise, and chapters of plain prose. It must read like a book, not a shot "
-        "list or a song breakdown.\n\n"
+        "list or a song breakdown, and it must unfold in step with the song.\n\n"
+        f"How it is told: {story_medium_rule(video_style, lead_name)}\n\n"
         "Rules:\n"
         f"- About {chapters} chapters and about {paragraphs} paragraphs in total. The video has {scene_count} scenes "
         f"and runs {song_seconds:.0f} seconds, so the story must fit that length.\n"
@@ -83,13 +100,17 @@ def story_book_instruction(*, premise, cast_text, tone_notes, scene_count, song_
         "- No camera directions, no shot language, no song-section words (Intro, Verse, Chorus, Bridge, Outro), "
         "no scene numbers.\n"
         "- The story has a beginning, a turn and an ending.\n"
+        "- Follow the song map from start to finish: the story moves in the same order and at the same pace as the "
+        "song. Quiet or instrumental parts are quiet moments, rising parts build, the chorus and the loudest parts are "
+        "the story's peaks, and the last chapter ends when the song ends. Do not name the sections in the book.\n"
         f"- {lyric_guidance}\n"
         "- Output only the book in exactly this format, with no notes before or after it:\n\n"
         f"{_BOOK_FORMAT}\n\n"
         f"Premise from the user:\n{premise or '[none, invent one from the cast and tone]'}\n\n"
         f"Cast:\n{cast_text or '[none, invent a small cast]'}\n\n"
         f"Tone, genre and world notes:\n{tone_notes or '[none]'}\n\n"
-        f"Song lyrics (mood and emotion only):\n{lyrics or '[none]'}\n\n"
+        "Song map in order (time, section, lyric). The timing and energy set the story's pace; the lyric words are "
+        f"for mood and emotion only:\n{lyrics or '[none]'}\n\n"
         "Previous draft to move away from on this reroll (do not reuse anyone from it who is not in the cast):\n"
         f"{previous_book or '[none]'}\n\n"
         f"Variation seed: {seed or '[none]'}"
@@ -97,7 +118,7 @@ def story_book_instruction(*, premise, cast_text, tone_notes, scene_count, song_
 
 
 def story_chapter_rewrite_instruction(*, book_text, chapter_number, chapter_text, direction, cast_text, lyric_guidance,
-                                      allow_new_cast=False):
+                                      allow_new_cast=False, video_style="music_video", lead_name=""):
     """Rewrite or expand one chapter, keeping the rest of the book as context."""
     return (
         "You are a novelist revising one chapter of a story that a music video will tell.\n\n"
@@ -106,6 +127,7 @@ def story_chapter_rewrite_instruction(*, book_text, chapter_number, chapter_text
         "Rules:\n"
         "- Plain prose paragraphs of things that visibly happen. No camera or song-section words.\n"
         f"- {story_cast_rule(cast_text, allow_new_cast)}\n"
+        f"- {story_medium_rule(video_style, lead_name)}\n"
         f"- {lyric_guidance}\n"
         "- Output only the chapter in exactly this format:\n\n"
         f"Chapter {chapter_number}: <chapter title>\n"
@@ -271,8 +293,17 @@ STORY_ACTS_SCHEMA = {
 }
 
 
+_PLAN_PERFORMANCE_RULES = {
+    "music_video": "Use singing for most scenes with vocals, so the performer sings through the video; use story "
+                   "where the action needs the screen to itself.",
+    "spoken": "Use speaking for scenes with vocals: a character says a line. Never singing.",
+    "story_only": "Use story for every scene with vocals, and instrumental where there are none. Never singing or "
+                  "speaking.",
+}
+
+
 def story_scene_plan_instruction(*, act_title, act_summary, setting_name, chapter_text, scenes_text, cast_text,
-                                 spot_min_scenes, previous_spot, lyric_guidance, known_spots):
+                                 spot_min_scenes, previous_spot, lyric_guidance, known_spots, video_style="music_video"):
     """Give every scene of one act its slice of the story, a spot, a mood and a performance."""
     return (
         "You are a music video director planning each scene of one act.\n\n"
@@ -288,7 +319,8 @@ def story_scene_plan_instruction(*, act_title, act_summary, setting_name, chapte
         "- mood: 2-5 words of emotion.\n"
         "- performance: singing (the performer sings the lyric to the camera or in the moment), speaking (a "
         "character says a line), story (no lip sync, the story plays out) or instrumental (no vocals in this scene). "
-        "Scenes marked instrumental must be instrumental.\n"
+        "Scenes marked instrumental must be instrumental. "
+        f"{_PLAN_PERFORMANCE_RULES.get(video_style, _PLAN_PERFORMANCE_RULES['music_video'])}\n"
         "- User notes on a scene are the user's direction and win over the story. Follow them exactly and write "
         "the slice to agree with them.\n"
         f"- {lyric_guidance}\n"

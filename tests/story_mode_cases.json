@@ -225,6 +225,24 @@
         "story_cast_ids": [],
         "story_allow_new_cast": false
       }
+    },
+    {
+      "name": "the video style is one of three, music video by default",
+      "input": {
+        "story_video_style": "Story Only"
+      },
+      "output": {
+        "story_video_style": "story_only"
+      }
+    },
+    {
+      "name": "an unknown video style is a music video",
+      "input": {
+        "story_video_style": "documentary"
+      },
+      "output": {
+        "story_video_style": "music_video"
+      }
     }
   ]
 }
