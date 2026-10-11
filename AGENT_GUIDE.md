@@ -175,6 +175,8 @@ The `core` package houses critical cross-cutting utilities used across the entir
 
 The `builder` package contains the backend business logic and HTTP API powering the **AI Video Builder UI**.
 
+- `builder/error_log.py` owns the local append-only `logs/error_log.txt` in each saved project; `error_log_routes.py` handles read/append/clear and project API failure capture. `web/music_video_builder/error_log.mjs` captures redacted browser errors and owns **View Error Log**, **Copy Log**, and confirmed **Clear Log**. Background jobs and Builder-polled ComfyUI failures retain available tracebacks. See [Project error log](docs/PROJECT_ERROR_LOG.md).
+
 #### [builder/nodes.py](builder/nodes.py)
 - **Purpose**: Defines the primary canvas node `VRGDG_MusicVideoBuilderUI` and triggers the registration of builder server routes.
 - **Node Registered**:

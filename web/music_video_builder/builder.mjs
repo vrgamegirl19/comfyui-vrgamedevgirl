@@ -19,9 +19,11 @@ import {
   waitForImages,
   whenBuilderSessionSavesIdle,
 } from "./comfy_api.mjs";
+import { openProjectErrorLog, secretValues, setErrorLogContext } from "./error_log.mjs";
 import { createExternalChangeSync } from "./external_changes.mjs";
 import { BUILDER_FONT_STACK, BUILDER_UI_VERSION } from "./constants.mjs";
 import {
+  copyTextToClipboard,
   makeButton,
   makeField,
   makeSettingsPanel,
@@ -213,6 +215,7 @@ export function openBuilder(node, options = {}) {
     builderLifecycle.resourceResizeObserver?.disconnect();
     window.removeEventListener("vrgdg:builder-toast", toastNotificationHandler);
     window.removeEventListener("vrgdg:builder-session-saved", videoModeSavedHandler);
+    builderLifecycle.disposeErrorLog?.();
     builderLifecycle.externalChangeSync?.dispose();
     builderLifecycle.sceneAudioSettings?.dispose();
     if (builderLifecycle.keydownHandler) document.removeEventListener("keydown", builderLifecycle.keydownHandler, true);
@@ -2664,6 +2667,21 @@ export function openBuilder(node, options = {}) {
       }
     }
   });
+
+  builderLifecycle.disposeErrorLog = setErrorLogContext(() => {
+    const segment = activeSegment();
+    const segments = allEditableSegments();
+    return {
+      project_folder: activeProjectFolderForSave(),
+      scene: segment ? segments.indexOf(segment) + 1 : undefined,
+      mode: `${state.projectVideoEngine || ""} - ${currentVideoMode()}`,
+      secrets: [...secretValues(state), ...[...document.querySelectorAll('input[type="password"]')].map(input => input.value).filter(Boolean)],
+    };
+  });
+  const errorLogButton = makeButton("View Error Log");
+  errorLogButton.onclick = () => openProjectErrorLog(activeProjectFolderForSave(), { makeButton, copyTextToClipboard });
+  errorLogButton.style.cssText = "width:100%;text-align:left;justify-content:flex-start;";
+  menuDropdown.append(errorLogButton);
 
   const toastNotificationHandler = (event) => {
     const message = String(event?.detail?.message || "");

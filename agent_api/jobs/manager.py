@@ -6,6 +6,7 @@ import inspect
 import logging
 import os
 import time
+import traceback
 from typing import Any, Callable, Dict, List, Optional
 
 from ..errors import (
@@ -16,6 +17,7 @@ from ..errors import (
     ValidationError,
 )
 from ..paths import get_allowed_project_roots, resolve_project_folder
+from ...builder.error_log import append_project_error
 from .events import get_event_broadcaster
 from .models import (
     Job,
@@ -425,6 +427,15 @@ class JobManager:
                         "retryable": True,
                     }
                 self.append_log(job.id, "error", f"Job '{job.id}' failed: {exc}")
+                if project_folder:
+                    try:
+                        await asyncio.to_thread(append_project_error, project_folder, {
+                            "source": "Backend", "stage": job.type, "component": "Background Job",
+                            "scene": job.params.get("scene_id"), "message": str(exc),
+                            "details": f"Job: {job.id}\n{job.error}", "stack": traceback.format_exc(),
+                        })
+                    except (OSError, ValueError, TypeError):
+                        logger.warning("[VRGDG Builder] Could not write the project error log.")
 
             finally:
                 self._cleanup_active(job)

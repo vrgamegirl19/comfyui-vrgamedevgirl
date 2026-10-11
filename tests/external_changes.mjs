@@ -121,13 +121,14 @@ function loadSaveHelper(responses, confirmAnswer) {
   const requests = [];
   const context = vm.createContext({
     console, AbortController, setTimeout, clearTimeout,
+    errorLogContext: payload => payload, errorLogHeaders: () => ({}), reportProjectError() {},
     window: { confirm: () => confirmAnswer },
     api: {
       fetchApi: async (url, options) => {
         const body = JSON.parse(options.body);
         requests.push({ url, body });
         const reply = responses.shift();
-        return { ok: reply.status === 200, status: reply.status, json: async () => reply.data };
+        return { ok: reply.status === 200, status: reply.status, headers: { get: () => null }, json: async () => reply.data };
       },
     },
   });
