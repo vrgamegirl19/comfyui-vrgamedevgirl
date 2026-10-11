@@ -873,7 +873,7 @@ export function openBuilder(node, options = {}) {
     deleteAllTimelineVideosButton, deleteSegmentButton, freezeTimingControl, globalAudioMuteButton, addAudioClipButton,
     globalScrub, globalScrubTime, idLoraTrimModeButton, lyricNoteButton, emotionTagButton, locationThumbnailButton, multiSelectButton,
     multiSelectHintButton, overlayTrackHintButton, overlayTrackToggleButton, playButton, playhead, redoButton,
-    refreshDeleteActions, sceneNoteButton, segmentLayer, setInButton, setOutButton, snapSceneEdgeButton,
+    latentContinuationOffAllButton, refreshDeleteActions, sceneNoteButton, segmentLayer, setInButton, setOutButton, snapSceneEdgeButton,
     snapToBeatsControl, splitSceneButton, stopButton, timeline, timelineCanvas, timelineInfo,
     timelineRangeInfo, timelineResizeHandle, timelineViewport, undoButton,
     videoNoteButton, waveformModeSelect, zoomInButton, zoomOutButton,
@@ -1586,7 +1586,7 @@ export function openBuilder(node, options = {}) {
     drawWaveform, normalizeSegments, openTimelineMarkerEditor, renderList, renderSegments,
     snapAddedSegmentEndToNearestBeat, snapTimeToBeat,
   } = createTimelineView({
-    miniMaxH3ModeForSegment,
+    miniMaxH3ModeForSegment, latentContinuationOffAllButton,
     appendTimelineFirstLastFrameThumbnail, autoSaveSessionQuiet, enableLutDrop, enablePostEffectDrop, stemLayer, timelineViewport,
     i2vNotesInput, lyricTextInput, mediaThumbnailHtml, openAudioContextMenu, openDirectorNoteContextMenu, renderAudioClips,
     openSceneOptions, openSegmentContextMenu, openTimelineSceneCard, playhead, pushHistory,
