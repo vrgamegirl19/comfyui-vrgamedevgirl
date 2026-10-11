@@ -140,3 +140,47 @@ test('custom emotion overrides inherited direction and keeps the LLM progression
   assert.match(out, /\[happy, singing\].*By the end, \[sad, singing\]/);
   assert.doesNotMatch(out, /with passion|mouth|jaw|Secret song words/);
 });
+
+test('tagged pronoun singing merges once and removes an already-appended canonical duplicate', async () => {
+  const { mergeLyricFreeContract } = await import('../web/music_video_builder/lyric_free_performance.mjs');
+  const contract = '<Subject 1> sings in sync with the vocals in <Audio 1>.';
+  const draft = '<Subject 1> keeps her stance planted and carries a restrained pulse through her shoulders as she [intense, singing] sings in sync with the vocals in <Audio 1>. <Subject 1> holds an engaged gaze toward the camera, her brows tightening. Warm light falls across the doorway. ' + contract;
+  const [text, extra] = mergeLyricFreeContract(draft, contract);
+  assert.equal(extra, '');
+  assert.equal((text.match(/sings\b/g) || []).length, 1);
+  assert.equal((text.match(/<Audio 1>/g) || []).length, 1);
+  assert.match(text, /she \[intense, singing\] sings in sync with the vocals in <Audio 1>\./);
+  assert.match(text, /restrained pulse through her shoulders/);
+  assert.match(text, /Warm light falls/);
+  const twice = mergeLyricFreeContract(text, contract);
+  assert.equal(twice[0], text);
+  assert.equal(twice[1], '');
+});
+
+test('pronoun merging preserves timed cues, requires clear ownership, and ignores quotes', async () => {
+  const { mergeLyricFreeContract } = await import('../web/music_video_builder/lyric_free_performance.mjs');
+  const contract = '<Subject 1> sings in sync with the vocals in <Audio 1> during 2.5s–4s.';
+  const draft = '<Subject 1> stands beside the doorway. She [intense, singing] sings in sync with <Audio 1> during 2.5s–4s.';
+  const [text, extra] = mergeLyricFreeContract(draft, contract);
+  assert.equal(extra, '');
+  assert.equal((text.match(/sings\b/g) || []).length, 1);
+  assert.match(text, /\[intense, singing\]/);
+  assert.match(text, /during 2.5s–4s/);
+  for (const uncertain of ['<Subject 1> watches <Subject 2> as she [sad, singing] sings.', '<Subject 1> holds a sign saying "she sings".', '<Subject 1> stands nearby. She sings during 1s–2s.']) {
+    assert.deepEqual(mergeLyricFreeContract(uncertain, contract), [uncertain, contract]);
+  }
+  const named = '<Subject 1> [intense, singing] sings in sync with <Audio 1>. <Subject 2> sings in sync with <Audio 1> during 1s–2s.';
+  const [multi] = mergeLyricFreeContract(named, contract);
+  assert.match(multi, /<Subject 2> sings in sync with <Audio 1> during 1s–2s\./);
+});
+
+
+test('the reported shoulder-pulse wording produces one singing cue in final assembly', async () => {
+  const run = await harness({ single: true, performers: [{ id: 'a', name: 'Alice' }] });
+  const draft = '<Subject 1> keeps her stance planted and carries a restrained pulse through her shoulders as she [intense, singing] sings in sync with the vocals in <Audio 1>. <Subject 1> holds an engaged gaze toward the camera, her brows tightening. Warm light falls across the doorway.';
+  const out = run({ lyric_text: 'Secret song words', facial_performance_custom: 'intense' }, [draft]);
+  assert.equal((out.match(/sings\b/g) || []).length, 1);
+  assert.equal((out.match(/<Audio 1>/g) || []).length, 1);
+  assert.match(out, /she \[intense, singing\] sings/);
+  assert.match(out, /restrained pulse through her shoulders/);
+});

@@ -40,27 +40,46 @@ def strip_singing_articulation(text: str) -> str:
 
 
 def merge_contract(description: str, contract: str) -> Tuple[str, str]:
-    """Put authoritative audio and timing on an existing owned singing cue once."""
+    """Merge named or unambiguously pronoun-owned singing, retaining tags and action."""
     protect = lambda v: re.sub(r"(\d)\.(?=\d)", r"\1DECIMAL", v)
     singing, *rest = re.split(r"(?<=[.!?])\s+", protect(contract))
     actor = re.match(r"(.*?) sings\b", singing, re.I)
     if not actor:
         return description, contract
-    owned = re.compile(re.escape(actor[1]) + r"\s+sings(?:\s+[a-z]+ly|\s+with passion)?\b", re.I)
+    actor = actor[1]
+    suffix = r"(?:\s*\[[^\]]+\])*\s+sings(?:\s+[a-z]+ly|\s+with passion)?\b"
+    owned = re.compile(re.escape(actor) + suffix, re.I)
+    pronoun = re.compile(r"\b(?:she|he|they)" + suffix, re.I)
     sentences = re.split(r"(?<=[.!?])\s+", protect(description))
     requested_time = re.search(r" during (.+)\.$", singing)
-    def compatible(sentence):
+    preceding = ""
+    index = None
+    cue = None
+    for i, sentence in enumerate(sentences):
+        visible = re.sub(r'<d>[\s\S]*?</d>|“[^”]*”|"[^"]*"',
+                         lambda m: " " * len(m[0]), sentence, flags=re.I)
+        named = owned.search(visible)
+        inferred = pronoun.search(visible)
+        labels = set(re.findall(r"<Subject\s+\d+>",
+                                preceding + visible[:inferred.start() if inferred else 0], re.I))
+        match = named or (inferred if len(labels) == 1 and actor in labels else None)
         existing_time = re.search(r" during (\d+(?:DECIMAL\d+)?s\s*[–—-]\s*\d+(?:DECIMAL\d+)?s)", sentence)
-        return owned.search(sentence) and (not requested_time or not existing_time or existing_time[1] == requested_time[1])
-    index = next((i for i, sentence in enumerate(sentences) if compatible(sentence)), None)
+        if match and (not requested_time or not existing_time or existing_time[1] == requested_time[1]):
+            index, cue = i, match
+            break
+        preceding += visible + " "
     if index is None:
         return description, contract
     sync = re.sub(r"^.*? sings(?: with passion)?\s*", "", singing, flags=re.I).rstrip(".")
-    sentence = re.sub(r"\s+in sync with\s+(?:the\s+)?(?:audible\s+)?(?:vocals(?:\s+in)?\s*(?:<Audio 1>)?|<Audio 1>)",
-                      "", sentences[index], flags=re.I)
-    sentence = re.sub(r"\s+during\s+\d+(?:DECIMAL\d+)?s\s*[–—-]\s*\d+(?:DECIMAL\d+)?s", "", sentence, flags=re.I)
-    sentences[index] = owned.sub(lambda m: f"{m[0]} {sync}", sentence, count=1)
-    return " ".join(sentences).replace("DECIMAL", "."), " ".join(rest).replace("DECIMAL", ".")
+    tail = sentences[index][cue.end():]
+    tail = re.sub(r"^(\s*(?:\[[^\]]+\]\s*)*)in sync with\s+(?:the\s+)?(?:audible\s+)?(?:vocals(?:\s+in)?\s*(?:<Audio 1>)?|<Audio 1>)", r"\1", tail, flags=re.I)
+    tail = re.sub(r"^(\s*(?:\[[^\]]+\]\s*)*)during\s+\d+(?:DECIMAL\d+)?s\s*[–—-]\s*\d+(?:DECIMAL\d+)?s", r"\1", tail, flags=re.I)
+    tail = re.sub(r"^\s+([.,;!?])", r"\1", tail)
+    tail = re.sub(r"^\s+", " ", tail)
+    sentences[index] = sentences[index][:cue.end()] + f" {sync}" + tail
+    canonical = lambda v: re.sub(r"\s+", " ", re.sub(r" sings with passion", " sings", v, flags=re.I)).strip()
+    kept = [sentence for i, sentence in enumerate(sentences) if i == index or canonical(sentence) != canonical(singing)]
+    return " ".join(kept).replace("DECIMAL", "."), " ".join(rest).replace("DECIMAL", ".")
 
 
 def clean_description(text: str, lyrics: List[str], preserve_performance: bool = False,

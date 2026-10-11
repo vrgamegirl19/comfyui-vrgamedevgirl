@@ -32,21 +32,43 @@ export function mergeLyricFreeContract(description, contract) {
   const [singing, ...rest] = protect(contract).split(/(?<=[.!?])\s+/);
   const actor = singing.match(/^(.*?) sings\b/i)?.[1];
   if (!actor) return [description, contract];
+  const maskQuotes = value => value.replace(/<d>[\s\S]*?<\/d>|“[^”]*”|"[^"]*"/gi, match => ' '.repeat(match.length));
   const escaped = actor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const owned = new RegExp(`${escaped}\\s+sings(?:\\s+[a-z]+ly|\\s+with passion)?\\b`, 'i');
+  const tags = '(?:\\s*\\[[^\\]]+\\])*';
+  const suffix = `${tags}\\s+sings(?:\\s+[a-z]+ly|\\s+with passion)?\\b`;
+  const owned = new RegExp(`${escaped}${suffix}`, 'i');
+  const pronoun = new RegExp(`\\b(?:she|he|they)${suffix}`, 'i');
   const sentences = protect(description).split(/(?<=[.!?])\s+/);
   const requestedTime = singing.match(/ during (.+)\.$/)?.[1];
-  const index = sentences.findIndex(sentence => {
-    const existingTime = sentence.match(/ during (\d+(?:DECIMAL\d+)?s\s*[–—-]\s*\d+(?:DECIMAL\d+)?s)/)?.[1];
-    return owned.test(sentence) && (!requestedTime || !existingTime || existingTime === requestedTime);
-  });
+  let preceding = '';
+  let index = -1;
+  let cue = null;
+  for (let i = 0; i < sentences.length; i += 1) {
+    const visible = maskQuotes(sentences[i]);
+    const named = owned.exec(visible);
+    const inferred = pronoun.exec(visible);
+    const labels = new Set((preceding + visible.slice(0, inferred?.index || 0)).match(/<Subject\s+\d+>/gi) || []);
+    const match = named || (inferred && labels.size === 1 && labels.has(actor) ? inferred : null);
+    const existingTime = sentences[i].match(/ during (\d+(?:DECIMAL\d+)?s\s*[–—-]\s*\d+(?:DECIMAL\d+)?s)/)?.[1];
+    if (match && (!requestedTime || !existingTime || existingTime === requestedTime)) {
+      index = i;
+      cue = match;
+      break;
+    }
+    preceding += visible + ' ';
+  }
   if (index < 0) return [description, contract];
   const sync = singing.replace(/^.*? sings(?: with passion)?\s*/i, '').replace(/\.$/, '');
-  sentences[index] = sentences[index]
-    .replace(/\s+in sync with\s+(?:the\s+)?(?:audible\s+)?(?:vocals(?:\s+in)?\s*(?:<Audio 1>)?|<Audio 1>)/gi, '')
-    .replace(/\s+during\s+\d+(?:DECIMAL\d+)?s\s*[–—-]\s*\d+(?:DECIMAL\d+)?s/gi, '')
-    .replace(owned, match => `${match} ${sync}`);
-  return [sentences.join(' ').replace(/DECIMAL/g, '.'), rest.join(' ').replace(/DECIMAL/g, '.')];
+  const start = cue.index + cue[0].length;
+  let tail = sentences[index].slice(start);
+  // Replace only this cue's adjacent sync/timing, preserving other singers and action.
+  tail = tail.replace(/^(\s*(?:\[[^\]]+\]\s*)*)in sync with\s+(?:the\s+)?(?:audible\s+)?(?:vocals(?:\s+in)?\s*(?:<Audio 1>)?|<Audio 1>)/i, '$1');
+  tail = tail.replace(/^(\s*(?:\[[^\]]+\]\s*)*)during\s+\d+(?:DECIMAL\d+)?s\s*[–—-]\s*\d+(?:DECIMAL\d+)?s/i, '$1');
+  tail = tail.replace(/^\s+([.,;!?])/, '$1').replace(/^\s+/, ' ');
+  sentences[index] = sentences[index].slice(0, start) + ` ${sync}` + tail;
+  const canonical = singing.replace(/ sings with passion/i, ' sings').replace(/\s+/g, ' ').trim();
+  const kept = sentences.filter((sentence, i) => i === index || sentence.replace(/ sings with passion/i, ' sings').replace(/\s+/g, ' ').trim() !== canonical);
+  return [kept.join(' ').replace(/DECIMAL/g, '.'), rest.join(' ').replace(/DECIMAL/g, '.')];
 }
 
 export function cleanLyricFreeDescription(text, lyrics = [], options = {}) {
