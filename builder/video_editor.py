@@ -5,6 +5,7 @@ import base64
 from io import BytesIO
 
 from aiohttp import web
+from aiohttp.helpers import content_disposition_header
 from PIL import Image
 from server import PromptServer
 
@@ -38,6 +39,12 @@ def _ensure_video_editor_routes():
         if not is_file:
             return web.json_response({"ok": False, "error": "Video file was not found."}, status=404)
         response = web.FileResponse(video_path)
+        filename = os.path.basename(video_path)
+        if os.path.splitext(filename)[1].lower() in {".mp4", ".m4v"}:
+            # Windows MIME registrations can suggest .m4v for an MP4 preview.
+            response.content_type = "video/mp4"
+            filename = os.path.splitext(filename)[0] + ".mp4"
+        response.headers["Content-Disposition"] = content_disposition_header("inline", filename=filename)
         # The client versions this URL with the scene's video_cache_bust, which only
         # changes when the scene is re-rendered, so the same URL always means the
         # same bytes. Mark it immutable so the browser reuses a preloaded/played

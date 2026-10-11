@@ -19,9 +19,11 @@ import {
   waitForImages,
   whenBuilderSessionSavesIdle,
 } from "./comfy_api.mjs";
+import { openProjectErrorLog, secretValues, setErrorLogContext } from "./error_log.mjs";
 import { createExternalChangeSync } from "./external_changes.mjs";
 import { BUILDER_FONT_STACK, BUILDER_UI_VERSION } from "./constants.mjs";
 import {
+  copyTextToClipboard,
   makeButton,
   makeField,
   makeSettingsPanel,
@@ -214,6 +216,7 @@ export function openBuilder(node, options = {}) {
     builderLifecycle.resourceResizeObserver?.disconnect();
     window.removeEventListener("vrgdg:builder-toast", toastNotificationHandler);
     window.removeEventListener("vrgdg:builder-session-saved", videoModeSavedHandler);
+    builderLifecycle.disposeErrorLog?.();
     builderLifecycle.externalChangeSync?.dispose();
     builderLifecycle.sceneAudioSettings?.dispose();
     if (builderLifecycle.keydownHandler) document.removeEventListener("keydown", builderLifecycle.keydownHandler, true);
@@ -611,7 +614,7 @@ export function openBuilder(node, options = {}) {
     ernieRefImagePanel, ernieSendT2IPromptToEnhanceButton, ernieT2IPrompt, ernieTextGemmaModelSelect,
     ernieUseVisionReference, flfTransitionTypeField, flfTransitionTypeSelect, flowGptCard, fluxKleinCard,
     fluxKleinModePanel, gemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect, i2vNotesInput, i2vPrompt,
-    i2vPromptEnhancementNote, i2vReferenceNote, i2vTextGemmaModelSelect, imageModelChooserWrap,
+    i2vPromptEnhancementNote, i2vReferenceNote, i2vTextGemmaModelSelect, imageModelChooserWrap, imageModelSelect,
     krea2TwoPassCard, krea2TwoPassCreateT2IButton, krea2TwoPassGemmaModelSelect, krea2TwoPassMmprojSelect,
     krea2TwoPassModePanel, krea2TwoPassNotesInput, krea2TwoPassRefImageDrop, krea2TwoPassRefImageLoadButton,
     krea2TwoPassRefImagePanel, krea2TwoPassSendT2IPromptToEnhanceButton, krea2TwoPassT2IPrompt,
@@ -750,14 +753,14 @@ export function openBuilder(node, options = {}) {
     miniMaxStartFrameCharacterInfluence, miniMaxStartFrameCharacterInfluenceField,
     miniMaxStartFrameReferenceNote, miniMaxSteps, miniMaxSubTabs, miniMaxThreePassLoraPicker,
     miniMaxThreePassLoraSection, miniMaxThreePassLoraStrength, miniMaxThreePassRefImageSize,
-    miniMaxThreePassSettings, miniMaxTurboLoraField, miniMaxTurboLoraPicker, miniMaxTurboLoraStrength,
-    miniMaxTurboLoraStrengthField, miniMaxTurboNote, miniMaxTurboSection, miniMaxTwoPassLatentScale, miniMaxTwoPassLatentUpscalerPicker,
+    miniMaxThreePassSettings,
+    miniMaxTwoPassLatentScale, miniMaxTwoPassLatentUpscalerPicker,
     miniMaxTwoPassLoraLayout, miniMaxTwoPassLoraPicker, miniMaxTwoPassLoraPreset,
     miniMaxTwoPassLoraPresetButtons, miniMaxTwoPassLoraPresetField, miniMaxTwoPassLoraSection,
     miniMaxTwoPassLoraStatus, miniMaxTwoPassLoraStrength, miniMaxTwoPassOutputCrf, miniMaxTwoPassRefImageSize,
     miniMaxTwoPassResizeMethod, miniMaxTwoPassSettings, miniMaxTwoPassTeCacheDepth, miniMaxTwoPassTeDevice,
     miniMaxTwoPassTeEnd, miniMaxTwoPassTeMcs, miniMaxTwoPassTeProcessingControl, miniMaxTwoPassTeStart,
-    miniMaxTwoPassUseFastVaeDecode, miniMaxUseCurrentSceneVideoButton, miniMaxUseLoras, miniMaxUseTurboLora,
+    miniMaxTwoPassUseFastVaeDecode, miniMaxUseCurrentSceneVideoButton, miniMaxUseLoras,
     miniMaxVideoReferenceRows, miniMaxVideoVaePicker, miniMaxWarmupFrames, saveMiniMaxPromptButton,
     twoPassControls, useSceneMiniMaxH3Settings, useSceneMiniMaxH3SettingsNote,
   } = buildMiniMaxPanel({
@@ -783,13 +786,6 @@ export function openBuilder(node, options = {}) {
           makeField("Latent upscaler", i2vUpscalePicker.wrapper),
           makeField("Audio VAE", i2vAudioVaePicker.wrapper),
           i2vDiffusionLoaderAdvanced,
-        ]),
-        makeSettingsSection("Non-Vision LLM Models", [
-          makeField("Non-Vision text LLM model", i2vTextGemmaModelSelect),
-        ]),
-        makeSettingsSection("Vision LLM Models", [
-          makeField("Vision LLM model", i2vGemmaModelSelect),
-          makeField("Vision mmproj", i2vMmprojSelect),
         ]),
         ltxMsrRequiredPanel,
         ltxIngredientsRequiredPanel,
@@ -1365,8 +1361,8 @@ export function openBuilder(node, options = {}) {
     miniMaxSpeakerAssignmentNote, miniMaxStartFrameCharacterInfluence,
     miniMaxStartFrameCharacterInfluenceField, miniMaxStartFrameReferenceNote, miniMaxSteps, miniMaxSubTabs,
     miniMaxThreePassLoraPicker, miniMaxThreePassLoraSection, miniMaxThreePassLoraStrength,
-    miniMaxThreePassRefImageSize, miniMaxThreePassSettings, miniMaxTurboLoraField, miniMaxTurboLoraPicker,
-    miniMaxTurboLoraStrength, miniMaxTurboLoraStrengthField, miniMaxTurboNote, miniMaxTurboSection,
+    miniMaxThreePassRefImageSize, miniMaxThreePassSettings,
+
     miniMaxTwoPassLatentScale,
     miniMaxTwoPassLatentUpscalerPicker, miniMaxTwoPassLoraLayout, miniMaxTwoPassLoraPicker,
     miniMaxTwoPassLoraPreset, miniMaxTwoPassLoraPresetButtons, miniMaxTwoPassLoraPresetField,
@@ -1374,7 +1370,7 @@ export function openBuilder(node, options = {}) {
     miniMaxTwoPassRefImageSize, miniMaxTwoPassResizeMethod, miniMaxTwoPassSettings,
     miniMaxTwoPassTeCacheDepth, miniMaxTwoPassTeDevice, miniMaxTwoPassTeEnd, miniMaxTwoPassTeMcs,
     miniMaxTwoPassTeProcessingControl, miniMaxTwoPassTeStart, miniMaxTwoPassUseFastVaeDecode, miniMaxUseLoras,
-    miniMaxUseTurboLora, miniMaxVideoReferenceRows, miniMaxVideoReferencesButton, miniMaxVideoVaePicker,
+    miniMaxVideoReferenceRows, miniMaxVideoReferencesButton, miniMaxVideoVaePicker,
     miniMaxWarmupFrames, playSceneAudioFrom, projectInput, pushHistory, savedMiniMaxPrompts,
     saveMiniMaxPromptButton, selectedSegmentImagePath, state, syncInspector, timelinePromptSave,
     twoPassControls, useSceneMiniMaxH3Settings, wizardVideoSettings,
@@ -1712,7 +1708,7 @@ export function openBuilder(node, options = {}) {
     i2vAdvancedNodeSettingsSection, i2vPass1Bypass, i2vPass1NodePanel, i2vPass1SamplerSelect,
     i2vPass1SigmasInput, i2vPass1StrengthInput, i2vPass1StrengthSlider, i2vPass2Bypass, i2vPass2NodePanel,
     i2vPass2SamplerSelect, i2vPass2SigmasInput, i2vPass2StrengthInput, i2vPass2StrengthSlider,
-    imageTriggerInput, krea2TwoPassAspectRatio, krea2TwoPassBatchSize, krea2TwoPassCard, krea2TwoPassCfg,
+    imageModelSelect, imageTriggerInput, krea2TwoPassAspectRatio, krea2TwoPassBatchSize, krea2TwoPassCard, krea2TwoPassCfg,
     krea2TwoPassClipPicker, krea2TwoPassCreateButton, krea2TwoPassCreativity, krea2TwoPassCreativityInput,
     krea2TwoPassI2IPanel, krea2TwoPassI2IPath, krea2TwoPassImageTriggerInput, krea2TwoPassLoraCount,
     krea2TwoPassLoraPanel, krea2TwoPassLoraRows, krea2TwoPassLoraSlots, krea2TwoPassModePanel,
@@ -2389,7 +2385,7 @@ export function openBuilder(node, options = {}) {
 
   const { openGemmaRunnerModal } = createGemmaRunner({
     autoSaveSessionQuiet, createProgressWindow, saveSession, state, syncBuilderLlmModelSelectsFromRunner,
-    t2iTextGemmaModelSelect, textGemmaRunnerPayload, updatePromptRunnerButtonLabels,
+    mmprojSelect, t2iTextGemmaModelSelect, textGemmaRunnerPayload, updatePromptRunnerButtonLabels,
   });
 
   const {
@@ -2537,7 +2533,7 @@ export function openBuilder(node, options = {}) {
     loadVisionReferenceFile, ltxIdLoraPicker, ltxIngredientsLoraPicker, ltxMsrLoraPicker,
     miniMaxAdvancedLatentUpscalerPicker, miniMaxAudioVaePicker, miniMaxClipPicker,
     miniMaxDiffusionModelPicker, miniMaxGemmaModelSelect, miniMaxLoraSlots, miniMaxMmprojSelect,
-    miniMaxTextGemmaModelSelect, miniMaxThreePassLoraPicker, miniMaxTurboLoraPicker,
+    miniMaxTextGemmaModelSelect, miniMaxThreePassLoraPicker,
     miniMaxTwoPassLatentUpscalerPicker, miniMaxTwoPassLoraPicker, miniMaxVideoVaePicker, mmprojSelect,
     nbGemmaModelSelect, nbMmprojSelect, openPromptCreatorPanel, pushHistory, renderList,
     saveI2VVideoSettingsFromPanel, saveMiniMaxH3SettingsFromPanel, setVisionReferenceSource, state,
@@ -2688,6 +2684,21 @@ export function openBuilder(node, options = {}) {
       }
     }
   });
+
+  builderLifecycle.disposeErrorLog = setErrorLogContext(() => {
+    const segment = activeSegment();
+    const segments = allEditableSegments();
+    return {
+      project_folder: activeProjectFolderForSave(),
+      scene: segment ? segments.indexOf(segment) + 1 : undefined,
+      mode: `${state.projectVideoEngine || ""} - ${currentVideoMode()}`,
+      secrets: [...secretValues(state), ...[...document.querySelectorAll('input[type="password"]')].map(input => input.value).filter(Boolean)],
+    };
+  });
+  const errorLogButton = makeButton("View Error Log");
+  errorLogButton.onclick = () => openProjectErrorLog(activeProjectFolderForSave(), { makeButton, copyTextToClipboard });
+  errorLogButton.style.cssText = "width:100%;text-align:left;justify-content:flex-start;";
+  menuDropdown.append(errorLogButton);
 
   const toastNotificationHandler = (event) => {
     const message = String(event?.detail?.message || "");
@@ -3050,14 +3061,14 @@ export function openBuilder(node, options = {}) {
     miniMaxModeButtons, miniMaxPass2Prompt, miniMaxPassButtons, miniMaxPrompt, miniMaxSageAttention,
     miniMaxSamplerName, miniMaxSceneImageUse, miniMaxScheduler, miniMaxSeed,
     miniMaxStartFrameCharacterInfluence, miniMaxSteps, miniMaxThreePassLoraPicker,
-    miniMaxThreePassLoraStrength, miniMaxThreePassRefImageSize, miniMaxTurboLoraPicker,
-    miniMaxTurboLoraStrength, miniMaxTwoPassLatentScale,
+    miniMaxThreePassLoraStrength, miniMaxThreePassRefImageSize,
+    miniMaxTwoPassLatentScale,
     miniMaxTwoPassLatentUpscalerPicker, miniMaxTwoPassLoraPicker, miniMaxTwoPassLoraPreset,
     miniMaxTwoPassLoraPresetButtons, miniMaxTwoPassLoraStatus, miniMaxTwoPassLoraStrength,
     miniMaxTwoPassOutputCrf, miniMaxTwoPassRefImageSize, miniMaxTwoPassResizeMethod,
     miniMaxTwoPassTeCacheDepth, miniMaxTwoPassTeDevice, miniMaxTwoPassTeEnd, miniMaxTwoPassTeMcs,
     miniMaxTwoPassTeProcessingControl, miniMaxTwoPassTeStart, miniMaxTwoPassUseFastVaeDecode,
-    miniMaxUseCurrentSceneVideoButton, miniMaxUseLoras, miniMaxUseTurboLora, miniMaxVideoReferenceRows,
+    miniMaxUseCurrentSceneVideoButton, miniMaxUseLoras, miniMaxVideoReferenceRows,
     miniMaxVideoVaePicker, miniMaxWarmupFrames, pushHistory, renderMiniMaxSpeakerAssignmentPanel,
     requireActiveSegment, saveMiniMaxH3SettingsFromPanel, saveMiniMaxSceneInputsFromPanel, segmentImageSource,
     segmentTrack, selectedPerformerSubjectsForSegment, setMiniMaxH3ModeForSegment,

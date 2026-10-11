@@ -11,6 +11,7 @@ from ..minimax import latent_takes
 from ..minimax.latent_manager import SceneLatentManager
 from ..post_process.lut_video_tools import register_lut_routes
 from ..post_process.face_fix import register_face_fix_routes
+from .error_log_routes import register_error_log_routes
 
 from .ui_profiles import (
     UiProfileExistsError, delete_ui_profile, get_last_ui_profile_name, list_ui_profiles, load_ui_profile, save_ui_profile,
@@ -55,6 +56,7 @@ def _ensure_music_builder_routes():
         return
     register_lut_routes(server_instance)
     register_face_fix_routes(server_instance)
+    register_error_log_routes(server_instance)
 
     @server_instance.routes.post("/vrgdg/music_builder/craft_scene_dialogue")
     async def vrgdg_craft_scene_dialogue(request: web.Request) -> web.Response:

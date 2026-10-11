@@ -175,23 +175,6 @@ export function buildMiniMaxPanel({
   const miniMaxNoGgufNote = document.createElement("div");
   miniMaxNoGgufNote.textContent = "MiniMax H3 currently uses the standard diffusion-model loader. GGUF is not enabled yet.";
   miniMaxNoGgufNote.style.cssText = "font-size:11px;color:#fcd34d;line-height:1.4;";
-  const miniMaxUseTurboLora = makeCheckbox("Use legacy MiniMax-H3 Turbo LoRA", false);
-  miniMaxUseTurboLora.wrapper.title = "Applies the selected legacy Turbo LoRA through ComfyUI's built-in LoRA loader. It does not require a separate Turbo custom-node repository.";
-  const miniMaxTurboLoraPicker = makeSearchableLoraPicker(DEFAULT_MINIMAX_H3_SETTINGS.turbo_lora_name);
-  const miniMaxTurboLoraField = makeField("Turbo LoRA", miniMaxTurboLoraPicker.wrapper);
-  const miniMaxTurboLoraStrength = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.turbo_lora_strength), "number");
-  miniMaxTurboLoraStrength.min = "-10";
-  miniMaxTurboLoraStrength.max = "10";
-  miniMaxTurboLoraStrength.step = "0.01";
-  const miniMaxTurboLoraStrengthField = makeField("Turbo LoRA strength", miniMaxTurboLoraStrength);
-  const miniMaxTurboNote = document.createElement("div");
-  miniMaxTurboNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
-  const miniMaxTurboSection = makeSettingsSection("Turbo acceleration", [
-    miniMaxUseTurboLora.wrapper,
-    miniMaxTurboLoraField,
-    miniMaxTurboLoraStrengthField,
-    miniMaxTurboNote,
-  ]);
   const miniMaxUseLoras = makeCheckbox("Use MiniMax LoRAs?", false);
   const miniMaxLoraCount = makeInput("0", "number");
   miniMaxLoraCount.min = "0";
@@ -745,13 +728,6 @@ export function buildMiniMaxPanel({
         makeField("Text encoder / CLIP", miniMaxClipPicker.wrapper),
         makeField("Video VAE", miniMaxVideoVaePicker.wrapper),
         makeField("Audio VAE", miniMaxAudioVaePicker.wrapper),
-        makeSettingsSection("Non-Vision LLM Models", [
-          makeField("Non-Vision text LLM model", miniMaxTextGemmaModelSelect),
-        ]),
-        makeSettingsSection("Vision LLM Models", [
-          makeField("Vision LLM model", miniMaxGemmaModelSelect),
-          makeField("Vision mmproj", miniMaxMmprojSelect),
-        ]),
       ]),
     },
     {
@@ -769,7 +745,6 @@ export function buildMiniMaxPanel({
         miniMaxLoraSection,
         miniMaxTwoPassLoraSection,
         miniMaxThreePassLoraSection,
-        miniMaxTurboSection,
         ...Object.values(miniMaxModePanels),
         makeSettingsSection("Render Settings", [miniMaxRenderSettingsGrid]),
         miniMaxAdvancedSettings,
@@ -826,14 +801,14 @@ export function buildMiniMaxPanel({
     miniMaxStartFrameCharacterInfluence, miniMaxStartFrameCharacterInfluenceField,
     miniMaxStartFrameReferenceNote, miniMaxSteps, miniMaxSubTabs, miniMaxThreePassLoraPicker,
     miniMaxThreePassLoraSection, miniMaxThreePassLoraStrength, miniMaxThreePassRefImageSize,
-    miniMaxThreePassSettings, miniMaxTurboLoraField, miniMaxTurboLoraPicker, miniMaxTurboLoraStrength,
-    miniMaxTurboLoraStrengthField, miniMaxTurboNote, miniMaxTurboSection, miniMaxTwoPassLatentScale, miniMaxTwoPassLatentUpscalerPicker,
+    miniMaxThreePassSettings,
+    miniMaxTwoPassLatentScale, miniMaxTwoPassLatentUpscalerPicker,
     miniMaxTwoPassLoraLayout, miniMaxTwoPassLoraPicker, miniMaxTwoPassLoraPreset,
     miniMaxTwoPassLoraPresetButtons, miniMaxTwoPassLoraPresetField, miniMaxTwoPassLoraSection,
     miniMaxTwoPassLoraStatus, miniMaxTwoPassLoraStrength, miniMaxTwoPassOutputCrf, miniMaxTwoPassRefImageSize,
     miniMaxTwoPassResizeMethod, miniMaxTwoPassSettings, miniMaxTwoPassTeCacheDepth, miniMaxTwoPassTeDevice,
     miniMaxTwoPassTeEnd, miniMaxTwoPassTeMcs, miniMaxTwoPassTeProcessingControl, miniMaxTwoPassTeStart,
-    miniMaxTwoPassUseFastVaeDecode, miniMaxUseCurrentSceneVideoButton, miniMaxUseLoras, miniMaxUseTurboLora,
+    miniMaxTwoPassUseFastVaeDecode, miniMaxUseCurrentSceneVideoButton, miniMaxUseLoras,
     miniMaxVideoReferenceRows, miniMaxVideoVaePicker, miniMaxWarmupFrames, saveMiniMaxPromptButton,
     miniMaxVideoProfileControls, twoPassControls, useSceneMiniMaxH3Settings, useSceneMiniMaxH3SettingsNote,
   };
