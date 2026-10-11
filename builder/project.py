@@ -1,5 +1,6 @@
 """Video Builder projects: create, save, load, export and import, sessions, model defaults, and per-scene file renumbering."""
 
+import hashlib
 import json
 import os
 import re
@@ -1129,12 +1130,18 @@ def _save_reference_descriptions(project_folder, session):
     manifest.setdefault("locations", [])
     for manifest_key, folder in (("subjects", subject_dir), ("locations", location_dir)):
         items = refs.get(manifest_key) if isinstance(refs.get(manifest_key), list) else []
+        # Reserve space for the extension and atomic_write_text's sibling temporary file.
+        max_stem_length = max(16, min(120, 240 - len(folder) - 19))
         for index, item in enumerate(items, start=1):
             if not isinstance(item, dict):
                 continue
             name = str(item.get("name") or f"{manifest_key[:-1].title()} {index}").strip()
             description = str(item.get("description") or "").strip()
-            atomic_write_text(os.path.join(folder, f"{_safe_project_name(name)}.txt"), description + ("\n" if description else ""))
+            stem = _safe_project_name(name)
+            if len(stem) > max_stem_length:
+                suffix = hashlib.sha256(name.encode("utf-8")).hexdigest()[:10]
+                stem = f"{stem[:max_stem_length - 11].rstrip(' ._')}_{suffix}"
+            atomic_write_text(os.path.join(folder, f"{stem}.txt"), description + ("\n" if description else ""))
     manifest_path = os.path.join(root, "reference_descriptions.json")
     atomic_write_json(manifest_path, manifest)
     return manifest_path
