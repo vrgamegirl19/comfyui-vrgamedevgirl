@@ -285,6 +285,7 @@ The `builder` package contains the backend business logic and HTTP API powering 
 - **Purpose**: Static asset delivery endpoints for high-throughput video/image timeline streaming.
 - **Key Endpoints**:
   - `GET /vrgdg/video_editor/video?path=<path>`: Streams video files with `Cache-Control: public, max-age=31536000, immutable` headers keyed to scene cache busters to enable instant browser timeline playback without re-fetching.
+    - Preview downloads include an inline Content-Disposition with the actual basename. MP4/M4V clips explicitly use `video/mp4` and an `.mp4` download filename; other containers retain their own extensions. FileResponse preserves range playback. `makeEditorVideoUrl` adds stable `v=2` to bypass cached responses with older MIME/filename headers.
   - `GET /vrgdg/video_editor/image?path=<path>`: Serves image files and thumbnails.
 
 ---

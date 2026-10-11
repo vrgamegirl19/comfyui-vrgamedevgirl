@@ -200,7 +200,8 @@ export function makeEditorVideoUrl(path, bust) {
   // scene is re-rendered) lets the browser reuse a cached fetch of the same clip
   // across preload/playback instead of re-downloading it from disk on every cut.
   const version = bust === undefined || bust === null || bust === "" ? Date.now() : bust;
-  return `/vrgdg/video_editor/video?path=${encodeURIComponent(path)}&rand=${version}`;
+  // Invalidate older immutable responses that lacked the MP4 download headers.
+  return `/vrgdg/video_editor/video?path=${encodeURIComponent(path)}&rand=${version}&v=2`;
 }
 
 function extractImagesFromHistory(historyPayload, promptId) {
