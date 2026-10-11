@@ -1,3 +1,5 @@
+import { wireSelectedDefaultActions } from "./defaults_actions.mjs";
+import { wireDefaultPresets } from "./defaults_presets.mjs";
 import { createStoryboardProgressWindow, createToast, makeButton, setButtonDisabled, setButtonVariant } from "./controls.mjs";
 import {
   FACIAL_PERFORMANCE_PRESETS,
@@ -265,6 +267,10 @@ export function openStoryboardBuilder(payload = {}) {
   });
   header.append(titleBlock, steps, headerActions);
 
+  const defaultsControls = buildSceneDefaultsPanel({
+    facialPerformancePresets, focusedSection, imageAestheticPresets, imageShotFlowPresets,
+    performanceStylePresets, state, usesFilmPlanningProfile,
+  });
   const {
     cameraFlowApply, cameraFlowControls, cameraFlowInfo, cameraFlowReplace, cameraFlowSelect,
     cameraSpeedControls, cameraSpeedHint, cameraSpeedInfo, cameraSpeedInput, cameraSpeedValue,
@@ -283,10 +289,8 @@ export function openStoryboardBuilder(payload = {}) {
     temporalIntensityInput, temporalIntensityValue, temporalProtectedCustomControls,
     temporalProtectedCustomInput, temporalProtectedSelect, videoStyleApply, videoStyleControls,
     videoStyleCustomControls, videoStyleCustomInput, videoStyleInfo, videoStyleReplace, videoStyleSelect,
-  } = buildSceneDefaultsPanel({
-    facialPerformancePresets, focusedSection, imageAestheticPresets, imageShotFlowPresets,
-    performanceStylePresets, state, usesFilmPlanningProfile,
-  });
+  } = defaultsControls;
+  let refreshSelectedDefaultActions = () => {};
   sceneDefaultsPanel.classList.add("vrgdg-storyboard-panel");
 
   const {
@@ -471,6 +475,7 @@ export function openStoryboardBuilder(payload = {}) {
   }
 
   function refreshActionButtons() {
+    refreshSelectedDefaultActions();
     const selectedScenes = getSelectedScenes();
     // Red marks a story step that already ran, or any story step once the project has rendered scenes.
     const hasRenderedScenes = state.renderedSceneCount > 0;
@@ -630,6 +635,14 @@ export function openStoryboardBuilder(payload = {}) {
     temporalProtectedSelect, userStoryArcInput, videoStyleApply, videoStyleCustomInput, videoStyleReplace,
     videoStyleSelect,
   });
+  wireDefaultPresets({ toolbar: defaultsControls.defaultsPresetsToolbar, controls: defaultsControls,
+    state, film: usesFilmPlanningProfile, postJson, createToast, refreshCameraFlowInfo, notifyStoryboardDefaultsChanged });
+  refreshSelectedDefaultActions = wireSelectedDefaultActions({
+    actions: defaultsControls.selectedDefaultActions,
+    handlers: { applyCameraFlow, applyImageShotFlow, applyImageAesthetic, applyVideoStyle, applyPerformanceStyle, applyFacialPerformance },
+    state,
+  });
+  refreshSelectedDefaultActions();
   // Agent API / MCP scene-card edits merged by the Video Builder also appear in this window.
   const externalSync = createStoryboardExternalSync({
     state, postJson, normalizeScene, scenesFromBuilderPayload, getBuilderScenes: payload.getBuilderScenes, renderTable,

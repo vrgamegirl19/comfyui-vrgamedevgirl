@@ -16,6 +16,10 @@ from .ui_profiles import (
     UiProfileExistsError, delete_ui_profile, get_last_ui_profile_name, list_ui_profiles, load_ui_profile, save_ui_profile,
     load_default_ui_layout, save_default_ui_layout, set_last_ui_profile, update_ui_profile_layout,
 )
+from .scene_defaults_presets import (
+    SceneDefaultsPresetExistsError, list_scene_defaults_presets, load_scene_defaults_preset,
+    save_scene_defaults_preset,
+)
 from .video_profiles import (
     ProfileExistsError, delete_video_profile, get_last_video_profile_name, list_video_profiles, load_video_profile,
     save_video_profile, set_last_video_profile,
@@ -916,6 +920,40 @@ def _ensure_music_builder_routes():
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/list_scene_defaults_presets")
+    async def vrgdg_list_scene_defaults_presets(request):
+        """List global named Scene Defaults presets shared by projects."""
+        try:
+            presets = await asyncio.to_thread(list_scene_defaults_presets)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, "presets": presets})
+
+    @server_instance.routes.post("/vrgdg/music_builder/load_scene_defaults_preset")
+    async def vrgdg_load_scene_defaults_preset(request):
+        """Load a named defaults snapshot; does not mutate a project."""
+        try:
+            payload = await request.json()
+            preset = await asyncio.to_thread(load_scene_defaults_preset, payload.get("name"))
+        except FileNotFoundError:
+            return web.json_response({"ok": False, "error": "Scene Defaults preset was not found."}, status=404)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, "preset": preset})
+
+    @server_instance.routes.post("/vrgdg/music_builder/save_scene_defaults_preset")
+    async def vrgdg_save_scene_defaults_preset(request):
+        """Save defaults atomically; replacing a preset requires overwrite=true."""
+        try:
+            payload = await request.json()
+            preset = await asyncio.to_thread(save_scene_defaults_preset, payload.get("name"),
+                                             payload.get("settings"), payload.get("overwrite") is True)
+        except SceneDefaultsPresetExistsError as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=409)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, "preset": preset})
 
     @server_instance.routes.post("/vrgdg/music_builder/list_video_profiles")
     async def vrgdg_music_builder_list_video_profiles(request):

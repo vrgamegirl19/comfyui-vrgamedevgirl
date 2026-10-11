@@ -163,6 +163,14 @@ export function storyboardMiniMaxVideoStylePreset(value = "") {
   return MINIMAX_VIDEO_STYLE_PRESETS.find((item) => item.value === value) || MINIMAX_VIDEO_STYLE_PRESETS[0];
 }
 
+export function storyboardSceneVideoStyle(scene = {}, state = {}) {
+  const value = String(scene.video_style || state.videoStyle || "");
+  const custom = value === "custom"
+    ? String(scene.video_style ? scene.video_style_custom || "" : state.videoStyleCustom || "").trim()
+    : "";
+  return { value, custom };
+}
+
 export function storyboardMiniMaxVideoStyleVerbiage(value = "", custom = "") {
   const preset = storyboardMiniMaxVideoStylePreset(value);
   const direction = preset.value === "custom" ? String(custom || "").trim() : String(preset.prompt_guidance || "").trim();

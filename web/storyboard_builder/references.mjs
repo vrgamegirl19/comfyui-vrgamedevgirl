@@ -1,3 +1,4 @@
+import { sceneDefaultTargets } from "./defaults_actions.mjs";
 import { assignLabels, composeRefmodItems, isRefmodCard, refmodCardFields } from "../music_video_builder/refmod_labels.mjs";
 import { postJson } from "./api.mjs";
 import { createToast, escapeHtml, makeButton, makeInput, makeTextarea, tagsHtml } from "./controls.mjs";
@@ -433,7 +434,7 @@ export function createStoryboardReferences({ renderTable, state }) {
     return ref;
   }
 
-  function applyVideoStyle({ overwrite = false } = {}) {
+  function applyVideoStyle({ overwrite = false, selectedOnly = false } = {}) {
     if (state.mode !== "image_to_video_prep") {
       createToast("Video style is only available in Video Prep.");
       return;
@@ -447,8 +448,10 @@ export function createStoryboardReferences({ renderTable, state }) {
       createToast("Type the exact custom style wording first.");
       return;
     }
+    const targets = sceneDefaultTargets(state, selectedOnly, createToast);
+    if (!targets) return;
     let changed = 0;
-    state.scenes.forEach((scene) => {
+    targets.forEach(({ scene }) => {
       if (!storyboardSceneSupportsVideoStyle(scene)) return;
       if (!overwrite && String(scene.video_style || "").trim()) return;
       scene.video_style = value;
