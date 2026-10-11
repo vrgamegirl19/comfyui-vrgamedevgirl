@@ -25,6 +25,7 @@ from .story_mode import (
     normalize_story_book,
     parse_story_book_text,
     split_paragraphs,
+    story_arc_to_story_text,
     story_book_to_text,
     sync_story_settings,
 )
@@ -280,6 +281,19 @@ def split_pasted_story(payload):
     if book["premise"] and not layer.get("overall_story_idea"):
         fields["overall_story_idea"] = book["premise"]
     return {"story_layer": fields, "story_book": book, **_runner_fields(run_info)}
+
+
+def convert_story_arc(payload):
+    """Move an older project to Story Mode: its song-section story arc becomes the story book.
+
+    Section headings and scene prefixes are removed, then the text is split into chapters like a pasted story
+    (every word kept). The old arc stays saved in ``user_story_arc``.
+    """
+    layer = _layer(payload)
+    text = story_arc_to_story_text(layer.get("user_story_arc") or "")
+    if not text:
+        raise ValueError("This project has no story arc to convert. Write a new story instead.")
+    return split_pasted_story({**payload, "text": text})
 
 
 def scan_story_cast(payload):

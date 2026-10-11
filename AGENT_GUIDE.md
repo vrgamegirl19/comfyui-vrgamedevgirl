@@ -501,6 +501,13 @@ The `storyboard` package provides script breakdown, shot planning, and narrative
 #### [storyboard/scene_helpers.py](storyboard/scene_helpers.py)
 - **Purpose**: Math and timing utilities for calculating scene lengths, frame offsets, and shot classifications.
 
+#### Story Mode (`video_type: "story"`)
+Design and stages: [new_builder.md](new_builder.md). A story is a book of chapters (one general setting each, e.g. Home), split into acts (one event, a run of scenes), and every scene stands at one spot inside the setting (Home - Kitchen). Lyrics set timing, mood and emotion only; they are never sent to the location steps.
+- **Data** (inside `builder_story_layer`, never a new top-level key): `story_flow_version` (2), `story_book`, `story_book_text`, `story_settings`, `story_acts`, `story_scene_plan`, `story_spot_min_scenes`. `storyboard/story_mode.py` normalizes them (twin `web/music_video_builder/story_mode_data.mjs`, cases `tests/story_mode_cases.json`); `_normalize_story_layer`, `normalizeBuilderStoryLayer` and the Storyboard's `normalizeStoryLayer` keep them only when present. Location cards built from the story carry `story_setting_id` and `story_act_ids`.
+- **Steps** (`storyboard/story_book.py`, `story_plan.py`, `story_locations.py`, prompts in `llm/prompts/story_mode.py`): `book`, `split` (pasted story, every word kept), `convert` (an older story arc), `chapter`, `cast`, `acts`, `plan`, `locations`. UI route `POST /vrgdg/storyboard/story_mode/{action}`; Agent API `POST /projects/{pid}/story/{step}` (`agent_api/orchestrator/story_mode_orchestrator.py`). Each returns the story layer fields to save. Code repairs every LLM reply (`storyboard/story_acts.py`, JS twin `story_acts_data.mjs`): acts cover the timeline in order, timed notes stay in one act, spots keep `story_spot_min_scenes`, user notes win.
+- **Performance**: `normalizeVideoType` returns `singing` for Story Mode, so render, audio and prompt code treat it as Singing; `normalizeProjectVideoType` keeps `story` where the project type is saved. In Story Mode a scene's `performance_mode` (singing or speaking) is honoured by `scenePerformanceForSegment` (`prompt_text.mjs`) and the Python twins; the plan writes it with `lyric_no_lip_sync` for story-only and instrumental scenes.
+- **UI**: `web/music_video_builder/story_builder.mjs` (tabs Song, Cast, Story, Acts, Scenes, Places, Beats & Prompts; progress rules in `story_builder_data.mjs`). The toolbar's Storyboard button opens it in Story Mode. Cast and Places host the Reference Builder through `openFluxReferenceBuilderModal({ host })`. Timeline scenes show a chapter stripe; the wizard's References and Story steps open the Story Builder.
+
 ---
 
 ### Prompt Creator Subsystem (`prompt_creator/`)

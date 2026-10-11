@@ -358,6 +358,19 @@ export function createStoryBuilder({
         }
       };
       own.append(pasted, row(split));
+      if (current.user_story_arc && !normalizeStoryBook(current.story_book).chapters.length) {
+        const convert = makeButton("Convert My Old Story Arc", "primary");
+        convert.title = "Turn this project's song-section story arc into chapters. The words are kept; the old arc stays saved.";
+        convert.disabled = Boolean(blocked);
+        convert.onclick = async () => {
+          const data = await runStep("convert", {}, "Converting the story arc");
+          if (data?.story_layer) {
+            await saveLayer(data.story_layer, "story builder story arc converted");
+            show("story");
+          }
+        };
+        own.append(el("div", "font-size:12px;color:#a5f3fc;", "This project already has a story arc from before Story Mode."), row(convert));
+      }
 
       const book = card("The story", "Edit freely. Keep 'Chapter N: title' and 'Setting: name' lines; every chapter happens in one general setting.");
       const editor = textarea(current.story_book_text, "Your story appears here.", 320);

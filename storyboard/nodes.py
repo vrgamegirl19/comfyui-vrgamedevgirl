@@ -13,7 +13,7 @@ from .persistence import (
     _save_storyboard,
 )
 from .scene_prompts import _build_storyboard_image_prompt, _build_storyboard_video_prompt
-from .story_book import draft_story_book, rewrite_story_chapter, scan_story_cast, split_pasted_story
+from .story_book import convert_story_arc, draft_story_book, rewrite_story_chapter, scan_story_cast, split_pasted_story
 from .story_locations import build_story_locations
 from .story_plan import build_story_acts, build_story_scene_plan
 from .story_layer import (
@@ -31,6 +31,7 @@ STORY_MODE_ACTIONS = {
     "book": draft_story_book,
     "chapter": rewrite_story_chapter,
     "split": split_pasted_story,
+    "convert": convert_story_arc,
     "cast": scan_story_cast,
     "acts": build_story_acts,
     "plan": build_story_scene_plan,

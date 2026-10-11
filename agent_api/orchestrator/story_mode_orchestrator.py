@@ -34,7 +34,7 @@ from .storyboard_orchestrator import (
     sync_storyboard_files,
 )
 
-STORY_MODE_STEPS = ("book", "chapter", "split", "cast", "acts", "plan", "locations")
+STORY_MODE_STEPS = ("book", "chapter", "split", "convert", "cast", "acts", "plan", "locations")
 # Story Mode fields an agent may send to PUT /story/settings. Each is checked before it is saved.
 STORY_MODE_EDIT_KEYS = ("story_book_text", "story_settings", "story_acts", "story_scene_plan", "story_spot_min_scenes")
 
@@ -140,6 +140,21 @@ def split_story(project_id: str, params: Optional[Dict[str, Any]] = None) -> Dic
     request = _request(session, params, cards, text=params["text"], title=params.get("title") or "")
     try:
         result = book_funcs.split_pasted_story(request)
+    except ValueError as error:
+        raise ValidationError(str(error)) from error
+    saved = _save_fields(project_id, result["story_layer"])
+    return {"story_book": result["story_book"], "story_book_text": result["story_layer"]["story_book_text"],
+            "story_settings": result["story_layer"]["story_settings"], "model": result.get("used_model"), **saved}
+
+
+def convert_story_arc(project_id: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Turn the project's old song-section story arc into a Story Mode book and save it."""
+    params = dict(params or {})
+    _folder, session = _get_active_session_and_folder(project_id)
+    cards = scene_cards(session)
+    request = _request(session, params, cards)
+    try:
+        result = book_funcs.convert_story_arc(request)
     except ValueError as error:
         raise ValidationError(str(error)) from error
     saved = _save_fields(project_id, result["story_layer"])
@@ -286,6 +301,11 @@ def run_story_split_job(job: Job, manager: JobManager) -> Dict[str, Any]:
     return split_story(job.project_id, job.params)
 
 
+def run_story_convert_job(job: Job, manager: JobManager) -> Dict[str, Any]:
+    manager.update_progress(job.id, 10.0, "story_convert", message="Converting the story arc into a story book...")
+    return convert_story_arc(job.project_id, job.params)
+
+
 def run_story_cast_job(job: Job, manager: JobManager) -> Dict[str, Any]:
     manager.update_progress(job.id, 10.0, "story_cast", message="Finding story characters without a card...")
     return scan_story_cast(job.project_id, job.params)
@@ -313,6 +333,7 @@ STORY_MODE_JOB_TYPES = {
     "book": "storyboard.story_book",
     "chapter": "storyboard.story_chapter",
     "split": "storyboard.story_split",
+    "convert": "storyboard.story_convert",
     "cast": "storyboard.story_cast",
     "acts": "storyboard.story_acts",
     "plan": "storyboard.story_plan",
@@ -325,6 +346,7 @@ def register_story_mode_handlers(manager: Optional[JobManager] = None) -> None:
     manager.register_handler("storyboard.story_book", run_story_book_job)
     manager.register_handler("storyboard.story_chapter", run_story_chapter_job)
     manager.register_handler("storyboard.story_split", run_story_split_job)
+    manager.register_handler("storyboard.story_convert", run_story_convert_job)
     manager.register_handler("storyboard.story_cast", run_story_cast_job)
     manager.register_handler("storyboard.story_acts", run_story_acts_job)
     manager.register_handler("storyboard.story_plan", run_story_plan_job)

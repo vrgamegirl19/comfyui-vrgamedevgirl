@@ -436,3 +436,42 @@ def fill_scene_cast(subject_scene_map, acts, subject_ids):
             result[scene_id] = list(cast)
             changed.append(scene_id)
     return result, changed
+
+
+# A heading is a bracketed tag ("[Chorus 2]") or a section word followed by a colon ("Verse 1:", "Act 2:").
+_ARC_HEADING = re.compile(
+    r"^\s*(?:\[[^\]\n]{1,40}\]|(?:intro|outro|verse|chorus|pre[\s-]?chorus|post[\s-]?chorus|bridge|hook|refrain|"
+    r"interlude|break|instrumental|breakdown|drop|solo|tag|coda|part|section|act)\b[^:\n]{0,30}:)\s*",
+    re.IGNORECASE,
+)
+_ARC_SCENE_PREFIX = re.compile(r"^\s*scene\s+\d+\s*(?:\([^)]*\))?\s*[\u2014\u2013:-]\s*", re.IGNORECASE)
+
+
+def story_arc_to_story_text(arc_text):
+    """Plain paragraphs from an old song-section story arc, for converting a project to Story Mode.
+
+    Section headings (``Verse 1:``, ``[Chorus 2]``) and ``Scene N (Location) -`` prefixes are removed; each section
+    becomes one paragraph. The words themselves are kept.
+    """
+    paragraphs, current = [], []
+    for raw in _text(arc_text, 200000).split("\n"):
+        line = raw.strip()
+        if not line:
+            if current:
+                paragraphs.append(" ".join(current))
+                current = []
+            continue
+        heading = _ARC_HEADING.match(line)
+        if heading:
+            if current:
+                paragraphs.append(" ".join(current))
+                current = []
+            line = line[heading.end():].strip()
+            if not line:
+                continue
+        line = _ARC_SCENE_PREFIX.sub("", line).strip()
+        if line:
+            current.append(line)
+    if current:
+        paragraphs.append(" ".join(current))
+    return "\n\n".join(paragraphs)

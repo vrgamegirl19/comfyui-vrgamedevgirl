@@ -260,6 +260,30 @@ class StoryModeStepTests(Base):
         with self.assertRaises(errors.ValidationError):
             story.create_scene_beats("Song", {})
 
+    def test_old_story_arc_converts_into_a_book_and_is_kept(self):
+        session = self.read_session()
+        arc = ("Verse 1:\nDarrel waits on the platform.\nScene 2 (Platform) — He checks the watch.\n\n"
+               "Chorus 1: The train arrives.\n\n[Bridge]\nPart of him wants to stay home.")
+        session["builder_story_layer"] = {"user_story_arc": arc, "overall_story_idea": "idea"}
+        self.write_session(session)
+        split = {"chapters": [{"start_paragraph": 1, "title": "Station", "setting": "The Night Train"},
+                              {"start_paragraph": 3, "title": "Home", "setting": "Home"}]}
+        llm = FakeLLM(json.dumps(split))
+        with patch.object(book_funcs, "_run", llm):
+            story_mode.convert_story_arc("Song", {})
+        self.assertNotIn("Verse 1", llm.instructions[0])
+        layer = self.layer()
+        self.assertEqual(layer["user_story_arc"], arc, "the old arc is kept")
+        self.assertEqual([c["paragraphs"] for c in layer["story_book"]["chapters"]], [
+            ["Darrel waits on the platform. He checks the watch.", "The train arrives."],
+            ["Part of him wants to stay home."],
+        ])
+        self.assertEqual(layer["story_flow_version"], 2)
+
+    def test_convert_needs_an_old_arc(self):
+        with self.assertRaises(errors.ValidationError):
+            story_mode.convert_story_arc("Song", {})
+
     def test_router_offers_the_story_mode_steps(self):
         source = (ROOT / "agent_api" / "router.py").read_text(encoding="utf-8")
         self.assertIn("**STORY_MODE_JOB_TYPES", source)

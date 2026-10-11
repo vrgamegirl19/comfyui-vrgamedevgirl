@@ -1573,7 +1573,8 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
             "story idea, 'brief' writes the song story brief, 'beats' writes a beat per scene (only scenes without one unless "
             "replace_existing; limit caps the count). Returns a job id for job_wait. Order: arc, brief, beats. "
             "Story Mode (video_type 'story') uses its own steps: 'book' writes the story book from story_idea, 'split' turns "
-            "a story you pass as text into chapters without changing a word, 'chapter' rewrites chapter_id following "
+            "a story you pass as text into chapters without changing a word, 'convert' does the same with an older project's "
+            "story arc, 'chapter' rewrites chapter_id following "
             "direction, 'cast' lists story characters that have no card (nothing saved), 'acts' splits every chapter (or "
             "chapter_id) into acts, 'plan' gives every scene (or act_id's scenes) a story slice, spot, mood and performance, "
             "'locations' makes a location card per spot (from the story, never the lyrics) and maps the scenes. "
@@ -1583,7 +1584,7 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
             "type": "object",
             "properties": {
                 "project_id": {"type": "string"},
-                "step": {"type": "string", "enum": ["arc", "brief", "beats", "book", "split", "chapter", "cast", "acts", "plan", "locations"]},
+                "step": {"type": "string", "enum": ["arc", "brief", "beats", "book", "split", "convert", "chapter", "cast", "acts", "plan", "locations"]},
                 "style_theme": {"type": "string", "description": "locations only: look and banned places."},
                 "act_id": {"type": "string", "description": "plan only: rebuild one act's scenes."},
                 "spot_min_scenes": {"type": "integer", "description": "plan only: fewest scenes in a row at one spot."},

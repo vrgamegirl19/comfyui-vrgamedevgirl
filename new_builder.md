@@ -383,3 +383,35 @@ and leaves Singing, Speaking and No Lip Sync projects unchanged.
 | S8. Old projects and docs | A10, A23, A25, A26 | Convert to Story Book works on an old project, docs updated, full suite passes. |
 
 S5 proves the story logic before the UI work starts, which is the largest risk (R2).
+
+### Status
+
+| Stage | Commit | State |
+|-------|--------|-------|
+| S1 | `f6c4360` | Done |
+| S2 | `4ec8d6b` | Done |
+| S3 | `a357145` | Done |
+| S4 | `3c47e40` | Done |
+| S5 | `ea23565` | Done with a fake LLM end to end. A real render through MCP is not run yet. |
+| S6 | `bdb10f7` | Done |
+| S7 | `24c08a4` | Done. Covered by a fake-DOM smoke test; not yet opened in a browser. |
+| S8 | (this commit) | Done |
+
+Still to check by hand, after restarting ComfyUI so the new routes load:
+
+1. Make a Story Mode project and walk the Story Builder tabs with the loaded LLM.
+2. Render the result and stitch it (the S5 checkpoint with a real model).
+
+### Where the build differs from the plan
+
+- Prompts live in `llm/prompts/story_mode.py`; services are `storyboard/story_mode.py` (data), `story_book.py`,
+  `story_acts.py` (rules), `story_plan.py` and `story_locations.py`.
+- Act edits through the API use `PUT /story/settings` with `story_acts` (checked) instead of separate routes.
+- The Song tab opens Line Mapping and Lyric Review in their own windows above the Story Builder; Cast and Places
+  host the Reference Builder inside the tab.
+- Act borders move with a "Move Start" choice instead of dragging.
+- The Video Builder timeline shows a chapter stripe and act/spot tooltip on each scene instead of a separate band.
+- No separate brief header prompt was added: scene beats get the book premise, the setting look and any saved
+  `song_story_brief`.
+- The plan step also maps each act's cast onto scenes that have no characters (`subject_scene_map`), so MiniMax
+  prompts have a character.
