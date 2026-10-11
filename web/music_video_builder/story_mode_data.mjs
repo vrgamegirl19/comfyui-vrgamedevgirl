@@ -2,7 +2,9 @@
 // Pure functions only. Python twin: storyboard/story_mode.py. Both are checked against tests/story_mode_cases.json.
 
 export const STORY_FLOW_VERSION = 2;
-export const STORY_MODE_KEYS = ["story_flow_version", "story_book", "story_book_text", "story_settings", "story_acts", "story_scene_plan"];
+export const STORY_MODE_KEYS = ["story_flow_version", "story_book", "story_book_text", "story_settings", "story_acts", "story_scene_plan",
+  "story_spot_min_scenes"];
+export const DEFAULT_SPOT_MIN_SCENES = 3;
 export const PLAN_PERFORMANCE_MODES = ["singing", "speaking", "no_lip_sync", "instrumental"];
 
 const STORY_MAX_CHAPTERS = 40;
@@ -119,7 +121,20 @@ export function normalizeStoryModeFields(source) {
   if ("story_settings" in value) result.story_settings = normalizeStorySettings(value.story_settings);
   if ("story_acts" in value) result.story_acts = normalizeStoryActs(value.story_acts);
   if ("story_scene_plan" in value) result.story_scene_plan = normalizeStoryScenePlan(value.story_scene_plan);
+  if ("story_spot_min_scenes" in value) result.story_spot_min_scenes = normalizeSpotMinScenes(value.story_spot_min_scenes);
   return result;
+}
+
+export function normalizeSpotMinScenes(value) {
+  const number = Math.trunc(Number(value));
+  return Number.isFinite(number) && value !== "" && value !== null ? Math.max(1, Math.min(20, number)) : DEFAULT_SPOT_MIN_SCENES;
+}
+
+// Timeline segment fields for a scene plan performance. Story-only and instrumental scenes are no lip sync.
+export function planSegmentFields(performanceMode) {
+  const mode = normalizePlanPerformance(performanceMode);
+  if (mode === "no_lip_sync" || mode === "instrumental") return { performance_mode: "no_lip_sync", lyric_no_lip_sync: true };
+  return { performance_mode: mode, lyric_no_lip_sync: false };
 }
 
 export function isStoryModeLayer(layer) {

@@ -10,6 +10,7 @@ Shape inside ``builder_story_layer`` (only present when the project has used Sto
 - ``story_settings``: ``[{id, name, look}]``, the general setting each chapter happens in.
 - ``story_acts``: ``[{id, chapter_id, title, summary, cast_ids, scene_ids}]``.
 - ``story_scene_plan``: ``[{scene_id, act_id, story_slice, spot, mood, performance_mode, note_sources}]``.
+- ``story_spot_min_scenes``: the fewest scenes in a row at one spot (the Builder's "scenes per location").
 
 JS twin: ``web/music_video_builder/story_mode_data.mjs``. Both are checked against
 ``tests/story_mode_cases.json``.
@@ -20,7 +21,9 @@ import re
 STORY_FLOW_VERSION = 2
 STORY_MODE_KEYS = (
     "story_flow_version", "story_book", "story_book_text", "story_settings", "story_acts", "story_scene_plan",
+    "story_spot_min_scenes",
 )
+DEFAULT_SPOT_MIN_SCENES = 3
 PLAN_PERFORMANCE_MODES = ("singing", "speaking", "no_lip_sync", "instrumental")
 
 _MAX_CHAPTERS = 40
@@ -161,7 +164,25 @@ def normalize_story_mode_fields(source):
         result["story_acts"] = normalize_story_acts(source.get("story_acts"))
     if "story_scene_plan" in source:
         result["story_scene_plan"] = normalize_story_scene_plan(source.get("story_scene_plan"))
+    if "story_spot_min_scenes" in source:
+        result["story_spot_min_scenes"] = normalize_spot_min_scenes(source.get("story_spot_min_scenes"))
     return result
+
+
+def normalize_spot_min_scenes(value):
+    try:
+        number = int(float(value))
+    except (TypeError, ValueError):
+        return DEFAULT_SPOT_MIN_SCENES
+    return max(1, min(20, number))
+
+
+def plan_segment_fields(performance_mode):
+    """Timeline segment fields for a scene plan performance. Story-only and instrumental scenes are no lip sync."""
+    mode = normalize_plan_performance(performance_mode)
+    if mode in ("no_lip_sync", "instrumental"):
+        return {"performance_mode": "no_lip_sync", "lyric_no_lip_sync": True}
+    return {"performance_mode": mode, "lyric_no_lip_sync": False}
 
 
 def is_story_mode_layer(layer):

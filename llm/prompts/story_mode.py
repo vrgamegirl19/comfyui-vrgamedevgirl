@@ -186,3 +186,107 @@ STORY_CAST_SCAN_SCHEMA = {
     "required": ["characters"],
     "additionalProperties": False,
 }
+
+
+def story_acts_instruction(*, chapter_number, chapter_title, setting_name, chapter_text, scenes_text, cast_text,
+                           notes_text, target_acts):
+    """Split one chapter into acts, each a contiguous run of the chapter's scenes."""
+    return (
+        "You are a music video director breaking one chapter of a story into acts.\n\n"
+        "An act is one event inside the chapter (an argument, a phone call, leaving the house). It is a run of "
+        "scenes that follow each other on the timeline. Acts stay in the chapter's setting; they may move between "
+        "spots inside it.\n\n"
+        "Rules:\n"
+        f"- About {target_acts} acts. Follow the chapter's own events in order. Every scene listed belongs to exactly one act.\n"
+        "- first_scene is the scene number where the act starts. The first act starts at the chapter's first scene.\n"
+        "- A timed user note must fall inside one act; never start an act in the middle of a note's scenes.\n"
+        "- Bigger story moments can land on louder or longer scenes, but never change the story's order.\n"
+        "- summary: 1-3 sentences of what visibly happens in the act.\n"
+        "- cast: names from the cast list who appear in the act.\n"
+        f"- {LYRICS_ARE_MOOD_ONLY}\n"
+        "Return JSON only: {\"acts\": [{\"first_scene\": 1, \"title\": \"...\", \"summary\": \"...\", \"cast\": [\"...\"]}]}\n\n"
+        f"Chapter {chapter_number}: {chapter_title}\n"
+        f"Setting: {setting_name or '[not named]'}\n\n"
+        f"{chapter_text}\n\n"
+        f"Cast:\n{cast_text or '[none]'}\n\n"
+        f"Timed user notes for these scenes:\n{notes_text or '[none]'}\n\n"
+        f"Scenes of this chapter (time, length, song section, lyric mood):\n{scenes_text}"
+    )
+
+
+STORY_ACTS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "acts": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "first_scene": {"type": "integer"},
+                    "title": {"type": "string"},
+                    "summary": {"type": "string"},
+                    "cast": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["first_scene", "title", "summary", "cast"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["acts"],
+    "additionalProperties": False,
+}
+
+
+def story_scene_plan_instruction(*, act_title, act_summary, setting_name, chapter_text, scenes_text, cast_text,
+                                 spot_min_scenes, previous_spot, lyric_guidance, known_spots):
+    """Give every scene of one act its slice of the story, a spot, a mood and a performance."""
+    return (
+        "You are a music video director planning each scene of one act.\n\n"
+        "For every scene listed, write what happens in it, where in the setting it happens, its mood and how the "
+        "performer appears.\n\n"
+        "Rules:\n"
+        "- story_slice: 1-2 sentences of what visibly happens in this scene, continuing from the scene before. "
+        "Together the slices tell the act in order.\n"
+        f"- spot: the specific place inside the setting \"{setting_name or 'the setting'}\" (e.g. Kitchen, Bedroom, "
+        "Front Porch). 1-3 words, no setting name. The spot comes from the story action, never from the lyrics. "
+        f"Stay at one spot for at least {spot_min_scenes} scenes in a row unless a user note moves it. "
+        f"Reuse these spot names when the place is the same: {known_spots or '[none yet]'}.\n"
+        "- mood: 2-5 words of emotion.\n"
+        "- performance: singing (the performer sings the lyric to the camera or in the moment), speaking (a "
+        "character says a line), story (no lip sync, the story plays out) or instrumental (no vocals in this scene). "
+        "Scenes marked instrumental must be instrumental.\n"
+        "- User notes on a scene are the user's direction and win over the story. Follow them exactly and write "
+        "the slice to agree with them.\n"
+        f"- {lyric_guidance}\n"
+        "Return JSON only: {\"scenes\": [{\"scene\": 1, \"story_slice\": \"...\", \"spot\": \"...\", \"mood\": \"...\", "
+        "\"performance\": \"singing\"}]}\n\n"
+        f"Act: {act_title}\n{act_summary}\n\n"
+        f"Spot of the scene before this act: {previous_spot or '[none]'}\n\n"
+        f"Cast:\n{cast_text or '[none]'}\n\n"
+        f"Chapter text for context:\n{chapter_text}\n\n"
+        f"Scenes of this act:\n{scenes_text}"
+    )
+
+
+STORY_SCENE_PLAN_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "scenes": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "scene": {"type": "integer"},
+                    "story_slice": {"type": "string"},
+                    "spot": {"type": "string"},
+                    "mood": {"type": "string"},
+                    "performance": {"type": "string", "enum": ["singing", "speaking", "story", "instrumental"]},
+                },
+                "required": ["scene", "story_slice", "spot", "mood", "performance"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["scenes"],
+    "additionalProperties": False,
+}

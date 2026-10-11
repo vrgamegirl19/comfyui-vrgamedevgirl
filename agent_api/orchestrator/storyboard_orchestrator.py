@@ -28,8 +28,6 @@ from ..scene_card_context import beat_scene
 # web/music_video_builder/model_settings.mjs. tests/test_agent_api_story_settings_fields.py fails when they drift.
 STORY_LAYER_KEYS = ("enabled", "overall_story_idea", "user_story_arc", "song_story_brief", "lyric_story_strength",
                     "image_world_style", "image_custom_style_direction")
-# Story Mode fields an agent may edit directly; the rest are written by the story steps.
-STORY_MODE_EDIT_KEYS = ("story_book_text",)
 IMAGE_WORLD_STYLES = ("natural", "surreal_subject", "balanced_surreal", "full_surreal", "abstract", "custom")
 DEFAULT_KEYS = (
     "global_consistency_phrase", "camera_motion_speed", "character_motion_speed", "minimax_h3_cut_frequency",
@@ -191,6 +189,8 @@ def set_story_settings(
     unknown = sorted(set(defaults_in) - set(DEFAULT_KEYS) - {"story_arc_detail"})
     if unknown:
         raise ValidationError(f"Unknown scene default(s): {', '.join(unknown)}. Allowed: {', '.join(DEFAULT_KEYS)}, story_arc_detail.")
+    from .story_mode_orchestrator import STORY_MODE_EDIT_KEYS, apply_plan_to_segments, story_mode_edit_fields
+
     unknown_story = sorted(set(story_in) - set(STORY_LAYER_KEYS) - set(STORY_MODE_EDIT_KEYS))
     if unknown_story:
         allowed = ", ".join((*STORY_LAYER_KEYS, *STORY_MODE_EDIT_KEYS))
@@ -228,12 +228,12 @@ def set_story_settings(
         defaults.update(defaults_in)
         session["builder_storyboard_defaults"] = defaults
         layer = _story_layer(session)
-        if "story_book_text" in story_in:
-            # Story Mode: the edited book text is parsed into chapters and settings (the Story tab's editor).
-            from .story_mode_orchestrator import story_mode_text_fields
-
-            story_in = {**story_in, **story_mode_text_fields(layer, story_in)}
+        if set(story_in) & set(STORY_MODE_EDIT_KEYS):
+            # Story Mode edits are checked: book text is parsed into chapters and settings, acts must cover the timeline.
+            story_in = {**story_in, **story_mode_edit_fields(session, layer, story_in)}
         layer.update(story_in)
+        if "story_scene_plan" in story_in:
+            apply_plan_to_segments(session, story_in["story_scene_plan"])
         _save_story_layer(session, layer)
         saved = _persist_session(folder, session)
     return {"defaults": defaults, "story": layer, "revision": saved.get("revision")}

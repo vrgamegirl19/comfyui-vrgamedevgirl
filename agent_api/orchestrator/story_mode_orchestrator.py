@@ -4,14 +4,22 @@ Same functions the Story Builder uses (``storyboard.story_book``). The LLM is th
 never loads or switches a model. Results are saved in ``builder_story_layer`` like the Builder saves them.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from ...storyboard import story_book as book_funcs
-from ...storyboard.story_mode import apply_story_book_text, normalize_story_mode_fields, story_book_to_text
+from ...storyboard import story_plan as plan_funcs
+from ...storyboard.story_acts import validate_story_acts
+from ...storyboard.story_mode import (
+    apply_story_book_text,
+    normalize_story_book,
+    normalize_story_mode_fields,
+    plan_segment_fields,
+    story_book_to_text,
+)
 from ..errors import ValidationError
 from ..jobs.manager import JobManager, get_job_manager
 from ..jobs.models import Job
-from ..mutations import _BUILDER_SAVE_LOCK, _get_active_session_and_folder, _persist_session
+from ..mutations import _BUILDER_SAVE_LOCK, _get_active_session_and_folder, _persist_session, scene_field_change
 from .storyboard_orchestrator import (
     _llm_request,
     _lyrics_blocks,
@@ -23,7 +31,9 @@ from .storyboard_orchestrator import (
     sync_storyboard_files,
 )
 
-STORY_MODE_STEPS = ("book", "chapter", "split", "cast")
+STORY_MODE_STEPS = ("book", "chapter", "split", "cast", "acts", "plan")
+# Story Mode fields an agent may send to PUT /story/settings. Each is checked before it is saved.
+STORY_MODE_EDIT_KEYS = ("story_book_text", "story_settings", "story_acts", "story_scene_plan", "story_spot_min_scenes")
 
 
 def _request(session: Dict[str, Any], params: Dict[str, Any], cards, **extra: Any) -> Dict[str, Any]:
@@ -39,13 +49,31 @@ def _request(session: Dict[str, Any], params: Dict[str, Any], cards, **extra: An
     )
 
 
+def apply_plan_to_segments(session: Dict[str, Any], plan: List[Dict[str, Any]]) -> List[str]:
+    """Write each planned scene's performance to its timeline segment. Returns the changed scene ids."""
+    fields_by_scene = {entry["scene_id"]: plan_segment_fields(entry.get("performance_mode")) for entry in plan}
+    changed = []
+    for segment in session.get("segments") or []:
+        if not isinstance(segment, dict) or segment.get("id") not in fields_by_scene:
+            continue
+        fields = fields_by_scene[segment["id"]]
+        if any(segment.get(key) != value for key, value in fields.items()):
+            segment.update(fields)
+            changed.append(segment["id"])
+    return changed
+
+
 def _save_fields(project_id: str, fields: Dict[str, Any]) -> Dict[str, Any]:
     with _BUILDER_SAVE_LOCK:
         folder, session = _get_active_session_and_folder(project_id)
         layer = _story_layer(session)
         layer.update(fields)
         _save_story_layer(session, layer)
-        saved = _persist_session(folder, session)
+        changed = apply_plan_to_segments(session, fields["story_scene_plan"]) if fields.get("story_scene_plan") else []
+        if len(changed) == 1:
+            saved = _persist_session(folder, session, scene_field_change(changed[0], ["performance_mode", "lyric_no_lip_sync"]))
+        else:
+            saved = _persist_session(folder, session)
     return {"revision": saved.get("revision"), "storyboard": sync_storyboard_files(project_id)}
 
 
@@ -116,8 +144,60 @@ def scan_story_cast(project_id: str, params: Optional[Dict[str, Any]] = None) ->
     return {"characters": result["characters"], "model": result.get("used_model")}
 
 
+def create_story_acts(project_id: str, params: Optional[Dict[str, Any]] = None,
+                      progress: Optional[Callable[[int, int, str], None]] = None) -> Dict[str, Any]:
+    """Split every chapter (or ``chapter_id``) into acts with the LLM and save them."""
+    params = dict(params or {})
+    _folder, session = _get_active_session_and_folder(project_id)
+    cards = scene_cards(session)
+    _require_scenes(cards)
+    request = _request(session, params, cards, chapter_id=params.get("chapter_id") or "",
+                       timeline_markers=session.get("timeline_markers") or [])
+    try:
+        result = plan_funcs.build_story_acts(request, progress=progress)
+    except ValueError as error:
+        raise ValidationError(str(error)) from error
+    saved = _save_fields(project_id, result["story_layer"])
+    return {"story_acts": result["story_layer"]["story_acts"], "model": result.get("used_model"), **saved}
+
+
+def create_story_scene_plan(project_id: str, params: Optional[Dict[str, Any]] = None,
+                            progress: Optional[Callable[[int, int, str], None]] = None) -> Dict[str, Any]:
+    """Write every scene's story slice, spot, mood and performance (or only ``act_id``'s) and save them.
+
+    Each scene's performance is also written to its timeline segment (``performance_mode``, ``lyric_no_lip_sync``).
+    """
+    params = dict(params or {})
+    folder, session = _get_active_session_and_folder(project_id)
+    cards = scene_cards(session, folder)
+    _require_scenes(cards)
+    request = _request(session, params, cards, act_id=params.get("act_id") or "",
+                       spot_min_scenes=params.get("spot_min_scenes"),
+                       timeline_markers=session.get("timeline_markers") or [])
+    try:
+        result = plan_funcs.build_story_scene_plan(request, progress=progress)
+    except ValueError as error:
+        raise ValidationError(str(error)) from error
+    saved = _save_fields(project_id, result["story_layer"])
+    return {"story_scene_plan": result["story_layer"]["story_scene_plan"], "model": result.get("used_model"), **saved}
+
+
+def story_mode_edit_fields(session: Dict[str, Any], layer: Dict[str, Any], story_in: Dict[str, Any]) -> Dict[str, Any]:
+    """Checked Story Mode fields for PUT /story/settings. Raises ValidationError on acts that break the rules."""
+    fields = normalize_story_mode_fields({key: story_in[key] for key in STORY_MODE_EDIT_KEYS if key in story_in})
+    if "story_book_text" in story_in:
+        fields.update(apply_story_book_text({**layer, **fields}, story_in.get("story_book_text") or ""))
+    if "story_acts" in fields:
+        chapters = normalize_story_book(fields.get("story_book") or layer.get("story_book"))["chapters"]
+        scene_ids = [str(s.get("id")) for s in session.get("segments") or [] if isinstance(s, dict) and s.get("id")]
+        problems = validate_story_acts(fields["story_acts"], chapters, scene_ids)
+        if problems:
+            raise ValidationError("story_acts are not valid: " + " ".join(problems))
+    return fields
+
+
 def story_mode_text_fields(layer: Dict[str, Any], story_in: Dict[str, Any]) -> Dict[str, Any]:
-    """Story layer fields for a direct edit of ``story_book_text`` (PUT /story/settings)."""
+    """Story layer fields for a direct edit of ``story_book_text``."""
     return apply_story_book_text(layer, story_in.get("story_book_text") or "")
 
 
@@ -153,11 +233,27 @@ def run_story_cast_job(job: Job, manager: JobManager) -> Dict[str, Any]:
     return scan_story_cast(job.project_id, job.params)
 
 
+def _progress(job: Job, manager: JobManager, stage: str, noun: str):
+    def report(done: int, total: int, label: str) -> None:
+        manager.update_progress(job.id, 5.0 + 90.0 * done / max(1, total), stage, message=f"{noun} {done}/{total} ({label})")
+    return report
+
+
+def run_story_acts_job(job: Job, manager: JobManager) -> Dict[str, Any]:
+    return create_story_acts(job.project_id, job.params, progress=_progress(job, manager, "story_acts", "Chapters"))
+
+
+def run_story_plan_job(job: Job, manager: JobManager) -> Dict[str, Any]:
+    return create_story_scene_plan(job.project_id, job.params, progress=_progress(job, manager, "story_plan", "Acts"))
+
+
 STORY_MODE_JOB_TYPES = {
     "book": "storyboard.story_book",
     "chapter": "storyboard.story_chapter",
     "split": "storyboard.story_split",
     "cast": "storyboard.story_cast",
+    "acts": "storyboard.story_acts",
+    "plan": "storyboard.story_plan",
 }
 
 
@@ -167,3 +263,5 @@ def register_story_mode_handlers(manager: Optional[JobManager] = None) -> None:
     manager.register_handler("storyboard.story_chapter", run_story_chapter_job)
     manager.register_handler("storyboard.story_split", run_story_split_job)
     manager.register_handler("storyboard.story_cast", run_story_cast_job)
+    manager.register_handler("storyboard.story_acts", run_story_acts_job)
+    manager.register_handler("storyboard.story_plan", run_story_plan_job)

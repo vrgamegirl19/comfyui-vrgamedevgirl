@@ -32,6 +32,16 @@ class StoryModeVideoTypeTests(unittest.TestCase):
         helpers = _load("storyboard.scene_helpers")
         self.assertEqual(helpers._normalize_performance_mode("story"), "singing")
 
+    def test_story_scenes_keep_their_own_performance(self):
+        session = {"video_type": "story"}
+        inputs = _load("agent_api.video_prompt_inputs")
+        sync = _load("storyboard.session_sync")
+        speaking = {"performance_mode": "speaking"}
+        self.assertEqual(inputs._performance_mode(session, speaking), "speaking")
+        self.assertEqual(sync._performance_mode(session, speaking), "speaking")
+        # Other video types still ignore a scene's performance_mode, as before.
+        self.assertEqual(sync._performance_mode({"video_type": "singing"}, speaking), "singing")
+
     def test_story_scene_without_lip_sync_stays_visual_only(self):
         inputs = _load("agent_api.video_prompt_inputs")
         self.assertEqual(inputs._performance_mode({"video_type": "story"}, {"lyric_no_lip_sync": True}), "no_lip_sync")

@@ -156,6 +156,53 @@ class StoryModeStepTests(Base):
         with self.assertRaises(errors.ValidationError):
             story.set_story_settings("Song", {"story": {"story_acts": []}})
 
+    def write_book(self):
+        story.set_story_settings("Song", {"story": {"story_book_text": BOOK}})
+
+    def test_acts_and_plan_are_saved_and_the_plan_sets_each_scene_performance(self):
+        self.write_book()
+        plan_funcs = importlib.import_module(f"{pkg_name}.storyboard.story_plan")
+
+        def fake(payload, instruction, *, label, **kwargs):
+            import re
+            numbers = [int(n) for n in re.findall(r"^Scene (\d+) \(", instruction, re.M)]
+            if label == "Story Mode Acts":
+                return json.dumps({"acts": [{"first_scene": numbers[0], "title": "A", "summary": "S", "cast": ["Darrel"]}]}), {}
+            performance = {1: "story", 2: "speaking"}
+            return json.dumps({"scenes": [
+                {"scene": n, "story_slice": f"slice {n}", "spot": "Platform", "mood": "calm",
+                 "performance": performance.get(n, "singing")} for n in numbers
+            ]}), {}
+
+        with patch.object(plan_funcs, "_run", fake):
+            acts = story_mode.create_story_acts("Song", {})
+            plan = story_mode.create_story_scene_plan("Song", {})
+        self.assertEqual(sum(len(a["scene_ids"]) for a in acts["story_acts"]), 10)
+        self.assertEqual(acts["story_acts"][0]["cast_ids"], ["darrel"])
+        self.assertEqual(len(plan["story_scene_plan"]), 10)
+        segments = self.read_session()["segments"]
+        self.assertEqual((segments[0]["performance_mode"], segments[0]["lyric_no_lip_sync"]), ("no_lip_sync", True))
+        self.assertEqual((segments[1]["performance_mode"], segments[1]["lyric_no_lip_sync"]), ("speaking", False))
+        self.assertEqual((segments[2]["performance_mode"], segments[2]["lyric_no_lip_sync"]), ("singing", False))
+        layer = self.layer()
+        self.assertEqual(len(layer["story_scene_plan"]), 10)
+
+    def test_act_edits_are_checked(self):
+        self.write_book()
+        ids = [s["id"] for s in self.read_session()["segments"]]
+        good = [{"id": "act_1", "chapter_id": "ch_1", "title": "A", "scene_ids": ids[:4]},
+                {"id": "act_2", "chapter_id": "ch_2", "title": "B", "scene_ids": ids[4:]}]
+        story.set_story_settings("Song", {"story": {"story_acts": good, "story_spot_min_scenes": 4}})
+        self.assertEqual(self.layer()["story_spot_min_scenes"], 4)
+        bad = [{"id": "act_1", "chapter_id": "ch_1", "title": "A", "scene_ids": ids[:4]}]
+        with self.assertRaises(errors.ValidationError):
+            story.set_story_settings("Song", {"story": {"story_acts": bad}})
+
+    def test_plan_needs_acts(self):
+        self.write_book()
+        with self.assertRaises(errors.ValidationError):
+            story_mode.create_story_scene_plan("Song", {})
+
     def test_router_offers_the_story_mode_steps(self):
         source = (ROOT / "agent_api" / "router.py").read_text(encoding="utf-8")
         self.assertIn("**STORY_MODE_JOB_TYPES", source)

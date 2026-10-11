@@ -14,6 +14,7 @@ from .persistence import (
 )
 from .scene_prompts import _build_storyboard_image_prompt, _build_storyboard_video_prompt
 from .story_book import draft_story_book, rewrite_story_chapter, scan_story_cast, split_pasted_story
+from .story_plan import build_story_acts, build_story_scene_plan
 from .story_layer import (
     StoryArcFormatError,
     _build_story_layer_arc,
@@ -30,6 +31,8 @@ STORY_MODE_ACTIONS = {
     "chapter": rewrite_story_chapter,
     "split": split_pasted_story,
     "cast": scan_story_cast,
+    "acts": build_story_acts,
+    "plan": build_story_scene_plan,
 }
 
 

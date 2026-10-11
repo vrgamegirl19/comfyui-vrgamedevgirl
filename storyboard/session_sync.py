@@ -120,6 +120,8 @@ def _performance_mode(session: Dict[str, Any], segment: Dict[str, Any]) -> str:
     if segment.get("lyric_no_lip_sync"):
         return "no_lip_sync"
     raw = _text(session.get("video_type") or session.get("videoType")).lower().replace("-", "_").replace(" ", "_")
+    if raw in {"story", "story_mode"}:  # Story Mode scenes choose their own performance
+        raw = _text(segment.get("performance_mode")).lower() or "singing"
     return "speaking" if raw in {"speaking", "short_film", "dialogue", "dialog"} else "singing"
 
 
