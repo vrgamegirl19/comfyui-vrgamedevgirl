@@ -275,7 +275,8 @@ export function createStoryboardPersistence({
       storyArcDetailSelect.value = state.storyArcDetail;
       storyArcDetailSelect.dispatchEvent(new Event("input"));
       cutFrequencyInput.value = String(state.cutFrequency);
-      state.storyLayer = normalizeStoryLayer(saved.story_layer ?? saved.storyLayer ?? {});
+      // Keep fields the saved storyboard lacks (Story Mode data written by the Video Builder after the last save).
+      state.storyLayer = normalizeStoryLayer({ ...state.storyLayer, ...(saved.story_layer ?? saved.storyLayer ?? {}) });
       state.scriptImport = normalizeStoryboardScriptImportState(saved.script_import ?? saved.scriptImport ?? state.scriptImport ?? {});
       storyLayerEnabledInput.checked = state.storyLayer.enabled !== false;
       overallStoryIdeaInput.value = state.storyLayer.overall_story_idea || "";

@@ -61,7 +61,7 @@ function fixture(state, parentSave = async () => {}) {
     imageAestheticPresets: [{ value: "" }], imageShotFlowPresets: { intimate: {} },
     enforceStoryboardVideoFacialRequirements: (prompt) => prompt,
     syncStoryLayerFromInputs: () => {
-      state.storyLayer = { enabled: controls.storyLayerEnabledInput.checked,
+      state.storyLayer = { ...state.storyLayer, enabled: controls.storyLayerEnabledInput.checked,
         overall_story_idea: controls.overallStoryIdeaInput.value, user_story_arc: controls.userStoryArcInput.value,
         song_story_brief: controls.songStoryBriefInput.value, lyric_story_strength: Number(controls.lyricStoryStrengthInput.value),
         image_world_style: controls.imageWorldStyleSelect.value, image_custom_style_direction: controls.imageCustomStyleInput.value };
@@ -153,7 +153,15 @@ test("Explicit saves apply live scene edits and cleared prompts; exports preserv
     autoSaveSessionQuiet: noop, setSegmentPromptForEdit: (target, kind, prompt) => { target[`${kind}_prompt`] = prompt; },
   });
   vm.runInContext(source.slice(start, end), context);
+  const mergeStart = source.indexOf("function mergeStoryboardStoryLayer(");
+  vm.runInContext(source.slice(mergeStart, source.indexOf("function openStoryboardBuilderFromProject(", mergeStart)), context);
   const apply = vm.runInContext("applyStoryboardPrompts", context);
+  // A beat export carries the Storyboard's classic story layer; Story Mode data it never loaded must survive.
+  context.state.builderStoryLayer = { overall_story_idea: "old", story_book_text: "Chapter 1: Home", story_acts: [{ id: "act_1" }] };
+  apply({ scenes: [], story_layer: { overall_story_idea: "new", user_story_arc: "arc" } });
+  assert.equal(context.state.builderStoryLayer.overall_story_idea, "new");
+  assert.equal(context.state.builderStoryLayer.story_book_text, "Chapter 1: Home");
+  assert.deepEqual(context.state.builderStoryLayer.story_acts, [{ id: "act_1" }]);
   apply({ scenes: [{ id: "scene1", lyrics: "Stale export dialogue", image_prompt: "New image" }] });
   assert.equal(segment.lyric_text, "Live dialogue");
   apply({ scenes: [{ id: "scene1", lyrics: "", image_prompt: "", video_prompt: "", motion_summary: "Edited motion",
@@ -164,6 +172,21 @@ test("Explicit saves apply live scene edits and cleared prompts; exports preserv
   assert.equal(segment.video_notes, "Edited motion");
   assert.equal(segment.flf_end_state, "New end");
   assert.equal(segment.timeline_note, "Edited director note");
+});
+
+test("Story Mode data from the Video Builder survives an older storyboard file and a save", async () => {
+  const folder = path.join(project, "storymode");
+  await fixture(stateFor(folder)).saveStoryboard({ throwOnError: true });
+  const state = stateFor(folder);
+  state.storyLayer = { story_flow_version: 2, story_book_text: "Chapter 1: Home\nSetting: Home\n\nShe waits.",
+    story_acts: [{ id: "act_1", chapter_id: "ch_1", title: "Waiting", scene_ids: ["scene1"] }] };
+  const api = fixture(state);
+  assert.equal(await api.loadExisting(), true, JSON.stringify(api.messages));
+  assert.equal(state.storyLayer.story_book_text, "Chapter 1: Home\nSetting: Home\n\nShe waits.");
+  await api.saveStoryboard({ throwOnError: true });
+  const saved = JSON.parse(fs.readFileSync(path.join(folder, "storyboard", "storyboard.json"), "utf8"));
+  assert.equal(saved.story_layer.story_book_text, "Chapter 1: Home\nSetting: Home\n\nShe waits.");
+  assert.equal(saved.story_layer.story_acts[0].id, "act_1");
 });
 
 test("New projects retain current settings when no storyboard file exists", async () => {

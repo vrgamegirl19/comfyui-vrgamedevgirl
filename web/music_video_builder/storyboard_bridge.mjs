@@ -45,6 +45,12 @@ export function createStoryboardBridge({
   syncVideoModePanel, textGemmaRunnerPayload, timelineDuration, updateActiveFromInputs,
   videoTriggerPhraseForSegment,
 }) {
+  // The Storyboard only edits the classic story fields. Merge its layer onto the Builder's so Story Mode data
+  // (story book, acts, scene plan) it never loaded is kept.
+  function mergeStoryboardStoryLayer(incoming) {
+    return normalizeBuilderStoryLayer({ ...state.builderStoryLayer, ...(incoming || {}) });
+  }
+
   function openStoryboardBuilderFromProject(options = {}) {
     if (!window.VRGDGStoryboardBuilder?.open) {
       toast("Storyboard Builder UI is not loaded yet. Refresh ComfyUI and try again.", true);
@@ -334,7 +340,7 @@ export function createStoryboardBridge({
         if (savedLyricText !== undefined) segment.lyric_text = savedLyricText;
       }
       if (updates.story_layer || updates.storyLayer) {
-        state.builderStoryLayer = normalizeBuilderStoryLayer(updates.story_layer || updates.storyLayer);
+        state.builderStoryLayer = mergeStoryboardStoryLayer(updates.story_layer || updates.storyLayer);
         storyChanged = true;
       }
       if (applied || storyChanged || facialChanged || beatChanged || speakerChanged) {
@@ -855,7 +861,7 @@ export function createStoryboardBridge({
       state.overlaySegments = [];
       state.activeId = nextSegments[0]?.id || "";
       state.idLoraReferenceBuilder = normalizeIdLoraReferenceBuilder(refs);
-      if (updates.story_layer || updates.storyLayer) state.builderStoryLayer = normalizeBuilderStoryLayer(updates.story_layer || updates.storyLayer);
+      if (updates.story_layer || updates.storyLayer) state.builderStoryLayer = mergeStoryboardStoryLayer(updates.story_layer || updates.storyLayer);
       sortSegments(state.segments);
       state.duration = timelineDuration();
       ensureAllSegmentRuntimeFields();
@@ -950,7 +956,7 @@ export function createStoryboardBridge({
       state.overlaySegments = [];
       state.activeId = nextSegments[0]?.id || "";
       state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
-      state.builderStoryLayer = normalizeBuilderStoryLayer(updates.story_layer || updates.storyLayer || state.builderStoryLayer);
+      state.builderStoryLayer = mergeStoryboardStoryLayer(updates.story_layer || updates.storyLayer);
       state.builderStoryboardDefaults = normalizeBuilderStoryboardDefaults({
         ...state.builderStoryboardDefaults,
         short_film_planning_mode: updates.short_film_planning_mode || "guided_film",
