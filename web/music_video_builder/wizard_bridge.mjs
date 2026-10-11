@@ -241,6 +241,14 @@ export function createWizardBridge({
     }
     return text;
   };
+  // Retry entries for the scene a batch stopped on and the scenes after it that were never tried.
+  const unfinishedSceneFailures = (scenes, error) => scenes.map((scene, index) => ({
+    key: `unfinished:${scene.id}`,
+    segmentId: String(scene.id || ""),
+    sceneLabel: scene.label || `Scene ${scene.scene_number || ""}`.trim(),
+    error: index === 0 ? String(error?.message || error) : "Not tried: the run stopped before this scene.",
+    raw: index === 0 ? String(error?.rawGemmaPrompt || error?.message || error) : "",
+  }));
   const createWizardSceneBeats = async ({ overwrite = false, failedIds = [] } = {}) => {
     const segments = allEditableSegments()
       .slice()
@@ -260,10 +268,12 @@ export function createWizardBridge({
     const storyboardState = wizardStoryboardState(scenes, { promptMode: "image" });
     const progress = createProgressWindow(overwrite ? "Replace Scene Story Beats" : "Create Missing Scene Story Beats", { zIndex: 100012 });
     let created = 0;
+    let stoppedAt = 0;
     const failures = [];
     try {
       progress.set(`${retryIds.size ? "Retrying failed" : "Creating"} ${targets.length} scene story beat${targets.length === 1 ? "" : "s"}...`, 5);
       for (let index = 0; index < targets.length; index += 1) {
+        stoppedAt = index;
         const scene = targets[index];
         const segmentIndex = segments.findIndex((item) => item.id === scene.id);
         const previousBeat = segmentIndex > 0 ? String(segments[segmentIndex - 1]?.story_beat || "") : "";
@@ -339,7 +349,15 @@ export function createWizardBridge({
       return { created, failures };
     } catch (error) {
       progress.set(`Scene story beats stopped after ${created}/${targets.length}:\n${String(error?.message || error)}`, 100);
+      progress.close(1800);
       toast(String(error?.message || error), true);
+      // Keep the beats made before the stop.
+      syncInspector();
+      render();
+      await autoSaveSessionQuiet("wizard scene story beats stopped");
+      showGemmaBatchFailures([...failures, ...unfinishedSceneFailures(targets.slice(stoppedAt), error)], {
+        retryHandler: (items) => createWizardSceneBeats({ failedIds: items.map((item) => item.segmentId) }),
+      });
       return { created, error: String(error?.message || error) };
     }
   };
@@ -378,10 +396,12 @@ export function createWizardBridge({
     const runnerGenericName = runnerName;
     const progress = createProgressWindow(`Storyboard ${runnerName} All (${miniMaxProject ? "MiniMax H3 project/locked modes" : videoModeDisplayLabel(videoMode, true)})`, { zIndex: 100012 });
     let created = 0;
+    let stoppedAt = 0;
     const failurePrefix = `storyboard:${videoMode}`;
     try {
       progress.set(`${failedIds.size ? "Retrying failed Storyboard scenes" : `Starting Storyboard ${runnerName} All`}...\nScenes: ${targetScenes.length}\nUsing the same prompt writer as Storyboard Builder.`, 5);
       for (let index = 0; index < targetScenes.length; index += 1) {
+        stoppedAt = index;
         const scene = targetScenes[index];
         const segment = segmentById.get(String(scene.id || "")) || segments.find((item) => String(item.id || "") === String(scene.id || "")) || segments[index];
         const base = 8 + Math.round((index / Math.max(1, targetScenes.length)) * 84);
@@ -495,7 +515,13 @@ export function createWizardBridge({
       }
     } catch (error) {
       progress.set(`Storyboard ${runnerName} All stopped after ${created}/${targetScenes.length} scenes:\n${String(error?.message || error)}`, 100);
+      progress.close(1800);
       toast(`Storyboard ${runnerName} All stopped after ${created}/${targetScenes.length} scenes:\n${String(error?.message || error)}`, true);
+      const skipped = targetScenes.slice(0, stoppedAt)
+        .map((scene) => gemmaBatchFailureStore()[`${failurePrefix}:${scene.id}`]).filter(Boolean);
+      showGemmaBatchFailures([...skipped, ...unfinishedSceneFailures(targetScenes.slice(stoppedAt), error)], {
+        retryHandler: (items) => runWizardStoryboardGemmaAll({ failedIds: items.map((item) => item.segmentId) }),
+      });
     }
   };
 
