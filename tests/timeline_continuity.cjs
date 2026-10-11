@@ -52,7 +52,7 @@ test('save failure is displayed', async () => {
   assert.deepEqual(messages, [['Error: Save failed', true]]);
 });
 
-test('bulk-off button is the rightmost timeline header control', () => {
+test('bulk-off and unlock buttons appear only in the Timeline Tools window', () => {
   const { functionSource } = require('./builder_source.cjs');
   class Element {
     constructor() { this.style = {}; this.children = []; this.options = []; }
@@ -64,14 +64,20 @@ test('bulk-off button is the rightmost timeline header control', () => {
     makeButton: label => Object.assign(element(), { textContent: label }),
     makeCheckbox: () => ({ wrapper: element(), input: element() }),
     makeSelect: element, WAVEFORM_MODES: {}, TIMELINE_HEIGHT: 400,
-    createTimelineToolWindows: () => ({ toolsButton: element(), deleteAllButton: element(), refreshDeleteActions() {} }),
+    createTimelineToolWindows: ({ toolButtons }) => {
+      const body = element();
+      body.append(...toolButtons);
+      return { toolsButton: element(), deleteAllButton: element(), refreshDeleteActions() {} };
+    },
   });
   vm.runInContext(functionSource(readBuilderModule('timeline_view.mjs'), 'buildTimelineView'), context);
   const view = context.buildTimelineView({ overlay: element(), preview: element(), previewStage: element() });
   const button = view.latentContinuationOffAllButton;
   assert.equal(button.textContent, 'Latent Continuation: Off All');
-  assert.equal(button.parentElement.children.at(-1), button);
-  assert.equal(button.parentElement.children.at(-2), view.freezeTimingControl.wrapper);
+  assert.equal(button.parentElement.children.at(-2), button);
+  assert.equal(button.parentElement.children.at(-1), view.unlockAllScenesButton);
+  assert.equal(view.unlockAllScenesButton.textContent, 'Unlock All Scenes');
+  assert.notEqual(button.parentElement, view.freezeTimingControl.wrapper.parentElement);
 });
 
 test('undo snapshot includes project continuity settings alongside scene overrides', () => {

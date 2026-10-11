@@ -34,6 +34,7 @@ import { parseBulkTimeValue } from "./timeline_actions.mjs";
 import { audioChunkDuration, audioTimelineStart, markerEnd, normalizeTimelineMarkers } from "./timeline_state.mjs";
 import { mappedLocation } from "./scene_locations.mjs";
 import { wireLatentContinuationOffAll } from "./timeline_continuity.mjs";
+import { wireUnlockAllScenes } from "./timeline_video_settings.mjs";
 import { createTimelineToolWindows } from "./timeline_tool_windows.mjs";
 import { createTimelineEmotionNote, timelineEmotionNotesVisible } from "./timeline_emotion_notes.mjs";
 import { speakingAudioEditsActive, speakingAudioLaneCount } from "./audio_clip_editor.mjs";
@@ -302,6 +303,8 @@ export function buildTimelineView({ overlay, preview, previewStage, getDeleteAva
   const latentContinuationOffAllButton = makeButton("Latent Continuation: Off All");
   latentContinuationOffAllButton.title = "Turn off MiniMax latent continuation for every scene, including locked scenes and project defaults.";
   latentContinuationOffAllButton.style.cssText += "flex:0 0 auto;padding:7px 10px;";
+  const unlockAllScenesButton = makeButton("Unlock All Scenes");
+  unlockAllScenesButton.title = "Unlock every scene's video settings so all scenes follow the global video mode, models, and settings.";
   const freezeTimingControl = makeCheckbox("Freeze SRT timing", false);
   freezeTimingControl.wrapper.style.cssText += "margin-left:auto;flex:0 0 auto;";
   freezeTimingControl.wrapper.title = "Lock all scene start/end times. Uncheck to adjust scene lengths.";
@@ -459,7 +462,7 @@ export function buildTimelineView({ overlay, preview, previewStage, getDeleteAva
   deleteAllTimelineImagesButton.title = "Delete every timeline image from every scene, including FLF first frames, last frames, and extracted chained start frames, and remove those files from the project folder.";
   const { toolsButton, deleteAllButton, refreshDeleteActions } = createTimelineToolWindows({
     overlay,
-    toolButtons: [setInButton, setOutButton, clearRangeButton, closeTimelineGapsButton, snapSceneEdgeButton, overlayTrackToggleButton, overlayTrackHintButton, locationThumbnailButton],
+    toolButtons: [setInButton, setOutButton, clearRangeButton, closeTimelineGapsButton, snapSceneEdgeButton, overlayTrackToggleButton, overlayTrackHintButton, locationThumbnailButton, latentContinuationOffAllButton, unlockAllScenesButton],
     deleteButtons: [deleteAllTimelineImagesButton, deleteAllTimelineVideosButton, deleteAllSegmentsButton],
     getDeleteAvailability,
   });
@@ -486,7 +489,7 @@ export function buildTimelineView({ overlay, preview, previewStage, getDeleteAva
   addOverlaySegmentButton.textContent = "+ Overlay Track";
   timelineToolRail.append(bulkSegmentsButton, sceneNoteButton, videoNoteButton, lyricNoteButton, emotionTagButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton, audioMaskButton, stemMonitorButton, stemVisibilityButton);
   timelineHeader.append(toolsButton, splitSceneButton, idLoraTrimModeButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineStatusInfo, deleteSegmentButton, deleteAllButton);
-  timelineHeader.append(addAudioClipButton, freezeTimingControl.wrapper, latentContinuationOffAllButton);
+  timelineHeader.append(addAudioClipButton, freezeTimingControl.wrapper);
   const timelineBody = document.createElement("div");
   timelineBody.style.cssText = "display:grid;grid-template-columns:auto minmax(0,1fr);min-height:0;overflow:hidden;";
   const timelineViewport = document.createElement("div");
@@ -514,7 +517,7 @@ export function buildTimelineView({ overlay, preview, previewStage, getDeleteAva
     refreshDeleteActions, sceneNoteButton, segmentLayer, setInButton, setOutButton, snapSceneEdgeButton,
     snapToBeatsControl, splitSceneButton, stopButton, timeline, timelineCanvas, timelineInfo,
     stemLayer, timelineRangeInfo, timelineResizeHandle, timelineViewport, undoButton,
-    latentContinuationOffAllButton, videoNoteButton, waveformModeSelect, zoomInButton, zoomOutButton,
+    latentContinuationOffAllButton, unlockAllScenesButton, videoNoteButton, waveformModeSelect, zoomInButton, zoomOutButton,
   };
 }
 
@@ -529,9 +532,10 @@ export function createTimelineView({
   segmentImageSource, segmentLayer, segmentTrack, selectedSegmentImageThumbnailPath, miniMaxH3ModeForSegment,
   selectedTimelineRangeInfo, setActiveSegment, state, syncInspector, syncLyricMapperFromSegments,
   timelineCanvas, timelineDuration, timelineSegmentLabel, toggleSegmentPreviewMode,
-  locationThumbnailButton, refreshDeleteActions, latentContinuationOffAllButton,
+  locationThumbnailButton, refreshDeleteActions, latentContinuationOffAllButton, unlockAllScenesButton,
 }) {
   wireLatentContinuationOffAll({ button: latentContinuationOffAllButton, state, pushHistory, syncInspector, render, autoSaveSessionQuiet });
+  wireUnlockAllScenes({ button: unlockAllScenesButton, state, pushHistory, syncInspector, render, autoSaveSessionQuiet });
   let showLocationThumbnails = false;
   locationThumbnailButton.onclick = () => {
     showLocationThumbnails = !showLocationThumbnails;
