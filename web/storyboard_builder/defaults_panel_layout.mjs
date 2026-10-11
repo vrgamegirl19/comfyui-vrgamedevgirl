@@ -1,4 +1,6 @@
 import { makeButton, makeCollapsiblePanel, makeInput, makeSelect, makeTextarea, sortOptionsAlphabetically } from "./controls.mjs";
+import { buildDefaultPresetsToolbar } from "./defaults_presets.mjs";
+import { buildDefaultsCards } from "./defaults_cards.mjs";
 import { normalizeStoryLayer, storyboardCutFrequencyValue, storyboardSpeedValue } from "./scenes.mjs";
 import { STORYBOARD_CAMERA_FLOW_PRESETS } from "./shot_presets.mjs";
 import {
@@ -12,6 +14,19 @@ export function buildSceneDefaultsPanel({
   facialPerformancePresets, focusedSection, imageAestheticPresets, imageShotFlowPresets,
   performanceStylePresets, state, usesFilmPlanningProfile,
 }) {
+  const selectedDefaultActions = {};
+  const makeDefaultButton = (label, variant) => {
+    const button = makeButton(label, variant);
+    button.style.cssText += "padding:5px 8px;font-size:11px;font-weight:700;line-height:1.2;";
+    return button;
+  };
+  const selectedButton = (key) => {
+    const button = makeDefaultButton("Apply to selected");
+    button.className = "vrgdg-scene-defaults-selected-action";
+    button.hidden = true;
+    selectedDefaultActions[key] = button;
+    return button;
+  };
   const note = document.createElement("div");
   note.className = "vrgdg-storyboard-note";
   note.style.cssText = "margin:18px 24px 0;min-width:0;max-width:100%;box-sizing:border-box;border:1px solid #155e75;border-radius:8px;background:#0f172a;color:#cbd5e1;padding:12px 14px;font-size:13px;overflow-wrap:anywhere;";
@@ -19,8 +34,7 @@ export function buildSceneDefaultsPanel({
   middleContent.style.cssText = "min-width:0;min-height:0;overflow-y:auto;overflow-x:hidden;padding-bottom:18px;scrollbar-width:thin;";
 
   const cameraFlowBar = document.createElement("div");
-  cameraFlowBar.className = "vrgdg-storyboard-defaults-grid";
-  cameraFlowBar.style.cssText = "display:grid;grid-template-columns:minmax(420px,700px) minmax(0,1fr);gap:8px 12px;align-items:center;width:100%;min-width:0;max-width:100%;box-sizing:border-box;color:#cbd5e1;font-size:12px;";
+  cameraFlowBar.style.cssText = "container-type:inline-size;width:100%;min-width:0;max-width:100%;box-sizing:border-box;color:#cbd5e1;font-size:12px;";
   const imageShotControls = document.createElement("div");
   imageShotControls.style.cssText = "display:flex;gap:8px;align-items:center;white-space:nowrap;";
   const imageShotLabel = document.createElement("div");
@@ -32,11 +46,11 @@ export function buildSceneDefaultsPanel({
   );
   imageShotSelect.style.width = "max-content";
   imageShotSelect.style.minWidth = "180px";
-  const imageShotApply = makeButton("Fill Missing", "primary");
+  const imageShotApply = makeDefaultButton("Fill Missing", "primary");
   imageShotApply.title = "Fill only blank shot/composition fields for Image Prep. Existing manual choices are kept.";
-  const imageShotReplace = makeButton("Replace All");
+  const imageShotReplace = makeDefaultButton("Replace All");
   imageShotReplace.title = "Replace every scene's shot/composition field with the selected still shot flow.";
-  imageShotControls.append(imageShotLabel, imageShotSelect, imageShotApply, imageShotReplace);
+  imageShotControls.append(imageShotLabel, imageShotSelect, imageShotApply, imageShotReplace, selectedButton("applyImageShotFlow"));
   const imageShotInfo = document.createElement("div");
   imageShotInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
   const imageAestheticControls = document.createElement("div");
@@ -47,11 +61,11 @@ export function buildSceneDefaultsPanel({
   const imageAestheticSelect = makeSelect(sortOptionsAlphabetically(imageAestheticPresets), state.imageAesthetic);
   imageAestheticSelect.style.width = "max-content";
   imageAestheticSelect.style.minWidth = "180px";
-  const imageAestheticApply = makeButton("Fill Missing", "primary");
+  const imageAestheticApply = makeDefaultButton("Fill Missing", "primary");
   imageAestheticApply.title = "Fill only scenes without a still camera style/aesthetic note.";
-  const imageAestheticReplace = makeButton("Replace All");
+  const imageAestheticReplace = makeDefaultButton("Replace All");
   imageAestheticReplace.title = "Replace each scene's generated image aesthetic note.";
-  imageAestheticControls.append(imageAestheticLabel, imageAestheticSelect, imageAestheticApply, imageAestheticReplace);
+  imageAestheticControls.append(imageAestheticLabel, imageAestheticSelect, imageAestheticApply, imageAestheticReplace, selectedButton("applyImageAesthetic"));
   const imageAestheticInfo = document.createElement("div");
   imageAestheticInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
   const videoStyleControls = document.createElement("div");
@@ -62,11 +76,11 @@ export function buildSceneDefaultsPanel({
   const videoStyleSelect = makeSelect(sortOptionsAlphabetically(MINIMAX_VIDEO_STYLE_PRESETS), state.videoStyle);
   videoStyleSelect.style.width = "max-content";
   videoStyleSelect.style.minWidth = "220px";
-  const videoStyleApply = makeButton("Fill Missing", "primary");
+  const videoStyleApply = makeDefaultButton("Fill Missing", "primary");
   videoStyleApply.title = "Fill blank style fields on eligible video scenes.";
-  const videoStyleReplace = makeButton("Replace All");
+  const videoStyleReplace = makeDefaultButton("Replace All");
   videoStyleReplace.title = "Replace the style on all eligible video scenes.";
-  videoStyleControls.append(videoStyleLabel, videoStyleSelect, videoStyleApply, videoStyleReplace);
+  videoStyleControls.append(videoStyleLabel, videoStyleSelect, videoStyleApply, videoStyleReplace, selectedButton("applyVideoStyle"));
   const videoStyleCustomControls = document.createElement("div");
   videoStyleCustomControls.style.cssText = "display:flex;gap:8px;align-items:flex-start;";
   const videoStyleCustomLabel = document.createElement("div");
@@ -184,11 +198,11 @@ export function buildSceneDefaultsPanel({
   );
   cameraFlowSelect.style.width = "max-content";
   cameraFlowSelect.style.minWidth = "180px";
-  const cameraFlowApply = makeButton("Fill Missing", "primary");
+  const cameraFlowApply = makeDefaultButton("Fill Missing", "primary");
   cameraFlowApply.title = "Fill only blank shot type and camera motion fields. Existing manual choices are kept.";
-  const cameraFlowReplace = makeButton("Replace All");
+  const cameraFlowReplace = makeDefaultButton("Replace All");
   cameraFlowReplace.title = "Replace every scene's shot type and camera motion with the selected auto camera flow.";
-  cameraFlowControls.append(cameraFlowLabel, cameraFlowSelect, cameraFlowApply, cameraFlowReplace);
+  cameraFlowControls.append(cameraFlowLabel, cameraFlowSelect, cameraFlowApply, cameraFlowReplace, selectedButton("applyCameraFlow"));
   const cameraFlowInfo = document.createElement("div");
   cameraFlowInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
   const cameraSpeedControls = document.createElement("div");
@@ -205,7 +219,7 @@ export function buildSceneDefaultsPanel({
   cameraSpeedInput.style.accentColor = "#22d3ee";
   const cameraSpeedValue = document.createElement("div");
   cameraSpeedValue.style.cssText = "font-size:12px;color:#cffafe;font-weight:900;min-width:120px;";
-  const cameraSpeedHint = makeButton("Hint");
+  const cameraSpeedHint = makeDefaultButton("Hint");
   cameraSpeedHint.title = "Explain camera motion speed.";
   cameraSpeedControls.append(cameraSpeedLabel, cameraSpeedInput, cameraSpeedValue, cameraSpeedHint);
   const cameraSpeedInfo = document.createElement("div");
@@ -224,7 +238,7 @@ export function buildSceneDefaultsPanel({
   cutFrequencyInput.style.accentColor = "#22d3ee";
   const cutFrequencyValue = document.createElement("div");
   cutFrequencyValue.style.cssText = "font-size:12px;color:#cffafe;font-weight:900;min-width:150px;";
-  const cutFrequencyHint = makeButton("Hint");
+  const cutFrequencyHint = makeDefaultButton("Hint");
   cutFrequencyHint.title = "Explain MiniMax cut frequency.";
   cutFrequencyControls.append(cutFrequencyLabel, cutFrequencyInput, cutFrequencyValue, cutFrequencyHint);
   const cutFrequencyInfo = document.createElement("div");
@@ -237,11 +251,11 @@ export function buildSceneDefaultsPanel({
   const performanceSelect = makeSelect(sortOptionsAlphabetically(performanceStylePresets), state.performanceStyle);
   performanceSelect.style.width = "max-content";
   performanceSelect.style.minWidth = "180px";
-  const performanceApply = makeButton("Fill Missing", "primary");
+  const performanceApply = makeDefaultButton("Fill Missing", "primary");
   performanceApply.title = usesFilmPlanningProfile ? "Fill only blank per-scene acting style fields. Existing scene choices are kept." : "Fill only blank per-scene performance/song style fields. Existing scene choices are kept.";
-  const performanceReplace = makeButton("Replace All");
+  const performanceReplace = makeDefaultButton("Replace All");
   performanceReplace.title = usesFilmPlanningProfile ? "Replace every scene's acting style with the selected global style." : "Replace every scene's performance/song style with the selected global style.";
-  performanceControls.append(performanceLabel, performanceSelect, performanceApply, performanceReplace);
+  performanceControls.append(performanceLabel, performanceSelect, performanceApply, performanceReplace, selectedButton("applyPerformanceStyle"));
   const performanceInfo = document.createElement("div");
   performanceInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
   const characterSpeedControls = document.createElement("div");
@@ -258,7 +272,7 @@ export function buildSceneDefaultsPanel({
   characterSpeedInput.style.accentColor = "#22d3ee";
   const characterSpeedValue = document.createElement("div");
   characterSpeedValue.style.cssText = "font-size:12px;color:#cffafe;font-weight:900;min-width:120px;";
-  const characterSpeedHint = makeButton("Hint");
+  const characterSpeedHint = makeDefaultButton("Hint");
   characterSpeedHint.title = "Explain character motion speed.";
   characterSpeedControls.append(characterSpeedLabel, characterSpeedInput, characterSpeedValue, characterSpeedHint);
   const characterSpeedInfo = document.createElement("div");
@@ -297,11 +311,11 @@ export function buildSceneDefaultsPanel({
   const facialSelect = makeSelect(sortOptionsAlphabetically(facialPerformancePresets), state.facialPerformance);
   facialSelect.style.width = "max-content";
   facialSelect.style.minWidth = "180px";
-  const facialApply = makeButton("Fill Missing", "primary");
+  const facialApply = makeDefaultButton("Fill Missing", "primary");
   facialApply.title = "Fill only blank per-scene facial performance fields.";
-  const facialReplace = makeButton("Replace All");
+  const facialReplace = makeDefaultButton("Replace All");
   facialReplace.title = "Replace every scene's facial performance with the selected global facial preset.";
-  facialControls.append(facialLabel, facialSelect, facialApply, facialReplace);
+  facialControls.append(facialLabel, facialSelect, facialApply, facialReplace, selectedButton("applyFacialPerformance"));
   const facialInfo = document.createElement("div");
   facialInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
   const facialCustomControls = document.createElement("div");
@@ -425,10 +439,40 @@ export function buildSceneDefaultsPanel({
     info.style.maxWidth = "100%";
     info.style.overflowWrap = "anywhere";
   }
-  cameraFlowBar.append(imageShotControls, imageShotInfo, imageAestheticControls, imageAestheticInfo, videoStyleControls, videoStyleCustomControls, videoStyleInfo, temporalEffectControls, temporalEffectCustomControls, temporalEffectOptions, temporalProtectedCustomControls, temporalEffectInfo, fxControls, fxCustomControls, fxInfo, imageWorldStyleControls, imageWorldStyleInfo, imageCustomStyleControls, imageCustomStyleInfo, consistencyControls, consistencyInfo, cameraFlowControls, cameraFlowInfo, cameraSpeedControls, cameraSpeedInfo, cutFrequencyControls, cutFrequencyInfo, performanceControls, performanceInfo, characterSpeedControls, characterSpeedInfo, storyArcDetailControls, storyArcDetailInfo, facialControls, facialInfo, facialCustomControls, facialCustomInfo);
+  const defaultsPresetsToolbar = buildDefaultPresetsToolbar();
+  cameraFlowBar.append(defaultsPresetsToolbar.toolbar);
+  cameraFlowBar.append(buildDefaultsCards([
+    { title: "Visual Style", settings: [
+      { name: "Image aesthetic", controls: imageAestheticControls, info: imageAestheticInfo },
+      { name: "Video aesthetic", controls: videoStyleControls, content: [videoStyleCustomControls], info: videoStyleInfo },
+      { name: "Temporal / world effect", controls: temporalEffectControls, content: [temporalEffectCustomControls, temporalEffectOptions, temporalProtectedCustomControls], info: temporalEffectInfo },
+      { name: "Shot FX preset", controls: fxControls, content: [fxCustomControls], info: fxInfo },
+      { name: "Image world style", controls: imageWorldStyleControls, info: imageWorldStyleInfo },
+      { name: "Custom world direction", controls: imageCustomStyleControls, info: imageCustomStyleInfo },
+      { name: "Global consistency phrase", controls: consistencyControls, info: consistencyInfo },
+    ] },
+    { title: "Camera & Editing", settings: [
+      { name: "Still shot flow", controls: imageShotControls, info: imageShotInfo },
+      { name: "Auto camera flow", controls: cameraFlowControls, info: cameraFlowInfo },
+      { name: "Camera motion speed", controls: cameraSpeedControls, info: cameraSpeedInfo },
+      { name: "Cut frequency", controls: cutFrequencyControls, info: cutFrequencyInfo },
+    ] },
+    { title: "Performance", settings: [
+      { name: "Global performance style", controls: performanceControls, info: performanceInfo },
+      { name: "Character motion speed", controls: characterSpeedControls, info: characterSpeedInfo },
+    ] },
+    { title: "Facial & Story", settings: [
+      { name: "Global facial performance", controls: facialControls, info: facialInfo },
+      { name: "Custom facial text", controls: facialCustomControls, info: facialCustomInfo },
+      { name: "Story arc detail", controls: storyArcDetailControls, info: storyArcDetailInfo },
+    ] },
+  ]));
   const sceneDefaultsPanel = makeCollapsiblePanel("Scene Defaults", "", cameraFlowBar, { open: focusedSection === "defaults" });
+  sceneDefaultsPanel.firstElementChild.style.gridTemplateColumns = "auto auto minmax(0,1fr)";
+  sceneDefaultsPanel.firstElementChild.lastElementChild.style.cssText += "justify-self:end;max-width:min(100%,420px);font-size:11px;";
 
   return {
+    defaultsPresetsToolbar, selectedDefaultActions,
     cameraFlowApply, cameraFlowControls, cameraFlowInfo, cameraFlowReplace, cameraFlowSelect,
     cameraSpeedControls, cameraSpeedHint, cameraSpeedInfo, cameraSpeedInput, cameraSpeedValue,
     characterSpeedControls, characterSpeedHint, characterSpeedInfo, characterSpeedInput, characterSpeedValue,

@@ -1,3 +1,4 @@
+import { storyboardSceneVideoStyle } from "./video_style.mjs";
 import {
   createStoryboardProgressWindow,
   createToast,
@@ -85,15 +86,14 @@ export function createSceneEditor({
     const characterMotionPreset = makeGroupedSelect(sortGroupsAlphabetically(CHARACTER_MOTION_GROUPS), characterMotionValue);
     const customCharacterMotion = makeInput(scene.character_motion || "", "Custom character motion");
     const performanceStyle = makeSelect(sortOptionsAlphabetically(performanceStylePresets), scene.performance_style || "");
-    const videoStyle = makeSelect(sortOptionsAlphabetically(MINIMAX_VIDEO_STYLE_PRESETS), state.videoStyle || scene.video_style || "");
-    videoStyle.disabled = Boolean(state.videoStyle);
-    videoStyle.title = state.videoStyle ? "The global Video style is required for every eligible scene." : "Choose a style for this scene.";
+    const selectedVideoStyle = storyboardSceneVideoStyle(scene, state);
+    const videoStyle = makeSelect(sortOptionsAlphabetically(MINIMAX_VIDEO_STYLE_PRESETS), selectedVideoStyle.value);
+    videoStyle.title = "Choose an aesthetic for this scene; explicit scene aesthetics override the global default.";
     const videoStyleCustom = makeTextarea(
-      state.videoStyle === "custom" ? state.videoStyleCustom : (scene.video_style_custom || state.videoStyleCustom || ""),
+      selectedVideoStyle.custom,
       "Type the exact style wording that must appear unchanged in this scene's prompt...",
       3,
     );
-    videoStyleCustom.disabled = Boolean(state.videoStyle);
     const temporalEffectOverride = makeSelect([
       { value: "global", label: "Use global temporal effect" },
       { value: "off", label: "Off for this scene" },
@@ -296,7 +296,7 @@ export function createSceneEditor({
     const characterMotionField = field("Character motion preset", characterMotionPreset);
     const customCharacterMotionField = field("Custom character motion", customCharacterMotion);
     const performanceStyleField = field("Performance / song style", performanceStyle);
-    const videoStyleField = field(state.videoStyle ? "Video aesthetic — global and required" : "Video aesthetic", videoStyle);
+    const videoStyleField = field("Video aesthetic", videoStyle);
     const videoStyleCustomField = field("Custom style wording — copied exactly", videoStyleCustom);
     const temporalEffectField = field("Temporal / world effect", temporalEffectOverride);
     const temporalEffectCustomField = field("Custom temporal wording", temporalEffectCustom);

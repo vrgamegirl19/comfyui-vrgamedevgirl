@@ -33,6 +33,7 @@ import {
   storyboardMiniMaxVideoStylePreset,
   storyboardMiniMaxVideoStyleVerbiage,
   storyboardSceneSupportsVideoStyle,
+  storyboardSceneVideoStyle,
   storyboardTemporalWorldEffectForScene,
 } from "./video_style.mjs";
 
@@ -220,10 +221,9 @@ function storyboardScenesForGpt(state) {
     const selectedPerformanceStyle = normalized.performance_style || (fullyCustomShortFilm ? "" : state.performanceStyle);
     const selectedPerformancePreset = performancePreset(selectedPerformanceStyle);
     const supportsVideoStyle = storyboardSceneSupportsVideoStyle(normalized);
-    const selectedVideoStyle = supportsVideoStyle ? String(state.videoStyle || normalized.video_style || "") : "";
-    const selectedVideoStyleCustom = selectedVideoStyle === "custom"
-      ? String(state.videoStyle === "custom" ? state.videoStyleCustom : (normalized.video_style_custom || state.videoStyleCustom || "")).trim()
-      : "";
+    const sceneVideoStyle = supportsVideoStyle ? storyboardSceneVideoStyle(normalized, state) : { value: "", custom: "" };
+    const selectedVideoStyle = sceneVideoStyle.value;
+    const selectedVideoStyleCustom = sceneVideoStyle.custom;
     const selectedVideoStylePreset = storyboardMiniMaxVideoStylePreset(selectedVideoStyle);
     const selectedVideoStyleVerbiage = storyboardMiniMaxVideoStyleVerbiage(selectedVideoStyle, selectedVideoStyleCustom);
     const temporalWorldEffect = !imageMode ? storyboardTemporalWorldEffectForScene(normalized, state) : null;
