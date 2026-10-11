@@ -18,7 +18,8 @@ import {
 // size and leads the reference, so Identity has three fixed slots (front, left, right) before the bulk images.
 
 // Concept types that can be created now. The other types the RefMod pack knows (voice, singing,
-// music_style, sound_fx, ambience) are listed as unavailable until we decide how to handle them.
+// music_style, sound_fx, ambience, pose_motion) are listed as unavailable until we decide how to handle them.
+// pose_motion is off because neither a RefMod nor a reference video made the character follow the movement.
 export const REFMOD_ACTIVE_TYPES = [
   { value: "identity", label: "Identity", hint: "A specific character or person." },
   { value: "clothing_men", label: "Clothing (men)", hint: "A men's outfit or garment, separate from who is wearing it." },
@@ -29,10 +30,9 @@ export const REFMOD_ACTIVE_TYPES = [
   { value: "prop", label: "Prop", hint: "Set dressing or a prop." },
   { value: "vehicle", label: "Vehicle", hint: "A car, bike, boat or other vehicle." },
   { value: "creature", label: "Creature", hint: "An animal, monster or other creature." },
-  { value: "pose_motion", label: "Pose / Motion", hint: "A pose, dance, gesture or camera move." },
   { value: "generic", label: "Generic", hint: "Unspecified or mixed content." },
 ];
-export const REFMOD_INACTIVE_TYPES = ["voice", "singing", "music_style", "sound_fx", "ambience"];
+export const REFMOD_INACTIVE_TYPES = ["voice", "singing", "music_style", "sound_fx", "ambience", "pose_motion"];
 
 // Types that load their images in a fixed order. Each slot holds one image and is loaded before the extras.
 export const REFMOD_SLOTS_BY_TYPE = {
