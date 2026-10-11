@@ -14,7 +14,9 @@ import {
   TIMELINE_SEGMENT_TOP,
   WAVEFORM_MODES,
 } from "./constants.mjs";
-import { escapeHtml, makeButton, makeCheckbox, makeInput, makeSelect, normalizeProjectVideoEngine, toast } from "./controls.mjs";
+import {
+  escapeHtml, makeButton, makeCheckbox, makeInput, makeSelect, normalizeProjectVideoEngine, normalizeProjectVideoType, toast,
+} from "./controls.mjs";
 import { miniMaxI2VFLFEnabled } from "./minimax_keyframe_state.mjs";
 import { formatDurationSeconds, formatTime } from "./format.mjs";
 import { applyLyricSectionsFromReferenceText } from "./lyric_transcription.mjs";
@@ -33,6 +35,7 @@ import { appendTimelineVideoThumbnail, hasLockedVideo, selectedSegmentVideoPath 
 import { parseBulkTimeValue } from "./timeline_actions.mjs";
 import { audioChunkDuration, audioTimelineStart, markerEnd, normalizeTimelineMarkers } from "./timeline_state.mjs";
 import { mappedLocation } from "./scene_locations.mjs";
+import { STORY_CHAPTER_COLORS, storySceneIndex } from "./story_mode_data.mjs";
 import { createTimelineToolWindows } from "./timeline_tool_windows.mjs";
 import { speakingAudioEditsActive, speakingAudioLaneCount } from "./audio_clip_editor.mjs";
 import {
@@ -1174,6 +1177,8 @@ export function createTimelineView({
       segmentLayer.append(lyricLabel);
     }
     const visibleTimelineOverlays = state.overlayTrack.enabled ? state.overlaySegments : [];
+    // Story Mode: each scene shows its chapter colour, and its tooltip names the chapter, act and spot.
+    const storyIndex = normalizeProjectVideoType(state.videoType) === "story" ? storySceneIndex(state.builderStoryLayer) : {};
     for (const segment of [...visibleTimelineOverlays, ...state.segments]) {
       const isOverlay = segmentTrack(segment) === "overlay";
       const blockTop = isOverlay ? TIMELINE_OVERLAY_TOP : TIMELINE_SEGMENT_TOP;
@@ -1305,6 +1310,16 @@ export function createTimelineView({
       }
       const dblClickHint = !isOverlay ? "Double-click to review line & performer mapping. Shift + double-click to edit the Storyboard Card." : "";
       block.title = lockedByVideo ? "This scene has a generated video, so timing is locked." : dblClickHint;
+      const storyScene = isOverlay ? null : storyIndex[segment.id];
+      if (storyScene) {
+        const stripe = document.createElement("span");
+        stripe.style.cssText = `position:absolute;left:0;right:0;top:0;height:4px;z-index:4;pointer-events:none;background:${STORY_CHAPTER_COLORS[storyScene.chapterIndex % STORY_CHAPTER_COLORS.length]};`;
+        block.append(stripe);
+        block.title = [
+          `Chapter ${storyScene.chapterIndex + 1}: ${storyScene.chapterTitle} | Act: ${storyScene.actTitle}${storyScene.spot ? ` | Spot: ${storyScene.spot}` : ""}`,
+          block.title,
+        ].filter(Boolean).join("\n");
+      }
       const dragImageSource = segmentImageSource(segment);
       if (dragImageSource) {
         block.draggable = true;

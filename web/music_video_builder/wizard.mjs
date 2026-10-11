@@ -827,10 +827,10 @@ export function openMusicVideoWizard(api = {}) {
     }
   }
 
-  function openNestedTool(openTool, label = "wizard nested tool") {
+  function openNestedTool(openTool, label = "wizard nested tool", zIndex = "100005") {
     persistWizardDraft();
     persistWizardDraftFile().catch(() => null);
-    backdrop.style.zIndex = "100005";
+    backdrop.style.zIndex = zIndex;
     try {
       openTool?.();
       saveWizardProgress(label);
@@ -2421,6 +2421,23 @@ export function openMusicVideoWizard(api = {}) {
     content.append(note, grid);
   }
 
+  // Story Mode: cast, story, acts, scenes and places are made in the Story Builder.
+  function renderStoryModeStep(stepId) {
+    const tab = stepId === "references" ? "cast" : "story";
+    const note = el("div", "vrgdg-wizard-note", "This is a Story Mode project. The Story Builder takes you through cast, the story, acts, scenes and places in order. Come back here for prompts and rendering.");
+    const box = card("Story Builder", stepId === "references"
+      ? "Add your main characters first. Places are built later from the story, not from the lyrics."
+      : "Write or paste the story, break it into chapters, acts and scenes, then build its places.");
+    const openBuilder = button("Open Story Builder", "primary");
+    openBuilder.onclick = () => {
+      done.add(stepId);
+      // The wizard drops below the Story Builder (100004) so the Story Builder shows on top.
+      openNestedTool(() => api.openStoryBuilder?.({ tab }), "wizard story builder", "100003");
+    };
+    box.append(openBuilder);
+    content.append(note, box);
+  }
+
   function render() {
     const data = snapshot();
     const step = steps[activeIndex];
@@ -2438,6 +2455,7 @@ export function openMusicVideoWizard(api = {}) {
       else if (step.id === "audio") renderAudio(data);
       else if (step.id === "lyrics") renderLyrics();
       else if (step.id === "mode") renderMode(data);
+      else if ((step.id === "references" || step.id === "story") && data.storyMode) renderStoryModeStep(step.id);
       else if (step.id === "references") renderReferences(data);
       else if (step.id === "story") renderStory(data);
       else renderFinish(data);

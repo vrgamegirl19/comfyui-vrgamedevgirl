@@ -48,7 +48,7 @@ export function wireToolbar({
   openAutoBuildModal, openBuilderAgentModal, openBulkSegmentsModal, openGemmaRunnerModal,
   openLyricMappingWorkflowModal, openPromptOptionsModal, openReferenceBuilderTargetChooser,
   openRenderLogModal, openSceneAudioOptionsButton, openSceneOptions, openSettingsModal, openSnapSceneEdgeMenu,
-  openStitchPreviewModal, openStoryboardBuilderFromProject, openWhatsNewModal, openWizardBetaFromBuilder,
+  openStitchPreviewModal, openStoryboardBuilderFromProject, openStoryBuilder, openWhatsNewModal, openWizardBetaFromBuilder,
   openWizardFromBuilder, overlayTrackHintButton, overlayTrackToggleButton, pauseTimelineForEditing,
   pickAudioButton, pickIdLoraReferenceAudioButton, pickSrtButton, projectAudioFileInput, projectSrtFileInput,
   promptCreatorButton, promptOptionsButton, redo, redoButton, renderAllButton, renderImageSlideshowPreview,
@@ -203,6 +203,11 @@ export function wireToolbar({
   };
   storyboardBuilderButton.onclick = () => {
     try {
+      // Story Mode projects open the Story Builder; its last tab opens this Storyboard.
+      if (normalizeProjectVideoType(state.videoType) === "story" && openStoryBuilder) {
+        openStoryBuilder();
+        return;
+      }
       openStoryboardBuilderFromProject();
     } catch (error) {
       console.error("VRGDG Storyboard Builder failed to open", error);

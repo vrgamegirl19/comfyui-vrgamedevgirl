@@ -256,3 +256,22 @@ export function fillSceneCast(subjectSceneMap, acts, subjectIds) {
   }
   return { map: result, changed };
 }
+
+// One colour per chapter, used by the timeline stripe and the Story Builder act band.
+export const STORY_CHAPTER_COLORS = ["#0e7490", "#7c3aed", "#b45309", "#15803d", "#be123c", "#1d4ed8", "#a16207"];
+
+// Scene id -> { chapterIndex, chapterTitle, actTitle, spot } for the scenes that are in an act.
+export function storySceneIndex(layer) {
+  const chapters = normalizeStoryBook(layer?.story_book).chapters;
+  const chapterIndex = Object.fromEntries(chapters.map((chapter, index) => [chapter.id, index]));
+  const spots = Object.fromEntries(normalizeStoryScenePlan(layer?.story_scene_plan).map((entry) => [entry.scene_id, entry.spot]));
+  const index = {};
+  for (const act of normalizeStoryActs(layer?.story_acts)) {
+    if (!(act.chapter_id in chapterIndex)) continue;
+    const chapter = chapters[chapterIndex[act.chapter_id]];
+    for (const sceneId of act.scene_ids) {
+      index[sceneId] = { chapterIndex: chapterIndex[act.chapter_id], chapterTitle: chapter.title, actTitle: act.title, spot: spots[sceneId] || "" };
+    }
+  }
+  return index;
+}

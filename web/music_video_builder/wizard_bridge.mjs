@@ -76,6 +76,7 @@ import { normalizeFluxReferenceBuilder, normalizeLyricMapper } from "./reference
 
 
 export function createWizardBridge({
+  openStoryBuilder,
   activeI2VVideoSettings, activeProjectFolderForSave, activeSegment, allEditableSegments, audioInput,
   autoSaveSessionQuiet, chooseProjectAudioFile, confirmAndRunFullBuild, confirmAndRunGemmaT2IAll,
   confirmAndRunGemmaVideoAll, confirmAndRunZImageAll, createProgressWindow, createSceneVideoActions,
@@ -1033,6 +1034,7 @@ export function createWizardBridge({
       return {
         projectFolder: String(projectInput.value || state.projectFolder || "").trim(),
         projectVideoEngine: normalizeProjectVideoEngine(state.projectVideoEngine),
+        storyMode: normalizeProjectVideoType(state.videoType) === "story",
         audioPath: String(audioInput.value || state.audioPath || "").trim(),
         wizardFolder: String(projectInput.value || state.projectFolder || "").trim() ? `${String(projectInput.value || state.projectFolder || "").trim()}\\wizard` : "",
         sceneCount: allEditableSegments().length,
@@ -1179,6 +1181,7 @@ export function createWizardBridge({
     };
     openMusicVideoWizard({
       snapshot: wizardSnapshot,
+      openStoryBuilder: (...args) => openStoryBuilder?.(...args),
       setVideoMode: setWizardVideoMode,
       setImageMode: setWizardImageMode,
       chooseAudioFile: chooseProjectAudioFile,

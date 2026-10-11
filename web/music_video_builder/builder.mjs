@@ -143,6 +143,7 @@ import { createIdLoraBuilder } from "./id_lora_builder.mjs";
 import { createVideoRender } from "./video_render.mjs";
 import { createBatchRender } from "./batch_render.mjs";
 import { createModelPickers } from "./model_pickers.mjs";
+import { createStoryBuilder } from "./story_builder.mjs";
 
 export function openBuilder(node, options = {}) {
   // Mutable runtime state shared across the builder features for this open builder.
@@ -2159,6 +2160,18 @@ export function openBuilder(node, options = {}) {
     textGemmaRunnerPayload, themeStyleInput, zClipPicker, zSeed, zUnetPicker, zVaePicker,
   });
 
+  // Story Mode workspace; the toolbar's Storyboard button opens it for Story Mode projects.
+  const { openStoryBuilder } = createStoryBuilder({
+    autoSaveSessionQuiet, createProgressWindow, normalizeBuilderStoryLayer, openFluxReferenceBuilderModal,
+    openLyricMappingWorkflowModal, openLyricReviewModal, pushHistory, state,
+    getLlmPayload: () => ({ ...textGemmaRunnerPayload(), model_file: state.textGemmaRunner === "qwen_local"
+      ? state.qwenModelFile : (t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || state.gemmaModelFile || "") }),
+    openStoryboardClassic: () => openStoryboardBuilderFromProject(),
+    referenceBuilderPayload: () => storyboardReferenceBuilderWithIdLoraRefs(state.fluxReferenceBuilder),
+    render: (...args) => render(...args),
+    storyboardScenePayload: (...args) => storyboardScenePayload(...args),
+  });
+
   const { openIngredientsReferenceBuilderModal } = createIngredientsBuilder({
     activeSegment, allEditableSegments, applyIngredientsReferenceMappings, autoMapIngredientsSheets,
     autoSaveSessionQuiet, createDetailedLocationDescriptionWithGemma, createProgressWindow,
@@ -2462,6 +2475,7 @@ export function openBuilder(node, options = {}) {
   });
 
   const { openWizardBetaFromBuilder, openWizardFromBuilder } = createWizardBridge({
+    openStoryBuilder,
     activeI2VVideoSettings, activeProjectFolderForSave, activeSegment, allEditableSegments, audioInput,
     autoSaveSessionQuiet, chooseProjectAudioFile, confirmAndRunFullBuild, confirmAndRunGemmaT2IAll,
     confirmAndRunGemmaVideoAll, confirmAndRunZImageAll, createProgressWindow,
@@ -2896,7 +2910,7 @@ export function openBuilder(node, options = {}) {
     openBulkSegmentsModal, openGemmaRunnerModal, openLyricMappingWorkflowModal, openPromptOptionsModal,
     openReferenceBuilderTargetChooser, openRenderLogModal, openSceneAudioOptionsButton, openSceneOptions,
     openSettingsModal, openSnapSceneEdgeMenu, openStitchPreviewModal, openStoryboardBuilderFromProject,
-    openWhatsNewModal, openWizardBetaFromBuilder, openWizardFromBuilder, overlayTrackHintButton,
+    openStoryBuilder, openWhatsNewModal, openWizardBetaFromBuilder, openWizardFromBuilder, overlayTrackHintButton,
     overlayTrackToggleButton, pauseTimelineForEditing, pickAudioButton, pickIdLoraReferenceAudioButton,
     pickSrtButton, projectAudioFileInput, projectSrtFileInput, promptCreatorButton, promptOptionsButton, redo,
     redoButton, renderAllButton, renderImageSlideshowPreview, renderLogButton, requireActiveSegment,
