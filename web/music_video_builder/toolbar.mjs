@@ -11,7 +11,7 @@ import {
   makeSelect,
   makeVideoTypeSelect,
   normalizeProjectVideoEngine,
-  normalizeVideoType,
+  normalizeProjectVideoType,
   styleCompactToolbarButton,
   toast,
   VIDEO_TYPE_OPTIONS,
@@ -130,7 +130,7 @@ export function wireToolbar({
   });
   videoTypeSelect.onchange = async () => {
     pauseTimelineForEditing();
-    state.videoType = normalizeVideoType(videoTypeSelect.value);
+    state.videoType = normalizeProjectVideoType(videoTypeSelect.value);
     syncVideoTypeControl();
     render();
     await autoSaveSessionQuiet("video type changed");

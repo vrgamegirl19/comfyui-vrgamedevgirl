@@ -167,12 +167,16 @@ Same subject and extras cards as today, just before the story so the book uses t
   flip any scene. Default per act, editable per scene.
 - About 40 files branch on the video type, and `normalizeVideoType` (`controls.mjs:270`) turns any unknown
   value into `singing`. To avoid breaking them:
-  - Add `story` to `normalizeVideoType` and its Python twins (`storyboard/scene_helpers.py:153`,
-    `agent_api/video_prompt_inputs.py`, `agent_api/session_keys.py`).
-  - Add one helper, `renderVideoType(state)` (JS) / `render_video_type(session)` (Python), that returns
-    `singing` for Story Mode. All render, audio and prompt code calls it instead of reading the type
-    directly. Only Story Mode UI checks for `story`.
+  - `normalizeVideoType` stays the performance normalizer and returns `singing` for `story`. Every render,
+    audio and prompt check already goes through it (often as `segment.performance_mode || state.videoType`),
+    so they need no change.
+  - New `normalizeProjectVideoType` keeps `story`. It is used only where the project's type is stored:
+    session save/load, project defaults, the Video Type select and the wizard.
+  - The Python twins (`storyboard/scene_helpers.py`, `storyboard/session_sync.py`,
+    `agent_api/video_prompt_inputs.py`) already read any unknown type as `singing`, and the Agent API saves
+    `video_type` as sent. No Python change was needed.
   - Audio handling, lyric alignment and render pipelines are the same as Singing.
+  - Done in S1. Tests: `tests/test_story_mode_video_type.py` and `tests/story_mode_video_type.mjs`.
 
 ### The Story Builder
 
@@ -283,9 +287,9 @@ Everything stays inside existing session objects. No new top-level keys.
 
 ### Phase 3: Frontend
 
-- **A16a.** Story Mode video type: add `story` to `normalizeVideoType`, the video type select and the
-  Python twins. Add `renderVideoType` / `render_video_type` and switch render, audio and prompt code to it.
-  Contract test: every place that read the raw type now gets `singing` for Story Mode.
+- **A16a.** Done. Story Mode video type: `story` option, `normalizeProjectVideoType` where the project type
+  is stored, `normalizeVideoType` returns `singing` for it. Contract test fails if a storing site uses
+  `normalizeVideoType`.
 - **A16b.** Per-scene performance in Story Mode: the scene plan proposes `performance_mode` (`singing`,
   `speaking`, `no_lip_sync`) and marks instrumental scenes with the existing `lyric_instrumental`. The
   Scenes tab and timeline let the user change it. A `speaking` scene needs its spoken line and speaker,
@@ -354,18 +358,28 @@ Everything stays inside existing session objects. No new top-level keys.
 
 ## 7. Risks
 
-- **R1.** Unknown video types fall back to `singing` silently. A missed branch would treat Story Mode as
-  plain Singing without an error. A16a's contract test covers this.
+- **R1.** Unknown video types fall back to `singing` silently. A save that used `normalizeVideoType` would
+  turn a Story Mode project back into Singing. A16a's contract test covers this.
 - **R2.** Reference Builder and line mapping panels are built inside closures with many dependencies
   (`reference_builder.mjs` passes about 40 functions between modules). Making them mountable (A16d) is the
   largest frontend task and should be done before the tabs.
 - **R3.** Two windows can edit the same scene (Story Builder and Video Builder). Both already use the
   revision check, so the second save asks before overwriting.
 
-## 8. Suggested build order
+## 8. Implementation stages
 
-1. Phase 1 prompts and services, tested from Python with a real project (no UI).
-2. A16a Story Mode type and the render helper.
-3. Phase 2 routes and Agent API, so the flow runs end to end through MCP.
-4. A16d mountable panels, then A16c Story Builder shell and tabs.
-5. Remaining frontend, docs and tests.
+Work happens on the `newbuilder` branch. Each stage is its own commits, passes the full unit test suite,
+and leaves Singing, Speaking and No Lip Sync projects unchanged.
+
+| Stage | Tasks | Done when |
+|-------|-------|-----------|
+| S1. Story Mode type | A16a | A Story Mode project renders exactly like Singing. The video type contract test passes. |
+| S2. The book | A1, A1b, A2, A6 (book part), A11/A13 (book routes) | Through the API: draft a book from a premise, split a pasted story with the text unchanged, list story characters without a card. |
+| S3. Acts and scene plan | A3, A4, A5b, A7, A16b, rest of A6/A11/A13 | On a 20-scene and a 46-scene project every scene is covered in order, timed notes and Director/Video Notes are respected, each scene has a spot and a performance, no place comes from the lyrics. |
+| S4. Settings and spots | A5, A8, A12, A14, A15 | Locations grouped by setting, mapped to scenes in `location_scene_map`, and they open correctly in the current Reference Builder. |
+| S5. End to end without new UI | A9, A24 | A full Story Mode video made through MCP: book, acts, plan, locations, beats, prompts, render, stitch. Main checkpoint. |
+| S6. Mountable panels | A16d | Line mapping, cast and location panels work in a test container and in the Reference Builder as before. |
+| S7. Story Builder UI | A16c, A16e, A16, A17-A22 | The S5 video can be made entirely from the Story Builder tabs. |
+| S8. Old projects and docs | A10, A23, A25, A26 | Convert to Story Book works on an old project, docs updated, full suite passes. |
+
+S5 proves the story logic before the UI work starts, which is the largest risk (R2).

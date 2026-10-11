@@ -16,7 +16,7 @@ import {
   REQUIRED_LTX_INGREDIENTS_LORA,
   REQUIRED_LTX25_MSR_LORA,
 } from "./constants.mjs";
-import { normalizeProjectVideoEngine, normalizeVideoType } from "./controls.mjs";
+import { normalizeProjectVideoEngine, normalizeProjectVideoType } from "./controls.mjs";
 import { defaultNBImageSettings } from "./llm_runner.mjs";
 import { normalizeMiniMaxShortFilmPlanningMode } from "./minimax_h3.mjs";
 import { cloneKrea2ReferenceSettings } from "./models.mjs";
@@ -735,7 +735,7 @@ export function createModelSettings({
       state.ownServerTimeoutMinutes = normalizeOwnServerTimeoutMinutes(rawTimeout ?? state.ownServerTimeoutMinutes);
     }
     state.imageModelMode = defaults.image_model_mode || defaults.imageModelMode || defaults.flux_klein_settings?.image_model_mode || defaults.fluxKleinSettings?.image_model_mode || state.imageModelMode || "zimage";
-    state.videoType = normalizeVideoType(defaults.video_type || defaults.videoType || state.videoType);
+    state.videoType = normalizeProjectVideoType(defaults.video_type || defaults.videoType || state.videoType);
     if (defaults.zimage_settings || defaults.zimageSettings) {
       state.zimageSettings = scrubGlobalImageToImageSourceForProject(cloneZImageSettings(defaults.zimage_settings || defaults.zimageSettings), state.projectFolder);
     }

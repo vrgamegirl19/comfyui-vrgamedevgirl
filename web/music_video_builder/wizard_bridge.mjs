@@ -35,6 +35,7 @@ import {
   makeButton,
   makeSubTabs,
   normalizeProjectVideoEngine,
+  normalizeProjectVideoType,
   normalizeVideoType,
   toast,
   VIDEO_TYPE_OPTIONS,
@@ -1411,7 +1412,7 @@ export function createWizardBridge({
         state.fluxKleinSettings.image_model_mode = values.imageMode;
         state.fluxKleinSettings.enabled = values.imageMode === "flux_klein";
       }
-      if (values.performance) { state.videoType = normalizeVideoType(values.performance); syncVideoTypeControl(); }
+      if (values.performance) { state.videoType = normalizeProjectVideoType(values.performance); syncVideoTypeControl(); }
       if (values.audioMode) {
         if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") state.miniMaxH3Settings = cloneMiniMaxH3Settings({ ...state.miniMaxH3Settings, audio_mode: values.audioMode });
         else ltxAudioChoice = values.audioMode;

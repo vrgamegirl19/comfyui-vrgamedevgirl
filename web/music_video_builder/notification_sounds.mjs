@@ -1,4 +1,4 @@
-import { normalizeVideoType } from "./controls.mjs";
+import { normalizeProjectVideoType } from "./controls.mjs";
 import { normalizeNotificationSettings } from "./notifications.mjs";
 
 function notificationFrequencies(kind, soundName) {
@@ -15,7 +15,7 @@ function notificationFrequencies(kind, soundName) {
 
 export function createNotificationSounds({ state, videoTypeSelect }) {
   function syncVideoTypeControl() {
-    state.videoType = normalizeVideoType(state.videoType);
+    state.videoType = normalizeProjectVideoType(state.videoType);
     videoTypeSelect.value = state.videoType;
   }
 

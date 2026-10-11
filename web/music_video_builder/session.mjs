@@ -16,7 +16,7 @@ import {
 import {
   makeButton,
   normalizeProjectVideoEngine,
-  normalizeVideoType,
+  normalizeProjectVideoType,
   setWidgetValue,
   styleCompactToolbarButton,
   toast,
@@ -843,7 +843,7 @@ export function createSession({
       timeline_panel_height: state.timelinePanelHeight,
       timeline_zoom: state.timelineZoom,
       auto_save_enabled: state.autoSaveEnabled,
-      video_type: normalizeVideoType(state.videoType),
+      video_type: normalizeProjectVideoType(state.videoType),
       video_engine: normalizeProjectVideoEngine(state.projectVideoEngine),
       minimax_h3_settings: cloneMiniMaxH3Settings(state.miniMaxH3Settings),
         minimax_h3_two_pass: state.miniMaxH3Settings.render_pass === "two_pass",
@@ -1157,7 +1157,7 @@ export function createSession({
         state.timelinePanelHeight = data.session.timeline_panel_height || state.timelinePanelHeight;
         state.timelineZoom = data.session.timeline_zoom || state.timelineZoom;
         state.autoSaveEnabled = data.session.auto_save_enabled ?? state.autoSaveEnabled;
-        state.videoType = normalizeVideoType(data.session.video_type || data.session.videoType || state.videoType);
+        state.videoType = normalizeProjectVideoType(data.session.video_type || data.session.videoType || state.videoType);
         state.projectVideoEngine = normalizeProjectVideoEngine(data.session.video_engine ?? state.projectVideoEngine);
         state.imageModelMode = data.session.image_model_mode || data.session.flux_klein_settings?.image_model_mode || state.imageModelMode || "zimage";
         state.pxPerSecond = state.timelineZoom;
@@ -1440,7 +1440,7 @@ export function createSession({
       state.timelinePanelHeight = session.timeline_panel_height || state.timelinePanelHeight || 300;
       state.timelineZoom = session.timeline_zoom || state.timelineZoom || 45;
       state.autoSaveEnabled = session.auto_save_enabled ?? state.autoSaveEnabled ?? true;
-      state.videoType = normalizeVideoType(session.video_type || session.videoType || state.videoType);
+      state.videoType = normalizeProjectVideoType(session.video_type || session.videoType || state.videoType);
       state.projectVideoEngine = normalizeProjectVideoEngine(session.video_engine);
       state.imageModelMode = session.image_model_mode || session.flux_klein_settings?.image_model_mode || state.imageModelMode || "zimage";
       state.pxPerSecond = state.timelineZoom;
