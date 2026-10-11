@@ -59,10 +59,16 @@ export function createReferenceBuilder({
               : "Gemma scene text mapping";
     state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
     const refs = state.fluxReferenceBuilder;
+    // options.host renders the builder inside that element (a Story Builder tab) instead of a full-screen window.
+    const host = options?.host instanceof HTMLElement ? options.host : null;
     const backdrop = document.createElement("div");
-    backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
+    backdrop.style.cssText = host
+      ? "position:relative;width:100%;height:100%;min-height:0;display:flex;"
+      : "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
     const box = document.createElement("div");
-    box.style.cssText = "width:min(1380px,calc(100vw - 42px));height:calc(100vh - 44px);max-height:calc(100vh - 44px);box-sizing:border-box;overflow:hidden;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+    box.style.cssText = host
+      ? "width:100%;height:100%;min-height:0;box-sizing:border-box;overflow:hidden;background:#111827;color:#f8fafc;padding:4px;display:flex;flex-direction:column;gap:12px;"
+      : "width:min(1380px,calc(100vw - 42px));height:calc(100vh - 44px);max-height:calc(100vh - 44px);box-sizing:border-box;overflow:hidden;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
     const header = document.createElement("div");
     header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
     const heading = document.createElement("div");
@@ -78,6 +84,7 @@ export function createReferenceBuilder({
     heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">${focusedSection === "mapping_tools" ? "Map Subjects / Locations" : sectionTitle ? `Edit ${sectionTitle}` : "Scene Reference Builder"}</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">${referenceBuilderDescription}</div>`;
     const close = makeButton("Close");
     header.append(heading, close);
+    if (host) close.style.display = "none";
 
     const useSubject = { input: { checked: true } };
     const useLocations = { input: { checked: true } };
@@ -379,9 +386,13 @@ export function createReferenceBuilder({
     const cancel = makeButton("Cancel");
     const save = makeButton(sectionTitle ? `Save ${sectionTitle}` : "Save Reference Builder", "primary");
     footer.append(cancel, save);
+    if (host) {
+      cancel.style.display = "none";
+      footer.style.gridTemplateColumns = "1fr";
+    }
     box.append(header, inlineProgress, tabShell, footer);
     backdrop.append(box);
-    document.body.append(backdrop);
+    (host || document.body).append(backdrop);
 
     if (options?.openLocationImport) {
       setTimeout(() => openImportLocationsDialog(), 0);
@@ -902,12 +913,20 @@ export function createReferenceBuilder({
         return;
       }
       toast(`${referenceBuilderTargetLabel} reference builder saved.`);
+      if (host) {
+        options.onSaved?.();
+        renderAll();
+        return;
+      }
       closeReferenceBuilder();
     };
-    backdrop.addEventListener("pointerdown", (event) => {
-      if (event.target === backdrop) closeReferenceBuilder();
-    });
+    if (!host) {
+      backdrop.addEventListener("pointerdown", (event) => {
+        if (event.target === backdrop) closeReferenceBuilder();
+      });
+    }
     renderAll();
+    return { close: closeReferenceBuilder, save: () => save.onclick(), renderAll };
   }
 
   return { openFluxReferenceBuilderModal };
