@@ -14,6 +14,39 @@ pa = importlib.import_module(f"{ROOT.name}.minimax.prompt_assembly")
 
 
 class LyricFreePerformanceTests(unittest.TestCase):
+    def test_tagged_pronoun_cue_is_kept_once_with_its_action_and_emotion(self):
+        contract = "<Subject 1> sings in sync with the vocals in <Audio 1>."
+        draft = ("<Subject 1> keeps her stance planted and carries a restrained pulse through her shoulders "
+                 "as she [intense, singing] sings in sync with the vocals in <Audio 1>. "
+                 "<Subject 1> holds an engaged gaze toward the camera. Warm light falls across the doorway.")
+        for text in (draft, draft + " " + contract):
+            merged, extra = lfp.merge_contract(text, contract)
+            self.assertEqual(extra, "")
+            self.assertEqual(len(re.findall(r"sings\b", merged)), 1)
+            self.assertEqual(merged.count("<Audio 1>"), 1)
+            self.assertIn("she [intense, singing] sings", merged)
+            self.assertIn("restrained pulse through her shoulders", merged)
+            self.assertEqual(lfp.merge_contract(merged, contract), (merged, ""))
+        scene = {"lyric_text": "Secret song words", "facial_performance_custom": "intense"}
+        out = lfp.apply_shots([draft], scene, {"exact_duration_seconds": 4}, "<Subject 1>")[0]
+        self.assertEqual(len(re.findall(r"sings\b", out)), 1)
+        self.assertIn("[intense, singing]", out)
+
+    def test_pronoun_ownership_requires_one_named_actor_and_preserves_other_times(self):
+        contract = "<Subject 1> sings in sync with the vocals in <Audio 1> during 2.5s–4s."
+        draft = "<Subject 1> stands beside the doorway. She [intense, singing] sings in sync with <Audio 1> during 2.5s–4s."
+        merged, extra = lfp.merge_contract(draft, contract)
+        self.assertEqual(extra, "")
+        self.assertEqual(merged.count("<Audio 1>"), 1)
+        self.assertIn("during 2.5s–4s.", merged)
+        for text in ('<Subject 1> watches <Subject 2> as she [sad, singing] sings.',
+                     '<Subject 1> holds a sign saying "she sings".',
+                     '<Subject 1> stands nearby. She sings during 1s–2s.'):
+            self.assertEqual(lfp.merge_contract(text, contract), (text, contract))
+        text = "<Subject 1> [intense, singing] sings in sync with <Audio 1>. <Subject 2> sings in sync with <Audio 1> during 1s–2s."
+        merged, _ = lfp.merge_contract(text, contract)
+        self.assertIn("<Subject 2> sings in sync with <Audio 1> during 1s–2s.", merged)
+
     def test_inline_singing_merges_audio_once_and_removes_articulation(self):
         draft = ("<Subject 1> walks slowly alongside the table; <Subject 1> sings passionately in sync with the audible vocals, "
                  "with natural mouth and jaw articulation, narrowed eyes, and brows drawn in a defiant expression. Dust drifts.")

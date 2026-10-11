@@ -13,3 +13,11 @@ H3 shot wording must also work literally. Use natural action-led prose: establis
 **Do not add lyric lines to prompt** applies to singing with supplied audio. Built-in audio and speaking retain their spoken or sung words. See [lyric-free prompts](LYRIC_FREE_VIDEO_PROMPTS.md) and [emotion and speech tags](EMOTION_EXPRESSION_TAGS.md).
 
 Populated scene-card shot and camera directions take priority over automatic framing rotation, including stale saved rotation choices. Supplied-audio singing assembly strips oral movement directives regardless of the lyric-omission option; exact quoted lyric words are protected.
+
+Image + Reference prompts retain the scene image as `<Picture 1>` and place character references after the start frame (and optional end frame). Compact output adds one brief picture-to-character appearance assignment for each character used in the shot text. Face/hair-only influence remains limited to face and hair. Unused character references do not introduce extra people into the action. Structured output keeps its full definitions instead.
+
+For Image + Reference with normal image references, the prompt writer receives all connected images in order, including when using the built-in local vision runner. Configure the vision model and matching MMProj for the local runner. RefMod inputs retain their existing behavior.
+
+With full-character influence, the character sheet controls the complete outfit, footwear, accessories, and body proportions throughout the shot, including details revealed beyond the opening crop. All panels of a multi-view sheet represent one character.
+
+Image + Reference two-pass rendering re-encodes start/end-frame conditioning and reference images at each sampler's resolution. Pass 2 uses the actual learned-upscaler dimensions (including rounding), rather than reusing pass-1 keyframe latents. Reference image sizing is preserved on both passes. Native audio wiring follows the pass-1 latent connection when multiple conditioning nodes are present.

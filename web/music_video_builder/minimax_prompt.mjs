@@ -382,6 +382,16 @@ function miniMaxH3CompactReferenceShots(creative, subjects) {
   }).join("\n\n").trim();
 }
 
+function miniMaxH3CharacterReferenceBindings(creative, subjects, reserveAll = false) {
+  return subjects.filter(item => (item.kind === "subject" || item.kind === "extra")
+    && item.pictureLabel && (reserveAll || String(creative).includes(item.label)))
+    .map(item => {
+      const purpose = String(item.purpose || "character identity, face, hair, clothing, and body-proportion reference")
+        .split(";")[0].replace(/\s+reference(?:\s+only)?(?:\s+for.*)?$/i, "");
+      return `Use ${item.pictureLabel} for ${item.label}'s ${purpose}.`;
+    }).join(" ");
+}
+
 function miniMaxH3ReferenceCompositionLeak(text) {
   return /\b(?:in|from|matching|copying|reproducing|preserving|using|following)\s+(?:the\s+)?(?:exact\s+)?(?:composition|framing|camera\s+angle|pose)\s+(?:of|from|in)\s+<Picture\s+\d+>/i.test(text)
     || /<Picture\s+\d+>\s+(?:is|defines|controls|sets)\s+(?:the\s+)?(?:exact\s+)?(?:first|start|opening)\s+(?:frame|composition|framing)/i.test(text)
@@ -1312,6 +1322,9 @@ export function createMiniMaxPrompt({
     }
     add(parts, "Location", segmentMappedLocationText(segment));
     const referenceAssignments = miniMaxH3ReferenceAssignmentLines(segment, mode);
+    if (normalizeMiniMaxH3Mode(mode) === "image_reference_to_video") {
+      parts.push("IMAGE + CHARACTER REFERENCE PLANNING: Inspect the attached start frame and each attached character reference using their exact connected Picture numbers. The start frame establishes the opening composition, pose, environment, and lighting. Character references provide their assigned appearance role; respect the selected face/hair-only or full-character influence. With full-character influence, keep the complete outfit, lower-body clothing, footwear, accessories, and body proportions from the character sheet, including details initially outside the start-frame crop and later revealed by camera movement. Multiple panels depict the same character, not additional people; use their appearance without copying the sheet layout or reference pose. Use the mapped subject labels for the characters required by this scene and describe their actions from the start-frame setup. Reference-only characters are not automatically additional people in the shot. The builder adds one concise picture-to-character assignment for each subject used in your descriptions; do not repeat that assignment or add picture-origin parentheses in the shot action.");
+    }
     const referenceLabels = referenceAssignments
       .map((line) => String(line || "").split(":")[0].trim())
       .filter(Boolean);
@@ -1795,6 +1808,7 @@ export function createMiniMaxPrompt({
         kind: item?.kind || "reference",
         description,
         pictureLabel,
+        purpose,
         extraId: item?.kind === "extra" ? String(item?.source_id || "") : "",
       });
     });
@@ -1963,7 +1977,9 @@ export function createMiniMaxPrompt({
     if (isRefmodPipelineActive()) return relabelRefmodPrompt(segment, mode, detailed);
     const refs = miniMaxH3CombinedSubjectPlan(segment, mode);
     if (!state.useStructuredOutputs) {
-      return `detailed_description:\nThe target video is in a ${miniMaxH3OpeningStyle(segment)} music-video style.\n\n${miniMaxH3CompactReferenceShots(creative, refs.subjects)}`.trim();
+      const bindings = normalizeMiniMaxH3Mode(mode) === "image_reference_to_video"
+        ? miniMaxH3CharacterReferenceBindings(creative, refs.subjects) : "";
+      return `detailed_description:\nThe target video is in a ${miniMaxH3OpeningStyle(segment)} music-video style.\n\n${bindings ? `${bindings}\n\n` : ""}${miniMaxH3CompactReferenceShots(creative, refs.subjects)}`.trim();
     }
     const audioDefinition = miniMaxH3OfficialAudioDefinition(segment);
     return [
@@ -2482,7 +2498,8 @@ export function createMiniMaxPrompt({
   }
 
   function miniMaxH3PromptVisionImagesForRunner(segment, mode) {
-    if ((state.textGemmaRunner || "builtin") === "builtin") return [];
+    if ((state.textGemmaRunner || "builtin") === "builtin"
+      && (normalizeMiniMaxH3Mode(mode) !== "image_reference_to_video" || isRefmodPipelineActive())) return [];
     return miniMaxH3PromptVisionImages(segment, mode);
   }
 
@@ -2675,7 +2692,9 @@ export function createMiniMaxPrompt({
           ? (item.label.length + 1) * shotCount
           : item.label.length + 47), 0)
       : 0;
-    const fixedChars = fixedPrompt.length + refmodReserve;
+    const characterBindingReserve = normalizedMode === "image_reference_to_video" && !state.useStructuredOutputs && !isRefmodPipelineActive()
+      ? miniMaxH3CharacterReferenceBindings("", miniMaxH3CombinedSubjectPlan(segment, normalizedMode).subjects, true).length + 2 : 0;
+    const fixedChars = fixedPrompt.length + refmodReserve + characterBindingReserve;
     return {
       hardLimit,
       targetLimit,

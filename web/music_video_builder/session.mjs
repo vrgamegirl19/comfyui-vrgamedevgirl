@@ -24,6 +24,7 @@ import {
 import { showLoadProjectModal, showWelcomeProjectModal } from "./dialogs.mjs";
 import { normalizeAudioMaskAuto } from "./audio_mask_store.mjs";
 import { cloneMiniMaxH3Settings } from "./minimax_h3.mjs";
+import { restoreVideoMode } from "./video_mode_resume.mjs";
 import {
   cloneErnieImageSettings,
   cloneFlowGptBrowserSettings,
@@ -770,6 +771,7 @@ export function createSession({
       overlay_segments: sanitizedSessionSegments(state.overlaySegments, "overlay"),
       overlay_track: normalizeOverlayTrackState(state.overlayTrack),
       active_track: state.activeTrack,
+      active_scene_id: state.activeId || "",
       timing_frozen: state.timingFrozen,
       srt_mode: state.srtMode,
       prompt_json_path: state.promptJsonPath,
@@ -1546,9 +1548,15 @@ export function createSession({
         }
       }
       state.activeTrack = session.active_track || "base";
+      const resumedActiveId = restoreVideoMode(localStorage, state);
+      state.miniMaxH3TwoPassEnabled = state.miniMaxH3Settings.render_pass === "two_pass";
+      state.miniMaxH3ThreePassEnabled = state.miniMaxH3Settings.render_pass === "three_pass";
+      const savedActive = [...state.segments, ...state.overlaySegments]
+        .find(item => item?.id === (resumedActiveId || session.active_scene_id));
       const keepActive = options.preserveSelection
         && [...state.segments, ...state.overlaySegments].some((item) => item?.id && item.id === previousActiveId);
-      state.activeId = keepActive ? previousActiveId : (state.segments[0]?.id || state.overlaySegments[0]?.id || "");
+      state.activeId = keepActive ? previousActiveId : (savedActive?.id || state.segments[0]?.id || state.overlaySegments[0]?.id || "");
+      state.activeTrack = state.overlaySegments.some(item => item.id === state.activeId) ? "overlay" : "base";
       syncZImageSettingsPanel();
       syncFluxKleinPanel();
       syncErnieImagePanel();

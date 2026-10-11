@@ -26,3 +26,5 @@ honor the saved setting. No additional MCP tool or parallel project key is neede
 
 Policy helpers live in `web/music_video_builder/lyric_free_performance.mjs` and
 `minimax/lyric_free_performance.py`. Keep their shot rules and facial presets synchronized.
+
+Supplied-audio lyric-free assembly recognizes emotion tags between the actor/pronoun and singing verb. An unambiguous pronoun can reuse the single established subject's assigned cue without appending another singing sentence. Already-appended identical standalone cues are removed; distinct singers and scheduled vocal intervals stay separate, and quoted text is excluded from ownership matching.
