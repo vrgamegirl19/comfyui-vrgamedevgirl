@@ -317,3 +317,19 @@ test('vision attachments keep start/end frames and four character pictures in re
   images = c.miniMaxH3PromptVisionImagesForRunner(scene, 'image_reference_to_video');
   assert.deepEqual(Array.from(images, image => image.path), ['start.png', 'end.png', 'character1.png', 'character2.png', 'character3.png', 'character4.png']);
 });
+
+test('full character sheets preserve outfit and footwear; all panels are the same person', () => {
+  const context = vm.createContext({
+    miniMaxH3ModeForSegment: () => 'image_reference_to_video',
+    miniMaxH3StartFrameCharacterInfluenceForSegment: () => 'full_character',
+  });
+  vm.runInContext(functionSource(readBuilderModule('minimax_references.mjs'), 'miniMaxReferencePurposeText'), context);
+  const purpose = context.miniMaxReferencePurposeText({ kind: 'subject', reference_image_type: 'multi_view' }, {});
+  assert.match(purpose, /complete outfit, footwear, accessories/);
+  assert.match(purpose, /all panels depict the same character, not multiple people/);
+  assert.match(purpose, /outside the start-frame crop/);
+  const c = fixture('input_audio', 'standard', false);
+  c.miniMaxReferencePurposeText = () => purpose;
+  const prompt = c.assembleMiniMaxH3OfficialPromptFromCreative(scene, 'image_reference_to_video', '<Subject 1> walks beside the stage as the camera pulls back to show her full figure.');
+  assert.match(prompt, /Use <Picture 2> for <Subject 1>'s character identity, face, hair, complete outfit, footwear, accessories, and body-proportion/);
+});

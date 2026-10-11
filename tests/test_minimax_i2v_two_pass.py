@@ -147,6 +147,45 @@ class MiniMaxI2VTwoPassTests(unittest.TestCase):
         self.assertEqual(pass1["inputs"]["model"], ["141", 0])
         self.assertEqual(pass2["inputs"]["model"], ["207", 0])
 
+    def test_image_reference_rebuilds_conditioning_for_the_upscaled_sampler(self) -> None:
+        for audio_mode in ("input_audio", "built_in_audio"):
+            for ref_size in ("match", "max"):
+                for last_frame in (False, True):
+                    with self.subTest(audio_mode=audio_mode, ref_size=ref_size, last_frame=last_frame):
+                        payload = {
+                            **self.payload, "video_mode": "image_reference_to_video", "audio_mode": audio_mode,
+                            "image_paths": [str(self.first), str(self.last)], "ref_image_size": ref_size,
+                            "latent_upscale_scale": 1.5,
+                            "two_pass_lora_name": "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+                        }
+                        if last_frame:
+                            end = self.project / "end.png"
+                            Image.new("RGB", (64, 64), "green").save(end)
+                            payload["last_frame_path"] = str(end)
+                        graph = workflows._build_minimax_h3_2pass_api_prompt(payload)["prompt"]
+                        self.assertEqual(graph["136"]["class_type"], "VRGDG_MiniMaxH3ImageReferenceToVideo")
+                        self.assertEqual(graph["214"]["class_type"], graph["136"]["class_type"])
+                        self.assertEqual(graph["193"]["inputs"]["conditioning"], ["214", 0])
+                        self.assertEqual(graph["214"]["inputs"]["width"], ["212", 1])
+                        self.assertEqual(graph["214"]["inputs"]["height"], ["213", 1])
+                        for dimension, source in (("212", "186"), ("213", "187")):
+                            self.assertEqual(graph[dimension]["inputs"]["expression"], "round(a / 16 * b) * 16")
+                            self.assertEqual(graph[dimension]["inputs"]["values.a"], [source, 1])
+                            self.assertEqual(graph[dimension]["inputs"]["values.b"], ["185", 0])
+                        for node_id in ("136", "214"):
+                            inputs = graph[node_id]["inputs"]
+                            self.assertEqual(inputs["first_frame"], ["180", 0])
+                            self.assertEqual(inputs["ref_images.ref_image_0"], ["180", 2 if last_frame else 1])
+                            self.assertEqual(inputs["ref_image_size"], ref_size)
+                            if last_frame:
+                                self.assertEqual(inputs["last_frame"], ["180", 1])
+                            else:
+                                self.assertNotIn("last_frame", inputs)
+                        for node in graph.values():
+                            for value in node["inputs"].values():
+                                if isinstance(value, list) and len(value) == 2 and isinstance(value[0], str):
+                                    self.assertIn(value[0], graph)
+
     def test_reference_two_pass_still_uses_its_original_template(self) -> None:
         result = workflows._build_minimax_h3_2pass_api_prompt({
             **self.payload, "video_mode": "reference_to_video",

@@ -241,6 +241,8 @@ def assemble_minimax_h3_prompt(
             if (item.get("kind") == "subject" and segment.get("minimax_h3_use_scene_image_as_start_frame")
                     and segment.get("minimax_h3_start_frame_character_influence") == "face_hair_only"):
                 item["purpose"] = "face identity and hair reference only"
+            elif item.get("kind") == "subject":
+                item["purpose"] = "character identity, face, hair, complete outfit, footwear, accessories, and body-proportion reference"
             items.append(item)
         items = items[:9]
         shots_body = shots_body.replace("[Shot 1] ", "[Shot 1] The shot begins exactly from <Picture 1>. ", 1)

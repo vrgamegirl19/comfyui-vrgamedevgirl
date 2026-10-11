@@ -242,9 +242,13 @@ export function createMiniMaxReferences({
     if (item?.refmod?.category === "object") return "object reference: shape, material, colour, markings and scale";
     if (item?.refmod?.category === "style") return "visual style reference: medium, palette, line quality, lighting and texture, applied to the whole scene";
     if (item?.kind === "subject") {
-      return faceHairOnly
-        ? "face identity and hair reference only; do not copy clothing, body proportions, pose, accessories, framing, lighting, or background"
+      if (faceHairOnly) return "face identity and hair reference only; do not copy clothing, body proportions, pose, accessories, framing, lighting, or background";
+      const purpose = miniMaxH3ModeForSegment(segment) === "image_reference_to_video"
+        ? "character identity, face, hair, complete outfit, footwear, accessories, and body-proportion reference"
         : "character identity, face, hair, clothing, and body-proportion reference";
+      return purpose + (item?.reference_image_type === "multi_view"
+        ? "; all panels depict the same character, not multiple people; use their complete appearance as framing reveals details outside the start-frame crop"
+        : "");
     }
     if (item?.kind === "extra") {
       return item?.reference_image_type === "multi_view"
