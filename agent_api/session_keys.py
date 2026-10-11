@@ -10,7 +10,7 @@ key has to be added here too. ``SERVER_SESSION_KEYS`` are the keys the save itse
 from typing import Any, Dict, FrozenSet
 
 BUILDER_SESSION_DATA_KEYS = (
-    "segments", "audio_clips", "speaking_audio_defaults", "overlay_segments", "overlay_track", "active_track", "timing_frozen", "srt_mode",
+    "segments", "audio_clips", "speaking_audio_defaults", "overlay_segments", "overlay_track", "active_track", "active_scene_id", "timing_frozen", "srt_mode",
     "prompt_json_path", "i2v_motion_json_path", "image_trigger_phrase", "video_trigger_phrase",
     "default_facial_performance", "default_facial_performance_custom", "use_i2v_prompt_enhancement_pass",
     "fail_on_invalid_prompt_formats", "omit_lyrics_from_video_prompts", "use_structured_outputs", "continuity_mode", "auto_img2img_start_step", "auto_img2img_creativity",
