@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   STORY_BUILDER_TABS, castWithoutImages, referenceImageGaps, sceneRangeText, storyBuilderBlocker, storyBuilderProgress,
-  storySubjectCard,
+  storySubjectCard, relinkStoryLocations,
 } from '../web/music_video_builder/story_builder_data.mjs';
 
 const sceneIds = ['s1', 's2', 's3'];
@@ -53,6 +53,19 @@ test('image gaps name the cards scenes use without an image, and the scenes with
   });
   assert.equal(sceneRangeText([48, 49, 50, 52]), 'Scenes 48-50, 52');
   assert.equal(sceneRangeText([7]), 'Scene 7');
+});
+
+test('used location cards that lost their story link are linked again by name', () => {
+  const settings = [{ id: 'setting_home', name: 'Home' }, { id: 'setting_home_office', name: 'Home Office' }];
+  const refs = {
+    locations: [{ id: 'a', name: 'Home - Kitchen' }, { id: 'b', name: 'Home Office - Desk' }, { id: 'c', name: 'Home - Porch' },
+      { id: 'd', name: 'Street' }, { id: 'e', name: 'Home', story_setting_id: 'setting_other' }],
+    scene_map: { s1: 'a', s2: 'b', s3: 'd', s4: 'e' },
+  };
+  const fixed = relinkStoryLocations(refs, settings);
+  assert.deepEqual(fixed.locations.map((card) => card.story_setting_id), ['setting_home', 'setting_home_office', undefined, undefined, 'setting_other']);
+  assert.equal(relinkStoryLocations(fixed, settings), null, 'nothing left to repair');
+  assert.equal(storyBuilderProgress({ sceneIds: ['s1', 's2'], refs: fixed }).places, 'done');
 });
 
 test('places are done once every scene has a story location, with or without images', () => {

@@ -85,6 +85,26 @@ export function referenceImageGaps(refs, sceneIds = []) {
   return { characters: [...missingCharacters], locations: [...missingLocations], scenes };
 }
 
+// Location cards used by scenes that lost their story link (story_setting_id) are linked again to the chapter setting
+// they are named after ("Home - Kitchen" or "Home"). Returns the repaired Reference Builder data, or null when nothing
+// needed it.
+export function relinkStoryLocations(refs, settings = []) {
+  const used = new Set(Object.values(refs?.scene_map || {}).map(String));
+  const named = (settings || []).filter((setting) => setting?.id && String(setting.name || "").trim())
+    .map((setting) => ({ id: setting.id, name: String(setting.name).trim().toLowerCase() }))
+    .sort((a, b) => b.name.length - a.name.length);
+  let changed = false;
+  const locations = (refs?.locations || []).map((card) => {
+    if (!card || card.story_setting_id || !used.has(String(card.id))) return card;
+    const name = String(card.name || "").trim().toLowerCase();
+    const setting = named.find((item) => name === item.name || name.startsWith(`${item.name} - `));
+    if (!setting) return card;
+    changed = true;
+    return { ...card, story_setting_id: setting.id, story_act_ids: Array.isArray(card.story_act_ids) ? card.story_act_ids : [] };
+  });
+  return changed ? { ...refs, locations } : null;
+}
+
 // "Scenes 48-50, 52" from [48, 49, 50, 52].
 export function sceneRangeText(numbers) {
   const parts = [];

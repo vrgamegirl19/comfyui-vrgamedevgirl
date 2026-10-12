@@ -6,8 +6,8 @@ import { escapeHtml, makeButton, makeField, makeInput, makeSelect, normalizeProj
 import { normalizeFluxReferenceBuilder } from "./reference_data.mjs";
 import { mergeActs, moveActBorder, splitAct, validateStoryActs } from "./story_acts_data.mjs";
 import {
-  STORY_BUILDER_TABS, castWithoutImages, referenceImageGaps, sceneRangeText, storyBuilderBlocker, storyBuilderProgress,
-  storySubjectCard,
+  STORY_BUILDER_TABS, castWithoutImages, referenceImageGaps, relinkStoryLocations, sceneRangeText, storyBuilderBlocker,
+  storyBuilderProgress, storySubjectCard,
 } from "./story_builder_data.mjs";
 import { normalizeMiniMaxH3Mode } from "./minimax_h3.mjs";
 import { applyStoryContinuationsToSegments } from "./story_continuation.mjs";
@@ -151,10 +151,13 @@ export function createStoryBuilder({
   }
 
   // Stamps outputs that have none yet, so later changes to what they were made from show as out of date.
+  // Also relinks story location cards that lost their link to a chapter setting.
   function fillStamps() {
+    const relinked = relinkStoryLocations(normalizeFluxReferenceBuilder(state.fluxReferenceBuilder), normalizeStorySettings(layer().story_settings));
+    if (relinked) state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(relinked);
     const filled = fillStoryStamps(staleInput());
-    if (!filled) return;
-    state.builderStoryLayer = normalizeBuilderStoryLayer({ ...state.builderStoryLayer, story_stamps: filled });
+    if (filled) state.builderStoryLayer = normalizeBuilderStoryLayer({ ...state.builderStoryLayer, story_stamps: filled });
+    if (!relinked && !filled) return;
     Promise.resolve(autoSaveSessionQuiet("story builder change tracking")).catch(() => {});
   }
 

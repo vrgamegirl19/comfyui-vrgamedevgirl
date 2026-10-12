@@ -130,12 +130,21 @@ export function createStoryboardBridge({
         }
         return Array.from(byKey.values());
       };
+      // The Storyboard only sends the fields it edits. Lay each card over the Builder's card with the same id so the
+      // rest (Story Mode location links, reference type, face description) are kept.
+      const overExisting = (current = [], incoming = []) => {
+        const byId = new Map(current.map((item) => [String(item?.id || ""), item]));
+        return incoming.map((item) => {
+          const existing = byId.get(item.id);
+          return existing ? { ...existing, ...item } : item;
+        });
+      };
       if (replaceCatalog) {
         const subjectIds = new Set(incomingRefs.subjects.map((item) => item.id));
         const linkedReferences = refs.subjects.filter((item) => subjectIds.has(item.extra_reference_for));
-        refs.subjects = [...incomingRefs.subjects, ...linkedReferences];
+        refs.subjects = [...overExisting(refs.subjects, incomingRefs.subjects), ...linkedReferences];
         refs.subject_count = refs.subjects.length;
-        refs.locations = incomingRefs.locations;
+        refs.locations = overExisting(refs.locations, incomingRefs.locations);
         refs.locations_cleared = Boolean(incomingSource.locations_cleared);
       } else if (incomingRefs.subjects.length) {
         refs.subjects = mergeReferenceList(refs.subjects, incomingRefs.subjects);
