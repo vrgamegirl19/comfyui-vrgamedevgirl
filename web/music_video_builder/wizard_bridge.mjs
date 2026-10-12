@@ -72,6 +72,7 @@ import {
   normalizeGemmaGpuLayers,
 } from "./prompt_text.mjs";
 import { normalizeFluxReferenceBuilder, normalizeLyricMapper } from "./reference_data.mjs";
+import { STORY_MODE_KEYS } from "./story_mode_data.mjs";
 
 
 
