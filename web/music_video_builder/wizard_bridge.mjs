@@ -850,8 +850,9 @@ export function createWizardBridge({
         state.defaultFacialPerformanceCustom = String(settings.facialPerformanceCustom ?? settings.facial_performance_custom ?? "");
       }
       if (settings.storyLayer || settings.story_layer) {
-        // Merge so Story Mode data the wizard does not edit (book, acts, scene plan) is kept.
-        state.builderStoryLayer = normalizeBuilderStoryLayer({ ...state.builderStoryLayer, ...(settings.storyLayer || settings.story_layer) });
+        // Merge so Story Mode data the wizard does not edit (book, acts, scene plan) is kept, even if it sends an old copy.
+        const classic = Object.entries(settings.storyLayer || settings.story_layer).filter(([key]) => !STORY_MODE_KEYS.includes(key));
+        state.builderStoryLayer = normalizeBuilderStoryLayer({ ...state.builderStoryLayer, ...Object.fromEntries(classic) });
       }
       return {
         sceneDefaults: normalizeBuilderStoryboardDefaults(state.builderStoryboardDefaults),

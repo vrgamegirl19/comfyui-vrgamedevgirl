@@ -25,6 +25,7 @@ import {
 } from "./reference_data.mjs";
 import { newSegment, normalizeVideoPromptOrigin, sortSegments } from "./segments.mjs";
 import { refmodCardFields } from "./refmod_labels.mjs";
+import { STORY_MODE_KEYS } from "./story_mode_data.mjs";
 import { storyboardSceneCardContext, STORYBOARD_SCENE_CARD_CONTEXT_INSTRUCTION } from "../storyboard_builder/scenes.mjs";
 
 export let ACTIVE_STORYBOARD_PROMPT_PIPELINE = null;
@@ -46,9 +47,11 @@ export function createStoryboardBridge({
   videoTriggerPhraseForSegment,
 }) {
   // The Storyboard only edits the classic story fields. Merge its layer onto the Builder's so Story Mode data
-  // (story book, acts, scene plan) it never loaded is kept.
+  // (story book, acts, scene plan) it never loaded is kept. Its own storyboard.json can hold an old copy of those
+  // fields, so the Builder's Story Mode fields always win.
   function mergeStoryboardStoryLayer(incoming) {
-    return normalizeBuilderStoryLayer({ ...state.builderStoryLayer, ...(incoming || {}) });
+    const classic = Object.fromEntries(Object.entries(incoming || {}).filter(([key]) => !STORY_MODE_KEYS.includes(key)));
+    return normalizeBuilderStoryLayer({ ...state.builderStoryLayer, ...classic });
   }
 
   function openStoryboardBuilderFromProject(options = {}) {

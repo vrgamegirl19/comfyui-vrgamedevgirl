@@ -151,6 +151,7 @@ test("Explicit saves apply live scene edits and cleared prompts; exports preserv
     normalizeBuilderStoryboardDefaults: (value) => value, applyMiniMaxH3NativeVoiceBlock: (value) => value,
     ensureAllSegmentRuntimeFields: noop, ensureSegmentRuntimeFields: noop, syncInspector: noop, render: noop, toast: noop,
     autoSaveSessionQuiet: noop, setSegmentPromptForEdit: (target, kind, prompt) => { target[`${kind}_prompt`] = prompt; },
+    STORY_MODE_KEYS: ["story_flow_version", "story_book", "story_book_text", "story_settings", "story_acts", "story_scene_plan", "story_stamps"],
   });
   vm.runInContext(source.slice(start, end), context);
   const mergeStart = source.indexOf("function mergeStoryboardStoryLayer(");
@@ -162,6 +163,10 @@ test("Explicit saves apply live scene edits and cleared prompts; exports preserv
   assert.equal(context.state.builderStoryLayer.overall_story_idea, "new");
   assert.equal(context.state.builderStoryLayer.story_book_text, "Chapter 1: Home");
   assert.deepEqual(context.state.builderStoryLayer.story_acts, [{ id: "act_1" }]);
+  // The Storyboard's own file can hold an old copy of the acts and scene plan; the Builder's always win.
+  apply({ scenes: [], story_layer: { overall_story_idea: "new", story_acts: [{ id: "old_act" }], story_scene_plan: [{ scene_id: "gone" }] } });
+  assert.deepEqual(context.state.builderStoryLayer.story_acts, [{ id: "act_1" }]);
+  assert.equal(context.state.builderStoryLayer.story_scene_plan, undefined);
   apply({ scenes: [{ id: "scene1", lyrics: "Stale export dialogue", image_prompt: "New image" }] });
   assert.equal(segment.lyric_text, "Live dialogue");
   apply({ scenes: [{ id: "scene1", lyrics: "", image_prompt: "", video_prompt: "", motion_summary: "Edited motion",
