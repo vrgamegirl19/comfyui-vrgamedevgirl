@@ -97,6 +97,28 @@ test('editing a beat makes only its prompt out of date', () => {
   assert.deepEqual(stale.plan, {});
 });
 
+test('a prompt rewritten anywhere after its beat changed counts as redone', () => {
+  const input = project();
+  input.segments[2].story_beat = 'Joe punches a ticket.';
+  input.layer.story_stamps = fillStoryStamps(input) || input.layer.story_stamps;
+  assert.deepEqual(storyStaleness(input).prompts, { s3: ['beat changed'] }, 'the new beat is kept, its prompt is out of date');
+  input.segments[2].minimax_h3_prompt = 'Joe punches a ticket, close-up.';
+  input.layer.story_stamps = fillStoryStamps(input);
+  assert.deepEqual(storyStaleness(input).prompts, {});
+  assert.equal(fillStoryStamps(input), null);
+});
+
+test('stamps from before outputs were printed keep their out-of-date state', () => {
+  const input = project();
+  input.layer.story_stamps.prompts.s3 = { ...input.layer.story_stamps.prompts.s3, beat: 'old' };
+  delete input.layer.story_stamps.prompts.s3.out;
+  input.layer.story_stamps = fillStoryStamps(input);
+  assert.deepEqual(storyStaleness(input).prompts, { s3: ['beat changed'] });
+  input.segments[2].minimax_h3_prompt = 'A new prompt.';
+  input.layer.story_stamps = fillStoryStamps(input);
+  assert.deepEqual(storyStaleness(input).prompts, {});
+});
+
 test('a setting look change marks the places and beats of that setting', () => {
   const input = project();
   input.layer.story_settings[1].look = 'Rusty steel.';

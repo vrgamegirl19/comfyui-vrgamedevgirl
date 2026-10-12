@@ -92,6 +92,12 @@ function storyState({ layer, refs, segments, promptKey }) {
     };
     prints.prompts[id] = { beat: storyPrint(text(segment.story_beat)), location: locationPrint, cast: castPrint(castIds) };
   }
+  // A print of the beat and prompt themselves (stamp part "out"), so a rewrite made outside the Story Builder (the
+  // Storyboard, the inspector, a manual edit) is seen and counts as redone.
+  const outputs = {
+    beats: Object.fromEntries(segments.map((segment) => [segment.id, storyPrint(text(segment.story_beat))])),
+    prompts: Object.fromEntries(segments.map((segment) => [segment.id, storyPrint(text(segment[promptKey]))])),
+  };
 
   // What exists and so can be out of date. Missing outputs are shown as missing, not out of date.
   const exists = {
@@ -102,7 +108,13 @@ function storyState({ layer, refs, segments, promptKey }) {
     beats: new Set(segments.filter((segment) => text(segment.story_beat)).map((segment) => segment.id)),
     prompts: new Set(segments.filter((segment) => text(segment[promptKey])).map((segment) => segment.id)),
   };
-  return { prints, exists, actOfScene };
+  return { prints, exists, actOfScene, outputs };
+}
+
+// The stamp for one output: the prints of its inputs, plus the print of the output itself for beats and prompts.
+function stampFor(state, section, id) {
+  const out = state.outputs[section]?.[id];
+  return out ? { ...state.prints[section][id], out } : state.prints[section][id];
 }
 
 // The parts of a stamp that no longer match. A stamp without a part counts that part as unchanged.
@@ -151,23 +163,26 @@ export function storyStaleness(input) {
 // The story layer's stamps with the given steps marked up to date. `marks` is {book: true, acts|...: true | [ids]};
 // true means every existing output of that step.
 export function stampStory(input, marks) {
-  const { prints, exists } = storyState(input);
+  const state = storyState(input);
+  const { prints, exists } = state;
   const stamps = normalizeStoryStamps(input.layer.story_stamps);
   if (marks.book && exists.book) stamps.book = prints.book;
   for (const section of STORY_STAMP_SECTIONS) {
     const mark = marks[section];
     if (!mark) continue;
     for (const id of mark === true ? exists[section] : mark) {
-      if (exists[section].has(id)) stamps[section][id] = prints[section][id];
+      if (exists[section].has(id)) stamps[section][id] = stampFor(state, section, id);
     }
   }
   return stamps;
 }
 
-// Stamps every existing output that has no stamp yet (a project from before change tracking, or a new act), and drops
-// stamps of outputs that are gone. Returns null when nothing changed.
+// Stamps every existing output that has no stamp yet (a project from before change tracking, or a new act), drops
+// stamps of outputs that are gone, and restamps a beat or prompt that was rewritten since its stamp, wherever that
+// happened. Returns null when nothing changed.
 export function fillStoryStamps(input) {
-  const { prints, exists } = storyState(input);
+  const state = storyState(input);
+  const { prints, exists, outputs } = state;
   const stamps = normalizeStoryStamps(input.layer.story_stamps);
   let changed = false;
   if (exists.book && !Object.keys(stamps.book).length) {
@@ -182,8 +197,14 @@ export function fillStoryStamps(input) {
       }
     }
     for (const id of exists[section]) {
-      if (!stamps[section][id]) {
-        stamps[section][id] = prints[section][id];
+      const stamp = stamps[section][id];
+      const out = outputs[section]?.[id];
+      if (!stamp || (out && stamp.out && stamp.out !== out)) {
+        stamps[section][id] = stampFor(state, section, id);
+        changed = true;
+      } else if (out && !stamp.out) {
+        // A stamp from before outputs were printed: remember the output as it is now, without marking it redone.
+        stamps[section][id] = { ...stamp, out };
         changed = true;
       }
     }
