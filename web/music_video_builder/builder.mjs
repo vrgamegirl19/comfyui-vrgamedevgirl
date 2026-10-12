@@ -2179,6 +2179,7 @@ export function openBuilder(node, options = {}) {
     referenceBuilderPayload: () => storyboardReferenceBuilderWithIdLoraRefs(state.fluxReferenceBuilder),
     render: (...args) => render(...args),
     storyboardScenePayload: (...args) => storyboardScenePayload(...args),
+    syncInspector: (...args) => syncInspector(...args),
   });
 
   const { openIngredientsReferenceBuilderModal } = createIngredientsBuilder({

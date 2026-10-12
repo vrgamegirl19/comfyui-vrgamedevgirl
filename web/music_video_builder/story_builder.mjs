@@ -87,7 +87,7 @@ function staleChip(label, reasons) {
 export function createStoryBuilder({
   autoSaveSessionQuiet, createProgressWindow, createSceneBeats, createVideoPrompts, getLlmPayload, normalizeBuilderStoryLayer,
   openFluxReferenceBuilderModal, openLyricMappingWorkflowModal, openLyricReviewModal, openSceneDefaults, openStoryboardClassic,
-  pushHistory, referenceBuilderPayload, render, state, storyboardScenePayload,
+  pushHistory, referenceBuilderPayload, render, state, storyboardScenePayload, syncInspector = () => {},
 }) {
   let open = null;
 
@@ -1393,6 +1393,8 @@ export function createStoryBuilder({
           }
         }
         render();
+        // Autosave copies the inspector's prompt box into the selected scene; show the edited prompt there first.
+        syncInspector();
         await autoSaveSessionQuiet("story builder beats and prompts edited");
         toast("Beats and prompts saved.");
         show("prompts");

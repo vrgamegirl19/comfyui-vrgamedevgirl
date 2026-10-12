@@ -486,6 +486,9 @@ export function createWizardBridge({
           scene.video_prompt_origin = "gemma";
           gemmaBatchFailureStore()[`${failurePrefix}:${scene.id}`] = undefined;
           created += 1;
+          // Autosave copies the inspector's prompt box into the selected scene, so show the new prompt there first or
+          // the selected scene's old prompt is written back over it.
+          syncInspector();
           await autoSaveSessionQuiet(`${runnerName} Storyboard ${scene.label || `Scene ${index + 1}`}`);
           progress.set(`${label}\nSaved prompt into the Video Builder scene.`, Math.min(96, base + 6));
         } catch (error) {
