@@ -609,8 +609,9 @@ export function createStoryBuilder({
           }
           await autoSaveSessionQuiet("story builder cast added");
           toast(`Added ${chosen.length} character${chosen.length === 1 ? "" : "s"}. Make their images now, or give them a RefMod.`);
-          // New cast has no images yet: go straight to making them.
-          await generateMissingImages("characters");
+          // Characters with no image and no RefMod: go straight to making their images.
+          if (castWithoutImages(normalizeFluxReferenceBuilder(state.fluxReferenceBuilder)).length) await generateMissingImages("characters");
+          else show(activeTab);
         };
         const removeThem = makeButton("Rewrite Without Them", "primary");
         removeThem.title = "The LLM rewrites the story so only your story cast is in it. Acts and the scene plan are cleared.";
@@ -938,9 +939,8 @@ export function createStoryBuilder({
         state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(merged.refs);
         await saveLayer(data.story_layer || {}, "story builder locations");
         toast(`Locations ready: ${merged.added} added, ${merged.updated} updated. Every scene is mapped to its spot.`);
-        // New cards have no images yet: go straight to making them.
-        if (imageGaps().locations.length) await generateMissingImages("locations");
-        else show("places");
+        // Location images are made from the Places tab's button when you want them, never opened for you.
+        show("places");
       };
       top.append(makeField("Style and theme", theme), row(regenerate, build));
       const missingPlaces = imageNotice("locations");

@@ -184,6 +184,7 @@ test('building locations keeps the new cards when the hosted Reference Builder s
     assert.deepEqual(calls.order.slice(0, 2), ['hosted save', 'build'], 'the hosted builder is saved before the build');
     assert.deepEqual(state.fluxReferenceBuilder.locations.map((card) => card.name), ['Home - Kitchen']);
     assert.equal(state.fluxReferenceBuilder.scene_map.seg_1, state.fluxReferenceBuilder.locations[0].id);
+    assert.deepEqual(calls.generated, [], 'building locations never opens the image generator');
     findButton('Close').onclick();
     await tick();
     assert.deepEqual(state.fluxReferenceBuilder.locations.map((card) => card.name), ['Home - Kitchen'], 'closing keeps the cards');
