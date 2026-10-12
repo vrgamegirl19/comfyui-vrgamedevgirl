@@ -31,7 +31,6 @@ export function storyBuilderProgress({ sceneIds = [], refs = {}, layer = {}, seg
   const sceneMap = refs?.scene_map || {};
   const storyCards = new Set((refs?.locations || []).filter((card) => card?.story_setting_id).map((card) => card.id));
   const mappedToStory = sceneIds.filter((id) => storyCards.has(sceneMap[id])).length;
-  const placesWithoutImages = referenceImageGaps(refs, sceneIds).locations.length;
   const withBeat = segments.filter((segment) => String(segment?.story_beat || "").trim()).length;
   const level = (count, total) => (!count ? "empty" : count >= total ? "done" : "progress");
   return {
@@ -40,7 +39,8 @@ export function storyBuilderProgress({ sceneIds = [], refs = {}, layer = {}, seg
     story: chapters.some((chapter) => chapter.paragraphs.length) ? "done" : "empty",
     acts: !acts.length ? "empty" : validateStoryActs(acts, chapters, sceneIds).length ? "progress" : "done",
     scenes: level(sceneIds.filter((id) => planned.has(id)).length, sceneIds.length || 1),
-    places: placesWithoutImages && mappedToStory ? "progress" : level(mappedToStory, sceneIds.length || 1),
+    // Location images are optional, so only the scene-to-location mapping counts.
+    places: level(mappedToStory, sceneIds.length || 1),
     prompts: level(withBeat, segments.length || 1),
   };
 }

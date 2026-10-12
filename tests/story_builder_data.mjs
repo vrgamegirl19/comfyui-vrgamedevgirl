@@ -55,12 +55,12 @@ test('image gaps name the cards scenes use without an image, and the scenes with
   assert.equal(sceneRangeText([7]), 'Scene 7');
 });
 
-test('places stay in progress while a mapped story location has no image', () => {
+test('places are done once every scene has a story location, with or without images', () => {
   const refs = { locations: [{ id: 'loc_1', name: 'Home - Kitchen', story_setting_id: 'setting_home', image: {} }],
-    scene_map: { s1: 'loc_1', s2: 'loc_1', s3: 'loc_1' } };
+    scene_map: { s1: 'loc_1', s2: 'loc_1' } };
   assert.equal(storyBuilderProgress({ sceneIds, refs }).places, 'progress');
-  refs.locations[0].image = { path: 'C:/k.png' };
-  assert.equal(storyBuilderProgress({ sceneIds, refs }).places, 'done');
+  refs.scene_map.s3 = 'loc_1';
+  assert.equal(storyBuilderProgress({ sceneIds, refs }).places, 'done', 'location images are optional');
 });
 
 test('broken acts block the scene plan', () => {

@@ -446,15 +446,21 @@ export function createStoryBuilder({
       return button;
     }
 
-    // An amber note naming the cards without an image, with the button that makes them; null when none are missing.
+    // A note naming the cards without an image, with the button that makes them; null when none are missing. Location
+    // images are optional, so that note is information only (blue); characters are amber when Reference to Video
+    // sends their images.
     function imageNotice(kind) {
       const names = kind === "locations" ? imageGaps().locations : castWithoutImages(normalizeFluxReferenceBuilder(state.fluxReferenceBuilder));
       if (!names.length) return null;
       const what = kind === "locations" ? "location" : "character";
-      const why = referenceImagesRequired()
+      const needed = kind !== "locations" && referenceImagesRequired();
+      const why = needed
         ? "Reference to Video sends these images, so each one needs an image before prompts and renders."
-        : "Make them now so every card is ready.";
-      const note = el("div", "font-size:12px;color:#fbbf24;border:1px solid #78350f;border-radius:7px;background:#1c1207;padding:9px;display:flex;flex-direction:column;gap:8px;",
+        : "Images are optional. Make them if you want the renders to match a look.";
+      const style = needed
+        ? "color:#fbbf24;border:1px solid #78350f;background:#1c1207;"
+        : "color:#bae6fd;border:1px solid #1e3a5f;background:#0b1a2b;";
+      const note = el("div", `font-size:12px;${style}border-radius:7px;padding:9px;display:flex;flex-direction:column;gap:8px;`,
         `${names.length} ${what}${names.length === 1 ? "" : "s"} ${kind === "locations" ? "used by your scenes " : ""}${names.length === 1 ? "has" : "have"} no image yet: ${names.join(", ")}. ${why}`);
       note.append(row(imageButton(kind)));
       return note;
@@ -1244,8 +1250,8 @@ export function createStoryBuilder({
       if (gaps.characters.length || gaps.locations.length || (required && gaps.scenes.length)) {
         const message = imagesBlock
           ? `${sceneRangeText(gaps.scenes)} ${gaps.scenes.length === 1 ? "has" : "have"} no character or location image, and Reference to Video needs at least one. ${gaps.characters.length || gaps.locations.length ? "Make the missing images first." : "Map a character or location to them in the Cast or Places tab."}`
-          : `Some cards used by your scenes have no image yet${gaps.characters.length ? `. Characters: ${gaps.characters.join(", ")}` : ""}${gaps.locations.length ? `. Locations: ${gaps.locations.join(", ")}` : ""}.`;
-        const note = el("div", `font-size:12px;color:${imagesBlock ? "#fca5a5" : "#fbbf24"};border:1px solid ${imagesBlock ? "#7f1d1d" : "#78350f"};border-radius:7px;background:${imagesBlock ? "#1f0808" : "#1c1207"};padding:9px;display:flex;flex-direction:column;gap:8px;`, message);
+          : `For your information: some cards used by your scenes have no image yet${gaps.characters.length ? `. Characters: ${gaps.characters.join(", ")}` : ""}${gaps.locations.length ? `. Locations: ${gaps.locations.join(", ")}` : ""}. Prompts can still be created.`;
+        const note = el("div", `font-size:12px;color:${imagesBlock ? "#fca5a5" : "#bae6fd"};border:1px solid ${imagesBlock ? "#7f1d1d" : "#1e3a5f"};border-radius:7px;background:${imagesBlock ? "#1f0808" : "#0b1a2b"};padding:9px;display:flex;flex-direction:column;gap:8px;`, message);
         note.append(row(gaps.characters.length ? imageButton("characters") : null, gaps.locations.length ? imageButton("locations") : null));
         prompts.append(note);
       }
