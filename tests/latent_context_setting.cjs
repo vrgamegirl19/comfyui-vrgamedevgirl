@@ -30,6 +30,8 @@ function fixture() {
     selected: { id: 'a', minimax_h3_latent_context_frames: 22 },
     activeSegment: () => context.selected,
     cloneMiniMaxH3Settings: settings => ({ latent_context_frames: 22, ...settings }),
+    // No Turbo LoRA in these settings, so the editable copy is a plain clone.
+    editableMiniMaxH3Settings: settings => ({ latent_context_frames: 22, ...settings }),
     normalizeMiniMaxH3Mode: value => value || 'text_to_video',
     normalizeMiniMaxH3LocationTransitionPreset: () => 'normal',
     autoSaveSessionQuiet: async () => { context.saved++; },
