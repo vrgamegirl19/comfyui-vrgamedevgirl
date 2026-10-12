@@ -744,7 +744,18 @@ export function createStoryBuilder({
           show("scenes");
         }
       };
-      top.append(row(planAll));
+      const resetPlan = makeButton("Reset Scene Plan");
+      resetPlan.title = "Clear every scene's plan and the masked continuations it set, so you can plan from scratch.";
+      resetPlan.disabled = !Object.keys(plan).length;
+      resetPlan.onclick = async () => {
+        if (window.confirm?.("Clear the scene plan of every scene? Masked continuations it set are turned off. Your scene notes are kept.") === false) return;
+        pushHistory();
+        if (isMiniMax()) applyStoryContinuationsToSegments(segments(), [], state.miniMaxH3Settings);
+        await saveLayer({ story_scene_plan: [] }, "story builder scene plan reset");
+        toast("Scene plan cleared. Press Plan All Scenes to plan again.");
+        show("scenes");
+      };
+      top.append(row(planAll, resetPlan));
       content.append(top);
 
       const mode = normalizeStoryContinuationMode(current.story_continuation_mode);

@@ -348,3 +348,25 @@ test('continued scenes become masked continuations, can be ticked by hand and ca
   findButton('Close').onclick();
   await tick();
 });
+
+test('reset scene plan clears the plan and the masked continuations it set', async () => {
+  const { state, calls, builder } = setup();
+  state.projectVideoEngine = 'minimax_h3';
+  state.miniMaxH3Settings = { video_mode: 'reference_to_video', render_pass: 'single', continuity_mode: 'off' };
+  builder.openStoryBuilder({ tab: 'scenes' });
+  await tick();
+  const modeSelect = document.body.all().find((node) => node.tagName === 'SELECT' && node.options.some((option) => option.value === 'location'));
+  modeSelect.value = 'location';
+  await modeSelect.onchange();
+  await tick();
+  assert.equal(state.segments[1].story_masked_continuation, true);
+  await findButton('Reset Scene Plan').onclick();
+  await tick();
+  assert.deepEqual(state.builderStoryLayer.story_scene_plan, []);
+  assert.equal(state.segments[1].use_scene_minimax_h3_settings, false, 'the masked scene is back to the project settings');
+  assert.equal(state.segments[1].timeline_note, 'She runs to the porch.', 'notes are kept');
+  assert.ok(calls.saves.includes('story builder scene plan reset'));
+  assert.equal(findButton('Reset Scene Plan').disabled, true);
+  findButton('Close').onclick();
+  await tick();
+});
