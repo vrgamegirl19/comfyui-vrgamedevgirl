@@ -21,6 +21,8 @@ Shape inside ``builder_story_layer`` (only present when the project has used Sto
   ``spoken`` (the characters talk) or ``story_only`` (no one sings or speaks on camera).
 - ``story_continuation_mode``: which scenes continue the scene before: ``off``, ``location`` (touching scenes at the
   same spot in the same chapter) or ``llm`` (the scene plan's answer). A manual choice always wins.
+- ``story_stamps``: ``{book: {part: print}, acts|plan|places|beats|prompts: {id: {part: print}}}``, prints of what
+  each Story Builder step's output was made from. The Story Builder compares them to mark later steps out of date.
 
 JS twin: ``web/music_video_builder/story_mode_data.mjs``. Both are checked against
 ``tests/story_mode_cases.json``.
@@ -32,10 +34,12 @@ STORY_FLOW_VERSION = 2
 STORY_MODE_KEYS = (
     "story_flow_version", "story_book", "story_book_text", "story_settings", "story_acts", "story_scene_plan",
     "story_spot_min_scenes", "story_cast_ids", "story_allow_new_cast", "story_video_style", "story_continuation_mode",
+    "story_stamps",
 )
 STORY_VIDEO_STYLES = ("music_video", "spoken", "story_only")
 STORY_CONTINUATION_MODES = ("off", "location", "llm")
 CONTINUATION_SOURCES = ("auto", "llm", "manual")
+STORY_STAMP_SECTIONS = ("acts", "plan", "places", "beats", "prompts")
 DEFAULT_SPOT_MIN_SCENES = 3
 PLAN_PERFORMANCE_MODES = ("singing", "speaking", "no_lip_sync", "instrumental")
 
@@ -197,6 +201,32 @@ def normalize_story_mode_fields(source):
         result["story_video_style"] = normalize_story_video_style(source.get("story_video_style"))
     if "story_continuation_mode" in source:
         result["story_continuation_mode"] = normalize_story_continuation_mode(source.get("story_continuation_mode"))
+    if "story_stamps" in source:
+        result["story_stamps"] = normalize_story_stamps(source.get("story_stamps"))
+    return result
+
+
+def _stamp_parts(value):
+    parts = {}
+    for key, print_ in list((value if isinstance(value, dict) else {}).items())[:12]:
+        name, text = _line(key, 40), _line(print_, 64)
+        if name and text:
+            parts[name] = text
+    return parts
+
+
+def normalize_story_stamps(value):
+    """``{book: {part: print}, acts|plan|places|beats|prompts: {id: {part: print}}}``: what each step was made from."""
+    source = value if isinstance(value, dict) else {}
+    result = {"book": _stamp_parts(source.get("book"))}
+    for section in STORY_STAMP_SECTIONS:
+        items = {}
+        group = source.get(section)
+        for item_id, item in list((group if isinstance(group, dict) else {}).items())[:2000]:
+            key, parts = _line(item_id, 160), _stamp_parts(item)
+            if key and parts:
+                items[key] = parts
+        result[section] = items
     return result
 
 

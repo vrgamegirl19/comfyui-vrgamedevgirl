@@ -314,6 +314,47 @@
           }
         ]
       }
+    },
+    {
+      "name": "story stamps keep short prints per step and drop junk",
+      "input": {
+        "story_stamps": {
+          "book": {
+            "premise": "a1b2c3d4",
+            "empty": ""
+          },
+          "acts": {
+            "act_1": {
+              "chapter": "0f",
+              "cast": 12
+            },
+            "act_2": {}
+          },
+          "beats": "nope",
+          "robots": {
+            "x": {
+              "y": "z"
+            }
+          }
+        }
+      },
+      "output": {
+        "story_stamps": {
+          "book": {
+            "premise": "a1b2c3d4"
+          },
+          "acts": {
+            "act_1": {
+              "chapter": "0f",
+              "cast": "12"
+            }
+          },
+          "plan": {},
+          "places": {},
+          "beats": {},
+          "prompts": {}
+        }
+      }
     }
   ],
   "continuations": [

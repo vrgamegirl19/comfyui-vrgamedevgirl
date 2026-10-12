@@ -3,9 +3,12 @@
 
 export const STORY_FLOW_VERSION = 2;
 export const STORY_MODE_KEYS = ["story_flow_version", "story_book", "story_book_text", "story_settings", "story_acts", "story_scene_plan",
-  "story_spot_min_scenes", "story_cast_ids", "story_allow_new_cast", "story_video_style", "story_continuation_mode"];
+  "story_spot_min_scenes", "story_cast_ids", "story_allow_new_cast", "story_video_style", "story_continuation_mode",
+  "story_stamps"];
 export const STORY_VIDEO_STYLES = ["music_video", "spoken", "story_only"];
 export const STORY_CONTINUATION_MODES = ["off", "location", "llm"];
+// Story Builder steps whose output is stamped with prints of what it was made from (see story_staleness.mjs).
+export const STORY_STAMP_SECTIONS = ["acts", "plan", "places", "beats", "prompts"];
 const CONTINUATION_SOURCES = ["auto", "llm", "manual"];
 export const DEFAULT_SPOT_MIN_SCENES = 3;
 export const PLAN_PERFORMANCE_MODES = ["singing", "speaking", "no_lip_sync", "instrumental"];
@@ -136,6 +139,37 @@ export function normalizeStoryModeFields(source) {
   }
   if ("story_video_style" in value) result.story_video_style = normalizeStoryVideoStyle(value.story_video_style);
   if ("story_continuation_mode" in value) result.story_continuation_mode = normalizeStoryContinuationMode(value.story_continuation_mode);
+  if ("story_stamps" in value) result.story_stamps = normalizeStoryStamps(value.story_stamps);
+  return result;
+}
+
+function plainObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function stampParts(value) {
+  const parts = {};
+  for (const [key, print] of Object.entries(plainObject(value)).slice(0, 12)) {
+    const name = storyLine(key, 40);
+    const text = storyLine(print, 64);
+    if (name && text) parts[name] = text;
+  }
+  return parts;
+}
+
+// {book: {part: print}, acts|plan|places|beats|prompts: {id: {part: print}}}: what each step's output was made from.
+export function normalizeStoryStamps(value) {
+  const source = plainObject(value);
+  const result = { book: stampParts(source.book) };
+  for (const section of STORY_STAMP_SECTIONS) {
+    const items = {};
+    for (const [id, item] of Object.entries(plainObject(source[section])).slice(0, 2000)) {
+      const key = storyLine(id, 160);
+      const parts = stampParts(item);
+      if (key && Object.keys(parts).length) items[key] = parts;
+    }
+    result[section] = items;
+  }
   return result;
 }
 

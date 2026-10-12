@@ -249,12 +249,13 @@ export function createWizardBridge({
     error: index === 0 ? String(error?.message || error) : "Not tried: the run stopped before this scene.",
     raw: index === 0 ? String(error?.rawGemmaPrompt || error?.message || error) : "",
   }));
-  const createWizardSceneBeats = async ({ overwrite = false, failedIds = [] } = {}) => {
+  // sceneIds: run only these scenes (the Story Builder's picked scenes), replacing their beats.
+  const createWizardSceneBeats = async ({ overwrite = false, failedIds = [], sceneIds = [] } = {}) => {
     const segments = allEditableSegments()
       .slice()
       .sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
     const scenes = storyboardScenePayload();
-    const retryIds = new Set(failedIds.map((value) => String(value)));
+    const retryIds = new Set([...failedIds, ...sceneIds].map((value) => String(value)));
     const targets = scenes.filter((scene) => {
       const segment = segments.find((item) => item.id === scene.id);
       return retryIds.size
@@ -271,7 +272,7 @@ export function createWizardBridge({
     let stoppedAt = 0;
     const failures = [];
     try {
-      progress.set(`${retryIds.size ? "Retrying failed" : "Creating"} ${targets.length} scene story beat${targets.length === 1 ? "" : "s"}...`, 5);
+      progress.set(`${failedIds.length ? "Retrying failed" : "Creating"} ${targets.length} scene story beat${targets.length === 1 ? "" : "s"}...`, 5);
       for (let index = 0; index < targets.length; index += 1) {
         stoppedAt = index;
         const scene = targets[index];
@@ -375,7 +376,8 @@ export function createWizardBridge({
       return;
     }
     const segmentById = new Map(segments.map((segment) => [String(segment.id || ""), segment]));
-    const failedIds = new Set((options.failedIds || []).map((value) => String(value)));
+    // sceneIds: run only these scenes (the Story Builder's picked scenes).
+    const failedIds = new Set([...(options.failedIds || []), ...(options.sceneIds || [])].map((value) => String(value)));
     const targetScenes = failedIds.size
       ? scenes.filter((scene) => failedIds.has(String(scene.id || "")))
       : scenes;
@@ -399,7 +401,7 @@ export function createWizardBridge({
     let stoppedAt = 0;
     const failurePrefix = `storyboard:${videoMode}`;
     try {
-      progress.set(`${failedIds.size ? "Retrying failed Storyboard scenes" : `Starting Storyboard ${runnerName} All`}...\nScenes: ${targetScenes.length}\nUsing the same prompt writer as Storyboard Builder.`, 5);
+      progress.set(`${options.failedIds?.length ? "Retrying failed Storyboard scenes" : `Starting Storyboard ${runnerName} All`}...\nScenes: ${targetScenes.length}\nUsing the same prompt writer as Storyboard Builder.`, 5);
       for (let index = 0; index < targetScenes.length; index += 1) {
         stoppedAt = index;
         const scene = targetScenes[index];

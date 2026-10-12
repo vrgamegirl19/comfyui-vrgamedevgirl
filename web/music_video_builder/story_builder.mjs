@@ -12,6 +12,7 @@ import {
 import { normalizeMiniMaxH3Mode } from "./minimax_h3.mjs";
 import { applyStoryContinuationsToSegments } from "./story_continuation.mjs";
 import { applyStoryLocations } from "./story_locations_data.mjs";
+import { fillStoryStamps, stampStory, storyStaleness } from "./story_staleness.mjs";
 import {
   applyStoryBookText, fillSceneCast, normalizeSpotMinScenes, normalizeStoryActs, normalizeStoryBook,
   normalizeStoryContinuationMode, normalizeStoryScenePlan, normalizeStorySettings, normalizeStoryVideoStyle,
@@ -32,6 +33,7 @@ const CONTINUATION_MODE_LABELS = {
 };
 const CONTINUATION_SOURCE_LABELS = { auto: "same spot", llm: "LLM", manual: "you" };
 const MASKED_COLOR = "#a3e635";
+const STALE_COLOR = "#f59e0b";
 
 function el(tag, css = "", text = "") {
   const node = document.createElement(tag);
@@ -63,6 +65,23 @@ function row(...children) {
 function clock(seconds) {
   const value = Math.max(0, Number(seconds) || 0);
   return `${Math.floor(value / 60)}:${(value % 60).toFixed(1).padStart(4, "0")}`;
+}
+
+function reasonText(reasons) {
+  return [...new Set(reasons)].join(", ");
+}
+
+// An amber box for work that is out of date because something before it changed.
+function staleBox(message, ...buttons) {
+  const box = el("div", `font-size:12px;color:#fde68a;border:1px solid ${STALE_COLOR};border-left:5px solid ${STALE_COLOR};border-radius:7px;background:#1c1207;padding:9px;display:flex;flex-direction:column;gap:8px;line-height:1.45;`, message);
+  if (buttons.filter(Boolean).length) box.append(row(...buttons));
+  return box;
+}
+
+function staleChip(label, reasons) {
+  const chip = el("div", `display:inline-flex;align-self:flex-start;border:1px solid ${STALE_COLOR};border-radius:999px;background:#451a03;color:#fde68a;font-size:11px;font-weight:900;padding:3px 10px;`,
+    `⚠ ${label} OUT OF DATE: ${reasonText(reasons)}`);
+  return chip;
 }
 
 export function createStoryBuilder({
@@ -99,16 +118,49 @@ export function createStoryBuilder({
     return referenceImageGaps(normalizeFluxReferenceBuilder(state.fluxReferenceBuilder), segments().map((segment) => segment.id));
   }
 
-  async function saveLayer(fields, label) {
-    state.builderStoryLayer = normalizeBuilderStoryLayer({
+  // marks: the steps this save brings up to date, as {book: true, acts|plan|places|beats|prompts: true | [ids] |
+  // (layer) => [ids]}. True means every existing output of that step.
+  async function saveLayer(fields, label, marks = null) {
+    const next = normalizeBuilderStoryLayer({
       ...state.builderStoryLayer, story_flow_version: STORY_FLOW_VERSION, ...fields,
     });
+    if (marks) {
+      const resolved = Object.fromEntries(Object.entries(marks).map(([key, value]) => [key, typeof value === "function" ? value(next) : value]));
+      next.story_stamps = stampStory(staleInput(next), resolved);
+    }
+    state.builderStoryLayer = next;
     render();
     await autoSaveSessionQuiet(label);
   }
 
   function isMiniMax() {
     return normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
+  }
+
+  function promptKey() {
+    return isMiniMax() ? "minimax_h3_prompt" : "i2v_prompt";
+  }
+
+  function staleInput(storyLayer = layer()) {
+    return { layer: storyLayer, refs: normalizeFluxReferenceBuilder(state.fluxReferenceBuilder), segments: segments(), promptKey: promptKey() };
+  }
+
+  // What is out of date and why (see story_staleness.mjs).
+  function staleness() {
+    return storyStaleness(staleInput());
+  }
+
+  // Stamps outputs that have none yet, so later changes to what they were made from show as out of date.
+  function fillStamps() {
+    const filled = fillStoryStamps(staleInput());
+    if (!filled) return;
+    state.builderStoryLayer = normalizeBuilderStoryLayer({ ...state.builderStoryLayer, story_stamps: filled });
+    Promise.resolve(autoSaveSessionQuiet("story builder change tracking")).catch(() => {});
+  }
+
+  function sceneNumbers(ids) {
+    const index = Object.fromEntries(segments().map((segment, position) => [segment.id, position + 1]));
+    return ids.map((id) => index[id]).filter(Boolean).sort((a, b) => a - b);
   }
 
   // Which scenes continue the one before, from the mode and the manual choices, written onto the timeline scenes as
@@ -216,6 +268,9 @@ export function createStoryBuilder({
 
     const tabButtons = new Map();
     const progressBars = new Map();
+    const staleBadges = new Map();
+    // Scenes picked in the Beats & Prompts tab to redo; kept while the window is open.
+    const picked = new Set();
     for (const tab of STORY_BUILDER_TABS) {
       const bar = el("div", "height:5px;border-radius:999px;background:#475569;");
       progressBars.set(tab.id, bar);
@@ -223,6 +278,9 @@ export function createStoryBuilder({
       const button = el("button", "border:0;border-right:1px solid #1e3a5f;background:transparent;color:#94a3b8;padding:10px 8px;cursor:pointer;text-align:left;");
       button.type = "button";
       button.innerHTML = `<div style="font-size:13px;font-weight:900;">${escapeHtml(tab.label)}</div><div style="font-size:11px;opacity:.8;">${escapeHtml(tab.caption)}</div>`;
+      const badge = el("div", `display:none;margin-top:4px;font-size:10px;font-weight:900;color:#1c1207;background:${STALE_COLOR};border-radius:999px;padding:1px 8px;width:max-content;`);
+      button.append(badge);
+      staleBadges.set(tab.id, badge);
       button.onclick = () => show(tab.id);
       tabButtons.set(tab.id, button);
       tabBar.append(button);
@@ -246,6 +304,19 @@ export function createStoryBuilder({
         button.style.background = active ? "#10243a" : "transparent";
         button.style.color = active ? "#cffafe" : "#94a3b8";
         button.style.borderBottom = active ? "3px solid #06b6d4" : "3px solid transparent";
+      }
+      const stale = staleness();
+      const counts = {
+        story: stale.book.length ? 1 : 0,
+        acts: Object.keys(stale.acts).length,
+        scenes: Object.keys(stale.plan).length,
+        places: Object.keys(stale.places).length,
+        prompts: new Set([...Object.keys(stale.beats), ...Object.keys(stale.prompts)]).size,
+      };
+      for (const [tabId, badge] of staleBadges) {
+        const count = counts[tabId] || 0;
+        badge.style.display = count ? "block" : "none";
+        badge.textContent = tabId === "story" ? "⚠ out of date" : `⚠ ${count} out of date`;
       }
       return progress;
     }
@@ -467,12 +538,45 @@ export function createStoryBuilder({
           story_cast_ids: picked.length === cards.length ? [] : picked,
           story_allow_new_cast: allowBox.checked,
         }, "story builder story cast");
+        drawBookNote();
+        refreshProgress();
       };
       for (const { box } of boxes) box.onchange = saveCast;
       allowBox.onchange = saveCast;
 
+      // The story's own out-of-date note, redrawn in place so typing elsewhere on the tab is not lost.
+      const bookNote = el("div");
+      const drawBookNote = () => {
+        bookNote.textContent = "";
+        const reasons = staleness().book;
+        if (!reasons.length) return;
+        const keep = makeButton("Keep The Story As Is");
+        keep.title = "The story stays as written. Acts, scenes, places, beats and prompts stop showing it as out of date.";
+        keep.onclick = async () => {
+          await saveLayer({}, "story builder story kept", { book: true });
+          drawBookNote();
+          refreshProgress();
+        };
+        bookNote.append(staleBox(`The story is out of date: ${reasonText(reasons)} since it was written. Draft Story again to rewrite it, or keep it as is. Until then the acts, scenes, places, beats and prompts made from it show as out of date too.`, keep));
+      };
+      drawBookNote();
+      content.append(bookNote);
+
       const idea = card("Premise", "A sentence or a full outline. The LLM writes the book from it, using only the characters ticked above.");
       const premise = textarea(current.overall_story_idea, "A son rides the night train home to find out why his father left.", 70);
+      const savePremise = async (announce) => {
+        if (premise.value === String(layer().overall_story_idea || "")) {
+          if (announce) toast("Premise saved.");
+          return;
+        }
+        await saveLayer({ overall_story_idea: premise.value }, "story builder premise");
+        drawBookNote();
+        refreshProgress();
+        if (announce) toast("Premise saved.");
+      };
+      premise.onchange = () => savePremise(false);
+      const savePremiseButton = makeButton("Save Premise");
+      savePremiseButton.onclick = () => savePremise(true);
       const tone = makeInput("");
       tone.placeholder = "Tone, genre, world (optional), e.g. 1970s rural Ohio, bittersweet";
       const draft = makeButton("Draft Story", "primary");
@@ -482,7 +586,7 @@ export function createStoryBuilder({
         const data = await runStep("book", { story_idea: premise.value, tone_notes: tone.value,
           previous_book: current.story_book_text || "", seed: String(Date.now()) }, "Writing the story");
         if (data?.story_layer) {
-          await saveLayer(data.story_layer, "story builder story drafted");
+          await saveLayer(data.story_layer, "story builder story drafted", { book: true });
           toast(removedNote(data, "Story written. Review it, then create the acts."));
           show("story");
         }
@@ -495,8 +599,12 @@ export function createStoryBuilder({
           story_only: "Story only: no singing or speaking on camera",
         }[option.value] || option.value;
       }
-      telling.onchange = () => saveLayer({ story_video_style: telling.value }, "story builder video style");
-      idea.append(premise, tone, makeField("How the story is told (the story follows the song's flow either way)", telling), row(draft));
+      telling.onchange = async () => {
+        await saveLayer({ story_video_style: telling.value }, "story builder video style");
+        drawBookNote();
+        refreshProgress();
+      };
+      idea.append(premise, tone, makeField("How the story is told (the story follows the song's flow either way)", telling), row(savePremiseButton, draft));
 
       const own = card("Use your own story", "Paste a finished story. Every word is kept; it is only divided into chapters with a setting each.");
       const pasted = textarea("", "Paste your story here. Chapter headings like 'Chapter 1: The Station' are kept.", 120);
@@ -509,7 +617,7 @@ export function createStoryBuilder({
         }
         const data = await runStep("split", { text: pasted.value }, "Splitting the story into chapters");
         if (data?.story_layer) {
-          await saveLayer(data.story_layer, "story builder story split");
+          await saveLayer(data.story_layer, "story builder story split", { book: true });
           show("story");
         }
       };
@@ -521,7 +629,7 @@ export function createStoryBuilder({
         convert.onclick = async () => {
           const data = await runStep("convert", {}, "Converting the story arc");
           if (data?.story_layer) {
-            await saveLayer(data.story_layer, "story builder story arc converted");
+            await saveLayer(data.story_layer, "story builder story arc converted", { book: true });
             show("story");
           }
         };
@@ -532,7 +640,7 @@ export function createStoryBuilder({
       const editor = textarea(current.story_book_text, "Your story appears here.", 320);
       const saveText = makeButton("Save Story Text", "primary");
       saveText.onclick = async () => {
-        await saveLayer(applyStoryBookText(current, editor.value), "story builder story edited");
+        await saveLayer(applyStoryBookText(current, editor.value), "story builder story edited", { book: true });
         toast("Story saved.");
         show("story");
       };
@@ -623,7 +731,7 @@ export function createStoryBuilder({
           }
           const data = await runStep("remove_people", { names }, "Rewriting the story without them");
           if (data?.story_layer) {
-            await saveLayer(data.story_layer, "story builder people removed");
+            await saveLayer(data.story_layer, "story builder people removed", { book: true });
             toast(`Removed ${names.join(", ")}. Create the acts again.`);
             show("story");
           }
@@ -650,7 +758,7 @@ export function createStoryBuilder({
       create.onclick = async () => {
         const data = await runStep("acts", {}, "Creating the acts");
         if (data?.story_layer) {
-          await saveLayer(data.story_layer, "story builder acts");
+          await saveLayer(data.story_layer, "story builder acts", { acts: true });
           show("acts");
         }
       };
@@ -673,6 +781,33 @@ export function createStoryBuilder({
       if (acts.length && problems.length) top.append(el("div", "font-size:12px;color:#fbbf24;white-space:pre-wrap;", problems.join("\n")));
       content.append(top);
 
+      // Acts made before their chapter, the story or the cast changed.
+      const stale = staleness().acts;
+      const chapterActIds = (chapterId) => (storyLayer) => normalizeStoryActs(storyLayer.story_acts)
+        .filter((act) => act.chapter_id === chapterId).map((act) => act.id);
+      const staleChapters = chapters.filter((chapter) => acts.some((act) => act.chapter_id === chapter.id && stale[act.id]));
+      if (staleChapters.length) {
+        const rebuildStale = makeButton(`Rebuild Out-Of-Date Chapters (${staleChapters.length})`, "primary");
+        rebuildStale.title = "Rebuild the acts of only the chapters that changed. The other chapters keep their acts.";
+        rebuildStale.disabled = Boolean(blocked);
+        rebuildStale.onclick = async () => {
+          for (const chapter of staleChapters) {
+            const data = await runStep("acts", { chapter_id: chapter.id }, `Rebuilding acts of ${chapter.title}`);
+            if (!data?.story_layer) break;
+            await saveLayer(data.story_layer, "story builder chapter acts", { acts: chapterActIds(chapter.id) });
+          }
+          show("acts");
+        };
+        const keepAll = makeButton("Keep All As Is");
+        keepAll.title = "Keep these acts. Scenes made from them stop showing the change.";
+        keepAll.onclick = async () => {
+          await saveLayer({}, "story builder acts kept", { acts: Object.keys(stale) });
+          show("acts");
+        };
+        const count = Object.keys(stale).length;
+        top.append(staleBox(`${count} act${count === 1 ? " is" : "s are"} out of date in ${staleChapters.map((chapter) => chapter.title || chapter.id).join(", ")}. Rebuild only those chapters, or keep the acts as they are.`, rebuildStale, keepAll));
+      }
+
       const saveActs = async (next, label) => {
         acts = next;
         const plan = normalizeStoryScenePlan(current.story_scene_plan);
@@ -686,15 +821,26 @@ export function createStoryBuilder({
         rebuild.onclick = async () => {
           const data = await runStep("acts", { chapter_id: chapter.id }, `Rebuilding acts of ${chapter.title}`);
           if (data?.story_layer) {
-            await saveLayer(data.story_layer, "story builder chapter acts");
+            await saveLayer(data.story_layer, "story builder chapter acts", { acts: chapterActIds(chapter.id) });
             show("acts");
           }
         };
         chapterCard.append(row(rebuild));
+        const staleHere = acts.filter((act) => act.chapter_id === chapter.id && stale[act.id]);
+        if (staleHere.length) {
+          chapterCard.style.border = `2px solid ${STALE_COLOR}`;
+          const keep = makeButton("Keep As Is");
+          keep.onclick = async () => {
+            await saveLayer({}, "story builder acts kept", { acts: staleHere.map((act) => act.id) });
+            show("acts");
+          };
+          chapterCard.append(staleBox(`This chapter's acts are out of date: ${reasonText(staleHere.flatMap((act) => stale[act.id]))}. Rebuild This Chapter to redo only its acts.`, keep));
+        }
         acts.forEach((act, index) => {
           if (act.chapter_id !== chapter.id) return;
           const numbers = act.scene_ids.map((id) => numberById[id]).filter(Boolean);
-          const box = el("div", "border:1px solid #1e3a5f;border-radius:7px;padding:8px;display:flex;flex-direction:column;gap:6px;");
+          const box = el("div", `border:1px solid ${stale[act.id] ? STALE_COLOR : "#1e3a5f"};border-radius:7px;padding:8px;display:flex;flex-direction:column;gap:6px;`);
+          if (stale[act.id]) box.append(staleChip("ACT", stale[act.id]));
           const actTitle = makeInput(act.title);
           const summary = textarea(act.summary, "What happens in this act.", 50);
           const range = el("div", "font-size:12px;color:#94a3b8;", numbers.length ? `Scenes ${numbers[0]}-${numbers[numbers.length - 1]}` : "No scenes");
@@ -741,7 +887,7 @@ export function createStoryBuilder({
         if (data?.story_layer) {
           pushHistory();
           const planned = applyPlanToProject(data.story_layer.story_scene_plan, acts);
-          await saveLayer({ ...data.story_layer, story_scene_plan: planned }, "story builder scene plan");
+          await saveLayer({ ...data.story_layer, story_scene_plan: planned }, "story builder scene plan", { plan: true });
           show("scenes");
         }
       };
@@ -760,6 +906,37 @@ export function createStoryBuilder({
       const topActions = row(planAll, resetPlan);
       top.append(topActions);
       content.append(top);
+
+      // Acts whose scenes were planned before the act, its chapter, the story or the cast changed.
+      const stale = staleness();
+      const replanAct = async (act) => {
+        const data = await runStep("plan", { act_id: act.id }, `Planning ${act.title}`);
+        if (!data?.story_layer) return false;
+        pushHistory();
+        const planned = applyPlanToProject(data.story_layer.story_scene_plan, acts);
+        await saveLayer({ ...data.story_layer, story_scene_plan: planned }, "story builder act replanned", { plan: act.scene_ids });
+        return true;
+      };
+      const staleActs = acts.filter((act) => act.scene_ids.some((id) => stale.plan[id]));
+      if (staleActs.length) {
+        const replanStale = makeButton(`Replan Out-Of-Date Acts (${staleActs.length})`, "primary");
+        replanStale.title = "Replan the scenes of only the acts that changed. Every other scene keeps its plan.";
+        replanStale.disabled = Boolean(blocked);
+        replanStale.onclick = async () => {
+          for (const act of staleActs) {
+            if (!await replanAct(act)) break;
+          }
+          show("scenes");
+        };
+        const keepAll = makeButton("Keep All As Is");
+        keepAll.title = "Keep these scene plans. Places, beats and prompts made from them stop showing the change.";
+        keepAll.onclick = async () => {
+          await saveLayer({}, "story builder scene plan kept", { plan: Object.keys(stale.plan) });
+          show("scenes");
+        };
+        const actsFirst = staleActs.some((act) => stale.acts[act.id]);
+        top.append(staleBox(`${staleActs.length} act${staleActs.length === 1 ? " has" : "s have"} out-of-date scenes: ${staleActs.map((act) => act.title || act.id).join(", ")}. They are outlined in amber below. Replan only those acts, or keep them as they are.${actsFirst ? " Some of their acts are out of date themselves: rebuild those in the Acts tab first." : ""}`, replanStale, keepAll));
+      }
 
       const mode = normalizeStoryContinuationMode(current.story_continuation_mode);
       const fromById = continuedFrom(current.story_scene_plan);
@@ -795,22 +972,52 @@ export function createStoryBuilder({
       }
       content.append(masked);
       const rows = [];
-      let lastAct = "";
-      all.forEach((segment, index) => {
-        const act = actOf[segment.id];
-        if (act && act.id !== lastAct) {
-          lastAct = act.id;
+      const chapters = normalizeStoryBook(current.story_book).chapters;
+      const numberById = Object.fromEntries(all.map((segment, index) => [segment.id, index + 1]));
+      // Each act is one section: a framed block in its chapter's colour holding the scenes that tell it.
+      const makeSection = (act) => {
+        const chapterIndex = act ? chapters.findIndex((chapter) => chapter.id === act.chapter_id) : -1;
+        const color = chapterIndex >= 0 ? STORY_CHAPTER_COLORS[chapterIndex % STORY_CHAPTER_COLORS.length] : "#475569";
+        const staleIds = act ? act.scene_ids.filter((id) => stale.plan[id]) : [];
+        const section = el("div", `border:2px solid ${staleIds.length ? STALE_COLOR : color};border-left:10px solid ${color};border-radius:10px;background:#0b1424;padding:10px;display:flex;flex-direction:column;gap:8px;margin-top:10px;`);
+        const numbers = act ? act.scene_ids.map((id) => numberById[id]).filter(Boolean) : [];
+        const heading = el("div", "display:flex;flex-direction:column;gap:2px;flex:1 1 auto;");
+        heading.append(
+          el("div", `font-size:11px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:${color};`,
+            act ? `Chapter ${chapterIndex + 1}${chapters[chapterIndex]?.title ? `: ${chapters[chapterIndex].title}` : ""}` : "Not in an act"),
+          el("div", "font-size:16px;font-weight:900;color:#f8fafc;", act ? act.title || act.id : "Scenes outside every act"),
+          el("div", "font-size:12px;color:#94a3b8;", numbers.length ? `${sceneRangeText(numbers)} · ${numbers.length} scene${numbers.length === 1 ? "" : "s"}` : ""),
+        );
+        const header = el("div", "display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding-bottom:8px;border-bottom:1px solid #1e3a5f;");
+        header.append(heading);
+        if (act) {
           const replan = makeButton("Replan This Act");
           replan.onclick = async () => {
-            const data = await runStep("plan", { act_id: act.id }, `Planning ${act.title}`);
-            if (data?.story_layer) {
-              pushHistory();
-              const planned = applyPlanToProject(data.story_layer.story_scene_plan, acts);
-              await saveLayer({ ...data.story_layer, story_scene_plan: planned }, "story builder act replanned");
-              show("scenes");
-            }
+            if (await replanAct(act)) show("scenes");
           };
-          content.append(row(el("div", "font-size:13px;font-weight:900;color:#a5f3fc;", `${act.title}`), replan));
+          header.append(replan);
+        }
+        section.append(header);
+        if (act?.summary) section.append(el("div", "font-size:12px;color:#cbd5e1;line-height:1.45;", act.summary));
+        if (staleIds.length) {
+          const keep = makeButton("Keep As Is");
+          keep.onclick = async () => {
+            await saveLayer({}, "story builder scene plan kept", { plan: staleIds });
+            show("scenes");
+          };
+          const actStale = stale.acts[act.id];
+          section.append(staleBox(`This act's scenes are out of date: ${reasonText(staleIds.flatMap((id) => stale.plan[id]))}. ${actStale ? "Rebuild this act in the Acts tab first, then replan it here." : "Replan This Act to redo only these scenes."}`, keep));
+        }
+        content.append(section);
+        return section;
+      };
+      let section = null;
+      let lastAct = null;
+      all.forEach((segment, index) => {
+        const act = actOf[segment.id];
+        if (!section || (act?.id || "") !== lastAct) {
+          lastAct = act?.id || "";
+          section = makeSection(act);
         }
         const entry = plan[segment.id] || { scene_id: segment.id, act_id: act?.id || "", story_slice: "", spot: "", mood: "", performance_mode: "singing", note_sources: [] };
         const box = el("div", "display:grid;grid-template-columns:150px minmax(0,1.4fr) minmax(0,1fr);gap:8px;border:1px solid #1e3a5f;border-radius:7px;padding:8px;");
@@ -867,7 +1074,7 @@ export function createStoryBuilder({
           box.append(cont);
           mark();
         }
-        content.append(box);
+        section.append(box);
         rows.push({ segment, entry, slice, spot, mood, performance, director, video, planning, continues, direction, holdInput });
       });
       const save = makeButton("Save Scene Plan And Notes", "primary");
@@ -939,12 +1146,23 @@ export function createStoryBuilder({
         }, regenerateBox.checked);
         merged.refs.location_style_theme = theme.value;
         state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(merged.refs);
-        await saveLayer(data.story_layer || {}, "story builder locations");
+        await saveLayer(data.story_layer || {}, "story builder locations", { places: true });
         toast(`Locations ready: ${merged.added} added, ${merged.updated} updated. Every scene is mapped to its spot.`);
         // Location images are made from the Places tab's button when you want them, never opened for you.
         show("places");
       };
       top.append(makeField("Style and theme", theme), row(regenerate, build));
+      const placeReasons = staleness().places;
+      const stalePlaces = Object.keys(placeReasons);
+      if (stalePlaces.length) {
+        const keep = makeButton("Keep Locations As Is");
+        keep.onclick = async () => {
+          await saveLayer({}, "story builder locations kept", { places: stalePlaces });
+          show("places");
+        };
+        const reasons = stalePlaces.flatMap((id) => placeReasons[id]);
+        top.append(staleBox(`${sceneRangeText(sceneNumbers(stalePlaces))} changed since the locations were built: ${reasonText(reasons)}. Build Locations From Story again (existing cards are updated, not duplicated), or keep the locations as they are.`, keep));
+      }
       const missingPlaces = imageNotice("locations");
       if (missingPlaces) top.append(missingPlaces);
       const looks = card("Setting looks", "Edit a look to change how every spot of that setting is described next time you build.");
@@ -972,8 +1190,14 @@ export function createStoryBuilder({
       const promptKey = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3" ? "minimax_h3_prompt" : "i2v_prompt";
       const withBeat = all.filter((segment) => String(segment.story_beat || "").trim()).length;
       const withPrompt = all.filter((segment) => String(segment[promptKey] || "").trim()).length;
-      const runAndRefresh = async (task) => {
+      // Runs a beat or prompt task, then marks the scenes whose beat or prompt it rewrote as up to date.
+      const runAndRefresh = async (task, kind = "beats") => {
+        const key = kind === "beats" ? "story_beat" : promptKey;
+        const before = Object.fromEntries(segments().map((segment) => [segment.id, String(segment[key] || "")]));
         await task();
+        const redone = segments().filter((segment) => String(segment[key] || "").trim() && String(segment[key] || "") !== before[segment.id])
+          .map((segment) => segment.id);
+        if (redone.length) await saveLayer({}, `story builder ${kind} redone`, { [kind]: redone });
         show("prompts");
       };
 
@@ -1007,7 +1231,7 @@ export function createStoryBuilder({
       if (imagesBlock) createPrompts.title = "Make the missing images first.";
       createPrompts.onclick = () => {
         if (withPrompt && window.confirm?.(`Replace the video prompts of all ${all.length} scenes?`) === false) return;
-        runAndRefresh(() => createVideoPrompts());
+        runAndRefresh(() => createVideoPrompts(), "prompts");
       };
       const openBoard = makeButton("Open Storyboard");
       openBoard.title = "The full Storyboard, for per-scene settings and single-scene prompts.";
@@ -1022,6 +1246,62 @@ export function createStoryBuilder({
         prompts.append(el("div", `font-size:12px;color:#ecfccb;border:1px solid ${MASKED_COLOR};border-radius:7px;background:rgba(54,83,20,.35);padding:9px;`,
           `${continuedCount} scene${continuedCount === 1 ? " is a masked continuation" : "s are masked continuations"} (marked below). At render, each one's prompt is rewritten from the previous scene's last frame and follows its direction, so the prompt written here is the starting idea. Render them in order.`));
       }
+      // Redo only picked scenes, so the rest keep their beats and prompts.
+      const stale = staleness();
+      const staleBeatIds = Object.keys(stale.beats);
+      const stalePromptIds = Object.keys(stale.prompts);
+      for (const id of [...picked]) if (!all.some((segment) => segment.id === id)) picked.delete(id);
+      const pickCard = card("Redo only the scenes you pick", "Tick scenes in the list below, or pick the out-of-date ones. Only the picked scenes are rerun; every other scene keeps its beat and prompt.");
+      if (staleBeatIds.length || stalePromptIds.length) {
+        pickCard.append(staleBox(`${staleBeatIds.length} beat${staleBeatIds.length === 1 ? "" : "s"} and ${stalePromptIds.length} prompt${stalePromptIds.length === 1 ? "" : "s"} are out of date because something before them changed. They are marked in amber below.`));
+      }
+      const pickedIds = () => all.filter((segment) => picked.has(segment.id)).map((segment) => segment.id);
+      const pickBoxes = [];
+      const pickedText = el("div", "font-size:12px;font-weight:800;color:#cffafe;");
+      const redoBeats = makeButton("Recreate Beats For Picked", "primary");
+      redoBeats.onclick = () => runAndRefresh(() => createSceneBeats({ overwrite: true, sceneIds: pickedIds() }), "beats");
+      const redoPrompts = makeButton("Create Prompts For Picked", "primary");
+      redoPrompts.onclick = () => {
+        const ids = pickedIds();
+        const noImage = required ? sceneNumbers(ids).filter((number) => gaps.scenes.includes(number)) : [];
+        if (noImage.length) {
+          toast(`${sceneRangeText(noImage)} ${noImage.length === 1 ? "has" : "have"} no character or location image, and Reference to Video needs one. Make the missing images first.`, true);
+          return;
+        }
+        runAndRefresh(() => createVideoPrompts({ sceneIds: ids }), "prompts");
+      };
+      const keepPicked = makeButton("Keep Picked As Is");
+      keepPicked.title = "The picked scenes keep their beats and prompts and stop showing as out of date.";
+      keepPicked.onclick = async () => {
+        const ids = pickedIds();
+        await saveLayer({}, "story builder beats kept", { beats: ids, prompts: ids });
+        show("prompts");
+      };
+      const drawPicked = () => {
+        const ids = pickedIds();
+        pickedText.textContent = ids.length ? `${ids.length} picked: ${sceneRangeText(sceneNumbers(ids))}` : "No scenes picked.";
+        redoBeats.disabled = Boolean(blocked) || !ids.length;
+        redoPrompts.disabled = Boolean(blocked) || !ids.length || !ids.some((id) => String(all.find((segment) => segment.id === id)?.story_beat || "").trim());
+        keepPicked.disabled = !ids.length;
+      };
+      const pickOnly = (ids) => {
+        picked.clear();
+        for (const id of ids) picked.add(id);
+        for (const { id, box } of pickBoxes) box.checked = picked.has(id);
+        drawPicked();
+      };
+      const pickStaleBeats = makeButton(`Pick Out-Of-Date Beats (${staleBeatIds.length})`);
+      pickStaleBeats.disabled = !staleBeatIds.length;
+      pickStaleBeats.onclick = () => pickOnly(staleBeatIds);
+      const pickStalePrompts = makeButton(`Pick Out-Of-Date Prompts (${stalePromptIds.length})`);
+      pickStalePrompts.disabled = !stalePromptIds.length;
+      pickStalePrompts.onclick = () => pickOnly(stalePromptIds);
+      const pickAll = makeButton("Pick All");
+      pickAll.onclick = () => pickOnly(all.map((segment) => segment.id));
+      const pickNone = makeButton("Pick None");
+      pickNone.onclick = () => pickOnly([]);
+      pickCard.append(row(pickStaleBeats, pickStalePrompts, pickAll, pickNone), pickedText, row(redoBeats, redoPrompts, keepPicked));
+
       const list = card("Scenes", "Edit any beat, prompt or continuation direction, then save.");
       // Save sits at the top of the list, above every scene.
       const listActions = row();
@@ -1038,12 +1318,31 @@ export function createStoryBuilder({
         const beat = textarea(segment.story_beat, "No beat yet.", 50);
         const prompt = textarea(segment[promptKey], "No video prompt yet.", 70);
         const from = fromById[segment.id];
+        const beatStale = stale.beats[segment.id];
+        const promptStale = stale.prompts[segment.id];
+        if (beatStale || promptStale) {
+          item.style.border = `1px solid ${STALE_COLOR}`;
+          item.style.borderLeft = `5px solid ${STALE_COLOR}`;
+        }
         if (from) {
           item.style.border = `1px solid ${MASKED_COLOR}`;
           item.style.borderLeft = `5px solid ${MASKED_COLOR}`;
           item.append(maskedChip(from, index + 1, entry.continuation_source));
         }
-        item.append(head, el("div", "font-size:11px;color:#94a3b8;", `Lyric (mood): ${segment.lyric_text || "[instrumental]"}`),
+        if (beatStale) item.append(staleChip("BEAT", beatStale));
+        if (promptStale) item.append(staleChip("PROMPT", promptStale));
+        const pickLabel = el("label", "display:flex;gap:6px;font-size:12px;font-weight:800;color:#e2e8f0;align-items:center;cursor:pointer;");
+        const pickBox = document.createElement("input");
+        pickBox.type = "checkbox";
+        pickBox.checked = picked.has(segment.id);
+        pickBox.onchange = () => {
+          if (pickBox.checked) picked.add(segment.id);
+          else picked.delete(segment.id);
+          drawPicked();
+        };
+        pickLabel.append(pickBox, document.createTextNode("Pick"));
+        pickBoxes.push({ id: segment.id, box: pickBox });
+        item.append(row(pickLabel, head), el("div", "font-size:11px;color:#94a3b8;", `Lyric (mood): ${segment.lyric_text || "[instrumental]"}`),
           el("div", "font-size:11px;color:#94a3b8;", "Beat"), beat, el("div", "font-size:11px;color:#94a3b8;", "Video prompt"), prompt);
         let direction = null;
         if (from) {
@@ -1076,7 +1375,8 @@ export function createStoryBuilder({
         show("prompts");
       };
       listActions.append(save);
-      content.append(beats, prompts, list);
+      drawPicked();
+      content.append(beats, prompts, pickCard, list);
     }
 
     const renderers = {
@@ -1088,6 +1388,7 @@ export function createStoryBuilder({
       await leaveHostedTab();
       activeTab = renderers[tabId] ? tabId : "song";
       content.textContent = "";
+      fillStamps();
       refreshProgress();
       try {
         renderers[activeTab]();
