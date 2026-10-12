@@ -214,9 +214,18 @@ export function createStoryBuilder({
     return plan;
   }
 
-  async function runStep(action, extra, title) {
-    const progress = createProgressWindow(title, { zIndex: STORY_BUILDER_Z + 10 });
-    progress.set(`${title}...\nThis runs on your selected LLM runner.`, 15);
+  // One LLM step. While it waits, the window counts the seconds and the bar creeps toward `to`, so a long step never
+  // looks frozen. `progress` shares one window across a run of steps; the caller then closes it.
+  async function runStep(action, extra, title, { progress: shared = null, detail = "", from = 5, to = 95 } = {}) {
+    const progress = shared || createProgressWindow(title, { zIndex: STORY_BUILDER_Z + 10 });
+    const started = Date.now();
+    const tick = () => {
+      const seconds = Math.round((Date.now() - started) / 1000);
+      const percent = from + (to - from) * (1 - Math.exp(-seconds / 45));
+      progress.set(`${title}...\n${detail ? `${detail}\n` : ""}Waiting for the LLM: ${seconds}s\nThis runs on your selected LLM runner.`, percent);
+    };
+    tick();
+    const timer = setInterval(tick, 1000);
     try {
       const baseIds = new Set(segments().map((segment) => segment.id));
       const scenes = storyboardScenePayload().filter((scene) => baseIds.has(scene.id));
@@ -230,14 +239,42 @@ export function createStoryBuilder({
         unload_after: true,
         ...extra,
       }, 20 * 60 * 1000);
-      progress.set(`${title}: done.`, 100);
-      progress.close(900);
+      if (!shared) {
+        progress.set(`${title}: done.`, 100);
+        progress.close(900);
+      }
       return data;
     } catch (error) {
-      progress.set(`Error:\n${String(error?.message || error)}`, 100);
+      progress.set(`${title}: stopped.\n${detail ? `${detail}\n` : ""}Error:\n${String(error?.message || error)}`, 100);
       toast(String(error?.message || error), true);
       return null;
+    } finally {
+      clearInterval(timer);
     }
+  }
+
+  // Plans the given acts one LLM call at a time, saving each act as it finishes. The window names the act and its
+  // scenes. A failed act stops the run; the acts before it stay planned. Returns how many acts were planned.
+  async function planActs(acts, list, title) {
+    const progress = createProgressWindow(title, { zIndex: STORY_BUILDER_Z + 10 });
+    const numberById = Object.fromEntries(segments().map((segment, index) => [segment.id, index + 1]));
+    const spotMin = layer().story_spot_min_scenes;
+    pushHistory();
+    let done = 0;
+    for (const [index, act] of list.entries()) {
+      const numbers = act.scene_ids.map((id) => numberById[id]).filter(Boolean);
+      const detail = `Act ${index + 1} of ${list.length}: ${act.title || act.id}\n${numbers.length ? `${sceneRangeText(numbers)} (${numbers.length} scene${numbers.length === 1 ? "" : "s"})` : "No scenes"}\n${done} of ${list.length} act${list.length === 1 ? "" : "s"} planned so far.`;
+      const data = await runStep("plan", { act_id: act.id, spot_min_scenes: spotMin, unload_after: index === list.length - 1 }, title, {
+        progress, detail, from: (100 * index) / list.length, to: (100 * (index + 1)) / list.length,
+      });
+      if (!data?.story_layer) return done;
+      const planned = applyPlanToProject(data.story_layer.story_scene_plan, acts);
+      await saveLayer({ ...data.story_layer, story_scene_plan: planned }, "story builder act replanned", { plan: act.scene_ids });
+      done += 1;
+    }
+    progress.set(`${title}: done.\nPlanned ${done} act${done === 1 ? "" : "s"}.`, 100);
+    progress.close(1200);
+    return done;
   }
 
   function openStoryBuilder(options = {}) {
@@ -883,13 +920,8 @@ export function createStoryBuilder({
       const planAll = makeButton(Object.keys(plan).length ? "Replan All Scenes" : "Plan All Scenes", "primary");
       planAll.disabled = Boolean(blocked);
       planAll.onclick = async () => {
-        const data = await runStep("plan", { spot_min_scenes: current.story_spot_min_scenes }, "Planning the scenes");
-        if (data?.story_layer) {
-          pushHistory();
-          const planned = applyPlanToProject(data.story_layer.story_scene_plan, acts);
-          await saveLayer({ ...data.story_layer, story_scene_plan: planned }, "story builder scene plan", { plan: true });
-          show("scenes");
-        }
+        await planActs(acts, acts, "Planning the scenes");
+        show("scenes");
       };
       const resetPlan = makeButton("Reset Scene Plan");
       resetPlan.title = "Clear every scene's plan and the masked continuations it set, so you can plan from scratch.";
@@ -909,23 +941,14 @@ export function createStoryBuilder({
 
       // Acts whose scenes were planned before the act, its chapter, the story or the cast changed.
       const stale = staleness();
-      const replanAct = async (act) => {
-        const data = await runStep("plan", { act_id: act.id }, `Planning ${act.title}`);
-        if (!data?.story_layer) return false;
-        pushHistory();
-        const planned = applyPlanToProject(data.story_layer.story_scene_plan, acts);
-        await saveLayer({ ...data.story_layer, story_scene_plan: planned }, "story builder act replanned", { plan: act.scene_ids });
-        return true;
-      };
+      const replanAct = async (act) => (await planActs(acts, [act], `Planning ${act.title || act.id}`)) === 1;
       const staleActs = acts.filter((act) => act.scene_ids.some((id) => stale.plan[id]));
       if (staleActs.length) {
         const replanStale = makeButton(`Replan Out-Of-Date Acts (${staleActs.length})`, "primary");
         replanStale.title = "Replan the scenes of only the acts that changed. Every other scene keeps its plan.";
         replanStale.disabled = Boolean(blocked);
         replanStale.onclick = async () => {
-          for (const act of staleActs) {
-            if (!await replanAct(act)) break;
-          }
+          await planActs(acts, staleActs, "Replanning out-of-date acts");
           show("scenes");
         };
         const keepAll = makeButton("Keep All As Is");

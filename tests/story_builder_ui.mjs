@@ -106,10 +106,10 @@ function project() {
 
 function setup() {
   const state = project();
-  const calls = { saves: [], hosted: [], storyboard: 0, errors: [], order: [], beats: [], prompts: 0, generated: [], defaults: [] };
+  const calls = { saves: [], hosted: [], storyboard: 0, errors: [], order: [], beats: [], prompts: 0, generated: [], defaults: [], progress: [] };
   const builder = createStoryBuilder({
     autoSaveSessionQuiet: async (label) => { calls.saves.push(label); },
-    createProgressWindow: () => ({ set() {}, close() {} }),
+    createProgressWindow: () => ({ set(message) { calls.progress.push(message); }, close() {} }),
     createSceneBeats: async (options) => { calls.beats.push(options); state.segments[0].story_beat = 'Mara folds a shirt.'; },
     createVideoPrompts: async () => { calls.prompts += 1; },
     getLlmPayload: () => ({ llm_runner: 'lm_studio' }),
@@ -442,6 +442,31 @@ test('beats and prompts can be redone for picked or out-of-date scenes only', as
   await findButton('Keep Picked As Is').onclick();
   await tick();
   assert.ok(!document.body.textContent.includes('BEAT OUT OF DATE'));
+  findButton('Close').onclick();
+  await tick();
+});
+
+test('planning all scenes runs act by act and says which act and scenes it is on', async () => {
+  const { state, calls, builder } = setup();
+  const bodies = [];
+  globalThis.fakeComfyApi.fetchApi = async (url, options) => {
+    bodies.push(JSON.parse(options.body));
+    return { ok: true, json: async () => ({ ok: true, story_layer: { story_scene_plan: state.builderStoryLayer.story_scene_plan } }) };
+  };
+  try {
+    builder.openStoryBuilder({ tab: 'scenes' });
+    await tick();
+    await findButton('Replan All Scenes').onclick();
+    await tick();
+    assert.deepEqual(bodies.map((body) => [body.act_id, body.unload_after]), [['act_1', false], ['act_2', true]],
+      'one call per act, and the model is only let go after the last one');
+    const text = calls.progress.join(' | ');
+    assert.ok(text.includes('Act 1 of 2: Pack') && text.includes('Act 2 of 2: Ride'));
+    assert.ok(text.includes('Scenes 1-3 (3 scenes)') && text.includes('Waiting for the LLM: 0s'));
+    assert.ok(text.includes('Planned 2 acts.'));
+  } finally {
+    delete globalThis.fakeComfyApi.fetchApi;
+  }
   findButton('Close').onclick();
   await tick();
 });
