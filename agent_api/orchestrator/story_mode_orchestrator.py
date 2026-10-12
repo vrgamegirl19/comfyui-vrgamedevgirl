@@ -6,6 +6,9 @@ never loads or switches a model. Results are saved in ``builder_story_layer`` li
 
 from typing import Any, Callable, Dict, List, Optional
 
+from ...minimax.scene_inputs import continuity_allowed_for_mode
+from ...minimax.settings_payload import minimax_h3_settings_for_scene
+from ...storyboard import session_sync
 from ...storyboard import story_book as book_funcs
 from ...storyboard import story_locations as location_funcs
 from ...storyboard import story_plan as plan_funcs
@@ -15,7 +18,9 @@ from ...storyboard.story_mode import (
     fill_scene_cast,
     normalize_story_book,
     normalize_story_mode_fields,
+    normalize_story_scene_plan,
     plan_segment_fields,
+    resolve_story_continuations,
     story_book_to_text,
 )
 from ..errors import ValidationError
@@ -37,7 +42,7 @@ from .storyboard_orchestrator import (
 STORY_MODE_STEPS = ("book", "chapter", "split", "convert", "cast", "remove_people", "acts", "plan", "locations")
 # Story Mode fields an agent may send to PUT /story/settings. Each is checked before it is saved.
 STORY_MODE_EDIT_KEYS = ("story_book_text", "story_settings", "story_acts", "story_scene_plan", "story_spot_min_scenes",
-                        "story_cast_ids", "story_allow_new_cast", "story_video_style")
+                        "story_cast_ids", "story_allow_new_cast", "story_video_style", "story_continuation_mode")
 
 
 def _request(session: Dict[str, Any], params: Dict[str, Any], cards, **extra: Any) -> Dict[str, Any]:
@@ -67,6 +72,69 @@ def apply_plan_to_segments(session: Dict[str, Any], plan: List[Dict[str, Any]]) 
     return changed
 
 
+def _scene_masked(segment: Dict[str, Any]) -> bool:
+    settings = segment.get("minimax_h3_settings") if isinstance(segment.get("minimax_h3_settings"), dict) else {}
+    return bool(segment.get("use_scene_minimax_h3_settings")) and settings.get("continuity_mode") == "latent_continuation_masked"
+
+
+def apply_continuations_to_segments(session: Dict[str, Any], plan: List[Dict[str, Any]]) -> List[str]:
+    """Make each continued scene a MiniMax masked continuation, like the timeline's chain button. Returns changed ids.
+
+    Twin of ``applyStoryContinuationsToSegments`` (``web/music_video_builder/story_continuation.mjs``). Only MiniMax
+    projects are changed, and only scenes the story made masked are turned back off.
+    """
+    if session_sync.video_engine(session) != "minimax_h3":
+        return []
+    entries = {entry["scene_id"]: entry for entry in normalize_story_scene_plan(plan)}
+    project = session.get("minimax_h3_settings") if isinstance(session.get("minimax_h3_settings"), dict) else {}
+    changed = []
+    segments = [s for s in session.get("segments") or [] if isinstance(s, dict)]
+    for index, segment in enumerate(segments):
+        entry = entries.get(segment.get("id"))
+        if entry and entry["continues_previous"] and index > 0:
+            effective = minimax_h3_settings_for_scene(session, segment)
+            if not continuity_allowed_for_mode("latent_continuation_masked", effective["video_mode"], effective["render_pass"]):
+                continue
+            if not _scene_masked(segment):
+                own = segment.get("minimax_h3_settings") if isinstance(segment.get("minimax_h3_settings"), dict) else {}
+                base = dict(own) if segment.get("use_scene_minimax_h3_settings") and own else dict(project)
+                segment["minimax_h3_masked_quick_prev"] = {
+                    "locked": bool(segment.get("use_scene_minimax_h3_settings")),
+                    "continuity_mode": effective["continuity_mode"],
+                    "location_transition_preset": effective["location_transition_preset"],
+                    "continuity_prompt_from_last_frame": bool(effective["continuity_prompt_from_last_frame"]),
+                }
+                segment["use_scene_minimax_h3_settings"] = True
+                segment["minimax_h3_settings"] = {
+                    **base, "video_mode": effective["video_mode"], "continuity_mode": "latent_continuation_masked",
+                    "location_transition_preset": "masked", "continuity_prompt_from_last_frame": True,
+                }
+                segment["minimax_h3_mode"] = effective["video_mode"]
+                segment["story_masked_continuation"] = True
+                changed.append(segment["id"])
+            if segment.get("minimax_h3_continuation_direction", "") != entry["continuation_direction"]:
+                segment["minimax_h3_continuation_direction"] = entry["continuation_direction"]
+                if segment["id"] not in changed:
+                    changed.append(segment["id"])
+            continue
+        if not segment.pop("story_masked_continuation", False) or not _scene_masked(segment):
+            continue
+        before = segment.pop("minimax_h3_masked_quick_prev", None) or {}
+        if before.get("locked") is False:
+            segment["use_scene_minimax_h3_settings"] = False
+            segment.pop("minimax_h3_settings", None)
+        else:
+            segment["minimax_h3_settings"] = {
+                **segment["minimax_h3_settings"],
+                "continuity_mode": before.get("continuity_mode") or "off",
+                "location_transition_preset": before.get("location_transition_preset") or "normal",
+                "continuity_prompt_from_last_frame": bool(before.get("continuity_prompt_from_last_frame")),
+            }
+        segment["minimax_h3_continuation_direction"] = ""
+        changed.append(segment["id"])
+    return changed
+
+
 def fill_cast_from_acts(session: Dict[str, Any], acts: List[Dict[str, Any]]) -> List[str]:
     """Map each act's cast onto its scenes that have no characters yet (the Reference Builder's subject_scene_map)."""
     refs = session.setdefault("flux_reference_builder", {})
@@ -85,9 +153,11 @@ def _save_fields(project_id: str, fields: Dict[str, Any]) -> Dict[str, Any]:
         layer.update(fields)
         _save_story_layer(session, layer)
         changed = apply_plan_to_segments(session, fields["story_scene_plan"]) if fields.get("story_scene_plan") else []
+        continued = []
         if fields.get("story_scene_plan"):
             fill_cast_from_acts(session, layer.get("story_acts") or [])
-        if len(changed) == 1:
+            continued = apply_continuations_to_segments(session, fields["story_scene_plan"])
+        if len(changed) == 1 and not continued:
             saved = _persist_session(folder, session, scene_field_change(changed[0], ["performance_mode", "lyric_no_lip_sync"]))
         else:
             saved = _persist_session(folder, session)
@@ -286,6 +356,15 @@ def story_mode_edit_fields(session: Dict[str, Any], layer: Dict[str, Any], story
         problems = validate_story_acts(fields["story_acts"], chapters, scene_ids)
         if problems:
             raise ValidationError("story_acts are not valid: " + " ".join(problems))
+    if "story_continuation_mode" in fields or "story_scene_plan" in fields:
+        # Which scenes continue follows the mode; a scene the agent marked "manual" keeps its choice.
+        plan = fields.get("story_scene_plan", layer.get("story_scene_plan") or [])
+        if plan:
+            timeline = [s for s in session.get("segments") or [] if isinstance(s, dict) and s.get("id")]
+            fields["story_scene_plan"] = resolve_story_continuations(
+                plan, timeline, fields.get("story_acts", layer.get("story_acts")),
+                fields.get("story_continuation_mode", layer.get("story_continuation_mode")),
+            )
     return fields
 
 

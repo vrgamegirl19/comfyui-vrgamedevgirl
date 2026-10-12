@@ -173,7 +173,11 @@
             "spot": "Kitchen",
             "mood": "",
             "performance_mode": "no_lip_sync",
-            "note_sources": []
+            "note_sources": [],
+            "continues_previous": false,
+            "continuation_source": "",
+            "llm_continues": false,
+            "continuation_direction": ""
           },
           {
             "scene_id": "s2",
@@ -182,7 +186,11 @@
             "spot": "",
             "mood": "",
             "performance_mode": "instrumental",
-            "note_sources": []
+            "note_sources": [],
+            "continues_previous": false,
+            "continuation_source": "",
+            "llm_continues": false,
+            "continuation_direction": ""
           }
         ]
       }
@@ -242,6 +250,493 @@
       },
       "output": {
         "story_video_style": "music_video"
+      }
+    },
+    {
+      "name": "continuation fields on a plan entry and the continuation mode",
+      "input": {
+        "story_continuation_mode": "LLM",
+        "story_scene_plan": [
+          {
+            "scene_id": "s2",
+            "continues_previous": true,
+            "continuation_source": "Manual",
+            "llm_continues": "true",
+            "continuation_direction": "  She walks to the window. "
+          }
+        ]
+      },
+      "output": {
+        "story_continuation_mode": "llm",
+        "story_scene_plan": [
+          {
+            "scene_id": "s2",
+            "act_id": "",
+            "story_slice": "",
+            "spot": "",
+            "mood": "",
+            "performance_mode": "singing",
+            "note_sources": [],
+            "continues_previous": true,
+            "continuation_source": "manual",
+            "llm_continues": false,
+            "continuation_direction": "She walks to the window."
+          }
+        ]
+      }
+    },
+    {
+      "name": "an unknown continuation mode is off and an unknown source is empty",
+      "input": {
+        "story_continuation_mode": "always",
+        "story_scene_plan": [
+          {
+            "scene_id": "s1",
+            "continuation_source": "robot"
+          }
+        ]
+      },
+      "output": {
+        "story_continuation_mode": "off",
+        "story_scene_plan": [
+          {
+            "scene_id": "s1",
+            "act_id": "",
+            "story_slice": "",
+            "spot": "",
+            "mood": "",
+            "performance_mode": "singing",
+            "note_sources": [],
+            "continues_previous": false,
+            "continuation_source": "",
+            "llm_continues": false,
+            "continuation_direction": ""
+          }
+        ]
+      }
+    }
+  ],
+  "continuations": [
+    {
+      "name": "off continues nothing",
+      "mode": "off",
+      "plan": [
+        {
+          "scene_id": "s1",
+          "act_id": "a1",
+          "spot": "Kitchen",
+          "llm_continues": true
+        },
+        {
+          "scene_id": "s2",
+          "act_id": "a1",
+          "spot": "kitchen",
+          "llm_continues": false
+        },
+        {
+          "scene_id": "s3",
+          "act_id": "a1",
+          "spot": "Porch",
+          "llm_continues": true
+        },
+        {
+          "scene_id": "s4",
+          "act_id": "a2",
+          "spot": "Porch",
+          "llm_continues": true
+        },
+        {
+          "scene_id": "s5",
+          "act_id": "a2",
+          "spot": "Porch",
+          "llm_continues": true
+        }
+      ],
+      "scenes": [
+        {
+          "id": "s1",
+          "start": 0,
+          "end": 4
+        },
+        {
+          "id": "s2",
+          "start": 4,
+          "end": 8
+        },
+        {
+          "id": "s3",
+          "start": 8,
+          "end": 12
+        },
+        {
+          "id": "s4",
+          "start": 12,
+          "end": 16
+        },
+        {
+          "id": "s5",
+          "start": 17,
+          "end": 20
+        }
+      ],
+      "acts": [
+        {
+          "id": "a1",
+          "chapter_id": "ch_1",
+          "scene_ids": [
+            "s1",
+            "s2",
+            "s3"
+          ]
+        },
+        {
+          "id": "a2",
+          "chapter_id": "ch_2",
+          "scene_ids": [
+            "s4",
+            "s5"
+          ]
+        }
+      ],
+      "expect": {
+        "s1": [
+          false,
+          ""
+        ],
+        "s2": [
+          false,
+          ""
+        ],
+        "s3": [
+          false,
+          ""
+        ],
+        "s4": [
+          false,
+          ""
+        ],
+        "s5": [
+          false,
+          ""
+        ]
+      }
+    },
+    {
+      "name": "same spot continues touching scenes at one spot in one chapter, never the first or after a gap",
+      "mode": "location",
+      "plan": [
+        {
+          "scene_id": "s1",
+          "act_id": "a1",
+          "spot": "Kitchen",
+          "llm_continues": true
+        },
+        {
+          "scene_id": "s2",
+          "act_id": "a1",
+          "spot": "kitchen",
+          "llm_continues": false
+        },
+        {
+          "scene_id": "s3",
+          "act_id": "a1",
+          "spot": "Porch",
+          "llm_continues": true
+        },
+        {
+          "scene_id": "s4",
+          "act_id": "a2",
+          "spot": "Porch",
+          "llm_continues": true
+        },
+        {
+          "scene_id": "s5",
+          "act_id": "a2",
+          "spot": "Porch",
+          "llm_continues": true
+        }
+      ],
+      "scenes": [
+        {
+          "id": "s1",
+          "start": 0,
+          "end": 4
+        },
+        {
+          "id": "s2",
+          "start": 4,
+          "end": 8
+        },
+        {
+          "id": "s3",
+          "start": 8,
+          "end": 12
+        },
+        {
+          "id": "s4",
+          "start": 12,
+          "end": 16
+        },
+        {
+          "id": "s5",
+          "start": 17,
+          "end": 20
+        }
+      ],
+      "acts": [
+        {
+          "id": "a1",
+          "chapter_id": "ch_1",
+          "scene_ids": [
+            "s1",
+            "s2",
+            "s3"
+          ]
+        },
+        {
+          "id": "a2",
+          "chapter_id": "ch_2",
+          "scene_ids": [
+            "s4",
+            "s5"
+          ]
+        }
+      ],
+      "expect": {
+        "s1": [
+          false,
+          ""
+        ],
+        "s2": [
+          true,
+          "auto"
+        ],
+        "s3": [
+          false,
+          ""
+        ],
+        "s4": [
+          false,
+          ""
+        ],
+        "s5": [
+          false,
+          ""
+        ]
+      }
+    },
+    {
+      "name": "the LLM's answer is used, never for the first scene or after a gap",
+      "mode": "llm",
+      "plan": [
+        {
+          "scene_id": "s1",
+          "act_id": "a1",
+          "spot": "Kitchen",
+          "llm_continues": true
+        },
+        {
+          "scene_id": "s2",
+          "act_id": "a1",
+          "spot": "kitchen",
+          "llm_continues": false
+        },
+        {
+          "scene_id": "s3",
+          "act_id": "a1",
+          "spot": "Porch",
+          "llm_continues": true
+        },
+        {
+          "scene_id": "s4",
+          "act_id": "a2",
+          "spot": "Porch",
+          "llm_continues": true
+        },
+        {
+          "scene_id": "s5",
+          "act_id": "a2",
+          "spot": "Porch",
+          "llm_continues": true
+        }
+      ],
+      "scenes": [
+        {
+          "id": "s1",
+          "start": 0,
+          "end": 4
+        },
+        {
+          "id": "s2",
+          "start": 4,
+          "end": 8
+        },
+        {
+          "id": "s3",
+          "start": 8,
+          "end": 12
+        },
+        {
+          "id": "s4",
+          "start": 12,
+          "end": 16
+        },
+        {
+          "id": "s5",
+          "start": 17,
+          "end": 20
+        }
+      ],
+      "acts": [
+        {
+          "id": "a1",
+          "chapter_id": "ch_1",
+          "scene_ids": [
+            "s1",
+            "s2",
+            "s3"
+          ]
+        },
+        {
+          "id": "a2",
+          "chapter_id": "ch_2",
+          "scene_ids": [
+            "s4",
+            "s5"
+          ]
+        }
+      ],
+      "expect": {
+        "s1": [
+          false,
+          ""
+        ],
+        "s2": [
+          false,
+          ""
+        ],
+        "s3": [
+          true,
+          "llm"
+        ],
+        "s4": [
+          true,
+          "llm"
+        ],
+        "s5": [
+          false,
+          ""
+        ]
+      }
+    },
+    {
+      "name": "a manual choice wins over the mode, both ways, but not after a gap",
+      "mode": "location",
+      "plan": [
+        {
+          "scene_id": "s1",
+          "act_id": "a1",
+          "spot": "Kitchen",
+          "llm_continues": true
+        },
+        {
+          "scene_id": "s2",
+          "act_id": "a1",
+          "spot": "kitchen",
+          "llm_continues": false,
+          "continues_previous": false,
+          "continuation_source": "manual"
+        },
+        {
+          "scene_id": "s3",
+          "act_id": "a1",
+          "spot": "Porch",
+          "llm_continues": true,
+          "continues_previous": true,
+          "continuation_source": "manual"
+        },
+        {
+          "scene_id": "s4",
+          "act_id": "a2",
+          "spot": "Porch",
+          "llm_continues": true
+        },
+        {
+          "scene_id": "s5",
+          "act_id": "a2",
+          "spot": "Porch",
+          "llm_continues": true,
+          "continues_previous": true,
+          "continuation_source": "manual"
+        }
+      ],
+      "scenes": [
+        {
+          "id": "s1",
+          "start": 0,
+          "end": 4
+        },
+        {
+          "id": "s2",
+          "start": 4,
+          "end": 8
+        },
+        {
+          "id": "s3",
+          "start": 8,
+          "end": 12
+        },
+        {
+          "id": "s4",
+          "start": 12,
+          "end": 16
+        },
+        {
+          "id": "s5",
+          "start": 17,
+          "end": 20
+        }
+      ],
+      "acts": [
+        {
+          "id": "a1",
+          "chapter_id": "ch_1",
+          "scene_ids": [
+            "s1",
+            "s2",
+            "s3"
+          ]
+        },
+        {
+          "id": "a2",
+          "chapter_id": "ch_2",
+          "scene_ids": [
+            "s4",
+            "s5"
+          ]
+        }
+      ],
+      "expect": {
+        "s1": [
+          false,
+          ""
+        ],
+        "s2": [
+          false,
+          "manual"
+        ],
+        "s3": [
+          true,
+          "manual"
+        ],
+        "s4": [
+          false,
+          ""
+        ],
+        "s5": [
+          false,
+          ""
+        ]
       }
     }
   ]

@@ -293,3 +293,58 @@ test('saving the scene plan sets each scene performance and keeps the notes', as
   findButton('Close').onclick();
   await tick();
 });
+
+test('continued scenes become masked continuations, can be ticked by hand and carry a direction', async () => {
+  const { state, calls, builder } = setup();
+  state.projectVideoEngine = 'minimax_h3';
+  state.miniMaxH3Settings = { video_mode: 'reference_to_video', render_pass: 'single', continuity_mode: 'off' };
+  builder.openStoryBuilder({ tab: 'scenes' });
+  await tick();
+  const modeSelect = document.body.all().find((node) => node.tagName === 'SELECT' && node.options.some((option) => option.value === 'location'));
+  modeSelect.value = 'location';
+  await modeSelect.onchange();
+  await tick();
+  const masked = (segment) => segment.use_scene_minimax_h3_settings === true
+    && segment.minimax_h3_settings.continuity_mode === 'latent_continuation_masked'
+    && segment.minimax_h3_settings.location_transition_preset === 'masked'
+    && segment.minimax_h3_settings.continuity_prompt_from_last_frame === true;
+  // Kitchen is scenes 1-3 (chapter 1), Sleeper Car is scenes 4-6 (chapter 2): a new chapter never continues.
+  assert.deepEqual(state.segments.map(masked), [false, true, true, false, true, true]);
+  assert.equal(state.builderStoryLayer.story_continuation_mode, 'location');
+  assert.ok(document.body.textContent.includes('MASKED: Scene 1 → Scene 2'), 'a visible marker names both scenes');
+  assert.ok(document.body.textContent.includes('4 scenes continue from the scene before'));
+
+  // Untick scene 2 by hand, give scene 3 a direction.
+  const ticks = document.body.all().filter((node) => node.tagName === 'INPUT' && node.type === 'checkbox');
+  assert.equal(ticks.length, 5, 'every scene but the first can continue');
+  ticks[0].checked = false;
+  ticks[0].onchange();
+  const directions = document.body.all().filter((node) => node.tagName === 'TEXTAREA' && node.placeholder.startsWith('During the continuation'));
+  directions[1].value = 'She drops the letter and runs out.';
+  await findButton('Save Scene Plan And Notes').onclick();
+  await tick();
+  assert.deepEqual(state.segments.map(masked), [false, false, true, false, true, true]);
+  assert.equal(state.segments[1].story_masked_continuation, undefined, 'the story turned its own change back off');
+  assert.equal(state.segments[2].minimax_h3_continuation_direction, 'She drops the letter and runs out.');
+  const plan = Object.fromEntries(state.builderStoryLayer.story_scene_plan.map((entry) => [entry.scene_id, entry]));
+  assert.deepEqual([plan.seg_2.continues_previous, plan.seg_2.continuation_source], [false, 'manual']);
+  assert.deepEqual([plan.seg_3.continues_previous, plan.seg_3.continuation_source], [true, 'auto']);
+
+  // The mode no longer overrides the hand-made choice.
+  builder.openStoryBuilder({ tab: 'scenes' });
+  await tick();
+  assert.equal(state.segments[1].use_scene_minimax_h3_settings, false);
+
+  // Beats & Prompts marks the continued scenes and edits their direction.
+  builder.openStoryBuilder({ tab: 'prompts' });
+  await tick();
+  assert.ok(document.body.textContent.includes('3 scenes are masked continuations'));
+  const promptDirections = document.body.all().filter((node) => node.tagName === 'TEXTAREA' && node.placeholder === 'What happens once the carried-on moment settles.');
+  assert.equal(promptDirections.length, 3);
+  promptDirections[0].value = 'She sits on the bed.';
+  await findButton('Save Beats And Prompts').onclick();
+  assert.equal(state.segments[2].minimax_h3_continuation_direction, 'She sits on the bed.');
+  assert.ok(calls.saves.includes('story builder continuation directions'));
+  findButton('Close').onclick();
+  await tick();
+});

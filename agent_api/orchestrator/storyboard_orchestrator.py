@@ -189,7 +189,12 @@ def set_story_settings(
     unknown = sorted(set(defaults_in) - set(DEFAULT_KEYS) - {"story_arc_detail"})
     if unknown:
         raise ValidationError(f"Unknown scene default(s): {', '.join(unknown)}. Allowed: {', '.join(DEFAULT_KEYS)}, story_arc_detail.")
-    from .story_mode_orchestrator import STORY_MODE_EDIT_KEYS, apply_plan_to_segments, story_mode_edit_fields
+    from .story_mode_orchestrator import (
+        STORY_MODE_EDIT_KEYS,
+        apply_continuations_to_segments,
+        apply_plan_to_segments,
+        story_mode_edit_fields,
+    )
 
     unknown_story = sorted(set(story_in) - set(STORY_LAYER_KEYS) - set(STORY_MODE_EDIT_KEYS))
     if unknown_story:
@@ -234,6 +239,7 @@ def set_story_settings(
         layer.update(story_in)
         if "story_scene_plan" in story_in:
             apply_plan_to_segments(session, story_in["story_scene_plan"])
+            apply_continuations_to_segments(session, story_in["story_scene_plan"])
         _save_story_layer(session, layer)
         saved = _persist_session(folder, session)
     return {"defaults": defaults, "story": layer, "revision": saved.get("revision")}

@@ -26,7 +26,12 @@ from .story_acts import (
     validate_story_acts,
 )
 from .story_book import _run, cast_lines
-from .story_mode import normalize_plan_performance, normalize_story_book, normalize_story_video_style
+from .story_mode import (
+    normalize_plan_performance,
+    normalize_story_book,
+    normalize_story_video_style,
+    resolve_story_continuations,
+)
 from .timeline_notes import story_arc_timeline_notes
 
 PLAN_NOTE_FIELDS = (("director", "timeline_note"), ("video", "motion_summary"), ("planning", "notes"))
@@ -317,6 +322,9 @@ def build_story_scene_plan(payload, progress=None):
             sources = list(_scene_notes(scene))
             if any(number in note.get("scene_numbers") or [] for note in timed_notes):
                 sources.append("timeline")
+            # A continuation the user set by hand survives a replan, with its direction.
+            old = plan.get(scene_ids[number - 1]) or {}
+            manual = old.get("continuation_source") == "manual"
             plan[scene_ids[number - 1]] = {
                 "scene_id": scene_ids[number - 1],
                 "act_id": act["id"],
@@ -325,6 +333,11 @@ def build_story_scene_plan(payload, progress=None):
                 "mood": _clean_scene_text(item.get("mood") or "", 200),
                 "performance_mode": performance,
                 "note_sources": sources,
+                "continues_previous": bool(old.get("continues_previous")) if manual else False,
+                "continuation_source": "manual" if manual else "",
+                "llm_continues": item.get("continues") is True,
+                "continuation_direction": old.get("continuation_direction", "") if manual
+                else _clean_scene_text(item.get("continuation") or "", 600),
             }
     # Spots are kept for a minimum run inside each chapter. Scenes with a user note, and (when only one act was
     # rebuilt) scenes outside that act, keep their spot.
@@ -339,7 +352,10 @@ def build_story_scene_plan(payload, progress=None):
         fallback_spot = (settings.get(chapter["setting_id"]) or {}).get("name", "") or chapter["title"]
         for sid, spot in zip(ids, spots):
             plan[sid]["spot"] = spot or fallback_spot
-    ordered = [plan[sid] for sid in scene_ids if sid in plan]
+    timeline = [{"id": sid, "start": _seconds(scene.get("timeline_start", scene.get("start"))),
+                 "end": _seconds(scene.get("timeline_end", scene.get("end")))} for sid, scene in zip(scene_ids, scenes)]
+    ordered = resolve_story_continuations([plan[sid] for sid in scene_ids if sid in plan], timeline, acts,
+                                          layer.get("story_continuation_mode"))
     if progress:
         progress(len(todo), len(todo), "done")
     return {

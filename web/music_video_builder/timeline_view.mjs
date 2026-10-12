@@ -1331,6 +1331,12 @@ export function createTimelineView({
           }
         };
         block.append(maskedButton);
+        if (maskedOn) {
+          // A lime seam on the left edge: this scene carries straight on from the one before it.
+          const seam = document.createElement("span");
+          seam.style.cssText = "position:absolute;left:0;top:0;bottom:0;width:4px;z-index:4;pointer-events:none;background:#a3e635;box-shadow:0 0 6px #a3e635;";
+          block.append(seam);
+        }
       }
       const dblClickHint = !isOverlay ? "Double-click to review line & performer mapping. Shift + double-click to edit the Storyboard Card." : "";
       block.title = lockedByVideo ? "This scene has a generated video, so timing is locked." : dblClickHint;

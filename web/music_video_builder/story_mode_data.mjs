@@ -3,8 +3,10 @@
 
 export const STORY_FLOW_VERSION = 2;
 export const STORY_MODE_KEYS = ["story_flow_version", "story_book", "story_book_text", "story_settings", "story_acts", "story_scene_plan",
-  "story_spot_min_scenes", "story_cast_ids", "story_allow_new_cast", "story_video_style"];
+  "story_spot_min_scenes", "story_cast_ids", "story_allow_new_cast", "story_video_style", "story_continuation_mode"];
 export const STORY_VIDEO_STYLES = ["music_video", "spoken", "story_only"];
+export const STORY_CONTINUATION_MODES = ["off", "location", "llm"];
+const CONTINUATION_SOURCES = ["auto", "llm", "manual"];
 export const DEFAULT_SPOT_MIN_SCENES = 3;
 export const PLAN_PERFORMANCE_MODES = ["singing", "speaking", "no_lip_sync", "instrumental"];
 
@@ -104,6 +106,11 @@ export function normalizeStoryScenePlan(value) {
       mood: storyLine(item.mood, 200),
       performance_mode: normalizePlanPerformance(item.performance_mode),
       note_sources: storyIdList(item.note_sources, 12),
+      continues_previous: item.continues_previous === true,
+      continuation_source: CONTINUATION_SOURCES.includes(storyLine(item.continuation_source, 20).toLowerCase())
+        ? storyLine(item.continuation_source, 20).toLowerCase() : "",
+      llm_continues: item.llm_continues === true,
+      continuation_direction: storyText(item.continuation_direction, 600),
     });
   }
   return plan;
@@ -128,7 +135,48 @@ export function normalizeStoryModeFields(source) {
     result.story_allow_new_cast = value.story_allow_new_cast === true || String(value.story_allow_new_cast).trim().toLowerCase() === "true";
   }
   if ("story_video_style" in value) result.story_video_style = normalizeStoryVideoStyle(value.story_video_style);
+  if ("story_continuation_mode" in value) result.story_continuation_mode = normalizeStoryContinuationMode(value.story_continuation_mode);
   return result;
+}
+
+// "off", "location" or "llm"; anything else is "off".
+export function normalizeStoryContinuationMode(value) {
+  const text = storyLine(value).toLowerCase().replace(/[\s-]+/g, "_");
+  return STORY_CONTINUATION_MODES.includes(text) ? text : "off";
+}
+
+// The scene plan with continues_previous set for every scene. `scenes` is the timeline in order ({id, start, end}).
+// A manual choice is kept. Otherwise "location" continues a scene that touches the scene before at the same spot in
+// the same chapter, "llm" uses the LLM's answer and "off" continues nothing. The first scene, and a scene with a gap
+// before it, never continue.
+export function resolveStoryContinuations(plan, scenes, acts, mode) {
+  const resolvedMode = normalizeStoryContinuationMode(mode);
+  const normalized = normalizeStoryScenePlan(plan);
+  const entries = Object.fromEntries(normalized.map((entry) => [entry.scene_id, { ...entry }]));
+  const chapterOf = {};
+  for (const act of normalizeStoryActs(acts)) for (const id of act.scene_ids) chapterOf[id] = act.chapter_id;
+  const seconds = (value) => (Number.isFinite(Number(value)) && value !== null && value !== "" ? Number(value) : 0);
+  let previous = null;
+  for (const scene of Array.isArray(scenes) ? scenes : []) {
+    const id = String(scene?.id || "");
+    const entry = entries[id];
+    if (entry) {
+      const before = previous ? entries[String(previous.id || "")] : null;
+      const touches = previous !== null && Math.abs(seconds(scene.start) - seconds(previous.end)) <= 0.05;
+      if (!touches) {
+        entry.continues_previous = false;
+        entry.continuation_source = "";
+      } else if (entry.continuation_source !== "manual") {
+        const sameSpot = Boolean(before && entry.spot && entry.spot.toLowerCase() === before.spot.toLowerCase()
+          && chapterOf[id] && chapterOf[id] === chapterOf[before.scene_id]);
+        if (resolvedMode === "location" && sameSpot) Object.assign(entry, { continues_previous: true, continuation_source: "auto" });
+        else if (resolvedMode === "llm" && entry.llm_continues) Object.assign(entry, { continues_previous: true, continuation_source: "llm" });
+        else Object.assign(entry, { continues_previous: false, continuation_source: "" });
+      }
+    }
+    previous = scene || {};
+  }
+  return normalized.map((entry) => entries[entry.scene_id]);
 }
 
 // "music_video", "spoken" or "story_only"; anything else is "music_video".

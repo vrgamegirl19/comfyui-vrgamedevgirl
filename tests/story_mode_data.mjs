@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import {
-  applyStoryBookText, normalizeStoryModeFields, parseStoryBookText, storyBookToText, syncStorySettings,
+  applyStoryBookText, normalizeStoryModeFields, parseStoryBookText, resolveStoryContinuations, storyBookToText,
+  syncStorySettings,
 } from '../web/music_video_builder/story_mode_data.mjs';
 
 // Same cases as tests/test_story_mode_data.py runs against storyboard/story_mode.py.
@@ -22,6 +23,13 @@ for (const item of CASES.parse) {
 for (const item of CASES.normalize) {
   test(`normalize: ${item.name}`, () => {
     assert.deepEqual(normalizeStoryModeFields(item.input), item.output);
+  });
+}
+
+for (const item of CASES.continuations) {
+  test(`continuations: ${item.name}`, () => {
+    const plan = resolveStoryContinuations(item.plan, item.scenes, item.acts, item.mode);
+    assert.deepEqual(Object.fromEntries(plan.map((entry) => [entry.scene_id, [entry.continues_previous, entry.continuation_source]])), item.expect);
   });
 }
 

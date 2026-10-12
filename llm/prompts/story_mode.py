@@ -323,9 +323,14 @@ def story_scene_plan_instruction(*, act_title, act_summary, setting_name, chapte
         f"{_PLAN_PERFORMANCE_RULES.get(video_style, _PLAN_PERFORMANCE_RULES['music_video'])}\n"
         "- User notes on a scene are the user's direction and win over the story. Follow them exactly and write "
         "the slice to agree with them.\n"
+        "- continues: true when this scene is the very next moment of the scene before it in one unbroken camera "
+        "take: same spot, same people, the action carries straight on with no time jump. False when time jumps, "
+        "the spot changes or a new moment starts.\n"
+        "- continuation: one sentence, the physical action the performer does in this scene once the carried-on "
+        "moment settles (e.g. \"She sets the letter down and walks to the window.\"). Write it for every scene.\n"
         f"- {lyric_guidance}\n"
         "Return JSON only: {\"scenes\": [{\"scene\": 1, \"story_slice\": \"...\", \"spot\": \"...\", \"mood\": \"...\", "
-        "\"performance\": \"singing\"}]}\n\n"
+        "\"performance\": \"singing\", \"continues\": false, \"continuation\": \"...\"}]}\n\n"
         f"Act: {act_title}\n{act_summary}\n\n"
         f"Spot of the scene before this act: {previous_spot or '[none]'}\n\n"
         f"Cast:\n{cast_text or '[none]'}\n\n"
@@ -347,8 +352,10 @@ STORY_SCENE_PLAN_SCHEMA = {
                     "spot": {"type": "string"},
                     "mood": {"type": "string"},
                     "performance": {"type": "string", "enum": ["singing", "speaking", "story", "instrumental"]},
+                    "continues": {"type": "boolean"},
+                    "continuation": {"type": "string"},
                 },
-                "required": ["scene", "story_slice", "spot", "mood", "performance"],
+                "required": ["scene", "story_slice", "spot", "mood", "performance", "continues", "continuation"],
                 "additionalProperties": False,
             },
         },

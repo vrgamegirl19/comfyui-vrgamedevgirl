@@ -10,11 +10,12 @@ import {
   storySubjectCard,
 } from "./story_builder_data.mjs";
 import { normalizeMiniMaxH3Mode } from "./minimax_h3.mjs";
+import { applyStoryContinuationsToSegments } from "./story_continuation.mjs";
 import { applyStoryLocations } from "./story_locations_data.mjs";
 import {
   applyStoryBookText, fillSceneCast, normalizeSpotMinScenes, normalizeStoryActs, normalizeStoryBook,
-  normalizeStoryScenePlan, normalizeStorySettings, normalizeStoryVideoStyle, planSegmentFields, STORY_CHAPTER_COLORS,
-  STORY_FLOW_VERSION, STORY_VIDEO_STYLES,
+  normalizeStoryContinuationMode, normalizeStoryScenePlan, normalizeStorySettings, normalizeStoryVideoStyle,
+  planSegmentFields, resolveStoryContinuations, STORY_CHAPTER_COLORS, STORY_FLOW_VERSION, STORY_VIDEO_STYLES,
 } from "./story_mode_data.mjs";
 import { normalizeTimelineMarkers } from "./timeline_state.mjs";
 
@@ -24,6 +25,13 @@ const STATUS_COLORS = { empty: "#475569", progress: "#f59e0b", done: "#22c55e" }
 const PERFORMANCE_OPTIONS = [
   ["singing", "Singing"], ["speaking", "Speaking"], ["no_lip_sync", "Story only"], ["instrumental", "Instrumental"],
 ];
+const CONTINUATION_MODE_LABELS = {
+  off: "Off (only the scenes I tick)",
+  location: "Same spot: touching scenes at the same spot in a chapter",
+  llm: "Let the LLM decide from the story",
+};
+const CONTINUATION_SOURCE_LABELS = { auto: "same spot", llm: "LLM", manual: "you" };
+const MASKED_COLOR = "#a3e635";
 
 function el(tag, css = "", text = "") {
   const node = document.createElement(tag);
@@ -99,7 +107,46 @@ export function createStoryBuilder({
     await autoSaveSessionQuiet(label);
   }
 
+  function isMiniMax() {
+    return normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
+  }
+
+  // Which scenes continue the one before, from the mode and the manual choices, written onto the timeline scenes as
+  // MiniMax masked continuations. Returns the resolved plan; tells the user about scenes their mode cannot continue.
+  function applyContinuations(plan, acts, mode = layer().story_continuation_mode) {
+    const timeline = segments().map((segment) => ({ id: segment.id, start: segment.start, end: segment.end }));
+    const resolved = resolveStoryContinuations(plan, timeline, acts, mode);
+    if (!isMiniMax()) return resolved;
+    const result = applyStoryContinuationsToSegments(segments(), resolved, state.miniMaxH3Settings);
+    if (result.blocked.length) {
+      const all = segments();
+      const numbers = result.blocked.map((id) => all.findIndex((segment) => segment.id === id) + 1);
+      toast(`${sceneRangeText(numbers)} cannot use masked continuation in their MiniMax mode (Image to Video, Image + Reference and 2 Pass Advanced cannot). Change the mode to continue them.`, true);
+    }
+    return resolved;
+  }
+
+  // The scene number each continued scene carries on from, by scene id.
+  function continuedFrom(plan) {
+    const all = segments();
+    const byId = Object.fromEntries(normalizeStoryScenePlan(plan).map((entry) => [entry.scene_id, entry]));
+    const result = {};
+    all.forEach((segment, index) => {
+      if (index > 0 && byId[segment.id]?.continues_previous) result[segment.id] = index;
+    });
+    return result;
+  }
+
+  // A bright chip that says which scene this one is masked to.
+  function maskedChip(fromNumber, toNumber, source = "") {
+    const chip = el("div", `display:inline-flex;align-items:center;gap:6px;align-self:flex-start;border:1px solid ${MASKED_COLOR};border-radius:999px;background:rgba(54,83,20,.9);color:#ecfccb;font-size:11px;font-weight:900;padding:3px 10px;letter-spacing:.02em;`,
+      `\u26d3 MASKED: Scene ${fromNumber} \u2192 Scene ${toNumber}${source ? `  (${CONTINUATION_SOURCE_LABELS[source] || source})` : ""}`);
+    chip.title = `Scene ${toNumber} carries straight on from the end of Scene ${fromNumber} in one take (MiniMax Latent Continuation Masked).`;
+    return chip;
+  }
+
   function applyPlanToProject(plan, acts) {
+    plan = applyContinuations(plan, acts);
     const fields = Object.fromEntries(normalizeStoryScenePlan(plan).map((entry) => [entry.scene_id, planSegmentFields(entry.performance_mode)]));
     for (const segment of segments()) {
       if (fields[segment.id]) Object.assign(segment, fields[segment.id]);
@@ -112,6 +159,7 @@ export function createStoryBuilder({
       refs.use_subject_reference = true;
       state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
     }
+    return plan;
   }
 
   async function runStep(action, extra, title) {
@@ -691,13 +739,47 @@ export function createStoryBuilder({
         const data = await runStep("plan", { spot_min_scenes: current.story_spot_min_scenes }, "Planning the scenes");
         if (data?.story_layer) {
           pushHistory();
-          applyPlanToProject(data.story_layer.story_scene_plan, acts);
-          await saveLayer(data.story_layer, "story builder scene plan");
+          const planned = applyPlanToProject(data.story_layer.story_scene_plan, acts);
+          await saveLayer({ ...data.story_layer, story_scene_plan: planned }, "story builder scene plan");
           show("scenes");
         }
       };
       top.append(row(planAll));
       content.append(top);
+
+      const mode = normalizeStoryContinuationMode(current.story_continuation_mode);
+      const fromById = continuedFrom(current.story_scene_plan);
+      const continuedCount = Object.keys(fromById).length;
+      const masked = card("Continue scenes in one take", "A continued scene is a MiniMax masked continuation: it starts from the last moments of the scene before, so the two play as one unbroken take. At render its prompt is written from the previous scene's last frame, then follows the direction you give it. Render continued scenes in order, since each needs the scene before it.");
+      const modeSelect = makeSelect(Object.keys(CONTINUATION_MODE_LABELS), mode);
+      for (const option of modeSelect.options) option.textContent = CONTINUATION_MODE_LABELS[option.value];
+      modeSelect.onchange = async () => {
+        pushHistory();
+        const nextMode = normalizeStoryContinuationMode(modeSelect.value);
+        const planned = applyContinuations(current.story_scene_plan, acts, nextMode);
+        await saveLayer({ story_continuation_mode: nextMode, story_scene_plan: planned }, "story builder continuation mode");
+        show("scenes");
+      };
+      masked.append(makeField("Which scenes continue", modeSelect),
+        el("div", `font-size:12px;font-weight:800;color:${continuedCount ? MASKED_COLOR : "#94a3b8"};`,
+          `${continuedCount} scene${continuedCount === 1 ? "" : "s"} continue${continuedCount === 1 ? "s" : ""} from the scene before. Tick or untick any scene below; your choice wins over the mode.`));
+      if (!isMiniMax()) {
+        masked.append(el("div", "font-size:12px;color:#fbbf24;", "Masked continuation renders with MiniMax H3. Your choices are kept, and they take effect once the project uses MiniMax H3."));
+      }
+      if (normalizeStoryScenePlan(current.story_scene_plan).some((entry) => entry.continuation_source === "manual")) {
+        const clearManual = makeButton("Clear My Ticks");
+        clearManual.title = "Forget the scenes you ticked or unticked by hand and use the mode again.";
+        clearManual.onclick = async () => {
+          pushHistory();
+          const reset = normalizeStoryScenePlan(current.story_scene_plan).map((entry) => (
+            entry.continuation_source === "manual" ? { ...entry, continuation_source: "", continues_previous: false } : entry));
+          const planned = applyContinuations(reset, acts);
+          await saveLayer({ story_scene_plan: planned }, "story builder continuation ticks cleared");
+          show("scenes");
+        };
+        masked.append(row(clearManual));
+      }
+      content.append(masked);
       const rows = [];
       let lastAct = "";
       all.forEach((segment, index) => {
@@ -709,8 +791,8 @@ export function createStoryBuilder({
             const data = await runStep("plan", { act_id: act.id }, `Planning ${act.title}`);
             if (data?.story_layer) {
               pushHistory();
-              applyPlanToProject(data.story_layer.story_scene_plan, acts);
-              await saveLayer(data.story_layer, "story builder act replanned");
+              const planned = applyPlanToProject(data.story_layer.story_scene_plan, acts);
+              await saveLayer({ ...data.story_layer, story_scene_plan: planned }, "story builder act replanned");
               show("scenes");
             }
           };
@@ -737,26 +819,73 @@ export function createStoryBuilder({
         const notes = el("div", "display:flex;flex-direction:column;gap:6px;");
         notes.append(director, video, planning);
         box.append(info, story, notes);
+        let continues = null;
+        let direction = null;
+        let holdInput = null;
+        if (index > 0) {
+          const cont = el("div", "grid-column:1/-1;display:flex;flex-direction:column;gap:6px;border-top:1px dashed #334155;padding-top:6px;");
+          const toggle = el("label", "display:flex;gap:6px;font-size:12px;color:#e2e8f0;align-items:center;cursor:pointer;");
+          continues = document.createElement("input");
+          continues.type = "checkbox";
+          continues.checked = Boolean(entry.continues_previous);
+          toggle.append(continues, document.createTextNode(`Continue from Scene ${index} in one take (masked continuation)`));
+          direction = textarea(entry.continuation_direction, "During the continuation: what happens once the carried-on moment settles, e.g. She sets the letter down and walks to the window.", 36);
+          holdInput = makeInput(String(segment.minimax_h3_continuation_start_seconds ?? ""), "number");
+          holdInput.step = "0.1";
+          holdInput.min = "0.5";
+          holdInput.placeholder = "0.5";
+          holdInput.style.maxWidth = "110px";
+          const details = el("div", "display:flex;flex-direction:column;gap:6px;");
+          details.append(direction, makeField("Direction starts at (seconds into the scene)", holdInput));
+          const chipSlot = el("div");
+          const mark = () => {
+            const on = continues.checked;
+            box.style.borderColor = on ? MASKED_COLOR : "#1e3a5f";
+            box.style.borderLeft = on ? `5px solid ${MASKED_COLOR}` : "1px solid #1e3a5f";
+            box.style.boxShadow = on ? "0 0 0 1px rgba(163,230,53,.25)" : "none";
+            details.style.display = on ? "flex" : "none";
+            const manualNow = on !== Boolean(entry.continues_previous);
+            chipSlot.textContent = "";
+            if (on) chipSlot.append(maskedChip(index, index + 1, manualNow ? "manual" : entry.continuation_source));
+          };
+          continues.onchange = mark;
+          cont.append(chipSlot, toggle, details);
+          box.append(cont);
+          mark();
+        }
         content.append(box);
-        rows.push({ segment, entry, slice, spot, mood, performance, director, video, planning });
+        rows.push({ segment, entry, slice, spot, mood, performance, director, video, planning, continues, direction, holdInput });
       });
       const save = makeButton("Save Scene Plan And Notes", "primary");
       save.onclick = async () => {
         pushHistory();
-        const nextPlan = rows.filter((item) => item.entry.act_id).map((item) => ({
-          ...item.entry,
-          story_slice: item.slice.value,
-          spot: item.spot.value,
-          mood: item.mood.value,
-          performance_mode: item.performance.value,
-        }));
+        const nextPlan = rows.filter((item) => item.entry.act_id).map((item) => {
+          const on = item.continues ? item.continues.checked : false;
+          // A tick that differs from what the mode decided is your choice, and it wins over the mode from now on.
+          const manual = item.continues && on !== Boolean(item.entry.continues_previous);
+          return {
+            ...item.entry,
+            story_slice: item.slice.value,
+            spot: item.spot.value,
+            mood: item.mood.value,
+            performance_mode: item.performance.value,
+            continues_previous: on,
+            continuation_source: manual ? "manual" : item.entry.continuation_source,
+            continuation_direction: item.direction ? item.direction.value.trim() : item.entry.continuation_direction,
+          };
+        });
         for (const item of rows) {
           item.segment.timeline_note = item.director.value;
           item.segment.i2v_notes = item.video.value;
           item.segment.notes = item.planning.value;
+          if (item.holdInput) {
+            const hold = String(item.holdInput.value).trim();
+            if (hold) item.segment.minimax_h3_continuation_start_seconds = Number(hold);
+            else delete item.segment.minimax_h3_continuation_start_seconds;
+          }
         }
-        applyPlanToProject(nextPlan, acts);
-        await saveLayer({ story_scene_plan: nextPlan }, "story builder scene plan edited");
+        const planned = applyPlanToProject(nextPlan, acts);
+        await saveLayer({ story_scene_plan: planned }, "story builder scene plan edited");
         toast("Scene plan and notes saved.");
         show("scenes");
       };
@@ -873,8 +1002,14 @@ export function createStoryBuilder({
       openBoard.onclick = () => openStoryboardClassic();
       prompts.append(row(createPrompts, openBoard));
 
-      const list = card("Scenes", "Edit any beat or prompt, then save.");
       const current = layer();
+      const fromById = isMiniMax() ? continuedFrom(current.story_scene_plan) : {};
+      const continuedCount = Object.keys(fromById).length;
+      if (continuedCount) {
+        prompts.append(el("div", `font-size:12px;color:#ecfccb;border:1px solid ${MASKED_COLOR};border-radius:7px;background:rgba(54,83,20,.35);padding:9px;`,
+          `${continuedCount} scene${continuedCount === 1 ? " is a masked continuation" : "s are masked continuations"} (marked below). At render, each one's prompt is rewritten from the previous scene's last frame and follows its direction, so the prompt written here is the starting idea. Render them in order.`));
+      }
+      const list = card("Scenes", "Edit any beat, prompt or continuation direction, then save.");
       const plan = Object.fromEntries(normalizeStoryScenePlan(current.story_scene_plan).map((entry) => [entry.scene_id, entry]));
       const actTitles = Object.fromEntries(normalizeStoryActs(current.story_acts).map((act) => [act.id, act.title]));
       const editors = all.map((segment, index) => {
@@ -886,14 +1021,31 @@ export function createStoryBuilder({
         head.onclick = () => selectScene(segment.id);
         const beat = textarea(segment.story_beat, "No beat yet.", 50);
         const prompt = textarea(segment[promptKey], "No video prompt yet.", 70);
+        const from = fromById[segment.id];
+        if (from) {
+          item.style.border = `1px solid ${MASKED_COLOR}`;
+          item.style.borderLeft = `5px solid ${MASKED_COLOR}`;
+          item.append(maskedChip(from, index + 1, entry.continuation_source));
+        }
         item.append(head, el("div", "font-size:11px;color:#94a3b8;", `Lyric (mood): ${segment.lyric_text || "[instrumental]"}`),
           el("div", "font-size:11px;color:#94a3b8;", "Beat"), beat, el("div", "font-size:11px;color:#94a3b8;", "Video prompt"), prompt);
+        let direction = null;
+        if (from) {
+          direction = textarea(entry.continuation_direction, "What happens once the carried-on moment settles.", 36);
+          item.append(el("div", `font-size:11px;color:${MASKED_COLOR};`, `Continuation direction (rewritten into the prompt from Scene ${from}'s last frame at render)`), direction);
+        }
         list.append(item);
-        return { segment, beat, prompt };
+        return { segment, beat, prompt, direction };
       });
       const save = makeButton("Save Beats And Prompts", "primary");
       save.onclick = async () => {
         pushHistory();
+        const directions = Object.fromEntries(editors.filter((item) => item.direction).map((item) => [item.segment.id, item.direction.value.trim()]));
+        if (Object.keys(directions).length) {
+          const nextPlan = normalizeStoryScenePlan(layer().story_scene_plan).map((entry) => (
+            entry.scene_id in directions ? { ...entry, continuation_direction: directions[entry.scene_id] } : entry));
+          await saveLayer({ story_scene_plan: applyContinuations(nextPlan, normalizeStoryActs(layer().story_acts)) }, "story builder continuation directions");
+        }
         for (const { segment, beat, prompt } of editors) {
           segment.story_beat = beat.value.trim();
           const text = prompt.value.trim();

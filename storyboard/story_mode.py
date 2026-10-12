@@ -9,12 +9,18 @@ Shape inside ``builder_story_layer`` (only present when the project has used Sto
 - ``story_book_text``: the editable plain-text form of the book (see ``story_book_to_text``).
 - ``story_settings``: ``[{id, name, look}]``, the general setting each chapter happens in.
 - ``story_acts``: ``[{id, chapter_id, title, summary, cast_ids, scene_ids}]``.
-- ``story_scene_plan``: ``[{scene_id, act_id, story_slice, spot, mood, performance_mode, note_sources}]``.
+- ``story_scene_plan``: ``[{scene_id, act_id, story_slice, spot, mood, performance_mode, note_sources,
+  continues_previous, continuation_source, llm_continues, continuation_direction}]``. ``continues_previous`` makes
+  the scene a MiniMax masked continuation of the scene before. ``continuation_source`` says who decided it
+  (``auto``, ``llm`` or ``manual``), ``llm_continues`` is the LLM's own answer, and ``continuation_direction`` is
+  what happens once the carried-on moment settles.
 - ``story_spot_min_scenes``: the fewest scenes in a row at one spot (the Builder's "scenes per location").
 - ``story_cast_ids``: subject card ids the story is about. Empty means every character card.
 - ``story_allow_new_cast``: true lets the LLM add people who have no card. False keeps the story to the cast.
 - ``story_video_style``: how the story is told on screen: ``music_video`` (the cast performs the song),
   ``spoken`` (the characters talk) or ``story_only`` (no one sings or speaks on camera).
+- ``story_continuation_mode``: which scenes continue the scene before: ``off``, ``location`` (touching scenes at the
+  same spot in the same chapter) or ``llm`` (the scene plan's answer). A manual choice always wins.
 
 JS twin: ``web/music_video_builder/story_mode_data.mjs``. Both are checked against
 ``tests/story_mode_cases.json``.
@@ -25,9 +31,11 @@ import re
 STORY_FLOW_VERSION = 2
 STORY_MODE_KEYS = (
     "story_flow_version", "story_book", "story_book_text", "story_settings", "story_acts", "story_scene_plan",
-    "story_spot_min_scenes", "story_cast_ids", "story_allow_new_cast", "story_video_style",
+    "story_spot_min_scenes", "story_cast_ids", "story_allow_new_cast", "story_video_style", "story_continuation_mode",
 )
 STORY_VIDEO_STYLES = ("music_video", "spoken", "story_only")
+STORY_CONTINUATION_MODES = ("off", "location", "llm")
+CONTINUATION_SOURCES = ("auto", "llm", "manual")
 DEFAULT_SPOT_MIN_SCENES = 3
 PLAN_PERFORMANCE_MODES = ("singing", "speaking", "no_lip_sync", "instrumental")
 
@@ -128,6 +136,11 @@ def normalize_plan_performance(value):
     return "singing"
 
 
+def _continuation_source(value):
+    text = _line(value, 20).lower()
+    return text if text in CONTINUATION_SOURCES else ""
+
+
 def normalize_story_scene_plan(value):
     plan, seen = [], set()
     for item in value if isinstance(value, list) else []:
@@ -145,6 +158,10 @@ def normalize_story_scene_plan(value):
             "mood": _line(item.get("mood"), 200),
             "performance_mode": normalize_plan_performance(item.get("performance_mode")),
             "note_sources": _id_list(item.get("note_sources"), 12),
+            "continues_previous": item.get("continues_previous") is True,
+            "continuation_source": _continuation_source(item.get("continuation_source")),
+            "llm_continues": item.get("llm_continues") is True,
+            "continuation_direction": _text(item.get("continuation_direction"), 600),
         })
     return plan
 
@@ -178,7 +195,54 @@ def normalize_story_mode_fields(source):
         result["story_allow_new_cast"] = value is True or str(value).strip().lower() == "true"
     if "story_video_style" in source:
         result["story_video_style"] = normalize_story_video_style(source.get("story_video_style"))
+    if "story_continuation_mode" in source:
+        result["story_continuation_mode"] = normalize_story_continuation_mode(source.get("story_continuation_mode"))
     return result
+
+
+def normalize_story_continuation_mode(value):
+    """``off``, ``location`` or ``llm``; anything else is ``off``."""
+    text = re.sub(r"[\s-]+", "_", _line(value).lower())
+    return text if text in STORY_CONTINUATION_MODES else "off"
+
+
+def resolve_story_continuations(plan, scenes, acts, mode):
+    """The scene plan with ``continues_previous`` set for every scene.
+
+    ``scenes`` is the timeline in order (``id``, ``start``, ``end``). A manual choice is kept. Otherwise ``location``
+    continues a scene that touches the scene before at the same spot in the same chapter, ``llm`` uses the LLM's
+    answer and ``off`` continues nothing. The first scene, and a scene with a gap before it, never continue.
+    """
+    mode = normalize_story_continuation_mode(mode)
+    entries = {entry["scene_id"]: dict(entry) for entry in normalize_story_scene_plan(plan)}
+    chapter_of = {sid: act["chapter_id"] for act in normalize_story_acts(acts) for sid in act["scene_ids"]}
+    previous = None
+    for scene in scenes or []:
+        sid = str((scene or {}).get("id") or "")
+        entry = entries.get(sid)
+        if entry is not None:
+            before = entries.get(str(previous.get("id") or "")) if previous else None
+            touches = previous is not None and abs(_seconds(scene.get("start")) - _seconds(previous.get("end"))) <= 0.05
+            if not touches:
+                entry["continues_previous"], entry["continuation_source"] = False, ""
+            elif entry["continuation_source"] != "manual":
+                same_spot = bool(before and entry["spot"] and entry["spot"].lower() == before["spot"].lower()
+                                 and chapter_of.get(sid) and chapter_of.get(sid) == chapter_of.get(before["scene_id"]))
+                if mode == "location" and same_spot:
+                    entry["continues_previous"], entry["continuation_source"] = True, "auto"
+                elif mode == "llm" and entry["llm_continues"]:
+                    entry["continues_previous"], entry["continuation_source"] = True, "llm"
+                else:
+                    entry["continues_previous"], entry["continuation_source"] = False, ""
+        previous = scene or {}
+    return [entries[entry["scene_id"]] for entry in normalize_story_scene_plan(plan)]
+
+
+def _seconds(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def normalize_story_video_style(value):
@@ -430,6 +494,12 @@ def story_beat_context(layer, scene_id, scene_number):
         brief.append(f"Setting look: {setting['look']}")
     if entry["mood"]:
         brief.append(f"Scene mood: {entry['mood']}")
+    if entry["continues_previous"]:
+        brief.append(
+            f"Continuation: this scene is the very next moment of Scene {number - 1} in one unbroken camera take. It "
+            "opens exactly where that scene ends (same place, people, framing and camera move), with no cut or new "
+            "setup." + (f" Then: {entry['continuation_direction']}" if entry["continuation_direction"] else "")
+        )
     if layer.get("song_story_brief"):
         brief.append(str(layer["song_story_brief"]))
     return "\n".join(lines), "\n".join(brief)

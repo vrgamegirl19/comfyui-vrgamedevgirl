@@ -41,6 +41,24 @@ class StoryModeDataTests(unittest.TestCase):
             with self.subTest(item["name"]):
                 self.assertEqual(story_mode.normalize_story_mode_fields(item["input"]), item["output"])
 
+    def test_continuation_cases(self):
+        for item in CASES["continuations"]:
+            with self.subTest(item["name"]):
+                plan = story_mode.resolve_story_continuations(item["plan"], item["scenes"], item["acts"], item["mode"])
+                got = {entry["scene_id"]: [entry["continues_previous"], entry["continuation_source"]] for entry in plan}
+                self.assertEqual(got, item["expect"])
+
+    def test_beat_context_says_the_scene_continues(self):
+        layer = {"story_scene_plan": [
+            {"scene_id": "s1", "story_slice": "She reads."},
+            {"scene_id": "s2", "story_slice": "She cries.", "continues_previous": True,
+             "continuation_direction": "She drops the letter."},
+        ]}
+        _arc, brief = story_mode.story_beat_context(layer, "s2", 2)
+        self.assertIn("next moment of Scene 1 in one unbroken camera take", brief)
+        self.assertIn("Then: She drops the letter.", brief)
+        self.assertNotIn("Continuation:", story_mode.story_beat_context(layer, "s1", 1)[1])
+
     def test_story_layer_normalizer_keeps_story_mode_data(self):
         layer = {"overall_story_idea": "idea", "story_flow_version": 2,
                  "story_book": {"title": "T", "chapters": [{"title": "One", "paragraphs": ["p"]}]}}
