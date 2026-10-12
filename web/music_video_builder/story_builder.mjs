@@ -756,7 +756,9 @@ export function createStoryBuilder({
         toast("Scene plan cleared. Press Plan All Scenes to plan again.");
         show("scenes");
       };
-      top.append(row(planAll, resetPlan));
+      // Save sits at the top with the plan buttons, so it is reachable without scrolling past every scene.
+      const topActions = row(planAll, resetPlan);
+      top.append(topActions);
       content.append(top);
 
       const mode = normalizeStoryContinuationMode(current.story_continuation_mode);
@@ -901,7 +903,7 @@ export function createStoryBuilder({
         toast("Scene plan and notes saved.");
         show("scenes");
       };
-      content.append(row(save));
+      topActions.append(save);
     }
 
     // ---------------------------------------------------------------- Places
@@ -1021,6 +1023,9 @@ export function createStoryBuilder({
           `${continuedCount} scene${continuedCount === 1 ? " is a masked continuation" : "s are masked continuations"} (marked below). At render, each one's prompt is rewritten from the previous scene's last frame and follows its direction, so the prompt written here is the starting idea. Render them in order.`));
       }
       const list = card("Scenes", "Edit any beat, prompt or continuation direction, then save.");
+      // Save sits at the top of the list, above every scene.
+      const listActions = row();
+      list.append(listActions);
       const plan = Object.fromEntries(normalizeStoryScenePlan(current.story_scene_plan).map((entry) => [entry.scene_id, entry]));
       const actTitles = Object.fromEntries(normalizeStoryActs(current.story_acts).map((act) => [act.id, act.title]));
       const editors = all.map((segment, index) => {
@@ -1070,7 +1075,7 @@ export function createStoryBuilder({
         toast("Beats and prompts saved.");
         show("prompts");
       };
-      list.append(row(save));
+      listActions.append(save);
       content.append(beats, prompts, list);
     }
 
