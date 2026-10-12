@@ -106,12 +106,12 @@ function project() {
 
 function setup() {
   const state = project();
-  const calls = { saves: [], hosted: [], storyboard: 0, errors: [], order: [], beats: [], prompts: 0, generated: [], defaults: [], progress: [] };
+  const calls = { saves: [], hosted: [], storyboard: 0, errors: [], order: [], beats: [], prompts: 0, promptArgs: [], generated: [], defaults: [], progress: [] };
   const builder = createStoryBuilder({
     autoSaveSessionQuiet: async (label) => { calls.saves.push(label); },
     createProgressWindow: () => ({ set(message) { calls.progress.push(message); }, close() {} }),
     createSceneBeats: async (options) => { calls.beats.push(options); state.segments[0].story_beat = 'Mara folds a shirt.'; },
-    createVideoPrompts: async () => { calls.prompts += 1; },
+    createVideoPrompts: async (options) => { calls.prompts += 1; calls.promptArgs.push(options); },
     getLlmPayload: () => ({ llm_runner: 'lm_studio' }),
     normalizeBuilderStoryLayer,
     openFluxReferenceBuilderModal: (options) => {
@@ -424,24 +424,27 @@ test('beats and prompts can be redone for picked or out-of-date scenes only', as
   for (const segment of state.segments) segment.story_beat = `beat of ${segment.id}`;
   builder.openStoryBuilder({ tab: 'prompts' });
   await tick();
-  assert.equal(findButton('Pick Out-Of-Date Beats (0)').disabled, true);
-  // Change scene 2's plan: only its beat goes out of date.
+  assert.equal(findButton('Redo Beats (0)').disabled, true);
+  assert.equal(findButton('Redo Prompts (0)').disabled, true);
+  // Change scene 2's plan: only its beat goes out of date, and Redo Beats runs just that scene.
   state.builderStoryLayer.story_scene_plan[1].story_slice = 'Mara burns the letter.';
   builder.openStoryBuilder({ tab: 'prompts' });
   await tick();
   assert.ok(document.body.textContent.includes('BEAT OUT OF DATE: scene plan changed'));
-  findButton('Pick Out-Of-Date Beats (1)').onclick();
-  assert.ok(document.body.textContent.includes('1 picked: Scene 2'));
-  await findButton('Recreate Beats For Picked').onclick();
+  await findButton('Redo Beats (1)').onclick();
   await tick();
   assert.deepEqual(calls.beats.at(-1), { overwrite: true, sceneIds: ['seg_2'] });
-  findButton('Pick All').onclick();
-  findButton('Pick None').onclick();
-  assert.equal(findButton('Recreate Beats For Picked').disabled, true);
-  findButton('Pick Out-Of-Date Beats (1)').onclick();
-  await findButton('Keep Picked As Is').onclick();
+  // A ticked scene is added to both buttons.
+  builder.openStoryBuilder({ tab: 'prompts' });
   await tick();
-  assert.ok(!document.body.textContent.includes('BEAT OUT OF DATE'));
+  const ticks = document.body.all().filter((node) => node.tagName === 'INPUT' && node.type === 'checkbox');
+  ticks[2].checked = true;
+  ticks[2].onchange();
+  assert.ok(findButton('Redo Beats (2)'));
+  await findButton('Redo Prompts (1)').onclick();
+  await tick();
+  assert.deepEqual(calls.promptArgs.at(-1), { sceneIds: ['seg_3'] });
+  assert.ok(findButton('Redo Prompts (0)'), 'ticks are cleared after a run');
   findButton('Close').onclick();
   await tick();
 });

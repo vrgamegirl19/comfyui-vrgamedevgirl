@@ -1269,61 +1269,52 @@ export function createStoryBuilder({
         prompts.append(el("div", `font-size:12px;color:#ecfccb;border:1px solid ${MASKED_COLOR};border-radius:7px;background:rgba(54,83,20,.35);padding:9px;`,
           `${continuedCount} scene${continuedCount === 1 ? " is a masked continuation" : "s are masked continuations"} (marked below). At render, each one's prompt is rewritten from the previous scene's last frame and follows its direction, so the prompt written here is the starting idea. Render them in order.`));
       }
-      // Redo only picked scenes, so the rest keep their beats and prompts.
+      // Redo only the out-of-date scenes plus any the user ticks, so the rest keep their beats and prompts.
       const stale = staleness();
-      const staleBeatIds = Object.keys(stale.beats);
-      const stalePromptIds = Object.keys(stale.prompts);
       for (const id of [...picked]) if (!all.some((segment) => segment.id === id)) picked.delete(id);
-      const pickCard = card("Redo only the scenes you pick", "Tick scenes in the list below, or pick the out-of-date ones. Only the picked scenes are rerun; every other scene keeps its beat and prompt.");
-      if (staleBeatIds.length || stalePromptIds.length) {
-        pickCard.append(staleBox(`${staleBeatIds.length} beat${staleBeatIds.length === 1 ? "" : "s"} and ${stalePromptIds.length} prompt${stalePromptIds.length === 1 ? "" : "s"} are out of date because something before them changed. They are marked in amber below.`));
-      }
-      const pickedIds = () => all.filter((segment) => picked.has(segment.id)).map((segment) => segment.id);
+      const pickCard = card("Redo only what needs it", "Each button reruns the scenes marked out of date in amber, plus any scene you tick in the list below. Every other scene keeps its beat and prompt.");
+      const hasBeat = (id) => String(all.find((segment) => segment.id === id)?.story_beat || "").trim();
+      const beatIds = () => all.map((segment) => segment.id).filter((id) => stale.beats[id] || picked.has(id));
+      const promptIds = () => all.map((segment) => segment.id).filter((id) => (stale.prompts[id] || picked.has(id)) && hasBeat(id));
       const pickBoxes = [];
-      const pickedText = el("div", "font-size:12px;font-weight:800;color:#cffafe;");
-      const redoBeats = makeButton("Recreate Beats For Picked", "primary");
-      redoBeats.onclick = () => runAndRefresh(() => createSceneBeats({ overwrite: true, sceneIds: pickedIds() }), "beats");
-      const redoPrompts = makeButton("Create Prompts For Picked", "primary");
+      const pickedText = el("div", "font-size:12px;color:#94a3b8;");
+      const runPicked = (task, kind) => {
+        picked.clear();
+        return runAndRefresh(task, kind);
+      };
+      const redoBeats = makeButton("Redo Beats", "primary");
+      redoBeats.onclick = () => {
+        const ids = beatIds();
+        runPicked(() => createSceneBeats({ overwrite: true, sceneIds: ids }), "beats");
+      };
+      const redoPrompts = makeButton("Redo Prompts", "primary");
       redoPrompts.onclick = () => {
-        const ids = pickedIds();
+        const ids = promptIds();
         const noImage = required ? sceneNumbers(ids).filter((number) => gaps.scenes.includes(number)) : [];
         if (noImage.length) {
           toast(`${sceneRangeText(noImage)} ${noImage.length === 1 ? "has" : "have"} no character or location image, and Reference to Video needs one. Make the missing images first.`, true);
           return;
         }
-        runAndRefresh(() => createVideoPrompts({ sceneIds: ids }), "prompts");
+        runPicked(() => createVideoPrompts({ sceneIds: ids }), "prompts");
       };
-      const keepPicked = makeButton("Keep Picked As Is");
-      keepPicked.title = "The picked scenes keep their beats and prompts and stop showing as out of date.";
-      keepPicked.onclick = async () => {
-        const ids = pickedIds();
-        await saveLayer({}, "story builder beats kept", { beats: ids, prompts: ids });
-        show("prompts");
-      };
-      const drawPicked = () => {
-        const ids = pickedIds();
-        pickedText.textContent = ids.length ? `${ids.length} picked: ${sceneRangeText(sceneNumbers(ids))}` : "No scenes picked.";
-        redoBeats.disabled = Boolean(blocked) || !ids.length;
-        redoPrompts.disabled = Boolean(blocked) || !ids.length || !ids.some((id) => String(all.find((segment) => segment.id === id)?.story_beat || "").trim());
-        keepPicked.disabled = !ids.length;
-      };
-      const pickOnly = (ids) => {
+      const clearPicks = makeButton("Clear Ticks");
+      clearPicks.onclick = () => {
         picked.clear();
-        for (const id of ids) picked.add(id);
-        for (const { id, box } of pickBoxes) box.checked = picked.has(id);
+        for (const { box } of pickBoxes) box.checked = false;
         drawPicked();
       };
-      const pickStaleBeats = makeButton(`Pick Out-Of-Date Beats (${staleBeatIds.length})`);
-      pickStaleBeats.disabled = !staleBeatIds.length;
-      pickStaleBeats.onclick = () => pickOnly(staleBeatIds);
-      const pickStalePrompts = makeButton(`Pick Out-Of-Date Prompts (${stalePromptIds.length})`);
-      pickStalePrompts.disabled = !stalePromptIds.length;
-      pickStalePrompts.onclick = () => pickOnly(stalePromptIds);
-      const pickAll = makeButton("Pick All");
-      pickAll.onclick = () => pickOnly(all.map((segment) => segment.id));
-      const pickNone = makeButton("Pick None");
-      pickNone.onclick = () => pickOnly([]);
-      pickCard.append(row(pickStaleBeats, pickStalePrompts, pickAll, pickNone), pickedText, row(redoBeats, redoPrompts, keepPicked));
+      const scenesText = (ids) => (ids.length ? sceneRangeText(sceneNumbers(ids)) : "none");
+      const drawPicked = () => {
+        const beatsToRun = beatIds();
+        const promptsToRun = promptIds();
+        redoBeats.textContent = `Redo Beats (${beatsToRun.length})`;
+        redoPrompts.textContent = `Redo Prompts (${promptsToRun.length})`;
+        redoBeats.disabled = Boolean(blocked) || !beatsToRun.length;
+        redoPrompts.disabled = Boolean(blocked) || !promptsToRun.length;
+        clearPicks.style.display = picked.size ? "" : "none";
+        pickedText.textContent = `Beats: ${scenesText(beatsToRun)}. Prompts: ${scenesText(promptsToRun)}.`;
+      };
+      pickCard.append(row(redoBeats, redoPrompts, clearPicks), pickedText);
 
       const list = card("Scenes", "Edit any beat, prompt or continuation direction, then save.");
       // Save sits at the top of the list, above every scene.
@@ -1363,7 +1354,8 @@ export function createStoryBuilder({
           else picked.delete(segment.id);
           drawPicked();
         };
-        pickLabel.append(pickBox, document.createTextNode("Pick"));
+        pickLabel.append(pickBox, document.createTextNode("Redo"));
+        pickLabel.title = "Add this scene to Redo Beats and Redo Prompts.";
         pickBoxes.push({ id: segment.id, box: pickBox });
         item.append(row(pickLabel, head), el("div", "font-size:11px;color:#94a3b8;", `Lyric (mood): ${segment.lyric_text || "[instrumental]"}`),
           el("div", "font-size:11px;color:#94a3b8;", "Beat"), beat, el("div", "font-size:11px;color:#94a3b8;", "Video prompt"), prompt);
