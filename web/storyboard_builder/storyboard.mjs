@@ -69,6 +69,8 @@ export function openStoryboardBuilder(payload = {}) {
   }
   const focusedSection = ["defaults", "story", "scenes"].includes(payload.focusedSection) ? payload.focusedSection : "";
   const focusedTitle = { defaults: "Scene Defaults", story: "Story Layer", scenes: "Scenes" }[focusedSection];
+  // payload.host renders a focused Scene Defaults view inside that element (a Story Builder tab) instead of a window.
+  const host = focusedSection === "defaults" && payload.host instanceof HTMLElement ? payload.host : null;
   const allowImagePrep = !focusedSection || payload.allowImagePrep === true;
   const focusSceneId = String(payload.focusSceneId || payload.focus_scene_id || "").trim();
   if (focusSceneId && document.querySelector("[data-vrgdg-focused-storyboard]")) return;
@@ -459,7 +461,14 @@ export function openStoryboardBuilder(payload = {}) {
   }
   shell.append(header, note, middleContent, footer);
   backdrop.append(shell);
-  document.body.append(backdrop);
+  if (host) {
+    close.remove();
+    backdrop.style.cssText = "position:relative;width:100%;height:100%;min-height:0;display:flex;";
+    shell.style.width = "100%";
+    shell.style.height = "100%";
+    shell.style.boxShadow = "none";
+  }
+  (host || document.body).append(backdrop);
   if (promptActionOnly) backdrop.style.display = "none";
   if (sceneActions) {
     backdrop.dataset.vrgdgSceneActions = sceneActions.sceneId;
@@ -678,9 +687,11 @@ export function openStoryboardBuilder(payload = {}) {
     payload.onClose?.();
   }
   close.onclick = closeStoryboard;
-  backdrop.addEventListener("pointerdown", (event) => {
-    if (event.target === backdrop) closeStoryboard();
-  });
+  if (!host) {
+    backdrop.addEventListener("pointerdown", (event) => {
+      if (event.target === backdrop) closeStoryboard();
+    });
+  }
   refreshCameraFlowInfo();
   refreshImageShotInfo();
   refreshImageAestheticInfo();
@@ -730,6 +741,8 @@ export function openStoryboardBuilder(payload = {}) {
     }
   }
 
+  // A hosted view hands its owner a way to save and close it.
+  if (host) payload.onHosted?.({ close: closeStoryboard, save: () => saveStoryboard({ throwOnError: true }) });
   loadExisting().then(async (loaded) => {
     if (sceneActions) {
       let replaced = false;

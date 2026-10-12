@@ -2169,6 +2169,10 @@ export function openBuilder(node, options = {}) {
     getLlmPayload: () => ({ ...textGemmaRunnerPayload(), model_file: state.textGemmaRunner === "qwen_local"
       ? state.qwenModelFile : (t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || state.gemmaModelFile || "") }),
     openStoryboardClassic: () => openStoryboardBuilderFromProject(),
+    // Resolves with the hosted view's { save, close } once the Storyboard has drawn it.
+    openSceneDefaults: (options = {}) => new Promise((resolve) => {
+      openStoryboardBuilderFromProject({ focusedSection: "defaults", ...options, onHosted: resolve, onClose: () => resolve(null) });
+    }),
     // The wizard bridge is created further down; these run only after a click.
     createSceneBeats: (...args) => createSceneBeats(...args),
     createVideoPrompts: (...args) => createVideoPrompts(...args),

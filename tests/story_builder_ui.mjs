@@ -106,7 +106,7 @@ function project() {
 
 function setup() {
   const state = project();
-  const calls = { saves: [], hosted: [], storyboard: 0, errors: [], order: [], beats: [], prompts: 0, generated: [] };
+  const calls = { saves: [], hosted: [], storyboard: 0, errors: [], order: [], beats: [], prompts: 0, generated: [], defaults: [] };
   const builder = createStoryBuilder({
     autoSaveSessionQuiet: async (label) => { calls.saves.push(label); },
     createProgressWindow: () => ({ set() {}, close() {} }),
@@ -125,6 +125,12 @@ function setup() {
     },
     openLyricMappingWorkflowModal() {},
     openLyricReviewModal() {},
+    // Like the Storyboard loader: the focused Scene Defaults view arrives asynchronously.
+    openSceneDefaults: async (options) => {
+      assert.ok(options.host instanceof FakeElement, 'Scene Defaults is hosted inside the Song tab');
+      calls.defaults.push('open');
+      return { save: async () => { calls.defaults.push('save'); }, close: () => { calls.defaults.push('close'); } };
+    },
     openStoryboardClassic: () => { calls.storyboard += 1; },
     pushHistory() {},
     referenceBuilderPayload: () => state.fluxReferenceBuilder,
@@ -257,6 +263,19 @@ test('the story cast checklist saves who the story is about', async () => {
   mara.checked = false;
   await mara.onchange();
   assert.deepEqual(state.builderStoryLayer.story_cast_ids, ['mara'], 'unticking everyone is refused');
+  findButton('Close').onclick();
+  await tick();
+});
+
+test('the Song tab hosts Scene Defaults and saves them when you leave it', async () => {
+  const { calls, builder } = setup();
+  builder.openStoryBuilder({ tab: 'song' });
+  await tick();
+  assert.ok(document.body.textContent.includes('Scene Defaults'));
+  assert.deepEqual(calls.defaults, ['open']);
+  builder.openStoryBuilder({ tab: 'story' });
+  await tick();
+  assert.deepEqual(calls.defaults, ['open', 'save', 'close']);
   findButton('Close').onclick();
   await tick();
 });

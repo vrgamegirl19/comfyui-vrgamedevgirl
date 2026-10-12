@@ -59,7 +59,7 @@ function clock(seconds) {
 
 export function createStoryBuilder({
   autoSaveSessionQuiet, createProgressWindow, createSceneBeats, createVideoPrompts, getLlmPayload, normalizeBuilderStoryLayer,
-  openFluxReferenceBuilderModal, openLyricMappingWorkflowModal, openLyricReviewModal, openStoryboardClassic,
+  openFluxReferenceBuilderModal, openLyricMappingWorkflowModal, openLyricReviewModal, openSceneDefaults, openStoryboardClassic,
   pushHistory, referenceBuilderPayload, render, state, storyboardScenePayload,
 }) {
   let open = null;
@@ -249,16 +249,27 @@ export function createStoryBuilder({
       renderSide();
     }
 
+    // The hosted tool (Reference Builder, or the Storyboard's Scene Defaults, which opens asynchronously) is saved
+    // and closed before another tab is drawn.
     async function leaveHostedTab() {
       if (!hosted) return;
-      const handle = hosted;
+      const pending = hosted;
       hosted = null;
+      const handle = await Promise.resolve(pending).catch(() => null);
+      if (!handle) return;
       try {
         await handle.save();
       } catch (error) {
-        console.warn("[VRGDG Story Builder] Saving the hosted Reference Builder failed", error);
+        console.warn("[VRGDG Story Builder] Saving the hosted tool failed", error);
       }
       handle.close();
+    }
+
+    function hostSceneDefaults(container) {
+      hosted = Promise.resolve(openSceneDefaults({ host: container })).catch((error) => {
+        container.append(el("div", "color:#fca5a5;font-size:12px;", `Scene Defaults failed to open: ${String(error?.message || error)}`));
+        return null;
+      });
     }
 
     function hostReferenceBuilder(container, focusedSection) {
@@ -355,7 +366,11 @@ export function createStoryBuilder({
         table.append(line);
       });
       scenes.append(table);
-      content.append(summary, notes, scenes);
+      const defaults = card("Scene Defaults", "The look and feel every scene starts from: speed and music style presets, camera flow, motion, cuts, performance and facial direction. Use Fill Missing or Replace All to update existing scenes. Saved when you leave this tab.");
+      const defaultsHost = el("div", "flex:1 1 auto;min-height:680px;display:flex;");
+      defaults.append(defaultsHost);
+      content.append(summary, defaults, notes, scenes);
+      hostSceneDefaults(defaultsHost);
     }
 
     // ---------------------------------------------------------------- Cast

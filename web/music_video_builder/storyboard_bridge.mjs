@@ -987,6 +987,8 @@ export function createStoryboardBridge({
     window.VRGDGStoryboardBuilder.open({
       promptActionOnly: options.promptActionOnly === true,
       focusedSection: options.focusedSection,
+      host: options.host,
+      onHosted: options.onHosted,
       allowImagePrep: options.allowImagePrep,
       onClose: options.onClose,
       sceneActions: options.sceneActions,
