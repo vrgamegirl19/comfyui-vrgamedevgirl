@@ -21,6 +21,7 @@ import {
   storyboardCutFrequencyValue,
   storyboardSpeedValue,
 } from "./scenes.mjs";
+import { withoutStoryModeKeys } from "../music_video_builder/story_mode_data.mjs";
 import { normalizeStoryboardScriptImportState } from "./script_import.mjs";
 import { normalizeStoryboardCustomCameraFlowSequence, STORYBOARD_CAMERA_FLOW_PRESETS } from "./shot_presets.mjs";
 import {
@@ -276,8 +277,9 @@ export function createStoryboardPersistence({
       storyArcDetailSelect.value = state.storyArcDetail;
       storyArcDetailSelect.dispatchEvent(new Event("input"));
       cutFrequencyInput.value = String(state.cutFrequency);
-      // Keep fields the saved storyboard lacks (Story Mode data written by the Video Builder after the last save).
-      state.storyLayer = normalizeStoryLayer({ ...state.storyLayer, ...(saved.story_layer ?? saved.storyLayer ?? {}) });
+      // The Video Builder owns Story Mode data (acts, scene plan); the saved storyboard's copy of it can be old, so only
+      // its classic story fields are restored.
+      state.storyLayer = normalizeStoryLayer({ ...state.storyLayer, ...withoutStoryModeKeys(saved.story_layer ?? saved.storyLayer) });
       state.scriptImport = normalizeStoryboardScriptImportState(saved.script_import ?? saved.scriptImport ?? state.scriptImport ?? {});
       storyLayerEnabledInput.checked = state.storyLayer.enabled !== false;
       overallStoryIdeaInput.value = state.storyLayer.overall_story_idea || "";

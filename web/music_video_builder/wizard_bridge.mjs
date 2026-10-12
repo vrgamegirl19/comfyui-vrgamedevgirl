@@ -72,7 +72,7 @@ import {
   normalizeGemmaGpuLayers,
 } from "./prompt_text.mjs";
 import { normalizeFluxReferenceBuilder, normalizeLyricMapper } from "./reference_data.mjs";
-import { STORY_MODE_KEYS } from "./story_mode_data.mjs";
+import { withoutStoryModeKeys } from "./story_mode_data.mjs";
 
 
 
@@ -852,8 +852,9 @@ export function createWizardBridge({
       }
       if (settings.storyLayer || settings.story_layer) {
         // Merge so Story Mode data the wizard does not edit (book, acts, scene plan) is kept, even if it sends an old copy.
-        const classic = Object.entries(settings.storyLayer || settings.story_layer).filter(([key]) => !STORY_MODE_KEYS.includes(key));
-        state.builderStoryLayer = normalizeBuilderStoryLayer({ ...state.builderStoryLayer, ...Object.fromEntries(classic) });
+        state.builderStoryLayer = normalizeBuilderStoryLayer({
+          ...state.builderStoryLayer, ...withoutStoryModeKeys(settings.storyLayer || settings.story_layer),
+        });
       }
       return {
         sceneDefaults: normalizeBuilderStoryboardDefaults(state.builderStoryboardDefaults),
@@ -973,7 +974,7 @@ export function createWizardBridge({
     const createWizardStoryBrief = async (draft = {}) => {
       const layer = normalizeBuilderStoryLayer({
         ...state.builderStoryLayer,
-        ...(draft?.storyLayer || draft?.story_layer || {}),
+        ...withoutStoryModeKeys(draft?.storyLayer || draft?.story_layer),
         user_story_arc: draft?.userStoryArc ?? draft?.user_story_arc ?? state.builderStoryLayer?.user_story_arc,
       });
       state.builderStoryLayer = layer;
@@ -1008,7 +1009,7 @@ export function createWizardBridge({
     const createWizardStoryArc = async (draft = {}) => {
       const layer = normalizeBuilderStoryLayer({
         ...state.builderStoryLayer,
-        ...(draft?.storyLayer || draft?.story_layer || {}),
+        ...withoutStoryModeKeys(draft?.storyLayer || draft?.story_layer),
         user_story_arc: draft?.userStoryArc ?? draft?.user_story_arc ?? state.builderStoryLayer?.user_story_arc,
       });
       state.builderStoryLayer = layer;
@@ -1297,7 +1298,7 @@ export function createWizardBridge({
       createStoryBrief: createWizardStoryBrief,
       createSceneBeats: createWizardSceneBeats,
       updateStoryLayer: async (storyLayer = {}) => {
-        state.builderStoryLayer = normalizeBuilderStoryLayer({ ...state.builderStoryLayer, ...storyLayer });
+        state.builderStoryLayer = normalizeBuilderStoryLayer({ ...state.builderStoryLayer, ...withoutStoryModeKeys(storyLayer) });
         await autoSaveSessionQuiet("wizard story layer updated");
         return normalizeBuilderStoryLayer(state.builderStoryLayer);
       },

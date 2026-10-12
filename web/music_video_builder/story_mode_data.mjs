@@ -5,7 +5,13 @@ export const STORY_FLOW_VERSION = 2;
 export const STORY_MODE_KEYS = ["story_flow_version", "story_book", "story_book_text", "story_settings", "story_acts", "story_scene_plan",
   "story_spot_min_scenes", "story_cast_ids", "story_allow_new_cast", "story_video_style", "story_continuation_mode",
   "story_stamps"];
-export const STORY_VIDEO_STYLES = ["music_video", "spoken", "story_only"];
+// A story layer without the Story Mode fields. The Story Builder owns those, so a layer coming back from the
+// Storyboard or the wizard (which can hold an old copy) is merged through this and never replaces them.
+export function withoutStoryModeKeys(layer) {
+  return Object.fromEntries(Object.entries(layer && typeof layer === "object" ? layer : {})
+    .filter(([key]) => !STORY_MODE_KEYS.includes(key)));
+}
+export const STORY_VIDEO_STYLES =["music_video", "spoken", "story_only"];
 export const STORY_CONTINUATION_MODES = ["off", "location", "llm"];
 // Story Builder steps whose output is stamped with prints of what it was made from (see story_staleness.mjs).
 export const STORY_STAMP_SECTIONS = ["acts", "plan", "places", "beats", "prompts"];
