@@ -151,6 +151,9 @@ export function openStoryboardBuilder(payload = {}) {
     storyArcDetail: normalizeStoryArcDetail(payload.storyArcDetail ?? payload.story_arc_detail),
     cutFrequency: storyboardCutFrequencyValue(payload.cutFrequency ?? payload.minimax_h3_cut_frequency ?? payload.builderStoryboardDefaults?.minimax_h3_cut_frequency ?? payload.builder_storyboard_defaults?.minimax_h3_cut_frequency),
     cutStyle: storyboardCutStyleValue(payload.cutStyle ?? payload.minimax_h3_cut_style ?? payload.builderStoryboardDefaults?.minimax_h3_cut_style ?? payload.builder_storyboard_defaults?.minimax_h3_cut_style),
+    // The Speed and Music style presets last chosen in Scene Defaults, shown again when the panel opens.
+    defaultsSpeedPreset: String(payload.builderStoryboardDefaults?.defaults_speed_preset ?? payload.builder_storyboard_defaults?.defaults_speed_preset ?? ""),
+    defaultsMusicPreset: String(payload.builderStoryboardDefaults?.defaults_music_preset ?? payload.builder_storyboard_defaults?.defaults_music_preset ?? ""),
     performanceMode: payloadPerformanceMode,
     shortFilmPlanningMode: normalizeStoryboardShortFilmPlanningMode(
       payload.shortFilmPlanningMode
@@ -192,6 +195,9 @@ export function openStoryboardBuilder(payload = {}) {
       character_motion_speed: storyboardSpeedValue(state.characterMotionSpeed, 4),
       minimax_h3_cut_frequency: storyboardCutFrequencyValue(state.cutFrequency),
       minimax_h3_cut_style: storyboardCutStyleValue(state.cutStyle),
+      defaults_speed_preset: String(state.defaultsSpeedPreset || ""),
+      defaults_music_preset: String(state.defaultsMusicPreset || ""),
+      story_arc_detail: normalizeStoryArcDetail(state.storyArcDetail),
       camera_guidance: storyboardSpeedGuidance(state.cameraMotionSpeed, "camera"),
       character_guidance: storyboardSpeedGuidance(state.characterMotionSpeed, "character"),
       send_adjacent_lyric_context: Boolean(state.sendAdjacentLyricContext),
@@ -232,6 +238,8 @@ export function openStoryboardBuilder(payload = {}) {
     story_arc_detail: normalizeStoryArcDetail(state.storyArcDetail),
     minimax_h3_cut_frequency: storyboardCutFrequencyValue(state.cutFrequency),
     minimax_h3_cut_style: storyboardCutStyleValue(state.cutStyle),
+    defaults_speed_preset: String(state.defaultsSpeedPreset || ""),
+    defaults_music_preset: String(state.defaultsMusicPreset || ""),
     custom_camera_flow_sequence: normalizeStoryboardCustomCameraFlowSequence(state.customCameraFlowSequence),
     motion_defaults: {
       camera_motion_speed: storyboardSpeedValue(state.cameraMotionSpeed, 4),
@@ -648,8 +656,14 @@ export function openStoryboardBuilder(payload = {}) {
     temporalProtectedSelect, userStoryArcInput, videoStyleApply, videoStyleCustomInput, videoStyleReplace,
     videoStyleSelect,
   });
-  wireDefaultPresets({ toolbar: defaultsControls.defaultsPresetsToolbar, controls: defaultsControls,
+  const defaultPresets = wireDefaultPresets({ toolbar: defaultsControls.defaultsPresetsToolbar, controls: defaultsControls,
     state, film: usesFilmPlanningProfile, postJson, createToast, refreshCameraFlowInfo, notifyStoryboardDefaultsChanged });
+  // After the saved storyboard loads, show its choices: the Speed / Music style presets and each setting's value.
+  state.onDefaultsLoaded = () => {
+    defaultPresets.syncFromState();
+    defaultsControls.defaultsCards?.refreshSummaries?.();
+  };
+  state.onDefaultsLoaded();
   refreshSelectedDefaultActions = wireSelectedDefaultActions({
     actions: defaultsControls.selectedDefaultActions,
     handlers: { applyCameraFlow, applyImageShotFlow, applyImageAesthetic, applyVideoStyle, applyPerformanceStyle, applyFacialPerformance },

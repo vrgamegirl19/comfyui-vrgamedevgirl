@@ -280,6 +280,8 @@ export function createStoryboardPersistence({
       cutFrequencyInput.value = String(state.cutFrequency);
       state.cutStyle = storyboardCutStyleValue(saved.minimax_h3_cut_style ?? state.cutStyle);
       if (cutStyleSelect) cutStyleSelect.value = state.cutStyle;
+      state.defaultsSpeedPreset = String(saved.defaults_speed_preset ?? state.defaultsSpeedPreset ?? "");
+      state.defaultsMusicPreset = String(saved.defaults_music_preset ?? state.defaultsMusicPreset ?? "");
       // The Video Builder owns Story Mode data (acts, scene plan); the saved storyboard's copy of it can be old, so only
       // its classic story fields are restored.
       state.storyLayer = normalizeStoryLayer({ ...state.storyLayer, ...withoutStoryModeKeys(saved.story_layer ?? saved.storyLayer) });
@@ -306,6 +308,7 @@ export function createStoryboardPersistence({
       refreshCharacterSpeedInfo();
       refreshFacialInfo();
       setMode(state.mode);
+      state.onDefaultsLoaded?.();
       syncReferenceMappingsToVideoCreator();
       return true;
     } catch (error) {

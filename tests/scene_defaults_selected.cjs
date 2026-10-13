@@ -5,7 +5,7 @@ const vm = require("node:vm");
 const { test } = require("node:test");
 
 function fixture(mode = "image_to_video_prep") {
-  const context = vm.createContext({});
+  const context = vm.createContext({ normalizeStoryModeFields: () => ({}), withoutStoryModeKeys: (value) => value || {} });
   for (const name of ["controls", "scenes", "shot_presets", "video_style", "performance_presets", "defaults_actions", "settings_panel", "references"]) {
     const source = fs.readFileSync(path.join(__dirname, "../web/storyboard_builder", `${name}.mjs`), "utf8")
       .replace(/^import [^;]*;\r?\n/gm, "").replace(/^export /gm, "");

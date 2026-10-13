@@ -344,6 +344,9 @@ export function normalizeBuilderStoryboardDefaults(value = {}) {
     character_motion_speed: Number.isFinite(characterSpeed) ? characterSpeed : 4,
     minimax_h3_cut_frequency: cutFrequency,
     minimax_h3_cut_style: storyboardCutStyleValue(source.minimax_h3_cut_style ?? source.cut_style ?? source.cutStyle),
+    // The Speed and Music style presets last picked in Scene Defaults (shown again when it opens).
+    defaults_speed_preset: ["static", "slow", "medium", "fast"].includes(String(source.defaults_speed_preset || "")) ? String(source.defaults_speed_preset) : "",
+    defaults_music_preset: ["rock", "metal", "rap", "soft", "pop"].includes(String(source.defaults_music_preset || "")) ? String(source.defaults_music_preset) : "",
     camera_guidance: String(source.camera_guidance || motionDefaults.camera_guidance || ""),
     character_guidance: String(source.character_guidance || motionDefaults.character_guidance || ""),
     performance_style: String(source.performance_style || source.performanceStyle || source.performance_style_default || ""),

@@ -98,14 +98,34 @@ export function wireDefaultPresets({ toolbar, controls, state, film, postJson, c
     applying = true;
     try { applyDefaultPreset(settings, context); } finally { applying = false; }
   };
+  // The chosen Speed and Music style are saved with the Scene Defaults (state.defaultsSpeedPreset and
+  // state.defaultsMusicPreset) and shown again when the panel opens.
+  const remember = () => {
+    state.defaultsSpeedPreset = toolbar.speed.value || "";
+    state.defaultsMusicPreset = toolbar.music.value || "";
+  };
+  const syncFromState = () => {
+    toolbar.speed.value = SPEED_DEFAULT_PRESETS[state.defaultsSpeedPreset] ? state.defaultsSpeedPreset : "";
+    toolbar.music.value = MUSIC_DEFAULT_PRESETS[state.defaultsMusicPreset] ? state.defaultsMusicPreset : "";
+  };
+  syncFromState();
   toolbar.speed.onchange = () => {
-    if (!SPEED_DEFAULT_PRESETS[toolbar.speed.value]) return;
+    if (!SPEED_DEFAULT_PRESETS[toolbar.speed.value]) {
+      remember();
+      notifyStoryboardDefaultsChanged();
+      return;
+    }
+    remember();
     apply(SPEED_DEFAULT_PRESETS[toolbar.speed.value]);
     toolbar.saved.value = "";
   };
   toolbar.music.onchange = () => {
     const settings = musicDefaultSettings(toolbar.music.value, film);
-    if (!settings) return;
+    remember();
+    if (!settings) {
+      notifyStoryboardDefaultsChanged();
+      return;
+    }
     apply(settings);
     toolbar.saved.value = "";
   };
@@ -117,6 +137,7 @@ export function wireDefaultPresets({ toolbar, controls, state, film, postJson, c
       if (["cameraFlow", "performanceStyle", "facialPerformance", "facialPerformanceCustom"].includes(key)) toolbar.music.value = "";
       if (key in PRESET_BASELINE) { toolbar.speed.value = ""; toolbar.music.value = ""; }
       toolbar.saved.value = "";
+      remember();
     });
   }
   const refresh = async (selected = "") => {
@@ -141,6 +162,7 @@ export function wireDefaultPresets({ toolbar, controls, state, film, postJson, c
     apply(data.preset.settings);
     toolbar.speed.value = "";
     toolbar.music.value = "";
+    remember();
     toolbar.name.value = data.preset.name;
     createToast(`Loaded Scene Defaults preset: ${data.preset.name}`);
   });
@@ -159,4 +181,5 @@ export function wireDefaultPresets({ toolbar, controls, state, film, postJson, c
     createToast(`Saved Scene Defaults preset: ${data.preset.name}`);
   });
   refresh().catch((error) => createToast(`Could not load Scene Defaults presets: ${String(error?.message || error)}`, true));
+  return { syncFromState };
 }

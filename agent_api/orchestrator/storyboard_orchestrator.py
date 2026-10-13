@@ -31,7 +31,7 @@ STORY_LAYER_KEYS = ("enabled", "overall_story_idea", "user_story_arc", "song_sto
 IMAGE_WORLD_STYLES = ("natural", "surreal_subject", "balanced_surreal", "full_surreal", "abstract", "custom")
 DEFAULT_KEYS = (
     "global_consistency_phrase", "camera_motion_speed", "character_motion_speed", "minimax_h3_cut_frequency",
-    "minimax_h3_cut_style", "camera_guidance", "character_guidance", "performance_style", "short_film_planning_mode", "camera_flow",
+    "minimax_h3_cut_style", "defaults_speed_preset", "defaults_music_preset", "camera_guidance", "character_guidance", "performance_style", "short_film_planning_mode", "camera_flow",
     "custom_camera_flow_sequence", "image_shot_flow", "image_aesthetic", "video_style", "video_style_custom",
     "temporal_world_effect", "temporal_world_effect_custom", "temporal_allow_background_extras",
     "temporal_background_intensity", "temporal_environment_time_passage", "temporal_protected_characters",

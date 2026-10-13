@@ -36,6 +36,8 @@ DEFAULT_KEY_MAP = {
     "character_motion_speed": "character_motion_speed",
     "minimax_h3_cut_frequency": "minimax_h3_cut_frequency",
     "minimax_h3_cut_style": "minimax_h3_cut_style",
+    "defaults_speed_preset": "defaults_speed_preset",
+    "defaults_music_preset": "defaults_music_preset",
     "performance_style": "performance_style_default",
     "short_film_planning_mode": "short_film_planning_mode",
     "camera_flow": "camera_flow",

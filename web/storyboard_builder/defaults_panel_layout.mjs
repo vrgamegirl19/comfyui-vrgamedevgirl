@@ -449,7 +449,7 @@ export function buildSceneDefaultsPanel({
   }
   const defaultsPresetsToolbar = buildDefaultPresetsToolbar();
   cameraFlowBar.append(defaultsPresetsToolbar.toolbar);
-  cameraFlowBar.append(buildDefaultsCards([
+  const defaultsCards = buildDefaultsCards([
     { title: "Visual Style", settings: [
       { name: "Image aesthetic", controls: imageAestheticControls, info: imageAestheticInfo },
       { name: "Video aesthetic", controls: videoStyleControls, content: [videoStyleCustomControls], info: videoStyleInfo },
@@ -474,13 +474,14 @@ export function buildSceneDefaultsPanel({
       { name: "Custom facial text", controls: facialCustomControls, info: facialCustomInfo },
       { name: "Story arc detail", controls: storyArcDetailControls, info: storyArcDetailInfo },
     ] },
-  ]));
+  ]);
+  cameraFlowBar.append(defaultsCards);
   const sceneDefaultsPanel = makeCollapsiblePanel("Scene Defaults", "", cameraFlowBar, { open: focusedSection === "defaults" });
   sceneDefaultsPanel.firstElementChild.style.gridTemplateColumns = "auto auto minmax(0,1fr)";
   sceneDefaultsPanel.firstElementChild.lastElementChild.style.cssText += "justify-self:end;max-width:min(100%,420px);font-size:11px;";
 
   return {
-    defaultsPresetsToolbar, selectedDefaultActions,
+    defaultsCards, defaultsPresetsToolbar, selectedDefaultActions,
     cameraFlowApply, cameraFlowControls, cameraFlowInfo, cameraFlowReplace, cameraFlowSelect,
     cameraSpeedControls, cameraSpeedHint, cameraSpeedInfo, cameraSpeedInput, cameraSpeedValue,
     characterSpeedControls, characterSpeedHint, characterSpeedInfo, characterSpeedInput, characterSpeedValue,

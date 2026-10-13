@@ -30,6 +30,19 @@ class Element {
     const tags = selector.split(",").map((tag) => tag.trim());
     return descendants(this).filter((node) => tags.includes(node.tagName));
   }
+  // Enough of querySelector for tag, tag[type="x"] and tag:not([type='x']) selectors.
+  querySelector(selector) {
+    const parts = selector.split(",").map((part) => part.trim());
+    const matches = (node, part) => {
+      const [, tag, rest = ""] = /^([a-z]+)(.*)$/.exec(part) || [];
+      if (node.tagName !== tag) return false;
+      const not = /:not\(\[type=['"](\w+)['"]\]\)/.exec(rest);
+      if (not) return node.type !== not[1];
+      const is = /\[type=['"](\w+)['"]\]/.exec(rest);
+      return is ? node.type === is[1] : true;
+    };
+    return descendants(this).find((node) => parts.some((part) => matches(node, part))) || null;
+  }
 }
 const descendants = (element) => element.children.flatMap((child) => [child, ...descendants(child)]);
 
@@ -38,7 +51,7 @@ function fixture() {
     createElementNS: (_namespace, tag) => new Element(tag),
     createTextNode: (text) => Object.assign(new Element("#text"), { textContent: text }),
     getElementById: (id) => descendants(document.head).find((element) => element.id === id) };
-  const context = vm.createContext({ document });
+  const context = vm.createContext({ document, normalizeStoryModeFields: () => ({}), withoutStoryModeKeys: (value) => value || {} });
   for (const name of ["controls", "scenes", "shot_presets", "video_style", "defaults_cards", "defaults_presets", "defaults_panel_layout"]) {
     const source = fs.readFileSync(path.join(__dirname, "../web/storyboard_builder", `${name}.mjs`), "utf8")
       .replace(/^import [^;]*;\r?\n/gm, "").replace(/^export /gm, "");
@@ -81,6 +94,21 @@ test("Four cards retain every original control, action button and helper", () =>
   }
   assert.match(panel.cameraFlowApply.style.cssText, /padding:5px 8px/);
   assert.match(panel.cameraFlowReplace.style.cssText, /font-size:11px/);
+});
+
+test("each setting header shows its current value, and a reload refreshes it", () => {
+  const { panel } = fixture();
+  const toggles = descendants(panel.sceneDefaultsPanel).filter((node) => node.className === "vrgdg-scene-defaults-toggle");
+  const shown = (name) => toggles.find((toggle) => toggle.children[0].textContent === name).children[1].textContent;
+  const flowOption = panel.cameraFlowSelect.children.find((option) => option.value === "medium_shots");
+  assert.equal(shown("Auto camera flow"), flowOption.textContent);
+  assert.equal(shown("Camera motion speed"), "4/10");
+  assert.match(shown("Cut frequency"), /^0\/10 · Free cuts$/);
+  assert.equal(shown("Global consistency phrase"), "Consistency sentinel");
+  // A loaded storyboard sets values without events; refreshSummaries shows them.
+  panel.cameraSpeedInput.value = "7";
+  panel.defaultsCards.refreshSummaries();
+  assert.equal(shown("Camera motion speed"), "7/10");
 });
 
 test("Opening across cards closes the previous setting without firing control handlers or modifying values", () => {
