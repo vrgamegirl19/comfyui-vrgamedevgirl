@@ -1,6 +1,7 @@
 """MiniMax H3 reference-to-video prompt format (Python twin of the Video Builder's assembly)."""
 
 import importlib
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -23,6 +24,40 @@ class ShotPromptTests(unittest.TestCase):
         self.assertEqual(prompt, "detailed_description:\nThe target video is in a cinematic_realism music-video style.\n\n"
                                  "[Shot 1] The camera opens wide on the porch. A slow dolly moves left.")
         self.assertEqual(sp.validate_prompt(prompt, plan), prompt)
+
+    def test_continuous_cut_style_holds_one_moment_across_cuts(self):
+        plan = sp.apply_cut_style(self.plan(8.0, 5), "continuous")
+        self.assertTrue(plan["continuous"])
+        count = len(sp.shot_plan(plan))
+        descriptions = ["<Subject 1> sings on the crosswalk, lifting one hand."] + [
+            "A low-angle close-up of <Subject 1> holds on her face."] * (count - 2) + [
+            "A wide shot of <Subject 1>, continuing her step along the stripe."]
+        prompt = sp.assemble_prompt(descriptions, plan, "cinematic_realism")
+        self.assertIn(f"music-video style. {sp.CONTINUOUS_CUTS_OPENING}\n\n[Shot 1]", prompt)
+        self.assertIn(", the camera cuts, continuing directly from the final moment of Shot 1. A low-angle", prompt)
+        self.assertNotIn("final moment of Shot " + str(count - 1), prompt, "a shot that already says it continues is left alone")
+        self.assertIn(sp.CONTINUOUS_CUTS_RULES, sp.cut_plan_instruction(plan))
+        sp.validate_prompt(prompt, plan)
+
+    def test_free_cuts_and_single_shots_are_unchanged(self):
+        free = sp.apply_cut_style(self.plan(8.0, 5), "free")
+        single = sp.apply_cut_style(self.plan(4.0), "continuous")
+        self.assertFalse(free["continuous"])
+        self.assertFalse(single["continuous"], "one shot has no cuts to hold together")
+        self.assertNotIn("CONTINUOUS MOMENT", sp.cut_plan_instruction(free))
+        self.assertNotIn(sp.CONTINUOUS_CUTS_OPENING, sp.assemble_prompt(["x."] * len(sp.shot_plan(free)), free, "s"))
+
+    def test_continuous_cut_text_matches_the_video_builder(self):
+        source = (ROOT / "web" / "music_video_builder" / "minimax_prompt.mjs").read_text(encoding="utf-8")
+
+        def js_constant(name):
+            start = source.index(f"export const {name} = ")
+            end = source.index(";\n", start)
+            return "".join(re.findall(r'"((?:[^"\\]|\\.)*)"', source[start:end]))
+
+        self.assertEqual(js_constant("MINIMAX_H3_CONTINUOUS_CUTS_OPENING"), sp.CONTINUOUS_CUTS_OPENING)
+        self.assertEqual(js_constant("MINIMAX_H3_CONTINUOUS_CUTS_RULES"), sp.CONTINUOUS_CUTS_RULES)
+        self.assertIn("the camera cuts, continuing directly from the final moment of Shot ${shotNumber - 1}.", source)
 
     def test_cuts_get_timecodes_and_post_cut_text(self):
         plan = self.plan(8.0, 5)

@@ -22,7 +22,7 @@ export function wireStoryboardEvents({
   clearPromptsButton, clearStoryBeatsButton, consistencyInput, copyStoryboardForGpt, copyStoryLayerForGpt,
   createAllSceneBeatsWithGemma, createMissingBeatsButton, createStoryArcButton, createStoryArcWithGemma,
   createStoryBriefButton, createStoryBriefWithGemma, createStorySequenceButton, createStorySequenceWithGemma,
-  cutFrequencyHint, cutFrequencyInput, detectLyricSections,
+  cutFrequencyHint, cutFrequencyInput, cutStyleSelect = null, detectLyricSections,
   detectSectionsButton, exportPromptFiles, exportPrompts, facialApply, facialCustomInput, facialReplace,
   facialSelect, fxCustomInput, fxSelect, gemmaAllButton, gptButton, gptStoryButton, handleReplaceSceneBeats,
   imageAestheticApply, imageAestheticPresets, imageAestheticReplace, imageAestheticSelect,
@@ -176,6 +176,12 @@ export function wireStoryboardEvents({
     refreshCutFrequencyInfo();
   });
   cutFrequencyInput.addEventListener("change", notifyStoryboardDefaultsChanged);
+  if (cutStyleSelect) {
+    cutStyleSelect.addEventListener("change", () => {
+      state.cutStyle = cutStyleSelect.value === "continuous" ? "continuous" : "free";
+      notifyStoryboardDefaultsChanged();
+    });
+  }
   cutFrequencyHint.onclick = () => {
     window.alert([
       "Cut Frequency controls editing inside each timeline segment.",

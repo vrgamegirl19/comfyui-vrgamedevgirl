@@ -45,7 +45,7 @@ function fixture(audioMode = 'input_audio', pipeline = 'standard', structured = 
   const source = readBuilderModule('minimax_prompt.mjs');
   for (const name of ['miniMaxH3CleanSubjectNoun', 'miniMaxH3ReferenceSceneGroundingContract', 'miniMaxH3CompactReferenceShots', 'miniMaxH3CharacterReferenceBindings', 'miniMaxH3OfficialShotPlan',
     'miniMaxH3OfficialReferencePlan', 'miniMaxH3CombinedSubjectPlan', 'miniMaxH3OfficialAudioDefinition',
-    'miniMaxH3OfficialSummary', 'miniMaxH3OpeningStyle', 'miniMaxH3OfficialSoundscape',
+    'miniMaxH3OfficialSummary', 'miniMaxH3OpeningStyle', 'miniMaxH3DetailedOpening', 'miniMaxH3OfficialSoundscape',
     'miniMaxH3OfficialMusic', 'isRefmodPipelineActive', 'relabelRefmodPrompt',
     'miniMaxH3OfficialReferencePrompt', 'miniMaxH3ReferenceCompositionLeak', 'assertValidMiniMaxH3FinalPrompt',
     'miniMaxH3RefmodRoleText', 'repairRefmodShotDescriptions',
@@ -73,6 +73,16 @@ test('native speech generation requires inline delivery inside dialogue, indepen
   assert.doesNotThrow(() => c.assertValidMiniMaxH3FinalPrompt(plain, speakingScene, 'reference_to_video'));
   c.miniMaxH3SettingsForSegment = () => ({ audio_mode: 'input_audio' });
   assert.doesNotThrow(() => c.assertValidMiniMaxH3FinalPrompt(plain, speakingScene, 'reference_to_video', { requireNativeSpeechDelivery: true }));
+});
+
+test('a continuous-moment scene opens with the continuity paragraph; free cuts do not', () => {
+  const c = fixture();
+  c.MINIMAX_H3_CONTINUOUS_CUTS_OPENING = 'All shots follow one continuous performance.';
+  assert.equal(c.miniMaxH3DetailedOpening(scene),
+    'detailed_description:\nThe target video is in a 1990s_grunge music-video style.\n\n');
+  c.miniMaxH3CutPlanForSegment = () => ({ cut_times_seconds: [2], continuous: true });
+  assert.equal(c.miniMaxH3DetailedOpening(scene),
+    'detailed_description:\nThe target video is in a 1990s_grunge music-video style. All shots follow one continuous performance.\n\n');
 });
 
 test('built-in speech preserves inline tags and matches spoken words without duplicating dialogue', () => {

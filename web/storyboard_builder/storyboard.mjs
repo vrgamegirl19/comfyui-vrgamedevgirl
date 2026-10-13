@@ -20,6 +20,7 @@ import {
   scenesFromBuilderPayload,
   slimSceneForRequest,
   storyboardCutFrequencyValue,
+  storyboardCutStyleValue,
   storyboardSpeedGuidance,
   storyboardSpeedValue,
 } from "./scenes.mjs";
@@ -149,6 +150,7 @@ export function openStoryboardBuilder(payload = {}) {
     characterMotionSpeed: storyboardSpeedValue(payload.characterMotionSpeed ?? payload.character_motion_speed ?? payload.motion_defaults?.character_motion_speed, 4),
     storyArcDetail: normalizeStoryArcDetail(payload.storyArcDetail ?? payload.story_arc_detail),
     cutFrequency: storyboardCutFrequencyValue(payload.cutFrequency ?? payload.minimax_h3_cut_frequency ?? payload.builderStoryboardDefaults?.minimax_h3_cut_frequency ?? payload.builder_storyboard_defaults?.minimax_h3_cut_frequency),
+    cutStyle: storyboardCutStyleValue(payload.cutStyle ?? payload.minimax_h3_cut_style ?? payload.builderStoryboardDefaults?.minimax_h3_cut_style ?? payload.builder_storyboard_defaults?.minimax_h3_cut_style),
     performanceMode: payloadPerformanceMode,
     shortFilmPlanningMode: normalizeStoryboardShortFilmPlanningMode(
       payload.shortFilmPlanningMode
@@ -189,6 +191,7 @@ export function openStoryboardBuilder(payload = {}) {
       camera_motion_speed: storyboardSpeedValue(state.cameraMotionSpeed, 4),
       character_motion_speed: storyboardSpeedValue(state.characterMotionSpeed, 4),
       minimax_h3_cut_frequency: storyboardCutFrequencyValue(state.cutFrequency),
+      minimax_h3_cut_style: storyboardCutStyleValue(state.cutStyle),
       camera_guidance: storyboardSpeedGuidance(state.cameraMotionSpeed, "camera"),
       character_guidance: storyboardSpeedGuidance(state.characterMotionSpeed, "character"),
       send_adjacent_lyric_context: Boolean(state.sendAdjacentLyricContext),
@@ -228,6 +231,7 @@ export function openStoryboardBuilder(payload = {}) {
     character_motion_speed: storyboardSpeedValue(state.characterMotionSpeed, 4),
     story_arc_detail: normalizeStoryArcDetail(state.storyArcDetail),
     minimax_h3_cut_frequency: storyboardCutFrequencyValue(state.cutFrequency),
+    minimax_h3_cut_style: storyboardCutStyleValue(state.cutStyle),
     custom_camera_flow_sequence: normalizeStoryboardCustomCameraFlowSequence(state.customCameraFlowSequence),
     motion_defaults: {
       camera_motion_speed: storyboardSpeedValue(state.cameraMotionSpeed, 4),
@@ -279,7 +283,7 @@ export function openStoryboardBuilder(payload = {}) {
     characterSpeedControls, characterSpeedHint, characterSpeedInfo, characterSpeedInput, characterSpeedValue,
     storyArcDetailInfo, storyArcDetailSelect,
     consistencyInfo, consistencyInput, cutFrequencyControls, cutFrequencyHint, cutFrequencyInfo,
-    cutFrequencyInput, cutFrequencyValue, facialApply, facialCustomInfo, facialCustomInput, facialInfo,
+    cutFrequencyInput, cutFrequencyValue, cutStyleSelect, facialApply, facialCustomInfo, facialCustomInput, facialInfo,
     facialReplace, facialSelect, fxControls, fxCustomControls, fxCustomInput, fxInfo, fxSelect,
     imageAestheticApply, imageAestheticControls, imageAestheticInfo, imageAestheticReplace,
     imageAestheticSelect, imageCustomStyleControls, imageCustomStyleInfo, imageCustomStyleInput,
@@ -382,7 +386,7 @@ export function openStoryboardBuilder(payload = {}) {
 
   const { copyStoryboardForGpt, exportPromptFiles, loadExisting: loadSavedStoryboard, saveStoryboard } = createStoryboardPersistence({
     absorbSceneReferencesIntoCatalog, adjacentLyricContextInput, cameraFlowSelect, cameraSpeedInput, characterSpeedInput, storyArcDetailSelect,
-    consistencyInput, cutFrequencyInput, enforceStoryboardVideoFacialRequirements, exportPrompts,
+    consistencyInput, cutFrequencyInput, cutStyleSelect, enforceStoryboardVideoFacialRequirements, exportPrompts,
     facialCustomInput, facialPerformancePresets, facialSelect, fxCustomInput, fxSelect,
     getSelectedScenes, imageAestheticPresets, imageAestheticSelect, imageCustomStyleInput, imageShotFlowPresets, imageShotSelect,
     imageWorldStyleSelect,
@@ -623,7 +627,7 @@ export function openStoryboardBuilder(payload = {}) {
     clearPromptsButton, clearStoryBeatsButton, consistencyInput, copyStoryboardForGpt, copyStoryLayerForGpt,
     createAllSceneBeatsWithGemma, createMissingBeatsButton, createStoryArcButton, createStoryArcWithGemma,
     createStorySequenceButton, createStorySequenceWithGemma,
-    createStoryBriefButton, createStoryBriefWithGemma, cutFrequencyHint, cutFrequencyInput,
+    createStoryBriefButton, createStoryBriefWithGemma, cutFrequencyHint, cutFrequencyInput, cutStyleSelect,
     detectLyricSections, detectSectionsButton, exportPromptFiles, exportPrompts, facialApply,
     facialCustomInput, facialReplace, facialSelect, fxCustomInput, fxSelect, gemmaAllButton, gptButton,
     gptStoryButton, handleReplaceSceneBeats, imageAestheticApply, imageAestheticPresets,

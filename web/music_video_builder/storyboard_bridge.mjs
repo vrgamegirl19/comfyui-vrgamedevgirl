@@ -215,7 +215,8 @@ export function createStoryboardBridge({
         || Object.prototype.hasOwnProperty.call(updates, "short_film_planning_mode")
         || Object.prototype.hasOwnProperty.call(updates, "shortFilmPlanningMode")
         || Object.prototype.hasOwnProperty.call(updates, "minimax_h3_cut_frequency")
-        || Object.prototype.hasOwnProperty.call(updates, "cutFrequency");
+        || Object.prototype.hasOwnProperty.call(updates, "cutFrequency")
+        || Object.prototype.hasOwnProperty.call(updates, "minimax_h3_cut_style");
       if (hasIncomingFacialDefault) {
         const nextDefault = String(updates.facial_performance_default ?? updates.facialPerformance ?? updates.default_facial_performance ?? "").trim();
         if (state.defaultFacialPerformance !== nextDefault) {
@@ -248,6 +249,7 @@ export function createStoryboardBridge({
           temporal_protected_custom: updates.temporal_protected_custom ?? updates.temporalProtectedCustom ?? updates.builder_storyboard_defaults?.temporal_protected_custom ?? updates.storyboard_defaults?.temporal_protected_custom ?? state.builderStoryboardDefaults?.temporal_protected_custom,
           short_film_planning_mode: updates.short_film_planning_mode ?? updates.shortFilmPlanningMode ?? updates.builder_storyboard_defaults?.short_film_planning_mode ?? updates.storyboard_defaults?.short_film_planning_mode ?? state.builderStoryboardDefaults?.short_film_planning_mode,
           minimax_h3_cut_frequency: updates.minimax_h3_cut_frequency ?? updates.cut_frequency ?? updates.cutFrequency ?? updates.builder_storyboard_defaults?.minimax_h3_cut_frequency ?? updates.storyboard_defaults?.minimax_h3_cut_frequency ?? state.builderStoryboardDefaults?.minimax_h3_cut_frequency,
+          minimax_h3_cut_style: updates.minimax_h3_cut_style ?? updates.builder_storyboard_defaults?.minimax_h3_cut_style ?? updates.storyboard_defaults?.minimax_h3_cut_style ?? state.builderStoryboardDefaults?.minimax_h3_cut_style,
           camera_motion_speed: updates.camera_motion_speed ?? updates.cameraMotionSpeed ?? updates.motion_defaults?.camera_motion_speed ?? state.builderStoryboardDefaults?.camera_motion_speed,
           character_motion_speed: updates.character_motion_speed ?? updates.characterMotionSpeed ?? updates.motion_defaults?.character_motion_speed ?? state.builderStoryboardDefaults?.character_motion_speed,
         });
@@ -1061,6 +1063,7 @@ export function createStoryboardBridge({
       cameraMotionSpeed: state.builderStoryboardDefaults?.camera_motion_speed ?? 4,
       characterMotionSpeed: state.builderStoryboardDefaults?.character_motion_speed ?? 4,
       cutFrequency: state.builderStoryboardDefaults?.minimax_h3_cut_frequency ?? 0,
+      cutStyle: state.builderStoryboardDefaults?.minimax_h3_cut_style || "free",
       motion_defaults: {
         camera_motion_speed: state.builderStoryboardDefaults?.camera_motion_speed ?? 4,
         character_motion_speed: state.builderStoryboardDefaults?.character_motion_speed ?? 4,

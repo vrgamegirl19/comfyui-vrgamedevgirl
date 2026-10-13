@@ -19,6 +19,7 @@ import {
   slimSceneForRequest,
   slimStoryboardForRequest,
   storyboardCutFrequencyValue,
+  storyboardCutStyleValue,
   storyboardSpeedValue,
 } from "./scenes.mjs";
 import { withoutStoryModeKeys } from "../music_video_builder/story_mode_data.mjs";
@@ -36,7 +37,7 @@ import {
 
 export function createStoryboardPersistence({
   absorbSceneReferencesIntoCatalog, adjacentLyricContextInput, cameraFlowSelect, cameraSpeedInput, characterSpeedInput, storyArcDetailSelect, consistencyInput,
-  cutFrequencyInput, enforceStoryboardVideoFacialRequirements, exportPrompts, facialCustomInput,
+  cutFrequencyInput, cutStyleSelect = null, enforceStoryboardVideoFacialRequirements, exportPrompts, facialCustomInput,
   facialPerformancePresets, facialSelect, fxCustomInput, fxSelect, getSelectedScenes,
   imageAestheticPresets, imageAestheticSelect, imageCustomStyleInput, imageShotFlowPresets, imageShotSelect,
   imageWorldStyleSelect,
@@ -277,6 +278,8 @@ export function createStoryboardPersistence({
       storyArcDetailSelect.value = state.storyArcDetail;
       storyArcDetailSelect.dispatchEvent(new Event("input"));
       cutFrequencyInput.value = String(state.cutFrequency);
+      state.cutStyle = storyboardCutStyleValue(saved.minimax_h3_cut_style ?? state.cutStyle);
+      if (cutStyleSelect) cutStyleSelect.value = state.cutStyle;
       // The Video Builder owns Story Mode data (acts, scene plan); the saved storyboard's copy of it can be old, so only
       // its classic story fields are restored.
       state.storyLayer = normalizeStoryLayer({ ...state.storyLayer, ...withoutStoryModeKeys(saved.story_layer ?? saved.storyLayer) });

@@ -1,5 +1,5 @@
 import { BROWSER_IMAGE_PROVIDERS } from "../VRGDG_BrowserImageBridge.js";
-import { storyboardCutFrequencyValue } from "../storyboard_builder/scenes.mjs";
+import { storyboardCutFrequencyValue, storyboardCutStyleValue } from "../storyboard_builder/scenes.mjs";
 import { normalizeStoryboardCustomCameraFlowSequence } from "../storyboard_builder/shot_presets.mjs";
 import { getJson, normalizeOwnServerTimeoutMinutes } from "./comfy_api.mjs";
 import {
@@ -343,6 +343,7 @@ export function normalizeBuilderStoryboardDefaults(value = {}) {
     camera_motion_speed: Number.isFinite(cameraSpeed) ? cameraSpeed : 4,
     character_motion_speed: Number.isFinite(characterSpeed) ? characterSpeed : 4,
     minimax_h3_cut_frequency: cutFrequency,
+    minimax_h3_cut_style: storyboardCutStyleValue(source.minimax_h3_cut_style ?? source.cut_style ?? source.cutStyle),
     camera_guidance: String(source.camera_guidance || motionDefaults.camera_guidance || ""),
     character_guidance: String(source.character_guidance || motionDefaults.character_guidance || ""),
     performance_style: String(source.performance_style || source.performanceStyle || source.performance_style_default || ""),

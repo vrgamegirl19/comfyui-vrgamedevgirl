@@ -76,7 +76,10 @@ def _scene_context(session: Dict[str, Any], segment: Dict[str, Any], card: Dict[
         "location_contract": location_contract,
         "items": items,
         "duration": duration,
-        "cut_plan": storyboard_cut_plan_for_duration(duration, int(_number(defaults.get("minimax_h3_cut_frequency"), 0))),
+        "cut_plan": sp.apply_cut_style(
+            storyboard_cut_plan_for_duration(duration, int(_number(defaults.get("minimax_h3_cut_frequency"), 0))),
+            defaults.get("minimax_h3_cut_style"),
+        ),
         "style": _text(segment.get("minimax_h3_video_style") or defaults.get("video_style")),
         "aspect_ratio": _text(settings.get("aspect_ratio")) or "16:9",
         "audio_mode": _text(settings.get("audio_mode")) or "input_audio",

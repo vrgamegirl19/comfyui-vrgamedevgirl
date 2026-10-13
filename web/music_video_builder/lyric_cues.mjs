@@ -1,7 +1,8 @@
-import { storyboardCutPlanForDuration } from "../storyboard_builder/scenes.mjs";
+import { storyboardCutPlanForDuration, storyboardCutStyleValue } from "../storyboard_builder/scenes.mjs";
 import { buildCastGuard } from "./cast_guard.mjs";
 import { normalizeMiniMaxSpeakerAssignments } from "./minimax_h3.mjs";
 import {
+  miniMaxH3ApplyCutStyle,
   miniMaxH3OfficialCutPlanInstruction,
   miniMaxH3PunctuatedCueText,
   miniMaxH3Timecode,
@@ -659,7 +660,12 @@ export function createLyricCues({
     return `${performerText} perform the same complete lyric/dialogue line together from <Audio 1>: "${miniMaxH3PunctuatedCueText(lyricText)}"`;
   }
 
+  // The scene's cut plan with the project's cut style (Scene Defaults) applied.
   function miniMaxH3CutPlanForSegment(segment) {
+    return miniMaxH3ApplyCutStyle(miniMaxH3SceneCutPlan(segment), storyboardCutStyleValue(state.builderStoryboardDefaults?.minimax_h3_cut_style));
+  }
+
+  function miniMaxH3SceneCutPlan(segment) {
     const duration = Math.max(0, Number(segment?.end || 0) - Number(segment?.start || 0));
     const fallback = storyboardCutPlanForDuration(duration, segment?.location_continuous_shot
       ? 0 : state.builderStoryboardDefaults?.minimax_h3_cut_frequency);

@@ -55,8 +55,43 @@ def shot_plan(cut_plan: Dict[str, Any]) -> List[Dict[str, Any]]:
     ]
 
 
+# Cut style "One continuous moment" (MINIMAX_H3_CONTINUOUS_CUTS_* in minimax_prompt.mjs): every cut keeps one unbroken
+# performance and only moves the camera.
+CONTINUOUS_CUTS_OPENING = (
+    "All shots follow one continuous performance, preserving every person's exact position, body orientation, "
+    "posture, and ongoing movement across every camera cut. Each new shot continues directly from the final physical "
+    "moment of the previous shot, with only the camera angle and framing changing."
+)
+CONTINUOUS_CUTS_RULES = (
+    "CONTINUOUS MOMENT ACROSS CUTS — MANDATORY: All shots are one unbroken moment filmed from different camera angles. "
+    "Each later shot starts exactly where the previous shot ended: the same spot, the same position and body "
+    "orientation, the same wardrobe, props, light and weather, and the action already in progress. Only the camera "
+    "angle, distance and framing change at a cut. The action may move forward naturally (a step, a turn, a gesture "
+    "finishing), but never jumps in time, never resets a pose, and never moves anyone to a new place. Begin each later "
+    "description by naming the new framing and what it continues from, for example: 'the camera cuts to a low-angle "
+    "close-up of <Subject 1>, continuing her raised-hand gesture from the shot before'."
+)
+
+
+def cut_style_value(value: Any) -> str:
+    """``storyboardCutStyleValue``: "continuous" or "free"."""
+    return "continuous" if str(value or "").strip().lower() == "continuous" else "free"
+
+
+def apply_cut_style(cut_plan: Dict[str, Any], cut_style: Any) -> Dict[str, Any]:
+    """``miniMaxH3ApplyCutStyle``: a plan with cuts is marked ``continuous`` when the style asks for it."""
+    plan = dict(cut_plan or {})
+    plan["continuous"] = bool(plan.get("cut_times_seconds")) and cut_style_value(cut_style) == "continuous"
+    return plan
+
+
 def cut_plan_instruction(cut_plan: Dict[str, Any]) -> str:
-    """Port of ``miniMaxH3OfficialCutPlanInstruction`` (frequency-driven plans)."""
+    """Port of ``miniMaxH3OfficialCutPlanInstruction`` (frequency-driven plans), with the continuous-moment rules."""
+    text = _frequency_cut_plan_instruction(cut_plan)
+    return f"{text} {CONTINUOUS_CUTS_RULES}" if cut_plan.get("continuous") else text
+
+
+def _frequency_cut_plan_instruction(cut_plan: Dict[str, Any]) -> str:
     duration = round(float(cut_plan.get("exact_duration_seconds") or 0), 3)
     cuts = cut_plan.get("cut_times_seconds") or []
     if not cuts:
@@ -141,8 +176,9 @@ def life_movements(character_speed: float, seed: str = "") -> List[str]:
     return [bank[(offset + i) % len(bank)] for i in range(6)]
 
 
-def opening_wrapper(style: str) -> str:
-    return f"detailed_description:\nThe target video is in a {style or 'photorealistic cinematic'} music-video style.\n\n"
+def opening_wrapper(style: str, continuous: bool = False) -> str:
+    continuity = f" {CONTINUOUS_CUTS_OPENING}" if continuous else ""
+    return f"detailed_description:\nThe target video is in a {style or 'photorealistic cinematic'} music-video style.{continuity}\n\n"
 
 
 def _clean_sentence_start(text: str) -> str:
@@ -192,6 +228,16 @@ def _strip_cut_directive(text: str) -> str:
         previous = clean
         clean = re.sub(r"^(?:(?:the\s+camera\s+)?cuts?\s+to|cut\s+to)\s*(?::|[-–—.]|\s)*", "", clean, flags=re.I).strip()
     return clean
+
+
+def continuous_cut_text(text: str, shot_number: int) -> str:
+    """``miniMaxH3ContinuousCutText``: a later shot of a continuous-moment scene says what it carries on from."""
+    if re.search(r"\bcontinu", text, re.IGNORECASE):
+        return text
+    carried = f"the camera cuts, continuing directly from the final moment of Shot {shot_number - 1}."
+    if re.match(r"^the camera cuts\.", text, re.IGNORECASE):
+        return re.sub(r"^the camera cuts\.", carried, text, count=1, flags=re.IGNORECASE)
+    return f"{carried} {text}"
 
 
 def post_cut_text(text: str) -> str:
@@ -262,13 +308,16 @@ def shot_body(descriptions: List[str], cut_plan: Dict[str, Any]) -> str:
         if shot["number"] == 1:
             blocks.append(f"[Shot 1] {description}".strip())
         else:
-            blocks.append(f"[Shot {shot['number']}] At {shot['timecode']}, {post_cut_text(description)}".strip())
+            text = post_cut_text(description)
+            if cut_plan.get("continuous"):
+                text = continuous_cut_text(text, shot["number"])
+            blocks.append(f"[Shot {shot['number']}] At {shot['timecode']}, {text}".strip())
     return "\n\n".join(blocks)
 
 
 def assemble_prompt(descriptions: List[str], cut_plan: Dict[str, Any], style: str) -> str:
     """The saved prompt for a reference-to-video scene."""
-    return f"{opening_wrapper(style)}{shot_body(descriptions, cut_plan)}".strip()
+    return f"{opening_wrapper(style, bool(cut_plan.get('continuous')))}{shot_body(descriptions, cut_plan)}".strip()
 
 
 AUDIO_DEFINITION = (

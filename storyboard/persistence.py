@@ -452,6 +452,7 @@ def _save_storyboard(payload):
             for item in custom_camera_flow if isinstance(item, dict)
         ],
         "minimax_h3_cut_frequency": _speed_value(storyboard.get("minimax_h3_cut_frequency"), 0),
+        "minimax_h3_cut_style": "continuous" if storyboard.get("minimax_h3_cut_style") == "continuous" else "free",
         "fx_preset": _clean_scene_text(storyboard.get("fx_preset") or "", 120),
         "fx_custom_json": str(storyboard.get("fx_custom_json") or ""),
         "image_shot_flow": _clean_scene_text(storyboard.get("image_shot_flow") or "intimate", 80),

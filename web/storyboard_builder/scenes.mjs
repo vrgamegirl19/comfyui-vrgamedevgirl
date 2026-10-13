@@ -388,6 +388,17 @@ export function storyboardCutFrequencyValue(value, fallback = 0) {
   return Number.isFinite(number) ? Math.max(0, Math.min(10, Math.round(number))) : fallback;
 }
 
+// How the shots of a scene with cuts connect: "free" (each shot stages its own beat, as before) or "continuous"
+// (one unbroken moment; a cut only changes the camera angle and framing).
+export const STORYBOARD_CUT_STYLES = [
+  { value: "free", label: "Free cuts" },
+  { value: "continuous", label: "One continuous moment" },
+];
+
+export function storyboardCutStyleValue(value) {
+  return String(value || "").trim().toLowerCase() === "continuous" ? "continuous" : "free";
+}
+
 export function storyboardCutFrequencyLabel(value) {
   const frequency = storyboardCutFrequencyValue(value);
   if (frequency <= 0) return "0 / continuous shot";

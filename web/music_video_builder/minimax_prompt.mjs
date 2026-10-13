@@ -182,6 +182,40 @@ function miniMaxH3OfficialShotPlan(cutPlan = {}) {
   ];
 }
 
+// Cut style "One continuous moment": every cut keeps one unbroken performance and only moves the camera.
+// Python twin: minimax/shot_prompt.py (CONTINUOUS_CUTS_OPENING, CONTINUOUS_CUTS_RULES, continuous_cut_plan).
+export const MINIMAX_H3_CONTINUOUS_CUTS_OPENING = "All shots follow one continuous performance, preserving every "
+  + "person's exact position, body orientation, posture, and ongoing movement across every camera cut. Each new shot "
+  + "continues directly from the final physical moment of the previous shot, with only the camera angle and framing changing.";
+
+export const MINIMAX_H3_CONTINUOUS_CUTS_RULES = "CONTINUOUS MOMENT ACROSS CUTS — MANDATORY: All shots are one unbroken "
+  + "moment filmed from different camera angles. Each later shot starts exactly where the previous shot ended: the same "
+  + "spot, the same position and body orientation, the same wardrobe, props, light and weather, and the action already "
+  + "in progress. Only the camera angle, distance and framing change at a cut. The action may move forward naturally "
+  + "(a step, a turn, a gesture finishing), but never jumps in time, never resets a pose, and never moves anyone to a new "
+  + "place. Begin each later description by naming the new framing and what it continues from, for example: 'the camera "
+  + "cuts to a low-angle close-up of <Subject 1>, continuing her raised-hand gesture from the shot before'.";
+
+// A later shot of a continuous-moment scene says what it carries on from (Python: continuous_cut_text).
+export function miniMaxH3ContinuousCutText(text, shotNumber) {
+  const value = String(text || "");
+  if (/\bcontinu/i.test(value)) return value;
+  const carried = `the camera cuts, continuing directly from the final moment of Shot ${shotNumber - 1}.`;
+  if (/^the camera cuts\./i.test(value)) return value.replace(/^the camera cuts\./i, carried);
+  return `${carried} ${value}`;
+}
+
+// The cut plan with the cut style applied: a plan with cuts gains ``continuous`` and the rules in its instruction.
+export function miniMaxH3ApplyCutStyle(cutPlan = {}, cutStyle = "free") {
+  const cuts = Array.isArray(cutPlan.cut_times_seconds) ? cutPlan.cut_times_seconds : [];
+  if (cutStyle !== "continuous" || !cuts.length) return { ...cutPlan, continuous: false };
+  return {
+    ...cutPlan,
+    continuous: true,
+    instruction: `${String(cutPlan.instruction || miniMaxH3OfficialCutPlanInstruction(cutPlan)).trim()} ${MINIMAX_H3_CONTINUOUS_CUTS_RULES}`,
+  };
+}
+
 export function miniMaxH3OfficialCutPlanInstruction(cutPlan = {}) {
   const duration = Number(cutPlan.exact_duration_seconds || 0);
   const exactDuration = Number.isFinite(duration) ? Number(duration.toFixed(3)) : 0;
@@ -1675,7 +1709,9 @@ export function createMiniMaxPrompt({
         description = stripSingingArticulation(description);
       }
       if (shot.number === 1) return `[Shot 1] ${description}`.trim();
-      const postCutDescription = miniMaxH3PostCutShotText(description).replace(/^\s*([a-z])/, (_match, letter) => letter.toUpperCase());
+      let postCutDescription = miniMaxH3PostCutShotText(description);
+      if (cutPlan.continuous) postCutDescription = miniMaxH3ContinuousCutText(postCutDescription, shot.number);
+      postCutDescription = postCutDescription.replace(/^\s*([a-z])/, (_match, letter) => letter.toUpperCase());
       return `[Shot ${shot.number}] At ${shot.timecode}, ${postCutDescription}`.trim();
     }).join("\n\n");
     if (normalizeMiniMaxH3Mode(mode) === "image_reference_to_video") {
@@ -1955,6 +1991,12 @@ export function createMiniMaxPrompt({
     return String(segment?.minimax_h3_video_style || state.builderStoryboardDefaults?.video_style || "").trim() || "photorealistic cinematic";
   }
 
+  // The opening of detailed_description: the style line, and the continuity paragraph for a continuous-cuts scene.
+  function miniMaxH3DetailedOpening(segment) {
+    const continuity = miniMaxH3CutPlanForSegment(segment)?.continuous ? ` ${MINIMAX_H3_CONTINUOUS_CUTS_OPENING}` : "";
+    return `detailed_description:\nThe target video is in a ${miniMaxH3OpeningStyle(segment)} music-video style.${continuity}\n\n`;
+  }
+
   function miniMaxH3OfficialSoundscape(segment) {
     const settings = miniMaxH3SettingsForSegment(segment);
     if (settings.audio_mode === "input_audio") {
@@ -1973,13 +2015,13 @@ export function createMiniMaxPrompt({
   }
 
   function miniMaxH3OfficialReferencePrompt(segment, mode, creative) {
-    const detailed = `detailed_description:\nThe target video is in a ${miniMaxH3OpeningStyle(segment)} music-video style.\n\n${creative}`.trim();
+    const detailed = `${miniMaxH3DetailedOpening(segment)}${creative}`.trim();
     if (isRefmodPipelineActive()) return relabelRefmodPrompt(segment, mode, detailed);
     const refs = miniMaxH3CombinedSubjectPlan(segment, mode);
     if (!state.useStructuredOutputs) {
       const bindings = normalizeMiniMaxH3Mode(mode) === "image_reference_to_video"
         ? miniMaxH3CharacterReferenceBindings(creative, refs.subjects) : "";
-      return `detailed_description:\nThe target video is in a ${miniMaxH3OpeningStyle(segment)} music-video style.\n\n${bindings ? `${bindings}\n\n` : ""}${miniMaxH3CompactReferenceShots(creative, refs.subjects)}`.trim();
+      return `${miniMaxH3DetailedOpening(segment)}${bindings ? `${bindings}\n\n` : ""}${miniMaxH3CompactReferenceShots(creative, refs.subjects)}`.trim();
     }
     const audioDefinition = miniMaxH3OfficialAudioDefinition(segment);
     return [
