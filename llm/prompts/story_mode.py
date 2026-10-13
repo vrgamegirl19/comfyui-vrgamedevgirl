@@ -467,3 +467,67 @@ STORY_SPOTS_SCHEMA = {
     "required": ["spots"],
     "additionalProperties": False,
 }
+
+
+def story_revise_scene_instruction(*, book_text, chapter_number, chapter_title, setting_name, chapter_text, act_title,
+                                   act_summary, act_scenes_text, scene_number, scene_cast, user_note, cast_text,
+                                   lyric_guidance):
+    """Change one scene the way the user wants, and adapt the act and chapter around it as little as possible."""
+    return (
+        "You are a story editor adapting a music video's story, the way a book is adapted into a film: the user has "
+        f"changed Scene {scene_number}, and the story around it must now agree with that change.\n\n"
+        "Rules:\n"
+        f"- The user's change to Scene {scene_number} is fixed. Keep the characters they put in it and do exactly what "
+        "their direction says. Write the scene to match it.\n"
+        "- Change the act and the chapter only as much as the new scene needs. Keep every other event, the order of "
+        "events, the setting and the tone. A character the user added gets a reason to be there that fits the story.\n"
+        "- chapter_paragraphs: the whole chapter again, as plain prose paragraphs, with the change woven in. Same "
+        "rules as the book: things that visibly happen, no camera or song-section words.\n"
+        "- other_scenes: the other scenes of this act whose plan no longer fits after the change (a character who "
+        "must now be there, an event that moved). Give each a short reason. Leave out scenes that still fit.\n"
+        f"- {story_cast_rule(cast_text, False)}\n"
+        f"- {lyric_guidance}\n"
+        "Return JSON only: {\"scene\": {\"story_slice\": \"...\", \"spot\": \"...\", \"mood\": \"...\", \"performer\": "
+        "\"...\", \"interaction\": \"...\"}, \"act_summary\": \"...\", \"chapter_paragraphs\": [\"...\"], "
+        "\"other_scenes\": [{\"scene\": 3, \"reason\": \"...\"}]}\n\n"
+        f"User's change to Scene {scene_number}:\n"
+        f"- Characters in the scene: {scene_cast or '[as planned]'}\n"
+        f"- Direction: {user_note or '[none, only the characters changed]'}\n\n"
+        f"Cast:\n{cast_text or '[none]'}\n\n"
+        f"Chapter {chapter_number}: {chapter_title}\nSetting: {setting_name or '[not named]'}\n\n{chapter_text}\n\n"
+        f"Act: {act_title}\n{act_summary}\n\n"
+        f"Scenes of this act (scene, spot, story slice, characters):\n{act_scenes_text}\n\n"
+        f"Whole story for context:\n{book_text}"
+    )
+
+
+STORY_REVISE_SCENE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "scene": {
+            "type": "object",
+            "properties": {
+                "story_slice": {"type": "string"},
+                "spot": {"type": "string"},
+                "mood": {"type": "string"},
+                "performer": {"type": "string"},
+                "interaction": {"type": "string"},
+            },
+            "required": ["story_slice", "spot", "mood", "performer", "interaction"],
+            "additionalProperties": False,
+        },
+        "act_summary": {"type": "string"},
+        "chapter_paragraphs": {"type": "array", "items": {"type": "string"}},
+        "other_scenes": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"scene": {"type": "integer"}, "reason": {"type": "string"}},
+                "required": ["scene", "reason"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["scene", "act_summary", "chapter_paragraphs", "other_scenes"],
+    "additionalProperties": False,
+}

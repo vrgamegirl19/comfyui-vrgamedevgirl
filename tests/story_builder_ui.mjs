@@ -510,6 +510,51 @@ test('planning all scenes runs act by act and says which act and scenes it is on
   await tick();
 });
 
+test('Update Story From This Scene keeps the change, adapts the act and marks only the named scenes out of date', async () => {
+  const { state, builder } = setup();
+  state.fluxReferenceBuilder.subjects.push({ id: 'joe', name: 'Joe', reference_type: 'character', image: {} });
+  const bodies = [];
+  globalThis.fakeComfyApi.fetchApi = async (url, options) => {
+    const body = JSON.parse(options.body);
+    bodies.push([url, body]);
+    const layerSent = body.story_layer;
+    const plan = layerSent.story_scene_plan.map((entry) => (entry.scene_id === 'seg_2'
+      ? { ...entry, story_slice: 'Joe arrives with flowers.', interaction: 'Joe offers the flowers.' } : entry));
+    const acts = layerSent.story_acts.map((act) => (act.id === 'act_1' ? { ...act, summary: 'Packing, until Joe arrives.' } : act));
+    return { ok: true, json: async () => ({ ok: true, chapter_id: 'ch_1', other_scenes: [{ scene_id: 'seg_3', reason: 'Joe is there now' }],
+      story_layer: { story_scene_plan: plan, story_acts: acts, story_book: layerSent.story_book, story_book_text: layerSent.story_book_text } }) };
+  };
+  try {
+    builder.openStoryBuilder({ tab: 'scenes' });
+    await tick();
+    const joeChips = document.body.all().filter((node) => node.tagName === 'BUTTON' && node.textContent === 'Joe');
+    joeChips[1].onclick();
+    const notes = document.body.all().filter((node) => node.tagName === 'TEXTAREA' && node.placeholder.startsWith('Your direction for this scene'));
+    notes[1].value = 'Joe arrives with flowers.';
+    const updates = document.body.all().filter((node) => node.tagName === 'BUTTON' && node.textContent === 'Update Story From This Scene');
+    assert.equal(updates.length, 6);
+    await updates[1].onclick();
+    await tick();
+    const [url, sent] = bodies[0];
+    assert.ok(url.endsWith('/story_mode/revise_scene'));
+    assert.equal(sent.scene_id, 'seg_2');
+    const sentEntry = sent.story_layer.story_scene_plan.find((entry) => entry.scene_id === 'seg_2');
+    assert.deepEqual([sentEntry.cast_ids, sentEntry.cast_source, sentEntry.user_note], [['joe'], 'manual', 'Joe arrives with flowers.'],
+      'your change is saved before the LLM step');
+    assert.equal(state.builderStoryLayer.story_acts[0].summary, 'Packing, until Joe arrives.');
+    assert.deepEqual(state.fluxReferenceBuilder.subject_scene_map.seg_2, ['joe']);
+    const text = document.body.textContent;
+    assert.ok(text.includes("This act's scenes are out of date: act changed"), 'the named scene shows as out of date');
+    assert.ok(text.includes('Replan Out-Of-Date Acts (1)'), 'only the act with the named scene needs a replan');
+    const stale = JSON.parse(JSON.stringify(state.builderStoryLayer.story_stamps.plan));
+    assert.ok(stale.seg_2 && stale.seg_1, 'the changed scene and the scenes that still fit are stamped up to date');
+  } finally {
+    delete globalThis.fakeComfyApi.fetchApi;
+  }
+  findButton('Close').onclick();
+  await tick();
+});
+
 test('each scene in the Scenes tab plays its part of the song, and stops at its end', async () => {
   const { state, builder } = setup();
   state.audioPath = 'C:/song.mp3';

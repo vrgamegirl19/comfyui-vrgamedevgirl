@@ -23,6 +23,7 @@ from .story_book import (
 )
 from .story_locations import build_story_locations
 from .story_plan import build_story_acts, build_story_scene_plan
+from .story_revise import revise_story_from_scene
 from .story_layer import (
     StoryArcFormatError,
     _build_story_layer_arc,
@@ -44,6 +45,7 @@ STORY_MODE_ACTIONS = {
     "acts": build_story_acts,
     "plan": build_story_scene_plan,
     "locations": build_story_locations,
+    "revise_scene": revise_story_from_scene,
 }
 
 

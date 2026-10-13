@@ -971,6 +971,7 @@ export function createStoryBuilder({
       const actOf = Object.fromEntries(acts.flatMap((act) => act.scene_ids.map((id) => [id, act])));
       const plan = Object.fromEntries(normalizeStoryScenePlan(current.story_scene_plan).map((entry) => [entry.scene_id, entry]));
       const castNames = Object.fromEntries(storyCastCards().map((subject) => [subject.id, subject.name || subject.id]));
+      let reviseFromScene = null;
       const top = card("Scene plan", "Every scene gets its part of the act, a spot inside the chapter's setting, a mood and a performance. Your notes win over the story.");
       const planAll = makeButton(Object.keys(plan).length ? "Replan All Scenes" : "Plan All Scenes", "primary");
       planAll.disabled = Boolean(blocked);
@@ -1142,6 +1143,13 @@ export function createStoryBuilder({
         const interaction = textarea(entry.interaction, "What the characters do with each other, e.g. Mara reaches for Joe's hand; he pulls away.", 34);
         const userNote = textarea(entry.user_note, "Your direction for this scene: what should happen, what a character does. The story follows it.", 34);
         story.append(slice, row(spot, mood, performance), castRow, interaction, userNote);
+        if (entry.act_id) {
+          const update = makeButton("Update Story From This Scene");
+          update.title = "Keeps this scene's characters and your direction, rewrites the scene to match, and adapts its act and chapter. Scenes that no longer fit are marked out of date.";
+          update.disabled = Boolean(blocked);
+          update.onclick = () => reviseFromScene?.(segment, index + 1);
+          story.append(row(update));
+        }
         const director = textarea(segment.timeline_note, "Director note: how you want this scene made", 40);
         const video = textarea(segment.i2v_notes, "Video note: motion and action", 40);
         const planning = textarea(segment.notes, "Planning note", 34);
@@ -1186,9 +1194,8 @@ export function createStoryBuilder({
         rows.push({ segment, entry, slice, spot, mood, performance, director, video, planning, continues, direction, holdInput,
           picked, interaction, userNote });
       });
-      const save = makeButton("Save Scene Plan And Notes", "primary");
-      save.onclick = async () => {
-        pushHistory();
+      // Saves every scene's edits (plan, cast, direction, notes) and returns the saved plan.
+      const savePlanEdits = async (label) => {
         const nextPlan = rows.filter((item) => item.entry.act_id).map((item) => {
           const on = item.continues ? item.continues.checked : false;
           // A tick that differs from what the mode decided is your choice, and it wins over the mode from now on.
@@ -1222,11 +1229,39 @@ export function createStoryBuilder({
           }
         }
         const planned = applyPlanToProject(nextPlan, acts);
-        await saveLayer({ story_scene_plan: planned }, "story builder scene plan edited");
+        await saveLayer({ story_scene_plan: planned }, label);
+        return planned;
+      };
+      const save = makeButton("Save Scene Plan And Notes", "primary");
+      save.onclick = async () => {
+        pushHistory();
+        await savePlanEdits("story builder scene plan edited");
         toast("Scene plan and notes saved.");
         show("scenes");
       };
       topActions.append(save);
+      // Update Story From This Scene: the scene's characters and direction are kept, and its act and chapter adapt
+      // to them. Only the other scenes the LLM names are marked out of date. One Undo restores everything.
+      reviseFromScene = async (segment, number) => {
+        pushHistory();
+        await savePlanEdits("story builder scene change saved");
+        const data = await runStep("revise_scene", { scene_id: segment.id }, `Updating the story from Scene ${number}`);
+        if (!data?.story_layer) {
+          show("scenes");
+          return;
+        }
+        const others = new Set((data.other_scenes || []).map((item) => item.scene_id));
+        const chapterActs = normalizeStoryActs(data.story_layer.story_acts).filter((act) => act.chapter_id === data.chapter_id);
+        const keptScenes = chapterActs.flatMap((act) => act.scene_ids).filter((id) => !others.has(id));
+        const planned = applyPlanToProject(data.story_layer.story_scene_plan, normalizeStoryActs(data.story_layer.story_acts));
+        await saveLayer({ ...data.story_layer, story_scene_plan: planned }, "story builder story updated from a scene",
+          { acts: chapterActs.map((act) => act.id), plan: keptScenes });
+        const named = (data.other_scenes || []).map((item) => `Scene ${sceneNumbers([item.scene_id])[0]}${item.reason ? ` (${item.reason})` : ""}`);
+        toast(named.length
+          ? `Story updated from Scene ${number}. These scenes no longer fit and are marked out of date: ${named.join("; ")}. Replan their act when you are ready.`
+          : `Story updated from Scene ${number}. The rest of the act still fits.`);
+        show("scenes");
+      };
     }
 
     // ---------------------------------------------------------------- Places
