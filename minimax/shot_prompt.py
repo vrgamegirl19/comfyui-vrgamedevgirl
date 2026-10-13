@@ -73,6 +73,8 @@ def cut_plan_instruction(cut_plan: Dict[str, Any]) -> str:
         "[Shot N] At MM:SS.mmm label. Return only the creative description for each shot. Each later description should stage a "
         "continuity-preserving camera/shot cut. Do not omit, merge, add, or shift a scheduled cut. Do not add extra shots, montage beats, "
         "dissolves, scene changes, or transitions outside this schedule."
+        "\n\n"
+        "MULTI-SHOT CONTINUITY — MANDATORY: When a scene has multiple shots, write them as consecutive camera views of one uninterrupted physical performance in the same place and moment. Shot 1 establishes staging. For Shot 2 onward, explicitly describe the same character continuing from the previous shot's ending position, posture, body orientation, eyeline, prop contact and ongoing movement. Carry each action forward at its existing pace and direction across the cut; do not restart it or reset the pose. An ongoing action may span scheduled cuts. Only camera angle, framing and camera movement change at a cut unless the scene explicitly requests a new action or transition. Show any requested physical change developing naturally from the inherited state. Use concrete carried-over details in each later description, not only 'maintain continuity'. Self-contained shot prose and varied camera coverage must preserve that shared staging. Keep vocal timing and speaker assignments continuous without restarting a cue. Before returning, check every adjacent pair for a matching end-to-start physical state."
     )
 
 
