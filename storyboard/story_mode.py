@@ -640,8 +640,65 @@ def story_beat_context(layer, scene_id, scene_number):
     return "\n".join(lines), "\n".join(brief)
 
 
+_PERSON_REFERENCE_TYPES = {"", "character", "person", "human", "subject", "singer"}
+
+
+def is_story_person_card(card):
+    """True for a subject card that is a person. Clothing, props, vehicles and other things are not cast members.
+
+    Twin of ``isStoryPersonCard`` in web/music_video_builder/story_mode_data.mjs.
+    """
+    if not isinstance(card, dict) or card.get("extra_reference_for"):
+        return False
+    return not is_scene_item_card(card)
+
+
+def is_scene_item_card(card):
+    """True for a clothing, prop, vehicle or other thing card: its type is not a person type."""
+    return isinstance(card, dict) and str(card.get("reference_type") or "").strip().lower() not in _PERSON_REFERENCE_TYPES
+
+
+def scene_items_text(items, people):
+    """One line for a scene's prompt or beat that says who wears or uses each clothing or prop card mapped to it.
+
+    ``items`` are the scene's clothing and prop cards (``name``, ``description``, ``reference_type``, ``wears``).
+    ``people`` are its people (``id``, ``name``). An item's ``wears`` names who wears or uses it in this scene; when
+    that person is not in the scene, the first person does. Empty when the scene has no items.
+    """
+    names = {str(person.get("id") or ""): str(person.get("name") or "").strip() for person in people if isinstance(person, dict)}
+    first = next((name for name in names.values() if name), "")
+    lines = []
+    for item in items:
+        name = str(item.get("name") or "").strip()
+        if not name:
+            continue
+        description = " ".join(str(item.get("description") or "").split())[:300]
+        detail = f" ({description})" if description else ""
+        user = names.get(str(item.get("wears") or "")) or first
+        kind = str(item.get("reference_type") or "").strip().lower()
+        if not user:
+            lines.append(f"- {name}{detail} is in the scene.")
+        elif kind == "outfit":
+            lines.append(f"- {user} wears {name}{detail}. Show {user} wearing it whenever {user} is seen.")
+        elif kind == "vehicle":
+            lines.append(f"- {name}{detail} is {user}'s vehicle: {user} drives it or stands beside it.")
+        else:
+            lines.append(f"- {user} holds or uses {name}{detail}.")
+    if not lines:
+        return ""
+    return "\n".join(["WARDROBE AND PROPS IN THIS SCENE (things, not people; the beat must show them as described):", *lines])
+
+
+def _scene_map_ids(value):
+    """The ids a scene mapping holds: a list, or a comma-separated string from older projects."""
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    return [item.strip() for item in str(value or "").split(",") if item.strip()]
+
+
 def fill_scene_cast(subject_scene_map, acts, subject_ids):
-    """Characters for scenes that have none: each act's cast goes onto its scenes. User mappings are kept.
+    """Characters for scenes that have none: each act's cast goes onto its scenes. User mappings are kept, and
+    clothing or props mapped to a scene (ids not in ``subject_ids``) stay beside the characters added.
 
     Returns ``(new_map, changed_scene_ids)``. Only ids in ``subject_ids`` are used.
     """
@@ -653,16 +710,17 @@ def fill_scene_cast(subject_scene_map, acts, subject_ids):
         if not cast:
             continue
         for scene_id in act["scene_ids"]:
-            current = result.get(scene_id)
-            if (isinstance(current, list) and current) or (isinstance(current, str) and current.strip()):
+            current = _scene_map_ids(result.get(scene_id))
+            if any(item in valid for item in current):
                 continue
-            result[scene_id] = list(cast)
+            result[scene_id] = cast + current
             changed.append(scene_id)
     return result, changed
 
 
 def apply_scene_cast(subject_scene_map, plan, acts, subject_ids):
-    """Each planned scene's characters (``cast_ids``) become its mapping; scenes the plan gives no cast keep theirs,
+    """Each planned scene's characters (``cast_ids``) become the characters of its mapping; clothing and props
+    mapped to the scene (ids not in ``subject_ids``) are kept after them. Scenes the plan gives no cast keep theirs,
     or get their act's cast when they have none (``fill_scene_cast``).
 
     Returns ``(new_map, changed_scene_ids)``. Only ids in ``subject_ids`` are used.
@@ -672,8 +730,11 @@ def apply_scene_cast(subject_scene_map, plan, acts, subject_ids):
     changed = []
     for entry in normalize_story_scene_plan(plan):
         cast = [cast_id for cast_id in entry["cast_ids"] if cast_id in valid]
-        if cast and result.get(entry["scene_id"]) != cast:
-            result[entry["scene_id"]] = cast
+        if not cast:
+            continue
+        following = cast + [item for item in _scene_map_ids(result.get(entry["scene_id"])) if item not in valid]
+        if result.get(entry["scene_id"]) != following:
+            result[entry["scene_id"]] = following
             changed.append(entry["scene_id"])
     result, filled = fill_scene_cast(result, acts, subject_ids)
     return result, changed + [scene_id for scene_id in filled if scene_id not in changed]

@@ -421,7 +421,23 @@ export function applyStoryBookText(layer, value) {
   };
 }
 
-// Characters for scenes that have none: each act's cast goes onto its scenes. User mappings are kept.
+const PERSON_REFERENCE_TYPES = new Set(["", "character", "person", "human", "subject", "singer"]);
+
+// True for a subject card that is a person. Clothing, props, vehicles and other things are not cast members.
+// Python twin: is_story_person_card.
+export function isStoryPersonCard(card) {
+  if (!card || typeof card !== "object" || card.extra_reference_for) return false;
+  return PERSON_REFERENCE_TYPES.has(String(card.reference_type ?? "").trim().toLowerCase());
+}
+
+// The ids a scene mapping holds: a list, or a comma-separated string from older projects.
+function sceneMapIds(value) {
+  if (Array.isArray(value)) return value.map((id) => String(id));
+  return String(value ?? "").split(",").map((id) => id.trim()).filter(Boolean);
+}
+
+// Characters for scenes that have none: each act's cast goes onto its scenes. User mappings are kept, and clothing or
+// props mapped to a scene (ids not in subjectIds) stay beside the characters added.
 export function fillSceneCast(subjectSceneMap, acts, subjectIds) {
   const result = {};
   for (const [key, value] of Object.entries(subjectSceneMap || {})) result[key] = Array.isArray(value) ? [...value] : value;
@@ -431,17 +447,18 @@ export function fillSceneCast(subjectSceneMap, acts, subjectIds) {
     const cast = act.cast_ids.filter((id) => valid.has(id));
     if (!cast.length) continue;
     for (const sceneId of act.scene_ids) {
-      const current = result[sceneId];
-      if ((Array.isArray(current) && current.length) || (typeof current === "string" && current.trim())) continue;
-      result[sceneId] = [...cast];
+      const current = sceneMapIds(result[sceneId]);
+      if (current.some((id) => valid.has(id))) continue;
+      result[sceneId] = [...cast, ...current];
       changed.push(sceneId);
     }
   }
   return { map: result, changed };
 }
 
-// Each planned scene's characters (cast_ids) become its mapping; scenes the plan gives no cast keep theirs, or get
-// their act's cast when they have none (fillSceneCast). Python twin: apply_scene_cast.
+// Each planned scene's characters (cast_ids) become the characters of its mapping; clothing and props mapped to the
+// scene (ids not in subjectIds) are kept after them. Scenes the plan gives no cast keep theirs, or get their act's cast
+// when they have none (fillSceneCast). Python twin: apply_scene_cast.
 export function applySceneCast(subjectSceneMap, plan, acts, subjectIds) {
   const result = {};
   for (const [key, value] of Object.entries(subjectSceneMap || {})) result[key] = Array.isArray(value) ? [...value] : value;
@@ -449,8 +466,10 @@ export function applySceneCast(subjectSceneMap, plan, acts, subjectIds) {
   const changed = [];
   for (const entry of normalizeStoryScenePlan(plan)) {
     const cast = entry.cast_ids.filter((id) => valid.has(id));
-    if (cast.length && JSON.stringify(result[entry.scene_id]) !== JSON.stringify(cast)) {
-      result[entry.scene_id] = cast;
+    if (!cast.length) continue;
+    const next = [...cast, ...sceneMapIds(result[entry.scene_id]).filter((id) => !valid.has(id))];
+    if (JSON.stringify(result[entry.scene_id]) !== JSON.stringify(next)) {
+      result[entry.scene_id] = next;
       changed.push(entry.scene_id);
     }
   }

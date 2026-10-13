@@ -320,7 +320,8 @@ export function createWizardBridge({
             story_layer: normalizeBuilderStoryLayer(state.builderStoryLayer),
             storyboard_payload: beatStoryboardPayload,
             all_subjects: (Array.isArray(state.fluxReferenceBuilder?.subjects) ? state.fluxReferenceBuilder.subjects : [])
-              .map((subject) => ({ name: String(subject?.name || ""), description: String(subject?.description || "") })),
+              .map((subject) => ({ name: String(subject?.name || ""), description: String(subject?.description || ""),
+                reference_type: String(subject?.reference_type || "character") })),
             previous_beat: previousBeat,
             next_lyrics: nextLyrics,
             unload_after: index === targets.length - 1,

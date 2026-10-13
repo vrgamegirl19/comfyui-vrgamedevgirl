@@ -3,7 +3,7 @@
 // story -> acts -> scene plan -> places -> beats -> prompts. It only runs down that chain: redoing a later step never
 // marks an earlier one. Pure functions only.
 import {
-  normalizeStoryActs, normalizeStoryBook, normalizeStoryScenePlan, normalizeStorySettings, normalizeStoryStamps,
+  isStoryPersonCard, normalizeStoryActs, normalizeStoryBook, normalizeStoryScenePlan, normalizeStorySettings, normalizeStoryStamps,
   STORY_STAMP_SECTIONS,
 } from "./story_mode_data.mjs";
 
@@ -19,6 +19,7 @@ const PART_REASONS = {
   plan: "scene plan changed",
   location: "location card changed",
   beat: "beat changed",
+  items: "clothing or props changed",
 };
 
 // A short print of any JSON value (32-bit FNV-1a, hex).
@@ -42,13 +43,14 @@ function byId(items, key = "id") {
 
 // Everything the stamps are compared against, worked out from the project as it is now.
 function storyState({ layer, refs, segments, promptKey }) {
-  const subjects = (refs?.subjects || []).filter((subject) => subject && !subject.extra_reference_for);
+  const subjects = (refs?.subjects || []).filter(Boolean);
   const subjectById = byId(subjects);
   const castPrint = (ids) => storyPrint([...new Set(ids)].sort().map((id) => {
     const subject = subjectById[id];
     return subject ? [id, text(subject.name), text(subject.description), text(subject.face_description)] : [id];
   }));
-  const storyCastIds = layer.story_cast_ids?.length ? layer.story_cast_ids : subjects.map((subject) => subject.id);
+  // The story's cast is people only, so adding a clothing or prop card changes only the scenes it is mapped to.
+  const storyCastIds = layer.story_cast_ids?.length ? layer.story_cast_ids : subjects.filter(isStoryPersonCard).map((subject) => subject.id);
   const chapters = normalizeStoryBook(layer.story_book).chapters;
   const chapterById = byId(chapters);
   const settingById = byId(normalizeStorySettings(layer.story_settings));
@@ -81,6 +83,8 @@ function storyState({ layer, refs, segments, promptKey }) {
     const location = locationById[refs?.scene_map?.[id]];
     const locationPrint = storyPrint(location ? [text(location.name), text(location.description)] : null);
     const castIds = Array.isArray(refs?.subject_scene_map?.[id]) ? refs.subject_scene_map[id] : [];
+    // Who wears or uses each clothing or prop card in this scene (Scenes tab). A stamp without it counts as unchanged.
+    const itemsPrint = storyPrint(segment.scene_item_users || {});
     prints.plan[id] = { act: storyPrint(act ? [act.chapter_id, act.title, act.summary, act.cast_ids, act.scene_ids] : null) };
     prints.places[id] = {
       spot: storyPrint(text(entry?.spot).toLowerCase()),
@@ -91,8 +95,9 @@ function storyState({ layer, refs, segments, promptKey }) {
         entry.continuation_direction] : null),
       location: locationPrint,
       cast: castPrint(castIds),
+      items: itemsPrint,
     };
-    prints.prompts[id] = { beat: storyPrint(text(segment.story_beat)), location: locationPrint, cast: castPrint(castIds) };
+    prints.prompts[id] = { beat: storyPrint(text(segment.story_beat)), location: locationPrint, cast: castPrint(castIds), items: itemsPrint };
   }
   // A print of the beat and prompt themselves (stamp part "out"), so a rewrite made outside the Story Builder (the
   // Storyboard, the inspector, a manual edit) is seen and counts as redone.

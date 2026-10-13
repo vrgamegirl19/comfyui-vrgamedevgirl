@@ -401,6 +401,8 @@ export function createSceneOutput({
         name: subject.name,
         description: subject.description,
         reference_type: subject.reference_type || "character",
+        // Who wears or uses clothing and props here: the scene's own choice, else the card's "Worn by" link.
+        wears: String(segment?.scene_item_users?.[subject.id] || subject.wears || ""),
         minimax_voice: normalizeMiniMaxH3Voice(subject.minimax_voice),
         trigger_phrase: subject.trigger_phrase || "",
         trigger_position: subject.trigger_position || "start",

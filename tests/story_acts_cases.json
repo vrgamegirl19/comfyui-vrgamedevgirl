@@ -359,16 +359,20 @@
     ]
   },
   "apply_cast": {
-    "name": "the plan cast replaces the mapping; scenes without plan cast keep theirs or get the act cast",
+    "name": "the plan cast replaces the characters of a mapping and keeps its clothing and props; scenes without plan cast keep theirs or get the act cast",
     "subject_scene_map": {
       "s1": [
-        "mara"
+        "mara",
+        "dress"
       ],
       "s2": [
         "mara"
       ],
       "s4": [
         "lena"
+      ],
+      "s5": [
+        "dress"
       ]
     },
     "plan": [
@@ -403,7 +407,8 @@
           "s1",
           "s2",
           "s3",
-          "s4"
+          "s4",
+          "s5"
         ]
       }
     ],
@@ -415,7 +420,8 @@
     "map_after": {
       "s1": [
         "mara",
-        "joe"
+        "joe",
+        "dress"
       ],
       "s2": [
         "mara"
@@ -423,13 +429,18 @@
       "s4": [
         "lena"
       ],
+      "s5": [
+        "joe",
+        "dress"
+      ],
       "s3": [
         "joe"
       ]
     },
     "changed": [
       "s1",
-      "s3"
+      "s3",
+      "s5"
     ]
   }
 }

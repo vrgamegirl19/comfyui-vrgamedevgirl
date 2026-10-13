@@ -136,3 +136,19 @@ test('fill drops stamps of outputs that are gone and stamps new ones', () => {
   assert.equal(filled.beats.s1, undefined);
   assert.ok(filled.acts.a3);
 });
+
+test('a clothing card changes only the scene it is put in, never the story', () => {
+  const input = project();
+  input.refs.subjects.push({ id: 'dress', name: 'Red Dress', description: 'Silk.', reference_type: 'outfit' });
+  let stale = storyStaleness(input);
+  assert.deepEqual(stale.book, [], 'adding the card does not change the story cast');
+  for (const section of ['acts', 'plan', 'beats', 'prompts']) assert.deepEqual(stale[section], {}, section);
+  input.refs.subject_scene_map.s3 = ['joe', 'dress'];
+  stale = storyStaleness(input);
+  assert.deepEqual(ids(stale.beats), ['s3']);
+  assert.deepEqual(ids(stale.prompts), ['s3']);
+  input.layer.story_stamps = stampStory(input, { beats: ['s3'], prompts: ['s3'] });
+  input.segments[2].scene_item_users = { dress: 'joe' };
+  stale = storyStaleness(input);
+  assert.deepEqual(stale.beats, { s3: ['clothing or props changed'] }, 'who wears it is part of the scene');
+});

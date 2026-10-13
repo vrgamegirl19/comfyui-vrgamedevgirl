@@ -292,6 +292,9 @@ export function slimReferenceForRequest(ref) {
     id: String(ref.id || ""),
     name: String(ref.name || ""),
     description: String(ref.description || ""),
+    // Card type and wearer, so the beat and prompt writers treat clothing and props as things, not people.
+    ...(String(ref.reference_type || "").trim() ? { reference_type: String(ref.reference_type).trim() } : {}),
+    ...(String(ref.wears || "").trim() ? { wears: String(ref.wears).trim() } : {}),
     ...refmodCardFields(ref),
     minimax_voice: ref.minimax_voice && typeof ref.minimax_voice === "object" ? { ...ref.minimax_voice } : {},
     trigger_phrase: String(ref.trigger_phrase || ref.trigger || ref.Trigger || ""),

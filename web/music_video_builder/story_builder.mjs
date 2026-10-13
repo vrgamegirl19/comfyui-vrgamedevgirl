@@ -14,7 +14,7 @@ import { applyStoryContinuationsToSegments } from "./story_continuation.mjs";
 import { applyStoryLocations } from "./story_locations_data.mjs";
 import { fillStoryStamps, stampStory, storyStaleness } from "./story_staleness.mjs";
 import {
-  applySceneCast, applyStoryBookText, normalizeSpotMinScenes, normalizeStoryActs, normalizeStoryBook,
+  applySceneCast, applyStoryBookText, isStoryPersonCard, normalizeSpotMinScenes, normalizeStoryActs, normalizeStoryBook,
   normalizeStoryContinuationMode, normalizeStoryScenePlan, normalizeStorySettings, normalizeStoryVideoStyle,
   planSegmentFields, resolveStoryContinuations, STORY_CAST_ROLES, STORY_CHAPTER_COLORS, STORY_FLOW_VERSION,
   STORY_RELATIONSHIP_TYPES, STORY_VIDEO_STYLES,
@@ -253,7 +253,7 @@ export function createStoryBuilder({
 
   // The characters the story is about: the ones picked in story_cast_ids, or every character card when none are.
   function storyCastCards() {
-    const cards = (normalizeFluxReferenceBuilder(state.fluxReferenceBuilder).subjects || []).filter((subject) => subject && !subject.extra_reference_for);
+    const cards = (normalizeFluxReferenceBuilder(state.fluxReferenceBuilder).subjects || []).filter(isStoryPersonCard);
     const chosen = new Set(layer().story_cast_ids || []);
     const picked = cards.filter((subject) => chosen.has(subject.id));
     return chosen.size && picked.length ? picked : cards;
@@ -305,7 +305,7 @@ export function createStoryBuilder({
       if (fields[segment.id]) Object.assign(segment, fields[segment.id]);
     }
     const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
-    const subjectIds = (refs.subjects || []).filter((subject) => !subject.extra_reference_for).map((subject) => subject.id);
+    const subjectIds = (refs.subjects || []).filter(isStoryPersonCard).map((subject) => subject.id);
     // Each planned scene's characters become its mapping (a cast set in the Scenes tab included).
     const { map, changed } = applySceneCast(refs.subject_scene_map, plan, acts, subjectIds);
     if (changed.length) {
@@ -701,7 +701,7 @@ export function createStoryBuilder({
       // Who the story is about, their parts and how they are connected. No ids saved means every card. The story
       // uses exactly these people and no one else.
       const people = card("Characters in this story", "Tick who the story is about and give each one a part. The main character leads the story and is in most scenes. The story uses only these people.");
-      const cards = (normalizeFluxReferenceBuilder(state.fluxReferenceBuilder).subjects || []).filter((subject) => subject && !subject.extra_reference_for);
+      const cards = (normalizeFluxReferenceBuilder(state.fluxReferenceBuilder).subjects || []).filter(isStoryPersonCard);
       const savedIds = new Set(current.story_cast_ids || []);
       const useAll = !cards.some((subject) => savedIds.has(subject.id));
       const savedRoles = current.story_cast_roles || {};
@@ -1007,6 +1007,10 @@ export function createStoryBuilder({
       const actOf = Object.fromEntries(acts.flatMap((act) => act.scene_ids.map((id) => [id, act])));
       const plan = Object.fromEntries(normalizeStoryScenePlan(current.story_scene_plan).map((entry) => [entry.scene_id, entry]));
       const castNames = Object.fromEntries(storyCastCards().map((subject) => [subject.id, subject.name || subject.id]));
+      // Clothing, prop and other thing cards, which scenes can use beside their characters.
+      const sceneRefs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+      const itemCards = (sceneRefs.subjects || []).filter((subject) => subject && !subject.extra_reference_for && !isStoryPersonCard(subject));
+      const sceneMapIds = (value) => (Array.isArray(value) ? value.map(String) : String(value ?? "").split(",").map((id) => id.trim()).filter(Boolean));
       let reviseFromScene = null;
       const top = card("Scene plan", "Every scene gets its part of the act, a spot inside the chapter's setting, a mood and a performance. Your notes win over the story.");
       const planAll = makeButton(Object.keys(plan).length ? "Replan All Scenes" : "Plan All Scenes", "primary");
@@ -1164,6 +1168,47 @@ export function createStoryBuilder({
           chip.style.cssText = `border:1px solid ${on ? "#22d3ee" : "#334155"};border-radius:999px;padding:2px 9px;font-size:11px;font-weight:800;cursor:pointer;background:${on ? "rgba(8,145,178,.35)" : "transparent"};color:${on ? "#cffafe" : "#94a3b8"};`;
           chip.textContent = `${on ? "✓ " : ""}${castNames[id]}${id === entry.performer_id ? " ♪" : ""}`;
         };
+        // Clothing and props in the scene: click one to add or remove it, and pick who wears or uses it here.
+        const mapped = new Set(sceneMapIds(sceneRefs.subject_scene_map?.[segment.id]));
+        const itemsOn = new Set(itemCards.filter((item) => mapped.has(item.id)).map((item) => item.id));
+        const itemUsers = { ...(segment.scene_item_users || {}) };
+        // Who can wear or use them: the scene's picked characters, else the people already mapped to it.
+        const scenePeople = () => {
+          const chosen = Object.keys(castNames).filter((id) => picked.has(id));
+          return chosen.length ? chosen : [...mapped].filter((id) => castNames[id]);
+        };
+        const itemsRow = el("div", "display:flex;flex-wrap:wrap;gap:6px;align-items:center;");
+        const drawItems = () => {
+          itemsRow.textContent = "";
+          if (!itemCards.length) return;
+          itemsRow.append(el("span", "font-size:11px;color:#94a3b8;", "Clothing & props:"));
+          const people = scenePeople();
+          for (const item of itemCards) {
+            const on = itemsOn.has(item.id);
+            const group = el("span", `display:inline-flex;gap:4px;align-items:center;border:1px solid ${on ? "#f0abfc" : "#334155"};border-radius:999px;padding:1px 4px 1px 2px;background:${on ? "rgba(162,28,175,.25)" : "transparent"};`);
+            const chip = el("button", `border:0;background:transparent;padding:1px 6px;font-size:11px;font-weight:800;cursor:pointer;color:${on ? "#fae8ff" : "#94a3b8"};`,
+              `${on ? "✓ " : ""}${item.name || "Item"}`);
+            chip.type = "button";
+            chip.title = on ? "In this scene. Click to remove it." : "Click to add it to this scene.";
+            chip.onclick = () => {
+              if (on) itemsOn.delete(item.id);
+              else itemsOn.add(item.id);
+              drawItems();
+            };
+            group.append(chip);
+            if (on && people.length) {
+              const chosen = people.includes(itemUsers[item.id]) ? itemUsers[item.id] : people.includes(item.wears) ? item.wears : people[0];
+              const user = makeSelect(people, chosen);
+              for (const option of user.options) option.textContent = `${item.reference_type === "outfit" ? "worn by" : "used by"} ${castNames[option.value]}`;
+              user.style.fontSize = "11px";
+              user.style.maxWidth = "170px";
+              itemUsers[item.id] = user.value;
+              user.onchange = () => { itemUsers[item.id] = user.value; };
+              group.append(user);
+            }
+            itemsRow.append(group);
+          }
+        };
         for (const id of Object.keys(castNames)) {
           const chip = el("button");
           chip.type = "button";
@@ -1172,13 +1217,15 @@ export function createStoryBuilder({
             if (picked.has(id)) picked.delete(id);
             else picked.add(id);
             drawChip(chip, id);
+            drawItems();
           };
           drawChip(chip, id);
           castRow.append(chip);
         }
+        drawItems();
         const interaction = textarea(entry.interaction, "What the characters do with each other, e.g. Mara reaches for Joe's hand; he pulls away.", 34);
         const userNote = textarea(entry.user_note, "Your direction for this scene: what should happen, what a character does. The story follows it.", 34);
-        story.append(slice, row(spot, mood, performance), castRow, interaction, userNote);
+        story.append(slice, row(spot, mood, performance), castRow, itemsRow, interaction, userNote);
         if (entry.act_id) {
           const update = makeButton("Update Story From This Scene");
           update.title = "Keeps this scene's characters and your direction, rewrites the scene to match, and adapts its act and chapter. Scenes that no longer fit are marked out of date.";
@@ -1228,7 +1275,7 @@ export function createStoryBuilder({
         }
         section.append(box);
         rows.push({ segment, entry, slice, spot, mood, performance, director, video, planning, continues, direction, holdInput,
-          picked, interaction, userNote });
+          picked, interaction, userNote, itemsOn, itemUsers, scenePeople });
       });
       // Saves every scene's edits (plan, cast, direction, notes) and returns the saved plan.
       const savePlanEdits = async (label) => {
@@ -1254,6 +1301,24 @@ export function createStoryBuilder({
             continuation_direction: item.direction ? item.direction.value.trim() : item.entry.continuation_direction,
           };
         });
+        // Clothing and props: the scene's mapping keeps its people and gets the chosen items after them, and the
+        // scene remembers who wears or uses each one. Only scenes whose items changed are touched.
+        const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+        const itemIds = new Set(itemCards.map((item) => item.id));
+        let itemsChanged = false;
+        for (const item of rows) {
+          const id = item.segment.id;
+          const before = sceneMapIds(refs.subject_scene_map?.[id]);
+          const after = [...before.filter((cardId) => !itemIds.has(cardId)), ...itemCards.map((card) => card.id).filter((cardId) => item.itemsOn.has(cardId))];
+          if (JSON.stringify(before) !== JSON.stringify(after)) {
+            refs.subject_scene_map[id] = after;
+            itemsChanged = true;
+          }
+          const users = Object.fromEntries(Object.entries(item.itemUsers).filter(([cardId, user]) => item.itemsOn.has(cardId) && item.scenePeople().includes(user)));
+          if (Object.keys(users).length) item.segment.scene_item_users = users;
+          else delete item.segment.scene_item_users;
+        }
+        if (itemsChanged) state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
         for (const item of rows) {
           item.segment.timeline_note = item.director.value;
           item.segment.i2v_notes = item.video.value;
@@ -1521,7 +1586,25 @@ export function createStoryBuilder({
         pickLabel.append(pickBox, document.createTextNode("Redo"));
         pickLabel.title = "Add this scene to Redo Beats and Redo Prompts.";
         pickBoxes.push({ id: segment.id, box: pickBox });
-        item.append(row(pickLabel, head), el("div", "font-size:11px;color:#94a3b8;", `Lyric (mood): ${segment.lyric_text || "[instrumental]"}`),
+        // This scene alone: every other scene keeps its beat and prompt, whatever else is out of date.
+        const oneBeat = makeButton("Redo Beat");
+        oneBeat.title = "Write a new beat for this scene only, from its plan, characters, clothing and props.";
+        oneBeat.disabled = Boolean(blocked);
+        oneBeat.onclick = () => runAndRefresh(() => createSceneBeats({ overwrite: true, sceneIds: [segment.id] }), "beats");
+        const onePrompt = makeButton("Redo Prompt");
+        onePrompt.title = "Write a new video prompt for this scene only, from the beat shown here.";
+        onePrompt.disabled = Boolean(blocked) || (required && gaps.scenes.includes(index + 1));
+        onePrompt.onclick = () => {
+          const edited = beat.value.trim();
+          if (!edited) {
+            toast(`Scene ${index + 1} has no beat yet. Redo its beat first.`, true);
+            return;
+          }
+          // A beat edited here and not saved yet is what the prompt is written from.
+          segment.story_beat = edited;
+          runAndRefresh(() => createVideoPrompts({ sceneIds: [segment.id], storyMode: true }), "prompts");
+        };
+        item.append(row(pickLabel, head, oneBeat, onePrompt), el("div", "font-size:11px;color:#94a3b8;", `Lyric (mood): ${segment.lyric_text || "[instrumental]"}`),
           el("div", "font-size:11px;color:#94a3b8;", "Beat"), beat, el("div", "font-size:11px;color:#94a3b8;", "Video prompt"), prompt);
         let direction = null;
         if (from) {

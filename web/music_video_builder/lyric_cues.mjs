@@ -607,15 +607,22 @@ export function createLyricCues({
       const subjectId = String(item?.id || item?.subject_id || item?.subjectId || rawKey.replace(/^subject:/, "") || "").trim();
       const name = String(item?.label || item?.name || "").trim();
       // Clothing and props are not people: their kind says so, so they never join the cast, the performers or the speakers.
-      const refmodCategory = item?.refmod?.category;
+      // A RefMod says so in its category; an image card says so in its card type.
+      const referenceType = String(item?.refmod?.reference_type || item?.reference_type || "");
+      const imageCategory = item?.kind === "subject" && !item?.refmod && referenceType && referenceType !== "character"
+        ? (referenceType === "outfit" ? "clothing" : ["environment", "style"].includes(referenceType) ? "" : "object")
+        : "";
+      const category = item?.refmod?.category || imageCategory;
+      const cardId = String(item?.refmod?.card_id || item?.source_id || "");
       const value = {
         label: `<Subject ${subjectNumber}>`,
         alias: "",
         name,
-        kind: refmodCategory === "clothing" || refmodCategory === "object" ? refmodCategory : (item?.kind || "reference"),
-        cardId: String(item?.refmod?.card_id || ""),
-        wears: String(item?.refmod?.wears || ""),
-        referenceType: String(item?.refmod?.reference_type || ""),
+        kind: category === "clothing" || category === "object" ? category : (item?.kind || "reference"),
+        cardId,
+        // The scene's own "worn / used by" choice wins over the card's "Worn by" link (RefMod items already carry it).
+        wears: String(item?.refmod ? item.refmod.wears || "" : segment?.scene_item_users?.[cardId] || item?.wears || ""),
+        referenceType,
       };
       if (subjectId) map.set(subjectId, value);
       if (name) map.set(name.toLowerCase(), value);

@@ -1,14 +1,15 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { assignLabels, attachRefmodLabels, enforceCastLabels, isIdentityCard, composeRefmodItems, clothingChoices, referencePayload, sceneSubjectCards, tokenReport, tokenStatusText, totalTokens } from '../web/music_video_builder/refmod_labels.mjs';
+import { applySceneItemUsers, assignLabels, attachRefmodLabels, enforceCastLabels, isIdentityCard, composeRefmodItems, clothingChoices, referencePayload, sceneSubjectCards, tokenReport, tokenStatusText, totalTokens } from '../web/music_video_builder/refmod_labels.mjs';
 
 const cases = JSON.parse(readFileSync(new URL('./refmod_scene_cases.json', import.meta.url), 'utf8'));
 
 for (const testCase of cases) {
   test(`shared case: ${testCase.name}`, () => {
     const subjects = sceneSubjectCards(testCase.scene || {}, testCase.subjects);
-    const items = composeRefmodItems(subjects, testCase.extras, testCase.location, testCase.all_subjects, testCase.override);
+    const composed = composeRefmodItems(subjects, testCase.extras, testCase.location, testCase.all_subjects, testCase.override);
+    const items = testCase.scene_item_users ? applySceneItemUsers(composed, testCase.scene_item_users) : composed;
     const labelled = assignLabels(items, testCase.include_audio);
     const actual = labelled.map((item) => ({ card_id: item.card_id, category: item.category, label: item.label, mod_name: item.mod_name }));
     assert.deepEqual(actual, testCase.expected);

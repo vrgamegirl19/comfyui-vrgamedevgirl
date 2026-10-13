@@ -33,7 +33,7 @@ from .scene_helpers import (
     _selected_storyboard_scene,
     _storyboard_dialogue_reference_catalog,
 )
-from .story_mode import is_story_mode_layer, story_beat_context
+from .story_mode import is_scene_item_card, is_story_mode_layer, scene_items_text, story_beat_context
 from .timeline_notes import story_arc_timeline_notes
 
 
@@ -1171,18 +1171,25 @@ def _build_story_layer_scene_beat(payload):
     if scene.get("no_character_present") or scene.get("noCharacterPresent") or scene.get("no_visible_subject") or scene.get("no_subject"):
         extra_subjects = []
     beat_word_limit = 100 if extra_subjects else 80
-    # Hard wall: characters not selected for this scene may not appear in its beat.
-    scene_cast = [] if (scene.get("no_character_present") or scene.get("noCharacterPresent")) else [
+    # Hard wall: characters not selected for this scene may not appear in its beat. Clothing and prop cards mapped to
+    # the scene are things the people wear or use, so they are listed apart and never banned or counted as people.
+    mapped_refs = [] if (scene.get("no_character_present") or scene.get("noCharacterPresent")) else [
         item for item in (scene.get("subject_refs") or []) if isinstance(item, dict) and str(item.get("name") or "").strip()
     ]
+    scene_cast = [item for item in mapped_refs if not is_scene_item_card(item)]
+    scene_items = [item for item in mapped_refs if is_scene_item_card(item)]
+    item_names = {_clean_scene_text(item.get("name"), 180).casefold() for item in scene_items}
+    silent_performers = [name for name in silent_performers if name.casefold() not in item_names]
     all_project_subjects = [item for item in (payload.get("all_subjects") or []) if isinstance(item, dict)]
     reference_builder = payload.get("reference_builder") or payload.get("referenceBuilder") or {}
     if isinstance(reference_builder, dict):
         all_project_subjects += [item for item in (reference_builder.get("subjects") or []) if isinstance(item, dict)]
+    all_project_subjects = [item for item in all_project_subjects if not is_scene_item_card(item)]
     cast_guard = build_cast_guard(all_project_subjects + scene_cast, scene_cast, [item["name"] for item in extra_subjects])
     scene_location = scene.get("location_ref") if isinstance(scene.get("location_ref"), dict) else {}
     scene_facts = "\n".join(filter(None, [
         cast_wall_text(cast_guard),
+        scene_items_text(scene_items, scene_cast),
         (
             f"Location: {_clean_scene_text(scene_location.get('name') or '', 120)}"
             f" — {_clean_scene_text(scene_location.get('description') or '', 400)}"

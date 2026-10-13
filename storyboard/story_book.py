@@ -23,6 +23,7 @@ from .story_mode import (
     chapters_from_split,
     chapters_keep_text,
     is_story_mode_layer,
+    is_story_person_card,
     normalize_story_book,
     normalize_story_video_style,
     parse_story_book_text,
@@ -92,8 +93,10 @@ def _scene_count(payload, scenes):
 
 
 def story_cast(payload):
-    """The subject cards the story is about: the ones picked in ``story_cast_ids``, or every card when none are."""
+    """The people the story is about: the ones picked in ``story_cast_ids``, or every person card when none are.
+    Clothing and prop cards are never part of the cast."""
     subjects, _locations = _storyboard_dialogue_reference_catalog(payload)
+    subjects = [subject for subject in subjects if is_story_person_card(subject)]
     chosen = set(_layer(payload).get("story_cast_ids") or [])
     picked = [subject for subject in subjects if subject.get("id") in chosen]
     return picked if chosen and picked else subjects

@@ -152,11 +152,30 @@ def refmod_items_for_scene(session: Dict[str, Any], segment: Dict[str, Any], ind
     extra_cards = [extras[key.split(":", 1)[1]] for key in _forced_extra_keys(refs, segment, index) if key.split(":", 1)[1] in extras]
     location_id = _text(scene_map_value(refs.get("scene_map"), segment, index))
     location = next((l for l in (refs.get("locations") or []) if isinstance(l, dict) and _text(l.get("id")) == location_id), None) if location_id else None
-    # A scene's clothing comes from its scene mapping and each clothing card's "worn by" link. The old per-scene
-    # clothing choice (``refmod_clothing_override``) has no control any more, so it is not applied.
-    return compose_items(
+    # A scene's clothing comes from its scene mapping and each clothing card's "worn by" link, which the scene's own
+    # choice (``scene_item_users``) replaces. The old per-scene clothing choice (``refmod_clothing_override``) has no
+    # control any more, so it is not applied.
+    items = compose_items(
         scene_subject_cards(segment, _subject_items_for_segment(refs, segment, index)), extra_cards, location, subjects,
     )
+    return apply_scene_item_users(items, segment.get("scene_item_users") if isinstance(segment, dict) else None)
+
+
+def apply_scene_item_users(items: List[Dict[str, Any]], users: Any) -> List[Dict[str, Any]]:
+    """Who wears or uses each piece of clothing or prop in one scene. Twin of ``applySceneItemUsers``.
+
+    ``users`` is ``segment["scene_item_users"]``: ``{card id: character card id}``. A choice naming a character who
+    is not in the scene is ignored.
+    """
+    chosen = users if isinstance(users, dict) else {}
+    characters = {item["card_id"] for item in items if item["category"] == "character"}
+    changed = []
+    for item in items:
+        user = _text(chosen.get(item["card_id"]))
+        if item["category"] in ("clothing", "object") and user in characters:
+            item = {**item, "wears": user}
+        changed.append(item)
+    return order_items(changed)
 
 
 def order_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

@@ -31,6 +31,8 @@ class RefModSceneTests(unittest.TestCase):
             with self.subTest(case["name"]):
                 subjects = scene.scene_subject_cards(case.get("scene") or {}, case["subjects"])
                 items = scene.compose_items(subjects, case["extras"], case["location"], case["all_subjects"], case["override"])
+                if case.get("scene_item_users"):
+                    items = scene.apply_scene_item_users(items, case["scene_item_users"])
                 labelled = scene.assign_labels(items, include_audio=case["include_audio"])
                 actual = [{"card_id": i["card_id"], "category": i["category"], "label": i["label"], "mod_name": i["mod_name"]} for i in labelled]
                 self.assertEqual(actual, case["expected"])

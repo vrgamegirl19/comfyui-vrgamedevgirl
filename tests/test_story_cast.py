@@ -171,5 +171,28 @@ class StoryCastTests(unittest.TestCase):
             story_book.remove_story_people({**payload(story_book=book), "names": []})
 
 
+class SceneItemTests(unittest.TestCase):
+    """Clothing and prop cards are things the scene's people wear or use, never cast members."""
+
+    def test_items_are_not_cast_and_say_who_wears_them(self):
+        story_mode = importlib.import_module(f"{ROOT.name}.storyboard.story_mode")
+        mara = {"id": "mara", "name": "Mara", "reference_type": "character"}
+        joe = {"id": "joe", "name": "Joe"}
+        dress = {"id": "dress", "name": "Red Dress", "description": "Silk, knee length.", "reference_type": "outfit", "wears": "joe"}
+        lamp = {"id": "lamp", "name": "Oil Lamp", "reference_type": "prop"}
+        self.assertTrue(story_mode.is_story_person_card(mara))
+        self.assertTrue(story_mode.is_story_person_card(joe))
+        self.assertFalse(story_mode.is_story_person_card(dress))
+        text = story_mode.scene_items_text([dress, lamp], [mara, joe])
+        self.assertIn("Joe wears Red Dress (Silk, knee length.)", text)
+        self.assertIn("Mara holds or uses Oil Lamp", text)
+        self.assertEqual(story_mode.scene_items_text([], [mara]), "")
+
+    def test_story_cast_leaves_out_clothing(self):
+        refs = {"subjects": REFS["subjects"] + [{"id": "dress", "name": "Red Dress", "reference_type": "outfit"}]}
+        cast = story_book.story_cast({**payload(), "reference_builder": refs})
+        self.assertNotIn("Red Dress", [subject.get("name") for subject in cast])
+
+
 if __name__ == "__main__":
     unittest.main()

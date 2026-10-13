@@ -137,6 +137,19 @@ export function composeRefmodItems(subjectCards, extraCards, locationCard, allSu
   return orderItems(items);
 }
 
+// Who wears or uses each piece of clothing or prop in one scene. users: segment.scene_item_users, { card id: character
+// card id }, set in the Story Builder's Scenes tab. A choice naming a character who is not in the scene is ignored.
+// Twin of apply_scene_item_users in minimax/refmod_scene.py.
+export function applySceneItemUsers(items, users) {
+  const chosen = users && typeof users === "object" ? users : {};
+  const characters = new Set((items || []).filter((item) => item.category === "character").map((item) => item.card_id));
+  const changed = (items || []).map((item) => {
+    const user = text(chosen[item.card_id]);
+    return (item.category === "clothing" || item.category === "object") && characters.has(user) ? { ...item, wears: user } : item;
+  });
+  return orderItems(changed);
+}
+
 // Add a label (for example "<Video 2>") to each item the way Text Encode with RefMods numbers them. Items with strength 0
 // get an empty label. With includeAudio an entry for the scene audio mod ("<Audio 1>") is appended.
 export function assignLabels(items, includeAudio = false) {

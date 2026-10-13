@@ -16,6 +16,7 @@ from ...storyboard.story_acts import validate_story_acts
 from ...storyboard.story_mode import (
     apply_scene_cast,
     apply_story_book_text,
+    is_story_person_card,
     normalize_story_book,
     normalize_story_mode_fields,
     normalize_story_scene_plan,
@@ -140,7 +141,7 @@ def fill_cast_from_acts(session: Dict[str, Any], acts: List[Dict[str, Any]],
     """Map each planned scene's cast onto it, and each act's cast onto its scenes that still have no characters
     (the Reference Builder's subject_scene_map)."""
     refs = session.setdefault("flux_reference_builder", {})
-    subject_ids = [s.get("id") for s in refs.get("subjects") or [] if isinstance(s, dict) and s.get("id")]
+    subject_ids = [s.get("id") for s in refs.get("subjects") or [] if is_story_person_card(s) and s.get("id")]
     mapped, changed = apply_scene_cast(refs.get("subject_scene_map") or {}, plan or [], acts, subject_ids)
     if changed:
         refs["subject_scene_map"] = mapped

@@ -1660,5 +1660,157 @@
       }
     ],
     "expected_tokens": 8026
+  },
+  {
+    "name": "the scene picks who wears each piece of clothing; a pick naming someone not in the scene is ignored",
+    "subjects": [
+      {
+        "id": "s1",
+        "name": "Brad",
+        "reference_type": "character",
+        "source": "refmod",
+        "description": "Brad description",
+        "refmod": {
+          "name": "identity/brad",
+          "kind": "video",
+          "tokens": 5632,
+          "strength": 1
+        }
+      },
+      {
+        "id": "s2",
+        "name": "Darrel",
+        "reference_type": "character",
+        "source": "refmod",
+        "description": "Darrel description",
+        "refmod": {
+          "name": "identity/darrel",
+          "kind": "video",
+          "tokens": 2394,
+          "strength": 1
+        }
+      },
+      {
+        "id": "c1",
+        "name": "charcoal suit",
+        "reference_type": "outfit",
+        "source": "refmod",
+        "description": "charcoal suit description",
+        "refmod": {
+          "name": "clothing_men/charcoal_suit",
+          "kind": "video",
+          "tokens": 1500,
+          "strength": 1
+        },
+        "wears": "s1"
+      },
+      {
+        "id": "h1",
+        "name": "red hat",
+        "reference_type": "outfit",
+        "source": "refmod",
+        "description": "red hat description",
+        "refmod": {
+          "name": "clothing_men/red_hat",
+          "kind": "image",
+          "tokens": 300,
+          "strength": 1
+        },
+        "wears": "s2"
+      }
+    ],
+    "extras": [],
+    "location": null,
+    "all_subjects": [
+      {
+        "id": "s1",
+        "name": "Brad",
+        "reference_type": "character",
+        "source": "refmod",
+        "description": "Brad description",
+        "refmod": {
+          "name": "identity/brad",
+          "kind": "video",
+          "tokens": 5632,
+          "strength": 1
+        }
+      },
+      {
+        "id": "s2",
+        "name": "Darrel",
+        "reference_type": "character",
+        "source": "refmod",
+        "description": "Darrel description",
+        "refmod": {
+          "name": "identity/darrel",
+          "kind": "video",
+          "tokens": 2394,
+          "strength": 1
+        }
+      },
+      {
+        "id": "c1",
+        "name": "charcoal suit",
+        "reference_type": "outfit",
+        "source": "refmod",
+        "description": "charcoal suit description",
+        "refmod": {
+          "name": "clothing_men/charcoal_suit",
+          "kind": "video",
+          "tokens": 1500,
+          "strength": 1
+        },
+        "wears": "s1"
+      },
+      {
+        "id": "h1",
+        "name": "red hat",
+        "reference_type": "outfit",
+        "source": "refmod",
+        "description": "red hat description",
+        "refmod": {
+          "name": "clothing_men/red_hat",
+          "kind": "image",
+          "tokens": 300,
+          "strength": 1
+        },
+        "wears": "s2"
+      }
+    ],
+    "override": {},
+    "include_audio": false,
+    "scene_item_users": {
+      "c1": "s2",
+      "h1": "s1",
+      "s1": "s2",
+      "x9": "nobody"
+    },
+    "expected": [
+      {
+        "card_id": "s1",
+        "category": "character",
+        "label": "<Video 1>",
+        "mod_name": "identity/brad"
+      },
+      {
+        "card_id": "s2",
+        "category": "character",
+        "label": "<Video 2>",
+        "mod_name": "identity/darrel"
+      },
+      {
+        "card_id": "h1",
+        "category": "clothing",
+        "label": "<Picture 1>",
+        "mod_name": "clothing_men/red_hat"
+      },
+      {
+        "card_id": "c1",
+        "category": "clothing",
+        "label": "<Video 3>",
+        "mod_name": "clothing_men/charcoal_suit"
+      }
+    ],
+    "expected_tokens": 9826
   }
 ]
