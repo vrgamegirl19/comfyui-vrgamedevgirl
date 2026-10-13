@@ -457,7 +457,7 @@ test('the premise saves on its own and nothing is shown as out of date', async (
 });
 
 test('scenes are grouped in act sections, and Replan asks for a location and story, then replans the act or ticked scenes', async () => {
-  const { state, builder } = setup();
+  const { state, calls, builder } = setup();
   const bodies = [];
   globalThis.fakeComfyApi.fetchApi = async (url, options) => {
     bodies.push(JSON.parse(options.body));
@@ -483,6 +483,7 @@ test('scenes are grouped in act sections, and Replan asks for a location and sto
     await findButton('Replan').onclick();
     await tick();
     assert.deepEqual(bodies.map((body) => [body.act_id, body.scene_ids]), [['act_1', ['seg_2']]], 'only the ticked scene is replanned');
+    assert.deepEqual(calls.beats.at(-1), { overwrite: true, sceneIds: ['seg_2'] }, 'the replanned scene gets a new beat from its new plan');
     const act = state.builderStoryLayer.story_acts[0];
     assert.deepEqual([act.location_note, act.direction], ['A rooftop at dusk.', 'She burns the letter.'], 'the act keeps your words');
   } finally {

@@ -412,6 +412,18 @@ export function createStoryBuilder({
     modeSelect.onchange = () => { list.style.display = modeSelect.value === "some" ? "flex" : "none"; };
     scope.append(modeSelect, list);
     box.append(scope);
+    // The plan alone does not change a beat or prompt that already exists, so these are on by default.
+    const tickBox = (text) => {
+      const label = el("label", "display:flex;gap:6px;font-size:12px;align-items:center;cursor:pointer;");
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.checked = true;
+      label.append(input, document.createTextNode(text));
+      box.append(label);
+      return input;
+    };
+    const redoBeats = tickBox("Then write new beats for these scenes (replaces the beats there now)");
+    const redoPrompts = tickBox("Then write new video prompts for these scenes (replaces the prompts there now)");
     const close = () => overlay.remove();
     const cancel = makeButton("Cancel");
     cancel.onclick = close;
@@ -423,6 +435,8 @@ export function createStoryBuilder({
         return;
       }
       go.disabled = true;
+      const wantBeats = redoBeats.checked;
+      const wantPrompts = redoPrompts.checked;
       close();
       const edited = normalizeStoryActs(layer().story_acts).map((item) => {
         if (item.id !== act.id) return item;
@@ -434,6 +448,20 @@ export function createStoryBuilder({
       await saveLayer({ story_acts: edited }, "story builder act direction");
       const fresh = edited.find((item) => item.id === act.id);
       const done = await planActs(edited, [fresh], "Replanning " + (act.title || act.id), { sceneIds: ids });
+      // The scenes just replanned get new beats and prompts from their new plan, so Beats & Prompts shows the rework.
+      const targets = ids.length ? ids : act.scene_ids;
+      if (done && wantBeats) {
+        await createSceneBeats({ overwrite: true, sceneIds: targets });
+        await saveLayer({}, "story builder beats redone", { beats: targets });
+      }
+      if (done && wantPrompts) {
+        const noImage = referenceImagesRequired() ? sceneNumbers(targets).filter((number) => imageGaps().scenes.includes(number)) : [];
+        if (noImage.length) toast("No video prompt was written for " + sceneRangeText(noImage) + ": it has no character or location image, and Reference to Video needs one.", true);
+        else if (targets.some((id) => String(segments().find((segment) => segment.id === id)?.story_beat || "").trim())) {
+          await createVideoPrompts({ sceneIds: targets.filter((id) => String(segments().find((segment) => segment.id === id)?.story_beat || "").trim()), storyMode: true });
+          await saveLayer({}, "story builder prompts redone", { prompts: targets });
+        }
+      }
       onDone(done);
     };
     box.append(row(go, cancel));
