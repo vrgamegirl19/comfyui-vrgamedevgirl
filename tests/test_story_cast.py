@@ -207,5 +207,30 @@ class SceneItemTests(unittest.TestCase):
         self.assertIn("She burns the letter.", brief)
 
 
+class RealismRuleTests(unittest.TestCase):
+    """Every Story Mode step that writes people or places is told to be believable and natural, even with a saved template."""
+
+    def test_realism_rules_reach_every_step(self):
+        prompts = importlib.import_module(f"{ROOT.name}.llm.prompts.story_mode")
+        saved = "Short saved rules."
+        texts = {
+            "book": prompts.story_book_instruction(premise="p", cast_text="- A", tone_notes="", scene_count=10, song_seconds=60, lyric_guidance="g", lyrics="", previous_book="", seed="1", template=saved),
+            "chapter": prompts.story_chapter_rewrite_instruction(book_text="b", chapter_number=1, chapter_text="c", direction="", cast_text="- A", lyric_guidance="g", template=saved),
+            "plan": prompts.story_scene_plan_instruction(act_title="a", act_summary="s", setting_name="n", chapter_text="c", scenes_text="t", cast_text="- A", spot_min_scenes=3, previous_spot="", lyric_guidance="g", known_spots="", template=saved),
+        }
+        for name, text in texts.items():
+            with self.subTest(name):
+                self.assertIn(prompts.BELIEVABLE_PLACES_RULE, text)
+                self.assertIn(prompts.NATURAL_ACTIONS_RULE, text)
+        looks = prompts.story_setting_looks_instruction(settings_text="s", book_summary="b", style_theme="", cast_text="", template=saved)
+        self.assertIn(prompts.BELIEVABLE_PLACES_RULE, looks)
+        self.assertNotIn(prompts.NATURAL_ACTIONS_RULE, looks)
+
+    def test_beat_rules_keep_the_cast_believable(self):
+        story_layer = importlib.import_module(f"{ROOT.name}.storyboard.story_layer")
+        with patch.object(story_book, "story_template", return_value="Saved beat rules.\n"):
+            self.assertIn("Keep it believable", story_layer._story_mode_beat_rules({}))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1081,7 +1081,15 @@ def _story_mode_beat_rules(payload):
     """The project's own Story Mode beat rules (story_mode_scene_beat), or the built-in rules."""
     from .story_book import story_template
 
-    return story_template(payload, "story_mode_scene_beat")
+    rules = str(story_template(payload, "story_mode_scene_beat"))
+    # Always added in code, so a saved copy of the rules cannot lose it.
+    believable = (
+        "- Keep it believable: the cast does ordinary, motivated things a real person would do in that place (sit, walk, "
+        "pick something up, open a door, glance at someone), using the objects and furniture there. Avoid staged poses, "
+        "long stares into the distance, standing at windows, and dramatic gestures with no purpose.\n"
+    )
+    marker = "- {{output_rules}}"
+    return rules.replace(marker, believable + marker, 1) if marker in rules else f"{rules.rstrip()}\n{believable}"
 
 
 def _build_story_layer_scene_beat(payload):

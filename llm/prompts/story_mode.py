@@ -10,6 +10,28 @@ LYRICS_ARE_MOOD_ONLY = (
     "Never take a story event, a character, an object or a place from the lyrics."
 )
 
+# Always added to the story steps (in code, so a saved instruction cannot lose them): believable places and natural
+# actions. Without them the LLM drifts to staged, symbolic scenes in odd places.
+BELIEVABLE_PLACES_RULE = (
+    "Believable places: every place is an ordinary, real, specific place that fits the story's world and time "
+    "(a kitchen with a dish rack and a window, a night bus, a laundromat, a back stairwell). Never an abstract, "
+    "dreamlike, symbolic or empty void place unless the user's premise is fantasy or surreal. A person is only "
+    "where a real person would be at that time of day, for a reason the story gives."
+)
+NATURAL_ACTIONS_RULE = (
+    "Natural actions: people do ordinary things for a reason and in a natural order: walk, sit, wait, make tea, read a "
+    "message, look for keys, lean on a counter, pick something up, glance at someone. Each action has a motive, uses "
+    "the objects and furniture around it, and fits the time the scene lasts. One clear thing happens at a time. "
+    "Avoid staged poses, long silent stares into the distance, standing at windows, dramatic gestures, "
+    "slow-motion walks, and actions with no purpose."
+)
+
+
+def with_realism(text):
+    """An instruction with the believable-places and natural-actions rules added before its data and reply format."""
+    return f"{str(text).rstrip()}\n- {BELIEVABLE_PLACES_RULE}\n- {NATURAL_ACTIONS_RULE}\n"
+
+
 # The story is written in Acts (big parts of the story). Chapters, each in one setting, are made from them later.
 _BOOK_FORMAT = (
     "Title: <story title>\n"
@@ -30,6 +52,16 @@ def render_story_template(template, tokens):
         text = text.replace("{{" + name + "}}", str(value))
     # A saved instruction loses its last line break; the step's own text always starts on a new line.
     return text if not text or text.endswith("\n") else f"{text}\n"
+
+
+def render_with_realism(template, tokens):
+    """A template rendered, then the believable-places and natural-actions rules added (steps about people and events)."""
+    return with_realism(render_story_template(template, tokens))
+
+
+def render_with_places(template, tokens):
+    """A template rendered, then the believable-places rule added (steps that design places and have no people)."""
+    return f"{render_story_template(template, tokens).rstrip()}\n- {BELIEVABLE_PLACES_RULE}\n"
 
 
 # The editable part of each Story Mode instruction (role and rules). The step adds the data and the reply format
@@ -145,7 +177,7 @@ def story_book_instruction(*, premise, cast_text, tone_notes, scene_count, song_
     """Draft the whole story book from the user's premise, in ``act_count`` acts (0 lets the scene count decide)."""
     acts, paragraphs = story_book_size(scene_count, act_count)
     return (
-        render_story_template(template or STORY_BOOK_TEMPLATE, {
+        render_with_realism(template or STORY_BOOK_TEMPLATE, {
             "medium_rule": story_medium_rule(video_style, lead_name), "acts": acts, "chapters": acts,
             "paragraphs": paragraphs,
             "scene_count": scene_count, "song_seconds": f"{song_seconds:.0f}",
@@ -168,7 +200,7 @@ def story_chapter_rewrite_instruction(*, book_text, chapter_number, chapter_text
                                       allow_new_cast=False, video_style="music_video", lead_name="", template=None):
     """Rewrite or expand one chapter, keeping the rest of the book as context."""
     return (
-        render_story_template(template or STORY_CHAPTER_TEMPLATE, {
+        render_with_realism(template or STORY_CHAPTER_TEMPLATE, {
             "chapter_number": chapter_number, "cast_rule": story_cast_rule(cast_text, allow_new_cast),
             "medium_rule": story_medium_rule(video_style, lead_name), "lyric_guidance": lyric_guidance,
         })
@@ -296,7 +328,7 @@ STORY_ACTS_TEMPLATE = (
     "- first_scene is the scene number where the act starts. The first act starts at the chapter's first scene.\n"
     "- A timed user note must fall inside one act; never start an act in the middle of a note's scenes.\n"
     "- Bigger story moments can land on louder or longer scenes, but never change the story's order.\n"
-    "- summary: 1-3 sentences of what visibly happens in the act.\n"
+    "- summary: 2-3 sentences of what visibly happens in the act: who does what, where, and how it changes things.\n"
     "- cast: names from the cast list who appear in the act. The main character is in nearly every act. Keep "
     "the other characters in the acts where the chapter has them, so each one stays in the story to the end.\n"
     "- {{lyrics_rule}}\n"
@@ -307,7 +339,7 @@ def story_acts_instruction(*, chapter_number, chapter_title, setting_name, chapt
                            notes_text, target_acts, template=None):
     """Split one chapter into acts, each a contiguous run of the chapter's scenes."""
     return (
-        render_story_template(template or STORY_ACTS_TEMPLATE,
+        render_with_realism(template or STORY_ACTS_TEMPLATE,
                               {"target_acts": target_acts, "lyrics_rule": LYRICS_ARE_MOOD_ONLY})
         + "Return JSON only: {\"acts\": [{\"first_scene\": 1, \"title\": \"...\", \"summary\": \"...\", \"cast\": [\"...\"]}]}\n\n"
         f"Chapter {chapter_number}: {chapter_title}\n"
@@ -356,8 +388,9 @@ STORY_SCENE_PLAN_TEMPLATE = (
     "For every scene listed, write what happens in it, where in the setting it happens, its mood, how the "
     "performer appears, and who is in it and what they do with each other.\n\n"
     "Rules:\n"
-    "- story_slice: 1-2 sentences of what visibly happens in this scene, continuing from the scene before. "
-    "Together the slices tell the act in order.\n"
+    "- story_slice: 2-3 sentences of what visibly happens in this scene, continuing from the scene before. "
+    "Say where in the space each person is, what they do with their hands and the objects around them, how they "
+    "move, and how they react to what just happened. Together the slices tell the act in order.\n"
     "- cast: names from the cast list who are visibly in this scene. "
     "{{main_character_line}}"
     "This act's characters are {{act_cast}}; give each of them scenes in this act. "
@@ -393,7 +426,7 @@ def story_scene_plan_instruction(*, act_title, act_summary, setting_name, chapte
                                  act_cast="", main_name="", template=None):
     """Give every scene of one act its slice of the story, a spot, a mood, a performance and its cast."""
     return (
-        render_story_template(template or STORY_SCENE_PLAN_TEMPLATE, {
+        render_with_realism(template or STORY_SCENE_PLAN_TEMPLATE, {
             "main_character_line": f"{main_name} is the main character and is in most scenes. " if main_name else "",
             "act_cast": act_cast or "the cast below", "setting_name": setting_name or "the setting",
             "spot_min_scenes": spot_min_scenes, "known_spots": known_spots or "[none yet]",
@@ -445,8 +478,9 @@ STORY_SETTING_LOOKS_TEMPLATE = (
     "You are a production designer for a music video that tells the story below.\n\n"
     "For each general setting, write its look: the one visual world every spot inside it shares.\n\n"
     "Rules:\n"
-    "- look: 2-3 sentences of physical design only: era, region, architecture, materials, colour palette, "
-    "light sources and quality, weather. No people, no actions, no story events.\n"
+    "- look: 3-4 sentences of physical design only: era, region, architecture, materials, colour palette, "
+    "light sources and quality, weather, and the signs that people really use the place (wear, clutter, "
+    "belongings, repairs). No people, no actions, no story events.\n"
     "- The look must fit the story's world and the style notes. Obey every ban in the style notes.\n"
     "- Settings in the same story should feel like the same world.\n"
 )
@@ -455,7 +489,7 @@ STORY_SETTING_LOOKS_TEMPLATE = (
 def story_setting_looks_instruction(*, settings_text, book_summary, style_theme, cast_text, template=None):
     """One shared look per general setting, so every spot inside it matches. No lyrics are sent."""
     return (
-        render_story_template(template or STORY_SETTING_LOOKS_TEMPLATE, {})
+        render_with_places(template or STORY_SETTING_LOOKS_TEMPLATE, {})
         + "Return JSON only: {\"settings\": [{\"name\": \"...\", \"look\": \"...\"}]} with every setting listed below, "
         "names unchanged.\n\n"
         f"Style and theme notes (look and banned places):\n{style_theme or '[none]'}\n\n"
@@ -488,7 +522,8 @@ STORY_SPOTS_TEMPLATE = (
     "share the setting's look.\n\n"
     "For each spot write a description for its location reference card.\n\n"
     "Rules:\n"
-    "- Exactly one sentence of 20-38 words.\n"
+    "- One or two sentences of 30-50 words that make the place feel real and lived in.\n"
+    "- Name the furniture, fixtures and everyday objects a real place like this holds, and where the light comes from.\n"
     "- Physical only: architecture, fixtures, surfaces, light sources, colours, weather, atmosphere. "
     "No people, clothing, actions or story events.\n"
     "- Start from the setting's look so every spot matches, then add what is specific to this spot.\n"
@@ -499,7 +534,7 @@ STORY_SPOTS_TEMPLATE = (
 def story_spots_instruction(*, setting_name, setting_look, spots_text, style_theme, template=None):
     """One location card per spot inside a setting, built on the setting's look. No lyrics are sent."""
     return (
-        render_story_template(template or STORY_SPOTS_TEMPLATE, {})
+        render_with_places(template or STORY_SPOTS_TEMPLATE, {})
         + "Return JSON only: {\"spots\": [{\"name\": \"...\", \"description\": \"...\"}]} with every spot listed below, "
         "names unchanged.\n\n"
         f"Setting: {setting_name}\n"
@@ -549,7 +584,7 @@ def story_revise_scene_instruction(*, book_text, chapter_number, chapter_title, 
                                    lyric_guidance, template=None):
     """Change one scene the way the user wants, and adapt the act and chapter around it as little as possible."""
     return (
-        render_story_template(template or STORY_REVISE_SCENE_TEMPLATE, {
+        render_with_realism(template or STORY_REVISE_SCENE_TEMPLATE, {
             "scene_number": scene_number, "cast_rule": story_cast_rule(cast_text, False), "lyric_guidance": lyric_guidance,
         })
         + "Return JSON only: {\"scene\": {\"story_slice\": \"...\", \"spot\": \"...\", \"mood\": \"...\", \"performer\": "

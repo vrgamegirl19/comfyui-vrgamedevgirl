@@ -50,7 +50,9 @@ class StoryModeInstructionTests(unittest.TestCase):
 
             with patch.object(story_plan, "_run", fake):
                 story_plan.build_story_acts(payload(folder))
-            self.assertTrue(prompts_seen[0].startswith("MY ACT RULES for about 2 acts.\nReturn JSON only:"))
+            self.assertTrue(prompts_seen[0].startswith("MY ACT RULES for about 2 acts.\n"))
+            self.assertIn(prompts.BELIEVABLE_PLACES_RULE, prompts_seen[0], "believable places are always added")
+            self.assertIn("\nReturn JSON only:", prompts_seen[0])
             self.assertEqual(story_book.story_template(payload(folder), "story_mode_book"), prompts.STORY_BOOK_TEMPLATE,
                              "an instruction the project did not edit stays the default")
         self.assertEqual(story_book.story_template(payload(), "story_mode_acts"), prompts.STORY_ACTS_TEMPLATE)
