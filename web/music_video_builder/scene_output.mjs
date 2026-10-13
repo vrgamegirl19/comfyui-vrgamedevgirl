@@ -557,6 +557,8 @@ export function createSceneOutput({
       imageMode,
       imageModeLabel: imageModeDisplayLabel(imageMode),
       cameraFlow: defaults.camera_flow || "balanced",
+      customCameraFlowSequence: defaults.custom_camera_flow_sequence || [],
+      cutStyle: defaults.minimax_h3_cut_style || "free",
       imageShotFlow: defaults.image_shot_flow || "intimate",
       imageAesthetic: defaults.image_aesthetic || "",
       videoStyle: defaults.video_style || "",

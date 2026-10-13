@@ -29,7 +29,7 @@ export function createAutoBuild({
   openStoryboardBuilderFromProject, projectInput, pushHistory, render, runMiniMaxH3PromptGeneration,
   saveGemmaJunkDebug, saveSession, sceneDisplayName, sceneReferenceMapArray, state, syncI2VVideoSettingsPanel,
   syncInspector, syncProjectVideoEngineUI, syncVideoModePanel, syncVideoTypeControl,
-  transcribeExistingScenesWithOptions,
+  transcribeExistingScenesWithOptions, sceneDefaultsPromptOptions = null,
 }) {
   function openAutoBuildModal() {
     const backdrop = document.createElement("div");
@@ -452,6 +452,8 @@ export function createAutoBuild({
           const percent = 5 + Math.round((index / Math.max(1, scenes.length)) * 90);
           progress.set(`Creating MiniMax prompt ${index + 1}/${scenes.length}: ${sceneDisplayName(segment, index)}\n${gemmaRunnerLine({ vision: Boolean(visionImages.length) })}`, percent);
           try {
+            // Scene Defaults (camera flow, speeds, style, temporal / world effect, FX) reach Auto Build prompts too.
+            const sceneDefaults = sceneDefaultsPromptOptions?.(segment) || {};
             const data = await runMiniMaxH3PromptGeneration(segment, mode, {
               projectFolder,
               sceneId: segment.id || "",
@@ -460,6 +462,8 @@ export function createAutoBuild({
               performanceMode: "singing",
               audioMode: "input_audio",
               speakerAssignments: [],
+              ...(sceneDefaults.contextOptions ? { contextOptions: sceneDefaults.contextOptions } : {}),
+              ...(sceneDefaults.finalizePrompt ? { finalizePrompt: sceneDefaults.finalizePrompt } : {}),
               emptyPromptMessage: `${sceneDisplayName(segment, index)} returned an empty MiniMax prompt.`,
             });
             gemmaBatchFailureStore()[`minimax:${mode}:${segment.id}`] = undefined;

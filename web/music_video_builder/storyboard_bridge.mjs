@@ -26,6 +26,7 @@ import {
 import { newSegment, normalizeVideoPromptOrigin, sortSegments } from "./segments.mjs";
 import { refmodCardFields } from "./refmod_labels.mjs";
 import { STORY_MODE_KEYS } from "./story_mode_data.mjs";
+import { storyboardGptPayload } from "../storyboard_builder/gpt_payload.mjs";
 import { storyboardSceneCardContext, STORYBOARD_SCENE_CARD_CONTEXT_INSTRUCTION } from "../storyboard_builder/scenes.mjs";
 
 export let ACTIVE_STORYBOARD_PROMPT_PIPELINE = null;
@@ -44,7 +45,7 @@ export function createStoryboardBridge({
   selectedSegmentImagePath, setSegmentPromptForEdit, state, storyboardPipeline,
   storyboardReferenceBuilderWithIdLoraRefs, storyboardScenePayload, syncI2VVideoSettingsPanel, syncInspector,
   syncVideoModePanel, textGemmaRunnerPayload, timelineDuration, updateActiveFromInputs,
-  videoTriggerPhraseForSegment,
+  videoTriggerPhraseForSegment, wizardStoryboardState = null,
 }) {
   // The Storyboard only edits the classic story fields. Merge its layer onto the Builder's so Story Mode data
   // (story book, acts, scene plan) it never loaded is kept. Its own storyboard.json can hold an old copy of those
@@ -52,6 +53,177 @@ export function createStoryboardBridge({
   function mergeStoryboardStoryLayer(incoming) {
     const classic = Object.fromEntries(Object.entries(incoming || {}).filter(([key]) => !STORY_MODE_KEYS.includes(key)));
     return normalizeBuilderStoryLayer({ ...state.builderStoryLayer, ...classic });
+  }
+
+  // Scene Defaults context and finishers for a MiniMax scene prompt, shared by the Storyboard and every Video Builder
+  // prompt path, so camera flow, style, temporal/world effects and the cut plan reach every final prompt.
+  const storyboardVideoExtraNotes = (scene = {}, storyboardPayload = {}, canonicalSegment = null) => {
+    const selectedScene = Array.isArray(storyboardPayload?.scenes) && storyboardPayload.scenes.length ? storyboardPayload.scenes[0] : {};
+    const fullyCustomShortFilm = normalizeMiniMaxShortFilmPlanningMode(storyboardPayload?.short_film_planning_mode) === "fully_custom";
+    const storyLayer = selectedScene.story_layer || {};
+    const vocalStatus = selectedScene.vocal_status || {};
+    const ltxScene = normalizeProjectVideoEngine(selectedScene.project_video_engine || storyboardPayload?.project_video_engine || state.projectVideoEngine) === "ltx";
+    const startingShot = selectedScene.starting_shot && typeof selectedScene.starting_shot === "object"
+      ? selectedScene.starting_shot
+      : null;
+    const add = (parts, title, value) => {
+      const text = String(value || "").trim();
+      if (text) parts.push(`${title}:\n${text}`);
+    };
+    const parts = [];
+    if (ltxScene) {
+      const mappedSubjects = Array.isArray(selectedScene.subjects) ? selectedScene.subjects : [];
+      const singleSubjectText = mappedSubjects.length === 1
+        ? [mappedSubjects[0]?.name, mappedSubjects[0]?.description].filter(Boolean).join(" ").toLowerCase()
+        : "";
+      const singularPronouns = /\b(?:woman|girl|female|feminine|she|her)\b/.test(singleSubjectText)
+        ? "she/her"
+        : /\b(?:man|boy|male|masculine|he|him|his)\b/.test(singleSubjectText)
+          ? "he/him"
+          : "singular wording that repeats the mapped subject name when needed";
+      const vocalContract = vocalStatus.should_lip_sync === true
+        ? `This is a visible singing/lip-sync scene. The mapped performer visibly vocalizes ${JSON.stringify(String(vocalStatus.lyric_text || scene.lyrics || "").trim())} in sync with the audio using natural mouth, lip, cheek, and jaw movement. Never describe closed, still, sealed, relaxed-closed, or unmoving lips, and never call the performance silent or instrumental.`
+        : "This is not a visible singing/lip-sync scene. Do not say anyone sings, vocalizes, mouths words, or lip-syncs, and do not quote the lyric as performed dialogue.";
+      parts.push([
+        "AUTHORITATIVE LTX ONE-PASS OUTPUT CONTRACT:",
+        "Return one polished generation-ready prompt only. Do not print headings, field names, metadata labels, explanations, or this contract.",
+        String(selectedScene.cut_plan?.instruction || "").trim() || "Use one continuous shot unless the scene explicitly requests a cut.",
+        vocalContract,
+        mappedSubjects.length === 1
+          ? `This scene contains exactly one mapped subject. Use ${singularPronouns} consistently. Never use they/them/their or plural agreement for that person.`
+          : "Use pronouns and singular/plural agreement that exactly match the mapped subject count.",
+        "Integrate facial and performance guidance as natural visual prose; never output labels such as 'Facial performance direction:'.",
+        "The first sentence is the sole opening-shot statement. After it, continue directly with new subject action; never restate that the subject is first shown, already shown, framed, introduced, or seen in the same opening shot.",
+        "Describe each camera action exactly once. Do not repeat the opening framing, reveal, pull-back, or other camera direction.",
+        "Use natural possessive anatomy phrasing such as 'the woman's eye' or 'the subject's eye'; never write awkward constructions such as 'one eye of the woman'.",
+        "Write only complete grammatical sentences. Attach short descriptive additions with grammatical wording such as 'with subtle natural eye movement'; never append a bare comma fragment such as ', subtle natural eye movement.'.",
+        "Treat first-frame visual inventory as optional visible detail, not a checklist. Mention only anatomy, wardrobe, accessories, and props that are actually inside the current framing. An eye, face, or upper-body shot must not claim that shoes, heels, feet, lower-body clothing, or other off-frame details are visible.",
+      ].filter(Boolean).join("\n"));
+    }
+    if (fullyCustomShortFilm) {
+      parts.push("FULLY CUSTOM SHORT FILM SOURCE CONTRACT:\nUse only the populated manual scene-card fields below. Do not infer or invent missing dialogue, speakers, actions, story beats, shots, camera moves, settings, sound, or continuity.");
+    }
+    if (startingShot?.required) {
+      add(
+        parts,
+        "REQUIRED Storyboard opening shot",
+        startingShot.instruction || `The video must explicitly begin with a ${startingShot.selected_starting_shot || scene.shot_type}. Begin all camera motion from that framing.`,
+      );
+    }
+    add(parts, "Storyboard scene story beat", storyLayer.scene_story_beat || scene.story_beat);
+    add(parts, "REQUIRED Storyboard video style", selectedScene.video_style);
+    add(parts, "MANDATORY exact Storyboard video style verbiage — copy word-for-word", selectedScene.video_style_verbiage);
+    add(parts, "MANDATORY exact temporal / world effect verbiage — copy word-for-word", selectedScene.temporal_world_effect_verbiage);
+    if (!ltxScene) {
+      const canonicalCutPlan = canonicalSegment ? miniMaxH3CutPlanForSegment(canonicalSegment) : null;
+      add(parts, "MANDATORY Storyboard editing / cut plan", canonicalCutPlan?.instruction || selectedScene.cut_plan?.instruction);
+    }
+    const customMotionSummary = String(selectedScene.motion_summary || scene.motion_summary || scene.video_notes || "").trim();
+    add(parts, "Storyboard motion/video summary", customMotionSummary);
+    if (!customMotionSummary) add(parts, "Storyboard camera motion", selectedScene.camera_motion || scene.camera_motion);
+    if (!fullyCustomShortFilm) add(parts, "REQUIRED Storyboard camera-flow framing", selectedScene.camera_flow_guidance);
+    add(parts, "Storyboard camera motion speed guidance", selectedScene.camera_motion_speed_guidance || selectedScene.camera_guidance?.camera_motion_speed_guidance);
+    add(parts, "Storyboard character motion guidance", selectedScene.character_motion_guidance || scene.character_motion);
+    add(parts, "Storyboard performance direction", selectedScene.performance_direction || scene.performance_style);
+    add(parts, "Storyboard facial performance direction", selectedScene.facial_performance_direction || scene.facial_performance_custom || scene.facial_performance);
+    add(parts, "Storyboard lyric section", vocalStatus.lyric_section || scene.lyric_section);
+    add(parts, "Storyboard first-frame visual inventory", selectedScene.first_frame_visual_inventory?.text || "");
+    add(parts, "Exact manual audio / sound direction", selectedScene.audio_direction || scene.audio_direction);
+    add(parts, "Exact manual continuity requirements", selectedScene.continuity || scene.continuity || scene.continuity_direction);
+    parts.push(`${STORYBOARD_SCENE_CARD_CONTEXT_INSTRUCTION}\nComplete scene_card:\n${JSON.stringify(storyboardSceneCardContext(scene), null, 2)}`);
+    return parts.join("\n\n");
+  };
+  const ensureStoryboardRequiredStartingShot = (prompt, segment, scene = {}, storyboardPayload = {}) => {
+    const text = String(prompt || "").trim();
+    const selectedScene = Array.isArray(storyboardPayload?.scenes) && storyboardPayload.scenes.length ? storyboardPayload.scenes[0] : {};
+    const requirement = selectedScene.starting_shot && typeof selectedScene.starting_shot === "object"
+      ? selectedScene.starting_shot
+      : null;
+    const shot = String(requirement?.selected_starting_shot || "").trim();
+    if (!text || !requirement?.required || !shot) return text;
+    const visibleSubject = Array.isArray(selectedScene.visible_subjects)
+      ? String(selectedScene.visible_subjects.find((value) => String(value || "").trim()) || "").trim()
+      : "";
+    const subject = visibleSubject || String(scene.subjects || scene.subject || "").split(/[,;\n]+/)[0].trim() || "the subject";
+    const shotKey = shot.toLowerCase().replace(/[\s_-]+/g, " ").trim();
+    let sentence = "";
+    if (shotKey === "eyes shot") sentence = `The video begins with an extreme close-up of ${subject}'s eyes.`;
+    else if (shotKey === "mouth shot") sentence = `The video begins with an extreme close-up of ${subject}'s mouth.`;
+    else if (shotKey === "hands shot") sentence = `The video begins with a close-up of ${subject}'s hands.`;
+    else if (shotKey === "feet shot") sentence = `The video begins with a close-up of ${subject}'s feet.`;
+    else sentence = `The video begins with ${/^[aeiou]/i.test(shot) ? "an" : "a"} ${shot} of ${subject === "the subject" ? "the scene" : subject}.`;
+    const opening = text.slice(0, 500);
+    const hasOpeningMarker = /\b(?:the\s+video\s+)?(?:begins?|starts?|opens?)\s+with\b|\b(?:opening|first)\s+(?:shot|frame)\b/i.test(opening);
+    const shotWords = shotKey.split(/[^a-z0-9]+/).filter((word) => word && word !== "shot");
+    const hasRequiredFraming = shotKey === "eyes shot"
+      ? /\beyes?\b/i.test(opening)
+      : shotWords.length > 0 && shotWords.every((word) => new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(opening));
+    if (hasOpeningMarker && hasRequiredFraming) return text;
+    if (currentVideoMode() === "id_lora" && /\[VISUAL\]\s*:?/i.test(text)) {
+      return text.replace(/(\[VISUAL\]\s*:?\s*)/i, `$1${sentence} `);
+    }
+    const ensured = `${sentence} ${text}`.trim();
+    return applyMappedTriggerPhrases(
+      applyTriggerPhrase(ensured, videoTriggerPhraseForSegment(segment)),
+      segment,
+      { ensureTransitionLast: true },
+    );
+  };
+  const ensureStoryboardRequiredVideoStyle = (prompt, storyboardPayload = {}) => {
+    const text = String(prompt || "").trim();
+    const selectedScene = Array.isArray(storyboardPayload?.scenes) && storyboardPayload.scenes.length
+      ? storyboardPayload.scenes[0]
+      : {};
+    const verbiage = String(selectedScene.video_style_verbiage || "").trim();
+    if (!text || !verbiage || text.includes(verbiage)) return text;
+    const requiredLine = verbiage;
+    const firstParagraphEnd = text.indexOf("\n\n");
+    if (firstParagraphEnd >= 0) {
+      return `${text.slice(0, firstParagraphEnd)}\n\n${requiredLine}${text.slice(firstParagraphEnd)}`;
+    }
+    const firstLineEnd = text.indexOf("\n");
+    if (firstLineEnd >= 0) {
+      return `${text.slice(0, firstLineEnd)}\n\n${requiredLine}\n${text.slice(firstLineEnd + 1)}`;
+    }
+    return `${text}\n\n${requiredLine}`;
+  };
+  const ensureStoryboardRequiredTemporalWorldEffect = (prompt, storyboardPayload = {}, scene = {}) => {
+    let text = String(prompt || "").trim();
+    const storyboardScenes = Array.isArray(storyboardPayload?.scenes) ? storyboardPayload.scenes : [];
+    const selectedScene = storyboardScenes.find((candidate) => candidate?.id && candidate.id === scene?.id)
+      || storyboardScenes.find((candidate) => Number(candidate?.scene_number) === Number(scene?.scene_number))
+      || (storyboardScenes.length ? storyboardScenes[0] : scene);
+    const effect = selectedScene.temporal_world_effect || {};
+    const verbiage = String(selectedScene.temporal_world_effect_verbiage || effect.exact_verbiage || "").trim();
+    if (!text || !verbiage) return text;
+
+    // Canonicalize the exact contract at the end of the prompt. Gemma sometimes
+    // embeds or paraphrases it inside a shot; remove that copy and append the
+    // builder-owned contract once in its canonical form.
+    text = text.split(verbiage).join("").replace(/\n{3,}/g, "\n\n").trim();
+    text = `${text}\n\n${verbiage}`.trim();
+
+    return text.trim();
+  };
+
+  // The Scene Defaults (camera flow, motion speeds, video style, temporal / world effect, FX, performance, facial,
+  // consistency phrase) and the scene card for one scene, as the Storyboard sends them: the context for the LLM and
+  // the finisher that adds the managed FX and the exact temporal / world effect contract.
+  function sceneDefaultsPromptOptions(segment) {
+    const scenes = storyboardScenePayload();
+    const scene = scenes.find((item) => item.id === segment?.id);
+    if (!scene || typeof wizardStoryboardState !== "function") {
+      return { finalizePrompt: (prompt) => ensureBuilderManagedFx(prompt, segment) };
+    }
+    const storyboardPayload = storyboardGptPayload(wizardStoryboardState(scenes, { promptMode: "video" }), [scene]);
+    return {
+      contextOptions: {
+        storyboardContext: storyboardVideoExtraNotes(scene, storyboardPayload, segment),
+        storyboardPayload,
+        storyboardScene: scene,
+      },
+      finalizePrompt: (prompt) => ensureStoryboardRequiredTemporalWorldEffect(ensureBuilderManagedFx(prompt, scene), storyboardPayload, scene),
+    };
   }
 
   function openStoryboardBuilderFromProject(options = {}) {
@@ -373,154 +545,6 @@ export function createStoryboardBridge({
         .sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
       return segments.find((candidate) => candidate.id === scene.id)
         || segments.find((candidate, index) => Number(index + 1) === Number(scene.scene_number));
-    };
-    const storyboardVideoExtraNotes = (scene = {}, storyboardPayload = {}, canonicalSegment = null) => {
-      const selectedScene = Array.isArray(storyboardPayload?.scenes) && storyboardPayload.scenes.length ? storyboardPayload.scenes[0] : {};
-      const fullyCustomShortFilm = normalizeMiniMaxShortFilmPlanningMode(storyboardPayload?.short_film_planning_mode) === "fully_custom";
-      const storyLayer = selectedScene.story_layer || {};
-      const vocalStatus = selectedScene.vocal_status || {};
-      const ltxScene = normalizeProjectVideoEngine(selectedScene.project_video_engine || storyboardPayload?.project_video_engine || state.projectVideoEngine) === "ltx";
-      const startingShot = selectedScene.starting_shot && typeof selectedScene.starting_shot === "object"
-        ? selectedScene.starting_shot
-        : null;
-      const add = (parts, title, value) => {
-        const text = String(value || "").trim();
-        if (text) parts.push(`${title}:\n${text}`);
-      };
-      const parts = [];
-      if (ltxScene) {
-        const mappedSubjects = Array.isArray(selectedScene.subjects) ? selectedScene.subjects : [];
-        const singleSubjectText = mappedSubjects.length === 1
-          ? [mappedSubjects[0]?.name, mappedSubjects[0]?.description].filter(Boolean).join(" ").toLowerCase()
-          : "";
-        const singularPronouns = /\b(?:woman|girl|female|feminine|she|her)\b/.test(singleSubjectText)
-          ? "she/her"
-          : /\b(?:man|boy|male|masculine|he|him|his)\b/.test(singleSubjectText)
-            ? "he/him"
-            : "singular wording that repeats the mapped subject name when needed";
-        const vocalContract = vocalStatus.should_lip_sync === true
-          ? `This is a visible singing/lip-sync scene. The mapped performer visibly vocalizes ${JSON.stringify(String(vocalStatus.lyric_text || scene.lyrics || "").trim())} in sync with the audio using natural mouth, lip, cheek, and jaw movement. Never describe closed, still, sealed, relaxed-closed, or unmoving lips, and never call the performance silent or instrumental.`
-          : "This is not a visible singing/lip-sync scene. Do not say anyone sings, vocalizes, mouths words, or lip-syncs, and do not quote the lyric as performed dialogue.";
-        parts.push([
-          "AUTHORITATIVE LTX ONE-PASS OUTPUT CONTRACT:",
-          "Return one polished generation-ready prompt only. Do not print headings, field names, metadata labels, explanations, or this contract.",
-          String(selectedScene.cut_plan?.instruction || "").trim() || "Use one continuous shot unless the scene explicitly requests a cut.",
-          vocalContract,
-          mappedSubjects.length === 1
-            ? `This scene contains exactly one mapped subject. Use ${singularPronouns} consistently. Never use they/them/their or plural agreement for that person.`
-            : "Use pronouns and singular/plural agreement that exactly match the mapped subject count.",
-          "Integrate facial and performance guidance as natural visual prose; never output labels such as 'Facial performance direction:'.",
-          "The first sentence is the sole opening-shot statement. After it, continue directly with new subject action; never restate that the subject is first shown, already shown, framed, introduced, or seen in the same opening shot.",
-          "Describe each camera action exactly once. Do not repeat the opening framing, reveal, pull-back, or other camera direction.",
-          "Use natural possessive anatomy phrasing such as 'the woman's eye' or 'the subject's eye'; never write awkward constructions such as 'one eye of the woman'.",
-          "Write only complete grammatical sentences. Attach short descriptive additions with grammatical wording such as 'with subtle natural eye movement'; never append a bare comma fragment such as ', subtle natural eye movement.'.",
-          "Treat first-frame visual inventory as optional visible detail, not a checklist. Mention only anatomy, wardrobe, accessories, and props that are actually inside the current framing. An eye, face, or upper-body shot must not claim that shoes, heels, feet, lower-body clothing, or other off-frame details are visible.",
-        ].filter(Boolean).join("\n"));
-      }
-      if (fullyCustomShortFilm) {
-        parts.push("FULLY CUSTOM SHORT FILM SOURCE CONTRACT:\nUse only the populated manual scene-card fields below. Do not infer or invent missing dialogue, speakers, actions, story beats, shots, camera moves, settings, sound, or continuity.");
-      }
-      if (startingShot?.required) {
-        add(
-          parts,
-          "REQUIRED Storyboard opening shot",
-          startingShot.instruction || `The video must explicitly begin with a ${startingShot.selected_starting_shot || scene.shot_type}. Begin all camera motion from that framing.`,
-        );
-      }
-      add(parts, "Storyboard scene story beat", storyLayer.scene_story_beat || scene.story_beat);
-      add(parts, "REQUIRED Storyboard video style", selectedScene.video_style);
-      add(parts, "MANDATORY exact Storyboard video style verbiage — copy word-for-word", selectedScene.video_style_verbiage);
-      add(parts, "MANDATORY exact temporal / world effect verbiage — copy word-for-word", selectedScene.temporal_world_effect_verbiage);
-      if (!ltxScene) {
-        const canonicalCutPlan = canonicalSegment ? miniMaxH3CutPlanForSegment(canonicalSegment) : null;
-        add(parts, "MANDATORY Storyboard editing / cut plan", canonicalCutPlan?.instruction || selectedScene.cut_plan?.instruction);
-      }
-      const customMotionSummary = String(selectedScene.motion_summary || scene.motion_summary || scene.video_notes || "").trim();
-      add(parts, "Storyboard motion/video summary", customMotionSummary);
-      if (!customMotionSummary) add(parts, "Storyboard camera motion", selectedScene.camera_motion || scene.camera_motion);
-      if (!fullyCustomShortFilm) add(parts, "REQUIRED Storyboard camera-flow framing", selectedScene.camera_flow_guidance);
-      add(parts, "Storyboard camera motion speed guidance", selectedScene.camera_motion_speed_guidance || selectedScene.camera_guidance?.camera_motion_speed_guidance);
-      add(parts, "Storyboard character motion guidance", selectedScene.character_motion_guidance || scene.character_motion);
-      add(parts, "Storyboard performance direction", selectedScene.performance_direction || scene.performance_style);
-      add(parts, "Storyboard facial performance direction", selectedScene.facial_performance_direction || scene.facial_performance_custom || scene.facial_performance);
-      add(parts, "Storyboard lyric section", vocalStatus.lyric_section || scene.lyric_section);
-      add(parts, "Storyboard first-frame visual inventory", selectedScene.first_frame_visual_inventory?.text || "");
-      add(parts, "Exact manual audio / sound direction", selectedScene.audio_direction || scene.audio_direction);
-      add(parts, "Exact manual continuity requirements", selectedScene.continuity || scene.continuity || scene.continuity_direction);
-      parts.push(`${STORYBOARD_SCENE_CARD_CONTEXT_INSTRUCTION}\nComplete scene_card:\n${JSON.stringify(storyboardSceneCardContext(scene), null, 2)}`);
-      return parts.join("\n\n");
-    };
-    const ensureStoryboardRequiredStartingShot = (prompt, segment, scene = {}, storyboardPayload = {}) => {
-      const text = String(prompt || "").trim();
-      const selectedScene = Array.isArray(storyboardPayload?.scenes) && storyboardPayload.scenes.length ? storyboardPayload.scenes[0] : {};
-      const requirement = selectedScene.starting_shot && typeof selectedScene.starting_shot === "object"
-        ? selectedScene.starting_shot
-        : null;
-      const shot = String(requirement?.selected_starting_shot || "").trim();
-      if (!text || !requirement?.required || !shot) return text;
-      const visibleSubject = Array.isArray(selectedScene.visible_subjects)
-        ? String(selectedScene.visible_subjects.find((value) => String(value || "").trim()) || "").trim()
-        : "";
-      const subject = visibleSubject || String(scene.subjects || scene.subject || "").split(/[,;\n]+/)[0].trim() || "the subject";
-      const shotKey = shot.toLowerCase().replace(/[\s_-]+/g, " ").trim();
-      let sentence = "";
-      if (shotKey === "eyes shot") sentence = `The video begins with an extreme close-up of ${subject}'s eyes.`;
-      else if (shotKey === "mouth shot") sentence = `The video begins with an extreme close-up of ${subject}'s mouth.`;
-      else if (shotKey === "hands shot") sentence = `The video begins with a close-up of ${subject}'s hands.`;
-      else if (shotKey === "feet shot") sentence = `The video begins with a close-up of ${subject}'s feet.`;
-      else sentence = `The video begins with ${/^[aeiou]/i.test(shot) ? "an" : "a"} ${shot} of ${subject === "the subject" ? "the scene" : subject}.`;
-      const opening = text.slice(0, 500);
-      const hasOpeningMarker = /\b(?:the\s+video\s+)?(?:begins?|starts?|opens?)\s+with\b|\b(?:opening|first)\s+(?:shot|frame)\b/i.test(opening);
-      const shotWords = shotKey.split(/[^a-z0-9]+/).filter((word) => word && word !== "shot");
-      const hasRequiredFraming = shotKey === "eyes shot"
-        ? /\beyes?\b/i.test(opening)
-        : shotWords.length > 0 && shotWords.every((word) => new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(opening));
-      if (hasOpeningMarker && hasRequiredFraming) return text;
-      if (currentVideoMode() === "id_lora" && /\[VISUAL\]\s*:?/i.test(text)) {
-        return text.replace(/(\[VISUAL\]\s*:?\s*)/i, `$1${sentence} `);
-      }
-      const ensured = `${sentence} ${text}`.trim();
-      return applyMappedTriggerPhrases(
-        applyTriggerPhrase(ensured, videoTriggerPhraseForSegment(segment)),
-        segment,
-        { ensureTransitionLast: true },
-      );
-    };
-    const ensureStoryboardRequiredVideoStyle = (prompt, storyboardPayload = {}) => {
-      const text = String(prompt || "").trim();
-      const selectedScene = Array.isArray(storyboardPayload?.scenes) && storyboardPayload.scenes.length
-        ? storyboardPayload.scenes[0]
-        : {};
-      const verbiage = String(selectedScene.video_style_verbiage || "").trim();
-      if (!text || !verbiage || text.includes(verbiage)) return text;
-      const requiredLine = verbiage;
-      const firstParagraphEnd = text.indexOf("\n\n");
-      if (firstParagraphEnd >= 0) {
-        return `${text.slice(0, firstParagraphEnd)}\n\n${requiredLine}${text.slice(firstParagraphEnd)}`;
-      }
-      const firstLineEnd = text.indexOf("\n");
-      if (firstLineEnd >= 0) {
-        return `${text.slice(0, firstLineEnd)}\n\n${requiredLine}\n${text.slice(firstLineEnd + 1)}`;
-      }
-      return `${text}\n\n${requiredLine}`;
-    };
-    const ensureStoryboardRequiredTemporalWorldEffect = (prompt, storyboardPayload = {}, scene = {}) => {
-      let text = String(prompt || "").trim();
-      const storyboardScenes = Array.isArray(storyboardPayload?.scenes) ? storyboardPayload.scenes : [];
-      const selectedScene = storyboardScenes.find((candidate) => candidate?.id && candidate.id === scene?.id)
-        || storyboardScenes.find((candidate) => Number(candidate?.scene_number) === Number(scene?.scene_number))
-        || (storyboardScenes.length ? storyboardScenes[0] : scene);
-      const effect = selectedScene.temporal_world_effect || {};
-      const verbiage = String(selectedScene.temporal_world_effect_verbiage || effect.exact_verbiage || "").trim();
-      if (!text || !verbiage) return text;
-
-      // Canonicalize the exact contract at the end of the prompt. Gemma sometimes
-      // embeds or paraphrases it inside a shot; remove that copy and append the
-      // builder-owned contract once in its canonical form.
-      text = text.split(verbiage).join("").replace(/\n{3,}/g, "\n\n").trim();
-      text = `${text}\n\n${verbiage}`.trim();
-
-      return text.trim();
     };
     const normalizeStoryboardInputAudioVocalTimeline = (prompt, segment) => {
       let text = String(prompt || "").trim();
@@ -1106,5 +1130,5 @@ export function createStoryboardBridge({
     }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
   }
 
-  return { openStoryboardBuilderFromProject };
+  return { openStoryboardBuilderFromProject, sceneDefaultsPromptOptions };
 }

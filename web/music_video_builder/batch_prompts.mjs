@@ -27,6 +27,7 @@ import { batchEmptyMessage, batchScopeLabel, normalizeBatchScope } from "./timel
 
 
 export function createBatchPrompts({
+  sceneDefaultsPromptOptions = null,
   activeProjectFolderForSave, activeSegment, allEditableSegments, assembleMiniMaxH3PromptFromCreative,
   assertBatchNotStopped, assertMiniMaxH3ReferenceDescriptionsReady, assertValidMiniMaxH3FinalPrompt,
   autoSaveSessionQuiet, batchTargetItems, buildI2VPromptRequestForSegment, convertLtxPromptsToMiniMaxButton,
@@ -321,10 +322,13 @@ export function createBatchPrompts({
       progress.set(`Autosaving this scene before LLM prompting...`, 8);
       await autoSaveSessionQuiet(`MiniMax ${modeLabel} prompt`);
       progress.set(`Running ${visionImages.length ? "vision-assisted" : "text-only"} MiniMax prompt direction...\n${gemmaRunnerLine({ vision: Boolean(visionImages.length) })}`, 42);
+      // Scene Defaults (camera flow, speeds, style, temporal / world effect, FX, performance) reach this prompt too.
+      const sceneDefaults = sceneDefaultsPromptOptions?.(segment) || {};
       const data = await runMiniMaxH3PromptGeneration(segment, mode, {
         projectFolder,
         unloadAfter: true,
-        finalizePrompt: (prompt) => ensureBuilderManagedFx(prompt, segment),
+        ...(sceneDefaults.contextOptions ? { contextOptions: sceneDefaults.contextOptions } : {}),
+        finalizePrompt: sceneDefaults.finalizePrompt || ((prompt) => ensureBuilderManagedFx(prompt, segment)),
         emptyPromptMessage: `The LLM returned an empty MiniMax ${modeLabel} prompt.`,
       });
       pushHistory();

@@ -1482,7 +1482,7 @@ export function openBuilder(node, options = {}) {
     videoTriggerPhraseForSegment: (...args) => videoTriggerPhraseForSegment(...args),
   });
 
-  const { openStoryboardBuilderFromProject } = createStoryboardBridge({
+  const { openStoryboardBuilderFromProject, sceneDefaultsPromptOptions } = createStoryboardBridge({
     autoSaveSessionQuiet, buildI2VPromptRequestForSegment, finalizeVideoPromptForSegment, gemmaRunnerLine,
     getI2VImageReference, i2vMmprojSelect, llmApiVisionModelSelected, miniMaxH3ModeForSegment,
     miniMaxH3SceneImageUseForSegment, miniMaxH3SettingsForSegment, mmprojSelect, projectInput, pushHistory,
@@ -1519,6 +1519,7 @@ export function openBuilder(node, options = {}) {
     segmentImageSource: (...args) => segmentImageSource(...args),
     effectiveVideoPerformanceModeForSegment: (...args) => effectiveVideoPerformanceModeForSegment(...args),
     videoTriggerPhraseForSegment: (...args) => videoTriggerPhraseForSegment(...args),
+    wizardStoryboardState: (...args) => wizardStoryboardState(...args),
   });
 
   const sceneAudioSettings = createSceneAudioSettings({
@@ -2323,6 +2324,7 @@ export function openBuilder(node, options = {}) {
     videoGemmaNotesForSegment, videoModeDisplayLabel, videoVisionReferenceEnabled, wizardStoryboardState,
     zImageAllButton,
     miniMaxH3FrameContinuityPromptEnabled: (...args) => miniMaxH3FrameContinuityPromptEnabled(...args),
+    sceneDefaultsPromptOptions: (...args) => sceneDefaultsPromptOptions(...args),
   });
 
   const {
@@ -2484,6 +2486,7 @@ export function openBuilder(node, options = {}) {
     saveGemmaJunkDebug, saveSession, sceneDisplayName, sceneReferenceMapArray, state,
     syncI2VVideoSettingsPanel, syncInspector, syncProjectVideoEngineUI, syncVideoModePanel,
     syncVideoTypeControl, transcribeExistingScenesWithOptions,
+    sceneDefaultsPromptOptions: (...args) => sceneDefaultsPromptOptions(...args),
   });
 
   const { createSceneBeats, createVideoPrompts, openWizardBetaFromBuilder, openWizardFromBuilder } = createWizardBridge({
