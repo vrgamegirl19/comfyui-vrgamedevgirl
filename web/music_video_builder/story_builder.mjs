@@ -1,7 +1,7 @@
 // Story Builder: the Story Mode workspace. One window with tabs in the order a story music video is made
 // (Song, Cast, Story, Acts, Scenes, Places, Beats & Prompts). It reads and writes the same session state as the
 // Video Builder and calls /vrgdg/storyboard/story_mode/{action} for the LLM steps.
-import { postJson } from "./comfy_api.mjs";
+import { audioUrl, postJson } from "./comfy_api.mjs";
 import { escapeHtml, makeButton, makeField, makeInput, makeSelect, normalizeProjectVideoEngine, toast } from "./controls.mjs";
 import { normalizeFluxReferenceBuilder } from "./reference_data.mjs";
 import { mergeActs, moveActBorder, splitAct, validateStoryActs } from "./story_acts_data.mjs";
@@ -406,6 +406,50 @@ export function createStoryBuilder({
     function selectScene(id) {
       selectedSceneId = id;
       renderSide();
+    }
+
+    // Plays one scene's stretch of the project song, so notes can be written while listening. One player for the
+    // window: starting a scene stops the one playing. Loop repeats the scene until stopped.
+    const sceneAudio = { audio: null, playingId: "", loop: false, button: null, label: "" };
+    function stopSceneAudio() {
+      sceneAudio.audio?.pause();
+      if (sceneAudio.button) sceneAudio.button.textContent = sceneAudio.label;
+      sceneAudio.playingId = "";
+      sceneAudio.button = null;
+    }
+    function sceneAudioButton(segment) {
+      const label = "▶ Play Scene Audio";
+      const button = makeButton(label);
+      const songPath = String(state.audioPath || "").trim();
+      button.disabled = !songPath;
+      if (!songPath) button.title = "The project has no song loaded.";
+      button.onclick = () => {
+        const wasPlaying = sceneAudio.playingId === segment.id;
+        stopSceneAudio();
+        if (wasPlaying) return;
+        if (!sceneAudio.audio) {
+          sceneAudio.audio = document.createElement("audio");
+          sceneAudio.audio.preload = "auto";
+          sceneAudio.audio.src = audioUrl(songPath);
+        }
+        const audio = sceneAudio.audio;
+        const start = Math.max(0, Number(segment.start) || 0);
+        const end = Math.max(start + 0.1, Number(segment.end) || start + 0.1);
+        Object.assign(sceneAudio, { playingId: segment.id, button, label });
+        audio.ontimeupdate = () => {
+          if (sceneAudio.playingId !== segment.id) return;
+          button.textContent = `■ Stop ${clock(Math.max(0, audio.currentTime - start))} / ${clock(end - start)}`;
+          if (audio.currentTime < end - 0.02) return;
+          if (sceneAudio.loop) audio.currentTime = start;
+          else stopSceneAudio();
+        };
+        audio.currentTime = start;
+        Promise.resolve(audio.play()).catch((error) => {
+          stopSceneAudio();
+          toast(`Could not play the song: ${String(error?.message || error)}`, true);
+        });
+      };
+      return button;
     }
 
     // The hosted tool (Reference Builder, or the Storyboard's Scene Defaults, which opens asynchronously) is saved
@@ -945,7 +989,13 @@ export function createStoryBuilder({
       };
       // Save sits at the top with the plan buttons, so it is reachable without scrolling past every scene.
       const topActions = row(planAll, resetPlan);
-      top.append(topActions);
+      const loopLabel = el("label", "display:flex;gap:6px;font-size:12px;color:#e2e8f0;align-items:center;cursor:pointer;");
+      const loop = document.createElement("input");
+      loop.type = "checkbox";
+      loop.checked = sceneAudio.loop;
+      loop.onchange = () => { sceneAudio.loop = loop.checked; };
+      loopLabel.append(loop, document.createTextNode("Loop scene audio while writing notes"));
+      top.append(topActions, loopLabel);
       content.append(top);
 
       // Acts whose scenes were planned before the act, its chapter, the story or the cast changed.
@@ -1056,7 +1106,8 @@ export function createStoryBuilder({
         const info = el("div", "font-size:12px;color:#94a3b8;display:flex;flex-direction:column;gap:4px;");
         const select = makeButton(`Scene ${index + 1}`);
         select.onclick = () => selectScene(segment.id);
-        info.append(select, el("div", "", `${clock(segment.start)}-${clock(segment.end)}`), el("div", "color:#cbd5e1;", segment.lyric_text || "[instrumental]"));
+        info.append(select, sceneAudioButton(segment), el("div", "", `${clock(segment.start)}-${clock(segment.end)}`),
+          el("div", "color:#cbd5e1;", segment.lyric_text || "[instrumental]"));
         const slice = textarea(entry.story_slice, "What happens in this scene.", 50);
         const spot = makeInput(entry.spot);
         spot.placeholder = "Spot, e.g. Kitchen";
@@ -1411,6 +1462,7 @@ export function createStoryBuilder({
     };
 
     async function show(tabId) {
+      stopSceneAudio();
       await leaveHostedTab();
       activeTab = renderers[tabId] ? tabId : "song";
       content.textContent = "";
@@ -1426,6 +1478,7 @@ export function createStoryBuilder({
     }
 
     async function closeStoryBuilder() {
+      stopSceneAudio();
       await leaveHostedTab();
       backdrop.remove();
       open = null;

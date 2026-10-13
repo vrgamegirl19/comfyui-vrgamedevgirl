@@ -316,7 +316,8 @@ test('continued scenes become masked continuations, can be ticked by hand and ca
   assert.ok(document.body.textContent.includes('4 scenes continue from the scene before'));
 
   // Untick scene 2 by hand, give scene 3 a direction.
-  const ticks = document.body.all().filter((node) => node.tagName === 'INPUT' && node.type === 'checkbox');
+  const ticks = document.body.all().filter((node) => node.tagName === 'INPUT' && node.type === 'checkbox'
+    && node.parent?.textContent.includes('Continue from'));
   assert.equal(ticks.length, 5, 'every scene but the first can continue');
   ticks[0].checked = false;
   ticks[0].onchange();
@@ -472,4 +473,46 @@ test('planning all scenes runs act by act and says which act and scenes it is on
   }
   findButton('Close').onclick();
   await tick();
+});
+
+test('each scene in the Scenes tab plays its part of the song, and stops at its end', async () => {
+  const { state, builder } = setup();
+  state.audioPath = 'C:/song.mp3';
+  const played = [];
+  let lastAudio = null;
+  FakeElement.prototype.play = function play() {
+    lastAudio = this;
+    played.push(this.currentTime);
+    this.paused = false;
+    return Promise.resolve();
+  };
+  FakeElement.prototype.pause = function pause() { this.paused = true; };
+  try {
+    builder.openStoryBuilder({ tab: 'scenes' });
+    await tick();
+    const plays = document.body.all().filter((node) => node.tagName === 'BUTTON' && node.textContent === '▶ Play Scene Audio');
+    assert.equal(plays.length, 6, 'one player button per scene');
+    plays[1].onclick();
+    assert.deepEqual(played, [5], 'scene 2 starts at its own start');
+    assert.equal(lastAudio.src.includes(encodeURIComponent('C:/song.mp3')), true);
+    // At the scene's end (10s) the player stops by itself.
+    lastAudio.currentTime = 7;
+    lastAudio.ontimeupdate();
+    assert.equal(plays[1].textContent, '■ Stop 0:02.0 / 0:05.0');
+    lastAudio.currentTime = 10;
+    lastAudio.ontimeupdate();
+    assert.equal(plays[1].textContent, '▶ Play Scene Audio');
+    assert.equal(lastAudio.paused, true);
+    plays[1].onclick();
+    plays[2].onclick();
+    assert.equal(plays[1].textContent, '▶ Play Scene Audio', 'starting scene 3 stops scene 2');
+    assert.deepEqual(played, [5, 5, 10]);
+    plays[2].onclick();
+    assert.equal(plays[2].textContent, '▶ Play Scene Audio', 'a second click stops it');
+    findButton('Close').onclick();
+    await tick();
+  } finally {
+    delete FakeElement.prototype.play;
+    delete FakeElement.prototype.pause;
+  }
 });
