@@ -392,6 +392,25 @@ export function createStoryBuilder({
     return done;
   }
 
+  // Writes new beats, then new video prompts, for these scenes from their current plan, so 7. Beats & Prompts shows the change.
+  // Kept while the page is open: whether planning in the Scenes tab also rewrites those scenes' beats and prompts.
+  let writeAfterPlan = true;
+  async function writeBeatsAndPrompts(targets, { beats = true, prompts = true } = {}) {
+    if (!targets.length) return;
+    if (beats) {
+      await createSceneBeats({ overwrite: true, sceneIds: targets });
+      await saveLayer({}, "story builder beats redone", { beats: targets });
+    }
+    if (!prompts) return;
+    const withBeat = targets.filter((id) => String(segments().find((segment) => segment.id === id)?.story_beat || "").trim());
+    const noImage = referenceImagesRequired() ? sceneNumbers(targets).filter((number) => imageGaps().scenes.includes(number)) : [];
+    if (noImage.length) toast("No video prompt was written for " + sceneRangeText(noImage) + ": it has no character or location image, and Reference to Video needs one.", true);
+    else if (withBeat.length) {
+      await createVideoPrompts({ sceneIds: withBeat, storyMode: true });
+      await saveLayer({}, "story builder prompts redone", { prompts: withBeat });
+    }
+  }
+
   // The Replan window of an act (a Chapter in the tabs): where it happens and what must happen, then the whole act's
   // scenes or only the scenes picked. Both texts are kept on the act and steer the plan and every beat in it.
   function openReplanDialog(act, onDone = () => {}) {
@@ -462,18 +481,7 @@ export function createStoryBuilder({
       if (done && wantSummary) await rewriteActDescription(act);
       // The scenes just replanned get new beats and prompts from their new plan, so Beats & Prompts shows the rework.
       const targets = ids.length ? ids : act.scene_ids;
-      if (done && wantBeats) {
-        await createSceneBeats({ overwrite: true, sceneIds: targets });
-        await saveLayer({}, "story builder beats redone", { beats: targets });
-      }
-      if (done && wantPrompts) {
-        const noImage = referenceImagesRequired() ? sceneNumbers(targets).filter((number) => imageGaps().scenes.includes(number)) : [];
-        if (noImage.length) toast("No video prompt was written for " + sceneRangeText(noImage) + ": it has no character or location image, and Reference to Video needs one.", true);
-        else if (targets.some((id) => String(segments().find((segment) => segment.id === id)?.story_beat || "").trim())) {
-          await createVideoPrompts({ sceneIds: targets.filter((id) => String(segments().find((segment) => segment.id === id)?.story_beat || "").trim()), storyMode: true });
-          await saveLayer({}, "story builder prompts redone", { prompts: targets });
-        }
-      }
+      if (done) await writeBeatsAndPrompts(targets, { beats: wantBeats, prompts: wantPrompts });
       onDone(done);
     };
     box.append(row(go, cancel));
@@ -1116,7 +1124,8 @@ export function createStoryBuilder({
       const planAll = makeButton(Object.keys(plan).length ? "Replan All Scenes" : "Plan All Scenes", "primary");
       planAll.disabled = Boolean(blocked);
       planAll.onclick = async () => {
-        await planActs(acts, acts, "Planning the scenes");
+        const done = await planActs(acts, acts, "Planning the scenes");
+        if (done && writeAfterPlan) await writeBeatsAndPrompts(segments().map((segment) => segment.id));
         show("scenes");
       };
       const resetPlan = makeButton("Reset Scene Plan");
@@ -1138,7 +1147,13 @@ export function createStoryBuilder({
       loop.checked = sceneAudio.loop;
       loop.onchange = () => { sceneAudio.loop = loop.checked; };
       loopLabel.append(loop, document.createTextNode("Loop scene audio while writing notes"));
-      top.append(topActions, loopLabel);
+      const writeLabel = el("label", "display:flex;gap:6px;font-size:12px;color:#e2e8f0;align-items:center;cursor:pointer;");
+      const writeBox = document.createElement("input");
+      writeBox.type = "checkbox";
+      writeBox.checked = writeAfterPlan;
+      writeBox.onchange = () => { writeAfterPlan = writeBox.checked; };
+      writeLabel.append(writeBox, document.createTextNode("After planning or updating a scene, also write its new beat and video prompt (shown in 7. Beats & Prompts)"));
+      top.append(topActions, loopLabel, writeLabel);
       content.append(top);
 
       // Acts whose scenes were planned before the act, its chapter, the story or the cast changed.
@@ -1336,7 +1351,16 @@ export function createStoryBuilder({
           update.title = "Keeps this scene's characters and your direction, rewrites the scene to match, and adapts its act and chapter. Scenes that may no longer fit are named so you can replan them.";
           update.disabled = Boolean(blocked);
           update.onclick = () => reviseFromScene?.(segment, index + 1);
-          story.append(row(update));
+          const redo = makeButton("Save And Redo This Scene's Beat And Prompt");
+          redo.title = "Saves this scene's changes (characters, clothing and props, your direction), then writes only this scene's new beat and video prompt.";
+          redo.disabled = Boolean(blocked);
+          redo.onclick = async () => {
+            pushHistory();
+            await savePlanEdits("story builder scene saved");
+            await writeBeatsAndPrompts([segment.id]);
+            show("scenes");
+          };
+          story.append(row(update, redo));
         }
         const director = textarea(segment.timeline_note, "Director note: how you want this scene made", 40);
         const video = textarea(segment.i2v_notes, "Video note: motion and action", 40);
@@ -1466,6 +1490,7 @@ export function createStoryBuilder({
         toast(named.length
           ? `Story updated from Scene ${number}. These scenes may no longer fit: ${named.join("; ")}. Replan them when you are ready.`
           : `Story updated from Scene ${number}. The rest of the act still fits.`);
+        if (writeAfterPlan) await writeBeatsAndPrompts([segment.id]);
         show("scenes");
       };
     }

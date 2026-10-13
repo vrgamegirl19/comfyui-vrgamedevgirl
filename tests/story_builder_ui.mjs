@@ -553,7 +553,7 @@ test('planning all scenes runs act by act and says which act and scenes it is on
 });
 
 test('Update Story From This Scene keeps the change and adapts the act', async () => {
-  const { state, builder } = setup();
+  const { state, calls, builder } = setup();
   state.fluxReferenceBuilder.subjects.push({ id: 'joe', name: 'Joe', reference_type: 'character', image: {} });
   const bodies = [];
   globalThis.fakeComfyApi.fetchApi = async (url, options) => {
@@ -584,6 +584,11 @@ test('Update Story From This Scene keeps the change and adapts the act', async (
     assert.deepEqual([sentEntry.cast_ids, sentEntry.cast_source, sentEntry.user_note], [['joe'], 'manual', 'Joe arrives with flowers.'],
       'your change is saved before the LLM step');
     assert.equal(state.builderStoryLayer.story_acts[0].summary, 'Packing, until Joe arrives.');
+    assert.deepEqual(calls.beats, [{ overwrite: true, sceneIds: ['seg_2'] }], 'the updated scene gets its new beat for 7. Beats & Prompts');
+    const redo = document.body.all().filter((node) => node.tagName === 'BUTTON' && node.textContent.startsWith('Save And Redo This Scene'));
+    await redo[2].onclick();
+    await tick();
+    assert.deepEqual(calls.beats.at(-1), { overwrite: true, sceneIds: ['seg_3'] }, 'the per-scene button redoes only that scene');
     assert.deepEqual(state.fluxReferenceBuilder.subject_scene_map.seg_2, ['joe']);
     const text = document.body.textContent;
     assert.ok(!text.includes('out of date'), 'nothing is shown as out of date');
