@@ -259,6 +259,7 @@ def draft_story_book(payload):
         previous_book=_clean_scene_text(payload.get("previous_book") or "", 8000),
         seed=_clean_scene_text(payload.get("seed") or "", 80),
         template=story_template(payload, "story_mode_book"),
+        act_count=layer.get("story_act_count") or 0,
     )
     text, run_info = _run(payload, instruction, label="Story Mode Book", max_new_tokens=6000)
     book, names = parse_story_book_text(text)
@@ -310,6 +311,9 @@ def rewrite_story_chapter(payload):
     new_chapter["id"] = old_chapter["id"]
     if not new_chapter["setting_id"]:
         new_chapter["setting_id"] = old_chapter["setting_id"]
+    # The act keeps its purpose and presence grid.
+    new_chapter["purpose"] = old_chapter.get("purpose", "")
+    new_chapter["presence"] = old_chapter.get("presence", {})
     book["chapters"][index] = new_chapter
     known = {item.get("id"): item.get("name") for item in settings if isinstance(item, dict)}
     names = {**known, **names}

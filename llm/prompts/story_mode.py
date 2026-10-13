@@ -10,15 +10,14 @@ LYRICS_ARE_MOOD_ONLY = (
     "Never take a story event, a character, an object or a place from the lyrics."
 )
 
+# The story is written in Acts (big parts of the story). Chapters, each in one setting, are made from them later.
 _BOOK_FORMAT = (
     "Title: <story title>\n"
     "Premise: <one or two sentences>\n\n"
-    "Chapter 1: <chapter title>\n"
-    "Setting: <the one general setting of this chapter, 1-4 words, e.g. Home, The Night Train, Grandmother's Farm>\n\n"
+    "Act 1: <act title>\n\n"
     "<paragraph>\n\n"
     "<paragraph>\n\n"
-    "Chapter 2: <chapter title>\n"
-    "Setting: <setting>\n\n"
+    "Act 2: <act title>\n\n"
     "<paragraph>"
 )
 
@@ -38,14 +37,15 @@ def render_story_template(template, tokens):
 STORY_BOOK_TEMPLATE = (
     "You are a novelist writing the story that a music video will tell, so a director can read it and see the "
     "video play out with the song.\n\n"
-    "Write a short book: a title, a premise, and chapters of plain prose. It must read like a book, not a shot "
+    "Write a short book: a title, a premise, and acts of plain prose. It must read like a book, not a shot "
     "list or a song breakdown, and it must unfold in step with the song.\n\n"
     "How it is told: {{medium_rule}}\n\n"
     "Rules:\n"
-    "- About {{chapters}} chapters and about {{paragraphs}} paragraphs in total. The video has {{scene_count}} scenes "
+    "- Exactly {{acts}} acts and about {{paragraphs}} paragraphs in total. The video has {{scene_count}} scenes "
     "and runs {{song_seconds}} seconds, so the story must fit that length.\n"
-    "- Every chapter happens in ONE general setting, named on its Setting line. A new setting starts a new chapter. "
-    "Inside a setting the story can move between specific spots (kitchen, bedroom, porch).\n"
+    "- An act is one big part of the story (the setup, the turn, the climax, the ending). It goes deep into its part "
+    "of the story and its characters, and it can move between places. Name each place plainly in the prose (the "
+    "kitchen, the night train), because each act is later split into chapters that each happen in one place.\n"
     "- Each paragraph is 2-5 sentences of things that visibly happen: actions, choices, meetings, discoveries.\n"
     "- {{cast_rule}}\n"
     "- Third person. Present or past tense, but keep the same tense throughout.\n"
@@ -54,16 +54,17 @@ STORY_BOOK_TEMPLATE = (
     "- The story has a beginning, a turn and an ending.\n"
     "- Follow the song map from start to finish: the story moves in the same order and at the same pace as the "
     "song. Quiet or instrumental parts are quiet moments, rising parts build, the chorus and the loudest parts are "
-    "the story's peaks, and the last chapter ends when the song ends. Do not name the sections in the book.\n"
+    "the story's peaks, and the last act ends when the song ends. Do not name the sections in the book.\n"
     "- {{lyric_guidance}}\n"
 )
 
 STORY_CHAPTER_TEMPLATE = (
-    "You are a novelist revising one chapter of a story that a music video will tell.\n\n"
-    "Rewrite chapter {{chapter_number}} following the user's direction. Keep it consistent with the chapters "
-    "around it, keep its setting unless the direction says otherwise, and keep the cast names.\n\n"
+    "You are a novelist revising one act of a story that a music video will tell.\n\n"
+    "Rewrite act {{chapter_number}} following the user's direction. Keep it consistent with the acts "
+    "around it, keep its places unless the direction says otherwise, and keep the cast names.\n\n"
     "Rules:\n"
-    "- Plain prose paragraphs of things that visibly happen. No camera or song-section words.\n"
+    "- Plain prose paragraphs of things that visibly happen. No camera or song-section words. Name each place "
+    "plainly in the prose.\n"
     "- {{cast_rule}}\n"
     "- {{medium_rule}}\n"
     "- {{lyric_guidance}}\n"
@@ -90,12 +91,13 @@ def story_mode_lyric_guidance(strength):
     return f"Lyric Story Strength: {value}/10 (emotion only). {guidance} {LYRICS_ARE_MOOD_ONLY}"
 
 
-def story_book_size(scene_count):
-    """(chapters, paragraphs) a book should have for a timeline of ``scene_count`` scenes."""
+def story_book_size(scene_count, act_count=0):
+    """(acts, paragraphs) a book should have for a timeline of ``scene_count`` scenes. ``act_count`` is the user's
+    choice; 0 lets the scene count decide (3-5 acts)."""
     count = max(1, int(scene_count or 1))
-    chapters = max(3, min(7, round(count / 8) or 3))
-    paragraphs = max(chapters, round(count / 2.5))
-    return chapters, paragraphs
+    acts = int(act_count or 0) or max(3, min(5, round(count / 10) or 3))
+    paragraphs = max(acts * 2, round(count / 2.5))
+    return acts, paragraphs
 
 
 def story_cast_rule(cast_text, allow_new_cast):
@@ -139,12 +141,13 @@ def story_medium_rule(video_style, lead_name=""):
 
 def story_book_instruction(*, premise, cast_text, tone_notes, scene_count, song_seconds, lyric_guidance, lyrics,
                            previous_book, seed, allow_new_cast=False, video_style="music_video", lead_name="",
-                           template=None):
-    """Draft the whole story book from the user's premise."""
-    chapters, paragraphs = story_book_size(scene_count)
+                           template=None, act_count=0):
+    """Draft the whole story book from the user's premise, in ``act_count`` acts (0 lets the scene count decide)."""
+    acts, paragraphs = story_book_size(scene_count, act_count)
     return (
         render_story_template(template or STORY_BOOK_TEMPLATE, {
-            "medium_rule": story_medium_rule(video_style, lead_name), "chapters": chapters, "paragraphs": paragraphs,
+            "medium_rule": story_medium_rule(video_style, lead_name), "acts": acts, "chapters": acts,
+            "paragraphs": paragraphs,
             "scene_count": scene_count, "song_seconds": f"{song_seconds:.0f}",
             "cast_rule": story_cast_rule(cast_text, allow_new_cast), "lyric_guidance": lyric_guidance,
         })
@@ -169,14 +172,13 @@ def story_chapter_rewrite_instruction(*, book_text, chapter_number, chapter_text
             "chapter_number": chapter_number, "cast_rule": story_cast_rule(cast_text, allow_new_cast),
             "medium_rule": story_medium_rule(video_style, lead_name), "lyric_guidance": lyric_guidance,
         })
-        + "- Output only the chapter in exactly this format:\n\n"
-        f"Chapter {chapter_number}: <chapter title>\n"
-        "Setting: <setting>\n\n"
+        + "- Output only the act in exactly this format:\n\n"
+        f"Act {chapter_number}: <act title>\n\n"
         "<paragraph>\n\n"
         "<paragraph>\n\n"
-        f"User direction:\n{direction or 'Improve and expand this chapter.'}\n\n"
+        f"User direction:\n{direction or 'Improve and expand this act.'}\n\n"
         f"Cast:\n{cast_text or '[none]'}\n\n"
-        f"Chapter to rewrite:\n{chapter_text}\n\n"
+        f"Act to rewrite:\n{chapter_text}\n\n"
         f"Whole book for context:\n{book_text}"
     )
 
