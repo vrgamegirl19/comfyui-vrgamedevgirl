@@ -89,7 +89,7 @@ import {
   wireZEnhanceControls,
 } from "./image_panels.mjs";
 import { createBrowserAi, wireBrowserAiPanel } from "./browser_ai.mjs";
-import { buildTimelineView, createTimelineView } from "./timeline_view.mjs";
+import { buildTimelineView, createTimelineView, savedSceneDragLock } from "./timeline_view.mjs";
 import { createAudioClipEditor, prepareEditedAudio } from "./audio_clip_editor.mjs";
 import { createSceneAudioSettings } from "./scene_audio_settings.mjs";
 import { timelineDeleteAvailability } from "./timeline_tool_windows.mjs";
@@ -873,7 +873,7 @@ export function openBuilder(node, options = {}) {
     deleteAllTimelineVideosButton, deleteSegmentButton, freezeTimingControl, globalAudioMuteButton, addAudioClipButton,
     globalScrub, globalScrubTime, idLoraTrimModeButton, lyricNoteButton, emotionTagButton, locationThumbnailButton, multiSelectButton,
     multiSelectHintButton, overlayTrackHintButton, overlayTrackToggleButton, playButton, playhead, redoButton,
-    latentContinuationOffAllButton, unlockAllScenesButton, refreshDeleteActions, sceneNoteButton, segmentLayer, setInButton, setOutButton, snapSceneEdgeButton,
+    latentContinuationOffAllButton, unlockAllScenesButton, refreshDeleteActions, sceneDragLockButton, sceneNoteButton, segmentLayer, setInButton, setOutButton, snapSceneEdgeButton,
     snapToBeatsControl, splitSceneButton, stopButton, timeline, timelineCanvas, timelineInfo,
     timelineRangeInfo, timelineResizeHandle, timelineViewport, undoButton,
     videoNoteButton, waveformModeSelect, zoomInButton, zoomOutButton,
@@ -1005,6 +1005,8 @@ export function openBuilder(node, options = {}) {
     sceneAudioGlobalTime: 0,
     sceneSelectionUsesGlobalAudio: false,
     timingFrozen: false,
+    // Timeline scenes are locked against dragging unless this browser turned that off.
+    timelineDragLocked: savedSceneDragLock(),
     srtMode: false,
     promptJsonPath: "",
     i2vMotionJsonPath: "",
@@ -1591,7 +1593,7 @@ export function openBuilder(node, options = {}) {
     i2vNotesInput, lyricTextInput, mediaThumbnailHtml, openAudioContextMenu, openDirectorNoteContextMenu, renderAudioClips,
     openSceneOptions, openSegmentContextMenu, openTimelineSceneCard, playhead, pushHistory,
     rtvReferenceBehaviorForSegment, sceneListPane, segmentLayer, selectedSegmentImageThumbnailPath,
-    setActiveSegment, state, syncInspector, timelineCanvas, locationThumbnailButton, refreshDeleteActions,
+    setActiveSegment, state, syncInspector, timelineCanvas, locationThumbnailButton, refreshDeleteActions, sceneDragLockButton,
     currentVideoMode: (...args) => currentVideoMode(...args),
     timelineSegmentLabel: (...args) => timelineSegmentLabel(...args),
     cycleSegmentImageHistory: (...args) => cycleSegmentImageHistory(...args),

@@ -108,6 +108,24 @@ export function createMediaImport({
         toast("Unlock this overlay clip before moving or trimming it.", true);
         return;
       }
+      if (!isOverlay && state.timelineDragLocked !== false) {
+        // A click still selects the scene; only an actual drag is refused, with one note saying how to unlock.
+        const startX = event.clientX;
+        const watch = (moveEvent) => {
+          if (Math.abs(moveEvent.clientX - startX) < 6) return;
+          stop();
+          toast("Scenes are locked in place. Click 🔒 Scenes Locked on the timeline bar to move or resize them.");
+        };
+        const stop = () => {
+          window.removeEventListener("pointermove", watch);
+          window.removeEventListener("pointerup", stop);
+          window.removeEventListener("pointercancel", stop);
+        };
+        window.addEventListener("pointermove", watch);
+        window.addEventListener("pointerup", stop);
+        window.addEventListener("pointercancel", stop);
+        return;
+      }
       if (state.timingFrozen && !isOverlay) {
         toast("Timing is frozen. Unfreeze timing before editing segment lengths.", true);
         return;
