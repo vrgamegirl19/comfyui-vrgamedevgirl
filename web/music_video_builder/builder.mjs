@@ -2183,6 +2183,8 @@ export function openBuilder(node, options = {}) {
     render: (...args) => render(...args),
     storyboardScenePayload: (...args) => storyboardScenePayload(...args),
     syncInspector: (...args) => syncInspector(...args),
+    projectFolder: () => activeProjectFolderForSave(),
+    openInstructions: (...args) => openBuilderInstructionEditor(...args),
   });
 
   const { openIngredientsReferenceBuilderModal } = createIngredientsBuilder({

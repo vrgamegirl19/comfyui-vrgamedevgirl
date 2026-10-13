@@ -9,7 +9,7 @@ caller's job.
 from ..llm.output_checks import _extract_json_object_from_text
 from ..llm.prompts.story_mode import STORY_REVISE_SCENE_SCHEMA, story_mode_lyric_guidance, story_revise_scene_instruction
 from .scene_helpers import _clean_scene_text
-from .story_book import _layer, _run, _runner_fields, _scenes, cast_lines, story_cast
+from .story_book import _layer, _run, _runner_fields, _scenes, cast_lines, story_cast, story_template
 from .story_mode import (
     normalize_story_acts,
     normalize_story_book,
@@ -65,6 +65,7 @@ def revise_story_from_scene(payload):
         user_note=entry["user_note"],
         cast_text=cast_lines(payload),
         lyric_guidance=story_mode_lyric_guidance(layer.get("lyric_story_strength", 5)),
+        template=story_template(payload, "story_mode_revise_scene"),
     )
     raw, run_info = _run(payload, instruction, label="Story Mode Revise Scene", max_new_tokens=3200,
                          temperature=0.5, json_schema=STORY_REVISE_SCENE_SCHEMA)

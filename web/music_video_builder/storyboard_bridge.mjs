@@ -30,6 +30,8 @@ import { storyboardGptPayload } from "../storyboard_builder/gpt_payload.mjs";
 import { storyboardSceneCardContext, STORYBOARD_SCENE_CARD_CONTEXT_INSTRUCTION } from "../storyboard_builder/scenes.mjs";
 
 export let ACTIVE_STORYBOARD_PROMPT_PIPELINE = null;
+// MiniMax modes with a Story Mode copy of their instructions (llm/builder_instructions.py).
+export const STORY_MODE_MINIMAX_MODES = ["text_to_video", "image_to_video", "image_reference_to_video", "reference_to_video", "video_to_video"];
 
 export function createStoryboardBridge({
   activeProjectFolderForSave, activeSegment, allEditableSegments, applyMappedTriggerPhrases,
@@ -671,7 +673,10 @@ export function createStoryboardBridge({
           || options.storyboardPayload?.shortFilmPlanningMode
           || state.builderStoryboardDefaults?.short_film_planning_mode,
         );
-        const storyboardInstructionKey = miniMaxH3InstructionKey(mode);
+        // Story Builder runs use Story Mode's own copy of the MiniMax instructions (minimax_h3_story_mode_<mode>).
+        const baseInstructionKey = miniMaxH3InstructionKey(mode);
+        const storyboardInstructionKey = options.storyMode && STORY_MODE_MINIMAX_MODES.includes(mode)
+          ? baseInstructionKey.replace(/^minimax_h3_/, "minimax_h3_story_mode_") : baseInstructionKey;
         const customSourceContract = storyboardPlanningMode === "fully_custom"
           ? "FULLY CUSTOM SHORT FILM: Every populated scene-card field is authoritative. Format only what the user supplied. Do not invent, rewrite, reorder, merge, omit, or replace dialogue, speakers, story beats, actions, shot/framing, camera motion, setting, references, audio direction, sound, or continuity. Leave unspecified choices unspecified."
           : "GUIDED SHORT FILM: Preserve exact dialogue and speaker order while using the supplied film-planning fields to stage a coherent narrative scene.";

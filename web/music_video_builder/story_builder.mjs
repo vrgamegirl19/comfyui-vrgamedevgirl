@@ -94,8 +94,42 @@ export function createStoryBuilder({
   autoSaveSessionQuiet, createProgressWindow, createSceneBeats, createVideoPrompts, getLlmPayload, normalizeBuilderStoryLayer,
   openFluxReferenceBuilderModal, openLyricMappingWorkflowModal, openLyricReviewModal, openSceneDefaults, openStoryboardClassic,
   pushHistory, referenceBuilderPayload, render, state, storyboardScenePayload, syncInspector = () => {},
+  projectFolder = () => "", openInstructions = null,
 }) {
   let open = null;
+
+  // The Story Mode instructions each tab's steps use. Beats & Prompts adds the MiniMax prompt instructions of the
+  // project's video mode (Story Mode's own copy).
+  function tabInstructions(tab) {
+    const minimax = isMiniMax()
+      ? [[`minimax_h3_story_mode_${normalizeMiniMaxH3Mode(state.miniMaxH3Settings?.video_mode)}`, "MiniMax Prompt"]] : [];
+    return {
+      story: [["story_mode_book", "Story"], ["story_mode_chapter", "Chapter Rewrite"]],
+      acts: [["story_mode_acts", "Acts"]],
+      scenes: [["story_mode_scene_plan", "Scene Plan"], ["story_mode_revise_scene", "Update From a Scene"]],
+      places: [["story_mode_setting_looks", "Setting Look"], ["story_mode_spots", "Location Card"]],
+      prompts: [["story_mode_scene_beat", "Scene Beat"], ...minimax],
+    }[tab] || [];
+  }
+
+  // A row of "Edit ... Instructions" buttons for Story Mode's own LLM instructions (story_mode_* Builder
+  // instructions). Edits apply to Story Mode only and are saved with the project.
+  function instructionButtons(items) {
+    if (typeof openInstructions !== "function" || !items.length) return null;
+    return row(...items.map(([key, label]) => {
+      const button = makeButton(`Edit ${label} Instructions`);
+      button.title = "Story Mode's own LLM instructions for this step. Changing them never changes another mode.";
+      button.onclick = () => {
+        const first = segments()[0];
+        if (!first) {
+          toast("Create the timeline scenes first.", true);
+          return;
+        }
+        openInstructions(key, first);
+      };
+      return button;
+    }));
+  }
 
   // Base timeline scenes only; overlay clips are not part of the story.
   function segments() {
@@ -299,6 +333,8 @@ export function createStoryBuilder({
       const scenes = storyboardScenePayload().filter((scene) => baseIds.has(scene.id));
       const data = await postJson(`/vrgdg/storyboard/story_mode/${action}`, {
         ...getLlmPayload(),
+        // The project folder lets the step use the project's own Story Mode instructions.
+        project_folder: projectFolder() || "",
         story_layer: layer(),
         scenes,
         reference_builder: referenceBuilderPayload(),
@@ -1382,7 +1418,7 @@ export function createStoryBuilder({
       if (imagesBlock) createPrompts.title = "Make the missing images first.";
       createPrompts.onclick = () => {
         if (withPrompt && window.confirm?.(`Replace the video prompts of all ${all.length} scenes?`) === false) return;
-        runAndRefresh(() => createVideoPrompts(), "prompts");
+        runAndRefresh(() => createVideoPrompts({ storyMode: true }), "prompts");
       };
       const openBoard = makeButton("Open Storyboard");
       openBoard.title = "The full Storyboard, for per-scene settings and single-scene prompts.";
@@ -1423,7 +1459,7 @@ export function createStoryBuilder({
           toast(`${sceneRangeText(noImage)} ${noImage.length === 1 ? "has" : "have"} no character or location image, and Reference to Video needs one. Make the missing images first.`, true);
           return;
         }
-        runPicked(() => createVideoPrompts({ sceneIds: ids }), "prompts");
+        runPicked(() => createVideoPrompts({ sceneIds: ids, storyMode: true }), "prompts");
       };
       const clearPicks = makeButton("Clear Ticks");
       clearPicks.onclick = () => {
@@ -1538,6 +1574,12 @@ export function createStoryBuilder({
       refreshProgress();
       try {
         renderers[activeTab]();
+        const instructions = instructionButtons(tabInstructions(activeTab));
+        if (instructions) {
+          const box = card("Story Mode instructions", "The LLM instructions this tab uses. They belong to Story Mode only, so changing them never changes how the other modes work.");
+          box.append(instructions);
+          content.append(box);
+        }
       } catch (error) {
         console.error("[VRGDG Story Builder] Tab failed to render", error);
         content.append(el("div", "color:#fca5a5;font-size:12px;", `This tab failed to open: ${String(error?.message || error)}`));

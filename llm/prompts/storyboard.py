@@ -662,6 +662,49 @@ def _storyboard_scene_beat_output_rules(flf_mode, beat_word_limit):
     return f"Output one short paragraph only, no label, no bullets.\nKeep it under {beat_word_limit} words."
 
 
+# The role and rules of the Scene Story Beat prompt. {{cast_wall_block}} and {{output_rules}} are filled in by the
+# step. Story Mode can save its own edited copy (the story_mode_scene_beat Builder instruction).
+SCENE_BEAT_RULES_TEMPLATE = (
+    "You are a music video scene-story planner.\n"
+    "Create one concise scene story beat that tells the video prompt writer what this scene contributes to the larger music-video story.\n\n"
+    "{{cast_wall_block}}"
+    "Rules:\n"
+    "- Use the Song Story Brief and User Story Arc as continuity anchors.\n"
+    "- If the User Story Arc contains a line that starts with this scene's number (for example \"Scene 12 (...) \u2014 ...\"), use that line as the primary story source for this beat and keep its actions and choices.\n"
+    "- Use the selected scene lyrics, lyric section, subject details, location details, vocal status, and no-character flag.\n"
+    "- This request creates a visual narrative Scene Story Beat only. Do not mention singing, lyrics, vocals, rapping, lip-sync, music, instrumental sections, dialogue delivery, or any other audio/performance metadata. Do not describe whether a subject is silent or vocal. Show the story through visible action, posture, blocking, props, environment, and one camera idea.\n"
+    "- Performer and vocal assignments are downstream video-prompt metadata, not content for this beat; never copy those assignments into the story_beat.\n"
+    "- The existing scene story beat, if present in the selected scene JSON, is stale draft text being replaced. Do not copy, preserve, or treat it as a fact; the Performer assignment and current scene data override it.\n"
+    "- Scene defaults are authoritative when supplied: use the selected shot, camera motion/camera-flow direction, character motion, performance direction, and facial direction to shape the beat. Do not replace them with generic actions.\n"
+    "- Treat the selected scene location_ref as the required physical setting for this scene.\n"
+    "- The scene cast is exactly the subjects in the selected scene JSON (subject_refs / subjects). The User Story Arc, Song Story Brief, previous beat, and next lyrics cover the whole song and may name other characters. Never include, mention, or imply a character who is not in this scene's cast, even if the arc places them here.\n"
+    "- Do not invent or import a different place from the story arc, song brief, previous beat, or next lyrics.\n"
+    "- If the story arc names a different location, translate only its emotion, tension, symbolism, or action into the selected location_ref.\n"
+    "- Write like a music video director's shot note. Describe what the cast physically does, where they are in the space, how the camera moves, and the light. Show mood only as visible movement (breath, gaze, hands, posture). Do not use feeling words, memories, or symbolism.\n"
+    "- Match the energy to the scene defaults: the character and camera motion speed set how fast and big the action is.\n"
+    "- Order the paragraph: setting, action, one small human movement, what carries into the next scene.\n"
+    "- Use every mapped extra listed below in the scene's action or blocking. Keep each exact extra name visible in the beat.\n"
+    "- Interaction meanings are exact: background stays present without active choreography; background_dancing performs backup choreography; alongside moves beside the main subject without contact; dancing_with performs partnered or group choreography with the main subject; direct performs an explicit physical or narrative interaction.\n"
+    "- Describe direct, dancing_with, and alongside extras individually. Extras sharing background or background_dancing may be combined into one concise named group.\n"
+    "- Use an extra's identity only when needed to distinguish people. Do not copy full appearance or wardrobe biographies into the beat.\n"
+    "- Extras do not sing, speak, or receive speaker IDs unless the selected scene explicitly supplies them as vocal sources elsewhere.\n"
+    "- Do not write the final video prompt.\n"
+    "- Include one camera idea that fits the scene defaults, in plain words.\n"
+    "- Do not quote long lyric text.\n"
+    "- If no character is present, make the beat about the location, objects, atmosphere, and light, with no person, hand, or shadow.\n"
+    "- {{output_rules}}\n\n"
+)
+
+
+def render_scene_beat_rules(template, cast_wall, output_rules):
+    """The beat prompt role and rules with the scene's cast wall and output rules filled in."""
+    text = str(template or SCENE_BEAT_RULES_TEMPLATE)
+    text = text.replace("{{cast_wall_block}}", f"{cast_wall}\n\n" if cast_wall else "")
+    text = text.replace("{{output_rules}}", str(output_rules))
+    # A saved instruction loses its last line breaks; the prompt's own text always starts after a blank line.
+    return text if text.endswith("\n\n") else f"{text.rstrip()}\n\n"
+
+
 def _storyboard_scene_beat_instruction(
     *,
     flf_mode,
@@ -681,6 +724,7 @@ def _storyboard_scene_beat_instruction(
     scene_json,
     cast_wall="",
     story_mode=False,
+    rules_template=None,
 ):
     """The main Scene Story Beat prompt.
     Controls: keeping the beat purely visual (no audio/vocal language),
@@ -692,36 +736,12 @@ def _storyboard_scene_beat_instruction(
         "CURRENT scene lyric text (mood and emotion only, never events or places)" if story_mode
         else "CURRENT scene lyric text (main authority)"
     )
+    # Story Mode can use its own edited copy of the role and rules; every other mode keeps the built-in text.
+    rules = render_scene_beat_rules(rules_template if story_mode and rules_template else SCENE_BEAT_RULES_TEMPLATE,
+                                    cast_wall, output_rules)
     return (
-        "You are a music video scene-story planner.\n"
-        "Create one concise scene story beat that tells the video prompt writer what this scene contributes to the larger music-video story.\n\n"
-        + (f"{cast_wall}\n\n" if cast_wall else "")
-        + "Rules:\n"
-        "- Use the Song Story Brief and User Story Arc as continuity anchors.\n"
-        "- If the User Story Arc contains a line that starts with this scene's number (for example \"Scene 12 (...) \u2014 ...\"), use that line as the primary story source for this beat and keep its actions and choices.\n"
-        "- Use the selected scene lyrics, lyric section, subject details, location details, vocal status, and no-character flag.\n"
-        "- This request creates a visual narrative Scene Story Beat only. Do not mention singing, lyrics, vocals, rapping, lip-sync, music, instrumental sections, dialogue delivery, or any other audio/performance metadata. Do not describe whether a subject is silent or vocal. Show the story through visible action, posture, blocking, props, environment, and one camera idea.\n"
-        "- Performer and vocal assignments are downstream video-prompt metadata, not content for this beat; never copy those assignments into the story_beat.\n"
-        "- The existing scene story beat, if present in the selected scene JSON, is stale draft text being replaced. Do not copy, preserve, or treat it as a fact; the Performer assignment and current scene data override it.\n"
-        "- Scene defaults are authoritative when supplied: use the selected shot, camera motion/camera-flow direction, character motion, performance direction, and facial direction to shape the beat. Do not replace them with generic actions.\n"
-        "- Treat the selected scene location_ref as the required physical setting for this scene.\n"
-        "- The scene cast is exactly the subjects in the selected scene JSON (subject_refs / subjects). The User Story Arc, Song Story Brief, previous beat, and next lyrics cover the whole song and may name other characters. Never include, mention, or imply a character who is not in this scene's cast, even if the arc places them here.\n"
-        "- Do not invent or import a different place from the story arc, song brief, previous beat, or next lyrics.\n"
-        "- If the story arc names a different location, translate only its emotion, tension, symbolism, or action into the selected location_ref.\n"
-        "- Write like a music video director's shot note. Describe what the cast physically does, where they are in the space, how the camera moves, and the light. Show mood only as visible movement (breath, gaze, hands, posture). Do not use feeling words, memories, or symbolism.\n"
-        "- Match the energy to the scene defaults: the character and camera motion speed set how fast and big the action is.\n"
-        "- Order the paragraph: setting, action, one small human movement, what carries into the next scene.\n"
-        "- Use every mapped extra listed below in the scene's action or blocking. Keep each exact extra name visible in the beat.\n"
-        "- Interaction meanings are exact: background stays present without active choreography; background_dancing performs backup choreography; alongside moves beside the main subject without contact; dancing_with performs partnered or group choreography with the main subject; direct performs an explicit physical or narrative interaction.\n"
-        "- Describe direct, dancing_with, and alongside extras individually. Extras sharing background or background_dancing may be combined into one concise named group.\n"
-        "- Use an extra's identity only when needed to distinguish people. Do not copy full appearance or wardrobe biographies into the beat.\n"
-        "- Extras do not sing, speak, or receive speaker IDs unless the selected scene explicitly supplies them as vocal sources elsewhere.\n"
-        "- Do not write the final video prompt.\n"
-        "- Include one camera idea that fits the scene defaults, in plain words.\n"
-        "- Do not quote long lyric text.\n"
-        "- If no character is present, make the beat about the location, objects, atmosphere, and light, with no person, hand, or shadow.\n"
-        f"- {output_rules}\n\n"
-        f"{lyric_story_strength_guidance_text}\n\n"
+        rules
+        + f"{lyric_story_strength_guidance_text}\n\n"
         f"User Story Arc:\n{user_story_arc or '[none]'}\n\n"
         f"Song Story Brief:\n{song_story_brief or '[none]'}\n\n"
         f"Previous scene beat:\n{previous_beat or '[none]'}\n\n"

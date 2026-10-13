@@ -15,7 +15,7 @@ from ..llm.prompts.story_mode import (
     story_spots_instruction,
 )
 from .scene_helpers import _clean_scene_text, _normalize_story_layer
-from .story_book import _run, cast_lines
+from .story_book import _run, cast_lines, story_template
 from .story_mode import normalize_story_book, normalize_story_settings
 
 
@@ -96,6 +96,7 @@ def build_story_locations(payload, progress=None):
             book_summary=summary[:12000],
             style_theme=style_theme,
             cast_text=cast_lines(payload),
+            template=story_template(payload, "story_mode_setting_looks"),
         )
         try:
             raw, run_info = _run(payload, instruction, label="Story Mode Setting Looks", max_new_tokens=1600,
@@ -125,7 +126,8 @@ def build_story_locations(payload, progress=None):
             raw, run_info = _run(
                 payload,
                 story_spots_instruction(setting_name=group["setting_name"], setting_look=group["look"],
-                                        spots_text=spots_text[:8000], style_theme=style_theme),
+                                        spots_text=spots_text[:8000], style_theme=style_theme,
+                                        template=story_template(payload, "story_mode_spots")),
                 label="Story Mode Spots", max_new_tokens=2000, temperature=0.5, json_schema=STORY_SPOTS_SCHEMA,
             )
             descriptions = {str(item.get("name") or "").strip().lower(): _clean_scene_text(item.get("description") or "", 800)

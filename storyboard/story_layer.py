@@ -1077,6 +1077,13 @@ def _strip_scene_beat_audio_language(text):
     return cleaned
 
 
+def _story_mode_beat_rules(payload):
+    """The project's own Story Mode beat rules (story_mode_scene_beat), or the built-in rules."""
+    from .story_book import story_template
+
+    return story_template(payload, "story_mode_scene_beat")
+
+
 def _build_story_layer_scene_beat(payload):
     scene_bundle = payload.get("storyboard_payload") or payload.get("scene_bundle") or payload.get("gpt_payload")
     if not isinstance(scene_bundle, dict):
@@ -1211,6 +1218,7 @@ def _build_story_layer_scene_beat(payload):
         scene_json=json.dumps(scene, ensure_ascii=False, indent=2),
         cast_wall=scene_facts,
         story_mode=bool(story_context),
+        rules_template=_story_mode_beat_rules(payload) if story_context else None,
     )
     from ..llm.builder_runner import _run_builder_text_llm, _runner_supports_json_schema
 

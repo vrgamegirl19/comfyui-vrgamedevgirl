@@ -25,7 +25,7 @@ from .story_acts import (
     repair_act_ranges,
     validate_story_acts,
 )
-from .story_book import _run, cast_lines, main_cast, story_cast
+from .story_book import _run, cast_lines, main_cast, story_cast, story_template
 from .story_mode import (
     normalize_plan_performance,
     normalize_story_book,
@@ -198,6 +198,7 @@ def build_story_acts(payload, progress=None):
                     for note in chapter_notes if note["scene_numbers"]
                 ),
                 target_acts=max(1, round((last - first + 1) / 4)),
+                template=story_template(payload, "story_mode_acts"),
             )
             try:
                 raw, run_info = _run(payload, instruction, label="Story Mode Acts", max_new_tokens=2400,
@@ -328,6 +329,7 @@ def build_story_scene_plan(payload, progress=None):
             video_style=style,
             act_cast=", ".join(act_names),
             main_name=main_name,
+            template=story_template(payload, "story_mode_scene_plan"),
         )
         replies = {}
         try:

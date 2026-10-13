@@ -23,6 +23,53 @@ _BOOK_FORMAT = (
 )
 
 
+def render_story_template(template, tokens):
+    """A Story Mode instruction template with its ``{{name}}`` tokens filled in. Unknown tokens stay as written,
+    so an edited template can never break the step."""
+    text = str(template or "")
+    for name, value in tokens.items():
+        text = text.replace("{{" + name + "}}", str(value))
+    # A saved instruction loses its last line break; the step's own text always starts on a new line.
+    return text if not text or text.endswith("\n") else f"{text}\n"
+
+
+# The editable part of each Story Mode instruction (role and rules). The step adds the data and the reply format
+# after it. Saved per project as the story_mode_* Builder instructions (llm/builder_instructions.py).
+STORY_BOOK_TEMPLATE = (
+    "You are a novelist writing the story that a music video will tell, so a director can read it and see the "
+    "video play out with the song.\n\n"
+    "Write a short book: a title, a premise, and chapters of plain prose. It must read like a book, not a shot "
+    "list or a song breakdown, and it must unfold in step with the song.\n\n"
+    "How it is told: {{medium_rule}}\n\n"
+    "Rules:\n"
+    "- About {{chapters}} chapters and about {{paragraphs}} paragraphs in total. The video has {{scene_count}} scenes "
+    "and runs {{song_seconds}} seconds, so the story must fit that length.\n"
+    "- Every chapter happens in ONE general setting, named on its Setting line. A new setting starts a new chapter. "
+    "Inside a setting the story can move between specific spots (kitchen, bedroom, porch).\n"
+    "- Each paragraph is 2-5 sentences of things that visibly happen: actions, choices, meetings, discoveries.\n"
+    "- {{cast_rule}}\n"
+    "- Third person. Present or past tense, but keep the same tense throughout.\n"
+    "- No camera directions, no shot language, no song-section words (Intro, Verse, Chorus, Bridge, Outro), "
+    "no scene numbers.\n"
+    "- The story has a beginning, a turn and an ending.\n"
+    "- Follow the song map from start to finish: the story moves in the same order and at the same pace as the "
+    "song. Quiet or instrumental parts are quiet moments, rising parts build, the chorus and the loudest parts are "
+    "the story's peaks, and the last chapter ends when the song ends. Do not name the sections in the book.\n"
+    "- {{lyric_guidance}}\n"
+)
+
+STORY_CHAPTER_TEMPLATE = (
+    "You are a novelist revising one chapter of a story that a music video will tell.\n\n"
+    "Rewrite chapter {{chapter_number}} following the user's direction. Keep it consistent with the chapters "
+    "around it, keep its setting unless the direction says otherwise, and keep the cast names.\n\n"
+    "Rules:\n"
+    "- Plain prose paragraphs of things that visibly happen. No camera or song-section words.\n"
+    "- {{cast_rule}}\n"
+    "- {{medium_rule}}\n"
+    "- {{lyric_guidance}}\n"
+)
+
+
 def story_mode_lyric_guidance(strength):
     """Lyric Story Strength in Story Mode: how strongly a scene's emotion follows its lyric line (never events or places)."""
     try:
@@ -91,31 +138,17 @@ def story_medium_rule(video_style, lead_name=""):
 
 
 def story_book_instruction(*, premise, cast_text, tone_notes, scene_count, song_seconds, lyric_guidance, lyrics,
-                           previous_book, seed, allow_new_cast=False, video_style="music_video", lead_name=""):
+                           previous_book, seed, allow_new_cast=False, video_style="music_video", lead_name="",
+                           template=None):
     """Draft the whole story book from the user's premise."""
     chapters, paragraphs = story_book_size(scene_count)
     return (
-        "You are a novelist writing the story that a music video will tell, so a director can read it and see the "
-        "video play out with the song.\n\n"
-        "Write a short book: a title, a premise, and chapters of plain prose. It must read like a book, not a shot "
-        "list or a song breakdown, and it must unfold in step with the song.\n\n"
-        f"How it is told: {story_medium_rule(video_style, lead_name)}\n\n"
-        "Rules:\n"
-        f"- About {chapters} chapters and about {paragraphs} paragraphs in total. The video has {scene_count} scenes "
-        f"and runs {song_seconds:.0f} seconds, so the story must fit that length.\n"
-        "- Every chapter happens in ONE general setting, named on its Setting line. A new setting starts a new chapter. "
-        "Inside a setting the story can move between specific spots (kitchen, bedroom, porch).\n"
-        "- Each paragraph is 2-5 sentences of things that visibly happen: actions, choices, meetings, discoveries.\n"
-        f"- {story_cast_rule(cast_text, allow_new_cast)}\n"
-        "- Third person. Present or past tense, but keep the same tense throughout.\n"
-        "- No camera directions, no shot language, no song-section words (Intro, Verse, Chorus, Bridge, Outro), "
-        "no scene numbers.\n"
-        "- The story has a beginning, a turn and an ending.\n"
-        "- Follow the song map from start to finish: the story moves in the same order and at the same pace as the "
-        "song. Quiet or instrumental parts are quiet moments, rising parts build, the chorus and the loudest parts are "
-        "the story's peaks, and the last chapter ends when the song ends. Do not name the sections in the book.\n"
-        f"- {lyric_guidance}\n"
-        "- Output only the book in exactly this format, with no notes before or after it:\n\n"
+        render_story_template(template or STORY_BOOK_TEMPLATE, {
+            "medium_rule": story_medium_rule(video_style, lead_name), "chapters": chapters, "paragraphs": paragraphs,
+            "scene_count": scene_count, "song_seconds": f"{song_seconds:.0f}",
+            "cast_rule": story_cast_rule(cast_text, allow_new_cast), "lyric_guidance": lyric_guidance,
+        })
+        + "- Output only the book in exactly this format, with no notes before or after it:\n\n"
         f"{_BOOK_FORMAT}\n\n"
         f"Premise from the user:\n{premise or '[none, invent one from the cast and tone]'}\n\n"
         f"Cast:\n{cast_text or '[none, invent a small cast]'}\n\n"
@@ -129,18 +162,14 @@ def story_book_instruction(*, premise, cast_text, tone_notes, scene_count, song_
 
 
 def story_chapter_rewrite_instruction(*, book_text, chapter_number, chapter_text, direction, cast_text, lyric_guidance,
-                                      allow_new_cast=False, video_style="music_video", lead_name=""):
+                                      allow_new_cast=False, video_style="music_video", lead_name="", template=None):
     """Rewrite or expand one chapter, keeping the rest of the book as context."""
     return (
-        "You are a novelist revising one chapter of a story that a music video will tell.\n\n"
-        f"Rewrite chapter {chapter_number} following the user's direction. Keep it consistent with the chapters "
-        "around it, keep its setting unless the direction says otherwise, and keep the cast names.\n\n"
-        "Rules:\n"
-        "- Plain prose paragraphs of things that visibly happen. No camera or song-section words.\n"
-        f"- {story_cast_rule(cast_text, allow_new_cast)}\n"
-        f"- {story_medium_rule(video_style, lead_name)}\n"
-        f"- {lyric_guidance}\n"
-        "- Output only the chapter in exactly this format:\n\n"
+        render_story_template(template or STORY_CHAPTER_TEMPLATE, {
+            "chapter_number": chapter_number, "cast_rule": story_cast_rule(cast_text, allow_new_cast),
+            "medium_rule": story_medium_rule(video_style, lead_name), "lyric_guidance": lyric_guidance,
+        })
+        + "- Output only the chapter in exactly this format:\n\n"
         f"Chapter {chapter_number}: <chapter title>\n"
         "Setting: <setting>\n\n"
         "<paragraph>\n\n"
@@ -255,24 +284,30 @@ STORY_CAST_SCAN_SCHEMA = {
 }
 
 
+STORY_ACTS_TEMPLATE = (
+    "You are a music video director breaking one chapter of a story into acts.\n\n"
+    "An act is one event inside the chapter (an argument, a phone call, leaving the house). It is a run of "
+    "scenes that follow each other on the timeline. Acts stay in the chapter's setting; they may move between "
+    "spots inside it.\n\n"
+    "Rules:\n"
+    "- About {{target_acts}} acts. Follow the chapter's own events in order. Every scene listed belongs to exactly one act.\n"
+    "- first_scene is the scene number where the act starts. The first act starts at the chapter's first scene.\n"
+    "- A timed user note must fall inside one act; never start an act in the middle of a note's scenes.\n"
+    "- Bigger story moments can land on louder or longer scenes, but never change the story's order.\n"
+    "- summary: 1-3 sentences of what visibly happens in the act.\n"
+    "- cast: names from the cast list who appear in the act. The main character is in nearly every act. Keep "
+    "the other characters in the acts where the chapter has them, so each one stays in the story to the end.\n"
+    "- {{lyrics_rule}}\n"
+)
+
+
 def story_acts_instruction(*, chapter_number, chapter_title, setting_name, chapter_text, scenes_text, cast_text,
-                           notes_text, target_acts):
+                           notes_text, target_acts, template=None):
     """Split one chapter into acts, each a contiguous run of the chapter's scenes."""
     return (
-        "You are a music video director breaking one chapter of a story into acts.\n\n"
-        "An act is one event inside the chapter (an argument, a phone call, leaving the house). It is a run of "
-        "scenes that follow each other on the timeline. Acts stay in the chapter's setting; they may move between "
-        "spots inside it.\n\n"
-        "Rules:\n"
-        f"- About {target_acts} acts. Follow the chapter's own events in order. Every scene listed belongs to exactly one act.\n"
-        "- first_scene is the scene number where the act starts. The first act starts at the chapter's first scene.\n"
-        "- A timed user note must fall inside one act; never start an act in the middle of a note's scenes.\n"
-        "- Bigger story moments can land on louder or longer scenes, but never change the story's order.\n"
-        "- summary: 1-3 sentences of what visibly happens in the act.\n"
-        "- cast: names from the cast list who appear in the act. The main character is in nearly every act. Keep "
-        "the other characters in the acts where the chapter has them, so each one stays in the story to the end.\n"
-        f"- {LYRICS_ARE_MOOD_ONLY}\n"
-        "Return JSON only: {\"acts\": [{\"first_scene\": 1, \"title\": \"...\", \"summary\": \"...\", \"cast\": [\"...\"]}]}\n\n"
+        render_story_template(template or STORY_ACTS_TEMPLATE,
+                              {"target_acts": target_acts, "lyrics_rule": LYRICS_ARE_MOOD_ONLY})
+        + "Return JSON only: {\"acts\": [{\"first_scene\": 1, \"title\": \"...\", \"summary\": \"...\", \"cast\": [\"...\"]}]}\n\n"
         f"Chapter {chapter_number}: {chapter_title}\n"
         f"Setting: {setting_name or '[not named]'}\n\n"
         f"{chapter_text}\n\n"
@@ -314,45 +349,56 @@ _PLAN_PERFORMANCE_RULES = {
 }
 
 
+STORY_SCENE_PLAN_TEMPLATE = (
+    "You are a music video director planning each scene of one act.\n\n"
+    "For every scene listed, write what happens in it, where in the setting it happens, its mood, how the "
+    "performer appears, and who is in it and what they do with each other.\n\n"
+    "Rules:\n"
+    "- story_slice: 1-2 sentences of what visibly happens in this scene, continuing from the scene before. "
+    "Together the slices tell the act in order.\n"
+    "- cast: names from the cast list who are visibly in this scene. "
+    "{{main_character_line}}"
+    "This act's characters are {{act_cast}}; give each of them scenes in this act. "
+    "Never name anyone outside the cast list.\n"
+    "- performer: the one name from cast who sings or speaks in this scene, or an empty string when nobody "
+    "does.\n"
+    "- interaction: one sentence of what the characters in this scene do with or toward each other, shaped by "
+    "their relationship (a glance, a touch, a turn away). Empty when only one character is in the scene.\n"
+    "- A scene with a user note (\"user direction\") follows it exactly, including any character it adds and what "
+    "they do.\n"
+    "- spot: the specific place inside the setting \"{{setting_name}}\" (e.g. Kitchen, Bedroom, "
+    "Front Porch). 1-3 words, no setting name. The spot comes from the story action, never from the lyrics. "
+    "Stay at one spot for at least {{spot_min_scenes}} scenes in a row unless a user note moves it. "
+    "Reuse these spot names when the place is the same: {{known_spots}}.\n"
+    "- mood: 2-5 words of emotion.\n"
+    "- performance: singing (the performer sings the lyric to the camera or in the moment), speaking (a "
+    "character says a line), story (no lip sync, the story plays out) or instrumental (no vocals in this scene). "
+    "Scenes marked instrumental must be instrumental. "
+    "{{performance_rule}}\n"
+    "- User notes on a scene are the user's direction and win over the story. Follow them exactly and write "
+    "the slice to agree with them.\n"
+    "- continues: true when this scene is the very next moment of the scene before it in one unbroken camera "
+    "take: same spot, same people, the action carries straight on with no time jump. False when time jumps, "
+    "the spot changes or a new moment starts.\n"
+    "- continuation: one sentence, the physical action the performer does in this scene once the carried-on "
+    "moment settles (e.g. \"She sets the letter down and walks to the window.\"). Write it for every scene.\n"
+    "- {{lyric_guidance}}\n"
+)
+
+
 def story_scene_plan_instruction(*, act_title, act_summary, setting_name, chapter_text, scenes_text, cast_text,
                                  spot_min_scenes, previous_spot, lyric_guidance, known_spots, video_style="music_video",
-                                 act_cast="", main_name=""):
+                                 act_cast="", main_name="", template=None):
     """Give every scene of one act its slice of the story, a spot, a mood, a performance and its cast."""
     return (
-        "You are a music video director planning each scene of one act.\n\n"
-        "For every scene listed, write what happens in it, where in the setting it happens, its mood, how the "
-        "performer appears, and who is in it and what they do with each other.\n\n"
-        "Rules:\n"
-        "- story_slice: 1-2 sentences of what visibly happens in this scene, continuing from the scene before. "
-        "Together the slices tell the act in order.\n"
-        "- cast: names from the cast list who are visibly in this scene. "
-        f"{(main_name + ' is the main character and is in most scenes. ') if main_name else ''}"
-        f"This act's characters are {act_cast or 'the cast below'}; give each of them scenes in this act. "
-        "Never name anyone outside the cast list.\n"
-        "- performer: the one name from cast who sings or speaks in this scene, or an empty string when nobody "
-        "does.\n"
-        "- interaction: one sentence of what the characters in this scene do with or toward each other, shaped by "
-        "their relationship (a glance, a touch, a turn away). Empty when only one character is in the scene.\n"
-        "- A scene with a user note (\"user direction\") follows it exactly, including any character it adds and what "
-        "they do.\n"
-        f"- spot: the specific place inside the setting \"{setting_name or 'the setting'}\" (e.g. Kitchen, Bedroom, "
-        "Front Porch). 1-3 words, no setting name. The spot comes from the story action, never from the lyrics. "
-        f"Stay at one spot for at least {spot_min_scenes} scenes in a row unless a user note moves it. "
-        f"Reuse these spot names when the place is the same: {known_spots or '[none yet]'}.\n"
-        "- mood: 2-5 words of emotion.\n"
-        "- performance: singing (the performer sings the lyric to the camera or in the moment), speaking (a "
-        "character says a line), story (no lip sync, the story plays out) or instrumental (no vocals in this scene). "
-        "Scenes marked instrumental must be instrumental. "
-        f"{_PLAN_PERFORMANCE_RULES.get(video_style, _PLAN_PERFORMANCE_RULES['music_video'])}\n"
-        "- User notes on a scene are the user's direction and win over the story. Follow them exactly and write "
-        "the slice to agree with them.\n"
-        "- continues: true when this scene is the very next moment of the scene before it in one unbroken camera "
-        "take: same spot, same people, the action carries straight on with no time jump. False when time jumps, "
-        "the spot changes or a new moment starts.\n"
-        "- continuation: one sentence, the physical action the performer does in this scene once the carried-on "
-        "moment settles (e.g. \"She sets the letter down and walks to the window.\"). Write it for every scene.\n"
-        f"- {lyric_guidance}\n"
-        "Return JSON only: {\"scenes\": [{\"scene\": 1, \"story_slice\": \"...\", \"spot\": \"...\", \"mood\": \"...\", "
+        render_story_template(template or STORY_SCENE_PLAN_TEMPLATE, {
+            "main_character_line": f"{main_name} is the main character and is in most scenes. " if main_name else "",
+            "act_cast": act_cast or "the cast below", "setting_name": setting_name or "the setting",
+            "spot_min_scenes": spot_min_scenes, "known_spots": known_spots or "[none yet]",
+            "performance_rule": _PLAN_PERFORMANCE_RULES.get(video_style, _PLAN_PERFORMANCE_RULES["music_video"]),
+            "lyric_guidance": lyric_guidance,
+        })
+        + "Return JSON only: {\"scenes\": [{\"scene\": 1, \"story_slice\": \"...\", \"spot\": \"...\", \"mood\": \"...\", "
         "\"performance\": \"singing\", \"continues\": false, \"continuation\": \"...\", \"cast\": [\"...\"], "
         "\"performer\": \"...\", \"interaction\": \"...\"}]}\n\n"
         f"Act: {act_title}\n{act_summary}\n\n"
@@ -393,17 +439,22 @@ STORY_SCENE_PLAN_SCHEMA = {
 }
 
 
-def story_setting_looks_instruction(*, settings_text, book_summary, style_theme, cast_text):
+STORY_SETTING_LOOKS_TEMPLATE = (
+    "You are a production designer for a music video that tells the story below.\n\n"
+    "For each general setting, write its look: the one visual world every spot inside it shares.\n\n"
+    "Rules:\n"
+    "- look: 2-3 sentences of physical design only: era, region, architecture, materials, colour palette, "
+    "light sources and quality, weather. No people, no actions, no story events.\n"
+    "- The look must fit the story's world and the style notes. Obey every ban in the style notes.\n"
+    "- Settings in the same story should feel like the same world.\n"
+)
+
+
+def story_setting_looks_instruction(*, settings_text, book_summary, style_theme, cast_text, template=None):
     """One shared look per general setting, so every spot inside it matches. No lyrics are sent."""
     return (
-        "You are a production designer for a music video that tells the story below.\n\n"
-        "For each general setting, write its look: the one visual world every spot inside it shares.\n\n"
-        "Rules:\n"
-        "- look: 2-3 sentences of physical design only: era, region, architecture, materials, colour palette, "
-        "light sources and quality, weather. No people, no actions, no story events.\n"
-        "- The look must fit the story's world and the style notes. Obey every ban in the style notes.\n"
-        "- Settings in the same story should feel like the same world.\n"
-        "Return JSON only: {\"settings\": [{\"name\": \"...\", \"look\": \"...\"}]} with every setting listed below, "
+        render_story_template(template or STORY_SETTING_LOOKS_TEMPLATE, {})
+        + "Return JSON only: {\"settings\": [{\"name\": \"...\", \"look\": \"...\"}]} with every setting listed below, "
         "names unchanged.\n\n"
         f"Style and theme notes (look and banned places):\n{style_theme or '[none]'}\n\n"
         f"Cast:\n{cast_text or '[none]'}\n\n"
@@ -430,19 +481,24 @@ STORY_SETTING_LOOKS_SCHEMA = {
 }
 
 
-def story_spots_instruction(*, setting_name, setting_look, spots_text, style_theme):
+STORY_SPOTS_TEMPLATE = (
+    "You are a music video location scout. Every spot below is a place inside the same setting, so all of them "
+    "share the setting's look.\n\n"
+    "For each spot write a description for its location reference card.\n\n"
+    "Rules:\n"
+    "- Exactly one sentence of 20-38 words.\n"
+    "- Physical only: architecture, fixtures, surfaces, light sources, colours, weather, atmosphere. "
+    "No people, clothing, actions or story events.\n"
+    "- Start from the setting's look so every spot matches, then add what is specific to this spot.\n"
+    "- The spot must suit what happens there in the story. Obey every ban in the style notes.\n"
+)
+
+
+def story_spots_instruction(*, setting_name, setting_look, spots_text, style_theme, template=None):
     """One location card per spot inside a setting, built on the setting's look. No lyrics are sent."""
     return (
-        "You are a music video location scout. Every spot below is a place inside the same setting, so all of them "
-        "share the setting's look.\n\n"
-        "For each spot write a description for its location reference card.\n\n"
-        "Rules:\n"
-        "- Exactly one sentence of 20-38 words.\n"
-        "- Physical only: architecture, fixtures, surfaces, light sources, colours, weather, atmosphere. "
-        "No people, clothing, actions or story events.\n"
-        "- Start from the setting's look so every spot matches, then add what is specific to this spot.\n"
-        "- The spot must suit what happens there in the story. Obey every ban in the style notes.\n"
-        "Return JSON only: {\"spots\": [{\"name\": \"...\", \"description\": \"...\"}]} with every spot listed below, "
+        render_story_template(template or STORY_SPOTS_TEMPLATE, {})
+        + "Return JSON only: {\"spots\": [{\"name\": \"...\", \"description\": \"...\"}]} with every spot listed below, "
         "names unchanged.\n\n"
         f"Setting: {setting_name}\n"
         f"Setting look: {setting_look or '[none yet]'}\n\n"
@@ -469,25 +525,32 @@ STORY_SPOTS_SCHEMA = {
 }
 
 
+STORY_REVISE_SCENE_TEMPLATE = (
+    "You are a story editor adapting a music video's story, the way a book is adapted into a film: the user has "
+    "changed Scene {{scene_number}}, and the story around it must now agree with that change.\n\n"
+    "Rules:\n"
+    "- The user's change to Scene {{scene_number}} is fixed. Keep the characters they put in it and do exactly what "
+    "their direction says. Write the scene to match it.\n"
+    "- Change the act and the chapter only as much as the new scene needs. Keep every other event, the order of "
+    "events, the setting and the tone. A character the user added gets a reason to be there that fits the story.\n"
+    "- chapter_paragraphs: the whole chapter again, as plain prose paragraphs, with the change woven in. Same "
+    "rules as the book: things that visibly happen, no camera or song-section words.\n"
+    "- other_scenes: the other scenes of this act whose plan no longer fits after the change (a character who "
+    "must now be there, an event that moved). Give each a short reason. Leave out scenes that still fit.\n"
+    "- {{cast_rule}}\n"
+    "- {{lyric_guidance}}\n"
+)
+
+
 def story_revise_scene_instruction(*, book_text, chapter_number, chapter_title, setting_name, chapter_text, act_title,
                                    act_summary, act_scenes_text, scene_number, scene_cast, user_note, cast_text,
-                                   lyric_guidance):
+                                   lyric_guidance, template=None):
     """Change one scene the way the user wants, and adapt the act and chapter around it as little as possible."""
     return (
-        "You are a story editor adapting a music video's story, the way a book is adapted into a film: the user has "
-        f"changed Scene {scene_number}, and the story around it must now agree with that change.\n\n"
-        "Rules:\n"
-        f"- The user's change to Scene {scene_number} is fixed. Keep the characters they put in it and do exactly what "
-        "their direction says. Write the scene to match it.\n"
-        "- Change the act and the chapter only as much as the new scene needs. Keep every other event, the order of "
-        "events, the setting and the tone. A character the user added gets a reason to be there that fits the story.\n"
-        "- chapter_paragraphs: the whole chapter again, as plain prose paragraphs, with the change woven in. Same "
-        "rules as the book: things that visibly happen, no camera or song-section words.\n"
-        "- other_scenes: the other scenes of this act whose plan no longer fits after the change (a character who "
-        "must now be there, an event that moved). Give each a short reason. Leave out scenes that still fit.\n"
-        f"- {story_cast_rule(cast_text, False)}\n"
-        f"- {lyric_guidance}\n"
-        "Return JSON only: {\"scene\": {\"story_slice\": \"...\", \"spot\": \"...\", \"mood\": \"...\", \"performer\": "
+        render_story_template(template or STORY_REVISE_SCENE_TEMPLATE, {
+            "scene_number": scene_number, "cast_rule": story_cast_rule(cast_text, False), "lyric_guidance": lyric_guidance,
+        })
+        + "Return JSON only: {\"scene\": {\"story_slice\": \"...\", \"spot\": \"...\", \"mood\": \"...\", \"performer\": "
         "\"...\", \"interaction\": \"...\"}, \"act_summary\": \"...\", \"chapter_paragraphs\": [\"...\"], "
         "\"other_scenes\": [{\"scene\": 3, \"reason\": \"...\"}]}\n\n"
         f"User's change to Scene {scene_number}:\n"

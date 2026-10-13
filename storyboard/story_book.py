@@ -50,6 +50,13 @@ def _run(payload, instruction, *, label, max_new_tokens, temperature=0.7, json_s
     )
 
 
+def story_template(payload, key):
+    """The project's own text for a Story Mode instruction (``story_mode_*``), or its built-in default."""
+    from ..llm.builder_instructions import _BUILDER_INSTRUCTION_DEFAULTS, _effective_builder_instruction
+
+    return _effective_builder_instruction(payload, key, _BUILDER_INSTRUCTION_DEFAULTS[key])
+
+
 def _layer(payload):
     return _normalize_story_layer(payload.get("story_layer") or payload.get("storyLayer") or {})
 
@@ -251,6 +258,7 @@ def draft_story_book(payload):
         lead_name=lead_name(payload),
         previous_book=_clean_scene_text(payload.get("previous_book") or "", 8000),
         seed=_clean_scene_text(payload.get("seed") or "", 80),
+        template=story_template(payload, "story_mode_book"),
     )
     text, run_info = _run(payload, instruction, label="Story Mode Book", max_new_tokens=6000)
     book, names = parse_story_book_text(text)
@@ -290,6 +298,7 @@ def rewrite_story_chapter(payload):
         lyric_guidance=story_mode_lyric_guidance(strength),
         video_style=video_style(payload),
         lead_name=lead_name(payload),
+        template=story_template(payload, "story_mode_chapter"),
     )
     text, run_info = _run(payload, instruction, label="Story Mode Chapter", max_new_tokens=2400)
     rewritten, names = parse_story_book_text(text)

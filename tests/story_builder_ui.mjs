@@ -104,7 +104,7 @@ function project() {
   };
 }
 
-function setup() {
+function setup(extra = {}) {
   const state = project();
   const calls = { saves: [], hosted: [], storyboard: 0, errors: [], order: [], beats: [], prompts: 0, promptArgs: [], generated: [], defaults: [], progress: [] };
   const builder = createStoryBuilder({
@@ -137,9 +137,42 @@ function setup() {
     render() {},
     state,
     storyboardScenePayload: () => state.segments.map((segment) => ({ id: segment.id, lyrics: segment.lyric_text })),
+    ...extra,
   });
   return { state, calls, builder };
 }
+
+test('each tab offers Story Mode\'s own instructions, and the steps send the project folder', async () => {
+  const opened = [];
+  const bodies = [];
+  const { state, builder } = setup({ projectFolder: () => 'C:/projects/song', openInstructions: (key, segment) => opened.push([key, segment.id]) });
+  state.projectVideoEngine = 'minimax_h3';
+  state.miniMaxH3Settings = { video_mode: 'reference_to_video' };
+  globalThis.fakeComfyApi.fetchApi = async (url, options) => {
+    bodies.push(JSON.parse(options.body));
+    return { ok: true, json: async () => ({ ok: true, story_layer: {} }) };
+  };
+  try {
+    builder.openStoryBuilder({ tab: 'acts' });
+    await tick();
+    findButton('Edit Acts Instructions').onclick();
+    builder.openStoryBuilder({ tab: 'prompts' });
+    await tick();
+    findButton('Edit Scene Beat Instructions').onclick();
+    findButton('Edit MiniMax Prompt Instructions').onclick();
+    assert.deepEqual(opened, [['story_mode_acts', 'seg_1'], ['story_mode_scene_beat', 'seg_1'],
+      ['minimax_h3_story_mode_reference_to_video', 'seg_1']]);
+    builder.openStoryBuilder({ tab: 'acts' });
+    await tick();
+    await findButton('Rebuild All Acts').onclick();
+    await tick();
+    assert.equal(bodies.at(-1)?.project_folder, 'C:/projects/song');
+  } finally {
+    delete globalThis.fakeComfyApi.fetchApi;
+  }
+  findButton('Close').onclick();
+  await tick();
+});
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 const findButton = (label) => document.body.all().find((node) => node.tagName === 'BUTTON' && node.textContent.trim() === label);
@@ -479,7 +512,7 @@ test('beats and prompts can be redone for picked or out-of-date scenes only', as
   assert.ok(findButton('Redo Beats (2)'));
   await findButton('Redo Prompts (1)').onclick();
   await tick();
-  assert.deepEqual(calls.promptArgs.at(-1), { sceneIds: ['seg_3'] });
+  assert.deepEqual(calls.promptArgs.at(-1), { sceneIds: ['seg_3'], storyMode: true });
   assert.ok(findButton('Redo Prompts (0)'), 'ticks are cleared after a run');
   findButton('Close').onclick();
   await tick();

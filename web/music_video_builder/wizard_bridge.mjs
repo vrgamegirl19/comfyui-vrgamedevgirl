@@ -314,6 +314,8 @@ export function createWizardBridge({
           }
           const data = await postJson("/vrgdg/storyboard/scene_story_beat", {
             ...textGemmaRunnerPayload(),
+            // The project folder lets a Story Mode beat use the project's own Story Mode beat instructions.
+            project_folder: activeProjectFolderForSave() || "",
             model_file: i2vTextGemmaModelSelect.value || t2iTextGemmaModelSelect.value || "",
             story_layer: normalizeBuilderStoryLayer(state.builderStoryLayer),
             storyboard_payload: beatStoryboardPayload,
@@ -457,6 +459,8 @@ export function createWizardBridge({
               progress,
               progressPercent: base,
               progressLabel: label,
+              // The Story Builder writes prompts with Story Mode's own MiniMax instructions.
+              storyMode: Boolean(options.storyMode),
             })
             : await postJson("/vrgdg/storyboard/gemma_video_prompt", {
               ...(storyboardState.gemmaSettings || {}),
