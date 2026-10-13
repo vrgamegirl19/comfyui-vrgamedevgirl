@@ -4,7 +4,8 @@
 export const STORY_FLOW_VERSION = 2;
 export const STORY_MODE_KEYS = ["story_flow_version", "story_book", "story_book_text", "story_settings", "story_acts", "story_scene_plan",
   "story_spot_min_scenes", "story_cast_ids", "story_allow_new_cast", "story_video_style", "story_continuation_mode",
-  "story_stamps", "story_main_cast_id", "story_cast_roles", "story_relationships"];
+  "story_stamps", "story_main_cast_id", "story_cast_roles", "story_relationships", "story_act_count",
+  "story_chapter_counts"];
 // A character's part in the story, and how two characters are connected.
 export const STORY_CAST_ROLES = ["main", "love_interest", "supporting", "antagonist"];
 export const STORY_RELATIONSHIP_TYPES = ["love_interest", "partners", "exes", "family", "friends", "rivals", "strangers", "other"];
@@ -24,7 +25,23 @@ export const PLAN_PERFORMANCE_MODES = ["singing", "speaking", "no_lip_sync", "in
 
 const STORY_MAX_CHAPTERS = 40;
 const STORY_MAX_PARAGRAPHS = 200;
-const STORY_CHAPTER_HEADING = /^\s*(?:#+\s*)?chapter\s+([0-9]+|[a-z]+(?:[\s-][a-z]+)?)\s*(?:[:.\-–—]\s*(.*?))?\s*$/i;
+// A book section heading: "Act 1: title" (written since story flow 3) or "Chapter 1: title" (older books).
+const STORY_CHAPTER_HEADING = /^\s*(?:#+\s*)?(?:chapter|act)\s+([0-9]+|[a-z]+(?:[\s-][a-z]+)?)\s*(?:[:.\-–—]\s*(.*?))?\s*$/i;
+// Levels: the story is built Story > Acts > Chapters > Scenes. In the data, story_book.chapters are the Acts and
+// story_acts are the Chapters (the keys predate the names).
+export const STORY_ACT_PURPOSES = ["setup", "turn", "climax", "resolution"];
+export const STORY_PRESENCE_LEVELS = ["absent", "present", "featured"];
+
+// {cast id: absent | present | featured}: how much a character is in an act or chapter.
+export function normalizeStoryPresence(value) {
+  const presence = {};
+  for (const [id, level] of Object.entries(plainObject(value)).slice(0, 40)) {
+    const key = storyLine(id, 160);
+    const name = storyLine(level, 20).toLowerCase();
+    if (key && STORY_PRESENCE_LEVELS.includes(name)) presence[key] = name;
+  }
+  return presence;
+}
 const STORY_META_LINE = /^\s*(title|premise|setting)\s*:\s*(.*?)\s*$/i;
 
 function storyText(value, limit = 4000) {
@@ -54,11 +71,15 @@ export function normalizeStoryBook(value) {
     if (!chapter || typeof chapter !== "object" || chapters.length >= STORY_MAX_CHAPTERS) return;
     const paragraphs = (Array.isArray(chapter.paragraphs) ? chapter.paragraphs : [])
       .map((item) => storyText(item, 6000)).filter(Boolean).slice(0, STORY_MAX_PARAGRAPHS);
+    const purpose = storyLine(chapter.purpose, 20).toLowerCase();
     chapters.push({
       id: storyLine(chapter.id, 80) || `ch_${index + 1}`,
       title: storyLine(chapter.title, 200),
       setting_id: storyLine(chapter.setting_id, 120),
       paragraphs,
+      // Shown as an Act: its part in the story and who is in it.
+      purpose: STORY_ACT_PURPOSES.includes(purpose) ? purpose : "",
+      presence: normalizeStoryPresence(chapter.presence),
     });
   });
   return { title: storyLine(source.title, 200), premise: storyText(source.premise, 2000), chapters };
@@ -89,9 +110,17 @@ export function normalizeStoryActs(value) {
       summary: storyText(item.summary, 2000),
       cast_ids: storyIdList(item.cast_ids, 40),
       scene_ids: storyIdList(item.scene_ids),
+      // Shown as a Chapter: the one setting it happens in (empty uses its act's) and who is in it.
+      setting_id: storyLine(item.setting_id, 120),
+      presence: normalizeStoryPresence(item.presence),
     });
   });
   return acts;
+}
+
+// The setting a chapter (story_acts entry) happens in: its own, or its act's (story_book chapter) for older stories.
+export function chapterSettingId(act, chapter) {
+  return storyLine(act?.setting_id, 120) || storyLine(chapter?.setting_id, 120);
 }
 
 export function normalizePlanPerformance(value) {
@@ -160,7 +189,20 @@ export function normalizeStoryModeFields(source) {
   if ("story_main_cast_id" in value) result.story_main_cast_id = storyLine(value.story_main_cast_id, 160);
   if ("story_cast_roles" in value) result.story_cast_roles = normalizeStoryCastRoles(value.story_cast_roles);
   if ("story_relationships" in value) result.story_relationships = normalizeStoryRelationships(value.story_relationships);
+  if ("story_act_count" in value) result.story_act_count = normalizeStoryCount(value.story_act_count, 0, 12);
+  if ("story_chapter_counts" in value) {
+    // {act (story_book chapter) id: how many chapters the user wants in it}.
+    result.story_chapter_counts = Object.fromEntries(Object.entries(plainObject(value.story_chapter_counts)).slice(0, 40)
+      .map(([id, count]) => [storyLine(id, 80), normalizeStoryCount(count, 0, 20)])
+      .filter(([id, count]) => id && count > 0));
+  }
   return result;
+}
+
+// A whole count between min and max; anything else is min (0 means "decide for me").
+export function normalizeStoryCount(value, min, max) {
+  const number = Math.trunc(Number(value));
+  return Number.isFinite(number) ? Math.max(min, Math.min(max, number)) : min;
 }
 
 // {cast id: role} for the story's characters. Unknown roles are dropped.
@@ -309,7 +351,7 @@ export function parseStoryBookText(value) {
     if (heading) {
       flush();
       buffer = [];
-      current = { id: `ch_${chapters.length + 1}`, title: storyLine(heading[2], 200) || `Chapter ${heading[1]}`, setting_id: "", paragraphs: [] };
+      current = { id: `ch_${chapters.length + 1}`, title: storyLine(heading[2], 200) || `Act ${heading[1]}`, setting_id: "", paragraphs: [] };
       continue;
     }
     const meta = STORY_META_LINE.exec(raw);
@@ -332,7 +374,7 @@ export function parseStoryBookText(value) {
   flush();
   if (!chapters.length) {
     const paragraphs = splitParagraphs(preamble.join("\n"));
-    if (paragraphs.length) chapters.push({ id: "ch_1", title: "Chapter 1", setting_id: "", paragraphs });
+    if (paragraphs.length) chapters.push({ id: "ch_1", title: "Act 1", setting_id: "", paragraphs });
   }
   return { book: normalizeStoryBook({ title, premise, chapters }), settingNames };
 }
@@ -346,7 +388,7 @@ export function storyBookToText(book, settings = []) {
   ].filter(Boolean).join("\n");
   const blocks = head ? [head] : [];
   normalized.chapters.forEach((chapter, index) => {
-    let heading = `Chapter ${index + 1}: ${chapter.title || `Chapter ${index + 1}`}`;
+    let heading = `Act ${index + 1}: ${chapter.title || `Act ${index + 1}`}`;
     const settingName = names[chapter.setting_id] || "";
     if (settingName) heading += `\nSetting: ${settingName}`;
     blocks.push([heading, ...chapter.paragraphs].join("\n\n"));

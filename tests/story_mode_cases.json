@@ -14,7 +14,9 @@
             "paragraphs": [
               "Mara waits on the platform.\nShe checks the watch.",
               "The train arrives."
-            ]
+            ],
+            "purpose": "",
+            "presence": {}
           },
           {
             "id": "ch_2",
@@ -23,7 +25,9 @@
             "paragraphs": [
               "Premise: not a premise here",
               "The kitchen is cold."
-            ]
+            ],
+            "purpose": "",
+            "presence": {}
           }
         ]
       },
@@ -31,7 +35,7 @@
         "setting_the_night_train": "The Night Train",
         "setting_home": "Home"
       },
-      "text_out": "Title: The Last Train North\nPremise: Mara follows her father's trail.\n\nChapter 1: The Station\nSetting: The Night Train\n\nMara waits on the platform.\nShe checks the watch.\n\nThe train arrives.\n\nChapter 2: Home\nSetting: Home\n\nPremise: not a premise here\n\nThe kitchen is cold."
+      "text_out": "Title: The Last Train North\nPremise: Mara follows her father's trail.\n\nAct 1: The Station\nSetting: The Night Train\n\nMara waits on the platform.\nShe checks the watch.\n\nThe train arrives.\n\nAct 2: Home\nSetting: Home\n\nPremise: not a premise here\n\nThe kitchen is cold."
     },
     {
       "name": "text without headings or blank lines is one chapter, one paragraph per line",
@@ -42,17 +46,19 @@
         "chapters": [
           {
             "id": "ch_1",
-            "title": "Chapter 1",
+            "title": "Act 1",
             "setting_id": "",
             "paragraphs": [
               "one line",
               "second line"
-            ]
+            ],
+            "purpose": "",
+            "presence": {}
           }
         ]
       },
       "setting_names": {},
-      "text_out": "Chapter 1: Chapter 1\n\none line\n\nsecond line"
+      "text_out": "Act 1: Act 1\n\none line\n\nsecond line"
     },
     {
       "name": "a sentence that starts with Chapter is not a heading",
@@ -63,16 +69,52 @@
         "chapters": [
           {
             "id": "ch_1",
-            "title": "Chapter 1",
+            "title": "Act 1",
             "setting_id": "",
             "paragraphs": [
               "Chapter by chapter she read the letters."
-            ]
+            ],
+            "purpose": "",
+            "presence": {}
           }
         ]
       },
       "setting_names": {},
-      "text_out": "Chapter 1: Chapter 1\n\nChapter by chapter she read the letters."
+      "text_out": "Act 1: Act 1\n\nChapter by chapter she read the letters."
+    },
+    {
+      "name": "Act headings (story flow 3) are read like chapter headings",
+      "text": "Act 1: Leaving\n\nMara packs.\n\nAct 2: The Road\nSetting: Highway\n\nShe drives.",
+      "book": {
+        "title": "",
+        "premise": "",
+        "chapters": [
+          {
+            "id": "ch_1",
+            "title": "Leaving",
+            "setting_id": "",
+            "paragraphs": [
+              "Mara packs."
+            ],
+            "purpose": "",
+            "presence": {}
+          },
+          {
+            "id": "ch_2",
+            "title": "The Road",
+            "setting_id": "setting_highway",
+            "paragraphs": [
+              "She drives."
+            ],
+            "purpose": "",
+            "presence": {}
+          }
+        ]
+      },
+      "setting_names": {
+        "setting_highway": "Highway"
+      },
+      "text_out": "Act 1: Leaving\n\nMara packs.\n\nAct 2: The Road\nSetting: Highway\n\nShe drives."
     }
   ],
   "split": [
@@ -100,12 +142,14 @@
       "chapters": [
         {
           "id": "ch_1",
-          "title": "Chapter 1",
+          "title": "Act 1",
           "setting_id": "",
           "paragraphs": [
             "a",
             "b"
-          ]
+          ],
+          "purpose": "",
+          "presence": {}
         },
         {
           "id": "ch_2",
@@ -114,7 +158,9 @@
           "paragraphs": [
             "c",
             "d"
-          ]
+          ],
+          "purpose": "",
+          "presence": {}
         }
       ],
       "setting_names": {
@@ -435,6 +481,87 @@
             "note": ""
           }
         ]
+      }
+    },
+    {
+      "name": "acts keep a purpose and presence; chapters keep a setting, presence and the wanted counts",
+      "input": {
+        "story_book": {
+          "chapters": [
+            {
+              "id": "ch_1",
+              "title": "Leaving",
+              "paragraphs": [
+                "x"
+              ],
+              "purpose": "Setup",
+              "presence": {
+                "mara": "Featured",
+                "joe": "maybe"
+              }
+            }
+          ]
+        },
+        "story_acts": [
+          {
+            "id": "act_1",
+            "chapter_id": "ch_1",
+            "title": "Packing",
+            "scene_ids": [
+              "s1"
+            ],
+            "setting_id": "setting_home",
+            "presence": {
+              "mara": "present"
+            }
+          }
+        ],
+        "story_act_count": "4",
+        "story_chapter_counts": {
+          "ch_1": 3,
+          "ch_2": 0,
+          "": 2
+        }
+      },
+      "output": {
+        "story_book": {
+          "title": "",
+          "premise": "",
+          "chapters": [
+            {
+              "id": "ch_1",
+              "title": "Leaving",
+              "setting_id": "",
+              "paragraphs": [
+                "x"
+              ],
+              "purpose": "setup",
+              "presence": {
+                "mara": "featured"
+              }
+            }
+          ]
+        },
+        "story_acts": [
+          {
+            "id": "act_1",
+            "chapter_id": "ch_1",
+            "title": "Packing",
+            "summary": "",
+            "cast_ids": [],
+            "scene_ids": [
+              "s1"
+            ],
+            "setting_id": "setting_home",
+            "presence": {
+              "mara": "present"
+            }
+          }
+        ],
+        "story_act_count": 4,
+        "story_chapter_counts": {
+          "ch_1": 3
+        }
       }
     }
   ],

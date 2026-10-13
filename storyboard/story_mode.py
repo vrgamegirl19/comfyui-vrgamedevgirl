@@ -20,6 +20,11 @@ Shape inside ``builder_story_layer`` (only present when the project has used Sto
 - ``story_spot_min_scenes``: the fewest scenes in a row at one spot (the Builder's "scenes per location").
 - ``story_cast_ids``: subject card ids the story is about. Empty means every character card.
 - ``story_allow_new_cast``: kept for old projects only. The story always uses only the cast.
+- Levels: the Story Builder shows Story > Acts > Chapters > Scenes. ``story_book.chapters`` are the Acts (with a
+  ``purpose`` and a ``presence`` grid) and ``story_acts`` are the Chapters inside them (each with its own
+  ``setting_id`` and ``presence``; an empty setting uses its act's). The keys predate the names.
+- ``story_act_count``: how many acts the user wants (0 lets the story decide). ``story_chapter_counts``: ``{act id:
+  chapters wanted}``.
 - ``story_main_cast_id``: the main character, who leads the story and is in most or every scene.
 - ``story_cast_roles``: ``{cast id: role}``, role one of ``STORY_CAST_ROLES``.
 - ``story_relationships``: ``[{a, b, type, note}]``, how two cast members are connected (type one of
@@ -41,7 +46,8 @@ STORY_FLOW_VERSION = 2
 STORY_MODE_KEYS = (
     "story_flow_version", "story_book", "story_book_text", "story_settings", "story_acts", "story_scene_plan",
     "story_spot_min_scenes", "story_cast_ids", "story_allow_new_cast", "story_video_style", "story_continuation_mode",
-    "story_stamps", "story_main_cast_id", "story_cast_roles", "story_relationships",
+    "story_stamps", "story_main_cast_id", "story_cast_roles", "story_relationships", "story_act_count",
+    "story_chapter_counts",
 )
 STORY_CAST_ROLES = ("main", "love_interest", "supporting", "antagonist")
 STORY_RELATIONSHIP_TYPES = ("love_interest", "partners", "exes", "family", "friends", "rivals", "strangers", "other")
@@ -54,10 +60,39 @@ PLAN_PERFORMANCE_MODES = ("singing", "speaking", "no_lip_sync", "instrumental")
 
 _MAX_CHAPTERS = 40
 _MAX_PARAGRAPHS = 200
+# A book section heading: "Act 1: title" (written since story flow 3) or "Chapter 1: title" (older books).
 _CHAPTER_HEADING = re.compile(
-    r"^\s*(?:#+\s*)?chapter\s+([0-9]+|[a-z]+(?:[\s-][a-z]+)?)\s*(?:[:.\-–—]\s*(.*?))?\s*$",
+    r"^\s*(?:#+\s*)?(?:chapter|act)\s+([0-9]+|[a-z]+(?:[\s-][a-z]+)?)\s*(?:[:.\-–—]\s*(.*?))?\s*$",
     re.IGNORECASE,
 )
+# Levels: the story is built Story > Acts > Chapters > Scenes. In the data, story_book chapters are the Acts and
+# story_acts are the Chapters (the keys predate the names).
+STORY_ACT_PURPOSES = ("setup", "turn", "climax", "resolution")
+STORY_PRESENCE_LEVELS = ("absent", "present", "featured")
+
+
+def normalize_story_presence(value):
+    """``{cast id: absent | present | featured}``: how much a character is in an act or chapter."""
+    presence = {}
+    for cast_id, level in list((value if isinstance(value, dict) else {}).items())[:40]:
+        key, name = _line(cast_id, 160), _line(level, 20).lower()
+        if key and name in STORY_PRESENCE_LEVELS:
+            presence[key] = name
+    return presence
+
+
+def normalize_story_count(value, minimum, maximum):
+    """A whole count between minimum and maximum; anything else is minimum (0 means "decide for me")."""
+    try:
+        number = int(float(value))
+    except (TypeError, ValueError):
+        return minimum
+    return max(minimum, min(maximum, number))
+
+
+def chapter_setting_id(act, chapter):
+    """The setting a chapter (story_acts entry) happens in: its own, or its act's (story_book chapter)."""
+    return _line((act or {}).get("setting_id"), 120) or _line((chapter or {}).get("setting_id"), 120)
 _META_LINE = re.compile(r"^\s*(title|premise|setting)\s*:\s*(.*?)\s*$", re.IGNORECASE)
 
 
@@ -95,11 +130,15 @@ def normalize_story_book(value):
         if not isinstance(chapter, dict) or len(chapters) >= _MAX_CHAPTERS:
             continue
         paragraphs = [_text(p, 6000) for p in chapter.get("paragraphs") or [] if _text(p, 6000)][:_MAX_PARAGRAPHS]
+        purpose = _line(chapter.get("purpose"), 20).lower()
         chapters.append({
             "id": _line(chapter.get("id"), 80) or f"ch_{index}",
             "title": _line(chapter.get("title"), 200),
             "setting_id": _line(chapter.get("setting_id"), 120),
             "paragraphs": paragraphs,
+            # Shown as an Act: its part in the story and who is in it.
+            "purpose": purpose if purpose in STORY_ACT_PURPOSES else "",
+            "presence": normalize_story_presence(chapter.get("presence")),
         })
     return {
         "title": _line(source.get("title"), 200),
@@ -134,6 +173,9 @@ def normalize_story_acts(value):
             "summary": _text(item.get("summary"), 2000),
             "cast_ids": _id_list(item.get("cast_ids"), 40),
             "scene_ids": _id_list(item.get("scene_ids")),
+            # Shown as a Chapter: the one setting it happens in (empty uses its act's) and who is in it.
+            "setting_id": _line(item.get("setting_id"), 120),
+            "presence": normalize_story_presence(item.get("presence")),
         })
     return acts
 
@@ -226,6 +268,16 @@ def normalize_story_mode_fields(source):
         result["story_cast_roles"] = normalize_story_cast_roles(source.get("story_cast_roles"))
     if "story_relationships" in source:
         result["story_relationships"] = normalize_story_relationships(source.get("story_relationships"))
+    if "story_act_count" in source:
+        result["story_act_count"] = normalize_story_count(source.get("story_act_count"), 0, 12)
+    if "story_chapter_counts" in source:
+        # {act (story_book chapter) id: how many chapters the user wants in it}.
+        counts = source.get("story_chapter_counts") if isinstance(source.get("story_chapter_counts"), dict) else {}
+        result["story_chapter_counts"] = {
+            _line(key, 80): normalize_story_count(value, 0, 20)
+            for key, value in list(counts.items())[:40]
+            if _line(key, 80) and normalize_story_count(value, 0, 20) > 0
+        }
     return result
 
 
@@ -368,7 +420,7 @@ def split_paragraphs(text):
 
 def _chapter_title(raw_number, raw_title):
     title = _line(raw_title, 200)
-    return title or f"Chapter {raw_number}"
+    return title or f"Act {raw_number}"
 
 
 def parse_story_book_text(text):
@@ -426,7 +478,7 @@ def parse_story_book_text(text):
     if not chapters:
         paragraphs = split_paragraphs("\n".join(preamble))
         if paragraphs:
-            chapters.append({"id": "ch_1", "title": "Chapter 1", "setting_id": "", "paragraphs": paragraphs})
+            chapters.append({"id": "ch_1", "title": "Act 1", "setting_id": "", "paragraphs": paragraphs})
     book = normalize_story_book({"title": title, "premise": premise, "chapters": chapters})
     return book, setting_names
 
@@ -443,7 +495,7 @@ def story_book_to_text(book, settings=None):
     head = "\n".join(parts)
     blocks = [head] if head else []
     for number, chapter in enumerate(book["chapters"], start=1):
-        heading = f"Chapter {number}: {chapter['title'] or f'Chapter {number}'}"
+        heading = f"Act {number}: {chapter['title'] or f'Act {number}'}"
         setting_name = names.get(chapter["setting_id"], "")
         if setting_name:
             heading += f"\nSetting: {setting_name}"
@@ -519,11 +571,11 @@ def chapters_from_split(paragraphs, split):
             names.setdefault(sid, setting)
         chapters.append({
             "id": f"ch_{index + 1}",
-            "title": title or f"Chapter {index + 1}",
+            "title": title or f"Act {index + 1}",
             "setting_id": sid,
             "paragraphs": list(paragraphs[start - 1:end]),
         })
-    return chapters, names
+    return normalize_story_book({"chapters": chapters})["chapters"], names
 
 
 def chapters_keep_text(paragraphs, chapters):
