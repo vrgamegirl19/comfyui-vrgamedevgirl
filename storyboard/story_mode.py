@@ -166,7 +166,7 @@ def normalize_story_acts(value):
     for index, item in enumerate(value if isinstance(value, list) else [], start=1):
         if not isinstance(item, dict):
             continue
-        acts.append({
+        act = {
             "id": _line(item.get("id"), 80) or f"act_{index}",
             "chapter_id": _line(item.get("chapter_id"), 80),
             "title": _line(item.get("title"), 200),
@@ -176,8 +176,23 @@ def normalize_story_acts(value):
             # Shown as a Chapter: the one setting it happens in (empty uses its act's) and who is in it.
             "setting_id": _line(item.get("setting_id"), 120),
             "presence": normalize_story_presence(item.get("presence")),
-        })
+        }
+        # The user's own words from Replan (Scenes tab): where it happens and what must happen. Kept only when set.
+        for key in ("location_note", "direction"):
+            if _text(item.get(key), 2000):
+                act[key] = _text(item.get(key), 2000)
+        acts.append(act)
     return acts
+
+
+def act_user_text(act):
+    """The user's location and direction for an act, as lines the plan and beat prompts must follow."""
+    lines = []
+    if (act or {}).get("location_note"):
+        lines.append(f"Where this happens (user, follow exactly): {act['location_note']}")
+    if (act or {}).get("direction"):
+        lines.append(f"What must happen (user, follow exactly): {act['direction']}")
+    return "\n".join(lines)
 
 
 def normalize_plan_performance(value):
@@ -635,6 +650,8 @@ def story_beat_context(layer, scene_id, scene_number):
         brief.append(f"What the characters do with each other: {entry['interaction']}")
     if entry.get("user_note"):
         brief.append(f"User direction for this scene (follow it exactly): {entry['user_note']}")
+    if act_user_text(act):
+        brief.append(act_user_text(act))
     if layer.get("song_story_brief"):
         brief.append(str(layer["song_story_brief"]))
     return "\n".join(lines), "\n".join(brief)

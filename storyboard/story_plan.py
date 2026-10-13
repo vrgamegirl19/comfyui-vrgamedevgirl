@@ -27,6 +27,7 @@ from .story_acts import (
 )
 from .story_book import _run, cast_lines, main_cast, story_cast, story_template
 from .story_mode import (
+    act_user_text,
     normalize_plan_performance,
     normalize_story_book,
     normalize_story_video_style,
@@ -277,6 +278,8 @@ def build_story_scene_plan(payload, progress=None):
     only = str(payload.get("act_id") or "").strip()
     if only and only not in {act["id"] for act in acts}:
         raise ValueError(f"Act '{only}' does not exist.")
+    # Replan only these scenes (Scenes tab, scene by scene). The LLM still sees the whole act; other scenes keep their plan.
+    only_scenes = {str(item) for item in payload.get("scene_ids") or [] if str(item).strip()}
     try:
         spot_min = max(1, int(payload.get("spot_min_scenes") or layer.get("story_spot_min_scenes")
                               or DEFAULT_SPOT_MIN_SCENES))
@@ -313,7 +316,7 @@ def build_story_scene_plan(payload, progress=None):
         known_spots = sorted({entry["spot"] for sid, entry in plan.items() if sid in chapter_scene_ids and entry.get("spot")})
         instruction = story_scene_plan_instruction(
             act_title=act["title"],
-            act_summary=act["summary"],
+            act_summary="\n".join(filter(None, [act["summary"], act_user_text(act)])),
             setting_name=setting_name,
             chapter_text="\n\n".join(chapter["paragraphs"]),
             scenes_text="\n".join(
@@ -343,6 +346,8 @@ def build_story_scene_plan(payload, progress=None):
         except Exception as error:  # the act keeps a plan built from its summary
             print(f"[VRGDG Story Mode] Scene plan for {act['id']} fell back to the act summary: {error}")
         for number in numbers:
+            if only_scenes and scene_ids[number - 1] not in only_scenes:
+                continue
             scene = scenes[number - 1]
             item = replies.get(number) or {}
             performance = normalize_plan_performance(item.get("performance") or _default_performance(scene))
@@ -388,7 +393,7 @@ def build_story_scene_plan(payload, progress=None):
             }
     # Spots are kept for a minimum run inside each chapter. Scenes with a user note, and (when only one act was
     # rebuilt) scenes outside that act, keep their spot.
-    rebuilt = {sid for act in todo for sid in act["scene_ids"]}
+    rebuilt = {sid for act in todo for sid in act["scene_ids"] if not only_scenes or sid in only_scenes}
     for chapter in chapters:
         ids = [sid for act in acts if act["chapter_id"] == chapter["id"] for sid in act["scene_ids"]]
         ids = [sid for sid in sorted(ids, key=number_by_id.get) if sid in plan]

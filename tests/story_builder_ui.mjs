@@ -441,7 +441,7 @@ test('reset scene plan clears the plan and the masked continuations it set', asy
   await tick();
 });
 
-test('the premise saves on its own and marks the story out of date until it is redone or kept', async () => {
+test('the premise saves on its own and nothing is shown as out of date', async () => {
   const { state, calls, builder } = setup();
   builder.openStoryBuilder({ tab: 'story' });
   await tick();
@@ -451,14 +451,12 @@ test('the premise saves on its own and marks the story out of date until it is r
   await findButton('Save Premise').onclick();
   assert.equal(state.builderStoryLayer.overall_story_idea, 'Mara leaves home for good.');
   assert.ok(calls.saves.includes('story builder premise'));
-  assert.ok(document.body.textContent.includes('The story is out of date: premise changed'));
-  await findButton('Keep The Story As Is').onclick();
-  assert.ok(!document.body.textContent.includes('The story is out of date'));
+  { const t = document.body.textContent; const i = t.indexOf('out of date'); assert.ok(i < 0, 'no out-of-date warnings: ' + t.slice(Math.max(0, i - 120), i + 80)); }
   findButton('Close').onclick();
   await tick();
 });
 
-test('scenes are grouped in act sections and only changed acts are replanned', async () => {
+test('scenes are grouped in act sections, and Replan asks for a location and story, then replans the act or ticked scenes', async () => {
   const { state, builder } = setup();
   const bodies = [];
   globalThis.fakeComfyApi.fetchApi = async (url, options) => {
@@ -471,15 +469,22 @@ test('scenes are grouped in act sections and only changed acts are replanned', a
     const text = document.body.textContent;
     assert.ok(text.includes('Chapter 1: Home') && text.includes('Chapter 2: Away'), 'each act is a section under its chapter');
     assert.ok(!findButton('Replan Out-Of-Date Acts (1)'));
-    // Edit act 1 by hand: its scenes go out of date, act 2's do not.
-    state.builderStoryLayer.story_acts[0].summary = 'Packing in a hurry.';
-    builder.openStoryBuilder({ tab: 'scenes' });
+    // Replan This Act opens a window for the location and a bit of story, and can replan only the ticked scenes.
+    findButton('Replan This Act').onclick();
+    const boxes = document.body.all().filter((node) => node.tagName === 'TEXTAREA' && /^(Where it happens|What must happen)/.test(node.placeholder));
+    assert.equal(boxes.length, 2, 'a location box and a story box');
+    boxes[0].value = 'A rooftop at dusk.';
+    boxes[1].value = 'She burns the letter.';
+    const mode = document.body.all().find((node) => node.tagName === 'SELECT' && node.options?.some((option) => option.value === 'some'));
+    mode.value = 'some';
+    mode.onchange();
+    const sceneTicks = document.body.all().filter((node) => node.tagName === 'INPUT' && node.type === 'checkbox' && node.parent?.textContent?.startsWith('Scene '));
+    sceneTicks[1].checked = true;
+    await findButton('Replan').onclick();
     await tick();
-    assert.ok(document.body.textContent.includes("This act's scenes are out of date: act changed"));
-    await findButton('Replan Out-Of-Date Acts (1)').onclick();
-    await tick();
-    assert.deepEqual(bodies.map((body) => body.act_id), ['act_1'], 'only the changed act is replanned');
-    assert.ok(!findButton('Replan Out-Of-Date Acts (1)'), 'the replanned act is up to date');
+    assert.deepEqual(bodies.map((body) => [body.act_id, body.scene_ids]), [['act_1', ['seg_2']]], 'only the ticked scene is replanned');
+    const act = state.builderStoryLayer.story_acts[0];
+    assert.deepEqual([act.location_note, act.direction], ['A rooftop at dusk.', 'She burns the letter.'], 'the act keeps your words');
   } finally {
     delete globalThis.fakeComfyApi.fetchApi;
   }
@@ -487,7 +492,7 @@ test('scenes are grouped in act sections and only changed acts are replanned', a
   await tick();
 });
 
-test('beats and prompts can be redone for picked or out-of-date scenes only', async () => {
+test('beats and prompts are redone for ticked scenes or one scene only', async () => {
   const { state, calls, builder } = setup();
   state.projectVideoEngine = 'minimax_h3';
   for (const segment of state.segments) segment.story_beat = `beat of ${segment.id}`;
@@ -495,12 +500,14 @@ test('beats and prompts can be redone for picked or out-of-date scenes only', as
   await tick();
   assert.equal(findButton('Redo Beats (0)').disabled, true);
   assert.equal(findButton('Redo Prompts (0)').disabled, true);
-  // Change scene 2's plan: only its beat goes out of date, and Redo Beats runs just that scene.
+  // Changing a plan marks nothing out of date; a scene's own Redo Beat runs just that scene.
   state.builderStoryLayer.story_scene_plan[1].story_slice = 'Mara burns the letter.';
   builder.openStoryBuilder({ tab: 'prompts' });
   await tick();
-  assert.ok(document.body.textContent.includes('BEAT OUT OF DATE: scene plan changed'));
-  await findButton('Redo Beats (1)').onclick();
+  assert.ok(!document.body.textContent.includes('OUT OF DATE'));
+  assert.equal(findButton('Redo Beats (0)').disabled, true);
+  const oneBeat = document.body.all().filter((node) => node.tagName === 'BUTTON' && node.textContent === 'Redo Beat');
+  await oneBeat[1].onclick();
   await tick();
   assert.deepEqual(calls.beats.at(-1), { overwrite: true, sceneIds: ['seg_2'] });
   // A ticked scene is added to both buttons.
@@ -509,7 +516,7 @@ test('beats and prompts can be redone for picked or out-of-date scenes only', as
   const ticks = document.body.all().filter((node) => node.tagName === 'INPUT' && node.type === 'checkbox');
   ticks[2].checked = true;
   ticks[2].onchange();
-  assert.ok(findButton('Redo Beats (2)'));
+  assert.ok(findButton('Redo Beats (1)'));
   await findButton('Redo Prompts (1)').onclick();
   await tick();
   assert.deepEqual(calls.promptArgs.at(-1), { sceneIds: ['seg_3'], storyMode: true });
@@ -543,7 +550,7 @@ test('planning all scenes runs act by act and says which act and scenes it is on
   await tick();
 });
 
-test('Update Story From This Scene keeps the change, adapts the act and marks only the named scenes out of date', async () => {
+test('Update Story From This Scene keeps the change and adapts the act', async () => {
   const { state, builder } = setup();
   state.fluxReferenceBuilder.subjects.push({ id: 'joe', name: 'Joe', reference_type: 'character', image: {} });
   const bodies = [];
@@ -577,10 +584,7 @@ test('Update Story From This Scene keeps the change, adapts the act and marks on
     assert.equal(state.builderStoryLayer.story_acts[0].summary, 'Packing, until Joe arrives.');
     assert.deepEqual(state.fluxReferenceBuilder.subject_scene_map.seg_2, ['joe']);
     const text = document.body.textContent;
-    assert.ok(text.includes("This act's scenes are out of date: act changed"), 'the named scene shows as out of date');
-    assert.ok(text.includes('Replan Out-Of-Date Acts (1)'), 'only the act with the named scene needs a replan');
-    const stale = JSON.parse(JSON.stringify(state.builderStoryLayer.story_stamps.plan));
-    assert.ok(stale.seg_2 && stale.seg_1, 'the changed scene and the scenes that still fit are stamped up to date');
+    assert.ok(!text.includes('out of date'), 'nothing is shown as out of date');
   } finally {
     delete globalThis.fakeComfyApi.fetchApi;
   }

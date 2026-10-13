@@ -12,12 +12,12 @@ import {
 import { normalizeMiniMaxH3Mode } from "./minimax_h3.mjs";
 import { applyStoryContinuationsToSegments } from "./story_continuation.mjs";
 import { applyStoryLocations } from "./story_locations_data.mjs";
-import { fillStoryStamps, stampStory, storyStaleness } from "./story_staleness.mjs";
+import { fillStoryStamps, stampStory } from "./story_staleness.mjs";
 import {
   applySceneCast, applyStoryBookText, isStoryPersonCard, normalizeSpotMinScenes, normalizeStoryActs, normalizeStoryBook,
   normalizeStoryContinuationMode, normalizeStoryScenePlan, normalizeStorySettings, normalizeStoryVideoStyle,
   planSegmentFields, resolveStoryContinuations, STORY_CAST_ROLES, STORY_CHAPTER_COLORS, STORY_FLOW_VERSION,
-  STORY_RELATIONSHIP_TYPES, STORY_VIDEO_STYLES,
+  STORY_RELATIONSHIP_TYPES, STORY_VIDEO_STYLES, storyBookToText,
 } from "./story_mode_data.mjs";
 import { normalizeTimelineMarkers } from "./timeline_state.mjs";
 
@@ -185,9 +185,10 @@ export function createStoryBuilder({
     return { layer: storyLayer, refs: normalizeFluxReferenceBuilder(state.fluxReferenceBuilder), segments: segments(), promptKey: promptKey() };
   }
 
-  // What is out of date and why (see story_staleness.mjs).
+  // Out-of-date warnings are switched off: nothing is shown as out of date, and every Redo runs only the scenes you
+  // choose. Stamps are still kept (story_staleness.mjs) so the warnings can come back without losing history.
   function staleness() {
-    return storyStaleness(staleInput());
+    return { book: [], acts: {}, plan: {}, places: {}, beats: {}, prompts: {} };
   }
 
   // Stamps outputs that have none yet, so later changes to what they were made from show as out of date.
@@ -359,16 +360,17 @@ export function createStoryBuilder({
 
   // Plans the given acts one LLM call at a time, saving each act as it finishes. The window names the act and its
   // scenes. A failed act stops the run; the acts before it stay planned. Returns how many acts were planned.
-  async function planActs(acts, list, title) {
+  // sceneIds: replan only these scenes of the acts (the rest keep their plan). Empty replans every scene of each act.
+  async function planActs(acts, list, title, { sceneIds = [] } = {}) {
     const progress = createProgressWindow(title, { zIndex: STORY_BUILDER_Z + 10 });
     const numberById = Object.fromEntries(segments().map((segment, index) => [segment.id, index + 1]));
     const spotMin = layer().story_spot_min_scenes;
     pushHistory();
     let done = 0;
     for (const [index, act] of list.entries()) {
-      const numbers = act.scene_ids.map((id) => numberById[id]).filter(Boolean);
+      const numbers = act.scene_ids.filter((id) => !sceneIds.length || sceneIds.includes(id)).map((id) => numberById[id]).filter(Boolean);
       const detail = `Act ${index + 1} of ${list.length}: ${act.title || act.id}\n${numbers.length ? `${sceneRangeText(numbers)} (${numbers.length} scene${numbers.length === 1 ? "" : "s"})` : "No scenes"}\n${done} of ${list.length} act${list.length === 1 ? "" : "s"} planned so far.`;
-      const data = await runStep("plan", { act_id: act.id, spot_min_scenes: spotMin, unload_after: index === list.length - 1 }, title, {
+      const data = await runStep("plan", { act_id: act.id, scene_ids: sceneIds, spot_min_scenes: spotMin, unload_after: index === list.length - 1 }, title, {
         progress, detail, from: (100 * index) / list.length, to: (100 * (index + 1)) / list.length,
       });
       if (!data?.story_layer) return done;
@@ -379,6 +381,64 @@ export function createStoryBuilder({
     progress.set(`${title}: done.\nPlanned ${done} act${done === 1 ? "" : "s"}.`, 100);
     progress.close(1200);
     return done;
+  }
+
+  // The Replan window of an act (a Chapter in the tabs): where it happens and what must happen, then the whole act's
+  // scenes or only the scenes picked. Both texts are kept on the act and steer the plan and every beat in it.
+  function openReplanDialog(act, onDone = () => {}) {
+    const all = segments();
+    const numberById = Object.fromEntries(all.map((segment, index) => [segment.id, index + 1]));
+    const overlay = el("div", "position:fixed;inset:0;background:rgba(2,6,23,.72);display:flex;align-items:center;justify-content:center;z-index:" + (STORY_BUILDER_Z + 20) + ";");
+    const box = el("div", "background:#0b1424;border:1px solid #22d3ee;border-radius:10px;padding:16px;width:min(640px,92vw);max-height:90vh;overflow:auto;display:flex;flex-direction:column;gap:10px;color:#e2e8f0;");
+    box.append(el("div", "font-size:16px;font-weight:900;", "Replan " + (act.title || act.id)));
+    box.append(el("div", "font-size:12px;color:#94a3b8;", "Your words steer the plan and the beat of every scene in this act. Leave a box empty to keep what is there."));
+    const where = textarea(act.location_note || "", "Where it happens: describe the place, e.g. A narrow rooftop at dusk, wet from rain, neon signs below.", 70);
+    const what = textarea(act.direction || "", "What must happen: a bit of story for this act, e.g. She finds the letter, hesitates, then burns it.", 100);
+    box.append(el("div", "font-size:12px;font-weight:800;", "Location"), where, el("div", "font-size:12px;font-weight:800;", "Story for this act"), what);
+    const picks = new Map();
+    const scope = el("div", "display:flex;flex-direction:column;gap:6px;border-top:1px dashed #334155;padding-top:8px;");
+    const modeSelect = makeSelect(["all", "some"], "all");
+    modeSelect.options[0].textContent = "Replan every scene of this act";
+    modeSelect.options[1].textContent = "Replan only the scenes I tick (scene by scene)";
+    const list = el("div", "display:none;flex-wrap:wrap;gap:8px;");
+    for (const id of act.scene_ids) {
+      const label = el("label", "display:flex;gap:4px;font-size:12px;align-items:center;cursor:pointer;");
+      const tick = document.createElement("input");
+      tick.type = "checkbox";
+      picks.set(id, tick);
+      label.append(tick, document.createTextNode("Scene " + (numberById[id] || "?")));
+      list.append(label);
+    }
+    modeSelect.onchange = () => { list.style.display = modeSelect.value === "some" ? "flex" : "none"; };
+    scope.append(modeSelect, list);
+    box.append(scope);
+    const close = () => overlay.remove();
+    const cancel = makeButton("Cancel");
+    cancel.onclick = close;
+    const go = makeButton("Replan", "primary");
+    go.onclick = async () => {
+      const ids = modeSelect.value === "some" ? act.scene_ids.filter((id) => picks.get(id).checked) : [];
+      if (modeSelect.value === "some" && !ids.length) {
+        toast("Tick at least one scene, or choose every scene.", true);
+        return;
+      }
+      go.disabled = true;
+      close();
+      const edited = normalizeStoryActs(layer().story_acts).map((item) => {
+        if (item.id !== act.id) return item;
+        const next = { ...item, location_note: where.value.trim(), direction: what.value.trim() };
+        if (!next.location_note) delete next.location_note;
+        if (!next.direction) delete next.direction;
+        return next;
+      });
+      await saveLayer({ story_acts: edited }, "story builder act direction");
+      const fresh = edited.find((item) => item.id === act.id);
+      const done = await planActs(edited, [fresh], "Replanning " + (act.title || act.id), { sceneIds: ids });
+      onDone(done);
+    };
+    box.append(row(go, cancel));
+    overlay.append(box);
+    document.body.append(overlay);
   }
 
   function openStoryBuilder(options = {}) {
@@ -457,7 +517,7 @@ export function createStoryBuilder({
       for (const [tabId, badge] of staleBadges) {
         const count = counts[tabId] || 0;
         badge.style.display = count ? "block" : "none";
-        badge.textContent = tabId === "story" ? "⚠ out of date" : `⚠ ${count} out of date`;
+        badge.textContent = count ? (tabId === "story" ? "⚠ out of date" : `⚠ ${count} out of date`) : "";
       }
       return progress;
     }
@@ -1117,9 +1177,8 @@ export function createStoryBuilder({
         header.append(heading);
         if (act) {
           const replan = makeButton("Replan This Act");
-          replan.onclick = async () => {
-            if (await replanAct(act)) show("scenes");
-          };
+          replan.title = "Tell the LLM where this happens and what must happen, then replan all of this act's scenes or only the ones you pick.";
+          replan.onclick = () => openReplanDialog(act, () => show("scenes"));
           header.append(replan);
         }
         section.append(header);
@@ -1228,7 +1287,7 @@ export function createStoryBuilder({
         story.append(slice, row(spot, mood, performance), castRow, itemsRow, interaction, userNote);
         if (entry.act_id) {
           const update = makeButton("Update Story From This Scene");
-          update.title = "Keeps this scene's characters and your direction, rewrites the scene to match, and adapts its act and chapter. Scenes that no longer fit are marked out of date.";
+          update.title = "Keeps this scene's characters and your direction, rewrites the scene to match, and adapts its act and chapter. Scenes that may no longer fit are named so you can replan them.";
           update.disabled = Boolean(blocked);
           update.onclick = () => reviseFromScene?.(segment, index + 1);
           story.append(row(update));
@@ -1359,7 +1418,7 @@ export function createStoryBuilder({
           { acts: chapterActs.map((act) => act.id), plan: keptScenes });
         const named = (data.other_scenes || []).map((item) => `Scene ${sceneNumbers([item.scene_id])[0]}${item.reason ? ` (${item.reason})` : ""}`);
         toast(named.length
-          ? `Story updated from Scene ${number}. These scenes no longer fit and are marked out of date: ${named.join("; ")}. Replan their act when you are ready.`
+          ? `Story updated from Scene ${number}. These scenes may no longer fit: ${named.join("; ")}. Replan them when you are ready.`
           : `Story updated from Scene ${number}. The rest of the act still fits.`);
         show("scenes");
       };
@@ -1501,7 +1560,7 @@ export function createStoryBuilder({
       // Redo only the out-of-date scenes plus any the user ticks, so the rest keep their beats and prompts.
       const stale = staleness();
       for (const id of [...picked]) if (!all.some((segment) => segment.id === id)) picked.delete(id);
-      const pickCard = card("Redo only what needs it", "Each button reruns the scenes marked out of date in amber, plus any scene you tick in the list below. Every other scene keeps its beat and prompt.");
+      const pickCard = card("Redo ticked scenes", "Tick scenes in the list below, then redo their beats or prompts. Each scene also has its own Redo Beat and Redo Prompt. Every other scene keeps its beat and prompt.");
       const hasBeat = (id) => String(all.find((segment) => segment.id === id)?.story_beat || "").trim();
       const beatIds = () => all.map((segment) => segment.id).filter((id) => stale.beats[id] || picked.has(id));
       const promptIds = () => all.map((segment) => segment.id).filter((id) => (stale.prompts[id] || picked.has(id)) && hasBeat(id));
@@ -1586,7 +1645,7 @@ export function createStoryBuilder({
         pickLabel.append(pickBox, document.createTextNode("Redo"));
         pickLabel.title = "Add this scene to Redo Beats and Redo Prompts.";
         pickBoxes.push({ id: segment.id, box: pickBox });
-        // This scene alone: every other scene keeps its beat and prompt, whatever else is out of date.
+        // This scene alone: every other scene keeps its beat and prompt.
         const oneBeat = makeButton("Redo Beat");
         oneBeat.title = "Write a new beat for this scene only, from its plan, characters, clothing and props.";
         oneBeat.disabled = Boolean(blocked);

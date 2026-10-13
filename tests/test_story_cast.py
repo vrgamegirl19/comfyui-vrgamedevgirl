@@ -193,6 +193,19 @@ class SceneItemTests(unittest.TestCase):
         cast = story_book.story_cast({**payload(), "reference_builder": refs})
         self.assertNotIn("Red Dress", [subject.get("name") for subject in cast])
 
+    def test_act_keeps_the_users_location_and_story(self):
+        story_mode = importlib.import_module(f"{ROOT.name}.storyboard.story_mode")
+        act = story_mode.normalize_story_acts([{"id": "a1", "location_note": "A rooftop at dusk.", "direction": "She burns the letter."}, {"id": "a2"}])
+        self.assertEqual(act[0]["location_note"], "A rooftop at dusk.")
+        self.assertNotIn("location_note", act[1])
+        text = story_mode.act_user_text(act[0])
+        self.assertIn("A rooftop at dusk.", text)
+        self.assertIn("She burns the letter.", text)
+        self.assertEqual(story_mode.act_user_text(act[1]), "")
+        layer = {"story_acts": act, "story_scene_plan": [{"scene_id": "s1", "act_id": "a1", "story_slice": "x"}]}
+        _arc, brief = story_mode.story_beat_context(layer, "s1", 1)
+        self.assertIn("She burns the letter.", brief)
+
 
 if __name__ == "__main__":
     unittest.main()

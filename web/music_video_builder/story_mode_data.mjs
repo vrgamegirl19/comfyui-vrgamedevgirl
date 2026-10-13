@@ -103,7 +103,7 @@ export function normalizeStoryActs(value) {
   const acts = [];
   (Array.isArray(value) ? value : []).forEach((item, index) => {
     if (!item || typeof item !== "object") return;
-    acts.push({
+    const act = {
       id: storyLine(item.id, 80) || `act_${index + 1}`,
       chapter_id: storyLine(item.chapter_id, 80),
       title: storyLine(item.title, 200),
@@ -113,7 +113,12 @@ export function normalizeStoryActs(value) {
       // Shown as a Chapter: the one setting it happens in (empty uses its act's) and who is in it.
       setting_id: storyLine(item.setting_id, 120),
       presence: normalizeStoryPresence(item.presence),
-    });
+    };
+    // The user's own words from Replan (Scenes tab): where it happens and what must happen. Kept only when set.
+    for (const key of ["location_note", "direction"]) {
+      if (storyText(item[key], 2000)) act[key] = storyText(item[key], 2000);
+    }
+    acts.push(act);
   });
   return acts;
 }
