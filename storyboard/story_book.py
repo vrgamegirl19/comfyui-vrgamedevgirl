@@ -93,17 +93,55 @@ def story_cast(payload):
 
 
 def allow_new_cast(payload):
-    """True when the LLM may add people who have no cast card."""
-    return bool(_layer(payload).get("story_allow_new_cast"))
+    """Always False: the story uses only the cast the user picked (old projects may still carry the setting)."""
+    return False
+
+
+_ROLE_LABELS = {"main": "main character", "love_interest": "love interest", "supporting": "supporting",
+                "antagonist": "antagonist"}
+_RELATIONSHIP_LABELS = {"love_interest": "love interests", "partners": "partners", "exes": "exes",
+                        "family": "family", "friends": "friends", "rivals": "rivals", "strangers": "strangers",
+                        "other": "connected"}
+
+
+def main_cast(payload):
+    """The main character card: the one picked in ``story_main_cast_id``, or the first story cast card."""
+    cast = story_cast(payload)
+    chosen = str(_layer(payload).get("story_main_cast_id") or "")
+    return next((subject for subject in cast if subject.get("id") == chosen), cast[0] if cast else None)
+
+
+def cast_role(payload, subject):
+    """The subject's role in the story: the main character is always ``main``; others default to supporting."""
+    main = main_cast(payload)
+    if main and subject.get("id") == main.get("id"):
+        return "main"
+    role = (_layer(payload).get("story_cast_roles") or {}).get(subject.get("id"), "supporting")
+    return "supporting" if role == "main" else role
+
+
+def relationship_lines(payload):
+    """``- Mara and Joe: love interests (estranged)`` for each relationship between story cast members."""
+    names = {subject.get("id"): subject["name"] for subject in story_cast(payload)}
+    lines = []
+    for item in _layer(payload).get("story_relationships") or []:
+        if item["a"] in names and item["b"] in names:
+            note = f" ({item['note']})" if item.get("note") else ""
+            lines.append(f"- {names[item['a']]} and {names[item['b']]}: {_RELATIONSHIP_LABELS.get(item['type'], 'connected')}{note}")
+    return lines
 
 
 def cast_lines(payload):
-    """``Name (type): description`` for every character card the story can use."""
+    """``Name (type, role): description`` for every character the story uses, then their relationships."""
     lines = []
     for subject in story_cast(payload):
         kind = subject.get("reference_type") or "character"
+        role = _ROLE_LABELS.get(cast_role(payload, subject), "supporting")
         description = subject.get("description") or ""
-        lines.append(f"- {subject['name']} ({kind})" + (f": {description}" if description else ""))
+        lines.append(f"- {subject['name']} ({kind}, {role})" + (f": {description}" if description else ""))
+    relationships = relationship_lines(payload)
+    if relationships:
+        lines += ["", "Relationships:", *relationships]
     return "\n".join(lines)
 
 
@@ -154,9 +192,9 @@ def video_style(payload):
 
 
 def lead_name(payload):
-    """The first story cast name, used as the performer in the prompts."""
-    cast = story_cast(payload)
-    return cast[0]["name"] if cast else ""
+    """The main character's name, used as the performer in the prompts."""
+    main = main_cast(payload)
+    return main["name"] if main else ""
 
 
 def _lyrics(payload, scenes):

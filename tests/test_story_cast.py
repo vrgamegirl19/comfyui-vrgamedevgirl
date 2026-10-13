@@ -68,7 +68,7 @@ class StoryCastTests(unittest.TestCase):
     def test_picked_cast_is_the_only_cast(self):
         prompt = self.draft(story_cast_ids=["subj_brandon"])
         self.assertIn("The story has exactly 1 character", prompt)
-        self.assertIn("- Brandon (character): Tall, lean.", prompt)
+        self.assertIn("- Brandon (character, main character): Tall, lean.", prompt)
         self.assertNotIn("Hostess", prompt)
         self.assertNotIn("Waiter", prompt)
         self.assertNotIn("You may add a few new minor people", prompt)
@@ -79,10 +79,23 @@ class StoryCastTests(unittest.TestCase):
         for name in ("Brandon", "Hostess", "Waiter"):
             self.assertIn(name, prompt)
 
-    def test_allowing_new_people(self):
+    def test_an_old_allow_new_people_setting_is_ignored(self):
         prompt = self.draft(story_cast_ids=["subj_brandon", "subj_hostess"], story_allow_new_cast=True)
-        self.assertIn("You may add a few new minor people", prompt)
+        self.assertNotIn("You may add a few new minor people", prompt)
+        self.assertIn("The story has exactly 2 characters", prompt)
         self.assertNotIn("Waiter", prompt)
+
+    def test_main_character_roles_and_relationships_reach_the_prompt(self):
+        prompt = self.draft(story_main_cast_id="subj_hostess",
+                            story_cast_roles={"subj_brandon": "love_interest", "subj_waiter": "antagonist"},
+                            story_relationships=[{"a": "subj_hostess", "b": "subj_brandon", "type": "love_interest",
+                                                  "note": "estranged"}])
+        self.assertIn("- Hostess (character, main character)", prompt)
+        self.assertIn("- Brandon (character, love interest)", prompt)
+        self.assertIn("- Waiter (character, antagonist)", prompt)
+        self.assertIn("Relationships:\n- Hostess and Brandon: love interests (estranged)", prompt)
+        self.assertIn("The story has exactly 3 characters", prompt, "relationship lines are not counted as people")
+        self.assertIn("Hostess performs the song", prompt, "the main character is the performer")
 
     def test_ids_of_removed_cards_fall_back_to_every_card(self):
         prompt = self.draft(story_cast_ids=["subj_gone"])
@@ -121,12 +134,11 @@ class StoryCastTests(unittest.TestCase):
         self.assertEqual(fake.labels, ["Story Mode Book", "Story Mode Cast Check"])
         self.assertEqual(result["removed_people"], [])
 
-    def test_allowing_new_people_skips_the_check(self):
+    def test_an_old_allow_new_people_setting_still_checks_the_cast(self):
         fake = FakeLLM(BOOK_WITH_OTHERS, extras=["Bellhop"])
         with patch.object(builder_runner, "_run_builder_text_llm", fake):
-            result = story_book.draft_story_book(payload(story_allow_new_cast=True))
-        self.assertEqual(fake.labels, ["Story Mode Book"])
-        self.assertIn("bellhop", result["story_layer"]["story_book_text"].lower())
+            story_book.draft_story_book(payload(story_allow_new_cast=True))
+        self.assertEqual(fake.labels[:2], ["Story Mode Book", "Story Mode Cast Check"])
 
     def test_a_broken_removal_keeps_the_draft(self):
         fake = FakeLLM(BOOK_WITH_OTHERS, extras=["Bellhop"], cleaned="Chapter 1: Lobby\nSetting: Condo Lobby\n\nOnly one.")

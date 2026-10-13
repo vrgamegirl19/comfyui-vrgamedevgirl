@@ -53,6 +53,13 @@ class ActRuleTests(unittest.TestCase):
         self.assertEqual(mapped, item["map_after"])
         self.assertEqual(changed, item["changed"])
 
+    def test_apply_cast_case(self):
+        story_mode = importlib.import_module(f"{ROOT.name}.storyboard.story_mode")
+        item = CASES["apply_cast"]
+        mapped, changed = story_mode.apply_scene_cast(item["subject_scene_map"], item["plan"], item["acts"], item["subject_ids"])
+        self.assertEqual(mapped, item["map_after"])
+        self.assertEqual(changed, item["changed"])
+
     def test_chapter_allocation(self):
         self.assertEqual(acts_rules.allocate_chapter_scenes([3, 1, 2], 20), [9, 4, 7])
         self.assertEqual(acts_rules.allocate_chapter_scenes([1] * 5, 3), [1, 1, 1, 0, 0])
@@ -217,6 +224,44 @@ class StoryPlanBuilderTests(unittest.TestCase):
         self.assertEqual(sum(len(a["scene_ids"]) for a in acts), 12)
         self.assertEqual(len(plan), 12)
         self.assertTrue(all(entry["spot"] for entry in plan), "spots fall back to the setting name")
+
+    def test_scene_cast_performer_and_interaction_with_user_changes_kept(self):
+        payload = make_payload(8)
+        payload["reference_builder"]["subjects"].append({"id": "joe", "name": "Joe", "description": "a conductor"})
+        payload["story_layer"]["story_main_cast_id"] = "mara"
+        payload["story_layer"]["story_relationships"] = [{"a": "mara", "b": "joe", "type": "love_interest", "note": ""}]
+        _llm, acts, _plan = self.run_steps(payload)
+        payload["story_layer"]["story_acts"] = acts
+        scene_ids = [s["id"] for s in payload["scenes"]]
+        # The user put Joe alone in scene 2 and wrote what he does.
+        payload["story_layer"]["story_scene_plan"] = [{"scene_id": scene_ids[1], "act_id": acts[0]["id"],
+                                                       "cast_ids": ["joe"], "cast_source": "manual",
+                                                       "user_note": "Joe arrives with flowers."}]
+
+        def scripted(payload_, instruction, *, label, **kwargs):
+            numbers = [int(n) for n in re.findall(r"^Scene (\d+) \(", instruction, re.M)]
+            scripted.prompts.append(instruction)
+            scenes = [{"scene": n, "story_slice": f"Slice {n}.", "spot": "Kitchen", "mood": "warm", "performance": "singing",
+                       "continues": False, "continuation": "", "cast": ["Mara", "Joe", "Stranger"], "performer": "Mara",
+                       "interaction": "Mara reaches for Joe's hand."} for n in numbers]
+            return json.dumps({"scenes": scenes}), {"runner": "fake", "used_model": "m"}
+
+        scripted.prompts = []
+        with patch.object(story_plan, "_run", scripted):
+            plan = story_plan.build_story_scene_plan(payload)["story_layer"]["story_scene_plan"]
+        by_id = {entry["scene_id"]: entry for entry in plan}
+        self.assertEqual(by_id[scene_ids[0]]["cast_ids"], ["mara", "joe"], "names outside the cast are dropped")
+        self.assertEqual(by_id[scene_ids[0]]["performer_id"], "mara")
+        self.assertEqual(by_id[scene_ids[0]]["interaction"], "Mara reaches for Joe's hand.")
+        self.assertEqual(by_id[scene_ids[0]]["cast_source"], "story")
+        self.assertEqual((by_id[scene_ids[1]]["cast_ids"], by_id[scene_ids[1]]["cast_source"]), (["joe"], "manual"))
+        self.assertEqual(by_id[scene_ids[1]]["performer_id"], "", "the performer must be in the scene")
+        self.assertEqual(by_id[scene_ids[1]]["interaction"], "", "one character has no interaction")
+        self.assertEqual(by_id[scene_ids[1]]["user_note"], "Joe arrives with flowers.")
+        first_prompt = scripted.prompts[0]
+        self.assertIn("user direction, characters in this scene: Joe | user direction: Joe arrives with flowers.", first_prompt)
+        self.assertIn("Mara is the main character", first_prompt)
+        self.assertIn("Relationships:\n- Mara and Joe: love interests", first_prompt)
 
     def test_plan_needs_valid_acts(self):
         payload = make_payload(6)

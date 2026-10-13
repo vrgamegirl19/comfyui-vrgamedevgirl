@@ -4,7 +4,10 @@
 export const STORY_FLOW_VERSION = 2;
 export const STORY_MODE_KEYS = ["story_flow_version", "story_book", "story_book_text", "story_settings", "story_acts", "story_scene_plan",
   "story_spot_min_scenes", "story_cast_ids", "story_allow_new_cast", "story_video_style", "story_continuation_mode",
-  "story_stamps"];
+  "story_stamps", "story_main_cast_id", "story_cast_roles", "story_relationships"];
+// A character's part in the story, and how two characters are connected.
+export const STORY_CAST_ROLES = ["main", "love_interest", "supporting", "antagonist"];
+export const STORY_RELATIONSHIP_TYPES = ["love_interest", "partners", "exes", "family", "friends", "rivals", "strangers", "other"];
 // A story layer without the Story Mode fields. The Story Builder owns those, so a layer coming back from the
 // Storyboard or the wizard (which can hold an old copy) is merged through this and never replaces them.
 export function withoutStoryModeKeys(layer) {
@@ -120,6 +123,14 @@ export function normalizeStoryScenePlan(value) {
         ? storyLine(item.continuation_source, 20).toLowerCase() : "",
       llm_continues: item.llm_continues === true,
       continuation_direction: storyText(item.continuation_direction, 600),
+      // Who is in the scene, who sings or speaks, what they do with each other, and who set the cast
+      // ("story" or "manual"). user_note is the user's own direction for the scene.
+      cast_ids: storyIdList(item.cast_ids, 12),
+      performer_id: storyLine(item.performer_id, 160),
+      interaction: storyText(item.interaction, 600),
+      cast_source: ["story", "manual"].includes(storyLine(item.cast_source, 20).toLowerCase())
+        ? storyLine(item.cast_source, 20).toLowerCase() : "",
+      user_note: storyText(item.user_note, 1200),
     });
   }
   return plan;
@@ -146,6 +157,36 @@ export function normalizeStoryModeFields(source) {
   if ("story_video_style" in value) result.story_video_style = normalizeStoryVideoStyle(value.story_video_style);
   if ("story_continuation_mode" in value) result.story_continuation_mode = normalizeStoryContinuationMode(value.story_continuation_mode);
   if ("story_stamps" in value) result.story_stamps = normalizeStoryStamps(value.story_stamps);
+  if ("story_main_cast_id" in value) result.story_main_cast_id = storyLine(value.story_main_cast_id, 160);
+  if ("story_cast_roles" in value) result.story_cast_roles = normalizeStoryCastRoles(value.story_cast_roles);
+  if ("story_relationships" in value) result.story_relationships = normalizeStoryRelationships(value.story_relationships);
+  return result;
+}
+
+// {cast id: role} for the story's characters. Unknown roles are dropped.
+export function normalizeStoryCastRoles(value) {
+  const roles = {};
+  for (const [id, role] of Object.entries(plainObject(value)).slice(0, 40)) {
+    const key = storyLine(id, 160);
+    const name = storyLine(role, 40).toLowerCase();
+    if (key && STORY_CAST_ROLES.includes(name)) roles[key] = name;
+  }
+  return roles;
+}
+
+// [{a, b, type, note}]: how two characters are connected. A pair with one person or an unknown type is dropped.
+export function normalizeStoryRelationships(value) {
+  const seen = new Set();
+  const result = [];
+  for (const item of (Array.isArray(value) ? value : []).slice(0, 40)) {
+    const a = storyLine(item?.a, 160);
+    const b = storyLine(item?.b, 160);
+    const type = storyLine(item?.type, 40).toLowerCase();
+    const pair = [a, b].sort().join("|");
+    if (!a || !b || a === b || !STORY_RELATIONSHIP_TYPES.includes(type) || seen.has(pair)) continue;
+    seen.add(pair);
+    result.push({ a, b, type, note: storyLine(item?.note, 300) });
+  }
   return result;
 }
 
@@ -355,6 +396,24 @@ export function fillSceneCast(subjectSceneMap, acts, subjectIds) {
     }
   }
   return { map: result, changed };
+}
+
+// Each planned scene's characters (cast_ids) become its mapping; scenes the plan gives no cast keep theirs, or get
+// their act's cast when they have none (fillSceneCast). Python twin: apply_scene_cast.
+export function applySceneCast(subjectSceneMap, plan, acts, subjectIds) {
+  const result = {};
+  for (const [key, value] of Object.entries(subjectSceneMap || {})) result[key] = Array.isArray(value) ? [...value] : value;
+  const valid = new Set(subjectIds);
+  const changed = [];
+  for (const entry of normalizeStoryScenePlan(plan)) {
+    const cast = entry.cast_ids.filter((id) => valid.has(id));
+    if (cast.length && JSON.stringify(result[entry.scene_id]) !== JSON.stringify(cast)) {
+      result[entry.scene_id] = cast;
+      changed.push(entry.scene_id);
+    }
+  }
+  const filled = fillSceneCast(result, acts, subjectIds);
+  return { map: filled.map, changed: [...changed, ...filled.changed.filter((id) => !changed.includes(id))] };
 }
 
 // One colour per chapter, used by the timeline stripe and the Story Builder act band.

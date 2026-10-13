@@ -14,9 +14,10 @@ import { applyStoryContinuationsToSegments } from "./story_continuation.mjs";
 import { applyStoryLocations } from "./story_locations_data.mjs";
 import { fillStoryStamps, stampStory, storyStaleness } from "./story_staleness.mjs";
 import {
-  applyStoryBookText, fillSceneCast, normalizeSpotMinScenes, normalizeStoryActs, normalizeStoryBook,
+  applySceneCast, applyStoryBookText, normalizeSpotMinScenes, normalizeStoryActs, normalizeStoryBook,
   normalizeStoryContinuationMode, normalizeStoryScenePlan, normalizeStorySettings, normalizeStoryVideoStyle,
-  planSegmentFields, resolveStoryContinuations, STORY_CHAPTER_COLORS, STORY_FLOW_VERSION, STORY_VIDEO_STYLES,
+  planSegmentFields, resolveStoryContinuations, STORY_CAST_ROLES, STORY_CHAPTER_COLORS, STORY_FLOW_VERSION,
+  STORY_RELATIONSHIP_TYPES, STORY_VIDEO_STYLES,
 } from "./story_mode_data.mjs";
 import { normalizeTimelineMarkers } from "./timeline_state.mjs";
 
@@ -26,6 +27,11 @@ const STATUS_COLORS = { empty: "#475569", progress: "#f59e0b", done: "#22c55e" }
 const PERFORMANCE_OPTIONS = [
   ["singing", "Singing"], ["speaking", "Speaking"], ["no_lip_sync", "Story only"], ["instrumental", "Instrumental"],
 ];
+const CAST_ROLE_LABELS = { main: "Main character", love_interest: "Love interest", supporting: "Supporting", antagonist: "Antagonist" };
+const RELATIONSHIP_LABELS = {
+  love_interest: "Love interests", partners: "Partners", exes: "Exes", family: "Family", friends: "Friends",
+  rivals: "Rivals", strangers: "Strangers", other: "Other",
+};
 const CONTINUATION_MODE_LABELS = {
   off: "Off (only the scenes I tick)",
   location: "Same spot: touching scenes at the same spot in a chapter",
@@ -161,6 +167,64 @@ export function createStoryBuilder({
     Promise.resolve(autoSaveSessionQuiet("story builder change tracking")).catch(() => {});
   }
 
+  // Who two characters are to each other. Every change saves; the story, scene plan and prompts get the list.
+  function relationshipEditor(cards, saved) {
+    const box = el("div", "display:flex;flex-direction:column;gap:6px;margin-top:8px;border-top:1px dashed #334155;padding-top:8px;");
+    box.append(el("div", "font-size:12px;font-weight:800;color:#cffafe;", "Relationships"),
+      el("div", "font-size:11px;color:#94a3b8;", "How two characters are connected, e.g. love interests. The story, the scenes and the shots show it in what they do together."));
+    const list = el("div", "display:flex;flex-direction:column;gap:6px;");
+    const ids = cards.map((subject) => subject.id);
+    const names = Object.fromEntries(cards.map((subject) => [subject.id, subject.name || subject.id]));
+    const rows = [];
+    const save = () => saveLayer({
+      story_relationships: rows.map((item) => ({ a: item.a.value, b: item.b.value, type: item.type.value, note: item.note.value })),
+    }, "story builder relationships");
+    const personSelect = (value) => {
+      const select = makeSelect(ids, value);
+      for (const option of select.options) option.textContent = names[option.value] || option.value;
+      select.style.width = "max-content";
+      return select;
+    };
+    const addRow = (item) => {
+      const a = personSelect(item.a);
+      const b = personSelect(item.b);
+      const type = makeSelect(STORY_RELATIONSHIP_TYPES, item.type || "love_interest");
+      for (const option of type.options) option.textContent = RELATIONSHIP_LABELS[option.value] || option.value;
+      type.style.width = "max-content";
+      const note = makeInput(item.note || "");
+      note.placeholder = "Note, e.g. estranged, secretly in love";
+      const remove = makeButton("Remove");
+      const line = row(a, el("span", "font-size:12px;color:#94a3b8;", "and"), b, type, note, remove);
+      const entry = { a, b, type, note };
+      remove.onclick = () => {
+        rows.splice(rows.indexOf(entry), 1);
+        line.remove();
+        save();
+      };
+      for (const control of [a, b, type, note]) control.onchange = save;
+      rows.push(entry);
+      list.append(line);
+    };
+    for (const item of saved) if (names[item.a] && names[item.b]) addRow(item);
+    const add = makeButton("Add Relationship");
+    add.disabled = ids.length < 2;
+    if (add.disabled) add.title = "Add a second character first.";
+    add.onclick = () => {
+      addRow({ a: ids[0], b: ids[1], type: "love_interest" });
+      save();
+    };
+    box.append(list, row(add));
+    return box;
+  }
+
+  // The characters the story is about: the ones picked in story_cast_ids, or every character card when none are.
+  function storyCastCards() {
+    const cards = (normalizeFluxReferenceBuilder(state.fluxReferenceBuilder).subjects || []).filter((subject) => subject && !subject.extra_reference_for);
+    const chosen = new Set(layer().story_cast_ids || []);
+    const picked = cards.filter((subject) => chosen.has(subject.id));
+    return chosen.size && picked.length ? picked : cards;
+  }
+
   function sceneNumbers(ids) {
     const index = Object.fromEntries(segments().map((segment, position) => [segment.id, position + 1]));
     return ids.map((id) => index[id]).filter(Boolean).sort((a, b) => a - b);
@@ -208,7 +272,8 @@ export function createStoryBuilder({
     }
     const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
     const subjectIds = (refs.subjects || []).filter((subject) => !subject.extra_reference_for).map((subject) => subject.id);
-    const { map, changed } = fillSceneCast(refs.subject_scene_map, acts, subjectIds);
+    // Each planned scene's characters become its mapping (a cast set in the Scenes tab included).
+    const { map, changed } = applySceneCast(refs.subject_scene_map, plan, acts, subjectIds);
     if (changed.length) {
       refs.subject_scene_map = map;
       refs.use_subject_reference = true;
@@ -597,42 +662,53 @@ export function createStoryBuilder({
       const current = layer();
       const blocked = blockerNote("story");
       if (blocked) content.append(blocked);
-      // Who the story is about. No ids saved means every card; the LLM gets only the picked cards.
-      const people = card("Characters in this story", "Tick who the story is about. The story uses exactly these people and no one else unless you allow new people below.");
+      // Who the story is about, their parts and how they are connected. No ids saved means every card. The story
+      // uses exactly these people and no one else.
+      const people = card("Characters in this story", "Tick who the story is about and give each one a part. The main character leads the story and is in most scenes. The story uses only these people.");
       const cards = (normalizeFluxReferenceBuilder(state.fluxReferenceBuilder).subjects || []).filter((subject) => subject && !subject.extra_reference_for);
       const savedIds = new Set(current.story_cast_ids || []);
       const useAll = !cards.some((subject) => savedIds.has(subject.id));
+      const savedRoles = current.story_cast_roles || {};
+      const mainId = cards.some((subject) => subject.id === current.story_main_cast_id) ? current.story_main_cast_id : cards[0]?.id || "";
       const boxes = cards.map((subject) => {
-        const label = el("label", "display:flex;gap:8px;font-size:12px;color:#e2e8f0;align-items:center;");
+        const line = el("div", "display:flex;gap:8px;font-size:12px;color:#e2e8f0;align-items:center;");
         const box = document.createElement("input");
         box.type = "checkbox";
         box.checked = useAll || savedIds.has(subject.id);
-        label.append(box, el("span", "", `${subject.name || subject.id} (${subject.reference_type || "character"})`));
-        people.append(label);
-        return { box, subject };
+        const role = makeSelect(STORY_CAST_ROLES, subject.id === mainId ? "main" : (savedRoles[subject.id] && savedRoles[subject.id] !== "main" ? savedRoles[subject.id] : "supporting"));
+        for (const option of role.options) option.textContent = CAST_ROLE_LABELS[option.value] || option.value;
+        role.style.width = "max-content";
+        line.append(box, el("span", "min-width:160px;", `${subject.name || subject.id} (${subject.reference_type || "character"})`), role);
+        people.append(line);
+        return { box, role, subject };
       });
       if (!cards.length) people.append(el("div", "font-size:12px;color:#fbbf24;", "No cast yet. Add your characters in the Cast tab first."));
-      const allowLabel = el("label", "display:flex;gap:8px;font-size:12px;color:#e2e8f0;align-items:center;");
-      const allowBox = document.createElement("input");
-      allowBox.type = "checkbox";
-      allowBox.checked = Boolean(current.story_allow_new_cast);
-      allowLabel.append(allowBox, el("span", "", "Let the story add new people (you add their cards with Find Cast In Story)"));
-      people.append(allowLabel);
-      const saveCast = async () => {
+      const saveCast = async (changedRole = null) => {
+        // One main character: picking a new one makes the old one supporting.
+        if (changedRole?.value === "main") {
+          for (const item of boxes) if (item.role !== changedRole && item.role.value === "main") item.role.value = "supporting";
+        }
         const picked = boxes.filter((item) => item.box.checked).map((item) => item.subject.id);
         if (cards.length && !picked.length) {
           toast("Pick at least one character for the story.", true);
           return;
         }
+        const main = boxes.find((item) => item.role.value === "main" && item.box.checked) || boxes.find((item) => item.box.checked);
         await saveLayer({
           story_cast_ids: picked.length === cards.length ? [] : picked,
-          story_allow_new_cast: allowBox.checked,
+          story_allow_new_cast: false,
+          story_main_cast_id: main?.subject.id || "",
+          story_cast_roles: Object.fromEntries(boxes.map((item) => [item.subject.id, item === main ? "main" : (item.role.value === "main" ? "supporting" : item.role.value)])),
         }, "story builder story cast");
+        if (main && main.role.value !== "main") main.role.value = "main";
         drawBookNote();
         refreshProgress();
       };
-      for (const { box } of boxes) box.onchange = saveCast;
-      allowBox.onchange = saveCast;
+      for (const { box, role } of boxes) {
+        box.onchange = () => saveCast();
+        role.onchange = () => saveCast(role);
+      }
+      people.append(relationshipEditor(cards, current.story_relationships || []));
 
       // The story's own out-of-date note, redrawn in place so typing elsewhere on the tab is not lost.
       const bookNote = el("div");
@@ -754,82 +830,7 @@ export function createStoryBuilder({
           row(direction, rewrite));
       }
 
-      const keepToCast = !current.story_allow_new_cast;
-      const cast = card("Cast in the story", keepToCast
-        ? "Check the story for anyone outside the characters ticked above, and write them out."
-        : "Find people in the story who have no character card, and add the ones you want.");
-      const find = makeButton(keepToCast ? "Check Story For Other People" : "Find Cast In Story", "primary");
-      const found = el("div", "display:flex;flex-direction:column;gap:6px;");
-      find.onclick = async () => {
-        const data = await runStep("cast", {}, "Finding story characters");
-        found.textContent = "";
-        const characters = data?.characters || [];
-        if (!characters.length) {
-          found.append(el("div", "font-size:12px;color:#94a3b8;", keepToCast
-            ? "Only your story cast is in the story."
-            : "Everyone in the story already has a card."));
-          return;
-        }
-        if (keepToCast) {
-          found.append(el("div", "font-size:12px;color:#fbbf24;", "These people are in the story but not in your story cast. Rewrite the story without them, or add them to the cast."));
-        }
-        const boxes = characters.map((character) => {
-          const label = el("label", "display:flex;gap:8px;font-size:12px;color:#e2e8f0;align-items:flex-start;");
-          const box = document.createElement("input");
-          box.type = "checkbox";
-          box.checked = keepToCast || character.role !== "background";
-          label.append(box, el("span", "", `${character.name} (${character.role}): ${character.description}`));
-          found.append(label);
-          return { box, character };
-        });
-        const addCast = makeButton(keepToCast ? "Add Selected To Cast Instead" : "Add Selected To Cast", keepToCast ? "" : "primary");
-        addCast.onclick = async () => {
-          const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
-          const chosen = boxes.filter((item) => item.box.checked).map((item) => item.character);
-          if (refs.subjects.length + chosen.length > 12) {
-            toast("The Reference Builder holds up to 12 characters. Pick fewer.", true);
-            return;
-          }
-          pushHistory();
-          const addedIds = [];
-          for (const character of chosen) {
-            const subject = storySubjectCard(character, `subj_${Date.now()}_${Math.floor(Math.random() * 10000)}`);
-            refs.subjects.push(subject);
-            addedIds.push(subject.id);
-          }
-          refs.subject_count = refs.subjects.length;
-          state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
-          // A picked story cast gets the new people too.
-          if (current.story_cast_ids?.length) {
-            state.builderStoryLayer = normalizeBuilderStoryLayer({
-              ...state.builderStoryLayer, story_cast_ids: [...current.story_cast_ids, ...addedIds],
-            });
-          }
-          await autoSaveSessionQuiet("story builder cast added");
-          toast(`Added ${chosen.length} character${chosen.length === 1 ? "" : "s"}. Make their images now, or give them a RefMod.`);
-          // Characters with no image and no RefMod: go straight to making their images.
-          if (castWithoutImages(normalizeFluxReferenceBuilder(state.fluxReferenceBuilder)).length) await generateMissingImages("characters");
-          else show(activeTab);
-        };
-        const removeThem = makeButton("Rewrite Without Them", "primary");
-        removeThem.title = "The LLM rewrites the story so only your story cast is in it. Acts and the scene plan are cleared.";
-        removeThem.onclick = async () => {
-          const names = boxes.filter((item) => item.box.checked).map((item) => item.character.name);
-          if (!names.length) {
-            toast("Tick the people to write out.", true);
-            return;
-          }
-          const data = await runStep("remove_people", { names }, "Rewriting the story without them");
-          if (data?.story_layer) {
-            await saveLayer(data.story_layer, "story builder people removed", { book: true });
-            toast(`Removed ${names.join(", ")}. Create the acts again.`);
-            show("story");
-          }
-        };
-        found.append(keepToCast ? row(removeThem, addCast) : row(addCast));
-      };
-      cast.append(row(find), found);
-      content.append(people, idea, own, book, chapters, cast);
+      content.append(people, idea, own, book, chapters);
     }
 
     // ---------------------------------------------------------------- Acts
@@ -969,6 +970,7 @@ export function createStoryBuilder({
       const acts = normalizeStoryActs(current.story_acts);
       const actOf = Object.fromEntries(acts.flatMap((act) => act.scene_ids.map((id) => [id, act])));
       const plan = Object.fromEntries(normalizeStoryScenePlan(current.story_scene_plan).map((entry) => [entry.scene_id, entry]));
+      const castNames = Object.fromEntries(storyCastCards().map((subject) => [subject.id, subject.name || subject.id]));
       const top = card("Scene plan", "Every scene gets its part of the act, a spot inside the chapter's setting, a mood and a performance. Your notes win over the story.");
       const planAll = makeButton(Object.keys(plan).length ? "Replan All Scenes" : "Plan All Scenes", "primary");
       planAll.disabled = Boolean(blocked);
@@ -1116,7 +1118,30 @@ export function createStoryBuilder({
         const performance = makeSelect(PERFORMANCE_OPTIONS.map(([value]) => value), entry.performance_mode);
         for (const option of performance.options) option.textContent = PERFORMANCE_OPTIONS.find(([value]) => value === option.value)?.[1] || option.value;
         const story = el("div", "display:flex;flex-direction:column;gap:6px;");
-        story.append(slice, row(spot, mood, performance));
+        // Who is in the scene: click a name to add or remove them. A cast you change here wins over the story.
+        const picked = new Set(entry.cast_ids || []);
+        const castRow = el("div", "display:flex;flex-wrap:wrap;gap:4px;align-items:center;");
+        castRow.append(el("span", "font-size:11px;color:#94a3b8;", entry.cast_source === "manual" ? "Characters (yours):" : "Characters:"));
+        const drawChip = (chip, id) => {
+          const on = picked.has(id);
+          chip.style.cssText = `border:1px solid ${on ? "#22d3ee" : "#334155"};border-radius:999px;padding:2px 9px;font-size:11px;font-weight:800;cursor:pointer;background:${on ? "rgba(8,145,178,.35)" : "transparent"};color:${on ? "#cffafe" : "#94a3b8"};`;
+          chip.textContent = `${on ? "✓ " : ""}${castNames[id]}${id === entry.performer_id ? " ♪" : ""}`;
+        };
+        for (const id of Object.keys(castNames)) {
+          const chip = el("button");
+          chip.type = "button";
+          chip.title = id === entry.performer_id ? "Sings or speaks in this scene." : "Click to add or remove this character.";
+          chip.onclick = () => {
+            if (picked.has(id)) picked.delete(id);
+            else picked.add(id);
+            drawChip(chip, id);
+          };
+          drawChip(chip, id);
+          castRow.append(chip);
+        }
+        const interaction = textarea(entry.interaction, "What the characters do with each other, e.g. Mara reaches for Joe's hand; he pulls away.", 34);
+        const userNote = textarea(entry.user_note, "Your direction for this scene: what should happen, what a character does. The story follows it.", 34);
+        story.append(slice, row(spot, mood, performance), castRow, interaction, userNote);
         const director = textarea(segment.timeline_note, "Director note: how you want this scene made", 40);
         const video = textarea(segment.i2v_notes, "Video note: motion and action", 40);
         const planning = textarea(segment.notes, "Planning note", 34);
@@ -1158,7 +1183,8 @@ export function createStoryBuilder({
           mark();
         }
         section.append(box);
-        rows.push({ segment, entry, slice, spot, mood, performance, director, video, planning, continues, direction, holdInput });
+        rows.push({ segment, entry, slice, spot, mood, performance, director, video, planning, continues, direction, holdInput,
+          picked, interaction, userNote });
       });
       const save = makeButton("Save Scene Plan And Notes", "primary");
       save.onclick = async () => {
@@ -1167,8 +1193,15 @@ export function createStoryBuilder({
           const on = item.continues ? item.continues.checked : false;
           // A tick that differs from what the mode decided is your choice, and it wins over the mode from now on.
           const manual = item.continues && on !== Boolean(item.entry.continues_previous);
+          const castIds = Object.keys(castNames).filter((id) => item.picked.has(id));
+          const castChanged = JSON.stringify(castIds) !== JSON.stringify((item.entry.cast_ids || []).filter((id) => castNames[id]));
           return {
             ...item.entry,
+            cast_ids: castIds,
+            cast_source: castChanged ? "manual" : item.entry.cast_source,
+            performer_id: castIds.includes(item.entry.performer_id) ? item.entry.performer_id : "",
+            interaction: item.interaction.value.trim(),
+            user_note: item.userNote.value.trim(),
             story_slice: item.slice.value,
             spot: item.spot.value,
             mood: item.mood.value,

@@ -357,5 +357,79 @@
         ]
       }
     ]
+  },
+  "apply_cast": {
+    "name": "the plan cast replaces the mapping; scenes without plan cast keep theirs or get the act cast",
+    "subject_scene_map": {
+      "s1": [
+        "mara"
+      ],
+      "s2": [
+        "mara"
+      ],
+      "s4": [
+        "lena"
+      ]
+    },
+    "plan": [
+      {
+        "scene_id": "s1",
+        "cast_ids": [
+          "mara",
+          "joe"
+        ]
+      },
+      {
+        "scene_id": "s2",
+        "cast_ids": [
+          "mara"
+        ]
+      },
+      {
+        "scene_id": "s3",
+        "cast_ids": [
+          "ghost"
+        ]
+      }
+    ],
+    "acts": [
+      {
+        "id": "a1",
+        "chapter_id": "c1",
+        "cast_ids": [
+          "joe"
+        ],
+        "scene_ids": [
+          "s1",
+          "s2",
+          "s3",
+          "s4"
+        ]
+      }
+    ],
+    "subject_ids": [
+      "mara",
+      "joe",
+      "lena"
+    ],
+    "map_after": {
+      "s1": [
+        "mara",
+        "joe"
+      ],
+      "s2": [
+        "mara"
+      ],
+      "s4": [
+        "lena"
+      ],
+      "s3": [
+        "joe"
+      ]
+    },
+    "changed": [
+      "s1",
+      "s3"
+    ]
   }
 }

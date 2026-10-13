@@ -25,7 +25,7 @@ import {
 } from "./reference_data.mjs";
 import { newSegment, normalizeVideoPromptOrigin, sortSegments } from "./segments.mjs";
 import { refmodCardFields } from "./refmod_labels.mjs";
-import { STORY_MODE_KEYS } from "./story_mode_data.mjs";
+import { normalizeStoryScenePlan, STORY_MODE_KEYS } from "./story_mode_data.mjs";
 import { storyboardGptPayload } from "../storyboard_builder/gpt_payload.mjs";
 import { storyboardSceneCardContext, STORYBOARD_SCENE_CARD_CONTEXT_INSTRUCTION } from "../storyboard_builder/scenes.mjs";
 
@@ -111,6 +111,15 @@ export function createStoryboardBridge({
       );
     }
     add(parts, "Storyboard scene story beat", storyLayer.scene_story_beat || scene.story_beat);
+    // Story Mode: this scene's part of the story, who is in it, what they do together, and the user's direction.
+    const planEntry = normalizeStoryScenePlan(normalizeBuilderStoryLayer(state.builderStoryLayer).story_scene_plan)
+      .find((entry) => entry.scene_id === String(canonicalSegment?.id || scene.id || ""));
+    if (planEntry) {
+      add(parts, "Story Mode scene", [planEntry.story_slice, planEntry.spot ? `Spot: ${planEntry.spot}.` : "",
+        planEntry.mood ? `Mood: ${planEntry.mood}.` : ""].filter(Boolean).join(" "));
+      add(parts, "MANDATORY what the characters do with each other", planEntry.interaction);
+      add(parts, "MANDATORY user direction for this scene", planEntry.user_note);
+    }
     add(parts, "REQUIRED Storyboard video style", selectedScene.video_style);
     add(parts, "MANDATORY exact Storyboard video style verbiage — copy word-for-word", selectedScene.video_style_verbiage);
     add(parts, "MANDATORY exact temporal / world effect verbiage — copy word-for-word", selectedScene.temporal_world_effect_verbiage);

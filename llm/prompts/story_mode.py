@@ -56,12 +56,23 @@ def story_cast_rule(cast_text, allow_new_cast):
     if allow_new_cast or not cast_text:
         return ("Use the cast names below. Main characters drive the story. You may add a few new minor people when "
                 "the story needs them; give each a name.")
-    count = len([line for line in cast_text.splitlines() if line.strip()])
+    people_lines = cast_text.split("\nRelationships:")[0]
+    count = len([line for line in people_lines.splitlines() if line.strip().startswith("- ")])
     people = "1 character" if count == 1 else f"{count} characters"
     return (f"The story has exactly {people}: the cast below, and no one else. Do not add, name or describe any other "
             "person, not even a minor one (no friends, partners, strangers, staff or family who are not in the cast). "
             "Places that would hold people (a club, a street, a restaurant) stay empty or have only a blurred, unnamed "
-            "crowd that never speaks, acts or matters to the story. Every event happens to or through the cast.")
+            "crowd that never speaks, acts or matters to the story. Every event happens to or through the cast. "
+            f"{CAST_PRESENCE_RULE}")
+
+
+# Keeps every picked character in the story to the end, the main character at its centre.
+CAST_PRESENCE_RULE = (
+    "The main character leads the story and is in nearly every part of it. Every other character has a clear part "
+    "that carries through to the ending: they return in later chapters, and nobody drops out without the story "
+    "showing why. The relationships listed with the cast decide how the characters treat each other, and the "
+    "story shows them on screen through what they do together."
+)
 
 
 def story_medium_rule(video_style, lead_name=""):
@@ -258,7 +269,8 @@ def story_acts_instruction(*, chapter_number, chapter_title, setting_name, chapt
         "- A timed user note must fall inside one act; never start an act in the middle of a note's scenes.\n"
         "- Bigger story moments can land on louder or longer scenes, but never change the story's order.\n"
         "- summary: 1-3 sentences of what visibly happens in the act.\n"
-        "- cast: names from the cast list who appear in the act.\n"
+        "- cast: names from the cast list who appear in the act. The main character is in nearly every act. Keep "
+        "the other characters in the acts where the chapter has them, so each one stays in the story to the end.\n"
         f"- {LYRICS_ARE_MOOD_ONLY}\n"
         "Return JSON only: {\"acts\": [{\"first_scene\": 1, \"title\": \"...\", \"summary\": \"...\", \"cast\": [\"...\"]}]}\n\n"
         f"Chapter {chapter_number}: {chapter_title}\n"
@@ -303,15 +315,26 @@ _PLAN_PERFORMANCE_RULES = {
 
 
 def story_scene_plan_instruction(*, act_title, act_summary, setting_name, chapter_text, scenes_text, cast_text,
-                                 spot_min_scenes, previous_spot, lyric_guidance, known_spots, video_style="music_video"):
-    """Give every scene of one act its slice of the story, a spot, a mood and a performance."""
+                                 spot_min_scenes, previous_spot, lyric_guidance, known_spots, video_style="music_video",
+                                 act_cast="", main_name=""):
+    """Give every scene of one act its slice of the story, a spot, a mood, a performance and its cast."""
     return (
         "You are a music video director planning each scene of one act.\n\n"
-        "For every scene listed, write what happens in it, where in the setting it happens, its mood and how the "
-        "performer appears.\n\n"
+        "For every scene listed, write what happens in it, where in the setting it happens, its mood, how the "
+        "performer appears, and who is in it and what they do with each other.\n\n"
         "Rules:\n"
         "- story_slice: 1-2 sentences of what visibly happens in this scene, continuing from the scene before. "
         "Together the slices tell the act in order.\n"
+        "- cast: names from the cast list who are visibly in this scene. "
+        f"{(main_name + ' is the main character and is in most scenes. ') if main_name else ''}"
+        f"This act's characters are {act_cast or 'the cast below'}; give each of them scenes in this act. "
+        "Never name anyone outside the cast list.\n"
+        "- performer: the one name from cast who sings or speaks in this scene, or an empty string when nobody "
+        "does.\n"
+        "- interaction: one sentence of what the characters in this scene do with or toward each other, shaped by "
+        "their relationship (a glance, a touch, a turn away). Empty when only one character is in the scene.\n"
+        "- A scene with a user note (\"user direction\") follows it exactly, including any character it adds and what "
+        "they do.\n"
         f"- spot: the specific place inside the setting \"{setting_name or 'the setting'}\" (e.g. Kitchen, Bedroom, "
         "Front Porch). 1-3 words, no setting name. The spot comes from the story action, never from the lyrics. "
         f"Stay at one spot for at least {spot_min_scenes} scenes in a row unless a user note moves it. "
@@ -330,7 +353,8 @@ def story_scene_plan_instruction(*, act_title, act_summary, setting_name, chapte
         "moment settles (e.g. \"She sets the letter down and walks to the window.\"). Write it for every scene.\n"
         f"- {lyric_guidance}\n"
         "Return JSON only: {\"scenes\": [{\"scene\": 1, \"story_slice\": \"...\", \"spot\": \"...\", \"mood\": \"...\", "
-        "\"performance\": \"singing\", \"continues\": false, \"continuation\": \"...\"}]}\n\n"
+        "\"performance\": \"singing\", \"continues\": false, \"continuation\": \"...\", \"cast\": [\"...\"], "
+        "\"performer\": \"...\", \"interaction\": \"...\"}]}\n\n"
         f"Act: {act_title}\n{act_summary}\n\n"
         f"Spot of the scene before this act: {previous_spot or '[none]'}\n\n"
         f"Cast:\n{cast_text or '[none]'}\n\n"
@@ -354,8 +378,12 @@ STORY_SCENE_PLAN_SCHEMA = {
                     "performance": {"type": "string", "enum": ["singing", "speaking", "story", "instrumental"]},
                     "continues": {"type": "boolean"},
                     "continuation": {"type": "string"},
+                    "cast": {"type": "array", "items": {"type": "string"}},
+                    "performer": {"type": "string"},
+                    "interaction": {"type": "string"},
                 },
-                "required": ["scene", "story_slice", "spot", "mood", "performance", "continues", "continuation"],
+                "required": ["scene", "story_slice", "spot", "mood", "performance", "continues", "continuation",
+                             "cast", "performer", "interaction"],
                 "additionalProperties": False,
             },
         },

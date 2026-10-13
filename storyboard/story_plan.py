@@ -25,7 +25,7 @@ from .story_acts import (
     repair_act_ranges,
     validate_story_acts,
 )
-from .story_book import _run, cast_lines
+from .story_book import _run, cast_lines, main_cast, story_cast
 from .story_mode import (
     normalize_plan_performance,
     normalize_story_book,
@@ -85,6 +85,22 @@ def _scene_line(number, scene, timed_notes, *, with_notes):
             if number in note.get("scene_numbers") or []:
                 parts.append(f"timed note: {note['note']}")
     return " | ".join(parts)
+
+
+def _names(value):
+    """Lowercased names from an LLM list of names."""
+    return [str(name).strip().lower() for name in (value if isinstance(value, list) else []) if str(name).strip()]
+
+
+def _user_direction(entry, names_by_id):
+    """The user's own direction for a scene (its note and a cast they set), added to its scene line."""
+    parts = []
+    if entry.get("cast_source") == "manual" and entry.get("cast_ids"):
+        names = [names_by_id.get(cid, cid) for cid in entry["cast_ids"]]
+        parts.append(f"user direction, characters in this scene: {', '.join(names)}")
+    if entry.get("user_note"):
+        parts.append(f"user direction: {entry['user_note']}")
+    return "".join(f" | {part}" for part in parts)
 
 
 def _note_ranges(timed_notes):
@@ -273,6 +289,11 @@ def build_story_scene_plan(payload, progress=None):
     chapter_by_id = {chapter["id"]: chapter for chapter in chapters}
     guidance = story_mode_lyric_guidance(layer.get("lyric_story_strength", 5))
     cast_text = cast_lines(payload)
+    # The scene cast comes only from the story cast; names are matched without case.
+    names_by_id = {subject["id"]: subject["name"] for subject in story_cast(payload) if subject.get("id")}
+    ids_by_name = {name.lower(): cid for cid, name in names_by_id.items()}
+    main = main_cast(payload)
+    main_id, main_name = (main.get("id", ""), main.get("name", "")) if main else ("", "")
     style = normalize_story_video_style(layer.get("story_video_style"))
     plan = {entry["scene_id"]: dict(entry) for entry in layer.get("story_scene_plan") or []}
     run_info = {}
@@ -283,6 +304,7 @@ def build_story_scene_plan(payload, progress=None):
         chapter = chapter_by_id[act["chapter_id"]]
         setting_name = (settings.get(chapter["setting_id"]) or {}).get("name", "")
         numbers = sorted(number_by_id[sid] for sid in act["scene_ids"])
+        act_names = [names_by_id[cid] for cid in act.get("cast_ids") or [] if cid in names_by_id]
         previous_spot = ""
         if numbers[0] > 1:
             previous_spot = (plan.get(scene_ids[numbers[0] - 2]) or {}).get("spot", "")
@@ -293,13 +315,19 @@ def build_story_scene_plan(payload, progress=None):
             act_summary=act["summary"],
             setting_name=setting_name,
             chapter_text="\n\n".join(chapter["paragraphs"]),
-            scenes_text="\n".join(_scene_line(n, scenes[n - 1], timed_notes, with_notes=True) for n in numbers),
+            scenes_text="\n".join(
+                _scene_line(n, scenes[n - 1], timed_notes, with_notes=True)
+                + _user_direction(plan.get(scene_ids[n - 1]) or {}, names_by_id)
+                for n in numbers
+            ),
             cast_text=cast_text,
             spot_min_scenes=spot_min,
             previous_spot=previous_spot,
             lyric_guidance=guidance,
             known_spots=", ".join(known_spots),
             video_style=style,
+            act_cast=", ".join(act_names),
+            main_name=main_name,
         )
         replies = {}
         try:
@@ -325,6 +353,18 @@ def build_story_scene_plan(payload, progress=None):
             # A continuation the user set by hand survives a replan, with its direction.
             old = plan.get(scene_ids[number - 1]) or {}
             manual = old.get("continuation_source") == "manual"
+            # So does a cast the user set by hand. Otherwise the story's cast: names from the cast list only.
+            if old.get("cast_source") == "manual":
+                scene_cast, cast_source = list(old.get("cast_ids") or []), "manual"
+            else:
+                scene_cast = [ids_by_name[name] for name in _names(item.get("cast")) if name in ids_by_name]
+                scene_cast = (list(dict.fromkeys(scene_cast))
+                              or [cid for cid in act.get("cast_ids") or [] if cid in names_by_id]
+                              or ([main_id] if main_id else []))
+                cast_source = "story"
+            performer = ids_by_name.get(str(item.get("performer") or "").strip().lower(), "")
+            if performer not in scene_cast:
+                performer = ""
             plan[scene_ids[number - 1]] = {
                 "scene_id": scene_ids[number - 1],
                 "act_id": act["id"],
@@ -338,6 +378,11 @@ def build_story_scene_plan(payload, progress=None):
                 "llm_continues": item.get("continues") is True,
                 "continuation_direction": old.get("continuation_direction", "") if manual
                 else _clean_scene_text(item.get("continuation") or "", 600),
+                "cast_ids": scene_cast,
+                "performer_id": performer,
+                "interaction": _clean_scene_text(item.get("interaction") or "", 600) if len(scene_cast) > 1 else "",
+                "cast_source": cast_source,
+                "user_note": old.get("user_note", ""),
             }
     # Spots are kept for a minimum run inside each chapter. Scenes with a user note, and (when only one act was
     # rebuilt) scenes outside that act, keep their spot.

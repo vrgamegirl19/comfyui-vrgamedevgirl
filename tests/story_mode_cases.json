@@ -177,7 +177,12 @@
             "continues_previous": false,
             "continuation_source": "",
             "llm_continues": false,
-            "continuation_direction": ""
+            "continuation_direction": "",
+            "cast_ids": [],
+            "performer_id": "",
+            "interaction": "",
+            "cast_source": "",
+            "user_note": ""
           },
           {
             "scene_id": "s2",
@@ -190,7 +195,12 @@
             "continues_previous": false,
             "continuation_source": "",
             "llm_continues": false,
-            "continuation_direction": ""
+            "continuation_direction": "",
+            "cast_ids": [],
+            "performer_id": "",
+            "interaction": "",
+            "cast_source": "",
+            "user_note": ""
           }
         ]
       }
@@ -280,7 +290,12 @@
             "continues_previous": true,
             "continuation_source": "manual",
             "llm_continues": false,
-            "continuation_direction": "She walks to the window."
+            "continuation_direction": "She walks to the window.",
+            "cast_ids": [],
+            "performer_id": "",
+            "interaction": "",
+            "cast_source": "",
+            "user_note": ""
           }
         ]
       }
@@ -310,7 +325,12 @@
             "continues_previous": false,
             "continuation_source": "",
             "llm_continues": false,
-            "continuation_direction": ""
+            "continuation_direction": "",
+            "cast_ids": [],
+            "performer_id": "",
+            "interaction": "",
+            "cast_source": "",
+            "user_note": ""
           }
         ]
       }
@@ -354,6 +374,67 @@
           "beats": {},
           "prompts": {}
         }
+      }
+    },
+    {
+      "name": "main character, roles and relationships keep only known values",
+      "input": {
+        "story_main_cast_id": "  mara ",
+        "story_cast_roles": {
+          "mara": "Main",
+          "joe": "love_interest",
+          "lena": "wizard",
+          "": "main"
+        },
+        "story_relationships": [
+          {
+            "a": "mara",
+            "b": "joe",
+            "type": "Love_Interest",
+            "note": "  estranged  "
+          },
+          {
+            "a": "joe",
+            "b": "mara",
+            "type": "rivals"
+          },
+          {
+            "a": "lena",
+            "b": "lena",
+            "type": "family"
+          },
+          {
+            "a": "mara",
+            "b": "lena",
+            "type": "enemies"
+          },
+          {
+            "a": "mara",
+            "b": "lena",
+            "type": "friends"
+          }
+        ]
+      },
+      "output": {
+        "story_main_cast_id": "mara",
+        "story_cast_roles": {
+          "mara": "main",
+          "joe": "love_interest"
+        },
+        "story_relationships": [
+          {
+            "a": "mara",
+            "b": "joe",
+            "type": "love_interest",
+            "note": "estranged"
+          },
+          {
+            "a": "mara",
+            "b": "lena",
+            "type": "friends",
+            "note": ""
+          }
+        ]
       }
     }
   ],

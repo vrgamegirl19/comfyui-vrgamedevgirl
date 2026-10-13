@@ -10,13 +10,20 @@ Shape inside ``builder_story_layer`` (only present when the project has used Sto
 - ``story_settings``: ``[{id, name, look}]``, the general setting each chapter happens in.
 - ``story_acts``: ``[{id, chapter_id, title, summary, cast_ids, scene_ids}]``.
 - ``story_scene_plan``: ``[{scene_id, act_id, story_slice, spot, mood, performance_mode, note_sources,
-  continues_previous, continuation_source, llm_continues, continuation_direction}]``. ``continues_previous`` makes
+  continues_previous, continuation_source, llm_continues, continuation_direction, cast_ids, performer_id, interaction,
+  cast_source, user_note}]``. ``cast_ids`` are the characters in the scene (``cast_source`` "manual" when the user
+  set them), ``performer_id`` sings or speaks, ``interaction`` is what they do with each other, and ``user_note`` is
+  the user's own direction for the scene. ``continues_previous`` makes
   the scene a MiniMax masked continuation of the scene before. ``continuation_source`` says who decided it
   (``auto``, ``llm`` or ``manual``), ``llm_continues`` is the LLM's own answer, and ``continuation_direction`` is
   what happens once the carried-on moment settles.
 - ``story_spot_min_scenes``: the fewest scenes in a row at one spot (the Builder's "scenes per location").
 - ``story_cast_ids``: subject card ids the story is about. Empty means every character card.
-- ``story_allow_new_cast``: true lets the LLM add people who have no card. False keeps the story to the cast.
+- ``story_allow_new_cast``: kept for old projects only. The story always uses only the cast.
+- ``story_main_cast_id``: the main character, who leads the story and is in most or every scene.
+- ``story_cast_roles``: ``{cast id: role}``, role one of ``STORY_CAST_ROLES``.
+- ``story_relationships``: ``[{a, b, type, note}]``, how two cast members are connected (type one of
+  ``STORY_RELATIONSHIP_TYPES``).
 - ``story_video_style``: how the story is told on screen: ``music_video`` (the cast performs the song),
   ``spoken`` (the characters talk) or ``story_only`` (no one sings or speaks on camera).
 - ``story_continuation_mode``: which scenes continue the scene before: ``off``, ``location`` (touching scenes at the
@@ -34,8 +41,10 @@ STORY_FLOW_VERSION = 2
 STORY_MODE_KEYS = (
     "story_flow_version", "story_book", "story_book_text", "story_settings", "story_acts", "story_scene_plan",
     "story_spot_min_scenes", "story_cast_ids", "story_allow_new_cast", "story_video_style", "story_continuation_mode",
-    "story_stamps",
+    "story_stamps", "story_main_cast_id", "story_cast_roles", "story_relationships",
 )
+STORY_CAST_ROLES = ("main", "love_interest", "supporting", "antagonist")
+STORY_RELATIONSHIP_TYPES = ("love_interest", "partners", "exes", "family", "friends", "rivals", "strangers", "other")
 STORY_VIDEO_STYLES = ("music_video", "spoken", "story_only")
 STORY_CONTINUATION_MODES = ("off", "location", "llm")
 CONTINUATION_SOURCES = ("auto", "llm", "manual")
@@ -166,6 +175,14 @@ def normalize_story_scene_plan(value):
             "continuation_source": _continuation_source(item.get("continuation_source")),
             "llm_continues": item.get("llm_continues") is True,
             "continuation_direction": _text(item.get("continuation_direction"), 600),
+            # Who is in the scene, who sings or speaks, what they do with each other, and who set the cast
+            # ("story" or "manual"). user_note is the user's own direction for the scene.
+            "cast_ids": _id_list(item.get("cast_ids"), 12),
+            "performer_id": _line(item.get("performer_id"), 160),
+            "interaction": _text(item.get("interaction"), 600),
+            "cast_source": _line(item.get("cast_source"), 20).lower()
+            if _line(item.get("cast_source"), 20).lower() in ("story", "manual") else "",
+            "user_note": _text(item.get("user_note"), 1200),
         })
     return plan
 
@@ -203,6 +220,38 @@ def normalize_story_mode_fields(source):
         result["story_continuation_mode"] = normalize_story_continuation_mode(source.get("story_continuation_mode"))
     if "story_stamps" in source:
         result["story_stamps"] = normalize_story_stamps(source.get("story_stamps"))
+    if "story_main_cast_id" in source:
+        result["story_main_cast_id"] = _line(source.get("story_main_cast_id"), 160)
+    if "story_cast_roles" in source:
+        result["story_cast_roles"] = normalize_story_cast_roles(source.get("story_cast_roles"))
+    if "story_relationships" in source:
+        result["story_relationships"] = normalize_story_relationships(source.get("story_relationships"))
+    return result
+
+
+def normalize_story_cast_roles(value):
+    """``{cast id: role}`` for the story's characters. Unknown roles are dropped."""
+    roles = {}
+    for cast_id, role in list((value if isinstance(value, dict) else {}).items())[:40]:
+        key, name = _line(cast_id, 160), _line(role, 40).lower()
+        if key and name in STORY_CAST_ROLES:
+            roles[key] = name
+    return roles
+
+
+def normalize_story_relationships(value):
+    """``[{a, b, type, note}]``: how two characters are connected. A pair with one person or an unknown type is dropped."""
+    seen = set()
+    result = []
+    for item in (value if isinstance(value, list) else [])[:40]:
+        item = item if isinstance(item, dict) else {}
+        a, b = _line(item.get("a"), 160), _line(item.get("b"), 160)
+        kind = _line(item.get("type"), 40).lower()
+        pair = "|".join(sorted([a, b]))
+        if not a or not b or a == b or kind not in STORY_RELATIONSHIP_TYPES or pair in seen:
+            continue
+        seen.add(pair)
+        result.append({"a": a, "b": b, "type": kind, "note": _line(item.get("note"), 300)})
     return result
 
 
@@ -530,6 +579,10 @@ def story_beat_context(layer, scene_id, scene_number):
             "opens exactly where that scene ends (same place, people, framing and camera move), with no cut or new "
             "setup." + (f" Then: {entry['continuation_direction']}" if entry["continuation_direction"] else "")
         )
+    if entry.get("interaction"):
+        brief.append(f"What the characters do with each other: {entry['interaction']}")
+    if entry.get("user_note"):
+        brief.append(f"User direction for this scene (follow it exactly): {entry['user_note']}")
     if layer.get("song_story_brief"):
         brief.append(str(layer["song_story_brief"]))
     return "\n".join(lines), "\n".join(brief)
@@ -554,6 +607,24 @@ def fill_scene_cast(subject_scene_map, acts, subject_ids):
             result[scene_id] = list(cast)
             changed.append(scene_id)
     return result, changed
+
+
+def apply_scene_cast(subject_scene_map, plan, acts, subject_ids):
+    """Each planned scene's characters (``cast_ids``) become its mapping; scenes the plan gives no cast keep theirs,
+    or get their act's cast when they have none (``fill_scene_cast``).
+
+    Returns ``(new_map, changed_scene_ids)``. Only ids in ``subject_ids`` are used.
+    """
+    result = {key: list(value) if isinstance(value, list) else value for key, value in (subject_scene_map or {}).items()}
+    valid = set(subject_ids)
+    changed = []
+    for entry in normalize_story_scene_plan(plan):
+        cast = [cast_id for cast_id in entry["cast_ids"] if cast_id in valid]
+        if cast and result.get(entry["scene_id"]) != cast:
+            result[entry["scene_id"]] = cast
+            changed.append(entry["scene_id"])
+    result, filled = fill_scene_cast(result, acts, subject_ids)
+    return result, changed + [scene_id for scene_id in filled if scene_id not in changed]
 
 
 # A heading is a bracketed tag ("[Chorus 2]") or a section word followed by a colon ("Verse 1:", "Act 2:").

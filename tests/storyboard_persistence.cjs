@@ -295,10 +295,18 @@ test("Builder video prompting includes complete card context for both LTX and Mi
   const source = fs.readFileSync(path.join(root, "web/music_video_builder/storyboard_bridge.mjs"), "utf8");
   const start = source.indexOf("const storyboardVideoExtraNotes =");
   const end = source.indexOf("const ensureStoryboardRequiredStartingShot =", start);
+  // Story Mode plan entries come from the Builder's story layer (state.builderStoryLayer).
+  const plan = [{ scene_id: "s1", story_slice: "Slice sentinel.", spot: "Kitchen", mood: "", interaction: "Interaction sentinel.",
+    user_note: "Direction sentinel." }];
   Object.assign(api.context, { normalizeMiniMaxShortFilmPlanningMode: () => "guided_film",
-    normalizeProjectVideoEngine: value => value, miniMaxH3CutPlanForSegment: () => null });
+    normalizeProjectVideoEngine: value => value, miniMaxH3CutPlanForSegment: () => null,
+    normalizeBuilderStoryLayer: value => value || {}, normalizeStoryScenePlan: value => value || [] });
+  api.context.state = { ...(api.context.state || {}), builderStoryLayer: { story_scene_plan: plan } };
   vm.runInContext(source.slice(start, end), api.context);
   const notes = vm.runInContext("storyboardVideoExtraNotes", api.context);
+  const story = notes({ id: "s1" }, { scenes: [{ project_video_engine: "minimax_h3" }] });
+  for (const value of ["Story Mode scene:\nSlice sentinel. Spot: Kitchen.", "MANDATORY what the characters do with each other:\nInteraction sentinel.",
+    "MANDATORY user direction for this scene:\nDirection sentinel."]) assert.ok(story.includes(value), value);
   for (const engine of ["ltx", "minimax_h3"]) {
     const scene = { project_video_engine: engine, timeline_note: "Director sentinel", notes: "Planning sentinel",
       audio_direction: "Sound sentinel", motion_summary: "Motion sentinel", include_microphone: true };
