@@ -31,13 +31,24 @@ Follow-up to `new_builder.md`. Fixes two reported problems and reworks the story
 | D6 | Keep today's shot frequency and cut behaviour, and add a choice for one continuous moment across the cuts. |
 | D7 | Phase 1 ships first. |
 | D8 | Story Mode gets its own LLM instructions, separate from every other mode, editable per project. Changing them never changes another mode. |
+| D9 | The story is fluid, like adapting a book to a film. The user can change any act, chapter or scene at any time (add a character, say what they do), and the LLM adapts the levels above it to fit. User changes always win. |
+
+## How changes move
+
+- **Down, automatic:** a change marks everything made from it as out of date (today's tracking). Nothing is
+  rerun without the user asking.
+- **Up, on request:** a change at a lower level (a scene's cast plus the user's note on what the new character
+  does) can be pushed up. The LLM revises the chapter, the act and the story so they agree with it, and names
+  the other scenes that must change to stay consistent. Only those are marked out of date; the rest stay as
+  they are.
 
 ## Phase 1: fixes on the current levels
 
 ### P1.1 Continuous cuts (F4, D6)
 
-- New MiniMax setting next to the cut frequency: **Shot cuts: Free (as now) / One continuous moment**.
-  Default Free, so existing projects do not change.
+- The user keeps choosing how often shots cut with **Cut frequency** in Scene Defaults.
+- New choice beside it in Scene Defaults: **Cut style: Free cuts (as now) / One continuous moment**.
+  Default Free cuts, so existing projects do not change.
 - One continuous moment:
   - The prompt opens with the continuity paragraph: one continuous performance; the same position, body
     orientation and posture across every cut; each shot continues from the last physical moment of the
@@ -62,10 +73,25 @@ Follow-up to `new_builder.md`. Fixes two reported problems and reworks the story
 - The scene plan returns, per scene: `cast` (names from the cast), `performer`, and `interaction` (one line of
   what the characters do with each other).
 - The main character is in the scene unless the story clearly puts them elsewhere.
-- The scene's characters are written to `subject_scene_map`, replacing a mapping the story set before or a
-  main-character-only mapping (Line Mapping). A mapping the user changed by hand is kept.
+- The scene's characters are written to `subject_scene_map`. A scene's cast the user set in the Scenes tab
+  always wins over the story.
 - Scenes tab: cast chips per scene to edit, and the interaction line.
 - Beats and video prompts receive the interaction and the relationships.
+
+### P1.4 Change the story from a scene (D9)
+
+- Each scene in the Scenes tab: edit its cast chips and write a note of what should happen ("Joe arrives at the
+  door with flowers; Mara turns away").
+- **Update Story From This Scene**: one LLM step gets the scene, the note, its chapter, its act and the story,
+  and returns:
+  - the scene's new slice, cast, performer and interaction (the user's choices kept exactly),
+  - the chapter and act text revised as little as possible to agree,
+  - the character arcs updated when a character is added or their role changes,
+  - the other scenes that must change to stay consistent, each with a reason.
+- The revised chapter, act and story are saved and stamped up to date. Only the scenes it named are marked out
+  of date ("story changed at Scene 12: Joe now arrives"), ready for Replan Out-Of-Date or Redo Beats.
+- One Undo restores everything the step changed.
+- The same step later works from a chapter (Phase 3) and an act.
 
 ## Phase 2: separate Story Mode instructions (D8)
 
