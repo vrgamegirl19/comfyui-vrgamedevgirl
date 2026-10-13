@@ -360,6 +360,15 @@ export function createStoryBuilder({
 
   // Plans the given acts one LLM call at a time, saving each act as it finishes. The window names the act and its
   // scenes. A failed act stops the run; the acts before it stay planned. Returns how many acts were planned.
+  // Rewrites one act's description (the text under its heading) from the scenes now planned for it and the words you gave.
+  async function rewriteActDescription(act) {
+    const data = await runStep("act_summary", { act_id: act.id }, "Rewriting the description of " + (act.title || act.id));
+    if (!Array.isArray(data?.story_layer?.story_acts)) return false;
+    pushHistory();
+    await saveLayer({ story_acts: data.story_layer.story_acts }, "story builder act description");
+    return true;
+  }
+
   // sceneIds: replan only these scenes of the acts (the rest keep their plan). Empty replans every scene of each act.
   async function planActs(acts, list, title, { sceneIds = [] } = {}) {
     const progress = createProgressWindow(title, { zIndex: STORY_BUILDER_Z + 10 });
@@ -422,6 +431,7 @@ export function createStoryBuilder({
       box.append(label);
       return input;
     };
+    const redoSummary = tickBox("Then rewrite this chapter's description to match the new scenes");
     const redoBeats = tickBox("Then write new beats for these scenes (replaces the beats there now)");
     const redoPrompts = tickBox("Then write new video prompts for these scenes (replaces the prompts there now)");
     const close = () => overlay.remove();
@@ -435,6 +445,7 @@ export function createStoryBuilder({
         return;
       }
       go.disabled = true;
+      const wantSummary = redoSummary.checked;
       const wantBeats = redoBeats.checked;
       const wantPrompts = redoPrompts.checked;
       close();
@@ -448,6 +459,7 @@ export function createStoryBuilder({
       await saveLayer({ story_acts: edited }, "story builder act direction");
       const fresh = edited.find((item) => item.id === act.id);
       const done = await planActs(edited, [fresh], "Replanning " + (act.title || act.id), { sceneIds: ids });
+      if (done && wantSummary) await rewriteActDescription(act);
       // The scenes just replanned get new beats and prompts from their new plan, so Beats & Prompts shows the rework.
       const targets = ids.length ? ids : act.scene_ids;
       if (done && wantBeats) {
@@ -1207,7 +1219,13 @@ export function createStoryBuilder({
           const replan = makeButton("Replan This Act");
           replan.title = "Tell the LLM where this happens and what must happen, then replan all of this act's scenes or only the ones you pick.";
           replan.onclick = () => openReplanDialog(act, () => show("scenes"));
-          header.append(replan);
+          const describe = makeButton("Rewrite Description");
+          describe.title = "Rewrite the text under this heading so it matches the scenes planned below and the location and story you gave.";
+          describe.disabled = Boolean(blocked) || !act.scene_ids.some((id) => plan[id]);
+          describe.onclick = async () => {
+            if (await rewriteActDescription(act)) show("scenes");
+          };
+          header.append(replan, describe);
         }
         section.append(header);
         if (act?.summary) section.append(el("div", "font-size:12px;color:#cbd5e1;line-height:1.45;", act.summary));

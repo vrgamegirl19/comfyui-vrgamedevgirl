@@ -22,7 +22,7 @@ from .story_book import (
     split_pasted_story,
 )
 from .story_locations import build_story_locations
-from .story_plan import build_story_acts, build_story_scene_plan
+from .story_plan import build_story_acts, build_story_scene_plan, rewrite_act_summary
 from .story_revise import revise_story_from_scene
 from .story_layer import (
     StoryArcFormatError,
@@ -44,6 +44,7 @@ STORY_MODE_ACTIONS = {
     "cast": scan_story_cast,
     "acts": build_story_acts,
     "plan": build_story_scene_plan,
+    "act_summary": rewrite_act_summary,
     "locations": build_story_locations,
     "revise_scene": revise_story_from_scene,
 }

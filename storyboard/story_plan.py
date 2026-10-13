@@ -8,8 +8,10 @@ without an act or a plan entry. Both return the story layer fields to save; savi
 
 from ..llm.output_checks import _extract_json_object_from_text
 from ..llm.prompts.story_mode import (
+    STORY_ACT_SUMMARY_SCHEMA,
     STORY_ACTS_SCHEMA,
     STORY_SCENE_PLAN_SCHEMA,
+    story_act_summary_instruction,
     story_acts_instruction,
     story_mode_lyric_guidance,
     story_scene_plan_instruction,
@@ -415,3 +417,56 @@ def build_story_scene_plan(payload, progress=None):
         "runner": run_info.get("runner", ""),
         "used_model": run_info.get("used_model", ""),
     }
+
+
+def rewrite_act_summary(payload):
+    """Rewrite one act's description (``act_id``) so it matches the scenes planned for it and the user's own words.
+
+    Returns the story layer's ``story_acts`` with only that act's summary changed. Saving is the caller's job.
+    """
+    layer = _normalize_story_layer(payload.get("story_layer") or payload.get("storyLayer") or {})
+    acts = layer.get("story_acts") or []
+    act_id = str(payload.get("act_id") or "").strip()
+    act = next((item for item in acts if item["id"] == act_id), None)
+    if not act:
+        raise ValueError(f"Act '{act_id}' does not exist.")
+    scenes = _scenes(payload)
+    scene_ids = [_scene_id(scene, index) for index, scene in enumerate(scenes)]
+    number_by_id = {sid: index + 1 for index, sid in enumerate(scene_ids)}
+    plan = {entry["scene_id"]: entry for entry in layer.get("story_scene_plan") or []}
+    names_by_id = {subject["id"]: subject["name"] for subject in story_cast(payload) if subject.get("id")}
+    lines = []
+    for sid in sorted((sid for sid in act["scene_ids"] if sid in plan), key=lambda sid: number_by_id.get(sid, 0)):
+        entry = plan[sid]
+        who = ", ".join(names_by_id[cid] for cid in entry.get("cast_ids") or [] if cid in names_by_id)
+        line = f"Scene {number_by_id.get(sid, '?')} ({entry.get('spot') or 'no spot'}"
+        line += f"; {who})" if who else ")"
+        lines.append(f"{line}: {entry.get('story_slice', '')}" + (f" {entry['interaction']}" if entry.get("interaction") else ""))
+    if not lines:
+        raise ValueError("Plan the scenes of this act first.")
+    chapters = {chapter["id"]: chapter for chapter in normalize_story_book(layer.get("story_book"))["chapters"]}
+    setting = (_settings_by_id(layer).get((chapters.get(act["chapter_id"]) or {}).get("setting_id", "")) or {}).get("name", "")
+    instruction = story_act_summary_instruction(
+        act_title=act["title"], setting_name=setting, scenes_text="\n".join(lines), user_text=act_user_text(act),
+        cast_text=cast_lines(payload), old_summary=act["summary"],
+    )
+    raw, run_info = _run(payload, instruction, label="Story Mode Act Description", max_new_tokens=700,
+                         temperature=0.5, json_schema=STORY_ACT_SUMMARY_SCHEMA)
+    summary = _clean_scene_text(_extract_summary(raw), 2000)
+    if not summary:
+        raise ValueError("The LLM did not return a description. Try again.")
+    updated = [{**item, "summary": summary} if item["id"] == act_id else item for item in acts]
+    return {
+        "story_layer": {"story_acts": updated},
+        "summary": summary,
+        "runner": run_info.get("runner", ""),
+        "used_model": run_info.get("used_model", ""),
+    }
+
+
+def _extract_summary(raw):
+    """The ``summary`` text from a JSON reply, or the plain reply when the model skipped the JSON."""
+    data = _extract_json_object_from_text(raw)
+    if isinstance(data, dict) and str(data.get("summary") or "").strip():
+        return str(data["summary"])
+    return "" if str(raw or "").lstrip().startswith("{") else str(raw or "")

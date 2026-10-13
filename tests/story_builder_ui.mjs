@@ -482,7 +482,8 @@ test('scenes are grouped in act sections, and Replan asks for a location and sto
     sceneTicks[1].checked = true;
     await findButton('Replan').onclick();
     await tick();
-    assert.deepEqual(bodies.map((body) => [body.act_id, body.scene_ids]), [['act_1', ['seg_2']]], 'only the ticked scene is replanned');
+    assert.deepEqual(bodies.filter((body) => body.scene_ids).map((body) => [body.act_id, body.scene_ids]), [['act_1', ['seg_2']]], 'only the ticked scene is replanned');
+    assert.ok(bodies.some((body) => body.act_id === 'act_1' && !body.scene_ids), 'the act description is rewritten from the new plan');
     assert.deepEqual(calls.beats.at(-1), { overwrite: true, sceneIds: ['seg_2'] }, 'the replanned scene gets a new beat from its new plan');
     const act = state.builderStoryLayer.story_acts[0];
     assert.deepEqual([act.location_note, act.direction], ['A rooftop at dusk.', 'She burns the letter.'], 'the act keeps your words');

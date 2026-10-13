@@ -444,6 +444,33 @@ def story_scene_plan_instruction(*, act_title, act_summary, setting_name, chapte
     )
 
 
+def story_act_summary_instruction(*, act_title, setting_name, scenes_text, user_text, cast_text, old_summary):
+    """Rewrite one act's description so it matches the scenes planned for it."""
+    return with_realism(
+        "You are a story editor. The scenes of one act were just planned, and the act's description must now match them.\n\n"
+        "Rules:\n"
+        "- summary: 2-4 sentences of plain prose that tell what happens across these scenes, in order: who does what, "
+        "where, and how it ends. Use only people, places and events found in the scenes below or in the user text.\n"
+        "- The user text (where it happens, what must happen) wins over the old description.\n"
+        "- No camera or song words, no scene numbers, nobody outside the cast."
+    ) + (
+        "Return JSON only: {\"summary\": \"...\"}\n\n"
+        f"Act: {act_title}\nSetting: {setting_name or '[not named]'}\n\n"
+        f"User text:\n{user_text or '[none]'}\n\n"
+        f"Cast:\n{cast_text or '[none]'}\n\n"
+        f"Old description (replace it):\n{old_summary or '[none]'}\n\n"
+        f"Planned scenes in order:\n{scenes_text}"
+    )
+
+
+STORY_ACT_SUMMARY_SCHEMA = {
+    "type": "object",
+    "properties": {"summary": {"type": "string"}},
+    "required": ["summary"],
+    "additionalProperties": False,
+}
+
+
 STORY_SCENE_PLAN_SCHEMA = {
     "type": "object",
     "properties": {

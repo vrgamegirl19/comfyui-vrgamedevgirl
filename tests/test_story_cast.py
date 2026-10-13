@@ -232,5 +232,27 @@ class RealismRuleTests(unittest.TestCase):
             self.assertIn("Keep it believable", story_layer._story_mode_beat_rules({}))
 
 
+class ActSummaryTests(unittest.TestCase):
+    def test_the_act_description_is_rewritten_from_its_planned_scenes(self):
+        story_plan = importlib.import_module(f"{ROOT.name}.storyboard.story_plan")
+        seen = []
+
+        def fake(payload_, instruction, *, label, **kwargs):
+            seen.append(instruction)
+            return json.dumps({"summary": "Brandon leaves the penthouse by the stairs."}), {"runner": "fake", "used_model": "m"}
+
+        data = {
+            "story_layer": {"story_flow_version": 2, "story_acts": [{"id": "a1", "chapter_id": "c1", "title": "Leaving", "summary": "OLD TEXT", "scene_ids": ["s0", "s1"], "direction": "He takes the stairs."}],
+                             "story_scene_plan": [{"scene_id": "s0", "act_id": "a1", "story_slice": "Brandon picks up his coat.", "spot": "Hall"}, {"scene_id": "s1", "act_id": "a1", "story_slice": "He walks down the stairs.", "spot": "Stairwell"}]},
+            "scenes": [{"id": "s0", "end": 4}, {"id": "s1", "end": 8}], "reference_builder": REFS, "act_id": "a1",
+        }
+        with patch.object(story_plan, "_run", fake):
+            result = story_plan.rewrite_act_summary(data)
+        self.assertEqual(result["story_layer"]["story_acts"][0]["summary"], "Brandon leaves the penthouse by the stairs.")
+        self.assertEqual(result["story_layer"]["story_acts"][0]["title"], "Leaving")
+        self.assertIn("He walks down the stairs.", seen[0])
+        self.assertIn("He takes the stairs.", seen[0])
+        self.assertIn("OLD TEXT", seen[0])
+
 if __name__ == "__main__":
     unittest.main()
