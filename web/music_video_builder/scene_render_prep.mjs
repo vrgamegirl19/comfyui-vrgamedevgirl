@@ -1027,20 +1027,25 @@ export function createSceneRenderPrep({
     const sceneScope = normalizeBatchScope(options.sceneScope);
     const allScenes = batchTargetItems(sceneScope).map(({ segment }) => segment);
     if (!allScenes.length) missing.push(batchEmptyMessage(sceneScope));
+    const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
     const scenesToRender = allScenes
       .map((segment) => ({ segment, index: segmentIndexInfo(segment).index }))
-      .filter(({ segment }) => options.forceVideos || !String(selectedSegmentVideoPath(segment) || "").trim());
-    const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
+      .filter(({ segment }) => options.forceVideos || (miniMaxProject && Boolean(segment.minimax_h3_draft?.id)) || !String(selectedSegmentVideoPath(segment) || "").trim());
     if (miniMaxProject) {
       if (!String(projectInput.value || state.projectFolder || "").trim()) missing.push("Project folder is missing.");
+      if (options.renderPhase === "finalize") return missing;
       scenesToRender.forEach(({ segment, index }) => {
+        if (!options.forceVideos && segment.minimax_h3_draft?.id) return;
+        if (options.renderPhase === "draft" && !["two_pass", "three_pass"].includes(miniMaxH3SettingsForSegment(segment).render_pass)) {
+          missing.push(`${sceneDisplayName(segment, index)}: select a MiniMax two-pass workflow before rendering drafts.`);
+        }
         if (miniMaxH3SettingsForSegment(segment).audio_mode !== "built_in_audio"
           && !String(segment.custom_audio_path || currentProjectAudioPath() || audioInput.value || "").trim()) {
           missing.push(`${sceneDisplayName(segment, index)}: MiniMax H3 needs project audio or custom scene audio.`);
         }
         missing.push(...validateMiniMaxSceneReadyForVideo(segment, index));
       });
-      missing.push(...miniMaxBatchReferenceProblems(scenesToRender));
+      missing.push(...miniMaxBatchReferenceProblems(scenesToRender.filter(({ segment }) => options.forceVideos || !segment.minimax_h3_draft?.id)));
       return missing;
     }
     const idLoraMode = currentVideoMode() === "id_lora";
