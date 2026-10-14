@@ -19,6 +19,7 @@ if str(ROOT.parent) not in sys.path:
 settings = importlib.import_module(f"{ROOT.name}.minimax.settings_payload")
 workflows = importlib.import_module(f"{ROOT.name}.runner.minimax_workflows")
 models = importlib.import_module(f"{ROOT.name}.runner.models")
+drafts = importlib.import_module(f"{ROOT.name}.runner.minimax_drafts")
 
 
 class MiniMaxI2VTwoPassTests(unittest.TestCase):
@@ -73,6 +74,24 @@ class MiniMaxI2VTwoPassTests(unittest.TestCase):
         lora_registry = patch.object(models, "_lora_choices", return_value=registry.return_value)
         lora_registry.start()
         self.addCleanup(lora_registry.stop)
+
+    def test_draft_and_finalize_use_real_compiled_graph_for_input_and_native_audio(self) -> None:
+        for audio_mode in ("input_audio", "built_in_audio"):
+            for mode in ("image_to_video", "reference_to_video", "image_reference_to_video"):
+                if audio_mode == "built_in_audio" and mode == "image_to_video":
+                    continue  # The existing I2V compiler supports supplied audio only.
+                with self.subTest(audio_mode=audio_mode, mode=mode):
+                    payload = {**self.payload, "audio_mode": audio_mode, "video_mode": mode,
+                               "scene_number": 1, "timeline_start_seconds": 0, "timeline_end_seconds": 1}
+                    built = workflows._build_minimax_h3_2pass_api_prompt(payload)
+                    draft = drafts._build_minimax_draft(built, payload)
+                    self.assertEqual(draft["prompt"]["125"]["inputs"], built["prompt"]["125"]["inputs"])
+                    self.assertNotIn("194", draft["prompt"])
+                    Path(draft["prompt"]["draft_save"]["inputs"]["checkpoint_path"]).touch()
+                    final = drafts._build_minimax_finalize({**payload, "draft_id": draft["draft_id"]})
+                    self.assertEqual(final["prompt"]["125"]["class_type"], "VRGDG_MiniMaxH3LoadDraft")
+                    self.assertEqual(final["prompt"]["194"], built["prompt"]["194"])
+                    self.assertEqual(final["post_render_trim"], built["post_render_trim"])
 
     def test_compiler_uses_i2v_template_and_preserves_requested_pass_settings(self) -> None:
         result = workflows._build_minimax_h3_2pass_api_prompt(self.payload)

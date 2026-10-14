@@ -53,15 +53,18 @@ export function createBatchRender({
     saveI2VVideoSettingsFromPanel();
     const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
     if (miniMaxProject) saveMiniMaxH3SettingsFromPanel();
+    const renderPhase = options.renderPhase || "full";
+    const finalizeDrafts = miniMaxProject && renderPhase === "finalize";
+    const draftRender = miniMaxProject && renderPhase === "draft";
     const forceVideos = Boolean(options.forceVideos);
     const randomizeVideoSeed = Boolean(options.randomizeVideoSeed);
     const sceneScope = normalizeBatchScope(options.sceneScope);
-    const skipFinalStitch = Boolean(options.skipFinalStitch || sceneScope === "selected");
+    const skipFinalStitch = Boolean(options.skipFinalStitch || sceneScope === "selected" || draftRender);
     let renderLog = null;
     let currentSceneLog = null;
     const renderWarnings = [];
     let previousRenderEndedMs = 0;
-    if (!forceVideos) {
+    if (!forceVideos && !finalizeDrafts) {
       try {
         await recoverSceneVideosFromProject({
           autoSave: true,
@@ -72,9 +75,9 @@ export function createBatchRender({
         console.warn("[VRGDG Music Builder] Scene video recovery before Render All failed:", error);
       }
     }
-    if (!(await ensureAudioOrOfferSilentTimeline({ sceneScope }))) return;
-    const missing = validateRenderAllReady({ forceVideos, sceneScope });
-    const progress = createProgressWindow(sceneScope === "selected" ? "Render Selected Scenes" : sceneScope === "from_selected" ? "Render From Selected Scene" : "Render All Scenes");
+    if (!finalizeDrafts && !(await ensureAudioOrOfferSilentTimeline({ sceneScope }))) return;
+    const missing = validateRenderAllReady({ forceVideos, sceneScope, renderPhase });
+    const progress = createProgressWindow(draftRender ? "Render Drafts" : finalizeDrafts ? "Finalize Drafts" : sceneScope === "selected" ? "Render Selected Scenes" : sceneScope === "from_selected" ? "Render From Selected Scene" : "Render All Scenes");
     if (missing.length) {
       progress.setHtml(renderMissingListHtml(missing), 100);
       toast("Render All needs a few things fixed first.", true);
@@ -83,7 +86,7 @@ export function createBatchRender({
     const logStartedMs = Date.now();
     const logStarted = new Date(logStartedMs);
     const logStamp = logStarted.toISOString().replace(/\D/g, "").slice(0, 14);
-    const modeLabel = sceneScope === "selected"
+    const modeLabel = draftRender ? "Render Drafts" : finalizeDrafts ? "Finalize Drafts" : sceneScope === "selected"
       ? "Render Selected Scenes"
       : sceneScope === "from_selected"
         ? "Render From Selected Scene"
@@ -98,6 +101,7 @@ export function createBatchRender({
       video_engine: miniMaxProject ? "minimax_h3" : "ltx",
       video_mode: miniMaxProject ? state.miniMaxH3Settings.video_mode : currentVideoMode(),
       force_videos: forceVideos,
+      render_phase: renderPhase,
       randomize_video_seed: randomizeVideoSeed,
       skip_final_stitch: skipFinalStitch,
       started_at: logStarted.toISOString(),
@@ -123,10 +127,10 @@ export function createBatchRender({
       await persistRenderLog(renderLog);
       progress.set(`Autosaving session/SRT before ${sceneScope === "selected" ? "Render Selected" : sceneScope === "from_selected" ? "Render From Selected" : "Render All"}...`, 3);
       await saveSessionForSceneVideo();
-      if (miniMaxProject) {
+      if (miniMaxProject && !finalizeDrafts) {
         const scenesAfterSave = batchTargetItems(sceneScope)
-          .filter(({ segment }) => forceVideos || !String(selectedSegmentVideoPath(segment) || "").trim());
-        const referenceProblems = miniMaxBatchReferenceProblems(scenesAfterSave);
+          .filter(({ segment }) => forceVideos || Boolean(segment.minimax_h3_draft?.id) || !String(selectedSegmentVideoPath(segment) || "").trim());
+        const referenceProblems = miniMaxBatchReferenceProblems(scenesAfterSave.filter(({ segment }) => forceVideos || !segment.minimax_h3_draft?.id));
         if (referenceProblems.length) {
           throw new Error(`MiniMax reference preflight found ${referenceProblems.length} stale scene prompt${referenceProblems.length === 1 ? "" : "s"} before rendering:\n${referenceProblems.map((problem) => `- ${problem}`).join("\n")}`);
         }
@@ -138,7 +142,7 @@ export function createBatchRender({
         ? { audioPath: "", srtPath: "" }
         : await prepareSceneAudioMix(progress, "Preparing combined scene-audio track for LTX", { rtvLtx25: ltx25RtvBatch });
       const scenes = batchTargetItems(sceneScope)
-        .filter(({ segment }) => forceVideos || !String(selectedSegmentVideoPath(segment) || "").trim());
+        .filter(({ segment }) => finalizeDrafts ? Boolean(segment.minimax_h3_draft?.id) : forceVideos || (miniMaxProject && Boolean(segment.minimax_h3_draft?.id)) || !String(selectedSegmentVideoPath(segment) || "").trim());
       const requestedSceneCount = batchTargetItems(sceneScope).length;
       renderLog.eta_plan = scenes.map(({ segment }) => renderETAScene(segment));
       renderLog.eta_video_duration = batchTargetItems(sceneScope).reduce((sum, { segment }) => sum + Math.max(0, Number(segment.end) - Number(segment.start)), 0);
@@ -267,7 +271,8 @@ export function createBatchRender({
           progressSpan: span,
           batchLabel: `Render All ${index + 1}/${scenes.length}: ${segment.label || `Scene ${sceneIndex + 1}`}`,
           autoSaveAfter: false,
-          existingVideoAction: forceVideos ? "backup" : "overwrite",
+          renderPhase: miniMaxProject && !forceVideos && segment.minimax_h3_draft?.id ? "finalize" : renderPhase,
+          existingVideoAction: finalizeDrafts ? "overwrite" : forceVideos ? "backup" : "overwrite",
         };
         const renderedVideoPath = miniMaxProject
           ? await renderMiniMaxSceneVideoWithProgress(segment, sceneIndex, progress, {
@@ -357,9 +362,9 @@ export function createBatchRender({
         await persistRenderLog(renderLog);
         await autoSaveSessionQuiet("render selected scenes complete");
         const summary = updateRenderLogSummary(renderLog);
-        progress.set(`Render Selected complete.\n\nRendered/checked ${scenes.length} selected scene${scenes.length === 1 ? "" : "s"}.\nNo final stitch was run.\n\nTotal time: ${renderLogDuration(summary.total_ms)}\nActive rendering: ${renderLogDuration(summary.render_ms)}\nRender Log:\n${renderLog.report_text_path || "saved in the project session"}`, 100);
+        progress.set(`${draftRender ? "Render Drafts complete." : "Render Selected complete."}\n\nRendered/checked ${scenes.length} selected scene${scenes.length === 1 ? "" : "s"}.\nNo final stitch was run.\n\nTotal time: ${renderLogDuration(summary.total_ms)}\nActive rendering: ${renderLogDuration(summary.render_ms)}\nRender Log:\n${renderLog.report_text_path || "saved in the project session"}`, 100);
         progress.close(4500);
-        toast("Render Selected complete. No final stitch was run.");
+        toast(draftRender ? "Drafts ready for review. Use Finalize Drafts for pass 2." : "Render Selected complete. No final stitch was run.");
         return;
       }
       const stitchStartedMs = Date.now();

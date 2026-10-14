@@ -123,6 +123,55 @@ class VRGDG_MiniMaxH3SaveLatent:
         return (latent, saved_path)
 
 
+def _checkpoint_value(value, restore=False):
+    if restore and isinstance(value, dict) and set(value) == {"__h3_nested__"}:
+        return NestedTensor(tuple(_checkpoint_value(item, True) for item in value["__h3_nested__"]))
+    if HAS_NESTED_TENSOR and isinstance(value, NestedTensor):
+        return {"__h3_nested__": [_checkpoint_value(item) for item in value.tensors]}
+    if isinstance(value, torch.Tensor):
+        return value.detach().cpu().contiguous()
+    if isinstance(value, dict):
+        return {key: _checkpoint_value(item, restore) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return type(value)(_checkpoint_value(item, restore) for item in value)
+    return value
+
+
+class VRGDG_MiniMaxH3SaveDraft:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {"latent": ("LATENT",), "checkpoint_path": ("STRING",)}}
+
+    RETURN_TYPES = ("LATENT",)
+    FUNCTION = "save"
+    CATEGORY = "VRGDG/MiniMax H3"
+
+    def save(self, latent, checkpoint_path):
+        os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
+        temp_path = checkpoint_path + ".tmp"
+        torch.save(_checkpoint_value(latent), temp_path)
+        os.replace(temp_path, checkpoint_path)
+        return (latent,)
+
+
+class VRGDG_MiniMaxH3LoadDraft:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {"checkpoint_path": ("STRING",)}}
+
+    @classmethod
+    def IS_CHANGED(cls, checkpoint_path):
+        stat = os.stat(checkpoint_path)
+        return f"{stat.st_mtime_ns}:{stat.st_size}"
+
+    RETURN_TYPES = ("LATENT",)
+    FUNCTION = "load"
+    CATEGORY = "VRGDG/MiniMax H3"
+
+    def load(self, checkpoint_path):
+        return (_checkpoint_value(torch.load(checkpoint_path, map_location="cpu", weights_only=True), True),)
+
+
 class VRGDG_MiniMaxH3LoadLatent:
     """Load a predecessor scene's latent and slice to the requested context frames window."""
 
@@ -567,6 +616,8 @@ class VRGDG_MiniMaxH3LoadExactFrame:
 
 
 NODE_CLASS_MAPPINGS = {
+    "VRGDG_MiniMaxH3SaveDraft": VRGDG_MiniMaxH3SaveDraft,
+    "VRGDG_MiniMaxH3LoadDraft": VRGDG_MiniMaxH3LoadDraft,
     "VRGDG_MiniMaxH3SaveLatent": VRGDG_MiniMaxH3SaveLatent,
     "VRGDG_MiniMaxH3LoadLatent": VRGDG_MiniMaxH3LoadLatent,
     "VRGDG_MiniMaxH3ApplyLatentGuide": VRGDG_MiniMaxH3ApplyLatentGuide,
@@ -575,6 +626,8 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
+    "VRGDG_MiniMaxH3SaveDraft": "VRGDG H3 Save Draft Checkpoint",
+    "VRGDG_MiniMaxH3LoadDraft": "VRGDG H3 Load Draft Checkpoint",
     "VRGDG_MiniMaxH3SaveLatent": "VRGDG H3 Save Latent",
     "VRGDG_MiniMaxH3LoadLatent": "VRGDG H3 Load Latent",
     "VRGDG_MiniMaxH3ApplyLatentGuide": "VRGDG H3 Apply Latent Continuation Guide",

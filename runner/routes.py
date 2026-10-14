@@ -9,6 +9,7 @@ from .api_graph import _ensure_placeholder_load_image
 from .image_workflows import _build_ernie_image_api_prompt, _build_flux_klein_api_prompt, _build_krea2_2pass_api_prompt, _build_krea2_api_prompt, _build_nb_image_api_prompt, _build_z_upscale_enhance_prompt, _build_zimage_api_prompt
 from .ltx_workflows import _build_flf_api_prompt, _build_i2v_api_prompt, _build_id_lora_api_prompt, _build_ingredients_api_prompt, _build_rtv_api_prompt, _build_t2v_api_prompt
 from .minimax_inputs import _cleanup_minimax_h3_output_folder, _prepare_scene_audio_clip
+from .minimax_drafts import _build_minimax_draft, _build_minimax_finalize
 from .minimax_workflows import _build_minimax_h3_2pass_api_prompt, _build_minimax_h3_3pass_api_prompt, _build_minimax_h3_advanced_2pass_api_prompt, _build_minimax_h3_api_prompt, _save_minimax_h3_advanced_2pass_debug_workflow
 from .utility_workflows import _build_clear_memory_prompt, _build_timestamped_transcribe_api_prompt, _build_transcribe_api_prompt
 from .video_files import _apply_scene_start_color_match, _collect_minimax_h3_stage_backup, _collect_scene_video, _find_minimax_h3_stage_outputs, _find_scene_video_output, _render_image_slideshow, _save_generated_image, _stitch_scene_videos, _trim_scene_video
@@ -180,6 +181,27 @@ def _ensure_workflow_runner_routes():
                 res["debug_workflow_path"] = _save_minimax_h3_advanced_2pass_debug_workflow(res, payload)
                 return res
             result = await asyncio.to_thread(_build_adv)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/workflow_runner/build_minimax_h3_draft_prompt")
+    async def vrgdg_workflow_runner_build_minimax_h3_draft_prompt(request):
+        try:
+            payload = await request.json()
+            def build():
+                builder = _build_minimax_h3_advanced_2pass_api_prompt if payload.get("draft_advanced") else _build_minimax_h3_2pass_api_prompt
+                return _build_minimax_draft(builder(payload), payload)
+            result = await asyncio.to_thread(build)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/workflow_runner/build_minimax_h3_finalize_prompt")
+    async def vrgdg_workflow_runner_build_minimax_h3_finalize_prompt(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(_build_minimax_finalize, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
