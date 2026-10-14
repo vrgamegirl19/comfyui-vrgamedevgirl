@@ -7,7 +7,6 @@ import {
   normalizeStoryboardCustomCameraFlowSequence,
   STORYBOARD_CAMERA_FLOW_PRESETS,
 } from "../storyboard_builder/shot_presets.mjs";
-import { storyboardFxContract } from "../storyboard_builder/video_style.mjs";
 import { normalizeVideoType, toast } from "./controls.mjs";
 import { miniMaxEffectiveCueEnd, miniMaxH3CueTimingText, miniMaxH3PerformerLabel } from "./lyric_cues.mjs";
 import {
@@ -2303,26 +2302,6 @@ export function createMiniMaxPrompt({
     return assembleMiniMaxH3OfficialPromptFromCreative(segment, mode, creativePrompt);
   }
 
-  function ensureBuilderManagedFx(prompt, scene = {}) {
-    let text = String(prompt || "").trim();
-    const defaults = normalizeBuilderStoryboardDefaults(state.builderStoryboardDefaults);
-    const preset = String(defaults.fx_preset || "").trim();
-    if (!text || !preset) return text;
-    const timestampPattern = /((?:\[\s*\d+(?:\.\d+)?s?\s*[-–—]\s*\d+(?:\.\d+)?s?\s*\]|\[\s*Shot\s+\d+[^\]]*\])\s*\n?)([\s\S]*?)(?=\n\s*(?:\[\s*\d+(?:\.\d+)?s?\s*[-–—]\s*\d+(?:\.\d+)?s?\s*\]|\[\s*Shot\s+\d+[^\]]*\])|\n\s*(?:Audio(?:\s+1)?|Native\s+audio|overall_soundscape|non_diegetic_music|Continuity)\s*:|$)/gi;
-    let shotIndex = 0;
-    let matched = false;
-    text = text.replace(timestampPattern, (whole, header, body) => {
-      matched = true;
-      const contract = storyboardFxContract(preset, defaults.fx_custom_json, shotIndex++);
-      if (!contract || String(body || "").includes(contract.cue)) return whole;
-      const cue = `FX accent: ${contract.cue} Timing: ${contract.timing}. Keep the mapped subject stable and readable.`;
-      return `${header}${String(body || "").trim()} ${cue}\n`;
-    });
-    if (matched) return text.trim();
-    const contract = storyboardFxContract(preset, defaults.fx_custom_json, 0);
-    return contract ? `${text}\n\nFX accent inside this shot: ${contract.cue} Keep the mapped subject stable and readable.`.trim() : text;
-  }
-
   function miniMaxH3PromptContextForSegment(segment, mode) {
     const settings = miniMaxH3SettingsForSegment(segment);
     const nativeAudio = settings.audio_mode === "built_in_audio";
@@ -2781,7 +2760,7 @@ export function createMiniMaxPrompt({
 
   return {
     applyMiniMaxH3NativeVoiceBlock, assembleMiniMaxH3PromptFromCreative, assertValidMiniMaxH3FinalPrompt,
-    ensureAutoTimedSingerCuesBeforePrompt, ensureBuilderManagedFx, miniMaxH3CreativePromptContextForSegment,
+    ensureAutoTimedSingerCuesBeforePrompt, miniMaxH3CreativePromptContextForSegment,
     miniMaxH3ImageReferencePromptItems, miniMaxH3PromptCharacterBudget, miniMaxH3PromptVisionImages,
     miniMaxH3PromptVisionImagesForRunner, miniMaxPromptReferenceMismatch, miniMaxPromptReferenceSignature,
     miniMaxRenderReferenceImagePaths,

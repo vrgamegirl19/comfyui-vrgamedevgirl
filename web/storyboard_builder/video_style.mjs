@@ -214,7 +214,7 @@ export const STORYBOARD_FX_PRESETS = [
   { value: "distortion", label: "Distortion FX", description: "Fisheye warp, heat haze, ripples, refraction and reality-bending lens effects.", cues: ["A localized lens distortion gently bends the outer edges of the environment while the subject remains stable.", "A brief heat-haze ripple passes through the background, refracting light without changing the subject's identity.", "A controlled wide-angle warp accentuates the perspective at the frame edges, then returns to a clean image."] },
   { value: "supernatural", label: "Supernatural FX", description: "Living shadows, aura, reality fractures, floating debris and uncanny visual accents.", cues: ["The environment's shadows shift independently for a brief uncanny accent while the subject remains physically natural.", "A faint supernatural glow gathers in the background atmosphere and fades without changing the subject's face or clothing.", "A few loose environmental fragments hover briefly in the air, creating a controlled reality-fracture accent around the subject."] },
   { value: "music_video", label: "Music Video FX", description: "A curated rhythmic mix of lighting, lens and restrained post-production accents.", cues: ["A rhythmic neon light pulse combines with a restrained lens flare on the musical accent.", "A brief bloom and light-streak accent sweeps across the frame, then resolves into clean cinematic contrast.", "A controlled mix of atmospheric particles and subtle chromatic color separation marks the beat without obscuring the subject."] },
-  { value: "custom", label: "Custom FX JSON", description: "Use the exact custom FX JSON wording and Builder placement rules." },
+  { value: "custom", label: "Custom FX JSON", description: "Use custom FX JSON as guidance for the LLM to write effects into the shots." },
 ];
 
 export function storyboardFxPreset(value = "") {
@@ -262,7 +262,7 @@ export function storyboardFxContract(value = "", customInput = "", shotIndex = 0
     cue,
     timing,
     intensity,
-    exact_verbiage: `FX placement — ${source.label || preset.label}: Insert this FX directly inside the timestamped shot after the camera direction and before the lyric or performance action. Use one clear ${intensity}/10 visual accent: ${cue} Timing: ${timing} ${avoid}`,
+    protection: avoid,
   };
 }
 
@@ -354,15 +354,13 @@ export function storyboardTemporalWorldEffectForScene(scene = {}, state = {}) {
   const continuityRequirement = allowExtras
     ? "CONTINUITY RULE: Do not add any new named, principal, mapped, or referenced characters. Anonymous unreferenced background extras are explicitly permitted and must remain secondary and subject to the selected temporal effect; never prohibit them with a generic ‘no new characters’ or ‘no people’ rule."
     : "CONTINUITY RULE: Do not add new named, mapped, referenced, principal, or anonymous characters.";
-  // This is a builder-owned contract. Gemma should not spend tokens recreating
-  // temporal rules, and the final renderer prompt should receive one canonical
-  // block instead of repeated per-shot instructions.
-  const verbiage = `Temporal / World Effect — ${preset.label} — Mandatory:\n\n${baseDirection}\n\n${protectedDirection}\n\nOnly the unprotected background/world may receive this effect, including location-appropriate environmental motion or anonymous extras when permitted. Keep the effect secondary; never alter, duplicate, replace, or obscure a mapped/reference character.\n\nTimestamp staging requirement: every shot must visibly show at least one concrete, readable effect affecting only the unprotected background/world while protected characters continue moving naturally at normal 1x speed.\n\n${audioDirection}`;
+  const writingGuidance = [baseDirection, protectedDirection, extrasDirection, environmentDirection,
+    intensityDirection, stagingRequirement, audioDirection, continuityRequirement].join("\n\n");
   return {
     enabled: true,
     key,
     label: preset.label,
-    exact_verbiage: verbiage,
+    writing_guidance: writingGuidance,
     protected_characters: protectedMode,
     protected_custom: protectedCustom,
     allow_background_extras: allowExtras,
