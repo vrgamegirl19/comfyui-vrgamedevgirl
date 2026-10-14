@@ -246,6 +246,17 @@ class UserLocationsAndPersonalityTests(unittest.TestCase):
         self.assertIn("Grandma's kitchen: yellow wallpaper", prompt)
         self.assertIn("Personality and emotions: guarded, funny when nervous", prompt)
 
+    def test_loaded_location_cards_stand_in_when_the_locations_box_is_empty(self):
+        cards = [{"name": "Old Mill", "description": "Stone walls,\nmoss."}, {"name": "Home - Kitchen", "story_setting_id": "setting_home"}]
+        data = {**payload(), "reference_builder": {"locations": cards}}
+        self.assertEqual(story_book.user_places(data), [("Old Mill", "Stone walls, moss.")])
+        fake = FakeLLM()
+        with patch.object(builder_runner, "_run_builder_text_llm", fake):
+            story_book.draft_story_book(data)
+        self.assertIn("Old Mill: Stone walls, moss.", fake.prompts[0])
+        typed = {**payload(story_user_locations="Barn"), "reference_builder": {"locations": cards}}
+        self.assertEqual(story_book.user_places(typed), [("Barn", "")], "the typed list wins over loaded cards")
+
     def test_no_places_block_when_the_user_lists_none(self):
         prompts = importlib.import_module(f"{ROOT.name}.llm.prompts.story_mode")
         text = prompts.story_book_instruction(premise="p", cast_text="- A", tone_notes="", scene_count=10, song_seconds=60,

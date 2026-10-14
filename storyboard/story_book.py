@@ -160,9 +160,28 @@ def cast_lines(payload):
     return "\n".join(lines)
 
 
+def _loaded_places_text(payload):
+    """One ``Name: description`` line per location card the user loaded in the Reference Builder (cards the story
+    made for itself carry a ``story_setting_id`` and are left out)."""
+    refs = payload.get("reference_builder") or payload.get("referenceBuilder") or {}
+    cards = refs.get("locations") if isinstance(refs, dict) else None
+    lines = []
+    for card in cards if isinstance(cards, list) else []:
+        if not isinstance(card, dict) or card.get("story_setting_id"):
+            continue
+        name = re.sub(r"\s+", " ", str(card.get("name") or "").replace(":", " ")).strip()
+        if not name:
+            continue
+        details = re.sub(r"\s+", " ", _clean_scene_text(card.get("description") or "", 300))
+        lines.append(f"{name}: {details}" if details else name)
+    return "\n".join(lines)
+
+
 def user_places_text(payload):
-    """The places the user wants in the video (one per line), or an empty string."""
-    return _clean_scene_text(_layer(payload).get("story_user_locations") or "", 3000)
+    """The places the user wants in the video (one per line), or an empty string. The Story tab's Locations box
+    comes first. Without it, the location cards the user already loaded stand in, so the story is written around them."""
+    typed = _clean_scene_text(_layer(payload).get("story_user_locations") or "", 3000)
+    return typed or _clean_scene_text(_loaded_places_text(payload), 3000)
 
 
 def user_places(payload):
