@@ -29,6 +29,9 @@ Shape inside ``builder_story_layer`` (only present when the project has used Sto
 - ``story_cast_roles``: ``{cast id: role}``, role one of ``STORY_CAST_ROLES``.
 - ``story_relationships``: ``[{a, b, type, note}]``, how two cast members are connected (type one of
   ``STORY_RELATIONSHIP_TYPES``).
+- ``story_user_locations``: the user's own places for the video, free text (one place per line, with its look after a
+  colon). The story and the setting looks use these places first.
+- ``story_character_notes``: ``{cast id: text}``, the personality and emotions of each character, in the user's words.
 - ``story_video_style``: how the story is told on screen: ``music_video`` (the cast performs the song),
   ``spoken`` (the characters talk) or ``story_only`` (no one sings or speaks on camera).
 - ``story_continuation_mode``: which scenes continue the scene before: ``off``, ``location`` (touching scenes at the
@@ -47,7 +50,7 @@ STORY_MODE_KEYS = (
     "story_flow_version", "story_book", "story_book_text", "story_settings", "story_acts", "story_scene_plan",
     "story_spot_min_scenes", "story_cast_ids", "story_allow_new_cast", "story_video_style", "story_continuation_mode",
     "story_stamps", "story_main_cast_id", "story_cast_roles", "story_relationships", "story_act_count",
-    "story_chapter_counts",
+    "story_chapter_counts", "story_user_locations", "story_character_notes",
 )
 STORY_CAST_ROLES = ("main", "love_interest", "supporting", "antagonist")
 STORY_RELATIONSHIP_TYPES = ("love_interest", "partners", "exes", "family", "friends", "rivals", "strangers", "other")
@@ -283,6 +286,10 @@ def normalize_story_mode_fields(source):
         result["story_cast_roles"] = normalize_story_cast_roles(source.get("story_cast_roles"))
     if "story_relationships" in source:
         result["story_relationships"] = normalize_story_relationships(source.get("story_relationships"))
+    if "story_user_locations" in source:
+        result["story_user_locations"] = _text(source.get("story_user_locations"), 3000)
+    if "story_character_notes" in source:
+        result["story_character_notes"] = normalize_story_character_notes(source.get("story_character_notes"))
     if "story_act_count" in source:
         result["story_act_count"] = normalize_story_count(source.get("story_act_count"), 0, 12)
     if "story_chapter_counts" in source:
@@ -304,6 +311,16 @@ def normalize_story_cast_roles(value):
         if key and name in STORY_CAST_ROLES:
             roles[key] = name
     return roles
+
+
+def normalize_story_character_notes(value):
+    """``{cast id: text}``: each character's personality and emotions. Empty notes are dropped."""
+    notes = {}
+    for cast_id, note in list((value if isinstance(value, dict) else {}).items())[:40]:
+        key, text = _line(cast_id, 160), _line(note, 600)
+        if key and text:
+            notes[key] = text
+    return notes
 
 
 def normalize_story_relationships(value):

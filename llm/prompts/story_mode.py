@@ -171,11 +171,57 @@ def story_medium_rule(video_style, lead_name=""):
             "moments on the chorus.")
 
 
+# Added in code (not in the editable template) when the user lists their own places.
+USER_PLACES_RULE = (
+    "The user's places: the story happens in the places listed under 'Places the user wants'. Name them as written "
+    "and use their details. Do not replace them with places of your own. Add another place only when the story "
+    "cannot work without one, and keep it ordinary and close to the listed ones."
+)
+USER_PLACES_RULE_FOR_PLANS = (
+    "The user's places: keep the acts inside the places listed under 'Places the user wants'. Do not move an act to "
+    "a place of your own."
+)
+USER_PLACES_RULE_FOR_SPOTS = (
+    "The user's places: a spot must be one of the places listed under 'Places the user wants' (use the place's "
+    "name, shortened to 1-3 words if it is long, e.g. Kitchen for \"Grandma's kitchen\"). Choose the one that fits "
+    "the story action. Use a spot of your own only when none of the listed places can hold the action."
+)
+CHARACTER_NOTES_RULE = (
+    "Personality and emotions: when a character has a 'Personality and emotions' line in the cast, show it through "
+    "what they do, choose and say. Keep each character true to it from the first act to the last."
+)
+
+
+def user_places_block(places_text):
+    """The data block for the user's own places, or an empty string when there are none."""
+    return f"Places the user wants (one per line):\n{places_text}\n\n" if str(places_text or "").strip() else ""
+
+
+# The location cards already made in the Places step (one line each). The acts and the scene plan work inside them.
+MADE_PLACES_RULE_FOR_ACTS = (
+    "Places: the places of this chapter's setting are already made and listed under 'Places already made'. Every act "
+    "happens in one or more of them. Say which place in the act's summary (e.g. \"In the kitchen, ...\"). Do not "
+    "invent a place that is not listed."
+)
+MADE_PLACES_RULE_FOR_SPOTS = (
+    "Places: a spot must be one of the places listed under 'Places already made'. Write its name exactly as listed. "
+    "Choose the one the act's summary and the story action put the scene in. Use a spot of your own only when none "
+    "of the listed places can hold the action."
+)
+
+
+def made_places_block(made_places_text):
+    """The data block for the place cards already made, or an empty string when there are none."""
+    return (f"Places already made (name: look):\n{made_places_text}\n\n"
+            if str(made_places_text or "").strip() else "")
+
+
 def story_book_instruction(*, premise, cast_text, tone_notes, scene_count, song_seconds, lyric_guidance, lyrics,
                            previous_book, seed, allow_new_cast=False, video_style="music_video", lead_name="",
-                           template=None, act_count=0):
+                           template=None, act_count=0, places_text=""):
     """Draft the whole story book from the user's premise, in ``act_count`` acts (0 lets the scene count decide)."""
     acts, paragraphs = story_book_size(scene_count, act_count)
+    extra_rules = (f"- {USER_PLACES_RULE}\n" if str(places_text or "").strip() else "") + f"- {CHARACTER_NOTES_RULE}\n"
     return (
         render_with_realism(template or STORY_BOOK_TEMPLATE, {
             "medium_rule": story_medium_rule(video_style, lead_name), "acts": acts, "chapters": acts,
@@ -183,10 +229,12 @@ def story_book_instruction(*, premise, cast_text, tone_notes, scene_count, song_
             "scene_count": scene_count, "song_seconds": f"{song_seconds:.0f}",
             "cast_rule": story_cast_rule(cast_text, allow_new_cast), "lyric_guidance": lyric_guidance,
         })
+        + extra_rules
         + "- Output only the book in exactly this format, with no notes before or after it:\n\n"
         f"{_BOOK_FORMAT}\n\n"
         f"Premise from the user:\n{premise or '[none, invent one from the cast and tone]'}\n\n"
         f"Cast:\n{cast_text or '[none, invent a small cast]'}\n\n"
+        f"{user_places_block(places_text)}"
         f"Tone, genre and world notes:\n{tone_notes or '[none]'}\n\n"
         "Song map in order (time, section, lyric). The timing and energy set the story's pace; the lyric words are "
         f"for mood and emotion only:\n{lyrics or '[none]'}\n\n"
@@ -197,19 +245,23 @@ def story_book_instruction(*, premise, cast_text, tone_notes, scene_count, song_
 
 
 def story_chapter_rewrite_instruction(*, book_text, chapter_number, chapter_text, direction, cast_text, lyric_guidance,
-                                      allow_new_cast=False, video_style="music_video", lead_name="", template=None):
+                                      allow_new_cast=False, video_style="music_video", lead_name="", template=None,
+                                      places_text=""):
     """Rewrite or expand one chapter, keeping the rest of the book as context."""
+    extra_rules = (f"- {USER_PLACES_RULE}\n" if str(places_text or "").strip() else "") + f"- {CHARACTER_NOTES_RULE}\n"
     return (
         render_with_realism(template or STORY_CHAPTER_TEMPLATE, {
             "chapter_number": chapter_number, "cast_rule": story_cast_rule(cast_text, allow_new_cast),
             "medium_rule": story_medium_rule(video_style, lead_name), "lyric_guidance": lyric_guidance,
         })
+        + extra_rules
         + "- Output only the act in exactly this format:\n\n"
         f"Act {chapter_number}: <act title>\n\n"
         "<paragraph>\n\n"
         "<paragraph>\n\n"
         f"User direction:\n{direction or 'Improve and expand this act.'}\n\n"
         f"Cast:\n{cast_text or '[none]'}\n\n"
+        f"{user_places_block(places_text)}"
         f"Act to rewrite:\n{chapter_text}\n\n"
         f"Whole book for context:\n{book_text}"
     )
@@ -336,16 +388,22 @@ STORY_ACTS_TEMPLATE = (
 
 
 def story_acts_instruction(*, chapter_number, chapter_title, setting_name, chapter_text, scenes_text, cast_text,
-                           notes_text, target_acts, template=None):
+                           notes_text, target_acts, template=None, places_text="", made_places_text=""):
     """Split one chapter into acts, each a contiguous run of the chapter's scenes."""
+    if str(made_places_text or "").strip():
+        own_places, places_text = f"- {MADE_PLACES_RULE_FOR_ACTS}\n", ""
+    else:
+        own_places = f"- {USER_PLACES_RULE_FOR_PLANS}\n" if str(places_text or "").strip() else ""
     return (
         render_with_realism(template or STORY_ACTS_TEMPLATE,
                               {"target_acts": target_acts, "lyrics_rule": LYRICS_ARE_MOOD_ONLY})
+        + own_places
         + "Return JSON only: {\"acts\": [{\"first_scene\": 1, \"title\": \"...\", \"summary\": \"...\", \"cast\": [\"...\"]}]}\n\n"
         f"Chapter {chapter_number}: {chapter_title}\n"
         f"Setting: {setting_name or '[not named]'}\n\n"
         f"{chapter_text}\n\n"
         f"Cast:\n{cast_text or '[none]'}\n\n"
+        f"{made_places_block(made_places_text)}{user_places_block(places_text)}"
         f"Timed user notes for these scenes:\n{notes_text or '[none]'}\n\n"
         f"Scenes of this chapter (time, length, song section, lyric mood):\n{scenes_text}"
     )
@@ -423,8 +481,12 @@ STORY_SCENE_PLAN_TEMPLATE = (
 
 def story_scene_plan_instruction(*, act_title, act_summary, setting_name, chapter_text, scenes_text, cast_text,
                                  spot_min_scenes, previous_spot, lyric_guidance, known_spots, video_style="music_video",
-                                 act_cast="", main_name="", template=None):
+                                 act_cast="", main_name="", template=None, places_text="", made_places_text=""):
     """Give every scene of one act its slice of the story, a spot, a mood, a performance and its cast."""
+    if str(made_places_text or "").strip():
+        own_places, places_text = f"- {MADE_PLACES_RULE_FOR_SPOTS}\n", ""
+    else:
+        own_places = f"- {USER_PLACES_RULE_FOR_SPOTS}\n" if str(places_text or "").strip() else ""
     return (
         render_with_realism(template or STORY_SCENE_PLAN_TEMPLATE, {
             "main_character_line": f"{main_name} is the main character and is in most scenes. " if main_name else "",
@@ -433,12 +495,14 @@ def story_scene_plan_instruction(*, act_title, act_summary, setting_name, chapte
             "performance_rule": _PLAN_PERFORMANCE_RULES.get(video_style, _PLAN_PERFORMANCE_RULES["music_video"]),
             "lyric_guidance": lyric_guidance,
         })
+        + own_places
         + "Return JSON only: {\"scenes\": [{\"scene\": 1, \"story_slice\": \"...\", \"spot\": \"...\", \"mood\": \"...\", "
         "\"performance\": \"singing\", \"continues\": false, \"continuation\": \"...\", \"cast\": [\"...\"], "
         "\"performer\": \"...\", \"interaction\": \"...\"}]}\n\n"
         f"Act: {act_title}\n{act_summary}\n\n"
         f"Spot of the scene before this act: {previous_spot or '[none]'}\n\n"
         f"Cast:\n{cast_text or '[none]'}\n\n"
+        f"{made_places_block(made_places_text)}{user_places_block(places_text)}"
         f"Chapter text for context:\n{chapter_text}\n\n"
         f"Scenes of this act:\n{scenes_text}"
     )
@@ -513,14 +577,24 @@ STORY_SETTING_LOOKS_TEMPLATE = (
 )
 
 
-def story_setting_looks_instruction(*, settings_text, book_summary, style_theme, cast_text, template=None):
+USER_PLACES_RULE_FOR_LOOKS = (
+    "When a setting matches a place under 'Places the user wants', build its look from the user's details for that "
+    "place and add only what they leave out."
+)
+
+
+def story_setting_looks_instruction(*, settings_text, book_summary, style_theme, cast_text, template=None,
+                                    places_text=""):
     """One shared look per general setting, so every spot inside it matches. No lyrics are sent."""
+    own_places = (f"- {USER_PLACES_RULE_FOR_LOOKS}\n" if str(places_text or "").strip() else "")
     return (
         render_with_places(template or STORY_SETTING_LOOKS_TEMPLATE, {})
+        + own_places
         + "Return JSON only: {\"settings\": [{\"name\": \"...\", \"look\": \"...\"}]} with every setting listed below, "
         "names unchanged.\n\n"
         f"Style and theme notes (look and banned places):\n{style_theme or '[none]'}\n\n"
         f"Cast:\n{cast_text or '[none]'}\n\n"
+        f"{user_places_block(places_text)}"
         f"Story:\n{book_summary}\n\n"
         f"Settings:\n{settings_text}"
     )
@@ -585,6 +659,48 @@ STORY_SPOTS_SCHEMA = {
         },
     },
     "required": ["spots"],
+    "additionalProperties": False,
+}
+
+
+def story_place_list_instruction(*, settings_text, user_places_text="", style_theme=""):
+    """The specific places inside each setting that the story uses, before any act or scene exists. Code-only
+    prompt (no saved template). No lyrics are sent."""
+    return with_places_rules(
+        "You are a music video location scout reading a finished story.\n\n"
+        "For each general setting, list the specific places inside it where the story's events happen.\n\n"
+        "Rules:\n"
+        "- 2-5 places per setting, each 1-3 words with no setting name (e.g. Kitchen, Back Porch, Platform).\n"
+        "- Only places the story's events need. Every event of the setting must fit one of them.\n"
+        "- Include every place under 'Places the user wants' that belongs in the setting, named as the user wrote it.\n"
+        "- A setting with one place inside it lists that one place.\n"
+        "Return JSON only: {\"settings\": [{\"name\": \"...\", \"spots\": [\"...\"]}]} with every setting listed "
+        "below, names unchanged.\n\n"
+        f"Style and theme notes:\n{style_theme or '[none]'}\n\n"
+        f"{user_places_block(user_places_text)}"
+        f"Settings and what happens there:\n{settings_text}"
+    )
+
+
+def with_places_rules(text):
+    """An instruction with the believable-places rule added before its data."""
+    return f"{str(text).rstrip()}\n- {BELIEVABLE_PLACES_RULE}\n\n"
+
+
+STORY_PLACE_LIST_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "settings": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"name": {"type": "string"}, "spots": {"type": "array", "items": {"type": "string"}}},
+                "required": ["name", "spots"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["settings"],
     "additionalProperties": False,
 }
 

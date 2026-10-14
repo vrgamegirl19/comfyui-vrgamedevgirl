@@ -385,13 +385,13 @@ def validate_minimax_h3_prompt(
 
 
 CONTINUATION_START_FIELD = "minimax_h3_continuation_start_seconds"
-CONTINUATION_MIN_START_SECONDS = 0.5
+CONTINUATION_MIN_START_SECONDS = 0.0
 
 
 def continuation_start_limits(duration: float) -> tuple:
     """(lowest, highest) second of a continued scene where its own movement may begin.
 
-    At least 0.5 s in, at most half of the scene (rounded down to 0.1 s). Python twin of
+    From the first frame (0 s) up to half of the scene (rounded down to 0.1 s). Python twin of
     ``miniMaxH3ContinuationStartLimits`` in ``web/music_video_builder/minimax_h3.mjs``.
     """
     low = CONTINUATION_MIN_START_SECONDS
@@ -402,7 +402,7 @@ def continuation_start_limits(duration: float) -> tuple:
 def continuation_hold_seconds(duration: float, requested: Any = None) -> float:
     """Seconds a continued scene simply carries on before its own movement begins.
 
-    The author's choice (``minimax_h3_continuation_start_seconds``) kept between the limits, 0.5 s when nothing is
+    The author's choice (``minimax_h3_continuation_start_seconds``) kept between the limits, 0 s when nothing is
     set. Python twin of ``miniMaxH3ContinuationHoldSeconds`` in ``web/music_video_builder/minimax_prompt.mjs``.
     """
     low, high = continuation_start_limits(duration)
@@ -429,9 +429,14 @@ def masked_continuation_context(segment: Dict[str, Any], duration: float, shot_c
     rules = [
         "This scene continues the previous scene's saved latent. Its first frames are the previous scene's last moments, "
         "already rendered. Write it as the very next moment of one uninterrupted take, never as a new shot.",
-        f"Write the timing into the shot text: 'For the first {hold:g} seconds, ...' carries on the previous scene's action "
-        f"with the same camera movement, framing and pace (no cut, reframe or restage), then 'At about {hold:g} seconds, ...' "
-        "gives the one smooth movement this scene makes.",
+        (
+            f"Write the timing into the shot text: 'For the first {hold:g} seconds, ...' carries on the previous scene's action "
+            f"with the same camera movement, framing and pace (no cut, reframe or restage), then 'At about {hold:g} seconds, ...' "
+            "gives the one smooth movement this scene makes."
+            if hold > 0 else
+            "The scene's own movement starts from the first frame with no timed lead-in, carrying on from the previous scene's "
+            "action with the same camera movement, framing and pace (no cut, reframe or restage)."
+        ),
         f"The scene is {scene_length:g} seconds long, so that movement has {seconds_left:g} seconds and must be completely "
         "finished before the scene ends. Keep every action of the author's direction, in their order, and perform them briskly "
         "enough to fit. Never leave one cut off or unfinished.",

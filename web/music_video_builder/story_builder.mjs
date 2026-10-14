@@ -389,7 +389,29 @@ export function createStoryBuilder({
     }
     progress.set(`${title}: done.\nPlanned ${done} act${done === 1 ? "" : "s"}.`, 100);
     progress.close(1200);
+    // The places already have their cards (4. Places), so planned scenes are mapped to them right away.
+    const madeCards = (normalizeFluxReferenceBuilder(state.fluxReferenceBuilder).locations || []).some((item) => item?.story_setting_id);
+    if (done && (madeCards || String(layer().story_user_locations || "").trim())) await buildPlaces({ title: "Mapping the scenes to their places" });
     return done;
+  }
+
+  // Runs the locations step, merges the cards into the Reference Builder and maps every planned scene to its place.
+  // Before any scene is planned it only makes cards for the places listed in the Story tab. Returns the merge result.
+  async function buildPlaces({ styleTheme = null, regenerate = false, title = "Building the locations" } = {}) {
+    const theme = styleTheme ?? normalizeFluxReferenceBuilder(state.fluxReferenceBuilder).location_style_theme ?? "";
+    const data = await runStep("locations", { style_theme: theme, regenerate_looks: regenerate }, title);
+    if (!data?.locations) return null;
+    pushHistory();
+    const merged = applyStoryLocations(normalizeFluxReferenceBuilder(state.fluxReferenceBuilder), data.locations, (taken) => {
+      let id = "";
+      do id = `loc_${Date.now()}_${Math.floor(Math.random() * 10000)}`; while (taken.has(id));
+      taken.add(id);
+      return id;
+    }, regenerate);
+    merged.refs.location_style_theme = theme;
+    state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(merged.refs);
+    await saveLayer(data.story_layer || {}, "story builder locations", { places: true });
+    return merged;
   }
 
   // Writes new beats, then new video prompts, for these scenes from their current plan, so 7. Beats & Prompts shows the change.
@@ -814,6 +836,8 @@ export function createStoryBuilder({
       const useAll = !cards.some((subject) => savedIds.has(subject.id));
       const savedRoles = current.story_cast_roles || {};
       const mainId = cards.some((subject) => subject.id === current.story_main_cast_id) ? current.story_main_cast_id : cards[0]?.id || "";
+      const savedNotes = current.story_character_notes || {};
+      const noteInputs = [];
       const boxes = cards.map((subject) => {
         const line = el("div", "display:flex;gap:8px;font-size:12px;color:#e2e8f0;align-items:center;");
         const box = document.createElement("input");
@@ -824,6 +848,14 @@ export function createStoryBuilder({
         role.style.width = "max-content";
         line.append(box, el("span", "min-width:160px;", `${subject.name || subject.id} (${subject.reference_type || "character"})`), role);
         people.append(line);
+        // Personality and emotions, in the user's words. The story shows them through what the character does.
+        const personality = makeInput(savedNotes[subject.id] || "");
+        personality.placeholder = "Personality and emotions, e.g. guarded, funny when nervous, hides how much she misses home";
+        personality.onchange = () => saveLayer({
+          story_character_notes: Object.fromEntries(noteInputs.map((item) => [item.id, item.input.value])),
+        }, "story builder character personalities");
+        noteInputs.push({ id: subject.id, input: personality });
+        people.append(personality);
         return { box, role, subject };
       });
       if (!cards.length) people.append(el("div", "font-size:12px;color:#fbbf24;", "No cast yet. Add your characters in the Cast tab first."));
@@ -872,7 +904,18 @@ export function createStoryBuilder({
       drawBookNote();
       content.append(bookNote);
 
-      const idea = card("Premise", "A sentence or a full outline. The LLM writes the book from it, using only the characters ticked above.");
+      // The user's own places. The story happens in these, and the setting looks and location cards are built from them.
+      const places = card("Locations", "The places you picture in the video, one per line, with the details you want after a colon, e.g. 'Grandma's kitchen: yellow wallpaper, a kettle always on'. The story happens in these places and does not invent others unless it has to.");
+      const placesBox = textarea(current.story_user_locations, "Grandma's kitchen: yellow wallpaper, a kettle always on\nThe night train: empty carriage, rain on the windows\nThe back porch: peeling paint, a swing that creaks", 110);
+      placesBox.onchange = async () => {
+        if (placesBox.value === String(layer().story_user_locations || "")) return;
+        await saveLayer({ story_user_locations: placesBox.value }, "story builder locations");
+        drawBookNote();
+        refreshProgress();
+      };
+      places.append(placesBox);
+
+      const idea = card("Premise", "A sentence or a full outline. The LLM writes the book from it, using the characters ticked above, their personalities and your locations.");
       const premise = textarea(current.overall_story_idea, "A son rides the night train home to find out why his father left.", 70);
       const savePremise = async (announce) => {
         if (premise.value === String(layer().overall_story_idea || "")) {
@@ -892,7 +935,8 @@ export function createStoryBuilder({
       const draft = makeButton("Draft Story", "primary");
       draft.disabled = Boolean(blocked);
       draft.onclick = async () => {
-        await saveLayer({ overall_story_idea: premise.value }, "story builder premise");
+        await saveLayer({ overall_story_idea: premise.value, story_user_locations: placesBox.value,
+          story_character_notes: Object.fromEntries(noteInputs.map((item) => [item.id, item.input.value])) }, "story builder premise");
         const data = await runStep("book", { story_idea: premise.value, tone_notes: tone.value,
           previous_book: current.story_book_text || "", seed: String(Date.now()) }, "Writing the story");
         if (data?.story_layer) {
@@ -974,7 +1018,7 @@ export function createStoryBuilder({
           row(direction, rewrite));
       }
 
-      content.append(people, idea, own, book, chapters);
+      content.append(people, places, idea, own, book, chapters);
     }
 
     // ---------------------------------------------------------------- Acts
@@ -1381,8 +1425,8 @@ export function createStoryBuilder({
           direction = textarea(entry.continuation_direction, "During the continuation: what happens once the carried-on moment settles, e.g. She sets the letter down and walks to the window.", 36);
           holdInput = makeInput(String(segment.minimax_h3_continuation_start_seconds ?? ""), "number");
           holdInput.step = "0.1";
-          holdInput.min = "0.5";
-          holdInput.placeholder = "0.5";
+          holdInput.min = "0";
+          holdInput.placeholder = "0";
           holdInput.style.maxWidth = "110px";
           const details = el("div", "display:flex;flex-direction:column;gap:6px;");
           details.append(direction, makeField("Direction starts at (seconds into the scene)", holdInput));
@@ -1501,35 +1545,28 @@ export function createStoryBuilder({
       const blocked = blockerNote("places");
       if (blocked) content.append(blocked);
       const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
-      const top = card("Places", "Each chapter's setting gets one look, and every spot inside it a location card built on that look. Only the story is used, never the lyrics.");
+      const top = card("Places", "The story leads to its places. Each chapter's setting gets one look, and the places inside it get a card each: yours from the Story tab word for word, and the others found in the story. The acts and the scenes are then made inside these places, and planning the scenes maps each one to its card. Only the story is used, never the lyrics.");
       const theme = makeInput(refs.location_style_theme || "");
       theme.placeholder = "Look and banned places, e.g. warm 1970s film, no warehouses";
       const regenerate = el("label", "display:flex;gap:6px;font-size:12px;color:#e2e8f0;align-items:center;");
       const regenerateBox = document.createElement("input");
       regenerateBox.type = "checkbox";
       regenerate.append(regenerateBox, document.createTextNode("Rewrite setting looks and card text"));
+      const hasPlan = normalizeStoryScenePlan(current.story_scene_plan).length > 0;
       const build = makeButton("Build Locations From Story", "primary");
       build.disabled = Boolean(blocked);
       build.onclick = async () => {
         // Save and close the hosted Reference Builder first. It holds its own copy of the cards, and saving that
         // copy after the build would overwrite the new locations.
         await leaveHostedTab();
-        const data = await runStep("locations", { style_theme: theme.value, regenerate_looks: regenerateBox.checked }, "Building the locations");
-        if (!data?.locations) {
+        const merged = await buildPlaces({ styleTheme: theme.value, regenerate: regenerateBox.checked });
+        if (!merged) {
           show("places");
           return;
         }
-        pushHistory();
-        const merged = applyStoryLocations(normalizeFluxReferenceBuilder(state.fluxReferenceBuilder), data.locations, (taken) => {
-          let id = "";
-          do id = `loc_${Date.now()}_${Math.floor(Math.random() * 10000)}`; while (taken.has(id));
-          taken.add(id);
-          return id;
-        }, regenerateBox.checked);
-        merged.refs.location_style_theme = theme.value;
-        state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(merged.refs);
-        await saveLayer(data.story_layer || {}, "story builder locations", { places: true });
-        toast(`Locations ready: ${merged.added} added, ${merged.updated} updated. Every scene is mapped to its spot.`);
+        toast(hasPlan
+          ? `Locations ready: ${merged.added} added, ${merged.updated} updated. Every scene is mapped to its spot.`
+          : `Locations ready: ${merged.added} added, ${merged.updated} updated. Scenes are mapped to them when you plan the scenes.`);
         // Location images are made from the Places tab's button when you want them, never opened for you.
         show("places");
       };
@@ -1605,7 +1642,7 @@ export function createStoryBuilder({
           ? `${sceneRangeText(gaps.scenes)} ${gaps.scenes.length === 1 ? "has" : "have"} no character or location image, and Reference to Video needs at least one. ${gaps.characters.length || gaps.locations.length ? "Make the missing images first." : "Map a character or location to them in the Cast or Places tab."}`
           : `For your information: some cards used by your scenes have no image yet${gaps.characters.length ? `. Characters: ${gaps.characters.join(", ")}` : ""}${gaps.locations.length ? `. Locations: ${gaps.locations.join(", ")}` : ""}. Prompts can still be created.`;
         const note = el("div", `font-size:12px;color:${imagesBlock ? "#fca5a5" : "#bae6fd"};border:1px solid ${imagesBlock ? "#7f1d1d" : "#1e3a5f"};border-radius:7px;background:${imagesBlock ? "#1f0808" : "#0b1a2b"};padding:9px;display:flex;flex-direction:column;gap:8px;`, message);
-        note.append(row(gaps.characters.length ? imageButton("characters") : null, gaps.locations.length ? imageButton("locations") : null));
+        if (gaps.characters.length) note.append(row(imageButton("characters")));
         prompts.append(note);
       }
       const createPrompts = makeButton("Create Video Prompts", "primary");

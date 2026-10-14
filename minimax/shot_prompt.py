@@ -715,8 +715,14 @@ def location_continuity_contract(
                 "Make the chosen mechanism concrete in the shot description."
             ),
             "masked": (
-                f"LOCATION PHASE — MASKED CONTINUATION TRANSITION: The renderer already holds the previous scene's last moments, so for the first {hold} seconds simply continue the opening frame's action in {prev} with the same subject, framing, pace, and camera motion. No cut, no change of angle, and no new setup. "
-                f"At about {hold} seconds, begin ONE smooth, motivated movement that carries the shot into {cur}. Choose the movement that best suits the opening frame: a camera move (push-in, pull-back, pan, tilt, track, or arc around the subject) or a natural subject move (turning, stepping through, walking on) that the camera follows. "
+                f"LOCATION PHASE — MASKED CONTINUATION TRANSITION: The renderer already holds the previous scene's last moments, "
+                + (
+                    f"so for the first {hold} seconds simply continue the opening frame's action in {prev} with the same subject, framing, pace, and camera motion. No cut, no change of angle, and no new setup. "
+                    f"At about {hold} seconds, "
+                    if float(hold) > 0 else
+                    f"so from the first frame carry on the opening frame's action in {prev} with the same subject, framing, pace, and camera motion. No cut, no change of angle, and no new setup. From the first frame, "
+                )
+                + f"begin ONE smooth, motivated movement that carries the shot into {cur}. Choose the movement that best suits the opening frame: a camera move (push-in, pull-back, pan, tilt, track, or arc around the subject) or a natural subject move (turning, stepping through, walking on) that the camera follows. "
                 "Let the surroundings change progressively through that movement and its parallax, with no wipe, flash, portal, morph, or cut. Describe the move and where the shot has arrived when it finishes."
                 + performance_line(has_vocals, "transition")
             ),
@@ -751,7 +757,8 @@ def continuation_task_text(
     the LLM is shown the previous scene's final frame as Attached Picture 1, like the Builder. Without it the previous
     scene's last shot description stands in for the picture.
     """
-    hold = f"{float(continuation.get('hold_seconds') or 0.5):g}"
+    hold_value = continuation.get("hold_seconds")
+    hold = f"{float(0.0 if hold_value is None else hold_value):g}"
     scene_seconds = float(continuation.get("scene_seconds") or 0.0)
     seconds_left = float(continuation.get("seconds_left") or max(0.0, scene_seconds - float(hold)))
     direction = str(continuation.get("direction") or "").strip()
@@ -808,11 +815,16 @@ def continuation_task_text(
                 "last action fully done, never cut off or left unfinished. "
                 if scene_seconds > 0 else ""
             )
-            + f"Write the one shot description in two timed parts and put the timing in the text itself. First: \"For the first {hold} seconds, ...\" "
-            "continuing the opening frame's action with the same camera motion, framing, and pace. "
-            f"Then: \"At about {hold} seconds, ...\" performing every action in the direction above, in the author's order and with the "
-            "author's own verbs and objects, as one smooth continuous movement in the same take. "
-            "If the direction needs a body position or facing different from "
+            + (
+                f"Write the one shot description in two timed parts and put the timing in the text itself. First: \"For the first {hold} seconds, ...\" "
+                "continuing the opening frame's action with the same camera motion, framing, and pace. "
+                f"Then: \"At about {hold} seconds, ...\" performing every action in the direction above, in the author's order and with the "
+                "author's own verbs and objects, as one smooth continuous movement in the same take. "
+                if float(hold) > 0 else
+                "Write the one shot description so the direction starts from the first frame, with no timed lead-in: perform every action "
+                "in the direction above, in the author's order and with the author's own verbs and objects, as one smooth continuous movement in the same take. "
+            )
+            + "If the direction needs a body position or facing different from "
             + ("Attached Picture 1" if with_picture else "the previous scene's last shot")
             + " (for example standing up, walking, or turning), first describe the natural movement that gets the subject there, inside the same take. "
             "Do not skip or replace any action in the direction. If it is a lot for the time left, perform its actions in quicker "

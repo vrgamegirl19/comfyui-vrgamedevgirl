@@ -265,11 +265,7 @@ test('Reference to Video blocks prompts for scenes with no image and opens the i
   await tick();
   assert.equal(findButton('Create Video Prompts').disabled, true);
   assert.ok(document.body.textContent.includes('Scenes 4-6 have no character or location image'));
-  await findButton('Generate Missing Location Images').onclick();
-  await tick();
-  assert.deepEqual(calls.generated, ['locations'], 'it opens the Places tab and its image generator');
-  builder.openStoryBuilder({ tab: 'prompts' });
-  await tick();
+  assert.ok(!document.body.textContent.includes('Generate Missing Location Images'), 'location images are made in the Places tab');
   state.fluxReferenceBuilder.locations[0].image = { path: 'C:/car.png' };
   builder.openStoryBuilder({ tab: 'prompts' });
   await tick();

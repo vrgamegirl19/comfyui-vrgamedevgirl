@@ -10,7 +10,7 @@ const book = { title: 'T', chapters: [{ id: 'ch_1', title: 'One', setting_id: 's
 const acts = [{ id: 'act_1', chapter_id: 'ch_1', title: 'A', scene_ids: sceneIds }];
 
 test('tabs follow the order a video is made', () => {
-  assert.deepEqual(STORY_BUILDER_TABS.map((tab) => tab.id), ['song', 'cast', 'story', 'acts', 'scenes', 'places', 'prompts']);
+  assert.deepEqual(STORY_BUILDER_TABS.map((tab) => tab.id), ['song', 'cast', 'story', 'places', 'acts', 'scenes', 'prompts']);
 });
 
 test('an empty project has only empty tabs', () => {
@@ -74,6 +74,23 @@ test('places are done once every scene has a story location, with or without ima
   assert.equal(storyBuilderProgress({ sceneIds, refs }).places, 'progress');
   refs.scene_map.s3 = 'loc_1';
   assert.equal(storyBuilderProgress({ sceneIds, refs }).places, 'done', 'location images are optional');
+});
+
+test('places built from the user list are done before any scene is planned, and the tab only needs the story', () => {
+  const layer = { story_book: book, story_user_locations: "- Grandma's kitchen: yellow wallpaper\nThe night train" };
+  const refs = { locations: [{ id: 'a', name: "Grandma's Kitchen" }, { id: 'b', name: 'Unrelated' }] };
+  const progress = storyBuilderProgress({ sceneIds, refs, layer });
+  assert.equal(progress.places, 'done');
+  assert.equal(storyBuilderProgress({ sceneIds, refs: { locations: [{ id: 'b', name: 'Unrelated' }] }, layer }).places, 'empty');
+  const planned = storyBuilderProgress({ sceneIds, refs, layer: { ...layer, story_scene_plan: [{ scene_id: 's1' }] } });
+  assert.equal(planned.places, 'progress', 'once scenes are planned, every scene needs a place');
+  assert.equal(storyBuilderBlocker('places', progress), '');
+  assert.equal(storyBuilderBlocker('places', storyBuilderProgress({})), 'Write the story first (Story tab).');
+  assert.equal(storyBuilderBlocker('acts', progress), '', 'acts can start once the places exist');
+  const noPlaces = storyBuilderProgress({ sceneIds, layer: { story_book: book } });
+  assert.equal(storyBuilderBlocker('acts', noPlaces), 'Build the places first (Places tab); the acts happen inside them.');
+  const hasActs = storyBuilderProgress({ sceneIds, layer: { story_book: book, story_acts: acts } });
+  assert.equal(storyBuilderBlocker('acts', hasActs), '', 'existing acts can still be rebuilt without place cards');
 });
 
 test('broken acts block the scene plan', () => {

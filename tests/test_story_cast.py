@@ -232,6 +232,109 @@ class RealismRuleTests(unittest.TestCase):
             self.assertIn("Keep it believable", story_layer._story_mode_beat_rules({}))
 
 
+class UserLocationsAndPersonalityTests(unittest.TestCase):
+    """The user's own places and character personalities reach the book, chapter and setting-look prompts."""
+
+    def test_book_prompt_carries_places_and_personality(self):
+        fake = FakeLLM()
+        layer = {"story_user_locations": "Grandma's kitchen: yellow wallpaper",
+                 "story_character_notes": {"subj_brandon": "guarded, funny when nervous"}}
+        with patch.object(builder_runner, "_run_builder_text_llm", fake):
+            story_book.draft_story_book(payload(**layer))
+        prompt = fake.prompts[0]
+        self.assertIn("Places the user wants", prompt)
+        self.assertIn("Grandma's kitchen: yellow wallpaper", prompt)
+        self.assertIn("Personality and emotions: guarded, funny when nervous", prompt)
+
+    def test_no_places_block_when_the_user_lists_none(self):
+        prompts = importlib.import_module(f"{ROOT.name}.llm.prompts.story_mode")
+        text = prompts.story_book_instruction(premise="p", cast_text="- A", tone_notes="", scene_count=10, song_seconds=60,
+                                              lyric_guidance="g", lyrics="", previous_book="", seed="1")
+        self.assertNotIn("Places the user wants", text)
+        looks = prompts.story_setting_looks_instruction(settings_text="s", book_summary="b", style_theme="", cast_text="",
+                                                        places_text="The porch: peeling paint")
+        self.assertIn("The porch: peeling paint", looks)
+
+
+class UserPlacesMatchingTests(unittest.TestCase):
+    PLACES = [("Grandma's kitchen", "Yellow wallpaper."), ("The night train", "Empty carriage."), ("Barn", "")]
+
+    def test_matches_by_whole_words_without_case_or_the(self):
+        self.assertEqual(story_book.match_user_place(self.PLACES, "Kitchen")[0], "Grandma's kitchen")
+        self.assertEqual(story_book.match_user_place(self.PLACES, "night TRAIN")[0], "The night train")
+        self.assertIsNone(story_book.match_user_place(self.PLACES, "Bar"))
+        self.assertIsNone(story_book.match_user_place(self.PLACES, "Penthouse"))
+
+    def test_places_are_read_one_per_line_with_details_after_the_colon(self):
+        places = story_book.user_places({"story_layer": {"story_user_locations": "- Porch: peeling paint\nGarage"}})
+        self.assertEqual(places, [("Porch", "peeling paint"), ("Garage", "")])
+
+    def test_cards_are_built_from_the_list_before_any_scene_is_planned(self):
+        story_locations = importlib.import_module(f"{ROOT.name}.storyboard.story_locations")
+        data = {"story_layer": {"story_flow_version": 2,
+                                "story_user_locations": "Grandma's kitchen: yellow wallpaper\nThe night train",
+                                "story_settings": [{"id": "setting_kitchen", "name": "Kitchen", "look": ""}]},
+                "scenes": [{"id": "s1"}]}
+        result = story_locations.build_story_locations(data)
+        self.assertEqual([(item["name"], item["description"]) for item in result["locations"]],
+                         [("Grandma's kitchen", "yellow wallpaper"), ("The night train", "")])
+        self.assertEqual(result["locations"][0]["story_setting_id"], "setting_kitchen")
+        self.assertEqual(result["locations"][0]["scene_ids"], [])
+        self.assertEqual(result["story_layer"]["story_settings"][0]["look"], "yellow wallpaper")
+        with self.assertRaises(ValueError):
+            story_locations.build_story_locations({"story_layer": {"story_flow_version": 2}, "scenes": [{"id": "s1"}]})
+
+    def test_places_come_from_the_story_before_acts_and_acts_and_scenes_use_them(self):
+        story_locations = importlib.import_module(f"{ROOT.name}.storyboard.story_locations")
+        story_plan = importlib.import_module(f"{ROOT.name}.storyboard.story_plan")
+        prompts = importlib.import_module(f"{ROOT.name}.llm.prompts.story_mode")
+        layer = {"story_flow_version": 2, "story_user_locations": "Grandma's kitchen: yellow wallpaper",
+                 "story_book": {"title": "T", "premise": "", "chapters": [
+                     {"id": "ch_1", "title": "Home", "setting_id": "setting_home", "paragraphs": ["She cooks, then sits on the porch."]}]},
+                 "story_settings": [{"id": "setting_home", "name": "Home", "look": "Pine and brick."}]}
+        seen = []
+
+        def fake(payload_, instruction, *, label, **kwargs):
+            seen.append(label)
+            if label == "Story Mode Place List":
+                return json.dumps({"settings": [{"name": "Home", "spots": ["Kitchen", "Back Porch"]}]}), {"runner": "fake"}
+            return json.dumps({"spots": [{"name": "Back Porch", "description": "Peeling paint."}]}), {"runner": "fake"}
+
+        with patch.object(story_locations, "_run", fake):
+            result = story_locations.build_story_locations({"story_layer": layer, "scenes": [{"id": "s1"}]})
+        by_name = {item["name"]: item for item in result["locations"]}
+        self.assertEqual(sorted(by_name), ["Grandma's kitchen", "Home - Back Porch"])
+        self.assertEqual(by_name["Grandma's kitchen"]["description"], "yellow wallpaper")
+        self.assertEqual(by_name["Grandma's kitchen"]["scene_ids"], [])
+        self.assertEqual(seen, ["Story Mode Place List", "Story Mode Spots"], "the user's kitchen needs no LLM text")
+        # The made cards reach the acts and the scene plan, and a scene's spot snaps to a made card.
+        refs = {"locations": [
+            {"id": "a", "name": "Grandma's kitchen", "description": "yellow wallpaper"},
+            {"id": "b", "name": "Home - Back Porch", "description": "Peeling paint.", "story_setting_id": "setting_home"}]}
+        data = {"story_layer": layer, "reference_builder": refs}
+        self.assertEqual(story_book.made_places_text(data, "setting_home"),
+                         "- Grandma's kitchen: yellow wallpaper\n- Back Porch: Peeling paint.")
+        acts = prompts.story_acts_instruction(chapter_number=1, chapter_title="t", setting_name="Home", chapter_text="c",
+                                              scenes_text="t", cast_text="- A", notes_text="", target_acts=2,
+                                              made_places_text=story_book.made_places_text(data, "setting_home"))
+        self.assertIn("Places already made", acts)
+        self.assertIn("- Back Porch: Peeling paint.", acts)
+        self.assertEqual(story_plan._snap_to_made_place(story_book.made_place_cards(data, "setting_home"), "the porch"), "Back Porch")
+        self.assertEqual(story_plan._snap_to_made_place(story_book.made_place_cards(data, "setting_home"), "Garage"), "Garage")
+
+    def test_scene_plan_and_acts_prompts_carry_the_places(self):
+        prompts = importlib.import_module(f"{ROOT.name}.llm.prompts.story_mode")
+        plan = prompts.story_scene_plan_instruction(
+            act_title="a", act_summary="s", setting_name="n", chapter_text="c", scenes_text="t", cast_text="- A",
+            spot_min_scenes=3, previous_spot="", lyric_guidance="g", known_spots="", places_text="Porch: paint")
+        acts = prompts.story_acts_instruction(chapter_number=1, chapter_title="t", setting_name="n", chapter_text="c",
+                                              scenes_text="t", cast_text="- A", notes_text="", target_acts=2,
+                                              places_text="Porch: paint")
+        for text in (plan, acts):
+            self.assertIn("Places the user wants", text)
+            self.assertIn("Porch: paint", text)
+
+
 class ActSummaryTests(unittest.TestCase):
     def test_the_act_description_is_rewritten_from_its_planned_scenes(self):
         story_plan = importlib.import_module(f"{ROOT.name}.storyboard.story_plan")

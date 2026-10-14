@@ -520,7 +520,7 @@ export function createMiniMaxPanel({
     }
   }
 
-  // The "Direction starts at" slider: from 0.5 s to half of this scene, on while the direction box is on.
+  // The "Direction starts at" slider: from 0 s to half of this scene, on while the direction box is on.
   function syncMiniMaxContinuationStart(segment, enabled) {
     const sceneSeconds = segment ? Math.max(0, Number(segment.end || 0) - Number(segment.start || 0)) : 0;
     const { low, high } = miniMaxH3ContinuationStartLimits(sceneSeconds);

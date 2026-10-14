@@ -5,7 +5,7 @@ export const STORY_FLOW_VERSION = 2;
 export const STORY_MODE_KEYS = ["story_flow_version", "story_book", "story_book_text", "story_settings", "story_acts", "story_scene_plan",
   "story_spot_min_scenes", "story_cast_ids", "story_allow_new_cast", "story_video_style", "story_continuation_mode",
   "story_stamps", "story_main_cast_id", "story_cast_roles", "story_relationships", "story_act_count",
-  "story_chapter_counts"];
+  "story_chapter_counts", "story_user_locations", "story_character_notes"];
 // A character's part in the story, and how two characters are connected.
 export const STORY_CAST_ROLES = ["main", "love_interest", "supporting", "antagonist"];
 export const STORY_RELATIONSHIP_TYPES = ["love_interest", "partners", "exes", "family", "friends", "rivals", "strangers", "other"];
@@ -194,6 +194,8 @@ export function normalizeStoryModeFields(source) {
   if ("story_main_cast_id" in value) result.story_main_cast_id = storyLine(value.story_main_cast_id, 160);
   if ("story_cast_roles" in value) result.story_cast_roles = normalizeStoryCastRoles(value.story_cast_roles);
   if ("story_relationships" in value) result.story_relationships = normalizeStoryRelationships(value.story_relationships);
+  if ("story_user_locations" in value) result.story_user_locations = storyText(value.story_user_locations, 3000);
+  if ("story_character_notes" in value) result.story_character_notes = normalizeStoryCharacterNotes(value.story_character_notes);
   if ("story_act_count" in value) result.story_act_count = normalizeStoryCount(value.story_act_count, 0, 12);
   if ("story_chapter_counts" in value) {
     // {act (story_book chapter) id: how many chapters the user wants in it}.
@@ -219,6 +221,17 @@ export function normalizeStoryCastRoles(value) {
     if (key && STORY_CAST_ROLES.includes(name)) roles[key] = name;
   }
   return roles;
+}
+
+// {cast id: text}: each character's personality and emotions. Empty notes are dropped.
+export function normalizeStoryCharacterNotes(value) {
+  const notes = {};
+  for (const [id, note] of Object.entries(plainObject(value)).slice(0, 40)) {
+    const key = storyLine(id, 160);
+    const text = storyLine(note, 600);
+    if (key && text) notes[key] = text;
+  }
+  return notes;
 }
 
 // [{a, b, type, note}]: how two characters are connected. A pair with one person or an unknown type is dropped.

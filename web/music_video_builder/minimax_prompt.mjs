@@ -978,8 +978,8 @@ export function createMiniMaxPrompt({
     ];
   }
 
-  // Seconds a continued scene simply carries on before its own movement begins. The author sets it per scene: at least
-  // 0.5 s in and at most half of the scene, 0.5 s when nothing is set.
+  // Seconds a continued scene simply carries on before its own movement begins. The author sets it per scene: from
+  // 0 s (the first frame) up to half of the scene, 0 s when nothing is set.
   function miniMaxH3ContinuationHoldSeconds(segment) {
     const sceneSeconds = Math.max(0, Number(segment?.end || 0) - Number(segment?.start || 0));
     return miniMaxH3ContinuationStartSeconds(sceneSeconds, segment?.minimax_h3_continuation_start_seconds);
@@ -996,7 +996,9 @@ export function createMiniMaxPrompt({
     return (
       `AUTHOR'S DIRECTION FOR THIS SCENE — MANDATORY, THE FINISHED DESCRIPTION MUST CONTAIN IT: "${direction}"\n`
       + `SCENE TIMING: This scene is ${sceneLength} seconds long. The direction starts at ${holdSeconds} seconds and has to be completely finished before the scene ends, which leaves ${secondsLeft} seconds for it. Perform every action of the direction in the author's order at a brisk pace that fits those ${secondsLeft} seconds, and end the shot with the last action fully done, never cut off or left unfinished. `
-      + `Write the one shot description in two timed parts and put the timing in the text itself. First: "For the first ${holdSeconds} seconds, ..." continuing the opening frame's action with the same camera motion, framing, and pace. Then: "At about ${holdSeconds} seconds, ..." performing every action in the direction above, in the author's order and with the author's own verbs and objects, as one smooth continuous movement in the same take. `
+      + (holdSeconds > 0
+        ? `Write the one shot description in two timed parts and put the timing in the text itself. First: "For the first ${holdSeconds} seconds, ..." continuing the opening frame's action with the same camera motion, framing, and pace. Then: "At about ${holdSeconds} seconds, ..." performing every action in the direction above, in the author's order and with the author's own verbs and objects, as one smooth continuous movement in the same take. `
+        : `Write the one shot description so the direction starts from the first frame, with no timed lead-in: perform every action in the direction above, in the author's order and with the author's own verbs and objects, as one smooth continuous movement in the same take. `)
       + `If the direction needs a body position or facing different from Attached Picture 1 (for example standing up, walking, or turning), first describe the natural movement that gets the subject there, inside the same take. `
       + `Do not skip or replace any action in the direction. If it is a lot for the time left, perform its actions in quicker succession rather than leaving any out. Never cut, change shot, or restart the action to reach it. Write it as the shot's one movement: if the mapped location differs from the previous scene's, let that same movement carry the shot into the new location instead of adding a second one. `
       + `Finish by stating where the shot ends.`
@@ -1078,8 +1080,11 @@ export function createMiniMaxPrompt({
           + `Let directional motion and natural motion blur carry the complete image across the location boundary, then resolve the same movement and screen direction clearly inside ${currentName}. Preserve the subject's action, rhythm, and camera momentum throughout.`
         ),
         masked: (
-          `LOCATION PHASE — MASKED CONTINUATION TRANSITION: The renderer already holds the previous scene's last moments, so for the first ${holdSeconds} seconds simply continue the opening frame's action in ${previousName} with the same subject, framing, pace, and camera motion. No cut, no change of angle, and no new setup. `
-          + `At about ${holdSeconds} seconds, begin ONE smooth, motivated movement that carries the shot into ${currentName}. Choose the movement that best suits the opening frame: a camera move (push-in, pull-back, pan, tilt, track, or arc around the subject) or a natural subject move (turning, stepping through, walking on) that the camera follows. `
+          `LOCATION PHASE — MASKED CONTINUATION TRANSITION: The renderer already holds the previous scene's last moments, `
+          + (holdSeconds > 0
+            ? `so for the first ${holdSeconds} seconds simply continue the opening frame's action in ${previousName} with the same subject, framing, pace, and camera motion. No cut, no change of angle, and no new setup. At about ${holdSeconds} seconds, `
+            : `so from the first frame carry on the opening frame's action in ${previousName} with the same subject, framing, pace, and camera motion. No cut, no change of angle, and no new setup. From the first frame, `)
+          + `begin ONE smooth, motivated movement that carries the shot into ${currentName}. Choose the movement that best suits the opening frame: a camera move (push-in, pull-back, pan, tilt, track, or arc around the subject) or a natural subject move (turning, stepping through, walking on) that the camera follows. `
           + `Let the surroundings change progressively through that movement and its parallax, with no wipe, flash, portal, morph, or cut. Describe the move and where the shot has arrived when it finishes.${performanceLine}`
         ),
         creative_auto: (

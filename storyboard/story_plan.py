@@ -27,7 +27,17 @@ from .story_acts import (
     repair_act_ranges,
     validate_story_acts,
 )
-from .story_book import _run, cast_lines, main_cast, story_cast, story_template
+from .story_book import (
+    _run,
+    cast_lines,
+    made_place_cards,
+    made_places_text,
+    main_cast,
+    match_user_place,
+    story_cast,
+    story_template,
+    user_places_text,
+)
 from .story_mode import (
     act_user_text,
     normalize_plan_performance,
@@ -201,6 +211,8 @@ def build_story_acts(payload, progress=None):
                     for note in chapter_notes if note["scene_numbers"]
                 ),
                 target_acts=max(1, round((last - first + 1) / 4)),
+                places_text=user_places_text(payload),
+                made_places_text=made_places_text(payload, chapter["setting_id"]),
                 template=story_template(payload, "story_mode_acts"),
             )
             try:
@@ -264,6 +276,12 @@ def style_performance(performance, style):
     return performance
 
 
+def _snap_to_made_place(made_cards, spot):
+    """The made place card a spot names (``Kitchen`` for ``The kitchen``), or the spot as written when none fits."""
+    place = match_user_place(made_cards, spot) if spot and made_cards else None
+    return place[0] if place else spot
+
+
 def build_story_scene_plan(payload, progress=None):
     """A plan entry for every scene of every act (or only ``act_id``), with spots kept for at least
     ``spot_min_scenes`` scenes in a row."""
@@ -309,6 +327,7 @@ def build_story_scene_plan(payload, progress=None):
             progress(step, len(todo), act["title"] or act["id"])
         chapter = chapter_by_id[act["chapter_id"]]
         setting_name = (settings.get(chapter["setting_id"]) or {}).get("name", "")
+        made_cards = made_place_cards(payload, chapter["setting_id"])
         numbers = sorted(number_by_id[sid] for sid in act["scene_ids"])
         act_names = [names_by_id[cid] for cid in act.get("cast_ids") or [] if cid in names_by_id]
         previous_spot = ""
@@ -334,6 +353,8 @@ def build_story_scene_plan(payload, progress=None):
             video_style=style,
             act_cast=", ".join(act_names),
             main_name=main_name,
+            places_text=user_places_text(payload),
+            made_places_text=made_places_text(payload, chapter["setting_id"]),
             template=story_template(payload, "story_mode_scene_plan"),
         )
         replies = {}
@@ -378,7 +399,7 @@ def build_story_scene_plan(payload, progress=None):
                 "scene_id": scene_ids[number - 1],
                 "act_id": act["id"],
                 "story_slice": _clean_scene_text(item.get("story_slice") or act["summary"], 1200),
-                "spot": _clean_scene_text(item.get("spot") or "", 160),
+                "spot": _snap_to_made_place(made_cards, _clean_scene_text(item.get("spot") or "", 160)),
                 "mood": _clean_scene_text(item.get("mood") or "", 200),
                 "performance_mode": performance,
                 "note_sources": sources,

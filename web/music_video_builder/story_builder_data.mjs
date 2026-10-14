@@ -6,9 +6,9 @@ export const STORY_BUILDER_TABS = [
   { id: "song", label: "1. Song", caption: "Lyrics, scenes, timed notes" },
   { id: "cast", label: "2. Cast", caption: "Characters and extras" },
   { id: "story", label: "3. Story", caption: "The book" },
-  { id: "acts", label: "4. Acts", caption: "Chapters into acts" },
-  { id: "scenes", label: "5. Scenes", caption: "Each scene's part" },
-  { id: "places", label: "6. Places", caption: "Settings and spots" },
+  { id: "places", label: "4. Places", caption: "Your locations and settings" },
+  { id: "acts", label: "5. Acts", caption: "Chapters into acts" },
+  { id: "scenes", label: "6. Scenes", caption: "Each scene's part" },
   { id: "prompts", label: "7. Beats & Prompts", caption: "Storyboard" },
 ];
 
@@ -29,7 +29,12 @@ export function storyBuilderProgress({ sceneIds = [], refs = {}, layer = {}, seg
   const planned = new Set(plan.map((entry) => entry.scene_id));
   const cast = characters(refs);
   const sceneMap = refs?.scene_map || {};
-  const storyCards = new Set((refs?.locations || []).filter((card) => card?.story_setting_id).map((card) => card.id));
+  // A story location card is linked to a chapter setting, or is one of the places the user listed.
+  const userPlaces = new Set(String(layer?.story_user_locations || "").split("\n")
+    .map((line) => line.split(":")[0].replace(/\s+/g, " ").replace(/^[\s*-]+|[\s*-]+$/g, "").toLowerCase()).filter(Boolean));
+  const storyCards = new Set((refs?.locations || [])
+    .filter((card) => card?.story_setting_id || userPlaces.has(String(card?.name || "").trim().toLowerCase()))
+    .map((card) => card.id));
   const mappedToStory = sceneIds.filter((id) => storyCards.has(sceneMap[id])).length;
   const withBeat = segments.filter((segment) => String(segment?.story_beat || "").trim()).length;
   const level = (count, total) => (!count ? "empty" : count >= total ? "done" : "progress");
@@ -39,8 +44,9 @@ export function storyBuilderProgress({ sceneIds = [], refs = {}, layer = {}, seg
     story: chapters.some((chapter) => chapter.paragraphs.length) ? "done" : "empty",
     acts: !acts.length ? "empty" : validateStoryActs(acts, chapters, sceneIds).length ? "progress" : "done",
     scenes: level(sceneIds.filter((id) => planned.has(id)).length, sceneIds.length || 1),
-    // Location images are optional, so only the scene-to-location mapping counts.
-    places: level(mappedToStory, sceneIds.length || 1),
+    // Location images are optional. Cards made from the user's list come before the plan, so they count as done
+    // until scenes are planned; after that every scene must be mapped to one.
+    places: !storyCards.size ? "empty" : !mappedToStory && !planned.size ? "done" : mappedToStory >= (sceneIds.length || 1) ? "done" : "progress",
     prompts: level(withBeat, segments.length || 1),
   };
 }
@@ -50,12 +56,14 @@ export function storyBuilderBlocker(tabId, progress) {
   const needs = {
     cast: [["song", "Create the timeline scenes first (Song tab)."]],
     story: [["song", "Create the timeline scenes first (Song tab)."]],
-    acts: [["story", "Write the story first (Story tab)."]],
+    places: [["story", "Write the story first (Story tab)."]],
+    acts: [["story", "Write the story first (Story tab)."], ["places", "Build the places first (Places tab); the acts happen inside them."]],
     scenes: [["acts", "Create valid acts first (Acts tab)."]],
-    places: [["scenes", "Plan the scenes first (Scenes tab)."]],
     prompts: [["scenes", "Plan the scenes first (Scenes tab)."]],
   }[tabId] || [];
   for (const [tab, message] of needs) {
+    // A project that already has acts is not stopped from rebuilding them because it has no place cards.
+    if (tabId === "acts" && tab === "places" && progress.acts !== "empty") continue;
     if (tab === "acts" ? progress[tab] !== "done" : progress[tab] === "empty") return message;
   }
   return "";

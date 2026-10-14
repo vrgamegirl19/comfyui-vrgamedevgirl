@@ -5,6 +5,8 @@ Each function takes the usual Storyboard payload (runner fields, ``story_layer``
 ``lyrics``) and returns ``{"story_layer": {...changed Story Mode fields...}, ...}``. Saving is the caller's job.
 """
 
+import re
+
 from ..llm.output_checks import _extract_json_object_from_text
 from ..llm.prompts.story_mode import (
     STORY_CAST_SCAN_SCHEMA,
@@ -149,10 +151,74 @@ def cast_lines(payload):
         role = _ROLE_LABELS.get(cast_role(payload, subject), "supporting")
         description = subject.get("description") or ""
         lines.append(f"- {subject['name']} ({kind}, {role})" + (f": {description}" if description else ""))
+        personality = (_layer(payload).get("story_character_notes") or {}).get(subject.get("id"))
+        if personality:
+            lines.append(f"  Personality and emotions: {personality}")
     relationships = relationship_lines(payload)
     if relationships:
         lines += ["", "Relationships:", *relationships]
     return "\n".join(lines)
+
+
+def user_places_text(payload):
+    """The places the user wants in the video (one per line), or an empty string."""
+    return _clean_scene_text(_layer(payload).get("story_user_locations") or "", 3000)
+
+
+def user_places(payload):
+    """``[(name, details)]`` from the user's places: one per line, details after the first colon."""
+    places = []
+    for line in user_places_text(payload).splitlines():
+        name, _colon, details = line.partition(":")
+        name = re.sub(r"\s+", " ", name).strip(" -*")
+        if name:
+            places.append((name, details.strip()))
+    return places
+
+
+def made_place_cards(payload, setting_id=""):
+    """``[(spot name, description)]`` for the story location cards already made in the Places step. With a
+    ``setting_id`` only that setting's cards and the user's own places count. The spot name is the card name
+    without its ``Setting - `` prefix, so it is what a scene's spot field is written as."""
+    refs = payload.get("reference_builder") or payload.get("referenceBuilder") or {}
+    cards = refs.get("locations") if isinstance(refs, dict) else None
+    settings = {item.get("id"): item.get("name", "") for item in _layer(payload).get("story_settings") or []}
+    own_names = {name.lower() for name, _details in user_places(payload)}
+    result = []
+    for card in cards if isinstance(cards, list) else []:
+        if not isinstance(card, dict) or not str(card.get("name") or "").strip():
+            continue
+        name = _clean_scene_text(card.get("name"), 160)
+        card_setting = str(card.get("story_setting_id") or "")
+        is_own = name.lower() in own_names
+        if not card_setting and not is_own:
+            continue
+        if setting_id and card_setting and card_setting != setting_id:
+            continue
+        prefix = f"{settings.get(card_setting, '')} - "
+        spot = name[len(prefix):] if card_setting and name.lower().startswith(prefix.lower()) else name
+        result.append((spot, _clean_scene_text(card.get("description") or "", 300)))
+    return result
+
+
+def made_places_text(payload, setting_id=""):
+    """One ``- Spot: description`` line per made place card, or an empty string when there are none."""
+    return "\n".join(f"- {spot}: {description}" if description else f"- {spot}"
+                     for spot, description in made_place_cards(payload, setting_id))
+
+
+def match_user_place(places, *names):
+    """The user's place a setting or spot name refers to, or None. Names match without case or a leading "the", and
+    all the words of the shorter name must be words of the longer one ("Kitchen" is "Grandma's kitchen")."""
+    def words(value):
+        return set(re.sub(r"[^a-z0-9' ]+", " ", str(value or "").lower()).split()) - {"the"}
+
+    for name, details in places:
+        own = words(name)
+        for item in (words(candidate) for candidate in names):
+            if own and item and (own <= item or item <= own):
+                return name, details
+    return None
 
 
 def _clock(seconds):
@@ -253,6 +319,7 @@ def draft_story_book(payload):
         cast_text=cast_lines(payload),
         allow_new_cast=allow_new_cast(payload),
         tone_notes=_clean_scene_text(payload.get("tone_notes") or payload.get("style_theme") or "", 2000),
+        places_text=user_places_text(payload),
         scene_count=scene_count,
         song_seconds=_song_seconds(payload, scenes),
         lyric_guidance=story_mode_lyric_guidance(strength),
@@ -298,6 +365,7 @@ def rewrite_story_chapter(payload):
         chapter_text=chapter_text,
         direction=_clean_scene_text(payload.get("direction") or "", 2000),
         cast_text=cast_lines(payload),
+        places_text=user_places_text(payload),
         allow_new_cast=allow_new_cast(payload),
         lyric_guidance=story_mode_lyric_guidance(strength),
         video_style=video_style(payload),

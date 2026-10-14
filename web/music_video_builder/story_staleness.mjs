@@ -12,6 +12,7 @@ const PART_REASONS = {
   style: "telling style changed",
   cast: "cast changed",
   roles: "roles or relationships changed",
+  notes: "locations or personalities changed",
   chapter: "chapter text changed",
   act: "act changed",
   spot: "spot changed",
@@ -65,6 +66,7 @@ function storyState({ layer, refs, segments, promptKey }) {
       style: storyPrint(layer.story_video_style || "music_video"),
       cast: castPrint(storyCastIds),
       roles: storyPrint([layer.story_main_cast_id || "", layer.story_cast_roles || {}, layer.story_relationships || []]),
+      notes: storyPrint([text(layer.story_user_locations), layer.story_character_notes || {}]),
     },
     acts: {}, plan: {}, places: {}, beats: {}, prompts: {},
   };
