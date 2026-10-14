@@ -57,7 +57,9 @@ class MiniMaxPromptTests(Base):
         self.assertIn("<Picture 1>", prompt)
         self.assertIn("<Audio 1> is the complete synchronized song and vocal track", prompt)
         self.assertIn("\n\nretention_analysis:\n", prompt)
-        self.assertIn("detailed_description:\nThe target video is in a cinematic_realism music-video style.\n\n"
+        self.assertIn("detailed_description:\nThe target video is in a Cinematic realism music-video style.\n\n"
+                      "Cinematic realism: Naturalistic practical lighting, restrained color grading, balanced contrast, subtle film grain, "
+                      "realistic skin texture, neutral tones, believable materials, and polished cinematic clarity throughout.\n\n"
                       "[Shot 1] The camera opens wide. <Subject 1> (Darrel) paces, turning at the rail. "
                       '<Subject 1> (Darrel) sings the lyric line, "line 1".', prompt)
         self.assertTrue(prompt.rstrip().endswith("complete audience-facing song/music track."))
@@ -79,6 +81,21 @@ class MiniMaxPromptTests(Base):
         self.assertEqual(prompt.count("Temporal / World Effect"), 1)
         self.assertLessEqual(len(prompt), 7000)
         self.assertIn("MANDATORY exact temporal / world effect verbiage", calls[0]["t2i_prompt"])
+
+    def test_a_chosen_video_style_and_fx_are_added_like_the_video_builder(self):
+        session = self.read_session()
+        session["builder_storyboard_defaults"].update(video_style="film_noir", fx_preset="lighting", temporal_world_effect="frozen_world")
+        self.write_session(session)
+        _result, calls = self.run_with('{"shots":[{"description":"The camera opens wide. <Subject 1> (Darrel) paces, turning at the rail."}]}', {"limit": 1})
+        prompt = self.read_session()["segments"][0]["minimax_h3_prompt"]
+        self.assertIn("in a Film noir music-video style", prompt)
+        self.assertEqual(prompt.count("Film noir: High-contrast black-and-white imagery"), 1)
+        self.assertLess(prompt.index("Film noir: High-contrast"), prompt.index("[Shot 1] The camera"))
+        self.assertIn("FX accent: A brief practical-light flicker cascade", prompt)
+        self.assertLess(prompt.index("FX accent:"), prompt.index("Temporal / World Effect"))
+        self.assertTrue(prompt.rstrip().endswith("never time-stretch, reverse, or accelerate protected voices."))
+        self.assertLessEqual(len(prompt), 7000)
+        self.assertIn("exact video style paragraph", calls[0]["t2i_prompt"])
 
     def test_built_in_audio_prompts_have_no_audio_reference(self):
         session = self.read_session()

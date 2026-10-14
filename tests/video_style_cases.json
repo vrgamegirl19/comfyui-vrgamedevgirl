@@ -1,0 +1,132 @@
+{
+  "style": [
+    {
+      "name": "project default",
+      "card": {},
+      "defaults": {
+        "video_style": "film_noir"
+      },
+      "expected": "Film noir: High-contrast black-and-white imagery, hard key light, venetian-blind shadows, wet streets, cigarette haze, deep blacks, bright highlights, period interiors, and morally shadowed atmosphere throughout."
+    },
+    {
+      "name": "scene overrides the default",
+      "card": {
+        "video_style": "cyberpunk"
+      },
+      "defaults": {
+        "video_style": "film_noir"
+      },
+      "expected": "Cyberpunk: Neon magenta, cyan, and electric blue light, rain-slick surfaces, holographic signage shapes without readable text, dense urban technology, reflective synthetic materials, high contrast, and gritty futuristic detail throughout."
+    },
+    {
+      "name": "no style",
+      "card": {},
+      "defaults": {},
+      "expected": ""
+    },
+    {
+      "name": "project custom",
+      "card": {},
+      "defaults": {
+        "video_style": "custom",
+        "video_style_custom": " Teal haze and grain "
+      },
+      "expected": "Teal haze and grain"
+    },
+    {
+      "name": "scene custom",
+      "card": {
+        "video_style": "custom",
+        "video_style_custom": "Scene wording"
+      },
+      "defaults": {
+        "video_style": "custom",
+        "video_style_custom": "Project wording"
+      },
+      "expected": "Scene wording"
+    },
+    {
+      "name": "empty custom",
+      "card": {},
+      "defaults": {
+        "video_style": "custom"
+      },
+      "expected": ""
+    },
+    {
+      "name": "unknown key",
+      "card": {},
+      "defaults": {
+        "video_style": "nope"
+      },
+      "expected": ""
+    }
+  ],
+  "fx": [
+    {
+      "name": "off",
+      "defaults": {},
+      "shot_index": 0,
+      "expected": ""
+    },
+    {
+      "name": "lighting shot 0",
+      "defaults": {
+        "fx_preset": "lighting"
+      },
+      "shot_index": 0,
+      "expected": "FX accent: A brief practical-light flicker cascade sweeps through the environment and resolves into clean subject light. Timing: on a readable musical, lyric, or action accent when one is present. Keep the mapped subject stable and readable."
+    },
+    {
+      "name": "lighting shot 4 wraps",
+      "defaults": {
+        "fx_preset": "lighting"
+      },
+      "shot_index": 4,
+      "expected": "FX accent: A controlled red-to-blue light sweep travels across the set, creating a readable cinematic exposure pulse. Timing: on a readable musical, lyric, or action accent when one is present. Keep the mapped subject stable and readable."
+    },
+    {
+      "name": "music video shot 2",
+      "defaults": {
+        "fx_preset": "music_video"
+      },
+      "shot_index": 2,
+      "expected": "FX accent: A controlled mix of atmospheric particles and subtle chromatic color separation marks the beat without obscuring the subject. Timing: on a readable musical, lyric, or action accent when one is present. Keep the mapped subject stable and readable."
+    },
+    {
+      "name": "unknown preset",
+      "defaults": {
+        "fx_preset": "nope"
+      },
+      "shot_index": 0,
+      "expected": ""
+    },
+    {
+      "name": "custom json",
+      "defaults": {
+        "fx_preset": "custom",
+        "fx_custom_json": "{\"primary\":\"A red flash.\",\"cues\":[\"Dust drifts.\",{\"text\":\"Sparks.\"}],\"secondary\":\"A hum.\",\"timing\":\"on the drop\"}"
+      },
+      "shot_index": 1,
+      "expected": "FX accent: Dust drifts. Timing: on the drop. Keep the mapped subject stable and readable."
+    },
+    {
+      "name": "custom list",
+      "defaults": {
+        "fx_preset": "custom",
+        "fx_custom_json": "[\"One.\",\"Two.\",\"One.\"]"
+      },
+      "shot_index": 3,
+      "expected": "FX accent: Two. Timing: on the strongest musical or action accent. Keep the mapped subject stable and readable."
+    },
+    {
+      "name": "custom bad json",
+      "defaults": {
+        "fx_preset": "custom",
+        "fx_custom_json": "{oops"
+      },
+      "shot_index": 0,
+      "expected": ""
+    }
+  ]
+}
