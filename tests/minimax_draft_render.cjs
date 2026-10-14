@@ -11,7 +11,7 @@ function fixture(failCollection = false) {
   const sandbox = {
     state: {}, projectInput: { value: "project" },
     sceneSlotNumber: () => 1, queueWorkflowPrompt: async graph => { calls.push(["queue", graph]); return { prompt_id: "p1" }; },
-    waitForVideos: async () => [{ filename: "stage2.mp4" }], resolveComfyVideoPath: () => "render.mp4",
+    waitForVideos: async (_id, update) => { update("Waiting for scene video..."); return [{ filename: "stage2.mp4" }]; }, resolveComfyVideoPath: () => "render.mp4",
     postJson: async (route, body) => {
       calls.push([route, body]);
       if (route.endsWith("collect_scene_video")) {
@@ -122,4 +122,15 @@ test("Finalize All targets only drafts; normal Resume also finalizes pending dra
     assert.deepEqual(result.rendered, [["draft", "finalize"]]);
     assert.equal(result.stitched, true);
   }
+});
+
+test("draft progress identifies pass 1 without listing pass 2 steps", async () => {
+  const { segment, sandbox, built } = fixture();
+  built.draft_steps = { pass1: 20, pass2: 4 };
+  const messages = [];
+  await sandbox.finishMiniMaxVideoRender(segment, 0, { set: message => messages.push(message) }, built, { renderPhase: "draft", exactTwoPassStepsLine: "Pass 1 = 20; Pass 2 = 4" });
+  const waiting = messages.find(message => message.includes("Waiting for scene video"));
+  assert.match(waiting, /DRAFT — Pass 1 Only/);
+  assert.match(waiting, /Pass 1 steps: 20/);
+  assert.doesNotMatch(waiting, /Pass 2|Stage 2/);
 });

@@ -603,9 +603,12 @@ export function createVideoRender({
     const finalDuration = Number(postTrim.duration);
     const threePass = Boolean(built.advanced_two_pass);
     const twoPass = Boolean(built.two_pass);
-    const exactTwoPassStepsLine = options.exactTwoPassStepsLine || "";
+    const exactTwoPassStepsLine = draft
+      ? `\nPass 1 steps: ${built.draft_steps?.pass1 ?? built.two_pass?.pass1_steps ?? "?"}`
+      : finalizing ? `\nPass 2 steps: ${built.draft_steps?.pass2 ?? built.two_pass?.pass2_steps ?? "?"}`
+      : options.exactTwoPassStepsLine || "";
     const exactAdvancedResolutionLine = options.exactAdvancedResolutionLine || "";
-    const exactTwoPassLorasLine = options.exactTwoPassLorasLine || "";
+    const exactTwoPassLorasLine = draft || finalizing ? "" : options.exactTwoPassLorasLine || "";
     const restoreAudio = built.draft_restore_audio || options.restoreAudio || {};
     const queued = await queueWorkflowPrompt(built.prompt);
     const promptId = queued?.prompt_id;
@@ -613,7 +616,7 @@ export function createVideoRender({
     const videos = await waitForVideos(
       promptId,
       (message) => {
-        progress?.set(`${batchLabel}${threePass ? "MiniMax H3 2 Pass Advanced (Base → MMH3 tiled upscale)\n" : twoPass ? "MiniMax H3 2 Pass (Stage 1 → Stage 2)\n" : ""}${message}${exactTwoPassStepsLine}${exactAdvancedResolutionLine}${exactTwoPassLorasLine}\nPrompt ID: ${promptId}`, pct(62));
+        progress?.set(`${batchLabel}${draft ? "MiniMax H3 DRAFT — Pass 1 Only\n" : finalizing ? "MiniMax H3 Finalize — Pass 2 Only\n" : threePass ? "MiniMax H3 2 Pass Advanced (Base → MMH3 tiled upscale)\n" : twoPass ? "MiniMax H3 2 Pass (Stage 1 → Stage 2)\n" : ""}${message}${exactTwoPassStepsLine}${exactAdvancedResolutionLine}${exactTwoPassLorasLine}\nPrompt ID: ${promptId}`, pct(62));
       },
       () => state.batchCancelled,
       null,
@@ -1175,11 +1178,11 @@ export function createVideoRender({
       }
 
       progress?.set(
-        `${batchLabel}${threePass ? "Queueing MiniMax H3 2 Pass Advanced (Base → MMH3 tiled upscale)..." : twoPass ? "Queueing MiniMax H3 2 Pass (Stage 1 → Stage 2)..." : "Queueing MiniMax H3..."}\n`
+        `${batchLabel}${options.renderPhase === "draft" ? "Queueing MiniMax H3 DRAFT — Pass 1 Only..." : threePass ? "Queueing MiniMax H3 2 Pass Advanced (Base → MMH3 tiled upscale)..." : twoPass ? "Queueing MiniMax H3 2 Pass (Stage 1 → Stage 2)..." : "Queueing MiniMax H3..."}\n`
         + `Timeline: ${sceneDuration.toFixed(3)}s\n`
         + `H3 render: ${Number(timing.h3_frame_count || 0)} frames`
-        + (threePass ? "\nThe MMH3 tiled/chunked Pass 2 video will be used for stitching." : twoPass ? "\nPass 1 is learned-latent upscaled and refined by pass 2; the final pass-2 video will be used for stitching." : "")
-        + exactTwoPassStepsLine
+        + (options.renderPhase === "draft" ? "\nSaving the pass-1 preview and latent; pass 2 will not run." : threePass ? "\nThe MMH3 tiled/chunked Pass 2 video will be used for stitching." : twoPass ? "\nPass 1 is learned-latent upscaled and refined by pass 2; the final pass-2 video will be used for stitching." : "")
+        + (options.renderPhase === "draft" ? `\nPass 1 steps: ${exactTwoPassSteps?.pass1}` : exactTwoPassStepsLine)
         + loraLine
         + turboLine
         + settingsScopeLine
