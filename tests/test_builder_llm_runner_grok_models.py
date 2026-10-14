@@ -39,7 +39,7 @@ class BuilderLlmRunnerGrokModelTests(unittest.TestCase):
     def test_grok_lists_only_current_chat_models(self):
         self.assertEqual(
             TABLES["PROVIDER_MODELS"]["grok"],
-            ["grok-4.6", "grok-4.5", "grok-4.3"],
+            ["grok-4.7", "grok-4.6", "grok-4.5", "grok-4.3"],
         )
         self.assertEqual(TABLES["DEFAULT_MODEL"]["grok"], "grok-4.6")
         for stale in (
@@ -57,7 +57,7 @@ class BuilderLlmRunnerGrokModelTests(unittest.TestCase):
         self.assertIn('provider = "grok"', BUILDER_BACKEND)
 
     def test_dynamic_ui_matches_backend_grok_list(self):
-        self.assertIn('grok: [\n    "grok-4.6",\n    "grok-4.5",\n    "grok-4.3",\n  ]', LLM_MULTI_UI)
+        self.assertIn('grok: [\n    "grok-4.7",\n    "grok-4.6",\n    "grok-4.5",\n    "grok-4.3",\n  ]', LLM_MULTI_UI)
         self.assertNotIn("xai:", LLM_MULTI_UI)
         self.assertNotIn("grok-imagine", LLM_MULTI_UI)
 
