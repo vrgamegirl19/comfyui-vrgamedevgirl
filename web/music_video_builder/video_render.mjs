@@ -71,7 +71,7 @@ export function createVideoRender({
   applyVocalDirectiveToVideoPrompt, assertValidMiniMaxH3FinalPrompt, audioInput, audioSourceDurationForScene,
   autoSaveSessionQuiet, buildIdLoraPromptForScene, collectedSceneVideoFolder, createProgressWindow,
   createSceneVideoButtons, currentProjectAudioPath, currentVideoMode, enforceAudioTimelineEnd,
-  ensureAudioOrOfferSilentTimeline, ensureBuilderManagedFx, ensureSceneAdjustsAppliedBeforeStitch,
+  ensureAudioOrOfferSilentTimeline, ensureSceneAdjustsAppliedBeforeStitch,
   ensureSceneFilmGrainAppliedBeforeStitch, ensureSceneLutsAppliedBeforeStitch,
   ensureSelectedImageForSceneVideo, finishSingleSceneETA, firstLastFrameEndImageSource,
   firstLastFrameResolvedEndImageSource, firstLastFrameStartImageSource, flfChainingEnabled,
@@ -562,7 +562,6 @@ export function createVideoRender({
           promptOnlySceneInspiration: miniMaxH3SceneImageIsPromptInspiration(segment),
           contextOptions: { frameContinuityPrompt: true },
           unloadAfter: true,
-          finalizePrompt: (prompt) => ensureBuilderManagedFx(prompt, segment),
           emptyPromptMessage: `Attempt ${attempt}/10 returned an empty frame-to-frame continuity prompt.`,
         });
         const generatedPrompt = String(data?.prompt || "").trim();

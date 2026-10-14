@@ -216,7 +216,7 @@ export function createStoryLayer({
       && state.temporalProtectedCharacters === "custom" ? "flex" : "none";
     const effect = storyboardTemporalWorldEffectForScene({}, state);
     temporalEffectInfo.textContent = effect
-      ? `Required in every video prompt unless a scene overrides it.\n${effect.exact_verbiage}`
+      ? `The LLM uses this guidance to write the effect into each shot unless a scene overrides it.\n${effect.writing_guidance}`
       : "Optional. Choose a global temporal/world effect. Existing projects and scenes remain natural-time while this is Off.";
     refreshSetupPanelSummaries();
   }

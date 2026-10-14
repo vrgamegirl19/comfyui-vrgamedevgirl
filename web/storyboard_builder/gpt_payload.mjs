@@ -35,6 +35,7 @@ import {
   storyboardSceneSupportsVideoStyle,
   storyboardSceneVideoStyle,
   storyboardTemporalWorldEffectForScene,
+  storyboardFxContract,
 } from "./video_style.mjs";
 
 const STORYBOARD_GPT_URL = "https://chatgpt.com/g/g-6a28d15f04e88191a2375d564ff8d90c-ltx-2-3-video-builder-from-storyboard-builder";
@@ -234,6 +235,10 @@ function storyboardScenesForGpt(state) {
     const cutPlan = !imageMode
       ? storyboardCutPlanForDuration(exactSceneDuration, state.cutFrequency, sceneVideoEngine)
       : null;
+    const shotFx = !imageMode ? Array.from({ length: Math.max(1, cutPlan?.shot_count || 1) }, (_item, index) => {
+      const effect = storyboardFxContract(state.fxPreset || "", state.fxCustomJson || "", index);
+      return effect ? { shot: index + 1, ...effect } : null;
+    }).filter(Boolean) : [];
     const instrumental = Boolean(normalized.lyric_instrumental);
     const noLipSync = Boolean(normalized.lyric_no_lip_sync || performanceMode === "no_lip_sync");
     const noCharacterPresent = Boolean(normalized.no_character_present);
@@ -366,9 +371,12 @@ function storyboardScenesForGpt(state) {
         ? "This exact video_style_verbiage is mandatory. Copy it word-for-word into the final prompt and use it only as the governing visual-appearance contract for lighting, color, texture, materials, production design, grading, and image finish. Do not paraphrase, shorten, rename, or omit it. Do not use it to select, replace, or modify camera motion, character motion, shot timing, editing, or transitions."
         : "",
       temporal_world_effect: temporalWorldEffect || { enabled: false },
-      temporal_world_effect_verbiage: temporalWorldEffect?.exact_verbiage || "",
       temporal_world_effect_instruction: temporalWorldEffect
-        ? "This exact temporal_world_effect_verbiage is mandatory and will be appended by the builder. Do not recreate, paraphrase, duplicate, or distribute this contract through the shot descriptions. Write only the creative shot action; the appended contract governs temporal behavior."
+        ? "Use temporal_world_effect.writing_guidance to write concrete visible temporal behavior naturally inside every shot. Apply the selected intensity, character protection, extras permission and environmental time-passage settings. Keep protected performance and audio at normal speed. Do not output a separate Temporal / World Effect block, field labels, or copied instructions; the LLM must express the effect in the scene action."
+        : "",
+      shot_fx: shotFx,
+      shot_fx_instruction: shotFx.length
+        ? "Write each shot's selected FX cue into its cinematic action using the specified intensity, timing and character protection. Keep the effect physically coherent with the scene. Use natural prose; do not emit FX accent labels or copy these instructions."
         : "",
       global_consistency_phrase: String(state.globalConsistencyPhrase || "").trim(),
       global_consistency_instruction: String(state.globalConsistencyPhrase || "").trim()
