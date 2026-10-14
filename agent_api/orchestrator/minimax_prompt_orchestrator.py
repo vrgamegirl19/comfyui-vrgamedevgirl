@@ -22,6 +22,7 @@ from ..jobs.models import Job
 from ..llm_runtime import llm_payload_from_session, prepare_llm_payload
 from ..mutations import _BUILDER_SAVE_LOCK, _get_active_session_and_folder, _persist_session, scene_field_change
 from ..scene_card_context import storyboard_video_context
+from ..temporal_effect import append_temporal_world_effect, temporal_world_effect_verbiage
 from .storyboard_orchestrator import scene_cards, sync_storyboard_files
 
 MODE = "reference_to_video"
@@ -81,6 +82,7 @@ def _scene_context(session: Dict[str, Any], segment: Dict[str, Any], card: Dict[
             defaults.get("minimax_h3_cut_style"),
         ),
         "style": _text(segment.get("minimax_h3_video_style") or defaults.get("video_style")),
+        "temporal": temporal_world_effect_verbiage(card, defaults),
         "aspect_ratio": _text(settings.get("aspect_ratio")) or "16:9",
         "audio_mode": _text(settings.get("audio_mode")) or "input_audio",
         "camera_speed": _number(segment.get("camera_motion_speed", defaults.get("camera_motion_speed")), 4.0),
@@ -123,6 +125,10 @@ def generate_scene_prompt(session: Dict[str, Any], folder: str, segment: Dict[st
     compact_core = sp.assemble_prompt([""] * len(sp.shot_plan(plan)), plan, ctx["style"])
     compact_overhead = len(sp.compact_reference_prompt(compact_core, ctx["items"])) - len(compact_core)
     target_limit = sp.HARD_LIMIT - (len(frame["head"]) + len(frame["tail"]) if structured else compact_overhead)
+    # The temporal / world effect is added after the shots, so its space is kept back like the rest of the format.
+    temporal = ctx["temporal"]
+    if temporal:
+        target_limit -= len(temporal) + 2
     last_length = 0
     use_picture = bool(previous_frame and ctx["continuation"])
     warnings: List[str] = []
@@ -142,7 +148,10 @@ def generate_scene_prompt(session: Dict[str, Any], folder: str, segment: Dict[st
                 continuation=ctx["continuation"], previous_shot="" if with_picture else ctx["previous_shot"],
                 with_picture=with_picture, location_contract=ctx["location_contract"],
                 motion_request=_text(segment.get("i2v_notes")), audio_direction=_text(segment.get("audio_direction")),
-                continuity=_text(segment.get("continuity")), storyboard_context=storyboard_video_context(card),
+                continuity=_text(segment.get("continuity")),
+                storyboard_context=storyboard_video_context(card) + (
+                    "\n\nMANDATORY exact temporal / world effect verbiage — the builder appends it; do not copy or paraphrase it into the shots:\n"
+                    + temporal if temporal else ""),
             )
             if omit_lyrics:
                 task = lfp.prompt_context(task, segment, plan, performer, performer_labels, session)
@@ -199,6 +208,7 @@ def generate_scene_prompt(session: Dict[str, Any], folder: str, segment: Dict[st
             descriptions = [lfp.strip_singing_articulation(text) for text in descriptions]
         core = sp.assemble_prompt(descriptions, plan, ctx["style"])
         prompt = sp.wrap_reference_prompt(core, frame) if structured else sp.compact_reference_prompt(core, ctx["items"])
+        prompt = append_temporal_world_effect(prompt, temporal)
         try:
             sp.validate_prompt(core, plan)
             if len(prompt) > sp.HARD_LIMIT:

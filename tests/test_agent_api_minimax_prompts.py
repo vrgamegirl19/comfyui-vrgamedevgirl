@@ -68,6 +68,18 @@ class MiniMaxPromptTests(Base):
         self.assertNotIn("minimax_h3_prompt", self.read_session()["segments"][2])
         self.assertEqual({m for m, _ in self.lm.requests}, {"GET"})
 
+    def test_a_chosen_temporal_world_effect_is_added_last_and_fits_the_limit(self):
+        session = self.read_session()
+        session["builder_storyboard_defaults"]["temporal_world_effect"] = "realtime_subjects_timelapse_world"
+        self.write_session(session)
+        _result, calls = self.run_with('{"shots":[{"description":"The camera opens wide. <Subject 1> (Darrel) paces, turning at the rail."}]}', {"limit": 1})
+        prompt = self.read_session()["segments"][0]["minimax_h3_prompt"]
+        self.assertIn("Real-time characters / time-lapse world", prompt)
+        self.assertTrue(prompt.rstrip().endswith("never time-stretch, reverse, or accelerate protected voices."))
+        self.assertEqual(prompt.count("Temporal / World Effect"), 1)
+        self.assertLessEqual(len(prompt), 7000)
+        self.assertIn("MANDATORY exact temporal / world effect verbiage", calls[0]["t2i_prompt"])
+
     def test_built_in_audio_prompts_have_no_audio_reference(self):
         session = self.read_session()
         session["minimax_h3_settings"] = {**(session.get("minimax_h3_settings") or {}), "audio_mode": "built_in_audio"}

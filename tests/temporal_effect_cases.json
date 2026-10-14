@@ -1,0 +1,84 @@
+{
+  "cases": [
+    {
+      "name": "global effect on",
+      "card": {},
+      "defaults": {
+        "temporal_world_effect": "frozen_world"
+      },
+      "expected": "Temporal / World Effect — Characters move / world frozen — Mandatory:\n\nProtected characters move naturally through a world frozen at one instant. Unprotected people, particles, vehicles, liquids, smoke, weather, and environmental motion remain suspended unless the scene explicitly releases one element.\n\nProtect every mapped/reference character in the scene at natural 1x real-time speed, including secondary referenced characters. Never accelerate, freeze, reverse, echo, duplicate, or temporally distort any protected character.\n\nOnly the unprotected background/world may receive this effect, including location-appropriate environmental motion or anonymous extras when permitted. Keep the effect secondary; never alter, duplicate, replace, or obscure a mapped/reference character.\n\nTimestamp staging requirement: every shot must visibly show at least one concrete, readable effect affecting only the unprotected background/world while protected characters continue moving naturally at normal 1x speed.\n\nTemporal speed separation is visual only. Keep supplied or generated dialogue, singing, lip sync, facial timing, and primary audio at normal speed; never time-stretch, reverse, or accelerate protected voices."
+    },
+    {
+      "name": "scene override off",
+      "card": {
+        "temporal_world_effect_override": "off"
+      },
+      "defaults": {
+        "temporal_world_effect": "frozen_world"
+      },
+      "expected": ""
+    },
+    {
+      "name": "scene override picks another",
+      "card": {
+        "temporal_world_effect_override": "reverse_world"
+      },
+      "defaults": {},
+      "expected": "Temporal / World Effect — Characters forward / world reverses — Mandatory:\n\nProtected characters move and perform forward in natural time while unprotected background people and environmental events visibly run in reverse, including recoverable spills, retracing traffic, returning debris, and reversed weather or smoke.\n\nProtect every mapped/reference character in the scene at natural 1x real-time speed, including secondary referenced characters. Never accelerate, freeze, reverse, echo, duplicate, or temporally distort any protected character.\n\nOnly the unprotected background/world may receive this effect, including location-appropriate environmental motion or anonymous extras when permitted. Keep the effect secondary; never alter, duplicate, replace, or obscure a mapped/reference character.\n\nTimestamp staging requirement: every shot must visibly show at least one concrete, readable effect affecting only the unprotected background/world while protected characters continue moving naturally at normal 1x speed.\n\nTemporal speed separation is visual only. Keep supplied or generated dialogue, singing, lip sync, facial timing, and primary audio at normal speed; never time-stretch, reverse, or accelerate protected voices."
+    },
+    {
+      "name": "no effect",
+      "card": {},
+      "defaults": {},
+      "expected": ""
+    },
+    {
+      "name": "project custom wording",
+      "card": {},
+      "defaults": {
+        "temporal_world_effect": "custom",
+        "temporal_world_effect_custom": "The crowd slows to half speed."
+      },
+      "expected": "Temporal / World Effect — Custom temporal effect — Mandatory:\n\nThe crowd slows to half speed.\n\nProtect every mapped/reference character in the scene at natural 1x real-time speed, including secondary referenced characters. Never accelerate, freeze, reverse, echo, duplicate, or temporally distort any protected character.\n\nOnly the unprotected background/world may receive this effect, including location-appropriate environmental motion or anonymous extras when permitted. Keep the effect secondary; never alter, duplicate, replace, or obscure a mapped/reference character.\n\nTimestamp staging requirement: every shot must visibly show at least one concrete, readable effect affecting only the unprotected background/world while protected characters continue moving naturally at normal 1x speed.\n\nTemporal speed separation is visual only. Keep supplied or generated dialogue, singing, lip sync, facial timing, and primary audio at normal speed; never time-stretch, reverse, or accelerate protected voices."
+    },
+    {
+      "name": "scene custom wording",
+      "card": {
+        "temporal_world_effect_override": "custom",
+        "temporal_world_effect_custom": "Clouds race."
+      },
+      "defaults": {
+        "temporal_world_effect": "custom",
+        "temporal_world_effect_custom": "ignored"
+      },
+      "expected": "Temporal / World Effect — Custom temporal effect — Mandatory:\n\nClouds race.\n\nProtect every mapped/reference character in the scene at natural 1x real-time speed, including secondary referenced characters. Never accelerate, freeze, reverse, echo, duplicate, or temporally distort any protected character.\n\nOnly the unprotected background/world may receive this effect, including location-appropriate environmental motion or anonymous extras when permitted. Keep the effect secondary; never alter, duplicate, replace, or obscure a mapped/reference character.\n\nTimestamp staging requirement: every shot must visibly show at least one concrete, readable effect affecting only the unprotected background/world while protected characters continue moving naturally at normal 1x speed.\n\nTemporal speed separation is visual only. Keep supplied or generated dialogue, singing, lip sync, facial timing, and primary audio at normal speed; never time-stretch, reverse, or accelerate protected voices."
+    },
+    {
+      "name": "custom with no wording",
+      "card": {},
+      "defaults": {
+        "temporal_world_effect": "custom"
+      },
+      "expected": ""
+    },
+    {
+      "name": "lead only",
+      "card": {},
+      "defaults": {
+        "temporal_world_effect": "crowd_flow",
+        "temporal_protected_characters": "lead_only"
+      },
+      "expected": "Temporal / World Effect — Real-time characters / crowd river — Mandatory:\n\nProtected characters remain sharply readable in natural time while anonymous unreferenced extras flow around them as an accelerated crowd river, forming continuous directional streams without duplicating, replacing, or obscuring the protected cast.\n\nProtect only the first mapped/reference character at natural 1x real-time speed; other mapped characters may receive the selected temporal effect.\n\nOnly the unprotected background/world may receive this effect, including location-appropriate environmental motion or anonymous extras when permitted. Keep the effect secondary; never alter, duplicate, replace, or obscure a mapped/reference character.\n\nTimestamp staging requirement: every shot must visibly show at least one concrete, readable effect affecting only the unprotected background/world while protected characters continue moving naturally at normal 1x speed.\n\nTemporal speed separation is visual only. Keep supplied or generated dialogue, singing, lip sync, facial timing, and primary audio at normal speed; never time-stretch, reverse, or accelerate protected voices."
+    },
+    {
+      "name": "named protected",
+      "card": {},
+      "defaults": {
+        "temporal_world_effect": "crowd_flow",
+        "temporal_protected_characters": "custom",
+        "temporal_protected_custom": "Mara"
+      },
+      "expected": "Temporal / World Effect — Real-time characters / crowd river — Mandatory:\n\nProtected characters remain sharply readable in natural time while anonymous unreferenced extras flow around them as an accelerated crowd river, forming continuous directional streams without duplicating, replacing, or obscuring the protected cast.\n\nProtect only these named mapped/reference characters at natural 1x real-time speed: Mara.\n\nOnly the unprotected background/world may receive this effect, including location-appropriate environmental motion or anonymous extras when permitted. Keep the effect secondary; never alter, duplicate, replace, or obscure a mapped/reference character.\n\nTimestamp staging requirement: every shot must visibly show at least one concrete, readable effect affecting only the unprotected background/world while protected characters continue moving naturally at normal 1x speed.\n\nTemporal speed separation is visual only. Keep supplied or generated dialogue, singing, lip sync, facial timing, and primary audio at normal speed; never time-stretch, reverse, or accelerate protected voices."
+    }
+  ]
+}
