@@ -37,8 +37,7 @@ export function createStoryboardBridge({
   activeProjectFolderForSave, activeSegment, allEditableSegments, applyMappedTriggerPhrases,
   applyMiniMaxH3NativeVoiceBlock, assertMiniMaxH3ReferenceDescriptionsReady, autoSaveSessionQuiet,
   buildI2VPromptRequestForSegment, currentVideoMode, effectiveVideoPerformanceModeForSegment,
-  ensureAllSegmentRuntimeFields, ensureAutoTimedSingerCuesBeforePrompt, ensureBuilderManagedFx,
-  ensureSegmentRuntimeFields, finalizeVideoPromptForSegment, gemmaRunnerLine, getI2VImageReference,
+  ensureAllSegmentRuntimeFields, ensureAutoTimedSingerCuesBeforePrompt, ensureSegmentRuntimeFields, finalizeVideoPromptForSegment, gemmaRunnerLine, getI2VImageReference,
   i2vMmprojSelect, imageModeDisplayLabel, llmApiVisionModelSelected, miniMaxH3CutPlanForSegment,
   miniMaxH3ModeForSegment, miniMaxH3PromptVisionImages, miniMaxH3PromptVisionImagesForRunner,
   miniMaxH3SceneImageUseForSegment, miniMaxH3SettingsForSegment, miniMaxOrderedImageReferenceItemsForSegment,
@@ -124,7 +123,14 @@ export function createStoryboardBridge({
     }
     add(parts, "REQUIRED Storyboard video style", selectedScene.video_style);
     add(parts, "MANDATORY exact Storyboard video style verbiage — copy word-for-word", selectedScene.video_style_verbiage);
-    add(parts, "MANDATORY exact temporal / world effect verbiage — copy word-for-word", selectedScene.temporal_world_effect_verbiage);
+    if (selectedScene.temporal_world_effect?.enabled) {
+      add(parts, "Temporal / world effect — integrate into each shot's action", selectedScene.temporal_world_effect.writing_guidance);
+      add(parts, "Temporal effect writing rules", selectedScene.temporal_world_effect_instruction);
+    }
+    if (selectedScene.shot_fx?.length) {
+      add(parts, "Shot FX — integrate into the corresponding shot's action", JSON.stringify(selectedScene.shot_fx));
+      add(parts, "Shot FX writing rules", selectedScene.shot_fx_instruction);
+    }
     if (!ltxScene) {
       const canonicalCutPlan = canonicalSegment ? miniMaxH3CutPlanForSegment(canonicalSegment) : null;
       add(parts, "MANDATORY Storyboard editing / cut plan", canonicalCutPlan?.instruction || selectedScene.cut_plan?.instruction);
@@ -198,34 +204,12 @@ export function createStoryboardBridge({
     }
     return `${text}\n\n${requiredLine}`;
   };
-  const ensureStoryboardRequiredTemporalWorldEffect = (prompt, storyboardPayload = {}, scene = {}) => {
-    let text = String(prompt || "").trim();
-    const storyboardScenes = Array.isArray(storyboardPayload?.scenes) ? storyboardPayload.scenes : [];
-    const selectedScene = storyboardScenes.find((candidate) => candidate?.id && candidate.id === scene?.id)
-      || storyboardScenes.find((candidate) => Number(candidate?.scene_number) === Number(scene?.scene_number))
-      || (storyboardScenes.length ? storyboardScenes[0] : scene);
-    const effect = selectedScene.temporal_world_effect || {};
-    const verbiage = String(selectedScene.temporal_world_effect_verbiage || effect.exact_verbiage || "").trim();
-    if (!text || !verbiage) return text;
-
-    // Canonicalize the exact contract at the end of the prompt. Gemma sometimes
-    // embeds or paraphrases it inside a shot; remove that copy and append the
-    // builder-owned contract once in its canonical form.
-    text = text.split(verbiage).join("").replace(/\n{3,}/g, "\n\n").trim();
-    text = `${text}\n\n${verbiage}`.trim();
-
-    return text.trim();
-  };
-
   // The Scene Defaults (camera flow, motion speeds, video style, temporal / world effect, FX, performance, facial,
-  // consistency phrase) and the scene card for one scene, as the Storyboard sends them: the context for the LLM and
-  // the finisher that adds the managed FX and the exact temporal / world effect contract.
+  // consistency phrase) and the scene card for one scene, as the Storyboard sends them: the context for the LLM.
   function sceneDefaultsPromptOptions(segment) {
     const scenes = storyboardScenePayload();
     const scene = scenes.find((item) => item.id === segment?.id);
-    if (!scene || typeof wizardStoryboardState !== "function") {
-      return { finalizePrompt: (prompt) => ensureBuilderManagedFx(prompt, segment) };
-    }
+    if (!scene || typeof wizardStoryboardState !== "function") return {};
     const storyboardPayload = storyboardGptPayload(wizardStoryboardState(scenes, { promptMode: "video" }), [scene]);
     return {
       contextOptions: {
@@ -233,7 +217,6 @@ export function createStoryboardBridge({
         storyboardPayload,
         storyboardScene: scene,
       },
-      finalizePrompt: (prompt) => ensureStoryboardRequiredTemporalWorldEffect(ensureBuilderManagedFx(prompt, scene), storyboardPayload, scene),
     };
   }
 
@@ -730,11 +713,6 @@ export function createStoryboardBridge({
             storyboardScene: scene,
           },
           userNotes: customSourceContract,
-          finalizePrompt: (prompt) => ensureStoryboardRequiredTemporalWorldEffect(
-            ensureBuilderManagedFx(prompt, scene),
-            options.storyboardPayload || {},
-            scene,
-          ),
           unloadAfter: options.unloadAfter !== false,
           emptyPromptMessage: `${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: LLM returned an empty MiniMax ${modeLabel} prompt.`,
         });
@@ -775,7 +753,7 @@ export function createStoryboardBridge({
         scene,
         options.storyboardPayload || {},
       );
-      const prompt = ensureBuilderManagedFx(promptWithStartingShot, scene);
+      const prompt = promptWithStartingShot;
       if (!prompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: Gemma returned an empty I2V prompt.`);
       return {
         ...data,

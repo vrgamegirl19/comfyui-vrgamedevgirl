@@ -1,3 +1,4 @@
+import { storyboardFxContract, storyboardTemporalWorldEffectForScene } from "../storyboard_builder/video_style.mjs";
 import { emotionExpressionInput, hasEmotionExpressionInput } from "./emotion_expression.mjs";
 import { lyricFreePerformanceEnabled } from "./lyric_free_performance.mjs";
 import { storyboardGptPayload } from "../storyboard_builder/gpt_payload.mjs";
@@ -33,7 +34,7 @@ export function createBatchPrompts({
   autoSaveSessionQuiet, batchTargetItems, buildI2VPromptRequestForSegment, convertLtxPromptsToMiniMaxButton,
   createFluxPromptButton, createI2VButton, createProgressWindow, createT2IButton, currentVideoMode,
   effectiveVideoPerformanceModeForSegment, ensureAllSegmentRuntimeFields,
-  ensureAutoTimedSingerCuesBeforePrompt, ensureBuilderManagedFx, ernieCreateT2IButton,
+  ensureAutoTimedSingerCuesBeforePrompt, ernieCreateT2IButton,
   finalizeVideoPromptDraftOnly, finalizeVideoPromptForSegment, firstLastFramePromptReferences,
   flfGemmaContextMode, flfGemmaSceneConcept, flfGemmaVisualNotes, flfTransitionLoraActive, gemmaRunnerLabel,
   gemmaRunnerLine, gemmaT2IAllButton, gemmaVideoAllButton, generateT2IPromptForSegment, getI2VImageReference,
@@ -55,6 +56,24 @@ export function createBatchPrompts({
   updateActiveFromInputs, updateMiniMaxPromptCharacterStatus, videoGemmaNotesForSegment,
   videoModeDisplayLabel, videoVisionReferenceEnabled, wizardStoryboardState, zImageAllButton,
 }) {
+  function sceneDefaultsFxPromptContext(segment) {
+    const scene = (storyboardScenePayload?.() || []).find(item => item.id === segment?.id) || segment;
+    const defaults = state.builderStoryboardDefaults || {};
+    const temporal = storyboardTemporalWorldEffectForScene(scene, defaults);
+    const parts = [];
+    if (temporal) {
+      parts.push(`Temporal/world FX writing guidance:\n${temporal.writing_guidance}`);
+    }
+    const shotCount = Math.max(1, miniMaxH3CutPlanForSegment(segment)?.shot_count || 1);
+    const effects = Array.from({ length: shotCount }, (_item, index) => {
+      const effect = storyboardFxContract(defaults.fx_preset || "", defaults.fx_custom_json || "", index);
+      return effect ? { shot: index + 1, ...effect } : null;
+    }).filter(Boolean);
+    if (effects.length) parts.push(`Shot FX writing guidance:\n${JSON.stringify(effects)}`);
+    if (parts.length) parts.push("Write the selected effects as concrete visible action naturally inside the appropriate shot descriptions. Honor intensity, timing, character protection, extras permissions and environmental time-passage settings. Keep protected characters and audio at normal speed. Do not output a separate Temporal / World Effect block, FX accent labels, or copied instruction text. No effect text will be appended after generation.");
+    return parts.join("\n\n");
+  }
+
   function miniMaxBatchReferenceProblems(scenes) {
     return scenes.map(({ segment, index }) => {
       if (miniMaxH3FrameContinuityPromptEnabled(segment)) return "";
@@ -76,6 +95,7 @@ export function createBatchPrompts({
 
   async function runMiniMaxH3PromptGeneration(segment, mode, options = {}) {
     await ensureAutoTimedSingerCuesBeforePrompt(segment);
+    const fxPromptGuidance = sceneDefaultsFxPromptContext(segment);
     const referenceSignature = miniMaxPromptReferenceSignature(segment, mode);
     const visionImages = Array.isArray(options.visionImages)
       ? options.visionImages.filter((item) => item && (String(item.path || "").trim() || String(item.data || "").trim()))
@@ -134,6 +154,7 @@ export function createBatchPrompts({
         t2i_prompt: miniMaxH3CreativePromptContextForSegment(segment, mode, contextOptions),
         user_notes: [
           String(options.userNotes || "").trim(),
+          fxPromptGuidance,
           assignmentNotes,
           speechDeliveryRetryNote,
           castGuard ? castWallText(castGuard) : "",
@@ -328,7 +349,6 @@ export function createBatchPrompts({
         projectFolder,
         unloadAfter: true,
         ...(sceneDefaults.contextOptions ? { contextOptions: sceneDefaults.contextOptions } : {}),
-        finalizePrompt: sceneDefaults.finalizePrompt || ((prompt) => ensureBuilderManagedFx(prompt, segment)),
         emptyPromptMessage: `The LLM returned an empty MiniMax ${modeLabel} prompt.`,
       });
       pushHistory();
@@ -549,7 +569,8 @@ export function createBatchPrompts({
         flf_end_state: isFLF ? String(segment.flf_end_state || "").trim() : "",
         flf_carry_forward: isFLF ? String(segment.flf_carry_forward || "").trim() : "",
         repair_model_file: i2vTextGemmaModelSelect.value,
-        user_notes: isIdLora ? idLoraGemmaNotesForSegment(segment) : isFLF ? flfGemmaVisualNotes(segment) : videoGemmaNotesForSegment(segment),
+        user_notes: [isIdLora ? idLoraGemmaNotesForSegment(segment) : isFLF ? flfGemmaVisualNotes(segment) : videoGemmaNotesForSegment(segment),
+          sceneDefaultsFxPromptContext(segment)].filter(Boolean).join("\n\n"),
         subject_context: isIdLora ? [idLoraContext?.characterName || "", String(idLoraContext?.character?.description || "").trim()].filter(Boolean).join("\n") : isFLF && flfGemmaContextMode(segment) !== "full" ? "" : segment.no_character_present ? "" : (isT2V || textScriptMode || !useImageReference ? segmentMappedSubjectText(segment) : ""),
         location_context: isIdLora ? [idLoraContext?.locationName || "", String(idLoraContext?.location?.description || "").trim()].filter(Boolean).join("\n") : isFLF && flfGemmaContextMode(segment) !== "full" ? "" : isT2V || textScriptMode || !useImageReference ? segmentMappedLocationText(segment) : "",
         no_character_present: Boolean(segment.no_character_present),
@@ -559,10 +580,7 @@ export function createBatchPrompts({
         unload_after: !state.useI2VPromptEnhancementPass || useImageReference,
       }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
       pushHistory();
-      segment.i2v_prompt = ensureBuilderManagedFx(
-        await finalizeVideoPromptForSegment(segment, data.prompt, progress, 82, `${modeLabel} prompt enhancement`, { unloadAfter: true }),
-        segment,
-      );
+      segment.i2v_prompt = await finalizeVideoPromptForSegment(segment, data.prompt, progress, 82, `${modeLabel} prompt enhancement`, { unloadAfter: true });
       segment.i2v_prompt_origin = "gemma";
       i2vPrompt.value = segment.i2v_prompt;
       render();
@@ -603,7 +621,7 @@ export function createBatchPrompts({
       image_reference_path: "",
       image_reference_data: "",
       repair_model_file: i2vTextGemmaModelSelect.value,
-      user_notes: videoGemmaNotesForSegment(segment),
+      user_notes: [videoGemmaNotesForSegment(segment), sceneDefaultsFxPromptContext(segment)].filter(Boolean).join("\n\n"),
       subject_context: segment.no_character_present ? "" : segmentMappedSubjectText(segment),
       location_context: segmentMappedLocationText(segment),
       no_character_present: Boolean(segment.no_character_present),

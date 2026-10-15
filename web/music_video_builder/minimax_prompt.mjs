@@ -7,7 +7,6 @@ import {
   normalizeStoryboardCustomCameraFlowSequence,
   STORYBOARD_CAMERA_FLOW_PRESETS,
 } from "../storyboard_builder/shot_presets.mjs";
-import { storyboardFxContract } from "../storyboard_builder/video_style.mjs";
 import { normalizeVideoType, toast } from "./controls.mjs";
 import { miniMaxEffectiveCueEnd, miniMaxH3CueTimingText, miniMaxH3PerformerLabel } from "./lyric_cues.mjs";
 import {
@@ -856,19 +855,23 @@ export function createMiniMaxPrompt({
 
   function miniMaxH3SelectedFramingEntries(segment, shotPlan = []) {
     if (!Array.isArray(shotPlan) || !shotPlan.length) return [];
-    // A populated scene card is authoritative; rotation is only a fallback.
-    if (String(segment?.shot_type || "").trim() || String(segment?.camera_motion || "").trim()) {
+    // A scene-card setup applies to the opening shot, not every camera cut.
+    const multiShot = shotPlan.length > 1;
+    const sceneSetup = String(segment?.shot_type || "").trim() || String(segment?.camera_motion || "").trim();
+    if (!multiShot && sceneSetup) {
       return shotPlan.map(() => ({ shot: String(segment?.shot_type || "").trim(), camera: String(segment?.camera_motion || "").trim() }));
     }
     const cameraFlowKey = String(state.builderStoryboardDefaults?.camera_flow || segment?.camera_flow || "").trim();
     const preset = STORYBOARD_CAMERA_FLOW_PRESETS[cameraFlowKey];
-    if (!preset?.framing_candidates) return shotPlan.map(() => null);
+    if (!multiShot && !preset?.framing_candidates) return shotPlan.map(() => null);
     const customSequence = cameraFlowKey === "custom"
       ? normalizeStoryboardCustomCameraFlowSequence(segment?.custom_camera_flow_sequence || state.builderStoryboardDefaults?.custom_camera_flow_sequence)
       : [];
-    const sequence = (cameraFlowKey === "custom" ? customSequence : (Array.isArray(preset?.sequence) ? preset.sequence : []))
+    const configured = cameraFlowKey === "custom" ? customSequence : (Array.isArray(preset?.sequence) ? preset.sequence : []);
+    const sequence = [...configured, ...(multiShot && cameraFlowKey !== "custom" ? STORYBOARD_CAMERA_FLOW_PRESETS.energetic.sequence.map(entry => ({ ...entry, camera: entry.camera.replace(/\btransition\b/g, "").trim() })) : [])]
       .filter((entry) => entry?.shot);
-    if (!sequence.length) return shotPlan.map(() => null);
+    if (!sequence.length) return shotPlan.map((_shot, index) => index === 0 && sceneSetup
+      ? { shot: String(segment.shot_type || "").trim(), camera: String(segment.camera_motion || "").trim() } : null);
     const sceneText = [
       segment?.lyric_text,
       segment?.story_beat,
@@ -913,9 +916,45 @@ export function createMiniMaxPrompt({
     const existingIds = Array.isArray(segment?.minimax_h3_framing_shot_ids)
       ? segment.minimax_h3_framing_shot_ids.map((value) => String(value || "").trim()).filter(Boolean)
       : [];
-    const existingMatchesPlan = existingIds.length === shotPlan.length && existingIds.every((id) => entries.some((item) => item.id === id));
+    const existingMatchesPlan = !multiShot && existingIds.length === shotPlan.length && existingIds.every((id) => entries.some((item) => item.id === id));
     const chosenIds = existingMatchesPlan ? existingIds : [];
     const usedInThisScene = new Set(chosenIds);
+    const coverageKey = (value, camera = false) => {
+      const text = String(value || "").toLowerCase().replace(/-/g, " ");
+      const families = camera ? [
+        [/pan|whip/, "pan"], [/orbit|arc|circle|rotat/, "orbit"],
+        [/track|truck|glide|lateral|follow|chase|pursuit|dolly (?:left|right)/, "track"],
+        [/push|dolly in|forward dolly/, "push"], [/pull|dolly out|backward dolly/, "pull"],
+        [/tilt/, "tilt"], [/crane|pedestal|jib|boom|rise|rising/, "vertical"],
+        [/zoom/, "zoom"], [/focus/, "focus"], [/handheld|hand held/, "handheld"],
+        [/static|held|lock/, "locked"],
+      ] : [
+        [/extreme close|macro/, "extreme_close"], [/medium close/, "medium_close"],
+        [/extreme wide|extreme long/, "extreme_wide"], [/medium wide/, "medium_wide"],
+        [/waist|upper body|medium shot/, "medium"], [/headshot|close up/, "close"],
+        [/full body|head to toe|full shot/, "full"], [/wide|long shot|establishing/, "wide"],
+        [/detail|insert/, "insert"],
+      ];
+      return families.find(([pattern]) => pattern.test(text))?.[1] || text.replace(/[^a-z0-9]+/g, " ").trim();
+    };
+    const angleKey = (entry) => String(entry?.shot || "").toLowerCase()
+      .match(/low.angle|high.angle|eye.level|overhead|top.down|side.profile|profile|rear|three.quarter|dutch|ground.level|aerial/)?.[0]
+      ?.replace(/[^a-z]+/g, "_") || "";
+    const angles = ["eye_level", "low_angle", "high_angle", "profile", "rear", "three_quarter", "overhead", "dutch", "ground_level", "aerial"];
+    const usedShots = new Set();
+    const usedCameras = new Set();
+    const usedAngles = new Set();
+    const rememberCoverage = (entry) => {
+      if (entry?.shot) usedShots.add(coverageKey(entry.shot));
+      if (entry?.camera) usedCameras.add(coverageKey(entry.camera, true));
+      const angle = angleKey(entry);
+      if (angle) usedAngles.add(angle);
+    };
+    const assignAngle = (entry) => {
+      if (!entry?.shot || angleKey(entry)) return entry;
+      const angle = angles.find(value => !usedAngles.has(value));
+      return angle ? { ...entry, shot: `${entry.shot}; camera angle: ${angle.replace(/_/g, " ")}` } : null;
+    };
     const stableTieBreak = (id, shotNumber) => {
       const text = `${segment?.id || segment?.start || "scene"}:${shotNumber}:${id}`;
       let hash = 0;
@@ -923,10 +962,17 @@ export function createMiniMaxPrompt({
       return Math.abs(hash);
     };
     const chooseEntry = (shot, shotIndex) => {
+      if (multiShot && shotIndex === 0 && sceneSetup) {
+        const entry = assignAngle({ shot: String(segment.shot_type || "").trim(), camera: String(segment.camera_motion || "").trim() });
+        rememberCoverage(entry);
+        return { entry, id: "scene_opening" };
+      }
       if (chosenIds[shotIndex]) return entries.find((item) => item.id === chosenIds[shotIndex]) || entries[0];
-      const available = entries.filter((item) => !usedInThisScene.has(item.id));
-      const candidates = available.length ? available : entries.filter((item) => !usedInThisScene.has(item.id));
-      const scored = (candidates.length ? candidates : entries).map((item) => {
+      const available = entries.filter((item) => !usedInThisScene.has(item.id)
+        && (!multiShot || (!usedShots.has(coverageKey(item.entry.shot)) && !usedCameras.has(coverageKey(item.entry.camera, true)) && (!angleKey(item.entry) || !usedAngles.has(angleKey(item.entry))))));
+      // Exhausting a pool must never silently duplicate a camera setup.
+      const candidates = multiShot ? available : (available.length ? available : entries);
+      const scored = candidates.map((item) => {
         const shotText = `${item.entry.shot} ${item.entry.camera}`.toLowerCase();
         let score = previousUsedIds.has(item.id) ? -28 : 28;
         semanticThemes.forEach((theme) => {
@@ -939,7 +985,11 @@ export function createMiniMaxPrompt({
         if (item.id === chosenIds[shotIndex - 1]) score -= 18;
         return { item, score, tie: stableTieBreak(item.id, shot.number) };
       }).sort((left, right) => right.score - left.score || left.tie - right.tie);
-      const selected = scored[0]?.item || entries[shotIndex % entries.length];
+      const selected = scored[0]?.item;
+      if (!selected) return null;
+      if (multiShot) selected.entry = assignAngle(selected.entry);
+      if (!selected.entry) return null;
+      rememberCoverage(selected.entry);
       chosenIds[shotIndex] = selected.id;
       usedInThisScene.add(selected.id);
       return selected;
@@ -962,9 +1012,17 @@ export function createMiniMaxPrompt({
       }
       return entry && shot
         ? `Shot ${shot.number} framing: ${entry.shot}${entry.camera ? ` (camera: ${entry.camera})` : ""}.`
-        : "";
+        : shot && shotPlan.length > 1
+          ? `Shot ${shot.number} framing: choose a new shot type, camera angle and camera-motion family not used anywhere else in this segment; do not reuse the opening scene-card setup.`
+          : "";
     }).filter(Boolean);
     if (!framingLines.length) return [];
+    if (shotPlan.length > 1) {
+      return [
+        `MULTI-SHOT CAMERA COVERAGE — AUTHORITATIVE, OVERRIDES SCENE-WIDE FRAMING:\n${framingLines.join("\n")}`,
+        "Treat a saved scene-card shot type and camera motion as Shot 1's opening setup only. Every later cut must use a visibly different shot type, a different camera angle and a different camera-motion family from every earlier shot. A pan left versus pan right, a track left versus track right, or an arc versus an orbit is repetition, not new coverage. Plan the whole sequence before writing. State a concrete distinct camera angle for each shot. Do not repeat the same shot size and viewpoint with renamed movement. If a candidate angle repeats, choose a new angle while retaining its assigned shot type and motion. Where the candidate pool is exhausted, author new distinct coverage instead of recycling a setup. Character continuity preserves physical position, pose, orientation, action and vocal timing; it never locks the camera's framing or angle across cuts. Keep new camera coverage physically consistent with that same performance. This per-shot coverage takes precedence over a scene-wide camera setting or preset asking for repeated framing.",
+      ];
+    }
     if (String(segment?.shot_type || "").trim() || String(segment?.camera_motion || "").trim()) {
       return [`SCENE CARD FRAMING / CAMERA — AUTHORITATIVE:\n${framingLines.join("\n")}`,
         "Follow these scene directions. Automatic framing candidates are fallback ideas and must not replace the scene card's angle, lens, framing or camera path."];
@@ -1204,6 +1262,9 @@ export function createMiniMaxPrompt({
       + "Apply this energy to the requested action within the available time; speed does not require additional actions."
     );
     parts.push(miniMaxH3SceneTimingInstruction(duration, cutPlan));
+    if (shotPlan.length > 1) {
+      parts.push("MULTI-SHOT CONTINUITY — MANDATORY: When a scene has multiple shots, write them as consecutive camera views of one uninterrupted physical performance in the same place and moment. Shot 1 establishes staging. In every later description, write a complete sentence explicitly continuing directly from the previous shot's final moment. At the instant of the cut, preserve the previous ending position, posture, body orientation, eyeline and prop contact, then carry the ongoing movement forward at its existing pace and direction. For a scene with active singing, for example: 'Continuing directly from the previous shot's final moment, <Subject 1> remains seated in the same position on the curb, her torso still angled toward the doorway, and continues the same uninterrupted singing performance in sync with the assigned audio.' Use the actual preceding physical state, not a generic continuity phrase. Do not restart an action, reset a pose, or replace continued performance with an unrelated beauty shot. An ongoing action may span scheduled cuts. Only camera angle, framing and camera movement change at a cut unless the scene explicitly requests a new action or transition. Show any requested physical change developing naturally from the inherited state. During every shot's active vocal interval, explicitly state that the assigned performer continues singing or speaking in sync with the assigned audio. Preserve cue timing and speaker assignments; instrumental, no-lip-sync and silent intervals remain non-vocal. Follow supplied lyric/dialogue allocations without duplicating an already quoted cue or restarting the scene's lyrics after a cut. Use complete grammatical sentences rather than fragments such as 'Still seated on the curb.' Self-contained shot prose and varied camera coverage must preserve the shared staging. Before returning, check every adjacent pair for a matching end-to-start physical state and continuous performance.");
+    }
     const cutTimes = shotPlan.slice(1).map((shot) => shot.timecode);
     if (cutTimes.length) {
       parts.push(`Builder cut times for your planning only: ${cutTimes.join(", ")}. Do not write these times.`);
@@ -2288,26 +2349,6 @@ export function createMiniMaxPrompt({
     return assembleMiniMaxH3OfficialPromptFromCreative(segment, mode, creativePrompt);
   }
 
-  function ensureBuilderManagedFx(prompt, scene = {}) {
-    let text = String(prompt || "").trim();
-    const defaults = normalizeBuilderStoryboardDefaults(state.builderStoryboardDefaults);
-    const preset = String(defaults.fx_preset || "").trim();
-    if (!text || !preset) return text;
-    const timestampPattern = /((?:\[\s*\d+(?:\.\d+)?s?\s*[-–—]\s*\d+(?:\.\d+)?s?\s*\]|\[\s*Shot\s+\d+[^\]]*\])\s*\n?)([\s\S]*?)(?=\n\s*(?:\[\s*\d+(?:\.\d+)?s?\s*[-–—]\s*\d+(?:\.\d+)?s?\s*\]|\[\s*Shot\s+\d+[^\]]*\])|\n\s*(?:Audio(?:\s+1)?|Native\s+audio|overall_soundscape|non_diegetic_music|Continuity)\s*:|$)/gi;
-    let shotIndex = 0;
-    let matched = false;
-    text = text.replace(timestampPattern, (whole, header, body) => {
-      matched = true;
-      const contract = storyboardFxContract(preset, defaults.fx_custom_json, shotIndex++);
-      if (!contract || String(body || "").includes(contract.cue)) return whole;
-      const cue = `FX accent: ${contract.cue} Timing: ${contract.timing}. Keep the mapped subject stable and readable.`;
-      return `${header}${String(body || "").trim()} ${cue}\n`;
-    });
-    if (matched) return text.trim();
-    const contract = storyboardFxContract(preset, defaults.fx_custom_json, 0);
-    return contract ? `${text}\n\nFX accent inside this shot: ${contract.cue} Keep the mapped subject stable and readable.`.trim() : text;
-  }
-
   function miniMaxH3PromptContextForSegment(segment, mode) {
     const settings = miniMaxH3SettingsForSegment(segment);
     const nativeAudio = settings.audio_mode === "built_in_audio";
@@ -2766,7 +2807,7 @@ export function createMiniMaxPrompt({
 
   return {
     applyMiniMaxH3NativeVoiceBlock, assembleMiniMaxH3PromptFromCreative, assertValidMiniMaxH3FinalPrompt,
-    ensureAutoTimedSingerCuesBeforePrompt, ensureBuilderManagedFx, miniMaxH3CreativePromptContextForSegment,
+    ensureAutoTimedSingerCuesBeforePrompt, miniMaxH3CreativePromptContextForSegment,
     miniMaxH3ImageReferencePromptItems, miniMaxH3PromptCharacterBudget, miniMaxH3PromptVisionImages,
     miniMaxH3PromptVisionImagesForRunner, miniMaxPromptReferenceMismatch, miniMaxPromptReferenceSignature,
     miniMaxRenderReferenceImagePaths,

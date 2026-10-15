@@ -67,6 +67,14 @@ export function savedSceneDragLock() {
   }
 }
 
+export function appendMiniMaxDraftBadge(element, segment) {
+  if (!segment.minimax_h3_draft?.id || segment.minimax_h3_draft.video_path !== segment.video_path) return;
+  const badge = document.createElement("span");
+  badge.textContent = "DRAFT";
+  badge.style.cssText = "position:absolute;right:5px;bottom:5px;z-index:7;border:1px solid #ef4444;border-radius:4px;background:#450a0a;color:#f87171;padding:2px 5px;font-size:10px;font-weight:900;pointer-events:none;";
+  element.append(badge);
+}
+
 export function shiftSegmentTiming(segment, delta) {
   const amount = Number(delta || 0);
   if (!segment || !amount) return;
@@ -1301,6 +1309,7 @@ export function createTimelineView({
         block.append(label);
       } else if (showFirstLastFrameThumb) appendTimelineFirstLastFrameThumbnail(block, segment);
       else if (!thumb && hasVideoPreview) appendTimelineVideoThumbnail(block, segment);
+      appendMiniMaxDraftBadge(block, segment);
       if (isOverlay) {
         normalizeOverlayClip(segment);
         const eye = document.createElement("span");
@@ -1691,6 +1700,8 @@ export function createTimelineView({
       const isMultiSelected = isSegmentMultiSelected(segment);
       row.style.cssText = `width:100%;text-align:left;border:${isActive || isMultiSelected ? "3px" : "1px"} solid ${isActive || isMultiSelected ? "#ef4444" : inserted ? "#f59e0b" : "#3f3f46"};border-radius:7px;background:${isActive || isMultiSelected ? "#3f1d24" : inserted ? "#451a03" : "#27272a"};color:#fafafa;padding:8px;margin-bottom:8px;cursor:pointer;box-shadow:${isActive || isMultiSelected ? "0 0 0 2px rgba(239,68,68,.25), 0 0 18px rgba(239,68,68,.42)" : "none"};`;
       row.innerHTML = `<div style="font-weight:800;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${index + 1}. ${escapeHtml(segment.label || "Scene")}</div><div style="font-size:11px;color:#a1a1aa;margin-top:4px;">Duration in seconds: ${formatDurationSeconds(segment.start, segment.end)}</div><div style="font-size:11px;color:#71717a;margin-top:2px;">${formatTime(segment.start)} - ${formatTime(segment.end)}</div>${status}${thumb}`;
+      row.style.position = "relative";
+      appendMiniMaxDraftBadge(row, segment);
       row.onclick = (event) => handleSegmentPick(segment, event);
       row.onkeydown = (event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -1737,6 +1748,8 @@ export function createTimelineView({
       const isMultiSelected = isSegmentMultiSelected(segment);
       row.style.cssText = `width:100%;text-align:left;border:${isActive || isMultiSelected ? "3px" : "1px"} solid ${isActive || isMultiSelected ? "#ef4444" : "#f97316"};border-radius:7px;background:${isActive || isMultiSelected ? "#3f1d24" : "#431407"};color:#fafafa;padding:8px;margin-bottom:8px;cursor:pointer;box-shadow:${isActive || isMultiSelected ? "0 0 0 2px rgba(239,68,68,.25), 0 0 18px rgba(239,68,68,.42)" : "none"};`;
       row.innerHTML = `<div style="font-weight:800;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Insert ${index + 1}. ${escapeHtml(segment.label || "Insert")}</div><div style="font-size:11px;color:#fed7aa;margin-top:4px;">${formatTime(segment.start)} - ${formatTime(segment.end)} | ${formatDurationSeconds(segment.start, segment.end)}s</div>${thumb}`;
+      row.style.position = "relative";
+      appendMiniMaxDraftBadge(row, segment);
       row.onclick = (event) => handleSegmentPick(segment, event);
       row.onkeydown = (event) => {
         if (event.key === "Enter" || event.key === " ") {

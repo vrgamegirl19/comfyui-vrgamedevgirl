@@ -463,7 +463,6 @@ export function createAutoBuild({
               audioMode: "input_audio",
               speakerAssignments: [],
               ...(sceneDefaults.contextOptions ? { contextOptions: sceneDefaults.contextOptions } : {}),
-              ...(sceneDefaults.finalizePrompt ? { finalizePrompt: sceneDefaults.finalizePrompt } : {}),
               emptyPromptMessage: `${sceneDisplayName(segment, index)} returned an empty MiniMax prompt.`,
             });
             gemmaBatchFailureStore()[`minimax:${mode}:${segment.id}`] = undefined;

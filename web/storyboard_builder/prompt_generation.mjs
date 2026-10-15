@@ -8,7 +8,6 @@ import {
   normalizeStoryLayer,
   slimStoryboardForRequest,
 } from "./scenes.mjs";
-import { storyboardFxContract } from "./video_style.mjs";
 
 export function confirmClearStoryboardPrompts() {
   return new Promise((resolve) => {
@@ -116,23 +115,6 @@ export function parseImagePromptImportJson(rawText, promptKeys = ["image_prompt"
     rows.push({ sceneNumber, prompt });
   }
   return rows;
-}
-
-export function applyBuilderManagedFx(prompt, presetValue = "", customJson = "") {
-  let text = String(prompt || "").trim();
-  if (!text || !presetValue) return text;
-  const timestampPattern = /((?:\[\s*\d+(?:\.\d+)?s?\s*[-–—]\s*\d+(?:\.\d+)?s?\s*\]|\[\s*Shot\s+\d+[^\]]*\])\s*\n?)([\s\S]*?)(?=\n\s*(?:\[\s*\d+(?:\.\d+)?s?\s*[-–—]\s*\d+(?:\.\d+)?s?\s*\]|\[\s*Shot\s+\d+[^\]]*\])|\n\s*(?:Audio(?:\s+1)?|overall_soundscape|non_diegetic_music|Continuity)\s*:|$)/gi;
-  let index = 0;
-  let matched = false;
-  text = text.replace(timestampPattern, (whole, header, body) => {
-    matched = true;
-    const contract = storyboardFxContract(presetValue, customJson, index++);
-    if (!contract || String(body || "").includes(contract.cue)) return whole;
-    return `${header}${String(body || "").trim()} FX accent: ${contract.cue} Keep the mapped subject stable and readable.\n`;
-  });
-  if (matched) return text.trim();
-  const contract = storyboardFxContract(presetValue, customJson, 0);
-  return contract ? `${text}\n\nFX accent inside this shot: ${contract.cue} Keep the mapped subject stable and readable.`.trim() : text;
 }
 
 export function isRecoverableStoryboardBatchError(error) {
@@ -485,7 +467,7 @@ export function createPromptGeneration({
       progress?.set(`${progressLabel || normalized.label || `Scene ${normalized.scene_number}`}: ${genericName} response received.\nRunner: ${data.runner || runnerName}\nSaving prompt into the scene card...`, Math.min(96, progressPercent + 45));
       const rawPrompt = String(data?.prompt || data || "").trim();
       const prompted = data?.already_finalized ? rawPrompt : applyStoryboardTriggerPhrases(rawPrompt, scene);
-      const prompt = data?.already_finalized ? prompted : applyBuilderManagedFx(prompted, state.fxPreset, state.fxCustomJson);
+      const prompt = prompted;
       if (!prompt) throw new Error(`${genericName} returned an empty Storyboard video prompt.`);
       scene.video_prompt = prompt;
       scene.video_prompt_origin = "gemma";

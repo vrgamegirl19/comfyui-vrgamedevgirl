@@ -734,6 +734,10 @@ export function createBatchActions({
       confirmLabel: "Run Render",
       returnAll: true,
       choices: [
+        ...(miniMaxProject ? [
+          { value: "draft", label: "Render Drafts — Pass 1 Only", description: "Render the target scenes at pass-1 resolution and save their latents. Requires two-pass settings; no final stitch." },
+          { value: "finalize", label: "Finalize Drafts — Pass 2 Only", description: "Finalize only scenes labeled DRAFT, reusing their saved pass-1 latents." },
+        ] : []),
         {
           value: "resume_missing",
           label: "Resume missing videos",
@@ -756,7 +760,8 @@ export function createBatchActions({
       const sceneScope = normalizeBatchScope(action.sceneScope);
       await renderAllScenes({
         sceneScope,
-        forceVideos: action.mode === "redo_videos",
+        forceVideos: action.mode === "redo_videos" || action.mode === "draft",
+        renderPhase: ["draft", "finalize"].includes(action.mode) ? action.mode : "full",
         skipFinalStitch: sceneScope === "selected",
       });
     }

@@ -203,6 +203,84 @@ export async function savePromptTextFile(path, content) {
   return await postJson("/vrgdg/music_builder/save_text_file", { path: filePath, content: String(content || "") });
 }
 
+function miniMaxPromptEditorSources(sceneContent, fileContent) {
+  return [
+    { id: "scenes", label: "Current scene prompts (Story Mode / session)", content: String(sceneContent || "") },
+    { id: "file", label: "Saved prompt file", content: String(fileContent || "") },
+  ].map((source) => {
+    const text = source.content.trim();
+    if (!text) return { ...source, count: 0 };
+    // A broken JSON export must not win over usable scene prompts.
+    if (/^[{[]/.test(text)) {
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)
+          && !Array.isArray(parsed.scenes)
+          && !Object.keys(parsed).some(key => /^(?:prompt|scene|minimax)[ _-]*\d+$/i.test(key))) {
+          return { ...source, count: 0 };
+        }
+      } catch (_) { return { ...source, count: 0 }; }
+    }
+    const count = parsePromptTextBlocks(text, "minimax").filter((item) => (
+      typeof item === "object" && item
+        ? String(item.prompt || "").trim() || String(item.pass2_prompt || "").trim()
+        : String(item || "").trim()
+    )).length;
+    return { ...source, count };
+  }).filter((source) => source.count > 0);
+}
+
+async function chooseMiniMaxPromptEditorSource(sceneContent, fileContent) {
+  const sources = miniMaxPromptEditorSources(sceneContent, fileContent);
+  if (sources.length < 2) return sources[0] || null;
+  return showMiniMaxPromptSourceChoice(sources);
+}
+
+function showMiniMaxPromptSourceChoice(sources) {
+  return new Promise((resolve) => {
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100007;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(580px,calc(100vw - 40px));border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;padding:16px;display:flex;flex-direction:column;gap:12px;";
+    const heading = document.createElement("div");
+    heading.textContent = "Choose MiniMax prompt source";
+    heading.style.cssText = "font-size:16px;font-weight:900;color:#cffafe;";
+    const note = document.createElement("div");
+    note.textContent = "Both sources contain prompts. Current scenes include the prompts used by Story Mode and the timeline. The saved file may contain an older or separately edited copy. Choose which to open; scene prompts change only when you save the editor.";
+    note.style.cssText = "font-size:13px;line-height:1.45;color:#cbd5e1;";
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:flex;flex-direction:column;gap:8px;";
+    let settled = false;
+    const finish = (source) => {
+      if (settled) return;
+      settled = true;
+      document.removeEventListener("keydown", onKeyDown, true);
+      backdrop.remove();
+      resolve(source);
+    };
+    const onKeyDown = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      finish(null);
+    };
+    for (const source of sources) {
+      const button = makeButton(`${source.label} — ${source.count} populated scene${source.count === 1 ? "" : "s"}`, "primary");
+      button.onclick = () => finish(source);
+      actions.append(button);
+    }
+    const cancel = makeButton("Cancel");
+    cancel.onclick = () => finish(null);
+    backdrop.onclick = (event) => { if (event.target === backdrop) finish(null); };
+    document.addEventListener("keydown", onKeyDown, true);
+    actions.append(cancel);
+    box.append(heading, note, actions);
+    backdrop.append(box);
+    document.body.append(backdrop);
+    cancel.focus();
+  });
+}
+
 function promptTimestamp() {
   const now = new Date();
   const pad = (value) => String(value).padStart(2, "0");
@@ -891,8 +969,22 @@ export function createProjectFiles({
       return;
     }
     try {
+      let currentContent;
+      let selectedSource = null;
+      if (kind === "minimax") {
+        const sceneContent = formatPromptBlocks(kind);
+        const fileContent = await loadPromptTextFile(path, "");
+        if (!miniMaxPromptEditorSources(sceneContent, fileContent).length) {
+          toast("No MiniMax H3 prompts were found in the current scenes or saved prompt file.", true);
+          return;
+        }
+        selectedSource = await chooseMiniMaxPromptEditorSource(sceneContent, fileContent);
+        if (!selectedSource) return;
+        currentContent = selectedSource.content;
+      } else {
+        currentContent = await loadPromptTextFile(path, formatPromptBlocks(kind));
+      }
       await ensureOriginalPromptBackup(kind);
-      const currentContent = await loadPromptTextFile(path, formatPromptBlocks(kind));
       const box = document.createElement("div");
       box.style.cssText = `
         position:fixed;left:50%;top:6%;transform:translateX(-50%);
@@ -915,7 +1007,7 @@ export function createProjectFiles({
       headerActions.append(hint, close);
       header.append(heading, headerActions);
       const pathText = document.createElement("div");
-      pathText.textContent = path;
+      pathText.textContent = selectedSource ? `${selectedSource.label} → Save to ${path}` : path;
       pathText.style.cssText = "padding:8px 12px;border-bottom:1px solid #1f2937;color:#bae6fd;font-size:11px;overflow-wrap:anywhere;";
       const textarea = document.createElement("textarea");
       textarea.value = currentContent || formatPromptBlocks(kind);
