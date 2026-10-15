@@ -444,8 +444,11 @@ test('the premise saves on its own and nothing is shown as out of date', async (
   assert.ok(!document.body.textContent.includes('The story is out of date'));
   const premise = document.body.all().find((node) => node.tagName === 'TEXTAREA' && node.placeholder.startsWith('A son rides'));
   premise.value = 'Mara leaves home for good.';
+  const tone = document.body.all().find((node) => node.tagName === 'INPUT' && String(node.placeholder || '').startsWith('Tone, genre'));
+  tone.value = '1970s rural Ohio, bittersweet';
   await findButton('Save Premise').onclick();
   assert.equal(state.builderStoryLayer.overall_story_idea, 'Mara leaves home for good.');
+  assert.equal(state.builderStoryLayer.story_tone_notes, '1970s rural Ohio, bittersweet');
   assert.ok(calls.saves.includes('story builder premise'));
   { const t = document.body.textContent; const i = t.indexOf('out of date'); assert.ok(i < 0, 'no out-of-date warnings: ' + t.slice(Math.max(0, i - 120), i + 80)); }
   findButton('Close').onclick();

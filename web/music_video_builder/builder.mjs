@@ -2744,8 +2744,8 @@ export function openBuilder(node, options = {}) {
 
   miniMaxAutoTimeAllScenesButton.onclick = () => autoTimeAllMiniMaxSingerScenes();
 
-  async function autoSaveSessionQuiet(reason = "") {
-    if (!state.autoSaveEnabled) return false;
+  async function autoSaveSessionQuiet(reason = "", { force = false } = {}) {
+    if (!state.autoSaveEnabled && !force) return false;
     try {
       updateActiveFromInputs();
       saveI2VVideoSettingsFromPanel();

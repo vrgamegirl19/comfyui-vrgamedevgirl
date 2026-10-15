@@ -31,6 +31,7 @@ Shape inside ``builder_story_layer`` (only present when the project has used Sto
   ``STORY_RELATIONSHIP_TYPES``).
 - ``story_user_locations``: the user's own places for the video, free text (one place per line, with its look after a
   colon). The story and the setting looks use these places first.
+- ``story_tone_notes``: the tone, genre and world the user wants the story written in.
 - ``story_character_notes``: ``{cast id: text}``, the personality and emotions of each character, in the user's words.
 - ``story_video_style``: how the story is told on screen: ``music_video`` (the cast performs the song),
   ``spoken`` (the characters talk) or ``story_only`` (no one sings or speaks on camera).
@@ -50,7 +51,7 @@ STORY_MODE_KEYS = (
     "story_flow_version", "story_book", "story_book_text", "story_settings", "story_acts", "story_scene_plan",
     "story_spot_min_scenes", "story_cast_ids", "story_allow_new_cast", "story_video_style", "story_continuation_mode",
     "story_stamps", "story_main_cast_id", "story_cast_roles", "story_relationships", "story_act_count",
-    "story_chapter_counts", "story_user_locations", "story_character_notes",
+    "story_chapter_counts", "story_user_locations", "story_character_notes", "story_tone_notes",
 )
 STORY_CAST_ROLES = ("main", "love_interest", "supporting", "antagonist")
 STORY_RELATIONSHIP_TYPES = ("love_interest", "partners", "exes", "family", "friends", "rivals", "strangers", "other")
@@ -288,6 +289,8 @@ def normalize_story_mode_fields(source):
         result["story_relationships"] = normalize_story_relationships(source.get("story_relationships"))
     if "story_user_locations" in source:
         result["story_user_locations"] = _text(source.get("story_user_locations"), 3000)
+    if "story_tone_notes" in source:
+        result["story_tone_notes"] = _text(source.get("story_tone_notes"), 2000)
     if "story_character_notes" in source:
         result["story_character_notes"] = normalize_story_character_notes(source.get("story_character_notes"))
     if "story_act_count" in source:

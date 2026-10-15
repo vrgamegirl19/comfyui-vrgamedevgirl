@@ -337,7 +337,7 @@ def draft_story_book(payload):
         premise=premise,
         cast_text=cast_lines(payload),
         allow_new_cast=allow_new_cast(payload),
-        tone_notes=_clean_scene_text(payload.get("tone_notes") or payload.get("style_theme") or "", 2000),
+        tone_notes=_clean_scene_text(payload.get("tone_notes") or layer.get("story_tone_notes") or payload.get("style_theme") or "", 2000),
         places_text=user_places_text(payload),
         scene_count=scene_count,
         song_seconds=_song_seconds(payload, scenes),

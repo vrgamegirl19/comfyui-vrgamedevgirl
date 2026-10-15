@@ -170,7 +170,8 @@ export function createStoryBuilder({
     }
     state.builderStoryLayer = next;
     render();
-    await autoSaveSessionQuiet(label);
+    // Story edits are saved even when autosave is off. Returns whether the project file was written.
+    return (await autoSaveSessionQuiet(label, { force: true })) !== false;
   }
 
   function isMiniMax() {
@@ -918,24 +919,27 @@ export function createStoryBuilder({
       const idea = card("Premise", "A sentence or a full outline. The LLM writes the book from it, using the characters ticked above, their personalities and your locations.");
       const premise = textarea(current.overall_story_idea, "A son rides the night train home to find out why his father left.", 70);
       const savePremise = async (announce) => {
-        if (premise.value === String(layer().overall_story_idea || "")) {
-          if (announce) toast("Premise saved.");
-          return;
+        const unchanged = premise.value === String(layer().overall_story_idea || "") && tone.value === String(layer().story_tone_notes || "");
+        const saved = unchanged ? true : await saveLayer({ overall_story_idea: premise.value, story_tone_notes: tone.value }, "story builder premise");
+        if (!unchanged) {
+          drawBookNote();
+          refreshProgress();
         }
-        await saveLayer({ overall_story_idea: premise.value }, "story builder premise");
-        drawBookNote();
-        refreshProgress();
-        if (announce) toast("Premise saved.");
+        if (announce) toast(saved ? "Premise and tone saved." : "Could not save to the project. Check that a project is open and reload it if it was changed elsewhere.", !saved);
       };
       premise.onchange = () => savePremise(false);
       const savePremiseButton = makeButton("Save Premise");
       savePremiseButton.onclick = () => savePremise(true);
-      const tone = makeInput("");
+      const tone = makeInput(current.story_tone_notes || "");
+      tone.onchange = async () => {
+        if (tone.value === String(layer().story_tone_notes || "")) return;
+        await saveLayer({ story_tone_notes: tone.value }, "story builder tone");
+      };
       tone.placeholder = "Tone, genre, world (optional), e.g. 1970s rural Ohio, bittersweet";
       const draft = makeButton("Draft Story", "primary");
       draft.disabled = Boolean(blocked);
       draft.onclick = async () => {
-        await saveLayer({ overall_story_idea: premise.value, story_user_locations: placesBox.value,
+        await saveLayer({ overall_story_idea: premise.value, story_user_locations: placesBox.value, story_tone_notes: tone.value,
           story_character_notes: Object.fromEntries(noteInputs.map((item) => [item.id, item.input.value])) }, "story builder premise");
         const data = await runStep("book", { story_idea: premise.value, tone_notes: tone.value,
           previous_book: current.story_book_text || "", seed: String(Date.now()) }, "Writing the story");
