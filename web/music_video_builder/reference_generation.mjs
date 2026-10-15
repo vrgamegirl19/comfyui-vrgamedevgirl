@@ -796,6 +796,83 @@ export function createReferenceGeneration({
     }
   }
 
+  const OWN_SERVER_IMAGE_STORAGE_KEY = "vrgdg_own_server_image_settings";
+  const DEFAULT_OWN_SERVER_IMAGE_SETTINGS = { image_model: "", width: 1024, height: 1024, steps: 0, seed: "" };
+
+  function loadOwnServerImageSettings() {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(OWN_SERVER_IMAGE_STORAGE_KEY) || "{}");
+      return { ...DEFAULT_OWN_SERVER_IMAGE_SETTINGS, ...(saved && typeof saved === "object" ? saved : {}) };
+    } catch (_error) {
+      return { ...DEFAULT_OWN_SERVER_IMAGE_SETTINGS };
+    }
+  }
+
+  function saveOwnServerImageSettings(settings) {
+    try {
+      window.localStorage.setItem(OWN_SERVER_IMAGE_STORAGE_KEY, JSON.stringify(settings));
+    } catch (_error) {
+      // Per-viewer convenience only.
+    }
+  }
+
+  async function runFluxReferenceWithOwnServer(referenceType, target, sourceText, name = "", imageSettings = {}) {
+    const text = String(sourceText || "").trim();
+    if (!text) {
+      toast(referenceType === "subject" ? "Enter a subject description first." : "Enter a location description first.", true);
+      return;
+    }
+    if (state.textGemmaRunner !== "own_server") {
+      toast("Set the LLM Runner to Custom Server first. Image generation uses its URL, API key and model.", true);
+      return;
+    }
+    let progress = null;
+    try {
+      setInlineProgress(referenceType === "subject" ? "Creating subject prompt with Custom Server..." : "Creating location prompt with Custom Server...", 8);
+      progress = createProgressWindow(referenceType === "subject" ? "Creating subject reference" : "Creating location reference", { zIndex: 100008 });
+      progress.set(`Creating reference prompt...\n${gemmaRunnerLine()}`, 8);
+      const styleTheme = state.useVrgdgTextContext ? await loadContextTextQuiet(themeStyleInput.value) : "";
+      const promptData = await postJson("/vrgdg/music_builder/flux_reference_zimage_prompt", {
+        ...textGemmaRunnerPayload(),
+        model_file: String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim(),
+        reference_type: referenceType,
+        source_text: text,
+        style_theme: styleTheme,
+        unload_after: true,
+      }, 3 * 60 * 1000);
+      setInlineProgress("Generating the image on the Custom Server...", 40);
+      progress.set("Generating the image on the Custom Server...", 40);
+      const saved = await postJson("/vrgdg/music_builder/own_server_reference_image", {
+        ...textGemmaRunnerPayload(),
+        prompt: promptData.prompt,
+        image_model: imageSettings.image_model || "",
+        width: imageSettings.width,
+        height: imageSettings.height,
+        steps: imageSettings.steps,
+        seed: imageSettings.seed,
+        project_folder: projectInput.value || state.projectFolder,
+        reference_type: referenceType,
+        name: name || text.slice(0, 48) || referenceType,
+      }, 12 * 60 * 1000);
+      if (!target.image) target.image = { path: "", data: "", name: "" };
+      target.image.path = saved.saved_path || "";
+      target.image.data = "";
+      target.image.name = `${name || referenceType}.png`;
+      await describeGeneratedReference(referenceType, target, promptData.prompt);
+      await persistGeneratedReferenceImage(referenceType, target);
+      renderAll();
+      setInlineProgress("Reference image ready.", 100);
+      progress.set("Reference image ready.", 100);
+      progress.close(1300);
+      hideInlineProgress();
+      toast(referenceType === "subject" ? "Subject reference created with the Custom Server." : "Location reference created with the Custom Server.");
+    } catch (error) {
+      setInlineProgress(`Error:\n${String(error?.message || error)}`, 100);
+      progress?.set(`Error:\n${String(error?.message || error)}`, 100);
+      toast(String(error?.message || error), true);
+    }
+  }
+
   function createFluxReferenceWithZImage(referenceType, target, sourceText, name = "") {
     const text = String(sourceText || "").trim();
     const backdrop = document.createElement("div");
@@ -931,6 +1008,30 @@ export function createReferenceGeneration({
       help.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.4;";
       return help;
     };
+    const ownSaved = loadOwnServerImageSettings();
+    const ownImageModel = makeInput(String(ownSaved.image_model || ""));
+    const ownImageWidth = makeInput(String(ownSaved.width || 1024), "number");
+    const ownImageHeight = makeInput(String(ownSaved.height || 1024), "number");
+    const ownImageSteps = makeInput(String(ownSaved.steps || 0), "number");
+    const ownImageSeed = makeInput(String(ownSaved.seed ?? ""), "number");
+    for (const input of [ownImageWidth, ownImageHeight]) {
+      input.min = "256";
+      input.max = "2048";
+      input.step = "32";
+    }
+    ownImageSteps.min = "0";
+    ownImageSeed.min = "0";
+    const readOwnImage = () => {
+      const settings = {
+        image_model: ownImageModel.value.trim(),
+        width: Number(ownImageWidth.value) || 1024,
+        height: Number(ownImageHeight.value) || 1024,
+        steps: Math.max(0, Math.floor(Number(ownImageSteps.value) || 0)),
+        seed: ownImageSeed.value.trim() === "" ? "" : Math.max(0, Math.floor(Number(ownImageSeed.value) || 0)),
+      };
+      saveOwnServerImageSettings(settings);
+      return settings;
+    };
     const sharedZImageCard = document.createElement("div");
     sharedZImageCard.style.cssText = "border:1px solid #334155;border-radius:8px;background:#0f172a;padding:12px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;";
     const sharedTitle = document.createElement("div");
@@ -987,6 +1088,14 @@ export function createReferenceGeneration({
       optionCard("Flow/GPT", [
         modalHelp("Use the selected browser image provider. Flow requires its browser profile and manual aspect setup; GPT Image appends the selected aspect ratio; Meta AI uses the meta.ai profile and login."),
       ], "Use Flow/GPT", (runText) => runFluxReferenceWithFlowGpt(referenceType, target, runText, name)),
+      optionCard("Custom Server", [
+        modalHelp("Uses the LLM Runner's Custom Server URL and API key to call /v1/images/generations. The LLM Runner must be set to Custom Server."),
+        makeField("Image model (optional)", ownImageModel),
+        makeField("Width", ownImageWidth),
+        makeField("Height", ownImageHeight),
+        makeField("Steps (0 = server default)", ownImageSteps),
+        makeField("Seed (blank = random)", ownImageSeed),
+      ], "Use Custom Server", (runText) => runFluxReferenceWithOwnServer(referenceType, target, runText, name, readOwnImage())),
     );
     const footer = document.createElement("div");
     footer.style.cssText = "display:flex;justify-content:flex-end;";

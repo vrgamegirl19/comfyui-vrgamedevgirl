@@ -482,6 +482,59 @@ def _test_own_server(payload):
     }
 
 
+def _own_server_image_size(width, height):
+    """Clamp to the OpenAI-style image size rule: each side a multiple of 32 between 256 and 2048."""
+    def _side(value, default):
+        try:
+            parsed = int(float(value))
+        except (TypeError, ValueError):
+            parsed = default
+        return max(256, min(2048, int(round(parsed / 32.0)) * 32))
+    return f"{_side(width, 1024)}x{_side(height, 1024)}"
+
+
+def _generate_own_server_image(payload):
+    """Generate one image on the custom server's /v1/images/generations and return it as a PNG data URL."""
+    import base64
+
+    v1_root = _own_server_v1_root(
+        payload.get("own_server_url") or payload.get("base_url") or _OWN_SERVER_DEFAULT_BASE_URL
+    )
+    prompt = str(payload.get("prompt") or "").strip()
+    if not prompt:
+        raise ValueError("Image prompt is empty.")
+    body = {
+        "prompt": prompt,
+        "size": _own_server_image_size(payload.get("width"), payload.get("height")),
+        "n": 1,
+        "response_format": "b64_json",
+    }
+    image_model = str(payload.get("image_model") or "").strip()
+    if image_model:
+        body["model"] = image_model
+    seed = payload.get("seed")
+    if seed not in (None, ""):
+        body["seed"] = int(seed)
+    steps = payload.get("steps")
+    if steps not in (None, "", 0, "0"):
+        body["steps"] = int(steps)
+    timeout = max(_own_server_timeout(payload), 120.0)
+    print(f"[VRGDG LLM] custom server image: {body['size']} steps={body.get('steps', 'default')} at {v1_root}/images/generations")
+    data = _own_server_request_json(f"{v1_root}/images/generations", payload, body=body, timeout=timeout)
+    items = data.get("data") if isinstance(data, dict) else None
+    item = items[0] if isinstance(items, list) and items and isinstance(items[0], dict) else {}
+    b64 = str(item.get("b64_json") or "").strip()
+    if b64:
+        return {"image_data": f"data:image/png;base64,{b64}", "size": body["size"]}
+    image_url = str(item.get("url") or "").strip()
+    if image_url:
+        request = urllib.request.Request(image_url, headers=_own_server_headers(payload))
+        with urllib.request.urlopen(request, timeout=timeout, context=_own_server_ssl_context(image_url)) as response:
+            raw = response.read()
+        return {"image_data": "data:image/png;base64," + base64.b64encode(raw).decode("ascii"), "size": body["size"]}
+    raise ValueError("Custom server returned no image. Check that it supports /v1/images/generations.")
+
+
 def _normalized_token_limit(value, default, minimum=64, maximum=262144):
     try:
         parsed = int(value)
