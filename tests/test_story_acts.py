@@ -225,6 +225,23 @@ class StoryPlanBuilderTests(unittest.TestCase):
         self.assertEqual(len(plan), 12)
         self.assertTrue(all(entry["spot"] for entry in plan), "spots fall back to the setting name")
 
+    def test_a_scene_with_no_spot_takes_a_loaded_place_not_the_act_title(self):
+        payload = make_payload(12)
+        payload["story_layer"]["story_settings"] = []
+        for chapter in payload["story_layer"]["story_book"]["chapters"]:
+            chapter["setting_id"] = ""
+            chapter["title"] = f"Act {chapter['id'][3:]}"
+        payload["reference_builder"]["locations"] = [{"id": "l1", "name": "Hallway", "description": "A narrow hallway."}]
+
+        def broken(*args, **kwargs):
+            raise RuntimeError("LM Studio is not answering")
+
+        with patch.object(story_plan, "_run", broken):
+            acts = story_plan.build_story_acts(payload)["story_layer"]["story_acts"]
+            payload["story_layer"]["story_acts"] = acts
+            plan = story_plan.build_story_scene_plan(payload)["story_layer"]["story_scene_plan"]
+        self.assertEqual({entry["spot"] for entry in plan}, {"Hallway"})
+
     def test_scene_cast_performer_and_interaction_with_user_changes_kept(self):
         payload = make_payload(8)
         payload["reference_builder"]["subjects"].append({"id": "joe", "name": "Joe", "description": "a conductor"})

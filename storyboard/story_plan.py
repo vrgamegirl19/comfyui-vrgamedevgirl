@@ -424,7 +424,10 @@ def build_story_scene_plan(payload, progress=None):
             continue
         locked = {i for i, sid in enumerate(ids) if plan[sid]["note_sources"] or sid not in rebuilt}
         spots = enforce_spot_runs([plan[sid]["spot"] for sid in ids], spot_min, locked)
-        fallback_spot = (settings.get(chapter["setting_id"]) or {}).get("name", "") or chapter["title"]
+        # A scene with no usable spot takes the setting, else the first place already made (loaded or built), and
+        # only then the act title, so a card is never named "Act 1" while real place cards exist.
+        made = made_place_cards(payload, chapter["setting_id"])
+        fallback_spot = (settings.get(chapter["setting_id"]) or {}).get("name", "") or (made[0][0] if made else "") or chapter["title"]
         for sid, spot in zip(ids, spots):
             plan[sid]["spot"] = spot or fallback_spot
     timeline = [{"id": sid, "start": _seconds(scene.get("timeline_start", scene.get("start"))),
