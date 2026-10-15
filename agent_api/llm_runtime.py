@@ -57,10 +57,35 @@ def llm_payload_from_session(session: Dict[str, Any], overrides: Optional[Dict[s
     }
     if runner == "qwen_local":
         payload["model_file"] = payload["qwen_model_file"]
+    _fill_api_keys(payload)
     for key, value in (overrides or {}).items():
         if value not in (None, ""):
             payload[key] = value
     return payload
+
+
+def global_llm_keys() -> Dict[str, str]:
+    """The API keys saved for every project (Video Builder LLM runner settings)."""
+    from ..builder.project import _load_global_llm_keys
+    return _load_global_llm_keys()
+
+
+def _fill_api_keys(payload: Dict[str, Any]) -> None:
+    """Give the runner a key: the project's own key first, then the global one. The global custom server key is
+    only sent to the server URL it was saved for."""
+    keys = global_llm_keys()
+    if not payload.get("llm_api_key"):
+        payload["llm_api_key"] = payload.get("llm_api_key_project") or keys.get("llm_api_key", "")
+    if not payload.get("own_server_api_key"):
+        own = payload.get("own_server_api_key_project") or ""
+        if not own and keys.get("own_server_api_key") and                 str(keys.get("own_server_url") or "").rstrip("/") == str(payload.get("own_server_url") or "").rstrip("/"):
+            own = keys["own_server_api_key"]
+        payload["own_server_api_key"] = own
+
+
+def project_elevenlabs_key(session: Dict[str, Any]) -> str:
+    """The ElevenLabs key: the project's own key, else the global one."""
+    return str((session or {}).get("elevenlabs_api_key_project") or global_llm_keys().get("elevenlabs_api_key") or "")
 
 
 def _api_root(payload: Dict[str, Any]) -> str:

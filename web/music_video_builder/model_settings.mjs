@@ -21,6 +21,7 @@ import { defaultNBImageSettings } from "./llm_runner.mjs";
 import { normalizeMiniMaxShortFilmPlanningMode } from "./minimax_h3.mjs";
 import { normalizeStoryModeFields } from "./story_mode_data.mjs";
 import { cloneKrea2ReferenceSettings } from "./models.mjs";
+import { applyGlobalLlmKeys, rememberGlobalLlmKeys } from "./llm_global_keys.mjs";
 import {
   normalizeGemmaContextLimit,
   normalizeGemmaGpuLayers,
@@ -789,6 +790,8 @@ export function createModelSettings({
     try {
       const data = await getJson("/vrgdg/music_builder/model_defaults");
       const applied = applyModelDefaults(data.defaults || {});
+      rememberGlobalLlmKeys(data.global_llm_keys);
+      applyGlobalLlmKeys(state);
       if (applied) {
         console.log("[VRGDG Music Builder] Loaded global model defaults:", data.path || "");
       }

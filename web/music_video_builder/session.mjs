@@ -23,6 +23,7 @@ import {
 } from "./controls.mjs";
 import { showLoadProjectModal, showWelcomeProjectModal } from "./dialogs.mjs";
 import { normalizeAudioMaskAuto } from "./audio_mask_store.mjs";
+import { applyGlobalLlmKeys, rememberGlobalLlmKeys } from "./llm_global_keys.mjs";
 import { cloneMiniMaxH3Settings } from "./minimax_h3.mjs";
 import { restoreVideoMode } from "./video_mode_resume.mjs";
 import {
@@ -1106,6 +1107,7 @@ export function createSession({
         state.ownServerModel = data.session.own_server_model || state.ownServerModel || "";
         state.ownServerApiKeyProject = data.session.own_server_api_key_project || "";
         if (state.ownServerApiKeyProject) state.ownServerApiKey = state.ownServerApiKeyProject;
+        applyGlobalLlmKeys(state);
         state.ownServerOutputTokenLimit = normalizeOutputTokenLimit(data.session.own_server_output_token_limit ?? state.ownServerOutputTokenLimit);
         state.ownServerTimeoutMinutes = normalizeOwnServerTimeoutMinutes(
           data.session.own_server_timeout_minutes
@@ -1389,6 +1391,8 @@ export function createSession({
       // Never carry a session-only credential into a newly loaded project's
       // arbitrary server URL. A project key is restored only when explicitly saved.
       state.ownServerApiKey = state.ownServerApiKeyProject;
+      rememberGlobalLlmKeys(data.global_llm_keys);
+      applyGlobalLlmKeys(state);
       state.ownServerOutputTokenLimit = normalizeOutputTokenLimit(session.own_server_output_token_limit ?? state.ownServerOutputTokenLimit);
       state.ownServerTimeoutMinutes = normalizeOwnServerTimeoutMinutes(
         session.own_server_timeout_minutes

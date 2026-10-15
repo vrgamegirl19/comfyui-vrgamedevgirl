@@ -13,7 +13,7 @@ import folder_paths
 from ..core.atomic_write import atomic_write_json, atomic_write_text
 from ..minimax.latent_manager import SceneLatentManager
 
-from .paths import _context_folder, _copy_file_if_exists, _default_project_folder, _images_folder, _is_internal_approved_image_path, _model_defaults_path, _newest_file, _prompts_folder, _render_logs_folder, _resolve_existing_file, _safe_project_name, _scene_notes_path, _scene_preview_folder, _session_path, _unique_folder_path, _vrgdg_textfile_path, _wizard_draft_path, _wizard_folder, _wizard_lyrics_path
+from .paths import _context_folder, _copy_file_if_exists, _default_project_folder, _images_folder, _global_llm_keys_path, _is_internal_approved_image_path, _model_defaults_path, _newest_file, _prompts_folder, _render_logs_folder, _resolve_existing_file, _safe_project_name, _scene_notes_path, _scene_preview_folder, _session_path, _unique_folder_path, _vrgdg_textfile_path, _wizard_draft_path, _wizard_folder, _wizard_lyrics_path
 from .audio import _convert_audio_to_wav, _segments_to_srt, _srt_path
 from .media import _scene_image_path
 from .project_copy import _apply_branch_keep_to_session, _assign_overlay_scene_numbers, _copy_project_tree, _copy_session_assets_to_project, _normalize_branch_keep, _overlay_scene_number, _project_rebased_path, _prune_unkept_project_folders, _rebase_project_owned_paths, _relocate_external_minimax_stage_media, _resolve_project_asset_path, _snapshot_project_assets
@@ -1031,6 +1031,53 @@ _MODEL_DEFAULT_KEYS = (
 )
 
 
+# API keys kept for every project (not in a project's session, so exports never carry them). The custom server key
+# is only used with the URL it was saved for.
+GLOBAL_LLM_KEY_FIELDS = ("llm_api_key", "own_server_api_key", "elevenlabs_api_key")
+
+
+def _load_global_llm_keys():
+    """``{field: key}`` for every saved global key, plus ``own_server_url`` (the server the custom key belongs to)."""
+    target = _global_llm_keys_path()
+    if not os.path.isfile(target):
+        return {}
+    try:
+        with open(target, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    keys = {name: str(data.get(name) or "").strip() for name in GLOBAL_LLM_KEY_FIELDS if str(data.get(name) or "").strip()}
+    if keys.get("own_server_api_key"):
+        keys["own_server_url"] = str(data.get("own_server_url") or "").strip()
+    return keys
+
+
+def _save_global_llm_keys(updates):
+    """Set the global keys named in ``updates``; an empty value clears that key. Other keys are left as they are."""
+    if not isinstance(updates, dict):
+        return
+    keys = _load_global_llm_keys()
+    changed = False
+    for name in GLOBAL_LLM_KEY_FIELDS:
+        if name not in updates:
+            continue
+        value = str(updates.get(name) or "").strip()
+        if value:
+            keys[name] = value
+        else:
+            keys.pop(name, None)
+        changed = True
+    if not changed:
+        return
+    if keys.get("own_server_api_key"):
+        keys["own_server_url"] = str(updates.get("own_server_url") or keys.get("own_server_url") or "").strip()
+    else:
+        keys.pop("own_server_url", None)
+    atomic_write_json(_global_llm_keys_path(), keys)
+
+
 def _scrub_model_defaults_project_sources(defaults):
     if not isinstance(defaults, dict):
         return {}
@@ -1073,7 +1120,7 @@ def _save_model_defaults(session):
 def _load_model_defaults():
     target = _model_defaults_path()
     if not os.path.isfile(target):
-        return {"path": target, "defaults": {}, "saved_at": ""}
+        return {"path": target, "defaults": {}, "saved_at": "", "global_llm_keys": _load_global_llm_keys()}
     with open(target, "r", encoding="utf-8") as handle:
         payload = json.load(handle)
     if not isinstance(payload, dict):
@@ -1086,6 +1133,7 @@ def _load_model_defaults():
         "path": target,
         "defaults": defaults,
         "saved_at": str(payload.get("saved_at", "") or ""),
+        "global_llm_keys": _load_global_llm_keys(),
     }
 
 
@@ -1212,6 +1260,8 @@ def _save_builder_session_unlocked(payload):
     os.makedirs(_context_folder(project_folder), exist_ok=True)
 
     session = dict(payload.get("session")) if isinstance(payload.get("session"), dict) else {}
+    # Global API keys go to their own file, never into the project's session.
+    _save_global_llm_keys(session.pop("global_llm_keys", None))
     segments = session.get("segments", [])
     if not isinstance(segments, list):
         segments = []
@@ -1616,6 +1666,7 @@ def _load_builder_session(project_folder):
         "scene_notes_path": _scene_notes_path(folder),
         "revision": int(session.get("revision") or 1),
         "session": session,
+        "global_llm_keys": _load_global_llm_keys(),
     }
 
 

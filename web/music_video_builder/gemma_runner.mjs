@@ -1,6 +1,7 @@
 import { getJson, normalizeOwnServerTimeoutMinutes, postJson } from "./comfy_api.mjs";
 import { makeButton, makeField, makeInput, makeSelect, toast } from "./controls.mjs";
 import { isLikelyEmbeddingModelId } from "./llm_runner.mjs";
+import { markGlobalLlmKeyChanged } from "./llm_global_keys.mjs";
 import {
   normalizeGemmaContextLimit,
   normalizeGemmaGpuLayers,
@@ -181,7 +182,7 @@ export function createGemmaRunner({
     apiPanel.style.cssText = "display:flex;flex-direction:column;gap:10px;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:12px;";
     const apiNote = document.createElement("div");
     apiNote.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
-    apiNote.textContent = "API keys are session-only unless you explicitly save the current key to this project. A project-saved key will be included in the project session and may be included in shareable exports. For image-reference Video Prep, choose an API model that supports vision/images.";
+    apiNote.textContent = "API keys are saved for every project (not in the project files). \"Save API Key to Project\" also stores the key in this project's session, which may be included in shareable exports. For image-reference Video Prep, choose an API model that supports vision/images.";
     const apiProvider = makeSelect(["openai"], state.llmApiProvider || "openai");
     const apiModel = makeSelect([""], state.llmApiModel || "");
     const llmApiKey = makeInput(state.llmApiKey || "", "password");
@@ -451,9 +452,11 @@ export function createGemmaRunner({
       state.llmApiProvider = apiProvider.value || "openai";
       state.llmApiModel = apiModel.value || "";
       state.llmApiKey = runner.value === "llm_api" ? llmApiKey.value || "" : state.llmApiKey || "";
+      if (runner.value === "llm_api") markGlobalLlmKeyChanged("llm_api_key");
       state.ownServerUrl = ownUrl.value || "http://127.0.0.1:8000/v1";
       state.ownServerModel = ownModel.value || "";
       state.ownServerApiKey = runner.value === "own_server" ? ownApiKey.value || "" : state.ownServerApiKey || "";
+      if (runner.value === "own_server") markGlobalLlmKeyChanged("own_server_api_key");
       state.ownServerOutputTokenLimit = normalizeOutputTokenLimit(ownOutputTokenLimit.value);
       state.ownServerTimeoutMinutes = normalizeOwnServerTimeoutMinutes(ownTimeoutMinutes.value);
       syncBuilderLlmModelSelectsFromRunner();

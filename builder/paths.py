@@ -379,3 +379,8 @@ def _model_defaults_path():
     defaults_folder = os.path.join(folder_paths.get_output_directory(), "VRGDG_Model_Defaults")
     os.makedirs(defaults_folder, exist_ok=True)
     return os.path.join(defaults_folder, "model_defaults.json")
+
+
+def _global_llm_keys_path():
+    """API keys kept for every project. A separate file from the model defaults, never copied into a project."""
+    return os.path.join(os.path.dirname(_model_defaults_path()), "llm_keys.json")

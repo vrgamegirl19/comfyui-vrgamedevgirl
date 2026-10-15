@@ -1,5 +1,6 @@
 import { errorLogContext, errorLogHeaders, reportProjectError } from "./error_log.mjs";
 import { api } from "../../../scripts/api.js";
+import { globalLlmKeysForSave } from "./llm_global_keys.mjs";
 import { app } from "../../../scripts/app.js";
 
 let builderAutomaticMemoryCleanupEnabled = false;
@@ -124,9 +125,11 @@ let builderSessionSaveRevision = 0;
 
 export function saveBuilderSessionJson(payload, timeoutMs = 60000) {
   const revision = ++builderSessionSaveRevision;
+  const globalLlmKeys = globalLlmKeysForSave();
   payload.session = {
     ...(payload.session || {}),
     builder_save_revision: revision,
+    ...(globalLlmKeys ? { global_llm_keys: globalLlmKeys } : {}),
   };
   const save = () => postJson("/vrgdg/music_builder/save_session", payload, timeoutMs);
   const result = builderSessionSaveQueue.then(save, save).then((data) => {

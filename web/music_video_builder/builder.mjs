@@ -1,5 +1,6 @@
 import { api } from "../../../scripts/api.js";
 import "./prompt_creator.mjs";
+import { applyGlobalLlmKeys, bindGlobalLlmKeys, rememberGlobalLlmKeys } from "./llm_global_keys.mjs";
 import { createMusicVideoBuilderLuts } from "../VRGDG_MusicVideoBuilderLUTs.js";
 import { createPostProcessComparePreview } from "../VRGDG_PostProcessComparePreview.js";
 import { createFaceFixTool } from "../VRGDG_FaceFixUI.js?v=20260716-1";
@@ -1108,6 +1109,12 @@ export function openBuilder(node, options = {}) {
     isRestoringHistory: false,
     batchCancelled: false,
   };
+  // API keys kept for every project: bound to the state, and filled in now for the LLM runner and ElevenLabs.
+  bindGlobalLlmKeys(state);
+  getJson("/vrgdg/music_builder/model_defaults").then((data) => {
+    rememberGlobalLlmKeys(data?.global_llm_keys);
+    applyGlobalLlmKeys(state);
+  }).catch(() => {});
   // A floating window with the MiniMax prompt fields, opened by a checkbox at the top of the right panel.
   const llmPopout = createLlmPopout({
     state, inspector, overlay,
