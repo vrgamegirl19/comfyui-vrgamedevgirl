@@ -70,6 +70,15 @@ class CreateProjectTests(unittest.TestCase):
         for key, value in self.saved_defaults.items():
             self.assertEqual(after.get(key), value, f"saved default '{key}' was changed")
 
+    def test_every_llm_runner_setting_is_a_global_default(self):
+        session = {
+            "llm_api_provider": "openai", "llm_api_model": "gpt-x", "own_server_url": "http://127.0.0.1:8000/v1",
+            "own_server_model": "m", "own_server_output_token_limit": 4096, "own_server_timeout": 900,
+            "llm_api_key_project": "secret", "own_server_api_key_project": "secret",
+        }
+        defaults = builder_project._extract_model_defaults(session)
+        self.assertEqual(defaults, {k: v for k, v in session.items() if not k.endswith("_key_project")})
+
 
 if __name__ == "__main__":
     unittest.main()
