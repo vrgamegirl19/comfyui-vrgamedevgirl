@@ -2283,7 +2283,7 @@ export function openBuilder(node, options = {}) {
     i2vMmprojSelect, i2vPrompt, i2vTextGemmaModelSelect, idLoraGemmaNotesForSegment, idLoraSceneContext,
     img2imgContinuityEnabled, krea2TwoPassCreateT2IButton, llmApiVisionModelSelected,
     miniMaxCreatePromptButton, miniMaxGemmaModelSelect, miniMaxH3CreativePromptContextForSegment,
-    miniMaxH3ModeForSegment, miniMaxH3PromptCharacterBudget, miniMaxH3PromptVisionImages,
+    miniMaxH3CutPlanForSegment, miniMaxH3ModeForSegment, miniMaxH3PromptCharacterBudget, miniMaxH3PromptVisionImages,
     miniMaxH3PromptVisionImagesForRunner, miniMaxH3SceneImageIsPromptInspiration,
     miniMaxH3SceneImageUseForSegment, miniMaxH3SettingsForSegment, miniMaxH3VocalCueMapText,
     miniMaxMmprojSelect, miniMaxOrderedImageReferenceItemsForSegment, miniMaxPrompt,

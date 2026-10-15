@@ -40,7 +40,7 @@ export function createBatchPrompts({
   hasFirstLastFrameEndImage, i2vAutoChainEnabled, i2vGemmaModelSelect, i2vMmprojSelect, i2vPrompt,
   i2vTextGemmaModelSelect, idLoraGemmaNotesForSegment, idLoraSceneContext, img2imgContinuityEnabled,
   krea2TwoPassCreateT2IButton, llmApiVisionModelSelected, miniMaxCreatePromptButton, miniMaxGemmaModelSelect,
-  miniMaxH3CreativePromptContextForSegment, miniMaxH3FrameContinuityPromptEnabled, miniMaxH3ModeForSegment,
+  miniMaxH3CreativePromptContextForSegment, miniMaxH3CutPlanForSegment, miniMaxH3FrameContinuityPromptEnabled, miniMaxH3ModeForSegment,
   miniMaxH3PromptCharacterBudget, miniMaxH3PromptVisionImages, miniMaxH3PromptVisionImagesForRunner,
   miniMaxH3SceneImageIsPromptInspiration, miniMaxH3SceneImageUseForSegment, miniMaxH3SettingsForSegment,
   miniMaxH3VocalCueMapText, miniMaxMmprojSelect, miniMaxOrderedImageReferenceItemsForSegment, miniMaxPrompt,
