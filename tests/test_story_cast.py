@@ -331,7 +331,9 @@ class UserPlacesMatchingTests(unittest.TestCase):
         self.assertIn("Places already made", acts)
         self.assertIn("- Back Porch: Peeling paint.", acts)
         self.assertEqual(story_plan._snap_to_made_place(story_book.made_place_cards(data, "setting_home"), "the porch"), "Back Porch")
-        self.assertEqual(story_plan._snap_to_made_place(story_book.made_place_cards(data, "setting_home"), "Garage"), "Garage")
+        # A spot no card fits is left blank (the scene takes the spot before it), so the plan never adds a place.
+        self.assertEqual(story_plan._snap_to_made_place(story_book.made_place_cards(data, "setting_home"), "Garage"), "")
+        self.assertEqual(story_plan._snap_to_made_place([], "Garage"), "Garage", "with no cards yet the spot is kept")
 
     def test_scene_plan_and_acts_prompts_carry_the_places(self):
         prompts = importlib.import_module(f"{ROOT.name}.llm.prompts.story_mode")

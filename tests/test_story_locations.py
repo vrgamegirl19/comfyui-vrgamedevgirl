@@ -122,6 +122,27 @@ class StoryLocationTests(unittest.TestCase):
                          ["setting_beach_at_first_light", "setting_small_days"])
         self.assertEqual([item["name"] for item in result["locations"]], ["Beach at First Light", "Small Days"])
 
+    def test_map_only_makes_no_card_and_maps_every_scene_to_an_existing_one(self):
+        ids = ["s1", "s2", "s3", "s4"]
+        layer = layer_with_plan(ids)
+        cards = [
+            {"id": "loc_k", "name": "Home - Kitchen", "story_setting_id": "setting_home", "description": "Kitchen."},
+            {"id": "loc_t", "name": "The Night Train - Sleeper Car", "story_setting_id": "setting_the_night_train", "description": "Car."},
+        ]
+
+        def no_llm(*args, **kwargs):
+            raise AssertionError("map_only must not call the LLM")
+
+        with patch.object(locations, "_run", no_llm):
+            result = locations.build_story_locations({
+                "story_layer": layer, "scenes": [{"id": sid} for sid in ids], "map_only": True,
+                "reference_builder": {"locations": cards}})
+        by_name = {item["name"]: item for item in result["locations"]}
+        self.assertEqual(sorted(by_name), ["Home - Kitchen", "The Night Train - Sleeper Car"], "Bedroom had no card, so no card is made")
+        self.assertEqual(by_name["Home - Kitchen"]["scene_ids"], ["s1", "s2"])
+        self.assertEqual(by_name["The Night Train - Sleeper Car"]["scene_ids"], ["s3", "s4"])
+        self.assertTrue(all(not item["description"] for item in result["locations"]))
+
     def test_needs_a_plan(self):
         with self.assertRaises(ValueError):
             locations.build_story_locations({"story_layer": {}, "scenes": [{"id": "s1"}]})

@@ -392,15 +392,16 @@ export function createStoryBuilder({
     progress.close(1200);
     // The places already have their cards (4. Places), so planned scenes are mapped to them right away.
     const madeCards = (normalizeFluxReferenceBuilder(state.fluxReferenceBuilder).locations || []).some((item) => item?.story_setting_id);
-    if (done && (madeCards || String(layer().story_user_locations || "").trim())) await buildPlaces({ title: "Mapping the scenes to their places" });
+    if (done && (madeCards || String(layer().story_user_locations || "").trim())) await buildPlaces({ title: "Mapping the scenes to their places", mapOnly: true });
     return done;
   }
 
   // Runs the locations step, merges the cards into the Reference Builder and maps every planned scene to its place.
-  // Before any scene is planned it only makes cards for the places listed in the Story tab. Returns the merge result.
-  async function buildPlaces({ styleTheme = null, regenerate = false, title = "Building the locations" } = {}) {
+  // Before any scene is planned it only makes cards for the places listed in the Story tab. With mapOnly (after planning)
+  // it makes no card at all: scenes are mapped to the cards that exist. Returns the merge result.
+  async function buildPlaces({ styleTheme = null, regenerate = false, title = "Building the locations", mapOnly = false } = {}) {
     const theme = styleTheme ?? normalizeFluxReferenceBuilder(state.fluxReferenceBuilder).location_style_theme ?? "";
-    const data = await runStep("locations", { style_theme: theme, regenerate_looks: regenerate }, title);
+    const data = await runStep("locations", { style_theme: theme, regenerate_looks: regenerate, map_only: mapOnly }, title);
     if (!data?.locations) return null;
     pushHistory();
     const merged = applyStoryLocations(normalizeFluxReferenceBuilder(state.fluxReferenceBuilder), data.locations, (taken) => {

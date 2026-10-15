@@ -159,14 +159,44 @@ def _name_unassigned_chapters(layer):
     return {"story_book": book, "story_book_text": story_book_to_text(book, settings), "story_settings": settings}
 
 
+def _map_scenes_to_made_cards(payload, groups, settings):
+    """Maps every planned scene to a location card that already exists. No card, look or description is made: a spot
+    with no card of its own takes the first card of its setting."""
+    refs = payload.get("reference_builder") or payload.get("referenceBuilder") or {}
+    cards = [card for card in (refs.get("locations") if isinstance(refs, dict) else None) or [] if isinstance(card, dict)]
+    locations = []
+    for group in groups:
+        made = [(str(card.get("name") or "").strip(), card) for card in cards
+                if str(card.get("name") or "").strip() and (not group["setting_id"] or str(card.get("story_setting_id") or "") == group["setting_id"])]
+        for spot in group["spots"]:
+            name = next((card_name for card_name, _card in made if card_name.lower() == spot["card_name"].lower()), "")
+            if not name:
+                place = match_user_place([(card_name, card_name) for card_name, _card in made], spot["name"], spot["card_name"])
+                name = place[1] if place else (made[0][0] if made else "")
+            if not name:
+                continue
+            existing = next((item for item in locations if item["name"].lower() == name.lower()), None)
+            if existing is None:
+                existing = {"name": name, "description": "", "story_setting_id": group["setting_id"],
+                            "story_act_ids": [], "scene_ids": []}
+                locations.append(existing)
+            existing["story_act_ids"] += [a for a in spot["act_ids"] if a not in existing["story_act_ids"]]
+            existing["scene_ids"] += spot["scene_ids"]
+    return {"story_layer": {"story_settings": settings}, "locations": locations, "runner": "", "used_model": ""}
+
+
 def build_story_locations(payload, progress=None):
-    """Looks for settings without one (all with ``regenerate_looks``) and a card for every spot in the scene plan."""
+    """Looks for settings without one (all with ``regenerate_looks``) and a card for every spot in the scene plan.
+
+    With ``map_only`` and a scene plan, nothing is made: each scene is only mapped to a card that already exists."""
     layer = _normalize_story_layer(payload.get("story_layer") or payload.get("storyLayer") or {})
     scenes = payload.get("scenes") if isinstance(payload.get("scenes"), list) else []
     scene_ids = [str(scene.get("id") or f"scene_{i + 1}") for i, scene in enumerate(scenes) if isinstance(scene, dict)]
     groups = spot_groups(layer, scene_ids)
     settings = normalize_story_settings(layer.get("story_settings"))
     own_places = user_places(payload)
+    if payload.get("map_only") and groups:
+        return _map_scenes_to_made_cards(payload, groups, settings)
     style_theme = _clean_scene_text(payload.get("style_theme") or "", 3000)
     # Before any scene is planned the places come from the story itself: the places inside each chapter setting,
     # found by the LLM, plus the user's own list. The acts and the scene plan then work inside these cards.

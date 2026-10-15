@@ -205,8 +205,8 @@ MADE_PLACES_RULE_FOR_ACTS = (
 )
 MADE_PLACES_RULE_FOR_SPOTS = (
     "Places: a spot must be one of the places listed under 'Places already made'. Write its name exactly as listed. "
-    "Choose the one the act's summary and the story action put the scene in. Use a spot of your own only when none "
-    "of the listed places can hold the action."
+    "Choose the one the act's summary and the story action put the scene in. Never invent a spot: when no place fits "
+    "exactly, take the closest listed place."
 )
 
 

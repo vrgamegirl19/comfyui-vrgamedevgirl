@@ -277,9 +277,12 @@ def style_performance(performance, style):
 
 
 def _snap_to_made_place(made_cards, spot):
-    """The made place card a spot names (``Kitchen`` for ``The kitchen``), or the spot as written when none fits."""
+    """The made place card a spot names (``Kitchen`` for ``The kitchen``). When place cards exist and none fits, the
+    spot is left blank, so the scene takes the spot before it: the plan never adds a place of its own."""
     place = match_user_place(made_cards, spot) if spot and made_cards else None
-    return place[0] if place else spot
+    if place:
+        return place[0]
+    return "" if made_cards else spot
 
 
 def build_story_scene_plan(payload, progress=None):
