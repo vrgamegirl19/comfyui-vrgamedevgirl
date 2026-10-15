@@ -482,7 +482,9 @@ export function createAudioMask({
   const useCheck = makeCheckbox("Render this scene with the masked mix (the finished clip gets the real audio back)", false);
   const buildInfo = note("");
   const removeButton = makeButton("Remove stems");
-  buildBox.append(line(buildButton), line(previewSelect, previewPlayButton, previewStopButton), useCheck.wrapper, buildInfo, line(removeButton));
+  const rebuildAllButton = makeButton("Rebuild stems for all scenes");
+  rebuildAllButton.title = "Split every scene's audio into stems again with the model and input gain above, then rebuild each masked mix. Your mute, level and region settings are kept.";
+  buildBox.append(line(buildButton), line(previewSelect, previewPlayButton, previewStopButton), useCheck.wrapper, buildInfo, line(removeButton, rebuildAllButton));
 
   // ---- window state ----
   let open = false;
@@ -661,6 +663,61 @@ export function createAudioMask({
   buildButton.onclick = () => {
     const item = loaded();
     if (item) run("Building the masked mix...", () => buildScene(item));
+  };
+  // Splits every scene again, one at a time, and rebuilds its mix. A scene that fails is skipped and reported at the end.
+  let rebuildingAll = false;
+  let stopRebuildAll = false;
+  rebuildAllButton.onclick = async () => {
+    if (rebuildingAll) {
+      stopRebuildAll = true;
+      rebuildAllButton.textContent = "Stopping after this scene...";
+      return;
+    }
+    if (busy) return;
+    const scenes = (state.segments || []).filter((item) => item?.id && sceneSource(item).audioPath && sceneSource(item).duration >= 0.25);
+    if (!scenes.length) {
+      toast("There are no scenes with audio to split.", true);
+      return;
+    }
+    if (!window.confirm(`Split all ${scenes.length} scenes into stems again and rebuild their masked mixes? Your mute, level and region settings are kept. This can take a while.`)) return;
+    rebuildingAll = true;
+    stopRebuildAll = false;
+    rebuildAllButton.textContent = "Stop rebuilding";
+    const model = modelSelect.value;
+    const gain = clamp(finite(gainInput.value, 0), -24, 24);
+    const failed = [];
+    let done = 0;
+    await run("Rebuilding stems for all scenes...", async () => {
+      await prepareEditedAudio(state, folder(), { generation: true });
+      for (const item of scenes) {
+        if (stopRebuildAll) break;
+        setStatus(`Rebuilding stems: ${sceneName(item)} (${done + 1} of ${scenes.length})...`);
+        try {
+          const source = sceneSource(item);
+          const result = await postJson("/vrgdg/music_builder/audio_mask/separate", {
+            project_folder: folder(), scene_id: item.id, audio_path: source.audioPath, start_seconds: source.start,
+            duration_seconds: source.duration, model_name: model, input_gain_db: gain,
+          }, 900000);
+          cache.set(item.id, result);
+          changeSettings(item, (next) => {
+            next.model_name = model;
+            next.input_gain_db = gain;
+          });
+          await buildScene(item);
+        } catch (error) {
+          failed.push(`${sceneName(item)}: ${String(error?.message || error)}`);
+        }
+        done += 1;
+      }
+    });
+    rebuildingAll = false;
+    rebuildAllButton.textContent = "Rebuild stems for all scenes";
+    autoFailed.clear();
+    autoMixFailed.clear();
+    const skipped = scenes.length - done;
+    const summary = `Stems rebuilt for ${done - failed.length} of ${scenes.length} scenes${skipped ? ` (stopped, ${skipped} not done)` : ""}.`;
+    toast(failed.length ? [summary, "Failed:", ...failed].join("\n") : summary, failed.length > 0);
+    refreshWindow();
   };
   removeButton.onclick = () => {
     const item = loaded();

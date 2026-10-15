@@ -85,6 +85,7 @@ globalThis.Audio = FakeAudio;
 
 const NAMES = ['vocals', 'drums', 'bass', 'guitar', 'piano', 'other'];
 const server = {};
+const separated = [];
 let now = 1000;
 function sceneState(id) {
   const s = server[id];
@@ -102,6 +103,10 @@ Object.assign(globalThis.fakeComfyApi ||= {}, {
       for (const name of NAMES) { const i = body.stems[name] || {}; stems[name] = { mask: !!i.mask, regions: i.regions || [], db: Number(i.db) || 0, mute: !!i.mute }; }
       server[body.scene_id].mix = { stems, built_at: ++now };
       data = sceneState(body.scene_id);
+    } else if (url.endsWith('/audio_mask/separate')) {
+      separated.push(body.scene_id);
+      server[body.scene_id].mix = null; // a new split removes the old masked mix
+      data = sceneState(body.scene_id);
     } else if (url.endsWith('/audio_mask/list')) data = { ok: true, scene_ids: Object.keys(server) };
     return { ok: true, status: 200, headers: { get: () => null }, json: async () => data };
   },
@@ -115,7 +120,8 @@ const state = { segments, overlaySegments: [], audioMaskAuto: { enabled: false }
 const mainAudio = new FakeAudio('main'); const mainSceneAudio = new FakeAudio('scene');
 let playing = false; let globalTime = 1; let active = segments[0];
 const button = document.createElement('button'); const monitorButton = document.createElement('button'); const visibilityButton = document.createElement('button');
-createAudioMask({ button, monitorButton, visibilityButton, overlay: document.createElement('div'), state, activeSegment: () => active,
+const overlay = document.createElement('div');
+createAudioMask({ button, monitorButton, visibilityButton, overlay, state, activeSegment: () => active,
   currentProjectAudioPath: () => 'c:/Users/x/a.wav', getProjectFolder: () => 'C:/proj', autoSaveSessionQuiet: async () => true,
   currentGlobalTime: () => globalTime, isTimelinePlaying: () => playing, audio: mainAudio, sceneAudio: mainSceneAudio });
 
@@ -149,5 +155,18 @@ test('the main audio is silenced only while the scene stem mix is playing', asyn
   assert.equal(mainSceneAudio.volume, 1);
   FakeAudio.loading = false; await sleep(400);
   assert.equal(mainAudio.volume, 0);
+});
+test('Rebuild stems for all scenes splits and rebuilds every scene and keeps the mute settings', async () => {
+  globalThis.window.confirm = () => true;
+  const button = overlay.all().find((node) => node.textContent === 'Rebuild stems for all scenes');
+  assert.ok(button, 'the button is in the Audio Mask window');
+  const mutedBefore = segments.map(muted);
+  playing = false;
+  await button.onclick();
+  assert.deepEqual(separated, ['s1', 's2', 's3']);
+  for (const segment of segments) assert.ok(server[segment.id].mix, 'the mix of ' + segment.id + ' is built again');
+  assert.deepEqual(segments.map(muted), mutedBefore);
+  assert.deepEqual(Object.entries(server.s1.mix.stems).filter(([, value]) => value.mute).map(([name]) => name), ['drums']);
+  assert.equal(button.textContent, 'Rebuild stems for all scenes');
 });
 after(() => process.exit(process.exitCode || 0));
