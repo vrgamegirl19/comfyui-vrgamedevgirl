@@ -858,7 +858,7 @@ export function createAudioMask({
   // ---- hear the stem mix from the timeline ----
   // With "Hear Stems" on, a timeline that plays through a scene with a built masked mix plays that mix, in step with the
   // playhead, and silences the main audio for that scene only. Other scenes keep their main audio.
-  const monitor = { sceneId: "", builtAt: 0, element: null };
+  const monitor = { sceneId: "", element: null };
   const building = new Set();
   let savedVolumes = null;
 
@@ -879,6 +879,35 @@ export function createAudioMask({
     monitorButton.textContent = on ? "Hear Stems ●" : "Hear Stems";
     monitorButton.style.borderColor = on ? "#22d3ee" : "";
     monitorButton.style.background = on ? "#0e7490" : "";
+  }
+
+  // The Audio element of a scene's current masked mix. Elements are kept for a few scenes so a scene that was just
+  // heard, or is about to start, plays at once instead of loading again.
+  const monitorElements = new Map();
+  function monitorElement(item, data) {
+    const path = data?.files?.masked_mix;
+    if (!path) return null;
+    const key = `${item.id}|${Number(data.mix?.built_at) || 0}`;
+    let element = monitorElements.get(key);
+    if (element) {
+      monitorElements.delete(key);
+    } else {
+      element = new Audio(audioUrl(path));
+      element.preload = "auto";
+      element.addEventListener("loadedmetadata", () => {
+        if (monitor.element === element && element.paused === false) element.currentTime = Math.max(0, Number(currentGlobalTime()) - item.start);
+      });
+      element.addEventListener("error", () => {
+        if (monitor.element === element) restoreMainAudio();
+      });
+    }
+    monitorElements.set(key, element);
+    while (monitorElements.size > 4) {
+      const [oldKey, oldElement] = monitorElements.entries().next().value;
+      if (oldElement !== monitor.element) oldElement.pause();
+      monitorElements.delete(oldKey);
+    }
+    return element;
   }
 
   function monitorTick() {
@@ -902,27 +931,38 @@ export function createAudioMask({
       stopMonitor();
       return;
     }
-    const path = data.files?.masked_mix;
-    const builtAt = Number(data.mix?.built_at) || 0;
-    if (!path) {
+    const element = monitorElement(item, data);
+    if (!element) {
       stopMonitor();
       return;
     }
-    if (!monitor.element || monitor.sceneId !== item.id || monitor.builtAt !== builtAt) {
+    if (monitor.element !== element) {
       if (monitor.element) monitor.element.pause();
-      monitor.element = new Audio(audioUrl(path));
+      // A scene whose mix is still loading must not silence the main audio, so going back to a scene never leaves silence.
+      restoreMainAudio();
+      monitor.element = element;
       monitor.sceneId = item.id;
-      monitor.builtAt = builtAt;
     }
-    if (!savedVolumes) savedVolumes = { audio: mainAudio.volume, sceneAudio: mainSceneAudio.volume };
-    mainAudio.volume = 0;
-    mainSceneAudio.volume = 0;
     const offset = now - item.start;
-    if (monitor.element.paused) {
-      monitor.element.currentTime = offset;
-      monitor.element.play().catch(() => null);
-    } else if (Math.abs(monitor.element.currentTime - offset) > 0.15) {
-      monitor.element.currentTime = offset;
+    if (element.paused) {
+      if (element.readyState >= 1) element.currentTime = offset;
+      element.play().catch(() => restoreMainAudio());
+    } else if (element.readyState >= 3 && Math.abs(element.currentTime - offset) > 0.15) {
+      element.currentTime = offset;
+    }
+    // Load the next scene's mix before it is needed.
+    if (item.end - now < 2) {
+      const next = (state.segments || []).find((candidate) => Math.abs(candidate.start - item.end) < 0.05 && cache.get(candidate.id)?.exists);
+      const nextData = next ? cache.get(next.id) : null;
+      if (next && !splitStale(next, nextData) && !mixStale(next, nextData)) monitorElement(next, nextData);
+    }
+    // Only a stem mix that is actually playing replaces the main audio.
+    if (element.readyState >= 3 && !element.paused) {
+      if (!savedVolumes) savedVolumes = { audio: mainAudio.volume, sceneAudio: mainSceneAudio.volume };
+      mainAudio.volume = 0;
+      mainSceneAudio.volume = 0;
+    } else {
+      restoreMainAudio();
     }
   }
 
