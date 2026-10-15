@@ -179,7 +179,19 @@ export function createAudioMask({
       throw new Error("Audio changed after splitting stems. Split the scene again before building its mask.");
     }
     const settings = maskSettings(item);
-    const data = await postJson("/vrgdg/music_builder/audio_mask/render", { project_folder: folder(), scene_id: item.id, stems: settings.stems }, 120000);
+    let data;
+    try {
+      data = await postJson("/vrgdg/music_builder/audio_mask/render", { project_folder: folder(), scene_id: item.id, stems: settings.stems }, 120000);
+    } catch (error) {
+      // The files are gone on disk while the page still believed they exist. Forget them so the scene is split again
+      // (Auto stems) instead of every later edit failing the same way.
+      if (/Split this scene/i.test(String(error?.message || ""))) {
+        console.warn(`[VRGDG Audio Mask] ${item.id}: the stems are missing on disk, forgetting them.`);
+        cache.set(item.id, { ok: true, exists: false, scene_id: item.id });
+        setStemLanes(item.id, null);
+      }
+      throw error;
+    }
     cache.set(item.id, data);
     publish(item);
     return data;
@@ -210,13 +222,14 @@ export function createAudioMask({
   // The stems no longer fit the scene (its length, start or audio changed, as when scenes are merged, split or resized):
   // remove them as if the mask had been deleted.
   async function removeStems(item, reason) {
+    console.warn(`[VRGDG Audio Mask] ${item.id}: removing the stems and mask settings (${reason}).`, { source: sceneSource(item), separation: cache.get(item.id)?.separation });
     cache.delete(item.id);
     delete item.audio_mask;
     setStemLanes(item.id, null);
     saveSoon();
     refreshButton();
     try {
-      await postJson("/vrgdg/music_builder/audio_mask/delete", { project_folder: folder(), scene_id: item.id }, 60000);
+      await postJson("/vrgdg/music_builder/audio_mask/delete", { project_folder: folder(), scene_id: item.id, reason: String(reason || "") }, 60000);
     } catch {
       // Files left behind are removed by the orphan check below.
     }
@@ -263,6 +276,13 @@ export function createAudioMask({
       const ids = Array.isArray(listed.scene_ids) ? listed.scene_ids : [];
       const current = new Set([...(state.segments || []), ...(state.overlaySegments || [])].map((item) => item.id));
       const now = Date.now();
+      // None of the stems on disk belongs to a scene on this page: this page is looking at other scenes, so it must not
+      // judge them. Stems are only ever swept away when some of them still match.
+      if (ids.length && ids.every((id) => !current.has(id))) {
+        console.warn("[VRGDG Audio Mask] The stems on disk match none of the scenes on this page, so none are removed.");
+        orphanSince.clear();
+        return;
+      }
       for (const id of [...orphanSince.keys()]) if (!ids.includes(id) || current.has(id)) orphanSince.delete(id);
       for (const id of ids) {
         if (current.has(id)) continue;
@@ -272,7 +292,7 @@ export function createAudioMask({
         orphanSince.delete(id);
         cache.delete(id);
         setStemLanes(id, null);
-        await postJson("/vrgdg/music_builder/audio_mask/delete", { project_folder: projectFolder, scene_id: id }, 60000);
+        await postJson("/vrgdg/music_builder/audio_mask/delete", { project_folder: projectFolder, scene_id: id, reason: "scene no longer exists" }, 60000);
       }
     } catch {
       // Tried again at the next check.

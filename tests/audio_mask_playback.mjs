@@ -99,6 +99,7 @@ Object.assign(globalThis.fakeComfyApi ||= {}, {
     if (url.endsWith('/audio_mask/state')) data = sceneState(body.scene_id);
     else if (url.endsWith('/audio_mask/states')) data = { ok: true, states: Object.fromEntries(body.scene_ids.map((id) => [id, sceneState(id)])) };
     else if (url.endsWith('/audio_mask/render')) {
+      if (server[body.scene_id].missing) return { ok: false, status: 400, headers: { get: () => null }, json: async () => ({ ok: false, error: "Split this scene's audio into stems first." }) };
       const stems = {};
       for (const name of NAMES) { const i = body.stems[name] || {}; stems[name] = { mask: !!i.mask, regions: i.regions || [], db: Number(i.db) || 0, mute: !!i.mute }; }
       server[body.scene_id].mix = { stems, built_at: ++now };
@@ -168,5 +169,13 @@ test('Rebuild stems for all scenes splits and rebuilds every scene and keeps the
   assert.deepEqual(segments.map(muted), mutedBefore);
   assert.deepEqual(Object.entries(server.s1.mix.stems).filter(([, value]) => value.mute).map(([name]) => name), ['drums']);
   assert.equal(button.textContent, 'Rebuild stems for all scenes');
+});
+test('stems that vanished from disk are forgotten so the scene is split again, not failed on every edit', async () => {
+  server.s2.missing = true; // the files are gone on the server, the page still lists them
+  playing = false;
+  store.requestStemEdit('s2', 'vocals', { mute: true });
+  await sleep(2200);
+  assert.equal(store.getStemLanes('s2'), null, 's2 no longer shows stems that are not there');
+  server.s2.missing = false;
 });
 after(() => process.exit(process.exitCode || 0));
