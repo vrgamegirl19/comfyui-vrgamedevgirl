@@ -417,7 +417,7 @@ export function createStoryBuilder({
 
   // Writes new beats, then new video prompts, for these scenes from their current plan, so 7. Beats & Prompts shows the change.
   // Kept while the page is open: whether planning in the Scenes tab also rewrites those scenes' beats and prompts.
-  let writeAfterPlan = true;
+  let writeAfterPlan = false;
   async function writeBeatsAndPrompts(targets, { beats = true, prompts = true } = {}) {
     if (!targets.length) return;
     if (beats) {
@@ -1200,7 +1200,7 @@ export function createStoryBuilder({
       writeBox.type = "checkbox";
       writeBox.checked = writeAfterPlan;
       writeBox.onchange = () => { writeAfterPlan = writeBox.checked; };
-      writeLabel.append(writeBox, document.createTextNode("After planning or updating a scene, also write its new beat and video prompt (shown in 7. Beats & Prompts)"));
+      writeLabel.append(writeBox, document.createTextNode("After planning or updating a scene, also write its new beat and video prompt now (off: run them from 7. Beats & Prompts)"));
       top.append(topActions, loopLabel, writeLabel);
       content.append(top);
 
