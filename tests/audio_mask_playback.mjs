@@ -107,6 +107,7 @@ Object.assign(globalThis.fakeComfyApi ||= {}, {
     } else if (url.endsWith('/audio_mask/separate')) {
       separated.push(body.scene_id);
       server[body.scene_id].mix = null; // a new split removes the old masked mix
+      server[body.scene_id].missing = false;
       data = sceneState(body.scene_id);
     } else if (url.endsWith('/audio_mask/list')) data = { ok: true, scene_ids: Object.keys(server) };
     return { ok: true, status: 200, headers: { get: () => null }, json: async () => data };
@@ -170,12 +171,15 @@ test('Rebuild stems for all scenes splits and rebuilds every scene and keeps the
   assert.deepEqual(Object.entries(server.s1.mix.stems).filter(([, value]) => value.mute).map(([name]) => name), ['drums']);
   assert.equal(button.textContent, 'Rebuild stems for all scenes');
 });
-test('stems that vanished from disk are forgotten so the scene is split again, not failed on every edit', async () => {
+test('stems that vanished from disk are forgotten and split again by Auto stems, not failed on every edit', async () => {
   server.s2.missing = true; // the files are gone on the server, the page still lists them
+  separated.length = 0;
   playing = false;
+  state.audioMaskAuto = { enabled: true, model_name: 'htdemucs_6s', input_gain_db: 0 };
   store.requestStemEdit('s2', 'vocals', { mute: true });
-  await sleep(2200);
-  assert.equal(store.getStemLanes('s2'), null, 's2 no longer shows stems that are not there');
-  server.s2.missing = false;
+  await sleep(7500); // the rebuild fails once, then Auto stems waits out the playback pause and splits the scene
+  assert.ok(separated.includes('s2'), 's2 was split again');
+  assert.ok(store.getStemLanes('s2'), 's2 shows its stems again');
+  assert.ok(server.s2.mix, 'and its mix was built');
 });
 after(() => process.exit(process.exitCode || 0));
