@@ -4,7 +4,7 @@ import {
 } from "./audio_mask_store.mjs";
 import { audioUrl, postJson } from "./comfy_api.mjs";
 import { makeButton, makeCheckbox, makeInput, makeSelect, toast } from "./controls.mjs";
-import { audioSourceStart, timelineSegmentDuration } from "./timeline_state.mjs";
+import { audioSourceStart, mediaPathKey, timelineSegmentDuration } from "./timeline_state.mjs";
 import { prepareEditedAudio, speakingAudioEditsActive } from "./audio_clip_editor.mjs";
 
 // Audio Mask. A scene's audio is split into stems (vocals, drums, bass, other, and with the 6 stem model also guitar and
@@ -135,7 +135,8 @@ export function createAudioMask({
     const source = sceneSource(item);
     return Math.abs(Number(separation.duration_seconds) - source.duration) > 0.02
       || Math.abs(Number(separation.start_seconds) - source.start) > 0.02
-      || String(separation.source_path || "") !== source.audioPath;
+      // The server stores the path in its own form (backslashes, absolute), the page may hold another spelling of it.
+      || mediaPathKey(separation.source_path) !== mediaPathKey(source.audioPath);
   }
 
   function mixStale(item, data) {
@@ -191,7 +192,8 @@ export function createAudioMask({
     if (!(maskSettings(item).enabled || normalizeAudioMaskAuto(state.audioMaskAuto).enabled) || !data?.exists || splitStale(item, data)) return;
     rebuildTimers.set(item.id, window.setTimeout(async () => {
       const latest = cache.get(item.id);
-      if (!mixStale(item, latest)) return;
+      // Stems that were removed in the meantime cannot be mixed.
+      if (!latest?.exists || !mixStale(item, latest)) return;
       if (busy) {
         scheduleRebuild(item);
         return;
