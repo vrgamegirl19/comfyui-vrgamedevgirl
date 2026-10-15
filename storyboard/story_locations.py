@@ -18,7 +18,13 @@ from ..llm.prompts.story_mode import (
 )
 from .scene_helpers import _clean_scene_text, _normalize_story_layer
 from .story_book import _run, cast_lines, match_user_place, story_template, user_places, user_places_text
-from .story_mode import normalize_story_book, normalize_story_settings
+from .story_mode import (
+    normalize_story_book,
+    normalize_story_settings,
+    setting_id,
+    story_book_to_text,
+    sync_story_settings,
+)
 
 
 def card_name(setting_name, spot):
@@ -133,6 +139,26 @@ def _find_book_spots(payload, groups, own_places, style_theme):
     return run_info
 
 
+def _name_unassigned_chapters(layer):
+    """Story layer fields that give every chapter without a setting one named after its title.
+
+    The LLM sometimes writes the story without ``Setting:`` lines. The places are still found inside each chapter, so
+    the chapter title stands in as its setting. Returns ``{}`` when no chapter is missing a setting.
+    """
+    book = normalize_story_book(layer.get("story_book"))
+    names, changed = {}, False
+    for chapter in book["chapters"]:
+        if chapter["setting_id"] or not chapter["title"]:
+            continue
+        chapter["setting_id"] = setting_id(chapter["title"])
+        names.setdefault(chapter["setting_id"], chapter["title"])
+        changed = True
+    if not changed:
+        return {}
+    settings = sync_story_settings(book, names, layer.get("story_settings"))
+    return {"story_book": book, "story_book_text": story_book_to_text(book, settings), "story_settings": settings}
+
+
 def build_story_locations(payload, progress=None):
     """Looks for settings without one (all with ``regenerate_looks``) and a card for every spot in the scene plan."""
     layer = _normalize_story_layer(payload.get("story_layer") or payload.get("storyLayer") or {})
@@ -146,8 +172,15 @@ def build_story_locations(payload, progress=None):
     # found by the LLM, plus the user's own list. The acts and the scene plan then work inside these cards.
     from_book = not groups
     run_info = {}
+    named = {}
     if from_book:
         groups = _book_groups(layer, settings)
+        if not groups:
+            named = _name_unassigned_chapters(layer)
+            if named:
+                layer = {**layer, **named}
+                settings = named["story_settings"]
+                groups = _book_groups(layer, settings)
         if not groups:
             if own_places:
                 return _user_place_cards(own_places, settings)
@@ -251,7 +284,7 @@ def build_story_locations(payload, progress=None):
     if progress:
         progress(total, total, "done")
     return {
-        "story_layer": {"story_settings": settings},
+        "story_layer": {**named, "story_settings": settings},
         "locations": locations,
         "runner": run_info.get("runner", ""),
         "used_model": run_info.get("used_model", ""),

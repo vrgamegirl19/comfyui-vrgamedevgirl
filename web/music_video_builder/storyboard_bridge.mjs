@@ -53,6 +53,12 @@ export function createStoryboardBridge({
   // fields, so the Builder's Story Mode fields always win.
   function mergeStoryboardStoryLayer(incoming) {
     const classic = Object.fromEntries(Object.entries(incoming || {}).filter(([key]) => !STORY_MODE_KEYS.includes(key)));
+    // The premise is written in the Story tab. Scene Defaults and the Storyboard keep their own copy, which can be
+    // empty or older, so an empty premise from them never replaces the one already saved.
+    if (!String(classic.overall_story_idea ?? classic.overallStoryIdea ?? "").trim()) {
+      delete classic.overall_story_idea;
+      delete classic.overallStoryIdea;
+    }
     return normalizeBuilderStoryLayer({ ...state.builderStoryLayer, ...classic });
   }
 

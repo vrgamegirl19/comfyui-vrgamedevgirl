@@ -105,6 +105,23 @@ class StoryLocationTests(unittest.TestCase):
         self.assertEqual(result["story_layer"]["story_settings"][0]["look"], "A 1970s farmhouse, pine and warm lamplight.")
         self.assertEqual(result["story_layer"]["story_settings"][1]["look"], "Brass and green velvet.", "a user look is kept")
 
+    def test_story_without_setting_lines_uses_the_chapter_titles(self):
+        layer = {"story_flow_version": 2, "story_book": {"title": "T", "premise": "P", "chapters": [
+            {"id": "ch_1", "title": "Beach at First Light", "setting_id": "", "paragraphs": ["Tammy walks the beach."]},
+            {"id": "ch_2", "title": "Small Days", "setting_id": "", "paragraphs": ["Tammy paints the hallway."]},
+        ]}}
+
+        def failing_run(*args, **kwargs):
+            raise RuntimeError("no LLM in this test")
+
+        with patch.object(locations, "_run", failing_run):
+            result = locations.build_story_locations({"story_layer": layer, "scenes": []})
+        names = [item["name"] for item in result["story_layer"]["story_settings"]]
+        self.assertEqual(names, ["Beach at First Light", "Small Days"])
+        self.assertEqual([c["setting_id"] for c in result["story_layer"]["story_book"]["chapters"]],
+                         ["setting_beach_at_first_light", "setting_small_days"])
+        self.assertEqual([item["name"] for item in result["locations"]], ["Beach at First Light", "Small Days"])
+
     def test_needs_a_plan(self):
         with self.assertRaises(ValueError):
             locations.build_story_locations({"story_layer": {}, "scenes": [{"id": "s1"}]})

@@ -163,6 +163,10 @@ test("Explicit saves apply live scene edits and cleared prompts; exports preserv
   assert.equal(context.state.builderStoryLayer.overall_story_idea, "new");
   assert.equal(context.state.builderStoryLayer.story_book_text, "Chapter 1: Home");
   assert.deepEqual(context.state.builderStoryLayer.story_acts, [{ id: "act_1" }]);
+  // An empty premise from the Storyboard or Scene Defaults never erases the premise written in the Story tab.
+  apply({ scenes: [], story_layer: { overall_story_idea: "", user_story_arc: "arc 2" } });
+  assert.equal(context.state.builderStoryLayer.overall_story_idea, "new");
+  assert.equal(context.state.builderStoryLayer.user_story_arc, "arc 2");
   // The Storyboard's own file can hold an old copy of the acts and scene plan; the Builder's always win.
   apply({ scenes: [], story_layer: { overall_story_idea: "new", story_acts: [{ id: "old_act" }], story_scene_plan: [{ scene_id: "gone" }] } });
   assert.deepEqual(context.state.builderStoryLayer.story_acts, [{ id: "act_1" }]);
