@@ -1140,6 +1140,82 @@ def get_project_references(project_id: str) -> Dict[str, Any]:
     }
 
 
+SCENE_MAPPING_INCLUDES = ("scenes",)
+
+
+def _mapped_card(card: Dict[str, Any], map_name: str) -> Dict[str, Any]:
+    """One mapped card with its RefMod source (read from the file like the RefMod render) and its picture."""
+    from ..minimax import refmod_library
+    from ..minimax.refmod_scene import is_refmod_card
+
+    refmod = None
+    if is_refmod_card(card):
+        saved = card["refmod"]
+        name = str(saved.get("name") or "").strip()
+        entry = refmod_library.find_refmod(name)
+        try:
+            strength = min(1.0, max(0.0, float(saved.get("strength", 1.0))))
+        except (TypeError, ValueError):
+            strength = 1.0
+        refmod = {
+            "name": name, "found": entry is not None,
+            "kind": (entry or {}).get("kind") or str(saved.get("kind") or "video"),
+            "tokens": int((entry or {}).get("tokens") or saved.get("tokens") or 0), "strength": strength,
+        }
+    image = card.get("image") if isinstance(card.get("image"), dict) else {}
+    path = str(image.get("path") or "").strip()
+    default_type = {"locations": "environment", "ingredients": "ingredients"}.get(map_name, "character")
+    return {
+        "map": map_name,
+        "card_id": str(card.get("id") or ""),
+        "name": str(card.get("name") or ""),
+        "reference_type": str(card.get("reference_type") or default_type),
+        "source": "refmod" if refmod else "image",
+        "refmod": refmod,
+        "picture": {"path": path, "exists": os.path.isfile(path)} if path else None,
+    }
+
+
+def get_scene_reference_overview(project_id: str, scene_id: Optional[str] = None) -> Dict[str, Any]:
+    """Every scene (or one) with the cards its scene maps name, each with its RefMod source and picture. Read-only."""
+    from ..minimax.scene_inputs import _split_ids, scene_map_value
+
+    _folder, session = _get_active_session_and_folder(project_id)
+    refs = session.get("flux_reference_builder") if isinstance(session.get("flux_reference_builder"), dict) else {}
+    maps = {name: dict(_reference_map(copy.deepcopy(session), name)) for name in _REFERENCE_MAP_KEYS}
+    cards_by_map = {
+        "subjects": refs.get("subjects") or [], "locations": refs.get("locations") or [],
+        "extras": refs.get("extra_subjects") or [], "ingredients": refs.get("ingredients_sheets") or [],
+    }
+    by_id = {name: {str(c.get("id")): c for c in cards if isinstance(c, dict)} for name, cards in cards_by_map.items()}
+    segments = sorted(session.get("segments") or [], key=lambda s: float(s.get("start", 0.0) or 0.0))
+    if scene_id is not None:
+        _segment, wanted = _sorted_scene_with_index(session, scene_id, project_id)
+    scenes = []
+    for index, segment in enumerate(segments):
+        if scene_id is not None and index != wanted:
+            continue
+        cards = []
+        for map_name in ("subjects", "extras", "locations", "ingredients"):
+            value = scene_map_value(maps[map_name], segment, index)
+            if map_name == "extras":
+                ids = [str((e or {}).get("extra_id") or (e or {}).get("extraId") or "") for e in (value if isinstance(value, list) else [])]
+            else:
+                ids = _split_ids(value)
+            for card_id in ids:
+                card = by_id[map_name].get(card_id)
+                if card is not None:
+                    cards.append(_mapped_card(card, map_name))
+        scenes.append({
+            "scene_id": str(segment.get("id") or ""), "scene_number": index + 1, "label": str(segment.get("label") or ""),
+            "no_character_present": bool(segment.get("no_character_present")), "cards": cards,
+        })
+    engine = str(session.get("video_engine") or "minimax_h3").strip().lower()
+    pipeline = "refmod" if engine in ("minimax_h3", "minimax") and str(
+        (session.get("minimax_h3_settings") or {}).get("pipeline") or "") == "refmod" else "standard"
+    return {**maps, "pipeline": pipeline, "scenes": scenes}
+
+
 def upsert_reference_subject(
     project_id: str,
     subject_id: str,

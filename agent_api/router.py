@@ -108,6 +108,8 @@ from .mutations import (
     get_audio_waveform,
     get_project_lyrics,
     get_project_references,
+    get_scene_reference_overview,
+    SCENE_MAPPING_INCLUDES,
     get_project_story,
     get_prompt_context,
     create_timeline_note,
@@ -936,6 +938,15 @@ def register_agent_api_routes(server_instance=None):
     @_api_endpoint
     async def api_get_reference_mapping(request: web.Request):
         pid = request.match_info["pid"]
+        include = [k.strip() for k in str(request.query.get("include") or "").split(",") if k.strip()]
+        unknown = [k for k in include if k not in SCENE_MAPPING_INCLUDES]
+        if unknown:
+            raise ValidationError(
+                f"Unknown include key(s): {', '.join(unknown)}. Supported: {', '.join(SCENE_MAPPING_INCLUDES)}.")
+        scene_id = request.query.get("scene_id")
+        if include or scene_id:
+            res = await asyncio.to_thread(get_scene_reference_overview, pid, scene_id or None)
+            return api_success(res)
         res = await asyncio.to_thread(get_project_references, pid)
         return api_success(res.get("scene_mapping"))
 
