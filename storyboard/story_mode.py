@@ -114,6 +114,15 @@ def _id_list(value, limit=400):
     return [_line(item, 160) for item in items if _line(item, 160)][:limit]
 
 
+def _performer_ids(item):
+    """The ids of everyone who sings or speaks in a scene plan entry; an older entry has only ``performer_id``."""
+    ids = _id_list(item.get("performer_ids"), 12)
+    legacy = _line(item.get("performer_id"), 160)
+    if legacy and legacy not in ids:
+        ids.insert(0, legacy)
+    return list(dict.fromkeys(ids))
+
+
 def slug(value):
     """Lower-case id fragment from a name (``Home - Kitchen`` -> ``home_kitchen``)."""
     return re.sub(r"[^a-z0-9]+", "_", _line(value).lower()).strip("_")[:60] or "item"
@@ -239,7 +248,10 @@ def normalize_story_scene_plan(value):
             # Who is in the scene, who sings or speaks, what they do with each other, and who set the cast
             # ("story" or "manual"). user_note is the user's own direction for the scene.
             "cast_ids": _id_list(item.get("cast_ids"), 12),
-            "performer_id": _line(item.get("performer_id"), 160),
+            # Everyone who sings or speaks (performer_id stays the first of them), and "manual" when the user ticked them.
+            "performer_ids": _performer_ids(item),
+            "performer_id": (_performer_ids(item) or [""])[0],
+            "performer_source": "manual" if item.get("performer_source") == "manual" else "",
             "interaction": _text(item.get("interaction"), 600),
             "cast_source": _line(item.get("cast_source"), 20).lower()
             if _line(item.get("cast_source"), 20).lower() in ("story", "manual") else "",

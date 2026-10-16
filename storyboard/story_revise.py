@@ -76,11 +76,16 @@ def revise_story_from_scene(payload):
 
     # The user's characters and direction are kept exactly; the LLM fills in the rest of the scene.
     performer = ids_by_name.get(str(scene.get("performer") or "").strip().lower(), "")
+    if entry.get("performer_source") == "manual":
+        performers = [cid for cid in entry.get("performer_ids") or [] if cid in entry["cast_ids"]]
+    else:
+        performers = [performer] if performer in entry["cast_ids"] else []
     entry.update({
         "story_slice": _clean_scene_text(scene.get("story_slice"), 1200),
         "spot": _clean_scene_text(scene.get("spot") or "", 160) or entry["spot"],
         "mood": _clean_scene_text(scene.get("mood") or "", 200) or entry["mood"],
-        "performer_id": performer if performer in entry["cast_ids"] else "",
+        "performer_ids": performers,
+        "performer_id": performers[0] if performers else "",
         "interaction": _clean_scene_text(scene.get("interaction") or "", 600) if len(entry["cast_ids"]) > 1 else "",
     })
     summary = _clean_scene_text(reply.get("act_summary") or "", 2000)

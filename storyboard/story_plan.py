@@ -398,6 +398,13 @@ def build_story_scene_plan(payload, progress=None):
             performer = ids_by_name.get(str(item.get("performer") or "").strip().lower(), "")
             if performer not in scene_cast:
                 performer = ""
+            # Singers the user ticked survive a replan, as long as they are still in the scene.
+            if old.get("performer_source") == "manual":
+                performers = [cid for cid in old.get("performer_ids") or [] if cid in scene_cast]
+                performer_source = "manual"
+            else:
+                performers = [performer] if performer else []
+                performer_source = ""
             plan[scene_ids[number - 1]] = {
                 "scene_id": scene_ids[number - 1],
                 "act_id": act["id"],
@@ -412,7 +419,9 @@ def build_story_scene_plan(payload, progress=None):
                 "continuation_direction": old.get("continuation_direction", "") if manual
                 else _clean_scene_text(item.get("continuation") or "", 600),
                 "cast_ids": scene_cast,
-                "performer_id": performer,
+                "performer_ids": performers,
+                "performer_id": performers[0] if performers else "",
+                "performer_source": performer_source,
                 "interaction": _clean_scene_text(item.get("interaction") or "", 600) if len(scene_cast) > 1 else "",
                 "cast_source": cast_source,
                 "user_note": old.get("user_note", ""),

@@ -160,7 +160,10 @@ export function normalizeStoryScenePlan(value) {
       // Who is in the scene, who sings or speaks, what they do with each other, and who set the cast
       // ("story" or "manual"). user_note is the user's own direction for the scene.
       cast_ids: storyIdList(item.cast_ids, 12),
-      performer_id: storyLine(item.performer_id, 160),
+      // Everyone who sings or speaks (performer_id is the first of them); "manual" once the user ticked them.
+      performer_ids: [...new Set([storyLine(item.performer_id, 160), ...storyIdList(item.performer_ids, 12)].filter(Boolean))],
+      performer_id: [storyLine(item.performer_id, 160), ...storyIdList(item.performer_ids, 12)].find(Boolean) || "",
+      performer_source: item.performer_source === "manual" ? "manual" : "",
       interaction: storyText(item.interaction, 600),
       cast_source: ["story", "manual"].includes(storyLine(item.cast_source, 20).toLowerCase())
         ? storyLine(item.cast_source, 20).toLowerCase() : "",

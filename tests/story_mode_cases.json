@@ -225,7 +225,9 @@
             "llm_continues": false,
             "continuation_direction": "",
             "cast_ids": [],
+            "performer_ids": [],
             "performer_id": "",
+            "performer_source": "",
             "interaction": "",
             "cast_source": "",
             "user_note": ""
@@ -243,7 +245,9 @@
             "llm_continues": false,
             "continuation_direction": "",
             "cast_ids": [],
+            "performer_ids": [],
             "performer_id": "",
+            "performer_source": "",
             "interaction": "",
             "cast_source": "",
             "user_note": ""
@@ -338,7 +342,9 @@
             "llm_continues": false,
             "continuation_direction": "She walks to the window.",
             "cast_ids": [],
+            "performer_ids": [],
             "performer_id": "",
+            "performer_source": "",
             "interaction": "",
             "cast_source": "",
             "user_note": ""
@@ -373,7 +379,9 @@
             "llm_continues": false,
             "continuation_direction": "",
             "cast_ids": [],
+            "performer_ids": [],
             "performer_id": "",
+            "performer_source": "",
             "interaction": "",
             "cast_source": "",
             "user_note": ""

@@ -55,6 +55,27 @@ function textarea(value, placeholder = "", minHeight = 80) {
   return node;
 }
 
+// Grows a textarea to show all of its text, so nothing has to be dragged open. Re-fits on typing and when the width changes.
+function autoGrow(node) {
+  let lastWidth = -1;
+  const fit = () => {
+    node.style.height = "auto";
+    node.style.height = `${node.scrollHeight + 2}px`;
+  };
+  node.style.overflow = "hidden";
+  node.addEventListener("input", fit);
+  if (typeof ResizeObserver === "function") {
+    new ResizeObserver(() => {
+      if (node.clientWidth === lastWidth) return;
+      lastWidth = node.clientWidth;
+      fit();
+    }).observe(node);
+  } else {
+    (globalThis.requestAnimationFrame || setTimeout)(fit);
+  }
+  return node;
+}
+
 function card(title, note = "") {
   const node = el("div", "border:1px solid #334155;border-radius:8px;background:#0f172a;padding:12px;display:flex;flex-direction:column;gap:10px;");
   node.append(el("div", "font-size:14px;font-weight:900;color:#cffafe;", title));
@@ -315,6 +336,23 @@ export function createStoryBuilder({
       refs.use_subject_reference = true;
       state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
     }
+    // Who sings or speaks in each scene: the ticked characters become its performers and lyric singers.
+    const people = new Map((refs.subjects || []).filter(isStoryPersonCard).map((subject) => [subject.id, subject.name || "Character"]));
+    const byId = Object.fromEntries(segments().map((segment) => [segment.id, segment]));
+    let performersChanged = false;
+    for (const entry of normalizeStoryScenePlan(plan)) {
+      const segment = byId[entry.scene_id];
+      const ids = entry.performer_ids.filter((id) => people.has(id));
+      if (!segment || (!ids.length && entry.performer_source !== "manual")) continue;
+      refs.performer_scene_map = refs.performer_scene_map && typeof refs.performer_scene_map === "object" ? refs.performer_scene_map : {};
+      if (JSON.stringify(refs.performer_scene_map[entry.scene_id] || []) !== JSON.stringify(ids)) {
+        if (ids.length) refs.performer_scene_map[entry.scene_id] = ids;
+        else delete refs.performer_scene_map[entry.scene_id];
+        performersChanged = true;
+      }
+      if (ids.length) segment.lyric_singers = ids.map((id) => people.get(id));
+    }
+    if (performersChanged) state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
     return plan;
   }
 
@@ -1099,6 +1137,168 @@ export function createStoryBuilder({
         await saveLayer({ story_acts: next, story_scene_plan: plan.map((entry) => ({ ...entry, act_id: actOf[entry.scene_id] || "" })) }, label);
         show("acts");
       };
+
+      // Scene strips that show which scenes each act holds now and after a split, border move or merge.
+      const ROLE_COLORS = { previous: "#1d4ed8", current: "#0e7490", added: "#b45309" };
+      const sceneLength = (id) => {
+        const segment = all[numberById[id] - 1];
+        return segment ? Math.max(0.1, (segment.end || 0) - (segment.start || 0)) : 0;
+      };
+      const actRangeText = (ids) => {
+        const numbers = ids.map((id) => numberById[id]).filter(Boolean);
+        if (!numbers.length) return "no scenes";
+        const span = numbers.length === 1 ? `scene ${numbers[0]}` : `scenes ${numbers[0]}-${numbers[numbers.length - 1]}`;
+        const seconds = ids.reduce((sum, id) => sum + sceneLength(id), 0);
+        return `${span} (${numbers.length} scene${numbers.length === 1 ? "" : "s"}, ${seconds.toFixed(1)}s)`;
+      };
+      const sceneChip = (id, color, { changed = false, cut = false, onPick = null } = {}) => {
+        const segment = all[numberById[id] - 1] || {};
+        const chip = el(onPick ? "button" : "div", `min-width:30px;padding:4px 6px;border-radius:5px;background:${color};color:#fff;font-size:11px;font-weight:800;text-align:center;box-sizing:border-box;border:2px solid ${changed ? "#fde047" : "transparent"};${cut ? "box-shadow:-4px 0 0 #f8fafc;margin-left:6px;" : ""}${onPick ? "cursor:pointer;" : ""}`,
+          String(numberById[id] ?? "?"));
+        chip.title = `Scene ${numberById[id]} (${clock(segment.start)} - ${clock(segment.end)})\nLyric: ${segment.lyric_text || "[instrumental]"}${onPick ? "\nClick to pick this scene." : ""}`;
+        if (onPick) {
+          chip.type = "button";
+          chip.onclick = () => onPick(id);
+        }
+        return chip;
+      };
+      // One act in a strip: its name and range, then a chip per scene.
+      const actGroup = (title, ids, color, { changed = new Set(), cutId = "", onPick = null } = {}) => {
+        const group = el("div", "display:flex;flex-direction:column;gap:4px;min-width:0;");
+        group.append(el("div", `font-size:11px;font-weight:800;color:${color === ROLE_COLORS.current ? "#67e8f9" : color === ROLE_COLORS.previous ? "#93c5fd" : "#fcd34d"};`, title || "Untitled act"),
+          el("div", "font-size:11px;color:#94a3b8;", actRangeText(ids)));
+        const chips = el("div", "display:flex;flex-wrap:wrap;gap:3px;");
+        for (const id of ids) chips.append(sceneChip(id, color, { changed: changed.has(id), cut: id === cutId, onPick }));
+        group.append(chips);
+        return group;
+      };
+      const stripRow = (caption, groups) => {
+        const wrap = el("div", "display:flex;flex-direction:column;gap:4px;");
+        wrap.append(el("div", "font-size:11px;font-weight:800;color:#e2e8f0;letter-spacing:.04em;", caption));
+        const line = el("div", "display:flex;flex-wrap:wrap;gap:14px;border:1px solid #1e293b;border-radius:6px;padding:8px;background:#0b1220;");
+        line.append(...groups);
+        wrap.append(line);
+        return wrap;
+      };
+
+      // Change which scenes belong to this act. Pick a change, see the scenes before and after, then apply it.
+      const actBorderEditor = (act, index) => {
+        const previous = index > 0 && acts[index - 1].chapter_id === act.chapter_id ? acts[index - 1] : null;
+        const startChoices = previous ? [...previous.scene_ids.slice(1), ...act.scene_ids.slice(1)] : [];
+        const modes = [
+          { id: "split", label: "Split This Act", ok: act.scene_ids.length >= 2,
+            why: "Needs at least 2 scenes.", help: "Cut this act in two. The scene you pick starts a new act, and it and every scene after it move into the new act." },
+          { id: "move", label: "Move Start", ok: startChoices.length > 0,
+            why: "The first act of a chapter has no act before it to trade scenes with.", help: "Move the border between the previous act and this one. Pick an earlier scene to take scenes from the previous act, or a later scene to give scenes to it. The number of acts stays the same." },
+          { id: "merge", label: "Merge With Previous", ok: Boolean(previous),
+            why: "The first act of a chapter has no act before it to merge into.", help: "Join this act into the previous act. Their scenes become one act with the previous act's title and both summaries." },
+        ];
+        const panel = el("div", "border:1px solid #1e293b;border-radius:7px;padding:8px;display:flex;flex-direction:column;gap:8px;background:#0a1020;");
+        panel.append(el("div", "font-size:12px;font-weight:900;color:#cffafe;", "Change this act's scenes"));
+        const modeRow = row();
+        const body = el("div", "display:flex;flex-direction:column;gap:8px;");
+        panel.append(modeRow, body);
+        let mode = "";
+        let choice = "";
+        const modeButtons = modes.map((item) => {
+          const button = makeButton(item.label);
+          button.disabled = !item.ok;
+          button.title = item.ok ? item.help : item.why;
+          button.onclick = () => {
+            mode = mode === item.id ? "" : item.id;
+            choice = mode === "split" ? act.scene_ids[Math.floor(act.scene_ids.length / 2)]
+              : mode === "move" ? (act.scene_ids[1] || previous.scene_ids[previous.scene_ids.length - 1]) : "";
+            draw();
+          };
+          modeRow.append(button);
+          return { item, button };
+        });
+        const pickable = (id) => (mode === "split" ? act.scene_ids.slice(1).includes(id) : mode === "move" ? startChoices.includes(id) : false);
+        const onPick = (id) => {
+          if (!pickable(id)) return;
+          choice = id;
+          draw();
+        };
+        const draw = () => {
+          body.textContent = "";
+          for (const { item, button } of modeButtons) button.style.outline = mode === item.id ? "2px solid #67e8f9" : "";
+          const nowGroups = () => [
+            ...(mode !== "split" && previous ? [actGroup(`Previous: ${previous.title}`, previous.scene_ids, ROLE_COLORS.previous, { onPick })] : []),
+            actGroup(`This act: ${act.title}`, act.scene_ids, ROLE_COLORS.current, { cutId: mode === "split" ? choice : "", onPick }),
+          ];
+          if (!mode) {
+            body.append(stripRow("SCENES IN THIS ACT", nowGroups()),
+              el("div", "font-size:11px;color:#94a3b8;", "Pick a change above to see how the scenes move before applying it. Hover a scene number to see its time and lyric."));
+            return;
+          }
+          const spec = modes.find((item) => item.id === mode);
+          body.append(el("div", "font-size:12px;color:#cbd5e1;line-height:1.45;", spec.help));
+          if (mode === "split" || mode === "move") {
+            const options = (mode === "split" ? act.scene_ids.slice(1) : startChoices).map((id) => {
+              const number = numberById[id];
+              let label = `Scene ${number}`;
+              if (mode === "split") {
+                const cut = act.scene_ids.indexOf(id);
+                label += `: this act keeps ${cut}, the new act gets ${act.scene_ids.length - cut}`;
+              } else {
+                const delta = numberById[act.scene_ids[0]] - number;
+                label += delta > 0 ? `: takes ${delta} scene${delta === 1 ? "" : "s"} from the previous act` : `: gives ${-delta} scene${delta === -1 ? "" : "s"} to the previous act`;
+              }
+              return { value: id, label };
+            });
+            const select = makeSelect(options, choice);
+            select.onchange = () => {
+              choice = select.value;
+              draw();
+            };
+            body.append(makeField(mode === "split" ? "New act starts at" : "This act starts at", select),
+              el("div", "font-size:11px;color:#94a3b8;", "You can also click a scene number in the strip below to pick it."));
+          }
+          let result = [];
+          let afterGroups = [];
+          let text = "";
+          let label = "";
+          if (mode === "split") {
+            result = splitAct(acts, index, choice);
+            const [first, second] = [result[index], result[index + 1]];
+            const moved = new Set(second.scene_ids);
+            afterGroups = [actGroup(`Act ${index + 1}: ${first.title}`, first.scene_ids, ROLE_COLORS.current),
+              actGroup(`New act ${index + 2}: ${second.title}`, second.scene_ids, ROLE_COLORS.added, { changed: moved })];
+            text = `"${act.title}" keeps ${actRangeText(first.scene_ids)}. A new act "${second.title}" gets ${actRangeText(second.scene_ids)}. The new act starts with the same summary and cast, so edit its title and summary after. Every later act moves up one number.`;
+            label = "story builder act split";
+          } else if (mode === "move") {
+            result = moveActBorder(acts, index, choice, sceneIds);
+            const [before, after] = [result[index - 1], result[index]];
+            const moved = new Set(after.scene_ids.filter((id) => previous.scene_ids.includes(id)).concat(before.scene_ids.filter((id) => act.scene_ids.includes(id))));
+            afterGroups = [actGroup(`Previous: ${before.title}`, before.scene_ids, ROLE_COLORS.previous, { changed: moved }),
+              actGroup(`This act: ${after.title}`, after.scene_ids, ROLE_COLORS.current, { changed: moved })];
+            const movedIds = [...moved];
+            const toThis = movedIds.some((id) => previous.scene_ids.includes(id));
+            text = `${actRangeText(movedIds).replace(/^s/, "S")} move${movedIds.length === 1 ? "s" : ""} ${toThis ? `from "${previous.title}" into "${act.title}"` : `from "${act.title}" into "${previous.title}"`}. "${previous.title}" becomes ${actRangeText(before.scene_ids)}, and "${act.title}" becomes ${actRangeText(after.scene_ids)}. Titles and summaries stay as they are.`;
+            label = "story builder act border moved";
+          } else {
+            result = mergeActs(acts, index);
+            const merged = result[index - 1];
+            afterGroups = [actGroup(`Merged act ${index}: ${merged.title}`, merged.scene_ids, ROLE_COLORS.previous, { changed: new Set(act.scene_ids) })];
+            text = `"${act.title}" joins "${previous.title}". The merged act holds ${actRangeText(merged.scene_ids)}, keeps the title "${previous.title}" and joins both summaries. Every later act moves down one number.`;
+            label = "story builder acts merged";
+          }
+          body.append(stripRow("NOW", nowGroups()), stripRow("AFTER (scenes that change act are outlined in yellow)", afterGroups),
+            el("div", "font-size:12px;color:#e2e8f0;line-height:1.45;", text),
+            el("div", `font-size:11px;color:${STALE_COLOR};line-height:1.45;`, "Scenes in the changed acts are then marked out of date in 6. Scenes. Their plans, beats and prompts stay as they are until you redo them there."));
+          const apply = makeButton(modes.find((item) => item.id === mode).label, "primary");
+          apply.onclick = () => saveActs(result, label);
+          const cancel = makeButton("Cancel");
+          cancel.onclick = () => {
+            mode = "";
+            draw();
+          };
+          body.append(row(apply, cancel));
+        };
+        draw();
+        return panel;
+      };
+
       for (const chapter of chapters) {
         const chapterCard = card(chapter.title);
         const rebuild = makeButton("Rebuild This Chapter");
@@ -1122,32 +1322,16 @@ export function createStoryBuilder({
         }
         acts.forEach((act, index) => {
           if (act.chapter_id !== chapter.id) return;
-          const numbers = act.scene_ids.map((id) => numberById[id]).filter(Boolean);
           const box = el("div", `border:1px solid ${stale[act.id] ? STALE_COLOR : "#1e3a5f"};border-radius:7px;padding:8px;display:flex;flex-direction:column;gap:6px;`);
           if (stale[act.id]) box.append(staleChip("ACT", stale[act.id]));
           const actTitle = makeInput(act.title);
-          const summary = textarea(act.summary, "What happens in this act.", 50);
-          const range = el("div", "font-size:12px;color:#94a3b8;", numbers.length ? `Scenes ${numbers[0]}-${numbers[numbers.length - 1]}` : "No scenes");
-          const sceneChoice = makeSelect(act.scene_ids.slice(1).map((id) => String(id)), "");
-          for (const option of sceneChoice.options) option.textContent = `Scene ${numberById[option.value]}`;
-          const startChoices = index > 0 && acts[index - 1].chapter_id === act.chapter_id
-            ? [...acts[index - 1].scene_ids.slice(1), ...act.scene_ids.slice(1)] : [];
-          const startChoice = makeSelect(startChoices, act.scene_ids[0] || "");
-          for (const option of startChoice.options) option.textContent = `Start at scene ${numberById[option.value]}`;
-          const saveText = makeButton("Save");
+          const summary = autoGrow(textarea(act.summary, "What happens in this act.", 50));
+          const range = el("div", "font-size:12px;color:#94a3b8;", `Act ${index + 1}: ${actRangeText(act.scene_ids)}`);
+          const saveText = makeButton("Save Title And Summary");
           saveText.onclick = () => saveActs(acts.map((item, i) => (i === index ? { ...item, title: actTitle.value, summary: summary.value } : item)), "story builder act edited");
-          const merge = makeButton("Merge With Previous");
-          merge.disabled = !(index > 0 && acts[index - 1].chapter_id === act.chapter_id);
-          merge.onclick = () => saveActs(mergeActs(acts, index), "story builder acts merged");
-          const split = makeButton("Split At");
-          split.disabled = act.scene_ids.length < 2;
-          split.onclick = () => saveActs(splitAct(acts, index, sceneChoice.value), "story builder act split");
-          const move = makeButton("Move Start");
-          move.disabled = !startChoices.length;
-          move.onclick = () => saveActs(moveActBorder(acts, index, startChoice.value, sceneIds), "story builder act border moved");
           const pick = makeButton("Show First Scene");
           pick.onclick = () => selectScene(act.scene_ids[0]);
-          box.append(row(range, pick), actTitle, summary, row(saveText, merge, sceneChoice, split, startChoice, move));
+          box.append(row(range, pick), actTitle, summary, row(saveText), actBorderEditor(act, index));
           chapterCard.append(box);
         });
         content.append(chapterCard);
@@ -1332,10 +1516,46 @@ export function createStoryBuilder({
         const picked = new Set(entry.cast_ids || []);
         const castRow = el("div", "display:flex;flex-wrap:wrap;gap:4px;align-items:center;");
         castRow.append(el("span", "font-size:11px;color:#94a3b8;", entry.cast_source === "manual" ? "Characters (yours):" : "Characters:"));
+        // Who sings or speaks: tick the ♪ box on any character in the scene, one or several.
+        const singers = new Set((entry.performer_ids || []).filter((id) => picked.has(id)));
+        let singersTicked = false;
         const drawChip = (chip, id) => {
           const on = picked.has(id);
           chip.style.cssText = `border:1px solid ${on ? "#22d3ee" : "#334155"};border-radius:999px;padding:2px 9px;font-size:11px;font-weight:800;cursor:pointer;background:${on ? "rgba(8,145,178,.35)" : "transparent"};color:${on ? "#cffafe" : "#94a3b8"};`;
-          chip.textContent = `${on ? "✓ " : ""}${castNames[id]}${id === entry.performer_id ? " ♪" : ""}`;
+          chip.textContent = `${on ? "✓ " : ""}${castNames[id]}`;
+        };
+        const drawSinger = (box, tick, id) => {
+          box.style.display = picked.has(id) ? "inline-flex" : "none";
+          tick.checked = singers.has(id);
+        };
+        // The singing order: the order they were ticked in, changed with the arrows. The first one sings first.
+        const orderRow = el("div", "display:flex;flex-wrap:wrap;gap:4px;align-items:center;");
+        const drawOrder = () => {
+          orderRow.textContent = "";
+          const list = [...singers];
+          orderRow.style.display = list.length > 1 ? "flex" : "none";
+          if (list.length < 2) return;
+          orderRow.append(el("span", "font-size:11px;color:#94a3b8;", "Singing order:"));
+          list.forEach((id, position) => {
+            const group = el("span", "display:inline-flex;align-items:center;gap:2px;border:1px solid #fde68a;border-radius:999px;padding:1px 6px;font-size:11px;font-weight:800;color:#fde68a;");
+            group.append(document.createTextNode(`${position + 1}. ${castNames[id]}`));
+            for (const [label, step, title] of [["◀", -1, "Sings earlier"], ["▶", 1, "Sings later"]]) {
+              const target = position + step;
+              const move = el("button", "border:0;background:transparent;color:inherit;cursor:pointer;padding:0 2px;font-size:10px;", label);
+              move.type = "button";
+              move.title = title;
+              move.disabled = target < 0 || target >= list.length;
+              move.onclick = () => {
+                [list[position], list[target]] = [list[target], list[position]];
+                singers.clear();
+                list.forEach((item) => singers.add(item));
+                singersTicked = true;
+                drawOrder();
+              };
+              group.append(move);
+            }
+            orderRow.append(group);
+          });
         };
         // Clothing and props in the scene: click one to add or remove it, and pick who wears or uses it here.
         const mapped = new Set(sceneMapIds(sceneRefs.subject_scene_map?.[segment.id]));
@@ -1381,20 +1601,37 @@ export function createStoryBuilder({
         for (const id of Object.keys(castNames)) {
           const chip = el("button");
           chip.type = "button";
-          chip.title = id === entry.performer_id ? "Sings or speaks in this scene." : "Click to add or remove this character.";
+          chip.title = "Click to add or remove this character.";
+          const singerBox = el("label", "display:none;align-items:center;gap:2px;font-size:11px;font-weight:800;color:#fde68a;cursor:pointer;");
+          const tick = document.createElement("input");
+          tick.type = "checkbox";
+          tick.onchange = () => {
+            if (tick.checked) singers.add(id);
+            else singers.delete(id);
+            singersTicked = true;
+            drawOrder();
+          };
+          singerBox.title = "Sings or speaks in this scene. Tick several for a duet or a group.";
+          singerBox.append(tick, document.createTextNode("♪"));
           chip.onclick = () => {
-            if (picked.has(id)) picked.delete(id);
-            else picked.add(id);
+            if (picked.has(id)) {
+              picked.delete(id);
+              singers.delete(id);
+            } else picked.add(id);
             drawChip(chip, id);
+            drawSinger(singerBox, tick, id);
+            drawOrder();
             drawItems();
           };
           drawChip(chip, id);
-          castRow.append(chip);
+          drawSinger(singerBox, tick, id);
+          castRow.append(chip, singerBox);
         }
         drawItems();
+        drawOrder();
         const interaction = textarea(entry.interaction, "What the characters do with each other, e.g. Mara reaches for Joe's hand; he pulls away.", 34);
         const userNote = textarea(entry.user_note, "Your direction for this scene: what should happen, what a character does. The story follows it.", 34);
-        story.append(slice, row(spot, mood, performance), castRow, itemsRow, interaction, userNote);
+        story.append(slice, row(spot, mood, performance), castRow, orderRow, itemsRow, interaction, userNote);
         if (entry.act_id) {
           const update = makeButton("Update Story From This Scene");
           update.title = "Keeps this scene's characters and your direction, rewrites the scene to match, and adapts its act and chapter. Scenes that may no longer fit are named so you can replan them.";
@@ -1415,7 +1652,12 @@ export function createStoryBuilder({
         const video = textarea(segment.i2v_notes, "Video note: motion and action", 40);
         const planning = textarea(segment.notes, "Planning note", 34);
         const notes = el("div", "display:flex;flex-direction:column;gap:6px;");
-        notes.append(director, video, planning);
+        const tip = (text) => el("div", "font-size:11px;color:#94a3b8;line-height:1.4;margin-top:-3px;", text);
+        notes.append(
+          director, tip("What happens and how the scene should look. Read when the scene is planned and when its video prompt is written. Also the note shown on the timeline. Replan the scene after changing it."),
+          video, tip("How people and the camera move. Read when the scene is planned and replaces the default camera motion in the video prompt. Example: slow push in while she turns to the window."),
+          planning, tip("Background facts to keep in mind, not an instruction. Read when the scene is planned and when its image and video prompts are written. Example: it is still raining, her hand is bandaged from scene 3."),
+        );
         box.append(info, story, notes);
         let continues = null;
         let direction = null;
@@ -1453,7 +1695,7 @@ export function createStoryBuilder({
         }
         section.append(box);
         rows.push({ segment, entry, slice, spot, mood, performance, director, video, planning, continues, direction, holdInput,
-          picked, interaction, userNote, itemsOn, itemUsers, scenePeople });
+          picked, singers, singersTicked: () => singersTicked, interaction, userNote, itemsOn, itemUsers, scenePeople });
       });
       // Saves every scene's edits (plan, cast, direction, notes) and returns the saved plan.
       const savePlanEdits = async (label) => {
@@ -1462,12 +1704,15 @@ export function createStoryBuilder({
           // A tick that differs from what the mode decided is your choice, and it wins over the mode from now on.
           const manual = item.continues && on !== Boolean(item.entry.continues_previous);
           const castIds = Object.keys(castNames).filter((id) => item.picked.has(id));
-          const castChanged = JSON.stringify(castIds) !== JSON.stringify((item.entry.cast_ids || []).filter((id) => castNames[id]));
+          const performerIds = [...item.singers].filter((id) => castIds.includes(id));
+          const castChanged =JSON.stringify(castIds) !== JSON.stringify((item.entry.cast_ids || []).filter((id) => castNames[id]));
           return {
             ...item.entry,
             cast_ids: castIds,
             cast_source: castChanged ? "manual" : item.entry.cast_source,
-            performer_id: castIds.includes(item.entry.performer_id) ? item.entry.performer_id : "",
+            performer_ids: performerIds,
+            performer_id: performerIds[0] || "",
+            performer_source: item.singersTicked() ? "manual" : item.entry.performer_source,
             interaction: item.interaction.value.trim(),
             user_note: item.userNote.value.trim(),
             story_slice: item.slice.value,
@@ -1730,8 +1975,8 @@ export function createStoryBuilder({
           `Scene ${index + 1} (${clock(segment.start)} - ${clock(segment.end)})  ${[actTitles[entry.act_id], entry.spot, entry.performance_mode].filter(Boolean).join(" · ")}`);
         head.type = "button";
         head.onclick = () => selectScene(segment.id);
-        const beat = textarea(segment.story_beat, "No beat yet.", 50);
-        const prompt = textarea(segment[promptKey], "No video prompt yet.", 70);
+        const beat = autoGrow(textarea(segment.story_beat, "No beat yet.", 50));
+        const prompt = autoGrow(textarea(segment[promptKey], "No video prompt yet.", 70));
         const from = fromById[segment.id];
         const beatStale = stale.beats[segment.id];
         const promptStale = stale.prompts[segment.id];
@@ -1780,7 +2025,7 @@ export function createStoryBuilder({
           el("div", "font-size:11px;color:#94a3b8;", "Beat"), beat, el("div", "font-size:11px;color:#94a3b8;", "Video prompt"), prompt);
         let direction = null;
         if (from) {
-          direction = textarea(entry.continuation_direction, "What happens once the carried-on moment settles.", 36);
+          direction = autoGrow(textarea(entry.continuation_direction, "What happens once the carried-on moment settles.", 36));
           item.append(el("div", `font-size:11px;color:${MASKED_COLOR};`, `Continuation direction (rewritten into the prompt from Scene ${from}'s last frame at render)`), direction);
         }
         list.append(item);
