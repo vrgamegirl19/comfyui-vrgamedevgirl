@@ -619,6 +619,16 @@
           },
           "sage_attention": {
             "default": "auto",
+            "enum": [
+              "disabled",
+              "auto",
+              "sageattn_qk_int8_pv_fp16_cuda",
+              "sageattn_qk_int8_pv_fp16_triton",
+              "sageattn_qk_int8_pv_fp8_cuda",
+              "sageattn_qk_int8_pv_fp8_cuda++",
+              "sageattn3",
+              "sageattn3_per_block_mean"
+            ],
             "type": "string"
           },
           "sampler_name": {

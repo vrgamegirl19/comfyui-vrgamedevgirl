@@ -39,6 +39,11 @@ SETTINGS_ENUMS: Dict[str, Tuple[str, ...]] = {
     "continuity_mode": (
         "off", "latent_continuation_masked",
     ),
+    # MINIMAX_H3_SAGE_ATTENTION_OPTIONS in web/music_video_builder/minimax_h3.mjs (the loader's sage_attention input).
+    "sage_attention": (
+        "disabled", "auto", "sageattn_qk_int8_pv_fp16_cuda", "sageattn_qk_int8_pv_fp16_triton",
+        "sageattn_qk_int8_pv_fp8_cuda", "sageattn_qk_int8_pv_fp8_cuda++", "sageattn3", "sageattn3_per_block_mean",
+    ),
     "location_transition_preset": (
         "normal", "surreal", "cinematic", "inner_world", "match", "motion", "creative_auto", "masked", "custom",
     ),
@@ -333,6 +338,27 @@ def minimax_h3_settings_for_scene(session: Dict[str, Any], segment: Optional[Dic
         # The pipeline belongs to the whole project, so a scene with its own settings follows it.
         merged["pipeline"] = (project_raw or {}).get("pipeline", "standard") if isinstance(project_raw, dict) else "standard"
     return normalize_minimax_h3_settings(merged)
+
+
+def minimax_h3_attention_summary(settings: Dict[str, Any]) -> Dict[str, Any]:
+    """The attention options a render with these normalized settings uses, read from the render payload.
+
+    Single pass reads ``use_block_sparse_attention``; 2 Pass and 2 Pass Advanced read
+    ``pass{1,2}_use_block_sparse_attention``, which fall back to ``two_pass_use_block_sparse_attention``.
+    """
+    payload = build_minimax_render_payload(settings)
+    render_pass = minimax_render_pass(settings)
+    if render_pass == "single":
+        by_pass = {"pass1": bool(payload.get("use_block_sparse_attention"))}
+    else:
+        by_pass = {f"pass{n}": bool(payload.get(f"pass{n}_use_block_sparse_attention")) for n in (1, 2)}
+    return {
+        "render_pass": render_pass,
+        "sage_attention": payload["sage_attention"],
+        "use_memory_efficient_sage_attention": bool(payload["use_memory_efficient_sage_attention"]),
+        "block_sparse_attention": any(by_pass.values()),
+        "block_sparse_attention_by_pass": by_pass,
+    }
 
 
 def minimax_render_pass(settings: Dict[str, Any]) -> str:
