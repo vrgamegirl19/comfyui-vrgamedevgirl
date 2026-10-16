@@ -10,6 +10,7 @@ from ..builder.paths import _session_path
 from ..builder.project import _load_builder_session, _redact_session_secrets
 from ..minimax.latent_manager import SceneLatentManager
 from ..minimax.scene_inputs import normalize_continuity_mode
+from ..minimax.settings_payload import minimax_h3_attention_summary, minimax_h3_settings_for_scene
 
 from .errors import ProjectNotFoundError, SceneNotFoundError, ValidationError
 from .paths import get_allowed_project_roots, get_project_id, resolve_project_folder
@@ -332,6 +333,18 @@ def get_project_scenes(
     return scenes
 
 
+def _scene_attention(session: Dict[str, Any], segment: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Attention options this scene renders with (scene settings when locked, else the project's), read-only."""
+    if not isinstance(segment, dict):
+        return None
+    try:
+        summary = minimax_h3_attention_summary(minimax_h3_settings_for_scene(session, segment))
+    except ValueError:
+        return None
+    locked = bool(segment.get("use_scene_minimax_h3_settings")) and isinstance(segment.get("minimax_h3_settings"), dict)
+    return {"source": "scene" if locked else "project", **summary}
+
+
 def get_scene_detail(project_id: str, scene_id: str) -> Dict[str, Any]:
     """Get single scene details by scene ID or 1-based number, with its complete scene card, Audio Mask and locked MiniMax H3 settings.
 
@@ -348,7 +361,8 @@ def get_scene_detail(project_id: str, scene_id: str) -> Dict[str, Any]:
             folder = resolve_project_folder(project_id)
             session = _load_builder_session(folder).get("session") or {}
             card = next((c for c in scene_cards(session, folder) if str(c.get("id")) == s["id"]), None)
-            return {**s, "scene_card": card}
+            segment = next((seg for seg in session.get("segments") or [] if str(seg.get("id")) == s["id"]), None)
+            return {**s, "scene_card": card, "minimax_h3_attention": _scene_attention(session, segment)}
 
     raise SceneNotFoundError(scene_id, project_id)
 

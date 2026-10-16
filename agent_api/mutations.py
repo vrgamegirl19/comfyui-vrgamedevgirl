@@ -59,7 +59,7 @@ from ..builder.timeline import (
 )
 from ..minimax.latent_manager import SceneLatentManager
 from ..minimax.scene_inputs import reference_choices, validate_reference_keys
-from ..minimax.settings_payload import minimax_h3_settings_for_scene
+from ..minimax.settings_payload import minimax_h3_settings_for_scene, validate_minimax_h3_patch
 from ..minimax.prompt_assembly import (
     assemble_minimax_h3_prompt,
     build_minimax_prompt_context,
@@ -646,6 +646,26 @@ def _write_storyboard_card(folder: str, session: Dict[str, Any], scene_id: str, 
     return changed, undo
 
 
+def _validate_scene_minimax_h3_patch(legacy: Dict[str, Any]) -> None:
+    """Check a scene's ``use_scene_minimax_h3_settings`` / ``minimax_h3_settings`` against the Builder's allowed values."""
+    if "use_scene_minimax_h3_settings" in legacy and not isinstance(legacy["use_scene_minimax_h3_settings"], bool):
+        raise ValidationError("use_scene_minimax_h3_settings must be true or false.")
+    if "minimax_h3_settings" not in legacy:
+        return
+    value = legacy["minimax_h3_settings"]
+    if value is None:
+        return
+    if not isinstance(value, dict):
+        raise ValidationError("minimax_h3_settings must be an object of MiniMax H3 settings, or null.")
+    problems = validate_minimax_h3_patch(value)
+    if problems:
+        detail = "; ".join(f"minimax_h3_settings.{key}: {problem}" for key, problem in problems.items())
+        raise ValidationError(
+            f"Invalid scene MiniMax H3 settings: {detail}. See GET /settings/minimax-h3/schema.",
+            details={"invalid_fields": {f"minimax_h3_settings.{key}": problem for key, problem in problems.items()}},
+        )
+
+
 def patch_scene(
     project_id: str,
     scene_id: str,
@@ -673,6 +693,7 @@ def patch_scene(
             f"Supported fields: {', '.join(_supported_scene_fields())}, plus use_scene_* and *_settings. "
             "POST /scenes/bulk with op=patch can write other fields."
         )
+    _validate_scene_minimax_h3_patch(legacy)
     with _BUILDER_SAVE_LOCK:
         folder, session = _get_active_session_and_folder(project_id)
         current_rev = int(session.get("revision") or session.get("builder_save_revision") or 0)
@@ -726,7 +747,10 @@ def patch_scene(
             scene["lyric_no_lip_sync"] = is_instrumental_lyric_text(scene.get("lyric_text"))
 
         for key, val in legacy.items():
-            if key.startswith("use_scene_") or key.endswith("_settings"):
+            if key == "minimax_h3_settings" and isinstance(val, dict) and isinstance(scene.get(key), dict):
+                # Merge like the Builder's scene lock (project settings overlaid with the scene's own).
+                scene[key] = {**scene[key], **val}
+            elif key.startswith("use_scene_") or key.endswith("_settings"):
                 scene[key] = val
 
         prompt_changed = any(str(before.get(key) or "") != str(scene.get(key) or "") for key in _PROMPT_KEYS)
