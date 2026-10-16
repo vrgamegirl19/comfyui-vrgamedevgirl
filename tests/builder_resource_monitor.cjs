@@ -7,8 +7,9 @@ const source = readBuilderModule("toolbar.mjs");
 const context = vm.createContext({});
 vm.runInContext(source.slice(0, source.indexOf("function wireToolbar")), context);
 
+// Copied out of the vm context: arrays made there fail deepStrictEqual against arrays made here.
 function meters(gpus) {
-  return vm.runInContext(`builderResourceMeters(${JSON.stringify(gpus)})`, context);
+  return JSON.parse(vm.runInContext(`JSON.stringify(builderResourceMeters(${JSON.stringify(gpus)}))`, context));
 }
 
 test("one reading per GPU, labeled VRAM0 and VRAM1, with RAM last", () => {

@@ -33,7 +33,7 @@ const BUILDER_RESOURCE_RAM_TEXT = "#c4b5fd";
 const BUILDER_RESOURCE_RAM_BAR = "#8b5cf6";
 
 function builderResourceAttribute(value) {
-  return String(value).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+  return String(value).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 function builderResourceGpus(gpus) {
