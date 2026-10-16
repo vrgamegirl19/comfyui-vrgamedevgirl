@@ -6,7 +6,7 @@ import comfy.model_management as mm
 import torch
 
 
-def tiled_decode_batched(model: Any, z: torch.Tensor, tile_batch_size: int) -> torch.Tensor:
+def tiled_decode_batched(model: Any, z: torch.Tensor, frames=slice(None), *, tile_batch_size: int = 4) -> torch.Tensor:
     """Batch spatial decoding while preserving the installed stock VAE seam policy."""
     height, width = z.shape[-2] * model.vae_ratio, z.shape[-1] * model.vae_ratio
     y_idx, y_len, y_overlap = model.split_tiles(height)
@@ -37,7 +37,7 @@ def tiled_decode_batched(model: Any, z: torch.Tensor, tile_batch_size: int) -> t
                            for _, _, yp, yl, xp, xl in tiles[start:end]], dim=0)
         decoded = model._decode_pixels(batch)
         for k, (i, j, _, _, _, _) in enumerate(tiles[start:end]):
-            tile = decoded[k * z.shape[0]:(k + 1) * z.shape[0]]
+            tile = decoded[k * z.shape[0]:(k + 1) * z.shape[0], :, frames]
             if not blended_tails and i < len(y_idx) - 1:
                 new_tails.append(tile[..., -y_overlap[i]:, :].clone())
             next_left_tail = (

@@ -1,4 +1,5 @@
 import importlib.util
+from functools import partial
 import sys
 import unittest
 from pathlib import Path
@@ -52,10 +53,13 @@ class MiniMaxH3FastVAEDecodeTests(unittest.TestCase):
         fixture = TileFixture()
         for height, width in ((4, 4), (8, 19), (19, 8), (19, 23), (24, 24)):
             latent = torch.randn(2, 3, 7, height, width)
-            stock = MiniMaxH3VideoVAE.tiled_decode(fixture, latent)
-            for batch_size in (1, 2, 4, 16):
-                actual = module.tiled_decode_batched(fixture, latent, batch_size)
-                torch.testing.assert_close(actual, stock, rtol=0, atol=0)
+            for frames in (slice(None), slice(1, 5), slice(None, None, 2), slice(-2, None)):
+                stock = MiniMaxH3VideoVAE.tiled_decode(fixture, latent, frames)
+                for batch_size in (1, 2, 4, 16):
+                    with self.subTest(height=height, width=width, frames=frames, batch_size=batch_size):
+                        patched_decode = partial(module.tiled_decode_batched, fixture, tile_batch_size=batch_size)
+                        actual = patched_decode(latent, frames)
+                        torch.testing.assert_close(actual, stock, rtol=0, atol=0)
 
 
 if __name__ == "__main__":
