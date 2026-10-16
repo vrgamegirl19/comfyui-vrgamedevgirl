@@ -959,7 +959,7 @@
     },
     {
       "body_keys": [],
-      "description": "What the Video Builder's Choose MiniMax References button shows for a scene: `available` (every character, extra, location and ingredients sheet with an image, each with its `key`, whether the scene mapping already picks it, and its `image_number` when selected), `selected` (the order sent to MiniMax), `custom` (chosen by hand or following the scene mappings), `automatic_keys` and the `limits` (9 images, 8 choices when the scene image is Image 1).",
+      "description": "What the Video Builder's Choose MiniMax References button shows for a scene: `available` (every character, extra, location and ingredients sheet with an image, each with its `key`, whether the scene mapping already picks it, and its `image_number` when selected), `selected` (the order sent to MiniMax), `custom` (chosen by hand or following the scene mappings), `automatic_keys` and the `limits` (9 images, 8 choices when the scene image is Image 1). `pipeline` says which view you got: `standard` (the view above) or, when the MiniMax H3 project renders with RefMods, `refmod`: `items` in render order, each with its prompt `label` (`<Video N>`, `<Picture N>`, `<Audio N>`), card, `category`, `reference_type` (props included), `strength`, `tokens` and `source` (`refmod` name, `found`, `kind`, `frames`, `canvas`, read from the RefMod file like the render), `labels`, `tokens` (`total`, `limit`, `over_limit`, `imbalance`), `warnings` and `editable: false`.",
       "if_match": false,
       "job": false,
       "method": "GET",
@@ -975,7 +975,7 @@
         "automatic",
         "keys"
       ],
-      "description": "Choose the ordered MiniMax references for a scene: `keys` is the list from `available` (for example `[\"subject:ava\", \"location:roof\", \"location:alley\"]`, several locations are allowed), or `automatic: true` to follow the scene mappings again. Unknown or repeated keys and too many keys are refused with the allowed keys listed. _(If-Match)_",
+      "description": "Choose the ordered MiniMax references for a scene: `keys` is the list from `available` (for example `[\"subject:ava\", \"location:roof\", \"location:alley\"]`, several locations are allowed), or `automatic: true` to follow the scene mappings again. Unknown or repeated keys and too many keys are refused with the allowed keys listed. In a RefMod project the render ignores this order, so the call returns 422 NOT_SUPPORTED_FOR_MODE and saves nothing; change the scene's references with PUT /references/scene-mapping instead. _(If-Match)_",
       "if_match": true,
       "job": false,
       "method": "PUT",
