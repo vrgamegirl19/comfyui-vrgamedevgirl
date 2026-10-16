@@ -163,7 +163,7 @@
       "use_dynamic_shifting": "disable",
       "use_exponential_sigmas": "disable",
       "use_karras_sigmas": "disable",
-      "device": "cuda"
+      "device": "auto"
     },
     "class_type": "FlowMatchEulerDiscreteScheduler (Custom)",
     "_meta": {
@@ -189,7 +189,7 @@
       "use_dynamic_shifting": "disable",
       "use_exponential_sigmas": "disable",
       "use_karras_sigmas": "disable",
-      "device": "cuda"
+      "device": "auto"
     },
     "class_type": "FlowMatchEulerDiscreteScheduler (Custom)",
     "_meta": {

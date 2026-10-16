@@ -1,0 +1,63 @@
+{
+    "1": {
+        "inputs": {
+            "model_name": "krea2",
+            "quantize": "4",
+            "custom_model_path": "",
+            "loras": ""
+        },
+        "class_type": "Krea2ModelLoader",
+        "_meta": {
+            "title": "Krea-2 MLX Model Loader"
+        }
+    },
+    "2": {
+        "inputs": {
+            "pipeline": ["1", 0],
+            "prompt": "",
+            "negative_prompt": "",
+            "height": 576,
+            "width": 1024,
+            "num_inference_steps": 8,
+            "seed": 0,
+            "guidance": 1.0,
+            "image_strength": 0.3,
+            "filename_prefix": "krea2_mlx/pass1"
+        },
+        "class_type": "Krea2Generate",
+        "_meta": {
+            "title": "Krea-2 MLX Generate (First Pass)"
+        }
+    },
+    "3": {
+        "inputs": {
+            "model_name": "z-image-turbo",
+            "quantize": "4",
+            "custom_model_path": "",
+            "loras": ""
+        },
+        "class_type": "ZImageModelLoader",
+        "_meta": {
+            "title": "Z-Image MLX Model Loader (Enhancer)"
+        }
+    },
+    "4": {
+        "inputs": {
+            "pipeline": ["3", 0],
+            "prompt": "",
+            "negative_prompt": "",
+            "image": ["2", 0],
+            "height": 1080,
+            "width": 1920,
+            "num_inference_steps": 4,
+            "seed": 0,
+            "guidance": 1.0,
+            "image_strength": 0.3,
+            "filename_prefix": "krea2_mlx/pass2_enhanced"
+        },
+        "class_type": "ZImageGenerate",
+        "_meta": {
+            "title": "Z-Image MLX Generate (Enhancer Pass)"
+        }
+    }
+}
