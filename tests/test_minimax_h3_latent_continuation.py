@@ -355,6 +355,19 @@ class SceneLatentStorageTests(unittest.TestCase):
             self._save(folder, 2)
             self.assertFalse(MANAGER.SceneLatentManager.is_dirty(folder, 2))
 
+    def test_saving_a_scene_leaves_a_successor_that_did_not_continue_from_it_clean(self):
+        with tempfile.TemporaryDirectory() as folder:
+            segments = [{"id": "a"}, {"id": "b", "minimax_h3_continuity_mode_used": "off"},
+                        {"id": "c", "minimax_h3_continuity_mode_used": "latent_continuation_masked"}]
+            with open(os.path.join(folder, "vrgdg_builder_session.json"), "w", encoding="utf-8") as handle:
+                json.dump({"segments": segments}, handle)
+            for scene in (2, 3):
+                self._save(folder, scene)
+            self._save(folder, 1)
+            self.assertFalse(MANAGER.SceneLatentManager.is_dirty(folder, 2))
+            self._save(folder, 2)
+            self.assertTrue(MANAGER.SceneLatentManager.is_dirty(folder, 3))
+
     def test_deleting_a_scene_latent_keeps_the_numbering_of_the_others(self):
         with tempfile.TemporaryDirectory() as folder:
             for scene in (1, 2, 3):

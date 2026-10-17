@@ -719,12 +719,13 @@ def scene_items_text(items, people):
     lines = []
     for item in items:
         name = str(item.get("name") or "").strip()
-        if not name:
+        kind = str(item.get("reference_type") or "").strip().lower()
+        # A style card is not a prop, and the Story Builder does not use style cards yet.
+        if not name or kind == "style":
             continue
         description = " ".join(str(item.get("description") or "").split())[:300]
         detail = f" ({description})" if description else ""
         user = names.get(str(item.get("wears") or "")) or first
-        kind = str(item.get("reference_type") or "").strip().lower()
         if not user:
             lines.append(f"- {name}{detail} is in the scene.")
         elif kind == "outfit":

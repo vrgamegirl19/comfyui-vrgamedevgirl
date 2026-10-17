@@ -38,7 +38,8 @@ class CreateProjectTests(unittest.TestCase):
             json.dump({"saved_at": "x", "defaults": self.saved_defaults}, handle)
         for target, value in (
             (builder_project, ("_model_defaults_path", lambda: self.defaults_file)),
-            (builder_project, ("_project_target_from_payload", lambda payload, key: os.path.join(self.root, payload["project_name"]))),
+            (builder_project, ("_project_target_from_payload",
+                               lambda payload, key: os.path.join(self.root, payload.get("project_name") or payload[key]))),
             (paths, ("get_allowed_project_roots", lambda: [self.root])),
         ):
             patcher = patch.object(target, value[0], value[1])
@@ -69,6 +70,27 @@ class CreateProjectTests(unittest.TestCase):
             after = json.load(handle)["defaults"]
         for key, value in self.saved_defaults.items():
             self.assertEqual(after.get(key), value, f"saved default '{key}' was changed")
+
+    def test_a_duplicate_keeps_the_scenes_and_its_own_copy_of_the_audio(self):
+        mutations.create_project("Fresh Song")
+        source = os.path.join(self.root, "Fresh Song")
+        audio = os.path.join(source, "project_audio", "project_audio.wav")
+        os.makedirs(os.path.dirname(audio))
+        with open(audio, "wb") as handle:
+            handle.write(b"RIFF")
+        session_path = os.path.join(source, "vrgdg_builder_session.json")
+        with open(session_path, "r", encoding="utf-8") as handle:
+            session = json.load(handle)
+        session.update({"audio_path": audio, "segments": [{"id": "seg_1", "start": 0.0, "end": 2.0, "lyric_text": "la"}]})
+        with open(session_path, "w", encoding="utf-8") as handle:
+            json.dump(session, handle)
+
+        copied = mutations.duplicate_project("Fresh Song", "Fresh Song Copy")
+        with open(os.path.join(copied["project_folder"], "vrgdg_builder_session.json"), "r", encoding="utf-8") as handle:
+            branch = json.load(handle)
+        self.assertEqual([s["id"] for s in branch["segments"]], ["seg_1"])
+        self.assertTrue(os.path.isfile(branch["audio_path"]))
+        self.assertEqual(os.path.commonpath([branch["audio_path"], copied["project_folder"]]), copied["project_folder"])
 
     def test_every_llm_runner_setting_is_a_global_default(self):
         session = {

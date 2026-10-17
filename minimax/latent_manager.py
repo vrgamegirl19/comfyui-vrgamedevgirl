@@ -473,6 +473,33 @@ class SceneLatentManager:
                 pass
 
     @classmethod
+    def continues_from_predecessor(cls, project_folder: str, scene_number: int) -> bool:
+        """Whether scene ``scene_number``'s render was built from its predecessor's latent.
+
+        Reads ``minimax_h3_continuity_mode_used`` from the saved session, which the Builder and the API record
+        after each render. A scene with no record (older project, never rendered) counts as continued.
+        """
+        try:
+            with open(os.path.join(project_folder, "vrgdg_builder_session.json"), encoding="utf-8-sig") as handle:
+                segments = json.load(handle).get("segments")
+            segment = segments[int(scene_number) - 1]
+        except (OSError, ValueError, AttributeError, TypeError, IndexError):
+            return True
+        used = str(segment.get("minimax_h3_continuity_mode_used") or "").strip().lower() if isinstance(segment, dict) else ""
+        return used != "off"
+
+    @classmethod
+    def mark_successor_dirty(cls, project_folder: str, scene_number: int, reason: str = "") -> bool:
+        """Mark the next scene's latent dirty, only when that latent was continued from this scene."""
+        successor = int(scene_number) + 1
+        if not cls.latent_exists(project_folder, successor):
+            return False
+        if not cls.continues_from_predecessor(project_folder, successor):
+            return False
+        cls.mark_dirty(project_folder, successor, reason=reason)
+        return True
+
+    @classmethod
     def list_dirty(cls, project_folder: str) -> list[int]:
         """List all scene numbers that have active dirty flags."""
         if not project_folder or not os.path.isdir(project_folder):
@@ -686,10 +713,8 @@ class SceneLatentManager:
         # Clear any dirty flag for this scene since it was just freshly rendered
         cls.clear_dirty(project_folder, scene_number)
 
-        # Mark subsequent scenes as dirty to warn that predecessor changed
-        successor_scene = int(scene_number) + 1
-        if cls.latent_exists(project_folder, successor_scene):
-            cls.mark_dirty(project_folder, successor_scene, reason=f"Scene {scene_number:03d} re-rendered")
+        # Mark the next scene dirty when it was continued from this one
+        cls.mark_successor_dirty(project_folder, scene_number, reason=f"Scene {int(scene_number):03d} re-rendered")
 
         print(
             f"[VRGDG Latent] Saved scene {scene_number:03d} latent ({token_count} tokens, "

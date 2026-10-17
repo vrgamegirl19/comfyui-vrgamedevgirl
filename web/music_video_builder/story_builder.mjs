@@ -1350,7 +1350,9 @@ export function createStoryBuilder({
       const castNames = Object.fromEntries(storyCastCards().map((subject) => [subject.id, subject.name || subject.id]));
       // Clothing, prop and other thing cards, which scenes can use beside their characters.
       const sceneRefs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
-      const itemCards = (sceneRefs.subjects || []).filter((subject) => subject && !subject.extra_reference_for && !isStoryPersonCard(subject));
+      // Style cards are not props, and the Story Builder does not use them yet.
+      const itemCards = (sceneRefs.subjects || []).filter((subject) => subject && !subject.extra_reference_for && !isStoryPersonCard(subject)
+        && String(subject.reference_type ?? "").trim().toLowerCase() !== "style");
       const sceneMapIds = (value) => (Array.isArray(value) ? value.map(String) : String(value ?? "").split(",").map((id) => id.trim()).filter(Boolean));
       let reviseFromScene = null;
       const top = card("Scene plan", "Every scene gets its part of the act, a spot inside the chapter's setting, a mood and a performance. Your notes win over the story.");

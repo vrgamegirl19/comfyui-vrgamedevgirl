@@ -2071,11 +2071,16 @@ def delete_project_by_id(project_id: str, confirm: Optional[str] = None) -> Dict
 
 
 def duplicate_project(project_id: str, new_name: str, options: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Branch a project under a new name with optional asset filtering."""
-    folder = resolve_project_folder(project_id)
+    """Branch a project under a new name with optional asset filtering.
+
+    Sends the source's saved session and audio like the Builder's Save As does; without them the copy is empty.
+    """
+    folder, session = _get_active_session_and_folder(project_id)
     payload = {
         "source_project_folder": folder,
         "target_project_folder": new_name,
+        "session": copy.deepcopy(session),
+        "audio_path": str(session.get("audio_path") or ""),
         **(options or {}),
     }
     result = _save_builder_project_as(payload)

@@ -187,6 +187,8 @@ class SceneItemTests(unittest.TestCase):
         self.assertIn("Joe wears Red Dress (Silk, knee length.)", text)
         self.assertIn("Mara holds or uses Oil Lamp", text)
         self.assertEqual(story_mode.scene_items_text([], [mara]), "")
+        style = {"id": "look", "name": "2dpoly", "reference_type": "style"}
+        self.assertEqual(story_mode.scene_items_text([style], [mara]), "")
 
     def test_story_cast_leaves_out_clothing(self):
         refs = {"subjects": REFS["subjects"] + [{"id": "dress", "name": "Red Dress", "reference_type": "outfit"}]}

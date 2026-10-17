@@ -147,14 +147,12 @@ def delete_scene_latent(
     scene_number = idx + 1
     deleted = SceneLatentManager.delete_latent(folder, scene_number, reindex=reindex)
 
-    # Invariant 4: Mark downstream successor dirty if it exists
-    successor = scene_number + 1
-    if SceneLatentManager.latent_exists(folder, successor):
-        SceneLatentManager.mark_dirty(
-            folder,
-            successor,
-            reason=f"Predecessor scene {scene_number:03d} latent was deleted",
-        )
+    # Invariant 4: Mark the downstream successor dirty when it was continued from this scene
+    SceneLatentManager.mark_successor_dirty(
+        folder,
+        scene_number,
+        reason=f"Predecessor scene {scene_number:03d} latent was deleted",
+    )
 
     return {
         "project_id": project_id,
