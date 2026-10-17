@@ -1,0 +1,23 @@
+{
+  "craft": [
+    {"style": "Anime", "hasCast": true, "hasVocals": true, "continuation": false},
+    {"style": "", "hasCast": true, "hasVocals": false, "continuation": false},
+    {"style": "Photoreal", "hasCast": true, "hasVocals": true, "continuation": true},
+    {"style": "Noir", "hasCast": false, "hasVocals": false, "continuation": false}
+  ],
+  "header": ["sad, longing, singing", "Spanish, joyful", "", "English, tender, hopeful, singing", "[weird]!"],
+  "delivery": [
+    ["Fuck the static, fuck the wait!", "<i>Fuck</i> the static, <i>fuck</i> the wait!"],
+    ["Say the quiet lasted too long. If the verdict", "Say the quiet lasted <i>too long</i>. <breath> If the verdict"],
+    ["Hold me close.", "Hold me near."],
+    ["I love you so.", "<i>I love you so</i>."],
+    ["Don't let go, it's late.", "Don't let <i>go</i>, it's late."],
+    ["Plain words here.", ""]
+  ],
+  "snap": [
+    [[2.0, 4.0], [{"start": 1.5, "end": 2.3}, {"start": 2.6, "end": 3.0}, {"start": 3.9, "end": 4.4}], 6],
+    [[2.5], [{"start": 0.2, "end": 1.0}, {"start": 3.0, "end": 3.5}], 5],
+    [[1.2], [{"start": 0.0, "end": 3.0}], 4],
+    [[], [{"start": 0.0, "end": 1.0}], 3]
+  ]
+}

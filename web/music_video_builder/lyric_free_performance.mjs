@@ -5,7 +5,8 @@ export function lyricFreePerformanceEnabled(enabled, performanceMode, audioMode)
 
 export function stripSingingArticulation(text) {
   const saved = [];
-  let clean = String(text || '').replace(/<d>[\s\S]*?<\/d>|“[^”]*”|"[^"]*"|\[[^\]]*\]/gi, value => {
+  // A silent person's closed lips ("<Subject 2> keeps his lips pressed together") are kept: they stop that person mouthing the song.
+  let clean = String(text || '').replace(/<d>[\s\S]*?<\/d>|“[^”]*”|"[^"]*"|\[[^\]]*\]|\blips\s+(?:(?:stay|stays|staying|remain|remains|remaining|still|kept|firmly|tightly)\s+){0,2}pressed\s+(?:together|shut|closed)\b/gi, value => {
     saved.push(value);
     return `VRGDGPROTECTED${saved.length - 1}TOKEN`;
   }).replace(/(\d)\.(?=\d)/g, '$1VRGDGDECIMALTOKEN');

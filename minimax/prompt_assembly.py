@@ -148,6 +148,16 @@ def _scene_cut_plan_by_frequency(segment: Dict[str, Any], session: Dict[str, Any
             if cuts:
                 plan.update(cut_times_seconds=cuts, cut_count=len(cuts), shot_count=len(cuts) + 1,
                             continuous_shot=False, cue_driven=True)
+    elif not segment.get("location_continuous_shot"):
+        # A timed singing cue map on the project audio cuts at every cue, like the Builder's miniMaxH3SceneCutPlan.
+        from . import shot_prompt
+        from .settings_payload import minimax_h3_settings_for_scene
+
+        singing = str(segment.get("performance_mode") or session.get("video_type") or "singing") == "singing"
+        if singing and minimax_h3_settings_for_scene(session, segment).get("audio_mode", "input_audio") != "built_in_audio":
+            cues = shot_prompt.timed_cue_rows(segment)
+            if cues:
+                plan = shot_prompt.cue_cut_plan(plan, cues)
     return plan
 
 

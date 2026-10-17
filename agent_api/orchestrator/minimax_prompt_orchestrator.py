@@ -124,6 +124,21 @@ def generate_scene_prompt(session: Dict[str, Any], folder: str, segment: Dict[st
         if ctx["continuation"]:
             plan = storyboard_cut_plan_for_duration(ctx["duration"], 0)
     performer, performer_labels = lfp.scene_performers(session, segment, MODE) if omit_lyrics else ("", {})
+    # A timed cue map ("Match exact sung words to each shot") cuts at each cue and gives every shot its own words,
+    # like the Builder. A continued scene stays one take.
+    cues: List[Dict[str, Any]] = []
+    if (not omit_lyrics and not ctx["continuation"] and ctx["lyric"] and ctx["audio_mode"] != "built_in_audio"
+            and str(segment.get("performance_mode") or session.get("video_type") or "singing") == "singing"):
+        cues = sp.timed_cue_rows(segment)
+        cue_plan = sp.apply_cut_style(sp.cue_cut_plan(plan, cues), ctx["defaults"].get("minimax_h3_cut_style")) if cues else plan
+        if cues and len(sp.shot_plan(cue_plan)) == len(cues):
+            plan = cue_plan
+            subjects = [l for l in labels if l["kind"] == "subject"] or labels
+            for cue in cues:
+                singer = next((l for l in subjects if l["name"] and l["name"].lower() == cue["singer_name"].lower()), subjects[0] if subjects else None)
+                cue["label"] = (f"{singer['label']} ({singer['name']})" if singer["name"] else singer["label"]) if singer else "The singer"
+        else:
+            cues = []
     # Reserve space for the selected output format before asking for the creative shots.
     frame = sp.reference_frame(ctx["items"], plan, ctx["style"], ctx["audio_mode"], _text(segment.get("audio_direction")))
     structured = bool(session.get("use_structured_outputs", False))
@@ -159,6 +174,7 @@ def generate_scene_prompt(session: Dict[str, Any], folder: str, segment: Dict[st
                 with_picture=with_picture, location_contract=ctx["location_contract"],
                 motion_request=_text(segment.get("i2v_notes")), audio_direction=_text(segment.get("audio_direction")),
                 continuity=_text(segment.get("continuity")),
+                cues=cues or None,
                 storyboard_context=storyboard_video_context(card) + (
                     "\n\nThe builder adds this exact video style look to the opening line. Write shots that fit it; do not copy it into the shots:\n"
                     + style_text if style_text else "") + (
@@ -210,6 +226,8 @@ def generate_scene_prompt(session: Dict[str, Any], folder: str, segment: Dict[st
         descriptions = sp.parse_shot_descriptions(raw, budget["shot_count"])
         if omit_lyrics:
             descriptions = lfp.apply_shots(descriptions, segment, plan, performer, performer_labels, session)
+        elif cues:
+            descriptions = [sp.enforce_cue_shot(text, cue) for text, cue in zip(descriptions, cues)]
         elif ctx["lyric"] and ctx["audio_mode"] != "built_in_audio" and labels:
             # The prompt must say what the character sings: the lyric goes in the shot in double quotes.
             cast = [l for l in labels if l["kind"] == "subject"] or labels

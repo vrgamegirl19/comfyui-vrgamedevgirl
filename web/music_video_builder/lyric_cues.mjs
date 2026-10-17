@@ -310,6 +310,35 @@ export function syncCueEndBoundariesFromNextStarts(cues = []) {
   return cues;
 }
 
+// Moves each cut that would split a sung word (or land just before one) to the nearest gap between words, at most
+// ``maxShift`` seconds away and keeping every shot at least ``minShot`` long. A cut with no such gap stays where it is.
+// ``words`` are scene-relative {start, end}.
+export function snapCutsToVocalGaps(cuts = [], words = [], duration = 0, { minShot = 1.0, maxShift = 1.0 } = {}) {
+  const timed = (Array.isArray(words) ? words : [])
+    .map((word) => ({ start: Number(word?.start), end: Number(word?.end) }))
+    .filter((word) => Number.isFinite(word.start) && Number.isFinite(word.end) && word.end > word.start)
+    .sort((a, b) => a.start - b.start);
+  const sorted = (Array.isArray(cuts) ? cuts : []).map(Number).filter(Number.isFinite).sort((a, b) => a - b);
+  if (!timed.length || !sorted.length) return sorted;
+  const splitsWord = (time) => timed.some((word) => time > word.start - 0.08 && time < word.end - 0.02);
+  const gaps = [Math.max(0, timed[0].start - 0.1), timed[timed.length - 1].end + 0.1];
+  for (let index = 0; index < timed.length - 1; index += 1) {
+    if (timed[index + 1].start > timed[index].end) gaps.push((timed[index].end + timed[index + 1].start) / 2);
+  }
+  const placed = [];
+  sorted.forEach((cut, index) => {
+    const previous = placed.length ? placed[placed.length - 1] : 0;
+    const next = index + 1 < sorted.length ? sorted[index + 1] : Number(duration) || cut + minShot;
+    let best = cut;
+    if (splitsWord(cut)) {
+      const options = gaps.filter((time) => Math.abs(time - cut) <= maxShift && time - previous >= minShot && next - time >= minShot && !splitsWord(time));
+      if (options.length) best = options.reduce((a, b) => (Math.abs(b - cut) < Math.abs(a - cut) ? b : a));
+    }
+    if (best > previous + 0.001) placed.push(Number(best.toFixed(3)));
+  });
+  return placed;
+}
+
 export function formatCueTime(value) {
   return Number.isFinite(Number(value)) ? `${Number(value).toFixed(3)}s` : "--";
 }
@@ -758,6 +787,9 @@ export function createLyricCues({
       continuousFramePrompt
         ? "All listed cues occur inside the same uninterrupted shot at their assigned times. Do not add a cut, reset, or new setup between cues. Do not swap singers, merge lyric cues, or anticipate a later vocal cue."
         : "Each listed cue is its own shot. Do not swap singers, merge lyric cues, or anticipate a later vocal cue. Apply vocal direction only to the assigned vocal row and its exact timing.",
+      "Write each vocal cue as <d>[Language, emotion, emotion, singing] exact words</d>: choose two specific emotions that fit this line's meaning, the story beat and the song, "
+        + "wrap the 1–3 words the singer leans on (a rhyme word, a key verb) in <i>...</i>, and put <breath> between two lines where the singer breathes. "
+        + "Keep every word unchanged and in order, and follow the cue with that singer's concrete facial acting.",
     ].join("\n");
   }
 
@@ -769,10 +801,10 @@ export function createLyricCues({
       .sort((a, b) => Number(a.start) - Number(b.start));
     if (!words.length) return [];
     const cutPlan = storyboardCutPlanForDuration(sceneDuration, state.builderStoryboardDefaults?.minimax_h3_cut_frequency);
-    const cuts = (Array.isArray(cutPlan?.cut_times_seconds) ? cutPlan.cut_times_seconds : [])
+    const cuts = snapCutsToVocalGaps((Array.isArray(cutPlan?.cut_times_seconds) ? cutPlan.cut_times_seconds : [])
       .map(Number)
       .filter((time) => Number.isFinite(time) && time > 0.001 && time < sceneDuration - 0.001)
-      .sort((a, b) => a - b);
+      .sort((a, b) => a - b), words, sceneDuration);
     const boundaries = [0, ...cuts, sceneDuration];
     const cues = [];
     for (let index = 0; index < boundaries.length - 1; index += 1) {

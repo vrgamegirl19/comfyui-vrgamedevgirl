@@ -17,7 +17,11 @@ def strip_singing_articulation(text: str) -> str:
         saved.append(match[0])
         return f"VRGDGPROTECTED{len(saved) - 1}TOKEN"
 
-    clean = re.sub(r'<d>[\s\S]*?</d>|“[^”]*”|"[^"]*"|\[[^\]]*\]', protect, str(text or ""), flags=re.I)
+    # A silent person's closed lips ("<Subject 2> keeps his lips pressed together") are kept: they stop that person mouthing the song.
+    clean = re.sub(r'<d>[\s\S]*?</d>|“[^”]*”|"[^"]*"|\[[^\]]*\]'
+                   r'|\blips\s+(?:(?:stay|stays|staying|remain|remains|remaining|still|kept|firmly|tightly)\s+){0,2}'
+                   r'pressed\s+(?:together|shut|closed)\b',
+                   protect, str(text or ""), flags=re.I)
     clean = re.sub(r"(\d)\.(?=\d)", r"\1VRGDGDECIMALTOKEN", clean)
     clean = re.sub(r"\bwith\s+(?:natural\s+)?(?:mouth|lips?|jaw)\b[^,;.!?]*,\s*", "with ", clean, flags=re.I)
     result = []

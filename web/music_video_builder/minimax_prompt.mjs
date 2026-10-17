@@ -389,6 +389,85 @@ export function miniMaxH3LiteralSceneInstruction() {
   return "LITERAL SCENE CLARITY — MANDATORY: Write natural, fluent shot prose that H3 can follow literally. Lead physical action with the person doing it; use their possessive for a body part or worn item and clear pronouns afterward. For example: '<Subject 1> steps past the ground-level camera, her boot briefly crossing the foreground.' Describe how the camera films that same action instead of independently placing a body part in the foreground and its owner elsewhere. A close-up identifies whose body part is framed; describe cropping only when needed to understand the shot. Keep ownership and spatial checks in your reasoning; finished sentences describe visible action, not explanations of anatomy or routine clothing attachment. Rewrite ambiguous scene-card or image-prompt wording into ordinary action-led sentences rather than copying it. Keep character, camera and prop positions consistent from the opening through the ending. Place loose props explicitly and use only objects supported by this scene's directions or mapped references. Carry an object from an adjacent scene only when the current scene explicitly does so. Before returning, read the shot by itself: every action has an actor, every item has a clear owner or placement, and the camera movement fits the same physical action. Resolve uncertainty with clear verbs and possessives, not explanatory qualifiers. Return only the requested shot JSON with natural visual prose.";
 }
 
+// Performance craft for any song or story: what kept faces acting, lip-sync readable and props in place on real H3
+// renders. The emotions come from each scene, never from a stock list. Twins: MINIMAX_H3_CRAFT_* in minimax/shot_prompt.py.
+export const MINIMAX_H3_CRAFT_ACTING = "PERFORMANCE CRAFT — MANDATORY: Give every visible face its own concrete expression in every shot, "
+  + "written as what the brows, eyes, smile, head and shoulders do, for example eyes narrowing, brows lifting, a slow smile spreading or the head turning away. "
+  + "Take each emotion from this scene's lyric meaning, story beat and song energy rather than a stock mood, choose two specific emotions wherever an emotion header is written, "
+  + "and let the expression change at least once in a longer shot. Scale every expression to the {style} video style and the scene's energy: "
+  + "stylized, animated or high-energy scenes use big, exaggerated expressions; realistic or quiet scenes use small, precise ones. "
+  + "Write each emotion as a visible action instead of a feeling word or a face colour: anger is a jabbed finger, gritted teeth or brows slammed down, never a red, flushed or pale face. "
+  + "Faces stay dry, with no tears, crying, wet eyes, glistening skin or sweat.";
+export const MINIMAX_H3_CRAFT_SILENT = "SILENT PEOPLE: Name every visible person who is not singing or speaking at that moment and state that their lips stay pressed together, "
+  + "with their own expression, for example '<Subject 2> watches with her lips pressed together and her brows lifted.'";
+export const MINIMAX_H3_CRAFT_FRAMING = "FACES WHILE SINGING OR SPEAKING: Unless a per-shot framing above says otherwise, frame a person who is singing or speaking "
+  + "from a medium shot to a close-up, with the camera near their eye level, so the face stays large in frame; keep wide and full-body framing for moments without vocals.";
+export const MINIMAX_H3_CRAFT_CLEAR_FACE = "Keep hands, drinks, food, hair and kisses away from a singing or speaking person's face while words are heard, "
+  + "and finish any such gesture before the vocal starts.";
+export const MINIMAX_H3_CRAFT_OPENING = "OPENING AND ENDING: Open Shot 1 on the scene's main subject, and end the last shot on a clear held state such as a pose, a look or a finished gesture.";
+export const MINIMAX_H3_CRAFT_ACTION = "ACTIONS AND PROPS: Give each shot one main action written as visible steps that reach a clear final state. "
+  + "Once a prop is picked up, put down, handed over or put on, name it with where it is in every later shot of this scene.";
+
+const MINIMAX_H3_CUE_LANGUAGES = /^(?:english|spanish|french|german|italian|portuguese|dutch|swedish|norwegian|danish|finnish|polish|czech|russian|ukrainian|greek|turkish|arabic|hebrew|hindi|bengali|urdu|japanese|korean|chinese|mandarin|cantonese|thai|vietnamese|indonesian|malay|tagalog|filipino)$/i;
+
+// The emotion header the LLM chose for a cue, with the language first. "English" when it wrote none.
+export function miniMaxH3CueHeader(header) {
+  const items = String(header || "").split(",").map((item) => item.replace(/[^\p{L}\p{N} '-]/gu, "").trim()).filter(Boolean);
+  if (!items.length) return "English";
+  if (!MINIMAX_H3_CUE_LANGUAGES.test(items[0])) items.unshift("English");
+  return items.slice(0, 5).join(", ");
+}
+
+// The canonical cue words with the LLM's delivery marks: <i> on 1–3 stressed words and <breath> between lines. The words
+// and punctuation always stay the cue's own. Marks are dropped when the LLM's words differ from the cue.
+export function miniMaxH3CueDelivery(cueText, llmBody) {
+  const canonical = String(cueText || "").trim().split(/\s+/).filter(Boolean);
+  const hasWord = (token) => /[\p{L}\p{N}]/u.test(token);
+  const wordKey = (token) => token.toLocaleLowerCase().replace(/’/g, "'").replace(/[^\p{L}\p{N}']/gu, "");
+  const marks = [];
+  let italic = false;
+  let breath = false;
+  String(llmBody || "").replace(/<\s*(\/?i|breath)\s*>/gi, " <$1> ").split(/\s+/).filter(Boolean).forEach((token) => {
+    const tag = token.match(/^<(\/?i|breath)>$/i)?.[1]?.toLowerCase();
+    if (tag === "i") italic = true;
+    else if (tag === "/i") italic = false;
+    else if (tag === "breath") breath = true;
+    else if (hasWord(token.replace(/<[^>]*>/g, ""))) {
+      marks.push({ key: wordKey(token.replace(/<[^>]*>/g, "")), stress: italic, breath });
+      breath = false;
+    }
+  });
+  const words = canonical.filter(hasWord);
+  if (!canonical.length || marks.length !== words.length || words.some((token, index) => wordKey(token) !== marks[index].key)) return canonical.join(" ");
+  const stressed = marks.filter((mark) => mark.stress).length;
+  const useStress = stressed > 0 && stressed <= 4;
+  let wordIndex = -1;
+  return canonical.map((token, index) => {
+    if (!hasWord(token)) return token;
+    wordIndex += 1;
+    const mark = marks[wordIndex];
+    let text = token;
+    if (useStress && mark.stress) {
+      const [, word, tail] = token.match(/^(.*?[\p{L}\p{N}'’])([^\p{L}\p{N}'’]*)$/u) || [null, token, ""];
+      text = `<i>${word}</i>${tail}`;
+    }
+    return `${mark.breath && index > 0 ? "<breath> " : ""}${text}`;
+  }).join(" ").replace(/<\/i>(\s+)<i>/g, "$1");
+}
+
+// ``hasCast``: people are visible. ``hasVocals``: someone sings or speaks. ``continuation``: the scene carries on from the previous frame.
+export function miniMaxH3PerformanceCraftInstruction({ style = "", hasCast = true, hasVocals = false, continuation = false } = {}) {
+  const lines = [];
+  if (hasCast) {
+    lines.push(MINIMAX_H3_CRAFT_ACTING.replace("{style}", String(style || "chosen").trim() || "chosen"), MINIMAX_H3_CRAFT_SILENT);
+    if (hasVocals && !continuation) lines.push(MINIMAX_H3_CRAFT_FRAMING);
+    if (hasVocals) lines.push(MINIMAX_H3_CRAFT_CLEAR_FACE);
+  }
+  if (!continuation) lines.push(MINIMAX_H3_CRAFT_OPENING);
+  lines.push(MINIMAX_H3_CRAFT_ACTION);
+  return lines.join("\n");
+}
+
 function miniMaxH3ReferenceSceneGroundingContract() {
   return "REFERENCE SCENE GROUNDING — MANDATORY: Generate and describe a complete new scene using the assigned character and environment pictures. "
     + "Character pictures supply identity and appearance; environment pictures supply the set. The prompt determines opening framing, camera angle, staging, pose, composition, and action. Never use a reference picture's composition, framing, camera angle, or pose as the opening shot. A separately enabled continuation task follows its own previous-frame rules. A saved image prompt is a proposed scene idea, not proof that its props, poses, or layout exist in a supplied picture. "
@@ -1252,7 +1331,7 @@ export function createMiniMaxPrompt({
       "SHOT FORMAT — MANDATORY: Write concise complete sentences, with length and action complexity suited to the available shot time, in this order. "
       + "1) Camera: the opening framing, one named camera move with its direction and speed, and the ending framing. "
       + "2) Subject action: each person in the cast does their own continuous physical action, written by what the body does. "
-      + "3) Acting detail: include only context-supported expression or reaction that fits naturally inside the existing action and available time. "
+      + "3) Acting detail: each visible face's concrete expression for this moment, as the PERFORMANCE CRAFT rules below describe. "
       + "4) Light and set: one short line using only the mapped location's own light and objects. "
       + "Describe only what the camera sees. Show emotion through visible acting; requested emotion descriptors are permitted inside performance tags. Avoid abstract feeling words such as feel, grief, longing, memory, soul, or emotional in the visual prose. "
       + "Write complete grammatical prose, not notes, labels, or fragments, and do not replace named subjects with S1/S2 shorthand. "
@@ -1304,7 +1383,10 @@ export function createMiniMaxPrompt({
         if (!performerLabelSet.has(item.label)) return "does NOT sing, speak, or lip sync; acts and reacts silently with a relaxed closed mouth";
         return cueMapMode
           ? "SINGS and lip-syncs only its assigned cue lines from the Performer / vocal cue map, with a relaxed closed mouth at every other moment"
-          : "SINGS and lip-syncs the exact lyric line with visible mouth, lip, and jaw movement";
+          : nativeAudio
+            ? "SINGS and lip-syncs the exact lyric line with visible mouth, lip, and jaw movement"
+            // Supplied audio drives the mouth, so the prose describes the face and body (SUPPLIED-AUDIO SINGING below).
+            : "SINGS the exact lyric line in sync with <Audio 1>, acting it with the face and body";
       }
       return "";
     };
@@ -1395,7 +1477,9 @@ export function createMiniMaxPrompt({
     } else if (lyricText) {
       parts.push("MANDATORY VOCAL PERFORMANCE: The assigned subject is visibly singing the exact supplied lyric/audio during this scene. Use the stable visible subject label, " + (nativeAudio
         ? "and place every performed lyric cue inside <d>[English] exact words with final punctuation.</d>. "
-        : "and write the exact lyric words, unchanged, inside the shot description in double quotes, introduced like this: <Subject 1> sings the lyric line, \"the exact words\". Every lyric line given below must appear in a shot, in order. ") + "Show clear, natural mouth, lip, jaw, and facial movement synchronized to the audible vocal. Never describe the lips as closed, still, motionless, or sealed while the assigned vocal is being performed. Body action is required in addition to lip sync; it does not replace lip sync. Non-verbal vocals such as oooh, ah, humming, and sustained notes still require visible mouth movement. Mention the visible singing action naturally in the shot descriptions.");
+        : "and write the exact lyric words, unchanged, inside the shot description in double quotes, introduced like this: <Subject 1> sings the lyric line, \"the exact words\". Every lyric line given below must appear in a shot, in order. ") + (nativeAudio
+        ? "Show clear, natural mouth, lip, jaw, and facial movement synchronized to the audible vocal. Never describe the lips as closed, still, motionless, or sealed while the assigned vocal is being performed. Body action is required in addition to lip sync; it does not replace lip sync. Non-verbal vocals such as oooh, ah, humming, and sustained notes still require visible mouth movement. "
+        : "Audio 1 drives the singer's mouth, so act the line with the face and body. Body action is required in addition to the singing. ") + "Mention the visible singing action naturally in the shot descriptions.");
       add(parts, "Exact lyric line", lyricText);
     } else {
       parts.push("Vocal performance: no exact lyric or dialogue is assigned to this scene.");
@@ -1450,6 +1534,12 @@ export function createMiniMaxPrompt({
     if (!nativeAudio && performanceMode === "singing") {
       parts.push("SUPPLIED-AUDIO SINGING: Include the assigned singer and Audio 1 synchronization cue once, only during audible vocals. Do not describe mouth, lip or jaw movement or ask for singing from the first frame. Preserve any supplied vocal timing; introductory silence remains non-vocal.");
     }
+    parts.push(miniMaxH3PerformanceCraftInstruction({
+      style: miniMaxH3OpeningStyle(segment),
+      hasCast: !segment?.no_character_present && subjectLabelEntries.length > 0,
+      hasVocals: Boolean(lyricText) && !visualOnly && performanceMode !== "no_lip_sync",
+      continuation: Boolean(options.frameContinuityPrompt),
+    }));
     parts.push(miniMaxH3LiteralSceneInstruction());
     const context = parts.join("\n\n");
     return omitLyricsForSegment(segment) ? lyricFreeContextForSegment(segment, mode, context) : context;
@@ -1686,11 +1776,17 @@ export function createMiniMaxPrompt({
     // `"; S2 plays bass...`. Remove only the duplicate lyric/tag/timing
     // material, then append the one canonical cue below.
     const cueText = miniMaxH3CapitalizeCueText(miniMaxH3PunctuatedCueText(cue.text));
-    const emotionDescriptor = hasEmotionExpressionInput(segment, state)
-      ? (text.match(/<d>\s*\[([^\]]+)\]/i)?.[1] || "English") : "English";
+    // The LLM's emotion header and delivery marks are kept on the cue's own words.
+    const llmCue = text.match(/<d>\s*(?:\[([^\]]*)\])?\s*([\s\S]*?)<\/d>/i);
+    const emotionDescriptor = miniMaxH3CueHeader(llmCue?.[1]);
+    const deliveredCue = miniMaxH3CueDelivery(cueText, llmCue?.[2]);
+    const vocalStart = Number(cue.vocal_start);
+    const vocalEnd = Number(cue.vocal_end);
+    const vocalWindow = cue.vocal_start != null && cue.vocal_end != null && Number.isFinite(vocalStart) && Number.isFinite(vocalEnd) && vocalEnd > vocalStart
+      ? ` from ${Number(vocalStart.toFixed(2))} s to ${Number(vocalEnd.toFixed(2))} s` : "";
     // Remove a previously generated canonical contract before adding the
     // authoritative one below. This keeps retries idempotent.
-    text = text.replace(/<Subject\s+\d+>[^.\n]*?is the only visible performer singing and lip-syncing[\s\S]*?every other visible performer remains silent\.?/gi, "");
+    text = text.replace(/<Subject\s+\d+>[^.\n]*?is the only visible performer singing\b[\s\S]*?every other visible performer remains silent\.?/gi, "");
     const cueVariants = [String(cue.text || "").trim(), cueText.replace(/[.!?…]+$/, "").trim()]
       .filter(Boolean)
       .sort((left, right) => right.length - left.length);
@@ -1716,7 +1812,8 @@ export function createMiniMaxPrompt({
       .trim();
     if (!clean) clean = miniMaxH3FallbackShotDescription(segment, shotIndex, mode);
     clean = clean.replace(/[,;:]\s*([.!?…])/g, "$1").replace(/\s+,/g, ",");
-    const vocalContract = `${performer} is the only visible performer singing and lip-syncing <d>[${emotionDescriptor}] ${cueText}</d> from <Audio 1>; every other visible performer remains silent.`;
+    // No "lip" words here: supplied-audio singing strips them, and with them this whole clause.
+    const vocalContract = `${performer} is the only visible performer singing, in sync with <Audio 1>${vocalWindow}, <d>[${emotionDescriptor}] ${deliveredCue}</d>; every other visible performer remains silent.`;
     return normalizeMiniMaxH3ShotDescription(`${clean.replace(/[.!?…]+$/g, "").trim()}. ${vocalContract}`);
   }
 
@@ -2164,7 +2261,9 @@ export function createMiniMaxPrompt({
         .replace(/\\</g, "<")
         .replace(/\\>/g, ">")
         .replace(/\\+/g, "")
-        .replace(hasEmotionExpressionInput(segment, state) ? /<d>\s*\[[^\]]+\]/gi : /$^/g, "<d>[English]")
+        // The emotion header and the <i> / <breath> delivery marks are the LLM's choice; the words must match.
+        .replace(/<d>\s*\[[^\]]+\]/gi, "<d>[English]")
+        .replace(/<(?!\/?d>)[^>]*>/gi, "")
         .replace(/\s+/g, " ")
         .trim()
         .toLocaleLowerCase();
