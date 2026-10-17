@@ -178,9 +178,11 @@ def life_movements(character_speed: float, seed: str = "") -> List[str]:
     return [bank[(offset + i) % len(bank)] for i in range(6)]
 
 
-def opening_wrapper(style: str, continuous: bool = False) -> str:
+def opening_wrapper(style: str, continuous: bool = False, guidance: str = "") -> str:
+    """The opening of detailed_description: the style name and its look, then the continuity sentence."""
     continuity = f" {CONTINUOUS_CUTS_OPENING}" if continuous else ""
-    return f"detailed_description:\nThe target video is in a {style or 'photorealistic cinematic'} music-video style.{continuity}\n\n"
+    look = f": {guidance.strip()}" if guidance and guidance.strip() else "."
+    return f"detailed_description:\nThe target video is in a {style or 'photorealistic cinematic'} music-video style{look}{continuity}\n\n"
 
 
 def _clean_sentence_start(text: str) -> str:
@@ -317,9 +319,9 @@ def shot_body(descriptions: List[str], cut_plan: Dict[str, Any]) -> str:
     return "\n\n".join(blocks)
 
 
-def assemble_prompt(descriptions: List[str], cut_plan: Dict[str, Any], style: str) -> str:
-    """The saved prompt for a reference-to-video scene."""
-    return f"{opening_wrapper(style, bool(cut_plan.get('continuous')))}{shot_body(descriptions, cut_plan)}".strip()
+def assemble_prompt(descriptions: List[str], cut_plan: Dict[str, Any], style: str, guidance: str = "") -> str:
+    """The saved prompt for a reference-to-video scene. ``guidance`` is the video style's look for the opening line."""
+    return f"{opening_wrapper(style, bool(cut_plan.get('continuous')), guidance)}{shot_body(descriptions, cut_plan)}".strip()
 
 
 AUDIO_DEFINITION = (

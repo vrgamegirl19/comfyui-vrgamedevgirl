@@ -473,6 +473,8 @@ export function createSceneOutput({
           lyrics: lyric,
           lyric_section: String(segment.lyric_section || "").trim(),
           story_beat: String(segment.story_beat || "").trim(),
+          // The user's override for this scene (Story Builder Scenes tab): always true, it wins over every other field.
+          scene_override: String(segment.scene_override || "").trim(),
           flf_start_state: String(segment.flf_start_state || "").trim(),
           flf_transformation: String(segment.flf_transformation || "").trim(),
           flf_end_state: String(segment.flf_end_state || "").trim(),

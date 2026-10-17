@@ -78,6 +78,15 @@ export function createStoryboardBridge({
       if (text) parts.push(`${title}:\n${text}`);
     };
     const parts = [];
+    // The user's override for this scene wins over every other field below, the lyric and the story.
+    const sceneOverride = String(canonicalSegment?.scene_override || scene.scene_override || "").trim();
+    if (sceneOverride) {
+      parts.push([
+        `SCENE OVERRIDE, set by the user and always true for this scene: ${sceneOverride}`,
+        "It replaces anything in the fields below, the story beat, the lyric, the location, the reference descriptions and any existing prompt that disagrees with it. Change every conflicting detail to match it, and make it clearly visible in the prompt's setting, light and action.",
+        "For example, an override of night time means the video is at night and lit like night even if the beat or a reference says day; an override of raining means it rains through the whole video.",
+      ].join("\n"));
+    }
     if (ltxScene) {
       const mappedSubjects = Array.isArray(selectedScene.subjects) ? selectedScene.subjects : [];
       const singleSubjectText = mappedSubjects.length === 1
@@ -128,7 +137,11 @@ export function createStoryboardBridge({
       add(parts, "MANDATORY user direction for this scene", planEntry.user_note);
     }
     add(parts, "REQUIRED Storyboard video style", selectedScene.video_style);
-    add(parts, "MANDATORY exact Storyboard video style verbiage — copy word-for-word", selectedScene.video_style_verbiage);
+    // MiniMax Reference to Video: the builder writes the style's look into the opening line itself (like the Agent API).
+    const builderAddsStyle = !ltxScene && String(selectedScene.minimax_h3_mode || scene.minimax_h3_mode || "") === "reference_to_video";
+    add(parts, builderAddsStyle
+      ? "Video style — the builder adds this exact look to the prompt's opening line. Write every shot's light, color and texture to fit it; do not copy it into the shots"
+      : "MANDATORY exact Storyboard video style verbiage — copy word-for-word", selectedScene.video_style_verbiage);
     if (selectedScene.temporal_world_effect?.enabled) {
       add(parts, "Temporal / world effect — integrate into each shot's action", selectedScene.temporal_world_effect.writing_guidance);
       add(parts, "Temporal effect writing rules", selectedScene.temporal_world_effect_instruction);
@@ -154,6 +167,7 @@ export function createStoryboardBridge({
     add(parts, "Exact manual audio / sound direction", selectedScene.audio_direction || scene.audio_direction);
     add(parts, "Exact manual continuity requirements", selectedScene.continuity || scene.continuity || scene.continuity_direction);
     parts.push(`${STORYBOARD_SCENE_CARD_CONTEXT_INSTRUCTION}\nComplete scene_card:\n${JSON.stringify(storyboardSceneCardContext(scene), null, 2)}`);
+    if (sceneOverride) parts.push(`FINAL CHECK: the prompt must match the scene override "${sceneOverride}". Rewrite any detail that disagrees with it.`);
     return parts.join("\n\n");
   };
   const ensureStoryboardRequiredStartingShot = (prompt, segment, scene = {}, storyboardPayload = {}) => {

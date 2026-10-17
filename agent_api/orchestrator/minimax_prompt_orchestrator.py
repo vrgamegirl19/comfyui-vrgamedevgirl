@@ -23,7 +23,7 @@ from ..llm_runtime import llm_payload_from_session, prepare_llm_payload
 from ..mutations import _BUILDER_SAVE_LOCK, _get_active_session_and_folder, _persist_session, scene_field_change
 from ..scene_card_context import storyboard_video_context
 from ..temporal_effect import append_temporal_world_effect, temporal_world_effect_verbiage
-from ..video_style import apply_fx, fx_reserve, insert_video_style, video_style_label, video_style_verbiage
+from ..video_style import apply_fx, fx_reserve, video_style_guidance, video_style_label
 from .storyboard_orchestrator import scene_cards, sync_storyboard_files
 
 MODE = "reference_to_video"
@@ -84,7 +84,7 @@ def _scene_context(session: Dict[str, Any], segment: Dict[str, Any], card: Dict[
         ),
         "style": video_style_label({**card, "video_style": card.get("video_style") or segment.get("minimax_h3_video_style"),
                                     "video_style_custom": card.get("video_style_custom") or segment.get("minimax_h3_video_style_custom")}, defaults),
-        "style_text": video_style_verbiage({**card, "video_style": card.get("video_style") or segment.get("minimax_h3_video_style"),
+        "style_text": video_style_guidance({**card, "video_style": card.get("video_style") or segment.get("minimax_h3_video_style"),
                                             "video_style_custom": card.get("video_style_custom") or segment.get("minimax_h3_video_style_custom")}, defaults),
         "defaults": defaults,
         "temporal": temporal_world_effect_verbiage(card, defaults),
@@ -134,7 +134,7 @@ def generate_scene_prompt(session: Dict[str, Any], folder: str, segment: Dict[st
     temporal = ctx["temporal"]
     if temporal:
         target_limit -= len(temporal) + 2
-    # The video style paragraph and the FX sentences are added to the finished shots too.
+    # The video style's look (in the opening line) and the FX sentences are added to the finished shots too.
     style_text = ctx["style_text"]
     if style_text:
         target_limit -= len(style_text) + 2
@@ -160,7 +160,7 @@ def generate_scene_prompt(session: Dict[str, Any], folder: str, segment: Dict[st
                 motion_request=_text(segment.get("i2v_notes")), audio_direction=_text(segment.get("audio_direction")),
                 continuity=_text(segment.get("continuity")),
                 storyboard_context=storyboard_video_context(card) + (
-                    "\n\nThe builder adds this exact video style paragraph after the opening line. Write shots that fit it; do not copy it into the shots:\n"
+                    "\n\nThe builder adds this exact video style look to the opening line. Write shots that fit it; do not copy it into the shots:\n"
                     + style_text if style_text else "") + (
                     "\n\nMANDATORY exact temporal / world effect verbiage — the builder appends it; do not copy or paraphrase it into the shots:\n"
                     + temporal if temporal else ""),
@@ -218,8 +218,8 @@ def generate_scene_prompt(session: Dict[str, Any], folder: str, segment: Dict[st
         if (ctx["audio_mode"] != "built_in_audio"
                 and str(segment.get("performance_mode") or session.get("video_type") or "singing") == "singing"):
             descriptions = [lfp.strip_singing_articulation(text) for text in descriptions]
-        core = sp.assemble_prompt(descriptions, plan, ctx["style"])
-        styled = insert_video_style(apply_fx(core, ctx["defaults"]), style_text)
+        core = sp.assemble_prompt(descriptions, plan, ctx["style"], style_text)
+        styled = apply_fx(core, ctx["defaults"])
         prompt = sp.wrap_reference_prompt(styled, frame) if structured else sp.compact_reference_prompt(styled, ctx["items"])
         prompt = append_temporal_world_effect(prompt, temporal)
         try:

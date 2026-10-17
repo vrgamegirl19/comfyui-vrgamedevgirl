@@ -1195,7 +1195,15 @@ def _build_story_layer_scene_beat(payload):
     all_project_subjects = [item for item in all_project_subjects if not is_scene_item_card(item)]
     cast_guard = build_cast_guard(all_project_subjects + scene_cast, scene_cast, [item["name"] for item in extra_subjects])
     scene_location = scene.get("location_ref") if isinstance(scene.get("location_ref"), dict) else {}
+    scene_override = _clean_scene_text(scene.get("scene_override") or "", 800)
     scene_facts = "\n".join(filter(None, [
+        (
+            f"SCENE OVERRIDE, set by the user and always true for this scene: {scene_override}\n"
+            "It replaces anything in the story, the arc, the lyric, the location, the notes or the previous beat that "
+            "disagrees with it. Change every conflicting detail to match it, and make it clearly visible in the beat. "
+            "For example, an override of night time means the scene happens at night and is lit like night even if "
+            "the story says morning; an override of raining means it rains through the whole scene."
+        ) if scene_override else "",
         cast_wall_text(cast_guard),
         scene_items_text(scene_items, scene_cast),
         (

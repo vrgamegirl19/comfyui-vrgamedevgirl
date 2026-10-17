@@ -57,8 +57,8 @@ class MiniMaxPromptTests(Base):
         self.assertIn("<Picture 1>", prompt)
         self.assertIn("<Audio 1> is the complete synchronized song and vocal track", prompt)
         self.assertIn("\n\nretention_analysis:\n", prompt)
-        self.assertIn("detailed_description:\nThe target video is in a Cinematic realism music-video style.\n\n"
-                      "Cinematic realism: Naturalistic practical lighting, restrained color grading, balanced contrast, subtle film grain, "
+        self.assertIn("detailed_description:\nThe target video is in a Cinematic realism music-video style: "
+                      "Naturalistic practical lighting, restrained color grading, balanced contrast, subtle film grain, "
                       "realistic skin texture, neutral tones, believable materials, and polished cinematic clarity throughout.\n\n"
                       "[Shot 1] The camera opens wide. <Subject 1> (Darrel) paces, turning at the rail. "
                       '<Subject 1> (Darrel) sings the lyric line, "line 1".', prompt)
@@ -88,14 +88,14 @@ class MiniMaxPromptTests(Base):
         self.write_session(session)
         _result, calls = self.run_with('{"shots":[{"description":"The camera opens wide. <Subject 1> (Darrel) paces, turning at the rail."}]}', {"limit": 1})
         prompt = self.read_session()["segments"][0]["minimax_h3_prompt"]
-        self.assertIn("in a Film noir music-video style", prompt)
-        self.assertEqual(prompt.count("Film noir: High-contrast black-and-white imagery"), 1)
-        self.assertLess(prompt.index("Film noir: High-contrast"), prompt.index("[Shot 1] The camera"))
+        self.assertEqual(prompt.count("in a Film noir music-video style: High-contrast black-and-white imagery"), 1)
+        self.assertEqual(prompt.count("High-contrast black-and-white imagery"), 1)
+        self.assertLess(prompt.index("High-contrast black-and-white"), prompt.index("[Shot 1] The camera"))
         self.assertIn("FX accent: A brief practical-light flicker cascade", prompt)
         self.assertLess(prompt.index("FX accent:"), prompt.index("Temporal / World Effect"))
         self.assertTrue(prompt.rstrip().endswith("never time-stretch, reverse, or accelerate protected voices."))
         self.assertLessEqual(len(prompt), 7000)
-        self.assertIn("exact video style paragraph", calls[0]["t2i_prompt"])
+        self.assertIn("exact video style look to the opening line", calls[0]["t2i_prompt"])
 
     def test_built_in_audio_prompts_have_no_audio_reference(self):
         session = self.read_session()

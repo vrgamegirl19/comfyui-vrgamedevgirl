@@ -301,6 +301,8 @@ export function createWizardBridge({
             .filter((item) => item && !singing.some((singer) => singer.toLowerCase() === item.toLowerCase()));
           const beatScene = beatStoryboardPayload.scenes?.[0];
           if (beatScene) {
+            // The Scenes tab override, which the beat must always follow.
+            if (scene.scene_override) beatScene.scene_override = scene.scene_override;
             beatScene.lyric_singers = singing;
             beatScene.performer_assignment = {
               singing,

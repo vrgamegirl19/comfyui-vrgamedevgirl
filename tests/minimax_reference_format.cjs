@@ -41,11 +41,13 @@ function fixture(audioMode = 'input_audio', pipeline = 'standard', structured = 
     attachRefmodLabels: text => text,
     miniMaxH3SubjectLabelMapForSegment: () => new Map(),
     enforceCastLabels: text => text,
+    storyboardMiniMaxVideoStylePreset: value => (value === '1990s_grunge'
+      ? { value, label: '1990s grunge', prompt_guidance: 'Washed-out color and flannel grit throughout.' } : { value: '', label: '', prompt_guidance: '' }),
   });
   const source = readBuilderModule('minimax_prompt.mjs');
   for (const name of ['miniMaxH3CleanSubjectNoun', 'miniMaxH3ReferenceSceneGroundingContract', 'miniMaxH3CompactReferenceShots', 'miniMaxH3CharacterReferenceBindings', 'miniMaxH3OfficialShotPlan',
     'miniMaxH3OfficialReferencePlan', 'miniMaxH3CombinedSubjectPlan', 'miniMaxH3OfficialAudioDefinition',
-    'miniMaxH3OfficialSummary', 'miniMaxH3OpeningStyle', 'miniMaxH3DetailedOpening', 'miniMaxH3OfficialSoundscape',
+    'miniMaxH3OfficialSummary', 'miniMaxH3VideoStyleParts', 'miniMaxH3OpeningStyle', 'miniMaxH3DetailedOpening', 'miniMaxH3OfficialSoundscape',
     'miniMaxH3OfficialMusic', 'isRefmodPipelineActive', 'relabelRefmodPrompt',
     'miniMaxH3OfficialReferencePrompt', 'miniMaxH3ReferenceCompositionLeak', 'assertValidMiniMaxH3FinalPrompt',
     'miniMaxH3RefmodRoleText', 'repairRefmodShotDescriptions',
@@ -79,10 +81,19 @@ test('a continuous-moment scene opens with the continuity paragraph; free cuts d
   const c = fixture();
   c.MINIMAX_H3_CONTINUOUS_CUTS_OPENING = 'All shots follow one continuous performance.';
   assert.equal(c.miniMaxH3DetailedOpening(scene),
-    'detailed_description:\nThe target video is in a 1990s_grunge music-video style.\n\n');
+    'detailed_description:\nThe target video is in a 1990s grunge music-video style: Washed-out color and flannel grit throughout.\n\n');
   c.miniMaxH3CutPlanForSegment = () => ({ cut_times_seconds: [2], continuous: true });
   assert.equal(c.miniMaxH3DetailedOpening(scene),
-    'detailed_description:\nThe target video is in a 1990s_grunge music-video style. All shots follow one continuous performance.\n\n');
+    'detailed_description:\nThe target video is in a 1990s grunge music-video style: Washed-out color and flannel grit throughout. All shots follow one continuous performance.\n\n');
+});
+
+test('the style look is left out where an image sets the look, and custom wording is used as typed', () => {
+  const c = fixture();
+  c.miniMaxH3ModeForSegment = () => 'image_reference_to_video';
+  assert.equal(c.miniMaxH3DetailedOpening(scene), 'detailed_description:\nThe target video is in a 1990s grunge music-video style.\n\n');
+  c.miniMaxH3ModeForSegment = () => 'reference_to_video';
+  const custom = { minimax_h3_video_style: 'custom', minimax_h3_video_style_custom: 'chalk-drawn dreamworld' };
+  assert.equal(c.miniMaxH3DetailedOpening(custom), 'detailed_description:\nThe target video is in a chalk-drawn dreamworld music-video style.\n\n');
 });
 
 test('built-in speech preserves inline tags and matches spoken words without duplicating dialogue', () => {

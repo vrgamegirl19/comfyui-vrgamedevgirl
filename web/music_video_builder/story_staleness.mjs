@@ -21,6 +21,7 @@ const PART_REASONS = {
   location: "location card changed",
   beat: "beat changed",
   items: "clothing or props changed",
+  override: "scene override changed",
 };
 
 // A short print of any JSON value (32-bit FNV-1a, hex).
@@ -87,6 +88,8 @@ function storyState({ layer, refs, segments, promptKey }) {
     const castIds = Array.isArray(refs?.subject_scene_map?.[id]) ? refs.subject_scene_map[id] : [];
     // Who wears or uses each clothing or prop card in this scene (Scenes tab). A stamp without it counts as unchanged.
     const itemsPrint = storyPrint(segment.scene_item_users || {});
+    // The scene override (Scenes tab), which every beat and prompt must follow.
+    const overridePrint = storyPrint(text(segment.scene_override));
     prints.plan[id] = { act: storyPrint(act ? [act.chapter_id, act.title, act.summary, act.cast_ids, act.scene_ids] : null) };
     prints.places[id] = {
       spot: storyPrint(text(entry?.spot).toLowerCase()),
@@ -98,8 +101,10 @@ function storyState({ layer, refs, segments, promptKey }) {
       location: locationPrint,
       cast: castPrint(castIds),
       items: itemsPrint,
+      override: overridePrint,
     };
-    prints.prompts[id] = { beat: storyPrint(text(segment.story_beat)), location: locationPrint, cast: castPrint(castIds), items: itemsPrint };
+    prints.prompts[id] = { beat: storyPrint(text(segment.story_beat)), location: locationPrint, cast: castPrint(castIds), items: itemsPrint,
+      override: overridePrint };
   }
   // A print of the beat and prompt themselves (stamp part "out"), so a rewrite made outside the Story Builder (the
   // Storyboard, the inspector, a manual edit) is seen and counts as redone.

@@ -7,6 +7,7 @@ import {
   normalizeStoryboardCustomCameraFlowSequence,
   STORYBOARD_CAMERA_FLOW_PRESETS,
 } from "../storyboard_builder/shot_presets.mjs";
+import { storyboardMiniMaxVideoStylePreset } from "../storyboard_builder/video_style.mjs";
 import { normalizeVideoType, toast } from "./controls.mjs";
 import { miniMaxEffectiveCueEnd, miniMaxH3CueTimingText, miniMaxH3PerformerLabel } from "./lyric_cues.mjs";
 import {
@@ -2053,14 +2054,32 @@ export function createMiniMaxPrompt({
     return `[${Array.from(new Set(taskTypes)).join(" + ")}] The target video is a ${miniMaxH3OpeningStyle(segment)} scene featuring ${subjectText}.${audioText}`;
   }
 
-  function miniMaxH3OpeningStyle(segment) {
-    return String(segment?.minimax_h3_video_style || state.builderStoryboardDefaults?.video_style || "").trim() || "photorealistic cinematic";
+  // The scene's video style as its name and its look ({label, guidance}). Custom wording is the name, with no look.
+  // Python twin: video_style_label / video_style_guidance in agent_api/video_style.py.
+  function miniMaxH3VideoStyleParts(segment) {
+    const defaults = state.builderStoryboardDefaults || {};
+    const value = String(segment?.minimax_h3_video_style || defaults.video_style || "").trim();
+    if (value === "custom") {
+      const custom = segment?.minimax_h3_video_style ? segment?.minimax_h3_video_style_custom : defaults.video_style_custom;
+      return { label: String(custom || "").trim(), guidance: "" };
+    }
+    const preset = value ? storyboardMiniMaxVideoStylePreset(value) : null;
+    if (!preset || preset.value !== value) return { label: value, guidance: "" };
+    return { label: preset.label, guidance: String(preset.prompt_guidance || "").trim() };
   }
 
-  // The opening of detailed_description: the style line, and the continuity paragraph for a continuous-cuts scene.
+  function miniMaxH3OpeningStyle(segment) {
+    return miniMaxH3VideoStyleParts(segment).label || "photorealistic cinematic";
+  }
+
+  // The opening of detailed_description: the style line with the style's look, and the continuity paragraph for a
+  // continuous-cuts scene. The look is left out where the Storyboard does not use a video style (an image sets it).
   function miniMaxH3DetailedOpening(segment) {
     const continuity = miniMaxH3CutPlanForSegment(segment)?.continuous ? ` ${MINIMAX_H3_CONTINUOUS_CUTS_OPENING}` : "";
-    return `detailed_description:\nThe target video is in a ${miniMaxH3OpeningStyle(segment)} music-video style.${continuity}\n\n`;
+    const { guidance } = miniMaxH3VideoStyleParts(segment);
+    const look = guidance && ["text_to_video", "reference_to_video"].includes(normalizeMiniMaxH3Mode(miniMaxH3ModeForSegment(segment)))
+      ? `: ${guidance}` : ".";
+    return `detailed_description:\nThe target video is in a ${miniMaxH3OpeningStyle(segment)} music-video style${look}${continuity}\n\n`;
   }
 
   function miniMaxH3OfficialSoundscape(segment) {

@@ -92,6 +92,10 @@ def _scene_line(number, scene, timed_notes, *, with_notes):
     if lyric and not instrumental:
         parts.append(f"lyric mood: \"{lyric}\"")
     if with_notes:
+        override = _clean_scene_text(scene.get("scene_override") or "", 800)
+        if override:
+            parts.append(f"OVERRIDE, always true for this scene: {override} (plan the scene to match it, changing any "
+                         "detail of the story, spot or mood that disagrees)")
         for source, text in _scene_notes(scene).items():
             parts.append(f"{source} note: {text}")
         for note in timed_notes:

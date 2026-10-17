@@ -43,6 +43,15 @@ def video_style_verbiage(card: Dict[str, Any], defaults: Dict[str, Any]) -> str:
     return f"{preset['label']}: {preset['guidance']}" if preset and preset["guidance"] else ""
 
 
+def video_style_guidance(card: Dict[str, Any], defaults: Dict[str, Any]) -> str:
+    """The style's look, written after its name in the opening line ("" for custom wording or no style).
+
+    Python twin of ``miniMaxH3VideoStyleParts(...).guidance`` in ``web/music_video_builder/minimax_prompt.mjs``.
+    """
+    preset = VIDEO_STYLES.get(video_style_value(card, defaults))
+    return _text(preset["guidance"]) if preset else ""
+
+
 def insert_video_style(prompt: str, verbiage: str) -> str:
     """Put the style paragraph right after the prompt's first paragraph, once."""
     text = _text(prompt)

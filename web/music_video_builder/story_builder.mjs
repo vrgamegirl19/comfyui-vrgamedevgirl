@@ -1658,6 +1658,25 @@ export function createStoryBuilder({
           video, tip("How people and the camera move. Read when the scene is planned and replaces the default camera motion in the video prompt. Example: slow push in while she turns to the window."),
           planning, tip("Background facts to keep in mind, not an instruction. Read when the scene is planned and when its image and video prompts are written. Example: it is still raining, her hand is bandaged from scene 3."),
         );
+        // Override: always true for this scene, and it wins over the story, the lyric and every other note.
+        const override = autoGrow(textarea(segment.scene_override, "Override, e.g. Day time", 34));
+        override.style.borderColor = override.value.trim() ? "#f472b6" : "#3f3f46";
+        override.oninput = () => { override.style.borderColor = override.value.trim() ? "#f472b6" : "#3f3f46"; };
+        const overrideAll = makeButton("Apply Override To All Scenes");
+        overrideAll.title = "Copy this override into every scene, replacing their overrides, and save.";
+        overrideAll.onclick = async () => {
+          const value = override.value.trim();
+          const question = value ? `Set the override of all ${rows.length} scenes to "${value}"?` : `Clear the override of all ${rows.length} scenes?`;
+          if (window.confirm?.(question) === false) return;
+          pushHistory();
+          for (const item of rows) item.override.value = value;
+          await savePlanEdits("story builder override applied to all scenes");
+          toast(value ? `Override set on all ${rows.length} scenes. Redo their beats and prompts to use it.` : "Overrides cleared on all scenes.");
+          show("scenes");
+        };
+        notes.append(el("div", "font-size:11px;font-weight:800;color:#f9a8d4;margin-top:4px;", "Override"), override,
+          tip("This applies to this scene and overrides anything else in its plan, beat and video prompt. Example: \"Day time\" means it is always day time in this scene. Redo the beat and prompt after changing it."),
+          row(overrideAll));
         box.append(info, story, notes);
         let continues = null;
         let direction = null;
@@ -1694,7 +1713,7 @@ export function createStoryBuilder({
           mark();
         }
         section.append(box);
-        rows.push({ segment, entry, slice, spot, mood, performance, director, video, planning, continues, direction, holdInput,
+        rows.push({ segment, entry, slice, spot, mood, performance, director, video, planning, override, continues, direction, holdInput,
           picked, singers, singersTicked: () => singersTicked, interaction, userNote, itemsOn, itemUsers, scenePeople });
       });
       // Saves every scene's edits (plan, cast, direction, notes) and returns the saved plan.
@@ -1746,6 +1765,9 @@ export function createStoryBuilder({
           item.segment.timeline_note = item.director.value;
           item.segment.i2v_notes = item.video.value;
           item.segment.notes = item.planning.value;
+          const overrideText = item.override.value.trim();
+          if (overrideText) item.segment.scene_override = overrideText;
+          else delete item.segment.scene_override;
           if (item.holdInput) {
             const hold = String(item.holdInput.value).trim();
             if (hold) item.segment.minimax_h3_continuation_start_seconds = Number(hold);
