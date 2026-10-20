@@ -9,6 +9,7 @@ import {
   LTX_23_MODEL_DOWNLOADS,
   LTX_25_MODEL_DOWNLOADS,
   MINIMAX_H3_MODEL_DOWNLOADS,
+  MOSS_IMAGE_MODEL_DOWNLOADS,
   MODEL_FOLDER_HINTS,
   QWEN_LLM_MODEL_DOWNLOADS,
   VIDEO_BUILDER_CUSTOM_NODES,
@@ -367,6 +368,7 @@ export function showModelDownloadModal() {
       groups: [
         { title: "ZImage", note: "Core ZImage Turbo diffusion model, Qwen text encoder, and VAE.", downloads: ZIMAGE_MODEL_DOWNLOADS },
         { title: "Krea2", note: "Krea2 text-to-image model used by the Reference Builder Krea2 + ZImage enhancer option.", downloads: KREA2_MODEL_DOWNLOADS },
+        { title: "MOSS-Image", note: "MOSS-Image option in Generate Subject/Location Reference. The 8-step Turbo LoRA is optional and needs a rename (see folder locations).", downloads: MOSS_IMAGE_MODEL_DOWNLOADS },
         { title: "Flux/Klein 9B", note: "9B is higher quality. 4B is smaller and lighter.", downloads: FLUX_KLEIN_9B_MODEL_DOWNLOADS },
         { title: "Flux/Klein 4B", note: "4B is smaller and lighter.", downloads: FLUX_KLEIN_4B_MODEL_DOWNLOADS },
         { title: "Ernie Image", note: "Ernie diffusion model, Ministral text encoder, and VAE.", downloads: ERNIE_MODEL_DOWNLOADS },

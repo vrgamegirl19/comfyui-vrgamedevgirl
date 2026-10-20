@@ -1,5 +1,5 @@
 import { buildBrowserImagePrompt } from "../VRGDG_BrowserImageBridge.js";
-import { postJson, queueWorkflowPrompt, waitForImages } from "./comfy_api.mjs";
+import { getJson, postJson, queueWorkflowPrompt, waitForImages } from "./comfy_api.mjs";
 import { makeButton, makeField, makeInput, makeSearchableLoraPicker, makeSelect, toast } from "./controls.mjs";
 import { showGemmaBatchFailures } from "./dialogs.mjs";
 import { hasReferenceImage } from "./llm_runner.mjs";
@@ -48,6 +48,59 @@ function zimageReferencePayload(prompt, settings) {
     payload[`strength_${index + 1}`] = Number(lora.second_pass_strength ?? lora.strength ?? 1);
   }
   return payload;
+}
+
+const MOSS_REFERENCE_STORAGE_KEY = "vrgdg_moss_image_reference_settings";
+const MOSS_TURBO_LORA = "moss_image_sft_8_steps_dmd_lora.safetensors";
+const MOSS_PRESETS = {
+  turbo: { lora_name: MOSS_TURBO_LORA, steps: 8, cfg: 1 },
+  quality: { lora_name: "[none]", steps: 50, cfg: 3 },
+};
+const DEFAULT_MOSS_REFERENCE_SETTINGS = {
+  unet_name: "moss_image_sft_bf16.safetensors",
+  clip_name: "qwen3.5_9b_int8_convrot.safetensors",
+  vae_name: "flux2-vae.safetensors",
+  preset: "turbo",
+  ...MOSS_PRESETS.turbo,
+  width: 1920,
+  height: 1088,
+  seed: 1,
+  seed_mode: "random",
+};
+
+function loadMossReferenceSettings() {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(MOSS_REFERENCE_STORAGE_KEY) || "{}");
+    return { ...DEFAULT_MOSS_REFERENCE_SETTINGS, ...(saved && typeof saved === "object" ? saved : {}) };
+  } catch (_error) {
+    return { ...DEFAULT_MOSS_REFERENCE_SETTINGS };
+  }
+}
+
+function saveMossReferenceSettings(settings) {
+  try {
+    window.localStorage.setItem(MOSS_REFERENCE_STORAGE_KEY, JSON.stringify(settings));
+  } catch (_error) {
+    // Per-viewer convenience only.
+  }
+}
+
+function mossReferencePayload(prompt, settings = {}) {
+  const moss = { ...DEFAULT_MOSS_REFERENCE_SETTINGS, ...settings };
+  return {
+    prompt: String(prompt || "").trim(),
+    unet_name: moss.unet_name,
+    clip_name: moss.clip_name,
+    vae_name: moss.vae_name,
+    lora_name: moss.lora_name || "[none]",
+    steps: Number(moss.steps) || 8,
+    cfg: Number(moss.cfg) || 1,
+    width: Number(moss.width) || 1920,
+    height: Number(moss.height) || 1088,
+    seed: Number(moss.seed) || 0,
+    seed_mode: moss.seed_mode || "random",
+    batch_size: 1,
+  };
 }
 
 function referenceGeneratorPickerOptions(options = [], defaults = []) {
@@ -171,7 +224,186 @@ export function createReferenceGeneration({
       seed_mode: seedMode.value || DEFAULT_KREA2_REFERENCE_SETTINGS.seed_mode,
     });
 
-    return { zModel, zClip, zVae, kreaModel, kreaClip, kreaVae, seed, seedMode, firstWidth, firstHeight, width, height, readZImage, readKrea2 };
+    const mossSaved = loadMossReferenceSettings();
+    const mossModel = makeSearchableLoraPicker(mossSaved.unet_name);
+    const mossClip = makeSearchableLoraPicker(mossSaved.clip_name);
+    const mossVae = makeSearchableLoraPicker(mossSaved.vae_name);
+    const mossLora = makeSearchableLoraPicker(mossSaved.lora_name || "[none]");
+    setReferenceGeneratorOptions(mossModel, zUnetPicker.options || [], DEFAULT_MOSS_REFERENCE_SETTINGS.unet_name);
+    setReferenceGeneratorOptions(mossClip, zClipPicker.options || [], DEFAULT_MOSS_REFERENCE_SETTINGS.clip_name);
+    setReferenceGeneratorOptions(mossVae, zVaePicker.options || [], DEFAULT_MOSS_REFERENCE_SETTINGS.vae_name);
+    setReferenceGeneratorOptions(mossLora, ["[none]"], mossLora.input.value);
+    getJson("/vrgdg/workflow_runner/lora_list")
+      .then((data) => setReferenceGeneratorOptions(mossLora, ["[none]", ...(data.loras || [])], mossLora.input.value))
+      .catch(() => null);
+    const mossPreset = makeSelect([
+      { value: "turbo", label: "Turbo (8-step LoRA)" },
+      { value: "quality", label: "Quality (no LoRA, 50 steps)" },
+      { value: "custom", label: "Custom" },
+    ], mossSaved.preset || "turbo");
+    const mossSteps = makeInput(String(mossSaved.steps), "number");
+    const mossCfg = makeInput(String(mossSaved.cfg), "number");
+    const mossWidth = makeInput(String(mossSaved.width), "number");
+    const mossHeight = makeInput(String(mossSaved.height), "number");
+    const mossSeed = makeInput(String(mossSaved.seed), "number");
+    const mossSeedMode = makeSelect(["random", "fixed"], mossSaved.seed_mode || "random");
+    mossSteps.min = "1";
+    mossCfg.min = "1";
+    mossCfg.step = "0.1";
+    mossSeed.min = "0";
+    for (const input of [mossWidth, mossHeight]) {
+      input.min = "256";
+      input.step = "16";
+    }
+    mossPreset.addEventListener("change", () => {
+      const preset = MOSS_PRESETS[mossPreset.value];
+      if (!preset) return;
+      mossLora.input.value = preset.lora_name;
+      mossSteps.value = String(preset.steps);
+      mossCfg.value = String(preset.cfg);
+    });
+    for (const control of [mossLora.input, mossSteps, mossCfg]) {
+      control.addEventListener("input", () => { mossPreset.value = "custom"; });
+    }
+    const readMoss = () => {
+      const settings = {
+        unet_name: mossModel.input.value.trim(),
+        clip_name: mossClip.input.value.trim(),
+        vae_name: mossVae.input.value.trim(),
+        lora_name: mossLora.input.value.trim() || "[none]",
+        preset: mossPreset.value,
+        steps: Math.max(1, Math.floor(Number(mossSteps.value) || 8)),
+        cfg: Math.max(1, Number(mossCfg.value) || 1),
+        width: Math.max(256, Math.floor(Number(mossWidth.value) || 1920)),
+        height: Math.max(256, Math.floor(Number(mossHeight.value) || 1088)),
+        seed: Math.max(0, Math.floor(Number(mossSeed.value) || 0)),
+        seed_mode: mossSeedMode.value || "random",
+      };
+      saveMossReferenceSettings(settings);
+      return settings;
+    };
+
+    return {
+      zModel, zClip, zVae, kreaModel, kreaClip, kreaVae, seed, seedMode, firstWidth, firstHeight, width, height, readZImage, readKrea2,
+      mossModel, mossClip, mossVae, mossLora, mossPreset, mossSteps, mossCfg, mossWidth, mossHeight, mossSeed, mossSeedMode, readMoss,
+    };
+  }
+
+  // One layout for the single and the batch generate dialogs: the image workflows sit side by side as cards.
+  function referenceEngineCards(controls, { batch = false } = {}) {
+    const help = (text) => {
+      const node = document.createElement("div");
+      node.textContent = text;
+      node.style.cssText = "font-size:12px;color:#94a3b8;line-height:1.4;";
+      return node;
+    };
+    const pair = (...fields) => {
+      const row = document.createElement("div");
+      row.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;";
+      row.append(...fields);
+      return row;
+    };
+    const c = controls;
+    const all = batch ? " For All Missing" : "";
+    return [
+      {
+        key: "zimage", heading: "ZImage", tagline: "Local, fast. Uses the ZImage panel's LoRAs and sizes.", actionLabel: `Use ZImage${all}`,
+        body: [
+          makeField("Diffusion model", c.zModel.wrapper),
+          makeField("Text encoder", c.zClip.wrapper),
+          makeField("VAE", c.zVae.wrapper),
+          help("Krea2 also uses these three models for its enhancer pass."),
+        ],
+        settings: () => ({ zimage: c.readZImage() }),
+      },
+      {
+        key: "krea2", heading: "Krea2 + Enhancer", tagline: "Local. Krea2 draws it, then ZImage refines it.", actionLabel: `Use Krea2${all}`,
+        body: [
+          makeField("Krea2 diffusion model", c.kreaModel.wrapper),
+          makeField("Krea2 text encoder", c.kreaClip.wrapper),
+          makeField("Krea2 VAE", c.kreaVae.wrapper),
+          pair(makeField("First width", c.firstWidth), makeField("First height", c.firstHeight)),
+          pair(makeField("Final width", c.width), makeField("Final height", c.height)),
+          pair(makeField("Seed", c.seed), makeField("Seed mode", c.seedMode)),
+        ],
+        settings: () => ({ krea2: c.readKrea2() }),
+      },
+      {
+        key: "moss_image", heading: "MOSS-Image", tagline: "Local 5B model. Long prompts and legible text.", actionLabel: `Use MOSS-Image${all}`,
+        body: [
+          makeField("Diffusion model", c.mossModel.wrapper),
+          makeField("Text encoder", c.mossClip.wrapper),
+          makeField("VAE", c.mossVae.wrapper),
+          makeField("Preset", c.mossPreset),
+          makeField("LoRA", c.mossLora.wrapper),
+          pair(makeField("Steps", c.mossSteps), makeField("CFG", c.mossCfg)),
+          pair(makeField("Width", c.mossWidth), makeField("Height", c.mossHeight)),
+          pair(makeField("Seed", c.mossSeed), makeField("Seed mode", c.mossSeedMode)),
+        ],
+        settings: () => ({ moss: c.readMoss() }),
+      },
+      {
+        key: "flow_gpt", heading: "Flow / GPT", tagline: "Browser AI. Uses the provider and login from the Browser AI image panel.", actionLabel: `Use Flow/GPT${all}`,
+        body: [help("Flow needs its browser profile and manual aspect setup. GPT Image appends the selected aspect ratio. Meta AI uses the meta.ai profile and login.")],
+        settings: () => ({}),
+      },
+    ];
+  }
+
+  function openReferenceGeneratorShell({ title, subtitle, note, top = [], cards, onRun, onClose = null }) {
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100009;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(1500px,calc(100vw - 36px));max-height:calc(100vh - 44px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.6);padding:16px;display:flex;flex-direction:column;gap:12px;";
+    const header = document.createElement("div");
+    header.style.cssText = "display:flex;align-items:flex-start;justify-content:space-between;gap:12px;";
+    const heading = document.createElement("div");
+    const headingTitle = document.createElement("div");
+    headingTitle.style.cssText = "font-size:16px;font-weight:900;color:#cffafe;";
+    headingTitle.textContent = title;
+    const headingSub = document.createElement("div");
+    headingSub.style.cssText = "font-size:12px;color:#94a3b8;margin-top:3px;line-height:1.4;";
+    headingSub.textContent = note ? `${subtitle} ${note}` : subtitle;
+    heading.append(headingTitle, headingSub);
+    const close = makeButton("Close");
+    header.append(heading, close);
+    const sectionLabel = document.createElement("div");
+    sectionLabel.style.cssText = "font-size:13px;font-weight:900;color:#cffafe;margin-top:2px;";
+    sectionLabel.textContent = "Image workflow";
+    const grid = document.createElement("div");
+    grid.style.cssText = "display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;align-items:stretch;";
+    for (const card of cards) {
+      const node = document.createElement("div");
+      node.style.cssText = "border:1px solid #334155;border-radius:8px;background:#0f172a;padding:12px;display:flex;flex-direction:column;gap:10px;min-width:0;";
+      const h = document.createElement("div");
+      h.style.cssText = "font-size:14px;font-weight:900;color:#cffafe;";
+      h.textContent = card.heading;
+      const tagline = document.createElement("div");
+      tagline.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.4;margin-top:-6px;";
+      tagline.textContent = card.tagline;
+      const button = makeButton(card.actionLabel, "primary");
+      button.style.marginTop = "auto";
+      button.onclick = async () => {
+        const settings = card.settings();
+        if (onRun && onRun(card) === false) return;
+        closeModal();
+        await card.run(settings);
+      };
+      node.append(h, tagline, ...card.body, button);
+      grid.append(node);
+    }
+    box.append(header, ...top, sectionLabel, grid);
+    backdrop.append(box);
+    document.body.append(backdrop);
+    function closeModal() {
+      onClose?.();
+      backdrop.remove();
+    }
+    close.onclick = closeModal;
+    backdrop.addEventListener("pointerdown", (event) => {
+      if (event.target === backdrop) closeModal();
+    });
+    return closeModal;
   }
 
   function applyReferenceDescription(referenceType, target, description = "") {
@@ -374,11 +606,13 @@ export function createReferenceGeneration({
 
   async function createMissingLocationReferencesWithZImage(workflow = "zimage", generatorSettings = {}) {
     const useKrea2 = workflow === "krea2";
+    const useMoss = workflow === "moss_image";
     const useFlowGpt = workflow === "flow_gpt";
+    const useZImage = !useKrea2 && !useMoss && !useFlowGpt;
     const browserSettings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
     const workflowLabel = useFlowGpt
       ? browserImageProviderLabel(browserSettings.provider)
-      : useKrea2 ? "Krea2 + ZImage enhancer" : "ZImage";
+      : useKrea2 ? "Krea2 + ZImage enhancer" : useMoss ? "MOSS-Image" : "ZImage";
     const missingLocations = refs.locations
       .map((location, index) => ({ location, index }))
       .filter(({ location }) => {
@@ -442,8 +676,10 @@ export function createReferenceGeneration({
           })
           : useKrea2
             ? await postJson("/vrgdg/workflow_runner/build_krea2_prompt", krea2ReferencePayload(prompt, kreaSettings))
-            : await postJson("/vrgdg/workflow_runner/build_zimage_prompt", zimageReferencePayload(prompt, zSettings));
-        if (!useFlowGpt && !useKrea2 && Number.isFinite(Number(built.used_seed))) {
+            : useMoss
+              ? await postJson("/vrgdg/workflow_runner/build_moss_image_prompt", mossReferencePayload(prompt, generatorSettings?.moss || {}))
+              : await postJson("/vrgdg/workflow_runner/build_zimage_prompt", zimageReferencePayload(prompt, zSettings));
+        if (useZImage && Number.isFinite(Number(built.used_seed))) {
           zSettings.seed = Number(built.used_seed);
           state.zimageSettings = zSettings;
           zSeed.value = String(zSettings.seed);
@@ -472,7 +708,7 @@ export function createReferenceGeneration({
         location.image.name = `${location.name || `location_${index + 1}`}.png`;
         await describeGeneratedReference("location", location, prompt);
         await persistGeneratedReferenceImage("location", location);
-        if (!useFlowGpt && !useKrea2) {
+        if (useZImage) {
           advanceZImageSeedAfterRun(zSettings);
           zSettings = cloneZImageSettings(state.zimageSettings);
           syncZImageSettingsPanel();
@@ -515,11 +751,13 @@ export function createReferenceGeneration({
       refs.subject = { ...refs.subject, ...refs.subjects[0], image: refs.subjects[0].image || refs.subject.image || { path: "", data: "", name: "" } };
     }
     const useKrea2 = workflow === "krea2";
+    const useMoss = workflow === "moss_image";
     const useFlowGpt = workflow === "flow_gpt";
+    const useZImage = !useKrea2 && !useMoss && !useFlowGpt;
     const browserSettings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
     const workflowLabel = useFlowGpt
       ? browserImageProviderLabel(browserSettings.provider)
-      : useKrea2 ? "Krea2 + ZImage enhancer" : "ZImage";
+      : useKrea2 ? "Krea2 + ZImage enhancer" : useMoss ? "MOSS-Image" : "ZImage";
     const missingSubjects = refs.subjects
       .map((subject, index) => ({ subject, index }))
       .filter(({ subject }) => {
@@ -580,8 +818,10 @@ export function createReferenceGeneration({
           })
           : useKrea2
             ? await postJson("/vrgdg/workflow_runner/build_krea2_prompt", krea2ReferencePayload(prompt, kreaSettings))
-            : await postJson("/vrgdg/workflow_runner/build_zimage_prompt", zimageReferencePayload(prompt, zSettings));
-        if (!useFlowGpt && !useKrea2 && Number.isFinite(Number(built.used_seed))) {
+            : useMoss
+              ? await postJson("/vrgdg/workflow_runner/build_moss_image_prompt", mossReferencePayload(prompt, generatorSettings?.moss || {}))
+              : await postJson("/vrgdg/workflow_runner/build_zimage_prompt", zimageReferencePayload(prompt, zSettings));
+        if (useZImage && Number.isFinite(Number(built.used_seed))) {
           zSettings.seed = Number(built.used_seed);
           state.zimageSettings = zSettings;
           zSeed.value = String(zSettings.seed);
@@ -613,7 +853,7 @@ export function createReferenceGeneration({
         if (refs.subject_count === 1 && refs.subjects[0]?.id === subject.id) {
           refs.subject.image = subject.image;
         }
-        if (!useFlowGpt && !useKrea2) {
+        if (useZImage) {
           advanceZImageSeedAfterRun(zSettings);
           zSettings = cloneZImageSettings(state.zimageSettings);
           syncZImageSettingsPanel();
@@ -722,7 +962,23 @@ export function createReferenceGeneration({
     }
   }
 
-  async function runFluxReferenceWithKrea2(referenceType, target, sourceText, name = "", generatorSettings = {}) {
+  function runFluxReferenceWithKrea2(referenceType, target, sourceText, name = "", generatorSettings = {}) {
+    return runFluxReferenceWithComfyGraph(referenceType, target, sourceText, name, {
+      label: "Krea2",
+      workflowLabel: "Krea2 + ZImage enhancer",
+      build: (prompt) => postJson("/vrgdg/workflow_runner/build_krea2_prompt", krea2ReferencePayload(prompt, generatorSettings.krea2 || {})),
+    });
+  }
+
+  function runFluxReferenceWithMoss(referenceType, target, sourceText, name = "", generatorSettings = {}) {
+    return runFluxReferenceWithComfyGraph(referenceType, target, sourceText, name, {
+      label: "MOSS-Image",
+      workflowLabel: "MOSS-Image",
+      build: (prompt) => postJson("/vrgdg/workflow_runner/build_moss_image_prompt", mossReferencePayload(prompt, generatorSettings.moss || {})),
+    });
+  }
+
+  async function runFluxReferenceWithComfyGraph(referenceType, target, sourceText, name, { label, workflowLabel, build }) {
     const text = String(sourceText || "").trim();
     if (!text) {
       toast(referenceType === "subject" ? "Enter a subject description first." : "Enter a location description first.", true);
@@ -734,7 +990,7 @@ export function createReferenceGeneration({
       return;
     }
     let progress = null;
-    let ranKrea2 = false;
+    let ranWorkflow = false;
     try {
       setInlineProgress(referenceType === "subject" ? "Creating subject prompt with Gemma..." : "Creating location prompt with Gemma...", 8);
       progress = createProgressWindow(referenceType === "subject" ? "Creating subject reference" : "Creating location reference", { zIndex: 100008 });
@@ -748,22 +1004,21 @@ export function createReferenceGeneration({
         style_theme: styleTheme,
         unload_after: true,
       }, 3 * 60 * 1000);
-      const kreaSettings = generatorSettings.krea2 || {};
-      setInlineProgress("Building Krea2 + ZImage enhancer workflow...", 28);
-      progress.set("Building Krea2 + ZImage enhancer workflow...", 28);
-      const built = await postJson("/vrgdg/workflow_runner/build_krea2_prompt", krea2ReferencePayload(promptData.prompt, kreaSettings));
-      setInlineProgress("Queueing Krea2 reference workflow...", 42);
-      progress.set("Queueing Krea2 reference workflow...", 42);
+      setInlineProgress(`Building ${workflowLabel} workflow...`, 28);
+      progress.set(`Building ${workflowLabel} workflow...`, 28);
+      const built = await build(promptData.prompt);
+      setInlineProgress(`Queueing ${label} reference workflow...`, 42);
+      progress.set(`Queueing ${label} reference workflow...`, 42);
       const queued = await queueWorkflowPrompt(built.prompt);
       const promptId = queued?.prompt_id;
-      if (!promptId) throw new Error("ComfyUI queued the Krea2 reference but did not return a prompt_id.");
-      ranKrea2 = true;
+      if (!promptId) throw new Error(`ComfyUI queued the ${label} reference but did not return a prompt_id.`);
+      ranWorkflow = true;
       const images = await waitForImages(promptId, (message) => {
         setInlineProgress(`${message}\nPrompt ID: ${promptId}`, 66);
         progress?.set(`${message}\nPrompt ID: ${promptId}`, 66);
       });
       const image = images[images.length - 1];
-      if (!image) throw new Error("Krea2 did not return a reference image.");
+      if (!image) throw new Error(`${label} did not return a reference image.`);
       setInlineProgress("Saving reference image into the project...", 88);
       progress.set("Saving reference image into the project...", 88);
       const saved = await postJson("/vrgdg/music_builder/save_flux_reference_image", {
@@ -778,17 +1033,17 @@ export function createReferenceGeneration({
       await describeGeneratedReference(referenceType, target, promptData.prompt);
       await persistGeneratedReferenceImage(referenceType, target);
       renderAll();
-      setInlineProgress("Cleaning memory after Krea2 reference...", 94);
-      await runImageMemoryCleanupQuiet(progress, "Krea2 reference", 94);
+      setInlineProgress(`Cleaning memory after ${label} reference...`, 94);
+      await runImageMemoryCleanupQuiet(progress, `${label} reference`, 94);
       setInlineProgress("Reference image ready.", 100);
       progress.set("Reference image ready.", 100);
       progress.close(1300);
       hideInlineProgress();
-      toast(referenceType === "subject" ? "Subject reference created with Krea2." : "Location reference created with Krea2.");
+      toast(referenceType === "subject" ? `Subject reference created with ${label}.` : `Location reference created with ${label}.`);
     } catch (error) {
-      if (ranKrea2) {
-        setInlineProgress("Cleaning memory after failed Krea2 reference...", 100);
-        await runImageMemoryCleanupQuiet(progress, "failed Krea2 reference", 100);
+      if (ranWorkflow) {
+        setInlineProgress(`Cleaning memory after failed ${label} reference...`, 100);
+        await runImageMemoryCleanupQuiet(progress, `failed ${label} reference`, 100);
       }
       setInlineProgress(`Error:\n${String(error?.message || error)}`, 100);
       progress?.set(`Error:\n${String(error?.message || error)}`, 100);
@@ -875,26 +1130,13 @@ export function createReferenceGeneration({
 
   function createFluxReferenceWithZImage(referenceType, target, sourceText, name = "") {
     const text = String(sourceText || "").trim();
-    const backdrop = document.createElement("div");
-    backdrop.style.cssText = "position:fixed;inset:0;z-index:100009;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;";
-    const box = document.createElement("div");
-    box.style.cssText = "width:min(920px,calc(100vw - 36px));max-height:calc(100vh - 44px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.6);padding:16px;display:flex;flex-direction:column;gap:12px;";
-    const header = document.createElement("div");
-    header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
-    const title = document.createElement("div");
-    title.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Generate ${referenceType === "subject" ? "Subject" : "Location"} Reference</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">${referenceType === "subject" ? "Choose how Gemma should create this subject, then choose the image workflow." : "Choose the image workflow for this Reference Builder image."}</div>`;
-    const close = makeButton("Close");
-    header.append(title, close);
-    const note = document.createElement("div");
-    note.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;color:#dbeafe;padding:10px;font-size:12px;line-height:1.45;";
-    note.textContent = referenceType === "subject"
-      ? "Gemma will turn your selected source into one character reference-sheet prompt. If you choose lyrics/style, it can invent a character that fits the song. If you do not like the result, run it again."
-      : "ZImage uses the existing reference-image workflow. Krea2 uses the hidden Krea2 text-to-image workflow, then runs the ZImage enhancer pass. Browser AI uses the selected browser provider and login/settings from the Browser AI image panel. A location description is required before generation can run.";
-
     const generatorControls = buildReferenceGeneratorControls();
-    const { zModel, zClip, zVae, kreaModel, kreaClip, kreaVae, seed, seedMode, firstWidth, firstHeight, width, height, readZImage, readKrea2 } = generatorControls;
     const subjectOptionsCard = document.createElement("div");
-    subjectOptionsCard.style.cssText = "border:1px solid #334155;border-radius:8px;background:#0f172a;padding:12px;display:flex;flex-direction:column;gap:10px;";
+    subjectOptionsCard.style.cssText = "border:1px solid #334155;border-radius:8px;background:#0f172a;padding:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:12px;align-items:start;";
+    const subjectOptionsLeft = document.createElement("div");
+    subjectOptionsLeft.style.cssText = "display:flex;flex-direction:column;gap:10px;min-width:0;";
+    const subjectOptionsRight = document.createElement("div");
+    subjectOptionsRight.style.cssText = "display:flex;flex-direction:column;gap:10px;min-width:0;";
     const subjectMode = makeSelect([
       { value: "description_only", label: "Use description only" },
       { value: "invent_from_lyrics", label: "Invent character from lyrics/style" },
@@ -931,7 +1173,9 @@ export function createReferenceGeneration({
       makeField("Gender / role", genderRole),
       makeField("Song / visual style", songStyle),
     );
-    subjectOptionsCard.append(subjectSourceGrid, makeField("Lyrics / dialogue context", lyricsInput), makeField("Extra user direction", extraDirection));
+    subjectOptionsLeft.append(subjectSourceGrid, makeField("Extra user direction", extraDirection));
+    subjectOptionsRight.append(makeField("Lyrics / dialogue context", lyricsInput));
+    subjectOptionsCard.append(subjectOptionsLeft, subjectOptionsRight);
     const hasSubjectImage = () => hasReferenceImage(target?.image || {});
     const subjectImageNote = document.createElement("div");
     subjectImageNote.style.cssText = "font-size:11px;color:#94a3b8;line-height:1.35;";
@@ -944,9 +1188,9 @@ export function createReferenceGeneration({
         : "Description and lyrics/style modes do not require an uploaded image.";
     };
     subjectMode.addEventListener("change", syncSubjectModeHint);
-    subjectOptionsCard.append(subjectImageNote);
+    subjectOptionsLeft.append(subjectImageNote);
     syncSubjectModeHint();
-    subjectOptionsCard.style.display = referenceType === "subject" ? "flex" : "none";
+    lyricsInput.style.minHeight = "190px";
     const persistReferenceGenerationDraft = () => {
       if (!target || typeof target !== "object") return;
       target.reference_generation_draft = {
@@ -1000,14 +1244,6 @@ export function createReferenceGeneration({
       return parts.join("\n\n");
     };
 
-    const grid = document.createElement("div");
-    grid.style.cssText = "display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start;";
-    const modalHelp = (text) => {
-      const help = document.createElement("div");
-      help.textContent = text;
-      help.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.4;";
-      return help;
-    };
     const ownSaved = loadOwnServerImageSettings();
     const ownImageModel = makeInput(String(ownSaved.image_model || ""));
     const ownImageWidth = makeInput(String(ownSaved.width || 1024), "number");
@@ -1032,87 +1268,55 @@ export function createReferenceGeneration({
       saveOwnServerImageSettings(settings);
       return settings;
     };
-    const sharedZImageCard = document.createElement("div");
-    sharedZImageCard.style.cssText = "border:1px solid #334155;border-radius:8px;background:#0f172a;padding:12px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;";
-    const sharedTitle = document.createElement("div");
-    sharedTitle.style.cssText = "grid-column:1/-1;font-size:13px;font-weight:900;color:#cffafe;";
-    sharedTitle.textContent = "Shared ZImage / Enhancer Models";
-    const sharedNote = document.createElement("div");
-    sharedNote.style.cssText = "grid-column:1/-1;font-size:12px;color:#94a3b8;line-height:1.35;";
-    sharedNote.textContent = "Used directly by ZImage, and reused as the enhancer pass when Krea2 is selected.";
-    sharedZImageCard.append(
-      sharedTitle,
-      sharedNote,
-      makeField("Diffusion model", zModel.wrapper),
-      makeField("Text encoder", zClip.wrapper),
-      makeField("VAE", zVae.wrapper)
-    );
-    const optionCard = (heading, body, actionLabel, action) => {
-      const card = document.createElement("div");
-      card.style.cssText = "border:1px solid #334155;border-radius:8px;background:#0f172a;padding:12px;display:flex;flex-direction:column;gap:10px;";
-      const h = document.createElement("div");
-      h.style.cssText = "font-size:14px;font-weight:900;color:#cffafe;";
-      h.textContent = heading;
-      const button = makeButton(actionLabel, "primary");
-      button.onclick = async () => {
-        const runText = subjectSourceTextForRun();
-        if (!String(runText || "").trim()) {
-          toast(referenceType === "subject" ? "Enter a subject description, lyrics, or extra direction first." : "Enter a location description first.", true);
-          return;
-        }
-        closeModal();
-        await action(runText);
-      };
-      card.append(h, ...body, button);
-      return card;
+    const ownServerHelp = document.createElement("div");
+    ownServerHelp.textContent = "Calls /v1/images/generations with the LLM Runner's Custom Server URL and API key. Set the LLM Runner to Custom Server first.";
+    ownServerHelp.style.cssText = "font-size:12px;color:#94a3b8;line-height:1.4;";
+    const pair = (...fields) => {
+      const row = document.createElement("div");
+      row.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;";
+      row.append(...fields);
+      return row;
     };
-    grid.append(
-      optionCard("ZImage", [
-        modalHelp("Use the shared ZImage model settings above for a direct ZImage reference image."),
-      ], "Use ZImage", (runText) => runFluxReferenceWithZImage(referenceType, target, runText, name, {
-        zimage: readZImage(),
-      })),
-      optionCard("Krea2 + ZImage Enhancer", [
-        makeField("Krea2 diffusion model", kreaModel.wrapper),
-        makeField("Krea2 text encoder", kreaClip.wrapper),
-        makeField("Krea2 VAE", kreaVae.wrapper),
-        makeField("Seed", seed),
-        makeField("Seed mode", seedMode),
-        makeField("Krea first width", firstWidth),
-        makeField("Krea first height", firstHeight),
-        makeField("Final width", width),
-        makeField("Final height", height),
-      ], "Use Krea2 + Enhancer", (runText) => runFluxReferenceWithKrea2(referenceType, target, runText, name, {
-        krea2: readKrea2(),
-      })),
-      optionCard("Flow/GPT", [
-        modalHelp("Use the selected browser image provider. Flow requires its browser profile and manual aspect setup; GPT Image appends the selected aspect ratio; Meta AI uses the meta.ai profile and login."),
-      ], "Use Flow/GPT", (runText) => runFluxReferenceWithFlowGpt(referenceType, target, runText, name)),
-      optionCard("Custom Server", [
-        modalHelp("Uses the LLM Runner's Custom Server URL and API key to call /v1/images/generations. The LLM Runner must be set to Custom Server."),
+
+    let runText = "";
+    const runners = {
+      zimage: (settings) => runFluxReferenceWithZImage(referenceType, target, runText, name, settings),
+      krea2: (settings) => runFluxReferenceWithKrea2(referenceType, target, runText, name, settings),
+      moss_image: (settings) => runFluxReferenceWithMoss(referenceType, target, runText, name, settings),
+      flow_gpt: () => runFluxReferenceWithFlowGpt(referenceType, target, runText, name),
+    };
+    const cards = referenceEngineCards(generatorControls).map((card) => ({ ...card, run: runners[card.key] }));
+    cards.push({
+      key: "own_server", heading: "Custom Server", tagline: "Any OpenAI-compatible image endpoint.", actionLabel: "Use Custom Server",
+      body: [
+        ownServerHelp,
         makeField("Image model (optional)", ownImageModel),
-        makeField("Width", ownImageWidth),
-        makeField("Height", ownImageHeight),
-        makeField("Steps (0 = server default)", ownImageSteps),
-        makeField("Seed (blank = random)", ownImageSeed),
-      ], "Use Custom Server", (runText) => runFluxReferenceWithOwnServer(referenceType, target, runText, name, readOwnImage())),
-    );
-    const footer = document.createElement("div");
-    footer.style.cssText = "display:flex;justify-content:flex-end;";
-    const cancel = makeButton("Cancel");
-    footer.append(cancel);
-    box.append(header, note, subjectOptionsCard, sharedZImageCard, grid, footer);
-    backdrop.append(box);
-    document.body.append(backdrop);
-    function closeModal() {
-      persistReferenceGenerationDraft();
-      autoSaveSessionQuiet("reference generation draft saved").catch(() => null);
-      backdrop.remove();
-    }
-    close.onclick = closeModal;
-    cancel.onclick = closeModal;
-    backdrop.addEventListener("pointerdown", (event) => {
-      if (event.target === backdrop) closeModal();
+        pair(makeField("Width", ownImageWidth), makeField("Height", ownImageHeight)),
+        pair(makeField("Steps (0 = default)", ownImageSteps), makeField("Seed (blank = random)", ownImageSeed)),
+      ],
+      settings: readOwnImage,
+      run: (settings) => runFluxReferenceWithOwnServer(referenceType, target, runText, name, settings),
+    });
+    openReferenceGeneratorShell({
+      title: `Generate ${referenceType === "subject" ? "Subject" : "Location"} Reference`,
+      subtitle: referenceType === "subject"
+        ? "Choose what Gemma builds the character from, then pick an image workflow."
+        : "Gemma writes the location prompt from its description, then the workflow you pick draws it.",
+      note: referenceType === "subject"
+        ? "Lyrics/style modes can invent a character that fits the song. Run it again if you do not like the result."
+        : "",
+      top: referenceType === "subject" ? [subjectOptionsCard] : [],
+      cards,
+      onRun: () => {
+        runText = subjectSourceTextForRun();
+        if (String(runText || "").trim()) return true;
+        toast(referenceType === "subject" ? "Enter a subject description, lyrics, or extra direction first." : "Enter a location description first.", true);
+        return false;
+      },
+      onClose: () => {
+        persistReferenceGenerationDraft();
+        autoSaveSessionQuiet("reference generation draft saved").catch(() => null);
+      },
     });
   }
 
@@ -1134,97 +1338,12 @@ export function createReferenceGeneration({
       toast("All listed subjects already have images, or no usable subjects were found.");
       return;
     }
-    const backdrop = document.createElement("div");
-    backdrop.style.cssText = "position:fixed;inset:0;z-index:100009;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;";
-    const box = document.createElement("div");
-    box.style.cssText = "width:min(820px,calc(100vw - 36px));max-height:calc(100vh - 44px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.6);padding:16px;display:flex;flex-direction:column;gap:12px;";
-    const header = document.createElement("div");
-    header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
-    const title = document.createElement("div");
-    title.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Generate Missing Subject Images</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Choose one workflow for ${missingCount} missing subject/reference image${missingCount === 1 ? "" : "s"}.</div>`;
-    const close = makeButton("Close");
-    header.append(title, close);
-    const note = document.createElement("div");
-    note.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;color:#dbeafe;padding:10px;font-size:12px;line-height:1.45;";
-    note.textContent = "This runs Gemma prompts for each missing subject/reference, then generates each image with the workflow you choose here. Browser AI uses the selected browser provider and login/settings from the Browser AI image panel.";
-
-    const generatorControls = buildReferenceGeneratorControls();
-    const { zModel, zClip, zVae, kreaModel, kreaClip, kreaVae, seed, seedMode, firstWidth, firstHeight, width, height, readZImage, readKrea2 } = generatorControls;
-
-    const grid = document.createElement("div");
-    grid.style.cssText = "display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start;";
-    const modalHelp = (text) => {
-      const help = document.createElement("div");
-      help.textContent = text;
-      help.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.4;";
-      return help;
-    };
-    const sharedZImageCard = document.createElement("div");
-    sharedZImageCard.style.cssText = "border:1px solid #334155;border-radius:8px;background:#0f172a;padding:12px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;";
-    const sharedTitle = document.createElement("div");
-    sharedTitle.style.cssText = "grid-column:1/-1;font-size:13px;font-weight:900;color:#cffafe;";
-    sharedTitle.textContent = "Shared ZImage / Enhancer Models";
-    const sharedNote = document.createElement("div");
-    sharedNote.style.cssText = "grid-column:1/-1;font-size:12px;color:#94a3b8;line-height:1.35;";
-    sharedNote.textContent = "Used directly by ZImage, and reused as the enhancer pass when Krea2 is selected.";
-    sharedZImageCard.append(
-      sharedTitle,
-      sharedNote,
-      makeField("Diffusion model", zModel.wrapper),
-      makeField("Text encoder", zClip.wrapper),
-      makeField("VAE", zVae.wrapper)
-    );
-    const optionCard = (heading, body, actionLabel, action) => {
-      const card = document.createElement("div");
-      card.style.cssText = "border:1px solid #334155;border-radius:8px;background:#0f172a;padding:12px;display:flex;flex-direction:column;gap:10px;";
-      const h = document.createElement("div");
-      h.style.cssText = "font-size:14px;font-weight:900;color:#cffafe;";
-      h.textContent = heading;
-      const button = makeButton(actionLabel, "primary");
-      button.onclick = async () => {
-        closeModal();
-        await action();
-      };
-      card.append(h, ...body, button);
-      return card;
-    };
-    grid.append(
-      optionCard("ZImage", [
-        modalHelp("Use the shared ZImage model settings above for every missing subject/reference image."),
-      ], "Use ZImage For All Missing", () => createMissingSubjectReferencesWithImageWorkflow("zimage", {
-        zimage: readZImage(),
-      })),
-      optionCard("Krea2 + ZImage Enhancer", [
-        makeField("Krea2 diffusion model", kreaModel.wrapper),
-        makeField("Krea2 text encoder", kreaClip.wrapper),
-        makeField("Krea2 VAE", kreaVae.wrapper),
-        makeField("Seed", seed),
-        makeField("Seed mode", seedMode),
-        makeField("Krea first width", firstWidth),
-        makeField("Krea first height", firstHeight),
-        makeField("Final width", width),
-        makeField("Final height", height),
-      ], "Use Krea2 + Enhancer For All Missing", () => createMissingSubjectReferencesWithImageWorkflow("krea2", {
-        krea2: readKrea2(),
-      })),
-      optionCard("Flow/GPT", [
-        modalHelp("Use the selected browser image provider for every missing subject/reference image. Log into the chosen browser profile first."),
-      ], "Use Flow/GPT For All Missing", () => createMissingSubjectReferencesWithImageWorkflow("flow_gpt")),
-    );
-    const footer = document.createElement("div");
-    footer.style.cssText = "display:flex;justify-content:flex-end;";
-    const cancel = makeButton("Cancel");
-    footer.append(cancel);
-    box.append(header, note, sharedZImageCard, grid, footer);
-    backdrop.append(box);
-    document.body.append(backdrop);
-    function closeModal() {
-      backdrop.remove();
-    }
-    close.onclick = closeModal;
-    cancel.onclick = closeModal;
-    backdrop.addEventListener("pointerdown", (event) => {
-      if (event.target === backdrop) closeModal();
+    const cards = referenceEngineCards(buildReferenceGeneratorControls(), { batch: true })
+      .map((card) => ({ ...card, run: (settings) => createMissingSubjectReferencesWithImageWorkflow(card.key, settings) }));
+    openReferenceGeneratorShell({
+      title: "Generate Missing Subject Images",
+      subtitle: `Gemma writes a prompt for each of the ${missingCount} subject${missingCount === 1 ? "" : "s"} without an image, then the workflow you pick draws them all.`,
+      cards,
     });
   }
 
@@ -1239,97 +1358,12 @@ export function createReferenceGeneration({
       toast("All listed locations already have images, or no usable locations were found.");
       return;
     }
-    const backdrop = document.createElement("div");
-    backdrop.style.cssText = "position:fixed;inset:0;z-index:100009;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;";
-    const box = document.createElement("div");
-    box.style.cssText = "width:min(820px,calc(100vw - 36px));max-height:calc(100vh - 44px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.6);padding:16px;display:flex;flex-direction:column;gap:12px;";
-    const header = document.createElement("div");
-    header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
-    const title = document.createElement("div");
-    title.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Generate Missing Location Images</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Choose one workflow for ${missingCount} missing location image${missingCount === 1 ? "" : "s"}.</div>`;
-    const close = makeButton("Close");
-    header.append(title, close);
-    const note = document.createElement("div");
-    note.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;color:#dbeafe;padding:10px;font-size:12px;line-height:1.45;";
-    note.textContent = "This runs Gemma prompts for each missing location, then generates each image with the workflow you choose here. Browser AI uses the selected browser provider and login/settings from the Browser AI image panel.";
-
-    const generatorControls = buildReferenceGeneratorControls();
-    const { zModel, zClip, zVae, kreaModel, kreaClip, kreaVae, seed, seedMode, firstWidth, firstHeight, width, height, readZImage, readKrea2 } = generatorControls;
-
-    const grid = document.createElement("div");
-    grid.style.cssText = "display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start;";
-    const modalHelp = (text) => {
-      const help = document.createElement("div");
-      help.textContent = text;
-      help.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.4;";
-      return help;
-    };
-    const sharedZImageCard = document.createElement("div");
-    sharedZImageCard.style.cssText = "border:1px solid #334155;border-radius:8px;background:#0f172a;padding:12px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;";
-    const sharedTitle = document.createElement("div");
-    sharedTitle.style.cssText = "grid-column:1/-1;font-size:13px;font-weight:900;color:#cffafe;";
-    sharedTitle.textContent = "Shared ZImage / Enhancer Models";
-    const sharedNote = document.createElement("div");
-    sharedNote.style.cssText = "grid-column:1/-1;font-size:12px;color:#94a3b8;line-height:1.35;";
-    sharedNote.textContent = "Used directly by ZImage, and reused as the enhancer pass when Krea2 is selected.";
-    sharedZImageCard.append(
-      sharedTitle,
-      sharedNote,
-      makeField("Diffusion model", zModel.wrapper),
-      makeField("Text encoder", zClip.wrapper),
-      makeField("VAE", zVae.wrapper)
-    );
-    const optionCard = (heading, body, actionLabel, action) => {
-      const card = document.createElement("div");
-      card.style.cssText = "border:1px solid #334155;border-radius:8px;background:#0f172a;padding:12px;display:flex;flex-direction:column;gap:10px;";
-      const h = document.createElement("div");
-      h.style.cssText = "font-size:14px;font-weight:900;color:#cffafe;";
-      h.textContent = heading;
-      const button = makeButton(actionLabel, "primary");
-      button.onclick = async () => {
-        closeModal();
-        await action();
-      };
-      card.append(h, ...body, button);
-      return card;
-    };
-    grid.append(
-      optionCard("ZImage", [
-        modalHelp("Use the shared ZImage model settings above for every missing location image."),
-      ], "Use ZImage For All Missing", () => createMissingLocationReferencesWithZImage("zimage", {
-        zimage: readZImage(),
-      })),
-      optionCard("Krea2 + ZImage Enhancer", [
-        makeField("Krea2 diffusion model", kreaModel.wrapper),
-        makeField("Krea2 text encoder", kreaClip.wrapper),
-        makeField("Krea2 VAE", kreaVae.wrapper),
-        makeField("Seed", seed),
-        makeField("Seed mode", seedMode),
-        makeField("Krea first width", firstWidth),
-        makeField("Krea first height", firstHeight),
-        makeField("Final width", width),
-        makeField("Final height", height),
-      ], "Use Krea2 + Enhancer For All Missing", () => createMissingLocationReferencesWithZImage("krea2", {
-        krea2: readKrea2(),
-      })),
-      optionCard("Flow/GPT", [
-        modalHelp("Use the selected browser image provider for every missing location image. Log into the chosen browser profile first."),
-      ], "Use Flow/GPT For All Missing", () => createMissingLocationReferencesWithZImage("flow_gpt")),
-    );
-    const footer = document.createElement("div");
-    footer.style.cssText = "display:flex;justify-content:flex-end;";
-    const cancel = makeButton("Cancel");
-    footer.append(cancel);
-    box.append(header, note, sharedZImageCard, grid, footer);
-    backdrop.append(box);
-    document.body.append(backdrop);
-    function closeModal() {
-      backdrop.remove();
-    }
-    close.onclick = closeModal;
-    cancel.onclick = closeModal;
-    backdrop.addEventListener("pointerdown", (event) => {
-      if (event.target === backdrop) closeModal();
+    const cards = referenceEngineCards(buildReferenceGeneratorControls(), { batch: true })
+      .map((card) => ({ ...card, run: (settings) => createMissingLocationReferencesWithZImage(card.key, settings) }));
+    openReferenceGeneratorShell({
+      title: "Generate Missing Location Images",
+      subtitle: `Gemma writes a prompt for each of the ${missingCount} location${missingCount === 1 ? "" : "s"} without an image, then the workflow you pick draws them all.`,
+      cards,
     });
   }
 

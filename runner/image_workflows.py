@@ -1,4 +1,4 @@
-"""Image workflow graphs: Z-Image, Krea2, Ernie, Flux Klein, NanoBanana and Z upscale enhance."""
+"""Image workflow graphs: Z-Image, Krea2, MOSS-Image, Ernie, Flux Klein, NanoBanana and Z upscale enhance."""
 
 import copy
 import json
@@ -645,6 +645,62 @@ def _build_krea2_api_prompt(payload):
         "prompt": patched_prompt,
         "used_seed": used_seed,
     }
+
+
+def _build_moss_image_api_prompt(payload):
+    """Build a MOSS-Image text-to-image graph from ComfyUI's native MOSS-Image support.
+
+    A model-only LoRA (the 8-step DMD turbo LoRA) is optional. The native model already
+    samples with shift 5 and a timestep multiplier of 1, so there is no ModelSamplingSD3
+    node: it forces a multiplier of 1000 and the result is noise.
+    """
+    prompt_text = str(payload.get("prompt", "") or "").strip()
+    if not prompt_text:
+        raise ValueError("Prompt text is empty.")
+    unet_name = str(payload.get("unet_name") or "moss_image_sft_bf16.safetensors").strip()
+    clip_name = str(payload.get("clip_name") or "qwen3.5_9b_int8_convrot.safetensors").strip()
+    vae_name = str(payload.get("vae_name") or "flux2-vae.safetensors").strip()
+    lora_name = str(payload.get("lora_name") or _NONE_LORA).strip()
+    _require_model_choice(("diffusion_models", "unet"), unet_name, "MOSS-Image diffusion model")
+    _require_model_choice(("text_encoders", "clip"), clip_name, "MOSS-Image text encoder")
+    _require_model_choice("vae", vae_name, "MOSS-Image VAE")
+    if lora_name != _NONE_LORA:
+        _require_model_choice("loras", lora_name, "MOSS-Image LoRA")
+
+    seed = _int_payload(payload, "seed", 1, 0, 0xFFFFFFFFFFFFFFFF)
+    if str(payload.get("seed_mode", "fixed") or "fixed").strip().lower() in {"random", "randomize"}:
+        seed = random.randint(0, 0xFFFFFFFFFFFFFFFF)
+    cfg = _float_payload(payload, "cfg", 1.0, 1.0, 20.0)
+
+    model = ["1", 0]
+    prompt = {
+        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": unet_name, "weight_dtype": "default"}},
+        "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": clip_name, "type": "moss_image", "device": "default"}},
+        "3": {"class_type": "VAELoader", "inputs": {"vae_name": vae_name}},
+    }
+    if lora_name != _NONE_LORA:
+        prompt["4"] = {"class_type": "LoraLoaderModelOnly", "inputs": {
+            "model": model, "lora_name": lora_name,
+            "strength_model": _float_payload(payload, "lora_strength", 1.0, -10.0, 10.0),
+        }}
+        model = ["4", 0]
+    prompt.update({
+        "7": {"class_type": "CLIPTextEncode", "inputs": {"clip": ["2", 0], "text": prompt_text}},
+        "8": {"class_type": "CLIPTextEncode", "inputs": {"clip": ["2", 0], "text": str(payload.get("negative_prompt") or "")}},
+        "9": {"class_type": "EmptyFlux2LatentImage", "inputs": {
+            "width": _int_payload(payload, "width", 1344, 256, 4096),
+            "height": _int_payload(payload, "height", 768, 256, 4096),
+            "batch_size": _int_payload(payload, "batch_size", 1, 1, 16),
+        }},
+        "10": {"class_type": "KSampler", "inputs": {
+            "model": model, "positive": ["7", 0], "negative": ["8", 0], "latent_image": ["9", 0],
+            "seed": seed, "steps": _int_payload(payload, "steps", 8, 1, 200), "cfg": cfg,
+            "sampler_name": "euler", "scheduler": "sgm_uniform", "denoise": 1.0,
+        }},
+        "11": {"class_type": "VAEDecode", "inputs": {"samples": ["10", 0], "vae": ["3", 0]}},
+        "12": {"class_type": "PreviewImage", "inputs": {"images": ["11", 0]}},
+    })
+    return {"workflow_path": "", "prompt": prompt, "used_seed": seed}
 
 
 def _build_krea2_2pass_api_prompt(payload):
