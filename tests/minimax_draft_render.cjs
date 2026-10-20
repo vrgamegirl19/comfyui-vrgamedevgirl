@@ -77,6 +77,7 @@ test("scene cards show red DRAFT only for the selected draft video", () => {
 
 async function runBatch(renderPhase, forceVideos = false) {
   const rendered = [];
+  const renderOptions = [];
   const messages = [];
   let stitched = false;
   const segments = [
@@ -98,7 +99,7 @@ async function runBatch(renderPhase, forceVideos = false) {
     sceneDisplayName: segment => segment.id,
     updateRenderLogSummary: () => ({ completed_scenes: 0 }), renderLogDuration: () => "0s",
     renderMiniMaxSceneVideoWithProgress: async (segment, _index, _progress, options) => {
-      rendered.push([segment.id, options.renderPhase]); return segment.video_path;
+      rendered.push([segment.id, options.renderPhase]); renderOptions.push(options); return segment.video_path;
     },
     stitchRenderedScenes: async () => { stitched = true; return { final_video_path: "final.mp4" }; },
     toast: message => messages.push(message),
@@ -107,7 +108,7 @@ async function runBatch(renderPhase, forceVideos = false) {
   vm.createContext(sandbox);
   vm.runInContext(functionSource(readBuilderModule("batch_render.mjs"), "renderAllScenes"), sandbox);
   await sandbox.renderAllScenes({ renderPhase, forceVideos, suppressFinalModal: true, throwOnError: true });
-  return { rendered, stitched, messages };
+  return { rendered, renderOptions, stitched, messages };
 }
 
 test("Render All Drafts runs pass 1 for every target and skips stitching", async () => {
@@ -133,4 +134,45 @@ test("draft progress identifies pass 1 without listing pass 2 steps", async () =
   assert.match(waiting, /DRAFT — Pass 1 Only/);
   assert.match(waiting, /Pass 1 steps: 20/);
   assert.doesNotMatch(waiting, /Pass 2|Stage 2/);
+});
+
+test("only a Finalize that Render chose by itself may fall back to a full render", async () => {
+  assert.equal((await runBatch("full")).renderOptions[0].draftAutoFinalize, true);
+  assert.equal((await runBatch("finalize")).renderOptions[0].draftAutoFinalize, false);
+});
+
+function staleDraftSandbox() {
+  const messages = [];
+  const sandbox = {
+    state: {}, projectInput: { value: "project" }, sceneSlotNumber: () => 1, renderList: () => {},
+    miniMaxH3SettingsForSegment: () => ({ diffusion_model_name: "fasth3_omniref_qad_nvfp4_comfy.safetensors" }),
+    postJson: async () => ({
+      stale_draft: true, draft_models: ["minimax_h3_ref2va_pruned_int8_convrot.safetensors"],
+      current_model: "fasth3_omniref_qad_nvfp4_comfy.safetensors",
+    }),
+    // The full render path starts here; stop it so the test only checks which path was taken.
+    prepareEditedAudio: async () => { throw new Error("FULL RENDER STARTED"); },
+  };
+  vm.createContext(sandbox);
+  vm.runInContext(functionSource(readBuilderModule("video_render.mjs"), "renderMiniMaxSceneVideoWithProgress"), sandbox);
+  const segment = { id: "s1", start: 0, end: 10, minimax_h3_draft: { id: "checkpoint" } };
+  return { sandbox, segment, progress: { set: message => messages.push(message) }, messages };
+}
+
+test("a draft made with another model renders fresh when Render chose Finalize", async () => {
+  const { sandbox, segment, progress, messages } = staleDraftSandbox();
+  await assert.rejects(
+    sandbox.renderMiniMaxSceneVideoWithProgress(segment, 0, progress, { renderPhase: "finalize", draftAutoFinalize: true }),
+    /FULL RENDER STARTED/,
+  );
+  assert.match(messages[0], /made with minimax_h3_ref2va_pruned_int8_convrot\.safetensors/);
+  assert.match(messages[0], /Rendering both passes with the current settings/);
+});
+
+test("an explicit Finalize of a draft made with another model stops with the reason", async () => {
+  const { sandbox, segment, progress } = staleDraftSandbox();
+  await assert.rejects(
+    sandbox.renderMiniMaxSceneVideoWithProgress(segment, 0, progress, { renderPhase: "finalize" }),
+    /now uses fasth3_omniref_qad_nvfp4_comfy\.safetensors[\s\S]*Render a new draft/,
+  );
 });

@@ -72,6 +72,19 @@ def _build_minimax_draft(result, payload):
     return draft
 
 
+_DIFFUSION_LOADERS = {"DiffusionModelLoaderKJ": "model_name", "UNETLoader": "unet_name"}
+
+
+def _draft_diffusion_models(prompt):
+    """Return the diffusion model files a saved draft graph loads."""
+    return sorted({
+        os.path.basename(str(node["inputs"].get(key) or ""))
+        for node in prompt.values()
+        for class_type, key in _DIFFUSION_LOADERS.items()
+        if node.get("class_type") == class_type and node["inputs"].get(key)
+    })
+
+
 def _build_minimax_finalize(payload):
     folder = _draft_folder(payload["project_folder"], payload["draft_id"])
     checkpoint = os.path.join(folder, "pass1.pt")
@@ -79,6 +92,12 @@ def _build_minimax_finalize(payload):
         raise FileNotFoundError("The saved pass-1 latent is missing. Render a new draft first.")
     with open(os.path.join(folder, "workflow.json"), encoding="utf-8") as handle:
         result = json.load(handle)
+    # Finalize replays the draft's saved graph, so a draft made with another diffusion model
+    # would ignore the current model. Report it instead of building that graph.
+    current_model = os.path.basename(str(payload.get("diffusion_model_name") or "").strip())
+    draft_models = _draft_diffusion_models(result["prompt"])
+    if current_model and draft_models and current_model not in draft_models:
+        return {"stale_draft": True, "draft_models": draft_models, "current_model": current_model}
     if int(payload["scene_number"]) != result["draft_scene_number"]:
         raise ValueError("This draft belongs to a different scene.")
     if abs(float(payload["timeline_start_seconds"]) - result["draft_start"]) > 0.001 or abs(float(payload["timeline_end_seconds"]) - result["draft_end"]) > 0.001:

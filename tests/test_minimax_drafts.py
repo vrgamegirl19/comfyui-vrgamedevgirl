@@ -62,6 +62,23 @@ class MiniMaxDraftTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 drafts._build_minimax_finalize({**request, "draft_id": "../outside"})
 
+    def test_draft_made_with_another_diffusion_model_is_reported_stale(self):
+        with tempfile.TemporaryDirectory() as folder:
+            payload = {"project_folder": folder, "scene_number": 1, "timeline_start_seconds": 0, "timeline_end_seconds": 10}
+            draft = drafts._build_minimax_draft(self.result(), payload)
+            Path(draft["prompt"]["draft_save"]["inputs"]["checkpoint_path"]).touch()
+            request = {**payload, "draft_id": draft["draft_id"]}
+            saved_model = draft["prompt"]["141"]["inputs"]["model_name"]
+            stale = drafts._build_minimax_finalize({**request, "diffusion_model_name": "fasth3_omniref_qad_nvfp4_comfy.safetensors"})
+            self.assertEqual(stale, {
+                "stale_draft": True, "draft_models": [saved_model],
+                "current_model": "fasth3_omniref_qad_nvfp4_comfy.safetensors",
+            })
+            # The same model, or a request without a model, still finalizes.
+            for extra in ({"diffusion_model_name": saved_model}, {}):
+                final = drafts._build_minimax_finalize({**request, **extra})
+                self.assertEqual(final["prompt"]["125"]["class_type"], "VRGDG_MiniMaxH3LoadDraft")
+
     def test_checkpoint_round_trip_preserves_audio_video_and_masks(self):
         import torch
         class Nested:
