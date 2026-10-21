@@ -185,7 +185,10 @@ class SceneItemTests(unittest.TestCase):
         self.assertFalse(story_mode.is_story_person_card(dress))
         text = story_mode.scene_items_text([dress, lamp], [mara, joe])
         self.assertIn("Joe wears Red Dress (Silk, knee length.)", text)
-        self.assertIn("Mara holds or uses Oil Lamp", text)
+        self.assertIn("Oil Lamp is part of the set", text)
+        keys = {"id": "keys", "name": "Car Keys", "reference_type": "object", "wears": "joe"}
+        self.assertIn("Joe holds and uses Car Keys the way it is normally used", story_mode.scene_items_text([keys], [mara, joe]))
+        self.assertTrue(story_mode.is_story_person_card({"id": "wolf", "name": "Grey Wolf", "reference_type": "creature"}))
         self.assertEqual(story_mode.scene_items_text([], [mara]), "")
         style = {"id": "look", "name": "2dpoly", "reference_type": "style"}
         self.assertEqual(story_mode.scene_items_text([style], [mara]), "")

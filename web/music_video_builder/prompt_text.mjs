@@ -323,6 +323,25 @@ export function normalizeGemmaContextLimit(value) {
   return Math.max(512, Math.min(262144, Math.round(parsed)));
 }
 
+// Gemma Local fails with a smaller window, so its context and output limits never go below this.
+export const GEMMA_LOCAL_MIN_TOKENS = 16384;
+
+// Gemma Local limits: both at least GEMMA_LOCAL_MIN_TOKENS, output no higher than the context.
+// Twin of gemma_local_token_limits in agent_api/llm_runtime.py.
+export function gemmaLocalTokenLimits(contextValue, outputValue) {
+  const context = Math.max(GEMMA_LOCAL_MIN_TOKENS, normalizeGemmaContextLimit(contextValue));
+  const output = Math.max(GEMMA_LOCAL_MIN_TOKENS, Math.min(context, normalizeOutputTokenLimit(outputValue)));
+  return { context, output };
+}
+
+// Raises the saved Gemma limits to the Gemma Local floor when Gemma Local is the runner.
+export function applyGemmaLocalTokenLimits(state) {
+  if (!state || (state.textGemmaRunner || "builtin") !== "builtin") return;
+  const limits = gemmaLocalTokenLimits(state.gemmaContextLimit, state.gemmaOutputTokenLimit);
+  state.gemmaContextLimit = limits.context;
+  state.gemmaOutputTokenLimit = limits.output;
+}
+
 export function normalizeLmStudioContextLimit(value) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return 32768;

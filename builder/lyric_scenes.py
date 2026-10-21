@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 REFERENCE_UNIT_MODES = ("reference_lines", "exact_reference_lines", "reference_stanzas")
 DEFAULT_INSTRUMENTAL_TEXT = "[instrumental]"
+DEFAULT_SCENE_VARIANCE_SECONDS = 2.0
 _EPSILON = 0.03
 
 _NON_VOCAL_MARKER = re.compile(r"^(instrumental|break|interlude|solo|no vocal|no vocals|no lyrics|silence|b roll|music only)$")
@@ -288,16 +289,22 @@ def segments_from_timestamped_payload(
     instrumental_text: str = "",
     min_gap_seconds: Optional[float] = None,
     max_scene_seconds: Optional[float] = None,
+    min_scene_seconds: Optional[float] = None,
+    scene_variance_seconds: float = DEFAULT_SCENE_VARIANCE_SECONDS,
+    keep_reference_units: bool = False,
 ) -> List[Dict[str, Any]]:
     """Mirror ``createSegmentsFromTimestampedLyricsPayload``.
 
     ``payload`` is the JSON the timestamp workflow returns (``segments`` with ``start``, ``end``,
-    ``text``, ``type`` and ``words``, plus ``duration``). Long chunks are split near word
-    boundaries, gaps between vocal chunks become instrumental scenes, and the song's tail is filled.
+    ``text``, ``type`` and ``words``, plus ``duration``). Chunks longer than max + scene variance
+    are split near word boundaries, gaps between vocal chunks become instrumental scenes, and the
+    song's tail is filled. Exact reference lines are never split. ``keep_reference_units`` also
+    keeps whole lines and stanzas in the other reference modes.
     """
     source_segments = payload.get("segments") if isinstance(payload.get("segments"), list) else []
     mode = _text(segment_mode or payload.get("segment_mode") or payload.get("segmentMode"))
-    preserves_units = mode in REFERENCE_UNIT_MODES
+    preserves_units = mode == "exact_reference_lines" or (keep_reference_units and mode in REFERENCE_UNIT_MODES)
+    min_scene = max(0.0, _number(min_scene_seconds if min_scene_seconds is not None else payload.get("min_scene_seconds", payload.get("minSceneSeconds")), 0.0))
     ordered_source = []
     for item in source_segments:
         start = max(0.0, _number(item.get("start") if isinstance(item, dict) else 0))
@@ -314,7 +321,7 @@ def segments_from_timestamped_payload(
     )
     min_gap = max(0.0, _number(min_gap_seconds if min_gap_seconds is not None else payload.get("min_gap_seconds", payload.get("minGapSeconds")), 0.25))
     max_scene = max(0.5, _number(max_scene_seconds if max_scene_seconds is not None else payload.get("max_scene_seconds", payload.get("maxSceneSeconds")), 8.0) or 8.0)
-    soft_max = max_scene + 2
+    soft_max = max_scene + max(0.0, _number(scene_variance_seconds, DEFAULT_SCENE_VARIANCE_SECONDS))
 
     ordered: List[Dict[str, Any]] = []
     for source in ordered_source:
@@ -334,10 +341,16 @@ def segments_from_timestamped_payload(
         while source["end"] - part_start > soft_max + _EPSILON:
             target = part_start + max_scene
             limit = part_start + soft_max
-            candidates = [
+            all_candidates = [
                 (word, index) for index, word in enumerate(words)
                 if index >= cursor and word["end"] > part_start + 0.1 and word["end"] <= limit + _EPSILON
             ]
+            # Prefer a cut that leaves both parts at least the minimum long.
+            full_candidates = [
+                (word, index) for word, index in all_candidates
+                if word["end"] - part_start >= min_scene - _EPSILON and source["end"] - word["end"] >= min_scene - _EPSILON
+            ]
+            candidates = full_candidates or all_candidates
             chosen = min(candidates, key=lambda c: abs(c[0]["end"] - target)) if candidates else None
             part_end = chosen[0]["end"] if chosen else target
             part_item = dict(source["item"])
@@ -349,7 +362,7 @@ def segments_from_timestamped_payload(
                 cursor = chosen[1] + 1
             else:
                 part_item["words"] = []
-            part_item["timing_warning"] = f"Long transcription chunk split near a word boundary to honor the {max_scene:.2f} second maximum."
+            part_item["timing_warning"] = f"Long transcription chunk split near a word boundary to honor the {soft_max:.2f} second maximum."
             ordered.append({"item": part_item, "start": part_start, "end": part_end})
             part_start = part_end
         final_item = dict(source["item"])
@@ -418,6 +431,7 @@ def normalize_scene_durations(
     max_scene_seconds: float = 8.0,
     segment_mode: str = "",
     instrumental_text: str = DEFAULT_INSTRUMENTAL_TEXT,
+    scene_variance_seconds: float = DEFAULT_SCENE_VARIANCE_SECONDS,
 ) -> List[Dict[str, Any]]:
     """Mirror ``normalizeTimestampedSceneDurations``: merge scenes shorter than the minimum into a neighbor."""
     items = sorted((s for s in segments if s), key=lambda s: (_number(s.get("start")), _number(s.get("end"))))
@@ -425,7 +439,7 @@ def normalize_scene_durations(
         return items
     min_s = max(1.0, _number(min_scene_seconds, 1.0))
     max_s = max(min_s, _number(max_scene_seconds, 8.0))
-    soft_max = max_s + 2
+    soft_max = max_s + max(0.0, _number(scene_variance_seconds, DEFAULT_SCENE_VARIANCE_SECONDS))
     if not items:
         return items
 

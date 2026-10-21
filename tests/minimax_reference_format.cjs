@@ -354,3 +354,23 @@ test('full character sheets preserve outfit and footwear; all panels are the sam
   const prompt = c.assembleMiniMaxH3OfficialPromptFromCreative(scene, 'image_reference_to_video', '<Subject 1> walks beside the stage as the camera pulls back to show her full figure.');
   assert.match(prompt, /Use <Picture 2> for <Subject 1>'s character identity, face, hair, complete outfit, footwear, accessories, and body-proportion/);
 });
+
+test('a RefMod object is used by its character, a prop is part of the set, a creature is not a thing', () => {
+  const c = fixture();
+  const pictureItems = [
+    { refmod: { category: 'character', card_id: 'a' } },
+    { refmod: { category: 'character', card_id: 'w', reference_type: 'creature' } },
+    { refmod: { category: 'object', reference_type: 'object', wears: 'w' } },
+    { refmod: { category: 'object', reference_type: 'prop' } },
+  ];
+  const role = (index, name) => c.miniMaxH3RefmodRoleText(pictureItems[index], {
+    subjectLabel: `<Subject ${index + 1}>`, pictureLabel: `<Picture ${index + 1}>`, pictureItems, shotList: '[Shot 1]', name,
+  });
+  const keys = role(2, 'car keys');
+  assert.equal(keys.role, 'object');
+  assert.match(keys.definition, /It is the car keys: show <Subject 2> holding and using it the way it is normally used/);
+  const lamp = role(3, 'floor lamp');
+  assert.equal(lamp.role, 'prop');
+  assert.match(lamp.definition, /It is the floor lamp, part of the set: place it where it naturally belongs/);
+  assert.equal(role(1, 'grey wolf'), null, 'a creature is a cast member, not a thing');
+});

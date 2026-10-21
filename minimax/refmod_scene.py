@@ -28,7 +28,7 @@ KIND_LABELS = {"image": "Picture", "video": "Video", "audio": "Audio"}
 
 # Order in a scene: characters, extras, clothing, objects, background, style.
 CATEGORY_RANK = {"character": 0, "extra": 1, "clothing": 2, "object": 3, "background": 4, "style": 5}
-_OBJECT_TYPES = ("object", "prop", "vehicle", "creature", "other")
+_OBJECT_TYPES = ("object", "prop", "vehicle", "other")
 
 
 def is_refmod_card(card: Any) -> bool:
@@ -47,7 +47,8 @@ def card_category(card: Dict[str, Any], kind: str = "subject") -> str:
     if kind == "location":
         return "background"
     reference_type = _text(card.get("reference_type")) or "character"
-    if reference_type == "character":
+    # A creature is stored as a creature but acts in the scene like a character.
+    if reference_type in ("character", "creature"):
         return "character"
     if reference_type == "outfit":
         return "clothing"

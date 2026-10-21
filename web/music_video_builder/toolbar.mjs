@@ -143,7 +143,7 @@ export function wireToolbar({
     updateV10Button.disabled = true;
     updateV10Button.textContent = "Updating...";
     try {
-      const response = await api.fetchApi("/vrgdg/update/v10", { method: "POST" });
+      const response = await api.fetchApi("/vrgdg/update/v10", { method: "POST", timeoutMs: null });
       let payload = {};
       try {
         payload = await response.json();

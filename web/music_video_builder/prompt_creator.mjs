@@ -314,6 +314,7 @@ async function postJson(url, payload) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload || {}),
+    timeoutMs: null,
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data?.ok === false) {
@@ -335,6 +336,7 @@ async function postForm(url, formData) {
   const response = await api.fetchApi(url, {
     method: "POST",
     body: formData,
+    timeoutMs: null,
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data?.ok === false) {

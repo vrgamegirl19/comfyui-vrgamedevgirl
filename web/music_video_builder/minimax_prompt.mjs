@@ -1412,11 +1412,17 @@ export function createMiniMaxPrompt({
         "CAST FOR THIS SCENE — MANDATORY: Character names in the scene text below have been replaced by these labels. Identify each character by its subject label on first mention in each shot, then use natural pronouns and possessives when the actor is unambiguous. For a single character, continue with she/he/they and her/his/their rather than repeating the label for every action. With multiple characters, repeat a label when the actor or speaker changes or a pronoun would be ambiguous. Do not append character names or picture origins in parentheses. Each role below comes from the user's Map Performers and Review Lines settings and must be followed exactly.",
         ...subjectLabelEntries.map((item) => {
           const role = subjectRole(item);
-          return `- ${item.label} (${item.name || "mapped subject"})${role ? `: ${role}` : ""}`;
+          // A creature is in the cast like a character, but it moves and behaves as the creature its name says.
+          const creature = item.referenceType === "creature"
+            ? `a creature (${item.name || "creature"}): it acts in the scene like a character, with its own actions, and moves and behaves the way that creature naturally would`
+            : "";
+          const roleText = [creature, role].filter(Boolean).join("; ");
+          return `- ${item.label} (${item.name || "mapped subject"})${roleText ? `: ${roleText}` : ""}`;
         }),
         `ONLY THESE PEOPLE APPEAR — MANDATORY: ${subjectLabelEntries.map((item) => `${item.label} (${item.name || "mapped subject"})`).join(", ")}. No other person, hand, arm, shadow, reflection, silhouette, or crowd appears in any shot. Labels and subsequent pronouns refer to the same established characters.`,
       ].join("\n"));
-      // Clothing, props and vehicles are things in the scene, not cast members: say how each one appears.
+      // Clothing, objects, props and vehicles are things in the scene, not cast members: say how each one appears.
+      // The card name says what the thing is (gun, car keys, floor lamp), so the writer uses it as that.
       const accessoryEntries = Array.from(new Map(
         Array.from(subjectLabelMap.values())
           .filter((item) => (item.kind === "clothing" || item.kind === "object") && item.label)
@@ -1425,16 +1431,18 @@ export function createMiniMaxPrompt({
       if (accessoryEntries.length) {
         const mainLabel = subjectLabelEntries[0]?.label || "the main character";
         parts.push([
-          "WARDROBE AND PROPS — MANDATORY: These labels are things, not people. Never give one a face, a pose, an action, dialogue or a place of its own, and never list one among the people in a shot. Name each one only as part of what a person wears, holds or stands beside.",
+          "WARDROBE, OBJECTS AND PROPS — MANDATORY: These labels are things, not people. Never give one a face, a pose, an action, dialogue or a will of its own, and never list one among the people in a shot. The name in parentheses says what each thing is: use it as exactly that kind of thing, the way it is normally worn, held, used or placed.",
           ...accessoryEntries.map((item) => {
             const label = `${item.label} (${item.name || "reference"})`;
             if (item.kind === "clothing") {
               const wearer = subjectLabelEntries.find((entry) => item.wears && entry.cardId === item.wears)?.label || mainLabel;
               return `- ${label} is clothing worn by ${wearer}: write ${wearer} wearing it in every shot where ${wearer} appears.`;
             }
-            if (item.referenceType === "vehicle") return `- ${label} is a vehicle: show ${mainLabel} driving it, or standing in front of or beside it.`;
-            if (item.referenceType === "creature" || item.referenceType === "animal") return `- ${label} is a ${item.referenceType} present in the scene next to ${mainLabel}; it moves as a ${item.referenceType} would and never speaks or sings.`;
-            return `- ${label} is a prop: place it in the scene and show ${mainLabel} holding it, using it, or standing next to it.`;
+            const thing = item.name || "item";
+            if (item.referenceType === "vehicle") return `- ${label} is a vehicle (${thing}): show ${mainLabel} driving it, or standing in front of or beside it.`;
+            if (item.referenceType === "prop") return `- ${label} is a prop (${thing}) that is part of the set: place it where it naturally belongs in the scene and stage the action around it. Nobody needs to hold it, and it stays where it is unless a person moves it.`;
+            const user = subjectLabelEntries.find((entry) => item.wears && entry.cardId === item.wears)?.label || mainLabel;
+            return `- ${label} is an object (${thing}) used by ${user}: show ${user} holding and using it the way it is normally used, in the shots where ${user} appears.`;
           }),
         ].join("\n"));
       }
@@ -1477,7 +1485,7 @@ export function createMiniMaxPrompt({
     } else if (lyricText) {
       parts.push("MANDATORY VOCAL PERFORMANCE: The assigned subject is visibly singing the exact supplied lyric/audio during this scene. Use the stable visible subject label, " + (nativeAudio
         ? "and place every performed lyric cue inside <d>[English] exact words with final punctuation.</d>. "
-        : "and write the exact lyric words, unchanged, inside the shot description in double quotes, introduced like this: <Subject 1> sings the lyric line, \"the exact words\". Every lyric line given below must appear in a shot, in order. ") + (nativeAudio
+        : "and write the exact lyric words, unchanged, inside <d>[English] exact words with final punctuation.</d>, introduced like this: <Subject 1> sings <d>[English] the exact words.</d> in sync with <Audio 1>. Every lyric line given below must appear in a shot, in order. ") + (nativeAudio
         ? "Show clear, natural mouth, lip, jaw, and facial movement synchronized to the audible vocal. Never describe the lips as closed, still, motionless, or sealed while the assigned vocal is being performed. Body action is required in addition to lip sync; it does not replace lip sync. Non-verbal vocals such as oooh, ah, humming, and sustained notes still require visible mouth movement. "
         : "Audio 1 drives the singer's mouth, so act the line with the face and body. Body action is required in addition to the singing. ") + "Mention the visible singing action naturally in the shot descriptions.");
       add(parts, "Exact lyric line", lyricText);
@@ -1817,8 +1825,8 @@ export function createMiniMaxPrompt({
     return normalizeMiniMaxH3ShotDescription(`${clean.replace(/[.!?…]+$/g, "").trim()}. ${vocalContract}`);
   }
 
-  // The saved prompt must say what the character sings, so the lyric goes in the shot in double quotes. The LLM is asked
-  // to do this; this quotes a plain copy of the lyric, or adds the sentence, so it never depends on the LLM. Lyric lines
+  // The saved prompt must say what the character sings, so the lyric goes in the shot as <d>[English] words.</d>. The LLM
+  // is asked to do this; this tags a quoted or plain copy of the lyric, or adds the sentence, so it never depends on the LLM. Lyric lines
   // are shared across the cuts in order. Only plain singing scenes on the project audio are touched.
   function miniMaxH3EnsureQuotedLyricInShot(segment, description, shotIndex, shotCount, mode = miniMaxH3ModeForSegment(segment)) {
     const text = String(description || "");
@@ -1847,16 +1855,19 @@ export function createMiniMaxPrompt({
         if (words(match[1]).join(" ").includes(chunkWords.join(" "))) return text;
       }
     }
-    for (const match of text.matchAll(/["“]([^"”]+)["”]/g)) {
-      if (words(match[1]).join(" ").includes(lead)) return text;
+    const dialogueTag = (lyric) => `<d>[English] ${miniMaxH3CapitalizeCueText(miniMaxH3PunctuatedCueText(String(lyric || "").trim().replace(/[ ,;:]+$/g, "")))}</d>`;
+    // A quoted lyric becomes a <d> tag: `sings the lyric line, "X",` -> `sings <d>[English] X.</d>`.
+    for (const match of text.matchAll(/(\bthe lyric line,?\s*)?["“]([^"”]+)["”],?/gi)) {
+      if (!words(match[2]).join(" ").includes(lead)) continue;
+      return `${text.slice(0, match.index)}${dialogueTag(match[2])}${text.slice(match.index + match[0].length)}`;
     }
     const plain = new RegExp(chunkWords.map((word) => escapeRegExp(word)).join("[\\W_]*"), "i").exec(text.replace(/’/g, "'"));
     if (plain) {
-      return `${text.slice(0, plain.index)}"${text.slice(plain.index, plain.index + plain[0].length).trim()}"${text.slice(plain.index + plain[0].length)}`;
+      return `${text.slice(0, plain.index)}${dialogueTag(text.slice(plain.index, plain.index + plain[0].length))}${text.slice(plain.index + plain[0].length)}`;
     }
     const performers = selectedPerformerSubjectsForSegment(segment);
     const label = performers.length ? miniMaxH3PerformerLabel(performers[0], miniMaxH3SubjectLabelMapForSegment(segment, mode)) : "The singer";
-    return `${text.replace(/\s+$/g, "")} ${label} sings the lyric line, "${chunk.replace(/[ ,;]+$/g, "")}".`.trim();
+    return `${text.replace(/\s+$/g, "")} ${label} sings ${dialogueTag(chunk)} in sync with <Audio 1>.`.trim();
   }
 
   function miniMaxH3OfficialShotBodyFromDescriptions(segment, descriptions = [], mode = miniMaxH3ModeForSegment(segment)) {
@@ -1886,17 +1897,16 @@ export function createMiniMaxPrompt({
     return body;
   }
 
-  // In the RefMod pipeline clothing, props and vehicles are not cast members. The prompt writer is told how each one
-  // appears: clothing is worn by its character, a vehicle is driven by or stood beside by the main character, and a
-  // prop is placed in the scene next to them. Returns null for everything else (people, extras, setting, style).
+  // In the RefMod pipeline clothing, objects, props and vehicles are not cast members. The prompt writer is told how each
+  // one appears: clothing is worn by its character, an object is held and used by its character, a vehicle is driven by
+  // or stood beside by the main character, and a prop is part of the set. Creatures are cast members (category
+  // character). Returns null for everything else (people, creatures, extras, setting, style).
   function miniMaxH3RefmodRoleText(item, { subjectLabel, pictureLabel, pictureItems, shotList, name }) {
     const refmod = item?.refmod;
     if (!refmod || !["clothing", "object"].includes(refmod.category)) return null;
     const labelAt = (position) => (position >= 0 ? `<Subject ${position + 1}>` : "");
     const mainLabel = labelAt(pictureItems.findIndex((other) => other?.refmod?.category === "character"));
-    const wearerLabel = refmod.category === "clothing"
-      ? labelAt(pictureItems.findIndex((other) => other?.refmod?.category === "character" && other.refmod.card_id === refmod.wears)) || mainLabel
-      : "";
+    const wearerLabel = labelAt(pictureItems.findIndex((other) => other?.refmod?.category === "character" && other.refmod.card_id === refmod.wears)) || mainLabel;
     const detail = miniMaxH3CompactReferenceDescription(String(item?.description || "").trim(), 160);
     const detailText = detail ? ` ${detail}.` : "";
     const person = mainLabel || "the main character";
@@ -1910,18 +1920,19 @@ export function createMiniMaxPrompt({
       };
     }
     const type = String(refmod.reference_type || "").toLowerCase();
-    let placement = `Place it in the scene and show ${person} holding it, using it, or standing next to it. It never acts on its own.`;
-    let noun = "prop";
+    const user = wearerLabel || person;
+    let noun = "object";
+    let placement = `It is the ${name}: show ${user} holding and using it the way it is normally used. It never acts on its own.`;
     if (type === "vehicle") {
       noun = "vehicle";
       placement = `Place it in the scene and show ${person} driving it, or standing in front of or beside it. It never moves or acts without ${person}.`;
-    } else if (type === "creature" || type === "animal") {
-      noun = type;
-      placement = `It is present in the scene next to ${person}, moving only as a ${type} would. It never speaks or sings.`;
+    } else if (type === "prop") {
+      noun = "prop";
+      placement = `It is the ${name}, part of the set: place it where it naturally belongs in the scene and stage the action around it. Nobody needs to hold it.`;
     }
     return {
       role: noun,
-      wearerLabel: "",
+      wearerLabel: noun === "object" ? user : "",
       definition: `${subjectLabel} is the ${noun} "${name}" shown in ${pictureLabel}. ${placement}${detailText}`,
       retention: `${subjectLabel} (appears in ${shotList || "[Shot 1]"}): fully_preserved - its shape, material, colours and markings remain consistent.`,
     };

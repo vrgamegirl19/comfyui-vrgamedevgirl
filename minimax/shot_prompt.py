@@ -773,32 +773,33 @@ def _words(text: str) -> List[str]:
     return re.findall(r"[a-z0-9']+", str(text or "").lower().replace("’", "'"))
 
 
-def _quote_existing(description: str, lyric: str) -> Optional[str]:
-    """Wrap an unquoted copy of ``lyric`` in the description in double quotes. None when it is not there."""
+def _dialogue_tag(lyric: str) -> str:
+    """``<d>[English] Lyric words.</d>`` for a sung lyric."""
+    return f"<d>[English] {_cue_text(str(lyric or '').strip().rstrip(' ,;:'))}</d>"
+
+
+def _tag_existing(description: str, lyric: str) -> Optional[str]:
+    """Turn a quoted or plain copy of ``lyric`` in the description into a ``<d>`` tag. None when it is not there.
+
+    ``sings the lyric line, "X",`` becomes ``sings <d>[English] X.</d>``.
+    """
     words = _words(lyric)
     if not words:
         return None
+    lead = " ".join(words[:6])
+    for match in re.finditer(r'(\bthe lyric line,?\s*)?["“]([^"”]+)["”],?', description, re.IGNORECASE):
+        if lead in " ".join(_words(match.group(2))):
+            return description[:match.start()] + _dialogue_tag(match.group(2)) + description[match.end():]
     pattern = r"[\W_]*".join(re.escape(w) for w in words)
     match = re.search(pattern, description.replace("’", "'"), re.IGNORECASE)
     if not match:
         return None
     start, end = match.span()
-    return description[:start] + '"' + description[start:end].strip() + '"' + description[end:]
-
-
-def _has_quoted_lyric(description: str, lyric: str) -> bool:
-    words = _words(lyric)
-    if not words:
-        return True
-    lead = " ".join(words[:6])
-    for quoted in re.findall(r'["“]([^"”]+)["”]', description):
-        if lead in " ".join(_words(quoted)):
-            return True
-    return False
+    return description[:start] + _dialogue_tag(description[start:end]) + description[end:]
 
 
 def ensure_quoted_lyrics(descriptions: List[str], lyric_text: str, performer: str = "the singer") -> List[str]:
-    """Make every shot carry its lyric in double quotes: quote a plain copy, or add the sentence.
+    """Make every shot carry its lyric as ``<d>[English] words.</d>``: tag a quoted or plain copy, or add the sentence.
 
     The saved prompt must say what the character sings, so this does not rely on the LLM.
     """
@@ -814,14 +815,14 @@ def ensure_quoted_lyrics(descriptions: List[str], lyric_text: str, performer: st
         if normalized_chunk and any(normalized_chunk in normalize(re.sub(r"<[^>]+>", "", tagged)) for tagged in tagged_lyrics):
             result.append(description)
             continue
-        if not chunk or _has_quoted_lyric(description, chunk):
+        if not chunk:
             result.append(description)
             continue
-        quoted = _quote_existing(description, chunk)
-        if quoted is not None:
-            result.append(quoted)
+        tagged = _tag_existing(description, chunk)
+        if tagged is not None:
+            result.append(tagged)
             continue
-        sentence = f'{performer} sings the lyric line, "{chunk.rstrip(" ,;")}".'
+        sentence = f"{performer} sings {_dialogue_tag(chunk)} in sync with <Audio 1>."
         base = description.rstrip()
         result.append(f"{base} {sentence}" if base else sentence)
     return result
@@ -1181,8 +1182,9 @@ def build_shot_task(
                  else "Audio 1 drives the singer's mouth, so act the line with the face and body. ")
         parts.append("MANDATORY VOCAL PERFORMANCE: The assigned subject is visibly singing the exact supplied lyric/audio during this scene. "
                      f"Use the stable visible subject label. {mouth}"
-                     "LYRIC IN THE SHOT — MANDATORY: write the exact lyric words, unchanged, inside the shot description in double quotes, "
-                     f'introduced like this: {singer} sings the lyric line, "the exact words". Every lyric line given below must appear in a shot, in order.')
+                     "LYRIC IN THE SHOT — MANDATORY: write the exact lyric words, unchanged, inside <d>[English] exact words with final punctuation.</d>, "
+                     f"introduced like this: {singer} sings <d>[English] the exact words.</d> in sync with <Audio 1>. "
+                     "Every lyric line given below must appear in a shot, in order.")
         if len(chunks) == 1:
             parts.append(f"Exact lyric line:\n{compact(chunks[0])}")
         else:

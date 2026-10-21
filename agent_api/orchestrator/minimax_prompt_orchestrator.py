@@ -229,7 +229,7 @@ def generate_scene_prompt(session: Dict[str, Any], folder: str, segment: Dict[st
         elif cues:
             descriptions = [sp.enforce_cue_shot(text, cue) for text, cue in zip(descriptions, cues)]
         elif ctx["lyric"] and ctx["audio_mode"] != "built_in_audio" and labels:
-            # The prompt must say what the character sings: the lyric goes in the shot in double quotes.
+            # The prompt must say what the character sings: the lyric goes in the shot as <d>[English] words.</d>.
             cast = [l for l in labels if l["kind"] == "subject"] or labels
             performer = f"{cast[0]['label']} ({cast[0]['name']})" if cast[0]["name"] else cast[0]["label"]
             descriptions = sp.ensure_quoted_lyrics(descriptions, segment.get("lyric_text") or ctx["lyric"], performer)

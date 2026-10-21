@@ -132,6 +132,16 @@ class SessionSettingsTests(unittest.TestCase):
         self.assertEqual(payload["lmstudio_context_limit"], 131072)
         self.assertEqual(payload["gemma_output_token_limit"], 4096)
 
+    def test_gemma_local_limits_never_go_below_16384_or_output_past_the_context(self):
+        low = rt.llm_payload_from_session({"gemma_context_limit": 8000, "gemma_output_token_limit": 4096})
+        self.assertEqual((low["n_ctx"], low["gemma_output_token_limit"]), (16384, 16384))
+        high = rt.llm_payload_from_session({"gemma_context_limit": 32768, "gemma_output_token_limit": 64000})
+        self.assertEqual((high["n_ctx"], high["gemma_output_token_limit"]), (32768, 32768))
+        overridden = rt.llm_payload_from_session({}, {"n_ctx": 4096})
+        self.assertEqual(overridden["n_ctx"], 16384)
+        qwen = rt.llm_payload_from_session({"text_gemma_runner": "qwen_local", "gemma_context_limit": 8000})
+        self.assertEqual(qwen["n_ctx"], 8000)
+
     def test_lm_studio_jobs_are_not_scheduled_as_gpu_jobs_but_local_runners_are(self):
         self.assertFalse(llm_jobs.is_llm_runner_gpu({"text_runner": "lm_studio"}))
         self.assertFalse(llm_jobs.is_llm_runner_gpu({"text_runner": "lmstudio"}))

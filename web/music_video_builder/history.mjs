@@ -19,6 +19,7 @@ import {
   normalizeAutoImg2ImgStartStep,
   normalizeContinuityMode,
   normalizeGemmaContextLimit,
+  applyGemmaLocalTokenLimits,
   normalizeGemmaGpuLayers,
   normalizeLmStudioContextLimit,
   normalizeOutputTokenLimit,
@@ -217,6 +218,7 @@ export function createHistory({
     syncBuilderLlmModelSelectsFromRunner();
     state.gemmaContextLimit = normalizeGemmaContextLimit(data.gemmaContextLimit ?? data.gemma_context_limit ?? data.n_ctx ?? legacyLlmMaxTokens ?? state.gemmaContextLimit);
     state.gemmaOutputTokenLimit = normalizeOutputTokenLimit(data.gemmaOutputTokenLimit ?? data.gemma_output_token_limit ?? legacyLlmMaxTokens ?? state.gemmaOutputTokenLimit);
+    applyGemmaLocalTokenLimits(state);
     state.gemmaGpuLayers = normalizeGemmaGpuLayers(data.gemmaGpuLayers ?? data.gemma_gpu_layers ?? data.n_gpu_layers ?? state.gemmaGpuLayers);
     state.lmStudioBaseUrl = data.lmStudioBaseUrl || data.lm_studio_base_url || state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
     state.lmStudioModel = data.lmStudioModel || data.lm_studio_model || state.lmStudioModel || "";

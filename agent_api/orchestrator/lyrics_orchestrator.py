@@ -180,6 +180,8 @@ def build_scenes_from_payload(payload: Dict[str, Any], params: Dict[str, Any], r
         instrumental_text=instrumental,
         min_gap_seconds=float(params.get("min_gap_seconds", 2.0)),
         max_scene_seconds=max_s,
+        min_scene_seconds=min_s,
+        keep_reference_units=not params.get("enforce_lengths", True),
     )
     scenes = normalize_scene_durations(scenes, min_scene_seconds=min_s, max_scene_seconds=max_s, segment_mode=mode, instrumental_text=instrumental)
     if not scenes:

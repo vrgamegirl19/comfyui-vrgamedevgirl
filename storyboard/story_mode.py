@@ -689,7 +689,8 @@ def story_beat_context(layer, scene_id, scene_number):
     return "\n".join(lines), "\n".join(brief)
 
 
-_PERSON_REFERENCE_TYPES = {"", "character", "person", "human", "subject", "singer"}
+# A creature is stored as a creature but acts in the story like a character.
+_PERSON_REFERENCE_TYPES = {"", "character", "person", "human", "subject", "singer", "creature"}
 
 
 def is_story_person_card(card):
@@ -726,14 +727,16 @@ def scene_items_text(items, people):
         description = " ".join(str(item.get("description") or "").split())[:300]
         detail = f" ({description})" if description else ""
         user = names.get(str(item.get("wears") or "")) or first
-        if not user:
+        if not user and kind != "prop":
             lines.append(f"- {name}{detail} is in the scene.")
         elif kind == "outfit":
             lines.append(f"- {user} wears {name}{detail}. Show {user} wearing it whenever {user} is seen.")
         elif kind == "vehicle":
             lines.append(f"- {name}{detail} is {user}'s vehicle: {user} drives it or stands beside it.")
+        elif kind == "prop":
+            lines.append(f"- {name}{detail} is part of the set: it stands where it naturally belongs and the action is staged around it.")
         else:
-            lines.append(f"- {user} holds or uses {name}{detail}.")
+            lines.append(f"- {user} holds and uses {name}{detail} the way it is normally used.")
     if not lines:
         return ""
     return "\n".join(["WARDROBE AND PROPS IN THIS SCENE (things, not people; the beat must show them as described):", *lines])

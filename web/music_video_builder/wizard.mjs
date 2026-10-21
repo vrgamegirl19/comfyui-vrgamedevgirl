@@ -739,6 +739,7 @@ export function openMusicVideoWizard(api = {}) {
     segmentMode: "reference_lines",
     minSceneSeconds: "1.0",
     maxSceneSeconds: "8.0",
+    sceneVarianceSeconds: "2.0",
     cameraFlow: String(initialSceneDefaults.cameraFlow || "balanced"),
     imageShotFlow: String(initialSceneDefaults.imageShotFlow || "intimate"),
     imageAesthetic: String(initialSceneDefaults.imageAesthetic || ""),
@@ -900,6 +901,7 @@ export function openMusicVideoWizard(api = {}) {
       segmentMode: String(sourceState.segmentMode || "reference_lines"),
       minSceneSeconds: String(sourceState.minSceneSeconds || "1.0"),
       maxSceneSeconds: String(sourceState.maxSceneSeconds || "8.0"),
+      sceneVarianceSeconds: String(sourceState.sceneVarianceSeconds ?? "2.0"),
       cameraFlow: String(sourceState.cameraFlow || "balanced"),
       imageShotFlow: sourceState.imageShotFlow == null ? wizardState.imageShotFlow : String(sourceState.imageShotFlow || "intimate"),
       imageAesthetic: sourceState.imageAesthetic == null ? wizardState.imageAesthetic : String(sourceState.imageAesthetic || ""),
@@ -1583,6 +1585,13 @@ export function openMusicVideoWizard(api = {}) {
       wizardState.maxSceneSeconds = maxScene.value || "8.0";
       queueWizardDraftSave();
     };
+    const sceneVariance = input(wizardState.sceneVarianceSeconds, "number");
+    sceneVariance.step = "0.1";
+    sceneVariance.min = "0";
+    sceneVariance.oninput = () => {
+      wizardState.sceneVarianceSeconds = sceneVariance.value || "2.0";
+      queueWizardDraftSave();
+    };
     const lyricsSection = el("div", "vrgdg-wizard-section");
     const lyricsHeading = el("div", "vrgdg-wizard-section-heading");
     lyricsHeading.append(el("div", "vrgdg-wizard-section-number", "1"), el("div", "vrgdg-wizard-section-title", "Lyrics"));
@@ -1619,8 +1628,9 @@ export function openMusicVideoWizard(api = {}) {
     grid.append(
       settingTile("Language", language, "Tells the transcription/alignment step what language to expect. Use english for English lyrics; use the spoken lyric language for non-English songs."),
       settingTile("Scene segmentation", segmentMode, segmentationHelp),
-      settingTile("Minimum scene seconds", minScene, "Used by Whisper/beat timing and instrumental or approximate sections. In lyric-line and stanza modes, the pasted lyric unit overrides this value and may be shorter."),
-      settingTile("Maximum scene seconds", maxScene, "Used by Whisper/beat timing and instrumental or approximate sections. In lyric-line and stanza modes, the pasted lyric unit stays intact and is not split by this value."),
+      settingTile("Minimum scene seconds", minScene, "No scene is shorter than this. A shorter lyric line, chunk or instrumental gap merges with a neighbor. Exact lyric lines mode ignores it."),
+      settingTile("Maximum scene seconds", maxScene, "The target longest scene. Scenes may run past it by the scene variance. In beat mode this is the longest beat scene."),
+      settingTile("Scene variance seconds", sceneVariance, "How far a scene may run past the maximum. Max 8 + variance 2 allows scenes up to 10 seconds, and longer ones are cut. Not used in beat mode or exact lyric lines mode."),
     );
     const run = button("Create Timeline Scenes From Lyrics", "primary");
     run.onclick = async () => {
@@ -1637,6 +1647,7 @@ export function openMusicVideoWizard(api = {}) {
           minGapSeconds: 5.0,
           minSceneSeconds: Number(wizardState.minSceneSeconds || 1.0),
           maxSceneSeconds: Number(wizardState.maxSceneSeconds || 8.0),
+          sceneVarianceSeconds: Number(wizardState.sceneVarianceSeconds ?? 2.0),
           wizardStripLyricParentheses: true,
           vocalTailPaddingSeconds: 0.3,
           beatUseSrtDurations: true,

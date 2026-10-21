@@ -85,6 +85,7 @@ export async function postJson(url, payload, timeoutMs = 120000) {
       headers: { "Content-Type": "application/json", ...errorLogHeaders(logContext) },
       body: JSON.stringify(payload),
       signal: controller.signal,
+      timeoutMs: null,
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data?.ok) {
@@ -166,7 +167,7 @@ export const GEMMA_VIDEO_ENHANCE_TIMEOUT_MS = 300000;
 export async function getJson(url) {
   const logContext = errorLogContext();
   try {
-    const response = await api.fetchApi(url, { headers: errorLogHeaders(logContext) });
+    const response = await api.fetchApi(url, { headers: errorLogHeaders(logContext), timeoutMs: null });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data?.ok) {
       const error = new Error(String(data?.error || `Request failed (${response.status})`));

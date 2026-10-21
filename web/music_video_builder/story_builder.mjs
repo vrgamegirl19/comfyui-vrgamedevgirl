@@ -1065,6 +1065,9 @@ export function createStoryBuilder({
     }
 
     // ---------------------------------------------------------------- Acts
+    // Unsaved act title/summary edits by act id. They survive a redraw of the tab, so saving one act
+    // or changing an act's scenes keeps the other edits until Save All Changes.
+    const pendingActEdits = new Map();
     function renderActs() {
       const current = layer();
       const blocked = blockerNote("acts");
@@ -1080,11 +1083,29 @@ export function createStoryBuilder({
       create.onclick = async () => {
         const data = await runStep("acts", {}, "Creating the acts");
         if (data?.story_layer) {
+          pendingActEdits.clear();
           await saveLayer(data.story_layer, "story builder acts", { acts: true });
           show("acts");
         }
       };
-      top.append(row(create));
+      for (const id of [...pendingActEdits.keys()]) {
+        if (!acts.some((act) => act.id === id)) pendingActEdits.delete(id);
+      }
+      const saveAll = makeButton("Save All Changes", "primary");
+      saveAll.title = "Save the title and summary of every act you changed.";
+      const syncSaveAll = () => {
+        const count = pendingActEdits.size;
+        saveAll.disabled = !count;
+        saveAll.textContent = count ? `Save All Changes (${count})` : "Save All Changes";
+      };
+      saveAll.onclick = async () => {
+        if (!pendingActEdits.size) return;
+        const next = acts.map((item) => (pendingActEdits.has(item.id) ? { ...item, ...pendingActEdits.get(item.id) } : item));
+        pendingActEdits.clear();
+        await saveActs(next, "story builder acts edited");
+      };
+      syncSaveAll();
+      top.append(row(create, saveAll));
 
       const band = el("div", "display:flex;height:26px;border-radius:6px;overflow:hidden;border:1px solid #1e3a5f;");
       const totalLength = all.reduce((sum, segment) => sum + Math.max(0.1, (segment.end || 0) - (segment.start || 0)), 0) || 1;
@@ -1116,6 +1137,7 @@ export function createStoryBuilder({
           for (const chapter of staleChapters) {
             const data = await runStep("acts", { chapter_id: chapter.id }, `Rebuilding acts of ${chapter.title}`);
             if (!data?.story_layer) break;
+            acts.filter((act) => act.chapter_id === chapter.id).forEach((act) => pendingActEdits.delete(act.id));
             await saveLayer(data.story_layer, "story builder chapter acts", { acts: chapterActIds(chapter.id) });
           }
           show("acts");
@@ -1305,6 +1327,7 @@ export function createStoryBuilder({
         rebuild.onclick = async () => {
           const data = await runStep("acts", { chapter_id: chapter.id }, `Rebuilding acts of ${chapter.title}`);
           if (data?.story_layer) {
+            acts.filter((act) => act.chapter_id === chapter.id).forEach((act) => pendingActEdits.delete(act.id));
             await saveLayer(data.story_layer, "story builder chapter acts", { acts: chapterActIds(chapter.id) });
             show("acts");
           }
@@ -1324,14 +1347,28 @@ export function createStoryBuilder({
           if (act.chapter_id !== chapter.id) return;
           const box = el("div", `border:1px solid ${stale[act.id] ? STALE_COLOR : "#1e3a5f"};border-radius:7px;padding:8px;display:flex;flex-direction:column;gap:6px;`);
           if (stale[act.id]) box.append(staleChip("ACT", stale[act.id]));
-          const actTitle = makeInput(act.title);
-          const summary = autoGrow(textarea(act.summary, "What happens in this act.", 50));
+          const pending = pendingActEdits.get(act.id);
+          const actTitle = makeInput(pending ? pending.title : act.title);
+          const summary = autoGrow(textarea(pending ? pending.summary : act.summary, "What happens in this act.", 50));
           const range = el("div", "font-size:12px;color:#94a3b8;", `Act ${index + 1}: ${actRangeText(act.scene_ids)}`);
           const saveText = makeButton("Save Title And Summary");
-          saveText.onclick = () => saveActs(acts.map((item, i) => (i === index ? { ...item, title: actTitle.value, summary: summary.value } : item)), "story builder act edited");
+          const markEdited = () => {
+            const edited = actTitle.value !== act.title || summary.value !== act.summary;
+            if (edited) pendingActEdits.set(act.id, { title: actTitle.value, summary: summary.value });
+            else pendingActEdits.delete(act.id);
+            box.style.boxShadow = edited ? "inset 3px 0 0 #fde047" : "";
+            syncSaveAll();
+          };
+          actTitle.addEventListener("input", markEdited);
+          summary.addEventListener("input", markEdited);
+          saveText.onclick = () => {
+            pendingActEdits.delete(act.id);
+            return saveActs(acts.map((item, i) => (i === index ? { ...item, title: actTitle.value, summary: summary.value } : item)), "story builder act edited");
+          };
           const pick = makeButton("Show First Scene");
           pick.onclick = () => selectScene(act.scene_ids[0]);
           box.append(row(range, pick), actTitle, summary, row(saveText), actBorderEditor(act, index));
+          if (pending) box.style.boxShadow = "inset 3px 0 0 #fde047";
           chapterCard.append(box);
         });
         content.append(chapterCard);

@@ -23,6 +23,7 @@ import { normalizeStoryModeFields } from "./story_mode_data.mjs";
 import { cloneKrea2ReferenceSettings } from "./models.mjs";
 import { applyGlobalLlmKeys, rememberGlobalLlmKeys } from "./llm_global_keys.mjs";
 import {
+  applyGemmaLocalTokenLimits,
   normalizeGemmaContextLimit,
   normalizeGemmaGpuLayers,
   normalizeLmStudioContextLimit,
@@ -707,6 +708,7 @@ export function createModelSettings({
     if (Object.prototype.hasOwnProperty.call(defaults, "gemma_output_token_limit") || Object.prototype.hasOwnProperty.call(defaults, "gemmaOutputTokenLimit") || legacyLlmMaxTokens != null) {
       state.gemmaOutputTokenLimit = normalizeOutputTokenLimit(defaults.gemma_output_token_limit ?? defaults.gemmaOutputTokenLimit ?? legacyLlmMaxTokens ?? state.gemmaOutputTokenLimit);
     }
+    applyGemmaLocalTokenLimits(state);
     if (defaults.lm_studio_base_url || defaults.lmStudioBaseUrl) {
       state.lmStudioBaseUrl = defaults.lm_studio_base_url || defaults.lmStudioBaseUrl || state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
     }

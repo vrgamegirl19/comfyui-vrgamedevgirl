@@ -25,13 +25,22 @@ export const REFMOD_ACTIVE_TYPES = [
   { value: "clothing_men", label: "Clothing (men)", hint: "A men's outfit or garment, separate from who is wearing it." },
   { value: "clothing_women", label: "Clothing (women)", hint: "A women's outfit or garment, separate from who is wearing it." },
   { value: "background", label: "Background", hint: "An environment, set or location." },
-  { value: "style", label: "Style", hint: "A look, grade or animation style rather than a concrete subject." },
-  { value: "object", label: "Object", hint: "A held or placed object." },
-  { value: "prop", label: "Prop", hint: "Set dressing or a prop." },
+  { value: "object", label: "Object", hint: "Something a person holds or uses, such as a gun, keys or a phone. The character it is used by is set on its Reference Builder card." },
+  { value: "prop", label: "Prop", hint: "Part of the set, such as a lamp, table or chair. It is placed in the scene and the action is staged around it." },
   { value: "vehicle", label: "Vehicle", hint: "A car, bike, boat or other vehicle." },
-  { value: "creature", label: "Creature", hint: "An animal, monster or other creature." },
+  { value: "creature", label: "Creature", hint: "An animal, monster or other creature. It acts in the scene like a character." },
   { value: "generic", label: "Generic", hint: "Unspecified or mixed content." },
 ];
+// Style RefMods are not offered: a style RefMod did not change the look of a render. Existing style RefMods still load.
+
+// Shown under the name for types whose name tells the prompt writer what the thing is and how it is used.
+const NAME_HINT_BY_TYPE = {
+  object: "Hint: name the object what it is, for example \"gun\", \"car keys\" or \"red phone\". The prompt writer reads the name to know what the character holds and how to use it.",
+  prop: "Hint: name the prop what it is, for example \"floor lamp\", \"wooden table\" or \"armchair\". The prompt writer reads the name to know what to place in the set.",
+  vehicle: "Hint: name the vehicle what it is, for example \"black muscle car\" or \"motorbike\". The prompt writer reads the name to know what the character drives or stands beside.",
+  creature: "Hint: name the creature what it is, for example \"grey wolf\" or \"small dragon\". The prompt writer reads the name to know how it moves and behaves.",
+};
+const NAME_PLACEHOLDER_BY_TYPE = { object: "car_keys", prop: "floor_lamp", vehicle: "black_muscle_car", creature: "grey_wolf" };
 export const REFMOD_INACTIVE_TYPES = ["voice", "singing", "music_style", "sound_fx", "ambience", "pose_motion"];
 
 // Types that load their images in a fixed order. Each slot holds one image and is loaded before the extras.
@@ -271,11 +280,14 @@ export function openRefModsStudio({ runnerPayload } = {}) {
   nameInput.placeholder = "my_character";
   const savePath = document.createElement("div");
   savePath.style.cssText = "border:1px solid #3f3f46;border-radius:6px;background:#0f172a;padding:8px;color:#bae6fd;font-size:11px;overflow-wrap:anywhere;";
+  const nameHint = noteText("");
+  nameHint.style.color = "#fde68a";
   typePanel.append(
     sectionTitle("Type and name"),
     makeField("Type", typeSelect),
     typeHint,
     makeField("Name", nameInput),
+    nameHint,
     savePath,
   );
 
@@ -448,6 +460,9 @@ export function openRefModsStudio({ runnerPayload } = {}) {
   const refreshType = () => {
     const entry = REFMOD_ACTIVE_TYPES.find((item) => item.value === studio.type);
     typeHint.textContent = entry?.hint || "";
+    nameHint.textContent = NAME_HINT_BY_TYPE[studio.type] || "";
+    nameHint.style.display = nameHint.textContent ? "" : "none";
+    nameInput.placeholder = NAME_PLACEHOLDER_BY_TYPE[studio.type] || "my_character";
     descriptionInput.placeholder = {
       identity: "The character: age and build, face and hair, clothing, distinctive marks.",
       clothing_men: "The clothing only: garments, colours, fabrics, accessories.",
@@ -457,7 +472,6 @@ export function openRefModsStudio({ runnerPayload } = {}) {
       vehicle: "The vehicle: type, body, paint, wheels, trim, wear.",
       creature: "The creature: type, build, skin or fur, colours, distinctive features.",
       background: "The setting: location, features, colours, atmosphere.",
-      style: "The look: medium, palette, line quality, shading, mood.",
       pose_motion: "The pose or movement.",
       generic: "What the images have in common.",
     }[studio.type] || "";
@@ -931,7 +945,7 @@ export function openRefModsStudio({ runnerPayload } = {}) {
     const previous = button.textContent;
     button.textContent = "Waiting...";
     try {
-      const response = await api.fetchApi("/vrgdg/refmod/pick_images", { method: "POST" });
+      const response = await api.fetchApi("/vrgdg/refmod/pick_images", { method: "POST", timeoutMs: null });
       const result = await response.json();
       if (!response.ok || !result.ok) throw new Error(result.error || "The file dialog could not open.");
       addPickedPaths(target, result.paths || []);
@@ -1138,6 +1152,7 @@ export function openRefModsStudio({ runnerPayload } = {}) {
     try {
       const response = await api.fetchApi("/vrgdg/refmod/describe", {
         method: "POST",
+        timeoutMs: null,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ paths, concept_type: studio.type, llm }),
       });
@@ -1172,6 +1187,7 @@ export function openRefModsStudio({ runnerPayload } = {}) {
   const createRefMod = async (overwrite) => {
     const response = await api.fetchApi("/vrgdg/refmod/create", {
       method: "POST",
+      timeoutMs: null,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...creationRequest(), overwrite }),
     });

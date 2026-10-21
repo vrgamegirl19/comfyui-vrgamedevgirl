@@ -18,6 +18,25 @@ from .errors import AgentApiError, LLM_UNAVAILABLE
 
 _LM_STUDIO_DEFAULT_BASE_URL = "http://127.0.0.1:1234/v1"
 _CHAT_TYPES = ("llm", "vlm")
+# Gemma Local fails with a smaller window (twin of GEMMA_LOCAL_MIN_TOKENS in llm/builder_runner.py).
+GEMMA_LOCAL_MIN_TOKENS = 16384
+_MAX_TOKENS = 262144
+
+
+def gemma_local_token_limits(context_limit: Any, output_limit: Any) -> tuple:
+    """Gemma Local (context, output): both at least GEMMA_LOCAL_MIN_TOKENS, output no higher than context.
+
+    Mirrors ``gemmaLocalTokenLimits`` in the Video Builder.
+    """
+    def as_int(value: Any) -> int:
+        try:
+            return int(round(float(value)))
+        except (TypeError, ValueError):
+            return GEMMA_LOCAL_MIN_TOKENS
+
+    context = max(GEMMA_LOCAL_MIN_TOKENS, min(_MAX_TOKENS, as_int(context_limit)))
+    output = max(GEMMA_LOCAL_MIN_TOKENS, min(context, as_int(output_limit)))
+    return context, output
 
 
 class LlmUnavailableError(AgentApiError):
@@ -61,6 +80,9 @@ def llm_payload_from_session(session: Dict[str, Any], overrides: Optional[Dict[s
     for key, value in (overrides or {}).items():
         if value not in (None, ""):
             payload[key] = value
+    if str(payload.get("text_runner") or "builtin") == "builtin":
+        payload["n_ctx"], payload["gemma_output_token_limit"] = gemma_local_token_limits(
+            payload.get("n_ctx"), payload.get("gemma_output_token_limit"))
     return payload
 
 

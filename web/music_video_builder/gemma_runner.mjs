@@ -3,6 +3,8 @@ import { makeButton, makeField, makeInput, makeSelect, toast } from "./controls.
 import { isLikelyEmbeddingModelId } from "./llm_runner.mjs";
 import { markGlobalLlmKeyChanged } from "./llm_global_keys.mjs";
 import {
+  GEMMA_LOCAL_MIN_TOKENS,
+  applyGemmaLocalTokenLimits,
   normalizeGemmaContextLimit,
   normalizeGemmaGpuLayers,
   normalizeLmStudioContextLimit,
@@ -382,10 +384,25 @@ export function createGemmaRunner({
       ownStatus,
       makeField("Test response", ownTestOutput),
     );
-    const syncVisibility = () => {
-      state.textGemmaRunner = runner.value || "builtin";
+    // Gemma Local: context and output start at GEMMA_LOCAL_MIN_TOKENS and output stops at the context limit.
+    const applyLocalTokenLimits = () => {
       state.gemmaContextLimit = normalizeGemmaContextLimit(gemmaContextLimit.value);
       state.gemmaOutputTokenLimit = normalizeOutputTokenLimit(gemmaOutputTokenLimit.value);
+      const gemmaLocal = (runner.value || "builtin") === "builtin";
+      if (gemmaLocal) {
+        applyGemmaLocalTokenLimits(state);
+        gemmaContextLimit.value = String(state.gemmaContextLimit);
+        gemmaOutputTokenLimit.value = String(state.gemmaOutputTokenLimit);
+      }
+      gemmaContextLimit.min = gemmaLocal ? String(GEMMA_LOCAL_MIN_TOKENS) : "512";
+      gemmaOutputTokenLimit.min = gemmaLocal ? String(GEMMA_LOCAL_MIN_TOKENS) : "64";
+      gemmaOutputTokenLimit.max = gemmaLocal ? String(state.gemmaContextLimit) : "262144";
+    };
+    gemmaContextLimit.addEventListener("change", applyLocalTokenLimits);
+    gemmaOutputTokenLimit.addEventListener("change", applyLocalTokenLimits);
+    const syncVisibility = () => {
+      state.textGemmaRunner = runner.value || "builtin";
+      applyLocalTokenLimits();
       state.gemmaGpuLayers = normalizeGemmaGpuLayers(gemmaGpuLayers.value);
       state.lmStudioContextLimit = normalizeLmStudioContextLimit(lmStudioContextLimit.value);
       state.lmStudioOutputTokenLimit = normalizeOutputTokenLimit(lmStudioOutputTokenLimit.value);
@@ -441,8 +458,7 @@ export function createGemmaRunner({
     close.onclick = cancel.onclick = () => backdrop.remove();
     save.onclick = async () => {
       state.textGemmaRunner = runner.value || "builtin";
-      state.gemmaContextLimit = normalizeGemmaContextLimit(gemmaContextLimit.value);
-      state.gemmaOutputTokenLimit = normalizeOutputTokenLimit(gemmaOutputTokenLimit.value);
+      applyLocalTokenLimits();
       state.gemmaGpuLayers = normalizeGemmaGpuLayers(gemmaGpuLayers.value);
       state.lmStudioBaseUrl = baseUrl.value || "http://127.0.0.1:1234/v1";
       state.lmStudioModel = model.value || "";

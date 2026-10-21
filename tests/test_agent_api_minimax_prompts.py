@@ -61,7 +61,7 @@ class MiniMaxPromptTests(Base):
                       "Naturalistic practical lighting, restrained color grading, balanced contrast, subtle film grain, "
                       "realistic skin texture, neutral tones, believable materials, and polished cinematic clarity throughout.\n\n"
                       "[Shot 1] The camera opens wide. <Subject 1> (Darrel) paces, turning at the rail. "
-                      '<Subject 1> (Darrel) sings the lyric line, "line 1".', prompt)
+                      '<Subject 1> (Darrel) sings <d>[English] Line 1.</d> in sync with <Audio 1>.', prompt)
         self.assertTrue(prompt.rstrip().endswith("complete audience-facing song/music track."))
         self.assertLessEqual(len(prompt), 7000)
         self.assertEqual(saved["video_prompt_type"], "rtv")
@@ -186,7 +186,7 @@ class MiniMaxPromptTests(Base):
         self.assertIn("during 1s–2s", prompt)
         self.assertIn("watery eyes", prompt)
 
-    def test_the_lyric_is_in_the_prompt_in_double_quotes_even_with_a_negative_word(self):
+    def test_the_lyric_is_in_the_prompt_in_a_d_tag_even_with_a_negative_word(self):
         session = self.read_session()
         session["segments"][0]["lyric_text"] = "Don't you ever feel like you are on your own,\nI am right here waiting"
         self.write_session(session)
@@ -194,7 +194,7 @@ class MiniMaxPromptTests(Base):
                  "Don't you ever feel like you are on your own, I am right here waiting.\"}]}")
         self.run_with(reply, {"limit": 1})
         prompt = self.read_session()["segments"][0]["minimax_h3_prompt"]
-        self.assertIn('"Don\'t you ever feel like you are on your own, I am right here waiting"', prompt)
+        self.assertIn("<d>[English] Don't you ever feel like you are on your own, I am right here waiting.</d>", prompt)
 
     def test_scene_emotion_and_custom_facial_inputs_reach_llm_and_tagged_lyric_is_preserved(self):
         session = self.read_session()

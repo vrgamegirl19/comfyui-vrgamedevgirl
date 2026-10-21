@@ -3,6 +3,7 @@ import { DEFAULT_NB_IMAGE_MODEL } from "./constants.mjs";
 import { toast } from "./controls.mjs";
 import { createBaseProgressWindow } from "./dialogs.mjs";
 import {
+  gemmaLocalTokenLimits,
   normalizeGemmaContextLimit,
   normalizeGemmaGpuLayers,
   normalizeLmStudioContextLimit,
@@ -42,16 +43,23 @@ export function createLlmRunner({
   i2vGemmaModelSelect, i2vMmprojSelect, i2vTextGemmaModelSelect, krea2TwoPassCreateT2IButton, mmprojSelect,
   nbGemmaModelSelect, nbMmprojSelect, state, t2iTextGemmaModelSelect, zEnhanceGemmaButton,
 }) {
+  // Gemma Local gets its floor (GEMMA_LOCAL_MIN_TOKENS); Qwen Local shares the fields without it.
+  function localTokenLimits() {
+    if ((state.textGemmaRunner || "builtin") === "builtin") return gemmaLocalTokenLimits(state.gemmaContextLimit, state.gemmaOutputTokenLimit);
+    return { context: normalizeGemmaContextLimit(state.gemmaContextLimit), output: normalizeOutputTokenLimit(state.gemmaOutputTokenLimit) };
+  }
+
   function textGemmaRunnerPayload() {
     const qwenLocal = state.textGemmaRunner === "qwen_local";
+    const localLimits = localTokenLimits();
     return {
       text_runner: state.textGemmaRunner || "builtin",
       qwen_model_file: state.qwenModelFile || "",
       qwen_mmproj_file: state.qwenMmprojFile || "",
       gemma_model_file: state.gemmaModelFile || "",
       model_file: qwenLocal ? (state.qwenModelFile || "") : "",
-      n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
-      gemma_output_token_limit: normalizeOutputTokenLimit(state.gemmaOutputTokenLimit),
+      n_ctx: localLimits.context,
+      gemma_output_token_limit: localLimits.output,
       n_gpu_layers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),
       lmstudio_base_url: state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
       lmstudio_model: state.lmStudioModel || "",
@@ -210,17 +218,16 @@ export function createLlmRunner({
     }
     try {
       progress.set(`Expanding ${name} from its short description...\n${gemmaRunnerLine()}`, 24);
+      const runnerPayload = textGemmaRunnerPayload();
       const data = await postJson("/vrgdg/gemma4/generate", {
-        ...textGemmaRunnerPayload(),
+        ...runnerPayload,
         target: "location_description_detail",
         model_file: modelFile,
         location_name: name,
         location_description: shortDescription,
         notes: shortDescription,
         unload_after: true,
-        n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
-        gemma_output_token_limit: normalizeOutputTokenLimit(state.gemmaOutputTokenLimit),
-        max_new_tokens: normalizeOutputTokenLimit(state.gemmaOutputTokenLimit),
+        max_new_tokens: runnerPayload.gemma_output_token_limit,
       }, 10 * 60 * 1000);
       const detailed = String(data.text || "").trim();
       if (!detailed) throw new Error("Gemma4 returned an empty detailed location description.");

@@ -70,16 +70,17 @@ function timestampedLyricsHintHtml() {
         <div><strong style="color:#cffafe;">Language</strong><br>Whisper/stable-ts language hint. Use <code>english</code> for English songs. Use <code>auto</code> if you do not know the language, but a specific language is usually more stable.</div>
         <div><strong style="color:#cffafe;">Segment mode</strong><br>
           <code>whisper_chunks</code>: uses the natural chunks detected by stable-ts. Good when you do not have lyrics.<br>
-          <code>reference_lines</code>: each non-empty pasted lyric line becomes one scene. The lyric line overrides minimum/maximum scene duration, so a short line stays short and a long line is not split.<br>
+          <code>reference_lines</code>: each non-empty pasted lyric line starts as one scene. Lines shorter than the minimum merge with a neighbor and lines longer than max + variance are cut.<br>
           <code>exact_reference_lines</code>: uses the normal lyric transcription/alignment and timing cleanup, but each non-empty pasted line stays one vocal scene with the exact pasted text and scene minimum/maximum duration limits are not applied.<br>
-          <code>reference_stanzas</code>: blank-line-separated lyric blocks become scenes. Each stanza stays intact even when it falls outside minimum/maximum scene duration.<br>
+          <code>reference_stanzas</code>: blank-line-separated lyric blocks start as scenes, then follow the same minimum and max + variance rule.<br>
           <code>beat_scenes</code>: creates beat-timed scenes with the same Prompt Creator Whisper/SRT timing workflow, then attaches the transcribed lyrics afterward.
         </div>
         <div><strong style="color:#cffafe;">Include instrumental gaps</strong><br>When enabled, the node inserts no-vocal scenes for detected timing gaps between vocal chunks. This is useful for intros, breaks, and outros.</div>
         <div><strong style="color:#cffafe;">Instrumental text</strong><br>The text used for no-vocal scenes, usually <code>[instrumental]</code>. Gemma/LTX treats this as a no-singing section.</div>
         <div><strong style="color:#cffafe;">Min gap seconds</strong><br>Only gaps at least this long become instrumental scenes. Example: <code>2.0</code> means tiny pauses are ignored, but a 10 second intro becomes a real scene.</div>
-        <div><strong style="color:#cffafe;">Min scene seconds</strong><br>Used for Whisper chunks, beat timing, instrumental scenes, and approximate unmatched timing. A pasted lyric line or stanza may be shorter because its boundary takes priority.</div>
-        <div><strong style="color:#cffafe;">Max scene seconds</strong><br>Used for Whisper chunks, beat timing, instrumental scenes, and approximate unmatched timing. A pasted lyric line or stanza is not split just to satisfy this value.</div>
+        <div><strong style="color:#cffafe;">Min scene seconds</strong><br>No scene is shorter than this. A shorter line, chunk or instrumental gap merges with a neighbor. Exact Reference Lyric Lines ignores it.</div>
+        <div><strong style="color:#cffafe;">Max scene seconds</strong><br>The target longest scene. Scenes may run past it by the scene variance.</div>
+        <div><strong style="color:#cffafe;">Scene variance seconds</strong><br>How far a scene may run past the max. With max <code>8</code> and variance <code>2</code>, scenes can be 8.73 or 9.23 seconds, and anything longer than 10 seconds is cut. Exact Reference Lyric Lines ignores it.</div>
         <div><strong style="color:#cffafe;">Vocal tail padding</strong><br>Adds a small amount of time after the final detected word in a vocal chunk so sung/held last words do not feel cut off. It is clamped before the next vocal word.</div>
         <div><strong style="color:#cffafe;">Manual instrumental sections</strong><br>Only <code>[instrumental]</code> or <code>[instrumental break]</code> on its own line forces a no-vocal section. <code>[intro]</code>, <code>[outro]</code>, and <code>[break]</code> are section headers only because those sections may contain lyrics. Blank lines are just spacing/stanza separators.</div>
       </div>
@@ -292,10 +293,104 @@ export function mergeTimestampedLyricText(a, b, instrumentalText = "[instrumenta
   return Array.from(new Set(nonInstrumental)).join("\n");
 }
 
+export const DEFAULT_SCENE_VARIANCE_SECONDS = 2;
+
+// Seconds a scene may run past the maximum before it is cut ("Scene variance").
+export function timestampedSceneVarianceSeconds(options = {}, payload = {}) {
+  const value = Number(options.sceneVarianceSeconds ?? payload?.scene_variance_seconds ?? DEFAULT_SCENE_VARIANCE_SECONDS);
+  return Number.isFinite(value) && value >= 0 ? value : DEFAULT_SCENE_VARIANCE_SECONDS;
+}
+
+// Mirror of split_lyric_text in builder/lyric_scenes.py: lines first, then words.
+export function splitTimestampedLyricText(text, fraction, instrumentalText = "[instrumental]") {
+  const value = String(text || "").trim();
+  if (!value || isInstrumentalLyricText(value)) return [value || instrumentalText, value || instrumentalText];
+  const share = Math.min(0.95, Math.max(0.05, Number(fraction) || 0.5));
+  const lines = value.replace(/\r\n?/g, "\n").split("\n").map((line) => line.trim()).filter(Boolean);
+  if (lines.length >= 2) {
+    const leftCount = Math.min(lines.length - 1, Math.max(1, Math.round(lines.length * share)));
+    return [lines.slice(0, leftCount).join("\n"), lines.slice(leftCount).join("\n")];
+  }
+  const words = value.split(/\s+/);
+  if (words.length < 2) return [value, instrumentalText];
+  const leftCount = Math.min(words.length - 1, Math.max(1, Math.round(words.length * share)));
+  return [words.slice(0, leftCount).join(" "), words.slice(leftCount).join(" ")];
+}
+
+/**
+ * Final length rule for timestamped scenes: every scene ends up between
+ * `minSceneSeconds` and `hardMaxSceneSeconds` (max + scene variance).
+ * Mirror of next_length_fix / enforce_scene_lengths in builder/lyric_scenes.py.
+ * Long scenes are cut into equal parts. A short scene merges into the
+ * neighbor that stays within the hard maximum, preferring the same kind
+ * (vocal or instrumental) and then the shorter result.
+ */
+export function enforceTimestampedSceneLengths(segments = [], options = {}) {
+  const minSeconds = Math.max(0.1, Number(options.minSceneSeconds) || 1);
+  const hardMax = Math.max(minSeconds, Number(options.hardMaxSceneSeconds) || 10);
+  const instrumentalText = String(options.instrumentalText || "[instrumental]").trim() || "[instrumental]";
+  const tolerance = 0.01;
+  const items = (Array.isArray(segments) ? segments : []).filter(Boolean)
+    .sort((a, b) => Number(a.start || 0) - Number(b.start || 0) || Number(a.end || 0) - Number(b.end || 0));
+  const length = (segment) => Number(segment.end || 0) - Number(segment.start || 0);
+  const limit = Math.max(50, items.length * 6);
+  for (let step = 0; step < limit; step += 1) {
+    const longIndex = items.findIndex((segment) => length(segment) > hardMax + tolerance);
+    if (longIndex >= 0) {
+      const scene = items[longIndex];
+      const start = Number(scene.start || 0);
+      const end = Number(scene.end || 0);
+      const parts = Math.ceil(length(scene) / hardMax - 1e-9);
+      const at = Math.round((start + (end - start) / parts) * 10000) / 10000;
+      const [leftText, rightText] = splitTimestampedLyricText(scene.lyric_text, (at - start) / Math.max(end - start, 0.01), instrumentalText);
+      const right = newSegment(at, end);
+      right.source = scene.source;
+      right.timeline_note = scene.timeline_note || "";
+      right.lyric_text = rightText;
+      right.lyric_no_lip_sync = isInstrumentalLyricText(rightText);
+      scene.end = at;
+      scene.lyric_text = leftText;
+      scene.lyric_no_lip_sync = isInstrumentalLyricText(leftText);
+      items.splice(longIndex + 1, 0, right);
+      continue;
+    }
+    if (items.length < 2) break;
+    const shortIndex = items.findIndex((segment) => length(segment) < minSeconds - tolerance);
+    if (shortIndex < 0) break;
+    const scene = items[shortIndex];
+    const choices = [shortIndex - 1, shortIndex + 1]
+      .filter((index) => index >= 0 && index < items.length)
+      .map((index) => {
+        const neighbor = items[index];
+        const merged = Math.max(Number(neighbor.end || 0), Number(scene.end || 0)) - Math.min(Number(neighbor.start || 0), Number(scene.start || 0));
+        const sameKind = isInstrumentalLyricText(neighbor.lyric_text) === isInstrumentalLyricText(scene.lyric_text);
+        return { index, key: [merged > hardMax + tolerance ? 1 : 0, sameKind ? 0 : 1, merged] };
+      })
+      .sort((a, b) => a.key[0] - b.key[0] || a.key[1] - b.key[1] || a.key[2] - b.key[2]);
+    const otherIndex = choices[0].index;
+    const [first, second] = otherIndex < shortIndex ? [items[otherIndex], scene] : [scene, items[otherIndex]];
+    first.start = Math.min(Number(first.start || 0), Number(second.start || 0));
+    first.end = Math.max(Number(first.end || 0), Number(second.end || 0));
+    first.lyric_text = mergeTimestampedLyricText(first.lyric_text, second.lyric_text, instrumentalText);
+    first.lyric_no_lip_sync = isInstrumentalLyricText(first.lyric_text);
+    first.timeline_note = [first.timeline_note, second.timeline_note]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+      .join("\n");
+    items.splice(items.indexOf(second), 1);
+  }
+  items.forEach((segment, index) => {
+    segment.label = `SCENE ${index + 1}`;
+  });
+  return items;
+}
+
 function createSegmentsFromTimestampedLyricsPayload(payload, options = {}) {
   const sourceSegments = Array.isArray(payload?.segments) ? payload.segments : [];
   const segmentMode = String(options.segmentMode || payload?.segment_mode || payload?.segmentMode || "");
-  const preservesReferenceUnits = ["reference_lines", "exact_reference_lines", "reference_stanzas"].includes(segmentMode);
+  // Only exact mode promises no duration limits. Line and stanza modes split a
+  // unit longer than max + variance at a word boundary.
+  const preservesReferenceUnits = segmentMode === "exact_reference_lines";
   const orderedSource = sourceSegments
     .map((item) => ({
       item,
@@ -309,7 +404,8 @@ function createSegmentsFromTimestampedLyricsPayload(payload, options = {}) {
   const shouldFillGaps = options.includeInstrumentalGaps !== false && payload?.include_instrumental_gaps !== false && payload?.includeInstrumentalGaps !== false;
   const minGap = Math.max(0, Number(options.minGapSeconds ?? payload?.min_gap_seconds ?? payload?.minGapSeconds ?? 0.25) || 0);
   const maxScene = Math.max(0.5, Number(options.maxSceneSeconds ?? payload?.max_scene_seconds ?? payload?.maxSceneSeconds ?? 8) || 8);
-  const softMaxScene = maxScene + 2;
+  const minScene = Math.max(0, Number(options.minSceneSeconds ?? payload?.min_scene_seconds ?? payload?.minSceneSeconds ?? 0) || 0);
+  const softMaxScene = maxScene + timestampedSceneVarianceSeconds(options, payload);
   const epsilon = 0.03;
   const ordered = [];
   for (const source of orderedSource) {
@@ -334,9 +430,12 @@ function createSegmentsFromTimestampedLyricsPayload(payload, options = {}) {
     while (source.end - partStart > softMaxScene + epsilon) {
       const target = partStart + maxScene;
       const limit = partStart + softMaxScene;
-      const candidates = timedWords
+      const allCandidates = timedWords
         .map((word, index) => ({ word, index }))
         .filter(({ word, index }) => index >= wordCursor && word.end > partStart + 0.1 && word.end <= limit + epsilon);
+      // Prefer a cut that leaves both parts at least the minimum long.
+      const fullCandidates = allCandidates.filter(({ word }) => word.end - partStart >= minScene - epsilon && source.end - word.end >= minScene - epsilon);
+      const candidates = fullCandidates.length ? fullCandidates : allCandidates;
       const chosen = candidates.length
         ? candidates.reduce((best, candidate) => Math.abs(candidate.word.end - target) < Math.abs(best.word.end - target) ? candidate : best)
         : null;
@@ -350,7 +449,7 @@ function createSegmentsFromTimestampedLyricsPayload(payload, options = {}) {
       } else {
         partItem.words = [];
       }
-      partItem.timing_warning = `Long transcription chunk split near a word boundary to honor the ${maxScene.toFixed(2)} second maximum.`;
+      partItem.timing_warning = `Long transcription chunk split near a word boundary to honor the ${softMaxScene.toFixed(2)} second maximum.`;
       ordered.push({ item: partItem, start: partStart, end: partEnd });
       partStart = partEnd;
     }
@@ -976,6 +1075,7 @@ export function createLyricTranscription({
       const minGap = makeInput("2.0");
       const minScene = makeInput("1.0");
       const maxScene = makeInput("8.0");
+      const sceneVariance = makeInput(String(DEFAULT_SCENE_VARIANCE_SECONDS.toFixed(1)));
       const vocalTail = makeInput("0.6");
       const beatUseSrtDurations = makeCheckbox("Use beat/SRT durations", true);
       const beatFixedSceneDuration = makeInput("4");
@@ -999,8 +1099,10 @@ export function createLyricTranscription({
       const minGapField = makeField("Min gap seconds", minGap);
       const minSceneField = makeField("Min scene seconds", minScene);
       const maxSceneField = makeField("Max scene seconds", maxScene);
+      const sceneVarianceField = makeField("Scene variance seconds", sceneVariance);
+      sceneVariance.title = "How far a scene may run past the max before it is cut. Max 8 + variance 2 allows scenes up to 10 seconds.";
       const vocalTailField = makeField("Vocal tail padding", vocalTail);
-      const timestampFields = [instrumentalTextField, minGapField, minSceneField, maxSceneField, vocalTailField];
+      const timestampFields = [instrumentalTextField, minGapField, minSceneField, maxSceneField, sceneVarianceField, vocalTailField];
       grid.append(
         makeField("Language", language),
         makeField("Segment mode", segmentMode),
@@ -1031,14 +1133,15 @@ export function createLyricTranscription({
         });
         minSceneField.style.display = isBeatMode || isExactMode ? "none" : "";
         maxSceneField.style.display = isBeatMode || isExactMode ? "none" : "";
+        sceneVarianceField.style.display = isBeatMode || isExactMode ? "none" : "";
         vocalTailField.style.display = isBeatMode ? "none" : "";
         exactModeNote.style.display = isExactMode ? "block" : "none";
         const isReferenceLineMode = segmentMode.value === "reference_lines";
         const isReferenceStanzaMode = segmentMode.value === "reference_stanzas";
         referenceDurationNote.style.display = isReferenceLineMode || isReferenceStanzaMode ? "block" : "none";
         referenceDurationNote.innerHTML = isReferenceLineMode
-          ? "<strong>Lyric-line duration:</strong> each pasted line stays one scene. If “Playing in the rain” is only 1.5 seconds long, it remains a 1.5-second scene. Minimum and maximum duration still guide instrumental or approximate timing, but they never split or merge pasted lyric lines."
-          : "<strong>Stanza duration:</strong> each pasted stanza stays one scene even when it is shorter than the minimum or longer than the maximum. Duration limits still guide instrumental or approximate timing.";
+          ? "<strong>Lyric-line duration:</strong> each pasted line starts as one scene. A line shorter than the minimum merges with a neighbor, and a line longer than max + variance is cut, so every scene lands between min and max + variance. Use Exact Reference Lyric Lines to keep every line as its own scene."
+          : "<strong>Stanza duration:</strong> each pasted stanza starts as one scene. A stanza shorter than the minimum merges with a neighbor, and one longer than max + variance is cut, so every scene lands between min and max + variance.";
         gapRow.style.display = isBeatMode ? "none" : "flex";
         beatSrtFields.forEach((field) => {
           field.style.display = usingBeatSrt ? "" : "none";
@@ -1079,6 +1182,7 @@ export function createLyricTranscription({
           minGapSeconds: Number(minGap.value || 2.0),
           minSceneSeconds: Number(minScene.value || 1.0),
           maxSceneSeconds: Number(maxScene.value || 8.0),
+          sceneVarianceSeconds: Number(sceneVariance.value === "" ? DEFAULT_SCENE_VARIANCE_SECONDS : sceneVariance.value),
           vocalTailPaddingSeconds: Number(vocalTail.value || 0.6),
           beatUseSrtDurations: Boolean(beatUseSrtDurations.input.checked),
           beatFixedSceneDuration: Number(beatFixedSceneDuration.value || 4),
@@ -1109,7 +1213,7 @@ export function createLyricTranscription({
     }
     const minSceneSeconds = Math.max(1, Number(options.minSceneSeconds ?? payload?.min_scene_seconds ?? payload?.minSceneSeconds ?? 1) || 1);
     const maxSceneSeconds = Math.max(minSceneSeconds, Number(options.maxSceneSeconds ?? payload?.max_scene_seconds ?? payload?.maxSceneSeconds ?? 8) || 8);
-    const softMaxSceneSeconds = maxSceneSeconds + 2;
+    const softMaxSceneSeconds = maxSceneSeconds + timestampedSceneVarianceSeconds(options, payload);
     const instrumentalText = String(options.instrumentalText || payload?.instrumental_text || payload?.instrumentalText || "[instrumental]").trim() || "[instrumental]";
     const items = (Array.isArray(segments) ? segments : [])
       .filter(Boolean)
@@ -1277,6 +1381,18 @@ export function createLyricTranscription({
       // scene, while Whisper mode does not define scenes from reference lines.
       if (["reference_lines", "exact_reference_lines"].includes(options.segmentMode)) {
         assertNoBundledReferenceLyrics(created.map((segment) => segment.lyric_text || ""), options.referenceLyrics || "");
+      }
+      // Min and max + variance are strict in every mode except exact lines
+      // (no limits) and beat mode (its own duration window). This runs after
+      // the bundling check because merging short lines is intended here.
+      if (!["exact_reference_lines", "beat_scenes"].includes(options.segmentMode)) {
+        const minSceneSeconds = Math.max(1, Number(options.minSceneSeconds || 1));
+        const maxSceneSeconds = Math.max(minSceneSeconds, Number(options.maxSceneSeconds || 8));
+        created = enforceTimestampedSceneLengths(created, {
+          minSceneSeconds,
+          hardMaxSceneSeconds: maxSceneSeconds + timestampedSceneVarianceSeconds(options),
+          instrumentalText: options.instrumentalText || "[instrumental]",
+        }).map((segment) => ensureSegmentRuntimeFields(segment));
       }
       if (options.wizardStripLyricParentheses) {
         for (const segment of created) {

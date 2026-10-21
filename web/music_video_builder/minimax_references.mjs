@@ -245,6 +245,9 @@ export function createMiniMaxReferences({
     if (item?.kind === "subject" && item?.reference_type === "outfit") return "clothing reference: garments, fabrics, colours, trims and accessories, worn by the character the prompt names";
     if (item?.refmod?.category === "clothing") return "clothing reference: garments, fabrics, colours, trims and accessories, worn by the character it follows";
     if (item?.refmod?.category === "object") return "object reference: shape, material, colour, markings and scale";
+    if (item?.kind === "subject" && String(item?.refmod?.reference_type || item?.reference_type || "") === "creature") {
+      return "creature identity reference: species, build, skin, fur or scales, colours and markings; it acts in the scene like a character";
+    }
     if (item?.refmod?.category === "style") return "visual style reference: medium, palette, line quality, lighting and texture, applied to the whole scene";
     if (item?.kind === "subject") {
       if (faceHairOnly) return "face identity and hair reference only; do not copy clothing, body proportions, pose, accessories, framing, lighting, or background";

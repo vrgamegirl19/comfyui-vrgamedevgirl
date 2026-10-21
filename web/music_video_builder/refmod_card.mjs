@@ -179,6 +179,7 @@ export function buildRefmodPicker({ item, kind = "subject", characters = [], onC
       const send = async (overwrite) => {
         const response = await api.fetchApi("/vrgdg/refmod/from_image", {
           method: "POST",
+          timeoutMs: null,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             type: folderSelect.value, name: String(item.name || "").trim(), image: item.image,
@@ -247,6 +248,19 @@ Replace it?`)) return;
     clothingRow.style.cssText = "display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;align-items:end;";
     clothingRow.append(labelled("Clothing set", setSelect), labelled("Worn by", wearsSelect));
     panel.append(clothingRow);
+  }
+
+  // Object: who holds and uses it. The scene's own choice in the Story Builder wins; without either, the main character.
+  if (kind === "subject" && String(item.reference_type) === "object") {
+    const usedBySelect = makeNativeSelect(
+      [["", "The main character"], ...characters.map((card) => [String(card.id), card.name || "Character"])],
+      String(item.wears || ""),
+    );
+    usedBySelect.onchange = () => {
+      item.wears = usedBySelect.value;
+      onChange(false);
+    };
+    panel.append(labelled("Used by", usedBySelect));
   }
 
   const body = document.createElement("div");

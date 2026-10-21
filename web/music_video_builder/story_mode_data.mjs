@@ -443,7 +443,8 @@ export function applyStoryBookText(layer, value) {
   };
 }
 
-const PERSON_REFERENCE_TYPES = new Set(["", "character", "person", "human", "subject", "singer"]);
+// A creature is stored as a creature but acts in the story like a character.
+const PERSON_REFERENCE_TYPES = new Set(["", "character", "person", "human", "subject", "singer", "creature"]);
 
 // True for a subject card that is a person. Clothing, props, vehicles and other things are not cast members.
 // Python twin: is_story_person_card.

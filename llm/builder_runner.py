@@ -37,6 +37,8 @@ def _openai_json_schema_format(json_schema):
 # Room left in the context window for the chat template around the prompt.
 _CONTEXT_TEMPLATE_MARGIN_TOKENS = 64
 _MIN_OUTPUT_TOKENS = 256
+# Gemma Local fails with a smaller window, so its context and output limits never go below this.
+GEMMA_LOCAL_MIN_TOKENS = 16384
 
 
 def _estimate_prompt_tokens(text):
@@ -543,6 +545,11 @@ def _normalized_token_limit(value, default, minimum=64, maximum=262144):
     return max(int(minimum), min(int(maximum), parsed))
 
 
+def _gemma_local_context_limit(payload):
+    """The Gemma Local context window: the saved n_ctx, never below GEMMA_LOCAL_MIN_TOKENS."""
+    return _normalized_token_limit(payload.get("n_ctx"), GEMMA_LOCAL_MIN_TOKENS, minimum=GEMMA_LOCAL_MIN_TOKENS)
+
+
 def _runner_output_token_limit(payload, requested=1200):
     payload = payload if isinstance(payload, dict) else {}
     runner = _llm_runner_from_payload(payload)
@@ -558,6 +565,11 @@ def _runner_output_token_limit(payload, requested=1200):
         configured = None
     if runner in {"builtin", "lm_studio", "own_server"} and configured in (None, ""):
         configured = payload.get("llm_max_tokens")
+    if runner == "builtin":
+        # Gemma Local output runs from GEMMA_LOCAL_MIN_TOKENS up to its context limit.
+        context_limit = _gemma_local_context_limit(payload)
+        value = configured if configured not in (None, "") else requested
+        return _normalized_token_limit(value, context_limit, minimum=GEMMA_LOCAL_MIN_TOKENS, maximum=context_limit)
     if configured not in (None, ""):
         return _normalized_token_limit(configured, requested)
     return _normalized_token_limit(requested, 1200)
@@ -1012,6 +1024,8 @@ def _run_builder_text_llm(payload, instruction_text, temperature=0.6, top_p=0.95
         f"model={os.path.basename(str(model_path)) or str(model_path)}"
     )
     n_ctx = int(payload.get("n_ctx") or 8000)
+    if _llm_runner_from_payload(payload) == "builtin":
+        n_ctx = _gemma_local_context_limit(payload)
     n_gpu_layers = int(payload.get("n_gpu_layers") or 99)
     n_threads = int(payload.get("n_threads") or 8)
     chat_format = str(payload.get("chat_format", "") or "").strip()

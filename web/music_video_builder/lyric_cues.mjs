@@ -638,7 +638,8 @@ export function createLyricCues({
       // Clothing and props are not people: their kind says so, so they never join the cast, the performers or the speakers.
       // A RefMod says so in its category; an image card says so in its card type.
       const referenceType = String(item?.refmod?.reference_type || item?.reference_type || "");
-      const imageCategory = item?.kind === "subject" && !item?.refmod && referenceType && referenceType !== "character"
+      // A creature acts like a character, so it stays in the cast.
+      const imageCategory = item?.kind === "subject" && !item?.refmod && referenceType && !["character", "creature"].includes(referenceType)
         ? (referenceType === "outfit" ? "clothing" : ["environment", "style"].includes(referenceType) ? "" : "object")
         : "";
       const category = item?.refmod?.category || imageCategory;

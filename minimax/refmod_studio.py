@@ -23,10 +23,11 @@ from PIL import Image, ImageOps
 from .refmod_library import PREVIEW_SUFFIX, save_preview
 from .refmod_picker import IMAGE_EXTENSIONS
 
-# Types the Studio can create. The folder under models/refmods is always the type. pose_motion is off for now:
+# Types the Studio can create. The folder under models/refmods is always the type. style is off: a style RefMod did
+# not change the look of a render. pose_motion is off for now:
 # neither a RefMod nor a reference video made the character follow the movement.
 ACTIVE_TYPES = (
-    "identity", "clothing_men", "clothing_women", "background", "style", "generic",
+    "identity", "clothing_men", "clothing_women", "background", "generic",
     "object", "prop", "vehicle", "creature",
 )
 
