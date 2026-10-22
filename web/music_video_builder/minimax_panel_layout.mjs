@@ -1,4 +1,5 @@
 import { createMiniMaxKeyframes } from "./minimax_keyframes.mjs";
+import { ENHANCE_PROMPT_LABEL } from "./minimax_prompt_enhance.mjs";
 import {
   applyCompactButtonLabel,
   makeButton,
@@ -691,8 +692,17 @@ export function buildMiniMaxPanel({
   const miniMaxPromptActions = document.createElement("div");
   miniMaxPromptActions.style.cssText = "display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:8px;";
   const miniMaxCreatePromptButton = makeButton("Create MiniMax H3 Prompt", "primary");
+  const miniMaxEnhancePromptButton = applyCompactButtonLabel(makeButton("Enhance Prompt", "primary"), ENHANCE_PROMPT_LABEL, {
+    noMap: true,
+    padding: "8px 6px",
+    title: "Choose enhancement with or without reference images. With images adds brief character and location descriptions using the selected vision LLM. Lyrics, cue times and labels stay as they are.",
+  });
+  // Create and Enhance share the space Create used to have on its own.
+  const miniMaxPromptButtonPair = document.createElement("div");
+  miniMaxPromptButtonPair.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;";
+  miniMaxPromptButtonPair.append(miniMaxCreatePromptButton, miniMaxEnhancePromptButton);
   const miniMaxEditInstructionsButton = makeButton("Edit Text to Video Instructions");
-  miniMaxPromptActions.append(miniMaxCreatePromptButton, miniMaxEditInstructionsButton);
+  miniMaxPromptActions.append(miniMaxPromptButtonPair, miniMaxEditInstructionsButton);
   const miniMaxPromptRunnerNote = document.createElement("div");
   miniMaxPromptRunnerNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
   const miniMaxSpeakerAssignmentPanel = makeSettingsPanel([]);
@@ -782,7 +792,7 @@ export function buildMiniMaxPanel({
     miniMaxAdvancedLatentUpscalerPicker, miniMaxAdvancedSettings, miniMaxAdvancedVramPreset, miniMaxAspectRatio, miniMaxAudioMode,
     miniMaxAudioNote, miniMaxAudioVaePicker, miniMaxAutoTimeAllScenesButton, miniMaxAutoTimeBeforePrompt,
     miniMaxClipPicker, miniMaxContinuityMode, miniMaxContinuityNote, miniMaxContinuitySection, miniMaxContinuityPromptFromLastFrame,
-    miniMaxCooldownFrames, miniMaxCreatePromptButton, miniMaxDenoise, miniMaxDiffusionModelPicker,
+    miniMaxCooldownFrames, miniMaxCreatePromptButton, miniMaxDenoise, miniMaxDiffusionModelPicker, miniMaxEnhancePromptButton,
     miniMaxEasyCacheBypass, miniMaxEasyCacheEndPercent, miniMaxEasyCacheReuseThreshold,
     miniMaxEasyCacheSettings, miniMaxEasyCacheStartPercent, miniMaxEasyCacheVerbose,
     miniMaxEditContinuityPromptInstructionsButton, miniMaxEditInstructionsButton, miniMaxEnginePanel,
