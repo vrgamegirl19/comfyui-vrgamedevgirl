@@ -1,4 +1,4 @@
-"""Which LLM the Agent API uses: the project's saved runner settings, and for LM Studio, the model that is loaded.
+"""Which LLM the Agent API uses: the LLM runner settings saved for every project, and for LM Studio, the model that is loaded.
 
 The API must never change what LM Studio has loaded. A request that names a model that is not loaded
 makes LM Studio load it (and unload the current one), so this module:
@@ -45,12 +45,13 @@ class LlmUnavailableError(AgentApiError):
 
 
 def llm_payload_from_session(session: Dict[str, Any], overrides: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """The LLM runner settings a project saved, in the key names the generators read.
+    """The LLM runner settings, in the key names the generators read.
 
-    Mirrors ``textGemmaRunnerPayload`` in the Video Builder. ``overrides`` (the caller's request
-    parameters) win over the saved settings.
+    The settings saved for every project win over the project's own copy, as in the Video Builder
+    (``applyGlobalLlmKeys``). Mirrors ``textGemmaRunnerPayload``. ``overrides`` (the caller's request
+    parameters) win over both.
     """
-    s = session if isinstance(session, dict) else {}
+    s = {**(session if isinstance(session, dict) else {}), **global_llm_runner()}
     runner = str(s.get("text_gemma_runner") or "builtin")
     payload: Dict[str, Any] = {
         "text_runner": runner,
@@ -86,6 +87,12 @@ def llm_payload_from_session(session: Dict[str, Any], overrides: Optional[Dict[s
     return payload
 
 
+def global_llm_runner() -> Dict[str, Any]:
+    """The LLM runner settings saved for every project (Video Builder LLM Runner)."""
+    from ..builder.project import _load_global_llm_runner
+    return _load_global_llm_runner()
+
+
 def global_llm_keys() -> Dict[str, str]:
     """The API keys saved for every project (Video Builder LLM runner settings)."""
     from ..builder.project import _load_global_llm_keys
@@ -93,16 +100,12 @@ def global_llm_keys() -> Dict[str, str]:
 
 
 def _fill_api_keys(payload: Dict[str, Any]) -> None:
-    """Give the runner a key: the project's own key first, then the global one. The global custom server key is
-    only sent to the server URL it was saved for."""
+    """Give the runner a key: the global one first, then a key an older project saved."""
     keys = global_llm_keys()
     if not payload.get("llm_api_key"):
-        payload["llm_api_key"] = payload.get("llm_api_key_project") or keys.get("llm_api_key", "")
+        payload["llm_api_key"] = keys.get("llm_api_key") or payload.get("llm_api_key_project") or ""
     if not payload.get("own_server_api_key"):
-        own = payload.get("own_server_api_key_project") or ""
-        if not own and keys.get("own_server_api_key") and                 str(keys.get("own_server_url") or "").rstrip("/") == str(payload.get("own_server_url") or "").rstrip("/"):
-            own = keys["own_server_api_key"]
-        payload["own_server_api_key"] = own
+        payload["own_server_api_key"] = keys.get("own_server_api_key") or payload.get("own_server_api_key_project") or ""
 
 
 def project_elevenlabs_key(session: Dict[str, Any]) -> str:

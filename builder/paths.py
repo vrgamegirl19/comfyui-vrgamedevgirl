@@ -384,3 +384,8 @@ def _model_defaults_path():
 def _global_llm_keys_path():
     """API keys kept for every project. A separate file from the model defaults, never copied into a project."""
     return os.path.join(os.path.dirname(_model_defaults_path()), "llm_keys.json")
+
+
+def _global_llm_runner_path():
+    """The LLM runner settings kept for every project (runner, servers, models and limits; no keys)."""
+    return os.path.join(os.path.dirname(_model_defaults_path()), "llm_runner.json")

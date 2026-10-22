@@ -9,6 +9,7 @@ from ..minimax.settings_payload import (
     validate_minimax_h3_patch,
 )
 from .errors import SettingsInvalidError
+from .llm_runtime import global_llm_runner
 
 
 SETTINGS_VERSION = 1
@@ -153,18 +154,20 @@ def extract_effective_settings(session: Dict[str, Any]) -> Dict[str, Any]:
         height=int(flux_raw.get("height", 720)),
     )
 
+    # The LLM runner settings saved for every project win over the project's copy (see llm_runtime).
+    llm_source = {**session, **global_llm_runner()}
     llm = LlmSettings(
-        text_gemma_runner=str(session.get("text_gemma_runner") or "auto"),
-        gemma_context_limit=int(session.get("gemma_context_limit", 8000)),
-        gemma_output_token_limit=int(session.get("gemma_output_token_limit", 8192)),
-        gemma_gpu_layers=int(session.get("gemma_gpu_layers", 99)),
-        lm_studio_base_url=str(session.get("lm_studio_base_url") or "http://127.0.0.1:1234/v1"),
-        lm_studio_model=str(session.get("lm_studio_model") or ""),
-        llm_api_provider=str(session.get("llm_api_provider") or "openai"),
-        llm_api_model=str(session.get("llm_api_model") or ""),
-        own_server_url=str(session.get("own_server_url") or "http://127.0.0.1:8000/v1"),
-        own_server_model=str(session.get("own_server_model") or ""),
-        own_server_timeout=int(session.get("own_server_timeout", 360)),
+        text_gemma_runner=str(llm_source.get("text_gemma_runner") or "auto"),
+        gemma_context_limit=int(llm_source.get("gemma_context_limit", 8000)),
+        gemma_output_token_limit=int(llm_source.get("gemma_output_token_limit", 8192)),
+        gemma_gpu_layers=int(llm_source.get("gemma_gpu_layers", 99)),
+        lm_studio_base_url=str(llm_source.get("lm_studio_base_url") or "http://127.0.0.1:1234/v1"),
+        lm_studio_model=str(llm_source.get("lm_studio_model") or ""),
+        llm_api_provider=str(llm_source.get("llm_api_provider") or "openai"),
+        llm_api_model=str(llm_source.get("llm_api_model") or ""),
+        own_server_url=str(llm_source.get("own_server_url") or "http://127.0.0.1:8000/v1"),
+        own_server_model=str(llm_source.get("own_server_model") or ""),
+        own_server_timeout=int(llm_source.get("own_server_timeout", 360)),
     )
 
     post = PostProcessSettings(

@@ -1,7 +1,7 @@
 import { getJson, normalizeOwnServerTimeoutMinutes, postJson } from "./comfy_api.mjs";
 import { makeButton, makeField, makeInput, makeSelect, toast } from "./controls.mjs";
 import { isLikelyEmbeddingModelId } from "./llm_runner.mjs";
-import { markGlobalLlmKeyChanged } from "./llm_global_keys.mjs";
+import { globalLlmSettingsPayload, rememberGlobalLlmKeys } from "./llm_global_keys.mjs";
 import {
   GEMMA_LOCAL_MIN_TOKENS,
   applyGemmaLocalTokenLimits,
@@ -12,7 +12,7 @@ import {
 } from "./prompt_text.mjs";
 
 export function createGemmaRunner({
-  autoSaveSessionQuiet, createProgressWindow, saveSession, state, syncBuilderLlmModelSelectsFromRunner,
+  autoSaveSessionQuiet, createProgressWindow, state, syncBuilderLlmModelSelectsFromRunner,
   mmprojSelect, t2iTextGemmaModelSelect, textGemmaRunnerPayload, updatePromptRunnerButtonLabels,
 }) {
   function openGemmaRunnerModal() {
@@ -184,12 +184,11 @@ export function createGemmaRunner({
     apiPanel.style.cssText = "display:flex;flex-direction:column;gap:10px;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:12px;";
     const apiNote = document.createElement("div");
     apiNote.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
-    apiNote.textContent = "API keys are saved for every project (not in the project files). \"Save API Key to Project\" also stores the key in this project's session, which may be included in shareable exports. For image-reference Video Prep, choose an API model that supports vision/images.";
+    apiNote.textContent = "Save Runner keeps every runner's settings and API keys for all projects (never in the project files), so you can switch runners and back without losing them. For image-reference Video Prep, choose an API model that supports vision/images.";
     const apiProvider = makeSelect(["openai"], state.llmApiProvider || "openai");
     const apiModel = makeSelect([""], state.llmApiModel || "");
     const llmApiKey = makeInput(state.llmApiKey || "", "password");
     const testApi = makeButton("Test LLM API", "primary");
-    const saveProjectApiKey = makeButton("Save API Key to Project", "primary");
     const apiStatus = document.createElement("div");
     apiStatus.style.cssText = "font-size:12px;color:#94a3b8;min-height:16px;";
     const providerLabel = (provider = {}) => String(provider.label || provider.id || "").trim();
@@ -300,7 +299,6 @@ export function createGemmaRunner({
       makeField("Model", apiModel),
       makeField("API key", llmApiKey),
       testApi,
-      saveProjectApiKey,
       apiStatus,
     );
     const ownUrl = makeInput(state.ownServerUrl || "http://127.0.0.1:8000/v1");
@@ -324,7 +322,6 @@ export function createGemmaRunner({
     ownNote.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
     ownNote.textContent = "Uses the OpenAI Chat Completions standard: POST {url}/v1/chat/completions. Text uses messages[].content as a string. Vision uses the official image_url content part with a JPEG data URL. Works with local addresses and HTTPS tunnels such as Cloudflare. An API key is optional and is only sent when filled. Enter the model id your server is serving, for example an Unsloth Gemma 4 12B IT QAT model.";
     const testOwn = makeButton("Test own server", "primary");
-    const saveOwnProjectApiKey = makeButton("Save API Key to Project", "primary");
     const ownStatus = document.createElement("div");
     ownStatus.style.cssText = "font-size:12px;color:#94a3b8;min-height:16px;";
     const ownTestOutput = document.createElement("textarea");
@@ -380,7 +377,6 @@ export function createGemmaRunner({
       makeField("Maximum output tokens", ownOutputTokenLimit),
       makeField("Request timeout (minutes)", ownTimeoutMinutes),
       testOwn,
-      saveOwnProjectApiKey,
       ownStatus,
       makeField("Test response", ownTestOutput),
     );
@@ -467,25 +463,23 @@ export function createGemmaRunner({
       state.lmStudioOutputTokenLimit = normalizeOutputTokenLimit(lmStudioOutputTokenLimit.value);
       state.llmApiProvider = apiProvider.value || "openai";
       state.llmApiModel = apiModel.value || "";
-      state.llmApiKey = runner.value === "llm_api" ? llmApiKey.value || "" : state.llmApiKey || "";
-      if (runner.value === "llm_api") markGlobalLlmKeyChanged("llm_api_key");
+      state.llmApiKey = llmApiKey.value || "";
       state.ownServerUrl = ownUrl.value || "http://127.0.0.1:8000/v1";
       state.ownServerModel = ownModel.value || "";
-      state.ownServerApiKey = runner.value === "own_server" ? ownApiKey.value || "" : state.ownServerApiKey || "";
-      if (runner.value === "own_server") markGlobalLlmKeyChanged("own_server_api_key");
+      state.ownServerApiKey = ownApiKey.value || "";
       state.ownServerOutputTokenLimit = normalizeOutputTokenLimit(ownOutputTokenLimit.value);
       state.ownServerTimeoutMinutes = normalizeOwnServerTimeoutMinutes(ownTimeoutMinutes.value);
       syncBuilderLlmModelSelectsFromRunner();
+      // Saved for every project first, so it holds even with no project open.
+      try {
+        const data = await postJson("/vrgdg/music_builder/llm_runner", globalLlmSettingsPayload(state));
+        rememberGlobalLlmKeys(data.global_llm_keys, data.global_llm_runner);
+      } catch (error) {
+        toast(`Could not save the LLM runner settings: ${String(error?.message || error)}`, true);
+        return;
+      }
       await autoSaveSessionQuiet("LLM runner settings");
-      toast(state.textGemmaRunner === "llm_api"
-        ? "LLM API settings saved for this session. API key was not saved with the project."
-        : state.textGemmaRunner === "own_server"
-          ? "Custom Server settings saved for this session. API key was not saved with the project unless you use Save API Key to Project."
-          : state.textGemmaRunner === "lm_studio"
-          ? "Text LLM runner set to LM Studio."
-          : state.textGemmaRunner === "qwen_local"
-          ? "Text LLM runner set to Qwen Local."
-          : "Text LLM runner set to Gemma Local.");
+      toast("LLM runner settings saved for every project.");
       updatePromptRunnerButtonLabels();
       backdrop.remove();
     };
@@ -584,52 +578,6 @@ export function createGemmaRunner({
       } finally {
         testOwn.disabled = false;
         testOwn.textContent = "Test own server";
-      }
-    };
-    saveOwnProjectApiKey.onclick = async () => {
-      const key = String(ownApiKey.value || "").trim();
-      try {
-        saveOwnProjectApiKey.disabled = true;
-        saveOwnProjectApiKey.textContent = "Saving...";
-        state.textGemmaRunner = "own_server";
-        state.ownServerUrl = ownUrl.value || "http://127.0.0.1:8000/v1";
-        state.ownServerModel = ownModel.value || "";
-        state.ownServerApiKey = key;
-        state.ownServerApiKeyProject = key;
-        state.ownServerOutputTokenLimit = normalizeOutputTokenLimit(ownOutputTokenLimit.value);
-        state.ownServerTimeoutMinutes = normalizeOwnServerTimeoutMinutes(ownTimeoutMinutes.value);
-        await saveSession({ quiet: true, throwOnError: true });
-        toast(key
-          ? "Custom Server API key saved to this project. Shareable exports will warn you before including it."
-          : "Cleared the project-saved own server API key. Requests will continue without a key.");
-      } catch (error) {
-        toast(`Could not save the project API key: ${String(error?.message || error)}`, true);
-      } finally {
-        saveOwnProjectApiKey.disabled = false;
-        saveOwnProjectApiKey.textContent = "Save API Key to Project";
-      }
-    };
-    saveProjectApiKey.onclick = async () => {
-      const key = String(llmApiKey.value || "").trim();
-      if (!key) {
-        toast("Enter an API key before saving it to this project.", true);
-        return;
-      }
-      try {
-        saveProjectApiKey.disabled = true;
-        saveProjectApiKey.textContent = "Saving...";
-        state.textGemmaRunner = "llm_api";
-        state.llmApiProvider = apiProvider.value || "openai";
-        state.llmApiModel = apiModel.value || "";
-        state.llmApiKey = key;
-        state.llmApiKeyProject = key;
-        await saveSession({ quiet: true, throwOnError: true });
-        toast("LLM API key saved to this project. Shareable exports will warn you before including it.");
-      } catch (error) {
-        toast(`Could not save the project API key: ${String(error?.message || error)}`, true);
-      } finally {
-        saveProjectApiKey.disabled = false;
-        saveProjectApiKey.textContent = "Save API Key to Project";
       }
     };
     return backdrop;

@@ -792,7 +792,7 @@ export function createModelSettings({
     try {
       const data = await getJson("/vrgdg/music_builder/model_defaults");
       const applied = applyModelDefaults(data.defaults || {});
-      rememberGlobalLlmKeys(data.global_llm_keys);
+      rememberGlobalLlmKeys(data.global_llm_keys, data.global_llm_runner);
       applyGlobalLlmKeys(state);
       if (applied) {
         console.log("[VRGDG Music Builder] Loaded global model defaults:", data.path || "");

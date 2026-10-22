@@ -13,7 +13,7 @@ import folder_paths
 from ..core.atomic_write import atomic_write_json, atomic_write_text
 from ..minimax.latent_manager import SceneLatentManager
 
-from .paths import _context_folder, _copy_file_if_exists, _default_project_folder, _images_folder, _global_llm_keys_path, _is_internal_approved_image_path, _model_defaults_path, _newest_file, _prompts_folder, _render_logs_folder, _resolve_existing_file, _safe_project_name, _scene_notes_path, _scene_preview_folder, _session_path, _unique_folder_path, _vrgdg_textfile_path, _wizard_draft_path, _wizard_folder, _wizard_lyrics_path
+from .paths import _context_folder, _copy_file_if_exists, _default_project_folder, _images_folder, _global_llm_keys_path, _global_llm_runner_path, _is_internal_approved_image_path, _model_defaults_path, _newest_file, _prompts_folder, _render_logs_folder, _resolve_existing_file, _safe_project_name, _scene_notes_path, _scene_preview_folder, _session_path, _unique_folder_path, _vrgdg_textfile_path, _wizard_draft_path, _wizard_folder, _wizard_lyrics_path
 from .audio import _convert_audio_to_wav, _segments_to_srt, _srt_path
 from .media import _scene_image_path
 from .project_copy import _apply_branch_keep_to_session, _assign_overlay_scene_numbers, _copy_project_tree, _copy_session_assets_to_project, _normalize_branch_keep, _overlay_scene_number, _project_rebased_path, _prune_unkept_project_folders, _rebase_project_owned_paths, _relocate_external_minimax_stage_media, _resolve_project_asset_path, _snapshot_project_assets
@@ -1031,14 +1031,21 @@ _MODEL_DEFAULT_KEYS = (
 )
 
 
-# API keys kept for every project (not in a project's session, so exports never carry them). The custom server key
-# is only used with the URL it was saved for.
+# API keys kept for every project (not in a project's session, so exports never carry them).
 GLOBAL_LLM_KEY_FIELDS = ("llm_api_key", "own_server_api_key", "elevenlabs_api_key")
 
+# LLM runner settings kept for every project, in session key names. Projects still record them, but the global copy
+# always wins, so switching runners or projects never loses a server, model or limit.
+GLOBAL_LLM_RUNNER_FIELDS = (
+    "text_gemma_runner", "gemma_model_file", "qwen_model_file", "qwen_mmproj_file",
+    "gemma_context_limit", "gemma_output_token_limit", "gemma_gpu_layers",
+    "lm_studio_base_url", "lm_studio_model", "lm_studio_api_key", "lm_studio_context_limit", "lm_studio_output_token_limit",
+    "llm_api_provider", "llm_api_model",
+    "own_server_url", "own_server_model", "own_server_output_token_limit", "own_server_timeout",
+)
 
-def _load_global_llm_keys():
-    """``{field: key}`` for every saved global key, plus ``own_server_url`` (the server the custom key belongs to)."""
-    target = _global_llm_keys_path()
+
+def _read_json_dict(target):
     if not os.path.isfile(target):
         return {}
     try:
@@ -1046,12 +1053,13 @@ def _load_global_llm_keys():
             data = json.load(handle)
     except (OSError, ValueError):
         return {}
-    if not isinstance(data, dict):
-        return {}
-    keys = {name: str(data.get(name) or "").strip() for name in GLOBAL_LLM_KEY_FIELDS if str(data.get(name) or "").strip()}
-    if keys.get("own_server_api_key"):
-        keys["own_server_url"] = str(data.get("own_server_url") or "").strip()
-    return keys
+    return data if isinstance(data, dict) else {}
+
+
+def _load_global_llm_keys():
+    """``{field: key}`` for every saved global key."""
+    data = _read_json_dict(_global_llm_keys_path())
+    return {name: str(data.get(name) or "").strip() for name in GLOBAL_LLM_KEY_FIELDS if str(data.get(name) or "").strip()}
 
 
 def _save_global_llm_keys(updates):
@@ -1069,13 +1077,37 @@ def _save_global_llm_keys(updates):
         else:
             keys.pop(name, None)
         changed = True
-    if not changed:
-        return
-    if keys.get("own_server_api_key"):
-        keys["own_server_url"] = str(updates.get("own_server_url") or keys.get("own_server_url") or "").strip()
-    else:
-        keys.pop("own_server_url", None)
-    atomic_write_json(_global_llm_keys_path(), keys)
+    if changed:
+        atomic_write_json(_global_llm_keys_path(), keys)
+
+
+def _load_global_llm_runner():
+    """The saved LLM runner settings, ``{session_key: value}``; only the fields that were saved."""
+    data = _read_json_dict(_global_llm_runner_path())
+    return {name: data[name] for name in GLOBAL_LLM_RUNNER_FIELDS if data.get(name) not in (None, "")}
+
+
+def _save_global_llm_runner(updates):
+    """Store the runner settings named in ``updates``; fields not named are left as they are."""
+    if not isinstance(updates, dict):
+        return _load_global_llm_runner()
+    settings = _load_global_llm_runner()
+    changed = False
+    for name in GLOBAL_LLM_RUNNER_FIELDS:
+        if name in updates and updates[name] is not None and settings.get(name) != updates[name]:
+            settings[name] = updates[name]
+            changed = True
+    if changed:
+        atomic_write_json(_global_llm_runner_path(), settings)
+    return settings
+
+
+def _save_global_llm_settings(payload):
+    """``POST /vrgdg/music_builder/llm_runner``: save the runner settings and keys for every project."""
+    payload = payload if isinstance(payload, dict) else {}
+    runner = _save_global_llm_runner(payload.get("runner"))
+    _save_global_llm_keys(payload.get("keys"))
+    return {"global_llm_runner": runner, "global_llm_keys": _load_global_llm_keys()}
 
 
 def _scrub_model_defaults_project_sources(defaults):
@@ -1120,7 +1152,8 @@ def _save_model_defaults(session):
 def _load_model_defaults():
     target = _model_defaults_path()
     if not os.path.isfile(target):
-        return {"path": target, "defaults": {}, "saved_at": "", "global_llm_keys": _load_global_llm_keys()}
+        return {"path": target, "defaults": {}, "saved_at": "", "global_llm_keys": _load_global_llm_keys(),
+                "global_llm_runner": _load_global_llm_runner()}
     with open(target, "r", encoding="utf-8") as handle:
         payload = json.load(handle)
     if not isinstance(payload, dict):
@@ -1134,6 +1167,7 @@ def _load_model_defaults():
         "defaults": defaults,
         "saved_at": str(payload.get("saved_at", "") or ""),
         "global_llm_keys": _load_global_llm_keys(),
+        "global_llm_runner": _load_global_llm_runner(),
     }
 
 
@@ -1260,8 +1294,9 @@ def _save_builder_session_unlocked(payload):
     os.makedirs(_context_folder(project_folder), exist_ok=True)
 
     session = dict(payload.get("session")) if isinstance(payload.get("session"), dict) else {}
-    # Global API keys go to their own file, never into the project's session.
+    # Global API keys and LLM runner settings go to their own files, never into the project's session.
     _save_global_llm_keys(session.pop("global_llm_keys", None))
+    _save_global_llm_runner(session.pop("global_llm_runner", None))
     segments = session.get("segments", [])
     if not isinstance(segments, list):
         segments = []
@@ -1667,6 +1702,7 @@ def _load_builder_session(project_folder):
         "revision": int(session.get("revision") or 1),
         "session": session,
         "global_llm_keys": _load_global_llm_keys(),
+        "global_llm_runner": _load_global_llm_runner(),
     }
 
 

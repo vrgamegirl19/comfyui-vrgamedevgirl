@@ -1109,11 +1109,13 @@ export function openBuilder(node, options = {}) {
     isRestoringHistory: false,
     batchCancelled: false,
   };
-  // API keys kept for every project: bound to the state, and filled in now for the LLM runner and ElevenLabs.
+  // API keys and LLM runner settings kept for every project: bound to the state, and filled in now.
   bindGlobalLlmKeys(state);
   getJson("/vrgdg/music_builder/model_defaults").then((data) => {
-    rememberGlobalLlmKeys(data?.global_llm_keys);
+    rememberGlobalLlmKeys(data?.global_llm_keys, data?.global_llm_runner);
     applyGlobalLlmKeys(state);
+    syncBuilderLlmModelSelectsFromRunner();
+    updatePromptRunnerButtonLabels();
   }).catch(() => {});
   // A floating window with the MiniMax prompt fields, opened by a checkbox at the top of the right panel.
   const llmPopout = createLlmPopout({

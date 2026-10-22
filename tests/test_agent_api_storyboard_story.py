@@ -20,6 +20,13 @@ story = importlib.import_module(f"{pkg_name}.agent_api.orchestrator.storyboard_o
 from test_agent_api_references_llm import Base  # noqa: E402
 
 
+def setUpModule():
+    # These tests use the project's runner settings, so the ones saved for every project on this machine are left out.
+    patcher = patch.object(importlib.import_module(f"{pkg_name}.builder.project"), "_load_global_llm_runner", lambda: {})
+    patcher.start()
+    unittest.addModuleCleanup(patcher.stop)
+
+
 class StoryTests(Base):
     def setUp(self):
         super().setUp()

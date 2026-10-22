@@ -1107,7 +1107,6 @@ export function createSession({
         state.ownServerModel = data.session.own_server_model || state.ownServerModel || "";
         state.ownServerApiKeyProject = data.session.own_server_api_key_project || "";
         if (state.ownServerApiKeyProject) state.ownServerApiKey = state.ownServerApiKeyProject;
-        applyGlobalLlmKeys(state);
         state.ownServerOutputTokenLimit = normalizeOutputTokenLimit(data.session.own_server_output_token_limit ?? state.ownServerOutputTokenLimit);
         state.ownServerTimeoutMinutes = normalizeOwnServerTimeoutMinutes(
           data.session.own_server_timeout_minutes
@@ -1136,6 +1135,8 @@ export function createSession({
         state.lmStudioApiKey = data.session.lm_studio_api_key || state.lmStudioApiKey || "";
         state.lmStudioContextLimit = normalizeLmStudioContextLimit(data.session.lm_studio_context_limit ?? state.lmStudioContextLimit);
         state.lmStudioOutputTokenLimit = normalizeOutputTokenLimit(data.session.lm_studio_output_token_limit ?? data.session.llm_max_tokens ?? data.session.llmMaxTokens ?? state.lmStudioOutputTokenLimit);
+        // The LLM runner settings and keys saved for every project replace this project's copy.
+        applyGlobalLlmKeys(state);
         state.notificationSettings = normalizeNotificationSettings(data.session.notification_settings || state.notificationSettings);
         state.automaticMemoryCleanup = setBuilderAutomaticMemoryCleanupEnabled(data.session.automatic_memory_cleanup ?? state.automaticMemoryCleanup ?? false);
         state.sceneRenderWaitHours = normalizeSceneRenderWaitHours(data.session.scene_render_wait_hours ?? state.sceneRenderWaitHours);
@@ -1388,11 +1389,6 @@ export function createSession({
       state.ownServerUrl = session.own_server_url || state.ownServerUrl || "http://127.0.0.1:8000/v1";
       state.ownServerModel = session.own_server_model || state.ownServerModel || "";
       state.ownServerApiKeyProject = session.own_server_api_key_project || "";
-      // Never carry a session-only credential into a newly loaded project's
-      // arbitrary server URL. A project key is restored only when explicitly saved.
-      state.ownServerApiKey = state.ownServerApiKeyProject;
-      rememberGlobalLlmKeys(data.global_llm_keys);
-      applyGlobalLlmKeys(state);
       state.ownServerOutputTokenLimit = normalizeOutputTokenLimit(session.own_server_output_token_limit ?? state.ownServerOutputTokenLimit);
       state.ownServerTimeoutMinutes = normalizeOwnServerTimeoutMinutes(
         session.own_server_timeout_minutes
@@ -1422,6 +1418,9 @@ export function createSession({
       state.lmStudioApiKey = session.lm_studio_api_key || state.lmStudioApiKey || "";
       state.lmStudioContextLimit = normalizeLmStudioContextLimit(session.lm_studio_context_limit ?? state.lmStudioContextLimit);
       state.lmStudioOutputTokenLimit = normalizeOutputTokenLimit(session.lm_studio_output_token_limit ?? session.llm_max_tokens ?? session.llmMaxTokens ?? state.lmStudioOutputTokenLimit);
+      // The LLM runner settings and keys saved for every project replace this project's copy.
+      rememberGlobalLlmKeys(data.global_llm_keys, data.global_llm_runner);
+      applyGlobalLlmKeys(state);
       state.notificationSettings = normalizeNotificationSettings(session.notification_settings || state.notificationSettings);
       state.automaticMemoryCleanup = setBuilderAutomaticMemoryCleanupEnabled(session.automatic_memory_cleanup ?? false);
       state.sceneRenderWaitHours = normalizeSceneRenderWaitHours(session.scene_render_wait_hours ?? state.sceneRenderWaitHours);

@@ -24,6 +24,7 @@ import {
   normalizeLmStudioContextLimit,
   normalizeOutputTokenLimit,
 } from "./prompt_text.mjs";
+import { applyGlobalLlmKeys } from "./llm_global_keys.mjs";
 import { normalizeLyricMapper } from "./reference_data.mjs";
 import { normalizeTimelineMarkers, normalizeTimelineRange } from "./timeline_state.mjs";
 
@@ -232,6 +233,9 @@ export function createHistory({
     if (previousElevenLabsProjectKey !== state.elevenLabsApiKeyProject) state.elevenLabsApiKey = state.elevenLabsApiKeyProject;
     state.llmApiKeyProject = data.llmApiKeyProject || data.llm_api_key_project || state.llmApiKeyProject || "";
     if (state.llmApiKeyProject) state.llmApiKey = state.llmApiKeyProject;
+    // Undo never brings back old LLM runner settings: the settings saved for every project win.
+    applyGlobalLlmKeys(state);
+    syncBuilderLlmModelSelectsFromRunner();
     state.notificationSettings = normalizeNotificationSettings(data.notificationSettings || data.notification_settings || state.notificationSettings);
     state.automaticMemoryCleanup = setBuilderAutomaticMemoryCleanupEnabled(data.automaticMemoryCleanup ?? data.automatic_memory_cleanup ?? state.automaticMemoryCleanup ?? false);
     state.sceneRenderWaitHours = normalizeSceneRenderWaitHours(data.sceneRenderWaitHours ?? data.scene_render_wait_hours ?? state.sceneRenderWaitHours);

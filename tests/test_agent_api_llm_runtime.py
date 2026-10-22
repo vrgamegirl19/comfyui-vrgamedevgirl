@@ -7,6 +7,7 @@ import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT.parent) not in sys.path:
@@ -16,6 +17,13 @@ pkg_name = ROOT.name
 rt = importlib.import_module(f"{pkg_name}.agent_api.llm_runtime")
 llm_jobs = importlib.import_module(f"{pkg_name}.agent_api.jobs.llm_jobs")
 jobs_models = importlib.import_module(f"{pkg_name}.agent_api.jobs.models")
+
+
+def setUpModule():
+    # These tests use the project's runner settings, so the ones saved for every project on this machine are left out.
+    patcher = patch.object(importlib.import_module(f"{pkg_name}.builder.project"), "_load_global_llm_runner", lambda: {})
+    patcher.start()
+    unittest.addModuleCleanup(patcher.stop)
 
 
 class FakeLmStudio:
