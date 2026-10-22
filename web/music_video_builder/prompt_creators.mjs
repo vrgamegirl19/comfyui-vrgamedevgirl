@@ -11,6 +11,7 @@ export function createPromptCreators({
   reloadFinalPromptList, render, replacePromptPhraseAcrossScenes, sceneDisplayName, selectedTimelineRangeInfo,
   state, storyIdeaInput, syncI2VMotionJsonFromSegments, syncPromptJsonFromSegments, t2iTextGemmaModelSelect,
   textGemmaRunnerPayload, themeStyleInput, transcribeLyricsForTimeline, updateActiveFromInputs,
+  enhanceAllMiniMaxH3Prompts, openBuilderInstructionEditor,
 }) {
   function conceptPromptTimelineNotesForSegment(segment) {
     const start = Number(segment?.start || 0);
@@ -419,6 +420,10 @@ export function createPromptCreators({
     const clearI2V = makeButton("Clear All I2V Prompts");
     const editMiniMax = makeButton("Edit MiniMax H3 Prompts", "primary");
     const reloadMiniMax = makeButton("Reload MiniMax H3 Prompts");
+    const enhanceMiniMax = makeButton("Enhance Prompts", "primary");
+    enhanceMiniMax.title = "Choose enhancement with or without reference images for every scene. With images adds brief character and location descriptions. Lyrics, cue times and labels stay as they are.";
+    const editEnhanceInstructions = makeButton("Edit Enhance Instructions (without images)");
+    const editEnhanceReferenceInstructions = makeButton("Edit Enhance Instructions (with images)");
     const promptValidationGroup = document.createElement("div");
     promptValidationGroup.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;padding:10px;display:flex;flex-direction:column;gap:7px;";
     const promptValidationHeading = document.createElement("div");
@@ -450,7 +455,7 @@ export function createPromptCreators({
       state.omitLyricsFromVideoPrompts = Boolean(omitLyrics.input.checked);
       void autoSaveSessionQuiet("Video prompt lyric option changed");
     });
-    videoGroup.append(videoHeading, structuredOutputs.wrapper, structuredOutputsNote, omitLyrics.wrapper, omitLyricsNote, createMotionNotes, editI2V, reloadI2V, originalI2V, clearI2V, editMiniMax, reloadMiniMax);
+    videoGroup.append(videoHeading, structuredOutputs.wrapper, structuredOutputsNote, omitLyrics.wrapper, omitLyricsNote, createMotionNotes, editI2V, reloadI2V, originalI2V, clearI2V, editMiniMax, reloadMiniMax, enhanceMiniMax, editEnhanceInstructions, editEnhanceReferenceInstructions);
     grid.append(imageGroup, videoGroup);
     const replaceGroup = document.createElement("div");
     replaceGroup.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;padding:10px;display:flex;flex-direction:column;gap:9px;";
@@ -515,6 +520,9 @@ export function createPromptCreators({
     clearI2V.onclick = () => run(() => clearFinalPromptList("i2v"));
     editMiniMax.onclick = () => run(() => editFinalPromptList("minimax"));
     reloadMiniMax.onclick = () => run(() => reloadFinalPromptList("minimax", false));
+    enhanceMiniMax.onclick = () => run(() => enhanceAllMiniMaxH3Prompts());
+    editEnhanceInstructions.onclick = () => run(() => openBuilderInstructionEditor("minimax_h3_prompt_enhance"));
+    editEnhanceReferenceInstructions.onclick = () => run(() => openBuilderInstructionEditor("minimax_h3_prompt_enhance_with_references"));
     failOnInvalidPromptFormats.input.addEventListener("change", () => {
       state.failOnInvalidPromptFormats = Boolean(failOnInvalidPromptFormats.input.checked);
       void autoSaveSessionQuiet("MiniMax prompt validation setting changed");

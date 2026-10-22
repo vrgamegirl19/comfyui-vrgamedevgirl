@@ -5,10 +5,11 @@ import re
 import folder_paths
 from .prompts.image import _FLOW_GPT_T2I_INSTRUCTIONS, _FLUX_KLEIN_T2I_INSTRUCTIONS, _NANO_B_T2I_INSTRUCTIONS, _STANDARD_IMAGE_T2I_INSTRUCTIONS
 from .prompts.video import _I2V_INSTRUCTIONS, _ID_LORA_INSTRUCTIONS, _T2V_INSTRUCTIONS
-from .prompts.minimax import MINIMAX_H3_IMAGE_REFERENCE_TO_VIDEO_INSTRUCTIONS, MINIMAX_H3_IMAGE_TO_VIDEO_INSTRUCTIONS, MINIMAX_H3_FRAME_CONTINUITY_INSTRUCTIONS, MINIMAX_H3_REFERENCE_TO_VIDEO_INSTRUCTIONS, MINIMAX_H3_TEXT_TO_VIDEO_INSTRUCTIONS, MINIMAX_H3_VIDEO_TO_VIDEO_INSTRUCTIONS, MINIMAX_H3_SHORT_FILM_GUIDED_INSTRUCTIONS_BY_MODE, MINIMAX_H3_SHORT_FILM_CUSTOM_INSTRUCTIONS_BY_MODE
+from .prompts.minimax import MINIMAX_H3_IMAGE_REFERENCE_TO_VIDEO_INSTRUCTIONS, MINIMAX_H3_IMAGE_TO_VIDEO_INSTRUCTIONS, MINIMAX_H3_FRAME_CONTINUITY_INSTRUCTIONS, MINIMAX_H3_PROMPT_ENHANCE_INSTRUCTIONS, MINIMAX_H3_REFERENCE_TO_VIDEO_INSTRUCTIONS, MINIMAX_H3_TEXT_TO_VIDEO_INSTRUCTIONS, MINIMAX_H3_VIDEO_TO_VIDEO_INSTRUCTIONS, MINIMAX_H3_SHORT_FILM_GUIDED_INSTRUCTIONS_BY_MODE, MINIMAX_H3_SHORT_FILM_CUSTOM_INSTRUCTIONS_BY_MODE
 
 from ..builder.paths import _context_folder, _project_folder_from_builder_payload, _safe_builder_scene_id
 from ..core.atomic_write import atomic_write_text
+from .prompts.minimax import MINIMAX_H3_PROMPT_ENHANCE_WITH_REFERENCES_INSTRUCTIONS
 from .prompts.speech import ELEVENLABS_DIALOGUE_INSTRUCTIONS
 
 
@@ -24,6 +25,8 @@ _BUILDER_INSTRUCTION_DEFAULTS = {
     "minimax_h3_image_to_video": MINIMAX_H3_IMAGE_TO_VIDEO_INSTRUCTIONS,
     "minimax_h3_frame_continuity": MINIMAX_H3_FRAME_CONTINUITY_INSTRUCTIONS,
     "minimax_h3_image_reference_to_video": MINIMAX_H3_IMAGE_REFERENCE_TO_VIDEO_INSTRUCTIONS,
+    "minimax_h3_prompt_enhance": MINIMAX_H3_PROMPT_ENHANCE_INSTRUCTIONS,
+    "minimax_h3_prompt_enhance_with_references": MINIMAX_H3_PROMPT_ENHANCE_WITH_REFERENCES_INSTRUCTIONS,
     "minimax_h3_reference_to_video": MINIMAX_H3_REFERENCE_TO_VIDEO_INSTRUCTIONS,
     "minimax_h3_text_to_video": MINIMAX_H3_TEXT_TO_VIDEO_INSTRUCTIONS,
     "minimax_h3_video_to_video": MINIMAX_H3_VIDEO_TO_VIDEO_INSTRUCTIONS,
@@ -54,6 +57,8 @@ _BUILDER_INSTRUCTION_LABELS = {
     "minimax_h3_image_to_video": "MiniMax H3 Image to Video",
     "minimax_h3_frame_continuity": "MiniMax H3 Frame-to-Frame Continuity",
     "minimax_h3_image_reference_to_video": "MiniMax H3 Image + Reference to Video",
+    "minimax_h3_prompt_enhance": "MiniMax H3 Enhance Prompts",
+    "minimax_h3_prompt_enhance_with_references": "MiniMax H3 Enhance Prompts With Reference Images",
     "minimax_h3_reference_to_video": "MiniMax H3 Reference to Video",
     "minimax_h3_text_to_video": "MiniMax H3 Text to Video",
     "minimax_h3_video_to_video": "MiniMax H3 Video to Video",

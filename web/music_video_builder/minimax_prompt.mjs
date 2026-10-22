@@ -2544,6 +2544,29 @@ export function createMiniMaxPrompt({
     return miniMaxH3PromptVisionImages(segment, mode);
   }
 
+  function miniMaxEnhanceReferenceImages(segment) {
+    const mode = miniMaxH3ModeForSegment(segment);
+    if (isRefmodPipelineActive()) throw new Error("Reference-image enhancement needs image references; RefMods do not provide inspectable reference images. Choose Without reference images.");
+    const items = mode === "image_reference_to_video"
+      ? miniMaxH3ImageReferencePromptItems(segment)
+      : miniMaxOrderedImageReferenceItemsForSegment(segment, mode);
+    const plan = miniMaxH3CombinedSubjectPlan(segment, mode);
+    const mismatch = miniMaxPromptReferenceMismatch(segment, segment.minimax_h3_prompt, mode,
+      items.map((item) => String(item?.image?.path || "")));
+    if (mismatch) throw new Error(`${mismatch} Recreate the prompt with the current references before enhancing with images.`);
+    return items.map((item, index) => {
+      const pictureLabel = `<Picture ${index + 1}>`;
+      const subject = plan.subjects.find((entry) => entry.pictureLabel === pictureLabel);
+      return {
+        path: String(item?.image?.path || "").trim(), data: String(item?.image?.data || "").trim(),
+        picture_label: pictureLabel, label: subject?.label || pictureLabel,
+        name: subject?.name || item.label || "reference", kind: subject?.kind || item.kind,
+        purpose: miniMaxReferencePurposeText(item, segment),
+        describe: Boolean(subject),
+      };
+    });
+  }
+
   async function ensureAutoTimedSingerCuesBeforePrompt(segment, options = {}) {
     if ((!state.autoTimeSingerCuesBeforePrompt && !options.force) || !segment || segment.no_character_present) return;
     if (segment.no_character_present || normalizeVideoType(segment.performance_mode || state.videoType) !== "singing") return;
@@ -2763,6 +2786,6 @@ export function createMiniMaxPrompt({
     ensureAutoTimedSingerCuesBeforePrompt, miniMaxH3CreativePromptContextForSegment,
     miniMaxH3ImageReferencePromptItems, miniMaxH3PromptCharacterBudget, miniMaxH3PromptVisionImages,
     miniMaxH3PromptVisionImagesForRunner, miniMaxPromptReferenceMismatch, miniMaxPromptReferenceSignature,
-    miniMaxRenderReferenceImagePaths,
+    miniMaxRenderReferenceImagePaths, miniMaxEnhanceReferenceImages,
   };
 }

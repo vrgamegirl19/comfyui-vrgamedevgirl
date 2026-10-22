@@ -808,7 +808,7 @@ export function createMiniMaxPanel({
         : mode === "video_to_video"
           ? "V2V"
           : "T2V";
-    miniMaxCreatePromptButton.textContent = `Create ${compactMiniMaxModeLabel} Prompt`;
+    applyCompactButtonLabel(miniMaxCreatePromptButton, `Create ${compactMiniMaxModeLabel}\nPrompt`, { noMap: true, padding: "8px 6px" });
     miniMaxCreatePromptButton.title = `Generate the MiniMax H3 ${modeLabel} prompt with the selected LLM. The prompt is saved to this scene; it does not render video.`;
     miniMaxEditInstructionsButton.textContent = `Edit ${compactMiniMaxModeLabel} Instructions`;
     miniMaxEditInstructionsButton.title = `Edit the LLM instructions used to create MiniMax H3 ${modeLabel} prompts.`;

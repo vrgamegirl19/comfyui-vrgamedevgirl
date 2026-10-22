@@ -135,6 +135,7 @@ import { createSceneRenderPrep } from "./scene_render_prep.mjs";
 import { createImagePrompts } from "./image_prompts.mjs";
 import { createMiniMaxPrompt } from "./minimax_prompt.mjs";
 import { createBatchPrompts } from "./batch_prompts.mjs";
+import { createMiniMaxPromptEnhance } from "./minimax_prompt_enhance.mjs";
 import { createProjectSetup } from "./project_setup.mjs";
 import { createBeatCalibration } from "./beat_calibration.mjs";
 import { createLlmPopout } from "./llm_popout.mjs";
@@ -733,7 +734,7 @@ export function openBuilder(node, options = {}) {
     miniMaxAdvancedLatentUpscalerPicker, miniMaxAdvancedSettings, miniMaxAdvancedVramPreset, miniMaxAspectRatio, miniMaxAudioMode,
     miniMaxAudioNote, miniMaxAudioVaePicker, miniMaxAutoTimeAllScenesButton, miniMaxAutoTimeBeforePrompt,
     miniMaxClipPicker, miniMaxContinuityMode, miniMaxContinuityNote, miniMaxContinuitySection, miniMaxContinuityPromptFromLastFrame,
-    miniMaxCooldownFrames, miniMaxCreatePromptButton, miniMaxDenoise, miniMaxDiffusionModelPicker,
+    miniMaxCooldownFrames, miniMaxCreatePromptButton, miniMaxDenoise, miniMaxDiffusionModelPicker, miniMaxEnhancePromptButton,
     miniMaxEasyCacheBypass, miniMaxEasyCacheEndPercent, miniMaxEasyCacheReuseThreshold,
     miniMaxEasyCacheSettings, miniMaxEasyCacheStartPercent, miniMaxEasyCacheVerbose,
     miniMaxEditContinuityPromptInstructionsButton, miniMaxEditInstructionsButton, miniMaxEnginePanel,
@@ -2125,7 +2126,7 @@ export function openBuilder(node, options = {}) {
     ensureAutoTimedSingerCuesBeforePrompt, miniMaxH3CreativePromptContextForSegment,
     miniMaxH3ImageReferencePromptItems, miniMaxH3PromptCharacterBudget, miniMaxH3PromptVisionImages,
     miniMaxH3PromptVisionImagesForRunner, miniMaxPromptReferenceMismatch, miniMaxPromptReferenceSignature,
-    miniMaxRenderReferenceImagePaths,
+    miniMaxRenderReferenceImagePaths, miniMaxEnhanceReferenceImages,
   } = createMiniMaxPrompt({
     autoTimeMiniMaxSingerCuesForSegment, firstLastFrameEndImageSource, isMiniMaxBuiltInSpeakerAssignmentMode,
     isMiniMaxSingerAssignmentMode, logicalExtraSubjectsForScene, logicalSubjectIdsForScene,
@@ -2200,6 +2201,8 @@ export function openBuilder(node, options = {}) {
     selectedTimelineRangeInfo, state, storyIdeaInput, syncI2VMotionJsonFromSegments,
     syncPromptJsonFromSegments, t2iTextGemmaModelSelect, textGemmaRunnerPayload, themeStyleInput,
     transcribeLyricsForTimeline, updateActiveFromInputs,
+    enhanceAllMiniMaxH3Prompts: (...args) => enhanceAllMiniMaxH3Prompts(...args),
+    openBuilderInstructionEditor: (...args) => openBuilderInstructionEditor(...args),
   });
 
   const {
@@ -2300,6 +2303,15 @@ export function openBuilder(node, options = {}) {
     zImageAllButton,
     miniMaxH3FrameContinuityPromptEnabled: (...args) => miniMaxH3FrameContinuityPromptEnabled(...args),
   });
+
+  const { enhanceAllMiniMaxH3Prompts, enhanceMiniMaxH3PromptWithLLM } = createMiniMaxPromptEnhance({
+    activeProjectFolderForSave, activeSegment, allEditableSegments, autoSaveSessionQuiet, createProgressWindow,
+    gemmaRunnerLabel, gemmaRunnerLine, miniMaxEnhancePromptButton, miniMaxPrompt, miniMaxTextGemmaModelSelect,
+    pushHistory, render, requireActiveSegment, sceneDisplayName, syncMiniMaxH3Panel, textGemmaRunnerPayload,
+    updateActiveFromInputs, updateMiniMaxPromptCharacterStatus,
+    miniMaxEnhanceReferenceImages, miniMaxGemmaModelSelect, miniMaxMmprojSelect,
+  });
+  miniMaxEnhancePromptButton.onclick = () => enhanceMiniMaxH3PromptWithLLM();
 
   const {
     createMiniMaxSceneVideo, createSceneVideo, miniMaxH3FrameContinuityPromptEnabled, openStitchPreviewModal, stitchPreviewFromSegments,

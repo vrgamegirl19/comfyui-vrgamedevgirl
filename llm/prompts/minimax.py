@@ -1,5 +1,12 @@
 """MiniMax H3 prompt creation: per-mode instructions, frame continuity and short-film contracts."""
 
+MINIMAX_H3_SUPPORTING_FACE_DIRECTION = """SUPPORTING CHARACTER FACIAL ACTING — MANDATORY
+Every established character whose face is visible gets an individual, readable facial reaction in every shot, including silent supporting performers and people behind the lead. Identify each by their existing subject label; do not replace their acting with 'the others watch', 'lips closed', 'eyes bright' or one shared expression for the group.
+Give each visible supporting face a specific reaction and a small progression suited to the available time: for example one person's brows pinch before one brow arches toward the singer, another gives a sideways glance that becomes a closed-mouth grin, while another's eyes widen before a skeptical head tilt. Choose different reactions from each person's role, the lyric or dialogue meaning, and the scene beat instead of copying those examples or making everyone raise their brows and smile together. Make the change clear enough to read at the actual framing, scaled to the requested facial direction, video style and scene energy; keep explicitly restrained acting restrained.
+Silence restricts vocal performance, not facial expression. Supporting performers remain silent outside their assigned cues while their eyes, brows, cheeks, closed-mouth expressions and small head movements stay alive. Do not add words, lip-sync, audible laughter or another vocal cue. Preserve supplied audio and existing mouth-movement restrictions.
+Carry each person's expression and eyeline naturally across camera cuts along with their position and ongoing action, then let the reaction develop during the next shot. Keep established camera coverage and staging; describe facial details only for faces visible and readable in that framing. Offscreen people and faces hidden by a close-up need no invented reaction or extra shot. Environment and prop labels are not characters. Before returning, check each shot for individual acting from every readable supporting face without adding cast, props or story events. Keep each reaction concise.
+"""
+
 
 # ============================================================================
 # MiniMax H3 prompt creation
@@ -147,3 +154,68 @@ MINIMAX_H3_SHORT_FILM_CUSTOM_INSTRUCTIONS_BY_MODE = {
     mode: instructions + "\n" + MINIMAX_H3_SHORT_FILM_CUSTOM_CONTRACT
     for mode, instructions in MINIMAX_H3_INSTRUCTIONS_BY_MODE.items()
 }
+
+
+# The "Enhance Prompts" pass: the LLM receives only these instructions and one finished prompt. The builder keeps
+# everything outside the [Shot N] blocks itself, so the rules below are about the shot writing only.
+MINIMAX_H3_ENHANCE_CONTINUITY_CONTRACT = MINIMAX_H3_SUPPORTING_FACE_DIRECTION + "\n" + """MULTI-SHOT CONTINUITY — REQUIRED ENHANCEMENT CONTRACT
+For multiple [Shot N] blocks, all shots are consecutive camera views of one uninterrupted performance in the same location and moment. This contract takes priority over any instruction to give each shot a separate action or held ending.
+The builder places this scene-wide paragraph after the detailed_description opening and before [Shot 1]: All shots follow one continuous performance, preserving every person's exact position, body orientation, posture, and ongoing movement across every camera cut; each new shot continues directly from the final physical moment of the previous shot, with only the camera angle and framing changing.
+Keep that paragraph outside every shot block. Shot 1 starts with its actual camera framing and action. If returning only shot blocks inside JSON, omit the global paragraph; the builder adds it.
+Start every later shot immediately after its original [Shot N] label and optional At timestamp with exactly: continuing directly from the previous shot's final moment,
+Then state the actual inherited physical state from the preceding shot's ending: the same characters in the same location, their positions, posture, body orientation, eyelines, what each hand holds or touches, and the movement already in progress. Follow with the new camera angle or framing and the shot's existing action developing naturally from that state. Use the actual subject and location labels already assigned; their identities, clothing, props, set and lighting remain consistent, including people outside the new framing.
+Only the camera angle, framing or camera movement changes at the cut. Continue ongoing action at its existing pace and direction; do not restart a gesture, replay an entrance, reset a pose, move a character to a new position, swap hands or props, or establish a new place at a cut. An action may continue across several shots without a held ending. Any physical change already requested by the original prompt must develop visibly from the inherited state during the shot.
+Keep singing or speaking continuous across cuts during the assigned active vocal intervals, using the same performer and audio reference, with every original cue, word and timing preserved. Keep instrumental and silent intervals as supplied.
+Example of a later opening: [Shot 2] At 00:03.150, continuing directly from the previous shot's final moment, <Subject 1> remains at the front centre of the same stage, the microphone still in her right hand and the band still playing behind her; the camera cuts to a low close-up as her ongoing performance continues.
+Use the current prompt's actual staging, props and timings rather than copying the example. Before returning, check every adjacent pair for a matching physical end-to-start state. For a single shot, preserve its single-shot format without adding multi-shot language.
+CAMERA PATH CLARITY: Check the opening framing, camera move and final framing as one physically coherent view. A cut directly to someone's face already establishes that close-up; hold it or use a motivated move from that view. Never open on a face, whip-pan away, then claim to settle on that same face without a physically explained return. For example, replace 'cuts to a high-angle 85mm close-up of the singer, then whip-pans right and settles on her face' with 'cuts directly to a high-angle 85mm close-up of the singer and holds her face in frame.' Use a pan only when its different starting view and destination are clear. Keep camera travel plausible within the mapped space and shot duration.
+"""
+
+MINIMAX_H3_PROMPT_ENHANCE_INSTRUCTIONS = """You improve one finished MiniMax H3 music video prompt. Rewrite the text of every [Shot N] block so the camera work, the movement and the facial acting are stronger, while the scene stays the same scene.
+
+Return the complete prompt in the same format, with every [Shot N] block in the same order. Return only the prompt: no notes, lists, headings, markdown or explanations.
+
+KEEP EXACTLY
+- Every [Shot N] label and every "At 00:00.000," time at the start of a shot.
+- Every <Subject N>, <Picture N>, <Audio N> and <Video N> label, used for the same person or thing.
+- Every sung or spoken word inside <d>...</d> and inside double quotes, in the same order. You may improve the emotion words in the [ ] tag at the start of a <d> cue.
+- Every "from X s to Y s" timing.
+- Who is in the scene, where it happens and what happens. Add no new people, props, places or story events.
+- Clothing, hair and props only as the prompt already names them.
+
+CAMERA
+- After the required continuity opening, describe a specific framing and lens: for example a wide-angle close-up with the face large in the frame, a low wide-angle shot from the floor, a medium shot from the side, a Dutch-tilted medium close-up, a shot tracking backward in front of the singer.
+- Every new shot changes the framing or angle in a way the viewer can see.
+- Name a camera move only inside the shot where it happens (cuts to, whip-pans to, pushes in, circles, tracks backward). One move per shot.
+- Keep the main singer at full body or closer; use medium shots and close-ups while she or he sings.
+
+MOVEMENT
+- Refine the existing physical action, timed with the line being sung, preserving its progression across camera cuts and using only established props and set contact.
+- Show the feeling of the line through action; do not act out the words literally.
+- Carry the physical state into the next shot: where the character stands, what they hold, what just happened ("still at the table, the glass in her hand").
+- Let an ongoing action carry through a cut; use a held reaction or pose only when it naturally belongs to the existing action.
+
+FACE AND EMOTION
+- Write faces as visible actions: a brow lifting, eyes widening or narrowing, a smile cracking into a laugh, a jaw setting, eyes dropping, a slow blink.
+- Let the expression change from line to line, sized to the mood the prompt already has.
+- Give every sung cue two fitting emotion words in its [ ] tag, keep <i> on one or two key words, and keep or add <breath> only at a real pause between phrases.
+- Give every readable supporting face its own evolving reaction by subject label in every shot where it is visible. Silent performers keep expressive eyes, brows, cheeks and closed-mouth expressions; carry these reactions across cuts. Use distinct reactions motivated by the scene rather than a collective 'the others watch' or identical raised brows for everyone.
+
+WRITING
+- Describe only what the camera sees, in complete, positive sentences. Write what happens, never what does not happen.
+- Do not add sentences about lighting, color grading, film look or general camera style.
+- Keep the prompt about the same length as the original. Make shots tighter, not longer.
+""" + "\n" + MINIMAX_H3_ENHANCE_CONTINUITY_CONTRACT
+
+
+MINIMAX_H3_PROMPT_ENHANCE_WITH_REFERENCES_INSTRUCTIONS = """Improve the supplied finished MiniMax H3 prompt using the attached, explicitly mapped reference images.
+
+Inspect every mapped image. For each entry marked describe=true, return a brief factual description, about 15–35 words. For a character include visible hair colour/style and the outfit type and main colours, including a distinctive accessory only if clear. For a location describe the type of place, a few defining set features and its visible lighting. For other reference roles describe only their assigned purpose. Multi-view panels show one identity, not extra people. Describe only visible facts; omit uncertain or hidden details.
+Follow each reference's purpose and authority: face/hair-only images do not supply wardrobe; outfit images do not supply identity. Start/end-frame images remain timeline anchors. Use their existing subject/picture labels exactly and keep the image-to-label assignment unchanged. Reference appearance corrects conflicting hair, clothing or environment wording in the shot prose, without changing staging, action, audio, timing or cast. Brief character/location definitions will be assembled separately by the builder; keep the shot prose focused on action and acting rather than repeating appearance in every shot.
+
+Enhance camera coverage and individual visible facial acting while preserving the scene's exact actions, subjects, props and setting. Preserve every [Shot N] label, opening At timestamp, reference label, from X s to Y s timing, sung/spoken word and quoted lyric. Emotion headers may improve, but never change who performs a cue or its words. Add no people, props, places, vocal cues or story events. Keep the complete final prompt, including brief definitions, under 7,000 characters. Everything outside the shots is retained by the builder except the mapped visual definitions.
+
+Return only valid JSON with exactly this shape:
+{"reference_descriptions":[{"label":"<Subject 1>","description":"A woman with a cherry-red bob, wearing an ivory ruffled top, a black corset belt and a pleated skirt."}],"prompt":"[Shot 1] ...\\n\\n[Shot 2] At 00:03.150, ..."}
+Return one description for every mapped entry marked describe=true, using its actual label, and none for entries marked describe=false. Return all enhanced shot blocks in prompt, in the original order. The example appearance is illustrative; use only the actual images. No markdown or commentary.
+""" + "\n" + MINIMAX_H3_ENHANCE_CONTINUITY_CONTRACT
