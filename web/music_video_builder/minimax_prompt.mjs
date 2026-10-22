@@ -48,6 +48,9 @@ export function miniMaxDialogueOrderText(segment) {
   }).join("\n");
 }
 
+const MINIMAX_H3_NO_LIP_SYNC_LINE = "No one on screen sings, speaks or lip-syncs; mouths stay relaxed or closed.";
+const MINIMAX_H3_NO_VOICES_LINE = "The audio has ambience and sound effects only, no voices.";
+
 function stripMiniMaxH3ManagedPromptBlock(prompt, headingPattern) {
   const nextSection = String.raw`(?=\n+(?:\[\s*\d+(?:\.\d+)?s?\s*[-–—]\s*\d+(?:\.\d+)?s?\s*\]|Audio(?:\s+1)?\s*:|Native\s+audio\s*:|Continuity\s*:|MINIMAX NATIVE VOICE IDENTITY — MANDATORY AND VERBATIM:|REFERENCE SUBJECT COUNT — MANDATORY:|VISUAL-ONLY B-ROLL / NO-LIP-SYNC SAFETY — MANDATORY AND FINAL:|PREVIOUS-SCENE (?:SPATIAL|EXACT FRAME) CONTINUITY — MANDATORY:)|$)`;
   return String(prompt || "").replace(
@@ -258,6 +261,7 @@ function stripMiniMaxH3FixedSectionsFromCreative(prompt) {
   text = stripMiniMaxH3ManagedPromptBlock(text, "MINIMAX NATIVE VOICE IDENTITY — MANDATORY AND VERBATIM");
   text = stripMiniMaxH3ManagedPromptBlock(text, "REFERENCE SUBJECT COUNT — MANDATORY");
   text = stripMiniMaxH3ManagedPromptBlock(text, "VISUAL-ONLY B-ROLL / NO-LIP-SYNC SAFETY — MANDATORY AND FINAL");
+  for (const line of [MINIMAX_H3_NO_LIP_SYNC_LINE, MINIMAX_H3_NO_VOICES_LINE]) text = text.split(line).join("");
   return text.replace(/\n{3,}/g, "\n\n").trim();
 }
 
@@ -871,18 +875,12 @@ export function createMiniMaxPrompt({
     return lines.join("\n");
   }
 
+  // Instrumental / B-roll: one line so no one on screen lip-syncs. Python twin: llm/video_prompt_generation.py.
   function miniMaxH3VisualOnlySafetyBlock(segment) {
     if (!segmentUsesNoLipSyncPerformance(segment)) return "";
-    const builtInAudio = miniMaxH3SettingsForSegment(segment).audio_mode === "built_in_audio";
-    return [
-      "VISUAL-ONLY B-ROLL / NO-LIP-SYNC SAFETY — MANDATORY AND FINAL:",
-      "This scene is explicitly B-roll / visual-only. This safety block overrides any conflicting lyric, singer, speaker, dialogue, voice, timestamp, facial-performance, or mouth instruction elsewhere in the prompt.",
-      "No visible subject sings, speaks, raps, whispers, lip-syncs, mouths words, or performs the saved lyric. Keep every visible mouth naturally relaxed or closed and use only visual acting, physical action, dancing without vocal performance, camera motion, and environmental motion.",
-      builtInAudio
-        ? "Built-in MiniMax Audio: generate only requested environmental ambience and sound effects. Do not generate speech, singing, dialogue, lyrics, narration, voices, or vocal layers."
-        : "Input Audio: preserve Audio 1 completely unchanged as the soundtrack and timing reference, including any audible vocals, but treat those vocals as off-screen soundtrack only. No visible subject may synchronize to them.",
-      "Treat the saved lyric only as hidden mood/story context; never quote it as dialogue or describe anyone performing it.",
-    ].join("\n");
+    return miniMaxH3SettingsForSegment(segment).audio_mode === "built_in_audio"
+      ? `${MINIMAX_H3_NO_LIP_SYNC_LINE} ${MINIMAX_H3_NO_VOICES_LINE}`
+      : MINIMAX_H3_NO_LIP_SYNC_LINE;
   }
 
   function applyMiniMaxH3NativeVoiceBlock(prompt, segment) {
@@ -898,6 +896,7 @@ export function createMiniMaxPrompt({
       clean,
       "VISUAL-ONLY B-ROLL / NO-LIP-SYNC SAFETY — MANDATORY AND FINAL",
     );
+    for (const line of [MINIMAX_H3_NO_LIP_SYNC_LINE, MINIMAX_H3_NO_VOICES_LINE]) clean = clean.split(line).join("").trim();
     const visualOnlyBlock = miniMaxH3VisualOnlySafetyBlock(segment);
     const safePrompt = visualOnlyBlock ? stripMiniMaxH3VisualOnlyTimelineVocalDirections(clean) : clean;
     const block = visualOnlyBlock ? "" : miniMaxH3NativeVoiceBlock(segment);
