@@ -1,0 +1,2256 @@
+{
+  "id": "4c4a4dd3-7e6d-4f51-955d-06c330ef1727",
+  "revision": 0,
+  "last_node_id": 233,
+  "last_link_id": 45,
+  "nodes": [
+    {
+      "id": 128,
+      "type": "CLIPLoader",
+      "pos": [
+        -130,
+        0
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            1
+          ]
+        }
+      ],
+      "title": "SHARED - H3 text encoder",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.42.0",
+        "Node name for S&R": "CLIPLoader"
+      },
+      "widgets_values": [
+        "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        "minimax",
+        "default"
+      ],
+      "widgets_values_named": {
+        "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        "type": "minimax",
+        "device": "default"
+      }
+    },
+    {
+      "id": 119,
+      "type": "VAELoader",
+      "pos": [
+        -130,
+        210
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            2,
+            20,
+            34
+          ]
+        }
+      ],
+      "title": "SHARED - Video VAE",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.42.0",
+        "Node name for S&R": "VAELoader"
+      },
+      "widgets_values": [
+        "minimax_h3_video_vae_int8_convrot.safetensors"
+      ],
+      "widgets_values_named": {
+        "vae_name": "minimax_h3_video_vae_int8_convrot.safetensors"
+      }
+    },
+    {
+      "id": 120,
+      "type": "VAELoader",
+      "pos": [
+        -130,
+        370
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            3,
+            18
+          ]
+        }
+      ],
+      "title": "SHARED - Audio VAE",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.42.0",
+        "Node name for S&R": "VAELoader"
+      },
+      "widgets_values": [
+        "minimax_h3_audio_vae_fp32.safetensors"
+      ],
+      "widgets_values_named": {
+        "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+      }
+    },
+    {
+      "id": 209,
+      "type": "LoadImage",
+      "pos": [
+        -1190,
+        20
+      ],
+      "size": [
+        490,
+        320
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            44
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "title": "OPTIONAL - Choose reference, then connect IMAGE to conditioning",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.42.0",
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "character_reference_faces_blocked.png",
+        "image"
+      ],
+      "widgets_values_named": {
+        "image": "character_reference_faces_blocked.png",
+        "upload": "image"
+      }
+    },
+    {
+      "id": 136,
+      "type": "MiniMaxH3ReferenceToVideo",
+      "pos": [
+        290,
+        0
+      ],
+      "size": [
+        440,
+        600
+      ],
+      "flags": {},
+      "order": 19,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 1
+        },
+        {
+          "name": "vae",
+          "shape": 7,
+          "type": "VAE",
+          "link": 2
+        },
+        {
+          "name": "audio_vae",
+          "shape": 7,
+          "type": "VAE",
+          "link": 3
+        },
+        {
+          "name": "ref_images.ref_image_0",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 45
+        },
+        {
+          "name": "ref_images.ref_image_1",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 43
+        },
+        {
+          "name": "ref_images.ref_image_2",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "ref_videos.ref_video_0",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "ref_video_audios.ref_video_audio_0",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": null
+        },
+        {
+          "name": "ref_audios.ref_audio_0",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "links": [
+            8,
+            27
+          ]
+        },
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            13
+          ]
+        }
+      ],
+      "title": "SHARED - Prompt / resolution / references",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.42.0",
+        "Node name for S&R": "MiniMaxH3ReferenceToVideo"
+      },
+      "widgets_values": [
+        "subject_definitions:\n\n<Subject 1> is the woman in <Picture 1>, with long softly waved chestnut-brown hair, bright blue eyes, fair skin, defined brows, deep red lipstick, and a sleeveless elegant crimson satin gown with soft draping and a thigh-high slit.\n\n<Subject 2> is the enchanted winter garden in <Picture 2>, featuring snow-covered white trees, delicate frost-covered flowers, a circular ornate golden gazebo, snowy stone steps, and soft silvery winter daylight.\n\nsummary:\n\n[reference generation] A cinematic romantic fantasy sequence featuring <Subject 1> within <Subject 2>. Three connected shots transition from a full-body establishing view to a graceful medium portrait and finally an intimate facial close-up.\n\nretention_analysis:\n\n<Subject 1> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - Her facial identity, chestnut-brown wavy hair, bright blue eyes, fair complexion, red lipstick, and elegant crimson satin gown remain consistent throughout the video.\n\n<Subject 2> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - The golden gazebo, snowy trees, frosted flowers, and silvery winter lighting remain visually consistent throughout.\n\ndetailed_description:\n\nPhotorealistic romantic fantasy cinematography, elegant composition, refined fabric textures, natural human movement, and delicate atmospheric depth.\n\n[Shot 1] A wide, full-body establishing shot reveals <Subject 1> standing at the center of the snow-covered garden directly in front of the ornate golden gazebo of <Subject 2>. Her crimson satin gown falls elegantly to the ground, and the slit opens naturally as she begins to move. She takes two slow graceful steps forward along the snowy path, her hair shifting softly with the winter air. The camera performs a smooth forward dolly while maintaining a centered frontal composition.\n\n[Shot 2] At 00:05.000, the shot cuts to a medium waist-up frontal view of <Subject 1> in the same garden, with the golden gazebo softly visible behind her. She gently turns her shoulders toward the camera and lifts one hand to lightly gather the fabric near her waist, creating a poised fashion-like gesture. Her expression is calm, confident, and quietly captivating as she looks directly toward the lens. A subtle breeze moves strands of her hair. The camera glides slightly sideways, creating gentle parallax through the frosted trees and flowers.\n\n[Shot 3] At 00:10.000, the shot cuts to an intimate close-up framing <Subject 1> from the shoulders upward. Her blue eyes, soft skin texture, chestnut waves, and deep red lipstick are shown in clear detail. She holds steady eye contact with the camera, then slowly softens her expression into a faint elegant smile while lifting her chin slightly. Tiny snowflakes drift past her face as the golden gazebo and pale winter forest blur softly into the background. The camera slowly pushes in closer, ending on her composed and luminous expression.\n\noverall_soundscape:\n\nSilent video.\n\nnon_diegetic_music:\n\nN/A — audio disabled.",
+        960,
+        544,
+        243,
+        "max"
+      ],
+      "widgets_values_named": {
+        "prompt": "subject_definitions:\n\n<Subject 1> is the woman in <Picture 1>, with long softly waved chestnut-brown hair, bright blue eyes, fair skin, defined brows, deep red lipstick, and a sleeveless elegant crimson satin gown with soft draping and a thigh-high slit.\n\n<Subject 2> is the enchanted winter garden in <Picture 2>, featuring snow-covered white trees, delicate frost-covered flowers, a circular ornate golden gazebo, snowy stone steps, and soft silvery winter daylight.\n\nsummary:\n\n[reference generation] A cinematic romantic fantasy sequence featuring <Subject 1> within <Subject 2>. Three connected shots transition from a full-body establishing view to a graceful medium portrait and finally an intimate facial close-up.\n\nretention_analysis:\n\n<Subject 1> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - Her facial identity, chestnut-brown wavy hair, bright blue eyes, fair complexion, red lipstick, and elegant crimson satin gown remain consistent throughout the video.\n\n<Subject 2> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - The golden gazebo, snowy trees, frosted flowers, and silvery winter lighting remain visually consistent throughout.\n\ndetailed_description:\n\nPhotorealistic romantic fantasy cinematography, elegant composition, refined fabric textures, natural human movement, and delicate atmospheric depth.\n\n[Shot 1] A wide, full-body establishing shot reveals <Subject 1> standing at the center of the snow-covered garden directly in front of the ornate golden gazebo of <Subject 2>. Her crimson satin gown falls elegantly to the ground, and the slit opens naturally as she begins to move. She takes two slow graceful steps forward along the snowy path, her hair shifting softly with the winter air. The camera performs a smooth forward dolly while maintaining a centered frontal composition.\n\n[Shot 2] At 00:05.000, the shot cuts to a medium waist-up frontal view of <Subject 1> in the same garden, with the golden gazebo softly visible behind her. She gently turns her shoulders toward the camera and lifts one hand to lightly gather the fabric near her waist, creating a poised fashion-like gesture. Her expression is calm, confident, and quietly captivating as she looks directly toward the lens. A subtle breeze moves strands of her hair. The camera glides slightly sideways, creating gentle parallax through the frosted trees and flowers.\n\n[Shot 3] At 00:10.000, the shot cuts to an intimate close-up framing <Subject 1> from the shoulders upward. Her blue eyes, soft skin texture, chestnut waves, and deep red lipstick are shown in clear detail. She holds steady eye contact with the camera, then slowly softens her expression into a faint elegant smile while lifting her chin slightly. Tiny snowflakes drift past her face as the golden gazebo and pale winter forest blur softly into the background. The camera slowly pushes in closer, ending on her composed and luminous expression.\n\noverall_soundscape:\n\nSilent video.\n\nnon_diegetic_music:\n\nN/A — audio disabled.",
+        "width": 960,
+        "height": 544,
+        "length": 243,
+        "ref_image_size": "max"
+      }
+    },
+    {
+      "id": 141,
+      "type": "DiffusionModelLoaderKJ",
+      "pos": [
+        880,
+        -10
+      ],
+      "size": [
+        350,
+        290
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "extra_state_dict",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            4
+          ]
+        }
+      ],
+      "title": "PASS 1 MODEL - FastH3 Omni NVFP4",
+      "properties": {
+        "cnr_id": "comfyui-kjnodes",
+        "ver": "60cd6bc1870db94c6eeb05fbe455147a8e91c4e9",
+        "Node name for S&R": "DiffusionModelLoaderKJ"
+      },
+      "widgets_values": [
+        "fasth3_omniref_qad_nvfp4_comfy.safetensors",
+        "default",
+        "bf16",
+        false,
+        "auto",
+        true
+      ],
+      "widgets_values_named": {
+        "model_name": "fasth3_omniref_qad_nvfp4_comfy.safetensors",
+        "weight_dtype": "default",
+        "compute_dtype": "bf16",
+        "patch_cublaslinear": false,
+        "sage_attention": "auto",
+        "enable_fp16_accumulation": true
+      }
+    },
+    {
+      "id": 221,
+      "type": "MiniMaxH3SigmaShift",
+      "pos": [
+        880,
+        330
+      ],
+      "size": [
+        350,
+        180
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            5
+          ]
+        }
+      ],
+      "title": "PASS 1 - Shifts 12 / 3",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.42.0",
+        "Node name for S&R": "MiniMaxH3SigmaShift"
+      },
+      "widgets_values": [
+        12,
+        3
+      ],
+      "widgets_values_named": {
+        "shift_video": 12,
+        "shift_audio": 3
+      }
+    },
+    {
+      "id": 223,
+      "type": "BlockSparseAttention",
+      "pos": [
+        880,
+        550
+      ],
+      "size": [
+        350,
+        340
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 5
+        }
+      ],
+      "outputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "links": [
+            6,
+            7
+          ]
+        }
+      ],
+      "title": "PASS 1 ONLY - VSA 10%",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.42.0",
+        "Node name for S&R": "BlockSparseAttention"
+      },
+      "widgets_values": [
+        "vsa",
+        10,
+        0,
+        1,
+        "",
+        12288,
+        0,
+        "exact_kv_and_rows",
+        false
+      ],
+      "widgets_values_named": {
+        "selection": "vsa",
+        "selection.keep_percent": 10,
+        "start_percent": 0,
+        "end_percent": 1,
+        "dense_blocks": "",
+        "min_tokens": 12288,
+        "extra_tokens": 0,
+        "sink_conditioning": "exact_kv_and_rows",
+        "verbose": false
+      }
+    },
+    {
+      "id": 124,
+      "type": "BasicScheduler",
+      "pos": [
+        1280,
+        -10
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 20,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 6
+        }
+      ],
+      "outputs": [
+        {
+          "name": "SIGMAS",
+          "type": "SIGMAS",
+          "links": [
+            12
+          ]
+        }
+      ],
+      "title": "PASS 1 - 8 steps / full denoise",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.42.0",
+        "Node name for S&R": "BasicScheduler"
+      },
+      "widgets_values": [
+        "simple",
+        8,
+        1
+      ],
+      "widgets_values_named": {
+        "scheduler": "simple",
+        "steps": 8,
+        "denoise": 1
+      }
+    },
+    {
+      "id": 126,
+      "type": "BasicGuider",
+      "pos": [
+        1280,
+        220
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 22,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 7
+        },
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "link": 8
+        }
+      ],
+      "outputs": [
+        {
+          "name": "GUIDER",
+          "type": "GUIDER",
+          "links": [
+            10
+          ]
+        }
+      ],
+      "title": "PASS 1 - Guidance 1",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.42.0",
+        "Node name for S&R": "BasicGuider"
+      }
+    },
+    {
+      "id": 123,
+      "type": "KSamplerSelect",
+      "pos": [
+        1280,
+        440
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "SAMPLER",
+          "type": "SAMPLER",
+          "links": [
+            11
+          ]
+        }
+      ],
+      "title": "PASS 1 - Euler",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.42.0",
+        "Node name for S&R": "KSamplerSelect"
+      },
+      "widgets_values": [
+        "euler"
+      ],
+      "widgets_values_named": {
+        "sampler_name": "euler"
+      }
+    },
+    {
+      "id": 129,
+      "type": "RandomNoise",
+      "pos": [
+        1280,
+        630
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "NOISE",
+          "type": "NOISE",
+          "links": [
+            9
+          ]
+        }
+      ],
+      "title": "PASS 1 - Fixed seed",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.42.0",
+        "Node name for S&R": "RandomNoise"
+      },
+      "widgets_values": [
+        69,
+        "fixed"
+      ],
+      "widgets_values_named": {
+        "noise_seed": 69,
+        "control_after_generate": "fixed"
+      }
+    },
+    {
+      "id": 125,
+      "type": "SamplerCustomAdvanced",
+      "pos": [
+        1680,
+        90
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 24,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "noise",
+          "type": "NOISE",
+          "link": 9
+        },
+        {
+          "name": "guider",
+          "type": "GUIDER",
+          "link": 10
+        },
+        {
+          "name": "sampler",
+          "type": "SAMPLER",
+          "link": 11
+        },
+        {
+          "name": "sigmas",
+          "type": "SIGMAS",
+          "link": 12
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 13
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "LATENT",
+          "links": [
+            14,
+            15
+          ]
+        },
+        {
+          "name": "denoised_output",
+          "type": "LATENT",
+          "links": []
+        }
+      ],
+      "title": "PASS 1 - Generate Omni video + audio",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.42.0",
+        "Node name for S&R": "SamplerCustomAdvanced"
+      }
+    },
+    {
+      "id": 181,
+      "type": "LTXVSeparateAVLatent",
+      "pos": [
+        2140,
+        30
+      ],
+      "size": [
+        350,
+        180
+      ],
+      "flags": {},
+      "order": 25,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "av_latent",
+          "type": "LATENT",
+          "link": 14
+        }
+      ],
+      "outputs": [
+        {
+          "name": "video_latent",
+          "type": "LATENT",
+          "links": [
+            19,
+            37
+          ]
+        },
+        {
+          "name": "audio_latent",
+          "type": "LATENT",
+          "links": [
+            17
+          ]
+        }
+      ],
+      "title": "PASS 1 - Separate video / audio",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.42.0",
+        "Node name for S&R": "LTXVSeparateAVLatent"
+      }
+    },
+    {
+      "id": 189,
+      "type": "VRGDG_MiniMaxH3ReplaceUpscaledVideoLatent",
+      "pos": [
+        2940,
+        30
+      ],
+      "size": [
+        400,
+        180
+      ],
+      "flags": {},
+      "order": 29,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "original_av_latent",
+          "type": "LATENT",
+          "link": 15
+        },
+        {
+          "name": "upscaled_video_latent",
+          "type": "LATENT",
+          "link": 16
+        }
+      ],
+      "outputs": [
+        {
+          "name": "upscaled_av_latent",
+          "type": "LATENT",
+          "links": [
+            32
+          ]
+        }
+      ],
+      "title": "PASS 2 INPUT - Upscaled video + locked Omni audio",
+      "properties": {
+        "cnr_id": "comfyui-vrgamedevgirl",
+        "ver": "075b9bd17e53ea5dec0a4db70f0ded59564c1ca5",
+        "Node name for S&R": "VRGDG_MiniMaxH3ReplaceUpscaledVideoLatent"
+      }
+    },
+    {
+      "id": 224,
+      "type": "LTXVAudioVAEDecode",
+      "pos": [
+        2140,
+        280
+      ],
+      "size": [
+        350,
+        180
+      ],
+      "flags": {},
+      "order": 28,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 17
+        },
+        {
+          "name": "audio_vae",
+          "type": "VAE",
+          "link": 18
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Audio",
+          "type": "AUDIO",
+          "links": [
+            22,
+            36
+          ]
+        }
+      ],
+      "title": "SHARED OUTPUT AUDIO - From Omni",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.42.0",
+        "Node name for S&R": "LTXVAudioVAEDecode"
+      }
+    },
+    {
+      "id": 225,
+      "type": "VAEDecode",
+      "pos": [
+        2540,
+        280
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 26,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 19
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 20
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            21
+          ]
+        }
+      ],
+      "title": "COMPARE - Decode raw Omni video",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.42.0",
+        "Node name for S&R": "VAEDecode"
+      }
+    },
+    {
+      "id": 220,
+      "type": "DiffusionModelLoaderKJ",
+      "pos": [
+        850,
+        1150
+      ],
+      "size": [
+        460,
+        290
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "extra_state_dict",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            23
+          ]
+        }
+      ],
+      "title": "PASS 2 MODEL - Change this to another H3 Ref2VA checkpoint",
+      "properties": {
+        "cnr_id": "comfyui-kjnodes",
+        "ver": "60cd6bc1870db94c6eeb05fbe455147a8e91c4e9",
+        "Node name for S&R": "DiffusionModelLoaderKJ"
+      },
+      "widgets_values": [
+        "Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors",
+        "default",
+        "default",
+        false,
+        "auto",
+        true
+      ],
+      "widgets_values_named": {
+        "model_name": "Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors",
+        "weight_dtype": "default",
+        "compute_dtype": "default",
+        "patch_cublaslinear": false,
+        "sage_attention": "auto",
+        "enable_fp16_accumulation": true
+      }
+    },
+    {
+      "id": 207,
+      "type": "LoraLoaderModelOnly",
+      "pos": [
+        870,
+        1510
+      ],
+      "size": [
+        340,
+        180
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 23
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            24
+          ]
+        }
+      ],
+      "title": "PASS 2 ONLY - Select Turbo LoRA / strength",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.42.0",
+        "Node name for S&R": "LoraLoaderModelOnly"
+      },
+      "widgets_values": [
+        "minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+        1
+      ],
+      "widgets_values_named": {
+        "lora_name": "minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+        "strength_model": 1
+      }
+    },
+    {
+      "id": 222,
+      "type": "MiniMaxH3SigmaShift",
+      "pos": [
+        1350,
+        1150
+      ],
+      "size": [
+        350,
+        180
+      ],
+      "flags": {},
+      "order": 18,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 24
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            25,
+            26
+          ]
+        }
+      ],
+      "title": "PASS 2 - Shifts 12 / 3 (dense attention)",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.42.0",
+        "Node name for S&R": "MiniMaxH3SigmaShift"
+      },
+      "widgets_values": [
+        12,
+        3
+      ],
+      "widgets_values_named": {
+        "shift_video": 12,
+        "shift_audio": 3
+      }
+    },
+    {
+      "id": 192,
+      "type": "BasicScheduler",
+      "pos": [
+        1750,
+        1150
+      ],
+      "size": [
+        350,
+        220
+      ],
+      "flags": {},
+      "order": 21,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 25
+        }
+      ],
+      "outputs": [
+        {
+          "name": "SIGMAS",
+          "type": "SIGMAS",
+          "links": [
+            31
+          ]
+        }
+      ],
+      "title": "PASS 2 - Steps / refinement denoise",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.42.0",
+        "Node name for S&R": "BasicScheduler"
+      },
+      "widgets_values": [
+        "simple",
+        4,
+        0.25
+      ],
+      "widgets_values_named": {
+        "scheduler": "simple",
+        "steps": 4,
+        "denoise": 0.25
+      }
+    },
+    {
+      "id": 193,
+      "type": "BasicGuider",
+      "pos": [
+        1750,
+        1420
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 23,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 26
+        },
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "link": 27
+        }
+      ],
+      "outputs": [
+        {
+          "name": "GUIDER",
+          "type": "GUIDER",
+          "links": [
+            29
+          ]
+        }
+      ],
+      "title": "PASS 2 - Guidance 1",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.42.0",
+        "Node name for S&R": "BasicGuider"
+      }
+    },
+    {
+      "id": 210,
+      "type": "KSamplerSelect",
+      "pos": [
+        1350,
+        1400
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "SAMPLER",
+          "type": "SAMPLER",
+          "links": [
+            30
+          ]
+        }
+      ],
+      "title": "PASS 2 - Refinement sampler",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.42.0",
+        "Node name for S&R": "KSamplerSelect"
+      },
+      "widgets_values": [
+        "res_multistep"
+      ],
+      "widgets_values_named": {
+        "sampler_name": "res_multistep"
+      }
+    },
+    {
+      "id": 211,
+      "type": "RandomNoise",
+      "pos": [
+        1360,
+        1640
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "NOISE",
+          "type": "NOISE",
+          "links": [
+            28
+          ]
+        }
+      ],
+      "title": "PASS 2 - Fixed refinement noise",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.42.0",
+        "Node name for S&R": "RandomNoise"
+      },
+      "widgets_values": [
+        1,
+        "fixed"
+      ],
+      "widgets_values_named": {
+        "noise_seed": 1,
+        "control_after_generate": "fixed"
+      }
+    },
+    {
+      "id": 194,
+      "type": "SamplerCustomAdvanced",
+      "pos": [
+        1750,
+        1670
+      ],
+      "size": [
+        430,
+        180
+      ],
+      "flags": {},
+      "order": 31,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "noise",
+          "type": "NOISE",
+          "link": 28
+        },
+        {
+          "name": "guider",
+          "type": "GUIDER",
+          "link": 29
+        },
+        {
+          "name": "sampler",
+          "type": "SAMPLER",
+          "link": 30
+        },
+        {
+          "name": "sigmas",
+          "type": "SIGMAS",
+          "link": 31
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 32
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "LATENT",
+          "links": [
+            33
+          ]
+        },
+        {
+          "name": "denoised_output",
+          "type": "LATENT",
+          "links": []
+        }
+      ],
+      "title": "PASS 2 - Refine UPSCALED latent with separate H3 model",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.42.0",
+        "Node name for S&R": "SamplerCustomAdvanced"
+      }
+    },
+    {
+      "id": 122,
+      "type": "VAEDecode",
+      "pos": [
+        2400,
+        1180
+      ],
+      "size": [
+        340,
+        180
+      ],
+      "flags": {},
+      "order": 32,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 33
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 34
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            35
+          ]
+        }
+      ],
+      "title": "FINAL - Decode high-resolution refined video",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.42.0",
+        "Node name for S&R": "VAEDecode"
+      }
+    },
+    {
+      "id": 226,
+      "type": "VHS_VideoCombine",
+      "pos": [
+        3010,
+        300
+      ],
+      "size": [
+        420,
+        574.6666666666667
+      ],
+      "flags": {},
+      "order": 30,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 21
+        },
+        {
+          "name": "audio",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": 22
+        },
+        {
+          "name": "meta_batch",
+          "shape": 7,
+          "type": "VHS_BatchManager",
+          "link": null
+        },
+        {
+          "name": "vae",
+          "shape": 7,
+          "type": "VAE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Filenames",
+          "type": "VHS_FILENAMES",
+          "links": []
+        }
+      ],
+      "title": "COMPARE - Raw low-resolution Omni clip",
+      "properties": {
+        "cnr_id": "comfyui-videohelpersuite",
+        "ver": "2984ec4c4b93292421888f38db74a5e8802a8ff8",
+        "Node name for S&R": "VHS_VideoCombine"
+      },
+      "widgets_values": {
+        "frame_rate": 24,
+        "loop_count": 0,
+        "filename_prefix": "FastH3_Omni_TwoModel/01_Omni_raw",
+        "format": "video/h264-mp4",
+        "pix_fmt": "yuv420p",
+        "crf": 18,
+        "save_metadata": true,
+        "trim_to_audio": false,
+        "pingpong": false,
+        "save_output": true,
+        "videopreview": {
+          "hidden": false,
+          "paused": true,
+          "params": {
+            "filename": "01_Omni_raw_00003-audio.mp4",
+            "subfolder": "FastH3_Omni_TwoModel",
+            "type": "output",
+            "format": "video/h264-mp4",
+            "frame_rate": 24,
+            "workflow": "01_Omni_raw_00003.png",
+            "fullpath": "Z:\\TOSHARE\\ComfyUI_windows_portable\\ComfyUI\\output\\FastH3_Omni_TwoModel\\01_Omni_raw_00003-audio.mp4",
+            "metadata": {
+              "kind": "video",
+              "width": 960,
+              "height": 544,
+              "duration": 10.125,
+              "fps": 24,
+              "frame_count": 243
+            }
+          }
+        }
+      },
+      "widgets_values_named": {
+        "frame_rate": 24,
+        "loop_count": 0,
+        "filename_prefix": "FastH3_Omni_TwoModel/01_Omni_raw",
+        "format": "video/h264-mp4",
+        "pix_fmt": "yuv420p",
+        "crf": 18,
+        "save_metadata": true,
+        "trim_to_audio": false,
+        "pingpong": false,
+        "save_output": true,
+        "videopreview": {
+          "hidden": false,
+          "paused": true,
+          "params": {
+            "filename": "01_Omni_raw_00003-audio.mp4",
+            "subfolder": "FastH3_Omni_TwoModel",
+            "type": "output",
+            "format": "video/h264-mp4",
+            "frame_rate": 24,
+            "workflow": "01_Omni_raw_00003.png",
+            "fullpath": "Z:\\TOSHARE\\ComfyUI_windows_portable\\ComfyUI\\output\\FastH3_Omni_TwoModel\\01_Omni_raw_00003-audio.mp4",
+            "metadata": {
+              "kind": "video",
+              "width": 960,
+              "height": 544,
+              "duration": 10.125,
+              "fps": 24,
+              "frame_count": 243
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": 142,
+      "type": "VHS_VideoCombine",
+      "pos": [
+        2780,
+        1200
+      ],
+      "size": [
+        420,
+        574.6666666666667
+      ],
+      "flags": {},
+      "order": 33,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 35
+        },
+        {
+          "name": "audio",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": 36
+        },
+        {
+          "name": "meta_batch",
+          "shape": 7,
+          "type": "VHS_BatchManager",
+          "link": null
+        },
+        {
+          "name": "vae",
+          "shape": 7,
+          "type": "VAE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Filenames",
+          "type": "VHS_FILENAMES",
+          "links": []
+        }
+      ],
+      "title": "FINAL - 2x upscaled + refined clip (same Omni audio)",
+      "properties": {
+        "cnr_id": "comfyui-videohelpersuite",
+        "ver": "2984ec4c4b93292421888f38db74a5e8802a8ff8",
+        "Node name for S&R": "VHS_VideoCombine"
+      },
+      "widgets_values": {
+        "frame_rate": 24,
+        "loop_count": 0,
+        "filename_prefix": "FastH3_Omni_TwoModel/02_H3_refined",
+        "format": "video/h264-mp4",
+        "pix_fmt": "yuv420p",
+        "crf": 18,
+        "save_metadata": true,
+        "trim_to_audio": false,
+        "pingpong": false,
+        "save_output": true,
+        "videopreview": {
+          "hidden": false,
+          "paused": true,
+          "params": {
+            "filename": "02_H3_refined_00003-audio.mp4",
+            "subfolder": "FastH3_Omni_TwoModel",
+            "type": "output",
+            "format": "video/h264-mp4",
+            "frame_rate": 24,
+            "workflow": "02_H3_refined_00003.png",
+            "fullpath": "Z:\\TOSHARE\\ComfyUI_windows_portable\\ComfyUI\\output\\FastH3_Omni_TwoModel\\02_H3_refined_00003-audio.mp4",
+            "metadata": {
+              "kind": "video",
+              "width": 1920,
+              "height": 1088,
+              "duration": 10.125,
+              "fps": 24,
+              "frame_count": 243
+            }
+          }
+        }
+      },
+      "widgets_values_named": {
+        "frame_rate": 24,
+        "loop_count": 0,
+        "filename_prefix": "FastH3_Omni_TwoModel/02_H3_refined",
+        "format": "video/h264-mp4",
+        "pix_fmt": "yuv420p",
+        "crf": 18,
+        "save_metadata": true,
+        "trim_to_audio": false,
+        "pingpong": false,
+        "save_output": true,
+        "videopreview": {
+          "hidden": false,
+          "paused": true,
+          "params": {
+            "filename": "02_H3_refined_00003-audio.mp4",
+            "subfolder": "FastH3_Omni_TwoModel",
+            "type": "output",
+            "format": "video/h264-mp4",
+            "frame_rate": 24,
+            "workflow": "02_H3_refined_00003.png",
+            "fullpath": "Z:\\TOSHARE\\ComfyUI_windows_portable\\ComfyUI\\output\\FastH3_Omni_TwoModel\\02_H3_refined_00003-audio.mp4",
+            "metadata": {
+              "kind": "video",
+              "width": 1920,
+              "height": 1088,
+              "duration": 10.125,
+              "fps": 24,
+              "frame_count": 243
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": 188,
+      "type": "VRGDG_MiniMaxH3LatentUpscaleModelLoader",
+      "pos": [
+        2150,
+        540
+      ],
+      "size": [
+        410,
+        230
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "upscale_model",
+          "type": "VRGDG_MINIMAX_H3_LATENT_UPSCALE_MODEL",
+          "links": [
+            38
+          ]
+        }
+      ],
+      "title": "LATENT UPSCALE - Load learned MiniMax H3 upscaler",
+      "properties": {
+        "cnr_id": "comfyui-vrgamedevgirl",
+        "ver": "075b9bd17e53ea5dec0a4db70f0ded59564c1ca5",
+        "Node name for S&R": "VRGDG_MiniMaxH3LatentUpscaleModelLoader"
+      },
+      "widgets_values": [
+        "minimax_h3_latent_upscaler_3d_bf16.safetensors",
+        "cuda",
+        "bf16"
+      ],
+      "widgets_values_named": {
+        "model_name": "minimax_h3_latent_upscaler_3d_bf16.safetensors",
+        "device": "cuda",
+        "precision": "bf16"
+      }
+    },
+    {
+      "id": 185,
+      "type": "PrimitiveFloat",
+      "pos": [
+        2620,
+        540
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "FLOAT",
+          "type": "FLOAT",
+          "links": [
+            39
+          ]
+        }
+      ],
+      "title": "LATENT UPSCALE - Scale (2x by default)",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.42.0",
+        "Node name for S&R": "PrimitiveFloat"
+      },
+      "widgets_values": [
+        2
+      ],
+      "widgets_values_named": {
+        "value": 2
+      }
+    },
+    {
+      "id": 182,
+      "type": "VRGDG_MiniMaxH3LearnedLatentUpscale",
+      "pos": [
+        2540,
+        30
+      ],
+      "size": [
+        370,
+        180
+      ],
+      "flags": {},
+      "order": 27,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "latent",
+          "type": "LATENT",
+          "link": 37
+        },
+        {
+          "name": "upscale_model",
+          "type": "VRGDG_MINIMAX_H3_LATENT_UPSCALE_MODEL",
+          "link": 38
+        },
+        {
+          "name": "scale",
+          "type": "FLOAT",
+          "widget": {
+            "name": "scale"
+          },
+          "link": 39
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            16
+          ]
+        }
+      ],
+      "title": "LATENT UPSCALE - Learned video latent upscale",
+      "properties": {
+        "cnr_id": "comfyui-vrgamedevgirl",
+        "ver": "075b9bd17e53ea5dec0a4db70f0ded59564c1ca5",
+        "Node name for S&R": "VRGDG_MiniMaxH3LearnedLatentUpscale"
+      },
+      "widgets_values": [
+        2
+      ],
+      "widgets_values_named": {
+        "scale": 2
+      }
+    },
+    {
+      "id": 231,
+      "type": "LoadImage",
+      "pos": [
+        -1170,
+        490
+      ],
+      "size": [
+        490,
+        320
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            42
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "title": "OPTIONAL - Choose reference, then connect IMAGE to conditioning",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.42.0",
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "ChatGPT Image Aug 12, 2026, 07_11_54 PM (1).png",
+        "image"
+      ],
+      "widgets_values_named": {
+        "image": "ChatGPT Image Aug 12, 2026, 07_11_54 PM (1).png",
+        "upload": "image"
+      }
+    },
+    {
+      "id": 232,
+      "type": "ImageResizeKJv2",
+      "pos": [
+        -620,
+        490
+      ],
+      "size": [
+        270,
+        336
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 42
+        },
+        {
+          "name": "mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            43
+          ]
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-kjnodes",
+        "ver": "60cd6bc1870db94c6eeb05fbe455147a8e91c4e9",
+        "Node name for S&R": "ImageResizeKJv2"
+      },
+      "widgets_values": [
+        1024,
+        576,
+        "nvidia_rtx_vsr",
+        "crop",
+        "0, 0, 0",
+        "center",
+        2,
+        "cpu"
+      ],
+      "widgets_values_named": {
+        "width": 1024,
+        "height": 576,
+        "upscale_method": "nvidia_rtx_vsr",
+        "keep_proportion": "crop",
+        "pad_color": "0, 0, 0",
+        "crop_position": "center",
+        "divisible_by": 2,
+        "device": "cpu"
+      }
+    },
+    {
+      "id": 233,
+      "type": "ImageResizeKJv2",
+      "pos": [
+        -610,
+        30
+      ],
+      "size": [
+        270,
+        336
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 44
+        },
+        {
+          "name": "mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            45
+          ]
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-kjnodes",
+        "ver": "60cd6bc1870db94c6eeb05fbe455147a8e91c4e9",
+        "Node name for S&R": "ImageResizeKJv2"
+      },
+      "widgets_values": [
+        1920,
+        1080,
+        "nvidia_rtx_vsr",
+        "crop",
+        "0, 0, 0",
+        "center",
+        2,
+        "cpu"
+      ],
+      "widgets_values_named": {
+        "width": 1920,
+        "height": 1080,
+        "upscale_method": "nvidia_rtx_vsr",
+        "keep_proportion": "crop",
+        "pad_color": "0, 0, 0",
+        "crop_position": "center",
+        "divisible_by": 2,
+        "device": "cpu"
+      }
+    }
+  ],
+  "links": [
+    [
+      4,
+      141,
+      0,
+      221,
+      0,
+      "MODEL"
+    ],
+    [
+      6,
+      223,
+      0,
+      124,
+      0,
+      "MODEL"
+    ],
+    [
+      7,
+      223,
+      0,
+      126,
+      0,
+      "MODEL"
+    ],
+    [
+      8,
+      136,
+      0,
+      126,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      9,
+      129,
+      0,
+      125,
+      0,
+      "NOISE"
+    ],
+    [
+      10,
+      126,
+      0,
+      125,
+      1,
+      "GUIDER"
+    ],
+    [
+      11,
+      123,
+      0,
+      125,
+      2,
+      "SAMPLER"
+    ],
+    [
+      12,
+      124,
+      0,
+      125,
+      3,
+      "SIGMAS"
+    ],
+    [
+      13,
+      136,
+      1,
+      125,
+      4,
+      "LATENT"
+    ],
+    [
+      14,
+      125,
+      0,
+      181,
+      0,
+      "LATENT"
+    ],
+    [
+      15,
+      125,
+      0,
+      189,
+      0,
+      "LATENT"
+    ],
+    [
+      16,
+      182,
+      0,
+      189,
+      1,
+      "LATENT"
+    ],
+    [
+      17,
+      181,
+      1,
+      224,
+      0,
+      "LATENT"
+    ],
+    [
+      18,
+      120,
+      0,
+      224,
+      1,
+      "VAE"
+    ],
+    [
+      19,
+      181,
+      0,
+      225,
+      0,
+      "LATENT"
+    ],
+    [
+      20,
+      119,
+      0,
+      225,
+      1,
+      "VAE"
+    ],
+    [
+      21,
+      225,
+      0,
+      226,
+      0,
+      "IMAGE"
+    ],
+    [
+      22,
+      224,
+      0,
+      226,
+      1,
+      "AUDIO"
+    ],
+    [
+      23,
+      220,
+      0,
+      207,
+      0,
+      "MODEL"
+    ],
+    [
+      24,
+      207,
+      0,
+      222,
+      0,
+      "MODEL"
+    ],
+    [
+      25,
+      222,
+      0,
+      192,
+      0,
+      "MODEL"
+    ],
+    [
+      26,
+      222,
+      0,
+      193,
+      0,
+      "MODEL"
+    ],
+    [
+      27,
+      136,
+      0,
+      193,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      28,
+      211,
+      0,
+      194,
+      0,
+      "NOISE"
+    ],
+    [
+      29,
+      193,
+      0,
+      194,
+      1,
+      "GUIDER"
+    ],
+    [
+      30,
+      210,
+      0,
+      194,
+      2,
+      "SAMPLER"
+    ],
+    [
+      31,
+      192,
+      0,
+      194,
+      3,
+      "SIGMAS"
+    ],
+    [
+      32,
+      189,
+      0,
+      194,
+      4,
+      "LATENT"
+    ],
+    [
+      33,
+      194,
+      0,
+      122,
+      0,
+      "LATENT"
+    ],
+    [
+      34,
+      119,
+      0,
+      122,
+      1,
+      "VAE"
+    ],
+    [
+      35,
+      122,
+      0,
+      142,
+      0,
+      "IMAGE"
+    ],
+    [
+      36,
+      224,
+      0,
+      142,
+      1,
+      "AUDIO"
+    ],
+    [
+      37,
+      181,
+      0,
+      182,
+      0,
+      "LATENT"
+    ],
+    [
+      38,
+      188,
+      0,
+      182,
+      1,
+      "VRGDG_MINIMAX_H3_LATENT_UPSCALE_MODEL"
+    ],
+    [
+      39,
+      185,
+      0,
+      182,
+      2,
+      "FLOAT"
+    ],
+    [
+      5,
+      221,
+      0,
+      223,
+      0,
+      "MODEL"
+    ],
+    [
+      1,
+      128,
+      0,
+      136,
+      0,
+      "CLIP"
+    ],
+    [
+      2,
+      119,
+      0,
+      136,
+      1,
+      "VAE"
+    ],
+    [
+      3,
+      120,
+      0,
+      136,
+      2,
+      "VAE"
+    ],
+    [
+      42,
+      231,
+      0,
+      232,
+      0,
+      "IMAGE"
+    ],
+    [
+      43,
+      232,
+      0,
+      136,
+      4,
+      "IMAGE"
+    ],
+    [
+      44,
+      209,
+      0,
+      233,
+      0,
+      "IMAGE"
+    ],
+    [
+      45,
+      233,
+      0,
+      136,
+      3,
+      "IMAGE"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "SHARED - Prompt, references and VAEs",
+      "bounding": [
+        -170,
+        -80,
+        930,
+        1020
+      ],
+      "color": "#76528b",
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "PASS 1 - FastH3 Omni + VSA",
+      "bounding": [
+        860,
+        -90,
+        1200,
+        1080
+      ],
+      "color": "#486b50",
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "title": "LEARNED LATENT UPSCALE + raw comparison",
+      "bounding": [
+        2110,
+        -60,
+        1370,
+        990
+      ],
+      "color": "#487f7b",
+      "flags": {}
+    },
+    {
+      "id": 4,
+      "title": "PASS 2 - Separate H3 model refines UPSCALED latent",
+      "bounding": [
+        810,
+        1050,
+        1440,
+        830
+      ],
+      "color": "#4f5f91",
+      "flags": {}
+    },
+    {
+      "id": 5,
+      "title": "FINAL - Refined output",
+      "bounding": [
+        2360,
+        1060,
+        880,
+        820
+      ],
+      "color": "#487f7b",
+      "flags": {}
+    },
+    {
+      "id": 6,
+      "title": "Group",
+      "bounding": [
+        -1200,
+        -50,
+        920,
+        960
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.3073560549142857,
+      "offset": [
+        1916.8176021495174,
+        599.3781613081429
+      ]
+    },
+    "frontendVersion": "1.55.18",
+    "VHS_latentpreview": true,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": false,
+    "VHS_KeepIntermediate": false
+  },
+  "version": 0.4
+}

@@ -8,8 +8,10 @@ from PIL import Image
 from ..core.atomic_write import atomic_write_json
 from ..builder.video_editor import _image_from_data_url
 from ..minimax.lyric_free_performance import enabled as lyric_free_enabled
+from ..minimax.prompt_enhance import merge_enhanced_prompt
 from .prompts.emotion_expression import emotion_expression_instruction
 from .text_cleaning import _clean_gemma_prompt_text
+from .prompts.minimax import MINIMAX_H3_PROMPT_ENHANCE_INSTRUCTIONS, MINIMAX_H3_ENHANCE_CONTINUITY_CONTRACT
 from .prompts.video import _I2V_INSTRUCTIONS, _T2V_INSTRUCTIONS
 
 from .prompts.video import _video_prompt_edit_instructions, _video_prompt_enhancement_instructions
@@ -1673,3 +1675,39 @@ def _edit_builder_video_prompt(payload):
                 mmproj_path=mmproj_path,
             )
             _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
+
+
+def _enhance_minimax_h3_prompt(payload):
+    """Improve a finished MiniMax prompt using the selected text-only or reference-image task.
+
+    Text-only uses just the reply's shot blocks; vision can also update mapped visual definitions.
+    A reply that loses a label,
+    cue time or sung word raises ``PromptEnhanceError`` and the scene keeps its prompt.
+    """
+    if payload.get("use_reference_images"):
+        from .minimax_reference_enhance import enhance_with_references
+        return enhance_with_references(payload)
+    current_prompt = str(payload.get("current_prompt") or "").strip()
+    if not current_prompt:
+        raise ValueError("This scene has no MiniMax H3 prompt to enhance. Create the prompt first.")
+    instruction = _effective_builder_instruction(payload, "minimax_h3_prompt_enhance", MINIMAX_H3_PROMPT_ENHANCE_INSTRUCTIONS)
+    # Saved project/scene instructions may predate the continuity fix. Both enhance buttons must use it.
+    if MINIMAX_H3_ENHANCE_CONTINUITY_CONTRACT not in instruction:
+        instruction = f"{instruction.strip()}\n\n{MINIMAX_H3_ENHANCE_CONTINUITY_CONTRACT}"
+    text, run_info = _run_builder_text_llm(
+        payload,
+        f"{instruction.strip()}\n\nCURRENT PROMPT:\n{current_prompt}",
+        temperature=float(payload.get("temperature") or 0.35),
+        top_p=float(payload.get("top_p") or 0.9),
+        max_new_tokens=int(payload.get("max_new_tokens") or min(4000, len(current_prompt) // 2 + 600)),
+        label="MiniMax H3 prompt enhance",
+        preserve_paragraphs=True,
+    )
+    prompt = merge_enhanced_prompt(current_prompt, text)
+    return {
+        "prompt": prompt,
+        "characters": len(prompt),
+        "runner": run_info.get("runner", "builtin"),
+        "used_model": run_info.get("used_model", ""),
+        "unloaded": run_info.get("unloaded", bool(payload.get("unload_after", True))),
+    }
