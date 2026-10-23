@@ -1,0 +1,29 @@
+{
+  "project": "C:\\Users\\NVMax\\Desktop\\ComfyUI_windows_portable\\ComfyUI\\output\\Dance With You In It",
+  "tag": "Scene08to09",
+  "audio_path": "C:\\Users\\NVMax\\Desktop\\ComfyUI_windows_portable\\ComfyUI\\output\\Dance With You In It\\project_audio\\project_audio.wav",
+  "audio_start": 34.59,
+  "audio_end": 41.92,
+  "scenes": [
+    {
+      "scene_number": 8,
+      "suffix": "pred",
+      "workflow": "C:\\Users\\NVMax\\Desktop\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui-vrgamedevgirl\\Workflows\\masked_seam_test\\MaskedSeam_Scene08to09_1_predecessor_API.json",
+      "trim": {
+        "start": 0.0,
+        "duration": 3.48,
+        "frames": 84
+      }
+    },
+    {
+      "scene_number": 9,
+      "suffix": "cont",
+      "workflow": "C:\\Users\\NVMax\\Desktop\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui-vrgamedevgirl\\Workflows\\masked_seam_test\\MaskedSeam_Scene08to09_2_continued_API.json",
+      "trim": {
+        "start": 1.375,
+        "duration": 3.85,
+        "frames": 92
+      }
+    }
+  ]
+}

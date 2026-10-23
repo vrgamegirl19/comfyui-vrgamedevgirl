@@ -206,6 +206,29 @@ class MaskedContextPlanTests(unittest.TestCase):
             MANAGER.plan_masked_context(7, 0, 39)
 
 
+class FirstPassLatentTests(unittest.TestCase):
+    def test_first_pass_latent_is_used_only_with_the_final_latent_of_the_same_render(self):
+        latents = {"video": torch.zeros(1, 24, 12, 2, 2), "audio": torch.zeros(1, 32, 2, 65)}
+        manager = MANAGER.SceneLatentManager
+        with tempfile.TemporaryDirectory() as folder:
+            self.assertFalse(manager.pass1_latent_matches(folder, 3))
+            manager.save_pass1_latent(folder, 3, latents, 6)
+            manager.save_latent(folder, 3, latents, metadata={"tail_padding_frames": 6})
+            self.assertTrue(manager.pass1_latent_matches(folder, 3))
+            loaded = manager.load_latent(folder, 3, pass1=True)
+            self.assertEqual(loaded["path"], manager.get_pass1_path(folder, 3))
+            # a final latent saved before the first pass (an older take, a single pass render) does not match
+            info = manager.get_path(folder, 3) + ".json"
+            with open(info, encoding="utf-8") as handle:
+                meta = json.load(handle)
+            meta["timestamp"] = str(float(meta["timestamp"]) - 60)
+            with open(info, "w", encoding="utf-8") as handle:
+                json.dump(meta, handle)
+            self.assertFalse(manager.pass1_latent_matches(folder, 3))
+            manager.delete_latent(folder, 3)
+            self.assertFalse(os.path.isfile(manager.get_pass1_path(folder, 3)))
+
+
 class MaskedContinuationNodeTests(unittest.TestCase):
     def setUp(self):
         self.classes = _loader_classes()
@@ -431,6 +454,15 @@ class LatentWarmupTimingTests(unittest.TestCase):
                 self.assertAlmostEqual(plan.audio_trim_start_seconds, max(0, source_start - 22 / 24))
                 self.assertAlmostEqual(plan.audio_trim_duration_seconds, 5 + 22 / 24)
                 self.assertEqual(plan.final_trim_duration_seconds, 5)
+
+    def test_audio_covers_the_alignment_padding_when_the_source_has_it(self):
+        # scene 8 of a real project: 3.48 s -> 84 frames, rendered as 90; the last 6 frames need real song audio
+        plan = MANAGER.calculate_minimax_h3_timing(34.59, 38.07, source_duration_seconds=200)
+        self.assertEqual(plan.h3_frame_count, 90)
+        self.assertAlmostEqual(plan.audio_trim_duration_seconds, plan.h3_render_duration_seconds)
+        # only the audio the source really has
+        plan = MANAGER.calculate_minimax_h3_timing(34.59, 38.07, source_duration_seconds=38.12)
+        self.assertAlmostEqual(plan.audio_trim_duration_seconds, 38.12 - 34.59)
 
     def test_non_latent_timing_still_clamps_the_audio_handle(self):
         plan = MANAGER.calculate_minimax_h3_timing(10, 15, 22, source_start_seconds=0)
