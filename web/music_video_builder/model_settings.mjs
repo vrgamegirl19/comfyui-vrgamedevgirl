@@ -1,5 +1,5 @@
 import { BROWSER_IMAGE_PROVIDERS } from "../VRGDG_BrowserImageBridge.js";
-import { storyboardCutFrequencyValue } from "../storyboard_builder/scenes.mjs";
+import { storyboardCutFrequencyValue, storyboardCutStyleValue } from "../storyboard_builder/scenes.mjs";
 import { normalizeStoryboardCustomCameraFlowSequence } from "../storyboard_builder/shot_presets.mjs";
 import { getJson, normalizeOwnServerTimeoutMinutes } from "./comfy_api.mjs";
 import {
@@ -16,11 +16,14 @@ import {
   REQUIRED_LTX_INGREDIENTS_LORA,
   REQUIRED_LTX25_MSR_LORA,
 } from "./constants.mjs";
-import { normalizeProjectVideoEngine, normalizeVideoType } from "./controls.mjs";
+import { normalizeProjectVideoEngine, normalizeProjectVideoType } from "./controls.mjs";
 import { defaultNBImageSettings } from "./llm_runner.mjs";
 import { normalizeMiniMaxShortFilmPlanningMode } from "./minimax_h3.mjs";
+import { normalizeStoryModeFields } from "./story_mode_data.mjs";
 import { cloneKrea2ReferenceSettings } from "./models.mjs";
+import { applyGlobalLlmKeys, rememberGlobalLlmKeys } from "./llm_global_keys.mjs";
 import {
+  applyGemmaLocalTokenLimits,
   normalizeGemmaContextLimit,
   normalizeGemmaGpuLayers,
   normalizeLmStudioContextLimit,
@@ -326,6 +329,7 @@ export function normalizeBuilderStoryLayer(value = {}) {
     lyric_story_strength: Number.isFinite(lyricStoryStrength) ? lyricStoryStrength : 7,
     image_world_style: imageWorldStyle,
     image_custom_style_direction: String(source.image_custom_style_direction || source.imageCustomStyleDirection || ""),
+    ...normalizeStoryModeFields(source),
   };
 }
 
@@ -341,6 +345,10 @@ export function normalizeBuilderStoryboardDefaults(value = {}) {
     camera_motion_speed: Number.isFinite(cameraSpeed) ? cameraSpeed : 4,
     character_motion_speed: Number.isFinite(characterSpeed) ? characterSpeed : 4,
     minimax_h3_cut_frequency: cutFrequency,
+    minimax_h3_cut_style: storyboardCutStyleValue(source.minimax_h3_cut_style ?? source.cut_style ?? source.cutStyle),
+    // The Speed and Music style presets last picked in Scene Defaults (shown again when it opens).
+    defaults_speed_preset: ["static", "slow", "medium", "fast"].includes(String(source.defaults_speed_preset || "")) ? String(source.defaults_speed_preset) : "",
+    defaults_music_preset: ["rock", "metal", "rap", "soft", "pop"].includes(String(source.defaults_music_preset || "")) ? String(source.defaults_music_preset) : "",
     camera_guidance: String(source.camera_guidance || motionDefaults.camera_guidance || ""),
     character_guidance: String(source.character_guidance || motionDefaults.character_guidance || ""),
     performance_style: String(source.performance_style || source.performanceStyle || source.performance_style_default || ""),
@@ -700,6 +708,7 @@ export function createModelSettings({
     if (Object.prototype.hasOwnProperty.call(defaults, "gemma_output_token_limit") || Object.prototype.hasOwnProperty.call(defaults, "gemmaOutputTokenLimit") || legacyLlmMaxTokens != null) {
       state.gemmaOutputTokenLimit = normalizeOutputTokenLimit(defaults.gemma_output_token_limit ?? defaults.gemmaOutputTokenLimit ?? legacyLlmMaxTokens ?? state.gemmaOutputTokenLimit);
     }
+    applyGemmaLocalTokenLimits(state);
     if (defaults.lm_studio_base_url || defaults.lmStudioBaseUrl) {
       state.lmStudioBaseUrl = defaults.lm_studio_base_url || defaults.lmStudioBaseUrl || state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
     }
@@ -735,7 +744,7 @@ export function createModelSettings({
       state.ownServerTimeoutMinutes = normalizeOwnServerTimeoutMinutes(rawTimeout ?? state.ownServerTimeoutMinutes);
     }
     state.imageModelMode = defaults.image_model_mode || defaults.imageModelMode || defaults.flux_klein_settings?.image_model_mode || defaults.fluxKleinSettings?.image_model_mode || state.imageModelMode || "zimage";
-    state.videoType = normalizeVideoType(defaults.video_type || defaults.videoType || state.videoType);
+    state.videoType = normalizeProjectVideoType(defaults.video_type || defaults.videoType || state.videoType);
     if (defaults.zimage_settings || defaults.zimageSettings) {
       state.zimageSettings = scrubGlobalImageToImageSourceForProject(cloneZImageSettings(defaults.zimage_settings || defaults.zimageSettings), state.projectFolder);
     }
@@ -783,6 +792,8 @@ export function createModelSettings({
     try {
       const data = await getJson("/vrgdg/music_builder/model_defaults");
       const applied = applyModelDefaults(data.defaults || {});
+      rememberGlobalLlmKeys(data.global_llm_keys, data.global_llm_runner);
+      applyGlobalLlmKeys(state);
       if (applied) {
         console.log("[VRGDG Music Builder] Loaded global model defaults:", data.path || "");
       }

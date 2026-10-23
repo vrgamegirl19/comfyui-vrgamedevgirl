@@ -17,6 +17,7 @@ def load_token_helpers():
         "_llm_runner_from_payload",
         "_normalized_token_limit",
         "_runner_output_token_limit",
+        "_gemma_local_context_limit",
         "_lm_studio_context_limit",
         "_lm_studio_api_root",
         "_lm_studio_native_output_text",
@@ -24,7 +25,7 @@ def load_token_helpers():
         "_fit_output_to_context",
         "_runner_supports_json_schema",
     }
-    constants = {"_LM_STUDIO_DEFAULT_BASE_URL", "_JSON_SCHEMA_RUNNERS", "_CONTEXT_TEMPLATE_MARGIN_TOKENS", "_MIN_OUTPUT_TOKENS"}
+    constants = {"_LM_STUDIO_DEFAULT_BASE_URL", "_JSON_SCHEMA_RUNNERS", "_CONTEXT_TEMPLATE_MARGIN_TOKENS", "_MIN_OUTPUT_TOKENS", "GEMMA_LOCAL_MIN_TOKENS"}
     tree = ast.parse(BUILDER_BACKEND)
     nodes = []
     for node in tree.body:
@@ -111,7 +112,7 @@ class BuilderLlmRunnerTokenLimitTests(unittest.TestCase):
         self.assertEqual(
             64000,
             output_limit(
-                {"text_runner": "builtin", "gemma_output_token_limit": 64000},
+                {"text_runner": "builtin", "n_ctx": 65536, "gemma_output_token_limit": 64000},
                 180,
             ),
         )
@@ -127,11 +128,24 @@ class BuilderLlmRunnerTokenLimitTests(unittest.TestCase):
             context_limit({"lmstudio_context_limit": 65536}),
         )
 
+    def test_gemma_local_limits_never_go_below_16384_or_output_past_the_context(self):
+        output_limit = TOKEN_HELPERS["_runner_output_token_limit"]
+        context_limit = TOKEN_HELPERS["_gemma_local_context_limit"]
+        self.assertEqual(16384, context_limit({"n_ctx": 8000}))
+        self.assertEqual(16384, context_limit({}))
+        self.assertEqual(32768, context_limit({"n_ctx": 32768}))
+        self.assertEqual(16384, output_limit({"text_runner": "builtin", "n_ctx": 8000, "gemma_output_token_limit": 4096}, 180))
+        self.assertEqual(16384, output_limit({"text_runner": "builtin", "n_ctx": 8000}, 180))
+        self.assertEqual(32768, output_limit({"text_runner": "builtin", "n_ctx": 32768, "gemma_output_token_limit": 64000}, 180))
+        # Qwen Local shares the fields but keeps its own limits.
+        self.assertEqual(180, output_limit({"text_runner": "qwen_local", "n_ctx": 8000}, 180))
+        self.assertIn('if _llm_runner_from_payload(payload) == "builtin":\n        n_ctx = _gemma_local_context_limit(payload)', BUILDER_BACKEND)
+
     def test_pr_114_legacy_limit_migrates_but_api_runner_ignores_it(self):
         output_limit = TOKEN_HELPERS["_runner_output_token_limit"]
         self.assertEqual(
-            12000,
-            output_limit({"text_runner": "builtin", "llm_max_tokens": 12000}, 180),
+            20000,
+            output_limit({"text_runner": "builtin", "n_ctx": 32768, "llm_max_tokens": 20000}, 180),
         )
         self.assertEqual(
             12000,

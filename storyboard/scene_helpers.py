@@ -2,6 +2,8 @@ import base64
 import os
 import re
 
+from .story_mode import normalize_story_mode_fields
+
 
 def _safe_project_folder(path):
     folder = os.path.abspath(str(path or "").strip().strip('"'))
@@ -223,6 +225,8 @@ def _normalize_reference_item(value, fallback_name="Reference", fallback_id="ref
         "trigger_phrase": _clean_scene_text(item.get("trigger_phrase") or item.get("trigger") or item.get("Trigger") or "", 1200),
         "trigger_position": "end" if trigger_position == "end" else "start",
         "image": _normalize_reference_image(item.get("image") if isinstance(item.get("image"), dict) else {}),
+        # Card type and wearer, so clothing and props are never taken for people (twin of slimReferenceForRequest).
+        **{key: _clean_scene_text(item.get(key), 160) for key in ("reference_type", "wears") if str(item.get(key) or "").strip()},
         **_refmod_card_fields(item),
     }
 
@@ -309,6 +313,7 @@ def _normalize_story_layer(value):
             or source.get("imageCustomStyleDirection") or "",
             3000,
         ),
+        **normalize_story_mode_fields(source),
     }
 
 

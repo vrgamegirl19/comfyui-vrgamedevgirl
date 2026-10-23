@@ -59,7 +59,7 @@ from ..builder.timeline import (
 )
 from ..minimax.latent_manager import SceneLatentManager
 from ..minimax.scene_inputs import reference_choices, validate_reference_keys
-from ..minimax.settings_payload import minimax_h3_settings_for_scene
+from ..minimax.settings_payload import minimax_h3_settings_for_scene, validate_minimax_h3_patch
 from ..minimax.prompt_assembly import (
     assemble_minimax_h3_prompt,
     build_minimax_prompt_context,
@@ -74,6 +74,7 @@ from ..storyboard import scene_card_fields as card_fields
 from ..storyboard import session_sync
 
 from .errors import (
+    NotSupportedForModeError,
     ProjectNotFoundError,
     RevisionConflictError,
     SceneNotFoundError,
@@ -646,6 +647,26 @@ def _write_storyboard_card(folder: str, session: Dict[str, Any], scene_id: str, 
     return changed, undo
 
 
+def _validate_scene_minimax_h3_patch(legacy: Dict[str, Any]) -> None:
+    """Check a scene's ``use_scene_minimax_h3_settings`` / ``minimax_h3_settings`` against the Builder's allowed values."""
+    if "use_scene_minimax_h3_settings" in legacy and not isinstance(legacy["use_scene_minimax_h3_settings"], bool):
+        raise ValidationError("use_scene_minimax_h3_settings must be true or false.")
+    if "minimax_h3_settings" not in legacy:
+        return
+    value = legacy["minimax_h3_settings"]
+    if value is None:
+        return
+    if not isinstance(value, dict):
+        raise ValidationError("minimax_h3_settings must be an object of MiniMax H3 settings, or null.")
+    problems = validate_minimax_h3_patch(value)
+    if problems:
+        detail = "; ".join(f"minimax_h3_settings.{key}: {problem}" for key, problem in problems.items())
+        raise ValidationError(
+            f"Invalid scene MiniMax H3 settings: {detail}. See GET /settings/minimax-h3/schema.",
+            details={"invalid_fields": {f"minimax_h3_settings.{key}": problem for key, problem in problems.items()}},
+        )
+
+
 def patch_scene(
     project_id: str,
     scene_id: str,
@@ -673,6 +694,7 @@ def patch_scene(
             f"Supported fields: {', '.join(_supported_scene_fields())}, plus use_scene_* and *_settings. "
             "POST /scenes/bulk with op=patch can write other fields."
         )
+    _validate_scene_minimax_h3_patch(legacy)
     with _BUILDER_SAVE_LOCK:
         folder, session = _get_active_session_and_folder(project_id)
         current_rev = int(session.get("revision") or session.get("builder_save_revision") or 0)
@@ -726,7 +748,10 @@ def patch_scene(
             scene["lyric_no_lip_sync"] = is_instrumental_lyric_text(scene.get("lyric_text"))
 
         for key, val in legacy.items():
-            if key.startswith("use_scene_") or key.endswith("_settings"):
+            if key == "minimax_h3_settings" and isinstance(val, dict) and isinstance(scene.get(key), dict):
+                # Merge like the Builder's scene lock (project settings overlaid with the scene's own).
+                scene[key] = {**scene[key], **val}
+            elif key.startswith("use_scene_") or key.endswith("_settings"):
                 scene[key] = val
 
         prompt_changed = any(str(before.get(key) or "") != str(scene.get(key) or "") for key in _PROMPT_KEYS)
@@ -1115,6 +1140,82 @@ def get_project_references(project_id: str) -> Dict[str, Any]:
     }
 
 
+SCENE_MAPPING_INCLUDES = ("scenes",)
+
+
+def _mapped_card(card: Dict[str, Any], map_name: str) -> Dict[str, Any]:
+    """One mapped card with its RefMod source (read from the file like the RefMod render) and its picture."""
+    from ..minimax import refmod_library
+    from ..minimax.refmod_scene import is_refmod_card
+
+    refmod = None
+    if is_refmod_card(card):
+        saved = card["refmod"]
+        name = str(saved.get("name") or "").strip()
+        entry = refmod_library.find_refmod(name)
+        try:
+            strength = min(1.0, max(0.0, float(saved.get("strength", 1.0))))
+        except (TypeError, ValueError):
+            strength = 1.0
+        refmod = {
+            "name": name, "found": entry is not None,
+            "kind": (entry or {}).get("kind") or str(saved.get("kind") or "video"),
+            "tokens": int((entry or {}).get("tokens") or saved.get("tokens") or 0), "strength": strength,
+        }
+    image = card.get("image") if isinstance(card.get("image"), dict) else {}
+    path = str(image.get("path") or "").strip()
+    default_type = {"locations": "environment", "ingredients": "ingredients"}.get(map_name, "character")
+    return {
+        "map": map_name,
+        "card_id": str(card.get("id") or ""),
+        "name": str(card.get("name") or ""),
+        "reference_type": str(card.get("reference_type") or default_type),
+        "source": "refmod" if refmod else "image",
+        "refmod": refmod,
+        "picture": {"path": path, "exists": os.path.isfile(path)} if path else None,
+    }
+
+
+def get_scene_reference_overview(project_id: str, scene_id: Optional[str] = None) -> Dict[str, Any]:
+    """Every scene (or one) with the cards its scene maps name, each with its RefMod source and picture. Read-only."""
+    from ..minimax.scene_inputs import _split_ids, scene_map_value
+
+    _folder, session = _get_active_session_and_folder(project_id)
+    refs = session.get("flux_reference_builder") if isinstance(session.get("flux_reference_builder"), dict) else {}
+    maps = {name: dict(_reference_map(copy.deepcopy(session), name)) for name in _REFERENCE_MAP_KEYS}
+    cards_by_map = {
+        "subjects": refs.get("subjects") or [], "locations": refs.get("locations") or [],
+        "extras": refs.get("extra_subjects") or [], "ingredients": refs.get("ingredients_sheets") or [],
+    }
+    by_id = {name: {str(c.get("id")): c for c in cards if isinstance(c, dict)} for name, cards in cards_by_map.items()}
+    segments = sorted(session.get("segments") or [], key=lambda s: float(s.get("start", 0.0) or 0.0))
+    if scene_id is not None:
+        _segment, wanted = _sorted_scene_with_index(session, scene_id, project_id)
+    scenes = []
+    for index, segment in enumerate(segments):
+        if scene_id is not None and index != wanted:
+            continue
+        cards = []
+        for map_name in ("subjects", "extras", "locations", "ingredients"):
+            value = scene_map_value(maps[map_name], segment, index)
+            if map_name == "extras":
+                ids = [str((e or {}).get("extra_id") or (e or {}).get("extraId") or "") for e in (value if isinstance(value, list) else [])]
+            else:
+                ids = _split_ids(value)
+            for card_id in ids:
+                card = by_id[map_name].get(card_id)
+                if card is not None:
+                    cards.append(_mapped_card(card, map_name))
+        scenes.append({
+            "scene_id": str(segment.get("id") or ""), "scene_number": index + 1, "label": str(segment.get("label") or ""),
+            "no_character_present": bool(segment.get("no_character_present")), "cards": cards,
+        })
+    engine = str(session.get("video_engine") or "minimax_h3").strip().lower()
+    pipeline = "refmod" if engine in ("minimax_h3", "minimax") and str(
+        (session.get("minimax_h3_settings") or {}).get("pipeline") or "") == "refmod" else "standard"
+    return {**maps, "pipeline": pipeline, "scenes": scenes}
+
+
 def upsert_reference_subject(
     project_id: str,
     subject_id: str,
@@ -1321,10 +1422,80 @@ def _scene_reference_choices(session: Dict[str, Any], scene_id: str, project_id:
     return reference_choices(session, segment, index, mode)
 
 
+def _scene_pipeline(session: Dict[str, Any], segment: Dict[str, Any]) -> str:
+    """``refmod`` when a MiniMax H3 project renders with RefMods (the whole project switches at once), else ``standard``."""
+    engine = str(session.get("video_engine") or "minimax_h3").strip().lower()
+    if engine not in ("minimax_h3", "minimax"):
+        return "standard"
+    return "refmod" if minimax_h3_settings_for_scene(session, segment).get("pipeline") == "refmod" else "standard"
+
+
+def _scene_refmod_references(session: Dict[str, Any], segment: Dict[str, Any], index: int) -> Dict[str, Any]:
+    """The RefMods a RefMod render sends for this scene, labelled and counted the way the render does.
+
+    Same steps as ``run_video_job`` (refmod_items_for_scene, strength > 0) and ``runner/minimax_refmod.py``
+    (kind and tokens from the RefMod file via ``find_refmod``, ``assign_labels`` with ``<Audio 1>`` for input
+    audio, ``token_report``).
+    """
+    from ..minimax import refmod_library
+    from ..minimax.refmod_scene import assign_labels, refmod_items_for_scene, token_report
+
+    settings = minimax_h3_settings_for_scene(session, segment)
+    with_audio = str(settings.get("audio_mode") or "input_audio") != "built_in_audio"
+    items: List[Dict[str, Any]] = []
+    warnings: List[str] = []
+    sources: List[Dict[str, Any]] = []
+    for item in refmod_items_for_scene(session, segment, index):
+        if item["strength"] <= 0:
+            continue
+        entry = refmod_library.find_refmod(item["mod_name"])
+        source = {"type": "refmod", "refmod": item["mod_name"], "found": entry is not None,
+                  "kind": item["kind"], "frames": None, "canvas": None}
+        if entry:
+            item = {**item, "kind": entry["kind"], "tokens": int(entry.get("tokens") or 0)}
+            source.update(kind=entry["kind"], frames=entry.get("frames"), canvas=entry.get("canvas"))
+        else:
+            warnings.append(f"RefMod '{item['mod_name']}' ({item['name']}) is not in models/refmods; the render will stop on it.")
+        items.append(item)
+        sources.append(source)
+    labelled = assign_labels(items, include_audio=with_audio)
+    out = []
+    for position, entry in enumerate(labelled):
+        source = sources[position] if position < len(sources) else {"type": "scene_audio", "refmod": "", "found": True,
+                                                                      "kind": "audio", "frames": None, "canvas": None}
+        out.append({
+            "label": entry["label"], "key": entry["key"], "card_id": entry["card_id"], "name": entry["name"],
+            "category": entry["category"], "reference_type": entry["reference_type"], "kind": entry["kind"],
+            "strength": entry["strength"], "tokens": int(entry.get("tokens") or 0), "wears": entry.get("wears", ""),
+            "source": source,
+        })
+    if not items:
+        warnings.append("No RefMod is mapped to this scene; the render needs at least one.")
+    return {
+        "pipeline": "refmod",
+        "scene_id": str(segment.get("id") or ""),
+        "scene_number": index + 1,
+        "video_mode": str(settings.get("video_mode") or ""),
+        "audio_mode": "input_audio" if with_audio else "built_in_audio",
+        "items": out,
+        "labels": [item["label"] for item in out],
+        "tokens": token_report(labelled),
+        "warnings": warnings,
+        "editable": False,
+    }
+
+
 def get_scene_minimax_references(project_id: str, scene_id: str) -> Dict[str, Any]:
-    """What "Choose MiniMax References" shows for a scene: every reference it can use, and the order it sends."""
+    """The references a scene's render sends. ``pipeline`` says which view this is.
+
+    ``standard``: what "Choose MiniMax References" shows, every reference the scene can use and the order it sends.
+    ``refmod``: the RefMods the RefMod render loads, with their labels, RefMod source and token counts.
+    """
     _folder, session = _get_active_session_and_folder(project_id)
-    return _scene_reference_choices(session, scene_id, project_id)
+    segment, index = _sorted_scene_with_index(session, scene_id, project_id)
+    if _scene_pipeline(session, segment) == "refmod":
+        return _scene_refmod_references(session, segment, index)
+    return {"pipeline": "standard", **_scene_reference_choices(session, scene_id, project_id)}
 
 
 def set_scene_minimax_references(
@@ -1346,6 +1517,14 @@ def set_scene_minimax_references(
             raise RevisionConflictError(current_rev, if_match_revision)
 
         segment, _index = _sorted_scene_with_index(session, scene_id, project_id)
+        if _scene_pipeline(session, segment) == "refmod":
+            # The RefMod render ignores minimax_h3_reference_keys, so saving them would change nothing.
+            raise NotSupportedForModeError(
+                "This project renders with RefMods, which take the scene's references from the Reference Builder scene "
+                "mappings, not from a chosen MiniMax reference order. Change them with PUT /references/scene-mapping "
+                "(or PATCH the scene's subject_ids / location_id). Nothing was saved.",
+                mode="refmod", feature="minimax_h3_reference_keys",
+            )
         if automatic:
             segment["minimax_h3_reference_keys"] = None
         else:
@@ -1358,6 +1537,7 @@ def set_scene_minimax_references(
 
         save_result = _persist_session(folder, session)
         return {
+            "pipeline": "standard",
             **_scene_reference_choices(session, scene_id, project_id),
             "revision": save_result.get("revision", current_rev + 1),
         }
@@ -1891,11 +2071,16 @@ def delete_project_by_id(project_id: str, confirm: Optional[str] = None) -> Dict
 
 
 def duplicate_project(project_id: str, new_name: str, options: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Branch a project under a new name with optional asset filtering."""
-    folder = resolve_project_folder(project_id)
+    """Branch a project under a new name with optional asset filtering.
+
+    Sends the source's saved session and audio like the Builder's Save As does; without them the copy is empty.
+    """
+    folder, session = _get_active_session_and_folder(project_id)
     payload = {
         "source_project_folder": folder,
         "target_project_folder": new_name,
+        "session": copy.deepcopy(session),
+        "audio_path": str(session.get("audio_path") or ""),
         **(options or {}),
     }
     result = _save_builder_project_as(payload)

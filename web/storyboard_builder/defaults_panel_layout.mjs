@@ -1,7 +1,9 @@
 import { makeButton, makeCollapsiblePanel, makeInput, makeSelect, makeTextarea, sortOptionsAlphabetically } from "./controls.mjs";
 import { buildDefaultPresetsToolbar } from "./defaults_presets.mjs";
 import { buildDefaultsCards } from "./defaults_cards.mjs";
-import { normalizeStoryLayer, storyboardCutFrequencyValue, storyboardSpeedValue } from "./scenes.mjs";
+import {
+  normalizeStoryLayer, STORYBOARD_CUT_STYLES, storyboardCutFrequencyValue, storyboardCutStyleValue, storyboardSpeedValue,
+} from "./scenes.mjs";
 import { STORYBOARD_CAMERA_FLOW_PRESETS } from "./shot_presets.mjs";
 import {
   MINIMAX_TEMPORAL_WORLD_EFFECT_PRESETS,
@@ -240,7 +242,13 @@ export function buildSceneDefaultsPanel({
   cutFrequencyValue.style.cssText = "font-size:12px;color:#cffafe;font-weight:900;min-width:150px;";
   const cutFrequencyHint = makeDefaultButton("Hint");
   cutFrequencyHint.title = "Explain MiniMax cut frequency.";
-  cutFrequencyControls.append(cutFrequencyLabel, cutFrequencyInput, cutFrequencyValue, cutFrequencyHint);
+  // How the shots connect when the scene has cuts.
+  const cutStyleSelect = makeSelect(STORYBOARD_CUT_STYLES, storyboardCutStyleValue(state.cutStyle));
+  cutStyleSelect.style.width = "max-content";
+  cutStyleSelect.style.minWidth = "190px";
+  cutStyleSelect.title = "Free cuts: each shot can stage its own part of the scene. One continuous moment: every shot "
+    + "continues from the last moment of the shot before, in the same place and pose; only the camera angle changes.";
+  cutFrequencyControls.append(cutFrequencyLabel, cutFrequencyInput, cutFrequencyValue, cutStyleSelect, cutFrequencyHint);
   const cutFrequencyInfo = document.createElement("div");
   cutFrequencyInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
   const performanceControls = document.createElement("div");
@@ -441,7 +449,7 @@ export function buildSceneDefaultsPanel({
   }
   const defaultsPresetsToolbar = buildDefaultPresetsToolbar();
   cameraFlowBar.append(defaultsPresetsToolbar.toolbar);
-  cameraFlowBar.append(buildDefaultsCards([
+  const defaultsCards = buildDefaultsCards([
     { title: "Visual Style", settings: [
       { name: "Image aesthetic", controls: imageAestheticControls, info: imageAestheticInfo },
       { name: "Video aesthetic", controls: videoStyleControls, content: [videoStyleCustomControls], info: videoStyleInfo },
@@ -466,18 +474,19 @@ export function buildSceneDefaultsPanel({
       { name: "Custom facial text", controls: facialCustomControls, info: facialCustomInfo },
       { name: "Story arc detail", controls: storyArcDetailControls, info: storyArcDetailInfo },
     ] },
-  ]));
+  ]);
+  cameraFlowBar.append(defaultsCards);
   const sceneDefaultsPanel = makeCollapsiblePanel("Scene Defaults", "", cameraFlowBar, { open: focusedSection === "defaults" });
   sceneDefaultsPanel.firstElementChild.style.gridTemplateColumns = "auto auto minmax(0,1fr)";
   sceneDefaultsPanel.firstElementChild.lastElementChild.style.cssText += "justify-self:end;max-width:min(100%,420px);font-size:11px;";
 
   return {
-    defaultsPresetsToolbar, selectedDefaultActions,
+    defaultsCards, defaultsPresetsToolbar, selectedDefaultActions,
     cameraFlowApply, cameraFlowControls, cameraFlowInfo, cameraFlowReplace, cameraFlowSelect,
     cameraSpeedControls, cameraSpeedHint, cameraSpeedInfo, cameraSpeedInput, cameraSpeedValue,
     characterSpeedControls, characterSpeedHint, characterSpeedInfo, characterSpeedInput, characterSpeedValue,
     consistencyInfo, consistencyInput, cutFrequencyControls, cutFrequencyHint, cutFrequencyInfo,
-    cutFrequencyInput, cutFrequencyValue, facialApply, facialCustomInfo, facialCustomInput, facialInfo,
+    cutFrequencyInput, cutFrequencyValue, cutStyleSelect, facialApply, facialCustomInfo, facialCustomInput, facialInfo,
     facialReplace, facialSelect, fxControls, fxCustomControls, fxCustomInput, fxInfo, fxSelect,
     imageAestheticApply, imageAestheticControls, imageAestheticInfo, imageAestheticReplace,
     imageAestheticSelect, imageCustomStyleControls, imageCustomStyleInfo, imageCustomStyleInput,

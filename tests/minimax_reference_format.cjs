@@ -41,11 +41,13 @@ function fixture(audioMode = 'input_audio', pipeline = 'standard', structured = 
     attachRefmodLabels: text => text,
     miniMaxH3SubjectLabelMapForSegment: () => new Map(),
     enforceCastLabels: text => text,
+    storyboardMiniMaxVideoStylePreset: value => (value === '1990s_grunge'
+      ? { value, label: '1990s grunge', prompt_guidance: 'Washed-out color and flannel grit throughout.' } : { value: '', label: '', prompt_guidance: '' }),
   });
   const source = readBuilderModule('minimax_prompt.mjs');
   for (const name of ['miniMaxH3CleanSubjectNoun', 'miniMaxH3ReferenceSceneGroundingContract', 'miniMaxH3CompactReferenceShots', 'miniMaxH3CharacterReferenceBindings', 'miniMaxH3OfficialShotPlan',
     'miniMaxH3OfficialReferencePlan', 'miniMaxH3CombinedSubjectPlan', 'miniMaxH3OfficialAudioDefinition',
-    'miniMaxH3OfficialSummary', 'miniMaxH3OpeningStyle', 'miniMaxH3OfficialSoundscape',
+    'miniMaxH3OfficialSummary', 'miniMaxH3VideoStyleParts', 'miniMaxH3OpeningStyle', 'miniMaxH3DetailedOpening', 'miniMaxH3OfficialSoundscape',
     'miniMaxH3OfficialMusic', 'isRefmodPipelineActive', 'relabelRefmodPrompt',
     'miniMaxH3OfficialReferencePrompt', 'miniMaxH3ReferenceCompositionLeak', 'assertValidMiniMaxH3FinalPrompt',
     'miniMaxH3RefmodRoleText', 'repairRefmodShotDescriptions',
@@ -73,6 +75,25 @@ test('native speech generation requires inline delivery inside dialogue, indepen
   assert.doesNotThrow(() => c.assertValidMiniMaxH3FinalPrompt(plain, speakingScene, 'reference_to_video'));
   c.miniMaxH3SettingsForSegment = () => ({ audio_mode: 'input_audio' });
   assert.doesNotThrow(() => c.assertValidMiniMaxH3FinalPrompt(plain, speakingScene, 'reference_to_video', { requireNativeSpeechDelivery: true }));
+});
+
+test('a continuous-moment scene opens with the continuity paragraph; free cuts do not', () => {
+  const c = fixture();
+  c.MINIMAX_H3_CONTINUOUS_CUTS_OPENING = 'All shots follow one continuous performance.';
+  assert.equal(c.miniMaxH3DetailedOpening(scene),
+    'detailed_description:\nThe target video is in a 1990s grunge music-video style: Washed-out color and flannel grit throughout.\n\n');
+  c.miniMaxH3CutPlanForSegment = () => ({ cut_times_seconds: [2], continuous: true });
+  assert.equal(c.miniMaxH3DetailedOpening(scene),
+    'detailed_description:\nThe target video is in a 1990s grunge music-video style: Washed-out color and flannel grit throughout. All shots follow one continuous performance.\n\n');
+});
+
+test('the style look is left out where an image sets the look, and custom wording is used as typed', () => {
+  const c = fixture();
+  c.miniMaxH3ModeForSegment = () => 'image_reference_to_video';
+  assert.equal(c.miniMaxH3DetailedOpening(scene), 'detailed_description:\nThe target video is in a 1990s grunge music-video style.\n\n');
+  c.miniMaxH3ModeForSegment = () => 'reference_to_video';
+  const custom = { minimax_h3_video_style: 'custom', minimax_h3_video_style_custom: 'chalk-drawn dreamworld' };
+  assert.equal(c.miniMaxH3DetailedOpening(custom), 'detailed_description:\nThe target video is in a chalk-drawn dreamworld music-video style.\n\n');
 });
 
 test('built-in speech preserves inline tags and matches spoken words without duplicating dialogue', () => {
@@ -332,4 +353,24 @@ test('full character sheets preserve outfit and footwear; all panels are the sam
   c.miniMaxReferencePurposeText = () => purpose;
   const prompt = c.assembleMiniMaxH3OfficialPromptFromCreative(scene, 'image_reference_to_video', '<Subject 1> walks beside the stage as the camera pulls back to show her full figure.');
   assert.match(prompt, /Use <Picture 2> for <Subject 1>'s character identity, face, hair, complete outfit, footwear, accessories, and body-proportion/);
+});
+
+test('a RefMod object is used by its character, a prop is part of the set, a creature is not a thing', () => {
+  const c = fixture();
+  const pictureItems = [
+    { refmod: { category: 'character', card_id: 'a' } },
+    { refmod: { category: 'character', card_id: 'w', reference_type: 'creature' } },
+    { refmod: { category: 'object', reference_type: 'object', wears: 'w' } },
+    { refmod: { category: 'object', reference_type: 'prop' } },
+  ];
+  const role = (index, name) => c.miniMaxH3RefmodRoleText(pictureItems[index], {
+    subjectLabel: `<Subject ${index + 1}>`, pictureLabel: `<Picture ${index + 1}>`, pictureItems, shotList: '[Shot 1]', name,
+  });
+  const keys = role(2, 'car keys');
+  assert.equal(keys.role, 'object');
+  assert.match(keys.definition, /It is the car keys: show <Subject 2> holding and using it the way it is normally used/);
+  const lamp = role(3, 'floor lamp');
+  assert.equal(lamp.role, 'prop');
+  assert.match(lamp.definition, /It is the floor lamp, part of the set: place it where it naturally belongs/);
+  assert.equal(role(1, 'grey wolf'), null, 'a creature is a cast member, not a thing');
 });

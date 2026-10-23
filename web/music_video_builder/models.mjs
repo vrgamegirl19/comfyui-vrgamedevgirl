@@ -44,6 +44,12 @@ export const KREA2_MODEL_DOWNLOADS = [
   { label: "Krea2 text encoder", url: "https://huggingface.co/Comfy-Org/Krea-2/resolve/main/text_encoders/qwen3vl_4b_fp8_scaled.safetensors" },
   { label: "Krea2 VAE", url: "https://huggingface.co/Comfy-Org/Krea-2/resolve/main/vae/qwen_image_vae.safetensors" },
 ];
+export const MOSS_IMAGE_MODEL_DOWNLOADS = [
+  { label: "MOSS-Image SFT diffusion model", url: "https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/diffusion_models/moss_image_sft_bf16.safetensors" },
+  { label: "Qwen3.5 9B text encoder", url: "https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/text_encoders/qwen3.5_9b_int8_convrot.safetensors" },
+  { label: "Flux2 VAE", url: "https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/vae/flux2-vae.safetensors" },
+  { label: "8-step Turbo LoRA", url: "https://huggingface.co/lodestones/MOSS-Image-SFT-8-steps-dmd/resolve/main/lora.safetensors" },
+];
 export const DEFAULT_KREA2_REFERENCE_SETTINGS = {
   krea_unet_name: "krea2_turbo_fp8_scaled.safetensors",
   krea_clip_name: "qwen3vl_4b_fp8_scaled.safetensors",
@@ -114,6 +120,18 @@ models/
     z_image_turbo_bf16.safetensors
   vae/
     ae.safetensors`,
+  "MOSS-Image": `ComfyUI/
+models/
+  diffusion_models/
+    moss_image_sft_bf16.safetensors
+  text_encoders/
+    qwen3.5_9b_int8_convrot.safetensors
+  vae/
+    flux2-vae.safetensors
+  loras/
+    moss_image_sft_8_steps_dmd_lora.safetensors
+
+The Turbo LoRA downloads as lora.safetensors. Rename it to moss_image_sft_8_steps_dmd_lora.safetensors.`,
   "Krea2": `ComfyUI/
 models/
   diffusion_models/

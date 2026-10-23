@@ -167,7 +167,7 @@ function adapterFixture() {
   const events = [];
   const context = { state, wizardVideoSettings: { global: false }, miniMaxPassChooser: null, audioInput: { value: '' }, projectInput: { value: '/project' }, audio: { duration: 0 },
     MINIMAX_H3_MODE_OPTIONS: modeOptions.minimax_h3, MINIMAX_H3_AUDIO_MODE_OPTIONS: [{ value: 'input_audio', label: 'Input' }, { value: 'built_in_audio', label: 'Built-in' }], VIDEO_TYPE_OPTIONS: [],
-    normalizeProjectVideoEngine: x => x, normalizeVideoType: x => x, promptRunnerActionName: () => "LLM API",
+    normalizeProjectVideoEngine: x => x, normalizeProjectVideoType: x => x, normalizeVideoType: x => x, promptRunnerActionName: () => "LLM API",
     confirmAndRunGemmaVideoAll: async () => events.push("video-all"),
     makeEditorImageUrl: path => `/vrgdg/video_editor/image?path=${encodeURIComponent(path)}`,
     cloneMiniMaxH3Settings: x => ({ ...x }), cloneI2VVideoSettings: x => ({ ...x }), normalizeFluxReferenceBuilder: x => x, normalizeBuilderStoryLayer: x => x, normalizeLyricMapper: x => x,

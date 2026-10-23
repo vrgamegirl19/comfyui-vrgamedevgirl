@@ -1,6 +1,7 @@
 """MiniMax H3 reference-to-video prompt format (Python twin of the Video Builder's assembly)."""
 
 import importlib
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -23,6 +24,40 @@ class ShotPromptTests(unittest.TestCase):
         self.assertEqual(prompt, "detailed_description:\nThe target video is in a cinematic_realism music-video style.\n\n"
                                  "[Shot 1] The camera opens wide on the porch. A slow dolly moves left.")
         self.assertEqual(sp.validate_prompt(prompt, plan), prompt)
+
+    def test_continuous_cut_style_holds_one_moment_across_cuts(self):
+        plan = sp.apply_cut_style(self.plan(8.0, 5), "continuous")
+        self.assertTrue(plan["continuous"])
+        count = len(sp.shot_plan(plan))
+        descriptions = ["<Subject 1> sings on the crosswalk, lifting one hand."] + [
+            "A low-angle close-up of <Subject 1> holds on her face."] * (count - 2) + [
+            "A wide shot of <Subject 1>, continuing her step along the stripe."]
+        prompt = sp.assemble_prompt(descriptions, plan, "cinematic_realism")
+        self.assertIn(f"music-video style. {sp.CONTINUOUS_CUTS_OPENING}\n\n[Shot 1]", prompt)
+        self.assertIn(", the camera cuts, continuing directly from the final moment of Shot 1. A low-angle", prompt)
+        self.assertNotIn("final moment of Shot " + str(count - 1), prompt, "a shot that already says it continues is left alone")
+        self.assertIn(sp.CONTINUOUS_CUTS_RULES, sp.cut_plan_instruction(plan))
+        sp.validate_prompt(prompt, plan)
+
+    def test_free_cuts_and_single_shots_are_unchanged(self):
+        free = sp.apply_cut_style(self.plan(8.0, 5), "free")
+        single = sp.apply_cut_style(self.plan(4.0), "continuous")
+        self.assertFalse(free["continuous"])
+        self.assertFalse(single["continuous"], "one shot has no cuts to hold together")
+        self.assertNotIn("CONTINUOUS MOMENT", sp.cut_plan_instruction(free))
+        self.assertNotIn(sp.CONTINUOUS_CUTS_OPENING, sp.assemble_prompt(["x."] * len(sp.shot_plan(free)), free, "s"))
+
+    def test_continuous_cut_text_matches_the_video_builder(self):
+        source = (ROOT / "web" / "music_video_builder" / "minimax_prompt.mjs").read_text(encoding="utf-8")
+
+        def js_constant(name):
+            start = source.index(f"export const {name} = ")
+            end = source.index(";\n", start)
+            return "".join(re.findall(r'"((?:[^"\\]|\\.)*)"', source[start:end]))
+
+        self.assertEqual(js_constant("MINIMAX_H3_CONTINUOUS_CUTS_OPENING"), sp.CONTINUOUS_CUTS_OPENING)
+        self.assertEqual(js_constant("MINIMAX_H3_CONTINUOUS_CUTS_RULES"), sp.CONTINUOUS_CUTS_RULES)
+        self.assertIn("the camera cuts, continuing directly from the final moment of Shot ${shotNumber - 1}.", source)
 
     def test_cuts_get_timecodes_and_post_cut_text(self):
         plan = self.plan(8.0, 5)
@@ -54,15 +89,17 @@ class ShotPromptTests(unittest.TestCase):
         raw = '{"shots":[{"description":"He stands near the window. \\" A slight tension enters his jaw."}]}'
         self.assertEqual(sp.parse_shot_descriptions(raw, 1), ["He stands near the window. A slight tension enters his jaw."])
 
-    def test_lyrics_are_quoted_in_the_shot(self):
+    def test_lyrics_are_tagged_in_the_shot(self):
         lyric = "If you open up your eyes and feel the dark,\nLike the heavy world is falling all apart"
-        said = "A man paces. He sings the lyric line, If you open up your eyes and feel the dark, Like the heavy world is falling all apart."
+        tag = "<d>[English] If you open up your eyes and feel the dark, Like the heavy world is falling all apart.</d>"
+        said = "A man paces. He sings If you open up your eyes and feel the dark, Like the heavy world is falling all apart in sync with <Audio 1>."
         out = sp.ensure_quoted_lyrics([said], lyric, "<Subject 1> (dave)")
-        self.assertIn('"If you open up your eyes and feel the dark, Like the heavy world is falling all apart"', out[0])
+        self.assertEqual(out[0], f"A man paces. He sings {tag} in sync with <Audio 1>.")
         out = sp.ensure_quoted_lyrics(["A man paces slowly."], lyric, "<Subject 1> (dave)")
-        self.assertEqual(out[0], 'A man paces slowly. <Subject 1> (dave) sings the lyric line, '
-                                 '"If you open up your eyes and feel the dark, Like the heavy world is falling all apart".')
-        already = 'He sings the lyric line, "If you open up your eyes and feel the dark, Like the heavy world is falling all apart".'
+        self.assertEqual(out[0], f"A man paces slowly. <Subject 1> (dave) sings {tag} in sync with <Audio 1>.")
+        quoted = 'He sings the lyric line, "If you open up your eyes and feel the dark, Like the heavy world is falling all apart," in sync with <Audio 1>.'
+        self.assertEqual(sp.ensure_quoted_lyrics([quoted], lyric), [f"He sings {tag} in sync with <Audio 1>."])
+        already = f"He sings {tag} in sync with <Audio 1>."
         self.assertEqual(sp.ensure_quoted_lyrics([already], lyric), [already])
 
     def test_lyric_lines_are_shared_out_across_cuts_in_order(self):
@@ -75,13 +112,13 @@ class ShotPromptTests(unittest.TestCase):
         raw = '{"shots":[{"description":"He steps forward. He sings \\"I don\'t ever look back\\". Do not show a crowd."}]}'
         self.assertEqual(sp.parse_shot_descriptions(raw, 1), ['He steps forward. He sings "I don\'t ever look back".'])
 
-    def test_the_task_asks_for_the_lyric_in_quotes(self):
+    def test_the_task_asks_for_the_lyric_in_a_d_tag(self):
         plan = self.plan(4.0)
         labels = sp.reference_labels([{"kind": "subject", "label": "dave"}])
         task = sp.build_shot_task(mode_label="Reference to Video", duration=4, aspect_ratio="16:9", audio_mode="input_audio", cut_plan=plan,
                                   style="s", labels=labels, camera_speed=3, character_speed=3, lyric_text="line one\nline two")
         self.assertIn("LYRIC IN THE SHOT", task)
-        self.assertIn('<Subject 1> (dave) sings the lyric line, "the exact words"', task)
+        self.assertIn('<Subject 1> (dave) sings <d>[English] the exact words.</d> in sync with <Audio 1>', task)
         self.assertIn("Exact lyric line:\nline one line two", task)
         self.assertIn("subject label on first mention in each shot", task)
         self.assertIn("use natural pronouns and possessives", task)

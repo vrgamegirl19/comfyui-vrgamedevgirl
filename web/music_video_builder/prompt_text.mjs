@@ -4,7 +4,7 @@ import {
 } from "../storyboard_builder/performance_presets.mjs";
 import { storyboardCutPlanForDuration } from "../storyboard_builder/scenes.mjs";
 import { cancelComfyExecutionAndWaitIdle, postJson } from "./comfy_api.mjs";
-import { normalizeProjectVideoEngine, normalizeVideoType } from "./controls.mjs";
+import { normalizeProjectVideoEngine, normalizeProjectVideoType, normalizeVideoType } from "./controls.mjs";
 import { castWallText, stripCastLeaks } from "./cast_guard.mjs";
 import { sceneConceptPromptText, sceneLyricTextForPromptValidation } from "./image_prompts.mjs";
 import { normalizeMiniMaxH3Voice } from "./minimax_h3.mjs";
@@ -323,6 +323,25 @@ export function normalizeGemmaContextLimit(value) {
   return Math.max(512, Math.min(262144, Math.round(parsed)));
 }
 
+// Gemma Local fails with a smaller window, so its context and output limits never go below this.
+export const GEMMA_LOCAL_MIN_TOKENS = 16384;
+
+// Gemma Local limits: both at least GEMMA_LOCAL_MIN_TOKENS, output no higher than the context.
+// Twin of gemma_local_token_limits in agent_api/llm_runtime.py.
+export function gemmaLocalTokenLimits(contextValue, outputValue) {
+  const context = Math.max(GEMMA_LOCAL_MIN_TOKENS, normalizeGemmaContextLimit(contextValue));
+  const output = Math.max(GEMMA_LOCAL_MIN_TOKENS, Math.min(context, normalizeOutputTokenLimit(outputValue)));
+  return { context, output };
+}
+
+// Raises the saved Gemma limits to the Gemma Local floor when Gemma Local is the runner.
+export function applyGemmaLocalTokenLimits(state) {
+  if (!state || (state.textGemmaRunner || "builtin") !== "builtin") return;
+  const limits = gemmaLocalTokenLimits(state.gemmaContextLimit, state.gemmaOutputTokenLimit);
+  state.gemmaContextLimit = limits.context;
+  state.gemmaOutputTokenLimit = limits.output;
+}
+
 export function normalizeLmStudioContextLimit(value) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return 32768;
@@ -561,15 +580,21 @@ export function createPromptText({
     return Array.isArray(segments) && segments.some((segment) => String(segment?.i2v_notes || "").trim());
   }
 
+  // Story Mode scenes choose their own performance (singing or speaking); other video types use the project's.
+  function scenePerformanceForSegment(segment) {
+    if (normalizeProjectVideoType(state.videoType) !== "story") return normalizeVideoType(state.videoType);
+    return normalizeVideoType(segment?.performance_mode || "singing");
+  }
+
   function effectiveVideoPerformanceModeForSegment(segment) {
-    return segmentUsesNoLipSyncPerformance(segment) ? "no_lip_sync" : normalizeVideoType(state.videoType);
+    return segmentUsesNoLipSyncPerformance(segment) ? "no_lip_sync" : scenePerformanceForSegment(segment);
   }
 
   function videoGemmaNotesForSegment(segment) {
     const notes = String(segment?.i2v_notes || "").trim();
     const facialNote = facialPerformanceNoteForSegment(segment);
     const writingRules = videoPromptWritingRulesNote();
-    const performanceMode = normalizeVideoType(state.videoType);
+    const performanceMode = scenePerformanceForSegment(segment);
     const noCharacterNote = segment?.no_character_present
       ? "Subject visibility: no main character is present in this scene. Do not include, mention, show, imply, or describe the mapped character/subject/performer. Build the shot from the location, props, environment, objects, atmosphere, and camera motion instead."
       : "";
@@ -706,7 +731,7 @@ export function createPromptText({
 
   function vocalDirectiveForSegment(segment) {
     if (segment?.no_character_present) return "";
-    const performanceMode = normalizeVideoType(state.videoType);
+    const performanceMode = scenePerformanceForSegment(segment);
     if (performanceMode === "no_lip_sync" || segmentUsesNoLipSyncPerformance(segment)) return "";
     const rawLyricText = String(segment?.lyric_text || "").trim();
     const lyricText = quoteOrderedLyricCues(rawLyricText).trim();
@@ -757,7 +782,7 @@ export function createPromptText({
 
   function vocalClauseForSegment(segment) {
     if (segment?.no_character_present) return null;
-    const performanceMode = normalizeVideoType(state.videoType);
+    const performanceMode = scenePerformanceForSegment(segment);
     if (performanceMode === "no_lip_sync" || segmentUsesNoLipSyncPerformance(segment)) return null;
     const rawLyricText = String(segment?.lyric_text || "").trim();
     const lyricText = quoteOrderedLyricCues(rawLyricText).trim();
@@ -788,7 +813,7 @@ export function createPromptText({
   }
 
   function applyVocalDirectiveToVideoPrompt(prompt, segment, options = {}) {
-    const performanceMode = normalizeVideoType(state.videoType);
+    const performanceMode = scenePerformanceForSegment(segment);
     const isVisualOnly = performanceMode === "no_lip_sync" || segmentUsesNoLipSyncPerformance(segment);
     const base = String(prompt || "")
       .replace(/^\s*No visible subject sings or lip-syncs in this shot;\s*this is an instrumental or no-vocal visual moment\.\s*/i, "")

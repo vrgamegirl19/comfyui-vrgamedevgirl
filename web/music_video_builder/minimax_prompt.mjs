@@ -7,6 +7,7 @@ import {
   normalizeStoryboardCustomCameraFlowSequence,
   STORYBOARD_CAMERA_FLOW_PRESETS,
 } from "../storyboard_builder/shot_presets.mjs";
+import { storyboardMiniMaxVideoStylePreset } from "../storyboard_builder/video_style.mjs";
 import { normalizeVideoType, toast } from "./controls.mjs";
 import { miniMaxEffectiveCueEnd, miniMaxH3CueTimingText, miniMaxH3PerformerLabel } from "./lyric_cues.mjs";
 import {
@@ -46,6 +47,9 @@ export function miniMaxDialogueOrderText(segment) {
     return `${index + 1}. ${timing}${cue.speaker_name || "The assigned speaker"} says exactly: “${cue.text}”`;
   }).join("\n");
 }
+
+const MINIMAX_H3_NO_LIP_SYNC_LINE = "No one on screen sings, speaks or lip-syncs; mouths stay relaxed or closed.";
+const MINIMAX_H3_NO_VOICES_LINE = "The audio has ambience and sound effects only, no voices.";
 
 function stripMiniMaxH3ManagedPromptBlock(prompt, headingPattern) {
   const nextSection = String.raw`(?=\n+(?:\[\s*\d+(?:\.\d+)?s?\s*[-–—]\s*\d+(?:\.\d+)?s?\s*\]|Audio(?:\s+1)?\s*:|Native\s+audio\s*:|Continuity\s*:|MINIMAX NATIVE VOICE IDENTITY — MANDATORY AND VERBATIM:|REFERENCE SUBJECT COUNT — MANDATORY:|VISUAL-ONLY B-ROLL / NO-LIP-SYNC SAFETY — MANDATORY AND FINAL:|PREVIOUS-SCENE (?:SPATIAL|EXACT FRAME) CONTINUITY — MANDATORY:)|$)`;
@@ -181,6 +185,40 @@ function miniMaxH3OfficialShotPlan(cutPlan = {}) {
   ];
 }
 
+// Cut style "One continuous moment": every cut keeps one unbroken performance and only moves the camera.
+// Python twin: minimax/shot_prompt.py (CONTINUOUS_CUTS_OPENING, CONTINUOUS_CUTS_RULES, continuous_cut_plan).
+export const MINIMAX_H3_CONTINUOUS_CUTS_OPENING = "All shots follow one continuous performance, preserving every "
+  + "person's exact position, body orientation, posture, and ongoing movement across every camera cut. Each new shot "
+  + "continues directly from the final physical moment of the previous shot, with only the camera angle and framing changing.";
+
+export const MINIMAX_H3_CONTINUOUS_CUTS_RULES = "CONTINUOUS MOMENT ACROSS CUTS — MANDATORY: All shots are one unbroken "
+  + "moment filmed from different camera angles. Each later shot starts exactly where the previous shot ended: the same "
+  + "spot, the same position and body orientation, the same wardrobe, props, light and weather, and the action already "
+  + "in progress. Only the camera angle, distance and framing change at a cut. The action may move forward naturally "
+  + "(a step, a turn, a gesture finishing), but never jumps in time, never resets a pose, and never moves anyone to a new "
+  + "place. Begin each later description by naming the new framing and what it continues from, for example: 'the camera "
+  + "cuts to a low-angle close-up of <Subject 1>, continuing her raised-hand gesture from the shot before'.";
+
+// A later shot of a continuous-moment scene says what it carries on from (Python: continuous_cut_text).
+export function miniMaxH3ContinuousCutText(text, shotNumber) {
+  const value = String(text || "");
+  if (/\bcontinu/i.test(value)) return value;
+  const carried = `the camera cuts, continuing directly from the final moment of Shot ${shotNumber - 1}.`;
+  if (/^the camera cuts\./i.test(value)) return value.replace(/^the camera cuts\./i, carried);
+  return `${carried} ${value}`;
+}
+
+// The cut plan with the cut style applied: a plan with cuts gains ``continuous`` and the rules in its instruction.
+export function miniMaxH3ApplyCutStyle(cutPlan = {}, cutStyle = "free") {
+  const cuts = Array.isArray(cutPlan.cut_times_seconds) ? cutPlan.cut_times_seconds : [];
+  if (cutStyle !== "continuous" || !cuts.length) return { ...cutPlan, continuous: false };
+  return {
+    ...cutPlan,
+    continuous: true,
+    instruction: `${String(cutPlan.instruction || miniMaxH3OfficialCutPlanInstruction(cutPlan)).trim()} ${MINIMAX_H3_CONTINUOUS_CUTS_RULES}`,
+  };
+}
+
 export function miniMaxH3OfficialCutPlanInstruction(cutPlan = {}) {
   const duration = Number(cutPlan.exact_duration_seconds || 0);
   const exactDuration = Number.isFinite(duration) ? Number(duration.toFixed(3)) : 0;
@@ -223,6 +261,7 @@ function stripMiniMaxH3FixedSectionsFromCreative(prompt) {
   text = stripMiniMaxH3ManagedPromptBlock(text, "MINIMAX NATIVE VOICE IDENTITY — MANDATORY AND VERBATIM");
   text = stripMiniMaxH3ManagedPromptBlock(text, "REFERENCE SUBJECT COUNT — MANDATORY");
   text = stripMiniMaxH3ManagedPromptBlock(text, "VISUAL-ONLY B-ROLL / NO-LIP-SYNC SAFETY — MANDATORY AND FINAL");
+  for (const line of [MINIMAX_H3_NO_LIP_SYNC_LINE, MINIMAX_H3_NO_VOICES_LINE]) text = text.split(line).join("");
   return text.replace(/\n{3,}/g, "\n\n").trim();
 }
 
@@ -352,6 +391,85 @@ function miniMaxH3CleanSubjectNoun(value, fallback = "reference") {
 
 export function miniMaxH3LiteralSceneInstruction() {
   return "LITERAL SCENE CLARITY — MANDATORY: Write natural, fluent shot prose that H3 can follow literally. Lead physical action with the person doing it; use their possessive for a body part or worn item and clear pronouns afterward. For example: '<Subject 1> steps past the ground-level camera, her boot briefly crossing the foreground.' Describe how the camera films that same action instead of independently placing a body part in the foreground and its owner elsewhere. A close-up identifies whose body part is framed; describe cropping only when needed to understand the shot. Keep ownership and spatial checks in your reasoning; finished sentences describe visible action, not explanations of anatomy or routine clothing attachment. Rewrite ambiguous scene-card or image-prompt wording into ordinary action-led sentences rather than copying it. Keep character, camera and prop positions consistent from the opening through the ending. Place loose props explicitly and use only objects supported by this scene's directions or mapped references. Carry an object from an adjacent scene only when the current scene explicitly does so. Before returning, read the shot by itself: every action has an actor, every item has a clear owner or placement, and the camera movement fits the same physical action. Resolve uncertainty with clear verbs and possessives, not explanatory qualifiers. Return only the requested shot JSON with natural visual prose.";
+}
+
+// Performance craft for any song or story: what kept faces acting, lip-sync readable and props in place on real H3
+// renders. The emotions come from each scene, never from a stock list. Twins: MINIMAX_H3_CRAFT_* in minimax/shot_prompt.py.
+export const MINIMAX_H3_CRAFT_ACTING = "PERFORMANCE CRAFT — MANDATORY: Give every visible face its own concrete expression in every shot, "
+  + "written as what the brows, eyes, smile, head and shoulders do, for example eyes narrowing, brows lifting, a slow smile spreading or the head turning away. "
+  + "Take each emotion from this scene's lyric meaning, story beat and song energy rather than a stock mood, choose two specific emotions wherever an emotion header is written, "
+  + "and let the expression change at least once in a longer shot. Scale every expression to the {style} video style and the scene's energy: "
+  + "stylized, animated or high-energy scenes use big, exaggerated expressions; realistic or quiet scenes use small, precise ones. "
+  + "Write each emotion as a visible action instead of a feeling word or a face colour: anger is a jabbed finger, gritted teeth or brows slammed down, never a red, flushed or pale face. "
+  + "Faces stay dry, with no tears, crying, wet eyes, glistening skin or sweat.";
+export const MINIMAX_H3_CRAFT_SILENT = "SILENT PEOPLE: Name every visible person who is not singing or speaking at that moment and state that their lips stay pressed together, "
+  + "with their own expression, for example '<Subject 2> watches with her lips pressed together and her brows lifted.'";
+export const MINIMAX_H3_CRAFT_FRAMING = "FACES WHILE SINGING OR SPEAKING: Unless a per-shot framing above says otherwise, frame a person who is singing or speaking "
+  + "from a medium shot to a close-up, with the camera near their eye level, so the face stays large in frame; keep wide and full-body framing for moments without vocals.";
+export const MINIMAX_H3_CRAFT_CLEAR_FACE = "Keep hands, drinks, food, hair and kisses away from a singing or speaking person's face while words are heard, "
+  + "and finish any such gesture before the vocal starts.";
+export const MINIMAX_H3_CRAFT_OPENING = "OPENING AND ENDING: Open Shot 1 on the scene's main subject, and end the last shot on a clear held state such as a pose, a look or a finished gesture.";
+export const MINIMAX_H3_CRAFT_ACTION = "ACTIONS AND PROPS: Give each shot one main action written as visible steps that reach a clear final state. "
+  + "Once a prop is picked up, put down, handed over or put on, name it with where it is in every later shot of this scene.";
+
+const MINIMAX_H3_CUE_LANGUAGES = /^(?:english|spanish|french|german|italian|portuguese|dutch|swedish|norwegian|danish|finnish|polish|czech|russian|ukrainian|greek|turkish|arabic|hebrew|hindi|bengali|urdu|japanese|korean|chinese|mandarin|cantonese|thai|vietnamese|indonesian|malay|tagalog|filipino)$/i;
+
+// The emotion header the LLM chose for a cue, with the language first. "English" when it wrote none.
+export function miniMaxH3CueHeader(header) {
+  const items = String(header || "").split(",").map((item) => item.replace(/[^\p{L}\p{N} '-]/gu, "").trim()).filter(Boolean);
+  if (!items.length) return "English";
+  if (!MINIMAX_H3_CUE_LANGUAGES.test(items[0])) items.unshift("English");
+  return items.slice(0, 5).join(", ");
+}
+
+// The canonical cue words with the LLM's delivery marks: <i> on 1–3 stressed words and <breath> between lines. The words
+// and punctuation always stay the cue's own. Marks are dropped when the LLM's words differ from the cue.
+export function miniMaxH3CueDelivery(cueText, llmBody) {
+  const canonical = String(cueText || "").trim().split(/\s+/).filter(Boolean);
+  const hasWord = (token) => /[\p{L}\p{N}]/u.test(token);
+  const wordKey = (token) => token.toLocaleLowerCase().replace(/’/g, "'").replace(/[^\p{L}\p{N}']/gu, "");
+  const marks = [];
+  let italic = false;
+  let breath = false;
+  String(llmBody || "").replace(/<\s*(\/?i|breath)\s*>/gi, " <$1> ").split(/\s+/).filter(Boolean).forEach((token) => {
+    const tag = token.match(/^<(\/?i|breath)>$/i)?.[1]?.toLowerCase();
+    if (tag === "i") italic = true;
+    else if (tag === "/i") italic = false;
+    else if (tag === "breath") breath = true;
+    else if (hasWord(token.replace(/<[^>]*>/g, ""))) {
+      marks.push({ key: wordKey(token.replace(/<[^>]*>/g, "")), stress: italic, breath });
+      breath = false;
+    }
+  });
+  const words = canonical.filter(hasWord);
+  if (!canonical.length || marks.length !== words.length || words.some((token, index) => wordKey(token) !== marks[index].key)) return canonical.join(" ");
+  const stressed = marks.filter((mark) => mark.stress).length;
+  const useStress = stressed > 0 && stressed <= 4;
+  let wordIndex = -1;
+  return canonical.map((token, index) => {
+    if (!hasWord(token)) return token;
+    wordIndex += 1;
+    const mark = marks[wordIndex];
+    let text = token;
+    if (useStress && mark.stress) {
+      const [, word, tail] = token.match(/^(.*?[\p{L}\p{N}'’])([^\p{L}\p{N}'’]*)$/u) || [null, token, ""];
+      text = `<i>${word}</i>${tail}`;
+    }
+    return `${mark.breath && index > 0 ? "<breath> " : ""}${text}`;
+  }).join(" ").replace(/<\/i>(\s+)<i>/g, "$1");
+}
+
+// ``hasCast``: people are visible. ``hasVocals``: someone sings or speaks. ``continuation``: the scene carries on from the previous frame.
+export function miniMaxH3PerformanceCraftInstruction({ style = "", hasCast = true, hasVocals = false, continuation = false } = {}) {
+  const lines = [];
+  if (hasCast) {
+    lines.push(MINIMAX_H3_CRAFT_ACTING.replace("{style}", String(style || "chosen").trim() || "chosen"), MINIMAX_H3_CRAFT_SILENT);
+    if (hasVocals && !continuation) lines.push(MINIMAX_H3_CRAFT_FRAMING);
+    if (hasVocals) lines.push(MINIMAX_H3_CRAFT_CLEAR_FACE);
+  }
+  if (!continuation) lines.push(MINIMAX_H3_CRAFT_OPENING);
+  lines.push(MINIMAX_H3_CRAFT_ACTION);
+  return lines.join("\n");
 }
 
 function miniMaxH3ReferenceSceneGroundingContract() {
@@ -757,18 +875,12 @@ export function createMiniMaxPrompt({
     return lines.join("\n");
   }
 
+  // Instrumental / B-roll: one line so no one on screen lip-syncs. Python twin: llm/video_prompt_generation.py.
   function miniMaxH3VisualOnlySafetyBlock(segment) {
     if (!segmentUsesNoLipSyncPerformance(segment)) return "";
-    const builtInAudio = miniMaxH3SettingsForSegment(segment).audio_mode === "built_in_audio";
-    return [
-      "VISUAL-ONLY B-ROLL / NO-LIP-SYNC SAFETY — MANDATORY AND FINAL:",
-      "This scene is explicitly B-roll / visual-only. This safety block overrides any conflicting lyric, singer, speaker, dialogue, voice, timestamp, facial-performance, or mouth instruction elsewhere in the prompt.",
-      "No visible subject sings, speaks, raps, whispers, lip-syncs, mouths words, or performs the saved lyric. Keep every visible mouth naturally relaxed or closed and use only visual acting, physical action, dancing without vocal performance, camera motion, and environmental motion.",
-      builtInAudio
-        ? "Built-in MiniMax Audio: generate only requested environmental ambience and sound effects. Do not generate speech, singing, dialogue, lyrics, narration, voices, or vocal layers."
-        : "Input Audio: preserve Audio 1 completely unchanged as the soundtrack and timing reference, including any audible vocals, but treat those vocals as off-screen soundtrack only. No visible subject may synchronize to them.",
-      "Treat the saved lyric only as hidden mood/story context; never quote it as dialogue or describe anyone performing it.",
-    ].join("\n");
+    return miniMaxH3SettingsForSegment(segment).audio_mode === "built_in_audio"
+      ? `${MINIMAX_H3_NO_LIP_SYNC_LINE} ${MINIMAX_H3_NO_VOICES_LINE}`
+      : MINIMAX_H3_NO_LIP_SYNC_LINE;
   }
 
   function applyMiniMaxH3NativeVoiceBlock(prompt, segment) {
@@ -784,6 +896,7 @@ export function createMiniMaxPrompt({
       clean,
       "VISUAL-ONLY B-ROLL / NO-LIP-SYNC SAFETY — MANDATORY AND FINAL",
     );
+    for (const line of [MINIMAX_H3_NO_LIP_SYNC_LINE, MINIMAX_H3_NO_VOICES_LINE]) clean = clean.split(line).join("").trim();
     const visualOnlyBlock = miniMaxH3VisualOnlySafetyBlock(segment);
     const safePrompt = visualOnlyBlock ? stripMiniMaxH3VisualOnlyTimelineVocalDirections(clean) : clean;
     const block = visualOnlyBlock ? "" : miniMaxH3NativeVoiceBlock(segment);
@@ -1002,8 +1115,8 @@ export function createMiniMaxPrompt({
     ];
   }
 
-  // Seconds a continued scene simply carries on before its own movement begins. The author sets it per scene: at least
-  // 0.5 s in and at most half of the scene, 0.5 s when nothing is set.
+  // Seconds a continued scene simply carries on before its own movement begins. The author sets it per scene: from
+  // 0 s (the first frame) up to half of the scene, 0 s when nothing is set.
   function miniMaxH3ContinuationHoldSeconds(segment) {
     const sceneSeconds = Math.max(0, Number(segment?.end || 0) - Number(segment?.start || 0));
     return miniMaxH3ContinuationStartSeconds(sceneSeconds, segment?.minimax_h3_continuation_start_seconds);
@@ -1020,7 +1133,9 @@ export function createMiniMaxPrompt({
     return (
       `AUTHOR'S DIRECTION FOR THIS SCENE — MANDATORY, THE FINISHED DESCRIPTION MUST CONTAIN IT: "${direction}"\n`
       + `SCENE TIMING: This scene is ${sceneLength} seconds long. The direction starts at ${holdSeconds} seconds and has to be completely finished before the scene ends, which leaves ${secondsLeft} seconds for it. Perform every action of the direction in the author's order at a brisk pace that fits those ${secondsLeft} seconds, and end the shot with the last action fully done, never cut off or left unfinished. `
-      + `Write the one shot description in two timed parts and put the timing in the text itself. First: "For the first ${holdSeconds} seconds, ..." continuing the opening frame's action with the same camera motion, framing, and pace. Then: "At about ${holdSeconds} seconds, ..." performing every action in the direction above, in the author's order and with the author's own verbs and objects, as one smooth continuous movement in the same take. `
+      + (holdSeconds > 0
+        ? `Write the one shot description in two timed parts and put the timing in the text itself. First: "For the first ${holdSeconds} seconds, ..." continuing the opening frame's action with the same camera motion, framing, and pace. Then: "At about ${holdSeconds} seconds, ..." performing every action in the direction above, in the author's order and with the author's own verbs and objects, as one smooth continuous movement in the same take. `
+        : `Write the one shot description so the direction starts from the first frame, with no timed lead-in: perform every action in the direction above, in the author's order and with the author's own verbs and objects, as one smooth continuous movement in the same take. `)
       + `If the direction needs a body position or facing different from Attached Picture 1 (for example standing up, walking, or turning), first describe the natural movement that gets the subject there, inside the same take. `
       + `Do not skip or replace any action in the direction. If it is a lot for the time left, perform its actions in quicker succession rather than leaving any out. Never cut, change shot, or restart the action to reach it. Write it as the shot's one movement: if the mapped location differs from the previous scene's, let that same movement carry the shot into the new location instead of adding a second one. `
       + `Finish by stating where the shot ends.`
@@ -1102,8 +1217,11 @@ export function createMiniMaxPrompt({
           + `Let directional motion and natural motion blur carry the complete image across the location boundary, then resolve the same movement and screen direction clearly inside ${currentName}. Preserve the subject's action, rhythm, and camera momentum throughout.`
         ),
         masked: (
-          `LOCATION PHASE — MASKED CONTINUATION TRANSITION: The renderer already holds the previous scene's last moments, so for the first ${holdSeconds} seconds simply continue the opening frame's action in ${previousName} with the same subject, framing, pace, and camera motion. No cut, no change of angle, and no new setup. `
-          + `At about ${holdSeconds} seconds, begin ONE smooth, motivated movement that carries the shot into ${currentName}. Choose the movement that best suits the opening frame: a camera move (push-in, pull-back, pan, tilt, track, or arc around the subject) or a natural subject move (turning, stepping through, walking on) that the camera follows. `
+          `LOCATION PHASE — MASKED CONTINUATION TRANSITION: The renderer already holds the previous scene's last moments, `
+          + (holdSeconds > 0
+            ? `so for the first ${holdSeconds} seconds simply continue the opening frame's action in ${previousName} with the same subject, framing, pace, and camera motion. No cut, no change of angle, and no new setup. At about ${holdSeconds} seconds, `
+            : `so from the first frame carry on the opening frame's action in ${previousName} with the same subject, framing, pace, and camera motion. No cut, no change of angle, and no new setup. From the first frame, `)
+          + `begin ONE smooth, motivated movement that carries the shot into ${currentName}. Choose the movement that best suits the opening frame: a camera move (push-in, pull-back, pan, tilt, track, or arc around the subject) or a natural subject move (turning, stepping through, walking on) that the camera follows. `
           + `Let the surroundings change progressively through that movement and its parallax, with no wipe, flash, portal, morph, or cut. Describe the move and where the shot has arrived when it finishes.${performanceLine}`
         ),
         creative_auto: (
@@ -1212,7 +1330,7 @@ export function createMiniMaxPrompt({
       "SHOT FORMAT — MANDATORY: Write concise complete sentences, with length and action complexity suited to the available shot time, in this order. "
       + "1) Camera: the opening framing, one named camera move with its direction and speed, and the ending framing. "
       + "2) Subject action: each person in the cast does their own continuous physical action, written by what the body does. "
-      + "3) Acting detail: include only context-supported expression or reaction that fits naturally inside the existing action and available time. "
+      + "3) Acting detail: each visible face's concrete expression for this moment, as the PERFORMANCE CRAFT rules below describe. "
       + "4) Light and set: one short line using only the mapped location's own light and objects. "
       + "Describe only what the camera sees. Show emotion through visible acting; requested emotion descriptors are permitted inside performance tags. Avoid abstract feeling words such as feel, grief, longing, memory, soul, or emotional in the visual prose. "
       + "Write complete grammatical prose, not notes, labels, or fragments, and do not replace named subjects with S1/S2 shorthand. "
@@ -1264,7 +1382,10 @@ export function createMiniMaxPrompt({
         if (!performerLabelSet.has(item.label)) return "does NOT sing, speak, or lip sync; acts and reacts silently with a relaxed closed mouth";
         return cueMapMode
           ? "SINGS and lip-syncs only its assigned cue lines from the Performer / vocal cue map, with a relaxed closed mouth at every other moment"
-          : "SINGS and lip-syncs the exact lyric line with visible mouth, lip, and jaw movement";
+          : nativeAudio
+            ? "SINGS and lip-syncs the exact lyric line with visible mouth, lip, and jaw movement"
+            // Supplied audio drives the mouth, so the prose describes the face and body (SUPPLIED-AUDIO SINGING below).
+            : "SINGS the exact lyric line in sync with <Audio 1>, acting it with the face and body";
       }
       return "";
     };
@@ -1290,11 +1411,17 @@ export function createMiniMaxPrompt({
         "CAST FOR THIS SCENE — MANDATORY: Character names in the scene text below have been replaced by these labels. Identify each character by its subject label on first mention in each shot, then use natural pronouns and possessives when the actor is unambiguous. For a single character, continue with she/he/they and her/his/their rather than repeating the label for every action. With multiple characters, repeat a label when the actor or speaker changes or a pronoun would be ambiguous. Do not append character names or picture origins in parentheses. Each role below comes from the user's Map Performers and Review Lines settings and must be followed exactly.",
         ...subjectLabelEntries.map((item) => {
           const role = subjectRole(item);
-          return `- ${item.label} (${item.name || "mapped subject"})${role ? `: ${role}` : ""}`;
+          // A creature is in the cast like a character, but it moves and behaves as the creature its name says.
+          const creature = item.referenceType === "creature"
+            ? `a creature (${item.name || "creature"}): it acts in the scene like a character, with its own actions, and moves and behaves the way that creature naturally would`
+            : "";
+          const roleText = [creature, role].filter(Boolean).join("; ");
+          return `- ${item.label} (${item.name || "mapped subject"})${roleText ? `: ${roleText}` : ""}`;
         }),
         `ONLY THESE PEOPLE APPEAR — MANDATORY: ${subjectLabelEntries.map((item) => `${item.label} (${item.name || "mapped subject"})`).join(", ")}. No other person, hand, arm, shadow, reflection, silhouette, or crowd appears in any shot. Labels and subsequent pronouns refer to the same established characters.`,
       ].join("\n"));
-      // Clothing, props and vehicles are things in the scene, not cast members: say how each one appears.
+      // Clothing, objects, props and vehicles are things in the scene, not cast members: say how each one appears.
+      // The card name says what the thing is (gun, car keys, floor lamp), so the writer uses it as that.
       const accessoryEntries = Array.from(new Map(
         Array.from(subjectLabelMap.values())
           .filter((item) => (item.kind === "clothing" || item.kind === "object") && item.label)
@@ -1303,16 +1430,18 @@ export function createMiniMaxPrompt({
       if (accessoryEntries.length) {
         const mainLabel = subjectLabelEntries[0]?.label || "the main character";
         parts.push([
-          "WARDROBE AND PROPS — MANDATORY: These labels are things, not people. Never give one a face, a pose, an action, dialogue or a place of its own, and never list one among the people in a shot. Name each one only as part of what a person wears, holds or stands beside.",
+          "WARDROBE, OBJECTS AND PROPS — MANDATORY: These labels are things, not people. Never give one a face, a pose, an action, dialogue or a will of its own, and never list one among the people in a shot. The name in parentheses says what each thing is: use it as exactly that kind of thing, the way it is normally worn, held, used or placed.",
           ...accessoryEntries.map((item) => {
             const label = `${item.label} (${item.name || "reference"})`;
             if (item.kind === "clothing") {
               const wearer = subjectLabelEntries.find((entry) => item.wears && entry.cardId === item.wears)?.label || mainLabel;
               return `- ${label} is clothing worn by ${wearer}: write ${wearer} wearing it in every shot where ${wearer} appears.`;
             }
-            if (item.referenceType === "vehicle") return `- ${label} is a vehicle: show ${mainLabel} driving it, or standing in front of or beside it.`;
-            if (item.referenceType === "creature" || item.referenceType === "animal") return `- ${label} is a ${item.referenceType} present in the scene next to ${mainLabel}; it moves as a ${item.referenceType} would and never speaks or sings.`;
-            return `- ${label} is a prop: place it in the scene and show ${mainLabel} holding it, using it, or standing next to it.`;
+            const thing = item.name || "item";
+            if (item.referenceType === "vehicle") return `- ${label} is a vehicle (${thing}): show ${mainLabel} driving it, or standing in front of or beside it.`;
+            if (item.referenceType === "prop") return `- ${label} is a prop (${thing}) that is part of the set: place it where it naturally belongs in the scene and stage the action around it. Nobody needs to hold it, and it stays where it is unless a person moves it.`;
+            const user = subjectLabelEntries.find((entry) => item.wears && entry.cardId === item.wears)?.label || mainLabel;
+            return `- ${label} is an object (${thing}) used by ${user}: show ${user} holding and using it the way it is normally used, in the shots where ${user} appears.`;
           }),
         ].join("\n"));
       }
@@ -1355,7 +1484,9 @@ export function createMiniMaxPrompt({
     } else if (lyricText) {
       parts.push("MANDATORY VOCAL PERFORMANCE: The assigned subject is visibly singing the exact supplied lyric/audio during this scene. Use the stable visible subject label, " + (nativeAudio
         ? "and place every performed lyric cue inside <d>[English] exact words with final punctuation.</d>. "
-        : "and write the exact lyric words, unchanged, inside the shot description in double quotes, introduced like this: <Subject 1> sings the lyric line, \"the exact words\". Every lyric line given below must appear in a shot, in order. ") + "Show clear, natural mouth, lip, jaw, and facial movement synchronized to the audible vocal. Never describe the lips as closed, still, motionless, or sealed while the assigned vocal is being performed. Body action is required in addition to lip sync; it does not replace lip sync. Non-verbal vocals such as oooh, ah, humming, and sustained notes still require visible mouth movement. Mention the visible singing action naturally in the shot descriptions.");
+        : "and write the exact lyric words, unchanged, inside <d>[English] exact words with final punctuation.</d>, introduced like this: <Subject 1> sings <d>[English] the exact words.</d> in sync with <Audio 1>. Every lyric line given below must appear in a shot, in order. ") + (nativeAudio
+        ? "Show clear, natural mouth, lip, jaw, and facial movement synchronized to the audible vocal. Never describe the lips as closed, still, motionless, or sealed while the assigned vocal is being performed. Body action is required in addition to lip sync; it does not replace lip sync. Non-verbal vocals such as oooh, ah, humming, and sustained notes still require visible mouth movement. "
+        : "Audio 1 drives the singer's mouth, so act the line with the face and body. Body action is required in addition to the singing. ") + "Mention the visible singing action naturally in the shot descriptions.");
       add(parts, "Exact lyric line", lyricText);
     } else {
       parts.push("Vocal performance: no exact lyric or dialogue is assigned to this scene.");
@@ -1410,6 +1541,12 @@ export function createMiniMaxPrompt({
     if (!nativeAudio && performanceMode === "singing") {
       parts.push("SUPPLIED-AUDIO SINGING: Include the assigned singer and Audio 1 synchronization cue once, only during audible vocals. Do not describe mouth, lip or jaw movement or ask for singing from the first frame. Preserve any supplied vocal timing; introductory silence remains non-vocal.");
     }
+    parts.push(miniMaxH3PerformanceCraftInstruction({
+      style: miniMaxH3OpeningStyle(segment),
+      hasCast: !segment?.no_character_present && subjectLabelEntries.length > 0,
+      hasVocals: Boolean(lyricText) && !visualOnly && performanceMode !== "no_lip_sync",
+      continuation: Boolean(options.frameContinuityPrompt),
+    }));
     parts.push(miniMaxH3LiteralSceneInstruction());
     const context = parts.join("\n\n");
     return omitLyricsForSegment(segment) ? lyricFreeContextForSegment(segment, mode, context) : context;
@@ -1646,11 +1783,17 @@ export function createMiniMaxPrompt({
     // `"; S2 plays bass...`. Remove only the duplicate lyric/tag/timing
     // material, then append the one canonical cue below.
     const cueText = miniMaxH3CapitalizeCueText(miniMaxH3PunctuatedCueText(cue.text));
-    const emotionDescriptor = hasEmotionExpressionInput(segment, state)
-      ? (text.match(/<d>\s*\[([^\]]+)\]/i)?.[1] || "English") : "English";
+    // The LLM's emotion header and delivery marks are kept on the cue's own words.
+    const llmCue = text.match(/<d>\s*(?:\[([^\]]*)\])?\s*([\s\S]*?)<\/d>/i);
+    const emotionDescriptor = miniMaxH3CueHeader(llmCue?.[1]);
+    const deliveredCue = miniMaxH3CueDelivery(cueText, llmCue?.[2]);
+    const vocalStart = Number(cue.vocal_start);
+    const vocalEnd = Number(cue.vocal_end);
+    const vocalWindow = cue.vocal_start != null && cue.vocal_end != null && Number.isFinite(vocalStart) && Number.isFinite(vocalEnd) && vocalEnd > vocalStart
+      ? ` from ${Number(vocalStart.toFixed(2))} s to ${Number(vocalEnd.toFixed(2))} s` : "";
     // Remove a previously generated canonical contract before adding the
     // authoritative one below. This keeps retries idempotent.
-    text = text.replace(/<Subject\s+\d+>[^.\n]*?is the only visible performer singing and lip-syncing[\s\S]*?every other visible performer remains silent\.?/gi, "");
+    text = text.replace(/<Subject\s+\d+>[^.\n]*?is the only visible performer singing\b[\s\S]*?every other visible performer remains silent\.?/gi, "");
     const cueVariants = [String(cue.text || "").trim(), cueText.replace(/[.!?…]+$/, "").trim()]
       .filter(Boolean)
       .sort((left, right) => right.length - left.length);
@@ -1676,12 +1819,13 @@ export function createMiniMaxPrompt({
       .trim();
     if (!clean) clean = miniMaxH3FallbackShotDescription(segment, shotIndex, mode);
     clean = clean.replace(/[,;:]\s*([.!?…])/g, "$1").replace(/\s+,/g, ",");
-    const vocalContract = `${performer} is the only visible performer singing and lip-syncing <d>[${emotionDescriptor}] ${cueText}</d> from <Audio 1>; every other visible performer remains silent.`;
+    // No "lip" words here: supplied-audio singing strips them, and with them this whole clause.
+    const vocalContract = `${performer} is the only visible performer singing, in sync with <Audio 1>${vocalWindow}, <d>[${emotionDescriptor}] ${deliveredCue}</d>; every other visible performer remains silent.`;
     return normalizeMiniMaxH3ShotDescription(`${clean.replace(/[.!?…]+$/g, "").trim()}. ${vocalContract}`);
   }
 
-  // The saved prompt must say what the character sings, so the lyric goes in the shot in double quotes. The LLM is asked
-  // to do this; this quotes a plain copy of the lyric, or adds the sentence, so it never depends on the LLM. Lyric lines
+  // The saved prompt must say what the character sings, so the lyric goes in the shot as <d>[English] words.</d>. The LLM
+  // is asked to do this; this tags a quoted or plain copy of the lyric, or adds the sentence, so it never depends on the LLM. Lyric lines
   // are shared across the cuts in order. Only plain singing scenes on the project audio are touched.
   function miniMaxH3EnsureQuotedLyricInShot(segment, description, shotIndex, shotCount, mode = miniMaxH3ModeForSegment(segment)) {
     const text = String(description || "");
@@ -1710,16 +1854,19 @@ export function createMiniMaxPrompt({
         if (words(match[1]).join(" ").includes(chunkWords.join(" "))) return text;
       }
     }
-    for (const match of text.matchAll(/["“]([^"”]+)["”]/g)) {
-      if (words(match[1]).join(" ").includes(lead)) return text;
+    const dialogueTag = (lyric) => `<d>[English] ${miniMaxH3CapitalizeCueText(miniMaxH3PunctuatedCueText(String(lyric || "").trim().replace(/[ ,;:]+$/g, "")))}</d>`;
+    // A quoted lyric becomes a <d> tag: `sings the lyric line, "X",` -> `sings <d>[English] X.</d>`.
+    for (const match of text.matchAll(/(\bthe lyric line,?\s*)?["“]([^"”]+)["”],?/gi)) {
+      if (!words(match[2]).join(" ").includes(lead)) continue;
+      return `${text.slice(0, match.index)}${dialogueTag(match[2])}${text.slice(match.index + match[0].length)}`;
     }
     const plain = new RegExp(chunkWords.map((word) => escapeRegExp(word)).join("[\\W_]*"), "i").exec(text.replace(/’/g, "'"));
     if (plain) {
-      return `${text.slice(0, plain.index)}"${text.slice(plain.index, plain.index + plain[0].length).trim()}"${text.slice(plain.index + plain[0].length)}`;
+      return `${text.slice(0, plain.index)}${dialogueTag(text.slice(plain.index, plain.index + plain[0].length))}${text.slice(plain.index + plain[0].length)}`;
     }
     const performers = selectedPerformerSubjectsForSegment(segment);
     const label = performers.length ? miniMaxH3PerformerLabel(performers[0], miniMaxH3SubjectLabelMapForSegment(segment, mode)) : "The singer";
-    return `${text.replace(/\s+$/g, "")} ${label} sings the lyric line, "${chunk.replace(/[ ,;]+$/g, "")}".`.trim();
+    return `${text.replace(/\s+$/g, "")} ${label} sings ${dialogueTag(chunk)} in sync with <Audio 1>.`.trim();
   }
 
   function miniMaxH3OfficialShotBodyFromDescriptions(segment, descriptions = [], mode = miniMaxH3ModeForSegment(segment)) {
@@ -1736,7 +1883,9 @@ export function createMiniMaxPrompt({
         description = stripSingingArticulation(description);
       }
       if (shot.number === 1) return `[Shot 1] ${description}`.trim();
-      const postCutDescription = miniMaxH3PostCutShotText(description).replace(/^\s*([a-z])/, (_match, letter) => letter.toUpperCase());
+      let postCutDescription = miniMaxH3PostCutShotText(description);
+      if (cutPlan.continuous) postCutDescription = miniMaxH3ContinuousCutText(postCutDescription, shot.number);
+      postCutDescription = postCutDescription.replace(/^\s*([a-z])/, (_match, letter) => letter.toUpperCase());
       return `[Shot ${shot.number}] At ${shot.timecode}, ${postCutDescription}`.trim();
     }).join("\n\n");
     if (normalizeMiniMaxH3Mode(mode) === "image_reference_to_video") {
@@ -1747,17 +1896,16 @@ export function createMiniMaxPrompt({
     return body;
   }
 
-  // In the RefMod pipeline clothing, props and vehicles are not cast members. The prompt writer is told how each one
-  // appears: clothing is worn by its character, a vehicle is driven by or stood beside by the main character, and a
-  // prop is placed in the scene next to them. Returns null for everything else (people, extras, setting, style).
+  // In the RefMod pipeline clothing, objects, props and vehicles are not cast members. The prompt writer is told how each
+  // one appears: clothing is worn by its character, an object is held and used by its character, a vehicle is driven by
+  // or stood beside by the main character, and a prop is part of the set. Creatures are cast members (category
+  // character). Returns null for everything else (people, creatures, extras, setting, style).
   function miniMaxH3RefmodRoleText(item, { subjectLabel, pictureLabel, pictureItems, shotList, name }) {
     const refmod = item?.refmod;
     if (!refmod || !["clothing", "object"].includes(refmod.category)) return null;
     const labelAt = (position) => (position >= 0 ? `<Subject ${position + 1}>` : "");
     const mainLabel = labelAt(pictureItems.findIndex((other) => other?.refmod?.category === "character"));
-    const wearerLabel = refmod.category === "clothing"
-      ? labelAt(pictureItems.findIndex((other) => other?.refmod?.category === "character" && other.refmod.card_id === refmod.wears)) || mainLabel
-      : "";
+    const wearerLabel = labelAt(pictureItems.findIndex((other) => other?.refmod?.category === "character" && other.refmod.card_id === refmod.wears)) || mainLabel;
     const detail = miniMaxH3CompactReferenceDescription(String(item?.description || "").trim(), 160);
     const detailText = detail ? ` ${detail}.` : "";
     const person = mainLabel || "the main character";
@@ -1771,18 +1919,19 @@ export function createMiniMaxPrompt({
       };
     }
     const type = String(refmod.reference_type || "").toLowerCase();
-    let placement = `Place it in the scene and show ${person} holding it, using it, or standing next to it. It never acts on its own.`;
-    let noun = "prop";
+    const user = wearerLabel || person;
+    let noun = "object";
+    let placement = `It is the ${name}: show ${user} holding and using it the way it is normally used. It never acts on its own.`;
     if (type === "vehicle") {
       noun = "vehicle";
       placement = `Place it in the scene and show ${person} driving it, or standing in front of or beside it. It never moves or acts without ${person}.`;
-    } else if (type === "creature" || type === "animal") {
-      noun = type;
-      placement = `It is present in the scene next to ${person}, moving only as a ${type} would. It never speaks or sings.`;
+    } else if (type === "prop") {
+      noun = "prop";
+      placement = `It is the ${name}, part of the set: place it where it naturally belongs in the scene and stage the action around it. Nobody needs to hold it.`;
     }
     return {
       role: noun,
-      wearerLabel: "",
+      wearerLabel: noun === "object" ? user : "",
       definition: `${subjectLabel} is the ${noun} "${name}" shown in ${pictureLabel}. ${placement}${detailText}`,
       retention: `${subjectLabel} (appears in ${shotList || "[Shot 1]"}): fully_preserved - its shape, material, colours and markings remain consistent.`,
     };
@@ -2012,8 +2161,32 @@ export function createMiniMaxPrompt({
     return `[${Array.from(new Set(taskTypes)).join(" + ")}] The target video is a ${miniMaxH3OpeningStyle(segment)} scene featuring ${subjectText}.${audioText}`;
   }
 
+  // The scene's video style as its name and its look ({label, guidance}). Custom wording is the name, with no look.
+  // Python twin: video_style_label / video_style_guidance in agent_api/video_style.py.
+  function miniMaxH3VideoStyleParts(segment) {
+    const defaults = state.builderStoryboardDefaults || {};
+    const value = String(segment?.minimax_h3_video_style || defaults.video_style || "").trim();
+    if (value === "custom") {
+      const custom = segment?.minimax_h3_video_style ? segment?.minimax_h3_video_style_custom : defaults.video_style_custom;
+      return { label: String(custom || "").trim(), guidance: "" };
+    }
+    const preset = value ? storyboardMiniMaxVideoStylePreset(value) : null;
+    if (!preset || preset.value !== value) return { label: value, guidance: "" };
+    return { label: preset.label, guidance: String(preset.prompt_guidance || "").trim() };
+  }
+
   function miniMaxH3OpeningStyle(segment) {
-    return String(segment?.minimax_h3_video_style || state.builderStoryboardDefaults?.video_style || "").trim() || "photorealistic cinematic";
+    return miniMaxH3VideoStyleParts(segment).label || "photorealistic cinematic";
+  }
+
+  // The opening of detailed_description: the style line with the style's look, and the continuity paragraph for a
+  // continuous-cuts scene. The look is left out where the Storyboard does not use a video style (an image sets it).
+  function miniMaxH3DetailedOpening(segment) {
+    const continuity = miniMaxH3CutPlanForSegment(segment)?.continuous ? ` ${MINIMAX_H3_CONTINUOUS_CUTS_OPENING}` : "";
+    const { guidance } = miniMaxH3VideoStyleParts(segment);
+    const look = guidance && ["text_to_video", "reference_to_video"].includes(normalizeMiniMaxH3Mode(miniMaxH3ModeForSegment(segment)))
+      ? `: ${guidance}` : ".";
+    return `detailed_description:\nThe target video is in a ${miniMaxH3OpeningStyle(segment)} music-video style${look}${continuity}\n\n`;
   }
 
   function miniMaxH3OfficialSoundscape(segment) {
@@ -2034,13 +2207,13 @@ export function createMiniMaxPrompt({
   }
 
   function miniMaxH3OfficialReferencePrompt(segment, mode, creative) {
-    const detailed = `detailed_description:\nThe target video is in a ${miniMaxH3OpeningStyle(segment)} music-video style.\n\n${creative}`.trim();
+    const detailed = `${miniMaxH3DetailedOpening(segment)}${creative}`.trim();
     if (isRefmodPipelineActive()) return relabelRefmodPrompt(segment, mode, detailed);
     const refs = miniMaxH3CombinedSubjectPlan(segment, mode);
     if (!state.useStructuredOutputs) {
       const bindings = normalizeMiniMaxH3Mode(mode) === "image_reference_to_video"
         ? miniMaxH3CharacterReferenceBindings(creative, refs.subjects) : "";
-      return `detailed_description:\nThe target video is in a ${miniMaxH3OpeningStyle(segment)} music-video style.\n\n${bindings ? `${bindings}\n\n` : ""}${miniMaxH3CompactReferenceShots(creative, refs.subjects)}`.trim();
+      return `${miniMaxH3DetailedOpening(segment)}${bindings ? `${bindings}\n\n` : ""}${miniMaxH3CompactReferenceShots(creative, refs.subjects)}`.trim();
     }
     const audioDefinition = miniMaxH3OfficialAudioDefinition(segment);
     return [
@@ -2098,7 +2271,9 @@ export function createMiniMaxPrompt({
         .replace(/\\</g, "<")
         .replace(/\\>/g, ">")
         .replace(/\\+/g, "")
-        .replace(hasEmotionExpressionInput(segment, state) ? /<d>\s*\[[^\]]+\]/gi : /$^/g, "<d>[English]")
+        // The emotion header and the <i> / <breath> delivery marks are the LLM's choice; the words must match.
+        .replace(/<d>\s*\[[^\]]+\]/gi, "<d>[English]")
+        .replace(/<(?!\/?d>)[^>]*>/gi, "")
         .replace(/\s+/g, " ")
         .trim()
         .toLocaleLowerCase();

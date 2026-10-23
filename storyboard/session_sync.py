@@ -35,6 +35,9 @@ DEFAULT_KEY_MAP = {
     "camera_motion_speed": "camera_motion_speed",
     "character_motion_speed": "character_motion_speed",
     "minimax_h3_cut_frequency": "minimax_h3_cut_frequency",
+    "minimax_h3_cut_style": "minimax_h3_cut_style",
+    "defaults_speed_preset": "defaults_speed_preset",
+    "defaults_music_preset": "defaults_music_preset",
     "performance_style": "performance_style_default",
     "short_film_planning_mode": "short_film_planning_mode",
     "camera_flow": "camera_flow",
@@ -120,6 +123,8 @@ def _performance_mode(session: Dict[str, Any], segment: Dict[str, Any]) -> str:
     if segment.get("lyric_no_lip_sync"):
         return "no_lip_sync"
     raw = _text(session.get("video_type") or session.get("videoType")).lower().replace("-", "_").replace(" ", "_")
+    if raw in {"story", "story_mode"}:  # Story Mode scenes choose their own performance
+        raw = _text(segment.get("performance_mode")).lower() or "singing"
     return "speaking" if raw in {"speaking", "short_film", "dialogue", "dialog"} else "singing"
 
 

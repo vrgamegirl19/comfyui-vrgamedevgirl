@@ -42,6 +42,7 @@ export async function postJson(url, payload = {}, timeoutMs = 120000) {
       headers: { "Content-Type": "application/json", ...errorLogHeaders(logContext) },
       body: JSON.stringify(payload),
       signal: controller.signal,
+      timeoutMs: null,
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || data?.ok === false) {

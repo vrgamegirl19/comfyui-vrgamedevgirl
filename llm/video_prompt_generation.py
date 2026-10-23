@@ -127,24 +127,11 @@ def _format_minimax_h3_prompt(text, payload=None, instruction_key=""):
             return f"{match.group(1)}{' '.join(kept)}"
 
         cleaned = timeline_block_pattern.sub(clean_timeline_block, cleaned)
-        safety_block = (
-            "VISUAL-ONLY B-ROLL / NO-LIP-SYNC SAFETY — MANDATORY AND FINAL:\n"
-            "This scene is explicitly B-roll / no-lip-sync. This safety block overrides any conflicting lyric, singer, "
-            "song-performance, or lyric-sync instruction elsewhere in the prompt. It does not remove visible characters "
-            "or prohibit natural non-lyric interaction.\n"
-            "No visible subject sings, raps, lip-syncs, or mouths the saved lyric. Characters may appear, act, interact, "
-            "and have natural unsynchronised conversation—for example, band members backstage talking—but no visible mouth "
-            "may synchronise to the saved song.\n"
-            + (
-                "Built-in MiniMax Audio: generate only requested environmental ambience and sound effects. Do not "
-                "generate speech, singing, dialogue, lyrics, narration, voices, or vocal layers."
-                if native_audio else
-                "Input Audio: preserve Audio 1 completely unchanged as the soundtrack and timing reference, including "
-                "any audible vocals, but treat those vocals as off-screen soundtrack only. No visible subject may synchronize to them."
-            )
-            + "\nTreat the saved lyric only as hidden mood/story context; never quote it as dialogue or describe anyone performing it."
-        )
-        insert_before_first_timeline(safety_block)
+        # One line so no one on screen lip-syncs. JS twin: miniMaxH3VisualOnlySafetyBlock in minimax_prompt.mjs.
+        safety_line = "No one on screen sings, speaks or lip-syncs; mouths stay relaxed or closed."
+        if native_audio:
+            safety_line += " The audio has ambience and sound effects only, no voices."
+        insert_before_first_timeline(safety_line)
 
     if instruction_key.endswith("image_to_video") and not re.search(r"(?im)^Image\s+1\s*:", cleaned):
         image_assignment = (

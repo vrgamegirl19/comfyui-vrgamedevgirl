@@ -40,6 +40,7 @@ async function postJson(url, payload = {}, timeoutMs = 120000) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload || {}),
       signal: controller.signal,
+      timeoutMs: null,
     });
     return await readJsonResponse(response);
   } finally {
@@ -51,7 +52,7 @@ async function getJson(url, timeoutMs = 30000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await api.fetchApi(url, { signal: controller.signal });
+    const response = await api.fetchApi(url, { signal: controller.signal, timeoutMs: null });
     return await readJsonResponse(response);
   } finally {
     clearTimeout(timer);

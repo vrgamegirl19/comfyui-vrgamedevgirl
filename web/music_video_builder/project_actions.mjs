@@ -595,6 +595,7 @@ export function createProjectActions({
         const response = await api.fetchApi("/vrgdg/music_builder/import_project", {
           method: "POST",
           body: form,
+          timeoutMs: null,
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok || !data?.ok) throw new Error(String(data?.error || `Import failed (${response.status})`));

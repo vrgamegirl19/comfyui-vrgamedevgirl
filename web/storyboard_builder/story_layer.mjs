@@ -134,7 +134,9 @@ export function createStoryLayer({
   userStoryArcInput, videoStyleCustomControls, videoStyleInfo,
 }) {
   function syncStoryLayerFromInputs({ notify = false } = {}) {
+    // Spread first so Story Mode data (story book, acts, scene plan) that has no input here is kept.
     state.storyLayer = normalizeStoryLayer({
+      ...state.storyLayer,
       enabled: storyLayerEnabledInput.checked,
       overall_story_idea: overallStoryIdeaInput.value,
       user_story_arc: userStoryArcInput.value,

@@ -1,6 +1,20 @@
 // Presentation only: move existing controls without recreating them or changing state.
 let defaultsSettingId = 0;
 
+// The value a setting row shows in its header: the chosen option of its first list, else its slider or text.
+export function currentValueText(controls) {
+  const select = controls.querySelector("select");
+  const range = controls.querySelector('input[type="range"]');
+  const chosen = select
+    ? String(Array.from(select.options || select.children || []).find((item) => item.value === select.value)?.textContent || select.value || "").trim()
+    : "";
+  if (range) return chosen ? `${range.value}/10 · ${chosen}` : `${range.value}/10`;
+  if (select) return chosen || "Not set";
+  const text = controls.querySelector("textarea, input:not([type='checkbox'])");
+  const words = String(text?.value || "").trim();
+  return words ? (words.length > 40 ? `${words.slice(0, 40)}…` : words) : "Not set";
+}
+
 export function buildDefaultsCards(groups) {
   if (!document.getElementById("vrgdg-scene-defaults-card-styles")) {
     const style = document.createElement("style");
@@ -30,6 +44,7 @@ export function buildDefaultsCards(groups) {
       .vrgdg-scene-defaults-body label { min-width:0!important;max-width:100%;flex-wrap:wrap; }
       .vrgdg-scene-defaults-body > div:not(.vrgdg-scene-defaults-primary) > div:first-child { min-width:0!important;text-align:left!important; }
       .vrgdg-scene-defaults-help { font-size:12px;color:#94a3b8;line-height:1.45; }
+      .vrgdg-scene-defaults-value { flex:1 1 auto;min-width:0;margin-left:auto;color:#a5f3fc;font-size:11px;font-weight:700;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
       @keyframes vrgdg-defaults-reveal { from { opacity:0;transform:translateY(-3px); } to { opacity:1;transform:translateY(0); } }
       @media (prefers-reduced-motion:reduce) { .vrgdg-scene-defaults-body { animation:none; }.vrgdg-scene-defaults-chevron { transition:none; } }
     `;
@@ -38,6 +53,11 @@ export function buildDefaultsCards(groups) {
   const grid = document.createElement("div");
   grid.className = "vrgdg-scene-defaults-cards";
   let active = null;
+  // Each setting's header shows its current value, so a reopened panel shows what was chosen without opening rows.
+  const summaries = [];
+  grid.refreshSummaries = () => {
+    for (const update of summaries) update();
+  };
   for (const { title, settings } of groups) {
     const card = document.createElement("section");
     card.className = "vrgdg-scene-defaults-card";
@@ -62,7 +82,17 @@ export function buildDefaultsCards(groups) {
       chevron.setAttribute("aria-hidden", "true");
       chevron.classList.add("vrgdg-scene-defaults-chevron");
       chevron.innerHTML = '<path d="m2 4 4 4 4-4"/>';
-      toggle.append(label, chevron);
+      const value = document.createElement("span");
+      value.className = "vrgdg-scene-defaults-value";
+      const update = () => {
+        value.textContent = currentValueText(controls);
+        value.title = value.textContent;
+      };
+      summaries.push(update);
+      controls.addEventListener("input", update);
+      controls.addEventListener("change", update);
+      update();
+      toggle.append(label, value, chevron);
       const body = document.createElement("div");
       body.className = "vrgdg-scene-defaults-body";
       body.id = `vrgdg-scene-default-setting-${++defaultsSettingId}`;

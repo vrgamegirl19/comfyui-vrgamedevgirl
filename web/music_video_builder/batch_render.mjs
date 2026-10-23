@@ -272,6 +272,8 @@ export function createBatchRender({
           batchLabel: `Render All ${index + 1}/${scenes.length}: ${segment.label || `Scene ${sceneIndex + 1}`}`,
           autoSaveAfter: false,
           renderPhase: miniMaxProject && !forceVideos && segment.minimax_h3_draft?.id ? "finalize" : renderPhase,
+          // Finalize was chosen for the user here, so a draft made with another model renders fresh instead.
+          draftAutoFinalize: renderPhase !== "finalize",
           existingVideoAction: finalizeDrafts ? "overwrite" : forceVideos ? "backup" : "overwrite",
         };
         const renderedVideoPath = miniMaxProject

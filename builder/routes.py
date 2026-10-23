@@ -35,9 +35,9 @@ from .scene_audio_settings import require_speaking
 from .audio import _convert_audio_to_wav, _create_silent_audio, _default_audio_srt_paths, _estimate_beats_from_audio, _find_latest_capcut_beats, _load_srt_segments, _prepare_scene_audio_mix, _read_audio_peaks, _save_project_audio, _save_project_srt, _save_scene_audio, _save_single_scene_srt, _trim_scene_audio
 from .audio_stems import delete_scene_stems, list_scene_stems, render_masked_mix, scene_state, scene_states, separate_scene_stems
 from .media import _archive_scene_image, _delete_project_media, _extract_video_final_frame_as_scene_image, _import_reference_locations_from_project, _import_reference_subjects_from_project, _restore_scene_video, _save_flux_reference_image, _save_scene_image, _scan_builder_scene_videos
-from .project import _copy_latest_prompt_creator_outputs, _copy_prompt_creator_outputs_from_source, _default_context_paths, _delete_builder_project, _import_builder_project_zip, _list_builder_projects, _load_builder_session, _load_editable_text_file, _load_model_defaults, _load_prompt_json, _load_wizard_draft, _new_builder_project, _prepare_builder_project_export, _project_prompt_creator_paths, _renumber_scene_assets_after_insert, _renumber_scene_assets_after_removal, _save_builder_project_as, _save_builder_render_log, _save_builder_session, _save_editable_text_file, _save_wizard_draft
+from .project import _copy_latest_prompt_creator_outputs, _copy_prompt_creator_outputs_from_source, _default_context_paths, _delete_builder_project, _import_builder_project_zip, _list_builder_projects, _load_builder_session, _load_editable_text_file, _load_model_defaults, _load_prompt_json, _load_wizard_draft, _new_builder_project, _prepare_builder_project_export, _project_prompt_creator_paths, _renumber_scene_assets_after_insert, _renumber_scene_assets_after_removal, _save_builder_project_as, _save_builder_render_log, _save_builder_session, _save_editable_text_file, _save_global_llm_settings, _save_wizard_draft
 from ..llm.builder_instructions import _get_builder_instruction, _list_builder_instruction_presets, _load_builder_instruction_preset, _reset_builder_instruction, _save_builder_instruction, _save_builder_instruction_preset
-from ..llm.builder_runner import _clear_builder_memory_direct, _gemma_choices, _list_lm_studio_models, _list_own_server_models, _llm_multi_choices, _test_llm_api, _test_own_server
+from ..llm.builder_runner import _clear_builder_memory_direct, _gemma_choices, _generate_own_server_image, _list_lm_studio_models, _list_own_server_models, _llm_multi_choices, _test_llm_api, _test_own_server
 from ..llm.video_prompt_generation import _edit_builder_video_prompt, _enhance_builder_video_prompt, _enhance_minimax_h3_prompt, _generate_builder_chained_i2v_prompt, _generate_builder_i2v_prompt, _generate_builder_motion_notes, _generate_builder_t2v_prompt
 from ..llm.image_prompt_generation import _analyze_builder_story_references, _edit_builder_image_prompt, _generate_builder_concept_prompts, _generate_builder_reference_description, _generate_builder_t2i_prompt, _generate_flux_klein_prompt, _generate_flux_reference_location_map, _generate_flux_reference_locations, _generate_flux_reference_subjects, _generate_flux_reference_zimage_prompt, _generate_lm_scout_locations, _generate_nb_image_prompt, _generate_wizard_locations_from_lyrics
 from ..llm.builder_agent import _generate_builder_agent_reply
@@ -243,6 +243,15 @@ def _ensure_music_builder_routes():
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
 
+    @server_instance.routes.post("/vrgdg/music_builder/llm_runner")
+    async def vrgdg_music_builder_save_llm_runner(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(_save_global_llm_settings, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
     @server_instance.routes.post("/vrgdg/music_builder/new_project")
     async def vrgdg_music_builder_new_project(request):
         try:
@@ -375,6 +384,20 @@ def _ensure_music_builder_routes():
         try:
             payload = await request.json()
             result = await asyncio.to_thread(_save_flux_reference_image, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/own_server_reference_image")
+    async def vrgdg_music_builder_own_server_reference_image(request):
+        try:
+            payload = await request.json()
+
+            def _generate_and_save():
+                generated = _generate_own_server_image(payload)
+                return _save_flux_reference_image({**payload, "image_data": generated["image_data"]})
+
+            result = await asyncio.to_thread(_generate_and_save)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})

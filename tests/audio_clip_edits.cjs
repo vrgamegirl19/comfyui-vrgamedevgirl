@@ -227,7 +227,7 @@ test('switching away from speaking immediately redraws and hides the audio edito
   const source = readBuilderModule('toolbar.mjs');
   const start = source.indexOf('  videoTypeSelect.onchange = async');
   Object.assign(f.c, { state: f.state, videoTypeSelect: { value: 'no_lip_sync' },
-    normalizeVideoType: value => value, syncVideoTypeControl() {},
+    normalizeProjectVideoType: value => value, syncVideoTypeControl() {},
     pauseTimelineForEditing: () => calls.push('pause'),
     autoSaveSessionQuiet: async () => {}, VIDEO_TYPE_OPTIONS: [],
     render: () => { f.editor.renderAudioClips({ append() {} }); calls.push('render'); } });

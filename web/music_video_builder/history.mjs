@@ -19,10 +19,12 @@ import {
   normalizeAutoImg2ImgStartStep,
   normalizeContinuityMode,
   normalizeGemmaContextLimit,
+  applyGemmaLocalTokenLimits,
   normalizeGemmaGpuLayers,
   normalizeLmStudioContextLimit,
   normalizeOutputTokenLimit,
 } from "./prompt_text.mjs";
+import { applyGlobalLlmKeys } from "./llm_global_keys.mjs";
 import { normalizeLyricMapper } from "./reference_data.mjs";
 import { normalizeTimelineMarkers, normalizeTimelineRange } from "./timeline_state.mjs";
 
@@ -217,6 +219,7 @@ export function createHistory({
     syncBuilderLlmModelSelectsFromRunner();
     state.gemmaContextLimit = normalizeGemmaContextLimit(data.gemmaContextLimit ?? data.gemma_context_limit ?? data.n_ctx ?? legacyLlmMaxTokens ?? state.gemmaContextLimit);
     state.gemmaOutputTokenLimit = normalizeOutputTokenLimit(data.gemmaOutputTokenLimit ?? data.gemma_output_token_limit ?? legacyLlmMaxTokens ?? state.gemmaOutputTokenLimit);
+    applyGemmaLocalTokenLimits(state);
     state.gemmaGpuLayers = normalizeGemmaGpuLayers(data.gemmaGpuLayers ?? data.gemma_gpu_layers ?? data.n_gpu_layers ?? state.gemmaGpuLayers);
     state.lmStudioBaseUrl = data.lmStudioBaseUrl || data.lm_studio_base_url || state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
     state.lmStudioModel = data.lmStudioModel || data.lm_studio_model || state.lmStudioModel || "";
@@ -230,6 +233,9 @@ export function createHistory({
     if (previousElevenLabsProjectKey !== state.elevenLabsApiKeyProject) state.elevenLabsApiKey = state.elevenLabsApiKeyProject;
     state.llmApiKeyProject = data.llmApiKeyProject || data.llm_api_key_project || state.llmApiKeyProject || "";
     if (state.llmApiKeyProject) state.llmApiKey = state.llmApiKeyProject;
+    // Undo never brings back old LLM runner settings: the settings saved for every project win.
+    applyGlobalLlmKeys(state);
+    syncBuilderLlmModelSelectsFromRunner();
     state.notificationSettings = normalizeNotificationSettings(data.notificationSettings || data.notification_settings || state.notificationSettings);
     state.automaticMemoryCleanup = setBuilderAutomaticMemoryCleanupEnabled(data.automaticMemoryCleanup ?? data.automatic_memory_cleanup ?? state.automaticMemoryCleanup ?? false);
     state.sceneRenderWaitHours = normalizeSceneRenderWaitHours(data.sceneRenderWaitHours ?? data.scene_render_wait_hours ?? state.sceneRenderWaitHours);

@@ -13,6 +13,17 @@ from .persistence import (
     _save_storyboard,
 )
 from .scene_prompts import _build_storyboard_image_prompt, _build_storyboard_video_prompt
+from .story_book import (
+    convert_story_arc,
+    draft_story_book,
+    remove_story_people,
+    rewrite_story_chapter,
+    scan_story_cast,
+    split_pasted_story,
+)
+from .story_locations import build_story_locations
+from .story_plan import build_story_acts, build_story_scene_plan, rewrite_act_summary
+from .story_revise import revise_story_from_scene
 from .story_layer import (
     StoryArcFormatError,
     _build_story_layer_arc,
@@ -22,6 +33,21 @@ from .story_layer import (
 
 
 _VRGDG_STORYBOARD_ROUTES_REGISTERED = False
+
+# Story Mode steps behind /vrgdg/storyboard/story_mode/{action}. Each returns the story layer fields to save.
+STORY_MODE_ACTIONS = {
+    "book": draft_story_book,
+    "chapter": rewrite_story_chapter,
+    "split": split_pasted_story,
+    "convert": convert_story_arc,
+    "remove_people": remove_story_people,
+    "cast": scan_story_cast,
+    "acts": build_story_acts,
+    "plan": build_story_scene_plan,
+    "act_summary": rewrite_act_summary,
+    "locations": build_story_locations,
+    "revise_scene": revise_story_from_scene,
+}
 
 
 def _ensure_storyboard_routes():
@@ -131,6 +157,19 @@ def _ensure_storyboard_routes():
                     "cleaned_output": exc.cleaned_output,
                 },
             }, status=500)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/storyboard/story_mode/{action}")
+    async def vrgdg_storyboard_story_mode(request):
+        action = STORY_MODE_ACTIONS.get(request.match_info.get("action", ""))
+        if action is None:
+            choices = ", ".join(STORY_MODE_ACTIONS)
+            return web.json_response({"ok": False, "error": f"Unknown Story Mode step. Use one of: {choices}."}, status=400)
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(action, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, **result})

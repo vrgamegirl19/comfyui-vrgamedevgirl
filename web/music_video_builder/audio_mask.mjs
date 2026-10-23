@@ -4,7 +4,7 @@ import {
 } from "./audio_mask_store.mjs";
 import { audioUrl, postJson } from "./comfy_api.mjs";
 import { makeButton, makeCheckbox, makeInput, makeSelect, toast } from "./controls.mjs";
-import { audioSourceStart, timelineSegmentDuration } from "./timeline_state.mjs";
+import { audioSourceStart, mediaPathKey, timelineSegmentDuration } from "./timeline_state.mjs";
 import { prepareEditedAudio, speakingAudioEditsActive } from "./audio_clip_editor.mjs";
 
 // Audio Mask. A scene's audio is split into stems (vocals, drums, bass, other, and with the 6 stem model also guitar and
@@ -135,7 +135,8 @@ export function createAudioMask({
     const source = sceneSource(item);
     return Math.abs(Number(separation.duration_seconds) - source.duration) > 0.02
       || Math.abs(Number(separation.start_seconds) - source.start) > 0.02
-      || String(separation.source_path || "") !== source.audioPath;
+      // The server stores the path in its own form (backslashes, absolute), the page may hold another spelling of it.
+      || mediaPathKey(separation.source_path) !== mediaPathKey(source.audioPath);
   }
 
   function mixStale(item, data) {
@@ -178,7 +179,19 @@ export function createAudioMask({
       throw new Error("Audio changed after splitting stems. Split the scene again before building its mask.");
     }
     const settings = maskSettings(item);
-    const data = await postJson("/vrgdg/music_builder/audio_mask/render", { project_folder: folder(), scene_id: item.id, stems: settings.stems }, 120000);
+    let data;
+    try {
+      data = await postJson("/vrgdg/music_builder/audio_mask/render", { project_folder: folder(), scene_id: item.id, stems: settings.stems }, 120000);
+    } catch (error) {
+      // The files are gone on disk while the page still believed they exist. Forget them so the scene is split again
+      // (Auto stems) instead of every later edit failing the same way.
+      if (/Split this scene/i.test(String(error?.message || ""))) {
+        console.warn(`[VRGDG Audio Mask] ${item.id}: the stems are missing on disk, forgetting them.`);
+        cache.set(item.id, { ok: true, exists: false, scene_id: item.id });
+        setStemLanes(item.id, null);
+      }
+      throw error;
+    }
     cache.set(item.id, data);
     publish(item);
     return data;
@@ -191,7 +204,8 @@ export function createAudioMask({
     if (!(maskSettings(item).enabled || normalizeAudioMaskAuto(state.audioMaskAuto).enabled) || !data?.exists || splitStale(item, data)) return;
     rebuildTimers.set(item.id, window.setTimeout(async () => {
       const latest = cache.get(item.id);
-      if (!mixStale(item, latest)) return;
+      // Stems that were removed in the meantime cannot be mixed.
+      if (!latest?.exists || !mixStale(item, latest)) return;
       if (busy) {
         scheduleRebuild(item);
         return;
@@ -208,13 +222,14 @@ export function createAudioMask({
   // The stems no longer fit the scene (its length, start or audio changed, as when scenes are merged, split or resized):
   // remove them as if the mask had been deleted.
   async function removeStems(item, reason) {
+    console.warn(`[VRGDG Audio Mask] ${item.id}: removing the stems and mask settings (${reason}).`, { source: sceneSource(item), separation: cache.get(item.id)?.separation });
     cache.delete(item.id);
     delete item.audio_mask;
     setStemLanes(item.id, null);
     saveSoon();
     refreshButton();
     try {
-      await postJson("/vrgdg/music_builder/audio_mask/delete", { project_folder: folder(), scene_id: item.id }, 60000);
+      await postJson("/vrgdg/music_builder/audio_mask/delete", { project_folder: folder(), scene_id: item.id, reason: String(reason || "") }, 60000);
     } catch {
       // Files left behind are removed by the orphan check below.
     }
@@ -261,6 +276,13 @@ export function createAudioMask({
       const ids = Array.isArray(listed.scene_ids) ? listed.scene_ids : [];
       const current = new Set([...(state.segments || []), ...(state.overlaySegments || [])].map((item) => item.id));
       const now = Date.now();
+      // None of the stems on disk belongs to a scene on this page: this page is looking at other scenes, so it must not
+      // judge them. Stems are only ever swept away when some of them still match.
+      if (ids.length && ids.every((id) => !current.has(id))) {
+        console.warn("[VRGDG Audio Mask] The stems on disk match none of the scenes on this page, so none are removed.");
+        orphanSince.clear();
+        return;
+      }
       for (const id of [...orphanSince.keys()]) if (!ids.includes(id) || current.has(id)) orphanSince.delete(id);
       for (const id of ids) {
         if (current.has(id)) continue;
@@ -270,7 +292,7 @@ export function createAudioMask({
         orphanSince.delete(id);
         cache.delete(id);
         setStemLanes(id, null);
-        await postJson("/vrgdg/music_builder/audio_mask/delete", { project_folder: projectFolder, scene_id: id }, 60000);
+        await postJson("/vrgdg/music_builder/audio_mask/delete", { project_folder: projectFolder, scene_id: id, reason: "scene no longer exists" }, 60000);
       }
     } catch {
       // Tried again at the next check.
@@ -480,7 +502,9 @@ export function createAudioMask({
   const useCheck = makeCheckbox("Render this scene with the masked mix (the finished clip gets the real audio back)", false);
   const buildInfo = note("");
   const removeButton = makeButton("Remove stems");
-  buildBox.append(line(buildButton), line(previewSelect, previewPlayButton, previewStopButton), useCheck.wrapper, buildInfo, line(removeButton));
+  const rebuildAllButton = makeButton("Rebuild stems for all scenes");
+  rebuildAllButton.title = "Split every scene's audio into stems again with the model and input gain above, then rebuild each masked mix. Your mute, level and region settings are kept.";
+  buildBox.append(line(buildButton), line(previewSelect, previewPlayButton, previewStopButton), useCheck.wrapper, buildInfo, line(removeButton, rebuildAllButton));
 
   // ---- window state ----
   let open = false;
@@ -659,6 +683,61 @@ export function createAudioMask({
   buildButton.onclick = () => {
     const item = loaded();
     if (item) run("Building the masked mix...", () => buildScene(item));
+  };
+  // Splits every scene again, one at a time, and rebuilds its mix. A scene that fails is skipped and reported at the end.
+  let rebuildingAll = false;
+  let stopRebuildAll = false;
+  rebuildAllButton.onclick = async () => {
+    if (rebuildingAll) {
+      stopRebuildAll = true;
+      rebuildAllButton.textContent = "Stopping after this scene...";
+      return;
+    }
+    if (busy) return;
+    const scenes = (state.segments || []).filter((item) => item?.id && sceneSource(item).audioPath && sceneSource(item).duration >= 0.25);
+    if (!scenes.length) {
+      toast("There are no scenes with audio to split.", true);
+      return;
+    }
+    if (!window.confirm(`Split all ${scenes.length} scenes into stems again and rebuild their masked mixes? Your mute, level and region settings are kept. This can take a while.`)) return;
+    rebuildingAll = true;
+    stopRebuildAll = false;
+    rebuildAllButton.textContent = "Stop rebuilding";
+    const model = modelSelect.value;
+    const gain = clamp(finite(gainInput.value, 0), -24, 24);
+    const failed = [];
+    let done = 0;
+    await run("Rebuilding stems for all scenes...", async () => {
+      await prepareEditedAudio(state, folder(), { generation: true });
+      for (const item of scenes) {
+        if (stopRebuildAll) break;
+        setStatus(`Rebuilding stems: ${sceneName(item)} (${done + 1} of ${scenes.length})...`);
+        try {
+          const source = sceneSource(item);
+          const result = await postJson("/vrgdg/music_builder/audio_mask/separate", {
+            project_folder: folder(), scene_id: item.id, audio_path: source.audioPath, start_seconds: source.start,
+            duration_seconds: source.duration, model_name: model, input_gain_db: gain,
+          }, 900000);
+          cache.set(item.id, result);
+          changeSettings(item, (next) => {
+            next.model_name = model;
+            next.input_gain_db = gain;
+          });
+          await buildScene(item);
+        } catch (error) {
+          failed.push(`${sceneName(item)}: ${String(error?.message || error)}`);
+        }
+        done += 1;
+      }
+    });
+    rebuildingAll = false;
+    rebuildAllButton.textContent = "Rebuild stems for all scenes";
+    autoFailed.clear();
+    autoMixFailed.clear();
+    const skipped = scenes.length - done;
+    const summary = `Stems rebuilt for ${done - failed.length} of ${scenes.length} scenes${skipped ? ` (stopped, ${skipped} not done)` : ""}.`;
+    toast(failed.length ? [summary, "Failed:", ...failed].join("\n") : summary, failed.length > 0);
+    refreshWindow();
   };
   removeButton.onclick = () => {
     const item = loaded();
@@ -858,7 +937,7 @@ export function createAudioMask({
   // ---- hear the stem mix from the timeline ----
   // With "Hear Stems" on, a timeline that plays through a scene with a built masked mix plays that mix, in step with the
   // playhead, and silences the main audio for that scene only. Other scenes keep their main audio.
-  const monitor = { sceneId: "", builtAt: 0, element: null };
+  const monitor = { sceneId: "", element: null };
   const building = new Set();
   let savedVolumes = null;
 
@@ -879,6 +958,35 @@ export function createAudioMask({
     monitorButton.textContent = on ? "Hear Stems ●" : "Hear Stems";
     monitorButton.style.borderColor = on ? "#22d3ee" : "";
     monitorButton.style.background = on ? "#0e7490" : "";
+  }
+
+  // The Audio element of a scene's current masked mix. Elements are kept for a few scenes so a scene that was just
+  // heard, or is about to start, plays at once instead of loading again.
+  const monitorElements = new Map();
+  function monitorElement(item, data) {
+    const path = data?.files?.masked_mix;
+    if (!path) return null;
+    const key = `${item.id}|${Number(data.mix?.built_at) || 0}`;
+    let element = monitorElements.get(key);
+    if (element) {
+      monitorElements.delete(key);
+    } else {
+      element = new Audio(audioUrl(path));
+      element.preload = "auto";
+      element.addEventListener("loadedmetadata", () => {
+        if (monitor.element === element && element.paused === false) element.currentTime = Math.max(0, Number(currentGlobalTime()) - item.start);
+      });
+      element.addEventListener("error", () => {
+        if (monitor.element === element) restoreMainAudio();
+      });
+    }
+    monitorElements.set(key, element);
+    while (monitorElements.size > 4) {
+      const [oldKey, oldElement] = monitorElements.entries().next().value;
+      if (oldElement !== monitor.element) oldElement.pause();
+      monitorElements.delete(oldKey);
+    }
+    return element;
   }
 
   function monitorTick() {
@@ -902,27 +1010,38 @@ export function createAudioMask({
       stopMonitor();
       return;
     }
-    const path = data.files?.masked_mix;
-    const builtAt = Number(data.mix?.built_at) || 0;
-    if (!path) {
+    const element = monitorElement(item, data);
+    if (!element) {
       stopMonitor();
       return;
     }
-    if (!monitor.element || monitor.sceneId !== item.id || monitor.builtAt !== builtAt) {
+    if (monitor.element !== element) {
       if (monitor.element) monitor.element.pause();
-      monitor.element = new Audio(audioUrl(path));
+      // A scene whose mix is still loading must not silence the main audio, so going back to a scene never leaves silence.
+      restoreMainAudio();
+      monitor.element = element;
       monitor.sceneId = item.id;
-      monitor.builtAt = builtAt;
     }
-    if (!savedVolumes) savedVolumes = { audio: mainAudio.volume, sceneAudio: mainSceneAudio.volume };
-    mainAudio.volume = 0;
-    mainSceneAudio.volume = 0;
     const offset = now - item.start;
-    if (monitor.element.paused) {
-      monitor.element.currentTime = offset;
-      monitor.element.play().catch(() => null);
-    } else if (Math.abs(monitor.element.currentTime - offset) > 0.15) {
-      monitor.element.currentTime = offset;
+    if (element.paused) {
+      if (element.readyState >= 1) element.currentTime = offset;
+      element.play().catch(() => restoreMainAudio());
+    } else if (element.readyState >= 3 && Math.abs(element.currentTime - offset) > 0.15) {
+      element.currentTime = offset;
+    }
+    // Load the next scene's mix before it is needed.
+    if (item.end - now < 2) {
+      const next = (state.segments || []).find((candidate) => Math.abs(candidate.start - item.end) < 0.05 && cache.get(candidate.id)?.exists);
+      const nextData = next ? cache.get(next.id) : null;
+      if (next && !splitStale(next, nextData) && !mixStale(next, nextData)) monitorElement(next, nextData);
+    }
+    // Only a stem mix that is actually playing replaces the main audio.
+    if (element.readyState >= 3 && !element.paused) {
+      if (!savedVolumes) savedVolumes = { audio: mainAudio.volume, sceneAudio: mainSceneAudio.volume };
+      mainAudio.volume = 0;
+      mainSceneAudio.volume = 0;
+    } else {
+      restoreMainAudio();
     }
   }
 

@@ -25,6 +25,13 @@ projects = importlib.import_module(f"{pkg_name}.agent_api.projects")
 router = importlib.import_module(f"{pkg_name}.agent_api.router")
 
 
+def setUpModule():
+    # These tests use the project's runner settings, so the ones saved for every project on this machine are left out.
+    patcher = patch.object(importlib.import_module(f"{pkg_name}.builder.project"), "_load_global_llm_runner", lambda: {})
+    patcher.start()
+    unittest.addModuleCleanup(patcher.stop)
+
+
 class AgentApiCoreTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.mkdtemp()

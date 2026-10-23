@@ -145,11 +145,12 @@ class BuilderOwnServerLlmRunnerTests(unittest.TestCase):
         self.assertIn("image_url", BUILDER_UI)
         self.assertIn("Cloudflare", BUILDER_UI)
 
-    def test_loading_project_clears_unsaved_key_instead_of_reusing_it(self):
-        self.assertIn(
-            "state.ownServerApiKey = state.ownServerApiKeyProject;",
-            BUILDER_UI,
-        )
+    def test_loading_a_project_applies_the_runner_settings_saved_for_every_project(self):
+        self.assertNotIn("Never carry a session-only credential", BUILDER_UI)
+        self.assertIn("rememberGlobalLlmKeys(data.global_llm_keys, data.global_llm_runner);", BUILDER_UI)
+        self.assertIn('postJson("/vrgdg/music_builder/llm_runner", globalLlmSettingsPayload(state))', BUILDER_UI)
+        runner_window = (Path(__file__).resolve().parents[1] / "web" / "music_video_builder" / "gemma_runner.mjs").read_text(encoding="utf-8")
+        self.assertNotIn("Save API Key to Project", runner_window)
 
     def test_backend_registers_test_and_models_routes(self):
         self.assertIn('/vrgdg/music_builder/test_own_server', BUILDER_BACKEND)

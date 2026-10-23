@@ -20,6 +20,13 @@ mm = importlib.import_module(f"{pkg_name}.agent_api.orchestrator.minimax_prompt_
 from test_agent_api_references_llm import Base  # noqa: E402
 
 
+def setUpModule():
+    # These tests use the project's runner settings, so the ones saved for every project on this machine are left out.
+    patcher = patch.object(importlib.import_module(f"{pkg_name}.builder.project"), "_load_global_llm_runner", lambda: {})
+    patcher.start()
+    unittest.addModuleCleanup(patcher.stop)
+
+
 class MiniMaxPromptTests(Base):
     def setUp(self):
         super().setUp()
@@ -57,9 +64,11 @@ class MiniMaxPromptTests(Base):
         self.assertIn("<Picture 1>", prompt)
         self.assertIn("<Audio 1> is the complete synchronized song and vocal track", prompt)
         self.assertIn("\n\nretention_analysis:\n", prompt)
-        self.assertIn("detailed_description:\nThe target video is in a cinematic_realism music-video style.\n\n"
+        self.assertIn("detailed_description:\nThe target video is in a Cinematic realism music-video style: "
+                      "Naturalistic practical lighting, restrained color grading, balanced contrast, subtle film grain, "
+                      "realistic skin texture, neutral tones, believable materials, and polished cinematic clarity throughout.\n\n"
                       "[Shot 1] The camera opens wide. <Subject 1> (Darrel) paces, turning at the rail. "
-                      '<Subject 1> (Darrel) sings the lyric line, "line 1".', prompt)
+                      '<Subject 1> (Darrel) sings <d>[English] Line 1.</d> in sync with <Audio 1>.', prompt)
         self.assertTrue(prompt.rstrip().endswith("complete audience-facing song/music track."))
         self.assertLessEqual(len(prompt), 7000)
         self.assertEqual(saved["video_prompt_type"], "rtv")
@@ -67,6 +76,33 @@ class MiniMaxPromptTests(Base):
         self.assertEqual(saved["minimax_h3_mode"], "reference_to_video")
         self.assertNotIn("minimax_h3_prompt", self.read_session()["segments"][2])
         self.assertEqual({m for m, _ in self.lm.requests}, {"GET"})
+
+    def test_a_chosen_temporal_world_effect_is_added_last_and_fits_the_limit(self):
+        session = self.read_session()
+        session["builder_storyboard_defaults"]["temporal_world_effect"] = "realtime_subjects_timelapse_world"
+        self.write_session(session)
+        _result, calls = self.run_with('{"shots":[{"description":"The camera opens wide. <Subject 1> (Darrel) paces, turning at the rail."}]}', {"limit": 1})
+        prompt = self.read_session()["segments"][0]["minimax_h3_prompt"]
+        self.assertIn("Real-time characters / time-lapse world", prompt)
+        self.assertTrue(prompt.rstrip().endswith("never time-stretch, reverse, or accelerate protected voices."))
+        self.assertEqual(prompt.count("Temporal / World Effect"), 1)
+        self.assertLessEqual(len(prompt), 7000)
+        self.assertIn("MANDATORY exact temporal / world effect verbiage", calls[0]["t2i_prompt"])
+
+    def test_a_chosen_video_style_and_fx_are_added_like_the_video_builder(self):
+        session = self.read_session()
+        session["builder_storyboard_defaults"].update(video_style="film_noir", fx_preset="lighting", temporal_world_effect="frozen_world")
+        self.write_session(session)
+        _result, calls = self.run_with('{"shots":[{"description":"The camera opens wide. <Subject 1> (Darrel) paces, turning at the rail."}]}', {"limit": 1})
+        prompt = self.read_session()["segments"][0]["minimax_h3_prompt"]
+        self.assertEqual(prompt.count("in a Film noir music-video style: High-contrast black-and-white imagery"), 1)
+        self.assertEqual(prompt.count("High-contrast black-and-white imagery"), 1)
+        self.assertLess(prompt.index("High-contrast black-and-white"), prompt.index("[Shot 1] The camera"))
+        self.assertIn("FX accent: A brief practical-light flicker cascade", prompt)
+        self.assertLess(prompt.index("FX accent:"), prompt.index("Temporal / World Effect"))
+        self.assertTrue(prompt.rstrip().endswith("never time-stretch, reverse, or accelerate protected voices."))
+        self.assertLessEqual(len(prompt), 7000)
+        self.assertIn("exact video style look to the opening line", calls[0]["t2i_prompt"])
 
     def test_built_in_audio_prompts_have_no_audio_reference(self):
         session = self.read_session()
@@ -157,7 +193,7 @@ class MiniMaxPromptTests(Base):
         self.assertIn("during 1s–2s", prompt)
         self.assertIn("watery eyes", prompt)
 
-    def test_the_lyric_is_in_the_prompt_in_double_quotes_even_with_a_negative_word(self):
+    def test_the_lyric_is_in_the_prompt_in_a_d_tag_even_with_a_negative_word(self):
         session = self.read_session()
         session["segments"][0]["lyric_text"] = "Don't you ever feel like you are on your own,\nI am right here waiting"
         self.write_session(session)
@@ -165,7 +201,7 @@ class MiniMaxPromptTests(Base):
                  "Don't you ever feel like you are on your own, I am right here waiting.\"}]}")
         self.run_with(reply, {"limit": 1})
         prompt = self.read_session()["segments"][0]["minimax_h3_prompt"]
-        self.assertIn('"Don\'t you ever feel like you are on your own, I am right here waiting"', prompt)
+        self.assertIn("<d>[English] Don't you ever feel like you are on your own, I am right here waiting.</d>", prompt)
 
     def test_scene_emotion_and_custom_facial_inputs_reach_llm_and_tagged_lyric_is_preserved(self):
         session = self.read_session()

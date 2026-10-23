@@ -1,8 +1,8 @@
-__pycache__/ 
-*.pyc 
-*.pyo 
-*.log 
-.DS_Store 
+__pycache__/
+*.pyc
+*.pyo
+*.log
+.DS_Store
 flow_automation/node_modules/
 flow_automation/chrome-flow-profile/
 flow_automation/chrome-chatgpt-profile/
@@ -24,7 +24,12 @@ LUTS/examples/
 Apireport.md
 LLMreverrefactor.md
 standalone_app/
-
+rustapp/
+.comfyignore
 
 # Playwright MCP session logs and screenshots (can contain connection tokens)
 .playwright-mcp/
+
+# Editor and AI tooling
+.claude/
+.vscode/

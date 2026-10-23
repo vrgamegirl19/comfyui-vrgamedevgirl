@@ -91,7 +91,7 @@ def _require_model_choice(category, value, label):
     folder_hint = category[0] if isinstance(category, (list, tuple)) else category
     raise ValueError(
         f"{label} '{value}' was not found in ComfyUI/models/{folder_hint}. "
-        "Install the model there, refresh/restart ComfyUI, then try Krea2 again."
+        "Install the model there, refresh/restart ComfyUI, then try again."
     )
 
 

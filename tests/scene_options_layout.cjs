@@ -147,7 +147,7 @@ test('global timing change saves the shared state without a selected scene', asy
 test('one shared timing lock blocks every scene drag and unlock restores editing', () => {
   const c = fixture();
   const viewport = new Element();
-  Object.assign(c, { state: { timingFrozen: true }, timelineViewport: viewport,
+  Object.assign(c, { state: { timingFrozen: true, timelineDragLocked: false }, timelineViewport: viewport,
     segmentTrack: () => 'base', hasLockedVideo: () => false,
     window: { addEventListener() {}, removeEventListener() {} } });
   vm.runInContext('let activeSegmentDragCleanup = null;\n' +
@@ -167,4 +167,32 @@ test('one shared timing lock blocks every scene drag and unlock restores editing
     handle.events.pointerdown(event);
     assert.equal(editing, 1);
   }
+});
+
+test('scenes locked in place refuse a drag, say how to unlock once, and drag again when unlocked', () => {
+  const c = fixture();
+  const listeners = {};
+  const toasts = [];
+  Object.assign(c, { state: { timingFrozen: false }, timelineViewport: new Element(),
+    segmentTrack: () => 'base', hasLockedVideo: () => false, toast: (message) => toasts.push(message),
+    window: { addEventListener: (name, handler) => { listeners[name] = handler; }, removeEventListener: (name) => { delete listeners[name]; } } });
+  vm.runInContext('let activeSegmentDragCleanup = null;\n' +
+    functionSource(readBuilderModule('media_import.mjs'), 'makeDragHandle'), c);
+  const segment = { id: 'scene1', start: 0, end: 10 };
+  const handle = new Element();
+  let editing = 0;
+  const event = { button: 0, isPrimary: true, pointerId: 1, clientX: 100, preventDefault: () => editing++, stopPropagation() {} };
+  c.makeDragHandle(handle, segment, 'move');
+  // Locked by default (no saved choice): a press does not start a drag, and a click needs no note.
+  handle.events.pointerdown(event);
+  assert.equal(editing, 0);
+  listeners.pointermove({ clientX: 102 });
+  assert.equal(toasts.length, 0, 'a small wobble during a click says nothing');
+  listeners.pointermove({ clientX: 140 });
+  assert.equal(toasts.length, 1);
+  assert.match(toasts[0], /Scenes Locked/);
+  assert.equal(listeners.pointermove, undefined, 'the note is shown once per drag');
+  c.state.timelineDragLocked = false;
+  handle.events.pointerdown(event);
+  assert.equal(editing, 1, 'unlocked scenes drag as before');
 });

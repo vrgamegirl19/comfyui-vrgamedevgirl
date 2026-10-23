@@ -339,7 +339,7 @@ export const CHARACTER_MOTION_GROUPS = [
     label: "Environment Interaction",
     options: [
       "opening a door", "closing a door", "leaning on a wall", "sitting on a chair",
-      "standing up", "sitting down", "lying down", "kneeling", "picking something up",
+      "standing up", "sitting down", "kneeling", "picking something up",
       "dropping something", "throwing something", "pushing something",
       "pulling something", "carrying something", "leaning over a railing",
       "looking out a window", "walking through smoke", "walking through rain",
@@ -536,9 +536,9 @@ export const STORYBOARD_CAMERA_FLOW_PRESETS = {
         // Seated & Postural Intimacy
         { shot: "tight seated composition, knees pulled close to frame, face resting lightly against forearm in sharp focus", camera: "slow creeping push-in" },
         { shot: "compact seated profile filling the frame, focus held on the curve of the shoulder and quiet facial composure", camera: "organic handheld drift" },
-        { shot: "curled pose framed tightly around shoulders, cheek, and folded arms, soft directional window light", camera: "slow lateral pan" },
-        { shot: "tight top-down perspective of subject resting head on a pillow or surface, hair pooling around the frame", camera: "slow downward pedestal" },
-        { shot: "side-lying close-up, cheek against surface, slow focus pull from resting hand in foreground to calm eyes", camera: "rack focus with slow push" },
+        { shot: "seated pose framed tightly around shoulders and folded arms, soft directional window light", camera: "slow lateral pan" },
+        { shot: "tight top-down perspective of seated subject looking up at the camera, hair falling around the frame", camera: "slow downward pedestal" },
+        { shot: "seated close-up, upright head, slow focus pull from a hand in the foreground to calm eyes", camera: "rack focus with slow push" },
 
         // Movement & Subject Dynamics
         { shot: "tight bust shot as subject leans slightly closer into the lens sweet spot, falling into sharp focus", camera: "static lock-off letting subject drive depth" },
@@ -569,7 +569,7 @@ export const STORYBOARD_CAMERA_FLOW_PRESETS = {
       { shot: "dynamic wraparound shot transitioning from subject's back to a full frontal face reveal mid-stride", camera: "curved arc wrap" },
 
       // Scale, Elevation & Jib
-      { shot: "overhead bird's-eye shot looking straight down at subject lying or rotating across patterned flooring", camera: "descending rotational crane" },
+      { shot: "overhead bird's-eye shot looking straight down at subject standing or rotating across patterned flooring", camera: "descending rotational crane" },
       { shot: "wide environmental shot with the subject small in frame, emphasizing stark negative space and isolation", camera: "slow creeping pull-back" },
       { shot: "dramatic elevated reveal starting from subject's feet, booming vertically up to an expansive wide master", camera: "fast jib rise" },
       { shot: "high-angle boom shot looking down from above head height, slowly descending to an intimate eye-line", camera: "descending crane boom" },
@@ -614,7 +614,7 @@ export const STORYBOARD_CAMERA_FLOW_PRESETS = {
       { shot: "subject reaches an exaggerated, massive palm forward to shield or tap the front element before snapping hand back", camera: "snap push-in with lens flare" },
       { shot: "both hands frame the circular bezel of the fish-eye lens, peering through the gap with intense warped focus", camera: "macro-proximity float" },
       { shot: "performer passes tight laterally across the frame, their silhouette dramatically bloating into the curve before compressing out of frame", camera: "whip-pan pass-by" },
-      { shot: "subject leans cheek inches from the glass, breathing mist onto the lens element before wiping it away with a sleeve", camera: "static intimate lock-off" },
+      { shot: "subject steps close to the glass, breathing mist onto the lens element before wiping it away with a sleeve", camera: "static intimate lock-off" },
 
       // Curved Surfaces & Physical Distortions
       { shot: "extreme convex distortion filmed through a chrome security mirror or polished hubcap, world warped into a sphere", camera: "curved reflection tilt" },

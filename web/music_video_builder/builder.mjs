@@ -1,5 +1,6 @@
 import { api } from "../../../scripts/api.js";
 import "./prompt_creator.mjs";
+import { applyGlobalLlmKeys, bindGlobalLlmKeys, rememberGlobalLlmKeys } from "./llm_global_keys.mjs";
 import { createMusicVideoBuilderLuts } from "../VRGDG_MusicVideoBuilderLUTs.js";
 import { createPostProcessComparePreview } from "../VRGDG_PostProcessComparePreview.js";
 import { createFaceFixTool } from "../VRGDG_FaceFixUI.js?v=20260716-1";
@@ -89,7 +90,7 @@ import {
   wireZEnhanceControls,
 } from "./image_panels.mjs";
 import { createBrowserAi, wireBrowserAiPanel } from "./browser_ai.mjs";
-import { buildTimelineView, createTimelineView } from "./timeline_view.mjs";
+import { buildTimelineView, createTimelineView, savedSceneDragLock } from "./timeline_view.mjs";
 import { createAudioClipEditor, prepareEditedAudio } from "./audio_clip_editor.mjs";
 import { createSceneAudioSettings } from "./scene_audio_settings.mjs";
 import { timelineDeleteAvailability } from "./timeline_tool_windows.mjs";
@@ -147,6 +148,7 @@ import { createIdLoraBuilder } from "./id_lora_builder.mjs";
 import { createVideoRender } from "./video_render.mjs";
 import { createBatchRender } from "./batch_render.mjs";
 import { createModelPickers } from "./model_pickers.mjs";
+import { createStoryBuilder } from "./story_builder.mjs";
 
 export function openBuilder(node, options = {}) {
   // Mutable runtime state shared across the builder features for this open builder.
@@ -873,7 +875,7 @@ export function openBuilder(node, options = {}) {
     deleteAllTimelineVideosButton, deleteSegmentButton, freezeTimingControl, globalAudioMuteButton, addAudioClipButton,
     globalScrub, globalScrubTime, idLoraTrimModeButton, lyricNoteButton, emotionTagButton, locationThumbnailButton, multiSelectButton,
     multiSelectHintButton, overlayTrackHintButton, overlayTrackToggleButton, playButton, playhead, redoButton,
-    latentContinuationOffAllButton, unlockAllScenesButton, refreshDeleteActions, sceneNoteButton, segmentLayer, setInButton, setOutButton, snapSceneEdgeButton,
+    latentContinuationOffAllButton, unlockAllScenesButton, refreshDeleteActions, sceneDragLockButton, sceneNoteButton, segmentLayer, setInButton, setOutButton, snapSceneEdgeButton,
     snapToBeatsControl, splitSceneButton, stopButton, timeline, timelineCanvas, timelineInfo,
     timelineRangeInfo, timelineResizeHandle, timelineViewport, undoButton,
     videoNoteButton, waveformModeSelect, zoomInButton, zoomOutButton,
@@ -1005,6 +1007,8 @@ export function openBuilder(node, options = {}) {
     sceneAudioGlobalTime: 0,
     sceneSelectionUsesGlobalAudio: false,
     timingFrozen: false,
+    // Timeline scenes are locked against dragging unless this browser turned that off.
+    timelineDragLocked: savedSceneDragLock(),
     srtMode: false,
     promptJsonPath: "",
     i2vMotionJsonPath: "",
@@ -1027,8 +1031,8 @@ export function openBuilder(node, options = {}) {
     qwenModelFile: "",
     qwenMmprojFile: "",
     gemmaModelFile: "",
-    gemmaContextLimit: 8000,
-    gemmaOutputTokenLimit: 8192,
+    gemmaContextLimit: 16384,
+    gemmaOutputTokenLimit: 16384,
     gemmaGpuLayers: 99,
     lmStudioBaseUrl: "http://127.0.0.1:1234/v1",
     lmStudioModel: "",
@@ -1106,6 +1110,14 @@ export function openBuilder(node, options = {}) {
     isRestoringHistory: false,
     batchCancelled: false,
   };
+  // API keys and LLM runner settings kept for every project: bound to the state, and filled in now.
+  bindGlobalLlmKeys(state);
+  getJson("/vrgdg/music_builder/model_defaults").then((data) => {
+    rememberGlobalLlmKeys(data?.global_llm_keys, data?.global_llm_runner);
+    applyGlobalLlmKeys(state);
+    syncBuilderLlmModelSelectsFromRunner();
+    updatePromptRunnerButtonLabels();
+  }).catch(() => {});
   // A floating window with the MiniMax prompt fields, opened by a checkbox at the top of the right panel.
   const llmPopout = createLlmPopout({
     state, inspector, overlay,
@@ -1480,7 +1492,7 @@ export function openBuilder(node, options = {}) {
     videoTriggerPhraseForSegment: (...args) => videoTriggerPhraseForSegment(...args),
   });
 
-  const { openStoryboardBuilderFromProject } = createStoryboardBridge({
+  const { openStoryboardBuilderFromProject, sceneDefaultsPromptOptions } = createStoryboardBridge({
     autoSaveSessionQuiet, buildI2VPromptRequestForSegment, finalizeVideoPromptForSegment, gemmaRunnerLine,
     getI2VImageReference, i2vMmprojSelect, llmApiVisionModelSelected, miniMaxH3ModeForSegment,
     miniMaxH3SceneImageUseForSegment, miniMaxH3SettingsForSegment, mmprojSelect, projectInput, pushHistory,
@@ -1516,6 +1528,7 @@ export function openBuilder(node, options = {}) {
     segmentImageSource: (...args) => segmentImageSource(...args),
     effectiveVideoPerformanceModeForSegment: (...args) => effectiveVideoPerformanceModeForSegment(...args),
     videoTriggerPhraseForSegment: (...args) => videoTriggerPhraseForSegment(...args),
+    wizardStoryboardState: (...args) => wizardStoryboardState(...args),
   });
 
   const sceneAudioSettings = createSceneAudioSettings({
@@ -1590,7 +1603,7 @@ export function openBuilder(node, options = {}) {
     i2vNotesInput, lyricTextInput, mediaThumbnailHtml, openAudioContextMenu, openDirectorNoteContextMenu, renderAudioClips,
     openSceneOptions, openSegmentContextMenu, openTimelineSceneCard, playhead, pushHistory,
     rtvReferenceBehaviorForSegment, sceneListPane, segmentLayer, selectedSegmentImageThumbnailPath,
-    setActiveSegment, state, syncInspector, timelineCanvas, locationThumbnailButton, refreshDeleteActions,
+    setActiveSegment, state, syncInspector, timelineCanvas, locationThumbnailButton, refreshDeleteActions, sceneDragLockButton,
     currentVideoMode: (...args) => currentVideoMode(...args),
     timelineSegmentLabel: (...args) => timelineSegmentLabel(...args),
     cycleSegmentImageHistory: (...args) => cycleSegmentImageHistory(...args),
@@ -2161,6 +2174,28 @@ export function openBuilder(node, options = {}) {
     textGemmaRunnerPayload, themeStyleInput, zClipPicker, zSeed, zUnetPicker, zVaePicker,
   });
 
+  // Story Mode workspace; the toolbar's Storyboard button opens it for Story Mode projects.
+  const { openStoryBuilder } = createStoryBuilder({
+    autoSaveSessionQuiet, createProgressWindow, normalizeBuilderStoryLayer, openFluxReferenceBuilderModal,
+    openLyricMappingWorkflowModal, openLyricReviewModal, pushHistory, state,
+    getLlmPayload: () => ({ ...textGemmaRunnerPayload(), model_file: state.textGemmaRunner === "qwen_local"
+      ? state.qwenModelFile : (t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || state.gemmaModelFile || "") }),
+    openStoryboardClassic: () => openStoryboardBuilderFromProject(),
+    // Resolves with the hosted view's { save, close } once the Storyboard has drawn it.
+    openSceneDefaults: (options = {}) => new Promise((resolve) => {
+      openStoryboardBuilderFromProject({ focusedSection: "defaults", ...options, onHosted: resolve, onClose: () => resolve(null) });
+    }),
+    // The wizard bridge is created further down; these run only after a click.
+    createSceneBeats: (...args) => createSceneBeats(...args),
+    createVideoPrompts: (...args) => createVideoPrompts(...args),
+    referenceBuilderPayload: () => storyboardReferenceBuilderWithIdLoraRefs(state.fluxReferenceBuilder),
+    render: (...args) => render(...args),
+    storyboardScenePayload: (...args) => storyboardScenePayload(...args),
+    syncInspector: (...args) => syncInspector(...args),
+    projectFolder: () => activeProjectFolderForSave(),
+    openInstructions: (...args) => openBuilderInstructionEditor(...args),
+  });
+
   const { openIngredientsReferenceBuilderModal } = createIngredientsBuilder({
     activeSegment, allEditableSegments, applyIngredientsReferenceMappings, autoMapIngredientsSheets,
     autoSaveSessionQuiet, createDetailedLocationDescriptionWithGemma, createProgressWindow,
@@ -2302,6 +2337,7 @@ export function openBuilder(node, options = {}) {
     videoGemmaNotesForSegment, videoModeDisplayLabel, videoVisionReferenceEnabled, wizardStoryboardState,
     zImageAllButton,
     miniMaxH3FrameContinuityPromptEnabled: (...args) => miniMaxH3FrameContinuityPromptEnabled(...args),
+    sceneDefaultsPromptOptions: (...args) => sceneDefaultsPromptOptions(...args),
   });
 
   const { enhanceAllMiniMaxH3Prompts, enhanceMiniMaxH3PromptWithLLM } = createMiniMaxPromptEnhance({
@@ -2471,9 +2507,11 @@ export function openBuilder(node, options = {}) {
     saveGemmaJunkDebug, saveSession, sceneDisplayName, sceneReferenceMapArray, state,
     syncI2VVideoSettingsPanel, syncInspector, syncProjectVideoEngineUI, syncVideoModePanel,
     syncVideoTypeControl, transcribeExistingScenesWithOptions,
+    sceneDefaultsPromptOptions: (...args) => sceneDefaultsPromptOptions(...args),
   });
 
-  const { openWizardBetaFromBuilder, openWizardFromBuilder } = createWizardBridge({
+  const { createSceneBeats, createVideoPrompts, openWizardBetaFromBuilder, openWizardFromBuilder } = createWizardBridge({
+    openStoryBuilder,
     activeI2VVideoSettings, activeProjectFolderForSave, activeSegment, allEditableSegments, audioInput,
     autoSaveSessionQuiet, chooseProjectAudioFile, confirmAndRunFullBuild, confirmAndRunGemmaT2IAll,
     confirmAndRunGemmaVideoAll, confirmAndRunZImageAll, createProgressWindow,
@@ -2720,8 +2758,8 @@ export function openBuilder(node, options = {}) {
 
   miniMaxAutoTimeAllScenesButton.onclick = () => autoTimeAllMiniMaxSingerScenes();
 
-  async function autoSaveSessionQuiet(reason = "") {
-    if (!state.autoSaveEnabled) return false;
+  async function autoSaveSessionQuiet(reason = "", { force = false } = {}) {
+    if (!state.autoSaveEnabled && !force) return false;
     try {
       updateActiveFromInputs();
       saveI2VVideoSettingsFromPanel();
@@ -2926,7 +2964,7 @@ export function openBuilder(node, options = {}) {
     openBulkSegmentsModal, openGemmaRunnerModal, openLyricMappingWorkflowModal, openPromptOptionsModal,
     openReferenceBuilderTargetChooser, openRenderLogModal, openSceneAudioOptionsButton, openSceneOptions,
     openSettingsModal, openSnapSceneEdgeMenu, openStitchPreviewModal, openStoryboardBuilderFromProject,
-    openWhatsNewModal, openWizardBetaFromBuilder, openWizardFromBuilder, overlayTrackHintButton,
+    openStoryBuilder, openWhatsNewModal, openWizardBetaFromBuilder, openWizardFromBuilder, overlayTrackHintButton,
     overlayTrackToggleButton, pauseTimelineForEditing, pickAudioButton, pickIdLoraReferenceAudioButton,
     pickSrtButton, projectAudioFileInput, projectSrtFileInput, promptCreatorButton, promptOptionsButton, redo,
     redoButton, renderAllButton, renderImageSlideshowPreview, renderLogButton, requireActiveSegment,

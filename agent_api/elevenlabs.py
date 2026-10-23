@@ -10,7 +10,7 @@ from ..builder.project import _BUILDER_SAVE_LOCK
 from ..builder.scene_audio_settings import require_speaking
 from ..llm.voice_design import generate_voice_description
 from .errors import RevisionConflictError, ValidationError
-from .llm_runtime import llm_payload_from_session, prepare_llm_payload
+from .llm_runtime import llm_payload_from_session, prepare_llm_payload, project_elevenlabs_key
 from .mutations import _get_active_session_and_folder, _persist_session
 
 
@@ -29,7 +29,7 @@ def project_credentials(project_id: str, api_key: Any = None,
                 revision = _persist_session(folder, session).get("revision", revision + 1)
         except ValueError as exc:
             raise ValidationError(str(exc)) from exc
-        return {"configured": bool(session.get("elevenlabs_api_key_project")), "revision": revision}
+        return {"configured": bool(project_elevenlabs_key(session)), "revision": revision}
 
 
 def project_voices(project_id: str, next_page_token: str = "", test: bool = False) -> dict[str, Any]:
@@ -40,7 +40,7 @@ def project_voices(project_id: str, next_page_token: str = "", test: bool = Fals
             require_speaking(session)
         except ValueError as exc:
             raise ValidationError(str(exc)) from exc
-        key = session.get("elevenlabs_api_key_project", "")
+        key = project_elevenlabs_key(session)
     try:
         result = list_voices(key, next_page_token)
     except ValueError as exc:
@@ -58,7 +58,7 @@ def project_voice_design(
             require_speaking(session)
         except ValueError as exc:
             raise ValidationError(str(exc)) from exc
-        key = session.get("elevenlabs_api_key_project", "")
+        key = project_elevenlabs_key(session)
     try:
         if save:
             return {"voice": create_designed_voice(key, payload)}

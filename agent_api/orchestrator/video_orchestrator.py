@@ -547,9 +547,7 @@ async def render_scene_video_async(
     if "minimax" in mode:
         from ...minimax.latent_manager import SceneLatentManager
         SceneLatentManager.clear_dirty(folder, scene_number)
-        successor_scene = scene_number + 1
-        if SceneLatentManager.latent_exists(folder, successor_scene):
-            SceneLatentManager.mark_dirty(folder, successor_scene, reason=f"Scene {scene_number:03d} re-rendered")
+        SceneLatentManager.mark_successor_dirty(folder, scene_number, reason=f"Scene {scene_number:03d} re-rendered")
 
     if manager and job:
         manager.update_progress(job.id, 100.0, "completed", scene_id=scene_id, message="Scene video rendered successfully.")

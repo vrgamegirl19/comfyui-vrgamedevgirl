@@ -1,7 +1,8 @@
-import { storyboardCutPlanForDuration } from "../storyboard_builder/scenes.mjs";
+import { storyboardCutPlanForDuration, storyboardCutStyleValue } from "../storyboard_builder/scenes.mjs";
 import { buildCastGuard } from "./cast_guard.mjs";
 import { normalizeMiniMaxSpeakerAssignments } from "./minimax_h3.mjs";
 import {
+  miniMaxH3ApplyCutStyle,
   miniMaxH3OfficialCutPlanInstruction,
   miniMaxH3PunctuatedCueText,
   miniMaxH3Timecode,
@@ -309,6 +310,35 @@ export function syncCueEndBoundariesFromNextStarts(cues = []) {
   return cues;
 }
 
+// Moves each cut that would split a sung word (or land just before one) to the nearest gap between words, at most
+// ``maxShift`` seconds away and keeping every shot at least ``minShot`` long. A cut with no such gap stays where it is.
+// ``words`` are scene-relative {start, end}.
+export function snapCutsToVocalGaps(cuts = [], words = [], duration = 0, { minShot = 1.0, maxShift = 1.0 } = {}) {
+  const timed = (Array.isArray(words) ? words : [])
+    .map((word) => ({ start: Number(word?.start), end: Number(word?.end) }))
+    .filter((word) => Number.isFinite(word.start) && Number.isFinite(word.end) && word.end > word.start)
+    .sort((a, b) => a.start - b.start);
+  const sorted = (Array.isArray(cuts) ? cuts : []).map(Number).filter(Number.isFinite).sort((a, b) => a - b);
+  if (!timed.length || !sorted.length) return sorted;
+  const splitsWord = (time) => timed.some((word) => time > word.start - 0.08 && time < word.end - 0.02);
+  const gaps = [Math.max(0, timed[0].start - 0.1), timed[timed.length - 1].end + 0.1];
+  for (let index = 0; index < timed.length - 1; index += 1) {
+    if (timed[index + 1].start > timed[index].end) gaps.push((timed[index].end + timed[index + 1].start) / 2);
+  }
+  const placed = [];
+  sorted.forEach((cut, index) => {
+    const previous = placed.length ? placed[placed.length - 1] : 0;
+    const next = index + 1 < sorted.length ? sorted[index + 1] : Number(duration) || cut + minShot;
+    let best = cut;
+    if (splitsWord(cut)) {
+      const options = gaps.filter((time) => Math.abs(time - cut) <= maxShift && time - previous >= minShot && next - time >= minShot && !splitsWord(time));
+      if (options.length) best = options.reduce((a, b) => (Math.abs(b - cut) < Math.abs(a - cut) ? b : a));
+    }
+    if (best > previous + 0.001) placed.push(Number(best.toFixed(3)));
+  });
+  return placed;
+}
+
 export function formatCueTime(value) {
   return Number.isFinite(Number(value)) ? `${Number(value).toFixed(3)}s` : "--";
 }
@@ -606,15 +636,23 @@ export function createLyricCues({
       const subjectId = String(item?.id || item?.subject_id || item?.subjectId || rawKey.replace(/^subject:/, "") || "").trim();
       const name = String(item?.label || item?.name || "").trim();
       // Clothing and props are not people: their kind says so, so they never join the cast, the performers or the speakers.
-      const refmodCategory = item?.refmod?.category;
+      // A RefMod says so in its category; an image card says so in its card type.
+      const referenceType = String(item?.refmod?.reference_type || item?.reference_type || "");
+      // A creature acts like a character, so it stays in the cast.
+      const imageCategory = item?.kind === "subject" && !item?.refmod && referenceType && !["character", "creature"].includes(referenceType)
+        ? (referenceType === "outfit" ? "clothing" : ["environment", "style"].includes(referenceType) ? "" : "object")
+        : "";
+      const category = item?.refmod?.category || imageCategory;
+      const cardId = String(item?.refmod?.card_id || item?.source_id || "");
       const value = {
         label: `<Subject ${subjectNumber}>`,
         alias: "",
         name,
-        kind: refmodCategory === "clothing" || refmodCategory === "object" ? refmodCategory : (item?.kind || "reference"),
-        cardId: String(item?.refmod?.card_id || ""),
-        wears: String(item?.refmod?.wears || ""),
-        referenceType: String(item?.refmod?.reference_type || ""),
+        kind: category === "clothing" || category === "object" ? category : (item?.kind || "reference"),
+        cardId,
+        // The scene's own "worn / used by" choice wins over the card's "Worn by" link (RefMod items already carry it).
+        wears: String(item?.refmod ? item.refmod.wears || "" : segment?.scene_item_users?.[cardId] || item?.wears || ""),
+        referenceType,
       };
       if (subjectId) map.set(subjectId, value);
       if (name) map.set(name.toLowerCase(), value);
@@ -659,7 +697,12 @@ export function createLyricCues({
     return `${performerText} perform the same complete lyric/dialogue line together from <Audio 1>: "${miniMaxH3PunctuatedCueText(lyricText)}"`;
   }
 
+  // The scene's cut plan with the project's cut style (Scene Defaults) applied.
   function miniMaxH3CutPlanForSegment(segment) {
+    return miniMaxH3ApplyCutStyle(miniMaxH3SceneCutPlan(segment), storyboardCutStyleValue(state.builderStoryboardDefaults?.minimax_h3_cut_style));
+  }
+
+  function miniMaxH3SceneCutPlan(segment) {
     const duration = Math.max(0, Number(segment?.end || 0) - Number(segment?.start || 0));
     const fallback = storyboardCutPlanForDuration(duration, segment?.location_continuous_shot
       ? 0 : state.builderStoryboardDefaults?.minimax_h3_cut_frequency);
@@ -745,6 +788,9 @@ export function createLyricCues({
       continuousFramePrompt
         ? "All listed cues occur inside the same uninterrupted shot at their assigned times. Do not add a cut, reset, or new setup between cues. Do not swap singers, merge lyric cues, or anticipate a later vocal cue."
         : "Each listed cue is its own shot. Do not swap singers, merge lyric cues, or anticipate a later vocal cue. Apply vocal direction only to the assigned vocal row and its exact timing.",
+      "Write each vocal cue as <d>[Language, emotion, emotion, singing] exact words</d>: choose two specific emotions that fit this line's meaning, the story beat and the song, "
+        + "wrap the 1–3 words the singer leans on (a rhyme word, a key verb) in <i>...</i>, and put <breath> between two lines where the singer breathes. "
+        + "Keep every word unchanged and in order, and follow the cue with that singer's concrete facial acting.",
     ].join("\n");
   }
 
@@ -756,10 +802,10 @@ export function createLyricCues({
       .sort((a, b) => Number(a.start) - Number(b.start));
     if (!words.length) return [];
     const cutPlan = storyboardCutPlanForDuration(sceneDuration, state.builderStoryboardDefaults?.minimax_h3_cut_frequency);
-    const cuts = (Array.isArray(cutPlan?.cut_times_seconds) ? cutPlan.cut_times_seconds : [])
+    const cuts = snapCutsToVocalGaps((Array.isArray(cutPlan?.cut_times_seconds) ? cutPlan.cut_times_seconds : [])
       .map(Number)
       .filter((time) => Number.isFinite(time) && time > 0.001 && time < sceneDuration - 0.001)
-      .sort((a, b) => a - b);
+      .sort((a, b) => a - b), words, sceneDuration);
     const boundaries = [0, ...cuts, sceneDuration];
     const cues = [];
     for (let index = 0; index < boundaries.length - 1; index += 1) {

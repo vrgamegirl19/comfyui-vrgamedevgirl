@@ -55,8 +55,43 @@ def shot_plan(cut_plan: Dict[str, Any]) -> List[Dict[str, Any]]:
     ]
 
 
+# Cut style "One continuous moment" (MINIMAX_H3_CONTINUOUS_CUTS_* in minimax_prompt.mjs): every cut keeps one unbroken
+# performance and only moves the camera.
+CONTINUOUS_CUTS_OPENING = (
+    "All shots follow one continuous performance, preserving every person's exact position, body orientation, "
+    "posture, and ongoing movement across every camera cut. Each new shot continues directly from the final physical "
+    "moment of the previous shot, with only the camera angle and framing changing."
+)
+CONTINUOUS_CUTS_RULES = (
+    "CONTINUOUS MOMENT ACROSS CUTS — MANDATORY: All shots are one unbroken moment filmed from different camera angles. "
+    "Each later shot starts exactly where the previous shot ended: the same spot, the same position and body "
+    "orientation, the same wardrobe, props, light and weather, and the action already in progress. Only the camera "
+    "angle, distance and framing change at a cut. The action may move forward naturally (a step, a turn, a gesture "
+    "finishing), but never jumps in time, never resets a pose, and never moves anyone to a new place. Begin each later "
+    "description by naming the new framing and what it continues from, for example: 'the camera cuts to a low-angle "
+    "close-up of <Subject 1>, continuing her raised-hand gesture from the shot before'."
+)
+
+
+def cut_style_value(value: Any) -> str:
+    """``storyboardCutStyleValue``: "continuous" or "free"."""
+    return "continuous" if str(value or "").strip().lower() == "continuous" else "free"
+
+
+def apply_cut_style(cut_plan: Dict[str, Any], cut_style: Any) -> Dict[str, Any]:
+    """``miniMaxH3ApplyCutStyle``: a plan with cuts is marked ``continuous`` when the style asks for it."""
+    plan = dict(cut_plan or {})
+    plan["continuous"] = bool(plan.get("cut_times_seconds")) and cut_style_value(cut_style) == "continuous"
+    return plan
+
+
 def cut_plan_instruction(cut_plan: Dict[str, Any]) -> str:
-    """Port of ``miniMaxH3OfficialCutPlanInstruction`` (frequency-driven plans)."""
+    """Port of ``miniMaxH3OfficialCutPlanInstruction`` (frequency-driven plans), with the continuous-moment rules."""
+    text = _frequency_cut_plan_instruction(cut_plan)
+    return f"{text} {CONTINUOUS_CUTS_RULES}" if cut_plan.get("continuous") else text
+
+
+def _frequency_cut_plan_instruction(cut_plan: Dict[str, Any]) -> str:
     duration = round(float(cut_plan.get("exact_duration_seconds") or 0), 3)
     cuts = cut_plan.get("cut_times_seconds") or []
     if not cuts:
@@ -76,6 +111,221 @@ def cut_plan_instruction(cut_plan: Dict[str, Any]) -> str:
         "\n\n"
         "MULTI-SHOT CONTINUITY — MANDATORY: When a scene has multiple shots, write them as consecutive camera views of one uninterrupted physical performance in the same place and moment. Shot 1 establishes staging. In every later description, write a complete sentence explicitly continuing directly from the previous shot's final moment. At the instant of the cut, preserve the previous ending position, posture, body orientation, eyeline and prop contact, then carry the ongoing movement forward at its existing pace and direction. For a scene with active singing, for example: 'Continuing directly from the previous shot's final moment, <Subject 1> remains seated in the same position on the curb, her torso still angled toward the doorway, and continues the same uninterrupted singing performance in sync with the assigned audio.' Use the actual preceding physical state, not a generic continuity phrase. Do not restart an action, reset a pose, or replace continued performance with an unrelated beauty shot. An ongoing action may span scheduled cuts. Only camera angle, framing and camera movement change at a cut unless the scene explicitly requests a new action or transition. Show any requested physical change developing naturally from the inherited state. During every shot's active vocal interval, explicitly state that the assigned performer continues singing or speaking in sync with the assigned audio. Preserve cue timing and speaker assignments; instrumental, no-lip-sync and silent intervals remain non-vocal. Follow supplied lyric/dialogue allocations without duplicating an already quoted cue or restarting the scene's lyrics after a cut. Use complete grammatical sentences rather than fragments such as 'Still seated on the curb.' Self-contained shot prose and varied camera coverage must preserve the shared staging. Before returning, check every adjacent pair for a matching end-to-start physical state and continuous performance."
     )
+
+
+# Performance craft for any song or story (MINIMAX_H3_CRAFT_* in minimax_prompt.mjs): what kept faces acting,
+# lip-sync readable and props in place on real H3 renders. The emotions come from each scene, never from a stock list.
+MINIMAX_H3_CRAFT_ACTING = (
+    "PERFORMANCE CRAFT — MANDATORY: Give every visible face its own concrete expression in every shot, "
+    "written as what the brows, eyes, smile, head and shoulders do, for example eyes narrowing, brows lifting, a slow smile spreading or the head turning away. "
+    "Take each emotion from this scene's lyric meaning, story beat and song energy rather than a stock mood, choose two specific emotions wherever an emotion header is written, "
+    "and let the expression change at least once in a longer shot. Scale every expression to the {style} video style and the scene's energy: "
+    "stylized, animated or high-energy scenes use big, exaggerated expressions; realistic or quiet scenes use small, precise ones. "
+    "Write each emotion as a visible action instead of a feeling word or a face colour: anger is a jabbed finger, gritted teeth or brows slammed down, never a red, flushed or pale face. "
+    "Faces stay dry, with no tears, crying, wet eyes, glistening skin or sweat."
+)
+MINIMAX_H3_CRAFT_SILENT = (
+    "SILENT PEOPLE: Name every visible person who is not singing or speaking at that moment and state that their lips stay pressed together, "
+    "with their own expression, for example '<Subject 2> watches with her lips pressed together and her brows lifted.'"
+)
+MINIMAX_H3_CRAFT_FRAMING = (
+    "FACES WHILE SINGING OR SPEAKING: Unless a per-shot framing above says otherwise, frame a person who is singing or speaking "
+    "from a medium shot to a close-up, with the camera near their eye level, so the face stays large in frame; keep wide and full-body framing for moments without vocals."
+)
+MINIMAX_H3_CRAFT_CLEAR_FACE = (
+    "Keep hands, drinks, food, hair and kisses away from a singing or speaking person's face while words are heard, "
+    "and finish any such gesture before the vocal starts."
+)
+MINIMAX_H3_CRAFT_OPENING = (
+    "OPENING AND ENDING: Open Shot 1 on the scene's main subject, and end the last shot on a clear held state such as a pose, a look or a finished gesture."
+)
+MINIMAX_H3_CRAFT_ACTION = (
+    "ACTIONS AND PROPS: Give each shot one main action written as visible steps that reach a clear final state. "
+    "Once a prop is picked up, put down, handed over or put on, name it with where it is in every later shot of this scene."
+)
+
+
+def performance_craft_instruction(style: str = "", has_cast: bool = True, has_vocals: bool = False, continuation: bool = False) -> str:
+    """Twin of ``miniMaxH3PerformanceCraftInstruction``. A continued scene keeps its inherited framing and opening."""
+    lines = []
+    if has_cast:
+        lines += [MINIMAX_H3_CRAFT_ACTING.replace("{style}", str(style or "chosen").strip() or "chosen"), MINIMAX_H3_CRAFT_SILENT]
+        if has_vocals and not continuation:
+            lines.append(MINIMAX_H3_CRAFT_FRAMING)
+        if has_vocals:
+            lines.append(MINIMAX_H3_CRAFT_CLEAR_FACE)
+    if not continuation:
+        lines.append(MINIMAX_H3_CRAFT_OPENING)
+    lines.append(MINIMAX_H3_CRAFT_ACTION)
+    return "\n".join(lines)
+
+
+_CUE_LANGUAGES = re.compile(
+    r"^(?:english|spanish|french|german|italian|portuguese|dutch|swedish|norwegian|danish|finnish|polish|czech|russian|ukrainian|greek|"
+    r"turkish|arabic|hebrew|hindi|bengali|urdu|japanese|korean|chinese|mandarin|cantonese|thai|vietnamese|indonesian|malay|tagalog|filipino)$",
+    re.I)
+_CUE_DELIVERY_RULE = (
+    "Write each vocal cue as <d>[Language, emotion, emotion, singing] exact words</d>: choose two specific emotions that fit this line's meaning, the story beat and the song, "
+    "wrap the 1–3 words the singer leans on (a rhyme word, a key verb) in <i>...</i>, and put <breath> between two lines where the singer breathes. "
+    "Keep every word unchanged and in order, and follow the cue with that singer's concrete facial acting."
+)
+
+
+def cue_header(header: Any) -> str:
+    """Twin of ``miniMaxH3CueHeader``: the LLM's emotion header with the language first, else "English"."""
+    items = [re.sub(r"[^\w '-]", "", item).strip() for item in str(header or "").split(",")]
+    items = [item for item in items if item]
+    if not items:
+        return "English"
+    if not _CUE_LANGUAGES.match(items[0]):
+        items.insert(0, "English")
+    return ", ".join(items[:5])
+
+
+def cue_delivery(cue_text: str, llm_body: Any) -> str:
+    """Twin of ``miniMaxH3CueDelivery``: the cue's own words with the LLM's <i> stress and <breath> marks."""
+    canonical = str(cue_text or "").split()
+
+    def has_word(token: str) -> bool:
+        return bool(re.search(r"[^\W_]", token))
+
+    def word_key(token: str) -> str:
+        return re.sub(r"[^\w']", "", token.lower().replace("’", "'")).replace("_", "")
+
+    marks, italic, breath = [], False, False
+    spaced = re.sub(r"<\s*(/?i|breath)\s*>", r" <\1> ", str(llm_body or ""), flags=re.I)
+    for token in spaced.split():
+        tag = re.fullmatch(r"<(/?i|breath)>", token, re.I)
+        name = tag.group(1).lower() if tag else ""
+        if name == "i":
+            italic = True
+        elif name == "/i":
+            italic = False
+        elif name == "breath":
+            breath = True
+        elif has_word(re.sub(r"<[^>]*>", "", token)):
+            marks.append({"key": word_key(re.sub(r"<[^>]*>", "", token)), "stress": italic, "breath": breath})
+            breath = False
+    words = [token for token in canonical if has_word(token)]
+    if not canonical or len(marks) != len(words) or any(word_key(t) != m["key"] for t, m in zip(words, marks)):
+        return " ".join(canonical)
+    stressed = sum(1 for mark in marks if mark["stress"])
+    use_stress = 0 < stressed <= 4
+    out, word_index = [], -1
+    for index, token in enumerate(canonical):
+        if not has_word(token):
+            out.append(token)
+            continue
+        word_index += 1
+        mark = marks[word_index]
+        text = token
+        if use_stress and mark["stress"]:
+            match = re.match(r"^(.*?[\w'’])([^\w'’]*)$", token)
+            word, tail = (match.group(1), match.group(2)) if match else (token, "")
+            text = f"<i>{word}</i>{tail}"
+        out.append(("<breath> " if mark["breath"] and index > 0 else "") + text)
+    return re.sub(r"</i>(\s+)<i>", r"\1", " ".join(out))
+
+
+def timed_cue_rows(segment: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """The scene's timed cue map (``lyric_performance_mode`` "cue_map", every row with a start), scene-relative. [] otherwise."""
+    if str(segment.get("lyric_performance_mode") or "together") != "cue_map":
+        return []
+    rows = []
+    for cue in segment.get("lyric_cue_map") or []:
+        if not isinstance(cue, dict):
+            continue
+        kind = "instrumental" if str(cue.get("type") or "").strip() == "instrumental" else "vocal"
+        text = " ".join(str(cue.get("text") or "").split())
+
+        def number(key: str) -> Optional[float]:
+            value = cue.get(key)
+            try:
+                return max(0.0, float(value)) if value not in (None, "") else None
+            except (TypeError, ValueError):
+                return None
+
+        if kind == "vocal" and not text:
+            continue
+        rows.append({"type": kind, "text": text, "singer_id": str(cue.get("singer_id") or "").strip(),
+                     "singer_name": str(cue.get("singer_name") or "").strip(), "start": number("start"),
+                     "vocal_start": number("vocal_start") if kind == "vocal" else None,
+                     "vocal_end": number("vocal_end") if kind == "vocal" else None,
+                     "action_note": str(cue.get("action_note") or "").strip()})
+    if not rows or any(row["start"] is None for row in rows):
+        return []
+    return rows
+
+
+def cue_cut_plan(cut_plan: Dict[str, Any], cues: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """The Builder's cue-driven plan (``miniMaxH3SceneCutPlan``): a hard cut at every later cue's start."""
+    duration = float(cut_plan.get("exact_duration_seconds") or 0)
+    cuts = sorted({round(float(c["start"]), 3) for c in cues[1:] if 0.04 < float(c["start"]) < duration - 0.04})
+    if len(cues) < 2 or not cuts:
+        return cut_plan
+    plan = dict(cut_plan)
+    plan.update(cut_times_seconds=cuts, cut_count=len(cuts), shot_count=len(cuts) + 1, continuous_shot=False, cue_driven=True)
+    return plan
+
+
+def _cue_text(text: str) -> str:
+    clean = str(text or "").strip()
+    if clean and not re.search(r"[.!?…][\"')\]]?$", re.sub(r"<[^>]+>", "", clean).strip()):
+        clean += "."
+    return re.sub(r"^(\s*[\"'“‘(]*)([a-z])", lambda m: m.group(1) + m.group(2).upper(), clean)
+
+
+def _cue_window(cue: Dict[str, Any]) -> str:
+    start, end = cue.get("vocal_start"), cue.get("vocal_end")
+    if start is None or end is None or end <= start:
+        return ""
+    return f" from {round(start, 2):g} s to {round(end, 2):g} s"
+
+
+def cue_shot_contract(cues: List[Dict[str, Any]]) -> str:
+    """Twin of ``miniMaxH3CueShotContractText`` for shot cue maps. Each row needs ``label``, the singer's subject label."""
+    lines = ["Timed singer/lyric shot contract — authoritative:"]
+    for index, cue in enumerate(cues):
+        if cue["type"] == "instrumental":
+            note = f" Visual action note: {cue['action_note']}" if cue.get("action_note") else ""
+            lines.append(f"[Shot {index + 1}]: use only the assigned visual action and camera direction.{note}")
+            continue
+        window = _cue_window(cue)
+        sync = f" The singer sings{window}." if window else ""
+        lines.append(f"[Shot {index + 1}]: {cue.get('label') or 'The singer'} is the only performer singing <d>[English] {_cue_text(cue['text'])}</d> "
+                     f"from <Audio 1>.{sync} Other visible performers remain silent, mouth closed or naturally reacting.")
+    lines.append("Each listed cue is its own shot. Do not swap singers, merge lyric cues, or anticipate a later vocal cue. "
+                 "Apply vocal direction only to the assigned vocal row and its exact timing.")
+    lines.append(_CUE_DELIVERY_RULE)
+    return "\n".join(lines)
+
+
+_VOCAL_MARKER = re.compile(
+    r"<d>|</d>|\b(?:sings?|singing|sung|speaks?|speaking|says?|saying|performs?|performing|dialogue|lip[ -]?sync(?:s|ing|ed)?|lyrics?|vocals?)\b", re.I)
+
+
+def enforce_cue_shot(description: str, cue: Dict[str, Any]) -> str:
+    """Twin of ``enforceMiniMaxH3CueOnShotDescription``: an instrumental shot loses its vocal sentences; a vocal shot keeps
+    the LLM's prose and ends with the one canonical cue, carrying the LLM's emotion header and delivery marks."""
+    text = normalize_description(description)
+    if cue["type"] == "instrumental":
+        sentences = re.findall(r"[^.!?…]+[.!?…]+|[^.!?…]+$", text)
+        clean = " ".join(s.strip() for s in sentences if not _VOCAL_MARKER.search(s)).strip()
+        return normalize_description(clean or FALLBACK_SHOT)
+    cue_text = _cue_text(cue["text"])
+    llm_cue = re.search(r"<d>\s*(?:\[([^\]]*)\])?\s*([\s\S]*?)</d>", text, re.I)
+    header = cue_header(llm_cue.group(1) if llm_cue else "")
+    delivered = cue_delivery(cue_text, llm_cue.group(2) if llm_cue else "")
+    text = re.sub(r"<Subject\s+\d+>[^.\n]*?is the only visible performer singing[\s\S]*?every other visible performer remains silent\.?", "", text, flags=re.I)
+    for variant in sorted({str(cue["text"]).strip(), cue_text.rstrip(".!?…").strip()} - {""}, key=len, reverse=True):
+        text = re.sub(r"[“\"']\s*" + re.escape(variant) + r"[.!?…]*\s*[”\"']", "the assigned vocal cue", text, flags=re.I)
+    clean = re.sub(r"<d>[\s\S]*?</d>", "the assigned vocal cue", text, flags=re.I)
+    clean = re.sub(r"\s+([,.;!?])", r"\1", clean)
+    clean = re.sub(r"\s{2,}", " ", clean).strip()
+    clean = re.sub(r"[,;:]\s*([.!?…])", r"\1", clean).rstrip(".!?… ") or FALLBACK_SHOT.rstrip(".")
+    contract = (f"{cue.get('label') or 'The singer'} is the only visible performer singing, in sync with <Audio 1>{_cue_window(cue)}, "
+                f"<d>[{header}] {delivered}</d>; every other visible performer remains silent.")
+    return normalize_description(f"{clean}. {contract}")
 
 
 def literal_scene_instruction() -> str:
@@ -143,8 +393,11 @@ def life_movements(character_speed: float, seed: str = "") -> List[str]:
     return [bank[(offset + i) % len(bank)] for i in range(6)]
 
 
-def opening_wrapper(style: str) -> str:
-    return f"detailed_description:\nThe target video is in a {style or 'photorealistic cinematic'} music-video style.\n\n"
+def opening_wrapper(style: str, continuous: bool = False, guidance: str = "") -> str:
+    """The opening of detailed_description: the style name and its look, then the continuity sentence."""
+    continuity = f" {CONTINUOUS_CUTS_OPENING}" if continuous else ""
+    look = f": {guidance.strip()}" if guidance and guidance.strip() else "."
+    return f"detailed_description:\nThe target video is in a {style or 'photorealistic cinematic'} music-video style{look}{continuity}\n\n"
 
 
 def _clean_sentence_start(text: str) -> str:
@@ -164,7 +417,7 @@ def strip_negative_sentences(description: str) -> str:
         quotes.append(match.group(0))
         return f"VRGDGQUOTE{len(quotes) - 1}TOKEN"
 
-    masked = re.sub(r'["“][^"”]*["”]', mask, text)
+    masked = re.sub(r'<d>[\s\S]*?</d>|["“][^"”]*["”]', mask, text, flags=re.I)
     # A decimal point (1.5 seconds) is not a sentence end.
     protected = re.sub(r"(\d)\.(?=\d)", lambda m: m.group(1) + "VRGDGDECIMALTOKEN", masked)
     sentences = [s.replace("VRGDGDECIMALTOKEN", ".") for s in re.findall(r"[^.!?…]+[.!?…]+|[^.!?…]+$", protected)] or [masked]
@@ -194,6 +447,16 @@ def _strip_cut_directive(text: str) -> str:
         previous = clean
         clean = re.sub(r"^(?:(?:the\s+camera\s+)?cuts?\s+to|cut\s+to)\s*(?::|[-–—.]|\s)*", "", clean, flags=re.I).strip()
     return clean
+
+
+def continuous_cut_text(text: str, shot_number: int) -> str:
+    """``miniMaxH3ContinuousCutText``: a later shot of a continuous-moment scene says what it carries on from."""
+    if re.search(r"\bcontinu", text, re.IGNORECASE):
+        return text
+    carried = f"the camera cuts, continuing directly from the final moment of Shot {shot_number - 1}."
+    if re.match(r"^the camera cuts\.", text, re.IGNORECASE):
+        return re.sub(r"^the camera cuts\.", carried, text, count=1, flags=re.IGNORECASE)
+    return f"{carried} {text}"
 
 
 def post_cut_text(text: str) -> str:
@@ -264,13 +527,16 @@ def shot_body(descriptions: List[str], cut_plan: Dict[str, Any]) -> str:
         if shot["number"] == 1:
             blocks.append(f"[Shot 1] {description}".strip())
         else:
-            blocks.append(f"[Shot {shot['number']}] At {shot['timecode']}, {post_cut_text(description)}".strip())
+            text = post_cut_text(description)
+            if cut_plan.get("continuous"):
+                text = continuous_cut_text(text, shot["number"])
+            blocks.append(f"[Shot {shot['number']}] At {shot['timecode']}, {text}".strip())
     return "\n\n".join(blocks)
 
 
-def assemble_prompt(descriptions: List[str], cut_plan: Dict[str, Any], style: str) -> str:
-    """The saved prompt for a reference-to-video scene."""
-    return f"{opening_wrapper(style)}{shot_body(descriptions, cut_plan)}".strip()
+def assemble_prompt(descriptions: List[str], cut_plan: Dict[str, Any], style: str, guidance: str = "") -> str:
+    """The saved prompt for a reference-to-video scene. ``guidance`` is the video style's look for the opening line."""
+    return f"{opening_wrapper(style, bool(cut_plan.get('continuous')), guidance)}{shot_body(descriptions, cut_plan)}".strip()
 
 
 AUDIO_DEFINITION = (
@@ -507,32 +773,33 @@ def _words(text: str) -> List[str]:
     return re.findall(r"[a-z0-9']+", str(text or "").lower().replace("’", "'"))
 
 
-def _quote_existing(description: str, lyric: str) -> Optional[str]:
-    """Wrap an unquoted copy of ``lyric`` in the description in double quotes. None when it is not there."""
+def _dialogue_tag(lyric: str) -> str:
+    """``<d>[English] Lyric words.</d>`` for a sung lyric."""
+    return f"<d>[English] {_cue_text(str(lyric or '').strip().rstrip(' ,;:'))}</d>"
+
+
+def _tag_existing(description: str, lyric: str) -> Optional[str]:
+    """Turn a quoted or plain copy of ``lyric`` in the description into a ``<d>`` tag. None when it is not there.
+
+    ``sings the lyric line, "X",`` becomes ``sings <d>[English] X.</d>``.
+    """
     words = _words(lyric)
     if not words:
         return None
+    lead = " ".join(words[:6])
+    for match in re.finditer(r'(\bthe lyric line,?\s*)?["“]([^"”]+)["”],?', description, re.IGNORECASE):
+        if lead in " ".join(_words(match.group(2))):
+            return description[:match.start()] + _dialogue_tag(match.group(2)) + description[match.end():]
     pattern = r"[\W_]*".join(re.escape(w) for w in words)
     match = re.search(pattern, description.replace("’", "'"), re.IGNORECASE)
     if not match:
         return None
     start, end = match.span()
-    return description[:start] + '"' + description[start:end].strip() + '"' + description[end:]
-
-
-def _has_quoted_lyric(description: str, lyric: str) -> bool:
-    words = _words(lyric)
-    if not words:
-        return True
-    lead = " ".join(words[:6])
-    for quoted in re.findall(r'["“]([^"”]+)["”]', description):
-        if lead in " ".join(_words(quoted)):
-            return True
-    return False
+    return description[:start] + _dialogue_tag(description[start:end]) + description[end:]
 
 
 def ensure_quoted_lyrics(descriptions: List[str], lyric_text: str, performer: str = "the singer") -> List[str]:
-    """Make every shot carry its lyric in double quotes: quote a plain copy, or add the sentence.
+    """Make every shot carry its lyric as ``<d>[English] words.</d>``: tag a quoted or plain copy, or add the sentence.
 
     The saved prompt must say what the character sings, so this does not rely on the LLM.
     """
@@ -548,14 +815,14 @@ def ensure_quoted_lyrics(descriptions: List[str], lyric_text: str, performer: st
         if normalized_chunk and any(normalized_chunk in normalize(re.sub(r"<[^>]+>", "", tagged)) for tagged in tagged_lyrics):
             result.append(description)
             continue
-        if not chunk or _has_quoted_lyric(description, chunk):
+        if not chunk:
             result.append(description)
             continue
-        quoted = _quote_existing(description, chunk)
-        if quoted is not None:
-            result.append(quoted)
+        tagged = _tag_existing(description, chunk)
+        if tagged is not None:
+            result.append(tagged)
             continue
-        sentence = f'{performer} sings the lyric line, "{chunk.rstrip(" ,;")}".'
+        sentence = f"{performer} sings {_dialogue_tag(chunk)} in sync with <Audio 1>."
         base = description.rstrip()
         result.append(f"{base} {sentence}" if base else sentence)
     return result
@@ -668,8 +935,14 @@ def location_continuity_contract(
                 "Make the chosen mechanism concrete in the shot description."
             ),
             "masked": (
-                f"LOCATION PHASE — MASKED CONTINUATION TRANSITION: The renderer already holds the previous scene's last moments, so for the first {hold} seconds simply continue the opening frame's action in {prev} with the same subject, framing, pace, and camera motion. No cut, no change of angle, and no new setup. "
-                f"At about {hold} seconds, begin ONE smooth, motivated movement that carries the shot into {cur}. Choose the movement that best suits the opening frame: a camera move (push-in, pull-back, pan, tilt, track, or arc around the subject) or a natural subject move (turning, stepping through, walking on) that the camera follows. "
+                f"LOCATION PHASE — MASKED CONTINUATION TRANSITION: The renderer already holds the previous scene's last moments, "
+                + (
+                    f"so for the first {hold} seconds simply continue the opening frame's action in {prev} with the same subject, framing, pace, and camera motion. No cut, no change of angle, and no new setup. "
+                    f"At about {hold} seconds, "
+                    if float(hold) > 0 else
+                    f"so from the first frame carry on the opening frame's action in {prev} with the same subject, framing, pace, and camera motion. No cut, no change of angle, and no new setup. From the first frame, "
+                )
+                + f"begin ONE smooth, motivated movement that carries the shot into {cur}. Choose the movement that best suits the opening frame: a camera move (push-in, pull-back, pan, tilt, track, or arc around the subject) or a natural subject move (turning, stepping through, walking on) that the camera follows. "
                 "Let the surroundings change progressively through that movement and its parallax, with no wipe, flash, portal, morph, or cut. Describe the move and where the shot has arrived when it finishes."
                 + performance_line(has_vocals, "transition")
             ),
@@ -704,7 +977,8 @@ def continuation_task_text(
     the LLM is shown the previous scene's final frame as Attached Picture 1, like the Builder. Without it the previous
     scene's last shot description stands in for the picture.
     """
-    hold = f"{float(continuation.get('hold_seconds') or 0.5):g}"
+    hold_value = continuation.get("hold_seconds")
+    hold = f"{float(0.0 if hold_value is None else hold_value):g}"
     scene_seconds = float(continuation.get("scene_seconds") or 0.0)
     seconds_left = float(continuation.get("seconds_left") or max(0.0, scene_seconds - float(hold)))
     direction = str(continuation.get("direction") or "").strip()
@@ -761,11 +1035,16 @@ def continuation_task_text(
                 "last action fully done, never cut off or left unfinished. "
                 if scene_seconds > 0 else ""
             )
-            + f"Write the one shot description in two timed parts and put the timing in the text itself. First: \"For the first {hold} seconds, ...\" "
-            "continuing the opening frame's action with the same camera motion, framing, and pace. "
-            f"Then: \"At about {hold} seconds, ...\" performing every action in the direction above, in the author's order and with the "
-            "author's own verbs and objects, as one smooth continuous movement in the same take. "
-            "If the direction needs a body position or facing different from "
+            + (
+                f"Write the one shot description in two timed parts and put the timing in the text itself. First: \"For the first {hold} seconds, ...\" "
+                "continuing the opening frame's action with the same camera motion, framing, and pace. "
+                f"Then: \"At about {hold} seconds, ...\" performing every action in the direction above, in the author's order and with the "
+                "author's own verbs and objects, as one smooth continuous movement in the same take. "
+                if float(hold) > 0 else
+                "Write the one shot description so the direction starts from the first frame, with no timed lead-in: perform every action "
+                "in the direction above, in the author's order and with the author's own verbs and objects, as one smooth continuous movement in the same take. "
+            )
+            + "If the direction needs a body position or facing different from "
             + ("Attached Picture 1" if with_picture else "the previous scene's last shot")
             + " (for example standing up, walking, or turning), first describe the natural movement that gets the subject there, inside the same take. "
             "Do not skip or replace any action in the direction. If it is a lot for the time left, perform its actions in quicker "
@@ -808,8 +1087,12 @@ def build_shot_task(
     audio_direction: str = "",
     continuity: str = "",
     storyboard_context: str = "",
+    cues: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     """The ``MiniMax H3 shot-description task`` text the saved instruction expects.
+
+    ``cues`` are the scene's timed cue rows (``timed_cue_rows``), one per shot, with ``label`` set to the singer's
+    subject label. With them each shot gets its own words and vocal window, like the Builder's cue map.
 
     ``motion_request`` (the scene's Video Notes), ``audio_direction``, ``continuity`` and
     ``storyboard_context`` (the scene-card block) are the Builder's "Motion/camera request", staging
@@ -847,7 +1130,7 @@ def build_shot_task(
         "SHOT FORMAT — MANDATORY: Write concise complete sentences, with length and action complexity suited to the available shot time, in this order. "
         "1) Camera: the opening framing, one named camera move with its direction and speed, and the ending framing. "
         "2) Subject action: each person in the cast does their own continuous physical action, written by what the body does. "
-        "3) Acting detail: include only context-supported expression or reaction that fits naturally inside the existing action and available time. "
+        "3) Acting detail: each visible face's concrete expression for this moment, as the PERFORMANCE CRAFT rules below describe. "
         "4) Light and set: one short line using only the mapped location's own light and objects. "
         "Describe only what the camera sees. Show emotion only as visible movement. Do not use feeling words such as feel, grief, longing, memory, soul, or emotional. "
         "Write complete grammatical prose, not notes, labels, or fragments. "
@@ -869,8 +1152,13 @@ def build_shot_task(
             "Do not append character names or picture origins in parentheses."
         ]
         for item in cast:
-            role = "does not sing, speak, or lip sync; acts and reacts silently with a relaxed closed mouth" if (visual_only or not lyric_text) \
-                else "SINGS and lip-syncs the exact lyric line with visible mouth, lip, and jaw movement"
+            if visual_only or not lyric_text:
+                role = "does not sing, speak, or lip sync; acts and reacts silently with a relaxed closed mouth"
+            elif audio_mode == "built_in_audio":
+                role = "SINGS and lip-syncs the exact lyric line with visible mouth, lip, and jaw movement"
+            else:
+                # Supplied audio drives the mouth, so the prose describes the face and body (SUPPLIED-AUDIO SINGING below).
+                role = "SINGS the exact lyric line in sync with <Audio 1>, acting it with the face and body"
             lines.append(f"- {item['label']} ({item['name'] or 'mapped subject'}): {role}")
         lines.append("ONLY THESE PEOPLE APPEAR — MANDATORY: " + ", ".join(f"{i['label']} ({i['name'] or 'mapped subject'})" for i in cast)
                      + ". No other person, hand, arm, shadow, reflection, silhouette, or crowd appears in any shot.")
@@ -883,13 +1171,20 @@ def build_shot_task(
         parts.append("Vocal performance: no visible character / no lip sync. Do not invent a visible singer or speaker.")
     elif visual_only or not lyric_text:
         parts.append("Vocal performance: no exact lyric is assigned to this scene. Do not add singing, speaking, or lip sync.")
+    elif cues:
+        parts.append("TIMED VOCAL CUES ONLY: Follow the timed singer/shot contract exactly. Never place, anticipate, continue, or repeat a lyric in an "
+                     "instrumental shot. A performer sings only inside the specifically assigned vocal cue shot.")
+        parts.append("Timed singer / shot contract:\n" + cue_shot_contract(cues))
     else:
         chunks = lyric_chunks(lyric_text, len(plan))
         singer = f"{cast[0]['label']} ({cast[0]['name']})" if cast and cast[0]["name"] else (cast[0]["label"] if cast else "the singer")
+        mouth = ("Show clear, natural mouth, lip, jaw, and facial movement synchronized to the audible vocal. " if audio_mode == "built_in_audio"
+                 else "Audio 1 drives the singer's mouth, so act the line with the face and body. ")
         parts.append("MANDATORY VOCAL PERFORMANCE: The assigned subject is visibly singing the exact supplied lyric/audio during this scene. "
-                     "Use the stable visible subject label. Show clear, natural mouth, lip, jaw, and facial movement synchronized to the audible vocal. "
-                     "LYRIC IN THE SHOT — MANDATORY: write the exact lyric words, unchanged, inside the shot description in double quotes, "
-                     f'introduced like this: {singer} sings the lyric line, "the exact words". Every lyric line given below must appear in a shot, in order.')
+                     f"Use the stable visible subject label. {mouth}"
+                     "LYRIC IN THE SHOT — MANDATORY: write the exact lyric words, unchanged, inside <d>[English] exact words with final punctuation.</d>, "
+                     f"introduced like this: {singer} sings <d>[English] the exact words.</d> in sync with <Audio 1>. "
+                     "Every lyric line given below must appear in a shot, in order.")
         if len(chunks) == 1:
             parts.append(f"Exact lyric line:\n{compact(chunks[0])}")
         else:
@@ -947,6 +1242,8 @@ def build_shot_task(
             "Do not append character names or picture origins in parentheses. "
             "Do not add a standalone reference-definition paragraph to the shot description."
         )
+    parts.append(performance_craft_instruction(
+        style, has_cast=bool(cast), has_vocals=bool(lyric_text) and not visual_only and not no_character, continuation=bool(continuation)))
     parts.append(literal_scene_instruction())
     if audio_mode != "built_in_audio" and not visual_only and not no_character:
         parts.append("SUPPLIED-AUDIO SINGING: Include the assigned singer and Audio 1 synchronization cue once, only during audible vocals. "

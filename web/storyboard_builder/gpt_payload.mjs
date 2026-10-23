@@ -304,7 +304,7 @@ function storyboardScenesForGpt(state) {
         instruction: explicitSingers.length === 1
           ? `${explicitSingers[0]} is the only singing performer. Every other visible subject is silent and must not sing.`
           : explicitSingers.length > 1
-            ? `Only these mapped performers sing: ${explicitSingers.join(", ")}. Every other visible subject is silent and must not sing.`
+            ? `Only these mapped performers sing, listed in singing order (${explicitSingers[0]} sings first, then the next one comes in): ${explicitSingers.join(", ")}. Every other visible subject is silent and must not sing.`
             : "No mapped subject is assigned to sing. All visible subjects are silent.",
       },
       vocal_status: {

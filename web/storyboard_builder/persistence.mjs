@@ -19,8 +19,10 @@ import {
   slimSceneForRequest,
   slimStoryboardForRequest,
   storyboardCutFrequencyValue,
+  storyboardCutStyleValue,
   storyboardSpeedValue,
 } from "./scenes.mjs";
+import { withoutStoryModeKeys } from "../music_video_builder/story_mode_data.mjs";
 import { normalizeStoryboardScriptImportState } from "./script_import.mjs";
 import { normalizeStoryboardCustomCameraFlowSequence, STORYBOARD_CAMERA_FLOW_PRESETS } from "./shot_presets.mjs";
 import {
@@ -35,7 +37,7 @@ import {
 
 export function createStoryboardPersistence({
   absorbSceneReferencesIntoCatalog, adjacentLyricContextInput, cameraFlowSelect, cameraSpeedInput, characterSpeedInput, storyArcDetailSelect, consistencyInput,
-  cutFrequencyInput, enforceStoryboardVideoFacialRequirements, exportPrompts, facialCustomInput,
+  cutFrequencyInput, cutStyleSelect = null, enforceStoryboardVideoFacialRequirements, exportPrompts, facialCustomInput,
   facialPerformancePresets, facialSelect, fxCustomInput, fxSelect, getSelectedScenes,
   imageAestheticPresets, imageAestheticSelect, imageCustomStyleInput, imageShotFlowPresets, imageShotSelect,
   imageWorldStyleSelect,
@@ -276,7 +278,13 @@ export function createStoryboardPersistence({
       storyArcDetailSelect.value = state.storyArcDetail;
       storyArcDetailSelect.dispatchEvent(new Event("input"));
       cutFrequencyInput.value = String(state.cutFrequency);
-      state.storyLayer = normalizeStoryLayer(saved.story_layer ?? saved.storyLayer ?? {});
+      state.cutStyle = storyboardCutStyleValue(saved.minimax_h3_cut_style ?? state.cutStyle);
+      if (cutStyleSelect) cutStyleSelect.value = state.cutStyle;
+      state.defaultsSpeedPreset = String(saved.defaults_speed_preset ?? state.defaultsSpeedPreset ?? "");
+      state.defaultsMusicPreset = String(saved.defaults_music_preset ?? state.defaultsMusicPreset ?? "");
+      // The Video Builder owns Story Mode data (acts, scene plan); the saved storyboard's copy of it can be old, so only
+      // its classic story fields are restored.
+      state.storyLayer = normalizeStoryLayer({ ...state.storyLayer, ...withoutStoryModeKeys(saved.story_layer ?? saved.storyLayer) });
       state.scriptImport = normalizeStoryboardScriptImportState(saved.script_import ?? saved.scriptImport ?? state.scriptImport ?? {});
       storyLayerEnabledInput.checked = state.storyLayer.enabled !== false;
       overallStoryIdeaInput.value = state.storyLayer.overall_story_idea || "";
@@ -300,6 +308,7 @@ export function createStoryboardPersistence({
       refreshCharacterSpeedInfo();
       refreshFacialInfo();
       setMode(state.mode);
+      state.onDefaultsLoaded?.();
       syncReferenceMappingsToVideoCreator();
       return true;
     } catch (error) {

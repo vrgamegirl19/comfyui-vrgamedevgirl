@@ -986,11 +986,12 @@ export function createTimelineEdit({
   }
 
   // Same path as Render All > "Selected scenes only", with Redo videos when any target already has a video.
-  async function renderScenesFromMenu(targets, redo) {
+  // renderPhase "draft" is Render All > "Render Drafts - Pass 1 Only": a pass-1 preview with no final stitch.
+  async function renderScenesFromMenu(targets, redo, renderPhase = "full") {
     const previousIds = Array.isArray(state.selectedSegmentIds) ? [...state.selectedSegmentIds] : [];
     state.selectedSegmentIds = targets.map((scene) => scene.id);
     try {
-      await renderAllScenes({ sceneScope: "selected", forceVideos: redo, skipFinalStitch: true });
+      await renderAllScenes({ sceneScope: "selected", forceVideos: redo || renderPhase === "draft", renderPhase, skipFinalStitch: true });
     } catch (error) {
       toast(String(error?.message || error), true);
     } finally {
@@ -1061,6 +1062,12 @@ export function createTimelineEdit({
         `${hasVideos ? "Rerender" : "Render"} ${noun}`,
         () => renderScenesFromMenu(renderTargets, hasVideos),
       );
+      // Pass 1 only needs two-pass settings, the same rule as Render All > Render Drafts.
+      const previewable = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3"
+        && renderTargets.every((scene) => ["two_pass", "three_pass"].includes(miniMaxH3SettingsForSegment(scene).render_pass));
+      if (previewable) {
+        addItem(`Render ${noun} preview (pass 1 only)`, () => renderScenesFromMenu(renderTargets, hasVideos, "draft"));
+      }
       if (multiTargets.length > 1) {
         addItem(
           `Stitch preview of ${multiTargets.length} scenes`,

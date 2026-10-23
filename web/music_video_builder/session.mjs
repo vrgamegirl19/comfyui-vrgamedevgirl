@@ -16,13 +16,14 @@ import {
 import {
   makeButton,
   normalizeProjectVideoEngine,
-  normalizeVideoType,
+  normalizeProjectVideoType,
   setWidgetValue,
   styleCompactToolbarButton,
   toast,
 } from "./controls.mjs";
 import { showLoadProjectModal, showWelcomeProjectModal } from "./dialogs.mjs";
 import { normalizeAudioMaskAuto } from "./audio_mask_store.mjs";
+import { applyGlobalLlmKeys, rememberGlobalLlmKeys } from "./llm_global_keys.mjs";
 import { cloneMiniMaxH3Settings } from "./minimax_h3.mjs";
 import { restoreVideoMode } from "./video_mode_resume.mjs";
 import {
@@ -848,7 +849,7 @@ export function createSession({
       timeline_panel_height: state.timelinePanelHeight,
       timeline_zoom: state.timelineZoom,
       auto_save_enabled: state.autoSaveEnabled,
-      video_type: normalizeVideoType(state.videoType),
+      video_type: normalizeProjectVideoType(state.videoType),
       video_engine: normalizeProjectVideoEngine(state.projectVideoEngine),
       minimax_h3_settings: cloneMiniMaxH3Settings(state.miniMaxH3Settings),
         minimax_h3_two_pass: state.miniMaxH3Settings.render_pass === "two_pass",
@@ -1134,6 +1135,8 @@ export function createSession({
         state.lmStudioApiKey = data.session.lm_studio_api_key || state.lmStudioApiKey || "";
         state.lmStudioContextLimit = normalizeLmStudioContextLimit(data.session.lm_studio_context_limit ?? state.lmStudioContextLimit);
         state.lmStudioOutputTokenLimit = normalizeOutputTokenLimit(data.session.lm_studio_output_token_limit ?? data.session.llm_max_tokens ?? data.session.llmMaxTokens ?? state.lmStudioOutputTokenLimit);
+        // The LLM runner settings and keys saved for every project replace this project's copy.
+        applyGlobalLlmKeys(state);
         state.notificationSettings = normalizeNotificationSettings(data.session.notification_settings || state.notificationSettings);
         state.automaticMemoryCleanup = setBuilderAutomaticMemoryCleanupEnabled(data.session.automatic_memory_cleanup ?? state.automaticMemoryCleanup ?? false);
         state.sceneRenderWaitHours = normalizeSceneRenderWaitHours(data.session.scene_render_wait_hours ?? state.sceneRenderWaitHours);
@@ -1165,7 +1168,7 @@ export function createSession({
         state.timelinePanelHeight = data.session.timeline_panel_height || state.timelinePanelHeight;
         state.timelineZoom = data.session.timeline_zoom || state.timelineZoom;
         state.autoSaveEnabled = data.session.auto_save_enabled ?? state.autoSaveEnabled;
-        state.videoType = normalizeVideoType(data.session.video_type || data.session.videoType || state.videoType);
+        state.videoType = normalizeProjectVideoType(data.session.video_type || data.session.videoType || state.videoType);
         state.projectVideoEngine = normalizeProjectVideoEngine(data.session.video_engine ?? state.projectVideoEngine);
         state.imageModelMode = data.session.image_model_mode || data.session.flux_klein_settings?.image_model_mode || state.imageModelMode || "zimage";
         state.pxPerSecond = state.timelineZoom;
@@ -1386,9 +1389,6 @@ export function createSession({
       state.ownServerUrl = session.own_server_url || state.ownServerUrl || "http://127.0.0.1:8000/v1";
       state.ownServerModel = session.own_server_model || state.ownServerModel || "";
       state.ownServerApiKeyProject = session.own_server_api_key_project || "";
-      // Never carry a session-only credential into a newly loaded project's
-      // arbitrary server URL. A project key is restored only when explicitly saved.
-      state.ownServerApiKey = state.ownServerApiKeyProject;
       state.ownServerOutputTokenLimit = normalizeOutputTokenLimit(session.own_server_output_token_limit ?? state.ownServerOutputTokenLimit);
       state.ownServerTimeoutMinutes = normalizeOwnServerTimeoutMinutes(
         session.own_server_timeout_minutes
@@ -1418,6 +1418,9 @@ export function createSession({
       state.lmStudioApiKey = session.lm_studio_api_key || state.lmStudioApiKey || "";
       state.lmStudioContextLimit = normalizeLmStudioContextLimit(session.lm_studio_context_limit ?? state.lmStudioContextLimit);
       state.lmStudioOutputTokenLimit = normalizeOutputTokenLimit(session.lm_studio_output_token_limit ?? session.llm_max_tokens ?? session.llmMaxTokens ?? state.lmStudioOutputTokenLimit);
+      // The LLM runner settings and keys saved for every project replace this project's copy.
+      rememberGlobalLlmKeys(data.global_llm_keys, data.global_llm_runner);
+      applyGlobalLlmKeys(state);
       state.notificationSettings = normalizeNotificationSettings(session.notification_settings || state.notificationSettings);
       state.automaticMemoryCleanup = setBuilderAutomaticMemoryCleanupEnabled(session.automatic_memory_cleanup ?? false);
       state.sceneRenderWaitHours = normalizeSceneRenderWaitHours(session.scene_render_wait_hours ?? state.sceneRenderWaitHours);
@@ -1451,7 +1454,7 @@ export function createSession({
       state.timelinePanelHeight = session.timeline_panel_height || state.timelinePanelHeight || 300;
       state.timelineZoom = session.timeline_zoom || state.timelineZoom || 45;
       state.autoSaveEnabled = session.auto_save_enabled ?? state.autoSaveEnabled ?? true;
-      state.videoType = normalizeVideoType(session.video_type || session.videoType || state.videoType);
+      state.videoType = normalizeProjectVideoType(session.video_type || session.videoType || state.videoType);
       state.projectVideoEngine = normalizeProjectVideoEngine(session.video_engine);
       state.imageModelMode = session.image_model_mode || session.flux_klein_settings?.image_model_mode || state.imageModelMode || "zimage";
       state.pxPerSecond = state.timelineZoom;

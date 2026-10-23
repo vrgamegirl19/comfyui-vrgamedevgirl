@@ -1,4 +1,4 @@
-"""Which LLM the Agent API uses: the project's saved runner settings, and for LM Studio, the model that is loaded.
+"""Which LLM the Agent API uses: the LLM runner settings saved for every project, and for LM Studio, the model that is loaded.
 
 The API must never change what LM Studio has loaded. A request that names a model that is not loaded
 makes LM Studio load it (and unload the current one), so this module:
@@ -18,6 +18,25 @@ from .errors import AgentApiError, LLM_UNAVAILABLE
 
 _LM_STUDIO_DEFAULT_BASE_URL = "http://127.0.0.1:1234/v1"
 _CHAT_TYPES = ("llm", "vlm")
+# Gemma Local fails with a smaller window (twin of GEMMA_LOCAL_MIN_TOKENS in llm/builder_runner.py).
+GEMMA_LOCAL_MIN_TOKENS = 16384
+_MAX_TOKENS = 262144
+
+
+def gemma_local_token_limits(context_limit: Any, output_limit: Any) -> tuple:
+    """Gemma Local (context, output): both at least GEMMA_LOCAL_MIN_TOKENS, output no higher than context.
+
+    Mirrors ``gemmaLocalTokenLimits`` in the Video Builder.
+    """
+    def as_int(value: Any) -> int:
+        try:
+            return int(round(float(value)))
+        except (TypeError, ValueError):
+            return GEMMA_LOCAL_MIN_TOKENS
+
+    context = max(GEMMA_LOCAL_MIN_TOKENS, min(_MAX_TOKENS, as_int(context_limit)))
+    output = max(GEMMA_LOCAL_MIN_TOKENS, min(context, as_int(output_limit)))
+    return context, output
 
 
 class LlmUnavailableError(AgentApiError):
@@ -26,12 +45,13 @@ class LlmUnavailableError(AgentApiError):
 
 
 def llm_payload_from_session(session: Dict[str, Any], overrides: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """The LLM runner settings a project saved, in the key names the generators read.
+    """The LLM runner settings, in the key names the generators read.
 
-    Mirrors ``textGemmaRunnerPayload`` in the Video Builder. ``overrides`` (the caller's request
-    parameters) win over the saved settings.
+    The settings saved for every project win over the project's own copy, as in the Video Builder
+    (``applyGlobalLlmKeys``). Mirrors ``textGemmaRunnerPayload``. ``overrides`` (the caller's request
+    parameters) win over both.
     """
-    s = session if isinstance(session, dict) else {}
+    s = {**(session if isinstance(session, dict) else {}), **global_llm_runner()}
     runner = str(s.get("text_gemma_runner") or "builtin")
     payload: Dict[str, Any] = {
         "text_runner": runner,
@@ -57,10 +77,40 @@ def llm_payload_from_session(session: Dict[str, Any], overrides: Optional[Dict[s
     }
     if runner == "qwen_local":
         payload["model_file"] = payload["qwen_model_file"]
+    _fill_api_keys(payload)
     for key, value in (overrides or {}).items():
         if value not in (None, ""):
             payload[key] = value
+    if str(payload.get("text_runner") or "builtin") == "builtin":
+        payload["n_ctx"], payload["gemma_output_token_limit"] = gemma_local_token_limits(
+            payload.get("n_ctx"), payload.get("gemma_output_token_limit"))
     return payload
+
+
+def global_llm_runner() -> Dict[str, Any]:
+    """The LLM runner settings saved for every project (Video Builder LLM Runner)."""
+    from ..builder.project import _load_global_llm_runner
+    return _load_global_llm_runner()
+
+
+def global_llm_keys() -> Dict[str, str]:
+    """The API keys saved for every project (Video Builder LLM runner settings)."""
+    from ..builder.project import _load_global_llm_keys
+    return _load_global_llm_keys()
+
+
+def _fill_api_keys(payload: Dict[str, Any]) -> None:
+    """Give the runner a key: the global one first, then a key an older project saved."""
+    keys = global_llm_keys()
+    if not payload.get("llm_api_key"):
+        payload["llm_api_key"] = keys.get("llm_api_key") or payload.get("llm_api_key_project") or ""
+    if not payload.get("own_server_api_key"):
+        payload["own_server_api_key"] = keys.get("own_server_api_key") or payload.get("own_server_api_key_project") or ""
+
+
+def project_elevenlabs_key(session: Dict[str, Any]) -> str:
+    """The ElevenLabs key: the project's own key, else the global one."""
+    return str((session or {}).get("elevenlabs_api_key_project") or global_llm_keys().get("elevenlabs_api_key") or "")
 
 
 def _api_root(payload: Dict[str, Any]) -> str:

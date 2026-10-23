@@ -36,6 +36,15 @@ except ImportError:  # loaded on its own (tests, tools): the per-take archive is
     class latent_takes:  # noqa: N801
         archive_latent = delete_scene_takes = delete_all_takes = shift_takes = copy_takes = staticmethod(lambda *args, **kwargs: None)
 
+try:
+    from ..core.atomic_write import atomic_write_json
+except ImportError:  # loaded on its own (tests, tools)
+    def atomic_write_json(path, value):
+        temp = path + ".tmp"
+        with open(temp, "w", encoding="utf-8") as handle:
+            json.dump(value, handle, indent=2)
+        os.replace(temp, path)
+
 
 # MiniMax H3 token to frame conversion table
 _FRAME_PER_TOKEN = (1, 4, 4, 4, 4)
@@ -374,6 +383,13 @@ def calculate_minimax_h3_timing(
     render_duration = Decimal(h3_frames) / frame_rate
     workflow_duration = Decimal(context_frames) / frame_rate
     alignment_padding = render_duration - context_duration
+    # The song keeps playing over the alignment padding. Audio Drive fills missing audio with silence, and the next
+    # scene's masked continuation copies these frames in as its first visible ones, so silence there shows as a closed
+    # mouth over continuous singing. Only audio the source really has is used, so the trim never comes up short.
+    audio_tail = Decimal(0)
+    if source_duration is not None:
+        audio_after_context = source_duration - (source_start + scene_duration + actual_cooldown)
+        audio_tail = min(alignment_padding, max(Decimal(0), audio_after_context))
     final_trim_start = actual_warmup
     discard_after_scene = render_duration - (actual_warmup + scene_duration)
     # frames the stitcher keeps for this scene: timeline boundaries rounded to whole frames
@@ -393,7 +409,7 @@ def calculate_minimax_h3_timing(
         actual_warmup_seconds=_seconds(actual_warmup),
         actual_cooldown_seconds=_seconds(actual_cooldown),
         audio_trim_start_seconds=_seconds(audio_trim_start),
-        audio_trim_duration_seconds=_seconds(context_duration),
+        audio_trim_duration_seconds=_seconds(context_duration + audio_tail),
         context_duration_seconds=_seconds(context_duration),
         context_frame_count=context_frames,
         workflow_duration_input_seconds=_seconds(workflow_duration),
@@ -427,6 +443,63 @@ class SceneLatentManager:
     @classmethod
     def get_path(cls, project_folder: str, scene_number: int) -> str:
         return os.path.join(cls._latents_folder(project_folder), f"scene_{int(scene_number):03d}.latent")
+
+    @classmethod
+    def get_pass1_path(cls, project_folder: str, scene_number: int) -> str:
+        """A 2 Pass render's first-pass latent, kept so the next scene's first pass continues it without a VAE trip."""
+        return os.path.join(cls._latents_folder(project_folder), f"scene_{int(scene_number):03d}.pass1.latent")
+
+    @classmethod
+    def save_pass1_latent(
+        cls, project_folder: str, scene_number: int, samples_dict_or_tensor: Any, tail_padding_frames: int = -1,
+    ) -> str:
+        """Save a 2 Pass render's first-pass latent. It is only an input for the next scene, so no takes or flags."""
+        video, audio = cls._extract_streams(samples_dict_or_tensor)
+        if not isinstance(video, torch.Tensor) or video.ndim != 5:
+            raise ValueError(f"Video latent must be a 5D tensor [B, C, T, H, W], got: {getattr(video, 'shape', None)}")
+        tensors = {"video": video.detach().to("cpu").contiguous()}
+        if isinstance(audio, torch.Tensor):
+            tensors["audio"] = audio.detach().to("cpu").contiguous()
+        meta = {
+            "scene_number": str(scene_number),
+            "token_count": str(int(video.shape[2])),
+            "timestamp": str(time.time()),
+            "video_shape": str(list(video.shape)),
+            "pass": "1",
+        }
+        if int(tail_padding_frames) >= 0:
+            meta["tail_padding_frames"] = str(int(tail_padding_frames))
+        path = cls.get_pass1_path(project_folder, scene_number)
+        temp = path + ".tmp"
+        if HAS_SAFETENSORS:
+            safetensors.torch.save_file(tensors, temp, metadata=meta)
+        else:
+            torch.save({**tensors, "metadata": meta}, temp)
+        os.replace(temp, path)
+        atomic_write_json(path + ".json", meta)
+        print(f"[VRGDG Latent] Saved scene {int(scene_number):03d} first-pass latent ({meta['token_count']} tokens) -> {path}")
+        return path
+
+    @classmethod
+    def pass1_latent_matches(cls, project_folder: str, scene_number: int) -> bool:
+        """True when the scene's first-pass latent was saved by the same render as its final latent.
+
+        Selecting an older take, a single pass re-render or a scene move leaves a first-pass file that no longer
+        belongs to the final latent. It must then be ignored.
+        """
+        info = cls.get_latent_info(project_folder, scene_number)
+        sidecar = cls.get_pass1_path(project_folder, scene_number) + ".json"
+        if not info.get("exists") or not os.path.isfile(sidecar[:-5]) or not os.path.isfile(sidecar):
+            return False
+        try:
+            with open(sidecar, "r", encoding="utf-8") as handle:
+                meta = json.load(handle)
+            pass1_time = float(meta["timestamp"])
+            same_length = int(meta["token_count"]) == int(info["token_count"])
+        except (OSError, ValueError, KeyError, TypeError):
+            return False
+        # the first pass is saved during the render, the final latent at its end
+        return same_length and 0 <= float(info["timestamp"]) - pass1_time < 4 * 3600
 
     @classmethod
     def get_dirty_path(cls, project_folder: str, scene_number: int) -> str:
@@ -471,6 +544,33 @@ class SceneLatentManager:
                 os.remove(dirty_path)
             except OSError:
                 pass
+
+    @classmethod
+    def continues_from_predecessor(cls, project_folder: str, scene_number: int) -> bool:
+        """Whether scene ``scene_number``'s render was built from its predecessor's latent.
+
+        Reads ``minimax_h3_continuity_mode_used`` from the saved session, which the Builder and the API record
+        after each render. A scene with no record (older project, never rendered) counts as continued.
+        """
+        try:
+            with open(os.path.join(project_folder, "vrgdg_builder_session.json"), encoding="utf-8-sig") as handle:
+                segments = json.load(handle).get("segments")
+            segment = segments[int(scene_number) - 1]
+        except (OSError, ValueError, AttributeError, TypeError, IndexError):
+            return True
+        used = str(segment.get("minimax_h3_continuity_mode_used") or "").strip().lower() if isinstance(segment, dict) else ""
+        return used != "off"
+
+    @classmethod
+    def mark_successor_dirty(cls, project_folder: str, scene_number: int, reason: str = "") -> bool:
+        """Mark the next scene's latent dirty, only when that latent was continued from this scene."""
+        successor = int(scene_number) + 1
+        if not cls.latent_exists(project_folder, successor):
+            return False
+        if not cls.continues_from_predecessor(project_folder, successor):
+            return False
+        cls.mark_dirty(project_folder, successor, reason=reason)
+        return True
 
     @classmethod
     def list_dirty(cls, project_folder: str) -> list[int]:
@@ -686,10 +786,8 @@ class SceneLatentManager:
         # Clear any dirty flag for this scene since it was just freshly rendered
         cls.clear_dirty(project_folder, scene_number)
 
-        # Mark subsequent scenes as dirty to warn that predecessor changed
-        successor_scene = int(scene_number) + 1
-        if cls.latent_exists(project_folder, successor_scene):
-            cls.mark_dirty(project_folder, successor_scene, reason=f"Scene {scene_number:03d} re-rendered")
+        # Mark the next scene dirty when it was continued from this one
+        cls.mark_successor_dirty(project_folder, scene_number, reason=f"Scene {int(scene_number):03d} re-rendered")
 
         print(
             f"[VRGDG Latent] Saved scene {scene_number:03d} latent ({token_count} tokens, "
@@ -698,14 +796,14 @@ class SceneLatentManager:
         return target_path
 
     @classmethod
-    def load_latent(cls, project_folder: str, scene_number: int) -> dict[str, Any] | None:
-        """Load a scene's latent tensor and metadata from disk.
+    def load_latent(cls, project_folder: str, scene_number: int, pass1: bool = False) -> dict[str, Any] | None:
+        """Load a scene's latent tensor and metadata from disk (``pass1``: its 2 Pass first-pass latent).
 
         Returns:
             Dict with keys: 'samples', 'video', 'audio', 'frame_count', 'token_count', 'fps', 'metadata'
             or None if the file does not exist.
         """
-        path = cls.get_path(project_folder, scene_number)
+        path = cls.get_pass1_path(project_folder, scene_number) if pass1 else cls.get_path(project_folder, scene_number)
         if not os.path.isfile(path):
             return None
 
@@ -818,7 +916,8 @@ class SceneLatentManager:
         """Safely delete a scene's latent file and sidecars."""
         path = cls.get_path(project_folder, scene_number)
         deleted = False
-        for p in (path, path + ".json", cls.get_dirty_path(project_folder, scene_number)):
+        pass1 = cls.get_pass1_path(project_folder, scene_number)
+        for p in (path, path + ".json", pass1, pass1 + ".json", cls.get_dirty_path(project_folder, scene_number)):
             if os.path.isfile(p):
                 try:
                     os.remove(p)
@@ -875,7 +974,7 @@ class SceneLatentManager:
             old_base = os.path.join(folder, f"scene_{num:03d}")
             new_base = os.path.join(folder, f"scene_{new_num:03d}")
 
-            for ext in (".latent", ".latent.json", ".dirty"):
+            for ext in (".latent", ".latent.json", ".pass1.latent", ".pass1.latent.json", ".dirty"):
                 old_file = old_base + ext
                 new_file = new_base + ext
                 if os.path.isfile(old_file):
@@ -901,7 +1000,7 @@ class SceneLatentManager:
         for num in indices:
             old_base = os.path.join(folder, f"scene_{num:03d}")
             new_base = os.path.join(folder, f"scene_{num + 1:03d}")
-            for ext in (".latent", ".latent.json", ".dirty"):
+            for ext in (".latent", ".latent.json", ".pass1.latent", ".pass1.latent.json", ".dirty"):
                 if os.path.isfile(old_base + ext):
                     os.rename(old_base + ext, new_base + ext)
         latent_takes.shift_takes(folder, first, 1)

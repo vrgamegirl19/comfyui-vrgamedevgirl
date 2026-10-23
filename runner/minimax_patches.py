@@ -100,9 +100,47 @@ def _patch_minimax_h3_save_latent(prompt, payload, timing=None):
     }
     prompt[decode_id]["inputs"]["samples"] = [save_id, 0]
 
+    # 2 Pass: also keep the first pass's latent, so the next scene's first pass continues it directly instead of a
+    # shrunk copy of this scene's finished second pass (which would put the second pass's contrast in twice).
+    pass1_save_id = None
+    first_pass_source = next(
+        (
+            node["inputs"]["original_av_latent"] for node in prompt.values()
+            if node.get("class_type") == "VRGDG_MiniMaxH3ReplaceUpscaledVideoLatent"
+            and isinstance(node.get("inputs", {}).get("original_av_latent"), list)
+        ),
+        None,
+    )
+    if first_pass_source is not None:
+        pass1_save_id = str(int(save_id) + 1)
+        while pass1_save_id in prompt:
+            pass1_save_id = str(int(pass1_save_id) + 1)
+        prompt[pass1_save_id] = {
+            "class_type": "VRGDG_MiniMaxH3SaveLatent",
+            "inputs": {
+                "latent": list(first_pass_source),
+                "project_folder": project_folder,
+                "scene_number": scene_number,
+                "frame_count": 0,
+                "fps": 24.0,
+                "tail_padding_frames": tail_padding if tail_padding is not None else -1,
+                "pass1": True,
+            },
+            "_meta": {"title": f"First-Pass Latent Save (Scene {scene_number:03d})"},
+        }
+        # The second pass reads the first pass through the save node, so the first-pass file is always written before
+        # the final latent. The next scene only trusts a first-pass file that is not newer than the final latent.
+        for node_id, node in prompt.items():
+            if node_id == pass1_save_id or node.get("class_type") == "VRGDG_MiniMaxH3SaveLatent":
+                continue
+            for name, value in node.get("inputs", {}).items():
+                if value == list(first_pass_source):
+                    node["inputs"][name] = [pass1_save_id, 0]
+
     return {
         "enabled": True,
         "save_node_id": save_id,
+        "pass1_save_node_id": pass1_save_id,
         "project_folder": project_folder,
         "scene_number": scene_number,
     }
@@ -333,6 +371,20 @@ def _patch_minimax_h3_latent_continuation_masked(prompt, payload):
     sampler["inputs"]["latent_image"] = [apply_id, 0]
 
     second_apply_id = None
+    # 2 Pass: the first pass continues the predecessor's own first-pass latent when that render saved one. Its head
+    # then needs no resize through pictures, and only the second pass adds its contrast, once.
+    pass1_load_id = None
+    if second_pass and SceneLatentManager.pass1_latent_matches(project_folder, pred_scene):
+        pass1_load_id = str(int(load_id) + 2)
+        while pass1_load_id in prompt:
+            pass1_load_id = str(int(pass1_load_id) + 1)
+        prompt[pass1_load_id] = {
+            "class_type": "VRGDG_MiniMaxH3LoadLatent",
+            "inputs": {**prompt[load_id]["inputs"], "pass1": True},
+            "_meta": {"title": f"Predecessor First-Pass Latent (Scene {pred_scene:03d} · {context_frames} frames · masked)"},
+        }
+        prompt[apply_id]["inputs"]["context_latent"] = [pass1_load_id, 0]
+
     if second_pass:
         second_sampler_id, second_sampler = next(iter(second_pass.items()))
         second_apply_id = str(int(apply_id) + 1)
@@ -346,7 +398,7 @@ def _patch_minimax_h3_latent_continuation_masked(prompt, payload):
                 # the audio is the locked source track in every 2 pass graph, its mask comes through the upscale
                 "include_audio": False,
                 **({"vae": list(video_vae)} if video_vae else {}),
-            },
+                },
             "_meta": {"title": f"MiniMax H3 Latent Continuation Masked · Pass 2 ({plan['context_frames']} frames)"},
         }
         second_sampler["inputs"]["latent_image"] = [second_apply_id, 0]
@@ -363,6 +415,7 @@ def _patch_minimax_h3_latent_continuation_masked(prompt, payload):
         "sampler_node_id": sampler_id,
         "include_audio": include_audio,
         "lost_tail_frames": plan["lost_tail_frames"],
+        "pass1_load_node_id": pass1_load_id,
         "tail_padding_known": info.get("tail_padding_frames") is not None,
         "dropped_first_frame": dropped_first_frame,
         "trim_node_id": None,

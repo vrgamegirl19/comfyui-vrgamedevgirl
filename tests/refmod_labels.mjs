@@ -1,14 +1,15 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { assignLabels, attachRefmodLabels, enforceCastLabels, isIdentityCard, composeRefmodItems, clothingChoices, referencePayload, sceneSubjectCards, tokenReport, tokenStatusText, totalTokens } from '../web/music_video_builder/refmod_labels.mjs';
+import { applySceneItemUsers, assignLabels, attachRefmodLabels, enforceCastLabels, isIdentityCard, composeRefmodItems, clothingChoices, referencePayload, sceneSubjectCards, tokenReport, tokenStatusText, totalTokens } from '../web/music_video_builder/refmod_labels.mjs';
 
 const cases = JSON.parse(readFileSync(new URL('./refmod_scene_cases.json', import.meta.url), 'utf8'));
 
 for (const testCase of cases) {
   test(`shared case: ${testCase.name}`, () => {
     const subjects = sceneSubjectCards(testCase.scene || {}, testCase.subjects);
-    const items = composeRefmodItems(subjects, testCase.extras, testCase.location, testCase.all_subjects, testCase.override);
+    const composed = composeRefmodItems(subjects, testCase.extras, testCase.location, testCase.all_subjects, testCase.override);
+    const items = testCase.scene_item_users ? applySceneItemUsers(composed, testCase.scene_item_users) : composed;
     const labelled = assignLabels(items, testCase.include_audio);
     const actual = labelled.map((item) => ({ card_id: item.card_id, category: item.category, label: item.label, mod_name: item.mod_name }));
     assert.deepEqual(actual, testCase.expected);
@@ -71,15 +72,20 @@ test('clothing the writer never named is worn by its character', () => {
   assert.equal(attachRefmodLabels(result, items), result);
 });
 
-test('a prop is placed next to the main character and a vehicle is stood beside, never "in the scene" as a person', () => {
+test('an object is held by its user, a prop is part of the set and a vehicle is stood beside', () => {
   const items = [
     { card_id: 'a', name: 'Darrel', category: 'character', label: '<Video 1>', wears: '' },
-    { card_id: 'p', name: 'Gold Chain', category: 'object', reference_type: 'prop', label: '<Picture 1>', wears: '' },
-    { card_id: 'v', name: 'Black Charger', category: 'object', reference_type: 'vehicle', label: '<Picture 2>', wears: '' },
+    { card_id: 'b', name: 'Grey Wolf', category: 'character', reference_type: 'creature', label: '<Video 2>', wears: '' },
+    { card_id: 'k', name: 'Car Keys', category: 'object', reference_type: 'object', label: '<Picture 1>', wears: 'b' },
+    { card_id: 'p', name: 'Floor Lamp', category: 'object', reference_type: 'prop', label: '<Picture 2>', wears: '' },
+    { card_id: 'v', name: 'Black Charger', category: 'object', reference_type: 'vehicle', label: '<Picture 3>', wears: '' },
+    { card_id: 'g', name: 'Gun', category: 'object', reference_type: 'object', label: '<Picture 4>', wears: '' },
   ];
-  const result = attachRefmodLabels('[Shot 1] <Subject 1> (Darrel) sings.', items);
-  assert.match(result, /<Picture 1> \(Gold Chain\) is placed in the scene next to <Video 1> \(Darrel\)\./);
-  assert.match(result, /<Video 1> \(Darrel\) stands beside <Picture 2> \(Black Charger\)\./);
+  const result = attachRefmodLabels('[Shot 1] <Subject 1> (Darrel) sings. <Subject 2> (Grey Wolf) circles him.', items);
+  assert.match(result, /<Video 2> \(Grey Wolf\) holds <Picture 1> \(Car Keys\)\./);
+  assert.match(result, /<Picture 2> \(Floor Lamp\) stands in the scene as part of the set\./);
+  assert.match(result, /<Video 1> \(Darrel\) stands beside <Picture 3> \(Black Charger\)\./);
+  assert.match(result, /<Video 1> \(Darrel\) holds <Picture 4> \(Gun\)\./, 'without a user the main character holds it');
 });
 
 test('a person the writer named without a label gets the label, and quoted lyrics are left alone', () => {
@@ -121,11 +127,12 @@ test('a garment the writer names in plain words gets its label, with no second w
   );
 });
 
-test('only identities are performers: clothing, props and vehicles RefMods are not', () => {
+test('only identities and creatures are performers: clothing, objects, props and vehicles RefMods are not', () => {
   const refmod = (referenceType) => ({ id: 'x', name: 'x', source: 'refmod', reference_type: referenceType, refmod: { name: 'a/b', kind: 'video' } });
   assert.equal(isIdentityCard(refmod('character')), true);
+  assert.equal(isIdentityCard(refmod('creature')), true, 'a creature acts like a character');
   assert.equal(isIdentityCard({ id: 'plain', name: 'Plain card' }), true);
-  for (const type of ['outfit', 'prop', 'vehicle', 'object', 'creature', 'style', 'environment']) {
+  for (const type of ['outfit', 'prop', 'vehicle', 'object', 'style', 'environment']) {
     assert.equal(isIdentityCard(refmod(type)), false, type);
   }
 });

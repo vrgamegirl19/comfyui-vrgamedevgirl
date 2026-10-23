@@ -35,6 +35,7 @@ export async function apiV1(method, path, body = undefined) {
     method,
     headers: { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
+    timeoutMs: null,
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || !data?.ok) throw new Error(apiErrorMessage(data, response.status));

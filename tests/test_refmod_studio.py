@@ -53,12 +53,12 @@ class RefModStudioRequestTests(unittest.TestCase):
         self.assertEqual((result["mode"], result["steps"]), ("training", 150))
 
     def test_inactive_types_are_rejected(self):
-        for concept_type in ("voice", "singing", "music_style", "sound_fx", "ambience", "bogus"):
+        for concept_type in ("voice", "singing", "music_style", "sound_fx", "ambience", "style", "bogus"):
             with self.assertRaises(ValueError):
                 studio.validate_request(self.request(type=concept_type))
 
     def test_new_types_are_creatable(self):
-        for concept_type in ("clothing_men", "clothing_women", "object", "prop", "vehicle", "creature", "background", "style"):
+        for concept_type in ("clothing_men", "clothing_women", "object", "prop", "vehicle", "creature", "background"):
             self.assertEqual(studio.validate_request(self.request(type=concept_type, paths=[self.image]))["type"], concept_type)
         with self.assertRaises(ValueError):
             studio.validate_request(self.request(type="clothing"))

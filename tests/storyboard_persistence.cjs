@@ -24,7 +24,7 @@ function fixture(state, parentSave = async () => {}) {
   // api.mjs is not loaded here; its save helper sends the same request through this fixture's postJson.
   context.saveStoryboardFile = (state, storyboard, url = "/vrgdg/storyboard/save") =>
     context.postJson(url, { project_folder: state.projectFolder, storyboard });
-  for (const file of ["music_video_builder/refmod_labels.mjs", "storyboard_builder/script_import.mjs",
+  for (const file of ["music_video_builder/refmod_labels.mjs", "music_video_builder/story_mode_data.mjs", "storyboard_builder/script_import.mjs",
     "storyboard_builder/video_style.mjs", "storyboard_builder/shot_presets.mjs",
     "storyboard_builder/scenes.mjs", "storyboard_builder/references.mjs", "storyboard_builder/persistence.mjs"]) {
     const source = fs.readFileSync(path.join(root, "web", file), "utf8")
@@ -61,7 +61,7 @@ function fixture(state, parentSave = async () => {}) {
     imageAestheticPresets: [{ value: "" }], imageShotFlowPresets: { intimate: {} },
     enforceStoryboardVideoFacialRequirements: (prompt) => prompt,
     syncStoryLayerFromInputs: () => {
-      state.storyLayer = { enabled: controls.storyLayerEnabledInput.checked,
+      state.storyLayer = { ...state.storyLayer, enabled: controls.storyLayerEnabledInput.checked,
         overall_story_idea: controls.overallStoryIdeaInput.value, user_story_arc: controls.userStoryArcInput.value,
         song_story_brief: controls.songStoryBriefInput.value, lyric_story_strength: Number(controls.lyricStoryStrengthInput.value),
         image_world_style: controls.imageWorldStyleSelect.value, image_custom_style_direction: controls.imageCustomStyleInput.value };
@@ -151,9 +151,26 @@ test("Explicit saves apply live scene edits and cleared prompts; exports preserv
     normalizeBuilderStoryboardDefaults: (value) => value, applyMiniMaxH3NativeVoiceBlock: (value) => value,
     ensureAllSegmentRuntimeFields: noop, ensureSegmentRuntimeFields: noop, syncInspector: noop, render: noop, toast: noop,
     autoSaveSessionQuiet: noop, setSegmentPromptForEdit: (target, kind, prompt) => { target[`${kind}_prompt`] = prompt; },
+    STORY_MODE_KEYS: ["story_flow_version", "story_book", "story_book_text", "story_settings", "story_acts", "story_scene_plan", "story_stamps"],
   });
   vm.runInContext(source.slice(start, end), context);
+  const mergeStart = source.indexOf("function mergeStoryboardStoryLayer(");
+  vm.runInContext(source.slice(mergeStart, source.indexOf("function openStoryboardBuilderFromProject(", mergeStart)), context);
   const apply = vm.runInContext("applyStoryboardPrompts", context);
+  // A beat export carries the Storyboard's classic story layer; Story Mode data it never loaded must survive.
+  context.state.builderStoryLayer = { overall_story_idea: "old", story_book_text: "Chapter 1: Home", story_acts: [{ id: "act_1" }] };
+  apply({ scenes: [], story_layer: { overall_story_idea: "new", user_story_arc: "arc" } });
+  assert.equal(context.state.builderStoryLayer.overall_story_idea, "new");
+  assert.equal(context.state.builderStoryLayer.story_book_text, "Chapter 1: Home");
+  assert.deepEqual(context.state.builderStoryLayer.story_acts, [{ id: "act_1" }]);
+  // An empty premise from the Storyboard or Scene Defaults never erases the premise written in the Story tab.
+  apply({ scenes: [], story_layer: { overall_story_idea: "", user_story_arc: "arc 2" } });
+  assert.equal(context.state.builderStoryLayer.overall_story_idea, "new");
+  assert.equal(context.state.builderStoryLayer.user_story_arc, "arc 2");
+  // The Storyboard's own file can hold an old copy of the acts and scene plan; the Builder's always win.
+  apply({ scenes: [], story_layer: { overall_story_idea: "new", story_acts: [{ id: "old_act" }], story_scene_plan: [{ scene_id: "gone" }] } });
+  assert.deepEqual(context.state.builderStoryLayer.story_acts, [{ id: "act_1" }]);
+  assert.equal(context.state.builderStoryLayer.story_scene_plan, undefined);
   apply({ scenes: [{ id: "scene1", lyrics: "Stale export dialogue", image_prompt: "New image" }] });
   assert.equal(segment.lyric_text, "Live dialogue");
   apply({ scenes: [{ id: "scene1", lyrics: "", image_prompt: "", video_prompt: "", motion_summary: "Edited motion",
@@ -164,6 +181,21 @@ test("Explicit saves apply live scene edits and cleared prompts; exports preserv
   assert.equal(segment.video_notes, "Edited motion");
   assert.equal(segment.flf_end_state, "New end");
   assert.equal(segment.timeline_note, "Edited director note");
+});
+
+test("Story Mode data from the Video Builder survives an older storyboard file and a save", async () => {
+  const folder = path.join(project, "storymode");
+  await fixture(stateFor(folder)).saveStoryboard({ throwOnError: true });
+  const state = stateFor(folder);
+  state.storyLayer = { story_flow_version: 2, story_book_text: "Chapter 1: Home\nSetting: Home\n\nShe waits.",
+    story_acts: [{ id: "act_1", chapter_id: "ch_1", title: "Waiting", scene_ids: ["scene1"] }] };
+  const api = fixture(state);
+  assert.equal(await api.loadExisting(), true, JSON.stringify(api.messages));
+  assert.equal(state.storyLayer.story_book_text, "Chapter 1: Home\nSetting: Home\n\nShe waits.");
+  await api.saveStoryboard({ throwOnError: true });
+  const saved = JSON.parse(fs.readFileSync(path.join(folder, "storyboard", "storyboard.json"), "utf8"));
+  assert.equal(saved.story_layer.story_book_text, "Chapter 1: Home\nSetting: Home\n\nShe waits.");
+  assert.equal(saved.story_layer.story_acts[0].id, "act_1");
 });
 
 test("New projects retain current settings when no storyboard file exists", async () => {
@@ -267,10 +299,18 @@ test("Builder video prompting includes complete card context for both LTX and Mi
   const source = fs.readFileSync(path.join(root, "web/music_video_builder/storyboard_bridge.mjs"), "utf8");
   const start = source.indexOf("const storyboardVideoExtraNotes =");
   const end = source.indexOf("const ensureStoryboardRequiredStartingShot =", start);
+  // Story Mode plan entries come from the Builder's story layer (state.builderStoryLayer).
+  const plan = [{ scene_id: "s1", story_slice: "Slice sentinel.", spot: "Kitchen", mood: "", interaction: "Interaction sentinel.",
+    user_note: "Direction sentinel." }];
   Object.assign(api.context, { normalizeMiniMaxShortFilmPlanningMode: () => "guided_film",
-    normalizeProjectVideoEngine: value => value, miniMaxH3CutPlanForSegment: () => null });
+    normalizeProjectVideoEngine: value => value, miniMaxH3CutPlanForSegment: () => null,
+    normalizeBuilderStoryLayer: value => value || {}, normalizeStoryScenePlan: value => value || [] });
+  api.context.state = { ...(api.context.state || {}), builderStoryLayer: { story_scene_plan: plan } };
   vm.runInContext(source.slice(start, end), api.context);
   const notes = vm.runInContext("storyboardVideoExtraNotes", api.context);
+  const story = notes({ id: "s1" }, { scenes: [{ project_video_engine: "minimax_h3" }] });
+  for (const value of ["Story Mode scene:\nSlice sentinel. Spot: Kitchen.", "MANDATORY what the characters do with each other:\nInteraction sentinel.",
+    "MANDATORY user direction for this scene:\nDirection sentinel."]) assert.ok(story.includes(value), value);
   for (const engine of ["ltx", "minimax_h3"]) {
     const scene = { project_video_engine: engine, timeline_note: "Director sentinel", notes: "Planning sentinel",
       audio_direction: "Sound sentinel", motion_summary: "Motion sentinel", include_microphone: true };

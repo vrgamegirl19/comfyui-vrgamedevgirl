@@ -37,6 +37,8 @@ def _openai_json_schema_format(json_schema):
 # Room left in the context window for the chat template around the prompt.
 _CONTEXT_TEMPLATE_MARGIN_TOKENS = 64
 _MIN_OUTPUT_TOKENS = 256
+# Gemma Local fails with a smaller window, so its context and output limits never go below this.
+GEMMA_LOCAL_MIN_TOKENS = 16384
 
 
 def _estimate_prompt_tokens(text):
@@ -482,12 +484,70 @@ def _test_own_server(payload):
     }
 
 
+def _own_server_image_size(width, height):
+    """Clamp to the OpenAI-style image size rule: each side a multiple of 32 between 256 and 2048."""
+    def _side(value, default):
+        try:
+            parsed = int(float(value))
+        except (TypeError, ValueError):
+            parsed = default
+        return max(256, min(2048, int(round(parsed / 32.0)) * 32))
+    return f"{_side(width, 1024)}x{_side(height, 1024)}"
+
+
+def _generate_own_server_image(payload):
+    """Generate one image on the custom server's /v1/images/generations and return it as a PNG data URL."""
+    import base64
+
+    v1_root = _own_server_v1_root(
+        payload.get("own_server_url") or payload.get("base_url") or _OWN_SERVER_DEFAULT_BASE_URL
+    )
+    prompt = str(payload.get("prompt") or "").strip()
+    if not prompt:
+        raise ValueError("Image prompt is empty.")
+    body = {
+        "prompt": prompt,
+        "size": _own_server_image_size(payload.get("width"), payload.get("height")),
+        "n": 1,
+        "response_format": "b64_json",
+    }
+    image_model = str(payload.get("image_model") or "").strip()
+    if image_model:
+        body["model"] = image_model
+    seed = payload.get("seed")
+    if seed not in (None, ""):
+        body["seed"] = int(seed)
+    steps = payload.get("steps")
+    if steps not in (None, "", 0, "0"):
+        body["steps"] = int(steps)
+    timeout = max(_own_server_timeout(payload), 120.0)
+    print(f"[VRGDG LLM] custom server image: {body['size']} steps={body.get('steps', 'default')} at {v1_root}/images/generations")
+    data = _own_server_request_json(f"{v1_root}/images/generations", payload, body=body, timeout=timeout)
+    items = data.get("data") if isinstance(data, dict) else None
+    item = items[0] if isinstance(items, list) and items and isinstance(items[0], dict) else {}
+    b64 = str(item.get("b64_json") or "").strip()
+    if b64:
+        return {"image_data": f"data:image/png;base64,{b64}", "size": body["size"]}
+    image_url = str(item.get("url") or "").strip()
+    if image_url:
+        request = urllib.request.Request(image_url, headers=_own_server_headers(payload))
+        with urllib.request.urlopen(request, timeout=timeout, context=_own_server_ssl_context(image_url)) as response:
+            raw = response.read()
+        return {"image_data": "data:image/png;base64," + base64.b64encode(raw).decode("ascii"), "size": body["size"]}
+    raise ValueError("Custom server returned no image. Check that it supports /v1/images/generations.")
+
+
 def _normalized_token_limit(value, default, minimum=64, maximum=262144):
     try:
         parsed = int(value)
     except (TypeError, ValueError):
         parsed = int(default)
     return max(int(minimum), min(int(maximum), parsed))
+
+
+def _gemma_local_context_limit(payload):
+    """The Gemma Local context window: the saved n_ctx, never below GEMMA_LOCAL_MIN_TOKENS."""
+    return _normalized_token_limit(payload.get("n_ctx"), GEMMA_LOCAL_MIN_TOKENS, minimum=GEMMA_LOCAL_MIN_TOKENS)
 
 
 def _runner_output_token_limit(payload, requested=1200):
@@ -505,6 +565,11 @@ def _runner_output_token_limit(payload, requested=1200):
         configured = None
     if runner in {"builtin", "lm_studio", "own_server"} and configured in (None, ""):
         configured = payload.get("llm_max_tokens")
+    if runner == "builtin":
+        # Gemma Local output runs from GEMMA_LOCAL_MIN_TOKENS up to its context limit.
+        context_limit = _gemma_local_context_limit(payload)
+        value = configured if configured not in (None, "") else requested
+        return _normalized_token_limit(value, context_limit, minimum=GEMMA_LOCAL_MIN_TOKENS, maximum=context_limit)
     if configured not in (None, ""):
         return _normalized_token_limit(configured, requested)
     return _normalized_token_limit(requested, 1200)
@@ -959,6 +1024,8 @@ def _run_builder_text_llm(payload, instruction_text, temperature=0.6, top_p=0.95
         f"model={os.path.basename(str(model_path)) or str(model_path)}"
     )
     n_ctx = int(payload.get("n_ctx") or 8000)
+    if _llm_runner_from_payload(payload) == "builtin":
+        n_ctx = _gemma_local_context_limit(payload)
     n_gpu_layers = int(payload.get("n_gpu_layers") or 99)
     n_threads = int(payload.get("n_threads") or 8)
     chat_format = str(payload.get("chat_format", "") or "").strip()

@@ -9,7 +9,7 @@ from ..builder.project import _BUILDER_SAVE_LOCK
 from ..builder.scene_audio_settings import require_speaking
 from ..llm.scene_dialogue import craft_dialogue
 from .errors import SceneNotFoundError, ValidationError
-from .llm_runtime import llm_payload_from_session, prepare_llm_payload
+from .llm_runtime import llm_payload_from_session, prepare_llm_payload, project_elevenlabs_key
 from .mutations import _get_active_session_and_folder
 
 
@@ -37,7 +37,7 @@ def dialogue_request(
         return {
             **llm_payload_from_session(session), **speaker, "dialogue": draft,
             "project_folder": folder, "scene_id": scene_id,
-            "api_key": session.get("elevenlabs_api_key_project", ""),
+            "api_key": project_elevenlabs_key(session),
             "unload_after": False, "clear_before_load": False,
         }
 

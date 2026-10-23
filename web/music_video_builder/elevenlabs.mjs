@@ -1,4 +1,5 @@
 import { postJson } from "./comfy_api.mjs";
+import { markGlobalLlmKeyChanged } from "./llm_global_keys.mjs";
 import { openElevenLabsVoiceDesign } from "./elevenlabs_voice_design.mjs";
 import { makeButton, makeCheckbox, makeField, makeInput, makeSelect, makeSettingsSection, normalizeVideoType, toast } from "./controls.mjs";
 
@@ -56,11 +57,11 @@ export function makeElevenLabsSettings({ state, projectInput, saveSession }) {
   const updateStatus = () => {
     status.textContent = state.elevenLabsApiKeyProject
       ? "A key is saved in this project. Changing the field affects this session until you save it again."
-      : "The key is used for this session. Save it to restore it when you reopen this project.";
+      : "The key is saved for every project.";
     clear.disabled = !state.elevenLabsApiKeyProject;
   };
   const note = document.createElement("div");
-  note.textContent = "Choose character voices in Reference Builder. Saved keys are included in project files, like LLM runner keys.";
+  note.textContent = "Choose character voices in Reference Builder. The key is saved for every project. \"Save API Key to Project\" also stores it in this project's files.";
   note.style.cssText = status.style.cssText;
   const actions = document.createElement("div");
   actions.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;";
@@ -69,7 +70,7 @@ export function makeElevenLabsSettings({ state, projectInput, saveSession }) {
   const folder = () => String(projectInput.value || state.projectFolder || "").trim();
   const openedFolder = folder();
   const current = () => panel.isConnected && isElevenLabsSpeaking(state) && folder() === openedFolder;
-  key.oninput = () => { if (current()) state.elevenLabsApiKey = key.value.trim(); };
+  key.oninput = () => { if (current()) { state.elevenLabsApiKey = key.value.trim(); markGlobalLlmKeyChanged("elevenlabs_api_key"); } };
   test.onclick = async () => {
     if (!current()) return;
     test.disabled = true;

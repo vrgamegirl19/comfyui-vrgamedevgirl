@@ -14,7 +14,9 @@ import {
   TIMELINE_SEGMENT_TOP,
   WAVEFORM_MODES,
 } from "./constants.mjs";
-import { escapeHtml, makeButton, makeCheckbox, makeInput, makeSelect, normalizeProjectVideoEngine, toast } from "./controls.mjs";
+import {
+  escapeHtml, makeButton, makeCheckbox, makeInput, makeSelect, normalizeProjectVideoEngine, normalizeProjectVideoType, toast,
+} from "./controls.mjs";
 import { miniMaxI2VFLFEnabled } from "./minimax_keyframe_state.mjs";
 import { formatDurationSeconds, formatTime } from "./format.mjs";
 import { applyLyricSectionsFromReferenceText } from "./lyric_transcription.mjs";
@@ -33,6 +35,7 @@ import { appendTimelineVideoThumbnail, hasLockedVideo, selectedSegmentVideoPath 
 import { parseBulkTimeValue } from "./timeline_actions.mjs";
 import { audioChunkDuration, audioTimelineStart, markerEnd, normalizeTimelineMarkers } from "./timeline_state.mjs";
 import { mappedLocation } from "./scene_locations.mjs";
+import { STORY_CHAPTER_COLORS, storySceneIndex } from "./story_mode_data.mjs";
 import { wireLatentContinuationOffAll } from "./timeline_continuity.mjs";
 import { wireUnlockAllScenes } from "./timeline_video_settings.mjs";
 import { createTimelineToolWindows } from "./timeline_tool_windows.mjs";
@@ -53,6 +56,16 @@ const STEM_MIN_REGION_SECONDS = 0.02;
 let stemRowList = [];
 let stemBandHeight = 0;
 let additionalAudioHeight = 0;
+const SCENE_DRAG_LOCK_KEY = "vrgdg_timeline_scenes_locked";
+
+// Whether timeline scenes start locked against dragging: on unless this browser last turned it off.
+export function savedSceneDragLock() {
+  try {
+    return localStorage.getItem(SCENE_DRAG_LOCK_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
 
 export function appendMiniMaxDraftBadge(element, segment) {
   if (!segment.minimax_h3_draft?.id || segment.minimax_h3_draft.video_path !== segment.video_path) return;
@@ -313,6 +326,10 @@ export function buildTimelineView({ overlay, preview, previewStage, getDeleteAva
   latentContinuationOffAllButton.style.cssText += "flex:0 0 auto;padding:7px 10px;";
   const unlockAllScenesButton = makeButton("Unlock All Scenes");
   unlockAllScenesButton.title = "Unlock every scene's video settings so all scenes follow the global video mode, models, and settings.";
+  // Stops scenes being dragged or resized by accident; on by default. Freeze SRT timing below is the stricter lock
+  // that also blocks typed times and timing tools.
+  const sceneDragLockButton = makeButton("🔒 Scenes Locked");
+  sceneDragLockButton.style.cssText += "flex:0 0 auto;padding:7px 10px;";
   const freezeTimingControl = makeCheckbox("Freeze SRT timing", false);
   freezeTimingControl.wrapper.style.cssText += "margin-left:auto;flex:0 0 auto;";
   freezeTimingControl.wrapper.title = "Lock all scene start/end times. Uncheck to adjust scene lengths.";
@@ -497,7 +514,7 @@ export function buildTimelineView({ overlay, preview, previewStage, getDeleteAva
   addOverlaySegmentButton.textContent = "+ Overlay Track";
   timelineToolRail.append(bulkSegmentsButton, sceneNoteButton, videoNoteButton, lyricNoteButton, emotionTagButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton, audioMaskButton, stemMonitorButton, stemVisibilityButton);
   timelineHeader.append(toolsButton, splitSceneButton, idLoraTrimModeButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineStatusInfo, deleteSegmentButton, deleteAllButton);
-  timelineHeader.append(addAudioClipButton, freezeTimingControl.wrapper);
+  timelineHeader.append(addAudioClipButton, sceneDragLockButton, freezeTimingControl.wrapper);
   const timelineBody = document.createElement("div");
   timelineBody.style.cssText = "display:grid;grid-template-columns:auto minmax(0,1fr);min-height:0;overflow:hidden;";
   const timelineViewport = document.createElement("div");
@@ -522,7 +539,7 @@ export function buildTimelineView({ overlay, preview, previewStage, getDeleteAva
     deleteAllTimelineVideosButton, deleteSegmentButton, freezeTimingControl, globalAudioMuteButton, addAudioClipButton,
     globalScrub, globalScrubTime, idLoraTrimModeButton, lyricNoteButton, emotionTagButton, locationThumbnailButton, multiSelectButton,
     multiSelectHintButton, overlayTrackHintButton, overlayTrackToggleButton, playButton, playhead, redoButton,
-    refreshDeleteActions, sceneNoteButton, segmentLayer, setInButton, setOutButton, snapSceneEdgeButton,
+    refreshDeleteActions, sceneDragLockButton, sceneNoteButton, segmentLayer, setInButton, setOutButton, snapSceneEdgeButton,
     snapToBeatsControl, splitSceneButton, stopButton, timeline, timelineCanvas, timelineInfo,
     stemLayer, timelineRangeInfo, timelineResizeHandle, timelineViewport, undoButton,
     latentContinuationOffAllButton, unlockAllScenesButton, videoNoteButton, waveformModeSelect, zoomInButton, zoomOutButton,
@@ -541,7 +558,30 @@ export function createTimelineView({
   selectedTimelineRangeInfo, setActiveSegment, state, syncInspector, syncLyricMapperFromSegments,
   timelineCanvas, timelineDuration, timelineSegmentLabel, toggleSegmentPreviewMode,
   locationThumbnailButton, refreshDeleteActions, latentContinuationOffAllButton, unlockAllScenesButton,
+  sceneDragLockButton = null,
 }) {
+  if (sceneDragLockButton) {
+    const draw = () => {
+      const locked = state.timelineDragLocked !== false;
+      sceneDragLockButton.textContent = locked ? "🔒 Scenes Locked" : "🔓 Scenes Unlocked";
+      sceneDragLockButton.title = locked
+        ? "Scenes can't be dragged or resized on the timeline, so their timing can't change by accident. Click to unlock them."
+        : "Scenes can be dragged and resized. Click to lock them in place.";
+      sceneDragLockButton.style.borderColor = locked ? "#22c55e" : "#f59e0b";
+      sceneDragLockButton.style.color = locked ? "#bbf7d0" : "#fde68a";
+    };
+    sceneDragLockButton.onclick = () => {
+      state.timelineDragLocked = state.timelineDragLocked === false;
+      try {
+        localStorage.setItem(SCENE_DRAG_LOCK_KEY, state.timelineDragLocked ? "1" : "0");
+      } catch {
+        // Storage may be blocked; the lock still applies for this session.
+      }
+      draw();
+      render();
+    };
+    draw();
+  }
   wireLatentContinuationOffAll({ button: latentContinuationOffAllButton, state, pushHistory, syncInspector, render, autoSaveSessionQuiet });
   wireUnlockAllScenes({ button: unlockAllScenesButton, state, pushHistory, syncInspector, render, autoSaveSessionQuiet });
   let showLocationThumbnails = false;
@@ -1206,6 +1246,8 @@ export function createTimelineView({
       segmentLayer.append(label);
     }
     const visibleTimelineOverlays = state.overlayTrack.enabled ? state.overlaySegments : [];
+    // Story Mode: each scene shows its chapter colour, and its tooltip names the chapter, act and spot.
+    const storyIndex = normalizeProjectVideoType(state.videoType) === "story" ? storySceneIndex(state.builderStoryLayer) : {};
     for (const segment of [...visibleTimelineOverlays, ...state.segments]) {
       const isOverlay = segmentTrack(segment) === "overlay";
       const blockTop = isOverlay ? TIMELINE_OVERLAY_TOP : TIMELINE_SEGMENT_TOP;
@@ -1335,9 +1377,25 @@ export function createTimelineView({
           }
         };
         block.append(maskedButton);
+        if (maskedOn) {
+          // A lime seam on the left edge: this scene carries straight on from the one before it.
+          const seam = document.createElement("span");
+          seam.style.cssText = "position:absolute;left:0;top:0;bottom:0;width:4px;z-index:4;pointer-events:none;background:#a3e635;box-shadow:0 0 6px #a3e635;";
+          block.append(seam);
+        }
       }
       const dblClickHint = !isOverlay ? "Double-click to review line & performer mapping. Shift + double-click to edit the Storyboard Card." : "";
       block.title = lockedByVideo ? "This scene has a generated video, so timing is locked." : dblClickHint;
+      const storyScene = isOverlay ? null : storyIndex[segment.id];
+      if (storyScene) {
+        const stripe = document.createElement("span");
+        stripe.style.cssText = `position:absolute;left:0;right:0;top:0;height:4px;z-index:4;pointer-events:none;background:${STORY_CHAPTER_COLORS[storyScene.chapterIndex % STORY_CHAPTER_COLORS.length]};`;
+        block.append(stripe);
+        block.title = [
+          `Chapter ${storyScene.chapterIndex + 1}: ${storyScene.chapterTitle} | Act: ${storyScene.actTitle}${storyScene.spot ? ` | Spot: ${storyScene.spot}` : ""}`,
+          block.title,
+        ].filter(Boolean).join("\n");
+      }
       const dragImageSource = segmentImageSource(segment);
       if (dragImageSource) {
         block.draggable = true;
@@ -1405,10 +1463,12 @@ export function createTimelineView({
         dirtyBadge.onpointerdown = (event) => event.stopPropagation();
         block.append(dirtyBadge);
       }
+      // Locked base scenes show no resize edges.
+      const edgeStyle = !isOverlay && state.timelineDragLocked !== false ? "background:transparent;cursor:pointer;" : "background:rgba(255,255,255,.25);cursor:ew-resize;";
       const leftHandle = document.createElement("div");
-      leftHandle.style.cssText = "position:absolute;left:0;top:0;bottom:0;width:8px;background:rgba(255,255,255,.25);cursor:ew-resize;z-index:4;";
+      leftHandle.style.cssText = `position:absolute;left:0;top:0;bottom:0;width:8px;${edgeStyle}z-index:4;`;
       const rightHandle = document.createElement("div");
-      rightHandle.style.cssText = "position:absolute;right:0;top:0;bottom:0;width:8px;background:rgba(255,255,255,.25);cursor:ew-resize;z-index:4;";
+      rightHandle.style.cssText = `position:absolute;right:0;top:0;bottom:0;width:8px;${edgeStyle}z-index:4;`;
       block.append(leftHandle, rightHandle);
       block.onclick = (event) => handleSegmentPick(segment, event);
       block.oncontextmenu = (event) => openSegmentContextMenu(event, segment);

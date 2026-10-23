@@ -231,7 +231,7 @@ test('MiniMax scene render keeps only the final pass video (no pass 1 backup)', 
   assert.equal(body.includes('collect_minimax_h3_stage_backup'), false);
   assert.equal(body.includes('find_minimax_h3_stage_outputs'), false);
   assert.equal(body.includes('canCleanupScratch'), false);
-  assert.ok(body.includes('cleanup_minimax_h3_output'));
+  assert.ok(source.includes('cleanup_minimax_h3_output'));
 });
 
 test('one output resolution is shared by every pass mode and legacy saves migrate to it', () => {

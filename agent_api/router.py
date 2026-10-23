@@ -86,6 +86,7 @@ from .orchestrator import (
     validate_stitch_request,
     upload_lut_service,
 )
+from .orchestrator.story_mode_orchestrator import STORY_MODE_JOB_TYPES
 from .paths import resolve_project_folder
 from .modes import get_modes_catalog
 from .mutations import (
@@ -107,6 +108,8 @@ from .mutations import (
     get_audio_waveform,
     get_project_lyrics,
     get_project_references,
+    get_scene_reference_overview,
+    SCENE_MAPPING_INCLUDES,
     get_project_story,
     get_prompt_context,
     create_timeline_note,
@@ -660,9 +663,10 @@ def register_agent_api_routes(server_instance=None):
     async def api_story_step(request: web.Request):
         """Create the story arc, story brief or scene beats with the project's LLM. Runs as a job."""
         pid, step = request.match_info["pid"], request.match_info["step"]
-        job_types = {"arc": "storyboard.story_arc", "brief": "storyboard.story_brief", "beats": "storyboard.scene_beats"}
+        job_types = {"arc": "storyboard.story_arc", "brief": "storyboard.story_brief", "beats": "storyboard.scene_beats",
+                     **STORY_MODE_JOB_TYPES}
         if step not in job_types:
-            raise ValidationError("step must be one of: arc, brief, beats.")
+            raise ValidationError(f"step must be one of: {', '.join(job_types)}.")
         payload = await request.json() if request.can_read_body else {}
         folder = await asyncio.to_thread(resolve_project_folder, pid)
         job = get_job_manager().submit_job(job_types[step], project_id=pid, params=dict(payload), is_gpu=is_llm_runner_gpu(payload, folder))
@@ -934,6 +938,15 @@ def register_agent_api_routes(server_instance=None):
     @_api_endpoint
     async def api_get_reference_mapping(request: web.Request):
         pid = request.match_info["pid"]
+        include = [k.strip() for k in str(request.query.get("include") or "").split(",") if k.strip()]
+        unknown = [k for k in include if k not in SCENE_MAPPING_INCLUDES]
+        if unknown:
+            raise ValidationError(
+                f"Unknown include key(s): {', '.join(unknown)}. Supported: {', '.join(SCENE_MAPPING_INCLUDES)}.")
+        scene_id = request.query.get("scene_id")
+        if include or scene_id:
+            res = await asyncio.to_thread(get_scene_reference_overview, pid, scene_id or None)
+            return api_success(res)
         res = await asyncio.to_thread(get_project_references, pid)
         return api_success(res.get("scene_mapping"))
 

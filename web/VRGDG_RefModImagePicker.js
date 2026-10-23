@@ -34,7 +34,7 @@ async function browse(node, button) {
   button.name = "Waiting for file dialog...";
   app.graph.setDirtyCanvas(true, true);
   try {
-    const response = await api.fetchApi("/vrgdg/refmod/pick_images", { method: "POST" });
+    const response = await api.fetchApi("/vrgdg/refmod/pick_images", { method: "POST", timeoutMs: null });
     const result = await response.json();
     if (!result.ok) throw new Error(result.error || "File dialog failed.");
     if (result.paths?.length) {

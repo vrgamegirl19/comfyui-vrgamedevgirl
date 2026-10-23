@@ -29,7 +29,7 @@
   "122": {
     "inputs": {
       "samples": [
-        "194",
+        "9850",
         0
       ],
       "vae": [
@@ -55,9 +55,9 @@
     "inputs": {
       "scheduler": "simple",
       "steps": 20,
-      "denoise": 1,
+      "denoise": 1.0,
       "model": [
-        "9203",
+        "141",
         0
       ]
     },
@@ -97,11 +97,11 @@
   "126": {
     "inputs": {
       "model": [
-        "9203",
+        "141",
         0
       ],
       "conditioning": [
-        "9302",
+        "136",
         0
       ]
     },
@@ -123,7 +123,7 @@
   },
   "129": {
     "inputs": {
-      "noise_seed": 69
+      "noise_seed": 7238314429764721413
     },
     "class_type": "RandomNoise",
     "_meta": {
@@ -145,7 +145,7 @@
   },
   "132": {
     "inputs": {
-      "value": 6.375
+      "value": 3.5
     },
     "class_type": "PrimitiveFloat",
     "_meta": {
@@ -170,7 +170,7 @@
         "131",
         1
       ],
-      "ref_image_size": "match",
+      "ref_image_size": "max",
       "clip": [
         "128",
         0
@@ -182,6 +182,66 @@
       "audio_vae": [
         "120",
         0
+      ],
+      "ref_images.ref_image_0": [
+        "180",
+        0
+      ],
+      "ref_images.ref_image_1": [
+        "180",
+        1
+      ],
+      "ref_images.ref_image_2": [
+        "180",
+        2
+      ],
+      "ref_images.ref_image_3": [
+        "180",
+        3
+      ],
+      "ref_images.ref_image_4": [
+        "180",
+        4
+      ],
+      "ref_images.ref_image_5": [
+        "180",
+        5
+      ],
+      "ref_images.ref_image_6": [
+        "180",
+        6
+      ],
+      "ref_images.ref_image_7": [
+        "180",
+        7
+      ],
+      "ref_images.ref_image_8": [
+        "180",
+        8
+      ],
+      "ref_videos.ref_video_0": [
+        "180",
+        9
+      ],
+      "ref_videos.ref_video_1": [
+        "180",
+        10
+      ],
+      "ref_videos.ref_video_2": [
+        "180",
+        11
+      ],
+      "ref_video_audios.ref_video_audio_0": [
+        "180",
+        12
+      ],
+      "ref_video_audios.ref_video_audio_1": [
+        "180",
+        13
+      ],
+      "ref_video_audios.ref_video_audio_2": [
+        "180",
+        14
       ],
       "ref_audios.ref_audio_0": [
         "171",
@@ -195,7 +255,7 @@
   },
   "138": {
     "inputs": {
-      "value": "detailed_description:\nThe target video is in a cinematic_realism music-video style.\n\n[Shot 1] Camera: low-angle crane rise from waist height to eye level, ending in a medium shot that fills the frame with clean headroom and ground perspective. The character from the loaded RefMod steps forward steadily while singing, mouth opening and jaw moving naturally as they vocalize \"If you see me yodelin' yodelin' yodelin' heee hooo! \" with visible lip articulation and chest expansion. Cool morning light filters through dark pine forests and illuminates rugged snow-dusted peaks framing the horizon. The camera continues its gentle track motion across the meadow floor where dense seasonal blooms carpet the ground, as the performer maintains continuous vocal performance with synchronized facial movement throughout the single uninterrupted shot."
+      "value": "subject_definitions:\n<Subject 1> is the young man from the first character reference, with tousled wavy medium-brown hair with lighter caramel highlights swept back from his forehead, light blue eyes, light freckles, short stubble, a plain white crew-neck cotton T-shirt, dark blue straight-leg jeans, and worn brown suede lace-up sneakers.\n\n<Subject 2> is the calm bedroom on a rainy afternoon from the second reference image, featuring a double bed with a rumpled grey-blue duvet, white pillows and a cream knitted blanket at its foot, a wooden nightstand with a small lamp glowing warm, a tall window with grey curtains showing rain-streaked glass, a white radiator beneath the window, a jute rug, and wooden floorboards. This reference defines the environment, lighting, and atmosphere, while the camera uses its own area of the space and places the characters in new positions within it.\n\n<Audio 1> is the complete synchronized song and vocal track for the target video, reused as its complete final soundtrack and timing reference.\n\nsummary:\n[reference generation + audio reuse] On the edge of her bed, Sam sings plain honesty instead of advice, with every reason to stay. The scene keeps the location's environment and art style while staging the action in its own area of the space, preserving each character's appearance from their character references.\n\nretention_analysis:\n<Subject 1>: fully_preserved - Wavy medium-brown hair, light blue eyes, stubble, facial identity, white T-shirt, blue jeans, and brown sneakers.\n<Subject 2>: fully_preserved - Dim grey rainy-day light, grey-blue duvet, white pillows, glowing bedside lamp, rain-streaked window, and wooden floorboards are retained, while the camera uses its own area of the space and new positions for the characters.\n<Audio 1>: fully_copy - <Audio 1> is reused 1:1 as the target video's complete final audio track.\n\ndetailed_description:\nThe target video uses the photorealistic, cinematic live-action look established by the reference images: natural skin texture, true-to-life faces, shallow depth of field, soft 35mm film grain, an intimate romantic drama style, and dim grey overcast light through the rain-streaked bedroom window mixed with the warm glow of a small bedside lamp, a hushed, heavy mood of quiet endurance, his face calm, steady and tender. Every face acts in close, honest detail that changes from beat to beat: eyes closing slowly and opening again, gaze dropping and lifting, brows moving with each feeling, a breath caught in the chest. The camera work is flowing and tender: gentle handheld drift, slow push-ins, lingering holds and smooth orbits.\n\n[Shot 1] A close-up of <Subject 1>'s face and shoulders at his eye level, seated on the edge of the bed in the bedroom of <Subject 2>, <Subject 1> alone in the frame, the blurred grey-blue duvet and white pillows soft behind his shoulder and the rain-streaked window glowing grey beside him; his face is turned three-quarters toward the camera, his gaze held steadily on a point just beyond the right edge of the frame at eye level, tender and patient; a slow push-in tightens the frame as he sings in sync with the vocals in <Audio 1> from 0.03 s to 3.39 s, <d>[English, steady, honest, singing] No <i>bullshit</i> advice, no reason to <i>run</i>:</d>, his lips shaping every word clearly and his mouth opening wide on the sung notes, his brows level, his light blue eyes calm and certain, his body staying still.\n\noverall_soundscape:\n<Audio 1> remains the sole complete soundtrack with its original mix, timing, vocals, music, and dynamics intact: a punchy acoustic folk song with a driving kick pulse, strummed guitar and swelling strings under a raw, intimate male tenor vocal.\n\nnon_diegetic_music:\n<Audio 1> is reused as the complete song: a driving, intimate acoustic folk song with a raw male tenor lead vocal."
     },
     "class_type": "PrimitiveStringMultiline",
     "_meta": {
@@ -220,7 +280,7 @@
     "inputs": {
       "frame_rate": 24,
       "loop_count": 0,
-      "filename_prefix": "MMH3_refmod_2pass/final",
+      "filename_prefix": "VRGDG_MiniMaxH3/MaskedSeamTest_a44b852e/scene_0008/MiniMaxH3_scene_0008_stage2_pred",
       "format": "video/h264-mp4",
       "pix_fmt": "yuv420p",
       "crf": 19,
@@ -239,12 +299,12 @@
     },
     "class_type": "VHS_VideoCombine",
     "_meta": {
-      "title": "OUTPUT - 2 Pass Final (learned latent upscale + pass 2 refine)"
+      "title": "BUILDER OUTPUT - Learned Latent Upscaled 1080p Video"
     }
   },
   "171": {
     "inputs": {
-      "audio_file": "C:\\Users\\NVMax\\Desktop\\ComfyUI_windows_portable\\ComfyUI\\output\\Higher ground\\minimax_h3_scene_audio\\scene_audio_0006.wav",
+      "audio_file": "C:\\Users\\NVMax\\Desktop\\ComfyUI_windows_portable\\ComfyUI\\output\\MaskedSeamTest\\minimax_h3_scene_audio\\scene_audio_0008_pred.wav",
       "seek_seconds": 0,
       "duration": 0
     },
@@ -273,10 +333,20 @@
       "title": "LOCK SOURCE AUDIO - GENERATE VIDEO ONLY"
     }
   },
+  "180": {
+    "inputs": {
+      "image_paths": "[\"C:\\\\Users\\\\NVMax\\\\Desktop\\\\ComfyUI_windows_portable\\\\ComfyUI\\\\output\\\\Dance With You In It\\\\_claude_work\\\\source\\\\characters\\\\sam.jpg\", \"C:\\\\Users\\\\NVMax\\\\Desktop\\\\ComfyUI_windows_portable\\\\ComfyUI\\\\output\\\\Dance With You In It\\\\_claude_work\\\\source\\\\locations\\\\bedroom.png\"]",
+      "video_references": "[]"
+    },
+    "class_type": "VRGDG_MiniMaxH3ReferenceMediaFromPaths",
+    "_meta": {
+      "title": "BUILDER INPUTS - Ordered H3 Reference Images And Videos"
+    }
+  },
   "181": {
     "inputs": {
       "av_latent": [
-        "125",
+        "9851",
         0
       ]
     },
@@ -333,7 +403,7 @@
   },
   "184": {
     "inputs": {
-      "value": 1080
+      "value": 1088
     },
     "class_type": "PrimitiveInt",
     "_meta": {
@@ -397,7 +467,7 @@
   "189": {
     "inputs": {
       "original_av_latent": [
-        "125",
+        "9851",
         0
       ],
       "upscaled_video_latent": [
@@ -412,7 +482,7 @@
   },
   "190": {
     "inputs": {
-      "value": 5
+      "value": 4
     },
     "class_type": "PrimitiveInt",
     "_meta": {
@@ -456,7 +526,7 @@
         0
       ],
       "conditioning": [
-        "9302",
+        "136",
         0
       ]
     },
@@ -518,119 +588,46 @@
   },
   "211": {
     "inputs": {
-      "noise_seed": 69
+      "noise_seed": 7772740481069805980
     },
     "class_type": "RandomNoise",
     "_meta": {
       "title": "BUILDER INPUT - Pass 2 Seed"
     }
   },
-  "9202": {
-    "class_type": "MiniMaxChunkFeedForward",
+  "9850": {
+    "class_type": "VRGDG_MiniMaxH3SaveLatent",
     "inputs": {
-      "model": [
-        "141",
+      "latent": [
+        "194",
         0
       ],
-      "chunks": 8,
-      "seq_threshold": 4096
+      "project_folder": "C:\\Users\\NVMax\\Desktop\\ComfyUI_windows_portable\\ComfyUI\\output\\MaskedSeamTest",
+      "scene_number": 8,
+      "frame_count": 0,
+      "fps": 24.0,
+      "tail_padding_frames": 6
     },
     "_meta": {
-      "title": "MiniMax H3 Chunk FeedForward - pass1"
+      "title": "Universal Latent Auto-Save (Scene 008)"
     }
   },
-  "9203": {
-    "class_type": "BlockSparseAttention",
+  "9851": {
+    "class_type": "VRGDG_MiniMaxH3SaveLatent",
     "inputs": {
-      "model": [
-        "9202",
+      "latent": [
+        "125",
         0
       ],
-      "selection": "sol-attn",
-      "selection.tau": 1.3,
-      "start_percent": 0.2,
-      "end_percent": 1.0,
-      "dense_blocks": "",
-      "min_tokens": 12288,
-      "extra_tokens": 256,
-      "sink_conditioning": "exact_kv_and_rows",
-      "verbose": false
+      "project_folder": "C:\\Users\\NVMax\\Desktop\\ComfyUI_windows_portable\\ComfyUI\\output\\MaskedSeamTest",
+      "scene_number": 8,
+      "frame_count": 0,
+      "fps": 24.0,
+      "tail_padding_frames": 6,
+      "pass1": true
     },
     "_meta": {
-      "title": "Block Sparse Attention - pass1"
-    }
-  },
-  "9301": {
-    "class_type": "MiniMaxH3RefModsLoader",
-    "inputs": {
-      "show_info": true,
-      "mod_1": "identity/darrel",
-      "strength_1": 1.0,
-      "copies_1": 1,
-      "mod_2": "(none)",
-      "strength_2": 1.0,
-      "copies_2": 1,
-      "mod_3": "(none)",
-      "strength_3": 1.0,
-      "copies_3": 1,
-      "mod_4": "(none)",
-      "strength_4": 1.0,
-      "copies_4": 1,
-      "mod_5": "(none)",
-      "strength_5": 1.0,
-      "copies_5": 1,
-      "mod_6": "(none)",
-      "strength_6": 1.0,
-      "copies_6": 1,
-      "mod_7": "(none)",
-      "strength_7": 1.0,
-      "copies_7": 1,
-      "mod_8": "(none)",
-      "strength_8": 1.0,
-      "copies_8": 1
-    },
-    "_meta": {
-      "title": "Load H3 RefMods (pick your RefMod in mod_1)"
-    }
-  },
-  "9302": {
-    "class_type": "MiniMaxH3RefModApply",
-    "inputs": {
-      "conditioning": [
-        "136",
-        0
-      ],
-      "mods": [
-        "9301",
-        0
-      ],
-      "override": false,
-      "retention": 1.0,
-      "curve_direction": "constant",
-      "scramble_seed": -1,
-      "curve_shape": "linear",
-      "curve_value": 1.0,
-      "graph_preset": "(none)",
-      "scramble_mode": "shuffle",
-      "scramble_keep": 1,
-      "max_total_tokens": 0,
-      "save_preset_as": ""
-    },
-    "_meta": {
-      "title": "Apply H3 RefMod"
-    }
-  },
-  "9303": {
-    "class_type": "VRGDG_RefModMetadata",
-    "inputs": {
-      "mod_name": "(use mods input)",
-      "mods": [
-        "9301",
-        0
-      ]
-    },
-    "_meta": {
-      "title": "RefMod description (display only)"
+      "title": "First-Pass Latent Save (Scene 008)"
     }
   }
 }

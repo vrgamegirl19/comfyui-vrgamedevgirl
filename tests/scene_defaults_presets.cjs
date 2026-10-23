@@ -120,3 +120,28 @@ test("Toolbar saves and loads via shared backend, with baseline and editable lab
   assert.equal(f.state.globalConsistencyPhrase, "Saved phrase"); assert.equal(f.state.cameraMotionSpeed, 2);
   assert.equal(toolbar.name.value, "My mix"); assert.equal(toolbar.load.disabled, false);
 });
+
+test("the chosen Speed and Music style are remembered and shown again", async () => {
+  const f = fixture();
+  const toolbar = {};
+  for (const key of ["speed", "music", "saved", "name", "save", "load"]) toolbar[key] = new Element(key === "name" ? "input" : "select");
+  toolbar.speed.children = ["", "static", "slow", "medium", "fast"].map((value) => ({ value }));
+  toolbar.music.children = ["", "rock", "metal", "rap", "soft", "pop"].map((value) => ({ value }));
+  f.state.defaultsSpeedPreset = "fast";
+  f.state.defaultsMusicPreset = "rap";
+  const wired = f.context.wireDefaultPresets({ toolbar, controls: f.args, state: f.state, film: false,
+    postJson: async () => ({ presets: [] }), createToast() {}, refreshCameraFlowInfo() {},
+    notifyStoryboardDefaultsChanged: f.args.notifyStoryboardDefaultsChanged });
+  assert.deepEqual([toolbar.speed.value, toolbar.music.value], ["fast", "rap"], "saved choices are shown on open");
+  toolbar.music.value = "rock";
+  toolbar.music.onchange();
+  assert.equal(f.state.defaultsMusicPreset, "rock");
+  assert.equal(f.state.defaultsSpeedPreset, "fast", "speed and music style combine");
+  // Editing a setting the music style set clears it, and that is remembered too.
+  f.args.cameraFlowSelect.value = "balanced";
+  f.args.cameraFlowSelect.dispatchEvent(new Event("change"));
+  assert.equal(f.state.defaultsMusicPreset, "");
+  f.state.defaultsSpeedPreset = "slow";
+  wired.syncFromState();
+  assert.equal(toolbar.speed.value, "slow", "a reloaded storyboard's choice is shown");
+});

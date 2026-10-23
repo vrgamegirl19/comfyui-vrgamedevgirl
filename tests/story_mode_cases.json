@@ -1,0 +1,1000 @@
+{
+  "parse": [
+    {
+      "name": "title, premise, chapters with settings, a non-numeric heading and a Premise line inside a chapter",
+      "text": "Title: The Last Train North\nPremise: Mara follows her father's trail.\n\nChapter 1: The Station\nSetting: The Night Train\n\nMara waits on the platform.\nShe checks the watch.\n\nThe train arrives.\n\n## Chapter Two - Home\nSetting: Home\nPremise: not a premise here\n\nThe kitchen is cold.",
+      "book": {
+        "title": "The Last Train North",
+        "premise": "Mara follows her father's trail.",
+        "chapters": [
+          {
+            "id": "ch_1",
+            "title": "The Station",
+            "setting_id": "setting_the_night_train",
+            "paragraphs": [
+              "Mara waits on the platform.\nShe checks the watch.",
+              "The train arrives."
+            ],
+            "purpose": "",
+            "presence": {}
+          },
+          {
+            "id": "ch_2",
+            "title": "Home",
+            "setting_id": "setting_home",
+            "paragraphs": [
+              "Premise: not a premise here",
+              "The kitchen is cold."
+            ],
+            "purpose": "",
+            "presence": {}
+          }
+        ]
+      },
+      "setting_names": {
+        "setting_the_night_train": "The Night Train",
+        "setting_home": "Home"
+      },
+      "text_out": "Title: The Last Train North\nPremise: Mara follows her father's trail.\n\nAct 1: The Station\nSetting: The Night Train\n\nMara waits on the platform.\nShe checks the watch.\n\nThe train arrives.\n\nAct 2: Home\nSetting: Home\n\nPremise: not a premise here\n\nThe kitchen is cold."
+    },
+    {
+      "name": "text without headings or blank lines is one chapter, one paragraph per line",
+      "text": "one line\nsecond line",
+      "book": {
+        "title": "",
+        "premise": "",
+        "chapters": [
+          {
+            "id": "ch_1",
+            "title": "Act 1",
+            "setting_id": "",
+            "paragraphs": [
+              "one line",
+              "second line"
+            ],
+            "purpose": "",
+            "presence": {}
+          }
+        ]
+      },
+      "setting_names": {},
+      "text_out": "Act 1: Act 1\n\none line\n\nsecond line"
+    },
+    {
+      "name": "a sentence that starts with Chapter is not a heading",
+      "text": "Chapter 1\nChapter by chapter she read the letters.",
+      "book": {
+        "title": "",
+        "premise": "",
+        "chapters": [
+          {
+            "id": "ch_1",
+            "title": "Act 1",
+            "setting_id": "",
+            "paragraphs": [
+              "Chapter by chapter she read the letters."
+            ],
+            "purpose": "",
+            "presence": {}
+          }
+        ]
+      },
+      "setting_names": {},
+      "text_out": "Act 1: Act 1\n\nChapter by chapter she read the letters."
+    },
+    {
+      "name": "Act headings (story flow 3) are read like chapter headings",
+      "text": "Act 1: Leaving\n\nMara packs.\n\nAct 2: The Road\nSetting: Highway\n\nShe drives.",
+      "book": {
+        "title": "",
+        "premise": "",
+        "chapters": [
+          {
+            "id": "ch_1",
+            "title": "Leaving",
+            "setting_id": "",
+            "paragraphs": [
+              "Mara packs."
+            ],
+            "purpose": "",
+            "presence": {}
+          },
+          {
+            "id": "ch_2",
+            "title": "The Road",
+            "setting_id": "setting_highway",
+            "paragraphs": [
+              "She drives."
+            ],
+            "purpose": "",
+            "presence": {}
+          }
+        ]
+      },
+      "setting_names": {
+        "setting_highway": "Highway"
+      },
+      "text_out": "Act 1: Leaving\n\nMara packs.\n\nAct 2: The Road\nSetting: Highway\n\nShe drives."
+    }
+  ],
+  "split": [
+    {
+      "name": "starts are sorted, the first chapter is added at paragraph 1, bad starts are dropped",
+      "paragraphs": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "split": [
+        {
+          "start_paragraph": 3,
+          "title": "Two",
+          "setting": "Home"
+        },
+        {
+          "start_paragraph": 9
+        },
+        {
+          "start_paragraph": "x"
+        }
+      ],
+      "chapters": [
+        {
+          "id": "ch_1",
+          "title": "Act 1",
+          "setting_id": "",
+          "paragraphs": [
+            "a",
+            "b"
+          ],
+          "purpose": "",
+          "presence": {}
+        },
+        {
+          "id": "ch_2",
+          "title": "Two",
+          "setting_id": "setting_home",
+          "paragraphs": [
+            "c",
+            "d"
+          ],
+          "purpose": "",
+          "presence": {}
+        }
+      ],
+      "setting_names": {
+        "setting_home": "Home"
+      }
+    }
+  ],
+  "normalize": [
+    {
+      "name": "only keys present are returned, values are cleaned",
+      "input": {
+        "story_flow_version": "2",
+        "story_settings": [
+          {
+            "name": "Home",
+            "look": " warm wood "
+          },
+          {
+            "id": "setting_home",
+            "name": "Dup"
+          },
+          {
+            "name": ""
+          }
+        ],
+        "story_scene_plan": [
+          {
+            "scene_id": "s1",
+            "performance_mode": "Story Only",
+            "spot": "  Kitchen  "
+          },
+          {
+            "scene_id": "s1",
+            "performance_mode": "speaking"
+          },
+          {
+            "scene_id": "s2",
+            "performance_mode": "music only"
+          }
+        ]
+      },
+      "output": {
+        "story_flow_version": 2,
+        "story_settings": [
+          {
+            "id": "setting_home",
+            "name": "Home",
+            "look": "warm wood"
+          }
+        ],
+        "story_scene_plan": [
+          {
+            "scene_id": "s1",
+            "act_id": "",
+            "story_slice": "",
+            "spot": "Kitchen",
+            "mood": "",
+            "performance_mode": "no_lip_sync",
+            "note_sources": [],
+            "continues_previous": false,
+            "continuation_source": "",
+            "llm_continues": false,
+            "continuation_direction": "",
+            "cast_ids": [],
+            "performer_ids": [],
+            "performer_id": "",
+            "performer_source": "",
+            "interaction": "",
+            "cast_source": "",
+            "user_note": ""
+          },
+          {
+            "scene_id": "s2",
+            "act_id": "",
+            "story_slice": "",
+            "spot": "",
+            "mood": "",
+            "performance_mode": "instrumental",
+            "note_sources": [],
+            "continues_previous": false,
+            "continuation_source": "",
+            "llm_continues": false,
+            "continuation_direction": "",
+            "cast_ids": [],
+            "performer_ids": [],
+            "performer_id": "",
+            "performer_source": "",
+            "interaction": "",
+            "cast_source": "",
+            "user_note": ""
+          }
+        ]
+      }
+    },
+    {
+      "name": "an old story layer has no Story Mode keys",
+      "input": {
+        "overall_story_idea": "idea",
+        "user_story_arc": "Verse 1: ..."
+      },
+      "output": {}
+    },
+    {
+      "name": "story cast ids and the allow-new-cast switch",
+      "input": {
+        "story_cast_ids": [
+          "  subj_1 ",
+          "",
+          "subj_2",
+          7
+        ],
+        "story_allow_new_cast": "TRUE"
+      },
+      "output": {
+        "story_cast_ids": [
+          "subj_1",
+          "subj_2",
+          "7"
+        ],
+        "story_allow_new_cast": true
+      }
+    },
+    {
+      "name": "anything but true keeps the story to the cast",
+      "input": {
+        "story_cast_ids": "subj_1",
+        "story_allow_new_cast": "yes"
+      },
+      "output": {
+        "story_cast_ids": [],
+        "story_allow_new_cast": false
+      }
+    },
+    {
+      "name": "the video style is one of three, music video by default",
+      "input": {
+        "story_video_style": "Story Only"
+      },
+      "output": {
+        "story_video_style": "story_only"
+      }
+    },
+    {
+      "name": "an unknown video style is a music video",
+      "input": {
+        "story_video_style": "documentary"
+      },
+      "output": {
+        "story_video_style": "music_video"
+      }
+    },
+    {
+      "name": "continuation fields on a plan entry and the continuation mode",
+      "input": {
+        "story_continuation_mode": "LLM",
+        "story_scene_plan": [
+          {
+            "scene_id": "s2",
+            "continues_previous": true,
+            "continuation_source": "Manual",
+            "llm_continues": "true",
+            "continuation_direction": "  She walks to the window. "
+          }
+        ]
+      },
+      "output": {
+        "story_continuation_mode": "llm",
+        "story_scene_plan": [
+          {
+            "scene_id": "s2",
+            "act_id": "",
+            "story_slice": "",
+            "spot": "",
+            "mood": "",
+            "performance_mode": "singing",
+            "note_sources": [],
+            "continues_previous": true,
+            "continuation_source": "manual",
+            "llm_continues": false,
+            "continuation_direction": "She walks to the window.",
+            "cast_ids": [],
+            "performer_ids": [],
+            "performer_id": "",
+            "performer_source": "",
+            "interaction": "",
+            "cast_source": "",
+            "user_note": ""
+          }
+        ]
+      }
+    },
+    {
+      "name": "an unknown continuation mode is off and an unknown source is empty",
+      "input": {
+        "story_continuation_mode": "always",
+        "story_scene_plan": [
+          {
+            "scene_id": "s1",
+            "continuation_source": "robot"
+          }
+        ]
+      },
+      "output": {
+        "story_continuation_mode": "off",
+        "story_scene_plan": [
+          {
+            "scene_id": "s1",
+            "act_id": "",
+            "story_slice": "",
+            "spot": "",
+            "mood": "",
+            "performance_mode": "singing",
+            "note_sources": [],
+            "continues_previous": false,
+            "continuation_source": "",
+            "llm_continues": false,
+            "continuation_direction": "",
+            "cast_ids": [],
+            "performer_ids": [],
+            "performer_id": "",
+            "performer_source": "",
+            "interaction": "",
+            "cast_source": "",
+            "user_note": ""
+          }
+        ]
+      }
+    },
+    {
+      "name": "story stamps keep short prints per step and drop junk",
+      "input": {
+        "story_stamps": {
+          "book": {
+            "premise": "a1b2c3d4",
+            "empty": ""
+          },
+          "acts": {
+            "act_1": {
+              "chapter": "0f",
+              "cast": 12
+            },
+            "act_2": {}
+          },
+          "beats": "nope",
+          "robots": {
+            "x": {
+              "y": "z"
+            }
+          }
+        }
+      },
+      "output": {
+        "story_stamps": {
+          "book": {
+            "premise": "a1b2c3d4"
+          },
+          "acts": {
+            "act_1": {
+              "chapter": "0f",
+              "cast": "12"
+            }
+          },
+          "plan": {},
+          "places": {},
+          "beats": {},
+          "prompts": {}
+        }
+      }
+    },
+    {
+      "name": "main character, roles and relationships keep only known values",
+      "input": {
+        "story_main_cast_id": "  mara ",
+        "story_cast_roles": {
+          "mara": "Main",
+          "joe": "love_interest",
+          "lena": "wizard",
+          "": "main"
+        },
+        "story_relationships": [
+          {
+            "a": "mara",
+            "b": "joe",
+            "type": "Love_Interest",
+            "note": "  estranged  "
+          },
+          {
+            "a": "joe",
+            "b": "mara",
+            "type": "rivals"
+          },
+          {
+            "a": "lena",
+            "b": "lena",
+            "type": "family"
+          },
+          {
+            "a": "mara",
+            "b": "lena",
+            "type": "enemies"
+          },
+          {
+            "a": "mara",
+            "b": "lena",
+            "type": "friends"
+          }
+        ]
+      },
+      "output": {
+        "story_main_cast_id": "mara",
+        "story_cast_roles": {
+          "mara": "main",
+          "joe": "love_interest"
+        },
+        "story_relationships": [
+          {
+            "a": "mara",
+            "b": "joe",
+            "type": "love_interest",
+            "note": "estranged"
+          },
+          {
+            "a": "mara",
+            "b": "lena",
+            "type": "friends",
+            "note": ""
+          }
+        ]
+      }
+    },
+    {
+      "name": "acts keep a purpose and presence; chapters keep a setting, presence and the wanted counts",
+      "input": {
+        "story_book": {
+          "chapters": [
+            {
+              "id": "ch_1",
+              "title": "Leaving",
+              "paragraphs": [
+                "x"
+              ],
+              "purpose": "Setup",
+              "presence": {
+                "mara": "Featured",
+                "joe": "maybe"
+              }
+            }
+          ]
+        },
+        "story_acts": [
+          {
+            "id": "act_1",
+            "chapter_id": "ch_1",
+            "title": "Packing",
+            "scene_ids": [
+              "s1"
+            ],
+            "setting_id": "setting_home",
+            "presence": {
+              "mara": "present"
+            }
+          }
+        ],
+        "story_act_count": "4",
+        "story_chapter_counts": {
+          "ch_1": 3,
+          "ch_2": 0,
+          "": 2
+        }
+      },
+      "output": {
+        "story_book": {
+          "title": "",
+          "premise": "",
+          "chapters": [
+            {
+              "id": "ch_1",
+              "title": "Leaving",
+              "setting_id": "",
+              "paragraphs": [
+                "x"
+              ],
+              "purpose": "setup",
+              "presence": {
+                "mara": "featured"
+              }
+            }
+          ]
+        },
+        "story_acts": [
+          {
+            "id": "act_1",
+            "chapter_id": "ch_1",
+            "title": "Packing",
+            "summary": "",
+            "cast_ids": [],
+            "scene_ids": [
+              "s1"
+            ],
+            "setting_id": "setting_home",
+            "presence": {
+              "mara": "present"
+            }
+          }
+        ],
+        "story_act_count": 4,
+        "story_chapter_counts": {
+          "ch_1": 3
+        }
+      }
+    }
+  ],
+  "continuations": [
+    {
+      "name": "off continues nothing",
+      "mode": "off",
+      "plan": [
+        {
+          "scene_id": "s1",
+          "act_id": "a1",
+          "spot": "Kitchen",
+          "llm_continues": true
+        },
+        {
+          "scene_id": "s2",
+          "act_id": "a1",
+          "spot": "kitchen",
+          "llm_continues": false
+        },
+        {
+          "scene_id": "s3",
+          "act_id": "a1",
+          "spot": "Porch",
+          "llm_continues": true
+        },
+        {
+          "scene_id": "s4",
+          "act_id": "a2",
+          "spot": "Porch",
+          "llm_continues": true
+        },
+        {
+          "scene_id": "s5",
+          "act_id": "a2",
+          "spot": "Porch",
+          "llm_continues": true
+        }
+      ],
+      "scenes": [
+        {
+          "id": "s1",
+          "start": 0,
+          "end": 4
+        },
+        {
+          "id": "s2",
+          "start": 4,
+          "end": 8
+        },
+        {
+          "id": "s3",
+          "start": 8,
+          "end": 12
+        },
+        {
+          "id": "s4",
+          "start": 12,
+          "end": 16
+        },
+        {
+          "id": "s5",
+          "start": 17,
+          "end": 20
+        }
+      ],
+      "acts": [
+        {
+          "id": "a1",
+          "chapter_id": "ch_1",
+          "scene_ids": [
+            "s1",
+            "s2",
+            "s3"
+          ]
+        },
+        {
+          "id": "a2",
+          "chapter_id": "ch_2",
+          "scene_ids": [
+            "s4",
+            "s5"
+          ]
+        }
+      ],
+      "expect": {
+        "s1": [
+          false,
+          ""
+        ],
+        "s2": [
+          false,
+          ""
+        ],
+        "s3": [
+          false,
+          ""
+        ],
+        "s4": [
+          false,
+          ""
+        ],
+        "s5": [
+          false,
+          ""
+        ]
+      }
+    },
+    {
+      "name": "same spot continues touching scenes at one spot in one chapter, never the first or after a gap",
+      "mode": "location",
+      "plan": [
+        {
+          "scene_id": "s1",
+          "act_id": "a1",
+          "spot": "Kitchen",
+          "llm_continues": true
+        },
+        {
+          "scene_id": "s2",
+          "act_id": "a1",
+          "spot": "kitchen",
+          "llm_continues": false
+        },
+        {
+          "scene_id": "s3",
+          "act_id": "a1",
+          "spot": "Porch",
+          "llm_continues": true
+        },
+        {
+          "scene_id": "s4",
+          "act_id": "a2",
+          "spot": "Porch",
+          "llm_continues": true
+        },
+        {
+          "scene_id": "s5",
+          "act_id": "a2",
+          "spot": "Porch",
+          "llm_continues": true
+        }
+      ],
+      "scenes": [
+        {
+          "id": "s1",
+          "start": 0,
+          "end": 4
+        },
+        {
+          "id": "s2",
+          "start": 4,
+          "end": 8
+        },
+        {
+          "id": "s3",
+          "start": 8,
+          "end": 12
+        },
+        {
+          "id": "s4",
+          "start": 12,
+          "end": 16
+        },
+        {
+          "id": "s5",
+          "start": 17,
+          "end": 20
+        }
+      ],
+      "acts": [
+        {
+          "id": "a1",
+          "chapter_id": "ch_1",
+          "scene_ids": [
+            "s1",
+            "s2",
+            "s3"
+          ]
+        },
+        {
+          "id": "a2",
+          "chapter_id": "ch_2",
+          "scene_ids": [
+            "s4",
+            "s5"
+          ]
+        }
+      ],
+      "expect": {
+        "s1": [
+          false,
+          ""
+        ],
+        "s2": [
+          true,
+          "auto"
+        ],
+        "s3": [
+          false,
+          ""
+        ],
+        "s4": [
+          false,
+          ""
+        ],
+        "s5": [
+          false,
+          ""
+        ]
+      }
+    },
+    {
+      "name": "the LLM's answer is used, never for the first scene or after a gap",
+      "mode": "llm",
+      "plan": [
+        {
+          "scene_id": "s1",
+          "act_id": "a1",
+          "spot": "Kitchen",
+          "llm_continues": true
+        },
+        {
+          "scene_id": "s2",
+          "act_id": "a1",
+          "spot": "kitchen",
+          "llm_continues": false
+        },
+        {
+          "scene_id": "s3",
+          "act_id": "a1",
+          "spot": "Porch",
+          "llm_continues": true
+        },
+        {
+          "scene_id": "s4",
+          "act_id": "a2",
+          "spot": "Porch",
+          "llm_continues": true
+        },
+        {
+          "scene_id": "s5",
+          "act_id": "a2",
+          "spot": "Porch",
+          "llm_continues": true
+        }
+      ],
+      "scenes": [
+        {
+          "id": "s1",
+          "start": 0,
+          "end": 4
+        },
+        {
+          "id": "s2",
+          "start": 4,
+          "end": 8
+        },
+        {
+          "id": "s3",
+          "start": 8,
+          "end": 12
+        },
+        {
+          "id": "s4",
+          "start": 12,
+          "end": 16
+        },
+        {
+          "id": "s5",
+          "start": 17,
+          "end": 20
+        }
+      ],
+      "acts": [
+        {
+          "id": "a1",
+          "chapter_id": "ch_1",
+          "scene_ids": [
+            "s1",
+            "s2",
+            "s3"
+          ]
+        },
+        {
+          "id": "a2",
+          "chapter_id": "ch_2",
+          "scene_ids": [
+            "s4",
+            "s5"
+          ]
+        }
+      ],
+      "expect": {
+        "s1": [
+          false,
+          ""
+        ],
+        "s2": [
+          false,
+          ""
+        ],
+        "s3": [
+          true,
+          "llm"
+        ],
+        "s4": [
+          true,
+          "llm"
+        ],
+        "s5": [
+          false,
+          ""
+        ]
+      }
+    },
+    {
+      "name": "a manual choice wins over the mode, both ways, but not after a gap",
+      "mode": "location",
+      "plan": [
+        {
+          "scene_id": "s1",
+          "act_id": "a1",
+          "spot": "Kitchen",
+          "llm_continues": true
+        },
+        {
+          "scene_id": "s2",
+          "act_id": "a1",
+          "spot": "kitchen",
+          "llm_continues": false,
+          "continues_previous": false,
+          "continuation_source": "manual"
+        },
+        {
+          "scene_id": "s3",
+          "act_id": "a1",
+          "spot": "Porch",
+          "llm_continues": true,
+          "continues_previous": true,
+          "continuation_source": "manual"
+        },
+        {
+          "scene_id": "s4",
+          "act_id": "a2",
+          "spot": "Porch",
+          "llm_continues": true
+        },
+        {
+          "scene_id": "s5",
+          "act_id": "a2",
+          "spot": "Porch",
+          "llm_continues": true,
+          "continues_previous": true,
+          "continuation_source": "manual"
+        }
+      ],
+      "scenes": [
+        {
+          "id": "s1",
+          "start": 0,
+          "end": 4
+        },
+        {
+          "id": "s2",
+          "start": 4,
+          "end": 8
+        },
+        {
+          "id": "s3",
+          "start": 8,
+          "end": 12
+        },
+        {
+          "id": "s4",
+          "start": 12,
+          "end": 16
+        },
+        {
+          "id": "s5",
+          "start": 17,
+          "end": 20
+        }
+      ],
+      "acts": [
+        {
+          "id": "a1",
+          "chapter_id": "ch_1",
+          "scene_ids": [
+            "s1",
+            "s2",
+            "s3"
+          ]
+        },
+        {
+          "id": "a2",
+          "chapter_id": "ch_2",
+          "scene_ids": [
+            "s4",
+            "s5"
+          ]
+        }
+      ],
+      "expect": {
+        "s1": [
+          false,
+          ""
+        ],
+        "s2": [
+          false,
+          "manual"
+        ],
+        "s3": [
+          true,
+          "manual"
+        ],
+        "s4": [
+          false,
+          ""
+        ],
+        "s5": [
+          false,
+          ""
+        ]
+      }
+    }
+  ]
+}

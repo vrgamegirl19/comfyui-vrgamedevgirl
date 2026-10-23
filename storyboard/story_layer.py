@@ -20,6 +20,7 @@ from ..llm.prompts.storyboard import (
     _storyboard_story_brief_instruction,
     _storyboard_timeline_note_story_instruction,
 )
+from ..llm.prompts.story_mode import story_mode_lyric_guidance
 from .cast_guard import build_cast_guard, cast_leaks, cast_wall_text, strip_cast_leaks, strip_story_arc_entry_leaks
 from .persistence import _normalize_script_import, _normalize_storyboard_scene
 from .scene_helpers import (
@@ -32,6 +33,7 @@ from .scene_helpers import (
     _selected_storyboard_scene,
     _storyboard_dialogue_reference_catalog,
 )
+from .story_mode import is_scene_item_card, is_story_mode_layer, scene_items_text, story_beat_context
 from .timeline_notes import story_arc_timeline_notes
 
 
@@ -1075,6 +1077,21 @@ def _strip_scene_beat_audio_language(text):
     return cleaned
 
 
+def _story_mode_beat_rules(payload):
+    """The project's own Story Mode beat rules (story_mode_scene_beat), or the built-in rules."""
+    from .story_book import story_template
+
+    rules = str(story_template(payload, "story_mode_scene_beat"))
+    # Always added in code, so a saved copy of the rules cannot lose it.
+    believable = (
+        "- Keep it believable: the cast does ordinary, motivated things a real person would do in that place (sit, walk, "
+        "pick something up, open a door, glance at someone), using the objects and furniture there. Avoid staged poses, "
+        "long stares into the distance, standing at windows, and dramatic gestures with no purpose.\n"
+    )
+    marker = "- {{output_rules}}"
+    return rules.replace(marker, believable + marker, 1) if marker in rules else f"{rules.rstrip()}\n{believable}"
+
+
 def _build_story_layer_scene_beat(payload):
     scene_bundle = payload.get("storyboard_payload") or payload.get("scene_bundle") or payload.get("gpt_payload")
     if not isinstance(scene_bundle, dict):
@@ -1162,30 +1179,56 @@ def _build_story_layer_scene_beat(payload):
     if scene.get("no_character_present") or scene.get("noCharacterPresent") or scene.get("no_visible_subject") or scene.get("no_subject"):
         extra_subjects = []
     beat_word_limit = 100 if extra_subjects else 80
-    # Hard wall: characters not selected for this scene may not appear in its beat.
-    scene_cast = [] if (scene.get("no_character_present") or scene.get("noCharacterPresent")) else [
+    # Hard wall: characters not selected for this scene may not appear in its beat. Clothing and prop cards mapped to
+    # the scene are things the people wear or use, so they are listed apart and never banned or counted as people.
+    mapped_refs = [] if (scene.get("no_character_present") or scene.get("noCharacterPresent")) else [
         item for item in (scene.get("subject_refs") or []) if isinstance(item, dict) and str(item.get("name") or "").strip()
     ]
+    scene_cast = [item for item in mapped_refs if not is_scene_item_card(item)]
+    scene_items = [item for item in mapped_refs if is_scene_item_card(item)]
+    item_names = {_clean_scene_text(item.get("name"), 180).casefold() for item in scene_items}
+    silent_performers = [name for name in silent_performers if name.casefold() not in item_names]
     all_project_subjects = [item for item in (payload.get("all_subjects") or []) if isinstance(item, dict)]
     reference_builder = payload.get("reference_builder") or payload.get("referenceBuilder") or {}
     if isinstance(reference_builder, dict):
         all_project_subjects += [item for item in (reference_builder.get("subjects") or []) if isinstance(item, dict)]
+    all_project_subjects = [item for item in all_project_subjects if not is_scene_item_card(item)]
     cast_guard = build_cast_guard(all_project_subjects + scene_cast, scene_cast, [item["name"] for item in extra_subjects])
     scene_location = scene.get("location_ref") if isinstance(scene.get("location_ref"), dict) else {}
+    scene_override = _clean_scene_text(scene.get("scene_override") or "", 800)
     scene_facts = "\n".join(filter(None, [
+        (
+            f"SCENE OVERRIDE, set by the user and always true for this scene: {scene_override}\n"
+            "It replaces anything in the story, the arc, the lyric, the location, the notes or the previous beat that "
+            "disagrees with it. Change every conflicting detail to match it, and make it clearly visible in the beat. "
+            "For example, an override of night time means the scene happens at night and is lit like night even if "
+            "the story says morning; an override of raining means it rains through the whole scene."
+        ) if scene_override else "",
         cast_wall_text(cast_guard),
+        scene_items_text(scene_items, scene_cast),
         (
             f"Location: {_clean_scene_text(scene_location.get('name') or '', 120)}"
             f" — {_clean_scene_text(scene_location.get('description') or '', 400)}"
         ) if scene_location.get("name") else "",
         f"Previous end state: {previous_end_state}" if previous_end_state else "",
     ]))
+    # Story Mode: the beat follows this scene's planned story slice instead of the song-section arc.
+    story_context = None
+    if is_story_mode_layer(story_layer):
+        story_context = story_beat_context(story_layer, scene.get("id"), scene.get("scene_number"))
+    if story_context:
+        arc_text, brief_text = story_context
+        lyric_guidance = story_mode_lyric_guidance(story_layer.get("lyric_story_strength", 5))
+    else:
+        arc_text = story_layer.get("user_story_arc") or ""
+        brief_text = story_layer.get("song_story_brief") or ""
+        lyric_guidance = _lyric_story_strength_guidance(story_layer)
     instruction = _storyboard_scene_beat_instruction(
         flf_mode=flf_mode,
         beat_word_limit=beat_word_limit,
-        lyric_story_strength_guidance_text=_lyric_story_strength_guidance(story_layer),
-        user_story_arc=story_layer.get("user_story_arc") or "",
-        song_story_brief=story_layer.get("song_story_brief") or "",
+        lyric_story_strength_guidance_text=lyric_guidance,
+        user_story_arc=arc_text,
+        song_story_brief=brief_text,
         previous_beat=previous_beat,
         previous_lyrics=previous_lyrics,
         previous_end_state=previous_end_state,
@@ -1197,6 +1240,8 @@ def _build_story_layer_scene_beat(payload):
         extra_subjects_json=json.dumps(extra_subjects, ensure_ascii=False, indent=2) if extra_subjects else "[none]",
         scene_json=json.dumps(scene, ensure_ascii=False, indent=2),
         cast_wall=scene_facts,
+        story_mode=bool(story_context),
+        rules_template=_story_mode_beat_rules(payload) if story_context else None,
     )
     from ..llm.builder_runner import _run_builder_text_llm, _runner_supports_json_schema
 

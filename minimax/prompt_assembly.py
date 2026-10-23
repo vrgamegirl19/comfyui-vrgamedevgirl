@@ -114,8 +114,21 @@ def effective_mode(segment: Dict[str, Any], session: Dict[str, Any], mode: Optio
     )
 
 
+def _continuous_cuts_opening() -> str:
+    from .shot_prompt import CONTINUOUS_CUTS_OPENING
+
+    return CONTINUOUS_CUTS_OPENING
+
+
 def scene_cut_plan(segment: Dict[str, Any], session: Dict[str, Any]) -> Dict[str, Any]:
-    """The scene's shot plan from its length and the project's saved cut frequency."""
+    """The scene's shot plan from its length and the project's saved cut frequency and cut style."""
+    from . import shot_prompt
+
+    defaults = session.get("builder_storyboard_defaults") if isinstance(session.get("builder_storyboard_defaults"), dict) else {}
+    return shot_prompt.apply_cut_style(_scene_cut_plan_by_frequency(segment, session), defaults.get("minimax_h3_cut_style"))
+
+
+def _scene_cut_plan_by_frequency(segment: Dict[str, Any], session: Dict[str, Any]) -> Dict[str, Any]:
     defaults = session.get("builder_storyboard_defaults") if isinstance(session.get("builder_storyboard_defaults"), dict) else {}
     duration = max(0.1, float(segment.get("end", 0.0) or 0.0) - float(segment.get("start", 0.0) or 0.0))
     try:
@@ -135,6 +148,16 @@ def scene_cut_plan(segment: Dict[str, Any], session: Dict[str, Any]) -> Dict[str
             if cuts:
                 plan.update(cut_times_seconds=cuts, cut_count=len(cuts), shot_count=len(cuts) + 1,
                             continuous_shot=False, cue_driven=True)
+    elif not segment.get("location_continuous_shot"):
+        # A timed singing cue map on the project audio cuts at every cue, like the Builder's miniMaxH3SceneCutPlan.
+        from . import shot_prompt
+        from .settings_payload import minimax_h3_settings_for_scene
+
+        singing = str(segment.get("performance_mode") or session.get("video_type") or "singing") == "singing"
+        if singing and minimax_h3_settings_for_scene(session, segment).get("audio_mode", "input_audio") != "built_in_audio":
+            cues = shot_prompt.timed_cue_rows(segment)
+            if cues:
+                plan = shot_prompt.cue_cut_plan(plan, cues)
     return plan
 
 
@@ -211,11 +234,16 @@ def assemble_minimax_h3_prompt(
         else:
             time_sec = cut_plan["cut_times_seconds"][i - 1] if (i - 1) < len(cut_plan["cut_times_seconds"]) else dur * i / expected_shots
             timecode = format_timecode(time_sec)
+            if cut_plan.get("continuous"):
+                from .shot_prompt import continuous_cut_text
+
+                desc = continuous_cut_text(desc, shot_num)
             shots_body_parts.append(f"[Shot {shot_num}] At {timecode}, {desc}")
 
     shots_body = "\n\n".join(shots_body_parts)
 
     style = str(segment.get("minimax_h3_video_style") or session.get("builder_storyboard_defaults", {}).get("video_style") or "photorealistic")
+    continuity = f" {_continuous_cuts_opening()}" if cut_plan.get("continuous") else ""
 
     if norm_mode == "image_reference_to_video":
         from . import shot_prompt
@@ -248,7 +276,7 @@ def assemble_minimax_h3_prompt(
         shots_body = shots_body.replace("[Shot 1] ", "[Shot 1] The shot begins exactly from <Picture 1>. ", 1)
         if end and end != start:
             shots_body += " The final motion converges exactly on <Picture 2> as the last frame."
-        detailed = f"detailed_description:\nThe target video is in a {style} music-video style.\n\n{shots_body}"
+        detailed = f"detailed_description:\nThe target video is in a {style} music-video style.{continuity}\n\n{shots_body}"
         if session.get("use_structured_outputs", False):
             settings = minimax_h3_settings_for_scene(session, segment)
             frame = shot_prompt.reference_frame(items, cut_plan, style, str(settings.get("audio_mode") or "input_audio"), str(segment.get("audio_direction") or ""))
@@ -277,7 +305,7 @@ def assemble_minimax_h3_prompt(
             "<Picture 1> ([Shot 1] first frame): fully_preserved - the opening framing and lighting are retained.",
             "<Audio 1>: fully_copy - the synchronized music and vocal audio track is fully copied.",
         ]
-        detailed = f"detailed_description:\nThe target video is in a {style} music-video style.\n\n{shots_body}"
+        detailed = f"detailed_description:\nThe target video is in a {style} music-video style.{continuity}\n\n{shots_body}"
         prompt_text = "\n\n".join([
             "subject_definitions:\n" + "\n".join(subject_defs),
             summary,
@@ -367,13 +395,13 @@ def validate_minimax_h3_prompt(
 
 
 CONTINUATION_START_FIELD = "minimax_h3_continuation_start_seconds"
-CONTINUATION_MIN_START_SECONDS = 0.5
+CONTINUATION_MIN_START_SECONDS = 0.0
 
 
 def continuation_start_limits(duration: float) -> tuple:
     """(lowest, highest) second of a continued scene where its own movement may begin.
 
-    At least 0.5 s in, at most half of the scene (rounded down to 0.1 s). Python twin of
+    From the first frame (0 s) up to half of the scene (rounded down to 0.1 s). Python twin of
     ``miniMaxH3ContinuationStartLimits`` in ``web/music_video_builder/minimax_h3.mjs``.
     """
     low = CONTINUATION_MIN_START_SECONDS
@@ -384,7 +412,7 @@ def continuation_start_limits(duration: float) -> tuple:
 def continuation_hold_seconds(duration: float, requested: Any = None) -> float:
     """Seconds a continued scene simply carries on before its own movement begins.
 
-    The author's choice (``minimax_h3_continuation_start_seconds``) kept between the limits, 0.5 s when nothing is
+    The author's choice (``minimax_h3_continuation_start_seconds``) kept between the limits, 0 s when nothing is
     set. Python twin of ``miniMaxH3ContinuationHoldSeconds`` in ``web/music_video_builder/minimax_prompt.mjs``.
     """
     low, high = continuation_start_limits(duration)
@@ -411,9 +439,14 @@ def masked_continuation_context(segment: Dict[str, Any], duration: float, shot_c
     rules = [
         "This scene continues the previous scene's saved latent. Its first frames are the previous scene's last moments, "
         "already rendered. Write it as the very next moment of one uninterrupted take, never as a new shot.",
-        f"Write the timing into the shot text: 'For the first {hold:g} seconds, ...' carries on the previous scene's action "
-        f"with the same camera movement, framing and pace (no cut, reframe or restage), then 'At about {hold:g} seconds, ...' "
-        "gives the one smooth movement this scene makes.",
+        (
+            f"Write the timing into the shot text: 'For the first {hold:g} seconds, ...' carries on the previous scene's action "
+            f"with the same camera movement, framing and pace (no cut, reframe or restage), then 'At about {hold:g} seconds, ...' "
+            "gives the one smooth movement this scene makes."
+            if hold > 0 else
+            "The scene's own movement starts from the first frame with no timed lead-in, carrying on from the previous scene's "
+            "action with the same camera movement, framing and pace (no cut, reframe or restage)."
+        ),
         f"The scene is {scene_length:g} seconds long, so that movement has {seconds_left:g} seconds and must be completely "
         "finished before the scene ends. Keep every action of the author's direction, in their order, and perform them briskly "
         "enough to fit. Never leave one cut off or unfinished.",

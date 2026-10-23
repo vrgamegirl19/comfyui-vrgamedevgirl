@@ -25,6 +25,13 @@ ref_orch = importlib.import_module(f"{pkg_name}.agent_api.orchestrator.reference
 builder_project = importlib.import_module(f"{pkg_name}.builder.project")
 
 
+def setUpModule():
+    # These tests use the project's runner settings, so the ones saved for every project on this machine are left out.
+    patcher = patch.object(importlib.import_module(f"{pkg_name}.builder.project"), "_load_global_llm_runner", lambda: {})
+    patcher.start()
+    unittest.addModuleCleanup(patcher.stop)
+
+
 class FakeLmStudio:
     def __init__(self, loaded_model="gemma-4-e4b-it"):
         self.requests = []

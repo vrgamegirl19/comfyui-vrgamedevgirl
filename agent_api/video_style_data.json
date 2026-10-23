@@ -1,0 +1,526 @@
+{
+  "video_styles": {
+    "cinematic_realism": {
+      "label": "Cinematic realism",
+      "guidance": "Naturalistic practical lighting, restrained color grading, balanced contrast, subtle film grain, realistic skin texture, neutral tones, believable materials, and polished cinematic clarity throughout."
+    },
+    "gothic_romance": {
+      "label": "Gothic romance",
+      "guidance": "Deep burgundy, black, and ivory tones, soft shadows, luminous highlights, ornate details, rich velvet and lace textures, candlelit atmosphere, and melancholic visual softness throughout."
+    },
+    "dark_fantasy": {
+      "label": "Dark fantasy",
+      "guidance": "Shadow-heavy lighting, desaturated earth tones, metallic accents, dramatic contrast, weathered textures, monumental fantasy production design, atmospheric haze, and richly cinematic grading throughout."
+    },
+    "ethereal_dreamscape": {
+      "label": "Ethereal dreamscape",
+      "guidance": "Pastel colors, diffused highlights, soft focus, glowing edges, translucent layers, pearlescent haze, low contrast, and weightless dreamlike beauty throughout."
+    },
+    "surrealism": {
+      "label": "Surrealism",
+      "guidance": "Unexpected proportions, distorted perspective, symbolic abstraction, unnatural colors, impossible spatial relationships, uncanny objects, and deliberately illogical dream imagery throughout."
+    },
+    "cosmic_horror": {
+      "label": "Cosmic horror",
+      "guidance": "Near-black palettes, cold highlights, immense scale, distorted geometry, oppressive shadows, ancient textures, unsettling negative space, and incomprehensible otherworldly detail throughout."
+    },
+    "psychological_horror": {
+      "label": "Psychological horror",
+      "guidance": "Sickly restrained color, oppressive shadow, uneasy negative space, subtly distorted interiors, harsh practical light, clammy skin tones, ambiguous background details, and persistent visual dread throughout."
+    },
+    "found_footage": {
+      "label": "Found footage",
+      "guidance": "Authentic in-world consumer-camera imagery with practical available light, imperfect exposure, mild autofocus softness, sensor noise, compression artifacts, clipped highlights, noisy shadows, subdued color, and an unpolished documentary texture. Keep faces readable; avoid glossy grading, studio polish, pristine sharpness, and cinematic glamour."
+    },
+    "analog_horror": {
+      "label": "Analog horror",
+      "guidance": "Degraded videotape imagery, faded color, tracking noise, scan lines, chromatic bleed, warped edges, crushed blacks, blown highlights, timestamp-like visual language without readable text, and ominous broadcast-era texture throughout."
+    },
+    "body_horror": {
+      "label": "Body horror",
+      "guidance": "Visceral organic textures, pallid flesh tones, wet highlights, anatomical distortion, diseased surfaces, clinical details, bruised color accents, harsh close detail, and deeply unsettling physical materiality throughout."
+    },
+    "occult_ritual": {
+      "label": "Occult ritual",
+      "guidance": "Candlelit darkness, ceremonial symbols, weathered stone, smoke, wax, ash, deep red and black accents, antique ritual objects, symmetrical arrangements, and secretive sacred atmosphere throughout."
+    },
+    "silent_hill_inspired": {
+      "label": "Silent Hill-inspired",
+      "guidance": "Dense pale fog, rusted industrial surfaces, damp concrete, peeling walls, muted gray-green color, dirty amber light, corroded metal, abandoned spaces, and oppressive psychological decay throughout."
+    },
+    "cyberpunk": {
+      "label": "Cyberpunk",
+      "guidance": "Neon magenta, cyan, and electric blue light, rain-slick surfaces, holographic signage shapes without readable text, dense urban technology, reflective synthetic materials, high contrast, and gritty futuristic detail throughout."
+    },
+    "biopunk": {
+      "label": "Biopunk",
+      "guidance": "Organic technology, translucent membranes, bone-like structures, cultured tissue, surgical hardware, sickly green and amber light, wet biological surfaces, laboratory grime, and engineered-life detail throughout."
+    },
+    "dieselpunk": {
+      "label": "Dieselpunk",
+      "guidance": "Oil-stained metal, riveted machinery, soot, heavy industrial architecture, military-era styling, muted olive and rust colors, hard smoky light, analog gauges, and imposing mechanical detail throughout."
+    },
+    "steampunk": {
+      "label": "Steampunk",
+      "guidance": "Aged brass, copper pipes, leather, polished wood, intricate gears, Victorian tailoring, warm amber light, steam-filled atmosphere, engraved ornament, and handcrafted mechanical detail throughout."
+    },
+    "post_apocalyptic": {
+      "label": "Post-apocalyptic",
+      "guidance": "Sun-bleached ruins, scavenged materials, dust, rust, broken infrastructure, weathered clothing, harsh natural light, muted earth colors, and layered environmental decay throughout."
+    },
+    "dystopian_sci_fi": {
+      "label": "Dystopian sci-fi",
+      "guidance": "Monumental controlled architecture, cold gray-blue palettes, severe uniforms, sterile surfaces, surveillance motifs without readable text, stark artificial light, rigid visual order, and oppressive technological detail throughout."
+    },
+    "retro_futurism": {
+      "label": "Retro-futurism",
+      "guidance": "Optimistic vintage future design, chrome, molded plastic, analog controls, bold geometric forms, saturated period color, glowing panels, clean illustrative surfaces, and nostalgic speculative detail throughout."
+    },
+    "y2k_futurism": {
+      "label": "Y2K futurism",
+      "guidance": "Glossy silver, translucent plastics, icy blue and white palettes, bubble-like interfaces without readable text, chrome accessories, soft digital glow, clean synthetic surfaces, and early-digital optimism throughout."
+    },
+    "vaporwave": {
+      "label": "Vaporwave",
+      "guidance": "Pastel pink, lavender, aqua, and sunset gradients, marble surfaces, retro computer textures, classical-statue motifs, soft haze, luminous grid-like design, and nostalgic digital unreality throughout."
+    },
+    "synthwave": {
+      "label": "Synthwave",
+      "guidance": "Hot magenta, violet, and electric cyan palettes, deep black silhouettes, neon grids, glossy reflections, dramatic sunset gradients, chrome accents, and polished retro-electronic atmosphere throughout."
+    },
+    "dreamcore": {
+      "label": "Dreamcore",
+      "guidance": "Soft familiar spaces, hazy pastel light, washed color, low-detail backgrounds, uncanny childhood objects, gentle bloom, empty interiors, and comforting yet disorienting dream imagery throughout."
+    },
+    "weirdcore": {
+      "label": "Weirdcore",
+      "guidance": "Low-resolution digital texture, awkward cropping, mismatched color, uncanny ordinary objects, liminal interiors, crude graphic shapes without readable text, visual noise, and deliberately unsettling internet-era imagery throughout."
+    },
+    "liminal_space": {
+      "label": "Liminal space",
+      "guidance": "Empty transitional architecture, fluorescent or sodium lighting, repetitive corridors, vacant rooms, muted institutional color, dated surfaces, deep vanishing points, and eerily familiar stillness throughout."
+    },
+    "dark_academia": {
+      "label": "Dark academia",
+      "guidance": "Deep brown, charcoal, forest green, and oxblood tones, old books, dark wood, worn leather, classical architecture, window light, dust, tweed textures, and scholarly melancholy throughout."
+    },
+    "cottagecore": {
+      "label": "Cottagecore",
+      "guidance": "Warm natural light, wildflowers, handmade fabrics, rustic wood, ceramics, baskets, soft earth colors, pastoral interiors, gentle weathering, and cozy rural detail throughout."
+    },
+    "fairycore": {
+      "label": "Fairycore",
+      "guidance": "Mossy forests, tiny flowers, luminous dust, translucent wings, dewdrops, soft green and pastel color, miniature natural details, glowing mushrooms, and delicate enchanted atmosphere throughout."
+    },
+    "angelcore": {
+      "label": "Angelcore",
+      "guidance": "Ivory and pale gold palettes, luminous white fabric, soft clouds, radiant backlight, delicate feathers, sacred ornament, pearlescent highlights, and serene celestial atmosphere throughout."
+    },
+    "goblincore": {
+      "label": "Goblincore",
+      "guidance": "Muddy greens and browns, moss, mushrooms, stones, bones, jars, tarnished trinkets, damp forest textures, cluttered natural collections, and earthy mischievous detail throughout."
+    },
+    "whimsigoth": {
+      "label": "Whimsigoth",
+      "guidance": "Midnight blue, plum, black, and antique gold tones, celestial patterns, velvet, candles, stained glass, ornate jewelry, mystical clutter, and romantic witchy atmosphere throughout."
+    },
+    "baroque": {
+      "label": "Baroque",
+      "guidance": "Deep jewel tones, dramatic light and shadow, gilded ornament, rich fabric, carved architecture, elaborate decoration, painterly highlights, and theatrical seventeenth-century grandeur throughout."
+    },
+    "rococo": {
+      "label": "Rococo",
+      "guidance": "Powder pink, pale blue, cream, and gold palettes, delicate florals, curved ornament, silk, porcelain, airy light, playful luxury, and ornate eighteenth-century elegance throughout."
+    },
+    "art_nouveau": {
+      "label": "Art Nouveau",
+      "guidance": "Flowing botanical lines, stained glass, wrought metal, muted jewel colors, floral ornament, organic symmetry, decorative illustration, and elegant turn-of-the-century craftsmanship throughout."
+    },
+    "art_deco": {
+      "label": "Art Deco",
+      "guidance": "Bold geometry, black and gold contrast, polished stone, lacquer, chrome, stepped forms, symmetrical ornament, rich jewel tones, and glamorous machine-age luxury throughout."
+    },
+    "victorian_gothic": {
+      "label": "Victorian gothic",
+      "guidance": "Black lace, dark carved wood, aged stone, gaslight, heavy drapery, mourning attire, tarnished silver, deep wine tones, and haunted nineteenth-century atmosphere throughout."
+    },
+    "renaissance_inspired": {
+      "label": "Renaissance-inspired",
+      "guidance": "Warm earth pigments, rich red and blue fabric, classical architecture, fresco-like color, soft directional light, fine textile detail, balanced humanist elegance, and old-master visual richness throughout."
+    },
+    "medieval_fantasy": {
+      "label": "Medieval fantasy",
+      "guidance": "Weathered stone, timber halls, chainmail, wool, leather, heraldic color, torchlight, misty landscapes, handcrafted props, and grounded legendary-world detail throughout."
+    },
+    "mythological_epic": {
+      "label": "Mythological epic",
+      "guidance": "Monumental temples, heroic silhouettes, carved stone, bronze and gold accents, dramatic skies, ceremonial fabric, divine light, vast landscapes, and timeless legendary grandeur throughout."
+    },
+    "film_noir": {
+      "label": "Film noir",
+      "guidance": "High-contrast black-and-white imagery, hard key light, venetian-blind shadows, wet streets, cigarette haze, deep blacks, bright highlights, period interiors, and morally shadowed atmosphere throughout."
+    },
+    "neo_noir": {
+      "label": "Neo-noir",
+      "guidance": "Deep shadows, saturated neon accents, reflective night surfaces, controlled color contrast, urban grime, practical light, smoky atmosphere, and sleek contemporary darkness throughout."
+    },
+    "expressionism": {
+      "label": "Expressionism",
+      "guidance": "Angular sets, exaggerated shadows, distorted architecture, stark color or monochrome contrast, theatrical makeup, painted surfaces, and emotionally warped visual design throughout."
+    },
+    "giallo_horror": {
+      "label": "Giallo horror",
+      "guidance": "Saturated red, yellow, blue, and green light, glossy black surfaces, ornate interiors, sharp shadows, glamorous styling, lurid practical effects, and stylish Italian horror atmosphere throughout."
+    },
+    "grindhouse": {
+      "label": "Grindhouse",
+      "guidance": "Faded color, heavy grain, scratched film, dirty highlights, crushed shadows, cheap practical effects, lurid wardrobe, distressed print texture, and raw exploitation-era finish throughout."
+    },
+    "1970s_psychedelic": {
+      "label": "1970s psychedelic",
+      "guidance": "Burnt orange, avocado, violet, and acid color, bold patterns, soft film grain, optical layering, warped graphic forms, warm haze, and richly hallucinatory period design throughout."
+    },
+    "1980s_music_video": {
+      "label": "1980s music video",
+      "guidance": "Saturated neon color, glossy highlights, smoky studio atmosphere, dramatic backlight, bold makeup, metallic wardrobe, soft diffusion, analog video texture, and theatrical pop imagery throughout."
+    },
+    "1990s_grunge": {
+      "label": "1990s grunge",
+      "guidance": "Muted dirty color, fluorescent interiors, distressed denim and flannel, photocopied graphic texture without readable text, harsh flash, visible grain, urban wear, and unpolished alternative-era realism throughout."
+    },
+    "early_2000s_pop": {
+      "label": "Early-2000s pop",
+      "guidance": "Glossy candy color, icy highlights, metallic accessories, low-rise era styling, bright studio surfaces, soft skin diffusion, digital-camera crispness, and playful Y2K polish throughout."
+    },
+    "indie_sleaze": {
+      "label": "Indie sleaze",
+      "guidance": "Direct-flash nightlife imagery, blown skin highlights, deep black backgrounds, messy styling, grainy digital texture, smoky clubs, saturated accents, and deliberately careless downtown glamour throughout."
+    },
+    "lo_fi_vhs": {
+      "label": "Lo-fi VHS",
+      "guidance": "Soft analog resolution, tape grain, color bleed, scan lines, tracking instability, crushed blacks, clipped whites, oversaturated consumer color, and worn home-video texture throughout."
+    },
+    "super_8_film": {
+      "label": "Super 8 film",
+      "guidance": "Warm faded color, pronounced small-gauge grain, soft focus, halation, light leaks, flickering exposure texture, rounded highlights, and intimate home-movie character throughout."
+    },
+    "vintage_hollywood": {
+      "label": "Vintage Hollywood",
+      "guidance": "Elegant studio lighting, luminous skin, rich black-and-white or restrained Technicolor tones, soft diffusion, tailored wardrobe, painted-set refinement, and classic star-era glamour throughout."
+    },
+    "high_fashion_editorial": {
+      "label": "High-fashion editorial",
+      "guidance": "Sculptural wardrobe, immaculate makeup, controlled color, premium fabric detail, bold graphic styling, clean luxury surfaces, precise beauty lighting, and magazine-grade visual polish throughout."
+    },
+    "avant_garde_fashion": {
+      "label": "Avant-garde fashion",
+      "guidance": "Experimental silhouettes, unexpected materials, abstract makeup, severe color blocking, sculptural sets, conceptual styling, high-detail fabric texture, and art-gallery fashion imagery throughout."
+    },
+    "runway_glamour": {
+      "label": "Runway glamour",
+      "guidance": "Luxury garments, luminous skin, glossy hair, dramatic show lighting, polished surfaces, rich color, crisp textile detail, and elevated fashion-week spectacle throughout."
+    },
+    "luxury_commercial": {
+      "label": "Luxury commercial",
+      "guidance": "Pristine product-grade surfaces, controlled highlights, rich neutral color, immaculate materials, elegant reflections, premium environments, clean contrast, and expensive advertising polish throughout."
+    },
+    "beauty_campaign": {
+      "label": "Beauty campaign",
+      "guidance": "Luminous skin, refined makeup detail, soft controlled highlights, clean backgrounds, flattering color, glossy hair, delicate texture, and premium cosmetic-advertising finish throughout."
+    },
+    "pop_star_music_video": {
+      "label": "Pop-star music video",
+      "guidance": "Bold saturated color, glamorous wardrobe, luminous skin, dramatic set lighting, glossy production design, metallic accents, atmospheric haze, and polished superstar imagery throughout."
+    },
+    "industrial_metal": {
+      "label": "Industrial metal",
+      "guidance": "Cold steel, concrete, rust, oil, black leather, harsh white and red light, smoke, abrasive texture, heavy machinery, and severe high-contrast atmosphere throughout."
+    },
+    "gothic_metal": {
+      "label": "Gothic metal",
+      "guidance": "Black leather and lace, deep crimson accents, cathedral stone, silver ornament, smoke, dramatic pale skin, low-key light, and dark romantic grandeur throughout."
+    },
+    "alternative_rock": {
+      "label": "Alternative rock",
+      "guidance": "Lived-in rehearsal spaces, worn instruments, denim and leather, practical stage light, muted color, visible grain, textured walls, and grounded independent-band authenticity throughout."
+    },
+    "punk_rock": {
+      "label": "Punk rock",
+      "guidance": "Photocopied texture without readable text, torn fabric, studs, leather, raw club interiors, harsh flash, red and black accents, grime, and confrontational DIY visual energy throughout."
+    },
+    "dark_pop": {
+      "label": "Dark pop",
+      "guidance": "Deep black palettes, jewel-tone accents, glossy shadows, dramatic beauty light, surreal luxury details, refined makeup, controlled haze, and sleek ominous pop polish throughout."
+    },
+    "hyperpop": {
+      "label": "Hyperpop",
+      "guidance": "Acid neon color, chrome, glossy plastic, exaggerated digital texture, candy gradients, iridescent makeup, maximal graphic detail, and intensely synthetic internet-pop imagery throughout."
+    },
+    "k_pop_inspired": {
+      "label": "K-pop-inspired",
+      "guidance": "Immaculate styling, vivid coordinated color, glossy sets, luminous skin, detailed fashion, polished hair and makeup, clean highlights, and high-budget pop perfection throughout."
+    },
+    "randb_glamour": {
+      "label": "R&B glamour",
+      "guidance": "Warm bronze skin tones, black and gold accents, soft practical light, satin and velvet textures, elegant interiors, luminous highlights, and intimate luxury throughout."
+    },
+    "eerie_claymation": {
+      "label": "Eerie claymation",
+      "guidance": "Hand-sculpted clay surfaces, visible fingerprints, miniature sets, muted uncanny color, uneven handmade forms, soft practical miniature lighting, and tactile unsettling charm throughout."
+    },
+    "stop_motion": {
+      "label": "Stop-motion",
+      "guidance": "Tactile handcrafted materials, miniature practical sets, visible fabrication seams, slightly stepped pose character, controlled tabletop lighting, and charming physical-animation texture throughout."
+    },
+    "paper_cut_animation": {
+      "label": "Paper-cut animation",
+      "guidance": "Layered cut-paper shapes, visible fibers, flat illustrated color, crisp silhouettes, handmade edges, shadowed paper depth, decorative patterns, and crafted collage texture throughout."
+    },
+    "hand_painted_animation": {
+      "label": "Hand-painted animation",
+      "guidance": "Visible brushwork, layered pigment, painterly backgrounds, softened outlines, rich handcrafted color, canvas or watercolor texture, and expressive illustrated detail throughout."
+    },
+    "anime_inspired": {
+      "label": "Anime-inspired",
+      "guidance": "Clean expressive linework, stylized facial features, cel-painted color, luminous eyes, graphic shadows, detailed illustrated backgrounds, controlled highlights, and polished animation-art finish throughout."
+    },
+    "graphic_novel": {
+      "label": "Graphic novel",
+      "guidance": "Bold ink lines, dramatic shadow blocks, limited accent color, textured paper, illustrated crosshatching, high contrast, and sophisticated sequential-art atmosphere throughout."
+    },
+    "comic_book": {
+      "label": "Comic-book",
+      "guidance": "Crisp outlines, saturated primary colors, halftone texture, graphic shadow shapes, stylized anatomy, printed-paper character, and energetic illustrated spectacle throughout."
+    },
+    "cel_shaded_3d": {
+      "label": "Cel-shaded 3D",
+      "guidance": "Three-dimensional forms with clean graphic outlines, flat color regions, stepped shadows, controlled highlights, simplified materials, and polished illustrated-game rendering throughout."
+    },
+    "photorealistic_cgi": {
+      "label": "Photorealistic CGI",
+      "guidance": "Physically accurate materials, realistic global illumination, detailed skin and hair, precise reflections, volumetric atmosphere, clean high-resolution rendering, and seamless digital realism throughout."
+    },
+    "low_poly_3d": {
+      "label": "Low-poly 3D",
+      "guidance": "Faceted geometry, simplified forms, flat-shaded surfaces, restrained texture, clean geometric color, stylized lighting, and intentionally economical digital design throughout."
+    },
+    "miniature_diorama": {
+      "label": "Miniature diorama",
+      "guidance": "Clearly handcrafted miniature environments, tiny scaled props, model-making textures, shallow miniature depth, painted surfaces, practical tabletop lighting, and charming physical detail throughout."
+    },
+    "dollhouse_surrealism": {
+      "label": "Dollhouse surrealism",
+      "guidance": "Miniature domestic rooms, toy-like furniture, porcelain or plastic textures, artificial pastel color, uncanny scale relationships, pristine tiny details, and dreamlike domestic unease throughout."
+    },
+    "liquid_chrome": {
+      "label": "Liquid chrome",
+      "guidance": "Mirror-bright silver surfaces, fluid metallic forms, warped reflections, cool specular highlights, deep black contrast, futuristic polish, and glossy sculptural abstraction throughout."
+    },
+    "holographic_iridescence": {
+      "label": "Holographic iridescence",
+      "guidance": "Prismatic rainbow highlights, pearlescent surfaces, translucent layers, shifting cyan-magenta color, glossy reflections, soft luminous haze, and futuristic iridescent finish throughout."
+    },
+    "neon_noir": {
+      "label": "Neon noir",
+      "guidance": "Near-black environments, saturated neon red, blue, and violet accents, wet reflections, hard silhouettes, smoky atmosphere, glossy urban surfaces, and brooding futuristic contrast throughout."
+    },
+    "monochrome_minimalism": {
+      "label": "Monochrome minimalism",
+      "guidance": "Single-hue or black-and-white palette, clean negative space, simple materials, restrained contrast, sparse production design, precise tonal separation, and elegant visual reduction throughout."
+    },
+    "high_key_white_studio": {
+      "label": "High-key white studio",
+      "guidance": "Bright seamless white surroundings, soft wraparound light, low shadow density, clean neutral color, crisp product-grade detail, airy surfaces, and immaculate studio clarity throughout."
+    },
+    "low_key_chiaroscuro": {
+      "label": "Low-key chiaroscuro",
+      "guidance": "Deep black shadows, narrow pools of directional light, sculpted facial highlights, rich tonal contrast, restrained color, and dramatic painterly darkness throughout."
+    },
+    "soft_pastel": {
+      "label": "Soft pastel",
+      "guidance": "Powder pink, pale blue, lavender, mint, and cream color, diffused light, gentle contrast, matte surfaces, delicate texture, and calm airy softness throughout."
+    },
+    "desaturated_melancholy": {
+      "label": "Desaturated melancholy",
+      "guidance": "Muted color, cool gray and faded earth tones, soft overcast light, low saturation, restrained highlights, subtle grain, weathered surfaces, and quiet visual sadness throughout."
+    },
+    "crimson_and_black": {
+      "label": "Crimson-and-black",
+      "guidance": "Dominant black surfaces with vivid crimson accents, deep shadows, hard red highlights, dark wardrobe, severe contrast, and intense graphic drama throughout."
+    },
+    "teal_and_orange_blockbuster": {
+      "label": "Teal-and-orange blockbuster",
+      "guidance": "Cool teal shadows, warm amber skin and highlights, strong complementary contrast, polished surfaces, atmospheric depth, controlled saturation, and large-scale commercial cinema finish throughout."
+    },
+    "golden_hour_nostalgia": {
+      "label": "Golden-hour nostalgia",
+      "guidance": "Warm amber sunlight, long soft shadows, gentle haze, faded earth color, glowing skin, subtle grain, sunlit dust, and tender memory-like warmth throughout."
+    },
+    "moonlit_blue": {
+      "label": "Moonlit blue",
+      "guidance": "Deep navy and cobalt tones, cool silver highlights, soft night haze, pale skin light, subdued warm accents, dark silhouettes, and luminous nocturnal atmosphere throughout."
+    },
+    "underwater_ethereal": {
+      "label": "Underwater ethereal",
+      "guidance": "Aqua and deep blue palettes, diffused caustic light, suspended particles, translucent fabric, softened detail, pearlescent highlights, and immersive aquatic beauty throughout."
+    },
+    "elemental_fantasy": {
+      "label": "Elemental fantasy",
+      "guidance": "Visually dominant fire, water, air, earth, ice, or lightning motifs, richly textured natural materials, luminous energy, dramatic atmospheric light, and mythic environmental detail throughout."
+    },
+    "nature_mysticism": {
+      "label": "Nature mysticism",
+      "guidance": "Ancient forests, moss, stone, roots, mist, filtered natural light, symbolic organic details, muted green and earth color, and sacred wilderness atmosphere throughout."
+    },
+    "apocalyptic_biblical": {
+      "label": "Apocalyptic biblical",
+      "guidance": "Monumental skies, ash and fire, stark divine light, ancient stone, distressed earth tones, ceremonial silhouettes, vast destruction, and solemn prophetic grandeur throughout."
+    },
+    "glitch_art": {
+      "label": "Glitch art",
+      "guidance": "Digital fragmentation, RGB channel separation, block corruption, pixel noise, scan errors, broken color fields, displaced image sections, and deliberate electronic artifacting throughout."
+    },
+    "datamosh": {
+      "label": "Datamosh",
+      "guidance": "Compressed digital smearing, macroblock trails, color displacement, broken codec texture, fragmented silhouettes, melted pixel fields, and aggressive corrupted-video appearance throughout."
+    },
+    "crt_distortion": {
+      "label": "CRT distortion",
+      "guidance": "Curved glass-screen appearance, scan lines, phosphor glow, chromatic fringing, barrel distortion, soft analog resolution, bloom, static noise, and vintage monitor texture throughout."
+    },
+    "kaleidoscopic": {
+      "label": "Kaleidoscopic",
+      "guidance": "Mirrored geometric repetition, radial symmetry, jewel-like color, layered reflections, intricate patterning, luminous fragments, and hypnotic prismatic imagery throughout."
+    },
+    "double_exposure": {
+      "label": "Double exposure",
+      "guidance": "Layered translucent imagery, overlapping silhouettes, blended environments, luminous tonal merging, photographic grain, controlled negative space, and poetic composite texture throughout."
+    },
+    "infrared": {
+      "label": "Infrared",
+      "guidance": "False-color foliage, pale luminous skin, dark skies, unusual magenta or cyan tonal mapping, high contrast, bright vegetation, and uncanny infrared-photography texture throughout."
+    },
+    "thermal_vision": {
+      "label": "Thermal vision",
+      "guidance": "Heat-map color ranging from deep violet and blue through red, orange, yellow, and white, simplified surface detail, glowing warm bodies, and sensor-like thermal imaging throughout."
+    },
+    "fisheye_distortion": {
+      "label": "Fisheye distortion",
+      "guidance": "Pronounced barrel distortion, curved edges, expanded center perspective, compressed borders, close spatial exaggeration, and distinctive ultra-wide optical appearance throughout."
+    },
+    "security_camera_footage": {
+      "label": "Security-camera footage",
+      "guidance": "Fixed surveillance-system image quality, high or corner-mounted viewpoint appearance, wide utilitarian lens, low resolution, digital noise, flat exposure, limited color, and institutional monitoring texture without readable overlays."
+    },
+    "documentary_realism": {
+      "label": "Documentary realism",
+      "guidance": "Available practical light, natural skin and material texture, restrained color, modest contrast, believable environments, subtle sensor grain, and honest unembellished observational realism throughout."
+    },
+    "social_media_selfie": {
+      "label": "Social-media selfie",
+      "guidance": "Front-facing phone-camera appearance, close personal perspective, wide phone-lens facial character, automatic exposure, digital sharpening, casual available light, and immediate user-generated authenticity throughout."
+    },
+    "tiktok_transformation": {
+      "label": "TikTok transformation",
+      "guidance": "Bright mobile-video color, crisp phone-camera detail, bold styling contrast, clean vertical-content polish without requiring a vertical aspect ratio, beauty-filter sheen, and highly legible before-and-after visual design throughout."
+    },
+    "dreamlike_slow_motion": {
+      "label": "Dreamlike slow motion",
+      "guidance": "Soft temporal blur, luminous highlight bloom, gentle pastel or muted color, floating particles, delicate fabric detail, low contrast, and romantic dreamlike image softness throughout."
+    },
+    "frenetic_montage": {
+      "label": "Frenetic montage",
+      "guidance": "Punchy high-contrast imagery, varied but coordinated color treatments, bold graphic details, sharp texture changes, intense highlights, and fragmented editorial visual energy throughout."
+    },
+    "one_take_immersive": {
+      "label": "One-take immersive",
+      "guidance": "Naturalistic spatial continuity, consistent practical lighting, coherent production design, believable environmental depth, uninterrupted visual realism, and an immediate lived-in atmosphere throughout."
+    },
+    "music_video_performance": {
+      "label": "Music-video performance",
+      "guidance": "Expressive stage styling, dramatic practical and colored light, atmospheric haze, polished wardrobe and makeup, rich contrast, glossy highlights, and premium performance-world production design throughout."
+    },
+    "narrative_short_film": {
+      "label": "Narrative short film",
+      "guidance": "Grounded production design, believable wardrobe, motivated practical lighting, restrained cinematic grading, detailed environments, natural skin texture, and cohesive story-world realism throughout."
+    },
+    "movie_trailer_aesthetic": {
+      "label": "Movie-trailer aesthetic",
+      "guidance": "Large-scale cinematic contrast, dramatic skies and practical light, rich production design, deep blacks, luminous highlights, atmospheric depth, premium color grading, and event-film visual polish throughout."
+    }
+  },
+  "fx": {
+    "lighting": {
+      "label": "Lighting FX",
+      "cues": [
+        "A brief practical-light flicker cascade sweeps through the environment and resolves into clean subject light.",
+        "A controlled red-to-blue light sweep travels across the set, creating a readable cinematic exposure pulse.",
+        "Neon reflections pulse once across the surfaces on the musical accent, without obscuring the subject's face."
+      ]
+    },
+    "camera_lens": {
+      "label": "Camera / Lens FX",
+      "cues": [
+        "A restrained lens flare and foreground-parallax accent passes through the frame as the camera moves.",
+        "A subtle lens-bloom pulse and focus-breathing shift accent the camera move while the subject remains sharp.",
+        "A controlled motion-blur streak catches the edge of the frame during the camera movement, preserving subject readability."
+      ]
+    },
+    "glitch": {
+      "label": "Glitch / Digital FX",
+      "cues": [
+        "A restrained scan-glitch briefly tears across the background, leaving the subject's face and body stable.",
+        "A short RGB-separation and signal-noise burst flickers at the musical accent, then clears completely.",
+        "A controlled digital frame stutter affects the environment for a moment without duplicating or deforming the subject."
+      ]
+    },
+    "atmospheric": {
+      "label": "Atmospheric FX",
+      "cues": [
+        "A thin layer of atmospheric mist curls through the background, catching the existing light without hiding the subject.",
+        "Small airborne particles drift through the light beam and briefly sparkle around the environment.",
+        "A restrained veil of smoke and dust crosses the deeper background, preserving the foreground performance clearly."
+      ]
+    },
+    "energy": {
+      "label": "Energy / Impact FX",
+      "cues": [
+        "A compact beat-synchronized light burst radiates through the environment and quickly settles.",
+        "A brief ring of sparks and reflected light marks the musical accent without touching or altering the subject.",
+        "A controlled impact pulse ripples through loose environmental particles while the subject continues naturally."
+      ]
+    },
+    "film_texture": {
+      "label": "Film / Texture FX",
+      "cues": [
+        "A subtle film-grain and halation texture becomes visible in the highlights for this shot.",
+        "A restrained analog gate-weave and soft light leak add a brief tactile film accent.",
+        "A short shutter-trail texture catches the brightest movement while keeping the composition and subject readable."
+      ]
+    },
+    "distortion": {
+      "label": "Distortion FX",
+      "cues": [
+        "A localized lens distortion gently bends the outer edges of the environment while the subject remains stable.",
+        "A brief heat-haze ripple passes through the background, refracting light without changing the subject's identity.",
+        "A controlled wide-angle warp accentuates the perspective at the frame edges, then returns to a clean image."
+      ]
+    },
+    "supernatural": {
+      "label": "Supernatural FX",
+      "cues": [
+        "The environment's shadows shift independently for a brief uncanny accent while the subject remains physically natural.",
+        "A faint supernatural glow gathers in the background atmosphere and fades without changing the subject's face or clothing.",
+        "A few loose environmental fragments hover briefly in the air, creating a controlled reality-fracture accent around the subject."
+      ]
+    },
+    "music_video": {
+      "label": "Music Video FX",
+      "cues": [
+        "A rhythmic neon light pulse combines with a restrained lens flare on the musical accent.",
+        "A brief bloom and light-streak accent sweeps across the frame, then resolves into clean cinematic contrast.",
+        "A controlled mix of atmospheric particles and subtle chromatic color separation marks the beat without obscuring the subject."
+      ]
+    }
+  }
+}

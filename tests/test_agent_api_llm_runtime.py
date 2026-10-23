@@ -7,6 +7,7 @@ import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT.parent) not in sys.path:
@@ -16,6 +17,13 @@ pkg_name = ROOT.name
 rt = importlib.import_module(f"{pkg_name}.agent_api.llm_runtime")
 llm_jobs = importlib.import_module(f"{pkg_name}.agent_api.jobs.llm_jobs")
 jobs_models = importlib.import_module(f"{pkg_name}.agent_api.jobs.models")
+
+
+def setUpModule():
+    # These tests use the project's runner settings, so the ones saved for every project on this machine are left out.
+    patcher = patch.object(importlib.import_module(f"{pkg_name}.builder.project"), "_load_global_llm_runner", lambda: {})
+    patcher.start()
+    unittest.addModuleCleanup(patcher.stop)
 
 
 class FakeLmStudio:
@@ -131,6 +139,16 @@ class SessionSettingsTests(unittest.TestCase):
         self.assertEqual(payload["lmstudio_model"], "override")
         self.assertEqual(payload["lmstudio_context_limit"], 131072)
         self.assertEqual(payload["gemma_output_token_limit"], 4096)
+
+    def test_gemma_local_limits_never_go_below_16384_or_output_past_the_context(self):
+        low = rt.llm_payload_from_session({"gemma_context_limit": 8000, "gemma_output_token_limit": 4096})
+        self.assertEqual((low["n_ctx"], low["gemma_output_token_limit"]), (16384, 16384))
+        high = rt.llm_payload_from_session({"gemma_context_limit": 32768, "gemma_output_token_limit": 64000})
+        self.assertEqual((high["n_ctx"], high["gemma_output_token_limit"]), (32768, 32768))
+        overridden = rt.llm_payload_from_session({}, {"n_ctx": 4096})
+        self.assertEqual(overridden["n_ctx"], 16384)
+        qwen = rt.llm_payload_from_session({"text_gemma_runner": "qwen_local", "gemma_context_limit": 8000})
+        self.assertEqual(qwen["n_ctx"], 8000)
 
     def test_lm_studio_jobs_are_not_scheduled_as_gpu_jobs_but_local_runners_are(self):
         self.assertFalse(llm_jobs.is_llm_runner_gpu({"text_runner": "lm_studio"}))

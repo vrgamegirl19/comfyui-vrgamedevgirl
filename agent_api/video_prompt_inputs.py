@@ -6,7 +6,7 @@ sends (``videoGemmaNotesForSegment`` and the payloads in ``web/music_video_build
 its text-only form: no reference image is attached unless the caller sends ``image_reference_path``.
 """
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from ..builder.lyric_scenes import is_instrumental_lyric_text
 from .errors import ValidationError
@@ -36,8 +36,10 @@ def normalize_video_mode(mode: Any) -> str:
     return "t2v" if _text(mode).lower() == "t2v" else "i2v"
 
 
-def _video_type(session: Dict[str, Any]) -> str:
+def _video_type(session: Dict[str, Any], segment: Optional[Dict[str, Any]] = None) -> str:
     raw = _text(session.get("video_type") or session.get("videoType")).lower().replace("-", "_").replace(" ", "_")
+    if raw in {"story", "story_mode"}:  # Story Mode scenes choose their own performance
+        raw = _text((segment or {}).get("performance_mode")).lower() or "singing"
     return "speaking" if raw in {"speaking", "short_film", "dialogue", "dialog"} else "singing"
 
 
@@ -46,7 +48,7 @@ def _performance_mode(session: Dict[str, Any], segment: Dict[str, Any]) -> str:
     visual_only = bool(segment.get("lyric_no_lip_sync")) or any(
         word in style for word in ("no vocal", "no lip sync", "b roll", "broll", "visual only")
     )
-    return "no_lip_sync" if visual_only else _video_type(session)
+    return "no_lip_sync" if visual_only else _video_type(session, segment)
 
 
 def _performance_note(segment: Dict[str, Any], performance: str) -> str:

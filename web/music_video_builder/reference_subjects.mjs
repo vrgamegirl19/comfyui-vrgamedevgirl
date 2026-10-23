@@ -667,6 +667,24 @@ export function createReferenceSubjects({
       const metaRow = document.createElement("div");
       metaRow.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;";
       metaRow.append(used);
+      // Who wears or uses a non-character card (clothing, prop, vehicle...). The RefMod picker has its own "Worn by" for
+      // clothing that renders from a saved RefMod.
+      const holderType = String(subject.reference_type || "character");
+      const hasOwnWornBy = refmodPipeline && subject.source === "refmod" && holderType === "outfit";
+      if (!["character", "style", "environment"].includes(holderType) && !isExtraSubjectReference(subject) && !hasOwnWornBy) {
+        const holderLabel = holderType === "outfit" ? "Worn by" : holderType === "vehicle" ? "Driven or used by" : "Used by";
+        const holderSelect = document.createElement("select");
+        holderSelect.style.cssText = "border:1px solid #3f3f46;border-radius:6px;background:#09090b;color:#f8fafc;padding:7px;font-size:12px;";
+        holderSelect.append(new Option("Nobody in particular", ""));
+        refs.subjects
+          .filter((card) => (card.reference_type || "character") === "character" && !isExtraSubjectReference(card))
+          .forEach((card) => holderSelect.append(new Option(card.name || "Character", card.id)));
+        holderSelect.value = String(subject.wears || "");
+        holderSelect.onchange = () => {
+          subject.wears = holderSelect.value;
+        };
+        metaRow.append(makeField(holderLabel, holderSelect));
+      }
       if (allowExtraSubjectReferences && refs.subjects.length > 1) metaRow.append(sameSubjectWrap);
       row.append(mainRow, metaRow);
       if (refmodPipeline) {

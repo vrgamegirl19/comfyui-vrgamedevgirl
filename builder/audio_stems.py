@@ -440,6 +440,7 @@ def delete_scene_stems(payload: Dict[str, Any]) -> Dict[str, Any]:
     folder = scene_folder(payload.get("project_folder"), payload.get("scene_id"))
     removed = 0
     if os.path.isdir(folder):
+        print(f"[VRGDG Audio Mask] Removing the stems of scene {payload.get('scene_id')}: {str(payload.get('reason') or 'no reason given')[:120]}")
         for name in os.listdir(folder):
             if name in (META_NAME, PEAKS_NAME) or name.endswith((".wav", ".tmp")):
                 os.remove(os.path.join(folder, name))

@@ -735,7 +735,15 @@ export function createVideoRender({
         project_folder: String(projectInput.value || state.projectFolder || "").trim(),
         draft_id: segment.minimax_h3_draft.id, scene_number: sceneSlotNumber(segment),
         timeline_start_seconds: Number(segment.start), timeline_end_seconds: Number(segment.end),
+        diffusion_model_name: miniMaxH3SettingsForSegment(segment).diffusion_model_name,
       }, 180000);
+      if (built.stale_draft) {
+        // Finalize replays the draft's own graph, so it would ignore the model now selected.
+        const reason = `The saved draft was made with ${built.draft_models.join(", ")}, but this scene now uses ${built.current_model}.`;
+        if (!options.draftAutoFinalize) throw new Error(`${reason}\nRender a new draft, or switch the diffusion model back to finalize this one.`);
+        progress?.set(`${options.batchLabel ? `${options.batchLabel}\n` : ""}${reason}\nRendering both passes with the current settings instead.`, Number(options.progressBase ?? 0));
+        return renderMiniMaxSceneVideoWithProgress(segment, sceneIndex, progress, { ...options, renderPhase: "full", draftAutoFinalize: false });
+      }
       segment.video_status = "running";
       renderList();
       try {

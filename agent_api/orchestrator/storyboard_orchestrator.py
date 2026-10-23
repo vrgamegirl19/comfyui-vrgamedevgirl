@@ -31,7 +31,7 @@ STORY_LAYER_KEYS = ("enabled", "overall_story_idea", "user_story_arc", "song_sto
 IMAGE_WORLD_STYLES = ("natural", "surreal_subject", "balanced_surreal", "full_surreal", "abstract", "custom")
 DEFAULT_KEYS = (
     "global_consistency_phrase", "camera_motion_speed", "character_motion_speed", "minimax_h3_cut_frequency",
-    "camera_guidance", "character_guidance", "performance_style", "short_film_planning_mode", "camera_flow",
+    "minimax_h3_cut_style", "defaults_speed_preset", "defaults_music_preset", "camera_guidance", "character_guidance", "performance_style", "short_film_planning_mode", "camera_flow",
     "custom_camera_flow_sequence", "image_shot_flow", "image_aesthetic", "video_style", "video_style_custom",
     "temporal_world_effect", "temporal_world_effect_custom", "temporal_allow_background_extras",
     "temporal_background_intensity", "temporal_environment_time_passage", "temporal_protected_characters",
@@ -115,6 +115,7 @@ def _storyboard_summary(session: Dict[str, Any], cards: List[Dict[str, Any]]) ->
         "character_motion_speed": defaults.get("character_motion_speed", 4),
         "story_arc_detail": defaults.get("story_arc_detail") or "standard",
         "minimax_h3_cut_frequency": defaults.get("minimax_h3_cut_frequency", 0),
+        "minimax_h3_cut_style": defaults.get("minimax_h3_cut_style") or "free",
         "performance_style_default": defaults.get("performance_style") or "",
         "story_layer": _story_layer(session),
         "reference_builder": {
@@ -189,9 +190,17 @@ def set_story_settings(
     unknown = sorted(set(defaults_in) - set(DEFAULT_KEYS) - {"story_arc_detail"})
     if unknown:
         raise ValidationError(f"Unknown scene default(s): {', '.join(unknown)}. Allowed: {', '.join(DEFAULT_KEYS)}, story_arc_detail.")
-    unknown_story = sorted(set(story_in) - set(STORY_LAYER_KEYS))
+    from .story_mode_orchestrator import (
+        STORY_MODE_EDIT_KEYS,
+        apply_continuations_to_segments,
+        apply_plan_to_segments,
+        story_mode_edit_fields,
+    )
+
+    unknown_story = sorted(set(story_in) - set(STORY_LAYER_KEYS) - set(STORY_MODE_EDIT_KEYS))
     if unknown_story:
-        raise ValidationError(f"Unknown story field(s): {', '.join(unknown_story)}. Allowed: {', '.join(STORY_LAYER_KEYS)}.")
+        allowed = ", ".join((*STORY_LAYER_KEYS, *STORY_MODE_EDIT_KEYS))
+        raise ValidationError(f"Unknown story field(s): {', '.join(unknown_story)}. Allowed: {allowed}.")
     for key in SPEED_KEYS:
         if key in defaults_in:
             defaults_in[key] = _number_0_to_10(defaults_in[key], key)
@@ -225,7 +234,13 @@ def set_story_settings(
         defaults.update(defaults_in)
         session["builder_storyboard_defaults"] = defaults
         layer = _story_layer(session)
+        if set(story_in) & set(STORY_MODE_EDIT_KEYS):
+            # Story Mode edits are checked: book text is parsed into chapters and settings, acts must cover the timeline.
+            story_in = {**story_in, **story_mode_edit_fields(session, layer, story_in)}
         layer.update(story_in)
+        if "story_scene_plan" in story_in:
+            apply_plan_to_segments(session, story_in["story_scene_plan"])
+            apply_continuations_to_segments(session, story_in["story_scene_plan"])
         _save_story_layer(session, layer)
         saved = _persist_session(folder, session)
     return {"defaults": defaults, "story": layer, "revision": saved.get("revision")}
@@ -339,7 +354,11 @@ def create_scene_beats(
     cards = scene_cards(session, folder)
     _require_scenes(cards)
     layer = _story_layer(session)
-    if not (layer["user_story_arc"] or layer["song_story_brief"] or layer["overall_story_idea"]):
+    if int(layer.get("story_flow_version") or 0) >= 2:
+        # Story Mode: each beat follows its scene's planned story slice.
+        if not layer.get("story_scene_plan"):
+            raise ValidationError("Story Mode: create the scene plan (story step 'plan') before scene beats.")
+    elif not (layer["user_story_arc"] or layer["song_story_brief"] or layer["overall_story_idea"]):
         raise ValidationError("Create the story arc (and brief) before scene beats.")
     wanted = {str(x) for x in (params.get("scene_ids") or [])}
     replace = bool(params.get("replace_existing"))
@@ -420,3 +439,6 @@ def register_storyboard_orchestrator_handlers(manager: Optional[JobManager] = No
     manager.register_handler("storyboard.story_arc", run_story_arc_job)
     manager.register_handler("storyboard.story_brief", run_story_brief_job)
     manager.register_handler("storyboard.scene_beats", run_scene_beats_job)
+    from .story_mode_orchestrator import register_story_mode_handlers
+
+    register_story_mode_handlers(manager)

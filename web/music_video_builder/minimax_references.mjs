@@ -3,7 +3,7 @@ import { escapeHtml, makeButton, normalizeProjectVideoEngine, toast } from "./co
 import { rtvReferenceImagePayload } from "./image_references.mjs";
 import { hasReferenceImage } from "./llm_runner.mjs";
 import { normalizeMiniMaxH3Mode, normalizeMiniMaxH3Pipeline } from "./minimax_h3.mjs";
-import { assignLabels, clothingChoices, composeRefmodItems, sceneSubjectCards, tokenStatusText } from "./refmod_labels.mjs";
+import { applySceneItemUsers, assignLabels, clothingChoices, composeRefmodItems, sceneSubjectCards, tokenStatusText } from "./refmod_labels.mjs";
 import { expandSubjectReferencesForRender, normalizeFluxReferenceBuilder } from "./reference_data.mjs";
 import { mediaPathKey } from "./timeline_state.mjs";
 
@@ -78,6 +78,9 @@ export function createMiniMaxReferences({
         label: String(item?.name || item?.title || fallbackLabel || "Reference").trim() || "Reference",
         description: String(item?.description || "").trim(),
         reference_image_type: String(item?.reference_image_type || "single"),
+        // The card type and who wears it, so clothing and props in the image pipeline are not taken for people.
+        reference_type: String(item?.reference_type || ""),
+        wears: String(item?.wears || ""),
         image,
       });
     };
@@ -171,7 +174,8 @@ export function createMiniMaxReferences({
     const location = locationId ? (refs.locations || []).find((item) => String(item?.id || "") === locationId) || null : null;
     // A scene's clothing comes from its scene mapping and from each clothing card's "Worn by" link. The old per-scene
     // clothing choice (segment.refmod_clothing_override) no longer has a control, so it is not applied.
-    const items = composeRefmodItems(subjectCards, [], location, refs.subjects || []);
+    // The scene's own "worn / used by" choice (Story Builder Scenes tab) replaces a card's "Worn by" link.
+    const items = applySceneItemUsers(composeRefmodItems(subjectCards, [], location, refs.subjects || []), segment?.scene_item_users);
     return assignLabels(items.filter((item) => item.strength > 0));
   }
 
@@ -238,8 +242,12 @@ export function createMiniMaxReferences({
         ? "exact start frame and authority for every visible detail except face identity and hair"
         : "exact start frame, opening composition, pose, camera angle, environment, and lighting anchor";
     }
+    if (item?.kind === "subject" && item?.reference_type === "outfit") return "clothing reference: garments, fabrics, colours, trims and accessories, worn by the character the prompt names";
     if (item?.refmod?.category === "clothing") return "clothing reference: garments, fabrics, colours, trims and accessories, worn by the character it follows";
     if (item?.refmod?.category === "object") return "object reference: shape, material, colour, markings and scale";
+    if (item?.kind === "subject" && String(item?.refmod?.reference_type || item?.reference_type || "") === "creature") {
+      return "creature identity reference: species, build, skin, fur or scales, colours and markings; it acts in the scene like a character";
+    }
     if (item?.refmod?.category === "style") return "visual style reference: medium, palette, line quality, lighting and texture, applied to the whole scene";
     if (item?.kind === "subject") {
       if (faceHairOnly) return "face identity and hair reference only; do not copy clothing, body proportions, pose, accessories, framing, lighting, or background";

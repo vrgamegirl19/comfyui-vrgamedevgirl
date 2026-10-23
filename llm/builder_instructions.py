@@ -11,6 +11,16 @@ from ..builder.paths import _context_folder, _project_folder_from_builder_payloa
 from ..core.atomic_write import atomic_write_text
 from .prompts.minimax import MINIMAX_H3_PROMPT_ENHANCE_WITH_REFERENCES_INSTRUCTIONS
 from .prompts.speech import ELEVENLABS_DIALOGUE_INSTRUCTIONS
+from .prompts.story_mode import (
+    STORY_ACTS_TEMPLATE,
+    STORY_BOOK_TEMPLATE,
+    STORY_CHAPTER_TEMPLATE,
+    STORY_REVISE_SCENE_TEMPLATE,
+    STORY_SCENE_PLAN_TEMPLATE,
+    STORY_SETTING_LOOKS_TEMPLATE,
+    STORY_SPOTS_TEMPLATE,
+)
+from .prompts.storyboard import SCENE_BEAT_RULES_TEMPLATE
 
 
 _BUILDER_INSTRUCTION_DEFAULTS = {
@@ -39,6 +49,41 @@ _BUILDER_INSTRUCTION_DEFAULTS = {
 
 for _minimax_mode, _instructions in MINIMAX_H3_SHORT_FILM_GUIDED_INSTRUCTIONS_BY_MODE.items():
     _BUILDER_INSTRUCTION_DEFAULTS[f"minimax_h3_short_film_guided_{_minimax_mode}"] = _instructions
+
+
+# Story Mode's own instructions, separate from every other mode: editing them changes only Story Mode. The story
+# steps use the role-and-rules templates; the MiniMax copies start as the standard MiniMax instructions.
+STORY_MODE_INSTRUCTION_DEFAULTS = {
+    "story_mode_book": STORY_BOOK_TEMPLATE,
+    "story_mode_chapter": STORY_CHAPTER_TEMPLATE,
+    "story_mode_acts": STORY_ACTS_TEMPLATE,
+    "story_mode_scene_plan": STORY_SCENE_PLAN_TEMPLATE,
+    "story_mode_setting_looks": STORY_SETTING_LOOKS_TEMPLATE,
+    "story_mode_spots": STORY_SPOTS_TEMPLATE,
+    "story_mode_revise_scene": STORY_REVISE_SCENE_TEMPLATE,
+    "story_mode_scene_beat": SCENE_BEAT_RULES_TEMPLATE,
+    "minimax_h3_story_mode_text_to_video": MINIMAX_H3_TEXT_TO_VIDEO_INSTRUCTIONS,
+    "minimax_h3_story_mode_image_to_video": MINIMAX_H3_IMAGE_TO_VIDEO_INSTRUCTIONS,
+    "minimax_h3_story_mode_image_reference_to_video": MINIMAX_H3_IMAGE_REFERENCE_TO_VIDEO_INSTRUCTIONS,
+    "minimax_h3_story_mode_reference_to_video": MINIMAX_H3_REFERENCE_TO_VIDEO_INSTRUCTIONS,
+    "minimax_h3_story_mode_video_to_video": MINIMAX_H3_VIDEO_TO_VIDEO_INSTRUCTIONS,
+}
+STORY_MODE_INSTRUCTION_LABELS = {
+    "story_mode_book": "Story Mode - Story",
+    "story_mode_chapter": "Story Mode - Rewrite Chapter",
+    "story_mode_acts": "Story Mode - Acts",
+    "story_mode_scene_plan": "Story Mode - Scene Plan",
+    "story_mode_setting_looks": "Story Mode - Setting Looks",
+    "story_mode_spots": "Story Mode - Location Cards",
+    "story_mode_revise_scene": "Story Mode - Update Story From a Scene",
+    "story_mode_scene_beat": "Story Mode - Scene Beats",
+    "minimax_h3_story_mode_text_to_video": "Story Mode - MiniMax Text to Video Prompts",
+    "minimax_h3_story_mode_image_to_video": "Story Mode - MiniMax Image to Video Prompts",
+    "minimax_h3_story_mode_image_reference_to_video": "Story Mode - MiniMax Image + Reference Prompts",
+    "minimax_h3_story_mode_reference_to_video": "Story Mode - MiniMax Reference to Video Prompts",
+    "minimax_h3_story_mode_video_to_video": "Story Mode - MiniMax Video to Video Prompts",
+}
+_BUILDER_INSTRUCTION_DEFAULTS.update(STORY_MODE_INSTRUCTION_DEFAULTS)
 
 
 for _minimax_mode, _instructions in MINIMAX_H3_SHORT_FILM_CUSTOM_INSTRUCTIONS_BY_MODE.items():
@@ -73,6 +118,7 @@ for _minimax_mode in MINIMAX_H3_SHORT_FILM_GUIDED_INSTRUCTIONS_BY_MODE:
     _mode_label = _minimax_mode.replace("_", " ").title()
     _BUILDER_INSTRUCTION_LABELS[f"minimax_h3_short_film_guided_{_minimax_mode}"] = f"MiniMax H3 Guided Short Film - {_mode_label}"
     _BUILDER_INSTRUCTION_LABELS[f"minimax_h3_short_film_custom_{_minimax_mode}"] = f"MiniMax H3 Fully Custom Short Film - {_mode_label}"
+_BUILDER_INSTRUCTION_LABELS.update(STORY_MODE_INSTRUCTION_LABELS)
 
 
 _BUILDER_INSTRUCTION_PRESET_GROUPS = {

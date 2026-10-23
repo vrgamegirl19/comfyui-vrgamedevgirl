@@ -17,6 +17,7 @@ let resolveFetch;
 let payload;
 const context = vm.createContext({ document, console,
   normalizeVideoType: value => value,
+  markGlobalLlmKeyChanged: () => {},
   makeInput: (value, type) => Object.assign(new Element("input"), { value, type }),
   makeButton: text => Object.assign(new Element("button"), { textContent: text }),
   makeCheckbox: (text, checked) => {

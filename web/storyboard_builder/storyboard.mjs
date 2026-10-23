@@ -20,6 +20,7 @@ import {
   scenesFromBuilderPayload,
   slimSceneForRequest,
   storyboardCutFrequencyValue,
+  storyboardCutStyleValue,
   storyboardSpeedGuidance,
   storyboardSpeedValue,
 } from "./scenes.mjs";
@@ -69,6 +70,8 @@ export function openStoryboardBuilder(payload = {}) {
   }
   const focusedSection = ["defaults", "story", "scenes"].includes(payload.focusedSection) ? payload.focusedSection : "";
   const focusedTitle = { defaults: "Scene Defaults", story: "Story Layer", scenes: "Scenes" }[focusedSection];
+  // payload.host renders a focused Scene Defaults view inside that element (a Story Builder tab) instead of a window.
+  const host = focusedSection === "defaults" && payload.host instanceof HTMLElement ? payload.host : null;
   const allowImagePrep = !focusedSection || payload.allowImagePrep === true;
   const focusSceneId = String(payload.focusSceneId || payload.focus_scene_id || "").trim();
   if (focusSceneId && document.querySelector("[data-vrgdg-focused-storyboard]")) return;
@@ -147,6 +150,10 @@ export function openStoryboardBuilder(payload = {}) {
     characterMotionSpeed: storyboardSpeedValue(payload.characterMotionSpeed ?? payload.character_motion_speed ?? payload.motion_defaults?.character_motion_speed, 4),
     storyArcDetail: normalizeStoryArcDetail(payload.storyArcDetail ?? payload.story_arc_detail),
     cutFrequency: storyboardCutFrequencyValue(payload.cutFrequency ?? payload.minimax_h3_cut_frequency ?? payload.builderStoryboardDefaults?.minimax_h3_cut_frequency ?? payload.builder_storyboard_defaults?.minimax_h3_cut_frequency),
+    cutStyle: storyboardCutStyleValue(payload.cutStyle ?? payload.minimax_h3_cut_style ?? payload.builderStoryboardDefaults?.minimax_h3_cut_style ?? payload.builder_storyboard_defaults?.minimax_h3_cut_style),
+    // The Speed and Music style presets last chosen in Scene Defaults, shown again when the panel opens.
+    defaultsSpeedPreset: String(payload.builderStoryboardDefaults?.defaults_speed_preset ?? payload.builder_storyboard_defaults?.defaults_speed_preset ?? ""),
+    defaultsMusicPreset: String(payload.builderStoryboardDefaults?.defaults_music_preset ?? payload.builder_storyboard_defaults?.defaults_music_preset ?? ""),
     performanceMode: payloadPerformanceMode,
     shortFilmPlanningMode: normalizeStoryboardShortFilmPlanningMode(
       payload.shortFilmPlanningMode
@@ -187,6 +194,10 @@ export function openStoryboardBuilder(payload = {}) {
       camera_motion_speed: storyboardSpeedValue(state.cameraMotionSpeed, 4),
       character_motion_speed: storyboardSpeedValue(state.characterMotionSpeed, 4),
       minimax_h3_cut_frequency: storyboardCutFrequencyValue(state.cutFrequency),
+      minimax_h3_cut_style: storyboardCutStyleValue(state.cutStyle),
+      defaults_speed_preset: String(state.defaultsSpeedPreset || ""),
+      defaults_music_preset: String(state.defaultsMusicPreset || ""),
+      story_arc_detail: normalizeStoryArcDetail(state.storyArcDetail),
       camera_guidance: storyboardSpeedGuidance(state.cameraMotionSpeed, "camera"),
       character_guidance: storyboardSpeedGuidance(state.characterMotionSpeed, "character"),
       send_adjacent_lyric_context: Boolean(state.sendAdjacentLyricContext),
@@ -226,6 +237,9 @@ export function openStoryboardBuilder(payload = {}) {
     character_motion_speed: storyboardSpeedValue(state.characterMotionSpeed, 4),
     story_arc_detail: normalizeStoryArcDetail(state.storyArcDetail),
     minimax_h3_cut_frequency: storyboardCutFrequencyValue(state.cutFrequency),
+    minimax_h3_cut_style: storyboardCutStyleValue(state.cutStyle),
+    defaults_speed_preset: String(state.defaultsSpeedPreset || ""),
+    defaults_music_preset: String(state.defaultsMusicPreset || ""),
     custom_camera_flow_sequence: normalizeStoryboardCustomCameraFlowSequence(state.customCameraFlowSequence),
     motion_defaults: {
       camera_motion_speed: storyboardSpeedValue(state.cameraMotionSpeed, 4),
@@ -277,7 +291,7 @@ export function openStoryboardBuilder(payload = {}) {
     characterSpeedControls, characterSpeedHint, characterSpeedInfo, characterSpeedInput, characterSpeedValue,
     storyArcDetailInfo, storyArcDetailSelect,
     consistencyInfo, consistencyInput, cutFrequencyControls, cutFrequencyHint, cutFrequencyInfo,
-    cutFrequencyInput, cutFrequencyValue, facialApply, facialCustomInfo, facialCustomInput, facialInfo,
+    cutFrequencyInput, cutFrequencyValue, cutStyleSelect, facialApply, facialCustomInfo, facialCustomInput, facialInfo,
     facialReplace, facialSelect, fxControls, fxCustomControls, fxCustomInput, fxInfo, fxSelect,
     imageAestheticApply, imageAestheticControls, imageAestheticInfo, imageAestheticReplace,
     imageAestheticSelect, imageCustomStyleControls, imageCustomStyleInfo, imageCustomStyleInput,
@@ -380,7 +394,7 @@ export function openStoryboardBuilder(payload = {}) {
 
   const { copyStoryboardForGpt, exportPromptFiles, loadExisting: loadSavedStoryboard, saveStoryboard } = createStoryboardPersistence({
     absorbSceneReferencesIntoCatalog, adjacentLyricContextInput, cameraFlowSelect, cameraSpeedInput, characterSpeedInput, storyArcDetailSelect,
-    consistencyInput, cutFrequencyInput, enforceStoryboardVideoFacialRequirements, exportPrompts,
+    consistencyInput, cutFrequencyInput, cutStyleSelect, enforceStoryboardVideoFacialRequirements, exportPrompts,
     facialCustomInput, facialPerformancePresets, facialSelect, fxCustomInput, fxSelect,
     getSelectedScenes, imageAestheticPresets, imageAestheticSelect, imageCustomStyleInput, imageShotFlowPresets, imageShotSelect,
     imageWorldStyleSelect,
@@ -459,7 +473,14 @@ export function openStoryboardBuilder(payload = {}) {
   }
   shell.append(header, note, middleContent, footer);
   backdrop.append(shell);
-  document.body.append(backdrop);
+  if (host) {
+    close.remove();
+    backdrop.style.cssText = "position:relative;width:100%;height:100%;min-height:0;display:flex;";
+    shell.style.width = "100%";
+    shell.style.height = "100%";
+    shell.style.boxShadow = "none";
+  }
+  (host || document.body).append(backdrop);
   if (promptActionOnly) backdrop.style.display = "none";
   if (sceneActions) {
     backdrop.dataset.vrgdgSceneActions = sceneActions.sceneId;
@@ -614,7 +635,7 @@ export function openStoryboardBuilder(payload = {}) {
     clearPromptsButton, clearStoryBeatsButton, consistencyInput, copyStoryboardForGpt, copyStoryLayerForGpt,
     createAllSceneBeatsWithGemma, createMissingBeatsButton, createStoryArcButton, createStoryArcWithGemma,
     createStorySequenceButton, createStorySequenceWithGemma,
-    createStoryBriefButton, createStoryBriefWithGemma, cutFrequencyHint, cutFrequencyInput,
+    createStoryBriefButton, createStoryBriefWithGemma, cutFrequencyHint, cutFrequencyInput, cutStyleSelect,
     detectLyricSections, detectSectionsButton, exportPromptFiles, exportPrompts, facialApply,
     facialCustomInput, facialReplace, facialSelect, fxCustomInput, fxSelect, gemmaAllButton, gptButton,
     gptStoryButton, handleReplaceSceneBeats, imageAestheticApply, imageAestheticPresets,
@@ -635,8 +656,14 @@ export function openStoryboardBuilder(payload = {}) {
     temporalProtectedSelect, userStoryArcInput, videoStyleApply, videoStyleCustomInput, videoStyleReplace,
     videoStyleSelect,
   });
-  wireDefaultPresets({ toolbar: defaultsControls.defaultsPresetsToolbar, controls: defaultsControls,
+  const defaultPresets = wireDefaultPresets({ toolbar: defaultsControls.defaultsPresetsToolbar, controls: defaultsControls,
     state, film: usesFilmPlanningProfile, postJson, createToast, refreshCameraFlowInfo, notifyStoryboardDefaultsChanged });
+  // After the saved storyboard loads, show its choices: the Speed / Music style presets and each setting's value.
+  state.onDefaultsLoaded = () => {
+    defaultPresets.syncFromState();
+    defaultsControls.defaultsCards?.refreshSummaries?.();
+  };
+  state.onDefaultsLoaded();
   refreshSelectedDefaultActions = wireSelectedDefaultActions({
     actions: defaultsControls.selectedDefaultActions,
     handlers: { applyCameraFlow, applyImageShotFlow, applyImageAesthetic, applyVideoStyle, applyPerformanceStyle, applyFacialPerformance },
@@ -678,9 +705,11 @@ export function openStoryboardBuilder(payload = {}) {
     payload.onClose?.();
   }
   close.onclick = closeStoryboard;
-  backdrop.addEventListener("pointerdown", (event) => {
-    if (event.target === backdrop) closeStoryboard();
-  });
+  if (!host) {
+    backdrop.addEventListener("pointerdown", (event) => {
+      if (event.target === backdrop) closeStoryboard();
+    });
+  }
   refreshCameraFlowInfo();
   refreshImageShotInfo();
   refreshImageAestheticInfo();
@@ -730,6 +759,8 @@ export function openStoryboardBuilder(payload = {}) {
     }
   }
 
+  // A hosted view hands its owner a way to save and close it.
+  if (host) payload.onHosted?.({ close: closeStoryboard, save: () => saveStoryboard({ throwOnError: true }) });
   loadExisting().then(async (loaded) => {
     if (sceneActions) {
       let replaced = false;

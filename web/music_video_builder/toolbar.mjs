@@ -1,5 +1,4 @@
 import { api } from "../../../scripts/api.js";
-import { app } from "../../../scripts/app.js";
 import { BUILDER_FONT_STACK } from "./constants.mjs";
 import {
   getWidget,
@@ -11,7 +10,7 @@ import {
   makeSelect,
   makeVideoTypeSelect,
   normalizeProjectVideoEngine,
-  normalizeVideoType,
+  normalizeProjectVideoType,
   styleCompactToolbarButton,
   toast,
   VIDEO_TYPE_OPTIONS,
@@ -25,6 +24,60 @@ import { showOverlayTrackHelp } from "./timeline_actions.mjs";
 // The RefMods Studio button is made in buildProjectControls, before the Builder's LLM runner exists, so wireToolbar hands
 // the runner settings over here.
 let currentRunnerPayload = null;
+
+const BUILDER_RESOURCE_COLUMN_PX = 125;
+const BUILDER_RESOURCE_MIN_COLUMN_PX = 105;
+const BUILDER_RESOURCE_VRAM_TEXT = "#67e8f9";
+const BUILDER_RESOURCE_VRAM_BAR = "#06b6d4";
+const BUILDER_RESOURCE_RAM_TEXT = "#c4b5fd";
+const BUILDER_RESOURCE_RAM_BAR = "#8b5cf6";
+
+function builderResourceAttribute(value) {
+  return String(value).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function builderResourceGpus(gpus) {
+  const list = Array.isArray(gpus) ? gpus : [];
+  return list.filter((gpu) => /^\d+$/.test(String(gpu?.index ?? "").trim()))
+    .slice()
+    .sort((a, b) => Number(a.index) - Number(b.index));
+}
+
+function builderResourceMeter(key, label, textColor, barColor, title = "") {
+  return { key, label, textColor, barColor, title };
+}
+
+function builderResourceMeters(gpus) {
+  const ordered = builderResourceGpus(gpus);
+  const numbered = ordered.length > 1;
+  const vram = ordered.length
+    ? ordered.map((gpu) => {
+      const index = String(gpu.index).trim();
+      return builderResourceMeter(
+        numbered ? `vram-${index}` : "vram",
+        numbered ? `VRAM${index}` : "VRAM",
+        BUILDER_RESOURCE_VRAM_TEXT,
+        BUILDER_RESOURCE_VRAM_BAR,
+        gpu.name ? String(gpu.name) : "",
+      );
+    })
+    : [builderResourceMeter("vram", "VRAM", BUILDER_RESOURCE_VRAM_TEXT, BUILDER_RESOURCE_VRAM_BAR)];
+  const count = vram.length + 1;
+  return {
+    gpus: ordered,
+    meters: [...vram, builderResourceMeter("ram", "RAM", BUILDER_RESOURCE_RAM_TEXT, BUILDER_RESOURCE_RAM_BAR)],
+    width: BUILDER_RESOURCE_COLUMN_PX * count,
+    minFit: BUILDER_RESOURCE_MIN_COLUMN_PX * count,
+  };
+}
+
+function builderResourceMeterMarkup(meter) {
+  const title = meter.title ? ` title="${builderResourceAttribute(meter.title)}"` : "";
+  return `<div data-builder-resource-metric="${meter.key}"${title} style="flex:1 1 0;min-width:0;">
+      <div style="display:flex;justify-content:space-between;gap:6px;"><span>${builderResourceAttribute(meter.label)}</span><strong data-builder-resource-value="${meter.key}" style="color:${meter.textColor};font-weight:600;white-space:nowrap;">—</strong></div>
+      <div style="height:3px;margin-top:4px;overflow:hidden;border-radius:3px;background:#3f3f46;"><i data-builder-resource-bar="${meter.key}" style="display:block;width:0;height:100%;background:${meter.barColor};"></i></div>
+    </div>`;
+}
 
 export function wireToolbar({
   render,
@@ -48,7 +101,7 @@ export function wireToolbar({
   openAutoBuildModal, openBuilderAgentModal, openBulkSegmentsModal, openGemmaRunnerModal,
   openLyricMappingWorkflowModal, openPromptOptionsModal, openReferenceBuilderTargetChooser,
   openRenderLogModal, openSceneAudioOptionsButton, openSceneOptions, openSettingsModal, openSnapSceneEdgeMenu,
-  openStitchPreviewModal, openStoryboardBuilderFromProject, openWhatsNewModal, openWizardBetaFromBuilder,
+  openStitchPreviewModal, openStoryboardBuilderFromProject, openStoryBuilder, openWhatsNewModal, openWizardBetaFromBuilder,
   openWizardFromBuilder, overlayTrackHintButton, overlayTrackToggleButton, pauseTimelineForEditing,
   pickAudioButton, pickIdLoraReferenceAudioButton, pickSrtButton, projectAudioFileInput, projectSrtFileInput,
   promptCreatorButton, promptOptionsButton, redo, redoButton, renderAllButton, renderImageSlideshowPreview,
@@ -90,7 +143,7 @@ export function wireToolbar({
     updateV10Button.disabled = true;
     updateV10Button.textContent = "Updating...";
     try {
-      const response = await api.fetchApi("/vrgdg/update/v10", { method: "POST" });
+      const response = await api.fetchApi("/vrgdg/update/v10", { method: "POST", timeoutMs: null });
       let payload = {};
       try {
         payload = await response.json();
@@ -130,7 +183,7 @@ export function wireToolbar({
   });
   videoTypeSelect.onchange = async () => {
     pauseTimelineForEditing();
-    state.videoType = normalizeVideoType(videoTypeSelect.value);
+    state.videoType = normalizeProjectVideoType(videoTypeSelect.value);
     syncVideoTypeControl();
     render();
     await autoSaveSessionQuiet("video type changed");
@@ -203,6 +256,11 @@ export function wireToolbar({
   };
   storyboardBuilderButton.onclick = () => {
     try {
+      // Story Mode projects open the Story Builder; its last tab opens this Storyboard.
+      if (normalizeProjectVideoType(state.videoType) === "story" && openStoryBuilder) {
+        openStoryBuilder();
+        return;
+      }
       openStoryboardBuilderFromProject();
     } catch (error) {
       console.error("VRGDG Storyboard Builder failed to open", error);
@@ -659,22 +717,26 @@ export function buildTopbar({
   const builderResourceMonitor = document.createElement("div");
   builderResourceMonitor.setAttribute("aria-label", "Video Builder RAM and VRAM usage");
   builderResourceMonitor.style.cssText = `position:absolute;right:0;top:50%;transform:translateY(-50%);display:none;align-items:center;gap:10px;width:250px;height:42px;box-sizing:border-box;padding:5px 9px;border:1px solid #3f3f46;border-radius:7px;background:#18181b;color:#d4d4d8;font-family:${BUILDER_FONT_STACK};font-size:10px;line-height:1.25;pointer-events:auto;`;
-  builderResourceMonitor.innerHTML = `
-    <div style="flex:1 1 0;min-width:0;">
-      <div style="display:flex;justify-content:space-between;gap:6px;"><span>VRAM</span><strong data-builder-resource-value="vram" style="color:#67e8f9;font-weight:600;white-space:nowrap;">—</strong></div>
-      <div style="height:3px;margin-top:4px;overflow:hidden;border-radius:3px;background:#3f3f46;"><i data-builder-resource-bar="vram" style="display:block;width:0;height:100%;background:#06b6d4;"></i></div>
-    </div>
-    <div style="flex:1 1 0;min-width:0;">
-      <div style="display:flex;justify-content:space-between;gap:6px;"><span>RAM</span><strong data-builder-resource-value="ram" style="color:#c4b5fd;font-weight:600;white-space:nowrap;">—</strong></div>
-      <div style="height:3px;margin-top:4px;overflow:hidden;border-radius:3px;background:#3f3f46;"><i data-builder-resource-bar="ram" style="display:block;width:0;height:100%;background:#8b5cf6;"></i></div>
-    </div>
-  `;
+  let builderResourcePlan = builderResourceMeters([]);
+  let builderResourceMeterKey = "";
+  const paintBuilderResourceMeters = (gpus) => {
+    const plan = builderResourceMeters(gpus);
+    const key = plan.meters.map((meter) => meter.key).join("|");
+    if (key !== builderResourceMeterKey) {
+      builderResourceMeterKey = key;
+      builderResourcePlan = plan;
+      builderResourceMonitor.innerHTML = plan.meters.map(builderResourceMeterMarkup).join("");
+      positionBuilderResourceMonitor();
+    }
+    return plan;
+  };
   builderResourceMonitor.title = "RAM and VRAM on the machine running ComfyUI. Updated every two seconds.";
   centerActions.append(builderResourceMonitor);
 
   const renderBuilderResourceMetric = (key, memory) => {
     const value = builderResourceMonitor.querySelector(`[data-builder-resource-value="${key}"]`);
     const bar = builderResourceMonitor.querySelector(`[data-builder-resource-bar="${key}"]`);
+    if (!value || !bar) return;
     const used = Number(memory?.used);
     const total = Number(memory?.total);
     const valid = Number.isFinite(used) && Number.isFinite(total) && total > 0;
@@ -686,18 +748,18 @@ export function buildTopbar({
   const positionBuilderResourceMonitor = () => {
     const centerBounds = centerActions.getBoundingClientRect();
     const actionRight = Math.max(importActions.getBoundingClientRect().right, batchActions.getBoundingClientRect().right);
-    const availableRight = centerBounds.right - actionRight;
-    const topRowWidth = Math.min(250, Math.max(0, availableRight - 8));
-    const fits = topRowWidth >= 210;
+    const room = Math.max(0, centerBounds.right - actionRight - 8);
+    const fits = room >= builderResourcePlan.minFit;
     const parent = fits ? centerActions : topbar;
     if (builderResourceMonitor.parentElement !== parent) parent.append(builderResourceMonitor);
-    builderResourceMonitor.style.width = fits ? `${topRowWidth}px` : "250px";
+    builderResourceMonitor.style.width = `${fits ? Math.min(builderResourcePlan.width, room) : builderResourcePlan.width}px`;
     builderResourceMonitor.style.position = fits ? "absolute" : "static";
     builderResourceMonitor.style.transform = fits ? "translateY(-50%)" : "none";
     builderResourceMonitor.style.gridColumn = fits ? "" : "1 / -1";
     builderResourceMonitor.style.justifySelf = fits ? "" : "center";
     builderResourceMonitor.style.display = "flex";
   };
+  paintBuilderResourceMeters([]);
   const pollBuilderResources = async () => {
     if (!overlay.isConnected || builderLifecycle.resourceController) return;
     builderLifecycle.resourceController = new AbortController();
@@ -709,19 +771,27 @@ export function buildTopbar({
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
-      const selectedGpu = String(app.extensionManager.setting.get("VRGDG.ResourceMonitor.GPU") ?? 0);
-      const gpu = Array.isArray(data?.gpus)
-        ? (data.gpus.find((item) => String(item?.index) === selectedGpu) || data.gpus[0])
-        : null;
-      renderBuilderResourceMetric("vram", gpu);
+      const plan = paintBuilderResourceMeters(data?.gpus);
+      for (const meter of plan.meters) {
+        if (meter.key === "ram") continue;
+        const gpu = plan.gpus.length === 1
+          ? plan.gpus[0]
+          : plan.gpus.find((item) => meter.key === `vram-${String(item.index).trim()}`);
+        renderBuilderResourceMetric(meter.key, gpu);
+      }
       renderBuilderResourceMetric("ram", data?.ram);
-      builderResourceMonitor.title = gpu
-        ? `GPU ${gpu.index} · ${gpu.name} · RAM and VRAM on the machine running ComfyUI`
+      const names = plan.gpus.map((gpu) => {
+        const label = plan.gpus.length > 1 ? `VRAM${String(gpu.index).trim()}` : "VRAM";
+        return `${label}${gpu.name ? ` · ${gpu.name}` : ""}`;
+      }).join("; ");
+      builderResourceMonitor.title = plan.gpus.length
+        ? `${names}. RAM and VRAM on the machine running ComfyUI. Updated every two seconds.`
         : "RAM is available. VRAM requires NVIDIA nvidia-smi.";
     } catch {
       if (overlay.isConnected) {
-        renderBuilderResourceMetric("vram", null);
-        renderBuilderResourceMetric("ram", null);
+        for (const value of builderResourceMonitor.querySelectorAll("[data-builder-resource-value]")) {
+          renderBuilderResourceMetric(value.getAttribute("data-builder-resource-value"), null);
+        }
         builderResourceMonitor.title = "Resource monitor unavailable. Restart ComfyUI after installing the monitor.";
       }
     } finally {

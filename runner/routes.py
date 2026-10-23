@@ -6,7 +6,7 @@ from ..core.model_paths import load_custom_model_root, register_custom_model_roo
 
 from .models import _folder_choices, _lora_choices, _ltx_video_model_choices
 from .api_graph import _ensure_placeholder_load_image
-from .image_workflows import _build_ernie_image_api_prompt, _build_flux_klein_api_prompt, _build_krea2_2pass_api_prompt, _build_krea2_api_prompt, _build_nb_image_api_prompt, _build_z_upscale_enhance_prompt, _build_zimage_api_prompt
+from .image_workflows import _build_ernie_image_api_prompt, _build_flux_klein_api_prompt, _build_krea2_2pass_api_prompt, _build_krea2_api_prompt, _build_moss_image_api_prompt, _build_nb_image_api_prompt, _build_z_upscale_enhance_prompt, _build_zimage_api_prompt
 from .ltx_workflows import _build_flf_api_prompt, _build_i2v_api_prompt, _build_id_lora_api_prompt, _build_ingredients_api_prompt, _build_rtv_api_prompt, _build_t2v_api_prompt
 from .minimax_inputs import _cleanup_minimax_h3_output_folder, _prepare_scene_audio_clip
 from .minimax_drafts import _build_minimax_draft, _build_minimax_finalize
@@ -93,6 +93,18 @@ def _ensure_workflow_runner_routes():
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
             result = await asyncio.to_thread(_build_krea2_api_prompt, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/workflow_runner/build_moss_image_prompt")
+    async def vrgdg_workflow_runner_build_moss_image_prompt(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+        try:
+            result = await asyncio.to_thread(_build_moss_image_api_prompt, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})

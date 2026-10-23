@@ -110,6 +110,17 @@ class FromTimedLinesTests(unittest.TestCase):
         scenes = ls.segments_from_timestamped_payload(payload, segment_mode="exact_reference_lines", max_scene_seconds=8.0)
         self.assertEqual(len(scenes), 1)
 
+    def test_a_lyric_line_past_max_plus_variance_is_cut_at_a_word(self):
+        words = [{"text": f"w{i}", "start": float(i), "end": i + 0.9} for i in range(14)]
+        payload = {"duration": 14.0, "segments": [{"start": 0.0, "end": 14.0, "text": "x", "type": "vocal", "words": words}]}
+        scenes = ls.segments_from_timestamped_payload(
+            payload, segment_mode="reference_lines", min_scene_seconds=3.0, max_scene_seconds=8.0, scene_variance_seconds=2.0,
+        )
+        self.assertEqual(len(scenes), 2)
+        self.assertTrue(all(3.0 <= s["end"] - s["start"] <= 10.0 for s in scenes))
+        kept = ls.segments_from_timestamped_payload(payload, segment_mode="reference_lines", max_scene_seconds=8.0, keep_reference_units=True)
+        self.assertEqual(len(kept), 1)
+
     def test_normalize_merges_short_scenes_into_a_vocal_neighbor(self):
         scenes = [scene(0, 4, "one"), scene(4, 5.2, "two"), scene(5.2, 11, "three")]
         result = ls.normalize_scene_durations(scenes, min_scene_seconds=3.5, max_scene_seconds=10.0)

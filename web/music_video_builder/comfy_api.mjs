@@ -1,5 +1,6 @@
 import { errorLogContext, errorLogHeaders, reportProjectError } from "./error_log.mjs";
 import { api } from "../../../scripts/api.js";
+import { globalLlmKeysForSave, globalLlmRunnerForSave } from "./llm_global_keys.mjs";
 import { app } from "../../../scripts/app.js";
 
 let builderAutomaticMemoryCleanupEnabled = false;
@@ -84,6 +85,7 @@ export async function postJson(url, payload, timeoutMs = 120000) {
       headers: { "Content-Type": "application/json", ...errorLogHeaders(logContext) },
       body: JSON.stringify(payload),
       signal: controller.signal,
+      timeoutMs: null,
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data?.ok) {
@@ -124,9 +126,13 @@ let builderSessionSaveRevision = 0;
 
 export function saveBuilderSessionJson(payload, timeoutMs = 60000) {
   const revision = ++builderSessionSaveRevision;
+  const globalLlmKeys = globalLlmKeysForSave();
+  const globalLlmRunner = globalLlmRunnerForSave();
   payload.session = {
     ...(payload.session || {}),
     builder_save_revision: revision,
+    ...(globalLlmKeys ? { global_llm_keys: globalLlmKeys } : {}),
+    ...(globalLlmRunner ? { global_llm_runner: globalLlmRunner } : {}),
   };
   const save = () => postJson("/vrgdg/music_builder/save_session", payload, timeoutMs);
   const result = builderSessionSaveQueue.then(save, save).then((data) => {
@@ -163,7 +169,7 @@ export const GEMMA_VIDEO_ENHANCE_TIMEOUT_MS = 300000;
 export async function getJson(url) {
   const logContext = errorLogContext();
   try {
-    const response = await api.fetchApi(url, { headers: errorLogHeaders(logContext) });
+    const response = await api.fetchApi(url, { headers: errorLogHeaders(logContext), timeoutMs: null });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data?.ok) {
       const error = new Error(String(data?.error || `Request failed (${response.status})`));

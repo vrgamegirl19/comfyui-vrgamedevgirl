@@ -21,7 +21,10 @@ character:
   notes:                 # optional, anything the agent must know about the character
 location_style_theme:    # where and what look, e.g. "Los Angeles nightlife, rooftop lounges, neon, night time"
 story_idea:              # one or two sentences the agent expands from. Leave empty to let the agent write one
-                         # from the lyrics and theme.
+                         # from the lyrics and theme. Required in Story Mode.
+story_mode: false        # true runs the Story Mode path (Part 3b): the story is a book, locations come from it
+story_text: |            # Story Mode only, optional: a finished story to use word for word instead of story_idea
+scenes_per_spot: 3       # Story Mode only: fewest scenes in a row at one spot (e.g. one room)
 continue_scenes: false   # true makes every scene after the first continue the previous scene's take (see step 16)
 video:
   style: cinematic_realism           # saved as the video style key
@@ -123,6 +126,34 @@ Use the project id returned by `project_create` in every later call.
 17. `scene_get` on each scene as it finishes: `video_path` is set and the clip length matches the scene length
     within about 0.1 second.
 18. `stitch_final`. Wait for the job, then report the `final_video_path`, the duration, and any scene that failed.
+
+---
+
+## Part 3b - Story Mode steps (when `story_mode` is true)
+
+Story Mode tells a story written as a book: chapters, each in one general setting (Home, The Night Train), split
+into acts, with every scene at one spot inside the setting (Home - Kitchen). The lyrics set mood and emotion only;
+they never decide an event or a place. Do steps 1-6 of Part 3, then:
+
+7. `project_update_settings` with `{"project": {"video_type": "story"}}`.
+8. Characters first: steps 7-8 of Part 3 (`reference_upsert`, `reference_describe`) for every main character.
+9. `story_settings` with the video defaults from step 11 of Part 3 and
+   `story: {"overall_story_idea": <story_idea>, "story_spot_min_scenes": <scenes_per_spot>}`.
+   Timed events (`timeline_note_create`) and per-scene Director / Video Notes (`scene_update`) go in now: the
+   story steps follow them and they win over the story.
+10. The book: `story_create` with `step: "book"` (from `story_idea`), or with `step: "split"` and `text: <story_text>`
+    when the user gave a finished story. Wait for the job. Read it back with `GET /projects/{pid}/story`
+    (`story_book_text`). To fix a chapter: `step: "chapter"`, `chapter_id`, `direction`.
+11. `story_create` with `step: "cast"`. For each listed character the user wants, `reference_upsert` a subject with
+    the given name and description (they need an image before rendering).
+12. `story_create` with `step: "acts"`. Wait.
+13. `story_create` with `step: "plan"`. Wait. Every scene now has a story slice, a spot, a mood and a performance
+    (singing, speaking, story only or instrumental), and each act's cast is mapped onto scenes that had none.
+14. `story_create` with `step: "locations"` (`style_theme` = `location_style_theme`). Wait. This writes one location
+    card per spot and maps every scene to it. Do not run `reference_extract_locations` or `reference_assign_scenes`
+    in Story Mode.
+15. `story_create` with `step: "beats"`. Wait. Then continue with Part 3 from step 15 (MiniMax prompts, render,
+    stitch).
 
 ---
 

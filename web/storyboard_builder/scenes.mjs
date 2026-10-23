@@ -1,5 +1,6 @@
 import { normalizeStoryboardScriptImportState } from "./script_import.mjs";
 import { refmodCardFields } from "../music_video_builder/refmod_labels.mjs";
+import { normalizeStoryModeFields } from "../music_video_builder/story_mode_data.mjs";
 import { storyboardTemporalIntensity, storyboardTemporalProtectedMode } from "./video_style.mjs";
 
 function statusMeta(scene) {
@@ -291,6 +292,9 @@ export function slimReferenceForRequest(ref) {
     id: String(ref.id || ""),
     name: String(ref.name || ""),
     description: String(ref.description || ""),
+    // Card type and wearer, so the beat and prompt writers treat clothing and props as things, not people.
+    ...(String(ref.reference_type || "").trim() ? { reference_type: String(ref.reference_type).trim() } : {}),
+    ...(String(ref.wears || "").trim() ? { wears: String(ref.wears).trim() } : {}),
     ...refmodCardFields(ref),
     minimax_voice: ref.minimax_voice && typeof ref.minimax_voice === "object" ? { ...ref.minimax_voice } : {},
     trigger_phrase: String(ref.trigger_phrase || ref.trigger || ref.Trigger || ""),
@@ -368,6 +372,7 @@ export function normalizeStoryLayer(value = {}) {
     lyric_story_strength: Number.isFinite(lyricStoryStrength) ? lyricStoryStrength : 7,
     image_world_style: imageWorldStyle,
     image_custom_style_direction: String(source.image_custom_style_direction || source.imageCustomStyleDirection || ""),
+    ...normalizeStoryModeFields(source),
   };
 }
 
@@ -384,6 +389,17 @@ export function storyboardSpeedValue(value, fallback = 4) {
 export function storyboardCutFrequencyValue(value, fallback = 0) {
   const number = Number(value);
   return Number.isFinite(number) ? Math.max(0, Math.min(10, Math.round(number))) : fallback;
+}
+
+// How the shots of a scene with cuts connect: "free" (each shot stages its own beat, as before) or "continuous"
+// (one unbroken moment; a cut only changes the camera angle and framing).
+export const STORYBOARD_CUT_STYLES = [
+  { value: "free", label: "Free cuts" },
+  { value: "continuous", label: "One continuous moment" },
+];
+
+export function storyboardCutStyleValue(value) {
+  return String(value || "").trim().toLowerCase() === "continuous" ? "continuous" : "free";
 }
 
 export function storyboardCutFrequencyLabel(value) {

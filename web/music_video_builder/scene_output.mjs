@@ -401,6 +401,8 @@ export function createSceneOutput({
         name: subject.name,
         description: subject.description,
         reference_type: subject.reference_type || "character",
+        // Who wears or uses clothing and props here: the scene's own choice, else the card's "Worn by" link.
+        wears: String(segment?.scene_item_users?.[subject.id] || subject.wears || ""),
         minimax_voice: normalizeMiniMaxH3Voice(subject.minimax_voice),
         trigger_phrase: subject.trigger_phrase || "",
         trigger_position: subject.trigger_position || "start",
@@ -471,6 +473,8 @@ export function createSceneOutput({
           lyrics: lyric,
           lyric_section: String(segment.lyric_section || "").trim(),
           story_beat: String(segment.story_beat || "").trim(),
+          // The user's override for this scene (Story Builder Scenes tab): always true, it wins over every other field.
+          scene_override: String(segment.scene_override || "").trim(),
           flf_start_state: String(segment.flf_start_state || "").trim(),
           flf_transformation: String(segment.flf_transformation || "").trim(),
           flf_end_state: String(segment.flf_end_state || "").trim(),
@@ -557,6 +561,8 @@ export function createSceneOutput({
       imageMode,
       imageModeLabel: imageModeDisplayLabel(imageMode),
       cameraFlow: defaults.camera_flow || "balanced",
+      customCameraFlowSequence: defaults.custom_camera_flow_sequence || [],
+      cutStyle: defaults.minimax_h3_cut_style || "free",
       imageShotFlow: defaults.image_shot_flow || "intimate",
       imageAesthetic: defaults.image_aesthetic || "",
       videoStyle: defaults.video_style || "",

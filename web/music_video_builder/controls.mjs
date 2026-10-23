@@ -266,8 +266,11 @@ export const VIDEO_TYPE_OPTIONS = [
   { value: "singing", label: "Singing (music video)" },
   { value: "speaking", label: "Speaking (short film)" },
   { value: "no_lip_sync", label: "No lip sync" },
+  { value: "story", label: "Story Mode (music video)" },
 ];
 
+// The performance a video type or scene performance_mode renders as: singing, speaking or no_lip_sync.
+// Story Mode renders as singing; its scenes choose their own performance_mode.
 export function normalizeVideoType(value) {
   const text = String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
   if (["speaking", "short_film", "dialogue", "dialog"].includes(text)) return "speaking";
@@ -275,19 +278,26 @@ export function normalizeVideoType(value) {
   return "singing";
 }
 
+// The project's saved video type. Same as normalizeVideoType, but keeps "story" so Story Mode survives a save.
+export function normalizeProjectVideoType(value) {
+  const text = String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (["story", "story_mode"].includes(text)) return "story";
+  return normalizeVideoType(text);
+}
+
 export function normalizeProjectVideoEngine(value) {
   return String(value || "").trim().toLowerCase() === "minimax_h3" ? "minimax_h3" : "ltx";
 }
 
 export function makeVideoTypeSelect(value = "singing") {
-  const select = makeSelect([], normalizeVideoType(value));
+  const select = makeSelect([], normalizeProjectVideoType(value));
   for (const optionInfo of VIDEO_TYPE_OPTIONS) {
     const option = document.createElement("option");
     option.value = optionInfo.value;
     option.textContent = optionInfo.label;
     select.append(option);
   }
-  select.value = normalizeVideoType(value);
+  select.value = normalizeProjectVideoType(value);
   return select;
 }
 

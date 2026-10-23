@@ -38,8 +38,8 @@ export function refmodCardFields(card) {
   return fields;
 }
 
-// A card that is somebody: every card that is not a RefMod, and RefMods of the character type. Clothing, props, vehicles,
-// creatures, styles and settings are things in a scene, so they are never performers, speakers or part of the cast.
+// A card that is somebody: every card that is not a RefMod, and RefMods of the character or creature type. Clothing, objects,
+// props, vehicles, styles and settings are things in a scene, so they are never performers, speakers or part of the cast.
 export function isIdentityCard(card) {
   return !isRefmodCard(card) || cardCategory(card) === "character";
 }
@@ -48,7 +48,8 @@ export function cardCategory(card, kind = "subject") {
   if (kind === "extra") return "extra";
   if (kind === "location") return "background";
   const referenceType = text(card?.reference_type) || "character";
-  if (referenceType === "character") return "character";
+  // A creature is stored as a creature but acts in the scene like a character.
+  if (referenceType === "character" || referenceType === "creature") return "character";
   if (referenceType === "outfit") return "clothing";
   if (referenceType === "environment") return "background";
   if (referenceType === "style") return "style";
@@ -135,6 +136,19 @@ export function composeRefmodItems(subjectCards, extraCards, locationCard, allSu
   }
   add(locationCard, "location");
   return orderItems(items);
+}
+
+// Who wears or uses each piece of clothing or prop in one scene. users: segment.scene_item_users, { card id: character
+// card id }, set in the Story Builder's Scenes tab. A choice naming a character who is not in the scene is ignored.
+// Twin of apply_scene_item_users in minimax/refmod_scene.py.
+export function applySceneItemUsers(items, users) {
+  const chosen = users && typeof users === "object" ? users : {};
+  const characters = new Set((items || []).filter((item) => item.category === "character").map((item) => item.card_id));
+  const changed = (items || []).map((item) => {
+    const user = text(chosen[item.card_id]);
+    return (item.category === "clothing" || item.category === "object") && characters.has(user) ? { ...item, wears: user } : item;
+  });
+  return orderItems(changed);
 }
 
 // Add a label (for example "<Video 2>") to each item the way Text Encode with RefMods numbers them. Items with strength 0
@@ -233,10 +247,15 @@ export function attachRefmodLabels(promptText, items) {
     text = text.replace(new RegExp(`${escapeTag(tag)}(?:\\s*\\([^)]*\\))?`, "g"), () => `${item.label} (${item.name})`);
   }
   // A RefMod the writer never named is placed the way its kind belongs in a scene: clothing is worn by its character,
-  // a vehicle is stood beside by the main character, a prop is placed next to them, and only people are "in the scene".
+  // an object is held by the character who uses it, a vehicle is stood beside by the main character, a prop is part of
+  // the set, and only people and creatures are "in the scene".
   const mainLabel = () => {
     const main = labelled.find((candidate) => candidate.category === "character");
     return main ? `${main.label} (${main.name})` : "";
+  };
+  const userLabel = (item) => {
+    const user = labelled.find((candidate) => candidate.category === "character" && candidate.card_id === item.wears);
+    return user ? `${user.label} (${user.name})` : mainLabel();
   };
   const sentenceFor = (item) => {
     if (item.category === "background") return `The setting is ${item.label}.`;
@@ -246,8 +265,9 @@ export function attachRefmodLabels(promptText, items) {
     if (item.category === "object") {
       const type = String(item.reference_type ?? "").trim();
       if (type === "vehicle") return main ? `${main} stands beside ${item.label} (${item.name}).` : `${item.label} (${item.name}) is parked in the scene.`;
-      if (type === "creature" || type === "animal") return `${item.label} (${item.name}) is in the scene${main ? ` beside ${main}` : ""}.`;
-      return `${item.label} (${item.name}) is placed in the scene${main ? ` next to ${main}` : ""}.`;
+      if (type === "prop") return `${item.label} (${item.name}) stands in the scene as part of the set.`;
+      const user = userLabel(item);
+      return user ? `${user} holds ${item.label} (${item.name}).` : `${item.label} (${item.name}) is placed in the scene.`;
     }
     return `${item.label} (${item.name}) is in the scene.`;
   };

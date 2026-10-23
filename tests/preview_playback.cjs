@@ -24,7 +24,7 @@ test('Stop cancels Play while waiting for video readiness',async()=>{
   const c=playFixture();const p=c.playButton.onclick();c.stopButton.onclick();c.waits.shift()();await p;assert.deepEqual(c.calls,[]);
 });
 test('closing the builder cancels pending Play',async()=>{
-  const c=playFixture();Object.assign(c,{builderLifecycle:{keydownHandler:null,resourceTimer:0,resourceController:null,resourceResizeObserver:null},builderETAState:{timer:0,log:null},builderETAResizeObserver:{disconnect(){}},window:{removeEventListener(){}},toastNotificationHandler(){},restoreBrowserAiDownloadsQuietly:async()=>{},overlay:{remove(){}},clearTimeout(){},clearInterval(){}});
+  const c=playFixture();Object.assign(c,{builderLifecycle:{keydownHandler:null,resourceTimer:0,resourceController:null,resourceResizeObserver:null},builderETAState:{timer:0,log:null},builderETAResizeObserver:{disconnect(){}},window:{removeEventListener(){}},toastNotificationHandler(){},restoreBrowserAiDownloadsQuietly:async()=>{},overlay:{remove(){}},clearTimeout(){},clearInterval(){},localStorage:{},rememberVideoMode(){},videoModeSavedHandler(){}});
   vm.runInContext(part('  const closeBuilderNow =', '\n  const ')+';globalThis.closeNow=closeBuilderNow;',c);
   const p=c.playButton.onclick();c.closeNow();c.waits.shift()();await p;assert.deepEqual(c.calls,[]);
 });

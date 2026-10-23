@@ -70,6 +70,13 @@ class VRGDG_MiniMaxH3SaveLatent:
                     "max": 120.0,
                     "step": 0.1,
                 }),
+                "pass1": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": (
+                        "Save this as the scene's 2 Pass first-pass latent (scene_NNN.pass1.latent). The next scene's "
+                        "first pass continues it directly instead of a shrunk copy of the finished second pass."
+                    ),
+                }),
                 "tail_padding_frames": ("INT", {
                     "default": -1,
                     "min": -1,
@@ -101,10 +108,16 @@ class VRGDG_MiniMaxH3SaveLatent:
         frame_count: int = 0,
         fps: float = 24.0,
         tail_padding_frames: int = -1,
+        pass1: bool = False,
     ) -> tuple[dict[str, Any], str]:
         saved_path = ""
         clean_folder = str(project_folder or "").strip().strip('"')
-        if clean_folder:
+        if clean_folder and pass1:
+            try:
+                saved_path = SceneLatentManager.save_pass1_latent(clean_folder, scene_number, latent, tail_padding_frames)
+            except Exception as exc:
+                print(f"[VRGDG Latent Save] Warning: Failed to save scene {scene_number:03d}'s first-pass latent: {exc}")
+        elif clean_folder:
             try:
                 saved_path = SceneLatentManager.save_latent(
                     project_folder=clean_folder,
@@ -176,9 +189,10 @@ class VRGDG_MiniMaxH3LoadLatent:
     """Load a predecessor scene's latent and slice to the requested context frames window."""
 
     @classmethod
-    def IS_CHANGED(cls, project_folder, scene_number, context_frames, exact_frame_mode=False, masked_av=False, run_after=None):
+    def IS_CHANGED(cls, project_folder, scene_number, context_frames, exact_frame_mode=False, masked_av=False, run_after=None,
+                   pass1=False):
         folder = str(project_folder or "").strip().strip('"')
-        path = SceneLatentManager.get_path(folder, scene_number)
+        path = SceneLatentManager.get_pass1_path(folder, scene_number) if pass1 else SceneLatentManager.get_path(folder, scene_number)
         if not os.path.isfile(path):
             # A graph can save the predecessor in the same run (see run_after), so the file may not exist yet.
             return "missing"
@@ -228,6 +242,10 @@ class VRGDG_MiniMaxH3LoadLatent:
                         "VRGDG H3 Apply Masked Continuation."
                     ),
                 }),
+                "pass1": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": "Load the scene's 2 Pass first-pass latent (scene_NNN.pass1.latent) instead of the final one.",
+                }),
                 "run_after": ("*", {
                     "tooltip": (
                         "Optional. Connect the LATENT output of the Save Latent node that writes the predecessor in "
@@ -254,12 +272,13 @@ class VRGDG_MiniMaxH3LoadLatent:
         exact_frame_mode: bool = False,
         masked_av: bool = False,
         run_after: Any = None,
+        pass1: bool = False,
     ) -> tuple[dict[str, Any], int]:
         clean_folder = str(project_folder or "").strip().strip('"')
         if not clean_folder:
             raise ValueError("project_folder is required to load a scene latent")
 
-        data = SceneLatentManager.load_latent(clean_folder, scene_number)
+        data = SceneLatentManager.load_latent(clean_folder, scene_number, pass1=pass1)
         if not data:
             raise FileNotFoundError(
                 f"No latent found for scene {scene_number:03d} in {clean_folder}/latents/. "
