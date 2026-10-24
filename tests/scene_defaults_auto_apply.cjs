@@ -3,7 +3,7 @@ const { test } = require("node:test");
 const vm = require("node:vm");
 const fs = require("node:fs"), path = require("node:path");
 
-function fixture() {
+function fixture({ refreshControls } = {}) {
   const context = vm.createContext({ Object, Set, JSON });
   for (const name of ["scene_defaults_state", "scenes", "shot_presets", "video_style", "defaults_presets", "defaults_auto_apply"]) {
     const source = fs.readFileSync(path.join(__dirname, "../web/storyboard_builder", name + ".mjs"), "utf8")
@@ -26,7 +26,7 @@ function fixture() {
   };
   let saves = 0;
   const controller = context.createAutoSceneDefaults({ state, controls, persist: () => saves++,
-    renderTable: () => controller.syncScope(), imageShotFlowPresets: {}, imageAestheticPresets: [] });
+    renderTable: () => controller.syncScope(), refreshControls: () => refreshControls?.(controller), imageShotFlowPresets: {}, imageAestheticPresets: [] });
   controller.reset();
   const change = (key, value) => {
     controls[DEFAULT_PRESET_CONTROLS[key]]?.change?.();
@@ -183,4 +183,21 @@ test("a mixed mode project updates video aesthetic only on eligible scenes", () 
   assert.equal(f.state.scenes[0].scene_defaults, undefined);
   assert.equal(f.state.scenes[1].video_style, "1990s_grunge");
   assert.match(f.controls.defaultsResult.textContent, /eligible scenes: 5, 7, 10/);
+});
+
+test("scope refresh can re-enter through Storyboard summaries without blocking window setup", () => {
+  let refreshes = 0;
+  const f = fixture({ refreshControls(controller) {
+    assert.ok(++refreshes < 20, "scope refresh must not recursively rebuild its own summaries");
+    controller.syncScope();
+  } });
+  assert.equal(refreshes, 1);
+  f.state.selected = new Set(["scene5"]);
+  f.controller.syncScope();
+  assert.equal(refreshes, 2);
+  assert.equal(f.controls.defaultsScope.textContent, "Editing selected scenes: 5");
+  f.change("cameraMotionSpeed", 2);
+  assert.equal(f.state.scenes[1].scene_defaults.camera_motion_speed, 2);
+  f.controls.defaultsUndo.onclick();
+  assert.equal(f.state.scenes[1].scene_defaults, undefined);
 });

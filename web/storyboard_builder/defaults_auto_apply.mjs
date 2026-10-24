@@ -49,6 +49,8 @@ export function createAutoSceneDefaults({ state, controls, persist, renderTable,
     const signature = (selected ? "selected:" : "all:") + rows.map(row => row.scene.id).join("|")
       + JSON.stringify(rows.map(row => row.scene.scene_defaults || {}));
     if (signature !== lastScope) {
+      // Summary refreshes call back into syncScope. Mark this scope before refreshing.
+      lastScope = signature;
       showControls(rows.length ? effectiveSceneDefaultsState(state, rows[0].scene) : state);
       const toolbar = controls.defaultsPresetsToolbar;
       if (toolbar) {
@@ -58,7 +60,6 @@ export function createAutoSceneDefaults({ state, controls, persist, renderTable,
         toolbar.music.value = Object.keys(MUSIC_DEFAULT_PRESETS).find(key => matches(musicDefaultSettings(key, film))) || "";
         toolbar.saved.value = "";
       }
-      lastScope = signature;
     }
   };
   for (const [key, ref] of Object.entries(CONTROLS)) {
