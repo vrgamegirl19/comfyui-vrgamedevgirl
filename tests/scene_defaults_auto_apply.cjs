@@ -3,7 +3,7 @@ const { test } = require("node:test");
 const vm = require("node:vm");
 const fs = require("node:fs"), path = require("node:path");
 
-function fixture({ refreshControls } = {}) {
+function fixture({ refreshControls, onSettingApplied } = {}) {
   const context = vm.createContext({ Object, Set, JSON });
   for (const name of ["scene_defaults_state", "scenes", "shot_presets", "video_style", "defaults_presets", "defaults_auto_apply"]) {
     const source = fs.readFileSync(path.join(__dirname, "../web/storyboard_builder", name + ".mjs"), "utf8")
@@ -25,7 +25,7 @@ function fixture({ refreshControls } = {}) {
     value: "", addEventListener(type, fn) { this[type] = fn; },
   };
   let saves = 0;
-  const controller = context.createAutoSceneDefaults({ state, controls, persist: () => saves++,
+  const controller = context.createAutoSceneDefaults({ state, controls, onSettingApplied, persist: () => saves++,
     renderTable: () => controller.syncScope(), refreshControls: () => refreshControls?.(controller, state), imageShotFlowPresets: {}, imageAestheticPresets: [] });
   controller.reset();
   const change = (key, value) => {
@@ -258,4 +258,22 @@ test("Undo keeps the selected scene's restored value in its slider and hint", ()
   f.controls.defaultsUndo.onclick();
   assert.equal(f.controls.characterSpeedInput.value, "7");
   assert.equal(shownSpeed, 7, "the hint must describe the selected scene rather than the global fallback");
+});
+
+test("individual facial dropdown confirms its option and selected scene numbers", () => {
+  const confirmations = [];
+  const f = fixture({ onSettingApplied: (name, result) => confirmations.push({ name, result }) });
+  f.state.selected = new Set(["scene1", "scene5", "scene7"]);
+  f.controller.syncScope();
+  const control = f.controls.facialSelect;
+  control.options = [{ value: "love_tender", textContent: "Love song / tender" }];
+  control.getAttribute = () => "Facial performance";
+  control.value = "love_tender";
+  f.change("facialPerformance", "love_tender");
+  assert.deepEqual(confirmations, [{ name: "Facial performance — Love song / tender", result: "Updated scenes 1, 5, 7" }]);
+  assert.equal(f.state.scenes[3].facial_performance, undefined);
+  f.controller.note(["facialPerformance"]);
+  f.state.facialPerformance = "love_tender";
+  f.controller.commit({ preset: true });
+  assert.equal(confirmations.length, 1, "a toolbar preset produces its own single combined confirmation");
 });

@@ -91,7 +91,7 @@ export function applyDefaultPreset(settings, { controls, state, refreshCameraFlo
     }
   } finally {
     delete state.applyingDefaultsPreset;
-    notifyStoryboardDefaultsChanged();
+    notifyStoryboardDefaultsChanged({ preset: true });
   }
 }
 

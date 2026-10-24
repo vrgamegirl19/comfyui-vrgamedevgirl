@@ -305,6 +305,7 @@ export function openStoryboardBuilder(payload = {}) {
     videoStyleCustomControls, videoStyleCustomInput, videoStyleInfo, videoStyleSelect,
   } = defaultsControls;
   let defaultsAutoApply = null;
+  let presetConfirmation = null;
   const refreshSelectedDefaultActions = () => defaultsAutoApply?.syncScope();
   sceneDefaultsPanel.classList.add("vrgdg-storyboard-panel");
 
@@ -377,9 +378,9 @@ export function openStoryboardBuilder(payload = {}) {
     userStoryArcInput, videoStyleCustomControls, videoStyleInfo,
   });
 
-  function notifyStoryboardDefaultsChanged() {
+  function notifyStoryboardDefaultsChanged(options = {}) {
     if (state.applyingDefaultsPreset) return;
-    if (defaultsAutoApply) defaultsAutoApply.commit();
+    if (defaultsAutoApply) defaultsAutoApply.commit({ preset: options.preset === true });
     else persistStoryboardDefaults();
   }
 
@@ -663,22 +664,25 @@ export function openStoryboardBuilder(payload = {}) {
     temporalProtectedSelect, userStoryArcInput, videoStyleCustomInput,
     videoStyleSelect,
   });
+  function showDefaultsConfirmation(message) {
+    presetConfirmation?.close();
+    presetConfirmation = createStoryboardProgressWindow("Scene Defaults");
+    presetConfirmation.set(message, 100);
+  }
   defaultsAutoApply = createAutoSceneDefaults({ state, controls: defaultsControls, film: usesFilmPlanningProfile,
     persist: persistStoryboardDefaults, renderTable, imageShotFlowPresets, imageAestheticPresets,
+    onSettingApplied: (name, result) => showDefaultsConfirmation(`${name}\n${result}`),
     refreshControls: () => {
       refreshCameraFlowInfo(); refreshCameraSpeedInfo(); refreshCharacterSpeedInfo(); refreshCutFrequencyInfo();
       refreshPerformanceInfo(); refreshFacialInfo(); refreshConsistencyInfo(); refreshVideoStyleInfo();
       refreshTemporalEffectInfo(); refreshFxInfo();
     },
   });
-  let presetConfirmation = null;
   const defaultPresets = wireDefaultPresets({ toolbar: defaultsControls.defaultsPresetsToolbar, controls: defaultsControls,
     state, film: usesFilmPlanningProfile, postJson, createToast, refreshCameraFlowInfo, notifyStoryboardDefaultsChanged,
     noteDefaultKeys: keys => defaultsAutoApply.note(keys),
     onPresetApplied: name => {
-      presetConfirmation?.close();
-      presetConfirmation = createStoryboardProgressWindow("Scene Defaults");
-      presetConfirmation.set(`Preset: ${name}\n${defaultsControls.defaultsResult.textContent}`, 100);
+      showDefaultsConfirmation(`Preset: ${name}\n${defaultsControls.defaultsResult.textContent}`);
     },
   });
   // After the saved storyboard loads, show its choices: the Speed / Music style presets and each setting's value.

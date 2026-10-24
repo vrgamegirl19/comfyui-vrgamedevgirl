@@ -20,7 +20,7 @@ const SNAPSHOT_KEYS = [...Object.keys(SCENE_DEFAULT_KEYS), "storyArcDetail", "de
 const snapshot = state => Object.fromEntries(SNAPSHOT_KEYS.map(key => [key, clone(state[key])]));
 
 export function createAutoSceneDefaults({ state, controls, persist, renderTable, refreshControls,
-  imageShotFlowPresets, imageAestheticPresets, film = false }) {
+  imageShotFlowPresets, imageAestheticPresets, film = false, onSettingApplied }) {
   let baseline = snapshot(state), undo = null, lastScope = null, busy = false;
   const pending = new Set();
   const { defaultsScope, defaultsResult, defaultsUndo } = controls;
@@ -97,7 +97,7 @@ export function createAutoSceneDefaults({ state, controls, persist, renderTable,
         .filter(line => !/^image aesthetic:/i.test(line.trim())).concat(description ? [`Image aesthetic: ${description}`] : []).join("\n").trim();
     }
   }
-  function commit() {
+  function commit({ preset = false } = {}) {
     if (state.applyingDefaultsPreset || busy) return;
     const now = snapshot(state);
     const fields = Object.keys(SCENE_DEFAULT_KEYS).filter(key => pending.has(key) || !same(now[key], baseline[key]));
@@ -107,6 +107,10 @@ export function createAutoSceneDefaults({ state, controls, persist, renderTable,
     const requested = fields.length ? targets() : [], selected = Boolean(state.selected?.size);
     const rows = requested.filter(({ scene }) => fields.some(key => !["videoStyle", "videoStyleCustom"].includes(key)
       || storyboardSceneSupportsVideoStyle(scene)));
+    const control = fields.length === 1 ? controls[CONTROLS[fields[0]]] : null;
+    const option = Array.from(control?.options || []).find(item => item.value === control.value);
+    const settingName = !preset && option
+      ? `${control.getAttribute?.("aria-label") || fields[0]} — ${option.textContent || option.value}` : "";
     const before = rows.map(({ scene }) => ({ id: scene.id, value: clone(scene) }));
     const globalBefore = clone(baseline);
     busy = true;
@@ -135,6 +139,7 @@ export function createAutoSceneDefaults({ state, controls, persist, renderTable,
       renderTable();
       persist();
       refreshDisplay(rows.length ? effectiveSceneDefaultsState(state, rows[0].scene) : state);
+      if (settingName) onSettingApplied?.(settingName, defaultsResult.textContent);
     } finally { busy = false; }
   }
   defaultsUndo.onclick = () => {
