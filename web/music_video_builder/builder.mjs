@@ -233,7 +233,7 @@ export function openBuilder(node, options = {}) {
     lyricMapperButton, menuDropdown, pollBuilderResources, positionBuilderETA, positionBuilderResourceMonitor,
     projectBatchButton, projectVideoEngineBadge, promptCreatorButton, promptOptionsButton, renderAllButton,
     renderLogButton, sendToPromptCreatorButton, slideshowPreviewButton, stitchPreviewButton,
-    stopWorkflowButton, storyboardBuilderButton, updateV10Button, updateV10HintButton,
+    syncWorkflowActionOrder, stopWorkflowButton, storyboardBuilderButton, updateV10Button, updateV10HintButton,
     wizardButton, zEnhanceAllButton, zEnhanceAllToolButton, zImageAllButton,
   } = buildTopbar({
     autoSaveControl, branchProjectButton, builderETAState, builderLifecycle, closeBuilderNow, closeButton,
@@ -1204,7 +1204,7 @@ export function openBuilder(node, options = {}) {
   });
 
   const { playBuilderNotification, shouldNotifyForToast, syncVideoTypeControl } = createNotificationSounds({
-    state, videoTypeSelect,
+    state, videoTypeSelect, syncWorkflowActionOrder,
   });
 
   const {

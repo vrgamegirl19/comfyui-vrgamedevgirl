@@ -674,7 +674,16 @@ export function buildTopbar({
   batchActions.style.display = "none";
   const importActions = document.createElement("div");
   importActions.style.cssText = "display:flex;gap:5px;align-items:center;justify-content:center;flex-wrap:nowrap;min-width:0;overflow:visible;";
-  importActions.append(wizardButton, autoBuildButton, storyboardBuilderButton, fluxReferenceBuilderButton, refModsStudioButton, refModsViewerButton, lyricMapperButton, gemmaRunnerButton, promptOptionsButton);
+  function syncWorkflowActionOrder(videoType) {
+    const order = normalizeProjectVideoType(videoType) === "singing"
+      ? [wizardButton, autoBuildButton, fluxReferenceBuilderButton, lyricMapperButton, storyboardBuilderButton,
+        refModsStudioButton, refModsViewerButton, gemmaRunnerButton, promptOptionsButton]
+      : [wizardButton, autoBuildButton, storyboardBuilderButton, fluxReferenceBuilderButton,
+        refModsStudioButton, refModsViewerButton, lyricMapperButton, gemmaRunnerButton, promptOptionsButton];
+    if (order.every((button, index) => importActions.children[index] === button)) return;
+    importActions.append(...order);
+  }
+  syncWorkflowActionOrder("singing");
   const centerActions = document.createElement("div");
   centerActions.style.cssText = "position:relative;display:flex;gap:8px;align-items:center;justify-content:center;min-width:0;overflow:visible;";
   centerActions.append(importActions, batchActions);
@@ -807,7 +816,7 @@ export function buildTopbar({
     lyricMapperButton, menuDropdown, pollBuilderResources, positionBuilderETA, positionBuilderResourceMonitor,
     projectBatchButton, projectVideoEngineBadge, promptCreatorButton, promptOptionsButton, renderAllButton,
     renderLogButton, sendToPromptCreatorButton, slideshowPreviewButton, stitchPreviewButton,
-    stopWorkflowButton, storyboardBuilderButton, updateV10Button, updateV10HintButton,
+    syncWorkflowActionOrder, stopWorkflowButton, storyboardBuilderButton, updateV10Button, updateV10HintButton,
     wizardButton, zEnhanceAllButton, zEnhanceAllToolButton, zImageAllButton,
   };
 }

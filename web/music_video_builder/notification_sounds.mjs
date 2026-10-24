@@ -13,10 +13,11 @@ function notificationFrequencies(kind, soundName) {
   return [523, 659, 784];
 }
 
-export function createNotificationSounds({ state, videoTypeSelect }) {
+export function createNotificationSounds({ state, videoTypeSelect, syncWorkflowActionOrder = () => {} }) {
   function syncVideoTypeControl() {
     state.videoType = normalizeProjectVideoType(state.videoType);
     videoTypeSelect.value = state.videoType;
+    syncWorkflowActionOrder(state.videoType);
   }
 
   let notificationAudioContext = null;
