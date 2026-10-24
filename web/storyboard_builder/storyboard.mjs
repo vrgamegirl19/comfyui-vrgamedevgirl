@@ -1,4 +1,4 @@
-import { wireSelectedDefaultActions } from "./defaults_actions.mjs";
+import { createAutoSceneDefaults } from "./defaults_auto_apply.mjs";
 import { wireDefaultPresets } from "./defaults_presets.mjs";
 import { createStoryboardProgressWindow, createToast, makeButton, setButtonDisabled, setButtonVariant } from "./controls.mjs";
 import {
@@ -286,25 +286,26 @@ export function openStoryboardBuilder(payload = {}) {
     performanceStylePresets, state, usesFilmPlanningProfile,
   });
   const {
-    cameraFlowApply, cameraFlowControls, cameraFlowInfo, cameraFlowReplace, cameraFlowSelect,
+    cameraFlowControls, cameraFlowInfo, cameraFlowSelect,
     cameraSpeedControls, cameraSpeedHint, cameraSpeedInfo, cameraSpeedInput, cameraSpeedValue,
     characterSpeedControls, characterSpeedHint, characterSpeedInfo, characterSpeedInput, characterSpeedValue,
     storyArcDetailInfo, storyArcDetailSelect,
     consistencyInfo, consistencyInput, cutFrequencyControls, cutFrequencyHint, cutFrequencyInfo,
-    cutFrequencyInput, cutFrequencyValue, cutStyleSelect, facialApply, facialCustomInfo, facialCustomInput, facialInfo,
-    facialReplace, facialSelect, fxControls, fxCustomControls, fxCustomInput, fxInfo, fxSelect,
-    imageAestheticApply, imageAestheticControls, imageAestheticInfo, imageAestheticReplace,
+    cutFrequencyInput, cutFrequencyValue, cutStyleSelect, facialCustomInfo, facialCustomInput, facialInfo,
+    facialSelect, fxControls, fxCustomControls, fxCustomInput, fxInfo, fxSelect,
+    imageAestheticControls, imageAestheticInfo,
     imageAestheticSelect, imageCustomStyleControls, imageCustomStyleInfo, imageCustomStyleInput,
-    imageShotApply, imageShotControls, imageShotInfo, imageShotReplace, imageShotSelect,
+    imageShotControls, imageShotInfo, imageShotSelect,
     imageWorldStyleControls, imageWorldStyleInfo, imageWorldStyleSelect, middleContent, note,
-    performanceApply, performanceInfo, performanceReplace, performanceSelect, sceneDefaultsPanel,
+    performanceInfo, performanceSelect, sceneDefaultsPanel,
     temporalEffectControls, temporalEffectCustomControls, temporalEffectCustomInput, temporalEffectInfo,
     temporalEffectOptions, temporalEffectSelect, temporalEnvironmentInput, temporalExtrasInput,
     temporalIntensityInput, temporalIntensityValue, temporalProtectedCustomControls,
-    temporalProtectedCustomInput, temporalProtectedSelect, videoStyleApply, videoStyleControls,
-    videoStyleCustomControls, videoStyleCustomInput, videoStyleInfo, videoStyleReplace, videoStyleSelect,
+    temporalProtectedCustomInput, temporalProtectedSelect, videoStyleControls,
+    videoStyleCustomControls, videoStyleCustomInput, videoStyleInfo, videoStyleSelect,
   } = defaultsControls;
-  let refreshSelectedDefaultActions = () => {};
+  let defaultsAutoApply = null;
+  const refreshSelectedDefaultActions = () => defaultsAutoApply?.syncScope();
   sceneDefaultsPanel.classList.add("vrgdg-storyboard-panel");
 
   const {
@@ -366,7 +367,7 @@ export function openStoryboardBuilder(payload = {}) {
 
   const {
     copyStoryLayerForGpt, createStoryArcWithGemma, createStoryBriefWithGemma, detectLyricSections,
-    notifyStoryboardDefaultsChanged, openImportStoryJsonModal, refreshTemporalEffectInfo,
+    notifyStoryboardDefaultsChanged: persistStoryboardDefaults, openImportStoryJsonModal, refreshTemporalEffectInfo,
     refreshVideoStyleInfo, syncStoryLayerFromInputs,
   } = createStoryLayer({
     imageCustomStyleInput, imageWorldStyleSelect, lyricStoryStrengthInput, overallStoryIdeaInput,
@@ -375,6 +376,12 @@ export function openStoryboardBuilder(payload = {}) {
     temporalEffectOptions, temporalIntensityInput, temporalIntensityValue, temporalProtectedCustomControls,
     userStoryArcInput, videoStyleCustomControls, videoStyleInfo,
   });
+
+  function notifyStoryboardDefaultsChanged() {
+    if (state.applyingDefaultsPreset) return;
+    if (defaultsAutoApply) defaultsAutoApply.commit();
+    else persistStoryboardDefaults();
+  }
 
   const {
     absorbSceneReferencesIntoCatalog, addStoryboardReferenceFromFile, applyVideoStyle,
@@ -565,7 +572,7 @@ export function openStoryboardBuilder(payload = {}) {
       shell.querySelector("#vrgdg-storyboard-subtitle").textContent = "Plan the story shared by your scenes.";
       note.textContent = "Develop the overall idea, story arc and scene beats. Save to update the project.";
     } else if (focusedSection === "defaults") {
-      shell.querySelector("#vrgdg-storyboard-subtitle").textContent = "Set project defaults. Use Fill Missing or Replace All to update existing scenes.";
+      shell.querySelector("#vrgdg-storyboard-subtitle").textContent = "Scene Defaults apply automatically to all scenes or only the checked scenes. Story arc detail remains project-wide.";
     }
     refreshActionButtons();
     importImagePromptsButton.style.display = "";
@@ -630,21 +637,21 @@ export function openStoryboardBuilder(payload = {}) {
   wireStoryboardEvents({
     add, adjacentLyricContextInput, applyCameraFlow, applyDialoguePlanButton, applyFacialPerformance,
     applyFilmDialoguePlanToVideoBuilder, applyImageAesthetic, applyImageShotFlow, applyPerformanceStyle,
-    applyVideoStyle, cameraFlowApply, cameraFlowReplace, cameraFlowSelect, cameraSpeedHint, cameraSpeedInput,
+    applyVideoStyle, cameraFlowSelect, cameraSpeedHint, cameraSpeedInput,
     characterSpeedHint, characterSpeedInput, storyArcDetailSelect, clearAllStoryboardPrompts, clearAllStoryboardStoryBeats,
     clearPromptsButton, clearStoryBeatsButton, consistencyInput, copyStoryboardForGpt, copyStoryLayerForGpt,
     createAllSceneBeatsWithGemma, createMissingBeatsButton, createStoryArcButton, createStoryArcWithGemma,
     createStorySequenceButton, createStorySequenceWithGemma,
     createStoryBriefButton, createStoryBriefWithGemma, cutFrequencyHint, cutFrequencyInput, cutStyleSelect,
-    detectLyricSections, detectSectionsButton, exportPromptFiles, exportPrompts, facialApply,
-    facialCustomInput, facialReplace, facialSelect, fxCustomInput, fxSelect, gemmaAllButton, gptButton,
-    gptStoryButton, handleReplaceSceneBeats, imageAestheticApply, imageAestheticPresets,
-    imageAestheticReplace, imageAestheticSelect, imageCustomStyleInput, imageShotApply, imageShotFlowPresets,
-    imageShotReplace, imageShotSelect, imageWorldStyleSelect, importImagePromptsButton, importStoryJsonButton,
+    detectLyricSections, detectSectionsButton, exportPromptFiles, exportPrompts,
+    facialCustomInput, facialSelect, fxCustomInput, fxSelect, gemmaAllButton, gptButton,
+    gptStoryButton, handleReplaceSceneBeats, imageAestheticPresets,
+    imageAestheticSelect, imageCustomStyleInput, imageShotFlowPresets,
+    imageShotSelect, imageWorldStyleSelect, importImagePromptsButton, importStoryJsonButton,
     keepGemmaLoadedInput, lyricStoryStrengthHintButton, lyricStoryStrengthInput,
     notifyStoryboardDefaultsChanged, openCustomCameraFlowDialog, openImportImagePromptsFromGptModal,
     openImportStoryJsonModal, openMiniMaxScriptMapper, openMiniMaxScriptMapperButton, openSceneEditor,
-    overallStoryIdeaInput, performanceApply, performanceReplace, performanceSelect, planDialogueScenesButton,
+    overallStoryIdeaInput, performanceSelect, planDialogueScenesButton,
     planFilmDialogueScenesWithLlm, promptRunnerName, refreshCameraFlowInfo, refreshCameraSpeedInfo,
     refreshCharacterSpeedInfo, refreshConsistencyInfo, refreshCutFrequencyInfo, refreshFacialInfo,
     refreshFxInfo, refreshImageAestheticInfo, refreshImageShotInfo, refreshImageWorldStyleInfo,
@@ -653,22 +660,27 @@ export function openStoryboardBuilder(payload = {}) {
     songStoryBriefInput, startAllPromptsWithGemma, state, stepPrep, stepPrompts, storyLayerEnabledInput,
     syncLyricStoryStrengthLabel, syncStoryLayerFromInputs, temporalEffectCustomInput, temporalEffectSelect,
     temporalEnvironmentInput, temporalExtrasInput, temporalIntensityInput, temporalProtectedCustomInput,
-    temporalProtectedSelect, userStoryArcInput, videoStyleApply, videoStyleCustomInput, videoStyleReplace,
+    temporalProtectedSelect, userStoryArcInput, videoStyleCustomInput,
     videoStyleSelect,
   });
+  defaultsAutoApply = createAutoSceneDefaults({ state, controls: defaultsControls, film: usesFilmPlanningProfile,
+    persist: persistStoryboardDefaults, renderTable, imageShotFlowPresets, imageAestheticPresets,
+    refreshControls: () => {
+      refreshCameraFlowInfo(); refreshCameraSpeedInfo(); refreshCharacterSpeedInfo(); refreshCutFrequencyInfo();
+      refreshPerformanceInfo(); refreshFacialInfo(); refreshConsistencyInfo(); refreshVideoStyleInfo();
+      refreshTemporalEffectInfo(); refreshFxInfo();
+    },
+  });
   const defaultPresets = wireDefaultPresets({ toolbar: defaultsControls.defaultsPresetsToolbar, controls: defaultsControls,
-    state, film: usesFilmPlanningProfile, postJson, createToast, refreshCameraFlowInfo, notifyStoryboardDefaultsChanged });
+    state, film: usesFilmPlanningProfile, postJson, createToast, refreshCameraFlowInfo, notifyStoryboardDefaultsChanged,
+    noteDefaultKeys: keys => defaultsAutoApply.note(keys) });
   // After the saved storyboard loads, show its choices: the Speed / Music style presets and each setting's value.
   state.onDefaultsLoaded = () => {
     defaultPresets.syncFromState();
+    defaultsAutoApply.reset();
     defaultsControls.defaultsCards?.refreshSummaries?.();
   };
   state.onDefaultsLoaded();
-  refreshSelectedDefaultActions = wireSelectedDefaultActions({
-    actions: defaultsControls.selectedDefaultActions,
-    handlers: { applyCameraFlow, applyImageShotFlow, applyImageAesthetic, applyVideoStyle, applyPerformanceStyle, applyFacialPerformance },
-    state,
-  });
   refreshSelectedDefaultActions();
   // Agent API / MCP scene-card edits merged by the Video Builder also appear in this window.
   const externalSync = createStoryboardExternalSync({

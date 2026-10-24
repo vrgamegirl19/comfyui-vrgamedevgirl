@@ -17,21 +17,21 @@ import {
 export function wireStoryboardEvents({
   add, adjacentLyricContextInput, applyCameraFlow, applyDialoguePlanButton, applyFacialPerformance,
   applyFilmDialoguePlanToVideoBuilder, applyImageAesthetic, applyImageShotFlow, applyPerformanceStyle,
-  applyVideoStyle, cameraFlowApply, cameraFlowReplace, cameraFlowSelect, cameraSpeedHint, cameraSpeedInput,
+  applyVideoStyle, cameraFlowSelect, cameraSpeedHint, cameraSpeedInput,
   characterSpeedHint, characterSpeedInput, storyArcDetailSelect, clearAllStoryboardPrompts, clearAllStoryboardStoryBeats,
   clearPromptsButton, clearStoryBeatsButton, consistencyInput, copyStoryboardForGpt, copyStoryLayerForGpt,
   createAllSceneBeatsWithGemma, createMissingBeatsButton, createStoryArcButton, createStoryArcWithGemma,
   createStoryBriefButton, createStoryBriefWithGemma, createStorySequenceButton, createStorySequenceWithGemma,
   cutFrequencyHint, cutFrequencyInput, cutStyleSelect = null, detectLyricSections,
-  detectSectionsButton, exportPromptFiles, exportPrompts, facialApply, facialCustomInput, facialReplace,
+  detectSectionsButton, exportPromptFiles, exportPrompts, facialCustomInput,
   facialSelect, fxCustomInput, fxSelect, gemmaAllButton, gptButton, gptStoryButton, handleReplaceSceneBeats,
-  imageAestheticApply, imageAestheticPresets, imageAestheticReplace, imageAestheticSelect,
-  imageCustomStyleInput, imageShotApply, imageShotFlowPresets, imageShotReplace, imageShotSelect,
+  imageAestheticPresets, imageAestheticSelect,
+  imageCustomStyleInput, imageShotFlowPresets, imageShotSelect,
   imageWorldStyleSelect, importImagePromptsButton, importStoryJsonButton, keepGemmaLoadedInput,
   lyricStoryStrengthHintButton, lyricStoryStrengthInput, notifyStoryboardDefaultsChanged,
   openCustomCameraFlowDialog, openImportImagePromptsFromGptModal, openImportStoryJsonModal,
   openMiniMaxScriptMapper, openMiniMaxScriptMapperButton, openSceneEditor, overallStoryIdeaInput,
-  performanceApply, performanceReplace, performanceSelect, planDialogueScenesButton,
+  performanceSelect, planDialogueScenesButton,
   planFilmDialogueScenesWithLlm, promptRunnerName, refreshCameraFlowInfo, refreshCameraSpeedInfo,
   refreshCharacterSpeedInfo, refreshConsistencyInfo, refreshCutFrequencyInfo, refreshFacialInfo,
   refreshFxInfo, refreshImageAestheticInfo, refreshImageShotInfo, refreshImageWorldStyleInfo,
@@ -40,7 +40,7 @@ export function wireStoryboardEvents({
   songStoryBriefInput, startAllPromptsWithGemma, state, stepPrep, stepPrompts, storyLayerEnabledInput,
   syncLyricStoryStrengthLabel, syncStoryLayerFromInputs, temporalEffectCustomInput, temporalEffectSelect,
   temporalEnvironmentInput, temporalExtrasInput, temporalIntensityInput, temporalProtectedCustomInput,
-  temporalProtectedSelect, userStoryArcInput, videoStyleApply, videoStyleCustomInput, videoStyleReplace,
+  temporalProtectedSelect, userStoryArcInput, videoStyleCustomInput,
   videoStyleSelect,
 }) {
   stepPrompts.onclick = () => setMode("storyboard_prompts");
@@ -197,14 +197,6 @@ export function wireStoryboardEvents({
       "Changing this setting affects newly generated prompts; it does not rewrite existing prompts automatically.",
     ].join("\n"));
   };
-  cameraFlowApply.onclick = () => applyCameraFlow({ overwrite: false });
-  cameraFlowReplace.onclick = () => applyCameraFlow({ overwrite: true });
-  imageShotApply.onclick = () => applyImageShotFlow({ overwrite: false });
-  imageShotReplace.onclick = () => applyImageShotFlow({ overwrite: true });
-  imageAestheticApply.onclick = () => applyImageAesthetic({ overwrite: false });
-  imageAestheticReplace.onclick = () => applyImageAesthetic({ overwrite: true });
-  videoStyleApply.onclick = () => applyVideoStyle({ overwrite: false });
-  videoStyleReplace.onclick = () => applyVideoStyle({ overwrite: true });
   performanceSelect.onchange = () => {
     state.performanceStyle = String(performanceSelect.value || "");
     refreshPerformanceInfo();
@@ -242,10 +234,6 @@ export function wireStoryboardEvents({
     refreshFacialInfo();
   };
   facialCustomInput.addEventListener("change", notifyStoryboardDefaultsChanged);
-  performanceApply.onclick = () => applyPerformanceStyle({ overwrite: false });
-  performanceReplace.onclick = () => applyPerformanceStyle({ overwrite: true });
-  facialApply.onclick = () => applyFacialPerformance({ overwrite: false });
-  facialReplace.onclick = () => applyFacialPerformance({ overwrite: true });
   add.onclick = () => {
     const next = normalizeScene({ scene_number: state.scenes.length + 1, label: `Scene ${state.scenes.length + 1}` }, state.scenes.length);
     state.scenes.push(next);

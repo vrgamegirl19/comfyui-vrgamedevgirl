@@ -60,7 +60,7 @@ class BuilderMiniMaxCutFrequencyTests(unittest.TestCase):
             BUILDER_SOURCE,
         )
         self.assertIn(
-            "? 0 : state.builderStoryboardDefaults?.minimax_h3_cut_frequency);",
+            "? 0 : (segment?.scene_defaults?.minimax_h3_cut_frequency ?? state.builderStoryboardDefaults?.minimax_h3_cut_frequency));",
             BUILDER_SOURCE,
         )
         self.assertIn("cutPlan.instruction,", BUILDER_SOURCE)

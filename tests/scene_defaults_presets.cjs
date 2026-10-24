@@ -17,7 +17,7 @@ function fixture() {
   const context = vm.createContext({ document: { createElement: (tag) => new Element(tag) }, Event,
     window: { confirm: () => true }, Array, Object, String });
   let eventsSource;
-  for (const name of ["controls", "scenes", "shot_presets", "video_style", "defaults_presets", "storyboard_events"]) {
+  for (const name of ["controls", "scene_defaults_state", "scenes", "shot_presets", "video_style", "defaults_presets", "storyboard_events"]) {
     const source = fs.readFileSync(path.join(__dirname, "../web/storyboard_builder", `${name}.mjs`), "utf8")
       .replace(/^import [^;]*;\r?\n/gm, "").replace(/^export /gm, "");
     vm.runInContext(source, context);

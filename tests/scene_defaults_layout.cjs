@@ -22,6 +22,7 @@ class Element {
       this.children.push(child);
     }
   }
+  prepend(node) { this.children.unshift(node); node.parentElement = this; }
   setAttribute(key, value) { this.attributes[key] = value; }
   addEventListener(key, callback) { this.events[key] = callback; }
   get firstElementChild() { return this.children[0]; }
@@ -52,7 +53,7 @@ function fixture() {
     createTextNode: (text) => Object.assign(new Element("#text"), { textContent: text }),
     getElementById: (id) => descendants(document.head).find((element) => element.id === id) };
   const context = vm.createContext({ document, normalizeStoryModeFields: () => ({}), withoutStoryModeKeys: (value) => value || {} });
-  for (const name of ["controls", "scenes", "shot_presets", "video_style", "defaults_cards", "defaults_presets", "defaults_panel_layout"]) {
+  for (const name of ["controls", "scene_defaults_state", "scenes", "shot_presets", "video_style", "defaults_cards", "defaults_presets", "defaults_panel_layout"]) {
     const source = fs.readFileSync(path.join(__dirname, "../web/storyboard_builder", `${name}.mjs`), "utf8")
       .replace(/^import [^;]*;\r?\n/gm, "").replace(/^export /gm, "");
     vm.runInContext(source, context, { filename: name });
@@ -66,7 +67,7 @@ function fixture() {
   return { panel, state, document };
 }
 
-test("Four cards retain every original control, action button and helper", () => {
+test("Four cards retain settings and helpers with scope, result and Undo controls", () => {
   const { panel } = fixture();
   const nodes = descendants(panel.sceneDefaultsPanel);
   assert.deepEqual(nodes.filter((node) => node.tagName === "h3").map((node) => node.textContent),
@@ -85,15 +86,11 @@ test("Four cards retain every original control, action button and helper", () =>
   assert.equal(panel.cameraSpeedInput.min, "0");
   assert.equal(panel.cameraSpeedInput.max, "10");
   assert.equal(panel.cameraFlowSelect.value, "medium_shots");
-  assert.equal(Object.keys(panel.selectedDefaultActions).length, 6);
-  for (const button of Object.values(panel.selectedDefaultActions)) {
-    assert.equal(button.textContent, "Apply to selected");
-    assert.equal(button.hidden, true);
-    assert.equal(nodes.filter((node) => node === button).length, 1);
-    assert.match(button.style.cssText, /padding:5px 8px/);
+  assert.equal(panel.defaultsScope.textContent, "Editing all scenes");
+  assert.equal(panel.defaultsUndo.textContent, "Undo");
+  for (const label of ["Fill Missing", "Replace All", "Apply to selected"]) {
+    assert.ok(!nodes.some(node => node.textContent === label));
   }
-  assert.match(panel.cameraFlowApply.style.cssText, /padding:5px 8px/);
-  assert.match(panel.cameraFlowReplace.style.cssText, /font-size:11px/);
 });
 
 test("each setting header shows its current value, and a reload refreshes it", () => {
@@ -119,7 +116,6 @@ test("Opening across cards closes the previous setting without firing control ha
   const before = JSON.stringify(state);
   let callbacks = 0;
   panel.cameraFlowSelect.events.change = () => { callbacks++; };
-  panel.cameraFlowApply.onclick = () => { callbacks++; };
   const camera = find("Auto camera flow"), face = find("Custom facial text");
   camera.events.click();
   assert.equal(camera.attributes["aria-expanded"], "true");
@@ -133,7 +129,7 @@ test("Opening across cards closes the previous setting without firing control ha
   assert.equal(panel.facialCustomInput.value, "Expression sentinel");
   assert.equal(panel.videoStyleCustomInput.value, "Style sentinel");
   assert.equal(panel.cameraFlowSelect.value, "medium_shots");
-  panel.cameraFlowApply.onclick();
+  panel.cameraFlowSelect.events.change();
   assert.equal(callbacks, 1);
 });
 

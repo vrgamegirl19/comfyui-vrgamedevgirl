@@ -1,3 +1,4 @@
+import { normalizeSceneDefaults } from "./scene_defaults_state.mjs";
 import { normalizeStoryboardScriptImportState } from "./script_import.mjs";
 import { refmodCardFields } from "../music_video_builder/refmod_labels.mjs";
 import { normalizeStoryModeFields } from "../music_video_builder/story_mode_data.mjs";
@@ -146,6 +147,7 @@ export function normalizeScene(scene = {}, index = 0) {
     project_video_engine: normalizeStoryboardProjectVideoEngine(scene.project_video_engine || scene.projectVideoEngine),
     minimax_h3_mode: normalizeStoryboardMiniMaxH3Mode(scene.minimax_h3_mode || scene.minimaxH3Mode),
     minimax_h3_audio_mode: normalizeStoryboardMiniMaxH3AudioMode(scene.minimax_h3_audio_mode || scene.minimaxH3AudioMode),
+    scene_defaults: normalizeSceneDefaults(scene.scene_defaults),
     video_style: String(scene.video_style || scene.videoStyle || ""),
     video_style_custom: String(scene.video_style_custom || scene.videoStyleCustom || ""),
     temporal_world_effect_override: String(scene.temporal_world_effect_override || scene.temporalWorldEffectOverride || "global"),
@@ -249,6 +251,7 @@ export function scenesFromBuilderPayload(payload = {}) {
     project_video_engine: scene.project_video_engine || scene.projectVideoEngine || payload.project_video_engine || payload.projectVideoEngine || "",
     minimax_h3_mode: scene.minimax_h3_mode || scene.minimaxH3Mode || "",
     minimax_h3_audio_mode: scene.minimax_h3_audio_mode || scene.minimaxH3AudioMode || payload.minimax_h3_audio_mode || payload.miniMaxH3AudioMode || "",
+    scene_defaults: normalizeSceneDefaults(scene.scene_defaults),
     video_style: scene.video_style || scene.videoStyle || "",
     video_style_custom: scene.video_style_custom || scene.videoStyleCustom || "",
     temporal_world_effect_override: scene.temporal_world_effect_override || scene.temporalWorldEffectOverride || "global",
@@ -503,8 +506,8 @@ export function storyboardCameraMotionForSpeed(value, speedValue) {
 function enforceHighMotionPromptLanguage(prompt, scene = {}, state = {}) {
   let text = String(prompt || "").trim();
   if (!text) return text;
-  const cameraSpeed = storyboardSpeedValue(scene.camera_motion_speed ?? scene.cameraMotionSpeed ?? state.cameraMotionSpeed, 4);
-  const characterSpeed = storyboardSpeedValue(scene.character_motion_speed ?? scene.characterMotionSpeed ?? state.characterMotionSpeed, 4);
+  const cameraSpeed = storyboardSpeedValue(scene.scene_defaults?.camera_motion_speed ?? scene.camera_motion_speed ?? scene.cameraMotionSpeed ?? state.cameraMotionSpeed, 4);
+  const characterSpeed = storyboardSpeedValue(scene.scene_defaults?.character_motion_speed ?? scene.character_motion_speed ?? scene.characterMotionSpeed ?? state.characterMotionSpeed, 4);
   if (cameraSpeed >= 7) {
     text = storyboardCameraMotionForSpeed(text, cameraSpeed)
       .replace(/\bthen\s+holds?\s+on\b/gi, "then continues moving across")

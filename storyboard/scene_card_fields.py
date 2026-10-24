@@ -19,6 +19,8 @@ import copy
 import math
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
+from .scene_defaults import normalize_scene_defaults
+
 PERFORMANCE_MODES = ("singing", "speaking", "no_lip_sync")
 VIDEO_PROMPT_TYPES = ("i2v", "id_lora", "t2v", "rtv", "ingredients", "flf")
 VIDEO_PROMPT_ORIGINS = ("gemma", "manual")
@@ -62,6 +64,7 @@ SCENE_CARD_FIELDS: Tuple[SceneCardField, ...] = (
     _text_field("notes", aliases=("planning_notes",), limit=4000),
     # The card's Summary (Video Prep). Saved on the Storyboard card only, like the UI.
     SceneCardField("prompt_summary", "text", (), "prompt_summary", ("summary",), (), 1000),
+    SceneCardField("scene_defaults", "scene_defaults", ("scene_defaults",), "scene_defaults"),
     # Camera and character.
     _text_field("shot_type", limit=200),
     _text_field("camera_motion", limit=200),
@@ -188,6 +191,11 @@ def normalize_value(field: SceneCardField, value: Any) -> Any:
         if field.name == "temporal_world_effect_override" and not text:
             return "global"  # the editor saves an empty override as "global"
         return text
+    if field.kind == "scene_defaults":
+        try:
+            return normalize_scene_defaults(value, strict=True)
+        except ValueError as exc:
+            raise SceneCardFieldError(str(exc)) from exc
     if field.kind == "choice":
         return _normalize_choice(field, value)
     if field.kind == "bool":
@@ -268,6 +276,8 @@ def apply_to_segment(segment: Dict[str, Any], values: Dict[str, Any], *, video_e
         elif name == "video_prompt_origin":
             if "video_prompt" not in values:
                 segment[video_prompt_keys(video_engine)[1]] = value
+        elif field.kind == "scene_defaults":
+            segment["scene_defaults"] = {**segment.get("scene_defaults", {}), **value} if value else {}
         elif field.kind == "speakers":
             segment["minimax_speaker_assignments"] = copy.deepcopy(value)
             # syncMiniMaxSpeakerAssignmentLegacyFields: a filled dialogue plan becomes the lyric and singers.
@@ -280,6 +290,16 @@ def apply_to_segment(segment: Dict[str, Any], values: Dict[str, Any], *, video_e
         else:
             for key in field.segment_keys:
                 segment[key] = copy.deepcopy(value)
+    scoped = segment.get("scene_defaults")
+    if isinstance(scoped, dict):
+        for name, key in (("performance_style", "performance_style"), ("facial_performance", "facial_performance"),
+                          ("facial_performance_custom", "facial_performance_custom"),
+                          ("video_style", "minimax_h3_video_style"), ("video_style_custom", "minimax_h3_video_style_custom")):
+            if "scene_defaults" in values and name in scoped:
+                segment[key] = copy.deepcopy(scoped[name])
+            elif name in values and name in scoped:
+                scoped[name] = copy.deepcopy(values[name])
+
 
 
 def apply_to_card(card: Dict[str, Any], values: Dict[str, Any]) -> None:
@@ -288,7 +308,17 @@ def apply_to_card(card: Dict[str, Any], values: Dict[str, Any]) -> None:
         field = FIELDS_BY_NAME[name]
         if field.kind in ("references", "reference") or field.card_key is None:
             continue
-        card[field.card_key] = copy.deepcopy(value)
+        if field.kind == "scene_defaults":
+            card[field.card_key] = {**card.get(field.card_key, {}), **copy.deepcopy(value)} if value else {}
+        else:
+            card[field.card_key] = copy.deepcopy(value)
+    scoped = card.get("scene_defaults")
+    if isinstance(scoped, dict):
+        for name in ("performance_style", "facial_performance", "facial_performance_custom", "video_style", "video_style_custom"):
+            if "scene_defaults" in values and name in scoped:
+                card[name] = copy.deepcopy(scoped[name])
+            elif name in values and name in scoped:
+                scoped[name] = copy.deepcopy(values[name])
     if "video_prompt" in values and "video_prompt_origin" not in values:
         card["video_prompt_origin"] = "manual"
     if "speaker_assignments" in values:

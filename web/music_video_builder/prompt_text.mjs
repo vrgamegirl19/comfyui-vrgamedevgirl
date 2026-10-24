@@ -648,7 +648,7 @@ export function createPromptText({
   function storyboardVideoExtraNotesForSegment(segment, sceneOverride = null) {
     if (!segment) return "";
     const scene = sceneOverride || storyboardScenePayload().find((item) => item.id === segment.id) || {};
-    const defaults = normalizeBuilderStoryboardDefaults(state.builderStoryboardDefaults);
+    const defaults = normalizeBuilderStoryboardDefaults({ ...state.builderStoryboardDefaults, ...segment?.scene_defaults });
     const storyLayer = normalizeBuilderStoryLayer(state.builderStoryLayer);
     const add = (parts, title, value) => {
       const text = String(value || "").trim();
