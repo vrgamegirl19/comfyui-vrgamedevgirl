@@ -95,12 +95,13 @@ export function applyDefaultPreset(settings, { controls, state, refreshCameraFlo
   }
 }
 
-export function wireDefaultPresets({ toolbar, controls, state, film, postJson, createToast, refreshCameraFlowInfo, notifyStoryboardDefaultsChanged, noteDefaultKeys }) {
+export function wireDefaultPresets({ toolbar, controls, state, film, postJson, createToast, refreshCameraFlowInfo, notifyStoryboardDefaultsChanged, noteDefaultKeys, onPresetApplied }) {
   const context = { controls, state, refreshCameraFlowInfo, notifyStoryboardDefaultsChanged, noteDefaultKeys };
   let applying = false;
-  const apply = (settings) => {
+  const apply = (settings, name) => {
     applying = true;
     try { applyDefaultPreset(settings, context); } finally { applying = false; }
+    onPresetApplied?.(name);
   };
   // The chosen Speed and Music style are saved with the Scene Defaults (state.defaultsSpeedPreset and
   // state.defaultsMusicPreset) and shown again when the panel opens.
@@ -120,7 +121,7 @@ export function wireDefaultPresets({ toolbar, controls, state, film, postJson, c
       return;
     }
     remember();
-    apply(SPEED_DEFAULT_PRESETS[toolbar.speed.value]);
+    apply(SPEED_DEFAULT_PRESETS[toolbar.speed.value], `${toolbar.speed.value[0].toUpperCase()}${toolbar.speed.value.slice(1)} speed`);
     toolbar.saved.value = "";
   };
   toolbar.music.onchange = () => {
@@ -130,7 +131,7 @@ export function wireDefaultPresets({ toolbar, controls, state, film, postJson, c
       notifyStoryboardDefaultsChanged();
       return;
     }
-    apply(settings);
+    apply(settings, `${toolbar.music.value[0].toUpperCase()}${toolbar.music.value.slice(1)} music style`);
     toolbar.saved.value = "";
   };
   // Avoid showing a preset label once any of its component settings is edited.
@@ -163,12 +164,12 @@ export function wireDefaultPresets({ toolbar, controls, state, film, postJson, c
   toolbar.load.onclick = () => busy(async () => {
     if (!toolbar.saved.value) throw new Error("Choose a saved preset first.");
     const data = await postJson("/vrgdg/music_builder/load_scene_defaults_preset", { name: toolbar.saved.value });
-    apply(data.preset.settings);
+    apply(data.preset.settings, data.preset.name);
     toolbar.speed.value = "";
     toolbar.music.value = "";
     remember();
     toolbar.name.value = data.preset.name;
-    createToast(`Loaded Scene Defaults preset: ${data.preset.name}`);
+    if (!onPresetApplied) createToast(`Loaded Scene Defaults preset: ${data.preset.name}`);
   });
   toolbar.saved.onchange = () => toolbar.saved.value ? toolbar.load.onclick() : undefined;
   toolbar.save.onclick = () => busy(async () => {

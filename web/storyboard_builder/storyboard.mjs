@@ -671,9 +671,16 @@ export function openStoryboardBuilder(payload = {}) {
       refreshTemporalEffectInfo(); refreshFxInfo();
     },
   });
+  let presetConfirmation = null;
   const defaultPresets = wireDefaultPresets({ toolbar: defaultsControls.defaultsPresetsToolbar, controls: defaultsControls,
     state, film: usesFilmPlanningProfile, postJson, createToast, refreshCameraFlowInfo, notifyStoryboardDefaultsChanged,
-    noteDefaultKeys: keys => defaultsAutoApply.note(keys) });
+    noteDefaultKeys: keys => defaultsAutoApply.note(keys),
+    onPresetApplied: name => {
+      presetConfirmation?.close();
+      presetConfirmation = createStoryboardProgressWindow("Scene Defaults");
+      presetConfirmation.set(`Preset: ${name}\n${defaultsControls.defaultsResult.textContent}`, 100);
+    },
+  });
   // After the saved storyboard loads, show its choices: the Speed / Music style presets and each setting's value.
   state.onDefaultsLoaded = () => {
     defaultPresets.syncFromState();
@@ -713,6 +720,7 @@ export function openStoryboardBuilder(payload = {}) {
   function closeStoryboard() {
     if (state.saving) return;
     window.removeEventListener(STORYBOARD_EXTERNAL_CHANGE_EVENT, onExternalChange);
+    presetConfirmation?.close();
     backdrop.remove();
     payload.onClose?.();
   }
@@ -746,7 +754,7 @@ export function openStoryboardBuilder(payload = {}) {
     const what = spec.beat && spec.prompt ? "scene beat + LLM prompt" : spec.beat ? "scene beat" : "LLM prompt";
     state.selected = new Set([scene.id]);
     setMode("image_to_video_prep");
-    const progress = createStoryboardProgressWindow(`${sceneLabel}: replace ${what} — ${promptRunnerName()}`);
+    const progress = createStoryboardProgressWindow(`${sceneLabel}: replace ${what} â€” ${promptRunnerName()}`);
     try {
       if (spec.beat) {
         await createSceneBeatWithGemma(scene, {

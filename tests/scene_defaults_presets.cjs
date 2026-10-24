@@ -145,3 +145,24 @@ test("the chosen Speed and Music style are remembered and shown again", async ()
   wired.syncFromState();
   assert.equal(toolbar.speed.value, "slow", "a reloaded storyboard's choice is shown");
 });
+
+test("choosing or replacing speed, music and saved presets confirms immediately after applying", async () => {
+  const f = fixture(), toolbar = f.context.buildDefaultPresetsToolbar();
+  const confirmations = [];
+  f.context.wireDefaultPresets({ toolbar, controls: f.args, state: f.state, film: false,
+    postJson: async url => url.includes("list_") ? { presets: [{ name: "Gentle verse" }] }
+      : { preset: { name: "Gentle verse", settings: { characterMotionSpeed: 1 } } },
+    createToast() {}, refreshCameraFlowInfo: f.args.refreshCameraFlowInfo,
+    notifyStoryboardDefaultsChanged: f.args.notifyStoryboardDefaultsChanged,
+    onPresetApplied: name => confirmations.push({ name, saves: f.notifications(), speed: f.state.characterMotionSpeed }),
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  toolbar.speed.value = "slow"; toolbar.speed.onchange();
+  assert.deepEqual(confirmations[0], { name: "Slow speed", saves: 1, speed: 2 });
+  toolbar.speed.value = "fast"; toolbar.speed.onchange();
+  assert.deepEqual(confirmations[1], { name: "Fast speed", saves: 2, speed: 8 });
+  toolbar.music.value = "metal"; toolbar.music.onchange();
+  assert.equal(confirmations[2].name, "Metal music style");
+  toolbar.saved.value = "Gentle verse"; await toolbar.saved.onchange();
+  assert.deepEqual(confirmations[3], { name: "Gentle verse", saves: 4, speed: 1 });
+});
