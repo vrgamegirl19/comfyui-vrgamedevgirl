@@ -59,14 +59,14 @@ function parameters(source) {
     .split(',').map(name => name.trim()).filter(Boolean).map(name => [name, new Element()]));
 }
 
-test('timeline owns the global timing checkbox at the far right', () => {
+test('timeline has a single Scenes lock with no Freeze SRT timing checkbox', () => {
   const c = fixture();
   vm.runInContext(functionSource(readBuilderModule('timeline_view.mjs'), 'buildTimelineView'), c);
   const layout = c.buildTimelineView({ overlay: new Element(), preview: new Element(), previewStage: new Element() });
-  const wrapper = layout.freezeTimingControl.wrapper;
-  assert.equal(wrapper.parentElement.children.at(-1), wrapper);
-  assert.match(wrapper.style.cssText, /margin-left:auto/);
-  assert.equal(wrapper.children.at(-1).textContent, 'Freeze SRT timing');
+  assert.equal(layout.freezeTimingControl, undefined);
+  assert.equal(layout.sceneDragLockButton.parentElement.children.at(-1), layout.sceneDragLockButton);
+  const texts = node => [node.textContent, ...node.children.flatMap(texts)];
+  assert.ok(!texts(layout.sceneDragLockButton.parentElement).includes('Freeze SRT timing'));
 });
 
 test('inspector has three tabs and migrates old Scene selection to Image', () => {
@@ -122,26 +122,55 @@ test('Scene Options reuses the scene controls and survives closing and reopening
   assert.equal(syncs, 2);
 });
 
-test('global timing change saves the shared state without a selected scene', async () => {
+for (const dragLocked of [true, false]) {
+  test(`Scenes Unlocked releases a saved timing freeze when drag lock is ${dragLocked}`, async () => {
+    const c = fixture();
+    const module = readBuilderModule('timeline_view.mjs');
+    c.SCENE_DRAG_LOCK_KEY = 'scenes-locked';
+    const stored = [];
+    c.localStorage = { setItem: (key, value) => stored.push(value) };
+    for (const name of ['syncSceneDragLockButton', 'wireSceneDragLock']) vm.runInContext(functionSource(module, name), c);
+    const button = new Element('button');
+    const state = { timingFrozen: true, timelineDragLocked: dragLocked };
+    const history = [], saved = [];
+    let syncs = 0;
+    c.wireSceneDragLock({ button, state,
+      pushHistory: () => history.push(state.timingFrozen), syncInspector: () => syncs++, render() {},
+      autoSaveSessionQuiet: async () => saved.push(state.timingFrozen) });
+    assert.equal(button['aria-pressed'], 'true');
+    await button.onclick();
+    assert.equal(state.timingFrozen, false);
+    assert.equal(state.timelineDragLocked, false);
+    assert.equal(button['aria-pressed'], 'false');
+    assert.deepEqual(history, [true]);
+    assert.deepEqual(saved, [false]);
+    assert.equal(syncs, 1);
+    assert.deepEqual(stored, ['0']);
+    await button.onclick();
+    assert.equal(state.timelineDragLocked, true);
+    assert.equal(state.timingFrozen, false, 'ordinary scene lock keeps its original drag-only behavior');
+    assert.deepEqual(stored, ['0', '1']);
+    assert.equal(saved.length, 1);
+    // Project reload or undo can restore a timing freeze after the button was unlocked.
+    state.timelineDragLocked = false;
+    state.timingFrozen = true;
+    c.syncSceneDragLockButton(button, state);
+    assert.equal(button['aria-pressed'], 'true');
+  });
+}
+
+test('scene lock still works when browser storage is unavailable', async () => {
   const c = fixture();
-  const source = functionSource(readBuilderModule('timeline_events.mjs'), 'wireTimelineControls');
-  vm.runInContext(source, c);
-  const input = new Element('input');
-  const state = { timingFrozen: false };
-  const saved = [];
-  const history = [];
-  c.wireTimelineControls({ ...parameters(source), state, freezeTimingControl: { input },
-    snapToBeatsControl: { input: new Element('input') },
-    pushHistory: () => history.push(state.timingFrozen), syncInspector() {}, render() {},
-    autoSaveSessionQuiet: async () => saved.push(state.timingFrozen) });
-  for (const checked of [true, false]) {
-    input.checked = checked;
-    input.events.change();
-    await Promise.resolve();
-    assert.equal(state.timingFrozen, checked);
-  }
-  assert.deepEqual(history, [false, true]);
-  assert.deepEqual(saved, [true, false]);
+  c.SCENE_DRAG_LOCK_KEY = 'scenes-locked';
+  c.localStorage = { setItem() { throw new Error('Storage blocked'); } };
+  const module = readBuilderModule('timeline_view.mjs');
+  for (const name of ['syncSceneDragLockButton', 'wireSceneDragLock']) vm.runInContext(functionSource(module, name), c);
+  const button = new Element('button'), state = {};
+  c.wireSceneDragLock({ button, state, pushHistory() {}, syncInspector() {}, render() {}, autoSaveSessionQuiet: async () => {} });
+  await button.onclick();
+  assert.equal(state.timelineDragLocked, false);
+  await button.onclick();
+  assert.equal(state.timelineDragLocked, true);
 });
 
 test('one shared timing lock blocks every scene drag and unlock restores editing', () => {

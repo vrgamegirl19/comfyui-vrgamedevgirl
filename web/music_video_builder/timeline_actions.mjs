@@ -146,7 +146,7 @@ export function createTimelineActions({
   activeSegment, addOverlaySegmentButton, addSceneImageHistoryPath, allEditableSegments, audio,
   autoSaveSessionQuiet, baseSceneVideoTrimKind, chooseRenderedSceneTrimAtPlayhead, closeBaseTimelineGap,
   currentGlobalTime, customImageFileInput, enforceAudioTimelineEnd,
-  ensureSegmentRuntimeFields, freezeTimingControl, loadDirtyLatentBadges, loadedGlobalAudioDuration,
+  ensureSegmentRuntimeFields, loadDirtyLatentBadges, loadedGlobalAudioDuration,
   nextFreeTimelineMarkerRange, nextOverlaySlotNumber, openTimelineMarkerEditor, overlayTrackToggleButton,
   pauseTimelineForEditing, playbackSegmentAtTime, previewVideo, projectInput, pushHistory, render, renderList,
   requireActiveSegment, sceneAudio, sceneListPane, sceneSlotNumber, segmentImageSource, segmentIndexInfo,
@@ -836,7 +836,6 @@ export function createTimelineActions({
     state.sceneAudioGlobalTime = 0;
     sceneAudio.removeAttribute("src");
     sceneAudio.load();
-    freezeTimingControl.input.checked = false;
     // Clear stale visual blocks immediately. The normal render below rebuilds
     // labels/overlays, but deleted scene nodes must never survive a render error.
     segmentLayer.textContent = "";

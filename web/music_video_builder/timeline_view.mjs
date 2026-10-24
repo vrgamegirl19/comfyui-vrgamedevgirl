@@ -45,6 +45,41 @@ import {
   STEM_COLORS, STEM_LABELS, getStemLanes, requestOpenAudioMask, requestStemEdit, stemRowNames,
 } from "./audio_mask_store.mjs";
 
+export function syncSceneDragLockButton(button, state) {
+  if (!button) return;
+  const locked = state.timelineDragLocked !== false || Boolean(state.timingFrozen);
+  button.textContent = locked ? "🔒 Scenes Locked" : "🔓 Scenes Unlocked";
+  button.title = locked
+    ? "Scenes cannot be dragged or resized. Click to unlock, including any saved or imported timing freeze."
+    : "Scenes can be dragged and resized. Click to lock them in place.";
+  button.setAttribute("aria-pressed", String(locked));
+  button.style.borderColor = locked ? "#22c55e" : "#f59e0b";
+  button.style.color = locked ? "#bbf7d0" : "#fde68a";
+}
+
+export function wireSceneDragLock({ button, state, pushHistory, syncInspector, render, autoSaveSessionQuiet }) {
+  if (!button) return;
+  button.onclick = async () => {
+    const locked = state.timelineDragLocked !== false || Boolean(state.timingFrozen);
+    const releaseTimingFreeze = Boolean(state.timingFrozen);
+    if (releaseTimingFreeze) pushHistory();
+    state.timelineDragLocked = !locked;
+    if (releaseTimingFreeze) state.timingFrozen = false;
+    try {
+      localStorage.setItem(SCENE_DRAG_LOCK_KEY, state.timelineDragLocked ? "1" : "0");
+    } catch {
+      // Storage may be blocked; the drag lock still applies for this session.
+    }
+    syncSceneDragLockButton(button, state);
+    if (releaseTimingFreeze) syncInspector();
+    render();
+    if (releaseTimingFreeze) {
+      await autoSaveSessionQuiet("scene timing unlocked").catch((error) => toast(String(error), true));
+    }
+  };
+  syncSceneDragLockButton(button, state);
+}
+
 // One track per stem (vocals, drums, bass, guitar, piano, other) and a masked mix track, under the scenes that have been
 // split in the Audio Mask window. A track is as wide as its scene and as tall as a waveform row.
 const STEM_ROW_HEIGHT = TIMELINE_SEGMENT_HEIGHT; // as tall as a scene block
@@ -326,13 +361,9 @@ export function buildTimelineView({ overlay, preview, previewStage, getDeleteAva
   latentContinuationOffAllButton.style.cssText += "flex:0 0 auto;padding:7px 10px;";
   const unlockAllScenesButton = makeButton("Unlock All Scenes");
   unlockAllScenesButton.title = "Unlock every scene's video settings so all scenes follow the global video mode, models, and settings.";
-  // Stops scenes being dragged or resized by accident; on by default. Freeze SRT timing below is the stricter lock
-  // that also blocks typed times and timing tools.
+  // One visible scene lock; unlocking also releases saved/imported strict timing freezes.
   const sceneDragLockButton = makeButton("🔒 Scenes Locked");
   sceneDragLockButton.style.cssText += "flex:0 0 auto;padding:7px 10px;";
-  const freezeTimingControl = makeCheckbox("Freeze SRT timing", false);
-  freezeTimingControl.wrapper.style.cssText += "margin-left:auto;flex:0 0 auto;";
-  freezeTimingControl.wrapper.title = "Lock all scene start/end times. Uncheck to adjust scene lengths.";
   timelineHeader.style.cssText = "display:flex;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid #27272a;font-size:12px;overflow-x:auto;overflow-y:hidden;white-space:nowrap;";
   const bulkSegmentsButton = makeButton("Bulk Segments");
   const sceneNoteButton = makeButton("+ Scene Note");
@@ -514,7 +545,7 @@ export function buildTimelineView({ overlay, preview, previewStage, getDeleteAva
   addOverlaySegmentButton.textContent = "+ Overlay Track";
   timelineToolRail.append(bulkSegmentsButton, sceneNoteButton, videoNoteButton, lyricNoteButton, emotionTagButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton, audioMaskButton, stemMonitorButton, stemVisibilityButton);
   timelineHeader.append(toolsButton, splitSceneButton, idLoraTrimModeButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineStatusInfo, deleteSegmentButton, deleteAllButton);
-  timelineHeader.append(addAudioClipButton, sceneDragLockButton, freezeTimingControl.wrapper);
+  timelineHeader.append(addAudioClipButton, sceneDragLockButton);
   const timelineBody = document.createElement("div");
   timelineBody.style.cssText = "display:grid;grid-template-columns:auto minmax(0,1fr);min-height:0;overflow:hidden;";
   const timelineViewport = document.createElement("div");
@@ -536,7 +567,7 @@ export function buildTimelineView({ overlay, preview, previewStage, getDeleteAva
   return {
     addOverlaySegmentButton, addSegmentButton, addTimelineMarkerButton, audioMaskButton, beatMarkersButton, bulkSegmentsButton, stemMonitorButton, stemVisibilityButton,
     clearRangeButton, closeTimelineGapsButton, deleteAllSegmentsButton, deleteAllTimelineImagesButton,
-    deleteAllTimelineVideosButton, deleteSegmentButton, freezeTimingControl, globalAudioMuteButton, addAudioClipButton,
+    deleteAllTimelineVideosButton, deleteSegmentButton, globalAudioMuteButton, addAudioClipButton,
     globalScrub, globalScrubTime, idLoraTrimModeButton, lyricNoteButton, emotionTagButton, locationThumbnailButton, multiSelectButton,
     multiSelectHintButton, overlayTrackHintButton, overlayTrackToggleButton, playButton, playhead, redoButton,
     refreshDeleteActions, sceneDragLockButton, sceneNoteButton, segmentLayer, setInButton, setOutButton, snapSceneEdgeButton,
@@ -560,28 +591,7 @@ export function createTimelineView({
   locationThumbnailButton, refreshDeleteActions, latentContinuationOffAllButton, unlockAllScenesButton,
   sceneDragLockButton = null,
 }) {
-  if (sceneDragLockButton) {
-    const draw = () => {
-      const locked = state.timelineDragLocked !== false;
-      sceneDragLockButton.textContent = locked ? "🔒 Scenes Locked" : "🔓 Scenes Unlocked";
-      sceneDragLockButton.title = locked
-        ? "Scenes can't be dragged or resized on the timeline, so their timing can't change by accident. Click to unlock them."
-        : "Scenes can be dragged and resized. Click to lock them in place.";
-      sceneDragLockButton.style.borderColor = locked ? "#22c55e" : "#f59e0b";
-      sceneDragLockButton.style.color = locked ? "#bbf7d0" : "#fde68a";
-    };
-    sceneDragLockButton.onclick = () => {
-      state.timelineDragLocked = state.timelineDragLocked === false;
-      try {
-        localStorage.setItem(SCENE_DRAG_LOCK_KEY, state.timelineDragLocked ? "1" : "0");
-      } catch {
-        // Storage may be blocked; the lock still applies for this session.
-      }
-      draw();
-      render();
-    };
-    draw();
-  }
+  wireSceneDragLock({ button: sceneDragLockButton, state, pushHistory, syncInspector, render, autoSaveSessionQuiet });
   wireLatentContinuationOffAll({ button: latentContinuationOffAllButton, state, pushHistory, syncInspector, render, autoSaveSessionQuiet });
   wireUnlockAllScenes({ button: unlockAllScenesButton, state, pushHistory, syncInspector, render, autoSaveSessionQuiet });
   let showLocationThumbnails = false;
@@ -1207,6 +1217,7 @@ export function createTimelineView({
   }
 
   function renderSegments() {
+    syncSceneDragLockButton(sceneDragLockButton, state);
     refreshDeleteActions();
     refreshStemBand();
     segmentLayer.textContent = "";

@@ -158,7 +158,7 @@ export function createSelectionPreview({
   ernieMmprojSelect, ernieNotesInput, ernieRefImagePanel, ernieT2IPrompt, ernieTextGemmaModelSelect,
   ernieUseVisionReference, firstLastFramePromptReferences, firstLastFrameResolvedEndImageSource,
   firstLastFrameStartImageSource, flfTransitionTypeSelect, flowGptCreatePromptButton, fluxPrompt,
-  fluxUseDirectorNotes, fluxUseTextOnlyGemmaPrompt, freezeTimingControl, gemmaModelSelect, globalAudioSummary,
+  fluxUseDirectorNotes, fluxUseTextOnlyGemmaPrompt, gemmaModelSelect, globalAudioSummary,
   globalScrub, globalScrubTime, i2vGemmaModelSelect, i2vMmprojSelect, i2vMotionJsonInput, i2vNotesInput,
   i2vPrompt, i2vTextGemmaModelSelect, i2vUseGgufModel, isSegmentMultiSelected, isTimelinePlaying,
   krea2TwoPassCreateT2IButton, krea2TwoPassNotesInput, krea2TwoPassRefImagePanel, krea2TwoPassT2IPrompt,
@@ -1017,7 +1017,6 @@ export function createSelectionPreview({
     const isOverlay = segmentTrack(segment) === "overlay";
     startInput.disabled = disabled || (!isOverlay && state.timingFrozen) || lockedByVideo;
     endInput.disabled = disabled || (!isOverlay && state.timingFrozen) || lockedByVideo;
-    freezeTimingControl.input.checked = Boolean(state.timingFrozen);
     promptJsonInput.value = state.promptJsonPath || "";
     i2vMotionJsonInput.value = state.i2vMotionJsonPath || "";
     useSceneErnieImageSettings.input.checked = Boolean(segment?.use_scene_ernie_image_settings);

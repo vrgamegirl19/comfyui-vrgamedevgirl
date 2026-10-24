@@ -11,7 +11,7 @@ export function wireTimelineControls({
   clearActiveSegment, closeBeatCalibrationWizard, currentGlobalTime,
   deleteAllSegments, deleteAllSegmentsButton, deleteAllTimelineImages, deleteAllTimelineImagesButton,
   deleteAllTimelineVideos, deleteAllTimelineVideosButton, deleteSegment, deleteSegmentButton,
-  enforceAudioTimelineEnd, ensureAutoBpmForCalibration, freezeTimingControl,
+  enforceAudioTimelineEnd, ensureAutoBpmForCalibration,
   ensureCapCutBeatsForCalibration, ensureGlobalTimelineAudioSource, globalAudioMuteButton, globalScrub,
   isTimelinePlaying, lyricNoteButton, emotionTagButton, multiSelectButton, multiSelectHintButton, openBeatCalibrationWizard,
   openMultiSelectChooser, pauseAllAudio, playbackDuration, playbackSegmentAtTime, playButton, playhead,
@@ -25,14 +25,6 @@ export function wireTimelineControls({
   updatePlayPauseButton, usingSceneAudioPlaybackMode, videoNoteButton,
   waitForPreviewVideoReady, waveformModeSelect, zoomInButton, zoomOutButton, prepareAudioEdits,
 }) {
-  freezeTimingControl.input.addEventListener("change", () => {
-    pushHistory();
-    state.timingFrozen = Boolean(freezeTimingControl.input.checked);
-    syncInspector();
-    render();
-    toast(state.timingFrozen ? "All scene timing frozen." : "Scene timing unlocked for editing.");
-    autoSaveSessionQuiet("global scene timing lock changed").catch((error) => toast(String(error), true));
-  });
   deleteSegmentButton.onclick = deleteSegment;
   deleteAllSegmentsButton.onclick = deleteAllSegments;
   deleteAllTimelineVideosButton.onclick = deleteAllTimelineVideos;
