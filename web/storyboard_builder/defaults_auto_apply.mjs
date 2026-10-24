@@ -45,6 +45,7 @@ export function createAutoSceneDefaults({ state, controls, persist, renderTable,
   const syncScope = () => {
     const rows = targets(), selected = Boolean(state.selected?.size);
     defaultsScope.textContent = selected ? `Editing selected scenes: ${numbers(rows) || "none (selection unavailable)"}` : "Editing all scenes";
+    if (controls.defaultsScopeFooter) controls.defaultsScopeFooter.textContent = defaultsScope.textContent;
     defaultsScope.title = "Camera, editing, performance and facial settings are stored per scene. Only fields you change are updated. Story arc detail is project-wide.";
     const signature = (selected ? "selected:" : "all:") + rows.map(row => row.scene.id).join("|")
       + JSON.stringify(rows.map(row => row.scene.scene_defaults || {}));
@@ -121,7 +122,7 @@ export function createAutoSceneDefaults({ state, controls, persist, renderTable,
           .filter(key => !same(value.scene_defaults?.[key], current.scene_defaults?.[key]));
         return { id, keys: keys.filter(key => key !== "scene_defaults"), defaultsKeys, value };
       });
-      undo = { patches, globalBefore, globalKeys: SNAPSHOT_KEYS.filter(key => !same(globalBefore[key], state[key])) };
+      undo = { patches, scope: numbers(rows), storyChanged, globalBefore, globalKeys: SNAPSHOT_KEYS.filter(key => !same(globalBefore[key], state[key])) };
       baseline = snapshot(state);
       defaultsResult.textContent = fields.length
         ? (!selected ? (rows.length === state.scenes.length && rows.length ? "Updated all scenes"
@@ -153,9 +154,13 @@ export function createAutoSceneDefaults({ state, controls, persist, renderTable,
       }
     }
     for (const key of undo.globalKeys) state[key] = clone(undo.globalBefore[key]);
+    const undoneScope = undo.scope;
+    const undoneStory = undo.storyChanged;
     undo = null; baseline = snapshot(state); pending.clear();
-    defaultsUndo.hidden = true; defaultsResult.textContent = "Scene Defaults update undone";
-    lastScope = null; syncScope(); renderTable(); persist(); refreshDisplay(state);
+    defaultsUndo.hidden = true;
+    defaultsResult.textContent = undoneScope ? `Undid update to scenes ${undoneScope}`
+      : undoneStory ? "Undid project-wide story arc detail update" : "Scene Defaults update undone";
+    lastScope = null; syncScope(); renderTable(); persist();
   };
   return { commit, syncScope, note(keys) { for (const key of keys) pending.add(key); }, reset() { baseline = snapshot(state); pending.clear(); lastScope = null; syncScope(); } };
 }

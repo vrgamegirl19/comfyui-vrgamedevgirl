@@ -443,13 +443,17 @@ export function buildSceneDefaultsPanel({
   defaultsScope.textContent = "Editing all scenes";
   defaultsScope.style.cssText = "padding:10px;color:#a5f3fc;font-size:13px;font-weight:700;";
   defaultsScope.setAttribute("role", "status");
+  const defaultsScopeFooter = document.createElement("div");
+  defaultsScopeFooter.textContent = defaultsScope.textContent;
+  defaultsScopeFooter.style.cssText = "flex:1 0 100%;color:#a5f3fc;font-size:13px;font-weight:700;";
+  defaultsScopeFooter.setAttribute("role", "status");
   const defaultsResult = document.createElement("span");
   defaultsResult.setAttribute("aria-live", "polite");
   const defaultsUndo = makeButton("Undo");
   defaultsUndo.hidden = true;
   const resultRow = document.createElement("div");
-  resultRow.style.cssText = "display:flex;align-items:center;gap:10px;padding:8px 10px;";
-  resultRow.append(defaultsResult, defaultsUndo);
+  resultRow.style.cssText = "display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:8px 10px;";
+  resultRow.append(defaultsScopeFooter, defaultsResult, defaultsUndo);
   cameraFlowBar.prepend(defaultsScope);
   cameraFlowBar.append(defaultsCards, resultRow);
   const sceneDefaultsPanel = makeCollapsiblePanel("Scene Defaults", "", cameraFlowBar, { open: focusedSection === "defaults" });
@@ -457,7 +461,7 @@ export function buildSceneDefaultsPanel({
   sceneDefaultsPanel.firstElementChild.lastElementChild.style.cssText += "justify-self:end;max-width:min(100%,420px);font-size:11px;";
 
   return {
-    defaultsCards, defaultsPresetsToolbar, defaultsScope, defaultsResult, defaultsUndo,
+    defaultsCards, defaultsPresetsToolbar, defaultsScope, defaultsScopeFooter, defaultsResult, defaultsUndo,
     cameraFlowControls, cameraFlowInfo, cameraFlowSelect,
     cameraSpeedControls, cameraSpeedHint, cameraSpeedInfo, cameraSpeedInput, cameraSpeedValue,
     characterSpeedControls, characterSpeedHint, characterSpeedInfo, characterSpeedInput, characterSpeedValue,
