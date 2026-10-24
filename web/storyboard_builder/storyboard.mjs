@@ -305,7 +305,6 @@ export function openStoryboardBuilder(payload = {}) {
     videoStyleCustomControls, videoStyleCustomInput, videoStyleInfo, videoStyleSelect,
   } = defaultsControls;
   let defaultsAutoApply = null;
-  let presetConfirmation = null;
   const refreshSelectedDefaultActions = () => defaultsAutoApply?.syncScope();
   sceneDefaultsPanel.classList.add("vrgdg-storyboard-panel");
 
@@ -665,9 +664,7 @@ export function openStoryboardBuilder(payload = {}) {
     videoStyleSelect,
   });
   function showDefaultsConfirmation(message) {
-    presetConfirmation?.close();
-    presetConfirmation = createStoryboardProgressWindow("Scene Defaults");
-    presetConfirmation.set(message, 100);
+    defaultsControls.defaultsResult.textContent = message;
   }
   defaultsAutoApply = createAutoSceneDefaults({ state, controls: defaultsControls, film: usesFilmPlanningProfile,
     persist: persistStoryboardDefaults, renderTable, imageShotFlowPresets, imageAestheticPresets,
@@ -682,7 +679,7 @@ export function openStoryboardBuilder(payload = {}) {
     state, film: usesFilmPlanningProfile, postJson, createToast, refreshCameraFlowInfo, notifyStoryboardDefaultsChanged,
     noteDefaultKeys: keys => defaultsAutoApply.note(keys),
     onPresetApplied: (name, details) => {
-      showDefaultsConfirmation(`Preset: ${name}\n${defaultsControls.defaultsResult.textContent}\n\n${details}`);
+      showDefaultsConfirmation(`Preset: ${name}\n${defaultsControls.defaultsResult.textContent}\n${details}`);
     },
   });
   // After the saved storyboard loads, show its choices: the Speed / Music style presets and each setting's value.
@@ -724,7 +721,6 @@ export function openStoryboardBuilder(payload = {}) {
   function closeStoryboard() {
     if (state.saving) return;
     window.removeEventListener(STORYBOARD_EXTERNAL_CHANGE_EVENT, onExternalChange);
-    presetConfirmation?.close();
     backdrop.remove();
     payload.onClose?.();
   }
@@ -758,7 +754,7 @@ export function openStoryboardBuilder(payload = {}) {
     const what = spec.beat && spec.prompt ? "scene beat + LLM prompt" : spec.beat ? "scene beat" : "LLM prompt";
     state.selected = new Set([scene.id]);
     setMode("image_to_video_prep");
-    const progress = createStoryboardProgressWindow(`${sceneLabel}: replace ${what} â€” ${promptRunnerName()}`);
+    const progress = createStoryboardProgressWindow(`${sceneLabel}: replace ${what} — ${promptRunnerName()}`);
     try {
       if (spec.beat) {
         await createSceneBeatWithGemma(scene, {

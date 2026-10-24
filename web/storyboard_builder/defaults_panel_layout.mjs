@@ -449,6 +449,7 @@ export function buildSceneDefaultsPanel({
   defaultsScopeFooter.setAttribute("role", "status");
   const defaultsResult = document.createElement("span");
   defaultsResult.setAttribute("aria-live", "polite");
+  defaultsResult.style.cssText = "white-space:pre-line;line-height:1.5;overflow-wrap:anywhere;min-width:0;";
   const defaultsUndo = makeButton("Undo");
   defaultsUndo.hidden = true;
   const resultRow = document.createElement("div");
