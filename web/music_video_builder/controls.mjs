@@ -414,7 +414,7 @@ export function makeI2VNodeOverridePassPanel(passLabel, controls) {
   return panel;
 }
 
-export function makeSubTabs(tabs = []) {
+export function makeSubTabs(tabs = [], { modelSelectionLabel = "" } = {}) {
   const wrapper = document.createElement("div");
   wrapper.style.cssText = "display:flex;flex-direction:column;gap:8px;";
   const tabBar = document.createElement("div");
@@ -422,10 +422,13 @@ export function makeSubTabs(tabs = []) {
   const panels = document.createElement("div");
   panels.style.cssText = "display:flex;flex-direction:column;gap:8px;";
   const buttons = [];
+  const modelTab = modelSelectionLabel ? tabs.find((tab) => tab.value === "models") : null;
+  const visibleTabs = tabs.filter((tab) => tab !== modelTab);
   const setActive = (value) => {
+    if (!visibleTabs.some((tab) => tab.value === value)) value = visibleTabs[0]?.value;
     for (const item of tabs) {
-      const active = item.value === value;
-      item.content.style.display = active ? "flex" : "none";
+      const active = item !== modelTab && item.value === value;
+      if (item.content.parentElement === panels) item.content.style.display = active ? "flex" : "none";
     }
     for (const button of buttons) {
       const active = button.dataset.value === value;
@@ -440,12 +443,12 @@ export function makeSubTabs(tabs = []) {
     button.dataset.value = tab.value;
     button.onclick = () => setActive(tab.value);
     buttons.push(button);
-    tabBar.append(button);
+    if (tab !== modelTab) tabBar.append(button);
     panels.append(tab.content);
   }
   wrapper.append(tabBar, panels);
   setActive(tabs[0]?.value || "");
-  return { wrapper, setActive };
+  return { wrapper, setActive, modelSelection: modelTab ? { label: modelSelectionLabel, content: modelTab.content } : null };
 }
 
 export function toast(message, isError = false) {

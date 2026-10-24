@@ -80,6 +80,7 @@ function builderResourceMeterMarkup(meter) {
 }
 
 export function wireToolbar({
+  modelSelections = [],
   render,
   activeSegment, addOverlaySegment, addOverlaySegmentButton, addSegment, addSegmentButton,
   addTimelineMarkerButton, addTimelineMarkerFromSelection, applyBuilderFullscreen, autoBuildButton,
@@ -290,7 +291,7 @@ export function wireToolbar({
   fullBuildButton.onclick = confirmAndRunFullBuild;
   fullFLFBuildButton.onclick = confirmAndRunFullFLFBuild;
   stopWorkflowButton.onclick = stopCurrentWorkflow;
-  downloadModelsButton.onclick = showModelDownloadModal;
+  downloadModelsButton.onclick = () => showModelDownloadModal({ modelSelections });
   fullscreenButton.onclick = () => applyBuilderFullscreen(!fullscreen.enabled);
   openSceneAudioOptionsButton.onclick = () => {
     const segment = requireActiveSegment();
@@ -533,7 +534,7 @@ export function buildTopbar({
   const fullBuildButton = makeButton("Build Full Video");
   const fullFLFBuildButton = makeButton("Build Full FLF Video");
   const stopWorkflowButton = makeButton("Stop");
-  const downloadModelsButton = makeButton("Download Models");
+  const downloadModelsButton = makeButton("Models");
   const buyMeACoffeeButton = makeBuyMeACoffeeButton();
   const updateV10Button = makeButton("Update to Latest");
   updateV10Button.style.background = "#9a3412";

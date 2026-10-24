@@ -783,7 +783,7 @@ export function buildMiniMaxPanel({
         miniMaxPass2PromptField,
       ]),
     },
-  ]);
+  ], { modelSelectionLabel: "MiniMax H3" });
   miniMaxPassButtons.refmod = { pipelineButtons: miniMaxPipelineButtons, modeChooser: miniMaxModeChooser, note: miniMaxRefmodNote };
   miniMaxEnginePanel.append(miniMaxBanner, miniMaxVideoProfileRow, miniMaxPipelineChooser, miniMaxRefmodNote, miniMaxModeChooser, miniMaxPassChooser, miniMaxSubTabs.wrapper, miniMaxSceneVideoButton);
 
