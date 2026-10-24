@@ -11,7 +11,7 @@ export const STORYBOARD_EXTERNAL_CHANGE_EVENT = "vrgdg:storyboard-external-chang
 
 // Timeline segment keys and the Storyboard card keys they fill (the reverse of applyStoryboardPrompts).
 export const SEGMENT_TO_CARD_KEYS = {
-  label: "label", lyric_text: "lyrics", lyric_section: "lyric_section", story_beat: "story_beat",
+  scene_defaults: "scene_defaults", label: "label", lyric_text: "lyrics", lyric_section: "lyric_section", story_beat: "story_beat",
   timeline_note: "timeline_note", i2v_notes: "motion_summary", video_notes: "motion_summary", notes: "notes",
   shot_type: "shot_type", camera_motion: "camera_motion", character_motion: "character_motion",
   performance_mode: "performance_mode", performance_style: "performance_style",

@@ -510,6 +510,7 @@ export function createStoryboardBridge({
         segment.facial_performance = nextFacial;
         segment.facial_performance_custom = nextFacialCustom;
         segment.emotion_expression_tags = String(scene.emotion_expression_tags ?? segment.emotion_expression_tags ?? "").trim();
+        if (Object.prototype.hasOwnProperty.call(scene, "scene_defaults")) segment.scene_defaults = scene.scene_defaults || {};
         if (Object.prototype.hasOwnProperty.call(scene, "video_style")) segment.minimax_h3_video_style = String(scene.video_style || "").trim();
         if (Object.prototype.hasOwnProperty.call(scene, "video_style_custom")) segment.minimax_h3_video_style_custom = String(scene.video_style_custom || "").trim();
         if (Object.prototype.hasOwnProperty.call(scene, "temporal_world_effect_override")) segment.temporal_world_effect_override = String(scene.temporal_world_effect_override || "global").trim();
@@ -982,6 +983,7 @@ export function createStoryboardBridge({
         segment.shot_type = String(scene.shot_type || "").trim();
         segment.camera_motion = String(scene.camera_motion || "").trim();
         segment.character_motion = String(scene.character_motion || "").trim();
+        segment.scene_defaults = scene.scene_defaults || {};
         segment.temporal_world_effect_override = String(scene.temporal_world_effect_override || "global").trim();
         segment.temporal_world_effect_custom = String(scene.temporal_world_effect_custom || "").trim();
         const imagePrompt = String(scene.image_prompt || scene.t2i_prompt || "").trim();

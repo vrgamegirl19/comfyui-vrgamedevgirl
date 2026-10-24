@@ -56,23 +56,27 @@ export function buildDefaultPresetsToolbar() {
     label.append(text, control);
     toolbar.append(label);
   }
-  toolbar.append(load, save);
+  toolbar.append(save);
   const help = document.createElement("div");
   help.style.cssText = "flex-basis:100%;font-size:11px;color:#94a3b8;line-height:1.4;";
-  help.textContent = "Presets update scene defaults; each setting remains editable. Speed and music style combine. Presets use Default video aesthetic with world FX and shot FX Off. Existing scene overrides still use Fill Missing / Replace All.";
+  help.textContent = "Presets update scene defaults; each setting remains editable. Speed and music style combine. Presets use Default video aesthetic with world FX and shot FX Off. Changes apply automatically to all scenes or only checked scenes; Story arc detail remains project-wide.";
   toolbar.append(help);
   return { toolbar, speed, music, saved, name, save, load };
 }
 
 // Use the same input/change handlers as individual edits. A saved custom camera list is
 // already supplied, so it can be restored without opening the import dialog.
-export function applyDefaultPreset(settings, { controls, state, refreshCameraFlowInfo, notifyStoryboardDefaultsChanged }) {
+export function applyDefaultPreset(settings, { controls, state, refreshCameraFlowInfo, notifyStoryboardDefaultsChanged, noteDefaultKeys }) {
+  const imageOnly = new Set(["imageWorldStyle", "imageCustomStyle", "imageShotFlow", "imageAesthetic"]);
+  const applied = Object.fromEntries(Object.entries({ ...settings, ...PRESET_BASELINE })
+    .filter(([key]) => state.mode !== "image_to_video_prep" || !imageOnly.has(key)));
+  noteDefaultKeys?.(Object.keys(applied));
   state.applyingDefaultsPreset = true;
   try {
     if (Array.isArray(settings.customCameraFlowSequence)) {
       state.customCameraFlowSequence = normalizeStoryboardCustomCameraFlowSequence(settings.customCameraFlowSequence);
     }
-    for (const [key, value] of Object.entries({ ...settings, ...PRESET_BASELINE })) {
+    for (const [key, value] of Object.entries(applied)) {
       const control = controls[DEFAULT_PRESET_CONTROLS[key]];
       if (!control) continue;
       if (control.tagName.toLowerCase() === "select" && !Array.from(control.options).some((option) => option.value === String(value))) continue;
@@ -91,8 +95,8 @@ export function applyDefaultPreset(settings, { controls, state, refreshCameraFlo
   }
 }
 
-export function wireDefaultPresets({ toolbar, controls, state, film, postJson, createToast, refreshCameraFlowInfo, notifyStoryboardDefaultsChanged }) {
-  const context = { controls, state, refreshCameraFlowInfo, notifyStoryboardDefaultsChanged };
+export function wireDefaultPresets({ toolbar, controls, state, film, postJson, createToast, refreshCameraFlowInfo, notifyStoryboardDefaultsChanged, noteDefaultKeys }) {
+  const context = { controls, state, refreshCameraFlowInfo, notifyStoryboardDefaultsChanged, noteDefaultKeys };
   let applying = false;
   const apply = (settings) => {
     applying = true;
@@ -166,6 +170,7 @@ export function wireDefaultPresets({ toolbar, controls, state, film, postJson, c
     toolbar.name.value = data.preset.name;
     createToast(`Loaded Scene Defaults preset: ${data.preset.name}`);
   });
+  toolbar.saved.onchange = () => toolbar.saved.value ? toolbar.load.onclick() : undefined;
   toolbar.save.onclick = () => busy(async () => {
     const settings = Object.fromEntries(Object.entries(DEFAULT_PRESET_CONTROLS).map(([key, ref]) => [key, controls[ref].value]));
     settings.customCameraFlowSequence = state.customCameraFlowSequence || [];

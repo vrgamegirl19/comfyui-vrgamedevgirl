@@ -8,6 +8,7 @@ checks, and the reference definitions and soundscape around the shots) is ``mini
 
 from typing import Any, Callable, Dict, List, Optional
 
+from ...storyboard.scene_defaults import normalize_scene_defaults
 from ...builder.lyric_scenes import is_instrumental_lyric_text
 from ...llm import video_prompt_generation as vid_gen
 from ...minimax import shot_prompt as sp
@@ -46,6 +47,8 @@ def _number(value: Any, fallback: float) -> float:
 
 def _scene_context(session: Dict[str, Any], segment: Dict[str, Any], card: Dict[str, Any], index: int) -> Dict[str, Any]:
     defaults = session.get("builder_storyboard_defaults") if isinstance(session.get("builder_storyboard_defaults"), dict) else {}
+    scoped_defaults = normalize_scene_defaults(segment.get("scene_defaults"))
+    defaults = {**defaults, **scoped_defaults}
     settings = session.get("minimax_h3_settings") if isinstance(session.get("minimax_h3_settings"), dict) else {}
     start, end = _number(segment.get("start"), 0.0), _number(segment.get("end"), 0.0)
     duration = max(0.1, end - start)
@@ -90,10 +93,10 @@ def _scene_context(session: Dict[str, Any], segment: Dict[str, Any], card: Dict[
         "temporal": temporal_world_effect_verbiage(card, defaults),
         "aspect_ratio": _text(settings.get("aspect_ratio")) or "16:9",
         "audio_mode": _text(settings.get("audio_mode")) or "input_audio",
-        "camera_speed": _number(segment.get("camera_motion_speed", defaults.get("camera_motion_speed")), 4.0),
-        "character_speed": _number(segment.get("character_motion_speed", defaults.get("character_motion_speed")), 4.0),
-        "camera_guidance": _text(segment.get("camera_motion_speed_guidance") or defaults.get("camera_guidance")),
-        "character_guidance": _text(segment.get("character_motion_guidance") or defaults.get("character_guidance")),
+        "camera_speed": _number(scoped_defaults.get("camera_motion_speed", segment.get("camera_motion_speed", defaults.get("camera_motion_speed"))), 4.0),
+        "character_speed": _number(scoped_defaults.get("character_motion_speed", segment.get("character_motion_speed", defaults.get("character_motion_speed"))), 4.0),
+        "camera_guidance": _text(scoped_defaults.get("camera_guidance") or segment.get("camera_motion_speed_guidance") or defaults.get("camera_guidance")),
+        "character_guidance": _text(scoped_defaults.get("character_guidance") or segment.get("character_motion_guidance") or defaults.get("character_guidance")),
         "lyric": "" if visual_only else " ".join(lyric.split()),
         "visual_only": visual_only,
         "no_character": no_character,

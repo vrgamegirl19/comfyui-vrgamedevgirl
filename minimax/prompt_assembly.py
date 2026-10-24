@@ -125,11 +125,13 @@ def scene_cut_plan(segment: Dict[str, Any], session: Dict[str, Any]) -> Dict[str
     from . import shot_prompt
 
     defaults = session.get("builder_storyboard_defaults") if isinstance(session.get("builder_storyboard_defaults"), dict) else {}
+    defaults = {**defaults, **(segment.get("scene_defaults") if isinstance(segment.get("scene_defaults"), dict) else {})}
     return shot_prompt.apply_cut_style(_scene_cut_plan_by_frequency(segment, session), defaults.get("minimax_h3_cut_style"))
 
 
 def _scene_cut_plan_by_frequency(segment: Dict[str, Any], session: Dict[str, Any]) -> Dict[str, Any]:
     defaults = session.get("builder_storyboard_defaults") if isinstance(session.get("builder_storyboard_defaults"), dict) else {}
+    defaults = {**defaults, **(segment.get("scene_defaults") if isinstance(segment.get("scene_defaults"), dict) else {})}
     duration = max(0.1, float(segment.get("end", 0.0) or 0.0) - float(segment.get("start", 0.0) or 0.0))
     try:
         frequency = int(float(defaults.get("minimax_h3_cut_frequency") or 0))

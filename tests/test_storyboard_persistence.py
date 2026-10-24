@@ -30,6 +30,7 @@ def load_persistence() -> dict:
         package.__path__ = [str(ROOT / "storyboard")]
         sys.modules["storyboard_pure"] = package
     namespace.update(vars(importlib.import_module("storyboard_pure.scene_helpers")))
+    namespace.update(vars(importlib.import_module("storyboard_pure.scene_defaults")))
     namespace["_enforce_storyboard_video_facial_requirements"] = (
         lambda prompt, scene: prompt
     )

@@ -14,11 +14,12 @@ from typing import Any, Dict, Iterable, List, Optional
 
 from ..builder.lyric_scenes import is_instrumental_lyric_text
 from .scene_card_fields import VIDEO_PROMPT_TYPES
+from .scene_defaults import normalize_scene_defaults
 
 # Card fields the open Storyboard takes from the live timeline scene (``liveOwned`` and ``sharedFields`` in
 # ``loadExisting``, plus timing and lyrics). The saved card keeps every other field.
 LINKED_CARD_KEYS = (
-    "scene_number", "label", "lyrics", "lyric_section", "story_beat", "timeline_start", "timeline_end",
+    "scene_defaults", "scene_number", "label", "lyrics", "lyric_section", "story_beat", "timeline_start", "timeline_end",
     "exact_duration", "project_video_engine", "minimax_h3_mode", "performance_mode", "lyric_singers",
     "lyric_no_lip_sync",
     "lyric_instrumental", "no_character_present", "performance_style", "facial_performance",
@@ -136,7 +137,7 @@ def scene_cards(session: Dict[str, Any]) -> List[Dict[str, Any]]:
     subject_map = _dict(refs.get("subject_scene_map"))
     location_map = _dict(refs.get("scene_map"))
     locations_cleared = bool(refs.get("locations_cleared"))
-    defaults = _dict(session.get("builder_storyboard_defaults"))
+    project_defaults = _dict(session.get("builder_storyboard_defaults"))
     engine = video_engine(session)
     mode = image_mode(session)
     minimax = engine == "minimax_h3"
@@ -144,6 +145,7 @@ def scene_cards(session: Dict[str, Any]) -> List[Dict[str, Any]]:
     segments.sort(key=lambda s: float(s.get("start") or 0))
     cards: List[Dict[str, Any]] = []
     for index, segment in enumerate(segments):
+        defaults = {**project_defaults, **normalize_scene_defaults(segment.get("scene_defaults"))}
         no_character = bool(segment.get("no_character_present"))
         mapped = [] if no_character else [
             _slim_reference(subjects[i]) for i in _id_list(subject_map.get(segment.get("id"))) if i in subjects
@@ -171,6 +173,7 @@ def scene_cards(session: Dict[str, Any]) -> List[Dict[str, Any]]:
                          "" if segment.get("lyric_no_lip_sync") else lyric]
         cards.append({
             "id": segment.get("id") or f"scene_{index + 1}",
+            "scene_defaults": normalize_scene_defaults(segment.get("scene_defaults")),
             "scene_number": index + 1,
             "label": _text(segment.get("label")) or f"Scene {index + 1}",
             "lyrics": lyric,
