@@ -455,10 +455,6 @@ export function createReferenceGeneration({
       return;
     }
     const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-    if (!modelFile && !["lm_studio", "llm_api", "own_server"].includes(state.textGemmaRunner)) {
-      toast("Choose a non-vision Gemma model first.", true);
-      return;
-    }
     let progress = null;
     let ranZImage = false;
     try {
@@ -536,10 +532,6 @@ export function createReferenceGeneration({
       return;
     }
     const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-    if (!modelFile && !["lm_studio", "llm_api", "own_server"].includes(state.textGemmaRunner)) {
-      toast("Choose a non-vision Gemma model first.", true);
-      return;
-    }
     let progress = null;
     try {
       const browserSettings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
@@ -625,10 +617,6 @@ export function createReferenceGeneration({
       return;
     }
     const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-    if (!modelFile && !["lm_studio", "llm_api", "own_server"].includes(state.textGemmaRunner)) {
-      toast("Choose a non-vision Gemma model first.", true);
-      return;
-    }
     const progress = createProgressWindow("Creating location references", { zIndex: 100008 });
     createAllMissingLocationZImages.disabled = true;
     extractLocations.disabled = true;
@@ -770,10 +758,6 @@ export function createReferenceGeneration({
       return;
     }
     const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-    if (!modelFile && !["lm_studio", "llm_api", "own_server"].includes(state.textGemmaRunner)) {
-      toast("Choose a non-vision Gemma model first.", true);
-      return;
-    }
     const progress = createProgressWindow("Creating subject references", { zIndex: 100008 });
     createAllMissingSubjectImages.disabled = true;
     extractSubjects.disabled = true;
@@ -985,10 +969,6 @@ export function createReferenceGeneration({
       return;
     }
     const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-    if (!modelFile && !["lm_studio", "llm_api", "own_server"].includes(state.textGemmaRunner)) {
-      toast("Choose a non-vision Gemma model first.", true);
-      return;
-    }
     let progress = null;
     let ranWorkflow = false;
     try {

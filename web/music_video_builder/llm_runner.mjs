@@ -170,9 +170,6 @@ export function createLlmRunner({
     }
     const modelFile = referenceDescriptionVisionModel();
     const mmprojFile = referenceDescriptionMmproj();
-    if (!["lm_studio", "llm_api", "own_server"].includes(state.textGemmaRunner) && (!modelFile || !mmprojFile)) {
-      throw new Error(`Choose a ${gemmaRunnerLabel({ vision: true })} model and Vision mmproj first.`);
-    }
     const data = await postJson("/vrgdg/music_builder/describe_reference_image", {
       ...textGemmaRunnerPayload(),
       model_file: modelFile,
@@ -206,10 +203,6 @@ export function createLlmRunner({
       return;
     }
     const modelFile = String(t2iTextGemmaModelSelect.value || gemmaModelSelect.value || i2vTextGemmaModelSelect.value || i2vGemmaModelSelect.value || "").trim();
-    if (!modelFile && state.textGemmaRunner === "builtin") {
-      toast("Choose a Gemma4 model first in the LLM/Image model settings.", true);
-      return;
-    }
     const progress = createProgressWindow("Creating detailed location description", { zIndex: 100008 });
     const previousText = button?.textContent || "";
     if (button) {

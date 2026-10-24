@@ -1738,10 +1738,6 @@ export function createBuilderAgent({
       }
       const modelFile = String(gemmaModelSelect.value || fluxGemmaModelSelect.value || nbGemmaModelSelect.value || i2vGemmaModelSelect.value || "").trim();
       const mmprojFile = String(mmprojSelect.value || fluxMmprojSelect.value || nbMmprojSelect.value || i2vMmprojSelect.value || "").trim();
-      if (!["lm_studio", "llm_api", "own_server"].includes(state.textGemmaRunner) && !modelFile) {
-        toast("Choose a vision Gemma model first.", true);
-        return;
-      }
       let progress = null;
       try {
         storyRefAnalyze.disabled = true;

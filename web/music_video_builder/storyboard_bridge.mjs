@@ -716,9 +716,6 @@ export function createStoryboardBridge({
         if (mode === "video_to_video" && !workingSegment.minimax_h3_video_references.some((item) => String(item?.path || "").trim())) {
           throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: MiniMax Video to Video needs a reference video.`);
         }
-        if (visionImages.length && state.textGemmaRunner === "llm_api" && !llmApiVisionModelSelected()) {
-          throw new Error("MiniMax image/reference prompting needs a vision-capable API model selected in LLM Runner.");
-        }
         options.progress?.set(
           `${options.progressLabel || scene.label || sceneDisplayName(segment, segmentIndexInfo(segment).index)}: creating MiniMax ${modeLabel} prompt with the scene's H3 instructions...\n${gemmaRunnerLine({ vision: Boolean(visionImages.length) })}`,
           Math.min(92, Number(options.progressPercent || 35) + 18),

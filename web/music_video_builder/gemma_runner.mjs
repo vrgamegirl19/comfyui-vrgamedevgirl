@@ -15,15 +15,39 @@ export function createGemmaRunner({
   autoSaveSessionQuiet, createProgressWindow, state, syncBuilderLlmModelSelectsFromRunner,
   mmprojSelect, t2iTextGemmaModelSelect, textGemmaRunnerPayload, updatePromptRunnerButtonLabels,
 }) {
-  function openGemmaRunnerModal() {
+  function openGemmaRunnerModal({ setupMessage = "", validateSetup, onSaved, onCancel } = {}) {
+    const previousFocus = document.activeElement;
+    const projectorParent = mmprojSelect.parentElement;
+    const projectorNext = mmprojSelect.nextSibling;
     const backdrop = document.createElement("div");
-    backdrop.style.cssText = "position:fixed;inset:0;z-index:100020;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100100;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
     const box = document.createElement("div");
     box.style.cssText = "width:min(740px,calc(100vw - 40px));max-height:calc(100vh - 36px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
     const header = document.createElement("div");
     header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
     const heading = document.createElement("div");
     heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">LLM Runner</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Choose the LLM runner for prompt writing. Image-reference video prompts can use Qwen Local with an mmproj, LM Studio vision, a vision-capable LLM API model, or your own OpenAI-compatible server.</div>`;
+    let finished = false;
+    let saving = false;
+    const finish = (saved = false) => {
+      if (finished || (saving && !saved)) return;
+      finished = true;
+      if (projectorParent) projectorParent.insertBefore(mmprojSelect, projectorNext);
+      document.removeEventListener("keydown", onKeyDown, true);
+      backdrop.remove();
+      previousFocus?.focus();
+      if (saved) onSaved?.();
+      else onCancel?.();
+    };
+    const onKeyDown = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault(); event.stopImmediatePropagation();
+      finish();
+    };
+    backdrop.cancelSetup = () => { saving = false; finish(); };
+    box.setAttribute("role", "dialog");
+    box.setAttribute("aria-modal", "true");
+    box.setAttribute("aria-label", "LLM Runner");
     const close = makeButton("Close");
     header.append(heading, close);
     const runner = makeSelect(["builtin", "qwen_local", "lm_studio", "llm_api", "own_server"], state.textGemmaRunner || "builtin");
@@ -432,7 +456,7 @@ export function createGemmaRunner({
           source_text: "small empty test room",
           style_theme: "",
           max_new_tokens: Math.min(120, normalizeOutputTokenLimit(state.lmStudioOutputTokenLimit)),
-        }, 60000);
+        }, 60000, { skipLlmSetup: true });
         progress.set(`LM Studio responded successfully:\n${data.prompt}`, 100);
         progress.close(4000);
         toast("LM Studio text runner works.");
@@ -444,15 +468,27 @@ export function createGemmaRunner({
     const actions = document.createElement("div");
     actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
     const cancel = makeButton("Cancel");
-    const save = makeButton("Save Runner", "primary");
+    const save = makeButton(setupMessage ? "Save & Continue" : "Save Runner", "primary");
     actions.append(cancel, save);
-    box.append(header, makeField("Text LLM runner", runner), builtinPanel, lmPanel, apiPanel, ownPanel, actions);
+    const setupStatus = document.createElement("div");
+    setupStatus.textContent = setupMessage;
+    setupStatus.style.cssText = "color:#a5f3fc;font-size:13px;line-height:1.5;";
+    setupStatus.setAttribute("role", "status");
+    box.append(header);
+    if (setupMessage) box.append(setupStatus);
+    box.append(makeField("Text LLM runner", runner), builtinPanel, lmPanel, apiPanel, ownPanel, actions);
     backdrop.append(box);
     document.body.append(backdrop);
     syncVisibility();
     loadApiChoices();
-    close.onclick = cancel.onclick = () => backdrop.remove();
+    close.onclick = cancel.onclick = () => finish();
+    document.addEventListener("keydown", onKeyDown, true);
+    if (setupMessage) {
+      if (runner.value === "llm_api" && !llmApiKey.value.trim()) llmApiKey.focus();
+      else runner.focus();
+    }
     save.onclick = async () => {
+      if (saving) return;
       state.textGemmaRunner = runner.value || "builtin";
       applyLocalTokenLimits();
       state.gemmaGpuLayers = normalizeGemmaGpuLayers(gemmaGpuLayers.value);
@@ -470,18 +506,35 @@ export function createGemmaRunner({
       state.ownServerOutputTokenLimit = normalizeOutputTokenLimit(ownOutputTokenLimit.value);
       state.ownServerTimeoutMinutes = normalizeOwnServerTimeoutMinutes(ownTimeoutMinutes.value);
       syncBuilderLlmModelSelectsFromRunner();
+      const setupError = validateSetup?.();
+      if (setupError) {
+        setupStatus.textContent = setupError;
+        if (!setupStatus.parentElement) box.prepend(setupStatus);
+        return;
+      }
+      saving = true;
+      save.disabled = true;
       // Saved for every project first, so it holds even with no project open.
       try {
         const data = await postJson("/vrgdg/music_builder/llm_runner", globalLlmSettingsPayload(state));
         rememberGlobalLlmKeys(data.global_llm_keys, data.global_llm_runner);
       } catch (error) {
+        saving = false; save.disabled = false;
         toast(`Could not save the LLM runner settings: ${String(error?.message || error)}`, true);
         return;
       }
-      await autoSaveSessionQuiet("LLM runner settings");
-      toast("LLM runner settings saved for every project.");
+      try {
+        await autoSaveSessionQuiet("LLM runner settings");
+      } catch (error) {
+        saving = false; save.disabled = false;
+        toast(`Could not save the project: ${String(error?.message || error)}`, true);
+        return;
+      }
+      toast(state.textGemmaRunner === "qwen_local"
+        ? "Text LLM runner set to Qwen Local. Settings saved for every project."
+        : "LLM runner settings saved for every project.");
       updatePromptRunnerButtonLabels();
-      backdrop.remove();
+      finish(true);
     };
     testApi.onclick = async () => {
       const provider = apiProvider.value || "openai";

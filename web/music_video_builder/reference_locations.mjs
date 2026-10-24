@@ -526,15 +526,6 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       return;
     }
     const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-    if (!modelFile && !["lm_studio", "llm_api", "own_server"].includes(state.textGemmaRunner)) {
-      const message = "Choose a non-vision Gemma model first, or use LM Studio, LLM API, or your own server in LLM Runner.";
-      progress.set(`Error:\n${message}`, 100);
-      toast(message, true);
-      extractLocations.disabled = false;
-      autoMapLocations.disabled = false;
-      extractLocations.textContent = "LM Extract";
-      return;
-    }
     try {
       const styleTheme = await locationExtractionStyleTheme(locationStyleTheme.value);
       progress.set(`Asking the LLM location scout for locations...\n${gemmaRunnerLine()}`, 15);
@@ -640,14 +631,6 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       return;
     }
     const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-    if (!modelFile && !["lm_studio", "llm_api", "own_server"].includes(state.textGemmaRunner)) {
-      const message = "Choose a non-vision Gemma model first, or use LM Studio, LLM API, or your own server in LLM Runner.";
-      progress.set(`Error:\n${message}`, 100);
-      toast(message, true);
-      autoMapLocations.disabled = false;
-      autoMapLocations.textContent = "Auto Map Locations with Gemma";
-      return;
-    }
     try {
       const compactText = (value, limit) => {
         const text = String(value || "").replace(/\s+/g, " ").trim();
