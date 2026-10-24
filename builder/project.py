@@ -13,7 +13,7 @@ import folder_paths
 from ..core.atomic_write import atomic_write_json, atomic_write_text
 from ..minimax.latent_manager import SceneLatentManager
 
-from .paths import _context_folder, _copy_file_if_exists, _default_project_folder, _images_folder, _global_llm_keys_path, _global_llm_runner_path, _is_internal_approved_image_path, _model_defaults_path, _newest_file, _prompts_folder, _render_logs_folder, _resolve_existing_file, _safe_project_name, _scene_notes_path, _scene_preview_folder, _session_path, _unique_folder_path, _vrgdg_textfile_path, _wizard_draft_path, _wizard_folder, _wizard_lyrics_path
+from .paths import _context_folder, _copy_file_if_exists, _default_project_folder, _images_folder, _global_llm_keys_path, _global_llm_runner_path, _is_internal_approved_image_path, _model_defaults_path, _newest_file, _prompts_folder, _render_logs_folder, _resolve_existing_file, _safe_project_name, _scene_notes_path, _scene_preview_folder, _session_path, _unique_folder_path, _vrgdg_textfile_path
 from .audio import _convert_audio_to_wav, _segments_to_srt, _srt_path
 from .media import _scene_image_path
 from .project_copy import _apply_branch_keep_to_session, _assign_overlay_scene_numbers, _copy_project_tree, _copy_session_assets_to_project, _normalize_branch_keep, _overlay_scene_number, _project_rebased_path, _prune_unkept_project_folders, _rebase_project_owned_paths, _relocate_external_minimax_stage_media, _resolve_project_asset_path, _snapshot_project_assets
@@ -1609,67 +1609,6 @@ def _import_builder_project_zip(zip_path, requested_name=""):
         except Exception:
             shutil.rmtree(target, ignore_errors=True)
             raise
-
-
-def _save_wizard_draft(payload):
-    project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
-    if not project_folder:
-        raise ValueError("Project folder is empty.")
-    os.makedirs(project_folder, exist_ok=True)
-    folder = _wizard_folder(project_folder)
-    os.makedirs(folder, exist_ok=True)
-    draft = payload.get("draft") if isinstance(payload.get("draft"), dict) else {}
-    lyrics = str(payload.get("lyrics", "") or draft.get("lyrics", "") or "").replace("\r\n", "\n").replace("\r", "\n")
-    draft = {
-        **draft,
-        "lyrics": lyrics,
-        "updated": time.time(),
-    }
-    atomic_write_json(_wizard_draft_path(project_folder), draft)
-    atomic_write_text(_wizard_lyrics_path(project_folder), lyrics + ("\n" if lyrics and not lyrics.endswith("\n") else ""))
-    raw_outputs = payload.get("raw_outputs") if isinstance(payload.get("raw_outputs"), dict) else {}
-    for name, value in raw_outputs.items():
-        safe_name = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(name or "").strip()).strip("._") or "raw_output"
-        if not safe_name.endswith(".txt") and not safe_name.endswith(".json"):
-            safe_name += ".txt"
-        target_path = os.path.join(folder, safe_name)
-        if isinstance(value, (dict, list)):
-            atomic_write_json(target_path, value)
-        else:
-            val_text = str(value or "")
-            if val_text and not val_text.endswith("\n"):
-                val_text += "\n"
-            atomic_write_text(target_path, val_text)
-    return {
-        "wizard_folder": folder,
-        "wizard_draft_path": _wizard_draft_path(project_folder),
-        "wizard_lyrics_path": _wizard_lyrics_path(project_folder),
-        "draft": draft,
-    }
-
-
-def _load_wizard_draft(payload):
-    project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
-    if not project_folder:
-        raise ValueError("Project folder is empty.")
-    path = _wizard_draft_path(project_folder)
-    draft = {}
-    if os.path.isfile(path):
-        with open(path, "r", encoding="utf-8") as handle:
-            loaded = json.load(handle)
-        if isinstance(loaded, dict):
-            draft = loaded
-    lyrics_path = _wizard_lyrics_path(project_folder)
-    if os.path.isfile(lyrics_path) and not str(draft.get("lyrics", "")).strip():
-        with open(lyrics_path, "r", encoding="utf-8") as handle:
-            draft["lyrics"] = handle.read()
-    return {
-        "wizard_folder": _wizard_folder(project_folder),
-        "wizard_draft_path": path,
-        "wizard_lyrics_path": lyrics_path,
-        "draft": draft,
-        "exists": bool(draft),
-    }
 
 
 def _load_builder_session(project_folder):

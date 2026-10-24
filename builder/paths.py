@@ -233,18 +233,6 @@ def _project_folder_from_builder_payload(payload):
     return os.path.abspath(raw)
 
 
-def _wizard_folder(project_folder):
-    return os.path.join(project_folder, "wizard")
-
-
-def _wizard_draft_path(project_folder):
-    return os.path.join(_wizard_folder(project_folder), "wizard_draft.json")
-
-
-def _wizard_lyrics_path(project_folder):
-    return os.path.join(_wizard_folder(project_folder), "lyrics.txt")
-
-
 def _is_internal_approved_image_path(path):
     parts = os.path.normpath(str(path or "")).split(os.sep)
     return "zimage_approved" in {part.lower() for part in parts}

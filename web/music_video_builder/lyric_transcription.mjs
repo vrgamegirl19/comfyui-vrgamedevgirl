@@ -1,4 +1,3 @@
-import { sanitizeWizardReferenceLyrics } from "./wizard.mjs";
 import { postJson, queueWorkflowPrompt, waitForText } from "./comfy_api.mjs";
 import { makeButton, makeCheckbox, makeField, makeInput, makeSelect, normalizeVideoType, toast } from "./controls.mjs";
 import {
@@ -85,6 +84,25 @@ function timestampedLyricsHintHtml() {
         <div><strong style="color:#cffafe;">Manual instrumental sections</strong><br>Only <code>[instrumental]</code> or <code>[instrumental break]</code> on its own line forces a no-vocal section. <code>[intro]</code>, <code>[outro]</code>, and <code>[break]</code> are section headers only because those sections may contain lyrics. Blank lines are just spacing/stanza separators.</div>
       </div>
     `;
+}
+
+function stripWizardParenthesisCharacters(value) {
+  return String(value || "")
+    .replace(/[()（）]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function sanitizeWizardReferenceLyrics(value) {
+  return String(value || "")
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((rawLine) => {
+      const line = rawLine.trim();
+      if (!line || /^\[[^\]]+\]$/.test(line)) return line;
+      return stripWizardParenthesisCharacters(line);
+    })
+    .join("\n");
 }
 
 export function showTimestampedLyricsHintModal() {

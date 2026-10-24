@@ -56,14 +56,14 @@ For each case, fill in all three lines. If a case fails, also add its ID to the 
 - Exact error message: __________
 - Notes / screenshot / log: __________
 
-## 2. Wizard Beta and Reference Builder
+## 2. Wizard and Reference Builder
 
-**WIZ-01 — Wizard Beta route.** Open Wizard Beta. Move through Engine, Video mode, Models & LoRAs, Sound & timing, Inputs, Scenes, and Render. Each step opens, Back/Next work, and saving restores your place.
+**WIZ-01 — Wizard route.** Open Wizard. Move through Engine, Video mode, Models & LoRAs, Sound & timing, Inputs, Scenes, and Render. Each step opens, Back/Next work, and saving restores your place.
 - Result: [ ] Pass [ ] Fail [ ] Not tested
 - Exact error message: __________
 - Notes / screenshot / log: __________
 
-**WIZ-02 — Models page.** In MiniMax mode, check the Video Models, Audio Model, pass controls, and Video Settings tabs. Change a harmless value, leave the page, and return. The value persists and the normal Builder controls still work after closing Wizard Beta.
+**WIZ-02 — Models page.** In MiniMax mode, check the Video Models, Audio Model, pass controls, and Video Settings tabs. Change a harmless value, leave the page, and return. The value persists and the normal Builder controls still work after closing Wizard.
 - Result: [ ] Pass [ ] Fail [ ] Not tested
 - Exact error message: __________
 - Notes / screenshot / log: __________
@@ -83,7 +83,7 @@ For each case, fill in all three lines. If a case fails, also add its ID to the 
 - Exact error message: __________
 - Notes / screenshot / log: __________
 
-**WIZ-06 — Storyboard from Wizard.** Open Story Layer from Wizard Beta, change story text or mappings, close it, then reopen the standalone Storyboard Builder. Changes are shared; prompts use the same scene data.
+**WIZ-06 — Storyboard from Wizard.** Open Story Layer from Wizard, change story text or mappings, close it, then reopen the standalone Storyboard Builder. Changes are shared; prompts use the same scene data.
 - Result: [ ] Pass [ ] Fail [ ] Not tested
 - Exact error message: __________
 - Notes / screenshot / log: __________
@@ -100,7 +100,7 @@ For each case, fill in all three lines. If a case fails, also add its ID to the 
 
 ## 3. Storyboard and prompt creation
 
-**STO-01 — Story Layer first.** Open the standalone Storyboard Builder. Story Layer is the first and initially active section; the story controls are visible without visiting Wizard Legacy.
+**STO-01 — Story Layer first.** Open the standalone Storyboard Builder. Story Layer is the first and initially active section; the story controls are visible immediately.
 - Result: [ ] Pass [ ] Fail [ ] Not tested
 - Exact error message: __________
 - Notes / screenshot / log: __________

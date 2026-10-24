@@ -1,4 +1,4 @@
-// Reuse the live Builder controls in Wizard Beta, then put every control back on exit.
+// Reuse the live Builder controls in Wizard, then put every control back on exit.
 export function organizeWizardVideoModels({ holder, contents, miniMax, miniMaxPassChooser, movePanel }) {
   const restores = [];
   const models = contents[0];

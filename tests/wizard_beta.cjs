@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const source = fs.readFileSync(path.join(__dirname, '../web/VRGDG_WizardBeta.js'), 'utf8');
+const source = fs.readFileSync(path.join(__dirname, '../web/VRGDG_Wizard.js'), 'utf8');
 const builder = readBuilderSource();
 
 class Element {
@@ -41,7 +41,7 @@ function fixture(overrides = {}) {
   };
   const context = vm.createContext({ document, window: { confirm: () => true }, api });
   vm.runInContext(source.replaceAll('export function ', 'function ').replace('export const ', 'const '), context);
-  vm.runInContext('openWizardBeta(api)', context);
+  vm.runInContext('openWizard(api)', context);
   const find = (tag, text) => document.body.querySelectorAll(tag).find(element => element.textContent === text);
   const click = async text => { const control = find('button', text); assert.ok(control, text); assert.equal(control.disabled, false); await control.onclick(); };
   const input = label => document.body.querySelectorAll('label').find(element => element.children[0]?.textContent === label)?.children[1];
@@ -92,10 +92,10 @@ test('RefMod Inputs directs users to saved RefMods and validates their presence'
   assert.equal(f.document.body.textContent.includes('Subject references'), false);
   assert.ok(f.find('button', 'Edit Subjects'));
   assert.ok(f.find('button', 'Edit Locations'));
-  const issues = f.context.wizardBetaIssues({ engine: 'minimax_h3', mode: 'reference_to_video', pipeline: 'refmod', audioMode: 'built_in_audio', locations: [], subjects: [] }, f.data, true);
+  const issues = f.context.wizardIssues({ engine: 'minimax_h3', mode: 'reference_to_video', pipeline: 'refmod', audioMode: 'built_in_audio', locations: [], subjects: [] }, f.data, true);
   assert.ok(issues.includes('Choose a saved RefMod in the Reference Builder.'));
   f.data.refmodCount = 1;
-  assert.equal(f.context.wizardBetaIssues({ engine: 'minimax_h3', mode: 'reference_to_video', pipeline: 'refmod', audioMode: 'built_in_audio', locations: [], subjects: [] }, f.data, true).length, 0);
+  assert.equal(f.context.wizardIssues({ engine: 'minimax_h3', mode: 'reference_to_video', pipeline: 'refmod', audioMode: 'built_in_audio', locations: [], subjects: [] }, f.data, true).length, 0);
 });
 
 test('timing choices replace fixed durations and skip transcription for built-in audio', async () => {
@@ -152,7 +152,7 @@ test('saved scene steps migrate by meaning and new saves use stable IDs', async 
 
 test('every mode has the correct media requirements', () => {
   const f = fixture();
-  const needs = (engine, mode) => f.context.wizardBetaNeeds(engine, mode);
+  const needs = (engine, mode) => f.context.wizardNeeds(engine, mode);
   assert.equal(needs('ltx', 't2v').images, false);
   assert.equal(needs('ltx', 'ingredients').references, true);
   assert.equal(needs('ltx', 'flf').endFrame, true);
@@ -172,7 +172,7 @@ function adapterFixture() {
     makeEditorImageUrl: path => `/vrgdg/video_editor/image?path=${encodeURIComponent(path)}`,
     cloneMiniMaxH3Settings: x => ({ ...x }), cloneI2VVideoSettings: x => ({ ...x }), normalizeFluxReferenceBuilder: x => x, normalizeBuilderStoryLayer: x => x, normalizeLyricMapper: x => x,
     currentVideoMode: () => state.videoModelMode, allEditableSegments: () => state.segments, activeSegment: () => state.segments[0], imageModeDisplayLabel: x => x,
-    openWizardBeta: api => { context.api = api; }, wizardBetaNeeds: fixture().context.wizardBetaNeeds,
+    openWizard: api => { context.api = api; }, wizardNeeds: fixture().context.wizardNeeds,
     applyBulkSegmentTimings: async times => { state.segments = times.map((time, i) => ({ id: String(i), ...time })); },
     saveSession: async () => events.push('save'), createSilentTimelineAudioForDuration: async () => events.push('silent'), chooseProjectAudioFile: async () => events.push('audio'),
     confirmAndRunFullBuild: async () => events.push('ltx-build'),
@@ -184,7 +184,7 @@ function adapterFixture() {
   };
   for (const name of ['updateActiveFromInputs','saveI2VVideoSettingsFromPanel','saveMiniMaxH3SettingsFromPanel','saveMiniMaxSceneInputsFromPanel','saveZImageSettingsFromPanel','saveFluxKleinSettingsFromPanel','saveErnieImageSettingsFromPanel','saveKrea2TwoPassSettingsFromPanel','saveNBImageSettingsFromPanel','saveFlowGptBrowserSettingsFromPanel','syncProjectVideoEngineUI','syncVideoModePanel','syncI2VVideoSettingsPanel','syncMiniMaxH3Panel','syncFluxKleinPanel','syncZImageSettingsPanel','syncErnieImagePanel','syncKrea2TwoPassPanel','syncNBImagePanel','syncFlowGptBrowserPanel','syncInspector','render','pushHistory','openGemmaRunnerModal','openLyricReviewModal','openStoryboardBuilderFromProject','confirmAndRunZImageAll','importTimelineImagesFromFolder','syncVideoTypeControl','assertBatchNotStopped']) context[name] = () => {};
   vm.createContext(context);
-  vm.runInContext(functionSource(builder, 'organizeWizardVideoModels') + '\n' + functionSource(builder, 'openWizardBetaFromBuilder') + '\nopenWizardBetaFromBuilder();', context);
+  vm.runInContext(functionSource(builder, 'organizeWizardVideoModels') + '\n' + functionSource(builder, 'openWizardFromBuilder') + '\nopenWizardFromBuilder();', context);
   return { context, state, events, api: context.api };
 }
 
@@ -900,4 +900,19 @@ test('prompt-only storyboard startup uses the existing video prompt dialog and c
     if (fail) await assert.rejects(task, /dialog failed/); else await task;
     assert.deepEqual(calls, ['loaded', 'image_to_video_prep', 'storyboard-dialog', 'closed']);
   }
+});
+
+test('current Wizard has one plain title and accessible dialog name', () => {
+  const f = fixture();
+  assert.ok(f.find('h2', 'Wizard'));
+  const dialog = f.document.body.querySelectorAll('div').find(element => element.attributes.role === 'dialog');
+  assert.equal(dialog.attributes['aria-label'], 'Wizard');
+  assert.equal(f.find('span', 'BETA'), undefined);
+});
+
+test('shared lyric cleanup remains available after removing the legacy Wizard', () => {
+  const fsSource = fs.readFileSync(path.join(__dirname, '../web/music_video_builder/lyric_transcription.mjs'), 'utf8');
+  const c = vm.createContext({});
+  for (const name of ['stripWizardParenthesisCharacters', 'sanitizeWizardReferenceLyrics']) vm.runInContext(functionSource(fsSource, name), c);
+  assert.equal(c.sanitizeWizardReferenceLyrics('[Chorus]\r\nSing (with me)\r\n（Tonight）'), '[Chorus]\nSing with me\nTonight');
 });

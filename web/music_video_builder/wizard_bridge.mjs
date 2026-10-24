@@ -1,33 +1,12 @@
-import {
-  BROWSER_IMAGE_PROVIDERS,
-  getBrowserImageStatus,
-  openBrowserImageLogin,
-  setupBrowserImageAutomation,
-} from "../VRGDG_BrowserImageBridge.js";
-import { openMusicVideoWizard } from "./wizard.mjs";
 import { organizeWizardVideoModels } from "./wizard_models_layout.mjs";
 import { storyboardGptPayload } from "../storyboard_builder/gpt_payload.mjs";
-import {
-  FACIAL_PERFORMANCE_PRESETS,
-  PERFORMANCE_STYLE_PRESETS,
-  storyboardFacialPerformancePreset,
-  storyboardPerformancePreset,
-} from "../storyboard_builder/performance_presets.mjs";
-import {
-  STORYBOARD_CAMERA_FLOW_PRESETS,
-  STORYBOARD_IMAGE_AESTHETIC_PRESETS,
-  STORYBOARD_IMAGE_SHOT_FLOW_PRESETS,
-  storyboardCameraFlowEntry,
-  storyboardImageAestheticPreset,
-  storyboardImageShotFlowEntry,
-} from "../storyboard_builder/shot_presets.mjs";
-import { openWizardBeta, wizardBetaNeeds } from "../VRGDG_WizardBeta.js";
-import { formatBrowserImageStatus } from "./browser_ai.mjs";
+
+import { openWizard, wizardNeeds } from "../VRGDG_Wizard.js";
+
 import { GEMMA_VIDEO_PROMPT_TIMEOUT_MS, makeEditorImageUrl, postJson } from "./comfy_api.mjs";
 import {
   DEFAULT_I2V_DIFFUSION_MODEL,
   DEFAULT_I2V_UNET,
-  NB_IMAGE_MODELS,
   REQUIRED_LTX_MSR_LORA,
   REQUIRED_LTX25_MSR_LORA,
 } from "./constants.mjs";
@@ -41,29 +20,13 @@ import {
   VIDEO_TYPE_OPTIONS,
 } from "./controls.mjs";
 import { gemmaBatchFailureStore, recordGemmaBatchFailure, showGemmaBatchFailures } from "./dialogs.mjs";
-import { applyLyricSectionsFromReferenceText } from "./lyric_transcription.mjs";
-import { cloneMiniMaxH3Settings, MINIMAX_H3_AUDIO_MODE_OPTIONS, MINIMAX_H3_MODE_OPTIONS } from "./minimax_h3.mjs";
+
 import {
-  browserImageLoginStatus,
-  browserImageProviderDebugPort,
-  browserImageProviderLabel,
-  builderMotionSpeedGuidance,
-  cloneErnieImageSettings,
-  cloneFlowGptBrowserSettings,
-  cloneI2VVideoSettings,
-  cloneKrea2TwoPassSettings,
-  cloneNBImageSettings,
-  cloneZImageSettings,
-  defaultErnieImageSettings,
-  defaultFlowGptBrowserSettings,
-  defaultFluxKleinSettings,
-  defaultKrea2TwoPassSettings,
-  defaultZImageSettings,
-  normalizeBuilderStoryboardDefaults,
-  normalizeBuilderStoryLayer,
-  normalizeFlowGptBrowserProvider,
-  repairI2VVideoSettingDimensions,
-} from "./model_settings.mjs";
+  cloneMiniMaxH3Settings,
+  MINIMAX_H3_AUDIO_MODE_OPTIONS,
+  MINIMAX_H3_MODE_OPTIONS,
+} from "./minimax_h3.mjs";
+import { cloneI2VVideoSettings, normalizeBuilderStoryLayer } from "./model_settings.mjs";
 import { chooseBatchModeAction } from "./project_actions.mjs";
 import {
   flattenLyricForPrompt,
@@ -72,45 +35,33 @@ import {
   normalizeGemmaGpuLayers,
 } from "./prompt_text.mjs";
 import { normalizeFluxReferenceBuilder, normalizeLyricMapper } from "./reference_data.mjs";
-import { withoutStoryModeKeys } from "./story_mode_data.mjs";
-
-
 
 export function createWizardBridge({
-  openStoryBuilder,
-  activeI2VVideoSettings, activeProjectFolderForSave, activeSegment, allEditableSegments, audioInput,
-  autoSaveSessionQuiet, chooseProjectAudioFile, confirmAndRunFullBuild, confirmAndRunGemmaT2IAll,
-  confirmAndRunGemmaVideoAll, confirmAndRunZImageAll, createProgressWindow, createSceneVideoActions,
+  activeProjectFolderForSave, activeSegment, allEditableSegments, audioInput, autoSaveSessionQuiet,
+  chooseProjectAudioFile, confirmAndRunZImageAll, createProgressWindow, createSceneVideoActions,
   createSceneVideoButtons, createScenesFromTimestampedLyrics, createSilentTimelineAudioForDuration,
-  currentVideoMode, ensureAllSegmentRuntimeFields, ensureAutoTimedSingerCuesBeforePrompt, ernieClipPicker,
-  ernieImagePanel, ernieUnetPicker, ernieVaePicker, exportManualFlowGptRefs, finalizeVideoPromptDraftOnly,
-  flowGptImageAllScenes, flowGptManualAutoAdvance, flowGptManualMode, flowGptManualStatus, flowGptModePanel,
-  flowGptStatusText, fluxClipPicker, fluxKleinPanel, fluxUnetPicker, fluxVaePicker, gemmaModelSelect,
-  gemmaRunnerLabel, gemmaRunnerLine, i2vAudioVaePicker, i2vClip1Picker, i2vClip2Picker,
-  i2vDiffusionModelPicker, i2vFpsInput, i2vGemmaModelSelect, i2vHeightInput, i2vLoraCount, i2vLoraSlots,
-  i2vMmprojSelect, i2vSeedInput, i2vTextGemmaModelSelect, i2vUnetPicker, i2vUpscalePicker, i2vUseGgufModel,
-  i2vUseLora, i2vVaePicker, i2vWidthInput, imageModeDisplayLabel, importLatestManualFlowGptDownload,
-  importTimelineImagesFromFolder, inspector, krea2TwoPassClipPicker, krea2TwoPassPanel,
-  krea2TwoPassUnetPicker, krea2TwoPassVaePicker, ltxMsrFirstPassStrength, ltxMsrLoraPicker,
-  miniMaxGemmaModelSelect, miniMaxMmprojSelect, miniMaxModePanels, miniMaxPassChooser, miniMaxSubTabs,
-  miniMaxTextGemmaModelSelect, mmprojSelect, nbImagePanel, newProject, normalizeLyricCueMapForSegment,
-  openBulkSegmentsModal, openFluxReferenceBuilderModal, openGemmaRunnerModal,
-  openIdLoraReferenceBuilderModalSafely, openIngredientsReferenceBuilderModal, openLyricMappingWorkflowModal,
-  openLyricReviewModal, openManualFlowGptBrowser, openStoryboardBuilderFromProject, projectInput,
-  promptRunnerActionName, pushHistory, render, renderAllScenes, rtvSceneImageAnchorSection,
-  saveErnieImageSettingsFromPanel, saveFlowGptBrowserSettingsFromPanel, saveFluxKleinSettingsFromPanel,
-  saveGemmaJunkDebug, saveI2VVideoSettingsFromPanel, saveKrea2TwoPassSettingsFromPanel,
-  saveMiniMaxH3SettingsFromPanel, saveNBImageSettingsFromPanel, saveSession, saveZImageSettingsFromPanel,
-  sceneDisplayName, segmentTrack, selectedPerformerSubjectsForSegment, setInspectorTab,
-  setSegmentPromptForEdit, state, storyboardPipeline, storyboardReferenceBuilderWithIdLoraRefs,
-  storyboardScenePayload, subjectSceneInput, syncErnieImagePanel, syncFlowGptBrowserPanel,
-  syncFlowGptManualPanel, syncFluxKleinPanel, syncI2VVideoModelPickerVisibility, syncI2VVideoSettingsPanel,
-  syncInspector, syncKrea2TwoPassLlmSelectsFromShared, syncKrea2TwoPassPanel, syncLyricAndSubjectNoteFiles,
-  syncMiniMaxH3Panel, syncNBImagePanel, syncProjectVideoEngineUI, syncVideoModePanel, syncVideoTypeControl,
-  syncZImageSettingsPanel, t2iTextGemmaModelSelect, textGemmaRunnerPayload, transcribeLyricsForTimeline,
-  updateActiveFromInputs, useSceneI2VVideoSettings, useSceneI2VVideoSettingsNote, useSceneMiniMaxH3Settings,
-  useSceneMiniMaxH3SettingsNote, videoModeDisplayLabel, videoSubTabs, wizardStoryboardState,
-  wizardVideoSettings, zClipPicker, zUnetPicker, zVaePicker, zimageSettingsPanel,
+  currentVideoMode, ensureAllSegmentRuntimeFields, ensureAutoTimedSingerCuesBeforePrompt,
+  ernieImagePanel, finalizeVideoPromptDraftOnly, flowGptModePanel, fluxKleinPanel,
+  gemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect, i2vTextGemmaModelSelect,
+  imageModeDisplayLabel, importTimelineImagesFromFolder, inspector, krea2TwoPassPanel,
+  miniMaxModePanels, miniMaxPassChooser, miniMaxSubTabs, mmprojSelect, nbImagePanel, newProject,
+  normalizeLyricCueMapForSegment, openBulkSegmentsModal, openFluxReferenceBuilderModal,
+  openGemmaRunnerModal, openIdLoraReferenceBuilderModalSafely,
+  openIngredientsReferenceBuilderModal, openLyricMappingWorkflowModal, openLyricReviewModal,
+  openStoryboardBuilderFromProject, projectInput, promptRunnerActionName, pushHistory, render,
+  renderAllScenes, rtvSceneImageAnchorSection, saveErnieImageSettingsFromPanel,
+  saveFlowGptBrowserSettingsFromPanel, saveFluxKleinSettingsFromPanel, saveGemmaJunkDebug,
+  saveI2VVideoSettingsFromPanel, saveKrea2TwoPassSettingsFromPanel, saveMiniMaxH3SettingsFromPanel,
+  saveNBImageSettingsFromPanel, saveSession, saveZImageSettingsFromPanel, sceneDisplayName,
+  segmentTrack, selectedPerformerSubjectsForSegment, setInspectorTab, setSegmentPromptForEdit,
+  state, storyboardPipeline, storyboardScenePayload, syncErnieImagePanel, syncFlowGptBrowserPanel,
+  syncFluxKleinPanel, syncI2VVideoSettingsPanel, syncInspector, syncKrea2TwoPassPanel,
+  syncMiniMaxH3Panel, syncNBImagePanel, syncProjectVideoEngineUI, syncVideoModePanel,
+  syncVideoTypeControl, syncZImageSettingsPanel, t2iTextGemmaModelSelect, textGemmaRunnerPayload,
+  transcribeLyricsForTimeline, updateActiveFromInputs, useSceneI2VVideoSettings,
+  useSceneI2VVideoSettingsNote, useSceneMiniMaxH3Settings, useSceneMiniMaxH3SettingsNote,
+  videoModeDisplayLabel, videoSubTabs, wizardStoryboardState, wizardVideoSettings,
+  zimageSettingsPanel,
 }) {
   function setBuilderLtxVersion(selectedVersion) {
       const versionDefaults = selectedVersion === "2.5" ? {
@@ -538,822 +489,6 @@ export function createWizardBridge({
     }
   };
 
-  function openWizardFromBuilder() {
-    const setWizardVideoMode = (mode) => {
-      const normalized = String(mode || "").trim().toLowerCase();
-      const allowed = ["i2v", "id_lora", "rtv", "t2v", "ingredients"];
-      if (!allowed.includes(normalized)) return;
-      pushHistory();
-      state.videoModelMode = normalized;
-      syncVideoModePanel();
-      syncI2VVideoSettingsPanel();
-      autoSaveSessionQuiet("wizard video mode").catch(() => null);
-    };
-    const normalizeWizardImageMode = (mode) => {
-      const normalized = String(mode || "").trim().toLowerCase();
-      return ["zimage", "flux_klein", "nano_banana", "ernie_image", "krea2_2pass", "flow_gpt"].includes(normalized)
-        ? normalized
-        : "zimage";
-    };
-    const setWizardImageMode = async (mode) => {
-      const normalized = normalizeWizardImageMode(mode);
-      pushHistory();
-      state.imageModelMode = normalized;
-      state.fluxKleinSettings.image_model_mode = normalized;
-      state.fluxKleinSettings.enabled = normalized === "flux_klein";
-      syncFluxKleinPanel();
-      syncZImageSettingsPanel();
-      syncErnieImagePanel();
-      syncKrea2TwoPassPanel();
-      syncInspector();
-      render();
-      await autoSaveSessionQuiet("wizard image mode");
-      return normalized;
-    };
-    const compactWizardText = (value, limit = 700) => {
-      const text = String(value || "").replace(/\s+/g, " ").trim();
-      return text.length > limit ? `${text.slice(0, Math.max(0, limit - 3)).trim()}...` : text;
-    };
-    const wizardLocationKey = (value) => String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
-    const wizardLocationByName = (refs, name) => {
-      const key = wizardLocationKey(name);
-      return (refs.locations || []).find((location) => wizardLocationKey(location.name) === key) || null;
-    };
-    const wizardOptionsFromSelect = (select) => Array.from(select?.options || [])
-      .map((option) => String(option?.value || option?.textContent || "").trim())
-      .filter(Boolean);
-    const wizardOptionsFromPicker = (picker) => Array.isArray(picker?.options)
-      ? picker.options.map((item) => String(item || "").trim()).filter(Boolean)
-      : [];
-    const applyWizardSettings = async (settings = {}) => {
-      if (settings.image_model_mode) {
-        const imageMode = normalizeWizardImageMode(settings.image_model_mode);
-        state.imageModelMode = imageMode;
-        state.fluxKleinSettings.image_model_mode = imageMode;
-        state.fluxKleinSettings.enabled = imageMode === "flux_klein";
-        const imageSettings = settings.image_settings || {};
-        if (imageSettings && typeof imageSettings === "object") {
-          if (imageMode === "flux_klein") {
-            state.fluxKleinSettings = {
-              ...state.fluxKleinSettings,
-              ...imageSettings,
-              image_model_mode: imageMode,
-              enabled: true,
-            };
-          } else if (imageMode === "ernie_image") {
-            state.ernieImageSettings = cloneErnieImageSettings({
-              ...state.ernieImageSettings,
-              ...imageSettings,
-            });
-          } else if (imageMode === "krea2_2pass") {
-            state.krea2TwoPassSettings = cloneKrea2TwoPassSettings({
-              ...state.krea2TwoPassSettings,
-              ...imageSettings,
-            });
-          } else if (imageMode === "nano_banana") {
-            state.nbImageSettings = cloneNBImageSettings({
-              ...state.nbImageSettings,
-              ...imageSettings,
-            });
-          } else if (imageMode === "flow_gpt") {
-            state.flowGptBrowserSettings = cloneFlowGptBrowserSettings({
-              ...state.flowGptBrowserSettings,
-              ...imageSettings,
-            });
-            flowGptManualMode.input.checked = Boolean(imageSettings.manual_mode);
-            flowGptManualAutoAdvance.input.checked = Boolean(imageSettings.manual_auto_advance);
-          } else if (imageMode === "zimage") {
-            state.zimageSettings = cloneZImageSettings({
-              ...state.zimageSettings,
-              ...imageSettings,
-            });
-          }
-        }
-      }
-      if (settings.use_gguf_model != null) i2vUseGgufModel.input.checked = settings.use_gguf_model !== false;
-      i2vUnetPicker.input.value = String(settings.unet_name || i2vUnetPicker.input.value || "");
-      i2vDiffusionModelPicker.input.value = String(settings.diffusion_model_name || i2vDiffusionModelPicker.input.value || DEFAULT_I2V_DIFFUSION_MODEL);
-      i2vVaePicker.input.value = String(settings.vae_name || i2vVaePicker.input.value || "");
-      i2vClip1Picker.input.value = String(settings.clip_name1 || i2vClip1Picker.input.value || "");
-      i2vClip2Picker.input.value = String(settings.clip_name2 || i2vClip2Picker.input.value || "");
-      i2vUpscalePicker.input.value = String(settings.upscale_model_name || i2vUpscalePicker.input.value || "");
-      i2vAudioVaePicker.input.value = String(settings.audio_vae_name || i2vAudioVaePicker.input.value || "");
-      i2vFpsInput.value = Number(settings.fps || i2vFpsInput.value || 24);
-      i2vWidthInput.value = Number(settings.width || i2vWidthInput.value || 1920);
-      i2vHeightInput.value = Number(settings.height || i2vHeightInput.value || 1080);
-      i2vSeedInput.value = Number(settings.seed || i2vSeedInput.value || 69);
-      if (settings.msr_lora_name != null) ltxMsrLoraPicker.input.value = String(settings.msr_lora_name || ltxMsrLoraPicker.input.value || REQUIRED_LTX_MSR_LORA);
-      if (settings.msr_first_pass_strength != null) ltxMsrFirstPassStrength.value = Number(settings.msr_first_pass_strength || ltxMsrFirstPassStrength.value || 1);
-      i2vUseLora.input.checked = Boolean(settings.use_loras);
-      i2vLoraCount.value = Math.max(0, Math.min(4, Number(settings.lora_count || 0)));
-      const incomingLoras = Array.isArray(settings.loras) ? settings.loras : [];
-      i2vLoraSlots.forEach((slot, index) => {
-        const lora = incomingLoras[index] || {};
-        slot.picker.input.value = String(lora.name || slot.picker.input.value || "[none]");
-        slot.firstPassStrength.value = Number(lora.first_pass_strength ?? lora.strength ?? slot.firstPassStrength.value ?? 1);
-        slot.secondPassStrength.value = 0;
-      });
-      if (String(settings.text_gemma_model || "").trim()) {
-        t2iTextGemmaModelSelect.value = settings.text_gemma_model;
-        i2vTextGemmaModelSelect.value = settings.text_gemma_model;
-        miniMaxTextGemmaModelSelect.value = settings.text_gemma_model;
-      }
-      if (String(settings.vision_gemma_model || "").trim()) {
-        gemmaModelSelect.value = settings.vision_gemma_model;
-        i2vGemmaModelSelect.value = settings.vision_gemma_model;
-        miniMaxGemmaModelSelect.value = settings.vision_gemma_model;
-      }
-      if (String(settings.mmproj_file || "").trim()) {
-        mmprojSelect.value = settings.mmproj_file;
-        i2vMmprojSelect.value = settings.mmproj_file;
-        miniMaxMmprojSelect.value = settings.mmproj_file;
-      }
-      syncKrea2TwoPassLlmSelectsFromShared();
-      syncI2VVideoModelPickerVisibility();
-      saveI2VVideoSettingsFromPanel();
-      syncFluxKleinPanel();
-      syncZImageSettingsPanel();
-      syncErnieImagePanel();
-      syncKrea2TwoPassPanel();
-      syncFlowGptBrowserPanel();
-      syncVideoModePanel();
-      syncI2VVideoSettingsPanel();
-      render();
-      await autoSaveSessionQuiet("wizard settings applied");
-      toast("Wizard settings applied.");
-      return true;
-    };
-    const upsertWizardLocations = (refs, locations = []) => {
-      refs.locations = Array.isArray(refs.locations) ? refs.locations : [];
-      let added = 0;
-      let updated = 0;
-      for (const item of locations) {
-        const name = String(item?.name || "").trim();
-        if (!name) continue;
-        const description = String(item?.description || "").trim();
-        const existing = wizardLocationByName(refs, name);
-        if (existing) {
-          if (description && description !== existing.description) {
-            existing.description = description;
-            updated += 1;
-          }
-        } else {
-          refs.locations_cleared = false;
-          refs.locations.push({
-            id: `loc_wizard_${Date.now()}_${refs.locations.length}_${Math.floor(Math.random() * 10000)}`,
-            name,
-            description,
-            image: { path: "", data: "", name: "" },
-          });
-          added += 1;
-        }
-      }
-      return { added, updated };
-    };
-    const wizardLyricsFromScenes = () => allEditableSegments()
-      .map((segment, index) => {
-        const lyric = String(segment?.lyric_text || "").trim();
-        if (!lyric) return "";
-        return `Scene ${index + 1}: ${lyric}`;
-      })
-      .filter(Boolean)
-      .join("\n");
-    const wizardSubjectContextForLocations = (refs) => (refs.subjects || [])
-      .map((subject) => {
-        const type = String(subject.reference_type || "character").trim();
-        const name = String(subject.name || "").trim();
-        const description = String(subject.description || "").trim();
-        if (!name && !description) return "";
-        return `${name || "Reference"}${type ? ` (${type})` : ""}${description ? `: ${description}` : ""}`;
-      })
-      .filter(Boolean)
-      .join("\n");
-    const createWizardLocationsFromLyrics = async (options = {}) => {
-      const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
-      const lyricsText = String(options.lyrics || "").trim() || wizardLyricsFromScenes();
-      if (!lyricsText) {
-        toast("Paste lyrics or create lyric scenes before creating locations from lyrics.", true);
-        return { added: 0, updated: 0 };
-      }
-      const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-      if (!modelFile && !["lm_studio", "llm_api", "own_server"].includes(state.textGemmaRunner)) {
-        toast("Choose a non-vision Gemma model first, or use LM Studio, LLM API, or your own server in LLM Runner.", true);
-        return { added: 0, updated: 0 };
-      }
-      const progress = createProgressWindow("Wizard Location Scout", { zIndex: 100012 });
-      try {
-        progress.set(`Sending lyrics to Gemma location scout...\n${gemmaRunnerLine()}`, 15);
-        const data = await postJson("/vrgdg/music_builder/wizard_locations_from_lyrics", {
-          ...textGemmaRunnerPayload(),
-          model_file: modelFile,
-          lyrics_text: lyricsText,
-          style_theme: options.styleTheme || options.style_theme || refs.location_style_theme || "",
-          subject_context: wizardSubjectContextForLocations(refs),
-          existing_locations: refs.locations.map((item) => ({
-            name: compactWizardText(item.name, 90),
-            description: compactWizardText(item.description, 700),
-          })),
-          max_locations: refs.max_generated_locations || 8,
-          unload_after: true,
-          n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
-          max_new_tokens: 2200,
-        }, 10 * 60 * 1000);
-        const { added, updated } = upsertWizardLocations(refs, data.locations || []);
-        refs.use_location_references = Boolean(refs.locations.length || Object.keys(refs.scene_map || {}).length);
-        refs.cleared = false;
-        state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
-        syncInspector();
-        render();
-        await syncLyricAndSubjectNoteFiles("wizard locations from lyrics");
-        await autoSaveSessionQuiet("wizard locations from lyrics");
-        progress.set(`Location list ready.\nAdded: ${added}\nUpdated: ${updated}`, 100);
-        progress.close(1800);
-        toast(`Created ${added} new location${added === 1 ? "" : "s"} from lyrics.`);
-        return { added, updated };
-      } catch (error) {
-        progress.set(`Error:\n${String(error?.message || error)}`, 100);
-        toast(String(error?.message || error), true);
-        return { added: 0, updated: 0, error: String(error?.message || error) };
-      }
-    };
-    const autoMapWizardLocations = async () => {
-      const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
-      if (!refs.locations.length) {
-        toast("Add or import locations in Reference Builder before using wizard Auto Map.", true);
-        return { mapped: 0 };
-      }
-      const scenes = allEditableSegments().map((segment, index) => ({
-        id: segment.id,
-        label: segment.label || `Scene ${index + 1}`,
-        concept: "",
-        notes: compactWizardText(segment.lyric_text || "", 850),
-      })).filter((scene) => String(scene.concept || scene.notes || "").trim());
-      if (!scenes.length) {
-        toast("Create timeline scenes with lyric text before using wizard location mapping.", true);
-        return { mapped: 0 };
-      }
-      const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-      if (!modelFile && !["lm_studio", "llm_api", "own_server"].includes(state.textGemmaRunner)) {
-        toast("Choose a non-vision Gemma model first, or use LM Studio, LLM API, or your own server in LLM Runner.", true);
-        return { mapped: 0 };
-      }
-      const progress = createProgressWindow("Wizard Location Mapping", { zIndex: 100012 });
-      try {
-        progress.set(`Sending scene lyric lines and existing locations to Gemma...\n${gemmaRunnerLine()}`, 15);
-        const data = await postJson("/vrgdg/music_builder/flux_reference_location_map", {
-          ...textGemmaRunnerPayload(),
-          model_file: modelFile,
-          scenes,
-          subject_scene_text: compactWizardText(subjectSceneInput.value || "", 1600),
-          existing_locations: refs.locations.map((item) => ({
-            name: compactWizardText(item.name, 90),
-            description: compactWizardText(item.description, 700),
-          })),
-          unload_after: true,
-          n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
-          max_new_tokens: 1800,
-        }, 10 * 60 * 1000);
-        upsertWizardLocations(refs, data.locations || []);
-        refs.scene_map = refs.scene_map && typeof refs.scene_map === "object" ? refs.scene_map : {};
-        let mapped = 0;
-        for (const [sceneId, locationName] of Object.entries(data.scene_map || {})) {
-          const location = wizardLocationByName(refs, locationName);
-          if (!location?.id) continue;
-          refs.scene_map[sceneId] = location.id;
-          mapped += 1;
-        }
-        refs.use_location_references = Boolean(refs.locations.length || Object.keys(refs.scene_map || {}).length);
-        refs.cleared = false;
-        state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
-        syncInspector();
-        render();
-        await syncLyricAndSubjectNoteFiles("wizard location mapping");
-        await autoSaveSessionQuiet("wizard location mapping");
-        progress.set(`Location mapping complete.\nMapped scenes: ${mapped}`, 100);
-        progress.close(1800);
-        toast(`Wizard auto-mapped ${mapped} scene${mapped === 1 ? "" : "s"} to locations.`);
-        return { mapped };
-      } catch (error) {
-        progress.set(`Error:\n${String(error?.message || error)}`, 100);
-        toast(String(error?.message || error), true);
-        return { mapped: 0, error: String(error?.message || error) };
-      }
-    };
-    const applyWizardSceneDefaultSettingsToState = (settings = {}) => {
-      const cameraSpeed = Math.max(0, Math.min(10, Number(settings.cameraMotionSpeed ?? settings.camera_motion_speed ?? state.builderStoryboardDefaults?.camera_motion_speed ?? 4)));
-      const characterSpeed = Math.max(0, Math.min(10, Number(settings.characterMotionSpeed ?? settings.character_motion_speed ?? state.builderStoryboardDefaults?.character_motion_speed ?? 4)));
-      state.builderStoryboardDefaults = normalizeBuilderStoryboardDefaults({
-        ...state.builderStoryboardDefaults,
-        camera_flow: settings.cameraFlow ?? settings.camera_flow ?? state.builderStoryboardDefaults?.camera_flow,
-        image_shot_flow: settings.imageShotFlow ?? settings.image_shot_flow ?? state.builderStoryboardDefaults?.image_shot_flow,
-        image_aesthetic: settings.imageAesthetic ?? settings.image_aesthetic ?? state.builderStoryboardDefaults?.image_aesthetic,
-        global_consistency_phrase: settings.globalConsistencyPhrase ?? settings.global_consistency_phrase ?? state.builderStoryboardDefaults?.global_consistency_phrase,
-        performance_style: settings.performanceStyle ?? settings.performance_style ?? state.builderStoryboardDefaults?.performance_style,
-        camera_motion_speed: cameraSpeed,
-        character_motion_speed: characterSpeed,
-        camera_guidance: builderMotionSpeedGuidance(cameraSpeed, "camera"),
-        character_guidance: builderMotionSpeedGuidance(characterSpeed, "character"),
-      });
-      if (Object.prototype.hasOwnProperty.call(settings, "facialPerformance") || Object.prototype.hasOwnProperty.call(settings, "facial_performance")) {
-        state.defaultFacialPerformance = String(settings.facialPerformance ?? settings.facial_performance ?? "");
-      }
-      if (Object.prototype.hasOwnProperty.call(settings, "facialPerformanceCustom") || Object.prototype.hasOwnProperty.call(settings, "facial_performance_custom")) {
-        state.defaultFacialPerformanceCustom = String(settings.facialPerformanceCustom ?? settings.facial_performance_custom ?? "");
-      }
-      if (settings.storyLayer || settings.story_layer) {
-        // Merge so Story Mode data the wizard does not edit (book, acts, scene plan) is kept, even if it sends an old copy.
-        state.builderStoryLayer = normalizeBuilderStoryLayer({
-          ...state.builderStoryLayer, ...withoutStoryModeKeys(settings.storyLayer || settings.story_layer),
-        });
-      }
-      return {
-        sceneDefaults: normalizeBuilderStoryboardDefaults(state.builderStoryboardDefaults),
-        storyLayer: normalizeBuilderStoryLayer(state.builderStoryLayer),
-      };
-    };
-    const updateWizardSceneDefaultSettings = async (settings = {}, label = "wizard scene settings") => {
-      const updated = applyWizardSceneDefaultSettingsToState(settings);
-      await autoSaveSessionQuiet(label);
-      return updated;
-    };
-    const applyWizardSceneDefaults = async (settings = {}) => {
-      const cameraFlow = STORYBOARD_CAMERA_FLOW_PRESETS[settings.cameraFlow] ? settings.cameraFlow : "balanced";
-      const imageShotFlow = STORYBOARD_IMAGE_SHOT_FLOW_PRESETS[settings.imageShotFlow] ? settings.imageShotFlow : "intimate";
-      const imageAesthetic = STORYBOARD_IMAGE_AESTHETIC_PRESETS.some((preset) => preset.value === settings.imageAesthetic)
-        ? String(settings.imageAesthetic || "")
-        : "";
-      const performanceStyle = String(settings.performanceStyle || "");
-      const facialPerformance = String(settings.facialPerformance || "");
-      const facialPerformanceCustom = String(settings.facialPerformanceCustom || "");
-      const shouldApplyImageShot = Boolean(settings.applyImageShotFlow);
-      const shouldApplyImageAesthetic = Boolean(settings.applyImageAesthetic);
-      const shouldApplyPerformance = Boolean(settings.applyPerformance);
-      const shouldApplyFacial = Boolean(settings.applyFacialPerformance);
-      const shouldApplyCamera = settings.applyCamera == null
-        ? !shouldApplyImageShot && !shouldApplyImageAesthetic && !shouldApplyPerformance && !settings.applyFacialPerformance
-        : Boolean(settings.applyCamera);
-      const overwriteImageShot = Boolean(settings.overwriteImageShotFlow);
-      const overwriteImageAesthetic = Boolean(settings.overwriteImageAesthetic);
-      const overwriteCamera = Boolean(settings.overwriteCamera);
-      const overwritePerformance = Boolean(settings.overwritePerformance);
-      const overwriteFacial = Boolean(settings.overwriteFacialPerformance);
-      let previousMotion = "";
-      let imageShotChanged = 0;
-      let imageAestheticChanged = 0;
-      let cameraChanged = 0;
-      let performanceChanged = 0;
-      let facialChanged = 0;
-      const scenes = allEditableSegments();
-      pushHistory();
-      applyWizardSceneDefaultSettingsToState(settings);
-      const nextStoryboardDefaults = {
-        ...state.builderStoryboardDefaults,
-      };
-      if (shouldApplyCamera) nextStoryboardDefaults.camera_flow = cameraFlow;
-      if (shouldApplyImageShot) nextStoryboardDefaults.image_shot_flow = imageShotFlow;
-      if (shouldApplyImageAesthetic) nextStoryboardDefaults.image_aesthetic = imageAesthetic;
-      if (shouldApplyPerformance && performanceStyle) nextStoryboardDefaults.performance_style = performanceStyle;
-      state.builderStoryboardDefaults = normalizeBuilderStoryboardDefaults(nextStoryboardDefaults);
-      if (facialPerformance || facialPerformanceCustom) {
-        state.defaultFacialPerformance = facialPerformance;
-        state.defaultFacialPerformanceCustom = facialPerformanceCustom;
-      }
-      scenes.forEach((segment, index) => {
-        if (shouldApplyImageShot && imageShotFlow !== "off") {
-          const shot = storyboardImageShotFlowEntry(imageShotFlow, index);
-          if (shot && (overwriteImageShot || !String(segment.shot_type || "").trim())) {
-            segment.shot_type = shot;
-            imageShotChanged += 1;
-          }
-        }
-        if (shouldApplyImageAesthetic) {
-          const aestheticDescription = String(storyboardImageAestheticPreset(imageAesthetic).description || "").trim();
-          const existing = String(segment.motion_summary || "");
-          const hasAesthetic = existing
-            .split(/\r?\n/)
-            .some((line) => line.trim().toLowerCase().startsWith("image aesthetic:"));
-          if (aestheticDescription && (overwriteImageAesthetic || !hasAesthetic)) {
-            const prefix = "Image aesthetic:";
-            const lines = existing
-              .replace(/\r\n/g, "\n")
-              .split("\n")
-              .filter((line) => !line.trim().toLowerCase().startsWith(prefix.toLowerCase()));
-            lines.push(`${prefix} ${aestheticDescription}.`);
-            segment.motion_summary = lines.map((line) => line.trim()).filter(Boolean).join("\n");
-            imageAestheticChanged += 1;
-          }
-        }
-      const entry = shouldApplyCamera
-        ? storyboardCameraFlowEntry(cameraFlow, index, previousMotion, state.builderStoryboardDefaults?.custom_camera_flow_sequence)
-        : null;
-        if (entry && cameraFlow !== "off") {
-          const hadShot = Boolean(String(segment.shot_type || "").trim());
-          const hadCamera = Boolean(String(segment.camera_motion || segment.motion_preset || "").trim());
-          if ((overwriteCamera || !hadShot) && entry.shot) {
-            segment.shot_type = entry.shot;
-            cameraChanged += 1;
-          }
-          if ((overwriteCamera || !hadCamera) && entry.camera) {
-            segment.camera_motion = entry.camera;
-            cameraChanged += 1;
-          }
-          previousMotion = String(segment.camera_motion || entry.camera || previousMotion);
-        }
-        if (shouldApplyPerformance) {
-          const hadPerformance = Boolean(String(segment.performance_style || "").trim());
-          if (overwritePerformance || !hadPerformance) {
-            segment.performance_style = performanceStyle;
-            performanceChanged += 1;
-          }
-        }
-        if (shouldApplyFacial) {
-          const hadFacial = Boolean(String(segment.facial_performance || "").trim() || String(segment.facial_performance_custom || "").trim());
-          if (overwriteFacial || !hadFacial) {
-            segment.facial_performance = facialPerformance;
-            segment.facial_performance_custom = facialPerformanceCustom;
-            facialChanged += 1;
-          }
-        }
-      });
-      syncInspector();
-      render();
-      await autoSaveSessionQuiet("wizard scene defaults");
-      toast(`Wizard scene defaults applied.\nImage shots: ${imageShotChanged}\nImage aesthetics: ${imageAestheticChanged}\nCamera fields: ${cameraChanged}\nPerformance scenes: ${performanceChanged}\nFacial scenes: ${facialChanged}`);
-      return { imageShotChanged, imageAestheticChanged, cameraChanged, performanceChanged, facialChanged };
-    };
-    const createWizardStoryBrief = async (draft = {}) => {
-      const layer = normalizeBuilderStoryLayer({
-        ...state.builderStoryLayer,
-        ...withoutStoryModeKeys(draft?.storyLayer || draft?.story_layer),
-        user_story_arc: draft?.userStoryArc ?? draft?.user_story_arc ?? state.builderStoryLayer?.user_story_arc,
-      });
-      state.builderStoryLayer = layer;
-      const scenes = storyboardScenePayload();
-      const progress = createProgressWindow("Wizard Story Brief", { zIndex: 100012 });
-      try {
-        progress.set("Creating compact story brief from lyrics, sections, and story arc...", 18);
-        const data = await postJson("/vrgdg/storyboard/story_brief", {
-          ...textGemmaRunnerPayload(),
-          model_file: i2vTextGemmaModelSelect.value || t2iTextGemmaModelSelect.value || "",
-          story_layer: layer,
-          lyrics: scenes.map((scene) => `${scene.lyric_section ? `[${scene.lyric_section}]\n` : ""}${scene.lyrics || ""}`).filter(Boolean).join("\n\n"),
-          scenes,
-          unload_after: true,
-          max_new_tokens: 800,
-        }, 240000);
-        state.builderStoryLayer = normalizeBuilderStoryLayer({
-          ...layer,
-          song_story_brief: data.story_brief || "",
-        });
-        await autoSaveSessionQuiet("wizard story brief");
-        progress.set("Story brief saved.", 100);
-        progress.close(1400);
-        toast("Wizard story brief created.");
-        return normalizeBuilderStoryLayer(state.builderStoryLayer);
-      } catch (error) {
-        progress.set(`Error:\n${String(error?.message || error)}`, 100);
-        toast(String(error?.message || error), true);
-        return normalizeBuilderStoryLayer(state.builderStoryLayer);
-      }
-    };
-    const createWizardStoryArc = async (draft = {}) => {
-      const layer = normalizeBuilderStoryLayer({
-        ...state.builderStoryLayer,
-        ...withoutStoryModeKeys(draft?.storyLayer || draft?.story_layer),
-        user_story_arc: draft?.userStoryArc ?? draft?.user_story_arc ?? state.builderStoryLayer?.user_story_arc,
-      });
-      state.builderStoryLayer = layer;
-      const scenes = storyboardScenePayload();
-      const progress = createProgressWindow(`Wizard Story Arc — ${gemmaRunnerLabel()}`, { zIndex: 100012 });
-      try {
-        const storyArcModeLabel = videoModeDisplayLabel(currentVideoMode(), true);
-        progress.set(`Creating a short song-structure story arc from lyrics, subjects, and locations...\nVideo mode: ${storyArcModeLabel}`, 18);
-        const data = await postJson("/vrgdg/storyboard/story_arc", {
-          ...textGemmaRunnerPayload(),
-          model_file: i2vTextGemmaModelSelect.value || t2iTextGemmaModelSelect.value || "",
-          story_layer: layer,
-          story_idea: draft?.storyIdea ?? draft?.story_idea ?? layer.user_story_arc,
-          character_motion: draft?.characterMotion ?? draft?.character_motion ?? draft?.storyCharacterMotion ?? 7,
-          lyrics: scenes.map((scene) => `${scene.lyric_section ? `[${scene.lyric_section}]\n` : ""}${scene.lyrics || ""}`).filter(Boolean).join("\n\n"),
-          scenes,
-          reference_builder: storyboardReferenceBuilderWithIdLoraRefs(state.fluxReferenceBuilder),
-          unload_after: true,
-          max_new_tokens: 900,
-        }, 240000);
-        state.builderStoryLayer = normalizeBuilderStoryLayer({
-          ...layer,
-          user_story_arc: data.story_arc || "",
-        });
-        await autoSaveSessionQuiet("wizard story arc");
-        progress.set("Story arc saved.", 100);
-        progress.close(1400);
-        toast("Wizard story arc created.");
-        return normalizeBuilderStoryLayer(state.builderStoryLayer);
-      } catch (error) {
-        progress.set(`Error:\n${String(error?.message || error)}`, 100);
-        toast(String(error?.message || error), true);
-        return normalizeBuilderStoryLayer(state.builderStoryLayer);
-      }
-    };
-    const detectWizardLyricSections = async (referenceLyrics = "") => {
-      const applied = applyLyricSectionsFromReferenceText(allEditableSegments(), referenceLyrics);
-      if (applied) {
-        syncInspector();
-        render();
-        await autoSaveSessionQuiet("wizard lyric sections detected");
-      }
-      toast(applied ? `Detected lyric sections for ${applied} scene${applied === 1 ? "" : "s"}.` : "No missing lyric sections were detected.");
-      return applied;
-    };
-    const wizardSnapshot = () => {
-      const refs = storyboardReferenceBuilderWithIdLoraRefs(state.fluxReferenceBuilder);
-      const videoSettings = repairI2VVideoSettingDimensions(activeI2VVideoSettings() || state.i2vVideoSettings || {});
-      const llmOptions = Array.from(new Set([
-        ...wizardOptionsFromSelect(t2iTextGemmaModelSelect),
-        ...wizardOptionsFromSelect(i2vTextGemmaModelSelect),
-        ...wizardOptionsFromSelect(gemmaModelSelect),
-        ...wizardOptionsFromSelect(i2vGemmaModelSelect),
-      ]));
-      return {
-        projectFolder: String(projectInput.value || state.projectFolder || "").trim(),
-        projectVideoEngine: normalizeProjectVideoEngine(state.projectVideoEngine),
-        storyMode: normalizeProjectVideoType(state.videoType) === "story",
-        audioPath: String(audioInput.value || state.audioPath || "").trim(),
-        wizardFolder: String(projectInput.value || state.projectFolder || "").trim() ? `${String(projectInput.value || state.projectFolder || "").trim()}\\wizard` : "",
-        sceneCount: allEditableSegments().length,
-        videoMode: currentVideoMode(),
-        videoModeLabel: videoModeDisplayLabel(currentVideoMode()),
-        imageMode: state.imageModelMode || "zimage",
-        imageModeLabel: imageModeDisplayLabel(state.imageModelMode || "zimage"),
-        imageModeOptions: [
-          { value: "zimage", label: imageModeDisplayLabel("zimage") },
-          { value: "flux_klein", label: imageModeDisplayLabel("flux_klein") },
-          { value: "ernie_image", label: imageModeDisplayLabel("ernie_image") },
-          { value: "krea2_2pass", label: imageModeDisplayLabel("krea2_2pass") },
-          { value: "flow_gpt", label: imageModeDisplayLabel("flow_gpt") },
-          { value: "nano_banana", label: imageModeDisplayLabel("nano_banana") },
-        ],
-        subjectCount: Array.isArray(refs.subjects) ? refs.subjects.length : 0,
-        locationCount: Array.isArray(refs.locations) ? refs.locations.length : 0,
-        storyLayer: normalizeBuilderStoryLayer(state.builderStoryLayer),
-        storyBeatCount: allEditableSegments().filter((segment) => String(segment.story_beat || "").trim()).length,
-        lyricSectionCount: allEditableSegments().filter((segment) => String(segment.lyric_section || "").trim()).length,
-        videoSettings: {
-          fps: Number(videoSettings.fps || 24),
-          width: Number(videoSettings.width || 1920),
-          height: Number(videoSettings.height || 1080),
-          seed: Number(videoSettings.seed || 69),
-          use_gguf_model: videoSettings.use_gguf_model !== false,
-          unet_name: String(videoSettings.unet_name || ""),
-          diffusion_model_name: String(videoSettings.diffusion_model_name || ""),
-          vae_name: String(videoSettings.vae_name || ""),
-          clip_name1: String(videoSettings.clip_name1 || ""),
-          clip_name2: String(videoSettings.clip_name2 || ""),
-          upscale_model_name: String(videoSettings.upscale_model_name || ""),
-          audio_vae_name: String(videoSettings.audio_vae_name || ""),
-          msr_lora_name: String(videoSettings.msr_lora_name || REQUIRED_LTX_MSR_LORA),
-          msr_first_pass_strength: Number(videoSettings.msr_first_pass_strength ?? 1),
-          use_loras: Boolean(videoSettings.use_loras),
-          lora_count: Number(videoSettings.lora_count || 0),
-          loras: Array.isArray(videoSettings.loras) ? videoSettings.loras.map((lora) => ({
-            name: String(lora?.name || "[none]"),
-            first_pass_strength: Number(lora?.first_pass_strength ?? lora?.strength ?? 1),
-            second_pass_strength: Number(lora?.second_pass_strength ?? 0),
-          })) : [],
-        },
-        gemmaSettings: {
-          text_model: String(i2vTextGemmaModelSelect.value || t2iTextGemmaModelSelect.value || ""),
-          vision_model: String(i2vGemmaModelSelect.value || gemmaModelSelect.value || ""),
-          mmproj: String(i2vMmprojSelect.value || mmprojSelect.value || ""),
-        },
-        imageSettings: {
-          zimage: cloneZImageSettings(state.zimageSettings || defaultZImageSettings()),
-          flux_klein: { ...(state.fluxKleinSettings || defaultFluxKleinSettings()) },
-          ernie_image: cloneErnieImageSettings(state.ernieImageSettings || defaultErnieImageSettings()),
-          krea2_2pass: cloneKrea2TwoPassSettings(state.krea2TwoPassSettings || defaultKrea2TwoPassSettings()),
-          flow_gpt: {
-            ...cloneFlowGptBrowserSettings(state.flowGptBrowserSettings || defaultFlowGptBrowserSettings()),
-            manual_mode: Boolean(flowGptManualMode.input.checked),
-            manual_auto_advance: Boolean(flowGptManualAutoAdvance.input.checked),
-          },
-          nano_banana: { ...(state.nbImageSettings || {}) },
-        },
-        imageModelOptions: {
-          zimage: {
-            unets: wizardOptionsFromPicker(zUnetPicker),
-            clip: wizardOptionsFromPicker(zClipPicker),
-            vae: wizardOptionsFromPicker(zVaePicker),
-          },
-          flux_klein: {
-            unets: wizardOptionsFromPicker(fluxUnetPicker),
-            clip: wizardOptionsFromPicker(fluxClipPicker),
-            vae: wizardOptionsFromPicker(fluxVaePicker),
-          },
-          ernie_image: {
-            unets: wizardOptionsFromPicker(ernieUnetPicker),
-            clip: wizardOptionsFromPicker(ernieClipPicker),
-            vae: wizardOptionsFromPicker(ernieVaePicker),
-          },
-          krea2_2pass: {
-            unets: wizardOptionsFromPicker(krea2TwoPassUnetPicker),
-            clip: wizardOptionsFromPicker(krea2TwoPassClipPicker),
-            vae: wizardOptionsFromPicker(krea2TwoPassVaePicker),
-          },
-          nano_banana: {
-            models: NB_IMAGE_MODELS,
-          },
-        },
-        modelOptions: {
-          unets: wizardOptionsFromPicker(i2vUnetPicker),
-          diffusion_models: wizardOptionsFromPicker(i2vDiffusionModelPicker),
-          vae: wizardOptionsFromPicker(i2vVaePicker),
-          clip: Array.from(new Set([...wizardOptionsFromPicker(i2vClip1Picker), ...wizardOptionsFromPicker(i2vClip2Picker)])),
-          upscale_models: wizardOptionsFromPicker(i2vUpscalePicker),
-          loras: wizardOptionsFromPicker(ltxMsrLoraPicker),
-          llm: llmOptions,
-          mmproj: Array.from(new Set([...wizardOptionsFromSelect(i2vMmprojSelect), ...wizardOptionsFromSelect(mmprojSelect)])),
-        },
-        sceneDefaults: {
-          cameraFlow: state.builderStoryboardDefaults?.camera_flow || "balanced",
-          imageShotFlow: state.builderStoryboardDefaults?.image_shot_flow || "intimate",
-          imageAesthetic: state.builderStoryboardDefaults?.image_aesthetic || "",
-          videoStyle: state.builderStoryboardDefaults?.video_style || "",
-          videoStyleCustom: state.builderStoryboardDefaults?.video_style_custom || "",
-          temporalWorldEffect: state.builderStoryboardDefaults?.temporal_world_effect || "",
-          temporalWorldEffectCustom: state.builderStoryboardDefaults?.temporal_world_effect_custom || "",
-          temporalAllowBackgroundExtras: state.builderStoryboardDefaults?.temporal_allow_background_extras !== false,
-          temporalBackgroundIntensity: state.builderStoryboardDefaults?.temporal_background_intensity ?? 8,
-          temporalEnvironmentTimePassage: state.builderStoryboardDefaults?.temporal_environment_time_passage !== false,
-          temporalProtectedCharacters: state.builderStoryboardDefaults?.temporal_protected_characters || "all_referenced",
-          temporalProtectedCustom: state.builderStoryboardDefaults?.temporal_protected_custom || "",
-          globalConsistencyPhrase: state.builderStoryboardDefaults?.global_consistency_phrase || "",
-          performanceStyle: state.builderStoryboardDefaults?.performance_style || "",
-          facialPerformance: state.defaultFacialPerformance || "",
-          facialPerformanceCustom: state.defaultFacialPerformanceCustom || "",
-          cameraMotionSpeed: state.builderStoryboardDefaults?.camera_motion_speed ?? 4,
-          characterMotionSpeed: state.builderStoryboardDefaults?.character_motion_speed ?? 4,
-          cameraFlowOptions: Object.entries(STORYBOARD_CAMERA_FLOW_PRESETS).map(([value, preset]) => ({
-            value,
-            label: preset.label || value,
-            description: preset.description || "",
-            count: Array.isArray(preset.sequence) ? preset.sequence.length : 0,
-          })),
-          imageShotFlowOptions: Object.entries(STORYBOARD_IMAGE_SHOT_FLOW_PRESETS).map(([value, preset]) => ({
-            value,
-            label: preset.label || value,
-            description: preset.description || "",
-            count: Array.isArray(preset.sequence) ? preset.sequence.length : 0,
-          })),
-          imageAestheticOptions: STORYBOARD_IMAGE_AESTHETIC_PRESETS.map((preset) => ({
-            value: preset.value,
-            label: preset.label,
-            description: preset.description || "",
-          })),
-          performanceStyleOptions: PERFORMANCE_STYLE_PRESETS.map((preset) => ({
-            value: preset.value,
-            label: preset.label,
-            description: storyboardPerformancePreset(preset.value).direction || preset.description || "",
-          })),
-          facialPerformanceOptions: FACIAL_PERFORMANCE_PRESETS.map((preset) => ({
-            value: preset.value,
-            label: preset.label,
-            description: storyboardFacialPerformancePreset(preset.value).direction || preset.description || "",
-          })),
-        },
-      };
-    };
-    openMusicVideoWizard({
-      snapshot: wizardSnapshot,
-      openStoryBuilder: (...args) => openStoryBuilder?.(...args),
-      setVideoMode: setWizardVideoMode,
-      setImageMode: setWizardImageMode,
-      chooseAudioFile: chooseProjectAudioFile,
-      createScenesFromLyrics: createScenesFromTimestampedLyrics,
-      applySettings: applyWizardSettings,
-      updateFlowGptSettings: async (settings = {}) => {
-        state.flowGptBrowserSettings = cloneFlowGptBrowserSettings({
-          ...state.flowGptBrowserSettings,
-          ...settings,
-        });
-        if (settings.manual_mode != null) flowGptManualMode.input.checked = Boolean(settings.manual_mode);
-        if (settings.manual_auto_advance != null) flowGptManualAutoAdvance.input.checked = Boolean(settings.manual_auto_advance);
-        syncFlowGptBrowserPanel();
-        await autoSaveSessionQuiet("wizard Flow/GPT settings updated");
-        return cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
-      },
-      openGemmaRunner: openGemmaRunnerModal,
-      setupFlowGptBrowser: async () => {
-        const data = await setupBrowserImageAutomation({ install_portable_node: true, install_if_missing: true, strict_ssl: false });
-        const status = data.status || formatBrowserImageStatus(data);
-        flowGptStatusText.textContent = status;
-        toast("Browser automation setup finished.");
-        return status;
-      },
-      checkFlowGptBrowser: async () => {
-        const data = await getBrowserImageStatus();
-        const status = formatBrowserImageStatus(data);
-        flowGptStatusText.textContent = status;
-        return status;
-      },
-      openFlowGptLogin: async (provider = BROWSER_IMAGE_PROVIDERS.FLOW_NANO_BANANA) => {
-        const normalized = normalizeFlowGptBrowserProvider(provider);
-        const settings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
-        await openBrowserImageLogin(normalized, {
-          debug_port: browserImageProviderDebugPort(normalized),
-          timeoutMs: 60000,
-        });
-        const status = browserImageLoginStatus(normalized, settings);
-        flowGptStatusText.textContent = status;
-        toast(`${browserImageProviderLabel(normalized)} login browser opened.`);
-        return status;
-      },
-      openFlowGptManualBrowser: async () => {
-        flowGptManualMode.input.checked = true;
-        syncFlowGptManualPanel();
-        await openManualFlowGptBrowser();
-        return flowGptManualStatus.textContent || "Manual browser opened.";
-      },
-      exportFlowGptManualRefs: async () => {
-        flowGptManualMode.input.checked = true;
-        syncFlowGptManualPanel();
-        await exportManualFlowGptRefs();
-        return flowGptManualStatus.textContent || "Scene refs exported.";
-      },
-      importLatestFlowGptManualDownload: async () => {
-        flowGptManualMode.input.checked = true;
-        syncFlowGptManualPanel();
-        await importLatestManualFlowGptDownload();
-        return flowGptManualStatus.textContent || "Latest manual download imported.";
-      },
-      openReferenceBuilder: (mode = currentVideoMode()) => {
-        const normalized = String(mode || currentVideoMode() || "i2v").trim().toLowerCase();
-        setWizardVideoMode(normalized);
-        if (normalized === "ingredients") {
-          openIngredientsReferenceBuilderModal();
-        } else if (normalized === "rtv") {
-          openFluxReferenceBuilderModal({ wizardMode: true });
-        } else if (normalized === "id_lora") {
-          openIdLoraReferenceBuilderModalSafely();
-        } else {
-          openFluxReferenceBuilderModal({ wizardMode: true, textOnlyMode: true });
-        }
-      },
-      openLyricMapping: openLyricMappingWorkflowModal,
-      openLyricReview: openLyricReviewModal,
-      openStoryboard: openStoryboardBuilderFromProject,
-      createLocationsFromLyrics: createWizardLocationsFromLyrics,
-      autoMapLocations: autoMapWizardLocations,
-      detectLyricSections: detectWizardLyricSections,
-      createStoryArc: createWizardStoryArc,
-      createStoryBrief: createWizardStoryBrief,
-      createSceneBeats: createWizardSceneBeats,
-      updateStoryLayer: async (storyLayer = {}) => {
-        state.builderStoryLayer = normalizeBuilderStoryLayer({ ...state.builderStoryLayer, ...withoutStoryModeKeys(storyLayer) });
-        await autoSaveSessionQuiet("wizard story layer updated");
-        return normalizeBuilderStoryLayer(state.builderStoryLayer);
-      },
-      updateSceneDefaultSettings: updateWizardSceneDefaultSettings,
-      applySceneDefaults: applyWizardSceneDefaults,
-      saveWizardDraft: async (draft = {}) => {
-        const projectFolder = activeProjectFolderForSave();
-        if (!projectFolder) return null;
-        return postJson("/vrgdg/music_builder/save_wizard_draft", {
-          project_folder: projectFolder,
-          lyrics: String(draft?.lyrics || ""),
-          draft,
-        }, 60000);
-      },
-      loadWizardDraft: async () => {
-        const projectFolder = activeProjectFolderForSave();
-        if (!projectFolder) return null;
-        return postJson("/vrgdg/music_builder/load_wizard_draft", {
-          project_folder: projectFolder,
-        }, 60000);
-      },
-      runGemmaImageAll: async () => {
-        await confirmAndRunGemmaT2IAll();
-      },
-      runFlowGptImageAll: async () => {
-        state.imageModelMode = "flow_gpt";
-        state.fluxKleinSettings.image_model_mode = "flow_gpt";
-        state.fluxKleinSettings.enabled = false;
-        syncFluxKleinPanel();
-        syncFlowGptBrowserPanel();
-        syncInspector();
-        render();
-        await flowGptImageAllScenes({ imageRunMode: "resume_missing" });
-      },
-      runGemmaVideoAll: async () => {
-        if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3" || ["i2v", "rtv"].includes(currentVideoMode())) await runWizardStoryboardGemmaAll();
-        else await confirmAndRunGemmaVideoAll();
-      },
-      buildFullVideo: async () => {
-        await confirmAndRunFullBuild();
-      },
-      saveProject: (options = {}) => saveSession({ quiet: options?.quiet !== false, throwOnError: false }),
-    });
-  }
-
   // The Storyboard Builder owns the Video Builder prompt pipeline; register it without opening its UI.
   function storyboardPromptPipeline() {
     if (typeof storyboardPipeline.runner !== "function") openStoryboardBuilderFromProject({ registerPromptPipelineOnly: true });
@@ -1363,7 +498,7 @@ export function createWizardBridge({
     return storyboardPipeline.runner;
   }
 
-  function openWizardBetaFromBuilder() {
+  function openWizardFromBuilder() {
     let ltxAudioChoice = state.wizardBetaDraft?.audioMode === "silent" ? "silent" : "input_audio";
     const modes = {
       ltx: [
@@ -1471,7 +606,7 @@ export function createWizardBridge({
       sync();
     };
     const movePanel = (holder, panel) => {
-      const marker = document.createComment("Wizard Beta panel position");
+      const marker = document.createComment("Wizard panel position");
       panel.before(marker); holder.append(panel);
       return () => { if (marker.parentNode) marker.replaceWith(panel); };
     };
@@ -1500,7 +635,7 @@ export function createWizardBridge({
         for (const [id, values] of Object.entries(map || {})) map[id] = values.filter(value => !removed.has(value));
       }
       for (const [id, value] of Object.entries(refs.scene_map || {})) if (removed.has(value)) delete refs.scene_map[id];
-      const referenceMode = wizardBetaNeeds(draft.engine, draft.mode).references;
+      const referenceMode = wizardNeeds(draft.engine, draft.mode).references;
       const subjects = draft.subjects || (draft.singer ? [draft.singer] : []);
       const saveImages = (images, list, prefix) => images.forEach((image, index) => {
         if (!image.referenceId) {
@@ -1528,7 +663,7 @@ export function createWizardBridge({
     const generatePrompts = () => openStoryboardBuilderFromProject({
       focusedSection: "scenes", allowImagePrep: false, promptActionOnly: true,
     });
-    openWizardBeta({
+    openWizard({
       snapshot, configure, flush,
       imageUrl: makeEditorImageUrl,
       mountSettings: (holder, kind) => {
@@ -1574,7 +709,7 @@ export function createWizardBridge({
       openRunner: openGemmaRunnerModal,
       openReferences: (focusedSection, onClose) => {
         const { engine, mode, imageMode } = snapshot();
-        const needs = wizardBetaNeeds(engine, mode);
+        const needs = wizardNeeds(engine, mode);
         const textOnlyMode = ["t2v", "text_to_video"].includes(mode)
           || (needs.images && !needs.references && !["nano_banana", "flux_klein", "flow_gpt"].includes(imageMode));
         if (focusedSection) {
@@ -1634,7 +769,7 @@ export function createWizardBridge({
         const created = allEditableSegments().filter(scene => !previousIds.has(scene.id));
         if (created.length) {
           const draft = state.wizardBetaDraft;
-          const needs = wizardBetaNeeds(draft.engine, draft.mode);
+          const needs = wizardNeeds(draft.engine, draft.mode);
           const context = [draft.direction, !needs.references && draft.characters && `Characters: ${draft.characters}`, !needs.references && draft.locationsText && `Locations: ${draft.locationsText}`, draft.sound && `Sound: ${draft.sound}`].filter(Boolean).join("\n");
           for (const scene of created) {
             scene.i2v_notes = [scene.i2v_notes, context].filter(Boolean).join("\n");
@@ -1667,6 +802,6 @@ export function createWizardBridge({
 
   return {
     createSceneBeats: createWizardSceneBeats, createVideoPrompts: runWizardStoryboardGemmaAll,
-    openWizardBetaFromBuilder, openWizardFromBuilder,
+    openWizardFromBuilder,
   };
 }
