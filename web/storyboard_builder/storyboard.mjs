@@ -681,8 +681,8 @@ export function openStoryboardBuilder(payload = {}) {
   const defaultPresets = wireDefaultPresets({ toolbar: defaultsControls.defaultsPresetsToolbar, controls: defaultsControls,
     state, film: usesFilmPlanningProfile, postJson, createToast, refreshCameraFlowInfo, notifyStoryboardDefaultsChanged,
     noteDefaultKeys: keys => defaultsAutoApply.note(keys),
-    onPresetApplied: name => {
-      showDefaultsConfirmation(`Preset: ${name}\n${defaultsControls.defaultsResult.textContent}`);
+    onPresetApplied: (name, details) => {
+      showDefaultsConfirmation(`Preset: ${name}\n${defaultsControls.defaultsResult.textContent}\n\n${details}`);
     },
   });
   // After the saved storyboard loads, show its choices: the Speed / Music style presets and each setting's value.

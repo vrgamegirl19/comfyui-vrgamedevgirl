@@ -226,8 +226,9 @@ test("actual scene checkbox updates the visible scope and isolates the next edit
     .replace(/^import [^;]*;\r?\n/gm, "").replace(/^export /gm, "");
   vm.runInContext(source, f.context);
   const tableWrap = new Node();
+  const visibleRows = f.state.scenes.slice(0, 3);
   const table = f.context.createSceneTable({ state: f.state, tableWrap, stats: {},
-    currentRows: () => f.state.scenes, promptRunnerName: () => "LLM",
+    currentRows: () => visibleRows, promptRunnerName: () => "LLM",
     refreshSetupPanelSummaries() {}, refreshActionButtons: () => f.controller.syncScope() });
   const checkbox = () => tableWrap.children[0].children.find(node => node.children.some(row => row.actions.select))
     .children[0].actions.select;
@@ -245,6 +246,16 @@ test("actual scene checkbox updates the visible scope and isolates the next edit
   assert.equal(f.state.scenes[0].scene_defaults, undefined);
   checkbox().events.change({ target: { checked: false } });
   assert.equal(f.controls.defaultsScopeFooter.textContent, "Editing all scenes");
+  const invert = () => tableWrap.children[0].children.find(node => node.actions["invert-selection"])
+    .actions["invert-selection"].events.click();
+  f.state.selected.add("scene10"); // Hidden by the current table filter.
+  invert();
+  assert.deepEqual([...f.state.selected].sort(), ["scene1", "scene10", "scene5", "scene7"]);
+  invert();
+  assert.deepEqual([...f.state.selected], ["scene10"], "hidden selection is preserved, visible inversion is reversible");
+  checkbox().events.change({ target: { checked: true } });
+  invert();
+  assert.deepEqual([...f.state.selected].sort(), ["scene10", "scene5", "scene7"]);
 });
 
 test("Undo keeps the selected scene's restored value in its slider and hint", () => {

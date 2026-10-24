@@ -30,7 +30,7 @@ export function createSceneTable({
     const header = document.createElement("div");
     header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:10px;";
     const heading = document.createElement("div");
-    heading.textContent = `${scene.scene_number || 1}. ${scene.label || `Scene ${scene.scene_number || 1}`} — Characters Present`;
+    heading.textContent = `${scene.scene_number || 1}. ${scene.label || `Scene ${scene.scene_number || 1}`} â€” Characters Present`;
     heading.style.cssText = "font-size:16px;font-weight:900;color:#cffafe;";
     const close = makeButton("Cancel");
     header.append(heading, close);
@@ -155,7 +155,7 @@ export function createSceneTable({
       table.appendChild(colgroup);
     }
     const thead = document.createElement("thead");
-    thead.innerHTML = `<tr>${head.map((item) => `<th style="position:sticky;top:0;background:#111827;border-bottom:1px solid #334155;color:#cffafe;text-align:${item === "Status" || item === "" ? "center" : "left"};padding:${mode === "image_to_video_prep" ? "11px 9px" : "13px"};font-weight:900;">${item === "" ? `<input type="checkbox" data-action="select-all" title="Select or deselect all visible scenes" ${rows.length && rows.every((r) => state.selected.has(r.id)) ? "checked" : ""}>` : escapeHtml(item)}</th>`).join("")}</tr>`;
+    thead.innerHTML = `<tr>${head.map((item) => item === "#" ? "" : `<th ${item === "" ? 'colspan="2"' : ""} style="position:sticky;top:0;background:#111827;border-bottom:1px solid #334155;color:#cffafe;text-align:${item === "Status" || item === "" ? "center" : "left"};padding:${mode === "image_to_video_prep" ? "11px 9px" : "13px"};font-weight:900;">${item === "" ? `<input type="checkbox" data-action="select-all" title="Select or deselect all visible scenes" ${rows.length && rows.every((r) => state.selected.has(r.id)) ? "checked" : ""}><button type="button" data-action="invert-selection" aria-label="Invert selection" title="Invert selection of visible scenes" style="margin-left:5px;padding:3px 5px;border:1px solid #155e75;border-radius:4px;background:#083344;color:#a5f3fc;font-size:10px;cursor:pointer;">Invert</button>` : escapeHtml(item)}</th>`).join("")}</tr>`;
     const tbody = document.createElement("tbody");
     for (const scene of rows) {
       const tr = document.createElement("tr");
@@ -261,6 +261,13 @@ export function createSceneTable({
         for (const row of rows) state.selected.add(row.id);
       } else {
         for (const row of rows) state.selected.delete(row.id);
+      }
+      renderTable();
+    });
+    thead.querySelector('[data-action="invert-selection"]')?.addEventListener("click", () => {
+      for (const row of rows) {
+        if (state.selected.has(row.id)) state.selected.delete(row.id);
+        else state.selected.add(row.id);
       }
       renderTable();
     });

@@ -95,13 +95,24 @@ export function applyDefaultPreset(settings, { controls, state, refreshCameraFlo
   }
 }
 
+export function describeDefaultPreset(settings, controls) {
+  return Object.entries(settings).flatMap(([key, value]) => {
+    const control = controls[DEFAULT_PRESET_CONTROLS[key]];
+    if (!control) return [];
+    const option = Array.from(control.options || []).find(item => item.value === String(value));
+    const label = control.getAttribute?.("aria-label") || key;
+    const shown = option?.textContent || (typeof value === "number" ? `${value}/10` : String(value || "Off / not set"));
+    return [`${label}: ${shown}`];
+  }).join("\n");
+}
+
 export function wireDefaultPresets({ toolbar, controls, state, film, postJson, createToast, refreshCameraFlowInfo, notifyStoryboardDefaultsChanged, noteDefaultKeys, onPresetApplied }) {
   const context = { controls, state, refreshCameraFlowInfo, notifyStoryboardDefaultsChanged, noteDefaultKeys };
   let applying = false;
   const apply = (settings, name) => {
     applying = true;
     try { applyDefaultPreset(settings, context); } finally { applying = false; }
-    onPresetApplied?.(name);
+    onPresetApplied?.(name, describeDefaultPreset(settings, controls));
   };
   // The chosen Speed and Music style are saved with the Scene Defaults (state.defaultsSpeedPreset and
   // state.defaultsMusicPreset) and shown again when the panel opens.

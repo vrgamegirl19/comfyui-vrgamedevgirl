@@ -9,8 +9,8 @@ class Element {
   append(...items) { this.children.push(...items); }
   replaceChildren(...items) { this.children = items; }
   setAttribute() {}
-  addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }
-  dispatchEvent(event) { this[`on${event.type}`]?.(event); for (const fn of this.listeners[event.type] || []) fn(event); }
+  addEventListener(type, fn, capture = false) { (this.listeners[type] ||= []).push({ fn, capture }); }
+  dispatchEvent(event) { const listeners = this.listeners[event.type] || []; for (const item of listeners.filter(item => item.capture)) item.fn(event); this[`on${event.type}`]?.(event); for (const item of listeners.filter(item => !item.capture)) item.fn(event); }
   get options() { return this.children; }
 }
 function fixture() {
@@ -165,4 +165,51 @@ test("choosing or replacing speed, music and saved presets confirms immediately 
   assert.equal(confirmations[2].name, "Metal music style");
   toolbar.saved.value = "Gentle verse"; await toolbar.saved.onchange();
   assert.deepEqual(confirmations[3], { name: "Gentle verse", saves: 4, speed: 1 });
+});
+
+test("real Speed and Music handlers replace presets on selected scenes without Save", async () => {
+  const f = fixture();
+  const source = fs.readFileSync(path.join(__dirname, "../web/storyboard_builder/defaults_auto_apply.mjs"), "utf8")
+    .replace(/^import [^;]*;\r?\n/gm, "").replace(/^export /gm, "");
+  vm.runInContext(source, f.context);
+  f.state.mode = "image_to_video_prep";
+  f.state.scenes = [1, 2, 3].map(n => ({ id: `scene${n}`, scene_number: n,
+    project_video_engine: "minimax_h3", video_prompt_type: "t2v" }));
+  f.state.selected = new Set(["scene2", "scene3"]);
+  const toolbar = f.context.buildDefaultPresetsToolbar();
+  Object.assign(f.args, { defaultsPresetsToolbar: toolbar, defaultsScope: {}, defaultsResult: {}, defaultsUndo: {} });
+  let saves = 0;
+  const controller = f.context.createAutoSceneDefaults({ state: f.state, controls: f.args,
+    persist: () => saves++, renderTable: () => controller.syncScope(), imageShotFlowPresets: {}, imageAestheticPresets: [] });
+  f.args.notifyStoryboardDefaultsChanged = options => controller.commit(options);
+  // Rewire the actual individual control handlers to the auto-apply controller.
+  f.context.wireStoryboardEvents(f.args);
+  const confirmations = [];
+  f.context.wireDefaultPresets({ toolbar, controls: f.args, state: f.state, film: false,
+    postJson: async () => ({ presets: [] }), createToast() {}, refreshCameraFlowInfo() {},
+    notifyStoryboardDefaultsChanged: f.args.notifyStoryboardDefaultsChanged,
+    noteDefaultKeys: keys => controller.note(keys),
+    onPresetApplied: (name, details) => confirmations.push({ name, details, result: f.args.defaultsResult.textContent }) });
+  controller.reset();
+  await new Promise(resolve => setImmediate(resolve));
+  toolbar.speed.value = "static"; toolbar.speed.onchange();
+  for (const scene of f.state.scenes.slice(1)) {
+    assert.equal(scene.scene_defaults.character_motion_speed, 0);
+    assert.equal(scene.scene_defaults.camera_motion_speed, 0);
+    assert.equal(scene.scene_defaults.minimax_h3_cut_frequency, 0);
+  }
+  toolbar.music.value = "soft"; toolbar.music.onchange();
+  for (const scene of f.state.scenes.slice(1)) {
+    assert.equal(scene.scene_defaults.performance_style, "ballad_emotional");
+    assert.equal(scene.scene_defaults.facial_performance, "love_tender");
+    assert.equal(scene.scene_defaults.character_motion_speed, 0, "music preserves the chosen speed");
+  }
+  toolbar.speed.value = "fast"; toolbar.speed.onchange();
+  assert.equal(f.state.scenes[1].scene_defaults.character_motion_speed, 8);
+  assert.equal(f.state.scenes[1].scene_defaults.performance_style, "ballad_emotional");
+  assert.equal(f.state.scenes[0].scene_defaults, undefined);
+  assert.equal(saves, 3);
+  assert.deepEqual(confirmations.map(item => `${item.name}: ${item.result}`), ["Static speed: Updated scenes 2, 3", "Soft music style: Updated scenes 2, 3", "Fast speed: Updated scenes 2, 3"]);
+  assert.match(confirmations[0].details, /characterMotionSpeed: 0\/10/);
+  assert.match(confirmations[1].details, /facialPerformance: love_tender/);
 });
