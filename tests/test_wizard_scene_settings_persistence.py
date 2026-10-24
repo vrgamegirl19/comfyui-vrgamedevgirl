@@ -4,7 +4,6 @@ from pathlib import Path
 
 WEB = Path(__file__).resolve().parents[1] / "web"
 PERSISTENCE_SOURCE = (WEB / "storyboard_builder" / "persistence.mjs").read_text(encoding="utf-8")
-WIZARD_SOURCE = (WEB / "music_video_builder" / "wizard.mjs").read_text(encoding="utf-8")
 
 
 class WizardSceneSettingsPersistenceTests(unittest.TestCase):
@@ -27,13 +26,6 @@ class WizardSceneSettingsPersistenceTests(unittest.TestCase):
         self.assertIn("? Boolean(fresh.no_character_present)", PERSISTENCE_SOURCE)
         self.assertIn("subject_refs: noCharacterPresent ? [] : subjectRefs", PERSISTENCE_SOURCE)
 
-    def test_wizard_replace_all_reads_the_visible_controls_first(self):
-        self.assertIn("const syncWizardStateFromControls", WIZARD_SOURCE)
-        self.assertIn("imageShotSelect.value || wizardState.imageShotFlow", WIZARD_SOURCE)
-        self.assertIn("cameraSelect.value || wizardState.cameraFlow", WIZARD_SOURCE)
-        self.assertIn("performanceSelect.value ?? wizardState.performanceStyle", WIZARD_SOURCE)
-        self.assertNotIn("wizardState.cameraFlow || cameraSelect.value", WIZARD_SOURCE)
-        self.assertNotIn("wizardState.performanceStyle ?? performanceSelect.value", WIZARD_SOURCE)
 
 
 if __name__ == "__main__":

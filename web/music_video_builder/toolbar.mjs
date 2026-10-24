@@ -102,7 +102,7 @@ export function wireToolbar({
   openAutoBuildModal, openBuilderAgentModal, openBulkSegmentsModal, openGemmaRunnerModal,
   openLyricMappingWorkflowModal, openPromptOptionsModal, openReferenceBuilderTargetChooser,
   openRenderLogModal, openSceneAudioOptionsButton, openSceneOptions, openSettingsModal, openSnapSceneEdgeMenu,
-  openStitchPreviewModal, openStoryboardBuilderFromProject, openStoryBuilder, openWhatsNewModal, openWizardBetaFromBuilder,
+  openStitchPreviewModal, openStoryboardBuilderFromProject, openStoryBuilder, openWhatsNewModal,
   openWizardFromBuilder, overlayTrackHintButton, overlayTrackToggleButton, pauseTimelineForEditing,
   pickAudioButton, pickIdLoraReferenceAudioButton, pickSrtButton, projectAudioFileInput, projectSrtFileInput,
   promptCreatorButton, promptOptionsButton, redo, redoButton, renderAllButton, renderImageSlideshowPreview,
@@ -114,7 +114,7 @@ export function wireToolbar({
   stopCurrentWorkflow, stopWorkflowButton, storyboardBuilderButton, syncGlobalAudioModeControls,
   syncTimelineTrimModeButton, textGemmaRunnerPayload, syncVideoTypeControl, toggleOverlayTrack, undo, undoButton,
   updateAudioScrubbers, updatePromptRunnerButtonLabels, updateStatus, updateStatusAction, updateV10Button,
-  updateV10HintButton, updateWhatsNewAction, videoTypeSelect, whatsNewMenuButton, wizardBetaButton,
+  updateV10HintButton, updateWhatsNewAction, videoTypeSelect, whatsNewMenuButton,
   wizardButton, zEnhanceAllButton, zEnhanceAllToolButton, zImageAllButton,
 }) {
   currentRunnerPayload = textGemmaRunnerPayload;
@@ -233,18 +233,10 @@ export function wireToolbar({
   loadLastProjectButton.onclick = loadLastProject;
   promptCreatorButton.onclick = confirmOpenLegacyPromptCreator;
   wizardButton.onclick = () => {
-    try {
-      openWizardFromBuilder();
-    } catch (error) {
-      console.error("VRGDG Video Wizard failed to open", error);
-      toast(`Video Wizard failed to open:\n${String(error?.message || error)}`, true);
-    }
-  };
-  wizardBetaButton.onclick = () => {
-    try { openWizardBetaFromBuilder(); }
+    try { openWizardFromBuilder(); }
     catch (error) {
-      console.error("VRGDG Wizard Beta failed to open", error);
-      toast(`Wizard Beta failed to open:\n${String(error?.message || error)}`, true);
+      console.error("[VRGDG] Wizard failed to open", error);
+      toast(`Wizard failed to open:\n${String(error?.message || error)}`, true);
     }
   };
   autoBuildButton.onclick = () => {
@@ -502,8 +494,7 @@ export function buildTopbar({
   const promptCreatorButton = makeButton("Prompt Creator (Legacy)");
   const autoLoadAllButton = makeButton("Import Data From Prompt Creator");
   const importSceneNotesButton = makeButton("Import Scene Notes JSON");
-  const wizardButton = makeButton("Wizard Legacy", "primary");
-  const wizardBetaButton = makeButton("Wizard Beta", "primary");
+  const wizardButton = makeButton("Wizard", "primary");
   const autoBuildButton = makeButton("Auto Build", "primary");
   const storyboardBuilderButton = makeButton("Storyboard Builder");
   const fluxReferenceBuilderButton = makeButton("Reference Builder");
@@ -567,14 +558,8 @@ export function buildTopbar({
     title: "Save, refresh the Builder UI, and reopen this project and scene.",
   });
   styleCompactToolbarButton(wizardButton, {
-    lines: ["Wizard", "Legacy"],
-    icon: "wizard",
-    width: 58,
-    title: "Open the legacy guided Video Builder setup workflow.",
-  });
-  styleCompactToolbarButton(wizardBetaButton, {
-    lines: ["Wizard", "Beta"], icon: "wizard", width: 58,
-    title: "Open Wizard Beta: save setup, prepare scenes, review, and render.",
+    lines: ["Wizard"], icon: "wizard", width: 58,
+    title: "Open Wizard: save setup, prepare scenes, review, and render.",
   });
   styleCompactToolbarButton(autoBuildButton, {
     lines: ["Auto", "Build"],
@@ -689,7 +674,7 @@ export function buildTopbar({
   batchActions.style.display = "none";
   const importActions = document.createElement("div");
   importActions.style.cssText = "display:flex;gap:5px;align-items:center;justify-content:center;flex-wrap:nowrap;min-width:0;overflow:visible;";
-  importActions.append(wizardButton, wizardBetaButton, autoBuildButton, storyboardBuilderButton, fluxReferenceBuilderButton, refModsStudioButton, refModsViewerButton, lyricMapperButton, gemmaRunnerButton, promptOptionsButton);
+  importActions.append(wizardButton, autoBuildButton, storyboardBuilderButton, fluxReferenceBuilderButton, refModsStudioButton, refModsViewerButton, lyricMapperButton, gemmaRunnerButton, promptOptionsButton);
   const centerActions = document.createElement("div");
   centerActions.style.cssText = "position:relative;display:flex;gap:8px;align-items:center;justify-content:center;min-width:0;overflow:visible;";
   centerActions.append(importActions, batchActions);
@@ -822,7 +807,7 @@ export function buildTopbar({
     lyricMapperButton, menuDropdown, pollBuilderResources, positionBuilderETA, positionBuilderResourceMonitor,
     projectBatchButton, projectVideoEngineBadge, promptCreatorButton, promptOptionsButton, renderAllButton,
     renderLogButton, sendToPromptCreatorButton, slideshowPreviewButton, stitchPreviewButton,
-    stopWorkflowButton, storyboardBuilderButton, updateV10Button, updateV10HintButton, wizardBetaButton,
+    stopWorkflowButton, storyboardBuilderButton, updateV10Button, updateV10HintButton,
     wizardButton, zEnhanceAllButton, zEnhanceAllToolButton, zImageAllButton,
   };
 }

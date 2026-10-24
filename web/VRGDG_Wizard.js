@@ -53,7 +53,6 @@ function styles() {
     .wb-footer { border-top:1px solid #344353; }
     .wb-brand { display:flex;align-items:center;gap:14px; }
     .wb-brand h2 { font-size:23px;line-height:1.3;margin:0; }
-    .wb-badge { font-size:10px;letter-spacing:1px;background:#29465e;border:1px solid #47687e;padding:3px 6px;border-radius:4px;vertical-align:middle;margin-left:8px; }
     .wb-icon { display:inline-flex;width:26px;height:26px;flex-shrink:0;color:#62d9f4;vertical-align:middle; }
     .wb-icon svg { width:100%;height:100%; }
     .wb-brand>.wb-icon { width:34px;height:34px; }
@@ -137,10 +136,10 @@ function styles() {
   document.head.append(sheet);
 }
 
-export const WIZARD_BETA_STEPS = ["Engine", "Video mode", "Models & LoRAs", "Sound & timing", "Inputs", "Scenes", "Render"];
-const WIZARD_BETA_STEP_IDS = ["engine", "mode", "models", "sound", "inputs", "scenes", "render"];
+export const WIZARD_STEPS = ["Engine", "Video mode", "Models & LoRAs", "Sound & timing", "Inputs", "Scenes", "Render"];
+const WIZARD_STEP_IDS = ["engine", "mode", "models", "sound", "inputs", "scenes", "render"];
 
-export function wizardBetaNeeds(engine, mode) {
+export function wizardNeeds(engine, mode) {
   return {
     images: engine === "minimax_h3" ? ["image_to_video", "image_reference_to_video"].includes(mode) : ["i2v", "flf", "id_lora"].includes(mode),
     references: engine === "minimax_h3" ? ["reference_to_video", "image_reference_to_video"].includes(mode) : ["rtv", "ingredients", "id_lora"].includes(mode),
@@ -149,13 +148,13 @@ export function wizardBetaNeeds(engine, mode) {
   };
 }
 
-export function wizardBetaIssues(draft, snapshot, preparing = false) {
+export function wizardIssues(draft, snapshot, preparing = false) {
   const issues = [];
   if (!(snapshot.modes[draft.engine] || []).some(mode => mode.value === draft.mode && !mode.disabled)) issues.push("Choose a supported video mode.");
   if (!snapshot.audioModes.some(item => item.value === draft.audioMode && !item.disabled)) issues.push("Choose a supported audio source for this mode and pass configuration.");
   if (preparing) {
     if (draft.audioMode === "input_audio" && !snapshot.audioPath && !draft.song) issues.push("Choose an audio file or another supported audio source.");
-    const needs = wizardBetaNeeds(draft.engine, draft.mode);
+    const needs = wizardNeeds(draft.engine, draft.mode);
     if (needs.references && draft.pipeline === "refmod" && draft.engine === "minimax_h3" && draft.mode === "reference_to_video") {
       if (!snapshot.refmodCount) issues.push("Choose a saved RefMod in the Reference Builder.");
     } else if (needs.references && !(draft.subjects?.length || draft.singer) && !draft.locations.length && !snapshot.referenceCount) issues.push("Add a reference image in Inputs or the reference editor.");
@@ -164,7 +163,7 @@ export function wizardBetaIssues(draft, snapshot, preparing = false) {
   return issues;
 }
 
-export function openWizardBeta(api) {
+export function openWizard(api) {
   styles();
   const initial = api.snapshot();
   const draft = {
@@ -177,7 +176,7 @@ export function openWizardBeta(api) {
   draft.singer = draft.subjects[0] || null;
   draft.removedReferenceIds = [];
   draft.locations = draft.locations.map(image => ({ ...image }));
-  const savedPage = WIZARD_BETA_STEP_IDS.indexOf(initial.draft?.pageId);
+  const savedPage = WIZARD_STEP_IDS.indexOf(initial.draft?.pageId);
   const legacyPage = [0, 1, 4, 2, 3, 5, 6][Number(initial.draft?.page) || 0] ?? 0;
   let page = savedPage >= 0 ? savedPage : legacyPage;
   const sceneSteps = ["Scene Defaults", "Align lyrics / dialogue (Optional)", "Edit Mappings", "Storyboard Scenes", "Story Layer", initial.engine === "minimax_h3" ? "Create MiniMax Prompts" : "Create Video Prompts"];
@@ -191,9 +190,9 @@ export function openWizardBeta(api) {
   const previousFocus = document.activeElement;
   const backdrop = node("div", "wb-backdrop");
   const dialog = node("div", "wb-dialog");
-  dialog.setAttribute("role", "dialog"); dialog.setAttribute("aria-modal", "true"); dialog.setAttribute("aria-label", "Wizard Beta");
+  dialog.setAttribute("role", "dialog"); dialog.setAttribute("aria-modal", "true"); dialog.setAttribute("aria-label", "Wizard");
   const header = node("header", "wb-header");
-  const title = node("h2", "", "Wizard"); title.append(node("span", "wb-badge", "BETA"));
+  const title = node("h2", "", "Wizard");
   const brand = node("div", "wb-brand"); brand.append(icon("wand"), title);
   const steps = node("nav", "wb-steps"); steps.setAttribute("aria-label", "Wizard steps");
   // Seven stages remain readable on narrow windows without shrinking the controls.
@@ -203,7 +202,7 @@ export function openWizardBeta(api) {
   const footer = node("footer", "wb-footer");
   const saveState = node("span", "wb-save-status", initial.draft ? "Saved draft loaded" : "Using Builder settings");
   const close = button("Close", () => {
-    if (busy || (dirty && !window.confirm("Close Wizard Beta? Unsaved wizard inputs will be lost; live Builder setting changes remain applied."))) return;
+    if (busy || (dirty && !window.confirm("Close Wizard? Unsaved wizard inputs will be lost; live Builder setting changes remain applied."))) return;
     releasePanel(); api.flush(); backdrop.remove(); previousFocus?.focus();
   });
   header.append(brand, node("span", "wb-spacer"), saveState, button("Configure LLM Runner", () => api.openRunner()), button("Save Project", save), close);
@@ -228,9 +227,9 @@ export function openWizardBeta(api) {
   }
   async function persist() {
     syncDraft();
-    const issues = wizardBetaIssues(draft, api.snapshot());
+    const issues = wizardIssues(draft, api.snapshot());
     if (issues.length) throw new Error(issues.join("\n"));
-    draft.page = page; draft.pageId = WIZARD_BETA_STEP_IDS[page]; draft.sceneStep = sceneStep; draft.sceneStepId = sceneStepIds[sceneStep];
+    draft.page = page; draft.pageId = WIZARD_STEP_IDS[page]; draft.sceneStep = sceneStep; draft.sceneStepId = sceneStepIds[sceneStep];
     draft.singer = draft.subjects[0] || null;
     await api.save(draft, sceneEdits);
     draft.removedReferenceIds = [];
@@ -320,14 +319,14 @@ export function openWizardBeta(api) {
   function render() {
     releasePanel(); releasePanel = () => {}; syncDraft();
     steps.replaceChildren(); body.replaceChildren(); footer.replaceChildren();
-    for (const [index, label] of WIZARD_BETA_STEPS.entries()) {
+    for (const [index, label] of WIZARD_STEPS.entries()) {
       const control = button(`${index + 1} ${label}`, () => { page = index; render(); });
       control.className = "wb-step"; if (index === page) control.setAttribute("aria-current", "step");
       steps.append(control);
     }
     const main = node("div", "wb-main");
-    main.append(node("h2", "", `${page + 1}. ${WIZARD_BETA_STEPS[page]}`));
-    const needs = wizardBetaNeeds(draft.engine, draft.mode);
+    main.append(node("h2", "", `${page + 1}. ${WIZARD_STEPS[page]}`));
+    const needs = wizardNeeds(draft.engine, draft.mode);
     if (page === 0) {
       main.append(node("p", "wb-muted", "Choose the engine. The next steps will only show options for that engine."));
       const pair = node("div", "wb-pair");
@@ -505,7 +504,7 @@ export function openWizardBeta(api) {
       build.disabled = !snapshot.scenes.length; main.append(build);
     }
     body.append(main);
-    footer.append(node("span", "wb-muted wb-spacer", `Step ${page + 1} of ${WIZARD_BETA_STEPS.length} · ${modeLabel()}`));
+    footer.append(node("span", "wb-muted wb-spacer", `Step ${page + 1} of ${WIZARD_STEPS.length} · ${modeLabel()}`));
     if (page) footer.append(button("Back", () => { if (page === 5 && sceneStep > 0) sceneStep--; else page--; render(); }));
     if (page !== 2) footer.append(button("Save Project", save));
     if (page < 6) footer.append(button(page === 5 && sceneStep === 1 ? "Skip / Next →" : "Next →", () => { if (page === 5 && sceneStep < sceneSteps.length - 1) sceneStep++; else page++; render(); }, true));
