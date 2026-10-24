@@ -115,6 +115,7 @@ export function createStoryboardPersistence({
               lyric_no_lip_sync: fresh.lyric_no_lip_sync,
               lyric_instrumental: fresh.lyric_instrumental,
               performance_style: fresh.performance_style,
+              scene_defaults: fresh.scene_defaults || {},
               facial_performance: fresh.facial_performance,
               facial_performance_custom: fresh.facial_performance_custom,
               emotion_expression_tags: fresh.emotion_expression_tags,

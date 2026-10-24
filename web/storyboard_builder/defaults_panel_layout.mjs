@@ -16,19 +16,7 @@ export function buildSceneDefaultsPanel({
   facialPerformancePresets, focusedSection, imageAestheticPresets, imageShotFlowPresets,
   performanceStylePresets, state, usesFilmPlanningProfile,
 }) {
-  const selectedDefaultActions = {};
-  const makeDefaultButton = (label, variant) => {
-    const button = makeButton(label, variant);
-    button.style.cssText += "padding:5px 8px;font-size:11px;font-weight:700;line-height:1.2;";
-    return button;
-  };
-  const selectedButton = (key) => {
-    const button = makeDefaultButton("Apply to selected");
-    button.className = "vrgdg-scene-defaults-selected-action";
-    button.hidden = true;
-    selectedDefaultActions[key] = button;
-    return button;
-  };
+  const makeDefaultButton = (label, variant) => makeButton(label, variant);
   const note = document.createElement("div");
   note.className = "vrgdg-storyboard-note";
   note.style.cssText = "margin:18px 24px 0;min-width:0;max-width:100%;box-sizing:border-box;border:1px solid #155e75;border-radius:8px;background:#0f172a;color:#cbd5e1;padding:12px 14px;font-size:13px;overflow-wrap:anywhere;";
@@ -48,11 +36,7 @@ export function buildSceneDefaultsPanel({
   );
   imageShotSelect.style.width = "max-content";
   imageShotSelect.style.minWidth = "180px";
-  const imageShotApply = makeDefaultButton("Fill Missing", "primary");
-  imageShotApply.title = "Fill only blank shot/composition fields for Image Prep. Existing manual choices are kept.";
-  const imageShotReplace = makeDefaultButton("Replace All");
-  imageShotReplace.title = "Replace every scene's shot/composition field with the selected still shot flow.";
-  imageShotControls.append(imageShotLabel, imageShotSelect, imageShotApply, imageShotReplace, selectedButton("applyImageShotFlow"));
+  imageShotControls.append(imageShotLabel, imageShotSelect);
   const imageShotInfo = document.createElement("div");
   imageShotInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
   const imageAestheticControls = document.createElement("div");
@@ -63,11 +47,7 @@ export function buildSceneDefaultsPanel({
   const imageAestheticSelect = makeSelect(sortOptionsAlphabetically(imageAestheticPresets), state.imageAesthetic);
   imageAestheticSelect.style.width = "max-content";
   imageAestheticSelect.style.minWidth = "180px";
-  const imageAestheticApply = makeDefaultButton("Fill Missing", "primary");
-  imageAestheticApply.title = "Fill only scenes without a still camera style/aesthetic note.";
-  const imageAestheticReplace = makeDefaultButton("Replace All");
-  imageAestheticReplace.title = "Replace each scene's generated image aesthetic note.";
-  imageAestheticControls.append(imageAestheticLabel, imageAestheticSelect, imageAestheticApply, imageAestheticReplace, selectedButton("applyImageAesthetic"));
+  imageAestheticControls.append(imageAestheticLabel, imageAestheticSelect);
   const imageAestheticInfo = document.createElement("div");
   imageAestheticInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
   const videoStyleControls = document.createElement("div");
@@ -78,11 +58,7 @@ export function buildSceneDefaultsPanel({
   const videoStyleSelect = makeSelect(sortOptionsAlphabetically(MINIMAX_VIDEO_STYLE_PRESETS), state.videoStyle);
   videoStyleSelect.style.width = "max-content";
   videoStyleSelect.style.minWidth = "220px";
-  const videoStyleApply = makeDefaultButton("Fill Missing", "primary");
-  videoStyleApply.title = "Fill blank style fields on eligible video scenes.";
-  const videoStyleReplace = makeDefaultButton("Replace All");
-  videoStyleReplace.title = "Replace the style on all eligible video scenes.";
-  videoStyleControls.append(videoStyleLabel, videoStyleSelect, videoStyleApply, videoStyleReplace, selectedButton("applyVideoStyle"));
+  videoStyleControls.append(videoStyleLabel, videoStyleSelect);
   const videoStyleCustomControls = document.createElement("div");
   videoStyleCustomControls.style.cssText = "display:flex;gap:8px;align-items:flex-start;";
   const videoStyleCustomLabel = document.createElement("div");
@@ -200,11 +176,7 @@ export function buildSceneDefaultsPanel({
   );
   cameraFlowSelect.style.width = "max-content";
   cameraFlowSelect.style.minWidth = "180px";
-  const cameraFlowApply = makeDefaultButton("Fill Missing", "primary");
-  cameraFlowApply.title = "Fill only blank shot type and camera motion fields. Existing manual choices are kept.";
-  const cameraFlowReplace = makeDefaultButton("Replace All");
-  cameraFlowReplace.title = "Replace every scene's shot type and camera motion with the selected auto camera flow.";
-  cameraFlowControls.append(cameraFlowLabel, cameraFlowSelect, cameraFlowApply, cameraFlowReplace, selectedButton("applyCameraFlow"));
+  cameraFlowControls.append(cameraFlowLabel, cameraFlowSelect);
   const cameraFlowInfo = document.createElement("div");
   cameraFlowInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
   const cameraSpeedControls = document.createElement("div");
@@ -255,15 +227,11 @@ export function buildSceneDefaultsPanel({
   performanceControls.style.cssText = "display:flex;gap:8px;align-items:center;white-space:nowrap;";
   const performanceLabel = document.createElement("div");
   performanceLabel.style.cssText = "font-weight:900;color:#cffafe;white-space:nowrap;text-align:right;min-width:160px;";
-  performanceLabel.textContent = usesFilmPlanningProfile ? "Global acting style" : "Global performance style";
+  performanceLabel.textContent = usesFilmPlanningProfile ? "Global acting style" : "Performance style";
   const performanceSelect = makeSelect(sortOptionsAlphabetically(performanceStylePresets), state.performanceStyle);
   performanceSelect.style.width = "max-content";
   performanceSelect.style.minWidth = "180px";
-  const performanceApply = makeDefaultButton("Fill Missing", "primary");
-  performanceApply.title = usesFilmPlanningProfile ? "Fill only blank per-scene acting style fields. Existing scene choices are kept." : "Fill only blank per-scene performance/song style fields. Existing scene choices are kept.";
-  const performanceReplace = makeDefaultButton("Replace All");
-  performanceReplace.title = usesFilmPlanningProfile ? "Replace every scene's acting style with the selected global style." : "Replace every scene's performance/song style with the selected global style.";
-  performanceControls.append(performanceLabel, performanceSelect, performanceApply, performanceReplace, selectedButton("applyPerformanceStyle"));
+  performanceControls.append(performanceLabel, performanceSelect);
   const performanceInfo = document.createElement("div");
   performanceInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
   const characterSpeedControls = document.createElement("div");
@@ -315,15 +283,11 @@ export function buildSceneDefaultsPanel({
   facialControls.style.cssText = "display:flex;gap:8px;align-items:center;white-space:nowrap;";
   const facialLabel = document.createElement("div");
   facialLabel.style.cssText = "font-weight:900;color:#cffafe;white-space:nowrap;text-align:right;min-width:160px;";
-  facialLabel.textContent = usesFilmPlanningProfile ? "Global screen face" : "Global facial performance";
+  facialLabel.textContent = usesFilmPlanningProfile ? "Global screen face" : "Facial performance";
   const facialSelect = makeSelect(sortOptionsAlphabetically(facialPerformancePresets), state.facialPerformance);
   facialSelect.style.width = "max-content";
   facialSelect.style.minWidth = "180px";
-  const facialApply = makeDefaultButton("Fill Missing", "primary");
-  facialApply.title = "Fill only blank per-scene facial performance fields.";
-  const facialReplace = makeDefaultButton("Replace All");
-  facialReplace.title = "Replace every scene's facial performance with the selected global facial preset.";
-  facialControls.append(facialLabel, facialSelect, facialApply, facialReplace, selectedButton("applyFacialPerformance"));
+  facialControls.append(facialLabel, facialSelect);
   const facialInfo = document.createElement("div");
   facialInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
   const facialCustomControls = document.createElement("div");
@@ -466,38 +430,50 @@ export function buildSceneDefaultsPanel({
       { name: "Cut frequency", controls: cutFrequencyControls, info: cutFrequencyInfo },
     ] },
     { title: "Performance", settings: [
-      { name: "Global performance style", controls: performanceControls, info: performanceInfo },
+      { name: "Performance style", controls: performanceControls, info: performanceInfo },
       { name: "Character motion speed", controls: characterSpeedControls, info: characterSpeedInfo },
     ] },
     { title: "Facial & Story", settings: [
-      { name: "Global facial performance", controls: facialControls, info: facialInfo },
+      { name: "Facial performance", controls: facialControls, info: facialInfo },
       { name: "Custom facial text", controls: facialCustomControls, info: facialCustomInfo },
-      { name: "Story arc detail", controls: storyArcDetailControls, info: storyArcDetailInfo },
+      { name: "Story arc detail (project-wide)", controls: storyArcDetailControls, info: storyArcDetailInfo },
     ] },
   ]);
-  cameraFlowBar.append(defaultsCards);
+  const defaultsScope = document.createElement("div");
+  defaultsScope.textContent = "Editing all scenes";
+  defaultsScope.style.cssText = "padding:10px;color:#a5f3fc;font-size:13px;font-weight:700;";
+  defaultsScope.setAttribute("role", "status");
+  const defaultsResult = document.createElement("span");
+  defaultsResult.setAttribute("aria-live", "polite");
+  const defaultsUndo = makeButton("Undo");
+  defaultsUndo.hidden = true;
+  const resultRow = document.createElement("div");
+  resultRow.style.cssText = "display:flex;align-items:center;gap:10px;padding:8px 10px;";
+  resultRow.append(defaultsResult, defaultsUndo);
+  cameraFlowBar.prepend(defaultsScope);
+  cameraFlowBar.append(defaultsCards, resultRow);
   const sceneDefaultsPanel = makeCollapsiblePanel("Scene Defaults", "", cameraFlowBar, { open: focusedSection === "defaults" });
   sceneDefaultsPanel.firstElementChild.style.gridTemplateColumns = "auto auto minmax(0,1fr)";
   sceneDefaultsPanel.firstElementChild.lastElementChild.style.cssText += "justify-self:end;max-width:min(100%,420px);font-size:11px;";
 
   return {
-    defaultsCards, defaultsPresetsToolbar, selectedDefaultActions,
-    cameraFlowApply, cameraFlowControls, cameraFlowInfo, cameraFlowReplace, cameraFlowSelect,
+    defaultsCards, defaultsPresetsToolbar, defaultsScope, defaultsResult, defaultsUndo,
+    cameraFlowControls, cameraFlowInfo, cameraFlowSelect,
     cameraSpeedControls, cameraSpeedHint, cameraSpeedInfo, cameraSpeedInput, cameraSpeedValue,
     characterSpeedControls, characterSpeedHint, characterSpeedInfo, characterSpeedInput, characterSpeedValue,
     consistencyInfo, consistencyInput, cutFrequencyControls, cutFrequencyHint, cutFrequencyInfo,
-    cutFrequencyInput, cutFrequencyValue, cutStyleSelect, facialApply, facialCustomInfo, facialCustomInput, facialInfo,
-    facialReplace, facialSelect, fxControls, fxCustomControls, fxCustomInput, fxInfo, fxSelect,
-    imageAestheticApply, imageAestheticControls, imageAestheticInfo, imageAestheticReplace,
+    cutFrequencyInput, cutFrequencyValue, cutStyleSelect, facialCustomInfo, facialCustomInput, facialInfo,
+    facialSelect, fxControls, fxCustomControls, fxCustomInput, fxInfo, fxSelect,
+    imageAestheticControls, imageAestheticInfo,
     imageAestheticSelect, imageCustomStyleControls, imageCustomStyleInfo, imageCustomStyleInput,
-    imageShotApply, imageShotControls, imageShotInfo, imageShotReplace, imageShotSelect,
+    imageShotControls, imageShotInfo, imageShotSelect,
     imageWorldStyleControls, imageWorldStyleInfo, imageWorldStyleSelect, middleContent, note,
-    performanceApply, performanceInfo, performanceReplace, performanceSelect, sceneDefaultsPanel,
+    performanceInfo, performanceSelect, sceneDefaultsPanel,
     storyArcDetailInfo, storyArcDetailSelect,
     temporalEffectControls, temporalEffectCustomControls, temporalEffectCustomInput, temporalEffectInfo,
     temporalEffectOptions, temporalEffectSelect, temporalEnvironmentInput, temporalExtrasInput,
     temporalIntensityInput, temporalIntensityValue, temporalProtectedCustomControls,
-    temporalProtectedCustomInput, temporalProtectedSelect, videoStyleApply, videoStyleControls,
-    videoStyleCustomControls, videoStyleCustomInput, videoStyleInfo, videoStyleReplace, videoStyleSelect,
+    temporalProtectedCustomInput, temporalProtectedSelect, videoStyleControls,
+    videoStyleCustomControls, videoStyleCustomInput, videoStyleInfo, videoStyleSelect,
   };
 }

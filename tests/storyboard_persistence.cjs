@@ -26,7 +26,7 @@ function fixture(state, parentSave = async () => {}) {
     context.postJson(url, { project_folder: state.projectFolder, storyboard });
   for (const file of ["music_video_builder/refmod_labels.mjs", "music_video_builder/story_mode_data.mjs", "storyboard_builder/script_import.mjs",
     "storyboard_builder/video_style.mjs", "storyboard_builder/shot_presets.mjs",
-    "storyboard_builder/scenes.mjs", "storyboard_builder/references.mjs", "storyboard_builder/persistence.mjs"]) {
+    "storyboard_builder/scene_defaults_state.mjs", "storyboard_builder/scenes.mjs", "storyboard_builder/references.mjs", "storyboard_builder/persistence.mjs"]) {
     const source = fs.readFileSync(path.join(root, "web", file), "utf8")
       .replace(/^import [^;]*;\r?\n/gm, "").replace(/^export /gm, "");
     vm.runInContext(source, context, { filename: file });
@@ -324,6 +324,9 @@ test("Builder video prompting includes complete card context for both LTX and Mi
 function creativeContextFixture() {
   const { functionSource, readBuilderModule } = require("./builder_source.cjs");
   const context = vm.createContext({
+    miniMaxSceneDefaults: segment => ({ ...context.state.builderStoryboardDefaults, ...segment?.scene_defaults }),
+    miniMaxH3OpeningStyle: () => "photorealistic",
+    miniMaxH3PerformanceCraftInstruction: () => "Performance craft",
     omitLyricsForSegment: () => false,
     state: { videoType: "no_lip_sync", builderStoryboardDefaults: {} },
     miniMaxH3SettingsForSegment: () => ({ audio_mode: "input_audio", aspect_ratio: "16:9" }),

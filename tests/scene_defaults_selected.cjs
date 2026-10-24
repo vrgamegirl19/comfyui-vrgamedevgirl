@@ -6,7 +6,7 @@ const { test } = require("node:test");
 
 function fixture(mode = "image_to_video_prep") {
   const context = vm.createContext({ normalizeStoryModeFields: () => ({}), withoutStoryModeKeys: (value) => value || {} });
-  for (const name of ["controls", "scenes", "shot_presets", "video_style", "performance_presets", "defaults_actions", "settings_panel", "references"]) {
+  for (const name of ["controls", "scene_defaults_state", "scenes", "shot_presets", "video_style", "performance_presets", "defaults_actions", "settings_panel", "references"]) {
     const source = fs.readFileSync(path.join(__dirname, "../web/storyboard_builder", `${name}.mjs`), "utf8")
       .replace(/^import [^;]*;\r?\n/gm, "").replace(/^export /gm, "");
     vm.runInContext(source, context, { filename: name });
@@ -105,4 +105,30 @@ test("Actual scene payload keeps selected and unselected aesthetics independent 
   assert.equal(scenes[0].video_style_verbiage, "Selected style");
   assert.equal(scenes[1].video_style_verbiage, "Unselected style");
   assert.equal(scenes[2].video_style_verbiage, "Global style");
+});
+
+test("reloaded verse and chorus keep their own speed, cuts and performance in the actual prompt payload", () => {
+  const f = fixture();
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "../web/music_video_builder/refmod_labels.mjs"), "utf8").replace(/^export /gm, ""), f.context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "../web/storyboard_builder/gpt_payload.mjs"), "utf8")
+    .replace(/^import [^;]*;\r?\n/gm, "").replace(/^export /gm, ""), f.context);
+  const state = { mode: "image_to_video_prep", storyLayer: {}, referenceBuilder: {}, cameraFlow: "balanced",
+    performanceStyle: "pop_performance", cameraMotionSpeed: 4, characterMotionSpeed: 4, cutFrequency: 4,
+    scenes: [
+      { id: "verse", exact_duration: 8, project_video_engine: "minimax_h3", video_prompt_type: "t2v",
+        scene_defaults: { camera_motion_speed: 0, character_motion_speed: 2, minimax_h3_cut_frequency: 0,
+          performance_style: "rock_punk", facial_performance: "rock_intense" } },
+      { id: "chorus", exact_duration: 8, project_video_engine: "minimax_h3", video_prompt_type: "t2v",
+        scene_defaults: { camera_motion_speed: 8, character_motion_speed: 9, minimax_h3_cut_frequency: 8,
+          performance_style: "metal_screaming", facial_performance: "metal_rage" } },
+    ].map((scene, index) => f.context.normalizeScene(JSON.parse(JSON.stringify(scene)), index)) };
+  const scenes = f.context.storyboardScenesForGpt(state);
+  assert.equal(scenes[0].camera_motion_speed, 0);
+  assert.equal(scenes[1].camera_motion_speed, 8);
+  assert.equal(scenes[0].character_motion_speed, 2);
+  assert.equal(scenes[1].character_motion_speed, 9);
+  assert.equal(scenes[0].minimax_h3_cut_frequency, 0);
+  assert.equal(scenes[1].minimax_h3_cut_frequency, 8);
+  assert.match(scenes[0].performance_style, /rock/i);
+  assert.match(scenes[1].performance_style, /metal/i);
 });

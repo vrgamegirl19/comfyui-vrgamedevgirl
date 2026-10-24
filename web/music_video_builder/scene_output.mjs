@@ -425,11 +425,12 @@ export function createSceneOutput({
   }
 
   function storyboardScenePayload() {
-    const defaults = normalizeBuilderStoryboardDefaults(state.builderStoryboardDefaults);
+    const projectDefaults = normalizeBuilderStoryboardDefaults(state.builderStoryboardDefaults);
     return allEditableSegments()
       .slice()
       .sort((a, b) => Number(a.start || 0) - Number(b.start || 0))
       .map((segment, sortedIndex) => {
+        const defaults = { ...projectDefaults, ...segment.scene_defaults };
         const info = segmentIndexInfo(segment);
         const index = info.index >= 0 ? info.index : sortedIndex;
         const label = sceneDisplayName(segment, index).replace(/^\d+\.\s*/, "");
@@ -498,6 +499,7 @@ export function createSceneOutput({
           facial_performance: String(segment.facial_performance || "").trim(),
           facial_performance_custom: String(segment.facial_performance_custom || "").trim(),
           emotion_expression_tags: String(segment.emotion_expression_tags || "").trim(),
+          scene_defaults: segment.scene_defaults || {},
           performance_style: String(segment.performance_style || defaults.performance_style || "").trim(),
           project_video_engine: normalizeProjectVideoEngine(state.projectVideoEngine),
           minimax_h3_mode: miniMaxH3ModeForSegment(segment),

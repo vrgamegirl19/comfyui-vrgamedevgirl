@@ -780,6 +780,11 @@ export function createSceneEditor({
       scene.temporal_world_effect_custom = temporalEffectOverride.value === "custom" ? temporalEffectCustom.value.trim() : "";
       scene.facial_performance = facialPerformance.value || "";
       scene.facial_performance_custom = facialPerformanceCustom.value.trim();
+      if (scene.scene_defaults) {
+        for (const key of ["performance_style", "facial_performance", "facial_performance_custom", "video_style", "video_style_custom"]) {
+          if (Object.hasOwn(scene.scene_defaults, key)) scene.scene_defaults[key] = scene[key] || "";
+        }
+      }
       scene.emotion_expression_tags = emotionExpressionTags.value.trim();
       scene.include_microphone = Boolean(includeMic.checked);
       scene.trigger_phrase = triggerPhrase.value.trim();

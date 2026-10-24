@@ -699,13 +699,13 @@ export function createLyricCues({
 
   // The scene's cut plan with the project's cut style (Scene Defaults) applied.
   function miniMaxH3CutPlanForSegment(segment) {
-    return miniMaxH3ApplyCutStyle(miniMaxH3SceneCutPlan(segment), storyboardCutStyleValue(state.builderStoryboardDefaults?.minimax_h3_cut_style));
+    return miniMaxH3ApplyCutStyle(miniMaxH3SceneCutPlan(segment), storyboardCutStyleValue((segment?.scene_defaults?.minimax_h3_cut_style ?? state.builderStoryboardDefaults?.minimax_h3_cut_style)));
   }
 
   function miniMaxH3SceneCutPlan(segment) {
     const duration = Math.max(0, Number(segment?.end || 0) - Number(segment?.start || 0));
     const fallback = storyboardCutPlanForDuration(duration, segment?.location_continuous_shot
-      ? 0 : state.builderStoryboardDefaults?.minimax_h3_cut_frequency);
+      ? 0 : (segment?.scene_defaults?.minimax_h3_cut_frequency ?? state.builderStoryboardDefaults?.minimax_h3_cut_frequency));
     if (segment?.location_continuous_shot || miniMaxH3FrameContinuityPromptEnabled(segment)) {
       const continuous = { ...fallback, frequency: 0, cut_times_seconds: [], cue_driven: false };
       continuous.instruction = miniMaxH3OfficialCutPlanInstruction(continuous);
@@ -725,7 +725,7 @@ export function createLyricCues({
         cuts.sort((a, b) => a - b);
         return {
           ...fallback,
-          frequency: state.builderStoryboardDefaults?.minimax_h3_cut_frequency ?? fallback.frequency,
+          frequency: (segment?.scene_defaults?.minimax_h3_cut_frequency ?? state.builderStoryboardDefaults?.minimax_h3_cut_frequency) ?? fallback.frequency,
           cut_times_seconds: cuts,
           cue_driven: true,
           cue_count: speakerCues.length,
@@ -747,7 +747,7 @@ export function createLyricCues({
     cuts.sort((a, b) => a - b);
     return {
       ...fallback,
-      frequency: state.builderStoryboardDefaults?.minimax_h3_cut_frequency ?? fallback.frequency,
+      frequency: (segment?.scene_defaults?.minimax_h3_cut_frequency ?? state.builderStoryboardDefaults?.minimax_h3_cut_frequency) ?? fallback.frequency,
       cut_times_seconds: cuts,
       cue_driven: true,
       cue_count: cues.length,
@@ -801,7 +801,7 @@ export function createLyricCues({
       .filter((word) => word.text && Number.isFinite(Number(word.start)) && Number.isFinite(Number(word.end)))
       .sort((a, b) => Number(a.start) - Number(b.start));
     if (!words.length) return [];
-    const cutPlan = storyboardCutPlanForDuration(sceneDuration, state.builderStoryboardDefaults?.minimax_h3_cut_frequency);
+    const cutPlan = storyboardCutPlanForDuration(sceneDuration, (segment?.scene_defaults?.minimax_h3_cut_frequency ?? state.builderStoryboardDefaults?.minimax_h3_cut_frequency));
     const cuts = snapCutsToVocalGaps((Array.isArray(cutPlan?.cut_times_seconds) ? cutPlan.cut_times_seconds : [])
       .map(Number)
       .filter((time) => Number.isFinite(time) && time > 0.001 && time < sceneDuration - 0.001)

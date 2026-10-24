@@ -23,6 +23,7 @@ from .scene_helpers import (
     _storyboard_folder,
     _storyboard_path,
 )
+from .scene_defaults import normalize_scene_defaults
 from .scene_prompts import _enforce_storyboard_video_facial_requirements
 
 
@@ -186,6 +187,7 @@ def _normalize_storyboard_scene(scene, fallback_number=1):
         "project_video_engine": project_video_engine,
         "minimax_h3_mode": minimax_h3_mode,
         "minimax_h3_audio_mode": minimax_h3_audio_mode,
+        "scene_defaults": normalize_scene_defaults(scene.get("scene_defaults")),
         "video_style": _clean_scene_text(scene.get("video_style") or scene.get("videoStyle") or "", 160),
         "video_style_custom": _clean_scene_text(scene.get("video_style_custom") or scene.get("videoStyleCustom") or "", 3000),
         "temporal_world_effect_override": _clean_scene_text(scene.get("temporal_world_effect_override") or scene.get("temporalWorldEffectOverride") or "global", 120),

@@ -28,6 +28,7 @@ PROJECT = "Card_Test"
 
 # One value for every editable scene-card field.
 FULL_PATCH = {
+    "scene_defaults": {"camera_motion_speed": 2, "minimax_h3_cut_frequency": 0},
     "label": "Opening",
     "lyric_text": "We run through the rain",
     "lyric_section": "Verse 1",

@@ -719,6 +719,8 @@ export function createMiniMaxPrompt({
   segmentIndexInfo, segmentMappedLocationText, segmentMappedSubjectText, sceneCastGuardForSegment, selectedCastCoverageContract,
   selectedPerformerSubjectsForSegment, selectedSegmentImagePath, state, storyboardReferenceDataForSegment,
 }) {
+  const miniMaxSceneDefaults = segment => ({ ...state.builderStoryboardDefaults, ...segment?.scene_defaults });
+
   // Story beats and the story arc are written for the whole song and can name characters who are not
   // selected for this scene. This tells the model the selected cast is the only cast.
   function omitLyricsForSegment(segment) {
@@ -756,9 +758,9 @@ export function createMiniMaxPrompt({
   }
 
   function lyricFreeFacialText(segment) {
-    const key = String(segment?.facial_performance || state.defaultFacialPerformance || "");
+    const key = String(segment?.facial_performance || (segment?.scene_defaults?.facial_performance ?? state.defaultFacialPerformance) || "");
     if (key === "off") return "";
-    const custom = String(segment?.facial_performance_custom || state.defaultFacialPerformanceCustom || "");
+    const custom = String(segment?.facial_performance_custom || (segment?.scene_defaults?.facial_performance_custom ?? state.defaultFacialPerformanceCustom) || "");
     const text = key === "custom" ? custom : [storyboardFacialPerformancePreset(key).direction, custom].filter(Boolean).join(" ");
     return cleanLyricFreeFacialDirection(text);
   }
@@ -940,11 +942,11 @@ export function createMiniMaxPrompt({
     if (!multiShot && sceneSetup) {
       return shotPlan.map(() => ({ shot: String(segment?.shot_type || "").trim(), camera: String(segment?.camera_motion || "").trim() }));
     }
-    const cameraFlowKey = String(state.builderStoryboardDefaults?.camera_flow || segment?.camera_flow || "").trim();
+    const cameraFlowKey = String(miniMaxSceneDefaults(segment).camera_flow || segment?.camera_flow || "").trim();
     const preset = STORYBOARD_CAMERA_FLOW_PRESETS[cameraFlowKey];
     if (!multiShot && !preset?.framing_candidates) return shotPlan.map(() => null);
     const customSequence = cameraFlowKey === "custom"
-      ? normalizeStoryboardCustomCameraFlowSequence(segment?.custom_camera_flow_sequence || state.builderStoryboardDefaults?.custom_camera_flow_sequence)
+      ? normalizeStoryboardCustomCameraFlowSequence(segment?.custom_camera_flow_sequence || miniMaxSceneDefaults(segment).custom_camera_flow_sequence)
       : [];
     const configured = cameraFlowKey === "custom" ? customSequence : (Array.isArray(preset?.sequence) ? preset.sequence : []);
     const sequence = [...configured, ...(multiShot && cameraFlowKey !== "custom" ? STORYBOARD_CAMERA_FLOW_PRESETS.energetic.sequence.map(entry => ({ ...entry, camera: entry.camera.replace(/\btransition\b/g, "").trim() })) : [])]
@@ -1106,7 +1108,7 @@ export function createMiniMaxPrompt({
       return [`SCENE CARD FRAMING / CAMERA — AUTHORITATIVE:\n${framingLines.join("\n")}`,
         "Follow these scene directions. Automatic framing candidates are fallback ideas and must not replace the scene card's angle, lens, framing or camera path."];
     }
-    const cameraFlowKey = String(state.builderStoryboardDefaults?.camera_flow || segment?.camera_flow || "").trim();
+    const cameraFlowKey = String(miniMaxSceneDefaults(segment).camera_flow || segment?.camera_flow || "").trim();
     const preset = STORYBOARD_CAMERA_FLOW_PRESETS[cameraFlowKey];
     if (!preset?.framing_candidates) return [];
     return [
@@ -1260,10 +1262,10 @@ export function createMiniMaxPrompt({
     const performanceMode = visualOnly
       ? "no_lip_sync"
       : normalizeVideoType(segment?.performance_mode || state.videoType);
-    const cameraMotionSpeed = Number(segment?.camera_motion_speed ?? state.builderStoryboardDefaults?.camera_motion_speed ?? 4);
-    const characterMotionSpeed = Number(segment?.character_motion_speed ?? state.builderStoryboardDefaults?.character_motion_speed ?? 4);
-    const cameraMotionGuidance = String(segment?.camera_motion_speed_guidance || state.builderStoryboardDefaults?.camera_guidance || "").trim();
-    const characterMotionGuidance = String(segment?.character_motion_guidance || state.builderStoryboardDefaults?.character_guidance || "").trim();
+    const cameraMotionSpeed = Number(segment?.scene_defaults?.camera_motion_speed ?? segment?.camera_motion_speed ?? miniMaxSceneDefaults(segment).camera_motion_speed ?? 4);
+    const characterMotionSpeed = Number(segment?.scene_defaults?.character_motion_speed ?? segment?.character_motion_speed ?? miniMaxSceneDefaults(segment).character_motion_speed ?? 4);
+    const cameraMotionGuidance = String((segment?.scene_defaults?.camera_guidance ?? (segment?.camera_motion_speed_guidance || miniMaxSceneDefaults(segment).camera_guidance)) || "").trim();
+    const characterMotionGuidance = String((segment?.scene_defaults?.character_guidance ?? (segment?.character_motion_guidance || miniMaxSceneDefaults(segment).character_guidance)) || "").trim();
     const cutPlan = miniMaxH3CutPlanForSegment(segment);
     const shotPlan = miniMaxH3OfficialShotPlan(cutPlan);
     const compact = (value, limit = 900) => {
@@ -1581,7 +1583,7 @@ export function createMiniMaxPrompt({
     const duration = Math.max(0, Number(segment?.end || 0) - Number(segment?.start || 0));
     const exactDuration = String(Number(duration.toFixed(3)));
     const aspectRatio = String(settings.aspect_ratio || "16:9").match(/\d+\s*:\s*\d+/)?.[0]?.replace(/\s+/g, "") || "16:9";
-    const style = String(segment?.minimax_h3_video_style || state.builderStoryboardDefaults?.video_style || "").trim();
+    const style = String(segment?.minimax_h3_video_style || miniMaxSceneDefaults(segment).video_style || "").trim();
     const styleText = style || "photorealistic";
     return `Generate a ${exactDuration}-second ${aspectRatio} ${styleText} video.`;
   }
@@ -2164,7 +2166,7 @@ export function createMiniMaxPrompt({
   // The scene's video style as its name and its look ({label, guidance}). Custom wording is the name, with no look.
   // Python twin: video_style_label / video_style_guidance in agent_api/video_style.py.
   function miniMaxH3VideoStyleParts(segment) {
-    const defaults = state.builderStoryboardDefaults || {};
+    const defaults = miniMaxSceneDefaults(segment);
     const value = String(segment?.minimax_h3_video_style || defaults.video_style || "").trim();
     if (value === "custom") {
       const custom = segment?.minimax_h3_video_style ? segment?.minimax_h3_video_style_custom : defaults.video_style_custom;
@@ -2511,10 +2513,10 @@ export function createMiniMaxPrompt({
       `Audio mode: ${nativeAudio ? "Built-in MiniMax Audio — generate native scene audio" : "Input Audio — preserve the supplied Audio 1 unchanged"}`,
       "Visual style: follow the supplied scene/theme context; default to photorealistic when no style is specified.",
     ];
-    const cameraMotionSpeed = Number(segment?.camera_motion_speed ?? state.builderStoryboardDefaults?.camera_motion_speed ?? 4);
-    const characterMotionSpeed = Number(segment?.character_motion_speed ?? state.builderStoryboardDefaults?.character_motion_speed ?? 4);
-    const cameraMotionGuidance = String(segment?.camera_motion_speed_guidance || state.builderStoryboardDefaults?.camera_guidance || "").trim();
-    const characterMotionGuidance = String(segment?.character_motion_guidance || state.builderStoryboardDefaults?.character_guidance || "").trim();
+    const cameraMotionSpeed = Number(segment?.scene_defaults?.camera_motion_speed ?? segment?.camera_motion_speed ?? miniMaxSceneDefaults(segment).camera_motion_speed ?? 4);
+    const characterMotionSpeed = Number(segment?.scene_defaults?.character_motion_speed ?? segment?.character_motion_speed ?? miniMaxSceneDefaults(segment).character_motion_speed ?? 4);
+    const cameraMotionGuidance = String((segment?.scene_defaults?.camera_guidance ?? (segment?.camera_motion_speed_guidance || miniMaxSceneDefaults(segment).camera_guidance)) || "").trim();
+    const characterMotionGuidance = String((segment?.scene_defaults?.character_guidance ?? (segment?.character_motion_guidance || miniMaxSceneDefaults(segment).character_guidance)) || "").trim();
     const cutPlan = miniMaxH3CutPlanForSegment(segment);
     parts.push(
       `Camera motion speed: ${Number.isFinite(cameraMotionSpeed) ? cameraMotionSpeed : 4}/10.`,
