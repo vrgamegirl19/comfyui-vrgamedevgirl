@@ -131,7 +131,7 @@ export function buildInspectorPanels({
     { label: "Models", value: "models", content: zImageModelsSection },
     { label: "Image Settings", value: "settings", content: zImageSettingsSection },
     { label: "LLM Prompting", value: "prompting", content: zImagePromptSection },
-  ]);
+  ], { modelSelectionLabel: "ZImage" });
   zimageSettingsPanel.append(zImageSubTabs.wrapper);
   zImageModePanel.append(zimageSettingsPanel);
   fluxKleinModePanel.append(fluxKleinPanel);
@@ -180,7 +180,7 @@ export function buildInspectorPanels({
         makeErnieCreateButton(),
       ]),
     },
-  ]);
+  ], { modelSelectionLabel: "Ernie Image" });
   ernieImagePanel.append(ernieImageSubTabs.wrapper);
   const krea2TwoPassSubTabs = makeSubTabs([
     {
@@ -224,7 +224,7 @@ export function buildInspectorPanels({
         makeKrea2TwoPassCreateButton(),
       ]),
     },
-  ]);
+  ], { modelSelectionLabel: "Krea2" });
   krea2TwoPassPanel.append(krea2TwoPassSubTabs.wrapper);
   const fluxKleinSubTabs = makeSubTabs([
     {
@@ -267,7 +267,7 @@ export function buildInspectorPanels({
         makeFluxCreateButton(),
       ]),
     },
-  ]);
+  ], { modelSelectionLabel: "Flux/Klein" });
   fluxKleinPanel.append(
     fluxKleinSubTabs.wrapper,
   );
@@ -311,7 +311,7 @@ export function buildInspectorPanels({
         previewNBButton,
       ]),
     },
-  ]);
+  ], { modelSelectionLabel: "NanoBanana" });
   nbImagePanel.append(nbImageSubTabs.wrapper);
   fluxKleinModePanel.append(nbImagePanel);
   const flowGptSubTabs = makeSubTabs([
@@ -371,7 +371,7 @@ export function buildInspectorPanels({
         flowGptManualStatus,
       ]),
     },
-  ]);
+  ], { modelSelectionLabel: "Browser AI" });
   flowGptModePanel.append(flowGptSubTabs.wrapper);
   const zEnhanceSubTabs = makeSubTabs([
     {
@@ -405,7 +405,7 @@ export function buildInspectorPanels({
         makeField("Enhance prompt", zEnhancePromptPreview),
       ]),
     },
-  ]);
+  ], { modelSelectionLabel: "ZImage Enhancer" });
   zEnhancePanel.append(
     zEnhanceTitle,
     zEnhanceSubTabs.wrapper,
@@ -457,7 +457,9 @@ export function buildInspectorPanels({
   ]);
   idLoraVoiceSettingsSection.style.display = "none";
 
-  return { idLoraVoiceSettingsSection, imageContinuityEnabled, imageContinuityStrength };
+  return { idLoraVoiceSettingsSection, imageContinuityEnabled, imageContinuityStrength,
+    imageModelSelections: [zImageSubTabs.modelSelection, ernieImageSubTabs.modelSelection, krea2TwoPassSubTabs.modelSelection, fluxKleinSubTabs.modelSelection, nbImageSubTabs.modelSelection, flowGptSubTabs.modelSelection, zEnhanceSubTabs.modelSelection],
+  };
 }
 
 export function buildInspectorTabs() {

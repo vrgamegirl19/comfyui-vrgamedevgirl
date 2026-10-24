@@ -685,7 +685,7 @@ export function openBuilder(node, options = {}) {
   imageTabButton.onclick = () => setInspectorTab("image");
   videoTabButton.onclick = () => setInspectorTab("video");
   audioTabButton.onclick = () => setInspectorTab("audio");
-  const { idLoraVoiceSettingsSection, imageContinuityEnabled, imageContinuityStrength } = buildInspectorPanels({
+  const { idLoraVoiceSettingsSection, imageContinuityEnabled, imageContinuityStrength, imageModelSelections } = buildInspectorPanels({
     browserAiAutoAdvanceGroup, browserAiBandSequenceMode, browserAiBandSequencePanel,
     browserAiCustomGroupsPanel, browserAiGroupPrompt, browserAiGroupsNote, browserAiGroupStatus,
     browserAiSessionActions, createFluxPromptButton, createNBPromptButton, createT2IButton,
@@ -848,7 +848,7 @@ export function openBuilder(node, options = {}) {
         makeCreateSceneVideoButton(),
       ]),
     },
-  ]);
+  ], { modelSelectionLabel: "LTX" });
   const ltxVideoPanel = document.createElement("div");
   ltxVideoPanel.style.cssText = "display:flex;flex-direction:column;gap:10px;";
   ltxVideoPanel.append(videoModeChooser, importCustomVideoPanel, videoSubTabs.wrapper);
@@ -2942,6 +2942,7 @@ export function openBuilder(node, options = {}) {
     useVisionReference,
   });
   wireToolbar({
+    modelSelections: [videoSubTabs.modelSelection, miniMaxSubTabs.modelSelection, ...imageModelSelections],
     render,
     activeSegment, addOverlaySegment, addOverlaySegmentButton, addSegment, addSegmentButton,
     addTimelineMarkerButton, addTimelineMarkerFromSelection, applyBuilderFullscreen, autoBuildButton,

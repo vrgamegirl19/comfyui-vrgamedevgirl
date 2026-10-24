@@ -340,7 +340,7 @@ export function showFinalVideoReadyModal(videoPath) {
   };
 }
 
-export function showModelDownloadModal() {
+export function showModelDownloadModal({ modelSelections = [] } = {}) {
   const tabs = [
     {
       id: "ltx",
@@ -410,7 +410,7 @@ export function showModelDownloadModal() {
   const header = document.createElement("div");
   header.style.cssText = "position:sticky;top:0;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:22px 24px;border-bottom:1px solid #155e75;background:#083344;z-index:1;";
   const title = document.createElement("div");
-  title.textContent = "Download Models";
+  title.textContent = "Models";
   title.style.cssText = "font-size:24px;font-weight:900;color:#e0f2fe;";
   const close = makeButton("Close");
   close.style.padding = "12px 16px";
@@ -669,13 +669,81 @@ export function showModelDownloadModal() {
     tabBar.append(button);
   }
 
-  box.append(header, tabBar, body);
+  const choices = document.createElement("div");
+  choices.style.cssText = "display:flex;flex-wrap:wrap;gap:12px;padding:18px 20px;border-bottom:1px solid #334155;";
+  const selectModels = makeButton("Select models");
+  const downloadModels = makeButton("Download models");
+  choices.append(selectModels, downloadModels);
+  const downloads = document.createElement("div");
+  downloads.append(tabBar, body);
+  downloads.style.display = "none";
+  const selection = document.createElement("div");
+  selection.style.cssText = "display:none;padding:18px 20px 20px;";
+  const selectionTabs = document.createElement("div");
+  selectionTabs.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;";
+  const selectionBody = document.createElement("div");
+  selectionBody.style.cssText = "max-width:800px;";
+  selection.append(selectionTabs, selectionBody);
+  let restoreSelection = () => {};
+  const selectionButtons = [];
+  const selectPanel = (entry) => {
+    restoreSelection();
+    const { content } = entry;
+    const parent = content.parentElement;
+    const next = content.nextSibling;
+    const display = content.style.display;
+    selectionBody.append(content);
+    content.style.display = "flex";
+    restoreSelection = () => {
+      parent.insertBefore(content, next);
+      content.style.display = display;
+      restoreSelection = () => {};
+    };
+    for (const [item, button] of selectionButtons) {
+      const active = item === entry;
+      button.setAttribute("aria-pressed", String(active));
+      button.style.background = active ? "#0e7490" : "#27272a";
+    }
+  };
+  for (const entry of modelSelections.filter(Boolean)) {
+    const button = makeButton(entry.label);
+    button.onclick = () => selectPanel(entry);
+    selectionButtons.push([entry, button]);
+    selectionTabs.append(button);
+  }
+  const choose = (mode) => {
+    const selecting = mode === "select";
+    title.textContent = selecting ? "Select models" : "Download models";
+    selectModels.setAttribute("aria-pressed", String(selecting));
+    downloadModels.setAttribute("aria-pressed", String(!selecting));
+    selectModels.style.background = selecting ? "#0e7490" : "#27272a";
+    downloadModels.style.background = selecting ? "#27272a" : "#0e7490";
+    selection.style.display = selecting ? "block" : "none";
+    downloads.style.display = selecting ? "none" : "block";
+    if (selecting && !selectionBody.children.length && selectionButtons.length) selectPanel(selectionButtons[0][0]);
+    if (!selecting) restoreSelection();
+  };
+  selectModels.onclick = () => choose("select");
+  downloadModels.onclick = () => choose("download");
+  const finish = () => {
+    restoreSelection();
+    document.removeEventListener("keydown", onKeyDown);
+    backdrop.remove();
+  };
+  const onKeyDown = (event) => {
+    if (event.key === "Escape") {
+      event.stopPropagation();
+      finish();
+    }
+  };
+  box.append(header, choices, selection, downloads);
   backdrop.append(box);
   document.body.append(backdrop);
   activateTab("ltx");
-  close.onclick = () => backdrop.remove();
+  close.onclick = finish;
+  document.addEventListener("keydown", onKeyDown);
   backdrop.addEventListener("click", (event) => {
-    if (event.target === backdrop) backdrop.remove();
+    if (event.target === backdrop) finish();
   });
 }
 
