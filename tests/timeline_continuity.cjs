@@ -77,7 +77,7 @@ test('bulk-off and unlock buttons appear only in the Timeline Tools window', () 
   assert.equal(button.parentElement.children.at(-2), button);
   assert.equal(button.parentElement.children.at(-1), view.unlockAllScenesButton);
   assert.equal(view.unlockAllScenesButton.textContent, 'Unlock All Scenes');
-  assert.notEqual(button.parentElement, view.freezeTimingControl.wrapper.parentElement);
+  assert.notEqual(button.parentElement, view.sceneDragLockButton.parentElement);
 });
 
 test('undo snapshot includes project continuity settings alongside scene overrides', () => {

@@ -186,7 +186,7 @@ test('cancelling delete-all-segments keeps every segment and confirming removes 
     const c = vm.createContext({
       calls, state: { segments: [{ id: 'a' }, { id: 'b' }], overlaySegments: [{ id: 'c' }], selectedSegmentIds: [] },
       toast() {}, pauseTimelineForEditing() {}, pushHistory: () => calls.push('pushHistory'), sceneAudio: { removeAttribute() {}, load() {} },
-      freezeTimingControl: { input: {} }, segmentLayer: {}, sceneListPane: {}, syncTimelineTrimModeButton() {}, syncInspector() {}, render() {},
+      segmentLayer: {}, sceneListPane: {}, syncTimelineTrimModeButton() {}, syncInspector() {}, render() {},
       syncPromptJsonFromSegments: async () => {}, syncI2VMotionJsonFromSegments: async () => {}, autoSaveSessionQuiet: async () => {},
       confirmDestructiveAction: async (options) => { calls.push(options.title); return { confirmed }; },
     });

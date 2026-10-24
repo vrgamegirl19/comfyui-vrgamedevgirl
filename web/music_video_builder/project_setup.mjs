@@ -52,7 +52,7 @@ export async function pickPath(kind, input) {
 export function createProjectSetup({
   activateGlobalTimelineAudioPlayback, activeProjectFolderForSave, allEditableSegments, audio, audioInput,
   autoSaveSessionQuiet, createSilentTimelineAudioButton, drawWaveform, enforceAudioTimelineEnd,
-  freezeTimingControl, getPreferredProjectRoot, globalScrub, loadButton, loadSrtButton,
+  getPreferredProjectRoot, globalScrub, loadButton, loadSrtButton,
   loadedGlobalAudioDuration, lutsTools, node, normalizeImportedSrtSegments, pickAudioButton, pickSrtButton,
   playBuilderNotification, projectInput, projectLyricNotesPath, pushHistory, refreshGemmaChoices,
   refreshLoraChoices, refreshModelChoices, renderList, renderSegments, saveSession, scenePanel, selectedTimelineRangeInfo,
@@ -128,7 +128,6 @@ export function createProjectSetup({
       state.timingFrozen = true;
       state.srtMode = true;
       state.showTimelineLyricNotes = true;
-      freezeTimingControl.input.checked = true;
       syncLyricNoteControls();
       const lyricPath = projectLyricNotesPath();
       if (lyricPath) await syncLyricAndSubjectNoteFiles("SRT path load");
@@ -747,7 +746,6 @@ export function createProjectSetup({
   function render() {
     refreshElevenLabsUI(state);
     syncLyricNoteControls();
-    freezeTimingControl.input.checked = Boolean(state.timingFrozen);
     enforceAudioTimelineEnd();
     syncOverlayTrackControls();
     drawWaveform();
