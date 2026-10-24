@@ -618,6 +618,7 @@ A modular 79-file ESM (`.mjs`) application structure:
 - **Prompting & LLM**: `prompt_editing.mjs`, `prompt_creator.mjs`, `builder_agent.mjs`, `llm_runner.mjs`, `gemma_runner.mjs`.
 - **Rendering & Output**: `batch_render.mjs`, `scene_render_prep.mjs`, `video_render.mjs`, `render_log.mjs`, `post_process.mjs`.
 - **MiniMax H3 Panel**: `minimax_panel.mjs`, `minimax_panel_layout.mjs`, `minimax_panel_events.mjs`, `minimax_prompt.mjs`, `minimax_references.mjs`, `minimax_h3.mjs`.
+  - The Standard pipeline's Video mode dropdown uses the existing five `MINIMAX_H3_MODE_OPTIONS` and saved `video_mode` values. Mode changes preserve the existing project/locked-scene scope, undo, autosave, start-frame cleanup and pass defaults (Image + Reference selects 2 Pass; other modes start at Single pass). Panel synchronization restores the selected value from effective settings after loading, undo or profile changes. RefMod hides the dropdown and retains its existing pipeline/pass controls. This is a presentation change with no new session keys, API routes or MCP tools.
 - **Wizard**: `wizard.mjs`, `wizard_bridge.mjs`, `auto_build.mjs`.
 
 #### Storyboard Builder Application Modules (`web/storyboard_builder/`)

@@ -50,7 +50,7 @@ export function createMiniMaxPanel({
   miniMaxLocationTransitionControls, miniMaxLocationTransitionCustom, miniMaxLocationTransitionCustomField,
   miniMaxLocationTransitionPreset, miniMaxLoraCount, miniMaxLoraNote, miniMaxLoraRows, miniMaxLoraSection,
   miniMaxLoraSlots, miniMaxMegapixels, miniMaxMegapixelsField, miniMaxResolutionPreset, miniMaxMemoryEfficientSageAttention,
-  miniMaxModeButtons, miniMaxModePanels, miniMaxModelLoaderSettings,
+  miniMaxModeSelect, miniMaxModePanels, miniMaxModelLoaderSettings,
   miniMaxOrderedImageReferenceItemsForSegment, miniMaxPass2Prompt, miniMaxPass2PromptField,
   miniMaxPassButtons, miniMaxPassChooser, miniMaxPrompt, miniMaxPromptCharacterStatus,
   miniMaxPromptReferenceMismatch, miniMaxPromptRunnerNote, miniMaxRefImageSize, miniMaxReferenceButtons,
@@ -739,16 +739,11 @@ export function createMiniMaxPanel({
       : "none";
     // Single-pass and multi-pass share the optional LoRA area.
     miniMaxLoraSection.style.display = "";
-    for (const button of miniMaxModeButtons) {
-      const active = button.dataset.minimaxH3Mode === mode;
-      button.style.background = active ? "#06b6d4" : "#27272a";
-      button.style.borderColor = active ? "#0891b2" : "#3f3f46";
-      button.style.color = active ? "#082f49" : "#f4f4f5";
-    }
+    miniMaxModeSelect.value = mode;
     const refmodUi = miniMaxPassButtons.refmod;
     const refmodPipeline = settings.pipeline === "refmod";
     if (refmodUi) {
-      refmodUi.modeChooser.style.display = refmodPipeline ? "none" : "grid";
+      refmodUi.modeChooser.style.display = refmodPipeline ? "none" : "flex";
       refmodUi.note.style.display = refmodPipeline ? "block" : "none";
       for (const button of refmodUi.pipelineButtons) {
         const active = button.dataset.minimaxH3Pipeline === (refmodPipeline ? "refmod" : "standard");

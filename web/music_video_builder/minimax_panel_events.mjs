@@ -30,7 +30,7 @@ export function wireMiniMaxPanel({
   miniMaxH3SceneImageUseForSegment, miniMaxH3SettingsForSegment, miniMaxContinuationDirection, miniMaxContinuationStart, miniMaxContinuationStartValue,
   miniMaxLatentContextFrames, miniMaxKeyframes,
   miniMaxLocationTransitionCustom, miniMaxLocationTransitionPreset, miniMaxLoraCount, miniMaxLoraSlots,
-  miniMaxMappedSpeakersForSegment, miniMaxMegapixels, miniMaxMemoryEfficientSageAttention, miniMaxResolutionPreset, miniMaxVideoProfileControls, miniMaxModeButtons,
+  miniMaxMappedSpeakersForSegment, miniMaxMegapixels, miniMaxMemoryEfficientSageAttention, miniMaxResolutionPreset, miniMaxVideoProfileControls, miniMaxModeSelect,
   miniMaxPass2Prompt, miniMaxPassButtons, miniMaxPrompt, miniMaxSageAttention, miniMaxSamplerName,
   miniMaxSceneImageUse, miniMaxScheduler, miniMaxSeed, miniMaxStartFrameCharacterInfluence, miniMaxSteps,
   miniMaxThreePassLoraPicker, miniMaxThreePassLoraStrength, miniMaxThreePassRefImageSize,
@@ -174,18 +174,20 @@ export function wireMiniMaxPanel({
     persistMiniMaxSettings();
     syncMiniMaxH3Panel();
   });
-  for (const button of miniMaxModeButtons) {
-    button.onclick = async () => {
-      const segment = wizardVideoSettings.global ? null : requireActiveSegment();
-      if (!segment && !wizardVideoSettings.global) return;
-      pushHistory();
-      clearMiniMaxImageReferenceStartFrameOnModeSwitch(segment, button.dataset.minimaxH3Mode);
-      setMiniMaxH3RenderPassForSegment(segment, button.dataset.minimaxH3Mode === "image_reference_to_video" ? "two_pass" : "single");
-      setMiniMaxH3ModeForSegment(segment, button.dataset.minimaxH3Mode);
+  miniMaxModeSelect.onchange = async () => {
+    const segment = wizardVideoSettings.global ? null : requireActiveSegment();
+    if (!segment && !wizardVideoSettings.global) {
       syncMiniMaxH3Panel();
-      await autoSaveSessionQuiet(segment?.use_scene_minimax_h3_settings ? "MiniMax H3 locked scene mode" : "MiniMax H3 project mode");
-    };
-  }
+      return;
+    }
+    const mode = miniMaxModeSelect.value;
+    pushHistory();
+    clearMiniMaxImageReferenceStartFrameOnModeSwitch(segment, mode);
+    setMiniMaxH3RenderPassForSegment(segment, mode === "image_reference_to_video" ? "two_pass" : "single");
+    setMiniMaxH3ModeForSegment(segment, mode);
+    syncMiniMaxH3Panel();
+    await autoSaveSessionQuiet(segment?.use_scene_minimax_h3_settings ? "MiniMax H3 locked scene mode" : "MiniMax H3 project mode");
+  };
   for (const button of miniMaxPassButtons.refmod?.pipelineButtons || []) {
     button.onclick = async () => {
       const pipeline = normalizeMiniMaxH3Pipeline(button.dataset.minimaxH3Pipeline);

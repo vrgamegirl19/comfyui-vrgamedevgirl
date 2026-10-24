@@ -83,17 +83,9 @@ export function buildMiniMaxPanel({
   const miniMaxRefmodNote = document.createElement("div");
   miniMaxRefmodNote.textContent = "RefMod pipeline: one mode, RefMod to Video, with Single or 2 Pass. Every scene uses the saved RefMods picked on its Reference Builder cards, and the prompt names them as <Video n> and <Picture n>.";
   miniMaxRefmodNote.style.cssText = "display:none;font-size:11px;color:#a5f3fc;line-height:1.45;border:1px solid #155e75;border-radius:6px;background:#06202e;padding:7px 9px;";
-  const miniMaxModeChooser = document.createElement("div");
-  miniMaxModeChooser.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;";
-  const miniMaxModeButtons = MINIMAX_H3_MODE_OPTIONS.map((item) => {
-    const button = item.value === "image_reference_to_video"
-      ? makeButton("Image to Video\n2 Pass")
-      : makeButton(item.buttonLabel || item.label);
-    applyCompactButtonLabel(button, item.buttonLabel || item.label, { noMap: true, minWidth: 0, padding: "7px 6px", title: item.label });
-    button.dataset.minimaxH3Mode = item.value;
-    miniMaxModeChooser.append(button);
-    return button;
-  });
+  const miniMaxModeSelect = makeSelect(MINIMAX_H3_MODE_OPTIONS, DEFAULT_MINIMAX_H3_SETTINGS.video_mode);
+  miniMaxModeSelect.setAttribute("aria-label", "MiniMax H3 video mode");
+  const miniMaxModeChooser = makeField("Video mode", miniMaxModeSelect);
   const miniMaxPassChooser = document.createElement("div");
   miniMaxPassChooser.setAttribute("role", "group");
   miniMaxPassChooser.setAttribute("aria-label", "Reference to video passes");
@@ -802,7 +794,7 @@ export function buildMiniMaxPanel({
     miniMaxLatentStatusPill, miniMaxLocationTransitionControls, miniMaxLocationTransitionCustom,
     miniMaxLocationTransitionCustomField, miniMaxLocationTransitionPreset, miniMaxLoraCount, miniMaxLoraNote,
     miniMaxLoraRows, miniMaxLoraSection, miniMaxLoraSlots, miniMaxMegapixels, miniMaxMegapixelsField, miniMaxResolutionPreset,
-    miniMaxMemoryEfficientSageAttention, miniMaxModeButtons, miniMaxModelLoaderSettings, miniMaxModePanels,
+    miniMaxMemoryEfficientSageAttention, miniMaxModeSelect, miniMaxModelLoaderSettings, miniMaxModePanels,
     miniMaxPass2Prompt, miniMaxPass2PromptField, miniMaxPassButtons, miniMaxPassChooser, miniMaxPrompt,
     miniMaxPromptCharacterStatus, miniMaxPromptRunnerNote, miniMaxReferenceConditioningSettings,
     miniMaxRefImageSize, miniMaxSageAttention, miniMaxSamplerName, miniMaxSamplerSettings,
