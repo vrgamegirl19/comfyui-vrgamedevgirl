@@ -750,7 +750,7 @@ export function createAutoBuild({
             temporal_world_effect: "",
             temporal_world_effect_custom: "",
             global_consistency_phrase: "",
-            camera_flow: "intimate_closeups",
+            camera_flow: "medium_shots",
             camera_motion_speed: 6,
             minimax_h3_cut_frequency: 3,
             performance_style: "",
@@ -762,7 +762,7 @@ export function createAutoBuild({
           state.defaultFacialPerformanceCustom = "";
           let previousMotion = "";
           state.segments.forEach((segment, index) => {
-            const camera = storyboardCameraFlowEntry("intimate_closeups", index, previousMotion);
+            const camera = storyboardCameraFlowEntry("medium_shots", index, previousMotion);
             if (camera?.shot) segment.shot_type = camera.shot;
             if (camera?.camera) segment.camera_motion = camera.camera;
             previousMotion = String(segment.camera_motion || previousMotion);
