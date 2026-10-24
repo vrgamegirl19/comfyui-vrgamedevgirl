@@ -1,3 +1,4 @@
+import { createLlmSetup, registerLlmSetup } from "./llm_setup.mjs";
 import { api } from "../../../scripts/api.js";
 import "./prompt_creator.mjs";
 import { applyGlobalLlmKeys, bindGlobalLlmKeys, rememberGlobalLlmKeys } from "./llm_global_keys.mjs";
@@ -218,6 +219,7 @@ export function openBuilder(node, options = {}) {
     builderLifecycle.resourceResizeObserver?.disconnect();
     window.removeEventListener("vrgdg:builder-toast", toastNotificationHandler);
     window.removeEventListener("vrgdg:builder-session-saved", videoModeSavedHandler);
+    builderLifecycle.disposeLlmSetup?.();
     builderLifecycle.disposeErrorLog?.();
     builderLifecycle.externalChangeSync?.dispose();
     builderLifecycle.sceneAudioSettings?.dispose();
@@ -388,9 +390,6 @@ export function openBuilder(node, options = {}) {
     generateFacePrompt: async ({ referenceImage }) => {
       const modelFile = referenceDescriptionVisionModel();
       const mmprojFile = referenceDescriptionMmproj();
-      if (!["lm_studio", "llm_api", "own_server"].includes(state.textGemmaRunner) && (!modelFile || !mmprojFile)) {
-        throw new Error("Choose a vision model and Vision mmproj in LLM Runner first.");
-      }
       const data = await postJson("/vrgdg/music_builder/describe_reference_image", {
         ...textGemmaRunnerPayload(),
         model_file: modelFile,
@@ -2417,6 +2416,15 @@ export function openBuilder(node, options = {}) {
     autoSaveSessionQuiet, createProgressWindow, saveSession, state, syncBuilderLlmModelSelectsFromRunner,
     mmprojSelect, t2iTextGemmaModelSelect, textGemmaRunnerPayload, updatePromptRunnerButtonLabels,
   });
+  builderLifecycle.disposeLlmSetup = registerLlmSetup(createLlmSetup({
+    openRunner: openGemmaRunnerModal,
+    getRunnerPayload: () => ({
+      ...textGemmaRunnerPayload(),
+      model_file: state.textGemmaRunner === "qwen_local" ? state.qwenModelFile || ""
+        : state.gemmaModelFile || t2iTextGemmaModelSelect.value || referenceDescriptionVisionModel(),
+      mmproj_file: state.textGemmaRunner === "qwen_local" ? state.qwenMmprojFile || "" : referenceDescriptionMmproj(),
+    }),
+  }));
 
   const {
     buildFullFLFVideoPipeline, buildFullVideoPipeline, buildIndependentFLFPairs, createEndFramesAllScenes,

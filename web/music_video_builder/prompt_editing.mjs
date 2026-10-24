@@ -222,10 +222,6 @@ export function createPromptEditing({
     }
     const modelFile = String(zEnhanceGemmaModelSelect.value || "").trim();
     const mmprojFile = String(zEnhanceMmprojSelect.value || "").trim();
-    if (!modelFile || !mmprojFile) {
-      toast("Choose the Enhance vision Gemma model and mmproj in the Enhance Models tab first.", true);
-      return;
-    }
     const notes = String(zEnhanceGemmaNotes.value || "").trim();
     let progress = null;
     try {
@@ -240,6 +236,7 @@ export function createPromptEditing({
         notes ? `User enhancement notes:\n${notes}` : "User enhancement notes:\nKeep the image identity, improve cinematic detail, clarity, lighting, and polish.",
       ].join("\n\n");
       const data = await postJson("/vrgdg/music_builder/generate_t2i", {
+        ...textGemmaRunnerPayload(),
         model_file: modelFile,
         mmproj_file: mmprojFile,
         use_vision: true,
@@ -623,9 +620,6 @@ export function createPromptEditing({
     if (useImageReference && !imageReference.path && !imageReference.data) {
       throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: ${modeLabel} image reference is enabled, but no reference image was found.`);
     }
-    if (useImageReference && state.textGemmaRunner === "llm_api" && !llmApiVisionModelSelected()) {
-      throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: LLM API vision needs a vision-capable API model selected. Open LLM Runner and choose an API model that supports images.`);
-    }
     const idLoraContext = isIdLora ? idLoraSceneContext(segment) : null;
     if (!useFirstLastFrameVision && (isT2V || textScriptMode || !useImageReference) && !t2iText && !(isIdLora && idLoraContext?.contextText)) {
       throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: scene text/concept is missing.`);
@@ -782,10 +776,6 @@ export function createPromptEditing({
     const editRequest = String(editOptions.editRequest || "").trim();
     const useFullSceneContext = Boolean(editOptions.useFullSceneContext);
     const useReferenceImage = canUseReferenceImage && Boolean(editOptions.useReferenceImage);
-    if (useReferenceImage && state.textGemmaRunner === "llm_api" && !llmApiVisionModelSelected()) {
-      toast("Hey, LLM API vision needs a vision-capable API model selected. Open LLM Runner, choose an API model that supports images, then try again.", true);
-      return;
-    }
     const buttons = editImagePromptButtons;
     let progress = null;
     try {
@@ -866,10 +856,6 @@ export function createPromptEditing({
     const editRequest = String(editOptions.editRequest || "").trim();
     const useFullSceneContext = Boolean(editOptions.useFullSceneContext);
     const useStartingImage = canUseStartingImage && Boolean(editOptions.useStartingImage);
-    if (useStartingImage && state.textGemmaRunner === "llm_api" && !llmApiVisionModelSelected()) {
-      toast("Hey, LLM API vision needs a vision-capable API model selected. Open LLM Runner, choose an API model that supports images, then try again.", true);
-      return;
-    }
     const singers = Array.isArray(segment.lyric_singers) ? segment.lyric_singers.map((value) => String(value || "").trim()).filter(Boolean) : [];
     let progress = null;
     try {

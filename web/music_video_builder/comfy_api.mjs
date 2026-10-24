@@ -1,3 +1,4 @@
+import { prepareLlmRequest } from "./llm_setup.mjs";
 import { errorLogContext, errorLogHeaders, reportProjectError } from "./error_log.mjs";
 import { api } from "../../../scripts/api.js";
 import { globalLlmKeysForSave, globalLlmRunnerForSave } from "./llm_global_keys.mjs";
@@ -69,7 +70,8 @@ function ownServerPayloadTimeoutMs(payload) {
   return Math.round(Math.max(15, Math.min(600, seconds)) * 1000) + 15000;
 }
 
-export async function postJson(url, payload, timeoutMs = 120000) {
+export async function postJson(url, payload, timeoutMs = 120000, { skipLlmSetup = false } = {}) {
+  if (!skipLlmSetup) payload = await prepareLlmRequest(url, payload);
   const logContext = errorLogContext(payload);
   const ownTimeoutMs = ownServerPayloadTimeoutMs(payload);
   if (ownTimeoutMs) timeoutMs = Math.max(timeoutMs, ownTimeoutMs);

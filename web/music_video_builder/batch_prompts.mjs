@@ -326,10 +326,6 @@ export function createBatchPrompts({
       toast("Video to Video needs at least one reference video path.", true);
       return;
     }
-    if (visionImages.length && state.textGemmaRunner === "llm_api" && !llmApiVisionModelSelected()) {
-      toast("MiniMax image/reference prompting needs a vision-capable API model selected in LLM Runner.", true);
-      return;
-    }
     if (mode === "text_to_video" && !sceneVideoConceptPromptText(segment) && !String(segment.i2v_notes || segment.story_beat || segment.lyric_text || "").trim()) {
       toast("Add a scene idea, notes, story beat, lyrics, or motion direction before creating a Text to Video prompt.", true);
       return;
@@ -526,10 +522,6 @@ export function createBatchPrompts({
       toast(isT2V
         ? "Hey, T2V Gemma image reference is on, but no reference image is loaded. Drop/load a reference image or turn it off."
         : "Hey, you need a scene image first. Save/load an image, or turn off image reference to create I2V from the T2I prompt instead.", true);
-      return;
-    }
-    if (useImageReference && state.textGemmaRunner === "llm_api" && !llmApiVisionModelSelected()) {
-      toast("Hey, LLM API vision needs a vision-capable API model selected. Open LLM Runner, choose an API model that supports images, then try again.", true);
       return;
     }
     if (!useFirstLastFrameVision && (isT2V || textScriptMode || !useImageReference) && !conceptPrompt && !(isIdLora && idLoraContext?.contextText)) {
@@ -796,9 +788,6 @@ export function createBatchPrompts({
         missing.push(`${sceneDisplayName(segment, index)}: First Last Frame needs a resolved start and end image; assign a timeline image or dedicated end frame.`);
       } else if (useImageReference && !imageReference.path && !imageReference.data) {
         missing.push(`${sceneDisplayName(segment, index)}: ${modeLabel} image reference is enabled, but no reference image was found.`);
-      }
-      if (useImageReference && state.textGemmaRunner === "llm_api" && !llmApiVisionModelSelected()) {
-        missing.push(`${sceneDisplayName(segment, index)}: LLM API vision needs a vision-capable API model selected in LLM Runner.`);
       }
       if ((isRTV || isIngredients || isIdLora) && !sceneVideoConceptPromptText(segment)) {
         missing.push(`${sceneDisplayName(segment, index)}: ${modeLabel} prompt is missing. Export prompts from Storyboard Builder, or add scene notes/concept text before running ${runnerName}.`);

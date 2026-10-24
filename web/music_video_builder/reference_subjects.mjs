@@ -275,14 +275,6 @@ export function createReferenceSubjects({
       return;
     }
     const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-    if (!modelFile && !["lm_studio", "llm_api", "own_server"].includes(state.textGemmaRunner)) {
-      const message = "Choose a non-vision Gemma model first, or use LM Studio, LLM API, or your own server in LLM Runner.";
-      progress.set(`Error:\n${message}`, 100);
-      toast(message, true);
-      extractSubjects.disabled = false;
-      extractSubjects.textContent = "Extract Subjects";
-      return;
-    }
     try {
       progress.set(`Asking Gemma for reusable character references...\n${gemmaRunnerLine()}`, 15);
       const data = await postJson("/vrgdg/music_builder/flux_reference_extract_subjects", {

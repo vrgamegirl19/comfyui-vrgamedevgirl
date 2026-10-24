@@ -1,3 +1,4 @@
+import { prepareLlmRequest } from "./llm_setup.mjs";
 import { storyboardCameraFlowEntry } from "../storyboard_builder/shot_presets.mjs";
 import {
   COMPACT_TOOLBAR_ICONS,
@@ -446,9 +447,6 @@ export function createAutoBuild({
           const rendererReferences = miniMaxOrderedImageReferenceItemsForSegment(segment, mode);
           if (!rendererReferences.length) throw new Error(`${sceneDisplayName(segment, index)} has no mapped Reference Builder image.`);
           assertMiniMaxH3ReferenceDescriptionsReady(segment, mode);
-          if (visionImages.length && state.textGemmaRunner === "llm_api" && !llmApiVisionModelSelected()) {
-            throw new Error("MiniMax reference prompting needs a vision-capable API model selected in LLM Runner.");
-          }
           const percent = 5 + Math.round((index / Math.max(1, scenes.length)) * 90);
           progress.set(`Creating MiniMax prompt ${index + 1}/${scenes.length}: ${sceneDisplayName(segment, index)}\n${gemmaRunnerLine({ vision: Boolean(visionImages.length) })}`, percent);
           try {
@@ -494,26 +492,10 @@ export function createAutoBuild({
       }
     };
 
-    const validateAutoBuildPromptRunner = () => {
-      if (state.textGemmaRunner === "llm_api") {
-        if (!String(state.llmApiKey || "").trim()) {
-          throw new Error("LLM API is selected, but no API key is set. Open LLM Runner in Auto Build, paste/test the key, then start Auto Build again.");
-        }
-        if (selectedEngine === "minimax_h3" && !llmApiVisionModelSelected()) {
-          throw new Error("MiniMax Auto Build uses reference images for prompt writing. Open LLM Runner and choose a vision-capable API model.");
-        }
-      }
-      if (state.textGemmaRunner === "lm_studio" && !String(state.lmStudioModel || "").trim()) {
-        throw new Error("LM Studio is selected, but no model name is set. Open LLM Runner, load/select a model, then start Auto Build again.");
-      }
-      if (state.textGemmaRunner === "own_server") {
-        if (!String(state.ownServerUrl || "").trim()) {
-          throw new Error("Custom Server is selected, but no URL is set. Open LLM Runner, paste the server URL, then start Auto Build again.");
-        }
-        if (!String(state.ownServerModel || "").trim()) {
-          throw new Error("Custom Server is selected, but no model name is set. Open LLM Runner, enter or load the served model, then start Auto Build again.");
-        }
-      }
+    const validateAutoBuildPromptRunner = async () => {
+      await prepareLlmRequest("", {
+        ...textGemmaRunnerPayload(), use_vision: selectedEngine === "minimax_h3",
+      });
     };
 
     const applyAutoBuildSingerPerformerMapping = (singer) => {
@@ -570,7 +552,7 @@ export function createAutoBuild({
         && state.autoBuildPreparation?.input_fingerprint === autoBuildInputFingerprint,
       );
       try {
-        validateAutoBuildPromptRunner();
+        await validateAutoBuildPromptRunner();
       } catch (error) {
         syncAutoBuildRunnerStatus();
         toast(String(error?.message || error), true);
@@ -750,7 +732,7 @@ export function createAutoBuild({
             temporal_world_effect: "",
             temporal_world_effect_custom: "",
             global_consistency_phrase: "",
-            camera_flow: "medium_shots",
+            camera_flow: "intimate_closeups",
             camera_motion_speed: 6,
             minimax_h3_cut_frequency: 3,
             performance_style: "",
@@ -762,7 +744,7 @@ export function createAutoBuild({
           state.defaultFacialPerformanceCustom = "";
           let previousMotion = "";
           state.segments.forEach((segment, index) => {
-            const camera = storyboardCameraFlowEntry("medium_shots", index, previousMotion);
+            const camera = storyboardCameraFlowEntry("intimate_closeups", index, previousMotion);
             if (camera?.shot) segment.shot_type = camera.shot;
             if (camera?.camera) segment.camera_motion = camera.camera;
             previousMotion = String(segment.camera_motion || previousMotion);

@@ -824,7 +824,6 @@ export function createIngredientsBuilder({
         const lyricScenes = sceneInputs.filter((scene) => String(scene.lyric || "").trim());
         if (!planningScenes.length && !lyricScenes.length) throw new Error("Gemma Extract needs scene prompts, notes, lyrics, or timeline notes first.");
         const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-        if (!modelFile && !["lm_studio", "llm_api", "own_server"].includes(state.textGemmaRunner)) throw new Error("Choose a non-vision Gemma model first, or use LM Studio, LLM API, or your own server in LLM Runner.");
         const useLyricsScout = Boolean(!planningScenes.length && lyricScenes.length);
         const styleTheme = await locationExtractionStyleTheme(locationStyleTheme.value);
         progress.set(`${useLyricsScout ? "Asking Gemma location scout to create locations from lyrics" : "Asking Gemma for reusable location descriptions"}...\n${gemmaRunnerLine()}`, 15);
