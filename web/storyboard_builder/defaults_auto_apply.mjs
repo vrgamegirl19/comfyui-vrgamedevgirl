@@ -107,10 +107,14 @@ export function createAutoSceneDefaults({ state, controls, persist, renderTable,
     const requested = fields.length ? targets() : [], selected = Boolean(state.selected?.size);
     const rows = requested.filter(({ scene }) => fields.some(key => !["videoStyle", "videoStyleCustom"].includes(key)
       || storyboardSceneSupportsVideoStyle(scene)));
-    const control = fields.length === 1 ? controls[CONTROLS[fields[0]]] : null;
+    const changedKey = fields.length === 1 ? fields[0] : !fields.length && storyChanged ? "storyArcDetail" : "";
+    const control = controls[CONTROLS[changedKey]];
     const option = Array.from(control?.options || []).find(item => item.value === control.value);
-    const settingName = !preset && option
-      ? `${control.getAttribute?.("aria-label") || fields[0]} — ${option.textContent || option.value}` : "";
+    const shownValue = option ? (option.textContent || option.value)
+      : control?.type === "range" ? `${control.value}/10`
+      : control?.type === "checkbox" ? (control.checked ? "On" : "Off") : String(control?.value || "Not set");
+    const settingName = !preset && control
+      ? `${control.getAttribute?.("aria-label") || changedKey} \u2014 ${shownValue}` : "";
     const before = rows.map(({ scene }) => ({ id: scene.id, value: clone(scene) }));
     const globalBefore = clone(baseline);
     busy = true;

@@ -281,10 +281,31 @@ test("individual facial dropdown confirms its option and selected scene numbers"
   control.getAttribute = () => "Facial performance";
   control.value = "love_tender";
   f.change("facialPerformance", "love_tender");
-  assert.deepEqual(confirmations, [{ name: "Facial performance — Love song / tender", result: "Updated scenes 1, 5, 7" }]);
+  assert.deepEqual(confirmations, [{ name: "Facial performance \u2014 Love song / tender", result: "Updated scenes 1, 5, 7" }]);
   assert.equal(f.state.scenes[3].facial_performance, undefined);
   f.controller.note(["facialPerformance"]);
   f.state.facialPerformance = "love_tender";
   f.controller.commit({ preset: true });
   assert.equal(confirmations.length, 1, "a toolbar preset produces its own single combined confirmation");
+});
+
+test("manual motion and cut sliders confirm committed values with their scene scope", () => {
+  const confirmations = [];
+  const f = fixture({ onSettingApplied: (name, result) => confirmations.push({ name, result }) });
+  f.state.selected = new Set(["scene1", "scene7"]);
+  f.controller.syncScope();
+  for (const [key, ref, label, value] of [
+    ["characterMotionSpeed", "characterSpeedInput", "Character motion speed", 5],
+    ["cameraMotionSpeed", "cameraSpeedInput", "Camera motion speed", 2],
+    ["cutFrequency", "cutFrequencyInput", "Cut frequency", 0],
+  ]) {
+    const control = f.controls[ref];
+    control.type = "range";
+    control.getAttribute = () => label;
+    control.value = String(value);
+    f.change(key, value);
+    assert.deepEqual(confirmations.at(-1), { name: `${label} \u2014 ${value}/10`, result: "Updated scenes 1, 7" });
+  }
+  assert.equal(confirmations.length, 3);
+  assert.equal(f.state.scenes[1].scene_defaults, undefined);
 });

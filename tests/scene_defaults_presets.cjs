@@ -179,8 +179,10 @@ test("real Speed and Music handlers replace presets on selected scenes without S
   const toolbar = f.context.buildDefaultPresetsToolbar();
   Object.assign(f.args, { defaultsPresetsToolbar: toolbar, defaultsScope: {}, defaultsResult: {}, defaultsUndo: {} });
   let saves = 0;
+  const settingConfirmations = [];
   const controller = f.context.createAutoSceneDefaults({ state: f.state, controls: f.args,
-    persist: () => saves++, renderTable: () => controller.syncScope(), imageShotFlowPresets: {}, imageAestheticPresets: [] });
+    persist: () => saves++, renderTable: () => controller.syncScope(), imageShotFlowPresets: {}, imageAestheticPresets: [],
+    onSettingApplied: (name, result) => settingConfirmations.push({ name, result }) });
   f.args.notifyStoryboardDefaultsChanged = options => controller.commit(options);
   // Rewire the actual individual control handlers to the auto-apply controller.
   f.context.wireStoryboardEvents(f.args);
@@ -212,4 +214,13 @@ test("real Speed and Music handlers replace presets on selected scenes without S
   assert.deepEqual(confirmations.map(item => `${item.name}: ${item.result}`), ["Static speed: Updated scenes 2, 3", "Soft music style: Updated scenes 2, 3", "Fast speed: Updated scenes 2, 3"]);
   assert.match(confirmations[0].details, /characterMotionSpeed: 0\/10/);
   assert.match(confirmations[1].details, /facialPerformance: love_tender/);
+  f.args.characterSpeedInput.type = "range";
+  f.args.characterSpeedInput.getAttribute = () => "Character motion speed";
+  f.args.characterSpeedInput.value = "5";
+  f.args.characterSpeedInput.dispatchEvent(new Event("input"));
+  assert.equal(settingConfirmations.length, 0, "dragging previews the value without popup spam");
+  f.args.characterSpeedInput.dispatchEvent(new Event("change"));
+  assert.deepEqual(settingConfirmations, [{ name: "Character motion speed \u2014 5/10", result: "Updated scenes 2, 3" }]);
+  assert.equal(saves, 4);
+
 });
