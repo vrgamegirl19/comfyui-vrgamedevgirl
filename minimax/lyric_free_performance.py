@@ -25,6 +25,15 @@ def strip_singing_articulation(text: str) -> str:
                    r'pressed\s+(?:together|shut|closed)\b',
                    protect, str(text or ""), flags=re.I)
     clean = re.sub(r"(\d)\.(?=\d)", r"\1VRGDGDECIMALTOKEN", clean)
+    clean = re.sub(
+        r"(<Subject\s+\d+>(?:\s+\([^)]*\))?|\b(?:she|he|they))\s+"
+        r"(?:keeps?|holds?|lets?|maintains?)\s+(?:(?:her|his|their|a|an|the)\s+)?"
+        r"(?:(?:relaxed|closed|soft|neutral|gently|pressed|shut|still|natural|loose|calm)[ -]+){0,6}"
+        r"(?:mouth|lips?|jaw)\b[^,;.!?]*,\s*(?:then|and)\s+", r"\1 ", clean, flags=re.I)
+    clean = re.sub(
+        r"\b(?:her|his|their)\s+(?:mouth|lips?|jaw)\s+"
+        r"(?:close|closes|relax|relaxes|settle|settles)\b[^,;.!?]*?\s+and\s+"
+        r"(?=(?:she|he|they)\b)", "", clean, flags=re.I)
     clean = re.sub(r"\bwith\s+(?:natural\s+)?(?:mouth|lips?|jaw)\b[^,;.!?]*,\s*", "with ", clean, flags=re.I)
     result = []
     for sentence in re.split(r"(?<=[.!?…])\s+", clean):
@@ -34,6 +43,11 @@ def strip_singing_articulation(text: str) -> str:
             clause = parts[i]
             clause = re.sub(r"\s+(?:with|and|while)\s+(?:(?:her|his|their|natural)\s+)*(?:mouth|lips?|jaw)\b[^.!?]*",
                             "", clause, flags=re.I).strip()
+            if re.fullmatch(r"(?:after|before|between|during)\s+(?:the\s+)?(?:vocal\s+)?"
+                            r"(?:cues?|lines?|phrases?|vocals?|singing)(?:\s+(?:ends?|finishes?))?",
+                            clause, flags=re.I) and (
+                    i + 2 >= len(parts) or re.search(r"\b(?:mouth\w*|lips?|jaw)\b", parts[i + 2], re.I)):
+                continue
             if clause and not re.search(r"\b(?:mouth\w*|lips?|jaw)\b", clause, re.I):
                 rebuilt += ((parts[i - 1] or ",") + " " if rebuilt else "") + clause
         rebuilt = re.sub(r"[,;]\s*([.!?])", r"\1", rebuilt).rstrip(" ,;")

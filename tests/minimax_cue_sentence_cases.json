@@ -1,0 +1,50 @@
+[
+  {
+    "name": "quoted tags and assigned audio suffix normalize as a single vocal clause",
+    "description": "<Subject 1> advances with squared shoulders; after the opening, she sings “<d>[English, curious, sly, singing] Find the <i>spark</i>.</d>” in sync with the assigned Audio 1. Her brows lift into a knowing grin.",
+    "cue": {"type":"vocal","text":"Find the spark","label":"<Subject 1>","vocal_start":0.21,"vocal_end":2.67},
+    "contains": ["after the opening, she sings in sync with <Audio 1> from 0.21 s to 2.67 s:", "</d> Her brows lift into a knowing grin."]
+  },
+  {
+    "name": "closed-mouth expression keeps the actor of continued performance",
+    "description": "A frontal tracking shot follows <Subject 1>. <Subject 1> keeps a relaxed closed-mouth expression during the silent opening beat, then continues the same performance and sings “<d>[English, pensive, defiant, singing] Hold that <i>light</i>.</d>” in sync with the assigned Audio 1; her brows rise into a deliberate look.",
+    "cue": {"type":"vocal","text":"Hold that light","label":"<Subject 1>","vocal_start":6.2,"vocal_end":7.82},
+    "contains": ["<Subject 1> continues the same performance and sings", "from 6.2 s to 7.82 s", "</d>; her brows rise into a deliberate look."]
+  },
+  {
+    "name": "walking and tagged singing remain one complete sentence",
+    "description": "A close-up holds on <Subject 1>. <Subject 1> advances along the path, shoulders upright, and sings in sync with Audio 1 from 0.210s: <d>[English, searching, wry, singing] Find the <i>spark</i>.</d> Her brows lift and one arches into a broad knowing grin.",
+    "cue": {"type":"vocal","text":"Find the spark","label":"<Subject 1>","vocal_start":0.21,"vocal_end":2.67},
+    "contains": ["advances along the path, shoulders upright, and sings", "from 0.21 s to 2.67 s", "Her brows lift and one arches into a broad knowing grin."]
+  },
+  {
+    "name": "oral rest clauses preserve the following singer and gaze action",
+    "description": "The camera tracks backward. <Subject 1> keeps her lips relaxed and closed through the brief opening, then sings in sync with Audio 1 from 6.200s: <d>[English, tender, wry, singing] Hold that <i>light</i>.</d> Her brows rise into a warm open smile; after the cue, her lips close and she holds that gaze.",
+    "cue": {"type":"vocal","text":"Hold that light","label":"<Subject 1>","vocal_start":6.2,"vocal_end":7.82},
+    "contains": ["<Subject 1> sings", "from 6.2 s to 7.82 s", "after the cue, she holds that gaze."]
+  },
+  {
+    "name": "quoted timed singing becomes one tagged cue",
+    "description": "<Subject 1> lip-syncs only \"Hold that light\" from 0.940s–1.800s, her eyes widening into mock surprise.",
+    "cue": {"type":"vocal","text":"Hold that light","label":"<Subject 1>","vocal_start":0.94,"vocal_end":1.8},
+    "contains": ["<Subject 1> sings", "from 0.94 s to 1.8 s", "her eyes widening into mock surprise"]
+  },
+  {
+    "name": "an incorrect vocal actor is corrected without removing other action",
+    "description": "<Subject 2> strums the guitar. <Subject 2> sings in sync with <Audio 1>: <d>[English, cheeky, singing] Find the spark.</d> The camera drifts beside the performers.",
+    "cue": {"type":"vocal","text":"Find the spark","label":"<Subject 1>","vocal_start":1.1,"vocal_end":2.4},
+    "contains": ["<Subject 2> strums the guitar.", "<Subject 1> sings", "The camera drifts beside the performers."]
+  },
+  {
+    "name": "an incorrectly tagged lyric keeps the authoritative cue words",
+    "description": "<Subject 1> sings <d>[English, gleeful, singing] Different invented words.</d> in sync with <Audio 1> from 0s to 9s, her shoulders bouncing to the rhythm.",
+    "cue": {"type":"vocal","text":"Find the spark","label":"<Subject 1>","vocal_start":2.2,"vocal_end":3.1},
+    "contains": ["Find the spark.", "from 2.2 s to 3.1 s", "her shoulders bouncing to the rhythm"]
+  },
+  {
+    "name": "bare lyric tags get a canonical cue while preserving visible acting",
+    "description": "A medium shot shows <Subject 1> swinging her shoulders, \"Find the spark\", <d>[English, cheeky, singing] Find the <i>spark</i>.</d>, her brows shooting upward.",
+    "cue": {"type":"vocal","text":"Find the spark","label":"<Subject 1>","vocal_start":0.5,"vocal_end":2},
+    "contains": ["swinging her shoulders", "her brows shooting upward", "from 0.5 s to 2 s"]
+  }
+]

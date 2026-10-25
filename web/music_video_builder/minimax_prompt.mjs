@@ -1757,6 +1757,40 @@ export function createMiniMaxPrompt({
     return miniMaxH3InjectMissingExtraLabels(normalizedDescriptions, requiredExtras);
   }
 
+  function miniMaxH3MergeTimedCue(text, performer, vocalWindow, tag) {
+    const matches = [...text.matchAll(/<d>[\s\S]*?<\/d>/gi)];
+    if (matches.length !== 1) return null;
+    const match = matches[0];
+    const prefix = text.slice(0, match.index);
+    const lead = prefix.match(/(?:(?:continues?|keeps?)\s+(?:the\s+same\s+)?(?:uninterrupted\s+)?)?(?:is\s+(?:the\s+only\s+visible\s+performer\s+)?singing|sings?|singing|lip[ -]?sync(?:s|ing)?)\b(?:<Audio\s+\d+>|[^<>.!?\n]|\.(?=\d))*$/i);
+    if (!lead) return null;
+    let stem = prefix.slice(0, lead.index);
+    const wanted = performer.match(/<Subject\s+\d+>/i)?.[0];
+    const actors = [...stem.matchAll(/<Subject\s+\d+>/gi)];
+    const actor = actors.at(-1)?.[0];
+    let verb = /^singing\b|^lip[ -]?syncing\b/i.test(lead[0]) ? "singing"
+      : /^(?:continues?|keeps?)\b/i.test(lead[0]) ? "continues singing" : "sings";
+    if (!wanted || actor !== wanted) {
+      // Correct only the vocal actor; keep other people's physical action.
+      const directActor = /(?:<Subject\s+\d+>(?:\s+\([^)]*\))?|\b(?:she|he|they|the singer))\s*$/i;
+      if (directActor.test(stem)) stem = stem.replace(directActor, `${performer} `);
+      else {
+        const action = stem.replace(/[,;:]?\s*\b(?:and|then|while|as)\s*$/i, "").trim().replace(/[,;:]$/, "");
+        stem = `${action ? `${action}. ` : ""}${performer} `;
+      }
+      verb = "sings";
+    }
+    let suffix = text.slice(match.index + match[0].length);
+    // Quotes outside a <d> tag belong to its old vocal clause, not the lyric.
+    if (/[“"‘']\s*$/.test(prefix)) suffix = suffix.replace(/^\s*[”"’']/, "");
+    suffix = suffix
+      .replace(/^\s*[,;]?\s*in sync with\s+(?:the\s+)?(?:(?:assigned|supplied|provided|original)\s+)?(?:vocals\s+in\s+)?(?:<Audio\s+\d+>|Audio\s+\d+)/i, "")
+      .replace(/^\s+(?:from|during)\s+\d+(?:\.\d+)?\s*s?\s*(?:to|[–—-])\s*\d+(?:\.\d+)?\s*s?/i, "");
+    // The canonical lyric already ends with punctuation inside its tag.
+    suffix = suffix.replace(/^\s*\.(?=\s|$)/, "");
+    return `${stem}${verb} in sync with <Audio 1>${vocalWindow}: ${tag}${suffix}`;
+  }
+
   function enforceMiniMaxH3CueOnShotDescription(segment, description, shotIndex, mode = miniMaxH3ModeForSegment(segment)) {
     let text = normalizeMiniMaxH3ShotDescription(description);
     if (miniMaxH3FrameContinuityPromptEnabled(segment)) return text;
@@ -1778,12 +1812,8 @@ export function createMiniMaxPrompt({
       if (!clean) clean = miniMaxH3FallbackShotDescription(segment, shotIndex, mode);
       return normalizeMiniMaxH3ShotDescription(clean);
     }
-    // The application owns the exact lyric placement, but the LLM's shot
-    // sentence also contains valuable blocking, camera, and ensemble action.
-    // Do not delete a whole sentence based on a vocal word: quoted lyric
-    // punctuation can make a sentence splitter leave fragments such as
-    // `"; S2 plays bass...`. Remove only the duplicate lyric/tag/timing
-    // material, then append the one canonical cue below.
+    // Normalize the cue in its original sentence so blocking, acting, tags,
+    // and facial prose survive. A missing vocal clause gets one fallback cue.
     const cueText = miniMaxH3CapitalizeCueText(miniMaxH3PunctuatedCueText(cue.text));
     // The LLM's emotion header and delivery marks are kept on the cue's own words.
     const llmCue = text.match(/<d>\s*(?:\[([^\]]*)\])?\s*([\s\S]*?)<\/d>/i);
@@ -1793,6 +1823,9 @@ export function createMiniMaxPrompt({
     const vocalEnd = Number(cue.vocal_end);
     const vocalWindow = cue.vocal_start != null && cue.vocal_end != null && Number.isFinite(vocalStart) && Number.isFinite(vocalEnd) && vocalEnd > vocalStart
       ? ` from ${Number(vocalStart.toFixed(2))} s to ${Number(vocalEnd.toFixed(2))} s` : "";
+    const cueTag = `<d>[${emotionDescriptor}] ${deliveredCue}</d>`;
+    const merged = miniMaxH3MergeTimedCue(text, performer, vocalWindow, cueTag);
+    if (merged != null) return normalizeMiniMaxH3ShotDescription(merged);
     // Remove a previously generated canonical contract before adding the
     // authoritative one below. This keeps retries idempotent.
     text = text.replace(/<Subject\s+\d+>[^.\n]*?is the only visible performer singing\b[\s\S]*?every other visible performer remains silent\.?/gi, "");
@@ -1803,17 +1836,17 @@ export function createMiniMaxPrompt({
       const escapedCue = escapeRegExp(variant);
       const timing = "(?:\\d+(?:\\.\\d+)?s?\\s*(?:to|[–—-])\\s*\\d+(?:\\.\\d+)?s?)";
       const vocalVerb = "(?:lip[ -]?sync(?:s|ing|ed)?|sing(?:s|ing)?|perform(?:s|ing|ed)?|speak(?:s|ing)?)";
-      // Preserve the sentence and its timing, replacing only the repeated
-      // lyric wording. For example: `she lip-syncs only \"line\" from
-      // 0.940s–1.800s` becomes `she performs the assigned vocal cue from
-      // 0.940s–1.800s`.
+      // Convert a quoted lyric to a real tag before normalizing the inline cue.
       text = text
-        .replace(new RegExp(`\\b${vocalVerb}\\s+(?:only\\s+)?[“"']\\s*${escapedCue}[.!?…]*\\s*[”"']\\s+from\\s+(${timing})`, "gi"), "performs the assigned vocal cue from $1")
-        .replace(new RegExp(`<d>\\s*(?:\\[[^\\]]+\\]\\s*)?${escapedCue}[.!?…]*\\s*<\\/d>`, "gi"), "the assigned vocal cue")
-        .replace(new RegExp(`[“"']\\s*${escapedCue}[.!?…]*\\s*[”"']`, "gi"), "the assigned vocal cue");
+        .replace(new RegExp(`\\b${vocalVerb}\\s+(?:only\\s+)?[“"']\\s*${escapedCue}[.!?…]*\\s*[”"']\\s+from\\s+(${timing})`, "gi"), () => `sings ${cueTag}`)
+        .replace(new RegExp(`<d>\\s*(?:\\[[^\\]]+\\]\\s*)?${escapedCue}[.!?…]*\\s*<\\/d>`, "gi"), () => cueTag)
+        .replace(new RegExp(`[“"']\\s*${escapedCue}[.!?…]*\\s*[”"']`, "gi"), () => cueTag);
     }
+    const quotedMerge = miniMaxH3MergeTimedCue(text, performer, vocalWindow, cueTag);
+    if (quotedMerge != null) return normalizeMiniMaxH3ShotDescription(quotedMerge);
     let clean = text
-      .replace(/<d>[\s\S]*?<\/d>/gi, "the assigned vocal cue")
+      .replace(/<d>[\s\S]*?<\/d>/gi, "")
+      .replace(/,\s*(?:,\s*)+/g, ", ")
       .replace(/\s+([,.;!?])/g, "$1")
       .replace(/([.!?])\s*;+/g, "$1")
       .replace(/\s{2,}/g, " ")
@@ -1822,7 +1855,7 @@ export function createMiniMaxPrompt({
     if (!clean) clean = miniMaxH3FallbackShotDescription(segment, shotIndex, mode);
     clean = clean.replace(/[,;:]\s*([.!?…])/g, "$1").replace(/\s+,/g, ",");
     // No "lip" words here: supplied-audio singing strips them, and with them this whole clause.
-    const vocalContract = `${performer} is the only visible performer singing, in sync with <Audio 1>${vocalWindow}, <d>[${emotionDescriptor}] ${deliveredCue}</d>; every other visible performer remains silent.`;
+    const vocalContract = `${performer} sings in sync with <Audio 1>${vocalWindow}: ${cueTag}; every other visible performer remains silent.`;
     return normalizeMiniMaxH3ShotDescription(`${clean.replace(/[.!?…]+$/g, "").trim()}. ${vocalContract}`);
   }
 
