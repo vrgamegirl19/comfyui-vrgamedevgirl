@@ -143,6 +143,33 @@ class StoryLocationTests(unittest.TestCase):
         self.assertEqual(by_name["The Night Train - Sleeper Car"]["scene_ids"], ["s3", "s4"])
         self.assertTrue(all(not item["description"] for item in result["locations"]))
 
+    def test_map_only_keeps_the_story_link_of_a_card_when_the_chapter_has_no_setting(self):
+        ids = ["s1", "s2"]
+        layer = layer_with_plan(ids)
+        layer["story_book"]["chapters"][0]["setting_id"] = ""
+        cards = [{"id": "loc_k", "name": "Home - Kitchen", "story_setting_id": "setting_home", "description": "Kitchen."}]
+        result = locations.build_story_locations({
+            "story_layer": layer, "scenes": [{"id": sid} for sid in ids], "map_only": True,
+            "reference_builder": {"locations": cards}})
+        self.assertEqual(len(result["locations"]), 1)
+        self.assertEqual(result["locations"][0]["story_setting_id"], "setting_home", "applying the map must not erase the link")
+        self.assertEqual(result["locations"][0]["scene_ids"], ["s1"], "the other chapter's setting has no card, so s2 is left unmapped")
+
+    def test_map_only_maps_cards_that_lost_their_story_link(self):
+        ids = ["s1", "s2", "s3", "s4"]
+        layer = layer_with_plan(ids)
+        cards = [
+            {"id": "loc_k", "name": "Home - Kitchen", "description": "Kitchen."},
+            {"id": "loc_t", "name": "The Night Train - Sleeper Car", "description": "Car."},
+        ]
+        result = locations.build_story_locations({
+            "story_layer": layer, "scenes": [{"id": sid} for sid in ids], "map_only": True,
+            "reference_builder": {"locations": cards}})
+        by_name = {item["name"]: item for item in result["locations"]}
+        self.assertEqual(by_name["Home - Kitchen"]["scene_ids"], ["s1", "s2"])
+        self.assertEqual(by_name["The Night Train - Sleeper Car"]["scene_ids"], ["s3", "s4"])
+        self.assertEqual(by_name["Home - Kitchen"]["story_setting_id"], "setting_home", "the card is linked again")
+
     def test_needs_a_plan(self):
         with self.assertRaises(ValueError):
             locations.build_story_locations({"story_layer": {}, "scenes": [{"id": "s1"}]})

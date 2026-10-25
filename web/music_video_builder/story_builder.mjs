@@ -6,8 +6,8 @@ import { escapeHtml, makeButton, makeField, makeInput, makeSelect, normalizeProj
 import { normalizeFluxReferenceBuilder } from "./reference_data.mjs";
 import { mergeActs, moveActBorder, splitAct, validateStoryActs } from "./story_acts_data.mjs";
 import {
-  STORY_BUILDER_TABS, castWithoutImages, referenceImageGaps, relinkStoryLocations, sceneRangeText, storyBuilderBlocker,
-  storyBuilderProgress, storySubjectCard,
+  STORY_BUILDER_TABS, cardForSpot, castWithoutImages, planSpotsFromMapping, referenceImageGaps, relinkStoryLocations,
+  sceneRangeText, spotNameOfCard, storyBuilderBlocker, storyBuilderProgress, storySubjectCard,
 } from "./story_builder_data.mjs";
 import { normalizeMiniMaxH3Mode } from "./minimax_h3.mjs";
 import { applyStoryContinuationsToSegments } from "./story_continuation.mjs";
@@ -38,6 +38,8 @@ const CONTINUATION_MODE_LABELS = {
   llm: "Let the LLM decide from the story",
 };
 const CONTINUATION_SOURCE_LABELS = { auto: "same spot", llm: "LLM", manual: "you" };
+// The Spot choice of a scene whose planned spot has no location card yet: saving keeps the spot as written.
+const KEEP_SPOT = "__keep_spot__";
 const MASKED_COLOR = "#a3e635";
 const STALE_COLOR = "#f59e0b";
 
@@ -428,9 +430,10 @@ export function createStoryBuilder({
     }
     progress.set(`${title}: done.\nPlanned ${done} act${done === 1 ? "" : "s"}.`, 100);
     progress.close(1200);
-    // The places already have their cards (4. Places), so planned scenes are mapped to them right away.
-    const madeCards = (normalizeFluxReferenceBuilder(state.fluxReferenceBuilder).locations || []).some((item) => item?.story_setting_id);
-    if (done && (madeCards || String(layer().story_user_locations || "").trim())) await buildPlaces({ title: "Mapping the scenes to their places", mapOnly: true });
+    // The places already have their cards (4. Places), so planned scenes are mapped to them right away. Any location
+    // card counts: a card the Reference Builder edited may have lost its story link and is still a place to map to.
+    const hasCards = (normalizeFluxReferenceBuilder(state.fluxReferenceBuilder).locations || []).some((item) => item?.id && String(item.name || "").trim());
+    if (done && hasCards) await buildPlaces({ title: "Mapping the scenes to their places", mapOnly: true });
     return done;
   }
 
@@ -733,10 +736,20 @@ export function createStoryBuilder({
       if (!handle) return;
       try {
         await handle.save();
+        await followMappingWithSpots();
       } catch (error) {
         console.warn("[VRGDG Story Builder] Saving the hosted tool failed", error);
       }
       handle.close();
+    }
+
+    // Auto Map and the mapping boxes in the hosted Reference Builder change which card a scene uses. The scene plan's
+    // spot follows, so the Scenes tab shows the location the scene really gets.
+    async function followMappingWithSpots() {
+      const plan = normalizeStoryScenePlan(layer().story_scene_plan);
+      if (!plan.length) return;
+      const next = planSpotsFromMapping(plan, normalizeFluxReferenceBuilder(state.fluxReferenceBuilder), normalizeStorySettings(layer().story_settings));
+      if (next) await saveLayer({ story_scene_plan: next }, "story builder spots follow the location mapping");
     }
 
     function hostSceneDefaults(container) {
@@ -1387,6 +1400,10 @@ export function createStoryBuilder({
       const castNames = Object.fromEntries(storyCastCards().map((subject) => [subject.id, subject.name || subject.id]));
       // Clothing, prop and other thing cards, which scenes can use beside their characters.
       const sceneRefs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+      // The location cards a scene can stand at. A scene's spot is a pick from these, and the pick is its mapping.
+      const settingList = normalizeStorySettings(current.story_settings);
+      const placeCards = (sceneRefs.locations || []).filter((place) => place?.id && String(place.name || "").trim());
+      const placeIds = new Set(placeCards.map((place) => place.id));
       // Style cards are not props, and the Story Builder does not use them yet.
       const itemCards = (sceneRefs.subjects || []).filter((subject) => subject && !subject.extra_reference_for && !isStoryPersonCard(subject)
         && String(subject.reference_type ?? "").trim().toLowerCase() !== "style");
@@ -1544,8 +1561,18 @@ export function createStoryBuilder({
         info.append(select, sceneAudioButton(segment), el("div", "", `${clock(segment.start)}-${clock(segment.end)}`),
           el("div", "color:#cbd5e1;", segment.lyric_text || "[instrumental]"));
         const slice = textarea(entry.story_slice, "What happens in this scene.", 50);
-        const spot = makeInput(entry.spot);
-        spot.placeholder = "Spot, e.g. Kitchen";
+        // The card the scene is mapped to, else the card its planned spot names. A spot no card matches stays as written
+        // (its own entry) until a card is picked.
+        const mappedCard = placeCards.find((place) => place.id === sceneRefs.scene_map?.[segment.id]) || cardForSpot(placeCards, entry.spot, settingList);
+        const spotChoices = placeCards.map((place) => ({ value: place.id, label: place.name }));
+        const unmatchedSpot = !mappedCard && String(entry.spot || "").trim();
+        if (!mappedCard) {
+          spotChoices.unshift(unmatchedSpot
+            ? { value: KEEP_SPOT, label: `${entry.spot} (no location card yet)` }
+            : { value: "", label: placeCards.length ? "Choose a location" : "No location cards yet (build them in Places)" });
+        }
+        const spot = makeSelect(spotChoices, mappedCard ? mappedCard.id : spotChoices[0].value);
+        spot.title = "The location card this scene uses. Picking one maps the scene to it.";
         const mood = makeInput(entry.mood);
         mood.placeholder = "Mood";
         const performance = makeSelect(PERFORMANCE_OPTIONS.map(([value]) => value), entry.performance_mode);
@@ -1774,7 +1801,9 @@ export function createStoryBuilder({
             interaction: item.interaction.value.trim(),
             user_note: item.userNote.value.trim(),
             story_slice: item.slice.value,
-            spot: item.spot.value,
+            spot: placeCards.some((place) => place.id === item.spot.value)
+              ? spotNameOfCard(placeCards.find((place) => place.id === item.spot.value), settingList)
+              : item.entry.spot,
             mood: item.mood.value,
             performance_mode: item.performance.value,
             continues_previous: on,
@@ -1799,7 +1828,16 @@ export function createStoryBuilder({
           if (Object.keys(users).length) item.segment.scene_item_users = users;
           else delete item.segment.scene_item_users;
         }
-        if (itemsChanged) state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
+        // The location card picked for a planned scene is that scene's mapping.
+        let placesChanged = false;
+        for (const item of rows) {
+          const picked = item.spot.value;
+          if (!item.entry.act_id || !placeIds.has(picked) || refs.scene_map?.[item.segment.id] === picked) continue;
+          refs.scene_map = { ...(refs.scene_map || {}), [item.segment.id]: picked };
+          placesChanged = true;
+        }
+        if (placesChanged) refs.use_location_references = true;
+        if (itemsChanged || placesChanged) state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
         for (const item of rows) {
           item.segment.timeline_note = item.director.value;
           item.segment.i2v_notes = item.video.value;

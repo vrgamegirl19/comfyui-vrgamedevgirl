@@ -576,8 +576,13 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     autoMapLocations.textContent = "Mapping...";
     progress = createProgressWindow("Auto mapping locations", { zIndex: 100008 });
     progress.set("Checking lyrics, scene notes, concept prompts, location list, and Gemma settings...\nNo reference images are required for Auto Map.", 5);
+    // Story Mode plans a spot for every scene. Gemma is told it, so Auto Map follows the plan instead of guessing.
+    const plannedSpots = new Map((Array.isArray(state.builderStoryLayer?.story_scene_plan) ? state.builderStoryLayer.story_scene_plan : [])
+      .filter((entry) => entry?.scene_id && String(entry.spot || "").trim())
+      .map((entry) => [entry.scene_id, String(entry.spot).trim()]));
     const scenes = allEditableSegments().map((segment, index) => {
       const planningNotes = [
+        plannedSpots.has(segment.id) ? `Planned location (choose the saved location that matches it): ${plannedSpots.get(segment.id)}.` : "",
         segment.notes || "",
         segment.timeline_note || "",
         segment.i2v_notes || "",

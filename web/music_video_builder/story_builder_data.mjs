@@ -113,6 +113,51 @@ export function relinkStoryLocations(refs, settings = []) {
   return changed ? { ...refs, locations } : null;
 }
 
+// "Kitchen" from the card "Home - Kitchen": the card name without the "Setting - " prefix of the setting it was built
+// for. This is how a scene's plan spot is written. Python twin: made_place_cards (storyboard/story_book.py).
+export function spotNameOfCard(card, settings = []) {
+  const name = String(card?.name || "").replace(/\s+/g, " ").trim();
+  const setting = (settings || []).find((item) => item?.id && item.id === card?.story_setting_id);
+  const prefix = setting?.name ? `${String(setting.name).trim()} - ` : "";
+  return prefix && name.toLowerCase().startsWith(prefix.toLowerCase()) ? name.slice(prefix.length) : name;
+}
+
+const spotWords = (value) => new Set(String(value || "").toLowerCase().replace(/[^a-z0-9' ]+/g, " ").split(/\s+/)
+  .filter((word) => word && word !== "the"));
+const wordsWithin = (small, big) => [...small].every((word) => big.has(word));
+
+// The location card a plan spot names: the card name or spot name without case, else every word of the shorter name is
+// a word of the longer one ("Kitchen" is "Grandma's kitchen"). Python twin: match_user_place (storyboard/story_book.py).
+export function cardForSpot(cards, spot, settings = []) {
+  const wanted = String(spot || "").replace(/\s+/g, " ").trim().toLowerCase();
+  if (!wanted) return null;
+  const list = (cards || []).filter((card) => card?.id && String(card.name || "").trim());
+  const exact = list.find((card) => String(card.name).replace(/\s+/g, " ").trim().toLowerCase() === wanted
+    || spotNameOfCard(card, settings).toLowerCase() === wanted);
+  if (exact) return exact;
+  const target = spotWords(wanted);
+  if (!target.size) return null;
+  return list.find((card) => {
+    const own = spotWords(spotNameOfCard(card, settings));
+    return own.size && (wordsWithin(own, target) || wordsWithin(target, own));
+  }) || null;
+}
+
+// The scene plan with each scene's spot following the location card it is mapped to (Auto Map and the mapping boxes
+// change the map, not the plan). Returns null when no spot changes.
+export function planSpotsFromMapping(plan, refs, settings = []) {
+  const cards = new Map((refs?.locations || []).filter((card) => card?.id).map((card) => [card.id, card]));
+  let changed = false;
+  const next = (plan || []).map((entry) => {
+    const card = cards.get(refs?.scene_map?.[entry.scene_id]);
+    const spot = card ? spotNameOfCard(card, settings) : "";
+    if (!spot || spot === entry.spot) return entry;
+    changed = true;
+    return { ...entry, spot };
+  });
+  return changed ? next : null;
+}
+
 // "Scenes 48-50, 52" from [48, 49, 50, 52].
 export function sceneRangeText(numbers) {
   const parts = [];
