@@ -20,7 +20,7 @@ const SNAPSHOT_KEYS = [...Object.keys(SCENE_DEFAULT_KEYS), "storyArcDetail", "de
 const snapshot = state => Object.fromEntries(SNAPSHOT_KEYS.map(key => [key, clone(state[key])]));
 
 export function createAutoSceneDefaults({ state, controls, persist, renderTable, refreshControls,
-  imageShotFlowPresets, imageAestheticPresets, film = false }) {
+  imageShotFlowPresets, imageAestheticPresets, film = false, onSettingApplied }) {
   let baseline = snapshot(state), undo = null, lastScope = null, busy = false;
   const pending = new Set();
   const { defaultsScope, defaultsResult, defaultsUndo } = controls;
@@ -45,6 +45,7 @@ export function createAutoSceneDefaults({ state, controls, persist, renderTable,
   const syncScope = () => {
     const rows = targets(), selected = Boolean(state.selected?.size);
     defaultsScope.textContent = selected ? `Editing selected scenes: ${numbers(rows) || "none (selection unavailable)"}` : "Editing all scenes";
+    if (controls.defaultsScopeFooter) controls.defaultsScopeFooter.textContent = defaultsScope.textContent;
     defaultsScope.title = "Camera, editing, performance and facial settings are stored per scene. Only fields you change are updated. Story arc detail is project-wide.";
     const signature = (selected ? "selected:" : "all:") + rows.map(row => row.scene.id).join("|")
       + JSON.stringify(rows.map(row => row.scene.scene_defaults || {}));
@@ -96,7 +97,7 @@ export function createAutoSceneDefaults({ state, controls, persist, renderTable,
         .filter(line => !/^image aesthetic:/i.test(line.trim())).concat(description ? [`Image aesthetic: ${description}`] : []).join("\n").trim();
     }
   }
-  function commit() {
+  function commit({ preset = false } = {}) {
     if (state.applyingDefaultsPreset || busy) return;
     const now = snapshot(state);
     const fields = Object.keys(SCENE_DEFAULT_KEYS).filter(key => pending.has(key) || !same(now[key], baseline[key]));
@@ -106,6 +107,14 @@ export function createAutoSceneDefaults({ state, controls, persist, renderTable,
     const requested = fields.length ? targets() : [], selected = Boolean(state.selected?.size);
     const rows = requested.filter(({ scene }) => fields.some(key => !["videoStyle", "videoStyleCustom"].includes(key)
       || storyboardSceneSupportsVideoStyle(scene)));
+    const changedKey = fields.length === 1 ? fields[0] : !fields.length && storyChanged ? "storyArcDetail" : "";
+    const control = controls[CONTROLS[changedKey]];
+    const option = Array.from(control?.options || []).find(item => item.value === control.value);
+    const shownValue = option ? (option.textContent || option.value)
+      : control?.type === "range" ? `${control.value}/10`
+      : control?.type === "checkbox" ? (control.checked ? "On" : "Off") : String(control?.value || "Not set");
+    const settingName = !preset && control
+      ? `${control.getAttribute?.("aria-label") || changedKey} \u2014 ${shownValue}` : "";
     const before = rows.map(({ scene }) => ({ id: scene.id, value: clone(scene) }));
     const globalBefore = clone(baseline);
     busy = true;
@@ -121,7 +130,7 @@ export function createAutoSceneDefaults({ state, controls, persist, renderTable,
           .filter(key => !same(value.scene_defaults?.[key], current.scene_defaults?.[key]));
         return { id, keys: keys.filter(key => key !== "scene_defaults"), defaultsKeys, value };
       });
-      undo = { patches, globalBefore, globalKeys: SNAPSHOT_KEYS.filter(key => !same(globalBefore[key], state[key])) };
+      undo = { patches, scope: numbers(rows), storyChanged, globalBefore, globalKeys: SNAPSHOT_KEYS.filter(key => !same(globalBefore[key], state[key])) };
       baseline = snapshot(state);
       defaultsResult.textContent = fields.length
         ? (!selected ? (rows.length === state.scenes.length && rows.length ? "Updated all scenes"
@@ -134,6 +143,7 @@ export function createAutoSceneDefaults({ state, controls, persist, renderTable,
       renderTable();
       persist();
       refreshDisplay(rows.length ? effectiveSceneDefaultsState(state, rows[0].scene) : state);
+      if (settingName) onSettingApplied?.(settingName, defaultsResult.textContent);
     } finally { busy = false; }
   }
   defaultsUndo.onclick = () => {
@@ -153,9 +163,13 @@ export function createAutoSceneDefaults({ state, controls, persist, renderTable,
       }
     }
     for (const key of undo.globalKeys) state[key] = clone(undo.globalBefore[key]);
+    const undoneScope = undo.scope;
+    const undoneStory = undo.storyChanged;
     undo = null; baseline = snapshot(state); pending.clear();
-    defaultsUndo.hidden = true; defaultsResult.textContent = "Scene Defaults update undone";
-    lastScope = null; syncScope(); renderTable(); persist(); refreshDisplay(state);
+    defaultsUndo.hidden = true;
+    defaultsResult.textContent = undoneScope ? `Undid update to scenes ${undoneScope}`
+      : undoneStory ? "Undid project-wide story arc detail update" : "Scene Defaults update undone";
+    lastScope = null; syncScope(); renderTable(); persist();
   };
   return { commit, syncScope, note(keys) { for (const key of keys) pending.add(key); }, reset() { baseline = snapshot(state); pending.clear(); lastScope = null; syncScope(); } };
 }

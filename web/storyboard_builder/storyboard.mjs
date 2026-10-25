@@ -377,9 +377,9 @@ export function openStoryboardBuilder(payload = {}) {
     userStoryArcInput, videoStyleCustomControls, videoStyleInfo,
   });
 
-  function notifyStoryboardDefaultsChanged() {
+  function notifyStoryboardDefaultsChanged(options = {}) {
     if (state.applyingDefaultsPreset) return;
-    if (defaultsAutoApply) defaultsAutoApply.commit();
+    if (defaultsAutoApply) defaultsAutoApply.commit({ preset: options.preset === true });
     else persistStoryboardDefaults();
   }
 
@@ -663,8 +663,12 @@ export function openStoryboardBuilder(payload = {}) {
     temporalProtectedSelect, userStoryArcInput, videoStyleCustomInput,
     videoStyleSelect,
   });
+  function showDefaultsConfirmation(message) {
+    defaultsControls.defaultsResult.textContent = message;
+  }
   defaultsAutoApply = createAutoSceneDefaults({ state, controls: defaultsControls, film: usesFilmPlanningProfile,
     persist: persistStoryboardDefaults, renderTable, imageShotFlowPresets, imageAestheticPresets,
+    onSettingApplied: (name, result) => showDefaultsConfirmation(`${name}\n${result}`),
     refreshControls: () => {
       refreshCameraFlowInfo(); refreshCameraSpeedInfo(); refreshCharacterSpeedInfo(); refreshCutFrequencyInfo();
       refreshPerformanceInfo(); refreshFacialInfo(); refreshConsistencyInfo(); refreshVideoStyleInfo();
@@ -673,7 +677,11 @@ export function openStoryboardBuilder(payload = {}) {
   });
   const defaultPresets = wireDefaultPresets({ toolbar: defaultsControls.defaultsPresetsToolbar, controls: defaultsControls,
     state, film: usesFilmPlanningProfile, postJson, createToast, refreshCameraFlowInfo, notifyStoryboardDefaultsChanged,
-    noteDefaultKeys: keys => defaultsAutoApply.note(keys) });
+    noteDefaultKeys: keys => defaultsAutoApply.note(keys),
+    onPresetApplied: (name, details) => {
+      showDefaultsConfirmation(`Preset: ${name}\n${defaultsControls.defaultsResult.textContent}\n${details}`);
+    },
+  });
   // After the saved storyboard loads, show its choices: the Speed / Music style presets and each setting's value.
   state.onDefaultsLoaded = () => {
     defaultPresets.syncFromState();

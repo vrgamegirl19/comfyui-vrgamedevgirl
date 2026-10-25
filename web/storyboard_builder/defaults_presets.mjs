@@ -91,16 +91,28 @@ export function applyDefaultPreset(settings, { controls, state, refreshCameraFlo
     }
   } finally {
     delete state.applyingDefaultsPreset;
-    notifyStoryboardDefaultsChanged();
+    notifyStoryboardDefaultsChanged({ preset: true });
   }
 }
 
-export function wireDefaultPresets({ toolbar, controls, state, film, postJson, createToast, refreshCameraFlowInfo, notifyStoryboardDefaultsChanged, noteDefaultKeys }) {
+export function describeDefaultPreset(settings, controls) {
+  return Object.entries(settings).flatMap(([key, value]) => {
+    const control = controls[DEFAULT_PRESET_CONTROLS[key]];
+    if (!control) return [];
+    const option = Array.from(control.options || []).find(item => item.value === String(value));
+    const label = control.getAttribute?.("aria-label") || key;
+    const shown = option?.textContent || (typeof value === "number" ? `${value}/10` : String(value || "Off / not set"));
+    return [`${label}: ${shown}`];
+  }).join("\n");
+}
+
+export function wireDefaultPresets({ toolbar, controls, state, film, postJson, createToast, refreshCameraFlowInfo, notifyStoryboardDefaultsChanged, noteDefaultKeys, onPresetApplied }) {
   const context = { controls, state, refreshCameraFlowInfo, notifyStoryboardDefaultsChanged, noteDefaultKeys };
   let applying = false;
-  const apply = (settings) => {
+  const apply = (settings, name) => {
     applying = true;
     try { applyDefaultPreset(settings, context); } finally { applying = false; }
+    onPresetApplied?.(name, describeDefaultPreset(settings, controls));
   };
   // The chosen Speed and Music style are saved with the Scene Defaults (state.defaultsSpeedPreset and
   // state.defaultsMusicPreset) and shown again when the panel opens.
@@ -120,7 +132,7 @@ export function wireDefaultPresets({ toolbar, controls, state, film, postJson, c
       return;
     }
     remember();
-    apply(SPEED_DEFAULT_PRESETS[toolbar.speed.value]);
+    apply(SPEED_DEFAULT_PRESETS[toolbar.speed.value], `${toolbar.speed.value[0].toUpperCase()}${toolbar.speed.value.slice(1)} speed`);
     toolbar.saved.value = "";
   };
   toolbar.music.onchange = () => {
@@ -130,7 +142,7 @@ export function wireDefaultPresets({ toolbar, controls, state, film, postJson, c
       notifyStoryboardDefaultsChanged();
       return;
     }
-    apply(settings);
+    apply(settings, `${toolbar.music.value[0].toUpperCase()}${toolbar.music.value.slice(1)} music style`);
     toolbar.saved.value = "";
   };
   // Avoid showing a preset label once any of its component settings is edited.
@@ -163,12 +175,12 @@ export function wireDefaultPresets({ toolbar, controls, state, film, postJson, c
   toolbar.load.onclick = () => busy(async () => {
     if (!toolbar.saved.value) throw new Error("Choose a saved preset first.");
     const data = await postJson("/vrgdg/music_builder/load_scene_defaults_preset", { name: toolbar.saved.value });
-    apply(data.preset.settings);
+    apply(data.preset.settings, data.preset.name);
     toolbar.speed.value = "";
     toolbar.music.value = "";
     remember();
     toolbar.name.value = data.preset.name;
-    createToast(`Loaded Scene Defaults preset: ${data.preset.name}`);
+    if (!onPresetApplied) createToast(`Loaded Scene Defaults preset: ${data.preset.name}`);
   });
   toolbar.saved.onchange = () => toolbar.saved.value ? toolbar.load.onclick() : undefined;
   toolbar.save.onclick = () => busy(async () => {
