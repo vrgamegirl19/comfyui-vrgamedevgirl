@@ -161,13 +161,20 @@ def _name_unassigned_chapters(layer):
 
 def _map_scenes_to_made_cards(payload, groups, settings):
     """Maps every planned scene to a location card that already exists. No card, look or description is made: a spot
-    with no card of its own takes the first card of its setting."""
+    with no card of its own takes the first card of its setting.
+
+    A card keeps the story link it already has (the apply step writes ``story_setting_id`` back), and a setting whose
+    cards lost that link still maps to the unlinked cards, so a planned scene is not left unmapped. A chapter with no
+    setting at all maps to any card."""
     refs = payload.get("reference_builder") or payload.get("referenceBuilder") or {}
     cards = [card for card in (refs.get("locations") if isinstance(refs, dict) else None) or [] if isinstance(card, dict)]
+    named = [(str(card.get("name") or "").strip(), card) for card in cards if str(card.get("name") or "").strip()]
+    card_by_name = {name.lower(): card for name, card in named}
     locations = []
     for group in groups:
-        made = [(str(card.get("name") or "").strip(), card) for card in cards
-                if str(card.get("name") or "").strip() and (not group["setting_id"] or str(card.get("story_setting_id") or "") == group["setting_id"])]
+        linked = [item for item in named if str(item[1].get("story_setting_id") or "") == group["setting_id"]]
+        unlinked = [item for item in named if not item[1].get("story_setting_id")]
+        made = (linked or unlinked) if group["setting_id"] else named
         for spot in group["spots"]:
             name = next((card_name for card_name, _card in made if card_name.lower() == spot["card_name"].lower()), "")
             if not name:
@@ -177,7 +184,8 @@ def _map_scenes_to_made_cards(payload, groups, settings):
                 continue
             existing = next((item for item in locations if item["name"].lower() == name.lower()), None)
             if existing is None:
-                existing = {"name": name, "description": "", "story_setting_id": group["setting_id"],
+                own_setting = str((card_by_name.get(name.lower()) or {}).get("story_setting_id") or "")
+                existing = {"name": name, "description": "", "story_setting_id": group["setting_id"] or own_setting,
                             "story_act_ids": [], "scene_ids": []}
                 locations.append(existing)
             existing["story_act_ids"] += [a for a in spot["act_ids"] if a not in existing["story_act_ids"]]

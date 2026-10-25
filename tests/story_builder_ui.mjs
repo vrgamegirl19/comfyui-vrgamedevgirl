@@ -639,3 +639,107 @@ test('each scene in the Scenes tab plays its part of the song, and stops at its 
     delete FakeElement.prototype.pause;
   }
 });
+
+const placeCards = () => [
+  { id: 'loc_k', name: 'Home - Kitchen', description: 'k', story_setting_id: 'setting_home', image: {} },
+  { id: 'loc_t', name: 'Train - Sleeper Car', description: 't', story_setting_id: 'setting_train', image: {} },
+];
+const spotSelects = () => document.body.all().filter((node) => node.tagName === 'SELECT'
+  && node.options.some((option) => option.textContent === 'Home - Kitchen'));
+
+test('a scene\'s spot is a list of the location cards and the pick is its mapping', async () => {
+  const { state, builder } = setup();
+  state.fluxReferenceBuilder.locations = placeCards();
+  state.fluxReferenceBuilder.scene_map = { seg_2: 'loc_t' };
+  builder.openStoryBuilder({ tab: 'scenes' });
+  await tick();
+  const selects = spotSelects();
+  assert.equal(selects.length, 6, 'one list per scene');
+  assert.deepEqual(selects[0].options.map((option) => option.textContent), ['Home - Kitchen', 'Train - Sleeper Car'], 'the cards are the choices');
+  assert.equal(selects[0].value, 'loc_k', 'the planned spot Kitchen shows its card');
+  assert.equal(selects[1].value, 'loc_t', 'the mapping wins over the planned spot text');
+  assert.equal(selects[4].value, 'loc_t');
+  selects[0].value = 'loc_t';
+  await findButton('Save Scene Plan And Notes').onclick();
+  assert.equal(state.fluxReferenceBuilder.scene_map.seg_1, 'loc_t', 'the pick maps the scene');
+  assert.equal(state.fluxReferenceBuilder.scene_map.seg_2, 'loc_t', 'a card shown from the mapping stays mapped');
+  assert.equal(state.fluxReferenceBuilder.scene_map.seg_3, 'loc_k', 'a card matched from the planned spot is mapped when saved');
+  const plan = Object.fromEntries(state.builderStoryLayer.story_scene_plan.map((entry) => [entry.scene_id, entry.spot]));
+  assert.deepEqual([plan.seg_1, plan.seg_2, plan.seg_3], ['Sleeper Car', 'Sleeper Car', 'Kitchen'], 'the plan keeps the spot name of the card');
+  findButton('Close').onclick();
+  await tick();
+});
+
+test('a spot with no location card is kept as written until a card is picked', async () => {
+  const { state, builder } = setup();
+  state.fluxReferenceBuilder.locations = placeCards();
+  state.builderStoryLayer.story_scene_plan[0].spot = 'Rooftop';
+  builder.openStoryBuilder({ tab: 'scenes' });
+  await tick();
+  const first = spotSelects()[0];
+  assert.equal(first.options[0].textContent, 'Rooftop (no location card yet)');
+  await findButton('Save Scene Plan And Notes').onclick();
+  assert.equal(state.builderStoryLayer.story_scene_plan[0].spot, 'Rooftop');
+  assert.equal(state.fluxReferenceBuilder.scene_map.seg_1, undefined, 'nothing was mapped for it');
+  findButton('Close').onclick();
+  await tick();
+});
+
+test('planning maps every scene to a location card even when the cards lost their story link', async () => {
+  const { state, calls, builder } = setup();
+  state.builderStoryLayer.story_scene_plan = [];
+  state.fluxReferenceBuilder.locations = placeCards().map(({ story_setting_id, ...card }) => card);
+  state.builderStoryLayer.story_user_locations = '';
+  globalThis.fakeComfyApi.fetchApi = async (url, options) => {
+    const body = JSON.parse(options.body);
+    if (url.endsWith('/plan')) {
+      const mine = { act_1: ['seg_1', 'seg_2', 'seg_3'], act_2: ['seg_4', 'seg_5', 'seg_6'] }[body.act_id] || [];
+      return { ok: true, json: async () => ({ ok: true, story_layer: { story_scene_plan: mine.map((id) => ({
+        scene_id: id, act_id: body.act_id, story_slice: 's', spot: body.act_id === 'act_1' ? 'Kitchen' : 'Sleeper Car',
+        mood: 'm', performance_mode: 'singing', note_sources: [] })) } }) };
+    }
+    if (url.endsWith('/locations')) {
+      calls.order.push(`map only: ${body.map_only}`);
+      return { ok: true, json: async () => ({ ok: true, story_layer: {}, locations: [
+        { name: 'Home - Kitchen', description: '', story_setting_id: 'setting_home', story_act_ids: ['act_1'], scene_ids: ['seg_1', 'seg_2', 'seg_3'] },
+        { name: 'Train - Sleeper Car', description: '', story_setting_id: 'setting_train', story_act_ids: ['act_2'], scene_ids: ['seg_4', 'seg_5', 'seg_6'] },
+      ] }) };
+    }
+    return { ok: true, json: async () => ({ ok: true, story_layer: {} }) };
+  };
+  try {
+    builder.openStoryBuilder({ tab: 'scenes' });
+    await tick();
+    await findButton('Plan All Scenes').onclick();
+    await tick();
+    assert.deepEqual(calls.order, ['map only: true'], 'the mapping step ran');
+    assert.deepEqual(state.fluxReferenceBuilder.scene_map,
+      { seg_1: 'loc_k', seg_2: 'loc_k', seg_3: 'loc_k', seg_4: 'loc_t', seg_5: 'loc_t', seg_6: 'loc_t' });
+  } finally {
+    delete globalThis.fakeComfyApi.fetchApi;
+  }
+  findButton('Close').onclick();
+  await tick();
+});
+
+test('leaving Places after Auto Map changed the mapping makes the plan spots follow it', async () => {
+  const holder = {};
+  // The hosted Reference Builder's Auto Map moves scene 1 to the train, and that is saved on leaving the tab.
+  const { state, builder } = setup({
+    openFluxReferenceBuilderModal: () => ({
+      save: async () => { holder.state.fluxReferenceBuilder = { ...holder.state.fluxReferenceBuilder, scene_map: { ...holder.state.fluxReferenceBuilder.scene_map, seg_1: 'loc_t' } }; },
+      close() {},
+    }),
+  });
+  holder.state = state;
+  state.fluxReferenceBuilder.locations = placeCards();
+  state.fluxReferenceBuilder.scene_map = { seg_1: 'loc_k', seg_2: 'loc_k', seg_3: 'loc_k', seg_4: 'loc_t', seg_5: 'loc_t', seg_6: 'loc_t' };
+  builder.openStoryBuilder({ tab: 'places' });
+  await tick();
+  builder.openStoryBuilder({ tab: 'scenes' });
+  await tick();
+  assert.equal(state.builderStoryLayer.story_scene_plan[0].spot, 'Sleeper Car');
+  assert.equal(spotSelects()[0].value, 'loc_t');
+  findButton('Close').onclick();
+  await tick();
+});

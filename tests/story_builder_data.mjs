@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   STORY_BUILDER_TABS, castWithoutImages, referenceImageGaps, sceneRangeText, storyBuilderBlocker, storyBuilderProgress,
-  storySubjectCard, relinkStoryLocations,
+  storySubjectCard, relinkStoryLocations, cardForSpot, planSpotsFromMapping, spotNameOfCard,
 } from '../web/music_video_builder/story_builder_data.mjs';
 
 const sceneIds = ['s1', 's2', 's3'];
@@ -105,4 +105,31 @@ test('a found character becomes a subject card', () => {
     id: 'subj_1', name: 'The Conductor', description: 'Navy uniform.', reference_type: 'character',
     image: { path: '', data: '', name: '' },
   });
+});
+
+const placeSettings = [{ id: 'setting_home', name: 'Home' }, { id: 'setting_train', name: 'The Night Train' }];
+const placeCards = [
+  { id: 'loc_k', name: 'Home - Kitchen', story_setting_id: 'setting_home' },
+  { id: 'loc_s', name: 'The Night Train - Sleeper Car', story_setting_id: 'setting_train' },
+  { id: 'loc_g', name: "Grandma's kitchen" },
+];
+
+test('a card\'s spot name drops the setting prefix and a spot finds its card', () => {
+  assert.equal(spotNameOfCard(placeCards[0], placeSettings), 'Kitchen');
+  assert.equal(spotNameOfCard(placeCards[1], placeSettings), 'Sleeper Car');
+  assert.equal(spotNameOfCard(placeCards[2], placeSettings), "Grandma's kitchen", 'a card with no story link keeps its name');
+  assert.equal(cardForSpot(placeCards, 'Kitchen', placeSettings).id, 'loc_k', 'the spot name');
+  assert.equal(cardForSpot(placeCards, 'home - kitchen', placeSettings).id, 'loc_k', 'the card name, any case');
+  assert.equal(cardForSpot(placeCards, 'The sleeper car', placeSettings).id, 'loc_s', 'words of the shorter name inside the longer');
+  assert.equal(cardForSpot(placeCards, 'Rooftop', placeSettings), null);
+  assert.equal(cardForSpot(placeCards, '', placeSettings), null);
+});
+
+test('the scene plan spots follow the location mapping', () => {
+  const plan = [{ scene_id: 's1', spot: 'Kitchen' }, { scene_id: 's2', spot: 'Kitchen' }, { scene_id: 's3', spot: 'Bench' }];
+  const refs = { locations: placeCards, scene_map: { s1: 'loc_k', s2: 'loc_s' } };
+  assert.deepEqual(planSpotsFromMapping(plan, refs, placeSettings), [
+    { scene_id: 's1', spot: 'Kitchen' }, { scene_id: 's2', spot: 'Sleeper Car' }, { scene_id: 's3', spot: 'Bench' },
+  ], 'an unmapped scene keeps its spot');
+  assert.equal(planSpotsFromMapping(plan.slice(0, 1), refs, placeSettings), null, 'nothing changes, nothing is saved');
 });
