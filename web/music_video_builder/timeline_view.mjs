@@ -160,8 +160,9 @@ function stemRowSignature(rowName, lanes, stem, width) {
     + `|${Array.isArray(peaks) ? peaks.length : 0}`;
 }
 
-// Draws one stem track for one scene. ``regions`` is what to show as kept (the stored ones, or the ones being dragged).
-function drawStemRow(canvas, rowName, lanes, stem, regions) {
+// Draws one stem track for one scene. ``regions`` is what to show as kept (the stored ones, or the ones being dragged). While a drag is in progress
+// (``editing``) the track is drawn as masked even when the stem has no mask yet, so the first selection shows as it is made and not once it is saved.
+export function drawStemRow(canvas, rowName, lanes, stem, regions, editing = false) {
   const ctx = canvas.getContext("2d");
   const width = canvas.width;
   const height = canvas.height;
@@ -171,7 +172,7 @@ function drawStemRow(canvas, rowName, lanes, stem, regions) {
   const color = STEM_COLORS[rowName] || STEM_COLORS.mix;
   const peaks = Array.isArray(stem ? stem.peaks : lanes.mix?.peaks) ? (stem ? stem.peaks : lanes.mix.peaks) : [];
   const duration = Math.max(0.05, Number(lanes.duration) || 1);
-  const masked = Boolean(stem?.mask);
+  const masked = Boolean(stem?.mask) || editing;
   const muted = Boolean(stem?.mute);
   const mid = height / 2;
   // Which columns are kept, worked out per region instead of testing every region at every column.
@@ -220,7 +221,7 @@ function drawStemRow(canvas, rowName, lanes, stem, regions) {
 
 // Drag on a stem track to keep that part of the stem, drag a region's edges to resize it or its middle to move it, and
 // double-click a region to delete it. The change is sent to Audio Mask, which saves it and rebuilds the mix.
-function attachStemEditing(canvas, sceneId, rowName, lanes, stem) {
+export function attachStemEditing(canvas, sceneId, rowName, lanes, stem) {
   const duration = Math.max(0.05, Number(lanes.duration) || 1);
   let working = stem.mask ? stem.regions.map((region) => ({ ...region })) : [];
   let drag = null;
@@ -256,6 +257,8 @@ function attachStemEditing(canvas, sceneId, rowName, lanes, stem) {
       drag = { kind: target.kind, index: target.index, offset: time - region.start, length: region.end - region.start };
     }
     canvas.setPointerCapture(event.pointerId);
+    // The green marker stands where the button went down, before the pointer moves.
+    drawStemRow(canvas, rowName, lanes, stem, working, true);
   });
   canvas.addEventListener("pointermove", (event) => {
     if (!drag) {
@@ -277,7 +280,7 @@ function attachStemEditing(canvas, sceneId, rowName, lanes, stem) {
       region.start = round(start);
       region.end = round(start + drag.length);
     }
-    drawStemRow(canvas, rowName, lanes, stem, working);
+    drawStemRow(canvas, rowName, lanes, stem, working, true);
   });
   const finish = () => {
     if (!drag) return;
