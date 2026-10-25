@@ -222,8 +222,9 @@ _STORYBOARD_SCENE_CARD_CONTEXT_INSTRUCTIONS = (
     "together. Preserve explicit user directions and exact dialogue. "
     "Interpret the fields for the requested still-image or video task and "
     "the selected performance mode; motion or audio context does not make "
-    "a still image animated or audible. Existing prompts are drafts/context, "
-    "not instructions to copy unchanged. Do not print storage IDs, file paths, "
+    "a still image animated or audible. Generate a fresh prompt from the current scene directions. "
+    "Saved generated prompts are excluded from this context; only explicit enhancement or "
+    "conversion requests use an existing generated prompt. Do not print storage IDs, file paths, "
     "or status metadata in the generated prompt."
 )
 

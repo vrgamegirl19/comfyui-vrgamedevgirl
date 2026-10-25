@@ -105,10 +105,15 @@ class SceneCardLlmInputTests(Base):
     def test_video_prompts_get_motion_audio_and_performance_directions(self):
         inputs = video_inputs.scene_video_prompt_inputs(self.read_session(), "seg_0", "i2v")
         payload = {**inputs, "text_gemma_runner": "lm_studio", "lm_studio_model": "gemma-4-e4b-it", "project_folder": self.folder}
+        payload["user_notes"] += '\n\nComplete scene_card:\n' + json.dumps({
+            "video_prompt": "STALE OLDER CLIENT OUTPUT", "notes": "CURRENT OLDER CLIENT NOTE",
+        })
         with patch.object(vid_mod, "_run_builder_text_llm", self.capture("She turns away as rain streaks the glass.")), \
                 patch.object(vid_mod, "_repair_and_validate_builder_gemma_prompt", lambda payload, text, label: text):
             vid_mod._generate_builder_i2v_prompt(payload)
         instruction = "\n".join(self.captured)
+        self.assertNotIn("STALE OLDER CLIENT OUTPUT", instruction)
+        self.assertIn("CURRENT OLDER CLIENT NOTE", instruction)
         self.assertIn("Scene emotion/expression input: Angry, then end sad", instruction)
         self.assertIn("Lyrics available for interpretation", instruction)
         self.assertDirections(instruction)
@@ -132,6 +137,28 @@ class SceneCardLlmInputTests(Base):
         self.assertIn("Storyboard Builder context:\nDirector note (timeline):\nDIRECTOR SENTINEL", task)
         self.assertDirections(task)
         self.assertEqual(self.scene_card_from(task)["prompt_summary"], CARD["prompt_summary"])
+
+    def test_fresh_api_inputs_exclude_saved_output_but_keep_it_on_disk(self):
+        session = self.read_session()
+        segment = next(scene for scene in session["segments"] if scene["id"] == "seg_0")
+        segment["minimax_h3_prompt"] = "STALE GENERATED VIDEO SENTINEL"
+        segment["i2v_prompt"] = "STALE LEGACY VIDEO SENTINEL"
+        segment["t2i_prompt"] = "STALE GENERATED IMAGE SENTINEL"
+        self.write_session(session)
+        tasks = []
+
+        def writer(request):
+            tasks.append(request["t2i_prompt"])
+            return {"prompt": '{"shots":[{"description":"<Subject 1> steps to the rail."}]}'}
+
+        with patch.object(mm.vid_gen, "_generate_builder_t2v_prompt", writer):
+            mm.create_minimax_prompts(PROJECT, {"scene_ids": ["seg_0"]})
+        self.assertNotIn("STALE", tasks[0])
+        self.assertDirections(tasks[0])
+        image_request = image_inputs.scene_image_prompt_inputs(session, "seg_0", "zimage")
+        self.assertNotIn("STALE", image_request["user_notes"])
+        original = next(scene for scene in session["segments"] if scene["id"] == "seg_0")
+        self.assertEqual(original["minimax_h3_prompt"], "STALE GENERATED VIDEO SENTINEL")
 
 
 if __name__ == "__main__":

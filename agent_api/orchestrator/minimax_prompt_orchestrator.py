@@ -9,6 +9,7 @@ checks, and the reference definitions and soundscape around the shots) is ``mini
 from typing import Any, Callable, Dict, List, Optional
 
 from ...storyboard.scene_defaults import normalize_scene_defaults
+from ...storyboard.theatrical_presets import theatrical_project_defaults
 from ...builder.lyric_scenes import is_instrumental_lyric_text
 from ...llm import video_prompt_generation as vid_gen
 from ...minimax import shot_prompt as sp
@@ -46,7 +47,7 @@ def _number(value: Any, fallback: float) -> float:
 
 
 def _scene_context(session: Dict[str, Any], segment: Dict[str, Any], card: Dict[str, Any], index: int) -> Dict[str, Any]:
-    defaults = session.get("builder_storyboard_defaults") if isinstance(session.get("builder_storyboard_defaults"), dict) else {}
+    defaults = theatrical_project_defaults(session)
     scoped_defaults = normalize_scene_defaults(segment.get("scene_defaults"))
     defaults = {**defaults, **scoped_defaults}
     settings = session.get("minimax_h3_settings") if isinstance(session.get("minimax_h3_settings"), dict) else {}
@@ -178,7 +179,7 @@ def generate_scene_prompt(session: Dict[str, Any], folder: str, segment: Dict[st
                 motion_request=_text(segment.get("i2v_notes")), audio_direction=_text(segment.get("audio_direction")),
                 continuity=_text(segment.get("continuity")),
                 cues=cues or None,
-                storyboard_context=storyboard_video_context(card) + (
+                storyboard_context=storyboard_video_context(card, ctx["defaults"]) + (
                     "\n\nThe builder adds this exact video style look to the opening line. Write shots that fit it; do not copy it into the shots:\n"
                     + style_text if style_text else "") + (
                     "\n\nMANDATORY exact temporal / world effect verbiage — the builder appends it; do not copy or paraphrase it into the shots:\n"

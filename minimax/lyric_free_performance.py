@@ -3,6 +3,8 @@
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
+from ..storyboard.theatrical_presets import theatrical_presets
+
 
 def enabled(value: bool, performance_mode: str, audio_mode: str) -> bool:
     """Apply only to singing with supplied audio."""
@@ -132,6 +134,7 @@ def remaining_contract(description: str, contract: str) -> str:
 
 
 _FACIAL_PRESETS = {
+    "theatrical": theatrical_presets()["facial"]["direction"],
     "off": (
         ""
     ),
@@ -192,10 +195,14 @@ _FACIAL_PRESETS = {
 def facial_text(segment: Dict[str, Any], session: Optional[Dict[str, Any]] = None) -> str:
     """Preserve selected facial emotion without introducing vocal articulation."""
     session = session or {}
-    key = str(segment.get("facial_performance") or session.get("default_facial_performance") or "")
+    scoped = segment.get("scene_defaults")
+    scoped = scoped if isinstance(scoped, dict) else {}
+    key = str(segment.get("facial_performance") or scoped.get(
+        "facial_performance", session.get("default_facial_performance")) or "")
     if key == "off":
         return ""
-    custom = str(segment.get("facial_performance_custom") or session.get("default_facial_performance_custom") or "")
+    custom = str(segment.get("facial_performance_custom") or scoped.get(
+        "facial_performance_custom", session.get("default_facial_performance_custom")) or "")
     text = custom if key == "custom" else " ".join(filter(None, [_FACIAL_PRESETS.get(key, ""), custom]))
     clauses = [c.strip() for c in re.split(r"[,.;]", text) if c.strip() and not re.search(
         r"\b(?:mouth\w*|lips?|jaw|sing\w*|sang|sung|vocals?|lyrics?|teeth|notes)\b", c, re.I)]

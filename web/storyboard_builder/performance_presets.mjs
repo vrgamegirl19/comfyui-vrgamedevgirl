@@ -15,6 +15,11 @@ export const PERFORMANCE_STYLE_PRESETS = [
     direction: "Use raw rock performance energy: intense facial emotion, head movement, sharp gestures, defiant posture, and gritty stage-like body language.",
   },
   {
+    value: "theatrical",
+    label: "Theatrical",
+    direction: "Use playful theatrical art-rock performance with cheeky confidence, comic timing, and bold readable physical acting. Match gestures to the lyric or story beat: a purposeful strut, cocked hip, exaggerated prim posture, mock bow or curtsy, rhythmic stomp, shoulder bounce, playful spin, or a knowing gesture toward the lens. Choose actions that fit the scene's staging, available time, and existing props. Let interactions play as clear setup-and-reaction beats, with supporting performers reacting in character and instrumentalists moving in time with their parts. Shape assigned vocal delivery with sly, teasing, mock-regal, gleeful, defiant, or triumphant intent as the words require; quieter passages settle into tender stillness, small gestures, and fond warmth. Preserve the supplied words, assigned performers, vocal windows, and ongoing physical action across shots. Scale each gesture to the framing so the face and the performance remain readable.",
+  },
+  {
     value: "metal_screaming",
     label: "Metal / screaming",
     direction: "Use aggressive high-intensity performance energy: fierce expression, powerful stance, forceful gestures, hair and clothing reacting to motion, and heavy dramatic presence.",
@@ -84,6 +89,12 @@ export const FACIAL_PERFORMANCE_PRESETS = [
     label: "Pop / playful flirty",
     description: "Playful, charming pop face",
     direction: "Use playful pop facial performance: flirty smile, coy glance, subtle natural eye movement, light pout, glossy pout, raised brows, charming direct gaze, playful smirk, subtle head tilt, lips slightly parted while singing, and occasional natural blinking.",
+  },
+  {
+    value: "theatrical",
+    label: "Theatrical",
+    description: "Big, cheeky expressions with comic timing and tender quieter beats",
+    direction: "Use big, playful, cheeky facial acting that develops from beat to beat. Select expressive details that fit the words and each character's role: brows shooting up, one eyebrow cocked, sly sideways glances, eyes widening with mock alarm or flaring with glee, extravagant eye rolls, wide grins, slow knowing winks, mock-innocent pouts, and sugary fake-polite smiles that crack into delight. Connect each change to a specific thought, gesture, lyric, or reaction, giving each expression time to read clearly. Let a supporting character's prim disapproval, frozen astonishment, skeptical raised brow, or deadpan pride develop into amusement when the scene calls for it. For intimate passages, soften the eyes and cheeks, lift the inner brows gently, and settle into a small fond smile and warm knowing gaze. Keep assigned vocal articulation aligned to its supplied cue windows, with natural expressive resting mouth shapes between cues and occasional natural blinks.",
   },
   {
     value: "love_tender",

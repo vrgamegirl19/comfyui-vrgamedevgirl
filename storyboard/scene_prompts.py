@@ -13,6 +13,7 @@ from .scene_helpers import (
     _storyboard_prompt_mentions_visible_face,
     _storyboard_scene_has_visible_character,
 )
+from .session_sync import fresh_prompt_scene_context
 from ..llm.prompts.image import _STANDARD_IMAGE_T2I_INSTRUCTIONS
 from ..llm.prompts.storyboard import (
     _STORYBOARD_T2I_GEMMA_INSTRUCTIONS,
@@ -375,6 +376,7 @@ def _build_storyboard_image_prompt(payload):
     scenes = scene_bundle.get("scenes")
     if not isinstance(scenes, list) or not scenes:
         raise ValueError("Storyboard scene-card payload has no scenes.")
+    scene_bundle = {**scene_bundle, "scenes": fresh_prompt_scene_context(scenes)}
     instruction_text = _STORYBOARD_T2I_GEMMA_INSTRUCTIONS
     instruction_key = str(payload.get("builder_instruction_key") or payload.get("instruction_key") or "").strip()
     if instruction_key:
@@ -432,6 +434,7 @@ def _build_storyboard_video_prompt(payload):
     scenes = scene_bundle.get("scenes")
     if not isinstance(scenes, list) or not scenes:
         raise ValueError("Storyboard scene-card payload has no scenes.")
+    scene_bundle = {**scene_bundle, "scenes": fresh_prompt_scene_context(scenes)}
     selected_scene = _selected_storyboard_scene(scene_bundle)
     image_path = _clean_scene_text(selected_scene.get("image_path") or selected_scene.get("approved_image_path") or "", 2000)
     image_data = str(selected_scene.get("image_data") or selected_scene.get("image_reference_data") or "").strip()

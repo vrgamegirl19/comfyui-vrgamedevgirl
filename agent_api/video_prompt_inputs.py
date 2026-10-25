@@ -9,6 +9,7 @@ its text-only form: no reference image is attached unless the caller sends ``ima
 from typing import Any, Dict, Optional
 
 from ..builder.lyric_scenes import is_instrumental_lyric_text
+from ..storyboard.theatrical_presets import theatrical_project_defaults
 from .errors import ValidationError
 from .image_prompt_inputs import _find_segment, _reference_lines, _text, scene_card_for
 from .scene_card_context import storyboard_video_context
@@ -126,7 +127,7 @@ def scene_video_prompt_inputs(session: Dict[str, Any], scene_id: Any, mode: Any 
         _INSTRUMENTAL_NOTE if instrumental else "",
         _text(segment.get("i2v_notes")),
         # The scene card's directions and the complete card, as the Storyboard sends them with a video prompt.
-        storyboard_video_context(card) if card else "",
+        storyboard_video_context(card, theatrical_project_defaults(session)) if card else "",
     ) if part)
     from ..llm.prompts.emotion_expression import emotion_expression_input
 

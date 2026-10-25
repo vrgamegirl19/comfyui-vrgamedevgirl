@@ -50,6 +50,30 @@ class MiniMaxPromptTests(Base):
         with patch.object(mm.vid_gen, "_generate_builder_t2v_prompt", fake):
             return mm.create_minimax_prompts("Song", params or {"limit": 2}), calls
 
+    def test_theatrical_presets_reach_the_existing_api_prompt_job(self):
+        session = self.read_session()
+        session["builder_storyboard_defaults"].update(
+            camera_flow="pretty_little_malfunction", performance_style="theatrical",
+        )
+        session["default_facial_performance"] = "theatrical"
+        self.write_session(session)
+        result, calls = self.run_with(
+            '{"shots":[{"description":"<Subject 1> paces with a cheeky grin."}]}', {"limit": 1},
+        )
+        self.assertEqual(result["failed"], 0)
+        task = calls[0]["t2i_prompt"]
+        self.assertIn("Theatrical camera flow:", task)
+        self.assertIn("purposeful whip-pan", task)
+        self.assertIn("Theatrical performance direction:", task)
+        self.assertIn("Theatrical facial performance direction:", task)
+        self.assertEqual({method for method, _ in self.lm.requests}, {"GET"})
+        assembly = importlib.import_module(f"{pkg_name}.minimax.prompt_assembly")
+        brief = assembly.build_minimax_prompt_context(session["segments"][0], session)
+        self.assertIn("Theatrical camera flow:", brief["instruction_text"])
+        video_inputs = importlib.import_module(f"{pkg_name}.agent_api.video_prompt_inputs")
+        request = video_inputs.scene_video_prompt_inputs(session, session["segments"][0]["id"], "t2v")
+        self.assertIn("Theatrical performance direction:", request["user_notes"])
+
     def test_prompts_are_written_in_the_saved_format_with_the_loaded_model(self):
         result, calls = self.run_with('{"shots":[{"description":"The camera opens wide. <Subject 1> (Darrel) paces, turning at the rail."}]}')
         self.assertEqual((result["created"], result["failed"]), (2, 0))

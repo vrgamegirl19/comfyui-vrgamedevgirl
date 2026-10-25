@@ -1,5 +1,6 @@
 import { postJson } from "./comfy_api.mjs";
-import { makeButton, makeCheckbox, makeField, makeInput, makeSelect, toast } from "./controls.mjs";
+import { makeButton, makeCheckbox, makeField, makeInput, makeSelect, normalizeProjectVideoEngine, toast } from "./controls.mjs";
+import { normalizeMiniMaxH3Mode, normalizeMiniMaxH3Pipeline } from "./minimax_h3.mjs";
 import { loadContextTextQuiet } from "./project_files.mjs";
 import { isInstrumentalLyricText, syncConceptPromptToStoryBeat } from "./prompt_text.mjs";
 import { normalizeTimelineMarkers } from "./timeline_state.mjs";
@@ -378,6 +379,15 @@ export function createPromptCreators({
   }
 
   function openPromptOptionsModal() {
+    const miniMax = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
+    const miniMaxMode = normalizeMiniMaxH3Pipeline(state.miniMaxH3Settings?.pipeline) === "refmod"
+      ? "reference_to_video" : normalizeMiniMaxH3Mode(state.miniMaxH3Settings?.video_mode);
+    const videoMode = currentVideoMode();
+    const showImage = miniMax
+      ? ["image_to_video", "image_reference_to_video"].includes(miniMaxMode)
+      : ["i2v", "flf", "id_lora"].includes(videoMode);
+    const showVideo = miniMax || videoMode !== "import";
+    const showStructuredOutputs = miniMax && ["reference_to_video", "image_reference_to_video"].includes(miniMaxMode);
     const backdrop = document.createElement("div");
     backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
     const box = document.createElement("div");
@@ -395,7 +405,7 @@ export function createPromptCreators({
     const transcribeLyrics = makeButton("Transcribe Lines For Timeline", "primary");
     transcribeLyrics.title = "Use the current audio and builder SRT timing to fill each scene's Line / lyric / dialogue field.";
     const grid = document.createElement("div");
-    grid.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;";
+    grid.style.cssText = `display:grid;grid-template-columns:repeat(${showImage && showVideo ? 2 : 1},minmax(0,1fr));gap:12px;`;
     const imageGroup = document.createElement("div");
     imageGroup.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;padding:10px;display:flex;flex-direction:column;gap:8px;";
     const videoGroup = document.createElement("div");
@@ -455,8 +465,20 @@ export function createPromptCreators({
       state.omitLyricsFromVideoPrompts = Boolean(omitLyrics.input.checked);
       void autoSaveSessionQuiet("Video prompt lyric option changed");
     });
-    videoGroup.append(videoHeading, structuredOutputs.wrapper, structuredOutputsNote, omitLyrics.wrapper, omitLyricsNote, createMotionNotes, editI2V, reloadI2V, originalI2V, clearI2V, editMiniMax, reloadMiniMax, enhanceMiniMax, editEnhanceInstructions, editEnhanceReferenceInstructions);
-    grid.append(imageGroup, videoGroup);
+    videoGroup.append(videoHeading);
+    if (miniMax) {
+      if (showStructuredOutputs) videoGroup.append(structuredOutputs.wrapper, structuredOutputsNote);
+      videoGroup.append(omitLyrics.wrapper, omitLyricsNote, editMiniMax, reloadMiniMax, enhanceMiniMax, editEnhanceInstructions, editEnhanceReferenceInstructions);
+    } else {
+      const videoLabel = ({ i2v: "Image to Video", t2v: "Text to Video", rtv: "Reference to Video", flf: "First / Last Frame", ingredients: "Ingredients to Video", id_lora: "ID LoRA" })[videoMode] || "Video";
+      editI2V.textContent = `Edit ${videoLabel} Prompts`;
+      reloadI2V.textContent = `Reload ${videoLabel} Prompts`;
+      originalI2V.textContent = `Reload Original ${videoLabel} Prompts`;
+      clearI2V.textContent = `Clear All ${videoLabel} Prompts`;
+      videoGroup.append(createMotionNotes, editI2V, reloadI2V, originalI2V, clearI2V);
+    }
+    if (showImage) grid.append(imageGroup);
+    if (showVideo) grid.append(videoGroup);
     const replaceGroup = document.createElement("div");
     replaceGroup.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;padding:10px;display:flex;flex-direction:column;gap:9px;";
     const replaceHeading = document.createElement("div");
@@ -473,12 +495,15 @@ export function createPromptCreators({
     replaceInput.placeholder = "Replace with, e.g. f4nt4syw0m3n";
     replaceFields.append(makeField("Find", findInput), makeField("Replace with", replaceInput));
     const replaceChecks = document.createElement("div");
-    replaceChecks.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:center;";
-    const includeT2I = makeCheckbox("Text-to-image prompts", true);
-    const includeI2V = makeCheckbox("I2V / T2V video prompts", true);
-    const includeMiniMax = makeCheckbox("MiniMax H3 prompts", true);
+    replaceChecks.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;align-items:center;";
+    const includeT2I = makeCheckbox("Text-to-image prompts", showImage);
+    const includeI2V = makeCheckbox("Video prompts", showVideo && !miniMax);
+    const includeMiniMax = makeCheckbox("MiniMax H3 prompts", miniMax);
     const caseSensitive = makeCheckbox("Case sensitive", false);
-    replaceChecks.append(includeT2I.wrapper, includeI2V.wrapper, includeMiniMax.wrapper, caseSensitive.wrapper);
+    if (showImage) replaceChecks.append(includeT2I.wrapper);
+    if (showVideo && !miniMax) replaceChecks.append(includeI2V.wrapper);
+    if (miniMax) replaceChecks.append(includeMiniMax.wrapper);
+    replaceChecks.append(caseSensitive.wrapper);
     const replaceStatus = document.createElement("div");
     replaceStatus.style.cssText = "min-height:18px;font-size:12px;color:#94a3b8;";
     const replaceActions = document.createElement("div");
@@ -487,7 +512,10 @@ export function createPromptCreators({
     const applyReplace = makeButton("Replace All");
     replaceActions.append(previewReplace, applyReplace);
     replaceGroup.append(replaceHeading, replaceNote, replaceFields, replaceChecks, replaceStatus, replaceActions);
-    box.append(header, note, transcribeLyrics, grid, promptValidationGroup, replaceGroup);
+    box.append(header, note, transcribeLyrics);
+    if (showImage || showVideo) box.append(grid);
+    if (miniMax) box.append(promptValidationGroup);
+    if (showImage || showVideo) box.append(replaceGroup);
     backdrop.append(box);
     document.body.append(backdrop);
     const run = (action) => {
@@ -528,9 +556,9 @@ export function createPromptCreators({
       void autoSaveSessionQuiet("MiniMax prompt validation setting changed");
     });
     const selectedReplaceKinds = () => [
-      includeT2I.input.checked ? "t2i" : "",
-      includeI2V.input.checked ? "i2v" : "",
-      includeMiniMax.input.checked ? "minimax" : "",
+      showImage && includeT2I.input.checked ? "t2i" : "",
+      showVideo && !miniMax && includeI2V.input.checked ? "i2v" : "",
+      miniMax && includeMiniMax.input.checked ? "minimax" : "",
     ].filter(Boolean);
     const previewPromptReplace = () => {
       const findText = String(findInput.value || "").trim();

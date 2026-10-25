@@ -22,6 +22,11 @@ def load_prompt_functions() -> dict:
         "json": json, "re": re,
         "extract_prompt_text_from_gemma_output": lambda text, *args: text,
     })
+    helpers = ast.parse((ROOT / "storyboard/session_sync.py").read_text(encoding="utf-8"))
+    helper = next(node for node in helpers.body if isinstance(node, ast.FunctionDef)
+                  and node.name == "fresh_prompt_scene_context")
+    namespace["Any"] = object
+    exec(compile(ast.Module(body=[helper], type_ignores=[]), "fresh_prompt_context", "exec"), namespace)
     constants = {
         "_STORYBOARD_T2I_GEMMA_INSTRUCTIONS",
         "_STORYBOARD_T2V_GEMMA_INSTRUCTIONS",
@@ -60,6 +65,9 @@ class StoryboardSceneCardContextTests(unittest.TestCase):
         runner._run_builder_text_llm = run_text
         video._generate_builder_i2v_prompt = run_vision
         card = {
+            "video_prompt": "STALE VIDEO OUTPUT SENTINEL",
+            "image_prompt": "STALE IMAGE OUTPUT SENTINEL",
+            "minimax_h3_pass2_prompt": "STALE SECOND PASS SENTINEL",
             "timeline_note": "Director sentinel",
             "notes": "Planning sentinel",
             "motion_summary": "Motion sentinel",
@@ -72,6 +80,7 @@ class StoryboardSceneCardContextTests(unittest.TestCase):
         with patch.dict(sys.modules, modules):
             for path in ("image", "text_video", "vision_video"):
                 scene = {"scene_number": 1, "scene_card": card,
+                         "video_prompt": "STALE TOP LEVEL SENTINEL",
                          "project_video_engine": "ltx"}
                 if path == "vision_video":
                     scene["image_path"] = "test-frame.png"
@@ -85,6 +94,8 @@ class StoryboardSceneCardContextTests(unittest.TestCase):
                     self.assertIn(value, captured[-1], path)
                 self.assertIn('"include_microphone": true', captured[-1])
                 self.assertIn("Read every populated field", captured[-1])
+                self.assertNotIn("STALE", captured[-1], path)
+                self.assertEqual(card["video_prompt"], "STALE VIDEO OUTPUT SENTINEL")
 
 
 if __name__ == "__main__":
