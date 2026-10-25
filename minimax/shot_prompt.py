@@ -304,9 +304,42 @@ _VOCAL_MARKER = re.compile(
     r"<d>|</d>|\b(?:sings?|singing|sung|speaks?|speaking|says?|saying|performs?|performing|dialogue|lip[ -]?sync(?:s|ing|ed)?|lyrics?|vocals?)\b", re.I)
 
 
+def merge_timed_cue(text: str, performer: str, vocal_window: str, tag: str) -> Optional[str]:
+    """Normalize one inline cue while preserving its action and complete surrounding sentences."""
+    matches = list(re.finditer(r"<d>[\s\S]*?</d>", text, re.I))
+    if len(matches) != 1:
+        return None
+    match = matches[0]
+    prefix = text[:match.start()]
+    lead = re.search(
+        r"(?:(?:continues?|keeps?)\s+(?:the\s+same\s+)?(?:uninterrupted\s+)?)?"
+        r"(?:is\s+(?:the\s+only\s+visible\s+performer\s+)?singing|sings?|singing|lip[ -]?sync(?:s|ing)?)"
+        r"\b(?:<Audio\s+\d+>|[^<>.!?\n]|\.(?=\d))*$", prefix, re.I)
+    if not lead:
+        return None
+    stem = prefix[:lead.start()]
+    wanted = re.search(r"<Subject\s+\d+>", performer, re.I)
+    actors = re.findall(r"<Subject\s+\d+>", stem, re.I)
+    verb = "singing" if re.match(r"singing\b|lip[ -]?syncing\b", lead[0], re.I) else (
+        "continues singing" if re.match(r"(?:continues?|keeps?)\b", lead[0], re.I) else "sings")
+    if not wanted or not actors or actors[-1] != wanted[0]:
+        direct_actor = r"(?:<Subject\s+\d+>(?:\s+\([^)]*\))?|\b(?:she|he|they|the singer))\s*$"
+        if re.search(direct_actor, stem, re.I):
+            stem = re.sub(direct_actor, lambda _match: performer + " ", stem, flags=re.I)
+        else:
+            stem = re.sub(r"[,;:]?\s*\b(?:and|then|while|as)\s*$", "", stem, flags=re.I).strip()
+            action = stem.rstrip(",;:")
+            stem = (action + ". " if action else "") + performer + " "
+        verb = "sings"
+    suffix = re.sub(r"^\s+in sync with\s+(?:the\s+)?(?:vocals\s+in\s+)?"
+                    r"(?:<Audio\s+\d+>|Audio\s+\d+)", "", text[match.end():], flags=re.I)
+    suffix = re.sub(r"^\s+(?:from|during)\s+\d+(?:\.\d+)?\s*s?\s*"
+                    r"(?:to|[–—-])\s*\d+(?:\.\d+)?\s*s?", "", suffix, flags=re.I)
+    return f"{stem}{verb} in sync with <Audio 1>{vocal_window}: {tag}{suffix}"
+
+
 def enforce_cue_shot(description: str, cue: Dict[str, Any]) -> str:
-    """Twin of ``enforceMiniMaxH3CueOnShotDescription``: an instrumental shot loses its vocal sentences; a vocal shot keeps
-    the LLM's prose and ends with the one canonical cue, carrying the LLM's emotion header and delivery marks."""
+    """Keep one authoritative vocal cue in place with its acting, header and delivery marks."""
     text = normalize_description(description)
     if cue["type"] == "instrumental":
         sentences = re.findall(r"[^.!?…]+[.!?…]+|[^.!?…]+$", text)
@@ -316,15 +349,24 @@ def enforce_cue_shot(description: str, cue: Dict[str, Any]) -> str:
     llm_cue = re.search(r"<d>\s*(?:\[([^\]]*)\])?\s*([\s\S]*?)</d>", text, re.I)
     header = cue_header(llm_cue.group(1) if llm_cue else "")
     delivered = cue_delivery(cue_text, llm_cue.group(2) if llm_cue else "")
+    performer = cue.get("label") or "The singer"
+    tag = f"<d>[{header}] {delivered}</d>"
+    merged = merge_timed_cue(text, performer, _cue_window(cue), tag)
+    if merged is not None:
+        return normalize_description(merged)
     text = re.sub(r"<Subject\s+\d+>[^.\n]*?is the only visible performer singing[\s\S]*?every other visible performer remains silent\.?", "", text, flags=re.I)
     for variant in sorted({str(cue["text"]).strip(), cue_text.rstrip(".!?…").strip()} - {""}, key=len, reverse=True):
-        text = re.sub(r"[“\"']\s*" + re.escape(variant) + r"[.!?…]*\s*[”\"']", "the assigned vocal cue", text, flags=re.I)
-    clean = re.sub(r"<d>[\s\S]*?</d>", "the assigned vocal cue", text, flags=re.I)
+        text = re.sub(r"[“\"']\s*" + re.escape(variant) + r"[.!?…]*\s*[”\"']", lambda _match: tag, text, flags=re.I)
+    merged = merge_timed_cue(text, performer, _cue_window(cue), tag)
+    if merged is not None:
+        return normalize_description(merged)
+    clean = re.sub(r"<d>[\s\S]*?</d>", "", text, flags=re.I)
+    clean = re.sub(r",\s*(?:,\s*)+", ", ", clean)
     clean = re.sub(r"\s+([,.;!?])", r"\1", clean)
     clean = re.sub(r"\s{2,}", " ", clean).strip()
     clean = re.sub(r"[,;:]\s*([.!?…])", r"\1", clean).rstrip(".!?… ") or FALLBACK_SHOT.rstrip(".")
-    contract = (f"{cue.get('label') or 'The singer'} is the only visible performer singing, in sync with <Audio 1>{_cue_window(cue)}, "
-                f"<d>[{header}] {delivered}</d>; every other visible performer remains silent.")
+    contract = (f"{performer} sings in sync with <Audio 1>{_cue_window(cue)}: "
+                f"{tag}; every other visible performer remains silent.")
     return normalize_description(f"{clean}. {contract}")
 
 

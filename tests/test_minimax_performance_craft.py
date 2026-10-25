@@ -2,6 +2,7 @@
 
 import importlib
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -51,7 +52,7 @@ class PerformanceCraftTests(unittest.TestCase):
         llm = ('A medium shot of <Subject 1> swinging her hips, "Fuck the fear that calls itself fate", '
                "<d>[English, fierce, drunk, singing] Fuck the <i>fear</i> that calls itself fate</d>, her brows knotting.")
         out = lfp.strip_singing_articulation(sp.enforce_cue_shot(llm, cue))
-        self.assertIn("in sync with <Audio 1> from 2.5 s to 4.7 s, <d>[English, fierce, drunk, singing] Fuck the <i>fear</i> that calls itself fate.</d>", out)
+        self.assertIn("in sync with <Audio 1> from 2.5 s to 4.7 s: <d>[English, fierce, drunk, singing] Fuck the <i>fear</i> that calls itself fate.</d>", out)
         self.assertEqual(out.count("<d>"), 1)
         self.assertIn("every other visible performer remains silent", out)
 
@@ -99,6 +100,25 @@ class PerformanceCraftTests(unittest.TestCase):
 
 @unittest.skipUnless(shutil.which("node"), "Node.js is required for UI tests")
 class BuilderParityTests(unittest.TestCase):
+    def test_inline_cue_sentences_preserve_acting_and_match_the_builder(self):
+        cases = json.loads((ROOT / "tests/minimax_cue_sentence_cases.json").read_text(encoding="utf-8"))
+        result = subprocess.run(["node", str(ROOT / "tests/minimax_cue_sentences.cjs")],
+                                capture_output=True, text=True, encoding="utf-8", cwd=ROOT, check=True)
+        outputs = []
+        for case in cases:
+            with self.subTest(case=case["name"]):
+                merged = sp.enforce_cue_shot(case["description"], case["cue"])
+                clean = lfp.strip_singing_articulation(merged)
+                for text in case["contains"]:
+                    self.assertIn(text, clean)
+                self.assertNotIn("assigned vocal cue", clean)
+                self.assertEqual(clean.count("<d>"), 1)
+                visual_prose = re.sub(r"<d>[\s\S]*?</d>", "", clean, flags=re.I)
+                self.assertEqual(len(re.findall(r"\b(?:sings|singing)\b", visual_prose)), 1)
+                self.assertEqual(sp.enforce_cue_shot(merged, case["cue"]), merged)
+                outputs.append(clean)
+        self.assertEqual(json.loads(result.stdout), outputs)
+
     def test_python_twins_match_the_video_builder(self):
         result = subprocess.run(["node", str(ROOT / "tests" / "minimax_craft_parity.cjs")], capture_output=True, text=True,
                                 encoding="utf-8", cwd=ROOT, check=True)
@@ -110,7 +130,7 @@ class BuilderParityTests(unittest.TestCase):
 
     def test_builder_cue_sentence_has_no_lip_words(self):
         source = (ROOT / "web" / "music_video_builder" / "minimax_prompt.mjs").read_text(encoding="utf-8")
-        self.assertIn("is the only visible performer singing, in sync with <Audio 1>${vocalWindow}, <d>[${emotionDescriptor}] ${deliveredCue}</d>", source)
+        self.assertIn("${performer} sings in sync with <Audio 1>${vocalWindow}: ${cueTag}", source)
         self.assertIn("miniMaxH3PerformanceCraftInstruction({", source)
         cues = (ROOT / "web" / "music_video_builder" / "lyric_cues.mjs").read_text(encoding="utf-8")
         self.assertIn("snapCutsToVocalGaps(", cues)

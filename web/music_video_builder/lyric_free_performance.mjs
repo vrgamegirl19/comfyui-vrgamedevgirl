@@ -10,6 +10,9 @@ export function stripSingingArticulation(text) {
     saved.push(value);
     return `VRGDGPROTECTED${saved.length - 1}TOKEN`;
   }).replace(/(\d)\.(?=\d)/g, '$1VRGDGDECIMALTOKEN');
+  // Remove oral-rest directions without losing the actor of the following action.
+  clean = clean.replace(/(<Subject\s+\d+>(?:\s+\([^)]*\))?|\b(?:she|he|they))\s+(?:keeps?|holds?|lets?|maintains?)\s+(?:(?:her|his|their)\s+)?(?:mouth|lips?|jaw)\b[^,;.!?]*,\s*(?:then|and)\s+/gi, '$1 ');
+  clean = clean.replace(/\b(?:her|his|their)\s+(?:mouth|lips?|jaw)\s+(?:close|closes|relax|relaxes|settle|settles)\b[^,;.!?]*?\s+and\s+(?=(?:she|he|they)\b)/gi, '');
   // Keep the adjacent eye/brow expression when an articulation clause introduces it.
   clean = clean.replace(/\bwith\s+(?:natural\s+)?(?:mouth|lips?|jaw)\b[^,;.!?]*,\s*/gi, 'with ');
   clean = clean.split(/(?<=[.!?…])\s+/).map(sentence => {
@@ -18,6 +21,8 @@ export function stripSingingArticulation(text) {
     for (let i = 0; i < parts.length; i += 2) {
       const clause = parts[i].replace(/\s+(?:with|and|while)\s+(?:(?:her|his|their|natural)\s+)*(?:mouth|lips?|jaw)\b[^.!?]*/gi, '').trim();
       if (!clause || /\b(?:mouth\w*|lips?|jaw)\b/i.test(clause)) continue;
+      if (/^(?:after|before|between|during)\s+(?:the\s+)?(?:vocal\s+)?(?:cues?|lines?|phrases?|vocals?|singing)(?:\s+(?:ends?|finishes?))?$/i.test(clause)
+        && (!parts[i + 2] || /\b(?:mouth\w*|lips?|jaw)\b/i.test(parts[i + 2]))) continue;
       result += (result ? `${parts[i - 1] || ','} ` : '') + clause;
     }
     result = result.replace(/[,;]\s*([.!?])/g, '$1').replace(/[ ,;]+$/, '');

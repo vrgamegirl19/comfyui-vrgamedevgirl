@@ -121,14 +121,13 @@ class BuilderReferenceSaveAndCueTests(unittest.TestCase):
         start = UI_SOURCE.index("function enforceMiniMaxH3CueOnShotDescription")
         end = UI_SOURCE.index("function miniMaxH3OfficialShotBodyFromDescriptions", start)
         source = UI_SOURCE[start:end]
-        self.assertIn("quoted lyric", source)
-        self.assertIn("sentence splitter", source)
+        self.assertIn("Normalize the cue in its original sentence", source)
         self.assertIn("const cueVariants", source)
-        self.assertIn("Remove only the duplicate lyric/tag/timing", source)
         # Whole-sentence vocal deletion caused the observed `\"; S2 ...` corruption.
         vocal_source = source[source.index("const cueText ="):]
         self.assertNotIn("sentences.filter((sentence) => !vocalMarker.test(sentence))", vocal_source)
-        self.assertIn("performs the assigned vocal cue from $1", source)
+        self.assertNotIn("the assigned vocal cue", source)
+        self.assertIn("miniMaxH3MergeTimedCue", source)
         self.assertIn("const vocalVerb", source)
         self.assertIn("Remove a previously generated canonical contract", source)
 

@@ -150,7 +150,7 @@ class LyricFreePerformanceTests(unittest.TestCase):
     def test_theatrical_facial_emotion_respects_scene_defaults(self):
         scene = {"scene_defaults": {"facial_performance": "theatrical"}}
         text = lfp.facial_text(scene, {"default_facial_performance": "off"})
-        self.assertIn("sly sideways glances", text)
+        self.assertIn("theatrical facial acting", text)
         self.assertNotRegex(text, r"mouth|lip|jaw|vocal")
         scene["scene_defaults"]["facial_performance"] = "off"
         self.assertEqual(lfp.facial_text(scene, {"default_facial_performance": "theatrical"}), "")
