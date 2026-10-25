@@ -11,7 +11,7 @@ export function stripSingingArticulation(text) {
     return `VRGDGPROTECTED${saved.length - 1}TOKEN`;
   }).replace(/(\d)\.(?=\d)/g, '$1VRGDGDECIMALTOKEN');
   // Remove oral-rest directions without losing the actor of the following action.
-  clean = clean.replace(/(<Subject\s+\d+>(?:\s+\([^)]*\))?|\b(?:she|he|they))\s+(?:keeps?|holds?|lets?|maintains?)\s+(?:(?:her|his|their)\s+)?(?:mouth|lips?|jaw)\b[^,;.!?]*,\s*(?:then|and)\s+/gi, '$1 ');
+  clean = clean.replace(/(<Subject\s+\d+>(?:\s+\([^)]*\))?|\b(?:she|he|they))\s+(?:keeps?|holds?|lets?|maintains?)\s+(?:(?:her|his|their|a|an|the)\s+)?(?:(?:relaxed|closed|soft|neutral|gently|pressed|shut|still|natural|loose|calm)[ -]+){0,6}(?:mouth|lips?|jaw)\b[^,;.!?]*,\s*(?:then|and)\s+/gi, '$1 ');
   clean = clean.replace(/\b(?:her|his|their)\s+(?:mouth|lips?|jaw)\s+(?:close|closes|relax|relaxes|settle|settles)\b[^,;.!?]*?\s+and\s+(?=(?:she|he|they)\b)/gi, '');
   // Keep the adjacent eye/brow expression when an articulation clause introduces it.
   clean = clean.replace(/\bwith\s+(?:natural\s+)?(?:mouth|lips?|jaw)\b[^,;.!?]*,\s*/gi, 'with ');

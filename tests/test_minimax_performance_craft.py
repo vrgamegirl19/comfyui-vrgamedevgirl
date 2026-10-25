@@ -112,6 +112,7 @@ class BuilderParityTests(unittest.TestCase):
                 for text in case["contains"]:
                     self.assertIn(text, clean)
                 self.assertNotIn("assigned vocal cue", clean)
+                self.assertNotRegex(clean, r'</d>[”"’\']|</d>\s+in sync')
                 self.assertEqual(clean.count("<d>"), 1)
                 visual_prose = re.sub(r"<d>[\s\S]*?</d>", "", clean, flags=re.I)
                 self.assertEqual(len(re.findall(r"\b(?:sings|singing)\b", visual_prose)), 1)

@@ -1780,9 +1780,14 @@ export function createMiniMaxPrompt({
       }
       verb = "sings";
     }
-    const suffix = text.slice(match.index + match[0].length)
-      .replace(/^\s+in sync with\s+(?:the\s+)?(?:vocals\s+in\s+)?(?:<Audio\s+\d+>|Audio\s+\d+)/i, "")
+    let suffix = text.slice(match.index + match[0].length);
+    // Quotes outside a <d> tag belong to its old vocal clause, not the lyric.
+    if (/[“"‘']\s*$/.test(prefix)) suffix = suffix.replace(/^\s*[”"’']/, "");
+    suffix = suffix
+      .replace(/^\s*[,;]?\s*in sync with\s+(?:the\s+)?(?:(?:assigned|supplied|provided|original)\s+)?(?:vocals\s+in\s+)?(?:<Audio\s+\d+>|Audio\s+\d+)/i, "")
       .replace(/^\s+(?:from|during)\s+\d+(?:\.\d+)?\s*s?\s*(?:to|[–—-])\s*\d+(?:\.\d+)?\s*s?/i, "");
+    // The canonical lyric already ends with punctuation inside its tag.
+    suffix = suffix.replace(/^\s*\.(?=\s|$)/, "");
     return `${stem}${verb} in sync with <Audio 1>${vocalWindow}: ${tag}${suffix}`;
   }
 

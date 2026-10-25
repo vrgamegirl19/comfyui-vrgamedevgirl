@@ -30,6 +30,8 @@ The browser definitions are authoritative. `node scripts/export_theatrical_prese
 
 Timed lyric assembly normalizes a valid tagged cue in its original sentence, preserving acting and facial prose while applying the assigned singer, exact words, delivery marks and vocal window. It does not replace the tag with placeholder prose and append another singing sentence. Supplied-audio articulation cleanup preserves the actor and adjacent physical action when removing mouth-only directions. The JavaScript and Python paths share regression fixtures in `tests/minimax_cue_sentence_cases.json`.
 
+Quoted `<d>` tags are unwrapped as part of that same cue, including trailing phrases such as “in sync with the assigned Audio 1.” Articulation cleanup also recognizes descriptive oral-rest phrases such as “keeps a relaxed closed-mouth expression” and retains the actor of the following action.
+
 ## Prompt Options
 
 The dialog shows tools and Find/Replace targets appropriate to the selected engine and mode. MiniMax reference-to-video and RefMod show a full-width video section, with image generation and LTX tools omitted. Image controls remain available for modes with generated start frames. MiniMax-specific options and validation appear only for MiniMax. LTX prompt action labels follow its current mode. This is a UI change and requires no API or MCP route.

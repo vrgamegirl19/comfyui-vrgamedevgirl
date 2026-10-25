@@ -27,7 +27,8 @@ def strip_singing_articulation(text: str) -> str:
     clean = re.sub(r"(\d)\.(?=\d)", r"\1VRGDGDECIMALTOKEN", clean)
     clean = re.sub(
         r"(<Subject\s+\d+>(?:\s+\([^)]*\))?|\b(?:she|he|they))\s+"
-        r"(?:keeps?|holds?|lets?|maintains?)\s+(?:(?:her|his|their)\s+)?"
+        r"(?:keeps?|holds?|lets?|maintains?)\s+(?:(?:her|his|their|a|an|the)\s+)?"
+        r"(?:(?:relaxed|closed|soft|neutral|gently|pressed|shut|still|natural|loose|calm)[ -]+){0,6}"
         r"(?:mouth|lips?|jaw)\b[^,;.!?]*,\s*(?:then|and)\s+", r"\1 ", clean, flags=re.I)
     clean = re.sub(
         r"\b(?:her|his|their)\s+(?:mouth|lips?|jaw)\s+"

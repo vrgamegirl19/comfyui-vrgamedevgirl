@@ -1,5 +1,17 @@
 [
   {
+    "name": "quoted tags and assigned audio suffix normalize as a single vocal clause",
+    "description": "<Subject 1> advances with squared shoulders; after the opening, she sings “<d>[English, curious, sly, singing] Find the <i>spark</i>.</d>” in sync with the assigned Audio 1. Her brows lift into a knowing grin.",
+    "cue": {"type":"vocal","text":"Find the spark","label":"<Subject 1>","vocal_start":0.21,"vocal_end":2.67},
+    "contains": ["after the opening, she sings in sync with <Audio 1> from 0.21 s to 2.67 s:", "</d> Her brows lift into a knowing grin."]
+  },
+  {
+    "name": "closed-mouth expression keeps the actor of continued performance",
+    "description": "A frontal tracking shot follows <Subject 1>. <Subject 1> keeps a relaxed closed-mouth expression during the silent opening beat, then continues the same performance and sings “<d>[English, pensive, defiant, singing] Hold that <i>light</i>.</d>” in sync with the assigned Audio 1; her brows rise into a deliberate look.",
+    "cue": {"type":"vocal","text":"Hold that light","label":"<Subject 1>","vocal_start":6.2,"vocal_end":7.82},
+    "contains": ["<Subject 1> continues the same performance and sings", "from 6.2 s to 7.82 s", "</d>; her brows rise into a deliberate look."]
+  },
+  {
     "name": "walking and tagged singing remain one complete sentence",
     "description": "A close-up holds on <Subject 1>. <Subject 1> advances along the path, shoulders upright, and sings in sync with Audio 1 from 0.210s: <d>[English, searching, wry, singing] Find the <i>spark</i>.</d> Her brows lift and one arches into a broad knowing grin.",
     "cue": {"type":"vocal","text":"Find the spark","label":"<Subject 1>","vocal_start":0.21,"vocal_end":2.67},

@@ -331,10 +331,15 @@ def merge_timed_cue(text: str, performer: str, vocal_window: str, tag: str) -> O
             action = stem.rstrip(",;:")
             stem = (action + ". " if action else "") + performer + " "
         verb = "sings"
-    suffix = re.sub(r"^\s+in sync with\s+(?:the\s+)?(?:vocals\s+in\s+)?"
-                    r"(?:<Audio\s+\d+>|Audio\s+\d+)", "", text[match.end():], flags=re.I)
+    suffix = text[match.end():]
+    if re.search(r"[“\"‘']\s*$", prefix):
+        suffix = re.sub(r"^\s*[”\"’']", "", suffix)
+    suffix = re.sub(r"^\s*[,;]?\s*in sync with\s+(?:the\s+)?"
+                    r"(?:(?:assigned|supplied|provided|original)\s+)?(?:vocals\s+in\s+)?"
+                    r"(?:<Audio\s+\d+>|Audio\s+\d+)", "", suffix, flags=re.I)
     suffix = re.sub(r"^\s+(?:from|during)\s+\d+(?:\.\d+)?\s*s?\s*"
                     r"(?:to|[–—-])\s*\d+(?:\.\d+)?\s*s?", "", suffix, flags=re.I)
+    suffix = re.sub(r"^\s*\.(?=\s|$)", "", suffix)
     return f"{stem}{verb} in sync with <Audio 1>{vocal_window}: {tag}{suffix}"
 
 

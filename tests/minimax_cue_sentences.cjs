@@ -30,7 +30,7 @@ const results = cases.map(item => {
   const merged = enforce(item.description);
   const clean = c.stripSingingArticulation(merged);
   for (const text of item.contains) assert.ok(clean.includes(text), `${item.name}: missing ${text}\n${clean}`);
-  assert.doesNotMatch(clean, /assigned vocal cue|then sings|after the cue\./, item.name);
+  assert.doesNotMatch(clean, /assigned vocal cue|then sings|after the cue\.|<\/d>[”"’']|<\/d>\s+in sync/, item.name);
   assert.equal((clean.match(/<d>/g) || []).length, 1, item.name);
   const visualProse = clean.replace(/<d>[\s\S]*?<\/d>/gi, '');
   assert.equal((visualProse.match(/\b(?:sings|singing)\b/g) || []).length, 1, item.name);
