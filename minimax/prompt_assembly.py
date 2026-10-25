@@ -562,4 +562,9 @@ def build_minimax_prompt_context(
     context["lyric_text"] = str(segment.get("lyric_text") or "")
     context.update(emotion_expression_input(segment, session))
     context["instruction_text"] += "\n\n" + emotion_expression_instruction(context)
+    from ..storyboard.theatrical_presets import theatrical_direction_lines, theatrical_project_defaults
+
+    preset_lines = theatrical_direction_lines(segment, theatrical_project_defaults(session))
+    if preset_lines:
+        context["instruction_text"] += "\n\n" + "\n\n".join(preset_lines)
     return context

@@ -147,6 +147,14 @@ class LyricFreePerformanceTests(unittest.TestCase):
         self.assertIn("Motion: walk forward", result)
         self.assertIn("Do not mention mouth, lip, or jaw movement", result)
 
+    def test_theatrical_facial_emotion_respects_scene_defaults(self):
+        scene = {"scene_defaults": {"facial_performance": "theatrical"}}
+        text = lfp.facial_text(scene, {"default_facial_performance": "off"})
+        self.assertIn("sly sideways glances", text)
+        self.assertNotRegex(text, r"mouth|lip|jaw|vocal")
+        scene["scene_defaults"]["facial_performance"] = "off"
+        self.assertEqual(lfp.facial_text(scene, {"default_facial_performance": "theatrical"}), "")
+
     def test_facial_presets_match_browser_and_keep_expression(self):
         source = (ROOT / "web/storyboard_builder/performance_presets.mjs").read_text(encoding="utf-8")
         bank = source.split("export const FACIAL_PERFORMANCE_PRESETS = [", 1)[1].split("];", 1)[0]

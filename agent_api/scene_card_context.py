@@ -12,10 +12,11 @@ Director Note is its ``timeline_note``.
 """
 
 import json
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from ..llm.prompts.storyboard import _STORYBOARD_SCENE_CARD_CONTEXT_INSTRUCTIONS
 from ..storyboard.session_sync import scene_card_context
+from ..storyboard.theatrical_presets import theatrical_direction_lines
 
 SCENE_CARD_INSTRUCTION = _STORYBOARD_SCENE_CARD_CONTEXT_INSTRUCTIONS
 
@@ -67,6 +68,10 @@ def video_direction_lines(card: Dict[str, Any]) -> List[str]:
     return lines
 
 
-def storyboard_video_context(card: Dict[str, Any]) -> str:
+def storyboard_video_context(
+    card: Dict[str, Any], defaults: Optional[Dict[str, Any]] = None,
+) -> str:
     """The "Storyboard Builder context" a video or MiniMax prompt request carries for one card."""
-    return "\n\n".join(video_direction_lines(card) + [scene_card_block(card)])
+    return "\n\n".join(
+        video_direction_lines(card) + theatrical_direction_lines(card, defaults) + [scene_card_block(card)]
+    )

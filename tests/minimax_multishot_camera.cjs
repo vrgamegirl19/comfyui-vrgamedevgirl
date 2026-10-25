@@ -14,6 +14,7 @@ function fixture(sequence, key = 'custom', framing = true) {
     miniMaxH3ResolveFramingEntry: (_scene, entry) => entry,
     sceneVideoConceptPromptText: () => '',
   });
+  vm.runInContext('function miniMaxSceneDefaults(scene) { return { ...state.builderStoryboardDefaults, ...(scene?.scene_defaults || {}) }; }', context);
   const source = readBuilderModule('minimax_prompt.mjs');
   for (const name of ['miniMaxH3SelectedFramingEntries', 'miniMaxH3PerShotFramingLines']) {
     vm.runInContext(functionSource(source, name), context);
@@ -132,4 +133,20 @@ test('the subway example gets distinct coverage with the real Medium shots prese
   assert.equal(new Set(entries.map(e => e.camera)).size, 4);
   assert.equal(entries.filter(e => /low.angle/.test(e.shot)).length, 1);
   assert.equal(entries.filter(e => /waist|upper.body/.test(e.shot)).length, 1);
+});
+
+test('Theatrical reaches MiniMax framing guidance and saved shot selection', async () => {
+  const { STORYBOARD_CAMERA_FLOW_PRESETS } = await import('../web/storyboard_builder/shot_presets.mjs');
+  const c = fixture([]);
+  c.STORYBOARD_CAMERA_FLOW_PRESETS = STORYBOARD_CAMERA_FLOW_PRESETS;
+  c.state.builderStoryboardDefaults.camera_flow = 'pretty_little_malfunction';
+  const scene = { id: 'theatrical_performance', story_beat: 'The performer walks forward while singing, then turns toward the audience.' };
+  const entries = c.miniMaxH3SelectedFramingEntries(scene, plan(3));
+  assert.ok(entries.every(Boolean));
+  assert.equal(new Set(entries.map(entry => entry.shot)).size, 3);
+  assert.equal(new Set(scene.minimax_h3_framing_shot_ids).size, 3);
+  const guidance = c.miniMaxH3PerShotFramingLines(scene, plan(1)).join('\n');
+  assert.match(guidance, /Theatrical/);
+  assert.match(guidance, /Across cuts, preserve each person's established position/);
+  assert.match(guidance, /project's mapped subjects, locations, and props/);
 });
