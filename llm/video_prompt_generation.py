@@ -9,6 +9,7 @@ from ..core.atomic_write import atomic_write_json
 from ..builder.video_editor import _image_from_data_url
 from ..minimax.lyric_free_performance import enabled as lyric_free_enabled
 from ..minimax.prompt_enhance import merge_enhanced_prompt
+from ..storyboard.session_sync import fresh_prompt_context_text
 from .prompts.emotion_expression import emotion_expression_instruction
 from .text_cleaning import _clean_gemma_prompt_text
 from .prompts.minimax import MINIMAX_H3_PROMPT_ENHANCE_INSTRUCTIONS, MINIMAX_H3_ENHANCE_CONTINUITY_CONTRACT
@@ -524,7 +525,7 @@ def _generate_builder_i2v_prompt(payload):
     t2i_prompt = str(payload.get("t2i_prompt", "") or "").strip()
     image_reference_path = str(payload.get("image_reference_path", "") or "").strip().strip('"')
     image_reference_data = str(payload.get("image_reference_data", "") or "").strip()
-    user_notes = str(payload.get("user_notes", "") or "").strip()
+    user_notes = fresh_prompt_context_text(str(payload.get("user_notes", "") or "").strip())
     subject_context = str(payload.get("subject_context", "") or "").strip()
     location_context = str(payload.get("location_context", "") or "").strip()
     no_character_present = bool(payload.get("no_character_present") or payload.get("no_subject") or payload.get("no_visible_subject"))
@@ -1115,10 +1116,11 @@ def _generate_builder_t2v_prompt(payload):
 
     model_file = str(payload.get("model_file", "") or "").strip()
     mmproj_file = str(payload.get("mmproj_file", "") or "").strip()
-    scene_prompt = str(payload.get("t2i_prompt", "") or payload.get("scene_prompt", "") or "").strip()
+    scene_prompt = fresh_prompt_context_text(
+        str(payload.get("t2i_prompt", "") or payload.get("scene_prompt", "") or "").strip())
     image_reference_path = str(payload.get("image_reference_path", "") or "").strip().strip('"')
     image_reference_data = str(payload.get("image_reference_data", "") or "").strip()
-    user_notes = str(payload.get("user_notes", "") or "").strip()
+    user_notes = fresh_prompt_context_text(str(payload.get("user_notes", "") or "").strip())
     omit_lyrics = lyric_free_enabled(payload.get("omit_lyrics_from_video_prompts", False),
                                     str(payload.get("performance_mode") or "singing"),
                                     str(payload.get("audio_mode") or "input_audio"))

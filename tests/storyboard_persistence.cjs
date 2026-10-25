@@ -236,14 +236,15 @@ test("Main timeline payload keeps canonical prompts and notes instead of old ali
   assert.equal(scenes[0].notes, "Planning notes");
 });
 
-test("Image and video LLM payloads include every normalized card field and all note types", () => {
+test("Fresh image and video LLM payloads keep directions and exclude saved prompt outputs", () => {
   for (const mode of ["storyboard_prompts", "image_to_video_prep"]) {
     const state = stateFor(project);
     state.mode = mode;
     Object.assign(state.scenes[0], { timeline_note: "Director-note sentinel", notes: "Planning-note sentinel",
       motion_summary: "Motion-note sentinel", audio_direction: "Sound sentinel", continuity: "Continuity sentinel",
       camera_motion: "Camera sentinel", character_motion: "Action sentinel", include_microphone: true,
-      facial_performance_custom: "Expression sentinel" });
+      facial_performance_custom: "Expression sentinel", video_prompt: "STALE VIDEO SENTINEL",
+      minimax_h3_pass2_prompt: "STALE SECOND PASS SENTINEL" });
     const api = fixture(state);
     for (const name of ["performance_presets.mjs", "gpt_payload.mjs"]) {
       const source = fs.readFileSync(path.join(root, "web/storyboard_builder", name), "utf8")
@@ -255,8 +256,16 @@ test("Image and video LLM payloads include every normalized card field and all n
     const normalized = clone(vm.runInContext("normalizeScene", api.context)(state.scenes[0]));
     for (const [field, value] of Object.entries(normalized)) {
       if (["image_data", "subject_refs", "location_ref"].includes(field)) continue;
+      if (["image_prompt", "video_prompt", "video_prompt_origin", "minimax_h3_pass2_prompt"].includes(field)) {
+        assert.equal(Object.hasOwn(actual, field), false, `${mode}: ${field}`);
+        continue;
+      }
       assert.deepEqual(actual[field], value, `${mode}: ${field}`);
     }
+    assert.equal(Object.hasOwn(payload.scenes[0], "video_prompt"), false);
+    assert.equal(Object.hasOwn(payload.scenes[0], "text_to_image_prompt"), false);
+    assert.equal(JSON.stringify(payload).includes("STALE"), false);
+    assert.equal(state.scenes[0].video_prompt, "STALE VIDEO SENTINEL");
     assert.equal(payload.scenes[0].director_note, "Director-note sentinel");
     assert.equal(actual.has_inline_image, true);
     assert.equal(JSON.stringify(actual).includes("base64"), false);

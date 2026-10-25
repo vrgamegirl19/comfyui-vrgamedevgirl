@@ -30,6 +30,10 @@ The browser definitions are authoritative. `node scripts/export_theatrical_prese
 
 The dialog shows tools and Find/Replace targets appropriate to the selected engine and mode. MiniMax reference-to-video and RefMod show a full-width video section, with image generation and LTX tools omitted. Image controls remain available for modes with generated start frames. MiniMax-specific options and validation appear only for MiniMax. LTX prompt action labels follow its current mode. This is a UI change and requires no API or MCP route.
 
+## Fresh generation versus enhancement
+
+Create Prompt excludes previously generated prompt outputs from the scene-card context and the Storyboard generation payload. The server also filters saved output fields from incoming scene bundles, including requests from an older browser tab. Scene notes, story beats, lyrics, presets, timing, references and the current start-frame visual inventory remain available. Filtering creates a request copy; it does not clear saved project prompts. Enhance Prompt deliberately receives `current_prompt`; explicit conversion requests also retain their requested source. The browser and Agent API use the same exclusion policy.
+
 ## Checks
 
 Run the focused JavaScript suites `prompt_options_visibility.cjs`, `camera_flow.test.mjs`, `minimax_multishot_camera.cjs` and `scene_defaults_presets.cjs`. Python coverage lives in `test_theatrical_presets.py`, `test_agent_api_minimax_prompts.py` and `test_lyric_free_performance.py`. API contract and endpoint-document checks should remain clean.

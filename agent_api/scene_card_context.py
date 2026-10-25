@@ -34,7 +34,7 @@ def scene_card_block(card: Dict[str, Any]) -> str:
 
 def beat_scene(card: Dict[str, Any]) -> Dict[str, Any]:
     """The selected scene of a scene-beat request (``storyboardScenesForGpt`` keys for the card context)."""
-    scene = {**card, "story_beat": ""}
+    scene = scene_card_context({**card, "story_beat": ""})
     return {
         **scene,
         "scene_card": scene_card_context(scene),

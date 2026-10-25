@@ -458,8 +458,6 @@ function storyboardScenesForGpt(state) {
             text: normalized.image_prompt,
             instruction: "Use only for visible first-frame inventory: subject identity, wardrobe, hair, makeup, props, setting, lighting, color palette, framing, and composition. Do not use this field for body action, camera motion, performance energy, facial performance, lyric action, story action, or animation pacing.",
           },
-      text_to_image_prompt: imageMode ? normalized.image_prompt : "",
-      video_prompt: normalized.video_prompt,
       notes: normalized.notes,
       audio_direction: normalized.audio_direction,
       continuity: normalized.continuity,

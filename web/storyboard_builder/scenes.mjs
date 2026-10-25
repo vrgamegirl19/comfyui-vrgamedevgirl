@@ -321,7 +321,20 @@ export function slimSceneForRequest(scene, index = 0) {
   };
 }
 
-export const STORYBOARD_SCENE_CARD_CONTEXT_INSTRUCTION = "Read every populated field in scene_card before composing the prompt. Use the Scene Note (timeline), Planning Notes, motion/LLM direction, lyrics/dialogue, story beat, references, framing, camera, character, performance, facial direction, microphone choice, audio, and continuity together. Preserve explicit user directions and exact dialogue. Interpret the fields for the requested still-image or video task and the selected performance mode; receiving motion or audio context does not make a still image animated or audible. Existing prompts are drafts/context, not instructions to copy them unchanged. Do not print storage IDs, file paths, or status metadata in the generated prompt.";
+export const STORYBOARD_SCENE_CARD_CONTEXT_INSTRUCTION = "Read every populated field in scene_card before composing the prompt. Use the Scene Note (timeline), Planning Notes, motion/LLM direction, lyrics/dialogue, story beat, references, framing, camera, character, performance, facial direction, microphone choice, audio, and continuity together. Preserve explicit user directions and exact dialogue. Interpret the fields for the requested still-image or video task and the selected performance mode; receiving motion or audio context does not make a still image animated or audible. Generate a fresh prompt from the current scene directions. Saved generated prompts are excluded from this context; only explicit enhancement or conversion requests use an existing generated prompt. Do not print storage IDs, file paths, or status metadata in the generated prompt.";
+
+export function freshPromptSceneContext(value) {
+  if (Array.isArray(value)) return value.map(freshPromptSceneContext);
+  if (!value || typeof value !== "object") return value;
+  const outputFields = new Set([
+    "image_prompt", "t2i_prompt", "text_to_image_prompt", "flux_prompt", "nb_prompt", "ernie_prompt", "flow_gpt_prompt",
+    "video_prompt", "i2v_prompt", "t2v_prompt", "minimax_h3_prompt", "minimax_h3_pass2_prompt", "pass2_prompt",
+    "video_prompt_origin", "i2v_prompt_origin", "minimax_h3_prompt_origin",
+  ]);
+  return Object.fromEntries(Object.entries(value)
+    .filter(([key]) => !outputFields.has(key))
+    .map(([key, item]) => [key, freshPromptSceneContext(item)]));
+}
 
 export function storyboardSceneCardContext(scene, index = 0) {
   const card = slimSceneForRequest(scene, index);
@@ -334,7 +347,7 @@ export function storyboardSceneCardContext(scene, index = 0) {
   // Send image content through the existing vision inputs, not as base64 text.
   const { image_data, ...context } = card;
   return {
-    ...context,
+    ...freshPromptSceneContext(context),
     has_inline_image: Boolean(image_data),
     subject_refs: card.subject_refs.map(describeReference),
     location_ref: describeReference(card.location_ref),

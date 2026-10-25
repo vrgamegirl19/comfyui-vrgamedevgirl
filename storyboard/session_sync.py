@@ -10,6 +10,8 @@ Pure module: no ComfyUI imports.
 """
 
 import copy
+import json
+import re
 from typing import Any, Dict, Iterable, List, Optional
 
 from ..builder.lyric_scenes import is_instrumental_lyric_text
@@ -234,12 +236,46 @@ def scene_cards(session: Dict[str, Any]) -> List[Dict[str, Any]]:
     return cards
 
 
+def fresh_prompt_scene_context(value: Any) -> Any:
+    """Exclude saved output drafts from LLM scene context, leaving stored cards untouched."""
+    if isinstance(value, list):
+        return [fresh_prompt_scene_context(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+    output_fields = {
+        "image_prompt", "t2i_prompt", "text_to_image_prompt", "flux_prompt", "nb_prompt", "ernie_prompt", "flow_gpt_prompt",
+        "video_prompt", "i2v_prompt", "t2v_prompt", "minimax_h3_prompt", "minimax_h3_pass2_prompt", "pass2_prompt",
+        "video_prompt_origin", "i2v_prompt_origin", "minimax_h3_prompt_origin",
+    }
+    return {key: fresh_prompt_scene_context(item) for key, item in value.items() if key not in output_fields}
+
+
+def fresh_prompt_context_text(text: str) -> str:
+    """Filter serialized scene cards in older clients' normal prompt-generation requests."""
+    parts = []
+    offset = 0
+    for marker in re.finditer(r"Complete scene_card:\s*", text):
+        if marker.start() < offset:
+            continue
+        try:
+            card, length = json.JSONDecoder().raw_decode(text[marker.end():])
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(card, dict):
+            continue
+        parts.extend([text[offset:marker.end()], json.dumps(
+            fresh_prompt_scene_context(card), indent=2, ensure_ascii=False)])
+        offset = marker.end() + length
+    return "".join(parts) + text[offset:] if parts else text
+
+
 def scene_card_context(card: Dict[str, Any]) -> Dict[str, Any]:
     """Twin of ``storyboardSceneCardContext`` (``web/storyboard_builder/scenes.mjs``): the complete card for an LLM.
 
-    Inline image data is replaced by ``has_inline_image``; pictures reach the LLM through its vision inputs.
+    Saved output drafts are excluded. Inline image data becomes ``has_inline_image``;
+    pictures reach the LLM through its vision inputs. The stored card is unchanged.
     """
-    context = copy.deepcopy(card)
+    context = fresh_prompt_scene_context(card)
     image_data = context.pop("image_data", "")
     context["has_inline_image"] = bool(image_data)
 
