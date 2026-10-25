@@ -729,6 +729,7 @@ The `mcp_server` package is a standalone, zero-dependency Model Context Protocol
 - **Client config**: Claude Code: `claude mcp add vrgdg -- <python_embeded\python.exe> <pack>\mcp_server\__main__.py`. LM Studio `mcp.json`: `{"mcpServers": {"vrgdg": {"command": "<python>", "args": ["<pack>/mcp_server/__main__.py"], "env": {"VRGDG_API_URL": "http://127.0.0.1:8188/vrgdg/api/v1"}}}}`.
 - **Server instructions**: the `initialize` reply carries `instructions` that point the agent to the `make_music_video` prompt and the doc resources and remind it never to change the LM Studio model.
 - **Actionable errors**: a failed call returns `isError: true` with `next_steps` in the text, so an agent is not left retrying blindly.
+- **Scenes by number**: every route that takes a scene accepts its id or its 1-based number on the timeline (the number `scene_list` shows as `number` and the Video Builder shows as Scene N), so "scene 11" is `scene_id` `"11"`. The `scene_id` and `scene_ids` hints (`SCENE_ID_HINT` and the other constants in `mcp_server/tools.py`), the `scene_list` and `scene_get` descriptions, the server instructions and `CHAT_AGENT_PROMPT.md` say so. A new route that looks a scene up must take both, as `agent_api/scene_audio.find_scene()` does. `tests/test_mcp_scene_numbers.py` covers the wording and the speaking routes.
 
 > `mcp_server/` is local-only (listed in `.gitignore`). `tests/test_mcp_server.py` and `tests/test_mcp_endpoints.py` need the folder.
 

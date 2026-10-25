@@ -30,6 +30,9 @@ SERVER_INSTRUCTIONS = (
     "full contract. Every endpoint has a tool: the named tools first, `api_*` tools for the rest, and `api_request` "
     "for any path. Call `llm_active` before any step that writes text: the LLM is whatever is loaded in LM Studio "
     "and must never be changed.\n"
+    "A scene is named by its id (seg_...) or by its number on the timeline, the one the Video Builder shows. When the user "
+    "says Scene 11, pass scene_id \"11\" to any tool (scene_get reads it, scene_update edits it) and do not search the "
+    "scene list for it. Numbers move when scenes are added or removed, ids do not.\n"
     "Long operations (LLM steps, renders, stitch) return a job id. Call `job_wait` until the job is succeeded or failed."
 )
 

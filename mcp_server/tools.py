@@ -42,6 +42,22 @@ class ToolDefinition:
 
 
 # ==============================================================================
+# How a scene is named: by id, or by its number on the timeline, which is how a user says it (Scene 11)
+# ==============================================================================
+
+SCENE_ID_HINT = (
+    'The scene: its id (seg_...) or its number on the timeline, the one the Video Builder shows. Send "11" for Scene 11. '
+    "Numbers move when scenes are added or removed, ids do not."
+)
+SCENE_IDS_HINT = 'The scenes to work on, each an id or a timeline number ("11" for Scene 11).'
+SCENE_IDS_TEXT_HINT = SCENE_IDS_HINT + " Separate several with commas."
+SCENE_LIST_NOTE = (
+    " Each scene has `number` (1 is the first scene, the number the Video Builder shows as Scene N) and `id`. "
+    "To read one scene, call scene_get with its number as scene_id instead of searching this list."
+)
+SCENE_GET_NOTE = ' scene_id can be the scene\'s number: scene_id "11" is Scene 11.'
+
+# ==============================================================================
 # Helper for Next Steps (Rule 5)
 # ==============================================================================
 
@@ -55,7 +71,7 @@ def _derive_next_steps(code: str, details: Optional[Dict[str, Any]] = None) -> L
     elif c == "REVISION_CONFLICT":
         steps.append("Fetch the latest project state via project_get and retry with the updated revision.")
     elif c == "SCENE_NOT_FOUND":
-        steps.append("Call scene_list to verify existing scene IDs in this project.")
+        steps.append("Call scene_list to see the scenes of this project. A scene is named by its id or by its number (1 is the first scene, as in Scene 11).")
     elif c == "PROJECT_NOT_FOUND":
         steps.append("Call project_list to check available projects.")
     elif c == "VALIDATION_ERROR":
@@ -972,7 +988,7 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
     ),
     "scene_list": ToolDefinition(
         name="scene_list",
-        description="List all scene segments in the project timeline (T18).",
+        description="List all scene segments in the project timeline (T18)." + SCENE_LIST_NOTE,
         input_schema={
             "type": "object",
             "properties": {"project_id": {"type": "string"}},
@@ -982,12 +998,12 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
     ),
     "scene_get": ToolDefinition(
         name="scene_get",
-        description="Get single scene details including prompts, images, takes, and timing (T19).",
+        description="Get single scene details including prompts, images, takes, and timing (T19)." + SCENE_GET_NOTE,
         input_schema={
             "type": "object",
             "properties": {
                 "project_id": {"type": "string"},
-                "scene_id": {"type": "string"},
+                "scene_id": {"type": "string", "description": SCENE_ID_HINT},
             },
             "required": ["project_id", "scene_id"],
         },
@@ -1015,7 +1031,7 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
             "type": "object",
             "properties": {
                 "project_id": {"type": "string"},
-                "scene_id": {"type": "string"},
+                "scene_id": {"type": "string", "description": SCENE_ID_HINT},
                 "patch": {"type": "object", "description": "Scene-card fields to set, for example {\"timeline_note\": \"...\", \"include_microphone\": false}."},
                 "if_match_revision": {"type": "integer"},
             },
@@ -1043,7 +1059,7 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
             "type": "object",
             "properties": {
                 "project_id": {"type": "string"},
-                "scene_id": {"type": "string"},
+                "scene_id": {"type": "string", "description": SCENE_ID_HINT},
                 "ripple": {"type": "boolean", "default": False},
             },
             "required": ["project_id", "scene_id"],
@@ -1057,7 +1073,7 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
             "type": "object",
             "properties": {
                 "project_id": {"type": "string"},
-                "scene_id": {"type": "string"},
+                "scene_id": {"type": "string", "description": SCENE_ID_HINT},
                 "op": {"type": "string", "enum": ["split", "merge", "move", "resize"]},
                 "split_time": {"type": "number"},
                 "direction": {"type": "string", "default": "next"},
@@ -1170,7 +1186,7 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
                 "project_id": {"type": "string"},
                 "kind": {"type": "string", "enum": ["image", "video", "chained", "enhance", "edit"]},
                 "scope": {"type": "string", "enum": ["one", "all", "selected"]},
-                "scene_id": {"type": "string"},
+                "scene_id": {"type": "string", "description": SCENE_ID_HINT},
                 "params": {"type": "object"},
             },
             "required": ["project_id"],
@@ -1200,7 +1216,7 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
             "type": "object",
             "properties": {
                 "project_id": {"type": "string"},
-                "scene_id": {"type": "string"},
+                "scene_id": {"type": "string", "description": SCENE_ID_HINT},
                 "params": {"type": "object"},
             },
             "required": ["project_id"],
@@ -1214,7 +1230,7 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
             "type": "object",
             "properties": {
                 "project_id": {"type": "string"},
-                "scene_id": {"type": "string"},
+                "scene_id": {"type": "string", "description": SCENE_ID_HINT},
                 "image_data": {"type": "string"},
                 "source_path": {"type": "string"},
             },
@@ -1229,7 +1245,7 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
             "type": "object",
             "properties": {
                 "project_id": {"type": "string"},
-                "scene_id": {"type": "string"},
+                "scene_id": {"type": "string", "description": SCENE_ID_HINT},
                 "action": {"type": "string", "enum": ["approve", "revert", "delete"]},
                 "image_path": {"type": "string"},
                 "delta": {"type": "integer"},
@@ -1246,7 +1262,7 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
             "type": "object",
             "properties": {
                 "project_id": {"type": "string"},
-                "scene_id": {"type": "string"},
+                "scene_id": {"type": "string", "description": SCENE_ID_HINT},
                 "params": {"type": "object"},
             },
             "required": ["project_id"],
@@ -1260,7 +1276,7 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
             "type": "object",
             "properties": {
                 "project_id": {"type": "string"},
-                "scene_id": {"type": "string"},
+                "scene_id": {"type": "string", "description": SCENE_ID_HINT},
                 "params": {"type": "object"},
             },
             "required": ["project_id", "scene_id"],
@@ -1274,7 +1290,7 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
             "type": "object",
             "properties": {
                 "project_id": {"type": "string"},
-                "scene_id": {"type": "string"},
+                "scene_id": {"type": "string", "description": SCENE_ID_HINT},
                 "source_path": {"type": "string"},
             },
             "required": ["project_id", "scene_id", "source_path"],
@@ -1289,7 +1305,7 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
             "properties": {
                 "project_id": {"type": "string"},
                 "action": {"type": "string", "enum": ["status", "dirty", "rebuild", "delete"]},
-                "scene_id": {"type": "string"},
+                "scene_id": {"type": "string", "description": SCENE_ID_HINT},
                 "all": {"type": "boolean"},
                 "params": {"type": "object"},
             },
@@ -1305,7 +1321,7 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
             "properties": {
                 "project_id": {"type": "string"},
                 "op": {"type": "string", "enum": ["lut", "grain", "adjust", "face_fix", "apply_all"]},
-                "scene_id": {"type": "string"},
+                "scene_id": {"type": "string", "description": SCENE_ID_HINT},
                 "settings": {"type": "object"},
             },
             "required": ["project_id", "op"],
@@ -1335,7 +1351,7 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
                 "pipeline": {"type": "string", "enum": ["full_video", "flf"]},
                 "build_mode": {"type": "string", "enum": ["resume_missing", "fresh_rebuild", "redo_videos", "redo_i2v_prompts_videos"]},
                 "scope": {"type": "string", "enum": ["all", "selected", "from_selected"]},
-                "scene_ids": {"type": "array", "items": {"type": "string"}},
+                "scene_ids": {"type": "array", "items": {"type": "string"}, "description": SCENE_IDS_HINT},
                 "stitch": {"type": "boolean", "default": True},
             },
             "required": ["project_id"],
@@ -1533,7 +1549,7 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
                 "scope": {"type": "string", "enum": ["all", "range", "selected"], "default": "all"},
                 "range_start": {"type": "integer"},
                 "range_end": {"type": "integer"},
-                "scene_ids": {"type": "array", "items": {"type": "string"}},
+                "scene_ids": {"type": "array", "items": {"type": "string"}, "description": SCENE_IDS_HINT},
                 "seed": {"type": "integer"},
                 "dry_run": {"type": "boolean", "default": False},
             },
@@ -1596,7 +1612,7 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
                 "direction": {"type": "string", "description": "chapter only: what to change."},
                 "names": {"type": "array", "items": {"type": "string"}, "description": "remove_people only: who to write out."},
                 "story_arc_detail": {"type": "string", "enum": ["compact", "standard", "detailed", "rich"]},
-                "scene_ids": {"type": "array", "items": {"type": "string"}},
+                "scene_ids": {"type": "array", "items": {"type": "string"}, "description": SCENE_IDS_HINT},
                 "replace_existing": {"type": "boolean", "default": False},
                 "limit": {"type": "integer"},
             },
@@ -1615,7 +1631,7 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
             "type": "object",
             "properties": {
                 "project_id": {"type": "string"},
-                "scene_ids": {"type": "array", "items": {"type": "string"}},
+                "scene_ids": {"type": "array", "items": {"type": "string"}, "description": SCENE_IDS_HINT},
                 "replace_existing": {"type": "boolean", "default": False},
                 "limit": {"type": "integer"},
             },
@@ -1656,7 +1672,7 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
                 "pipeline": {"type": "string", "enum": ["full_video", "flf"]},
                 "build_mode": {"type": "string"},
                 "scope": {"type": "string"},
-                "scene_ids": {"type": "string"},
+                "scene_ids": {"type": "string", "description": SCENE_IDS_TEXT_HINT},
             },
             "required": ["project_id"],
         },
@@ -1712,7 +1728,7 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
             "type": "object",
             "properties": {
                 "project_id": {"type": "string"},
-                "scene_id": {"type": "string"},
+                "scene_id": {"type": "string", "description": SCENE_ID_HINT},
                 "asset_id": {"type": "string"},
                 "kind": {"type": "string", "enum": ["thumbnail", "contact_sheet"], "default": "thumbnail"},
             },

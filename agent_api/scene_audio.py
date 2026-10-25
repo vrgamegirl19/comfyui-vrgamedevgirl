@@ -12,6 +12,14 @@ from .errors import RevisionConflictError, SceneNotFoundError, ValidationError
 from .mutations import _get_active_session_and_folder, _persist_session
 
 
+def find_scene(session: dict[str, Any], scene_ref: Any) -> dict[str, Any] | None:
+    """The scene with this id, or else the one at this 1-based number on the timeline, as the rest of the API takes a scene."""
+    segments = session.get("segments", [])
+    ref = str(scene_ref).strip()
+    by_id = next((s for s in segments if s.get("id") == ref), None)
+    return by_id if by_id is not None else next((s for i, s in enumerate(segments) if str(i + 1) == ref), None)
+
+
 def get_audio_settings(project_id: str, scene_id: str | None = None) -> dict[str, Any]:
     """Read project defaults or one scene's effective audio settings."""
     with _BUILDER_SAVE_LOCK:
@@ -21,7 +29,7 @@ def get_audio_settings(project_id: str, scene_id: str | None = None) -> dict[str
             if scene_id is None:
                 view = {**DEFAULTS, **(session.get("speaking_audio_defaults") or {})}
             else:
-                scene = next((s for s in session.get("segments", []) if s["id"] == scene_id), None)
+                scene = find_scene(session, scene_id)
                 if scene is None:
                     raise SceneNotFoundError(scene_id, project_id)
                 view = audio_settings_view(session, scene)
@@ -42,9 +50,11 @@ def patch_audio_settings(
         revision = int(session.get("revision") or session.get("builder_save_revision") or 0)
         if if_match_revision is not None and revision != if_match_revision:
             raise RevisionConflictError(revision, if_match_revision)
-        scene = next((s for s in session.get("segments", []) if s["id"] == scene_id), None)
+        scene = find_scene(session, scene_id) if scene_id is not None else None
         if scene_id is not None and scene is None:
             raise SceneNotFoundError(scene_id, project_id)
+        if scene is not None:
+            scene_id = scene["id"]
         if session.get("timing_frozen") or any(s.get("video_status") == "running" for s in session.get("segments", [])):
             raise ValidationError("Unfreeze timing and wait for scene rendering to finish before editing audio.")
         try:

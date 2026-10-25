@@ -138,6 +138,9 @@ Tell the user, briefly:
 Then ask whether they want anything changed (a scene re-rendered, a prompt rewritten, settings adjusted). To do that,
 use `scene_update`, `minimax_prompts` with `scene_ids` and `replace_existing`, or `video_render` for that scene.
 
+The user names a scene by its number on the timeline ("scene 11"). Pass that number as `scene_id` ("11") to any tool,
+for example `scene_get` to read its prompt, and do not search `scene_list` for it. Numbers move when scenes are added or removed, ids do not.
+
 ---
 
 ## Appendix: video styles
