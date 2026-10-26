@@ -36,8 +36,10 @@ Resources you can read when you need detail: `vrgdg://docs/endpoints` (every end
     did not mention, start a RefMod or stems job, or delete or overwrite anything. Try a new call on a copy made with
     `project_duplicate`, not on the user's project, and delete only what you made. If `system_health` carries a `features`
     block, plan with it.
-11. **The Video Builder may be open on the project.** It reloads by itself when it has nothing unsaved. Otherwise it keeps its
-    older copy and refuses to save it until the user reloads the project, so tell the user to reload after a long run of edits.
+11. **The Video Builder may be open on the project.** It shows your edits and finished renders as they happen and reloads by
+    itself after a change to the settings, a card or the story, keeping what the user has typed and not saved. While the user is
+    typing or rendering in the window it waits, and it never saves its older copy over your edits. There is nothing to tell the
+    user to reload.
 
 ---
 

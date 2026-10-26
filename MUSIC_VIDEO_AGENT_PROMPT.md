@@ -60,9 +60,11 @@ scene_length_seconds:
    did not mention (for example `automatic_memory_cleanup`), start a GPU job the user did not ask for (a RefMod or the stems),
    or delete or overwrite anything. Try a new call on a copy made with `project_duplicate`, not on the user's project, and
    delete only what you made.
-10. **The Video Builder may be open on the project.** It shows what you change. It reloads by itself when it has nothing unsaved.
-    When it has unsaved edits or a render running it does not, and it refuses to save its older copy until the user reloads the
-    project. Tell the user to reload after a long run of edits.
+10. **The Video Builder may be open on the project.** It shows what you change as you change it: scene edits and finished renders
+    appear at once, and a change to the settings, a card or the story reloads the project by itself. A scene field the user has
+    typed and not saved is kept. The window waits, then reloads, only while the user is typing or has a render running in it
+    (or has unsaved changes to the settings or cards), and it refuses to save its older copy meanwhile, so nothing you saved is
+    overwritten. There is nothing to tell the user to reload.
 
 ---
 

@@ -83,6 +83,48 @@ test("unsaved-edit detection ignores runtime-only keys", () => {
   assert.equal(builder.projectFolderKey("C:/Out/Song/"), builder.projectFolderKey("c:\\out\\song"));
 });
 
+test("defaults the Builder fills in are not unsaved edits, real edits are", () => {
+  const saved = savedFrom([{ id: "s1", label: "A", notes: "plan" }, { id: "s2", label: "B" }]);
+  // Selecting scene 2 writes empty defaults into it.
+  const selected = [{ id: "s1", label: "A", notes: "plan" }, { id: "s2", label: "B", notes: "", t2i_prompt: "", use_vision_reference: false, tags: [] }];
+  assert.deepEqual(builder.localSegmentEdits(selected, saved), []);
+  assert.equal(builder.unsavedKey({ segments: selected }), builder.unsavedKey({ segments: [{ id: "s1", label: "A", notes: "plan" }, { id: "s2", label: "B" }] }));
+  assert.equal(builder.isBlank(0), false, "zero is a value");
+  // A video history the Builder derived from the backups is not an edit.
+  const rendered = savedFrom([{ id: "s1", label: "A", video_history: ["a"], video_history_index: 0 }]);
+  assert.deepEqual(builder.localSegmentEdits([{ id: "s1", label: "A", video_history: ["x", "a"], video_history_index: 1 }], rendered), []);
+  // A real edit, a cleared value, a switch turned on and a moved scene all count.
+  assert.deepEqual(builder.localSegmentEdits([{ id: "s1", label: "A", notes: "" }, { id: "s2", label: "B" }], saved), [{ sceneId: "s1", key: "notes" }]);
+  assert.deepEqual(builder.localSegmentEdits([{ id: "s1", label: "A", notes: "plan" }, { id: "s2", label: "B", use_vision_reference: true }], saved), [{ sceneId: "s2", key: "use_vision_reference" }]);
+  assert.deepEqual(builder.localSegmentEdits([{ id: "s2", label: "B" }, { id: "s1", label: "A", notes: "plan" }], saved), [{ sceneId: "", key: "" }]);
+  assert.deepEqual(builder.localSegmentEdits([{ id: "s1", label: "A", notes: "plan" }], saved), [{ sceneId: "", key: "" }], "a scene removed here");
+});
+
+test("rebasing on the server's copy: unannounced fields arrive, local edits win, agreement is not unsaved", () => {
+  const saved = savedFrom([{ id: "s1", label: "A", notes: "plan", video_history: ["a"], video_cache_bust: 1 }]);
+  // The window derived the new history itself; the server sent the same history and a new cache key. The user edited the notes.
+  const live = [{ id: "s1", label: "A", notes: "MY PLAN", video_history: ["a", "b"], video_cache_bust: 1 }];
+  const fresh = [{ id: "s1", label: "A", notes: "API plan", video_history: ["a", "b"], video_cache_bust: 2 }];
+  const result = builder.rebaseSegments({ liveSegments: live, freshSegments: fresh, saved });
+  assert.equal(live[0].video_cache_bust, 2, "a field the server changed and the user did not touch is taken, announced or not");
+  assert.equal(live[0].notes, "MY PLAN", "the user's unsaved edit wins");
+  assert.deepEqual(result.applied, [{ sceneId: "s1", key: "video_cache_bust", was: 1 }], "what the field held is kept, so a value put back by the redraw can be told from a change");
+  assert.deepEqual(result.conflicts, [{ sceneId: "s1", key: "notes" }]);
+  // Only the user's edit is still unsaved. The history both sides agree on is not.
+  assert.deepEqual(builder.localSegmentEdits(live, saved), [{ sceneId: "s1", key: "notes" }]);
+});
+
+test("rebasing keeps a missing value and an empty one apart from a real change", () => {
+  const saved = savedFrom([{ id: "s1", label: "A" }]);
+  const live = [{ id: "s1", label: "A", notes: "" }];
+  const result = builder.rebaseSegments({ liveSegments: live, freshSegments: [{ id: "s1", label: "A" }], saved });
+  assert.deepEqual(result, { applied: [], conflicts: [] });
+  const cleared = [{ id: "s1", label: "A", notes: "kept" }];
+  const again = builder.rebaseSegments({ liveSegments: cleared, freshSegments: [{ id: "s1", label: "A", notes: "" }], saved: savedFrom([{ id: "s1", label: "A", notes: "kept" }]) });
+  assert.equal(cleared[0].notes, "", "an API clear is applied to a field the user did not edit");
+  assert.equal(again.applied.length, 1);
+});
+
 test("storyboard cards: values come from the file when the API wrote it, else from the timeline", () => {
   const byScene = storyboard.changedCardKeys([{ kind: "scene_fields", scenes: {
     s1: { segment: ["i2v_notes", "timeline_note"], card: ["timeline_note", "motion_summary"], references: [] },
