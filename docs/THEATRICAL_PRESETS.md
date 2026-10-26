@@ -6,6 +6,8 @@ Scene Defaults offers three independently selectable **Theatrical** presets:
 - **Performance style**: cheeky theatrical presence, comic timing, purposeful struts and gestures, musical reactions and tender quieter passages.
 - **Facial performance**: animated brows, sly glances, grins, winks, mock pouts, evolving supporting reactions and warm intimate expressions.
 
+Theatrical performance now requests a distinct, motivated physical acting beat in every visible-performer shot. The facial preset requests an opening expression, visible change, and clear landing expression for each readable face. These requirements develop the authored action and respect framing, timing and continuity. Camera speed controls camera travel independently of the actor's expressive choices; a held close-up still carries deliberate theatrical acting.
+
 The camera selection retains the saved key `pretty_little_malfunction`; its displayed name is **Theatrical**. Performance and facial selections both use `theatrical`. These directions adapt to the current project's cast, props, locations and cue timing. They do not import the source song's characters or story.
 
 ## Agent API and MCP
@@ -25,6 +27,10 @@ Use the existing revision-checked `PATCH /projects/{pid}/scenes/{sid}` endpoint 
 The existing `POST /projects/{pid}/minimax-prompts` job expands these selections into the full camera, performance and facial directions for the LLM. Scene overrides take precedence over project defaults. Authored motion summaries and custom facial direction keep their existing priority. Lyric-free prompt assembly retains Theatrical facial emotion through the same shared data. Existing routes, saved keys, schemas and MCP tool contracts are unchanged.
 
 The browser definitions are authoritative. `node scripts/export_theatrical_presets.mjs` regenerates `storyboard/theatrical_presets.json` for Python; `--check` verifies parity. No model is loaded or switched by these helpers.
+
+Timed lyric assembly normalizes a valid tagged cue in its original sentence, preserving acting and facial prose while applying the assigned singer, exact words, delivery marks and vocal window. It does not replace the tag with placeholder prose and append another singing sentence. Supplied-audio articulation cleanup preserves the actor and adjacent physical action when removing mouth-only directions. The JavaScript and Python paths share regression fixtures in `tests/minimax_cue_sentence_cases.json`.
+
+Quoted `<d>` tags are unwrapped as part of that same cue, including trailing phrases such as “in sync with the assigned Audio 1.” Articulation cleanup also recognizes descriptive oral-rest phrases such as “keeps a relaxed closed-mouth expression” and retains the actor of the following action.
 
 ## Prompt Options
 

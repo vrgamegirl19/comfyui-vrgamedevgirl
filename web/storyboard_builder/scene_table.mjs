@@ -10,6 +10,7 @@ import { openStoryboardGptUrl, storyboardGptPayload } from "./gpt_payload.mjs";
 import { videoPromptTypeLabel } from "./prompt_generation.mjs";
 import {
   settingRefHtml,
+  storyboardCardImageSrc,
   storyboardReferenceImageSrc,
   storyboardSubjectNamesFromRefs,
   subjectRefsHtml,
@@ -67,19 +68,23 @@ export function createSceneTable({
         card.style.cssText = `min-height:132px;border:2px solid ${active ? "#22d3ee" : "#334155"};border-radius:8px;background:${active ? "#083344" : "#111827"};color:#f8fafc;padding:8px;display:flex;flex-direction:column;gap:7px;align-items:center;cursor:pointer;`;
         const preview = document.createElement("div");
         preview.style.cssText = "width:96px;height:72px;border:1px solid #155e75;border-radius:6px;background:#061620;overflow:hidden;display:flex;align-items:center;justify-content:center;flex:0 0 auto;";
-        const imageSource = storyboardReferenceImageSrc(subject.image || {});
+        const imageSource = storyboardCardImageSrc(subject);
+        const showNoImage = () => {
+          const empty = document.createElement("span");
+          empty.textContent = "No image";
+          empty.style.cssText = "font-size:11px;font-weight:900;color:#67e8f9;";
+          preview.replaceChildren(empty);
+        };
         if (imageSource) {
           const image = document.createElement("img");
           image.src = imageSource;
           image.alt = subject.name || "Subject reference";
           image.draggable = false;
           image.style.cssText = "width:100%;height:100%;object-fit:cover;display:block;";
+          image.onerror = showNoImage;
           preview.append(image);
         } else {
-          const empty = document.createElement("span");
-          empty.textContent = "No image";
-          empty.style.cssText = "font-size:11px;font-weight:900;color:#67e8f9;";
-          preview.append(empty);
+          showNoImage();
         }
         const name = document.createElement("div");
         name.textContent = subject.name || "Subject";
