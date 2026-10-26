@@ -9,6 +9,8 @@ import sys
 import time
 import folder_paths
 
+from .export_video import _export_file_name
+
 
 def _vrgdg_textfile_path(folder_name, file_name):
     return os.path.join(
@@ -33,17 +35,21 @@ def _newest_file(folder, extensions):
     return max(candidates, key=lambda path: os.path.getmtime(path))
 
 
-def _open_native_picker(kind):
+def _open_native_picker(kind, file_name=""):
+    """Show a native dialog and return the chosen path, or "" when it was cancelled.
+
+    ``file_name`` is the name a save dialog (``save_video``) starts with.
+    """
     try:
-        return _open_tk_picker(kind)
+        return _open_tk_picker(kind, file_name)
     except Exception as tk_exc:
         try:
-            return _open_powershell_picker(kind)
+            return _open_powershell_picker(kind, file_name)
         except Exception as ps_exc:
             raise RuntimeError(f"Native file dialog is not available. tkinter error: {tk_exc}; PowerShell error: {ps_exc}")
 
 
-def _open_tk_picker(kind):
+def _open_tk_picker(kind, file_name=""):
     try:
         import tkinter as tk
         from tkinter import filedialog
@@ -83,6 +89,14 @@ def _open_tk_picker(kind):
         elif kind in {"project_folder", "project_root"}:
             title = "Choose projects root folder" if kind == "project_root" else "Choose project folder"
             path = filedialog.askdirectory(title=title)
+        elif kind == "save_video":
+            path = filedialog.asksaveasfilename(
+                title="Export video",
+                initialfile=_export_file_name(file_name),
+                defaultextension=".mp4",
+                filetypes=[("MP4 video", "*.mp4")],
+                confirmoverwrite=True,
+            )
         else:
             raise ValueError(f"Unknown picker type: {kind}")
         return str(path or "")
@@ -90,7 +104,7 @@ def _open_tk_picker(kind):
         root.destroy()
 
 
-def _open_powershell_picker(kind):
+def _open_powershell_picker(kind, file_name=""):
     if kind == "audio":
         script = r"""
 Add-Type -AssemblyName System.Windows.Forms
@@ -145,6 +159,19 @@ $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
 $dialog.Description = 'Choose projects root folder'
 if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Write($dialog.SelectedPath) }
 """
+    elif kind == "save_video":
+        # Single quotes in a PowerShell string are doubled.
+        script = r"""
+Add-Type -AssemblyName System.Windows.Forms
+$dialog = New-Object System.Windows.Forms.SaveFileDialog
+$dialog.Title = 'Export video'
+$dialog.Filter = 'MP4 video (*.mp4)|*.mp4'
+$dialog.DefaultExt = 'mp4'
+$dialog.AddExtension = $true
+$dialog.OverwritePrompt = $true
+$dialog.FileName = '__FILE_NAME__'
+if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Write($dialog.FileName) }
+""".replace("__FILE_NAME__", _export_file_name(file_name).replace("'", "''"))
     else:
         raise ValueError(f"Unknown picker type: {kind}")
 

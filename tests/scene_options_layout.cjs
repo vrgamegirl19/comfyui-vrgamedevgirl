@@ -64,7 +64,11 @@ test('timeline has a single Scenes lock with no Freeze SRT timing checkbox', () 
   vm.runInContext(functionSource(readBuilderModule('timeline_view.mjs'), 'buildTimelineView'), c);
   const layout = c.buildTimelineView({ overlay: new Element(), preview: new Element(), previewStage: new Element() });
   assert.equal(layout.freezeTimingControl, undefined);
-  assert.equal(layout.sceneDragLockButton.parentElement.children.at(-1), layout.sceneDragLockButton);
+  // The Export button sits right after the lock, last in the header.
+  assert.equal(layout.sceneDragLockButton.parentElement.children.at(-2), layout.sceneDragLockButton);
+  assert.equal(layout.sceneDragLockButton.parentElement.children.at(-1), layout.exportVideoButton);
+  assert.equal(layout.exportVideoButton.textContent, 'Export');
+  assert.equal(layout.exportVideoButton.disabled, true);
   const texts = node => [node.textContent, ...node.children.flatMap(texts)];
   assert.ok(!texts(layout.sceneDragLockButton.parentElement).includes('Freeze SRT timing'));
 });

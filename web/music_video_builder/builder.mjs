@@ -147,6 +147,7 @@ import { createUiProfileActions } from "./ui_profiles.mjs";
 import { createMiniMaxReferences } from "./minimax_references.mjs";
 import { createIdLoraBuilder } from "./id_lora_builder.mjs";
 import { createVideoRender } from "./video_render.mjs";
+import { wireExportVideo } from "./export_video.mjs";
 import { createBatchRender } from "./batch_render.mjs";
 import { createModelPickers } from "./model_pickers.mjs";
 import { createStoryBuilder } from "./story_builder.mjs";
@@ -874,7 +875,7 @@ export function openBuilder(node, options = {}) {
     deleteAllTimelineVideosButton, deleteSegmentButton, globalAudioMuteButton, addAudioClipButton,
     globalScrub, globalScrubTime, idLoraTrimModeButton, lyricNoteButton, emotionTagButton, locationThumbnailButton, multiSelectButton,
     multiSelectHintButton, overlayTrackHintButton, overlayTrackToggleButton, playButton, playhead, redoButton,
-    latentContinuationOffAllButton, unlockAllScenesButton, refreshDeleteActions, sceneDragLockButton, sceneNoteButton, segmentLayer, setInButton, setOutButton, snapSceneEdgeButton,
+    latentContinuationOffAllButton, unlockAllScenesButton, refreshDeleteActions, sceneDragLockButton, exportVideoButton, sceneNoteButton, segmentLayer, setInButton, setOutButton, snapSceneEdgeButton,
     snapToBeatsControl, splitSceneButton, stopButton, timeline, timelineCanvas, timelineInfo,
     timelineRangeInfo, timelineResizeHandle, timelineViewport, undoButton,
     videoNoteButton, waveformModeSelect, zoomInButton, zoomOutButton,
@@ -1602,7 +1603,7 @@ export function openBuilder(node, options = {}) {
     i2vNotesInput, lyricTextInput, mediaThumbnailHtml, openAudioContextMenu, openDirectorNoteContextMenu, renderAudioClips,
     openSceneOptions, openSegmentContextMenu, openTimelineSceneCard, playhead, pushHistory,
     rtvReferenceBehaviorForSegment, sceneListPane, segmentLayer, selectedSegmentImageThumbnailPath,
-    setActiveSegment, state, syncInspector, timelineCanvas, locationThumbnailButton, refreshDeleteActions, sceneDragLockButton,
+    setActiveSegment, state, syncInspector, timelineCanvas, locationThumbnailButton, refreshDeleteActions, sceneDragLockButton, exportVideoButton,
     currentVideoMode: (...args) => currentVideoMode(...args),
     timelineSegmentLabel: (...args) => timelineSegmentLabel(...args),
     cycleSegmentImageHistory: (...args) => cycleSegmentImageHistory(...args),
@@ -2378,6 +2379,7 @@ export function openBuilder(node, options = {}) {
     validateMiniMaxSceneReadyForVideo, validateSceneReadyForVideo, validateSrtTimingForSceneVideo,
     videoModeDisplayLabel, videoTriggerPhraseForSegment,
   });
+  wireExportVideo({ button: exportVideoButton, state, projectInput, createProgressWindow, stitchRenderedScenes });
 
   const {
     setInspectorTab, syncBuilderLlmModelSelectsFromRunner, syncInspectorPanels,

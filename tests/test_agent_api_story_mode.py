@@ -201,6 +201,37 @@ class StoryModeStepTests(Base):
         with self.assertRaises(errors.ValidationError):
             story.set_story_settings("Song", {"story": {"story_acts": bad}})
 
+    def test_a_story_written_by_hand_is_saved_mapped_and_linked_without_the_llm(self):
+        location_funcs = importlib.import_module(f"{pkg_name}.storyboard.story_locations")
+        mutations = importlib.import_module(f"{pkg_name}.agent_api.mutations")
+        self.write_book()
+        ids = [s["id"] for s in self.read_session()["segments"]]
+        acts = [{"id": "act_1", "chapter_id": "ch_1", "title": "Arrive", "cast_ids": ["darrel"], "scene_ids": ids[:5]},
+                {"id": "act_2", "chapter_id": "ch_2", "title": "Home", "cast_ids": ["darrel"], "scene_ids": ids[5:]}]
+        plan = [{"scene_id": sid, "act_id": "act_1" if i < 5 else "act_2", "story_slice": f"Darrel does step {i + 1}.",
+                 "spot": "Platform" if i < 5 else "Kitchen", "mood": "calm", "performance_mode": "singing", "cast_ids": ["darrel"]}
+                for i, sid in enumerate(ids)]
+        # Places: the cards the story's places go on, named "Setting - Spot", made by hand before the plan.
+        for card_id, name in (("train_platform", "The Night Train - Platform"), ("home_kitchen", "Home - Kitchen")):
+            mutations.upsert_reference_location("Song", card_id, {"name": name, "description": f"{name} card."})
+        story.set_story_settings("Song", {"story": {"story_acts": acts, "story_scene_plan": plan}})
+        refs = self.read_session()["flux_reference_builder"]
+        self.assertTrue(all(refs["subject_scene_map"].get(sid) == ["darrel"] for sid in ids),
+                        "saving a plan maps each planned scene's cast, like the Story Builder does")
+
+        def no_llm(*args, **kwargs):
+            raise AssertionError("mapping the scenes to the places must not ask the LLM")
+
+        with patch.object(location_funcs, "_run", no_llm):
+            located = story_mode.create_story_locations("Song", {"map_only": True})
+        self.assertEqual(located["added"], 0)
+        refs = self.read_session()["flux_reference_builder"]
+        cards = {c["name"]: c for c in refs["locations"]}
+        self.assertEqual(len(cards), 2, "no card is made")
+        self.assertTrue(cards["Home - Kitchen"]["story_setting_id"], "the card is linked to its chapter setting")
+        self.assertEqual(refs["scene_map"][ids[0]], "train_platform")
+        self.assertEqual(refs["scene_map"][ids[9]], "home_kitchen")
+
     def test_plan_needs_acts(self):
         self.write_book()
         with self.assertRaises(errors.ValidationError):

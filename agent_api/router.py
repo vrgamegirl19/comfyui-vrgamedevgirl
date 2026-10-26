@@ -87,6 +87,7 @@ from .orchestrator import (
     upload_lut_service,
 )
 from .orchestrator.story_mode_orchestrator import STORY_MODE_JOB_TYPES
+from .refmod_stems import check_refmod_request, register_refmod_stems_handlers, stems_request
 from .paths import resolve_project_folder
 from .modes import get_modes_catalog
 from .mutations import (
@@ -199,6 +200,7 @@ def register_agent_api_routes(server_instance=None):
         register_reference_orchestrator_handlers(get_job_manager())
         register_storyboard_orchestrator_handlers(get_job_manager())
         register_minimax_prompt_orchestrator_handlers(get_job_manager())
+        register_refmod_stems_handlers(get_job_manager())
     except Exception as _je:
         print(f"[VRGDG API] Job handlers registration warning: {_je}")
 
@@ -287,6 +289,21 @@ def register_agent_api_routes(server_instance=None):
 
         entries = await asyncio.to_thread(list_refmods, str(request.query.get("folder", "") or ""))
         return api_success({"refmods": [{k: v for k, v in entry.items() if k not in ("path", "directory")} for entry in entries]})
+
+    @server_instance.routes.post(f"{_API_V1_PREFIX}/refmods")
+    @_api_endpoint
+    async def api_refmod_create(request: web.Request):
+        """Make a saved RefMod from pictures, like RefMods Studio's Create. Runs as a GPU job."""
+        payload = await request.json() if request.can_read_body else {}
+        params = {
+            "name": payload.get("name"), "type": payload.get("type"), "paths": payload.get("paths"), "crops": payload.get("crops"),
+            "quality": payload.get("quality"), "mode": payload.get("mode"), "steps": payload.get("steps"),
+            "description": payload.get("description"), "overwrite": payload.get("overwrite"),
+        }
+        params = {key: value for key, value in params.items() if value is not None}
+        await asyncio.to_thread(check_refmod_request, params)
+        job = get_job_manager().submit_job("refmod.create", params=params, is_gpu=True)
+        return api_success({"job_id": job.id, "status": job.status, "job": job.to_dict()}, status=202)
 
     @server_instance.routes.get(f"{_API_V1_PREFIX}/models")
     @_api_endpoint
@@ -715,6 +732,21 @@ def register_agent_api_routes(server_instance=None):
             enforce_scene_lengths_on_project, pid, min_seconds, max_seconds, bool(payload.get("dry_run", False))
         )
         return api_success(res)
+
+    @server_instance.routes.post(f"{_API_V1_PREFIX}/projects/{{pid}}/audio/stems")
+    @_api_endpoint
+    async def api_audio_stems(request: web.Request):
+        """Split the project's song into stems with Demucs and write a vocal-free mix. Runs as a GPU job."""
+        pid = request.match_info["pid"]
+        payload = await request.json() if request.can_read_body else {}
+        params = {
+            "audio_path": payload.get("audio_path"), "model_name": payload.get("model_name"),
+            "device": payload.get("device"), "input_gain_db": payload.get("input_gain_db"),
+        }
+        params = {key: value for key, value in params.items() if value is not None}
+        await asyncio.to_thread(stems_request, pid, params)
+        job = get_job_manager().submit_job("audio.stems", project_id=pid, params=params, is_gpu=True)
+        return api_success({"job_id": job.id, "status": job.status, "job": job.to_dict()}, status=202)
 
     @server_instance.routes.post(f"{_API_V1_PREFIX}/projects/{{pid}}/lyrics/align")
     @_api_endpoint

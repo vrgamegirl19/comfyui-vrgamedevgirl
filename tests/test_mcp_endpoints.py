@@ -120,11 +120,11 @@ class EndpointToolsTests(unittest.TestCase):
 
 
 class ToolDescriptionTests(unittest.TestCase):
-    """What an agent reads about a tool: ids that say where to get them, body fields as schema, and safety annotations."""
+    """What an agent reads about a tool: ids that say how to name a scene, body fields as schema, and safety annotations."""
 
     def test_path_ids_and_body_fields_are_described_in_the_schema(self):
         schema = tools.ALL_TOOLS["api_put_scenes_minimax_references"].input_schema
-        self.assertIn("scene_list", schema["properties"]["scene_id"]["description"])
+        self.assertIn("number", schema["properties"]["scene_id"]["description"])
         body = schema["properties"]["body"]
         self.assertEqual(sorted(body["properties"]), ["automatic", "keys"])
         self.assertIn("description", body["properties"]["keys"])

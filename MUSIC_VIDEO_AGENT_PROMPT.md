@@ -54,6 +54,17 @@ scene_length_seconds:
 6. **If a tool fails,** read the error and `next_steps`, fix the cause once, and retry. If it fails again, stop
    and report the exact error. Do not work around it with other tools.
 7. Report after each step in one or two lines: what ran, what the result was, any warning.
+8. **Know what this build can do.** The answer of `system_health` may carry a `features` block (the H3 Studio app does).
+   Plan with it. Do not run a step it says is missing.
+9. **Ask before you do more than was asked.** Ask first before you generate more than a few images, change a setting the user
+   did not mention (for example `automatic_memory_cleanup`), start a GPU job the user did not ask for (a RefMod or the stems),
+   or delete or overwrite anything. Try a new call on a copy made with `project_duplicate`, not on the user's project, and
+   delete only what you made.
+10. **The Video Builder may be open on the project.** It shows what you change as you change it: scene edits and finished renders
+    appear at once, and a change to the settings, a card or the story reloads the project by itself. A scene field the user has
+    typed and not saved is kept. The window waits, then reloads, only while the user is typing or has a render running in it
+    (or has unsaved changes to the settings or cards), and it refuses to save its older copy meanwhile, so nothing you saved is
+    overwritten. There is nothing to tell the user to reload.
 
 ---
 
@@ -146,14 +157,41 @@ they never decide an event or a place. Do steps 1-6 of Part 3, then:
     (`story_book_text`). To fix a chapter: `step: "chapter"`, `chapter_id`, `direction`.
 11. `story_create` with `step: "cast"`. For each listed character the user wants, `reference_upsert` a subject with
     the given name and description (they need an image before rendering).
-12. `story_create` with `step: "acts"`. Wait.
-13. `story_create` with `step: "plan"`. Wait. Every scene now has a story slice, a spot, a mood and a performance
+12. Places, as the Story Builder's Places tab does before the acts: `story_create` with `step: "locations"`
+    (`style_theme` = `location_style_theme`). Wait. It finds the places inside each chapter setting, writes each
+    setting's look and makes one location card per place. Places the user named go in first as location cards
+    (`reference_upsert`, `kind: "locations"`) and are kept word for word.
+13. `story_create` with `step: "acts"`. Wait. The acts happen inside the places.
+14. `story_create` with `step: "plan"`. Wait. Every scene now has a story slice, a spot, a mood and a performance
     (singing, speaking, story only or instrumental), and each act's cast is mapped onto scenes that had none.
-14. `story_create` with `step: "locations"` (`style_theme` = `location_style_theme`). Wait. This writes one location
-    card per spot and maps every scene to it. Do not run `reference_extract_locations` or `reference_assign_scenes`
-    in Story Mode.
-15. `story_create` with `step: "beats"`. Wait. Then continue with Part 3 from step 15 (MiniMax prompts, render,
+15. `story_create` with `step: "locations"` and `map_only: true`. It asks the LLM nothing: it maps every planned scene
+    to the card of its spot. Do not run `reference_extract_locations` or `reference_assign_scenes` in Story Mode.
+16. `story_create` with `step: "beats"`. Wait. Then continue with Part 3 from step 15 (MiniMax prompts, render,
     stitch).
+
+---
+
+## Part 3c - Cards that render from a saved RefMod, and scenes without the singer
+
+### Cards that render from a RefMod
+When the project renders with RefMods (`minimax_h3.pipeline` is `refmod`), H3 receives each scene's RefMods and its audio and
+nothing else: no scene image and no location image. Every scene needs at least one RefMod.
+1. `api_get_refmods` lists the saved RefMods, each as `<type>/<name>`.
+2. Pick one on a card with `reference_upsert`:
+   `payload: {"name": "Corvette", "reference_type": "vehicle", "source": "refmod", "refmod": {"name": "vehicle/C8_Corvette", "strength": 1}}`.
+   A location card takes the same fields. A name that is not saved is an error that lists the saved ones. `source: "image"` takes
+   the RefMod off again.
+3. To make a RefMod from pictures, such as a place or a person you generated, call `refmod_create` with `name`, `type` and
+   `paths`. It is a GPU job: wait with `job_wait`. Then pick `<type>/<name>` as in step 2.
+4. Map the cards to scenes with `reference_scene_mapping_set`. `api_get_scenes_minimax_references` for a scene shows what its
+   render sends (`items`, and `warnings` when a RefMod is missing).
+
+### Scenes without the singer
+H3 makes every face in a shot lip-sync to the audio it hears. For a scene where the singer is not on screen, render it against
+the song without vocals:
+1. `audio_stems_split` once. Wait for the job. The result has `no_vocals_path`.
+2. `video_render` for that scene with `params: {"mode": "minimax_h3", "audio_path": <no_vocals_path>}`.
+The stitch puts the project song under the final video, so the vocals are back in the final.
 
 ---
 

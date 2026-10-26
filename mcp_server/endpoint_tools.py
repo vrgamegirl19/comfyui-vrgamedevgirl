@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .client import VrgdgApiClient
 from .protocol import format_tool_result
-from .tools import ToolDefinition, _safe_call
+from .tools import SCENE_ID_HINT, ToolDefinition, _safe_call
 
 PACK_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ENDPOINTS_PATH = os.path.join(PACK_ROOT, "agent_api", "endpoints.json")
@@ -26,7 +26,7 @@ _ARG_NAMES = {"pid": "project_id", "sid": "scene_id", "rid": "reference_id"}
 # it accepts, so a hint here cannot make a valid call fail a client's schema check.
 _ARG_HINTS = {
     "project_id": "The project's id (its folder name). Get it from project_list.",
-    "scene_id": "The scene's id, e.g. seg_1. Get it from scene_list.",
+    "scene_id": SCENE_ID_HINT,
     "reference_id": "The reference card's id. Get it from references_get.",
     "job_id": "A job id returned by a call that runs as a job.",
     "id": "The id from the path.",

@@ -114,7 +114,10 @@ def _persist_session(folder: str, session: Dict[str, Any], change: Optional[Dict
     current_rev = max(int(session.get("revision") or 0), int(session.get("builder_save_revision") or 0))
     next_rev = current_rev + 1
     session["revision"] = next_rev
-    session["builder_save_revision"] = next_rev
+    # An open Video Builder window numbers its next save one above its last. Leave this number one higher still, so that save is
+    # refused as stale (the server accepts a save that equals the saved number) until the window has reloaded, and does not
+    # overwrite this edit with its older snapshot.
+    session["builder_save_revision"] = next_rev + 1
     session["project_folder"] = folder
     payload = {
         "project_folder": folder,
@@ -799,7 +802,15 @@ def bulk_scene_operations(
     operations: List[Dict[str, Any]],
     if_match_revision: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """Execute a batch of scene mutations atomically in one write (Section 6.4)."""
+    """Execute a batch of scene mutations atomically in one write (Section 6.4).
+
+    Each operation is ``{"op": "move" | "resize" | "patch", "scene_id": id or timeline number, ...}``. A malformed
+    operation or an unknown scene fails the whole batch and nothing is saved.
+    """
+    from .scene_audio import find_scene
+
+    if not isinstance(operations, list) or not operations:
+        raise ValidationError("operations must be a non-empty list of {op, scene_id, ...} objects.")
     with _BUILDER_SAVE_LOCK:
         folder, session = _get_active_session_and_folder(project_id)
         current_rev = int(session.get("revision") or session.get("builder_save_revision") or 0)
@@ -808,29 +819,42 @@ def bulk_scene_operations(
 
         segments = session.setdefault("segments", [])
         applied = 0
-        for op in operations:
+        for position, op in enumerate(operations):
+            where = f"operations[{position}]"
+            if not isinstance(op, dict):
+                raise ValidationError(f"{where} must be an object like {{\"op\": \"patch\", \"scene_id\": \"11\", \"fields\": {{...}}}}.")
             op_type = op.get("op") or op.get("action")
+            if op_type not in ("move", "resize", "patch"):
+                raise ValidationError(f"{where} needs \"op\" set to move, resize or patch (got {op_type!r}).")
+            if op.get("scene_id") in (None, ""):
+                raise ValidationError(f"{where} ({op_type}) needs scene_id: a scene id or its number on the timeline.")
+            scene = find_scene(session, op["scene_id"])
+            if scene is None:
+                raise SceneNotFoundError(str(op["scene_id"]), project_id)
+            scene_id = scene["id"]
             if op_type == "move":
-                move_scene_timing(segments, op["scene_id"], float(op["start"]), ripple=bool(op.get("ripple", False)))
-                applied += 1
+                if op.get("start") is None:
+                    raise ValidationError(f"{where} (move) needs start, in seconds.")
+                move_scene_timing(segments, scene_id, float(op["start"]), ripple=bool(op.get("ripple", False)))
             elif op_type == "resize":
+                if op.get("duration") is None and op.get("end") is None:
+                    raise ValidationError(f"{where} (resize) needs duration or end, in seconds.")
                 resize_scene_timing(
                     segments,
-                    op["scene_id"],
+                    scene_id,
                     new_duration=op.get("duration"),
                     new_end=op.get("end"),
                     ripple=bool(op.get("ripple", False)),
                 )
-                applied += 1
-            elif op_type == "patch":
-                idx = next((i for i, s in enumerate(segments) if s.get("id") == op["scene_id"]), -1)
-                if idx >= 0:
-                    fields = op.get("fields", {})
-                    for k, v in fields.items():
-                        segments[idx][k] = v
-                    if "lyric_text" in fields and "lyric_no_lip_sync" not in fields:
-                        segments[idx]["lyric_no_lip_sync"] = is_instrumental_lyric_text(segments[idx].get("lyric_text"))
-                    applied += 1
+            else:
+                fields = op.get("fields")
+                if not isinstance(fields, dict) or not fields:
+                    raise ValidationError(f"{where} (patch) needs fields: an object of scene fields to set.")
+                for k, v in fields.items():
+                    scene[k] = v
+                if "lyric_text" in fields and "lyric_no_lip_sync" not in fields:
+                    scene["lyric_no_lip_sync"] = is_instrumental_lyric_text(scene.get("lyric_text"))
+            applied += 1
 
         save_result = _persist_session(folder, session)
         return {
@@ -1216,6 +1240,56 @@ def get_scene_reference_overview(project_id: str, scene_id: Optional[str] = None
     return {**maps, "pipeline": pipeline, "scenes": scenes}
 
 
+def _refmod_binding(payload: Dict[str, Any], existing: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """The RefMod a card save binds, or ``None`` when the save does not mention one.
+
+    ``source: "refmod"`` with ``refmod: {name, strength}`` (or ``refmod`` as the RefMod's name) picks a saved RefMod
+    from ``GET /refmods``, the way the Reference Builder's RefMod picker does. Folder, type, kind, tokens and frames
+    are read from the RefMod file. ``source: "image"`` takes the RefMod off again. The result is ``{"source": ...}``
+    and, for a RefMod, ``{"refmod": {...}}`` too.
+    """
+    from ..minimax import refmod_library
+
+    raw = payload.get("refmod")
+    if payload.get("source") is None and raw is None and payload.get("refmod_name") is None:
+        return None
+    source = payload.get("source")
+    if source not in (None, "image", "refmod"):
+        raise ValidationError('source must be "image" or "refmod".')
+    if source == "image":
+        return {"source": "image"}
+    picked = raw if isinstance(raw, dict) else {"name": raw if isinstance(raw, str) else payload.get("refmod_name")}
+    name = str(picked.get("name") or "").strip()
+    if not name:
+        raise ValidationError('source "refmod" needs refmod: {"name": ...}, a saved RefMod from GET /refmods.')
+    entry = refmod_library.find_refmod(name)
+    if entry is None:
+        available = [item["name"] for item in refmod_library.list_refmods("")][:40]
+        raise ValidationError(f"RefMod '{name}' is not in models/refmods. Pick one from GET /refmods: {', '.join(available) or 'none saved'}.")
+    saved = existing.get("refmod") if isinstance(existing.get("refmod"), dict) and existing["refmod"].get("name") == entry["name"] else {}
+    strength = picked.get("strength", saved.get("strength", 1.0))
+    try:
+        strength = float(strength)
+    except (TypeError, ValueError):
+        strength = -1.0
+    if not 0.0 <= strength <= 1.0:
+        raise ValidationError("refmod.strength must be a number from 0 to 1.")
+    return {"source": "refmod", "refmod": {
+        "name": entry["name"], "folder": entry["folder"], "type": entry["type"], "kind": entry["kind"],
+        "tokens": int(entry["tokens"]), "frames": int(entry["frames"]), "strength": strength,
+    }}
+
+
+def _apply_refmod_binding(card: Dict[str, Any], binding: Optional[Dict[str, Any]]) -> None:
+    if binding is None:
+        return
+    card["source"] = binding["source"]
+    if "refmod" in binding:
+        card["refmod"] = binding["refmod"]
+    else:
+        card.pop("refmod", None)
+
+
 def upsert_reference_subject(
     project_id: str,
     subject_id: str,
@@ -1234,6 +1308,7 @@ def upsert_reference_subject(
 
         idx = next((i for i, s in enumerate(subjects) if s.get("id") == subject_id), -1)
         existing = subjects[idx] if idx >= 0 else {}
+        binding = _refmod_binding(payload, existing)
         voice = payload.get("minimax_voice")
         if voice is None:
             voice = existing.get("minimax_voice", "none")
@@ -1280,6 +1355,7 @@ def upsert_reference_subject(
         else:
             subjects.append(subj)
             item = subj
+        _apply_refmod_binding(item, binding)
 
         if subjects and item is subjects[0]:
             ref_builder.setdefault("subject", {})["elevenlabs_voice"] = dict(elevenlabs_voice)
@@ -1309,13 +1385,15 @@ def upsert_reference_location(
         locations = ref_builder.setdefault("locations", [])
 
         idx = next((i for i, loc in enumerate(locations) if loc.get("id") == location_id), -1)
+        existing = locations[idx] if idx >= 0 else {}
+        binding = _refmod_binding(payload, existing)
         loc = {
             "id": location_id,
-            "name": payload.get("name", "Location"),
-            "description": payload.get("description", ""),
-            "trigger_phrase": payload.get("trigger_phrase", ""),
-            "trigger_position": payload.get("trigger_position", "start"),
-            "image": payload.get("image", {}),
+            "name": payload.get("name", existing.get("name", "Location")),
+            "description": payload.get("description", existing.get("description", "")),
+            "trigger_phrase": payload.get("trigger_phrase", existing.get("trigger_phrase", "")),
+            "trigger_position": payload.get("trigger_position", existing.get("trigger_position", "start")),
+            "image": payload.get("image", existing.get("image", {})),
         }
 
         if idx >= 0:
@@ -1324,6 +1402,7 @@ def upsert_reference_location(
         else:
             locations.append(loc)
             item = loc
+        _apply_refmod_binding(item, binding)
 
         save_result = _persist_session(folder, session)
         return {

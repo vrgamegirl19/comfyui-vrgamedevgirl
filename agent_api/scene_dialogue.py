@@ -11,6 +11,7 @@ from ..llm.scene_dialogue import craft_dialogue
 from .errors import SceneNotFoundError, ValidationError
 from .llm_runtime import llm_payload_from_session, prepare_llm_payload, project_elevenlabs_key
 from .mutations import _get_active_session_and_folder
+from .scene_audio import find_scene
 
 
 def dialogue_request(
@@ -19,8 +20,7 @@ def dialogue_request(
     """Resolve a saved scene, draft, voice and runner without mutating state."""
     with _BUILDER_SAVE_LOCK:
         folder, session = _get_active_session_and_folder(project_id)
-        scene = next((s for s in session.get("segments", [])
-                      if s["id"] == scene_id), None)
+        scene = find_scene(session, scene_id)
         if scene is None:
             raise SceneNotFoundError(scene_id, project_id)
         try:
@@ -36,7 +36,7 @@ def dialogue_request(
             raise ValidationError(str(exc)) from exc
         return {
             **llm_payload_from_session(session), **speaker, "dialogue": draft,
-            "project_folder": folder, "scene_id": scene_id,
+            "project_folder": folder, "scene_id": scene["id"],
             "api_key": project_elevenlabs_key(session),
             "unload_after": False, "clear_before_load": False,
         }

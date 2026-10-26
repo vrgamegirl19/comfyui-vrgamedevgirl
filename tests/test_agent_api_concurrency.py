@@ -125,6 +125,27 @@ class ConcurrentEditTests(unittest.TestCase):
         self.assertTrue(result.get("stale"), "the stale UI save must be reported, not silently accepted")
         self.assertEqual(len(self.load_session()["segments"]), 3, "the agent's scene must survive the stale UI save")
 
+    def test_the_open_builders_next_save_after_one_agent_edit_is_refused(self):
+        # The Builder window saved as save 7 and numbers its next save 8. One agent edit lands in between.
+        window = self.load_session()
+        self.save_session({**window, "revision": 7, "builder_save_revision": 7})
+        mutations.create_scene("Song", position="append", label="Agent scene", duration=2.0)
+        self.assertEqual(len(self.load_session()["segments"]), 3)
+
+        result = builder_project._save_builder_session({"project_folder": self.folder, "session": {**window, "builder_save_revision": 8}})
+
+        self.assertTrue(result.get("stale"), "the window's next save is older than the agent's edit and must be refused")
+        self.assertEqual(len(self.load_session()["segments"]), 3, "the agent's scene must survive the window's autosave")
+
+    def test_the_window_saves_again_once_it_has_reloaded(self):
+        mutations.create_scene("Song", position="append", label="Agent scene", duration=2.0)
+        reloaded = self.load_session()
+        # A window that reloaded takes the saved number as its own and numbers its next save one above it.
+        result = builder_project._save_builder_session({
+            "project_folder": self.folder, "session": {**reloaded, "builder_save_revision": int(reloaded["builder_save_revision"]) + 1},
+        })
+        self.assertFalse(result.get("stale"))
+
 
 if __name__ == "__main__":
     unittest.main()

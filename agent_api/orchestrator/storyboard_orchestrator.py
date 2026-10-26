@@ -194,6 +194,7 @@ def set_story_settings(
         STORY_MODE_EDIT_KEYS,
         apply_continuations_to_segments,
         apply_plan_to_segments,
+        fill_cast_from_acts,
         story_mode_edit_fields,
     )
 
@@ -240,6 +241,8 @@ def set_story_settings(
         layer.update(story_in)
         if "story_scene_plan" in story_in:
             apply_plan_to_segments(session, story_in["story_scene_plan"])
+            # Like the Story Builder when a plan is saved: each planned scene's cast becomes its characters.
+            fill_cast_from_acts(session, layer.get("story_acts") or [], story_in["story_scene_plan"])
             apply_continuations_to_segments(session, story_in["story_scene_plan"])
         _save_story_layer(session, layer)
         saved = _persist_session(folder, session)

@@ -32,6 +32,14 @@ Resources you can read when you need detail: `vrgdg://docs/endpoints` (every end
    (a file is missing, a tool fails twice).
 9. **If a tool fails,** read the error and `next_steps`, fix the cause once and retry. If it fails again, stop and tell
    the user the exact error.
+10. **Ask before you do more than was asked.** Ask first before you generate more than a few images, change a setting the user
+    did not mention, start a RefMod or stems job, or delete or overwrite anything. Try a new call on a copy made with
+    `project_duplicate`, not on the user's project, and delete only what you made. If `system_health` carries a `features`
+    block, plan with it.
+11. **The Video Builder may be open on the project.** It shows your edits and finished renders as they happen and reloads by
+    itself after a change to the settings, a card or the story, keeping what the user has typed and not saved. While the user is
+    typing or rendering in the window it waits, and it never saves its older copy over your edits. There is nothing to tell the
+    user to reload.
 
 ---
 
@@ -138,7 +146,21 @@ Tell the user, briefly:
 Then ask whether they want anything changed (a scene re-rendered, a prompt rewritten, settings adjusted). To do that,
 use `scene_update`, `minimax_prompts` with `scene_ids` and `replace_existing`, or `video_render` for that scene.
 
+The user names a scene by its number on the timeline ("scene 11"). Pass that number as `scene_id` ("11") to any tool,
+for example `scene_get` to read its prompt, and do not search `scene_list` for it. Numbers move when scenes are added or removed, ids do not.
+
 ---
+
+## Appendix: RefMod renders and scenes without the singer
+
+When the project renders with RefMods (`minimax_h3.pipeline` is `refmod`), H3 receives each scene's RefMods and its audio and
+nothing else, never a scene or location image, and every scene needs at least one RefMod. `api_get_refmods` lists the saved
+ones as `<type>/<name>`. Pick one on a character or location card with `reference_upsert` and
+`payload: {"source": "refmod", "refmod": {"name": "vehicle/C8_Corvette", "strength": 1}}`. To make one from pictures, call
+`refmod_create` with `name`, `type` and `paths` and wait with `job_wait`.
+
+H3 makes every face in a shot lip-sync to the audio it hears. For a scene where the singer is not on screen, call
+`audio_stems_split` once, wait for the job, and render that scene with `params: {"mode": "minimax_h3", "audio_path": <no_vocals_path>}`.
 
 ## Appendix: video styles
 
