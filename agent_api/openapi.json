@@ -2928,6 +2928,69 @@
         ]
       }
     },
+    "/vrgdg/api/v1/projects/{pid}/audio/stems": {
+      "post": {
+        "operationId": "api_audio_stems",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "audio_path": {},
+                  "device": {},
+                  "input_gain_db": {},
+                  "model_name": {}
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Error. The HTTP status mirrors error.code."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {}
+        ],
+        "summary": "Split the project's song into stems with Demucs and write a vocal-free mix. Runs as a GPU job.",
+        "tags": [
+          "audio"
+        ]
+      }
+    },
     "/vrgdg/api/v1/projects/{pid}/audio/waveform": {
       "get": {
         "operationId": "api_get_waveform",
@@ -10281,6 +10344,63 @@
           {}
         ],
         "summary": "refmods",
+        "tags": [
+          "refmods"
+        ]
+      },
+      "post": {
+        "operationId": "api_refmod_create",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "crops": {},
+                  "description": {},
+                  "mode": {},
+                  "name": {},
+                  "overwrite": {},
+                  "paths": {},
+                  "quality": {},
+                  "steps": {},
+                  "type": {}
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Error. The HTTP status mirrors error.code."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {}
+        ],
+        "summary": "Make a saved RefMod from pictures, like RefMods Studio's Create. Runs as a GPU job.",
         "tags": [
           "refmods"
         ]

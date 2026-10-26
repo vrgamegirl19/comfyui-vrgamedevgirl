@@ -173,9 +173,9 @@ class TestMcpServer(unittest.TestCase):
         req = {"jsonrpc": "2.0", "id": 3, "method": "tools/list"}
         res = self.server.handle_request(req)
         tools = res["result"]["tools"]
-        # 67 named tools, one generated `api_*` tool per other endpoint (see test_mcp_endpoints.py) and `api_request`.
-        self.assertGreaterEqual(len(tools), 67 + 1)
-        self.assertEqual(sum(1 for t in tools if not t["name"].startswith("api_")), 67)
+        # 69 named tools, one generated `api_*` tool per other endpoint (see test_mcp_endpoints.py) and `api_request`.
+        self.assertGreaterEqual(len(tools), 69 + 1)
+        self.assertEqual(sum(1 for t in tools if not t["name"].startswith("api_")), 69)
         tool_names = {t["name"] for t in tools}
         self.assertIn("system_health", tool_names)
         self.assertIn("project_create", tool_names)

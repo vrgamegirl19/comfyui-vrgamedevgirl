@@ -403,6 +403,78 @@ def separate_scene_stems(payload: Dict[str, Any]) -> Dict[str, Any]:
     return scene_state(payload)
 
 
+PROJECT_STEMS_FOLDER = os.path.join("project_audio", "stems")
+
+
+def project_stems_folder(project_folder: Any, create: bool = False) -> str:
+    """The folder that holds the whole song's stems, inside the project folder."""
+    raw = str(project_folder or "").strip().strip('"')
+    project = os.path.abspath(raw) if raw else ""
+    if not project or not os.path.isdir(project):
+        raise ValueError("Project folder is empty or does not exist.")
+    folder = os.path.join(project, PROJECT_STEMS_FOLDER)
+    if create:
+        os.makedirs(folder, exist_ok=True)
+    return folder
+
+
+def separate_project_audio(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Split the whole song into stems, and write a vocal-free mix (``no_vocals.wav``) beside them.
+
+    The Audio Mask splits one scene at a time. This splits the song once, for a render that must not have the singer's voice
+    (``audio_path`` of a scene render), so a face that is not the singer has nothing to lip-sync to. Files live in
+    ``<project>/project_audio/stems/``: one wav per stem, ``no_vocals.wav`` and ``stems.json``. Every wav is 44.1 kHz stereo 16 bit and
+    exactly the song's length.
+    """
+    folder = project_stems_folder(payload.get("project_folder"), create=True)
+    source = _resolve_existing_file(payload.get("audio_path"), "Project audio")
+    model_name = str(payload.get("model_name") or "htdemucs")
+    if model_name not in MODEL_NAMES:
+        raise ValueError(f"Unknown Demucs model: {model_name}")
+    device = str(payload.get("device") or "auto")
+    if device not in DEVICES:
+        raise ValueError(f"Unknown device: {device}")
+    gain_db = _number(payload, "input_gain_db", 0.0, -24.0, 24.0)
+    ffmpeg = _find_ffmpeg_path()
+    full_path = os.path.join(folder, "_full.wav")
+    filters = []
+    if gain_db:
+        filters.append(f"volume={gain_db:.2f}dB")
+        if gain_db > 0:
+            filters.append("alimiter=limit=0.97")
+    started = time.time()
+    with _SEPARATE_LOCK:
+        _ffmpeg([ffmpeg, "-y", "-i", source, "-vn", "-ac", "2", "-ar", str(SAMPLE_RATE), *(["-af", ",".join(filters)] if filters else []),
+                 "-c:a", "pcm_s16le", full_path], "ffmpeg could not read the song.")
+        try:
+            mix = _read_wav(full_path)
+            stems = _run_demucs(mix, model_name, device)
+        finally:
+            if os.path.isfile(full_path):
+                os.remove(full_path)
+    if "vocals" not in stems or len(stems) < 2:
+        raise RuntimeError("The split did not give a vocals stem and the rest.")
+    samples = mix.shape[1]
+    written: Dict[str, str] = {}
+    for name in ALL_STEM_NAMES:
+        stem_path = os.path.join(folder, f"{name}.wav")
+        if name in stems:
+            _write_wav(stem_path, _fit(stems[name], samples))
+            written[name] = stem_path
+        elif os.path.isfile(stem_path):
+            os.remove(stem_path)  # a stem the new model does not have, left by an earlier split
+    instrumental = sum(_fit(stems[name], samples) for name in stems if name != "vocals")
+    no_vocals_path = os.path.join(folder, "no_vocals.wav")
+    _write_wav(no_vocals_path, instrumental)
+    result = {
+        "model_name": model_name, "device": device, "input_gain_db": gain_db, "source_path": source,
+        "stems": written, "vocals_path": written["vocals"], "no_vocals_path": no_vocals_path,
+        "duration_seconds": round(samples / SAMPLE_RATE, 3), "seconds_taken": round(time.time() - started, 2),
+    }
+    atomic_write_json(os.path.join(folder, "stems.json"), {**result, "created_at": time.time()})
+    return result
+
+
 def render_masked_mix(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Build ``masked_mix.wav`` from the saved stems and the per stem settings in ``payload["stems"]``."""
     folder = scene_folder(payload.get("project_folder"), payload.get("scene_id"))

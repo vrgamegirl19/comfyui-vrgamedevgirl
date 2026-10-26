@@ -360,6 +360,19 @@ def _t29_references_extract(client: VrgdgApiClient, args: Dict[str, Any]) -> Dic
     return format_tool_result(res)
 
 @_safe_call
+def _refmod_create(client: VrgdgApiClient, args: Dict[str, Any]) -> Dict[str, Any]:
+    body = {key: args[key] for key in ("name", "type", "paths", "crops", "quality", "mode", "steps", "description", "overwrite") if args.get(key) is not None}
+    res = client.post("/refmods", json_data=body)
+    return format_tool_result(res)
+
+@_safe_call
+def _audio_stems_split(client: VrgdgApiClient, args: Dict[str, Any]) -> Dict[str, Any]:
+    pid = args["project_id"]
+    body = {key: args[key] for key in ("audio_path", "model_name", "device", "input_gain_db") if args.get(key) is not None}
+    res = client.post(f"/projects/{pid}/audio/stems", json_data=body)
+    return format_tool_result(res)
+
+@_safe_call
 def _t30_reference_scene_mapping_set(client: VrgdgApiClient, args: Dict[str, Any]) -> Dict[str, Any]:
     pid = args["project_id"]
     mapping = args.get("mapping", {})
@@ -1088,16 +1101,87 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
     ),
     "scenes_bulk_edit": ToolDefinition(
         name="scenes_bulk_edit",
-        description="Execute multiple scene operations atomically (T24).",
+        description=(
+            "Execute multiple scene operations atomically (T24). Each operation is an object with `op` (move, resize or patch) "
+            "and `scene_id`. A malformed operation or an unknown scene fails the whole batch and saves nothing."
+        ),
         input_schema={
             "type": "object",
             "properties": {
                 "project_id": {"type": "string"},
-                "operations": {"type": "array", "items": {"type": "object"}},
+                "operations": {
+                    "type": "array",
+                    "minItems": 1,
+                    "description": (
+                        'For example [{"op": "patch", "scene_id": "11", "fields": {"timeline_note": "..."}}, '
+                        '{"op": "move", "scene_id": "12", "start": 30.5}, {"op": "resize", "scene_id": "12", "duration": 4}].'
+                    ),
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "op": {"type": "string", "enum": ["move", "resize", "patch"]},
+                            "scene_id": {"type": "string", "description": SCENE_ID_HINT},
+                            "start": {"type": "number", "description": "move: the scene's new start, in seconds."},
+                            "duration": {"type": "number", "description": "resize: the new length, in seconds (or send end)."},
+                            "end": {"type": "number", "description": "resize: the new end, in seconds (or send duration)."},
+                            "ripple": {"type": "boolean", "description": "move and resize: shift the later scenes too."},
+                            "fields": {"type": "object", "description": "patch: the scene fields to set, under the Builder's own names."},
+                        },
+                        "required": ["op", "scene_id"],
+                    },
+                },
             },
             "required": ["project_id", "operations"],
         },
         handler=_t24_scenes_bulk_edit,
+    ),
+    "refmod_create": ToolDefinition(
+        name="refmod_create",
+        description=(
+            "Make a saved RefMod from pictures, as a GPU job (use job_wait). A RefMod is what a RefMod render sends to H3 for a character, "
+            "a place or an object, so this is how a picture such as a location plate becomes one. The result names it "
+            '"<type>/<name>": pick it on a card with reference_upsert (source "refmod", refmod {name}). Needs ComfyUI with ComfyUI-MiniMaxH3Mod.'
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "The RefMod's name, for example Darrel_noclothes."},
+                "type": {
+                    "type": "string",
+                    "enum": ["identity", "clothing_men", "clothing_women", "background", "generic", "object", "prop", "vehicle", "creature"],
+                    "description": "What the RefMod is. It is also the folder it is saved in.",
+                },
+                "paths": {"type": "array", "items": {"type": "string"}, "description": "Picture files on this computer, one or more, in order."},
+                "crops": {"type": "array", "description": "One [x0, y0, x1, y1] or null for each picture, to keep only that part."},
+                "quality": {"type": "string", "enum": ["maximum", "high", "balanced", "compact", "draft"], "description": "Default balanced."},
+                "mode": {"type": "string", "enum": ["Full Reference", "Compressed Reference"], "description": "Default Full Reference."},
+                "steps": {"type": "integer", "description": "Refinement steps, 0 to 2000. Default 500."},
+                "description": {"type": "string"},
+                "overwrite": {"type": "boolean", "description": "Replace a RefMod of the same name."},
+            },
+            "required": ["name", "type", "paths"],
+        },
+        handler=_refmod_create,
+    ),
+    "audio_stems_split": ToolDefinition(
+        name="audio_stems_split",
+        description=(
+            "Split the project's song into stems with Demucs and write a vocal-free mix, as a GPU job (use job_wait). The result has vocals_path "
+            "and no_vocals_path. To render a scene without the singer's voice, so a face that is not the singer has nothing to lip-sync to, send "
+            "no_vocals_path as audio_path in the params of video_render."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "project_id": {"type": "string"},
+                "audio_path": {"type": "string", "description": "A sound file to split instead of the project song."},
+                "model_name": {"type": "string", "enum": ["htdemucs", "htdemucs_ft", "mdx_extra", "htdemucs_6s"], "description": "Default htdemucs."},
+                "device": {"type": "string", "enum": ["auto", "cuda", "cpu"]},
+                "input_gain_db": {"type": "number", "description": "-24 to 24. Raise it when the vocals are quiet."},
+            },
+            "required": ["project_id"],
+        },
+        handler=_audio_stems_split,
     ),
     "story_generate": ToolDefinition(
         name="story_generate",
@@ -1138,14 +1222,24 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
     ),
     "reference_upsert": ToolDefinition(
         name="reference_upsert",
-        description="Add or update a reference subject or location (T28).",
+        description=(
+            "Add or update a reference subject or location (T28). Keys you do not send keep their saved value. To render with a saved "
+            'RefMod, send source "refmod" and refmod {name, strength} with a name from api_get_refmods.'
+        ),
         input_schema={
             "type": "object",
             "properties": {
                 "project_id": {"type": "string"},
                 "kind": {"type": "string", "enum": ["subjects", "locations"]},
                 "reference_id": {"type": "string"},
-                "payload": {"type": "object"},
+                "payload": {
+                    "type": "object",
+                    "description": (
+                        'Card fields: name, description, reference_type (subjects: character, prop, vehicle, creature, outfit...), trigger_phrase, '
+                        'image {path}, and source "refmod" with refmod {"name": "vehicle/C8_Corvette", "strength": 1} (a name from api_get_refmods, '
+                        'strength 0 to 1) to bind a saved RefMod. source "image" takes the RefMod off. An unknown RefMod name is an error.'
+                    ),
+                },
             },
             "required": ["project_id", "kind", "reference_id", "payload"],
         },
@@ -1257,13 +1351,21 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
     ),
     "video_render": ToolDefinition(
         name="video_render",
-        description="Submit a video render job for a scene or batch (T36).",
+        description="Submit a video render job for a scene or batch (T36). Send scene_id for one scene, leave it out for many.",
         input_schema={
             "type": "object",
             "properties": {
                 "project_id": {"type": "string"},
                 "scene_id": {"type": "string", "description": SCENE_ID_HINT},
-                "params": {"type": "object"},
+                "params": {
+                    "type": "object",
+                    "description": (
+                        'Render options. mode ("minimax_h3"). audio_path: a sound file to render against instead of the project song, for example '
+                        "a vocal-free track so a face that is not the singer has nothing to lip-sync to. "
+                        "timeout_hours. match_start_color (true matches the first frame's colour to the previous scene). prompt: a prompt to use "
+                        "instead of the saved one. Many scenes: scene_ids, scope, range, run_mode (missing or resume_missing), force."
+                    ),
+                },
             },
             "required": ["project_id"],
         },
@@ -1594,8 +1696,9 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
             "direction, 'cast' lists story characters that have no card (nothing saved), 'remove_people' rewrites the book "
             "without the people in names, 'acts' splits every chapter (or "
             "chapter_id) into acts, 'plan' gives every scene (or act_id's scenes) a story slice, spot, mood and performance, "
-            "'locations' makes a location card per spot (from the story, never the lyrics) and maps the scenes. "
-            "For LM Studio the loaded model is used and never changed."
+            "'locations' makes a location card per place and maps the scenes (from the story, never the lyrics): before the plan "
+            "it finds the places inside each chapter setting (the Places tab), and with map_only after the plan it only maps each "
+            "scene to a card that exists. For LM Studio the loaded model is used and never changed."
         ),
         input_schema={
             "type": "object",
@@ -1603,6 +1706,9 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
                 "project_id": {"type": "string"},
                 "step": {"type": "string", "enum": ["arc", "brief", "beats", "book", "split", "convert", "chapter", "cast", "remove_people", "acts", "plan", "locations"]},
                 "style_theme": {"type": "string", "description": "locations only: look and banned places."},
+                "map_only": {"type": "boolean", "description": "locations only: after the plan, map each scene to a location card that exists and make nothing (no LLM)."},
+                "regenerate_looks": {"type": "boolean", "description": "locations only: write every setting's look again."},
+                "replace_descriptions": {"type": "boolean", "description": "locations only: replace the description of a card that has one."},
                 "act_id": {"type": "string", "description": "plan only: rebuild one act's scenes."},
                 "spot_min_scenes": {"type": "integer", "description": "plan only: fewest scenes in a row at one spot."},
                 "story_idea": {"type": "string", "description": "arc and book; defaults to the saved idea."},

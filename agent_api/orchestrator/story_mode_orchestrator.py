@@ -311,7 +311,9 @@ def create_story_locations(project_id: str, params: Optional[Dict[str, Any]] = N
     """Give each chapter setting a look and each planned spot a location card, then map every scene to its spot.
 
     Uses the story, the scene plan and the style/theme notes only; the lyrics are not sent. Existing cards with the
-    same name keep their image (and their description unless ``replace_descriptions``).
+    same name keep their image (and their description unless ``replace_descriptions``). Before any scene is planned it
+    finds the places inside each chapter setting and makes a card for each (the Story Builder's Places tab). With
+    ``map_only`` after the plan nothing is written by the LLM: each scene is only mapped to a card that already exists.
     """
     params = dict(params or {})
     folder, session = _get_active_session_and_folder(project_id)
@@ -320,7 +322,7 @@ def create_story_locations(project_id: str, params: Optional[Dict[str, Any]] = N
     refs = session.get("flux_reference_builder") if isinstance(session.get("flux_reference_builder"), dict) else {}
     local_notes = str(params.get("style_theme") or refs.get("location_style_theme") or "").strip()
     request = _request(session, params, cards, style_theme=location_style_theme_text(folder, session, local_notes),
-                       regenerate_looks=bool(params.get("regenerate_looks")))
+                       regenerate_looks=bool(params.get("regenerate_looks")), map_only=bool(params.get("map_only")))
     try:
         result = location_funcs.build_story_locations(request, progress=progress)
     except ValueError as error:
