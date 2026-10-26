@@ -17,6 +17,13 @@ export function storyboardReferenceImageSrc(image) {
   return path ? makeStoryboardImageUrl(path) : "";
 }
 
+// A card's own image, or for a RefMod card without one the saved RefMod's preview.
+export function storyboardCardImageSrc(card) {
+  const image = storyboardReferenceImageSrc(card?.image);
+  if (image || !isRefmodCard(card)) return image;
+  return `/vrgdg/refmod/preview?name=${encodeURIComponent(card.refmod.name)}`;
+}
+
 export function normalizeReferenceImage(value = {}) {
   const source = value && typeof value === "object" ? value : {};
   const image = source.image && typeof source.image === "object" ? source.image : source;
@@ -80,7 +87,7 @@ export function storyboardRefmodLabels(scene, catalogSubjects = []) {
 }
 
 export function referenceChipHtml(ref, fallbackLabel = "Reference", refmodLabel = "") {
-  const image = storyboardReferenceImageSrc(ref?.image);
+  const image = storyboardCardImageSrc(ref);
   const label = String(ref?.name || fallbackLabel || "Reference").trim();
   const badge = isRefmodCard(ref)
     ? `<span title="Rendered from the saved RefMod ${escapeHtml(ref.refmod.name)}" style="flex:0 0 auto;border:1px solid #0891b2;border-radius:999px;color:#a5f3fc;font-size:10px;font-weight:900;padding:1px 6px;">◈ ${escapeHtml(refmodLabel || "RefMod")}</span>`
