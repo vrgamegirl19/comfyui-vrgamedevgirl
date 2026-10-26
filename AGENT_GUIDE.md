@@ -283,6 +283,9 @@ The `builder` package contains the backend business logic and HTTP API powering 
   - `_open_native_picker(type="file", ...)`: Spawns the operating system's native file/folder explorer dialog.
   - `_open_local_file(path)`: Launches the default system media player or image viewer for a rendered asset.
 
+#### [builder/export_video.py](builder/export_video.py)
+- **Purpose**: The timeline's **Export** button, next to Scenes Locked. `web/music_video_builder/export_video.mjs` turns it on only when every base scene has its final video (none rendering, no MiniMax draft), asks where to save with `POST /vrgdg/music_builder/pick_path` `kind: "save_video"` (`file_name` is the dialog's start name, from `builder/paths.py`), stitches with the Builder's own `stitchRenderedScenes` as `EXPORT_VIDEO.mp4`, then calls `POST /vrgdg/music_builder/export_final_video` (`source_path`, `destination_path`, `project_folder`, `remove_source`). That copies the stitch through a hidden `.partial` file and deletes it. Only an `.mp4` destination in an existing folder is accepted, and only an `EXPORT_VIDEO*` file directly in the project folder is ever removed. A Builder feature, not part of the Agent API (agents use `POST /projects/{project_id}/stitch`). The Rust app has the same two routes. Verify with `tests/test_export_video.py` and `node --test tests/export_video.cjs`.
+
 #### [builder/video_editor.py](builder/video_editor.py)
 - **Purpose**: Static asset delivery endpoints for high-throughput video/image timeline streaming.
 - **Key Endpoints**:

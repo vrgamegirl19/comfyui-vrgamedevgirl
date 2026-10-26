@@ -25,6 +25,7 @@ from .video_profiles import (
     ProfileExistsError, delete_video_profile, get_last_video_profile_name, list_video_profiles, load_video_profile,
     save_video_profile, set_last_video_profile,
 )
+from .export_video import _export_final_video
 from .paths import _open_local_file, _open_native_picker, _resolve_existing_file
 from .elevenlabs import list_voices
 from .elevenlabs_voice_design import create_designed_voice, design_voice
@@ -808,11 +809,24 @@ def _ensure_music_builder_routes():
         try:
             payload = await request.json()
             kind = str(payload.get("kind", "") or "")
+            file_name = str(payload.get("file_name", "") or "")
             # macOS aborts when a Tk window is created off the main thread, so the picker stays on the event loop there.
-            path = _open_native_picker(kind) if sys.platform == "darwin" else await asyncio.to_thread(_open_native_picker, kind)
+            if sys.platform == "darwin":
+                path = _open_native_picker(kind, file_name)
+            else:
+                path = await asyncio.to_thread(_open_native_picker, kind, file_name)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, "path": path})
+
+    @server_instance.routes.post("/vrgdg/music_builder/export_final_video")
+    async def vrgdg_music_builder_export_final_video(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(_export_final_video, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
 
     @server_instance.routes.get("/vrgdg/music_builder/audio")
     async def vrgdg_music_builder_audio(request):

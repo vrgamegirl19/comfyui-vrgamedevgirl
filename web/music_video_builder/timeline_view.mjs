@@ -37,6 +37,7 @@ import { audioChunkDuration, audioTimelineStart, markerEnd, normalizeTimelineMar
 import { mappedLocation } from "./scene_locations.mjs";
 import { STORY_CHAPTER_COLORS, storySceneIndex } from "./story_mode_data.mjs";
 import { wireLatentContinuationOffAll } from "./timeline_continuity.mjs";
+import { syncExportButton } from "./export_video.mjs";
 import { wireUnlockAllScenes } from "./timeline_video_settings.mjs";
 import { createTimelineToolWindows } from "./timeline_tool_windows.mjs";
 import { createTimelineEmotionNote, timelineEmotionNotesVisible } from "./timeline_emotion_notes.mjs";
@@ -367,6 +368,11 @@ export function buildTimelineView({ overlay, preview, previewStage, getDeleteAva
   // One visible scene lock; unlocking also releases saved/imported strict timing freezes.
   const sceneDragLockButton = makeButton("🔒 Scenes Locked");
   sceneDragLockButton.style.cssText += "flex:0 0 auto;padding:7px 10px;";
+  // Next to the lock: stitches every rendered scene into one video and saves it where the user chooses (export_video.mjs).
+  const exportVideoButton = makeButton("Export");
+  exportVideoButton.style.cssText += "flex:0 0 auto;padding:7px 10px;";
+  exportVideoButton.disabled = true;
+  exportVideoButton.title = "Render every scene to export the finished video.";
   timelineHeader.style.cssText = "display:flex;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid #27272a;font-size:12px;overflow-x:auto;overflow-y:hidden;white-space:nowrap;";
   const bulkSegmentsButton = makeButton("Bulk Segments");
   const sceneNoteButton = makeButton("+ Scene Note");
@@ -548,7 +554,7 @@ export function buildTimelineView({ overlay, preview, previewStage, getDeleteAva
   addOverlaySegmentButton.textContent = "+ Overlay Track";
   timelineToolRail.append(bulkSegmentsButton, sceneNoteButton, videoNoteButton, lyricNoteButton, emotionTagButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton, audioMaskButton, stemMonitorButton, stemVisibilityButton);
   timelineHeader.append(toolsButton, splitSceneButton, idLoraTrimModeButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineStatusInfo, deleteSegmentButton, deleteAllButton);
-  timelineHeader.append(addAudioClipButton, sceneDragLockButton);
+  timelineHeader.append(addAudioClipButton, sceneDragLockButton, exportVideoButton);
   const timelineBody = document.createElement("div");
   timelineBody.style.cssText = "display:grid;grid-template-columns:auto minmax(0,1fr);min-height:0;overflow:hidden;";
   const timelineViewport = document.createElement("div");
@@ -573,7 +579,7 @@ export function buildTimelineView({ overlay, preview, previewStage, getDeleteAva
     deleteAllTimelineVideosButton, deleteSegmentButton, globalAudioMuteButton, addAudioClipButton,
     globalScrub, globalScrubTime, idLoraTrimModeButton, lyricNoteButton, emotionTagButton, locationThumbnailButton, multiSelectButton,
     multiSelectHintButton, overlayTrackHintButton, overlayTrackToggleButton, playButton, playhead, redoButton,
-    refreshDeleteActions, sceneDragLockButton, sceneNoteButton, segmentLayer, setInButton, setOutButton, snapSceneEdgeButton,
+    refreshDeleteActions, sceneDragLockButton, exportVideoButton, sceneNoteButton, segmentLayer, setInButton, setOutButton, snapSceneEdgeButton,
     snapToBeatsControl, splitSceneButton, stopButton, timeline, timelineCanvas, timelineInfo,
     stemLayer, timelineRangeInfo, timelineResizeHandle, timelineViewport, undoButton,
     latentContinuationOffAllButton, unlockAllScenesButton, videoNoteButton, waveformModeSelect, zoomInButton, zoomOutButton,
@@ -592,7 +598,7 @@ export function createTimelineView({
   selectedTimelineRangeInfo, setActiveSegment, state, syncInspector, syncLyricMapperFromSegments,
   timelineCanvas, timelineDuration, timelineSegmentLabel, toggleSegmentPreviewMode,
   locationThumbnailButton, refreshDeleteActions, latentContinuationOffAllButton, unlockAllScenesButton,
-  sceneDragLockButton = null,
+  sceneDragLockButton = null, exportVideoButton = null,
 }) {
   wireSceneDragLock({ button: sceneDragLockButton, state, pushHistory, syncInspector, render, autoSaveSessionQuiet });
   wireLatentContinuationOffAll({ button: latentContinuationOffAllButton, state, pushHistory, syncInspector, render, autoSaveSessionQuiet });
@@ -1221,6 +1227,7 @@ export function createTimelineView({
 
   function renderSegments() {
     syncSceneDragLockButton(sceneDragLockButton, state);
+    syncExportButton(exportVideoButton, state);
     refreshDeleteActions();
     refreshStemBand();
     segmentLayer.textContent = "";
