@@ -47,7 +47,12 @@ class RefModSceneTests(unittest.TestCase):
         self.assertFalse(report["over_limit"])
         self.assertIsNone(scene.token_report([person("A", 520), person("B", 1000, 0.6)])["imbalance"])
         self.assertIsNone(scene.token_report([person("A", 1000), person("Meadow", 5000, 1, "background")])["imbalance"])
-        self.assertTrue(scene.token_report([person("A", 3500), person("B", 3500)])["over_limit"])
+        self.assertTrue(scene.token_report([person("A", 4500), person("B", 4500)])["over_limit"])
+
+    def test_the_token_warning_starts_above_8192(self):
+        self.assertEqual(scene.TOKEN_WARN_LIMIT, 8192)
+        self.assertFalse(scene.token_report([{"name": "A", "tokens": 8192, "strength": 1, "category": "character"}])["over_limit"])
+        self.assertTrue(scene.token_report([{"name": "A", "tokens": 8193, "strength": 1, "category": "character"}])["over_limit"])
 
     def test_scene_selection_uses_the_standard_scene_maps(self):
         brad = {"id": "s1", "name": "Brad", "reference_type": "character", "source": "refmod",

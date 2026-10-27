@@ -153,7 +153,6 @@ export function createReferenceBuilder({
     subjectHeader.append(subjectTitle, subjectActions);
     const subjectCountInput = makeInput(String(refs.subject_count || 0), "number");
     subjectCountInput.min = "0";
-    subjectCountInput.max = "12";
     subjectCountInput.step = "1";
     const subjectSourceSelect = makeSelect(["prompts_and_director_notes", "director_notes_only", "prompts_only"], "prompts_and_director_notes");
     for (const option of subjectSourceSelect.options) {

@@ -99,7 +99,11 @@ Use the project id returned by `project_create` in every later call.
     different order), use `GET /projects/{pid}/scenes/{sid}/minimax-references`: `available` lists every character,
     extra, location and ingredients sheet with its `key`, and `selected` is the order MiniMax receives. Then
     `PUT` the same path with `{"keys": ["subject:ava", "location:roof", "location:alley"]}`, or `{"automatic": true}`
-    to follow the mappings again. At most 9 images are sent (8 chosen when the scene image is Image 1).
+    to follow the mappings again. A scene sends at most 8 references (Reference Builder images, or RefMods in a RefMod
+    project). The scene image used as Image 1 is a ninth image and not a reference. A project can hold any number of
+    characters, but a scene that maps more than 8 sends the first 8, and `over_limit_by` says how many were left out.
+    Map at most 8 to a scene. A RefMod scene with more than 8 stops at render. A RefMod token total above 8,192 only
+    warns that the scene may not render or may crash.
 
 ### D. Storyboard (story layer)
 11. `story_settings` with

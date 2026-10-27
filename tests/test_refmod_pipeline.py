@@ -110,14 +110,21 @@ class RefModPipelineTests(unittest.TestCase):
                     if isinstance(value, list) and len(value) == 2 and isinstance(value[0], str):
                         self.assertIn(value[0], prompt, f"{name}: node {key} links to missing {value[0]}")
 
-    def test_more_than_eight_mods_use_extra_loaders(self):
-        many = [{"name": "identity/brad", "strength": 1.0}] * 10
+    def test_a_scene_takes_eight_mods_in_one_loader(self):
+        eight = [{"name": "identity/brad", "strength": 1.0}] * 8
         prompt = template("minimax_audio_driven_builder_api.json")
         with mock.patch.object(refmod, "find_refmod", fake_find):
-            refmod.apply_refmod_pipeline(prompt, payload(refmod_references=many))
+            refmod.apply_refmod_pipeline(prompt, payload(refmod_references=eight))
         loaders = [n for n in prompt.values() if n["class_type"] == "MiniMaxH3RefModsLoader"]
-        self.assertEqual(len(loaders), 2)
-        self.assertEqual(loaders[1]["inputs"]["mod_3"], "(none)")
+        self.assertEqual(len(loaders), 1)
+        self.assertEqual(loaders[0]["inputs"]["mod_8"], "identity/brad")
+
+    def test_a_ninth_mod_is_refused(self):
+        nine = [{"name": "identity/brad", "strength": 1.0}] * 9
+        prompt = template("minimax_audio_driven_builder_api.json")
+        with mock.patch.object(refmod, "find_refmod", fake_find):
+            with self.assertRaisesRegex(ValueError, r"at most 8 RefMods \(9 were given\)"):
+                refmod.apply_refmod_pipeline(prompt, payload(refmod_references=nine))
 
     def test_strengths_and_names_land_in_the_loader(self):
         prompt, _ = self.apply("minimax_audio_driven_builder_api.json")

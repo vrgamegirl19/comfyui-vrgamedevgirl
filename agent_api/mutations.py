@@ -58,7 +58,7 @@ from ..builder.timeline import (
     validate_timeline_consistency,
 )
 from ..minimax.latent_manager import SceneLatentManager
-from ..minimax.scene_inputs import reference_choices, validate_reference_keys
+from ..minimax.scene_inputs import MAX_SCENE_REFERENCES, reference_choices, validate_reference_keys
 from ..minimax.settings_payload import minimax_h3_settings_for_scene, validate_minimax_h3_patch
 from ..minimax.prompt_assembly import (
     assemble_minimax_h3_prompt,
@@ -1550,6 +1550,17 @@ def _scene_refmod_references(session: Dict[str, Any], segment: Dict[str, Any], i
         })
     if not items:
         warnings.append("No RefMod is mapped to this scene; the render needs at least one.")
+    if len(items) > MAX_SCENE_REFERENCES:
+        warnings.append(
+            f"This scene maps {len(items)} RefMods and a scene can use at most {MAX_SCENE_REFERENCES}; the render will stop. "
+            "Remove some from the scene mapping."
+        )
+    report = token_report(labelled)
+    if report["over_limit"]:
+        warnings.append(
+            f"These RefMods use {report['total']} tokens, above {report['limit']}; the scene may not render or may crash. "
+            "The render is not stopped."
+        )
     return {
         "pipeline": "refmod",
         "scene_id": str(segment.get("id") or ""),
@@ -1558,7 +1569,7 @@ def _scene_refmod_references(session: Dict[str, Any], segment: Dict[str, Any], i
         "audio_mode": "input_audio" if with_audio else "built_in_audio",
         "items": out,
         "labels": [item["label"] for item in out],
-        "tokens": token_report(labelled),
+        "tokens": report,
         "warnings": warnings,
         "editable": False,
     }

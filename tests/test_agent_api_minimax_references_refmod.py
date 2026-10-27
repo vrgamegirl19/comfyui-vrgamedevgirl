@@ -81,6 +81,28 @@ class RefmodMinimaxReferencesTests(Base):
         view = mutations.get_scene_minimax_references("Song", "seg_2")
         self.assertEqual(view["labels"], ["<Video 1>", "<Video 2>", "<Picture 1>"])
 
+    def test_more_than_eight_refmods_in_a_scene_are_flagged(self):
+        session = self.read_session()
+        builder = session["flux_reference_builder"]
+        props = [_card(f"prop{n}", f"Prop {n}", "prop", "prop/Glock17", "video", 486) for n in range(7)]
+        builder["subjects"] = [*builder["subjects"], *props]
+        builder["subject_count"] = len(builder["subjects"])
+        builder["subject_scene_map"]["seg_2"] = "ayame,subj_1791577825883_4299," + ",".join(card["id"] for card in props)
+        self.write_session(session)
+        view = mutations.get_scene_minimax_references("Song", "3")
+        self.assertEqual(len([i for i in view["items"] if i["source"]["type"] == "refmod"]), 10)
+        self.assertTrue(any("at most 8" in warning for warning in view["warnings"]))
+
+    def test_tokens_over_8192_warn_and_do_not_stop_the_scene(self):
+        big = dict(LIBRARY, **{"prop/Glock17": dict(LIBRARY["prop/Glock17"], tokens=8000)})
+        with patch.object(library, "find_refmod", lambda name: dict(big[name]) if name in big else None):
+            view = mutations.get_scene_minimax_references("Song", "3")
+        self.assertEqual(view["tokens"]["total"], 9860)
+        self.assertEqual(view["tokens"]["limit"], 8192)
+        self.assertTrue(view["tokens"]["over_limit"])
+        self.assertTrue(any("may not render or may crash" in warning for warning in view["warnings"]))
+        self.assertEqual(len(view["items"]), 4)  # nothing is dropped
+
     def test_a_missing_refmod_file_is_flagged(self):
         with patch.object(library, "find_refmod", lambda name: None if name == "prop/Glock17" else dict(LIBRARY[name])):
             view = mutations.get_scene_minimax_references("Song", "3")

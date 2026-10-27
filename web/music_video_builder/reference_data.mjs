@@ -26,6 +26,10 @@ export function defaultIdLoraReferenceBuilder() {
   };
 }
 
+// A project holds as many subjects as it needs. Typing a count only adds blank cards, and one entry adds at most this many,
+// so a typing slip such as 99999 cannot freeze the page.
+export const MAX_BLANK_SUBJECTS_PER_ENTRY = 100;
+
 export function estimateIdLoraDialogueDuration(text) {
   const clean = String(text || "").trim();
   const words = clean.match(/[\p{L}\p{N}'’-]+/gu) || [];
@@ -306,8 +310,8 @@ export function normalizeFluxReferenceBuilder(value = {}) {
   normalized.subject_count = normalized.cleared
     ? 0
     : hasExplicitSubjectsArray
-      ? Math.min(12, rawSubjects.length)
-      : Math.max(0, Math.min(12, rawSubjects.length || Number(source.subject_count || 0) || 0));
+      ? rawSubjects.length
+      : Math.max(0, Math.min(MAX_BLANK_SUBJECTS_PER_ENTRY, rawSubjects.length || Number(source.subject_count || 0) || 0));
   const subject = source.subject && typeof source.subject === "object" ? source.subject : {};
   normalized.subject = {
     description: String(subject.description || ""),
