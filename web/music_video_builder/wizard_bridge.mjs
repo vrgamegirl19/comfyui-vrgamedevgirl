@@ -32,6 +32,7 @@ import {
   flattenLyricForPrompt,
   isRecoverableBuildGemmaError,
   normalizeGemmaContextLimit,
+  normalizeGemmaGpuDevice,
   normalizeGemmaGpuLayers,
 } from "./prompt_text.mjs";
 import { normalizeFluxReferenceBuilder, normalizeLyricMapper } from "./reference_data.mjs";
@@ -347,6 +348,7 @@ export function createWizardBridge({
         mmproj_file: i2vMmprojSelect.value || mmprojSelect.value || "",
         n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
         n_gpu_layers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),
+        gpu_device: normalizeGemmaGpuDevice(state.gemmaGpuDevice),
         n_threads: 8,
         unload_after: true,
       },
@@ -733,7 +735,7 @@ export function createWizardBridge({
           const settings = { performance: state.videoType, engine: state.projectVideoEngine, mode: state.videoModelMode, mini: cloneMiniMaxH3Settings(state.miniMaxH3Settings), ltx: cloneI2VVideoSettings(state.i2vVideoSettings), imageMode: state.imageModelMode,
             z: state.zimageSettings, flux: state.fluxKleinSettings, ernie: state.ernieImageSettings, krea: state.krea2TwoPassSettings, nb: state.nbImageSettings, flow: state.flowGptBrowserSettings,
             runner: Object.fromEntries([
-              "textGemmaRunner", "qwenModelFile", "qwenMmprojFile", "gemmaModelFile", "gemmaContextLimit", "gemmaOutputTokenLimit", "gemmaGpuLayers",
+              "textGemmaRunner", "qwenModelFile", "qwenMmprojFile", "gemmaModelFile", "gemmaContextLimit", "gemmaOutputTokenLimit", "gemmaGpuLayers", "gemmaGpuDevice",
               "lmStudioBaseUrl", "lmStudioModel", "lmStudioContextLimit", "lmStudioOutputTokenLimit", "llmApiProvider", "llmApiModel",
               "ownServerUrl", "ownServerModel", "ownServerOutputTokenLimit", "ownServerTimeoutMinutes",
             ].map(key => [key, state[key]])) };

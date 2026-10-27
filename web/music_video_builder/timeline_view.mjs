@@ -38,6 +38,7 @@ import { mappedLocation } from "./scene_locations.mjs";
 import { STORY_CHAPTER_COLORS, storySceneIndex } from "./story_mode_data.mjs";
 import { wireLatentContinuationOffAll } from "./timeline_continuity.mjs";
 import { syncExportButton } from "./export_video.mjs";
+import { overlayLaneHeight, overlayLaneVisible, renderOverlayLane } from "./overlay_lane.mjs";
 import { wireUnlockAllScenes } from "./timeline_video_settings.mjs";
 import { createTimelineToolWindows } from "./timeline_tool_windows.mjs";
 import { createTimelineEmotionNote, timelineEmotionNotesVisible } from "./timeline_emotion_notes.mjs";
@@ -92,6 +93,8 @@ const STEM_MIN_REGION_SECONDS = 0.02;
 let stemRowList = [];
 let stemBandHeight = 0;
 let additionalAudioHeight = 0;
+let overlayLaneShown = false;
+let overlayLaneBoxHeight = 0;
 const SCENE_DRAG_LOCK_KEY = "vrgdg_timeline_scenes_locked";
 
 // Whether timeline scenes start locked against dragging: on unless this browser last turned it off.
@@ -121,8 +124,17 @@ export function shiftSegmentTiming(segment, delta) {
   }
 }
 
-function timelineNoteTop() {
+// The overlay lane sits under the audio and stem lanes and above the note lanes, and only takes room while it is shown.
+function timelineOverlayTop() {
   return TIMELINE_SCENE_AUDIO_TOP + TIMELINE_SCENE_AUDIO_HEIGHT + additionalAudioHeight + stemBandHeight + TIMELINE_NOTE_GAP;
+}
+
+function overlayLaneRoom() {
+  return overlayLaneShown ? overlayLaneBoxHeight + TIMELINE_NOTE_GAP : 0;
+}
+
+function timelineNoteTop() {
+  return timelineOverlayTop() + overlayLaneRoom();
 }
 
 // Drawn stem tracks, reused between timeline redraws while nothing about them has changed. A redraw happens on every scene
@@ -720,6 +732,8 @@ export function createTimelineView({
 
   // The band for stem lanes exists only while some scene has stems and the Audio Mask window's switch is on.
   function refreshStemBand() {
+    overlayLaneShown = overlayLaneVisible(state);
+    overlayLaneBoxHeight = overlayLaneShown ? overlayLaneHeight(state.overlayLayers) : 0;
     additionalAudioHeight = (speakingAudioLaneCount(state) - 1) * (TIMELINE_SCENE_AUDIO_HEIGHT + 4);
     const names = state.showTimelineStems !== false ? stemRowNames(state.segments.map((segment) => segment.id)) : [];
     stemRowList = names.length ? [...names, "mix"] : [];
@@ -844,7 +858,7 @@ export function createTimelineView({
     if (timelineMarkerLaneVisible()) return timelineMarkerTop() + TIMELINE_MARKER_HEIGHT + 14;
     if (state.showTimelineVideoNotes) return timelineVideoNoteTop() + TIMELINE_NOTE_HEIGHT + 14;
     if (state.showTimelineSceneNotes) return timelineNoteTop() + TIMELINE_NOTE_HEIGHT + 14;
-    return TIMELINE_SCENE_AUDIO_TOP + TIMELINE_SCENE_AUDIO_HEIGHT + additionalAudioHeight + stemBandHeight + 14;
+    return TIMELINE_SCENE_AUDIO_TOP + TIMELINE_SCENE_AUDIO_HEIGHT + additionalAudioHeight + stemBandHeight + overlayLaneRoom() + 14;
   }
 
   function timelineEmotionNoteTop() {
@@ -1674,6 +1688,15 @@ export function createTimelineView({
     renderAudioClips?.(segmentLayer);
     renderStemTracks();
     renderBeatMarkersOverlay();
+    if (overlayLaneShown) {
+      renderOverlayLane({
+        layer: segmentLayer, state, top: timelineOverlayTop(), total: timelineDuration(),
+        edges: state.segments.flatMap((segment) => [Number(segment.start) || 0, Number(segment.end) || 0]),
+        playheadTime: () => currentGlobalTime(), pushHistory,
+        commit: (reason) => { render(); autoSaveSessionQuiet(reason).catch(() => null); state.refreshOverlayInspector?.(); },
+        select: (id) => { state.activeOverlayId = id; state.showOverlayInspector?.(); },
+      });
+    }
   }
 
   // Scene statuses change through renderList(), so repaint the timeline when the set of rendering scenes changes.

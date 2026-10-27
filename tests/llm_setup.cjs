@@ -164,6 +164,8 @@ function modalFixture() {
   });
   for (const name of ['normalizeGemmaContextLimit', 'normalizeOutputTokenLimit', 'normalizeGemmaGpuLayers',
     'normalizeLmStudioContextLimit', 'normalizeOwnServerTimeoutMinutes']) c[name] = value => Number(value) || 512;
+  vm.runInContext(readBuilderModule('gpu_choices.mjs'), c);
+  vm.runInContext(functionSource(readBuilderModule('prompt_text.mjs'), 'normalizeGemmaGpuDevice'), c);
   vm.runInContext(readBuilderModule('gemma_runner.mjs'), c);
   const runner = c.createGemmaRunner({ state, mmprojSelect: mmproj, t2iTextGemmaModelSelect: new Element('select'),
     autoSaveSessionQuiet: async () => events.push('saved'), syncBuilderLlmModelSelectsFromRunner() {},

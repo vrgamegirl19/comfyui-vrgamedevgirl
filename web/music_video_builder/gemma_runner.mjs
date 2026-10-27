@@ -1,11 +1,13 @@
 import { getJson, normalizeOwnServerTimeoutMinutes, postJson } from "./comfy_api.mjs";
 import { makeButton, makeField, makeInput, makeSelect, toast } from "./controls.mjs";
+import { gpuChoices } from "./gpu_choices.mjs";
 import { isLikelyEmbeddingModelId } from "./llm_runner.mjs";
 import { globalLlmSettingsPayload, rememberGlobalLlmKeys } from "./llm_global_keys.mjs";
 import {
   GEMMA_LOCAL_MIN_TOKENS,
   applyGemmaLocalTokenLimits,
   normalizeGemmaContextLimit,
+  normalizeGemmaGpuDevice,
   normalizeGemmaGpuLayers,
   normalizeLmStudioContextLimit,
   normalizeOutputTokenLimit,
@@ -68,6 +70,27 @@ export function createGemmaRunner({
     gemmaGpuLayers.min = "0";
     gemmaGpuLayers.max = "999";
     gemmaGpuLayers.step = "1";
+    // The GPU of Gemma Local and Qwen Local. The list comes from ComfyUI (the cards it sees, numbered as it numbers them). The saved choice is
+    // listed from the start, so closing the window before the list arrives cannot drop it.
+    const gemmaGpuDevice = makeSelect([], "-1");
+    const gpuDetails = document.createElement("div");
+    gpuDetails.style.cssText = "font-size:12px;color:#94a3b8;line-height:1.5;white-space:pre-wrap;";
+    const fillGpus = (info) => {
+      const { options, details, selected } = gpuChoices(info, normalizeGemmaGpuDevice(state.gemmaGpuDevice));
+      gemmaGpuDevice.innerHTML = "";
+      for (const item of options) {
+        const option = document.createElement("option");
+        option.value = item.value;
+        option.textContent = item.label;
+        option.disabled = item.disabled;
+        gemmaGpuDevice.append(option);
+      }
+      gemmaGpuDevice.value = selected;
+      gpuDetails.textContent = details || "Looking for the GPUs...";
+    };
+    fillGpus(null);
+    gpuDetails.textContent = "Looking for the GPUs...";
+    gemmaGpuDevice.onchange = () => { state.gemmaGpuDevice = normalizeGemmaGpuDevice(gemmaGpuDevice.value); };
     const qwenModelSelect = makeSelect([""], state.qwenModelFile || "");
     const qwenModelPath = makeInput(state.qwenModelFile || "");
     const qwenMmprojSelect = makeSelect([""], state.qwenMmprojFile || "");
@@ -108,6 +131,8 @@ export function createGemmaRunner({
       makeField("Maximum output tokens", gemmaOutputTokenLimit),
       gpuNote,
       makeField("GPU layers / n_gpu_layers", gemmaGpuLayers),
+      makeField("GPU", gemmaGpuDevice),
+      gpuDetails,
     );
     qwenModelRow.append(makeField("Qwen GGUF path (optional external file)", qwenModelPath), chooseQwenModel);
     gemmaLocalRow.append(makeField("Gemma GGUF path (optional external file)", gemmaLocalPath), chooseGemmaModel);
@@ -154,6 +179,7 @@ export function createGemmaRunner({
       } catch (error) { toast(String(error?.message || error), true); }
     };
     getJson("/vrgdg/music_builder/gemma_choices").then((data) => {
+      fillGpus(data.gpus);
       const gemmaModels = Array.isArray(data.models) ? data.models.filter((item) => item && !/^\[No Gemma/i.test(item)) : [];
       gemmaLocalSelect.innerHTML = "";
       gemmaModels.forEach((item) => { const option = document.createElement("option"); option.value = item; option.textContent = item; gemmaLocalSelect.append(option); });
@@ -182,7 +208,7 @@ export function createGemmaRunner({
       if (state.qwenMmprojFile && mmproj.includes(state.qwenMmprojFile)) qwenMmprojSelect.value = state.qwenMmprojFile;
       else if (mmproj.length === 1) { qwenMmprojSelect.value = mmproj[0]; state.qwenMmprojFile = mmproj[0]; }
       syncBuilderLlmModelSelectsFromRunner();
-    }).catch(() => null);
+    }).catch(() => fillGpus(null));
     const baseUrl = makeInput(state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1");
     const model = makeInput(state.lmStudioModel || "");
     const modelSelect = makeSelect([""], "");
@@ -424,6 +450,7 @@ export function createGemmaRunner({
       state.textGemmaRunner = runner.value || "builtin";
       applyLocalTokenLimits();
       state.gemmaGpuLayers = normalizeGemmaGpuLayers(gemmaGpuLayers.value);
+      state.gemmaGpuDevice = normalizeGemmaGpuDevice(gemmaGpuDevice.value);
       state.lmStudioContextLimit = normalizeLmStudioContextLimit(lmStudioContextLimit.value);
       state.lmStudioOutputTokenLimit = normalizeOutputTokenLimit(lmStudioOutputTokenLimit.value);
       syncBuilderLlmModelSelectsFromRunner();
@@ -492,6 +519,7 @@ export function createGemmaRunner({
       state.textGemmaRunner = runner.value || "builtin";
       applyLocalTokenLimits();
       state.gemmaGpuLayers = normalizeGemmaGpuLayers(gemmaGpuLayers.value);
+      state.gemmaGpuDevice = normalizeGemmaGpuDevice(gemmaGpuDevice.value);
       state.lmStudioBaseUrl = baseUrl.value || "http://127.0.0.1:1234/v1";
       state.lmStudioModel = model.value || "";
       state.lmStudioApiKey = lmStudioApiKey.value || "";

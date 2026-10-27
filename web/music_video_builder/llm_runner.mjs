@@ -5,6 +5,7 @@ import { createBaseProgressWindow } from "./dialogs.mjs";
 import {
   gemmaLocalTokenLimits,
   normalizeGemmaContextLimit,
+  normalizeGemmaGpuDevice,
   normalizeGemmaGpuLayers,
   normalizeLmStudioContextLimit,
   normalizeOutputTokenLimit,
@@ -61,6 +62,7 @@ export function createLlmRunner({
       n_ctx: localLimits.context,
       gemma_output_token_limit: localLimits.output,
       n_gpu_layers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),
+      gpu_device: normalizeGemmaGpuDevice(state.gemmaGpuDevice),
       lmstudio_base_url: state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
       lmstudio_model: state.lmStudioModel || "",
       lmstudio_api_key: state.lmStudioApiKey || "",

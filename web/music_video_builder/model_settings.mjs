@@ -25,6 +25,7 @@ import { applyGlobalLlmKeys, rememberGlobalLlmKeys } from "./llm_global_keys.mjs
 import {
   applyGemmaLocalTokenLimits,
   normalizeGemmaContextLimit,
+  normalizeGemmaGpuDevice,
   normalizeGemmaGpuLayers,
   normalizeLmStudioContextLimit,
   normalizeOutputTokenLimit,
@@ -701,6 +702,9 @@ export function createModelSettings({
     }
     if (Object.prototype.hasOwnProperty.call(defaults, "gemma_gpu_layers") || Object.prototype.hasOwnProperty.call(defaults, "gemmaGpuLayers") || Object.prototype.hasOwnProperty.call(defaults, "n_gpu_layers")) {
       state.gemmaGpuLayers = normalizeGemmaGpuLayers(defaults.gemma_gpu_layers ?? defaults.gemmaGpuLayers ?? defaults.n_gpu_layers ?? state.gemmaGpuLayers);
+    }
+    if (Object.prototype.hasOwnProperty.call(defaults, "gemma_gpu_device") || Object.prototype.hasOwnProperty.call(defaults, "gemmaGpuDevice")) {
+      state.gemmaGpuDevice = normalizeGemmaGpuDevice(defaults.gemma_gpu_device ?? defaults.gemmaGpuDevice ?? state.gemmaGpuDevice);
     }
     if (Object.prototype.hasOwnProperty.call(defaults, "gemma_context_limit") || Object.prototype.hasOwnProperty.call(defaults, "gemmaContextLimit") || Object.prototype.hasOwnProperty.call(defaults, "n_ctx") || legacyLlmMaxTokens != null) {
       state.gemmaContextLimit = normalizeGemmaContextLimit(defaults.gemma_context_limit ?? defaults.gemmaContextLimit ?? defaults.n_ctx ?? legacyLlmMaxTokens ?? state.gemmaContextLimit);

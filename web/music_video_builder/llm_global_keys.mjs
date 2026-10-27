@@ -14,7 +14,7 @@ const RUNNER_FIELDS = [
   ["text_gemma_runner", "textGemmaRunner"], ["gemma_model_file", "gemmaModelFile"],
   ["qwen_model_file", "qwenModelFile"], ["qwen_mmproj_file", "qwenMmprojFile"],
   ["gemma_context_limit", "gemmaContextLimit"], ["gemma_output_token_limit", "gemmaOutputTokenLimit"],
-  ["gemma_gpu_layers", "gemmaGpuLayers"], ["lm_studio_base_url", "lmStudioBaseUrl"], ["lm_studio_model", "lmStudioModel"],
+  ["gemma_gpu_layers", "gemmaGpuLayers"], ["gemma_gpu_device", "gemmaGpuDevice"], ["lm_studio_base_url", "lmStudioBaseUrl"], ["lm_studio_model", "lmStudioModel"],
   ["lm_studio_api_key", "lmStudioApiKey"], ["lm_studio_context_limit", "lmStudioContextLimit"],
   ["lm_studio_output_token_limit", "lmStudioOutputTokenLimit"], ["llm_api_provider", "llmApiProvider"],
   ["llm_api_model", "llmApiModel"], ["own_server_url", "ownServerUrl"], ["own_server_model", "ownServerModel"],

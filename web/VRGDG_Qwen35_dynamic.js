@@ -135,6 +135,7 @@ function refreshAdvancedWidgets(node) {
   const advancedNames = [
     "n_ctx",
     "n_gpu_layers",
+    "gpu_device",
     "n_threads",
     "chat_format",
     "temperature",

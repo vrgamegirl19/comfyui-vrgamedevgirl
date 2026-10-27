@@ -9,6 +9,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from ..core.model_paths import register_custom_model_root
+from .gpus import list_gpus, normalize_gpu_device
 from .text_cleaning import _clean_visual_gemma_text
 
 from .output_checks import _looks_like_gemma_repeat_failure, _looks_like_id_lora_script_prompt, _looks_like_source_lyric_echo, _looks_like_unfilled_prompt_template, _validate_builder_gemma_prompt
@@ -167,6 +168,8 @@ def _builder_local_llm(payload):
     # preamble. Set this explicitly for both local runners because model chat
     # templates can default to thinking mode when the flag is omitted.
     llm._qwen_chat_template_kwargs = {"enable_thinking": False}
+    # The GPU the LLM Runner chose (-1 or missing: every GPU ComfyUI sees, as before).
+    llm._gpu_device = normalize_gpu_device(payload.get("gpu_device"))
     return llm
 
 
@@ -1267,4 +1270,14 @@ def _gemma_choices():
         "mmproj": VRGDG_SuperGemmaGGUFChat._list_local_mmproj_choices(),
         "qwen_models": VRGDG_QwenGGUF._list_local_qwen_gguf(),
         "qwen_mmproj": VRGDG_QwenGGUF._list_local_qwen_mmproj(),
+        "gpus": _gpu_choices(),
     }
+
+
+def _gpu_choices():
+    """The GPUs the local runners can use, for the LLM Runner's GPU list. A failure leaves the list empty instead of breaking the dialog."""
+    try:
+        return list_gpus()
+    except Exception as exc:
+        print(f"[VRGDG LLM] Could not list the GPUs: {exc}")
+        return {"gpus": [], "visible_count": 0, "comfyui_gpu": None, "cuda_visible_devices": "", "note": ""}

@@ -1,0 +1,877 @@
+{
+  "source": {
+    "width": 1504,
+    "height": 832,
+    "fps": 24,
+    "duration": 10
+  },
+  "files": [
+    "C:/overlay/dust.mov",
+    "C:/overlay/leak.mp4"
+  ],
+  "luts": [
+    "Teal.cube"
+  ],
+  "plan_cases": [
+    {
+      "name": "no clips",
+      "clips": [],
+      "return": {
+        "graph": "[0:v]format=gbrp[v0];\n[v0]format=yuv420p[v]",
+        "media": [],
+        "luts": [],
+        "fonts": [],
+        "texts": [],
+        "applied": [],
+        "skipped": []
+      }
+    },
+    {
+      "name": "grain with its defaults",
+      "clips": [
+        {
+          "kind": "grain",
+          "id": "g",
+          "start": 0,
+          "end": 10
+        }
+      ],
+      "return": {
+        "graph": "[0:v]format=gbrp[v0];\ncolor=c=gray:s=1504x832:r=24,format=yuv420p,noise=c0s=28:c0f=t+u,eq=contrast='clip(min((t-0)/0.3,(10-t)/0.3),0,1)':saturation='clip(min((t-0)/0.3,(10-t)/0.3),0,1)':brightness='0':eval=frame,format=gbrp[l1];\n[v0][l1]blend=all_mode=grainmerge:all_opacity=1:enable='between(t,0,10)'[v1];\n[v1]format=yuv420p[v]",
+        "media": [],
+        "luts": [],
+        "fonts": [],
+        "texts": [],
+        "applied": [
+          "g"
+        ],
+        "skipped": []
+      }
+    },
+    {
+      "name": "grain with chroma and not animated",
+      "clips": [
+        {
+          "kind": "grain",
+          "id": "g",
+          "start": 1,
+          "end": 4,
+          "strength": 40,
+          "chroma": 6,
+          "animated": false,
+          "opacity": 0.8
+        }
+      ],
+      "return": {
+        "graph": "[0:v]format=gbrp[v0];\ncolor=c=gray:s=1504x832:r=24,format=yuv420p,noise=c0s=40:c0f=u:c1s=6:c1f=u:c2s=6:c2f=u,eq=contrast='clip(min((t-1)/0.3,(4-t)/0.3),0,1)':saturation='clip(min((t-1)/0.3,(4-t)/0.3),0,1)':brightness='0':eval=frame,format=gbrp[l1];\n[v0][l1]blend=all_mode=grainmerge:all_opacity=0.8:enable='between(t,1,4)'[v1];\n[v1]format=yuv420p[v]",
+        "media": [],
+        "luts": [],
+        "fonts": [],
+        "texts": [],
+        "applied": [
+          "g"
+        ],
+        "skipped": []
+      }
+    },
+    {
+      "name": "grain made on a smaller picture",
+      "clips": [
+        {
+          "kind": "grain",
+          "id": "m",
+          "start": 0,
+          "end": 5,
+          "size": "medium",
+          "strength": 30
+        },
+        {
+          "kind": "grain",
+          "id": "c",
+          "start": 5,
+          "end": 10,
+          "size": "coarse",
+          "strength": 60
+        }
+      ],
+      "return": {
+        "graph": "[0:v]format=gbrp[v0];\ncolor=c=gray:s=752x416:r=24,format=yuv420p,noise=c0s=30:c0f=t+u,scale=1504:832:flags=bicubic,eq=contrast='clip(min((t-0)/0.3,(5-t)/0.3),0,1)':saturation='clip(min((t-0)/0.3,(5-t)/0.3),0,1)':brightness='0':eval=frame,format=gbrp[l1];\n[v0][l1]blend=all_mode=grainmerge:all_opacity=1:enable='between(t,0,5)'[v1];\ncolor=c=gray:s=500x276:r=24,format=yuv420p,noise=c0s=60:c0f=t+u,scale=1504:832:flags=bicubic,eq=contrast='clip(min((t-5)/0.3,(10-t)/0.3),0,1)':saturation='clip(min((t-5)/0.3,(10-t)/0.3),0,1)':brightness='0':eval=frame,format=gbrp[l2];\n[v1][l2]blend=all_mode=grainmerge:all_opacity=1:enable='between(t,5,10)'[v2];\n[v2]format=yuv420p[v]",
+        "media": [],
+        "luts": [],
+        "fonts": [],
+        "texts": [],
+        "applied": [
+          "m",
+          "c"
+        ],
+        "skipped": []
+      }
+    },
+    {
+      "name": "vignette",
+      "clips": [
+        {
+          "kind": "vignette",
+          "id": "v",
+          "start": 0,
+          "end": 10,
+          "strength": 0.875,
+          "fade_in": 0,
+          "fade_out": 0
+        }
+      ],
+      "return": {
+        "graph": "[0:v]format=gbrp[v0];\ncolor=c=white:s=1504x832:r=24,format=gbrp,vignette=angle=1.05:eval=init[l1];\n[v0][l1]blend=all_mode=multiply:all_opacity=1:enable='between(t,0,10)'[v1];\n[v1]format=yuv420p[v]",
+        "media": [],
+        "luts": [],
+        "fonts": [],
+        "texts": [],
+        "applied": [
+          "v"
+        ],
+        "skipped": []
+      }
+    },
+    {
+      "name": "lut with a strength",
+      "clips": [
+        {
+          "kind": "lut",
+          "id": "l",
+          "start": 2,
+          "end": 8,
+          "lut": "Teal.cube",
+          "strength": 0.5,
+          "opacity": 0.8
+        }
+      ],
+      "return": {
+        "graph": "[0:v]format=gbrp[v0];\n[v0]split=2[a1][b1];\n[b1]lut3d=file=lut0.cube:interp=trilinear[eff1];\n[eff1]format=gbrap,colorchannelmixer=aa=0.4,fade=t=in:st=2:d=0.3:alpha=1,fade=t=out:st=7.7:d=0.3:alpha=1[al1];\n[a1][al1]overlay=format=gbrp:enable='between(t,2,8)'[v1];\n[v1]format=yuv420p[v]",
+        "media": [],
+        "luts": [
+          "Teal.cube"
+        ],
+        "fonts": [],
+        "texts": [],
+        "applied": [
+          "l"
+        ],
+        "skipped": []
+      }
+    },
+    {
+      "name": "media with its defaults",
+      "clips": [
+        {
+          "kind": "media",
+          "id": "d",
+          "start": 2,
+          "end": 6,
+          "path": "C:/overlay/dust.mov"
+        }
+      ],
+      "return": {
+        "graph": "[0:v]format=gbrp[v0];\n[1:v]setpts=(PTS-STARTPTS)/1,fps=24,scale=1504:832:force_original_aspect_ratio=increase,crop=1504:832,tpad=start_duration=2:start_mode=add:color=black,eq=contrast='clip(min((t-2)/0.3,(6-t)/0.3),0,1)':saturation='clip(min((t-2)/0.3,(6-t)/0.3),0,1)':brightness='-0.5*(1-clip(min((t-2)/0.3,(6-t)/0.3),0,1))':eval=frame,format=gbrp[l1];\n[v0][l1]blend=all_mode=screen:all_opacity=0.9:enable='between(t,2,6)'[v1];\n[v1]format=yuv420p[v]",
+        "media": [
+          {
+            "path": "C:/overlay/dust.mov",
+            "looped": true,
+            "seek": 0.0
+          }
+        ],
+        "luts": [],
+        "fonts": [],
+        "texts": [],
+        "applied": [
+          "d"
+        ],
+        "skipped": []
+      }
+    },
+    {
+      "name": "media at the start needs no padding",
+      "clips": [
+        {
+          "kind": "media",
+          "id": "d",
+          "start": 0,
+          "end": 4,
+          "path": "C:/overlay/dust.mov",
+          "fade_in": 0,
+          "fade_out": 0
+        }
+      ],
+      "return": {
+        "graph": "[0:v]format=gbrp[v0];\n[1:v]setpts=(PTS-STARTPTS)/1,fps=24,scale=1504:832:force_original_aspect_ratio=increase,crop=1504:832,format=gbrp[l1];\n[v0][l1]blend=all_mode=screen:all_opacity=0.9:enable='between(t,0,4)'[v1];\n[v1]format=yuv420p[v]",
+        "media": [
+          {
+            "path": "C:/overlay/dust.mov",
+            "looped": true,
+            "seek": 0.0
+          }
+        ],
+        "luts": [],
+        "fonts": [],
+        "texts": [],
+        "applied": [
+          "d"
+        ],
+        "skipped": []
+      }
+    },
+    {
+      "name": "media with every option",
+      "clips": [
+        {
+          "kind": "media",
+          "id": "leak",
+          "start": 3.5,
+          "end": 8,
+          "path": "C:/overlay/leak.mp4",
+          "source_start": 1.5,
+          "blend_mode": "overlay",
+          "scale": "contain",
+          "loop": false,
+          "speed": 1.5,
+          "flip_h": true,
+          "brightness": 0.2,
+          "contrast": 1.3,
+          "tint": "#ff8000",
+          "opacity": 0.6,
+          "fade_in": 0.5,
+          "fade_out": 1
+        }
+      ],
+      "return": {
+        "graph": "[0:v]format=gbrp[v0];\n[1:v]setpts=(PTS-STARTPTS)/1.5,fps=24,scale=1504:832:force_original_aspect_ratio=decrease,pad=1504:832:(ow-iw)/2:(oh-ih)/2:color=black,hflip,eq=brightness=0.2:contrast=1.3,tpad=start_duration=3.5:start_mode=add:color=black,eq=contrast='clip(min((t-3.5)/0.5,(8-t)/1),0,1)':saturation='clip(min((t-3.5)/0.5,(8-t)/1),0,1)':brightness='0':eval=frame,format=gbrp,colorchannelmixer=rr=1:gg=0.502:bb=0[l1];\n[v0][l1]blend=all_mode=overlay:all_opacity=0.6:enable='between(t,3.5,8)'[v1];\n[v1]format=yuv420p[v]",
+        "media": [
+          {
+            "path": "C:/overlay/leak.mp4",
+            "looped": false,
+            "seek": 1.5
+          }
+        ],
+        "luts": [],
+        "fonts": [],
+        "texts": [],
+        "applied": [
+          "leak"
+        ],
+        "skipped": []
+      }
+    },
+    {
+      "name": "media blend modes and fits",
+      "clips": [
+        {
+          "kind": "media",
+          "id": "a",
+          "start": 0,
+          "end": 2,
+          "path": "C:/overlay/dust.mov",
+          "blend_mode": "add",
+          "scale": "stretch"
+        },
+        {
+          "kind": "media",
+          "id": "b",
+          "start": 0,
+          "end": 2,
+          "path": "C:/overlay/dust.mov",
+          "blend_mode": "lighten"
+        },
+        {
+          "kind": "media",
+          "id": "c",
+          "start": 0,
+          "end": 2,
+          "path": "C:/overlay/dust.mov",
+          "blend_mode": "softlight"
+        },
+        {
+          "kind": "media",
+          "id": "d",
+          "start": 0,
+          "end": 2,
+          "path": "C:/overlay/dust.mov",
+          "blend_mode": "multiply"
+        },
+        {
+          "kind": "media",
+          "id": "e",
+          "start": 0,
+          "end": 2,
+          "path": "C:/overlay/dust.mov",
+          "blend_mode": "normal"
+        }
+      ],
+      "return": {
+        "graph": "[0:v]format=gbrp[v0];\n[1:v]setpts=(PTS-STARTPTS)/1,fps=24,scale=1504:832,eq=contrast='clip(min((t-0)/0.3,(2-t)/0.3),0,1)':saturation='clip(min((t-0)/0.3,(2-t)/0.3),0,1)':brightness='-0.5*(1-clip(min((t-0)/0.3,(2-t)/0.3),0,1))':eval=frame,format=gbrp[l1];\n[v0][l1]blend=all_mode=addition:all_opacity=0.9:enable='between(t,0,2)'[v1];\n[2:v]setpts=(PTS-STARTPTS)/1,fps=24,scale=1504:832:force_original_aspect_ratio=increase,crop=1504:832,eq=contrast='clip(min((t-0)/0.3,(2-t)/0.3),0,1)':saturation='clip(min((t-0)/0.3,(2-t)/0.3),0,1)':brightness='-0.5*(1-clip(min((t-0)/0.3,(2-t)/0.3),0,1))':eval=frame,format=gbrp[l2];\n[v1][l2]blend=all_mode=lighten:all_opacity=0.9:enable='between(t,0,2)'[v2];\n[3:v]setpts=(PTS-STARTPTS)/1,fps=24,scale=1504:832:force_original_aspect_ratio=increase,crop=1504:832,eq=contrast='clip(min((t-0)/0.3,(2-t)/0.3),0,1)':saturation='clip(min((t-0)/0.3,(2-t)/0.3),0,1)':brightness='0':eval=frame,format=gbrp[l3];\n[v2][l3]blend=all_mode=softlight:all_opacity=0.9:enable='between(t,0,2)'[v3];\n[4:v]setpts=(PTS-STARTPTS)/1,fps=24,scale=1504:832:force_original_aspect_ratio=increase,crop=1504:832,eq=contrast='clip(min((t-0)/0.3,(2-t)/0.3),0,1)':saturation='clip(min((t-0)/0.3,(2-t)/0.3),0,1)':brightness='0.5*(1-clip(min((t-0)/0.3,(2-t)/0.3),0,1))':eval=frame,format=gbrp[l4];\n[v3][l4]blend=all_mode=multiply:all_opacity=0.9:enable='between(t,0,2)'[v4];\n[5:v]setpts=(PTS-STARTPTS)/1,fps=24,scale=1504:832:force_original_aspect_ratio=increase,crop=1504:832,format=gbrap,colorchannelmixer=aa=0.9,fade=t=in:st=0:d=0.3:alpha=1,fade=t=out:st=1.7:d=0.3:alpha=1[l5];\n[v4][l5]overlay=format=gbrp:enable='between(t,0,2)'[v5];\n[v5]format=yuv420p[v]",
+        "media": [
+          {
+            "path": "C:/overlay/dust.mov",
+            "looped": true,
+            "seek": 0.0
+          },
+          {
+            "path": "C:/overlay/dust.mov",
+            "looped": true,
+            "seek": 0.0
+          },
+          {
+            "path": "C:/overlay/dust.mov",
+            "looped": true,
+            "seek": 0.0
+          },
+          {
+            "path": "C:/overlay/dust.mov",
+            "looped": true,
+            "seek": 0.0
+          },
+          {
+            "path": "C:/overlay/dust.mov",
+            "looped": true,
+            "seek": 0.0
+          }
+        ],
+        "luts": [],
+        "fonts": [],
+        "texts": [],
+        "applied": [
+          "a",
+          "b",
+          "c",
+          "d",
+          "e"
+        ],
+        "skipped": []
+      }
+    },
+    {
+      "name": "fade in only and fade out only",
+      "clips": [
+        {
+          "kind": "vignette",
+          "id": "in",
+          "start": 0,
+          "end": 4,
+          "fade_in": 1,
+          "fade_out": 0
+        },
+        {
+          "kind": "vignette",
+          "id": "out",
+          "start": 4,
+          "end": 8,
+          "fade_in": 0,
+          "fade_out": 1
+        }
+      ],
+      "return": {
+        "graph": "[0:v]format=gbrp[v0];\ncolor=c=white:s=1504x832:r=24,format=gbrp,vignette=angle=0.84:eval=init,eq=contrast='clip((t-0)/1,0,1)':saturation='clip((t-0)/1,0,1)':brightness='0.5*(1-clip((t-0)/1,0,1))':eval=frame[l1];\n[v0][l1]blend=all_mode=multiply:all_opacity=1:enable='between(t,0,4)'[v1];\ncolor=c=white:s=1504x832:r=24,format=gbrp,vignette=angle=0.84:eval=init,eq=contrast='clip((8-t)/1,0,1)':saturation='clip((8-t)/1,0,1)':brightness='0.5*(1-clip((8-t)/1,0,1))':eval=frame[l2];\n[v1][l2]blend=all_mode=multiply:all_opacity=1:enable='between(t,4,8)'[v2];\n[v2]format=yuv420p[v]",
+        "media": [],
+        "luts": [],
+        "fonts": [],
+        "texts": [],
+        "applied": [
+          "in",
+          "out"
+        ],
+        "skipped": []
+      }
+    },
+    {
+      "name": "clips stack in track order with their own names",
+      "clips": [
+        {
+          "kind": "media",
+          "id": "dust",
+          "start": 1,
+          "end": 9,
+          "path": "C:/overlay/dust.mov"
+        },
+        {
+          "kind": "grain",
+          "id": "grain",
+          "start": 0,
+          "end": 10
+        },
+        {
+          "kind": "lut",
+          "id": "lut",
+          "start": 0,
+          "end": 10,
+          "lut": "Teal.cube"
+        },
+        {
+          "kind": "media",
+          "id": "leak",
+          "start": 6,
+          "end": 10,
+          "path": "C:/overlay/leak.mp4"
+        },
+        {
+          "kind": "vignette",
+          "id": "vig",
+          "start": 0,
+          "end": 10
+        }
+      ],
+      "return": {
+        "graph": "[0:v]format=gbrp[v0];\n[1:v]setpts=(PTS-STARTPTS)/1,fps=24,scale=1504:832:force_original_aspect_ratio=increase,crop=1504:832,tpad=start_duration=1:start_mode=add:color=black,eq=contrast='clip(min((t-1)/0.3,(9-t)/0.3),0,1)':saturation='clip(min((t-1)/0.3,(9-t)/0.3),0,1)':brightness='-0.5*(1-clip(min((t-1)/0.3,(9-t)/0.3),0,1))':eval=frame,format=gbrp[l1];\n[v0][l1]blend=all_mode=screen:all_opacity=0.9:enable='between(t,1,9)'[v1];\ncolor=c=gray:s=1504x832:r=24,format=yuv420p,noise=c0s=28:c0f=t+u,eq=contrast='clip(min((t-0)/0.3,(10-t)/0.3),0,1)':saturation='clip(min((t-0)/0.3,(10-t)/0.3),0,1)':brightness='0':eval=frame,format=gbrp[l2];\n[v1][l2]blend=all_mode=grainmerge:all_opacity=1:enable='between(t,0,10)'[v2];\n[v2]split=2[a3][b3];\n[b3]lut3d=file=lut0.cube:interp=trilinear[eff3];\n[eff3]format=gbrap,fade=t=in:st=0:d=0.3:alpha=1,fade=t=out:st=9.7:d=0.3:alpha=1[al3];\n[a3][al3]overlay=format=gbrp:enable='between(t,0,10)'[v3];\n[2:v]setpts=(PTS-STARTPTS)/1,fps=24,scale=1504:832:force_original_aspect_ratio=increase,crop=1504:832,tpad=start_duration=6:start_mode=add:color=black,eq=contrast='clip(min((t-6)/0.3,(10-t)/0.3),0,1)':saturation='clip(min((t-6)/0.3,(10-t)/0.3),0,1)':brightness='-0.5*(1-clip(min((t-6)/0.3,(10-t)/0.3),0,1))':eval=frame,format=gbrp[l4];\n[v3][l4]blend=all_mode=screen:all_opacity=0.9:enable='between(t,6,10)'[v4];\ncolor=c=white:s=1504x832:r=24,format=gbrp,vignette=angle=0.84:eval=init,eq=contrast='clip(min((t-0)/0.3,(10-t)/0.3),0,1)':saturation='clip(min((t-0)/0.3,(10-t)/0.3),0,1)':brightness='0.5*(1-clip(min((t-0)/0.3,(10-t)/0.3),0,1))':eval=frame[l5];\n[v4][l5]blend=all_mode=multiply:all_opacity=1:enable='between(t,0,10)'[v5];\n[v5]format=yuv420p[v]",
+        "media": [
+          {
+            "path": "C:/overlay/dust.mov",
+            "looped": true,
+            "seek": 0.0
+          },
+          {
+            "path": "C:/overlay/leak.mp4",
+            "looped": true,
+            "seek": 0.0
+          }
+        ],
+        "luts": [
+          "Teal.cube"
+        ],
+        "fonts": [],
+        "texts": [],
+        "applied": [
+          "dust",
+          "grain",
+          "lut",
+          "leak",
+          "vig"
+        ],
+        "skipped": []
+      }
+    },
+    {
+      "name": "a clip that is off leaves no trace",
+      "clips": [
+        {
+          "kind": "grain",
+          "id": "off",
+          "start": 0,
+          "end": 5,
+          "enabled": false
+        },
+        {
+          "kind": "vignette",
+          "id": "on",
+          "start": 0,
+          "end": 5
+        }
+      ],
+      "return": {
+        "graph": "[0:v]format=gbrp[v0];\ncolor=c=white:s=1504x832:r=24,format=gbrp,vignette=angle=0.84:eval=init,eq=contrast='clip(min((t-0)/0.3,(5-t)/0.3),0,1)':saturation='clip(min((t-0)/0.3,(5-t)/0.3),0,1)':brightness='0.5*(1-clip(min((t-0)/0.3,(5-t)/0.3),0,1))':eval=frame[l1];\n[v0][l1]blend=all_mode=multiply:all_opacity=1:enable='between(t,0,5)'[v1];\n[v1]format=yuv420p[v]",
+        "media": [],
+        "luts": [],
+        "fonts": [],
+        "texts": [],
+        "applied": [
+          "on"
+        ],
+        "skipped": []
+      }
+    },
+    {
+      "name": "clips that cannot be applied are listed with a reason",
+      "clips": [
+        {
+          "kind": "media",
+          "id": "nofile",
+          "start": 0,
+          "end": 2
+        },
+        {
+          "kind": "media",
+          "id": "missing",
+          "start": 0,
+          "end": 2,
+          "path": "C:/overlay/gone.mov"
+        },
+        {
+          "kind": "lut",
+          "id": "nolut",
+          "start": 0,
+          "end": 2
+        },
+        {
+          "kind": "lut",
+          "id": "wronglut",
+          "start": 0,
+          "end": 2,
+          "lut": "Nope.cube"
+        },
+        {
+          "kind": "text",
+          "id": "title",
+          "start": 0,
+          "end": 2,
+          "text": "Verse 2"
+        },
+        {
+          "kind": "glitch",
+          "id": "odd",
+          "start": 0,
+          "end": 2
+        },
+        {
+          "kind": "grain",
+          "id": "late",
+          "start": 10,
+          "end": 12
+        },
+        {
+          "kind": "grain",
+          "id": "after",
+          "start": 30,
+          "end": 40
+        },
+        {
+          "kind": "grain",
+          "id": "fine",
+          "start": 0,
+          "end": 12
+        }
+      ],
+      "return": {
+        "graph": "[0:v]format=gbrp[v0];\n[v0]drawtext=fontfile=font0.ttf:textfile=text0.txt:expansion=none:fontsize=73.9556:fontcolor=0xffffff:borderw=2.3111:bordercolor=0x000000:shadowx=3.0815:shadowy=3.0815:shadowcolor=0x000000@0.6:x='w*0.5-text_w/2':y='h*0.78-text_h/2':alpha='1*clip(min((t-0)/0.3,(2-t)/0.3),0,1)':enable='between(t,0,2)'[v1];\ncolor=c=gray:s=1504x832:r=24,format=yuv420p,noise=c0s=28:c0f=t+u,eq=contrast='clip(min((t-0)/0.3,(12-t)/0.3),0,1)':saturation='clip(min((t-0)/0.3,(12-t)/0.3),0,1)':brightness='0':eval=frame,format=gbrp[l2];\n[v1][l2]blend=all_mode=grainmerge:all_opacity=1:enable='between(t,0,12)'[v2];\n[v2]format=yuv420p[v]",
+        "media": [],
+        "luts": [],
+        "fonts": [
+          "Anton-Regular.ttf"
+        ],
+        "texts": [
+          "Verse 2"
+        ],
+        "applied": [
+          "title",
+          "fine"
+        ],
+        "skipped": [
+          {
+            "id": "nofile",
+            "reason": "no clip file was chosen"
+          },
+          {
+            "id": "missing",
+            "reason": "the clip file was not found"
+          },
+          {
+            "id": "nolut",
+            "reason": "the LUT file was not found"
+          },
+          {
+            "id": "wronglut",
+            "reason": "the LUT file was not found"
+          },
+          {
+            "id": "odd",
+            "reason": "glitch is not a kind this version can draw"
+          },
+          {
+            "id": "late",
+            "reason": "starts after the end of the video"
+          },
+          {
+            "id": "after",
+            "reason": "starts after the end of the video"
+          }
+        ]
+      }
+    },
+    {
+      "name": "text with its defaults",
+      "clips": [
+        {
+          "kind": "text",
+          "id": "title",
+          "start": 1,
+          "end": 5,
+          "text": "Verse 2"
+        }
+      ],
+      "return": {
+        "graph": "[0:v]format=gbrp[v0];\n[v0]drawtext=fontfile=font0.ttf:textfile=text0.txt:expansion=none:fontsize=73.9556:fontcolor=0xffffff:borderw=2.3111:bordercolor=0x000000:shadowx=3.0815:shadowy=3.0815:shadowcolor=0x000000@0.6:x='w*0.5-text_w/2':y='h*0.78-text_h/2':alpha='1*clip(min((t-1)/0.3,(5-t)/0.3),0,1)':enable='between(t,1,5)'[v1];\n[v1]format=yuv420p[v]",
+        "media": [],
+        "luts": [],
+        "fonts": [
+          "Anton-Regular.ttf"
+        ],
+        "texts": [
+          "Verse 2"
+        ],
+        "applied": [
+          "title"
+        ],
+        "skipped": []
+      }
+    },
+    {
+      "name": "text with every option",
+      "clips": [
+        {
+          "kind": "text",
+          "id": "t",
+          "start": 2,
+          "end": 9,
+          "text": "Hello: it's 100% me\nsecond line",
+          "font": "Oswald",
+          "size": 60,
+          "color": "#ffcc00",
+          "outline_width": 4,
+          "outline_color": "#112233",
+          "shadow": 2,
+          "x": 0.3,
+          "y": 0.9,
+          "animation": "slide_up",
+          "opacity": 0.8,
+          "fade_in": 0.6,
+          "fade_out": 0.8
+        }
+      ],
+      "return": {
+        "graph": "[0:v]format=gbrp[v0];\n[v0]drawtext=fontfile=font0.ttf:textfile=text0.txt:expansion=none:fontsize=46.2222:fontcolor=0xffcc00:borderw=3.0815:bordercolor=0x112233:shadowx=1.5407:shadowy=1.5407:shadowcolor=0x000000@0.6:x='w*0.3-text_w/2':y='h*0.9-text_h/2+h*0.04*(1-clip((t-2)/0.6,0,1))':alpha='0.8*clip(min((t-2)/0.6,(9-t)/0.8),0,1)':enable='between(t,2,9)'[v1];\n[v1]format=yuv420p[v]",
+        "media": [],
+        "luts": [],
+        "fonts": [
+          "Oswald.ttf"
+        ],
+        "texts": [
+          "Hello: it's 100% me\nsecond line"
+        ],
+        "applied": [
+          "t"
+        ],
+        "skipped": []
+      }
+    },
+    {
+      "name": "texts share a font file and an unknown font falls back to the default",
+      "clips": [
+        {
+          "kind": "text",
+          "id": "a",
+          "start": 0,
+          "end": 2,
+          "text": "One"
+        },
+        {
+          "kind": "text",
+          "id": "b",
+          "start": 2,
+          "end": 4,
+          "text": "Two",
+          "font": "Anton"
+        },
+        {
+          "kind": "text",
+          "id": "c",
+          "start": 4,
+          "end": 6,
+          "text": "Three",
+          "font": "Oswald"
+        },
+        {
+          "kind": "text",
+          "id": "d",
+          "start": 6,
+          "end": 8,
+          "text": "Four",
+          "font": "Comic Sans"
+        }
+      ],
+      "return": {
+        "graph": "[0:v]format=gbrp[v0];\n[v0]drawtext=fontfile=font0.ttf:textfile=text0.txt:expansion=none:fontsize=73.9556:fontcolor=0xffffff:borderw=2.3111:bordercolor=0x000000:shadowx=3.0815:shadowy=3.0815:shadowcolor=0x000000@0.6:x='w*0.5-text_w/2':y='h*0.78-text_h/2':alpha='1*clip(min((t-0)/0.3,(2-t)/0.3),0,1)':enable='between(t,0,2)'[v1];\n[v1]drawtext=fontfile=font0.ttf:textfile=text1.txt:expansion=none:fontsize=73.9556:fontcolor=0xffffff:borderw=2.3111:bordercolor=0x000000:shadowx=3.0815:shadowy=3.0815:shadowcolor=0x000000@0.6:x='w*0.5-text_w/2':y='h*0.78-text_h/2':alpha='1*clip(min((t-2)/0.3,(4-t)/0.3),0,1)':enable='between(t,2,4)'[v2];\n[v2]drawtext=fontfile=font1.ttf:textfile=text2.txt:expansion=none:fontsize=73.9556:fontcolor=0xffffff:borderw=2.3111:bordercolor=0x000000:shadowx=3.0815:shadowy=3.0815:shadowcolor=0x000000@0.6:x='w*0.5-text_w/2':y='h*0.78-text_h/2':alpha='1*clip(min((t-4)/0.3,(6-t)/0.3),0,1)':enable='between(t,4,6)'[v3];\n[v3]drawtext=fontfile=font0.ttf:textfile=text3.txt:expansion=none:fontsize=73.9556:fontcolor=0xffffff:borderw=2.3111:bordercolor=0x000000:shadowx=3.0815:shadowy=3.0815:shadowcolor=0x000000@0.6:x='w*0.5-text_w/2':y='h*0.78-text_h/2':alpha='1*clip(min((t-6)/0.3,(8-t)/0.3),0,1)':enable='between(t,6,8)'[v4];\n[v4]format=yuv420p[v]",
+        "media": [],
+        "luts": [],
+        "fonts": [
+          "Anton-Regular.ttf",
+          "Oswald.ttf"
+        ],
+        "texts": [
+          "One",
+          "Two",
+          "Three",
+          "Four"
+        ],
+        "applied": [
+          "a",
+          "b",
+          "c",
+          "d"
+        ],
+        "skipped": []
+      }
+    },
+    {
+      "name": "text that is empty is left out",
+      "clips": [
+        {
+          "kind": "text",
+          "id": "blank",
+          "start": 0,
+          "end": 2,
+          "text": "   "
+        },
+        {
+          "kind": "text",
+          "id": "none",
+          "start": 0,
+          "end": 2
+        }
+      ],
+      "return": {
+        "graph": "[0:v]format=gbrp[v0];\n[v0]format=yuv420p[v]",
+        "media": [],
+        "luts": [],
+        "fonts": [],
+        "texts": [],
+        "applied": [],
+        "skipped": [
+          {
+            "id": "blank",
+            "reason": "the text is empty"
+          },
+          {
+            "id": "none",
+            "reason": "the text is empty"
+          }
+        ]
+      }
+    },
+    {
+      "name": "a clip that runs past the end keeps its own fade out time",
+      "clips": [
+        {
+          "kind": "vignette",
+          "id": "long",
+          "start": 8,
+          "end": 14,
+          "fade_in": 0.5,
+          "fade_out": 2
+        }
+      ],
+      "return": {
+        "graph": "[0:v]format=gbrp[v0];\ncolor=c=white:s=1504x832:r=24,format=gbrp,vignette=angle=0.84:eval=init,eq=contrast='clip(min((t-8)/0.5,(14-t)/2),0,1)':saturation='clip(min((t-8)/0.5,(14-t)/2),0,1)':brightness='0.5*(1-clip(min((t-8)/0.5,(14-t)/2),0,1))':eval=frame[l1];\n[v0][l1]blend=all_mode=multiply:all_opacity=1:enable='between(t,8,14)'[v1];\n[v1]format=yuv420p[v]",
+        "media": [],
+        "luts": [],
+        "fonts": [],
+        "texts": [],
+        "applied": [
+          "long"
+        ],
+        "skipped": []
+      }
+    }
+  ],
+  "args_cases": [
+    {
+      "name": "grain with audio",
+      "clips": [
+        {
+          "kind": "grain",
+          "id": "g",
+          "start": 0,
+          "end": 10
+        }
+      ],
+      "keep_audio": true,
+      "crf": 21,
+      "preset": "medium",
+      "return": [
+        "-y",
+        "-loglevel",
+        "error",
+        "-i",
+        "in.mp4",
+        "-/filter_complex",
+        "graph.txt",
+        "-map",
+        "[v]",
+        "-map",
+        "0:a:0",
+        "-c:a",
+        "copy",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "medium",
+        "-crf",
+        "21",
+        "-pix_fmt",
+        "yuv420p",
+        "-movflags",
+        "+faststart",
+        "-t",
+        "10",
+        "out.mp4"
+      ]
+    },
+    {
+      "name": "media inputs: loop, seek and a second file",
+      "clips": [
+        {
+          "kind": "media",
+          "id": "a",
+          "start": 1,
+          "end": 5,
+          "path": "C:/overlay/dust.mov",
+          "loop": true,
+          "source_start": 0
+        },
+        {
+          "kind": "media",
+          "id": "b",
+          "start": 2,
+          "end": 6,
+          "path": "C:/overlay/leak.mp4",
+          "loop": false,
+          "source_start": 2.5
+        }
+      ],
+      "keep_audio": false,
+      "crf": 18,
+      "preset": "veryfast",
+      "return": [
+        "-y",
+        "-loglevel",
+        "error",
+        "-i",
+        "in.mp4",
+        "-stream_loop",
+        "-1",
+        "-i",
+        "C:/overlay/dust.mov",
+        "-ss",
+        "2.5",
+        "-i",
+        "C:/overlay/leak.mp4",
+        "-/filter_complex",
+        "graph.txt",
+        "-map",
+        "[v]",
+        "-an",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "18",
+        "-pix_fmt",
+        "yuv420p",
+        "-movflags",
+        "+faststart",
+        "-t",
+        "10",
+        "out.mp4"
+      ]
+    }
+  ],
+  "fonts": {
+    "Anton": "Anton-Regular.ttf",
+    "Oswald": "Oswald.ttf"
+  }
+}

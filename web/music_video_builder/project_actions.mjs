@@ -24,6 +24,7 @@ import {
 import {
   defaultFluxReferenceBuilder,
   normalizeGemmaContextLimit,
+  normalizeGemmaGpuDevice,
   normalizeGemmaGpuLayers,
   normalizeLmStudioContextLimit,
   normalizeOutputTokenLimit,
@@ -480,6 +481,7 @@ export function createProjectActions({
         gemma_context_limit: normalizeGemmaContextLimit(state.gemmaContextLimit),
         gemma_output_token_limit: normalizeOutputTokenLimit(state.gemmaOutputTokenLimit),
         gemma_gpu_layers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),
+        gemma_gpu_device: normalizeGemmaGpuDevice(state.gemmaGpuDevice),
         lm_studio_base_url: state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
         lm_studio_model: state.lmStudioModel || "",
         lm_studio_api_key: state.lmStudioApiKey || "",

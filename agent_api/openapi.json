@@ -224,6 +224,10 @@
             "default": 8000,
             "type": "integer"
           },
+          "gemma_gpu_device": {
+            "default": -1,
+            "type": "integer"
+          },
           "gemma_gpu_layers": {
             "default": 99,
             "type": "integer"
@@ -270,6 +274,7 @@
           "gemma_context_limit",
           "gemma_output_token_limit",
           "gemma_gpu_layers",
+          "gemma_gpu_device",
           "lm_studio_base_url",
           "lm_studio_model",
           "llm_api_provider",
